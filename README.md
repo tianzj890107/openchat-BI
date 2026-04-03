@@ -15,31 +15,76 @@ An open-source AI coding assistant CLI, powered by Anthropic's Claude API. Inspi
 - **Task management** - track multi-step work with in-memory task system
 - **Cross-platform** - Windows (Git Bash / PowerShell / cmd fallback), macOS, Linux
 
-## Installation
+## Prerequisites
+
+- **Python 3.10+** ([download](https://www.python.org/downloads/))
+- **Anthropic API Key** - get one at https://console.anthropic.com/
+- **Git** (optional, for `/commit`, `/review` and other git-related skills)
+
+## Quick Start
 
 ```bash
-# Clone the repo
+# 1. Clone the repo
 git clone https://github.com/YOUR_USERNAME/open-claude.git
 cd open-claude
 
-# Install dependencies
+# 2. (Recommended) Create a virtual environment
+python -m venv .venv
+
+# Activate it:
+#   Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+#   Windows (cmd):
+.venv\Scripts\activate.bat
+#   macOS / Linux:
+source .venv/bin/activate
+
+# 3. Install the package (with all dependencies)
 pip install -e .
+
+# 4. Set your Anthropic API key
+#   Windows (PowerShell):
+$env:ANTHROPIC_API_KEY = "sk-ant-your-key-here"
+#   Windows (cmd):
+set ANTHROPIC_API_KEY=sk-ant-your-key-here
+#   macOS / Linux:
+export ANTHROPIC_API_KEY="sk-ant-your-key-here"
+
+# 5. Run!
+open-claude
 ```
 
-### Requirements
+> **Tip**: To avoid setting the API key every time, add the `export` / `$env:` line to your shell profile (`~/.bashrc`, `~/.zshrc`, or PowerShell `$PROFILE`), or save it in the config file (see below).
 
-- Python 3.10+
-- An [Anthropic API key](https://console.anthropic.com/)
+### Alternative: Run without installing
+
+If you prefer not to `pip install`, you can install dependencies manually and run as a module:
+
+```bash
+pip install anthropic rich prompt_toolkit
+python -m open_claude
+```
+
+Or simply:
+
+```bash
+pip install anthropic rich prompt_toolkit
+python run.py
+```
 
 ## Configuration
 
-Set your API key via environment variable:
+### API Key
+
+You have two options:
+
+**Option A** - Environment variable (recommended):
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-Or add it to `~/.claude/config.json`:
+**Option B** - Config file at `~/.claude/config.json`:
 
 ```json
 {
@@ -58,24 +103,32 @@ Or add it to `~/.claude/config.json`:
 
 ## Usage
 
+### Interactive Mode (REPL)
+
 ```bash
-# Interactive REPL
 open-claude
+```
 
-# Or run directly
-python -m open_claude
+This opens an interactive chat session. Type your message, press Enter, and the assistant will respond with streaming output. It can read/write files, run shell commands, search your codebase, and more.
 
-# Single prompt (non-interactive)
-open-claude -p "explain this codebase"
+### Single Prompt Mode
 
-# With a specific model
-open-claude --model claude-opus-4-20250514
+```bash
+# Run one prompt and exit (useful for scripting)
+open-claude -p "explain the main function in src/app.py"
+```
 
-# Auto-approve all tool executions
-open-claude --dangerously-skip-permissions
+### CLI Options
 
-# Specify working directory
-open-claude --cwd /path/to/project
+```
+open-claude [OPTIONS]
+
+Options:
+  -v, --version                 Show version and exit
+  -p, --prompt TEXT             Run a single prompt and exit
+  --model MODEL                 Model override (e.g. claude-opus-4-20250514)
+  --cwd PATH                    Set working directory
+  --dangerously-skip-permissions  Auto-approve all tool executions
 ```
 
 ### REPL Commands
@@ -160,6 +213,18 @@ open_claude/
     registry.py     # Skill registry, discovery, loading
     bundled.py      # Built-in skills (/commit, /review, etc.)
 ```
+
+## Troubleshooting
+
+**`No API key found`** - Set `ANTHROPIC_API_KEY` environment variable or add it to `~/.claude/config.json`.
+
+**`'anthropic' package not installed`** - Run `pip install anthropic` (or `pip install -e .` if you cloned the repo).
+
+**`python: command not found`** - Try `python3` instead, or ensure Python 3.10+ is installed and on your PATH.
+
+**Windows: `open-claude` command not found after install** - Make sure your Python Scripts directory is on PATH. Alternatively, use `python -m open_claude`.
+
+**Permission denied on tool execution** - The default mode asks before running Bash/Write/Edit. Press `y` to allow, `a` to always allow that tool, or `A` to allow all. You can also start with `--dangerously-skip-permissions`.
 
 ## License
 
