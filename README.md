@@ -39,7 +39,9 @@ python -m venv .venv
 #   macOS / Linux:
 source .venv/bin/activate
 
-# 3. Install the package (with all dependencies)
+# 3. Install open-claude and all dependencies
+#    This installs the `open-claude` command to your PATH
+#    so you can run it from anywhere.
 pip install -e .
 
 # 4. Set your Anthropic API key
@@ -56,21 +58,29 @@ open-claude
 
 > **Tip**: To avoid setting the API key every time, add the `export` / `$env:` line to your shell profile (`~/.bashrc`, `~/.zshrc`, or PowerShell `$PROFILE`), or save it in the config file (see below).
 
+### What does `pip install -e .` do?
+
+It reads `pyproject.toml` and:
+
+1. Installs dependencies: `anthropic`, `rich`, `prompt_toolkit`
+2. Registers the `open-claude` command on your PATH (via `[project.scripts]`)
+3. `-e` (editable) means changes to the source code take effect immediately without reinstalling
+
+After this step, you can run `open-claude` from any directory.
+
 ### Alternative: Run without installing
 
-If you prefer not to `pip install`, you can install dependencies manually and run as a module:
+If you don't want to `pip install`, install dependencies manually and run as a Python module:
 
 ```bash
 pip install anthropic rich prompt_toolkit
 python -m open_claude
-```
 
-Or simply:
-
-```bash
-pip install anthropic rich prompt_toolkit
+# or
 python run.py
 ```
+
+Note: this way you won't have the `open-claude` command, you'll need to use `python -m open_claude` every time.
 
 ## Configuration
 
