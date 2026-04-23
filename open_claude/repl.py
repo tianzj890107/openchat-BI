@@ -10,6 +10,8 @@ from rich.syntax import Syntax
 from rich.text import Text
 
 from .agent import execute_agent
+from .agent_def import AgentDef, BASE_AGENT_DEF, get_agent_def_registry, load_agent_defs
+from .agent_instance import AgentInstance, InstanceState, get_instance_store
 from .api import create_client, stream_message
 from .compact import compact_conversation, needs_compaction
 from .config import get_model
@@ -18,7 +20,7 @@ from .skills.bundled import init_bundled_skills
 from .skills.registry import get_registry, load_skills
 from .tasks import get_task_store
 from .tokens import CostTracker, estimate_messages_tokens, tokens_remaining
-from .tools import execute_tool
+from .tools import execute_tool, get_filtered_tool_schemas
 
 console = Console()
 
@@ -142,14 +144,31 @@ class PermissionManager:
 # Display helpers
 # ---------------------------------------------------------------------------
 
-def print_welcome():
+def print_welcome(agent_def: Optional[AgentDef] = None, instance: Optional[AgentInstance] = None):
+    title = "[bold cyan]Open Claude[/bold cyan]"
+    model_name = (agent_def.model if agent_def and agent_def.model else get_model())
+
+    if agent_def and not agent_def.is_base:
+        title = f"[bold cyan]{agent_def.name}[/bold cyan]"
+        desc = agent_def.description or ""
+        if desc:
+            title += f"\n[dim]{desc}[/dim]"
+
+    instance_line = ""
+    if instance:
+        instance_line = f"\n[dim]Instance #{instance.id}[/dim]"
+
     console.print()
     console.print(Panel.fit(
-        "[bold cyan]Open Claude[/bold cyan]\n"
-        f"[dim]Model: {get_model()}[/dim]\n"
+        f"{title}\n"
+        f"[dim]Model: {model_name}[/dim]"
+        f"{instance_line}\n"
         "[dim]Type your message, or 'quit' to exit. Use Ctrl+C to cancel.[/dim]",
         border_style="cyan",
     ))
+    # Show welcome message from agent definition
+    if agent_def and agent_def.welcome_message:
+        console.print(f"\n  [italic]{agent_def.welcome_message}[/italic]")
     console.print()
 
 
@@ -217,30 +236,51 @@ def _shorten(s: str, max_len: int) -> str:
 class Conversation:
     """Manages message history and the query loop."""
 
-    def __init__(self, cwd: str, permission_mode: str = "default"):
+    def __init__(
+        self,
+        cwd: str,
+        permission_mode: str = "default",
+        agent_def: Optional[AgentDef] = None,
+    ):
         self.cwd = cwd
         self.messages: list[dict[str, Any]] = []
         self.client = create_client()
         self.permissions = PermissionManager()
-        self.permissions.mode = permission_mode
         self.cost_tracker = CostTracker()
-        self.model = get_model()
+
+        # Agent definition — drives identity, tools, model, permissions
+        self.agent_def = agent_def or BASE_AGENT_DEF
+
+        # Model: agent def override > CLI override > config default
+        self.model = self.agent_def.model or get_model()
+
+        # Permission: agent def override > CLI flag
+        self.permissions.mode = self.agent_def.permission_mode or permission_mode
+
+        # Max tool-loop iterations
+        self.max_iterations = self.agent_def.max_iterations
+
+        # Create instance record
+        store = get_instance_store()
+        self.instance = store.create(self.agent_def, cwd)
+        self.instance.start()
 
         # Initialize skills
         init_bundled_skills()
         load_skills(cwd)
 
+        # Load agent definitions
+        load_agent_defs(cwd)
+
         # Build system prompt (after skills loaded so they appear in prompt)
-        self.system_prompt = build_system_prompt(cwd)
+        self.system_prompt = build_system_prompt(cwd, agent_def=self.agent_def)
 
     def add_user_message(self, text: str):
         self.messages.append({"role": "user", "content": text})
 
     def run_turn(self) -> None:
         """Run one assistant turn: stream response, execute tools, loop until done."""
-        max_iterations = 30  # Safety limit for tool loops
-
-        for iteration in range(max_iterations):
+        for iteration in range(self.max_iterations):
             # Auto-compact if approaching context limit
             self._maybe_compact()
 
@@ -277,7 +317,10 @@ class Conversation:
         started_text = False
 
         # Use a single generator for the entire stream
-        event_gen = stream_message(self.client, self.messages, self.system_prompt)
+        event_gen = stream_message(
+            self.client, self.messages, self.system_prompt,
+            allowed_tools=self.agent_def.tools,
+        )
 
         # Show spinner until first text/tool event
         spinner_active = True
@@ -419,12 +462,16 @@ class Conversation:
 # REPL
 # ---------------------------------------------------------------------------
 
-def run_repl(cwd: Optional[str] = None, permission_mode: str = "default"):
+def run_repl(
+    cwd: Optional[str] = None,
+    permission_mode: str = "default",
+    agent_def: Optional[AgentDef] = None,
+):
     """Main REPL loop."""
     cwd = cwd or os.getcwd()
-    print_welcome()
 
-    conv = Conversation(cwd, permission_mode=permission_mode)
+    conv = Conversation(cwd, permission_mode=permission_mode, agent_def=agent_def)
+    print_welcome(agent_def=conv.agent_def, instance=conv.instance)
 
     # Persistent prompt session
     try:
@@ -475,6 +522,9 @@ def run_repl(cwd: Optional[str] = None, permission_mode: str = "default"):
                     "  /help        - Show this help\n"
                     "  /tasks       - Show current tasks\n"
                     "  /skills      - List all available skills\n"
+                    "  /agents      - List available agent definitions\n"
+                    "  /agent       - Show current agent info\n"
+                    "  /instances   - List active agent instances\n"
                     "  /model       - Show current model\n"
                     "  /cost        - Show token usage and cost\n"
                     "  /compact     - Manually compact conversation history\n"
@@ -559,6 +609,45 @@ def run_repl(cwd: Optional[str] = None, permission_mode: str = "default"):
                         desc = f" - {s.description}" if s.description else ""
                         invocable = " (user-invocable)" if s.user_invocable else ""
                         console.print(f"  [bold cyan]/{s.name}[/bold cyan]{desc} [dim]{src}{invocable}[/dim]")
+                continue
+
+            if text.lower() in ("/agents",):
+                adr = get_agent_def_registry()
+                defs = adr.get_all()
+                if not defs:
+                    console.print("[dim]No agent definitions found.[/dim]")
+                    console.print("[dim]Add .md files to .claude/agents/ or ~/.claude/agents/[/dim]")
+                else:
+                    console.print(f"[dim]{len(defs)} agent definition(s):[/dim]")
+                    for d in defs:
+                        console.print(f"  [bold cyan]{d.name}[/bold cyan] — {d.description or '(no description)'} [dim][{d.source}][/dim]")
+                continue
+
+            if text.lower() in ("/instances",):
+                istore = get_instance_store()
+                instances = istore.list_all()
+                if not instances:
+                    console.print("[dim]No instances.[/dim]")
+                else:
+                    for inst in instances:
+                        color = {
+                            "running": "green", "paused": "yellow",
+                            "stopped": "dim", "created": "cyan",
+                        }.get(inst.state, "white")
+                        console.print(f"  [{color}]{inst.summary()}[/{color}]")
+                continue
+
+            if text.lower() in ("/agent",):
+                # Show current agent info
+                ad = conv.agent_def
+                console.print(f"[dim]Current agent: {ad.name}[/dim]")
+                if ad.description:
+                    console.print(f"[dim]  Description: {ad.description}[/dim]")
+                if ad.model:
+                    console.print(f"[dim]  Model: {ad.model}[/dim]")
+                if ad.tools is not None:
+                    console.print(f"[dim]  Tools: {', '.join(ad.tools)}[/dim]")
+                console.print(f"[dim]  Instance: #{conv.instance.id} ({conv.instance.state})[/dim]")
                 continue
 
             # Slash command → skill invocation

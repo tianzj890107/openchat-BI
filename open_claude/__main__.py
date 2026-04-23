@@ -30,6 +30,15 @@ def main():
         "--dangerously-skip-permissions", action="store_true",
         help="Auto-approve all tool executions without asking (use with caution)",
     )
+    parser.add_argument(
+        "--agent", type=str, default=None,
+        help="Agent definition name to use (e.g. 'code-reviewer'). "
+             "See .claude/agents/ for available definitions.",
+    )
+    parser.add_argument(
+        "--list-agents", action="store_true",
+        help="List available agent definitions and exit",
+    )
 
     args = parser.parse_args()
 
@@ -62,6 +71,24 @@ def main():
         print("Run: pip install rich", file=sys.stderr)
         sys.exit(1)
 
+    # Load agent definitions early (needed for --list-agents and --agent)
+    from .agent_def import load_agent_defs, get_agent_def_registry
+    load_agent_defs(cwd)
+
+    # --list-agents: show available definitions and exit
+    if args.list_agents:
+        registry = get_agent_def_registry()
+        defs = registry.get_all()
+        if not defs:
+            print("No agent definitions found.")
+            print("Add .md files to .claude/agents/ or ~/.claude/agents/")
+        else:
+            print(f"{len(defs)} agent definition(s):")
+            for d in defs:
+                model_hint = f" (model: {d.model})" if d.model else ""
+                print(f"  {d.name}{model_hint} — {d.description or '(no description)'}  [{d.source}]")
+        return
+
     # Check API key
     from .config import get_api_key
     if not get_api_key():
@@ -69,24 +96,38 @@ def main():
         print("Set ANTHROPIC_API_KEY environment variable or add to ~/.claude/config.json", file=sys.stderr)
         sys.exit(1)
 
+    # Resolve agent definition
+    agent_def = None
+    if args.agent:
+        registry = get_agent_def_registry()
+        agent_def = registry.get(args.agent)
+        if not agent_def:
+            print(f"Error: Unknown agent '{args.agent}'.", file=sys.stderr)
+            available = registry.list_names()
+            if available:
+                print(f"Available agents: {', '.join(available)}", file=sys.stderr)
+            else:
+                print("No agent definitions found. Add .md files to .claude/agents/", file=sys.stderr)
+            sys.exit(1)
+
     permission_mode = "always_allow" if args.dangerously_skip_permissions else "default"
 
     if args.prompt:
         # Non-interactive: single prompt mode
-        _run_single_prompt(args.prompt, cwd, permission_mode)
+        _run_single_prompt(args.prompt, cwd, permission_mode, agent_def=agent_def)
     else:
         # Interactive REPL
         from .repl import run_repl
-        run_repl(cwd, permission_mode=permission_mode)
+        run_repl(cwd, permission_mode=permission_mode, agent_def=agent_def)
 
 
-def _run_single_prompt(prompt: str, cwd: str, permission_mode: str = "default"):
+def _run_single_prompt(prompt: str, cwd: str, permission_mode: str = "default", agent_def=None):
     """Run a single prompt and exit."""
     from rich.console import Console
     from .repl import Conversation
 
     console = Console()
-    conv = Conversation(cwd, permission_mode=permission_mode)
+    conv = Conversation(cwd, permission_mode=permission_mode, agent_def=agent_def)
     conv.add_user_message(prompt)
 
     try:

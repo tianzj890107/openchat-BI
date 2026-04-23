@@ -6,7 +6,7 @@ from typing import Any, Generator, Optional
 import anthropic
 
 from .config import get_api_key, get_max_tokens, get_model
-from .tools import TOOL_SCHEMAS
+from .tools import TOOL_SCHEMAS, get_filtered_tool_schemas
 
 
 def create_client() -> anthropic.Anthropic:
@@ -20,9 +20,9 @@ def create_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=api_key)
 
 
-def get_tool_schemas() -> list[dict[str, Any]]:
-    """Get tool schemas in Anthropic API format."""
-    return TOOL_SCHEMAS
+def get_tool_schemas(allowed_tools: Optional[list[str]] = None) -> list[dict[str, Any]]:
+    """Get tool schemas in Anthropic API format, optionally filtered."""
+    return get_filtered_tool_schemas(allowed_tools)
 
 
 def stream_message(
@@ -31,6 +31,7 @@ def stream_message(
     system_prompt: str,
     model: Optional[str] = None,
     max_tokens: Optional[int] = None,
+    allowed_tools: Optional[list[str]] = None,
 ) -> Generator[dict[str, Any], None, None]:
     """
     Stream a message from the API, yielding events as they arrive.
@@ -47,7 +48,7 @@ def stream_message(
     model = model or get_model()
     max_tokens = max_tokens or get_max_tokens()
 
-    tools = get_tool_schemas()
+    tools = get_tool_schemas(allowed_tools)
 
     try:
         with client.messages.stream(

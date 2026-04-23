@@ -1,0 +1,455 @@
+"""
+WebSession — a conversation wrapper that emits structured events for SSE.
+
+This is a thin reimplementation of open_claude.repl.Conversation's turn loop
+that yields events instead of printing via rich.Console. Each event is a
+JSON-serializable dict suitable for `data: <json>\\n\\n` SSE framing.
+
+Event types:
+    user_message        {text}
+    iteration_start     {iteration}
+    llm_request         {iteration, model, message_count, last_message}
+    text_delta          {text}
+    tool_start          {id, name}
+    tool_input          {id, name, input}
+    tool_result         {id, name, input, output, duration_ms, ontology_entities}
+    llm_response        {iteration, text, tool_uses, stop_reason, usage}
+    done                {stop_reason, iterations}
+    error               {message}
+"""
+
+from __future__ import annotations
+
+import copy
+import re
+import time
+from typing import Any, Generator, Optional
+
+from open_claude.agent_def import AgentDef
+from open_claude.prompt import build_system_prompt
+from open_claude.skills.bundled import init_bundled_skills
+from open_claude.skills.registry import load_skills
+from open_claude.tokens import CostTracker
+from open_claude.tools import execute_tool
+
+from ..llm.provider import get_model_id, stream_message
+from ..llm.runtime_config import get_config as get_llm_config
+from ..ontology.store import OntologyStore
+from ..tools.ask_user import ASK_USER_TOOL_NAME
+from ..tools.chart_tools import extract_chart_spec
+
+
+ENTITY_CODE_RE = re.compile(r"\b(?:T\d{6}|BO\d{4}|LE\d{5}|AT\d{5}|ER\d{3}|M\d{3}|A\d{3}|R\d{3})\b")
+
+
+class WebSession:
+    """One browser session = one Conversation + one event stream."""
+
+    def __init__(
+        self,
+        cwd: str,
+        agent_def: AgentDef,
+        ontology_store: OntologyStore,
+        max_iterations: Optional[int] = None,
+        *,
+        tools_override: Optional[list[str]] = None,
+        report_context_block: Optional[str] = None,
+        context_header: Optional[str] = None,
+    ) -> None:
+        self.cwd = cwd
+        self.agent_def = agent_def
+        self.ontology_store = ontology_store
+        self.messages: list[dict[str, Any]] = []
+        self.cost_tracker = CostTracker()
+        self.max_iterations = max_iterations or agent_def.max_iterations or 40
+
+        # --- Per-session overrides ----------------------------------------
+        # tools_override: if not None, takes precedence over agent_def.tools
+        # report_context_block: appended to the system prompt under
+        #   `# 报表上下文`. context_header (optional) shows a short status
+        #   line (e.g., "# 数据库工具可用性: enabled")
+        self._tools_override: Optional[list[str]] = (
+            list(tools_override) if tools_override is not None else None
+        )
+        self._report_context_block: Optional[str] = report_context_block
+        self._context_header: Optional[str] = context_header
+
+        # Skills & system prompt (skills must be loaded before prompt build)
+        init_bundled_skills()
+        load_skills(cwd)
+        self.system_prompt = self._build_system_prompt()
+
+        # Aggregate history of ontology entities seen this session (dedup by code)
+        self.ontology_seen: dict[str, dict[str, Any]] = {}
+
+        # Pending AskUser tool_use whose result must be supplied by the user.
+        # When non-None, the next call to run_loop() must start by appending a
+        # synthetic tool_result for this id, not a fresh user message.
+        self.pending_tool_use_id: Optional[str] = None
+        self.pending_choice_spec: Optional[dict[str, Any]] = None
+        self._pending_sibling_results: list[dict[str, Any]] = []
+
+    # ------------------------------------------------------------------
+    # System-prompt construction (honours per-session overrides)
+    # ------------------------------------------------------------------
+
+    @property
+    def allowed_tools(self) -> Optional[list[str]]:
+        """Effective tool whitelist for the current session."""
+        if self._tools_override is not None:
+            return self._tools_override
+        return self.agent_def.tools
+
+    def _build_system_prompt(self) -> str:
+        # If tools_override is set, build against a shallow clone of the
+        # agent_def so build_system_prompt's tool listing reflects it.
+        if self._tools_override is not None:
+            effective_def = copy.copy(self.agent_def)
+            effective_def.tools = list(self._tools_override)
+        else:
+            effective_def = self.agent_def
+        prompt = build_system_prompt(self.cwd, agent_def=effective_def)
+        extras: list[str] = []
+        if self._context_header:
+            extras.append(self._context_header.strip())
+        if self._report_context_block:
+            extras.append(
+                "# 报表上下文\n\n(以下内容来自用户上传的报表,请将其作为回答的主要依据)\n\n"
+                + self._report_context_block.strip()
+            )
+        if extras:
+            prompt = prompt.rstrip() + "\n\n" + "\n\n".join(extras) + "\n"
+        return prompt
+
+    def set_tools_override(self, tools: Optional[list[str]]) -> None:
+        """
+        Change the effective tool whitelist mid-session (e.g., user toggled
+        the '启用数据库查询' checkbox). Rebuilds the system prompt so the
+        tool listing matches what the LLM will actually be allowed to call.
+        """
+        self._tools_override = list(tools) if tools is not None else None
+        self.system_prompt = self._build_system_prompt()
+
+    def set_context_header(self, header: Optional[str]) -> None:
+        """
+        Update the `# 当前报表 ... # 数据库工具可用性: ...` marker block
+        mid-session. Must be called together with `set_tools_override` when
+        flipping the db-query toggle, otherwise the agent will see a stale
+        availability marker and refuse to use the tools it actually has.
+        """
+        self._context_header = header
+        self.system_prompt = self._build_system_prompt()
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def generate_turn(self, user_text: str) -> Generator[dict[str, Any], None, None]:
+        """Yield events for one user turn (user message → assistant → tools → ...)."""
+        self.messages.append({"role": "user", "content": user_text})
+        yield {"type": "user_message", "text": user_text}
+        yield from self._run_loop()
+
+    def continue_with_choice(
+        self, choice_id: str, choice_label: str,
+    ) -> Generator[dict[str, Any], None, None]:
+        """Resume a turn that paused on an AskUser call.
+
+        The deferred AskUser tool_use gets its synthetic tool_result here
+        (the user's selection). Any sibling tool_uses that were executed
+        before the pause contribute their cached results in the same user
+        message, so every tool_use in the prior assistant turn has a
+        matching tool_result.
+        """
+        if not self.pending_tool_use_id:
+            yield {"type": "error", "message": "no pending choice"}
+            return
+        tool_use_id = self.pending_tool_use_id
+        sibling_results = getattr(self, "_pending_sibling_results", []) or []
+        self.pending_tool_use_id = None
+        self.pending_choice_spec = None
+        self._pending_sibling_results = []
+
+        content_text = f"User selected: {choice_label} (id={choice_id})"
+        user_content = list(sibling_results) + [{
+            "type": "tool_result",
+            "tool_use_id": tool_use_id,
+            "content": content_text,
+        }]
+        self.messages.append({"role": "user", "content": user_content})
+        yield {
+            "type": "user_choice_resolved",
+            "tool_use_id": tool_use_id,
+            "choice_id": choice_id,
+            "choice_label": choice_label,
+        }
+        yield from self._run_loop()
+
+    # ------------------------------------------------------------------
+    # Turn loop
+    # ------------------------------------------------------------------
+
+    def _run_loop(self) -> Generator[dict[str, Any], None, None]:
+        stop_reason = "end_turn"
+        for iteration in range(self.max_iterations):
+            yield {"type": "iteration_start", "iteration": iteration}
+
+            cfg = get_llm_config()
+            current_model_id = get_model_id(cfg.model_key)
+
+            yield {
+                "type": "llm_request",
+                "iteration": iteration,
+                "model": current_model_id,
+                "model_key": cfg.model_key,
+                "max_tokens": cfg.max_tokens,
+                "temperature": cfg.temperature,
+                "message_count": len(self.messages),
+                "messages_snapshot": self._snapshot_messages(),
+            }
+
+            stop_reason, text_buffer, tool_uses, usage = yield from self._stream_one_response(iteration)
+
+            yield {
+                "type": "llm_response",
+                "iteration": iteration,
+                "text": text_buffer,
+                "tool_uses": [
+                    {"id": tu["id"], "name": tu["name"], "input": tu["input"]}
+                    for tu in tool_uses
+                ],
+                "stop_reason": stop_reason,
+                "usage": usage,
+            }
+
+            # Persist assistant turn to history
+            content: list[dict[str, Any]] = []
+            if text_buffer:
+                content.append({"type": "text", "text": text_buffer})
+            content.extend(tool_uses)
+            if content:
+                self.messages.append({"role": "assistant", "content": content})
+
+            if stop_reason != "tool_use" or not tool_uses:
+                break
+
+            # If any tool_use is AskUser, run the siblings now (if any) and
+            # pause. We cache the sibling results so continue_with_choice
+            # can emit ONE user message containing results for every
+            # tool_use_id — the API rule is that every tool_use in an
+            # assistant turn needs a matching tool_result in the next
+            # user turn.
+            ask_user_tu = next((tu for tu in tool_uses if tu["name"] == ASK_USER_TOOL_NAME), None)
+            if ask_user_tu:
+                sibling_results: list[dict[str, Any]] = []
+                for tu in tool_uses:
+                    if tu["id"] == ask_user_tu["id"]:
+                        continue
+                    t0 = time.time()
+                    try:
+                        output = execute_tool(tu["name"], tu["input"], self.cwd)
+                    except Exception as e:
+                        output = f"Error executing {tu['name']}: {e}"
+                    duration_ms = int((time.time() - t0) * 1000)
+                    display_output, chart = extract_chart_spec(output)
+                    llm_output = display_output if chart else output
+                    entities = self._extract_entities(display_output)
+                    yield {
+                        "type": "tool_result",
+                        "id": tu["id"],
+                        "name": tu["name"],
+                        "input": tu["input"],
+                        "output": display_output,
+                        "duration_ms": duration_ms,
+                        "ontology_entities": entities,
+                        "chart": chart,
+                    }
+                    sibling_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tu["id"],
+                        "content": llm_output,
+                    })
+                self._pending_sibling_results = sibling_results
+
+                spec = dict(ask_user_tu.get("input") or {})
+                self.pending_tool_use_id = ask_user_tu["id"]
+                self.pending_choice_spec = spec
+                yield {
+                    "type": "user_choice_requested",
+                    "tool_use_id": ask_user_tu["id"],
+                    "question": spec.get("question", "请选择"),
+                    "options": spec.get("options", []),
+                    "context": spec.get("context", ""),
+                }
+                yield {"type": "awaiting_user_choice"}
+                return
+
+            # Normal tool execution path
+            tool_results: list[dict[str, Any]] = []
+            for tu in tool_uses:
+                t0 = time.time()
+                try:
+                    output = execute_tool(tu["name"], tu["input"], self.cwd)
+                except Exception as e:
+                    output = f"Error executing {tu['name']}: {e}"
+                duration_ms = int((time.time() - t0) * 1000)
+
+                # Pull out a chart spec if present; keep the display text for
+                # the UI, strip the JSON block before sending back to the LLM.
+                display_output, chart = extract_chart_spec(output)
+                llm_output = display_output if chart else output
+
+                entities = self._extract_entities(display_output)
+                yield {
+                    "type": "tool_result",
+                    "id": tu["id"],
+                    "name": tu["name"],
+                    "input": tu["input"],
+                    "output": display_output,
+                    "duration_ms": duration_ms,
+                    "ontology_entities": entities,
+                    "chart": chart,
+                }
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tu["id"],
+                    "content": llm_output,
+                })
+
+            self.messages.append({"role": "user", "content": tool_results})
+
+        yield {"type": "done", "stop_reason": stop_reason}
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+
+    def _stream_one_response(self, iteration: int):
+        """Consume one LLM stream; yield per-delta events; return summary."""
+        text_buffer = ""
+        tool_uses: list[dict[str, Any]] = []
+        stop_reason = "end_turn"
+        usage: dict[str, Any] = {}
+
+        cfg = get_llm_config()
+        current_model_id = get_model_id(cfg.model_key)
+
+        for event in stream_message(
+            self.messages,
+            self.system_prompt,
+            allowed_tools=self.allowed_tools,
+            model_key=cfg.model_key,
+            max_tokens=cfg.max_tokens,
+            temperature=cfg.temperature,
+        ):
+            etype = event["type"]
+            if etype == "text_delta":
+                text_buffer += event["text"]
+                yield {"type": "text_delta", "text": event["text"]}
+            elif etype == "tool_use_start":
+                yield {"type": "tool_start", "id": event["id"], "name": event["name"]}
+            elif etype == "tool_use_end":
+                tu = {
+                    "type": "tool_use",
+                    "id": event["id"],
+                    "name": event["name"],
+                    "input": event["input"],
+                }
+                tool_uses.append(tu)
+                yield {
+                    "type": "tool_input",
+                    "id": event["id"],
+                    "name": event["name"],
+                    "input": event["input"],
+                }
+            elif etype == "message_end":
+                stop_reason = event.get("stop_reason", "end_turn")
+                usage = event.get("usage", {})
+                self.cost_tracker.add_usage(
+                    current_model_id,
+                    input_tokens=usage.get("input_tokens", 0),
+                    output_tokens=usage.get("output_tokens", 0),
+                )
+            elif etype == "error":
+                yield {"type": "error", "message": event["error"]}
+                return stop_reason, text_buffer, tool_uses, usage
+
+        return stop_reason, text_buffer, tool_uses, usage
+
+    def _snapshot_messages(self) -> list[dict[str, Any]]:
+        """Return a lightweight JSON-safe view of the current message list."""
+        out: list[dict[str, Any]] = []
+        for msg in self.messages:
+            role = msg.get("role")
+            content = msg.get("content")
+            if isinstance(content, str):
+                out.append({"role": role, "content": content})
+                continue
+            blocks: list[dict[str, Any]] = []
+            for blk in content or []:
+                btype = blk.get("type")
+                if btype == "text":
+                    blocks.append({"type": "text", "text": blk.get("text", "")})
+                elif btype == "tool_use":
+                    blocks.append({
+                        "type": "tool_use",
+                        "id": blk.get("id"),
+                        "name": blk.get("name"),
+                        "input": blk.get("input"),
+                    })
+                elif btype == "tool_result":
+                    raw = blk.get("content", "")
+                    if isinstance(raw, list):  # Claude API list-of-blocks form
+                        raw = "".join(b.get("text", "") for b in raw if isinstance(b, dict))
+                    text = str(raw)
+                    preview = text if len(text) <= 2000 else text[:2000] + f"\n... [+{len(text)-2000} chars]"
+                    blocks.append({
+                        "type": "tool_result",
+                        "tool_use_id": blk.get("tool_use_id"),
+                        "content_preview": preview,
+                    })
+                else:
+                    blocks.append({"type": btype or "unknown"})
+            out.append({"role": role, "content": blocks})
+        return out
+
+    def _extract_entities(self, text: str) -> list[dict[str, Any]]:
+        """Find ontology codes in tool output, return enriched entity records."""
+        codes = set(ENTITY_CODE_RE.findall(text or ""))
+        results: list[dict[str, Any]] = []
+        store = self.ontology_store
+        for code in codes:
+            entity, kind = self._lookup(code)
+            if entity is None:
+                continue
+            record = {
+                "code": code,
+                "kind": kind,
+                "name": getattr(entity, "name", None) or code,
+                "display": entity.to_prompt(),
+            }
+            results.append(record)
+            if code not in self.ontology_seen:
+                self.ontology_seen[code] = record
+        results.sort(key=lambda r: r["code"])
+        return results
+
+    def _lookup(self, code: str):
+        store = self.ontology_store
+        if code in store.metrics:
+            return store.metrics[code], "metric"
+        if code in store.business_objects:
+            return store.business_objects[code], "business_object"
+        if code in store.logical_entities:
+            return store.logical_entities[code], "logical_entity"
+        if code in store.attributes:
+            return store.attributes[code], "attribute"
+        if code in store.relations:
+            return store.relations[code], "relation"
+        if code in store.terms:
+            return store.terms[code], "term"
+        if code in store.activities:
+            return store.activities[code], "activity"
+        if code in store.rules:
+            return store.rules[code], "rule"
+        return None, None

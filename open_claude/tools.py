@@ -577,6 +577,40 @@ def get_base_tool_schemas() -> list[dict[str, Any]]:
     return [BASH_SCHEMA, READ_SCHEMA, WRITE_SCHEMA, EDIT_SCHEMA, GLOB_SCHEMA, GREP_SCHEMA]
 
 
+def register_tool(schema: dict[str, Any], executor) -> None:
+    """
+    Register a new tool at runtime (extension point for downstream products).
+
+    Downstream products (e.g. bi_agent) call this before creating a Conversation
+    to plug in domain-specific tools. The tool then becomes available through
+    the same tool-use flow as built-in tools, and can be whitelisted in an
+    AgentDef's `tools` list.
+    """
+    name = schema["name"]
+    if name in TOOL_EXECUTORS:
+        # Replace the existing registration (idempotent)
+        for i, s in enumerate(TOOL_SCHEMAS):
+            if s["name"] == name:
+                TOOL_SCHEMAS[i] = schema
+                break
+    else:
+        TOOL_SCHEMAS.append(schema)
+    TOOL_EXECUTORS[name] = executor
+
+
+def get_filtered_tool_schemas(allowed_tools: Optional[list[str]] = None) -> list[dict[str, Any]]:
+    """
+    Get tool schemas filtered by an allowlist.
+
+    If *allowed_tools* is None, return all schemas (same as TOOL_SCHEMAS).
+    Otherwise return only those whose name appears in the list.
+    """
+    if allowed_tools is None:
+        return TOOL_SCHEMAS
+    allowed_set = set(allowed_tools)
+    return [s for s in TOOL_SCHEMAS if s["name"] in allowed_set]
+
+
 def execute_tool(name: str, params: dict[str, Any], cwd: str) -> str:
     """Execute a tool by name with given params."""
     executor = TOOL_EXECUTORS.get(name)

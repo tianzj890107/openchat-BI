@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>应收账款账龄分布</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0A0E14; color: #E1E8F0;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  #chart { width: 100vw; height: 100vh; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+</head>
+<body>
+<div id="chart"></div>
+<script>
+  const chart = echarts.init(document.getElementById('chart'));
+  chart.setOption({"backgroundColor": "transparent", "title": {"text": "应收账款账龄分布", "subtext": "", "left": 14, "top": 10, "textStyle": {"color": "#E1E8F0", "fontSize": 14, "fontWeight": "600"}, "subtextStyle": {"color": "#6E7E96", "fontSize": 11}}, "color": ["#22D3EE", "#2DD4BF", "#F5A524", "#A78BFA", "#F472B6", "#A3E635", "#60A5FA", "#F87171", "#FB923C", "#E879F9"], "textStyle": {"color": "#AEBACB"}, "tooltip": {"trigger": "item", "backgroundColor": "#101620", "borderColor": "#2A3B52", "borderWidth": 1, "textStyle": {"color": "#E1E8F0"}, "axisPointer": {"type": "shadow"}}, "legend": {"top": 36, "right": 14, "textStyle": {"color": "#AEBACB"}, "icon": "roundRect", "itemWidth": 10, "itemHeight": 10, "show": false}, "grid": {"left": 50, "right": 20, "top": 80, "bottom": 40, "containLabel": true}, "graphic": [{"type": "text", "right": 14, "bottom": 8, "style": {"text": "Source · M013 · T_AR_Receivable · 当前数据", "fill": "#48566D", "fontSize": 10, "fontFamily": "monospace"}}], "series": [{"type": "pie", "radius": ["40%", "70%"], "center": ["50%", "56%"], "avoidLabelOverlap": true, "itemStyle": {"borderColor": "#0A0E14", "borderWidth": 2}, "label": {"color": "#AEBACB", "formatter": "{b}: {d}%"}, "data": [{"name": "0-30天", "value": 33617.14000000001}, {"name": "31-60天", "value": 25535.26}, {"name": "61-90天", "value": 19319.809999999998}, {"name": "90天以上", "value": 45368.82}]}]});
+  window.addEventListener('resize', () => chart.resize());
+</script>
+</body>
+</html>

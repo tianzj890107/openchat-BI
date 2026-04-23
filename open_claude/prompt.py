@@ -3,6 +3,8 @@
 import datetime
 import os
 import subprocess
+from typing import Optional
+
 from .claudemd import build_memory_prompt
 from .config import get_environment_info
 
@@ -104,8 +106,47 @@ def _get_project_structure(cwd: str) -> str:
     return f"  Project type: {', '.join(unique)}"
 
 
-def build_system_prompt(cwd: str) -> str:
-    """Build the full system prompt."""
+def _build_tools_section(agent_def: Optional["AgentDef"] = None) -> str:
+    """Build the tools listing, optionally filtered by AgentDef.
+
+    Reads descriptions from the live TOOL_SCHEMAS registry so that
+    tools registered at runtime (e.g. via register_tool) also appear.
+    """
+    from .tools import TOOL_SCHEMAS
+
+    def _short(desc: str) -> str:
+        # Take the first sentence or first 140 chars, whichever is shorter.
+        d = (desc or "").strip().replace("\n", " ")
+        cut = d.split(". ", 1)[0].rstrip(".")
+        if len(cut) > 140:
+            cut = cut[:137] + "..."
+        return cut
+
+    all_tools = {s["name"]: _short(s.get("description", "")) for s in TOOL_SCHEMAS}
+
+    if agent_def and agent_def.tools is not None:
+        filtered = {k: all_tools.get(k, "") for k in agent_def.tools}
+    else:
+        filtered = all_tools
+
+    lines = [f"- **{name}**: {desc}" for name, desc in filtered.items()]
+    return "\n".join(lines)
+
+
+def build_system_prompt(
+    cwd: str,
+    agent_def: Optional["AgentDef"] = None,
+) -> str:
+    """
+    Build the full system prompt.
+
+    If *agent_def* is provided and is not the base definition,
+    the prompt is specialized with the agent's role instructions,
+    tool whitelist, and identity.
+    """
+    # Avoid circular import at module level
+    from .agent_def import AgentDef
+
     env = get_environment_info()
     today = datetime.date.today().isoformat()
     git_info = _get_git_info(cwd)
@@ -113,20 +154,26 @@ def build_system_prompt(cwd: str) -> str:
     memory_prompt = build_memory_prompt(cwd)
     project_info = _get_project_structure(cwd)
 
-    prompt = f"""You are Open Claude, an interactive CLI assistant for software engineering tasks.
-You help users with coding, debugging, file operations, and shell commands.
+    # --- Identity ---
+    if agent_def and not agent_def.is_base:
+        identity = (
+            f"You are **{agent_def.name}**, a specialized Open Claude agent.\n"
+            f"{agent_def.description}\n"
+        )
+    else:
+        identity = (
+            "You are Open Claude, an interactive CLI assistant for software "
+            "engineering tasks.\n"
+            "You help users with coding, debugging, file operations, and shell commands.\n"
+        )
 
+    # --- Tools section (respects whitelist) ---
+    tools_section = _build_tools_section(agent_def)
+
+    prompt = f"""{identity}
 # Tools
 You have access to the following tools:
-- **Bash**: Execute shell commands
-- **Read**: Read file contents with line numbers
-- **Write**: Create or overwrite files
-- **Edit**: Perform exact string replacements in files
-- **Glob**: Search for files by pattern
-- **Grep**: Search file contents with regex
-- **Skill**: Execute a skill (slash command) for specialized tasks
-- **TaskCreate/TaskUpdate/TaskList/TaskGet**: Track multi-step work with tasks
-- **Agent**: Launch a sub-agent for complex, multi-step tasks in an isolated context
+{tools_section}
 
 # Skills
 When users reference a slash command like "/commit" or "/review", use the Skill tool to invoke it.
@@ -169,5 +216,9 @@ When users reference a slash command like "/commit" or "/review", use the Skill 
 
     if memory_prompt:
         prompt += f"\n# User & Project Instructions\n{memory_prompt}\n"
+
+    # --- Agent-specific role instructions (from definition body) ---
+    if agent_def and agent_def.system_prompt_extra:
+        prompt += f"\n# Agent Role Instructions\n{agent_def.system_prompt_extra}\n"
 
     return prompt

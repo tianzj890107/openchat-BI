@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BI Analyst · Ontology Workbench</title>
+  <link rel="stylesheet" href="/static/styles.css?v=7" />
+  <script src="/static/vendor/echarts.min.js"></script>
+</head>
+<body data-mode="data">
+  <div class="app">
+    <!-- ============ TOP BAR ============ -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">◆</span>
+        <span class="brand-name">ONTOLOGY WORKBENCH</span>
+        <span class="brand-sep">/</span>
+        <span class="brand-sub" id="agent-name">bi-analyst</span>
+      </div>
+      <div class="mode-switch" id="mode-switch">
+        <button class="mode-btn active" data-mode="data" title="智能数据分析 — 直接查询光峰本体与 SQLite">
+          <span class="mode-glyph">◉</span> 数据分析
+        </button>
+        <button class="mode-btn" data-mode="report" title="智能报表分析 — 上传 PDF/Word 做 Q&A">
+          <span class="mode-glyph">◎</span> 报表分析
+        </button>
+      </div>
+      <div class="topbar-meta" id="topbar-meta"></div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" id="btn-settings" title="模型与参数设置">⚙ MODEL</button>
+        <button class="btn btn-ghost" id="btn-reset" title="开始新对话">⟲ RESET</button>
+        <button class="btn btn-ghost" id="btn-toggle-inspector"
+                title="折叠 / 展开右侧检查面板 (Ctrl+\\)">◨ PANEL</button>
+      </div>
+    </header>
+
+    <!-- ============ MAIN SPLIT ============ -->
+    <main class="split">
+      <!-- ---------- LEFT: CHAT ---------- -->
+      <section class="chat-pane">
+        <div class="pane-header">
+          <span class="pane-label" id="pane-label">CONVERSATION</span>
+          <span class="pane-hint" id="turn-counter">0 turns</span>
+        </div>
+        <div class="chat-scroll" id="chat-scroll">
+          <div class="empty-state" id="chat-empty">
+            <div class="empty-glyph" id="empty-glyph">◇</div>
+            <div class="empty-title" id="empty-title">光峰财务 BI 智能分析</div>
+            <div class="empty-sub" id="empty-welcome"></div>
+            <div class="empty-hints" id="empty-hints"></div>
+          </div>
+        </div>
+
+        <!-- ========== CHAT INPUT (claude.ai-style composer) ========== -->
+        <div class="chat-input-wrap" id="chat-input-wrap">
+
+          <!-- Attachment chip row — only shown in report mode when a report is active -->
+          <div class="attach-row" id="attach-row" hidden>
+            <div class="attach-chip" id="attach-chip">
+              <span class="attach-chip-ico">📄</span>
+              <div class="attach-chip-body">
+                <div class="attach-chip-name" id="attach-chip-name"></div>
+                <div class="attach-chip-meta" id="attach-chip-meta"></div>
+              </div>
+              <button class="attach-chip-change" id="attach-chip-change"
+                      title="切换到其他报表">切换</button>
+              <button class="attach-chip-remove" id="attach-chip-remove"
+                      title="移除当前报表">✕</button>
+            </div>
+          </div>
+
+          <!-- Drop overlay — covers whole composer while dragging in report mode -->
+          <div class="drop-overlay" id="drop-overlay">
+            <div class="drop-overlay-inner">
+              <div class="drop-overlay-ico">⬇</div>
+              <div class="drop-overlay-text">松开以上传 PDF / Word 报表</div>
+            </div>
+          </div>
+
+          <div class="composer">
+            <textarea
+              id="chat-input"
+              class="chat-input"
+              rows="2"
+              placeholder="提问...  (Enter 发送 · Shift+Enter 换行)"></textarea>
+
+            <div class="composer-toolbar">
+              <div class="composer-left">
+                <!-- Attach button — only visible in report mode -->
+                <button class="composer-btn composer-attach" id="btn-attach"
+                        title="上传 PDF / Word 报表">
+                  <span class="composer-btn-ico">📎</span>
+                  <span class="composer-btn-label">上传报表</span>
+                </button>
+                <!-- Database-query toggle — only visible in report mode -->
+                <label class="toggle composer-toggle"
+                       title="勾选后,问答可同时调用光峰本体工具与 SQLite 做对账">
+                  <input type="checkbox" id="with-db" />
+                  <span class="toggle-track"><span class="toggle-dot"></span></span>
+                  <span class="toggle-label">数据库查询</span>
+                </label>
+                <!-- History button — only visible in report mode -->
+                <button class="composer-btn composer-history" id="btn-history"
+                        title="最近上传的报表">
+                  <span class="composer-btn-ico">📚</span>
+                  <span class="composer-btn-label">最近报表</span>
+                  <span class="history-count" id="history-count">0</span>
+                </button>
+                <!-- Inline status text (upload / switching feedback) -->
+                <span class="upload-status" id="upload-status"></span>
+              </div>
+              <button id="btn-send" class="btn btn-primary composer-send">SEND ▸</button>
+            </div>
+          </div>
+
+          <!-- Hidden native file input — triggered by btn-attach & attach-chip-change -->
+          <input type="file" id="file-input" accept=".pdf,.docx" hidden />
+
+          <!-- History popover — anchored to composer, opens upward -->
+          <div class="history-popover" id="history-popover" hidden>
+            <div class="history-header">
+              <span>最近上传的报表</span>
+              <button class="history-close" id="history-close">✕</button>
+            </div>
+            <div class="history-list" id="history-list">
+              <div class="history-empty">暂无上传记录</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- RIGHT: INSPECTOR ---------- -->
+      <section class="inspector-pane" id="inspector-pane">
+        <div class="pane-header tab-bar">
+          <button class="tab active" data-tab="ontology">
+            <span class="tab-glyph">◉</span> ONTOLOGY
+            <span class="tab-count" id="count-ontology">0</span>
+          </button>
+          <button class="tab" data-tab="tools">
+            <span class="tab-glyph">▸</span> TOOL CALLS
+            <span class="tab-count" id="count-tools">0</span>
+          </button>
+          <button class="tab" data-tab="llm">
+            <span class="tab-glyph">⟳</span> LLM I/O
+            <span class="tab-count" id="count-llm">0</span>
+          </button>
+          <button class="tab" data-tab="system">
+            <span class="tab-glyph">⚙</span> SYSTEM
+          </button>
+          <button class="inspector-collapse" id="inspector-collapse"
+                  title="折叠右侧面板 (Ctrl+\\)">⇥</button>
+        </div>
+        <div class="inspector-scroll" id="inspector-scroll">
+          <div class="inspector-panel active" data-panel="ontology">
+            <div class="panel-desc">对话中命中的本体实体(按编码去重,实时追加)</div>
+            <div class="entity-list" id="ontology-list"></div>
+          </div>
+          <div class="inspector-panel" data-panel="tools">
+            <div class="panel-desc">每次工具调用的输入、输出与耗时</div>
+            <div class="tool-list" id="tool-list"></div>
+          </div>
+          <div class="inspector-panel" data-panel="llm">
+            <div class="panel-desc">大模型每一轮的输入消息与输出(含文本与工具调用)</div>
+            <div class="llm-list" id="llm-list"></div>
+          </div>
+          <div class="inspector-panel" data-panel="system">
+            <div class="panel-desc">Agent 身份、工具白名单、完整 System Prompt</div>
+            <div class="system-content" id="system-content">
+              <div class="sys-section">
+                <div class="sys-title">LOADING...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Floating re-open tab — visible only when inspector is collapsed -->
+      <button class="inspector-reopen" id="inspector-reopen"
+              title="展开右侧检查面板 (Ctrl+\\)">◨</button>
+    </main>
+  </div>
+
+  <!-- ============ SETTINGS MODAL ============ -->
+  <div class="modal-overlay" id="settings-overlay" hidden>
+    <div class="modal-panel" role="dialog" aria-labelledby="settings-title">
+      <div class="modal-header">
+        <span class="modal-title" id="settings-title">⚙ 模型与参数设置</span>
+        <button class="modal-close" id="settings-close" aria-label="关闭">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-field">
+          <label class="settings-label" for="settings-model">模型</label>
+          <select class="settings-select" id="settings-model"></select>
+          <div class="settings-hint" id="settings-model-hint"></div>
+        </div>
+        <div class="settings-field">
+          <label class="settings-label" for="settings-max-tokens">max_tokens</label>
+          <input type="number" min="256" max="200000" step="256"
+                 class="settings-input" id="settings-max-tokens" />
+          <div class="settings-hint">单次响应的最大输出 token 数,范围 256–200000。</div>
+        </div>
+        <div class="settings-field">
+          <label class="settings-label" for="settings-temperature">
+            temperature <span class="settings-val" id="settings-temp-val">1.0</span>
+          </label>
+          <input type="range" min="0" max="2" step="0.05"
+                 class="settings-slider" id="settings-temperature" />
+          <div class="settings-hint">0 最确定性,1 平衡,2 最发散。Qwen 建议 ≤1.2。</div>
+        </div>
+
+        <div class="settings-divider">API KEYS</div>
+
+        <div class="settings-field">
+          <label class="settings-label" for="settings-key-anthropic">
+            Anthropic (Claude)
+            <span class="settings-keystatus" id="settings-key-anthropic-status"></span>
+          </label>
+          <div class="settings-keyrow">
+            <input type="password" autocomplete="off" spellcheck="false"
+                   class="settings-input" id="settings-key-anthropic"
+                   placeholder="sk-ant-api03-…  (留空则不修改)" />
+            <button type="button" class="btn btn-ghost settings-key-clear"
+                    id="settings-key-anthropic-clear" title="清空该 key">×</button>
+          </div>
+          <div class="settings-hint">用于 Claude Opus/Sonnet 模型。也可设为环境变量 <code>ANTHROPIC_API_KEY</code>(优先级更高)。</div>
+        </div>
+
+        <div class="settings-field">
+          <label class="settings-label" for="settings-key-qwen">
+            DashScope (Qwen)
+            <span class="settings-keystatus" id="settings-key-qwen-status"></span>
+          </label>
+          <div class="settings-keyrow">
+            <input type="password" autocomplete="off" spellcheck="false"
+                   class="settings-input" id="settings-key-qwen"
+                   placeholder="sk-…  (留空则不修改)" />
+            <button type="button" class="btn btn-ghost settings-key-clear"
+                    id="settings-key-qwen-clear" title="清空该 key">×</button>
+          </div>
+          <div class="settings-hint">用于 Qwen 系列模型。也可设为环境变量 <code>DASHSCOPE_API_KEY</code>。</div>
+        </div>
+
+        <div class="settings-status" id="settings-status"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="settings-reset-defaults">恢复默认</button>
+        <button class="btn btn-primary" id="settings-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=7"></script>
+</body>
+</html>

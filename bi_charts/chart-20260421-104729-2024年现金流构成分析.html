@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>2024年现金流构成分析</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0A0E14; color: #E1E8F0;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  #chart { width: 100vw; height: 100vh; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+</head>
+<body>
+<div id="chart"></div>
+<script>
+  const chart = echarts.init(document.getElementById('chart'));
+  chart.setOption({"backgroundColor": "transparent", "title": {"text": "2024年现金流构成分析", "subtext": "各组成部分对净现金流的贡献", "left": 14, "top": 10, "textStyle": {"color": "#E1E8F0", "fontSize": 14, "fontWeight": "600"}, "subtextStyle": {"color": "#6E7E96", "fontSize": 11}}, "color": ["#22D3EE", "#2DD4BF", "#F5A524", "#A78BFA", "#F472B6", "#A3E635", "#60A5FA", "#F87171", "#FB923C", "#E879F9"], "textStyle": {"color": "#AEBACB"}, "tooltip": {"trigger": "axis", "backgroundColor": "#101620", "borderColor": "#2A3B52", "borderWidth": 1, "textStyle": {"color": "#E1E8F0"}, "axisPointer": {"type": "shadow"}}, "legend": {"top": 36, "right": 14, "textStyle": {"color": "#AEBACB"}, "icon": "roundRect", "itemWidth": 10, "itemHeight": 10}, "grid": {"left": 50, "right": 20, "top": 80, "bottom": 40, "containLabel": true}, "graphic": [{"type": "text", "right": 14, "bottom": 8, "style": {"text": "Source · M038 · T_FM_CashFlow · 2024年全年", "fill": "#48566D", "fontSize": 10, "fontFamily": "monospace"}}], "xAxis": {"type": "category", "data": ["收款金额", "三月前成本", "付现费用", "折旧摘销"], "axisLabel": {"color": "#AEBACB"}, "axisLine": {"lineStyle": {"color": "#2A3B52"}}}, "yAxis": {"type": "value", "name": "金额(万元)", "nameTextStyle": {"color": "#6E7E96"}, "axisLabel": {"color": "#AEBACB", "formatter": "{value}万元"}, "splitLine": {"show": true, "lineStyle": {"color": "#1F2A3A"}}, "axisLine": {"lineStyle": {"color": "#2A3B52"}}}, "series": [{"name": "金额", "data": [105516.0, -50647.68, -24268.68, 6330.96], "type": "bar", "barMaxWidth": 28, "itemStyle": {"borderRadius": [2, 2, 0, 0]}}]});
+  window.addEventListener('resize', () => chart.resize());
+</script>
+</body>
+</html>

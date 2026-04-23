@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>2021年各事业部管报收入分布</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0A0E14; color: #E1E8F0;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  #chart { width: 100vw; height: 100vh; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+</head>
+<body>
+<div id="chart"></div>
+<script>
+  const chart = echarts.init(document.getElementById('chart'));
+  chart.setOption({"backgroundColor": "transparent", "title": {"text": "2021年各事业部管报收入分布", "subtext": "按事业部汇总的管报口径收入金额(含正负调整)", "left": 14, "top": 10, "textStyle": {"color": "#E1E8F0", "fontSize": 14, "fontWeight": "600"}, "subtextStyle": {"color": "#6E7E96", "fontSize": 11}}, "color": ["#22D3EE", "#2DD4BF", "#F5A524", "#A78BFA", "#F472B6", "#A3E635", "#60A5FA", "#F87171", "#FB923C", "#E879F9"], "textStyle": {"color": "#AEBACB"}, "tooltip": {"trigger": "axis", "backgroundColor": "#101620", "borderColor": "#2A3B52", "borderWidth": 1, "textStyle": {"color": "#E1E8F0"}, "axisPointer": {"type": "shadow"}}, "legend": {"top": 36, "right": 14, "textStyle": {"color": "#AEBACB"}, "icon": "roundRect", "itemWidth": 10, "itemHeight": 10}, "grid": {"left": 50, "right": 20, "top": 80, "bottom": 40, "containLabel": true}, "graphic": [{"type": "text", "right": 14, "bottom": 8, "style": {"text": "Source · M001 · T_FM_MgmtPnL · 2021年", "fill": "#48566D", "fontSize": 10, "fontFamily": "monospace"}}], "xAxis": {"type": "value", "name": "金额(万元)", "nameTextStyle": {"color": "#6E7E96"}, "axisLabel": {"color": "#AEBACB"}, "splitLine": {"show": true, "lineStyle": {"color": "#1F2A3A"}}, "axisLine": {"lineStyle": {"color": "#2A3B52"}}}, "yAxis": {"type": "category", "data": ["光峰子公司-021", "市场营销部", "工程投影事业部", "光峰科技集团", "供应链管理部", "华南区域中心"], "axisLabel": {"color": "#AEBACB"}, "axisLine": {"lineStyle": {"color": "#2A3B52"}}}, "series": [{"name": "管报收入", "data": [2064.0, 2026.4, 1988.8, -1970.0, -2007.6, -2045.2], "type": "bar", "barMaxWidth": 20, "itemStyle": {"borderRadius": [0, 2, 2, 0]}}]});
+  window.addEventListener('resize', () => chart.resize());
+</script>
+</body>
+</html>

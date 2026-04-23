@@ -11,10 +11,23 @@ dependencies = [
     "anthropic>=0.42.0",
     "rich>=13.0.0",
     "prompt_toolkit>=3.0.0",
+    "openpyxl>=3.1.0",
+]
+
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
+    "python-multipart>=0.0.9",
+    "openai>=1.40.0",
+    "pymupdf>=1.24.0",
+    "python-docx>=1.1.0",
 ]
 
 [tool.setuptools.packages.find]
-include = ["open_claude*"]
+include = ["open_claude*", "bi_agent*"]
 
 [project.scripts]
 open-claude = "open_claude.__main__:main"
+bi-agent = "bi_agent.__main__:main"
+bi-agent-web = "bi_agent.web.__main__:main"
