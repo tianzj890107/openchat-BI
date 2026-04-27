@@ -104,18 +104,31 @@ body {
 .split {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(420px, 1fr) minmax(440px, 1fr);
+  grid-template-columns: minmax(380px, 1fr) minmax(360px, 1fr) minmax(400px, 1fr);
   overflow: hidden;
+}
+/* Dashboard collapsed: 2 columns (chat | inspector) */
+body[data-dashboard="collapsed"] .split {
+  grid-template-columns: minmax(420px, 1fr) minmax(440px, 1fr);
+}
+body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
+/* Inspector collapsed wins at the right edge (handled later by .inspector-pane) */
+body[data-dashboard="collapsed"][data-inspector="collapsed"] .split {
+  grid-template-columns: 1fr;
+}
+body[data-inspector="collapsed"]:not([data-dashboard="collapsed"]) .split {
+  grid-template-columns: minmax(420px, 1fr) minmax(360px, 1fr);
 }
 
 /* ---------- PANE SHARED ---------- */
-.chat-pane, .inspector-pane {
+.chat-pane, .dashboard-pane, .inspector-pane {
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-0);
 }
 .chat-pane { border-right: 1px solid var(--border-1); }
+.dashboard-pane { border-right: 1px solid var(--border-1); background: var(--bg-0); }
 .pane-header {
   display: flex;
   align-items: center;
@@ -137,7 +150,10 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 18px 22px 8px;
-  scroll-behavior: smooth;
+  /* No `scroll-behavior: smooth` — combined with high-frequency
+     auto-scroll during streaming it makes the wheel feel laggy
+     and "fights" the user. Default `auto` is what we want. */
+  overscroll-behavior: contain;
 }
 .chat-input-wrap {
   flex-shrink: 0;
@@ -724,6 +740,12 @@ body {
   opacity: 0.5;
   cursor: default;
 }
+.choice-option.selected {
+  border-color: var(--accent-cyan);
+  background: var(--bg-2);
+  opacity: 1;
+}
+.choice-option.selected .choice-arrow { color: var(--accent-cyan); }
 .choice-idx {
   flex-shrink: 0;
   width: 22px;
@@ -1472,6 +1494,272 @@ body[data-inspector="collapsed"] #btn-toggle-inspector {
   color: var(--fg-3);
   border-style: dashed;
 }
+body[data-dashboard="collapsed"] #btn-toggle-dashboard {
+  color: var(--fg-3);
+  border-style: dashed;
+}
 
 /* Give .split a stable positioning context for the floating reopen tab */
 .split { position: relative; }
+
+/* ====================================================================
+ *  DATA GRID (TableGenerate inline in chat)
+ * ================================================================== */
+.table-card {
+  margin: 10px 0;
+  border: 1px solid var(--border-1);
+  background: var(--bg-1);
+  border-left: 3px solid var(--accent-violet);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.table-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.table-tag {
+  color: var(--accent-violet);
+  border: 1px solid var(--accent-violet);
+  padding: 2px 8px;
+  border-radius: 2px;
+  letter-spacing: 1.3px;
+  flex-shrink: 0;
+}
+.table-title {
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  color: var(--fg-0);
+  font-weight: 600;
+}
+.table-subtitle { color: var(--fg-2); font-size: var(--fs-xs); }
+.table-shape { color: var(--fg-3); margin-left: auto; }
+.table-source { color: var(--fg-3); }
+.table-scroll {
+  overflow-x: auto;
+  max-height: 420px;
+}
+table.data-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+}
+table.data-grid thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-2);
+  color: var(--fg-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-2);
+  border-right: 1px solid var(--border-1);
+  white-space: nowrap;
+}
+table.data-grid thead th:last-child { border-right: none; }
+table.data-grid tbody td {
+  padding: 6px 10px;
+  color: var(--fg-0);
+  border-bottom: 1px solid var(--border-1);
+  border-right: 1px solid var(--border-1);
+  white-space: nowrap;
+}
+table.data-grid tbody td:last-child { border-right: none; }
+table.data-grid tbody tr:nth-child(odd) { background: rgba(255, 255, 255, 0.012); }
+table.data-grid tbody tr:hover { background: var(--bg-2); }
+table.data-grid tbody tr.row-highlight {
+  background: rgba(245, 165, 36, 0.08);
+}
+table.data-grid tbody tr.row-highlight:hover {
+  background: rgba(245, 165, 36, 0.14);
+}
+table.data-grid [data-align="right"]  { text-align: right; font-variant-numeric: tabular-nums; }
+table.data-grid [data-align="center"] { text-align: center; }
+table.data-grid [data-align="left"]   { text-align: left; }
+.tbl-null { color: var(--fg-3); }
+.table-summary {
+  padding: 8px 12px;
+  background: var(--bg-elev);
+  color: var(--accent-amber);
+  font-size: var(--fs-sm);
+  border-top: 1px dashed var(--border-1);
+}
+.table-footnote {
+  padding: 6px 12px;
+  background: var(--bg-elev);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  border-top: 1px dashed var(--border-1);
+}
+
+/* ====================================================================
+ *  DASHBOARD PANE (middle real-time board)
+ * ================================================================== */
+.dashboard-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dashboard-scroll .empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-3);
+}
+.dashboard-scroll .empty-state .empty-glyph {
+  font-size: 42px;
+  color: var(--fg-3);
+  margin-bottom: 10px;
+}
+.dashboard-scroll .empty-state .empty-title {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.dashboard-scroll .empty-state .empty-sub {
+  color: var(--fg-3);
+  font-size: var(--fs-xs);
+  margin-top: 4px;
+}
+.dash-toolbtn {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+}
+.dashboard-collapse {
+  background: transparent;
+  border: 1px solid var(--border-2);
+  color: var(--fg-2);
+  padding: 2px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  transition: color 0.12s, border-color 0.12s;
+}
+.dashboard-collapse:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
+
+/* Floating re-open tab for the dashboard — visible only when collapsed */
+.dashboard-reopen {
+  position: absolute;
+  top: 8px;
+  left: calc(50% - 14px);
+  z-index: 40;
+  width: 28px;
+  height: 28px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-1);
+  border: 1px solid var(--border-accent);
+  color: var(--accent-violet);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: background 0.12s;
+}
+.dashboard-reopen:hover { background: var(--bg-2); }
+body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
+
+/* Dashboard cards */
+.dash-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border-1);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.dash-conclusion { border-left: 3px solid var(--accent-amber); }
+.dash-chart      { border-left: 3px solid var(--accent-cyan); }
+.dash-table      { border-left: 3px solid var(--accent-violet); }
+.dash-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.dash-tag {
+  padding: 2px 8px;
+  border-radius: 2px;
+  letter-spacing: 1.1px;
+  font-weight: 600;
+  flex-shrink: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.dash-tag.conclusion { color: var(--accent-amber); border: 1px solid var(--accent-amber); }
+.dash-tag.chart      { color: var(--accent-cyan);  border: 1px solid var(--accent-cyan); }
+.dash-tag.table      { color: var(--accent-violet);border: 1px solid var(--accent-violet); }
+.dash-title {
+  color: var(--fg-0);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-turn {
+  color: var(--fg-3);
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  margin-left: auto;
+}
+.dash-link {
+  color: var(--accent-cyan);
+  text-decoration: none;
+  font-size: 10px;
+}
+.dash-link:hover { text-decoration: underline; }
+.dash-source { color: var(--fg-3); font-size: 10px; }
+
+.dash-body {
+  padding: 10px 12px;
+  color: var(--fg-0);
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  word-wrap: break-word;
+  white-space: pre-wrap;  /* preserve newlines inside the multi-line 📌 block */
+}
+.dash-chart-canvas {
+  width: 100%;
+  height: 220px;
+}
+.dash-chart-err {
+  padding: 14px;
+  color: var(--accent-red);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.dash-table-wrap .table-scroll {
+  max-height: 280px;
+  border: none;
+}

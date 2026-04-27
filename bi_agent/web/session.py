@@ -37,6 +37,7 @@ from ..llm.runtime_config import get_config as get_llm_config
 from ..ontology.store import OntologyStore
 from ..tools.ask_user import ASK_USER_TOOL_NAME
 from ..tools.chart_tools import extract_chart_spec
+from ..tools.table_tools import extract_table_spec
 
 
 ENTITY_CODE_RE = re.compile(r"\b(?:T\d{6}|BO\d{4}|LE\d{5}|AT\d{5}|ER\d{3}|M\d{3}|A\d{3}|R\d{3})\b")
@@ -252,7 +253,8 @@ class WebSession:
                         output = f"Error executing {tu['name']}: {e}"
                     duration_ms = int((time.time() - t0) * 1000)
                     display_output, chart = extract_chart_spec(output)
-                    llm_output = display_output if chart else output
+                    display_output, table = extract_table_spec(display_output)
+                    llm_output = display_output if (chart or table) else output
                     entities = self._extract_entities(display_output)
                     yield {
                         "type": "tool_result",
@@ -263,6 +265,7 @@ class WebSession:
                         "duration_ms": duration_ms,
                         "ontology_entities": entities,
                         "chart": chart,
+                        "table": table,
                     }
                     sibling_results.append({
                         "type": "tool_result",
@@ -294,10 +297,11 @@ class WebSession:
                     output = f"Error executing {tu['name']}: {e}"
                 duration_ms = int((time.time() - t0) * 1000)
 
-                # Pull out a chart spec if present; keep the display text for
-                # the UI, strip the JSON block before sending back to the LLM.
+                # Pull out chart/table specs if present; keep the display text
+                # for the UI, strip the JSON blocks before sending back to the LLM.
                 display_output, chart = extract_chart_spec(output)
-                llm_output = display_output if chart else output
+                display_output, table = extract_table_spec(display_output)
+                llm_output = display_output if (chart or table) else output
 
                 entities = self._extract_entities(display_output)
                 yield {
@@ -309,6 +313,7 @@ class WebSession:
                     "duration_ms": duration_ms,
                     "ontology_entities": entities,
                     "chart": chart,
+                    "table": table,
                 }
                 tool_results.append({
                     "type": "tool_result",

@@ -26,13 +26,19 @@
       currentAssistantEl: null,
       currentAssistantText: "",
       systemPrompt: null,
+      // Per-turn conclusion tracking — 📌-prefixed sentences extracted from
+      // assistant text go to the middle dashboard as conclusion cards.
+      conclusionSeen: new Set(),       // dedup within a session
+      currentTurnTag: 0,               // increments per user turn (for card ids)
       // Detached DOM children (populated on mode switch-out)
       chatNodes: [],
       ontologyNodes: [],
       toolNodes: [],
       llmNodes: [],
+      dashboardNodes: [],
       // Whether the mode currently has any chat content
       hasContent: false,
+      dashboardHasContent: false,
     };
   }
 
@@ -125,6 +131,15 @@
     countOntology:  document.getElementById("count-ontology"),
     countTools:     document.getElementById("count-tools"),
     countLlm:       document.getElementById("count-llm"),
+    // Middle dashboard pane
+    dashboardPane:  document.getElementById("dashboard-pane"),
+    dashboardList:  document.getElementById("dashboard-list"),
+    dashboardEmpty: document.getElementById("dashboard-empty"),
+    dashboardCount: document.getElementById("dashboard-count"),
+    dashboardClear: document.getElementById("dashboard-clear"),
+    dashboardCollapseBtn: document.getElementById("dashboard-collapse"),
+    dashboardReopen: document.getElementById("dashboard-reopen"),
+    btnToggleDashboard: document.getElementById("btn-toggle-dashboard"),
   };
 
   // Default empty-state strings per mode
@@ -185,8 +200,74 @@
     return x;
   }
 
+  // Pixel threshold below which we consider the user "pinned" to the bottom.
+  // While pinned, new content auto-scrolls; once they scroll up further than
+  // this, auto-scroll backs off and they keep manual control of the wheel.
+  const SCROLL_PIN_PX = 120;
+
+  function isChatPinnedToBottom() {
+    const sc = el.chatScroll;
+    if (!sc) return true;
+    return sc.scrollHeight - sc.scrollTop - sc.clientHeight < SCROLL_PIN_PX;
+  }
+
+  // Soft scroll — only follows the bottom when the user is already there.
+  // Use this for streamed assistant deltas, tool steps, charts, tables, etc.
   function scrollChatBottom() {
+    if (!el.chatScroll) return;
+    if (isChatPinnedToBottom()) {
+      el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
+    }
+  }
+
+  // Hard scroll — always jumps to the bottom regardless of user position.
+  // Reserve for explicit user actions (sending a new message) where the user
+  // expects to see their own input land at the bottom.
+  function scrollChatBottomForce() {
+    if (!el.chatScroll) return;
     el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
+  }
+
+  // ------------------------------------------------------------------
+  // Wheel forwarding for chat-scroll
+  // ------------------------------------------------------------------
+  // The chat content embeds nested scroll containers (`.step pre`,
+  // `.table-scroll`) and ECharts <canvas> elements. Browsers' default
+  // scroll-chaining is unreliable around these — the user reports that
+  // wheeling over chat content does nothing while only the visible
+  // scrollbar works. We explicitly forward wheel deltas to chat-scroll
+  // unless the wheel target is *inside an inner scroll that still has
+  // capacity in that direction*. In that case the inner scroll handles
+  // it (so users can still read long tool-step output by wheeling).
+  function setupChatWheelForwarding() {
+    const chat = el.chatScroll;
+    if (!chat) return;
+    chat.addEventListener("wheel", (e) => {
+      const dy = e.deltaY;
+      if (!dy) return;
+      let node = e.target;
+      while (node && node !== chat) {
+        if (node instanceof HTMLElement) {
+          const cs = getComputedStyle(node);
+          const ovy = cs.overflowY;
+          const scrollable = (ovy === "auto" || ovy === "scroll") &&
+                             node.scrollHeight > node.clientHeight;
+          if (scrollable) {
+            const atTop = node.scrollTop <= 0;
+            const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1;
+            if ((dy < 0 && !atTop) || (dy > 0 && !atBottom)) {
+              return;  // inner has room — let the browser scroll it
+            }
+          }
+        }
+        node = node.parentElement;
+      }
+      // No inner container can absorb this wheel — drive chat-scroll
+      // directly. Without this, ECharts canvas / boundary-saturated <pre>
+      // would silently swallow the wheel without scrolling anything.
+      chat.scrollTop += dy;
+      e.preventDefault();
+    }, { passive: false });
   }
 
   function fmtDuration(ms) {
@@ -549,7 +630,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
       </div>
       <div class="msg-body">${esc(text)}</div>`;
     el.chatScroll.appendChild(msg);
-    scrollChatBottom();
+    scrollChatBottomForce();  // user just sent — always reveal their input
   }
 
   function assistantRoleLabel() {
@@ -616,7 +697,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
     const card = el_h("div", "choice-card");
     card.dataset.toolUseId = evt.tool_use_id;
     const optionsHtml = (evt.options || []).map((opt, idx) => `
-      <button class="choice-option" data-id="${esc(opt.id)}" data-label="${esc(opt.label)}">
+      <button type="button" class="choice-option" data-id="${esc(opt.id)}" data-label="${esc(opt.label)}">
         <span class="choice-idx">${idx + 1}</span>
         <span class="choice-body">
           <span class="choice-label">${esc(opt.label)}</span>
@@ -636,7 +717,11 @@ welcome: ${esc(a.welcome_message || "")}</div>
     scrollChatBottom();
 
     card.querySelectorAll(".choice-option").forEach(btn => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (btn.disabled || card.classList.contains("submitting") || card.classList.contains("resolved")) return;
+        btn.classList.add("selected");
         submitChoice(card, btn.dataset.id, btn.dataset.label);
       });
     });
@@ -652,20 +737,36 @@ welcome: ${esc(a.welcome_message || "")}</div>
   }
 
   async function submitChoice(card, id, label) {
-    if (card.classList.contains("resolved")) return;
+    if (card.classList.contains("resolved") || card.classList.contains("submitting")) return;
     card.classList.add("submitting");
+    card.querySelectorAll(".choice-option").forEach(b => { b.disabled = true; });
     const status = card.querySelector(".choice-status");
     if (status) status.textContent = `正在提交: ${label}…`;
     setBusy(true);
 
     const url = state.mode === "report" ? "/api/report/choice" : "/api/choice";
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ choice_id: id, choice_label: label }),
-    });
+    let resp;
+    try {
+      resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ choice_id: id, choice_label: label }),
+      });
+    } catch (err) {
+      onEvent({ type: "error", message: `choice request failed: ${err.message || err}` });
+      card.classList.remove("submitting");
+      card.querySelectorAll(".choice-option").forEach(b => { b.disabled = false; });
+      if (status) status.textContent = `提交失败,请重试`;
+      setBusy(false);
+      return;
+    }
     if (!resp.ok || !resp.body) {
-      onEvent({ type: "error", message: `HTTP ${resp.status}` });
+      const errText = await resp.text().catch(() => resp.statusText);
+      onEvent({ type: "error", message: `HTTP ${resp.status}: ${errText}` });
+      card.classList.remove("submitting");
+      card.querySelectorAll(".choice-option").forEach(b => { b.disabled = false; });
+      if (status) status.textContent = `提交失败 (HTTP ${resp.status}),请重试`;
+      setBusy(false);
       return;
     }
     await streamResponse(resp);
@@ -713,6 +814,296 @@ welcome: ${esc(a.welcome_message || "")}</div>
     } catch (e) {
       canvas.innerHTML = `<div style="padding:14px;color:var(--accent-red);font-family:var(--font-mono);font-size:12px;">Chart render failed: ${esc(e.message || String(e))}</div>`;
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Table card (TableGenerate output)
+  // ------------------------------------------------------------------
+  function attachChatTable(table) {
+    const bucket = B();
+    const container = bucket.currentAssistantEl
+      ? bucket.currentAssistantEl.parentElement
+      : el.chatScroll;
+    const card = buildTableCard(table);
+    container.appendChild(card);
+    scrollChatBottom();
+  }
+
+  function formatCellValue(value, col) {
+    if (value === null || value === undefined) return '<span class="tbl-null">—</span>';
+    const fmt = col && col.format;
+    const unit = col && col.unit;
+    if (fmt === "number" || fmt === "money") {
+      const num = Number(value);
+      if (!isFinite(num)) return esc(String(value));
+      const abs = Math.abs(num);
+      const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+      const formatted = num.toLocaleString("zh-CN", { maximumFractionDigits: digits });
+      return esc(formatted + (unit ? ` ${unit}` : ""));
+    }
+    if (fmt === "percent") {
+      const num = Number(value);
+      if (!isFinite(num)) return esc(String(value));
+      return esc(num.toFixed(2) + "%");
+    }
+    return esc(String(value));
+  }
+
+  function defaultAlign(col) {
+    if (!col) return "left";
+    if (col.align) return col.align;
+    if (col.format === "number" || col.format === "money" || col.format === "percent") return "right";
+    return "left";
+  }
+
+  function buildTableCard(tbl) {
+    const card = el_h("div", "table-card");
+    const cols = Array.isArray(tbl.columns) ? tbl.columns : [];
+    const rows = Array.isArray(tbl.rows) ? tbl.rows : [];
+    const hi = new Set((tbl.highlight_rows || []).map(Number));
+
+    const colgroup = cols.map((c) =>
+      `<col${c.width ? ` style="width:${esc(String(c.width))}"` : ""}/>`
+    ).join("");
+
+    const head = cols.map((c) =>
+      `<th data-align="${esc(defaultAlign(c))}">${esc(c.label || c.key || "")}</th>`
+    ).join("");
+
+    const body = rows.map((row, rIdx) => {
+      const cells = cols.map((c, cIdx) => {
+        const v = Array.isArray(row) ? row[cIdx] : row[c.key];
+        return `<td data-align="${esc(defaultAlign(c))}">${formatCellValue(v, c)}</td>`;
+      }).join("");
+      return `<tr class="${hi.has(rIdx) ? "row-highlight" : ""}">${cells}</tr>`;
+    }).join("");
+
+    const subtitle = tbl.subtitle ? `<span class="table-subtitle">${esc(tbl.subtitle)}</span>` : "";
+    const source = tbl.source_note ? `<span class="table-source">Source · ${esc(tbl.source_note)}</span>` : "";
+    const summary = tbl.summary ? `<div class="table-summary">📌 ${esc(tbl.summary)}</div>` : "";
+    const footnote = tbl.footnote ? `<div class="table-footnote">${esc(tbl.footnote)}</div>` : "";
+    const metaLine = `<span class="table-shape">${rows.length} 行 × ${cols.length} 列</span>`;
+
+    card.innerHTML = `
+      <div class="table-head">
+        <span class="table-tag">TABLE</span>
+        <span class="table-title">${esc(tbl.title || "")}</span>
+        ${subtitle}
+        ${metaLine}
+        ${source}
+      </div>
+      <div class="table-scroll">
+        <table class="data-grid">
+          <colgroup>${colgroup}</colgroup>
+          <thead><tr>${head}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+      ${summary}
+      ${footnote}`;
+    return card;
+  }
+
+  // ------------------------------------------------------------------
+  // Dashboard pane (middle) — conclusion + chart + table cards
+  // ------------------------------------------------------------------
+  // Markers that indicate the start of the next section in the L1/L2 templates.
+  // Used as a *secondary* boundary in case the model omits the ## heading.
+  const NEXT_SECTION_RE = /[📊🔍💡📎📈📄]/u;
+
+  function cleanLeadingDecoration(raw) {
+    // Strip markdown bullets (`- `, `* `, `> `) and bold markers (`**`).
+    // We deliberately do NOT strip leading `#` — heading lines are handled
+    // separately so we can detect them as section boundaries.
+    return raw
+      .replace(/^[*\->\s]+/, "")
+      .replace(/\*\*/g, "")
+      .trim();
+  }
+
+  function extractConclusion(text) {
+    if (!text || typeof text !== "string") return null;
+    const lines = text.split(/\n/);
+
+    // ----- 1. Locate the first 📌 line -----
+    let startIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes("📌")) { startIdx = i; break; }
+    }
+    if (startIdx < 0) return null;
+
+    const out = [];
+
+    // ----- 2. Same-line content after 📌 (if any) -----
+    // e.g. "**📌 结论(TL;DR)** —— 2024 Q3 收入..." → keep "2024 Q3 收入..."
+    let head = lines[startIdx]
+      .replace(/^[#>*\-\s]+/, "")
+      .replace(/\*\*/g, "")
+      .trim();
+    head = head.replace(/^📌\s*/, "");
+    head = head.replace(/^结论\s*(?:[\(（]TL;DR[\)）])?\s*/, "");
+    head = head.replace(/^[—\-:：]+\s*/, "").trim();
+    if (head) out.push(head);
+
+    // ----- 3. Walk forward until the next ## heading (or section marker) -----
+    // Per spec: "everything from after 📌 start to before the next ## is the
+    // conclusion". We preserve internal blank lines so paragraph structure
+    // survives in the dashboard card.
+    for (let j = startIdx + 1; j < lines.length; j++) {
+      const raw = lines[j];
+      const nt = raw.trim();
+
+      // Stop on any markdown heading (#, ##, ###, ...).
+      if (/^#{1,6}\s/.test(nt)) break;
+
+      // Secondary fence: a non-📌 section emoji at the start of a (decorated)
+      // line — covers the case where the model uses bold/heading-less section
+      // markers like "**📊 关键数据**".
+      const stripped = nt.replace(/^[*\->\s]+/, "");
+      if (stripped && stripped !== nt && NEXT_SECTION_RE.test(stripped.slice(0, 4))) break;
+      if (NEXT_SECTION_RE.test(nt.slice(0, 4))) break;
+
+      // Empty line: keep if we already have content (paragraph break),
+      // skip if it's still leading whitespace before any content.
+      if (!nt) {
+        if (out.length > 0) out.push("");
+        continue;
+      }
+
+      // Body line — strip bold/bullet decoration but keep the text.
+      out.push(cleanLeadingDecoration(raw));
+    }
+
+    // Trim trailing blank lines.
+    while (out.length > 0 && !out[out.length - 1]) out.pop();
+
+    return out.length ? out.join("\n") : null;
+  }
+
+  function ensureDashboardEmptyHidden() {
+    const bucket = B();
+    if (!bucket.dashboardHasContent) {
+      bucket.dashboardHasContent = true;
+      if (el.dashboardEmpty) el.dashboardEmpty.style.display = "none";
+    }
+  }
+
+  function updateDashboardCount() {
+    const bucket = B();
+    const n = bucket.dashboardHasContent ? el.dashboardList.querySelectorAll(".dash-card").length : 0;
+    if (el.dashboardCount) el.dashboardCount.textContent = n;
+  }
+
+  function appendDashboardCard(card) {
+    ensureDashboardEmptyHidden();
+    el.dashboardList.appendChild(card);
+    updateDashboardCount();
+    // Keep user at the bottom when new cards arrive — but only if they are
+    // already close to the bottom. Don't yank them if they scrolled up.
+    const list = el.dashboardList;
+    const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+    if (nearBottom) list.scrollTop = list.scrollHeight;
+  }
+
+  function dashboardConclusionCard(text, turnTag) {
+    const card = el_h("div", "dash-card dash-conclusion");
+    card.dataset.turn = turnTag;
+    card.innerHTML = `
+      <div class="dash-head">
+        <span class="dash-tag conclusion">📌 结论</span>
+        <span class="dash-turn">Turn ${turnTag}</span>
+      </div>
+      <div class="dash-body">${highlightEntities(text)}</div>`;
+    return card;
+  }
+
+  function dashboardChartCard(chart, turnTag) {
+    const card = el_h("div", "dash-card dash-chart");
+    card.dataset.turn = turnTag;
+    const title = esc(chart.title || "(未命名)");
+    const type = esc(chart.chart_type || "chart");
+    const source = chart.saved_path
+      ? `<a class="dash-link" href="/charts/${esc(chart.saved_path.split(/[\\/]/).pop())}" target="_blank">open ↗</a>`
+      : "";
+    card.innerHTML = `
+      <div class="dash-head">
+        <span class="dash-tag chart">📊 ${type}</span>
+        <span class="dash-title">${title}</span>
+        <span class="dash-turn">Turn ${turnTag}</span>
+        ${source}
+      </div>
+      <div class="dash-chart-canvas"></div>`;
+    requestAnimationFrame(() => {
+      const canvas = card.querySelector(".dash-chart-canvas");
+      if (!canvas || !chart.option || typeof echarts === "undefined") return;
+      try {
+        const inst = echarts.init(canvas);
+        inst.setOption(chart.option, true);
+        requestAnimationFrame(() => inst.resize());
+        const ro = new ResizeObserver(() => inst.resize());
+        ro.observe(canvas);
+      } catch (e) {
+        canvas.innerHTML = `<div class="dash-chart-err">render failed: ${esc(e.message || String(e))}</div>`;
+      }
+    });
+    return card;
+  }
+
+  function dashboardTableCard(tbl, turnTag) {
+    const card = el_h("div", "dash-card dash-table");
+    card.dataset.turn = turnTag;
+    const title = esc(tbl.title || "(未命名)");
+    const source = tbl.source_note ? `<span class="dash-source">Source · ${esc(tbl.source_note)}</span>` : "";
+    card.innerHTML = `
+      <div class="dash-head">
+        <span class="dash-tag table">📋 TABLE</span>
+        <span class="dash-title">${title}</span>
+        <span class="dash-turn">Turn ${turnTag}</span>
+        ${source}
+      </div>
+      <div class="dash-table-wrap"></div>`;
+    // Reuse the same grid builder as the inline chat table; strip redundant
+    // head so the dashboard card's own head is the only one visible.
+    const inner = buildTableCard(tbl);
+    const scroll = inner.querySelector(".table-scroll");
+    const summary = inner.querySelector(".table-summary");
+    const wrap = card.querySelector(".dash-table-wrap");
+    if (scroll) wrap.appendChild(scroll);
+    if (summary) wrap.appendChild(summary);
+    return card;
+  }
+
+  function pushConclusionIfAny(text) {
+    const bucket = B();
+    const content = extractConclusion(text);
+    if (!content) return;
+    // Dedup within session — identical text not useful twice
+    const key = content.trim().toLowerCase();
+    if (bucket.conclusionSeen.has(key)) return;
+    bucket.conclusionSeen.add(key);
+    appendDashboardCard(dashboardConclusionCard(content, bucket.currentTurnTag || 1));
+  }
+
+  function pushChartToDashboard(chart) {
+    const bucket = B();
+    appendDashboardCard(dashboardChartCard(chart, bucket.currentTurnTag || 1));
+  }
+
+  function pushTableToDashboard(table) {
+    const bucket = B();
+    appendDashboardCard(dashboardTableCard(table, bucket.currentTurnTag || 1));
+  }
+
+  function clearDashboard() {
+    const bucket = B();
+    el.dashboardList.innerHTML = "";
+    bucket.dashboardHasContent = false;
+    bucket.conclusionSeen = new Set();
+    if (el.dashboardEmpty) {
+      if (!el.dashboardEmpty.parentNode) el.dashboardList.appendChild(el.dashboardEmpty);
+      el.dashboardEmpty.style.display = "";
+    }
+    updateDashboardCount();
   }
 
   // ------------------------------------------------------------------
@@ -965,10 +1356,18 @@ welcome: ${esc(a.welcome_message || "")}</div>
           duration_ms: evt.duration_ms,
           ontology_entities: evt.ontology_entities,
           chart: evt.chart || null,
+          table: evt.table || null,
         };
         recordToolCall(record);
         attachChatStep(buildChatStep(record));
-        if (record.chart) attachChatChart(record.chart);
+        if (record.chart) {
+          attachChatChart(record.chart);
+          pushChartToDashboard(record.chart);
+        }
+        if (record.table) {
+          attachChatTable(record.table);
+          pushTableToDashboard(record.table);
+        }
         upsertOntologyEntities(evt.ontology_entities);
         break;
       }
@@ -990,6 +1389,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
           stop_reason: evt.stop_reason,
           usage: evt.usage,
         });
+        if (evt.text) pushConclusionIfAny(evt.text);
         break;
       case "done":
         setBusy(false);
@@ -1018,17 +1418,27 @@ welcome: ${esc(a.welcome_message || "")}</div>
       return;
     }
     setBusy(true);
+    // Bump per-turn tag so dashboard cards group by user turn
+    B().currentTurnTag = (B().currentTurnTag || 0) + 1;
     addUserMessage(text);
 
     const url = state.mode === "report" ? "/api/report/chat" : "/api/chat";
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text }),
-    });
+    let resp;
+    try {
+      resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      });
+    } catch (err) {
+      onEvent({ type: "error", message: `request failed: ${err.message || err}` });
+      setBusy(false);
+      return;
+    }
     if (!resp.ok || !resp.body) {
       const errText = await resp.text().catch(() => resp.statusText);
       onEvent({ type: "error", message: `HTTP ${resp.status}: ${errText}` });
+      setBusy(false);
       return;
     }
     await streamResponse(resp);
@@ -1090,6 +1500,10 @@ welcome: ${esc(a.welcome_message || "")}</div>
     out.ontologyNodes  = detachChildren(el.ontologyList);
     out.toolNodes      = detachChildren(el.toolList);
     out.llmNodes       = detachChildren(el.llmList);
+    if (el.dashboardList) {
+      out.dashboardNodes = detachChildren(el.dashboardList)
+        .filter(n => !(n === el.dashboardEmpty));
+    }
 
     state.mode = newMode;
     document.body.dataset.mode = newMode;
@@ -1106,11 +1520,23 @@ welcome: ${esc(a.welcome_message || "")}</div>
     attachChildren(el.ontologyList, inc.ontologyNodes);
     attachChildren(el.toolList,     inc.toolNodes);
     attachChildren(el.llmList,      inc.llmNodes);
+    if (el.dashboardList) {
+      if (inc.dashboardNodes && inc.dashboardNodes.length) {
+        attachChildren(el.dashboardList, inc.dashboardNodes);
+        if (el.dashboardEmpty) el.dashboardEmpty.style.display = "none";
+      } else {
+        if (el.dashboardEmpty) {
+          if (!el.dashboardEmpty.parentNode) el.dashboardList.appendChild(el.dashboardEmpty);
+          el.dashboardEmpty.style.display = "";
+        }
+      }
+    }
 
     // Counters
     el.countOntology.textContent = inc.ontologyByCode.size;
     el.countTools.textContent    = inc.toolCalls.length;
     el.countLlm.textContent      = inc.llmTurns.length;
+    if (el.dashboardCount) el.dashboardCount.textContent = (inc.dashboardNodes || []).length;
     updateTurnCounter();
 
     // Empty-state & topbar
@@ -1301,18 +1727,28 @@ welcome: ${esc(a.welcome_message || "")}</div>
     bucket.ontologyNodes = [];
     bucket.toolNodes = [];
     bucket.llmNodes = [];
+    bucket.dashboardNodes = [];
     bucket.hasContent = false;
+    bucket.dashboardHasContent = false;
+    bucket.conclusionSeen = new Set();
+    bucket.currentTurnTag = 0;
     // If this is the active mode, also clear visible DOM
     if (state.mode === mode) {
       detachChildren(el.chatScroll);
       detachChildren(el.ontologyList);
       detachChildren(el.toolList);
       detachChildren(el.llmList);
+      if (el.dashboardList) detachChildren(el.dashboardList);
+      if (el.dashboardEmpty) {
+        el.dashboardList.appendChild(el.dashboardEmpty);
+        el.dashboardEmpty.style.display = "";
+      }
       if (el.chatEmpty && !el.chatEmpty.parentNode) el.chatScroll.appendChild(el.chatEmpty);
       if (el.chatEmpty) el.chatEmpty.style.display = "";
       el.countOntology.textContent = "0";
       el.countTools.textContent = "0";
       el.countLlm.textContent = "0";
+      if (el.dashboardCount) el.dashboardCount.textContent = "0";
       updateTurnCounter();
     }
   }
@@ -1529,9 +1965,46 @@ welcome: ${esc(a.welcome_message || "")}</div>
     applyInspectorState(collapsed);
   })();
 
+  // Wire up wheel forwarding for chat-scroll so the wheel works
+  // anywhere in the chat content, not just on the visible scrollbar.
+  setupChatWheelForwarding();
+
   if (el.btnToggleInspector) el.btnToggleInspector.addEventListener("click", toggleInspector);
   if (el.inspectorCollapseBtn) el.inspectorCollapseBtn.addEventListener("click", () => applyInspectorState(true));
   if (el.inspectorReopen) el.inspectorReopen.addEventListener("click", () => applyInspectorState(false));
+
+  // ------------------------------------------------------------------
+  // Dashboard collapse / expand  (middle pane)
+  // ------------------------------------------------------------------
+  const DASHBOARD_LS_KEY = "bi.dashboardCollapsed";
+
+  function applyDashboardState(collapsed) {
+    document.body.dataset.dashboard = collapsed ? "collapsed" : "expanded";
+    if (el.btnToggleDashboard) {
+      el.btnToggleDashboard.classList.toggle("collapsed", collapsed);
+      el.btnToggleDashboard.title = collapsed ? "展开中间实时看板" : "折叠中间实时看板";
+    }
+    try { localStorage.setItem(DASHBOARD_LS_KEY, collapsed ? "1" : "0"); } catch (e) {}
+  }
+
+  function toggleDashboard() {
+    const collapsed = document.body.dataset.dashboard === "collapsed";
+    applyDashboardState(!collapsed);
+  }
+
+  (function bootDashboardState() {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(DASHBOARD_LS_KEY) === "1"; } catch (e) {}
+    applyDashboardState(collapsed);
+  })();
+
+  if (el.btnToggleDashboard) el.btnToggleDashboard.addEventListener("click", toggleDashboard);
+  if (el.dashboardCollapseBtn) el.dashboardCollapseBtn.addEventListener("click", () => applyDashboardState(true));
+  if (el.dashboardReopen) el.dashboardReopen.addEventListener("click", () => applyDashboardState(false));
+  if (el.dashboardClear) el.dashboardClear.addEventListener("click", () => {
+    if (!confirm("清空当前模式的实时看板?")) return;
+    clearDashboard();
+  });
   document.addEventListener("keydown", (e) => {
     // Ctrl+\  — toggle inspector (ignore inside text inputs so \ still types)
     if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === "\\") {

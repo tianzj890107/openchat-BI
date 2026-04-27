@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BI Analyst · Ontology Workbench</title>
-  <link rel="stylesheet" href="/static/styles.css?v=7" />
+  <link rel="stylesheet" href="/static/styles.css?v=14" />
   <script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body data-mode="data">
@@ -29,6 +29,8 @@
       <div class="topbar-actions">
         <button class="btn btn-ghost" id="btn-settings" title="模型与参数设置">⚙ MODEL</button>
         <button class="btn btn-ghost" id="btn-reset" title="开始新对话">⟲ RESET</button>
+        <button class="btn btn-ghost" id="btn-toggle-dashboard"
+                title="折叠 / 展开中间实时看板">▦ DASH</button>
         <button class="btn btn-ghost" id="btn-toggle-inspector"
                 title="折叠 / 展开右侧检查面板 (Ctrl+\\)">◨ PANEL</button>
       </div>
@@ -128,6 +130,27 @@
           </div>
         </div>
       </section>
+
+      <!-- ---------- MIDDLE: REAL-TIME DASHBOARD ---------- -->
+      <section class="dashboard-pane" id="dashboard-pane">
+        <div class="pane-header">
+          <span class="pane-label">DASHBOARD</span>
+          <span class="pane-hint" id="dashboard-count">0</span>
+          <button class="btn btn-ghost dash-toolbtn" id="dashboard-clear"
+                  title="清空当前看板">✕ CLEAR</button>
+          <button class="dashboard-collapse" id="dashboard-collapse"
+                  title="折叠中间看板">⇤</button>
+        </div>
+        <div class="dashboard-scroll" id="dashboard-list">
+          <div class="empty-state" id="dashboard-empty">
+            <div class="empty-glyph">▦</div>
+            <div class="empty-title">实时看板</div>
+            <div class="empty-sub">结论 / 图表 / 表格会在此自动汇总</div>
+          </div>
+        </div>
+      </section>
+      <button class="dashboard-reopen" id="dashboard-reopen"
+              title="展开中间实时看板">▦</button>
 
       <!-- ---------- RIGHT: INSPECTOR ---------- -->
       <section class="inspector-pane" id="inspector-pane">
@@ -249,6 +272,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=7"></script>
+  <script src="/static/app.js?v=14"></script>
 </body>
 </html>

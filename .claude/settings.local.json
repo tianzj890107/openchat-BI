@@ -48,7 +48,12 @@
       "Bash(curl -s -X PUT http://127.0.0.1:8766/api/config -H 'Content-Type: application/json' -d '{\"model_key\":\"nope\",\"qwen_api_key\":\"should-not-persist\"}')",
       "Bash(wait)",
       "Bash(node --check bi_agent/web/static/app.js)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(mkdir -p /c/tmp)",
+      "Read(//c/tmp/**)",
+      "Bash(tasklist /FI \"PID eq 5676\")",
+      "Bash(node --check \"C:/shuopan/claude-BI/open-claude/bi_agent/web/static/app.js\")",
+      "Bash(echo \"syntax-check exit: $?\")"
     ]
   }
 }
