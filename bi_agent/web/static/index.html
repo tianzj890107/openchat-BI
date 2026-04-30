@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BI Analyst · Ontology Workbench</title>
-  <link rel="stylesheet" href="/static/styles.css?v=16" />
+  <link rel="stylesheet" href="/static/styles.css?v=17" />
   <script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body data-mode="data">
@@ -231,7 +231,7 @@
           <div class="settings-hint">0 最确定性,1 平衡,2 最发散。Qwen 建议 ≤1.2。</div>
         </div>
 
-        <div class="settings-field" id="settings-thinking-field" hidden>
+        <div class="settings-field" id="settings-thinking-field">
           <label class="settings-label" for="settings-thinking">
             extended thinking
             <span class="settings-keystatus" id="settings-thinking-status"></span>
@@ -241,7 +241,7 @@
             <span class="toggle-track"><span class="toggle-dot"></span></span>
             <span class="toggle-label">启用思考模式</span>
           </label>
-          <div class="settings-hint">
+          <div class="settings-hint" id="settings-thinking-hint">
             开启后模型会先输出推理过程再给最终回答。仅对支持思考模式的模型生效;
             Claude 模型在启用思考时会自动锁定 <code>temperature=1.0</code>。
           </div>
@@ -303,6 +303,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=16"></script>
+  <script src="/static/app.js?v=17"></script>
 </body>
 </html>

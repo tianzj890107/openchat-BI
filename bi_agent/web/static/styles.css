@@ -1033,6 +1033,13 @@ body[data-inspector="collapsed"]:not([data-dashboard="collapsed"]) .split {
 .settings-thinking-toggle input:checked + .toggle-track .toggle-dot {
   transform: translateX(18px);
 }
+.settings-thinking-toggle input:disabled + .toggle-track {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.settings-field.disabled .toggle-label {
+  opacity: 0.55;
+}
 
 .settings-keyrow {
   display: flex;

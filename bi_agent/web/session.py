@@ -209,7 +209,9 @@ class WebSession:
                 "messages_snapshot": self._snapshot_messages(),
             }
 
-            stop_reason, text_buffer, tool_uses, usage = yield from self._stream_one_response(iteration)
+            stop_reason, text_buffer, tool_uses, usage, thinking_blocks = (
+                yield from self._stream_one_response(iteration)
+            )
 
             yield {
                 "type": "llm_response",
@@ -223,8 +225,13 @@ class WebSession:
                 "usage": usage,
             }
 
-            # Persist assistant turn to history
+            # Persist assistant turn to history. Thinking blocks must come
+            # FIRST — Anthropic requires the trace at the head of content
+            # blocks when extended thinking is enabled, and DeepSeek's
+            # OpenAI-style translator just reads the field regardless of
+            # position so the ordering is harmless either way.
             content: list[dict[str, Any]] = []
+            content.extend(thinking_blocks)
             if text_buffer:
                 content.append({"type": "text", "text": text_buffer})
             content.extend(tool_uses)
@@ -333,6 +340,7 @@ class WebSession:
         """Consume one LLM stream; yield per-delta events; return summary."""
         text_buffer = ""
         tool_uses: list[dict[str, Any]] = []
+        thinking_blocks: list[dict[str, Any]] = []
         stop_reason = "end_turn"
         usage: dict[str, Any] = {}
 
@@ -352,6 +360,19 @@ class WebSession:
             if etype == "text_delta":
                 text_buffer += event["text"]
                 yield {"type": "text_delta", "text": event["text"]}
+            elif etype == "thinking_delta":
+                # Surface the streaming reasoning trace to the inspector.
+                yield {"type": "thinking_delta", "text": event.get("text", "")}
+            elif etype == "thinking_block":
+                # End-of-block snapshot — keep it so the assistant message
+                # in self.messages can round-trip the trace on the next
+                # tool turn (DeepSeek API rejects requests otherwise; for
+                # Anthropic the signature is the gating field).
+                blk = {"type": "thinking", "thinking": event.get("text", "")}
+                sig = event.get("signature")
+                if sig:
+                    blk["signature"] = sig
+                thinking_blocks.append(blk)
             elif etype == "tool_use_start":
                 yield {"type": "tool_start", "id": event["id"], "name": event["name"]}
             elif etype == "tool_use_end":
@@ -378,9 +399,9 @@ class WebSession:
                 )
             elif etype == "error":
                 yield {"type": "error", "message": event["error"]}
-                return stop_reason, text_buffer, tool_uses, usage
+                return stop_reason, text_buffer, tool_uses, usage, thinking_blocks
 
-        return stop_reason, text_buffer, tool_uses, usage
+        return stop_reason, text_buffer, tool_uses, usage, thinking_blocks
 
     def _snapshot_messages(self) -> list[dict[str, Any]]:
         """Return a lightweight JSON-safe view of the current message list."""
@@ -396,6 +417,10 @@ class WebSession:
                 btype = blk.get("type")
                 if btype == "text":
                     blocks.append({"type": "text", "text": blk.get("text", "")})
+                elif btype == "thinking":
+                    raw_t = blk.get("thinking", "") or ""
+                    preview_t = raw_t if len(raw_t) <= 2000 else raw_t[:2000] + f"\n... [+{len(raw_t)-2000} chars]"
+                    blocks.append({"type": "thinking", "text_preview": preview_t})
                 elif btype == "tool_use":
                     blocks.append({
                         "type": "tool_use",

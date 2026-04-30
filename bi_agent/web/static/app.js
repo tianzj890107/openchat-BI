@@ -123,6 +123,7 @@
     settingsThinkingField:      document.getElementById("settings-thinking-field"),
     settingsThinking:           document.getElementById("settings-thinking"),
     settingsThinkingStatus:     document.getElementById("settings-thinking-status"),
+    settingsThinkingHint:       document.getElementById("settings-thinking-hint"),
     // Topbar
     agentName:      document.getElementById("agent-name"),
     topbarMeta:     document.getElementById("topbar-meta"),
@@ -477,20 +478,24 @@
     if (supportsThinking) hint += " · 支持思考模式";
     el.settingsModelHint.textContent = hint;
     el.settingsMaxTokens.max = maxOut;
+    // Keep the row visible at all times — disabling (rather than hiding)
+    // the checkbox makes the capability difference discoverable across
+    // model swaps without the row jumping in/out.
+    if (el.settingsThinking) {
+      el.settingsThinking.disabled = !supportsThinking;
+      if (!supportsThinking) el.settingsThinking.checked = false;
+    }
     if (el.settingsThinkingField) {
-      el.settingsThinkingField.hidden = !supportsThinking;
-      if (!supportsThinking && el.settingsThinking) {
-        // Clear UI state for unsupported models — the backend ignores
-        // the flag anyway via effective_thinking, but keeping the
-        // checkbox checked would be misleading on the next model swap.
-        el.settingsThinking.checked = false;
-      }
+      el.settingsThinkingField.classList.toggle("disabled", !supportsThinking);
     }
     if (el.settingsThinkingStatus) {
-      el.settingsThinkingStatus.textContent = supportsThinking ? "" : "本模型不支持";
+      el.settingsThinkingStatus.textContent = supportsThinking ? "可用" : "本模型不支持";
       el.settingsThinkingStatus.className = supportsThinking
         ? "settings-keystatus set"
         : "settings-keystatus missing";
+    }
+    if (el.settingsThinkingHint) {
+      el.settingsThinkingHint.style.opacity = supportsThinking ? "" : "0.55";
     }
   }
 

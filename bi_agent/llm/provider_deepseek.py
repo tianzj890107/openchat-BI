@@ -24,10 +24,85 @@ try:
 except Exception:  # pragma: no cover
     OpenAI = None  # type: ignore
 
-from .provider_qwen import FINISH_MAP, _convert_messages, _convert_tools
+from .provider_qwen import FINISH_MAP, _block_text, _convert_tools
 
 
 BASE_URL = "https://api.deepseek.com/v1"
+
+
+def _convert_messages(
+    messages: list[dict[str, Any]],
+    system_prompt: str,
+    *,
+    include_reasoning: bool = True,
+) -> list[dict[str, Any]]:
+    """Anthropic-style messages → OpenAI-style for DeepSeek.
+
+    Mirrors `provider_qwen._convert_messages` but additionally handles
+    `thinking` blocks: the API REQUIRES that any `reasoning_content`
+    produced under thinking mode be passed back on the next request,
+    otherwise it returns 400 invalid_request_error.
+
+    `include_reasoning=False` should be passed when thinking is OFF for
+    the current request — re-sending prior reasoning under non-thinking
+    mode is unsupported and may itself trigger a validation error.
+    """
+    out: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content")
+
+        if isinstance(content, str):
+            out.append({"role": role, "content": content})
+            continue
+
+        if not isinstance(content, list):
+            continue
+
+        if role == "assistant":
+            text_parts: list[str] = []
+            reasoning_parts: list[str] = []
+            tool_calls: list[dict[str, Any]] = []
+            for blk in content:
+                bt = blk.get("type")
+                if bt == "text":
+                    text_parts.append(blk.get("text", ""))
+                elif bt == "thinking" and include_reasoning:
+                    reasoning_parts.append(blk.get("thinking", ""))
+                elif bt == "tool_use":
+                    tool_calls.append({
+                        "id": blk["id"],
+                        "type": "function",
+                        "function": {
+                            "name": blk["name"],
+                            "arguments": json.dumps(blk.get("input", {}), ensure_ascii=False),
+                        },
+                    })
+            assistant_msg: dict[str, Any] = {"role": "assistant"}
+            text_joined = "".join(text_parts)
+            assistant_msg["content"] = text_joined if text_joined else None
+            if reasoning_parts:
+                assistant_msg["reasoning_content"] = "".join(reasoning_parts)
+            if tool_calls:
+                assistant_msg["tool_calls"] = tool_calls
+            out.append(assistant_msg)
+
+        elif role == "user":
+            text_parts: list[str] = []
+            for blk in content:
+                bt = blk.get("type")
+                if bt == "tool_result":
+                    out.append({
+                        "role": "tool",
+                        "tool_call_id": blk.get("tool_use_id"),
+                        "content": _block_text(blk.get("content", "")),
+                    })
+                elif bt == "text":
+                    text_parts.append(blk.get("text", ""))
+            if text_parts:
+                out.append({"role": "user", "content": "".join(text_parts)})
+
+    return out
 
 
 def _get_api_key() -> Optional[str]:
@@ -79,7 +154,7 @@ def stream(
         return
 
     try:
-        oa_messages = _convert_messages(messages, system_prompt)
+        oa_messages = _convert_messages(messages, system_prompt, include_reasoning=bool(thinking))
         oa_tools = _convert_tools(allowed_tools)
     except Exception as e:
         yield {"type": "error", "error": f"Message conversion failed: {e}"}
@@ -96,8 +171,15 @@ def stream(
     if oa_tools:
         request_kwargs["tools"] = oa_tools
         request_kwargs["tool_choice"] = "auto"
-    if thinking:
-        request_kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
+    # DeepSeek requires the thinking parameter to be ALWAYS present for
+    # V4 models — omitting it leaves the request in an ambiguous mode and
+    # surfaces as `400 invalid_request_error: 'reasoning_content ... must
+    # be passed back'` on follow-up turns. We therefore send an explicit
+    # enabled/disabled marker every call. Note: this is DeepSeek-specific,
+    # other OpenAI-compatible providers (Qwen) don't accept this field.
+    request_kwargs["extra_body"] = {
+        "thinking": {"type": "enabled" if thinking else "disabled"},
+    }
 
     try:
         completion_stream = client.chat.completions.create(**request_kwargs)
@@ -108,6 +190,12 @@ def stream(
     tc_state: dict[int, dict[str, Any]] = {}
     stop_reason = "end_turn"
     usage = {"input_tokens": 0, "output_tokens": 0}
+    # Accumulate the full reasoning trace so we can emit a final
+    # `thinking_block` event after the stream ends; the session loop
+    # persists it back into the assistant message and provider_deepseek's
+    # `_convert_messages` translates it to `reasoning_content` on the
+    # NEXT request — required by DeepSeek's thinking-mode API contract.
+    reasoning_buf = ""
 
     try:
         for chunk in completion_stream:
@@ -135,6 +223,7 @@ def stream(
             # Anthropic provider uses, so the UI can render both uniformly.
             reasoning = getattr(delta, "reasoning_content", None)
             if reasoning:
+                reasoning_buf += reasoning
                 yield {"type": "thinking_delta", "text": reasoning}
 
             content = getattr(delta, "content", None)
@@ -176,6 +265,13 @@ def stream(
             finish = getattr(choice, "finish_reason", None)
             if finish:
                 stop_reason = FINISH_MAP.get(finish, "end_turn")
+
+        if reasoning_buf:
+            yield {
+                "type": "thinking_block",
+                "text": reasoning_buf,
+                "signature": None,
+            }
 
         for idx in sorted(tc_state.keys()):
             st = tc_state[idx]

@@ -3,7 +3,9 @@
 Every provider yields the SAME event dicts as open_claude.api.stream_message:
 
     {"type": "text_delta", "text": str}
-    {"type": "thinking_delta", "text": str}              # optional
+    {"type": "thinking_delta", "text": str}              # optional, streaming
+    {"type": "thinking_block", "text": str,              # optional, end-of-block
+                               "signature": str | None}  #   (Anthropic only)
     {"type": "tool_use_start", "id": str, "name": str}
     {"type": "tool_input_delta", "partial_json": str}    # optional
     {"type": "tool_use_end", "id": str, "name": str, "input": dict}
@@ -12,6 +14,11 @@ Every provider yields the SAME event dicts as open_claude.api.stream_message:
 
 stop_reason values are normalized across providers to:
     "end_turn" | "tool_use" | "max_tokens" | "stop_sequence"
+
+`thinking_block` is what the session loop persists into the assistant
+message so subsequent tool turns can round-trip the reasoning trace —
+required by Anthropic (with `signature`) and by DeepSeek (text only)
+when extended thinking is enabled.
 """
 
 from __future__ import annotations

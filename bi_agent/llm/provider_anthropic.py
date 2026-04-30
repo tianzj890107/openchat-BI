@@ -63,6 +63,9 @@ def stream(
         with client.messages.stream(**kwargs) as stream_ctx:
             current_tool: Optional[dict[str, Any]] = None
             current_tool_json = ""
+            in_thinking = False
+            thinking_buf = ""
+            thinking_signature = ""
 
             for event in stream_ctx:
                 etype = event.type
@@ -72,13 +75,23 @@ def stream(
                         current_tool = {"id": block.id, "name": block.name}
                         current_tool_json = ""
                         yield {"type": "tool_use_start", "id": block.id, "name": block.name}
+                    elif block.type == "thinking":
+                        in_thinking = True
+                        thinking_buf = ""
+                        thinking_signature = ""
                 elif etype == "content_block_delta":
                     delta = event.delta
                     dt = delta.type
                     if dt == "text_delta":
                         yield {"type": "text_delta", "text": delta.text}
                     elif dt == "thinking_delta":
+                        thinking_buf += delta.thinking
                         yield {"type": "thinking_delta", "text": delta.thinking}
+                    elif dt == "signature_delta":
+                        # Signature arrives once at the end of the thinking
+                        # block; required by Anthropic when round-tripping
+                        # the block on subsequent tool-use turns.
+                        thinking_signature += getattr(delta, "signature", "") or ""
                     elif dt == "input_json_delta":
                         current_tool_json += delta.partial_json
                         yield {"type": "tool_input_delta", "partial_json": delta.partial_json}
@@ -96,6 +109,15 @@ def stream(
                         }
                         current_tool = None
                         current_tool_json = ""
+                    elif in_thinking:
+                        yield {
+                            "type": "thinking_block",
+                            "text": thinking_buf,
+                            "signature": thinking_signature or None,
+                        }
+                        in_thinking = False
+                        thinking_buf = ""
+                        thinking_signature = ""
                 elif etype == "message_delta":
                     yield {
                         "type": "message_end",
