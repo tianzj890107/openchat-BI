@@ -33,6 +33,9 @@ class RuntimeConfig:
         self.model_key: str = key
         self.max_tokens: int = int(m.get("default_max_tokens", 8192))
         self.temperature: float = float(m.get("default_temperature", 1.0))
+        # Extended-thinking toggle. Only applied when the active model
+        # advertises supports_thinking=True; providers ignore it otherwise.
+        self.thinking: bool = False
         self._load()
 
     # -------------------------
@@ -54,6 +57,9 @@ class RuntimeConfig:
         t = data.get("temperature")
         if isinstance(t, (int, float)) and _MIN_TEMP <= float(t) <= _MAX_TEMP:
             self.temperature = float(t)
+        thk = data.get("thinking")
+        if isinstance(thk, bool):
+            self.thinking = thk
 
     def _save(self) -> None:
         _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +77,7 @@ class RuntimeConfig:
         model_key: Optional[str] = None,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
+        thinking: Optional[bool] = None,
     ) -> None:
         if model_key is not None:
             if get_model(model_key) is None:
@@ -90,13 +97,24 @@ class RuntimeConfig:
                     f"temperature out of range [{_MIN_TEMP}, {_MAX_TEMP}]"
                 )
             self.temperature = t
+        if thinking is not None:
+            self.thinking = bool(thinking)
         self._save()
+
+    @property
+    def effective_thinking(self) -> bool:
+        """`thinking` flag intersected with the active model's capability."""
+        if not self.thinking:
+            return False
+        m = get_model(self.model_key) or {}
+        return bool(m.get("supports_thinking", False))
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "model_key": self.model_key,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
+            "thinking": self.thinking,
         }
 
 
@@ -123,6 +141,7 @@ _CLAUDE_CONFIG_PATH = Path.home() / ".claude" / "config.json"
 _KEY_FIELDS = {
     "anthropic": ("api_key", "ANTHROPIC_API_KEY"),
     "qwen":      ("dashscope_api_key", "DASHSCOPE_API_KEY"),
+    "deepseek":  ("deepseek_api_key", "DEEPSEEK_API_KEY"),
 }
 
 

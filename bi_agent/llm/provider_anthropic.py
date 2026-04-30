@@ -33,6 +33,7 @@ def stream(
     allowed_tools: Optional[list[str]],
     max_tokens: int,
     temperature: float,
+    thinking: bool = False,
 ) -> Generator[dict[str, Any], None, None]:
     try:
         client = _client()
@@ -48,7 +49,14 @@ def stream(
         messages=messages,
         tools=tools,
     )
-    if temperature is not None:
+    if thinking:
+        # Reserve roughly half of max_tokens for the thinking trace, but
+        # always leave at least 1024 for the visible answer. Anthropic
+        # requires temperature=1.0 when thinking is enabled.
+        budget = max(1024, min(max_tokens // 2, 32000))
+        kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+        kwargs["temperature"] = 1.0
+    elif temperature is not None:
         kwargs["temperature"] = float(temperature)
 
     try:

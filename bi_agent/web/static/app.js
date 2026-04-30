@@ -117,6 +117,12 @@
     settingsKeyQwen:            document.getElementById("settings-key-qwen"),
     settingsKeyQwenStatus:      document.getElementById("settings-key-qwen-status"),
     settingsKeyQwenClear:       document.getElementById("settings-key-qwen-clear"),
+    settingsKeyDeepseek:        document.getElementById("settings-key-deepseek"),
+    settingsKeyDeepseekStatus:  document.getElementById("settings-key-deepseek-status"),
+    settingsKeyDeepseekClear:   document.getElementById("settings-key-deepseek-clear"),
+    settingsThinkingField:      document.getElementById("settings-thinking-field"),
+    settingsThinking:           document.getElementById("settings-thinking"),
+    settingsThinkingStatus:     document.getElementById("settings-thinking-status"),
     // Topbar
     agentName:      document.getElementById("agent-name"),
     topbarMeta:     document.getElementById("topbar-meta"),
@@ -367,6 +373,14 @@
         `<span class="kv"><span class="kv-k">MAX_T</span><span class="kv-v">${cur.max_tokens}</span></span>`,
         `<span class="kv"><span class="kv-k">TEMP</span><span class="kv-v">${Number(cur.temperature).toFixed(2)}</span></span>`,
       );
+      const m = (data.llm.models || []).find(x => x.key === cur.model_key);
+      const supportsThinking = !!(m && m.supports_thinking);
+      const thinkingActive = !!cur.thinking && supportsThinking;
+      if (thinkingActive) {
+        metaParts.push(
+          `<span class="kv"><span class="kv-k">THINK</span><span class="kv-v">on</span></span>`,
+        );
+      }
     }
     metaParts.push(
       `<span class="kv"><span class="kv-k">DB</span><span class="kv-v">${esc(data.db_path)}</span></span>`,
@@ -417,6 +431,7 @@
       opt.dataset.defaultMaxTokens = m.default_max_tokens;
       opt.dataset.defaultTemperature = m.default_temperature;
       opt.dataset.maxOutputTokens = m.max_output_tokens;
+      opt.dataset.supportsThinking = m.supports_thinking ? "1" : "0";
       el.settingsModel.appendChild(opt);
     });
     const cur = llm.current || {};
@@ -424,10 +439,12 @@
     el.settingsMaxTokens.value = cur.max_tokens ?? 8192;
     el.settingsTemp.value = cur.temperature ?? 1.0;
     el.settingsTempVal.textContent = Number(el.settingsTemp.value).toFixed(2);
+    if (el.settingsThinking) el.settingsThinking.checked = !!cur.thinking;
     updateModelHint();
     renderKeyStatus(llm.api_keys || {});
     el.settingsKeyAnthropic.value = "";
     el.settingsKeyQwen.value = "";
+    if (el.settingsKeyDeepseek) el.settingsKeyDeepseek.value = "";
   }
 
   function renderKeyStatus(keys) {
@@ -444,6 +461,7 @@
     };
     render(el.settingsKeyAnthropicStatus, keys.anthropic);
     render(el.settingsKeyQwenStatus, keys.qwen);
+    render(el.settingsKeyDeepseekStatus, keys.deepseek);
   }
 
   function updateModelHint() {
@@ -451,11 +469,29 @@
     if (!opt) { el.settingsModelHint.textContent = ""; return; }
     const provider = opt.dataset.provider;
     const maxOut = opt.dataset.maxOutputTokens;
+    const supportsThinking = opt.dataset.supportsThinking === "1";
     let hint = `provider: ${provider} · max_output: ${maxOut}`;
     if (provider === "qwen") hint += " · 需要环境变量 DASHSCOPE_API_KEY";
+    else if (provider === "deepseek") hint += " · 需要环境变量 DEEPSEEK_API_KEY";
     else hint += " · 需要环境变量 ANTHROPIC_API_KEY";
+    if (supportsThinking) hint += " · 支持思考模式";
     el.settingsModelHint.textContent = hint;
     el.settingsMaxTokens.max = maxOut;
+    if (el.settingsThinkingField) {
+      el.settingsThinkingField.hidden = !supportsThinking;
+      if (!supportsThinking && el.settingsThinking) {
+        // Clear UI state for unsupported models — the backend ignores
+        // the flag anyway via effective_thinking, but keeping the
+        // checkbox checked would be misleading on the next model swap.
+        el.settingsThinking.checked = false;
+      }
+    }
+    if (el.settingsThinkingStatus) {
+      el.settingsThinkingStatus.textContent = supportsThinking ? "" : "本模型不支持";
+      el.settingsThinkingStatus.className = supportsThinking
+        ? "settings-keystatus set"
+        : "settings-keystatus missing";
+    }
   }
 
   function openSettings() {
@@ -474,11 +510,14 @@
       model_key: el.settingsModel.value,
       max_tokens: parseInt(el.settingsMaxTokens.value, 10),
       temperature: parseFloat(el.settingsTemp.value),
+      thinking: !!(el.settingsThinking && el.settingsThinking.checked),
     };
     const aKey = el.settingsKeyAnthropic.value.trim();
     if (aKey) payload.anthropic_api_key = aKey;
     const qKey = el.settingsKeyQwen.value.trim();
     if (qKey) payload.qwen_api_key = qKey;
+    const dsKey = el.settingsKeyDeepseek && el.settingsKeyDeepseek.value.trim();
+    if (dsKey) payload.deepseek_api_key = dsKey;
 
     el.settingsStatus.textContent = "保存中…";
     el.settingsStatus.className = "settings-status pending";
@@ -498,6 +537,7 @@
       renderKeyStatus(data.api_keys || {});
       el.settingsKeyAnthropic.value = "";
       el.settingsKeyQwen.value = "";
+      if (el.settingsKeyDeepseek) el.settingsKeyDeepseek.value = "";
       el.settingsStatus.textContent = "已保存 · 下一轮对话立即生效";
       el.settingsStatus.className = "settings-status success";
       setTimeout(closeSettings, 900);
@@ -509,9 +549,14 @@
 
   async function clearApiKey(provider) {
     if (!confirm(`确定清除 ${provider} 的 API key?(仅清除配置文件中的值;环境变量不受影响)`)) return;
-    const payload = provider === "anthropic"
-      ? { anthropic_api_key: "" }
-      : { qwen_api_key: "" };
+    const fieldByProvider = {
+      anthropic: "anthropic_api_key",
+      qwen:      "qwen_api_key",
+      deepseek:  "deepseek_api_key",
+    };
+    const field = fieldByProvider[provider];
+    if (!field) return;
+    const payload = { [field]: "" };
     try {
       const r = await fetch("/api/config", {
         method: "PUT",
@@ -551,6 +596,7 @@
   if (el.settingsResetDefaults) el.settingsResetDefaults.addEventListener("click", resetSettingsToDefaults);
   if (el.settingsKeyAnthropicClear) el.settingsKeyAnthropicClear.addEventListener("click", () => clearApiKey("anthropic"));
   if (el.settingsKeyQwenClear) el.settingsKeyQwenClear.addEventListener("click", () => clearApiKey("qwen"));
+  if (el.settingsKeyDeepseekClear) el.settingsKeyDeepseekClear.addEventListener("click", () => clearApiKey("deepseek"));
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && el.settingsOverlay && !el.settingsOverlay.hidden) {
       closeSettings();
@@ -580,8 +626,8 @@
       ? (state.report.withDb
           ? ["OntologyQuery", "TermDisambiguate", "MetricLookup", "RelationLookup",
              "EntityDescribe", "ListBusinessObjects", "SQLRun", "ListTables",
-             "DescribeTable", "ChartGenerate", "AskUser"]
-          : ["ChartGenerate", "AskUser"])
+             "DescribeTable", "ChartGenerate", "TableGenerate", "AskUser"]
+          : ["ChartGenerate", "TableGenerate", "AskUser"])
       : (a.tools || []);
     const tools = toolsList.map(t => `<span class="tool-pill">${esc(t)}</span>`).join("") || '<span class="kv-v">(all)</span>';
     el.systemContent.innerHTML = `

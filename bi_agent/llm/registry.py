@@ -3,6 +3,11 @@
 Edit `MODELS` to change the catalog. Qwen model_id strings are sent verbatim
 to DashScope's OpenAI-compatible endpoint; if your account exposes snapshot
 IDs (e.g. qwen-plus-2025-07-28), put them here.
+
+`supports_thinking: True` adds an "extended thinking" toggle in the UI for
+that model. The provider is responsible for translating the runtime
+`thinking` flag into its native parameter (Anthropic: `thinking={…}`,
+DeepSeek: `extra_body={"thinking": {"type": "enabled"}}`).
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ MODELS: list[dict[str, Any]] = [
         "default_max_tokens": 16384,
         "default_temperature": 1.0,
         "max_output_tokens": 32000,
+        "supports_thinking": True,
     },
     {
         "key": "opus4.6",
@@ -28,6 +34,7 @@ MODELS: list[dict[str, Any]] = [
         "default_max_tokens": 16384,
         "default_temperature": 1.0,
         "max_output_tokens": 64000,
+        "supports_thinking": True,
     },
     {
         "key": "sonnet4.6",
@@ -37,6 +44,7 @@ MODELS: list[dict[str, Any]] = [
         "default_max_tokens": 16384,
         "default_temperature": 1.0,
         "max_output_tokens": 32000,
+        "supports_thinking": True,
     },
     {
         "key": "qwen3.6-plus",
@@ -46,6 +54,7 @@ MODELS: list[dict[str, Any]] = [
         "default_max_tokens": 8192,
         "default_temperature": 0.7,
         "max_output_tokens": 8192,
+        "supports_thinking": False,
     },
     {
         "key": "qwen3.5-plus",
@@ -55,6 +64,7 @@ MODELS: list[dict[str, Any]] = [
         "default_max_tokens": 8192,
         "default_temperature": 0.7,
         "max_output_tokens": 8192,
+        "supports_thinking": False,
     },
     {
         "key": "qwen-plus",
@@ -64,6 +74,27 @@ MODELS: list[dict[str, Any]] = [
         "default_max_tokens": 8192,
         "default_temperature": 0.7,
         "max_output_tokens": 8192,
+        "supports_thinking": False,
+    },
+    {
+        "key": "deepseek-v4-flash",
+        "label": "DeepSeek V4 Flash",
+        "provider": "deepseek",
+        "model_id": "deepseek-v4-flash",
+        "default_max_tokens": 8192,
+        "default_temperature": 0.7,
+        "max_output_tokens": 16384,
+        "supports_thinking": True,
+    },
+    {
+        "key": "deepseek-v4-pro",
+        "label": "DeepSeek V4 Pro",
+        "provider": "deepseek",
+        "model_id": "deepseek-v4-pro",
+        "default_max_tokens": 8192,
+        "default_temperature": 0.7,
+        "max_output_tokens": 32768,
+        "supports_thinking": True,
     },
 ]
 
@@ -78,6 +109,7 @@ def list_models() -> list[dict[str, Any]]:
             "default_max_tokens": m["default_max_tokens"],
             "default_temperature": m["default_temperature"],
             "max_output_tokens": m["max_output_tokens"],
+            "supports_thinking": bool(m.get("supports_thinking", False)),
         }
         for m in MODELS
     ]

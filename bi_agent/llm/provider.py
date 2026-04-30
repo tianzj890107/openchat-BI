@@ -28,6 +28,7 @@ def stream_message(
     model_key: str,
     max_tokens: int,
     temperature: float,
+    thinking: bool = False,
 ) -> Generator[dict[str, Any], None, None]:
     m = get_model(model_key)
     if not m:
@@ -36,6 +37,9 @@ def stream_message(
 
     provider = m["provider"]
     model_id = m["model_id"]
+    # Only forward thinking when the model advertises support for it,
+    # so providers don't have to re-check every model.
+    effective_thinking = bool(thinking) and bool(m.get("supports_thinking", False))
 
     if provider == "anthropic":
         from . import provider_anthropic
@@ -46,6 +50,7 @@ def stream_message(
             allowed_tools=allowed_tools,
             max_tokens=max_tokens,
             temperature=temperature,
+            thinking=effective_thinking,
         )
     elif provider == "qwen":
         from . import provider_qwen
@@ -56,6 +61,17 @@ def stream_message(
             allowed_tools=allowed_tools,
             max_tokens=max_tokens,
             temperature=temperature,
+        )
+    elif provider == "deepseek":
+        from . import provider_deepseek
+        yield from provider_deepseek.stream(
+            model_id=model_id,
+            messages=messages,
+            system_prompt=system_prompt,
+            allowed_tools=allowed_tools,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            thinking=effective_thinking,
         )
     else:
         yield {"type": "error", "error": f"Unsupported provider: {provider}"}

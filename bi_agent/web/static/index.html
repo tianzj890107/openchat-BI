@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BI Analyst · Ontology Workbench</title>
-  <link rel="stylesheet" href="/static/styles.css?v=14" />
+  <link rel="stylesheet" href="/static/styles.css?v=16" />
   <script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body data-mode="data">
@@ -231,6 +231,22 @@
           <div class="settings-hint">0 最确定性,1 平衡,2 最发散。Qwen 建议 ≤1.2。</div>
         </div>
 
+        <div class="settings-field" id="settings-thinking-field" hidden>
+          <label class="settings-label" for="settings-thinking">
+            extended thinking
+            <span class="settings-keystatus" id="settings-thinking-status"></span>
+          </label>
+          <label class="toggle settings-thinking-toggle">
+            <input type="checkbox" id="settings-thinking" />
+            <span class="toggle-track"><span class="toggle-dot"></span></span>
+            <span class="toggle-label">启用思考模式</span>
+          </label>
+          <div class="settings-hint">
+            开启后模型会先输出推理过程再给最终回答。仅对支持思考模式的模型生效;
+            Claude 模型在启用思考时会自动锁定 <code>temperature=1.0</code>。
+          </div>
+        </div>
+
         <div class="settings-divider">API KEYS</div>
 
         <div class="settings-field">
@@ -263,6 +279,21 @@
           <div class="settings-hint">用于 Qwen 系列模型。也可设为环境变量 <code>DASHSCOPE_API_KEY</code>。</div>
         </div>
 
+        <div class="settings-field">
+          <label class="settings-label" for="settings-key-deepseek">
+            DeepSeek
+            <span class="settings-keystatus" id="settings-key-deepseek-status"></span>
+          </label>
+          <div class="settings-keyrow">
+            <input type="password" autocomplete="off" spellcheck="false"
+                   class="settings-input" id="settings-key-deepseek"
+                   placeholder="sk-…  (留空则不修改)" />
+            <button type="button" class="btn btn-ghost settings-key-clear"
+                    id="settings-key-deepseek-clear" title="清空该 key">×</button>
+          </div>
+          <div class="settings-hint">用于 DeepSeek V4 系列模型。也可设为环境变量 <code>DEEPSEEK_API_KEY</code>。</div>
+        </div>
+
         <div class="settings-status" id="settings-status"></div>
       </div>
       <div class="modal-footer">
@@ -272,6 +303,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=14"></script>
+  <script src="/static/app.js?v=16"></script>
 </body>
 </html>

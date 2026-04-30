@@ -55,11 +55,12 @@ STATE = AppState()
 REPORT_DB_TOOLS: list[str] = [
     "OntologyQuery", "TermDisambiguate", "MetricLookup", "RelationLookup",
     "EntityDescribe", "ListBusinessObjects", "SQLRun", "ListTables",
-    "DescribeTable", "ChartGenerate", "AskUser",
+    "DescribeTable", "ChartGenerate", "TableGenerate", "AskUser",
 ]
-# Pure-mode: only chart generation (over report data) and AskUser for
-# disambiguation — no ontology/SQL.
-REPORT_PURE_TOOLS: list[str] = ["ChartGenerate", "AskUser"]
+# Pure-mode: visualization (chart + structured table over report data) and
+# AskUser for disambiguation — no ontology/SQL. Table generation is part
+# of the visualization-skill bundle the report-analyst SOP requires.
+REPORT_PURE_TOOLS: list[str] = ["ChartGenerate", "TableGenerate", "AskUser"]
 
 
 # ---------------------------------------------------------------------------
@@ -121,9 +122,11 @@ class ConfigUpdate(BaseModel):
     model_key: Optional[str] = None
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
+    thinking: Optional[bool] = None
     # API keys — pass a plain string to set, "" to clear, None/omit = no change
     anthropic_api_key: Optional[str] = None
     qwen_api_key: Optional[str] = None
+    deepseek_api_key: Optional[str] = None
 
 
 @app.get("/")
@@ -186,6 +189,7 @@ def put_config_endpoint(req: ConfigUpdate) -> JSONResponse:
             model_key=req.model_key,
             max_tokens=req.max_tokens,
             temperature=req.temperature,
+            thinking=req.thinking,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -198,6 +202,8 @@ def put_config_endpoint(req: ConfigUpdate) -> JSONResponse:
             set_api_key("anthropic", payload["anthropic_api_key"])
         if "qwen_api_key" in payload:
             set_api_key("qwen", payload["qwen_api_key"])
+        if "deepseek_api_key" in payload:
+            set_api_key("deepseek", payload["deepseek_api_key"])
     except ValueError as e:
         raise HTTPException(400, str(e))
 

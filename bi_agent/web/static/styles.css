@@ -1016,6 +1016,24 @@ body[data-inspector="collapsed"]:not([data-dashboard="collapsed"]) .split {
   border: 1px solid rgba(45, 212, 191, 0.25);
 }
 
+/* Thinking-mode toggle inside the settings modal — slightly larger
+   than the inline composer toggle so it reads as a top-level switch. */
+.settings-thinking-toggle {
+  align-self: flex-start;
+  padding: 4px 0;
+}
+.settings-thinking-toggle .toggle-track {
+  width: 36px;
+  height: 18px;
+}
+.settings-thinking-toggle .toggle-dot {
+  width: 14px;
+  height: 14px;
+}
+.settings-thinking-toggle input:checked + .toggle-track .toggle-dot {
+  transform: translateX(18px);
+}
+
 .settings-keyrow {
   display: flex;
   gap: 6px;

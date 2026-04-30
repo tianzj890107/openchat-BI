@@ -346,6 +346,7 @@ class WebSession:
             model_key=cfg.model_key,
             max_tokens=cfg.max_tokens,
             temperature=cfg.temperature,
+            thinking=cfg.effective_thinking,
         ):
             etype = event["type"]
             if etype == "text_delta":
