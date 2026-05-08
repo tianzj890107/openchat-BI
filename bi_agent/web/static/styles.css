@@ -68,6 +68,24 @@ body {
 
 ::selection { background: rgba(88, 166, 255, 0.3); }
 
+/* ---------- TEXT SELECTION ----------
+ * Explicitly enable user-select on the three content panes so chat / table /
+ * dashboard text can be highlighted and copied. Some flex/grid layouts in
+ * combination with focus-trapping can quietly break selection — declaring
+ * `user-select: text` here makes it deterministic. The opt-in `user-select:
+ * none` rules (collapsible headers, toggles) are direct selectors and are
+ * NOT overridden, since user-select uses cascade not inheritance. */
+.chat-scroll,
+.dashboard-pane,
+.inspector-pane,
+.msg, .msg-body, .step-body,
+.entity-card .entity-body,
+.chart-card, .table-card, .multidim-card {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: auto;
+}
+
 /* ---------- APP SHELL ---------- */
 .app { display: flex; flex-direction: column; height: 100vh; }
 
@@ -1387,9 +1405,60 @@ body:not([data-mode="report"]) .upload-status {
   padding: 0 4px;
 }
 .history-close:hover { color: var(--accent-red); }
+.history-hint {
+  color: var(--fg-3);
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  margin-left: 6px;
+  text-transform: none;
+}
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+.history-selected-count {
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.4px;
+  flex: 1;
+}
+.history-toolbar .btn {
+  font-size: var(--fs-xs);
+  padding: 4px 10px;
+}
 .history-list {
   overflow-y: auto;
   padding: 6px;
+}
+.history-item-check {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 2px;
+  cursor: pointer;
+}
+.history-item-check input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+}
+.history-item-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  color: var(--accent-cyan);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 2px;
+  vertical-align: middle;
 }
 .history-empty {
   padding: 24px;
@@ -1787,4 +1856,168 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 .dash-table-wrap .table-scroll {
   max-height: 280px;
   border: none;
+}
+
+/* ====================================================================
+ * Deep-Insight (深入洞察) — button on chart cards
+ * ================================================================== */
+.chart-insight-btn {
+  margin-left: 6px;
+  padding: 3px 10px;
+  background: transparent;
+  color: var(--accent-cyan);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.chart-insight-btn:hover:not(:disabled) {
+  background: var(--accent-cyan);
+  color: var(--bg-0);
+}
+.chart-insight-btn:disabled,
+.chart-insight-btn.triggered {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: var(--border-1);
+  color: var(--fg-3);
+}
+
+/* ====================================================================
+ * Multi-dim chart card (ChartGenerateMultiDim)
+ * ================================================================== */
+.multidim-card {
+  margin: 10px 0;
+  border: 1px solid var(--border-1);
+  border-left: 3px solid var(--accent-violet);
+  background: var(--bg-1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.multidim-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.multidim-tag {
+  color: var(--accent-violet);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.multidim-title {
+  color: var(--fg-0);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.multidim-metric {
+  padding: 1px 6px;
+  color: var(--accent-amber);
+  border: 1px solid var(--accent-amber);
+  border-radius: 2px;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+}
+.multidim-subtitle { color: var(--fg-2); font-size: 11px; }
+.multidim-source { color: var(--fg-3); font-size: 10px; }
+.multidim-saved { color: var(--accent-cyan); text-decoration: none; font-size: 10px; }
+.multidim-saved:hover { text-decoration: underline; }
+
+.multidim-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-0);
+  border-bottom: 1px solid var(--border-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.multidim-label {
+  color: var(--fg-3);
+  letter-spacing: 0.8px;
+}
+.multidim-select {
+  background: var(--bg-2);
+  color: var(--fg-0);
+  border: 1px solid var(--border-1);
+  border-radius: 2px;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 140px;
+}
+.multidim-select:focus { outline: 1px solid var(--accent-cyan); }
+.multidim-dim-summary {
+  flex: 1;
+  color: var(--fg-2);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multidim-canvas {
+  width: 100%;
+  height: 360px;
+  background: var(--bg-0);
+}
+.multidim-summary {
+  padding: 8px 12px;
+  color: var(--fg-1);
+  background: var(--bg-2);
+  border-top: 1px solid var(--border-1);
+  font-size: 12px;
+}
+.multidim-footnote {
+  padding: 6px 12px;
+  color: var(--fg-3);
+  font-size: 11px;
+  border-top: 1px solid var(--border-1);
+}
+.multidim-err {
+  padding: 14px;
+  color: var(--accent-red);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Dashboard multi-dim card variant */
+.dash-multidim { border-left: 3px solid var(--accent-violet); }
+.dash-tag.multidim {
+  color: var(--accent-violet);
+  border: 1px solid var(--accent-violet);
+}
+.dash-metric {
+  padding: 1px 6px;
+  color: var(--accent-amber);
+  border: 1px solid var(--accent-amber);
+  border-radius: 2px;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+}
+.dash-toolbar {
+  /* Slimmer toolbar for the dashboard variant */
+  padding: 6px 10px;
+}
+.dash-multidim .dash-chart-canvas {
+  height: 240px;
 }

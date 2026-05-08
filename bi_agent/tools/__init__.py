@@ -12,7 +12,14 @@ from pathlib import Path
 from open_claude.tools import register_tool
 
 from ..ontology.store import OntologyStore
-from . import ask_user, chart_tools, ontology_tools, sql_tools, table_tools
+from . import (
+    ask_user,
+    chart_multidim_tools,
+    chart_tools,
+    ontology_tools,
+    sql_tools,
+    table_tools,
+)
 
 
 def register_all(store: OntologyStore, db_path: str | Path) -> list[str]:
@@ -26,6 +33,9 @@ def register_all(store: OntologyStore, db_path: str | Path) -> list[str]:
         register_tool(schema, make_executor(db_path))
         registered.append(schema["name"])
     for schema, make_executor in chart_tools.SPECS:
+        register_tool(schema, make_executor())
+        registered.append(schema["name"])
+    for schema, make_executor in chart_multidim_tools.SPECS:
         register_tool(schema, make_executor())
         registered.append(schema["name"])
     for schema, make_executor in table_tools.SPECS:

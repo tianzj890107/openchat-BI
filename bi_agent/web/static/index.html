@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BI Analyst · Ontology Workbench</title>
-  <link rel="stylesheet" href="/static/styles.css?v=17" />
+  <link rel="stylesheet" href="/static/styles.css?v=20" />
   <script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body data-mode="data">
@@ -116,13 +116,20 @@
           </div>
 
           <!-- Hidden native file input — triggered by btn-attach & attach-chip-change -->
-          <input type="file" id="file-input" accept=".pdf,.docx" hidden />
+          <input type="file" id="file-input" accept=".pdf,.docx" multiple hidden />
 
           <!-- History popover — anchored to composer, opens upward -->
           <div class="history-popover" id="history-popover" hidden>
             <div class="history-header">
-              <span>最近上传的报表</span>
+              <span>最近上传的报表 <span class="history-hint">(可多选,最多 5 份)</span></span>
               <button class="history-close" id="history-close">✕</button>
+            </div>
+            <div class="history-toolbar">
+              <span class="history-selected-count" id="history-selected-count">已选 0 份</span>
+              <button class="btn btn-ghost history-select-all" id="history-select-all">全选</button>
+              <button class="btn btn-ghost history-clear-sel" id="history-clear-sel">清空</button>
+              <button class="btn btn-primary history-activate-sel" id="history-activate-sel"
+                      disabled>激活所选</button>
             </div>
             <div class="history-list" id="history-list">
               <div class="history-empty">暂无上传记录</div>
@@ -303,6 +310,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=17"></script>
+  <script src="/static/app.js?v=20"></script>
 </body>
 </html>

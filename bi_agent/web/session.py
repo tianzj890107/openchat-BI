@@ -36,6 +36,7 @@ from ..llm.provider import get_model_id, stream_message
 from ..llm.runtime_config import get_config as get_llm_config
 from ..ontology.store import OntologyStore
 from ..tools.ask_user import ASK_USER_TOOL_NAME
+from ..tools.chart_multidim_tools import extract_multidim_chart_spec
 from ..tools.chart_tools import extract_chart_spec
 from ..tools.table_tools import extract_table_spec
 
@@ -261,7 +262,8 @@ class WebSession:
                     duration_ms = int((time.time() - t0) * 1000)
                     display_output, chart = extract_chart_spec(output)
                     display_output, table = extract_table_spec(display_output)
-                    llm_output = display_output if (chart or table) else output
+                    display_output, multi_chart = extract_multidim_chart_spec(display_output)
+                    llm_output = display_output if (chart or table or multi_chart) else output
                     entities = self._extract_entities(display_output)
                     yield {
                         "type": "tool_result",
@@ -273,6 +275,7 @@ class WebSession:
                         "ontology_entities": entities,
                         "chart": chart,
                         "table": table,
+                        "multi_chart": multi_chart,
                     }
                     sibling_results.append({
                         "type": "tool_result",
@@ -308,7 +311,8 @@ class WebSession:
                 # for the UI, strip the JSON blocks before sending back to the LLM.
                 display_output, chart = extract_chart_spec(output)
                 display_output, table = extract_table_spec(display_output)
-                llm_output = display_output if (chart or table) else output
+                display_output, multi_chart = extract_multidim_chart_spec(display_output)
+                llm_output = display_output if (chart or table or multi_chart) else output
 
                 entities = self._extract_entities(display_output)
                 yield {
@@ -321,6 +325,7 @@ class WebSession:
                     "ontology_entities": entities,
                     "chart": chart,
                     "table": table,
+                    "multi_chart": multi_chart,
                 }
                 tool_results.append({
                     "type": "tool_result",

@@ -28,6 +28,13 @@ from .session import WebSession
 
 REPORT_AGENT_NAME = "report-analyst"
 
+# Hard cap so the multi-report system prompt doesn't blow past the model's
+# context window. 5 × ~12k chars/report ≈ 60k chars total — same budget as
+# the previous single-report path. Selecting more than this returns 400.
+MAX_ACTIVE_REPORTS = 5
+# Total character budget across all selected reports (split evenly).
+TOTAL_REPORT_CHARS = 60_000
+
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -42,9 +49,12 @@ class AppState:
         self.session: Optional[WebSession] = None
         self.db_path: str = ""
         # --- Report-analysis mode ---------------------------------------
+        # Multiple reports may be active simultaneously. The ordered list
+        # below preserves the user's selection order so prompt sections,
+        # attach-chip labels, and the agent's report-numbering all line up.
         self.report_store: Optional[ReportStore] = None
         self.report_session: Optional[WebSession] = None
-        self.active_report_id: Optional[str] = None
+        self.active_report_ids: list[str] = []
         self.report_with_db: bool = False
 
 
@@ -52,14 +62,19 @@ STATE = AppState()
 
 
 # Tool list for "启用数据库查询" mode — mirrors the report-analyst agent def.
+# ChartGenerateMultiDim is included because deep-insight drill-down requires
+# running multi-dim SQL queries; only meaningful when DB tools are on.
 REPORT_DB_TOOLS: list[str] = [
     "OntologyQuery", "TermDisambiguate", "MetricLookup", "RelationLookup",
     "EntityDescribe", "ListBusinessObjects", "SQLRun", "ListTables",
-    "DescribeTable", "ChartGenerate", "TableGenerate", "AskUser",
+    "DescribeTable", "ChartGenerate", "ChartGenerateMultiDim",
+    "TableGenerate", "AskUser",
 ]
 # Pure-mode: visualization (chart + structured table over report data) and
 # AskUser for disambiguation — no ontology/SQL. Table generation is part
 # of the visualization-skill bundle the report-analyst SOP requires.
+# ChartGenerateMultiDim NOT included: deep-insight drill-down depends on
+# running per-dim SQL, which pure mode doesn't have access to.
 REPORT_PURE_TOOLS: list[str] = ["ChartGenerate", "TableGenerate", "AskUser"]
 
 
@@ -323,10 +338,31 @@ def choice(req: ChoiceRequest):
 
 
 class ReportActivate(BaseModel):
-    report_id: str
+    # `report_ids` is the canonical multi-report field; `report_id`
+    # remains for backward compatibility with the single-report client.
+    # If both are sent, `report_ids` wins.
+    report_ids: Optional[list[str]] = None
+    report_id: Optional[str] = None
     # Default to True — users nearly always want DB cross-checking; pure
     # mode is the exception, not the rule.
     with_db: bool = True
+
+    def resolve_ids(self) -> list[str]:
+        if self.report_ids:
+            ids = [r for r in self.report_ids if r]
+        elif self.report_id:
+            ids = [self.report_id]
+        else:
+            ids = []
+        # Preserve order, drop duplicates.
+        seen: set[str] = set()
+        out: list[str] = []
+        for rid in ids:
+            if rid in seen:
+                continue
+            seen.add(rid)
+            out.append(rid)
+        return out
 
 
 class ReportConfigUpdate(BaseModel):
@@ -370,30 +406,49 @@ def report_list() -> JSONResponse:
 def report_delete(rid: str) -> JSONResponse:
     store = _require_report_store()
     ok = store.delete(rid)
-    if STATE.active_report_id == rid:
-        STATE.active_report_id = None
-        STATE.report_session = None
+    # If the deleted report is in the active list, drop it. When the list
+    # becomes empty, blow away the session — there's nothing left to
+    # answer questions against, and the system prompt would carry stale
+    # references to deleted files otherwise.
+    if rid in STATE.active_report_ids:
+        STATE.active_report_ids = [r for r in STATE.active_report_ids if r != rid]
+        if STATE.active_report_ids:
+            STATE.report_session = _build_report_session(
+                STATE.active_report_ids, STATE.report_with_db,
+            )
+        else:
+            STATE.report_session = None
     return JSONResponse({"ok": ok})
+
+
+def _record_to_summary(rec: dict) -> dict:
+    """The slim record shape the frontend consumes (no full text/tables)."""
+    return {
+        "id": rec["id"],
+        "filename": rec.get("filename"),
+        "ext": rec.get("ext"),
+        "page_count": rec.get("page_count"),
+        "tables_count": rec.get("tables_count"),
+        "text_length": rec.get("text_length"),
+        "uploaded_at": rec.get("uploaded_at"),
+        "preview": rec.get("preview"),
+    }
 
 
 @app.get("/api/report/status")
 def report_status() -> JSONResponse:
-    active = None
-    if STATE.active_report_id and STATE.report_store:
-        rec = STATE.report_store.get(STATE.active_report_id)
-        if rec:
-            active = {
-                "id": rec["id"],
-                "filename": rec.get("filename"),
-                "ext": rec.get("ext"),
-                "page_count": rec.get("page_count"),
-                "tables_count": rec.get("tables_count"),
-                "text_length": rec.get("text_length"),
-                "uploaded_at": rec.get("uploaded_at"),
-                "preview": rec.get("preview"),
-            }
+    actives: list[dict] = []
+    if STATE.report_store:
+        for rid in STATE.active_report_ids:
+            rec = STATE.report_store.get(rid)
+            if rec:
+                actives.append(_record_to_summary(rec))
+    # Backward-compat: keep `active_report` as the first one so older
+    # clients don't break; new clients should read `active_reports`.
+    legacy_active = actives[0] if actives else None
     return JSONResponse({
-        "active_report": active,
+        "active_reports": actives,
+        "active_report": legacy_active,
         "with_db": STATE.report_with_db,
         "has_session": STATE.report_session is not None,
     })
@@ -401,28 +456,33 @@ def report_status() -> JSONResponse:
 
 @app.post("/api/report/activate")
 def report_activate(req: ReportActivate) -> JSONResponse:
-    """Bind the given report to a fresh report-analyst session."""
+    """Bind the given report(s) to a fresh report-analyst session."""
     store = _require_report_store()
-    rec = store.get(req.report_id)
-    if not rec:
-        raise HTTPException(404, f"report not found: {req.report_id}")
+    ids = req.resolve_ids()
+    if not ids:
+        raise HTTPException(400, "请至少提供一个 report_id")
+    if len(ids) > MAX_ACTIVE_REPORTS:
+        raise HTTPException(
+            400,
+            f"一次最多激活 {MAX_ACTIVE_REPORTS} 份报表(已选 {len(ids)} 份)",
+        )
 
-    STATE.report_session = _build_report_session(req.report_id, req.with_db)
-    STATE.active_report_id = req.report_id
+    actives: list[dict] = []
+    for rid in ids:
+        rec = store.get(rid)
+        if not rec:
+            raise HTTPException(404, f"report not found: {rid}")
+        actives.append(_record_to_summary(rec))
+
+    STATE.report_session = _build_report_session(ids, req.with_db)
+    STATE.active_report_ids = ids
     STATE.report_with_db = req.with_db
 
     return JSONResponse({
         "ok": True,
-        "active_report": {
-            "id": rec["id"],
-            "filename": rec.get("filename"),
-            "ext": rec.get("ext"),
-            "page_count": rec.get("page_count"),
-            "tables_count": rec.get("tables_count"),
-            "text_length": rec.get("text_length"),
-            "uploaded_at": rec.get("uploaded_at"),
-            "preview": rec.get("preview"),
-        },
+        "active_reports": actives,
+        # Backward-compat — first report as the legacy "single active".
+        "active_report": actives[0] if actives else None,
         "with_db": STATE.report_with_db,
     })
 
@@ -440,22 +500,23 @@ def report_config(req: ReportConfigUpdate) -> JSONResponse:
     STATE.report_with_db = bool(req.with_db)
     new_tools = REPORT_DB_TOOLS if STATE.report_with_db else REPORT_PURE_TOOLS
     STATE.report_session.set_tools_override(new_tools)
-    if STATE.active_report_id and STATE.report_store is not None:
-        rec = STATE.report_store.get(STATE.active_report_id)
-        if rec:
+    if STATE.active_report_ids and STATE.report_store is not None:
+        recs = [STATE.report_store.get(rid) for rid in STATE.active_report_ids]
+        recs = [r for r in recs if r]
+        if recs:
             STATE.report_session.set_context_header(
-                _report_context_header(rec, STATE.report_with_db)
+                _report_context_header(recs, STATE.report_with_db)
             )
     return JSONResponse({"ok": True, "with_db": STATE.report_with_db})
 
 
 @app.post("/api/report/session/reset")
 def report_session_reset() -> JSONResponse:
-    """Clear the chat history but keep the active report + flag."""
+    """Clear the chat history but keep the active reports + flag."""
     STATE.report_session = None
-    if STATE.active_report_id:
+    if STATE.active_report_ids:
         STATE.report_session = _build_report_session(
-            STATE.active_report_id, STATE.report_with_db,
+            STATE.active_report_ids, STATE.report_with_db,
         )
     return JSONResponse({"ok": True})
 
@@ -534,27 +595,73 @@ def _require_report_store() -> ReportStore:
     return STATE.report_store
 
 
-def _report_context_header(rec: dict, with_db: bool) -> str:
+def _report_context_header(recs: list[dict], with_db: bool) -> str:
     """Render the `# 当前报表 ... # 数据库工具可用性: ...` header block.
 
-    Kept as a module-level helper so both fresh-session creation and the
-    mid-session toggle endpoint build the SAME header — otherwise flipping
-    the checkbox would desync the availability marker from the tool list.
+    For multi-report sessions, list every active report numbered so the
+    agent can refer to them as "报表 1 · filename" / "报表 2 · filename"
+    in answers. The `with_db` marker stays on its own final line so both
+    fresh-session creation and the mid-session toggle endpoint emit the
+    SAME footer — flipping the checkbox must not desync the availability
+    marker from the tool list.
     """
+    n = len(recs)
+    if n == 1:
+        rec = recs[0]
+        body = (
+            f"- 文件名: {rec.get('filename')}\n"
+            f"- 页数: {rec.get('page_count')}\n"
+            f"- 表格数: {rec.get('tables_count')}\n"
+            f"- 文本长度: {rec.get('text_length')} 字符"
+        )
+    else:
+        lines = [f"共 {n} 份报表(回答时请用「报表 N · 文件名」前缀引用):"]
+        for i, rec in enumerate(recs, 1):
+            lines.append(
+                f"- 报表 {i} · {rec.get('filename')} "
+                f"({rec.get('page_count')} 页 / {rec.get('tables_count')} 表 / "
+                f"{rec.get('text_length')} 字)"
+            )
+        body = "\n".join(lines)
     return (
-        f"# 当前报表\n\n"
-        f"- 文件名: {rec.get('filename')}\n"
-        f"- 页数: {rec.get('page_count')}\n"
-        f"- 表格数: {rec.get('tables_count')}\n"
-        f"- 文本长度: {rec.get('text_length')} 字符\n"
+        f"# 当前报表\n\n{body}\n"
         f"\n# 数据库工具可用性: {'enabled' if with_db else 'disabled'}"
     )
 
 
-def _build_report_session(report_id: str, with_db: bool) -> WebSession:
-    """Create a fresh WebSession bound to the given report + DB-tools flag."""
+def _build_multi_report_block(report_ids: list[str]) -> str:
+    """Concatenate prompt blocks for multiple reports under the same budget.
+
+    The total character budget (TOTAL_REPORT_CHARS) is split evenly across
+    all selected reports so a 5-report selection doesn't blow the context.
+    Each section gets a `## 报表 N · filename` header so the agent can
+    reference them unambiguously.
+    """
+    store = STATE.report_store
+    if store is None or not report_ids:
+        return "(报表内容为空)"
+    per_report = max(2_000, TOTAL_REPORT_CHARS // max(1, len(report_ids)))
+    sections: list[str] = []
+    for i, rid in enumerate(report_ids, 1):
+        rec = store.get(rid)
+        block = store.get_prompt_block(rid, max_chars=per_report) or "(本报表内容为空)"
+        fname = (rec or {}).get("filename") or rid
+        header = f"## 报表 {i} · {fname}\n"
+        sections.append(header + block)
+    return "\n\n---\n\n".join(sections)
+
+
+def _build_report_session(report_ids: list[str], with_db: bool) -> WebSession:
+    """Create a fresh WebSession bound to the given report list + DB flag."""
     if not STATE.ontology_store or not STATE.report_store:
         raise HTTPException(500, "Server not configured; call configure() first.")
+    if not report_ids:
+        raise HTTPException(400, "report_ids is empty")
+    if len(report_ids) > MAX_ACTIVE_REPORTS:
+        raise HTTPException(
+            400,
+            f"一次最多激活 {MAX_ACTIVE_REPORTS} 份报表(传入 {len(report_ids)} 份)",
+        )
     reg = get_agent_def_registry()
     report_agent = reg.get(REPORT_AGENT_NAME)
     if report_agent is None:
@@ -563,11 +670,15 @@ def _build_report_session(report_id: str, with_db: bool) -> WebSession:
             f"Agent '{REPORT_AGENT_NAME}' not found — please restart the server after "
             f"adding .claude/agents/{REPORT_AGENT_NAME}.md",
         )
-    rec = STATE.report_store.get(report_id)
-    if not rec:
-        raise HTTPException(404, f"report not found: {report_id}")
-    report_block = STATE.report_store.get_prompt_block(report_id) or "(报表内容为空)"
-    header = _report_context_header(rec, with_db)
+    recs: list[dict] = []
+    for rid in report_ids:
+        rec = STATE.report_store.get(rid)
+        if not rec:
+            raise HTTPException(404, f"report not found: {rid}")
+        recs.append(rec)
+
+    report_block = _build_multi_report_block(report_ids)
+    header = _report_context_header(recs, with_db)
     tools = REPORT_DB_TOOLS if with_db else REPORT_PURE_TOOLS
     return WebSession(
         cwd=STATE.cwd,

@@ -54,10 +54,17 @@
     mode: "data",                      // "data" | "report"
     // Report-mode extras
     report: {
-      activeReport: null,              // {id, filename, ...}
+      // Multi-report support: `activeReports` is the list, `activeReport`
+      // mirrors the first entry for legacy code paths (placeholder text,
+      // single-line attach chip etc.).
+      activeReports: [],               // [{id, filename, ...}, ...]
+      activeReport: null,              // alias for activeReports[0] or null
       withDb: false,
       history: [],                     // list of records from /api/report/list
       sessionActivated: false,
+      // History popover multi-select state — populated when the popover
+      // is opened, cleared when it closes.
+      historySelectedIds: new Set(),
     },
   };
 
@@ -99,6 +106,10 @@
     historyPopover: document.getElementById("history-popover"),
     historyClose:   document.getElementById("history-close"),
     historyList:    document.getElementById("history-list"),
+    historySelectedCount: document.getElementById("history-selected-count"),
+    historySelectAll:     document.getElementById("history-select-all"),
+    historyClearSel:      document.getElementById("history-clear-sel"),
+    historyActivateSel:   document.getElementById("history-activate-sel"),
     uploadStatus:   document.getElementById("upload-status"),
     // Settings modal
     settingsOverlay:    document.getElementById("settings-overlay"),
@@ -839,14 +850,77 @@ welcome: ${esc(a.welcome_message || "")}</div>
     const savedLink = chart.saved_path
       ? `<span class="chart-saved">saved: <a href="/charts/${esc(chart.saved_path.split(/[\\/]/).pop())}" target="_blank" title="${esc(chart.saved_path)}">${esc(chart.saved_path.split(/[\\/]/).pop())}</a></span>`
       : "";
+    const insightBtn = buildInsightButtonHTML(chart);
     card.innerHTML = `
       <div class="chart-head">
         <span class="chart-type">${esc(chart.chart_type || "chart")}</span>
         <span class="chart-title">${esc(chart.title || "")}</span>
         ${savedLink}
+        ${insightBtn}
       </div>
       <div class="chart-canvas"></div>`;
+    wireInsightButton(card, chart);
     return card;
+  }
+
+  // ------------------------------------------------------------------
+  // Deep-Insight (深入洞察) — drill-down trigger on chart cards
+  // ------------------------------------------------------------------
+  function extractMetricCode(sourceNote) {
+    if (!sourceNote) return null;
+    const m = String(sourceNote).match(/M\d{3}/);
+    return m ? m[0] : null;
+  }
+
+  function isInsightAvailable(chart) {
+    // Need a metric code in the source_note to anchor the drill-down.
+    if (!chart || !extractMetricCode(chart.source_note)) return false;
+    // Pure report mode has no DB tools — drill-down can't run there.
+    if (state.mode === "report" && state.report && state.report.withDb === false) {
+      return false;
+    }
+    return true;
+  }
+
+  function buildInsightButtonHTML(chart) {
+    if (!isInsightAvailable(chart)) return "";
+    const src = esc(chart.source_note || "");
+    const ttl = esc(chart.title || "");
+    return `<button type="button" class="chart-insight-btn"
+              data-source="${src}" data-title="${ttl}"
+              title="基于本体维度对该图表进行深入洞察">深入洞察 ⤵</button>`;
+  }
+
+  function wireInsightButton(card, chart) {
+    const btn = card.querySelector(".chart-insight-btn");
+    if (!btn) return;
+    btn.addEventListener("click", () => triggerDeepInsight(chart));
+  }
+
+  function markInsightTriggered(sourceNote) {
+    if (!sourceNote) return;
+    const sel = `.chart-insight-btn[data-source="${cssAttr(sourceNote)}"]`;
+    document.querySelectorAll(sel).forEach((b) => {
+      b.disabled = true;
+      b.textContent = "已触发洞察";
+      b.classList.add("triggered");
+    });
+  }
+
+  function cssAttr(s) {
+    // Escape for use inside an attribute selector value.
+    return String(s).replace(/(["\\])/g, "\\$1");
+  }
+
+  function triggerDeepInsight(chart) {
+    if (state.busy) return;
+    const metric = extractMetricCode(chart.source_note);
+    if (!metric) return;
+    const title = chart.title || "(未命名)";
+    const source = chart.source_note || "";
+    const prompt = `[深入洞察] 图表标题:"${title}";指标:${metric};来源口径:${source}`;
+    markInsightTriggered(source);
+    sendMessage(prompt);
   }
 
   function mountChart(card, chart) {
@@ -1076,14 +1150,17 @@ welcome: ${esc(a.welcome_message || "")}</div>
     const source = chart.saved_path
       ? `<a class="dash-link" href="/charts/${esc(chart.saved_path.split(/[\\/]/).pop())}" target="_blank">open ↗</a>`
       : "";
+    const insightBtn = buildInsightButtonHTML(chart);
     card.innerHTML = `
       <div class="dash-head">
         <span class="dash-tag chart">📊 ${type}</span>
         <span class="dash-title">${title}</span>
         <span class="dash-turn">Turn ${turnTag}</span>
         ${source}
+        ${insightBtn}
       </div>
       <div class="dash-chart-canvas"></div>`;
+    wireInsightButton(card, chart);
     requestAnimationFrame(() => {
       const canvas = card.querySelector(".dash-chart-canvas");
       if (!canvas || !chart.option || typeof echarts === "undefined") return;
@@ -1098,6 +1175,162 @@ welcome: ${esc(a.welcome_message || "")}</div>
       }
     });
     return card;
+  }
+
+  // ------------------------------------------------------------------
+  // Multi-dim chart (ChartGenerateMultiDim) — chat + dashboard cards
+  // ------------------------------------------------------------------
+  function attachChatMultiChart(spec) {
+    const bucket = B();
+    const container = bucket.currentAssistantEl
+      ? bucket.currentAssistantEl.parentElement
+      : el.chatScroll;
+    const card = buildMultiChartCard(spec);
+    container.appendChild(card);
+    scrollChatBottom();
+    requestAnimationFrame(() => mountMultiChart(card, spec));
+  }
+
+  function buildMultiChartCard(spec) {
+    const card = el_h("div", "multidim-card");
+    const title = esc(spec.title || "(未命名)");
+    const subtitle = spec.subtitle ? `<span class="multidim-subtitle">${esc(spec.subtitle)}</span>` : "";
+    const metric = spec.metric_code ? `<span class="multidim-metric">${esc(spec.metric_code)}</span>` : "";
+    const source = spec.source_note ? `<span class="multidim-source">Source · ${esc(spec.source_note)}</span>` : "";
+    const savedLink = spec.saved_path
+      ? `<a class="multidim-saved" href="/charts/${esc(String(spec.saved_path).split(/[\\/]/).pop())}" target="_blank">open ↗</a>`
+      : "";
+    const dims = Array.isArray(spec.dimensions) ? spec.dimensions : [];
+    const options = dims.map((d) =>
+      `<option value="${esc(d.key)}"${d.key === spec.default_dim ? " selected" : ""}>${esc(d.label || d.key)}</option>`
+    ).join("");
+    const summary = spec.summary ? `<div class="multidim-summary">📌 ${esc(spec.summary)}</div>` : "";
+    const footnote = spec.footnote ? `<div class="multidim-footnote">${esc(spec.footnote)}</div>` : "";
+
+    card.innerHTML = `
+      <div class="multidim-head">
+        <span class="multidim-tag">📊 多维洞察</span>
+        <span class="multidim-title">${title}</span>
+        ${metric}
+        ${subtitle}
+        ${source}
+        ${savedLink}
+      </div>
+      <div class="multidim-toolbar">
+        <label class="multidim-label">维度</label>
+        <select class="multidim-select">${options}</select>
+        <span class="multidim-dim-summary"></span>
+      </div>
+      <div class="multidim-canvas"></div>
+      ${summary}
+      ${footnote}`;
+    return card;
+  }
+
+  function mountMultiChart(card, spec) {
+    const canvas = card.querySelector(".multidim-canvas");
+    const select = card.querySelector(".multidim-select");
+    const dimSummaryEl = card.querySelector(".multidim-dim-summary");
+    if (!canvas) return;
+    if (typeof echarts === "undefined") {
+      canvas.innerHTML = '<div class="multidim-err">ECharts 未加载</div>';
+      return;
+    }
+    const dims = Array.isArray(spec.dimensions) ? spec.dimensions : [];
+    if (dims.length === 0) {
+      canvas.innerHTML = '<div class="multidim-err">无维度数据</div>';
+      return;
+    }
+    const dimMap = new Map(dims.map((d) => [d.key, d]));
+    let inst;
+    try {
+      inst = echarts.init(canvas);
+    } catch (e) {
+      canvas.innerHTML = `<div class="multidim-err">init failed: ${esc(e.message || String(e))}</div>`;
+      return;
+    }
+    function show(key) {
+      const d = dimMap.get(key) || dims[0];
+      try {
+        if (d && d.option) inst.setOption(d.option, true);
+      } catch (e) {
+        canvas.innerHTML = `<div class="multidim-err">render failed: ${esc(e.message || String(e))}</div>`;
+        return;
+      }
+      if (dimSummaryEl) dimSummaryEl.textContent = (d && d.summary) || "";
+    }
+    show(spec.default_dim || (dims[0] && dims[0].key));
+    if (select) select.addEventListener("change", (e) => show(e.target.value));
+    requestAnimationFrame(() => inst.resize());
+    try {
+      const ro = new ResizeObserver(() => inst.resize());
+      ro.observe(canvas);
+    } catch (_) { /* ResizeObserver unsupported, ignore */ }
+  }
+
+  function dashboardMultiChartCard(spec, turnTag) {
+    const card = el_h("div", "dash-card dash-multidim");
+    card.dataset.turn = turnTag;
+    const title = esc(spec.title || "(未命名)");
+    const metric = spec.metric_code ? `<span class="dash-metric">${esc(spec.metric_code)}</span>` : "";
+    const source = spec.saved_path
+      ? `<a class="dash-link" href="/charts/${esc(String(spec.saved_path).split(/[\\/]/).pop())}" target="_blank">open ↗</a>`
+      : "";
+    const dims = Array.isArray(spec.dimensions) ? spec.dimensions : [];
+    const options = dims.map((d) =>
+      `<option value="${esc(d.key)}"${d.key === spec.default_dim ? " selected" : ""}>${esc(d.label || d.key)}</option>`
+    ).join("");
+    card.innerHTML = `
+      <div class="dash-head">
+        <span class="dash-tag multidim">📊 多维</span>
+        <span class="dash-title">${title}</span>
+        ${metric}
+        <span class="dash-turn">Turn ${turnTag}</span>
+        ${source}
+      </div>
+      <div class="multidim-toolbar dash-toolbar">
+        <label class="multidim-label">维度</label>
+        <select class="multidim-select">${options}</select>
+        <span class="multidim-dim-summary"></span>
+      </div>
+      <div class="dash-chart-canvas"></div>`;
+    requestAnimationFrame(() => {
+      const canvas = card.querySelector(".dash-chart-canvas");
+      const select = card.querySelector(".multidim-select");
+      const dimSummaryEl = card.querySelector(".multidim-dim-summary");
+      if (!canvas || typeof echarts === "undefined" || dims.length === 0) return;
+      const dimMap = new Map(dims.map((d) => [d.key, d]));
+      let inst;
+      try {
+        inst = echarts.init(canvas);
+      } catch (e) {
+        canvas.innerHTML = `<div class="dash-chart-err">init failed: ${esc(e.message || String(e))}</div>`;
+        return;
+      }
+      function show(key) {
+        const d = dimMap.get(key) || dims[0];
+        try {
+          if (d && d.option) inst.setOption(d.option, true);
+        } catch (e) {
+          canvas.innerHTML = `<div class="dash-chart-err">render failed: ${esc(e.message || String(e))}</div>`;
+          return;
+        }
+        if (dimSummaryEl) dimSummaryEl.textContent = (d && d.summary) || "";
+      }
+      show(spec.default_dim || (dims[0] && dims[0].key));
+      if (select) select.addEventListener("change", (e) => show(e.target.value));
+      requestAnimationFrame(() => inst.resize());
+      try {
+        const ro = new ResizeObserver(() => inst.resize());
+        ro.observe(canvas);
+      } catch (_) { /* ResizeObserver unsupported */ }
+    });
+    return card;
+  }
+
+  function pushMultiChartToDashboard(spec) {
+    const bucket = B();
+    appendDashboardCard(dashboardMultiChartCard(spec, bucket.currentTurnTag || 1));
   }
 
   function dashboardTableCard(tbl, turnTag) {
@@ -1408,6 +1641,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
           ontology_entities: evt.ontology_entities,
           chart: evt.chart || null,
           table: evt.table || null,
+          multi_chart: evt.multi_chart || null,
         };
         recordToolCall(record);
         attachChatStep(buildChatStep(record));
@@ -1418,6 +1652,10 @@ welcome: ${esc(a.welcome_message || "")}</div>
         if (record.table) {
           attachChatTable(record.table);
           pushTableToDashboard(record.table);
+        }
+        if (record.multi_chart) {
+          attachChatMultiChart(record.multi_chart);
+          pushMultiChartToDashboard(record.multi_chart);
         }
         upsertOntologyEntities(evt.ontology_entities);
         break;
@@ -1616,9 +1854,15 @@ welcome: ${esc(a.welcome_message || "")}</div>
   function updateSendPlaceholder() {
     if (state.mode === "report") {
       if (!state.report.sessionActivated) {
-        el.chatInput.placeholder = "请先上传一份 PDF/Word 报表...";
+        el.chatInput.placeholder = "请先上传或激活报表(可多选)...";
       } else {
-        el.chatInput.placeholder = `针对「${state.report.activeReport?.filename || "报表"}」提问...  (Enter 发送 · Shift+Enter 换行)`;
+        const recs = state.report.activeReports || [];
+        const n = recs.length;
+        if (n <= 1) {
+          el.chatInput.placeholder = `针对「${recs[0]?.filename || state.report.activeReport?.filename || "报表"}」提问...  (Enter 发送 · Shift+Enter 换行)`;
+        } else {
+          el.chatInput.placeholder = `针对 ${n} 份报表(${recs[0].filename} 等)提问...  (Enter 发送 · Shift+Enter 换行)`;
+        }
       }
     } else {
       el.chatInput.placeholder = "提问...  (Enter 发送 · Shift+Enter 换行)";
@@ -1637,14 +1881,13 @@ welcome: ${esc(a.welcome_message || "")}</div>
     try {
       const r = await fetch("/api/report/status");
       const data = await r.json();
-      if (data.active_report) {
-        state.report.activeReport = data.active_report;
-        state.report.withDb = !!data.with_db;
-        state.report.sessionActivated = !!data.has_session;
-      } else {
-        state.report.activeReport = null;
-        state.report.sessionActivated = false;
-      }
+      const list = Array.isArray(data.active_reports)
+        ? data.active_reports
+        : (data.active_report ? [data.active_report] : []);
+      state.report.activeReports = list;
+      state.report.activeReport = list[0] || null;
+      state.report.withDb = !!data.with_db;
+      state.report.sessionActivated = !!data.has_session && list.length > 0;
       renderReportControls();
     } catch (e) {
       console.warn("report status load failed", e);
@@ -1664,32 +1907,50 @@ welcome: ${esc(a.welcome_message || "")}</div>
   }
 
   function renderReportControls() {
-    const active = state.report.activeReport;
-    // Attach-chip only makes sense in report mode with an active report
-    const chipVisible = state.mode === "report" && !!active;
+    const recs = state.report.activeReports || [];
+    const first = recs[0] || null;
+    state.report.activeReport = first;
+    // Attach-chip only makes sense in report mode with at least one active report
+    const chipVisible = state.mode === "report" && !!first;
     if (el.attachRow) el.attachRow.hidden = !chipVisible;
     if (chipVisible) {
-      el.attachChipName.textContent = active.filename || "(未命名)";
-      const parts = [
-        active.ext?.replace(".", "").toUpperCase() || "",
-        `${active.page_count || 0} 页`,
-        `${active.tables_count || 0} 表格`,
-        `${fmtBytes(active.size_bytes || active.text_length || 0)}`,
-        fmtDate(active.uploaded_at),
-      ].filter(Boolean);
-      el.attachChipMeta.textContent = parts.join(" · ");
+      const more = recs.length > 1 ? `  +${recs.length - 1}` : "";
+      el.attachChipName.textContent = (first.filename || "(未命名)") + more;
+      const parts = recs.length > 1
+        ? [`${recs.length} 份报表`, `共 ${recs.reduce((a, r) => a + (r.page_count || 0), 0)} 页`,
+           `${recs.reduce((a, r) => a + (r.tables_count || 0), 0)} 表格`]
+        : [
+            first.ext?.replace(".", "").toUpperCase() || "",
+            `${first.page_count || 0} 页`,
+            `${first.tables_count || 0} 表格`,
+            `${fmtBytes(first.size_bytes || first.text_length || 0)}`,
+            fmtDate(first.uploaded_at),
+          ];
+      el.attachChipMeta.textContent = parts.filter(Boolean).join(" · ");
+      // Tooltip lists every active filename
+      const titleLines = recs.map((r, i) => `${i + 1}. ${r.filename}`).join("\n");
+      if (el.attachChipName.parentElement) el.attachChipName.parentElement.title = titleLines;
     }
     if (el.withDb) el.withDb.checked = !!state.report.withDb;
     updateChatInputAvailability();
     updateSendPlaceholder();
   }
 
+  const MAX_ACTIVE_REPORTS = 5;
+
+  function activeIdSet() {
+    return new Set((state.report.activeReports || []).map(r => r.id));
+  }
+
   function renderHistoryList() {
     const items = state.report.history;
     if (!items.length) {
       el.historyList.innerHTML = '<div class="history-empty">暂无上传记录</div>';
+      updateHistoryToolbar();
       return;
     }
+    const activeIds = activeIdSet();
+    const sel = state.report.historySelectedIds;
     el.historyList.innerHTML = items.map(it => {
       const meta = [
         (it.ext || "").replace(".", "").toUpperCase(),
@@ -1698,54 +1959,109 @@ welcome: ${esc(a.welcome_message || "")}</div>
         fmtBytes(it.size_bytes || 0),
         fmtDate(it.uploaded_at),
       ].filter(Boolean).join(" · ");
-      const isActive = state.report.activeReport && state.report.activeReport.id === it.id;
+      const isActive = activeIds.has(it.id);
+      const isChecked = sel.has(it.id);
       return `
         <div class="history-item ${isActive ? 'active' : ''}" data-id="${esc(it.id)}">
+          <label class="history-item-check">
+            <input type="checkbox" class="history-checkbox" data-id="${esc(it.id)}"
+                   ${isChecked ? 'checked' : ''} />
+          </label>
           <div class="history-item-main">
-            <div class="history-item-name">${esc(it.filename || "(未命名)")}</div>
+            <div class="history-item-name">
+              ${esc(it.filename || "(未命名)")}
+              ${isActive ? '<span class="history-item-badge">使用中</span>' : ''}
+            </div>
             <div class="history-item-meta">${esc(meta)}</div>
             ${it.preview ? `<div class="history-item-preview">${esc(it.preview)}</div>` : ""}
           </div>
           <div class="history-item-actions">
-            <button class="btn btn-ghost history-use" data-id="${esc(it.id)}">
-              ${isActive ? '使用中' : '使用'}
-            </button>
+            <button class="btn btn-ghost history-use" data-id="${esc(it.id)}"
+                    title="单独激活该报表(替换当前选择)">仅用此份</button>
             <button class="btn btn-ghost history-del" data-id="${esc(it.id)}" title="删除">✕</button>
           </div>
         </div>`;
     }).join("");
+    el.historyList.querySelectorAll(".history-checkbox").forEach(cb => {
+      cb.addEventListener("change", () => {
+        const id = cb.dataset.id;
+        if (cb.checked) {
+          if (sel.size >= MAX_ACTIVE_REPORTS) {
+            cb.checked = false;
+            uploadStatus(`最多只能选择 ${MAX_ACTIVE_REPORTS} 份报表`, "error");
+            setTimeout(() => uploadStatus(""), 2000);
+            return;
+          }
+          sel.add(id);
+        } else {
+          sel.delete(id);
+        }
+        updateHistoryToolbar();
+      });
+    });
     el.historyList.querySelectorAll(".history-use").forEach(b => {
-      b.addEventListener("click", () => activateReport(b.dataset.id));
+      b.addEventListener("click", () => activateReports([b.dataset.id]));
     });
     el.historyList.querySelectorAll(".history-del").forEach(b => {
       b.addEventListener("click", () => deleteReport(b.dataset.id));
     });
+    updateHistoryToolbar();
   }
 
-  async function activateReport(rid) {
+  function updateHistoryToolbar() {
+    const n = state.report.historySelectedIds.size;
+    if (el.historySelectedCount) {
+      el.historySelectedCount.textContent = `已选 ${n} 份`;
+    }
+    if (el.historyActivateSel) {
+      el.historyActivateSel.disabled = (n === 0) || state.busy;
+    }
+  }
+
+  async function activateReports(ids) {
     if (state.busy) return;
-    uploadStatus("正在激活报表…", "pending");
+    if (!Array.isArray(ids) || ids.length === 0) {
+      uploadStatus("请至少选择一份报表", "error");
+      return;
+    }
+    if (ids.length > MAX_ACTIVE_REPORTS) {
+      uploadStatus(`最多只能选择 ${MAX_ACTIVE_REPORTS} 份报表`, "error");
+      return;
+    }
+    uploadStatus(`正在激活 ${ids.length} 份报表…`, "pending");
     try {
       const r = await fetch("/api/report/activate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ report_id: rid, with_db: !!state.report.withDb }),
+        body: JSON.stringify({ report_ids: ids, with_db: !!state.report.withDb }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || "activate failed");
       const data = await r.json();
-      state.report.activeReport = data.active_report;
+      const list = Array.isArray(data.active_reports) ? data.active_reports
+                  : (data.active_report ? [data.active_report] : []);
+      state.report.activeReports = list;
+      state.report.activeReport = list[0] || null;
       state.report.withDb = !!data.with_db;
-      state.report.sessionActivated = true;
+      state.report.sessionActivated = list.length > 0;
+      state.report.historySelectedIds.clear();
       renderReportControls();
       await refreshReportHistory();
       hideHistoryPopover();
-      // Clear chat of the report mode (server just (re)created a fresh session)
+      // Server just (re)created a fresh session — wipe local chat history
       clearBucketChat("report");
-      uploadStatus(`已切换到「${data.active_report.filename}」`, "success");
+      const label = list.length === 1
+        ? `已切换到「${list[0].filename}」`
+        : `已激活 ${list.length} 份报表(${list[0].filename} 等)`;
+      uploadStatus(label, "success");
       setTimeout(() => uploadStatus(""), 2000);
     } catch (e) {
       uploadStatus("激活失败: " + (e.message || e), "error");
     }
+  }
+
+  // Backward-compat alias for older call sites (e.g., upload completion).
+  async function activateReport(rid) {
+    return activateReports([rid]);
   }
 
   async function deleteReport(rid) {
@@ -1753,11 +2069,15 @@ welcome: ${esc(a.welcome_message || "")}</div>
     try {
       const r = await fetch(`/api/report/${encodeURIComponent(rid)}`, { method: "DELETE" });
       if (!r.ok) throw new Error("delete failed");
-      if (state.report.activeReport && state.report.activeReport.id === rid) {
-        state.report.activeReport = null;
+      // Drop from local active mirror; server already updated its side.
+      const wasActive = (state.report.activeReports || []).some(x => x.id === rid);
+      state.report.activeReports = (state.report.activeReports || []).filter(x => x.id !== rid);
+      state.report.activeReport = state.report.activeReports[0] || null;
+      if (wasActive && state.report.activeReports.length === 0) {
         state.report.sessionActivated = false;
         clearBucketChat("report");
       }
+      state.report.historySelectedIds.delete(rid);
       await refreshReportHistory();
       renderReportControls();
     } catch (e) {
@@ -1804,33 +2124,60 @@ welcome: ${esc(a.welcome_message || "")}</div>
     }
   }
 
-  async function uploadFile(file) {
-    if (!file) return;
+  async function uploadOne(file) {
     const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
     if (ext !== ".pdf" && ext !== ".docx") {
-      uploadStatus(`不支持的文件类型 ${ext},仅支持 .pdf / .docx`, "error");
-      return;
+      throw new Error(`不支持的文件类型 ${ext},仅支持 .pdf / .docx`);
     }
     if (file.size > 50 * 1024 * 1024) {
-      uploadStatus("文件过大,上限 50MB", "error");
-      return;
+      throw new Error("文件过大,上限 50MB");
     }
-    uploadStatus(`正在上传并解析「${file.name}」…`, "pending");
     const fd = new FormData();
     fd.append("file", file);
-    try {
-      const r = await fetch("/api/report/upload", { method: "POST", body: fd });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ detail: r.statusText }));
-        throw new Error(err.detail || "upload failed");
-      }
-      const rec = await r.json();
-      uploadStatus(`解析完成: ${rec.page_count} 页 / ${rec.tables_count} 表 / ${rec.text_length} 字 — 正在激活…`, "pending");
-      await refreshReportHistory();
-      await activateReport(rec.id);
-    } catch (e) {
-      uploadStatus("上传失败: " + (e.message || e), "error");
+    const r = await fetch("/api/report/upload", { method: "POST", body: fd });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || "upload failed");
     }
+    return await r.json();  // ReportRecord
+  }
+
+  async function uploadFiles(files) {
+    if (!files || !files.length) return;
+    const list = Array.from(files);
+    if (list.length > MAX_ACTIVE_REPORTS) {
+      uploadStatus(`一次最多上传 ${MAX_ACTIVE_REPORTS} 份报表,已截取前 ${MAX_ACTIVE_REPORTS} 份`, "error");
+      list.length = MAX_ACTIVE_REPORTS;
+    }
+    const newIds = [];
+    const failures = [];
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i];
+      uploadStatus(`正在上传 (${i + 1}/${list.length})「${f.name}」…`, "pending");
+      try {
+        const rec = await uploadOne(f);
+        newIds.push(rec.id);
+      } catch (e) {
+        failures.push(`${f.name}: ${e.message || e}`);
+      }
+    }
+    await refreshReportHistory();
+    if (failures.length && !newIds.length) {
+      uploadStatus("全部上传失败:\n" + failures.join("\n"), "error");
+      return;
+    }
+    if (failures.length) {
+      uploadStatus(`部分失败 (${failures.length}/${list.length}),即将激活成功的 ${newIds.length} 份…`, "pending");
+    } else {
+      uploadStatus(`已上传 ${newIds.length} 份,正在激活…`, "pending");
+    }
+    if (newIds.length) await activateReports(newIds);
+  }
+
+  // Backward-compat single-file path (drag/drop with one file).
+  async function uploadFile(file) {
+    if (!file) return;
+    return uploadFiles([file]);
   }
 
   // ------- Composer: attach button + drag/drop over the whole input area -------
@@ -1841,11 +2188,15 @@ welcome: ${esc(a.welcome_message || "")}</div>
   if (el.attachChipChange) el.attachChipChange.addEventListener("click", triggerFilePicker);
   if (el.attachChipRemove) {
     el.attachChipRemove.addEventListener("click", async () => {
-      const active = state.report.activeReport;
-      if (!active) return;
-      if (!confirm(`从当前会话中移除「${active.filename}」?(该文件仍保留在最近上传列表中,不会从服务器删除)`)) return;
-      // Server-side: reset the report session so no prompt block is attached
+      const recs = state.report.activeReports || [];
+      if (!recs.length) return;
+      const label = recs.length === 1
+        ? `从当前会话中移除「${recs[0].filename}」?`
+        : `从当前会话中移除全部 ${recs.length} 份报表?`;
+      if (!confirm(`${label}(文件仍保留在最近上传列表中,不会从服务器删除)`)) return;
+      // Clear server session AND server-side active list
       try { await fetch("/api/report/session/reset", { method: "POST" }); } catch (e) {}
+      state.report.activeReports = [];
       state.report.activeReport = null;
       state.report.sessionActivated = false;
       clearBucketChat("report");
@@ -1856,8 +2207,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
   }
   if (el.fileInput) {
     el.fileInput.addEventListener("change", () => {
-      const f = el.fileInput.files && el.fileInput.files[0];
-      if (f) uploadFile(f);
+      const files = el.fileInput.files;
+      if (files && files.length) uploadFiles(files);
       el.fileInput.value = "";
     });
   }
@@ -1896,8 +2247,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
       e.preventDefault();
       dragDepth = 0;
       el.chatInputWrap.classList.remove("drag-hover");
-      const f = e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) uploadFile(f);
+      const files = e.dataTransfer.files;
+      if (files && files.length) uploadFiles(files);
     });
   }
 
@@ -1930,8 +2281,37 @@ welcome: ${esc(a.welcome_message || "")}</div>
   // ------- 最近报表 popover -------
   if (el.btnHistory) el.btnHistory.addEventListener("click", showHistoryPopover);
   if (el.historyClose) el.historyClose.addEventListener("click", hideHistoryPopover);
+  if (el.historySelectAll) {
+    el.historySelectAll.addEventListener("click", () => {
+      const sel = state.report.historySelectedIds;
+      sel.clear();
+      const items = state.report.history || [];
+      // Take up to MAX_ACTIVE_REPORTS most recent
+      for (let i = 0; i < items.length && sel.size < MAX_ACTIVE_REPORTS; i++) {
+        sel.add(items[i].id);
+      }
+      renderHistoryList();
+    });
+  }
+  if (el.historyClearSel) {
+    el.historyClearSel.addEventListener("click", () => {
+      state.report.historySelectedIds.clear();
+      renderHistoryList();
+    });
+  }
+  if (el.historyActivateSel) {
+    el.historyActivateSel.addEventListener("click", () => {
+      const ids = Array.from(state.report.historySelectedIds);
+      if (ids.length) activateReports(ids);
+    });
+  }
 
   function showHistoryPopover() {
+    // Pre-seed selection with the currently active set so opening the
+    // popover always reflects "what's already on" — user can then add/
+    // remove freely and click "激活所选" to apply.
+    const active = activeIdSet();
+    state.report.historySelectedIds = new Set(active);
     refreshReportHistory();
     el.historyPopover.hidden = false;
     setTimeout(() => el.historyPopover.classList.add("visible"), 10);
@@ -1940,6 +2320,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
   function hideHistoryPopover() {
     el.historyPopover.classList.remove("visible");
     setTimeout(() => { el.historyPopover.hidden = true; }, 150);
+    state.report.historySelectedIds.clear();
   }
 
   // Click outside popover to dismiss
