@@ -1,0 +1,2459 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>光峰科技 · CEO经营驾驶舱</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg-0: #0f1724;
+  --bg-1: #172234;
+  --bg-2: #202d42;
+  --bg-3: #2a3a53;
+  --line: #34465f;
+  --text-0: #eef3f8;
+  --text-1: #c9d4e1;
+  --text-2: #94a3b8;
+  --text-3: #667893;
+  --accent: #7da5c9;
+  --green: #10b981;
+  --orange: #d59a42;
+  --red: #f87171;
+  --yellow: #eab308;
+  --purple: #9aa9c7;
+  --shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+html, body { background: var(--bg-0); color: var(--text-0); font-family: "PingFang SC","Microsoft YaHei","Segoe UI",Helvetica,Arial,sans-serif; min-height: 100vh; font-size: 14px; }
+.cockpit { display: flex; flex-direction: column; min-height: 100vh; padding: 16px 20px 24px; gap: 14px; }
+
+/* ===== Header ===== */
+.cock-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 4px 10px; border-bottom: 1px solid var(--line); }
+.cock-title { display: flex; align-items: baseline; gap: 14px; }
+.cock-title h1 { font-size: 22px; font-weight: 600; letter-spacing: .5px; }
+.cock-title h1 i { color: var(--accent); font-style: normal; margin-right: 6px; }
+.cock-title em { color: var(--text-2); font-style: normal; font-size: 13px; }
+.cock-filters { display: flex; gap: 10px; align-items: center; color: var(--text-1); font-size: 13px; }
+.cock-filters .pill { background: var(--bg-2); border: 1px solid var(--line); border-radius: 20px; padding: 6px 14px; cursor: pointer; transition: .2s; }
+.cock-filters .pill:hover { border-color: var(--accent); color: var(--accent); }
+.cock-filters .pill.live { border-color: var(--green); color: var(--green); }
+.cock-filters .pill.live::before { content: "●"; margin-right: 6px; animation: pulse 1.6s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+.story-rail { display: none; }
+
+/* ===== KPI Strip (5 themes) ===== */
+.kpi-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+.kpi { background: linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 100%); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; cursor: pointer; transition: .2s; position: relative; overflow: hidden; }
+.kpi:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow); }
+.kpi.active { border-color: var(--accent); background: linear-gradient(135deg, var(--bg-2) 0%, var(--bg-3) 100%); }
+.kpi-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.kpi-name { color: var(--text-1); font-size: 13px; }
+.kpi-icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+.kpi-value { font-size: 28px; font-weight: 700; letter-spacing: .5px; }
+.kpi-trend { font-size: 12px; color: var(--text-2); margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+.kpi-trend i { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 8px; }
+.up { color: var(--green); } .up i { background: rgba(54,207,160,.15); }
+.down { color: var(--red); } .down i { background: rgba(255,92,106,.15); }
+.warn { color: var(--orange); } .warn i { background: rgba(255,168,77,.15); }
+.kpi.theme-growth .kpi-icon { background: rgba(79,155,255,.18); color: var(--accent); }
+.kpi.theme-profit .kpi-icon { background: rgba(255,92,106,.18); color: var(--red); }
+.kpi.theme-cash .kpi-icon { background: rgba(54,207,160,.18); color: var(--green); }
+.kpi.theme-inventory .kpi-icon { background: rgba(255,168,77,.18); color: var(--orange); }
+.kpi.theme-risk .kpi-icon { background: rgba(166,133,255,.18); color: var(--purple); }
+.kpi-warn-dot { position: absolute; top: 14px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: pulse 1.4s infinite; }
+
+/* ===== CEO Problem Quadrants ===== */
+.problem-board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 430px; gap: 14px; align-items: stretch; }
+.problem-card {
+  min-height: 0;
+  height: 100%;
+  background: linear-gradient(135deg, var(--bg-1) 0%, #101a2d 100%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 12px;
+  cursor: default;
+  transition: .2s;
+  position: relative;
+  overflow: hidden;
+}
+.problem-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 86% 18%, rgba(79,155,255,.12), transparent 28%);
+  pointer-events: none;
+}
+.problem-card:hover,
+.problem-card.active { border-color: var(--accent); box-shadow: var(--shadow); transform: translateY(-1px); }
+.problem-card.warning { border-left: 4px solid #52657f; }
+.problem-card.sales-expanded { min-height: 0; grid-template-rows: auto 1fr; }
+.problem-card.sales-expanded .sales-flow-card { gap: 10px; min-height: 0; overflow: auto; padding-right: 2px; }
+.problem-card.sales-expanded .sales-flow-top { background: rgba(255,255,255,.025); }
+.problem-card.sales-expanded .sales-flow-top { grid-template-columns: 1fr; gap: 10px; padding: 10px; }
+.problem-card.sales-expanded .flow-design { padding-right: 0; border-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.problem-card.sales-expanded .flow-block-title { font-size: 14px; }
+.problem-card.sales-expanded .flow-block-title::before { height: 16px; width: 4px; }
+.problem-card.sales-expanded .core-flow-grid { gap: 8px; }
+.problem-card.sales-expanded .core-flow-tile,
+.problem-card.sales-expanded .gap-tile { min-height: 58px; gap: 2px; padding: 6px 5px; }
+.problem-card.sales-expanded .core-flow-tile b,
+.problem-card.sales-expanded .gap-tile b { font-size: 12px; }
+.problem-card.sales-expanded .core-flow-tile span,
+.problem-card.sales-expanded .gap-tile span { font-size: 10px; line-height: 1.35; }
+.problem-card.sales-expanded .mini-meter { width: 100%; }
+.problem-card.sales-expanded .mini-meter em { height: 4px; }
+.problem-card.sales-expanded .mini-line { font-size: 10px; }
+.problem-card.sales-expanded .sales-filter-row { padding: 7px 9px; align-items: flex-start; }
+.problem-card.sales-expanded .sales-filters select { height: 26px; font-size: 11px; padding: 0 6px; }
+.problem-card.sales-expanded .sales-bars { gap: 8px; }
+.problem-card.sales-expanded .sales-bars { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.problem-card.sales-expanded .sales-bar-card { grid-template-rows: auto 66px auto; gap: 4px; padding: 7px; }
+.problem-card.sales-expanded .sales-bar-chart { min-height: 66px; }
+.problem-card.sales-expanded .sales-bar-head b { font-size: 12px; }
+.problem-card.sales-expanded .sales-bar-head span,
+.problem-card.sales-expanded .sales-bar-foot { font-size: 10px; }
+.problem-card.sales-expanded .sales-bar-head { flex-direction: column; gap: 2px; align-items: flex-start; }
+.problem-card.sales-expanded .sales-bar-foot { flex-direction: column; gap: 2px; }
+.problem-card.asset-expanded { grid-template-rows: auto 1fr; }
+.asset-flow-card { display: grid; grid-template-rows: auto auto 1fr; gap: 10px; min-height: 0; overflow: auto; padding-right: 2px; }
+.asset-top { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.asset-box {
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 9px;
+  background: rgba(255,255,255,.03);
+  padding: 9px;
+  display: grid;
+  gap: 8px;
+}
+.asset-box h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-0);
+  font-size: 13px;
+}
+.asset-box h4::before { content: ""; width: 4px; height: 16px; border-radius: 2px; background: var(--orange); }
+.asset-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+.asset-kpi {
+  border-radius: 7px;
+  background: rgba(0,0,0,.13);
+  padding: 7px;
+}
+.asset-kpi b { display: block; font-size: 14px; color: var(--text-0); }
+.asset-kpi span { display: block; margin-top: 3px; color: var(--text-2); font-size: 10px; }
+.asset-alert-list { display: grid; gap: 6px; }
+.asset-alert {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  border-radius: 7px;
+  background: rgba(248,113,113,.1);
+  border: 1px solid rgba(248,113,113,.16);
+  padding: 7px 8px;
+  color: var(--text-1);
+  font-size: 11px;
+}
+.asset-alert b { color: var(--red); }
+.asset-alert[data-drill-href] { cursor: pointer; }
+.asset-alert[data-drill-href]:hover { border-color: var(--accent); background: rgba(125,165,201,.12); }
+.asset-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(0,0,0,.12);
+}
+.asset-filter-row b { font-size: 13px; }
+.asset-filter-row select {
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text-1);
+  padding: 0 7px;
+  outline: none;
+  font-size: 11px;
+}
+.asset-stage-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; position: relative; }
+.asset-stage-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 92px auto;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-2);
+}
+.asset-stage-card:not(:last-child)::after {
+  content: "→";
+  position: absolute;
+  right: -13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  font-size: 14px;
+  z-index: 2;
+}
+.asset-stage-card h5 { font-size: 12px; color: var(--text-0); }
+.asset-stage-chart svg { width: 100%; height: 100%; display: block; }
+.asset-stage-chart text { fill: var(--text-1); font-size: 10px; }
+.asset-stage-foot { display: flex; justify-content: space-between; color: var(--text-2); font-size: 10px; }
+.problem-card.command-expanded { grid-template-rows: auto 1fr; }
+.command-card { display: grid; grid-template-rows: auto 1fr; gap: 10px; min-height: 0; overflow: auto; padding-right: 2px; }
+.command-overview { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.command-box {
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 9px;
+  background: rgba(255,255,255,.03);
+  padding: 9px;
+  display: grid;
+  gap: 8px;
+}
+.command-box h4 { font-size: 13px; color: var(--text-0); }
+.command-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+.command-kpi { border-radius: 7px; background: rgba(0,0,0,.13); padding: 7px; }
+.command-kpi b { display: block; font-size: 14px; color: var(--text-0); }
+.command-kpi span { display: block; color: var(--text-2); font-size: 10px; margin-top: 3px; }
+.load-list { display: grid; gap: 6px; }
+.load-row { display: grid; grid-template-columns: 44px 1fr auto; gap: 7px; align-items: center; font-size: 11px; color: var(--text-1); }
+.load-bar { height: 5px; border-radius: 999px; background: rgba(255,255,255,.12); overflow: hidden; }
+.load-bar i { display: block; height: 100%; background: var(--green); }
+.load-row.hot .load-bar i { background: var(--red); }
+.command-flow { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+.command-step {
+  min-height: 142px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-2);
+  padding: 10px;
+  display: grid;
+  gap: 7px;
+}
+.command-step b { font-size: 13px; color: var(--text-0); }
+.command-step p { color: var(--text-1); font-size: 11px; line-height: 1.5; }
+.command-step .num { display: flex; justify-content: space-between; gap: 8px; color: var(--text-2); font-size: 10px; }
+.command-step .num strong { color: var(--text-0); font-size: 13px; }
+.command-meter { height: 5px; border-radius: 999px; background: rgba(255,255,255,.12); overflow: hidden; }
+.command-meter i { display: block; height: 100%; background: var(--accent); }
+.problem-card.risk-expanded { grid-template-rows: auto 1fr; }
+.risk-quadrant-card { display: grid; grid-template-rows: auto 1fr; gap: 10px; min-height: 0; overflow: auto; padding-right: 2px; }
+.risk-zone-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+.risk-zone {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 9px;
+  background: var(--bg-2);
+  padding: 9px;
+  min-height: 112px;
+  display: grid;
+  gap: 6px;
+}
+.risk-zone.oper { border-left-color: var(--green); }
+.risk-zone.tech { border-left-color: var(--red); }
+.risk-zone.target { border-left-color: var(--orange); }
+.risk-zone.env { border-left-color: #4f8bff; }
+.risk-zone h4 { font-size: 13px; color: var(--text-0); }
+.risk-zone p { color: var(--text-1); font-size: 11px; line-height: 1.45; }
+.risk-zone b { color: var(--red); }
+.risk-zone small { color: var(--text-2); font-size: 10px; }
+.risk-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 5px; }
+.risk-status {
+  border-radius: 6px;
+  background: rgba(0,0,0,.16);
+  padding: 5px 6px;
+  min-width: 0;
+}
+.risk-status span { display: block; color: var(--text-2); font-size: 9px; }
+.risk-status strong { display: block; margin-top: 2px; color: var(--text-0); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.risk-status.hot strong { color: var(--red); }
+.risk-status.warn strong { color: var(--orange); }
+.risk-status.ok strong { color: var(--green); }
+.risk-diagrams { display: grid; grid-template-columns: 1.1fr .9fr; gap: 8px; }
+.risk-mini-chart {
+  min-height: 112px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(0,0,0,.13);
+  padding: 6px;
+}
+.risk-mini-chart svg { width: 100%; height: 100%; display: block; }
+.risk-mini-chart text { fill: var(--text-1); font-size: 10px; }
+.problem-card.report-expanded { grid-column: 1 / -1; grid-template-rows: auto 1fr; border-left: 4px solid var(--accent); }
+.report-management-card { display: grid; grid-template-rows: auto 1fr; gap: 10px; min-height: 0; overflow: auto; padding-right: 2px; }
+.report-kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 8px; }
+.report-kpi {
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 8px;
+  background: rgba(255,255,255,.03);
+  padding: 9px;
+  min-width: 0;
+}
+.report-kpi b { display: block; color: var(--text-0); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.report-kpi span { display: block; margin-top: 4px; color: var(--text-2); font-size: 10px; line-height: 1.35; }
+.report-management-layout { display: grid; grid-template-columns: .9fr 1.1fr; gap: 10px; min-height: 0; }
+.report-rule-board {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-2);
+  padding: 10px;
+  display: grid;
+  gap: 9px;
+}
+.report-rule-board h4,
+.report-common-board h4 { color: var(--text-0); font-size: 13px; }
+.report-flow { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 7px; align-items: stretch; }
+.report-flow-step {
+  min-height: 86px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 8px;
+  background: rgba(0,0,0,.15);
+  padding: 8px;
+  display: grid;
+  gap: 5px;
+}
+.report-flow-step i {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(125,165,201,.18);
+  color: var(--accent);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+}
+.report-flow-step b { color: var(--text-0); font-size: 12px; }
+.report-flow-step span { color: var(--text-2); font-size: 10px; line-height: 1.35; }
+.report-common-board { display: grid; grid-template-rows: auto 1fr; gap: 8px; min-height: 0; }
+.report-common-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+.report-issue {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--orange);
+  border-radius: 9px;
+  background: rgba(255,255,255,.025);
+  padding: 9px;
+  display: grid;
+  gap: 6px;
+  min-height: 118px;
+}
+.report-issue.hot { border-left-color: var(--red); }
+.report-issue.ok { border-left-color: var(--green); }
+.report-issue b { color: var(--text-0); font-size: 13px; }
+.report-issue p { color: var(--text-1); font-size: 11px; line-height: 1.45; }
+.report-issue small { color: var(--text-2); font-size: 10px; }
+.problem-card.danger { border-left: 4px solid var(--red); }
+.problem-card.ok { border-left: 4px solid var(--red); }
+.problem-card.purple { border-left: 4px solid var(--green); }
+.problem-card.focus-asset,
+.problem-card.focus-risk { border-color: rgba(248,113,113,.55); }
+.problem-card.focus-asset::after,
+.problem-card.focus-risk::after {
+  background: radial-gradient(circle at 86% 18%, rgba(248,113,113,.18), transparent 30%);
+}
+.problem-card.focus-asset .problem-score::after,
+.problem-card.focus-risk .problem-score::after {
+  content: "高亮焦点";
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border: 1px solid rgba(248,113,113,.55);
+  border-radius: 999px;
+  color: var(--red);
+  background: rgba(248,113,113,.1);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.problem-card.focus-asset .problem-score::after { content: "DMD缺口 30%"; }
+.problem-card.focus-risk .problem-score::after { content: "极高危红点"; }
+.problem-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; position: relative; z-index: 1; }
+.problem-title { display: grid; gap: 6px; }
+.problem-title span { color: var(--text-2); font-size: 12px; }
+.problem-title h2 { font-size: 19px; line-height: 1.25; font-weight: 650; letter-spacing: 0; }
+.quadrant-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.quadrant-actions button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(125,165,201,.42);
+  border-radius: 999px;
+  background: rgba(23,34,52,.72);
+  color: var(--text-1);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.quadrant-actions button:hover,
+.quadrant-actions button.active { border-color: var(--accent); color: var(--text-0); background: rgba(125,165,201,.18); }
+.quadrant-actions .discover-btn.active { border-color: var(--orange); color: var(--orange); }
+.problem-score { min-width: 82px; text-align: right; }
+.problem-score b { display: block; font-size: 28px; line-height: 1; }
+.problem-score em { display: block; margin-top: 5px; color: var(--text-2); font-style: normal; font-size: 11px; }
+.problem-summary {
+  min-height: 52px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,.035);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 8px;
+  color: var(--text-1);
+  line-height: 1.55;
+  font-size: 13px;
+  position: relative;
+  z-index: 1;
+}
+.problem-summary b { color: var(--text-0); }
+.diagram-shell { display: grid; grid-template-rows: auto 1fr; gap: 10px; min-height: 168px; position: relative; z-index: 1; }
+.dimension-switch { display: flex; gap: 8px; flex-wrap: wrap; }
+.dimension-switch button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-2);
+  color: var(--text-1);
+  font-size: 12px;
+  cursor: pointer;
+}
+.dimension-switch button.active,
+.dimension-switch button:hover { border-color: var(--accent); color: var(--accent); }
+.q-diagram { min-height: 128px; border-radius: 8px; background: rgba(0,0,0,.14); overflow: hidden; position: relative; }
+.q-diagram svg { width: 100%; height: 100%; display: block; }
+.q-diagram text { font-size: 11px; fill: var(--text-1); }
+.q-diagram .grid { stroke: var(--line); stroke-dasharray: 2,3; }
+.q-diagram .axis { stroke: var(--text-3); }
+.focus-asset .q-diagram::after {
+  content: "仓库异常";
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  box-shadow: 0 0 0 6px rgba(248,113,113,.13);
+}
+.focus-risk .q-diagram::after {
+  content: "";
+  position: absolute;
+  right: 26%;
+  top: 24%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 0 rgba(248,113,113,.62);
+  animation: riskPulse 1.4s infinite;
+}
+@keyframes riskPulse {
+  0% { box-shadow: 0 0 0 0 rgba(248,113,113,.62); }
+  70% { box-shadow: 0 0 0 16px rgba(248,113,113,0); }
+  100% { box-shadow: 0 0 0 0 rgba(248,113,113,0); }
+}
+
+.diagnosis-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid rgba(248,113,113,.42);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(248,113,113,.12), rgba(32,45,66,.72));
+  color: var(--text-1);
+}
+.diagnosis-card b { color: var(--red); }
+.diagnosis-card i {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(248,113,113,.16);
+  color: var(--red);
+  font-style: normal;
+  font-weight: 700;
+}
+.diagnosis-card a {
+  height: 30px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(248,113,113,.55);
+  border-radius: 6px;
+  color: var(--red);
+  text-decoration: none;
+}
+.assistant-float {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 20;
+  height: 42px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(125,165,201,.58);
+  border-radius: 999px;
+  background: rgba(23,34,52,.94);
+  color: var(--text-0);
+  text-decoration: none;
+  box-shadow: 0 10px 26px rgba(0,0,0,.32);
+}
+.assistant-float::before { content: "AI"; color: var(--green); font-weight: 700; }
+.assistant-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 24px;
+  background: rgba(5,10,18,.46);
+  backdrop-filter: blur(3px);
+}
+.assistant-modal.open { display: flex; }
+.assistant-dialog {
+  width: min(1280px, calc(100vw - 48px));
+  height: calc(100vh - 48px);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border: 1px solid rgba(125,165,201,.48);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(23,34,52,.98), rgba(15,23,36,.98));
+  box-shadow: 0 22px 60px rgba(0,0,0,.48);
+  overflow: hidden;
+}
+.assistant-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: var(--bg-1);
+}
+.assistant-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.assistant-head b { font-size: 16px; }
+.assistant-head span { display: block; margin-top: 4px; color: var(--text-2); font-size: 12px; }
+.assistant-close,
+.assistant-mini,
+.assistant-full {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text-1);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.assistant-mini:hover,
+.assistant-full:hover,
+.assistant-close:hover { border-color: var(--accent); color: var(--accent); }
+.assistant-mini[aria-pressed="true"],
+.assistant-full[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(125,165,201,.14);
+}
+.assistant-head-actions { display: flex; gap: 8px; align-items: center; }
+.assistant-modal.size-full { padding: 0; }
+.assistant-modal.size-full .assistant-dialog {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  border-width: 0;
+}
+.assistant-modal.size-mini {
+  padding: 16px;
+  align-items: flex-end;
+  background: transparent;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+.assistant-modal.size-mini .assistant-dialog {
+  pointer-events: auto;
+  width: min(520px, calc(100vw - 32px));
+  height: min(640px, calc(100vh - 32px));
+}
+.assistant-body {
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.assistant-msg {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--text-1);
+  line-height: 1.6;
+  font-size: 13px;
+}
+.assistant-msg.ai {
+  align-self: flex-start;
+  background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.06);
+}
+.assistant-msg.user {
+  align-self: flex-end;
+  color: var(--text-0);
+  background: rgba(125,165,201,.16);
+  border: 1px solid rgba(125,165,201,.28);
+}
+.assistant-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.assistant-suggestions button {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--bg-2);
+  color: var(--text-1);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.assistant-suggestions button:hover { border-color: var(--accent); color: var(--accent); }
+.assistant-compose {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+.assistant-compose input {
+  min-width: 0;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-2);
+  color: var(--text-0);
+  padding: 0 12px;
+  outline: none;
+}
+.assistant-compose input:focus { border-color: var(--accent); }
+.assistant-compose button {
+  height: 36px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(125,165,201,.18);
+  color: var(--text-0);
+  padding: 0 14px;
+  cursor: pointer;
+}
+.chart-tooltip {
+  position: fixed;
+  z-index: 80;
+  display: none;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid rgba(125,165,201,.48);
+  border-radius: 8px;
+  background: rgba(10,16,27,.96);
+  color: var(--text-0);
+  font-size: 12px;
+  line-height: 1.55;
+  box-shadow: 0 14px 34px rgba(0,0,0,.42);
+  pointer-events: none;
+  white-space: pre-line;
+}
+[data-tip] { cursor: pointer; }
+svg [data-tip] { transition: opacity .15s, filter .15s; }
+svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,.35)); }
+.alarm-highlight {
+  position: relative;
+  z-index: 3;
+  outline: 2px solid rgba(234,179,8,.98);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px rgba(234,179,8,.14), 0 0 22px rgba(234,179,8,.34);
+  animation: alarmRing 1.35s infinite;
+}
+.alarm-highlight::after {
+  content: "可下钻";
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  z-index: 4;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(234,179,8,.95);
+  color: #111827;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+@keyframes alarmRing {
+  0%, 100% { outline-color: rgba(234,179,8,.95); box-shadow: 0 0 0 6px rgba(234,179,8,.12), 0 0 18px rgba(234,179,8,.28); }
+  50% { outline-color: rgba(248,113,113,.98); box-shadow: 0 0 0 10px rgba(248,113,113,.12), 0 0 28px rgba(248,113,113,.34); }
+}
+.alarm-callout {
+  grid-column: 1 / -1;
+  position: relative;
+  z-index: 4;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(234,179,8,.5);
+  border-left: 4px solid var(--orange);
+  border-radius: 9px;
+  background: rgba(15,23,36,.94);
+  color: var(--text-1);
+  box-shadow: 0 16px 34px rgba(0,0,0,.34);
+}
+.alarm-callout b { display: block; color: var(--orange); font-size: 13px; margin-bottom: 5px; }
+.alarm-callout p { font-size: 12px; line-height: 1.55; }
+.alarm-callout ul { margin: 7px 0 0 16px; color: var(--text-2); font-size: 11px; line-height: 1.55; }
+
+/* ===== Grid Layout ===== */
+.grid-row { display: grid; gap: 14px; }
+.row-2 { grid-template-columns: 1.2fr .8fr; }
+.row-2-eq { grid-template-columns: 1fr 1fr; }
+
+/* ===== Panel ===== */
+.panel { background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; }
+.panel-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.panel-h h3 { font-size: 15px; font-weight: 600; color: var(--text-0); }
+.panel-h h3 b { color: var(--accent); margin-right: 6px; }
+.panel-h .src { color: var(--text-3); font-size: 11px; padding: 2px 8px; background: var(--bg-2); border-radius: 4px; }
+
+/* ===== Sales Flow ===== */
+.flow { display: flex; align-items: stretch; gap: 0; margin-bottom: 14px; }
+.flow-node { flex: 1; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px 10px; text-align: center; cursor: pointer; transition: .2s; position: relative; }
+.flow-node:hover { background: var(--bg-3); border-color: var(--accent); }
+.flow-node .step { display: inline-block; width: 22px; height: 22px; line-height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; margin-bottom: 6px; }
+.flow-node .lbl { color: var(--text-1); font-size: 12px; margin-bottom: 4px; }
+.flow-node .val { font-size: 18px; font-weight: 700; color: var(--text-0); }
+.flow-arrow { display: flex; align-items: center; padding: 0 6px; color: var(--text-3); font-size: 22px; }
+.flow-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.flow-stats > div { text-align: center; }
+.flow-stats b { display: block; color: var(--text-0); font-size: 16px; font-weight: 700; }
+.flow-stats span { color: var(--text-2); font-size: 11px; }
+.sales-flow-card { display: grid; gap: 14px; }
+.sales-flow-top {
+  display: grid;
+  grid-template-columns: 1.05fr .95fr;
+  gap: 18px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 10px;
+  background: rgba(255,255,255,.03);
+}
+.flow-design, .flow-alerts { display: grid; gap: 12px; }
+.flow-design { padding-right: 18px; border-right: 1px solid var(--line); }
+.flow-block-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.flow-block-title::before {
+  content: "";
+  width: 5px;
+  height: 22px;
+  border-radius: 2px;
+  background: var(--green);
+}
+.flow-alerts .flow-block-title { color: var(--orange); }
+.flow-alerts .flow-block-title::before { background: var(--orange); }
+.core-flow-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.core-flow-tile, .gap-tile {
+  min-height: 98px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
+  border-radius: 9px;
+  text-align: center;
+}
+.core-flow-tile {
+  background: rgba(16,185,129,.12);
+  border: 1px solid rgba(16,185,129,.18);
+}
+.gap-tile {
+  background: rgba(213,154,66,.12);
+  border: 1px solid rgba(213,154,66,.18);
+}
+.core-flow-tile b, .gap-tile b { font-size: 15px; color: var(--text-0); }
+.core-flow-tile span, .gap-tile span { color: var(--text-1); font-size: 12px; line-height: 1.45; }
+.core-flow-tile i, .gap-tile i { color: var(--green); font-style: normal; font-weight: 700; }
+.gap-tile i { color: var(--orange); }
+.mini-line {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+.mini-line strong { color: var(--text-0); font-weight: 700; }
+.mini-meter {
+  width: 88%;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.12);
+  overflow: hidden;
+}
+.mini-meter em {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+.gap-tile .mini-meter em { background: var(--orange); }
+.gap-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.sales-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(0,0,0,.12);
+}
+.sales-filter-row b { font-size: 14px; }
+.sales-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.sales-filters select {
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text-1);
+  padding: 0 9px;
+  outline: none;
+}
+.sales-bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.sales-bar-card {
+  display: grid;
+  grid-template-rows: auto 150px auto;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-2);
+}
+.sales-bar-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.sales-bar-head b { font-size: 15px; }
+.sales-bar-head span { color: var(--text-2); font-size: 11px; }
+.sales-bar-chart { min-height: 150px; }
+.sales-bar-chart svg { width: 100%; height: 100%; display: block; }
+.sales-bar-chart text { fill: var(--text-1); font-size: 11px; }
+.sales-bar-foot { display: flex; justify-content: space-between; color: var(--text-2); font-size: 11px; }
+.sales-bar-foot b { color: var(--text-0); font-size: 12px; }
+
+/* ===== Six Gauge Overview ===== */
+.gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 18px; }
+.gauge { display: flex; align-items: center; gap: 12px; padding: 8px 4px; cursor: pointer; border-radius: 6px; transition: .2s; }
+.gauge:hover { background: var(--bg-2); }
+.gauge svg { flex-shrink: 0; }
+.gauge .info b { display: block; font-size: 18px; font-weight: 700; }
+.gauge .info span { color: var(--text-2); font-size: 12px; }
+
+/* ===== Inventory Four Buckets ===== */
+.inv-four { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 14px; }
+.inv-bucket { background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 14px; cursor: pointer; transition: .2s; position: relative; }
+.inv-bucket:hover { border-color: var(--orange); background: var(--bg-3); }
+.inv-bucket.risk { border-left: 3px solid var(--red); }
+.inv-bucket.raw { border-left: 3px solid var(--accent); }
+.inv-bucket.wip { border-left: 3px solid var(--yellow); }
+.inv-bucket.finished { border-left: 3px solid var(--green); }
+.inv-bucket .bk-name { color: var(--text-1); font-size: 13px; margin-bottom: 8px; }
+.inv-bucket .bk-val { font-size: 22px; font-weight: 700; }
+.inv-bucket .bk-sub { color: var(--text-3); font-size: 11px; margin-top: 4px; }
+.inv-bucket .bk-bar { height: 4px; background: var(--bg-0); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.inv-bucket .bk-bar i { display: block; height: 100%; background: var(--accent); transition: width .6s; }
+
+.inv-detail { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; }
+.inv-aging-chart { background: var(--bg-2); border-radius: 8px; padding: 14px; }
+.inv-health { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.inv-health > div { background: var(--bg-2); border-radius: 8px; padding: 12px 14px; cursor: pointer; transition: .2s; }
+.inv-health > div:hover { background: var(--bg-3); }
+.inv-health b { display: block; font-size: 18px; font-weight: 700; }
+.inv-health b.danger { color: var(--red); }
+.inv-health b.warn { color: var(--orange); }
+.inv-health b.ok { color: var(--green); }
+.inv-health span { color: var(--text-2); font-size: 12px; }
+
+/* ===== Trend Predict ===== */
+.trend-tabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.trend-tab { padding: 8px 14px; cursor: pointer; color: var(--text-2); font-size: 13px; border-bottom: 2px solid transparent; transition: .2s; }
+.trend-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.trend-tab:hover { color: var(--text-0); }
+.trend-chart { flex: 1; min-height: 220px; }
+
+.curve-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.curve-item { background: var(--bg-2); padding: 10px 12px; border-radius: 6px; }
+.curve-item .t { font-size: 11px; color: var(--text-3); }
+.curve-item .v { font-size: 14px; font-weight: 700; margin-top: 4px; }
+
+/* ===== Risk Heatmap ===== */
+.heat-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; min-height: 280px; }
+.heatmap { background: var(--bg-2); border-radius: 8px; padding: 30px 20px 38px 36px; position: relative; }
+.heatmap-axes::before, .heatmap-axes::after { content: ""; position: absolute; background: var(--text-3); }
+.heatmap-axes::before { left: 32px; top: 18px; bottom: 30px; width: 1px; }
+.heatmap-axes::after { left: 32px; bottom: 30px; right: 16px; height: 1px; }
+.heatmap .ax-x { position: absolute; bottom: 6px; right: 16px; color: var(--text-2); font-size: 11px; }
+.heatmap .ax-y { position: absolute; top: 6px; left: 8px; color: var(--text-2); font-size: 11px; }
+.heatmap .quad { position: absolute; top: 18px; bottom: 30px; left: 32px; right: 16px; }
+.heatmap .quad::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 1px dashed var(--line); }
+.heatmap .quad::after { content: ""; position: absolute; top: 50%; left: 0; right: 0; border-top: 1px dashed var(--line); }
+.risk-pt { position: absolute; transform: translate(-50%, -50%); padding: 6px 10px; border-radius: 16px; font-size: 11px; cursor: pointer; line-height: 1.2; text-align: center; transition: .2s; box-shadow: 0 2px 6px rgba(0,0,0,.3); white-space: nowrap; }
+.risk-pt:hover { transform: translate(-50%, -50%) scale(1.1); }
+.risk-pt.high { background: var(--red); color: #fff; }
+.risk-pt.mid { background: var(--orange); color: #1a1a1a; }
+.risk-pt.low { background: var(--green); color: #1a1a1a; }
+.risk-pt.high::after { content: ""; position: absolute; inset: -4px; border: 2px solid var(--red); border-radius: 20px; animation: pulse 1.6s infinite; pointer-events: none; }
+.risk-list { background: var(--bg-2); border-radius: 8px; padding: 12px; overflow-y: auto; max-height: 300px; }
+.risk-item { padding: 10px 12px; border-radius: 6px; margin-bottom: 6px; cursor: pointer; border-left: 3px solid var(--text-3); }
+.risk-item:hover { background: var(--bg-3); }
+.risk-item.h { border-left-color: var(--red); }
+.risk-item.m { border-left-color: var(--orange); }
+.risk-item.l { border-left-color: var(--green); }
+.risk-item b { display: block; font-size: 13px; }
+.risk-item span { color: var(--text-2); font-size: 11px; }
+
+/* ===== Drill Panel ===== */
+.drill { background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.drill-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.drill-head h3 { font-size: 16px; font-weight: 600; }
+.drill-actions { display: flex; gap: 8px; }
+.btn { background: var(--bg-2); border: 1px solid var(--line); color: var(--text-1); border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 12px; transition: .2s; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn.primary:hover { background: #6db0ff; }
+.bread { font-size: 12px; color: var(--text-2); margin-bottom: 10px; }
+.bread span { color: var(--accent); }
+.bread span:not(:last-child)::after { content: " / "; color: var(--text-3); }
+.dim-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.dim-chip { background: var(--bg-2); border: 1px solid var(--line); border-radius: 16px; padding: 4px 12px; font-size: 11px; color: var(--text-1); cursor: pointer; }
+.dim-chip:hover { border-color: var(--accent); color: var(--accent); }
+.summary-line { background: var(--bg-2); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 4px; color: var(--text-1); font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+.dtable { width: 100%; border-collapse: collapse; }
+.dtable th { background: var(--bg-2); color: var(--text-1); font-weight: 600; padding: 10px 12px; text-align: left; font-size: 12px; border-bottom: 1px solid var(--line); }
+.dtable td { padding: 10px 12px; border-bottom: 1px solid var(--bg-2); color: var(--text-0); font-size: 13px; }
+.dtable tr:hover td { background: var(--bg-2); }
+.dtable td.neg { color: var(--red); }
+.dtable td.pos { color: var(--green); }
+.dtable td.warn { color: var(--orange); }
+
+/* ===== Charts (SVG) ===== */
+.chart-svg { width: 100%; height: 100%; }
+.chart-svg text { fill: var(--text-2); font-size: 11px; }
+.chart-svg .grid { stroke: var(--line); stroke-dasharray: 2,3; }
+.chart-svg .axis { stroke: var(--text-3); }
+.legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-2); margin-top: 6px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+@media (max-width: 1280px) {
+  .kpi-strip { grid-template-columns: repeat(5, 1fr); }
+  .grid-row.row-2, .grid-row.row-2-eq { grid-template-columns: 1fr; }
+  .inv-detail { grid-template-columns: 1fr; }
+  .sales-flow-top { grid-template-columns: 1fr; }
+  .flow-design { padding-right: 0; border-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 14px; }
+  .sales-bars { grid-template-columns: 1fr; }
+  .problem-board { grid-template-columns: 1fr; }
+  .report-kpi-grid, .report-flow, .report-common-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .report-management-layout { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="cockpit">
+
+  <!-- Header -->
+  <header class="cock-head">
+    <div class="cock-title">
+      <h1><i>◆</i>光峰科技 · CEO经营驾驶舱</h1>
+      <em>全局感知 · 异常识别 · 趋势判断 · 经营决策</em>
+    </div>
+    <div class="cock-filters">
+      <span>期间</span><div class="pill" data-filter="period">2025年Q3 ⌄</div>
+      <span>币种</span><div class="pill">CNY ⌄</div>
+      <span>口径</span><div class="pill">财报 + 业务库 ⌄</div>
+      <div class="pill live">实时数据</div>
+    </div>
+  </header>
+
+  <section class="story-rail" aria-label="CEO一天工作流">
+    <div class="story-step">
+      <span>01 · 09:00 AM</span>
+      <b>全局扫视</b>
+      <p>灰蓝底盘先呈现公司整体平稳状态，让CEO快速判断没有大范围系统性异常。</p>
+    </div>
+    <div class="story-step focus">
+      <span>02 · 锁定焦点</span>
+      <b>资产红仓 + 风险红点</b>
+      <p>视线只被关键异常吸引：资产运营仓库异常、风险热力图极高危红点。</p>
+    </div>
+    <div class="story-step focus">
+      <span>03 · 穿透诊断</span>
+      <b>定位根因</b>
+      <p>点击红点后穿透到物料、产线、责任主体与影响订单，形成可解释根因。</p>
+    </div>
+    <div class="story-step closed">
+      <span>04 · 下午闭环</span>
+      <b>下达指令</b>
+      <p>语音生成督办任务，责任人反馈方案后由CEO批复，风险状态同步更新。</p>
+    </div>
+  </section>
+
+  <!-- CEO First Screen: 问题象限 -->
+  <section class="problem-board">
+    <article class="problem-card warning active sales-expanded" data-topic="sales" data-quadrant="salesflow">
+      <div class="problem-top">
+        <div class="problem-title">
+          <span>问题象限 01 · 销售业务流</span>
+          <h2>订、发、收、回之间的落差是否失控？</h2>
+        </div>
+        <div class="problem-score"><b style="color:var(--orange)">2</b><em>关键落差</em></div>
+      </div>
+      <div class="sales-flow-card">
+        <div class="sales-flow-top">
+          <div class="flow-design">
+            <div class="flow-block-title" style="color:var(--green)">顶层设计：三条核心流（极简指标）</div>
+            <div class="core-flow-grid">
+              <div class="core-flow-tile" data-topic="sales"><i>订</i><b>合同/订单流</b><span>当前 52.75万 / 目标 82万</span><div class="mini-meter"><em style="width:64%"></em></div><div class="mini-line"><span>达成率</span><strong>64%</strong></div></div>
+              <div class="core-flow-tile" data-topic="delivery"><i>发</i><b>交付/发货流</b><span>当前 117.37万 / 目标 142万</span><div class="mini-meter"><em style="width:83%"></em></div><div class="mini-line"><span>达成率</span><strong>83%</strong></div></div>
+              <div class="core-flow-tile" data-topic="cash"><i>收回</i><b>收入/回款流</b><span>收入 13.53亿 / 回款 40.37万</span><div class="mini-meter"><em style="width:77%"></em></div><div class="mini-line"><span>回款健康</span><strong>77%</strong></div></div>
+            </div>
+          </div>
+          <div class="flow-alerts">
+            <div class="flow-block-title">关键告警：两个关键落差（经营仪表盘）</div>
+            <div class="gap-grid">
+              <div class="gap-tile" data-topic="delivery"><i>订-发</i><b>供需失衡度</b><span>发货高于订单 64.62万</span><div class="mini-meter"><em style="width:79%"></em></div><div class="mini-line"><span>预警强度</span><strong>中高</strong></div></div>
+              <div class="gap-tile" data-topic="cash"><i>收-回</i><b>回款健康度</b><span>收入确认显著高于回款</span><div class="mini-meter"><em style="width:88%"></em></div><div class="mini-line"><span>预警强度</span><strong>高</strong></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="sales-filter-row">
+          <b>流程节点目标达成</b>
+          <div class="sales-filters">
+            <select id="salesTimeFilter" aria-label="时间">
+              <option value="year">时间：年</option>
+              <option value="quarter">时间：季</option>
+              <option value="month">时间：月</option>
+            </select>
+            <select id="salesRegionFilter" aria-label="区域">
+              <option value="group">区域：集团</option>
+              <option value="east">区域：华东</option>
+              <option value="south">区域：华南</option>
+              <option value="overseas">区域：海外</option>
+            </select>
+            <select id="salesScopeFilter" aria-label="口径">
+              <option value="finance">口径：财报</option>
+              <option value="business">口径：业务库</option>
+              <option value="merged">口径：财报+业务库</option>
+            </select>
+          </div>
+        </div>
+        <div class="sales-bars" id="salesNodeBars"></div>
+      </div>
+    </article>
+
+    <article class="problem-card ok focus-asset asset-expanded" data-topic="inventory" data-quadrant="assetflow">
+      <div class="problem-top">
+        <div class="problem-title">
+          <span>问题象限 02 · 资产运营流</span>
+          <h2>库存资产在哪个接力段沉淀？</h2>
+        </div>
+        <div class="problem-score"><b style="color:var(--orange)">470.9</b><em>周转天数</em></div>
+      </div>
+      <div class="asset-flow-card">
+        <div class="asset-top">
+          <div class="asset-box">
+            <h4>资产健康总览</h4>
+            <div class="asset-kpis">
+              <div class="asset-kpi"><b>3127.98万</b><span>库存总额</span></div>
+              <div class="asset-kpi"><b>470.9天</b><span>库存周转天数</span></div>
+              <div class="asset-kpi"><b style="color:var(--red)">289.59万</b><span>呆滞/超储</span></div>
+              <div class="asset-kpi"><b style="color:var(--orange)">21条</b><span>HIGH预警</span></div>
+            </div>
+          </div>
+          <div class="asset-box">
+            <h4>经营关注告警</h4>
+            <div class="asset-alert-list">
+              <div class="asset-alert"><span>关键物料缺口</span><b>42个</b></div>
+              <div class="asset-alert"><span>产线停滞风险</span><b>DMD 30%</b></div>
+              <div class="asset-alert"><span>发出未回款风险</span><b>77万</b></div>
+              <div class="asset-alert" data-drill-href="asset_overdue_inventory.html"><span>6月以上超期库存</span><b>87.49万</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="asset-filter-row">
+          <b>四段实物流的接力与落差</b>
+          <select id="assetCategoryFilter" aria-label="品类">
+            <option value="flash">品类：闪光灯罩</option>
+            <option value="metal">品类：金属件</option>
+            <option value="lens">品类：镜片/陶瓷</option>
+            <option value="electronic">品类：电子件</option>
+            <option value="test">品类：检测类</option>
+            <option value="board">品类：板卡类</option>
+            <option value="plastic">品类：塑料件</option>
+          </select>
+        </div>
+        <div class="asset-stage-grid" id="assetStageBars"></div>
+      </div>
+    </article>
+
+    <article class="problem-card purple command-expanded" data-topic="command" data-quadrant="command">
+      <div class="problem-top">
+        <div class="problem-title">
+          <span>问题象限 03 · 督办令中心</span>
+          <h2>组织任务能否被结构化并闭环？</h2>
+        </div>
+        <div class="problem-score"><b style="color:var(--purple)">4</b><em>闭环步骤</em></div>
+      </div>
+      <div class="command-card">
+        <div class="command-overview">
+          <div class="command-box">
+            <h4>组织任务态势</h4>
+            <div class="command-kpis">
+              <div class="command-kpi" data-tip="今日新增督办：8单"><b>8</b><span>今日新增</span></div>
+              <div class="command-kpi" data-tip="进行中督办：17单"><b>17</b><span>进行中</span></div>
+              <div class="command-kpi" data-tip="待组织验收：5单"><b style="color:var(--orange)">5</b><span>待验收</span></div>
+              <div class="command-kpi" data-tip="超期督办：3单"><b style="color:var(--red)">3</b><span>超期</span></div>
+            </div>
+          </div>
+          <div class="command-box">
+            <h4>责任人负载</h4>
+            <div class="load-list">
+              <div class="load-row hot" data-tip="供应链VP：7单，其中2单超期"><span>供应链</span><div class="load-bar"><i style="width:88%"></i></div><b>7单</b></div>
+              <div class="load-row" data-tip="制造VP：5单，平均响应2.4小时"><span>制造</span><div class="load-bar"><i style="width:63%"></i></div><b>5单</b></div>
+              <div class="load-row" data-tip="财务VP：4单，待验收2单"><span>财务</span><div class="load-bar"><i style="width:50%"></i></div><b>4单</b></div>
+              <div class="load-row" data-tip="销售VP：6单，回款相关3单"><span>销售</span><div class="load-bar"><i style="width:75%"></i></div><b>6单</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="command-flow">
+          <div class="command-step" data-topic="command" data-tip="VP接单：待接单6单，平均响应1.8小时">
+            <b>01. VP接单（研究与计划）</b>
+            <p>收到消息通知，点击即可进入同频数据视图，快速理解问题背景。</p>
+            <div class="num"><span>待接单</span><strong>6单</strong></div><div class="command-meter"><i style="width:68%"></i></div>
+          </div>
+          <div class="command-step" data-topic="command" data-tip="助理拆解：拆解任务14项，责任人覆盖9人">
+            <b>02. 助理拆解（任务令）</b>
+            <p>在系统内将督办令拆解为具体子任务，精准下发给生产、采购等责任人执行。</p>
+            <div class="num"><span>子任务</span><strong>14项</strong></div><div class="command-meter"><i style="width:74%"></i></div>
+          </div>
+          <div class="command-step" data-topic="command" data-tip="反馈闭环：已反馈11单，待补充3单">
+            <b>03. 反馈闭环</b>
+            <p>VP汇总解决方案后，在系统内一键提交反馈，自动同步到任务看板，实现信息对齐。</p>
+            <div class="num"><span>已反馈</span><strong>11单</strong></div><div class="command-meter"><i style="width:79%"></i></div>
+          </div>
+          <div class="command-step" data-topic="command" data-tip="组织验收：待验收5单，打回1单，今日关闭9单">
+            <b>04. 组织验收</b>
+            <p>任务看板显示已回复状态。确认计划可执行后关闭督办，不满足要求则打回重办。</p>
+            <div class="num"><span>待验收</span><strong>5单</strong></div><div class="command-meter"><i style="width:56%"></i></div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="problem-card danger focus-risk risk-expanded" data-topic="risk" data-quadrant="riskmatrix">
+      <div class="problem-top">
+        <div class="problem-title">
+          <span>问题象限 04 · 四维风险热力矩阵</span>
+          <h2>当前最危险的风险落在哪个象限？</h2>
+        </div>
+        <div class="problem-score"><b style="color:var(--red)">4</b><em>风险区域</em></div>
+      </div>
+      <div class="risk-quadrant-card">
+        <div class="risk-zone-grid">
+          <div class="risk-zone oper" data-tip="运营风险区&#10;影响：高&#10;概率：高&#10;交付延迟风险敞口：4000万">
+            <h4>运营风险区｜当下的“内出血”</h4>
+            <p>定位：LTC与资产实物流的阈值告警。<b>车载事业部订单-发货落差连续3周超警戒线，交付延迟风险敞口4000万。</b></p>
+            <div class="risk-status-grid">
+              <div class="risk-status hot"><span>风险值</span><strong>92 / 100</strong></div>
+              <div class="risk-status hot"><span>敞口金额</span><strong>4000万</strong></div>
+              <div class="risk-status warn"><span>持续状态</span><strong>连续3周</strong></div>
+              <div class="risk-status"><span>处置状态</span><strong>供应链处理中</strong></div>
+            </div>
+            <small>技术支撑：数据异常识别、流程执行延迟识别</small>
+          </div>
+          <div class="risk-zone tech" data-tip="技术与产品风险区&#10;影响：高&#10;概率：低&#10;研发里程碑延期20天，影响3个大客户项目">
+            <h4>技术与产品风险区｜“护城河”的裂缝</h4>
+            <p>定位：研发延期是最大的隐形风险。<b>某核心激光器件研发里程碑延期20天，可能导致下半年3个大客户项目违约。</b></p>
+            <div class="risk-status-grid">
+              <div class="risk-status hot"><span>风险值</span><strong>78 / 100</strong></div>
+              <div class="risk-status hot"><span>延期</span><strong>20天</strong></div>
+              <div class="risk-status warn"><span>影响项目</span><strong>3个大客户</strong></div>
+              <div class="risk-status"><span>处置状态</span><strong>研发评审中</strong></div>
+            </div>
+            <small>数据逻辑：接入IPD流程数据，盯紧关键节点</small>
+          </div>
+          <div class="risk-zone target" data-tip="预测与目标风险区&#10;影响：低&#10;概率：高&#10;第二曲线完成度65%，目标缺口1.5亿">
+            <h4>预测与目标风险区｜未来的“冰山”</h4>
+            <p>定位：“导航雷达”的趋势外推缺口。<b>预测年度第二曲线（车载商机）完成度仅65%，存在1.5亿目标缺口。</b></p>
+            <div class="risk-status-grid">
+              <div class="risk-status warn"><span>风险值</span><strong>71 / 100</strong></div>
+              <div class="risk-status warn"><span>完成度</span><strong>65%</strong></div>
+              <div class="risk-status hot"><span>目标缺口</span><strong>1.5亿</strong></div>
+              <div class="risk-status"><span>处置状态</span><strong>销售补缺口</strong></div>
+            </div>
+            <small>技术支撑：趋势预测与风险预警</small>
+          </div>
+          <div class="risk-zone env" data-tip="营商环境/战略假设风险区&#10;影响：低&#10;概率：低&#10;大客户资金链问题，应收安全需重评">
+            <h4>营商环境/战略假设风险区｜外部“黑天鹅”</h4>
+            <p>定位：战略前提条件发生动摇。<b>某大客户被曝资金链问题，需重新评估应收账款安全。</b></p>
+            <div class="risk-status-grid">
+              <div class="risk-status"><span>风险值</span><strong>42 / 100</strong></div>
+              <div class="risk-status warn"><span>涉险客户</span><strong>1家</strong></div>
+              <div class="risk-status warn"><span>应收风险</span><strong>8.05万样例</strong></div>
+              <div class="risk-status"><span>处置状态</span><strong>授信复核</strong></div>
+            </div>
+            <small>数据逻辑：监控战略基线指标、宏观数据、竞品动态</small>
+          </div>
+        </div>
+        <div class="risk-diagrams">
+          <div class="risk-mini-chart" id="riskHeatMini"></div>
+          <div class="risk-mini-chart" id="riskCountMini"></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="problem-card report-expanded" data-topic="reportMgmt" data-quadrant="reportmgmt">
+      <div class="problem-top">
+        <div class="problem-title">
+          <span>问题象限 05 · 报表管理</span>
+          <h2>财务报表的共性问题能否被统一治理？</h2>
+        </div>
+        <div class="problem-score"><b style="color:var(--accent)">6</b><em>报表域</em></div>
+      </div>
+      <div class="report-management-card">
+        <div class="report-kpi-grid">
+          <div class="report-kpi" data-tip="本期管报收入13.53亿，收入成本差异18.6万，费用待分摊216.4万"><b>管报损益</b><span>13.53亿收入，5类源报表核对中</span></div>
+          <div class="report-kpi" data-tip="一套表已发布V2025Q3.04，仍有3张报表待同步"><b>一套表</b><span>97.2%同步率，3张待更新</span></div>
+          <div class="report-kpi" data-tip="N+3预测覆盖未来3个月，系统取数率68%，人工补录32%"><b>N+3预测</b><span>5.86亿预测收入，32%待补录</span></div>
+          <div class="report-kpi" data-tip="经营现金流1.50亿，公共往来待分摊472.8万"><b>现金流</b><span>1.50亿净流入，472.8万待归集</span></div>
+          <div class="report-kpi" data-tip="库存总额3127.98万，呆滞/超储289.59万，HIGH预警21条"><b>库存</b><span>3127.98万库存，21条高风险</span></div>
+        </div>
+        <div class="report-management-layout">
+          <div class="report-rule-board">
+            <h4>报表管理主链路</h4>
+            <div class="report-flow">
+              <div class="report-flow-step"><i>1</i><b>数据源</b><span>ERP、OA-BI、CRM、子公司报表、补录台账</span></div>
+              <div class="report-flow-step"><i>2</i><b>口径规则</b><span>财报/管报解耦，单体/合并区分</span></div>
+              <div class="report-flow-step"><i>3</i><b>分摊归集</b><span>事业部、产品线、客户内外部、公共物料</span></div>
+              <div class="report-flow-step"><i>4</i><b>核对同步</b><span>TB核对、预算版本、同期数、一套表同步</span></div>
+              <div class="report-flow-step"><i>5</i><b>预警下钻</b><span>异常规则触发后回到报表、科目、物料、责任人</span></div>
+            </div>
+          </div>
+          <div class="report-common-board">
+            <h4>来自用户需求的通用问题展示</h4>
+            <div class="report-common-grid">
+              <div class="report-issue hot" data-topic="reportMgmt" data-tip="对照关系需随组织架构、经营维度变化维护">
+                <b>口径与对照经常变</b>
+                <p>本期新增组织与产品线对照28条，影响收入成本18.6万、费用归集73.2万，仍有6条待财务BP确认。</p>
+                <small>实际数据：28条变更 / 6条待确认 / 91.4万影响额</small>
+              </div>
+              <div class="report-issue hot" data-topic="reportMgmt" data-tip="公共物料、公共往来和费用需要按规则分摊到事业部">
+                <b>公共项分摊压力大</b>
+                <p>公共物料金额1563.9万，占库存49.99%；公共往来472.8万、房租物业86.5万需按事业部规则归集。</p>
+                <small>实际数据：公共项2123.2万 / 异常占比12.8%</small>
+              </div>
+              <div class="report-issue" data-topic="reportMgmt" data-tip="管报合并与财报合并、还原租赁服务成本后差异需解释">
+                <b>财报管报核对</b>
+                <p>管报合并收入13.53亿与财报一致，成本还原后差异42.7万，其中租赁服务成本还原影响31.4万。</p>
+                <small>实际数据：差异42.7万 / 已解释31.4万 / 待处理11.3万</small>
+              </div>
+              <div class="report-issue" data-topic="reportMgmt" data-tip="实际数、预算数、同期数变更后需自动同步一套表">
+                <b>版本与模板同步</b>
+                <p>本期预算版本4个，已锁定2个；一套表同步率97.2%，同期损益表仍有3个事业部口径待更新。</p>
+                <small>实际数据：4个预算版本 / 3张待同步 / 97.2%完成</small>
+              </div>
+              <div class="report-issue" data-topic="reportMgmt" data-tip="N+3预测部分数据来自CRM，成本费用仍有补录和子公司报表">
+                <b>预测数据半系统化</b>
+                <p>未来3个月预测收入5.86亿，CRM覆盖3.98亿；成本费用1.12亿来自补录，子公司合并成本缺口0.46亿。</p>
+                <small>实际数据：68%系统取数 / 32%补录 / 0.46亿缺口</small>
+              </div>
+              <div class="report-issue ok" data-topic="reportMgmt" data-tip="库存报表需要把库龄、出入库、呆滞、不良品、待退仓变成预警清单">
+                <b>库存预警报表化</b>
+                <p>库存3127.98万，呆滞/超储289.59万；不良品待处理17条，待退仓超截止日9条，均可下钻到物料。</p>
+                <small>实际数据：21条HIGH / 17条不良品 / 9条待退仓</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- Row 1: 销售业务流 + 六维总览 -->
+  <section class="diagnosis-card">
+    <i>!</i>
+    <div><b>当前穿透诊断样例：</b>车载DMD芯片采购缺口已达30%，导致新产线投产停滞。建议从资产运营红仓进入，按物料、供应商、责任主体、影响订单逐层下钻。</div>
+    <a href="ceo_quadrant_detail.html?topic=assetflow">查看下钻</a>
+  </section>
+
+  <section class="grid-row row-2">
+    <div class="panel" data-topic="sales">
+      <div class="panel-h">
+        <h3><b>◤</b>销售业务流监控区 · 订 → 发 → 收 → 回</h3>
+        <span class="src">guangfeng.db + 25.pdf</span>
+      </div>
+      <div class="flow">
+        <div class="flow-node" data-topic="sales">
+          <span class="step">订</span>
+          <div class="lbl">新签订单额</div>
+          <div class="val">52.75<small>万</small></div>
+        </div>
+        <div class="flow-arrow">▶</div>
+        <div class="flow-node" data-topic="delivery">
+          <span class="step">发</span>
+          <div class="lbl">销售出库金额</div>
+          <div class="val">117.37<small>万</small></div>
+        </div>
+        <div class="flow-arrow">▶</div>
+        <div class="flow-node" data-topic="revenue">
+          <span class="step">收</span>
+          <div class="lbl">营业收入</div>
+          <div class="val">13.53<small>亿</small></div>
+        </div>
+        <div class="flow-arrow">▶</div>
+        <div class="flow-node" data-topic="cash">
+          <span class="step">回</span>
+          <div class="lbl">回款金额</div>
+          <div class="val">40.37<small>万</small></div>
+        </div>
+      </div>
+      <div class="flow-stats">
+        <div><b>29.41%</b><span>毛利率</span></div>
+        <div><b style="color:var(--green)">76.52%</b><span>回款率</span></div>
+        <div><b>66.25天</b><span>平均逾期</span></div>
+        <div><b style="color:var(--orange)">8.05<small>万</small></b><span>应收余额</span></div>
+      </div>
+    </div>
+
+    <div class="panel" data-topic="overview">
+      <div class="panel-h">
+        <h3><b>◇</b>集团经营总览区 · 六维健康度</h3>
+        <span class="src">综合评分 0-100</span>
+      </div>
+      <div class="gauges" id="gaugesBox"></div>
+    </div>
+  </section>
+
+  <!-- Row 2: 库存资产展示区 (重点模块) -->
+  <section class="panel" data-topic="inventory">
+    <div class="panel-h">
+      <h3><b>▦</b>库存资产展示区 · 库存就是尚未兑现的资金</h3>
+      <span class="src">guangfeng.db (T_STK_*)</span>
+    </div>
+    <div class="inv-four">
+      <div class="inv-bucket raw" data-topic="inventoryRaw">
+        <div class="bk-name">① 原材料库存</div>
+        <div class="bk-val">634.76<small>万</small></div>
+        <div class="bk-sub">待加工的钱 · 占20.30%</div>
+        <div class="bk-bar"><i style="width:20.30%"></i></div>
+      </div>
+      <div class="inv-bucket wip" data-topic="inventoryWip">
+        <div class="bk-name">② 在制品库存</div>
+        <div class="bk-val">639.67<small>万</small></div>
+        <div class="bk-sub">生产中的钱 · 占20.45%</div>
+        <div class="bk-bar"><i style="width:20.45%;background:var(--yellow)"></i></div>
+      </div>
+      <div class="inv-bucket finished" data-topic="inventoryFinished">
+        <div class="bk-name">③ 成品库存</div>
+        <div class="bk-val">304.48<small>万</small></div>
+        <div class="bk-sub">待销售的钱 · 占9.74%</div>
+        <div class="bk-bar"><i style="width:9.74%;background:var(--green)"></i></div>
+      </div>
+      <div class="inv-bucket risk" data-topic="inventoryRisk">
+        <div class="bk-name">④ 呆滞/风险库存</div>
+        <div class="bk-val" style="color:var(--red)">289.59<small>万</small></div>
+        <div class="bk-sub">待处置的钱 · 21条HIGH预警</div>
+        <div class="bk-bar"><i style="width:9.26%;background:var(--red)"></i></div>
+      </div>
+    </div>
+
+    <div class="inv-detail">
+      <div class="inv-aging-chart">
+        <div class="panel-h" style="margin-bottom:8px">
+          <h3 style="font-size:13px;color:var(--text-1)">库龄结构 · 30/60/90/90+ 天</h3>
+        </div>
+        <div id="agingChart" style="height:200px"></div>
+        <div class="legend">
+          <span><i style="background:var(--green)"></i>0-30天 451.67万</span>
+          <span><i style="background:var(--accent)"></i>31-60天 177.71万</span>
+          <span><i style="background:var(--orange)"></i>61-90天 143.59万</span>
+          <span><i style="background:var(--red)"></i>90+天 87.49万</span>
+        </div>
+      </div>
+      <div class="inv-health">
+        <div data-topic="inventory"><b class="warn">470.9天</b><span>库存周转天数</span></div>
+        <div data-topic="inventoryRisk"><b class="danger">289.59万</b><span>呆滞超储金额</span></div>
+        <div data-topic="inventoryRisk"><b class="danger">21条</b><span>高风险预警(HIGH)</span></div>
+        <div data-topic="inventoryRisk"><b class="warn">63.12万</b><span>跌价准备估算</span></div>
+        <div data-topic="inventoryRaw"><b class="ok">58.0%</b><span>安全库存达成率</span></div>
+        <div data-topic="inventoryRaw"><b class="warn">42个</b><span>缺料风险物料</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Row 3: 未来趋势预测 + 风险热力图 -->
+  <section class="grid-row row-2-eq">
+    <div class="panel" data-topic="growth">
+      <div class="panel-h">
+        <h3><b>◐</b>未来趋势预测区</h3>
+        <span class="src">23.pdf · 24.pdf · 25.pdf</span>
+      </div>
+      <div class="trend-tabs">
+        <div class="trend-tab active" data-tab="year">三年走势</div>
+        <div class="trend-tab" data-tab="quarter">2024季度</div>
+        <div class="trend-tab" data-tab="curve">增长曲线</div>
+      </div>
+      <div class="trend-chart" id="trendChart"></div>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>营业收入</span>
+        <span><i style="background:var(--orange)"></i>归母净利润</span>
+        <span><i style="background:var(--green)"></i>经营现金流</span>
+      </div>
+      <div class="curve-grid">
+        <div class="curve-item">
+          <div class="t">第一增长曲线 · 影院/激光显示</div>
+          <div class="v">9.80<small>亿</small> · 成熟稳定</div>
+        </div>
+        <div class="curve-item">
+          <div class="t">第二增长曲线 · 车载光学</div>
+          <div class="v" style="color:var(--green)">6.38<small>亿</small> · 量产期</div>
+        </div>
+        <div class="curve-item">
+          <div class="t">研发储备 · AR/AI/机器人</div>
+          <div class="v">13.35%<small> 研发占比</small></div>
+        </div>
+        <div class="curve-item">
+          <div class="t">2025年度收入预测达成率</div>
+          <div class="v" style="color:var(--orange)">62.4%<small> 待补缺口</small></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" data-topic="risk">
+      <div class="panel-h">
+        <h3><b>◈</b>风险热力图区 · 影响程度 × 发生概率</h3>
+        <span class="src">综合预警</span>
+      </div>
+      <div class="heat-wrap">
+        <div class="heatmap">
+          <div class="heatmap-axes"></div>
+          <span class="ax-y">影响程度 ↑</span>
+          <span class="ax-x">发生概率 →</span>
+          <div class="quad">
+            <button class="risk-pt high" style="left:78%;top:18%" data-topic="profit" data-tip="财务风险&#10;影响：高&#10;概率：高&#10;利润下滑">财务风险<br>利润下滑</button>
+            <button class="risk-pt mid" style="left:62%;top:46%" data-topic="inventoryRisk" data-tip="库存风险&#10;影响：中高&#10;概率：中&#10;呆滞/超储：289.59万">库存风险<br>呆滞超储</button>
+            <button class="risk-pt mid" style="left:42%;top:32%" data-topic="growth" data-tip="经营风险&#10;影响：中&#10;概率：中&#10;收入同比下降：21.31%">经营风险<br>收入下降</button>
+            <button class="risk-pt low" style="left:30%;top:68%" data-topic="delivery" data-tip="交付风险&#10;影响：低&#10;概率：中&#10;销售出库：117.37万">交付风险<br>出库波动</button>
+            <button class="risk-pt mid" style="left:74%;top:62%" data-topic="cash" data-tip="现金风险&#10;影响：中高&#10;概率：中&#10;平均逾期：66.25天">应收逾期<br>60天+客户</button>
+            <button class="risk-pt low" style="left:18%;top:80%" data-topic="growth" data-tip="战略风险&#10;影响：低&#10;概率：低&#10;新赛道ROI跟踪">战略风险<br>新赛道ROI</button>
+          </div>
+        </div>
+        <div class="risk-list" id="riskList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Drill Panel -->
+  <section class="drill">
+    <div class="drill-head">
+      <h3 id="drillTitle">集团经营总览</h3>
+      <div class="drill-actions">
+        <button class="btn">导出明细</button>
+        <button class="btn">移动端查看</button>
+        <button class="btn primary">下发督办令</button>
+      </div>
+    </div>
+    <div class="bread" id="drillBread"></div>
+    <div class="dim-row" id="drillDims"></div>
+    <div class="summary-line" id="drillSummary"></div>
+    <table class="dtable">
+      <thead id="drillHead"></thead>
+      <tbody id="drillRows"></tbody>
+    </table>
+  </section>
+
+  <button class="assistant-float" id="assistantOpen" type="button">AI助手</button>
+
+  <div class="assistant-modal" id="assistantModal" aria-hidden="true">
+    <section class="assistant-dialog" role="dialog" aria-modal="true" aria-labelledby="assistantTitle">
+      <div class="assistant-head">
+        <div>
+          <b id="assistantTitle">智能分析 · 报表分析</b>
+          <span>BI 工作台已嵌入,可在此进行数据问答与报表解读</span>
+        </div>
+        <div class="assistant-head-actions">
+          <button class="assistant-mini" id="assistantMini" type="button" aria-pressed="false" title="缩小为右下角悬浮窗">⊟</button>
+          <button class="assistant-full" id="assistantFull" type="button" aria-pressed="false" title="全屏">⛶</button>
+          <button class="assistant-close" id="assistantClose" type="button" aria-label="收起" title="收起">×</button>
+        </div>
+      </div>
+      <iframe class="assistant-frame" id="assistantFrame" title="BI 工作台" src="about:blank" loading="lazy"></iframe>
+    </section>
+  </div>
+  <div class="chart-tooltip" id="chartTooltip"></div>
+
+</div>
+
+<script>
+// ============================================================
+// Data Layer
+// ============================================================
+const FIN = {
+  reports: [
+    { name: "2023", revenue: 22.13, profit: 1.03, deducted: 0.42, cash: 3.64, rd: 12.69, src: "23.pdf 年报" },
+    { name: "2024", revenue: 24.19, profit: 0.28, deducted: 0.32, cash: 0.87, rd: 10.24, src: "24.pdf 年报" },
+    { name: "2025Q3", revenue: 13.53, profit: -1.36, deducted: -0.54, cash: 1.50, rd: 13.35, src: "25.pdf 三季报" }
+  ],
+  q2024: [
+    { name: "Q1", revenue: 4.45, profit: 0.45, cash: 0.12 },
+    { name: "Q2", revenue: 6.36, profit: -0.34, cash: -0.91 },
+    { name: "Q3", revenue: 6.38, profit: 0.32, cash: 1.51 },
+    { name: "Q4", revenue: 6.99, profit: -0.15, cash: 0.16 }
+  ],
+  segment: [
+    { name: "影院/激光显示", value: 9.80, type: "first" },
+    { name: "车载光学", value: 6.38, type: "second" },
+    { name: "ToB专业显示", value: 4.80, type: "first" },
+    { name: "ToC消费/家用", value: 3.20, type: "decline" }
+  ]
+};
+
+const INV = {
+  total: 3127.98,
+  raw: 634.76,
+  wip: 639.67,
+  finished: 304.48,
+  other: 1549.07,
+  slow: 289.59,
+  reserve: 63.12,
+  highWarn: 21,
+  turnover: 470.9,
+  safeOk: 58,
+  safeLow: 42,
+  aging: [
+    { name: "0-30天", value: 451.67, pct: 0.557, color: "var(--green)" },
+    { name: "31-60天", value: 177.71, pct: 0.219, color: "var(--accent)" },
+    { name: "61-90天", value: 143.59, pct: 0.177, color: "var(--orange)" },
+    { name: "90+天", value: 87.49, pct: 0.108, color: "var(--red)" }
+  ],
+  byCategory: [
+    { name: "检测类", value: 630.46 },
+    { name: "金属件", value: 536.35 },
+    { name: "镜片/陶瓷", value: 502.64 },
+    { name: "塑料件", value: 495.22 },
+    { name: "板卡类", value: 342.16 },
+    { name: "闪光灯罩", value: 312.02 },
+    { name: "电子件", value: 309.12 }
+  ],
+  byOrg: [
+    { name: "Organization-071", value: 258.77 },
+    { name: "光峰智造中心", value: 233.08 },
+    { name: "Organization-066", value: 188.89 },
+    { name: "Organization-056", value: 188.26 },
+    { name: "深圳光峰科技（合并示范）", value: 186.35 },
+    { name: "光峰供应链中心", value: 164.09 }
+  ],
+  topMaterials: [
+    ["MAT-NO-054", "Material-054", "检测类", "原材料", "Organization-071", 83.77],
+    ["MAT-NO-031", "Material-031", "镜片/陶瓷", "原材料", "Organization-056", 83.47],
+    ["MAT-NO-058", "Material-058", "金属件", "成品", "Organization-091", 76.03],
+    ["MAT-NO-089", "Material-089", "检测类", "辅料", "Organization-046", 74.66],
+    ["MAT-NO-017", "Material-017", "镜片/陶瓷", "设备及备品备件", "Organization-086", 74.17],
+    ["MAT-NO-021", "Material-021", "闪光灯罩", "办公用品", "光峰智造中心", 72.44]
+  ],
+  slowDetail: [
+    ["EXCESS / HIGH", 3, 13.71, "35.67%", "立即处置"],
+    ["EXCESS / MEDIUM", 12, 51.99, "22.17%", "限期处置"],
+    ["EXCESS / LOW", 9, 22.82, "24.67%", "跟踪"],
+    ["SLOW / HIGH", 11, 61.72, "17.82%", "立即处置"],
+    ["SLOW / MEDIUM", 6, 29.23, "20.83%", "限期处置"],
+    ["SLOW / LOW", 7, 26.80, "23.57%", "跟踪"],
+    ["NEAR_SLOW / HIGH", 7, 28.36, "23.43%", "立即处置"],
+    ["NEAR_SLOW / MEDIUM", 11, 48.74, "22.55%", "限期处置"],
+    ["NEAR_SLOW / LOW", 4, 6.21, "31.50%", "跟踪"]
+  ],
+  movements: [
+    ["PUR_IN（采购入库）", 116.93, 100.95, 45],
+    ["SAL_OUT（销售出库）", 109.06, 117.37, 45],
+    ["ADJ（库存调整）", 126.60, 91.07, 43],
+    ["TRF_IN（调拨入库）", 67.13, 46.04, 32],
+    ["TRF_OUT（调拨出库）", 68.53, 81.92, 35]
+  ]
+};
+
+const SCORE = {
+  overall: 62,
+  growth: { value: 56, label: "收入完成指数", color: "var(--orange)" },
+  profit: { value: 38, label: "利润健康指数", color: "var(--red)" },
+  cash: { value: 78, label: "现金流状态", color: "var(--green)" },
+  inventory: { value: 64, label: "库存健康指数", color: "var(--orange)" },
+  delivery: { value: 71, label: "交付健康指数", color: "var(--green)" },
+  risk: { value: 58, label: "整体风险指数", color: "var(--orange)" }
+};
+
+const RISKS = [
+  { lvl: "h", name: "财务风险 · 利润下滑", impact: "高", prob: "高", topic: "profit", action: "建立利润修复专题" },
+  { lvl: "m", name: "库存风险 · 呆滞超储", impact: "中高", prob: "中", topic: "inventoryRisk", action: "下发处置督办令" },
+  { lvl: "m", name: "经营风险 · 收入下降", impact: "中", prob: "中", topic: "growth", action: "下钻收入缺口" },
+  { lvl: "m", name: "现金风险 · 应收逾期", impact: "中", prob: "中", topic: "cash", action: "客户分级追讨" },
+  { lvl: "l", name: "交付风险 · 出库波动", impact: "中", prob: "低", topic: "delivery", action: "保持出库节奏" },
+  { lvl: "l", name: "战略风险 · 新赛道ROI", impact: "中", prob: "低", topic: "growth", action: "看研发投入产出比" }
+];
+
+// ============================================================
+// Drill Configurations
+// ============================================================
+const DRILLS = {
+  overview: {
+    title: "集团经营总览",
+    bread: ["集团", "总览"],
+    dims: ["集团→事业部→子公司→部门", "年→季→月", "增长 / 利润 / 现金 / 库存"],
+    summary: "2025前三季度营收13.53亿同比-21.31%；归母净利润-1.36亿元；经营现金流1.50亿同比+109%。CEO首页五大主题映射到下方专题。",
+    head: ["年度/期间", "营业收入(亿)", "归母净利润(亿)", "扣非净利润(亿)", "经营现金流(亿)", "研发占比", "数据来源"],
+    rows: () => FIN.reports.map(r => [r.name, r.revenue.toFixed(2), n(r.profit), n(r.deducted), r.cash.toFixed(2), r.rd + "%", r.src])
+  },
+  growth: {
+    title: "看增长 · 收入与目标缺口",
+    bread: ["集团", "增长"],
+    dims: ["集团→事业部", "年→季→月", "产品线", "区域市场", "客户"],
+    summary: "2024年营收24.19亿同比+9.27%，主由车载光学6.38亿驱动；2025前三季度同比-21.31%，需按板块×季度下钻识别缺口。",
+    head: ["期间/板块", "营业收入(亿)", "同比", "关键说明", "CEO动作"],
+    rows: () => [
+      ["2023全年", "22.13", "-12.90%", "消费电子波动", "复盘成熟业务"],
+      ["2024全年", "24.19", "+9.27%", "车载光学6.38亿，C端清库存", "看产品结构"],
+      ["2024Q1", "4.45", "—", "全年最低单季", "看新签储备"],
+      ["2024Q2", "6.36", "—", "回升", "看交付节奏"],
+      ["2024Q3", "6.38", "—", "稳定", "看客户结构"],
+      ["2024Q4", "6.99", "—", "全年高点", "看年末冲量"],
+      ["2025Q3累计", "13.53", "-21.31%", "C端调整+宏观", "下钻缺口"]
+    ]
+  },
+  profit: {
+    title: "看利润 · 利润健康与成本结构",
+    bread: ["集团", "利润"],
+    dims: ["产品线→型号", "成本结构", "毛利率", "研发投入", "非经常损益"],
+    summary: "2024年归母净利0.28亿同比-72.91%，毛利率因结构变化下降6.85pp；2025Q3累计-1.36亿叠加仲裁支出与研发加大。",
+    head: ["期间", "归母净利(亿)", "扣非净利(亿)", "研发占比", "关键解释"],
+    rows: () => [
+      ["2023", "1.03", "0.42", "12.69%", "消费电子波动"],
+      ["2024", "0.28", "0.32", "10.24%", "C端清库 + 车载占比上升致毛利下降"],
+      ["2025Q3累计", "-1.36", "-0.54", "13.35%", "收入下滑 + 仲裁营业外 + 研发加大"]
+    ]
+  },
+  cash: {
+    title: "看现金 · 财报现金流 + 业务回款",
+    bread: ["集团", "现金"],
+    dims: ["客户", "区域", "销售责任人", "账龄", "回款状态"],
+    summary: "2025Q3经营现金流1.50亿同比+109.19%；业务样例库回款率76.52%，应收余额8.05万元。",
+    head: ["指标", "金额/比例", "口径", "下钻"],
+    rows: () => [
+      ["经营现金流净额", "1.50亿", "25.pdf 三季报累计", "年/季"],
+      ["2024经营现金流", "0.87亿", "24.pdf 年报", "受车载营运资金影响"],
+      ["业务回款金额", "40.37万", "T_AR_Receivable.FReceivedAmt", "客户/组织"],
+      ["应收账款余额", "8.05万", "FInvoiceAmt-FReceivedAmt-FNoteAmt", "客户/账龄"],
+      ["业务回款率", "76.52%", "FReceivedAmt/FInvoiceAmt", "销售责任人"],
+      ["平均逾期天数", "66.25天", "FOverdueDays均值", "超60天客户单独追踪"]
+    ]
+  },
+  sales: {
+    title: "销售业务流 · 订发收回",
+    bread: ["集团", "销售业务流"],
+    dims: ["集团→事业部→子公司", "年→季→月→周→日", "产品线→型号→SKU", "区域→客户", "客户行业"],
+    summary: "围绕订/发/收/回四节点判断链路。订单+应收来自业务库；发货以销售出库金额近似；收入以财报口径为权威。",
+    head: ["节点", "金额", "数据来源", "异常判断"],
+    rows: () => [
+      ["订 · 新签订单", "52.75万", "T_SAL_OrderEntry.FAmount", "100张订单与收入联动"],
+      ["发 · 销售出库", "117.37万", "T_STK_InvMovement(SAL_OUT).FOutAmt", "出库正常"],
+      ["收 · 营业收入", "13.53亿", "25.pdf 三季报", "同比-21.31%"],
+      ["回 · 回款金额", "40.37万", "T_AR_Receivable.FReceivedAmt", "回款率76.52%"],
+      ["毛利率", "29.41%", "(收入-成本)/收入", "—"],
+      ["平均逾期", "66.25天", "FOverdueDays均值", "60+天单独追踪"]
+    ]
+  },
+  delivery: {
+    title: "交付健康 · 库存出入库",
+    bread: ["集团", "供应链", "出入库"],
+    dims: ["工厂", "仓库", "物料类别", "产品线", "时间"],
+    summary: "出入库以SAL_OUT和PUR_IN为主线判断交付压力。当前销售出库117.37万，采购入库116.93万，处于平衡状态。",
+    head: ["流转类型", "入库金额(万)", "出库金额(万)", "单据数"],
+    rows: () => INV.movements.map(m => [m[0], m[1].toFixed(2), m[2].toFixed(2), m[3] + "单"])
+  },
+  revenue: {
+    title: "收入确认 · 财报 + 业务联动",
+    bread: ["集团", "收入"],
+    dims: ["年度", "季度", "产品线", "客户", "业务板块"],
+    summary: "财报口径用于CEO总览，业务库订单收入用于穿透分析。两者口径不同，页面明确区分来源。",
+    head: ["口径", "金额(亿)", "期间", "下钻能力"],
+    rows: () => [
+      ["财报营业收入", "13.53", "2025Q3累计", "年度/季度"],
+      ["车载光学专项", "6.38", "2024年报", "板块/客户/产品"],
+      ["业务订单收入", "0.0053", "样例业务库 100单", "组织/产品线/客户"],
+      ["2024营业收入", "24.19", "2024年报", "Q1/Q2/Q3/Q4"],
+      ["2023营业收入", "22.13", "2023年报", "年度对比"]
+    ]
+  },
+  inventory: {
+    title: "库存资产 · 全集团",
+    bread: ["集团", "库存"],
+    dims: ["集团→事业部→工厂→仓库→库位", "产品线→型号→物料编码", "原材料→半成品→成品", "库龄", "供应商"],
+    summary: "库存总额3127.98万元。原材料634.76 / 半成品639.67 / 成品304.48 / 其他段1549.07万。周转470.9天偏长。",
+    head: ["物料编码", "物料名称", "类别", "库存段", "组织/仓库", "金额(万)"],
+    rows: () => INV.topMaterials.map(r => [r[0], r[1], r[2], r[3], r[4], r[5].toFixed(2)])
+  },
+  inventoryRaw: {
+    title: "原材料库存 · 待加工的钱",
+    bread: ["集团", "库存", "原材料"],
+    dims: ["物料类别", "供应商", "工厂", "仓库", "库位"],
+    summary: "原材料634.76万元（FStockCategory='原材料'）。检测类、镜片/陶瓷、金属件占主要金额，下钻关注关键物料保障率。",
+    head: ["物料类别", "库存金额(万)", "占比", "经营关注"],
+    rows: () => INV.byCategory.slice(0, 5).map(r => [r.name, r.value.toFixed(2), pct(r.value / INV.total), "保障率/周转"])
+  },
+  inventoryWip: {
+    title: "在制/半成品 · 生产中的钱",
+    bread: ["集团", "库存", "在制"],
+    dims: ["工厂", "生产阶段", "产品线", "物料", "时间"],
+    summary: "半成品639.67万元（FStockCategory='半成品'），主要分布在光峰智造中心、Organization-081等生产组织。后续接入MES可拆分EVT/DVT/PVT/MP。",
+    head: ["库存段", "金额(万)", "数据源", "后续接入"],
+    rows: () => [
+      ["半成品(WIP)", "639.67", "FStockCategory='半成品'", "MES生产阶段"],
+      ["设备及备品备件", "565.35", "FStockCategory='设备及备品备件'", "客户处备件追踪"],
+      ["辅料", "492.00", "FStockCategory='辅料'", "按工艺归集"]
+    ]
+  },
+  inventoryFinished: {
+    title: "成品库存 · 待销售的钱",
+    bread: ["集团", "库存", "成品"],
+    dims: ["产品型号", "SKU", "仓库", "渠道", "销售区域"],
+    summary: "成品304.48万元。Top成品物料：MAT-058金属件@Organization-091（76万）、MAT-086金属件@Organization-031（71万）。",
+    head: ["物料编码", "物料名称", "类别", "组织", "金额(万)"],
+    rows: () => INV.topMaterials.filter(r => r[3] === "成品").map(r => [r[0], r[1], r[2], r[4], r[5].toFixed(2)])
+  },
+  inventoryRisk: {
+    title: "库存风险 · 呆滞 / 超储 / 近呆滞",
+    bread: ["集团", "库存", "风险"],
+    dims: ["库龄区间", "预警等级", "库存组织", "物料", "责任部门"],
+    summary: "呆滞/超储/近呆滞总额289.59万元，跌价准备估算63.12万；HIGH等级21条须立即处置。按 类型×等级 形成处置矩阵。",
+    head: ["类型 / 等级", "条数", "金额(万)", "平均跌价比例", "动作"],
+    rows: () => INV.slowDetail.map(d => [d[0], d[1] + "条", d[2].toFixed(2), d[3], d[4]])
+  },
+  command: {
+    title: "督办令中心 · 极简与闭环",
+    bread: ["集团", "督办令中心"],
+    dims: ["语音触发", "AI结构化", "VP接单", "助理拆解", "组织验收"],
+    summary: "督办令中心把CEO口头指令转成可追踪任务：识别责任人、关联业务异常、明确时限，并通过钉钉/企微推送，形成进行中/待验收/已关闭的闭环。",
+    head: ["环节", "动作", "系统识别对象", "状态", "经营关注"],
+    rows: () => [
+      ["触发", "CEO语音下令", "车载事业部发货落差异常", "已捕获", "是否足够低摩擦"],
+      ["转化", "AI结构化", "王XX(VP) / 明日17:00 / 查缺料原因", "待确认", "责任对象是否准确"],
+      ["送达", "推送VP及助理", "钉钉/企微任务卡", "进行中", "是否同频同数"],
+      ["拆解", "助理拆为子任务", "生产/采购/物流负责人", "进行中", "是否落实到人"],
+      ["反馈", "VP提交解决计划", "补货计划/交付恢复路径", "待验收", "是否可关闭或打回"]
+    ]
+  },
+  reportMgmt: {
+    title: "报表管理 · 通用治理问题",
+    bread: ["集团", "报表管理"],
+    dims: ["财报/管报口径", "对照关系", "分摊归集", "TB核对", "版本同步", "预测补录", "库存预警"],
+    summary: "基于本期实际报表采集与核对结果：用户不是只要看单张报表，而是要把口径变更、公共项分摊、财报管报核对、一套表同步、预测补录和库存预警统一放到一个可治理、可解释、可追责的报表管理入口。本期已接入6个报表域、42张报表、186项规则，仍有23项待确认。",
+    head: ["通用问题", "实际报表数据", "当前异常", "第五象限展示方式", "下一步动作"],
+    rows: () => [
+      ["口径与对照变化", "本期新增对照28条，影响收入成本18.6万、费用归集73.2万", "6条待确认，涉及车载、专显、峰米三个口径", "本期变更清单 + 影响报表 + 待确认责任人", "固化口径版本并保留变更记录"],
+      ["公共项分摊", "公共物料1563.9万，公共往来472.8万，公共费用86.5万", "无法自动分摊271.8万，异常占比12.8%", "分摊规则卡片 + 异常占比 + 无法分摊清单", "按规则引擎沉淀分摊逻辑"],
+      ["财报管报核对", "管报收入13.53亿，成本还原后差异42.7万", "待解释差异11.3万，集中在租赁服务成本和合并抵消", "核对差异表 + 还原项说明 + 差异状态", "打通TB到管报明细穿透"],
+      ["一套表同步", "42张报表已同步39张，同步率97.2%，预算版本4个", "3张报表未同步，2个预算版本未锁定", "版本影响提示 + 同步状态 + 未更新报表", "建立版本发布与锁定机制"],
+      ["预测半系统化", "N+3预测收入5.86亿，CRM覆盖3.98亿，补录1.88亿", "子公司合并成本缺口0.46亿，费用逻辑待确认9项", "来源可信度 + 补录缺口 + 单体/合并标记", "区分系统取数、报表补录、人工确认"],
+      ["库存预警报表化", "库存3127.98万，呆滞/超储289.59万，HIGH预警21条", "不良品17条、待退仓9条已超处理截止日", "预警类型平铺 + 截止日清单 + 物料下钻", "接入库存预警到督办闭环"]
+    ]
+  },
+  risk: {
+    title: "风险热力图 · 影响×概率",
+    bread: ["集团", "风险"],
+    dims: ["责任事业部", "涉及客户", "涉及产品", "订单/库存明细", "趋势过程"],
+    summary: "高优先级：财务风险（高×高）+ 库存风险（中高×中）+ 经营风险（中×中）。点击风险点穿透至责任对象与明细单据。",
+    head: ["风险类型", "影响", "概率", "穿透对象", "下一步"],
+    rows: () => RISKS.map(r => [r.name, r.impact, r.prob, r.topic, r.action])
+  }
+};
+
+// ============================================================
+// Helpers
+// ============================================================
+const fmt = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
+const pct = v => (v * 100).toFixed(1) + "%";
+const n = v => v >= 0 ? v.toFixed(2) : v.toFixed(2);
+function setText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
+function tipAttr(v) { return String(v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+// ============================================================
+// Charts
+// ============================================================
+function drawAging() {
+  const el = document.getElementById("agingChart");
+  if (!el) return;
+  const w = el.clientWidth, h = el.clientHeight;
+  const pad = { l: 50, r: 16, t: 12, b: 30 };
+  const data = INV.aging;
+  const max = Math.max(...data.map(d => d.value));
+  const bw = (w - pad.l - pad.r) / data.length;
+  const bars = data.map((d, i) => {
+    const bh = (d.value / max) * (h - pad.t - pad.b);
+    const x = pad.l + i * bw + bw * 0.2;
+    const y = h - pad.b - bh;
+    return `<rect data-tip="${tipAttr(`${d.name}\n库存金额：${d.value.toFixed(2)}万`)}" x="${x}" y="${y}" width="${bw * 0.6}" height="${bh}" rx="3" fill="${d.color}" opacity="0.85"/>
+      <text x="${x + bw * 0.3}" y="${y - 5}" text-anchor="middle" fill="#e9eef8" font-size="11">${d.value.toFixed(0)}万</text>
+      <text x="${x + bw * 0.3}" y="${h - 12}" text-anchor="middle" fill="#7a8aa9" font-size="11">${d.name}</text>`;
+  }).join("");
+  const grids = [0, 0.5, 1].map(g => {
+    const y = h - pad.b - g * (h - pad.t - pad.b);
+    return `<line x1="${pad.l}" y1="${y}" x2="${w - pad.r}" y2="${y}" class="grid"/>
+      <text x="${pad.l - 6}" y="${y + 4}" text-anchor="end" fill="#506180" font-size="10">${(max * g).toFixed(0)}</text>`;
+  }).join("");
+  el.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${w} ${h}">${grids}${bars}</svg>`;
+}
+
+function drawTrend(tab) {
+  const el = document.getElementById("trendChart");
+  if (!el) return;
+  const w = el.clientWidth, h = el.clientHeight || 220;
+  const pad = { l: 48, r: 12, t: 18, b: 32 };
+  let data = [];
+  if (tab === "year") {
+    data = FIN.reports.map(r => ({ name: r.name, revenue: r.revenue, profit: r.profit, cash: r.cash }));
+  } else if (tab === "quarter") {
+    data = FIN.q2024.map(q => ({ name: q.name, revenue: q.revenue, profit: q.profit, cash: q.cash }));
+  } else {
+    data = FIN.segment.map(s => ({ name: s.name, revenue: s.value, profit: 0, cash: 0 }));
+  }
+  const all = data.flatMap(d => [d.revenue, Math.abs(d.profit), Math.abs(d.cash)]);
+  const max = Math.max(...all, 1);
+  const zero = h - pad.b - (h - pad.t - pad.b) * 0.18;
+  const scale = (h - pad.t - pad.b) * 0.78 / max;
+  const bw = (w - pad.l - pad.r) / data.length;
+  const series = [["revenue", "#4f9bff", -16], ["profit", "#ffa84d", 0], ["cash", "#36cfa0", 16]];
+  const bars = data.map((d, i) => {
+    const cx = pad.l + i * bw + bw / 2;
+    let svg = `<text x="${cx}" y="${h - 10}" text-anchor="middle" fill="#7a8aa9" font-size="11">${d.name}</text>`;
+    series.forEach(([k, c, off]) => {
+      const v = d[k];
+      if (v === 0 && tab === "curve") return;
+      const bh = Math.abs(v) * scale;
+      const y = v >= 0 ? zero - bh : zero;
+      const label = k === "revenue" ? "收入" : k === "profit" ? "利润" : "现金流";
+      svg += `<rect data-tip="${tipAttr(`${d.name} · ${label}\n数值：${v.toFixed(2)}亿元`)}" x="${cx + off - 6}" y="${y}" width="12" height="${bh}" rx="2" fill="${c}"/>
+        <text x="${cx + off}" y="${v >= 0 ? y - 4 : y + bh + 12}" text-anchor="middle" fill="#b8c5dc" font-size="10">${v.toFixed(2)}</text>`;
+    });
+    return svg;
+  }).join("");
+  el.innerHTML = `<svg class="chart-svg" viewBox="0 0 ${w} ${h}">
+    <line x1="${pad.l}" y1="${zero}" x2="${w - pad.r}" y2="${zero}" class="axis"/>
+    <text x="${pad.l - 6}" y="${pad.t + 4}" text-anchor="end" fill="#506180" font-size="10">${tab === "curve" ? "亿元" : "亿元"}</text>
+    ${bars}
+  </svg>`;
+}
+
+function drawGauges() {
+  const box = document.getElementById("gaugesBox");
+  const items = [
+    ["growth", SCORE.growth],
+    ["profit", SCORE.profit],
+    ["cash", SCORE.cash],
+    ["inventory", SCORE.inventory],
+    ["delivery", SCORE.delivery],
+    ["risk", SCORE.risk]
+  ];
+  box.innerHTML = items.map(([key, s]) => {
+    const r = 28;
+    const c = 2 * Math.PI * r;
+    const offset = c - (s.value / 100) * c;
+    return `<div class="gauge" data-topic="${key}">
+      <svg width="68" height="68" viewBox="0 0 68 68">
+        <circle cx="34" cy="34" r="${r}" fill="none" stroke="#243353" stroke-width="6"/>
+        <circle data-tip="${tipAttr(`${s.label}\n健康评分：${s.value}/100`)}" cx="34" cy="34" r="${r}" fill="none" stroke="${s.color}" stroke-width="6"
+          stroke-dasharray="${c}" stroke-dashoffset="${offset}" stroke-linecap="round"
+          transform="rotate(-90 34 34)"/>
+        <text x="34" y="40" text-anchor="middle" fill="#e9eef8" font-size="16" font-weight="700">${s.value}</text>
+      </svg>
+      <div class="info"><b>${s.value}</b><span>${s.label}</span></div>
+    </div>`;
+  }).join("");
+}
+
+function drawSalesNodeBars() {
+  const box = document.getElementById("salesNodeBars");
+  if (!box) return;
+  const time = document.getElementById("salesTimeFilter")?.value || "year";
+  const region = document.getElementById("salesRegionFilter")?.value || "group";
+  const scope = document.getElementById("salesScopeFilter")?.value || "finance";
+  const timeFactor = { year: 1, quarter: .28, month: .095 }[time] || 1;
+  const regionFactor = { group: 1, east: .34, south: .29, overseas: .22 }[region] || 1;
+  const scopeFactor = { finance: 1, business: 1.08, merged: 1.04 }[scope] || 1;
+  const factor = timeFactor * regionFactor * scopeFactor;
+  const nodes = [
+    { key: "sales", title: "订 · 合同/订单流", sub: "新签订单额", current: 52.75, target: 82, unit: "万", color: "var(--green)" },
+    { key: "delivery", title: "发 · 交付/发货流", sub: "销售出库金额", current: 117.37, target: 142, unit: "万", color: "var(--accent)" },
+    { key: "revenue", title: "收 · 收入流", sub: "营业收入", current: 135300, target: 150000, unit: "万", color: "var(--purple)" },
+    { key: "cash", title: "回 · 回款流", sub: "回款金额", current: 40.37, target: 68, unit: "万", color: "var(--orange)" }
+  ].map(n => ({ ...n, current: +(n.current * factor).toFixed(2), target: +(n.target * factor).toFixed(2) }));
+  box.innerHTML = nodes.map(n => {
+    const max = Math.max(n.current, n.target, 1);
+    const h1 = Math.max(n.current / max * 92, 3);
+    const h2 = Math.max(n.target / max * 92, 3);
+    const rate = Math.round(n.current / n.target * 100);
+    return `<div class="sales-bar-card" data-topic="${n.key}">
+      <div class="sales-bar-head"><b>${n.title}</b><span>${n.sub}</span></div>
+      <div class="sales-bar-chart">
+        <svg viewBox="0 0 180 150" preserveAspectRatio="none">
+          <line x1="24" y1="118" x2="162" y2="118" stroke="var(--line)"/>
+          <rect data-tip="${tipAttr(`${n.title}\n当前：${n.current}${n.unit}\n达成率：${rate}%`)}" x="54" y="${118 - h1}" width="26" height="${h1}" rx="4" fill="${n.color}"/>
+          <rect data-tip="${tipAttr(`${n.title}\n目标：${n.target}${n.unit}`)}" x="102" y="${118 - h2}" width="26" height="${h2}" rx="4" fill="rgba(255,255,255,.22)"/>
+          <text x="67" y="${112 - h1}" text-anchor="middle">${n.current}${n.unit}</text>
+          <text x="115" y="${112 - h2}" text-anchor="middle">${n.target}${n.unit}</text>
+          <text x="67" y="138" text-anchor="middle">当前</text>
+          <text x="115" y="138" text-anchor="middle">目标</text>
+        </svg>
+      </div>
+      <div class="sales-bar-foot"><span>达成率 <b>${rate}%</b></span><span>${time === "year" ? "年度" : time === "quarter" ? "季度" : "月度"}</span></div>
+    </div>`;
+  }).join("");
+}
+
+function drawAssetStageBars() {
+  const box = document.getElementById("assetStageBars");
+  if (!box) return;
+  const category = document.getElementById("assetCategoryFilter")?.value || "flash";
+  const categoryFactor = { flash: .82, metal: 1.05, lens: .94, electronic: 1.18, test: .73, board: 1.12, plastic: .68 }[category] || 1;
+  const stages = [
+    { name: "采购库存", current: 634.76, overdue: 86.2, expired: 31.4, safe: 520, owner: "供应链" },
+    { name: "生产库存", current: 639.67, overdue: 72.6, expired: 24.8, safe: 560, owner: "制造" },
+    { name: "仓库库存", current: 304.48, overdue: 51.3, expired: 18.9, safe: 260, owner: "仓储" },
+    { name: "站点库存", current: 289.59, overdue: 87.49, expired: 42.7, safe: 210, owner: "销售/交付" }
+  ].map(s => ({
+    ...s,
+    current: +(s.current * categoryFactor).toFixed(1),
+    overdue: +(s.overdue * categoryFactor).toFixed(1),
+    expired: +(s.expired * categoryFactor).toFixed(1),
+    safe: +(s.safe * categoryFactor).toFixed(1)
+  }));
+  const globalMax = Math.max(...stages.flatMap(s => [s.current, s.overdue, s.expired, s.safe]), 1) * 1.12;
+  box.innerHTML = stages.map(s => {
+    const scale = v => Math.max(v / globalMax * 64, 2);
+    const h1 = scale(s.current), h2 = scale(s.overdue), h3 = scale(s.expired);
+    const safeY = 82 - scale(s.safe);
+    return `<div class="asset-stage-card" data-topic="inventory">
+      <h5>${s.name}</h5>
+      <div class="asset-stage-chart">
+        <svg viewBox="0 0 160 92" preserveAspectRatio="none">
+          <text x="14" y="9" fill="var(--text-3)">统一水位</text>
+          <line data-tip="${tipAttr(`${s.name}\n安全水位：${s.safe}万`)}" x1="16" y1="${safeY}" x2="150" y2="${safeY}" stroke="var(--red)" stroke-dasharray="4 3"/>
+          <text x="150" y="${Math.max(safeY - 3, 8)}" text-anchor="end" fill="var(--red)">安全线 ${s.safe}</text>
+          <line x1="14" y1="82" x2="150" y2="82" stroke="var(--line)"/>
+          <rect data-tip="${tipAttr(`${s.name}\n当前库存：${s.current}万\n安全水位：${s.safe}万`)}" x="28" y="${82 - h1}" width="20" height="${h1}" rx="3" fill="var(--accent)"/>
+          <rect data-tip="${tipAttr(`${s.name}\n逾期库存（3月以上）：${s.overdue}万`)}" x="70" y="${82 - h2}" width="20" height="${h2}" rx="3" fill="var(--orange)"/>
+          <rect data-tip="${tipAttr(`${s.name}\n超期库存（6月以上）：${s.expired}万`)}" x="112" y="${82 - h3}" width="20" height="${h3}" rx="3" fill="var(--red)"/>
+          <text x="38" y="91" text-anchor="middle">当前</text>
+          <text x="80" y="91" text-anchor="middle">3月+</text>
+          <text x="122" y="91" text-anchor="middle">6月+</text>
+        </svg>
+      </div>
+      <div class="asset-stage-foot"><span>${s.owner}</span><span>${s.current}万</span></div>
+    </div>`;
+  }).join("");
+}
+
+function drawRiskList() {
+  const el = document.getElementById("riskList");
+  el.innerHTML = RISKS.map(r => `
+    <div class="risk-item ${r.lvl}" data-topic="${r.topic}">
+      <b>${r.name}</b>
+      <span>影响:${r.impact} · 概率:${r.prob} · ${r.action}</span>
+    </div>`).join("");
+}
+
+function drawRiskQuadrantMini() {
+  const heat = document.getElementById("riskHeatMini");
+  const count = document.getElementById("riskCountMini");
+  if (!heat || !count) return;
+  const pts = [
+    { n: "运营", x: 78, y: 28, c: "var(--green)", tip: "运营风险\n风险值：92/100\n高影响 / 高概率\n交付延迟风险敞口：4000万\n状态：供应链处理中" },
+    { n: "技术", x: 32, y: 26, c: "var(--red)", tip: "技术与产品风险\n风险值：78/100\n高影响 / 低概率\n延期：20天，影响3个大客户项目\n状态：研发评审中" },
+    { n: "目标", x: 76, y: 72, c: "var(--orange)", tip: "预测与目标风险\n风险值：71/100\n低影响 / 高概率\n第二曲线完成度：65%\n目标缺口：1.5亿" },
+    { n: "外部", x: 30, y: 74, c: "#4f8bff", tip: "营商环境/战略假设风险\n风险值：42/100\n低影响 / 低概率\n涉险客户：1家\n状态：授信复核" }
+  ];
+  heat.innerHTML = `<svg viewBox="0 0 220 130">
+    <rect x="28" y="12" width="172" height="96" fill="rgba(255,255,255,.025)" stroke="var(--line)"/>
+    <line x1="114" y1="12" x2="114" y2="108" class="grid"/>
+    <line x1="28" y1="60" x2="200" y2="60" class="grid"/>
+    ${pts.map(p=>`<g data-tip="${tipAttr(p.tip)}"><circle cx="${28+p.x/100*172}" cy="${12+p.y/100*96}" r="11" fill="${p.c}"/><text x="${28+p.x/100*172}" y="${16+p.y/100*96}" text-anchor="middle" fill="#101827" font-weight="700">${p.n}</text></g>`).join("")}
+    <text x="198" y="123" text-anchor="end">概率</text><text x="8" y="20">影响</text>
+  </svg>`;
+  const rows = [
+    { n: "运营", v: 3, c: "var(--green)", tip: "运营风险：3项\n立即处置：1项\n敞口：4000万" },
+    { n: "技术", v: 1, c: "var(--red)", tip: "技术与产品风险：1项\n延期：20天\n影响项目：3个" },
+    { n: "目标", v: 2, c: "var(--orange)", tip: "预测与目标风险：2项\n完成度：65%\n目标缺口：1.5亿" },
+    { n: "外部", v: 1, c: "#4f8bff", tip: "外部战略风险：1项\n涉险客户：1家\n应收样例：8.05万" }
+  ];
+  const max = Math.max(...rows.map(r=>r.v));
+  count.innerHTML = `<svg viewBox="0 0 220 130">
+    ${rows.map((r,i)=>{const h=r.v/max*72,x=34+i*44,y=92-h;return `<rect data-tip="${tipAttr(r.tip)}" x="${x}" y="${y}" width="24" height="${h}" rx="4" fill="${r.c}"/><text x="${x+12}" y="${y-5}" text-anchor="middle">${r.v}项</text><text x="${x+12}" y="112" text-anchor="middle">${r.n}</text>`}).join("")}
+  </svg>`;
+}
+
+function qSvg(id, body) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const w = Math.max(el.clientWidth || 420, 320);
+  const h = Math.max(el.clientHeight || 128, 128);
+  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${body(w, h)}</svg>`;
+}
+
+function qBars(id, rows, color = "#4f9bff", suffix = "") {
+  qSvg(id, (w, h) => {
+    const pad = { l: 38, r: 12, t: 18, b: 28 };
+    const max = Math.max(...rows.map(r => Math.abs(r.value)), 1);
+    const bw = (w - pad.l - pad.r) / rows.length;
+    const zero = h - pad.b;
+    const bars = rows.map((r, i) => {
+      const bh = Math.max(Math.abs(r.value) / max * (h - pad.t - pad.b), 2);
+      const x = pad.l + i * bw + bw * .22;
+      const y = r.value >= 0 ? zero - bh : zero;
+      const c = r.color || color;
+      return `<rect data-tip="${tipAttr(`${r.name}\n数值：${r.value}${suffix}`)}" x="${x}" y="${y}" width="${bw * .56}" height="${bh}" rx="3" fill="${c}" opacity=".88"/>
+        <text x="${x + bw * .28}" y="${r.value >= 0 ? y - 5 : y + bh + 13}" text-anchor="middle">${r.value}${suffix}</text>
+        <text x="${x + bw * .28}" y="${h - 9}" text-anchor="middle">${r.name}</text>`;
+    }).join("");
+    return `<line x1="${pad.l}" y1="${zero}" x2="${w - pad.r}" y2="${zero}" class="axis"/>${bars}`;
+  });
+}
+
+function qLine(id, rows, keys) {
+  qSvg(id, (w, h) => {
+    const pad = { l: 40, r: 16, t: 18, b: 28 };
+    const max = Math.max(...rows.flatMap(r => keys.map(k => Math.abs(r[k.key]))), 1);
+    const min = Math.min(...rows.flatMap(r => keys.map(k => r[k.key])), 0);
+    const top = h - pad.t - pad.b;
+    const y = v => pad.t + (max - v) / (max - min || 1) * top;
+    const x = i => pad.l + i * (w - pad.l - pad.r) / Math.max(rows.length - 1, 1);
+    const grid = [0, .5, 1].map(g => {
+      const gy = pad.t + g * top;
+      return `<line x1="${pad.l}" y1="${gy}" x2="${w - pad.r}" y2="${gy}" class="grid"/>`;
+    }).join("");
+    const paths = keys.map(k => {
+      const d = rows.map((r, i) => `${i ? "L" : "M"}${x(i)},${y(r[k.key])}`).join(" ");
+      const pts = rows.map((r, i) => `<circle data-tip="${tipAttr(`${r.name}\n${k.key}：${r[k.key]}`)}" cx="${x(i)}" cy="${y(r[k.key])}" r="3" fill="${k.color}"/>`).join("");
+      return `<path d="${d}" fill="none" stroke="${k.color}" stroke-width="2.5"/>${pts}`;
+    }).join("");
+    const labels = rows.map((r, i) => `<text x="${x(i)}" y="${h - 9}" text-anchor="middle">${r.name}</text>`).join("");
+    return `${grid}${paths}${labels}`;
+  });
+}
+
+function qMatrix(id) {
+  qSvg(id, (w, h) => {
+    const pad = { l: 36, r: 12, t: 12, b: 26 };
+    const pts = [
+      { name: "利润", x: .78, y: .25, c: "var(--red)" },
+      { name: "库存", x: .64, y: .52, c: "var(--orange)" },
+      { name: "收入", x: .46, y: .38, c: "var(--orange)" },
+      { name: "现金", x: .56, y: .60, c: "var(--orange)" },
+      { name: "交付", x: .30, y: .70, c: "var(--green)" }
+    ];
+    const x0 = pad.l, y0 = pad.t, ww = w - pad.l - pad.r, hh = h - pad.t - pad.b;
+    const dots = pts.map(p => {
+      const x = x0 + p.x * ww, y = y0 + p.y * hh;
+      return `<g data-tip="${tipAttr(`${p.name}\n影响：${Math.round(p.y * 100)}\n概率：${Math.round(p.x * 100)}`)}"><circle cx="${x}" cy="${y}" r="12" fill="${p.c}" opacity=".9"/><text x="${x}" y="${y + 4}" text-anchor="middle" fill="#101827" font-weight="700">${p.name}</text></g>`;
+    }).join("");
+    return `<rect x="${x0}" y="${y0}" width="${ww}" height="${hh}" fill="rgba(255,255,255,.025)" stroke="var(--line)"/>
+      <line x1="${x0 + ww/2}" y1="${y0}" x2="${x0 + ww/2}" y2="${y0+hh}" class="grid"/>
+      <line x1="${x0}" y1="${y0 + hh/2}" x2="${x0+ww}" y2="${y0+hh/2}" class="grid"/>
+      ${dots}<text x="${w - 14}" y="${h - 8}" text-anchor="end">概率</text><text x="${pad.l}" y="10">影响</text>`;
+  });
+}
+
+function qSteps(id, steps, color = "var(--accent)") {
+  qSvg(id, (w, h) => {
+    const pad = { l: 16, r: 16, t: 26, b: 22 };
+    const n = steps.length;
+    const gap = 16;
+    const bw = (w - pad.l - pad.r - gap * (n - 1)) / n;
+    const y = pad.t + 18;
+    const boxes = steps.map((s, i) => {
+      const x = pad.l + i * (bw + gap);
+      const arrow = i < n - 1 ? `<line x1="${x + bw}" y1="${y + 26}" x2="${x + bw + gap - 4}" y2="${y + 26}" stroke="${color}" stroke-width="2"/>
+        <path d="M${x + bw + gap - 5},${y + 21} L${x + bw + gap},${y + 26} L${x + bw + gap - 5},${y + 31}" fill="none" stroke="${color}" stroke-width="2"/>` : "";
+      return `<rect data-tip="${tipAttr(`${s.name}\n${s.sub}`)}" x="${x}" y="${y}" width="${bw}" height="52" rx="8" fill="rgba(255,255,255,.045)" stroke="var(--line)"/>
+        <circle data-tip="${tipAttr(`${s.name}\n${s.sub}`)}" cx="${x + 18}" cy="${y + 18}" r="10" fill="${s.color || color}"/>
+        <text x="${x + 18}" y="${y + 22}" text-anchor="middle" fill="#101827" font-weight="700">${i + 1}</text>
+        <text x="${x + bw / 2}" y="${y + 22}" text-anchor="middle" font-weight="700">${s.name}</text>
+        <text x="${x + bw / 2}" y="${y + 40}" text-anchor="middle">${s.sub}</text>${arrow}`;
+    }).join("");
+    return `${boxes}<text x="${pad.l}" y="14" fill="var(--text-2)">${steps[0]?.title || ""}</text>`;
+  });
+}
+
+function drawQuadrantDiagram(group, dim) {
+  if (group === "salesflow") {
+    if (dim === "gap") qBars("diagramSalesFlow", [
+      { name: "订-发", value: 52.75 - 117.37, color: "var(--orange)" },
+      { name: "收-回", value: 135300 - 40.37, color: "var(--red)" }
+    ], "#ffa84d", "万");
+    else if (dim === "node") qBars("diagramSalesFlow", [
+      { name: "订质量", value: 29.41, color: "var(--accent)" },
+      { name: "发效率", value: 71, color: "var(--green)" },
+      { name: "收结构", value: 56, color: "var(--orange)" },
+      { name: "回安全", value: 76.52, color: "var(--green)" }
+    ], "#4f9bff", "%");
+    else qSteps("diagramSalesFlow", [
+      { name: "订", sub: "质量", color: "var(--accent)", title: "三条核心流：合同/订单流、交付/发货流、收入/回款流" },
+      { name: "发", sub: "交付", color: "var(--green)" },
+      { name: "收", sub: "结构", color: "var(--orange)" },
+      { name: "回", sub: "安全", color: "var(--purple)" }
+    ]);
+  }
+  if (group === "assetflow") {
+    if (dim === "gap") qBars("diagramAssetFlow", [
+      { name: "入库-投产", value: INV.raw - INV.wip, color: "var(--orange)" },
+      { name: "投料-完工", value: INV.wip - INV.finished, color: "var(--yellow)" },
+      { name: "入库-发货", value: INV.finished - 117.37, color: "var(--green)" },
+      { name: "发货-回款", value: 117.37 - 40.37, color: "var(--red)" }
+    ], "#ffa84d", "万");
+    else if (dim === "risk") qBars("diagramAssetFlow", INV.aging.map(r => ({ name: r.name, value: r.value, color: r.color })), "#ffa84d", "万");
+    else qBars("diagramAssetFlow", [
+      { name: "原料", value: INV.raw, color: "var(--accent)" },
+      { name: "在制", value: INV.wip, color: "var(--yellow)" },
+      { name: "成品", value: INV.finished, color: "var(--green)" },
+      { name: "风险", value: INV.slow, color: "var(--red)" }
+    ], "#ffa84d", "万");
+  }
+  if (group === "command") {
+    if (dim === "role") qSteps("diagramCommand", [
+      { name: "发起", sub: "语音下令", color: "var(--purple)", title: "角色链路：指令直接变成组织任务" },
+      { name: "AI", sub: "结构化", color: "var(--accent)" },
+      { name: "VP", sub: "接单", color: "var(--orange)" },
+      { name: "助理", sub: "拆解", color: "var(--green)" }
+    ], "var(--purple)");
+    else if (dim === "state") qBars("diagramCommand", [
+      { name: "进行中", value: 6, color: "var(--accent)" },
+      { name: "待验收", value: 3, color: "var(--orange)" },
+      { name: "已关闭", value: 9, color: "var(--green)" },
+      { name: "打回", value: 1, color: "var(--red)" }
+    ], "#a685ff", "单");
+    else qSteps("diagramCommand", [
+      { name: "触发", sub: "语音录入", color: "var(--purple)", title: "极简闭环：触发、转化、送达、反馈验收" },
+      { name: "转化", sub: "AI识别", color: "var(--accent)" },
+      { name: "送达", sub: "IM推送", color: "var(--orange)" },
+      { name: "闭环", sub: "组织验收", color: "var(--green)" }
+    ], "var(--purple)");
+  }
+  if (group === "riskmatrix") {
+    if (dim === "type") qBars("diagramRiskMatrix", [
+      { name: "财务", value: 3, color: "var(--red)" },
+      { name: "库存", value: 2, color: "var(--orange)" },
+      { name: "经营", value: 2, color: "var(--orange)" },
+      { name: "技术", value: 1, color: "var(--purple)" },
+      { name: "外部", value: 1, color: "var(--green)" }
+    ], "#a685ff", "项");
+    else if (dim === "action") qBars("diagramRiskMatrix", [
+      { name: "立即", value: 3, color: "var(--red)" },
+      { name: "限期", value: 2, color: "var(--orange)" },
+      { name: "跟踪", value: 1, color: "var(--green)" }
+    ], "#a685ff", "项");
+    else qMatrix("diagramRiskMatrix");
+  }
+}
+
+function drawQuadrants() {
+  drawQuadrantDiagram("salesflow", "flow");
+  drawQuadrantDiagram("assetflow", "stage");
+  drawQuadrantDiagram("command", "loop");
+  drawQuadrantDiagram("riskmatrix", "matrix");
+}
+
+// ============================================================
+// Drill Renderer
+// ============================================================
+function renderDrill(key) {
+  const d = DRILLS[key]; if (!d) return;
+  document.querySelectorAll("[data-topic]").forEach(n => n.classList.toggle("active", n.dataset.topic === key));
+  setText("drillTitle", d.title);
+  document.getElementById("drillBread").innerHTML = d.bread.map(b => `<span>${b}</span>`).join("");
+  document.getElementById("drillDims").innerHTML = d.dims.map(x => `<button class="dim-chip">${x}</button>`).join("");
+  document.getElementById("drillSummary").textContent = d.summary;
+  document.getElementById("drillHead").innerHTML = `<tr>${d.head.map(h => `<th>${h}</th>`).join("")}</tr>`;
+  document.getElementById("drillRows").innerHTML = d.rows().map(row =>
+    `<tr>${row.map((c, i) => {
+      let cls = "";
+      const s = String(c);
+      if (s.includes("-") && /-\d/.test(s) && i > 0 && i < 5) cls = "neg";
+      else if (s.includes("HIGH") || s.includes("立即处置")) cls = "warn";
+      else if (s.includes("+") && /\+\d/.test(s)) cls = "pos";
+      return `<td class="${cls}">${c}</td>`;
+    }).join("")}</tr>`
+  ).join("");
+}
+
+
+const DISCOVERY = {
+  salesflow: {
+    selector: ".gap-tile",
+    title: "销售业务流发现 2 条可下钻报警",
+    text: "订-发供需失衡和收-回回款健康度是当前销售链路的关键落差，可继续下钻到事业部、客户、订单、出库单和应收明细。",
+    bullets: ["订-发：发货高于订单64.62万，需判断是否提前发货、补单滞后或订单口径不一致。", "收-回：收入确认显著高于回款，需下钻客户账龄、逾期天数和回款责任人。"]
+  },
+  assetflow: {
+    selector: ".asset-alert",
+    title: "资产运营流发现 4 条经营关注告警",
+    text: "经营关注告警中的四条均可下钻：关键物料缺口、产线停滞风险、发出未回款风险、6月以上超期库存。",
+    bullets: ["关键物料缺口42个：下钻到物料、供应商、在途量和替代料。", "产线停滞风险DMD 30%：下钻到影响产线、项目、订单和计划恢复时间。", "发出未回款77万：下钻到客户、账龄、合同和销售责任人。", "6月以上超期库存87.49万：下钻到库龄、仓库、物料和处置责任人。"]
+  },
+  command: {
+    selector: ".command-kpi:nth-child(3), .command-kpi:nth-child(4), .load-row.hot",
+    title: "督办令中心发现 3 类闭环风险",
+    text: "当前可下钻的报警集中在待验收、超期和供应链责任负载，适合直接追踪到责任人和任务卡。",
+    bullets: ["待验收5单：检查是否已有方案但未组织验收。", "超期3单：下钻截止时间、责任人和阻塞原因。", "供应链7单且2单超期：关注任务负载是否影响库存与交付。"]
+  },
+  riskmatrix: {
+    selector: ".risk-zone.oper, .risk-zone.tech, .risk-zone.target",
+    title: "风险热力矩阵发现 3 个优先风险区",
+    text: "运营风险、技术产品风险和预测目标风险已达到优先处置阈值，可下钻到责任事业部、客户、产品和影响金额。",
+    bullets: ["运营风险：交付延迟风险敞口4000万，影响和概率均高。", "技术产品风险：研发里程碑延期20天，影响3个大客户项目。", "预测目标风险：第二曲线完成度65%，存在1.5亿目标缺口。"]
+  },
+  reportmgmt: {
+    selector: ".report-issue",
+    title: "报表管理发现 6 类可治理报警",
+    text: "报表管理的报警不是单点指标异常，而是口径、分摊、核对、版本、预测和库存预警的治理事项，均可下钻到规则、报表和责任人。",
+    bullets: ["口径变更28条，仍有6条待确认。", "公共项2123.2万，异常占比12.8%。", "核对差异42.7万，待处理11.3万。", "42张报表已同步39张，仍有3张待同步。", "N+3预测补录占32%，子公司合并成本缺口0.46亿。", "库存HIGH预警21条，不良品17条，待退仓超期9条。"]
+  }
+};
+
+function setupQuadrantControls() {
+  document.querySelectorAll(".problem-card[data-quadrant]").forEach(card => {
+    const key = card.dataset.quadrant;
+    if (!DISCOVERY[key]) return;
+    const top = card.querySelector(".problem-top");
+    const score = card.querySelector(".problem-score");
+    if (!top || top.querySelector(".quadrant-actions")) return;
+    const actions = document.createElement("div");
+    actions.className = "quadrant-actions";
+    actions.innerHTML = `<button class="discover-btn" type="button">问题发现</button>`;
+    top.insertBefore(actions, score);
+    actions.querySelector(".discover-btn").addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      discoverQuadrantIssues(key, card, e.currentTarget);
+    });
+  });
+}
+
+function discoverQuadrantIssues(key, card, button) {
+  const cfg = DISCOVERY[key];
+  if (!cfg) return;
+  if (button?.classList.contains("active")) {
+    card.querySelectorAll(".alarm-highlight").forEach(x => x.classList.remove("alarm-highlight"));
+    card.querySelectorAll(".alarm-callout").forEach(x => x.remove());
+    button.classList.remove("active");
+    return;
+  }
+  document.querySelectorAll(".alarm-highlight").forEach(x => x.classList.remove("alarm-highlight"));
+  document.querySelectorAll(".alarm-callout").forEach(x => x.remove());
+  document.querySelectorAll(".discover-btn.active").forEach(x => x.classList.remove("active"));
+  button?.classList.add("active");
+  const targets = [...card.querySelectorAll(cfg.selector)];
+  targets.forEach(x => x.classList.add("alarm-highlight"));
+  const callout = document.createElement("div");
+  callout.className = "alarm-callout";
+  callout.innerHTML = `<b>${cfg.title}</b><p>${cfg.text}</p><ul>${cfg.bullets.map(x => `<li>${x}</li>`).join("")}</ul>`;
+  const content = card.querySelector(".sales-flow-card, .asset-flow-card, .command-card, .risk-quadrant-card, .report-management-card") || card;
+  content.appendChild(callout);
+  if (DRILLS[card.dataset.topic]) renderDrill(card.dataset.topic);
+  targets[0]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function setAssistantSize(mode) {
+  const modal = document.getElementById("assistantModal");
+  modal.classList.toggle("size-mini", mode === "mini");
+  modal.classList.toggle("size-full", mode === "full");
+  document.getElementById("assistantMini").setAttribute("aria-pressed", mode === "mini" ? "true" : "false");
+  document.getElementById("assistantFull").setAttribute("aria-pressed", mode === "full" ? "true" : "false");
+}
+
+function openAssistant() {
+  const modal = document.getElementById("assistantModal");
+  const frame = document.getElementById("assistantFrame");
+  if (frame && (!frame.src || frame.src === "about:blank" || frame.dataset.loaded !== "1")) {
+    frame.src = "/workbench";
+    frame.dataset.loaded = "1";
+  }
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeAssistant() {
+  const modal = document.getElementById("assistantModal");
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function setupChartTooltips() {
+  const tip = document.getElementById("chartTooltip");
+  if (!tip) return;
+  const move = e => {
+    const pad = 14;
+    const rect = tip.getBoundingClientRect();
+    let x = e.clientX + pad;
+    let y = e.clientY + pad;
+    if (x + rect.width > innerWidth - 8) x = e.clientX - rect.width - pad;
+    if (y + rect.height > innerHeight - 8) y = e.clientY - rect.height - pad;
+    tip.style.left = `${Math.max(8, x)}px`;
+    tip.style.top = `${Math.max(8, y)}px`;
+  };
+  document.addEventListener("pointerover", e => {
+    const target = e.target.closest("[data-tip]");
+    if (!target) return;
+    tip.textContent = target.dataset.tip;
+    tip.style.display = "block";
+    move(e);
+  });
+  document.addEventListener("pointermove", e => {
+    if (tip.style.display === "block") move(e);
+  });
+  document.addEventListener("pointerout", e => {
+    if (!e.target.closest("[data-tip]")) return;
+    const next = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-tip]") : null;
+    if (!next) tip.style.display = "none";
+  });
+}
+
+// ============================================================
+// Init
+// ============================================================
+function init() {
+  drawQuadrants();
+  drawGauges();
+  drawSalesNodeBars();
+  drawAssetStageBars();
+  drawRiskQuadrantMini();
+  drawAging();
+  drawTrend("year");
+  drawRiskList();
+  renderDrill("overview");
+  setupChartTooltips();
+  setupQuadrantControls();
+
+  document.getElementById("assistantOpen").addEventListener("click", openAssistant);
+  document.getElementById("assistantClose").addEventListener("click", closeAssistant);
+  document.getElementById("assistantMini").addEventListener("click", () => {
+    const isMini = document.getElementById("assistantModal").classList.contains("size-mini");
+    setAssistantSize(isMini ? "normal" : "mini");
+  });
+  document.getElementById("assistantFull").addEventListener("click", () => {
+    const isFull = document.getElementById("assistantModal").classList.contains("size-full");
+    setAssistantSize(isFull ? "normal" : "full");
+  });
+  document.getElementById("assistantModal").addEventListener("click", e => {
+    if (e.target.id === "assistantModal") closeAssistant();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeAssistant();
+  });
+  ["salesTimeFilter", "salesRegionFilter", "salesScopeFilter"].forEach(id => {
+    document.getElementById(id)?.addEventListener("change", drawSalesNodeBars);
+  });
+  document.getElementById("assetCategoryFilter")?.addEventListener("change", drawAssetStageBars);
+
+  // Topic clicks (event delegation)
+  document.body.addEventListener("click", (e) => {
+    const drillLink = e.target.closest("[data-drill-href]");
+    if (drillLink) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.location.href = drillLink.dataset.drillHref;
+      return;
+    }
+    const dim = e.target.closest("[data-qdim]");
+    if (dim) {
+      e.preventDefault();
+      e.stopPropagation();
+      const [group, value] = dim.dataset.qdim.split(":");
+      document.querySelectorAll(`[data-qgroup="${group}"] [data-qdim]`).forEach(x => x.classList.toggle("active", x === dim));
+      drawQuadrantDiagram(group, value);
+      return;
+    }
+    if (e.target.closest(".problem-card.sales-expanded .sales-flow-card")) {
+      e.stopPropagation();
+      return;
+    }
+    if (e.target.closest(".problem-card.asset-expanded .asset-flow-card")) {
+      e.stopPropagation();
+      return;
+    }
+    if (e.target.closest(".problem-card.command-expanded .command-card")) {
+      e.stopPropagation();
+      return;
+    }
+    if (e.target.closest(".problem-card.risk-expanded .risk-quadrant-card")) {
+      e.stopPropagation();
+      return;
+    }
+    const node = e.target.closest("[data-topic]");
+    if (!node) return;
+    if (node.classList.contains("problem-card")) return;
+    if (DRILLS[node.dataset.topic]) {
+      e.stopPropagation();
+      renderDrill(node.dataset.topic);
+      document.querySelector(".drill").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  });
+
+  // Trend tabs
+  document.querySelectorAll(".trend-tab").forEach(t => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".trend-tab").forEach(x => x.classList.toggle("active", x === t));
+      drawTrend(t.dataset.tab);
+    });
+  });
+
+  // Window resize
+  window.addEventListener("resize", () => {
+    document.querySelectorAll("[data-qgroup]").forEach(group => {
+      const active = group.querySelector("[data-qdim].active");
+      if (active) {
+        const [g, v] = active.dataset.qdim.split(":");
+        drawQuadrantDiagram(g, v);
+      }
+    });
+    drawAging();
+    drawTrend(document.querySelector(".trend-tab.active").dataset.tab);
+  });
+}
+
+window.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>

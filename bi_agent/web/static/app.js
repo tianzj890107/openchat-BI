@@ -1680,6 +1680,18 @@ welcome: ${esc(a.welcome_message || "")}</div>
         });
         if (evt.text) pushConclusionIfAny(evt.text);
         break;
+      case "render_enforce": {
+        finalizeAssistantText();
+        const reasons = (evt.reasons || []).join(" / ") || "缺少表格 / 图表卡片";
+        const tip = el_h("div", "msg msg-system msg-enforce",
+          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-yellow,#eab308); border-color: var(--accent-yellow,#eab308);">SYSTEM · 强制渲染</span></div>
+           <div class="msg-body" style="color: var(--text-1); border-left: 2px solid var(--accent-yellow,#eab308); padding-left: 10px;">
+             检测到本轮${esc(reasons)}却未调用渲染工具,已注入提醒,要求模型补一次 <code>TableGenerate</code>(必要时再加 <code>ChartGenerate</code>)。
+           </div>`);
+        el.chatScroll.appendChild(tip);
+        el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
+        break;
+      }
       case "done":
         setBusy(false);
         break;

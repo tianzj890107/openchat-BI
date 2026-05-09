@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>资产运营 · 6月以上超期库存下钻</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg0:#0f1724;--bg1:#172234;--bg2:#202d42;--bg3:#2a3a53;--line:#34465f;--text0:#eef3f8;--text1:#c9d4e1;--text2:#94a3b8;--accent:#7da5c9;--green:#10b981;--orange:#d59a42;--red:#f87171;--yellow:#eab308}
+body{min-height:100vh;background:var(--bg0);color:var(--text0);font-family:"PingFang SC","Microsoft YaHei","Segoe UI",Arial,sans-serif;font-size:14px}
+.page{padding:18px 22px 28px;display:grid;gap:16px}
+.top{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:14px}
+.brand h1{font-size:23px;font-weight:650}.brand p{margin-top:6px;color:var(--text2);font-size:13px}
+.back{height:34px;padding:0 14px;border:1px solid var(--line);border-radius:6px;background:var(--bg2);color:var(--text1);text-decoration:none;display:inline-flex;align-items:center}.back:hover{border-color:var(--accent);color:var(--accent)}
+.hero{display:grid;grid-template-columns:1fr 1.1fr;gap:14px}
+.panel{min-width:0;background:var(--bg1);border:1px solid var(--line);border-radius:12px;padding:16px}
+.summary{display:grid;gap:14px}.eyebrow{color:var(--accent);font-size:13px}.summary h2{font-size:27px;line-height:1.22}.summary p{color:var(--text1);line-height:1.7}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.kpi{background:var(--bg2);border-radius:8px;padding:12px}.kpi b{display:block;font-size:22px}.kpi span{display:block;margin-top:5px;color:var(--text2);font-size:12px}
+.controls{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}.control-group{display:flex;gap:8px;align-items:center;color:var(--text2);font-size:12px}
+select{height:32px;border:1px solid var(--line);border-radius:7px;background:var(--bg2);color:var(--text0);padding:0 10px;outline:none}
+select:focus{border-color:var(--accent)}
+.chart{height:330px;background:rgba(0,0,0,.14);border-radius:10px;padding:10px}.chart svg{width:100%;height:100%;display:block}.chart text{fill:var(--text1);font-size:12px}.grid{stroke:var(--line);stroke-dasharray:2,3}.axis{stroke:#667893}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--text2);font-size:12px;margin-top:8px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px}.section-head h3{font-size:16px}.section-head span{color:var(--text2);font-size:12px}
+.table-wrap{max-width:100%;overflow:auto;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;min-width:1180px}th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{background:var(--bg2);color:var(--text1);font-weight:600;font-size:12px;position:sticky;top:0}td{color:var(--text0);font-size:13px}tr:hover td{background:rgba(255,255,255,.035)}
+.tag{display:inline-flex;padding:3px 8px;border-radius:999px;border:1px solid var(--line);font-size:11px;color:var(--text1)}.tag.hot{border-color:rgba(248,113,113,.5);background:rgba(248,113,113,.1);color:var(--red)}.tag.warn{border-color:rgba(213,154,66,.55);background:rgba(213,154,66,.1);color:var(--orange)}
+.note{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;padding:11px 13px;border:1px solid rgba(213,154,66,.42);border-left:4px solid var(--orange);border-radius:10px;background:rgba(213,154,66,.08);color:var(--text1);line-height:1.6}.note i{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:rgba(213,154,66,.18);color:var(--orange);font-style:normal;font-weight:700}.note b{color:var(--orange)}
+.assistant-float{position:fixed;right:22px;bottom:22px;z-index:20;height:42px;padding:0 16px;display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(125,165,201,.58);border-radius:999px;background:rgba(23,34,52,.94);color:var(--text0);box-shadow:0 10px 26px rgba(0,0,0,.32);cursor:pointer}
+.assistant-float::before{content:"AI";color:var(--green);font-weight:700}
+.assistant-modal{position:fixed;inset:0;z-index:40;display:none;align-items:stretch;justify-content:flex-end;padding:24px;background:rgba(5,10,18,.46);backdrop-filter:blur(3px)}
+.assistant-modal.open{display:flex}
+.assistant-dialog{width:min(1280px,calc(100vw - 48px));height:calc(100vh - 48px);display:grid;grid-template-rows:auto 1fr;border:1px solid rgba(125,165,201,.48);border-radius:12px;background:linear-gradient(180deg,rgba(23,34,52,.98),rgba(15,23,36,.98));box-shadow:0 22px 60px rgba(0,0,0,.48);overflow:hidden}
+.assistant-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line)}.assistant-head b{font-size:16px}.assistant-head span{display:block;margin-top:4px;color:var(--text2);font-size:12px}
+.assistant-close,.assistant-mini,.assistant-full{width:30px;height:30px;border:1px solid var(--line);border-radius:6px;background:var(--bg2);color:var(--text1);cursor:pointer;font-size:15px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+.assistant-close:hover,.assistant-mini:hover,.assistant-full:hover{border-color:var(--accent);color:var(--accent)}
+.assistant-mini[aria-pressed="true"],.assistant-full[aria-pressed="true"]{border-color:var(--accent);color:var(--accent);background:rgba(125,165,201,.14)}
+.assistant-head-actions{display:flex;gap:8px;align-items:center}
+.assistant-modal.size-full{padding:0}
+.assistant-modal.size-full .assistant-dialog{width:100vw;height:100vh;border-radius:0;border-width:0}
+.assistant-modal.size-mini{padding:16px;align-items:flex-end;background:transparent;backdrop-filter:none;pointer-events:none}
+.assistant-modal.size-mini .assistant-dialog{pointer-events:auto;width:min(520px,calc(100vw - 32px));height:min(640px,calc(100vh - 32px))}
+.assistant-frame{width:100%;height:100%;border:0;display:block;background:var(--bg1)}
+@media(max-width:1100px){.hero,.kpis{grid-template-columns:1fr}.top,.controls,.section-head{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="top">
+    <div class="brand">
+      <h1>6月以上超期库存下钻 · 采购库存实例</h1>
+      <p>资产运营象限 / 经营关注告警 / 超期库存组件下钻</p>
+    </div>
+    <a class="back" href="/">返回CEO驾驶舱</a>
+  </header>
+
+  <section class="hero">
+    <div class="panel summary">
+      <div class="eyebrow">采购库存 · 原料超期 · 6个月以上</div>
+      <h2>先看采购库存中的原材料超期占用，再定位品类和物料明细</h2>
+      <p>当前默认口径为采购库存，即原料采购入库后超过180天仍未消耗、未退供、未改用的库存。页面支持切换库存类型，并按品类筛选明细表，帮助从报警金额进入具体物料、批次、供应商和责任人。</p>
+      <div class="kpis">
+        <div class="kpi"><b id="kpiAmt">0万</b><span>筛选后超期金额</span></div>
+        <div class="kpi"><b id="kpiRows">0条</b><span>超期库存行</span></div>
+        <div class="kpi"><b id="kpiDays">0天</b><span>平均库龄</span></div>
+        <div class="kpi"><b id="kpiHigh">0条</b><span>HIGH预警</span></div>
+      </div>
+      <div class="note"><i>!</i><div><b>下钻判断：</b>金额大、库龄长且供应商处理建议不明确的物料，应优先进入采购责任人和订单占用链路，确认退供、改用、替代料或跌价处理。</div></div>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <div class="control-group">
+          <span>库存类型</span>
+          <select id="stockType"></select>
+        </div>
+        <div class="control-group">
+          <span>表格品类</span>
+          <select id="category"></select>
+        </div>
+      </div>
+      <div class="chart" id="chart"></div>
+      <div class="legend"><span><i style="background:var(--red)"></i>HIGH</span><span><i style="background:var(--orange)"></i>MEDIUM</span><span><i style="background:var(--accent)"></i>LOW</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="section-head">
+      <h3>超期库存行明细</h3>
+      <span id="tableHint">按当前库存类型与品类筛选</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>物料编码</th><th>物料名称</th><th>库存类型</th><th>品类</th><th>仓库</th><th>批次</th><th>入库日期</th><th>库龄</th><th>数量</th><th>金额(万)</th><th>预警</th><th>采购订单</th><th>供应商</th><th>责任人</th><th>处理建议</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<button class="assistant-float" id="assistantOpen" type="button">AI助手</button>
+<div class="assistant-modal" id="assistantModal" aria-hidden="true">
+  <section class="assistant-dialog" role="dialog" aria-modal="true" aria-labelledby="assistantTitle">
+    <div class="assistant-head">
+      <div>
+        <b id="assistantTitle">智能分析 · 报表分析</b>
+        <span>BI 工作台已嵌入,可在此进行数据问答与报表解读</span>
+      </div>
+      <div class="assistant-head-actions">
+        <button class="assistant-mini" id="assistantMini" type="button" aria-pressed="false" title="缩小为右下角悬浮窗">⊟</button>
+        <button class="assistant-full" id="assistantFull" type="button" aria-pressed="false" title="全屏">⛶</button>
+        <button class="assistant-close" id="assistantClose" type="button" aria-label="收起" title="收起">×</button>
+      </div>
+    </div>
+    <iframe class="assistant-frame" id="assistantFrame" title="BI 工作台" src="about:blank" loading="lazy"></iframe>
+  </section>
+</div>
+
+<script>
+const rows = [
+  ["MAT-PUR-014","DMD芯片载板","采购库存","电子件","原材料一仓","B2024-011","2024-01-16",842,1280,18.72,"HIGH","PO-2024-0048","华南精密电子","采购一部-李敏","确认替代料并释放冻结订单占用"],
+  ["MAT-PUR-031","激光模组陶瓷座","采购库存","镜片/陶瓷","原材料二仓","B2024-036","2024-03-08",790,640,12.86,"HIGH","PO-2024-0091","景瓷科技","采购二部-周航","供应商退换货谈判"],
+  ["MAT-PUR-046","光机金属支架","采购库存","金属件","结构件仓","B2024-052","2024-04-21",746,2100,10.48,"MEDIUM","PO-2024-0137","东莞鑫和","采购三部-陈卓","评估改用到车载项目"],
+  ["MAT-PUR-052","散热铝基板","采购库存","板卡类","电子料仓","B2024-060","2024-05-10",727,980,9.64,"MEDIUM","PO-2024-0168","深联板业","采购一部-李敏","按新版本BOM核销"],
+  ["MAT-PUR-066","塑料外壳半成品料","采购库存","塑料件","塑料件仓","B2024-074","2024-06-02",704,3600,8.97,"MEDIUM","PO-2024-0192","明辉塑胶","采购三部-陈卓","冻结新增采购并做跌价测试"],
+  ["MAT-PUR-077","闪光灯罩毛坯","采购库存","闪光灯罩","原材料三仓","B2024-088","2024-06-23",683,1450,7.81,"LOW","PO-2024-0215","光盛材料","采购二部-周航","转入售后备件需求"],
+  ["MAT-PUR-082","检测治具探针","采购库存","检测类","工装仓","B2024-102","2024-07-04",672,540,6.58,"LOW","PO-2024-0244","联测仪器","制造工程-王楠","匹配维修工单消耗"],
+  ["MAT-PUR-095","高透镜片","采购库存","镜片/陶瓷","光学料仓","B2024-117","2024-07-22",654,310,5.94,"HIGH","PO-2024-0262","皓光光学","采购二部-周航","客户项目取消，发起退供"],
+  ["MAT-WIP-018","光机装配半成品","在制库存","光机组件","在制品仓","W2024-041","2024-04-12",755,220,6.12,"MEDIUM","MO-2024-055","内部制造","制造一部-赵岩","按排产计划重排"],
+  ["MAT-FG-033","车载投影成品","成品库存","车载整机","成品仓","F2024-019","2024-05-18",719,42,11.36,"HIGH","SO-2024-078","内部成品","销售运营-刘佳","核对客户交付窗口"],
+  ["MAT-SP-009","备品备件镜头组","备品备件","镜片/陶瓷","备件仓","S2024-026","2024-02-26",801,96,4.73,"LOW","PO-2024-0062","皓光光学","售后运营-何静","按售后预测分批消耗"]
+];
+const typeOrder = ["采购库存","在制库存","成品库存","备品备件","全部库存"];
+const colors = {HIGH:"var(--red)", MEDIUM:"var(--orange)", LOW:"var(--accent)"};
+const stockType = document.getElementById("stockType");
+const category = document.getElementById("category");
+stockType.innerHTML = typeOrder.map(x => `<option value="${x}" ${x==="采购库存"?"selected":""}>${x}</option>`).join("");
+
+function baseRows() {
+  const t = stockType.value;
+  return rows.filter(r => t === "全部库存" || r[2] === t);
+}
+function tableRows() {
+  const c = category.value;
+  return baseRows().filter(r => c === "全部品类" || r[3] === c);
+}
+function refreshCategories() {
+  const current = category.value || "全部品类";
+  const cats = ["全部品类", ...new Set(baseRows().map(r => r[3]))];
+  category.innerHTML = cats.map(x => `<option value="${x}">${x}</option>`).join("");
+  category.value = cats.includes(current) ? current : "全部品类";
+}
+function drawChart(data) {
+  const grouped = {};
+  data.forEach(r => {
+    grouped[r[3]] ||= {amount:0, level:"LOW"};
+    grouped[r[3]].amount += r[9];
+    if (r[10] === "HIGH") grouped[r[3]].level = "HIGH";
+    else if (r[10] === "MEDIUM" && grouped[r[3]].level !== "HIGH") grouped[r[3]].level = "MEDIUM";
+  });
+  const items = Object.entries(grouped).map(([name,v]) => ({name, ...v})).sort((a,b)=>b.amount-a.amount);
+  const max = Math.max(...items.map(x => x.amount), 1);
+  const bars = items.map((d,i) => {
+    const x = 54 + i * 72;
+    const h = d.amount / max * 210;
+    const y = 250 - h;
+    return `<rect x="${x}" y="${y}" width="38" height="${h}" rx="5" fill="${colors[d.level]}"/><text x="${x+19}" y="${y-8}" text-anchor="middle">${d.amount.toFixed(1)}</text><text x="${x+19}" y="276" text-anchor="middle">${d.name}</text>`;
+  }).join("");
+  chart.innerHTML = `<svg viewBox="0 0 640 300" preserveAspectRatio="none"><line x1="38" y1="250" x2="620" y2="250" class="axis"/><line x1="38" y1="40" x2="38" y2="250" class="axis"/><line x1="38" y1="145" x2="620" y2="145" class="grid"/><text x="18" y="45">万元</text>${bars}</svg>`;
+}
+function render() {
+  refreshCategories();
+  const data = tableRows();
+  const amount = data.reduce((s,r)=>s+r[9],0);
+  const avgDays = data.length ? Math.round(data.reduce((s,r)=>s+r[7],0)/data.length) : 0;
+  kpiAmt.textContent = amount.toFixed(2) + "万";
+  kpiRows.textContent = data.length + "条";
+  kpiDays.textContent = avgDays + "天";
+  kpiHigh.textContent = data.filter(r => r[10] === "HIGH").length + "条";
+  tableHint.textContent = `${stockType.value} / ${category.value} / ${data.length}条`;
+  drawChart(baseRows());
+  tbody.innerHTML = data.map(r => `<tr>${r.map((c,i) => i===10 ? `<td><span class="tag ${c==="HIGH"?"hot":c==="MEDIUM"?"warn":""}">${c}</span></td>` : `<td>${c}</td>`).join("")}</tr>`).join("");
+}
+function setAssistantSize(mode) {
+  assistantModal.classList.toggle("size-mini", mode === "mini");
+  assistantModal.classList.toggle("size-full", mode === "full");
+  assistantMini.setAttribute("aria-pressed", mode === "mini" ? "true" : "false");
+  assistantFull.setAttribute("aria-pressed", mode === "full" ? "true" : "false");
+}
+function openAssistant() {
+  const frame = document.getElementById("assistantFrame");
+  if (frame && (!frame.src || frame.src === "about:blank" || frame.dataset.loaded !== "1")) {
+    frame.src = "/workbench";
+    frame.dataset.loaded = "1";
+  }
+  assistantModal.classList.add("open");
+  assistantModal.setAttribute("aria-hidden","false");
+}
+function closeAssistant() {
+  assistantModal.classList.remove("open");
+  assistantModal.setAttribute("aria-hidden","true");
+}
+stockType.addEventListener("change", render);
+category.addEventListener("change", render);
+assistantOpen.addEventListener("click", openAssistant);
+assistantClose.addEventListener("click", closeAssistant);
+assistantMini.addEventListener("click", () => setAssistantSize(assistantModal.classList.contains("size-mini") ? "normal" : "mini"));
+assistantFull.addEventListener("click", () => setAssistantSize(assistantModal.classList.contains("size-full") ? "normal" : "full"));
+assistantModal.addEventListener("click", e => { if (e.target.id === "assistantModal") closeAssistant(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeAssistant(); });
+render();
+</script>
+</body>
+</html>

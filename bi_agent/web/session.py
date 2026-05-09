@@ -43,6 +43,23 @@ from ..tools.table_tools import extract_table_spec
 
 ENTITY_CODE_RE = re.compile(r"\b(?:T\d{6}|BO\d{4}|LE\d{5}|AT\d{5}|ER\d{3}|M\d{3}|A\d{3}|R\d{3})\b")
 
+# --- Render-tool enforcement ----------------------------------------------
+# Tools whose output produces a dashboard card. If a turn contains
+# SQL/data fetch but no render tool — or the assistant typed a Markdown
+# table into the chat — we re-prompt the model to call TableGenerate.
+RENDER_TOOLS = {"TableGenerate", "ChartGenerate", "ChartGenerateMultiDim"}
+DATA_FETCH_TOOLS = {"SQLRun"}
+
+# Matches a Markdown table separator row, e.g. "| --- | :---: | ---: |"
+_MD_TABLE_SEP_RE = re.compile(
+    r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$",
+    re.MULTILINE,
+)
+
+
+def _has_markdown_table(text: str) -> bool:
+    return bool(text) and bool(_MD_TABLE_SEP_RE.search(text))
+
 
 class WebSession:
     """One browser session = one Conversation + one event stream."""
@@ -193,6 +210,11 @@ class WebSession:
 
     def _run_loop(self) -> Generator[dict[str, Any], None, None]:
         stop_reason = "end_turn"
+        # Per-turn render-enforcement bookkeeping
+        called_tools_this_turn: set[str] = set()
+        text_concat_this_turn: str = ""
+        enforced_render: bool = False
+
         for iteration in range(self.max_iterations):
             yield {"type": "iteration_start", "iteration": iteration}
 
@@ -239,7 +261,60 @@ class WebSession:
             if content:
                 self.messages.append({"role": "assistant", "content": content})
 
+            # Track this iteration's tool calls + text for render enforcement
+            for tu in tool_uses:
+                called_tools_this_turn.add(tu["name"])
+            if text_buffer:
+                text_concat_this_turn += "\n" + text_buffer
+
             if stop_reason != "tool_use" or not tool_uses:
+                # ---- Render enforcement ------------------------------------
+                # Trigger when the agent fetched data (SQLRun) or wrote a
+                # Markdown table into the chat, but never called any of the
+                # rendering tools. Inject one corrective user message and
+                # re-prompt; only fires once per turn to avoid loops.
+                allowed = set(self.allowed_tools or [])
+                has_render_tool_available = bool(allowed & RENDER_TOOLS)
+                fetched_data = bool(called_tools_this_turn & DATA_FETCH_TOOLS)
+                wrote_md_table = _has_markdown_table(text_concat_this_turn)
+                rendered = bool(called_tools_this_turn & RENDER_TOOLS)
+
+                if (
+                    not enforced_render
+                    and has_render_tool_available
+                    and (fetched_data or wrote_md_table)
+                    and not rendered
+                ):
+                    enforced_render = True
+                    reasons: list[str] = []
+                    if fetched_data:
+                        reasons.append("已经执行了 `SQLRun` 取数")
+                    if wrote_md_table:
+                        reasons.append("回复正文里直接写了 Markdown 表格")
+                    reason_text = "且".join(reasons)
+                    reminder = (
+                        "⚠️ **强制纪律检查 · 渲染工具未调用**\n\n"
+                        f"你这一轮{reason_text},但**没有调用** `TableGenerate` / "
+                        "`ChartGenerate` / `ChartGenerateMultiDim`,看板和对话里都不会出现"
+                        "结构化卡片,直接违反 SOP。\n\n"
+                        "**现在立刻补做**:\n"
+                        "1. 调用 **`TableGenerate`** 把核心数据渲染成表格卡片"
+                        "(必须;列名、数据行、可选 footer 都给齐,不要再粘 Markdown 表)。\n"
+                        "2. 如果数据有时间趋势 / 维度对比意义,在表格之后再追加一次 "
+                        "**`ChartGenerate`** 渲染折线 / 柱状 / 饼图。\n"
+                        "3. 渲染完成后用 1~2 句话给结论,不要复述表格里已经有的数字。\n\n"
+                        "⚠️ 不要再用纯文本或 Markdown 表代替工具调用。"
+                    )
+                    self.messages.append({"role": "user", "content": reminder})
+                    yield {
+                        "type": "render_enforce",
+                        "iteration": iteration,
+                        "reasons": reasons,
+                        "called_tools": sorted(called_tools_this_turn),
+                        "message": reminder,
+                    }
+                    continue  # re-prompt LLM with the reminder appended
+
                 break
 
             # If any tool_use is AskUser, run the siblings now (if any) and

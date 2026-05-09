@@ -144,8 +144,30 @@ class ConfigUpdate(BaseModel):
     deepseek_api_key: Optional[str] = None
 
 
+def _project_root() -> Path:
+    # Prefer the cwd configured at startup; fall back to repo root inferred from this file.
+    if STATE.cwd:
+        return Path(STATE.cwd)
+    return Path(__file__).resolve().parents[2]
+
+
 @app.get("/")
 def index() -> FileResponse:
+    # Project main page: the CEO cockpit. The BI workbench lives at /workbench
+    # and is embedded as an iframe inside the cockpit's AI-assistant panel.
+    page = _project_root() / "ceo_cockpit.html"
+    if page.exists():
+        return FileResponse(page)
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/asset_overdue_inventory.html")
+def asset_overdue_inventory_page() -> FileResponse:
+    return FileResponse(_project_root() / "asset_overdue_inventory.html")
+
+
+@app.get("/workbench")
+def workbench() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
