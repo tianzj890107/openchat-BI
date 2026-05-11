@@ -168,6 +168,17 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _no_cache_file(path: Path) -> FileResponse:
+    return FileResponse(
+        path,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
 @app.get("/")
 def index() -> FileResponse:
     # Project main page: the standalone CEO dashboard (entry). The detailed
@@ -175,11 +186,11 @@ def index() -> FileResponse:
     # /workbench and is embedded as an iframe inside the floating AI assistant.
     page = _project_root() / "ceo_dashboard_standalone.html"
     if page.exists():
-        return FileResponse(page)
+        return _no_cache_file(page)
     fallback = _project_root() / "ceo_cockpit.html"
     if fallback.exists():
-        return FileResponse(fallback)
-    return FileResponse(STATIC_DIR / "index.html")
+        return _no_cache_file(fallback)
+    return _no_cache_file(STATIC_DIR / "index.html")
 
 
 @app.get("/ceo_cockpit.html")
@@ -194,7 +205,7 @@ def asset_overdue_inventory_page() -> FileResponse:
 
 @app.get("/workbench")
 def workbench() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    return _no_cache_file(STATIC_DIR / "index.html")
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

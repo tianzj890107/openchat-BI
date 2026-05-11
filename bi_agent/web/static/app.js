@@ -2506,6 +2506,17 @@ welcome: ${esc(a.welcome_message || "")}</div>
   });
 
   // ------------------------------------------------------------------
+  // Cross-frame: parent shell (CEO dashboard) sends `{type:"toggleSettings",
+  // visible: bool}` to show/hide the MODEL/RESET/DASH/PANEL row.
+  // ------------------------------------------------------------------
+  window.addEventListener("message", (e) => {
+    const msg = e && e.data;
+    if (!msg || typeof msg !== "object" || msg.type !== "toggleSettings") return;
+    const hidden = msg.visible === false;
+    document.body.classList.toggle("settings-hidden", hidden);
+  });
+
+  // ------------------------------------------------------------------
   // Boot
   // ------------------------------------------------------------------
   loadMeta();

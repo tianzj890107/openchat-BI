@@ -48,7 +48,7 @@ table{width:100%;border-collapse:collapse;min-width:1180px}th,td{padding:10px 12
 <main class="page">
   <header class="top">
     <div class="brand">
-      <h1>6月以上超期库存下钻 · 采购库存实例</h1>
+      <h1>6月以上超期库存下钻 · 数据库明细</h1>
       <p>资产运营象限 / 经营关注告警 / 超期库存组件下钻</p>
     </div>
     <a class="back" href="/ceo_cockpit.html">返回CEO驾驶舱</a>
@@ -56,9 +56,9 @@ table{width:100%;border-collapse:collapse;min-width:1180px}th,td{padding:10px 12
 
   <section class="hero">
     <div class="panel summary">
-      <div class="eyebrow">采购库存 · 原料超期 · 6个月以上</div>
-      <h2>先看采购库存中的原材料超期占用，再定位品类和物料明细</h2>
-      <p>当前默认口径为采购库存，即原料采购入库后超过180天仍未消耗、未退供、未改用的库存。页面支持切换库存类型，并按品类筛选明细表，帮助从报警金额进入具体物料、批次、供应商和责任人。</p>
+      <div class="eyebrow">全库存 · 呆滞/超储 · 6个月以上</div>
+      <h2>按数据库真实超期明细定位库存段、品类和物料</h2>
+      <p>当前口径来自 T_STK_SlowMoving：FAgeDays ≥ 180 的呆滞、超储、近呆滞库存。当前数据库共 49 条，金额 202.16 万，HIGH 预警 12 条。页面支持按库存段与品类筛选，金额、数量、库龄和预警等级均直接取自 guangfeng.db。</p>
       <div class="kpis">
         <div class="kpi"><b id="kpiAmt">0万</b><span>筛选后超期金额</span></div>
         <div class="kpi"><b id="kpiRows">0条</b><span>超期库存行</span></div>
@@ -92,7 +92,7 @@ table{width:100%;border-collapse:collapse;min-width:1180px}th,td{padding:10px 12
       <table>
         <thead>
           <tr>
-            <th>物料编码</th><th>物料名称</th><th>库存类型</th><th>品类</th><th>仓库</th><th>批次</th><th>入库日期</th><th>库龄</th><th>数量</th><th>金额(万)</th><th>预警</th><th>采购订单</th><th>供应商</th><th>责任人</th><th>处理建议</th>
+            <th>物料编码</th><th>物料名称</th><th>库存段</th><th>品类</th><th>库存组织</th><th>期间</th><th>处置截止日</th><th>库龄</th><th>数量</th><th>金额(万)</th><th>预警</th><th>状态类型</th><th>责任组织</th><th>库存组织</th><th>处理建议</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -120,24 +120,12 @@ table{width:100%;border-collapse:collapse;min-width:1180px}th,td{padding:10px 12
 </div>
 
 <script>
-const rows = [
-  ["MAT-PUR-014","DMD芯片载板","采购库存","电子件","原材料一仓","B2024-011","2024-01-16",842,1280,18.72,"HIGH","PO-2024-0048","华南精密电子","采购一部-李敏","确认替代料并释放冻结订单占用"],
-  ["MAT-PUR-031","激光模组陶瓷座","采购库存","镜片/陶瓷","原材料二仓","B2024-036","2024-03-08",790,640,12.86,"HIGH","PO-2024-0091","景瓷科技","采购二部-周航","供应商退换货谈判"],
-  ["MAT-PUR-046","光机金属支架","采购库存","金属件","结构件仓","B2024-052","2024-04-21",746,2100,10.48,"MEDIUM","PO-2024-0137","东莞鑫和","采购三部-陈卓","评估改用到车载项目"],
-  ["MAT-PUR-052","散热铝基板","采购库存","板卡类","电子料仓","B2024-060","2024-05-10",727,980,9.64,"MEDIUM","PO-2024-0168","深联板业","采购一部-李敏","按新版本BOM核销"],
-  ["MAT-PUR-066","塑料外壳半成品料","采购库存","塑料件","塑料件仓","B2024-074","2024-06-02",704,3600,8.97,"MEDIUM","PO-2024-0192","明辉塑胶","采购三部-陈卓","冻结新增采购并做跌价测试"],
-  ["MAT-PUR-077","闪光灯罩毛坯","采购库存","闪光灯罩","原材料三仓","B2024-088","2024-06-23",683,1450,7.81,"LOW","PO-2024-0215","光盛材料","采购二部-周航","转入售后备件需求"],
-  ["MAT-PUR-082","检测治具探针","采购库存","检测类","工装仓","B2024-102","2024-07-04",672,540,6.58,"LOW","PO-2024-0244","联测仪器","制造工程-王楠","匹配维修工单消耗"],
-  ["MAT-PUR-095","高透镜片","采购库存","镜片/陶瓷","光学料仓","B2024-117","2024-07-22",654,310,5.94,"HIGH","PO-2024-0262","皓光光学","采购二部-周航","客户项目取消，发起退供"],
-  ["MAT-WIP-018","光机装配半成品","在制库存","光机组件","在制品仓","W2024-041","2024-04-12",755,220,6.12,"MEDIUM","MO-2024-055","内部制造","制造一部-赵岩","按排产计划重排"],
-  ["MAT-FG-033","车载投影成品","成品库存","车载整机","成品仓","F2024-019","2024-05-18",719,42,11.36,"HIGH","SO-2024-078","内部成品","销售运营-刘佳","核对客户交付窗口"],
-  ["MAT-SP-009","备品备件镜头组","备品备件","镜片/陶瓷","备件仓","S2024-026","2024-02-26",801,96,4.73,"LOW","PO-2024-0062","皓光光学","售后运营-何静","按售后预测分批消耗"]
-];
-const typeOrder = ["采购库存","在制库存","成品库存","备品备件","全部库存"];
+const rows = [["MAT006","Material-006","成品","板卡类","ORG031","PER202604","2026-04-19",298,647,12.36,"HIGH","SLOW","ORG031","ORG031","立即处置并计提跌价"],["MAT070","Material-070","原材料","塑料件","ORG051","PER202604","2026-04-15",356,682,10.1,"HIGH","NEAR_SLOW","ORG051","ORG051","立即处置并计提跌价"],["MAT026","Material-026","办公用品","检测类","ORG031","PER202604","2026-04-23",305,519,10.06,"MEDIUM","NEAR_SLOW","ORG031","ORG031","限期处置/复核需求"],["MAT015","Material-015","成品","闪光灯罩","ORG076","PER202604","2026-04-18",184,593,9.24,"MEDIUM","EXCESS","ORG076","ORG076","限期处置/复核需求"],["MAT021","Material-021","成品","塑料件","ORG006","PER202604","2026-04-08",278,415,8.92,"HIGH","SLOW","ORG006","ORG006","立即处置并计提跌价"],["MAT047","Material-047","办公用品","检测类","ORG036","PER202604","2026-04-02",278,402,8.29,"LOW","SLOW","ORG036","ORG036","跟踪消耗计划"],["MAT036","Material-036","成品","闪光灯罩","ORG081","PER202604","2026-04-25",223,505,7.83,"MEDIUM","NEAR_SLOW","ORG081","ORG081","限期处置/复核需求"],["MAT008","Material-008","办公用品","闪光灯罩","ORG041","PER202604","2026-04-25",184,652,7.27,"HIGH","SLOW","ORG041","ORG041","立即处置并计提跌价"],["MAT040","Material-040","原材料","检测类","ORG001","PER202604","2026-04-09",212,317,6.88,"MEDIUM","SLOW","ORG001","ORG001","限期处置/复核需求"],["MAT065","Material-065","办公用品","金属件","ORG026","PER202604","2026-04-28",227,558,6.79,"MEDIUM","SLOW","ORG026","ORG026","限期处置/复核需求"],["MAT063","Material-063","成品","塑料件","ORG016","PER202604","2026-04-22",353,680,6.7,"MEDIUM","NEAR_SLOW","ORG016","ORG016","限期处置/复核需求"],["MAT025","Material-025","原材料","电子件","ORG026","PER202604","2026-04-20",331,379,6.24,"HIGH","SLOW","ORG026","ORG026","立即处置并计提跌价"],["MAT009","Material-009","成品","金属件","ORG046","PER202604","2026-04-28",284,614,6.23,"HIGH","SLOW","ORG046","ORG046","立即处置并计提跌价"],["MAT032","Material-032","办公用品","电子件","ORG061","PER202604","2026-04-13",329,526,6.02,"MEDIUM","NEAR_SLOW","ORG061","ORG061","限期处置/复核需求"],["MAT027","Material-027","成品","板卡类","ORG036","PER202604","2026-04-26",258,316,5.82,"LOW","EXCESS","ORG036","ORG036","跟踪消耗计划"],["MAT017","Material-017","办公用品","镜片/陶瓷","ORG086","PER202604","2026-04-24",262,503,5.73,"MEDIUM","EXCESS","ORG086","ORG086","限期处置/复核需求"],["MAT028","Material-028","原材料","塑料件","ORG041","PER202604","2026-04-01",296,402,5.13,"HIGH","SLOW","ORG041","ORG041","立即处置并计提跌价"],["MAT053","Material-053","办公用品","电子件","ORG066","PER202604","2026-04-20",252,334,4.94,"MEDIUM","EXCESS","ORG066","ORG066","限期处置/复核需求"],["MAT022","Material-022","原材料","闪光灯罩","ORG011","PER202604","2026-04-11",200,290,4.91,"MEDIUM","SLOW","ORG011","ORG011","限期处置/复核需求"],["MAT013","Material-013","原材料","板卡类","ORG066","PER202604","2026-04-12",272,499,4.28,"MEDIUM","SLOW","ORG066","ORG066","限期处置/复核需求"],["MAT005","Material-005","办公用品","检测类","ORG026","PER202604","2026-04-16",249,617,4.13,"LOW","EXCESS","ORG026","ORG026","跟踪消耗计划"],["MAT059","Material-059","办公用品","镜片/陶瓷","ORG096","PER202604","2026-04-10",243,389,4.11,"LOW","SLOW","ORG096","ORG096","跟踪消耗计划"],["MAT001","Material-001","原材料","闪光灯罩","ORG006","PER202604","2026-04-04",232,529,4.11,"MEDIUM","EXCESS","ORG006","ORG006","限期处置/复核需求"],["MAT033","Material-033","成品","检测类","ORG066","PER202604","2026-04-16",213,234,3.98,"MEDIUM","SLOW","ORG066","ORG066","限期处置/复核需求"],["MAT042","Material-042","成品","塑料件","ORG011","PER202604","2026-04-15",356,203,3.5,"MEDIUM","NEAR_SLOW","ORG011","ORG011","限期处置/复核需求"],["MAT004","Material-004","原材料","电子件","ORG021","PER202604","2026-04-13",347,430,3.37,"MEDIUM","EXCESS","ORG021","ORG021","限期处置/复核需求"],["MAT062","Material-062","办公用品","板卡类","ORG011","PER202604","2026-04-19",273,383,3.32,"LOW","EXCESS","ORG011","ORG011","跟踪消耗计划"],["MAT038","Material-038","办公用品","镜片/陶瓷","ORG091","PER202604","2026-04-03",191,511,3.19,"LOW","SLOW","ORG091","ORG091","跟踪消耗计划"],["MAT050","Material-050","办公用品","闪光灯罩","ORG051","PER202604","2026-04-11",237,645,3.04,"HIGH","NEAR_SLOW","ORG051","ORG051","立即处置并计提跌价"],["MAT023","Material-023","办公用品","金属件","ORG016","PER202604","2026-04-14",297,119,2.6,"MEDIUM","NEAR_SLOW","ORG016","ORG016","限期处置/复核需求"],["MAT054","Material-054","成品","检测类","ORG071","PER202604","2026-04-23",209,380,2.47,"MEDIUM","EXCESS","ORG071","ORG071","限期处置/复核需求"],["MAT051","Material-051","成品","金属件","ORG056","PER202604","2026-04-14",213,160,2.39,"MEDIUM","SLOW","ORG056","ORG056","限期处置/复核需求"],["MAT045","Material-045","成品","镜片/陶瓷","ORG026","PER202604","2026-04-24",258,535,2.2,"HIGH","SLOW","ORG026","ORG026","立即处置并计提跌价"],["MAT034","Material-034","原材料","板卡类","ORG071","PER202604","2026-04-19",305,178,1.92,"LOW","SLOW","ORG071","ORG071","跟踪消耗计划"],["MAT020","Material-020","办公用品","板卡类","ORG001","PER202604","2026-04-05",256,381,1.91,"LOW","SLOW","ORG001","ORG001","跟踪消耗计划"],["MAT044","Material-044","办公用品","金属件","ORG021","PER202604","2026-04-21",325,387,1.62,"HIGH","NEAR_SLOW","ORG021","ORG021","立即处置并计提跌价"],["MAT035","Material-035","办公用品","塑料件","ORG076","PER202604","2026-04-22",280,91,1.54,"MEDIUM","EXCESS","ORG076","ORG076","限期处置/复核需求"],["MAT031","Material-031","原材料","镜片/陶瓷","ORG056","PER202604","2026-04-10",351,574,1.35,"MEDIUM","NEAR_SLOW","ORG056","ORG056","限期处置/复核需求"],["MAT029","Material-029","办公用品","闪光灯罩","ORG046","PER202604","2026-04-04",232,431,1.34,"MEDIUM","NEAR_SLOW","ORG046","ORG046","限期处置/复核需求"],["MAT018","Material-018","成品","电子件","ORG091","PER202604","2026-04-27",267,191,1.29,"LOW","NEAR_SLOW","ORG091","ORG091","跟踪消耗计划"],["MAT049","Material-049","原材料","塑料件","ORG046","PER202604","2026-04-08",280,122,1.15,"LOW","SLOW","ORG046","ORG046","跟踪消耗计划"],["MAT002","Material-002","办公用品","金属件","ORG011","PER202604","2026-04-07",273,491,1.1,"LOW","EXCESS","ORG011","ORG011","跟踪消耗计划"],["MAT041","Material-041","办公用品","板卡类","ORG006","PER202604","2026-04-12",329,204,0.67,"LOW","EXCESS","ORG006","ORG006","跟踪消耗计划"],["MAT056","Material-056","办公用品","塑料件","ORG081","PER202604","2026-04-01",197,141,0.6,"LOW","EXCESS","ORG081","ORG081","跟踪消耗计划"],["MAT046","Material-046","原材料","电子件","ORG031","PER202604","2026-04-27",311,146,0.58,"HIGH","NEAR_SLOW","ORG031","ORG031","立即处置并计提跌价"],["MAT037","Material-037","原材料","金属件","ORG086","PER202604","2026-04-28",321,87,0.5,"HIGH","NEAR_SLOW","ORG086","ORG086","立即处置并计提跌价"],["MAT007","Material-007","原材料","塑料件","ORG036","PER202604","2026-04-22",345,124,0.24,"LOW","EXCESS","ORG036","ORG036","跟踪消耗计划"],["MAT055","Material-055","原材料","板卡类","ORG076","PER202604","2026-04-26",240,98,0.11,"MEDIUM","NEAR_SLOW","ORG076","ORG076","限期处置/复核需求"],["MAT010","Material-010","原材料","镜片/陶瓷","ORG051","PER202604","2026-04-03",249,11,0.11,"LOW","EXCESS","ORG051","ORG051","跟踪消耗计划"]];
+const typeOrder = ["全部库存", "原材料", "半成品", "成品", "设备及备品备件", "辅料", "办公用品"];
 const colors = {HIGH:"var(--red)", MEDIUM:"var(--orange)", LOW:"var(--accent)"};
 const stockType = document.getElementById("stockType");
 const category = document.getElementById("category");
-stockType.innerHTML = typeOrder.map(x => `<option value="${x}" ${x==="采购库存"?"selected":""}>${x}</option>`).join("");
+stockType.innerHTML = typeOrder.map(x => `<option value="${x}" ${x==="全部库存"?"selected":""}>${x}</option>`).join("");
 
 function baseRows() {
   const t = stockType.value;
@@ -190,11 +178,12 @@ function setAssistantSize(mode) {
   assistantMini.setAttribute("aria-pressed", mode === "mini" ? "true" : "false");
   assistantFull.setAttribute("aria-pressed", mode === "full" ? "true" : "false");
 }
+const WORKBENCH_URL = "/workbench?v=24";
 function openAssistant() {
   const frame = document.getElementById("assistantFrame");
-  if (frame && (!frame.src || frame.src === "about:blank" || frame.dataset.loaded !== "1")) {
-    frame.src = "/workbench";
-    frame.dataset.loaded = "1";
+  if (frame && (!frame.src || frame.src === "about:blank" || frame.dataset.loaded !== WORKBENCH_URL)) {
+    frame.src = WORKBENCH_URL;
+    frame.dataset.loaded = WORKBENCH_URL;
   }
   assistantModal.classList.add("open");
   assistantModal.setAttribute("aria-hidden","false");

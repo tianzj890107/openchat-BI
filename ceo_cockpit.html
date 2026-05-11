@@ -1117,7 +1117,7 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
               <div class="asset-alert"><span>关键物料缺口</span><b>42个</b></div>
               <div class="asset-alert"><span>产线停滞风险</span><b>DMD 30%</b></div>
               <div class="asset-alert"><span>发出未回款风险</span><b>77万</b></div>
-              <div class="asset-alert" data-drill-href="asset_overdue_inventory.html"><span>6月以上超期库存</span><b>87.49万</b></div>
+              <div class="asset-alert" data-drill-href="asset_overdue_inventory.html"><span>6月以上超期库存</span><b>202.16万</b></div>
             </div>
           </div>
         </div>
@@ -1604,11 +1604,11 @@ const INV = {
   ],
   slowDetail: [
     ["EXCESS / HIGH", 3, 13.71, "35.67%", "立即处置"],
-    ["EXCESS / MEDIUM", 12, 51.99, "22.17%", "限期处置"],
+    ["EXCESS / MEDIUM", 12, 52.0, "22.17%", "限期处置"],
     ["EXCESS / LOW", 9, 22.82, "24.67%", "跟踪"],
     ["SLOW / HIGH", 11, 61.72, "17.82%", "立即处置"],
     ["SLOW / MEDIUM", 6, 29.23, "20.83%", "限期处置"],
-    ["SLOW / LOW", 7, 26.80, "23.57%", "跟踪"],
+    ["SLOW / LOW", 7, 26.8, "23.57%", "跟踪"],
     ["NEAR_SLOW / HIGH", 7, 28.36, "23.43%", "立即处置"],
     ["NEAR_SLOW / MEDIUM", 11, 48.74, "22.55%", "限期处置"],
     ["NEAR_SLOW / LOW", 4, 6.21, "31.50%", "跟踪"]
@@ -1967,7 +1967,7 @@ function drawAssetStageBars() {
     { name: "采购库存", current: 634.76, overdue: 86.2, expired: 31.4, safe: 520, owner: "供应链" },
     { name: "生产库存", current: 639.67, overdue: 72.6, expired: 24.8, safe: 560, owner: "制造" },
     { name: "仓库库存", current: 304.48, overdue: 51.3, expired: 18.9, safe: 260, owner: "仓储" },
-    { name: "站点库存", current: 289.59, overdue: 87.49, expired: 42.7, safe: 210, owner: "销售/交付" }
+    { name: "风险库存", current: 289.59, overdue: 202.16, expired: 45.17, safe: 210, owner: "供应链" }
   ].map(s => ({
     ...s,
     current: +(s.current * categoryFactor).toFixed(1),
@@ -2244,7 +2244,7 @@ const DISCOVERY = {
     selector: ".asset-alert",
     title: "资产运营流发现 4 条经营关注告警",
     text: "经营关注告警中的四条均可下钻：关键物料缺口、产线停滞风险、发出未回款风险、6月以上超期库存。",
-    bullets: ["关键物料缺口42个：下钻到物料、供应商、在途量和替代料。", "产线停滞风险DMD 30%：下钻到影响产线、项目、订单和计划恢复时间。", "发出未回款77万：下钻到客户、账龄、合同和销售责任人。", "6月以上超期库存87.49万：下钻到库龄、仓库、物料和处置责任人。"]
+    bullets: ["关键物料缺口42个：下钻到物料、供应商、在途量和替代料。", "产线停滞风险DMD 30%：下钻到影响产线、项目、订单和计划恢复时间。", "发出未回款77万：下钻到客户、账龄、合同和销售责任人。", "6月以上超期库存202.16万：下钻到库龄、仓库、物料和处置责任人。"]
   },
   command: {
     selector: ".command-kpi:nth-child(3), .command-kpi:nth-child(4), .load-row.hot",
@@ -2317,12 +2317,14 @@ function setAssistantSize(mode) {
   document.getElementById("assistantFull").setAttribute("aria-pressed", mode === "full" ? "true" : "false");
 }
 
+const WORKBENCH_URL = "/workbench?v=24";
+
 function openAssistant() {
   const modal = document.getElementById("assistantModal");
   const frame = document.getElementById("assistantFrame");
-  if (frame && (!frame.src || frame.src === "about:blank" || frame.dataset.loaded !== "1")) {
-    frame.src = "/workbench";
-    frame.dataset.loaded = "1";
+  if (frame && (!frame.src || frame.src === "about:blank" || frame.dataset.loaded !== WORKBENCH_URL)) {
+    frame.src = WORKBENCH_URL;
+    frame.dataset.loaded = WORKBENCH_URL;
   }
   modal.classList.add("open");
   modal.setAttribute("aria-hidden", "false");

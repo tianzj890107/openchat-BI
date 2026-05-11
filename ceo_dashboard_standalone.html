@@ -1707,11 +1707,30 @@ body.nav-collapsed .menu-item {
   align-items: center;
   justify-content: center;
 }
+.assistant-settings {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid #2f4a64;
+  border-radius: 6px;
+  background: #122033;
+  color: #d7e5ec;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
 .assistant-mini:hover,
 .assistant-full:hover,
-.assistant-close:hover { border-color: #64b5ff; color: #64b5ff; }
+.assistant-close:hover,
+.assistant-settings:hover { border-color: #64b5ff; color: #64b5ff; }
 .assistant-mini[aria-pressed="true"],
-.assistant-full[aria-pressed="true"] {
+.assistant-full[aria-pressed="true"],
+.assistant-settings[aria-pressed="true"] {
   border-color: #64b5ff;
   color: #64b5ff;
   background: rgba(100, 181, 255, .14);
@@ -1789,6 +1808,7 @@ body.nav-collapsed .menu-item {
           <span>BI 工作台已嵌入,可在此进行数据问答与报表解读</span>
         </div>
         <div class="assistant-head-actions">
+          <button class="assistant-settings" id="assistantSettings" type="button" aria-pressed="true" title="显示 / 隐藏整条工具栏 (品牌 · 模式切换 · MODEL · RESET · DASH · PANEL)">⚙ Settings</button>
           <button class="assistant-mini" id="assistantMini" type="button" aria-pressed="false" title="缩小为右下角悬浮窗">⊟</button>
           <button class="assistant-full" id="assistantFull" type="button" aria-pressed="false" title="全屏">⛶</button>
           <button class="assistant-close" id="assistantClose" type="button" aria-label="收起" title="收起">×</button>
@@ -1953,15 +1973,15 @@ const CEO_DATA = {
       { type: "TRF_OUT（调拨出库）", in: 685292.84, out: 819201.59, count: 35 }
     ],
     slowDetail: [
-      { type: "EXCESS（超储） / HIGH", count: 3, amount: 137067.48, ratio: 0.3567 },
-      { type: "EXCESS / MEDIUM", count: 12, amount: 519982.10, ratio: 0.2217 },
-      { type: "EXCESS / LOW", count: 9, amount: 228177.34, ratio: 0.2467 },
-      { type: "SLOW（呆滞） / HIGH", count: 11, amount: 617202.83, ratio: 0.1782 },
-      { type: "SLOW / MEDIUM", count: 6, amount: 292281.10, ratio: 0.2083 },
-      { type: "SLOW / LOW", count: 7, amount: 268036.96, ratio: 0.2357 },
-      { type: "NEAR_SLOW / HIGH", count: 7, amount: 283596.60, ratio: 0.2343 },
-      { type: "NEAR_SLOW / MEDIUM", count: 11, amount: 487353.11, ratio: 0.2255 },
-      { type: "NEAR_SLOW / LOW", count: 4, amount: 62094.37, ratio: 0.3150 }
+      { type: "EXCESS / HIGH", count: 3, amount: 137134.54, ratio: 0.3567 },
+      { type: "EXCESS / MEDIUM", count: 12, amount: 520013.24, ratio: 0.2217 },
+      { type: "EXCESS / LOW", count: 9, amount: 228208.50, ratio: 0.2467 },
+      { type: "SLOW / HIGH", count: 11, amount: 617169.65, ratio: 0.1782 },
+      { type: "SLOW / MEDIUM", count: 6, amount: 292315.57, ratio: 0.2083 },
+      { type: "SLOW / LOW", count: 7, amount: 267973.07, ratio: 0.2357 },
+      { type: "NEAR_SLOW / HIGH", count: 7, amount: 283555.10, ratio: 0.2343 },
+      { type: "NEAR_SLOW / MEDIUM", count: 11, amount: 487418.35, ratio: 0.2255 },
+      { type: "NEAR_SLOW / LOW", count: 4, amount: 62147.52, ratio: 0.3150 }
     ]
   },
   scoreCard: {
@@ -1980,7 +2000,7 @@ const CEO_DRILLS = {
     title: "集团经营总览",
     breadcrumb: "集团",
     dims: ["集团 → 事业部 → 子公司 → 部门", "年 → 季 → 月", "增长 / 利润 / 现金 / 库存 / 风险"],
-    summary: "2025年前三季度收入13.53亿元同比下降21.31%，归母净利润-1.36亿元承压；经营现金流1.50亿元同比改善109%。库存3128万元中呆滞超储289.59万元、高风险预警21条，需要联动财务与库存口径同时治理。",
+    summary: "2025年前三季度收入13.53亿元同比下降21.31%，归母净利润-1.36亿元承压；经营现金流1.50亿元同比改善109%。库存3128万元中呆滞超储289.59万元、6月以上超期202.16万元、高风险预警21条，需要联动财务与库存口径同时治理。",
     head: ["年度/期间", "营业收入", "归母净利润", "扣非净利润", "经营现金流", "研发占比", "数据来源"],
     rows: () => REPORT_DATA.map((r) => [r.name, yi(r.revenue), yi(r.profit), yi(r.deductedProfit), yi(r.cash), pct(r.rdRate), r.source])
   },
@@ -2067,7 +2087,7 @@ const CEO_DRILLS = {
     title: "库存资产：库存就是尚未兑现的资金",
     breadcrumb: "集团 / 库存 / 物料类别",
     dims: ["集团 → 事业部 → 工厂 → 仓库 → 库位", "产品线 → 型号 → 物料编码", "原材料 → 半成品 → 成品", "库龄区间", "供应商", "时间趋势"],
-    summary: "库存总额3127.98万元（来自guangfeng.db）。原材料634.76万、半成品639.67万、成品304.48万、其他段（辅料/备品/办公）1549.07万；库存周转470.9天显著偏长，需穿透到关键物料。",
+    summary: "库存总额3127.98万元（来自guangfeng.db）。原材料634.76万、半成品639.67万、成品304.48万、其他段（辅料/备品/办公）1549.07万；6月以上超期202.16万，需穿透到关键物料。",
     head: ["物料编码", "物料名称", "类别", "库存段", "组织/仓库", "库存金额"],
     rows: () => CEO_DATA.inventory.topMaterials.map((r) => [r[0], r[1], r[2], r[3], r[4], wan(r[5])])
   },
@@ -2103,9 +2123,9 @@ const CEO_DRILLS = {
     title: "库存风险：呆滞、超储与近呆滞",
     breadcrumb: "集团 / 库存 / 风险",
     dims: ["库龄区间", "预警等级", "库存组织", "物料", "责任部门"],
-    summary: "呆滞/超储/近呆滞总额289.59万元，跌价准备估算63.12万元，HIGH预警21条；按 SLOW/EXCESS/NEAR_SLOW × HIGH/MEDIUM/LOW 形成处置矩阵，下发督办令。",
+    summary: "呆滞/超储/近呆滞总额289.59万元，其中6月以上超期202.16万元、49条、HIGH预警12条；跌价准备估算63.12万元，整体HIGH预警21条。",
     head: ["类型 / 等级", "条数", "金额", "平均跌价比例", "动作"],
-    rows: () => CEO_DATA.inventory.slowDetail.map((d) => [d.type, `${d.count}条`, wan(d.amount), pct(d.ratio), d.type.includes("HIGH") ? "立即处置" : "跟踪"])
+    rows: () => CEO_DATA.inventory.slowDetail.map((d) => [d.type, `${d.count}条`, wan(d.amount), pct(d.ratio), d.type.includes("HIGH") ? "立即处置" : (d.type.includes("MEDIUM") ? "限期处置" : "跟踪")])
   },
   risk: {
     title: "风险热力图：影响程度 × 发生概率",
@@ -2381,6 +2401,8 @@ window.addEventListener("DOMContentLoaded", () => {
 // ============================================================
 // Floating AI assistant (iframe mount of /workbench)
 // ============================================================
+const WORKBENCH_URL = "/workbench?v=26";
+
 function setAssistantSize(mode) {
   const modal = document.getElementById("assistantModal");
   if (!modal) return;
@@ -2395,9 +2417,9 @@ function setAssistantSize(mode) {
 function openAssistant() {
   const modal = document.getElementById("assistantModal");
   const frame = document.getElementById("assistantFrame");
-  if (frame && (!frame.src || frame.src === "about:blank" || frame.dataset.loaded !== "1")) {
-    frame.src = "/workbench";
-    frame.dataset.loaded = "1";
+  if (frame && (!frame.src || frame.src === "about:blank" || frame.dataset.loaded !== WORKBENCH_URL)) {
+    frame.src = WORKBENCH_URL;
+    frame.dataset.loaded = WORKBENCH_URL;
   }
   if (modal) {
     modal.classList.add("open");
@@ -2412,12 +2434,24 @@ function closeAssistant() {
   modal.setAttribute("aria-hidden", "true");
 }
 
+function sendSettingsState() {
+  const frame = document.getElementById("assistantFrame");
+  const btn = document.getElementById("assistantSettings");
+  if (!frame || !btn || !frame.contentWindow) return;
+  const visible = btn.getAttribute("aria-pressed") === "true";
+  try {
+    frame.contentWindow.postMessage({ type: "toggleSettings", visible }, "*");
+  } catch (e) { /* iframe not ready */ }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   const openBtn = document.getElementById("assistantOpen");
   const closeBtn = document.getElementById("assistantClose");
   const miniBtn = document.getElementById("assistantMini");
   const fullBtn = document.getElementById("assistantFull");
+  const settingsBtn = document.getElementById("assistantSettings");
   const modal = document.getElementById("assistantModal");
+  const frame = document.getElementById("assistantFrame");
   if (openBtn) openBtn.addEventListener("click", openAssistant);
   if (closeBtn) closeBtn.addEventListener("click", closeAssistant);
   if (miniBtn) miniBtn.addEventListener("click", () => {
@@ -2428,6 +2462,13 @@ window.addEventListener("DOMContentLoaded", () => {
     const isFull = modal.classList.contains("size-full");
     setAssistantSize(isFull ? "normal" : "full");
   });
+  if (settingsBtn) settingsBtn.addEventListener("click", () => {
+    const next = settingsBtn.getAttribute("aria-pressed") !== "true";
+    settingsBtn.setAttribute("aria-pressed", next ? "true" : "false");
+    sendSettingsState();
+  });
+  // Re-sync settings state every time the iframe finishes loading
+  if (frame) frame.addEventListener("load", sendSettingsState);
   if (modal) modal.addEventListener("click", (e) => {
     if (e.target.id === "assistantModal") closeAssistant();
   });
