@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CEO驾驶舱</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-page="ceo">
+  <div class="app">
+    <header class="topbar">
+      <div class="hamburger">☰</div>
+      <div class="brand">EIMOS <span class="env">Demo准备环境</span></div>
+      <nav class="platform-nav">
+        <a class="active" href="#"><span class="nav-icon">⌂</span><span class="nav-label">产品平台</span></a>
+        <a href="#"><span class="nav-icon">▣</span><span class="nav-label">任务中心</span></a>
+        <a href="#"><span class="nav-icon">✕</span><span class="nav-label">运维平台</span></a>
+        <a href="#"><span class="nav-icon">▲</span><span class="nav-label">企业架构</span></a>
+        <a href="#"><span class="nav-icon">▤</span><span class="nav-label">开发交付</span></a>
+        <a href="#"><span class="nav-label no-icon">应用开发</span></a>
+      </nav>
+      <div class="top-actions">
+        <span class="top-action ai"><span class="action-icon">✦</span>AI助手</span>
+        <span class="top-action"><span class="action-icon small">◉</span>切换皮肤</span>
+        <span class="notice">99+</span>
+        <span class="user-icon">●</span>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="search">搜索 <span>⌕</span></div>
+      <div class="menu-title"><span>IBA</span> 智能经营解析(IBA) <span class="chev">⌃</span></div>
+      <div class="submenu">
+        <a class="active" href="ceo_dashboard.html">CEO驾驶舱</a>
+        <a href="dashboard.html">驾驶舱</a>
+        <a href="income.html">收入</a>
+        <a href="#">i-Agent</a>
+      </div>
+      <div class="menu-item">流程运营(360) <span class="chev">⌄</span></div>
+      <div class="menu-item">智能销售管理(ISMP) <span class="chev">⌄</span></div>
+      <div class="menu-item">智能合同管理(ICM) <span class="chev">⌄</span></div>
+      <div class="menu-item">开票回款管理(IB&C) <span class="chev">⌄</span></div>
+      <div class="menu-item">产品配置周期管理(CLM) <span class="chev">⌄</span></div>
+      <div class="menu-item">配置报价管理(CPQ) <span class="chev">⌄</span></div>
+      <div class="menu-item">集成计划(IPS) <span class="chev">⌄</span></div>
+    </aside>
+
+    <main class="content">
+      <section class="ceo2-page">
+        <div class="ceo2-head">
+          <div>
+            <h1>CEO核心管理驾驶舱</h1>
+            <p>围绕利润、现金、库存、增长、风险五大主题，支撑全局感知、异常识别、趋势判断与经营决策。</p>
+          </div>
+          <div class="filters ceo2-filters">
+            <span>期间</span><div class="select">2025Q3 <span>⌄</span></div>
+            <span>币种</span><div class="select">CNY <span>⌄</span></div>
+            <span>口径</span><div class="select company">财务报表 + 库存运营数据 <span>⌄</span></div>
+          </div>
+        </div>
+
+        <section class="vital-strip">
+          <button class="vital-card active" data-ceo-topic="overview">
+            <span>集团经营总分</span><strong>62</strong><em>利润承压·现金改善</em>
+          </button>
+          <button class="vital-card warn" data-ceo-topic="growth">
+            <span>看增长</span><strong>-21.31%</strong><em>2025Q3累计同比</em>
+          </button>
+          <button class="vital-card danger" data-ceo-topic="profit">
+            <span>看利润</span><strong>-1.36亿</strong><em>2025Q3归母净利润</em>
+          </button>
+          <button class="vital-card ok" data-ceo-topic="cash">
+            <span>看现金</span><strong>1.50亿</strong><em>经营现金流·同比+109%</em>
+          </button>
+          <button class="vital-card warn" data-ceo-topic="inventory">
+            <span>看库存</span><strong id="ceoInvTotal">0万元</strong><em>周转470.9天偏长</em>
+          </button>
+        </section>
+
+        <div class="ceo2-layout">
+          <section class="panel ceo2-panel sales-flow-panel" data-ceo-topic="sales">
+            <div class="panel-title">销售业务流监控：订 → 发 → 收 → 回 <span class="note">点击节点下钻</span></div>
+            <div class="panel-body">
+              <div class="sales-flow">
+                <button data-ceo-topic="sales"><span>订</span><b>新签订单</b><strong id="flowOrder">0万元</strong></button>
+                <i></i>
+                <button data-ceo-topic="delivery"><span>发</span><b>发货金额</b><strong id="flowShip">0万元</strong></button>
+                <i></i>
+                <button data-ceo-topic="revenue"><span>收</span><b>营业收入</b><strong>13.53亿</strong></button>
+                <i></i>
+                <button data-ceo-topic="cash"><span>回</span><b>回款/现金</b><strong id="flowCash">0万元</strong></button>
+              </div>
+              <div class="flow-metrics">
+                <div><b>24.19亿</b><span>2024营业收入(+9.27%)</span></div>
+                <div><b>13.35%</b><span>2025Q3研发占比</span></div>
+                <div><b id="flowAr">0万元</b><span>应收账款余额</span></div>
+                <div><b id="flowRate">0%</b><span>业务库回款率</span></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel ceo2-panel trend-panel" data-ceo-topic="growth">
+            <div class="panel-title">未来趋势预测区 <span class="note">财务数据来自 23/24/25.pdf</span></div>
+            <div class="panel-body">
+              <div id="ceoFinanceTrend" class="chart small"></div>
+              <div class="legend"><span><i class="dot blue"></i>营业收入</span><span><i class="dot orange"></i>归母净利润</span><span><i class="dot green"></i>经营现金流</span></div>
+            </div>
+          </section>
+
+          <section class="panel ceo2-panel inventory-panel" data-ceo-topic="inventory">
+            <div class="panel-title">库存资产展示区：库存就是尚未兑现的资金 <span class="note">数据源 guangfeng.db</span></div>
+            <div class="panel-body">
+              <div class="inventory-four">
+                <button data-ceo-topic="inventoryRaw"><span>原材料/部件</span><strong id="invRaw">0万元</strong><em>待加工的钱</em></button>
+                <button data-ceo-topic="inventoryWip"><span>在制/半成品</span><strong id="invWip">0万元</strong><em>生产中的钱</em></button>
+                <button data-ceo-topic="inventoryFinished"><span>成品库存</span><strong id="invFinished">0万元</strong><em>待销售的钱</em></button>
+                <button data-ceo-topic="inventoryRisk"><span>呆滞/风险库存</span><strong id="invRisk">0万元</strong><em>需立即处置</em></button>
+              </div>
+              <div class="inventory-body">
+                <div id="ceoInventoryChart" class="chart small"></div>
+                <div class="inventory-health">
+                  <div><b id="invTurnover">0天</b><span>库存周转天数</span></div>
+                  <div><b id="invSlow">0万元</b><span>呆滞/超储金额</span></div>
+                  <div data-ceo-topic="inventoryRisk"><b id="invWarn">0</b><span>高风险预警(HIGH)</span></div>
+                  <div data-ceo-topic="inventoryAging"><b id="invReserve">0万元</b><span>跌价准备估算</span></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel ceo2-panel risk-panel" data-ceo-topic="risk">
+            <div class="panel-title">风险热力图区：影响程度 × 发生概率</div>
+            <div class="panel-body">
+              <div class="risk-matrix">
+                <button class="risk-dot high" style="left:76%;top:24%" data-ceo-topic="risk">财务风险<br>利润下滑</button>
+                <button class="risk-dot mid" style="left:64%;top:52%" data-ceo-topic="inventoryRisk">库存风险<br>呆滞超储</button>
+                <button class="risk-dot mid" style="left:42%;top:36%" data-ceo-topic="sales">经营风险<br>收入下降</button>
+                <button class="risk-dot low" style="left:30%;top:68%" data-ceo-topic="delivery">交付风险<br>出库波动</button>
+                <span class="axis-y">影响程度</span><span class="axis-x">发生概率</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel ceo2-panel overview-panel" data-ceo-topic="overview">
+            <div class="panel-title">集团经营总览区 <span class="note">六维健康度 (0-100)</span></div>
+            <div class="panel-body">
+              <div class="overview-gauges">
+                <div data-ceo-topic="growth"><b>56</b><span>收入完成指数</span></div>
+                <div data-ceo-topic="profit"><b>38</b><span>利润健康指数</span></div>
+                <div data-ceo-topic="cash"><b>78</b><span>现金流状态</span></div>
+                <div data-ceo-topic="inventory"><b>64</b><span>库存健康指数</span></div>
+                <div data-ceo-topic="delivery"><b>71</b><span>交付健康指数</span></div>
+                <div data-ceo-topic="risk"><b>58</b><span>风险指数</span></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel ceo2-panel drill-panel-v2">
+            <div class="panel-title">
+              <span id="ceoDrillTitle">集团经营总览</span>
+              <div class="drill-actions"><button class="btn">导出明细</button><button class="btn primary">下发督办令</button></div>
+            </div>
+            <div class="panel-body">
+              <div class="breadcrumb" id="ceoBreadcrumb">集团</div>
+              <div class="drill-dims" id="ceoDrillDims"></div>
+              <div class="drill-summary" id="ceoDrillSummary"></div>
+              <table>
+                <thead id="ceoDrillHead"></thead>
+                <tbody id="ceoDrillRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

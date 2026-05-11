@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -128,8 +128,25 @@ class ChatRequest(BaseModel):
 
 
 class ChoiceRequest(BaseModel):
-    choice_id: str
-    choice_label: str
+    # Multi-select (preferred). Single-pick clients can send lists of length 1.
+    choice_ids: Optional[List[str]] = None
+    choice_labels: Optional[List[str]] = None
+    # Back-compat: legacy single-pick fields.
+    choice_id: Optional[str] = None
+    choice_label: Optional[str] = None
+
+    def normalized(self) -> tuple[List[str], List[str]]:
+        ids = list(self.choice_ids or [])
+        labels = list(self.choice_labels or [])
+        if not ids and self.choice_id is not None:
+            ids = [self.choice_id]
+        if not labels and self.choice_label is not None:
+            labels = [self.choice_label]
+        if not ids or not labels or len(ids) != len(labels):
+            raise HTTPException(
+                400, "choice_ids/choice_labels must be non-empty lists of equal length",
+            )
+        return ids, labels
 
 
 class ConfigUpdate(BaseModel):
@@ -153,12 +170,21 @@ def _project_root() -> Path:
 
 @app.get("/")
 def index() -> FileResponse:
-    # Project main page: the CEO cockpit. The BI workbench lives at /workbench
-    # and is embedded as an iframe inside the cockpit's AI-assistant panel.
-    page = _project_root() / "ceo_cockpit.html"
+    # Project main page: the standalone CEO dashboard (entry). The detailed
+    # CEO cockpit is reachable at /ceo_cockpit.html; the BI workbench lives at
+    # /workbench and is embedded as an iframe inside the floating AI assistant.
+    page = _project_root() / "ceo_dashboard_standalone.html"
     if page.exists():
         return FileResponse(page)
+    fallback = _project_root() / "ceo_cockpit.html"
+    if fallback.exists():
+        return FileResponse(fallback)
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/ceo_cockpit.html")
+def ceo_cockpit_page() -> FileResponse:
+    return FileResponse(_project_root() / "ceo_cockpit.html")
 
 
 @app.get("/asset_overdue_inventory.html")
@@ -334,10 +360,11 @@ def choice(req: ChoiceRequest):
     session = STATE.session
     if not session.pending_tool_use_id:
         raise HTTPException(400, "No pending user choice")
+    ids, labels = req.normalized()
 
     def event_stream():
         try:
-            for evt in session.continue_with_choice(req.choice_id, req.choice_label):
+            for evt in session.continue_with_choice(ids, labels):
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
         except Exception as e:
             err = {"type": "error", "message": f"{type(e).__name__}: {e}"}
@@ -576,10 +603,11 @@ def report_choice(req: ChoiceRequest):
     session = STATE.report_session
     if session is None or not session.pending_tool_use_id:
         raise HTTPException(400, "No pending user choice")
+    ids, labels = req.normalized()
 
     def event_stream():
         try:
-            for evt in session.continue_with_choice(req.choice_id, req.choice_label):
+            for evt in session.continue_with_choice(ids, labels):
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
         except Exception as e:
             err = {"type": "error", "message": f"{type(e).__name__}: {e}"}

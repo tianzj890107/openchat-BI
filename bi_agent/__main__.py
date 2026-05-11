@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_ONTOLOGY_XLSX = "ChatBI业务元数据_光峰财务管理.xlsx"
+DEFAULT_ONTOLOGY_XLSX = "ChatBI业务元数据_硕磐财务管理.xlsx"
 DEFAULT_DB = "guangfeng.db"
 DEFAULT_AGENT = "bi-analyst"
 
@@ -26,7 +26,7 @@ def _resolve(path: str, base: Path) -> Path:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="bi-agent",
-        description="光峰财务 BI 智能分析助手 (基于 open-claude 和业务本体)",
+        description="硕磐财务 BI 智能分析助手 (基于 open-claude 和业务本体)",
     )
     parser.add_argument("--cwd", default=None, help="工作目录 (默认当前目录)")
     parser.add_argument("--ontology", default=None, help=f"本体 xlsx 路径 (默认 {DEFAULT_ONTOLOGY_XLSX})")

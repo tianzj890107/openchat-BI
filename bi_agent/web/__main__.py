@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_ONTOLOGY = "ChatBI业务元数据_光峰财务管理.xlsx"
+DEFAULT_ONTOLOGY = "ChatBI业务元数据_硕磐财务管理.xlsx"
 DEFAULT_DB = "guangfeng.db"
 DEFAULT_AGENT = "bi-analyst"
 
@@ -22,7 +22,7 @@ def _resolve(path: str, base: Path) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="bi-agent-web", description="光峰 BI 智能分析 Web UI")
+    parser = argparse.ArgumentParser(prog="bi-agent-web", description="硕磐 BI 智能分析 Web UI")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--cwd", default=None, help="工作目录,默认当前目录")

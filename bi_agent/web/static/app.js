@@ -164,7 +164,7 @@
   const EMPTY_STATES = {
     data: {
       glyph: "◇",
-      title: "光峰财务 BI 智能分析",
+      title: "硕磐财务 BI 智能分析",
       hints: [
         "管报收入总金额是多少?",
         "列出本体里所有业务对象",
@@ -758,52 +758,96 @@ welcome: ${esc(a.welcome_message || "")}</div>
       : el.chatScroll;
     const card = el_h("div", "choice-card");
     card.dataset.toolUseId = evt.tool_use_id;
-    const optionsHtml = (evt.options || []).map((opt, idx) => `
-      <button type="button" class="choice-option" data-id="${esc(opt.id)}" data-label="${esc(opt.label)}">
+    const optionsHtml = (evt.options || []).map((opt, idx) => {
+      const inputId = `choice-${evt.tool_use_id}-${idx}`;
+      return `
+      <label class="choice-option" for="${esc(inputId)}" data-id="${esc(opt.id)}" data-label="${esc(opt.label)}">
+        <input type="checkbox" class="choice-check" id="${esc(inputId)}"
+               value="${esc(opt.id)}" data-label="${esc(opt.label)}" />
         <span class="choice-idx">${idx + 1}</span>
         <span class="choice-body">
           <span class="choice-label">${esc(opt.label)}</span>
           ${opt.detail ? `<span class="choice-detail">${esc(opt.detail)}</span>` : ""}
         </span>
-        <span class="choice-arrow">↵</span>
-      </button>`).join("");
+      </label>`;
+    }).join("");
     card.innerHTML = `
       <div class="choice-head">
         <span class="choice-tag">需要您选择</span>
         <span class="choice-question">${esc(evt.question || "")}</span>
+        <span class="choice-hint">支持多选</span>
       </div>
       ${evt.context ? `<div class="choice-context">${esc(evt.context)}</div>` : ""}
       <div class="choice-options">${optionsHtml}</div>
+      <div class="choice-actions">
+        <span class="choice-summary">未选择</span>
+        <button type="button" class="choice-confirm" disabled>确定</button>
+      </div>
       <div class="choice-status"></div>`;
     container.appendChild(card);
     scrollChatBottom();
 
-    card.querySelectorAll(".choice-option").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (btn.disabled || card.classList.contains("submitting") || card.classList.contains("resolved")) return;
-        btn.classList.add("selected");
-        submitChoice(card, btn.dataset.id, btn.dataset.label);
+    const checks = card.querySelectorAll(".choice-check");
+    const confirmBtn = card.querySelector(".choice-confirm");
+    const summary = card.querySelector(".choice-summary");
+
+    function refreshSelection() {
+      const selected = Array.from(checks).filter(c => c.checked);
+      checks.forEach(c => {
+        const lbl = c.closest(".choice-option");
+        if (lbl) lbl.classList.toggle("selected", c.checked);
       });
+      confirmBtn.disabled = selected.length === 0
+        || card.classList.contains("submitting")
+        || card.classList.contains("resolved");
+      if (selected.length === 0) {
+        summary.textContent = "未选择";
+      } else if (selected.length === 1) {
+        summary.textContent = `已选 1 项: ${selected[0].dataset.label}`;
+      } else {
+        summary.textContent = `已选 ${selected.length} 项: ` +
+          selected.map(c => c.dataset.label).join("、");
+      }
+    }
+
+    checks.forEach(c => {
+      c.addEventListener("change", refreshSelection);
     });
+
+    confirmBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (confirmBtn.disabled) return;
+      const selected = Array.from(checks).filter(c => c.checked);
+      if (!selected.length) return;
+      const ids = selected.map(c => c.value);
+      const labels = selected.map(c => c.dataset.label);
+      submitChoice(card, ids, labels);
+    });
+
+    refreshSelection();
   }
 
-  function markChoiceResolved(toolUseId, label) {
+  function markChoiceResolved(toolUseId, labels) {
     const card = el.chatScroll.querySelector(`.choice-card[data-tool-use-id="${CSS.escape(toolUseId)}"]`);
     if (!card) return;
     card.classList.add("resolved");
+    const list = Array.isArray(labels) ? labels : [labels];
     const status = card.querySelector(".choice-status");
-    if (status) status.textContent = `已选择: ${label}`;
-    card.querySelectorAll(".choice-option").forEach(b => { b.disabled = true; });
+    if (status) status.textContent = `已选择: ${list.join("、")}`;
+    card.querySelectorAll(".choice-check").forEach(c => { c.disabled = true; });
+    const confirmBtn = card.querySelector(".choice-confirm");
+    if (confirmBtn) confirmBtn.disabled = true;
   }
 
-  async function submitChoice(card, id, label) {
+  async function submitChoice(card, ids, labels) {
     if (card.classList.contains("resolved") || card.classList.contains("submitting")) return;
     card.classList.add("submitting");
-    card.querySelectorAll(".choice-option").forEach(b => { b.disabled = true; });
+    card.querySelectorAll(".choice-check").forEach(c => { c.disabled = true; });
+    const confirmBtn = card.querySelector(".choice-confirm");
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = "提交中…"; }
     const status = card.querySelector(".choice-status");
-    if (status) status.textContent = `正在提交: ${label}…`;
+    if (status) status.textContent = `正在提交: ${labels.join("、")}…`;
     setBusy(true);
 
     const url = state.mode === "report" ? "/api/report/choice" : "/api/choice";
@@ -812,12 +856,13 @@ welcome: ${esc(a.welcome_message || "")}</div>
       resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ choice_id: id, choice_label: label }),
+        body: JSON.stringify({ choice_ids: ids, choice_labels: labels }),
       });
     } catch (err) {
       onEvent({ type: "error", message: `choice request failed: ${err.message || err}` });
       card.classList.remove("submitting");
-      card.querySelectorAll(".choice-option").forEach(b => { b.disabled = false; });
+      card.querySelectorAll(".choice-check").forEach(c => { c.disabled = false; });
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "确定"; }
       if (status) status.textContent = `提交失败,请重试`;
       setBusy(false);
       return;
@@ -826,7 +871,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
       const errText = await resp.text().catch(() => resp.statusText);
       onEvent({ type: "error", message: `HTTP ${resp.status}: ${errText}` });
       card.classList.remove("submitting");
-      card.querySelectorAll(".choice-option").forEach(b => { b.disabled = false; });
+      card.querySelectorAll(".choice-check").forEach(c => { c.disabled = false; });
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "确定"; }
       if (status) status.textContent = `提交失败 (HTTP ${resp.status}),请重试`;
       setBusy(false);
       return;
@@ -1665,7 +1711,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
         setBusy(false);
         break;
       case "user_choice_resolved":
-        markChoiceResolved(evt.tool_use_id, evt.choice_label);
+        markChoiceResolved(evt.tool_use_id, evt.choice_labels || evt.choice_label);
         setBusy(true);
         break;
       case "awaiting_user_choice":

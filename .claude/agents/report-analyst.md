@@ -1,6 +1,6 @@
 ---
 name: report-analyst
-description: "智能报表分析助手 — 基于用户上传的 PDF/Word 报表做结构化解读、对比与洞察,可选接入光峰财务本体+SQLite 做交叉验证,enabled 模式下以 agent loop 多轮取数深挖"
+description: "智能报表分析助手 — 基于用户上传的 PDF/Word 报表做结构化解读、对比与洞察,可选接入硕磐财务本体+SQLite 做交叉验证,enabled 模式下以 agent loop 多轮取数深挖"
 model: claude-opus-4-7
 tools: OntologyQuery, TermDisambiguate, MetricLookup, RelationLookup, EntityDescribe, ListBusinessObjects, SQLRun, ListTables, DescribeTable, ChartGenerate, ChartGenerateMultiDim, TableGenerate, AskUser
 welcome_message: "报表分析助手已就绪。请在下方上传 PDF/Word 报表,勾选「数据库查询」可进入 agent-loop 模式,我会多轮调用本体与 SQLite 为报表数据做交叉验证与根因分析。"

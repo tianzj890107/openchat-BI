@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>光峰科技 · CEO经营驾驶舱</title>
+<title>硕磐智能 · CEO经营驾驶舱</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -601,6 +601,15 @@ html, body { background: var(--bg-0); color: var(--text-0); font-family: "PingFa
   width: min(520px, calc(100vw - 32px));
   height: min(640px, calc(100vh - 32px));
 }
+/* When embedded in the standalone shell, parent page already provides the AI float */
+body.embedded .assistant-float,
+body.embedded .assistant-modal { display: none !important; }
+
+/* Embedded mode shrinks the available viewport (sidebar in parent), but the
+ * problem board must stay 2-column — Q1/Q2 on row 1, Q3/Q4 on row 2.
+ * Higher specificity than the @media collapse below, so it wins. */
+body.embedded .problem-board { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+body.embedded .cockpit { padding: 12px 14px 20px; }
 .assistant-body {
   padding: 14px;
   overflow-y: auto;
@@ -986,12 +995,17 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
 </style>
 </head>
 <body>
+<script>
+  // Mark embedded mode early (before paint) so the parent shell can suppress
+  // this page's own AI float / modal — the parent already provides one.
+  try { if (window.self !== window.top) document.body.classList.add("embedded"); } catch (e) {}
+</script>
 <div class="cockpit">
 
   <!-- Header -->
   <header class="cock-head">
     <div class="cock-title">
-      <h1><i>◆</i>光峰科技 · CEO经营驾驶舱</h1>
+      <h1><i>◆</i>硕磐智能 · CEO经营驾驶舱</h1>
       <em>全局感知 · 异常识别 · 趋势判断 · 经营决策</em>
     </div>
     <div class="cock-filters">
@@ -1574,11 +1588,11 @@ const INV = {
   ],
   byOrg: [
     { name: "Organization-071", value: 258.77 },
-    { name: "光峰智造中心", value: 233.08 },
+    { name: "硕磐智造中心", value: 233.08 },
     { name: "Organization-066", value: 188.89 },
     { name: "Organization-056", value: 188.26 },
-    { name: "深圳光峰科技（合并示范）", value: 186.35 },
-    { name: "光峰供应链中心", value: 164.09 }
+    { name: "深圳硕磐智能（合并示范）", value: 186.35 },
+    { name: "硕磐供应链中心", value: 164.09 }
   ],
   topMaterials: [
     ["MAT-NO-054", "Material-054", "检测类", "原材料", "Organization-071", 83.77],
@@ -1586,7 +1600,7 @@ const INV = {
     ["MAT-NO-058", "Material-058", "金属件", "成品", "Organization-091", 76.03],
     ["MAT-NO-089", "Material-089", "检测类", "辅料", "Organization-046", 74.66],
     ["MAT-NO-017", "Material-017", "镜片/陶瓷", "设备及备品备件", "Organization-086", 74.17],
-    ["MAT-NO-021", "Material-021", "闪光灯罩", "办公用品", "光峰智造中心", 72.44]
+    ["MAT-NO-021", "Material-021", "闪光灯罩", "办公用品", "硕磐智造中心", 72.44]
   ],
   slowDetail: [
     ["EXCESS / HIGH", 3, 13.71, "35.67%", "立即处置"],
@@ -1739,7 +1753,7 @@ const DRILLS = {
     title: "在制/半成品 · 生产中的钱",
     bread: ["集团", "库存", "在制"],
     dims: ["工厂", "生产阶段", "产品线", "物料", "时间"],
-    summary: "半成品639.67万元（FStockCategory='半成品'），主要分布在光峰智造中心、Organization-081等生产组织。后续接入MES可拆分EVT/DVT/PVT/MP。",
+    summary: "半成品639.67万元（FStockCategory='半成品'），主要分布在硕磐智造中心、Organization-081等生产组织。后续接入MES可拆分EVT/DVT/PVT/MP。",
     head: ["库存段", "金额(万)", "数据源", "后续接入"],
     rows: () => [
       ["半成品(WIP)", "639.67", "FStockCategory='半成品'", "MES生产阶段"],

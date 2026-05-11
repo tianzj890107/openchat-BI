@@ -32,7 +32,9 @@ ASK_USER_SCHEMA = {
         "确定,直接查本体,不要打扰用户。每个 option 填 id (短英文标识符)、"
         "label (一行中文标签,带关键编码)、detail (一句话解释差异)。\n"
         "\n"
-        "工具返回的字符串即用户选中的 label,后续步骤以此为准。"
+        "前端以复选框形式展示选项(支持多选),用户勾选后点击「确定」提交。\n"
+        "工具返回的字符串包含用户勾选的全部 label —— 单选时直接是该 label,\n"
+        "多选时形如 `User selected N options: A (id=a)、B (id=b)`。"
     ),
     "input_schema": {
         "type": "object",

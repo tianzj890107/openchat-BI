@@ -170,16 +170,27 @@ class WebSession:
         yield from self._run_loop()
 
     def continue_with_choice(
-        self, choice_id: str, choice_label: str,
+        self,
+        choice_ids: list[str] | str,
+        choice_labels: list[str] | str,
     ) -> Generator[dict[str, Any], None, None]:
         """Resume a turn that paused on an AskUser call.
 
+        Accepts either lists (multi-select) or single strings (legacy single-pick).
         The deferred AskUser tool_use gets its synthetic tool_result here
-        (the user's selection). Any sibling tool_uses that were executed
+        (the user's selection(s)). Any sibling tool_uses that were executed
         before the pause contribute their cached results in the same user
         message, so every tool_use in the prior assistant turn has a
         matching tool_result.
         """
+        if isinstance(choice_ids, str):
+            choice_ids = [choice_ids]
+        if isinstance(choice_labels, str):
+            choice_labels = [choice_labels]
+        if not choice_ids or not choice_labels or len(choice_ids) != len(choice_labels):
+            yield {"type": "error", "message": "invalid choice payload"}
+            return
+
         if not self.pending_tool_use_id:
             yield {"type": "error", "message": "no pending choice"}
             return
@@ -189,7 +200,14 @@ class WebSession:
         self.pending_choice_spec = None
         self._pending_sibling_results = []
 
-        content_text = f"User selected: {choice_label} (id={choice_id})"
+        if len(choice_labels) == 1:
+            content_text = f"User selected: {choice_labels[0]} (id={choice_ids[0]})"
+        else:
+            joined = "、".join(
+                f"{lbl} (id={cid})"
+                for cid, lbl in zip(choice_ids, choice_labels)
+            )
+            content_text = f"User selected {len(choice_labels)} options: {joined}"
         user_content = list(sibling_results) + [{
             "type": "tool_result",
             "tool_use_id": tool_use_id,
@@ -199,8 +217,11 @@ class WebSession:
         yield {
             "type": "user_choice_resolved",
             "tool_use_id": tool_use_id,
-            "choice_id": choice_id,
-            "choice_label": choice_label,
+            "choice_ids": list(choice_ids),
+            "choice_labels": list(choice_labels),
+            # Legacy single-pick mirrors for any old client code:
+            "choice_id": choice_ids[0],
+            "choice_label": choice_labels[0],
         }
         yield from self._run_loop()
 

@@ -1,0 +1,2441 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CEO驾驶舱</title>
+  <style>
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --nav: #101c28;
+  --side: #2b3a47;
+  --side-dark: #101c28;
+  --line: #e8ebef;
+  --text: #111827;
+  --muted: #6b7280;
+  --blue: #0b7ff3;
+  --orange: #ff9f43;
+  --green: #22c7a9;
+  --panel: #ffffff;
+  --soft: #f7f9fb;
+}
+
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  color: var(--text);
+  background: #fff;
+}
+
+.app {
+  min-height: 100vh;
+}
+
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  background: var(--nav);
+  color: #eef2f7;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(16, 28, 40, 0.16);
+}
+
+.hamburger {
+  width: 56px;
+  text-align: center;
+  font-size: 25px;
+  line-height: 56px;
+  color: #d8dee7;
+}
+
+.brand {
+  width: 336px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 40px;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: #33383d;
+}
+
+.brand .env {
+  padding: 6px 12px;
+  background: #172df5;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 2px;
+}
+
+.platform-nav {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+.platform-nav a {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 0 28px;
+  color: #e5e7eb;
+  text-decoration: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.platform-nav a.active {
+  background: #07121d;
+}
+
+.nav-icon {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f3f6fa;
+  font-size: 31px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.nav-label {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.nav-label.no-icon {
+  padding-left: 2px;
+}
+
+.top-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding-right: 22px;
+  color: #d1d5db;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ai {
+  color: #ff9f1a;
+}
+
+.top-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 31px;
+  height: 31px;
+  color: #8b5cf6;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.action-icon.small {
+  width: 18px;
+  height: 18px;
+  color: #cbd5e1;
+  font-size: 18px;
+}
+
+.notice {
+  min-width: 32px;
+  height: 18px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: #ff2635;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.user-icon {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #101c28;
+  background: #f1f5f9;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.sidebar {
+  position: fixed;
+  top: 56px;
+  bottom: 0;
+  left: 0;
+  width: 300px;
+  background: var(--side);
+  color: #d9e4ef;
+  z-index: 9;
+}
+
+.search {
+  height: 56px;
+  border-bottom: 1px solid rgba(255,255,255,.12);
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+  color: #8291a2;
+  font-size: 18px;
+}
+
+.search span {
+  margin-left: auto;
+}
+
+.menu-title,
+.menu-item {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  gap: 12px;
+  font-size: 18px;
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.menu-title {
+  background: #2f4050;
+}
+
+.menu-title .chev,
+.menu-item .chev {
+  margin-left: auto;
+  color: #a7b2bd;
+}
+
+.submenu a {
+  display: block;
+  height: 60px;
+  line-height: 60px;
+  padding-left: 68px;
+  color: #e5eef7;
+  text-decoration: none;
+  font-size: 17px;
+}
+
+.submenu a.active {
+  background: var(--side-dark);
+  color: #fff;
+  font-weight: 700;
+}
+
+.content {
+  margin-left: 300px;
+  padding-top: 56px;
+}
+
+.tabstrip {
+  height: 50px;
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  padding-left: 26px;
+  border-bottom: 1px solid #ddd;
+  background: #fff;
+}
+
+.tab {
+  width: 226px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d7dce2;
+  border-bottom: none;
+  color: #666;
+  border-radius: 4px 4px 0 0;
+  text-decoration: none;
+  position: relative;
+}
+
+.tab.active {
+  color: #006ee6;
+  background: #eef6ff;
+  border-color: #0078ff;
+}
+
+.tab .close {
+  position: absolute;
+  right: 18px;
+  color: #666;
+}
+
+.page {
+  padding: 18px 22px 34px;
+}
+
+.dashboard-view {
+  display: none;
+}
+
+.dashboard-view.active {
+  display: block;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.25;
+  font-weight: 800;
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+}
+
+.select {
+  width: 216px;
+  height: 42px;
+  border: 1px solid #aebdca;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  background: #fff;
+  box-shadow: 0 2px 0 rgba(31,56,78,.12);
+}
+
+.select.company {
+  width: 304px;
+}
+
+.tabs {
+  display: flex;
+  margin-bottom: 20px;
+}
+
+.tabs a,
+.side-tabs button,
+.mini-tabs button {
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid #d6d9de;
+  background: #fff;
+  color: #111827;
+  font-size: 16px;
+  text-decoration: none;
+}
+
+.tabs a.active,
+.side-tabs button.active,
+.mini-tabs button.active {
+  color: #006eff;
+  border-color: #006eff;
+  box-shadow: inset 0 0 0 1px #006eff;
+}
+
+.grid {
+  display: grid;
+  gap: 18px;
+}
+
+.grid.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.panel-title {
+  height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 700;
+}
+
+.panel-body {
+  padding: 16px;
+}
+
+.kpi-card {
+  min-height: 160px;
+}
+
+.kpi-main {
+  font-size: 30px;
+  font-weight: 800;
+  color: #07111e;
+}
+
+.kpi-label {
+  margin-top: 5px;
+  color: #4b5563;
+  font-size: 15px;
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  row-gap: 22px;
+}
+
+.bullet-chart {
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+}
+
+.bullet-bar {
+  width: 46%;
+  height: 28px;
+  background: var(--blue);
+  border-radius: 4px 0 0 4px;
+}
+
+.bullet-line {
+  width: 4px;
+  height: 62px;
+  background: #b8bec7;
+}
+
+.empty {
+  height: 280px;
+  display: grid;
+  place-items: center;
+  color: #111827;
+  font-size: 15px;
+}
+
+.empty .box {
+  width: 88px;
+  height: 70px;
+  margin: 0 auto 12px;
+  background: linear-gradient(#edf1f6, #d9dee6);
+  border-radius: 9px 9px 14px 14px;
+  position: relative;
+}
+
+.empty .box:before {
+  content: "";
+  position: absolute;
+  left: 22px;
+  top: 10px;
+  width: 44px;
+  height: 24px;
+  background: #cfd6df;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.chart {
+  width: 100%;
+  height: 360px;
+}
+
+.chart.small {
+  height: 250px;
+}
+
+.legend {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.blue { background: var(--blue); }
+.orange { background: var(--orange); }
+.green { background: var(--green); }
+.gray { background: #b8bec7; }
+
+.funnel {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 8px 22px 28px;
+  overflow-x: auto;
+}
+
+.tube {
+  min-width: 250px;
+  height: 166px;
+  border-radius: 38px;
+  color: #083a7a;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin-left: -22px;
+  box-shadow: 0 28px 28px rgba(42, 130, 220, .15);
+  position: relative;
+}
+
+.tube:first-child {
+  margin-left: 0;
+}
+
+.tube:after {
+  content: "";
+  position: absolute;
+  right: 14px;
+  width: 56px;
+  height: 130px;
+  border: 4px solid rgba(255,255,255,.32);
+  border-radius: 50%;
+  background: rgba(255,255,255,.1);
+}
+
+.tube .amount {
+  font-size: 36px;
+  font-weight: 800;
+}
+
+.tube .label {
+  margin-top: 8px;
+  font-size: 17px;
+}
+
+.t1 { background: linear-gradient(180deg, #dcecff, #83b7ef); }
+.t2 { background: linear-gradient(180deg, #fff0d5, #ffb447); }
+.t3 { background: linear-gradient(180deg, #90f5df, #27c9a9); }
+.t4 { background: linear-gradient(180deg, #ccefff, #43b9eb); }
+.t5 { background: linear-gradient(180deg, #cadbff, #96b8f5); }
+.t6 { background: linear-gradient(180deg, #dcefff, #8bbdf1); }
+
+.query-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto auto auto;
+  align-items: end;
+  gap: 40px;
+  padding: 6px 36px 24px;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 12px;
+  color: #1f3f68;
+}
+
+.field input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #aebdca;
+}
+
+.linkish {
+  color: #006eff;
+  background: transparent;
+  border: 0;
+  font-size: 16px;
+}
+
+.btn {
+  height: 40px;
+  padding: 0 18px;
+  border: 1px solid #d8dbe0;
+  background: #fff;
+  font-size: 16px;
+}
+
+.btn.primary {
+  border-color: #006eff;
+  background: #006eff;
+  color: #fff;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 16px;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 13px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  background: #fafafa;
+  color: #1f2937;
+  font-weight: 700;
+}
+
+tbody tr:nth-child(even) {
+  background: #f4f7fb;
+}
+
+.analysis-layout {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 18px;
+}
+
+.side-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.side-tabs button {
+  width: 90px;
+}
+
+.mini-tabs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.arrow {
+  width: 52px;
+  height: 2px;
+  background: #c7cbd1;
+  position: relative;
+}
+
+.arrow:after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  border-left: 8px solid #c7cbd1;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+
+.note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ceo-page {
+  background: #f6f8fb;
+  min-height: calc(100vh - 56px);
+}
+
+.ceo-subtitle {
+  margin-top: 6px;
+  color: #6b7280;
+  font-size: 15px;
+}
+
+.ceo-hero {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  align-items: center;
+  gap: 24px;
+  padding: 22px 28px;
+  margin-bottom: 18px;
+  background: linear-gradient(135deg, #0f2438, #173f52 45%, #1b6b69);
+  color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15, 36, 56, .16);
+}
+
+.hero-eyebrow {
+  color: #bfe8e0;
+  font-size: 15px;
+}
+
+.hero-score {
+  margin-top: 8px;
+  font-size: 64px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+.hero-desc {
+  margin-top: 8px;
+  color: #d7e5ec;
+  font-size: 15px;
+}
+
+.hero-flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.hero-flow span {
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.24);
+  background: rgba(255,255,255,.08);
+  border-radius: 6px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.hero-flow i {
+  display: none;
+}
+
+.ceo-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.domain-card {
+  min-height: 205px;
+  padding: 18px;
+  border: 1px solid #dfe7ee;
+  border-left-width: 5px;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .05);
+}
+
+.domain-card.active {
+  border-color: #0b7ff3;
+  box-shadow: 0 10px 26px rgba(11, 127, 243, .16);
+}
+
+.domain-card.people { border-left-color: #22a36a; }
+.domain-card.finance { border-left-color: #0b7ff3; }
+.domain-card.material { border-left-color: #e6a70d; }
+.domain-card.process { border-left-color: #8b5cf6; }
+
+.domain-head {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.domain-head span {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #101c28;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.domain-head strong {
+  font-size: 18px;
+}
+
+.domain-head em {
+  padding: 4px 8px;
+  border: 1px solid #c9d8e6;
+  border-radius: 12px;
+  color: #0f766e;
+  font-style: normal;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.domain-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 18px 0 12px;
+}
+
+.domain-kpis div {
+  padding: 10px;
+  background: #f7fafc;
+  border-radius: 6px;
+}
+
+.domain-kpis b {
+  display: block;
+  color: #0f172a;
+  font-size: 22px;
+}
+
+.domain-kpis small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.domain-card p {
+  margin: 0;
+  color: #4b5563;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.ceo-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+}
+
+.drill-panel .panel-body {
+  display: grid;
+  gap: 14px;
+}
+
+.drill-dims {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.drill-dims button {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #bfdbfe;
+  color: #006ee6;
+  background: #eff6ff;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.drill-summary {
+  padding: 12px 14px;
+  border-left: 4px solid #0b7ff3;
+  background: #f8fbff;
+  color: #334155;
+  line-height: 1.6;
+}
+
+.command-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.command-list li {
+  margin-bottom: 16px;
+}
+
+.command-list b {
+  display: block;
+  margin-bottom: 5px;
+  color: #0f172a;
+}
+
+.command-list span {
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.ceo-method {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: 1fr 44px 1fr 44px 1fr;
+  gap: 12px;
+  align-items: stretch;
+  padding: 18px;
+  background: #eef5ff;
+  border-radius: 8px;
+}
+
+.method-step {
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.method-step b {
+  display: block;
+  margin-bottom: 8px;
+  color: #0f3e78;
+}
+
+.method-step span {
+  color: #475569;
+}
+
+.method-arrow {
+  display: grid;
+  place-items: center;
+  color: #006eff;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.ceo2-page {
+  min-height: calc(100vh - 56px);
+  padding: 18px 20px 28px;
+  background: #0f1724;
+  color: #d7e5ec;
+}
+
+.ceo2-page .panel {
+  background: #162233;
+  border-color: #27384c;
+  color: #d7e5ec;
+  box-shadow: 0 10px 26px rgba(0,0,0,.18);
+}
+
+.ceo2-page .panel-title {
+  border-bottom-color: #27384c;
+  color: #edf5fb;
+}
+
+.ceo2-page table {
+  color: #dce8f1;
+}
+
+.ceo2-page th {
+  background: #1e2b3d;
+  color: #edf5fb;
+  border-bottom-color: #31445b;
+}
+
+.ceo2-page td {
+  border-bottom-color: #27384c;
+}
+
+.ceo2-page tbody tr:nth-child(even) {
+  background: #1a2839;
+}
+
+.ceo2-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.ceo2-head h1 {
+  color: #f7fbff;
+}
+
+.ceo2-head p {
+  margin: 6px 0 0;
+  color: #8fa4ba;
+}
+
+.ceo2-filters {
+  color: #d7e5ec;
+}
+
+.ceo2-filters .select {
+  background: #111d2c;
+  color: #e5eef7;
+  border-color: #42576e;
+  box-shadow: none;
+}
+
+.vital-strip {
+  display: grid;
+  grid-template-columns: 1.25fr repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.vital-card {
+  min-height: 116px;
+  padding: 14px 16px;
+  border: 1px solid #2a3d53;
+  border-top: 4px solid #4f9cff;
+  border-radius: 8px;
+  background: #172538;
+  color: #d7e5ec;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vital-card.active,
+.vital-card:hover {
+  border-color: #64b5ff;
+  background: #1a2d43;
+}
+
+.vital-card.warn {
+  border-top-color: #e8b339;
+}
+
+.vital-card.danger {
+  border-top-color: #f05a5a;
+}
+
+.vital-card.ok {
+  border-top-color: #28c79d;
+}
+
+.vital-card span,
+.vital-card em {
+  display: block;
+  color: #90a7bd;
+  font-style: normal;
+}
+
+.vital-card strong {
+  display: block;
+  margin: 8px 0;
+  color: #fff;
+  font-size: 31px;
+  line-height: 1;
+}
+
+.ceo2-layout {
+  display: grid;
+  grid-template-columns: 1.45fr 1fr;
+  gap: 16px;
+}
+
+.ceo2-panel {
+  min-height: 250px;
+}
+
+.sales-flow-panel,
+.inventory-panel,
+.drill-panel-v2 {
+  grid-column: 1 / -1;
+}
+
+.sales-flow {
+  display: grid;
+  grid-template-columns: 1fr 34px 1fr 34px 1fr 34px 1fr;
+  align-items: center;
+  gap: 0;
+}
+
+.sales-flow button {
+  min-height: 128px;
+  border: 1px solid #33506c;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #1d334b, #17283c);
+  color: #e6f2fb;
+  cursor: pointer;
+}
+
+.sales-flow button.active,
+.sales-flow button:hover {
+  border-color: #64b5ff;
+}
+
+.sales-flow span {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  background: #0b7ff3;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.sales-flow b,
+.sales-flow strong {
+  display: block;
+}
+
+.sales-flow b {
+  color: #a8bdd1;
+  font-size: 15px;
+}
+
+.sales-flow strong {
+  margin-top: 8px;
+  font-size: 24px;
+}
+
+.sales-flow i {
+  height: 2px;
+  background: #4f6680;
+  position: relative;
+}
+
+.sales-flow i:after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -5px;
+  border-left: 9px solid #4f6680;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+}
+
+.flow-metrics,
+.overview-gauges,
+.inventory-health {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.overview-gauges {
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 0;
+}
+
+.flow-metrics div,
+.overview-gauges div,
+.inventory-health div {
+  padding: 14px;
+  border-radius: 6px;
+  background: #101c2b;
+  border: 1px solid #27384c;
+}
+
+.flow-metrics b,
+.overview-gauges b,
+.inventory-health b {
+  display: block;
+  color: #fff;
+  font-size: 24px;
+}
+
+.flow-metrics span,
+.overview-gauges span,
+.inventory-health span {
+  color: #8fa4ba;
+  font-size: 13px;
+}
+
+.inventory-four {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.inventory-four button {
+  min-height: 104px;
+  padding: 14px;
+  border: 1px solid #3d536b;
+  border-radius: 8px;
+  background: #111d2c;
+  color: #d7e5ec;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inventory-four button.active,
+.inventory-four button:hover {
+  border-color: #e8b339;
+}
+
+.inventory-four span,
+.inventory-four strong,
+.inventory-four em {
+  display: block;
+}
+
+.inventory-four span {
+  color: #a8bdd1;
+}
+
+.inventory-four strong {
+  margin: 8px 0;
+  color: #fff;
+  font-size: 24px;
+}
+
+.inventory-four em {
+  color: #e8b339;
+  font-style: normal;
+}
+
+.inventory-body {
+  display: grid;
+  grid-template-columns: 1.2fr .8fr;
+  gap: 14px;
+}
+
+.inventory-health {
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 0;
+}
+
+.risk-matrix {
+  height: 306px;
+  position: relative;
+  border-left: 1px solid #53677d;
+  border-bottom: 1px solid #53677d;
+  background:
+    linear-gradient(90deg, transparent 49.5%, rgba(255,255,255,.08) 50%, transparent 50.5%),
+    linear-gradient(0deg, transparent 49.5%, rgba(255,255,255,.08) 50%, transparent 50.5%),
+    radial-gradient(circle at 80% 20%, rgba(240,90,90,.2), transparent 28%),
+    radial-gradient(circle at 30% 70%, rgba(40,199,157,.14), transparent 26%);
+}
+
+.risk-dot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 98px;
+  height: 48px;
+  border: 1px solid currentColor;
+  border-radius: 24px;
+  background: #122033;
+  color: #d7e5ec;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.risk-dot.high {
+  color: #ff7a7a;
+}
+
+.risk-dot.mid {
+  color: #e8b339;
+}
+
+.risk-dot.low {
+  color: #28c79d;
+}
+
+.axis-y,
+.axis-x {
+  position: absolute;
+  color: #8fa4ba;
+  font-size: 13px;
+}
+
+.axis-y {
+  left: 8px;
+  top: 8px;
+}
+
+.axis-x {
+  right: 8px;
+  bottom: 8px;
+}
+
+.breadcrumb {
+  color: #88bfff;
+  font-size: 14px;
+}
+
+.drill-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ceo2-page .drill-summary {
+  background: #111d2c;
+  border-left-color: #64b5ff;
+  color: #c9d8e6;
+}
+
+.ceo2-page .drill-dims button {
+  background: #10243a;
+  border-color: #2f5f8f;
+  color: #9fd0ff;
+}
+
+@media (max-width: 1200px) {
+  .platform-nav a {
+    padding: 0 16px;
+  }
+  .grid.cols-3,
+  .grid.cols-2 {
+    grid-template-columns: 1fr;
+  }
+  .query-row {
+    grid-template-columns: 1fr;
+  }
+  .ceo-grid,
+  .ceo-main,
+  .ceo-hero,
+  .ceo-method,
+  .ceo2-layout,
+  .vital-strip,
+  .inventory-body,
+  .inventory-four,
+  .ceo2-head,
+  .sales-flow,
+  .flow-metrics,
+  .overview-gauges,
+  .inventory-health {
+    grid-template-columns: 1fr;
+  }
+  .method-arrow {
+    display: none;
+  }
+}
+
+/* ===== EIMOS system skin override ===== */
+:root {
+  --nav: #dbe8ff;
+  --side: #eef5ff;
+  --side-dark: #d9eaff;
+  --line: #d9e0ea;
+  --text: #172033;
+  --muted: #6b7890;
+  --blue: #126ee2;
+  --orange: #f08313;
+  --green: #35c6bd;
+  --panel: #ffffff;
+  --soft: #f5f8fc;
+}
+
+body {
+  background: #f7f8fb;
+  color: var(--text);
+}
+
+.topbar {
+  height: 57px;
+  background: #dbe8ff;
+  color: #24324a;
+  box-shadow: 0 2px 8px rgba(66, 86, 120, .12);
+}
+
+.hamburger {
+  width: 72px;
+  height: 57px;
+  display: grid;
+  place-items: center;
+  line-height: normal;
+  color: #fff;
+  cursor: pointer;
+}
+
+.hamburger::before {
+  content: "";
+  width: 36px;
+  height: 36px;
+  display: block;
+  border-radius: 50%;
+  background: #0875d8;
+  box-shadow: 0 3px 8px rgba(8, 117, 216, .28);
+}
+
+.hamburger::after {
+  content: "☰";
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  color: #fff;
+}
+
+.brand {
+  width: 338px;
+  height: 57px;
+  padding-left: 26px;
+  gap: 12px;
+  color: #fff;
+  background: linear-gradient(90deg, #eff6ff 0%, #dbe8ff 100%);
+  font-size: 36px;
+  letter-spacing: 2px;
+  text-shadow: 0 1px 0 rgba(0,0,0,.04);
+}
+
+.brand::first-letter {
+  color: #fff;
+}
+
+.brand .env {
+  padding: 7px 11px;
+  background: #e27d1b;
+  color: #fff;
+  font-size: 14px;
+  border-radius: 2px;
+  letter-spacing: 0;
+  text-shadow: none;
+}
+
+.platform-nav {
+  background: #dbe8ff;
+}
+
+.platform-nav a {
+  min-width: 132px;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 24px;
+  color: #2f3d55;
+  border-left: 0;
+  position: relative;
+}
+
+.platform-nav a.active {
+  background: #eef5ff;
+  color: #0b61d8;
+}
+
+.platform-nav a.active::after {
+  content: "";
+  position: absolute;
+  left: 26px;
+  right: 26px;
+  bottom: 0;
+  height: 3px;
+  background: #0b6ff0;
+}
+
+.nav-icon {
+  width: 28px;
+  height: 28px;
+  color: #2b3c55;
+  font-size: 25px;
+}
+
+.platform-nav a.active .nav-icon {
+  color: #0b61d8;
+}
+
+.nav-label {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.top-actions {
+  color: #4b5b73;
+  font-size: 15px;
+}
+
+.sidebar {
+  top: 57px;
+  width: 248px;
+  background: #eef5ff;
+  color: #17315d;
+  border-right: 1px solid #d3dce8;
+  box-shadow: inset -4px 0 0 rgba(196, 205, 218, .35);
+  transition: width .18s ease;
+}
+
+.search {
+  height: 55px;
+  justify-content: center;
+  padding: 0;
+  border-bottom: 1px solid #d3dce8;
+  color: #7890b1;
+  background: #f8fbff;
+}
+
+.search span {
+  margin-left: 8px;
+}
+
+.menu-title,
+.menu-item {
+  min-height: 52px;
+  height: auto;
+  padding: 10px 14px;
+  color: #1c335d;
+  border-bottom: 1px solid #dce5f0;
+  background: #edf5ff;
+  font-size: 15px;
+}
+
+.menu-title {
+  background: #e4f0ff;
+  font-weight: 600;
+}
+
+.submenu {
+  padding: 10px 0;
+  background: #eef5ff;
+}
+
+.submenu a {
+  width: calc(100% - 20px);
+  height: 38px;
+  line-height: 36px;
+  margin: 5px 10px;
+  padding-left: 18px;
+  color: #17315d;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  font-size: 14px;
+}
+
+.submenu a.active {
+  color: #005fe8;
+  background: #dcecff;
+  border-color: #0b74ff;
+  font-weight: 600;
+}
+
+.content {
+  margin-left: 248px;
+  padding-top: 57px;
+  background: #fff;
+  min-height: 100vh;
+  transition: margin-left .18s ease;
+}
+
+.eimos-tabbar {
+  display: none;
+  height: 0;
+  align-items: flex-end;
+  gap: 8px;
+  padding-left: 14px;
+  border-bottom: 1px solid #d9e0ea;
+  background: #fff;
+}
+
+.eimos-back {
+  width: 24px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: #55657b;
+  font-size: 24px;
+}
+
+.eimos-tab {
+  width: 222px;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #0068df;
+  border: 1px solid #0a74ff;
+  border-bottom-color: #fff;
+  border-radius: 4px 4px 0 0;
+  background: #f9fcff;
+  font-size: 15px;
+}
+
+.eimos-tab::before {
+  content: "↻";
+  font-size: 18px;
+}
+
+.ceo2-page {
+  padding: 30px 32px 34px 40px;
+  background: #fff;
+}
+
+.ceo2-head h1 {
+  font-size: 34px;
+  font-weight: 700;
+}
+
+.ceo2-page .panel {
+  border-color: #d9e0ea;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.ceo2-page .panel-title {
+  background: #fff;
+  color: #1f2937;
+  border-bottom-color: #d9e0ea;
+}
+
+.vital-card,
+.inventory-four button,
+.sales-flow button,
+.risk-dot,
+.overview-gauges div {
+  border-radius: 4px;
+}
+
+body.nav-collapsed .sidebar {
+  width: 80px;
+  overflow: hidden;
+}
+
+body.nav-collapsed .content {
+  margin-left: 80px;
+}
+
+body.nav-collapsed .search,
+body.nav-collapsed .menu-title,
+body.nav-collapsed .submenu,
+body.nav-collapsed .menu-item {
+  display: none;
+}
+
+@media (max-width: 1280px) {
+  .brand { width: 300px; }
+  .platform-nav a { min-width: 112px; padding: 0 16px; }
+  .top-actions { display: none; }
+}
+
+/* ====== Embedded cockpit iframe (replaces the previous ceo2-page block) ====== */
+.content { padding-top: 57px; }
+.cockpit-frame {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 57px);
+  border: 0;
+  background: #0f1724;
+}
+
+/* ====== Floating AI assistant (mounted bottom-right, opens iframe to /workbench) ====== */
+.assistant-float {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 50;
+  height: 44px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #0b74ff;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #0b7ff3, #1b3f7c);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 10px 26px rgba(11, 96, 200, .28);
+}
+.assistant-float::before {
+  content: "✦";
+  color: #ffd64a;
+  font-size: 17px;
+  font-weight: 800;
+}
+.assistant-float:hover { filter: brightness(1.06); }
+
+.assistant-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: none;
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 24px;
+  background: rgba(8, 18, 30, .42);
+  backdrop-filter: blur(3px);
+}
+.assistant-modal.open { display: flex; }
+.assistant-dialog {
+  width: min(1280px, calc(100vw - 48px));
+  height: calc(100vh - 48px);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border: 1px solid #2a3d53;
+  border-radius: 12px;
+  background: #0f1724;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .48);
+  overflow: hidden;
+}
+.assistant-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #0f1724;
+}
+.assistant-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #27384c;
+  background: #142235;
+  color: #edf5fb;
+}
+.assistant-head b { font-size: 15px; }
+.assistant-head span { display: block; margin-top: 4px; color: #8fa4ba; font-size: 12px; }
+.assistant-head-actions { display: flex; gap: 8px; align-items: center; }
+.assistant-close,
+.assistant-mini,
+.assistant-full {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #2f4a64;
+  border-radius: 6px;
+  background: #122033;
+  color: #d7e5ec;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.assistant-mini:hover,
+.assistant-full:hover,
+.assistant-close:hover { border-color: #64b5ff; color: #64b5ff; }
+.assistant-mini[aria-pressed="true"],
+.assistant-full[aria-pressed="true"] {
+  border-color: #64b5ff;
+  color: #64b5ff;
+  background: rgba(100, 181, 255, .14);
+}
+.assistant-modal.size-full { padding: 0; }
+.assistant-modal.size-full .assistant-dialog {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  border-width: 0;
+}
+.assistant-modal.size-mini {
+  padding: 16px;
+  align-items: flex-end;
+  background: transparent;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+.assistant-modal.size-mini .assistant-dialog {
+  pointer-events: auto;
+  width: min(520px, calc(100vw - 32px));
+  height: min(640px, calc(100vh - 32px));
+}
+</style>
+</head>
+<body data-page="ceo-embed">
+  <div class="app">
+    <header class="topbar">
+      <div class="hamburger"></div>
+      <div class="brand">EIMOS <span class="env">Demo准备环境</span></div>
+      <nav class="platform-nav">
+        <a href="#"><span class="nav-icon">⌂</span><span class="nav-label">产品功能</span></a>
+        <a class="active" href="#"><span class="nav-icon">▣</span><span class="nav-label">任务中心</span></a>
+        <a href="#"><span class="nav-icon">✕</span><span class="nav-label">运维平台</span></a>
+        <a href="#"><span class="nav-icon">▲</span><span class="nav-label">企业架构</span></a>
+        <a href="#"><span class="nav-icon">▤</span><span class="nav-label">开发交付</span></a>
+        <a href="#"><span class="nav-label no-icon">应用开发</span></a>
+      </nav>
+      <div class="top-actions">
+        <span class="top-action"><span class="action-icon small">◉</span>切换皮肤</span>
+        <span class="notice">99+</span>
+        <span class="user-icon">●</span>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="search">搜索 <span>⌕</span></div>
+      <div class="menu-title"><span>IBA</span> 智能经营解析(IBA) <span class="chev">⌃</span></div>
+      <div class="submenu">
+        <a class="active" href="/">CEO驾驶舱</a>
+        <a href="dashboard.html">驾驶舱</a>
+        <a href="income.html">收入</a>
+        <a href="#">i-Agent</a>
+      </div>
+      <div class="menu-item">流程运营(360) <span class="chev">⌄</span></div>
+      <div class="menu-item">智能销售管理(ISMP) <span class="chev">⌄</span></div>
+      <div class="menu-item">智能合同管理(ICM) <span class="chev">⌄</span></div>
+      <div class="menu-item">开票回款管理(IB&C) <span class="chev">⌄</span></div>
+      <div class="menu-item">产品配置周期管理(CLM) <span class="chev">⌄</span></div>
+      <div class="menu-item">配置报价管理(CPQ) <span class="chev">⌄</span></div>
+      <div class="menu-item">集成计划(IPS) <span class="chev">⌄</span></div>
+    </aside>
+
+    <main class="content">
+      <iframe class="cockpit-frame" id="cockpitFrame" title="CEO 驾驶舱" src="/ceo_cockpit.html"></iframe>
+    </main>
+  </div>
+
+  <button class="assistant-float" id="assistantOpen" type="button">AI 助手</button>
+  <div class="assistant-modal" id="assistantModal" aria-hidden="true">
+    <section class="assistant-dialog" role="dialog" aria-modal="true" aria-labelledby="assistantTitle">
+      <div class="assistant-head">
+        <div>
+          <b id="assistantTitle">智能分析 · 报表分析</b>
+          <span>BI 工作台已嵌入,可在此进行数据问答与报表解读</span>
+        </div>
+        <div class="assistant-head-actions">
+          <button class="assistant-mini" id="assistantMini" type="button" aria-pressed="false" title="缩小为右下角悬浮窗">⊟</button>
+          <button class="assistant-full" id="assistantFull" type="button" aria-pressed="false" title="全屏">⛶</button>
+          <button class="assistant-close" id="assistantClose" type="button" aria-label="收起" title="收起">×</button>
+        </div>
+      </div>
+      <iframe class="assistant-frame" id="assistantFrame" title="BI 工作台" src="about:blank" loading="lazy"></iframe>
+    </section>
+  </div>
+
+  <script>
+const DATA = {
+  metrics: {
+    revenue: 527528.22,
+    cost: 372378.39,
+    consolCost: 401252.31,
+    freight: 9971.02,
+    orders: 100,
+    qty: 14671.67,
+    invoice: 527528.22,
+    received: 403687.19,
+    arBalance: 80496.69,
+    avgOverdue: 66.25,
+    overdue60: 64688.63,
+    grossProfit: 155149.83,
+    grossMargin: 0.2941071664,
+    collectionRate: 0.7652428338,
+    salOut: 1173729.52
+  },
+  monthly: [
+    { m: "1月", revenue: 145723.68, cost: 101900.18, cnt: 28 },
+    { m: "2月", revenue: 182498.47, cost: 129484.0, cnt: 29 },
+    { m: "3月", revenue: 131560.6, cost: 93422.96, cnt: 31 },
+    { m: "4月", revenue: 67745.47, cost: 47571.25, cnt: 12 }
+  ],
+  arMonthly: [
+    { m: "1月", invoice: 142728.43, received: 107211.98, balance: 35516.45 },
+    { m: "2月", invoice: 178383.17, received: 138742.12, balance: 39641.05 },
+    { m: "3月", invoice: 132761.23, received: 103351.76, balance: 29409.47 },
+    { m: "4月", invoice: 73655.39, received: 54381.33, balance: 19274.06 }
+  ],
+  byOrg: [
+    { name: "Organization-089", revenue: 32430.51, cost: 21870.73, cnt: 4, gross: 10559.78 },
+    { name: "Organization-053", revenue: 27082.77, cost: 19345.93, cnt: 4, gross: 7736.84 },
+    { name: "Organization-061", revenue: 26857.61, cost: 19844.78, cnt: 4, gross: 7012.83 },
+    { name: "Organization-005", revenue: 26815.41, cost: 17775.5, cnt: 4, gross: 9039.91 },
+    { name: "Organization-029", revenue: 25953.74, cost: 17708.63, cnt: 4, gross: 8245.11 },
+    { name: "Organization-033", revenue: 25731.96, cost: 18363.68, cnt: 4, gross: 7368.28 },
+    { name: "Organization-069", revenue: 24749.82, cost: 17906.76, cnt: 4, gross: 6843.06 },
+    { name: "Organization-073", revenue: 23805.14, cost: 16485.69, cnt: 4, gross: 7319.45 }
+  ],
+  byProduct: [
+    { name: "ProductLine-023", revenue: 18451.19, cost: 13322.44, qty: 180.54, gross: 5128.75 },
+    { name: "ProductLine-030", revenue: 15578.44, cost: 10335.47, qty: 262.44, gross: 5242.97 },
+    { name: "ProductLine-024", revenue: 12633.91, cost: 9087.34, qty: 242.54, gross: 3546.57 },
+    { name: "ProductLine-083", revenue: 12139.24, cost: 7830.71, qty: 132.02, gross: 4308.53 },
+    { name: "ProductLine-020", revenue: 11907.94, cost: 8578.2, qty: 252.93, gross: 3329.74 },
+    { name: "ProductLine-031", revenue: 11654.48, cost: 8327.36, qty: 278.15, gross: 3327.12 },
+    { name: "ProductLine-044", revenue: 11204.97, cost: 8420.13, qty: 200.77, gross: 2784.84 },
+    { name: "ProductLine-056", revenue: 10864.63, cost: 8309.88, qty: 278.01, gross: 2554.75 }
+  ],
+  byCustomer: [
+    { name: "Customer-039", type: "Project", internal: "N", invoice: 18451.19, received: 12469.68, balance: 5981.51 },
+    { name: "Customer-042", type: "Retail", internal: "N", invoice: 15578.44, received: 14462.23, balance: 1116.21 },
+    { name: "Customer-068", type: "Retail", internal: "N", invoice: 12633.91, received: 8401.54, balance: 4232.37 },
+    { name: "Customer-079", type: "Retail", internal: "N", invoice: 12139.24, received: 8316.35, balance: 3822.89 },
+    { name: "Customer-052", type: "Project", internal: "N", invoice: 11907.94, received: 7601.52, balance: 4306.42 },
+    { name: "Customer-071", type: "Project", internal: "N", invoice: 11654.48, received: 7424.39, balance: 4230.09 },
+    { name: "Customer-048", type: "Distributor", internal: "Y", invoice: 11204.97, received: 8343.0, balance: 2861.97 },
+    { name: "Customer-096", type: "Dealer", internal: "N", invoice: 10864.63, received: 8494.82, balance: 2369.81 }
+  ],
+  projects: [
+    { code: "SO-NO-00100", customer: "Customer-001", org: "深圳硕磐智能（合并示范）", date: "2024-04-12", status: "B", amount: 3706.97, cost: 2466.08 },
+    { code: "SO-NO-00099", customer: "Customer-098", org: "Organization-097", date: "2024-04-11", status: "A", amount: 4192.64, cost: 2615.31 },
+    { code: "SO-NO-00098", customer: "Customer-095", org: "Organization-093", date: "2024-04-10", status: "B", amount: 4395.22, cost: 3320.34 },
+    { code: "SO-NO-00097", customer: "Customer-092", org: "Organization-089", date: "2024-04-09", status: "A", amount: 6176.05, cost: 3904.88 },
+    { code: "SO-NO-00096", customer: "Customer-089", org: "Organization-085", date: "2024-04-08", status: "C", amount: 4073.56, cost: 2978.16 },
+    { code: "SO-NO-00095", customer: "Customer-086", org: "Organization-081", date: "2024-04-07", status: "C", amount: 403.94, cost: 284.57 },
+    { code: "SO-NO-00094", customer: "Customer-083", org: "Organization-077", date: "2024-04-06", status: "C", amount: 6569.82, cost: 4717.85 },
+    { code: "SO-NO-00093", customer: "Customer-080", org: "Organization-073", date: "2024-04-05", status: "B", amount: 6602.19, cost: 4999.1 },
+    { code: "SO-NO-00092", customer: "Customer-077", org: "Organization-069", date: "2024-04-04", status: "C", amount: 543.51, cost: 412.06 },
+    { code: "SO-NO-00091", customer: "Customer-074", org: "Organization-065", date: "2024-04-03", status: "C", amount: 6793.18, cost: 4458.2 },
+    { code: "SO-NO-00090", customer: "Customer-071", org: "Organization-061", date: "2024-04-02", status: "A", amount: 11654.48, cost: 8327.36 },
+    { code: "SO-NO-00089", customer: "Customer-068", org: "Organization-057", date: "2024-04-01", status: "C", amount: 12633.91, cost: 9087.34 }
+  ]
+};
+
+const REPORT_DATA = [
+  { name: "2023", revenue: 2213356977.95, profit: 103186743.57, deductedProfit: 41664497.37, cash: 364082055.08, rdRate: 0.1269, totalAsset: 4220570891.16, source: "23.pdf 年报" },
+  { name: "2024", revenue: 2418574391.82, profit: 27953093.89, deductedProfit: 32133597.05, cash: 87220645.17, rdRate: 0.1024, totalAsset: 4255663351.00, source: "24.pdf 年报" },
+  { name: "2025Q3", revenue: 1353229603.25, profit: -135580994.36, deductedProfit: -53671539.75, cash: 149615879.59, rdRate: 0.1335, totalAsset: null, source: "25.pdf 三季报" }
+];
+
+const QUARTERLY_2024 = [
+  { name: "2024Q1", revenue: 445039193.21, profit: 44543331.11, cash: 12224792.96 },
+  { name: "2024Q2", revenue: 636370307.00, profit: -33633717.67, cash: -91371463.19 },
+  { name: "2024Q3", revenue: 638189703.62, profit: 32036983.19, cash: 150669868.02 },
+  { name: "2024Q4", revenue: 698975187.99, profit: -14993502.74, cash: 15697447.38 }
+];
+
+const SEGMENT_2024 = [
+  { name: "车载光学（量产交付期）", revenue: 638000000, note: "2024进入密集量产，毛利结构转型" },
+  { name: "影院/激光显示", revenue: 980000000, note: "成熟业务，稳定贡献" },
+  { name: "ToB专业显示/工程", revenue: 480000000, note: "工程与教育市场" },
+  { name: "ToC消费/家用", revenue: 320000000, note: "主动清理整机库存" }
+];
+
+const CEO_DATA = {
+  inventory: {
+    total: 31279834.96,
+    raw: 6347592.17,
+    wip: 6396717.90,
+    finished: 3044806.69,
+    other: 15490718.20,
+    risk: 2895935.54,
+    slowMoving: 2895935.54,
+    reserve: 631192.14,
+    turnoverDays: 470.9,
+    highWarnCount: 21,
+    safeOk: 58,
+    safeLow: 42,
+    safeRate: 0.58,
+    mix: [
+      { name: "检测类", value: 6304578.61 },
+      { name: "金属件", value: 5363516.25 },
+      { name: "镜片/陶瓷", value: 5026444.79 },
+      { name: "塑料件", value: 4952215.21 },
+      { name: "板卡类", value: 3421604.16 },
+      { name: "闪光灯罩", value: 3120226.90 },
+      { name: "电子件", value: 3091249.04 }
+    ],
+    aging: [
+      { name: "0-30天", value: 4516670.34 },
+      { name: "31-60天", value: 1777061.30 },
+      { name: "61-90天", value: 1435921.78 },
+      { name: "90+天", value: 874939.00 }
+    ],
+    orgs: [
+      { name: "Organization-071", value: 2587746.71 },
+      { name: "硕磐智造中心", value: 2330783.53 },
+      { name: "Organization-066", value: 1888885.52 },
+      { name: "Organization-056", value: 1882555.59 },
+      { name: "Organization-076", value: 1865386.09 },
+      { name: "深圳硕磐智能（合并示范）", value: 1863538.55 },
+      { name: "硕磐供应链中心", value: 1640948.45 },
+      { name: "Organization-036", value: 1601177.88 }
+    ],
+    topMaterials: [
+      ["MAT-NO-054", "Material-054", "检测类", "原材料", "Organization-071", 837741.80],
+      ["MAT-NO-031", "Material-031", "镜片/陶瓷", "原材料", "Organization-056", 834747.61],
+      ["MAT-NO-058", "Material-058", "金属件", "成品", "Organization-091", 760330.23],
+      ["MAT-NO-089", "Material-089", "检测类", "辅料", "Organization-046", 746633.13],
+      ["MAT-NO-017", "Material-017", "镜片/陶瓷", "设备及备品备件", "Organization-086", 741701.89],
+      ["MAT-NO-021", "Material-021", "闪光灯罩", "办公用品", "硕磐智造中心", 724378.86],
+      ["MAT-NO-086", "Material-086", "金属件", "成品", "Organization-031", 709440.11],
+      ["MAT-NO-041", "Material-041", "金属件", "半成品", "硕磐智造中心", 707089.07]
+    ],
+    movements: [
+      { type: "PUR_IN（采购入库）", in: 1169345.35, out: 1009452.47, count: 45 },
+      { type: "SAL_OUT（销售出库）", in: 1090622.17, out: 1173729.52, count: 45 },
+      { type: "ADJ（调整）", in: 1266041.94, out: 910717.35, count: 43 },
+      { type: "TRF_IN（调拨入库）", in: 671277.48, out: 460447.19, count: 32 },
+      { type: "TRF_OUT（调拨出库）", in: 685292.84, out: 819201.59, count: 35 }
+    ],
+    slowDetail: [
+      { type: "EXCESS（超储） / HIGH", count: 3, amount: 137067.48, ratio: 0.3567 },
+      { type: "EXCESS / MEDIUM", count: 12, amount: 519982.10, ratio: 0.2217 },
+      { type: "EXCESS / LOW", count: 9, amount: 228177.34, ratio: 0.2467 },
+      { type: "SLOW（呆滞） / HIGH", count: 11, amount: 617202.83, ratio: 0.1782 },
+      { type: "SLOW / MEDIUM", count: 6, amount: 292281.10, ratio: 0.2083 },
+      { type: "SLOW / LOW", count: 7, amount: 268036.96, ratio: 0.2357 },
+      { type: "NEAR_SLOW / HIGH", count: 7, amount: 283596.60, ratio: 0.2343 },
+      { type: "NEAR_SLOW / MEDIUM", count: 11, amount: 487353.11, ratio: 0.2255 },
+      { type: "NEAR_SLOW / LOW", count: 4, amount: 62094.37, ratio: 0.3150 }
+    ]
+  },
+  scoreCard: {
+    overall: 62,
+    revenue: 56,
+    profit: 38,
+    cash: 78,
+    inventory: 64,
+    delivery: 71,
+    risk: 58
+  }
+};
+
+const CEO_DRILLS = {
+  overview: {
+    title: "集团经营总览",
+    breadcrumb: "集团",
+    dims: ["集团 → 事业部 → 子公司 → 部门", "年 → 季 → 月", "增长 / 利润 / 现金 / 库存 / 风险"],
+    summary: "2025年前三季度收入13.53亿元同比下降21.31%，归母净利润-1.36亿元承压；经营现金流1.50亿元同比改善109%。库存3128万元中呆滞超储289.59万元、高风险预警21条，需要联动财务与库存口径同时治理。",
+    head: ["年度/期间", "营业收入", "归母净利润", "扣非净利润", "经营现金流", "研发占比", "数据来源"],
+    rows: () => REPORT_DATA.map((r) => [r.name, yi(r.revenue), yi(r.profit), yi(r.deductedProfit), yi(r.cash), pct(r.rdRate), r.source])
+  },
+  growth: {
+    title: "看增长：收入与目标缺口",
+    breadcrumb: "集团 / 增长 / 年 → 季 → 月",
+    dims: ["集团 → 事业部", "年度 → 季度 → 月度", "产品线", "区域市场", "客户"],
+    summary: "2024年收入24.19亿元同比+9.27%，主要由车载光学（6.38亿元）密集量产驱动；2025年前三季度收入同比-21.31%，需要按业务板块和季度下钻识别缺口。",
+    head: ["期间/板块", "营业收入", "同比", "关键说明", "CEO动作"],
+    rows: () => [
+      ["2023全年", "22.13亿", "-12.90%", "消费电子波动", "复盘成熟业务"],
+      ["2024全年", "24.19亿", "+9.27%", "车载光学6.38亿，C端清库存", "看产品结构"],
+      ["2024Q1", "4.45亿", "—", "全年最低单季", "看新签储备"],
+      ["2024Q2", "6.36亿", "—", "回升", "看交付节奏"],
+      ["2024Q3", "6.38亿", "—", "稳定", "看客户结构"],
+      ["2024Q4", "6.99亿", "—", "全年高点", "看年末冲量"],
+      ["2025Q1-Q3", "13.53亿", "-21.31%", "C端调整+宏观", "下钻收入缺口"]
+    ]
+  },
+  profit: {
+    title: "看利润：利润健康与成本结构",
+    breadcrumb: "集团 / 利润 / 产品线",
+    dims: ["产品线 → 产品型号", "成本结构", "毛利率", "研发投入", "非经常损益"],
+    summary: "2024年归母净利润0.28亿同比-72.91%，毛利率因产品结构变化下降6.85个百分点；2025前三季度归母净利润-1.36亿，扣非净利润-0.54亿，仲裁支出与研发投入加大叠加。",
+    head: ["期间", "归母净利润", "扣非净利润", "研发占比", "关键解释"],
+    rows: () => [
+      ["2023", "1.03亿", "0.42亿", "12.69%", "消费电子波动"],
+      ["2024", "0.28亿", "0.32亿", "10.24%", "C端清库+车载占比上升致毛利下降"],
+      ["2025Q3累计", "-1.36亿", "-0.54亿", "13.35%", "收入下滑+仲裁营业外支出+研发加大"]
+    ]
+  },
+  cash: {
+    title: "看现金：财报现金流 + 业务回款联动",
+    breadcrumb: "集团 / 现金 / 客户",
+    dims: ["客户", "区域", "销售责任人", "账龄", "回款状态"],
+    summary: "2025前三季度经营现金流净额1.50亿元，同比+109.19%；业务样例库回款率76.52%，应收余额8.05万元，逾期60+天客户需逐户穿透。",
+    head: ["指标", "金额/比例", "口径", "下钻"],
+    rows: () => [
+      ["经营现金流净额", "1.50亿", "25.pdf 三季报", "年/季"],
+      ["2024经营现金流", "0.87亿", "24.pdf 年报", "受车载营运资金影响"],
+      ["业务回款金额", wan(DATA.metrics.received), "T_AR_Receivable.FReceivedAmt", "客户/组织"],
+      ["应收账款余额", wan(DATA.metrics.arBalance), "FInvoiceAmt-FReceivedAmt-FNoteAmt", "客户/账龄"],
+      ["业务回款率", pct(DATA.metrics.collectionRate), "FReceivedAmt/FInvoiceAmt", "销售责任人"]
+    ]
+  },
+  sales: {
+    title: "销售业务流：订 → 发 → 收 → 回",
+    breadcrumb: "集团 / 销售业务流",
+    dims: ["集团 → 事业部 → 子公司", "年 → 季 → 月 → 周 → 日", "产品线 → 型号 → SKU", "区域 → 客户", "客户行业"],
+    summary: "围绕订单、发货、收入、回款四节点判断链路是否顺畅。订单与应收来自业务库；发货以库存销售出库金额近似；收入以财报口径为权威。",
+    head: ["节点", "金额", "数据来源", "异常判断"],
+    rows: () => [
+      ["订：新签订单额", wan(DATA.metrics.revenue), "T_SAL_OrderEntry.FAmount", "100张订单与收入联动"],
+      ["发：发货金额", wan(DATA.metrics.salOut), "T_STK_InvMovement(SAL_OUT).FOutAmt", "出库117.37万元"],
+      ["收：营业收入", "13.53亿", "25.pdf 三季报累计", "同比-21.31%"],
+      ["回：回款金额", wan(DATA.metrics.received), "T_AR_Receivable.FReceivedAmt", "回款率76.52%"],
+      ["毛利率", pct(DATA.metrics.grossMargin), "(收入-成本)/收入", "29.41%"],
+      ["平均逾期天数", `${DATA.metrics.avgOverdue.toFixed(1)}天`, "FOverdueDays均值", "超60天客户单独追踪"]
+    ]
+  },
+  delivery: {
+    title: "交付健康：库存出入库与交付压力",
+    breadcrumb: "集团 / 供应链 / 出入库",
+    dims: ["工厂", "仓库", "物料类别", "产品线", "时间"],
+    summary: "出入库以销售出库（SAL_OUT）和采购入库（PUR_IN）为主线判断交付压力，调拨与调整作为辅证。当前销售出库117.37万元、采购入库116.93万元，处于平衡状态。",
+    head: ["流转类型", "入库金额", "出库金额", "单据数"],
+    rows: () => CEO_DATA.inventory.movements.map((m) => [m.type, wan(m.in), wan(m.out), `${m.count}单`])
+  },
+  revenue: {
+    title: "收入确认：财报收入与业务收入联动",
+    breadcrumb: "集团 / 收入 / 产品线",
+    dims: ["年度", "季度", "产品线", "客户", "业务板块"],
+    summary: "财报口径用于CEO总览，业务库订单收入用于穿透分析。两者属于不同系统口径，页面明确区分来源。",
+    head: ["口径", "金额", "期间", "下钻能力"],
+    rows: () => [
+      ["财报营业收入", "13.53亿", "2025Q3累计", "年度/季度"],
+      ["车载光学专项", "6.38亿", "2024年报", "板块/客户/产品"],
+      ["业务订单收入", wan(DATA.metrics.revenue), "样例业务库", "组织/产品线/客户"],
+      ["2024营业收入", "24.19亿", "2024年报", "Q1/Q2/Q3/Q4"],
+      ["2023营业收入", "22.13亿", "2023年报", "年度对比"]
+    ]
+  },
+  inventory: {
+    title: "库存资产：库存就是尚未兑现的资金",
+    breadcrumb: "集团 / 库存 / 物料类别",
+    dims: ["集团 → 事业部 → 工厂 → 仓库 → 库位", "产品线 → 型号 → 物料编码", "原材料 → 半成品 → 成品", "库龄区间", "供应商", "时间趋势"],
+    summary: "库存总额3127.98万元（来自guangfeng.db）。原材料634.76万、半成品639.67万、成品304.48万、其他段（辅料/备品/办公）1549.07万；库存周转470.9天显著偏长，需穿透到关键物料。",
+    head: ["物料编码", "物料名称", "类别", "库存段", "组织/仓库", "库存金额"],
+    rows: () => CEO_DATA.inventory.topMaterials.map((r) => [r[0], r[1], r[2], r[3], r[4], wan(r[5])])
+  },
+  inventoryRaw: {
+    title: "原材料/部件库存：待加工的钱",
+    breadcrumb: "集团 / 库存 / 原材料",
+    dims: ["物料类别", "供应商", "工厂", "仓库", "库位"],
+    summary: "原材料634.76万元（FStockCategory='原材料'）。检测类、镜片/陶瓷、金属件占主要金额，下钻关注关键物料保障率与缺料风险。",
+    head: ["物料类别", "库存金额", "占总库存比", "CEO关注"],
+    rows: () => CEO_DATA.inventory.mix.slice(0, 5).map((r) => [r.name, wan(r.value), pct(r.value / CEO_DATA.inventory.total), "保障率/周转/分摊"])
+  },
+  inventoryWip: {
+    title: "在制/半成品库存：生产中的钱",
+    breadcrumb: "集团 / 库存 / 在制",
+    dims: ["工厂", "生产阶段", "产品线", "物料", "时间"],
+    summary: "半成品639.67万元（FStockCategory='半成品'），主要分布在硕磐智造中心、Organization-081等生产组织。继续接入MES数据后可拆分EVT/DVT/PVT/MP生产阶段。",
+    head: ["库存段", "金额", "数据来源", "后续接入"],
+    rows: () => [
+      ["半成品（WIP）", wan(CEO_DATA.inventory.wip), "FStockCategory='半成品'", "MES生产阶段"],
+      ["设备及备品备件", "565.35万元", "FStockCategory='设备及备品备件'", "在客户处的备件追踪"],
+      ["辅料", "492.00万元", "FStockCategory='辅料'", "按工艺归集"]
+    ]
+  },
+  inventoryFinished: {
+    title: "成品库存：待销售的钱",
+    breadcrumb: "集团 / 库存 / 成品",
+    dims: ["产品型号", "SKU", "仓库", "渠道", "销售区域"],
+    summary: "成品库存304.48万元（FStockCategory='成品'），用于判断销售滞销风险。Top成品物料：MAT-058金属件@Organization-091（76万）、MAT-086金属件@Organization-031（71万）。",
+    head: ["物料编码", "物料名称", "类别", "组织", "金额"],
+    rows: () => CEO_DATA.inventory.topMaterials.filter((r) => r[3] === "成品").map((r) => [r[0], r[1], r[2], r[4], wan(r[5])])
+  },
+  inventoryRisk: {
+    title: "库存风险：呆滞、超储与近呆滞",
+    breadcrumb: "集团 / 库存 / 风险",
+    dims: ["库龄区间", "预警等级", "库存组织", "物料", "责任部门"],
+    summary: "呆滞/超储/近呆滞总额289.59万元，跌价准备估算63.12万元，HIGH预警21条；按 SLOW/EXCESS/NEAR_SLOW × HIGH/MEDIUM/LOW 形成处置矩阵，下发督办令。",
+    head: ["类型 / 等级", "条数", "金额", "平均跌价比例", "动作"],
+    rows: () => CEO_DATA.inventory.slowDetail.map((d) => [d.type, `${d.count}条`, wan(d.amount), pct(d.ratio), d.type.includes("HIGH") ? "立即处置" : "跟踪"])
+  },
+  risk: {
+    title: "风险热力图：影响程度 × 发生概率",
+    breadcrumb: "集团 / 风险 / 热力图",
+    dims: ["责任事业部", "涉及客户", "涉及产品", "订单/库存明细", "趋势过程"],
+    summary: "高优先级风险：利润下滑（高×高）、呆滞超储（中高×中）、收入下降（中×中）、出库波动（中×低）。点击风险点穿透至责任对象、涉及客户/产品与明细单据。",
+    head: ["风险类型", "影响程度", "发生概率", "穿透对象", "下一步"],
+    rows: () => [
+      ["财务风险", "高", "高", "利润/现金/应收", "建立利润修复专题"],
+      ["库存风险", "中高", "中", "库存组织/呆滞物料", "下发处置督办令"],
+      ["经营风险", "中", "中", "C端清库/产品线", "跟踪车载持续放量"],
+      ["交付风险", "中", "低", "仓库/出库单", "保持出库节奏"],
+      ["战略风险", "中", "低", "AR/AI/机器人新赛道", "看研发ROI"]
+    ]
+  },
+  inventoryAging: {
+    title: "库龄结构：30/60/90/90+天",
+    breadcrumb: "集团 / 库存 / 库龄",
+    dims: ["事业部", "物料类别", "库存组织", "时间"],
+    summary: "0-30天451.67万元（占55.7%），31-60天177.71万、61-90天143.59万、90+天87.49万元。90+天部分需要逐物料追责。",
+    head: ["库龄区间", "金额", "占比", "动作"],
+    rows: () => {
+      const total = CEO_DATA.inventory.aging.reduce((s, r) => s + r.value, 0);
+      return CEO_DATA.inventory.aging.map((r) => [r.name, wan(r.value), pct(r.value / total), r.name === "90+天" ? "逐物料追责" : "常规跟踪"]);
+    }
+  }
+};
+
+const fmt = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
+const pct = (v) => `${(v * 100).toFixed(2)}%`;
+const wan = (v) => `${fmt.format(v / 10000)}万元`;
+const yi = (v) => v == null ? "—" : `${fmt.format(v / 100000000)}亿`;
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function svgLineChart(el, rows, series) {
+  const width = el.clientWidth || 900;
+  const height = el.clientHeight || 320;
+  const pad = { l: 54, r: 24, t: 28, b: 44 };
+  const max = Math.max(...rows.flatMap((r) => series.map((s) => r[s.key])), 1);
+  const x = (i) => pad.l + (i * (width - pad.l - pad.r)) / Math.max(rows.length - 1, 1);
+  const y = (v) => height - pad.b - (v / max) * (height - pad.t - pad.b);
+  const paths = series.map((s) => {
+    const d = rows.map((r, i) => `${i ? "L" : "M"}${x(i)},${y(r[s.key])}`).join(" ");
+    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="3"/>`;
+  }).join("");
+  const labels = rows.map((r, i) => `<text x="${x(i)}" y="${height - 16}" text-anchor="middle" fill="#8a8f99" font-size="14">${r.m}</text>`).join("");
+  const grid = [0, .25, .5, .75, 1].map((g) => {
+    const gy = height - pad.b - g * (height - pad.t - pad.b);
+    return `<line x1="${pad.l}" y1="${gy}" x2="${width - pad.r}" y2="${gy}" stroke="#edf0f4"/><text x="${pad.l - 8}" y="${gy + 4}" text-anchor="end" fill="#9aa0a8" font-size="12">${fmt.format(max * g / 10000)}万</text>`;
+  }).join("");
+  el.innerHTML = `<svg width="100%" height="100%" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">${grid}${paths}${labels}</svg>`;
+}
+
+function svgBarChart(el, rows, key, color) {
+  if (!el) return;
+  const width = el.clientWidth || 700;
+  const height = el.clientHeight || 250;
+  const pad = { l: 46, r: 18, t: 26, b: 58 };
+  const max = Math.max(...rows.map((r) => r[key]), 1);
+  const band = (width - pad.l - pad.r) / rows.length;
+  const bars = rows.map((r, i) => {
+    const h = (r[key] / max) * (height - pad.t - pad.b);
+    const x = pad.l + i * band + band * .2;
+    const y = height - pad.b - h;
+    return `<rect x="${x}" y="${y}" width="${band * .6}" height="${h}" rx="2" fill="${color}" opacity=".78"/>
+      <text x="${x + band * .3}" y="${y - 8}" text-anchor="middle" fill="#606774" font-size="12">${fmt.format(r[key] / 10000)}</text>
+      <text x="${x + band * .3}" y="${height - 22}" text-anchor="middle" fill="#6b7280" font-size="12">${r.name}</text>`;
+  }).join("");
+  el.innerHTML = `<svg width="100%" height="100%" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+    <line x1="${pad.l}" y1="${height - pad.b}" x2="${width - pad.r}" y2="${height - pad.b}" stroke="#b8bec7"/>
+    ${bars}
+  </svg>`;
+}
+
+function svgFinanceTrend(el) {
+  if (!el) return;
+  const rows = REPORT_DATA.map((r) => ({
+    name: r.name,
+    revenue: r.revenue / 100000000,
+    profit: r.profit / 100000000,
+    cash: r.cash / 100000000
+  }));
+  const width = el.clientWidth || 760;
+  const height = el.clientHeight || 260;
+  const pad = { l: 48, r: 18, t: 22, b: 44 };
+  const max = Math.max(...rows.flatMap((r) => [r.revenue, Math.abs(r.profit), r.cash]), 1);
+  const zero = height - pad.b - (height - pad.t - pad.b) * .28;
+  const scale = (height - pad.t - pad.b) * .68 / max;
+  const band = (width - pad.l - pad.r) / rows.length;
+  const series = [
+    ["revenue", "#0b7ff3", -18],
+    ["profit", "#ff9f43", 0],
+    ["cash", "#22c7a9", 18]
+  ];
+  const bars = rows.map((r, i) => {
+    const cx = pad.l + i * band + band / 2;
+    const label = `<text x="${cx}" y="${height - 16}" text-anchor="middle" fill="#b7c6d8" font-size="12">${r.name}</text>`;
+    return series.map(([key, color, offset]) => {
+      const value = r[key];
+      const h = Math.abs(value) * scale;
+      const y = value >= 0 ? zero - h : zero;
+      return `<rect x="${cx + offset - 7}" y="${y}" width="14" height="${h}" rx="2" fill="${color}"/>
+        <text x="${cx + offset}" y="${value >= 0 ? y - 5 : y + h + 14}" text-anchor="middle" fill="#d7e5ec" font-size="11">${fmt.format(value)}</text>`;
+    }).join("") + label;
+  }).join("");
+  el.innerHTML = `<svg width="100%" height="100%" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+    <line x1="${pad.l}" y1="${zero}" x2="${width - pad.r}" y2="${zero}" stroke="#607086"/>
+    <text x="${pad.l - 10}" y="${pad.t + 8}" text-anchor="end" fill="#9fb0c4" font-size="12">亿元</text>
+    ${bars}
+  </svg>`;
+}
+
+function renderRows(id, rows, mapper) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = rows.map(mapper).join("");
+}
+
+function initCommon() {
+  setText("totalRevenue", wan(DATA.metrics.revenue));
+  setText("totalReceived", wan(DATA.metrics.received));
+  setText("arBalance", wan(DATA.metrics.arBalance));
+  setText("grossMargin", pct(DATA.metrics.grossMargin));
+  setText("collectionRate", pct(DATA.metrics.collectionRate));
+  setText("avgOverdue", `${DATA.metrics.avgOverdue.toFixed(1)}天`);
+}
+
+function initDashboard() {
+  initCommon();
+  setText("orderAmount", wan(DATA.metrics.revenue));
+  setText("yearRevenue", wan(DATA.metrics.revenue));
+  setText("yearRate", pct(DATA.metrics.collectionRate));
+  setText("grossProfit", wan(DATA.metrics.grossProfit));
+  setText("qty", fmt.format(DATA.metrics.qty));
+  setText("ltcOrderAmount", wan(DATA.metrics.revenue));
+  setText("ltcInvoiceAmount", wan(DATA.metrics.invoice));
+  setText("ltcReceivedAmount", wan(DATA.metrics.received));
+  setText("ltcCollectionRate", pct(DATA.metrics.collectionRate));
+  svgBarChart(document.getElementById("orgChart"), DATA.byOrg.slice(0, 6), "revenue", "#0b7ff3");
+  svgLineChart(document.getElementById("dashTrend"), DATA.monthly, [
+    { key: "revenue", color: "#0b7ff3" },
+    { key: "cost", color: "#ff9f43" }
+  ]);
+  svgLineChart(document.getElementById("warningChart"), DATA.monthly.map((row, index) => ({
+    m: row.m,
+    completion: row.revenue / 180000,
+    growth: index === 0 ? 0 : (row.revenue - DATA.monthly[index - 1].revenue) / DATA.monthly[index - 1].revenue
+  })), [
+    { key: "completion", color: "#0b7ff3" },
+    { key: "growth", color: "#ff9f43" }
+  ]);
+  svgBarChart(document.getElementById("ltcLeadChart"), [
+    { name: "线索", value: 1079 },
+    { name: "线索到项目", value: 111 },
+    { name: "项目到合同", value: 59 },
+    { name: "合同到订单", value: DATA.metrics.orders }
+  ], "value", "#f3a98d");
+  svgBarChart(document.getElementById("ltcCashChart"), [
+    { name: "项目", value: 0 },
+    { name: "项目到合同", value: DATA.metrics.revenue },
+    { name: "合同到订单", value: DATA.metrics.invoice },
+    { name: "订单到回款", value: DATA.metrics.received }
+  ], "value", "#f3a98d");
+  renderRows("orgRows", DATA.byOrg.slice(0, 6), (r) => `<tr><td>${r.name}</td><td>${wan(r.revenue)}</td><td>${wan(r.cost)}</td><td>${wan(r.gross)}</td><td>${pct(r.gross / r.revenue)}</td></tr>`);
+  bindDashboardTabs();
+}
+
+function initIncome() {
+  initCommon();
+  setText("tube1", wan(DATA.metrics.revenue));
+  setText("tube2", wan(DATA.metrics.invoice - DATA.metrics.revenue));
+  setText("tube3", wan(DATA.metrics.revenue - DATA.metrics.invoice));
+  setText("tube4", wan(DATA.metrics.invoice));
+  setText("tube5", wan(DATA.metrics.arBalance));
+  setText("tube6", wan(DATA.metrics.received));
+  svgLineChart(document.getElementById("incomeTrend"), DATA.monthly.map((m, i) => ({
+    m: m.m,
+    revenue: m.revenue,
+    cost: m.cost,
+    received: DATA.arMonthly[i]?.received || 0
+  })), [
+    { key: "revenue", color: "#0b7ff3" },
+    { key: "cost", color: "#ff9f43" },
+    { key: "received", color: "#22c7a9" }
+  ]);
+  svgBarChart(document.getElementById("productChart"), DATA.byProduct.slice(0, 6), "revenue", "#ffad8a");
+  renderRows("customerRows", DATA.byCustomer, (r) => `<tr><td>${r.name}</td><td>${r.type}</td><td>${r.internal === "Y" ? "内部" : "外部"}</td><td>${wan(r.invoice)}</td><td>${wan(r.received)}</td><td>${wan(r.balance)}</td><td>${pct(r.received / r.invoice)}</td></tr>`);
+  renderRows("projectRows", DATA.projects, (r) => `<tr><td>${r.code}</td><td>${r.customer}</td><td>${r.org}</td><td>${r.date}</td><td>${statusName(r.status)}</td><td>${wan(r.amount)}</td><td>${wan(r.cost)}</td></tr>`);
+}
+
+function initCeo() {
+  setText("ceoInvTotal", wan(CEO_DATA.inventory.total));
+  setText("flowOrder", wan(DATA.metrics.revenue));
+  setText("flowShip", wan(DATA.metrics.salOut));
+  setText("flowCash", wan(DATA.metrics.received));
+  setText("flowAr", wan(DATA.metrics.arBalance));
+  setText("flowRate", pct(DATA.metrics.collectionRate));
+  setText("invRaw", wan(CEO_DATA.inventory.raw));
+  setText("invWip", wan(CEO_DATA.inventory.wip));
+  setText("invFinished", wan(CEO_DATA.inventory.finished));
+  setText("invRisk", wan(CEO_DATA.inventory.risk));
+  setText("invTurnover", `${CEO_DATA.inventory.turnoverDays.toFixed(1)}天`);
+  setText("invSlow", wan(CEO_DATA.inventory.slowMoving));
+  setText("invWarn", `${CEO_DATA.inventory.highWarnCount}条`);
+  setText("invReserve", wan(CEO_DATA.inventory.reserve));
+  svgFinanceTrend(document.getElementById("ceoFinanceTrend"));
+  svgBarChart(document.getElementById("ceoInventoryChart"), CEO_DATA.inventory.mix.slice(0, 6), "value", "#e8b339");
+  bindCeoTopics();
+  renderCeoDrill("overview");
+}
+
+function statusName(v) {
+  return ({ A: "创建", B: "审核中", C: "已审核" })[v] || v;
+}
+
+function bindDashboardTabs() {
+  document.querySelectorAll("[data-dashboard-tab]").forEach((tab) => {
+    tab.addEventListener("click", (event) => {
+      event.preventDefault();
+      const target = tab.dataset.dashboardTab;
+      document.querySelectorAll("[data-dashboard-tab]").forEach((item) => item.classList.toggle("active", item === tab));
+      document.querySelectorAll(".dashboard-view").forEach((view) => view.classList.toggle("active", view.id === `dashboard-${target}`));
+      window.dispatchEvent(new Event("resize"));
+    });
+  });
+}
+
+function bindCeoTopics() {
+  document.querySelectorAll("[data-ceo-topic]").forEach((item) => {
+    item.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const target = item.dataset.ceoTopic;
+      document.querySelectorAll("[data-ceo-topic]").forEach((node) => node.classList.toggle("active", node.dataset.ceoTopic === target));
+      renderCeoDrill(target);
+    });
+  });
+}
+
+function renderCeoDrill(key) {
+  const drill = CEO_DRILLS[key];
+  if (!drill) return;
+  setText("ceoDrillTitle", drill.title);
+  setText("ceoBreadcrumb", drill.breadcrumb);
+  setText("ceoDrillSummary", drill.summary);
+  const dims = document.getElementById("ceoDrillDims");
+  if (dims) dims.innerHTML = drill.dims.map((dim) => `<button>${dim}</button>`).join("");
+  const head = document.getElementById("ceoDrillHead");
+  if (head) head.innerHTML = `<tr>${drill.head.map((h) => `<th>${h}</th>`).join("")}</tr>`;
+  renderRows("ceoDrillRows", drill.rows(), (row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`);
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  const page = document.body.dataset.page;
+  if (page === "dashboard") initDashboard();
+  if (page === "income") initIncome();
+  if (page === "ceo") initCeo();
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+  const hamburger = document.querySelector(".hamburger");
+  if (!hamburger) return;
+  hamburger.setAttribute("role", "button");
+  hamburger.setAttribute("aria-label", "展开或收起左侧菜单");
+  hamburger.addEventListener("click", () => {
+    document.body.classList.toggle("nav-collapsed");
+  });
+});
+
+// ============================================================
+// Floating AI assistant (iframe mount of /workbench)
+// ============================================================
+function setAssistantSize(mode) {
+  const modal = document.getElementById("assistantModal");
+  if (!modal) return;
+  modal.classList.toggle("size-mini", mode === "mini");
+  modal.classList.toggle("size-full", mode === "full");
+  const mini = document.getElementById("assistantMini");
+  const full = document.getElementById("assistantFull");
+  if (mini) mini.setAttribute("aria-pressed", mode === "mini" ? "true" : "false");
+  if (full) full.setAttribute("aria-pressed", mode === "full" ? "true" : "false");
+}
+
+function openAssistant() {
+  const modal = document.getElementById("assistantModal");
+  const frame = document.getElementById("assistantFrame");
+  if (frame && (!frame.src || frame.src === "about:blank" || frame.dataset.loaded !== "1")) {
+    frame.src = "/workbench";
+    frame.dataset.loaded = "1";
+  }
+  if (modal) {
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeAssistant() {
+  const modal = document.getElementById("assistantModal");
+  if (!modal) return;
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  const openBtn = document.getElementById("assistantOpen");
+  const closeBtn = document.getElementById("assistantClose");
+  const miniBtn = document.getElementById("assistantMini");
+  const fullBtn = document.getElementById("assistantFull");
+  const modal = document.getElementById("assistantModal");
+  if (openBtn) openBtn.addEventListener("click", openAssistant);
+  if (closeBtn) closeBtn.addEventListener("click", closeAssistant);
+  if (miniBtn) miniBtn.addEventListener("click", () => {
+    const isMini = modal.classList.contains("size-mini");
+    setAssistantSize(isMini ? "normal" : "mini");
+  });
+  if (fullBtn) fullBtn.addEventListener("click", () => {
+    const isFull = modal.classList.contains("size-full");
+    setAssistantSize(isFull ? "normal" : "full");
+  });
+  if (modal) modal.addEventListener("click", (e) => {
+    if (e.target.id === "assistantModal") closeAssistant();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeAssistant();
+  });
+});
+
+</script>
+</body>
+</html>

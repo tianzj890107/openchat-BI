@@ -1,5 +1,5 @@
 """
-Ontology data classes matching the real ChatBI业务元数据_光峰财务管理.xlsx structure.
+Ontology data classes matching the real ChatBI业务元数据_硕磐财务管理.xlsx structure.
 
 Nine ontology sheets, each mapped to a dataclass:
     Term            — 术语 (business terminology)

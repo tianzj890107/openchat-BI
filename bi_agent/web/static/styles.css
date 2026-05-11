@@ -750,20 +750,76 @@ body[data-inspector="collapsed"]:not([data-dashboard="collapsed"]) .split {
   border-radius: 2px;
   transition: border-color 0.12s, background 0.12s;
 }
-.choice-option:hover:not(:disabled) {
+.choice-option:hover {
   border-color: var(--accent-cyan);
   background: var(--bg-2);
 }
-.choice-option:disabled {
-  opacity: 0.5;
+.choice-card.submitting .choice-option,
+.choice-card.resolved .choice-option {
+  opacity: 0.6;
   cursor: default;
+}
+.choice-card.submitting .choice-option:hover,
+.choice-card.resolved .choice-option:hover {
+  border-color: var(--border-1);
+  background: var(--bg-elev);
 }
 .choice-option.selected {
   border-color: var(--accent-cyan);
   background: var(--bg-2);
   opacity: 1;
 }
-.choice-option.selected .choice-arrow { color: var(--accent-cyan); }
+.choice-check {
+  align-self: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent-cyan);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.choice-check:disabled { cursor: default; }
+.choice-hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+}
+.choice-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border-top: 1px dashed var(--border-1);
+}
+.choice-summary {
+  flex: 1;
+  font-size: var(--fs-xs);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+}
+.choice-confirm {
+  background: var(--accent-cyan);
+  color: var(--bg-0);
+  border: 1px solid var(--accent-cyan);
+  padding: 6px 18px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: opacity 0.12s, filter 0.12s;
+}
+.choice-confirm:hover:not(:disabled) { filter: brightness(1.15); }
+.choice-confirm:disabled {
+  background: var(--bg-elev);
+  color: var(--fg-3);
+  border-color: var(--border-1);
+  cursor: not-allowed;
+}
 .choice-idx {
   flex-shrink: 0;
   width: 22px;

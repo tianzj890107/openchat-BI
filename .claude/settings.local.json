@@ -54,7 +54,9 @@
       "Bash(tasklist /FI \"PID eq 5676\")",
       "Bash(node --check \"C:/shuopan/claude-BI/open-claude/bi_agent/web/static/app.js\")",
       "Bash(echo \"syntax-check exit: $?\")",
-      "Bash(py *)"
+      "Bash(py *)",
+      "Bash(powershell -Command \"Get-ChildItem *.html | Select Name, Length\")",
+      "Bash(powershell *)"
     ]
   }
 }

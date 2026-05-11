@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BI Analyst · Ontology Workbench</title>
-  <link rel="stylesheet" href="/static/styles.css?v=21" />
+  <link rel="stylesheet" href="/static/styles.css?v=23" />
   <script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body data-mode="data">
@@ -18,7 +18,7 @@
         <span class="brand-sub" id="agent-name">bi-analyst</span>
       </div>
       <div class="mode-switch" id="mode-switch">
-        <button class="mode-btn active" data-mode="data" title="智能数据分析 — 直接查询光峰本体与 SQLite">
+        <button class="mode-btn active" data-mode="data" title="智能数据分析 — 直接查询硕磐本体与 SQLite">
           <span class="mode-glyph">◉</span> 数据分析
         </button>
         <button class="mode-btn" data-mode="report" title="智能报表分析 — 上传 PDF/Word 做 Q&A">
@@ -47,7 +47,7 @@
         <div class="chat-scroll" id="chat-scroll">
           <div class="empty-state" id="chat-empty">
             <div class="empty-glyph" id="empty-glyph">◇</div>
-            <div class="empty-title" id="empty-title">光峰财务 BI 智能分析</div>
+            <div class="empty-title" id="empty-title">硕磐财务 BI 智能分析</div>
             <div class="empty-sub" id="empty-welcome"></div>
             <div class="empty-hints" id="empty-hints"></div>
           </div>
@@ -96,7 +96,7 @@
                 </button>
                 <!-- Database-query toggle — only visible in report mode -->
                 <label class="toggle composer-toggle"
-                       title="勾选后,问答可同时调用光峰本体工具与 SQLite 做对账">
+                       title="勾选后,问答可同时调用硕磐本体工具与 SQLite 做对账">
                   <input type="checkbox" id="with-db" />
                   <span class="toggle-track"><span class="toggle-dot"></span></span>
                   <span class="toggle-label">数据库查询</span>
@@ -310,6 +310,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=21"></script>
+  <script src="/static/app.js?v=23"></script>
 </body>
 </html>
