@@ -125,68 +125,299 @@ body {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 26px;
-  padding-right: 22px;
-  color: #d1d5db;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.ai {
-  color: #ff9f1a;
+  gap: 14px;
+  height: 100%;
+  padding-right: 18px;
+  color: #1f2a44;
+  font-size: 14px;
+  font-weight: 500;
+  position: relative;
 }
 
 .top-action {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 6px;
+  min-width: 36px;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   line-height: 1;
   white-space: nowrap;
+  cursor: pointer;
+  position: relative;
 }
 
-.action-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 31px;
-  height: 31px;
-  color: #8b5cf6;
-  font-size: 32px;
-  line-height: 1;
+.top-action:hover,
+.top-action[aria-expanded="true"] {
+  color: #0b6ff0;
 }
 
-.action-icon.small {
-  width: 18px;
-  height: 18px;
-  color: #cbd5e1;
-  font-size: 18px;
-}
-
-.notice {
-  min-width: 32px;
-  height: 18px;
-  padding: 0 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9px;
-  background: #ff2635;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.user-icon {
-  width: 30px;
-  height: 30px;
+.top-action-icon {
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  color: #101c28;
-  background: #f1f5f9;
-  font-size: 17px;
+  font-size: 0;
   line-height: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.top-action-icon.globe {
+  background: #2e3b50;
+  color: #fff;
+}
+
+.top-action-icon.globe::before {
+  content: "";
+  width: 22px;
+  height: 22px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background:
+    linear-gradient(90deg, transparent 45%, #fff 45% 55%, transparent 55%),
+    linear-gradient(0deg, transparent 45%, #fff 45% 55%, transparent 55%);
+  opacity: .95;
+}
+
+.top-action-icon.globe::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 22px;
+  border: 2px solid #fff;
+  border-top: 0;
+  border-bottom: 0;
+  border-radius: 50%;
+}
+
+.top-action-icon.bell {
+  color: #2c3850;
+  overflow: visible;
+}
+
+.top-action-icon.bell::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 14px;
+  height: 15px;
+  border-radius: 8px 8px 4px 4px;
+  background: #2c3850;
+  transform: translateX(-50%);
+}
+
+.top-action-icon.bell::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #2c3850;
+  box-shadow: 0 -3px 0 7px transparent, 0 -4px 0 -1px #2c3850;
+  transform: translateX(-50%);
+}
+
+.top-action-icon.user {
+  background: #0875e9;
+  color: #fff;
+}
+
+.top-action-icon.user::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translateX(-50%);
+}
+
+.top-action-icon.user::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  width: 19px;
+  height: 12px;
+  border-radius: 14px 14px 4px 4px;
+  background: #fff;
+  transform: translateX(-50%);
+}
+
+.top-badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #ff1f36;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 16px;
+}
+
+.top-popover {
+  position: absolute;
+  top: 56px;
+  right: 8px;
+  min-width: 280px;
+  background: #fff;
+  color: #1f2937;
+  border: 1px solid rgba(15, 23, 42, .06);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, .18);
+  display: none;
+  z-index: 30;
+}
+
+.top-popover.open {
+  display: block;
+}
+
+.top-popover::before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  right: var(--arrow-x, 30px);
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  transform: rotate(45deg);
+  border-left: 1px solid rgba(15, 23, 42, .06);
+  border-top: 1px solid rgba(15, 23, 42, .06);
+}
+
+.language-popover {
+  width: 280px;
+  padding: 18px 20px 16px;
+}
+
+.popover-title {
+  margin-bottom: 18px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.language-option,
+.account-option {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  background: transparent;
+  color: #1f2937;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.language-option:hover,
+.account-option:hover {
+  color: #0b6ff0;
+}
+
+.notice-popover {
+  width: 456px;
+  padding: 16px 16px 18px;
+}
+
+.notice-tabs {
+  display: flex;
+  gap: 28px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 14px;
+}
+
+.notice-tab {
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: #1f2937;
+  font: inherit;
+  cursor: pointer;
+  position: relative;
+}
+
+.notice-tab.active {
+  color: #006cff;
+  font-weight: 700;
+}
+
+.notice-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  background: #006cff;
+}
+
+.notice-list {
+  display: grid;
+  gap: 14px;
+  padding: 10px 8px 4px;
+}
+
+.notice-item {
+  max-width: 390px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #1f2937;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.notice-more {
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  color: #006cff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.account-popover {
+  width: 280px;
+  padding: 16px 20px;
+}
+
+.account-name {
+  padding: 6px 0 16px;
+  font-size: 16px;
+  color: #1f2937;
+}
+
+.account-option {
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 40px;
+}
+
+.account-option span {
+  width: 18px;
+  color: #1f2937;
+  text-align: center;
 }
 
 .sidebar {
@@ -1373,7 +1604,7 @@ body {
 }
 
 .brand {
-  width: 338px;
+  width: 230px;
   height: 57px;
   padding-left: 26px;
   gap: 12px;
@@ -1399,14 +1630,17 @@ body {
 }
 
 .platform-nav {
+  flex: 1 1 auto;
+  min-width: 0;
   background: #dbe8ff;
 }
 
 .platform-nav a {
-  min-width: 132px;
+  flex: 0 1 auto;
+  min-width: 108px;
   justify-content: center;
-  gap: 12px;
-  padding: 0 24px;
+  gap: 8px;
+  padding: 0 12px;
   color: #2f3d55;
   border-left: 0;
   position: relative;
@@ -1444,8 +1678,12 @@ body {
 }
 
 .top-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
   color: #4b5b73;
   font-size: 15px;
+  gap: 10px;
+  padding-right: 16px;
 }
 
 .sidebar {
@@ -1605,9 +1843,11 @@ body.nav-collapsed .menu-item {
 }
 
 @media (max-width: 1280px) {
-  .brand { width: 300px; }
-  .platform-nav a { min-width: 112px; padding: 0 16px; }
-  .top-actions { display: none; }
+  .brand { width: 190px; padding-left: 22px; font-size: 32px; }
+  .platform-nav a { min-width: 92px; padding: 0 8px; gap: 6px; }
+  .nav-label { font-size: 15px; }
+  .nav-icon { width: 24px; font-size: 21px; }
+  .top-actions { display: flex; gap: 8px; padding-right: 12px; }
 }
 
 /* ====== Embedded cockpit iframe (replaces the previous ceo2-page block) ====== */
@@ -1760,7 +2000,7 @@ body.nav-collapsed .menu-item {
   <div class="app">
     <header class="topbar">
       <div class="hamburger"></div>
-      <div class="brand">EIMOS <span class="env">Demo准备环境</span></div>
+      <div class="brand">EIMOS</div>
       <nav class="platform-nav">
         <a href="#"><span class="nav-icon">⌂</span><span class="nav-label">产品功能</span></a>
         <a class="active" href="#"><span class="nav-icon">▣</span><span class="nav-label">任务中心</span></a>
@@ -1770,9 +2010,45 @@ body.nav-collapsed .menu-item {
         <a href="#"><span class="nav-label no-icon">应用开发</span></a>
       </nav>
       <div class="top-actions">
-        <span class="top-action"><span class="action-icon small">◉</span>切换皮肤</span>
-        <span class="notice">99+</span>
-        <span class="user-icon">●</span>
+        <button class="top-action" type="button" data-popover-target="languagePopover" aria-expanded="false" title="系统语言">
+          <span class="top-action-icon globe">●</span>
+        </button>
+        <button class="top-action" type="button" data-popover-target="noticePopover" aria-expanded="false" title="待办 / 通知">
+          <span class="top-action-icon bell">●</span>
+          <span class="top-badge">6</span>
+        </button>
+        <button class="top-action" type="button" data-popover-target="accountPopover" aria-expanded="false" title="账号">
+          <span class="top-action-icon user">●</span>
+        </button>
+
+        <section class="top-popover language-popover" id="languagePopover" aria-hidden="true">
+          <div class="popover-title">系统语言</div>
+          <button class="language-option" type="button">简体中文 <span>✓</span></button>
+          <button class="language-option" type="button">English(US)</button>
+        </section>
+
+        <section class="top-popover notice-popover" id="noticePopover" aria-hidden="true">
+          <div class="notice-tabs">
+            <button class="notice-tab active" type="button">待办</button>
+            <button class="notice-tab" type="button">通知</button>
+          </div>
+          <div class="notice-list">
+            <div class="notice-item">线索基本信息【OPP202603270307300001】，请及时完善</div>
+            <div class="notice-item">【合同注册】确认合同销售配置</div>
+            <div class="notice-item">合同编号：HT2603160009发起合同注册，请复核</div>
+            <div class="notice-item">合同编号：HT2603160004发起合同注册，请复核</div>
+            <div class="notice-item">【合同注册】确认合同销售配置</div>
+            <div class="notice-item">合同号：HC20250821305212700001，合同名称待确认</div>
+          </div>
+          <button class="notice-more" type="button">查看全部</button>
+        </section>
+
+        <section class="top-popover account-popover" id="accountPopover" aria-hidden="true">
+          <div class="account-name">体****1</div>
+          <button class="account-option" type="button"><span>♙</span>个人偏好设置</button>
+          <button class="account-option" type="button"><span>⚙</span>个人资料</button>
+          <button class="account-option" type="button"><span>♙</span>退出登录</button>
+        </section>
       </div>
     </header>
 
@@ -2395,6 +2671,58 @@ window.addEventListener("DOMContentLoaded", () => {
   hamburger.setAttribute("aria-label", "展开或收起左侧菜单");
   hamburger.addEventListener("click", () => {
     document.body.classList.toggle("nav-collapsed");
+  });
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+  const buttons = Array.from(document.querySelectorAll("[data-popover-target]"));
+  const popovers = Array.from(document.querySelectorAll(".top-popover"));
+
+  function closeTopPopovers() {
+    buttons.forEach((button) => button.setAttribute("aria-expanded", "false"));
+    popovers.forEach((popover) => {
+      popover.classList.remove("open");
+      popover.setAttribute("aria-hidden", "true");
+    });
+  }
+
+  function openTopPopover(button, popover) {
+    closeTopPopovers();
+    const buttonRect = button.getBoundingClientRect();
+    const actionsRect = button.closest(".top-actions").getBoundingClientRect();
+    const popoverWidth = popover.offsetWidth || 280;
+    const desiredRight = window.innerWidth - buttonRect.right - (popoverWidth / 2) + (buttonRect.width / 2);
+    const maxRight = Math.max(8, window.innerWidth - actionsRect.left - popoverWidth);
+    const right = Math.max(8, Math.min(desiredRight, maxRight));
+    const arrowX = Math.max(24, Math.min(popoverWidth - 24, window.innerWidth - buttonRect.left - (buttonRect.width / 2) - right));
+
+    popover.style.right = `${right}px`;
+    popover.style.setProperty("--arrow-x", `${arrowX}px`);
+    popover.classList.add("open");
+    popover.setAttribute("aria-hidden", "false");
+    button.setAttribute("aria-expanded", "true");
+  }
+
+  buttons.forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const popover = document.getElementById(button.dataset.popoverTarget);
+      if (!popover) return;
+      if (popover.classList.contains("open")) {
+        closeTopPopovers();
+      } else {
+        openTopPopover(button, popover);
+      }
+    });
+  });
+
+  popovers.forEach((popover) => {
+    popover.addEventListener("click", (event) => event.stopPropagation());
+  });
+
+  document.addEventListener("click", closeTopPopovers);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeTopPopovers();
   });
 });
 
