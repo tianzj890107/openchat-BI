@@ -29,6 +29,8 @@
       // Per-turn conclusion tracking — 📌-prefixed sentences extracted from
       // assistant text go to the middle dashboard as conclusion cards.
       conclusionSeen: new Set(),       // dedup within a session
+      rootCauseSeen: new Set(),        // dedup 🔍 root-cause cards
+      actionsSeen: new Set(),          // dedup 💡 action cards
       currentTurnTag: 0,               // increments per user turn (for card ids)
       // Detached DOM children (populated on mode switch-out)
       chatNodes: [],
@@ -1092,63 +1094,97 @@ welcome: ${esc(a.welcome_message || "")}</div>
       .trim();
   }
 
-  function extractConclusion(text) {
+  // Generic section extractor. Locates a section header whose first
+  // non-decoration character is `marker` (an emoji) — so inline mentions of
+  // the same emoji in body text won't falsely anchor the section. Strips an
+  // optional section-name prefix and returns body up to the next `## ` heading
+  // or the next NEXT_SECTION_RE section emoji.
+  //
+  // `markers` is a list — first element is the canonical emoji, subsequent
+  // entries are accepted variants (e.g. 🔎 for 🔍).
+  function extractSection(text, markers, namePrefixes /* string[] */) {
     if (!text || typeof text !== "string") return null;
+    if (typeof markers === "string") markers = [markers];
     const lines = text.split(/\n/);
 
-    // ----- 1. Locate the first 📌 line -----
+    // A line is a section header for this marker iff after stripping the
+    // decoration prefix (`#`, `>`, `*`, `-`, whitespace, numbered list like
+    // "3. ") its first character(s) are one of the markers.
+    const stripDecor = (s) => s
+      .replace(/^[#>*\-\s]+/, "")
+      .replace(/^\d+\.\s*/, "")
+      .replace(/^\*+/, "")
+      .replace(/^\s+/, "");
+
     let startIdx = -1;
+    let usedMarker = null;
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes("📌")) { startIdx = i; break; }
+      const head = stripDecor(lines[i]);
+      const m = markers.find((mk) => head.startsWith(mk));
+      if (m) { startIdx = i; usedMarker = m; break; }
     }
     if (startIdx < 0) return null;
 
     const out = [];
 
-    // ----- 2. Same-line content after 📌 (if any) -----
-    // e.g. "**📌 结论(TL;DR)** —— 2024 Q3 收入..." → keep "2024 Q3 收入..."
-    let head = lines[startIdx]
-      .replace(/^[#>*\-\s]+/, "")
+    let head = stripDecor(lines[startIdx])
       .replace(/\*\*/g, "")
       .trim();
-    head = head.replace(/^📌\s*/, "");
-    head = head.replace(/^结论\s*(?:[\(（]TL;DR[\)）])?\s*/, "");
+    head = head.replace(new RegExp("^" + usedMarker + "\\s*"), "");
+    for (const name of (namePrefixes || [])) {
+      head = head.replace(new RegExp("^" + name + "\\s*(?:[\\(（][^\\)）]*[\\)）])?\\s*"), "");
+    }
     head = head.replace(/^[—\-:：]+\s*/, "").trim();
     if (head) out.push(head);
 
-    // ----- 3. Walk forward until the next ## heading (or section marker) -----
-    // Per spec: "everything from after 📌 start to before the next ## is the
-    // conclusion". We preserve internal blank lines so paragraph structure
-    // survives in the dashboard card.
     for (let j = startIdx + 1; j < lines.length; j++) {
       const raw = lines[j];
       const nt = raw.trim();
 
-      // Stop on any markdown heading (#, ##, ###, ...).
       if (/^#{1,6}\s/.test(nt)) break;
 
-      // Secondary fence: a non-📌 section emoji at the start of a (decorated)
-      // line — covers the case where the model uses bold/heading-less section
-      // markers like "**📊 关键数据**".
-      const stripped = nt.replace(/^[*\->\s]+/, "");
-      if (stripped && stripped !== nt && NEXT_SECTION_RE.test(stripped.slice(0, 4))) break;
-      if (NEXT_SECTION_RE.test(nt.slice(0, 4))) break;
+      // Stop only on a *section header* line for some OTHER section emoji —
+      // i.e. after decoration strip the line begins with one of the section
+      // emojis and is NOT one of our own accepted markers (inline mentions
+      // of section emojis inside body text don't terminate the section).
+      const headProbe = stripDecor(nt).replace(/\*\*/g, "");
+      const isOwnMarker = markers.some((mk) => headProbe.startsWith(mk));
+      const probeFirst = headProbe.slice(0, 4);
+      if (!isOwnMarker && NEXT_SECTION_RE.test(probeFirst)) break;
 
-      // Empty line: keep if we already have content (paragraph break),
-      // skip if it's still leading whitespace before any content.
       if (!nt) {
         if (out.length > 0) out.push("");
         continue;
       }
 
-      // Body line — strip bold/bullet decoration but keep the text.
       out.push(cleanLeadingDecoration(raw));
     }
 
-    // Trim trailing blank lines.
     while (out.length > 0 && !out[out.length - 1]) out.pop();
-
     return out.length ? out.join("\n") : null;
+  }
+
+  function extractConclusion(text) {
+    return extractSection(text, ["📌"], ["结论"]);
+  }
+
+  function extractRootCause(text) {
+    // bi-analyst calls it "根因分析(证据链)"; report-analyst calls it "根因证据链".
+    // Accept 🔎 as a tolerated variant of 🔍.
+    return extractSection(text, ["🔍", "🔎"], ["根因分析", "根因证据链", "根因"]);
+  }
+
+  function extractActions(text) {
+    return extractSection(text, ["💡"], ["行动建议", "建议"]);
+  }
+
+  // L2/L3 responses contain 🔍 (root cause) and/or 💡 (actions) sections.
+  // L1 responses end with 💬 分析提醒 and have neither 🔍 nor 💡 in body.
+  function detectIntentLevel(text) {
+    if (!text || typeof text !== "string") return "L1";
+    const hasRoot = text.includes("🔍") || text.includes("🔎");
+    const hasActions = text.includes("💡");
+    return (hasRoot || hasActions) ? "L2L3" : "L1";
   }
 
   function ensureDashboardEmptyHidden() {
@@ -1182,6 +1218,30 @@ welcome: ${esc(a.welcome_message || "")}</div>
     card.innerHTML = `
       <div class="dash-head">
         <span class="dash-tag conclusion">📌 结论</span>
+        <span class="dash-turn">Turn ${turnTag}</span>
+      </div>
+      <div class="dash-body">${highlightEntities(text)}</div>`;
+    return card;
+  }
+
+  function dashboardRootCauseCard(text, turnTag) {
+    const card = el_h("div", "dash-card dash-rootcause");
+    card.dataset.turn = turnTag;
+    card.innerHTML = `
+      <div class="dash-head">
+        <span class="dash-tag rootcause">🔍 根因分析</span>
+        <span class="dash-turn">Turn ${turnTag}</span>
+      </div>
+      <div class="dash-body">${highlightEntities(text)}</div>`;
+    return card;
+  }
+
+  function dashboardActionsCard(text, turnTag) {
+    const card = el_h("div", "dash-card dash-actions");
+    card.dataset.turn = turnTag;
+    card.innerHTML = `
+      <div class="dash-head">
+        <span class="dash-tag actions">💡 行动建议</span>
         <span class="dash-turn">Turn ${turnTag}</span>
       </div>
       <div class="dash-body">${highlightEntities(text)}</div>`;
@@ -1414,6 +1474,38 @@ welcome: ${esc(a.welcome_message || "")}</div>
     appendDashboardCard(dashboardConclusionCard(content, bucket.currentTurnTag || 1));
   }
 
+  function pushRootCauseIfAny(text) {
+    const bucket = B();
+    const content = extractRootCause(text);
+    if (!content) return;
+    bucket.rootCauseSeen = bucket.rootCauseSeen || new Set();
+    const key = content.trim().toLowerCase();
+    if (bucket.rootCauseSeen.has(key)) return;
+    bucket.rootCauseSeen.add(key);
+    appendDashboardCard(dashboardRootCauseCard(content, bucket.currentTurnTag || 1));
+  }
+
+  function pushActionsIfAny(text) {
+    const bucket = B();
+    const content = extractActions(text);
+    if (!content) return;
+    bucket.actionsSeen = bucket.actionsSeen || new Set();
+    const key = content.trim().toLowerCase();
+    if (bucket.actionsSeen.has(key)) return;
+    bucket.actionsSeen.add(key);
+    appendDashboardCard(dashboardActionsCard(content, bucket.currentTurnTag || 1));
+  }
+
+  // L1 dashboards show only chart + conclusion — strip table cards from the
+  // current turn after we know the intent level.
+  function pruneL1Dashboard(turnTag) {
+    if (!el.dashboardList) return;
+    const tag = String(turnTag);
+    const tables = el.dashboardList.querySelectorAll(".dash-card.dash-table");
+    tables.forEach((c) => { if (c.dataset.turn === tag) c.remove(); });
+    updateDashboardCount();
+  }
+
   function pushChartToDashboard(chart) {
     const bucket = B();
     appendDashboardCard(dashboardChartCard(chart, bucket.currentTurnTag || 1));
@@ -1424,11 +1516,200 @@ welcome: ${esc(a.welcome_message || "")}</div>
     appendDashboardCard(dashboardTableCard(table, bucket.currentTurnTag || 1));
   }
 
+  // ------------------------------------------------------------------
+  // Per-turn HTML report export
+  // ------------------------------------------------------------------
+  function appendTurnExportButton(turnTag) {
+    if (!el.dashboardList) return;
+    const tagStr = String(turnTag);
+    // Only append if this turn produced at least one (non-export) dashboard card.
+    const dataCards = el.dashboardList.querySelectorAll(
+      ".dash-card[data-turn=\"" + tagStr + "\"]:not(.dash-export)"
+    );
+    if (!dataCards.length) return;
+    // Avoid duplicate export buttons.
+    if (el.dashboardList.querySelector(".dash-export[data-turn=\"" + tagStr + "\"]")) return;
+
+    const card = el_h("div", "dash-card dash-export");
+    card.dataset.turn = tagStr;
+    card.innerHTML =
+      '<button type="button" class="dash-export-btn" data-turn="' + tagStr + '">' +
+      '📤 导出本轮报告 (HTML)</button>';
+    card.querySelector(".dash-export-btn").addEventListener("click", () => {
+      exportTurnReport(turnTag);
+    });
+    appendDashboardCard(card);
+  }
+
+  function renderTextCardForExport(card) {
+    const tagEl = card.querySelector(".dash-tag");
+    const body = card.querySelector(".dash-body");
+    const tag = tagEl ? tagEl.textContent.trim() : "";
+    const cls = !tagEl ? ""
+      : (tagEl.classList.contains("conclusion") ? "conclusion"
+       : tagEl.classList.contains("rootcause")  ? "rootcause"
+       : tagEl.classList.contains("actions")    ? "actions" : "");
+    return (
+      '<section class="report-section report-' + cls + '">' +
+      '  <header><span class="report-tag ' + cls + '">' + esc(tag) + '</span></header>' +
+      '  <div class="report-body">' + (body ? body.innerHTML : "") + '</div>' +
+      '</section>'
+    );
+  }
+
+  function renderChartCardForExport(card) {
+    const title = (card.querySelector(".dash-title") || {}).textContent || "图表";
+    const tag = (card.querySelector(".dash-tag") || {}).textContent || "📊 CHART";
+    const source = (card.querySelector(".dash-source") || {}).textContent || "";
+    let imgTag = "";
+    const canvas = card.querySelector(".dash-chart-canvas, .dash-multidim-canvas");
+    if (canvas && typeof echarts !== "undefined") {
+      try {
+        const inst = echarts.getInstanceByDom(canvas);
+        if (inst) {
+          const dataUrl = inst.getDataURL({
+            type: "png", pixelRatio: 2, backgroundColor: "#ffffff",
+          });
+          imgTag = '<img src="' + dataUrl + '" alt="' + esc(title) + '" />';
+        }
+      } catch (_) { /* echarts may not have hydrated for some reason */ }
+    }
+    return (
+      '<section class="report-section report-chart">' +
+      '  <header>' +
+      '    <span class="report-tag chart">' + esc(tag.trim()) + '</span>' +
+      '    <span class="report-title">' + esc(title.trim()) + '</span>' +
+      '  </header>' +
+      (imgTag || '<div class="report-empty">(图表未渲染)</div>') +
+      (source ? '<div class="report-source">' + esc(source.trim()) + '</div>' : "") +
+      '</section>'
+    );
+  }
+
+  function renderTableCardForExport(card) {
+    const title = (card.querySelector(".dash-title") || {}).textContent || "数据表";
+    const tag = (card.querySelector(".dash-tag") || {}).textContent || "📋 TABLE";
+    const wrap = card.querySelector(".dash-table-wrap");
+    const inner = wrap ? wrap.innerHTML : "";
+    return (
+      '<section class="report-section report-table">' +
+      '  <header>' +
+      '    <span class="report-tag table">' + esc(tag.trim()) + '</span>' +
+      '    <span class="report-title">' + esc(title.trim()) + '</span>' +
+      '  </header>' +
+      '  <div class="report-table-wrap">' + inner + '</div>' +
+      '</section>'
+    );
+  }
+
+  function buildReportHTML(turnTag, sectionsHTML) {
+    const dateStr = new Date().toLocaleString("zh-CN", { hour12: false });
+    const modeName = state.mode === "report" ? "报表分析" : "智能分析";
+    return [
+      '<!doctype html>',
+      '<html lang="zh-CN">',
+      '<head>',
+      '<meta charset="utf-8">',
+      '<title>硕磐智能 · ' + modeName + ' · Turn ' + turnTag + '</title>',
+      '<style>',
+      '* { box-sizing: border-box; }',
+      'body { font-family: "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1f2937; background: #f7f9fc; margin: 0; padding: 28px; }',
+      '.report { max-width: 960px; margin: 0 auto; background: #fff; border-radius: 8px; padding: 32px 40px; box-shadow: 0 2px 12px rgba(0,0,0,.06); }',
+      '.report-head { border-bottom: 2px solid #0b7ff3; padding-bottom: 14px; margin-bottom: 22px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }',
+      '.report-head h1 { margin: 0 0 4px; font-size: 20px; color: #111827; font-weight: 700; }',
+      '.report-meta { font-size: 12px; color: #6b7280; }',
+      '.report-section { margin: 20px 0; }',
+      '.report-section header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }',
+      '.report-tag { font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 3px 8px; border-radius: 3px; text-transform: uppercase; }',
+      '.report-tag.conclusion { color: #b45309; border: 1px solid #f5a524; }',
+      '.report-tag.rootcause  { color: #b91c1c; border: 1px solid #f87171; }',
+      '.report-tag.actions    { color: #4d7c0f; border: 1px solid #a3e635; }',
+      '.report-tag.chart      { color: #0e7490; border: 1px solid #22d3ee; }',
+      '.report-tag.table      { color: #6d28d9; border: 1px solid #a78bfa; }',
+      '.report-title { font-size: 14px; font-weight: 600; color: #111827; }',
+      '.report-source { font-size: 11px; color: #6b7280; margin-top: 6px; }',
+      '.report-body { white-space: pre-wrap; line-height: 1.7; font-size: 14px; color: #1f2937; }',
+      '.report-chart img { width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 4px; }',
+      '.report-empty { padding: 24px; text-align: center; color: #9ca3af; font-size: 12px; border: 1px dashed #e5e7eb; border-radius: 4px; }',
+      '.report-table-wrap { overflow-x: auto; }',
+      '.report-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }',
+      '.report-table-wrap th, .report-table-wrap td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: left; }',
+      '.report-table-wrap thead th { background: #f3f4f6; font-weight: 600; }',
+      '.report-toolbar { padding: 14px 18px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fafafa; text-align: right; margin-top: 24px; }',
+      '.btn { display: inline-block; padding: 7px 14px; margin-left: 8px; font-size: 13px; border-radius: 4px; cursor: pointer; border: 1px solid #0b7ff3; background: #0b7ff3; color: #fff; }',
+      '.btn:hover { background: #0a6cd1; }',
+      '.btn-ghost { background: #fff; color: #0b7ff3; }',
+      '.btn-ghost:hover { background: #eaf3ff; }',
+      '@media print { body { padding: 0; background: #fff; } .report { box-shadow: none; padding: 0; max-width: none; } .report-toolbar { display: none; } }',
+      '</style>',
+      '</head>',
+      '<body>',
+      '<div class="report">',
+      '  <div class="report-head">',
+      '    <div>',
+      '      <h1>硕磐智能 · ' + modeName + ' 报告</h1>',
+      '      <div class="report-meta">Turn ' + turnTag + ' · ' + esc(dateStr) + '</div>',
+      '    </div>',
+      '  </div>',
+      sectionsHTML,
+      '  <div class="report-toolbar">',
+      '    <button class="btn btn-ghost" onclick="window.print()">打印 / 保存为 PDF</button>',
+      '    <button class="btn" onclick="(function(){var b=new Blob([document.documentElement.outerHTML],{type:\'text/html;charset=utf-8\'});var a=document.createElement(\'a\');a.href=URL.createObjectURL(b);a.download=\'report-turn' + turnTag + '.html\';a.click();})()">下载 HTML</button>',
+      '  </div>',
+      '</div>',
+      '</body>',
+      '</html>',
+    ].join("\n");
+  }
+
+  function exportTurnReport(turnTag) {
+    const tagStr = String(turnTag);
+    const cards = Array.from(el.dashboardList.querySelectorAll(
+      ".dash-card[data-turn=\"" + tagStr + "\"]"
+    )).filter((c) => !c.classList.contains("dash-export"));
+
+    if (cards.length === 0) {
+      alert("本轮没有可导出的看板内容。");
+      return;
+    }
+
+    const sections = cards.map((card) => {
+      if (card.classList.contains("dash-chart") ||
+          card.classList.contains("dash-multidim")) {
+        return renderChartCardForExport(card);
+      }
+      if (card.classList.contains("dash-table")) {
+        return renderTableCardForExport(card);
+      }
+      if (card.classList.contains("dash-conclusion") ||
+          card.classList.contains("dash-rootcause")  ||
+          card.classList.contains("dash-actions")) {
+        return renderTextCardForExport(card);
+      }
+      return "";
+    }).join("\n");
+
+    const html = buildReportHTML(turnTag, sections);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, "_blank");
+    // If popups are blocked, fall back to anchor-download.
+    if (!win) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "report-turn" + tagStr + ".html";
+      a.click();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
   function clearDashboard() {
     const bucket = B();
     el.dashboardList.innerHTML = "";
     bucket.dashboardHasContent = false;
     bucket.conclusionSeen = new Set();
+    bucket.rootCauseSeen = new Set();
+    bucket.actionsSeen = new Set();
     if (el.dashboardEmpty) {
       if (!el.dashboardEmpty.parentNode) el.dashboardList.appendChild(el.dashboardEmpty);
       el.dashboardEmpty.style.display = "";
@@ -1724,7 +2005,21 @@ welcome: ${esc(a.welcome_message || "")}</div>
           stop_reason: evt.stop_reason,
           usage: evt.usage,
         });
-        if (evt.text) pushConclusionIfAny(evt.text);
+        if (evt.text) {
+          pushConclusionIfAny(evt.text);
+          // Only act on the L1/L2/L3 split when the model is actually delivering
+          // a templated answer (📌 present). Intermediate tool-call iterations
+          // tend to have no 📌 and would mis-prune valid L2/L3 tables.
+          if (evt.text.includes("📌")) {
+            const level = detectIntentLevel(evt.text);
+            if (level === "L2L3") {
+              pushRootCauseIfAny(evt.text);
+              pushActionsIfAny(evt.text);
+            } else {
+              pruneL1Dashboard(B().currentTurnTag || 1);
+            }
+          }
+        }
         break;
       case "render_enforce": {
         finalizeAssistantText();
@@ -1740,6 +2035,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
       }
       case "done":
         setBusy(false);
+        appendTurnExportButton(B().currentTurnTag || 1);
         break;
       case "error":
         finalizeAssistantText();
@@ -2160,6 +2456,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
     bucket.hasContent = false;
     bucket.dashboardHasContent = false;
     bucket.conclusionSeen = new Set();
+    bucket.rootCauseSeen = new Set();
+    bucket.actionsSeen = new Set();
     bucket.currentTurnTag = 0;
     // If this is the active mode, also clear visible DOM
     if (state.mode === mode) {

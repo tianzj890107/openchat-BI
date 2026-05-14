@@ -50,7 +50,7 @@ MODELS: list[dict[str, Any]] = [
         "key": "qwen3.6-plus",
         "label": "Qwen 3.6 Plus",
         "provider": "qwen",
-        "model_id": "qwen3-plus",
+        "model_id": "qwen3.6-plus",
         "default_max_tokens": 8192,
         "default_temperature": 0.7,
         "max_output_tokens": 8192,
