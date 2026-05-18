@@ -56,7 +56,9 @@
       "Bash(echo \"syntax-check exit: $?\")",
       "Bash(py *)",
       "Bash(powershell -Command \"Get-ChildItem *.html | Select Name, Length\")",
-      "Bash(powershell *)"
+      "Bash(powershell *)",
+      "Bash(node --check C:/shuopan/claude-BI/open-claude/bi_agent/web/static/app.js)",
+      "Bash(node *)"
     ]
   }
 }

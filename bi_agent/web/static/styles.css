@@ -105,6 +105,18 @@ body {
 .brand-name { color: var(--fg-0); letter-spacing: 1.5px; font-weight: 600; }
 .brand-sep { color: var(--fg-3); }
 .brand-sub { color: var(--accent-cyan); text-transform: lowercase; letter-spacing: 0.5px; }
+.brand-quadrant {
+  margin-left: 10px;
+  padding: 2px 9px;
+  border: 1px solid var(--accent-green, #10b981);
+  color: var(--accent-green, #10b981);
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.brand-quadrant::before { content: "◎ "; }
+.brand-quadrant[hidden] { display: none; }
 .topbar-meta {
   flex: 1;
   display: flex;
@@ -783,6 +795,40 @@ body[data-inspector="collapsed"]:not([data-dashboard="collapsed"]) .split {
   flex-shrink: 0;
 }
 .choice-check:disabled { cursor: default; }
+
+/* Manual-input row — hidden checkbox follows the text input; row visually
+ * marked with a dashed border until something is typed. */
+.choice-option-manual {
+  border-style: dashed;
+  cursor: text;
+}
+.choice-option-manual .choice-check-manual {
+  visibility: hidden;
+  /* Keep the same layout footprint as a normal checkbox so the idx/body align. */
+}
+.choice-option-manual.has-input .choice-check-manual,
+.choice-option-manual:has(.choice-manual-input:focus) .choice-check-manual {
+  visibility: visible;
+}
+.choice-option-manual.has-input,
+.choice-option-manual:focus-within {
+  border-style: solid;
+  border-color: var(--accent-cyan);
+  background: var(--bg-2);
+}
+.choice-manual-input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  color: var(--fg-0);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  outline: none;
+  padding: 0;
+  min-width: 0;
+  width: 100%;
+}
+.choice-manual-input::placeholder { color: var(--fg-3); }
 .choice-hint {
   margin-left: auto;
   font-family: var(--font-mono);
@@ -876,6 +922,85 @@ body[data-inspector="collapsed"]:not([data-dashboard="collapsed"]) .split {
   content: "▸ ";
   color: var(--accent-amber);
 }
+
+/* --- UI command apply card (quadrant-assistant turn summary) ---
+ * Rendered at end-of-turn when one or more ```ui-command``` blocks were
+ * staged from the model's response. Clicking the button flushes the queue
+ * to the cockpit in one apply_batch postMessage. */
+.ui-apply-card {
+  margin: 12px 0;
+  border: 1px solid var(--accent-lime);
+  background: rgba(163, 230, 53, 0.04);
+  border-left: 3px solid var(--accent-lime);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.ui-apply-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(163, 230, 53, 0.08);
+  border-bottom: 1px solid rgba(163, 230, 53, 0.30);
+}
+.ui-apply-icon { font-size: 16px; }
+.ui-apply-title { flex: 1; color: var(--fg-0); font-weight: 600; font-size: var(--fs-md); }
+.ui-apply-btn {
+  background: var(--accent-lime);
+  color: var(--bg-0);
+  border: 1px solid var(--accent-lime);
+  padding: 6px 16px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  letter-spacing: 1px;
+  cursor: pointer;
+  border-radius: 2px;
+  font-weight: 700;
+  transition: filter 0.12s;
+}
+.ui-apply-btn:hover:not(:disabled) { filter: brightness(1.12); }
+.ui-apply-btn:disabled {
+  background: var(--bg-elev);
+  color: var(--fg-3);
+  border-color: var(--border-1);
+  cursor: not-allowed;
+}
+.ui-apply-list {
+  margin: 0;
+  padding: 8px 14px 4px 30px;
+  list-style: disc;
+  color: var(--fg-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.55;
+}
+.ui-apply-list li { padding: 2px 0; }
+.ui-apply-status {
+  padding: 6px 14px 10px;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  min-height: 16px;
+}
+.ui-apply-card.applied {
+  background: rgba(45, 212, 191, 0.04);
+  border-color: var(--accent-teal);
+  border-left-color: var(--accent-teal);
+}
+.ui-apply-card.applied .ui-apply-head {
+  background: rgba(45, 212, 191, 0.08);
+  border-bottom-color: rgba(45, 212, 191, 0.30);
+}
+.ui-apply-card.applied .ui-apply-status { color: var(--accent-teal); }
+.ui-apply-card.failed {
+  border-color: var(--accent-red);
+  border-left-color: var(--accent-red);
+}
+.ui-apply-card.failed .ui-apply-head {
+  background: rgba(248, 113, 113, 0.10);
+  border-bottom-color: rgba(248, 113, 113, 0.30);
+}
+.ui-apply-card.failed .ui-apply-status { color: var(--accent-red); }
 
 /* --- Chart card (inline in chat + in tool card) --- */
 .chart-card {
@@ -1424,7 +1549,14 @@ body:not([data-mode="report"]) .upload-status {
 .upload-status.success { color: var(--accent-teal); }
 .upload-status.error   { color: var(--accent-red); }
 
-/* ----- History popover (anchored to composer, opens UPWARD) ----- */
+/* ----- History popover (anchored to composer, opens UPWARD) -----
+ * IMPORTANT: This popover is hidden via the HTML `hidden` attribute. The
+ * own `display:flex` below would normally OUTRANK the UA `[hidden]{display:none}`
+ * rule (same specificity, later cascade wins), making the popover invisible
+ * (opacity:0) but still consuming clicks and wheel events from the chat
+ * area below it. The `[hidden]` rule and the `pointer-events:none` default
+ * together guarantee it never blocks chat interaction while not shown.
+ */
 .history-popover {
   position: absolute;
   bottom: calc(100% - 4px);
@@ -1436,13 +1568,19 @@ body:not([data-mode="report"]) .upload-status {
   z-index: 50;
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.6);
   opacity: 0;
+  pointer-events: none;
   transform: translateY(4px);
   transition: opacity 0.12s, transform 0.12s;
   max-height: 50vh;
   display: flex;
   flex-direction: column;
 }
-.history-popover.visible { opacity: 1; transform: translateY(0); }
+.history-popover[hidden] { display: none !important; }
+.history-popover.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
 .history-header {
   display: flex;
   align-items: center;
@@ -1867,6 +2005,18 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   transition: background 0.12s, color 0.12s;
 }
 .dash-export-btn:hover { background: var(--bg-3, #1a2230); color: var(--fg-0); }
+.dash-export-btn.dash-sync-btn { color: var(--accent-lime, #84cc16); border-top: none; }
+.dash-export-btn.dash-feishu-btn { color: #00d6b9; border-top: none; }
+.dash-export-status {
+  padding: 7px 14px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-2, #94a3b8);
+  border-top: 1px solid var(--border-1);
+  background: var(--bg-1, #0f1724);
+}
+.dash-export-status:empty { display: none; }
 .dash-head {
   display: flex;
   align-items: center;
@@ -1924,6 +2074,105 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   line-height: 1.55;
   word-wrap: break-word;
   white-space: pre-wrap;  /* preserve newlines inside the multi-line 📌 block */
+}
+/* Itemized body (根因分析 / 行动建议 — per-clause 行动 dropdown) */
+.dash-body.has-items { white-space: normal; padding: 8px 12px; }
+.dash-body.has-items .dash-pre {
+  white-space: pre-wrap;
+  margin-bottom: 6px;
+  color: var(--fg-1, #c7d0db);
+}
+.dash-seg-head {
+  white-space: pre-wrap;
+  font-weight: 600;
+  color: var(--fg-0);
+  margin: 10px 0 4px;
+  line-height: 1.5;
+}
+.dash-seg-head:first-child { margin-top: 0; }
+.dash-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border-1);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  background: var(--bg-1, #0f1724);
+}
+.dash-item-flash {
+  flex-basis: 100%;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--ok, #34d399);
+}
+.dash-item.is-supervised { border-color: rgba(52,211,153,.45); }
+.dash-item-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.55;
+}
+.dash-item-actions { flex: none; position: relative; }
+.dash-act-btn {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  letter-spacing: .5px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  background: var(--bg-2);
+  color: var(--fg-1, #c7d0db);
+  border: 1px solid var(--border-1);
+  transition: background .12s, color .12s, border-color .12s;
+}
+.dash-rootcause .dash-act-btn:hover,
+.dash-rootcause .dash-act-btn[aria-expanded="true"] {
+  border-color: var(--accent-red); color: var(--accent-red);
+  background: rgba(239,68,68,.10);
+}
+.dash-actions .dash-act-btn:hover,
+.dash-actions .dash-act-btn[aria-expanded="true"] {
+  border-color: var(--accent-lime); color: var(--accent-lime);
+  background: rgba(132,204,22,.12);
+}
+.dash-act-menu {
+  position: fixed;        /* escapes .dash-card overflow:hidden clipping */
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  min-width: 104px;
+  padding: 4px;
+  border: 1px solid var(--border-1);
+  border-radius: 7px;
+  background: var(--bg-2, #161e2b);
+  box-shadow: 0 8px 22px rgba(0,0,0,.45);
+}
+.dash-act-menu[hidden] { display: none; }
+.dash-act-choice {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  text-align: left;
+  white-space: nowrap;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-1, #c7d0db);
+  cursor: pointer;
+}
+.dash-rootcause .dash-act-choice:hover {
+  background: rgba(239,68,68,.14); color: var(--accent-red);
+}
+.dash-actions .dash-act-choice:hover {
+  background: rgba(132,204,22,.16); color: var(--accent-lime);
 }
 .dash-chart-canvas {
   width: 100%;

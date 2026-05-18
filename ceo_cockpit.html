@@ -205,6 +205,8 @@ html, body { background: var(--bg-0); color: var(--text-0); font-family: "PingFa
 .asset-stage-card h5 { font-size: 12px; color: var(--text-0); }
 .asset-stage-chart svg { width: 100%; height: 100%; display: block; }
 .asset-stage-chart text { fill: var(--text-1); font-size: 10px; }
+.asset-stage-hit-area { fill: transparent; cursor: pointer; pointer-events: all; }
+.asset-stage-hit-area:hover { fill: rgba(255,255,255,.055); }
 .asset-stage-foot { display: flex; justify-content: space-between; color: var(--text-2); font-size: 10px; }
 .problem-card.command-expanded { grid-template-rows: auto 1fr; }
 .command-card { display: grid; grid-template-rows: auto 1fr; gap: 10px; min-height: 0; overflow: auto; padding-right: 2px; }
@@ -373,7 +375,7 @@ html, body { background: var(--bg-0); color: var(--text-0); font-family: "PingFa
   font-size: 11px;
   white-space: nowrap;
 }
-.problem-card.focus-asset .problem-score::after { content: "DMD缺口 30%"; }
+.problem-card.focus-asset .problem-score::after { content: "不良品 173.27万"; }
 .problem-card.focus-risk .problem-score::after { content: "极高危红点"; }
 .problem-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; position: relative; z-index: 1; }
 .problem-title { display: grid; gap: 6px; }
@@ -401,6 +403,9 @@ html, body { background: var(--bg-0); color: var(--text-0); font-family: "PingFa
 .quadrant-actions button:hover,
 .quadrant-actions button.active { border-color: var(--accent); color: var(--text-0); background: rgba(125,165,201,.18); }
 .quadrant-actions .discover-btn.active { border-color: var(--orange); color: var(--orange); }
+.quadrant-actions .assistant-btn::before { content: "◎"; color: var(--green); margin-right: 4px; }
+.quadrant-actions .assistant-btn:hover { border-color: var(--green); color: var(--green); background: rgba(16,185,129,.12); }
+.quadrant-actions .assistant-btn.active { border-color: var(--green); color: var(--green); background: rgba(16,185,129,.18); }
 .problem-score { min-width: 82px; text-align: right; }
 .problem-score b { display: block; font-size: 28px; line-height: 1; }
 .problem-score em { display: block; margin-top: 5px; color: var(--text-2); font-style: normal; font-size: 11px; }
@@ -604,6 +609,284 @@ html, body { background: var(--bg-0); color: var(--text-0); font-family: "PingFa
 /* When embedded in the standalone shell, parent page already provides the AI float */
 body.embedded .assistant-float,
 body.embedded .assistant-modal { display: none !important; }
+
+/* ====== Per-quadrant assistant modal (independent from the generic AI float) ====== */
+.quad-assistant-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: none;
+  align-items: stretch;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(5,10,18,.58);
+  backdrop-filter: blur(4px);
+}
+.quad-assistant-modal.open { display: flex; }
+.quad-assistant-dialog {
+  width: min(1180px, calc(100vw - 64px));
+  height: calc(100vh - 64px);
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border: 1px solid rgba(16,185,129,.55);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(23,34,52,.98), rgba(15,23,36,.98));
+  box-shadow: 0 22px 60px rgba(0,0,0,.55);
+  overflow: hidden;
+}
+.quad-assistant-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(16,185,129,.06);
+}
+.quad-assistant-head b { font-size: 16px; }
+.quad-assistant-head b::before { content: "◎ "; color: var(--green); }
+.quad-assistant-head span { display: block; margin-top: 4px; color: var(--text-2); font-size: 12px; }
+.quad-assistant-head-actions { display: flex; gap: 8px; }
+.quad-assistant-head-actions button {
+  width: 32px; height: 32px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg-2); color: var(--text-1);
+  cursor: pointer; font-size: 15px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.quad-assistant-head-actions button:hover { border-color: var(--green); color: var(--green); }
+.quad-assistant-frame {
+  width: 100%; height: 100%;
+  border: 0; display: block; background: var(--bg-1);
+}
+.quad-assistant-modal.size-full { padding: 0; }
+.quad-assistant-modal.size-full .quad-assistant-dialog {
+  width: 100vw; height: 100vh; border-radius: 0; border-width: 0;
+}
+
+/* ====== Per-quadrant auto-update settings (config-only, engine not wired) ====== */
+.quadrant-actions .autoupdate-btn::before { content: "⟳"; color: var(--accent); margin-right: 4px; }
+.quadrant-actions .autoupdate-btn:hover { border-color: var(--accent); color: var(--text-0); background: rgba(125,165,201,.16); }
+.quadrant-actions .autoupdate-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(125,165,201,.20); }
+.quadrant-actions .autoupdate-btn.on::after {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 5px;
+  border-radius: 50%; background: var(--green); vertical-align: middle;
+  box-shadow: 0 0 6px var(--green);
+}
+.quad-au-modal {
+  position: fixed; inset: 0; z-index: 62; display: none;
+  align-items: stretch; justify-content: center; padding: 32px;
+  background: rgba(5,10,18,.58); backdrop-filter: blur(4px);
+}
+.quad-au-modal.open { display: flex; }
+.quad-au-dialog {
+  width: min(820px, calc(100vw - 64px));
+  max-height: calc(100vh - 64px);
+  display: grid; grid-template-rows: auto 1fr auto;
+  border: 1px solid rgba(125,165,201,.55); border-radius: 14px;
+  background: linear-gradient(180deg, rgba(23,34,52,.99), rgba(15,23,36,.99));
+  box-shadow: 0 22px 60px rgba(0,0,0,.55); overflow: hidden;
+}
+.quad-au-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--line);
+  background: rgba(125,165,201,.07);
+}
+.quad-au-head b { font-size: 16px; }
+.quad-au-head b::before { content: "⟳ "; color: var(--accent); }
+.quad-au-head span { display: block; margin-top: 4px; color: var(--text-2); font-size: 12px; }
+.quad-au-status {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+  padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--line); color: var(--text-2);
+}
+.quad-au-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--text-3, #6b7a90); }
+.quad-au-status.on { color: var(--green); border-color: rgba(16,185,129,.5); }
+.quad-au-status.on::before { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.quad-au-status.paused { color: var(--orange); border-color: rgba(245,158,11,.5); }
+.quad-au-status.paused::before { background: var(--orange); }
+.quad-au-head-x {
+  width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg-2); color: var(--text-1); cursor: pointer; font-size: 15px;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+}
+.quad-au-head-x:hover { border-color: var(--accent); color: var(--accent); }
+.quad-au-body { overflow-y: auto; padding: 18px; display: grid; gap: 16px; }
+.quad-au-field { display: grid; gap: 6px; }
+.quad-au-field > label { font-size: 12px; color: var(--text-1); font-weight: 600; }
+.quad-au-field > label small { color: var(--text-2); font-weight: 400; margin-left: 6px; }
+.quad-au-field textarea,
+.quad-au-field select,
+.quad-au-field input[type="datetime-local"] {
+  width: 100%; box-sizing: border-box; padding: 8px 10px;
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 7px;
+  color: var(--text-0); font-size: 13px; font-family: inherit;
+}
+.quad-au-field textarea { min-height: 78px; resize: vertical; line-height: 1.5; }
+.quad-au-field select:focus,
+.quad-au-field textarea:focus,
+.quad-au-field input:focus { outline: none; border-color: var(--accent); }
+.quad-au-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.quad-au-checks { display: flex; flex-wrap: wrap; gap: 8px; }
+.quad-au-checks label {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 6px 12px; border: 1px solid var(--line); border-radius: 20px;
+  font-size: 12px; color: var(--text-1); user-select: none;
+}
+.quad-au-checks label:has(input:checked) {
+  border-color: var(--accent); color: var(--accent); background: rgba(125,165,201,.14);
+}
+.quad-au-checks input { accent-color: var(--accent); }
+.quad-au-hint { font-size: 11px; color: var(--text-2); }
+.quad-au-log {
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg-1);
+  max-height: 168px; overflow-y: auto; font-size: 12px;
+}
+.quad-au-log-row {
+  display: grid; grid-template-columns: 132px 78px 1fr; gap: 10px;
+  padding: 7px 12px; border-bottom: 1px solid var(--line); color: var(--text-1);
+}
+.quad-au-log-row:last-child { border-bottom: 0; }
+.quad-au-log-row time { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.quad-au-log-row .tag {
+  font-size: 10px; font-weight: 700; text-align: center; align-self: center;
+  padding: 1px 0; border-radius: 4px;
+}
+.quad-au-log-row .tag.ok { color: var(--green); background: rgba(16,185,129,.14); }
+.quad-au-log-row .tag.run { color: var(--accent); background: rgba(125,165,201,.16); }
+.quad-au-log-row .tag.pause { color: var(--orange); background: rgba(245,158,11,.14); }
+.quad-au-log-empty { padding: 16px; text-align: center; color: var(--text-2); }
+.quad-au-foot {
+  display: flex; align-items: center; gap: 10px; padding: 14px 18px;
+  border-top: 1px solid var(--line); background: rgba(15,23,36,.7);
+}
+.quad-au-foot .spacer { flex: 1; }
+.quad-au-foot button {
+  padding: 9px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer; border: 1px solid var(--line); background: var(--bg-2); color: var(--text-1);
+}
+.quad-au-foot button:hover { border-color: var(--accent); color: var(--text-0); }
+.quad-au-foot .au-run { border-color: rgba(125,165,201,.6); color: var(--accent); }
+.quad-au-foot .au-run:hover { background: rgba(125,165,201,.16); }
+.quad-au-foot .au-pause { border-color: rgba(245,158,11,.5); color: var(--orange); }
+.quad-au-foot .au-pause:hover { background: rgba(245,158,11,.12); }
+.quad-au-foot .au-save { border-color: rgba(16,185,129,.6); color: var(--green); }
+.quad-au-foot .au-save:hover { background: rgba(16,185,129,.14); }
+
+/* ====== Per-quadrant 问题清单 (common + synced drillable issues) ====== */
+.quadrant-actions .issuelist-btn::before { content: "☰"; color: var(--text-2); margin-right: 4px; }
+.quadrant-actions .issuelist-btn:hover { border-color: var(--accent); color: var(--text-0); background: rgba(125,165,201,.16); }
+.quadrant-actions .issuelist-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(125,165,201,.20); }
+.quadrant-actions .issuelist-btn .il-badge {
+  display: inline-block; min-width: 16px; margin-left: 5px; padding: 0 4px;
+  font-size: 10px; line-height: 15px; text-align: center; border-radius: 8px;
+  background: var(--accent); color: #0b1320; font-weight: 700;
+}
+.quad-il-modal {
+  position: fixed; inset: 0; z-index: 63; display: none;
+  align-items: stretch; justify-content: center; padding: 32px;
+  background: rgba(5,10,18,.58); backdrop-filter: blur(4px);
+}
+.quad-il-modal.open { display: flex; }
+.quad-il-dialog {
+  width: min(760px, calc(100vw - 64px)); max-height: calc(100vh - 64px);
+  display: grid; grid-template-rows: auto 1fr; border: 1px solid rgba(125,165,201,.5);
+  border-radius: 14px; background: linear-gradient(180deg, rgba(23,34,52,.99), rgba(15,23,36,.99));
+  box-shadow: 0 22px 60px rgba(0,0,0,.55); overflow: hidden;
+}
+.quad-il-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--line); background: rgba(125,165,201,.07);
+}
+.quad-il-head b { font-size: 16px; }
+.quad-il-head b::before { content: "☰ "; color: var(--accent); }
+.quad-il-head span { display: block; margin-top: 4px; color: var(--text-2); font-size: 12px; }
+.quad-il-head-x {
+  width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg-2); color: var(--text-1); cursor: pointer; font-size: 15px;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+}
+.quad-il-head-x:hover { border-color: var(--accent); color: var(--accent); }
+.quad-il-body { overflow-y: auto; padding: 8px 18px 18px; }
+.quad-il-group { margin-top: 14px; }
+.quad-il-group h5 {
+  margin: 0 0 8px; font-size: 12px; color: var(--text-2); font-weight: 600;
+  letter-spacing: .5px; text-transform: uppercase;
+}
+.quad-il-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px;
+  background: var(--bg-1); font-size: 13px; color: var(--text-0);
+}
+.quad-il-item .il-q { flex: 1; line-height: 1.5; }
+.quad-il-item .il-meta { display: block; margin-top: 3px; font-size: 11px; color: var(--text-2); }
+.quad-il-item.drillable { cursor: pointer; }
+.quad-il-item.drillable:hover { border-color: var(--accent); background: rgba(125,165,201,.10); }
+.quad-il-item .il-tag {
+  flex: none; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+  border: 1px solid var(--line); color: var(--text-2);
+}
+.quad-il-item.drillable .il-tag { color: var(--accent); border-color: rgba(125,165,201,.5); }
+.quad-il-item .il-feishu {
+  flex: none; padding: 4px 9px; font-size: 11px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg-2); color: var(--text-1);
+}
+.quad-il-item .il-feishu:hover { border-color: #00d6b9; color: #00d6b9; }
+.quad-il-item .il-del {
+  flex: none; width: 24px; height: 24px; padding: 0; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg-2); color: var(--text-2); font-size: 13px;
+}
+.quad-il-item .il-del:hover { border-color: var(--orange); color: var(--orange); }
+.quad-il-empty { padding: 16px; text-align: center; color: var(--text-2); font-size: 12px; }
+.quad-il-view-modal {
+  position: fixed; inset: 0; z-index: 64; display: none;
+  align-items: stretch; justify-content: center; padding: 24px;
+  background: rgba(5,10,18,.66); backdrop-filter: blur(4px);
+}
+.quad-il-view-modal.open { display: flex; }
+.quad-il-view-dialog {
+  width: min(1080px, calc(100vw - 48px)); height: calc(100vh - 48px);
+  display: grid; grid-template-rows: auto 1fr; border: 1px solid rgba(125,165,201,.5);
+  border-radius: 12px; background: #0f1724; box-shadow: 0 22px 60px rgba(0,0,0,.6); overflow: hidden;
+}
+.quad-il-view-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; border-bottom: 1px solid var(--line); background: rgba(125,165,201,.07);
+}
+.quad-il-view-head b { font-size: 14px; }
+.quad-il-view-head .vh-actions { display: flex; gap: 8px; }
+.quad-il-view-head button {
+  padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--bg-2); color: var(--text-1);
+}
+.quad-il-view-head button:hover { border-color: var(--accent); color: var(--accent); }
+.quad-il-view-frame { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+
+/* ====== Cockpit-side toast (apply_batch result feedback) ====== */
+.cockpit-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translate(-50%, 12px);
+  z-index: 80;
+  padding: 10px 18px;
+  background: rgba(23,34,52,.94);
+  border: 1px solid var(--green);
+  border-radius: 20px;
+  color: var(--text-0);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.cockpit-toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.cockpit-toast[data-kind="error"] { border-color: var(--red); color: var(--red); }
+.cockpit-toast[data-kind="warn"] { border-color: var(--orange); color: var(--orange); }
 
 /* Embedded mode shrinks the available viewport (sidebar in parent), but the
  * problem board must stay 2-column — Q1/Q2 on row 1, Q3/Q4 on row 2.
@@ -1098,32 +1381,33 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
           <span>问题象限 02 · 资产运营流</span>
           <h2>库存资产在哪个接力段沉淀？</h2>
         </div>
-        <div class="problem-score"><b style="color:var(--orange)">470.9</b><em>周转天数</em></div>
+        <div class="problem-score" data-tip="周转天数 = 期末库存 / 月销售出库 × 30 = 3130.80 / 117.37 × 30"><b style="color:var(--orange)">800.2</b><em>周转天数</em></div>
       </div>
       <div class="asset-flow-card">
         <div class="asset-top">
           <div class="asset-box">
             <h4>资产健康总览</h4>
             <div class="asset-kpis">
-              <div class="asset-kpi"><b>3127.98万</b><span>库存总额</span></div>
-              <div class="asset-kpi"><b>470.9天</b><span>库存周转天数</span></div>
-              <div class="asset-kpi"><b style="color:var(--red)">289.59万</b><span>呆滞/超储</span></div>
-              <div class="asset-kpi"><b style="color:var(--orange)">21条</b><span>HIGH预警</span></div>
+              <div class="asset-kpi" data-tip="T_STK_Inventory SUM(FOnHandAmt)/10000"><b>3130.80万</b><span>库存总额</span></div>
+              <div class="asset-kpi" data-tip="期末库存 3130.80万 / 月销售出库 117.37万 × 30 天"><b>800.2天</b><span>库存周转天数</span></div>
+              <div class="asset-kpi" data-tip="T_STK_SlowMoving 全部 (SLOW + EXCESS + NEAR_SLOW)"><b style="color:var(--red)">289.60万</b><span>呆滞/超储/准呆滞</span></div>
+              <div class="asset-kpi" data-tip="T_STK_SlowMoving FWarnLevel='HIGH' COUNT(*)"><b style="color:var(--orange)">21条</b><span>HIGH预警</span></div>
             </div>
           </div>
           <div class="asset-box">
             <h4>经营关注告警</h4>
             <div class="asset-alert-list">
-              <div class="asset-alert"><span>关键物料缺口</span><b>42个</b></div>
-              <div class="asset-alert"><span>产线停滞风险</span><b>DMD 30%</b></div>
-              <div class="asset-alert"><span>发出未回款风险</span><b>77万</b></div>
-              <div class="asset-alert" data-drill-href="asset_overdue_inventory.html"><span>6月以上超期库存</span><b>202.16万</b></div>
+              <div class="asset-alert" data-tip="T_STK_Inventory 中 FOnHandQty < FSafeStockQty 的物料数 (DISTINCT FMaterialId)"><span>关键物料缺口</span><b>42个</b></div>
+              <div class="asset-alert" data-tip="T_STK_DefectiveInventory COUNT(*) 批数 / SUM(FOnHandAmt)/10000 金额"><span>不良品库存</span><b>60批 / 173.27万</b></div>
+              <div class="asset-alert" data-tip="本期销售出库 SAL_OUT 117.37万 − 当期回款 SUM(FReceivedAmt) 40.37万"><span>发出未回款风险</span><b>77.00万</b></div>
+              <div class="asset-alert" data-drill-href="asset_overdue_inventory.html" data-tip="T_STK_SlowMoving WHERE FAgeDays ≥ 180 SUM(FAmount)/10000"><span>6月以上超期库存</span><b>202.16万</b></div>
             </div>
           </div>
         </div>
         <div class="asset-filter-row">
           <b>四段实物流的接力与落差</b>
           <select id="assetCategoryFilter" aria-label="品类">
+            <option value="all" selected>品类：全部</option>
             <option value="flash">品类：闪光灯罩</option>
             <option value="metal">品类：金属件</option>
             <option value="lens">品类：镜片/陶瓷</option>
@@ -1323,7 +1607,7 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
   <!-- Row 1: 销售业务流 + 六维总览 -->
   <section class="diagnosis-card">
     <i>!</i>
-    <div><b>当前穿透诊断样例：</b>车载DMD芯片采购缺口已达30%，导致新产线投产停滞。建议从资产运营红仓进入，按物料、供应商、责任主体、影响订单逐层下钻。</div>
+    <div><b>当前穿透诊断样例：</b>T_STK_DefectiveInventory 收录 60 批不良品共 173.27 万元，集中在采购入库环节。建议从资产运营红仓进入，按供应商、检验员、批次号、采购单逐层下钻。</div>
     <a href="ceo_quadrant_detail.html?topic=assetflow">查看下钻</a>
   </section>
 
@@ -1532,6 +1816,114 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
     </section>
   </div>
   <div class="chart-tooltip" id="chartTooltip"></div>
+
+  <div class="quad-assistant-modal" id="quadAssistantModal" aria-hidden="true">
+    <section class="quad-assistant-dialog" role="dialog" aria-modal="true" aria-labelledby="quadAssistantTitle">
+      <div class="quad-assistant-head">
+        <div>
+          <b id="quadAssistantTitle">象限助手</b>
+          <span id="quadAssistantSubtitle">通过对话调整本象限的看板维度、文字与图表</span>
+        </div>
+        <div class="quad-assistant-head-actions">
+          <button id="quadAssistantFull" type="button" aria-pressed="false" title="全屏">⛶</button>
+          <button id="quadAssistantClose" type="button" aria-label="关闭" title="关闭">×</button>
+        </div>
+      </div>
+      <iframe class="quad-assistant-frame" id="quadAssistantFrame" title="象限助手工作台" src="about:blank" loading="lazy"></iframe>
+    </section>
+  </div>
+
+  <div class="quad-au-modal" id="quadAutoUpdateModal" aria-hidden="true">
+    <section class="quad-au-dialog" role="dialog" aria-modal="true" aria-labelledby="quadAuTitle">
+      <div class="quad-au-head">
+        <div>
+          <b id="quadAuTitle">自动更新</b>
+          <span id="quadAuSubtitle">配置本象限的自动更新策略(更新引擎暂未实装,此处仅保存配置)</span>
+          <span class="quad-au-status" id="quadAuStatus">未启用</span>
+        </div>
+        <button class="quad-au-head-x" id="quadAuClose" type="button" aria-label="关闭" title="关闭">×</button>
+      </div>
+      <div class="quad-au-body">
+        <div class="quad-au-field">
+          <label for="quadAuPrompt">系统提示词 <small>驱动本象限自动更新时下发给模型的指令</small></label>
+          <textarea id="quadAuPrompt" placeholder="例如:每次更新时,基于最新数据库数据刷新本象限四段柱图与告警文案,保持口径一致……"></textarea>
+        </div>
+        <div class="quad-au-grid2">
+          <div class="quad-au-field">
+            <label for="quadAuModel">模型选择</label>
+            <select id="quadAuModel">
+              <option value="claude-opus-4-7">Claude Opus 4.7(最强,慢)</option>
+              <option value="claude-sonnet-4-6">Claude Sonnet 4.6(均衡)</option>
+              <option value="claude-haiku-4-5">Claude Haiku 4.5(快,省)</option>
+            </select>
+          </div>
+          <div class="quad-au-field">
+            <label for="quadAuFreq">更新频率</label>
+            <select id="quadAuFreq">
+              <option value="hourly">每小时</option>
+              <option value="daily">每天</option>
+              <option value="weekly">每周</option>
+              <option value="monthly">每月</option>
+              <option value="manual">仅手动</option>
+            </select>
+          </div>
+        </div>
+        <div class="quad-au-field">
+          <label for="quadAuNext">下次更新时间</label>
+          <input type="datetime-local" id="quadAuNext">
+          <span class="quad-au-hint" id="quadAuNextHint">按所选频率自动推算,可手动覆盖</span>
+        </div>
+        <div class="quad-au-field">
+          <label>更新内容</label>
+          <div class="quad-au-checks">
+            <label><input type="checkbox" value="data" checked> 数据</label>
+            <label><input type="checkbox" value="chart" checked> 图表</label>
+            <label><input type="checkbox" value="text"> 文字</label>
+            <label><input type="checkbox" value="screenshot"> AI 截图</label>
+            <label><input type="checkbox" value="risk" checked> 风险提示告警</label>
+          </div>
+        </div>
+        <div class="quad-au-field">
+          <label>历史更新日志</label>
+          <div class="quad-au-log" id="quadAuLog"></div>
+        </div>
+      </div>
+      <div class="quad-au-foot">
+        <button class="au-run" id="quadAuRun" type="button">立即执行</button>
+        <button class="au-pause" id="quadAuPause" type="button">暂停更新</button>
+        <span class="spacer"></span>
+        <button id="quadAuCancel" type="button">取消</button>
+        <button class="au-save" id="quadAuSave" type="button">保存配置</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="quad-il-modal" id="quadIssueModal" aria-hidden="true">
+    <section class="quad-il-dialog" role="dialog" aria-modal="true" aria-labelledby="quadIlTitle">
+      <div class="quad-il-head">
+        <div>
+          <b id="quadIlTitle">问题清单</b>
+          <span id="quadIlSubtitle">本象限常用问题与已同步到主页的分析,标记「可下钻」的可展开详情</span>
+        </div>
+        <button class="quad-il-head-x" id="quadIlClose" type="button" aria-label="关闭" title="关闭">×</button>
+      </div>
+      <div class="quad-il-body" id="quadIlBody"></div>
+    </section>
+  </div>
+
+  <div class="quad-il-view-modal" id="quadIssueViewer" aria-hidden="true">
+    <section class="quad-il-view-dialog" role="dialog" aria-modal="true" aria-labelledby="quadIlViewTitle">
+      <div class="quad-il-view-head">
+        <b id="quadIlViewTitle">下钻报告</b>
+        <div class="vh-actions">
+          <button id="quadIlViewFeishu" type="button">分享到飞书</button>
+          <button id="quadIlViewOpen" type="button">新窗口打开</button>
+          <button id="quadIlViewBack" type="button">返回清单</button>
+        </div>
+      </div>
+      <iframe class="quad-il-view-frame" id="quadIlViewFrame" title="下钻报告" src="about:blank"></iframe>
+    </section>
+  </div>
 
 </div>
 
@@ -1958,45 +2350,128 @@ function drawSalesNodeBars() {
   }).join("");
 }
 
+// 四段实物流的接力与落差 — 数据来自 guangfeng.db 真实汇总,按「段 × 品类」双维切片:
+//   前三段(采购/生产/仓库): T_STK_Inventory 按 FStockCategory(原材料/半成品/成品) × FItemCategory 切
+//   第四段(站点): T_STK_InvMovement WHERE FMoveType='SAL_OUT' 按 FItemCategory 切 (2026-04 单月)
+//   overdue/expired: T_STK_InvAging 按 FStockCategory × FItemCategory × FAgingBucket 切
+//                    站点段无 aging 维度(本期流量),overdue/expired 置 0,safe 取 current×0.85
+// 品类选「全部」时取 total(单独存,不是从 byCategory 求和——确保与库内总值一致);
+// 选具体品类时取 byCategory[key]。这样「全部 = 库内真总和」,「单品类 = 该品类切片」,两者口径独立。
+const ASSET_STAGES_DB = [
+  {
+    name: "采购库存", owner: "供应链", source: "T_STK_Inventory · FStockCategory='原材料'",
+    total: { current: 637.10, overdue: 28.01, expired: 12.14, safe: 471.97 },
+    byCategory: {
+      flash:      { current:  20.48, overdue: 2.50, expired: 1.23, safe:  15.80 },
+      metal:      { current: 135.76, overdue: 6.56, expired: 2.91, safe:  78.00 },
+      lens:       { current: 141.52, overdue: 1.78, expired: 0.83, safe:  77.64 },
+      electronic: { current:  13.61, overdue: 3.75, expired: 1.53, safe:  14.12 },
+      test:       { current: 136.46, overdue: 4.14, expired: 1.79, safe:  95.57 },
+      board:      { current:  35.43, overdue: 4.61, expired: 1.95, safe:  61.50 },
+      plastic:    { current: 152.94, overdue: 4.68, expired: 1.91, safe: 128.14 },
+      package:    { current:   0.90, overdue: 0,    expired: 0,    safe:   1.20 },
+      structural: { current:   0,    overdue: 0,    expired: 0,    safe:   0    }
+    }
+  },
+  {
+    name: "生产库存", owner: "制造", source: "T_STK_Inventory · FStockCategory='半成品'",
+    total: { current: 640.17, overdue: 0, expired: 0, safe: 492.26 },
+    byCategory: {
+      flash:      { current:  73.62, overdue: 0, expired: 0, safe:  66.24 },
+      metal:      { current: 113.24, overdue: 0, expired: 0, safe:  84.96 },
+      lens:       { current:  47.32, overdue: 0, expired: 0, safe:  32.85 },
+      electronic: { current:  53.52, overdue: 0, expired: 0, safe:  45.79 },
+      test:       { current: 144.70, overdue: 0, expired: 0, safe: 117.27 },
+      board:      { current: 136.34, overdue: 0, expired: 0, safe:  87.08 },
+      plastic:    { current:  70.95, overdue: 0, expired: 0, safe:  56.87 },
+      package:    { current:   0,    overdue: 0, expired: 0, safe:   0    },
+      structural: { current:   0.48, overdue: 0, expired: 0, safe:   1.20 }
+    }
+  },
+  {
+    name: "仓库库存", owner: "仓储", source: "T_STK_Inventory · FStockCategory='成品'",
+    total: { current: 304.49, overdue: 34.84, expired: 16.04, safe: 353.58 },
+    byCategory: {
+      flash:      { current:  16.74, overdue: 5.01, expired: 2.31, safe: 30.32 },
+      metal:      { current: 146.98, overdue: 6.22, expired: 3.08, safe: 83.84 },
+      lens:       { current:   1.69, overdue: 5.80, expired: 2.69, safe: 19.83 },
+      electronic: { current:  22.38, overdue: 7.32, expired: 3.42, safe: 30.95 },
+      test:       { current:  73.19, overdue: 5.84, expired: 2.38, safe: 64.67 },
+      board:      { current:  11.06, overdue: 2.40, expired: 1.06, safe: 50.16 },
+      plastic:    { current:  32.45, overdue: 2.25, expired: 1.10, safe: 73.81 },
+      package:    { current:   0,    overdue: 0,    expired: 0,    safe:  0    },
+      structural: { current:   0,    overdue: 0,    expired: 0,    safe:  0    }
+    }
+  },
+  {
+    name: "站点库存", owner: "分销/物流", source: "T_STK_InvMovement · FMoveType='SAL_OUT' (本期已发出在途)",
+    total: { current: 117.37, overdue: 0, expired: 0, safe: 99.77 },
+    byCategory: {
+      flash:      { current: 28.24, overdue: 0, expired: 0, safe: 24.00 },
+      metal:      { current: 11.05, overdue: 0, expired: 0, safe:  9.39 },
+      lens:       { current:  3.81, overdue: 0, expired: 0, safe:  3.24 },
+      electronic: { current: 21.98, overdue: 0, expired: 0, safe: 18.68 },
+      test:       { current: 22.90, overdue: 0, expired: 0, safe: 19.47 },
+      board:      { current:  7.38, overdue: 0, expired: 0, safe:  6.27 },
+      plastic:    { current: 22.01, overdue: 0, expired: 0, safe: 18.71 },
+      package:    { current:  0,    overdue: 0, expired: 0, safe:  0    },
+      structural: { current:  0,    overdue: 0, expired: 0, safe:  0    }
+    }
+  }
+];
+
 function drawAssetStageBars() {
   const box = document.getElementById("assetStageBars");
   if (!box) return;
-  const category = document.getElementById("assetCategoryFilter")?.value || "flash";
-  const categoryFactor = { flash: .82, metal: 1.05, lens: .94, electronic: 1.18, test: .73, board: 1.12, plastic: .68 }[category] || 1;
-  const stages = [
-    { name: "采购库存", current: 634.76, overdue: 86.2, expired: 31.4, safe: 520, owner: "供应链" },
-    { name: "生产库存", current: 639.67, overdue: 72.6, expired: 24.8, safe: 560, owner: "制造" },
-    { name: "仓库库存", current: 304.48, overdue: 51.3, expired: 18.9, safe: 260, owner: "仓储" },
-    { name: "风险库存", current: 289.59, overdue: 202.16, expired: 45.17, safe: 210, owner: "供应链" }
-  ].map(s => ({
-    ...s,
-    current: +(s.current * categoryFactor).toFixed(1),
-    overdue: +(s.overdue * categoryFactor).toFixed(1),
-    expired: +(s.expired * categoryFactor).toFixed(1),
-    safe: +(s.safe * categoryFactor).toFixed(1)
-  }));
+  const category = document.getElementById("assetCategoryFilter")?.value || "all";
+  // 段 → 取对应切片(品类=all 时取 total,具体品类时取 byCategory[key])。
+  // 不再用任何缩放魔数,前端只是把数据库聚合结果摆出来。
+  const stages = ASSET_STAGES_DB.map(s => {
+    const slice = (category === "all") ? s.total : (s.byCategory[category] || { current: 0, overdue: 0, expired: 0, safe: 0 });
+    return {
+      name: s.name, owner: s.owner, source: s.source,
+      current: +Number(slice.current || 0).toFixed(2),
+      overdue: +Number(slice.overdue || 0).toFixed(2),
+      expired: +Number(slice.expired || 0).toFixed(2),
+      safe:    +Number(slice.safe    || 0).toFixed(2)
+    };
+  });
   const globalMax = Math.max(...stages.flatMap(s => [s.current, s.overdue, s.expired, s.safe]), 1) * 1.12;
+  // 不足 1 万的数值改用「元」单位,避免出现 "0.48 万" 这种读起来反直觉的写法。
+  // 整 0 不带单位。
+  const fmtWan = v => {
+    const n = Number(v) || 0;
+    if (n === 0) return "0";
+    if (Math.abs(n) < 1) return `${Math.round(n * 10000).toLocaleString()} 元`;
+    return `${n} 万`;
+  };
   box.innerHTML = stages.map(s => {
     const scale = v => Math.max(v / globalMax * 64, 2);
     const h1 = scale(s.current), h2 = scale(s.overdue), h3 = scale(s.expired);
     const safeY = 82 - scale(s.safe);
+    const currentTip = `${s.name}\n当前库存：${fmtWan(s.current)}\n安全水位：${fmtWan(s.safe)}\n数据库口径：${s.source}`;
+    const overdueTip = `${s.name}\n逾期库存（3月以上）：${fmtWan(s.overdue)}\nT_STK_InvAging FAgingBucket in ('91-180','180+')`;
+    const expiredTip = `${s.name}\n超期库存（6月以上）：${fmtWan(s.expired)}\nT_STK_InvAging FAgingBucket = '180+'`;
     return `<div class="asset-stage-card" data-topic="inventory">
       <h5>${s.name}</h5>
       <div class="asset-stage-chart">
         <svg viewBox="0 0 160 92" preserveAspectRatio="none">
           <text x="14" y="9" fill="var(--text-3)">统一水位</text>
-          <line data-tip="${tipAttr(`${s.name}\n安全水位：${s.safe}万`)}" x1="16" y1="${safeY}" x2="150" y2="${safeY}" stroke="var(--red)" stroke-dasharray="4 3"/>
-          <text x="150" y="${Math.max(safeY - 3, 8)}" text-anchor="end" fill="var(--red)">安全线 ${s.safe}</text>
+          <line data-tip="${tipAttr(`${s.name}\n安全水位：${fmtWan(s.safe)}`)}" x1="16" y1="${safeY}" x2="150" y2="${safeY}" stroke="var(--red)" stroke-dasharray="4 3"/>
+          <text x="150" y="${Math.max(safeY - 3, 8)}" text-anchor="end" fill="var(--red)">安全线 ${fmtWan(s.safe)}</text>
           <line x1="14" y1="82" x2="150" y2="82" stroke="var(--line)"/>
-          <rect data-tip="${tipAttr(`${s.name}\n当前库存：${s.current}万\n安全水位：${s.safe}万`)}" x="28" y="${82 - h1}" width="20" height="${h1}" rx="3" fill="var(--accent)"/>
-          <rect data-tip="${tipAttr(`${s.name}\n逾期库存（3月以上）：${s.overdue}万`)}" x="70" y="${82 - h2}" width="20" height="${h2}" rx="3" fill="var(--orange)"/>
-          <rect data-tip="${tipAttr(`${s.name}\n超期库存（6月以上）：${s.expired}万`)}" x="112" y="${82 - h3}" width="20" height="${h3}" rx="3" fill="var(--red)"/>
+          <rect data-tip="${tipAttr(currentTip)}" x="28" y="${82 - h1}" width="20" height="${h1}" rx="3" fill="var(--accent)"/>
+          <rect data-tip="${tipAttr(overdueTip)}" x="70" y="${82 - h2}" width="20" height="${h2}" rx="3" fill="var(--orange)"/>
+          <rect data-tip="${tipAttr(expiredTip)}" x="112" y="${82 - h3}" width="20" height="${h3}" rx="3" fill="var(--red)"/>
+          <rect class="asset-stage-hit-area" data-tip="${tipAttr(currentTip)}" x="18" y="12" width="40" height="74" rx="6"/>
+          <rect class="asset-stage-hit-area" data-tip="${tipAttr(overdueTip)}" x="60" y="12" width="40" height="74" rx="6"/>
+          <rect class="asset-stage-hit-area" data-tip="${tipAttr(expiredTip)}" x="102" y="12" width="40" height="74" rx="6"/>
           <text x="38" y="91" text-anchor="middle">当前</text>
           <text x="80" y="91" text-anchor="middle">3月+</text>
           <text x="122" y="91" text-anchor="middle">6月+</text>
         </svg>
       </div>
-      <div class="asset-stage-foot"><span>${s.owner}</span><span>${s.current}万</span></div>
+      <div class="asset-stage-foot"><span>${s.owner}</span><span>${fmtWan(s.current)}</span></div>
     </div>`;
   }).join("");
 }
@@ -2243,8 +2718,8 @@ const DISCOVERY = {
   assetflow: {
     selector: ".asset-alert",
     title: "资产运营流发现 4 条经营关注告警",
-    text: "经营关注告警中的四条均可下钻：关键物料缺口、产线停滞风险、发出未回款风险、6月以上超期库存。",
-    bullets: ["关键物料缺口42个：下钻到物料、供应商、在途量和替代料。", "产线停滞风险DMD 30%：下钻到影响产线、项目、订单和计划恢复时间。", "发出未回款77万：下钻到客户、账龄、合同和销售责任人。", "6月以上超期库存202.16万：下钻到库龄、仓库、物料和处置责任人。"]
+    text: "经营关注告警中的四条均可下钻：关键物料缺口、不良品库存、发出未回款风险、6月以上超期库存。",
+    bullets: ["关键物料缺口42个：下钻到物料、供应商、在途量和替代料。", "不良品库存60批/173.27万：下钻到供应商、检验员、批次号和处置单据。", "发出未回款77万：下钻到客户、账龄、合同和销售责任人。", "6月以上超期库存202.16万：下钻到库龄、仓库、物料和处置责任人。"]
   },
   command: {
     selector: ".command-kpi:nth-child(3), .command-kpi:nth-child(4), .load-row.hot",
@@ -2266,6 +2741,81 @@ const DISCOVERY = {
   }
 };
 
+// ============================================================
+// 5 个象限的助手元数据(白名单 + Workbench 展示用)
+// ------------------------------------------------------------
+const QUADRANT_META = {
+  salesflow: {
+    label: "销售助手",
+    title: "销售助手 · 销售业务流",
+    subtitle: "可调整本象限的筛选维度、节点柱图与告警文案",
+    filters: [
+      { id: "salesTimeFilter", aria: "时间" },
+      { id: "salesRegionFilter", aria: "区域" },
+      { id: "salesScopeFilter", aria: "口径" }
+    ],
+    charts: ["salesNodeBars"],
+    textSelectors: [
+      "article[data-quadrant='salesflow'] .problem-title h2",
+      "article[data-quadrant='salesflow'] .flow-block-title",
+      "article[data-quadrant='salesflow'] .sales-filter-row b",
+      "article[data-quadrant='salesflow'] .gap-tile b",
+      "article[data-quadrant='salesflow'] .core-flow-tile b"
+    ]
+  },
+  assetflow: {
+    label: "资产助手",
+    title: "资产助手 · 资产运营流",
+    subtitle: "可调整本象限的品类筛选、四段接力柱图与告警卡",
+    filters: [{ id: "assetCategoryFilter", aria: "品类" }],
+    charts: ["assetStageBars"],
+    textSelectors: [
+      "article[data-quadrant='assetflow'] .problem-title h2",
+      "article[data-quadrant='assetflow'] .asset-box h4",
+      "article[data-quadrant='assetflow'] .asset-filter-row b",
+      "article[data-quadrant='assetflow'] .asset-kpi span",
+      "article[data-quadrant='assetflow'] .asset-alert span"
+    ]
+  },
+  command: {
+    label: "督办助手",
+    title: "督办助手 · 督办令中心",
+    subtitle: "可调整四步闭环文字与 KPI 提示",
+    filters: [],
+    charts: [],
+    textSelectors: [
+      "article[data-quadrant='command'] .problem-title h2",
+      "article[data-quadrant='command'] .command-step b",
+      "article[data-quadrant='command'] .command-step p"
+    ]
+  },
+  riskmatrix: {
+    label: "风险助手",
+    title: "风险助手 · 四维风险热力矩阵",
+    subtitle: "可调整四象限文字、风险区描述与提示策略",
+    filters: [],
+    charts: [],
+    textSelectors: [
+      "article[data-quadrant='riskmatrix'] .problem-title h2",
+      "article[data-quadrant='riskmatrix'] .risk-zone h4",
+      "article[data-quadrant='riskmatrix'] .risk-zone p",
+      "article[data-quadrant='riskmatrix'] .risk-zone small"
+    ]
+  },
+  reportmgmt: {
+    label: "报表助手",
+    title: "报表助手 · 报表管理",
+    subtitle: "可调整报表管理的通用问题文案与治理要点",
+    filters: [],
+    charts: [],
+    textSelectors: [
+      "article[data-quadrant='reportmgmt'] .problem-title h2",
+      "article[data-quadrant='reportmgmt'] .report-common-board h4",
+      "article[data-quadrant='reportmgmt'] .report-issue"
+    ]
+  }
+};
+
 function setupQuadrantControls() {
   document.querySelectorAll(".problem-card[data-quadrant]").forEach(card => {
     const key = card.dataset.quadrant;
@@ -2275,13 +2825,31 @@ function setupQuadrantControls() {
     if (!top || top.querySelector(".quadrant-actions")) return;
     const actions = document.createElement("div");
     actions.className = "quadrant-actions";
-    actions.innerHTML = `<button class="discover-btn" type="button">问题发现</button>`;
+    const assistantLabel = (QUADRANT_META[key] && QUADRANT_META[key].label) || "助手";
+    actions.innerHTML = `<button class="discover-btn" type="button">告警提示</button><button class="issuelist-btn" type="button" data-quadrant="${key}">问题清单</button><button class="assistant-btn" type="button" data-quadrant="${key}">${assistantLabel}</button><button class="autoupdate-btn" type="button" data-quadrant="${key}">自动更新</button>`;
     top.insertBefore(actions, score);
     actions.querySelector(".discover-btn").addEventListener("click", e => {
       e.preventDefault();
       e.stopPropagation();
       discoverQuadrantIssues(key, card, e.currentTarget);
     });
+    actions.querySelector(".issuelist-btn").addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      openQuadIssueList(key, e.currentTarget);
+    });
+    actions.querySelector(".assistant-btn").addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      openQuadrantAssistant(key, e.currentTarget);
+    });
+    const auBtn = actions.querySelector(".autoupdate-btn");
+    auBtn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      openQuadAutoUpdate(key, e.currentTarget);
+    });
+    if (loadAutoUpdateCfg(key).enabled) auBtn.classList.add("on");
   });
 }
 
@@ -2317,7 +2885,7 @@ function setAssistantSize(mode) {
   document.getElementById("assistantFull").setAttribute("aria-pressed", mode === "full" ? "true" : "false");
 }
 
-const WORKBENCH_URL = "/workbench?v=24";
+const WORKBENCH_URL = "/workbench?v=49";
 
 function openAssistant() {
   const modal = document.getElementById("assistantModal");
@@ -2334,6 +2902,695 @@ function closeAssistant() {
   const modal = document.getElementById("assistantModal");
   modal.classList.remove("open");
   modal.setAttribute("aria-hidden", "true");
+}
+
+// ============================================================
+// 象限助手 modal:单实例,按 quadrant key 切换 iframe 与标题
+// ------------------------------------------------------------
+const QUAD_WORKBENCH_URL_BASE = "/workbench?v=49";
+
+function openQuadrantAssistant(key, button) {
+  const meta = QUADRANT_META[key];
+  if (!meta) return;
+  document.querySelectorAll(".quadrant-actions .assistant-btn.active").forEach(b => b.classList.remove("active"));
+  button?.classList.add("active");
+  document.getElementById("quadAssistantTitle").textContent = meta.title;
+  document.getElementById("quadAssistantSubtitle").textContent = meta.subtitle;
+  const frame = document.getElementById("quadAssistantFrame");
+  const target = `${QUAD_WORKBENCH_URL_BASE}&quadrant=${key}`;
+  if (frame.dataset.loaded !== target) {
+    frame.src = target;
+    frame.dataset.loaded = target;
+  }
+  const modal = document.getElementById("quadAssistantModal");
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeQuadrantAssistant() {
+  const modal = document.getElementById("quadAssistantModal");
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+  document.querySelectorAll(".quadrant-actions .assistant-btn.active").forEach(b => b.classList.remove("active"));
+}
+
+function setQuadAssistantSize(mode) {
+  document.getElementById("quadAssistantModal").classList.toggle("size-full", mode === "full");
+  document.getElementById("quadAssistantFull").setAttribute("aria-pressed", mode === "full" ? "true" : "false");
+}
+
+// ============================================================
+// 象限自动更新:配置页(更新引擎暂未实装,仅持久化配置 + 模拟日志)
+// ------------------------------------------------------------
+const AU_FREQ_LABEL = { hourly: "每小时", daily: "每天", weekly: "每周", monthly: "每月", manual: "仅手动" };
+let _auCurrentKey = null;
+
+function _auStoreKey(key) { return `cockpitAutoUpdate:${key}`; }
+
+function _auToLocalInput(d) {
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function computeNextRun(freq, from) {
+  const d = from ? new Date(from) : new Date();
+  switch (freq) {
+    case "hourly":  d.setHours(d.getHours() + 1); break;
+    case "daily":   d.setDate(d.getDate() + 1); break;
+    case "weekly":  d.setDate(d.getDate() + 7); break;
+    case "monthly": d.setMonth(d.getMonth() + 1); break;
+    default: return "";   // manual:无自动下次时间
+  }
+  return _auToLocalInput(d);
+}
+
+function autoUpdateDefaults(key) {
+  const meta = QUADRANT_META[key] || {};
+  const label = (meta.label || "本象限").replace(/助手$/, "");
+  return {
+    enabled: false,
+    paused: false,
+    prompt: `每次自动更新时,基于 guangfeng.db 最新数据刷新「${meta.title || label}」象限的图表与指标,保持口径与数据库一致;发现异常时生成风险提示告警,不要编造数据库中不存在的数字。`,
+    model: "claude-opus-4-7",
+    freq: "daily",
+    next: computeNextRun("daily"),
+    content: { data: true, chart: true, text: false, screenshot: false, risk: true },
+    log: [
+      { t: "", kind: "ok", msg: "配置初始化(示例日志)" }
+    ]
+  };
+}
+
+function loadAutoUpdateCfg(key) {
+  const def = autoUpdateDefaults(key);
+  try {
+    const raw = localStorage.getItem(_auStoreKey(key));
+    if (!raw) return def;
+    const saved = JSON.parse(raw);
+    return { ...def, ...saved, content: { ...def.content, ...(saved.content || {}) } };
+  } catch (e) { return def; }
+}
+
+function saveAutoUpdateCfgObj(key, cfg) {
+  try { localStorage.setItem(_auStoreKey(key), JSON.stringify(cfg)); } catch (e) {}
+}
+
+function _auFmtLogTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  const p = n => String(n).padStart(2, "0");
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function renderAuStatusBadge(key) {
+  const cfg = loadAutoUpdateCfg(key);
+  const el = document.getElementById("quadAuStatus");
+  el.classList.remove("on", "paused");
+  if (!cfg.enabled) { el.textContent = "未启用"; }
+  else if (cfg.paused) { el.classList.add("paused"); el.textContent = "已暂停"; }
+  else {
+    el.classList.add("on");
+    el.textContent = cfg.freq === "manual"
+      ? "已启用 · 仅手动"
+      : `已启用 · ${AU_FREQ_LABEL[cfg.freq] || cfg.freq} · 下次 ${_auFmtLogTime(cfg.next)}`;
+  }
+  document.querySelectorAll(`.autoupdate-btn[data-quadrant="${key}"]`).forEach(b => {
+    b.classList.toggle("on", !!cfg.enabled && !cfg.paused);
+  });
+}
+
+function renderAuLog(key) {
+  const cfg = loadAutoUpdateCfg(key);
+  const box = document.getElementById("quadAuLog");
+  const rows = (cfg.log || []).slice().reverse();
+  if (!rows.length) { box.innerHTML = `<div class="quad-au-log-empty">暂无更新日志</div>`; return; }
+  const tagText = { ok: "完成", run: "执行", pause: "暂停" };
+  box.innerHTML = rows.map(r => `
+    <div class="quad-au-log-row">
+      <time>${_auFmtLogTime(r.t)}</time>
+      <span class="tag ${r.kind}">${tagText[r.kind] || r.kind}</span>
+      <span>${r.msg}</span>
+    </div>`).join("");
+}
+
+function _auPushLog(key, kind, msg) {
+  const cfg = loadAutoUpdateCfg(key);
+  cfg.log = (cfg.log || []).concat([{ t: new Date().toISOString(), kind, msg }]).slice(-30);
+  saveAutoUpdateCfgObj(key, cfg);
+  if (_auCurrentKey === key) renderAuLog(key);
+}
+
+function openQuadAutoUpdate(key, button) {
+  const meta = QUADRANT_META[key];
+  if (!meta) return;
+  _auCurrentKey = key;
+  const cfg = loadAutoUpdateCfg(key);
+  document.getElementById("quadAuTitle").textContent = `${meta.label || "象限"} · 自动更新`;
+  document.getElementById("quadAuSubtitle").textContent = `配置「${meta.title || key}」的自动更新策略(更新引擎暂未实装,此处仅保存配置)`;
+  document.getElementById("quadAuPrompt").value = cfg.prompt;
+  document.getElementById("quadAuModel").value = cfg.model;
+  document.getElementById("quadAuFreq").value = cfg.freq;
+  document.getElementById("quadAuNext").value = cfg.next || "";
+  document.querySelectorAll("#quadAutoUpdateModal .quad-au-checks input").forEach(c => {
+    c.checked = !!cfg.content[c.value];
+  });
+  document.getElementById("quadAuPause").textContent = cfg.paused ? "恢复更新" : "暂停更新";
+  renderAuStatusBadge(key);
+  renderAuLog(key);
+  document.querySelectorAll(".quadrant-actions .autoupdate-btn.active").forEach(b => b.classList.remove("active"));
+  button?.classList.add("active");
+  const modal = document.getElementById("quadAutoUpdateModal");
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeQuadAutoUpdate() {
+  const modal = document.getElementById("quadAutoUpdateModal");
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+  document.querySelectorAll(".quadrant-actions .autoupdate-btn.active").forEach(b => b.classList.remove("active"));
+  _auCurrentKey = null;
+}
+
+function _auReadForm(key) {
+  const cfg = loadAutoUpdateCfg(key);
+  cfg.prompt = document.getElementById("quadAuPrompt").value.trim();
+  cfg.model = document.getElementById("quadAuModel").value;
+  cfg.freq = document.getElementById("quadAuFreq").value;
+  cfg.next = document.getElementById("quadAuNext").value;
+  cfg.content = {};
+  document.querySelectorAll("#quadAutoUpdateModal .quad-au-checks input").forEach(c => {
+    cfg.content[c.value] = c.checked;
+  });
+  return cfg;
+}
+
+function auSaveFromForm(key) {
+  const cfg = _auReadForm(key);
+  cfg.enabled = true;          // 保存即视为启用配置
+  saveAutoUpdateCfgObj(key, cfg);
+  _auPushLog(key, "ok", `保存配置 · ${AU_FREQ_LABEL[cfg.freq] || cfg.freq} · 模型 ${cfg.model}`);
+  renderAuStatusBadge(key);
+  cockpitToast("自动更新配置已保存", "ok");
+}
+
+function auRunNow(key) {
+  const cfg = _auReadForm(key);
+  cfg.enabled = true;
+  if (cfg.freq !== "manual") cfg.next = computeNextRun(cfg.freq);
+  saveAutoUpdateCfgObj(key, cfg);
+  const picked = Object.entries(cfg.content).filter(([, v]) => v)
+    .map(([k]) => ({ data: "数据", chart: "图表", text: "文字", screenshot: "AI截图", risk: "风险告警" }[k] || k));
+  _auPushLog(key, "run", `手动触发一次更新(范围:${picked.join("/") || "无"})— 引擎未实装,仅记录`);
+  document.getElementById("quadAuNext").value = cfg.next || "";
+  renderAuStatusBadge(key);
+  cockpitToast("已记录一次手动执行(更新引擎暂未实装)", "ok");
+}
+
+function auTogglePause(key) {
+  const cfg = loadAutoUpdateCfg(key);
+  cfg.enabled = true;
+  cfg.paused = !cfg.paused;
+  saveAutoUpdateCfgObj(key, cfg);
+  _auPushLog(key, "pause", cfg.paused ? "自动更新已暂停" : "自动更新已恢复");
+  document.getElementById("quadAuPause").textContent = cfg.paused ? "恢复更新" : "暂停更新";
+  renderAuStatusBadge(key);
+  cockpitToast(cfg.paused ? "已暂停自动更新" : "已恢复自动更新", "ok");
+}
+
+// ============================================================
+// 象限问题清单:常用问题(部分可下钻)+ 主页同步分析报告
+// ------------------------------------------------------------
+// 预置常用问题:drill=true 的为可下钻,detail 为下钻 HTML 片段。
+const QUADRANT_ISSUES = {
+  salesflow: [
+    { q: "订-发供需失衡:发货是否高于订单?", drill: true,
+      detail: "<h3>订-发缺口下钻</h3><p>本期发货高于订单 <b>64.62 万</b>。可继续下钻:事业部 → 客户 → 订单 → 出库单。</p><ul><li>提前发货 / 补单滞后 / 订单口径不一致三类成因待区分</li><li>建议核对销售订单与出库单的时间错配</li></ul>" },
+    { q: "收-回回款健康度:收入确认是否显著高于回款?", drill: true,
+      detail: "<h3>收-回缺口下钻</h3><p>收入确认显著高于回款,可下钻客户账龄、逾期天数与回款责任人。</p><ul><li>关注 90+ 天账龄客户</li><li>核对回款计划与合同付款条款</li></ul>" },
+    { q: "各事业部销售节点转化率是否达标?", drill: false },
+    { q: "本月新签订单结构(产品/区域)如何?", drill: false }
+  ],
+  assetflow: [
+    { q: "四段实物流的接力与落差在哪一段最大?", drill: true,
+      detail: "<h3>四段实物流下钻</h3><p>采购→生产→仓库→站点四段库存,落差最大段需下钻品类与库龄。</p><ul><li>逾期(3月+)与超期(6月+)金额分布</li><li>按品类切片定位呆滞集中点</li></ul>" },
+    { q: "关键物料缺口 42 个具体是哪些?", drill: true,
+      detail: "<h3>关键物料缺口下钻</h3><p>42 个物料在手量低于安全库存。下钻:物料 → 供应商 → 在途量 → 替代料。</p>" },
+    { q: "不良品库存 60 批 / 173.27 万的处置进度?", drill: true,
+      detail: "<h3>不良品库存下钻</h3><p>60 批共 173.27 万。下钻:供应商 → 检验员 → 批次号 → 处置单据。</p>" },
+    { q: "库存周转天数为何偏高?", drill: false }
+  ],
+  command: [
+    { q: "待验收单据是否已有方案未组织验收?", drill: true,
+      detail: "<h3>待验收下钻</h3><p>当前 5 单待验收。下钻责任人与任务卡,确认是否已有方案。</p>" },
+    { q: "超期督办令的阻塞原因是什么?", drill: true,
+      detail: "<h3>超期下钻</h3><p>3 单超期。下钻截止时间、责任人与阻塞原因。</p>" },
+    { q: "供应链责任负载是否影响交付?", drill: false }
+  ],
+  riskmatrix: [
+    { q: "运营风险:交付延迟敞口集中在哪些客户?", drill: true,
+      detail: "<h3>运营风险下钻</h3><p>交付延迟风险敞口约 4000 万,影响与概率均高。下钻责任事业部 → 客户 → 影响金额。</p>" },
+    { q: "技术产品风险:研发里程碑延期影响哪些项目?", drill: true,
+      detail: "<h3>技术产品风险下钻</h3><p>研发里程碑延期约 20 天,影响 3 个大客户项目。</p>" },
+    { q: "预测目标风险:第二曲线缺口如何?", drill: false }
+  ],
+  reportmgmt: [
+    { q: "口径变更未确认条目有哪些?", drill: true,
+      detail: "<h3>口径变更下钻</h3><p>口径变更 28 条,其中 6 条待确认。下钻规则 → 报表 → 责任人。</p>" },
+    { q: "公共项异常占比 12.8% 的明细?", drill: true,
+      detail: "<h3>公共项异常下钻</h3><p>公共项 2123.2 万,异常占比 12.8%。下钻分摊规则与报表。</p>" },
+    { q: "待同步报表 3 张是哪些?", drill: false }
+  ]
+};
+
+const IL_STORE_KEY = "cockpitHomeReports";
+
+function loadSyncedReports() {
+  try { return JSON.parse(localStorage.getItem(IL_STORE_KEY) || "[]"); }
+  catch (e) { return []; }
+}
+function saveSyncedReports(list) {
+  try { localStorage.setItem(IL_STORE_KEY, JSON.stringify(list.slice(-60))); } catch (e) {}
+}
+// 同步报告归属:绑定象限则归该象限;通用AI助手(无象限)在每个象限清单都展示。
+function syncedReportsFor(key) {
+  return loadSyncedReports().filter(r => r.quadrant === key || !r.quadrant);
+}
+function _ilCount(key) {
+  return QUADRANT_ISSUES[key]?.length ? QUADRANT_ISSUES[key].length + syncedReportsFor(key).length
+                                      : syncedReportsFor(key).length;
+}
+function refreshIssueListBadges() {
+  document.querySelectorAll(".issuelist-btn[data-quadrant]").forEach(btn => {
+    const key = btn.dataset.quadrant;
+    const n = syncedReportsFor(key).length;     // 角标仅计已同步分析(动态新增)
+    let b = btn.querySelector(".il-badge");
+    if (n > 0) {
+      if (!b) { b = document.createElement("span"); b.className = "il-badge"; btn.appendChild(b); }
+      b.textContent = n;
+    } else if (b) { b.remove(); }
+  });
+}
+
+function _ilFmtTime(iso) {
+  const d = new Date(iso); if (isNaN(d)) return "";
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function _ilEsc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+let _ilCurrentKey = null;
+
+function openQuadIssueList(key, button) {
+  const meta = QUADRANT_META[key];
+  if (!meta) return;
+  _ilCurrentKey = key;
+  document.getElementById("quadIlTitle").textContent = `${meta.label || "象限"} · 问题清单`;
+  document.getElementById("quadIlSubtitle").textContent =
+    `「${meta.title || key}」常用问题与已同步到主页的分析,标记「可下钻」的可展开详情`;
+  renderIssueListBody(key);
+  document.querySelectorAll(".quadrant-actions .issuelist-btn.active").forEach(b => b.classList.remove("active"));
+  button?.classList.add("active");
+  const modal = document.getElementById("quadIssueModal");
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeQuadIssueList() {
+  const modal = document.getElementById("quadIssueModal");
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+  document.querySelectorAll(".quadrant-actions .issuelist-btn.active").forEach(b => b.classList.remove("active"));
+  _ilCurrentKey = null;
+}
+
+function renderIssueListBody(key) {
+  const body = document.getElementById("quadIlBody");
+  const presets = QUADRANT_ISSUES[key] || [];
+  const synced = syncedReportsFor(key);
+
+  const presetHtml = presets.map((it, i) => `
+    <div class="quad-il-item ${it.drill ? "drillable" : ""}" data-kind="preset" data-idx="${i}">
+      <span class="il-q">${_ilEsc(it.q)}</span>
+      <span class="il-tag">${it.drill ? "可下钻" : "概览"}</span>
+    </div>`).join("") || `<div class="quad-il-empty">本象限暂无预置常用问题</div>`;
+
+  const syncedHtml = synced.length ? synced.slice().reverse().map(r => `
+    <div class="quad-il-item drillable" data-kind="synced" data-id="${_ilEsc(r.id)}">
+      <span class="il-q">${_ilEsc(r.summary)}
+        <small class="il-meta">${_ilEsc(r.source || "智能分析")} · ${_ilFmtTime(r.ts)}</small>
+      </span>
+      <span class="il-tag">可下钻</span>
+      <button class="il-feishu" type="button" data-id="${_ilEsc(r.id)}" title="分享到飞书">分享飞书</button>
+      <button class="il-del" type="button" data-id="${_ilEsc(r.id)}" title="移除">×</button>
+    </div>`).join("")
+    : `<div class="quad-il-empty">暂无同步分析。在智能分析 / 通用AI助手导出报告旁点「同步到主页」即可加入</div>`;
+
+  body.innerHTML =
+    `<div class="quad-il-group"><h5>常用问题</h5>${presetHtml}</div>` +
+    `<div class="quad-il-group"><h5>已同步分析(可下钻)</h5>${syncedHtml}</div>`;
+
+  body.querySelectorAll('.quad-il-item[data-kind="preset"].drillable').forEach(elm => {
+    elm.addEventListener("click", () => {
+      const it = presets[Number(elm.dataset.idx)];
+      if (it && it.detail) openIssueReport(_buildPresetReportHTML(key, it), it.q);
+    });
+  });
+  body.querySelectorAll('.quad-il-item[data-kind="synced"]').forEach(elm => {
+    elm.addEventListener("click", e => {
+      if (e.target.closest(".il-del") || e.target.closest(".il-feishu")) return;
+      const r = loadSyncedReports().find(x => x.id === elm.dataset.id);
+      if (r) openIssueReport(r.html, r.summary);
+    });
+  });
+  body.querySelectorAll(".il-del").forEach(b => {
+    b.addEventListener("click", e => {
+      e.stopPropagation();
+      const list = loadSyncedReports().filter(x => x.id !== b.dataset.id);
+      saveSyncedReports(list);
+      renderIssueListBody(key);
+      refreshIssueListBadges();
+      cockpitToast("已从问题清单移除", "ok");
+    });
+  });
+  body.querySelectorAll(".il-feishu").forEach(b => {
+    b.addEventListener("click", e => { e.stopPropagation(); shareToFeishu(); });
+  });
+}
+
+function _buildPresetReportHTML(key, it) {
+  const meta = QUADRANT_META[key] || {};
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<title>${_ilEsc(it.q)}</title><style>
+body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;color:#1f2937;background:#f7f9fc;margin:0;padding:28px}
+.rp{max-width:880px;margin:0 auto;background:#fff;border-radius:8px;padding:30px 38px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+h1{font-size:19px;margin:0 0 4px;color:#111827}.meta{font-size:12px;color:#6b7280;border-bottom:2px solid #0b7ff3;padding-bottom:12px;margin-bottom:18px}
+h3{font-size:15px;color:#0b7ff3;margin:18px 0 8px}p{line-height:1.7;font-size:14px}ul{line-height:1.8;font-size:14px}b{color:#b45309}
+</style></head><body><div class="rp">
+<h1>${_ilEsc(it.q)}</h1><div class="meta">${_ilEsc(meta.title || key)} · 常用问题下钻 · 预置示例</div>
+${it.detail}
+</div></body></html>`;
+}
+
+function openIssueReport(html, title) {
+  const modal = document.getElementById("quadIssueViewer");
+  const frame = document.getElementById("quadIlViewFrame");
+  document.getElementById("quadIlViewTitle").textContent = title || "下钻报告";
+  frame.removeAttribute("src");
+  frame.srcdoc = html || "<p style='font:14px sans-serif;padding:24px'>(报告内容为空)</p>";
+  modal._html = html || "";
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+}
+function closeIssueReport() {
+  const modal = document.getElementById("quadIssueViewer");
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+  document.getElementById("quadIlViewFrame").srcdoc = "";
+}
+
+// 分享到飞书:占位功能,未接入飞书开放平台
+function shareToFeishu() {
+  cockpitToast("「分享到飞书」为占位入口,未接入飞书开放平台(/im/v1/messages)", "info");
+}
+
+// 接收 workbench「同步到主页」postMessage
+function setupHomeSyncChannel() {
+  window.addEventListener("message", e => {
+    const d = e.data;
+    if (!d || d.channel !== "cockpit-home-sync") return;
+    const list = loadSyncedReports();
+    const rec = {
+      id: `r-${Date.now()}-${Math.floor(Math.random() * 1e4)}`,
+      quadrant: d.quadrant || null,
+      source: d.source || (d.quadrant ? (QUADRANT_META[d.quadrant]?.label || "象限分析") : "通用AI助手"),
+      summary: String(d.summary || "智能分析报告").slice(0, 80),
+      html: String(d.html || ""),
+      ts: d.ts || new Date().toISOString()
+    };
+    list.push(rec);
+    saveSyncedReports(list);
+    refreshIssueListBadges();
+    if (_ilCurrentKey) renderIssueListBody(_ilCurrentKey);
+    cockpitToast(`已同步到主页问题清单:${rec.summary.slice(0, 24)}…`, "success");
+    try { e.source?.postMessage({ channel: "cockpit-home-sync-ack", req: d.req || null, ok: true }, "*"); } catch (_) {}
+  });
+}
+
+// ============================================================
+// 转督办 → 接收督办请求,自动生成任务令(任务清单持久化 + 回执)
+// ------------------------------------------------------------
+const TASK_ORDER_KEY = "cockpitTaskOrders";
+const TASK_OWNER_BY_QUADRANT = {
+  salesflow: "销售业务负责人",
+  assetflow: "资产运营负责人",
+  command: "督办令中心负责人",
+  riskmatrix: "风险管控负责人",
+  reportmgmt: "报表中心负责人"
+};
+function loadTaskOrders() {
+  try { return JSON.parse(localStorage.getItem(TASK_ORDER_KEY) || "[]"); }
+  catch (e) { return []; }
+}
+function saveTaskOrders(list) {
+  try { localStorage.setItem(TASK_ORDER_KEY, JSON.stringify(list.slice(-200))); } catch (e) {}
+}
+function nextTaskNo() {
+  let n = parseInt(localStorage.getItem("cockpitTaskOrderSeq") || "0", 10);
+  n = (isNaN(n) ? 0 : n) + 1;
+  try { localStorage.setItem("cockpitTaskOrderSeq", String(n)); } catch (e) {}
+  return "WO-" + String(1000 + n);
+}
+function setupTaskOrderChannel() {
+  window.addEventListener("message", e => {
+    const d = e.data;
+    if (!d || d.channel !== "cockpit-task-order") return;
+    const owner = (d.quadrant && TASK_OWNER_BY_QUADRANT[d.quadrant]) || "对口业务负责人";
+    const taskNo = nextTaskNo();
+    const list = loadTaskOrders();
+    const rec = {
+      id: `t-${Date.now()}-${Math.floor(Math.random() * 1e4)}`,
+      taskNo: taskNo,
+      quadrant: d.quadrant || null,
+      source: d.source || (d.quadrant ? (QUADRANT_META[d.quadrant]?.label || "象限分析") : "通用AI助手"),
+      owner: owner,
+      clause: String(d.clause || "").slice(0, 400),
+      turn: d.turn || "",
+      ts: d.ts || new Date().toISOString(),
+      status: "已下发"
+    };
+    list.push(rec);
+    saveTaskOrders(list);
+    cockpitToast(`已发送给${owner}督办 · 已自动生成任务令 ${taskNo}`, "success");
+    try {
+      e.source?.postMessage({
+        channel: "cockpit-task-order-ack",
+        req: d.req || null,
+        ok: true,
+        taskId: taskNo,
+        owner: owner
+      }, "*");
+    } catch (_) {}
+  });
+}
+
+// ============================================================
+// UI 命令执行器 (受 QUADRANT_META 白名单约束)
+// ------------------------------------------------------------
+function _quadFilter(meta, filterId) {
+  if (!filterId) return undefined;
+  // Tolerate LLM writing target as "#assetCategoryFilter" (CSS-selector style)
+  // instead of the bare DOM id "assetCategoryFilter".
+  const key = String(filterId).replace(/^#+/, "");
+  return meta.filters.find(f => f.id === key);
+}
+
+function _selectorAllowed(meta, sel) {
+  if (!sel || typeof sel !== "string") return false;
+  return meta.textSelectors.some(s => sel === s || sel.startsWith(s));
+}
+
+function _redrawChart(chartId) {
+  if (chartId === "salesNodeBars" && typeof drawSalesNodeBars === "function") drawSalesNodeBars();
+  if (chartId === "assetStageBars" && typeof drawAssetStageBars === "function") drawAssetStageBars();
+}
+
+function cockpitSetFilterOptions(meta, cmd) {
+  const filter = _quadFilter(meta, cmd.target);
+  if (!filter) return { ok: false, error: `filter ${cmd.target} not in scope` };
+  const sel = document.getElementById(filter.id);
+  if (!sel) return { ok: false, error: `filter element #${filter.id} missing` };
+  if (!Array.isArray(cmd.options)) return { ok: false, error: "options must be array" };
+  sel.innerHTML = cmd.options.map(o =>
+    typeof o === "string"
+      ? `<option value="${o}">${o}</option>`
+      : `<option value="${o.value ?? o.label}">${o.label ?? o.value}</option>`
+  ).join("");
+  sel.dispatchEvent(new Event("change", { bubbles: true }));
+  return { ok: true, count: cmd.options.length };
+}
+
+function cockpitAddFilterOption(meta, cmd) {
+  const filter = _quadFilter(meta, cmd.target);
+  if (!filter) return { ok: false, error: `filter ${cmd.target} not in scope` };
+  const sel = document.getElementById(filter.id);
+  if (!sel) return { ok: false, error: `filter element #${filter.id} missing` };
+  const opt = cmd.option;
+  if (!opt) return { ok: false, error: "option missing" };
+  const o = document.createElement("option");
+  o.value = (typeof opt === "string") ? opt : (opt.value ?? opt.label);
+  o.textContent = (typeof opt === "string") ? opt : (opt.label ?? opt.value);
+  sel.appendChild(o);
+  return { ok: true };
+}
+
+function cockpitRemoveFilterOption(meta, cmd) {
+  const filter = _quadFilter(meta, cmd.target);
+  if (!filter) return { ok: false, error: `filter ${cmd.target} not in scope` };
+  const sel = document.getElementById(filter.id);
+  if (!sel) return { ok: false, error: `filter element #${filter.id} missing` };
+  const value = String(cmd.value ?? "");
+  let removed = 0;
+  [...sel.options].forEach(o => { if (o.value === value || o.textContent === value) { o.remove(); removed++; } });
+  if (removed > 0) sel.dispatchEvent(new Event("change", { bubbles: true }));
+  return { ok: true, removed };
+}
+
+function cockpitSetText(meta, cmd) {
+  const sel = cmd.selector;
+  if (!_selectorAllowed(meta, sel)) {
+    return { ok: false, error: `selector "${sel}" not whitelisted for quadrant ${cmd.quadrant}` };
+  }
+  const nodes = document.querySelectorAll(sel);
+  if (!nodes.length) return { ok: false, error: `no node matched ${sel}` };
+  const limit = Number.isFinite(cmd.limit) ? cmd.limit : nodes.length;
+  let n = 0;
+  for (const node of nodes) {
+    if (n >= limit) break;
+    node.textContent = String(cmd.text || "");
+    n++;
+  }
+  return { ok: true, count: n };
+}
+
+function cockpitSetChartDim(meta, cmd) {
+  if (!meta.charts.includes(cmd.chart_id)) return { ok: false, error: `chart ${cmd.chart_id} not in scope` };
+  const box = document.getElementById(cmd.chart_id);
+  if (!box) return { ok: false, error: `chart container ${cmd.chart_id} missing` };
+  box.dataset.dim = String(cmd.dim || "");
+  _redrawChart(cmd.chart_id);
+  return { ok: true, dim: box.dataset.dim };
+}
+
+function cockpitSetChartType(meta, cmd) {
+  if (!meta.charts.includes(cmd.chart_id)) return { ok: false, error: `chart ${cmd.chart_id} not in scope` };
+  const box = document.getElementById(cmd.chart_id);
+  if (!box) return { ok: false, error: `chart container ${cmd.chart_id} missing` };
+  box.dataset.type = String(cmd.type || "bars");
+  _redrawChart(cmd.chart_id);
+  return { ok: true, type: box.dataset.type };
+}
+
+function cockpitSetChartColor(meta, cmd) {
+  if (!meta.charts.includes(cmd.chart_id)) return { ok: false, error: `chart ${cmd.chart_id} not in scope` };
+  const box = document.getElementById(cmd.chart_id);
+  if (!box) return { ok: false, error: `chart container ${cmd.chart_id} missing` };
+  const color = String(cmd.color || "");
+  box.style.setProperty("--chart-color", color);
+  box.querySelectorAll(".bar-fill,.bar,.stage-bar,.gap-meter em,.mini-meter em").forEach(el => {
+    if (color) el.style.background = color;
+    else el.style.removeProperty("background");
+  });
+  return { ok: true, color };
+}
+
+function applyCockpitUICommand(cmd) {
+  if (!cmd || !cmd.action || !cmd.quadrant) return { ok: false, error: "missing action/quadrant" };
+  const meta = QUADRANT_META[cmd.quadrant];
+  if (!meta) return { ok: false, error: "unknown quadrant: " + cmd.quadrant };
+  try {
+    switch (cmd.action) {
+      case "set_filter_options":   return cockpitSetFilterOptions(meta, cmd);
+      case "add_filter_option":    return cockpitAddFilterOption(meta, cmd);
+      case "remove_filter_option": return cockpitRemoveFilterOption(meta, cmd);
+      case "set_text":             return cockpitSetText(meta, cmd);
+      case "set_chart_dim":        return cockpitSetChartDim(meta, cmd);
+      case "set_chart_type":       return cockpitSetChartType(meta, cmd);
+      case "set_chart_color":      return cockpitSetChartColor(meta, cmd);
+      default: return { ok: false, error: "unknown action: " + cmd.action };
+    }
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+}
+
+function cockpitForceRedrawQuadrant(quadrant) {
+  const meta = QUADRANT_META[quadrant];
+  if (!meta) return;
+  for (const chartId of (meta.charts || [])) _redrawChart(chartId);
+}
+
+function cockpitToast(text, kind) {
+  let box = document.getElementById("cockpitToast");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "cockpitToast";
+    box.className = "cockpit-toast";
+    document.body.appendChild(box);
+  }
+  box.textContent = String(text || "");
+  box.dataset.kind = kind || "info";
+  box.classList.add("visible");
+  clearTimeout(cockpitToast._t);
+  cockpitToast._t = setTimeout(() => {
+    box.classList.remove("visible");
+  }, 3200);
+}
+
+function applyCockpitUIBatch(batch) {
+  if (!batch || !Array.isArray(batch.commands)) {
+    return { ok: false, error: "apply_batch.commands must be array" };
+  }
+  const quadrant = batch.quadrant || (batch.commands[0] && batch.commands[0].quadrant);
+  let applied = 0;
+  let failed = 0;
+  const errors = [];
+  for (const c of batch.commands) {
+    const out = applyCockpitUICommand({ ...c, quadrant: c.quadrant || quadrant });
+    if (out && out.ok) applied++;
+    else { failed++; errors.push({ cmd: c.action, error: out?.error }); }
+  }
+  cockpitForceRedrawQuadrant(quadrant);
+  const meta = QUADRANT_META[quadrant];
+  const label = meta?.label || "象限助手";
+  if (failed === 0) {
+    cockpitToast(`✓ ${label} 已应用 ${applied} 条变更`, "success");
+  } else if (applied === 0) {
+    cockpitToast(`✕ ${label} 应用失败 (0/${batch.commands.length})`, "error");
+  } else {
+    cockpitToast(`⚠ ${label} 部分应用 (${applied}/${batch.commands.length})`, "warn");
+  }
+  if (errors.length) console.warn("[cockpit-ui] batch errors:", errors);
+  return { ok: applied > 0, applied, failed, total: batch.commands.length, errors };
+}
+
+function setupCockpitUIChannel() {
+  window.addEventListener("message", e => {
+    const data = e.data;
+    if (!data || data.channel !== "cockpit-ui") return;
+    let out;
+    if (data.action === "apply_batch") {
+      out = applyCockpitUIBatch(data);
+    } else {
+      out = applyCockpitUICommand(data);
+    }
+    try {
+      e.source?.postMessage({ channel: "cockpit-ui-ack", req: data.req || null, action: data.action, ...out }, "*");
+    } catch (_) {}
+  });
 }
 
 function setupChartTooltips() {
@@ -2364,6 +3621,15 @@ function setupChartTooltips() {
     const next = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-tip]") : null;
     if (!next) tip.style.display = "none";
   });
+  document.addEventListener("click", e => {
+    const target = e.target.closest(".asset-stage-hit-area[data-tip]");
+    if (!target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    tip.textContent = target.dataset.tip;
+    tip.style.display = "block";
+    move(e);
+  }, true);
 }
 
 // ============================================================
@@ -2381,6 +3647,58 @@ function init() {
   renderDrill("overview");
   setupChartTooltips();
   setupQuadrantControls();
+  setupCockpitUIChannel();
+  setupHomeSyncChannel();
+  setupTaskOrderChannel();
+  refreshIssueListBadges();
+
+  document.getElementById("quadAssistantClose").addEventListener("click", closeQuadrantAssistant);
+  document.getElementById("quadAssistantFull").addEventListener("click", () => {
+    const isFull = document.getElementById("quadAssistantModal").classList.contains("size-full");
+    setQuadAssistantSize(isFull ? "normal" : "full");
+  });
+  document.getElementById("quadAssistantModal").addEventListener("click", e => {
+    if (e.target.id === "quadAssistantModal") closeQuadrantAssistant();
+  });
+
+  document.getElementById("quadAuClose").addEventListener("click", closeQuadAutoUpdate);
+  document.getElementById("quadAuCancel").addEventListener("click", closeQuadAutoUpdate);
+  document.getElementById("quadAutoUpdateModal").addEventListener("click", e => {
+    if (e.target.id === "quadAutoUpdateModal") closeQuadAutoUpdate();
+  });
+  document.getElementById("quadAuFreq").addEventListener("change", e => {
+    const next = computeNextRun(e.target.value);
+    document.getElementById("quadAuNext").value = next;
+    document.getElementById("quadAuNextHint").textContent = e.target.value === "manual"
+      ? "「仅手动」模式无自动下次时间,可留空" : "按所选频率自动推算,可手动覆盖";
+  });
+  document.getElementById("quadAuSave").addEventListener("click", () => { if (_auCurrentKey) auSaveFromForm(_auCurrentKey); });
+  document.getElementById("quadAuRun").addEventListener("click", () => { if (_auCurrentKey) auRunNow(_auCurrentKey); });
+  document.getElementById("quadAuPause").addEventListener("click", () => { if (_auCurrentKey) auTogglePause(_auCurrentKey); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && document.getElementById("quadAutoUpdateModal").classList.contains("open")) closeQuadAutoUpdate();
+  });
+
+  document.getElementById("quadIlClose").addEventListener("click", closeQuadIssueList);
+  document.getElementById("quadIssueModal").addEventListener("click", e => {
+    if (e.target.id === "quadIssueModal") closeQuadIssueList();
+  });
+  document.getElementById("quadIlViewBack").addEventListener("click", closeIssueReport);
+  document.getElementById("quadIlViewFeishu").addEventListener("click", shareToFeishu);
+  document.getElementById("quadIlViewOpen").addEventListener("click", () => {
+    const html = document.getElementById("quadIssueViewer")._html || "";
+    const w = window.open("", "_blank");
+    if (w) { w.document.open(); w.document.write(html); w.document.close(); }
+    else cockpitToast("浏览器拦截了弹窗", "warn");
+  });
+  document.getElementById("quadIssueViewer").addEventListener("click", e => {
+    if (e.target.id === "quadIssueViewer") closeIssueReport();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if (document.getElementById("quadIssueViewer").classList.contains("open")) closeIssueReport();
+    else if (document.getElementById("quadIssueModal").classList.contains("open")) closeQuadIssueList();
+  });
 
   document.getElementById("assistantOpen").addEventListener("click", openAssistant);
   document.getElementById("assistantClose").addEventListener("click", closeAssistant);
@@ -2396,7 +3714,7 @@ function init() {
     if (e.target.id === "assistantModal") closeAssistant();
   });
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") closeAssistant();
+    if (e.key === "Escape") { closeAssistant(); closeQuadrantAssistant(); }
   });
   ["salesTimeFilter", "salesRegionFilter", "salesScopeFilter"].forEach(id => {
     document.getElementById(id)?.addEventListener("change", drawSalesNodeBars);

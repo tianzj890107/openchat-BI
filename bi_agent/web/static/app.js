@@ -32,6 +32,11 @@
       rootCauseSeen: new Set(),        // dedup 🔍 root-cause cards
       actionsSeen: new Set(),          // dedup 💡 action cards
       currentTurnTag: 0,               // increments per user turn (for card ids)
+      // Quadrant-assistant: ui-command queue. Commands extracted from each
+      // llm_response stage here instead of firing immediately at the cockpit.
+      // The user clicks an "执行" button rendered at end-of-turn to flush
+      // them in one apply_batch postMessage.
+      pendingCommands: [],
       // Detached DOM children (populated on mode switch-out)
       chatNodes: [],
       ontologyNodes: [],
@@ -54,6 +59,12 @@
     busy: false,
     activeTab: "ontology",
     mode: "data",                      // "data" | "report"
+    // Quadrant-assistant mode — when workbench is embedded inside the CEO
+    // cockpit as a quadrant helper, location.search carries ?quadrant=KEY.
+    // Non-null state.quadrant flips a few behaviors: brand badge, prompt
+    // prefix injection, and ui-command block extraction on llm_response.
+    quadrant: null,                    // "salesflow" | "assetflow" | "command" | "riskmatrix" | "reportmgmt" | null
+    quadrantPromptSent: false,         // suppress repeated prefix per turn (we re-send each turn for safety)
     // Report-mode extras
     report: {
       // Multi-report support: `activeReports` is the list, `activeReport`
@@ -212,6 +223,231 @@
       return `<span class="entity-ref" data-code="${code}">${code}</span>`;
     });
   }
+
+  // Per-clause action menu for 根因分析 / 行动建议 cards. Each concrete
+  // clause (a bullet / numbered point) gets one 行动 button that opens a
+  // small dropdown of choices — actions bind to that specific clause.
+  const ITEM_ACTIONS = {
+    rootcause: [["ask", "追问"], ["verify", "验证"], ["deep", "深度分析"]],
+    actions:   [["supervise", "转督办"], ["execute", "转执行"],
+                ["simulate", "转模拟"], ["risk", "转风险分析"]],
+  };
+
+  function actionControlHTML(kind) {
+    const acts = ITEM_ACTIONS[kind] || [];
+    const choices = acts.map(([a, l]) =>
+      `<button type="button" class="dash-act-choice" data-act="${a}">${esc(l)}</button>`
+    ).join("");
+    return (
+      '<div class="dash-item-actions">' +
+      '<button type="button" class="dash-act-btn" aria-haspopup="true" aria-expanded="false">行动 ▾</button>' +
+      `<div class="dash-act-menu" hidden role="menu">${choices}</div>` +
+      '</div>'
+    );
+  }
+
+  // Parse a multi-line block into:
+  //   · sub-headers   — bold-only headings (**第 N 层…**) / emoji section
+  //                     lines → shown as context, NOT actionable
+  //   · clauses       — bullet / numbered lines → each gets its own 行动 btn
+  // Continuation lines fold into the open clause; text before the first
+  // clause/header is a plain preamble.
+  function buildActionableBody(text, kind) {
+    const acts = ITEM_ACTIONS[kind];
+    const raw = String(text == null ? "" : text).replace(/\r/g, "");
+    if (!acts) return `<div class="dash-body">${highlightEntities(raw)}</div>`;
+
+    const lines = raw.split("\n");
+    const itemRe = /^\s*(?:\d+[.、)]|[（(]\s*\d+\s*[）)]|[-*•·]|[一二三四五六七八九十]+[、.)])\s+/;
+    const emojiHeadRe = /^\s*(?:🔍|💡|📌|📊|📈|📄|🧩|🧠|✅|⚠️)/;
+    const boldHeadRe = /^\s*\*\*[^*].*?\*\*\s*[:：]?\s*$/;
+
+    const segs = [];               // {type:'head'|'pre', text} | {type:'item', lines:[]}
+    let cur = null;                // open item line buffer
+    const flush = () => { if (cur) { segs.push({ type: "item", lines: cur }); cur = null; } };
+
+    for (const ln of lines) {
+      if (itemRe.test(ln)) { flush(); cur = [ln]; }
+      else if (emojiHeadRe.test(ln) || boldHeadRe.test(ln)) {
+        flush();
+        segs.push({ type: "head", text: ln });
+      } else if (cur) { cur.push(ln); }
+      else if (ln.trim()) { segs.push({ type: "pre", text: ln }); }
+    }
+    flush();
+
+    // Strip the leading bullet/number marker (display only) — the structure
+    // was already captured by the parser above.
+    const stripMarker = (s) => s.replace(itemRe, "").replace(/^\s*[-*•·]\s+/, "");
+    const stripBold = (s) => s.replace(/\*\*/g, "");
+    const clean = (s) => stripBold(s).trim();
+
+    const ctrl = () => actionControlHTML(kind);
+    const hasItem = segs.some(s => s.type === "item");
+    let html = "";
+    if (!hasItem) {
+      // No list structure — treat the whole block as a single clause.
+      const body = clean(raw);
+      if (body) {
+        html = `<div class="dash-item"><div class="dash-item-text">${highlightEntities(body)}</div>${ctrl()}</div>`;
+      }
+      return `<div class="dash-body has-items">${html || highlightEntities(raw)}</div>`;
+    }
+    for (const s of segs) {
+      if (s.type === "head") {
+        html += `<div class="dash-seg-head">${highlightEntities(clean(s.text))}</div>`;
+      } else if (s.type === "pre") {
+        const p = clean(s.text);
+        if (p) html += `<div class="dash-pre">${highlightEntities(p)}</div>`;
+      } else {
+        let t = s.lines.join("\n").replace(/\s+$/, "");
+        // Drop the marker from the first line, bold markers everywhere.
+        const nl = t.indexOf("\n");
+        if (nl < 0) t = stripMarker(t);
+        else t = stripMarker(t.slice(0, nl)) + t.slice(nl);
+        t = stripBold(t).trim();
+        if (!t) continue;
+        html += `<div class="dash-item"><div class="dash-item-text">${highlightEntities(t)}</div>${ctrl()}</div>`;
+      }
+    }
+    return `<div class="dash-body has-items">${html}</div>`;
+  }
+
+  // Place the fixed-position menu under (or above) its 行动 button,
+  // right-aligned and clamped to the viewport.
+  function positionActMenu(btn, menu) {
+    const r = btn.getBoundingClientRect();
+    const mw = menu.offsetWidth || 120;
+    const mh = menu.offsetHeight || 120;
+    let left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8));
+    let top = r.bottom + 4;
+    if (top + mh > window.innerHeight - 8) {
+      const above = r.top - mh - 4;
+      top = above >= 8 ? above : Math.max(8, window.innerHeight - mh - 8);
+    }
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+  }
+
+  // Single delegated controller for every 行动 dropdown on the page.
+  function closeAllActMenus(except) {
+    document.querySelectorAll(".dash-act-menu:not([hidden])").forEach(m => {
+      if (m === except) return;
+      m.hidden = true;
+      const b = m.parentElement && m.parentElement.querySelector(".dash-act-btn");
+      if (b) b.setAttribute("aria-expanded", "false");
+    });
+  }
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest && e.target.closest(".dash-act-btn");
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const menu = btn.parentElement.querySelector(".dash-act-menu");
+      const wasOpen = menu && !menu.hidden;
+      closeAllActMenus(menu);
+      if (menu && !wasOpen) {
+        menu.hidden = false;
+        btn.setAttribute("aria-expanded", "true");
+        positionActMenu(btn, menu);
+      } else if (menu) {
+        menu.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+      }
+      return;
+    }
+    const choice = e.target.closest && e.target.closest(".dash-act-choice");
+    if (choice) {
+      e.preventDefault();
+      e.stopPropagation();
+      const act = choice.getAttribute("data-act");
+      const item = choice.closest(".dash-item");
+      closeAllActMenus();
+      // 转督办 is wired end-to-end: send to the responsible owner and auto
+      // create a task order (任务令). Other choices remain intent-only.
+      if (act === "supervise" && item) dispatchSupervise(item);
+      return;
+    }
+    closeAllActMenus();
+  });
+
+  // ── 转督办 → 发送督办 + 自动生成任务令 ──────────────────────────────
+  function localTaskSeq() {
+    let n = parseInt(localStorage.getItem("wbTaskOrderSeq") || "0", 10);
+    n = (isNaN(n) ? 0 : n) + 1;
+    try { localStorage.setItem("wbTaskOrderSeq", String(n)); } catch (_) {}
+    return 1000 + n;
+  }
+  function flashItem(item, msg, isErr) {
+    let f = item.querySelector(":scope > .dash-item-flash");
+    if (!f) {
+      f = document.createElement("div");
+      f.className = "dash-item-flash";
+      item.appendChild(f);
+    }
+    f.textContent = msg;
+    f.style.color = isErr ? "var(--danger,#ef4444)" : "var(--ok,#34d399)";
+  }
+  function dispatchSupervise(item) {
+    if (item.dataset.supervised === "1") {
+      flashItem(item, "✅ 该条已督办,任务令已生成", false);
+      return;
+    }
+    const txt = ((item.querySelector(".dash-item-text") || {}).textContent || "").trim();
+    if (!txt) return;
+    const card = item.closest(".dash-card");
+    const turnTag = (card && card.dataset.turn) || (B().currentTurnTag || 1);
+    const quad = state.quadrant || null;
+    const source = quad
+      ? ((typeof QUADRANT_PROMPT_META !== "undefined" && QUADRANT_PROMPT_META[quad] &&
+          QUADRANT_PROMPT_META[quad].label) || "象限分析")
+      : "通用AI助手";
+    item.dataset.supervised = "1";
+    item.classList.add("is-supervised");
+    flashItem(item, "✅ 已发送给负责人督办 · 正在生成任务令…", false);
+
+    const target = (window.parent && window.parent !== window) ? window.parent : null;
+    if (!target) {
+      flashItem(item, `✅ 已发送给负责人督办 · 已自动生成任务令 #${localTaskSeq()}`, false);
+      return;
+    }
+    const reqId = "task-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+    function ackHandler(ev) {
+      const m = ev.data;
+      if (!m || m.channel !== "cockpit-task-order-ack" || m.req !== reqId) return;
+      window.removeEventListener("message", ackHandler);
+      clearTimeout(timer);
+      const idTxt = m.taskId ? ` #${m.taskId}` : "";
+      const owner = m.owner ? `,责任人:${m.owner}` : "";
+      flashItem(item, `✅ 已发送给负责人督办 · 已自动生成任务令${idTxt}${owner}`, false);
+    }
+    const timer = setTimeout(() => {
+      window.removeEventListener("message", ackHandler);
+      flashItem(item, `✅ 已发送给负责人督办 · 已自动生成任务令 #${localTaskSeq()}`, false);
+    }, 4000);
+    window.addEventListener("message", ackHandler);
+    try {
+      target.postMessage({
+        channel: "cockpit-task-order",
+        quadrant: quad,
+        source: source,
+        turn: String(turnTag),
+        clause: txt,
+        ts: new Date().toISOString(),
+        req: reqId,
+      }, "*");
+    } catch (err) {
+      window.removeEventListener("message", ackHandler);
+      clearTimeout(timer);
+      flashItem(item, "督办发送失败:" + String((err && err.message) || err), true);
+    }
+  }
+  // A fixed menu can't follow its anchor through scroll/resize — just close.
+  window.addEventListener("scroll", () => closeAllActMenus(), true);
+  window.addEventListener("resize", () => closeAllActMenus());
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeAllActMenus();
+  });
 
   function el_h(tag, cls, html) {
     const x = document.createElement(tag);
@@ -408,12 +644,23 @@
 
   function renderEmptyState() {
     const cfg = EMPTY_STATES[state.mode];
+    // In quadrant-assistant mode each quadrant has its own title / greeting /
+    // example questions so the workbench reads as that quadrant's助手.
+    const qMeta = (state.quadrant &&
+      typeof QUADRANT_PROMPT_META !== "undefined" &&
+      QUADRANT_PROMPT_META[state.quadrant]) || null;
     el.emptyGlyph.textContent = cfg.glyph;
-    el.emptyTitle.textContent = cfg.title;
-    const agent = currentAgentMeta();
-    el.emptyWelcome.textContent =
-      (agent && (agent.welcome_message || agent.description)) || "";
-    el.emptyHints.innerHTML = cfg.hints.map(h =>
+    el.emptyTitle.textContent = qMeta ? (qMeta.emptyTitle || qMeta.label) : cfg.title;
+    if (qMeta) {
+      el.emptyWelcome.textContent = qMeta.welcome || "";
+    } else {
+      const agent = currentAgentMeta();
+      el.emptyWelcome.textContent =
+        (agent && (agent.welcome_message || agent.description)) || "";
+    }
+    const hints = (qMeta && Array.isArray(qMeta.hints) && qMeta.hints.length)
+      ? qMeta.hints : cfg.hints;
+    el.emptyHints.innerHTML = hints.map(h =>
       `<div class="hint-row"><span class="hint-key">试试</span><span class="hint-val">${esc(h)}</span></div>`
     ).join("");
     // Re-bind hint click (delegation gets us one click handler below)
@@ -758,29 +1005,60 @@ welcome: ${esc(a.welcome_message || "")}</div>
     const container = bucket.currentAssistantEl
       ? bucket.currentAssistantEl.parentElement
       : el.chatScroll;
+    // Defensive: if the backend re-emits user_choice_requested for the same
+    // tool_use_id (retry/reconnect), remove the stale card so we don't end up
+    // with two — the old (disabled) one would intercept clicks ahead of the
+    // new one.
+    if (evt.tool_use_id) {
+      const stale = el.chatScroll.querySelectorAll(`.choice-card[data-tool-use-id="${CSS.escape(evt.tool_use_id)}"]`);
+      stale.forEach(n => n.remove());
+    }
     const card = el_h("div", "choice-card");
     card.dataset.toolUseId = evt.tool_use_id;
-    const optionsHtml = (evt.options || []).map((opt, idx) => {
+    const presetOptions = evt.options || [];
+    const optionsHtml = presetOptions.map((opt, idx) => {
       const inputId = `choice-${evt.tool_use_id}-${idx}`;
+      // NOTE: We deliberately use <div role="checkbox"> instead of <label
+      // for=…>. The for-attribute label/input pairing has subtle browser
+      // behaviour (re-toggling on click, focus stealing, native synthesized
+      // click events) that has caused a "third option won't respond" symptom
+      // when the option list is rendered inside the cockpit's iframe modal.
+      // Toggling is now driven entirely by an explicit click delegate.
       return `
-      <label class="choice-option" for="${esc(inputId)}" data-id="${esc(opt.id)}" data-label="${esc(opt.label)}">
+      <div class="choice-option" data-id="${esc(opt.id)}" data-label="${esc(opt.label)}" role="checkbox" aria-checked="false" tabindex="0">
         <input type="checkbox" class="choice-check" id="${esc(inputId)}"
-               value="${esc(opt.id)}" data-label="${esc(opt.label)}" />
+               value="${esc(opt.id)}" data-label="${esc(opt.label)}" tabindex="-1" />
         <span class="choice-idx">${idx + 1}</span>
         <span class="choice-body">
           <span class="choice-label">${esc(opt.label)}</span>
           ${opt.detail ? `<span class="choice-detail">${esc(opt.detail)}</span>` : ""}
         </span>
-      </label>`;
+      </div>`;
     }).join("");
+    // Trailing row: a manual-input option. The hidden checkbox auto-toggles
+    // as the user types; its data-label & value follow the input contents,
+    // so the existing selection / submit pipeline doesn't need to special-case
+    // it beyond ignoring text-input click events.
+    const manualIdx = presetOptions.length;
+    const manualInputId = `choice-${evt.tool_use_id}-manual`;
+    const manualHtml = `
+      <div class="choice-option choice-option-manual" data-manual="1">
+        <input type="checkbox" class="choice-check choice-check-manual" id="${esc(manualInputId)}-check"
+               value="" data-label="" tabindex="-1" />
+        <span class="choice-idx">${manualIdx + 1}</span>
+        <span class="choice-body">
+          <input type="text" class="choice-manual-input" id="${esc(manualInputId)}"
+                 placeholder="或手动输入答案 (按 Enter 提交)…" autocomplete="off" />
+        </span>
+      </div>`;
     card.innerHTML = `
       <div class="choice-head">
         <span class="choice-tag">需要您选择</span>
         <span class="choice-question">${esc(evt.question || "")}</span>
-        <span class="choice-hint">支持多选</span>
+        <span class="choice-hint">支持多选 / 手动输入</span>
       </div>
       ${evt.context ? `<div class="choice-context">${esc(evt.context)}</div>` : ""}
-      <div class="choice-options">${optionsHtml}</div>
+      <div class="choice-options">${optionsHtml}${manualHtml}</div>
       <div class="choice-actions">
         <span class="choice-summary">未选择</span>
         <button type="button" class="choice-confirm" disabled>确定</button>
@@ -792,16 +1070,27 @@ welcome: ${esc(a.welcome_message || "")}</div>
     const checks = card.querySelectorAll(".choice-check");
     const confirmBtn = card.querySelector(".choice-confirm");
     const summary = card.querySelector(".choice-summary");
+    const manualInput = card.querySelector(".choice-manual-input");
+    const manualCheck = card.querySelector(".choice-check-manual");
 
     function refreshSelection() {
       const selected = Array.from(checks).filter(c => c.checked);
       checks.forEach(c => {
-        const lbl = c.closest(".choice-option");
-        if (lbl) lbl.classList.toggle("selected", c.checked);
+        const opt = c.closest(".choice-option");
+        if (opt) {
+          opt.classList.toggle("selected", c.checked);
+          opt.setAttribute("aria-checked", String(c.checked));
+        }
       });
-      confirmBtn.disabled = selected.length === 0
-        || card.classList.contains("submitting")
-        || card.classList.contains("resolved");
+      const lockedBySubmitting = card.classList.contains("submitting");
+      const lockedByResolved = card.classList.contains("resolved");
+      const newDisabled = selected.length === 0 || lockedBySubmitting || lockedByResolved;
+      if (confirmBtn.disabled !== newDisabled) {
+        console.debug("[choice] confirm.disabled", newDisabled, {
+          selected: selected.length, lockedBySubmitting, lockedByResolved,
+        });
+      }
+      confirmBtn.disabled = newDisabled;
       if (selected.length === 0) {
         summary.textContent = "未选择";
       } else if (selected.length === 1) {
@@ -812,19 +1101,91 @@ welcome: ${esc(a.welcome_message || "")}</div>
       }
     }
 
-    checks.forEach(c => {
-      c.addEventListener("change", refreshSelection);
-    });
+    function toggleOption(opt) {
+      if (!opt) return;
+      // Manual rows aren't toggled by clicks anywhere except the text input;
+      // the hidden check follows the input value.
+      if (opt.dataset.manual === "1") return;
+      const input = opt.querySelector(".choice-check");
+      if (!input || input.disabled) return;
+      if (card.classList.contains("submitting") || card.classList.contains("resolved")) return;
+      input.checked = !input.checked;
+      refreshSelection();
+    }
 
-    confirmBtn.addEventListener("click", (e) => {
+    // Manual-input wiring: typing toggles the hidden checkbox + sets its
+    // value/label so the rest of the pipeline treats it as a normal entry.
+    if (manualInput && manualCheck) {
+      manualInput.addEventListener("input", () => {
+        const text = manualInput.value.trim();
+        manualCheck.checked = !!text;
+        manualCheck.value = text ? `manual:${text}` : "";
+        manualCheck.dataset.label = text;
+        const opt = manualCheck.closest(".choice-option");
+        if (opt) opt.classList.toggle("has-input", !!text);
+        refreshSelection();
+      });
+      manualInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          // Trigger the confirm path if at least one selection (preset or manual) exists.
+          refreshSelection();
+          if (!confirmBtn.disabled) confirmBtn.click();
+        }
+      });
+    }
+
+    // Single delegated click handler covers BOTH options and the confirm
+    // button. No reliance on <label for=…> native pairing.
+    card.addEventListener("click", (e) => {
+      // 1) Confirm button path
+      const btn = e.target.closest(".choice-confirm");
+      if (btn && btn === confirmBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        refreshSelection();
+        if (confirmBtn.disabled) {
+          console.warn("[choice] confirm clicked but still disabled — selection empty or card locked");
+          return;
+        }
+        const selected = Array.from(checks).filter(c => c.checked);
+        if (!selected.length) return;
+        const ids = selected.map(c => c.value);
+        const labels = selected.map(c => c.dataset.label);
+        submitChoice(card, ids, labels);
+        return;
+      }
+      // 2) Manual text input — let the browser handle focus/typing.
+      if (e.target.classList.contains("choice-manual-input")) {
+        return;
+      }
+      // 3) Option toggle path
+      const opt = e.target.closest(".choice-option");
+      if (!opt) return;
+      // Click on the manual row's empty area: focus the text input instead.
+      if (opt.dataset.manual === "1") {
+        const inp = opt.querySelector(".choice-manual-input");
+        if (inp) inp.focus();
+        return;
+      }
+      // If the user clicked the <input> directly the browser has already
+      // toggled .checked for us — don't flip it back.
+      if (e.target.classList.contains("choice-check")) {
+        refreshSelection();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
-      if (confirmBtn.disabled) return;
-      const selected = Array.from(checks).filter(c => c.checked);
-      if (!selected.length) return;
-      const ids = selected.map(c => c.value);
-      const labels = selected.map(c => c.dataset.label);
-      submitChoice(card, ids, labels);
+      toggleOption(opt);
+    });
+
+    // Keyboard a11y: Space / Enter on a focused option toggles it.
+    card.addEventListener("keydown", (e) => {
+      if (e.key !== " " && e.key !== "Enter") return;
+      const opt = e.target.closest(".choice-option");
+      if (!opt) return;
+      e.preventDefault();
+      toggleOption(opt);
     });
 
     refreshSelection();
@@ -1085,13 +1446,15 @@ welcome: ${esc(a.welcome_message || "")}</div>
   const NEXT_SECTION_RE = /[📊🔍💡📎📈📄]/u;
 
   function cleanLeadingDecoration(raw) {
-    // Strip markdown bullets (`- `, `* `, `> `) and bold markers (`**`).
-    // We deliberately do NOT strip leading `#` — heading lines are handled
-    // separately so we can detect them as section boundaries.
+    // Preserve list structure (`- `, `* `, numbered, CJK numerals) and
+    // `**bold**` markers so the dashboard can split a section into its
+    // individual clauses (each `-` line) and detect `**…**` sub-headers.
+    // Marker / bold cleanup for *display* happens later, per clause, inside
+    // buildActionableBody(). Here we only drop blockquote markers and
+    // trailing whitespace. Leading `#` is still left for boundary detection.
     return raw
-      .replace(/^[*\->\s]+/, "")
-      .replace(/\*\*/g, "")
-      .trim();
+      .replace(/^\s*>+\s?/, "")
+      .replace(/\s+$/, "");
   }
 
   // Generic section extractor. Locates a section header whose first
@@ -1232,7 +1595,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
         <span class="dash-tag rootcause">🔍 根因分析</span>
         <span class="dash-turn">Turn ${turnTag}</span>
       </div>
-      <div class="dash-body">${highlightEntities(text)}</div>`;
+      ${buildActionableBody(text, "rootcause")}`;
     return card;
   }
 
@@ -1244,7 +1607,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
         <span class="dash-tag actions">💡 行动建议</span>
         <span class="dash-turn">Turn ${turnTag}</span>
       </div>
-      <div class="dash-body">${highlightEntities(text)}</div>`;
+      ${buildActionableBody(text, "actions")}`;
     return card;
   }
 
@@ -1534,9 +1897,19 @@ welcome: ${esc(a.welcome_message || "")}</div>
     card.dataset.turn = tagStr;
     card.innerHTML =
       '<button type="button" class="dash-export-btn" data-turn="' + tagStr + '">' +
-      '📤 导出本轮报告 (HTML)</button>';
-    card.querySelector(".dash-export-btn").addEventListener("click", () => {
-      exportTurnReport(turnTag);
+      '📤 导出本轮报告 (HTML)</button>' +
+      '<button type="button" class="dash-export-btn dash-sync-btn" data-turn="' + tagStr + '">' +
+      '🏠 同步到主页</button>' +
+      '<button type="button" class="dash-export-btn dash-feishu-btn" data-turn="' + tagStr + '">' +
+      '🐦 分享到飞书</button>' +
+      '<div class="dash-export-status" data-turn="' + tagStr + '"></div>';
+    card.querySelector(".dash-export-btn:not(.dash-sync-btn):not(.dash-feishu-btn)")
+      .addEventListener("click", () => exportTurnReport(turnTag));
+    card.querySelector(".dash-sync-btn").addEventListener("click", () => {
+      syncTurnReportToHome(turnTag, card);
+    });
+    card.querySelector(".dash-feishu-btn").addEventListener("click", () => {
+      shareTurnReportToFeishu(turnTag, card);
     });
     appendDashboardCard(card);
   }
@@ -1549,10 +1922,17 @@ welcome: ${esc(a.welcome_message || "")}</div>
       : (tagEl.classList.contains("conclusion") ? "conclusion"
        : tagEl.classList.contains("rootcause")  ? "rootcause"
        : tagEl.classList.contains("actions")    ? "actions" : "");
+    let bodyHTML = "";
+    if (body) {
+      const clone = body.cloneNode(true);
+      // Per-item action buttons are UI-only — keep them out of exports.
+      clone.querySelectorAll(".dash-item-actions").forEach(n => n.remove());
+      bodyHTML = clone.innerHTML;
+    }
     return (
       '<section class="report-section report-' + cls + '">' +
       '  <header><span class="report-tag ' + cls + '">' + esc(tag) + '</span></header>' +
-      '  <div class="report-body">' + (body ? body.innerHTML : "") + '</div>' +
+      '  <div class="report-body">' + bodyHTML + '</div>' +
       '</section>'
     );
   }
@@ -1662,16 +2042,14 @@ welcome: ${esc(a.welcome_message || "")}</div>
     ].join("\n");
   }
 
-  function exportTurnReport(turnTag) {
+  // Collect this turn's dashboard cards into a standalone report HTML.
+  // Returns { html, cardCount } or null when the turn has no content.
+  function collectTurnReportHTML(turnTag) {
     const tagStr = String(turnTag);
     const cards = Array.from(el.dashboardList.querySelectorAll(
       ".dash-card[data-turn=\"" + tagStr + "\"]"
     )).filter((c) => !c.classList.contains("dash-export"));
-
-    if (cards.length === 0) {
-      alert("本轮没有可导出的看板内容。");
-      return;
-    }
+    if (cards.length === 0) return null;
 
     const sections = cards.map((card) => {
       if (card.classList.contains("dash-chart") ||
@@ -1689,7 +2067,84 @@ welcome: ${esc(a.welcome_message || "")}</div>
       return "";
     }).join("\n");
 
-    const html = buildReportHTML(turnTag, sections);
+    return { html: buildReportHTML(turnTag, sections), cardCount: cards.length };
+  }
+
+  // A short summary of the turn for the homepage 问题清单 entry:
+  // prefer the user's question, fall back to the first conclusion text.
+  function turnSummaryText(turnTag) {
+    const q = (B().turnQuestions || {})[turnTag];
+    if (q && q.trim()) return q.trim().slice(0, 80);
+    const concl = el.dashboardList.querySelector(
+      ".dash-card.dash-conclusion[data-turn=\"" + String(turnTag) + "\"] .dash-body"
+    );
+    if (concl && concl.textContent.trim()) return concl.textContent.trim().slice(0, 80);
+    return "智能分析报告 · Turn " + turnTag;
+  }
+
+  function setExportStatus(card, text, isErr) {
+    const s = card && card.querySelector(".dash-export-status");
+    if (!s) return;
+    s.textContent = text || "";
+    s.style.color = isErr ? "var(--danger,#ef4444)" : "var(--text-2,#94a3b8)";
+  }
+
+  function syncTurnReportToHome(turnTag, card) {
+    const r = collectTurnReportHTML(turnTag);
+    if (!r) { setExportStatus(card, "本轮没有可同步的内容", true); return; }
+    const target = (window.parent && window.parent !== window) ? window.parent : null;
+    if (!target) { setExportStatus(card, "未检测到主页(workbench 未嵌入驾驶舱)", true); return; }
+    const quad = state.quadrant || null;
+    const source = quad
+      ? ((typeof QUADRANT_PROMPT_META !== "undefined" && QUADRANT_PROMPT_META[quad] &&
+          QUADRANT_PROMPT_META[quad].label) || "象限分析")
+      : "通用AI助手";
+    const reqId = "sync-" + Date.now();
+    function ackHandler(ev) {
+      const m = ev.data;
+      if (!m || m.channel !== "cockpit-home-sync-ack" || m.req !== reqId) return;
+      window.removeEventListener("message", ackHandler);
+      clearTimeout(timer);
+      setExportStatus(card, "✓ 已同步到主页问题清单(可下钻)");
+    }
+    const timer = setTimeout(() => {
+      window.removeEventListener("message", ackHandler);
+      setExportStatus(card, "✓ 已发送同步请求(主页未回执)");
+    }, 4000);
+    window.addEventListener("message", ackHandler);
+    try {
+      target.postMessage({
+        channel: "cockpit-home-sync",
+        quadrant: quad,
+        source: source,
+        summary: turnSummaryText(turnTag),
+        html: r.html,
+        ts: new Date().toISOString(),
+        req: reqId,
+      }, "*");
+      setExportStatus(card, "同步中…");
+    } catch (err) {
+      window.removeEventListener("message", ackHandler);
+      clearTimeout(timer);
+      setExportStatus(card, "同步失败:" + String(err && err.message || err), true);
+    }
+  }
+
+  // 分享到飞书:占位入口,未接入飞书开放平台。
+  function shareTurnReportToFeishu(turnTag, card) {
+    const r = collectTurnReportHTML(turnTag);
+    if (!r) { setExportStatus(card, "本轮没有可分享的内容", true); return; }
+    setExportStatus(card, "「分享到飞书」为占位入口,未接入飞书开放平台(占位:仅展示功能选项)");
+  }
+
+  function exportTurnReport(turnTag) {
+    const tagStr = String(turnTag);
+    const r = collectTurnReportHTML(turnTag);
+    if (!r) {
+      alert("本轮没有可导出的看板内容。");
+      return;
+    }
+    const html = r.html;
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const win = window.open(url, "_blank");
@@ -2019,6 +2474,13 @@ welcome: ${esc(a.welcome_message || "")}</div>
               pruneL1Dashboard(B().currentTurnTag || 1);
             }
           }
+          // Quadrant-assistant: detect any ```ui-command``` blocks and STAGE
+          // them on the pending queue. The user clicks an "执行" button at
+          // end-of-turn to actually apply them to the cockpit.
+          if (state.quadrant) {
+            const cmds = extractUiCommands(evt.text);
+            if (cmds.length) stageUiCommands(cmds);
+          }
         }
         break;
       case "render_enforce": {
@@ -2036,6 +2498,9 @@ welcome: ${esc(a.welcome_message || "")}</div>
       case "done":
         setBusy(false);
         appendTurnExportButton(B().currentTurnTag || 1);
+        // Quadrant-assistant: if any ui-commands were staged this turn,
+        // render the "执行" card so the user can apply them in one click.
+        if (state.quadrant) appendApplyButton(B().currentTurnTag || 1);
         break;
       case "error":
         finalizeAssistantText();
@@ -2063,7 +2528,16 @@ welcome: ${esc(a.welcome_message || "")}</div>
     setBusy(true);
     // Bump per-turn tag so dashboard cards group by user turn
     B().currentTurnTag = (B().currentTurnTag || 0) + 1;
+    const _bk = B();
+    _bk.turnQuestions = _bk.turnQuestions || {};
+    _bk.turnQuestions[_bk.currentTurnTag] = text;
     addUserMessage(text);
+
+    // In quadrant-assistant mode, prepend a hidden system-style instruction so
+    // the LLM knows which quadrant it is editing and what command vocabulary
+    // it may emit. The user sees only their original text.
+    const quadPrefix = buildQuadrantSystemPrefix();
+    const payloadText = quadPrefix ? `${quadPrefix}\n\n用户问: ${text}` : text;
 
     const url = state.mode === "report" ? "/api/report/chat" : "/api/chat";
     let resp;
@@ -2071,7 +2545,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
       resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: payloadText }),
       });
     } catch (err) {
       onEvent({ type: "error", message: `request failed: ${err.message || err}` });
@@ -2136,6 +2610,9 @@ welcome: ${esc(a.welcome_message || "")}</div>
 
   function switchMode(newMode) {
     if (newMode === state.mode || state.busy) return;
+    // Quadrant assistants are locked to a single mode; only the initial
+    // lock-in (from applyQuadrantFromUrl) may set it.
+    if (state.lockedMode && newMode !== state.lockedMode) return;
 
     // Stash outgoing mode's DOM (snapshot of current containers)
     const out = buckets[state.mode];
@@ -2459,6 +2936,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
     bucket.rootCauseSeen = new Set();
     bucket.actionsSeen = new Set();
     bucket.currentTurnTag = 0;
+    bucket.pendingCommands = [];
     // If this is the active mode, also clear visible DOM
     if (state.mode === mode) {
       detachChildren(el.chatScroll);
@@ -2813,6 +3291,361 @@ welcome: ${esc(a.welcome_message || "")}</div>
     const hidden = msg.visible === false;
     document.body.classList.toggle("settings-hidden", hidden);
   });
+
+  // ------------------------------------------------------------------
+  // Quadrant assistant mode
+  // ------------------------------------------------------------------
+  const QUADRANT_PROMPT_META = {
+    salesflow: {
+      label: "销售助手",
+      scope: "CEO 驾驶舱 · 问题象限 01 · 销售业务流",
+      emptyTitle: "销售助手 · 销售业务流分析",
+      welcome: "销售助手已就绪。可分析订-发-收-回节点落差、区域结构与回款健康度,也可直接改本象限的维度 / 文字 / 图表。",
+      hints: [
+        "本期发货为何高于订单 64.62 万?",
+        "把订/发/收/回节点柱图按事业部下钻",
+        "应收回款健康度如何?逾期客户有哪些?"
+      ],
+      filters: [
+        { id: "salesTimeFilter", aria: "时间", current: ["年","季","月"] },
+        { id: "salesRegionFilter", aria: "区域", current: ["集团","华东","华南","海外"] },
+        { id: "salesScopeFilter", aria: "口径", current: ["财报","业务库","财报+业务库"] }
+      ],
+      charts: [{ id: "salesNodeBars", desc: "订/发/收/回 节点柱图" }],
+      textHints: [
+        "article[data-quadrant='salesflow'] .problem-title h2  — 象限主问题",
+        "article[data-quadrant='salesflow'] .flow-block-title  — 顶层设计/告警分组小标题",
+        "article[data-quadrant='salesflow'] .sales-filter-row b — 流程节点目标达成标题",
+        "article[data-quadrant='salesflow'] .gap-tile b — 关键落差小卡名",
+        "article[data-quadrant='salesflow'] .core-flow-tile b — 核心流小卡名"
+      ]
+    },
+    assetflow: {
+      label: "资产助手",
+      scope: "CEO 驾驶舱 · 问题象限 02 · 资产运营流",
+      emptyTitle: "资产助手 · 资产运营流分析",
+      welcome: "资产助手已就绪。可分析采购→生产→仓库→站点四段库存接力与落差、品类呆滞与不良品,也可改本象限维度 / 文字 / 图表。",
+      hints: [
+        "四段实物流哪一段落差最大?",
+        "按品类拆解站点库存与 6 月以上超期金额",
+        "给四段接力柱图增加「包材」品类维度"
+      ],
+      filters: [
+        { id: "assetCategoryFilter", aria: "品类", current: ["闪光灯罩","金属件","镜片/陶瓷","电子件","检测类","板卡类","塑料件"] }
+      ],
+      charts: [{ id: "assetStageBars", desc: "原材料 → 在制 → 成品 → 发出 四段接力柱图" }],
+      textHints: [
+        "article[data-quadrant='assetflow'] .problem-title h2 — 象限主问题",
+        "article[data-quadrant='assetflow'] .asset-box h4 — 资产健康/经营关注盒标题",
+        "article[data-quadrant='assetflow'] .asset-filter-row b — 四段接力标题",
+        "article[data-quadrant='assetflow'] .asset-kpi span — KPI 标签",
+        "article[data-quadrant='assetflow'] .asset-alert span — 告警标签"
+      ]
+    },
+    command: {
+      label: "督办助手",
+      scope: "CEO 驾驶舱 · 问题象限 03 · 督办令中心",
+      emptyTitle: "督办助手 · 督办令中心",
+      welcome: "督办助手已就绪。可梳理督办四步闭环、超期与待验收任务及责任负载,也可改本象限的步骤文案。",
+      hints: [
+        "当前超期督办令的阻塞原因是什么?",
+        "待验收 5 单是否已有方案未组织验收?",
+        "把四步闭环说明改得更精炼"
+      ],
+      filters: [],
+      charts: [],
+      textHints: [
+        "article[data-quadrant='command'] .problem-title h2 — 象限主问题",
+        "article[data-quadrant='command'] .command-step b — 四步骤标题",
+        "article[data-quadrant='command'] .command-step p — 四步骤说明"
+      ]
+    },
+    riskmatrix: {
+      label: "风险助手",
+      scope: "CEO 驾驶舱 · 问题象限 04 · 四维风险热力矩阵",
+      emptyTitle: "风险助手 · 四维风险热力矩阵",
+      welcome: "风险助手已就绪。可解读运营 / 技术 / 预测 / 合规四维风险敞口与优先处置区,也可改本象限的风险区文案。",
+      hints: [
+        "哪个风险区已达优先处置阈值?",
+        "交付延迟敞口集中在哪些客户?",
+        "调整运营风险区的描述文案"
+      ],
+      filters: [],
+      charts: [],
+      textHints: [
+        "article[data-quadrant='riskmatrix'] .problem-title h2 — 象限主问题",
+        "article[data-quadrant='riskmatrix'] .risk-zone h4 — 风险区标题",
+        "article[data-quadrant='riskmatrix'] .risk-zone p — 风险区描述",
+        "article[data-quadrant='riskmatrix'] .risk-zone small — 风险区脚注"
+      ]
+    },
+    reportmgmt: {
+      label: "报表助手",
+      scope: "CEO 驾驶舱 · 问题象限 05 · 报表管理",
+      emptyTitle: "报表助手 · 报表管理",
+      welcome: "报表助手已就绪。可治理口径变更、公共项分摊、核对差异与报表同步等事项,也可改本象限的通用问题文案。",
+      hints: [
+        "仍待确认的口径变更有哪些?",
+        "公共项异常占比 12.8% 如何拆解?",
+        "改写通用问题板块的标题"
+      ],
+      filters: [],
+      charts: [],
+      textHints: [
+        "article[data-quadrant='reportmgmt'] .problem-title h2 — 象限主问题",
+        "article[data-quadrant='reportmgmt'] .report-common-board h4 — 通用问题板块标题",
+        "article[data-quadrant='reportmgmt'] .report-issue — 单条通用问题"
+      ]
+    }
+  };
+
+  function applyQuadrantFromUrl() {
+    let key = null;
+    try {
+      key = new URLSearchParams(location.search).get("quadrant");
+    } catch (_) { key = null; }
+    if (!key || !QUADRANT_PROMPT_META[key]) return;
+    state.quadrant = key;
+    const meta = QUADRANT_PROMPT_META[key];
+    const badge = document.getElementById("brand-quadrant");
+    if (badge) {
+      badge.textContent = meta.label;
+      badge.hidden = false;
+      badge.title = meta.scope;
+    }
+    // Stamp body for any future CSS hooks
+    document.body.dataset.quadrant = key;
+
+    // Mode lock per quadrant: only 报表助手(第五象限/reportmgmt)gets
+    // 报表分析; every other quadrant assistant is数据分析 only. The
+    // bottom-right general assistant has no quadrant → keeps both modes.
+    const lockedMode = (key === "reportmgmt") ? "report" : "data";
+    state.lockedMode = lockedMode;
+    if (state.mode !== lockedMode) switchMode(lockedMode);
+    // Hide the data/report toggle — quadrant assistants are single-mode.
+    if (el.modeSwitch) el.modeSwitch.hidden = true;
+  }
+
+  function buildQuadrantSystemPrefix() {
+    if (!state.quadrant) return "";
+    const meta = QUADRANT_PROMPT_META[state.quadrant];
+    if (!meta) return "";
+    const filterLines = meta.filters.length
+      ? meta.filters.map(f => `  · id=${f.id} (${f.aria}) — 当前选项: [${f.current.join(", ")}]`).join("\n")
+      : "  · (本象限暂无可编辑筛选器)";
+    const chartLines = meta.charts.length
+      ? meta.charts.map(c => `  · ${c.id} — ${c.desc}`).join("\n")
+      : "  · (本象限暂无可编辑图表)";
+    const textLines = meta.textHints.map(t => `  · ${t}`).join("\n");
+    return [
+      `[象限助手系统提示 — 此段内容仅用于约束你本轮的输出格式,不要在回复中复述]`,
+      `你当前作为「${meta.label}」运行,服务于 ${meta.scope}。`,
+      `除常规的数据问答外,你还可以直接修改这块象限页面。`,
+      ``,
+      `可改的筛选器(<select>):`,
+      filterLines,
+      ``,
+      `可改的图表:`,
+      chartLines,
+      ``,
+      `可改的看板文字(白名单 selector,严格匹配前缀):`,
+      textLines,
+      ``,
+      `如果用户的话明确要求改页面,请在你的回答里输出一个或多个 fenced code block,语言标记必须是 \`ui-command\`,内容为 JSON 对象,字段定义:`,
+      `  - channel: 固定 "cockpit-ui"`,
+      `  - quadrant: 固定 "${state.quadrant}"`,
+      `  - action: 以下之一`,
+      `      · set_filter_options    {target:"<filter id>", options:[{value,label}|"字符串"...]}`,
+      `      · add_filter_option     {target:"<filter id>", option:{value,label}|"字符串"}`,
+      `      · remove_filter_option  {target:"<filter id>", value:"<要删的 value 或 label>"}`,
+      `      · set_text              {selector:"<上面 textHints 白名单>", text:"<新文字>", limit?:<数字,只改前几个>}`,
+      `      · set_chart_dim         {chart_id:"<chart id>", dim:"<by_region|by_bu|by_node|…>"}`,
+      `      · set_chart_type        {chart_id:"<chart id>", type:"bars|line"}`,
+      `      · set_chart_color       {chart_id:"<chart id>", color:"#hex 或 css color"}`,
+      ``,
+      `重要约定:`,
+      `  - target / chart_id 都是裸 DOM id,不要加 "#" 前缀(写 "assetCategoryFilter" 而不是 "#assetCategoryFilter")。`,
+      `  - 一次回答可以发多条 ui-command 块,会作为一批等用户点「执行」后统一应用。`,
+      ``,
+      `示例(把销售象限的时间筛选器改为半年口径):`,
+      "```ui-command",
+      `{"channel":"cockpit-ui","quadrant":"salesflow","action":"set_filter_options","target":"salesTimeFilter","options":["上半年","下半年","全年"]}`,
+      "```",
+      ``,
+      `若用户只是问数,正常调本体/SQL/图表工具回答即可,不要发 ui-command。`,
+      `若用户要求改页面但要素不全(比如没说具体改什么文字),正常提问澄清,不要凭空发 ui-command。`,
+      ``,
+      `数据分析纪律(与通用助手完全一致,不得因象限身份弱化 —— ui-command 是附加能力,不替代分析 SOP):`,
+      `  - 🔴 强制图表配对:本轮只要调用了 \`TableGenerate\`,就必须同时至少调用 1 次 \`ChartGenerate\`;≥2 行的结果集禁止在正文手写 Markdown \`|\` 表格,必须走 \`TableGenerate\`。L1/事实型多行结果 ≥1 表 +≥1 图;L2/L3 分析型 ≥1 表 +≥2 图(2 图覆盖不同视角)。仅 1 行 1 列纯标量可只用文字。`,
+      `  - 🔴 L2/L3 输出到看板:带"为什么/原因/分析/对比/怎么办"等分析意图时按 L2/L3 模板交付 —— 📌结论(一句带数字与实体编码,会被抽取为看板结论卡)+ 🔍根因证据链(论点+数据+来源三元组)+ 💡行动建议(自动带出)+ 📈附图;这些段落前端会汇总进中间实时看板,缺图或缺根因/建议视为交付不合格。`,
+      `[象限助手系统提示结束]`
+    ].join("\n");
+  }
+
+  function extractUiCommands(text) {
+    if (!text || typeof text !== "string") return [];
+    const out = [];
+    const re = /```ui-command\s*\n([\s\S]*?)```/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const body = m[1].trim();
+      if (!body) continue;
+      try {
+        const obj = JSON.parse(body);
+        if (obj && typeof obj === "object") {
+          obj.channel = "cockpit-ui";
+          if (!obj.quadrant && state.quadrant) obj.quadrant = state.quadrant;
+          out.push(obj);
+        }
+      } catch (err) {
+        console.warn("[ui-command] bad JSON block:", body, err);
+      }
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------
+  // Pending UI-command queue:
+  // Commands are STAGED here as they come out of llm_response. The user
+  // clicks an "执行" button rendered at end-of-turn to flush the whole
+  // batch to the cockpit in a single apply_batch postMessage.
+  // ------------------------------------------------------------------
+  function describeUiCommand(cmd) {
+    if (!cmd || !cmd.action) return "(空命令)";
+    switch (cmd.action) {
+      case "set_filter_options": {
+        const n = Array.isArray(cmd.options) ? cmd.options.length : 0;
+        const tail = Array.isArray(cmd.options)
+          ? cmd.options.slice(0, 3).map(o => typeof o === "string" ? o : (o.label ?? o.value)).join("、")
+          : "";
+        return `改筛选项 · #${cmd.target} → ${n} 项${tail ? ` (${tail}${n > 3 ? "…" : ""})` : ""}`;
+      }
+      case "add_filter_option":
+        return `追加筛选项 · #${cmd.target} → ${typeof cmd.option === "string" ? cmd.option : (cmd.option?.label ?? cmd.option?.value ?? "?")}`;
+      case "remove_filter_option":
+        return `移除筛选项 · #${cmd.target} · ${cmd.value}`;
+      case "set_text": {
+        const sel = String(cmd.selector || "");
+        const shortSel = sel.length > 56 ? "…" + sel.slice(-54) : sel;
+        const t = String(cmd.text || "");
+        return `改文字 · ${shortSel} → 「${t.length > 28 ? t.slice(0, 28) + "…" : t}」`;
+      }
+      case "set_chart_dim":
+        return `改图表维度 · ${cmd.chart_id} → ${cmd.dim}`;
+      case "set_chart_type":
+        return `改图表类型 · ${cmd.chart_id} → ${cmd.type}`;
+      case "set_chart_color":
+        return `改图表配色 · ${cmd.chart_id} → ${cmd.color}`;
+      default:
+        return `${cmd.action}`;
+    }
+  }
+
+  function stageUiCommands(cmds) {
+    if (!cmds || !cmds.length) return;
+    const bucket = B();
+    if (!bucket.pendingCommands) bucket.pendingCommands = [];
+    for (const c of cmds) bucket.pendingCommands.push(c);
+  }
+
+  function appendApplyButton(turnTag) {
+    const bucket = B();
+    const cmds = bucket.pendingCommands || [];
+    if (!cmds.length) return;
+    if (!state.quadrant) return; // outside quadrant-assistant mode — no-op
+    // If this turn already has an apply card we re-render it to reflect the
+    // latest pending list (in case multiple llm_response iterations added
+    // commands during the same turn).
+    const tagStr = String(turnTag);
+    const existing = el.chatScroll.querySelector(`.ui-apply-card[data-turn="${CSS.escape(tagStr)}"]`);
+    if (existing) existing.remove();
+    const card = el_h("div", "ui-apply-card");
+    card.dataset.turn = tagStr;
+    const list = cmds.map(c => `<li>${esc(describeUiCommand(c))}</li>`).join("");
+    card.innerHTML = `
+      <div class="ui-apply-head">
+        <span class="ui-apply-icon">🛠</span>
+        <span class="ui-apply-title">本轮 ${cmds.length} 条待应用变更</span>
+        <button type="button" class="ui-apply-btn">▶ 执行</button>
+      </div>
+      <ul class="ui-apply-list">${list}</ul>
+      <div class="ui-apply-status"></div>`;
+    el.chatScroll.appendChild(card);
+    scrollChatBottom();
+    card.querySelector(".ui-apply-btn").addEventListener("click", () => {
+      applyPendingCommands(card);
+    });
+  }
+
+  function applyPendingCommands(card) {
+    const bucket = B();
+    const cmds = (bucket.pendingCommands || []).slice();
+    if (!cmds.length) {
+      const status = card.querySelector(".ui-apply-status");
+      if (status) status.textContent = "没有待应用的变更";
+      return;
+    }
+    const btn = card.querySelector(".ui-apply-btn");
+    const status = card.querySelector(".ui-apply-status");
+    if (btn) { btn.disabled = true; btn.textContent = "应用中…"; }
+    if (status) status.textContent = `正在应用 ${cmds.length} 条变更…`;
+    const target = (window.parent && window.parent !== window) ? window.parent : null;
+    if (!target) {
+      if (status) status.textContent = "未检测到驾驶舱(workbench 未嵌入)";
+      if (btn) { btn.disabled = false; btn.textContent = "▶ 执行"; }
+      return;
+    }
+    const reqId = `apply-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    function ackHandler(e) {
+      const msg = e.data;
+      if (!msg || msg.channel !== "cockpit-ui-ack" || msg.req !== reqId) return;
+      window.removeEventListener("message", ackHandler);
+      clearTimeout(timer);
+      handleApplyAck(card, msg);
+    }
+    const timer = setTimeout(() => {
+      window.removeEventListener("message", ackHandler);
+      handleApplyAck(card, { ok: false, error: "驾驶舱未响应(超时)" });
+    }, 5000);
+    window.addEventListener("message", ackHandler);
+    try {
+      target.postMessage({
+        channel: "cockpit-ui",
+        action: "apply_batch",
+        quadrant: state.quadrant,
+        commands: cmds,
+        req: reqId,
+      }, "*");
+    } catch (err) {
+      window.removeEventListener("message", ackHandler);
+      clearTimeout(timer);
+      handleApplyAck(card, { ok: false, error: String(err && err.message || err) });
+      return;
+    }
+    bucket.pendingCommands = [];
+  }
+
+  function handleApplyAck(card, ack) {
+    const btn = card.querySelector(".ui-apply-btn");
+    const status = card.querySelector(".ui-apply-status");
+    if (ack && ack.ok) {
+      if (btn) btn.style.display = "none";
+      const applied = (typeof ack.applied === "number") ? ack.applied : null;
+      const failed = (typeof ack.failed === "number") ? ack.failed : 0;
+      if (status) {
+        status.textContent = failed > 0
+          ? `✓ 已应用 ${applied ?? "全部"} 条变更(其中 ${failed} 条失败,详见控制台)`
+          : `✓ 已应用 ${applied ?? "全部"} 条变更`;
+      }
+      card.classList.add("applied");
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = "重试"; }
+      if (status) status.textContent = `应用失败: ${ack?.error || "未知错误"}`;
+      card.classList.add("failed");
+    }
+  }
+
+  applyQuadrantFromUrl();
 
   // ------------------------------------------------------------------
   // Boot
