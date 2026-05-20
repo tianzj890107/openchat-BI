@@ -1,7 +1,7 @@
 import sqlite3
 
 
-DB_PATH = "guangfeng.db"
+DB_PATH = "Kingdee.db"
 
 
 def table_columns(cur, table_name):

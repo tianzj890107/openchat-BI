@@ -1022,6 +1022,9 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
 .alarm-callout b { display: block; color: var(--orange); font-size: 13px; margin-bottom: 5px; }
 .alarm-callout p { font-size: 12px; line-height: 1.55; }
 .alarm-callout ul { margin: 7px 0 0 16px; color: var(--text-2); font-size: 11px; line-height: 1.55; }
+.alarm-callout li.alarm-drill { cursor: pointer; color: var(--text-1); transition: color .15s; }
+.alarm-callout li.alarm-drill:hover { color: var(--orange); text-decoration: underline; }
+.alarm-callout li.alarm-drill::after { content: " ▸ 下钻"; color: var(--orange); font-size: 10px; opacity: .8; }
 
 /* ===== Grid Layout ===== */
 .grid-row { display: grid; gap: 14px; }
@@ -1075,7 +1078,7 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
 }
 .flow-alerts .flow-block-title { color: var(--orange); }
 .flow-alerts .flow-block-title::before { background: var(--orange); }
-.core-flow-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.core-flow-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .core-flow-tile, .gap-tile {
   min-height: 98px;
   display: grid;
@@ -1092,6 +1095,16 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
 .gap-tile {
   background: rgba(213,154,66,.12);
   border: 1px solid rgba(213,154,66,.18);
+}
+.gap-tile[data-topic] { cursor: pointer; transition: border-color .15s, background .15s; }
+.gap-tile[data-topic]:hover { border-color: var(--orange); background: rgba(213,154,66,.20); }
+.gap-tile[data-topic]::after {
+  content: "点击下钻 ▸";
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--orange);
+  opacity: .85;
 }
 .core-flow-tile b, .gap-tile b { font-size: 15px; color: var(--text-0); }
 .core-flow-tile span, .gap-tile span { color: var(--text-1); font-size: 12px; line-height: 1.45; }
@@ -1292,7 +1305,7 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
       <em>全局感知 · 异常识别 · 趋势判断 · 经营决策</em>
     </div>
     <div class="cock-filters">
-      <span>期间</span><div class="pill" data-filter="period">2025年Q3 ⌄</div>
+      <span>期间</span><div class="pill" data-filter="period">2026年5月 ⌄</div>
       <span>币种</span><div class="pill">CNY ⌄</div>
       <span>口径</span><div class="pill">财报 + 业务库 ⌄</div>
       <div class="pill live">实时数据</div>
@@ -1327,7 +1340,7 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
     <article class="problem-card warning active sales-expanded" data-topic="sales" data-quadrant="salesflow">
       <div class="problem-top">
         <div class="problem-title">
-          <span>问题象限 01 · 销售业务流</span>
+          <span>问题象限 01 · 财务经营流</span>
           <h2>订、发、收、回之间的落差是否失控？</h2>
         </div>
         <div class="problem-score"><b style="color:var(--orange)">2</b><em>关键落差</em></div>
@@ -1335,18 +1348,19 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
       <div class="sales-flow-card">
         <div class="sales-flow-top">
           <div class="flow-design">
-            <div class="flow-block-title" style="color:var(--green)">顶层设计：三条核心流（极简指标）</div>
+            <div class="flow-block-title" style="color:var(--green)">基于LTC流程，打通财务规则和业务节点</div>
             <div class="core-flow-grid">
-              <div class="core-flow-tile" data-topic="sales"><i>订</i><b>合同/订单流</b><span>当前 52.75万 / 目标 82万</span><div class="mini-meter"><em style="width:64%"></em></div><div class="mini-line"><span>达成率</span><strong>64%</strong></div></div>
-              <div class="core-flow-tile" data-topic="delivery"><i>发</i><b>交付/发货流</b><span>当前 117.37万 / 目标 142万</span><div class="mini-meter"><em style="width:83%"></em></div><div class="mini-line"><span>达成率</span><strong>83%</strong></div></div>
-              <div class="core-flow-tile" data-topic="cash"><i>收回</i><b>收入/回款流</b><span>收入 13.53亿 / 回款 40.37万</span><div class="mini-meter"><em style="width:77%"></em></div><div class="mini-line"><span>回款健康</span><strong>77%</strong></div></div>
+              <div class="core-flow-tile" data-topic="sales"><i>订</i><b>签单/订货流</b><span>当前 52.75万 / 目标 82万</span><div class="mini-meter"><em style="width:64%"></em></div><div class="mini-line"><span>达成率</span><strong>64%</strong></div></div>
+              <div class="core-flow-tile" data-topic="delivery"><i>发</i><b>备货/发货流</b><span>当前 117.37万 / 目标 142万</span><div class="mini-meter"><em style="width:83%"></em></div><div class="mini-line"><span>达成率</span><strong>83%</strong></div></div>
+              <div class="core-flow-tile" data-topic="sales"><i>收</i><b>安装验收/收入流</b><span>当前 13.53亿 / 目标 15亿</span><div class="mini-meter"><em style="width:90%"></em></div><div class="mini-line"><span>达成率</span><strong>90%</strong></div></div>
+              <div class="core-flow-tile" data-topic="cash"><i>回</i><b>开票/回款流</b><span>当前 40.37万 / 目标 68万</span><div class="mini-meter"><em style="width:59%"></em></div><div class="mini-line"><span>达成率</span><strong>59%</strong></div></div>
             </div>
           </div>
           <div class="flow-alerts">
             <div class="flow-block-title">关键告警：两个关键落差（经营仪表盘）</div>
             <div class="gap-grid">
-              <div class="gap-tile" data-topic="delivery"><i>订-发</i><b>供需失衡度</b><span>发货高于订单 64.62万</span><div class="mini-meter"><em style="width:79%"></em></div><div class="mini-line"><span>预警强度</span><strong>中高</strong></div></div>
-              <div class="gap-tile" data-topic="cash"><i>收-回</i><b>回款健康度</b><span>收入确认显著高于回款</span><div class="mini-meter"><em style="width:88%"></em></div><div class="mini-line"><span>预警强度</span><strong>高</strong></div></div>
+              <div class="gap-tile" data-topic="salesGapSupply"><i>订-发</i><b>供需失衡度</b><span>未发货滞留3580万·占新单37%</span><div class="mini-meter"><em style="width:82%"></em></div><div class="mini-line"><span>预警强度</span><strong>中高</strong></div></div>
+              <div class="gap-tile" data-topic="salesGapDeliver"><i>发-收</i><b>交付转化度</b><span>安装验收滞留850万·收入确认受阻</span><div class="mini-meter"><em style="width:60%"></em></div><div class="mini-line"><span>预警强度</span><strong>中</strong></div></div>
             </div>
           </div>
         </div>
@@ -1604,7 +1618,7 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
     </article>
   </section>
 
-  <!-- Row 1: 销售业务流 + 六维总览 -->
+  <!-- Row 1: 财务经营流 + 六维总览 -->
   <section class="diagnosis-card">
     <i>!</i>
     <div><b>当前穿透诊断样例：</b>T_STK_DefectiveInventory 收录 60 批不良品共 173.27 万元，集中在采购入库环节。建议从资产运营红仓进入，按供应商、检验员、批次号、采购单逐层下钻。</div>
@@ -1614,8 +1628,8 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
   <section class="grid-row row-2">
     <div class="panel" data-topic="sales">
       <div class="panel-h">
-        <h3><b>◤</b>销售业务流监控区 · 订 → 发 → 收 → 回</h3>
-        <span class="src">guangfeng.db + 25.pdf</span>
+        <h3><b>◤</b>财务经营流监控区 · 订 → 发 → 收 → 回</h3>
+        <span class="src">Kingdee.db + 25.pdf</span>
       </div>
       <div class="flow">
         <div class="flow-node" data-topic="sales">
@@ -1663,7 +1677,7 @@ svg [data-tip]:hover { opacity: 1; filter: drop-shadow(0 0 6px rgba(125,165,201,
   <section class="panel" data-topic="inventory">
     <div class="panel-h">
       <h3><b>▦</b>库存资产展示区 · 库存就是尚未兑现的资金</h3>
-      <span class="src">guangfeng.db (T_STK_*)</span>
+      <span class="src">Kingdee.db (T_STK_*)</span>
     </div>
     <div class="inv-four">
       <div class="inv-bucket raw" data-topic="inventoryRaw">
@@ -2089,8 +2103,8 @@ const DRILLS = {
     ]
   },
   sales: {
-    title: "销售业务流 · 订发收回",
-    bread: ["集团", "销售业务流"],
+    title: "财务经营流 · 订发收回",
+    bread: ["集团", "财务经营流"],
     dims: ["集团→事业部→子公司", "年→季→月→周→日", "产品线→型号→SKU", "区域→客户", "客户行业"],
     summary: "围绕订/发/收/回四节点判断链路。订单+应收来自业务库；发货以销售出库金额近似；收入以财报口径为权威。",
     head: ["节点", "金额", "数据来源", "异常判断"],
@@ -2101,6 +2115,53 @@ const DRILLS = {
       ["回 · 回款金额", "40.37万", "T_AR_Receivable.FReceivedAmt", "回款率76.52%"],
       ["毛利率", "29.41%", "(收入-成本)/收入", "—"],
       ["平均逾期", "66.25天", "FOverdueDays均值", "60+天单独追踪"]
+    ]
+  },
+  // ===== 财务经营流「两个关键落差」专用告警下钻页 =====
+  // 数据来自 Kingdee.db 的 CFO 故事线表(本月 2026-05 / 上月 2026-04)。
+  salesGapSupply: {
+    title: "订-发供需失衡 · 订单→发货转化落差",
+    bread: ["集团", "财务经营流", "订-发落差", "2026年5月"],
+    dims: ["环节:未发货→已发货未签收", "产品线→A产品线", "区域→华东", "客户分层"],
+    summary: "2026年5月新增订单9676万(环比+18%),发货前滞留5490万、占新单56.7%:未发货3580万(37.0%,最高,库存不足+排产延迟)、已发货未签收1910万(19.7%,客户延迟收货/在途长)。卡点集中 A产品线 / 华东。发货后(签收→安装→验收)转化见『发-收』专页。来源:T_CFO_OrderToRevenue / T_CFO_OrderQuality。",
+    head: ["转化环节", "滞留订单额(万)", "订单数", "占比", "主要产品线/区域", "根因", "收入确认影响(万)"],
+    rows: () => [
+      ["未发货", "3580", "142", "37.0%", "A产品线 · 华东", "库存不足 + 排产延迟", "-1180"],
+      ["已发货未签收", "1910", "88", "19.7%", "A产品线 · 华东", "客户延迟收货 / 在途时间长", "-520"],
+      ["合计·订-发(发货前)", "5490", "230", "56.7%", "—", "发货前滞留占新单 56.7%", "-1700"]
+    ]
+  },
+  salesGapDeliver: {
+    title: "发-收交付转化 · 签收→安装→验收落差",
+    bread: ["集团", "财务经营流", "发-收落差", "2026年5月"],
+    dims: ["环节:已签收未安装→已安装未验收", "产品线→A产品线", "区域→华东", "客户分层"],
+    summary: "2026年5月,已签收订单后续交付环节滞留850万:已签收未安装470万(27单,设备到货待排期安装)、已安装未验收380万(21单,客户验收周期长)。安装/验收是发-收转化的主要卡点,集中 A产品线 / 华东,直接影响收入确认约240万。来源:T_CFO_OrderToRevenue。",
+    head: ["转化环节", "滞留订单额(万)", "订单数", "占新单比", "主要产品线/区域", "根因", "收入确认影响(万)"],
+    rows: () => [
+      ["已签收未安装", "470", "27", "4.9%", "A产品线 · 华东", "现场安装排期不足", "-130"],
+      ["已安装未验收", "380", "21", "3.9%", "A产品线 · 华东", "客户验收周期长", "-110"],
+      ["合计·发-收(安装验收)", "850", "48", "8.8%", "—", "安装/验收滞留合计", "-240"]
+    ]
+  },
+  salesGapCash: {
+    title: "收-回回款健康 · 收入→现金转化落差",
+    bread: ["集团", "财务经营流", "收-回落差"],
+    dims: ["期间:本月/上月", "客户分层→大客户KA", "区域→华东", "账期 / 逾期"],
+    summary: "本月收入8180万(环比+6.9%),回款7360万(环比+3.4%);收入增速快于回款增速,经营现金转化率93.1%→90.0%(↓3.1pct),应收净增加820万,逾期应收386万。差距主要来自华东三家大客户账期拉长与逾期增加,top3 贡献61.5%。短期现金流可控,持续扩大将加大资金周转压力。来源:T_CFO_RevenueToCash / T_CFO_KeyCustomerAR。",
+    head: ["客户 / 口径", "应收增加/金额", "账期(上月→本月)", "逾期金额(万)", "贡献占比", "督办动作"],
+    rows: () => [
+      ["本月收入", "8180万", "—", "—", "环比+6.9%", "看转化"],
+      ["本月回款", "7360万", "—", "—", "环比+3.4%", "回款偏慢"],
+      ["经营现金转化率", "90.0%", "上月93.1%", "—", "↓3.1pct", "触发高风险应收督办"],
+      ["应收净增加", "820万", "—", "—", "≈收入-回款", "跟踪"],
+      ["逾期应收", "386万", "—", "386", "占应收约16%", "催收"],
+      ["华东精密制造 · 大客户KA", "+212万", "60→78", "96", "25.9%", "高风险应收督办 + 冻结新增高折扣单"],
+      ["远东能源集团 · 大客户KA", "+168万", "45→66", "74", "20.5%", "商务约谈缩短账期"],
+      ["江南装备 · 大客户KA", "+124万", "30→52", "41", "15.1%", "逐单催收"],
+      ["南方电气 · 重点", "+78万", "38→48", "22", "9.5%", "常规跟踪"],
+      ["中部重工 · 重点", "+62万", "40→45", "16", "7.6%", "常规跟踪"],
+      ["其他客户合计", "+176万", "—", "137", "21.5%", "分散监控"],
+      ["合计·应收净增加", "+820万", "—", "386", "100%", "生成重点客户回款跟踪表"]
     ]
   },
   delivery: {
@@ -2350,7 +2411,7 @@ function drawSalesNodeBars() {
   }).join("");
 }
 
-// 四段实物流的接力与落差 — 数据来自 guangfeng.db 真实汇总,按「段 × 品类」双维切片:
+// 四段实物流的接力与落差 — 数据来自 Kingdee.db 真实汇总,按「段 × 品类」双维切片:
 //   前三段(采购/生产/仓库): T_STK_Inventory 按 FStockCategory(原材料/半成品/成品) × FItemCategory 切
 //   第四段(站点): T_STK_InvMovement WHERE FMoveType='SAL_OUT' 按 FItemCategory 切 (2026-04 单月)
 //   overdue/expired: T_STK_InvAging 按 FStockCategory × FItemCategory × FAgingBucket 切
@@ -2711,9 +2772,10 @@ function renderDrill(key) {
 const DISCOVERY = {
   salesflow: {
     selector: ".gap-tile",
-    title: "销售业务流发现 2 条可下钻报警",
-    text: "订-发供需失衡和收-回回款健康度是当前销售链路的关键落差，可继续下钻到事业部、客户、订单、出库单和应收明细。",
-    bullets: ["订-发：发货高于订单64.62万，需判断是否提前发货、补单滞后或订单口径不一致。", "收-回：收入确认显著高于回款，需下钻客户账龄、逾期天数和回款责任人。"]
+    title: "财务经营流发现 2 条可下钻报警",
+    text: "订-发供需失衡和发-收交付转化是当前财务经营链路的两个关键落差,点击下方任一条即可下钻到专用告警分析页(数据口径:Kingdee.db / 2026年5月)。",
+    bullets: ["订-发供需失衡:2026年5月订单9676万(环比+18%),发货前滞留5490万、占新单56.7%(未发货3580万37.0%最高),卡点集中A产品线/华东。", "发-收交付转化:2026年5月安装/验收环节滞留850万(已签收未安装470万、已安装未验收380万),集中A产品线/华东,影响收入确认约240万。"],
+    drills: ["salesGapSupply", "salesGapDeliver"]
   },
   assetflow: {
     selector: ".asset-alert",
@@ -2746,8 +2808,8 @@ const DISCOVERY = {
 // ------------------------------------------------------------
 const QUADRANT_META = {
   salesflow: {
-    label: "销售助手",
-    title: "销售助手 · 销售业务流",
+    label: "财经助手",
+    title: "财经助手 · 财务经营流",
     subtitle: "可调整本象限的筛选维度、节点柱图与告警文案",
     filters: [
       { id: "salesTimeFilter", aria: "时间" },
@@ -2870,10 +2932,29 @@ function discoverQuadrantIssues(key, card, button) {
   targets.forEach(x => x.classList.add("alarm-highlight"));
   const callout = document.createElement("div");
   callout.className = "alarm-callout";
-  callout.innerHTML = `<b>${cfg.title}</b><p>${cfg.text}</p><ul>${cfg.bullets.map(x => `<li>${x}</li>`).join("")}</ul>`;
+  const drills = Array.isArray(cfg.drills) ? cfg.drills : [];
+  callout.innerHTML = `<b>${cfg.title}</b><p>${cfg.text}</p><ul>${cfg.bullets.map((x, i) => {
+    const dk = drills[i];
+    return (dk && DRILLS[dk])
+      ? `<li class="alarm-drill" data-drill="${dk}">${x}</li>`
+      : `<li>${x}</li>`;
+  }).join("")}</ul>`;
   const content = card.querySelector(".sales-flow-card, .asset-flow-card, .command-card, .risk-quadrant-card, .report-management-card") || card;
   content.appendChild(callout);
-  if (DRILLS[card.dataset.topic]) renderDrill(card.dataset.topic);
+  callout.querySelectorAll("li.alarm-drill[data-drill]").forEach(li => {
+    li.addEventListener("click", ev => {
+      ev.stopPropagation();
+      const dk = li.getAttribute("data-drill");
+      if (DRILLS[dk]) {
+        renderDrill(dk);
+        document.querySelector(".drill")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+  });
+  // 默认下钻:有专用落差页时先渲染第一个,否则回退到象限主题概览
+  const firstDrill = drills.find(dk => DRILLS[dk]);
+  if (firstDrill) renderDrill(firstDrill);
+  else if (DRILLS[card.dataset.topic]) renderDrill(card.dataset.topic);
   targets[0]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
@@ -2885,7 +2966,7 @@ function setAssistantSize(mode) {
   document.getElementById("assistantFull").setAttribute("aria-pressed", mode === "full" ? "true" : "false");
 }
 
-const WORKBENCH_URL = "/workbench?v=49";
+const WORKBENCH_URL = "/workbench?v=51";
 
 function openAssistant() {
   const modal = document.getElementById("assistantModal");
@@ -2907,7 +2988,7 @@ function closeAssistant() {
 // ============================================================
 // 象限助手 modal:单实例,按 quadrant key 切换 iframe 与标题
 // ------------------------------------------------------------
-const QUAD_WORKBENCH_URL_BASE = "/workbench?v=49";
+const QUAD_WORKBENCH_URL_BASE = "/workbench?v=51";
 
 function openQuadrantAssistant(key, button) {
   const meta = QUADRANT_META[key];
@@ -2970,7 +3051,7 @@ function autoUpdateDefaults(key) {
   return {
     enabled: false,
     paused: false,
-    prompt: `每次自动更新时,基于 guangfeng.db 最新数据刷新「${meta.title || label}」象限的图表与指标,保持口径与数据库一致;发现异常时生成风险提示告警,不要编造数据库中不存在的数字。`,
+    prompt: `每次自动更新时,基于 Kingdee.db 最新数据刷新「${meta.title || label}」象限的图表与指标,保持口径与数据库一致;发现异常时生成风险提示告警,不要编造数据库中不存在的数字。`,
     model: "claude-opus-4-7",
     freq: "daily",
     next: computeNextRun("daily"),
@@ -3737,6 +3818,15 @@ function init() {
       const [group, value] = dim.dataset.qdim.split(":");
       document.querySelectorAll(`[data-qgroup="${group}"] [data-qdim]`).forEach(x => x.classList.toggle("active", x === dim));
       drawQuadrantDiagram(group, value);
+      return;
+    }
+    // 关键告警落差卡:整卡可点下钻。必须在下方 .sales-flow-card 守卫之前
+    // 处理,否则守卫会 stopPropagation 吞掉点击,导致只有 callout 文字能下钻。
+    const gapTile = e.target.closest(".gap-tile[data-topic]");
+    if (gapTile && DRILLS[gapTile.dataset.topic]) {
+      e.stopPropagation();
+      renderDrill(gapTile.dataset.topic);
+      document.querySelector(".drill")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
     if (e.target.closest(".problem-card.sales-expanded .sales-flow-card")) {

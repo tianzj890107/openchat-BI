@@ -364,8 +364,12 @@
       const item = choice.closest(".dash-item");
       closeAllActMenus();
       // 转督办 is wired end-to-end: send to the responsible owner and auto
-      // create a task order (任务令). Other choices remain intent-only.
+      // create a task order (任务令).
       if (act === "supervise" && item) dispatchSupervise(item);
+      // 追问 → 把该条根因拷贝到对话框(不发送,交用户补充);
+      // 深度分析 → 在对话框填入该根因 + 深度分析要求并直接发送。
+      else if (act === "ask" && item) copyClauseToInput(item);
+      else if (act === "deep" && item) sendDeepAnalysis(item);
       return;
     }
     closeAllActMenus();
@@ -442,6 +446,42 @@
       flashItem(item, "督办发送失败:" + String((err && err.message) || err), true);
     }
   }
+  // ── 追问 / 深度分析 → 复用对话框 ────────────────────────────────────
+  function clauseText(item) {
+    return ((item.querySelector(".dash-item-text") || {}).textContent || "").trim();
+  }
+  function autosizeInput() {
+    if (!el.chatInput) return;
+    el.chatInput.style.height = "auto";
+    el.chatInput.style.height = Math.min(el.chatInput.scrollHeight, 140) + "px";
+  }
+  // 追问:把该条根因原文拷贝进对话框,聚焦但不发送,等用户继续补充。
+  function copyClauseToInput(item) {
+    const txt = clauseText(item);
+    if (!txt || !el.chatInput) return;
+    const cur = el.chatInput.value.trim();
+    el.chatInput.value = cur ? cur + "\n" + txt : txt;
+    autosizeInput();
+    el.chatInput.focus();
+    try {
+      el.chatInput.setSelectionRange(el.chatInput.value.length, el.chatInput.value.length);
+    } catch (_) {}
+    flashItem(item, "✅ 已填入对话框,可补充后发送", false);
+  }
+  // 深度分析:在对话框填入该根因 + 深度分析要求,并直接发送。
+  function sendDeepAnalysis(item) {
+    const txt = clauseText(item);
+    if (!txt) return;
+    const msg =
+      "请针对以下根因做深度分析:\n「" + txt + "」\n" +
+      "要求:① 拆解关键驱动因素并量化各自影响;② 还原传导链路(指标→动因→结果);" +
+      "③ 给出可验证的下钻路径与数据证据;④ 输出可执行的改进建议。";
+    if (el.chatInput) { el.chatInput.value = msg; autosizeInput(); }
+    flashItem(item, "✅ 已提交深度分析…", false);
+    if (el.chatInput) { el.chatInput.value = ""; el.chatInput.style.height = ""; }
+    sendMessage(msg);
+  }
+
   // A fixed menu can't follow its anchor through scroll/resize — just close.
   window.addEventListener("scroll", () => closeAllActMenus(), true);
   window.addEventListener("resize", () => closeAllActMenus());
@@ -1837,26 +1877,30 @@ welcome: ${esc(a.welcome_message || "")}</div>
     appendDashboardCard(dashboardConclusionCard(content, bucket.currentTurnTag || 1));
   }
 
+  // Returns true iff a 根因 card was actually appended (used to decide
+  // L1-vs-L2/L3 for the turn — see the llm_response / done handlers).
   function pushRootCauseIfAny(text) {
     const bucket = B();
     const content = extractRootCause(text);
-    if (!content) return;
+    if (!content) return false;
     bucket.rootCauseSeen = bucket.rootCauseSeen || new Set();
     const key = content.trim().toLowerCase();
-    if (bucket.rootCauseSeen.has(key)) return;
+    if (bucket.rootCauseSeen.has(key)) return true;
     bucket.rootCauseSeen.add(key);
     appendDashboardCard(dashboardRootCauseCard(content, bucket.currentTurnTag || 1));
+    return true;
   }
 
   function pushActionsIfAny(text) {
     const bucket = B();
     const content = extractActions(text);
-    if (!content) return;
+    if (!content) return false;
     bucket.actionsSeen = bucket.actionsSeen || new Set();
     const key = content.trim().toLowerCase();
-    if (bucket.actionsSeen.has(key)) return;
+    if (bucket.actionsSeen.has(key)) return true;
     bucket.actionsSeen.add(key);
     appendDashboardCard(dashboardActionsCard(content, bucket.currentTurnTag || 1));
+    return true;
   }
 
   // L1 dashboards show only chart + conclusion — strip table cards from the
@@ -2461,19 +2505,24 @@ welcome: ${esc(a.welcome_message || "")}</div>
           usage: evt.usage,
         });
         if (evt.text) {
+          const _bk = B();
+          const _tag = _bk.currentTurnTag || 1;
+          _bk.turnHasConclusion = _bk.turnHasConclusion || {};
+          _bk.turnHasL2L3 = _bk.turnHasL2L3 || {};
+          // 📌结论 / 🔍根因 / 💡建议 may land in the SAME message or be split
+          // across separate iterations. Extract each INDEPENDENTLY on its own
+          // marker — never gate 根因/建议 on 📌 being in the same message.
+          // (The old `if (text.includes("📌"))` gate dropped the L2/L3 cards
+          //  whenever the model emitted 📌结论 and 🔍根因/💡建议 separately.)
+          // All three pushes are idempotent no-ops without their marker.
           pushConclusionIfAny(evt.text);
-          // Only act on the L1/L2/L3 split when the model is actually delivering
-          // a templated answer (📌 present). Intermediate tool-call iterations
-          // tend to have no 📌 and would mis-prune valid L2/L3 tables.
-          if (evt.text.includes("📌")) {
-            const level = detectIntentLevel(evt.text);
-            if (level === "L2L3") {
-              pushRootCauseIfAny(evt.text);
-              pushActionsIfAny(evt.text);
-            } else {
-              pruneL1Dashboard(B().currentTurnTag || 1);
-            }
-          }
+          const _hadRC = pushRootCauseIfAny(evt.text);
+          const _hadAC = pushActionsIfAny(evt.text);
+          if (evt.text.includes("📌")) _bk.turnHasConclusion[_tag] = true;
+          // A turn is L2/L3 iff it actually rendered a 根因/建议 card. The
+          // L1 table-prune is deferred to the `done` handler so a
+          // conclusion-first / 根因-later split is never mis-pruned.
+          if (_hadRC || _hadAC) _bk.turnHasL2L3[_tag] = true;
           // Quadrant-assistant: detect any ```ui-command``` blocks and STAGE
           // them on the pending queue. The user clicks an "执行" button at
           // end-of-turn to actually apply them to the cockpit.
@@ -2495,13 +2544,25 @@ welcome: ${esc(a.welcome_message || "")}</div>
         el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
         break;
       }
-      case "done":
+      case "done": {
         setBusy(false);
-        appendTurnExportButton(B().currentTurnTag || 1);
+        const _bk = B();
+        const _tag = _bk.currentTurnTag || 1;
+        // Decide L1-vs-L2/L3 only now that the whole turn is complete, so a
+        // "📌结论 first, 🔍根因/💡建议 later" split is never mis-pruned.
+        // L2/L3 if a 根因/建议 card exists for this turn (flag OR DOM probe);
+        // prune L1 tables only when the turn had a 📌结论 but no L2/L3 card.
+        const _domL2L3 = el.dashboardList && el.dashboardList.querySelector(
+          `.dash-card.dash-rootcause[data-turn="${_tag}"], .dash-card.dash-actions[data-turn="${_tag}"]`);
+        const _hadL2L3 = (_bk.turnHasL2L3 && _bk.turnHasL2L3[_tag]) || !!_domL2L3;
+        const _hadConcl = _bk.turnHasConclusion && _bk.turnHasConclusion[_tag];
+        if (!_hadL2L3 && _hadConcl) pruneL1Dashboard(_tag);
+        appendTurnExportButton(_tag);
         // Quadrant-assistant: if any ui-commands were staged this turn,
         // render the "执行" card so the user can apply them in one click.
-        if (state.quadrant) appendApplyButton(B().currentTurnTag || 1);
+        if (state.quadrant) appendApplyButton(_tag);
         break;
+      }
       case "error":
         finalizeAssistantText();
         const errEl = el_h("div", "msg msg-error",
@@ -3297,10 +3358,10 @@ welcome: ${esc(a.welcome_message || "")}</div>
   // ------------------------------------------------------------------
   const QUADRANT_PROMPT_META = {
     salesflow: {
-      label: "销售助手",
-      scope: "CEO 驾驶舱 · 问题象限 01 · 销售业务流",
-      emptyTitle: "销售助手 · 销售业务流分析",
-      welcome: "销售助手已就绪。可分析订-发-收-回节点落差、区域结构与回款健康度,也可直接改本象限的维度 / 文字 / 图表。",
+      label: "财经助手",
+      scope: "CEO 驾驶舱 · 问题象限 01 · 财务经营流",
+      emptyTitle: "财经助手 · 财务经营流分析",
+      welcome: "财经助手已就绪。可分析订-发-收-回节点落差、区域结构与回款健康度,也可直接改本象限的维度 / 文字 / 图表。",
       hints: [
         "本期发货为何高于订单 64.62 万?",
         "把订/发/收/回节点柱图按事业部下钻",
@@ -3467,7 +3528,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
       `  - target / chart_id 都是裸 DOM id,不要加 "#" 前缀(写 "assetCategoryFilter" 而不是 "#assetCategoryFilter")。`,
       `  - 一次回答可以发多条 ui-command 块,会作为一批等用户点「执行」后统一应用。`,
       ``,
-      `示例(把销售象限的时间筛选器改为半年口径):`,
+      `示例(把财经象限的时间筛选器改为半年口径):`,
       "```ui-command",
       `{"channel":"cockpit-ui","quadrant":"salesflow","action":"set_filter_options","target":"salesTimeFilter","options":["上半年","下半年","全年"]}`,
       "```",

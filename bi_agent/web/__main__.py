@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 DEFAULT_ONTOLOGY = "ChatBI业务元数据_硕磐财务管理.xlsx"
-DEFAULT_DB = "guangfeng.db"
+DEFAULT_DB = "Kingdee.db"
 DEFAULT_AGENT = "bi-analyst"
 
 

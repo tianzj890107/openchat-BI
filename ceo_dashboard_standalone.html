@@ -2323,8 +2323,8 @@ const CEO_DRILLS = {
     ]
   },
   sales: {
-    title: "销售业务流：订 → 发 → 收 → 回",
-    breadcrumb: "集团 / 销售业务流",
+    title: "财务经营流：订 → 发 → 收 → 回",
+    breadcrumb: "集团 / 财务经营流",
     dims: ["集团 → 事业部 → 子公司", "年 → 季 → 月 → 周 → 日", "产品线 → 型号 → SKU", "区域 → 客户", "客户行业"],
     summary: "围绕订单、发货、收入、回款四节点判断链路是否顺畅。订单与应收来自业务库；发货以库存销售出库金额近似；收入以财报口径为权威。",
     head: ["节点", "金额", "数据来源", "异常判断"],
@@ -2363,7 +2363,7 @@ const CEO_DRILLS = {
     title: "库存资产：库存就是尚未兑现的资金",
     breadcrumb: "集团 / 库存 / 物料类别",
     dims: ["集团 → 事业部 → 工厂 → 仓库 → 库位", "产品线 → 型号 → 物料编码", "原材料 → 半成品 → 成品", "库龄区间", "供应商", "时间趋势"],
-    summary: "库存总额3127.98万元（来自guangfeng.db）。原材料634.76万、半成品639.67万、成品304.48万、其他段（辅料/备品/办公）1549.07万；6月以上超期202.16万，需穿透到关键物料。",
+    summary: "库存总额3127.98万元（来自Kingdee.db）。原材料634.76万、半成品639.67万、成品304.48万、其他段（辅料/备品/办公）1549.07万；6月以上超期202.16万，需穿透到关键物料。",
     head: ["物料编码", "物料名称", "类别", "库存段", "组织/仓库", "库存金额"],
     rows: () => CEO_DATA.inventory.topMaterials.map((r) => [r[0], r[1], r[2], r[3], r[4], wan(r[5])])
   },
@@ -2729,7 +2729,7 @@ window.addEventListener("DOMContentLoaded", () => {
 // ============================================================
 // Floating AI assistant (iframe mount of /workbench)
 // ============================================================
-const WORKBENCH_URL = "/workbench?v=49";
+const WORKBENCH_URL = "/workbench?v=53";
 
 function setAssistantSize(mode) {
   const modal = document.getElementById("assistantModal");
