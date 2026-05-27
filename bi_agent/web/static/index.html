@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BI Analyst · Ontology Workbench</title>
-  <link rel="stylesheet" href="/static/styles.css?v=53" />
+  <link rel="stylesheet" href="/static/styles.css?v=63" />
   <script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body data-mode="data">
@@ -28,6 +28,8 @@
       </div>
       <div class="topbar-meta" id="topbar-meta"></div>
       <div class="topbar-actions">
+        <button class="btn btn-ghost" id="btn-sources"
+                title="数据源设置 — 选择本体源与数据库源">◈ SOURCE</button>
         <button class="btn btn-ghost" id="btn-settings" title="模型与参数设置">⚙ MODEL</button>
         <button class="btn btn-ghost" id="btn-reset" title="开始新对话">⟲ RESET</button>
         <button class="btn btn-ghost" id="btn-toggle-dashboard"
@@ -108,6 +110,12 @@
                   <span class="composer-btn-ico">📚</span>
                   <span class="composer-btn-label">最近报表</span>
                   <span class="history-count" id="history-count">0</span>
+                </button>
+                <!-- Report-generation wizard launcher — only visible in report mode -->
+                <button class="composer-btn composer-reportgen" id="btn-reportgen"
+                        title="按经营规则配置生成标准管报">
+                  <span class="composer-btn-ico">⊞</span>
+                  <span class="composer-btn-label">报表生成</span>
                 </button>
                 <!-- Inline status text (upload / switching feedback) -->
                 <span class="upload-status" id="upload-status"></span>
@@ -311,6 +319,239 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=53"></script>
+  <!-- ============ DATA-SOURCE SETTINGS MODAL ============ -->
+  <!-- Switches the active ontology (.xlsx) and database (.db) the Agent
+       uses. PUT /api/sources re-registers BI tools and resets sessions. -->
+  <div class="modal-overlay" id="sources-overlay" hidden>
+    <div class="modal-panel" role="dialog" aria-labelledby="sources-title">
+      <div class="modal-header">
+        <span class="modal-title" id="sources-title">◈ 数据源设置</span>
+        <button class="modal-close" id="sources-close" aria-label="关闭">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-field">
+          <label class="settings-label" for="sources-ontology">本体源</label>
+          <select class="settings-select" id="sources-ontology"></select>
+          <div class="settings-hint">Agent 的指标定义与业务语义来源(.xlsx 业务元数据)。</div>
+        </div>
+        <div class="settings-field">
+          <label class="settings-label" for="sources-database">数据库源</label>
+          <select class="settings-select" id="sources-database"></select>
+          <div class="settings-hint">Agent 取数所用的 SQLite 数据库(.db)。</div>
+        </div>
+        <div class="rg-note rg-note-info">ℹ 切换数据源会把本体与 SQL 工具重新绑定到新源,并重置「数据分析」与「报表分析」两个模式的当前会话。</div>
+        <div class="settings-status" id="sources-status"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="sources-cancel">取消</button>
+        <button class="btn btn-primary" id="sources-save">保存并切换</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ REPORT-GENERATION WIZARD MODAL ============ -->
+  <!-- 7-step config wizard. On final confirm it composes a report-
+       generation request and dispatches it to the data-analysis agent;
+       the agent's取数 steps show in chat, the report renders into the
+       dashboard, and the per-turn 导出 buttons handle export. -->
+  <div class="modal-overlay" id="reportgen-overlay" hidden>
+    <div class="modal-panel reportgen-panel" role="dialog" aria-labelledby="reportgen-title">
+      <div class="modal-header">
+        <span class="modal-title" id="reportgen-title">⊞ 标准报表生成</span>
+        <button class="modal-close" id="reportgen-close" aria-label="关闭">✕</button>
+      </div>
+
+      <!-- Stepper -->
+      <div class="rg-stepper" id="rg-stepper">
+        <div class="rg-step active" data-step="1"><i>1</i><span>数据底座</span></div>
+        <div class="rg-step" data-step="2"><i>2</i><span>指标体系</span></div>
+        <div class="rg-step" data-step="3"><i>3</i><span>经营规则</span></div>
+        <div class="rg-step" data-step="4"><i>4</i><span>模板·输出</span></div>
+        <div class="rg-step" data-step="5"><i>5</i><span>权限切片</span></div>
+        <div class="rg-step" data-step="6"><i>6</i><span>图表库</span></div>
+        <div class="rg-step" data-step="7"><i>7</i><span>确认生成</span></div>
+      </div>
+
+      <div class="modal-body rg-body" id="rg-body">
+
+        <!-- ① 业务数据底座 -->
+        <div class="rg-panel active" data-panel="1">
+          <p class="rg-panel-desc">选择报表的数据来源与期间口径,这是后续取数的边界。</p>
+          <div class="rg-field" data-key="period" data-label="报表期间">
+            <label class="rg-field-label">报表期间</label>
+            <select class="rg-input">
+              <option>2025年3月(损益当前期)</option>
+              <option>2025年2月</option>
+              <option>2025年1月</option>
+              <option>2025年一季度(累计)</option>
+              <option>2025年4-12月(收入预测期)</option>
+            </select>
+          </div>
+          <div class="rg-field" data-key="dataSources" data-label="数据底座">
+            <label class="rg-field-label">数据底座(可多选)</label>
+            <div class="rg-checks">
+              <label class="rg-check"><input type="checkbox" checked /> 损益明细表 · T_HF_PL_Detail</label>
+              <label class="rg-check"><input type="checkbox" checked /> 收入预测清单 · T_HF_RevenueForecast</label>
+              <label class="rg-check"><input type="checkbox" /> 经营明细 · T_HF_RefreshData</label>
+              <label class="rg-check"><input type="checkbox" checked /> 超聚变本体语义层</label>
+            </div>
+          </div>
+          <div class="rg-field" data-key="compareBase" data-label="对比基期">
+            <label class="rg-field-label">对比基期</label>
+            <select class="rg-input">
+              <option>上期环比(2025年2月)</option>
+              <option>历史实际数基线</option>
+              <option>预算数</option>
+              <option>全年预测数</option>
+              <option>不对比</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ② 指标体系 -->
+        <div class="rg-panel" data-panel="2">
+          <p class="rg-panel-desc">从超聚变本体勾选纳入报表的指标集,指标口径以本体已发布定义为准。</p>
+          <div class="rg-field" data-key="metricSets" data-label="指标集">
+            <label class="rg-field-label">指标集(可多选)</label>
+            <div class="rg-checks rg-checks-2col">
+              <label class="rg-check"><input type="checkbox" checked /> 收入销毛类 · 净销售收入/销售成本/销毛额/销毛率</label>
+              <label class="rg-check"><input type="checkbox" checked /> 报告金额类 · 报告金额CNY/USD</label>
+              <label class="rg-check"><input type="checkbox" checked /> 收入预测类 · 收入预测/预测执行率</label>
+              <label class="rg-check"><input type="checkbox" /> 名义销毛类 · 名义销毛/名义销毛率</label>
+            </div>
+          </div>
+          <div class="rg-field" data-key="metricSource" data-label="口径来源">
+            <label class="rg-field-label">口径来源</label>
+            <select class="rg-input">
+              <option>超聚变本体 · 已发布指标定义</option>
+              <option>报表方案自定义口径</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ③ 经营规则配置 -->
+        <div class="rg-panel" data-panel="3">
+          <p class="rg-panel-desc">选择经营规则方案;规则定义与版本由「规则中心」统一管理,此处仅做选择与调参。</p>
+          <div class="rg-field" data-key="rulePlan" data-label="规则方案">
+            <label class="rg-field-label">规则方案</label>
+            <select class="rg-input">
+              <option>收入销毛分析 · 标准口径</option>
+              <option>销毛率基线推演 · 产业+行管</option>
+              <option>自定义规则方案…</option>
+            </select>
+          </div>
+          <div class="rg-field" data-key="ruleItems" data-label="规则明细">
+            <label class="rg-field-label">规则明细(随方案带出,可逐项启用)</label>
+            <div class="rg-checks">
+              <label class="rg-check"><input type="checkbox" checked /> 行管标签 · 行管1-7 判定(国内外/经营单元/行业/销售类型)</label>
+              <label class="rg-check"><input type="checkbox" checked /> 销毛率基线 · 按产业+行管维度搭建基线</label>
+              <label class="rg-check"><input type="checkbox" checked /> 基线调整 · 规则类 / 利好利空 / 基线替换</label>
+              <label class="rg-check"><input type="checkbox" checked /> 报表项归集 · 报表项一级~四级归集</label>
+            </div>
+          </div>
+          <div class="rg-field" data-key="customRule" data-label="自定义规则" hidden>
+            <label class="rg-field-label">自定义规则描述</label>
+            <textarea class="rg-input rg-textarea" rows="5"
+              placeholder="请用自然语言描述本次报表的经营规则 —— 例如:口径(收入是否含税、剔除哪些交易)、费用分摊方式、需要的调整事项、特殊归类逻辑等。Agent 将按此执行取数与计算。"></textarea>
+          </div>
+          <div class="rg-note rg-note-warn">⚠ 影响预览:基线调整(规则类 / 利好利空事项)将改变销毛率推演结果,发布前建议在沙箱比对改前/改后。</div>
+        </div>
+
+        <!-- ④ 报表模板和输出格式 -->
+        <div class="rg-panel" data-panel="4">
+          <p class="rg-panel-desc">选择报表模板(行列结构)、版式与输出格式。</p>
+          <div class="rg-field" data-key="template" data-label="报表模板">
+            <label class="rg-field-label">报表模板</label>
+            <div class="rg-radios">
+              <label class="rg-check"><input type="radio" name="rg-tpl" checked /> 损益明细表</label>
+              <label class="rg-check"><input type="radio" name="rg-tpl" /> 收入预测清单</label>
+              <label class="rg-check"><input type="radio" name="rg-tpl" /> 收入销毛分析报告</label>
+              <label class="rg-check"><input type="radio" name="rg-tpl" /> 销毛率基线推演表</label>
+            </div>
+          </div>
+          <div class="rg-field" data-key="layout" data-label="版式">
+            <label class="rg-field-label">版式</label>
+            <select class="rg-input">
+              <option>标准版</option>
+              <option>精简版</option>
+              <option>管理层汇报版</option>
+            </select>
+          </div>
+          <div class="rg-field" data-key="outputs" data-label="输出格式">
+            <label class="rg-field-label">输出格式(可多选)</label>
+            <div class="rg-checks">
+              <label class="rg-check"><input type="checkbox" checked /> 在线交互报表</label>
+              <label class="rg-check"><input type="checkbox" checked /> Excel</label>
+              <label class="rg-check"><input type="checkbox" /> PPT</label>
+              <label class="rg-check"><input type="checkbox" /> PDF</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- ⑤ 权限切片 -->
+        <div class="rg-panel" data-panel="5">
+          <p class="rg-panel-desc">设定本次报表的可见数据范围与口径权限。</p>
+          <div class="rg-field" data-key="orgScope" data-label="组织范围">
+            <label class="rg-field-label">组织范围</label>
+            <select class="rg-input">
+              <option>全公司</option>
+              <option>国内</option>
+              <option>国际</option>
+              <option>指定经营单元</option>
+            </select>
+          </div>
+          <div class="rg-field" data-key="industryScope" data-label="产业范围">
+            <label class="rg-field-label">产业范围(可多选)</label>
+            <div class="rg-checks rg-checks-2col">
+              <label class="rg-check"><input type="checkbox" checked /> 全部产业</label>
+              <label class="rg-check"><input type="checkbox" /> 产业1</label>
+              <label class="rg-check"><input type="checkbox" /> 产业2</label>
+              <label class="rg-check"><input type="checkbox" /> 产业3</label>
+            </div>
+          </div>
+          <div class="rg-field" data-key="visScope" data-label="可见口径">
+            <label class="rg-field-label">可见口径</label>
+            <select class="rg-input">
+              <option>管理层全口径</option>
+              <option>经营单元口径</option>
+              <option>脱敏口径</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ⑥ 可选图表库 -->
+        <div class="rg-panel" data-panel="6">
+          <p class="rg-panel-desc">勾选随报表生成的配图,图表将绑定到对应报表区块。</p>
+          <div class="rg-field" data-key="charts" data-label="配图">
+            <label class="rg-field-label">可选图表(可多选)</label>
+            <div class="rg-checks rg-checks-2col">
+              <label class="rg-check"><input type="checkbox" checked /> 趋势线图 · 收入/销毛月度趋势</label>
+              <label class="rg-check"><input type="checkbox" checked /> 维度对比柱状图 · 产业/经营单元</label>
+              <label class="rg-check"><input type="checkbox" checked /> 占比饼图 · 产业结构分布</label>
+              <label class="rg-check"><input type="checkbox" /> 销毛率瀑布图 · 基线→调整→定稿</label>
+              <label class="rg-check"><input type="checkbox" /> 预算 / 预测执行率对比图</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- ⑦ 报表自动生成 · 确认 -->
+        <div class="rg-panel" data-panel="7">
+          <p class="rg-panel-desc">核对配置,确认后将在对话框中开启报表生成任务 —— Agent 会逐步取数,把报表内容输出到看板,并在末尾提供导出选项。</p>
+          <div class="rg-review" id="rg-review"></div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer rg-footer">
+        <button class="btn btn-ghost" id="rg-save-plan">⭐ 存为方案</button>
+        <span class="rg-footer-spacer"></span>
+        <button class="btn btn-ghost" id="rg-prev" hidden>‹ 上一步</button>
+        <button class="btn btn-primary" id="rg-next">下一步 ›</button>
+        <button class="btn btn-primary" id="rg-confirm" hidden>▸ 确认 · 开启报表生成</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=63"></script>
 </body>
 </html>

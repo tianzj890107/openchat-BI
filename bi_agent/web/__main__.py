@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_ONTOLOGY = "ChatBI业务元数据_硕磐财务管理.xlsx"
-DEFAULT_DB = "Kingdee.db"
+DEFAULT_ONTOLOGY = "超聚变本体元数据.xlsx"
+DEFAULT_DB = "HyperFusion.db"
 DEFAULT_AGENT = "bi-analyst"
 
 

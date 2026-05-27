@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict
 
 from open_claude.agent_def import AgentDef, get_agent_def_registry, load_agent_defs
 
+from ..llm.provider import stream_message
 from ..llm.registry import list_models
 from ..llm.runtime_config import (
     get_api_key_status,
@@ -27,6 +28,7 @@ from .session import WebSession
 
 
 REPORT_AGENT_NAME = "report-analyst"
+REPORTGEN_AGENT_NAME = "report-generator"
 
 # Hard cap so the multi-report system prompt doesn't blow past the model's
 # context window. 5 × ~12k chars/report ≈ 60k chars total — same budget as
@@ -48,6 +50,7 @@ class AppState:
         self.agent_def: Optional[AgentDef] = None
         self.session: Optional[WebSession] = None
         self.db_path: str = ""
+        self.ontology_path: str = ""
         # --- Report-analysis mode ---------------------------------------
         # Multiple reports may be active simultaneously. The ordered list
         # below preserves the user's selection order so prompt sections,
@@ -96,6 +99,7 @@ def configure(
 
     STATE.cwd = cwd
     STATE.db_path = db_path
+    STATE.ontology_path = ontology_path
     STATE.ontology_store = OntologyStore.from_xlsx(ontology_path)
     register_all(STATE.ontology_store, db_path)
 
@@ -161,6 +165,24 @@ class ConfigUpdate(BaseModel):
     deepseek_api_key: Optional[str] = None
 
 
+class SourcesUpdate(BaseModel):
+    """Switch the active ontology / database source. Omit a field to keep it."""
+    ontology: Optional[str] = None   # xlsx filename, relative to cwd
+    database: Optional[str] = None   # .db filename, relative to cwd
+
+
+class ReportComposeBlock(BaseModel):
+    """One dashboard content block fed to the report-compose LLM call."""
+    idx: int
+    kind: str = "text"          # "text" | "table" | "chart"
+    title: str = ""
+    content: str = ""
+
+
+class ReportComposeRequest(BaseModel):
+    blocks: List[ReportComposeBlock] = []
+
+
 def _project_root() -> Path:
     # Prefer the cwd configured at startup; fall back to repo root inferred from this file.
     if STATE.cwd:
@@ -196,6 +218,11 @@ def index() -> FileResponse:
 @app.get("/ceo_cockpit.html")
 def ceo_cockpit_page() -> FileResponse:
     return FileResponse(_project_root() / "ceo_cockpit.html")
+
+
+@app.get("/dashboard.html")
+def role_dashboard_page() -> FileResponse:
+    return _no_cache_file(_project_root() / "dashboard.html")
 
 
 @app.get("/asset_overdue_inventory.html")
@@ -285,6 +312,73 @@ def put_config_endpoint(req: ConfigUpdate) -> JSONResponse:
         "models": list_models(),
         "current": cfg.to_dict(),
         "api_keys": get_api_key_status(),
+    })
+
+
+@app.get("/api/sources")
+def get_sources_endpoint() -> JSONResponse:
+    """List available ontology (.xlsx) and database (.db) files in the
+    working directory, flagging the currently active one."""
+    cwd = Path(STATE.cwd)
+
+    def _scan(pattern: str) -> list[str]:
+        return sorted(
+            p.name for p in cwd.glob(pattern)
+            if p.is_file() and not p.name.startswith("~$")
+        )
+
+    return JSONResponse({
+        "ontology": {
+            "options": _scan("*.xlsx"),
+            "active": os.path.basename(STATE.ontology_path),
+        },
+        "database": {
+            "options": _scan("*.db"),
+            "active": os.path.basename(STATE.db_path),
+        },
+    })
+
+
+@app.put("/api/sources")
+def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
+    """Switch the active ontology / database at runtime. Re-registers the
+    BI tools against the new sources and resets sessions so the change
+    takes effect on the next turn."""
+    cwd = Path(STATE.cwd)
+    changed: list[str] = []
+
+    if req.ontology:
+        op = cwd / req.ontology
+        if not op.is_file():
+            raise HTTPException(400, f"本体文件不存在: {req.ontology}")
+        try:
+            store = OntologyStore.from_xlsx(str(op))
+        except Exception as e:  # surface load errors to the UI
+            raise HTTPException(400, f"本体文件无法加载: {req.ontology} — {e}")
+        STATE.ontology_store = store
+        STATE.ontology_path = str(op)
+        changed.append("ontology")
+
+    if req.database:
+        dp = cwd / req.database
+        if not dp.is_file():
+            raise HTTPException(400, f"数据库文件不存在: {req.database}")
+        STATE.db_path = str(dp)
+        changed.append("database")
+
+    if changed:
+        # register_tool is idempotent — this rebinds the ontology/SQL
+        # tools to the new store + db_path.
+        register_all(STATE.ontology_store, STATE.db_path)
+        # Reset sessions so the new system prompt / ontology take effect.
+        STATE.session = None
+        STATE.report_session = None
+        STATE.active_report_ids = []
+
+    return JSONResponse({
+        "changed": changed,
+        "ontology": os.path.basename(STATE.ontology_path),
+        "database": os.path.basename(STATE.db_path),
     })
 
 
@@ -579,6 +673,131 @@ def report_session_reset() -> JSONResponse:
             STATE.active_report_ids, STATE.report_with_db,
         )
     return JSONResponse({"ok": True})
+
+
+@app.post("/api/report/generate")
+def report_generate() -> JSONResponse:
+    """Start a report-GENERATION session — runs IN report mode on the
+    report-generator agent (ontology + DB tools), not bound to any
+    uploaded report. The wizard sends the report config as the first
+    chat message; the agent searches data and assembles the report.
+    """
+    if not STATE.ontology_store:
+        raise HTTPException(500, "Server not configured; call configure() first.")
+    reg = get_agent_def_registry()
+    gen_agent = reg.get(REPORTGEN_AGENT_NAME)
+    if gen_agent is None:
+        raise HTTPException(
+            500,
+            f"Agent '{REPORTGEN_AGENT_NAME}' not found — 请在添加 "
+            f".claude/agents/{REPORTGEN_AGENT_NAME}.md 后重启服务。",
+        )
+    STATE.report_session = WebSession(
+        cwd=STATE.cwd,
+        agent_def=gen_agent,
+        ontology_store=STATE.ontology_store,
+        tools_override=REPORT_DB_TOOLS,
+        context_header="# 任务类型: 标准报表生成\n# 数据库工具可用性: enabled",
+    )
+    STATE.active_report_ids = []
+    STATE.report_with_db = True
+    return JSONResponse({"ok": True})
+
+
+def _llm_complete(
+    system_prompt: str,
+    user_text: str,
+    max_tokens: int = 3000,
+    temperature: float = 0.3,
+) -> str:
+    """One-shot LLM completion — no tools, no agent loop. Returns the
+    concatenated text. Raises RuntimeError on a provider error."""
+    cfg = get_llm_config()
+    chunks: list[str] = []
+    for evt in stream_message(
+        messages=[{"role": "user", "content": user_text}],
+        system_prompt=system_prompt,
+        allowed_tools=None,
+        model_key=cfg.model_key,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        thinking=False,
+    ):
+        etype = evt.get("type")
+        if etype == "text_delta":
+            chunks.append(evt.get("text", ""))
+        elif etype == "error":
+            raise RuntimeError(evt.get("error", "LLM provider error"))
+    return "".join(chunks).strip()
+
+
+def _parse_json_object(raw: str) -> Optional[dict]:
+    """Best-effort: extract the first {...} JSON object from an LLM reply."""
+    s = (raw or "").strip()
+    if s.startswith("```"):
+        s = s.split("\n", 1)[1] if "\n" in s else s
+        if s.rstrip().endswith("```"):
+            s = s.rstrip()[:-3]
+    a, b = s.find("{"), s.rfind("}")
+    if a < 0 or b <= a:
+        return None
+    try:
+        obj = json.loads(s[a:b + 1])
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
+
+
+@app.post("/api/report/compose")
+def report_compose(req: ReportComposeRequest) -> JSONResponse:
+    """One LLM call: integrate the dashboard content blocks into a formal
+    report-document structure — title, executive summary, and a sectioned
+    table-of-contents with a per-section intro paragraph. The frontend
+    then assembles the Word doc, interleaving the real tables/charts."""
+    blocks = req.blocks or []
+    if not blocks:
+        raise HTTPException(400, "no content blocks to compose")
+
+    lines = []
+    for b in blocks:
+        c = " ".join((b.content or "").split())
+        if len(c) > 600:
+            c = c[:600] + "…"
+        lines.append(
+            f"[{b.idx}] 类型={b.kind} 标题={b.title or '(无)'} 内容={c or '(无)'}"
+        )
+    manifest = "\n".join(lines)
+
+    system_prompt = (
+        "你是一名资深报表编辑。用户会给你一份报表的「内容块清单」"
+        "(每块有编号、类型 text/table/chart、标题、内容摘要)。"
+        "请把这些内容块整合成一份正式报表文档的结构,并**只输出 JSON**"
+        "(不要 markdown 代码围栏、不要任何额外文字)。\n\n"
+        "JSON 结构:\n"
+        '{\n'
+        '  "title": "报表标题(简洁专业)",\n'
+        '  "summary": "执行摘要,150-300字,综述核心情况与结论",\n'
+        '  "sections": [\n'
+        '    {"heading": "一、章节标题", "intro": "本节简介段落,60-150字",'
+        ' "blocks": [内容块编号数组]}\n'
+        '  ]\n'
+        "}\n\n"
+        "规则:章节 3-6 个,按主题归类;每个内容块必须且只能归入一个章节的 "
+        "blocks;blocks 用清单里的编号;heading 带「一、二、三、」序号;"
+        "不要编造清单里没有的数据。"
+    )
+    user_text = (
+        f"报表内容块清单(共 {len(blocks)} 块):\n{manifest}\n\n"
+        "请把以上内容整合为报表文档结构,按要求只输出 JSON。"
+    )
+    try:
+        raw = _llm_complete(system_prompt, user_text, max_tokens=3000)
+    except Exception as e:
+        raise HTTPException(502, f"大模型调用失败: {e}")
+    plan = _parse_json_object(raw)
+    if not plan or not isinstance(plan.get("sections"), list):
+        raise HTTPException(502, "大模型未返回可解析的报表结构")
+    return JSONResponse(plan)
 
 
 @app.post("/api/report/chat")

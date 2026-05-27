@@ -1,0 +1,2107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>角色驾驶舱</title>
+  <style>
+* { box-sizing: border-box; }
+
+:root {
+  --nav: #101c28;
+  --side: #2b3a47;
+  --side-dark: #101c28;
+  --line: #e8ebef;
+  --line-strong: #d7dce2;
+  --text: #111827;
+  --muted: #6b7280;
+  --blue: #0b7ff3;
+  --orange: #ff9f43;
+  --green: #22c7a9;
+  --red: #ef4444;
+  --panel: #ffffff;
+  --soft: #f7f9fb;
+  --page: #f4f6f9;
+}
+
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+  color: var(--text);
+  background: var(--page);
+}
+
+.app { min-height: 100vh; }
+
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  background: var(--nav);
+  color: #eef2f7;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(16, 28, 40, .16);
+}
+
+.hamburger {
+  width: 56px;
+  text-align: center;
+  font-size: 25px;
+  line-height: 56px;
+  color: #d8dee7;
+}
+
+.brand {
+  width: 336px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 40px;
+  font-size: 34px;
+  font-weight: 800;
+  color: #33383d;
+}
+
+.brand .env {
+  padding: 6px 12px;
+  background: #172df5;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 2px;
+}
+
+.platform-nav {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+.platform-nav a {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 0 28px;
+  color: #e5e7eb;
+  text-decoration: none;
+  border-left: 1px solid rgba(255, 255, 255, .03);
+}
+
+.platform-nav a.active { background: #07121d; }
+
+.nav-icon {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f3f6fa;
+  font-size: 31px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.nav-label {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.top-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 100%;
+  padding-right: 18px;
+  color: #e5edf6;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.top-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.top-action-icon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  position: relative;
+  overflow: hidden;
+}
+
+.top-action-icon.globe {
+  background: #2e3b50;
+  color: #fff;
+}
+
+.top-action-icon.globe::before {
+  content: "";
+  width: 22px;
+  height: 22px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background:
+    linear-gradient(90deg, transparent 45%, #fff 45% 55%, transparent 55%),
+    linear-gradient(0deg, transparent 45%, #fff 45% 55%, transparent 55%);
+}
+
+.top-action-icon.bell::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 14px;
+  height: 15px;
+  border-radius: 8px 8px 4px 4px;
+  background: #d8dee7;
+  transform: translateX(-50%);
+}
+
+.top-action-icon.bell::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #d8dee7;
+  box-shadow: 0 -4px 0 -1px #d8dee7;
+  transform: translateX(-50%);
+}
+
+.top-action-icon.user {
+  background: #0875e9;
+}
+
+.top-action-icon.user::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translateX(-50%);
+}
+
+.top-action-icon.user::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  width: 19px;
+  height: 12px;
+  border-radius: 14px 14px 4px 4px;
+  background: #fff;
+  transform: translateX(-50%);
+}
+
+.top-badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #ff1f36;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.sidebar {
+  position: fixed;
+  top: 56px;
+  bottom: 0;
+  left: 0;
+  width: 300px;
+  background: var(--side);
+  color: #d9e4ef;
+  z-index: 9;
+}
+
+.search {
+  height: 56px;
+  border-bottom: 1px solid rgba(255,255,255,.12);
+  display: flex;
+  align-items: center;
+  padding: 0 22px;
+  color: #8291a2;
+  font-size: 18px;
+}
+
+.search span { margin-left: auto; }
+
+.menu-title,
+.menu-item {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  gap: 12px;
+  font-size: 18px;
+  border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.menu-title { background: #2f4050; }
+.menu-title .chev,
+.menu-item .chev {
+  margin-left: auto;
+  color: #a7b2bd;
+}
+
+.submenu a {
+  display: block;
+  height: 60px;
+  line-height: 60px;
+  padding-left: 68px;
+  color: #e5eef7;
+  text-decoration: none;
+  font-size: 17px;
+}
+
+.submenu a.active {
+  background: var(--side-dark);
+  color: #fff;
+  font-weight: 700;
+}
+
+.content {
+  margin-left: 300px;
+  padding-top: 56px;
+}
+
+.tabstrip {
+  height: 50px;
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  padding-left: 26px;
+  border-bottom: 1px solid #ddd;
+  background: #fff;
+}
+
+.tab {
+  width: 226px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line-strong);
+  border-bottom: none;
+  color: #666;
+  border-radius: 4px 4px 0 0;
+  text-decoration: none;
+  position: relative;
+}
+
+.tab.active {
+  color: #006ee6;
+  background: #eef6ff;
+  border-color: #0078ff;
+  font-weight: 700;
+}
+
+.tab .close {
+  position: absolute;
+  right: 18px;
+  color: #666;
+}
+
+.page {
+  padding: 18px 22px 34px;
+}
+
+.page-head {
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 14px 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+
+.page-head h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 800;
+}
+
+.page-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.role-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #374151;
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+.head-tools {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.role-select {
+  width: 248px;
+  height: 38px;
+  padding: 0 38px 0 12px;
+  border: 1px solid #cfd8e3;
+  border-radius: 4px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  outline: none;
+}
+
+.role-select:focus {
+  border-color: #0078ff;
+  box-shadow: 0 0 0 3px rgba(0, 120, 255, .12);
+}
+
+.edit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  min-width: 92px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #cfd8e3;
+  background: #fff;
+  color: #1f2937;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.page-btn.primary {
+  border-color: #0078ff;
+  background: #0078ff;
+  color: #fff;
+}
+
+.page-btn:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.edit-state {
+  min-width: 118px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, .65fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+
+.panel-head {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.panel-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.panel-head span {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.panel-body { padding: 14px 16px 16px; }
+
+.editable-board {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+
+.board-widget {
+  grid-column: span 6;
+  position: relative;
+  min-height: 184px;
+  overflow: visible;
+}
+
+.board-widget.wide { grid-column: span 8; }
+.board-widget.narrow { grid-column: span 4; }
+.board-widget.full { grid-column: 1 / -1; }
+
+.board-widget > .panel-body {
+  min-height: inherit;
+}
+
+.widget-tools {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.widget-tool {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  border: 1px solid #cfd8e3;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #64748b;
+  font-weight: 800;
+}
+
+.resize-handle {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 18px;
+  height: 18px;
+  display: none;
+  border-right: 3px solid #0078ff;
+  border-bottom: 3px solid #0078ff;
+  background:
+    linear-gradient(135deg, transparent 0 48%, rgba(0, 120, 255, .28) 49% 52%, transparent 53%),
+    #fff;
+  cursor: nwse-resize;
+  z-index: 3;
+}
+
+.resize-ghost {
+  position: fixed;
+  z-index: 45;
+  min-width: 142px;
+  padding: 7px 10px;
+  border: 1px solid #0078ff;
+  background: #f3f8ff;
+  color: #1f4f80;
+  font-size: 13px;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .16);
+}
+
+body.editing .board-widget {
+  outline: 2px dashed rgba(0, 120, 255, .38);
+  outline-offset: 3px;
+}
+
+body.editing .widget-tools { display: inline-flex; }
+body.editing .resize-handle { display: block; }
+body.editing .board-widget.dragging { opacity: .42; }
+body.resizing { cursor: nwse-resize; user-select: none; }
+body.resizing .board-widget.resizing { outline-color: rgba(0, 120, 255, .75); }
+body.editing .editable-board { background: linear-gradient(0deg, rgba(0,120,255,.04), rgba(0,120,255,.04)); }
+
+.config-note {
+  display: none;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px dashed #7bb9ff;
+  background: #f3f8ff;
+  color: #1f4f80;
+  font-size: 13px;
+}
+
+body.editing .config-note { display: block; }
+
+.ai-edit-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 42;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, .34);
+}
+
+.ai-edit-modal.open { display: flex; }
+
+.ai-edit-dialog {
+  width: min(920px, 100%);
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, .12);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, .24);
+}
+
+.ai-edit-head {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.ai-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ai-avatar {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #0078ff;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.ai-edit-head b {
+  display: block;
+  font-size: 18px;
+}
+
+.ai-edit-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ai-edit-body {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-height: 500px;
+}
+
+.ai-sidebar {
+  padding: 14px;
+  border-right: 1px solid var(--line);
+  background: #f8fafc;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.ai-section-title {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ai-mode-list,
+.ai-suggestions {
+  display: grid;
+  gap: 8px;
+}
+
+.ai-mode {
+  min-height: 56px;
+  border: 1px solid #d7dce2;
+  background: #fff;
+  color: #1f2937;
+  text-align: left;
+  padding: 9px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ai-mode b {
+  display: block;
+  font-size: 14px;
+}
+
+.ai-mode span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ai-mode.active {
+  border-color: #0078ff;
+  background: #eef6ff;
+  color: #005dbf;
+}
+
+.ai-chat {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: #fff;
+}
+
+.ai-edit-log {
+  min-height: 340px;
+  max-height: 520px;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 16px;
+  background: #fff;
+}
+
+.ai-log-item {
+  max-width: 86%;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ai-log-item.user {
+  justify-self: end;
+  background: #eef6ff;
+  border-color: #cfe5ff;
+}
+
+.ai-log-item.assistant {
+  justify-self: start;
+}
+
+.ai-log-item b {
+  color: #075985;
+}
+
+.ai-log-item ul {
+  margin: 6px 0 0 18px;
+  padding: 0;
+}
+
+.ai-composer {
+  border-top: 1px solid var(--line);
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.ai-command {
+  width: 100%;
+  min-height: 72px;
+  max-height: 150px;
+  resize: none;
+  padding: 10px;
+  border: 1px solid #cfd8e3;
+  color: #111827;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  outline: none;
+}
+
+.ai-command:focus {
+  border-color: #0078ff;
+  box-shadow: 0 0 0 3px rgba(0, 120, 255, .12);
+}
+
+.ai-edit-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ai-mode-hint {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.ai-suggestion {
+  min-height: 34px;
+  border: 1px solid #d5e7ff;
+  background: #f3f8ff;
+  color: #1f4f80;
+  text-align: left;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.filter {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid #d7dce2;
+  background: #f8fafc;
+  color: #374151;
+  font-size: 13px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.kpi {
+  min-height: 94px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+}
+
+.kpi span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kpi strong {
+  display: block;
+  margin-top: 7px;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.kpi em {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-style: normal;
+  font-size: 12px;
+}
+
+.kpi.good strong { color: #07866f; }
+.kpi.warn strong { color: #b76700; }
+.kpi.bad strong { color: #c52222; }
+
+.visual-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.chart-box {
+  min-height: 304px;
+  border: 1px solid var(--line);
+  padding: 12px;
+  background: #fff;
+}
+
+.chart-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.chart-title span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.bars {
+  display: grid;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 72px;
+  gap: 10px;
+  align-items: center;
+  color: #334155;
+  font-size: 13px;
+}
+
+.track {
+  height: 12px;
+  background: #e8edf4;
+  overflow: hidden;
+}
+
+.fill { height: 100%; background: var(--blue); }
+
+.flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.flow-step {
+  min-height: 125px;
+  border: 1px solid var(--line);
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.flow-step b {
+  display: block;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.flow-step strong {
+  display: block;
+  margin-top: 9px;
+  font-size: 21px;
+}
+
+.flow-step span {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.right-col,
+.stack {
+  display: grid;
+  gap: 14px;
+}
+
+.ask-list,
+.insight-list,
+.task-list,
+.permission-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ask,
+.insight,
+.task,
+.permission {
+  border: 1px solid var(--line);
+  padding: 11px 12px;
+  background: var(--soft);
+}
+
+.ask {
+  color: #1f4f80;
+  background: #f3f8ff;
+  border-color: #d5e7ff;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ask::before {
+  content: "问";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.insight b,
+.task b,
+.permission b {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+.insight p,
+.task p,
+.permission p {
+  display: block;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.task {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.status {
+  min-width: 60px;
+  text-align: center;
+  padding: 5px 8px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 13px;
+}
+
+.status.hot {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status.week {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.config-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, .34);
+}
+
+.config-modal.open { display: flex; }
+
+.config-dialog {
+  width: min(680px, 100%);
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, .12);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, .24);
+}
+
+.config-head {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.config-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.config-close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: #334155;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.config-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 16px 18px 18px;
+}
+
+.config-field {
+  display: grid;
+  gap: 6px;
+  color: #374151;
+  font-size: 14px;
+}
+
+.config-field.full { grid-column: 1 / -1; }
+
+.config-field input,
+.config-field select {
+  height: 36px;
+  border: 1px solid #cfd8e3;
+  padding: 0 10px;
+  color: #111827;
+  font: inherit;
+}
+
+.config-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+@media (max-width: 1280px) {
+  .dashboard-grid,
+  .visual-grid,
+  .page-head {
+    grid-template-columns: 1fr;
+  }
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .role-picker,
+  .head-tools { justify-content: flex-start; justify-items: start; }
+  .board-widget,
+  .board-widget.wide,
+  .board-widget.narrow { grid-column: 1 / -1; }
+}
+
+@media (max-width: 820px) {
+  .sidebar { display: none; }
+  .content { margin-left: 0; }
+  .brand { width: auto; padding-left: 6px; font-size: 24px; color: #fff; }
+  .brand .env,
+  .platform-nav,
+  .top-actions { display: none; }
+  .page { padding: 12px; }
+  .kpi-grid,
+  .flow {
+    grid-template-columns: 1fr;
+  }
+  .role-select { width: min(100%, 248px); }
+  .config-form { grid-template-columns: 1fr; }
+  .ai-edit-body { grid-template-columns: 1fr; }
+  .ai-sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="hamburger">☰</div>
+      <div class="brand">EIMOS <span class="env">PRO</span></div>
+      <nav class="platform-nav">
+        <a class="active" href="/"><span class="nav-icon">⌂</span><span class="nav-label">产品功能</span></a>
+        <a href="#"><span class="nav-icon">▣</span><span class="nav-label">任务中心</span></a>
+        <a href="#"><span class="nav-icon">×</span><span class="nav-label">运维平台</span></a>
+        <a href="#"><span class="nav-icon">▲</span><span class="nav-label">企业架构</span></a>
+        <a href="#"><span class="nav-icon">▤</span><span class="nav-label">开发交付</span></a>
+      </nav>
+      <div class="top-actions">
+        <button class="top-action" type="button" title="语言"><span class="top-action-icon globe"></span></button>
+        <button class="top-action" type="button" title="通知"><span class="top-action-icon bell"><span class="top-badge">99+</span></span></button>
+        <button class="top-action" type="button" title="账户"><span class="top-action-icon user"></span><span>体****1</span></button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="search">搜索 <span>⌕</span></div>
+      <div class="menu-title"><span>IBA</span> 智能经营解析(IBA) <span class="chev">⌃</span></div>
+      <div class="submenu">
+        <a href="/">CEO驾驶舱</a>
+        <a class="active" href="/dashboard.html">驾驶舱</a>
+        <a href="income.html">收入</a>
+        <a href="/workbench">i-Agent</a>
+      </div>
+      <div class="menu-item">流程运营(360) <span class="chev">⌄</span></div>
+      <div class="menu-item">智能销售管理(ISMP) <span class="chev">⌄</span></div>
+      <div class="menu-item">智能合同管理(ICM) <span class="chev">⌄</span></div>
+      <div class="menu-item">开票回款管理(IB&C) <span class="chev">⌄</span></div>
+      <div class="menu-item">产品配置周期管理(CLM) <span class="chev">⌄</span></div>
+      <div class="menu-item">配置报价管理(CPQ) <span class="chev">⌄</span></div>
+      <div class="menu-item">集成计划(IPS) <span class="chev">⌄</span></div>
+    </aside>
+
+    <main class="content">
+      <nav class="tabstrip" aria-label="驾驶舱页签">
+        <a class="tab" href="/">CEO驾驶舱 <span class="close">×</span></a>
+        <a class="tab active" href="/dashboard.html">角色驾驶舱 <span class="close">×</span></a>
+      </nav>
+
+      <section class="page">
+        <div class="page-head">
+          <div>
+            <h1 id="pageTitle">CFO驾驶舱</h1>
+            <p id="pageSubtitle">集团全域权限 · 财务口径 + 经营口径</p>
+          </div>
+          <div class="head-tools">
+            <label class="role-picker" for="roleSelect">
+              <span>当前角色</span>
+              <select class="role-select" id="roleSelect" aria-label="选择驾驶舱角色">
+                <option value="cfo">CFO</option>
+                <option value="sales">销售负责人</option>
+                <option value="supply">供应链负责人</option>
+              </select>
+            </label>
+            <div class="edit-actions">
+              <button class="page-btn" id="permissionQueryOpen" type="button">权限切片</button>
+              <button class="page-btn" id="aiEditOpen" type="button">AI助手编辑</button>
+              <button class="page-btn primary" id="editToggle" type="button">编辑页面</button>
+              <button class="page-btn" id="addWidgetBtn" type="button" disabled>新增看板项目</button>
+              <button class="page-btn" id="resetLayoutBtn" type="button">恢复默认</button>
+              <span class="edit-state" id="editState">浏览模式</span>
+            </div>
+          </div>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>核心指标</h2>
+            <span id="permissionScope">集团 / 全组织 / 敏感财务字段可见</span>
+          </div>
+          <div class="panel-body">
+            <div class="filters" id="filters"></div>
+            <div class="kpi-grid" id="kpis"></div>
+          </div>
+        </section>
+
+        <div class="config-note">编辑模式已开启：可拖动排序柄、缩放手柄或点击“新增看板项目”手动配置；权限切片为只读查询入口，不作为看板项目编辑。</div>
+        <div class="editable-board" id="editableBoard" aria-label="可配置看板"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="ai-edit-modal" id="aiEditModal" aria-hidden="true">
+    <section class="ai-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="aiEditTitle">
+      <div class="ai-edit-head">
+        <div class="ai-title-wrap">
+          <span class="ai-avatar">AI</span>
+          <div>
+            <b id="aiEditTitle">经营驾驶舱助手</b>
+            <span>智能分析 · 页面修改</span>
+          </div>
+        </div>
+        <button class="config-close" id="aiEditClose" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="ai-edit-body">
+        <aside class="ai-sidebar">
+          <div class="ai-section-title">能力</div>
+          <div class="ai-mode-list">
+            <button class="ai-mode active" type="button" data-ai-mode="analysis"><b>智能分析</b><span>解释当前角色指标、风险和建议动作</span></button>
+            <button class="ai-mode" type="button" data-ai-mode="edit"><b>页面修改</b><span>新增、删除、放大、置顶或恢复看板</span></button>
+          </div>
+          <div class="ai-section-title">常用指令</div>
+          <div class="ai-suggestions">
+            <button class="ai-suggestion" type="button" data-ai-mode-set="analysis" data-ai-command="分析当前驾驶舱的主要风险和建议">分析主要风险</button>
+            <button class="ai-suggestion" type="button" data-ai-mode-set="analysis" data-ai-command="总结当前角色的盈利、费用和现金情况">总结经营情况</button>
+            <button class="ai-suggestion" type="button" data-ai-mode-set="edit" data-ai-command="新增营业收入按区域柱状图，宽列">新增收入按区域柱状图</button>
+            <button class="ai-suggestion" type="button" data-ai-mode-set="edit" data-ai-command="把经营链路分析放大">放大经营链路</button>
+            <button class="ai-suggestion" type="button" data-ai-mode-set="edit" data-ai-command="把费用分析置顶">费用分析置顶</button>
+          </div>
+        </aside>
+        <section class="ai-chat">
+          <div class="ai-edit-log" id="aiEditLog">
+            <div class="ai-log-item assistant"><b>助手：</b>我可以做两类工作：一是分析当前驾驶舱，二是按自然语言修改页面布局。先选择左侧能力，再输入指令。</div>
+          </div>
+          <div class="ai-composer">
+            <textarea class="ai-command" id="aiCommand" placeholder="输入问题或修改指令，例如：分析当前主要风险；新增收入按区域柱状图；把费用分析置顶"></textarea>
+            <div class="ai-edit-actions">
+              <span class="ai-mode-hint" id="aiModeHint">当前能力：智能分析</span>
+              <div>
+                <button class="page-btn" id="aiClear" type="button">清空</button>
+                <button class="page-btn primary" id="aiApply" type="button">发送</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </div>
+
+  <div class="config-modal" id="permissionModal" aria-hidden="true">
+    <section class="config-dialog" role="dialog" aria-modal="true" aria-labelledby="permissionTitle">
+      <div class="config-head">
+        <h2 id="permissionTitle">权限切片查询</h2>
+        <button class="config-close" id="permissionClose" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="panel-body">
+        <div class="permission-list" id="permissionReadonly"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="config-modal" id="configModal" aria-hidden="true">
+    <section class="config-dialog" role="dialog" aria-modal="true" aria-labelledby="configTitle">
+      <div class="config-head">
+        <h2 id="configTitle">新增看板项目</h2>
+        <button class="config-close" id="configClose" type="button" aria-label="关闭">×</button>
+      </div>
+      <form class="config-form" id="widgetForm">
+        <label class="config-field full">
+          <span>项目标题</span>
+          <input id="widgetTitle" name="title" value="收入按区域分析" required>
+        </label>
+        <label class="config-field">
+          <span>指标</span>
+          <select id="widgetMetric" name="metric">
+            <option value="revenue">营业收入</option>
+            <option value="cash">经营现金转化率</option>
+            <option value="ar">逾期应收</option>
+            <option value="orders">新增订单</option>
+            <option value="inventory">库存余额</option>
+            <option value="delivery">准时交付率</option>
+          </select>
+        </label>
+        <label class="config-field">
+          <span>维度</span>
+          <select id="widgetDimension" name="dimension">
+            <option value="region">区域</option>
+            <option value="month">月份</option>
+            <option value="product">产品线</option>
+            <option value="customer">客户</option>
+            <option value="warehouse">仓库</option>
+            <option value="owner">责任人</option>
+          </select>
+        </label>
+        <label class="config-field">
+          <span>展示类型</span>
+          <select id="widgetChart" name="chart">
+            <option value="bar">横向柱状</option>
+            <option value="list">明细列表</option>
+            <option value="number">指标卡片</option>
+          </select>
+        </label>
+        <label class="config-field">
+          <span>宽度</span>
+          <select id="widgetSize" name="size">
+            <option value="narrow">窄列</option>
+            <option value="">标准</option>
+            <option value="wide">宽列</option>
+            <option value="full">整行</option>
+          </select>
+        </label>
+        <div class="config-actions">
+          <button class="page-btn" id="configCancel" type="button">取消</button>
+          <button class="page-btn primary" type="submit">添加到当前页面</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <script>
+const roleData = {
+  cfo: {
+    title: "CFO驾驶舱",
+    subtitle: "集团全域权限 · 财务口径 + 经营口径",
+    scope: "集团 / 全组织 / 敏感财务字段可见",
+    filters: ["期间：2026-05", "组织：集团合并", "口径：财务+经营", "币种：CNY"],
+    kpis: [
+      ["营业收入", "8,180万", "环比 +6.9%", "good"],
+      ["经营现金转化率", "90.0%", "较上月 -3.1pct", "warn"],
+      ["逾期应收", "386万", "Top3客户占61.5%", "bad"],
+      ["预算执行率", "82.4%", "费用节奏偏快", "warn"]
+    ],
+    barsTitle: "财务风险构成",
+    bars: [["逾期应收", 386, "bad"], ["低毛利订单", 312, "warn"], ["费用超预算", 228, "warn"], ["公共分摊待确认", 73, "good"]],
+    flowTitle: "订-发-收-回",
+    flow: [["订", "新增订单", "9,676万", "A产品线贡献42%"], ["发", "发货金额", "7,010万", "未发货3,580万"], ["收", "收入确认", "8,180万", "验收后转收入"], ["回", "回款", "7,360万", "现金转化率90%"]],
+    profitTitle: "盈利分析",
+    profitCards: [["毛利额", "2,406万", "毛利率29.4%", "good"], ["净利润", "812万", "净利率9.9%", "warn"], ["低毛利订单", "312万", "需复核报价", "bad"], ["产品线贡献", "A线 52%", "高于均值", "good"]],
+    profitBars: [["A产品线", 1248, "good"], ["B产品线", 724, "good"], ["服务收入", 286, "warn"], ["低毛利订单", 148, "bad"]],
+    expenseTitle: "费用分析",
+    expenseCards: [["期间费用", "1,126万", "费用率13.8%", "warn"], ["销售费用", "486万", "环比+8.6%", "warn"], ["物流费用", "218万", "高于预算", "bad"], ["管理费用", "306万", "基本稳定", "good"]],
+    expenseBars: [["销售费用", 486, "warn"], ["管理费用", 306, "good"], ["物流费用", 218, "bad"], ["研发费用", 116, "good"]],
+    asks: ["本月收入增长为什么没有同步转化为现金？", "逾期应收 Top3 客户分别是谁，责任销售是谁？", "预算执行偏差最大的费用科目是什么？"],
+    permissions: [["字段权限", "可查看利润、现金、预算、应收账龄、客户信用等敏感字段。"], ["组织权限", "集团、事业部、法人主体均可穿透。"], ["动作权限", "可下发财务预警、冻结信用额度、发起预算复核。"]],
+    insights: [["现金转化下降", "收入环比增长 6.9%，回款仅增长 3.4%，应收净增加 820 万。"], ["客户信用风险集中", "华东三家大客户账期拉长，逾期应收贡献 61.5%。"], ["预算节奏偏快", "销售费用和物流费用高于收入增速，需要复核费用归属。"]],
+    tasks: [["信用复核", "财务BP + 销售负责人复核 Top3 逾期客户信用额度。", "立即"], ["现金回款", "对 386 万逾期应收生成催收清单。", "本周"], ["预算校正", "按事业部重算费用执行率并提交预算预警。", "本周"]]
+  },
+  sales: {
+    title: "销售负责人驾驶舱",
+    subtitle: "销售组织权限 · 客户与区域切片",
+    scope: "销售组织 / 授权区域 / 客户敏感字段脱敏",
+    filters: ["期间：2026-05", "区域：华东+华南", "产品线：A/B", "客户级别：KA"],
+    kpis: [
+      ["新增商机", "1.42亿", "环比 +14.2%", "good"],
+      ["订单转化率", "41.6%", "较目标 -4.4pct", "warn"],
+      ["发货前滞留", "5,490万", "占新单56.7%", "bad"],
+      ["KA回款率", "88.2%", "账期拉长", "warn"]
+    ],
+    barsTitle: "区域目标达成",
+    bars: [["华东", 92, "good"], ["华南", 81, "warn"], ["华北", 76, "warn"], ["西南", 64, "bad"]],
+    flowTitle: "销售漏斗",
+    flow: [["线索", "有效线索", "2,460条", "市场活动导入"], ["商机", "确认商机", "1.42亿", "KA占比52%"], ["订单", "新签订单", "9,676万", "转化率41.6%"], ["回款", "客户回款", "7,360万", "KA账期偏长"]],
+    asks: ["哪些区域拖累了本月销售目标达成？", "未发货订单中哪些是销售承诺交期风险？", "KA 客户回款变慢是否影响下月签单？"],
+    permissions: [["客户权限", "只能查看本人团队授权客户，跨区域客户金额脱敏。"], ["价格权限", "可见成交价和折扣，毛利率按区间展示。"], ["动作权限", "可创建客户跟进、交期协调、回款协同任务。"]],
+    insights: [["发货前滞留过高", "未发货金额 3,580 万，主要来自库存不足与排产延迟。"], ["华南区域低于目标", "目标达成 81%，新签订单不足且 KA 回款偏慢。"], ["销售承诺风险", "5 个订单接近承诺交期，但供应链尚未确认可发货日期。"]],
+    tasks: [["交期确认", "销售运营牵头拉通供应链，确认高风险订单交期。", "立即"], ["区域复盘", "华南负责人提交缺口客户和补单计划。", "本周"], ["KA回款", "对账期拉长客户安排联合拜访。", "本周"]]
+  },
+  supply: {
+    title: "供应链负责人驾驶舱",
+    subtitle: "供应链权限 · 物料、仓库、供应商切片",
+    scope: "供应链中心 / 授权仓库 / 成本金额按角色展示",
+    filters: ["期间：2026-05", "仓库：全部", "物料类别：原料+半成品", "风险等级：HIGH"],
+    kpis: [
+      ["库存余额", "3,127.98万", "周转470.9天", "warn"],
+      ["呆滞超储", "289.59万", "21条HIGH预警", "bad"],
+      ["缺料风险", "42个", "影响7单交付", "bad"],
+      ["准时交付率", "91.3%", "较目标 -3.7pct", "warn"]
+    ],
+    barsTitle: "库存风险分布",
+    bars: [["原材料", 635, "warn"], ["半成品", 640, "warn"], ["成品", 304, "good"], ["风险库存", 290, "bad"]],
+    flowTitle: "采购-生产-仓储-交付",
+    flow: [["采", "采购到料", "637万", "2家供应商延期"], ["产", "在制库存", "640万", "关闭工单需清理"], ["仓", "成品库存", "304万", "超保质期需复核"], ["交", "发货履约", "91.3%", "7单受缺料影响"]],
+    asks: ["哪些物料已经超期但仍未被领用？", "关闭工单对应库存还有多少金额未处理？", "哪些供应商延期影响本周交付？"],
+    permissions: [["物料权限", "可穿透物料批次、库存组织、计划领用人和责任工单。"], ["金额权限", "库存金额可见，销售价格和客户毛利不可见。"], ["动作权限", "可发起退货、报废鉴定、调拨和生产领用任务。"]],
+    insights: [["超期未领用", "计划领用日期早于当前日期且仍有库存，需按计划领用人分派。"], ["工单关闭残留", "部分库存关联已关闭生产工单，需要转不良仓或重新分配需求。"], ["退货订单未执行", "退货采购订单计划发货已过期，接收/验货/入库均为0。"]],
+    tasks: [["超期物料清理", "按计划领用人生成清理清单，超过30天升级。", "立即"], ["供应商退货", "采购协同供应商确认退货窗口。", "本周"], ["工单残留处理", "制造负责人复核关闭工单库存去向。", "本周"]]
+  }
+};
+
+const $ = (id) => document.getElementById(id);
+const tone = (type) => type === "bad" ? "var(--red)" : type === "warn" ? "var(--orange)" : "var(--green)";
+const metricLabels = {
+  revenue: "营业收入",
+  cash: "经营现金转化率",
+  ar: "逾期应收",
+  orders: "新增订单",
+  inventory: "库存余额",
+  delivery: "准时交付率"
+};
+const dimensionLabels = {
+  region: "区域",
+  month: "月份",
+  product: "产品线",
+  customer: "客户",
+  warehouse: "仓库",
+  owner: "责任人"
+};
+const defaultLayout = [
+  { id: "analysis", type: "analysis", title: "经营链路分析", size: "wide" },
+  { id: "insights", type: "insights", title: "异常洞察", size: "" },
+  { id: "tasks", type: "tasks", title: "待办与闭环", size: "" }
+];
+const cfoDefaultAdditions = [
+  { id: "cfoProfit", type: "profitability", title: "盈利分析", size: "" },
+  { id: "cfoExpense", type: "expense", title: "费用分析", size: "" }
+];
+
+let currentRole = "cfo";
+let aiMode = "analysis";
+let editing = false;
+let draggingId = "";
+let resizing = null;
+const sizeOrder = ["narrow", "", "wide", "full"];
+const sizeLabels = { narrow: "窄列", "": "标准", wide: "宽列", full: "整行" };
+
+function layoutKey(role = currentRole) {
+  return `roleDashboardLayout:${role}`;
+}
+
+function defaultLayoutFor(role = currentRole) {
+  const layout = structuredClone(defaultLayout);
+  if (role === "cfo") {
+    layout.splice(1, 0, ...structuredClone(cfoDefaultAdditions));
+  }
+  return layout;
+}
+
+function ensureRoleLayout(layout, role = currentRole) {
+  const source = Array.isArray(layout) && layout.length ? structuredClone(layout) : defaultLayoutFor(role);
+  const removedTypes = ["asks", "permissions", "capability"];
+  const next = source.filter((item) => !removedTypes.includes(item.type) && !removedTypes.includes(item.id));
+  if (role !== "cfo") return next;
+  const migrationKey = `${layoutKey(role)}:profitExpenseAdded`;
+  if (localStorage.getItem(migrationKey) === "1") return next;
+  const existing = new Set(next.map((item) => item.id));
+  const missing = cfoDefaultAdditions.filter((item) => !existing.has(item.id));
+  if (!missing.length) {
+    localStorage.setItem(migrationKey, "1");
+    return next;
+  }
+  const insertAt = Math.max(1, next.findIndex((item) => item.id === "analysis") + 1);
+  next.splice(insertAt, 0, ...structuredClone(missing));
+  localStorage.setItem(migrationKey, "1");
+  return next;
+}
+
+function readLayout(role = currentRole) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(layoutKey(role)) || "null");
+    return ensureRoleLayout(saved, role);
+  } catch {
+    return defaultLayoutFor(role);
+  }
+}
+
+function writeLayout(layout, role = currentRole) {
+  localStorage.setItem(layoutKey(role), JSON.stringify(layout));
+}
+
+function panelShell(item, body, sub = "") {
+  const size = item.size ? ` ${item.size}` : "";
+  const height = Number(item.height || 0);
+  const style = height ? ` style="min-height:${Math.max(184, Math.min(620, height))}px"` : "";
+  return `
+    <section class="panel board-widget${size}" draggable="${editing}" data-widget-id="${item.id}"${style}>
+      <div class="panel-head">
+        <h2>${item.title}</h2>
+        <span>${sub}</span>
+        <div class="widget-tools">
+          <button class="widget-tool drag-handle" type="button" title="拖拽排序">↕</button>
+          <button class="widget-tool" type="button" data-size-widget="${item.id}" data-size-dir="-1" title="缩小宽度">缩小</button>
+          <button class="widget-tool" type="button" data-size-widget="${item.id}" data-size-dir="1" title="放大宽度">放大</button>
+          <button class="widget-tool" type="button" data-remove-widget="${item.id}" title="删除项目">删除</button>
+        </div>
+      </div>
+      <div class="panel-body">${body}</div>
+      <div class="resize-handle" data-resize-widget="${item.id}" title="拖拽改变宽度和高度"></div>
+    </section>
+  `;
+}
+
+function renderBars(rows) {
+  const max = Math.max(...rows.map((item) => item[1]), 1);
+  return `<div class="bars">${rows.map((item) => `
+    <div class="bar-row">
+      <span>${item[0]}</span>
+      <div class="track"><div class="fill" style="width:${Math.max(8, item[1] / max * 100)}%;background:${tone(item[2])}"></div></div>
+      <b>${item[1]}</b>
+    </div>
+  `).join("")}</div>`;
+}
+
+function renderCustomDataset(item) {
+  const dimMap = {
+    region: ["华东", "华南", "华北", "西南"],
+    month: ["1月", "2月", "3月", "4月"],
+    product: ["A产品线", "B产品线", "C产品线", "服务"],
+    customer: ["KA客户A", "KA客户B", "渠道客户C", "海外客户D"],
+    warehouse: ["硕磐基地仓", "杭州智能仓", "华东前置仓", "不良品仓"],
+    owner: ["财务BP", "销售运营", "供应链计划", "仓储主管"]
+  };
+  const metricBase = { revenue: 818, cash: 90, ar: 386, orders: 967, inventory: 3128, delivery: 91 };
+  const labels = dimMap[item.dimension] || dimMap.region;
+  const base = metricBase[item.metric] || 100;
+  return labels.map((label, index) => {
+    const value = Math.round(base * (0.42 + index * 0.18));
+    const level = index === labels.length - 1 ? "bad" : index === labels.length - 2 ? "warn" : "good";
+    return [label, value, level];
+  });
+}
+
+function renderCustomWidget(item) {
+  const rows = renderCustomDataset(item);
+  const metric = metricLabels[item.metric] || item.metric;
+  const dimension = dimensionLabels[item.dimension] || item.dimension;
+  if (item.chart === "number") {
+    const total = rows.reduce((sum, row) => sum + row[1], 0);
+    return panelShell(item, `<div class="kpi-grid"><div class="kpi good"><span>${metric}</span><strong>${total}</strong><em>按${dimension}汇总</em></div></div>`, `${metric} / ${dimension}`);
+  }
+  if (item.chart === "list") {
+    return panelShell(item, `<div class="insight-list">${rows.map((row) => `<div class="insight"><b>${row[0]}</b><p>${metric}：${row[1]}，维度：${dimension}</p></div>`).join("")}</div>`, `${metric} / ${dimension}`);
+  }
+  return panelShell(item, renderBars(rows), `${metric} / ${dimension}`);
+}
+
+function renderFinanceDetail(item, cards, rows, sub) {
+  return panelShell(item, `
+    <div class="visual-grid">
+      <div class="chart-box">
+        <div class="chart-title"><span>${item.title}</span><span>核心指标</span></div>
+        <div class="kpi-grid">${cards.map((card) => `
+          <div class="kpi ${card[3]}"><span>${card[0]}</span><strong>${card[1]}</strong><em>${card[2]}</em></div>
+        `).join("")}</div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title"><span>${sub}</span><span>万元 / %</span></div>
+        ${renderBars(rows)}
+      </div>
+    </div>
+  `, sub);
+}
+
+function renderWidget(item, data) {
+  if (item.type === "analysis") {
+    return panelShell(item, `
+      <div class="visual-grid">
+        <div class="chart-box">
+          <div class="chart-title"><span>${data.barsTitle}</span><span>本月</span></div>
+          ${renderBars(data.bars)}
+        </div>
+        <div class="chart-box">
+          <div class="chart-title"><span>${data.flowTitle}</span><span>本月</span></div>
+          <div class="flow">${data.flow.map((step) => `<div class="flow-step"><b>${step[0]} · ${step[1]}</b><strong>${step[2]}</strong><span>${step[3]}</span></div>`).join("")}</div>
+        </div>
+      </div>
+    `, "万元 / %");
+  }
+  if (item.type === "profitability") {
+    return renderFinanceDetail(item, data.profitCards || [], data.profitBars || [], "盈利质量");
+  }
+  if (item.type === "expense") {
+    return renderFinanceDetail(item, data.expenseCards || [], data.expenseBars || [], "费用结构");
+  }
+  if (item.type === "insights") {
+    return panelShell(item, `<div class="insight-list">${data.insights.map((row) => `<div class="insight"><b>${row[0]}</b><p>${row[1]}</p></div>`).join("")}</div>`, "系统归因");
+  }
+  if (item.type === "tasks") {
+    return panelShell(item, `<div class="task-list">${data.tasks.map((row) => `<div class="task"><div><b>${row[0]}</b><p>${row[1]}</p></div><span class="status ${row[2] === "立即" ? "hot" : "week"}">${row[2]}</span></div>`).join("")}</div>`, "责任动作");
+  }
+  return renderCustomWidget(item);
+}
+
+function renderBoard() {
+  const data = roleData[currentRole] || roleData.cfo;
+  const layout = readLayout();
+  $("editableBoard").innerHTML = layout.map((item) => renderWidget(item, data)).join("");
+}
+
+function moveWidget(sourceId, targetId) {
+  if (!sourceId || !targetId || sourceId === targetId) return;
+  const layout = readLayout();
+  const from = layout.findIndex((item) => item.id === sourceId);
+  const to = layout.findIndex((item) => item.id === targetId);
+  if (from < 0 || to < 0) return;
+  const [moved] = layout.splice(from, 1);
+  layout.splice(to, 0, moved);
+  writeLayout(layout);
+  renderBoard();
+}
+
+function updateWidget(id, patch) {
+  const layout = readLayout();
+  const index = layout.findIndex((item) => item.id === id);
+  if (index < 0) return;
+  layout[index] = { ...layout[index], ...patch };
+  writeLayout(layout);
+  renderBoard();
+}
+
+function resizeWidgetStep(id, dir) {
+  const layout = readLayout();
+  const item = layout.find((entry) => entry.id === id);
+  if (!item) return;
+  const current = sizeOrder.includes(item.size || "") ? item.size || "" : "";
+  const nextIndex = Math.max(0, Math.min(sizeOrder.length - 1, sizeOrder.indexOf(current) + Number(dir || 0)));
+  updateWidget(id, { size: sizeOrder[nextIndex] });
+}
+
+function sizeFromDelta(startSize, deltaX) {
+  const current = sizeOrder.includes(startSize || "") ? startSize || "" : "";
+  const step = Math.round(deltaX / 180);
+  const nextIndex = Math.max(0, Math.min(sizeOrder.length - 1, sizeOrder.indexOf(current) + step));
+  return sizeOrder[nextIndex];
+}
+
+function showResizeGhost(x, y, size, height) {
+  let ghost = document.querySelector(".resize-ghost");
+  if (!ghost) {
+    ghost = document.createElement("div");
+    ghost.className = "resize-ghost";
+    document.body.appendChild(ghost);
+  }
+  ghost.style.left = `${x + 14}px`;
+  ghost.style.top = `${y + 14}px`;
+  ghost.textContent = `宽度：${sizeLabels[size || ""]} · 高度：${height}px`;
+}
+
+function hideResizeGhost() {
+  document.querySelector(".resize-ghost")?.remove();
+}
+
+function appendAiLog(role, message) {
+  const log = $("aiEditLog");
+  const item = document.createElement("div");
+  item.className = `ai-log-item ${role === "你" ? "user" : "assistant"}`;
+  const name = document.createElement("b");
+  name.textContent = `${role}：`;
+  item.appendChild(name);
+  if (message.includes("<")) {
+    const content = document.createElement("div");
+    content.innerHTML = message;
+    item.appendChild(content);
+  } else {
+    item.appendChild(document.createTextNode(message));
+  }
+  log.appendChild(item);
+  log.scrollTop = log.scrollHeight;
+}
+
+function setAiMode(mode) {
+  aiMode = mode === "edit" ? "edit" : "analysis";
+  document.querySelectorAll("[data-ai-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.aiMode === aiMode);
+  });
+  $("aiModeHint").textContent = aiMode === "edit" ? "当前能力：页面修改" : "当前能力：智能分析";
+  $("aiApply").textContent = aiMode === "edit" ? "执行修改" : "发送";
+}
+
+function roleAnalysis(command) {
+  const data = roleData[currentRole] || roleData.cfo;
+  const kpis = (data.kpis || []).map((item) => `${item[0]} ${item[1]}（${item[2]}）`).join("；");
+  const risks = (data.insights || []).slice(0, 3).map((item) => `<li><b>${item[0]}</b>：${item[1]}</li>`).join("");
+  const tasks = (data.tasks || []).slice(0, 3).map((item) => `<li>${item[0]}：${item[1]}（${item[2]}）</li>`).join("");
+  const extra = currentRole === "cfo"
+    ? `<li>盈利：${(data.profitCards || []).map((item) => `${item[0]} ${item[1]}`).join("；")}</li><li>费用：${(data.expenseCards || []).map((item) => `${item[0]} ${item[1]}`).join("；")}</li>`
+    : "";
+  return `基于当前「${data.title}」视图：<ul><li>核心指标：${kpis}</li>${extra}<li>主要风险：</li>${risks}<li>建议动作：</li>${tasks}</ul>`;
+}
+
+function detectMetric(text) {
+  if (/库存|呆滞|超储/.test(text)) return "inventory";
+  if (/交付|履约|准时/.test(text)) return "delivery";
+  if (/订单|商机|签单/.test(text)) return "orders";
+  if (/应收|逾期|账款/.test(text)) return "ar";
+  if (/现金|回款|转化/.test(text)) return "cash";
+  if (/收入|营收|销售额/.test(text)) return "revenue";
+  return "revenue";
+}
+
+function detectDimension(text) {
+  if (/仓库|仓储|库房/.test(text)) return "warehouse";
+  if (/责任|负责人|人员|计划领用人/.test(text)) return "owner";
+  if (/客户|KA/.test(text)) return "customer";
+  if (/产品|产线|物料|品类/.test(text)) return "product";
+  if (/月|月份|期间|趋势/.test(text)) return "month";
+  if (/区域|地区|代表处|办事处/.test(text)) return "region";
+  return "region";
+}
+
+function detectChart(text) {
+  if (/列表|明细|清单/.test(text)) return "list";
+  if (/卡片|指标卡|数字|数值/.test(text)) return "number";
+  return "bar";
+}
+
+function detectSize(text) {
+  if (/整行|全宽|通栏/.test(text)) return "full";
+  if (/宽列|大块|放大/.test(text)) return "wide";
+  if (/窄列|小块|缩小/.test(text)) return "narrow";
+  return "";
+}
+
+function findWidgetByText(text) {
+  const layout = readLayout();
+  if (/第一个|首个|第一/.test(text)) return layout[0];
+  if (/最后|末尾/.test(text)) return layout[layout.length - 1];
+  const typeMap = [
+    ["analysis", /经营链路|链路|分析/],
+    ["profitability", /盈利|利润|毛利|净利/],
+    ["expense", /费用|费率|预算/],
+    ["insights", /异常|洞察|归因/],
+    ["tasks", /待办|闭环|任务|责任/],
+  ];
+  for (const [type, rule] of typeMap) {
+    if (rule.test(text)) {
+      const hit = layout.find((item) => item.type === type);
+      if (hit) return hit;
+    }
+  }
+  return layout.find((item) => text.includes(item.title) || item.title.includes(text.replace(/\s/g, "")));
+}
+
+function reorderWidget(id, mode) {
+  const layout = readLayout();
+  const index = layout.findIndex((item) => item.id === id);
+  if (index < 0) return false;
+  const [item] = layout.splice(index, 1);
+  if (mode === "top") layout.unshift(item);
+  else if (mode === "bottom") layout.push(item);
+  else if (mode === "up") layout.splice(Math.max(0, index - 1), 0, item);
+  else if (mode === "down") layout.splice(Math.min(layout.length, index + 1), 0, item);
+  writeLayout(layout);
+  renderBoard();
+  return true;
+}
+
+function removeWidgetById(id) {
+  const next = readLayout().filter((item) => item.id !== id);
+  writeLayout(next.length ? next : defaultLayoutFor());
+  renderBoard();
+}
+
+function addWidgetFromText(text) {
+  const metric = detectMetric(text);
+  const dimension = detectDimension(text);
+  const chart = detectChart(text);
+  const size = detectSize(text);
+  const titleMatch = text.match(/(?:标题|命名|叫做)[:：]?\s*([^，。；;]+)/);
+  const title = titleMatch ? titleMatch[1].trim() : `${metricLabels[metric]}按${dimensionLabels[dimension]}分析`;
+  const layout = readLayout();
+  layout.push({
+    id: `custom-${Date.now()}`,
+    type: "custom",
+    title,
+    metric,
+    dimension,
+    chart,
+    size,
+    height: chart === "number" ? 184 : 240
+  });
+  writeLayout(layout);
+  renderBoard();
+  appendAiLog("助手", `已新增「${title}」，指标为${metricLabels[metric]}，维度为${dimensionLabels[dimension]}。`);
+}
+
+function applyAiCommand() {
+  const command = $("aiCommand").value.trim();
+  if (!command) {
+    appendAiLog("助手", "请先输入要调整页面的指令。");
+    return;
+  }
+  appendAiLog("你", command);
+  if (aiMode === "analysis" && !/新增|添加|创建|加一个|增加|删除|移除|去掉|置顶|置底|上移|下移|放大|缩小|整行|恢复默认|重置|还原|切换/.test(command)) {
+    appendAiLog("助手", roleAnalysis(command));
+    return;
+  }
+  if (!editing) setEditing(true);
+
+  if (/恢复默认|重置|还原/.test(command)) {
+    localStorage.removeItem(layoutKey());
+    renderBoard();
+    appendAiLog("助手", "已恢复当前角色的默认看板布局。");
+    return;
+  }
+
+  if (/切换.*CFO|CFO/.test(command) && /切换|角色/.test(command)) {
+    $("roleSelect").value = "cfo";
+    renderRole("cfo");
+    appendAiLog("助手", "已切换到 CFO 驾驶舱。");
+    return;
+  }
+  if (/销售/.test(command) && /切换|角色/.test(command)) {
+    $("roleSelect").value = "sales";
+    renderRole("sales");
+    appendAiLog("助手", "已切换到销售负责人驾驶舱。");
+    return;
+  }
+  if (/供应链/.test(command) && /切换|角色/.test(command)) {
+    $("roleSelect").value = "supply";
+    renderRole("supply");
+    appendAiLog("助手", "已切换到供应链负责人驾驶舱。");
+    return;
+  }
+
+  if (/新增|添加|创建|加一个|增加/.test(command)) {
+    addWidgetFromText(command);
+    return;
+  }
+
+  const target = findWidgetByText(command);
+  if (!target) {
+    appendAiLog("助手", "没有找到要调整的看板项目。可以明确说“经营链路分析”“盈利分析”“费用分析”“异常洞察”等模块名称。权限切片是只读查询入口，不作为看板项目编辑。");
+    return;
+  }
+
+  if (/删除|移除|去掉/.test(command)) {
+    removeWidgetById(target.id);
+    appendAiLog("助手", `已删除「${target.title}」。`);
+    return;
+  }
+
+  if (/置顶|放到最前|移到顶部/.test(command)) {
+    reorderWidget(target.id, "top");
+    appendAiLog("助手", `已将「${target.title}」置顶。`);
+    return;
+  }
+  if (/置底|放到最后|移到末尾/.test(command)) {
+    reorderWidget(target.id, "bottom");
+    appendAiLog("助手", `已将「${target.title}」移到末尾。`);
+    return;
+  }
+  if (/上移|往上/.test(command)) {
+    reorderWidget(target.id, "up");
+    appendAiLog("助手", `已将「${target.title}」上移一位。`);
+    return;
+  }
+  if (/下移|往下/.test(command)) {
+    reorderWidget(target.id, "down");
+    appendAiLog("助手", `已将「${target.title}」下移一位。`);
+    return;
+  }
+
+  const heightMatch = command.match(/(?:高度|高)[^\d]*(\d{3,4})/);
+  if (heightMatch) {
+    updateWidget(target.id, { height: Number(heightMatch[1]) });
+    appendAiLog("助手", `已将「${target.title}」高度调整为 ${heightMatch[1]}px。`);
+    return;
+  }
+  if (/高一点|加高|更高/.test(command)) {
+    updateWidget(target.id, { height: Math.min(620, Number(target.height || 240) + 80) });
+    appendAiLog("助手", `已加高「${target.title}」。`);
+    return;
+  }
+  if (/矮一点|降低|更矮/.test(command)) {
+    updateWidget(target.id, { height: Math.max(184, Number(target.height || 240) - 80) });
+    appendAiLog("助手", `已降低「${target.title}」高度。`);
+    return;
+  }
+
+  if (/整行|全宽|通栏/.test(command)) {
+    updateWidget(target.id, { size: "full" });
+    appendAiLog("助手", `已将「${target.title}」调整为整行。`);
+    return;
+  }
+  if (/宽列|放大|变大|更宽/.test(command)) {
+    resizeWidgetStep(target.id, 1);
+    appendAiLog("助手", `已放大「${target.title}」。`);
+    return;
+  }
+  if (/窄列|缩小|变小|更窄/.test(command)) {
+    resizeWidgetStep(target.id, -1);
+    appendAiLog("助手", `已缩小「${target.title}」。`);
+    return;
+  }
+
+  appendAiLog("助手", "这条指令暂未识别。可尝试：新增收入按区域柱状图、把经营链路放大、费用分析置顶、删除异常洞察。");
+}
+
+function renderRole(key) {
+  currentRole = key;
+  const d = roleData[key] || roleData.cfo;
+  $("pageTitle").textContent = d.title;
+  $("pageSubtitle").textContent = d.subtitle;
+  $("permissionScope").textContent = d.scope;
+  $("filters").innerHTML = d.filters.map((item) => `<span class="filter">${item}</span>`).join("");
+  $("kpis").innerHTML = d.kpis.map((item) => `
+    <div class="kpi ${item[3]}"><span>${item[0]}</span><strong>${item[1]}</strong><em>${item[2]}</em></div>
+  `).join("");
+  renderBoard();
+}
+
+function setEditing(next) {
+  editing = next;
+  document.body.classList.toggle("editing", editing);
+  $("editToggle").textContent = editing ? "退出编辑" : "编辑页面";
+  $("editState").textContent = editing ? "编辑模式" : "浏览模式";
+  $("addWidgetBtn").disabled = !editing;
+  renderBoard();
+}
+
+function openConfig() {
+  if (!editing) return;
+  $("configModal").classList.add("open");
+  $("configModal").setAttribute("aria-hidden", "false");
+  $("widgetTitle").focus();
+}
+
+function closeConfig() {
+  $("configModal").classList.remove("open");
+  $("configModal").setAttribute("aria-hidden", "true");
+}
+
+function openAiEditor() {
+  $("aiEditModal").classList.add("open");
+  $("aiEditModal").setAttribute("aria-hidden", "false");
+  setAiMode(aiMode);
+  $("aiCommand").focus();
+}
+
+function closeAiEditor() {
+  $("aiEditModal").classList.remove("open");
+  $("aiEditModal").setAttribute("aria-hidden", "true");
+}
+
+function openPermissionQuery() {
+  const data = roleData[currentRole] || roleData.cfo;
+  $("permissionTitle").textContent = `${data.title} · 权限切片查询`;
+  $("permissionReadonly").innerHTML = `
+    <div class="permission"><b>可见范围</b><p>${data.scope}</p></div>
+    ${(data.permissions || []).map((row) => `<div class="permission"><b>${row[0]}</b><p>${row[1]}</p></div>`).join("")}
+  `;
+  $("permissionModal").classList.add("open");
+  $("permissionModal").setAttribute("aria-hidden", "false");
+}
+
+function closePermissionQuery() {
+  $("permissionModal").classList.remove("open");
+  $("permissionModal").setAttribute("aria-hidden", "true");
+}
+
+$("roleSelect").addEventListener("change", (event) => renderRole(event.target.value));
+$("editToggle").addEventListener("click", () => setEditing(!editing));
+$("addWidgetBtn").addEventListener("click", openConfig);
+$("permissionQueryOpen").addEventListener("click", openPermissionQuery);
+$("permissionClose").addEventListener("click", closePermissionQuery);
+$("aiEditOpen").addEventListener("click", openAiEditor);
+$("aiEditClose").addEventListener("click", closeAiEditor);
+$("aiApply").addEventListener("click", applyAiCommand);
+$("aiClear").addEventListener("click", () => {
+  $("aiCommand").value = "";
+  $("aiCommand").focus();
+});
+$("aiCommand").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    applyAiCommand();
+  }
+});
+document.querySelectorAll("[data-ai-mode]").forEach((button) => {
+  button.addEventListener("click", () => setAiMode(button.dataset.aiMode));
+});
+document.querySelectorAll("[data-ai-command]").forEach((button) => {
+  button.addEventListener("click", () => {
+    if (button.dataset.aiModeSet) setAiMode(button.dataset.aiModeSet);
+    $("aiCommand").value = button.dataset.aiCommand;
+    applyAiCommand();
+  });
+});
+$("configClose").addEventListener("click", closeConfig);
+$("configCancel").addEventListener("click", closeConfig);
+$("resetLayoutBtn").addEventListener("click", () => {
+  localStorage.removeItem(layoutKey());
+  renderBoard();
+});
+$("widgetForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const item = {
+    id: `custom-${Date.now()}`,
+    type: "custom",
+    title: $("widgetTitle").value.trim() || "自定义看板项目",
+    metric: $("widgetMetric").value,
+    dimension: $("widgetDimension").value,
+    chart: $("widgetChart").value,
+    size: $("widgetSize").value,
+    height: 220
+  };
+  const layout = readLayout();
+  layout.push(item);
+  writeLayout(layout);
+  closeConfig();
+  renderBoard();
+});
+$("editableBoard").addEventListener("dragstart", (event) => {
+  const widget = event.target.closest(".board-widget");
+  if (!editing || !widget || event.target.closest(".resize-handle") || event.target.closest("[data-size-widget]")) {
+    event.preventDefault();
+    return;
+  }
+  draggingId = widget.dataset.widgetId;
+  widget.classList.add("dragging");
+  event.dataTransfer.effectAllowed = "move";
+});
+$("editableBoard").addEventListener("dragend", () => {
+  draggingId = "";
+  document.querySelectorAll(".board-widget.dragging").forEach((item) => item.classList.remove("dragging"));
+});
+$("editableBoard").addEventListener("dragover", (event) => {
+  if (!editing) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+});
+$("editableBoard").addEventListener("drop", (event) => {
+  if (!editing) return;
+  event.preventDefault();
+  const target = event.target.closest(".board-widget");
+  if (target) moveWidget(draggingId, target.dataset.widgetId);
+});
+$("editableBoard").addEventListener("click", (event) => {
+  const sizeId = event.target.dataset.sizeWidget;
+  if (editing && sizeId) {
+    resizeWidgetStep(sizeId, event.target.dataset.sizeDir);
+    return;
+  }
+  const removeId = event.target.dataset.removeWidget;
+  if (!editing || !removeId) return;
+  const next = readLayout().filter((item) => item.id !== removeId);
+  writeLayout(next.length ? next : defaultLayoutFor());
+  renderBoard();
+});
+$("editableBoard").addEventListener("pointerdown", (event) => {
+  const handle = event.target.closest(".resize-handle");
+  if (!editing || !handle) return;
+  event.preventDefault();
+  const widget = handle.closest(".board-widget");
+  const layoutItem = readLayout().find((item) => item.id === handle.dataset.resizeWidget);
+  if (!widget || !layoutItem) return;
+  resizing = {
+    id: handle.dataset.resizeWidget,
+    startX: event.clientX,
+    startY: event.clientY,
+    startSize: layoutItem.size || "",
+    startHeight: Number(layoutItem.height || widget.getBoundingClientRect().height || 220)
+  };
+  widget.classList.add("resizing");
+  document.body.classList.add("resizing");
+  handle.setPointerCapture?.(event.pointerId);
+  showResizeGhost(event.clientX, event.clientY, resizing.startSize, Math.round(resizing.startHeight));
+});
+window.addEventListener("pointermove", (event) => {
+  if (!resizing) return;
+  const nextSize = sizeFromDelta(resizing.startSize, event.clientX - resizing.startX);
+  const nextHeight = Math.max(184, Math.min(620, Math.round(resizing.startHeight + event.clientY - resizing.startY)));
+  const widget = document.querySelector(`[data-widget-id="${resizing.id}"]`);
+  if (widget) {
+    widget.classList.toggle("narrow", nextSize === "narrow");
+    widget.classList.toggle("wide", nextSize === "wide");
+    widget.classList.toggle("full", nextSize === "full");
+    widget.style.minHeight = `${nextHeight}px`;
+  }
+  showResizeGhost(event.clientX, event.clientY, nextSize, nextHeight);
+});
+window.addEventListener("pointerup", (event) => {
+  if (!resizing) return;
+  const nextSize = sizeFromDelta(resizing.startSize, event.clientX - resizing.startX);
+  const nextHeight = Math.max(184, Math.min(620, Math.round(resizing.startHeight + event.clientY - resizing.startY)));
+  updateWidget(resizing.id, { size: nextSize, height: nextHeight });
+  resizing = null;
+  document.body.classList.remove("resizing");
+  document.querySelectorAll(".board-widget.resizing").forEach((item) => item.classList.remove("resizing"));
+  hideResizeGhost();
+});
+$("configModal").addEventListener("click", (event) => {
+  if (event.target === $("configModal")) closeConfig();
+});
+$("aiEditModal").addEventListener("click", (event) => {
+  if (event.target === $("aiEditModal")) closeAiEditor();
+});
+$("permissionModal").addEventListener("click", (event) => {
+  if (event.target === $("permissionModal")) closePermissionQuery();
+});
+
+renderRole("cfo");
+  </script>
+</body>
+</html>

@@ -125,6 +125,58 @@ class OntologyStore:
                 row = row + (None,) * (width - len(row))
             yield row
 
+    # --- Header-driven loading -------------------------------------------
+    # Some sheets (指标 / 实体关系) differ in column layout between ontology
+    # files (e.g. ChatBI 17-col 指标 vs 超聚变 8-col 指标). Loaders for those
+    # sheets map by header NAME instead of fixed position.
+
+    @staticmethod
+    def _norm_key(s) -> str:
+        """Normalize a header / lookup name: drop brackets, commas, spaces."""
+        out = _norm(s)
+        for ch in "（）()【】[]，,、 　":
+            out = out.replace(ch, "")
+        return out
+
+    @staticmethod
+    def _col_index(header) -> dict:
+        """Map normalized header names -> column index (first occurrence wins)."""
+        idx: dict[str, int] = {}
+        for i, h in enumerate(header or ()):
+            key = OntologyStore._norm_key(h)
+            if key and key not in idx:
+                idx[key] = i
+        return idx
+
+    @staticmethod
+    def _cell(row, col_idx: dict, *names: str) -> str:
+        """Read a row value by any candidate header name (exact, then prefix)."""
+        for n in names:
+            key = OntologyStore._norm_key(n)
+            if not key:
+                continue
+            pos = col_idx.get(key)
+            if pos is None:
+                for hk, hp in col_idx.items():
+                    if hk.startswith(key):
+                        pos = hp
+                        break
+            if pos is not None and pos < len(row):
+                return _norm(row[pos])
+        return ""
+
+    @staticmethod
+    def _indexed(ws):
+        """Return (col_index, data_rows) for a sheet — header mapped by name."""
+        it = ws.iter_rows(values_only=True)
+        header = next(it, None)
+        col = OntologyStore._col_index(header)
+        rows = [
+            row for row in it
+            if row is not None and not all(c is None or _norm(c) == "" for c in row)
+        ]
+        return col, rows
+
     def _load_terms(self, ws) -> None:
         for row in self._rows(ws):
             code = _norm(row[0])
@@ -208,19 +260,21 @@ class OntologyStore:
                 self._attrs_by_le.setdefault(le_code, []).append(at_code)
 
     def _load_relations(self, ws) -> None:
-        for row in self._rows(ws):
-            code = _norm(row[0])
+        # Header-driven: ChatBI uses 源/目标实体, 超聚变 uses 主/从实体.
+        col, rows = self._indexed(ws)
+        for row in rows:
+            code = self._cell(row, col, "关系编号")
             if not code:
                 continue
             er = EntityRelation(
                 code=code,
-                source_code=_norm(row[1]),
-                source_name=_norm(row[2]),
-                target_code=_norm(row[3]),
-                target_name=_norm(row[4]),
-                cardinality=_norm(row[5]),
-                description=_norm(row[6]),
-                foreign_key=_norm(row[7]) if len(row) > 7 else "",
+                source_code=self._cell(row, col, "源实体编号", "主实体编号"),
+                source_name=self._cell(row, col, "源实体名称", "主实体名称"),
+                target_code=self._cell(row, col, "目标实体编号", "从实体编号"),
+                target_name=self._cell(row, col, "目标实体名称", "从实体名称"),
+                cardinality=self._cell(row, col, "关系类型"),
+                description=self._cell(row, col, "关系描述", "关系说明"),
+                foreign_key=self._cell(row, col, "外键字段", "关联条件"),
             )
             self.relations[code] = er
             if er.source_code:
@@ -229,32 +283,39 @@ class OntologyStore:
                 self._relations_by_le.setdefault(er.target_code, []).append(code)
 
     def _load_metrics(self, ws) -> None:
-        for row in self._rows(ws):
-            code = _norm(row[0])
+        # Header-driven: ChatBI 指标 has 17 rich columns; 超聚变 指标 has 8
+        # (编号/名称/英文名/定义/计算口径/数据类型/来源实体/解释部门).
+        col, rows = self._indexed(ws)
+        for row in rows:
+            code = self._cell(row, col, "指标编码", "指标编号")
             if not code:
                 continue
+            type_raw = self._cell(row, col, "指标类型")
             try:
-                mtype = int(row[7]) if row[7] is not None else METRIC_TYPE_ATOMIC
+                mtype = int(type_raw) if type_raw else METRIC_TYPE_ATOMIC
             except (TypeError, ValueError):
                 mtype = METRIC_TYPE_ATOMIC
+            # 超聚变 carries a single 计算口径 column; reuse it where the
+            # richer ChatBI 业务公式 / 统计口径 columns are absent.
+            caliber = self._cell(row, col, "计算口径")
             metric = Metric(
                 code=code,
-                name=_norm(row[1]),
-                aliases=_split_list(row[2]),
-                english=_norm(row[3]),
-                definition=_norm(row[4]),
-                formula_business=_norm(row[5]),
-                scope=_norm(row[6]),
+                name=self._cell(row, col, "指标名称"),
+                aliases=_split_list(self._cell(row, col, "指标别名")),
+                english=self._cell(row, col, "指标英文名"),
+                definition=self._cell(row, col, "指标定义"),
+                formula_business=self._cell(row, col, "计算公式(业务)") or caliber,
+                scope=self._cell(row, col, "统计口径") or caliber,
                 metric_type=mtype,
-                formula_technical=_norm(row[8]),
-                table=_norm(row[9]),
-                agg_column=_norm(row[10]),
-                agg_type=_norm(row[11]),
-                join_condition=_norm(row[12]),
-                filter_condition=_norm(row[13]),
-                dim_columns=_norm(row[14]) if len(row) > 14 else "",
-                version=_norm(row[15]) if len(row) > 15 else "",
-                change_note=_norm(row[16]) if len(row) > 16 else "",
+                formula_technical=self._cell(row, col, "计算公式(技术)"),
+                table=self._cell(row, col, "对应表名", "来源实体"),
+                agg_column=self._cell(row, col, "聚合列"),
+                agg_type=self._cell(row, col, "聚合类型"),
+                join_condition=self._cell(row, col, "连接条件"),
+                filter_condition=self._cell(row, col, "筛选条件"),
+                dim_columns=self._cell(row, col, "维度列"),
+                version=self._cell(row, col, "版本"),
+                change_note=self._cell(row, col, "修改说明"),
             )
             self.metrics[code] = metric
             if metric.name:

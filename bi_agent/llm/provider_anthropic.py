@@ -51,13 +51,14 @@ def stream(
     )
     if thinking:
         # Reserve roughly half of max_tokens for the thinking trace, but
-        # always leave at least 1024 for the visible answer. Anthropic
-        # requires temperature=1.0 when thinking is enabled.
+        # always leave at least 1024 for the visible answer.
         budget = max(1024, min(max_tokens // 2, 32000))
         kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
-        kwargs["temperature"] = 1.0
-    elif temperature is not None:
-        kwargs["temperature"] = float(temperature)
+    # `temperature` is intentionally NOT forwarded: recent Claude models
+    # (Opus 4.7+) deprecated the parameter and reject any request that
+    # includes it. Anthropic's default sampling is used instead. The arg
+    # is kept in the signature for cross-provider interface consistency.
+    _ = temperature
 
     try:
         with client.messages.stream(**kwargs) as stream_ctx:

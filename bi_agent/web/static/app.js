@@ -148,6 +148,26 @@
     settingsThinking:           document.getElementById("settings-thinking"),
     settingsThinkingStatus:     document.getElementById("settings-thinking-status"),
     settingsThinkingHint:       document.getElementById("settings-thinking-hint"),
+    // Report-generation wizard
+    btnReportgen:       document.getElementById("btn-reportgen"),
+    reportgenOverlay:   document.getElementById("reportgen-overlay"),
+    reportgenClose:     document.getElementById("reportgen-close"),
+    rgStepper:          document.getElementById("rg-stepper"),
+    rgBody:             document.getElementById("rg-body"),
+    rgReview:           document.getElementById("rg-review"),
+    rgPrev:             document.getElementById("rg-prev"),
+    rgNext:             document.getElementById("rg-next"),
+    rgConfirm:          document.getElementById("rg-confirm"),
+    rgSavePlan:         document.getElementById("rg-save-plan"),
+    // Data-source settings
+    btnSources:         document.getElementById("btn-sources"),
+    sourcesOverlay:     document.getElementById("sources-overlay"),
+    sourcesClose:       document.getElementById("sources-close"),
+    sourcesCancel:      document.getElementById("sources-cancel"),
+    sourcesSave:        document.getElementById("sources-save"),
+    sourcesOntology:    document.getElementById("sources-ontology"),
+    sourcesDatabase:    document.getElementById("sources-database"),
+    sourcesStatus:      document.getElementById("sources-status"),
     // Topbar
     agentName:      document.getElementById("agent-name"),
     topbarMeta:     document.getElementById("topbar-meta"),
@@ -909,6 +929,303 @@
   });
 
   // ------------------------------------------------------------------
+  // Report-generation wizard
+  //
+  // A 7-step config wizard. On final confirm it composes a report-
+  // generation request and runs it IN the 报表分析 page (report mode)
+  // on the report-generator agent — which searches data and assembles
+  // an actual structured report. The agent's取数 steps appear in the
+  // conversation, the report renders into the dashboard, and the
+  // per-turn 导出 buttons (HTML / Word) handle export.
+  // ------------------------------------------------------------------
+  const RG_TOTAL_STEPS = 7;
+  let rgStep = 1;
+
+  function rgGoto(step) {
+    rgStep = Math.max(1, Math.min(RG_TOTAL_STEPS, step));
+    el.reportgenOverlay.querySelectorAll(".rg-panel").forEach((p) => {
+      p.classList.toggle("active", Number(p.dataset.panel) === rgStep);
+    });
+    el.reportgenOverlay.querySelectorAll(".rg-step").forEach((s) => {
+      const n = Number(s.dataset.step);
+      s.classList.toggle("active", n === rgStep);
+      s.classList.toggle("done", n < rgStep);
+    });
+    el.rgPrev.hidden = rgStep === 1;
+    el.rgNext.hidden = rgStep === RG_TOTAL_STEPS;
+    el.rgConfirm.hidden = rgStep !== RG_TOTAL_STEPS;
+    if (rgStep === RG_TOTAL_STEPS) rgRenderReview();
+  }
+
+  // Read every .rg-field across the 6 input panels into a flat list of
+  // {key, label, value} — select → string, radio → checked label,
+  // checkbox group → array of checked labels.
+  function rgCollectPlan() {
+    const fields = [];
+    el.reportgenOverlay
+      .querySelectorAll('.rg-panel[data-panel] .rg-field')
+      .forEach((f) => {
+        if (f.hidden) return;   // skip the toggled-off field (e.g. 规则明细 ↔ 自定义规则)
+        const key = f.dataset.key;
+        const label = f.dataset.label || key;
+        const sel = f.querySelector("select");
+        const ta = f.querySelector("textarea");
+        const radios = f.querySelectorAll('input[type="radio"]');
+        const checks = f.querySelectorAll('input[type="checkbox"]');
+        let value;
+        if (sel) {
+          value = sel.value;
+        } else if (ta) {
+          value = ta.value.trim();
+        } else if (radios.length) {
+          const r = Array.from(radios).find((x) => x.checked);
+          value = r ? r.closest("label").textContent.trim() : "";
+        } else if (checks.length) {
+          value = Array.from(checks)
+            .filter((x) => x.checked)
+            .map((x) => x.closest("label").textContent.trim());
+        }
+        fields.push({ key, label, value });
+      });
+    return fields;
+  }
+
+  // Compose the natural-language report-generation request the agent
+  // receives. Each wizard field becomes a labelled line; the closing
+  // block tells the agent how to find data and render the report.
+  function rgBuildPrompt(fields) {
+    const cfg = fields
+      .map((f) => {
+        const v = Array.isArray(f.value) ? f.value.join("、") : f.value;
+        return v ? "· " + f.label + ":" + v : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    return (
+      "【标准报表生成任务】\n" +
+      "请按以下配置生成一份标准管理报表。你拥有业务本体与数据库的访问权限," +
+      "请逐步取数,并把报表内容以表格和图表输出到看板。\n\n" +
+      "[报表配置]\n" + cfg + "\n\n" +
+      "[执行要求]\n" +
+      "① 先用本体(MetricLookup / TermDisambiguate)核对指标口径,再用 SQL 逐项取数," +
+      "并展示关键取数步骤;\n" +
+      "② 按「报表模板」用 TableGenerate 输出报表主体表格(含对比基期);\n" +
+      "③ 按「配图」清单用 ChartGenerate 逐张输出对应图表;\n" +
+      "④ 最后给出一段管理层评述,点出关键结论与异常。"
+    );
+  }
+
+  function rgRenderReview() {
+    const fields = rgCollectPlan();
+    el.rgReview.innerHTML = fields
+      .map((f) => {
+        const v = Array.isArray(f.value)
+          ? f.value.join("、") || "—"
+          : f.value || "—";
+        return (
+          '<div class="rg-review-row">' +
+          '<span class="rg-review-key">' + esc(f.label) + "</span>" +
+          '<span class="rg-review-val">' + esc(v) + "</span></div>"
+        );
+      })
+      .join("");
+  }
+
+  // ③ 经营规则:选「自定义规则方案」时,把「规则明细」选择框换成自定义
+  // 规则文本框;选预设方案时换回。两个 .rg-field 互斥显示。
+  function rgToggleCustomRule() {
+    const ov = el.reportgenOverlay;
+    if (!ov) return;
+    const sel = ov.querySelector('.rg-field[data-key="rulePlan"] select');
+    const itemsField = ov.querySelector('.rg-field[data-key="ruleItems"]');
+    const customField = ov.querySelector('.rg-field[data-key="customRule"]');
+    if (!sel || !itemsField || !customField) return;
+    const isCustom = sel.value.indexOf("自定义") !== -1;
+    itemsField.hidden = isCustom;
+    customField.hidden = !isCustom;
+  }
+
+  function openReportgen() {
+    el.rgStepper.hidden = false;
+    el.rgConfirm.hidden = true;
+    el.rgSavePlan.hidden = false;
+    el.rgNext.hidden = false;
+    rgToggleCustomRule();
+    rgGoto(1);
+    el.reportgenOverlay.hidden = false;
+    setTimeout(() => el.reportgenOverlay.classList.add("visible"), 10);
+  }
+
+  function closeReportgen() {
+    el.reportgenOverlay.classList.remove("visible");
+    setTimeout(() => {
+      el.reportgenOverlay.hidden = true;
+    }, 150);
+  }
+
+  // Final confirm — run report generation IN the 报表分析 page.
+  // POST /api/report/generate spins up a report-generator session
+  // (ontology + DB tools, no uploaded report needed); the agent then
+  // searches data and assembles an actual report into the dashboard,
+  // where the per-turn 导出 buttons (HTML / Word) appear.
+  async function rgRunGeneration() {
+    if (state.busy) {
+      alert("当前有对话进行中,请等待结束后再生成报表。");
+      return;
+    }
+    const prompt = rgBuildPrompt(rgCollectPlan());
+    closeReportgen();
+    try {
+      const r = await fetch("/api/report/generate", { method: "POST" });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: r.statusText }));
+        throw new Error(err.detail || "create session failed");
+      }
+    } catch (e) {
+      alert("报表生成会话创建失败:" + (e.message || e));
+      return;
+    }
+    // Mark the report-mode session active (no uploaded report) so the
+    // chat send-gate passes; then dispatch the generation task.
+    state.report.activeReports = [];
+    state.report.activeReport = null;
+    state.report.withDb = true;
+    state.report.sessionActivated = true;
+    updateChatInputAvailability();
+    updateSendPlaceholder();
+    sendMessage(prompt);
+  }
+
+  if (el.btnReportgen)
+    el.btnReportgen.addEventListener("click", openReportgen);
+  if (el.reportgenClose)
+    el.reportgenClose.addEventListener("click", closeReportgen);
+  if (el.reportgenOverlay)
+    el.reportgenOverlay.addEventListener("click", (e) => {
+      if (e.target === el.reportgenOverlay) closeReportgen();
+    });
+  if (el.rgStepper)
+    el.rgStepper.addEventListener("click", (e) => {
+      const s = e.target.closest(".rg-step");
+      if (s) rgGoto(Number(s.dataset.step));
+    });
+  if (el.rgPrev) el.rgPrev.addEventListener("click", () => rgGoto(rgStep - 1));
+  if (el.rgNext) el.rgNext.addEventListener("click", () => rgGoto(rgStep + 1));
+  if (el.rgConfirm) el.rgConfirm.addEventListener("click", rgRunGeneration);
+  const rgRulePlanSel = el.reportgenOverlay &&
+    el.reportgenOverlay.querySelector('.rg-field[data-key="rulePlan"] select');
+  if (rgRulePlanSel)
+    rgRulePlanSel.addEventListener("change", rgToggleCustomRule);
+  if (el.rgSavePlan)
+    el.rgSavePlan.addEventListener("click", () => {
+      el.rgSavePlan.textContent = "✓ 方案已保存";
+      setTimeout(() => {
+        el.rgSavePlan.textContent = "⭐ 存为方案";
+      }, 1600);
+    });
+  document.addEventListener("keydown", (e) => {
+    if (
+      e.key === "Escape" &&
+      el.reportgenOverlay &&
+      !el.reportgenOverlay.hidden
+    ) {
+      closeReportgen();
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // Data-source settings — switch the active ontology / database the
+  // Agent runs against. GET /api/sources lists available files;
+  // PUT /api/sources re-binds the BI tools and resets sessions.
+  // ------------------------------------------------------------------
+  function fillSourceSelect(sel, info) {
+    const opts = (info && info.options) || [];
+    const active = info && info.active;
+    sel.innerHTML = "";
+    opts.forEach((name) => {
+      const o = document.createElement("option");
+      o.value = name;
+      o.textContent = name + (name === active ? "  · 当前生效" : "");
+      sel.appendChild(o);
+    });
+    if (active && opts.indexOf(active) !== -1) sel.value = active;
+  }
+
+  async function openSources() {
+    el.sourcesStatus.textContent = "";
+    el.sourcesStatus.className = "settings-status";
+    try {
+      const r = await fetch("/api/sources");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      fillSourceSelect(el.sourcesOntology, data.ontology);
+      fillSourceSelect(el.sourcesDatabase, data.database);
+    } catch (e) {
+      el.sourcesStatus.textContent = "加载数据源列表失败: " + (e.message || e);
+      el.sourcesStatus.className = "settings-status error";
+    }
+    el.sourcesOverlay.hidden = false;
+    setTimeout(() => el.sourcesOverlay.classList.add("visible"), 10);
+  }
+
+  function closeSources() {
+    el.sourcesOverlay.classList.remove("visible");
+    setTimeout(() => {
+      el.sourcesOverlay.hidden = true;
+    }, 150);
+  }
+
+  async function saveSources() {
+    if (state.busy) {
+      el.sourcesStatus.textContent = "对话进行中,请等当前回合结束后再切换数据源。";
+      el.sourcesStatus.className = "settings-status error";
+      return;
+    }
+    const payload = {
+      ontology: el.sourcesOntology.value || null,
+      database: el.sourcesDatabase.value || null,
+    };
+    el.sourcesStatus.textContent = "切换中…";
+    el.sourcesStatus.className = "settings-status pending";
+    try {
+      const r = await fetch("/api/sources", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({ detail: r.statusText }));
+        throw new Error(err.detail || "switch failed");
+      }
+      el.sourcesStatus.textContent = "✓ 数据源已切换 · 正在重新加载…";
+      el.sourcesStatus.className = "settings-status success";
+      setTimeout(() => location.reload(), 700);
+    } catch (e) {
+      el.sourcesStatus.textContent = "切换失败: " + (e.message || e);
+      el.sourcesStatus.className = "settings-status error";
+    }
+  }
+
+  if (el.btnSources) el.btnSources.addEventListener("click", openSources);
+  if (el.sourcesClose) el.sourcesClose.addEventListener("click", closeSources);
+  if (el.sourcesCancel)
+    el.sourcesCancel.addEventListener("click", closeSources);
+  if (el.sourcesSave) el.sourcesSave.addEventListener("click", saveSources);
+  if (el.sourcesOverlay)
+    el.sourcesOverlay.addEventListener("click", (e) => {
+      if (e.target === el.sourcesOverlay) closeSources();
+    });
+  document.addEventListener("keydown", (e) => {
+    if (
+      e.key === "Escape" &&
+      el.sourcesOverlay &&
+      !el.sourcesOverlay.hidden
+    ) {
+      closeSources();
+    }
+  });
+
+  // ------------------------------------------------------------------
   // System prompt (per-mode)
   // ------------------------------------------------------------------
   async function loadSystemPrompt() {
@@ -1485,6 +1802,44 @@ welcome: ${esc(a.welcome_message || "")}</div>
   // Used as a *secondary* boundary in case the model omits the ## heading.
   const NEXT_SECTION_RE = /[📊🔍💡📎📈📄]/u;
 
+  // Every section name across the L1 / L2·L3 / 报表生成 delivery templates.
+  // Drives the name-based fallback in extractSection() — when the model
+  // drops the canonical emoji (e.g. writes `**结论**:` or `## 根因分析`
+  // instead of `📌 结论` / `🔍 根因分析`), we still recognise the section
+  // so 结论 / 根因 / 建议 reliably reach the dashboard.
+  const SECTION_NAMES = [
+    "关键结论", "结论",
+    "根因分析", "根因证据链", "根因",
+    "行动建议", "管理建议", "建议",
+    "关键数据", "口径说明", "附图", "分析提醒", "跨维洞察",
+  ];
+
+  // Strip leading list / quote / heading / bold decoration from a line so
+  // the first *semantic* token is exposed. Shared by header detection.
+  function stripLineDecor(s) {
+    return String(s == null ? "" : s)
+      .replace(/^[#>*\-\s]+/, "")
+      .replace(/^\d+\.\s*/, "")
+      .replace(/^\*+/, "")
+      .replace(/^\s+/, "");
+  }
+
+  // Is `line` a *name-based* section header (canonical emoji omitted)?
+  // Returns the matched name, or null. Header-like = after decoration strip
+  // the line begins with a section name AND that name is immediately
+  // followed by a separator (`:`、`——`、`*`bold-close、`(`…) or end-of-line
+  // — so a body sentence that merely starts with the word ("建议各部门加强…")
+  // is not mistaken for a header. `names` restricts which names count.
+  function nameHeaderOf(line, names) {
+    const h = stripLineDecor(line);
+    for (const name of names) {
+      if (!h.startsWith(name)) continue;
+      const rest = h.slice(name.length);
+      if (rest === "" || /^[*：:—\-（(、\s]/.test(rest)) return name;
+    }
+    return null;
+  }
+
   function cleanLeadingDecoration(raw) {
     // Preserve list structure (`- `, `* `, numbered, CJK numerals) and
     // `**bold**` markers so the dashboard can split a section into its
@@ -1497,34 +1852,41 @@ welcome: ${esc(a.welcome_message || "")}</div>
       .replace(/\s+$/, "");
   }
 
-  // Generic section extractor. Locates a section header whose first
-  // non-decoration character is `marker` (an emoji) — so inline mentions of
-  // the same emoji in body text won't falsely anchor the section. Strips an
-  // optional section-name prefix and returns body up to the next `## ` heading
-  // or the next NEXT_SECTION_RE section emoji.
+  // Generic section extractor. Two-pass header detection:
+  //   Pass 1 — emoji header: a line whose first non-decoration character is
+  //     one of `markers` (the canonical, template-mandated form). Inline
+  //     mentions of the same emoji in body text won't falsely anchor it.
+  //   Pass 2 — name fallback: ONLY when no emoji header exists anywhere in
+  //     the text, accept a *name-based* header (`**结论**:`, `## 根因分析`).
+  //     Gating pass 2 on the emoji being entirely absent guarantees a
+  //     well-formed answer is never affected by the looser matching.
+  // Body runs to the next `## ` heading, the next NEXT_SECTION_RE section
+  // emoji, or the next name-based header of a *different* section — so
+  // 结论 / 根因 / 建议 reliably reach the dashboard even when the model
+  // drifts from the canonical emoji template.
   //
   // `markers` is a list — first element is the canonical emoji, subsequent
   // entries are accepted variants (e.g. 🔎 for 🔍).
   function extractSection(text, markers, namePrefixes /* string[] */) {
     if (!text || typeof text !== "string") return null;
     if (typeof markers === "string") markers = [markers];
+    namePrefixes = namePrefixes || [];
     const lines = text.split(/\n/);
+    const stripDecor = stripLineDecor;
 
-    // A line is a section header for this marker iff after stripping the
-    // decoration prefix (`#`, `>`, `*`, `-`, whitespace, numbered list like
-    // "3. ") its first character(s) are one of the markers.
-    const stripDecor = (s) => s
-      .replace(/^[#>*\-\s]+/, "")
-      .replace(/^\d+\.\s*/, "")
-      .replace(/^\*+/, "")
-      .replace(/^\s+/, "");
-
+    // Pass 1 — canonical emoji header.
     let startIdx = -1;
     let usedMarker = null;
     for (let i = 0; i < lines.length; i++) {
       const head = stripDecor(lines[i]);
       const m = markers.find((mk) => head.startsWith(mk));
       if (m) { startIdx = i; usedMarker = m; break; }
+    }
+    // Pass 2 — name fallback (only when the emoji is entirely absent).
+    if (startIdx < 0 && namePrefixes.length) {
+      for (let i = 0; i < lines.length; i++) {
+        if (nameHeaderOf(lines[i], namePrefixes)) { startIdx = i; break; }
+      }
     }
     if (startIdx < 0) return null;
 
@@ -1533,12 +1895,16 @@ welcome: ${esc(a.welcome_message || "")}</div>
     let head = stripDecor(lines[startIdx])
       .replace(/\*\*/g, "")
       .trim();
-    head = head.replace(new RegExp("^" + usedMarker + "\\s*"), "");
-    for (const name of (namePrefixes || [])) {
+    if (usedMarker) head = head.replace(new RegExp("^" + usedMarker + "\\s*"), "");
+    for (const name of namePrefixes) {
       head = head.replace(new RegExp("^" + name + "\\s*(?:[\\(（][^\\)）]*[\\)）])?\\s*"), "");
     }
     head = head.replace(/^[—\-:：]+\s*/, "").trim();
     if (head) out.push(head);
+
+    // Names of OTHER sections — a name-based header for any of them bounds
+    // this section (covers the "emoji dropped on the next section too" case).
+    const otherNames = SECTION_NAMES.filter((n) => !namePrefixes.includes(n));
 
     for (let j = startIdx + 1; j < lines.length; j++) {
       const raw = lines[j];
@@ -1555,6 +1921,9 @@ welcome: ${esc(a.welcome_message || "")}</div>
       const probeFirst = headProbe.slice(0, 4);
       if (!isOwnMarker && NEXT_SECTION_RE.test(probeFirst)) break;
 
+      // Stop on a name-based header for a different section (emoji omitted).
+      if (nt && nameHeaderOf(nt, otherNames)) break;
+
       if (!nt) {
         if (out.length > 0) out.push("");
         continue;
@@ -1568,7 +1937,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
   }
 
   function extractConclusion(text) {
-    return extractSection(text, ["📌"], ["结论"]);
+    // bi-analyst / report-analyst: "结论"; report-generator: "关键结论".
+    return extractSection(text, ["📌"], ["关键结论", "结论"]);
   }
 
   function extractRootCause(text) {
@@ -1578,7 +1948,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
   }
 
   function extractActions(text) {
-    return extractSection(text, ["💡"], ["行动建议", "建议"]);
+    // bi-analyst / report-analyst: "行动建议"; report-generator: "管理建议".
+    return extractSection(text, ["💡"], ["行动建议", "管理建议", "建议"]);
   }
 
   // L2/L3 responses contain 🔍 (root cause) and/or 💡 (actions) sections.
@@ -1942,13 +2313,18 @@ welcome: ${esc(a.welcome_message || "")}</div>
     card.innerHTML =
       '<button type="button" class="dash-export-btn" data-turn="' + tagStr + '">' +
       '📤 导出本轮报告 (HTML)</button>' +
+      '<button type="button" class="dash-export-btn dash-word-btn" data-turn="' + tagStr + '">' +
+      '📄 导出 Word</button>' +
       '<button type="button" class="dash-export-btn dash-sync-btn" data-turn="' + tagStr + '">' +
       '🏠 同步到主页</button>' +
       '<button type="button" class="dash-export-btn dash-feishu-btn" data-turn="' + tagStr + '">' +
       '🐦 分享到飞书</button>' +
       '<div class="dash-export-status" data-turn="' + tagStr + '"></div>';
-    card.querySelector(".dash-export-btn:not(.dash-sync-btn):not(.dash-feishu-btn)")
+    card.querySelector(
+      ".dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-feishu-btn)")
       .addEventListener("click", () => exportTurnReport(turnTag));
+    card.querySelector(".dash-word-btn")
+      .addEventListener("click", (ev) => handleWordButton(turnTag, ev.currentTarget));
     card.querySelector(".dash-sync-btn").addEventListener("click", () => {
       syncTurnReportToHome(turnTag, card);
     });
@@ -2026,9 +2402,13 @@ welcome: ${esc(a.welcome_message || "")}</div>
     );
   }
 
-  function buildReportHTML(turnTag, sectionsHTML) {
+  function buildReportHTML(turnTag, sectionsHTML, opts) {
+    opts = opts || {};
     const dateStr = new Date().toLocaleString("zh-CN", { hour12: false });
     const modeName = state.mode === "report" ? "报表分析" : "智能分析";
+    const docTitle = opts.title || ("硕磐智能 · " + modeName + " 报告");
+    const docMeta = opts.metaText || ("Turn " + turnTag + " · " + esc(dateStr));
+    const leadHTML = opts.leadHTML || "";
     return [
       '<!doctype html>',
       '<html lang="zh-CN">',
@@ -2064,6 +2444,14 @@ welcome: ${esc(a.welcome_message || "")}</div>
       '.btn:hover { background: #0a6cd1; }',
       '.btn-ghost { background: #fff; color: #0b7ff3; }',
       '.btn-ghost:hover { background: #eaf3ff; }',
+      '.report-toc { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 20px; margin: 18px 0; }',
+      '.report-summary { background: #f0f7ff; border: 1px solid #cfe3fb; border-radius: 6px; padding: 14px 20px; margin: 18px 0; }',
+      '.report-lead-title { font-size: 13px; font-weight: 700; color: #0b7ff3; margin-bottom: 8px; }',
+      '.report-toc ol { margin: 0; padding-left: 22px; font-size: 13px; color: #374151; line-height: 1.95; }',
+      '.report-summary p { margin: 0; font-size: 13px; line-height: 1.85; color: #1f2937; }',
+      '.doc-section { margin: 24px 0; }',
+      '.doc-section-head { font-size: 16px; font-weight: 700; color: #111827; border-left: 4px solid #0b7ff3; padding-left: 10px; margin: 24px 0 8px; }',
+      '.doc-section-intro { font-size: 13px; line-height: 1.85; color: #4b5563; margin: 0 0 12px; }',
       '@media print { body { padding: 0; background: #fff; } .report { box-shadow: none; padding: 0; max-width: none; } .report-toolbar { display: none; } }',
       '</style>',
       '</head>',
@@ -2071,10 +2459,11 @@ welcome: ${esc(a.welcome_message || "")}</div>
       '<div class="report">',
       '  <div class="report-head">',
       '    <div>',
-      '      <h1>硕磐智能 · ' + modeName + ' 报告</h1>',
-      '      <div class="report-meta">Turn ' + turnTag + ' · ' + esc(dateStr) + '</div>',
+      '      <h1>' + esc(docTitle) + '</h1>',
+      '      <div class="report-meta">' + docMeta + '</div>',
       '    </div>',
       '  </div>',
+      leadHTML,
       sectionsHTML,
       '  <div class="report-toolbar">',
       '    <button class="btn btn-ghost" onclick="window.print()">打印 / 保存为 PDF</button>',
@@ -2086,31 +2475,35 @@ welcome: ${esc(a.welcome_message || "")}</div>
     ].join("\n");
   }
 
+  // Render one dashboard card to its export <section> HTML.
+  function renderCardForExport(card) {
+    if (card.classList.contains("dash-chart") ||
+        card.classList.contains("dash-multidim")) {
+      return renderChartCardForExport(card);
+    }
+    if (card.classList.contains("dash-table")) {
+      return renderTableCardForExport(card);
+    }
+    if (card.classList.contains("dash-conclusion") ||
+        card.classList.contains("dash-rootcause")  ||
+        card.classList.contains("dash-actions")) {
+      return renderTextCardForExport(card);
+    }
+    return "";
+  }
+
+  function turnCards(turnTag) {
+    return Array.from(el.dashboardList.querySelectorAll(
+      ".dash-card[data-turn=\"" + String(turnTag) + "\"]"
+    )).filter((c) => !c.classList.contains("dash-export"));
+  }
+
   // Collect this turn's dashboard cards into a standalone report HTML.
   // Returns { html, cardCount } or null when the turn has no content.
   function collectTurnReportHTML(turnTag) {
-    const tagStr = String(turnTag);
-    const cards = Array.from(el.dashboardList.querySelectorAll(
-      ".dash-card[data-turn=\"" + tagStr + "\"]"
-    )).filter((c) => !c.classList.contains("dash-export"));
+    const cards = turnCards(turnTag);
     if (cards.length === 0) return null;
-
-    const sections = cards.map((card) => {
-      if (card.classList.contains("dash-chart") ||
-          card.classList.contains("dash-multidim")) {
-        return renderChartCardForExport(card);
-      }
-      if (card.classList.contains("dash-table")) {
-        return renderTableCardForExport(card);
-      }
-      if (card.classList.contains("dash-conclusion") ||
-          card.classList.contains("dash-rootcause")  ||
-          card.classList.contains("dash-actions")) {
-        return renderTextCardForExport(card);
-      }
-      return "";
-    }).join("\n");
-
+    const sections = cards.map(renderCardForExport).join("\n");
     return { html: buildReportHTML(turnTag, sections), cardCount: cards.length };
   }
 
@@ -2200,6 +2593,236 @@ welcome: ${esc(a.welcome_message || "")}</div>
       a.click();
     }
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
+  // --- Word export ------------------------------------------------------
+  // Clicking 导出 Word makes ONE LLM call (/api/report/compose) that
+  // integrates the turn's dashboard content into a formal report
+  // document — title, executive summary, a sectioned 目录 with a
+  // per-section intro paragraph — then assembles the .doc, interleaving
+  // the real rendered tables/charts. Falls back to a plain dump if the
+  // LLM call fails. Word opens HTML-content .doc files natively.
+
+  function cardExportKind(card) {
+    if (card.classList.contains("dash-chart") ||
+        card.classList.contains("dash-multidim")) return "chart";
+    if (card.classList.contains("dash-table")) return "table";
+    return "text";
+  }
+
+  function cardExportTitle(card) {
+    const t = card.querySelector(".dash-title");
+    if (t && t.textContent.trim()) return t.textContent.trim();
+    const tag = card.querySelector(".dash-tag");
+    return tag ? tag.textContent.trim() : "";
+  }
+
+  // A compact text representation of a card so the compose LLM knows
+  // what each block contains (without shipping rendered HTML / images).
+  function cardExportText(card) {
+    if (card.classList.contains("dash-table")) {
+      const table = card.querySelector(".dash-table-wrap table");
+      if (!table) return "";
+      return Array.from(table.querySelectorAll("tr")).slice(0, 12).map((tr) =>
+        Array.from(tr.querySelectorAll("th,td"))
+          .map((c) => c.textContent.trim()).join(" | ")
+      ).join(" ; ");
+    }
+    if (card.classList.contains("dash-chart") ||
+        card.classList.contains("dash-multidim")) {
+      const src = card.querySelector(".dash-source");
+      return src ? src.textContent.trim() : "";
+    }
+    const body = card.querySelector(".dash-body");
+    return body ? body.textContent.trim() : "";
+  }
+
+  // Assemble a professional Word report DOCUMENT from the LLM plan + the
+  // real rendered cards. Self-contained HTML styled as a formal report —
+  // cover page · 目录 · numbered sections · formal tables. Word opens
+  // HTML-content .doc files and renders this as a proper document.
+  // plan = { title, summary, sections:[{heading,intro,blocks:[idx]}] }.
+  function buildWordReportHTML(turnTag, plan, cards) {
+    const sections = Array.isArray(plan.sections) ? plan.sections : [];
+    const used = new Set();
+    const title = (plan.title || "经营分析报表").trim();
+    const now = new Date();
+    const dateCN = now.getFullYear() + " 年 " + (now.getMonth() + 1)
+      + " 月 " + now.getDate() + " 日";
+    const PB = '<br clear="all" '
+      + 'style="mso-special-character:line-break;page-break-before:always">';
+
+    // --- 目录 rows ---
+    const tocRows = [];
+    let tno = 0;
+    if (plan.summary) {
+      tno += 1;
+      tocRows.push('<tr><td class="toc-no">' + tno
+        + '</td><td class="toc-txt">执行摘要</td></tr>');
+    }
+    sections.forEach((s) => {
+      tno += 1;
+      tocRows.push('<tr><td class="toc-no">' + tno + '</td><td class="toc-txt">'
+        + esc((s.heading || "").trim()) + '</td></tr>');
+    });
+
+    // --- 正文 ---
+    const body = [];
+    if (plan.summary) {
+      body.push('<h1 class="sec-h1">执行摘要</h1>');
+      body.push('<div class="sec-summary">' + esc(plan.summary) + '</div>');
+    }
+    sections.forEach((s) => {
+      body.push('<h1 class="sec-h1">' + esc((s.heading || "").trim()) + '</h1>');
+      if (s.intro) body.push('<p class="sec-intro">' + esc(s.intro) + '</p>');
+      (Array.isArray(s.blocks) ? s.blocks : []).forEach((raw) => {
+        const bi = Number(raw);
+        const card = cards[bi];
+        if (!card || used.has(bi)) return;
+        used.add(bi);
+        body.push(renderCardForExport(card));
+      });
+    });
+    const leftover = cards
+      .map((c, i) => (used.has(i) ? "" : renderCardForExport(c)))
+      .filter(Boolean);
+    if (leftover.length) {
+      body.push('<h1 class="sec-h1">附:其他内容</h1>');
+      body.push(leftover.join("\n"));
+    }
+
+    return [
+      '<html xmlns:o="urn:schemas-microsoft-com:office:office"',
+      '      xmlns:w="urn:schemas-microsoft-com:office:word"',
+      '      xmlns="http://www.w3.org/TR/REC-html40">',
+      '<head>',
+      '<meta charset="utf-8">',
+      '<title>' + esc(title) + '</title>',
+      '<style>',
+      '@page { size: 21cm 29.7cm; margin: 2.5cm 2.3cm; }',
+      '* { box-sizing: border-box; }',
+      'body { font-family: "SimSun","宋体",serif; font-size: 12pt; color: #1a1a1a; line-height: 1.7; margin: 0; }',
+      'p { margin: 0 0 8pt; }',
+      '.cover { text-align: center; padding-top: 4.6cm; }',
+      '.cover-cat { font-family: "Microsoft YaHei",sans-serif; font-size: 14pt; letter-spacing: 8pt; color: #1f5fa8; margin-bottom: 2cm; }',
+      '.cover-title { font-family: "Microsoft YaHei",sans-serif; font-size: 30pt; font-weight: 700; color: #11233f; line-height: 1.4; margin: 0 1cm; }',
+      '.cover-rule { width: 30%; border: 0; border-top: 3px solid #1f5fa8; margin: 0.8cm auto 1.5cm; }',
+      '.cover-meta { margin: 0 auto; border-collapse: collapse; font-family: "Microsoft YaHei",sans-serif; font-size: 11pt; }',
+      '.cover-meta td { padding: 5pt 14pt; color: #333; }',
+      '.cover-meta .k { color: #8a8a8a; text-align: right; }',
+      '.cover-conf { margin-top: 3.4cm; font-family: "Microsoft YaHei",sans-serif; font-size: 10.5pt; color: #b03030; letter-spacing: 3pt; }',
+      '.doc-title-cn { font-family: "Microsoft YaHei",sans-serif; font-size: 19pt; font-weight: 700; color: #11233f; text-align: center; letter-spacing: 6pt; margin: 0 0 0.8cm; }',
+      '.toc { width: 100%; border-collapse: collapse; font-family: "Microsoft YaHei",sans-serif; font-size: 11.5pt; }',
+      '.toc td { padding: 9pt 4pt; border-bottom: 1px dotted #c4c4c4; }',
+      '.toc-no { width: 1.6cm; color: #1f5fa8; font-weight: 700; }',
+      '.toc-txt { color: #222; }',
+      '.sec-h1 { font-family: "Microsoft YaHei",sans-serif; font-size: 15pt; font-weight: 700; color: #11233f; border-left: 5px solid #1f5fa8; padding-left: 10pt; margin: 22pt 0 10pt; }',
+      '.sec-intro { color: #444; margin: 0 0 10pt; text-indent: 2em; }',
+      '.sec-summary { padding: 12pt 16pt; background: #f4f7fb; border: 1px solid #d6e1ee; line-height: 1.85; text-indent: 2em; }',
+      '.report-section { margin: 12pt 0 16pt; }',
+      '.report-section header { margin-bottom: 5pt; }',
+      '.report-tag { font-family: "Microsoft YaHei",sans-serif; font-size: 9pt; color: #9aa0a6; margin-right: 6pt; }',
+      '.report-title { font-family: "Microsoft YaHei",sans-serif; font-size: 11.5pt; font-weight: 700; color: #1f5fa8; }',
+      '.report-source { font-size: 9pt; color: #9aa0a6; margin-top: 4pt; }',
+      '.report-body { white-space: pre-wrap; line-height: 1.85; }',
+      '.report-chart { text-align: center; }',
+      '.report-chart img { max-width: 100%; height: auto; border: 1px solid #dadada; }',
+      '.report-empty { color: #9aa0a6; font-size: 9pt; padding: 10pt; border: 1px dashed #ccc; text-align: center; }',
+      '.report-table-wrap table { width: 100%; border-collapse: collapse; font-family: "Microsoft YaHei",sans-serif; font-size: 10pt; margin: 4pt 0; }',
+      '.report-table-wrap th, .report-table-wrap td { border: 1px solid #b9c4d2; padding: 5pt 8pt; }',
+      '.report-table-wrap thead th { background: #1f5fa8; color: #fff; font-weight: 700; }',
+      '.report-table-wrap tbody tr:nth-child(even) td { background: #eef3f9; }',
+      '.doc-end { margin-top: 26pt; padding-top: 10pt; border-top: 2px solid #1f5fa8; text-align: center; font-family: "Microsoft YaHei",sans-serif; font-size: 9.5pt; color: #8a8a8a; }',
+      '</style>',
+      '</head>',
+      '<body>',
+      '<div class="cover">',
+      '  <div class="cover-cat">经营分析报告</div>',
+      '  <div class="cover-title">' + esc(title) + '</div>',
+      '  <hr class="cover-rule">',
+      '  <table class="cover-meta">',
+      '    <tr><td class="k">生成日期</td><td>' + dateCN + '</td></tr>',
+      '    <tr><td class="k">生成方式</td><td>BI 智能报表生成</td></tr>',
+      '    <tr><td class="k">报表编号</td><td>RPT-' + esc(String(turnTag)) + '</td></tr>',
+      '  </table>',
+      '  <div class="cover-conf">内部资料 · 注意保密</div>',
+      '</div>',
+      PB,
+      '<div class="doc-title-cn">目 录</div>',
+      '<table class="toc">' + tocRows.join("") + '</table>',
+      PB,
+      body.join("\n"),
+      '<div class="doc-end">—— 报表结束 ——<br>本报表由 BI 智能报表生成助手自动生成,数据以系统取数为准</div>',
+      '</body>',
+      '</html>',
+    ].join("\n");
+  }
+
+  function downloadDoc(turnTag, html) {
+    const blob = new Blob(["﻿", html], {
+      type: "application/msword;charset=utf-8",
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "report-turn" + String(turnTag) + ".doc";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+  }
+
+  // Composed Word docs, kept in memory (keyed by turnTag) until download.
+  const rgWordDocs = {};
+
+  // The Word button is two-stage:
+  //   ① click「📄 导出 Word」  → one LLM call composes the report document
+  //   ② click「⬇ 下载 Word 文档」→ downloads the composed .doc
+  async function handleWordButton(turnTag, btn) {
+    const exportCard = btn.closest(".dash-export");
+    // Stage ② — already composed: this click just downloads.
+    if (btn.dataset.state === "ready") {
+      if (rgWordDocs[turnTag]) downloadDoc(turnTag, rgWordDocs[turnTag]);
+      return;
+    }
+    // Stage ① — compose via the LLM.
+    const cards = turnCards(turnTag);
+    if (!cards.length) {
+      alert("本轮没有可导出的看板内容。");
+      return;
+    }
+    const blocks = cards.map((card, idx) => ({
+      idx: idx,
+      kind: cardExportKind(card),
+      title: cardExportTitle(card),
+      content: cardExportText(card),
+    }));
+    btn.disabled = true;
+    btn.textContent = "⏳ 整合中…";
+    setExportStatus(exportCard, "正在调用大模型整合报表文档…");
+    let plan = null;
+    let errMsg = "";
+    try {
+      const resp = await fetch("/api/report/compose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blocks: blocks }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail || "compose failed");
+      }
+      plan = await resp.json();
+    } catch (e) {
+      errMsg = e.message || String(e);
+    }
+    btn.disabled = false;
+    if (plan && Array.isArray(plan.sections) && plan.sections.length) {
+      rgWordDocs[turnTag] = buildWordReportHTML(turnTag, plan, cards);
+      btn.dataset.state = "ready";
+      btn.textContent = "⬇ 下载 Word 文档";
+      setExportStatus(exportCard, "✓ 报表文档已整合完成,点击「下载 Word 文档」保存");
+    } else {
+      btn.textContent = "📄 导出 Word";
+      setExportStatus(exportCard, "整合失败:" + errMsg + " —— 可点击重试", true);
+    }
   }
 
   function clearDashboard() {
@@ -2750,7 +3373,10 @@ welcome: ${esc(a.welcome_message || "")}</div>
       } else {
         const recs = state.report.activeReports || [];
         const n = recs.length;
-        if (n <= 1) {
+        if (n === 0) {
+          // Report-generation session — no uploaded report bound.
+          el.chatInput.placeholder = "报表生成中,可继续补充生成要求...  (Enter 发送)";
+        } else if (n <= 1) {
           el.chatInput.placeholder = `针对「${recs[0]?.filename || state.report.activeReport?.filename || "报表"}」提问...  (Enter 发送 · Shift+Enter 换行)`;
         } else {
           el.chatInput.placeholder = `针对 ${n} 份报表(${recs[0].filename} 等)提问...  (Enter 发送 · Shift+Enter 换行)`;

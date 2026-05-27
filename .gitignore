@@ -25,6 +25,7 @@ Thumbs.db
 # Project
 bi_charts/
 uploaded_reports/
+outputs/
 # Secrets
 .env
 .env.*
