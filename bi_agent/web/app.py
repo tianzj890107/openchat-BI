@@ -25,6 +25,7 @@ from ..ontology.store import OntologyStore
 from ..report import ReportStore, parser_availability
 from ..tools import register_all
 from ..tools.sql_tools import (
+    DEFAULT_DORIS_DATABASE,
     DEFAULT_DORIS_DRIVER,
     DEFAULT_DORIS_JDBC_URL,
     DEFAULT_DORIS_PASSWORD,
@@ -67,6 +68,9 @@ class AppState:
         self.doris_driver: str = os.environ.get("DORIS_DRIVER", DEFAULT_DORIS_DRIVER)
         self.doris_username: str = os.environ.get("DORIS_USERNAME", DEFAULT_DORIS_USERNAME)
         self.doris_password: str = os.environ.get("DORIS_PASSWORD", DEFAULT_DORIS_PASSWORD)
+        # Active Doris database (schema). SQL references tables db-qualified,
+        # e.g. `ontology_demo_scm_po.poheader`.
+        self.doris_database: str = os.environ.get("DORIS_DATABASE", DEFAULT_DORIS_DATABASE)
         self.use_doris: bool = False
         # --- Report-analysis mode ---------------------------------------
         # Multiple reports may be active simultaneously. The ordered list
@@ -126,6 +130,7 @@ def configure(
             username=STATE.doris_username,
             password=STATE.doris_password,
             driver=STATE.doris_driver,
+            database=STATE.doris_database,
         )
         if use_doris
         else None
@@ -208,6 +213,7 @@ class SourcesUpdate(BaseModel):
     doris_driver: Optional[str] = None
     doris_username: Optional[str] = None
     doris_password: Optional[str] = None
+    doris_database: Optional[str] = None
 
 
 class ReportComposeBlock(BaseModel):
@@ -393,6 +399,7 @@ def get_sources_endpoint() -> JSONResponse:
             "driver": STATE.doris_driver,
             "username": STATE.doris_username,
             "password": STATE.doris_password,
+            "database": STATE.doris_database,
         },
     })
 
@@ -424,16 +431,21 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         username = req.doris_username if req.doris_username is not None else STATE.doris_username
         password = req.doris_password if req.doris_password is not None else STATE.doris_password
         driver = (req.doris_driver or STATE.doris_driver or DEFAULT_DORIS_DRIVER).strip()
+        database = (req.doris_database or STATE.doris_database or DEFAULT_DORIS_DATABASE).strip()
         if not jdbc:
             raise HTTPException(400, "请填写 Doris JDBC 地址(例如 jdbc:mysql://host:9030/db)")
         try:
-            DorisConn(jdbc_url=jdbc, username=username, password=password, driver=driver)
+            DorisConn(
+                jdbc_url=jdbc, username=username, password=password,
+                driver=driver, database=database,
+            )
         except ValueError as e:
             raise HTTPException(400, f"Doris JDBC 地址无法解析: {e}")
         STATE.doris_jdbc_url = jdbc
         STATE.doris_username = username
         STATE.doris_password = password
         STATE.doris_driver = driver
+        STATE.doris_database = database
         STATE.use_doris = True
         changed.append("database")
     elif req.database:
@@ -453,6 +465,7 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
                 username=STATE.doris_username,
                 password=STATE.doris_password,
                 driver=STATE.doris_driver,
+                database=STATE.doris_database,
             )
             if STATE.use_doris
             else None
@@ -468,6 +481,7 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         "ontology": os.path.basename(STATE.ontology_path),
         "database": DORIS_SOURCE_VALUE if STATE.use_doris else os.path.basename(STATE.db_path),
         "doris_jdbc_url": STATE.doris_jdbc_url if STATE.use_doris else "",
+        "doris_database": STATE.doris_database if STATE.use_doris else "",
     })
 
 

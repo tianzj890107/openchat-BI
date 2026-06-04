@@ -77,6 +77,7 @@ max_iterations: 40
 - 一次调用 `SQLRun` 只执行一条语句。优先用指标 `scope` 中限定的过滤条件,不要自行发明口径。
 - 复合指标:先拆解为原子指标分别查询,再在应用层组合。
 - 遇到列名/表名对不上时,立刻用 `DescribeTable` 或 `ListTables` 核实,不要硬猜。
+- **Doris 实时查询时,表名必须带库前缀** `<库名>.<表名>`(例:`ontology_demo_scm_po.poheader`)。库名以 `ListTables` 返回的前缀为准,不要写裸表名。
 
 ## 第 5 步 · 深度分析(L2 起执行,L1 跳过)
 

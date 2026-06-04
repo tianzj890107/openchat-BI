@@ -35,6 +35,10 @@ DEFAULT_DORIS_JDBC_URL = (
 DEFAULT_DORIS_DRIVER = "com.mysql.cj.jdbc.Driver"
 DEFAULT_DORIS_USERNAME = "admin"
 DEFAULT_DORIS_PASSWORD = ""
+# Active Doris database (schema). Tables are referenced db-qualified in SQL,
+# e.g. `ontology_demo_scm_po.poheader`. Overridable via the 数据源设置 UI or
+# the DORIS_DATABASE env var; falls back to the schema in the JDBC URL.
+DEFAULT_DORIS_DATABASE = "ontology_demo_scm_po"
 
 
 class DorisApiError(Exception):
@@ -64,12 +68,16 @@ class DorisConn:
         username: str = DEFAULT_DORIS_USERNAME,
         password: str = DEFAULT_DORIS_PASSWORD,
         driver: str = DEFAULT_DORIS_DRIVER,
+        database: str | None = None,
     ) -> None:
         self.jdbc_url = (jdbc_url or "").strip()
         self.username = username or ""
         self.password = password or ""
         self.driver = driver or DEFAULT_DORIS_DRIVER
-        self.host, self.port, self.database = _parse_jdbc_mysql(self.jdbc_url)
+        self.host, self.port, url_db = _parse_jdbc_mysql(self.jdbc_url)
+        # An explicit `database` overrides the schema baked into the JDBC URL,
+        # so the UI can switch databases without rewriting the connection URL.
+        self.database = (database or "").strip() or url_db
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"DorisConn({self.host}:{self.port}/{self.database}, user={self.username!r})"
@@ -206,7 +214,10 @@ SQL_RUN_SCHEMA = {
         "Doris (MySQL protocol), selected in 数据源设置. Writes, DDL, and "
         "multi-statement scripts are rejected. When Doris is active, use "
         "standard MySQL/ANSI SQL (PRAGMA is SQLite-only). Use this after "
-        "you've resolved the metric spec and relations from the ontology."
+        "you've resolved the metric spec and relations from the ontology. "
+        "When Doris is active, table names MUST be database-qualified "
+        "(e.g. ontology_demo_scm_po.poheader) — run ListTables first to get "
+        "the exact db.table prefixes."
     ),
     "input_schema": {
         "type": "object",
@@ -283,10 +294,14 @@ def _list_tables_doris(backend: SqlBackend) -> str:
         _cols, rows = _doris_query(conn, sql)
     except DorisApiError as e:
         return f"ListTables (Doris) error: {e}"
-    out = [f"# Tables in Doris {conn.host}:{conn.port}/{conn.database} ({len(rows)})"]
+    out = [
+        f"# Tables in Doris {conn.host}:{conn.port}/{conn.database} ({len(rows)})",
+        f"# 注意: 写 SQL 时表名必须带库前缀 `{conn.database}.<表名>`(例如 "
+        f"`{conn.database}.poheader`)。",
+    ]
     for name, cnt in rows:
         cnt_s = "?" if cnt is None else cnt
-        out.append(f"  {name}  ({cnt_s} rows est.)")
+        out.append(f"  {conn.database}.{name}  ({cnt_s} rows est.)")
     return "\n".join(out)
 
 
@@ -333,19 +348,27 @@ DESCRIBE_TABLE_SCHEMA = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "table": {"type": "string", "description": "Physical table name."},
+            "table": {
+                "type": "string",
+                "description": (
+                    "Physical table name. For Doris you may pass it "
+                    "db-qualified as `database.table` (e.g. "
+                    "ontology_demo_scm_po.poheader); a bare name uses the "
+                    "active Doris database."
+                ),
+            },
         },
         "required": ["table"],
     },
 }
 
 
-def _describe_table_doris(backend: SqlBackend, table: str) -> str:
+def _describe_table_doris(backend: SqlBackend, schema: str, table: str) -> str:
     conn = backend.doris
     sql = (
         "SELECT column_name, data_type, is_nullable, column_key "
         "FROM information_schema.columns "
-        f"WHERE table_schema = '{conn.database}' AND table_name = '{table}' "
+        f"WHERE table_schema = '{schema}' AND table_name = '{table}' "
         "ORDER BY ordinal_position"
     )
     try:
@@ -369,10 +392,18 @@ def _make_describe_table(source: "SqlBackend | str") -> Executor:
         table = (params.get("table") or "").strip()
         if not table:
             return "DescribeTable: empty table."
+        if backend.is_doris:
+            # Accept either a bare name or a db-qualified `schema.table`; the
+            # schema defaults to the active Doris database when omitted.
+            m = re.fullmatch(
+                r"(?:([A-Za-z_][A-Za-z0-9_]*)\.)?([A-Za-z_][A-Za-z0-9_]*)", table
+            )
+            if not m:
+                return f"DescribeTable: invalid table name {table!r}."
+            schema = m.group(1) or backend.doris.database
+            return _describe_table_doris(backend, schema, m.group(2))
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
             return f"DescribeTable: invalid table name {table!r}."
-        if backend.is_doris:
-            return _describe_table_doris(backend, table)
         try:
             conn = sqlite3.connect(backend.db_path)
             cur = conn.cursor()

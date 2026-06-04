@@ -347,6 +347,12 @@
                    placeholder="jdbc:mysql://host:9030/db?useSSL=false" autocomplete="off" spellcheck="false" />
           </div>
           <div class="settings-field">
+            <label class="settings-label" for="sources-doris-database">数据库(库名)</label>
+            <input class="settings-input" id="sources-doris-database" type="text"
+                   placeholder="ontology_demo_scm_po" autocomplete="off" spellcheck="false" />
+            <div class="settings-hint">生成 SQL 时表名会带库前缀,例如 <code>ontology_demo_scm_po.poheader</code>。</div>
+          </div>
+          <div class="settings-field">
             <label class="settings-label" for="sources-doris-driver">驱动类</label>
             <input class="settings-input" id="sources-doris-driver" type="text"
                    placeholder="com.mysql.cj.jdbc.Driver" autocomplete="off" spellcheck="false" />

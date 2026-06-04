@@ -169,6 +169,7 @@
     sourcesDatabase:    document.getElementById("sources-database"),
     sourcesDorisField:  document.getElementById("sources-doris-field"),
     sourcesDorisJdbc:   document.getElementById("sources-doris-jdbc"),
+    sourcesDorisDatabase: document.getElementById("sources-doris-database"),
     sourcesDorisDriver: document.getElementById("sources-doris-driver"),
     sourcesDorisUser:   document.getElementById("sources-doris-user"),
     sourcesDorisPass:   document.getElementById("sources-doris-pass"),
@@ -1184,6 +1185,7 @@
       fillSourceSelect(el.sourcesDatabase, data.database);
       if (data.doris) {
         if (el.sourcesDorisJdbc) el.sourcesDorisJdbc.value = data.doris.jdbc_url || "";
+        if (el.sourcesDorisDatabase) el.sourcesDorisDatabase.value = data.doris.database || "";
         if (el.sourcesDorisDriver) el.sourcesDorisDriver.value = data.doris.driver || "";
         if (el.sourcesDorisUser) el.sourcesDorisUser.value = data.doris.username || "";
         if (el.sourcesDorisPass) el.sourcesDorisPass.value = data.doris.password || "";
@@ -1223,6 +1225,7 @@
         return;
       }
       payload.doris_jdbc_url = jdbc;
+      payload.doris_database = (el.sourcesDorisDatabase && el.sourcesDorisDatabase.value || "").trim();
       payload.doris_driver = (el.sourcesDorisDriver && el.sourcesDorisDriver.value || "").trim();
       payload.doris_username = (el.sourcesDorisUser && el.sourcesDorisUser.value || "").trim();
       // Password may legitimately be empty (current Doris has no password).
