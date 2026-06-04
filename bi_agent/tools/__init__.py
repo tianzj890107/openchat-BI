@@ -22,15 +22,25 @@ from . import (
 )
 
 
-def register_all(store: OntologyStore, db_path: str | Path) -> list[str]:
-    """Register all BI tools with open_claude. Returns the list of tool names."""
+def register_all(
+    store: OntologyStore,
+    db_path: str | Path,
+    *,
+    doris: "sql_tools.DorisConn | None" = None,
+) -> list[str]:
+    """Register all BI tools with open_claude. Returns the list of tool names.
+
+    When `doris` is a DorisConn the SQL tools query Apache Doris over the MySQL
+    protocol instead of the local SQLite `db_path`.
+    """
     db_path = str(db_path)
+    sql_backend = sql_tools.SqlBackend(db_path=db_path, doris=doris)
     registered: list[str] = []
     for schema, make_executor in ontology_tools.SPECS:
         register_tool(schema, make_executor(store))
         registered.append(schema["name"])
     for schema, make_executor in sql_tools.SPECS:
-        register_tool(schema, make_executor(db_path))
+        register_tool(schema, make_executor(sql_backend))
         registered.append(schema["name"])
     for schema, make_executor in chart_tools.SPECS:
         register_tool(schema, make_executor())

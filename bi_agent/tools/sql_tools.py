@@ -1,5 +1,12 @@
 """
-SQL tools — safe read-only execution against the customer SQLite DB.
+SQL tools — safe read-only execution against the customer data source.
+
+Two backends are supported, selected per-registration via `SqlBackend`:
+
+  * SQLite  — local `.db` file (default).
+  * Doris   — Apache Doris over the MySQL wire protocol (FE query port, e.g.
+              172.16.6.163:9030), connected with pymysql using a JDBC-style
+              URL + username/password (see `DorisConn`).
 
 Only SELECT / WITH / PRAGMA / EXPLAIN statements are allowed. A single call
 executes exactly one statement. Results are truncated to a row cap so the
@@ -13,7 +20,132 @@ import sqlite3
 from typing import Callable
 
 Executor = Callable[[dict, str], str]
-ExecutorFactory = Callable[[str], Executor]
+
+
+# ---------------------------------------------------------------------------
+# Doris connection (MySQL wire protocol)
+# ---------------------------------------------------------------------------
+
+# Defaults for the bundled Doris instance. Password is empty by default
+# ("当前没有密码"); override via the 数据源设置 UI or DORIS_* env vars.
+DEFAULT_DORIS_JDBC_URL = (
+    "jdbc:mysql://172.16.6.163:9030/ontology"
+    "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+)
+DEFAULT_DORIS_DRIVER = "com.mysql.cj.jdbc.Driver"
+DEFAULT_DORIS_USERNAME = "admin"
+DEFAULT_DORIS_PASSWORD = ""
+
+
+class DorisApiError(Exception):
+    """Raised when a Doris connection or query fails."""
+
+
+def _parse_jdbc_mysql(jdbc_url: str) -> tuple[str, int, str]:
+    """Extract (host, port, database) from a `jdbc:mysql://host:port/db?...` URL."""
+    m = re.match(
+        r"^jdbc:mysql://(?P<host>[^:/?]+)(?::(?P<port>\d+))?/(?P<db>[^?/]+)",
+        (jdbc_url or "").strip(),
+        re.IGNORECASE,
+    )
+    if not m:
+        raise ValueError(
+            "需形如 jdbc:mysql://HOST:PORT/DATABASE?params 的 JDBC 地址"
+        )
+    return m.group("host"), int(m.group("port") or 3306), m.group("db")
+
+
+class DorisConn:
+    """A Doris (MySQL-protocol) connection spec parsed from a JDBC URL."""
+
+    def __init__(
+        self,
+        jdbc_url: str,
+        username: str = DEFAULT_DORIS_USERNAME,
+        password: str = DEFAULT_DORIS_PASSWORD,
+        driver: str = DEFAULT_DORIS_DRIVER,
+    ) -> None:
+        self.jdbc_url = (jdbc_url or "").strip()
+        self.username = username or ""
+        self.password = password or ""
+        self.driver = driver or DEFAULT_DORIS_DRIVER
+        self.host, self.port, self.database = _parse_jdbc_mysql(self.jdbc_url)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        return f"DorisConn({self.host}:{self.port}/{self.database}, user={self.username!r})"
+
+
+# ---------------------------------------------------------------------------
+# Backend descriptor
+# ---------------------------------------------------------------------------
+
+class SqlBackend:
+    """Where the SQL tools run their queries.
+
+    Pass a `DorisConn` to query Apache Doris over the MySQL protocol; otherwise
+    queries hit the local SQLite `db_path`.
+    """
+
+    def __init__(self, db_path: str = "", doris: "DorisConn | None" = None) -> None:
+        self.db_path = str(db_path or "")
+        self.doris = doris
+
+    @property
+    def is_doris(self) -> bool:
+        return self.doris is not None
+
+    @property
+    def label(self) -> str:
+        if self.doris is not None:
+            return f"Doris {self.doris.host}:{self.doris.port}/{self.doris.database}"
+        return self.db_path
+
+
+def _coerce_backend(source: "SqlBackend | str") -> SqlBackend:
+    """Accept either a SqlBackend or a bare db_path string (back-compat)."""
+    return source if isinstance(source, SqlBackend) else SqlBackend(db_path=str(source))
+
+
+ExecutorFactory = Callable[["SqlBackend | str"], Executor]
+
+
+# ---------------------------------------------------------------------------
+# Doris query execution (pymysql, imported lazily so the module loads without it)
+# ---------------------------------------------------------------------------
+
+def _doris_query(conn: DorisConn, sql: str) -> tuple[list[str], list[tuple]]:
+    """Run a single read-only statement on Doris; return (columns, rows)."""
+    try:
+        import pymysql  # lazy: only required when the Doris source is active
+    except ImportError as e:  # pragma: no cover - environment dependent
+        raise DorisApiError(
+            "未安装 pymysql,无法连接 Doris。请先 `pip install pymysql`。"
+        ) from e
+    try:
+        cx = pymysql.connect(
+            host=conn.host,
+            port=conn.port,
+            user=conn.username,
+            password=conn.password,
+            database=conn.database,
+            charset="utf8mb4",
+            connect_timeout=10,
+            read_timeout=60,
+        )
+    except Exception as e:  # pymysql.err.OperationalError etc.
+        raise DorisApiError(
+            f"无法连接 Doris ({conn.host}:{conn.port}/{conn.database}): {e}"
+        ) from e
+    try:
+        cur = cx.cursor()
+        cur.execute(sql)
+        columns = [d[0] for d in cur.description] if cur.description else []
+        rows = list(cur.fetchall())
+    except Exception as e:
+        raise DorisApiError(f"{e}") from e
+    finally:
+        cx.close()
+    return columns, rows
 
 
 _ALLOWED_LEAD = re.compile(r"^\s*(select|with|pragma|explain)\b", re.IGNORECASE)
@@ -69,10 +201,12 @@ def _format_rows(columns: list[str], rows: list[tuple], max_rows: int) -> str:
 SQL_RUN_SCHEMA = {
     "name": "SQLRun",
     "description": (
-        "Execute a single read-only SQL statement (SELECT / WITH / PRAGMA / "
-        "EXPLAIN) against the customer SQLite database. Writes, DDL, and "
-        "multi-statement scripts are rejected. Use this after you've resolved "
-        "the metric spec and relations from the ontology."
+        "Execute a single read-only SQL statement against the customer "
+        "database. The active source is either a local SQLite DB or Apache "
+        "Doris (MySQL protocol), selected in 数据源设置. Writes, DDL, and "
+        "multi-statement scripts are rejected. When Doris is active, use "
+        "standard MySQL/ANSI SQL (PRAGMA is SQLite-only). Use this after "
+        "you've resolved the metric spec and relations from the ontology."
     ),
     "input_schema": {
         "type": "object",
@@ -88,15 +222,25 @@ SQL_RUN_SCHEMA = {
 }
 
 
-def _make_sql_run(db_path: str) -> Executor:
+def _make_sql_run(source: "SqlBackend | str") -> Executor:
+    backend = _coerce_backend(source)
+
     def run(params: dict, cwd: str) -> str:
         sql = (params.get("sql") or "").strip()
         limit = int(params.get("limit") or 100)
         err = _validate_sql(sql)
         if err:
             return f"SQLRun rejected: {err}\nSQL: {sql}"
+        header = f"SQL: {sql}"
+        if backend.is_doris:
+            clean = sql.strip().rstrip(";").strip()
+            try:
+                columns, rows = _doris_query(backend.doris, clean)
+            except DorisApiError as e:
+                return f"SQLRun (Doris) error: {e}\nSQL: {sql}"
+            return header + "\n\n" + _format_rows(columns, rows, limit)
         try:
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(backend.db_path)
             conn.row_factory = None
             cur = conn.cursor()
             cur.execute(sql)
@@ -108,7 +252,6 @@ def _make_sql_run(db_path: str) -> Executor:
             conn.close()
         except sqlite3.Error as e:
             return f"SQLRun error: {e}\nSQL: {sql}"
-        header = f"SQL: {sql}"
         return header + "\n\n" + _format_rows(columns, rows, limit)
     return run
 
@@ -127,17 +270,41 @@ LIST_TABLES_SCHEMA = {
 }
 
 
-def _make_list_tables(db_path: str) -> Executor:
+def _list_tables_doris(backend: SqlBackend) -> str:
+    # Scope to the connected database. table_rows is an estimate maintained by
+    # Doris (good enough for an existence / scale check, and far cheaper than
+    # COUNT(*) over large columnar tables).
+    conn = backend.doris
+    sql = (
+        "SELECT table_name, table_rows FROM information_schema.tables "
+        f"WHERE table_schema = '{conn.database}' ORDER BY table_name"
+    )
+    try:
+        _cols, rows = _doris_query(conn, sql)
+    except DorisApiError as e:
+        return f"ListTables (Doris) error: {e}"
+    out = [f"# Tables in Doris {conn.host}:{conn.port}/{conn.database} ({len(rows)})"]
+    for name, cnt in rows:
+        cnt_s = "?" if cnt is None else cnt
+        out.append(f"  {name}  ({cnt_s} rows est.)")
+    return "\n".join(out)
+
+
+def _make_list_tables(source: "SqlBackend | str") -> Executor:
+    backend = _coerce_backend(source)
+
     def run(params: dict, cwd: str) -> str:
+        if backend.is_doris:
+            return _list_tables_doris(backend)
         try:
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(backend.db_path)
             cur = conn.cursor()
             cur.execute(
                 "SELECT name FROM sqlite_master "
                 "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
             )
             names = [r[0] for r in cur.fetchall()]
-            out = [f"# Tables in {db_path} ({len(names)})"]
+            out = [f"# Tables in {backend.db_path} ({len(names)})"]
             for n in names:
                 try:
                     cur.execute(f'SELECT COUNT(*) FROM "{n}"')
@@ -173,15 +340,41 @@ DESCRIBE_TABLE_SCHEMA = {
 }
 
 
-def _make_describe_table(db_path: str) -> Executor:
+def _describe_table_doris(backend: SqlBackend, table: str) -> str:
+    conn = backend.doris
+    sql = (
+        "SELECT column_name, data_type, is_nullable, column_key "
+        "FROM information_schema.columns "
+        f"WHERE table_schema = '{conn.database}' AND table_name = '{table}' "
+        "ORDER BY ordinal_position"
+    )
+    try:
+        _cols, rows = _doris_query(conn, sql)
+    except DorisApiError as e:
+        return f"DescribeTable (Doris) error: {e}"
+    if not rows:
+        return f"DescribeTable: table {table!r} not found or has no columns."
+    lines = [f"# {table} — {len(rows)} columns"]
+    for name, type_, is_nullable, key in rows:
+        marker = " [PK]" if str(key).upper() in ("PRI", "PRIMARY") else ""
+        null_s = "NULL" if str(is_nullable).upper() in ("YES", "1", "TRUE") else "NOT NULL"
+        lines.append(f"  {name}  {type_}  {null_s}{marker}")
+    return "\n".join(lines)
+
+
+def _make_describe_table(source: "SqlBackend | str") -> Executor:
+    backend = _coerce_backend(source)
+
     def run(params: dict, cwd: str) -> str:
         table = (params.get("table") or "").strip()
         if not table:
             return "DescribeTable: empty table."
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
             return f"DescribeTable: invalid table name {table!r}."
+        if backend.is_doris:
+            return _describe_table_doris(backend, table)
         try:
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(backend.db_path)
             cur = conn.cursor()
             cur.execute(f'PRAGMA table_info("{table}")')
             rows = cur.fetchall()

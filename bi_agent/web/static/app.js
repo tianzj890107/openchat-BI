@@ -167,6 +167,11 @@
     sourcesSave:        document.getElementById("sources-save"),
     sourcesOntology:    document.getElementById("sources-ontology"),
     sourcesDatabase:    document.getElementById("sources-database"),
+    sourcesDorisField:  document.getElementById("sources-doris-field"),
+    sourcesDorisJdbc:   document.getElementById("sources-doris-jdbc"),
+    sourcesDorisDriver: document.getElementById("sources-doris-driver"),
+    sourcesDorisUser:   document.getElementById("sources-doris-user"),
+    sourcesDorisPass:   document.getElementById("sources-doris-pass"),
     sourcesStatus:      document.getElementById("sources-status"),
     // Topbar
     agentName:      document.getElementById("agent-name"),
@@ -1138,6 +1143,16 @@
   // Agent runs against. GET /api/sources lists available files;
   // PUT /api/sources re-binds the BI tools and resets sessions.
   // ------------------------------------------------------------------
+  // Sentinel value for the Doris read-only API pseudo-source (mirrors the
+  // backend DORIS_SOURCE_VALUE). Selecting it routes SQLRun/ListTables/
+  // DescribeTable through POST {base}/agent/doris/query.
+  const DORIS_SOURCE_VALUE = "__doris_api__";
+
+  function sourceOptionLabel(name, active) {
+    const base = name === DORIS_SOURCE_VALUE ? "API · Doris 实时查询" : name;
+    return base + (name === active ? "  · 当前生效" : "");
+  }
+
   function fillSourceSelect(sel, info) {
     const opts = (info && info.options) || [];
     const active = info && info.active;
@@ -1145,10 +1160,17 @@
     opts.forEach((name) => {
       const o = document.createElement("option");
       o.value = name;
-      o.textContent = name + (name === active ? "  · 当前生效" : "");
+      o.textContent = sourceOptionLabel(name, active);
       sel.appendChild(o);
     });
     if (active && opts.indexOf(active) !== -1) sel.value = active;
+  }
+
+  // Show the Doris API base-URL field only when the API source is selected.
+  function syncDorisField() {
+    if (!el.sourcesDorisField) return;
+    const on = el.sourcesDatabase && el.sourcesDatabase.value === DORIS_SOURCE_VALUE;
+    el.sourcesDorisField.hidden = !on;
   }
 
   async function openSources() {
@@ -1160,6 +1182,13 @@
       const data = await r.json();
       fillSourceSelect(el.sourcesOntology, data.ontology);
       fillSourceSelect(el.sourcesDatabase, data.database);
+      if (data.doris) {
+        if (el.sourcesDorisJdbc) el.sourcesDorisJdbc.value = data.doris.jdbc_url || "";
+        if (el.sourcesDorisDriver) el.sourcesDorisDriver.value = data.doris.driver || "";
+        if (el.sourcesDorisUser) el.sourcesDorisUser.value = data.doris.username || "";
+        if (el.sourcesDorisPass) el.sourcesDorisPass.value = data.doris.password || "";
+      }
+      syncDorisField();
     } catch (e) {
       el.sourcesStatus.textContent = "加载数据源列表失败: " + (e.message || e);
       el.sourcesStatus.className = "settings-status error";
@@ -1181,10 +1210,24 @@
       el.sourcesStatus.className = "settings-status error";
       return;
     }
+    const dbValue = el.sourcesDatabase.value || null;
     const payload = {
       ontology: el.sourcesOntology.value || null,
-      database: el.sourcesDatabase.value || null,
+      database: dbValue,
     };
+    if (dbValue === DORIS_SOURCE_VALUE) {
+      const jdbc = (el.sourcesDorisJdbc && el.sourcesDorisJdbc.value || "").trim();
+      if (!jdbc) {
+        el.sourcesStatus.textContent = "请填写 Doris JDBC 地址(例如 jdbc:mysql://host:9030/db)。";
+        el.sourcesStatus.className = "settings-status error";
+        return;
+      }
+      payload.doris_jdbc_url = jdbc;
+      payload.doris_driver = (el.sourcesDorisDriver && el.sourcesDorisDriver.value || "").trim();
+      payload.doris_username = (el.sourcesDorisUser && el.sourcesDorisUser.value || "").trim();
+      // Password may legitimately be empty (current Doris has no password).
+      payload.doris_password = (el.sourcesDorisPass && el.sourcesDorisPass.value) || "";
+    }
     el.sourcesStatus.textContent = "切换中…";
     el.sourcesStatus.className = "settings-status pending";
     try {
@@ -1207,6 +1250,7 @@
   }
 
   if (el.btnSources) el.btnSources.addEventListener("click", openSources);
+  if (el.sourcesDatabase) el.sourcesDatabase.addEventListener("change", syncDorisField);
   if (el.sourcesClose) el.sourcesClose.addEventListener("click", closeSources);
   if (el.sourcesCancel)
     el.sourcesCancel.addEventListener("click", closeSources);
@@ -1952,13 +1996,14 @@ welcome: ${esc(a.welcome_message || "")}</div>
     return extractSection(text, ["💡"], ["行动建议", "管理建议", "建议"]);
   }
 
-  // L2/L3 responses contain 🔍 (root cause) and/or 💡 (actions) sections.
-  // L1 responses end with 💬 分析提醒 and have neither 🔍 nor 💡 in body.
+  // Analysis-level turns (L2 问题寻找 / L3 根因 / L4 决策 / L5 执行) carry one of
+  // the deep-analysis section markers below and must keep their tables on the
+  // dashboard. L1 取数查询 responses end with a 🧭 引导 and have none of them.
+  //   🔍/🔎 根因  💡 建议  🧮 方案对比  🗂️ 行动计划  📟 监控盘  🔁 复盘
+  const ANALYSIS_MARKERS = ["🔍", "🔎", "💡", "🧮", "🗂️", "🗂", "📟", "🔁"];
   function detectIntentLevel(text) {
     if (!text || typeof text !== "string") return "L1";
-    const hasRoot = text.includes("🔍") || text.includes("🔎");
-    const hasActions = text.includes("💡");
-    return (hasRoot || hasActions) ? "L2L3" : "L1";
+    return ANALYSIS_MARKERS.some((m) => text.includes(m)) ? "L2L3" : "L1";
   }
 
   function ensureDashboardEmptyHidden() {
@@ -3167,6 +3212,17 @@ welcome: ${esc(a.welcome_message || "")}</div>
         el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
         break;
       }
+      case "conclusion_enforce": {
+        finalizeAssistantText();
+        const tip = el_h("div", "msg msg-system msg-enforce",
+          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-yellow,#eab308); border-color: var(--accent-yellow,#eab308);">SYSTEM · 强制结论</span></div>
+           <div class="msg-body" style="color: var(--text-1); border-left: 2px solid var(--accent-yellow,#eab308); padding-left: 10px;">
+             检测到本轮缺少 <code>📌 结论</code>,已注入提醒,要求模型补一条结论。
+           </div>`);
+        el.chatScroll.appendChild(tip);
+        el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
+        break;
+      }
       case "done": {
         setBusy(false);
         const _bk = B();
@@ -4163,8 +4219,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
       `若用户要求改页面但要素不全(比如没说具体改什么文字),正常提问澄清,不要凭空发 ui-command。`,
       ``,
       `数据分析纪律(与通用助手完全一致,不得因象限身份弱化 —— ui-command 是附加能力,不替代分析 SOP):`,
-      `  - 🔴 强制图表配对:本轮只要调用了 \`TableGenerate\`,就必须同时至少调用 1 次 \`ChartGenerate\`;≥2 行的结果集禁止在正文手写 Markdown \`|\` 表格,必须走 \`TableGenerate\`。L1/事实型多行结果 ≥1 表 +≥1 图;L2/L3 分析型 ≥1 表 +≥2 图(2 图覆盖不同视角)。仅 1 行 1 列纯标量可只用文字。`,
-      `  - 🔴 L2/L3 输出到看板:带"为什么/原因/分析/对比/怎么办"等分析意图时按 L2/L3 模板交付 —— 📌结论(一句带数字与实体编码,会被抽取为看板结论卡)+ 🔍根因证据链(论点+数据+来源三元组)+ 💡行动建议(自动带出)+ 📈附图;这些段落前端会汇总进中间实时看板,缺图或缺根因/建议视为交付不合格。`,
+      `  - 🔴 强制图表配对:本轮只要调用了 \`TableGenerate\`,就必须同时至少调用 1 次 \`ChartGenerate\`;≥2 行的结果集禁止在正文手写 Markdown \`|\` 表格,必须走 \`TableGenerate\`。L1 取数/L2 问题寻找 多行结果 ≥1 表 +≥1 图;L3 及以上分析型 ≥1 表 +≥2 图(2 图覆盖不同视角)。仅 1 行 1 列纯标量可只用文字。`,
+      `  - 🔴 五级分析逐级递进并逐级引导(L1 取数→L2 问题→L3 根因→L4 决策→L5 执行):每轮交付必须有一条 📌结论(一句带数字与实体编码,会被抽取为看板结论卡),L1 先给 📐口径再给结论;L1–L4 结尾用一句话 🧭引导进入下一级。L3 起带 🔍根因证据链(论点+数据+来源三元组)+ 📈附图;L4 每个方案含效果/成本/风险/周期(+历史案例)并给推荐;L5 给可执行行动(谁/何时/标准)+可量化监控+复盘闭环。这些段落前端会汇总进中间实时看板,缺图或缺结论视为交付不合格。`,
       `[象限助手系统提示结束]`
     ].join("\n");
   }
@@ -4332,6 +4388,17 @@ welcome: ${esc(a.welcome_message || "")}</div>
     }
   }
 
+  // Light theme — opt-in via ?theme=light (e.g. embedded as the white-based
+  // Meta-ERP 智能分析助手 inside the role dashboard's i-Agent). Stamps a class
+  // on <html> that flips the dark palette to a light one (see styles.css).
+  function applyThemeFromUrl() {
+    let theme = null;
+    try { theme = new URLSearchParams(location.search).get("theme"); }
+    catch (_) { theme = null; }
+    if (theme === "light") document.documentElement.classList.add("theme-light");
+  }
+
+  applyThemeFromUrl();
   applyQuadrantFromUrl();
 
   // ------------------------------------------------------------------

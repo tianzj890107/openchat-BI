@@ -53,7 +53,16 @@ body {
   font-size: 25px;
   line-height: 56px;
   color: #d8dee7;
+  cursor: pointer;
+  user-select: none;
 }
+.hamburger:hover { color: #fff; }
+
+/* Collapsible left product-function sidebar (toggled by the hamburger) */
+.sidebar { transition: transform .22s ease; }
+.content { transition: margin-left .22s ease; }
+body.sidebar-collapsed .sidebar { transform: translateX(-100%); }
+body.sidebar-collapsed .content { margin-left: 0; }
 
 .brand {
   width: 336px;
@@ -1124,6 +1133,21 @@ body.editing .config-note { display: block; }
   .ai-edit-body { grid-template-columns: 1fr; }
   .ai-sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
 }
+
+/* ====== Meta-ERP 智能分析助手 (inline /workbench view inside i-Agent) ====== */
+.iagent-view {
+  display: none;
+  height: calc(100vh - 56px);
+  background: #ffffff;
+}
+.iagent-view.active { display: block; }
+.iagent-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #ffffff;
+}
   </style>
 </head>
 <body>
@@ -1149,10 +1173,10 @@ body.editing .config-note { display: block; }
       <div class="search">搜索 <span>⌕</span></div>
       <div class="menu-title"><span>IBA</span> 智能经营解析(IBA) <span class="chev">⌃</span></div>
       <div class="submenu">
-        <a href="/">CEO驾驶舱</a>
-        <a class="active" href="/dashboard.html">驾驶舱</a>
+        <a href="/ceo_dashboard_standalone.html">CEO驾驶舱</a>
+        <a class="active" href="/dashboard.html" id="dashboardNav">驾驶舱</a>
         <a href="income.html">收入</a>
-        <a href="/workbench">i-Agent</a>
+        <a href="/workbench" id="iAgentOpen">i-Agent</a>
       </div>
       <div class="menu-item">流程运营(360) <span class="chev">⌄</span></div>
       <div class="menu-item">智能销售管理(ISMP) <span class="chev">⌄</span></div>
@@ -1164,12 +1188,7 @@ body.editing .config-note { display: block; }
     </aside>
 
     <main class="content">
-      <nav class="tabstrip" aria-label="驾驶舱页签">
-        <a class="tab" href="/">CEO驾驶舱 <span class="close">×</span></a>
-        <a class="tab active" href="/dashboard.html">角色驾驶舱 <span class="close">×</span></a>
-      </nav>
-
-      <section class="page">
+      <section class="page" id="dashboardView">
         <div class="page-head">
           <div>
             <h1 id="pageTitle">CFO驾驶舱</h1>
@@ -1208,6 +1227,10 @@ body.editing .config-note { display: block; }
 
         <div class="config-note">编辑模式已开启：可拖动排序柄、缩放手柄或点击“新增看板项目”手动配置；权限切片为只读查询入口，不作为看板项目编辑。</div>
         <div class="editable-board" id="editableBoard" aria-label="可配置看板"></div>
+      </section>
+
+      <section class="iagent-view" id="iagentView" aria-label="Meta-ERP智能分析助手">
+        <iframe class="iagent-frame" id="iagentFrame" title="Meta-ERP智能分析助手" src="about:blank" loading="lazy"></iframe>
       </section>
     </main>
   </div>
@@ -2102,6 +2125,56 @@ $("permissionModal").addEventListener("click", (event) => {
 });
 
 renderRole("cfo");
+  </script>
+
+  <script>
+  // ============================================================
+  // Meta-ERP 智能分析助手 (inline /workbench view inside i-Agent)
+  // ============================================================
+  const WORKBENCH_URL = "/workbench?theme=light";
+
+  function showIagentView() {
+    const dashView = document.getElementById("dashboardView");
+    const iaView = document.getElementById("iagentView");
+    const frame = document.getElementById("iagentFrame");
+    const iaNav = document.getElementById("iAgentOpen");
+    const dashNav = document.getElementById("dashboardNav");
+    if (frame && (!frame.src || frame.src === "about:blank" || frame.dataset.loaded !== WORKBENCH_URL)) {
+      frame.src = WORKBENCH_URL;
+      frame.dataset.loaded = WORKBENCH_URL;
+    }
+    if (dashView) dashView.style.display = "none";
+    if (iaView) iaView.classList.add("active");
+    if (iaNav) iaNav.classList.add("active");
+    if (dashNav) dashNav.classList.remove("active");
+  }
+
+  function showDashboardView() {
+    const dashView = document.getElementById("dashboardView");
+    const iaView = document.getElementById("iagentView");
+    const iaNav = document.getElementById("iAgentOpen");
+    const dashNav = document.getElementById("dashboardNav");
+    if (iaView) iaView.classList.remove("active");
+    if (dashView) dashView.style.display = "";
+    if (iaNav) iaNav.classList.remove("active");
+    if (dashNav) dashNav.classList.add("active");
+  }
+
+  window.addEventListener("DOMContentLoaded", () => {
+    const iaNav = document.getElementById("iAgentOpen");
+    const dashNav = document.getElementById("dashboardNav");
+    if (iaNav) iaNav.addEventListener("click", (e) => { e.preventDefault(); showIagentView(); });
+    if (dashNav) dashNav.addEventListener("click", (e) => { e.preventDefault(); showDashboardView(); });
+
+    // Hamburger toggles the left product-function sidebar
+    const hamburger = document.querySelector(".hamburger");
+    if (hamburger) hamburger.addEventListener("click", () => {
+      document.body.classList.toggle("sidebar-collapsed");
+    });
+
+    // Land directly on the i-Agent assistant instead of the dashboard
+    showIagentView();
+  });
   </script>
 </body>
 </html>

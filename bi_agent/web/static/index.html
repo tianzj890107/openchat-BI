@@ -337,7 +337,31 @@
         <div class="settings-field">
           <label class="settings-label" for="sources-database">数据库源</label>
           <select class="settings-select" id="sources-database"></select>
-          <div class="settings-hint">Agent 取数所用的 SQLite 数据库(.db)。</div>
+          <div class="settings-hint">Agent 取数所用的数据源:本地 SQLite 数据库(.db),或 Doris 实时只读 API。</div>
+        </div>
+        <div id="sources-doris-field" hidden>
+          <div class="settings-label" style="margin-bottom:6px;">API 接口参数(Doris)</div>
+          <div class="settings-field">
+            <label class="settings-label" for="sources-doris-jdbc">JDBC 地址</label>
+            <input class="settings-input" id="sources-doris-jdbc" type="text"
+                   placeholder="jdbc:mysql://host:9030/db?useSSL=false" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="settings-field">
+            <label class="settings-label" for="sources-doris-driver">驱动类</label>
+            <input class="settings-input" id="sources-doris-driver" type="text"
+                   placeholder="com.mysql.cj.jdbc.Driver" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="settings-field">
+            <label class="settings-label" for="sources-doris-user">用户名</label>
+            <input class="settings-input" id="sources-doris-user" type="text"
+                   placeholder="admin" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="settings-field">
+            <label class="settings-label" for="sources-doris-pass">密码</label>
+            <input class="settings-input" id="sources-doris-pass" type="password"
+                   placeholder="(当前无密码,可留空)" autocomplete="new-password" />
+          </div>
+          <div class="settings-hint">取数与 SQL 执行将通过 MySQL 协议连接 Doris(仅允许单条只读查询)。</div>
         </div>
         <div class="rg-note rg-note-info">ℹ 切换数据源会把本体与 SQL 工具重新绑定到新源,并重置「数据分析」与「报表分析」两个模式的当前会话。</div>
         <div class="settings-status" id="sources-status"></div>

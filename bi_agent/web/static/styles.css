@@ -54,6 +54,37 @@
   --fs-xl:  16px;
 }
 
+/* ---------- LIGHT THEME ----------
+ * Opt-in via <html class="theme-light"> (set when the workbench is loaded with
+ * ?theme=light, e.g. embedded as the Meta-ERP 智能分析助手 inside the role
+ * dashboard's i-Agent). Only the palette variables are overridden, so every
+ * component that consumes them flips to a white base with no markup changes. */
+html.theme-light {
+  --bg-0:          #FFFFFF;   /* app background */
+  --bg-1:          #FFFFFF;   /* panel */
+  --bg-2:          #FFFFFF;   /* card */
+  --bg-3:          #F2F5F9;   /* card hover */
+  --bg-elev:       #F4F6FA;   /* code / pre */
+  --bg-input:      #FFFFFF;
+
+  --border-1:      #E3E8EF;
+  --border-2:      #CFD8E3;
+  --border-accent: #9CC0EA;
+
+  --fg-0:          #111418;   /* primary text — black */
+  --fg-1:          #2C3543;
+  --fg-2:          #5A6675;
+  --fg-3:          #8A97A6;
+
+  --accent-blue:   #1F6FEB;
+}
+html.theme-light,
+html.theme-light body { background: #FFFFFF; color: var(--fg-0); }
+/* Scrollbars + faint white-on-dark tints don't read on a white base — neutralize */
+html.theme-light table.data-grid tbody tr:nth-child(odd) { background: rgba(15, 23, 42, 0.025); }
+html.theme-light ::-webkit-scrollbar-thumb { background: #C7D0DB; }
+html.theme-light ::-webkit-scrollbar-track { background: #EEF2F7; }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 body {

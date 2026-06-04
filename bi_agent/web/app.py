@@ -24,6 +24,13 @@ from ..llm.runtime_config import (
 from ..ontology.store import OntologyStore
 from ..report import ReportStore, parser_availability
 from ..tools import register_all
+from ..tools.sql_tools import (
+    DEFAULT_DORIS_DRIVER,
+    DEFAULT_DORIS_JDBC_URL,
+    DEFAULT_DORIS_PASSWORD,
+    DEFAULT_DORIS_USERNAME,
+    DorisConn,
+)
 from .session import WebSession
 
 
@@ -51,6 +58,16 @@ class AppState:
         self.session: Optional[WebSession] = None
         self.db_path: str = ""
         self.ontology_path: str = ""
+        # --- Doris (MySQL protocol) data source -------------------------
+        # When `use_doris` is True the SQL tools query Apache Doris over the
+        # MySQL wire protocol instead of the local SQLite `db_path`. The
+        # connection params seed the 数据源设置 UI fields and can be overridden
+        # via DORIS_* env vars. Password is empty by default ("当前没有密码").
+        self.doris_jdbc_url: str = os.environ.get("DORIS_JDBC_URL", DEFAULT_DORIS_JDBC_URL)
+        self.doris_driver: str = os.environ.get("DORIS_DRIVER", DEFAULT_DORIS_DRIVER)
+        self.doris_username: str = os.environ.get("DORIS_USERNAME", DEFAULT_DORIS_USERNAME)
+        self.doris_password: str = os.environ.get("DORIS_PASSWORD", DEFAULT_DORIS_PASSWORD)
+        self.use_doris: bool = False
         # --- Report-analysis mode ---------------------------------------
         # Multiple reports may be active simultaneously. The ordered list
         # below preserves the user's selection order so prompt sections,
@@ -90,6 +107,7 @@ def configure(
     ontology_path: str,
     db_path: str,
     agent_name: str = "bi-analyst",
+    use_doris: bool = False,
 ) -> None:
     """Load ontology, register tools, select agent def. Call once before serving."""
     # API keys are checked per-provider at call time:
@@ -100,8 +118,19 @@ def configure(
     STATE.cwd = cwd
     STATE.db_path = db_path
     STATE.ontology_path = ontology_path
+    STATE.use_doris = use_doris
     STATE.ontology_store = OntologyStore.from_xlsx(ontology_path)
-    register_all(STATE.ontology_store, db_path)
+    doris_conn = (
+        DorisConn(
+            jdbc_url=STATE.doris_jdbc_url,
+            username=STATE.doris_username,
+            password=STATE.doris_password,
+            driver=STATE.doris_driver,
+        )
+        if use_doris
+        else None
+    )
+    register_all(STATE.ontology_store, db_path, doris=doris_conn)
 
     load_agent_defs(cwd)
     reg = get_agent_def_registry()
@@ -165,10 +194,20 @@ class ConfigUpdate(BaseModel):
     deepseek_api_key: Optional[str] = None
 
 
+# Sentinel `database` value meaning "use the Doris (MySQL protocol) source"
+# instead of a local .db file. Surfaced as a selectable option in /api/sources.
+DORIS_SOURCE_VALUE = "__doris_api__"
+
+
 class SourcesUpdate(BaseModel):
     """Switch the active ontology / database source. Omit a field to keep it."""
     ontology: Optional[str] = None   # xlsx filename, relative to cwd
-    database: Optional[str] = None   # .db filename, relative to cwd
+    database: Optional[str] = None   # .db filename, or DORIS_SOURCE_VALUE for Doris
+    # Doris connection params (used when database == DORIS_SOURCE_VALUE)
+    doris_jdbc_url: Optional[str] = None
+    doris_driver: Optional[str] = None
+    doris_username: Optional[str] = None
+    doris_password: Optional[str] = None
 
 
 class ReportComposeBlock(BaseModel):
@@ -203,16 +242,22 @@ def _no_cache_file(path: Path) -> FileResponse:
 
 @app.get("/")
 def index() -> FileResponse:
-    # Project main page: the standalone CEO dashboard (entry). The detailed
-    # CEO cockpit is reachable at /ceo_cockpit.html; the BI workbench lives at
-    # /workbench and is embedded as an iframe inside the floating AI assistant.
-    page = _project_root() / "ceo_dashboard_standalone.html"
+    # Project main page: the role dashboard (entry). The standalone CEO dashboard
+    # is reachable at /ceo_dashboard_standalone.html and the detailed CEO cockpit
+    # at /ceo_cockpit.html; the BI workbench lives at /workbench and is embedded
+    # as the Meta-ERP 智能分析助手 inside the dashboard's i-Agent view.
+    page = _project_root() / "dashboard.html"
     if page.exists():
         return _no_cache_file(page)
-    fallback = _project_root() / "ceo_cockpit.html"
+    fallback = _project_root() / "ceo_dashboard_standalone.html"
     if fallback.exists():
         return _no_cache_file(fallback)
     return _no_cache_file(STATIC_DIR / "index.html")
+
+
+@app.get("/ceo_dashboard_standalone.html")
+def ceo_dashboard_standalone_page() -> FileResponse:
+    return _no_cache_file(_project_root() / "ceo_dashboard_standalone.html")
 
 
 @app.get("/ceo_cockpit.html")
@@ -327,14 +372,27 @@ def get_sources_endpoint() -> JSONResponse:
             if p.is_file() and not p.name.startswith("~$")
         )
 
+    # Doris (MySQL protocol) is offered as a pseudo-source alongside the local
+    # .db files. When active, `database.active` points at the sentinel value.
+    db_options = _scan("*.db") + [DORIS_SOURCE_VALUE]
+    db_active = DORIS_SOURCE_VALUE if STATE.use_doris else os.path.basename(STATE.db_path)
+
     return JSONResponse({
         "ontology": {
             "options": _scan("*.xlsx"),
             "active": os.path.basename(STATE.ontology_path),
         },
         "database": {
-            "options": _scan("*.db"),
-            "active": os.path.basename(STATE.db_path),
+            "options": db_options,
+            "active": db_active,
+        },
+        "doris": {
+            "value": DORIS_SOURCE_VALUE,
+            "active": STATE.use_doris,
+            "jdbc_url": STATE.doris_jdbc_url,
+            "driver": STATE.doris_driver,
+            "username": STATE.doris_username,
+            "password": STATE.doris_password,
         },
     })
 
@@ -359,17 +417,47 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         STATE.ontology_path = str(op)
         changed.append("ontology")
 
-    if req.database:
+    if req.database == DORIS_SOURCE_VALUE:
+        # Switch the SQL tools to Doris (MySQL protocol). Empty fields fall
+        # back to the stored/default connection params (password may be blank).
+        jdbc = (req.doris_jdbc_url or STATE.doris_jdbc_url or "").strip()
+        username = req.doris_username if req.doris_username is not None else STATE.doris_username
+        password = req.doris_password if req.doris_password is not None else STATE.doris_password
+        driver = (req.doris_driver or STATE.doris_driver or DEFAULT_DORIS_DRIVER).strip()
+        if not jdbc:
+            raise HTTPException(400, "请填写 Doris JDBC 地址(例如 jdbc:mysql://host:9030/db)")
+        try:
+            DorisConn(jdbc_url=jdbc, username=username, password=password, driver=driver)
+        except ValueError as e:
+            raise HTTPException(400, f"Doris JDBC 地址无法解析: {e}")
+        STATE.doris_jdbc_url = jdbc
+        STATE.doris_username = username
+        STATE.doris_password = password
+        STATE.doris_driver = driver
+        STATE.use_doris = True
+        changed.append("database")
+    elif req.database:
         dp = cwd / req.database
         if not dp.is_file():
             raise HTTPException(400, f"数据库文件不存在: {req.database}")
         STATE.db_path = str(dp)
+        STATE.use_doris = False
         changed.append("database")
 
     if changed:
-        # register_tool is idempotent — this rebinds the ontology/SQL
-        # tools to the new store + db_path.
-        register_all(STATE.ontology_store, STATE.db_path)
+        # register_tool is idempotent — this rebinds the ontology/SQL tools to
+        # the new store + db_path (or Doris connection).
+        doris_conn = (
+            DorisConn(
+                jdbc_url=STATE.doris_jdbc_url,
+                username=STATE.doris_username,
+                password=STATE.doris_password,
+                driver=STATE.doris_driver,
+            )
+            if STATE.use_doris
+            else None
+        )
+        register_all(STATE.ontology_store, STATE.db_path, doris=doris_conn)
         # Reset sessions so the new system prompt / ontology take effect.
         STATE.session = None
         STATE.report_session = None
@@ -378,7 +466,8 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
     return JSONResponse({
         "changed": changed,
         "ontology": os.path.basename(STATE.ontology_path),
-        "database": os.path.basename(STATE.db_path),
+        "database": DORIS_SOURCE_VALUE if STATE.use_doris else os.path.basename(STATE.db_path),
+        "doris_jdbc_url": STATE.doris_jdbc_url if STATE.use_doris else "",
     })
 
 
