@@ -61,18 +61,6 @@ def _has_markdown_table(text: str) -> bool:
     return bool(text) and bool(_MD_TABLE_SEP_RE.search(text))
 
 
-# --- Conclusion enforcement ------------------------------------------------
-# Every turn must close with a `📌 结论` line (the front-end lifts it into the
-# dashboard's conclusion card). If the model forgets, we re-prompt for it —
-# capped so a stubborn model can't loop the turn forever.
-_CONCLUSION_RE = re.compile(r"📌\s*\**\s*(?:关键)?结论")
-MAX_CONCLUSION_ENFORCE = 2
-
-
-def _has_conclusion(text: str) -> bool:
-    return bool(text) and bool(_CONCLUSION_RE.search(text))
-
-
 class WebSession:
     """One browser session = one Conversation + one event stream."""
 
@@ -247,7 +235,6 @@ class WebSession:
         called_tools_this_turn: set[str] = set()
         text_concat_this_turn: str = ""
         enforced_render: bool = False
-        conclusion_enforce_attempts: int = 0
 
         for iteration in range(self.max_iterations):
             yield {"type": "iteration_start", "iteration": iteration}
@@ -348,38 +335,6 @@ class WebSession:
                         "message": reminder,
                     }
                     continue  # re-prompt LLM with the reminder appended
-
-                # ---- Conclusion enforcement --------------------------------
-                # Every substantive turn must end with a `📌 结论` line. If the
-                # model produced real work (text or tool calls) but no
-                # conclusion, inject a corrective message and re-prompt for
-                # exactly the missing line. Capped to avoid an infinite loop.
-                did_work = bool(text_concat_this_turn.strip() or called_tools_this_turn)
-                if (
-                    did_work
-                    and not _has_conclusion(text_concat_this_turn)
-                    and conclusion_enforce_attempts < MAX_CONCLUSION_ENFORCE
-                ):
-                    conclusion_enforce_attempts += 1
-                    reminder = (
-                        "⚠️ **强制纪律检查 · 结论缺失**\n\n"
-                        "你这一轮的回复里没有出现 `📌 结论`。按 SOP,**每一轮交付都必须有"
-                        "至少一条以 `📌 结论` 开头的一句话总结**(带量化值 + 时间/维度/单位 + "
-                        "实体编码),前端实时看板要靠它抽取结论卡,缺失视为交付不合格。\n\n"
-                        "**现在立刻补一条结论(只补这一行,不要重新取数、不要重复整段分析)**:\n"
-                        "- 格式:`📌 结论:<一句话,含量化值 + 时间/维度/单位 + 实体编码>`。\n"
-                        "- 基于本轮已取到的数据下结论。\n"
-                        "- 若本轮因故未取到完整数据,也必须给一条结论,说明已确定什么、卡在哪、"
-                        "缺什么(例:`📌 结论:截至当前 X 已确认为 …,但 Y 因 … 未完成,需 … 后继续`)。"
-                    )
-                    self.messages.append({"role": "user", "content": reminder})
-                    yield {
-                        "type": "conclusion_enforce",
-                        "iteration": iteration,
-                        "attempt": conclusion_enforce_attempts,
-                        "message": reminder,
-                    }
-                    continue  # re-prompt LLM for the missing conclusion
 
                 break
 

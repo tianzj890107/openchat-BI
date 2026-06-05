@@ -3215,17 +3215,6 @@ welcome: ${esc(a.welcome_message || "")}</div>
         el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
         break;
       }
-      case "conclusion_enforce": {
-        finalizeAssistantText();
-        const tip = el_h("div", "msg msg-system msg-enforce",
-          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-yellow,#eab308); border-color: var(--accent-yellow,#eab308);">SYSTEM · 强制结论</span></div>
-           <div class="msg-body" style="color: var(--text-1); border-left: 2px solid var(--accent-yellow,#eab308); padding-left: 10px;">
-             检测到本轮缺少 <code>📌 结论</code>,已注入提醒,要求模型补一条结论。
-           </div>`);
-        el.chatScroll.appendChild(tip);
-        el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
-        break;
-      }
       case "done": {
         setBusy(false);
         const _bk = B();
@@ -4223,7 +4212,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
       ``,
       `数据分析纪律(与通用助手完全一致,不得因象限身份弱化 —— ui-command 是附加能力,不替代分析 SOP):`,
       `  - 🔴 强制图表配对:本轮只要调用了 \`TableGenerate\`,就必须同时至少调用 1 次 \`ChartGenerate\`;≥2 行的结果集禁止在正文手写 Markdown \`|\` 表格,必须走 \`TableGenerate\`。L1 取数/L2 问题寻找 多行结果 ≥1 表 +≥1 图;L3 及以上分析型 ≥1 表 +≥2 图(2 图覆盖不同视角)。仅 1 行 1 列纯标量可只用文字。`,
-      `  - 🔴 五级分析逐级递进并逐级引导(L1 取数→L2 问题→L3 根因→L4 决策→L5 执行):每轮交付必须有一条 📌结论(一句带数字与实体编码,会被抽取为看板结论卡),L1 先给 📐口径再给结论;L1–L4 结尾用一句话 🧭引导进入下一级。L3 起带 🔍根因证据链(论点+数据+来源三元组)+ 📈附图;L4 每个方案含效果/成本/风险/周期(+历史案例)并给推荐;L5 给可执行行动(谁/何时/标准)+可量化监控+复盘闭环。这些段落前端会汇总进中间实时看板,缺图或缺结论视为交付不合格。`,
+      `  - 🔴 五级分析逐级递进并逐级引导(L1 取数→L2 问题→L3 根因→L4 决策→L5 执行):每轮交付必须有一条 📌结论(一句带数字与实体编码,会被抽取为看板结论卡);L1–L4 结尾用一句话 🧭引导进入下一级。L3 起带 🔍根因证据链(论点+数据+来源三元组)+ 📈附图;L4 每个方案含效果/成本/风险/周期(+历史案例)并给推荐;L5 给可执行行动(谁/何时/标准)+可量化监控+复盘闭环。这些段落前端会汇总进中间实时看板,缺图或缺结论视为交付不合格。`,
       `[象限助手系统提示结束]`
     ].join("\n");
   }
