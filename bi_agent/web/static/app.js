@@ -499,9 +499,15 @@
     const txt = clauseText(item);
     if (!txt) return;
     const msg =
-      "请针对以下根因做深度分析:\n「" + txt + "」\n" +
-      "要求:① 拆解关键驱动因素并量化各自影响;② 还原传导链路(指标→动因→结果);" +
-      "③ 给出可验证的下钻路径与数据证据;④ 输出可执行的改进建议。";
+      "请针对以下问题进入「根因分析」(L3),并严格按 L3 模板交付:\n「" + txt + "」\n" +
+      "必须包含且各用规定的标题行开头:\n" +
+      "📌 结论(一句话,带数字与实体编码)\n" +
+      "📊 关键数据(用 TableGenerate 出表)\n" +
+      "🔍 根因分析(证据链:分层展开,每层=论点+支持数据+来源编码)\n" +
+      "✅ 证据验证(已验证 / 部分验证)\n" +
+      "💡 行动建议(1–2 条,具体到根因切片)\n" +
+      "📈 附图(≥1 张 ChartGenerate)\n" +
+      "注意:🔍 根因分析 与 💡 行动建议 两段的标题必须原样出现,前端据此抽取到看板。";
     if (el.chatInput) { el.chatInput.value = msg; autosizeInput(); }
     flashItem(item, "✅ 已提交深度分析…", false);
     if (el.chatInput) { el.chatInput.value = ""; el.chatInput.style.height = ""; }
@@ -2322,16 +2328,6 @@ welcome: ${esc(a.welcome_message || "")}</div>
     return true;
   }
 
-  // L1 dashboards show only chart + conclusion — strip table cards from the
-  // current turn after we know the intent level.
-  function pruneL1Dashboard(turnTag) {
-    if (!el.dashboardList) return;
-    const tag = String(turnTag);
-    const tables = el.dashboardList.querySelectorAll(".dash-card.dash-table");
-    tables.forEach((c) => { if (c.dataset.turn === tag) c.remove(); });
-    updateDashboardCount();
-  }
-
   function pushChartToDashboard(chart) {
     const bucket = B();
     appendDashboardCard(dashboardChartCard(chart, bucket.currentTurnTag || 1));
@@ -3176,10 +3172,6 @@ welcome: ${esc(a.welcome_message || "")}</div>
           usage: evt.usage,
         });
         if (evt.text) {
-          const _bk = B();
-          const _tag = _bk.currentTurnTag || 1;
-          _bk.turnHasConclusion = _bk.turnHasConclusion || {};
-          _bk.turnHasL2L3 = _bk.turnHasL2L3 || {};
           // 📌结论 / 🔍根因 / 💡建议 may land in the SAME message or be split
           // across separate iterations. Extract each INDEPENDENTLY on its own
           // marker — never gate 根因/建议 on 📌 being in the same message.
@@ -3187,13 +3179,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
           //  whenever the model emitted 📌结论 and 🔍根因/💡建议 separately.)
           // All three pushes are idempotent no-ops without their marker.
           pushConclusionIfAny(evt.text);
-          const _hadRC = pushRootCauseIfAny(evt.text);
-          const _hadAC = pushActionsIfAny(evt.text);
-          if (evt.text.includes("📌")) _bk.turnHasConclusion[_tag] = true;
-          // A turn is L2/L3 iff it actually rendered a 根因/建议 card. The
-          // L1 table-prune is deferred to the `done` handler so a
-          // conclusion-first / 根因-later split is never mis-pruned.
-          if (_hadRC || _hadAC) _bk.turnHasL2L3[_tag] = true;
+          pushRootCauseIfAny(evt.text);
+          pushActionsIfAny(evt.text);
           // Quadrant-assistant: detect any ```ui-command``` blocks and STAGE
           // them on the pending queue. The user clicks an "执行" button at
           // end-of-turn to actually apply them to the cockpit.
@@ -3219,15 +3206,9 @@ welcome: ${esc(a.welcome_message || "")}</div>
         setBusy(false);
         const _bk = B();
         const _tag = _bk.currentTurnTag || 1;
-        // Decide L1-vs-L2/L3 only now that the whole turn is complete, so a
-        // "📌结论 first, 🔍根因/💡建议 later" split is never mis-pruned.
-        // L2/L3 if a 根因/建议 card exists for this turn (flag OR DOM probe);
-        // prune L1 tables only when the turn had a 📌结论 but no L2/L3 card.
-        const _domL2L3 = el.dashboardList && el.dashboardList.querySelector(
-          `.dash-card.dash-rootcause[data-turn="${_tag}"], .dash-card.dash-actions[data-turn="${_tag}"]`);
-        const _hadL2L3 = (_bk.turnHasL2L3 && _bk.turnHasL2L3[_tag]) || !!_domL2L3;
-        const _hadConcl = _bk.turnHasConclusion && _bk.turnHasConclusion[_tag];
-        if (!_hadL2L3 && _hadConcl) pruneL1Dashboard(_tag);
+        // Tables produced this turn stay on the dashboard regardless of level —
+        // the L1 template (6.2) itself requires TableGenerate, so 取数 tables
+        // must map to the 看板 just like charts/conclusions do.
         appendTurnExportButton(_tag);
         // Quadrant-assistant: if any ui-commands were staged this turn,
         // render the "执行" card so the user can apply them in one click.
