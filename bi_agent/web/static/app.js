@@ -32,6 +32,9 @@
       rootCauseSeen: new Set(),        // dedup 🔍 root-cause cards
       actionsSeen: new Set(),          // dedup 💡 action cards
       currentTurnTag: 0,               // increments per user turn (for card ids)
+      // Pinned task list (TodoWrite). Latest full snapshot the agent wrote;
+      // re-rendered into #chat-todo on every update and on mode switch.
+      todos: [],
       // Quadrant-assistant: ui-command queue. Commands extracted from each
       // llm_response stage here instead of firing immediately at the cockpit.
       // The user clicks an "执行" button rendered at end-of-turn to flush
@@ -88,6 +91,11 @@
   // ------------------------------------------------------------------
   const el = {
     chatScroll:     document.getElementById("chat-scroll"),
+    chatTodo:       document.getElementById("chat-todo"),
+    chatTodoHead:   document.getElementById("chat-todo-head"),
+    chatTodoCaret:  document.getElementById("chat-todo-caret"),
+    chatTodoCount:  document.getElementById("chat-todo-count"),
+    chatTodoList:   document.getElementById("chat-todo-list"),
     chatEmpty:      document.getElementById("chat-empty"),
     emptyGlyph:     document.getElementById("empty-glyph"),
     emptyTitle:     document.getElementById("empty-title"),
@@ -1986,7 +1994,26 @@ welcome: ${esc(a.welcome_message || "")}</div>
     }
 
     while (out.length > 0 && !out[out.length - 1]) out.pop();
-    return out.length ? out.join("\n") : null;
+    const result = out.length ? out.join("\n") : null;
+    // Guard: when the model echoes the SOP/delivery template into the chat as a
+    // plan (e.g. "1. 📌 结论:一句话复述查询结果  2. 📊 数据/图表 ……"), the marker
+    // line is a *placeholder*, not a real answer — extracting it produces an
+    // awkward "结论:一句话复述查询结果" card. Drop sections whose body is just
+    // the template's own descriptive wording.
+    if (result && isTemplatePlaceholder(result)) return null;
+    return result;
+  }
+
+  // True if `content` is SOP-template boilerplate rather than a real answer.
+  // The template's section descriptions begin with stems no genuine answer
+  // ever opens with ("一句话…", "分层展开…", "用 TableGenerate…"), so a strict
+  // first-line prefix test catches plan-dumps without touching valid output.
+  const TEMPLATE_PLACEHOLDER_RE =
+    /^(一句话|分层展开|基于证据链|用\s*`?TableGenerate|用\s*`?ChartGenerate|多行多列|列出当期值|点出|含量化|指标编码|末尾用一句话)/;
+  function isTemplatePlaceholder(content) {
+    const first = String(content || "").split(/\n/).map(s => s.trim()).find(Boolean);
+    if (!first) return false;
+    return TEMPLATE_PLACEHOLDER_RE.test(first);
   }
 
   function extractConclusion(text) {
@@ -2326,6 +2353,110 @@ welcome: ${esc(a.welcome_message || "")}</div>
     bucket.actionsSeen.add(key);
     appendDashboardCard(dashboardActionsCard(content, bucket.currentTurnTag || 1));
     return true;
+  }
+
+  // ------------------------------------------------------------------
+  // Pinned task list — pinned above the chat scroll (#chat-todo). Driven
+  // automatically from the six-step SOP (not from the model), so it always
+  // reflects real progress even when the model never calls a todo tool:
+  //   ① 识别意图 → ② 准备口径/上下文 → ③ 规划取数 → ④ 执行取数 →
+  //   ⑤ 深度分析 → ⑥ 汇总交付(结论+图表)
+  // A forward-only `sopStep` cursor advances on tool/marker signals; all
+  // steps before it read completed, the cursor reads in_progress, the rest
+  // pending. The whole list is seeded fresh at the start of each user turn.
+  // ------------------------------------------------------------------
+  const TODO_BOX = { pending: "○", in_progress: "◔", completed: "✔" };
+  const SOP_STEPS = [
+    "识别意图",
+    "准备口径与上下文",
+    "规划取数方案",
+    "执行查询取数",
+    "深度分析",
+    "汇总交付(结论 + 图表)",
+  ];
+  // Tool → the SOP step it proves we've reached (forward-fill marks earlier
+  // steps done). Planning (idx 2) has no tool — SQLRun jumps to idx 3 and
+  // forward-fill completes it.
+  const SOP_TOOL_STEP = {
+    OntologyQuery: 1, TermDisambiguate: 1, MetricLookup: 1, RelationLookup: 1,
+    EntityDescribe: 1, ListBusinessObjects: 1, ListTables: 1, DescribeTable: 1,
+    SQLRun: 3,
+    TableGenerate: 5, ChartGenerate: 5, ChartGenerateMultiDim: 5,
+  };
+
+  // Seed a fresh SOP checklist at the start of a user turn (data mode only).
+  function initSopTodos() {
+    const bucket = B();
+    bucket.sopStep = 0;
+    bucket.todos = SOP_STEPS.map((label, i) => ({
+      content: label, status: i === 0 ? "in_progress" : "pending",
+    }));
+    renderTodoPanel();
+  }
+  function applySopStatuses() {
+    const bucket = B();
+    const cur = bucket.sopStep || 0;
+    bucket.todos = (bucket.todos || []).map((t, i) => ({
+      content: t.content,
+      status: i < cur ? "completed" : (i === cur ? "in_progress" : "pending"),
+    }));
+  }
+  // Move the cursor forward to `stepIdx` (never backwards), re-render if moved.
+  function advanceSop(stepIdx) {
+    const bucket = B();
+    if (!bucket.todos || !bucket.todos.length) return;  // no active SOP list
+    if (typeof bucket.sopStep !== "number") bucket.sopStep = 0;
+    if (!(stepIdx > bucket.sopStep)) return;
+    bucket.sopStep = stepIdx;
+    applySopStatuses();
+    renderTodoPanel();
+  }
+  function advanceSopForTool(name) {
+    const step = SOP_TOOL_STEP[name];
+    if (step != null) advanceSop(step);
+  }
+  function advanceSopForText(text) {
+    if (!text) return;
+    if (ANALYSIS_MARKERS.some(m => text.includes(m))) advanceSop(4);  // 深度分析
+    if (text.includes("📌")) advanceSop(5);                            // 交付
+  }
+
+  // Render the active bucket's task list into the shared #chat-todo element.
+  function renderTodoPanel() {
+    if (!el.chatTodo) return;
+    const todos = (B().todos) || [];
+    if (!todos.length) { el.chatTodo.hidden = true; return; }
+    el.chatTodo.hidden = false;
+    const done = todos.filter(t => t && t.status === "completed").length;
+    if (el.chatTodoCount) el.chatTodoCount.textContent = `${done}/${todos.length}`;
+    el.chatTodoList.innerHTML = todos.map((t) => {
+      const status = (t && t.status) || "pending";
+      const box = TODO_BOX[status] || "○";
+      return `<li class="chat-todo-item is-${esc(status)}">` +
+             `<span class="chat-todo-box">${box}</span>` +
+             `<span class="chat-todo-text">${esc((t && t.content) || "")}</span></li>`;
+    }).join("");
+  }
+  if (el.chatTodoHead) {
+    el.chatTodoHead.addEventListener("click", () => {
+      el.chatTodo.classList.toggle("collapsed");
+    });
+  }
+  // Safety net: a turn that delivered a 📌 结论 is a finished deliverable, so
+  // the checklist should read 100% — flip any leftover in_progress/pending to
+  // completed (e.g. an L1 query that never hits 深度分析). Only runs when a
+  // conclusion was actually delivered; interrupted/errored turns keep their
+  // honest partial state.
+  function reconcileTodosOnConclusion() {
+    const bucket = B();
+    const todos = bucket.todos || [];
+    if (!todos.length) return;
+    let changed = false;
+    bucket.todos = todos.map((t) => {
+      if (t && t.status !== "completed") { changed = true; return { ...t, status: "completed" }; }
+      return t;
+    });
+    if (changed) { bucket.sopStep = SOP_STEPS.length; renderTodoPanel(); }
   }
 
   function pushChartToDashboard(chart) {
@@ -3138,6 +3269,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
         };
         recordToolCall(record);
         attachChatStep(buildChatStep(record));
+        // Advance the pinned SOP checklist based on which tool just ran.
+        advanceSopForTool(record.name);
         if (record.chart) {
           attachChatChart(record.chart);
           pushChartToDashboard(record.chart);
@@ -3181,6 +3314,11 @@ welcome: ${esc(a.welcome_message || "")}</div>
           pushConclusionIfAny(evt.text);
           pushRootCauseIfAny(evt.text);
           pushActionsIfAny(evt.text);
+          // Advance the SOP checklist: 深度分析 markers → step ⑤, 📌结论 → 交付.
+          advanceSopForText(evt.text);
+          // Remember this turn delivered a 📌 结论 — used at turn end to
+          // reconcile the checklist to 100% (handles L1 turns that skip 深度分析).
+          if (evt.text.includes("📌")) B().concludedTurnTag = B().currentTurnTag || 1;
           // Quadrant-assistant: detect any ```ui-command``` blocks and STAGE
           // them on the pending queue. The user clicks an "执行" button at
           // end-of-turn to actually apply them to the cockpit.
@@ -3209,6 +3347,9 @@ welcome: ${esc(a.welcome_message || "")}</div>
         // Tables produced this turn stay on the dashboard regardless of level —
         // the L1 template (6.2) itself requires TableGenerate, so 取数 tables
         // must map to the 看板 just like charts/conclusions do.
+        // If this turn delivered a 📌 结论, reconcile the pinned task list to
+        // 100% so it never dangles at ◔ 进行中 after the answer is out.
+        if (_bk.concludedTurnTag === _tag) reconcileTodosOnConclusion();
         appendTurnExportButton(_tag);
         // Quadrant-assistant: if any ui-commands were staged this turn,
         // render the "执行" card so the user can apply them in one click.
@@ -3244,6 +3385,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
     const _bk = B();
     _bk.turnQuestions = _bk.turnQuestions || {};
     _bk.turnQuestions[_bk.currentTurnTag] = text;
+    // Seed a fresh SOP task checklist for this turn (BI data mode only).
+    if (state.mode === "data") initSopTodos();
     addUserMessage(text);
 
     // In quadrant-assistant mode, prepend a hidden system-style instruction so
@@ -3353,6 +3496,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
     attachChildren(el.ontologyList, inc.ontologyNodes);
     attachChildren(el.toolList,     inc.toolNodes);
     attachChildren(el.llmList,      inc.llmNodes);
+    renderTodoPanel();  // show the incoming mode's task list (or hide if none)
     if (el.dashboardList) {
       if (inc.dashboardNodes && inc.dashboardNodes.length) {
         attachChildren(el.dashboardList, inc.dashboardNodes);
@@ -3653,8 +3797,12 @@ welcome: ${esc(a.welcome_message || "")}</div>
     bucket.actionsSeen = new Set();
     bucket.currentTurnTag = 0;
     bucket.pendingCommands = [];
+    bucket.todos = [];
+    bucket.sopStep = 0;
+    bucket.concludedTurnTag = 0;
     // If this is the active mode, also clear visible DOM
     if (state.mode === mode) {
+      renderTodoPanel();  // hides the pinned task list (bucket.todos now empty)
       detachChildren(el.chatScroll);
       detachChildren(el.ontologyList);
       detachChildren(el.toolList);

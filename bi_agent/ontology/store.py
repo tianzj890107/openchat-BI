@@ -10,10 +10,21 @@ Design:
 
 from __future__ import annotations
 
+import io
+import re
+import zipfile
 from pathlib import Path
 from typing import Iterable, Optional
 
 import openpyxl
+
+# Some exported ontology files carry an <autoFilter> whose <customFilter> value
+# openpyxl can't parse (raises "Value must be either numerical or a string
+# containing a wildcard"). We only read cell values, so strip the filter XML
+# in-memory before loading. Matches both self-closing and container forms.
+_AUTOFILTER_RE = re.compile(
+    rb"<autoFilter\b[^>]*?/>|<autoFilter\b.*?</autoFilter>", re.DOTALL
+)
 
 from .schema import (
     Activity,
@@ -91,10 +102,30 @@ class OntologyStore:
     # Loading
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _load_workbook(path: str | Path):
+        """Load an xlsx for value reading, stripping unparseable <autoFilter>
+        XML in-memory first (the file on disk is never modified)."""
+        with open(path, "rb") as f:
+            raw = f.read()
+        out = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(raw)) as zin, \
+                zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if (
+                    item.filename.startswith("xl/worksheets/")
+                    and item.filename.endswith(".xml")
+                ):
+                    data = _AUTOFILTER_RE.sub(b"", data)
+                zout.writestr(item, data)
+        out.seek(0)
+        return openpyxl.load_workbook(out, data_only=True, read_only=True)
+
     @classmethod
     def from_xlsx(cls, path: str | Path) -> "OntologyStore":
         store = cls()
-        wb = openpyxl.load_workbook(str(path), data_only=True, read_only=True)
+        wb = cls._load_workbook(path)
         store._load_terms(wb[SHEET_TERM])
         store._load_business_objects(wb[SHEET_BO])
         store._load_logical_entities(wb[SHEET_LE])
@@ -109,10 +140,27 @@ class OntologyStore:
         return store
 
     @staticmethod
+    def _first_header(it) -> "tuple | None":
+        """Advance the row iterator past leading blank rows; return the first
+        non-empty row as the header (or None if the sheet is empty).
+
+        Some ontology files (e.g. MetaERP 指标) put a blank spacer row above the
+        real header — skipping it lets header-name mapping bind to the actual
+        columns instead of a row full of None.
+        """
+        for row in it:
+            if row is None:
+                continue
+            if all(c is None or _norm(c) == "" for c in row):
+                continue
+            return row
+        return None
+
+    @staticmethod
     def _rows(ws) -> Iterable[tuple]:
         """Yield data rows (skip header), padding short rows with None."""
         it = ws.iter_rows(values_only=True)
-        header = next(it, None)
+        header = OntologyStore._first_header(it)
         if header is None:
             return
         width = len(header)
@@ -169,7 +217,7 @@ class OntologyStore:
     def _indexed(ws):
         """Return (col_index, data_rows) for a sheet — header mapped by name."""
         it = ws.iter_rows(values_only=True)
-        header = next(it, None)
+        header = OntologyStore._first_header(it)
         col = OntologyStore._col_index(header)
         rows = [
             row for row in it
@@ -178,18 +226,21 @@ class OntologyStore:
         return col, rows
 
     def _load_terms(self, ws) -> None:
-        for row in self._rows(ws):
-            code = _norm(row[0])
+        # Header-driven: column order/extra columns vary across ontology files
+        # (e.g. MetaERP 术语 inserts a 缩略语 column that shifts定义/分类).
+        col, rows = self._indexed(ws)
+        for row in rows:
+            code = self._cell(row, col, "术语编码", "术语编号")
             if not code:
                 continue
             term = Term(
                 code=code,
-                name=_norm(row[1]),
-                aliases=_split_list(row[2]),
-                english=_norm(row[3]),
-                definition=_norm(row[4]),
-                category=_norm(row[5]),
-                department=_norm(row[6]) if len(row) > 6 else "",
+                name=self._cell(row, col, "术语名称"),
+                aliases=_split_list(self._cell(row, col, "别名")),
+                english=self._cell(row, col, "术语英文名", "英文名"),
+                definition=self._cell(row, col, "术语定义"),
+                category=self._cell(row, col, "术语分类"),
+                department=self._cell(row, col, "解释部门", "部门"),
             )
             self.terms[code] = term
             if term.name:
@@ -198,35 +249,39 @@ class OntologyStore:
                 self._term_by_name[alias.lower()] = code
 
     def _load_business_objects(self, ws) -> None:
-        for row in self._rows(ws):
-            code = _norm(row[0])
+        # Header-driven: MetaERP 业务对象 omits 类型/物理表 entirely.
+        col, rows = self._indexed(ws)
+        for row in rows:
+            code = self._cell(row, col, "业务对象编号", "业务对象编码")
             if not code:
                 continue
             bo = BusinessObject(
                 code=code,
-                name=_norm(row[1]),
-                english=_norm(row[2]),
-                definition=_norm(row[3]),
-                type=_norm(row[4]),
-                physical_table=_norm(row[5]) if len(row) > 5 else "",
+                name=self._cell(row, col, "业务对象名称"),
+                english=self._cell(row, col, "业务对象英文名"),
+                definition=self._cell(row, col, "业务对象定义"),
+                type=self._cell(row, col, "业务对象类型"),
+                physical_table=self._cell(row, col, "关联物理表", "对应物理表"),
             )
             self.business_objects[code] = bo
             if bo.name:
                 self._bo_by_name[bo.name.lower()] = code
 
     def _load_logical_entities(self, ws) -> None:
-        for row in self._rows(ws):
-            bo_code = _norm(row[0])
-            bo_name = _norm(row[1])
-            le_code = _norm(row[2])
+        # Header-driven: MetaERP 逻辑实体 has no 物理表 column (语义层用英文名).
+        col, rows = self._indexed(ws)
+        for row in rows:
+            bo_code = self._cell(row, col, "业务对象编号", "业务对象编码")
+            bo_name = self._cell(row, col, "业务对象名称")
+            le_code = self._cell(row, col, "逻辑实体编号", "逻辑实体编码")
             if not le_code:
                 continue
             le = LogicalEntity(
                 code=le_code,
-                name=_norm(row[3]),
-                english=_norm(row[4]),
-                definition=_norm(row[5]),
-                physical_table=_norm(row[6]) if len(row) > 6 else "",
+                name=self._cell(row, col, "逻辑实体名称"),
+                english=self._cell(row, col, "英文名", "逻辑实体英文名"),
+                definition=self._cell(row, col, "逻辑实体定义"),
+                physical_table=self._cell(row, col, "对应物理表", "关联物理表"),
                 bo_code=bo_code,
                 bo_name=bo_name,
             )
@@ -239,21 +294,30 @@ class OntologyStore:
                 self._les_by_bo.setdefault(bo_code, []).append(le_code)
 
     def _load_attributes(self, ws) -> None:
-        for row in self._rows(ws):
-            le_code = _norm(row[0])
-            at_code = _norm(row[3])
+        # Header-driven: MetaERP 业务属性 has no 逻辑实体编号 column and splits
+        # 是否主键 into 是否物理主键/逻辑主键 — positional mapping mis-aligns.
+        col, rows = self._indexed(ws)
+        for row in rows:
+            at_code = self._cell(row, col, "业务属性编号", "业务属性编码", "属性编号")
             if not at_code:
                 continue
+            le_name = self._cell(row, col, "逻辑实体名称")
+            le_code = self._cell(row, col, "逻辑实体编号", "逻辑实体编码")
+            # MetaERP 业务属性 links to its entity by NAME (no code column);
+            # backfill the code from the LE name so drill-down (_attrs_by_le)
+            # still works. LE is loaded before AT, so _le_by_name is ready.
+            if not le_code and le_name:
+                le_code = self._le_by_name.get(le_name.lower(), "")
             attr = Attribute(
                 code=at_code,
-                name=_norm(row[4]),
-                english=_norm(row[5]),
-                definition=_norm(row[6]),
-                data_type=_norm(row[7]),
-                is_primary_key=_truthy(row[8]) if len(row) > 8 else False,
+                name=self._cell(row, col, "业务属性名称", "属性名称"),
+                english=self._cell(row, col, "业务属性英文名称", "业务属性英文名", "属性英文名"),
+                definition=self._cell(row, col, "业务属性定义", "属性定义"),
+                data_type=self._cell(row, col, "数据类型"),
+                is_primary_key=_truthy(self._cell(row, col, "是否物理主键", "是否主键")),
                 le_code=le_code,
-                le_name=_norm(row[1]),
-                le_english=_norm(row[2]),
+                le_name=le_name,
+                le_english=self._cell(row, col, "逻辑实体英文名"),
             )
             self.attributes[at_code] = attr
             if le_code:
@@ -324,39 +388,43 @@ class OntologyStore:
                 self._metric_by_name[alias.lower()] = code
 
     def _load_activities(self, ws) -> None:
-        for row in self._rows(ws):
-            code = _norm(row[0])
+        # Header-driven: MetaERP 活动 omits 上游活动/业务角色 and reorders cols.
+        col, rows = self._indexed(ws)
+        for row in rows:
+            code = self._cell(row, col, "活动编码", "活动编号")
             if not code:
                 continue
             act = Activity(
                 code=code,
-                name=_norm(row[1]),
-                description=_norm(row[2]),
-                upstream_codes=_split_list(row[3]),
-                role=_norm(row[4]),
-                object_codes=_split_list(row[5]),
-                object_names=_split_list(row[6]) if len(row) > 6 else [],
+                name=self._cell(row, col, "活动名称"),
+                description=self._cell(row, col, "活动描述", "活动定义"),
+                upstream_codes=_split_list(self._cell(row, col, "上游活动编码", "上游活动编号")),
+                role=self._cell(row, col, "业务角色"),
+                object_codes=_split_list(self._cell(row, col, "操作业务对象编号")),
+                object_names=_split_list(self._cell(row, col, "操作业务对象名称")),
             )
             self.activities[code] = act
 
     def _load_rules(self, ws) -> None:
-        for row in self._rows(ws):
-            code = _norm(row[0])
+        # Header-driven: MetaERP 业务规则 inserts 规则描述, shifting cols.
+        col, rows = self._indexed(ws)
+        for row in rows:
+            code = self._cell(row, col, "规则编号", "规则编码")
             if not code:
                 continue
             rule = BusinessRule(
                 code=code,
-                rule=_norm(row[1]),
-                activity_code=_norm(row[2]),
-                activity_name=_norm(row[3]),
-                category=_norm(row[4]),
-                department=_norm(row[5]) if len(row) > 5 else "",
+                rule=self._cell(row, col, "规则名称", "规则"),
+                activity_code=self._cell(row, col, "所属活动编号", "所属活动编码"),
+                activity_name=self._cell(row, col, "活动名称"),
+                category=self._cell(row, col, "规则分类"),
+                department=self._cell(row, col, "解释部门", "部门"),
             )
             self.rules[code] = rule
 
     def _load_dim_matrix(self, ws) -> None:
         it = ws.iter_rows(values_only=True)
-        header = next(it, None)
+        header = self._first_header(it)
         if header is None:
             return
         dim_names = [_norm(h) for h in header[2:]]  # cols 0,1 are metric code/name

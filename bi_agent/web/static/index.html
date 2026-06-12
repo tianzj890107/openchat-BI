@@ -47,6 +47,17 @@
           <span class="pane-label" id="pane-label">CONVERSATION</span>
           <span class="pane-hint" id="turn-counter">0 turns</span>
         </div>
+        <!-- Pinned task list (Claude-Code style) — driven by the TodoWrite
+             tool; sits above the scroll area so it stays visible. Hidden until
+             the agent writes its first task list. -->
+        <div class="chat-todo" id="chat-todo" hidden>
+          <div class="chat-todo-head" id="chat-todo-head">
+            <span class="chat-todo-caret" id="chat-todo-caret">▾</span>
+            <span class="chat-todo-title">任务清单</span>
+            <span class="chat-todo-count" id="chat-todo-count">0/0</span>
+          </div>
+          <ul class="chat-todo-list" id="chat-todo-list"></ul>
+        </div>
         <div class="chat-scroll" id="chat-scroll">
           <div class="empty-state" id="chat-empty">
             <div class="empty-glyph" id="empty-glyph">◇</div>

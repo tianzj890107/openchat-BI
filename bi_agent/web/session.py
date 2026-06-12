@@ -39,6 +39,7 @@ from ..tools.ask_user import ASK_USER_TOOL_NAME
 from ..tools.chart_multidim_tools import extract_multidim_chart_spec
 from ..tools.chart_tools import extract_chart_spec
 from ..tools.table_tools import extract_table_spec
+from ..tools.todo_tools import extract_todo_spec
 
 
 ENTITY_CODE_RE = re.compile(r"\b(?:T\d{6}|BO\d{4}|LE\d{5}|AT\d{5}|ER\d{3}|M\d{3}|A\d{3}|R\d{3})\b")
@@ -359,7 +360,8 @@ class WebSession:
                     display_output, chart = extract_chart_spec(output)
                     display_output, table = extract_table_spec(display_output)
                     display_output, multi_chart = extract_multidim_chart_spec(display_output)
-                    llm_output = display_output if (chart or table or multi_chart) else output
+                    display_output, todos = extract_todo_spec(display_output)
+                    llm_output = display_output if (chart or table or multi_chart or todos) else output
                     entities = self._extract_entities(display_output)
                     yield {
                         "type": "tool_result",
@@ -372,6 +374,7 @@ class WebSession:
                         "chart": chart,
                         "table": table,
                         "multi_chart": multi_chart,
+                        "todos": (todos or {}).get("todos") if todos else None,
                     }
                     sibling_results.append({
                         "type": "tool_result",
@@ -408,7 +411,8 @@ class WebSession:
                 display_output, chart = extract_chart_spec(output)
                 display_output, table = extract_table_spec(display_output)
                 display_output, multi_chart = extract_multidim_chart_spec(display_output)
-                llm_output = display_output if (chart or table or multi_chart) else output
+                display_output, todos = extract_todo_spec(display_output)
+                llm_output = display_output if (chart or table or multi_chart or todos) else output
 
                 entities = self._extract_entities(display_output)
                 yield {
@@ -422,6 +426,7 @@ class WebSession:
                     "chart": chart,
                     "table": table,
                     "multi_chart": multi_chart,
+                    "todos": (todos or {}).get("todos") if todos else None,
                 }
                 tool_results.append({
                     "type": "tool_result",

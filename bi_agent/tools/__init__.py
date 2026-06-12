@@ -19,6 +19,7 @@ from . import (
     ontology_tools,
     sql_tools,
     table_tools,
+    todo_tools,
 )
 
 
@@ -49,6 +50,9 @@ def register_all(
         register_tool(schema, make_executor())
         registered.append(schema["name"])
     for schema, make_executor in table_tools.SPECS:
+        register_tool(schema, make_executor())
+        registered.append(schema["name"])
+    for schema, make_executor in todo_tools.SPECS:
         register_tool(schema, make_executor())
         registered.append(schema["name"])
     for schema, make_executor in ask_user.SPECS:

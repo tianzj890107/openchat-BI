@@ -210,6 +210,55 @@ body[data-inspector="collapsed"]:not([data-dashboard="collapsed"]) .split {
 .pane-label { color: var(--fg-2); text-transform: uppercase; font-weight: 600; }
 .pane-hint { color: var(--fg-3); margin-left: auto; }
 
+/* ---------- PINNED TASK LIST (TodoWrite) ---------- */
+.chat-todo {
+  flex-shrink: 0;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-1);
+  font-family: var(--font-mono);
+  max-height: 40%;
+  display: flex;
+  flex-direction: column;
+}
+.chat-todo-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+.chat-todo-head:hover { background: var(--bg-2); }
+.chat-todo-caret { color: var(--fg-3); width: 10px; font-size: 10px; transition: transform .15s; }
+.chat-todo.collapsed .chat-todo-caret { transform: rotate(-90deg); }
+.chat-todo-title { color: var(--fg-2); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.chat-todo-count { color: var(--fg-3); font-size: var(--fs-xs); margin-left: auto; }
+.chat-todo-list {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.chat-todo.collapsed .chat-todo-list { display: none; }
+.chat-todo-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 14px 3px 16px;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.chat-todo-box { width: 14px; flex-shrink: 0; text-align: center; }
+.chat-todo-item.is-pending     .chat-todo-box { color: var(--fg-3); }
+.chat-todo-item.is-in_progress .chat-todo-box { color: var(--accent-amber); }
+.chat-todo-item.is-completed   .chat-todo-box { color: var(--accent-green, #3fb950); }
+.chat-todo-text { color: var(--fg-1); }
+.chat-todo-item.is-pending   .chat-todo-text { color: var(--fg-2); }
+.chat-todo-item.is-completed .chat-todo-text { color: var(--fg-3); text-decoration: line-through; }
+.chat-todo-item.is-in_progress .chat-todo-text { color: var(--fg-0, #fff); font-weight: 600; }
+
 /* ---------- CHAT ---------- */
 .chat-scroll {
   flex: 1;
