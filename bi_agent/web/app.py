@@ -24,6 +24,7 @@ from ..llm.runtime_config import (
 from ..ontology.store import OntologyStore
 from ..report import ReportStore, parser_availability
 from ..tools import register_all
+from ..tools.graph_tools import GRAPH_TOOL_NAMES
 from ..tools.sql_tools import (
     DEFAULT_DORIS_DATABASE,
     DEFAULT_DORIS_DRIVER,
@@ -72,6 +73,15 @@ class AppState:
         # e.g. `ontology_demo_scm_po.poheader`.
         self.doris_database: str = os.environ.get("DORIS_DATABASE", DEFAULT_DORIS_DATABASE)
         self.use_doris: bool = False
+        # --- Ontology retrieval mode ------------------------------------
+        # "semantic" (default): retrieve ontology knowledge from the Excel
+        # business-metadata via keyword/semantic lookup. "graph": retrieve via
+        # a graph library (图库) alongside the Excel ontology. The graph
+        # retrieval logic itself is not implemented yet — these fields only
+        # carry the selected configuration so a later implementation can read
+        # STATE.retrieval_mode / STATE.graph_path.
+        self.retrieval_mode: str = os.environ.get("RETRIEVAL_MODE", "semantic")
+        self.graph_path: str = os.environ.get("GRAPH_PATH", "")
         # --- Report-analysis mode ---------------------------------------
         # Multiple reports may be active simultaneously. The ordered list
         # below preserves the user's selection order so prompt sections,
@@ -203,6 +213,48 @@ class ConfigUpdate(BaseModel):
 # instead of a local .db file. Surfaced as a selectable option in /api/sources.
 DORIS_SOURCE_VALUE = "__doris_api__"
 
+# Retrieval modes for ontology knowledge. "semantic" = Excel-only keyword/
+# semantic lookup (the original behavior); "graph" = graph-library retrieval
+# (anchor on the graph, drill the sub-tree, diffuse for根因) which additionally
+# needs a 图库 file. The graph-mode tools/SOP are applied in _ensure_session.
+RETRIEVAL_MODES = ("semantic", "graph")
+# Candidate graph-library file extensions scanned for the 图库源 dropdown.
+GRAPH_PATTERNS = ("*.graphml", "*.gml", "*.kuzu", "*.graph", "*.ttl", "*.rdf")
+
+# Graph-mode SOP addendum — appended to the bi-analyst system prompt when
+# 检索模式 = 图库检索. It overrides steps 2/3 and augments step 5 (深度分析)
+# with the图库扩散探索 skill; all other steps + delivery templates stay.
+GRAPH_MODE_SOP = """# 图库检索模式 · SOP 调整(覆盖上文对应步骤)
+
+当前检索模式 = **图库检索**。以下调整覆盖六步 SOP 的第 2、3 步与第 5 步(深度分析)的取数上下文方式;**其余步骤与各 Level 交付模板完全不变**。
+
+## 第 1 步 · 意图识别(不变)
+仍以识别 L1–L5 五种类型为目标,并对问题做分词,抽出其中的业务名词。
+
+## 第 2 步 · 语义消歧(术语嫁接)
+- 对问句中的业务名词,用 `TermDisambiguate` 在术语库(术语名称 + 别名)中检索。
+- 若命中术语,把该术语定义以**括号形式嫁接**回用户问题,形成"完整问题"作为后续输入。例:"采购金额是多少" → 命中术语 → 以"采购金额(企业对外采购产品和服务的金额)是多少"推进。
+- **若一个名词命中多个口径不同的术语、且无法从问句上下文唯一确定**(如"客户活跃度"对应月活/周活/订单活跃),**必须调用 `AskUser` 让用户选择后再嫁接**,不要默默挑一个。
+- 未命中则保持原问句。
+
+## 第 3 步 · 上下文准备(图库锚定 + 下钻)
+- 把**原始问题**分别与业务对象库、指标库匹配,确定锚点,然后调用 `GraphContext`:
+  - 先用 `query` 传业务名词,由系统在业务对象/指标库匹配锚点;**若返回多个候选锚点(业务对象或指标)且无法从问句唯一确定是哪一个,必须调用 `AskUser` 让用户确认**,再用其选定项的 `anchor` 编码调用 `GraphContext`;仅当候选唯一或问句已明示时才直接选定,不要替用户臆断。
+  - **业务对象锚点** → 返回该业务对象 + 其下逻辑实体 / 业务属性 + 其下指标的行信息。
+  - **指标锚点** → 返回该指标 + 可下钻维度 + 指标维度矩阵,并自动上挂其业务对象作为新锚点、下钻该业务对象全部行信息。
+- **指标下钻维度的确认**:若锚点指标的可下钻维度多于 1 个、问句又没点明下钻方向,且问题属于 L2 及以上分析,**必须调用 `AskUser` 让用户选择主下钻维度**(可多选);问句已点明("按事业部""按季度")或只有单一维度则直接采用。
+- `GraphContext` 的返回即已剪枝去重的背景上下文,直接作为后续规划与 SQL 的依据;无需再逐个 `EntityDescribe` / `MetricLookup`(仅在需要核对单个元素细节时才补用)。
+
+## 第 4 步起 · 不变
+规划 / SQL 执行 / 校验 / 交付,沿用上文六步 SOP 与各 Level 模板。
+
+## 第 5 步 · 深度分析增强(仅 L3–L5,且上下文不足时)
+若判定为 L3–L5(含根因分析),而 `GraphContext` 给到的上下文不足以支撑根因/决策,可自行使用「图库扩散探索」skill `GraphExpand`:
+- 传入当前业务对象锚点(BOxxxx;传指标编码会自动定位其业务对象)。
+- 它会沿"活动 → 所属流程(取整条流程行信息)"与"活动上下游(活动流流转)"找到上下游业务对象,作为新锚点下钻其全部行信息,补足跨域上下文。
+- **仅在已有上下文确实不够时调用**;够用就不必扩散。
+"""
+
 
 class SourcesUpdate(BaseModel):
     """Switch the active ontology / database source. Omit a field to keep it."""
@@ -214,6 +266,15 @@ class SourcesUpdate(BaseModel):
     doris_username: Optional[str] = None
     doris_password: Optional[str] = None
     doris_database: Optional[str] = None
+    # Ontology retrieval mode ("semantic" | "graph") + the selected 图库 file
+    # (only meaningful in graph mode). Graph retrieval is not implemented yet.
+    retrieval_mode: Optional[str] = None
+    graph: Optional[str] = None
+
+
+class GraphBuildRequest(BaseModel):
+    """Build a NetworkX graph library (.graphml) from an ontology xlsx."""
+    ontology: str  # xlsx filename, relative to cwd
 
 
 class ReportComposeBlock(BaseModel):
@@ -383,6 +444,12 @@ def get_sources_endpoint() -> JSONResponse:
     db_options = _scan("*.db") + [DORIS_SOURCE_VALUE]
     db_active = DORIS_SOURCE_VALUE if STATE.use_doris else os.path.basename(STATE.db_path)
 
+    # Graph-library candidates for the 图库源 dropdown (graph retrieval mode).
+    graph_options: list[str] = []
+    for pat in GRAPH_PATTERNS:
+        graph_options.extend(_scan(pat))
+    graph_options = sorted(set(graph_options))
+
     return JSONResponse({
         "ontology": {
             "options": _scan("*.xlsx"),
@@ -391,6 +458,13 @@ def get_sources_endpoint() -> JSONResponse:
         "database": {
             "options": db_options,
             "active": db_active,
+        },
+        "retrieval": {
+            "mode": STATE.retrieval_mode,
+            "graph": {
+                "options": graph_options,
+                "active": os.path.basename(STATE.graph_path) if STATE.graph_path else "",
+            },
         },
         "doris": {
             "value": DORIS_SOURCE_VALUE,
@@ -456,6 +530,24 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         STATE.use_doris = False
         changed.append("database")
 
+    # Retrieval mode (semantic | graph) + optional 图库 file. In graph mode the
+    # data session is rebuilt with the 图库检索 tools + SOP (see _ensure_session).
+    if req.retrieval_mode is not None:
+        mode = req.retrieval_mode.strip()
+        if mode not in RETRIEVAL_MODES:
+            raise HTTPException(400, f"未知检索模式: {req.retrieval_mode}")
+        if mode != STATE.retrieval_mode:
+            STATE.retrieval_mode = mode
+            changed.append("retrieval_mode")
+
+    if req.graph:
+        gp = cwd / req.graph
+        if not gp.is_file():
+            raise HTTPException(400, f"图库文件不存在: {req.graph}")
+        if str(gp) != STATE.graph_path:
+            STATE.graph_path = str(gp)
+            changed.append("graph")
+
     if changed:
         # register_tool is idempotent — this rebinds the ontology/SQL tools to
         # the new store + db_path (or Doris connection).
@@ -482,7 +574,29 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         "database": DORIS_SOURCE_VALUE if STATE.use_doris else os.path.basename(STATE.db_path),
         "doris_jdbc_url": STATE.doris_jdbc_url if STATE.use_doris else "",
         "doris_database": STATE.doris_database if STATE.use_doris else "",
+        "retrieval_mode": STATE.retrieval_mode,
+        "graph": os.path.basename(STATE.graph_path) if STATE.graph_path else "",
     })
+
+
+@app.post("/api/graph/build")
+def build_graph_endpoint(req: GraphBuildRequest) -> JSONResponse:
+    """Build a NetworkX graph library from the given ontology xlsx and write it
+    as `<stem>.graphml` in the working dir (so it appears in the 图库源 list).
+    Nodes = ontology elements; edges = 实体关系 (ER) + 本体元模型关系 (meta)."""
+    cwd = Path(STATE.cwd)
+    op = cwd / req.ontology
+    if not op.is_file():
+        raise HTTPException(400, f"本体文件不存在: {req.ontology}")
+    out = cwd / (op.stem + ".graphml")
+    try:
+        from ..ontology.graph import build_from_xlsx
+        stats = build_from_xlsx(str(op), str(out))
+    except ImportError as e:
+        raise HTTPException(500, f"未安装 networkx,无法构建图库: {e}")
+    except Exception as e:
+        raise HTTPException(400, f"图库构建失败: {e}")
+    return JSONResponse({"graph": out.name, "stats": stats})
 
 
 @app.get("/api/system-prompt")
@@ -965,10 +1079,18 @@ def _ensure_session() -> None:
     if STATE.session is None:
         if not STATE.agent_def or not STATE.ontology_store:
             raise HTTPException(500, "Server not configured; call configure() first.")
+        tools_override = None
+        context_header = None
+        if STATE.retrieval_mode == "graph":
+            base = list(STATE.agent_def.tools or [])
+            tools_override = base + [t for t in GRAPH_TOOL_NAMES if t not in base]
+            context_header = GRAPH_MODE_SOP
         STATE.session = WebSession(
             cwd=STATE.cwd,
             agent_def=STATE.agent_def,
             ontology_store=STATE.ontology_store,
+            tools_override=tools_override,
+            context_header=context_header,
         )
 
 

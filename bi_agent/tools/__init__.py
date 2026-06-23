@@ -16,6 +16,7 @@ from . import (
     ask_user,
     chart_multidim_tools,
     chart_tools,
+    graph_tools,
     ontology_tools,
     sql_tools,
     table_tools,
@@ -38,6 +39,10 @@ def register_all(
     sql_backend = sql_tools.SqlBackend(db_path=db_path, doris=doris)
     registered: list[str] = []
     for schema, make_executor in ontology_tools.SPECS:
+        register_tool(schema, make_executor(store))
+        registered.append(schema["name"])
+    # Graph-mode retrieval tools (whitelisted for the agent only in 图库检索 mode).
+    for schema, make_executor in graph_tools.SPECS:
         register_tool(schema, make_executor(store))
         registered.append(schema["name"])
     for schema, make_executor in sql_tools.SPECS:

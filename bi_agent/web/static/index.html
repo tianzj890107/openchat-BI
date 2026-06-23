@@ -341,9 +341,26 @@
       </div>
       <div class="modal-body">
         <div class="settings-field">
+          <label class="settings-label" for="sources-retrieval-mode">检索模式</label>
+          <select class="settings-select" id="sources-retrieval-mode">
+            <option value="semantic">语义检索模式(基于 Excel 本体)</option>
+            <option value="graph">图库检索模式(图库 + Excel 本体)</option>
+          </select>
+          <div class="settings-hint">语义检索:仅用 Excel 本体做语义 / 关键词检索。图库检索:用图库做关联检索(检索逻辑待实现),仍需配套 Excel 本体。</div>
+        </div>
+        <div class="settings-field" id="sources-graph-field" hidden>
+          <label class="settings-label" for="sources-graph">图库源</label>
+          <select class="settings-select" id="sources-graph"></select>
+          <div class="settings-hint">用于图库检索的图谱文件(.graphml / .kuzu 等)。检索逻辑暂未实现,此处仅作配置。</div>
+        </div>
+        <div class="settings-field">
           <label class="settings-label" for="sources-ontology">本体源</label>
           <select class="settings-select" id="sources-ontology"></select>
           <div class="settings-hint">Agent 的指标定义与业务语义来源(.xlsx 业务元数据)。</div>
+        </div>
+        <div class="settings-field" id="sources-build-graph-row" hidden>
+          <button class="btn btn-ghost" id="sources-build-graph" type="button">⚙ 用所选 Excel 建立图库 (NetworkX)</button>
+          <div class="settings-hint" id="sources-build-graph-hint">从上方「本体源」Excel 抽取实体关系(ER)+ 本体元模型关系,生成 <code>.graphml</code> 图库并加入「图库源」。</div>
         </div>
         <div class="settings-field">
           <label class="settings-label" for="sources-database">数据库源</label>

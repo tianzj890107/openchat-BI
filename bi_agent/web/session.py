@@ -42,7 +42,12 @@ from ..tools.table_tools import extract_table_spec
 from ..tools.todo_tools import extract_todo_spec
 
 
-ENTITY_CODE_RE = re.compile(r"\b(?:T\d{6}|BO\d{4}|LE\d{5}|AT\d{5}|ER\d{3}|M\d{3}|A\d{3}|R\d{3})\b")
+# Ontology codes carried in tool output, surfaced to the 本体 inspector panel.
+# Digit widths differ across本体源 layouts (ChatBI / 超聚变 / MetaERP),
+# e.g. LE000001(6位)/AT0000001(7位)/REL000006(REL前缀)/M0007(4位)。
+# 用宽松的位宽区间 + 全部前缀,真实校验交给 _lookup(查不到的候选会被丢弃)。
+# 长前缀排在前(REL 先于 R、BO/LE/AT 先于单字母),避免被吃成单字母前缀。
+ENTITY_CODE_RE = re.compile(r"\b(?:REL|BO|LE|AT|ER|T|M|A|R)\d{3,7}\b")
 
 # --- Render-tool enforcement ----------------------------------------------
 # Tools whose output produces a dashboard card. If a turn contains

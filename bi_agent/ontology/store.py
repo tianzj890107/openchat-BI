@@ -31,11 +31,14 @@ from .schema import (
     Attribute,
     BusinessObject,
     BusinessRule,
+    Dimension,
     DimMatrixEntry,
     EntityRelation,
     LogicalEntity,
     METRIC_TYPE_ATOMIC,
+    MetaRelation,
     Metric,
+    Process,
     Term,
 )
 
@@ -50,6 +53,9 @@ SHEET_METRIC = "指标"
 SHEET_ACTIVITY = "活动"
 SHEET_RULE = "业务规则"
 SHEET_DIM_MATRIX = "指标维度矩阵"
+SHEET_DIM = "维度"            # 维度元素(可能缺失,旧本体文件没有此表)
+SHEET_ACTIVITY_FLOW = "活动流"  # 流程(场景子流程) + 活动流转(可能缺失)
+SHEET_META_REL = "本体元模型关系"  # 类型级关系(可能缺失,旧本体文件没有此表)
 
 
 def _norm(v) -> str:
@@ -83,20 +89,28 @@ class OntologyStore:
         self.logical_entities: dict[str, LogicalEntity] = {}
         self.attributes: dict[str, Attribute] = {}
         self.relations: dict[str, EntityRelation] = {}
+        self.meta_relations: dict[str, MetaRelation] = {}  # 类型级关系(可能为空)
         self.metrics: dict[str, Metric] = {}
         self.activities: dict[str, Activity] = {}
         self.rules: dict[str, BusinessRule] = {}
         self.dim_matrix: dict[str, DimMatrixEntry] = {}
+        self.dimensions: dict[str, Dimension] = {}     # 维度元素(可能为空)
+        self.processes: dict[str, Process] = {}        # 流程(场景子流程,可能为空)
 
         # Secondary indexes
         self._term_by_name: dict[str, str] = {}        # name/alias (lower) -> code
         self._bo_by_name: dict[str, str] = {}
         self._le_by_name: dict[str, str] = {}
+        self._le_by_english: dict[str, str] = {}       # english (lower) -> le_code
         self._le_by_table: dict[str, str] = {}         # physical_table -> le_code
         self._metric_by_name: dict[str, str] = {}      # name/alias (lower) -> code
+        self._dim_by_shortname: dict[str, str] = {}    # 维度矩阵列名/别名 (lower) -> dim_code
         self._attrs_by_le: dict[str, list[str]] = {}   # le_code -> [at_code, ...]
         self._les_by_bo: dict[str, list[str]] = {}     # bo_code -> [le_code, ...]
         self._relations_by_le: dict[str, list[str]] = {}  # le_code -> [er_code, ...]
+        # Activity flow transitions from 活动流 (源节点->目标节点), for上下游探索.
+        self._activity_flow_next: dict[str, list[str]] = {}  # activity -> [downstream act, ...]
+        self._activity_flow_prev: dict[str, list[str]] = {}  # activity -> [upstream act, ...]
 
     # ------------------------------------------------------------------
     # Loading
@@ -131,8 +145,14 @@ class OntologyStore:
         store._load_logical_entities(wb[SHEET_LE])
         store._load_attributes(wb[SHEET_AT])
         store._load_relations(wb[SHEET_ER])
+        if SHEET_META_REL in wb.sheetnames:
+            store._load_meta_relations(wb[SHEET_META_REL])
+        if SHEET_DIM in wb.sheetnames:
+            store._load_dimensions(wb[SHEET_DIM])
         store._load_metrics(wb[SHEET_METRIC])
         store._load_activities(wb[SHEET_ACTIVITY])
+        if SHEET_ACTIVITY_FLOW in wb.sheetnames:
+            store._load_processes(wb[SHEET_ACTIVITY_FLOW])
         store._load_rules(wb[SHEET_RULE])
         store._load_dim_matrix(wb[SHEET_DIM_MATRIX])
         wb.close()
@@ -288,6 +308,8 @@ class OntologyStore:
             self.logical_entities[le_code] = le
             if le.name:
                 self._le_by_name[le.name.lower()] = le_code
+            if le.english:
+                self._le_by_english[le.english.lower()] = le_code
             if le.physical_table:
                 self._le_by_table[le.physical_table] = le_code
             if bo_code:
@@ -324,7 +346,7 @@ class OntologyStore:
                 self._attrs_by_le.setdefault(le_code, []).append(at_code)
 
     def _load_relations(self, ws) -> None:
-        # Header-driven: ChatBI uses 源/目标实体, 超聚变 uses 主/从实体.
+        # Header-driven: ChatBI 源/目标实体, 超聚变 主/从实体, MetaERP 源/目标逻辑实体.
         col, rows = self._indexed(ws)
         for row in rows:
             code = self._cell(row, col, "关系编号")
@@ -332,19 +354,98 @@ class OntologyStore:
                 continue
             er = EntityRelation(
                 code=code,
-                source_code=self._cell(row, col, "源实体编号", "主实体编号"),
-                source_name=self._cell(row, col, "源实体名称", "主实体名称"),
-                target_code=self._cell(row, col, "目标实体编号", "从实体编号"),
-                target_name=self._cell(row, col, "目标实体名称", "从实体名称"),
-                cardinality=self._cell(row, col, "关系类型"),
+                source_code=self._cell(row, col, "源实体编号", "主实体编号", "源逻辑实体编号"),
+                source_name=self._cell(row, col, "源实体名称", "主实体名称", "源逻辑实体名称"),
+                target_code=self._cell(row, col, "目标实体编号", "从实体编号", "目标逻辑实体编号"),
+                target_name=self._cell(row, col, "目标实体名称", "从实体名称", "目标逻辑实体名称"),
+                cardinality=self._cell(row, col, "关系类型", "关系基数"),
                 description=self._cell(row, col, "关系描述", "关系说明"),
-                foreign_key=self._cell(row, col, "外键字段", "关联条件"),
+                foreign_key=self._cell(row, col, "外键字段", "关联条件", "源关联属性英文名"),
+                name=self._cell(row, col, "关系中文名称", "关系名称"),
+                english=self._cell(row, col, "关系英文名称"),
             )
             self.relations[code] = er
             if er.source_code:
                 self._relations_by_le.setdefault(er.source_code, []).append(code)
             if er.target_code and er.target_code != er.source_code:
                 self._relations_by_le.setdefault(er.target_code, []).append(code)
+
+    def _load_meta_relations(self, ws) -> None:
+        # 本体元模型关系 — 类型级关系(源/目标是本体元素类型 token,如
+        # business_object / logical_entity)。旧本体文件没有此表,from_xlsx 已守卫。
+        col, rows = self._indexed(ws)
+        for row in rows:
+            code = self._cell(row, col, "关系编号")
+            if not code:
+                continue
+            mr = MetaRelation(
+                code=code,
+                source_kind=self._cell(row, col, "源本体元素编码", "源元素编码", "源本体元素"),
+                source_name=self._cell(row, col, "源本体元素名称", "源元素名称"),
+                target_kind=self._cell(row, col, "目标本体元素编码", "目标元素编码", "目标本体元素"),
+                target_name=self._cell(row, col, "目标本体元素名称", "目标元素名称"),
+                category=self._cell(row, col, "关系分类", "关系类型"),
+                name=self._cell(row, col, "关系中文名称", "关系名称"),
+                english=self._cell(row, col, "关系英文名称"),
+                cardinality=self._cell(row, col, "关系基数"),
+                description=self._cell(row, col, "关系描述"),
+                reverse_name=self._cell(row, col, "反向关系中文名称"),
+                reverse_english=self._cell(row, col, "反向关系英文名称"),
+                agent_use=_truthy(self._cell(row, col, "是否智能体使用")),
+            )
+            self.meta_relations[code] = mr
+
+    def _load_dimensions(self, ws) -> None:
+        # 维度 — 指标下钻的分析轴。指标维度矩阵的列名是维度短名(时间/管理单元…),
+        # 维度页用全名(时间维度/管理单元维度…);建立短名->编码索引以便对齐。
+        col, rows = self._indexed(ws)
+        for row in rows:
+            code = self._cell(row, col, "维度编码", "维度编号")
+            if not code:
+                continue
+            aliases = _split_list(self._cell(row, col, "维度别名"))
+            dim = Dimension(
+                code=code,
+                name=self._cell(row, col, "维度名称"),
+                aliases=aliases,
+                english=self._cell(row, col, "维度英文名"),
+                definition=self._cell(row, col, "维度定义"),
+                level=self._cell(row, col, "维度层级"),
+            )
+            self.dimensions[code] = dim
+            # index by full name, by name without 维度 suffix, and by aliases
+            keys = {dim.name, dim.name.replace("维度", "").strip(), *aliases}
+            for k in keys:
+                if k:
+                    self._dim_by_shortname[k.lower()] = code
+
+    def _load_processes(self, ws) -> None:
+        # 活动流 — 每行是一条活动流转(源节点->目标节点)。流程(场景子流程)
+        # 由 场景子流程编码/所属场景子流程 标识,其包含的活动 = 出现在该流程
+        # 各流转行里的源/目标活动(去重保序)。
+        col, rows = self._indexed(ws)
+        for row in rows:
+            pcode = self._cell(row, col, "场景子流程编码", "流程编码")
+            pname = self._cell(row, col, "所属场景子流程", "流程名称")
+            if not pcode:
+                continue
+            proc = self.processes.get(pcode)
+            if proc is None:
+                proc = Process(code=pcode, name=pname)
+                self.processes[pcode] = proc
+            src = self._cell(row, col, "源节点编号", "源活动编号")
+            tgt = self._cell(row, col, "目标节点编号", "目标活动编号")
+            for act in (src, tgt):
+                if act and act in self.activities and act not in proc.activity_codes:
+                    proc.activity_codes.append(act)
+            # Flow transition src -> tgt (both must be known activities).
+            if src in self.activities and tgt in self.activities:
+                nxt = self._activity_flow_next.setdefault(src, [])
+                if tgt not in nxt:
+                    nxt.append(tgt)
+                prv = self._activity_flow_prev.setdefault(tgt, [])
+                if src not in prv:
+                    prv.append(src)
 
     def _load_metrics(self, ws) -> None:
         # Header-driven: ChatBI 指标 has 17 rich columns; 超聚变 指标 has 8
@@ -372,8 +473,9 @@ class OntologyStore:
                 scope=self._cell(row, col, "统计口径") or caliber,
                 metric_type=mtype,
                 formula_technical=self._cell(row, col, "计算公式(技术)"),
-                table=self._cell(row, col, "对应表名", "来源实体"),
-                agg_column=self._cell(row, col, "聚合列"),
+                table=self._cell(row, col, "对应表名", "对应表名/逻辑实体", "来源实体"),
+                bo_name=self._cell(row, col, "业务对象"),
+                agg_column=self._cell(row, col, "聚合列", "聚合列/属性"),
                 agg_type=self._cell(row, col, "聚合类型"),
                 join_condition=self._cell(row, col, "连接条件"),
                 filter_condition=self._cell(row, col, "筛选条件"),
@@ -570,4 +672,6 @@ class OntologyStore:
             "metrics": len(self.metrics),
             "activities": len(self.activities),
             "rules": len(self.rules),
+            "dimensions": len(self.dimensions),
+            "processes": len(self.processes),
         }

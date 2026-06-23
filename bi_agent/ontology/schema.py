@@ -150,15 +150,50 @@ class EntityRelation:
     cardinality: str = ""         # 1:N / N:1 / N:N / 1:1
     description: str = ""         # 业务语义描述
     foreign_key: str = ""         # FParentOrgId -> FOrgId
+    name: str = ""                # 关系中文名称, e.g. 包含
+    english: str = ""             # 关系英文名称, e.g. Contain
 
     def to_prompt(self) -> str:
-        arrow = f"{self.source_name} --[{self.cardinality or '?'}]-> {self.target_name}"
+        rel = f" {self.name}" if self.name else ""
+        arrow = f"{self.source_name} --[{self.cardinality or '?'}{rel}]-> {self.target_name}"
         lines = [f"[{self.code}] {arrow}"]
         if self.description:
             lines.append(f"  含义: {self.description}")
         if self.foreign_key:
             lines.append(f"  外键: {self.foreign_key}")
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Meta-model Relations (MREL) — relationships between ontology ELEMENT KINDS
+# (business_object → logical_entity 包含, logical_entity → business_attribute
+# 包含, activity → business_object 操作, …). Source/target are element-kind
+# tokens, not instance codes; the graph builder materializes instance edges
+# from these via the structural foreign keys.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class MetaRelation:
+    """本体元模型关系 — 两类本体元素之间的关系(类型级)."""
+    code: str                     # MREL000003
+    source_kind: str              # business_object
+    source_name: str              # 业务对象
+    target_kind: str              # logical_entity
+    target_name: str              # 逻辑实体
+    category: str = ""            # 组合关系 / 关联关系 …
+    name: str = ""                # 关系中文名称, e.g. 包含
+    english: str = ""            # 关系英文名称, e.g. BOContainLE
+    cardinality: str = ""         # 1:N / M:N …
+    description: str = ""
+    reverse_name: str = ""        # 反向关系中文名称
+    reverse_english: str = ""     # 反向关系英文名称
+    agent_use: bool = False       # 是否智能体使用
+
+    def to_prompt(self) -> str:
+        rel = self.name or self.english or "?"
+        return (f"[{self.code}] {self.source_name}({self.source_kind}) "
+                f"--[{self.cardinality or '?'} {rel}]-> "
+                f"{self.target_name}({self.target_kind})")
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +218,7 @@ class Metric:
     metric_type: int = METRIC_TYPE_ATOMIC  # 1=复合, 2=原子
     formula_technical: str = ""
     table: str = ""               # T_FM_MgmtPnL
+    bo_name: str = ""             # 业务对象 (指标所属业务对象名称, e.g. 采购订单)
     agg_column: str = ""          # FAmount
     agg_type: str = ""            # SUM / AVG / COUNT ...
     join_condition: str = ""
@@ -285,3 +321,48 @@ class DimMatrixEntry:
 
     def applicable(self) -> list[str]:
         return [d for d, v in self.dimensions.items() if v]
+
+
+# ---------------------------------------------------------------------------
+# Dimensions (D) — 维度, the analysis axes a metric can be drilled down by.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Dimension:
+    """维度 — 指标可下钻的分析轴 (时间 / 管理单元 / 品类 …)."""
+    code: str                     # D001
+    name: str                     # 时间维度
+    aliases: list[str] = field(default_factory=list)
+    english: str = ""             # Time Dimension
+    definition: str = ""
+    level: str = ""               # 维度层级, e.g. 5级(年→季→月)
+
+    def to_prompt(self) -> str:
+        header = f"维度 [{self.code}] {self.name}"
+        if self.english:
+            header += f" ({self.english})"
+        lines = [header]
+        if self.level:
+            lines.append(f"  层级: {self.level}")
+        if self.definition:
+            lines.append(f"  定义: {self.definition}")
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Processes (P) — 流程 (场景子流程), a named flow that contains activities.
+# Sourced from the 活动流 sheet: 场景子流程编码 = 流程编码, 所属场景子流程 = 流程名.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Process:
+    """流程 (场景子流程) — 由若干活动按流转顺序组成的业务流程."""
+    code: str                     # SSP0001
+    name: str                     # 标准直接采购
+    activity_codes: list[str] = field(default_factory=list)  # 包含的活动 (去重, 保序)
+
+    def to_prompt(self) -> str:
+        lines = [f"流程 [{self.code}] {self.name}"]
+        if self.activity_codes:
+            lines.append(f"  包含活动数: {len(self.activity_codes)}")
+        return "\n".join(lines)

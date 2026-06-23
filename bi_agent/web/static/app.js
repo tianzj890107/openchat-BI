@@ -173,6 +173,12 @@
     sourcesClose:       document.getElementById("sources-close"),
     sourcesCancel:      document.getElementById("sources-cancel"),
     sourcesSave:        document.getElementById("sources-save"),
+    sourcesRetrievalMode: document.getElementById("sources-retrieval-mode"),
+    sourcesGraphField:  document.getElementById("sources-graph-field"),
+    sourcesGraph:       document.getElementById("sources-graph"),
+    sourcesBuildGraphRow:  document.getElementById("sources-build-graph-row"),
+    sourcesBuildGraph:     document.getElementById("sources-build-graph"),
+    sourcesBuildGraphHint: document.getElementById("sources-build-graph-hint"),
     sourcesOntology:    document.getElementById("sources-ontology"),
     sourcesDatabase:    document.getElementById("sources-database"),
     sourcesDorisField:  document.getElementById("sources-doris-field"),
@@ -262,7 +268,7 @@
   // clause (a bullet / numbered point) gets one 行动 button that opens a
   // small dropdown of choices — actions bind to that specific clause.
   const ITEM_ACTIONS = {
-    rootcause: [["ask", "追问"], ["verify", "验证"], ["deep", "深度分析"]],
+    rootcause: [["ask", "追问"], ["verify", "验证"]],
     actions:   [["supervise", "转督办"], ["execute", "转执行"],
                 ["simulate", "转模拟"], ["risk", "转风险分析"]],
   };
@@ -400,10 +406,8 @@
       // 转督办 is wired end-to-end: send to the responsible owner and auto
       // create a task order (任务令).
       if (act === "supervise" && item) dispatchSupervise(item);
-      // 追问 → 把该条根因拷贝到对话框(不发送,交用户补充);
-      // 深度分析 → 在对话框填入该根因 + 深度分析要求并直接发送。
+      // 追问 → 把该条根因拷贝到对话框(不发送,交用户补充)。
       else if (act === "ask" && item) copyClauseToInput(item);
-      else if (act === "deep" && item) sendDeepAnalysis(item);
       return;
     }
     closeAllActMenus();
@@ -480,7 +484,7 @@
       flashItem(item, "督办发送失败:" + String((err && err.message) || err), true);
     }
   }
-  // ── 追问 / 深度分析 → 复用对话框 ────────────────────────────────────
+  // ── 追问 → 复用对话框 ──────────────────────────────────────────────
   function clauseText(item) {
     return ((item.querySelector(".dash-item-text") || {}).textContent || "").trim();
   }
@@ -501,25 +505,6 @@
       el.chatInput.setSelectionRange(el.chatInput.value.length, el.chatInput.value.length);
     } catch (_) {}
     flashItem(item, "✅ 已填入对话框,可补充后发送", false);
-  }
-  // 深度分析:在对话框填入该根因 + 深度分析要求,并直接发送。
-  function sendDeepAnalysis(item) {
-    const txt = clauseText(item);
-    if (!txt) return;
-    const msg =
-      "请针对以下问题进入「根因分析」(L3),并严格按 L3 模板交付:\n「" + txt + "」\n" +
-      "必须包含且各用规定的标题行开头:\n" +
-      "📌 结论(一句话,带数字与实体编码)\n" +
-      "📊 关键数据(用 TableGenerate 出表)\n" +
-      "🔍 根因分析(证据链:分层展开,每层=论点+支持数据+来源编码)\n" +
-      "✅ 证据验证(已验证 / 部分验证)\n" +
-      "💡 行动建议(1–2 条,具体到根因切片)\n" +
-      "📈 附图(≥1 张 ChartGenerate)\n" +
-      "注意:🔍 根因分析 与 💡 行动建议 两段的标题必须原样出现,前端据此抽取到看板。";
-    if (el.chatInput) { el.chatInput.value = msg; autosizeInput(); }
-    flashItem(item, "✅ 已提交深度分析…", false);
-    if (el.chatInput) { el.chatInput.value = ""; el.chatInput.style.height = ""; }
-    sendMessage(msg);
   }
 
   // A fixed menu can't follow its anchor through scroll/resize — just close.
@@ -1188,6 +1173,53 @@
     el.sourcesDorisField.hidden = !on;
   }
 
+  // Show the 图库源 selector + 建立图库 button only in graph-retrieval mode.
+  // Semantic mode uses the Excel ontology alone; graph mode additionally needs
+  // a graph library (which can be built from the selected Excel).
+  function syncRetrievalMode() {
+    const graph = el.sourcesRetrievalMode && el.sourcesRetrievalMode.value === "graph";
+    if (el.sourcesGraphField) el.sourcesGraphField.hidden = !graph;
+    if (el.sourcesBuildGraphRow) el.sourcesBuildGraphRow.hidden = !graph;
+  }
+
+  // Build a NetworkX graph library (.graphml) from the currently-selected
+  // 本体源 Excel, then refresh the 图库源 dropdown and select the result.
+  async function buildGraphFromExcel() {
+    const setHint = (msg, cls) => {
+      if (!el.sourcesBuildGraphHint) return;
+      el.sourcesBuildGraphHint.textContent = msg;
+      el.sourcesBuildGraphHint.className = "settings-hint" + (cls ? " " + cls : "");
+    };
+    const xlsx = el.sourcesOntology && el.sourcesOntology.value;
+    if (!xlsx) { setHint("请先在「本体源」选择一个 Excel。", "error"); return; }
+    if (el.sourcesBuildGraph) el.sourcesBuildGraph.disabled = true;
+    setHint("构建中…（抽取 ER + 元模型关系）", "pending");
+    try {
+      const r = await fetch("/api/graph/build", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ontology: xlsx }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.detail || "build failed");
+      const s = data.stats || {};
+      setHint(
+        `✓ 已生成 ${data.graph} · 节点 ${s.nodes} / 边 ${s.edges}` +
+        `(层级 ${s.tree_edges} + ER ${s.er_edges} + 规则 ${s.rule_edges})`, "success");
+      // Refresh the 图库源 list and select the freshly-built graph.
+      const sr = await fetch("/api/sources");
+      const sd = await sr.json().catch(() => ({}));
+      if (sd.retrieval && el.sourcesGraph) {
+        fillSourceSelect(el.sourcesGraph, sd.retrieval.graph || {});
+        el.sourcesGraph.value = data.graph;
+      }
+    } catch (e) {
+      setHint("构建失败: " + (e.message || e), "error");
+    } finally {
+      if (el.sourcesBuildGraph) el.sourcesBuildGraph.disabled = false;
+    }
+  }
+
   async function openSources() {
     el.sourcesStatus.textContent = "";
     el.sourcesStatus.className = "settings-status";
@@ -1197,6 +1229,10 @@
       const data = await r.json();
       fillSourceSelect(el.sourcesOntology, data.ontology);
       fillSourceSelect(el.sourcesDatabase, data.database);
+      if (data.retrieval) {
+        if (el.sourcesRetrievalMode) el.sourcesRetrievalMode.value = data.retrieval.mode || "semantic";
+        if (el.sourcesGraph) fillSourceSelect(el.sourcesGraph, data.retrieval.graph || {});
+      }
       if (data.doris) {
         if (el.sourcesDorisJdbc) el.sourcesDorisJdbc.value = data.doris.jdbc_url || "";
         if (el.sourcesDorisDatabase) el.sourcesDorisDatabase.value = data.doris.database || "";
@@ -1205,6 +1241,7 @@
         if (el.sourcesDorisPass) el.sourcesDorisPass.value = data.doris.password || "";
       }
       syncDorisField();
+      syncRetrievalMode();
     } catch (e) {
       el.sourcesStatus.textContent = "加载数据源列表失败: " + (e.message || e);
       el.sourcesStatus.className = "settings-status error";
@@ -1227,9 +1264,15 @@
       return;
     }
     const dbValue = el.sourcesDatabase.value || null;
+    const retrievalMode = (el.sourcesRetrievalMode && el.sourcesRetrievalMode.value) || "semantic";
     const payload = {
       ontology: el.sourcesOntology.value || null,
       database: dbValue,
+      retrieval_mode: retrievalMode,
+      // Graph library is only meaningful in graph-retrieval mode.
+      graph: retrievalMode === "graph"
+        ? ((el.sourcesGraph && el.sourcesGraph.value) || null)
+        : null,
     };
     if (dbValue === DORIS_SOURCE_VALUE) {
       const jdbc = (el.sourcesDorisJdbc && el.sourcesDorisJdbc.value || "").trim();
@@ -1268,6 +1311,8 @@
 
   if (el.btnSources) el.btnSources.addEventListener("click", openSources);
   if (el.sourcesDatabase) el.sourcesDatabase.addEventListener("change", syncDorisField);
+  if (el.sourcesRetrievalMode) el.sourcesRetrievalMode.addEventListener("change", syncRetrievalMode);
+  if (el.sourcesBuildGraph) el.sourcesBuildGraph.addEventListener("click", buildGraphFromExcel);
   if (el.sourcesClose) el.sourcesClose.addEventListener("click", closeSources);
   if (el.sourcesCancel)
     el.sourcesCancel.addEventListener("click", closeSources);
