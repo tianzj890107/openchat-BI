@@ -33,6 +33,7 @@ from ..tools.sql_tools import (
     DEFAULT_DORIS_USERNAME,
     DorisConn,
 )
+from .conversations import ConversationStore
 from .session import WebSession
 
 
@@ -90,6 +91,13 @@ class AppState:
         self.report_session: Optional[WebSession] = None
         self.active_report_ids: list[str] = []
         self.report_with_db: bool = False
+        # --- Conversation history (restorable 最近 list) -----------------
+        self.conversation_store: Optional[ConversationStore] = None
+        # --- 角色选择(用户画像 + Agent 回答风格偏好)-------------------
+        # Injected into every session's system prompt so the agent adapts its
+        # depth / terminology / tone. Empty = no role preference applied.
+        self.user_role: str = ""
+        self.agent_pref: str = ""
 
 
 STATE = AppState()
@@ -110,6 +118,70 @@ REPORT_DB_TOOLS: list[str] = [
 # ChartGenerateMultiDim NOT included: deep-insight drill-down depends on
 # running per-dim SQL, which pure mode doesn't have access to.
 REPORT_PURE_TOOLS: list[str] = ["ChartGenerate", "TableGenerate", "AskUser"]
+
+
+# ---------------------------------------------------------------------------
+# 角色选择(用户画像 + Agent 回答风格)
+# ---------------------------------------------------------------------------
+# Each entry: key -> (label, prompt description). The selected pair is rendered
+# into a system-prompt block so the agent adapts depth, terminology and tone.
+USER_ROLES: dict[str, tuple[str, str]] = {
+    "finance": (
+        "财务分析师",
+        "用户是财务分析师,熟悉会计科目、报表勾稽与口径;回答可使用专业财务术语,"
+        "重点放在数字准确性、口径一致与异常勾稽。",
+    ),
+    "business": (
+        "业务负责人",
+        "用户是业务负责人,关注经营结果与业务动因;回答应少用纯财务术语,多用业务语言"
+        "解释数字背后的经营含义,并给出可执行建议。",
+    ),
+    "exec": (
+        "管理层",
+        "用户是管理层(高管),时间有限;回答先给结论与关键风险/机会,再给少量支撑数据,"
+        "避免冗长的过程细节。",
+    ),
+    "data": (
+        "数据工程师",
+        "用户是数据工程师,关注取数过程;回答可展示 SQL、涉及的表/字段、口径与数据来源,"
+        "便于复核与复用。",
+    ),
+}
+AGENT_PREFS: dict[str, tuple[str, str]] = {
+    "audit": (
+        "严谨审计型",
+        "以严谨审计的口吻作答:强调口径定义、数据来源与可验证性,对不确定处主动标注"
+        "假设与风险,不臆测。",
+    ),
+    "advisor": (
+        "业务顾问型",
+        "以业务顾问的口吻作答:在给出数据的同时提供洞察、归因与下一步建议。",
+    ),
+    "tutor": (
+        "教学讲解型",
+        "以教学讲解的口吻作答:解释关键概念与计算过程,循序渐进,必要时举例。",
+    ),
+    "concise": (
+        "简洁高效型",
+        "以简洁高效的口吻作答:直接给结论与关键数字,尽量精炼,避免冗长铺垫。",
+    ),
+}
+
+
+def _role_block() -> Optional[str]:
+    """Render the 用户画像/回答风格 system-prompt block from STATE, or None."""
+    user = USER_ROLES.get(STATE.user_role)
+    pref = AGENT_PREFS.get(STATE.agent_pref)
+    if not user and not pref:
+        return None
+    lines = ["# 用户画像与回答偏好", ""]
+    if user:
+        lines.append(f"- 自身角色:{user[0]} —— {user[1]}")
+    if pref:
+        lines.append(f"- 回答风格:{pref[0]} —— {pref[1]}")
+    lines.append("")
+    lines.append("请在保证数据准确的前提下,按上述用户角色与回答风格组织你的回答。")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +229,9 @@ def configure(
 
     # Report store (PDF/Word uploads for the report-analysis mode)
     STATE.report_store = ReportStore(cwd)
+
+    # Conversation store (restorable history for the sidebar 「最近」list)
+    STATE.conversation_store = ConversationStore(cwd)
 
     # Serve generated charts so the chat-card "open" link works.
     charts_dir = Path(cwd) / "bi_charts"
@@ -646,6 +721,133 @@ def reset_session() -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+# ---------------------------------------------------------------------------
+# 角色选择(用户画像 + Agent 回答风格)
+# ---------------------------------------------------------------------------
+class RolesRequest(BaseModel):
+    user_role: str = ""    # key in USER_ROLES, or "" to clear
+    agent_pref: str = ""   # key in AGENT_PREFS, or "" to clear
+
+
+@app.get("/api/roles")
+def get_roles() -> JSONResponse:
+    return JSONResponse({
+        "user_role": STATE.user_role,
+        "agent_pref": STATE.agent_pref,
+        "user_role_options": [{"key": k, "label": v[0], "desc": v[1]} for k, v in USER_ROLES.items()],
+        "agent_pref_options": [{"key": k, "label": v[0], "desc": v[1]} for k, v in AGENT_PREFS.items()],
+    })
+
+
+@app.put("/api/roles")
+def put_roles(req: RolesRequest) -> JSONResponse:
+    # Validate against the known taxonomy; unknown keys clear the slot.
+    STATE.user_role = req.user_role if req.user_role in USER_ROLES else ""
+    STATE.agent_pref = req.agent_pref if req.agent_pref in AGENT_PREFS else ""
+    block = _role_block()
+    # Apply to live sessions so the change takes effect on the next turn —
+    # no conversation reset needed.
+    if STATE.session is not None:
+        STATE.session.set_role_block(block)
+    if STATE.report_session is not None:
+        STATE.report_session.set_role_block(block)
+    return JSONResponse({"ok": True, "user_role": STATE.user_role, "agent_pref": STATE.agent_pref})
+
+
+# ---------------------------------------------------------------------------
+# Conversation history (restorable 「最近」list)
+# ---------------------------------------------------------------------------
+class ConversationSaveRequest(BaseModel):
+    mode: str = "data"                  # "data" | "report"
+    title: Optional[str] = None
+    chat_html: str = ""
+    dashboard_html: str = ""
+    cid: Optional[str] = None           # update in place when the browser has one
+
+
+class ConversationRestoreRequest(BaseModel):
+    id: str
+
+
+def _require_conversation_store() -> ConversationStore:
+    if STATE.conversation_store is None:
+        raise HTTPException(500, "Server not configured; call configure() first.")
+    return STATE.conversation_store
+
+
+def _session_for_mode(mode: str) -> Optional[WebSession]:
+    return STATE.report_session if mode == "report" else STATE.session
+
+
+@app.get("/api/conversations")
+def list_conversations(mode: Optional[str] = None) -> JSONResponse:
+    store = _require_conversation_store()
+    return JSONResponse({"conversations": store.list(mode)})
+
+
+@app.post("/api/conversations/save")
+def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
+    """Snapshot the active session of `mode` (its messages) + the supplied
+    client-rendered chat/dashboard HTML, so it can be relisted and restored."""
+    store = _require_conversation_store()
+    mode = req.mode if req.mode in ("data", "report") else "data"
+    session = _session_for_mode(mode)
+    messages = list(session.messages) if session else []
+    summary = store.save(
+        mode=mode,
+        title=req.title or "未命名对话",
+        messages=messages,
+        chat_html=req.chat_html,
+        dashboard_html=req.dashboard_html,
+        cid=req.cid,
+    )
+    return JSONResponse(summary)
+
+
+@app.post("/api/conversations/restore")
+def restore_conversation(req: ConversationRestoreRequest) -> JSONResponse:
+    """Reinstate a stored conversation: reload its messages into the matching
+    session (so the user can keep chatting) and return the saved HTML so the
+    browser can re-render the transcript + dashboard."""
+    store = _require_conversation_store()
+    rec = store.get(req.id)
+    if not rec:
+        raise HTTPException(404, f"conversation not found: {req.id}")
+    mode = rec.get("mode") or "data"
+    messages = rec.get("messages") or []
+    context_restored = False
+    if mode == "report":
+        # Report sessions are bound to uploaded reports; only reinstate context
+        # when one is active. Otherwise the transcript is restored visually only.
+        if STATE.report_session is not None:
+            STATE.report_session.messages = list(messages)
+            STATE.report_session.pending_tool_use_id = None
+            STATE.report_session.pending_choice_spec = None
+            STATE.report_session._pending_sibling_results = []
+            context_restored = True
+    else:
+        _ensure_session()
+        STATE.session.messages = list(messages)
+        STATE.session.pending_tool_use_id = None
+        STATE.session.pending_choice_spec = None
+        STATE.session._pending_sibling_results = []
+        context_restored = True
+    return JSONResponse({
+        "id": rec.get("id"),
+        "mode": mode,
+        "title": rec.get("title"),
+        "chat_html": rec.get("chat_html") or "",
+        "dashboard_html": rec.get("dashboard_html") or "",
+        "context_restored": context_restored,
+    })
+
+
+@app.delete("/api/conversations/{cid}")
+def delete_conversation(cid: str) -> JSONResponse:
+    store = _require_conversation_store()
+    return JSONResponse({"ok": store.delete(cid)})
+
+
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     _ensure_session()
@@ -1091,6 +1293,7 @@ def _ensure_session() -> None:
             ontology_store=STATE.ontology_store,
             tools_override=tools_override,
             context_header=context_header,
+            role_block=_role_block(),
         )
 
 
@@ -1192,4 +1395,5 @@ def _build_report_session(report_ids: list[str], with_db: bool) -> WebSession:
         tools_override=tools,
         report_context_block=report_block,
         context_header=header,
+        role_block=_role_block(),
     )

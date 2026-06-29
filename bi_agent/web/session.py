@@ -80,6 +80,7 @@ class WebSession:
         tools_override: Optional[list[str]] = None,
         report_context_block: Optional[str] = None,
         context_header: Optional[str] = None,
+        role_block: Optional[str] = None,
     ) -> None:
         self.cwd = cwd
         self.agent_def = agent_def
@@ -98,6 +99,8 @@ class WebSession:
         )
         self._report_context_block: Optional[str] = report_context_block
         self._context_header: Optional[str] = context_header
+        # role_block: 用户画像 + 回答风格偏好(角色选择页设置),注入系统提示。
+        self._role_block: Optional[str] = role_block
 
         # Skills & system prompt (skills must be loaded before prompt build)
         init_bundled_skills()
@@ -137,6 +140,8 @@ class WebSession:
         extras: list[str] = []
         if self._context_header:
             extras.append(self._context_header.strip())
+        if self._role_block:
+            extras.append(self._role_block.strip())
         if self._report_context_block:
             extras.append(
                 "# 报表上下文\n\n(以下内容来自用户上传的报表,请将其作为回答的主要依据)\n\n"
@@ -153,6 +158,15 @@ class WebSession:
         tool listing matches what the LLM will actually be allowed to call.
         """
         self._tools_override = list(tools) if tools is not None else None
+        self.system_prompt = self._build_system_prompt()
+
+    def set_role_block(self, block: Optional[str]) -> None:
+        """
+        Update the 用户画像/回答风格 block mid-session (角色选择页保存时调用).
+        Rebuilds the system prompt so the next turn reflects the new role
+        preferences — no conversation reset required.
+        """
+        self._role_block = block
         self.system_prompt = self._build_system_prompt()
 
     def set_context_header(self, header: Optional[str]) -> None:

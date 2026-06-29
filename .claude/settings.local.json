@@ -61,7 +61,10 @@
       "Bash(node *)",
       "Bash(perl -i -CSD -pe 's/\\\\x{9500}\\\\x{552e}\\\\x{4e1a}\\\\x{52a1}\\\\x{6d41}/\\\\x{8d22}\\\\x{52a1}\\\\x{7ecf}\\\\x{8425}\\\\x{6d41}/g' bi_agent/web/static/app.js ceo_cockpit.html ceo_dashboard.html ceo_dashboard_standalone.html)",
       "Bash(PYTHONIOENCODING=utf-8 grep *)",
-      "Bash(PYTHONIOENCODING=utf-8 sed -n '1,60p' bi_agent/llm/provider.py)"
+      "Bash(PYTHONIOENCODING=utf-8 sed -n '1,60p' bi_agent/llm/provider.py)",
+      "Read(//c/c/shuopan/claude-BI/open-claude/bi_agent/**)",
+      "Read(//c/c/shuopan/claude-BI/open-claude/**)",
+      "Bash(PYTHONIOENCODING=utf-8 PYTHONUTF8=1 python *)"
     ]
   }
 }

@@ -49,6 +49,11 @@
       // Whether the mode currently has any chat content
       hasContent: false,
       dashboardHasContent: false,
+      // Restorable history: id of the persisted conversation record this
+      // bucket maps to (null = unsaved / fresh). Saved/updated in place.
+      convId: null,
+      // Stable title anchor for restored conversations (no turnQuestions).
+      titleHint: null,
     };
   }
 
@@ -60,7 +65,8 @@
   const state = {
     meta: null,
     busy: false,
-    activeTab: "ontology",
+    activeTab: "tools",
+    view: "workspace",                 // sidebar page router: which view is shown
     mode: "data",                      // "data" | "report"
     // Quadrant-assistant mode — when workbench is embedded inside the CEO
     // cockpit as a quadrant helper, location.search carries ?quadrant=KEY.
@@ -188,6 +194,10 @@
     sourcesDorisUser:   document.getElementById("sources-doris-user"),
     sourcesDorisPass:   document.getElementById("sources-doris-pass"),
     sourcesStatus:      document.getElementById("sources-status"),
+    // 本体适配 page (检索模式 / 本体源 / 图库源 — shares the /api/sources fields above)
+    ontoAdaptCancel:    document.getElementById("onto-adapt-cancel"),
+    ontoAdaptSave:      document.getElementById("onto-adapt-save"),
+    ontoAdaptStatus:    document.getElementById("onto-adapt-status"),
     // Topbar
     agentName:      document.getElementById("agent-name"),
     topbarMeta:     document.getElementById("topbar-meta"),
@@ -211,6 +221,8 @@
     dashboardCollapseBtn: document.getElementById("dashboard-collapse"),
     dashboardReopen: document.getElementById("dashboard-reopen"),
     btnToggleDashboard: document.getElementById("btn-toggle-dashboard"),
+    sidebarCollapse: document.getElementById("sidebar-collapse"),
+    sidebarReopen: document.getElementById("sidebar-reopen"),
   };
 
   // Default empty-state strings per mode
@@ -239,14 +251,14 @@
   // Utilities
   // ------------------------------------------------------------------
   const KIND_LABELS = {
-    term: "TERM",
-    business_object: "BO",
-    logical_entity: "LE",
-    attribute: "ATTR",
-    relation: "REL",
-    metric: "METRIC",
-    activity: "ACT",
-    rule: "RULE",
+    term: "术语",
+    business_object: "业务对象",
+    logical_entity: "逻辑实体",
+    attribute: "属性",
+    relation: "关系",
+    metric: "指标",
+    activity: "活动",
+    rule: "规则",
   };
 
   const ENTITY_CODE_RE = /\b(?:T\d{6}|BO\d{4}|LE\d{5}|AT\d{5}|ER\d{3}|M\d{3}|A\d{3}|R\d{3})\b/g;
@@ -644,6 +656,311 @@
   });
 
   // ------------------------------------------------------------------
+  // Sidebar page router — workspace(chat+dashboard) is shared by
+  // 智能分析/报表分析; 本体内容 / 系统调用记录 / 数据源 / 模型参数 /
+  // 记忆管理 are standalone full-area pages.
+  // ------------------------------------------------------------------
+  const viewSections = document.querySelectorAll(".app-main .view");
+  const navItems = document.querySelectorAll(".sidebar .nav-item");
+
+  function setActiveNav() {
+    const view = state.view || "workspace";
+    navItems.forEach((b) => {
+      const on = b.dataset.mode
+        ? (view === "workspace" && b.dataset.mode === state.mode)  // mode buttons
+        : (b.dataset.view === view);
+      b.classList.toggle("active", on);
+    });
+  }
+
+  function showView(view) {
+    state.view = view;
+    viewSections.forEach((s) => s.classList.toggle("active", s.dataset.view === view));
+    setActiveNav();
+    if (view === "syslog" && state.activeTab === "system") loadSystemPrompt();
+  }
+
+  navItems.forEach((b) => {
+    b.addEventListener("click", () => {
+      const view = b.dataset.view;
+      if (b.dataset.mode) { showView("workspace"); return; }  // switchMode wired separately
+      if (view === "sources") { openSources(); }      // fetch + populate, then show
+      else if (view === "ontology-adapt") { openOntologyAdapt(); }  // shares /api/sources
+      else if (view === "model") { openSettings(); }  // clear status, then show
+      else if (view === "roles") { openRoles(); }     // fetch current roles, then show
+      else { showView(view); }
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // Restorable conversation history (sidebar 「最近」)
+  // Each conversation persists server-side (messages + rendered chat/dashboard
+  // HTML). The 最近 list is filtered to the current mode, so restoring is
+  // always same-mode (no cross-mode context clobbering).
+  // ------------------------------------------------------------------
+  const recentListEl = document.getElementById("recent-list");
+
+  function conversationTitle() {
+    const b = B();
+    const tq = b.turnQuestions || {};
+    // First question identifies the conversation; titleHint preserves it for
+    // restored conversations (whose turnQuestions map isn't repopulated).
+    const q = tq[1] || tq[Object.keys(tq)[0]] || b.titleHint || "";
+    return (q || "未命名对话").slice(0, 60);
+  }
+
+  function collectHtml(container, emptyEl) {
+    if (!container) return "";
+    let html = "";
+    container.childNodes.forEach((n) => {
+      if (n === emptyEl) return;
+      if (n.nodeType === 1) html += n.outerHTML;
+    });
+    return html;
+  }
+
+  async function saveCurrentConversation() {
+    const b = B();
+    if (!b.hasContent) return;  // nothing worth saving yet
+    try {
+      const r = await fetch("/api/conversations/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: state.mode,
+          cid: b.convId,
+          title: conversationTitle(),
+          chat_html: collectHtml(el.chatScroll, el.chatEmpty),
+          dashboard_html: collectHtml(el.dashboardList, el.dashboardEmpty),
+        }),
+      });
+      if (r.ok) { const d = await r.json(); if (d && d.id) b.convId = d.id; }
+    } catch (e) { /* history is best-effort */ }
+    loadRecent();
+  }
+
+  async function loadRecent() {
+    if (!recentListEl) return;
+    try {
+      const r = await fetch("/api/conversations?mode=" + encodeURIComponent(state.mode));
+      const d = await r.json();
+      renderRecent(d.conversations || []);
+    } catch (e) { /* ignore */ }
+  }
+
+  function renderRecent(items) {
+    if (!recentListEl) return;
+    recentListEl.innerHTML = "";
+    if (!items.length) {
+      const e = document.createElement("div");
+      e.className = "recent-empty";
+      e.textContent = "暂无历史会话";
+      recentListEl.appendChild(e);
+      return;
+    }
+    const activeId = B().convId;
+    items.forEach((it) => {
+      const row = document.createElement("div");
+      row.className = "recent-item" + (it.id === activeId ? " active" : "");
+      row.title = it.title || "未命名对话";
+      const t = document.createElement("span");
+      t.className = "recent-title";
+      t.textContent = it.title || "未命名对话";
+      row.appendChild(t);
+      const del = document.createElement("button");
+      del.className = "recent-del";
+      del.textContent = "✕";
+      del.title = "删除该会话";
+      del.addEventListener("click", (ev) => { ev.stopPropagation(); deleteRecent(it.id); });
+      row.appendChild(del);
+      row.addEventListener("click", () => restoreConversation(it.id));
+      recentListEl.appendChild(row);
+    });
+  }
+
+  async function deleteRecent(id) {
+    try { await fetch("/api/conversations/" + id, { method: "DELETE" }); } catch (e) {}
+    ["data", "report"].forEach((m) => { if (buckets[m].convId === id) buckets[m].convId = null; });
+    loadRecent();
+  }
+
+  async function restoreConversation(id) {
+    if (state.busy) return;
+    await saveCurrentConversation();  // persist current (same-mode) before swapping
+    let rec;
+    try {
+      const r = await fetch("/api/conversations/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!r.ok) return;
+      rec = await r.json();
+    } catch (e) { return; }
+    if (rec.mode && rec.mode !== state.mode) switchMode(rec.mode);
+    const b = B();
+    // Swap in the saved transcript + dashboard snapshot.
+    el.chatScroll.innerHTML = rec.chat_html || "";
+    el.dashboardList.innerHTML = rec.dashboard_html || "";
+    b.hasContent = !!(rec.chat_html && rec.chat_html.trim());
+    b.dashboardHasContent = !!(rec.dashboard_html && rec.dashboard_html.trim());
+    if (el.chatEmpty && !b.hasContent) {
+      if (!el.chatEmpty.parentNode) el.chatScroll.appendChild(el.chatEmpty);
+      el.chatEmpty.style.display = "";
+    }
+    if (el.dashboardEmpty && !b.dashboardHasContent) {
+      if (!el.dashboardEmpty.parentNode) el.dashboardList.appendChild(el.dashboardEmpty);
+      el.dashboardEmpty.style.display = "";
+    } else if (el.dashboardEmpty) {
+      el.dashboardEmpty.style.display = "none";
+    }
+    b.convId = rec.id;
+    // Restored transcripts carry no turnQuestions, so anchor the title here;
+    // otherwise a later save would relabel it 「未命名对话」.
+    b.titleHint = rec.title || "";
+    showView("workspace");
+    loadRecent();
+    if (typeof scrollChatBottom === "function") scrollChatBottom();
+  }
+
+  // ------------------------------------------------------------------
+  // Personal account settings (username + theme) — browser-local prefs
+  // ------------------------------------------------------------------
+  const ACCT_NAME_KEY = "bi.userName";
+  const ACCT_THEME_KEY = "bi.theme";
+
+  function applyTheme(theme) {
+    document.documentElement.classList.toggle("theme-light", theme === "light");
+  }
+
+  function readPref(key, fallback) {
+    try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+  }
+
+  function renderAccountChip() {
+    const name = readPref(ACCT_NAME_KEY, "分析员") || "分析员";
+    const nameEl = document.getElementById("account-name");
+    const avEl = document.getElementById("account-avatar");
+    if (nameEl) nameEl.textContent = name;
+    if (avEl) avEl.textContent = name.slice(0, 1);
+  }
+
+  function openAccount() {
+    const nameInput = document.getElementById("account-name-input");
+    const themeToggle = document.getElementById("account-theme-light");
+    if (nameInput) nameInput.value = readPref(ACCT_NAME_KEY, "") || "";
+    if (themeToggle) themeToggle.checked = readPref(ACCT_THEME_KEY, "dark") === "light";
+    const st = document.getElementById("account-status");
+    if (st) st.textContent = "";
+    showView("account");
+  }
+
+  function saveAccount() {
+    const nameInput = document.getElementById("account-name-input");
+    const themeToggle = document.getElementById("account-theme-light");
+    const name = ((nameInput && nameInput.value) || "").trim() || "分析员";
+    const theme = (themeToggle && themeToggle.checked) ? "light" : "dark";
+    try {
+      localStorage.setItem(ACCT_NAME_KEY, name);
+      localStorage.setItem(ACCT_THEME_KEY, theme);
+    } catch (e) {}
+    applyTheme(theme);
+    renderAccountChip();
+    const st = document.getElementById("account-status");
+    if (st) {
+      st.textContent = "✓ 已保存";
+      st.className = "settings-status success";
+      setTimeout(() => { if (st) st.textContent = ""; }, 2000);
+    }
+  }
+
+  (function bootAccount() {
+    // URL ?theme=light still wins (embedding); else use the saved preference.
+    let urlTheme = null;
+    try { urlTheme = new URLSearchParams(location.search).get("theme"); } catch (e) {}
+    if (urlTheme !== "light") applyTheme(readPref(ACCT_THEME_KEY, "dark"));
+    renderAccountChip();
+    const acctBtn = document.getElementById("sidebar-account");
+    if (acctBtn) acctBtn.addEventListener("click", openAccount);
+    const acctSave = document.getElementById("account-save");
+    if (acctSave) acctSave.addEventListener("click", saveAccount);
+  })();
+
+  // ------------------------------------------------------------------
+  // 角色选择(自身角色 + Agent 回答风格)— 注入系统提示,真正影响回答
+  // ------------------------------------------------------------------
+  const rolesState = { user_role: "", agent_pref: "", userOptions: [], agentOptions: [] };
+
+  function renderRoleGroup(containerId, options, selectedKey, onPick) {
+    const box = document.getElementById(containerId);
+    if (!box) return;
+    box.innerHTML = "";
+    // Leading 「不指定」(key "") lets the user clear the slot.
+    const all = [{ key: "", label: "不指定", desc: "不设置该项偏好,使用 Agent 默认行为。" }]
+      .concat(options || []);
+    all.forEach((opt) => {
+      const card = el_h("div", "role-option" + (opt.key === selectedKey ? " selected" : ""));
+      card.innerHTML = `<span class="role-opt-label">${esc(opt.label)}</span>` +
+        (opt.desc ? `<span class="role-opt-desc">${esc(opt.desc)}</span>` : "");
+      card.addEventListener("click", () => onPick(opt.key));
+      box.appendChild(card);
+    });
+  }
+
+  function renderRoles() {
+    renderRoleGroup("roles-user", rolesState.userOptions, rolesState.user_role, (k) => {
+      rolesState.user_role = k; renderRoles();
+    });
+    renderRoleGroup("roles-agent", rolesState.agentOptions, rolesState.agent_pref, (k) => {
+      rolesState.agent_pref = k; renderRoles();
+    });
+  }
+
+  async function openRoles() {
+    const st = document.getElementById("roles-status");
+    if (st) { st.textContent = ""; st.className = "settings-status"; }
+    try {
+      const r = await fetch("/api/roles");
+      if (r.ok) {
+        const d = await r.json();
+        rolesState.user_role = d.user_role || "";
+        rolesState.agent_pref = d.agent_pref || "";
+        rolesState.userOptions = d.user_role_options || [];
+        rolesState.agentOptions = d.agent_pref_options || [];
+      }
+    } catch (e) {}
+    renderRoles();
+    showView("roles");
+  }
+
+  async function saveRoles() {
+    const st = document.getElementById("roles-status");
+    if (st) { st.textContent = "保存中…"; st.className = "settings-status pending"; }
+    try {
+      const r = await fetch("/api/roles", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_role: rolesState.user_role, agent_pref: rolesState.agent_pref }),
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      if (st) {
+        st.textContent = "✓ 已保存,自下一条提问起生效";
+        st.className = "settings-status success";
+        setTimeout(() => { if (st) st.textContent = ""; }, 2500);
+      }
+    } catch (e) {
+      if (st) { st.textContent = "保存失败: " + (e.message || e); st.className = "settings-status error"; }
+    }
+  }
+
+  (function bootRoles() {
+    const saveBtn = document.getElementById("roles-save");
+    if (saveBtn) saveBtn.addEventListener("click", saveRoles);
+    const cancelBtn = document.getElementById("roles-cancel");
+    if (cancelBtn) cancelBtn.addEventListener("click", () => showView("workspace"));
+  })();
+
+  // ------------------------------------------------------------------
   // Meta / bootstrap
   // ------------------------------------------------------------------
   async function loadMeta() {
@@ -672,7 +989,10 @@
     if (!state.meta) return;
     const data = state.meta;
     const agent = currentAgentMeta();
-    if (agent) el.agentName.textContent = agent.name;
+    if (agent && el.agentName) el.agentName.textContent = agent.name;
+    // Model/DB/ontology stats panel was removed from the sidebar — keep the
+    // brand-name update above, skip the (now absent) meta strip.
+    if (!el.topbarMeta) return;
     const s = data.ontology_stats;
     const cur = (data.llm && data.llm.current) || null;
     const modelLabel = (() => {
@@ -825,14 +1145,12 @@
   }
 
   function openSettings() {
-    el.settingsStatus.textContent = "";
-    el.settingsOverlay.hidden = false;
-    setTimeout(() => el.settingsOverlay.classList.add("visible"), 10);
+    if (el.settingsStatus) el.settingsStatus.textContent = "";
+    showView("model");
   }
 
   function closeSettings() {
-    el.settingsOverlay.classList.remove("visible");
-    setTimeout(() => { el.settingsOverlay.hidden = true; }, 150);
+    showView("workspace");
   }
 
   async function saveSettings() {
@@ -1220,9 +1538,11 @@
     }
   }
 
-  async function openSources() {
-    el.sourcesStatus.textContent = "";
-    el.sourcesStatus.className = "settings-status";
+  // Shared loader for both 数据源 and 本体适配 pages — they read/write the same
+  // /api/sources payload, just split across two screens. `statusEl` is the
+  // status line of whichever page is being opened.
+  async function loadSourcesInto(statusEl) {
+    if (statusEl) { statusEl.textContent = ""; statusEl.className = "settings-status"; }
     try {
       const r = await fetch("/api/sources");
       if (!r.ok) throw new Error("HTTP " + r.status);
@@ -1243,24 +1563,34 @@
       syncDorisField();
       syncRetrievalMode();
     } catch (e) {
-      el.sourcesStatus.textContent = "加载数据源列表失败: " + (e.message || e);
-      el.sourcesStatus.className = "settings-status error";
+      if (statusEl) {
+        statusEl.textContent = "加载数据源列表失败: " + (e.message || e);
+        statusEl.className = "settings-status error";
+      }
     }
-    el.sourcesOverlay.hidden = false;
-    setTimeout(() => el.sourcesOverlay.classList.add("visible"), 10);
+  }
+
+  async function openSources() {
+    await loadSourcesInto(el.sourcesStatus);
+    showView("sources");
   }
 
   function closeSources() {
-    el.sourcesOverlay.classList.remove("visible");
-    setTimeout(() => {
-      el.sourcesOverlay.hidden = true;
-    }, 150);
+    showView("workspace");
   }
 
-  async function saveSources() {
+  async function openOntologyAdapt() {
+    await loadSourcesInto(el.ontoAdaptStatus);
+    showView("ontology-adapt");
+  }
+
+  // Both 数据源 and 本体适配 save the full /api/sources payload (the backend
+  // re-binds atomically); `statusEl` directs feedback to the active page.
+  async function saveSources(statusEl) {
+    statusEl = statusEl || el.sourcesStatus;
     if (state.busy) {
-      el.sourcesStatus.textContent = "对话进行中,请等当前回合结束后再切换数据源。";
-      el.sourcesStatus.className = "settings-status error";
+      statusEl.textContent = "对话进行中,请等当前回合结束后再切换数据源。";
+      statusEl.className = "settings-status error";
       return;
     }
     const dbValue = el.sourcesDatabase.value || null;
@@ -1277,8 +1607,8 @@
     if (dbValue === DORIS_SOURCE_VALUE) {
       const jdbc = (el.sourcesDorisJdbc && el.sourcesDorisJdbc.value || "").trim();
       if (!jdbc) {
-        el.sourcesStatus.textContent = "请填写 Doris JDBC 地址(例如 jdbc:mysql://host:9030/db)。";
-        el.sourcesStatus.className = "settings-status error";
+        statusEl.textContent = "请填写 Doris JDBC 地址(例如 jdbc:mysql://host:9030/db)。";
+        statusEl.className = "settings-status error";
         return;
       }
       payload.doris_jdbc_url = jdbc;
@@ -1288,8 +1618,8 @@
       // Password may legitimately be empty (current Doris has no password).
       payload.doris_password = (el.sourcesDorisPass && el.sourcesDorisPass.value) || "";
     }
-    el.sourcesStatus.textContent = "切换中…";
-    el.sourcesStatus.className = "settings-status pending";
+    statusEl.textContent = "切换中…";
+    statusEl.className = "settings-status pending";
     try {
       const r = await fetch("/api/sources", {
         method: "PUT",
@@ -1300,12 +1630,12 @@
         const err = await r.json().catch(() => ({ detail: r.statusText }));
         throw new Error(err.detail || "switch failed");
       }
-      el.sourcesStatus.textContent = "✓ 数据源已切换 · 正在重新加载…";
-      el.sourcesStatus.className = "settings-status success";
+      statusEl.textContent = "✓ 数据源已切换 · 正在重新加载…";
+      statusEl.className = "settings-status success";
       setTimeout(() => location.reload(), 700);
     } catch (e) {
-      el.sourcesStatus.textContent = "切换失败: " + (e.message || e);
-      el.sourcesStatus.className = "settings-status error";
+      statusEl.textContent = "切换失败: " + (e.message || e);
+      statusEl.className = "settings-status error";
     }
   }
 
@@ -1316,7 +1646,10 @@
   if (el.sourcesClose) el.sourcesClose.addEventListener("click", closeSources);
   if (el.sourcesCancel)
     el.sourcesCancel.addEventListener("click", closeSources);
-  if (el.sourcesSave) el.sourcesSave.addEventListener("click", saveSources);
+  if (el.sourcesSave) el.sourcesSave.addEventListener("click", () => saveSources(el.sourcesStatus));
+  // 本体适配 page reuses the same loader + save (full /api/sources payload).
+  if (el.ontoAdaptCancel) el.ontoAdaptCancel.addEventListener("click", closeSources);
+  if (el.ontoAdaptSave) el.ontoAdaptSave.addEventListener("click", () => saveSources(el.ontoAdaptStatus));
   if (el.sourcesOverlay)
     el.sourcesOverlay.addEventListener("click", (e) => {
       if (e.target === el.sourcesOverlay) closeSources();
@@ -1335,14 +1668,14 @@
   // System prompt (per-mode)
   // ------------------------------------------------------------------
   async function loadSystemPrompt() {
-    el.systemContent.innerHTML = '<div class="sys-section"><div class="sys-title">Loading…</div></div>';
+    el.systemContent.innerHTML = '<div class="sys-section"><div class="sys-title">加载中…</div></div>';
     try {
       const r = await fetch(`/api/system-prompt?mode=${state.mode}`);
       const data = await r.json();
       B().systemPrompt = data.system_prompt;
       renderSystem();
     } catch (e) {
-      el.systemContent.innerHTML = `<div class="sys-section"><div class="sys-title">Error</div><div class="sys-body">${esc(e.message || String(e))}</div></div>`;
+      el.systemContent.innerHTML = `<div class="sys-section"><div class="sys-title">错误</div><div class="sys-body">${esc(e.message || String(e))}</div></div>`;
     }
   }
 
@@ -1357,21 +1690,22 @@
              "DescribeTable", "ChartGenerate", "TableGenerate", "AskUser"]
           : ["ChartGenerate", "TableGenerate", "AskUser"])
       : (a.tools || []);
-    const tools = toolsList.map(t => `<span class="tool-pill">${esc(t)}</span>`).join("") || '<span class="kv-v">(all)</span>';
+    const tools = toolsList.map(t => `<span class="tool-pill">${esc(t)}</span>`).join("") || '<span class="kv-v">(全部)</span>';
+    const modeLabel = state.mode === "report" ? "报表分析" : "智能分析";
     el.systemContent.innerHTML = `
       <div class="sys-section">
-        <div class="sys-title">Agent Definition (${esc(state.mode)} mode)</div>
-        <div class="sys-body">name: ${esc(a.name)}
-model: ${esc(a.model || "default")}
-description: ${esc(a.description || "")}
-welcome: ${esc(a.welcome_message || "")}</div>
+        <div class="sys-title">Agent 定义(${esc(modeLabel)}模式)</div>
+        <div class="sys-body">名称: ${esc(a.name)}
+模型: ${esc(a.model || "默认")}
+描述: ${esc(a.description || "")}
+欢迎语: ${esc(a.welcome_message || "")}</div>
       </div>
       <div class="sys-section">
-        <div class="sys-title">Tool Whitelist</div>
+        <div class="sys-title">工具白名单</div>
         <div style="padding: 4px 0;">${tools}</div>
       </div>
       <div class="sys-section">
-        <div class="sys-title">System Prompt (full)</div>
+        <div class="sys-title">完整系统提示词</div>
         <div class="sys-body">${esc(B().systemPrompt || "")}</div>
       </div>`;
   }
@@ -1390,7 +1724,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
 
   function updateTurnCounter() {
     const n = B().turnCount;
-    el.turnCounter.textContent = n + (n === 1 ? " turn" : " turns");
+    el.turnCounter.textContent = n + " 回合";
   }
 
   function addUserMessage(text) {
@@ -1400,7 +1734,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
     const msg = el_h("div", "msg msg-user");
     msg.innerHTML = `
       <div class="msg-header">
-        <span class="msg-role user">USER</span>
+        <span class="msg-role user">用户</span>
       </div>
       <div class="msg-body">${esc(text)}</div>`;
     el.chatScroll.appendChild(msg);
@@ -1409,7 +1743,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
 
   function assistantRoleLabel() {
     const agent = currentAgentMeta();
-    return (agent && agent.name ? agent.name : "ASSISTANT").toUpperCase();
+    return (agent && agent.name ? agent.name : "助手").toUpperCase();
   }
 
   function startAssistantMessage(iteration) {
@@ -1417,7 +1751,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
     msg.innerHTML = `
       <div class="msg-header">
         <span class="msg-role assistant">${esc(assistantRoleLabel())}</span>
-        <span class="msg-iter">iter ${iteration}</span>
+        <span class="msg-iter">迭代 ${iteration}</span>
       </div>
       <div class="msg-body"><span class="thinking-line"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>思考中…</span></div>`;
     el.chatScroll.appendChild(msg);
@@ -3098,8 +3432,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
   });
 
   function flashOntologyEntity(code) {
-    const targetTab = Array.from(el.tabs).find(t => t.dataset.tab === "ontology");
-    if (targetTab) targetTab.click();
+    showView("ontology");  // 本体内容 is now a standalone page
     const card = el.ontologyList.querySelector(`.entity-card[data-code="${CSS.escape(code)}"]`);
     if (card) {
       card.classList.add("open");
@@ -3133,15 +3466,15 @@ welcome: ${esc(a.welcome_message || "")}</div>
       </div>
       <div class="tool-body">
         <div class="kv-block">
-          <div class="kv-label">Input</div>
+          <div class="kv-label">输入</div>
           <pre>${esc(JSON.stringify(r.input || {}, null, 2))}</pre>
         </div>
         <div class="kv-block">
-          <div class="kv-label">Output</div>
+          <div class="kv-label">输出</div>
           <pre>${esc(r.output || "")}</pre>
         </div>
         ${chips ? `<div class="kv-block">
-          <div class="kv-label">Ontology Entities Touched</div>
+          <div class="kv-label">命中的本体实体</div>
           <div class="chip-row">${chips}</div>
         </div>` : ""}
       </div>`;
@@ -3173,11 +3506,11 @@ welcome: ${esc(a.welcome_message || "")}</div>
         <span class="step-duration">${fmtDuration(r.duration_ms)}</span>
       </div>
       <div class="step-body">
-        <div class="step-sub">Input</div>
+        <div class="step-sub">输入</div>
         <pre>${esc(JSON.stringify(r.input || {}, null, 2))}</pre>
-        <div class="step-sub">Output</div>
+        <div class="step-sub">输出</div>
         <pre>${esc(r.output || "")}</pre>
-        ${chips ? `<div class="step-sub">Ontology Hits</div><div class="chip-row">${chips}</div>` : ""}
+        ${chips ? `<div class="step-sub">命中的本体</div><div class="chip-row">${chips}</div>` : ""}
       </div>`;
     step.querySelector(".step-header").addEventListener("click", () => step.classList.toggle("open"));
     step.querySelectorAll(".chip").forEach(ch => {
@@ -3215,33 +3548,33 @@ welcome: ${esc(a.welcome_message || "")}</div>
   function buildLlmCard(turn, idx) {
     const { iteration, request, response } = turn;
     const tokenInfo = response && response.usage
-      ? `${response.usage.output_tokens || 0} out`
+      ? `输出 ${response.usage.output_tokens || 0} tokens`
       : "…";
     const stopR = response && response.stop_reason ? response.stop_reason : "…";
     const nTools = response && response.tool_uses ? response.tool_uses.length : 0;
     const summary = nTools
       ? `${response.text ? "text+" : ""}${nTools} tool_use · stop=${stopR}`
-      : (response && response.text ? `text · stop=${stopR}` : "streaming…");
+      : (response && response.text ? `text · stop=${stopR}` : "流式中…");
 
     const card = el_h("div", "llm-card");
     card.innerHTML = `
       <div class="llm-head">
-        <span class="iter">REQ #${idx + 1} · iter ${iteration}</span>
+        <span class="iter">请求 #${idx + 1} · 迭代 ${iteration}</span>
         <span class="summary">${esc(summary)}</span>
         <span class="usage">${esc(tokenInfo)}</span>
       </div>
       <div class="llm-body">
-        <div class="kv-label">Request Messages (${request.message_count})</div>
+        <div class="kv-label">请求消息 (${request.message_count})</div>
         ${renderMessages(request.messages_snapshot || [])}
-        <div class="kv-label" style="margin-top: 12px;">Response</div>
-        ${response ? renderResponse(response) : '<div class="msg-block">streaming…</div>'}
+        <div class="kv-label" style="margin-top: 12px;">响应</div>
+        ${response ? renderResponse(response) : '<div class="msg-block">流式中…</div>'}
       </div>`;
     card.querySelector(".llm-head").addEventListener("click", () => card.classList.toggle("open"));
     return card;
   }
 
   function renderMessages(messages) {
-    if (!messages || !messages.length) return '<div class="msg-block">(empty)</div>';
+    if (!messages || !messages.length) return '<div class="msg-block">(空)</div>';
     return messages.map((m) => {
       const blocks = [];
       if (typeof m.content === "string") {
@@ -3278,7 +3611,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
       parts.push(`<div class="msg-block role-assistant">
         <span class="block-label">assistant — tool_use ${esc(tu.name)}</span>${esc(JSON.stringify(tu.input || {}, null, 2))}</div>`);
     }
-    return parts.join("") || '<div class="msg-block">(empty)</div>';
+    return parts.join("") || '<div class="msg-block">(空)</div>';
   }
 
   // ------------------------------------------------------------------
@@ -3399,6 +3732,9 @@ welcome: ${esc(a.welcome_message || "")}</div>
         // Quadrant-assistant: if any ui-commands were staged this turn,
         // render the "执行" card so the user can apply them in one click.
         if (state.quadrant) appendApplyButton(_tag);
+        // Persist this conversation to the restorable 「最近」history (updates
+        // the same record in place via bucket.convId).
+        saveCurrentConversation();
         break;
       }
       case "error":
@@ -3491,7 +3827,7 @@ welcome: ${esc(a.welcome_message || "")}</div>
     state.busy = v;
     el.btnSend.disabled = v;
     el.chatInput.disabled = v;
-    el.btnSend.textContent = v ? "…" : "SEND ▸";
+    el.btnSend.textContent = v ? "…" : "发送 ▸";
     // Block mode switching while a turn is in flight
     el.modeBtns.forEach(b => { b.disabled = v; });
   }
@@ -3571,6 +3907,9 @@ welcome: ${esc(a.welcome_message || "")}</div>
 
     // System panel is mode-specific — lazy-load next time it's opened
     if (state.activeTab === "system") loadSystemPrompt();
+
+    // 最近 list is per-mode — refresh for the incoming mode
+    if (typeof loadRecent === "function") loadRecent();
   }
 
   el.modeBtns.forEach(b => {
@@ -3845,6 +4184,8 @@ welcome: ${esc(a.welcome_message || "")}</div>
     bucket.todos = [];
     bucket.sopStep = 0;
     bucket.concludedTurnTag = 0;
+    bucket.convId = null;   // detach from any saved 最近 record → next is fresh
+    bucket.titleHint = null; // drop the restored-title anchor; next title is fresh
     // If this is the active mode, also clear visible DOM
     if (state.mode === mode) {
       renderTodoPanel();  // hides the pinned task list (bucket.todos now empty)
@@ -4100,16 +4441,32 @@ welcome: ${esc(a.welcome_message || "")}</div>
     el.chatInput.style.height = Math.min(el.chatInput.scrollHeight, 140) + "px";
   });
 
-  el.btnReset.addEventListener("click", async () => {
+  async function resetConversation(opts) {
+    const silent = opts && opts.silent;
     if (state.busy) return;
-    if (!confirm("开始新对话?当前模式的对话历史将被清空。")) return;
+    if (!silent && !confirm("开始新对话?当前对话会存入左侧「最近」,可随时恢复。")) return;
+    await saveCurrentConversation();   // persist current to 最近 before clearing
     const url = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
     await fetch(url, { method: "POST" });
-    clearBucketChat(state.mode);
+    clearBucketChat(state.mode);       // also resets bucket.convId → fresh
     renderEmptyState();
     if (state.mode === "report") {
       await refreshReportStatus();
     }
+    loadRecent();
+    const ms = document.getElementById("memory-status");
+    if (ms) {
+      ms.textContent = "✓ 已开始新对话(上一段已存入「最近」)";
+      ms.className = "settings-status success";
+      setTimeout(() => { if (ms) ms.textContent = ""; }, 2500);
+    }
+  }
+
+  if (el.btnReset) el.btnReset.addEventListener("click", () => resetConversation());
+  const navNewChat = document.getElementById("nav-new-chat");
+  if (navNewChat) navNewChat.addEventListener("click", () => {
+    showView("workspace");
+    resetConversation({ silent: true });
   });
 
   // ------------------------------------------------------------------
@@ -4147,6 +4504,25 @@ welcome: ${esc(a.welcome_message || "")}</div>
   if (el.btnToggleInspector) el.btnToggleInspector.addEventListener("click", toggleInspector);
   if (el.inspectorCollapseBtn) el.inspectorCollapseBtn.addEventListener("click", () => applyInspectorState(true));
   if (el.inspectorReopen) el.inspectorReopen.addEventListener("click", () => applyInspectorState(false));
+
+  // ------------------------------------------------------------------
+  // Sidebar collapse / expand  (left nav, Claude/ChatGPT-style)
+  // ------------------------------------------------------------------
+  const SIDEBAR_LS_KEY = "bi.sidebarCollapsed";
+
+  function applySidebarState(collapsed) {
+    document.body.classList.toggle("sidebar-collapsed", collapsed);
+    try { localStorage.setItem(SIDEBAR_LS_KEY, collapsed ? "1" : "0"); } catch (e) {}
+  }
+
+  (function bootSidebarState() {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(SIDEBAR_LS_KEY) === "1"; } catch (e) {}
+    applySidebarState(collapsed);
+  })();
+
+  if (el.sidebarCollapse) el.sidebarCollapse.addEventListener("click", () => applySidebarState(true));
+  if (el.sidebarReopen) el.sidebarReopen.addEventListener("click", () => applySidebarState(false));
 
   // ------------------------------------------------------------------
   // Dashboard collapse / expand  (middle pane)
@@ -4571,4 +4947,5 @@ welcome: ${esc(a.welcome_message || "")}</div>
   // Boot
   // ------------------------------------------------------------------
   loadMeta();
+  loadRecent();
 })();

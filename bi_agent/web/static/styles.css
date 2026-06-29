@@ -165,25 +165,18 @@ body {
 .topbar-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: nowrap; }
 body.settings-hidden .topbar { display: none; }
 
-/* ---------- SPLIT ---------- */
+/* ---------- SPLIT (workspace: chat | dashboard, dashboard resident) ---------- */
 .split {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(380px, 1fr) minmax(360px, 1fr) minmax(400px, 1fr);
+  grid-template-columns: minmax(380px, 1.15fr) minmax(360px, 1fr);
   overflow: hidden;
 }
-/* Dashboard collapsed: 2 columns (chat | inspector) */
+/* Dashboard collapsed: chat takes the whole width */
 body[data-dashboard="collapsed"] .split {
-  grid-template-columns: minmax(420px, 1fr) minmax(440px, 1fr);
-}
-body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
-/* Inspector collapsed wins at the right edge (handled later by .inspector-pane) */
-body[data-dashboard="collapsed"][data-inspector="collapsed"] .split {
   grid-template-columns: 1fr;
 }
-body[data-inspector="collapsed"]:not([data-dashboard="collapsed"]) .split {
-  grid-template-columns: minmax(420px, 1fr) minmax(360px, 1fr);
-}
+body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 
 /* ---------- PANE SHARED ---------- */
 .chat-pane, .dashboard-pane, .inspector-pane {
@@ -1972,15 +1965,8 @@ body:not([data-mode="report"]) .upload-status {
   background: var(--bg-2);
 }
 
-body[data-inspector="collapsed"] .split {
-  grid-template-columns: 1fr;
-}
-body[data-inspector="collapsed"] .inspector-pane {
-  display: none;
-}
-body[data-inspector="collapsed"] .chat-pane {
-  border-right: none;
-}
+/* Inspector moved to its own pages (本体内容 / 系统调用记录); the legacy
+ * data-inspector collapse no longer affects the workspace split. */
 
 .inspector-reopen {
   position: absolute;
@@ -2576,3 +2562,193 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 .dash-multidim .dash-chart-canvas {
   height: 240px;
 }
+
+/* ====================================================================
+ *  LEFT SIDEBAR + PAGE ROUTER  (v=64 — Claude/ChatGPT-style global nav)
+ *  Replaces the old top bar: 数据源 / 模型参数 / 记忆管理 / 本体内容 /
+ *  系统调用记录 become standalone pages; 智能分析 + 报表分析 share the
+ *  workspace (chat + resident dashboard).
+ * ================================================================== */
+.app { flex-direction: row; }                 /* override the column shell */
+
+.sidebar {
+  width: 188px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px;
+  background: var(--bg-1);
+  border-right: 1px solid var(--border-1);
+  overflow-y: auto;
+}
+body.settings-hidden .sidebar { display: none; }  /* embedded shell: hide chrome */
+
+.sidebar-brand {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+  padding: 2px 6px 12px; white-space: nowrap; overflow: hidden;
+}
+.sidebar-brand .brand-mark { color: var(--accent-cyan); font-size: 14px; }
+.sidebar-brand .brand-name { color: var(--fg-0); font-weight: 600; letter-spacing: 1px; }
+.sidebar-brand .brand-sub { color: var(--accent-cyan); font-size: var(--fs-xs); text-transform: lowercase; }
+.sidebar-brand .brand-quadrant { margin-left: 0; }
+
+/* ---------- SIDEBAR COLLAPSE / EXPAND (Claude/ChatGPT-style) ---------- */
+.sidebar-collapse {
+  margin-left: auto; flex-shrink: 0;
+  background: transparent; border: none; color: var(--fg-3);
+  font-size: 14px; line-height: 1; cursor: pointer;
+  padding: 2px 5px; border-radius: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+.sidebar-collapse:hover { background: var(--bg-2); color: var(--accent-cyan); }
+
+body.sidebar-collapsed .sidebar { display: none; }
+
+.sidebar-reopen {
+  display: none;
+  position: fixed; top: 6px; left: 8px; z-index: 60;
+  width: 28px; height: 28px;
+  align-items: center; justify-content: center;
+  background: var(--bg-2); color: var(--accent-cyan);
+  border: 1px solid var(--border-accent); border-radius: 5px;
+  font-size: 14px; cursor: pointer;
+  transition: background 0.12s;
+}
+.sidebar-reopen:hover { background: var(--bg-3); }
+body.sidebar-collapsed .sidebar-reopen { display: flex; }
+/* shift the left-most header label right so the floating button has room */
+body.sidebar-collapsed .chat-pane .pane-header { padding-left: 44px; }
+body.sidebar-collapsed .page-header { padding-left: 46px; }
+/* embedded shell hides all nav chrome — never show the reopen button there */
+body.settings-hidden .sidebar-reopen { display: none; }
+
+.sidebar-newchat {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; margin-bottom: 10px; padding: 8px;
+  background: var(--bg-2); color: var(--accent-cyan);
+  border: 1px solid var(--border-accent); border-radius: 4px;
+  font-family: var(--font-sans); font-size: var(--fs-md); cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.sidebar-newchat:hover { background: var(--bg-3); }
+.sidebar-newchat .nav-glyph { font-size: 15px; }
+
+.sidebar-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.sidebar-group-label {
+  font-size: 10px; letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--fg-3); padding: 8px 8px 4px;
+}
+.sidebar-divider { height: 1px; background: var(--border-1); margin: 6px 4px; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; text-align: left;
+  padding: 8px 10px; border: 1px solid transparent; border-radius: 5px;
+  background: transparent; color: var(--fg-1);
+  font-family: var(--font-sans); font-size: var(--fs-md); cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.nav-item:hover { background: var(--bg-2); color: var(--fg-0); }
+.nav-item.active {
+  background: var(--bg-3); color: var(--accent-cyan); border-color: var(--border-accent);
+}
+.nav-item .nav-glyph {
+  font-size: 14px; width: 16px; text-align: center; flex-shrink: 0; color: var(--fg-2);
+}
+.nav-item.active .nav-glyph { color: var(--accent-cyan); }
+
+.sidebar-footer {
+  margin-top: auto; padding: 10px 6px 2px; border-top: 1px solid var(--border-1);
+}
+.sidebar-footer .topbar-meta {
+  flex-direction: column; align-items: flex-start; gap: 4px;
+  flex: none; font-size: 10px; color: var(--fg-3);
+}
+
+/* ---------- MAIN AREA + VIEW ROUTER ---------- */
+.app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.view { flex: 1; min-height: 0; display: none; overflow: hidden; }
+.view.active { display: flex; flex-direction: column; }
+.view-workspace .split { flex: 1; }
+
+/* ---------- PAGE VIEWS (content + settings) ---------- */
+.view-page { background: var(--bg-0); }
+.page-header {
+  display: flex; align-items: center; gap: 10px;
+  height: 44px; flex-shrink: 0; padding: 0 16px;
+  background: var(--bg-1); border-bottom: 1px solid var(--border-1);
+}
+.page-header.tab-bar { padding: 0 8px; gap: 4px; }
+.page-title {
+  font-family: var(--font-mono); font-size: var(--fs-md); color: var(--fg-0);
+  font-weight: 600; letter-spacing: 0.5px;
+}
+.page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
+.page-body-form { max-width: 720px; }
+.page-footer {
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0; padding: 10px 16px;
+  background: var(--bg-1); border-top: 1px solid var(--border-1);
+}
+
+/* ---------- SIDEBAR: 最近(restorable history) + 账号 ---------- */
+.sidebar-recent {
+  flex: 1; min-height: 60px;
+  display: flex; flex-direction: column;
+  margin-top: 4px; overflow: hidden;
+}
+.recent-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.recent-empty { font-size: var(--fs-xs); color: var(--fg-3); padding: 6px 10px; }
+.recent-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 5px; cursor: pointer;
+  color: var(--fg-1); font-size: var(--fs-sm);
+  white-space: nowrap; overflow: hidden;
+}
+.recent-item:hover { background: var(--bg-2); color: var(--fg-0); }
+.recent-item.active { background: var(--bg-3); color: var(--accent-cyan); }
+.recent-item .recent-title {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.recent-item .recent-del {
+  flex-shrink: 0; visibility: hidden;
+  background: transparent; border: none; color: var(--fg-3);
+  font-size: 13px; cursor: pointer; padding: 0 2px; line-height: 1;
+}
+.recent-item:hover .recent-del { visibility: visible; }
+.recent-item .recent-del:hover { color: var(--accent-red); }
+
+.sidebar-account {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; margin-top: 6px; padding: 8px 10px;
+  background: transparent; border: 1px solid transparent; border-top: 1px solid var(--border-1);
+  border-radius: 0; color: var(--fg-1);
+  font-family: var(--font-sans); font-size: var(--fs-md); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.sidebar-account:hover { background: var(--bg-2); color: var(--fg-0); }
+.account-avatar {
+  flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--border-accent); color: var(--fg-0);
+  font-size: var(--fs-xs); font-weight: 600;
+}
+.account-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.account-gear { flex-shrink: 0; color: var(--fg-3); font-size: 13px; }
+.sidebar-account:hover .account-gear { color: var(--accent-cyan); }
+
+/* ---------- 角色选择(自身角色 + Agent 风格)---------- */
+.role-options { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.role-option {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 12px; border: 1px solid var(--border-1); border-radius: 6px;
+  background: var(--bg-1); cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.role-option:hover { background: var(--bg-2); }
+.role-option.selected { border-color: var(--border-accent); background: var(--bg-3); }
+.role-option .role-opt-label { font-size: var(--fs-md); color: var(--fg-0); font-weight: 600; }
+.role-option.selected .role-opt-label { color: var(--accent-cyan); }
+.role-option .role-opt-desc { font-size: var(--fs-xs); color: var(--fg-2); line-height: 1.5; }

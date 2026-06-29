@@ -1,0 +1,157 @@
+"""
+ConversationStore — filesystem-backed persistence for restorable chat history.
+
+Each record captures one conversation so it can be relisted in the sidebar
+「最近」list and fully restored later:
+
+  - `messages`        : the Anthropic-format message list of the WebSession,
+                        so the agent's context is reinstated and the user can
+                        keep chatting from where they left off.
+  - `chat_html` /
+    `dashboard_html`  : the client-rendered chat + dashboard DOM at save time,
+                        so the transcript and its cards re-appear exactly
+                        (re-deriving the rich cards from `messages` alone is not
+                        possible — chart/table specs are stripped before they
+                        reach the model).
+
+One conversation == one JSON file under `<cwd>/bi_conversations/`. The active
+conversation's id is owned by the browser (per mode) and passed back on each
+save so a growing conversation updates its record in place instead of spawning
+duplicates.
+"""
+
+from __future__ import annotations
+
+import json
+import secrets
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+
+STORE_DIRNAME = "bi_conversations"
+MAX_CONVERSATIONS = 100          # keep newest N per store; prune the rest
+MAX_HTML_BYTES = 4_000_000       # per-blob safety cap (~4 MB)
+VALID_MODES = ("data", "report")
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+class ConversationStore:
+    """Filesystem-backed conversation store. One instance per app."""
+
+    def __init__(self, cwd: str) -> None:
+        self.root = Path(cwd) / STORE_DIRNAME
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+    def _path(self, cid: str) -> Path:
+        # cid is hex from secrets.token_hex — no path-traversal risk, but guard.
+        safe = "".join(ch for ch in (cid or "") if ch.isalnum())
+        return self.root / f"{safe}.json"
+
+    def _load(self, cid: str) -> Optional[dict[str, Any]]:
+        p = self._path(cid)
+        if not cid or not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _summary(rec: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": rec.get("id"),
+            "mode": rec.get("mode"),
+            "title": rec.get("title"),
+            "updated_at": rec.get("updated_at"),
+            "created_at": rec.get("created_at"),
+        }
+
+    def _prune(self) -> None:
+        recs = []
+        for p in self.root.glob("*.json"):
+            try:
+                recs.append((p, json.loads(p.read_text(encoding="utf-8")).get("updated_at", "")))
+            except Exception:
+                continue
+        recs.sort(key=lambda t: t[1], reverse=True)
+        for p, _ in recs[MAX_CONVERSATIONS:]:
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def save(
+        self,
+        *,
+        mode: str,
+        title: str,
+        messages: list,
+        chat_html: str,
+        dashboard_html: str,
+        cid: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Create or update (when `cid` exists) a conversation record."""
+        if mode not in VALID_MODES:
+            mode = "data"
+        created = None
+        if cid:
+            existing = self._load(cid)
+            if existing:
+                created = existing.get("created_at")
+            else:
+                cid = None  # stale id — start a fresh record
+        if not cid:
+            cid = secrets.token_hex(4)
+        now = _now_iso()
+        rec = {
+            "id": cid,
+            "mode": mode,
+            "title": (title or "未命名对话").strip()[:80] or "未命名对话",
+            "created_at": created or now,
+            "updated_at": now,
+            "messages": messages or [],
+            "chat_html": (chat_html or "")[:MAX_HTML_BYTES],
+            "dashboard_html": (dashboard_html or "")[:MAX_HTML_BYTES],
+        }
+        self._path(cid).write_text(
+            json.dumps(rec, ensure_ascii=False), encoding="utf-8"
+        )
+        self._prune()
+        return self._summary(rec)
+
+    def list(self, mode: Optional[str] = None) -> list[dict[str, Any]]:
+        """Return conversation summaries, newest first, optionally by mode."""
+        out: list[dict[str, Any]] = []
+        for p in self.root.glob("*.json"):
+            try:
+                rec = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if mode and rec.get("mode") != mode:
+                continue
+            out.append(self._summary(rec))
+        out.sort(key=lambda r: r.get("updated_at") or "", reverse=True)
+        return out
+
+    def get(self, cid: str) -> Optional[dict[str, Any]]:
+        return self._load(cid)
+
+    def delete(self, cid: str) -> bool:
+        p = self._path(cid)
+        if p.exists():
+            try:
+                p.unlink()
+                return True
+            except Exception:
+                return False
+        return False
