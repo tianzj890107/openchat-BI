@@ -119,6 +119,9 @@ class ConversationStore:
         messages: list,
         chat_html: str,
         dashboard_html: str,
+        ontology_html: str = "",
+        tools_html: str = "",
+        llm_html: str = "",
         cid: Optional[str] = None,
     ) -> dict[str, Any]:
         """Create or update (when `cid` exists) a conversation record."""
@@ -147,6 +150,9 @@ class ConversationStore:
             "messages": messages or [],
             "chat_html": (chat_html or "")[:MAX_HTML_BYTES],
             "dashboard_html": (dashboard_html or "")[:MAX_HTML_BYTES],
+            "ontology_html": (ontology_html or "")[:MAX_HTML_BYTES],
+            "tools_html": (tools_html or "")[:MAX_HTML_BYTES],
+            "llm_html": (llm_html or "")[:MAX_HTML_BYTES],
         }
         self._path(cid).write_text(
             json.dumps(rec, ensure_ascii=False), encoding="utf-8"

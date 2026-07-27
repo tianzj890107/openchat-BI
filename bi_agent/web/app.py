@@ -885,6 +885,9 @@ class ConversationSaveRequest(BaseModel):
     title: Optional[str] = None
     chat_html: str = ""
     dashboard_html: str = ""
+    ontology_html: str = ""
+    tools_html: str = ""
+    llm_html: str = ""
     cid: Optional[str] = None           # update in place when the browser has one
 
 
@@ -940,11 +943,16 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
         messages=messages,
         chat_html=req.chat_html,
         dashboard_html=req.dashboard_html,
+        ontology_html=req.ontology_html,
+        tools_html=req.tools_html,
+        llm_html=req.llm_html,
         cid=req.cid,
     )
     synced = _conversation_sync("POST", "/api/conversations/save", {
         "mode": mode, "title": summary.get("title"), "chat_html": req.chat_html,
         "dashboard_html": req.dashboard_html, "cid": summary.get("id"),
+        "ontology_html": req.ontology_html, "tools_html": req.tools_html,
+        "llm_html": req.llm_html,
     })
     return JSONResponse(synced or summary)
 
@@ -983,6 +991,9 @@ def restore_conversation(req: ConversationRestoreRequest) -> JSONResponse:
         "title": rec.get("title"),
         "chat_html": rec.get("chat_html") or "",
         "dashboard_html": rec.get("dashboard_html") or "",
+        "ontology_html": rec.get("ontology_html") or "",
+        "tools_html": rec.get("tools_html") or "",
+        "llm_html": rec.get("llm_html") or "",
         "context_restored": context_restored,
     })
 
