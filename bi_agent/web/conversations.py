@@ -64,6 +64,27 @@ class ConversationStore:
             return None
 
     @staticmethod
+    def _first_question_title(messages: list[Any]) -> str:
+        """Return the stable title source: the first user question."""
+        for message in messages or []:
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if isinstance(content, str):
+                text = content.strip()
+            elif isinstance(content, list):
+                text = " ".join(
+                    str(item.get("text") or "").strip()
+                    for item in content
+                    if isinstance(item, dict) and item.get("text")
+                ).strip()
+            else:
+                text = ""
+            if text:
+                return text.splitlines()[0].strip()[:80]
+        return ""
+
+    @staticmethod
     def _summary(rec: dict[str, Any]) -> dict[str, Any]:
         return {
             "id": rec.get("id"),
@@ -104,10 +125,12 @@ class ConversationStore:
         if mode not in VALID_MODES:
             mode = "data"
         created = None
+        existing_title = None
         if cid:
             existing = self._load(cid)
             if existing:
                 created = existing.get("created_at")
+                existing_title = self._first_question_title(existing.get("messages") or []) or existing.get("title")
             else:
                 cid = None  # stale id — start a fresh record
         if not cid:
@@ -116,7 +139,9 @@ class ConversationStore:
         rec = {
             "id": cid,
             "mode": mode,
-            "title": (title or "未命名对话").strip()[:80] or "未命名对话",
+            # A conversation title is immutable: it is the first question's
+            # short title and must not change when later turns are appended.
+            "title": (existing_title or title or "未命名对话").strip()[:80] or "未命名对话",
             "created_at": created or now,
             "updated_at": now,
             "messages": messages or [],
@@ -139,12 +164,20 @@ class ConversationStore:
                 continue
             if mode and rec.get("mode") != mode:
                 continue
+            first_title = self._first_question_title(rec.get("messages") or [])
+            if first_title:
+                rec["title"] = first_title
             out.append(self._summary(rec))
         out.sort(key=lambda r: r.get("updated_at") or "", reverse=True)
         return out
 
     def get(self, cid: str) -> Optional[dict[str, Any]]:
-        return self._load(cid)
+        rec = self._load(cid)
+        if rec:
+            first_title = self._first_question_title(rec.get("messages") or [])
+            if first_title:
+                rec["title"] = first_title
+        return rec
 
     def delete(self, cid: str) -> bool:
         p = self._path(cid)

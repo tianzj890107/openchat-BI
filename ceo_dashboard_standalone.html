@@ -1835,6 +1835,15 @@ body.nav-collapsed .content {
   margin-left: 80px;
 }
 
+.iba-sidebar-resizer {
+  position: fixed; top: 57px; bottom: 0; left: 245px; width: 6px;
+  z-index: 20; cursor: col-resize; background: transparent;
+}
+.iba-sidebar-resizer::after { content: ""; position: absolute; inset: 0 2px; background: #d3dce8; opacity: .7; }
+.iba-sidebar-resizer:hover::after, .iba-sidebar-resizer.dragging::after { background: #0b74ff; opacity: 1; }
+body.nav-collapsed .iba-sidebar-resizer { display: none; }
+
+
 body.nav-collapsed .search,
 body.nav-collapsed .menu-title,
 body.nav-collapsed .submenu,
@@ -2057,9 +2066,9 @@ body.nav-collapsed .menu-item {
       <div class="menu-title"><span>IBA</span> 智能经营解析(IBA) <span class="chev">⌃</span></div>
       <div class="submenu">
         <a class="active" href="/">CEO驾驶舱</a>
-        <a href="dashboard.html">驾驶舱</a>
+        <a href="/dashboard.html">驾驶舱</a>
         <a href="income.html">收入</a>
-        <a href="#">i-Agent</a>
+        <a href="/dashboard.html?view=iagent">i-Agent</a>
       </div>
       <div class="menu-item">流程运营(360) <span class="chev">⌄</span></div>
       <div class="menu-item">智能销售管理(ISMP) <span class="chev">⌄</span></div>
@@ -2069,6 +2078,7 @@ body.nav-collapsed .menu-item {
       <div class="menu-item">配置报价管理(CPQ) <span class="chev">⌄</span></div>
       <div class="menu-item">集成计划(IPS) <span class="chev">⌄</span></div>
     </aside>
+    <div class="iba-sidebar-resizer" id="iba-sidebar-resizer" title="拖动调整 IBA 侧栏宽度"></div>
 
     <main class="content">
       <iframe class="cockpit-frame" id="cockpitFrame" title="CEO 驾驶舱" src="/ceo_cockpit.html"></iframe>
@@ -2095,6 +2105,36 @@ body.nav-collapsed .menu-item {
   </div>
 
   <script>
+  const ibaSidebarResizer = document.getElementById("iba-sidebar-resizer");
+  const ibaSavedSidebarWidth = Number(localStorage.getItem("iba.sidebar.width"));
+  if (Number.isFinite(ibaSavedSidebarWidth) && ibaSavedSidebarWidth >= 220 && ibaSavedSidebarWidth <= 420) {
+    document.querySelector(".sidebar").style.width = ibaSavedSidebarWidth + "px";
+    document.querySelector(".content").style.marginLeft = ibaSavedSidebarWidth + "px";
+    ibaSidebarResizer.style.left = (ibaSavedSidebarWidth - 3) + "px";
+  }
+  if (ibaSidebarResizer) ibaSidebarResizer.addEventListener("pointerdown", (ev) => {
+    ev.preventDefault();
+    ibaSidebarResizer.setPointerCapture(ev.pointerId);
+    ibaSidebarResizer.classList.add("dragging");
+    const move = (e) => {
+      const width = Math.max(220, Math.min(420, e.clientX));
+      document.querySelector(".sidebar").style.width = width + "px";
+      document.querySelector(".content").style.marginLeft = width + "px";
+      ibaSidebarResizer.style.left = (width - 3) + "px";
+      localStorage.setItem("iba.sidebar.width", String(width));
+    };
+    const end = () => {
+      ibaSidebarResizer.classList.remove("dragging");
+      ibaSidebarResizer.releasePointerCapture(ev.pointerId);
+      ibaSidebarResizer.removeEventListener("pointermove", move);
+      ibaSidebarResizer.removeEventListener("pointerup", end);
+      ibaSidebarResizer.removeEventListener("pointercancel", end);
+    };
+    ibaSidebarResizer.addEventListener("pointermove", move);
+    ibaSidebarResizer.addEventListener("pointerup", end);
+    ibaSidebarResizer.addEventListener("pointercancel", end);
+  });
+
 const DATA = {
   metrics: {
     revenue: 527528.22,

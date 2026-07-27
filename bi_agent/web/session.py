@@ -522,6 +522,19 @@ class WebSession:
                     input_tokens=usage.get("input_tokens", 0),
                     output_tokens=usage.get("output_tokens", 0),
                 )
+            elif etype == "model_fallback":
+                # Persist the working fallback so subsequent turns start
+                # directly on it instead of retrying an exhausted model.
+                fallback_key = event.get("model_key")
+                if fallback_key:
+                    try:
+                        get_llm_config().update(model_key=fallback_key)
+                    except Exception:
+                        pass
+                    yield {
+                        "type": "status",
+                        "message": f"当前模型额度不足，已自动切换到 {get_model_id(fallback_key)}",
+                    }
             elif etype == "error":
                 yield {"type": "error", "message": event["error"]}
                 return stop_reason, text_buffer, tool_uses, usage, thinking_blocks

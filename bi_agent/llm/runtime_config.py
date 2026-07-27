@@ -49,7 +49,14 @@ class RuntimeConfig:
         except Exception:
             return
         mk = data.get("model_key")
-        if isinstance(mk, str) and get_model(mk) is not None:
+        forced_provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
+        persisted_model = get_model(mk) if isinstance(mk, str) else None
+        # A deployment-level provider choice must win over a stale browser
+        # preference persisted on this machine (for example an old Claude
+        # choice when the server is now configured for Qwen).
+        if persisted_model is not None and (
+            not forced_provider or persisted_model["provider"] == forced_provider
+        ):
             self.model_key = mk
         mt = data.get("max_tokens")
         if isinstance(mt, int) and _MIN_MAX_TOKENS <= mt <= _MAX_MAX_TOKENS:
@@ -139,9 +146,11 @@ _CLAUDE_CONFIG_PATH = Path.home() / ".claude" / "config.json"
 
 # Field name inside config.json → environment variable that shadows it.
 _KEY_FIELDS = {
-    "anthropic": ("api_key", "ANTHROPIC_API_KEY"),
-    "qwen":      ("dashscope_api_key", "DASHSCOPE_API_KEY"),
-    "deepseek":  ("deepseek_api_key", "DEEPSEEK_API_KEY"),
+    "anthropic": ("api_key", ("ANTHROPIC_API_KEY",)),
+    # DashScope documents DASHSCOPE_API_KEY, while this deployment uses the
+    # clearer QWEN_API_KEY alias. Both must be visible to the UI status API.
+    "qwen":      ("dashscope_api_key", ("DASHSCOPE_API_KEY", "QWEN_API_KEY")),
+    "deepseek":  ("deepseek_api_key", ("DEEPSEEK_API_KEY",)),
 }
 
 
@@ -178,8 +187,8 @@ def get_api_key_status() -> dict[str, dict[str, Any]]:
     """
     cfg = _load_claude_config()
     out: dict[str, dict[str, Any]] = {}
-    for name, (file_key, env_key) in _KEY_FIELDS.items():
-        env_val = os.environ.get(env_key)
+    for name, (file_key, env_keys) in _KEY_FIELDS.items():
+        env_val = next((os.environ.get(k) for k in env_keys if os.environ.get(k)), None)
         file_val = cfg.get(file_key)
         key = env_val or file_val
         source = "env" if env_val else ("file" if file_val else None)
@@ -187,7 +196,7 @@ def get_api_key_status() -> dict[str, dict[str, Any]]:
             "present": bool(key),
             "masked": _mask_key(key),
             "source": source,
-            "env_var": env_key,
+            "env_var": " / ".join(env_keys),
         }
     return out
 

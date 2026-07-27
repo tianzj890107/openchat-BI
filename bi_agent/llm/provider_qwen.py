@@ -22,7 +22,7 @@ except Exception:  # pragma: no cover
 from open_claude.tools import get_filtered_tool_schemas
 
 
-BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +43,19 @@ def _get_api_key() -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+def _get_base_url() -> str:
+    """Return a DashScope-compatible endpoint, allowing private gateways."""
+    return os.environ.get("QWEN_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
+
+
+def _enable_thinking() -> Optional[bool]:
+    """Map QWEN_ENABLE_THINKING to DashScope's compatible API option."""
+    value = os.environ.get("QWEN_ENABLE_THINKING")
+    if value is None or not value.strip():
+        return None
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +191,7 @@ def stream(
         return
 
     try:
-        client = OpenAI(api_key=api_key, base_url=BASE_URL)
+        client = OpenAI(api_key=api_key, base_url=_get_base_url())
     except Exception as e:
         yield {"type": "error", "error": f"Failed to init Qwen client: {e}"}
         return
@@ -201,6 +214,9 @@ def stream(
     if oa_tools:
         request_kwargs["tools"] = oa_tools
         request_kwargs["tool_choice"] = "auto"
+    enable_thinking = _enable_thinking()
+    if enable_thinking is not None:
+        request_kwargs["extra_body"] = {"enable_thinking": enable_thinking}
 
     try:
         completion_stream = client.chat.completions.create(**request_kwargs)

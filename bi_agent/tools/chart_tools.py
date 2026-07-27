@@ -276,7 +276,7 @@ def _write_standalone_html(option: dict[str, Any], out_path: Path, title: str) -
     font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }}
   #chart {{ width: 100vw; height: 100vh; }}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body>
 <div id="chart"></div>

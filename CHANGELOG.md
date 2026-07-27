@@ -1,0 +1,169 @@
+# openchat-BI 变更记录
+
+> 本文档记录本项目的用户可见功能、接口、模型、数据源和运行方式变更。
+
+## 维护规则
+
+- 每次发布或一组相关修改按日期追加，不记录单个操作步骤或中间尝试。
+- 每条记录只描述相对于上一版本的最终用户可见差异；同一功能的多次调整合并为一条。
+- 每条记录至少说明：用户可见变化、涉及页面、主要文件、是否需要重启后端。
+- HTML/CSS/JS 静态资源修改：刷新浏览器即可；Python、模型、接口、依赖或数据源实现修改：需要重启后端。
+- 本地后端地址：`http://127.0.0.1:8765`。
+
+## 2026-07-27
+
+### 15. CEO 顶部导航与外层入口修正（历史）
+
+- CEO驾驶舱顶部平台导航恢复深色样式，避免被响应式浅色主题覆盖。
+- “驾驶舱”明确跳转 `/dashboard.html`；“i-Agent”明确跳转 `/dashboard.html?view=iagent`。
+- 修复从 CEO驾驶舱点击入口时驾驶舱无法进入、i-Agent 无法跳转的问题。
+- 主要文件：`ceo_dashboard_standalone.html`、`ceo_dashboard.html`。
+- 类型：页面静态资源变更，刷新页面即可；本次已重启后端。
+
+### 14. 驾驶舱与 i-Agent 页面入口和侧栏统一
+
+- 从 CEO驾驶舱点击“驾驶舱”时默认进入真正的驾驶舱，不再自动跳到 i-Agent。
+- i-Agent 仅在点击 i-Agent 菜单或访问 `/dashboard.html?view=iagent` 时打开。
+- 统一驾驶舱和 i-Agent 外层 IBA 侧栏的搜索栏、菜单项高度、字号、子菜单间距和按钮样式。
+- 主要文件：`dashboard.html`、`CHANGELOG.md`。
+- 类型：页面静态资源变更，刷新页面即可；本次已重启后端。
+
+### 12. CEO / 驾驶舱外层 IBA 侧栏统一与可调宽度
+
+- 撤销 i-agent 内部侧栏的错误样式改动，恢复 i-agent 自身页面原有侧栏。
+- `ceo_dashboard_standalone.html` 和 `dashboard.html` 的外层 IBA 侧栏统一为 CEO 驾驶舱的浅蓝分组样式。
+- IBA 侧栏默认宽度为 248px，支持拖拽右侧分隔条调整，宽度在 CEO 驾驶舱和驾驶舱页面之间共享保存。
+- 页面：CEO驾驶舱、驾驶舱及其下方的 IBA 菜单（CEO驾驶舱 / 驾驶舱 / 收入 / i-Agent）。
+- 主要文件：`ceo_dashboard_standalone.html`、`dashboard.html`、`bi_agent/web/static/styles.css`。
+- 类型：外层页面与前端静态资源变更，刷新页面即可；本次已重启后端。
+
+### 13. 修正 IBA 侧栏样式覆盖范围
+
+- 修正驾驶舱页面样式只写在桌面媒体查询内、导致常规桌面宽度未生效的问题。
+- 现在 `dashboard.html` 的外层 IBA 侧栏在正常桌面尺寸下也使用 CEO 驾驶舱样式并显示拖拽分隔条。
+- 主要文件：`dashboard.html`。
+- 类型：页面静态资源变更，刷新页面即可；本次已重启后端。
+
+### 11. 历史会话图表恢复
+
+- 历史会话保存图表的完整 ECharts 配置，不再只保存空的 canvas 容器。
+- 恢复历史会话时重新初始化普通图表和多维图表，保留维度切换、深入洞察按钮和自适应尺寸。
+- 同时修复聊天区内嵌图表恢复后空白的问题。
+- 历史图表 HTML 改用本地 ECharts 资源；旧图表链接也会在服务端自动替换 CDN 地址，点击后可正常自动渲染。
+- 页面：最近历史会话、智能分析/报表分析聊天区和看板。
+- 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更，刷新浏览器即可；本次已重启后端。
+
+### 10. 工作区栏目宽度可拖拽调整
+
+- 保留原有默认布局比例。
+- 左侧导航栏和工作区“对话 / 看板”分隔条支持鼠标拖拽调整宽度。
+- 宽度保存到浏览器本地存储，重新打开页面后继续使用；独立的本体内容、系统调用页面自动占满剩余空间。
+- 页面：主工作区、左侧导航。
+- 主要文件：`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/app.js`。
+- 类型：前端静态资源变更，刷新浏览器即可；本次已重启后端。
+
+### 9. 分析进行中的页面与历史导航
+
+- 智能分析进行中仍可点击“智能分析”“报表分析”“本体内容”“系统调用内容”和最近历史。
+- 切换分析模式或恢复历史会取消当前浏览器端流式响应，避免后台输出串入另一个会话页面。
+- 不再因为分析中的忙碌状态禁用模式按钮和历史记录。
+- 页面：左侧导航、最近历史会话、智能分析/报表分析工作区。
+- 主要文件：`bi_agent/web/static/app.js`。
+- 类型：前端交互变更，需要刷新浏览器；本次已重启后端。
+
+### 1. Doris 数据源改为 HTTP API 调用
+
+- 数据源设置不再要求填写 JDBC 地址，改为填写 Doris HTTP API 地址。
+- 默认接口：`http://172.16.5.181:30834/agent/doris/query`。
+- `SQLRun`、`ListTables`、`DescribeTable` 均通过 `POST /agent/doris/query` 执行只读 SQL。
+- 数据库库名仍单独填写，默认值为 `ontology_demometaerp_scm_po`。
+- 保留旧 JDBC 参数作为兼容展示/配置字段，但活动 Doris 查询不再使用它们。
+- 页面：数据源设置、本体适配中的数据库源区域。
+- 主要文件：`bi_agent/tools/sql_tools.py`、`bi_agent/web/app.py`、`bi_agent/web/static/index.html`、`bi_agent/web/static/app.js`。
+- 类型：后端接口与前端配置变更，需要重启后端。
+
+### 2. Doris 默认库名统一
+
+- 默认 Doris JDBC schema 和数据库名统一为 `ontology_demometaerp_scm_po`。
+- 不再根据 MetaERP 本体接口返回的 `dorisDatabase` 自动覆盖用户填写的数据库。
+- 实际查询使用用户在数据源设置中填写的数据库名；未填写时使用上述默认值。
+- 主要文件：`bi_agent/tools/sql_tools.py`、`bi_agent/web/app.py`、`bi_agent/web/static/index.html`。
+- 类型：后端数据源配置变更，需要重启后端。
+
+### 3. 默认数据库源改为 API·Doris 实时查询
+
+- 打开网页或新建对话时，默认数据库源为 `API·Doris 实时查询`，不再默认使用 `HyperFusion.db`。
+- 本地 SQLite 文件仍保留在数据库源列表中，可手动选择。
+- 主要文件：`bi_agent/web/__main__.py`、运行启动参数。
+- 类型：启动配置变更，需要以 `--db doris` 启动后端。
+
+### 4. Qwen 模型额度耗尽自动切换
+
+- Qwen 当前模型遇到额度耗尽、429、限流或资源耗尽错误时，自动按环境变量模型列表切换到下一个同类型模型。
+- 文本模型只在文本模型之间切换，视觉模型只在视觉模型之间切换。
+- 成功切换后保存新的当前模型，后续请求直接使用可用模型。
+- 页面：模型设置和对话流状态提示。
+- 主要文件：`bi_agent/llm/registry.py`、`bi_agent/llm/provider.py`、`bi_agent/web/session.py`。
+- 类型：模型调用逻辑变更，需要重启后端。
+
+### 5. 最近历史会话修复
+
+- 新对话会正确清空标题缓存，不再全部复用最早一条问题作为标题。
+- 点击历史会话时不再无条件更新当前会话时间，避免当前会话反复跳到列表最上方。
+- 每条历史记录保持自己的标题、内容和排序。
+- 会话标题固定为该会话第一条问题的小标题；点击查看历史只读不改变列表，只有追加问题并完成任务后才更新该会话时间并置顶，后续问题不会改标题。
+- 历史记录列表和恢复内容也会按已保存消息中的第一条用户问题校正标题，避免旧记录继续显示后续问题生成的名称。
+- 页面：左侧“最近”历史会话列表。
+- 主要文件：`bi_agent/web/static/app.js`。
+- 类型：前端静态资源变更，刷新浏览器即可；本次已随服务重启生效。
+
+### 6. MetaERP 生产本体服务接入与名称统一
+
+- 本体源显示名称统一为 `MetaERP`。
+- 生产本体通过 `ONTOLOGY_BASE_URL` 和 `ONTOLOGY_REPOSITORY_ID` 调用团队本体服务。
+- 支持本体对象解析、关系查询、脚本查询和元数据查询；本地 Excel 仅作为兼容回退数据结构。
+- 检索模式名称恢复为“语义检索模式(基于 Excel 本体)”和“图库检索模式(图库 + Excel 本体)” 。
+- 页面：本体适配、检索模式和本体检查器。
+- 主要文件：`bi_agent/ontology/remote.py`、`bi_agent/tools/remote_ontology_tools.py`、`bi_agent/web/app.py`、`bi_agent/web/static/app.js`。
+- 类型：后端接口与前端配置变更，需要重启后端。
+
+### 7. Qwen 提供商和模型目录
+
+- 增加 Qwen OpenAI-compatible API 调用支持。
+- 复用 `QWEN_API_KEY`、`QWEN_BASE_URL`、`QWEN_MODEL`、`QWEN_TEXT_MODEL`、`QWEN_VISION_MODELS`、`QWEN_TEXT_MODELS` 等环境变量。
+- 模型选择器动态展示环境变量中的文本和视觉模型。
+- 支持 Qwen 视觉模型和文本模型分别配置。
+- 主要文件：`bi_agent/llm/provider_qwen.py`、`bi_agent/llm/provider.py`、`bi_agent/llm/registry.py`、`bi_agent/llm/runtime_config.py`、`pyproject.toml`。
+- 类型：模型提供商和依赖变更，需要重启后端。
+
+### 8. 服务启动与数据源验证
+
+- 后端当前启动方式：
+
+  ```bash
+  .venv/bin/python -m bi_agent.web --host 127.0.0.1 --port 8765 --db doris
+  ```
+
+- `/api/sources` 可查看当前生效的数据源、Doris HTTP API 地址和数据库名。
+- 已验证 Doris HTTP API 执行 `SELECT 1 AS connection_check` 返回正常。
+- 类型：运行配置说明，无代码页面变更；启动配置变更需要重启后端。
+
+## 2026-07-27
+
+### 16. 当前版本：CEO、驾驶舱与 i-Agent 外层统一
+
+- 相比上一版，三个入口最终统一为 CEO 驾驶舱的浅色顶部栏：EIMOS 品牌区、圆形汉堡按钮、平台导航图标、激活态、字号间距、语言/通知/账号图标及弹层结构一致。
+- 驾驶舱默认进入 `dashboard.html`，i-Agent 使用 `dashboard.html?view=iagent`，两者不再互相误跳；IBA 外层侧栏保留可拖拽宽度并在入口间共享。
+- 桌面宽屏不再被旧媒体查询覆盖为黑色顶部栏，搜索区域保持居中。
+- 顶部语言、通知和账号内容默认隐藏，只有点击对应图标时才显示 CEO 同款白色弹层，不再直接堆在右侧。
+- 修正驾驶舱和 i-Agent 外层搜索栏图标仍被旧 `margin-left:auto` 推到右侧的问题，搜索文字与图标现在整体居中。
+- 本体适配现在按文档调用 `/system/manager/ontology-repository?page=1&size=100`，把远程本体库的真实名称（例如“光峰科技本体库-勿动”）全部加入可选列表；选择后使用对应 repository ID 实时调用本体服务，并保留本地 Excel 选项。
+- 本体适配中选择远程本体库不会自动改动数据库源；进入数据源后点击“读取当前数据源”，才会将当前本体库的 `dorisDatabase` 填入数据库库名输入框。
+- 左侧“设置”菜单顺序调整为“本体适配”在上、“数据源”在下，便于先选择本体库再读取对应数据库库名。
+- 本体源下拉框增加未保存提示：切换远程本体库后必须点击“保存并切换”，直接进入数据源页面不会把临时选择当作已生效配置。
+- 本体适配的“本体源”保留原有本地 Excel 选项，并追加四个远程真实名称：光峰科技本体库-勿动、测试本体库、开发联调本体库、MetaERP本体库-勿动；`__metaerp_repository__:*` 仅作为内部值，不再显示给用户。
+- 数据源的 Doris“数据库(库名)”旁新增“读取当前本体库库名”按钮，可将当前远程本体库的 `dorisDatabase` 自动填入输入框；本地 Excel 源没有该字段时会提示原因。
+- 页面：`ceo_dashboard_standalone.html`、`dashboard.html`（驾驶舱及 i-Agent 外层视图）。
+- 主要文件：`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；已重启后端，浏览器强制刷新即可生效。

@@ -242,7 +242,7 @@ def _write_standalone_html(spec: dict[str, Any], out_path: Path) -> None:
     padding: 6px 10px; border-radius: 4px; font-size: 13px; }}
   #chart {{ width: 100vw; height: calc(100vh - 49px); }}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body>
 <div id="toolbar">

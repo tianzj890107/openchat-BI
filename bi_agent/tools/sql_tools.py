@@ -4,9 +4,7 @@ SQL tools — safe read-only execution against the customer data source.
 Two backends are supported, selected per-registration via `SqlBackend`:
 
   * SQLite  — local `.db` file (default).
-  * Doris   — Apache Doris over the MySQL wire protocol (FE query port, e.g.
-              172.16.6.163:9030), connected with pymysql using a JDBC-style
-              URL + username/password (see `DorisConn`).
+  * Doris   — the team's read-only HTTP query endpoint (see `DorisHttpConn`).
 
 Only SELECT / WITH / PRAGMA / EXPLAIN statements are allowed. A single call
 executes exactly one statement. Results are truncated to a row cap so the
@@ -17,6 +15,9 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import json
+import os
+from urllib.request import Request, urlopen
 from typing import Callable
 
 Executor = Callable[[dict, str], str]
@@ -26,19 +27,19 @@ Executor = Callable[[dict, str], str]
 # Doris connection (MySQL wire protocol)
 # ---------------------------------------------------------------------------
 
-# Defaults for the bundled Doris instance. Password is empty by default
-# ("当前没有密码"); override via the 数据源设置 UI or DORIS_* env vars.
+# Doris defaults; the HTTP endpoint is used by the active web application.
 DEFAULT_DORIS_JDBC_URL = (
-    "jdbc:mysql://172.16.6.163:9030/ontology"
+    "jdbc:mysql://172.16.6.163:9030/ontology_demometaerp_scm_po"
     "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
 )
 DEFAULT_DORIS_DRIVER = "com.mysql.cj.jdbc.Driver"
 DEFAULT_DORIS_USERNAME = "admin"
 DEFAULT_DORIS_PASSWORD = ""
 # Active Doris database (schema). Tables are referenced db-qualified in SQL,
-# e.g. `ontology_demo_scm_po.poheader`. Overridable via the 数据源设置 UI or
+# e.g. `ontology_demometaerp_scm_po.poheader`. Overridable via the 数据源设置 UI or
 # the DORIS_DATABASE env var; falls back to the schema in the JDBC URL.
-DEFAULT_DORIS_DATABASE = "ontology_demo_scm_po"
+DEFAULT_DORIS_DATABASE = "ontology_demometaerp_scm_po"
+DEFAULT_DORIS_API_URL = "http://172.16.5.181:30834/agent/doris/query"
 
 
 class DorisApiError(Exception):
@@ -83,6 +84,21 @@ class DorisConn:
         return f"DorisConn({self.host}:{self.port}/{self.database}, user={self.username!r})"
 
 
+class DorisHttpConn:
+    """Doris query endpoint exposed by the team ontology service."""
+
+    def __init__(self, api_url: str, database: str = DEFAULT_DORIS_DATABASE) -> None:
+        self.api_url = (api_url or "").strip()
+        if not self.api_url:
+            raise ValueError("需填写 Doris HTTP API 地址")
+        self.database = (database or DEFAULT_DORIS_DATABASE).strip()
+        self.host = "HTTP API"
+        self.port = 0
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"DorisHttpConn({self.api_url}, database={self.database})"
+
+
 # ---------------------------------------------------------------------------
 # Backend descriptor
 # ---------------------------------------------------------------------------
@@ -121,8 +137,44 @@ ExecutorFactory = Callable[["SqlBackend | str"], Executor]
 # Doris query execution (pymysql, imported lazily so the module loads without it)
 # ---------------------------------------------------------------------------
 
-def _doris_query(conn: DorisConn, sql: str) -> tuple[list[str], list[tuple]]:
-    """Run a single read-only statement on Doris; return (columns, rows)."""
+def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], list[tuple]]:
+    """Run a read-only statement through the configured Doris transport."""
+    if isinstance(conn, DorisHttpConn):
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        for name, env_name in (
+            ("X-Ontology-Repository-Id", "ONTOLOGY_REPOSITORY_ID"),
+            ("X-App-Id", "ONTOLOGY_APP_ID"),
+            ("Authorization", "ONTOLOGY_AUTH_TOKEN"),
+        ):
+            value = os.environ.get(env_name, "").strip()
+            if value:
+                headers[name] = value
+        try:
+            request = Request(
+                conn.api_url,
+                data=json.dumps({"sql": sql}, ensure_ascii=False).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            with urlopen(request, timeout=60) as response:
+                payload = json.loads(response.read().decode("utf-8", errors="replace"))
+        except Exception as e:
+            raise DorisApiError(f"Doris HTTP API 请求失败 ({conn.api_url}): {e}") from e
+        if isinstance(payload, dict) and payload.get("success") is False:
+            raise DorisApiError(str(payload.get("msg") or "Doris HTTP API 返回失败"))
+        data = payload.get("data", payload) if isinstance(payload, dict) else {}
+        raw_rows = data.get("rows", []) if isinstance(data, dict) else []
+        if not raw_rows:
+            return [], []
+        if isinstance(raw_rows[0], dict):
+            columns: list[str] = []
+            for row in raw_rows:
+                for key in row:
+                    if key not in columns:
+                        columns.append(key)
+            return columns, [tuple(row.get(c) for c in columns) for row in raw_rows]
+        columns = data.get("columns", []) if isinstance(data, dict) else []
+        return list(columns), [tuple(row) for row in raw_rows]
     try:
         import pymysql  # lazy: only required when the Doris source is active
     except ImportError as e:  # pragma: no cover - environment dependent

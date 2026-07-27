@@ -328,7 +328,7 @@ body.sidebar-collapsed .content { margin-left: 0; }
   position: relative;
 }
 
-.tab.active {
+  .tab.active {
   color: #006ee6;
   background: #eef6ff;
   border-color: #0078ff;
@@ -1106,6 +1106,57 @@ body.editing .config-note { display: block; }
   .page-head {
     grid-template-columns: 1fr;
   }
+
+  /* CEO 驾驶舱同款 IBA 外层侧栏，宽度可拖拽调整。 */
+  :root { --iba-sidebar-width: 248px; }
+  .sidebar {
+    width: var(--iba-sidebar-width);
+    background: #eef5ff;
+    color: #17315d;
+    border-right: 1px solid #d3dce8;
+    box-shadow: inset -4px 0 0 rgba(196, 205, 218, .35);
+    transition: width .18s ease;
+  }
+  .search { color: #7890b1; background: #f8fbff; border-bottom-color: #d3dce8; }
+  .menu-title, .menu-item {
+    color: #1c335d;
+    background: #edf5ff;
+    border-bottom-color: #dce5f0;
+  }
+  .menu-title { background: #e4f0ff; font-weight: 600; }
+  .submenu { background: #eef5ff; }
+  .submenu a { color: #17315d; border: 1px solid transparent; border-radius: 7px; }
+  .submenu a:hover { color: #005fe8; background: #e3efff; }
+  .submenu a.active { color: #005fe8; background: #dcecff; border-color: #0b74ff; }
+  .iba-sidebar-resizer {
+    position: fixed; top: 56px; bottom: 0; left: calc(var(--iba-sidebar-width) - 3px);
+    width: 6px; z-index: 20; cursor: col-resize; background: transparent;
+  }
+  .iba-sidebar-resizer::after { content: ""; position: absolute; inset: 0 2px; background: #d3dce8; opacity: .7; }
+  .iba-sidebar-resizer:hover::after, .iba-sidebar-resizer.dragging::after { background: #0b74ff; opacity: 1; }
+  .content { margin-left: var(--iba-sidebar-width); transition: margin-left .18s ease; }
+  body.sidebar-collapsed .content { margin-left: 0; }
+  body.sidebar-collapsed .iba-sidebar-resizer { display: none; }
+
+  /* 与 CEO驾驶舱原始浅色顶部导航完全一致。 */
+  .topbar { height: 57px; background: #dbe8ff; color: #24324a; box-shadow: 0 2px 8px rgba(66,86,120,.12); }
+  .hamburger { width: 72px; height: 57px; color: #fff; }
+  .brand { width: 230px; height: 57px; padding-left: 26px; color: #fff; background: linear-gradient(90deg,#eff6ff 0%,#dbe8ff 100%); font-size: 36px; letter-spacing: 2px; }
+  .platform-nav { background: #dbe8ff; }
+  .platform-nav a { min-width: 108px; padding: 0 12px; gap: 8px; color: #2f3d55; border-left: 0; }
+  .platform-nav a.active { background: #eef5ff; color: #0b61d8; }
+  .platform-nav a.active::after { content: ""; display: block; }
+  .platform-nav .nav-icon { color: #2b3c55; }
+  .platform-nav .nav-label { color: inherit; font-size: 17px; }
+
+  /* 最终覆盖：保证驾驶舱与 i-Agent 外层不会被旧主题规则改回黑色。 */
+  .topbar { background: #dbe8ff !important; color: #24324a !important; }
+  .brand { color: #fff !important; background: linear-gradient(90deg,#eff6ff 0%,#dbe8ff 100%) !important; }
+  .platform-nav { background: #dbe8ff !important; }
+  .platform-nav a { color: #2f3d55 !important; }
+  .platform-nav a.active { background: #eef5ff !important; color: #0b61d8 !important; }
+  .search { justify-content: center !important; text-align: center; }
+  .search span { margin-left: 8px !important; }
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1148,24 +1199,184 @@ body.editing .config-note { display: block; }
   display: block;
   background: #ffffff;
 }
-  </style>
+  /* IBA 外层侧栏样式必须在媒体查询之外，确保桌面宽度同样生效。 */
+  :root { --iba-sidebar-width: 248px; }
+  .sidebar {
+    width: var(--iba-sidebar-width);
+    background: #eef5ff;
+    color: #17315d;
+    border-right: 1px solid #d3dce8;
+    box-shadow: inset -4px 0 0 rgba(196, 205, 218, .35);
+    transition: width .18s ease;
+  }
+  .search { color: #7890b1; background: #f8fbff; border-bottom-color: #d3dce8; }
+  .search { height: 55px; justify-content: center; padding: 0; }
+  .menu-title, .menu-item {
+    min-height: 52px; height: auto; padding: 10px 14px;
+    color: #1c335d; background: #edf5ff; border-bottom-color: #dce5f0;
+    font-size: 15px;
+  }
+  .menu-title { background: #e4f0ff; font-weight: 600; }
+  .submenu { padding: 10px 0; background: #eef5ff; }
+  .submenu a {
+    width: calc(100% - 20px); height: 38px; line-height: 36px;
+    margin: 5px 10px; padding-left: 18px;
+    color: #17315d; border: 1px solid transparent; border-radius: 7px;
+    font-size: 14px;
+  }
+  .submenu a:hover { color: #005fe8; background: #e3efff; }
+  .submenu a.active { color: #005fe8; background: #dcecff; border-color: #0b74ff; }
+  .iba-sidebar-resizer { position: fixed; top: 56px; bottom: 0; left: calc(var(--iba-sidebar-width) - 3px); width: 6px; z-index: 20; cursor: col-resize; background: transparent; }
+  .iba-sidebar-resizer::after { content: ""; position: absolute; inset: 0 2px; background: #d3dce8; opacity: .7; }
+  .iba-sidebar-resizer:hover::after, .iba-sidebar-resizer.dragging::after { background: #0b74ff; opacity: 1; }
+  .content { margin-left: var(--iba-sidebar-width); transition: margin-left .18s ease; }
+  body.sidebar-collapsed .content { margin-left: 0; }
+  body.sidebar-collapsed .iba-sidebar-resizer { display: none; }
+    /* CEO 驾驶舱顶部栏的最终样式：驾驶舱及其 i-Agent 视图直接复用。 */
+    .topbar { height: 57px !important; background: #dbe8ff !important; color: #24324a !important; box-shadow: 0 2px 8px rgba(66,86,120,.12) !important; }
+    .hamburger { width: 72px !important; height: 57px !important; display: grid !important; place-items: center !important; line-height: normal !important; color: #fff !important; position: relative; }
+    .hamburger::before { content: ""; width: 36px; height: 36px; display: block; border-radius: 50%; background: #0875d8; box-shadow: 0 3px 8px rgba(8,117,216,.28); }
+    .hamburger::after { content: "☰"; position: absolute; width: 36px; height: 36px; display: grid; place-items: center; font-size: 20px; color: #fff; }
+    .brand { width: 230px !important; height: 57px !important; padding-left: 26px !important; color: #fff !important; background: linear-gradient(90deg,#eff6ff 0%,#dbe8ff 100%) !important; font-size: 36px !important; letter-spacing: 2px !important; }
+    .brand .env { display: none; }
+    .platform-nav { background: #dbe8ff !important; }
+    .platform-nav a { min-width: 108px !important; padding: 0 12px !important; gap: 8px !important; color: #2f3d55 !important; border-left: 0 !important; }
+    .platform-nav a.active { background: #eef5ff !important; color: #0b61d8 !important; }
+    .platform-nav .nav-icon { color: #2b3c55 !important; }
+    .platform-nav .nav-label { color: inherit !important; font-size: 17px !important; }
+    .top-actions { color: #1f2a44 !important; }
+    .top-action-icon.globe { background: #2e3b50 !important; }
+    .top-action-icon.bell::before, .top-action-icon.bell::after { background: #2c3850 !important; }
+    .top-action-icon.user { background: #0875e9 !important; }
+
+</style>
+<style>
+/* CEO 驾驶舱顶部栏的最终基准样式：驾驶舱及 i-Agent 共用同一套浅色导航和图标。 */
+.topbar {
+  height: 57px !important;
+  background: #dbe8ff !important;
+  color: #24324a !important;
+  box-shadow: 0 2px 8px rgba(66,86,120,.12) !important;
+}
+.hamburger { width: 72px !important; height: 57px !important; color: #fff !important; }
+.brand {
+  width: 230px !important;
+  height: 57px !important;
+  padding-left: 26px !important;
+  gap: 12px !important;
+  color: #fff !important;
+  background: linear-gradient(90deg,#eff6ff 0%,#dbe8ff 100%) !important;
+  font-size: 36px !important;
+  letter-spacing: 2px !important;
+}
+.brand .env { display: none !important; }
+.platform-nav { background: #dbe8ff !important; }
+.platform-nav a {
+  min-width: 108px !important;
+  padding: 0 12px !important;
+  gap: 8px !important;
+  color: #2f3d55 !important;
+  border-left: 0 !important;
+  position: relative;
+}
+.platform-nav a.active { background: #eef5ff !important; color: #0b61d8 !important; }
+.platform-nav a.active::after {
+  content: ""; position: absolute; left: 26px; right: 26px; bottom: 0;
+  height: 3px; background: #0b6ff0;
+}
+.nav-icon { width: 28px !important; height: 28px !important; color: #2b3c55 !important; font-size: 25px !important; }
+.platform-nav a.active .nav-icon { color: #0b61d8 !important; }
+.nav-label { font-size: 17px !important; font-weight: 500 !important; }
+.top-actions {
+  margin-left: auto !important; gap: 10px !important; padding-right: 16px !important;
+  color: #4b5b73 !important; font-size: 15px !important;
+}
+.top-action { min-width: 36px !important; height: 40px !important; cursor: pointer; position: relative; }
+.top-action-icon { width: 32px !important; height: 32px !important; border-radius: 50%; position: relative; overflow: hidden; font-size: 0; }
+.top-action-icon.globe { background: #2e3b50 !important; color: #fff !important; }
+.top-action-icon.globe::before { content:""; width:22px; height:22px; border:2px solid #fff; border-radius:50%; background:linear-gradient(90deg,transparent 45%,#fff 45% 55%,transparent 55%),linear-gradient(0deg,transparent 45%,#fff 45% 55%,transparent 55%); }
+.top-action-icon.globe::after { content:""; position:absolute; width:10px; height:22px; border:2px solid #fff; border-top:0; border-bottom:0; border-radius:50%; }
+.top-action-icon.bell { color:#2c3850 !important; overflow:visible; }
+.top-action-icon.bell::before { content:""; position:absolute; left:50%; top:8px; width:14px; height:15px; border-radius:8px 8px 4px 4px; background:#2c3850; transform:translateX(-50%); }
+.top-action-icon.bell::after { content:""; position:absolute; left:50%; bottom:6px; width:5px; height:5px; border-radius:50%; background:#2c3850; box-shadow:0 -4px 0 -1px #2c3850; transform:translateX(-50%); }
+.top-action-icon.user { background:#0875e9 !important; color:#fff !important; }
+.top-action-icon.user::before { content:""; position:absolute; top:7px; left:50%; width:10px; height:10px; border-radius:50%; background:#fff; transform:translateX(-50%); }
+.top-action-icon.user::after { content:""; position:absolute; left:50%; bottom:5px; width:19px; height:12px; border-radius:14px 14px 4px 4px; background:#fff; transform:translateX(-50%); }
+.top-badge { top:2px !important; right:0 !important; }
+.search { justify-content: center !important; text-align: center !important; }
+.search span { margin-left: 8px !important; }
+
+/* CEO 驾驶舱同款顶部弹层：默认隐藏，仅点击对应图标时展开。 */
+.top-popover {
+  position: absolute; top: 56px; right: 8px; min-width: 280px;
+  background: #fff; color: #1f2937; border: 1px solid rgba(15,23,42,.06);
+  box-shadow: 0 14px 34px rgba(15,23,42,.18); display: none; z-index: 30;
+}
+.top-popover.open { display: block; }
+.top-popover::before {
+  content: ""; position: absolute; top: -9px; right: var(--arrow-x,30px);
+  width: 18px; height: 18px; background: #fff; transform: rotate(45deg);
+  border-left: 1px solid rgba(15,23,42,.06); border-top: 1px solid rgba(15,23,42,.06);
+}
+.language-popover { width: 280px; padding: 18px 20px 16px; }
+.popover-title { margin-bottom: 18px; font-size: 16px; font-weight: 500; }
+.language-option, .account-option {
+  width: 100%; min-height: 42px; display: flex; align-items: center;
+  justify-content: space-between; border: 0; background: transparent;
+  color: #1f2937; font: inherit; text-align: left; cursor: pointer;
+}
+.language-option:hover, .account-option:hover { color: #0b6ff0; }
+.notice-popover { width: 456px; padding: 16px 16px 18px; }
+.notice-tabs { display: flex; gap: 28px; border-bottom: 1px solid #e5e7eb; margin-bottom: 14px; }
+.notice-tab { height: 40px; border: 0; background: transparent; color: #1f2937; font: inherit; cursor: pointer; position: relative; }
+.notice-tab.active { color: #006cff; font-weight: 700; }
+.notice-tab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: #006cff; }
+.notice-list { display: grid; gap: 14px; padding: 10px 8px 4px; }
+.notice-item { max-width: 390px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #1f2937; font-size: 15px; line-height: 1.35; }
+.notice-more { margin-top: 10px; border: 0; background: transparent; color: #006cff; font: inherit; cursor: pointer; }
+.account-popover { width: 280px; padding: 16px 20px; }
+.account-name { padding: 6px 0 16px; font-size: 16px; color: #1f2937; }
+.account-option { justify-content: flex-start; gap: 10px; min-height: 40px; }
+.account-option span { width: 18px; color: #1f2937; text-align: center; }
+</style>
 </head>
 <body>
   <div class="app">
+    <!-- 顶部平台导航与 CEO 驾驶舱保持同一份结构，确保图标、间距和右侧操作一致。 -->
     <header class="topbar">
-      <div class="hamburger">☰</div>
-      <div class="brand">EIMOS <span class="env">PRO</span></div>
+      <div class="hamburger"></div>
+      <div class="brand">EIMOS</div>
       <nav class="platform-nav">
-        <a class="active" href="/"><span class="nav-icon">⌂</span><span class="nav-label">产品功能</span></a>
+        <a class="active" href="#"><span class="nav-icon">⌂</span><span class="nav-label">产品功能</span></a>
         <a href="#"><span class="nav-icon">▣</span><span class="nav-label">任务中心</span></a>
-        <a href="#"><span class="nav-icon">×</span><span class="nav-label">运维平台</span></a>
+        <a href="#"><span class="nav-icon">✕</span><span class="nav-label">运维平台</span></a>
         <a href="#"><span class="nav-icon">▲</span><span class="nav-label">企业架构</span></a>
         <a href="#"><span class="nav-icon">▤</span><span class="nav-label">开发交付</span></a>
+        <a href="#"><span class="nav-label no-icon">应用开发</span></a>
       </nav>
       <div class="top-actions">
-        <button class="top-action" type="button" title="语言"><span class="top-action-icon globe"></span></button>
-        <button class="top-action" type="button" title="通知"><span class="top-action-icon bell"><span class="top-badge">99+</span></span></button>
-        <button class="top-action" type="button" title="账户"><span class="top-action-icon user"></span><span>体****1</span></button>
+        <button class="top-action" type="button" data-popover-target="languagePopover" aria-expanded="false" title="系统语言"><span class="top-action-icon globe">●</span></button>
+        <button class="top-action" type="button" data-popover-target="noticePopover" aria-expanded="false" title="待办 / 通知">
+          <span class="top-action-icon bell">●</span><span class="top-badge">6</span>
+        </button>
+        <button class="top-action" type="button" data-popover-target="accountPopover" aria-expanded="false" title="账号"><span class="top-action-icon user">●</span></button>
+
+        <section class="top-popover language-popover" id="languagePopover" aria-hidden="true">
+          <div class="popover-title">系统语言</div>
+          <button class="language-option" type="button">简体中文 <span>✓</span></button>
+          <button class="language-option" type="button">English(US)</button>
+        </section>
+        <section class="top-popover notice-popover" id="noticePopover" aria-hidden="true">
+          <div class="notice-tabs"><button class="notice-tab active" type="button">待办</button><button class="notice-tab" type="button">通知</button></div>
+          <div class="notice-list"><div class="notice-item">暂无新的待办通知</div></div>
+          <button class="notice-more" type="button">查看全部</button>
+        </section>
+        <section class="top-popover account-popover" id="accountPopover" aria-hidden="true">
+          <div class="account-name">体****1</div>
+          <button class="account-option" type="button"><span>♙</span>个人偏好设置</button>
+          <button class="account-option" type="button"><span>⚙</span>个人资料</button>
+          <button class="account-option" type="button"><span>♙</span>退出登录</button>
+        </section>
       </div>
     </header>
 
@@ -1186,6 +1397,7 @@ body.editing .config-note { display: block; }
       <div class="menu-item">配置报价管理(CPQ) <span class="chev">⌄</span></div>
       <div class="menu-item">集成计划(IPS) <span class="chev">⌄</span></div>
     </aside>
+    <div class="iba-sidebar-resizer" id="iba-sidebar-resizer" title="拖动调整 IBA 侧栏宽度"></div>
 
     <main class="content">
       <section class="page" id="dashboardView">
@@ -2161,10 +2373,30 @@ renderRole("cfo");
   }
 
   window.addEventListener("DOMContentLoaded", () => {
+    // 顶部栏直接沿用 CEO 驾驶舱的语言、通知、账号弹层交互。
+    const popoverButtons = Array.from(document.querySelectorAll("[data-popover-target]"));
+    const popovers = Array.from(document.querySelectorAll(".top-popover"));
+    const closePopovers = () => {
+      popovers.forEach((panel) => { panel.classList.remove("open"); panel.setAttribute("aria-hidden", "true"); });
+      popoverButtons.forEach((button) => button.setAttribute("aria-expanded", "false"));
+    };
+    popoverButtons.forEach((button) => button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const panel = document.getElementById(button.dataset.popoverTarget);
+      const open = panel && panel.classList.contains("open");
+      closePopovers();
+      if (panel && !open) { panel.classList.add("open"); panel.setAttribute("aria-hidden", "false"); button.setAttribute("aria-expanded", "true"); }
+    }));
+    document.addEventListener("click", closePopovers);
+
     const iaNav = document.getElementById("iAgentOpen");
     const dashNav = document.getElementById("dashboardNav");
-    if (iaNav) iaNav.addEventListener("click", (e) => { e.preventDefault(); showIagentView(); });
-    if (dashNav) dashNav.addEventListener("click", (e) => { e.preventDefault(); showDashboardView(); });
+    if (iaNav) iaNav.addEventListener("click", (e) => {
+      e.preventDefault(); history.replaceState(null, "", "/dashboard.html?view=iagent"); showIagentView();
+    });
+    if (dashNav) dashNav.addEventListener("click", (e) => {
+      e.preventDefault(); history.replaceState(null, "", "/dashboard.html"); showDashboardView();
+    });
 
     // Hamburger toggles the left product-function sidebar
     const hamburger = document.querySelector(".hamburger");
@@ -2172,8 +2404,39 @@ renderRole("cfo");
       document.body.classList.toggle("sidebar-collapsed");
     });
 
-    // Land directly on the i-Agent assistant instead of the dashboard
-    showIagentView();
+    const resizer = document.getElementById("iba-sidebar-resizer");
+    const saved = Number(localStorage.getItem("iba.sidebar.width"));
+    if (Number.isFinite(saved) && saved >= 220 && saved <= 420) {
+      document.documentElement.style.setProperty("--iba-sidebar-width", saved + "px");
+    }
+    if (resizer) resizer.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      resizer.setPointerCapture(ev.pointerId);
+      resizer.classList.add("dragging");
+      const move = (e) => {
+        const width = Math.max(220, Math.min(420, e.clientX));
+        document.documentElement.style.setProperty("--iba-sidebar-width", width + "px");
+        localStorage.setItem("iba.sidebar.width", String(width));
+      };
+      const end = () => {
+        resizer.classList.remove("dragging");
+        resizer.releasePointerCapture(ev.pointerId);
+        resizer.removeEventListener("pointermove", move);
+        resizer.removeEventListener("pointerup", end);
+        resizer.removeEventListener("pointercancel", end);
+      };
+      resizer.addEventListener("pointermove", move);
+      resizer.addEventListener("pointerup", end);
+      resizer.addEventListener("pointercancel", end);
+    });
+
+    // Dashboard is the default page. i-Agent is shown only when explicitly
+    // selected or when the URL carries ?view=iagent.
+    if (new URLSearchParams(window.location.search).get("view") === "iagent") {
+      showIagentView();
+    } else {
+      showDashboardView();
+    }
   });
   </script>
 </body>
