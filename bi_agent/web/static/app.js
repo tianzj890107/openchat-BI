@@ -799,6 +799,9 @@
           title: conversationTitle(),
           chat_html: collectHtml(el.chatScroll, el.chatEmpty),
           dashboard_html: collectHtml(el.dashboardList, el.dashboardEmpty),
+          ontology_html: collectHtml(el.ontologyList),
+          tools_html: collectHtml(el.toolList),
+          llm_html: collectHtml(el.llmList),
         }),
       });
       if (r.ok) { const d = await r.json(); if (d && d.id) b.convId = d.id; }
@@ -876,10 +879,16 @@
     // Swap in the saved transcript + dashboard snapshot.
     el.chatScroll.innerHTML = rec.chat_html || "";
     el.dashboardList.innerHTML = rec.dashboard_html || "";
+    el.ontologyList.innerHTML = rec.ontology_html || "";
+    el.toolList.innerHTML = rec.tools_html || "";
+    el.llmList.innerHTML = rec.llm_html || "";
     hydrateRestoredChat();
     hydrateRestoredDashboard();
     b.hasContent = !!(rec.chat_html && rec.chat_html.trim());
     b.dashboardHasContent = !!(rec.dashboard_html && rec.dashboard_html.trim());
+    el.countOntology.textContent = String(el.ontologyList.querySelectorAll(".entity-card").length);
+    el.countTools.textContent = String(el.toolList.querySelectorAll(".tool-card").length);
+    el.countLlm.textContent = String(el.llmList.querySelectorAll(".llm-card").length);
     if (el.chatEmpty && !b.hasContent) {
       if (!el.chatEmpty.parentNode) el.chatScroll.appendChild(el.chatEmpty);
       el.chatEmpty.style.display = "";
