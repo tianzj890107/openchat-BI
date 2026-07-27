@@ -965,6 +965,10 @@ def restore_conversation(req: ConversationRestoreRequest) -> JSONResponse:
     store = _require_conversation_store()
     rec = store.get(req.id)
     if not rec:
+        remote = _conversation_sync("GET", f"/api/conversations/{req.id}/record")
+        if remote and isinstance(remote.get("conversation"), dict):
+            rec = remote["conversation"]
+    if not rec:
         raise HTTPException(404, f"conversation not found: {req.id}")
     mode = rec.get("mode") or "data"
     messages = rec.get("messages") or []
@@ -996,6 +1000,16 @@ def restore_conversation(req: ConversationRestoreRequest) -> JSONResponse:
         "llm_html": rec.get("llm_html") or "",
         "context_restored": context_restored,
     })
+
+
+@app.get("/api/conversations/{cid}/record")
+def get_conversation_record(cid: str) -> JSONResponse:
+    """Internal read endpoint used by a development client syncing history."""
+    store = _require_conversation_store()
+    rec = store.get(cid)
+    if not rec:
+        raise HTTPException(404, f"conversation not found: {cid}")
+    return JSONResponse({"conversation": rec})
 
 
 @app.delete("/api/conversations/{cid}")
