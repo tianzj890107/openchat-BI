@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -97,6 +99,9 @@ class AppState:
         self.report_with_db: bool = False
         # --- Conversation history (restorable 最近 list) -----------------
         self.conversation_store: Optional[ConversationStore] = None
+        # Optional canonical history endpoint. Local development can point to
+        # the server so every completed turn is mirrored there.
+        self.conversation_sync_url: str = os.environ.get("CONVERSATION_SYNC_URL", "").strip().rstrip("/")
         # --- 角色选择(用户画像 + Agent 回答风格偏好)-------------------
         # Injected into every session's system prompt so the agent adapts its
         # depth / terminology / tone. Empty = no role preference applied.
@@ -897,9 +902,27 @@ def _session_for_mode(mode: str) -> Optional[WebSession]:
     return STATE.report_session if mode == "report" else STATE.session
 
 
+def _conversation_sync(method: str, path: str, payload: Optional[dict[str, Any]] = None) -> Optional[dict[str, Any]]:
+    """Best-effort backend-to-backend history sync; never blocks local use."""
+    base = STATE.conversation_sync_url
+    if not base:
+        return None
+    try:
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
+        req = Request(base + path, data=data, headers=headers, method=method.upper())
+        with urlopen(req, timeout=5) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (OSError, URLError, ValueError, json.JSONDecodeError):
+        return None
+
+
 @app.get("/api/conversations")
 def list_conversations(mode: Optional[str] = None) -> JSONResponse:
     store = _require_conversation_store()
+    synced = _conversation_sync("GET", "/api/conversations" + (f"?mode={mode}" if mode else ""))
+    if synced and isinstance(synced.get("conversations"), list):
+        return JSONResponse(synced)
     return JSONResponse({"conversations": store.list(mode)})
 
 
@@ -919,7 +942,11 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
         dashboard_html=req.dashboard_html,
         cid=req.cid,
     )
-    return JSONResponse(summary)
+    synced = _conversation_sync("POST", "/api/conversations/save", {
+        "mode": mode, "title": summary.get("title"), "chat_html": req.chat_html,
+        "dashboard_html": req.dashboard_html, "cid": summary.get("id"),
+    })
+    return JSONResponse(synced or summary)
 
 
 @app.post("/api/conversations/restore")
@@ -963,7 +990,9 @@ def restore_conversation(req: ConversationRestoreRequest) -> JSONResponse:
 @app.delete("/api/conversations/{cid}")
 def delete_conversation(cid: str) -> JSONResponse:
     store = _require_conversation_store()
-    return JSONResponse({"ok": store.delete(cid)})
+    local_ok = store.delete(cid)
+    synced = _conversation_sync("DELETE", f"/api/conversations/{cid}")
+    return JSONResponse({"ok": bool((synced or {}).get("ok", local_ok))})
 
 
 @app.post("/api/chat")
