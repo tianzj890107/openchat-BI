@@ -2737,15 +2737,17 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .recent-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
 .recent-empty { font-size: var(--fs-xs); color: var(--fg-3); padding: 6px 10px; }
 .recent-item {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px 10px; border-radius: 5px; cursor: pointer;
+  display: flex; align-items: flex-start; gap: 6px;
+  flex: 0 0 auto; min-height: 34px;
+  padding: 7px 10px; border-radius: 5px; cursor: pointer;
   color: var(--fg-1); font-size: var(--fs-sm);
-  white-space: nowrap; overflow: hidden;
+  white-space: normal; overflow: visible;
 }
 .recent-item:hover { background: var(--bg-2); color: var(--fg-0); }
 .recent-item.active { background: var(--bg-3); color: var(--accent-cyan); }
 .recent-item .recent-title {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; word-break: break-word;
+  white-space: normal; line-height: 1.45;
 }
 .recent-item .recent-del {
   flex-shrink: 0; visibility: hidden;
