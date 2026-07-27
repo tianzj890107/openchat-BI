@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
@@ -22,16 +22,19 @@ from ..llm.runtime_config import (
     set_api_key,
 )
 from ..ontology.store import OntologyStore
+from ..ontology.remote import OntologyApiError, RemoteOntologyClient
 from ..report import ReportStore, parser_availability
 from ..tools import register_all
 from ..tools.graph_tools import GRAPH_TOOL_NAMES
 from ..tools.sql_tools import (
     DEFAULT_DORIS_DATABASE,
+    DEFAULT_DORIS_API_URL,
     DEFAULT_DORIS_DRIVER,
     DEFAULT_DORIS_JDBC_URL,
     DEFAULT_DORIS_PASSWORD,
     DEFAULT_DORIS_USERNAME,
     DorisConn,
+    DorisHttpConn,
 )
 from .conversations import ConversationStore
 from .session import WebSession
@@ -57,6 +60,8 @@ class AppState:
     def __init__(self) -> None:
         self.cwd: str = ""
         self.ontology_store: Optional[OntologyStore] = None
+        self.remote_ontology: Optional[RemoteOntologyClient] = None
+        self.ontology_backend: str = os.environ.get("ONTOLOGY_BACKEND", "local").strip().lower()
         self.agent_def: Optional[AgentDef] = None
         self.session: Optional[WebSession] = None
         self.db_path: str = ""
@@ -73,14 +78,13 @@ class AppState:
         # Active Doris database (schema). SQL references tables db-qualified,
         # e.g. `ontology_demo_scm_po.poheader`.
         self.doris_database: str = os.environ.get("DORIS_DATABASE", DEFAULT_DORIS_DATABASE)
+        self.doris_api_url: str = os.environ.get("DORIS_API_URL", DEFAULT_DORIS_API_URL)
         self.use_doris: bool = False
         # --- Ontology retrieval mode ------------------------------------
-        # "semantic" (default): retrieve ontology knowledge from the Excel
-        # business-metadata via keyword/semantic lookup. "graph": retrieve via
-        # a graph library (图库) alongside the Excel ontology. The graph
-        # retrieval logic itself is not implemented yet — these fields only
-        # carry the selected configuration so a later implementation can read
-        # STATE.retrieval_mode / STATE.graph_path.
+        # "semantic" (default): retrieve ontology knowledge from the local
+        # workbook or the configured remote ontology API. "graph": enable the
+        # bounded GraphContext/GraphExpand tools; in remote mode these call the
+        # production ontology service rather than the local workbook.
         self.retrieval_mode: str = os.environ.get("RETRIEVAL_MODE", "semantic")
         self.graph_path: str = os.environ.get("GRAPH_PATH", "")
         # --- Report-analysis mode ---------------------------------------
@@ -207,17 +211,25 @@ def configure(
     STATE.use_doris = use_doris
     STATE.ontology_store = OntologyStore.from_xlsx(ontology_path)
     doris_conn = (
-        DorisConn(
-            jdbc_url=STATE.doris_jdbc_url,
-            username=STATE.doris_username,
-            password=STATE.doris_password,
-            driver=STATE.doris_driver,
-            database=STATE.doris_database,
-        )
+        DorisHttpConn(STATE.doris_api_url, STATE.doris_database)
         if use_doris
         else None
     )
     register_all(STATE.ontology_store, db_path, doris=doris_conn)
+
+    # Keep the local workbook as a fallback for tools not yet migrated, while
+    # remote mode overrides ontology lookup tools with the production API.
+    if STATE.ontology_backend in {"production", "remote"}:
+        try:
+            STATE.remote_ontology = RemoteOntologyClient.from_env()
+        except ValueError as e:
+            raise RuntimeError(f"远程本体配置无效: {e}") from e
+        if use_doris:
+            # Rebuild the connection after repository metadata may have
+            # supplied the authoritative Doris schema name.
+            doris_conn = DorisHttpConn(STATE.doris_api_url, STATE.doris_database)
+        register_all(STATE.ontology_store, db_path, doris=doris_conn,
+                     remote_ontology=STATE.remote_ontology)
 
     load_agent_defs(cwd)
     reg = get_agent_def_registry()
@@ -233,10 +245,9 @@ def configure(
     # Conversation store (restorable history for the sidebar 「最近」list)
     STATE.conversation_store = ConversationStore(cwd)
 
-    # Serve generated charts so the chat-card "open" link works.
-    charts_dir = Path(cwd) / "bi_charts"
-    charts_dir.mkdir(parents=True, exist_ok=True)
-    app.mount("/charts", StaticFiles(directory=str(charts_dir)), name="charts")
+    # Generated charts are served by the /charts route below so old files that
+    # reference the public ECharts CDN can be rewritten to our local asset.
+    (Path(cwd) / "bi_charts").mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +255,28 @@ def configure(
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="BI Agent Web", version="0.1.0")
+
+
+@app.get("/charts/{filename:path}")
+def serve_chart(filename: str):
+    """Serve standalone charts with a local ECharts fallback.
+
+    Historical chart HTML files were generated with a CDN script URL. Replacing
+    that URL at response time keeps old history links renderable in offline or
+    restricted browser environments too.
+    """
+    charts_dir = (Path(STATE.cwd) / "bi_charts").resolve()
+    target = (charts_dir / filename).resolve()
+    if charts_dir not in target.parents or not target.is_file():
+        raise HTTPException(404, "图表不存在")
+    if target.suffix.lower() == ".html":
+        html = target.read_text(encoding="utf-8", errors="replace")
+        html = html.replace(
+            "https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js",
+            "/static/vendor/echarts.min.js",
+        )
+        return HTMLResponse(html)
+    return FileResponse(target)
 
 
 class ChatRequest(BaseModel):
@@ -287,6 +320,10 @@ class ConfigUpdate(BaseModel):
 # Sentinel `database` value meaning "use the Doris (MySQL protocol) source"
 # instead of a local .db file. Surfaced as a selectable option in /api/sources.
 DORIS_SOURCE_VALUE = "__doris_api__"
+# Pseudo-source shown in 本体适配. It represents the production ontology
+# service, not a local workbook.
+METAERP_ONTOLOGY_VALUE = "__metaerp_ontology__"
+LEGACY_PRODUCTION_ONTOLOGY_VALUE = "__production_ontology__"
 
 # Retrieval modes for ontology knowledge. "semantic" = Excel-only keyword/
 # semantic lookup (the original behavior); "graph" = graph-library retrieval
@@ -337,6 +374,7 @@ class SourcesUpdate(BaseModel):
     database: Optional[str] = None   # .db filename, or DORIS_SOURCE_VALUE for Doris
     # Doris connection params (used when database == DORIS_SOURCE_VALUE)
     doris_jdbc_url: Optional[str] = None
+    doris_api_url: Optional[str] = None
     doris_driver: Optional[str] = None
     doris_username: Optional[str] = None
     doris_password: Optional[str] = None
@@ -451,6 +489,12 @@ def get_meta() -> JSONResponse:
         "ontology_stats": STATE.ontology_store.stats(),
         "db_path": os.path.basename(STATE.db_path),
         "cwd": STATE.cwd,
+        "ontology_backend": "production" if STATE.ontology_backend == "remote" else STATE.ontology_backend,
+        "ontology_service": {
+            "configured": STATE.remote_ontology is not None,
+            "base_url": STATE.remote_ontology.base_url if STATE.remote_ontology else "",
+            "repository_id": STATE.remote_ontology.repository_id if STATE.remote_ontology else "",
+        },
         "llm": {
             "models": list_models(),
             "current": cfg.to_dict(),
@@ -525,10 +569,55 @@ def get_sources_endpoint() -> JSONResponse:
         graph_options.extend(_scan(pat))
     graph_options = sorted(set(graph_options))
 
+    ontology_options = _scan("*.xlsx") + [METAERP_ONTOLOGY_VALUE]
+    # The production service exposes all selectable repositories through the
+    # documented manager endpoint. Keep the local Excel entries as offline
+    # fallbacks, and expose each remote repository by its stable id.
+    remote_repositories: list[dict[str, Any]] = []
+    if STATE.remote_ontology is not None:
+        try:
+            listing = STATE.remote_ontology.list_repositories(page=1, size=100)
+            items = listing.get("items") if isinstance(listing, dict) else []
+            if isinstance(items, list):
+                for item in items:
+                    if not isinstance(item, dict) or item.get("id") is None:
+                        continue
+                    remote_repositories.append({
+                        "id": str(item["id"]),
+                        "name": str(item.get("name") or f"本体库 {item['id']}"),
+                        "description": str(item.get("description") or ""),
+                        "dorisDatabase": str(item.get("dorisDatabase") or ""),
+                        "value": f"__metaerp_repository__:{item['id']}",
+                    })
+        except OntologyApiError:
+            # A temporary manager API failure must not prevent the settings UI
+            # from showing the already configured repository.
+            remote_repositories = []
+    if remote_repositories:
+        # Keep the original local Excel sources and append the real remote
+        # repository catalog. Repository IDs remain internal option values.
+        ontology_options = _scan("*.xlsx") + [repo["value"] for repo in remote_repositories]
+    ontology_active = (
+        METAERP_ONTOLOGY_VALUE
+        if STATE.ontology_backend in {"production", "remote"}
+        else os.path.basename(STATE.ontology_path)
+    )
+    if STATE.remote_ontology is not None:
+        current_repo_value = f"__metaerp_repository__:{STATE.remote_ontology.repository_id}"
+        if any(repo["value"] == current_repo_value for repo in remote_repositories):
+            ontology_active = current_repo_value
     return JSONResponse({
         "ontology": {
-            "options": _scan("*.xlsx"),
-            "active": os.path.basename(STATE.ontology_path),
+            "options": ontology_options,
+            "active": ontology_active,
+            "production": {
+                "value": METAERP_ONTOLOGY_VALUE,
+                "label": "MetaERP",
+                "active": ontology_active == METAERP_ONTOLOGY_VALUE,
+                "base_url": STATE.remote_ontology.base_url if STATE.remote_ontology else os.environ.get("ONTOLOGY_BASE_URL", ""),
+                "repository_id": STATE.remote_ontology.repository_id if STATE.remote_ontology else os.environ.get("ONTOLOGY_REPOSITORY_ID", ""),
+            },
+            "remote_repositories": remote_repositories,
         },
         "database": {
             "options": db_options,
@@ -544,6 +633,7 @@ def get_sources_endpoint() -> JSONResponse:
         "doris": {
             "value": DORIS_SOURCE_VALUE,
             "active": STATE.use_doris,
+            "api_url": STATE.doris_api_url,
             "jdbc_url": STATE.doris_jdbc_url,
             "driver": STATE.doris_driver,
             "username": STATE.doris_username,
@@ -561,7 +651,36 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
     cwd = Path(STATE.cwd)
     changed: list[str] = []
 
-    if req.ontology:
+    repository_prefix = "__metaerp_repository__:"
+    if req.ontology and req.ontology.startswith(repository_prefix):
+        repository_id = req.ontology[len(repository_prefix):].strip()
+        if not repository_id:
+            raise HTTPException(400, "本体库 ID 不能为空")
+        if STATE.remote_ontology is None:
+            try:
+                STATE.remote_ontology = RemoteOntologyClient.from_env()
+            except ValueError as e:
+                raise HTTPException(400, f"生产本体库配置无效: {e}") from e
+        # Keep the same API endpoint/authentication, changing only the
+        # repository selected by the user.
+        STATE.remote_ontology = RemoteOntologyClient(
+            STATE.remote_ontology.base_url,
+            repository_id,
+            app_id=STATE.remote_ontology.app_id,
+            auth_token=STATE.remote_ontology.auth_token,
+            timeout=STATE.remote_ontology.timeout,
+        )
+        STATE.ontology_backend = "production"
+        changed.append("ontology")
+    elif req.ontology in {METAERP_ONTOLOGY_VALUE, LEGACY_PRODUCTION_ONTOLOGY_VALUE}:
+        if STATE.remote_ontology is None:
+            try:
+                STATE.remote_ontology = RemoteOntologyClient.from_env()
+            except ValueError as e:
+                raise HTTPException(400, f"生产本体库配置无效: {e}") from e
+        STATE.ontology_backend = "production"
+        changed.append("ontology")
+    elif req.ontology:
         op = cwd / req.ontology
         if not op.is_file():
             raise HTTPException(400, f"本体文件不存在: {req.ontology}")
@@ -571,26 +690,22 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
             raise HTTPException(400, f"本体文件无法加载: {req.ontology} — {e}")
         STATE.ontology_store = store
         STATE.ontology_path = str(op)
+        STATE.ontology_backend = "local"
+        STATE.remote_ontology = None
         changed.append("ontology")
 
     if req.database == DORIS_SOURCE_VALUE:
-        # Switch the SQL tools to Doris (MySQL protocol). Empty fields fall
-        # back to the stored/default connection params (password may be blank).
+        # Switch the SQL tools to the team's Doris HTTP query API.
+        api_url = (req.doris_api_url or STATE.doris_api_url or DEFAULT_DORIS_API_URL).strip()
         jdbc = (req.doris_jdbc_url or STATE.doris_jdbc_url or "").strip()
         username = req.doris_username if req.doris_username is not None else STATE.doris_username
         password = req.doris_password if req.doris_password is not None else STATE.doris_password
         driver = (req.doris_driver or STATE.doris_driver or DEFAULT_DORIS_DRIVER).strip()
         database = (req.doris_database or STATE.doris_database or DEFAULT_DORIS_DATABASE).strip()
-        if not jdbc:
-            raise HTTPException(400, "请填写 Doris JDBC 地址(例如 jdbc:mysql://host:9030/db)")
-        try:
-            DorisConn(
-                jdbc_url=jdbc, username=username, password=password,
-                driver=driver, database=database,
-            )
-        except ValueError as e:
-            raise HTTPException(400, f"Doris JDBC 地址无法解析: {e}")
+        if not api_url.startswith(("http://", "https://")):
+            raise HTTPException(400, "请填写 Doris HTTP API 地址(例如 http://host:30834/agent/doris/query)")
         STATE.doris_jdbc_url = jdbc
+        STATE.doris_api_url = api_url
         STATE.doris_username = username
         STATE.doris_password = password
         STATE.doris_driver = driver
@@ -627,17 +742,16 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         # register_tool is idempotent — this rebinds the ontology/SQL tools to
         # the new store + db_path (or Doris connection).
         doris_conn = (
-            DorisConn(
-                jdbc_url=STATE.doris_jdbc_url,
-                username=STATE.doris_username,
-                password=STATE.doris_password,
-                driver=STATE.doris_driver,
-                database=STATE.doris_database,
-            )
+            DorisHttpConn(STATE.doris_api_url, STATE.doris_database)
             if STATE.use_doris
             else None
         )
-        register_all(STATE.ontology_store, STATE.db_path, doris=doris_conn)
+        register_all(
+            STATE.ontology_store,
+            STATE.db_path,
+            doris=doris_conn,
+            remote_ontology=STATE.remote_ontology,
+        )
         # Reset sessions so the new system prompt / ontology take effect.
         STATE.session = None
         STATE.report_session = None
@@ -645,7 +759,11 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
 
     return JSONResponse({
         "changed": changed,
-        "ontology": os.path.basename(STATE.ontology_path),
+        "ontology": (
+            METAERP_ONTOLOGY_VALUE
+            if STATE.ontology_backend in {"production", "remote"}
+            else os.path.basename(STATE.ontology_path)
+        ),
         "database": DORIS_SOURCE_VALUE if STATE.use_doris else os.path.basename(STATE.db_path),
         "doris_jdbc_url": STATE.doris_jdbc_url if STATE.use_doris else "",
         "doris_database": STATE.doris_database if STATE.use_doris else "",
@@ -850,12 +968,11 @@ def delete_conversation(cid: str) -> JSONResponse:
 
 @app.post("/api/chat")
 def chat(req: ChatRequest):
-    _ensure_session()
-    session = STATE.session
-
     message = (req.message or "").strip()
     if not message:
         raise HTTPException(400, "empty message")
+    _ensure_session()
+    session = STATE.session
 
     def event_stream():
         try:

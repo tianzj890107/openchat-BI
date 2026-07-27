@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>智析 · 本体工作台</title>
-  <link rel="stylesheet" href="/static/styles.css?v=68" />
+  <link rel="stylesheet" href="/static/styles.css?v=70" />
   <script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body data-mode="data">
@@ -53,11 +53,11 @@
       <!-- settings pages -->
       <div class="sidebar-group sidebar-settings">
         <div class="sidebar-group-label">设置</div>
-        <button class="nav-item" data-view="sources" title="数据源 — 选择数据库 / Doris 取数源">
-          <span class="nav-glyph">◈</span> 数据源
-        </button>
         <button class="nav-item" data-view="ontology-adapt" title="本体适配 — 检索模式与本体源 / 图库源">
           <span class="nav-glyph">⬡</span> 本体适配
+        </button>
+        <button class="nav-item" data-view="sources" title="数据源 — 选择数据库 / Doris 取数源">
+          <span class="nav-glyph">◈</span> 数据源
         </button>
         <button class="nav-item" data-view="model" title="模型参数 — 模型与采样参数、API Key">
           <span class="nav-glyph">⚙</span> 模型参数
@@ -83,6 +83,8 @@
         <span class="account-gear">⚙</span>
       </button>
     </aside>
+
+    <div class="layout-resizer layout-resizer-sidebar" id="sidebar-resizer" title="拖动调整导航栏宽度"></div>
 
     <!-- Floating reopen button — shown only while the sidebar is collapsed -->
     <button class="sidebar-reopen" id="sidebar-reopen" title="展开侧栏">☰</button>
@@ -203,6 +205,8 @@
             </div>
           </section>
 
+          <div class="layout-resizer layout-resizer-workspace" id="workspace-resizer" title="拖动调整对话与看板宽度"></div>
+
           <!-- dashboard (resident on the right) -->
           <section class="dashboard-pane" id="dashboard-pane">
             <div class="pane-header">
@@ -295,7 +299,7 @@
           <div class="settings-field">
             <label class="settings-label" for="sources-ontology">本体源</label>
             <select class="settings-select" id="sources-ontology"></select>
-            <div class="settings-hint">Agent 的指标定义与业务语义来源(.xlsx 业务元数据)。</div>
+            <div class="settings-hint">选择后请点击下方“保存并切换”才会生效；本地 Excel 仅用于离线测试 fallback。</div>
           </div>
           <div class="settings-field" id="sources-build-graph-row" hidden>
             <button class="btn btn-ghost" id="sources-build-graph" type="button">⚙ 用所选 Excel 建立图库 (NetworkX)</button>
@@ -324,32 +328,35 @@
           <div id="sources-doris-field" hidden>
             <div class="settings-label" style="margin-bottom:6px;">API 接口参数(Doris)</div>
             <div class="settings-field">
-              <label class="settings-label" for="sources-doris-jdbc">JDBC 地址</label>
+              <label class="settings-label" for="sources-doris-jdbc">Doris HTTP API 地址</label>
               <input class="settings-input" id="sources-doris-jdbc" type="text"
-                     placeholder="jdbc:mysql://host:9030/db?useSSL=false" autocomplete="off" spellcheck="false" />
+                     placeholder="http://host:30834/agent/doris/query" autocomplete="off" spellcheck="false" />
             </div>
             <div class="settings-field">
               <label class="settings-label" for="sources-doris-database">数据库(库名)</label>
-              <input class="settings-input" id="sources-doris-database" type="text"
-                     placeholder="ontology_demo_scm_po" autocomplete="off" spellcheck="false" />
-              <div class="settings-hint">生成 SQL 时表名会带库前缀,例如 <code>ontology_demo_scm_po.poheader</code>。</div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <input class="settings-input" id="sources-doris-database" type="text"
+                       placeholder="ontology_demometaerp_scm_po" autocomplete="off" spellcheck="false" style="flex:1;" />
+                <button class="btn btn-ghost" id="sources-read-ontology-db" type="button" title="读取当前数据源对应本体库的 dorisDatabase">读取当前数据源</button>
+              </div>
+              <div class="settings-hint">生成 SQL 时表名会带库前缀,例如 <code>ontology_demometaerp_scm_po.poheader</code>。</div>
             </div>
-            <div class="settings-field">
+            <div class="settings-field" hidden>
               <label class="settings-label" for="sources-doris-driver">驱动类</label>
               <input class="settings-input" id="sources-doris-driver" type="text"
                      placeholder="com.mysql.cj.jdbc.Driver" autocomplete="off" spellcheck="false" />
             </div>
-            <div class="settings-field">
+            <div class="settings-field" hidden>
               <label class="settings-label" for="sources-doris-user">用户名</label>
               <input class="settings-input" id="sources-doris-user" type="text"
                      placeholder="admin" autocomplete="off" spellcheck="false" />
             </div>
-            <div class="settings-field">
+            <div class="settings-field" hidden>
               <label class="settings-label" for="sources-doris-pass">密码</label>
               <input class="settings-input" id="sources-doris-pass" type="password"
                      placeholder="(当前无密码,可留空)" autocomplete="new-password" />
             </div>
-            <div class="settings-hint">取数与 SQL 执行将通过 MySQL 协议连接 Doris(仅允许单条只读查询)。</div>
+            <div class="settings-hint">取数与 SQL 执行将通过 HTTP API 调用 Doris(仅允许单条只读查询)。</div>
           </div>
           <div class="rg-note rg-note-info">ℹ 切换数据源会把 SQL 取数工具重新绑定到新库,并重置「智能分析」与「报表分析」两个模式的当前会话。</div>
           <div class="settings-status" id="sources-status"></div>
@@ -735,6 +742,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=68"></script>
+  <script src="/static/app.js?v=76"></script>
 </body>
 </html>

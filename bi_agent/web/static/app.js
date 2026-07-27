@@ -58,6 +58,7 @@
   }
 
   const buckets = { data: makeBucket(), report: makeBucket() };
+  let activeRequestController = null;
 
   // ------------------------------------------------------------------
   // Global state
@@ -190,6 +191,7 @@
     sourcesDorisField:  document.getElementById("sources-doris-field"),
     sourcesDorisJdbc:   document.getElementById("sources-doris-jdbc"),
     sourcesDorisDatabase: document.getElementById("sources-doris-database"),
+    sourcesReadOntologyDb: document.getElementById("sources-read-ontology-db"),
     sourcesDorisDriver: document.getElementById("sources-doris-driver"),
     sourcesDorisUser:   document.getElementById("sources-doris-user"),
     sourcesDorisPass:   document.getElementById("sources-doris-pass"),
@@ -224,6 +226,71 @@
     sidebarCollapse: document.getElementById("sidebar-collapse"),
     sidebarReopen: document.getElementById("sidebar-reopen"),
   };
+
+  // ------------------------------------------------------------------
+  // Resizable layout (navigation + chat/dashboard split)
+  // ------------------------------------------------------------------
+  const layoutPrefs = {
+    sidebar: "bi.layout.sidebarWidth",
+    chat: "bi.layout.chatWidth",
+  };
+
+  function applyLayoutPrefs() {
+    const sidebar = Number(localStorage.getItem(layoutPrefs.sidebar));
+    if (Number.isFinite(sidebar) && sidebar >= 150 && sidebar <= 360) {
+      document.documentElement.style.setProperty("--sidebar-width", `${sidebar}px`);
+    }
+    const chat = Number(localStorage.getItem(layoutPrefs.chat));
+    if (Number.isFinite(chat) && chat >= 380) {
+      document.documentElement.style.setProperty("--chat-width", `${chat}px`);
+    }
+  }
+
+  function setupResizer(id, onMove, min, maxFn) {
+    const handle = document.getElementById(id);
+    if (!handle) return;
+    handle.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      handle.setPointerCapture(ev.pointerId);
+      handle.classList.add("dragging");
+      const move = (e) => onMove(Math.max(min, Math.min(maxFn(), e.clientX)));
+      const end = () => {
+        handle.classList.remove("dragging");
+        handle.releasePointerCapture(ev.pointerId);
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", end);
+        handle.removeEventListener("pointercancel", end);
+      };
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", end);
+      handle.addEventListener("pointercancel", end);
+    });
+  }
+
+  applyLayoutPrefs();
+  setupResizer(
+    "sidebar-resizer",
+    (x) => {
+      const width = Math.round(x);
+      document.documentElement.style.setProperty("--sidebar-width", `${width}px`);
+      localStorage.setItem(layoutPrefs.sidebar, String(width));
+    },
+    150,
+    () => Math.min(360, window.innerWidth * 0.35),
+  );
+  setupResizer(
+    "workspace-resizer",
+    (x) => {
+      const split = document.querySelector(".split");
+      if (!split) return;
+      const width = Math.round(x - split.getBoundingClientRect().left);
+      if (width < 380) return;
+      document.documentElement.style.setProperty("--chat-width", `${width}px`);
+      localStorage.setItem(layoutPrefs.chat, String(width));
+    },
+    380,
+    () => window.innerWidth - 360,
+  );
 
   // Default empty-state strings per mode
   const EMPTY_STATES = {
@@ -785,8 +852,15 @@
   }
 
   async function restoreConversation(id) {
-    if (state.busy) return;
-    await saveCurrentConversation();  // persist current (same-mode) before swapping
+    if (state.busy) {
+      if (activeRequestController) activeRequestController.abort();
+      const resetUrl = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
+      try { await fetch(resetUrl, { method: "POST" }); } catch (e) {}
+      setBusy(false);
+    }
+    // Restoring is read-only. Never snapshot the currently visible draft here:
+    // doing so creates a new conversation and moves it to the top merely by
+    // clicking history. A conversation is persisted/ordered only at turn end.
     let rec;
     try {
       const r = await fetch("/api/conversations/restore", {
@@ -802,6 +876,8 @@
     // Swap in the saved transcript + dashboard snapshot.
     el.chatScroll.innerHTML = rec.chat_html || "";
     el.dashboardList.innerHTML = rec.dashboard_html || "";
+    hydrateRestoredChat();
+    hydrateRestoredDashboard();
     b.hasContent = !!(rec.chat_html && rec.chat_html.trim());
     b.dashboardHasContent = !!(rec.dashboard_html && rec.dashboard_html.trim());
     if (el.chatEmpty && !b.hasContent) {
@@ -1465,8 +1541,12 @@
   // backend DORIS_SOURCE_VALUE). Selecting it routes SQLRun/ListTables/
   // DescribeTable through POST {base}/agent/doris/query.
   const DORIS_SOURCE_VALUE = "__doris_api__";
+  const PRODUCTION_ONTOLOGY_VALUE = "__metaerp_ontology__";
 
-  function sourceOptionLabel(name, active) {
+  function sourceOptionLabel(name, active, remoteRepositories) {
+    if (name === PRODUCTION_ONTOLOGY_VALUE) return "MetaERP";
+    const repo = (remoteRepositories || []).find((item) => String(item.value) === String(name));
+    if (repo) return repo.name + (name === active ? "  · 当前生效" : "");
     const base = name === DORIS_SOURCE_VALUE ? "API · Doris 实时查询" : name;
     return base + (name === active ? "  · 当前生效" : "");
   }
@@ -1478,7 +1558,7 @@
     opts.forEach((name) => {
       const o = document.createElement("option");
       o.value = name;
-      o.textContent = sourceOptionLabel(name, active);
+      o.textContent = sourceOptionLabel(name, active, info && info.remote_repositories);
       sel.appendChild(o);
     });
     if (active && opts.indexOf(active) !== -1) sel.value = active;
@@ -1497,7 +1577,12 @@
   function syncRetrievalMode() {
     const graph = el.sourcesRetrievalMode && el.sourcesRetrievalMode.value === "graph";
     if (el.sourcesGraphField) el.sourcesGraphField.hidden = !graph;
-    if (el.sourcesBuildGraphRow) el.sourcesBuildGraphRow.hidden = !graph;
+    const usingProduction = el.sourcesOntology && el.sourcesOntology.value === PRODUCTION_ONTOLOGY_VALUE;
+    if (el.sourcesBuildGraphRow) el.sourcesBuildGraphRow.hidden = !graph || usingProduction;
+    if (el.sourcesGraphField && usingProduction) {
+      const hint = el.sourcesGraphField.querySelector(".settings-hint");
+      if (hint) hint.textContent = "生产本体关系由团队本体服务实时提供，不需要本地图文件。";
+    }
   }
 
   // Build a NetworkX graph library (.graphml) from the currently-selected
@@ -1509,6 +1594,10 @@
       el.sourcesBuildGraphHint.className = "settings-hint" + (cls ? " " + cls : "");
     };
     const xlsx = el.sourcesOntology && el.sourcesOntology.value;
+    if (xlsx === PRODUCTION_ONTOLOGY_VALUE) {
+      setHint("生产本体库不需要生成本地 GraphML 图文件。", "error");
+      return;
+    }
     if (!xlsx) { setHint("请先在「本体源」选择一个 Excel。", "error"); return; }
     if (el.sourcesBuildGraph) el.sourcesBuildGraph.disabled = true;
     setHint("构建中…（抽取 ER + 元模型关系）", "pending");
@@ -1554,7 +1643,7 @@
         if (el.sourcesGraph) fillSourceSelect(el.sourcesGraph, data.retrieval.graph || {});
       }
       if (data.doris) {
-        if (el.sourcesDorisJdbc) el.sourcesDorisJdbc.value = data.doris.jdbc_url || "";
+        if (el.sourcesDorisJdbc) el.sourcesDorisJdbc.value = data.doris.api_url || "";
         if (el.sourcesDorisDatabase) el.sourcesDorisDatabase.value = data.doris.database || "";
         if (el.sourcesDorisDriver) el.sourcesDorisDriver.value = data.doris.driver || "";
         if (el.sourcesDorisUser) el.sourcesDorisUser.value = data.doris.username || "";
@@ -1605,13 +1694,13 @@
         : null,
     };
     if (dbValue === DORIS_SOURCE_VALUE) {
-      const jdbc = (el.sourcesDorisJdbc && el.sourcesDorisJdbc.value || "").trim();
-      if (!jdbc) {
-        statusEl.textContent = "请填写 Doris JDBC 地址(例如 jdbc:mysql://host:9030/db)。";
+      const apiUrl = (el.sourcesDorisJdbc && el.sourcesDorisJdbc.value || "").trim();
+      if (!apiUrl || !/^https?:\/\//i.test(apiUrl)) {
+        statusEl.textContent = "请填写 Doris HTTP API 地址(例如 http://host:30834/agent/doris/query)。";
         statusEl.className = "settings-status error";
         return;
       }
-      payload.doris_jdbc_url = jdbc;
+      payload.doris_api_url = apiUrl;
       payload.doris_database = (el.sourcesDorisDatabase && el.sourcesDorisDatabase.value || "").trim();
       payload.doris_driver = (el.sourcesDorisDriver && el.sourcesDorisDriver.value || "").trim();
       payload.doris_username = (el.sourcesDorisUser && el.sourcesDorisUser.value || "").trim();
@@ -1639,8 +1728,43 @@
     }
   }
 
+  async function readCurrentOntologyDatabase() {
+    const button = el.sourcesReadOntologyDb;
+    if (button) { button.disabled = true; button.textContent = "读取中…"; }
+    try {
+      const r = await fetch("/api/sources");
+      const data = await r.json();
+      const ontology = data.ontology || {};
+      const active = ontology.active;
+      const repo = (ontology.remote_repositories || []).find((item) => String(item.value) === String(active));
+      if (!repo || !repo.dorisDatabase) {
+        throw new Error("当前本体源没有可用的 dorisDatabase（本地 Excel 不提供该字段）");
+      }
+      el.sourcesDorisDatabase.value = repo.dorisDatabase;
+      if (el.sourcesStatus) {
+        el.sourcesStatus.textContent = `✓ 已读取 ${repo.name}：${repo.dorisDatabase}`;
+        el.sourcesStatus.className = "settings-status success";
+      }
+    } catch (e) {
+      if (el.sourcesStatus) {
+        el.sourcesStatus.textContent = "读取失败: " + (e.message || e);
+        el.sourcesStatus.className = "settings-status error";
+      }
+    } finally {
+      if (button) { button.disabled = false; button.textContent = "读取当前数据源"; }
+    }
+  }
+
   if (el.btnSources) el.btnSources.addEventListener("click", openSources);
   if (el.sourcesDatabase) el.sourcesDatabase.addEventListener("change", syncDorisField);
+  if (el.sourcesReadOntologyDb) el.sourcesReadOntologyDb.addEventListener("click", readCurrentOntologyDatabase);
+  if (el.sourcesOntology) el.sourcesOntology.addEventListener("change", () => {
+    syncRetrievalMode();
+    if (el.ontoAdaptStatus) {
+      el.ontoAdaptStatus.textContent = "本体源选择尚未保存，请点击“保存并切换”。";
+      el.ontoAdaptStatus.className = "settings-status pending";
+    }
+  });
   if (el.sourcesRetrievalMode) el.sourcesRetrievalMode.addEventListener("change", syncRetrievalMode);
   if (el.sourcesBuildGraph) el.sourcesBuildGraph.addEventListener("click", buildGraphFromExcel);
   if (el.sourcesClose) el.sourcesClose.addEventListener("click", closeSources);
@@ -2053,6 +2177,7 @@
 
   function buildChartCard(chart) {
     const card = el_h("div", "chart-card");
+    card.dataset.chartJson = encodeURIComponent(JSON.stringify(chart || {}));
     const savedLink = chart.saved_path
       ? `<span class="chart-saved">saved: <a href="/charts/${esc(chart.saved_path.split(/[\\/]/).pop())}" target="_blank" title="${esc(chart.saved_path)}">${esc(chart.saved_path.split(/[\\/]/).pop())}</a></span>`
       : "";
@@ -2142,6 +2267,7 @@
       inst.setOption(chart.option, true);
       requestAnimationFrame(() => inst.resize());
       window.addEventListener("resize", () => inst.resize());
+      wireInsightButton(card, chart);
     } catch (e) {
       canvas.innerHTML = `<div style="padding:14px;color:var(--accent-red);font-family:var(--font-mono);font-size:12px;">Chart render failed: ${esc(e.message || String(e))}</div>`;
     }
@@ -2485,6 +2611,7 @@
   function dashboardChartCard(chart, turnTag) {
     const card = el_h("div", "dash-card dash-chart");
     card.dataset.turn = turnTag;
+    card.dataset.chartJson = encodeURIComponent(JSON.stringify(chart || {}));
     const title = esc(chart.title || "(未命名)");
     const type = esc(chart.chart_type || "chart");
     const source = chart.saved_path
@@ -2501,20 +2628,23 @@
       </div>
       <div class="dash-chart-canvas"></div>`;
     wireInsightButton(card, chart);
-    requestAnimationFrame(() => {
-      const canvas = card.querySelector(".dash-chart-canvas");
-      if (!canvas || !chart.option || typeof echarts === "undefined") return;
-      try {
-        const inst = echarts.init(canvas);
-        inst.setOption(chart.option, true);
-        requestAnimationFrame(() => inst.resize());
-        const ro = new ResizeObserver(() => inst.resize());
-        ro.observe(canvas);
-      } catch (e) {
-        canvas.innerHTML = `<div class="dash-chart-err">render failed: ${esc(e.message || String(e))}</div>`;
-      }
-    });
+    requestAnimationFrame(() => mountDashboardChart(card, chart));
     return card;
+  }
+
+  function mountDashboardChart(card, chart) {
+    const canvas = card && card.querySelector(".dash-chart-canvas");
+    if (!canvas || !chart || !chart.option || typeof echarts === "undefined") return;
+    try {
+      const inst = echarts.init(canvas);
+      inst.setOption(chart.option, true);
+      requestAnimationFrame(() => inst.resize());
+      const ro = new ResizeObserver(() => inst.resize());
+      ro.observe(canvas);
+      wireInsightButton(card, chart);
+    } catch (e) {
+      canvas.innerHTML = `<div class="dash-chart-err">render failed: ${esc(e.message || String(e))}</div>`;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -2533,6 +2663,7 @@
 
   function buildMultiChartCard(spec) {
     const card = el_h("div", "multidim-card");
+    card.dataset.chartJson = encodeURIComponent(JSON.stringify(spec || {}));
     const title = esc(spec.title || "(未命名)");
     const subtitle = spec.subtitle ? `<span class="multidim-subtitle">${esc(spec.subtitle)}</span>` : "";
     const metric = spec.metric_code ? `<span class="multidim-metric">${esc(spec.metric_code)}</span>` : "";
@@ -2611,6 +2742,7 @@
   function dashboardMultiChartCard(spec, turnTag) {
     const card = el_h("div", "dash-card dash-multidim");
     card.dataset.turn = turnTag;
+    card.dataset.chartJson = encodeURIComponent(JSON.stringify(spec || {}));
     const title = esc(spec.title || "(未命名)");
     const metric = spec.metric_code ? `<span class="dash-metric">${esc(spec.metric_code)}</span>` : "";
     const source = spec.saved_path
@@ -2666,6 +2798,59 @@
       } catch (_) { /* ResizeObserver unsupported */ }
     });
     return card;
+  }
+
+  function hydrateRestoredDashboard() {
+    if (!el.dashboardList) return;
+    el.dashboardList.querySelectorAll(".dash-card[data-chart-json]").forEach((card) => {
+      try {
+        const data = JSON.parse(decodeURIComponent(card.dataset.chartJson));
+        if (card.classList.contains("dash-multidim")) {
+          // Recreate the dimension selector listeners and chart instance.
+          mountRestoredMultiDashboardChart(card, data);
+        } else {
+          mountDashboardChart(card, data);
+        }
+      } catch (e) {
+        console.warn("历史图表恢复失败", e);
+      }
+    });
+  }
+
+  function hydrateRestoredChat() {
+    if (!el.chatScroll) return;
+    el.chatScroll.querySelectorAll(".chart-card[data-chart-json]").forEach((card) => {
+      try { mountChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson))); }
+      catch (e) { console.warn("历史聊天图表恢复失败", e); }
+    });
+    el.chatScroll.querySelectorAll(".multidim-card[data-chart-json]").forEach((card) => {
+      try { mountMultiChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson))); }
+      catch (e) { console.warn("历史多维图表恢复失败", e); }
+    });
+  }
+
+  function mountRestoredMultiDashboardChart(card, spec) {
+    const canvas = card.querySelector(".dash-chart-canvas");
+    const select = card.querySelector(".multidim-select");
+    const summary = card.querySelector(".multidim-dim-summary");
+    const dims = Array.isArray(spec && spec.dimensions) ? spec.dimensions : [];
+    if (!canvas || !dims.length || typeof echarts === "undefined") return;
+    try {
+      const inst = echarts.init(canvas);
+      const dimMap = new Map(dims.map((d) => [d.key, d]));
+      const show = (key) => {
+        const d = dimMap.get(key) || dims[0];
+        if (d && d.option) inst.setOption(d.option, true);
+        if (summary) summary.textContent = (d && d.summary) || "";
+      };
+      show(spec.default_dim || dims[0].key);
+      if (select) select.addEventListener("change", (e) => show(e.target.value));
+      requestAnimationFrame(() => inst.resize());
+      const ro = new ResizeObserver(() => inst.resize());
+      ro.observe(canvas);
+    } catch (e) {
+      canvas.innerHTML = `<div class="dash-chart-err">render failed: ${esc(e.message || String(e))}</div>`;
+    }
   }
 
   function pushMultiChartToDashboard(spec) {
@@ -3779,12 +3964,15 @@
     const url = state.mode === "report" ? "/api/report/chat" : "/api/chat";
     let resp;
     try {
+      activeRequestController = new AbortController();
       resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: payloadText }),
+        signal: activeRequestController.signal,
       });
     } catch (err) {
+      if (err && err.name === "AbortError") return;
       onEvent({ type: "error", message: `request failed: ${err.message || err}` });
       setBusy(false);
       return;
@@ -3796,6 +3984,7 @@
       return;
     }
     await streamResponse(resp);
+    activeRequestController = null;
   }
 
   async function streamResponse(resp) {
@@ -3828,8 +4017,7 @@
     el.btnSend.disabled = v;
     el.chatInput.disabled = v;
     el.btnSend.textContent = v ? "…" : "发送 ▸";
-    // Block mode switching while a turn is in flight
-    el.modeBtns.forEach(b => { b.disabled = v; });
+    // Navigation remains available while a turn is in flight.
   }
 
   // ------------------------------------------------------------------
@@ -3846,7 +4034,13 @@
   }
 
   function switchMode(newMode) {
-    if (newMode === state.mode || state.busy) return;
+    if (newMode === state.mode) return;
+    if (state.busy) {
+      if (activeRequestController) activeRequestController.abort();
+      const resetUrl = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
+      fetch(resetUrl, { method: "POST" }).catch(() => {});
+      setBusy(false);
+    }
     // Quadrant assistants are locked to a single mode; only the initial
     // lock-in (from applyQuadrantFromUrl) may set it.
     if (state.lockedMode && newMode !== state.lockedMode) return;
@@ -4180,6 +4374,7 @@
     bucket.rootCauseSeen = new Set();
     bucket.actionsSeen = new Set();
     bucket.currentTurnTag = 0;
+    bucket.turnQuestions = {};
     bucket.pendingCommands = [];
     bucket.todos = [];
     bucket.sopStep = 0;

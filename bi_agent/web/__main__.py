@@ -10,6 +10,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 DEFAULT_ONTOLOGY = "本体元素_MetaERP（采购领域）-建模.xlsx"
 DEFAULT_DB = "HyperFusion.db"
@@ -24,6 +26,10 @@ def _resolve(path: str, base: Path) -> Path:
 
 
 def main() -> None:
+    # Local deployments conventionally keep provider credentials in a
+    # gitignored .env file at the project root/current working directory.
+    # Environment variables set by the process still take precedence.
+    load_dotenv(override=False)
     parser = argparse.ArgumentParser(prog="bi-agent-web", description="硕磐 BI 智能分析 Web UI")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)

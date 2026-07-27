@@ -12,6 +12,8 @@ from pathlib import Path
 from open_claude.tools import register_tool
 
 from ..ontology.store import OntologyStore
+from ..ontology.remote import RemoteOntologyClient
+from .remote_ontology_tools import remote_specs
 from . import (
     ask_user,
     chart_multidim_tools,
@@ -29,6 +31,7 @@ def register_all(
     db_path: str | Path,
     *,
     doris: "sql_tools.DorisConn | None" = None,
+    remote_ontology: RemoteOntologyClient | None = None,
 ) -> list[str]:
     """Register all BI tools with open_claude. Returns the list of tool names.
 
@@ -63,4 +66,9 @@ def register_all(
     for schema, make_executor in ask_user.SPECS:
         register_tool(schema, make_executor())
         registered.append(schema["name"])
+    # In remote mode, replace only ontology-facing executors. SQL, charts,
+    # reports and the local Excel fallback remain available unchanged.
+    if remote_ontology is not None:
+        for schema, executor in remote_specs(remote_ontology):
+            register_tool(schema, executor)
     return registered

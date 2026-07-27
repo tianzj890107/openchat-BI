@@ -25,7 +25,15 @@ from __future__ import annotations
 
 from typing import Any, Generator, Optional
 
-from .registry import get_model
+from .registry import fallback_model_keys, get_model
+
+
+def _is_quota_error(message: str) -> bool:
+    text = (message or "").lower()
+    return any(token in text for token in (
+        "429", "rate limit", "quota", "insufficient_quota", "exceeded",
+        "resource_exhausted", "限额", "额度", "用完",
+    ))
 
 
 def stream_message(
@@ -61,14 +69,32 @@ def stream_message(
         )
     elif provider == "qwen":
         from . import provider_qwen
-        yield from provider_qwen.stream(
-            model_id=model_id,
-            messages=messages,
-            system_prompt=system_prompt,
-            allowed_tools=allowed_tools,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
+        # DashScope may reject a model after its quota is exhausted. Retry
+        # only pre-stream quota/rate-limit failures with the next configured
+        # Qwen model; normal errors are returned unchanged.
+        attempts = [model_key] + fallback_model_keys(model_key)
+        for index, attempt_key in enumerate(attempts):
+            attempt = get_model(attempt_key) or m
+            emitted = False
+            retry = False
+            for event in provider_qwen.stream(
+                model_id=attempt["model_id"],
+                messages=messages,
+                system_prompt=system_prompt,
+                allowed_tools=allowed_tools,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            ):
+                if event.get("type") in {"text_delta", "tool_use_start", "tool_input_delta", "tool_use_end"}:
+                    emitted = True
+                if event.get("type") == "error" and not emitted and _is_quota_error(event.get("error", "")) and index < len(attempts) - 1:
+                    retry = True
+                    break
+                yield event
+            if not retry:
+                return
+            yield {"type": "model_fallback", "model_key": attempts[index + 1],
+                   "reason": "当前模型额度或限流"}
     elif provider == "deepseek":
         from . import provider_deepseek
         yield from provider_deepseek.stream(

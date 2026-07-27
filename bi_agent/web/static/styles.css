@@ -2570,9 +2570,10 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
  *  workspace (chat + resident dashboard).
  * ================================================================== */
 .app { flex-direction: row; }                 /* override the column shell */
+:root { --sidebar-width: 188px; }
 
 .sidebar {
-  width: 188px;
+  width: var(--sidebar-width);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -2624,6 +2625,13 @@ body.sidebar-collapsed .page-header { padding-left: 46px; }
 /* embedded shell hides all nav chrome — never show the reopen button there */
 body.settings-hidden .sidebar-reopen { display: none; }
 
+/* i-agent 嵌入或直接打开时，顶部栏也跟随 CEO 驾驶舱浅色主题。 */
+.topbar { background: #dbe8ff !important; color: #24324a !important; box-shadow: 0 2px 8px rgba(66,86,120,.12) !important; }
+.topbar .brand { color: #17315d !important; }
+.topbar .topbar-meta, .topbar .topbar-meta .kv-v { color: #2f3d55 !important; }
+.topbar .topbar-meta .kv-k { color: #7890b1 !important; }
+
+
 .sidebar-newchat {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   width: 100%; margin-bottom: 10px; padding: 8px;
@@ -2672,6 +2680,33 @@ body.settings-hidden .sidebar-reopen { display: none; }
 .view { flex: 1; min-height: 0; display: none; overflow: hidden; }
 .view.active { display: flex; flex-direction: column; }
 .view-workspace .split { flex: 1; }
+
+/* User-adjustable layout separators. Defaults preserve the original layout. */
+.layout-resizer {
+  flex: 0 0 6px;
+  z-index: 20;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+}
+.layout-resizer::after {
+  content: "";
+  position: absolute;
+  inset: 0 2px;
+  background: var(--border-1);
+  opacity: 0.45;
+  transition: opacity .12s, background .12s;
+}
+.layout-resizer:hover::after,
+.layout-resizer.dragging::after { background: var(--accent-cyan); opacity: 1; }
+.split { grid-template-columns: var(--chat-width, minmax(380px, 1.15fr)) 6px minmax(360px, 1fr); }
+.layout-resizer-workspace { grid-column: 2; grid-row: 1; }
+.split > .chat-pane { grid-column: 1; grid-row: 1; }
+.split > .dashboard-pane { grid-column: 3; grid-row: 1; }
+body[data-dashboard="collapsed"] .split { grid-template-columns: 1fr; }
+body[data-dashboard="collapsed"] .layout-resizer-workspace { display: none; }
+body[data-dashboard="collapsed"] .split > .chat-pane { grid-column: 1; }
+body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 
 /* ---------- PAGE VIEWS (content + settings) ---------- */
 .view-page { background: var(--bg-0); }
