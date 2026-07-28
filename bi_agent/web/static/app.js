@@ -883,6 +883,7 @@
     el.toolList.innerHTML = rec.tools_html || "";
     el.llmList.innerHTML = rec.llm_html || "";
     hydrateRestoredChat();
+    hydrateRestoredInspector();
     hydrateRestoredDashboard();
     b.hasContent = !!(rec.chat_html && rec.chat_html.trim());
     b.dashboardHasContent = !!(rec.dashboard_html && rec.dashboard_html.trim());
@@ -2828,6 +2829,23 @@
 
   function hydrateRestoredChat() {
     if (!el.chatScroll) return;
+    // Restored chat is inserted with innerHTML, so the click handlers that
+    // buildChatStep normally attaches are not present. Rebind them here.
+    el.chatScroll.querySelectorAll(".step").forEach((step) => {
+      const head = step.querySelector(".step-header");
+      if (head && !head.dataset.clickBound) {
+        head.dataset.clickBound = "1";
+        head.addEventListener("click", () => step.classList.toggle("open"));
+      }
+      step.querySelectorAll(".chip").forEach((ch) => {
+        if (ch.dataset.clickBound) return;
+        ch.dataset.clickBound = "1";
+        ch.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          flashOntologyEntity(ch.dataset.code);
+        });
+      });
+    });
     el.chatScroll.querySelectorAll(".chart-card[data-chart-json]").forEach((card) => {
       try { mountChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson))); }
       catch (e) { console.warn("历史聊天图表恢复失败", e); }
@@ -2835,6 +2853,30 @@
     el.chatScroll.querySelectorAll(".multidim-card[data-chart-json]").forEach((card) => {
       try { mountMultiChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson))); }
       catch (e) { console.warn("历史多维图表恢复失败", e); }
+    });
+  }
+
+  function hydrateRestoredInspector() {
+    const bind = (root, selector, event, handler) => {
+      if (!root) return;
+      root.querySelectorAll(selector).forEach((node) => {
+        if (node.dataset.clickBound) return;
+        node.dataset.clickBound = "1";
+        node.addEventListener(event, handler.bind(null, node));
+      });
+    };
+    bind(el.ontologyList, ".entity-card .entity-head", "click", (head) => {
+      head.closest(".entity-card").classList.toggle("open");
+    });
+    bind(el.toolList, ".tool-card .tool-head", "click", (head) => {
+      head.closest(".tool-card").classList.toggle("open");
+    });
+    bind(el.toolList, ".tool-card .chip", "click", (chip, ev) => {
+      ev.stopPropagation();
+      flashOntologyEntity(chip.dataset.code);
+    });
+    bind(el.llmList, ".llm-card .llm-head", "click", (head) => {
+      head.closest(".llm-card").classList.toggle("open");
     });
   }
 
