@@ -24,7 +24,7 @@ try:
 except Exception:  # pragma: no cover
     OpenAI = None  # type: ignore
 
-from .provider_qwen import FINISH_MAP, _block_text, _convert_tools
+from .provider_qwen import FINISH_MAP, _block_text, _convert_tools, _image_part
 
 
 BASE_URL = "https://api.deepseek.com/v1"
@@ -89,6 +89,7 @@ def _convert_messages(
 
         elif role == "user":
             text_parts: list[str] = []
+            content_parts: list[dict[str, Any]] = []
             for blk in content:
                 bt = blk.get("type")
                 if bt == "tool_result":
@@ -98,9 +99,20 @@ def _convert_messages(
                         "content": _block_text(blk.get("content", "")),
                     })
                 elif bt == "text":
-                    text_parts.append(blk.get("text", ""))
+                    text = blk.get("text", "")
+                    text_parts.append(text)
+                    content_parts.append({"type": "text", "text": text})
+                elif bt == "image":
+                    image = _image_part(blk)
+                    if image:
+                        content_parts.append(image)
             if text_parts:
-                out.append({"role": "user", "content": "".join(text_parts)})
+                if any(part.get("type") == "image_url" for part in content_parts):
+                    out.append({"role": "user", "content": content_parts})
+                else:
+                    out.append({"role": "user", "content": "".join(text_parts)})
+            elif content_parts:
+                out.append({"role": "user", "content": content_parts})
 
     return out
 

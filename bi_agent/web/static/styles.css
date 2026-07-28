@@ -326,6 +326,12 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 
 /* Messages */
 .msg { margin-bottom: 10px; }
+.msg-user.question-focus {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 3px;
+  border-radius: 2px;
+  background: rgba(34, 211, 238, 0.08);
+}
 .msg-header {
   display: flex;
   align-items: center;

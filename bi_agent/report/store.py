@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
@@ -39,6 +40,7 @@ ALLOWED_EXT = {".pdf", ".docx"}
 STORE_DIRNAME = "uploaded_reports"
 # Hard cap to keep accidental 500MB uploads from taking the server down.
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024   # 50 MB
+REPORT_ID_RE = re.compile(r"^[0-9a-f]{8,64}$", re.IGNORECASE)
 
 
 @dataclass
@@ -112,7 +114,10 @@ class ReportStore:
             "tables_markdown": parsed.tables_markdown,
             "warnings": parsed.warnings,
         }
-        self._meta_path(rid).write_text(
+        meta_path = self._meta_path(rid)
+        if meta_path is None:  # generated IDs always satisfy REPORT_ID_RE
+            raise RuntimeError("生成了无效的报表 ID")
+        meta_path.write_text(
             json.dumps(meta, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
@@ -129,13 +134,24 @@ class ReportStore:
             meta = self._load_meta(p)
             if meta is None:
                 continue
-            records.append(self._public_record(meta))
+            try:
+                records.append(self._public_record(meta))
+            except (KeyError, TypeError, ValueError):
+                continue
         records.sort(key=lambda r: r.uploaded_at, reverse=True)
         return records
 
     def get(self, rid: str) -> Optional[dict[str, Any]]:
         """Return the full meta dict (including text + tables) or None."""
-        return self._load_meta(self._meta_path(rid))
+        path = self._meta_path(rid)
+        meta = self._load_meta(path) if path is not None else None
+        if meta is None:
+            return None
+        try:
+            self._public_record(meta)
+        except (KeyError, TypeError, ValueError):
+            return None
+        return meta
 
     def get_prompt_block(self, rid: str, max_chars: int = 60_000) -> Optional[str]:
         """Convenience: assembled content ready to inject into a system prompt."""
@@ -154,13 +170,16 @@ class ReportStore:
     def delete(self, rid: str) -> bool:
         """Remove both the original file and the metadata. Idempotent."""
         meta_path = self._meta_path(rid)
+        if meta_path is None:
+            return False
         meta = self._load_meta(meta_path)
         if meta is None:
             return False
         ext = meta.get("ext", "")
-        file_path = self.root / f"{rid}{ext}"
+        file_path = self.root / f"{rid}{ext}" if ext in ALLOWED_EXT else None
         try:
-            file_path.unlink(missing_ok=True)
+            if file_path is not None:
+                file_path.unlink(missing_ok=True)
         except Exception:
             pass
         try:
@@ -173,23 +192,33 @@ class ReportStore:
     # Internals
     # ------------------------------------------------------------------
 
-    def _meta_path(self, rid: str) -> Path:
-        return self.root / f"{rid}.json"
+    def _meta_path(self, rid: str) -> Optional[Path]:
+        safe = str(rid or "").strip()
+        if not REPORT_ID_RE.fullmatch(safe):
+            return None
+        return self.root / f"{safe}.json"
 
     def _load_meta(self, path: Path) -> Optional[dict[str, Any]]:
         if not path.is_file():
             return None
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            meta = json.loads(path.read_text(encoding="utf-8"))
+            return meta if isinstance(meta, dict) else None
         except Exception:
             return None
 
     @staticmethod
     def _public_record(meta: dict[str, Any]) -> ReportRecord:
+        rid = str(meta.get("id") or "")
+        if not REPORT_ID_RE.fullmatch(rid):
+            raise ValueError("invalid report metadata id")
+        ext = str(meta.get("ext") or "").lower()
+        if ext not in ALLOWED_EXT:
+            raise ValueError("invalid report metadata extension")
         return ReportRecord(
-            id=meta["id"],
+            id=rid,
             filename=meta.get("filename", ""),
-            ext=meta.get("ext", ""),
+            ext=ext,
             size_bytes=int(meta.get("size_bytes", 0)),
             uploaded_at=meta.get("uploaded_at", ""),
             page_count=int(meta.get("page_count", 0)),

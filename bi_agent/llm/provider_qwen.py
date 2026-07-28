@@ -92,6 +92,28 @@ def _block_text(content: Any) -> str:
     return str(content)
 
 
+def _image_part(block: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Convert an Anthropic image block to an OpenAI-compatible image part."""
+    source = block.get("source") if isinstance(block, dict) else None
+    if not isinstance(source, dict):
+        return None
+    source_type = source.get("type")
+    if source_type == "base64" and source.get("data"):
+        media_type = source.get("media_type") or "image/png"
+        return {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{media_type};base64,{source['data']}",
+            },
+        }
+    if source_type == "url" and source.get("url"):
+        return {
+            "type": "image_url",
+            "image_url": {"url": str(source["url"])},
+        }
+    return None
+
+
 def _convert_messages(
     messages: list[dict[str, Any]],
     system_prompt: str,
@@ -132,9 +154,12 @@ def _convert_messages(
             out.append(assistant_msg)
 
         elif role == "user":
-            # tool_results → one OpenAI "tool" message each
-            # text blocks → merged into a single user message
+            # tool_results → one OpenAI "tool" message each. Text and image
+            # blocks stay in one user message so vision-capable Qwen models
+            # actually receive the attached drawing/image instead of silently
+            # losing it during Anthropic → OpenAI conversion.
             text_parts: list[str] = []
+            content_parts: list[dict[str, Any]] = []
             for blk in content:
                 bt = blk.get("type")
                 if bt == "tool_result":
@@ -144,9 +169,20 @@ def _convert_messages(
                         "content": _block_text(blk.get("content", "")),
                     })
                 elif bt == "text":
-                    text_parts.append(blk.get("text", ""))
+                    text = blk.get("text", "")
+                    text_parts.append(text)
+                    content_parts.append({"type": "text", "text": text})
+                elif bt == "image":
+                    image = _image_part(blk)
+                    if image:
+                        content_parts.append(image)
             if text_parts:
-                out.append({"role": "user", "content": "".join(text_parts)})
+                if any(part.get("type") == "image_url" for part in content_parts):
+                    out.append({"role": "user", "content": content_parts})
+                else:
+                    out.append({"role": "user", "content": "".join(text_parts)})
+            elif content_parts:
+                out.append({"role": "user", "content": content_parts})
 
     return out
 

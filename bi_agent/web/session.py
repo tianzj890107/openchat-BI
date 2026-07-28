@@ -277,6 +277,12 @@ class WebSession:
                 yield from self._stream_one_response(iteration)
             )
 
+            # A provider error already emitted an SSE error event. Do not
+            # append a partial assistant message or emit `done`, otherwise the
+            # browser saves an incomplete turn as if it completed normally.
+            if stop_reason == "error":
+                return
+
             yield {
                 "type": "llm_response",
                 "iteration": iteration,
@@ -537,7 +543,7 @@ class WebSession:
                     }
             elif etype == "error":
                 yield {"type": "error", "message": event["error"]}
-                return stop_reason, text_buffer, tool_uses, usage, thinking_blocks
+                return "error", text_buffer, tool_uses, usage, thinking_blocks
 
         return stop_reason, text_buffer, tool_uses, usage, thinking_blocks
 
