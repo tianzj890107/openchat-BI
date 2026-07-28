@@ -1916,12 +1916,12 @@
       applyDashboardState(false);
     }
     if (msg) {
-      msg.scrollIntoView({ behavior: "smooth", block: "center" });
+      msg.scrollIntoView({ behavior: "smooth", block: "start" });
       msg.classList.add("question-focus");
       setTimeout(() => msg.classList.remove("question-focus"), 900);
     }
     if (dashboardCard) {
-      dashboardCard.scrollIntoView({ behavior: "smooth", block: "center" });
+      dashboardCard.scrollIntoView({ behavior: "smooth", block: "start" });
       dashboardCard.classList.add("question-focus");
       setTimeout(() => dashboardCard.classList.remove("question-focus"), 900);
     }
