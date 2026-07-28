@@ -2594,6 +2594,18 @@
     return card;
   }
 
+  function dashboardQuestionCard(text, turnTag) {
+    const card = el_h("div", "dash-card dash-question");
+    card.dataset.turn = turnTag;
+    card.innerHTML = `
+      <div class="dash-head">
+        <span class="dash-tag question">用户</span>
+        <span class="dash-turn">Turn ${turnTag}</span>
+      </div>
+      <div class="dash-body">${esc(text || "")}</div>`;
+    return card;
+  }
+
   function dashboardRootCauseCard(text, turnTag) {
     const card = el_h("div", "dash-card dash-rootcause");
     card.dataset.turn = turnTag;
@@ -4005,6 +4017,10 @@
     // Seed a fresh SOP task checklist for this turn (BI data mode only).
     if (state.mode === "data") initSopTodos();
     addUserMessage(text);
+    // Keep the right-hand dashboard readable as a complete mini-report:
+    // every turn starts with the user's question, followed by its conclusion,
+    // tables and charts as they arrive.
+    appendDashboardCard(dashboardQuestionCard(text, _bk.currentTurnTag));
 
     // In quadrant-assistant mode, prepend a hidden system-style instruction so
     // the LLM knows which quadrant it is editing and what command vocabulary
