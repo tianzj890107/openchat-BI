@@ -35,6 +35,9 @@
       // Pinned task list (TodoWrite). Latest full snapshot the agent wrote;
       // re-rendered into #chat-todo on every update and on mode switch.
       todos: [],
+      // Every user question in this conversation, used by the pinned
+      // question index and by the dashboard's question cards.
+      questions: [],
       // Quadrant-assistant: ui-command queue. Commands extracted from each
       // llm_response stage here instead of firing immediately at the cockpit.
       // The user clicks an "执行" button rendered at end-of-turn to flush
@@ -883,10 +886,19 @@
     el.toolList.innerHTML = rec.tools_html || "";
     el.llmList.innerHTML = rec.llm_html || "";
     hydrateRestoredChat();
+    indexQuestionsFromChat();
+    ensureRestoredDashboardQuestions();
     hydrateRestoredInspector();
     hydrateRestoredDashboard();
     b.hasContent = !!(rec.chat_html && rec.chat_html.trim());
     b.dashboardHasContent = !!(rec.dashboard_html && rec.dashboard_html.trim());
+    // TodoWrite progress is intentionally not part of the persisted
+    // conversation snapshot; never leave the previous conversation's tasks
+    // visible when opening another history record.
+    b.todos = [];
+    renderTodoPanel();
+    b.turnCount = b.questions.length;
+    updateTurnCounter();
     el.countOntology.textContent = String(el.ontologyList.querySelectorAll(".entity-card").length);
     el.countTools.textContent = String(el.toolList.querySelectorAll(".tool-card").length);
     el.countLlm.textContent = String(el.llmList.querySelectorAll(".llm-card").length);
@@ -1866,13 +1878,38 @@
     B().turnCount += 1;
     updateTurnCounter();
     const msg = el_h("div", "msg msg-user");
+    msg.dataset.turn = String(B().turnCount);
     msg.innerHTML = `
       <div class="msg-header">
         <span class="msg-role user">用户</span>
       </div>
       <div class="msg-body">${esc(text)}</div>`;
     el.chatScroll.appendChild(msg);
+    B().questions.push({ turn: B().turnCount, text: String(text || "") });
+    renderTodoPanel();
     scrollChatBottomForce();  // user just sent — always reveal their input
+  }
+
+  function indexQuestionsFromChat() {
+    const bucket = B();
+    const messages = Array.from(el.chatScroll.querySelectorAll(".msg-user"));
+    bucket.questions = messages.map((msg, i) => {
+      const turn = i + 1;
+      msg.dataset.turn = String(turn);
+      const body = msg.querySelector(".msg-body");
+      return { turn, text: body ? body.textContent.trim() : "" };
+    }).filter((q) => q.text);
+    bucket.turnCount = bucket.questions.length;
+  }
+
+  function scrollToQuestion(turn) {
+    const selector = `.msg-user[data-turn="${CSS.escape(String(turn))}"]`;
+    const msg = el.chatScroll && el.chatScroll.querySelector(selector);
+    if (!msg) return;
+    showView("workspace");
+    msg.scrollIntoView({ behavior: "smooth", block: "center" });
+    msg.classList.add("question-focus");
+    setTimeout(() => msg.classList.remove("question-focus"), 900);
   }
 
   function assistantRoleLabel() {
@@ -2597,6 +2634,10 @@
   function dashboardQuestionCard(text, turnTag) {
     const card = el_h("div", "dash-card dash-question");
     card.dataset.turn = turnTag;
+    card.dataset.questionTurn = turnTag;
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.title = "点击定位到对话中的这条提问";
     card.innerHTML = `
       <div class="dash-head">
         <span class="dash-tag question">用户</span>
@@ -2604,6 +2645,36 @@
       </div>
       <div class="dash-body">${esc(text || "")}</div>`;
     return card;
+  }
+
+  function ensureRestoredDashboardQuestions() {
+    if (!el.dashboardList) return;
+    for (const q of (B().questions || [])) {
+      const selector = `.dash-question[data-question-turn="${CSS.escape(String(q.turn))}"]`;
+      if (el.dashboardList.querySelector(selector)) continue;
+      const card = dashboardQuestionCard(q.text, q.turn);
+      const firstTurnCard = el.dashboardList.querySelector(
+        `.dash-card[data-turn="${CSS.escape(String(q.turn))}"]`
+      );
+      if (firstTurnCard) el.dashboardList.insertBefore(card, firstTurnCard);
+      else el.dashboardList.appendChild(card);
+    }
+  }
+
+  function bindDashboardQuestionLinks() {
+    if (!el.dashboardList || el.dashboardList.dataset.questionLinksBound) return;
+    el.dashboardList.dataset.questionLinksBound = "1";
+    el.dashboardList.addEventListener("click", (ev) => {
+      const card = ev.target.closest(".dash-question[data-question-turn]");
+      if (card) scrollToQuestion(card.dataset.questionTurn);
+    });
+    el.dashboardList.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      const card = ev.target.closest(".dash-question[data-question-turn]");
+      if (!card) return;
+      ev.preventDefault();
+      scrollToQuestion(card.dataset.questionTurn);
+    });
   }
 
   function dashboardRootCauseCard(text, turnTag) {
@@ -3051,22 +3122,45 @@
   // Render the active bucket's task list into the shared #chat-todo element.
   function renderTodoPanel() {
     if (!el.chatTodo) return;
+    const questions = (B().questions || []).filter((q) => q && q.text);
     const todos = (B().todos) || [];
-    if (!todos.length) { el.chatTodo.hidden = true; return; }
+    if (!todos.length && !questions.length) { el.chatTodo.hidden = true; return; }
     el.chatTodo.hidden = false;
     const done = todos.filter(t => t && t.status === "completed").length;
-    if (el.chatTodoCount) el.chatTodoCount.textContent = `${done}/${todos.length}`;
-    el.chatTodoList.innerHTML = todos.map((t) => {
+    if (el.chatTodoCount) {
+      const progress = todos.length ? `${done}/${todos.length}` : "";
+      el.chatTodoCount.textContent = progress + (questions.length ? `${progress ? " · " : ""}${questions.length} 个问题` : "");
+    }
+    const questionSection = questions.length ?
+      `<li class="chat-todo-section">用户提问</li>` + questions.map((q, i) =>
+        `<li class="chat-question-item" data-question-turn="${esc(q.turn)}" tabindex="0" role="button" title="点击定位到这条提问">` +
+        `<span class="chat-question-turn">${i + 1}</span>` +
+        `<span class="chat-question-text">${esc(q.text)}</span></li>`).join("") : "";
+    const todoSection = todos.length ? `<li class="chat-todo-section">分析进度</li>` + todos.map((t) => {
       const status = (t && t.status) || "pending";
       const box = TODO_BOX[status] || "○";
       return `<li class="chat-todo-item is-${esc(status)}">` +
              `<span class="chat-todo-box">${box}</span>` +
              `<span class="chat-todo-text">${esc((t && t.content) || "")}</span></li>`;
-    }).join("");
+    }).join("") : "";
+    el.chatTodoList.innerHTML = questionSection + todoSection;
   }
   if (el.chatTodoHead) {
     el.chatTodoHead.addEventListener("click", () => {
       el.chatTodo.classList.toggle("collapsed");
+    });
+  }
+  if (el.chatTodoList) {
+    el.chatTodoList.addEventListener("click", (ev) => {
+      const item = ev.target.closest("[data-question-turn]");
+      if (item) scrollToQuestion(item.dataset.questionTurn);
+    });
+    el.chatTodoList.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      const item = ev.target.closest("[data-question-turn]");
+      if (!item) return;
+      ev.preventDefault();
+      scrollToQuestion(item.dataset.questionTurn);
     });
   }
   // Safety net: a turn that delivered a 📌 结论 is a finished deliverable, so
@@ -4442,6 +4536,7 @@
     bucket.actionsSeen = new Set();
     bucket.currentTurnTag = 0;
     bucket.turnQuestions = {};
+    bucket.questions = [];
     bucket.pendingCommands = [];
     bucket.todos = [];
     bucket.sopStep = 0;
@@ -5204,6 +5299,7 @@
 
   applyThemeFromUrl();
   applyQuadrantFromUrl();
+  bindDashboardQuestionLinks();
 
   // ------------------------------------------------------------------
   // Boot
