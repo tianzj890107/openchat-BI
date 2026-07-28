@@ -12,7 +12,7 @@ from typing import Any, List, Optional
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from open_claude.agent_def import AgentDef, get_agent_def_registry, load_agent_defs
 
@@ -404,7 +404,7 @@ class ReportComposeBlock(BaseModel):
 
 
 class ReportComposeRequest(BaseModel):
-    blocks: List[ReportComposeBlock] = []
+    blocks: List[ReportComposeBlock] = Field(default_factory=list)
 
 
 def _project_root() -> Path:
@@ -412,6 +412,15 @@ def _project_root() -> Path:
     if STATE.cwd:
         return Path(STATE.cwd)
     return Path(__file__).resolve().parents[2]
+
+
+def _cwd_file(name: str, *, label: str) -> Path:
+    """Resolve a user-selected working-directory file without path escape."""
+    root = Path(STATE.cwd).resolve()
+    candidate = (root / str(name or "")).resolve()
+    if candidate == root or root not in candidate.parents:
+        raise HTTPException(400, f"{label}路径无效")
+    return candidate
 
 
 def _no_cache_file(path: Path) -> FileResponse:
@@ -438,6 +447,16 @@ def index() -> FileResponse:
     if fallback.exists():
         return _no_cache_file(fallback)
     return _no_cache_file(STATIC_DIR / "index.html")
+
+
+@app.get("/healthz")
+def healthz() -> JSONResponse:
+    """Dependency-free liveness/readiness probe; never invokes an LLM."""
+    ready = bool(STATE.agent_def and STATE.ontology_store and STATE.conversation_store)
+    return JSONResponse(
+        {"ok": ready, "configured": ready, "llm_call": False},
+        status_code=200 if ready else 503,
+    )
 
 
 @app.get("/ceo_dashboard_standalone.html")
@@ -581,19 +600,31 @@ def get_sources_endpoint() -> JSONResponse:
     remote_repositories: list[dict[str, Any]] = []
     if STATE.remote_ontology is not None:
         try:
-            listing = STATE.remote_ontology.list_repositories(page=1, size=100)
-            items = listing.get("items") if isinstance(listing, dict) else []
-            if isinstance(items, list):
+            page = 1
+            seen_ids: set[str] = set()
+            while page <= 100:
+                listing = STATE.remote_ontology.list_repositories(page=page, size=100)
+                items = listing.get("items") if isinstance(listing, dict) else []
+                if not isinstance(items, list) or not items:
+                    break
                 for item in items:
                     if not isinstance(item, dict) or item.get("id") is None:
                         continue
+                    repository_id = str(item["id"])
+                    if repository_id in seen_ids:
+                        continue
+                    seen_ids.add(repository_id)
                     remote_repositories.append({
-                        "id": str(item["id"]),
-                        "name": str(item.get("name") or f"本体库 {item['id']}"),
+                        "id": repository_id,
+                        "name": str(item.get("name") or f"本体库 {repository_id}"),
                         "description": str(item.get("description") or ""),
                         "dorisDatabase": str(item.get("dorisDatabase") or ""),
-                        "value": f"__metaerp_repository__:{item['id']}",
+                        "value": f"__metaerp_repository__:{repository_id}",
                     })
+                total = int(listing.get("total") or 0) if isinstance(listing, dict) else 0
+                if (total and len(remote_repositories) >= total) or (not total and len(items) < 100):
+                    break
+                page += 1
         except OntologyApiError:
             # A temporary manager API failure must not prevent the settings UI
             # from showing the already configured repository.
@@ -686,7 +717,7 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         STATE.ontology_backend = "production"
         changed.append("ontology")
     elif req.ontology:
-        op = cwd / req.ontology
+        op = _cwd_file(req.ontology, label="本体文件")
         if not op.is_file():
             raise HTTPException(400, f"本体文件不存在: {req.ontology}")
         try:
@@ -718,7 +749,7 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         STATE.use_doris = True
         changed.append("database")
     elif req.database:
-        dp = cwd / req.database
+        dp = _cwd_file(req.database, label="数据库文件")
         if not dp.is_file():
             raise HTTPException(400, f"数据库文件不存在: {req.database}")
         STATE.db_path = str(dp)
@@ -736,7 +767,7 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
             changed.append("retrieval_mode")
 
     if req.graph:
-        gp = cwd / req.graph
+        gp = _cwd_file(req.graph, label="图库文件")
         if not gp.is_file():
             raise HTTPException(400, f"图库文件不存在: {req.graph}")
         if str(gp) != STATE.graph_path:
@@ -783,7 +814,7 @@ def build_graph_endpoint(req: GraphBuildRequest) -> JSONResponse:
     as `<stem>.graphml` in the working dir (so it appears in the 图库源 list).
     Nodes = ontology elements; edges = 实体关系 (ER) + 本体元模型关系 (meta)."""
     cwd = Path(STATE.cwd)
-    op = cwd / req.ontology
+    op = _cwd_file(req.ontology, label="本体文件")
     if not op.is_file():
         raise HTTPException(400, f"本体文件不存在: {req.ontology}")
     out = cwd / (op.stem + ".graphml")

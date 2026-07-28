@@ -12,6 +12,17 @@
 
 ## 2026-07-28
 
+### 3. 全流程稳定性与安全性修正
+
+- 修复模型流式请求出错后仍被当作正常完成、保存残缺会话的问题；错误回合不再写入完成态历史。
+- Qwen/DeepSeek 的 OpenAI 兼容转换现在保留图片消息，视觉模型可以收到原始图片内容。
+- 修正 Qwen 3.5 Plus 模型别名指向错误的问题；额度或限流时仍按同类模型自动切换。
+- 历史会话 ID、报表 ID、数据源/图库/本体文件路径增加校验，避免非法输入访问工作目录外文件。
+- 本体库列表按接口文档的 `total` 分页读取，不再只显示第一页；损坏的历史/报表元数据会被安全跳过。
+- 增加不触发大模型的 `/healthz` 服务探针，并修正前端 CSS 缓存版本，保证新交互样式及时生效。
+- 主要文件：`bi_agent/llm/provider_qwen.py`、`bi_agent/llm/provider_deepseek.py`、`bi_agent/llm/registry.py`、`bi_agent/web/session.py`、`bi_agent/web/app.py`、`bi_agent/web/conversations.py`、`bi_agent/report/store.py`、`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`、`tests/test_regressions.py`。
+- 类型：模型、后端接口与前端静态资源变更，需要重启后端；本次未调用 Qwen API。
+
 ### 2. 用户提问索引与定位
 
 - 任务清单现在独立展示当前会话的全部用户提问，不再需要从长对话内容中寻找问题。
