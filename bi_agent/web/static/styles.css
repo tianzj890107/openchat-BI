@@ -326,7 +326,8 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 
 /* Messages */
 .msg { margin-bottom: 10px; }
-.msg-user.question-focus {
+.msg-user.question-focus,
+.dash-question.question-focus {
   outline: 2px solid var(--accent-cyan);
   outline-offset: 3px;
   border-radius: 2px;

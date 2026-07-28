@@ -1903,13 +1903,28 @@
   }
 
   function scrollToQuestion(turn) {
-    const selector = `.msg-user[data-turn="${CSS.escape(String(turn))}"]`;
-    const msg = el.chatScroll && el.chatScroll.querySelector(selector);
-    if (!msg) return;
+    const turnText = String(turn);
+    const chatSelector = `.msg-user[data-turn="${CSS.escape(turnText)}"]`;
+    const dashboardSelector = `.dash-question[data-question-turn="${CSS.escape(turnText)}"]`;
+    const msg = el.chatScroll && el.chatScroll.querySelector(chatSelector);
+    const dashboardCard = el.dashboardList && el.dashboardList.querySelector(dashboardSelector);
+    if (!msg && !dashboardCard) return;
     showView("workspace");
-    msg.scrollIntoView({ behavior: "smooth", block: "center" });
-    msg.classList.add("question-focus");
-    setTimeout(() => msg.classList.remove("question-focus"), 900);
+    // Task-list and dashboard links are cross-pane navigation: keep the chat
+    // and resident dashboard at the same user-turn anchor.
+    if (dashboardCard && document.body.dataset.dashboard === "collapsed") {
+      applyDashboardState(false);
+    }
+    if (msg) {
+      msg.scrollIntoView({ behavior: "smooth", block: "center" });
+      msg.classList.add("question-focus");
+      setTimeout(() => msg.classList.remove("question-focus"), 900);
+    }
+    if (dashboardCard) {
+      dashboardCard.scrollIntoView({ behavior: "smooth", block: "center" });
+      dashboardCard.classList.add("question-focus");
+      setTimeout(() => dashboardCard.classList.remove("question-focus"), 900);
+    }
   }
 
   function assistantRoleLabel() {
