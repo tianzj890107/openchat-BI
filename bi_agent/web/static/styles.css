@@ -346,9 +346,19 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 .msg-assistant {
   align-self: flex-start;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.msg-assistant .msg-header {
+  margin: 0 0 6px 4px;
+}
+.msg-assistant .msg-body {
   padding: 11px 14px;
-  background: var(--bg-2);
-  border: 1px solid var(--border-1);
+  background: #2D2D2D;
+  color: #FFFFFF;
+  border: 1px solid #424242;
   border-radius: 14px;
   border-bottom-left-radius: 4px;
 }
