@@ -442,9 +442,9 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 .msg-assistant .msg-body {
   padding: 11px 14px;
-  background: #2D2D2D;
-  color: #FFFFFF;
-  border: 1px solid #424242;
+  background: #F7F7F8;
+  color: #1F2023;
+  border: 1px solid #E7E7EA;
   border-radius: 14px;
   border-bottom-left-radius: 4px;
 }
@@ -2736,8 +2736,9 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   width: min(100%, 760px);
   margin: 10px 0;
   padding: 11px 14px;
-  background: #2D2D2D;
-  border: 1px solid #424242;
+  background: #F7F7F8;
+  color: #1F2023;
+  border: 1px solid #E7E7EA;
   border-radius: 14px;
   border-bottom-left-radius: 4px;
   overflow: visible;
@@ -2748,6 +2749,52 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 .chat-scroll .table-head,
 .chat-scroll .multidim-head {
   padding: 0 0 8px;
+}
+.chat-scroll .msg-role.assistant { color: #6B7280; }
+.chat-scroll .chart-title,
+.chat-scroll .table-title,
+.chat-scroll .multidim-title,
+.chat-scroll .dash-title,
+.chat-scroll .dash-body,
+.chat-scroll .table-subtitle,
+.chat-scroll .table-shape,
+.chat-scroll .table-source,
+.chat-scroll .multidim-subtitle,
+.chat-scroll .multidim-source,
+.chat-scroll .multidim-dim-summary {
+  color: #1F2023;
+}
+.chat-scroll .chart-head,
+.chat-scroll .table-head,
+.chat-scroll .multidim-head,
+.chat-scroll .dash-head { color: #1F2023; }
+.chat-scroll .chart-canvas,
+.chat-scroll .multidim-canvas,
+.chat-scroll .dash-chart-canvas {
+  background: #2D2D2D;
+  border-radius: 10px;
+}
+.chat-scroll .table-scroll {
+  background: #FFFFFF;
+  border-color: #E7E7EA;
+}
+.chat-scroll .table-summary,
+.chat-scroll .table-footnote {
+  background: transparent;
+  color: #6B7280;
+  border-color: #E7E7EA;
+}
+.chat-scroll .dash-item-text,
+.chat-scroll .dash-seg-head,
+.chat-scroll .dash-body.has-items .dash-pre { color: #1F2023; }
+.chat-scroll table.data-grid thead th {
+  background: #ECECF1;
+  color: #1F2023;
+  border-color: #E7E7EA;
+}
+.chat-scroll table.data-grid tbody td {
+  color: #1F2023;
+  border-color: #E7E7EA;
 }
 .chat-scroll .dash-export {
   display: flex;
