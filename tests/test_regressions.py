@@ -37,7 +37,7 @@ class OfflineRegressionTests(unittest.TestCase):
             "series": [{"name": "金额", "data": [1]}],
             "source_note": "M001",
         })
-        self.assertEqual(option["color"][0], "#1A73E8")
+        self.assertEqual(option["color"][:4], ["#0B7FF3", "#E8B339", "#28C79D", "#F05A5A"])
         self.assertIn("PingFang SC", option["textStyle"]["fontFamily"])
         self.assertEqual(option["tooltip"]["backgroundColor"], "#FFFFFF")
         self.assertEqual(option["xAxis"]["axisLine"]["lineStyle"]["color"], "#D9D9E3")

@@ -2301,7 +2301,8 @@
   // with the CPQ-style light result surface. The conversation layout itself
   // is intentionally unchanged; this only removes black chart canvases.
   const CHART_THEME = Object.freeze({
-    palette: ["#1A73E8", "#FF6D00", "#00C853", "#607D8B", "#8D6E63", "#5C6BC0", "#9E9E9E"],
+    // Keep generated and historical charts aligned with CEO 驾驶舱 semantic colors.
+    palette: ["#0B7FF3", "#E8B339", "#28C79D", "#F05A5A", "#64B5FF", "#FF9F43", "#8B5CF6"],
     fontFamily: '"PingFang SC", "SF Pro Display", -apple-system, sans-serif',
     text: "#374151",
     primaryText: "#1F2023",
