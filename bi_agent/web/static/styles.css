@@ -3391,6 +3391,35 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 }
 .dashboard-scroll table.data-grid tbody td { color: #1F2023; border-color: #E7E7EA; }
 
+/* Chart/table type badges use the same rounded treatment. Every chart card
+ * keeps a visible outer frame; the table's data grid remains a nested frame.
+ */
+.chat-scroll .chart-card,
+.chat-scroll .table-card,
+.chat-scroll .multidim-card {
+  border: 1px solid #E7E7EA;
+  border-radius: 14px;
+  background: #F7F7F8;
+  box-shadow: 0 1px 3px rgba(16, 28, 40, .06);
+}
+.chat-scroll .chart-head .chart-type,
+.chat-scroll .table-tag,
+.chat-scroll .multidim-tag,
+.dashboard-scroll .dash-tag.chart,
+.dashboard-scroll .dash-tag.table,
+.dashboard-scroll .dash-tag.multidim {
+  padding: 3px 9px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  line-height: 1.2;
+}
+.chat-scroll .chart-head .chart-type {
+  color: #0B7FF3;
+  letter-spacing: .8px;
+}
+.chat-scroll .table-tag { color: #7C83FD; }
+.chat-scroll .multidim-tag { color: #7C83FD; }
+
 /* The generic action-card reset above is intentionally frameless, but the
  * individual export controls remain real actions. Keep their CEO colors,
  * black labels and rounded hit areas even when nested in that card. */
