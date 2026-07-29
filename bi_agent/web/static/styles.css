@@ -394,34 +394,55 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 .msg-body .entity-ref:hover { background: var(--bg-3); border-color: var(--accent-cyan); color: var(--accent-cyan); }
 
-/* Tool step inline in chat */
+/* Tool step inline in chat — a lightweight ThoughtChain equivalent for the
+ * vanilla workbench (same expandable timeline pattern without adding a React
+ * runtime dependency). */
 .step {
-  margin: 4px 0;
-  border: 1px solid var(--border-1);
-  background: var(--bg-2);
+  position: relative;
+  margin: 0 0 4px 10px;
+  padding: 0 0 6px 18px;
+  border: 0;
+  border-left: 2px solid var(--border-1);
+  background: transparent;
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
-  border-radius: 2px;
-  overflow: hidden;
+  overflow: visible;
 }
+.step::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 11px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--accent-blue);
+  border-radius: 50%;
+  background: var(--bg-0);
+  box-sizing: border-box;
+  z-index: 1;
+}
+.step.open::before { background: var(--accent-blue); box-shadow: 0 0 0 3px rgba(26,115,232,.14); }
 .step:first-child { margin-top: 0; }
 .msg-body + .step { margin-top: 2px; }
 .step-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px;
-  background: var(--bg-1);
+  min-height: 32px;
+  padding: 6px 10px 6px 0;
+  background: transparent;
   cursor: pointer;
   user-select: none;
-  border-bottom: 1px solid var(--border-1);
+  border: 0;
+  border-radius: 6px;
 }
-.step-header:hover { background: var(--bg-3); }
-.step-icon { color: var(--accent-amber); width: 12px; display: inline-block; }
-.step-name { color: var(--accent-cyan); font-weight: 600; }
+.step-header:hover { background: rgba(255,255,255,.04); }
+.step-icon { color: var(--accent-blue); width: 12px; display: inline-block; font-size: 12px; }
+.step.open .step-icon { transform: rotate(90deg); }
+.step-name { color: var(--fg-1); font-weight: 600; }
 .step-summary { color: var(--fg-2); flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .step-duration { color: var(--fg-3); font-size: var(--fs-xs); }
-.step-body { padding: 10px; display: none; }
+.step-body { padding: 2px 0 8px; display: none; }
 .step.open .step-body { display: block; }
 .step-sub { color: var(--fg-3); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
 .step pre {
@@ -434,7 +455,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   color: var(--fg-1);
   font-size: 12px;
   margin-bottom: 8px;
-  border-radius: 2px;
+  border-radius: 8px;
   max-height: 340px;
   overflow-y: auto;
 }
@@ -2183,13 +2204,39 @@ table.data-grid [data-align="left"]   { text-align: left; }
   width: min(720px, 100%);
 }
 .dashboard-scroll > .dash-chart,
-.dashboard-scroll > .dash-table,
 .dashboard-scroll > .dash-multidim {
   border: 0;
   border-left: 0;
   border-radius: 0;
   background: transparent;
   overflow: visible;
+}
+.dashboard-scroll > .dash-question,
+.dashboard-scroll > .dash-conclusion {
+  border: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.dashboard-scroll > .dash-question > .dash-head,
+.dashboard-scroll > .dash-conclusion > .dash-head {
+  padding: 4px 0 6px;
+  background: transparent;
+  border-bottom: 0;
+}
+.dashboard-scroll > .dash-question > .dash-body,
+.dashboard-scroll > .dash-conclusion > .dash-body {
+  padding: 4px 0 10px;
+}
+.dashboard-scroll > .dash-table {
+  /* The table is a result component in its own right: retain its readable
+     outer frame while the surrounding turn/module remains frameless. */
+  border: 1px solid var(--border-1);
+  border-left: 1px solid var(--border-1);
+  border-radius: 12px;
+  background: var(--bg-1);
+  overflow: hidden;
 }
 .dashboard-scroll > .dash-chart > .dash-head,
 .dashboard-scroll > .dash-table > .dash-head,
