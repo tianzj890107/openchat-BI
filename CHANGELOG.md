@@ -38,7 +38,8 @@
 ### 18. 用户消息去除重复角色标签
 
 - 对话气泡和右侧看板用户问题不再显示“用户”或 Turn 标签，只保留用户实际输入内容；左右对齐和气泡颜色继续用于区分发言者。
-- 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`。
+- 历史会话恢复时也通过样式隐藏旧版本已经保存的“用户”角色标题，避免重新打开历史后标签再次出现。
+- 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
 
 ### 14. 用户气泡与图表 HTML 全面去黑

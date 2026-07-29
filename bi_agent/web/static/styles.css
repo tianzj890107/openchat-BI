@@ -506,6 +506,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   word-wrap: break-word;
 }
 .msg-user .msg-body { color: #FFFFFF; }
+.msg-user .msg-header { display: none; }
 .msg-body:empty { display: none; }
 .msg-body code {
   font-family: var(--font-mono);
