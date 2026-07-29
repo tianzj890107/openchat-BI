@@ -2292,6 +2292,89 @@
     btn.addEventListener("click", () => triggerDeepInsight(chart));
   }
 
+  // Keep historical and newly generated ECharts options visually consistent
+  // with the AI 工艺 design specification.  The conversation layout itself
+  // is intentionally unchanged; this only normalizes chart presentation.
+  const CHART_THEME = Object.freeze({
+    palette: ["#1A73E8", "#FF6D00", "#00C853", "#607D8B", "#8D6E63", "#5C6BC0", "#9E9E9E"],
+    fontFamily: '"PingFang SC", "SF Pro Display", -apple-system, sans-serif',
+    text: "#E0E0E0",
+    primaryText: "#FFFFFF",
+    secondaryText: "#9E9E9E",
+    mutedText: "#757575",
+    card: "#1F1F1F",
+    border: "#424242",
+    axis: "#555555",
+    page: "#121212",
+  });
+
+  function themedChartOption(option) {
+    if (!option || typeof option !== "object") return option;
+    let themed;
+    try {
+      themed = JSON.parse(JSON.stringify(option));
+    } catch (_) {
+      return option;
+    }
+    themed.color = CHART_THEME.palette.slice();
+    themed.backgroundColor = "transparent";
+    themed.textStyle = { ...(themed.textStyle || {}), color: CHART_THEME.text, fontFamily: CHART_THEME.fontFamily };
+
+    const titles = Array.isArray(themed.title) ? themed.title : (themed.title ? [themed.title] : []);
+    titles.forEach((title) => {
+      if (!title || typeof title !== "object") return;
+      title.textStyle = { ...(title.textStyle || {}), color: CHART_THEME.primaryText, fontFamily: CHART_THEME.fontFamily };
+      title.subtextStyle = { ...(title.subtextStyle || {}), color: CHART_THEME.secondaryText, fontFamily: CHART_THEME.fontFamily };
+    });
+    if (Array.isArray(themed.title)) themed.title = titles;
+    else if (titles[0]) themed.title = titles[0];
+
+    if (themed.tooltip) {
+      themed.tooltip = {
+        ...themed.tooltip,
+        backgroundColor: CHART_THEME.card,
+        borderColor: CHART_THEME.border,
+        textStyle: { ...(themed.tooltip.textStyle || {}), color: CHART_THEME.primaryText, fontFamily: CHART_THEME.fontFamily },
+      };
+    }
+    if (themed.legend) {
+      const legends = Array.isArray(themed.legend) ? themed.legend : [themed.legend];
+      legends.forEach((legend) => {
+        legend.textStyle = { ...(legend.textStyle || {}), color: CHART_THEME.text, fontFamily: CHART_THEME.fontFamily };
+      });
+    }
+
+    const axes = ["xAxis", "yAxis"];
+    axes.forEach((axisName) => {
+      if (!themed[axisName]) return;
+      const axisList = Array.isArray(themed[axisName]) ? themed[axisName] : [themed[axisName]];
+      axisList.forEach((axis) => {
+        if (!axis || typeof axis !== "object") return;
+        axis.axisLabel = { ...(axis.axisLabel || {}), color: CHART_THEME.text, fontFamily: CHART_THEME.fontFamily };
+        axis.nameTextStyle = { ...(axis.nameTextStyle || {}), color: CHART_THEME.secondaryText, fontFamily: CHART_THEME.fontFamily };
+        axis.axisLine = { ...(axis.axisLine || {}), lineStyle: { ...(axis.axisLine && axis.axisLine.lineStyle || {}), color: CHART_THEME.axis } };
+        if (axis.splitLine) axis.splitLine = { ...axis.splitLine, lineStyle: { ...(axis.splitLine.lineStyle || {}), color: CHART_THEME.border } };
+      });
+      if (Array.isArray(themed[axisName])) themed[axisName] = axisList;
+      else themed[axisName] = axisList[0];
+    });
+
+    if (Array.isArray(themed.series)) {
+      themed.series.forEach((series) => {
+        if (series && series.type === "pie") {
+          series.label = { ...(series.label || {}), color: CHART_THEME.text, fontFamily: CHART_THEME.fontFamily };
+          series.itemStyle = { ...(series.itemStyle || {}), borderColor: CHART_THEME.page };
+        }
+      });
+    }
+    if (Array.isArray(themed.graphic)) {
+      themed.graphic.forEach((graphic) => {
+        if (graphic && graphic.style) graphic.style = { ...graphic.style, fill: CHART_THEME.mutedText, fontFamily: CHART_THEME.fontFamily };
+      });
+    }
+    return themed;
+  }
+
   function markInsightTriggered(sourceNote) {
     if (!sourceNote) return;
     const sel = `.chart-insight-btn[data-source="${cssAttr(sourceNote)}"]`;
@@ -2328,7 +2411,7 @@
     }
     try {
       const inst = echarts.init(canvas);
-      inst.setOption(chart.option, true);
+      inst.setOption(themedChartOption(chart.option), true);
       requestAnimationFrame(() => inst.resize());
       window.addEventListener("resize", () => inst.resize());
       wireInsightButton(card, chart);
@@ -2769,7 +2852,7 @@
     if (!canvas || !chart || !chart.option || typeof echarts === "undefined") return;
     try {
       const inst = echarts.init(canvas);
-      inst.setOption(chart.option, true);
+      inst.setOption(themedChartOption(chart.option), true);
       requestAnimationFrame(() => inst.resize());
       const ro = new ResizeObserver(() => inst.resize());
       ro.observe(canvas);
@@ -2855,7 +2938,7 @@
     function show(key) {
       const d = dimMap.get(key) || dims[0];
       try {
-        if (d && d.option) inst.setOption(d.option, true);
+        if (d && d.option) inst.setOption(themedChartOption(d.option), true);
       } catch (e) {
         canvas.innerHTML = `<div class="multidim-err">render failed: ${esc(e.message || String(e))}</div>`;
         return;
@@ -2914,7 +2997,7 @@
       function show(key) {
         const d = dimMap.get(key) || dims[0];
         try {
-          if (d && d.option) inst.setOption(d.option, true);
+          if (d && d.option) inst.setOption(themedChartOption(d.option), true);
         } catch (e) {
           canvas.innerHTML = `<div class="dash-chart-err">render failed: ${esc(e.message || String(e))}</div>`;
           return;
@@ -3019,7 +3102,7 @@
       const dimMap = new Map(dims.map((d) => [d.key, d]));
       const show = (key) => {
         const d = dimMap.get(key) || dims[0];
-        if (d && d.option) inst.setOption(d.option, true);
+        if (d && d.option) inst.setOption(themedChartOption(d.option), true);
         if (summary) summary.textContent = (d && d.summary) || "";
       };
       show(spec.default_dim || dims[0].key);

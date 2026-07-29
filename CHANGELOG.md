@@ -12,6 +12,14 @@
 
 ## 2026-07-29
 
+### 5. 图表主题统一到设计规范
+
+- 保留现有对话布局，仅统一对话内图表、历史会话恢复图表和多维图表的字体、文字层级与颜色。
+- ChartGenerate/ChartGenerateMultiDim 生成的独立 HTML 图表同步使用科技蓝、活力橙、清新绿等低饱和规范色，以及 PingFang SC/SF Pro Display 字体；旧历史图表加载时也会自动套用同一主题。
+- 页面：智能分析、报表分析的对话区、看板及图表 HTML 打开页。
+- 主要文件：`bi_agent/tools/chart_tools.py`、`bi_agent/tools/chart_multidim_tools.py`、`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+- 类型：前端静态资源与图表生成后端变更，需要刷新浏览器并重启后端；本次部署已重启后端，未调用 Qwen API。
+
 ### 2. 对话操作归位与低饱和视觉色彩
 
 - 导出本轮报告、导出 Word、同步到主页、分享到飞书及根因分析/行动建议的操作控件统一放到左侧对话区对应 Agent 回合；右侧看板保留结论、图表和表格等结果展示。

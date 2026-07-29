@@ -26,6 +26,20 @@ CHART_SPEC_RE = re.compile(
 
 SUPPORTED_TYPES = {"bar", "line", "pie", "scatter", "area", "horizontal_bar"}
 
+# Shared with the web workbench design specification.  Keeping the palette
+# here makes charts rendered in the conversation, history and standalone HTML
+# use the same restrained colors instead of the former fluorescent theme.
+CHART_PALETTE = [
+    "#1A73E8",  # technology blue
+    "#FF6D00",  # active orange
+    "#00C853",  # success green
+    "#607D8B",  # slate
+    "#8D6E63",  # warm brown
+    "#5C6BC0",  # muted indigo
+    "#9E9E9E",  # neutral gray
+]
+CHART_FONT_FAMILY = '"PingFang SC", "SF Pro Display", -apple-system, sans-serif'
+
 
 CHART_GENERATE_SCHEMA = {
     "name": "ChartGenerate",
@@ -138,10 +152,6 @@ def _echarts_option(params: dict) -> dict[str, Any]:
     y_name = params.get("y_axis_name") or ""
     source = params.get("source_note") or ""
 
-    # Palette that matches the dark Palantir UI
-    palette = ["#22D3EE", "#2DD4BF", "#F5A524", "#A78BFA", "#F472B6",
-               "#A3E635", "#60A5FA", "#F87171", "#FB923C", "#E879F9"]
-
     base: dict[str, Any] = {
         "backgroundColor": "transparent",
         "title": {
@@ -149,23 +159,29 @@ def _echarts_option(params: dict) -> dict[str, Any]:
             "subtext": subtitle,
             "left": 14,
             "top": 10,
-            "textStyle": {"color": "#E1E8F0", "fontSize": 14, "fontWeight": "600"},
-            "subtextStyle": {"color": "#6E7E96", "fontSize": 11},
+            "textStyle": {
+                "color": "#FFFFFF", "fontSize": 14, "fontWeight": "600",
+                "fontFamily": CHART_FONT_FAMILY,
+            },
+            "subtextStyle": {
+                "color": "#9E9E9E", "fontSize": 11,
+                "fontFamily": CHART_FONT_FAMILY,
+            },
         },
-        "color": palette,
-        "textStyle": {"color": "#AEBACB"},
+        "color": CHART_PALETTE,
+        "textStyle": {"color": "#E0E0E0", "fontFamily": CHART_FONT_FAMILY},
         "tooltip": {
             "trigger": "item" if ct == "pie" else "axis",
-            "backgroundColor": "#101620",
-            "borderColor": "#2A3B52",
+            "backgroundColor": "#1F1F1F",
+            "borderColor": "#424242",
             "borderWidth": 1,
-            "textStyle": {"color": "#E1E8F0"},
+            "textStyle": {"color": "#FFFFFF", "fontFamily": CHART_FONT_FAMILY},
             "axisPointer": {"type": "shadow"},
         },
         "legend": {
             "top": 36,
             "right": 14,
-            "textStyle": {"color": "#AEBACB"},
+            "textStyle": {"color": "#E0E0E0", "fontFamily": CHART_FONT_FAMILY},
             "icon": "roundRect",
             "itemWidth": 10,
             "itemHeight": 10,
@@ -180,9 +196,9 @@ def _echarts_option(params: dict) -> dict[str, Any]:
             "bottom": 8,
             "style": {
                 "text": f"Source · {source}",
-                "fill": "#48566D",
+                "fill": "#757575",
                 "fontSize": 10,
-                "fontFamily": "monospace",
+                "fontFamily": CHART_FONT_FAMILY,
             },
         }]
 
@@ -192,8 +208,11 @@ def _echarts_option(params: dict) -> dict[str, Any]:
             "radius": ["40%", "70%"],
             "center": ["50%", "56%"],
             "avoidLabelOverlap": True,
-            "itemStyle": {"borderColor": "#0A0E14", "borderWidth": 2},
-            "label": {"color": "#AEBACB", "formatter": "{b}: {d}%"},
+            "itemStyle": {"borderColor": "#121212", "borderWidth": 2},
+            "label": {
+                "color": "#E0E0E0", "formatter": "{b}: {d}%",
+                "fontFamily": CHART_FONT_FAMILY,
+            },
             "data": series[0]["data"],
         }
         base["series"] = [pie_series]
@@ -202,38 +221,38 @@ def _echarts_option(params: dict) -> dict[str, Any]:
 
     # Axis-based charts
     x_axis = params.get("x_axis", [])
-    axis_fg = {"color": "#AEBACB"}
-    grid_line = {"show": True, "lineStyle": {"color": "#1F2A3A"}}
+    axis_fg = {"color": "#E0E0E0", "fontFamily": CHART_FONT_FAMILY}
+    grid_line = {"show": True, "lineStyle": {"color": "#424242"}}
 
     if ct == "horizontal_bar":
         base["xAxis"] = {
             "type": "value",
             "name": y_name,
-            "nameTextStyle": {"color": "#6E7E96"},
+            "nameTextStyle": {"color": "#9E9E9E", "fontFamily": CHART_FONT_FAMILY},
             "axisLabel": axis_fg,
             "splitLine": grid_line,
-            "axisLine": {"lineStyle": {"color": "#2A3B52"}},
+            "axisLine": {"lineStyle": {"color": "#555555"}},
         }
         base["yAxis"] = {
             "type": "category",
             "data": x_axis,
             "axisLabel": axis_fg,
-            "axisLine": {"lineStyle": {"color": "#2A3B52"}},
+            "axisLine": {"lineStyle": {"color": "#555555"}},
         }
     else:
         base["xAxis"] = {
             "type": "category",
             "data": x_axis,
             "axisLabel": axis_fg,
-            "axisLine": {"lineStyle": {"color": "#2A3B52"}},
+            "axisLine": {"lineStyle": {"color": "#555555"}},
         }
         base["yAxis"] = {
             "type": "value",
             "name": y_name,
-            "nameTextStyle": {"color": "#6E7E96"},
+            "nameTextStyle": {"color": "#9E9E9E", "fontFamily": CHART_FONT_FAMILY},
             "axisLabel": {**axis_fg, "formatter": ("{value}" + unit) if unit else "{value}"},
             "splitLine": grid_line,
-            "axisLine": {"lineStyle": {"color": "#2A3B52"}},
+            "axisLine": {"lineStyle": {"color": "#555555"}},
         }
 
     echarts_series: list[dict[str, Any]] = []
@@ -272,8 +291,8 @@ def _write_standalone_html(option: dict[str, Any], out_path: Path, title: str) -
 <meta charset="UTF-8">
 <title>{title}</title>
 <style>
-  html, body {{ margin: 0; height: 100%; background: #0A0E14; color: #E1E8F0;
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }}
+  html, body {{ margin: 0; height: 100%; background: #121212; color: #FFFFFF;
+    font-family: "PingFang SC", "SF Pro Display", -apple-system, sans-serif; }}
   #chart {{ width: 100vw; height: 100vh; }}
 </style>
 <script src="/static/vendor/echarts.min.js"></script>
