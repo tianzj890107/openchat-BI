@@ -2726,6 +2726,77 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 }
 .chat-scroll .multidim-canvas { background: transparent; }
 
+/* Every assistant-delivered result gets the same CPQ-style compact grey
+ * bubble as assistant text.  The table's own data frame remains nested inside
+ * this bubble; titles and summaries stay outside that data frame. */
+.chat-scroll .chart-card,
+.chat-scroll .table-card,
+.chat-scroll .multidim-card,
+.chat-scroll .chat-action-card {
+  width: min(100%, 760px);
+  margin: 10px 0;
+  padding: 11px 14px;
+  background: #2D2D2D;
+  border: 1px solid #424242;
+  border-radius: 14px;
+  border-bottom-left-radius: 4px;
+  overflow: visible;
+}
+.chat-scroll .chat-action-card.dash-export { padding: 11px 14px; }
+.chat-scroll .chat-action-card .dash-head,
+.chat-scroll .chart-head,
+.chat-scroll .table-head,
+.chat-scroll .multidim-head {
+  padding: 0 0 8px;
+}
+.chat-scroll .dash-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.chat-scroll .dash-export-btn {
+  width: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: #FFFFFF;
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  letter-spacing: 0;
+  text-align: center;
+  background: var(--accent-blue);
+}
+.chat-scroll .dash-export-btn:hover { filter: brightness(1.1); background: var(--accent-blue); }
+.chat-scroll .dash-export-btn.dash-word-btn { background: var(--accent-violet); }
+.chat-scroll .dash-export-btn.dash-word-btn:hover { background: var(--accent-violet); }
+.chat-scroll .dash-export-btn.dash-sync-btn { background: var(--accent-green); color: #FFFFFF; }
+.chat-scroll .dash-export-btn.dash-sync-btn:hover { background: var(--accent-green); }
+.chat-scroll .dash-export-btn.dash-feishu-btn { background: var(--accent-amber); color: #FFFFFF; }
+.chat-scroll .dash-export-btn.dash-feishu-btn:hover { background: var(--accent-amber); }
+.chat-scroll .dash-export-status {
+  flex: 1 0 100%;
+  padding: 4px 0 0;
+  border-top: 1px solid var(--border-1);
+  background: transparent;
+}
+.chat-scroll .dash-rootcause .dash-act-btn,
+.chat-scroll .dash-actions .dash-act-btn {
+  color: #FFFFFF;
+  border: 0;
+  border-radius: 8px;
+}
+.chat-scroll .dash-rootcause .dash-act-btn { background: var(--accent-red); }
+.chat-scroll .dash-actions .dash-act-btn { background: var(--accent-green); }
+.chat-scroll .dash-rootcause .dash-act-btn:hover,
+.chat-scroll .dash-rootcause .dash-act-btn[aria-expanded="true"] { background: var(--accent-red); color: #FFFFFF; filter: brightness(1.1); }
+.chat-scroll .dash-actions .dash-act-btn:hover,
+.chat-scroll .dash-actions .dash-act-btn[aria-expanded="true"] { background: var(--accent-green); color: #FFFFFF; filter: brightness(1.1); }
+
 /* ====================================================================
  * Deep-Insight (深入洞察) — button on chart cards
  * ================================================================== */
