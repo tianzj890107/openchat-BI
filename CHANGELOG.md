@@ -28,6 +28,13 @@
 - 页面：对话工作台和右侧用户看板；主要文件：`bi_agent/tools/chart_tools.py`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
 - 类型：前端静态资源、图表生成后端与离线回归测试变更；本次仅本地启动和验证，不部署服务器。
 
+### 17. 工作台默认浅色画布
+
+- 修复工作台打开后整个页面沿用深色根变量、看起来全黑的问题。新打开或未保存主题偏好的工作台默认使用 CEO 驾驶舱风格的浅色画布、白色面板和浅灰边框；仍可在个人偏好中切换深色主题。
+- 通过新的主题偏好键隔离旧版本的深色默认值，避免升级后浏览器缓存把页面重新切回黑色。
+- 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
+
 ### 14. 用户气泡与图表 HTML 全面去黑
 
 - 用户气泡改为 CPQ 的蓝紫渐变并强制白色文字。

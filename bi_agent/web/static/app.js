@@ -932,7 +932,10 @@
   // Personal account settings (username + theme) — browser-local prefs
   // ------------------------------------------------------------------
   const ACCT_NAME_KEY = "bi.userName";
-  const ACCT_THEME_KEY = "bi.theme";
+  // The CEO 驾驶舱 is the visual baseline, so new workbench sessions start
+  // with its light canvas. Keep a versioned key so an old saved "dark"
+  // preference cannot unexpectedly turn the whole page black after upgrade.
+  const ACCT_THEME_KEY = "bi.theme.v2";
 
   function applyTheme(theme) {
     document.documentElement.classList.toggle("theme-light", theme === "light");
@@ -954,7 +957,7 @@
     const nameInput = document.getElementById("account-name-input");
     const themeToggle = document.getElementById("account-theme-light");
     if (nameInput) nameInput.value = readPref(ACCT_NAME_KEY, "") || "";
-    if (themeToggle) themeToggle.checked = readPref(ACCT_THEME_KEY, "dark") === "light";
+    if (themeToggle) themeToggle.checked = readPref(ACCT_THEME_KEY, "light") === "light";
     const st = document.getElementById("account-status");
     if (st) st.textContent = "";
     showView("account");
@@ -980,10 +983,11 @@
   }
 
   (function bootAccount() {
-    // URL ?theme=light still wins (embedding); else use the saved preference.
+    // URL ?theme=light still wins (embedding); otherwise use the saved
+    // preference, defaulting to the CEO-style light canvas.
     let urlTheme = null;
     try { urlTheme = new URLSearchParams(location.search).get("theme"); } catch (e) {}
-    if (urlTheme !== "light") applyTheme(readPref(ACCT_THEME_KEY, "dark"));
+    if (urlTheme !== "light") applyTheme(readPref(ACCT_THEME_KEY, "light"));
     renderAccountChip();
     const acctBtn = document.getElementById("sidebar-account");
     if (acctBtn) acctBtn.addEventListener("click", openAccount);
