@@ -4880,7 +4880,9 @@
   // ------------------------------------------------------------------
   // Sidebar collapse / expand  (left nav, Claude/ChatGPT-style)
   // ------------------------------------------------------------------
-  const SIDEBAR_LS_KEY = "bi.sidebarCollapsed";
+  // Versioned key makes the first visit use the new icon-rail default while
+  // preserving an explicit expand/collapse choice afterwards.
+  const SIDEBAR_LS_KEY = "bi.sidebarCollapsed.v2";
 
   function applySidebarState(collapsed) {
     document.body.classList.toggle("sidebar-collapsed", collapsed);
@@ -4888,8 +4890,14 @@
   }
 
   (function bootSidebarState() {
-    let collapsed = false;
-    try { collapsed = localStorage.getItem(SIDEBAR_LS_KEY) === "1"; } catch (e) {}
+    let collapsed = true;
+    let saved = null;
+    try {
+      saved = localStorage.getItem(SIDEBAR_LS_KEY);
+      collapsed = saved === "1";
+    } catch (e) {}
+    // No saved preference means the navigation starts in the compact icon rail.
+    if (saved == null) collapsed = true;
     applySidebarState(collapsed);
   })();
 

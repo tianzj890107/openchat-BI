@@ -2666,7 +2666,72 @@ body.settings-hidden .sidebar { display: none; }  /* embedded shell: hide chrome
 }
 .sidebar-collapse:hover { background: var(--bg-2); color: var(--accent-cyan); }
 
-body.sidebar-collapsed .sidebar { display: none; }
+/* Compact icon rail: collapsing keeps every navigation entry available
+   instead of removing the whole sidebar from the layout. */
+body.sidebar-collapsed .sidebar {
+  width: 56px;
+  padding: 12px 6px;
+  gap: 4px;
+  overflow-x: hidden;
+}
+body.sidebar-collapsed .layout-resizer-sidebar { display: none; }
+body.sidebar-collapsed .sidebar-brand {
+  justify-content: space-between;
+  gap: 0;
+  padding: 2px 0 12px;
+}
+body.sidebar-collapsed .sidebar-brand .brand-name,
+body.sidebar-collapsed .sidebar-brand .brand-sub,
+body.sidebar-collapsed .sidebar-brand .brand-quadrant {
+  display: none;
+}
+body.sidebar-collapsed .sidebar-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 26px;
+  margin: 0 0 0 4px;
+  padding: 0;
+  font-size: 0;
+}
+body.sidebar-collapsed .sidebar-collapse::before {
+  content: "⇥";
+  font-size: 14px;
+}
+body.sidebar-collapsed .sidebar-newchat,
+body.sidebar-collapsed .nav-item {
+  justify-content: center;
+  gap: 0;
+  padding-left: 0;
+  padding-right: 0;
+  font-size: 0;
+}
+body.sidebar-collapsed .sidebar-newchat .nav-glyph,
+body.sidebar-collapsed .nav-item .nav-glyph {
+  font-size: 15px;
+}
+body.sidebar-collapsed .sidebar-group-label { display: none; }
+body.sidebar-collapsed .sidebar-divider { margin: 6px 2px; }
+body.sidebar-collapsed .sidebar-recent .recent-item {
+  justify-content: center;
+  padding: 7px 0;
+  font-size: 0;
+}
+body.sidebar-collapsed .sidebar-recent .recent-item::before {
+  content: "◷";
+  color: var(--fg-2);
+  font-size: 15px;
+}
+body.sidebar-collapsed .sidebar-recent .recent-title,
+body.sidebar-collapsed .sidebar-recent .recent-del,
+body.sidebar-collapsed .sidebar-recent .recent-empty { display: none; }
+body.sidebar-collapsed .sidebar-account {
+  justify-content: center;
+  padding: 8px 0;
+}
+body.sidebar-collapsed .sidebar-account .account-name,
+body.sidebar-collapsed .sidebar-account .account-gear { display: none; }
 
 .sidebar-reopen {
   display: none;
@@ -2679,10 +2744,10 @@ body.sidebar-collapsed .sidebar { display: none; }
   transition: background 0.12s;
 }
 .sidebar-reopen:hover { background: var(--bg-3); }
-body.sidebar-collapsed .sidebar-reopen { display: flex; }
+body.sidebar-collapsed .sidebar-reopen { display: none; }
 /* shift the left-most header label right so the floating button has room */
-body.sidebar-collapsed .chat-pane .pane-header { padding-left: 44px; }
-body.sidebar-collapsed .page-header { padding-left: 46px; }
+body.sidebar-collapsed .chat-pane .pane-header { padding-left: 14px; }
+body.sidebar-collapsed .page-header { padding-left: 16px; }
 /* embedded shell hides all nav chrome — never show the reopen button there */
 body.settings-hidden .sidebar-reopen { display: none; }
 
