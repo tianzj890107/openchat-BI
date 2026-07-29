@@ -20,7 +20,7 @@ from bi_agent.llm.provider_deepseek import _convert_messages as convert_deepseek
 from bi_agent.llm.provider_qwen import _convert_messages as convert_qwen
 from bi_agent.ontology.store import OntologyStore
 from bi_agent.report.store import ReportStore
-from bi_agent.tools.sql_tools import _validate_sql
+from bi_agent.tools.sql_tools import _format_rows, _validate_sql
 from bi_agent.tools.chart_tools import _echarts_option, _write_standalone_html
 from bi_agent.web.app import STATE, _cwd_file, app, get_sources_endpoint
 from bi_agent.web.conversations import ConversationStore
@@ -132,6 +132,38 @@ class OfflineRegressionTests(unittest.TestCase):
             self.assertIsNone(reports.get("deadbeef"))
             self.assertEqual(reports.list(), [])
             self.assertTrue(reports.delete("deadbeef"))
+
+    def test_conversation_title_and_snapshot_are_stable_across_follow_up(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            conversations = ConversationStore(temp_dir)
+            first = conversations.save(
+                mode="data",
+                title="临时标题",
+                messages=[{"role": "user", "content": "第一个问题\n补充说明"}],
+                chat_html="first",
+                dashboard_html="first",
+            )
+            conversations.save(
+                mode="data",
+                title="不应覆盖标题",
+                messages=[
+                    {"role": "user", "content": "第一个问题\n补充说明"},
+                    {"role": "assistant", "content": "结论"},
+                    {"role": "user", "content": "追加问题"},
+                ],
+                chat_html="second",
+                dashboard_html="second",
+                cid=first["id"],
+            )
+            loaded = conversations.get(first["id"])
+            self.assertEqual(loaded["title"], "第一个问题")
+            self.assertEqual(loaded["chat_html"], "second")
+            self.assertEqual(list(Path(temp_dir, "bi_conversations").glob(".*.tmp")), [])
+
+    def test_sql_formatter_handles_missing_column_metadata(self) -> None:
+        rendered = _format_rows([], [("a", "b")], 10)
+        self.assertIn("column_1", rendered)
+        self.assertIn("column_2", rendered)
 
     def test_source_path_and_sql_guards(self) -> None:
         previous = STATE.cwd

@@ -28,10 +28,12 @@ import json
 import os
 import re
 import secrets
+import tempfile
 from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from .parser import ParseResult, parse_report
 
@@ -103,7 +105,7 @@ class ReportStore:
             "filename": filename,
             "ext": ext,
             "size_bytes": len(data),
-            "uploaded_at": datetime.now(timezone.utc).astimezone().isoformat(
+            "uploaded_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(
                 timespec="seconds"
             ),
             "page_count": parsed.page_count,
@@ -117,10 +119,25 @@ class ReportStore:
         meta_path = self._meta_path(rid)
         if meta_path is None:  # generated IDs always satisfy REPORT_ID_RE
             raise RuntimeError("生成了无效的报表 ID")
-        meta_path.write_text(
-            json.dumps(meta, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        payload = json.dumps(meta, ensure_ascii=False, indent=2)
+        temp_path: Optional[str] = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.root, prefix=f".{rid}.",
+                suffix=".tmp", delete=False
+            ) as tmp:
+                temp_path = tmp.name
+                tmp.write(payload)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(temp_path, meta_path)
+            temp_path = None
+        finally:
+            if temp_path:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
         return self._public_record(meta)
 
     # ------------------------------------------------------------------

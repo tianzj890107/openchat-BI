@@ -238,9 +238,19 @@ def _format_rows(columns: list[str], rows: list[tuple], max_rows: int) -> str:
     for r in shown:
         cells = ["" if v is None else str(v) for v in r]
         str_rows.append(cells)
+        # A few HTTP SQL gateways omit or under-report column metadata for
+        # empty/heterogeneous result sets. Keep formatting diagnostic output
+        # useful instead of raising IndexError on a wider row.
+        if len(cells) > len(widths):
+            widths.extend([0] * (len(cells) - len(widths)))
         for i, c in enumerate(cells):
-            if i < len(widths):
-                widths[i] = min(max(widths[i], len(c)), 60)
+            widths[i] = min(max(widths[i], len(c)), 60)
+
+    if len(columns) < len(widths):
+        columns = list(columns) + [f"column_{i + 1}" for i in range(len(columns), len(widths))]
+    for i, column in enumerate(columns):
+        if i < len(widths):
+            widths[i] = min(max(widths[i], len(str(column))), 60)
 
     def _fmt(cells: list[str]) -> str:
         return " | ".join(c.ljust(widths[i])[: widths[i]] for i, c in enumerate(cells))
