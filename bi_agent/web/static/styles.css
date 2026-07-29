@@ -3452,6 +3452,9 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 }
 .chat-pane .btn,
 .chat-pane .composer-btn,
+.chat-pane .choice-option,
+.chat-pane .choice-confirm,
+.chat-pane .ui-apply-btn,
 .chat-pane .chart-insight-btn,
 .chat-pane .dash-act-btn,
 .chat-pane .dash-export-btn,
@@ -3463,6 +3466,12 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .dashboard-pane .dash-export-btn {
   border-radius: 8px;
 }
+.chat-pane .chat-action-card .dash-export-btn,
+.chat-pane .dash-rootcause .dash-act-btn,
+.chat-pane .dash-actions .dash-act-btn {
+  border-radius: 8px;
+}
+.dashboard-reopen { border-radius: 8px; }
 .chat-pane .multidim-select,
 .dashboard-pane .multidim-select {
   border-radius: 8px;

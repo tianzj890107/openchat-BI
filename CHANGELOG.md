@@ -44,6 +44,12 @@
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
 
+### 19. 会话与看板工作面圆角统一
+
+- 会话区、看板区外层大卡片统一圆角；导出、行动、深入洞察、维度选择、确认等内部操作控件统一圆角，避免同一页面同时出现直角和圆角按钮。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
+
 ### 14. 用户气泡与图表 HTML 全面去黑
 
 - 用户气泡改为 CPQ 的蓝紫渐变并强制白色文字。
