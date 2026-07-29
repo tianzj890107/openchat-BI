@@ -21,6 +21,13 @@
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`、`bi_agent/tools/chart_tools.py`、`tests/test_regressions.py`。
 - 类型：前端静态资源与图表生成后端变更；本次仅本地启动和验证，不部署服务器。
 
+### 16. CEO 驾驶舱配色与操作按钮统一
+
+- 对话和看板中的 HTML 图表、历史图表统一采用 CEO 驾驶舱的蓝 `#0B7FF3`、黄 `#E8B339`、绿 `#28C79D`、红 `#F05A5A` 语义色，图表画布与页面结果区保持浅色背景，避免整块黑底。
+- “导出本轮报告（HTML）”“导出 Word”“同步到主页”“分享到飞书”以及根因分析、行动建议按钮统一使用 CEO 配色、黑色文字、圆角和轻微阴影，操作状态更容易区分。
+- 页面：对话工作台和右侧用户看板；主要文件：`bi_agent/tools/chart_tools.py`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+- 类型：前端静态资源、图表生成后端与离线回归测试变更；本次仅本地启动和验证，不部署服务器。
+
 ### 14. 用户气泡与图表 HTML 全面去黑
 
 - 用户气泡改为 CPQ 的蓝紫渐变并强制白色文字。

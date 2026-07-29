@@ -2809,22 +2809,21 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   align-items: center;
   justify-content: center;
   padding: 8px 12px;
-  border: 0;
-  border-radius: 8px;
-  color: #FFFFFF;
+  border: 1px solid rgba(17, 24, 39, .14);
+  border-radius: 10px;
+  color: #111827;
+  font-weight: 600;
+  box-shadow: 0 2px 5px rgba(16, 28, 40, .12);
   font-family: var(--font-sans);
   font-size: var(--fs-xs);
   letter-spacing: 0;
   text-align: center;
-  background: var(--accent-blue);
+  background: #0B7FF3;
 }
-.chat-scroll .dash-export-btn:hover { filter: brightness(1.1); background: var(--accent-blue); }
-.chat-scroll .dash-export-btn.dash-word-btn { background: var(--accent-violet); }
-.chat-scroll .dash-export-btn.dash-word-btn:hover { background: var(--accent-violet); }
-.chat-scroll .dash-export-btn.dash-sync-btn { background: var(--accent-green); color: #FFFFFF; }
-.chat-scroll .dash-export-btn.dash-sync-btn:hover { background: var(--accent-green); }
-.chat-scroll .dash-export-btn.dash-feishu-btn { background: var(--accent-amber); color: #FFFFFF; }
-.chat-scroll .dash-export-btn.dash-feishu-btn:hover { background: var(--accent-amber); }
+.chat-scroll .dash-export-btn:hover { filter: brightness(1.04); }
+.chat-scroll .dash-export-btn.dash-word-btn { background: #E8B339; }
+.chat-scroll .dash-export-btn.dash-sync-btn { background: #28C79D; }
+.chat-scroll .dash-export-btn.dash-feishu-btn { background: #F05A5A; }
 .chat-scroll .dash-export-status {
   flex: 1 0 100%;
   padding: 4px 0 0;
@@ -2833,16 +2832,18 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 }
 .chat-scroll .dash-rootcause .dash-act-btn,
 .chat-scroll .dash-actions .dash-act-btn {
-  color: #FFFFFF;
-  border: 0;
-  border-radius: 8px;
+  color: #111827;
+  border: 1px solid rgba(17, 24, 39, .14);
+  border-radius: 10px;
+  font-weight: 600;
+  box-shadow: 0 2px 5px rgba(16, 28, 40, .12);
 }
-.chat-scroll .dash-rootcause .dash-act-btn { background: var(--accent-red); }
-.chat-scroll .dash-actions .dash-act-btn { background: var(--accent-green); }
+.chat-scroll .dash-rootcause .dash-act-btn { background: #F05A5A; }
+.chat-scroll .dash-actions .dash-act-btn { background: #28C79D; }
 .chat-scroll .dash-rootcause .dash-act-btn:hover,
-.chat-scroll .dash-rootcause .dash-act-btn[aria-expanded="true"] { background: var(--accent-red); color: #FFFFFF; filter: brightness(1.1); }
+.chat-scroll .dash-rootcause .dash-act-btn[aria-expanded="true"] { background: #F05A5A; color: #111827; filter: brightness(1.04); }
 .chat-scroll .dash-actions .dash-act-btn:hover,
-.chat-scroll .dash-actions .dash-act-btn[aria-expanded="true"] { background: var(--accent-green); color: #FFFFFF; filter: brightness(1.1); }
+.chat-scroll .dash-actions .dash-act-btn[aria-expanded="true"] { background: #28C79D; color: #111827; filter: brightness(1.04); }
 
 /* ====================================================================
  * Deep-Insight (深入洞察) — button on chart cards
@@ -3380,3 +3381,25 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   border-color: #E7E7EA;
 }
 .dashboard-scroll table.data-grid tbody td { color: #1F2023; border-color: #E7E7EA; }
+
+/* The generic action-card reset above is intentionally frameless, but the
+ * individual export controls remain real actions. Keep their CEO colors,
+ * black labels and rounded hit areas even when nested in that card. */
+.chat-scroll .chat-action-card .dash-export-btn {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border: 1px solid rgba(17, 24, 39, .14);
+  border-radius: 10px;
+  color: #111827;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 2px 5px rgba(16, 28, 40, .12);
+}
+.chat-scroll .chat-action-card .dash-export-btn:hover { filter: brightness(1.04); }
+.chat-scroll .chat-action-card .dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-feishu-btn) { background: #0B7FF3; }
+.chat-scroll .chat-action-card .dash-export-btn.dash-word-btn { background: #E8B339; }
+.chat-scroll .chat-action-card .dash-export-btn.dash-sync-btn { background: #28C79D; }
+.chat-scroll .chat-action-card .dash-export-btn.dash-feishu-btn { background: #F05A5A; }

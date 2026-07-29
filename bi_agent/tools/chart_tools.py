@@ -29,14 +29,16 @@ SUPPORTED_TYPES = {"bar", "line", "pie", "scatter", "area", "horizontal_bar"}
 # Shared with the CPQ-style light result surface. Keeping the palette here
 # makes charts rendered in the conversation, history and standalone HTML use
 # the same restrained colors instead of black canvases and fluorescent text.
+# CEO 驾驶舱使用的克制语义色：蓝、黄、绿、红。图表与驾驶舱共用这组
+# 颜色，避免生成 HTML 时出现高饱和荧光色或每张图使用不同的主题。
 CHART_PALETTE = [
-    "#1A73E8",  # technology blue
-    "#FF6D00",  # active orange
-    "#00C853",  # success green
-    "#607D8B",  # slate
-    "#8D6E63",  # warm brown
-    "#5C6BC0",  # muted indigo
-    "#9E9E9E",  # neutral gray
+    "#0B7FF3",  # CEO blue
+    "#E8B339",  # CEO yellow
+    "#28C79D",  # CEO green
+    "#F05A5A",  # CEO red
+    "#64B5FF",  # light blue
+    "#FF9F43",  # warm orange
+    "#8B5CF6",  # muted violet
 ]
 CHART_FONT_FAMILY = '"PingFang SC", "SF Pro Display", -apple-system, sans-serif'
 
