@@ -3441,3 +3441,29 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .chat-scroll .chat-action-card .dash-export-btn.dash-word-btn { background: #E8B339; }
 .chat-scroll .chat-action-card .dash-export-btn.dash-sync-btn { background: #28C79D; }
 .chat-scroll .chat-action-card .dash-export-btn.dash-feishu-btn { background: #F05A5A; }
+
+/* The conversation and dashboard are the two primary work surfaces. Round
+ * their outer shells and use one consistent corner radius for all controls
+ * inside them, including controls restored from older conversations. */
+.chat-pane,
+.dashboard-pane {
+  border-radius: 14px;
+  overflow: hidden;
+}
+.chat-pane .btn,
+.chat-pane .composer-btn,
+.chat-pane .chart-insight-btn,
+.chat-pane .dash-act-btn,
+.chat-pane .dash-export-btn,
+.dashboard-pane .btn,
+.dashboard-pane .dashboard-collapse,
+.dashboard-pane .dashboard-reopen,
+.dashboard-pane .chart-insight-btn,
+.dashboard-pane .dash-act-btn,
+.dashboard-pane .dash-export-btn {
+  border-radius: 8px;
+}
+.chat-pane .multidim-select,
+.dashboard-pane .multidim-select {
+  border-radius: 8px;
+}
