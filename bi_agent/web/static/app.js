@@ -101,6 +101,11 @@
   // ------------------------------------------------------------------
   const el = {
     chatScroll:     document.getElementById("chat-scroll"),
+    chatSop:        document.getElementById("chat-sop"),
+    chatSopHead:    document.getElementById("chat-sop-head"),
+    chatSopCaret:   document.getElementById("chat-sop-caret"),
+    chatSopCount:   document.getElementById("chat-sop-count"),
+    chatSopList:    document.getElementById("chat-sop-list"),
     chatTodo:       document.getElementById("chat-todo"),
     chatTodoHead:   document.getElementById("chat-todo-head"),
     chatTodoCaret:  document.getElementById("chat-todo-caret"),
@@ -3217,6 +3222,10 @@
     bucket.todos = SOP_STEPS.map((label, i) => ({
       content: label, status: i === 0 ? "in_progress" : "pending",
     }));
+    // The full SOP is the primary overview; keep the verbose question/task
+    // list collapsed until the user explicitly opens it.
+    if (el.chatTodo) el.chatTodo.classList.add("collapsed");
+    if (el.chatSop) el.chatSop.classList.remove("collapsed");
     renderTodoPanel();
   }
   function applySopStatuses() {
@@ -3247,11 +3256,33 @@
     if (text.includes("📌")) advanceSop(5);                            // 交付
   }
 
-  // Render the active bucket's task list into the shared #chat-todo element.
+  function renderSopPanel(todos) {
+    if (!el.chatSop || !el.chatSopList) return;
+    if (!todos.length) {
+      el.chatSop.hidden = true;
+      return;
+    }
+    el.chatSop.hidden = false;
+    const done = todos.filter((t) => t && t.status === "completed").length;
+    if (el.chatSopCount) el.chatSopCount.textContent = `${done}/${todos.length}`;
+    el.chatSopList.innerHTML = todos.map((t, i) => {
+      const status = (t && t.status) || "pending";
+      const icon = TODO_BOX[status] || "○";
+      return `<li class="chat-sop-item is-${esc(status)}">` +
+        `<span class="chat-sop-node">${icon}</span>` +
+        `<span class="chat-sop-index">${i + 1}</span>` +
+        `<span class="chat-sop-text">${esc((t && t.content) || SOP_STEPS[i] || "")}</span></li>`;
+    }).join("");
+  }
+
+  // Render the active bucket's SOP overview and task list into the shared
+  // chat pane. The task list remains available for question-level navigation,
+  // but starts collapsed so it does not dominate the conversation.
   function renderTodoPanel() {
     if (!el.chatTodo) return;
     const questions = (B().questions || []).filter((q) => q && q.text);
     const todos = (B().todos) || [];
+    renderSopPanel(todos);
     if (!todos.length && !questions.length) { el.chatTodo.hidden = true; return; }
     el.chatTodo.hidden = false;
     const done = todos.filter(t => t && t.status === "completed").length;
@@ -3272,6 +3303,11 @@
              `<span class="chat-todo-text">${esc((t && t.content) || "")}</span></li>`;
     }).join("") : "";
     el.chatTodoList.innerHTML = questionSection + todoSection;
+  }
+  if (el.chatSopHead) {
+    el.chatSopHead.addEventListener("click", () => {
+      el.chatSop.classList.toggle("collapsed");
+    });
   }
   if (el.chatTodoHead) {
     el.chatTodoHead.addEventListener("click", () => {

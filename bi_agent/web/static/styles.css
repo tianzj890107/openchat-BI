@@ -206,6 +206,77 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .pane-hint { color: var(--fg-3); margin-left: auto; }
 
 /* ---------- PINNED TASK LIST (TodoWrite) ---------- */
+.chat-sop {
+  flex-shrink: 0;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-1);
+  font-family: var(--font-mono);
+  max-height: 34%;
+  display: flex;
+  flex-direction: column;
+}
+.chat-sop-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+.chat-sop-head:hover { background: var(--bg-2); }
+.chat-sop-caret { color: var(--fg-3); width: 10px; font-size: 10px; transition: transform .15s; }
+.chat-sop.collapsed .chat-sop-caret { transform: rotate(-90deg); }
+.chat-sop-title { color: var(--fg-1); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 1px; }
+.chat-sop-count { color: var(--fg-3); font-size: var(--fs-xs); margin-left: auto; }
+.chat-sop-list {
+  list-style: none;
+  margin: 0;
+  padding: 3px 14px 9px 28px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.chat-sop.collapsed .chat-sop-list { display: none; }
+.chat-sop-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  color: var(--fg-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.chat-sop-item:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 18px;
+  bottom: -6px;
+  width: 1px;
+  background: var(--border-2);
+}
+.chat-sop-node {
+  z-index: 1;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-3);
+  background: var(--bg-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.chat-sop-index { flex: 0 0 16px; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px; }
+.chat-sop-text { color: var(--fg-2); }
+.chat-sop-item.is-in_progress .chat-sop-node { color: var(--accent-amber); }
+.chat-sop-item.is-in_progress .chat-sop-text { color: var(--fg-0); font-weight: 600; }
+.chat-sop-item.is-completed .chat-sop-node { color: var(--accent-green); }
+.chat-sop-item.is-completed .chat-sop-text { color: var(--fg-1); }
+
 .chat-todo {
   flex-shrink: 0;
   background: var(--bg-1);

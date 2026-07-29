@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>智析 · 本体工作台</title>
-  <link rel="stylesheet" href="/static/styles.css?v=79" />
+  <link rel="stylesheet" href="/static/styles.css?v=80" />
   <script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body data-mode="data" class="sidebar-collapsed">
@@ -101,8 +101,17 @@
               <span class="pane-label" id="pane-label">对话</span>
               <span class="pane-hint" id="turn-counter">0 回合</span>
             </div>
+            <!-- Current SOP overview; task details remain in the collapsible list below. -->
+            <div class="chat-sop" id="chat-sop" hidden>
+              <div class="chat-sop-head" id="chat-sop-head">
+                <span class="chat-sop-caret" id="chat-sop-caret">▾</span>
+                <span class="chat-sop-title">分析 SOP</span>
+                <span class="chat-sop-count" id="chat-sop-count">0/6</span>
+              </div>
+              <ol class="chat-sop-list" id="chat-sop-list"></ol>
+            </div>
             <!-- Pinned task list (Claude-Code style) — driven by TodoWrite -->
-            <div class="chat-todo" id="chat-todo" hidden>
+            <div class="chat-todo collapsed" id="chat-todo" hidden>
               <div class="chat-todo-head" id="chat-todo-head">
                 <span class="chat-todo-caret" id="chat-todo-caret">▾</span>
                 <span class="chat-todo-title">任务清单</span>
@@ -742,6 +751,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=89"></script>
+  <script src="/static/app.js?v=90"></script>
 </body>
 </html>
