@@ -4,52 +4,54 @@
  * ==================================================================== */
 
 :root {
-  /* Surfaces */
-  --bg-0:          #0A0E14;   /* app background */
-  --bg-1:          #101620;   /* panel */
-  --bg-2:          #151C28;   /* card */
-  --bg-3:          #1B2432;   /* card hover */
-  --bg-elev:       #0E141C;   /* code / pre */
-  --bg-input:      #0B1017;
+  /* Semi-inspired dark palette from the AI 工艺 dialogue specification. */
+  --bg-0:          #121212;   /* background */
+  --bg-1:          #1F1F1F;   /* deep-space gray / panel */
+  --bg-2:          #2D2D2D;   /* charcoal card */
+  --bg-3:          #383838;   /* card hover */
+  --bg-elev:       #242424;   /* code / pre */
+  --bg-input:      #1F1F1F;
 
   /* Borders */
-  --border-1:      #1F2A3A;
-  --border-2:      #2A3B52;
-  --border-accent: #3C5A82;
+  --border-1:      #424242;
+  --border-2:      #555555;
+  --border-accent: #1A73E8;
 
   /* Text */
-  --fg-0:          #E1E8F0;
-  --fg-1:          #AEBACB;
-  --fg-2:          #6E7E96;
-  --fg-3:          #48566D;
+  --fg-0:          #FFFFFF;
+  --fg-1:          #E0E0E0;
+  --fg-2:          #9E9E9E;
+  --fg-3:          #757575;
 
-  /* Accent */
-  --accent-blue:   #58A6FF;
-  --accent-cyan:   #22D3EE;
-  --accent-teal:   #2DD4BF;
-  --accent-amber:  #F5A524;
-  --accent-red:    #F87171;
-  --accent-violet: #A78BFA;
-  --accent-lime:   #A3E635;
+  /* Accents — blue/orange/green are reserved for interaction state. */
+  --accent-blue:   #1A73E8;
+  --accent-cyan:   #1A73E8;
+  --accent-teal:   #00C853;
+  --accent-green:  #00C853;
+  --accent-amber:  #FF6D00;
+  --accent-red:    #8D6E63;
+  --accent-violet: #607D8B;
+  --accent-lime:   #00C853;
+  --ok:            #00C853;
 
-  /* Entity kind tints */
-  --k-term:      #A3E635;   /* lime */
-  --k-bo:        #22D3EE;   /* cyan */
-  --k-le:        #2DD4BF;   /* teal */
-  --k-at:        #60A5FA;   /* blue */
-  --k-relation:  #A78BFA;   /* violet */
-  --k-metric:    #F5A524;   /* amber */
-  --k-activity:  #F472B6;   /* pink */
-  --k-rule:      #F87171;   /* red */
+  /* Entity kind tints use the same restrained semantic palette. */
+  --k-term:      #00C853;
+  --k-bo:        #1A73E8;
+  --k-le:        #00C853;
+  --k-at:        #1A73E8;
+  --k-relation:  #607D8B;
+  --k-metric:    #FF6D00;
+  --k-activity:  #9E9E9E;
+  --k-rule:      #8D6E63;
 
   /* Typography */
-  --font-sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "SF Mono", "JetBrains Mono", "Consolas", "Menlo", monospace;
+  --font-sans: "PingFang SC", "SF Pro Display", -apple-system, sans-serif;
+  --font-mono: "SF Mono", "Consolas", monospace;
 
   /* Sizes */
-  --fs-xs:  11px;
+  --fs-xs:  12px;
   --fs-sm:  12px;
-  --fs-md:  13px;
+  --fs-md:  14px;
   --fs-lg:  14px;
   --fs-xl:  16px;
 }
@@ -97,7 +99,7 @@ body {
   overflow: hidden;
 }
 
-::selection { background: rgba(88, 166, 255, 0.3); }
+::selection { background: rgba(26, 115, 232, 0.28); }
 
 /* ---------- TEXT SELECTION ----------
  * Explicitly enable user-select on the three content panes so chat / table /
@@ -139,8 +141,8 @@ body {
 .brand-quadrant {
   margin-left: 10px;
   padding: 2px 9px;
-  border: 1px solid var(--accent-green, #10b981);
-  color: var(--accent-green, #10b981);
+  border: 1px solid var(--accent-green, #00c853);
+  color: var(--accent-green, #00c853);
   border-radius: 999px;
   font-size: 11px;
   letter-spacing: 0.5px;
@@ -342,7 +344,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   outline: 2px solid var(--accent-cyan);
   outline-offset: 3px;
   border-radius: 2px;
-  background: rgba(34, 211, 238, 0.08);
+  background: rgba(26, 115, 232, 0.10);
 }
 .msg-header {
   display: flex;
@@ -1056,7 +1058,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .ui-apply-card {
   margin: 12px 0;
   border: 1px solid var(--accent-lime);
-  background: rgba(163, 230, 53, 0.04);
+  background: rgba(0, 200, 83, 0.04);
   border-left: 3px solid var(--accent-lime);
   border-radius: 2px;
   overflow: hidden;
@@ -1066,8 +1068,8 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  background: rgba(163, 230, 53, 0.08);
-  border-bottom: 1px solid rgba(163, 230, 53, 0.30);
+  background: rgba(0, 200, 83, 0.08);
+  border-bottom: 1px solid rgba(0, 200, 83, 0.30);
 }
 .ui-apply-icon { font-size: 16px; }
 .ui-apply-title { flex: 1; color: var(--fg-0); font-weight: 600; font-size: var(--fs-md); }
@@ -1109,13 +1111,13 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   min-height: 16px;
 }
 .ui-apply-card.applied {
-  background: rgba(45, 212, 191, 0.04);
+  background: rgba(0, 200, 83, 0.04);
   border-color: var(--accent-teal);
   border-left-color: var(--accent-teal);
 }
 .ui-apply-card.applied .ui-apply-head {
-  background: rgba(45, 212, 191, 0.08);
-  border-bottom-color: rgba(45, 212, 191, 0.30);
+  background: rgba(0, 200, 83, 0.08);
+  border-bottom-color: rgba(0, 200, 83, 0.30);
 }
 .ui-apply-card.applied .ui-apply-status { color: var(--accent-teal); }
 .ui-apply-card.failed {
@@ -1123,8 +1125,8 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   border-left-color: var(--accent-red);
 }
 .ui-apply-card.failed .ui-apply-head {
-  background: rgba(248, 113, 113, 0.10);
-  border-bottom-color: rgba(248, 113, 113, 0.30);
+  background: rgba(141, 110, 99, 0.10);
+  border-bottom-color: rgba(141, 110, 99, 0.30);
 }
 .ui-apply-card.failed .ui-apply-status { color: var(--accent-red); }
 
@@ -1301,15 +1303,15 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   transition: background 0.15s ease;
 }
 .settings-status.pending {
-  background: rgba(245, 165, 36, 0.12);
+  background: rgba(255, 109, 0, 0.12);
   color: var(--accent-amber);
 }
 .settings-status.success {
-  background: rgba(45, 212, 191, 0.12);
+  background: rgba(0, 200, 83, 0.12);
   color: var(--accent-teal);
 }
 .settings-status.error {
-  background: rgba(248, 113, 113, 0.12);
+  background: rgba(141, 110, 99, 0.12);
   color: var(--accent-red);
 }
 
@@ -1336,13 +1338,13 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 .settings-keystatus.missing {
   color: var(--accent-red);
-  background: rgba(248, 113, 113, 0.10);
-  border: 1px solid rgba(248, 113, 113, 0.25);
+  background: rgba(141, 110, 99, 0.10);
+  border: 1px solid rgba(141, 110, 99, 0.25);
 }
 .settings-keystatus.set {
   color: var(--accent-teal);
-  background: rgba(45, 212, 191, 0.10);
-  border: 1px solid rgba(45, 212, 191, 0.25);
+  background: rgba(0, 200, 83, 0.10);
+  border: 1px solid rgba(0, 200, 83, 0.25);
 }
 
 /* Thinking-mode toggle inside the settings modal — slightly larger
@@ -1700,13 +1702,13 @@ body:not([data-mode="report"]) .upload-status {
   border: 1px solid var(--bg-3);
 }
 .rg-note-warn {
-  background: rgba(245, 176, 65, 0.08);
-  border-color: rgba(245, 176, 65, 0.35);
+  background: rgba(255, 109, 0, 0.08);
+  border-color: rgba(255, 109, 0, 0.35);
   color: var(--accent-amber);
 }
 .rg-note-info {
-  background: rgba(34, 211, 238, 0.07);
-  border-color: rgba(34, 211, 238, 0.3);
+  background: rgba(26, 115, 232, 0.07);
+  border-color: rgba(26, 115, 232, 0.3);
   color: var(--accent-cyan);
 }
 
@@ -1732,7 +1734,7 @@ body:not([data-mode="report"]) .upload-status {
 .drop-overlay {
   position: absolute;
   inset: 6px;
-  background: rgba(34, 211, 238, 0.08);
+  background: rgba(26, 115, 232, 0.08);
   border: 1.5px dashed var(--accent-cyan);
   border-radius: 8px;
   display: none;
@@ -1785,7 +1787,7 @@ body:not([data-mode="report"]) .upload-status {
   transition: transform 0.15s, background 0.15s;
 }
 .toggle input:checked + .toggle-track {
-  background: rgba(34, 211, 238, 0.25);
+  background: rgba(26, 115, 232, 0.25);
   border-color: var(--accent-cyan);
 }
 .toggle input:checked + .toggle-track .toggle-dot {
@@ -1951,7 +1953,7 @@ body:not([data-mode="report"]) .upload-status {
 }
 .history-item.active {
   border-color: var(--accent-cyan);
-  background: rgba(34, 211, 238, 0.06);
+  background: rgba(26, 115, 232, 0.06);
 }
 .history-item-main { flex: 1; min-width: 0; }
 .history-item-name {
@@ -2133,10 +2135,10 @@ table.data-grid tbody td:last-child { border-right: none; }
 table.data-grid tbody tr:nth-child(odd) { background: rgba(255, 255, 255, 0.012); }
 table.data-grid tbody tr:hover { background: var(--bg-2); }
 table.data-grid tbody tr.row-highlight {
-  background: rgba(245, 165, 36, 0.08);
+  background: rgba(255, 109, 0, 0.08);
 }
 table.data-grid tbody tr.row-highlight:hover {
-  background: rgba(245, 165, 36, 0.14);
+  background: rgba(255, 109, 0, 0.14);
 }
 table.data-grid [data-align="right"]  { text-align: right; font-variant-numeric: tabular-nums; }
 table.data-grid [data-align="center"] { text-align: center; }
@@ -2245,6 +2247,12 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   overflow: hidden;
   flex-shrink: 0;
 }
+/* Interactive analysis/report controls live with the assistant turn in the
+   conversation pane; the dashboard remains a read-only result surface. */
+.chat-action-card {
+  width: 100%;
+  margin: 14px 0 4px;
+}
 .dash-conclusion { border-left: 3px solid var(--accent-amber); }
 .dash-question   { border-left: 3px solid var(--accent-blue); }
 .dash-question { cursor: pointer; transition: background .12s, border-color .12s; }
@@ -2275,8 +2283,8 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   transition: background 0.12s, color 0.12s;
 }
 .dash-export-btn:hover { background: var(--bg-3, #1a2230); color: var(--fg-0); }
-.dash-export-btn.dash-sync-btn { color: var(--accent-lime, #84cc16); border-top: none; }
-.dash-export-btn.dash-feishu-btn { color: #00d6b9; border-top: none; }
+.dash-export-btn.dash-sync-btn { color: var(--accent-lime, #00c853); border-top: none; }
+.dash-export-btn.dash-feishu-btn { color: #00c853; border-top: none; }
 .dash-export-status {
   padding: 7px 14px;
   font-family: var(--font-mono);
@@ -2380,9 +2388,9 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   line-height: 1.5;
-  color: var(--ok, #34d399);
+  color: var(--ok, #00c853);
 }
-.dash-item.is-supervised { border-color: rgba(52,211,153,.45); }
+.dash-item.is-supervised { border-color: rgba(0,200,83,.45); }
 .dash-item-text {
   flex: 1;
   min-width: 0;
@@ -2407,12 +2415,12 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 .dash-rootcause .dash-act-btn:hover,
 .dash-rootcause .dash-act-btn[aria-expanded="true"] {
   border-color: var(--accent-red); color: var(--accent-red);
-  background: rgba(239,68,68,.10);
+  background: rgba(141,110,99,.10);
 }
 .dash-actions .dash-act-btn:hover,
 .dash-actions .dash-act-btn[aria-expanded="true"] {
   border-color: var(--accent-lime); color: var(--accent-lime);
-  background: rgba(132,204,22,.12);
+  background: rgba(0,200,83,.12);
 }
 .dash-act-menu {
   position: fixed;        /* escapes .dash-card overflow:hidden clipping */
@@ -2440,10 +2448,10 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   cursor: pointer;
 }
 .dash-rootcause .dash-act-choice:hover {
-  background: rgba(239,68,68,.14); color: var(--accent-red);
+  background: rgba(141,110,99,.14); color: var(--accent-red);
 }
 .dash-actions .dash-act-choice:hover {
-  background: rgba(132,204,22,.16); color: var(--accent-lime);
+  background: rgba(0,200,83,.16); color: var(--accent-lime);
 }
 .dash-chart-canvas {
   width: 100%;
