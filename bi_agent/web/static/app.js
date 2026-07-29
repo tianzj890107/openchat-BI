@@ -882,6 +882,7 @@
     // Swap in the saved transcript + dashboard snapshot.
     el.chatScroll.innerHTML = rec.chat_html || "";
     el.dashboardList.innerHTML = rec.dashboard_html || "";
+    moveRestoredInteractiveCardsToChat();
     el.ontologyList.innerHTML = rec.ontology_html || "";
     el.toolList.innerHTML = rec.tools_html || "";
     el.llmList.innerHTML = rec.llm_html || "";
@@ -891,7 +892,8 @@
     hydrateRestoredInspector();
     hydrateRestoredDashboard();
     b.hasContent = !!(rec.chat_html && rec.chat_html.trim());
-    b.dashboardHasContent = !!(rec.dashboard_html && rec.dashboard_html.trim());
+    b.dashboardHasContent = !!el.dashboardList.querySelector(".dash-card");
+    updateDashboardCount();
     // TodoWrite progress is intentionally not part of the persisted
     // conversation snapshot; never leave the previous conversation's tasks
     // visible when opening another history record.
@@ -2640,11 +2642,20 @@
   function appendChatActionCard(card) {
     if (!card || !el.chatScroll) return;
     card.classList.add("chat-action-card");
-    const container = B().currentAssistantEl
+    const assistantEl = B().currentAssistantEl;
+    const container = assistantEl && el.chatScroll.contains(assistantEl)
       ? B().currentAssistantEl.parentElement
       : el.chatScroll;
     container.appendChild(card);
     scrollChatBottom();
+  }
+
+  function moveRestoredInteractiveCardsToChat() {
+    if (!el.dashboardList || !el.chatScroll) return;
+    el.dashboardList
+      .querySelectorAll(".dash-rootcause, .dash-actions, .dash-export")
+      .forEach((card) => appendChatActionCard(card));
+    updateDashboardCount();
   }
 
   function dashboardConclusionCard(text, turnTag) {
