@@ -2847,12 +2847,20 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   font-weight: 600;
   box-shadow: 0 2px 5px rgba(16, 28, 40, .12);
 }
-.chat-scroll .dash-rootcause .dash-act-btn { background: #F05A5A; }
-.chat-scroll .dash-actions .dash-act-btn { background: #28C79D; }
+.chat-scroll .dash-rootcause .dash-act-btn {
+  background: #FFF1F1;
+  color: #C53E3E;
+  border-color: #F05A5A;
+}
+.chat-scroll .dash-actions .dash-act-btn {
+  background: #ECFBF6;
+  color: #168B6F;
+  border-color: #28C79D;
+}
 .chat-scroll .dash-rootcause .dash-act-btn:hover,
-.chat-scroll .dash-rootcause .dash-act-btn[aria-expanded="true"] { background: #F05A5A; color: #111827; filter: brightness(1.04); }
+.chat-scroll .dash-rootcause .dash-act-btn[aria-expanded="true"] { background: #FFE3E3; color: #A93131; filter: brightness(1.02); }
 .chat-scroll .dash-actions .dash-act-btn:hover,
-.chat-scroll .dash-actions .dash-act-btn[aria-expanded="true"] { background: #28C79D; color: #111827; filter: brightness(1.04); }
+.chat-scroll .dash-actions .dash-act-btn[aria-expanded="true"] { background: #DDF7EE; color: #11735D; filter: brightness(1.02); }
 
 /* ====================================================================
  * Deep-Insight (深入洞察) — button on chart cards
@@ -3441,6 +3449,29 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .chat-scroll .chat-action-card .dash-export-btn.dash-word-btn { background: #E8B339; }
 .chat-scroll .chat-action-card .dash-export-btn.dash-sync-btn { background: #28C79D; }
 .chat-scroll .chat-action-card .dash-export-btn.dash-feishu-btn { background: #F05A5A; }
+
+/* Use a light tint with a semantic label/border color instead of a solid
+ * saturated fill for the four export actions. */
+.chat-scroll .chat-action-card .dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-feishu-btn) {
+  background: #F1F6FF;
+  color: #0B6EE6;
+  border-color: #8FBFFF;
+}
+.chat-scroll .chat-action-card .dash-export-btn.dash-word-btn {
+  background: #FFF8E6;
+  color: #A66A00;
+  border-color: #E8B339;
+}
+.chat-scroll .chat-action-card .dash-export-btn.dash-sync-btn {
+  background: #ECFBF6;
+  color: #168B6F;
+  border-color: #28C79D;
+}
+.chat-scroll .chat-action-card .dash-export-btn.dash-feishu-btn {
+  background: #FFF1F1;
+  color: #C53E3E;
+  border-color: #F05A5A;
+}
 
 /* The conversation and dashboard are the two primary work surfaces. Round
  * their outer shells and use one consistent corner radius for all controls
