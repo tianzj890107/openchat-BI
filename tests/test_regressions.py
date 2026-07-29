@@ -21,6 +21,7 @@ from bi_agent.llm.provider_qwen import _convert_messages as convert_qwen
 from bi_agent.ontology.store import OntologyStore
 from bi_agent.report.store import ReportStore
 from bi_agent.tools.sql_tools import _validate_sql
+from bi_agent.tools.chart_tools import _echarts_option, _write_standalone_html
 from bi_agent.web.app import STATE, _cwd_file, app, get_sources_endpoint
 from bi_agent.web.conversations import ConversationStore
 from bi_agent.web.session import WebSession
@@ -28,6 +29,26 @@ from open_claude.agent_def import AgentDef
 
 
 class OfflineRegressionTests(unittest.TestCase):
+    def test_chart_theme_follows_ui_spec(self) -> None:
+        option = _echarts_option({
+            "chart_type": "bar",
+            "title": "收入",
+            "x_axis": ["一月"],
+            "series": [{"name": "金额", "data": [1]}],
+            "source_note": "M001",
+        })
+        self.assertEqual(option["color"][0], "#1A73E8")
+        self.assertIn("PingFang SC", option["textStyle"]["fontFamily"])
+        self.assertEqual(option["tooltip"]["backgroundColor"], "#1F1F1F")
+        self.assertEqual(option["xAxis"]["axisLine"]["lineStyle"]["color"], "#555555")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            out = Path(temp_dir) / "chart.html"
+            _write_standalone_html(option, out, "收入")
+            html = out.read_text(encoding="utf-8")
+            self.assertIn("background: #121212", html)
+            self.assertIn('"PingFang SC", "SF Pro Display"', html)
+
     def test_openai_compatible_conversion_preserves_images_and_tools(self) -> None:
         messages = [
             {

@@ -233,13 +233,14 @@ def _write_standalone_html(spec: dict[str, Any], out_path: Path) -> None:
 <meta charset="UTF-8">
 <title>{title}</title>
 <style>
-  html, body {{ margin: 0; height: 100%; background: #0A0E14; color: #E1E8F0;
-    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }}
+  html, body {{ margin: 0; height: 100%; background: #121212; color: #FFFFFF;
+    font-family: "PingFang SC", "SF Pro Display", -apple-system, sans-serif; }}
   #toolbar {{ display: flex; gap: 12px; align-items: center; padding: 12px 16px;
-    border-bottom: 1px solid #1F2A3A; }}
-  #toolbar label {{ font-size: 12px; color: #6E7E96; }}
-  #dim-select {{ background: #101620; color: #E1E8F0; border: 1px solid #2A3B52;
-    padding: 6px 10px; border-radius: 4px; font-size: 13px; }}
+    border-bottom: 1px solid #424242; }}
+  #toolbar label {{ font-size: 12px; color: #9E9E9E; }}
+  #dim-select {{ background: #1F1F1F; color: #FFFFFF; border: 1px solid #555555;
+    padding: 6px 10px; border-radius: 8px; font-size: 13px;
+    font-family: "PingFang SC", "SF Pro Display", -apple-system, sans-serif; }}
   #chart {{ width: 100vw; height: calc(100vh - 49px); }}
 </style>
 <script src="/static/vendor/echarts.min.js"></script>
