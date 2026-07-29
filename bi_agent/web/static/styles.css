@@ -224,11 +224,26 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   flex-shrink: 0;
   user-select: none;
 }
+.chat-sop-head,
+.chat-todo-head {
+  min-height: 30px;
+  padding: 6px 14px;
+}
 .chat-sop-head:hover { background: var(--bg-2); }
+.chat-todo-head:hover { background: var(--bg-2); }
 .chat-sop-caret { color: var(--fg-3); width: 10px; font-size: 10px; transition: transform .15s; }
 .chat-sop.collapsed .chat-sop-caret { transform: rotate(-90deg); }
-.chat-sop-title { color: var(--fg-1); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 1px; }
-.chat-sop-count { color: var(--fg-3); font-size: var(--fs-xs); margin-left: auto; }
+.chat-sop-title,
+.chat-todo-title {
+  color: var(--fg-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.chat-sop-count,
+.chat-todo-count { color: var(--fg-3); font-size: var(--fs-xs); margin-left: auto; }
 .chat-sop-list {
   list-style: none;
   margin: 0;
