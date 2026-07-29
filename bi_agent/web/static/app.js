@@ -510,7 +510,7 @@
       item.appendChild(f);
     }
     f.textContent = msg;
-    f.style.color = isErr ? "var(--danger,#ef4444)" : "var(--ok,#34d399)";
+    f.style.color = isErr ? "var(--danger,#8d6e63)" : "var(--ok,#00c853)";
   }
   function dispatchSupervise(item) {
     if (item.dataset.supervised === "1") {
@@ -2634,6 +2634,19 @@
     if (nearBottom) list.scrollTop = list.scrollHeight;
   }
 
+  // Actionable controls belong to the conversation column. Keep the same
+  // card markup so export/report logic can consume it, but mount it directly
+  // after the current assistant message instead of in the read-only board.
+  function appendChatActionCard(card) {
+    if (!card || !el.chatScroll) return;
+    card.classList.add("chat-action-card");
+    const container = B().currentAssistantEl
+      ? B().currentAssistantEl.parentElement
+      : el.chatScroll;
+    container.appendChild(card);
+    scrollChatBottom();
+  }
+
   function dashboardConclusionCard(text, turnTag) {
     const card = el_h("div", "dash-card dash-conclusion");
     card.dataset.turn = turnTag;
@@ -2910,6 +2923,9 @@
 
   function hydrateRestoredDashboard() {
     if (!el.dashboardList) return;
+    el.dashboardList.querySelectorAll(".dash-export[data-turn]").forEach((card) => {
+      bindExportCard(card, card.dataset.turn);
+    });
     el.dashboardList.querySelectorAll(".dash-card[data-chart-json]").forEach((card) => {
       try {
         const data = JSON.parse(decodeURIComponent(card.dataset.chartJson));
@@ -2951,6 +2967,9 @@
     el.chatScroll.querySelectorAll(".multidim-card[data-chart-json]").forEach((card) => {
       try { mountMultiChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson))); }
       catch (e) { console.warn("历史多维图表恢复失败", e); }
+    });
+    el.chatScroll.querySelectorAll(".dash-export[data-turn]").forEach((card) => {
+      bindExportCard(card, card.dataset.turn);
     });
   }
 
@@ -3052,7 +3071,7 @@
     const key = content.trim().toLowerCase();
     if (bucket.rootCauseSeen.has(key)) return true;
     bucket.rootCauseSeen.add(key);
-    appendDashboardCard(dashboardRootCauseCard(content, bucket.currentTurnTag || 1));
+    appendChatActionCard(dashboardRootCauseCard(content, bucket.currentTurnTag || 1));
     return true;
   }
 
@@ -3064,7 +3083,7 @@
     const key = content.trim().toLowerCase();
     if (bucket.actionsSeen.has(key)) return true;
     bucket.actionsSeen.add(key);
-    appendDashboardCard(dashboardActionsCard(content, bucket.currentTurnTag || 1));
+    appendChatActionCard(dashboardActionsCard(content, bucket.currentTurnTag || 1));
     return true;
   }
 
@@ -3209,15 +3228,13 @@
   // Per-turn HTML report export
   // ------------------------------------------------------------------
   function appendTurnExportButton(turnTag) {
-    if (!el.dashboardList) return;
     const tagStr = String(turnTag);
-    // Only append if this turn produced at least one (non-export) dashboard card.
-    const dataCards = el.dashboardList.querySelectorAll(
-      ".dash-card[data-turn=\"" + tagStr + "\"]:not(.dash-export)"
-    );
+    // Export controls are useful when the turn has board cards or actionable
+    // root-cause/recommendation cards mounted in the chat column.
+    const dataCards = turnCards(tagStr).filter((card) => !card.classList.contains("dash-question"));
     if (!dataCards.length) return;
-    // Avoid duplicate export buttons.
-    if (el.dashboardList.querySelector(".dash-export[data-turn=\"" + tagStr + "\"]")) return;
+    // Avoid duplicate export buttons in either pane.
+    if (document.querySelector(".dash-export[data-turn=\"" + tagStr + "\"]")) return;
 
     const card = el_h("div", "dash-card dash-export");
     card.dataset.turn = tagStr;
@@ -3231,18 +3248,24 @@
       '<button type="button" class="dash-export-btn dash-feishu-btn" data-turn="' + tagStr + '">' +
       '🐦 分享到飞书</button>' +
       '<div class="dash-export-status" data-turn="' + tagStr + '"></div>';
+    bindExportCard(card, turnTag);
+    appendChatActionCard(card);
+  }
+
+  function bindExportCard(card, turnTag) {
+    if (!card || card.dataset.exportBound === "1") return;
+    card.dataset.exportBound = "1";
     card.querySelector(
       ".dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-feishu-btn)")
-      .addEventListener("click", () => exportTurnReport(turnTag));
+      ?.addEventListener("click", () => exportTurnReport(turnTag));
     card.querySelector(".dash-word-btn")
-      .addEventListener("click", (ev) => handleWordButton(turnTag, ev.currentTarget));
-    card.querySelector(".dash-sync-btn").addEventListener("click", () => {
+      ?.addEventListener("click", (ev) => handleWordButton(turnTag, ev.currentTarget));
+    card.querySelector(".dash-sync-btn")?.addEventListener("click", () => {
       syncTurnReportToHome(turnTag, card);
     });
-    card.querySelector(".dash-feishu-btn").addEventListener("click", () => {
+    card.querySelector(".dash-feishu-btn")?.addEventListener("click", () => {
       shareTurnReportToFeishu(turnTag, card);
     });
-    appendDashboardCard(card);
   }
 
   function renderTextCardForExport(card) {
@@ -3404,9 +3427,15 @@
   }
 
   function turnCards(turnTag) {
-    return Array.from(el.dashboardList.querySelectorAll(
-      ".dash-card[data-turn=\"" + String(turnTag) + "\"]"
-    )).filter((c) => !c.classList.contains("dash-export"));
+    const tag = String(turnTag);
+    const dashboardCards = el.dashboardList
+      ? Array.from(el.dashboardList.querySelectorAll(".dash-card[data-turn=\"" + tag + "\"]"))
+      : [];
+    const chatCards = el.chatScroll
+      ? Array.from(el.chatScroll.querySelectorAll(".chat-action-card[data-turn=\"" + tag + "\"]"))
+      : [];
+    return dashboardCards.concat(chatCards)
+      .filter((c) => !c.classList.contains("dash-export"));
   }
 
   // Collect this turn's dashboard cards into a standalone report HTML.
@@ -3434,7 +3463,7 @@
     const s = card && card.querySelector(".dash-export-status");
     if (!s) return;
     s.textContent = text || "";
-    s.style.color = isErr ? "var(--danger,#ef4444)" : "var(--text-2,#94a3b8)";
+    s.style.color = isErr ? "var(--danger,#8d6e63)" : "var(--text-2,#9e9e9e)";
   }
 
   function syncTurnReportToHome(turnTag, card) {
@@ -3795,7 +3824,7 @@
       card.classList.add("open");
       card.scrollIntoView({ behavior: "smooth", block: "center" });
       card.style.transition = "background 0.3s";
-      card.style.background = "rgba(88, 166, 255, 0.15)";
+      card.style.background = "rgba(26, 115, 232, 0.15)";
       setTimeout(() => { card.style.background = ""; }, 600);
     }
   }
@@ -4067,8 +4096,8 @@
         finalizeAssistantText();
         const reasons = (evt.reasons || []).join(" / ") || "缺少表格 / 图表卡片";
         const tip = el_h("div", "msg msg-system msg-enforce",
-          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-yellow,#eab308); border-color: var(--accent-yellow,#eab308);">SYSTEM · 强制渲染</span></div>
-           <div class="msg-body" style="color: var(--text-1); border-left: 2px solid var(--accent-yellow,#eab308); padding-left: 10px;">
+          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-amber,#ff6d00); border-color: var(--accent-amber,#ff6d00);">SYSTEM · 强制渲染</span></div>
+           <div class="msg-body" style="color: var(--fg-1); border-left: 2px solid var(--accent-amber,#ff6d00); padding-left: 10px;">
              检测到本轮${esc(reasons)}却未调用渲染工具,已注入提醒,要求模型补一次 <code>TableGenerate</code>(必要时再加 <code>ChartGenerate</code>)。
            </div>`);
         el.chatScroll.appendChild(tip);
