@@ -51,6 +51,12 @@
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
 
+### 20. 迭代思维链紧凑间距
+
+- 压缩每次迭代中工具思考条目的上下留白和条目间距；`Ontology query · 业务对象 · 363ms` 等摘要更紧凑，点击展开的详细输入输出不变。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
+
 ### 14. 用户气泡与图表 HTML 全面去黑
 
 - 用户气泡改为 CPQ 的蓝紫渐变并强制白色文字。
