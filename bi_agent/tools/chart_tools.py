@@ -150,7 +150,6 @@ def _echarts_option(params: dict) -> dict[str, Any]:
     series = params["series"]
     unit = params.get("unit") or ""
     y_name = params.get("y_axis_name") or ""
-    source = params.get("source_note") or ""
 
     base: dict[str, Any] = {
         "backgroundColor": "transparent",
@@ -186,21 +185,8 @@ def _echarts_option(params: dict) -> dict[str, Any]:
             "itemWidth": 10,
             "itemHeight": 10,
         },
-        "grid": {"left": 50, "right": 20, "top": 80, "bottom": 40, "containLabel": True},
+        "grid": {"left": 18, "right": 16, "top": 80, "bottom": 40, "containLabel": True},
     }
-
-    if source:
-        base["graphic"] = [{
-            "type": "text",
-            "right": 14,
-            "bottom": 8,
-            "style": {
-                "text": f"Source · {source}",
-                "fill": "#6B7280",
-                "fontSize": 10,
-                "fontFamily": CHART_FONT_FAMILY,
-            },
-        }]
 
     if ct == "pie":
         pie_series = {
