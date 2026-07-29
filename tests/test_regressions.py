@@ -39,14 +39,14 @@ class OfflineRegressionTests(unittest.TestCase):
         })
         self.assertEqual(option["color"][0], "#1A73E8")
         self.assertIn("PingFang SC", option["textStyle"]["fontFamily"])
-        self.assertEqual(option["tooltip"]["backgroundColor"], "#1F1F1F")
-        self.assertEqual(option["xAxis"]["axisLine"]["lineStyle"]["color"], "#555555")
+        self.assertEqual(option["tooltip"]["backgroundColor"], "#FFFFFF")
+        self.assertEqual(option["xAxis"]["axisLine"]["lineStyle"]["color"], "#D9D9E3")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             out = Path(temp_dir) / "chart.html"
             _write_standalone_html(option, out, "收入")
             html = out.read_text(encoding="utf-8")
-            self.assertIn("background: #121212", html)
+            self.assertIn("background: #F7F7F8", html)
             self.assertIn('"PingFang SC", "SF Pro Display"', html)
 
     def test_openai_compatible_conversion_preserves_images_and_tools(self) -> None:

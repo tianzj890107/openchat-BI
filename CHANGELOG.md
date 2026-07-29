@@ -12,6 +12,15 @@
 
 ## 2026-07-29
 
+### 14. 用户气泡与图表 HTML 全面去黑
+
+- 用户气泡改为 CPQ 的蓝紫渐变并强制白色文字。
+- ChartGenerate、ChartGenerateMultiDim、历史图表恢复和独立 HTML 图表统一使用浅色背景、深色文字和浅色边框；图表画布不再被黑色背景包住。
+- 多维图表的工具栏、下拉框和图表页面同步改为浅色，保留规范配色的数据系列。
+- 页面：智能分析、报表分析对话区、图表 HTML 打开页。
+- 主要文件：`bi_agent/tools/chart_tools.py`、`bi_agent/tools/chart_multidim_tools.py`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+- 类型：前端静态资源与图表生成后端变更，需要刷新浏览器并重启后端；本次部署未调用 Qwen API。
+
 ### 13. CPQ 浅灰气泡配色校正
 
 - Agent 文本、迭代输出、图表、表格、根因分析和行动建议气泡改为与 `cpq_agent` 一致的浅灰 `#F7F7F8` 背景和浅色边框，文字同步改为深色，避免出现黑色气泡。
