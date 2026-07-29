@@ -2298,19 +2298,19 @@
   }
 
   // Keep historical and newly generated ECharts options visually consistent
-  // with the AI 工艺 design specification.  The conversation layout itself
-  // is intentionally unchanged; this only normalizes chart presentation.
+  // with the CPQ-style light result surface. The conversation layout itself
+  // is intentionally unchanged; this only removes black chart canvases.
   const CHART_THEME = Object.freeze({
     palette: ["#1A73E8", "#FF6D00", "#00C853", "#607D8B", "#8D6E63", "#5C6BC0", "#9E9E9E"],
     fontFamily: '"PingFang SC", "SF Pro Display", -apple-system, sans-serif',
-    text: "#E0E0E0",
-    primaryText: "#FFFFFF",
-    secondaryText: "#9E9E9E",
-    mutedText: "#757575",
-    card: "#1F1F1F",
-    border: "#424242",
-    axis: "#555555",
-    page: "#121212",
+    text: "#374151",
+    primaryText: "#1F2023",
+    secondaryText: "#6B7280",
+    mutedText: "#6B7280",
+    card: "#FFFFFF",
+    border: "#E7E7EA",
+    axis: "#D9D9E3",
+    page: "#F7F7F8",
   });
 
   function themedChartOption(option) {

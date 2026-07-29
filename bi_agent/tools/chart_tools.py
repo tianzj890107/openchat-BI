@@ -26,9 +26,9 @@ CHART_SPEC_RE = re.compile(
 
 SUPPORTED_TYPES = {"bar", "line", "pie", "scatter", "area", "horizontal_bar"}
 
-# Shared with the web workbench design specification.  Keeping the palette
-# here makes charts rendered in the conversation, history and standalone HTML
-# use the same restrained colors instead of the former fluorescent theme.
+# Shared with the CPQ-style light result surface. Keeping the palette here
+# makes charts rendered in the conversation, history and standalone HTML use
+# the same restrained colors instead of black canvases and fluorescent text.
 CHART_PALETTE = [
     "#1A73E8",  # technology blue
     "#FF6D00",  # active orange
@@ -160,28 +160,28 @@ def _echarts_option(params: dict) -> dict[str, Any]:
             "left": 14,
             "top": 10,
             "textStyle": {
-                "color": "#FFFFFF", "fontSize": 14, "fontWeight": "600",
+                "color": "#1F2023", "fontSize": 14, "fontWeight": "600",
                 "fontFamily": CHART_FONT_FAMILY,
             },
             "subtextStyle": {
-                "color": "#9E9E9E", "fontSize": 11,
+                "color": "#6B7280", "fontSize": 11,
                 "fontFamily": CHART_FONT_FAMILY,
             },
         },
         "color": CHART_PALETTE,
-        "textStyle": {"color": "#E0E0E0", "fontFamily": CHART_FONT_FAMILY},
+        "textStyle": {"color": "#374151", "fontFamily": CHART_FONT_FAMILY},
         "tooltip": {
             "trigger": "item" if ct == "pie" else "axis",
-            "backgroundColor": "#1F1F1F",
-            "borderColor": "#424242",
+            "backgroundColor": "#FFFFFF",
+            "borderColor": "#E7E7EA",
             "borderWidth": 1,
-            "textStyle": {"color": "#FFFFFF", "fontFamily": CHART_FONT_FAMILY},
+            "textStyle": {"color": "#1F2023", "fontFamily": CHART_FONT_FAMILY},
             "axisPointer": {"type": "shadow"},
         },
         "legend": {
             "top": 36,
             "right": 14,
-            "textStyle": {"color": "#E0E0E0", "fontFamily": CHART_FONT_FAMILY},
+            "textStyle": {"color": "#374151", "fontFamily": CHART_FONT_FAMILY},
             "icon": "roundRect",
             "itemWidth": 10,
             "itemHeight": 10,
@@ -196,7 +196,7 @@ def _echarts_option(params: dict) -> dict[str, Any]:
             "bottom": 8,
             "style": {
                 "text": f"Source · {source}",
-                "fill": "#757575",
+                "fill": "#6B7280",
                 "fontSize": 10,
                 "fontFamily": CHART_FONT_FAMILY,
             },
@@ -208,9 +208,9 @@ def _echarts_option(params: dict) -> dict[str, Any]:
             "radius": ["40%", "70%"],
             "center": ["50%", "56%"],
             "avoidLabelOverlap": True,
-            "itemStyle": {"borderColor": "#121212", "borderWidth": 2},
+            "itemStyle": {"borderColor": "#F7F7F8", "borderWidth": 2},
             "label": {
-                "color": "#E0E0E0", "formatter": "{b}: {d}%",
+                "color": "#374151", "formatter": "{b}: {d}%",
                 "fontFamily": CHART_FONT_FAMILY,
             },
             "data": series[0]["data"],
@@ -221,38 +221,38 @@ def _echarts_option(params: dict) -> dict[str, Any]:
 
     # Axis-based charts
     x_axis = params.get("x_axis", [])
-    axis_fg = {"color": "#E0E0E0", "fontFamily": CHART_FONT_FAMILY}
-    grid_line = {"show": True, "lineStyle": {"color": "#424242"}}
+    axis_fg = {"color": "#374151", "fontFamily": CHART_FONT_FAMILY}
+    grid_line = {"show": True, "lineStyle": {"color": "#E7E7EA"}}
 
     if ct == "horizontal_bar":
         base["xAxis"] = {
             "type": "value",
             "name": y_name,
-            "nameTextStyle": {"color": "#9E9E9E", "fontFamily": CHART_FONT_FAMILY},
+            "nameTextStyle": {"color": "#6B7280", "fontFamily": CHART_FONT_FAMILY},
             "axisLabel": axis_fg,
             "splitLine": grid_line,
-            "axisLine": {"lineStyle": {"color": "#555555"}},
+            "axisLine": {"lineStyle": {"color": "#D9D9E3"}},
         }
         base["yAxis"] = {
             "type": "category",
             "data": x_axis,
             "axisLabel": axis_fg,
-            "axisLine": {"lineStyle": {"color": "#555555"}},
+            "axisLine": {"lineStyle": {"color": "#D9D9E3"}},
         }
     else:
         base["xAxis"] = {
             "type": "category",
             "data": x_axis,
             "axisLabel": axis_fg,
-            "axisLine": {"lineStyle": {"color": "#555555"}},
+            "axisLine": {"lineStyle": {"color": "#D9D9E3"}},
         }
         base["yAxis"] = {
             "type": "value",
             "name": y_name,
-            "nameTextStyle": {"color": "#9E9E9E", "fontFamily": CHART_FONT_FAMILY},
+            "nameTextStyle": {"color": "#6B7280", "fontFamily": CHART_FONT_FAMILY},
             "axisLabel": {**axis_fg, "formatter": ("{value}" + unit) if unit else "{value}"},
             "splitLine": grid_line,
-            "axisLine": {"lineStyle": {"color": "#555555"}},
+            "axisLine": {"lineStyle": {"color": "#D9D9E3"}},
         }
 
     echarts_series: list[dict[str, Any]] = []
@@ -291,7 +291,7 @@ def _write_standalone_html(option: dict[str, Any], out_path: Path, title: str) -
 <meta charset="UTF-8">
 <title>{title}</title>
 <style>
-  html, body {{ margin: 0; height: 100%; background: #121212; color: #FFFFFF;
+  html, body {{ margin: 0; height: 100%; background: #F7F7F8; color: #1F2023;
     font-family: "PingFang SC", "SF Pro Display", -apple-system, sans-serif; }}
   #chart {{ width: 100vw; height: 100vh; }}
 </style>
