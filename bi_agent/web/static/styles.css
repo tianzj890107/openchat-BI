@@ -536,8 +536,8 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
  * runtime dependency). */
 .step {
   position: relative;
-  margin: 0 0 4px 10px;
-  padding: 0 0 6px 18px;
+  margin: 0 0 1px 10px;
+  padding: 0 0 1px 18px;
   border: 0;
   border-left: 2px solid var(--border-1);
   background: transparent;
@@ -549,9 +549,9 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   content: "";
   position: absolute;
   left: -7px;
-  top: 11px;
-  width: 10px;
-  height: 10px;
+  top: 8px;
+  width: 8px;
+  height: 8px;
   border: 2px solid var(--accent-blue);
   border-radius: 50%;
   background: var(--bg-0);
@@ -560,13 +560,13 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 .step.open::before { background: var(--accent-blue); box-shadow: 0 0 0 3px rgba(26,115,232,.14); }
 .step:first-child { margin-top: 0; }
-.msg-body + .step { margin-top: 2px; }
+.msg-body + .step { margin-top: 1px; }
 .step-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 32px;
-  padding: 6px 10px 6px 0;
+  gap: 8px;
+  min-height: 24px;
+  padding: 2px 10px 2px 0;
   background: transparent;
   cursor: pointer;
   user-select: none;
