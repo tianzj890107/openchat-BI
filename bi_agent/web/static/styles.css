@@ -2169,7 +2169,22 @@ table.data-grid [data-align="left"]   { text-align: left; }
   padding: 14px 14px 20px;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 12px;
+}
+.dashboard-scroll > .dash-card {
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
+}
+.dashboard-scroll > .dash-card[data-chart-json] {
+  /* Charts have a stable readable canvas width, but never overflow a narrow
+     dashboard pane. Text/table cards remain content-sized below. */
+  width: min(720px, 100%);
+}
+.dashboard-scroll > .empty-state {
+  align-self: stretch;
+  width: auto;
 }
 .dashboard-scroll .empty-state {
   flex: 1;
