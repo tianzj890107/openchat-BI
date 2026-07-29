@@ -3317,3 +3317,66 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .role-option .role-opt-label { font-size: var(--fs-md); color: var(--fg-0); font-weight: 600; }
 .role-option.selected .role-opt-label { color: var(--accent-cyan); }
 .role-option .role-opt-desc { font-size: var(--fs-xs); color: var(--fg-2); line-height: 1.5; }
+
+/* Dashboard mirrors the conversation surface: user prompts are right-aligned
+ * bubbles, while every delivered result is a CPQ-style light bubble. */
+.dashboard-scroll > .dash-question {
+  align-self: flex-end;
+  width: fit-content;
+  max-width: 88%;
+  margin-left: auto;
+  padding: 11px 14px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  color: #FFFFFF;
+  border: 0;
+  border-radius: 14px;
+  border-bottom-right-radius: 4px;
+}
+.dashboard-scroll > .dash-question > .dash-head { padding: 0 0 6px; color: rgba(255,255,255,.86); }
+.dashboard-scroll > .dash-question > .dash-body { padding: 0; color: #FFFFFF; }
+.dashboard-scroll > .dash-conclusion,
+.dashboard-scroll > .dash-chart,
+.dashboard-scroll > .dash-table,
+.dashboard-scroll > .dash-multidim {
+  width: min(100%, 760px);
+  align-self: flex-start;
+  margin: 10px 0;
+  padding: 11px 14px;
+  background: #F7F7F8;
+  color: #1F2023;
+  border: 1px solid #E7E7EA;
+  border-radius: 14px;
+  border-bottom-left-radius: 4px;
+  overflow: visible;
+}
+.dashboard-scroll > .dash-conclusion > .dash-head,
+.dashboard-scroll > .dash-chart > .dash-head,
+.dashboard-scroll > .dash-table > .dash-head,
+.dashboard-scroll > .dash-multidim > .dash-head {
+  padding: 0 0 8px;
+  background: transparent;
+  border-bottom: 0;
+  color: #1F2023;
+}
+.dashboard-scroll .dash-title,
+.dashboard-scroll .dash-body,
+.dashboard-scroll .table-title,
+.dashboard-scroll .table-subtitle,
+.dashboard-scroll .table-shape,
+.dashboard-scroll .table-source,
+.dashboard-scroll .multidim-title,
+.dashboard-scroll .multidim-subtitle,
+.dashboard-scroll .multidim-source,
+.dashboard-scroll .multidim-dim-summary { color: #1F2023; }
+.dashboard-scroll .dash-chart-canvas,
+.dashboard-scroll .multidim-canvas { background: #F7F7F8; border-radius: 10px; }
+.dashboard-scroll .dash-table-wrap .table-scroll {
+  background: #FFFFFF;
+  border-color: #E7E7EA;
+}
+.dashboard-scroll table.data-grid thead th {
+  background: #ECECF1;
+  color: #1F2023;
+  border-color: #E7E7EA;
+}
+.dashboard-scroll table.data-grid tbody td { color: #1F2023; border-color: #E7E7EA; }

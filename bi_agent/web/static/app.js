@@ -2324,6 +2324,9 @@
     themed.color = CHART_THEME.palette.slice();
     themed.backgroundColor = "transparent";
     themed.textStyle = { ...(themed.textStyle || {}), color: CHART_THEME.text, fontFamily: CHART_THEME.fontFamily };
+    if (themed.grid && typeof themed.grid === "object" && !Array.isArray(themed.grid)) {
+      themed.grid = { ...themed.grid, left: 18, right: 16 };
+    }
 
     const titles = Array.isArray(themed.title) ? themed.title : (themed.title ? [themed.title] : []);
     titles.forEach((title) => {
@@ -2373,8 +2376,11 @@
       });
     }
     if (Array.isArray(themed.graphic)) {
-      themed.graphic.forEach((graphic) => {
-        if (graphic && graphic.style) graphic.style = { ...graphic.style, fill: CHART_THEME.mutedText, fontFamily: CHART_THEME.fontFamily };
+      // Source/table identifiers are useful for audit metadata but are not
+      // user-facing chart content in the dashboard.
+      themed.graphic = themed.graphic.filter((graphic) => {
+        const text = graphic && graphic.style && graphic.style.text;
+        return !(typeof text === "string" && /^Source\s*[·:]/i.test(text));
       });
     }
     return themed;

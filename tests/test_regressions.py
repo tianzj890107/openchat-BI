@@ -41,6 +41,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("PingFang SC", option["textStyle"]["fontFamily"])
         self.assertEqual(option["tooltip"]["backgroundColor"], "#FFFFFF")
         self.assertEqual(option["xAxis"]["axisLine"]["lineStyle"]["color"], "#D9D9E3")
+        self.assertNotIn("graphic", option)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             out = Path(temp_dir) / "chart.html"
