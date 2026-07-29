@@ -4886,6 +4886,9 @@
 
   function applySidebarState(collapsed) {
     document.body.classList.toggle("sidebar-collapsed", collapsed);
+    if (el.sidebarCollapse) {
+      el.sidebarCollapse.title = collapsed ? "展开侧栏" : "收起侧栏";
+    }
     try { localStorage.setItem(SIDEBAR_LS_KEY, collapsed ? "1" : "0"); } catch (e) {}
   }
 
@@ -4901,7 +4904,11 @@
     applySidebarState(collapsed);
   })();
 
-  if (el.sidebarCollapse) el.sidebarCollapse.addEventListener("click", () => applySidebarState(true));
+  if (el.sidebarCollapse) {
+    el.sidebarCollapse.addEventListener("click", () => {
+      applySidebarState(!document.body.classList.contains("sidebar-collapsed"));
+    });
+  }
   if (el.sidebarReopen) el.sidebarReopen.addEventListener("click", () => applySidebarState(false));
 
   // ------------------------------------------------------------------
