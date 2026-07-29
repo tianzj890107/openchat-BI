@@ -3225,7 +3225,7 @@
     // The full SOP is the primary overview; keep the verbose question/task
     // list collapsed until the user explicitly opens it.
     if (el.chatTodo) el.chatTodo.classList.add("collapsed");
-    if (el.chatSop) el.chatSop.classList.remove("collapsed");
+    if (el.chatSop) el.chatSop.classList.add("collapsed");
     renderTodoPanel();
   }
   function applySopStatuses() {
