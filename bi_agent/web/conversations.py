@@ -23,11 +23,18 @@ duplicates.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import re
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover - Python 3.10+ includes zoneinfo
+    ZoneInfo = None  # type: ignore[assignment,misc]
 
 
 STORE_DIRNAME = "bi_conversations"
@@ -38,6 +45,10 @@ CID_RE = re.compile(r"^[0-9a-f]{8,64}$", re.IGNORECASE)
 
 
 def _now_iso() -> str:
+    # Persist a stable business timezone instead of depending on the host's
+    # local timezone (which differs between a developer laptop and Docker).
+    if ZoneInfo is not None:
+        return datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds")
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
@@ -169,9 +180,29 @@ class ConversationStore:
             "tools_html": (tools_html or "")[:MAX_HTML_BYTES],
             "llm_html": (llm_html or "")[:MAX_HTML_BYTES],
         }
-        self._path(cid).write_text(
-            json.dumps(rec, ensure_ascii=False), encoding="utf-8"
-        )
+        target = self._path(cid)
+        payload = json.dumps(rec, ensure_ascii=False)
+        # Replace the snapshot atomically. A browser save and a server-side
+        # sync can overlap; never leave a partially-written JSON document for
+        # the history list to read.
+        temp_path: Optional[str] = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.root, prefix=f".{cid}.",
+                suffix=".tmp", delete=False
+            ) as tmp:
+                temp_path = tmp.name
+                tmp.write(payload)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(temp_path, target)
+            temp_path = None
+        finally:
+            if temp_path:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
         self._prune()
         return self._summary(rec)
 

@@ -58,6 +58,13 @@
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
 
+### 21. 会话与报表存储稳健性
+
+- 会话历史和上传报表的 JSON 快照改为同目录临时文件校验后原子替换，避免并发保存或进程中断留下半截文件导致历史列表、图表恢复失败。
+- 会话与报表时间统一按东八区写入，不再依赖运行主机的本地时区；SQL 结果格式化兼容列元数据缺失或行列数不一致的 Doris 返回值。
+- 主要文件：`bi_agent/web/conversations.py`、`bi_agent/report/store.py`、`bi_agent/tools/sql_tools.py`、`tests/test_regressions.py`。
+- 类型：后端持久化与 SQL 工具变更，需要重启本地和服务器后端；不调用 Qwen API。
+
 ### 14. 用户气泡与图表 HTML 全面去黑
 
 - 用户气泡改为 CPQ 的蓝紫渐变并强制白色文字。
