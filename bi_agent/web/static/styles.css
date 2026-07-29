@@ -336,8 +336,8 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .msg-user {
   padding: 10px 14px;
   background: rgba(148, 163, 184, 0.11);
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  border-radius: 4px;
+  border: 0;
+  border-radius: 0;
 }
 .msg-user.question-focus,
 .dash-question.question-focus {
@@ -1154,18 +1154,18 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 /* --- Chart card (inline in chat + in tool card) --- */
 .chart-card {
   margin: 10px 0;
-  border: 1px solid var(--border-1);
-  background: var(--bg-1);
-  border-radius: 2px;
-  overflow: hidden;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  overflow: visible;
 }
 .chart-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 12px;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border-1);
+  padding: 4px 0 8px;
+  background: transparent;
+  border-bottom: 0;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
 }
@@ -1185,7 +1185,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .chart-canvas {
   width: 100%;
   height: 340px;
-  background: var(--bg-0);
+  background: transparent;
 }
 
 /* ====================================================================
@@ -2085,20 +2085,19 @@ body[data-dashboard="collapsed"] #btn-toggle-dashboard {
  * ================================================================== */
 .table-card {
   margin: 10px 0;
-  border: 1px solid var(--border-1);
-  background: var(--bg-1);
-  border-left: 3px solid var(--accent-violet);
-  border-radius: 2px;
-  overflow: hidden;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  overflow: visible;
 }
 .table-head {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 8px 12px;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border-1);
+  padding: 4px 0 8px;
+  background: transparent;
+  border-bottom: 0;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
 }
@@ -2122,6 +2121,9 @@ body[data-dashboard="collapsed"] #btn-toggle-dashboard {
 .table-scroll {
   overflow-x: auto;
   max-height: 420px;
+  border: 1px solid var(--border-1);
+  border-radius: 12px;
+  background: var(--bg-1);
 }
 table.data-grid {
   width: 100%;
@@ -2337,6 +2339,35 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   width: 100%;
   margin: 14px 0 4px;
 }
+.chat-scroll .chat-action-card {
+  border: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.chat-scroll .chat-action-card .dash-head {
+  padding: 4px 0 8px;
+  background: transparent;
+  border-bottom: 0;
+}
+.chat-scroll .chat-action-card .dash-body { padding-left: 0; padding-right: 0; }
+.chat-scroll .chat-action-card .dash-item {
+  border: 0;
+  border-radius: 0;
+  padding: 6px 0;
+  margin: 6px 0;
+  background: transparent;
+}
+.chat-scroll .chat-action-card .dash-item-flash { padding-left: 0; padding-right: 0; }
+.chat-scroll .chat-action-card.dash-export { padding: 0; }
+.chat-scroll .chat-action-card .dash-export-btn {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.chat-scroll .chat-action-card .dash-export-btn:hover { background: rgba(255,255,255,.04); }
 .dash-conclusion { border-left: 3px solid var(--accent-amber); }
 .dash-question   { border-left: 3px solid var(--accent-blue); }
 .dash-question { cursor: pointer; transition: background .12s, border-color .12s; }
@@ -2549,8 +2580,23 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 }
 .dash-table-wrap .table-scroll {
   max-height: 280px;
-  border: none;
+  border: 1px solid var(--border-1);
+  border-radius: 12px;
+  background: var(--bg-1);
 }
+.dashboard-scroll > .dash-table {
+  border: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.dashboard-scroll > .dash-table > .dash-head {
+  padding: 4px 0 8px;
+  background: transparent;
+  border-bottom: 0;
+}
+.chat-scroll .multidim-canvas { background: transparent; }
 
 /* ====================================================================
  * Deep-Insight (深入洞察) — button on chart cards
@@ -2591,6 +2637,13 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   border-radius: 2px;
   overflow: hidden;
 }
+.chat-scroll .multidim-card {
+  border: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
 .multidim-head {
   display: flex;
   align-items: center;
@@ -2601,6 +2654,11 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   border-bottom: 1px solid var(--border-1);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
+}
+.chat-scroll .multidim-head {
+  padding: 4px 0 8px;
+  background: transparent;
+  border-bottom: 0;
 }
 .multidim-tag {
   color: var(--accent-violet);
@@ -2642,6 +2700,12 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   border-bottom: 1px solid var(--border-1);
   font-family: var(--font-mono);
   font-size: 11px;
+}
+.chat-scroll .multidim-toolbar {
+  padding-left: 0;
+  padding-right: 0;
+  background: transparent;
+  border-bottom: 0;
 }
 .multidim-label {
   color: var(--fg-3);
