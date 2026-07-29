@@ -2182,6 +2182,28 @@ table.data-grid [data-align="left"]   { text-align: left; }
      dashboard pane. Text/table cards remain content-sized below. */
   width: min(720px, 100%);
 }
+.dashboard-scroll > .dash-chart,
+.dashboard-scroll > .dash-table,
+.dashboard-scroll > .dash-multidim {
+  border: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.dashboard-scroll > .dash-chart > .dash-head,
+.dashboard-scroll > .dash-table > .dash-head,
+.dashboard-scroll > .dash-multidim > .dash-head {
+  padding: 4px 0 8px;
+  background: transparent;
+  border-bottom: 0;
+}
+.dashboard-scroll .dash-turn,
+.dashboard-scroll .dash-source,
+.dashboard-scroll .dash-link,
+.chat-scroll .chat-action-card .dash-turn {
+  display: none;
+}
 .dashboard-scroll > .empty-state {
   align-self: stretch;
   width: auto;
