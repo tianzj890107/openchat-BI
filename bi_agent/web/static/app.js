@@ -1890,11 +1890,10 @@
     updateTurnCounter();
     const msg = el_h("div", "msg msg-user");
     msg.dataset.turn = String(B().turnCount);
-    msg.innerHTML = `
-      <div class="msg-header">
-        <span class="msg-role user">用户</span>
-      </div>
-      <div class="msg-body">${esc(text)}</div>`;
+    // User bubbles contain only the user's words. The bubble alignment and
+    // color already identify the speaker, so a redundant 「用户」 label adds
+    // noise inside every message.
+    msg.innerHTML = `<div class="msg-body">${esc(text)}</div>`;
     el.chatScroll.appendChild(msg);
     B().questions.push({ turn: B().turnCount, text: String(text || "") });
     renderTodoPanel();
@@ -2776,12 +2775,7 @@
     card.tabIndex = 0;
     card.setAttribute("role", "button");
     card.title = "点击定位到对话中的这条提问";
-    card.innerHTML = `
-      <div class="dash-head">
-        <span class="dash-tag question">用户</span>
-        <span class="dash-turn">Turn ${turnTag}</span>
-      </div>
-      <div class="dash-body">${esc(text || "")}</div>`;
+    card.innerHTML = `<div class="dash-body">${esc(text || "")}</div>`;
     return card;
   }
 
