@@ -26,6 +26,13 @@
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`。
 - 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
 
+### 3. Ant Design 迁移第三阶段：对话消息气泡
+
+- 用户消息和 Agent 文本输出改为 Ant Design X `Bubble` 渲染，分别使用右侧蓝色气泡和左侧浅灰气泡；迭代标题和流式文本继续由原有 SSE DOM 数据驱动。
+- 原消息节点、回合定位、滚动、工具步骤和历史恢复逻辑保留；React 渲染失败时旧消息仍可作为回退路径。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
