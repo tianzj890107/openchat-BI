@@ -85,6 +85,12 @@
 - 页面：`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`。
 - 类型：HTML/CSS 静态资源变更；刷新页面即可生效。
 
+### 12. React 侧栏最近会话数据源修复
+
+- 最近会话改为 React 侧栏直接读取 `/api/conversations`，不再依赖已隐藏的旧侧栏 DOM；新建、完成分析、切换模式后会自动刷新列表，点击仍桥接到原有恢复逻辑。
+- 页面：`bi_agent/web/static/index.html`、`bi_agent/web/static/app.js`、`frontend/src/main.jsx`。
+- 类型：前端静态资源变更；本地构建后需刷新浏览器。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏

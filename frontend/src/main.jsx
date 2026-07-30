@@ -62,16 +62,39 @@ function readRecent() {
   }));
 }
 
+async function fetchRecent(mode = "data") {
+  try {
+    const response = await fetch(`/api/conversations?mode=${encodeURIComponent(mode)}`);
+    if (!response.ok) return [];
+    const payload = await response.json();
+    return (payload.conversations || []).map((item) => ({
+      key: item.id,
+      cid: item.id,
+      title: item.title || "未命名对话",
+    }));
+  } catch (_) {
+    return [];
+  }
+}
+
 function Sidebar() {
   const [collapsed, setCollapsed] = useState(document.body.classList.contains("sidebar-collapsed"));
   const [recent, setRecent] = useState(readRecent);
   const [active, setActive] = useState("data");
 
   useEffect(() => {
+    let disposed = false;
+    const refresh = async (mode = document.body.dataset.mode || "data") => {
+      const items = await fetchRecent(mode);
+      if (!disposed) setRecent(items);
+    };
+    refresh();
     const recentList = document.getElementById("recent-list");
     const observer = recentList ? new MutationObserver(() => setRecent(readRecent())) : null;
     if (recentList) observer.observe(recentList, { childList: true, subtree: true, characterData: true });
-    return () => observer?.disconnect();
+    const onUpdated = (event) => refresh(event.detail?.mode || document.body.dataset.mode || "data");
+    window.addEventListener("bi-conversations-updated", onUpdated);
+    return () => { disposed = true; observer?.disconnect(); window.removeEventListener("bi-conversations-updated", onUpdated); };
   }, []);
 
   const items = useMemo(() => navItems.map((item) => {
@@ -102,7 +125,7 @@ function Sidebar() {
           <Divider className="antd-sidebar-divider" />
           <div className="antd-sidebar-section-title">最近</div>
           <div className="antd-recent-list">
-            {recent.length ? recent.map((item) => <button key={item.key} className="antd-recent-item" onClick={() => item.node?.click()} title={item.title}>{item.title}</button>) : <span className="antd-recent-empty">暂无历史会话</span>}
+            {recent.length ? recent.map((item) => <button key={item.key} className="antd-recent-item" onClick={() => item.node?.click() || document.querySelector(`#recent-list .recent-item[data-cid="${CSS.escape(item.cid || item.key)}"]`)?.click()} title={item.title}>{item.title}</button>) : <span className="antd-recent-empty">暂无历史会话</span>}
           </div>
           <button className="antd-account" onClick={() => document.getElementById("sidebar-account")?.click()}><UserOutlined /> <span>分析员</span></button>
         </>}

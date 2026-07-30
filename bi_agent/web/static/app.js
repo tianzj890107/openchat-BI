@@ -840,6 +840,7 @@
     items.forEach((it) => {
       const row = document.createElement("div");
       row.className = "recent-item" + (it.id === activeId ? " active" : "");
+      row.dataset.cid = it.id || "";
       row.title = it.title || "未命名对话";
       const t = document.createElement("span");
       t.className = "recent-title";
@@ -854,6 +855,7 @@
       row.addEventListener("click", () => restoreConversation(it.id));
       recentListEl.appendChild(row);
     });
+    window.dispatchEvent(new CustomEvent("bi-conversations-updated", { detail: { mode: state.mode } }));
   }
 
   async function deleteRecent(id) {
