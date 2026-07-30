@@ -3544,6 +3544,9 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   margin: 4px 4px 8px;
   padding-inline: 16px;
 }
+.antd-workbench-sidebar:not(.ant-layout-sider-collapsed) .antd-new-chat.ant-btn-block {
+  width: calc(100% - 8px);
+}
 .antd-workbench-sidebar.ant-layout-sider-collapsed .antd-new-chat {
   width: 48px;
   margin-inline: 8px;
@@ -3634,6 +3637,9 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-dashboard-bubble .dash-tag.chart { color: #0B7FF3; }
 .antd-dashboard-bubble .dash-tag.table,
 .antd-dashboard-bubble .dash-tag.multidim { color: #7C83FD; }
+.antd-dashboard-bubble .dash-tag.conclusion { color: #B7791F; }
+.antd-dashboard-bubble .dash-tag.rootcause { color: #A93131; }
+.antd-dashboard-bubble .dash-tag.actions { color: #11735D; }
 .antd-dashboard-result-head {
   display: flex;
   align-items: center;
