@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Button, Collapse, ConfigProvider, Divider, Layout, List, Menu, Progress, Tag, Tooltip } from "antd";
+import { Button, Card, Collapse, ConfigProvider, Divider, Layout, List, Menu, Progress, Tag, Tooltip } from "antd";
 import { ThoughtChain } from "@ant-design/x";
 import { Bubble } from "@ant-design/x";
 import {
@@ -243,6 +243,26 @@ function mountStep(step) {
 }
 
 window.antdStepMount = mountStep;
+
+const cardRoots = new WeakMap();
+function mountResultCard(card, type) {
+  if (!card || cardRoots.has(card)) return;
+  const host = document.createElement("div");
+  host.className = "antd-result-card-host";
+  card.appendChild(host);
+  const head = card.querySelector(`:scope > .${type === "table" ? "table-head" : type === "multi" ? "multidim-head" : "chart-head"}`);
+  const title = head?.querySelector(`.${type === "table" ? "table-title" : type === "multi" ? "multidim-title" : "chart-title"}`)?.textContent?.trim() || "分析结果";
+  const nodes = type === "chart"
+    ? [card.querySelector(":scope > .chart-canvas")]
+    : type === "table"
+      ? [card.querySelector(":scope > .table-scroll"), card.querySelector(":scope > .table-summary"), card.querySelector(":scope > .table-footnote")]
+      : [card.querySelector(":scope > .multidim-toolbar"), card.querySelector(":scope > .multidim-canvas"), card.querySelector(":scope > .multidim-summary"), card.querySelector(":scope > .multidim-footnote")];
+  const root = createRoot(host);
+  root.render(<Card size="small" title={title} className={`antd-result-card antd-result-${type}`}><div ref={(slot) => { if (slot) nodes.filter(Boolean).forEach((node) => slot.appendChild(node)); }} /></Card>);
+  if (head) head.style.display = "none";
+  cardRoots.set(card, root);
+}
+window.antdResultCardMount = mountResultCard;
 
 const root = document.getElementById("antd-sidebar-root");
 if (root) createRoot(root).render(<Sidebar />);

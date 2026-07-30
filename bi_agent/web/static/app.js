@@ -2245,6 +2245,7 @@
       : el.chatScroll;
     const card = buildChartCard(chart);
     container.appendChild(card);
+    if (window.antdResultCardMount) window.antdResultCardMount(card, "chart");
     scrollChatBottom();
     requestAnimationFrame(() => mountChart(card, chart));
   }
@@ -2447,6 +2448,7 @@
       : el.chatScroll;
     const card = buildTableCard(table);
     container.appendChild(card);
+    if (window.antdResultCardMount) window.antdResultCardMount(card, "table");
     scrollChatBottom();
   }
 
@@ -2884,6 +2886,7 @@
       : el.chatScroll;
     const card = buildMultiChartCard(spec);
     container.appendChild(card);
+    if (window.antdResultCardMount) window.antdResultCardMount(card, "multi");
     scrollChatBottom();
     requestAnimationFrame(() => mountMultiChart(card, spec));
   }

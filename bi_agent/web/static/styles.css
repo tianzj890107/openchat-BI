@@ -3572,3 +3572,10 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-step-label span { overflow: hidden; color: #667085; text-overflow: ellipsis; white-space: nowrap; }
 .antd-step-label em { margin-left: auto; color: #98a2b3; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-style: normal; }
 .antd-step-html { padding: 0 8px 8px 28px; color: #667085; font-size: 11px; }
+.antd-result-card-host { width: 100%; }
+.antd-result-card { border-color: #e7e7ea !important; border-radius: 10px !important; box-shadow: none !important; }
+.antd-result-card .ant-card-head { min-height: 38px; padding: 0 12px; border-bottom-color: #f0f0f2; }
+.antd-result-card .ant-card-head-title { font-size: 13px; color: #344054; }
+.antd-result-card .ant-card-body { padding: 10px 12px; }
+.antd-result-card .chart-canvas, .antd-result-card .multidim-canvas { min-height: 240px; width: 100%; }
+.antd-result-card .table-scroll { overflow-x: auto; }
