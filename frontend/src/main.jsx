@@ -213,13 +213,18 @@ function AntdMessage({ role, iteration, html }) {
   const rawHtml = String(html || "");
   const visibleHtml = rawHtml.replace(/<span class="thinking-line">[\s\S]*?思考中…<\/span>/g, "").trim();
   if (!user && !visibleHtml) return null;
+  const hasMarkup = /<\/?[a-z][^>]*>/i.test(visibleHtml);
+  const hasMarkdown = /\*\*|__|```|^\s{0,3}#{1,6}\s|^\s*[-+*]\s|\|.+\|/m.test(visibleHtml);
+  const contentHtml = !hasMarkup && hasMarkdown && typeof window.legacyRenderMarkdown === "function"
+    ? window.legacyRenderMarkdown(visibleHtml)
+    : visibleHtml;
   return <Bubble
     placement={user ? "end" : "start"}
     variant="filled"
     shape="corner"
     className={`antd-message-bubble ${user ? "antd-message-user" : "antd-message-assistant"}`}
     header={!user && <span className="antd-message-header">助手 · 迭代 {iteration || ""}</span>}
-    content={visibleHtml}
+    content={contentHtml}
     messageRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
   />;
 }

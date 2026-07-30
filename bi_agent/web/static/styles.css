@@ -3584,7 +3584,25 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-message-user .ant-bubble-content { background: linear-gradient(135deg, #597ef7, #7c5cff); color: #fff; }
 .antd-message-assistant .ant-bubble-content { background: #f7f7f8; border: 1px solid #e7e7ea; color: #1f2023; }
 .antd-message-header { color: #667085; font-size: 11px; }
-.antd-message-html { white-space: pre-wrap; word-break: break-word; }
+.antd-message-html { white-space: normal; word-break: break-word; line-height: 1.7; }
+.antd-message-html p { margin: 0 0 10px; }
+.antd-message-html p:last-child { margin-bottom: 0; }
+.antd-message-html strong { font-weight: 700; color: inherit; }
+.antd-message-html em { font-style: italic; }
+.antd-message-html h1, .antd-message-html h2, .antd-message-html h3,
+.antd-message-html h4, .antd-message-html h5, .antd-message-html h6 {
+  margin: 8px 0 6px; color: inherit; font-size: 1.05em; font-weight: 700;
+}
+.antd-message-html ul, .antd-message-html ol { margin: 6px 0 10px; padding-left: 22px; }
+.antd-message-html li { margin: 3px 0; }
+.antd-message-html blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid #d0d5dd; color: #667085; }
+.antd-message-html pre { margin: 8px 0; padding: 10px 12px; overflow-x: auto; border-radius: 8px; background: #eef0f3; color: #1f2023; }
+.antd-message-html pre code { padding: 0; background: transparent; color: inherit; }
+.antd-message-html .md-table-wrap { margin: 8px 0 10px; overflow-x: auto; }
+.antd-message-html table.md-table { width: 100%; border-collapse: collapse; font-size: .95em; }
+.antd-message-html .md-table th, .antd-message-html .md-table td { padding: 6px 9px; border: 1px solid #dfe3e8; text-align: left; }
+.antd-message-html .md-table th { background: #eef0f3; font-weight: 700; }
+.antd-message-html code { padding: 1px 5px; border-radius: 4px; background: rgba(0,0,0,.06); font-family: var(--font-mono); font-size: .9em; }
 .antd-step-enhanced { padding: 0; }
 .antd-step-enhanced > .step-header,
 .antd-step-enhanced > .step-body { display: none !important; }
@@ -3688,6 +3706,70 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   min-height: 220px;
   height: 220px;
   flex: 0 0 auto;
+}
+
+/* Markdown inside assistant bubbles: the body itself must allow block
+ * elements instead of treating the whole response as preformatted text. */
+.msg-assistant .msg-body,
+.antd-message-html {
+  white-space: normal !important;
+  word-break: break-word;
+  line-height: 1.65;
+}
+.msg-assistant .msg-body p,
+.antd-message-html p { margin: 0 0 10px; }
+.msg-assistant .msg-body p:last-child,
+.antd-message-html p:last-child { margin-bottom: 0; }
+.msg-assistant .msg-body h1,
+.msg-assistant .msg-body h2,
+.msg-assistant .msg-body h3,
+.antd-message-html h1,
+.antd-message-html h2,
+.antd-message-html h3 { margin: 12px 0 7px; color: #1F2023; line-height: 1.35; }
+.msg-assistant .msg-body ul,
+.msg-assistant .msg-body ol,
+.antd-message-html ul,
+.antd-message-html ol { margin: 6px 0 10px; padding-left: 24px; }
+.msg-assistant .msg-body li,
+.antd-message-html li { margin: 3px 0; }
+.msg-assistant .msg-body blockquote,
+.antd-message-html blockquote {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid #91B7E8;
+  background: #EEF5FF;
+  color: #4B5B73;
+}
+.msg-assistant .msg-body pre,
+.antd-message-html pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: #1F2937;
+  color: #F9FAFB;
+  white-space: pre;
+}
+.msg-assistant .msg-body code,
+.antd-message-html code { white-space: pre-wrap; }
+.msg-assistant .msg-body pre code,
+.antd-message-html pre code { white-space: pre; background: transparent; border: 0; padding: 0; color: inherit; }
+.md-table-wrap { width: 100%; overflow-x: auto; margin: 8px 0 12px; }
+.md-table {
+  width: 100%; min-width: 420px; border-collapse: collapse;
+  font-size: 13px; background: #fff; color: #1F2023;
+}
+.md-table th, .md-table td { padding: 7px 10px; border: 1px solid #E7E7EA; text-align: left; }
+.md-table th { background: #ECECF1; font-weight: 600; }
+.md-table tr:nth-child(even) td { background: #FAFAFC; }
+
+/* Ant Design's task-list migration inherits the bubble alignment in some
+ * themes. User questions in the task list should always read left-to-right. */
+.antd-workflow-panels .antd-question-item,
+.antd-workflow-panels .antd-question-item > * {
+  justify-content: flex-start !important;
+  text-align: left !important;
+  direction: ltr;
 }
 
 /* ------------------------------------------------------------------

@@ -354,6 +354,113 @@
     });
   }
 
+  // Dependency-free Markdown renderer for streamed assistant responses.
+  // Model text is escaped before markup is added, so arbitrary HTML cannot be
+  // injected. It covers headings, emphasis, code, links, lists, blockquotes,
+  // fenced code and Markdown tables used by the analysis templates.
+  function renderInlineMarkdown(text) {
+    let s = esc(text);
+    s = s.replace(ENTITY_CODE_RE, (code) => `<span class="entity-ref" data-code="${code}">${code}</span>`);
+    const slots = [];
+    const slot = (html) => {
+      const key = `\u0000MD${slots.length}\u0000`;
+      slots.push(html);
+      return key;
+    };
+    s = s.replace(/`([^`\n]+)`/g, (_, code) => slot(`<code>${code}</code>`));
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)(?:\s+"[^"]*")?\)/gi,
+      (_, label, href) => slot(`<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`));
+    s = s.replace(/\*\*([^*\n]+)\*\*|__([^_\n]+)__?/g, (_, a, b) => `<strong>${a || b}</strong>`);
+    s = s.replace(/~~([^~\n]+)~~/g, "<del>$1</del>");
+    s = s.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)|(?<!_)_([^_\n]+)_(?!_)/g,
+      (_, a, b) => `<em>${a || b}</em>`);
+    return s.replace(/\u0000MD(\d+)\u0000/g, (_, idx) => slots[Number(idx)] || "");
+  }
+
+  function markdownTableCells(line) {
+    let value = String(line || "").trim();
+    if (value.startsWith("|")) value = value.slice(1);
+    if (value.endsWith("|")) value = value.slice(0, -1);
+    return value.split("|").map((cell) => cell.trim());
+  }
+
+  function isMarkdownTableDivider(line) {
+    const cells = markdownTableCells(line);
+    return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+  }
+
+  function renderMarkdown(text) {
+    const lines = String(text == null ? "" : text).replace(/\r/g, "").split("\n");
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) { i += 1; continue; }
+      const fence = line.match(/^\s*```\s*([\w+-]*)\s*$/);
+      if (fence) {
+        const code = [];
+        i += 1;
+        while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) code.push(lines[i++]);
+        if (i < lines.length) i += 1;
+        const lang = fence[1] ? ` class="language-${esc(fence[1])}"` : "";
+        out.push(`<pre><code${lang}>${esc(code.join("\n"))}</code></pre>`);
+        continue;
+      }
+      const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+      if (heading) {
+        const level = heading[1].length;
+        out.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+        i += 1;
+        continue;
+      }
+      if (i + 1 < lines.length && line.includes("|") && isMarkdownTableDivider(lines[i + 1])) {
+        const headers = markdownTableCells(line);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && lines[i].trim() && lines[i].includes("|")) rows.push(markdownTableCells(lines[i++]));
+        out.push(`<div class="md-table-wrap"><table class="md-table"><thead><tr>${headers.map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${headers.map((_, idx) => `<td>${renderInlineMarkdown(row[idx] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+        continue;
+      }
+      const quote = line.match(/^\s*>\s?(.*)$/);
+      if (quote) {
+        const block = [];
+        while (i < lines.length) {
+          const match = lines[i].match(/^\s*>\s?(.*)$/);
+          if (!match) break;
+          block.push(match[1]);
+          i += 1;
+        }
+        out.push(`<blockquote>${renderMarkdown(block.join("\n"))}</blockquote>`);
+        continue;
+      }
+      const list = line.match(/^\s*([-+*]|\d+[.)])\s+(.+)$/);
+      if (list) {
+        const ordered = /^\d/.test(list[1]);
+        const items = [];
+        while (i < lines.length) {
+          const item = lines[i].match(/^\s*([-+*]|\d+[.)])\s+(.+)$/);
+          if (!item || /^\d/.test(item[1]) !== ordered) break;
+          items.push(`<li>${renderInlineMarkdown(item[2])}</li>`);
+          i += 1;
+        }
+        const tag = ordered ? "ol" : "ul";
+        out.push(`<${tag}>${items.join("")}</${tag}>`);
+        continue;
+      }
+      const paragraph = [line];
+      i += 1;
+      while (i < lines.length && lines[i].trim() &&
+             !/^\s*```/.test(lines[i]) &&
+             !/^\s{0,3}#{1,6}\s+/.test(lines[i]) &&
+             !/^\s*>/.test(lines[i]) &&
+             !/^\s*([-+*]|\d+[.)])\s+/.test(lines[i])) paragraph.push(lines[i++]);
+      out.push(`<p>${renderInlineMarkdown(paragraph.join("\n")).replace(/\n/g, "<br>")}</p>`);
+    }
+    return out.join("");
+  }
+
+  window.legacyRenderMarkdown = renderMarkdown;
+
   // Per-clause action menu for 根因分析 / 行动建议 cards. Each concrete
   // clause (a bullet / numbered point) gets one 行动 button that opens a
   // small dropdown of choices — actions bind to that specific clause.
@@ -1974,7 +2081,7 @@
     }
     bucket.currentAssistantText += text;
     const display = bucket.currentAssistantText.replace(/\s+$/, "");
-    bucket.currentAssistantEl.innerHTML = highlightEntities(display) +
+    bucket.currentAssistantEl.innerHTML = renderMarkdown(display) +
       '<span class="cursor"></span>';
     scrollChatBottom();
   }
@@ -1984,7 +2091,7 @@
     if (!bucket.currentAssistantEl) return;
     const trimmed = (bucket.currentAssistantText || "").replace(/\s+$/, "");
     if (trimmed) {
-      bucket.currentAssistantEl.innerHTML = highlightEntities(trimmed);
+      bucket.currentAssistantEl.innerHTML = renderMarkdown(trimmed);
     } else {
       bucket.currentAssistantEl.innerHTML = "";
     }
