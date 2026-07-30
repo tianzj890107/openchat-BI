@@ -40,6 +40,13 @@
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
 
+### 5. Ant Design 迁移第五阶段：结果卡片
+
+- 对话中的图表、表格和多维图表结果改为使用 Ant Design `Card` 作为外层容器；原 ECharts 画布、表格滚动区、维度选择和摘要节点继续复用，交互和数据不变。
+- 结果卡片保留原有隐藏回退 DOM，历史恢复和旧浏览器路径不会因 React 加载失败而丢失。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
