@@ -54,6 +54,13 @@
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
 
+### 7. 历史内容兼容迁移
+
+- 历史会话和历史看板恢复的旧 HTML 会自动重新挂载到 React/Ant Design 展示层，历史消息、工具步骤、图表、表格和结果卡片不再因恢复路径不同而继续使用旧样式。
+- 新生成内容与历史恢复内容共用同一套增强观察器，旧 DOM 仍保留作回退。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏

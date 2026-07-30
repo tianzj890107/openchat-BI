@@ -279,7 +279,29 @@ function mountDashboardCard(card) {
 }
 window.antdDashboardCardMount = mountDashboardCard;
 
+function enhanceLegacyTree(container) {
+  if (!container) return;
+  container.querySelectorAll(":scope > .msg:not(.antd-message-enhanced)").forEach((node) => {
+    mountMessage(node, node.classList.contains("msg-user") ? "user" : "assistant", node.querySelector(".msg-iter")?.textContent?.replace(/[^0-9]/g, ""));
+  });
+  container.querySelectorAll(".step:not(.antd-step-enhanced)").forEach(mountStep);
+  container.querySelectorAll(":scope > .chart-card:not(.antd-result-card-host), :scope > .table-card:not(.antd-result-card-host), :scope > .multidim-card:not(.antd-result-card-host)").forEach((node) => {
+    mountResultCard(node, node.classList.contains("table-card") ? "table" : node.classList.contains("multidim-card") ? "multi" : "chart");
+  });
+  container.querySelectorAll(":scope > .dash-card:not(.antd-dashboard-card-host)").forEach(mountDashboardCard);
+}
+
+function observeLegacySurface(id) {
+  const container = document.getElementById(id);
+  if (!container) return;
+  enhanceLegacyTree(container);
+  const observer = new MutationObserver(() => enhanceLegacyTree(container));
+  observer.observe(container, { childList: true, subtree: true });
+}
+
 const root = document.getElementById("antd-sidebar-root");
 if (root) createRoot(root).render(<Sidebar />);
 const workflowRoot = document.getElementById("antd-workflow-root");
 if (workflowRoot) createRoot(workflowRoot).render(<WorkflowPanels />);
+observeLegacySurface("chat-scroll");
+observeLegacySurface("dashboard-list");
