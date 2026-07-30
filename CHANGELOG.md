@@ -105,6 +105,14 @@
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`CHANGELOG.md`。
 - 类型：前端静态资源变更；本地构建后需刷新浏览器，服务器部署后无需重启后端。
 
+### 15. 看板结果标题与图表渲染恢复
+
+- 看板结果气泡恢复显示与会话一致的类型徽标和结果标题，仅隐藏 Source、Turn 等技术元信息。
+- 修复看板结果节点迁移到气泡后图表画布失去稳定尺寸、bar/pie/line 等图形不显示的问题。
+- 工具调用产生的空助手迭代不再显示只有“助手 · 迭代 0”的空气泡。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；本地构建后需刷新浏览器，服务器部署后无需重启后端。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏

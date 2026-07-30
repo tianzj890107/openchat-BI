@@ -207,6 +207,10 @@ const stepRoots = new WeakMap();
 
 function AntdMessage({ role, iteration, html }) {
   const user = role === "user";
+  // Tool-only iterations can create an assistant message host before any
+  // text arrives. Do not render an empty Bubble with only the iteration
+  // header; the tool step itself remains visible below it.
+  if (!user && !String(html || "").trim()) return null;
   return <Bubble
     placement={user ? "end" : "start"}
     variant="filled"
@@ -303,13 +307,19 @@ function mountDashboardCard(card) {
   host.className = "antd-dashboard-card-host";
   card.appendChild(host);
   const head = card.querySelector(":scope > .dash-head");
-  // Keep the result-type badge (chart/table/pie/line) visible in the board,
-  // just like the type marker in the conversation result cards. Other head
-  // metadata (title, turn, source) stays hidden to avoid duplicating content
-  // inside the assistant bubble.
+  // Keep the result-type badge and title visible in the board, just like the
+  // header of the conversation result cards. Other head metadata (source and
+  // turn) stays hidden to avoid duplicating technical information.
   const typeTag = head?.querySelector(":scope > .dash-tag.chart, :scope > .dash-tag.table, :scope > .dash-tag.multidim");
+  const title = head?.querySelector(":scope > .dash-title");
   const nodes = [...card.children].filter((node) => node !== head && node !== host);
-  if (typeTag) nodes.unshift(typeTag);
+  if (typeTag || title) {
+    const resultHead = document.createElement("div");
+    resultHead.className = "antd-dashboard-result-head";
+    if (typeTag) resultHead.appendChild(typeTag);
+    if (title) resultHead.appendChild(title);
+    nodes.unshift(resultHead);
+  }
   const root = createRoot(host);
   root.render(<DashboardBubble user={card.classList.contains("dash-question")} nodes={nodes} />);
   if (head) head.style.display = "none";

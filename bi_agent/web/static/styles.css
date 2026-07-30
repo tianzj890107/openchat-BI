@@ -3621,3 +3621,34 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-dashboard-bubble .dash-tag.chart { color: #0B7FF3; }
 .antd-dashboard-bubble .dash-tag.table,
 .antd-dashboard-bubble .dash-tag.multidim { color: #7C83FD; }
+.antd-dashboard-result-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  padding: 0 0 8px;
+  color: #1F2023;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.antd-dashboard-result-head .dash-title {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  color: #1F2023;
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.antd-dashboard-bubble .dash-chart-canvas,
+.antd-dashboard-bubble .multidim-canvas {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  height: 220px;
+  flex: 0 0 auto;
+}
