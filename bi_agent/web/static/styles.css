@@ -3640,6 +3640,24 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-dashboard-bubble .dash-tag.conclusion { color: #B7791F; }
 .antd-dashboard-bubble .dash-tag.rootcause { color: #A93131; }
 .antd-dashboard-bubble .dash-tag.actions { color: #11735D; }
+.dashboard-scroll > .antd-dashboard-card-mounted {
+  /* The legacy dashboard card used to be a second bubble. Once its content
+   * is mounted into Ant Design X Bubble, keep only the inner bubble's size
+   * and visual surface. */
+  width: 100% !important;
+  max-width: 100% !important;
+  align-self: stretch !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+.dashboard-scroll > .antd-dashboard-card-mounted > .antd-dashboard-card-host {
+  width: 100%;
+}
 .antd-dashboard-result-head {
   display: flex;
   align-items: center;
@@ -3670,4 +3688,103 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   min-height: 220px;
   height: 220px;
   flex: 0 0 auto;
+}
+
+/* ------------------------------------------------------------------
+ * Single-bubble result surfaces
+ *
+ * The legacy card remains in the DOM for history/export/layout purposes,
+ * while the Ant Design migration adds the visible inner Bubble/Card.  Do
+ * not paint both layers: keep the legacy layer's dimensions/layout, make it
+ * transparent, and put its visual treatment on the inner component.
+ * ------------------------------------------------------------------ */
+.msg.antd-message-enhanced {
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+.msg.antd-message-enhanced .antd-message-host,
+.msg.antd-message-enhanced .ant-bubble {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+.msg.antd-message-enhanced .ant-bubble {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.msg.antd-message-enhanced .ant-bubble-content {
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border-radius: 14px;
+}
+.msg.antd-message-enhanced .antd-message-user .ant-bubble-content {
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  color: #fff;
+  border: 0;
+  border-bottom-right-radius: 4px;
+}
+.msg.antd-message-enhanced .antd-message-assistant .ant-bubble-content {
+  background: #F7F7F8;
+  color: #1F2023;
+  border: 1px solid #E7E7EA;
+  border-bottom-left-radius: 4px;
+}
+
+/* Dashboard conclusion / chart / table / question: one visible bubble. */
+.dashboard-scroll > .dash-card:has(> .antd-dashboard-card-host) {
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+.dashboard-scroll > .dash-card:has(> .antd-dashboard-card-host) > .antd-dashboard-card-host,
+.antd-dashboard-card-host .ant-bubble {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+.antd-dashboard-card-host .ant-bubble {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.antd-dashboard-card-host .ant-bubble-content {
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border-radius: 14px;
+}
+.antd-dashboard-card-host .antd-dashboard-user .ant-bubble-content {
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  color: #fff;
+  border: 0;
+  border-bottom-right-radius: 4px;
+}
+.antd-dashboard-card-host .antd-dashboard-agent .ant-bubble-content {
+  background: #F7F7F8;
+  color: #1F2023;
+  border: 1px solid #E7E7EA;
+  border-bottom-left-radius: 4px;
+}
+
+/* Chat Bar/Table result cards use the same rule: outer legacy frame is
+ * layout-only, inner Ant Card carries the former outer visual style. */
+.chat-scroll > *:has(> .antd-result-card-host) {
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible !important;
+}
+.chat-scroll .antd-result-card-host .antd-result-card {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #E7E7EA !important;
+  border-radius: 14px !important;
+  background: #F7F7F8 !important;
+  box-shadow: 0 1px 3px rgba(16, 28, 40, .06) !important;
 }

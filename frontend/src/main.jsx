@@ -308,6 +308,7 @@ function mountDashboardCard(card) {
   const host = document.createElement("div");
   host.className = "antd-dashboard-card-host";
   card.appendChild(host);
+  card.classList.add("antd-dashboard-card-mounted");
   const head = card.querySelector(":scope > .dash-head");
   // Keep the semantic badge and title visible in the board, just like the
   // header of the conversation result cards. Other head metadata (source and

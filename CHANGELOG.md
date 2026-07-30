@@ -134,6 +134,13 @@
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`CHANGELOG.md`。
 - 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
 
+### 19. 看板重复气泡清理
+
+- 看板用户输入、结论、图表和表格只保留 Ant Design 内层气泡；原看板卡片的外层背景、边框和内边距改为透明，避免出现两个嵌套气泡。
+- 内层气泡的尺寸和左右对齐保持不变，用户问题继续使用右侧蓝色样式，助手结果继续使用左侧浅灰样式。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
