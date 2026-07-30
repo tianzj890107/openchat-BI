@@ -3697,7 +3697,11 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   max-width: 100% !important;
   color: #fff !important;
 }
-.dashboard-scroll > .antd-dashboard-card-mounted .antd-dashboard-user .dash-body { color: #fff !important; }
+.dashboard-scroll > .antd-dashboard-card-mounted .antd-dashboard-user .dash-body {
+  padding: 0 !important;
+  color: #fff !important;
+  white-space: pre-wrap;
+}
 .dashboard-scroll > .antd-dashboard-card-mounted .antd-dashboard-agent {
   margin-right: auto;
 }
