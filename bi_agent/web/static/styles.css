@@ -195,6 +195,10 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   overflow: hidden;
   background: var(--bg-0);
 }
+.chat-pane,
+.dashboard-pane,
+.chat-scroll,
+.dashboard-scroll { background: #FFFFFF; }
 .chat-pane { border-right: 1px solid var(--border-1); }
 .dashboard-pane { border-right: 1px solid var(--border-1); background: var(--bg-0); }
 .pane-header {
@@ -3531,7 +3535,9 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   min-height: 100vh;
   border-right: 1px solid #e5e6eb;
   box-shadow: 1px 0 8px rgba(31, 35, 41, .04);
+  background: #F7F9FB;
 }
+.antd-workbench-sidebar .ant-layout-sider-children { background: #F7F9FB; }
 .antd-workbench-sidebar .ant-layout-sider-children { display: flex; flex-direction: column; }
 .antd-sidebar-brand { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 16px; color: #1f2329; }
 .antd-sidebar-brand strong { display: block; font-size: 16px; line-height: 20px; }

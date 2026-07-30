@@ -162,6 +162,13 @@
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
 - 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
 
+### 23. 工作区背景层级调整
+
+- 会话区和看板区改为纯白背景，消息气泡、图表和表格内部仍保留浅灰层次。
+- 左侧导航栏改为极浅灰背景，与纯白内容区形成清晰的布局分层。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
