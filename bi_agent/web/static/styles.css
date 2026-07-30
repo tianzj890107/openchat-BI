@@ -3675,6 +3675,19 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 }
 .dashboard-scroll > .antd-dashboard-card-mounted > .antd-dashboard-card-host {
   width: 100%;
+  display: flex;
+}
+.dashboard-scroll > .antd-dashboard-card-mounted .antd-dashboard-user {
+  width: fit-content;
+  max-width: 88%;
+  margin-left: auto;
+}
+.dashboard-scroll > .antd-dashboard-card-mounted .antd-dashboard-user .ant-bubble-content {
+  width: fit-content;
+  max-width: 100%;
+}
+.dashboard-scroll > .antd-dashboard-card-mounted .antd-dashboard-agent {
+  margin-right: auto;
 }
 .antd-dashboard-result-head {
   display: flex;
