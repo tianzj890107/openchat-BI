@@ -91,6 +91,13 @@
 - 页面：`bi_agent/web/static/index.html`、`bi_agent/web/static/app.js`、`frontend/src/main.jsx`。
 - 类型：前端静态资源变更；本地构建后需刷新浏览器。
 
+### 13. 看板气泡与对话统一
+
+- 看板用户问题改为与对话一致的右侧蓝色气泡；结论、图表、表格、根因和行动内容改为左侧浅灰气泡。
+- 移除看板中的“分析结果”默认提示、气泡内部二次背景和重复标题；表格、图表本体仍保留必要的内容边框。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；本地构建后需刷新浏览器。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
