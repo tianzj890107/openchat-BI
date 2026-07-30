@@ -303,7 +303,7 @@ function DashboardBubble({ user, nodes }) {
     placement={user ? "end" : "start"}
     variant="filled"
     shape="corner"
-    className={`antd-dashboard-bubble ${user ? "antd-dashboard-user" : "antd-dashboard-agent"}`}
+    className={`antd-message-bubble antd-dashboard-bubble ${user ? "antd-message-user antd-dashboard-user" : "antd-message-assistant antd-dashboard-agent"}`}
     content={<div ref={(slot) => { if (slot) nodes.forEach((node) => slot.appendChild(node)); }} />}
   />;
 }

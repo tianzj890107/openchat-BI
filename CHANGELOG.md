@@ -155,6 +155,13 @@
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
 - 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
 
+### 22. 看板用户气泡与会话统一
+
+- 看板用户气泡复用会话用户气泡的类名和布局规则，宽度按内容自适应，不再被 Ant Design 默认宽度撑大。
+- 用户消息文字强制使用白色，保持与会话中的蓝色用户气泡一致。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
