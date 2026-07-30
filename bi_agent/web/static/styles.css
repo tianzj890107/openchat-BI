@@ -3561,3 +3561,14 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-message-assistant .ant-bubble-content { background: #f7f7f8; border: 1px solid #e7e7ea; color: #1f2023; }
 .antd-message-header { color: #667085; font-size: 11px; }
 .antd-message-html { white-space: pre-wrap; word-break: break-word; }
+.antd-step-enhanced { padding: 0; }
+.antd-step-enhanced > .step-header,
+.antd-step-enhanced > .step-body { display: none !important; }
+.antd-step-host .ant-collapse { background: transparent; border: 0; }
+.antd-step-host .ant-collapse-item { border: 0; }
+.antd-step-host .ant-collapse-header { padding: 5px 8px !important; align-items: center !important; }
+.antd-step-label { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; }
+.antd-step-label b { color: #344054; font-weight: 600; }
+.antd-step-label span { overflow: hidden; color: #667085; text-overflow: ellipsis; white-space: nowrap; }
+.antd-step-label em { margin-left: auto; color: #98a2b3; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-style: normal; }
+.antd-step-html { padding: 0 8px 8px 28px; color: #667085; font-size: 11px; }

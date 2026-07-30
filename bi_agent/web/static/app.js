@@ -4169,7 +4169,9 @@
           multi_chart: evt.multi_chart || null,
         };
         recordToolCall(record);
-        attachChatStep(buildChatStep(record));
+        const chatStep = buildChatStep(record);
+        attachChatStep(chatStep);
+        if (window.antdStepMount) window.antdStepMount(chatStep);
         // Advance the pinned SOP checklist based on which tool just ran.
         advanceSopForTool(record.name);
         if (record.chart) {
