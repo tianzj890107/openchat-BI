@@ -2730,6 +2730,7 @@
   function appendDashboardCard(card) {
     ensureDashboardEmptyHidden();
     el.dashboardList.appendChild(card);
+    if (window.antdDashboardCardMount) window.antdDashboardCardMount(card);
     updateDashboardCount();
     // Keep user at the bottom when new cards arrive — but only if they are
     // already close to the bottom. Don't yank them if they scrolled up.

@@ -3579,3 +3579,8 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-result-card .ant-card-body { padding: 10px 12px; }
 .antd-result-card .chart-canvas, .antd-result-card .multidim-canvas { min-height: 240px; width: 100%; }
 .antd-result-card .table-scroll { overflow-x: auto; }
+.antd-dashboard-card-host { width: 100%; }
+.antd-dashboard-card { border-color: #e7e7ea !important; border-radius: 10px !important; box-shadow: none !important; }
+.antd-dashboard-card .ant-card-head { min-height: 38px; padding: 0 12px; border-bottom-color: #f0f0f2; }
+.antd-dashboard-card .ant-card-head-title { font-size: 13px; color: #344054; }
+.antd-dashboard-card .ant-card-body { padding: 10px 12px; }

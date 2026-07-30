@@ -264,6 +264,21 @@ function mountResultCard(card, type) {
 }
 window.antdResultCardMount = mountResultCard;
 
+function mountDashboardCard(card) {
+  if (!card || cardRoots.has(card)) return;
+  const host = document.createElement("div");
+  host.className = "antd-dashboard-card-host";
+  card.appendChild(host);
+  const head = card.querySelector(":scope > .dash-head");
+  const title = head?.querySelector(".dash-title")?.textContent?.trim() || head?.querySelector(".dash-tag")?.textContent?.trim() || "分析结果";
+  const nodes = [...card.children].filter((node) => node !== head && node !== host);
+  const root = createRoot(host);
+  root.render(<Card size="small" title={title} className="antd-dashboard-card"><div ref={(slot) => { if (slot) nodes.forEach((node) => slot.appendChild(node)); }} /></Card>);
+  if (head) head.style.display = "none";
+  cardRoots.set(card, root);
+}
+window.antdDashboardCardMount = mountDashboardCard;
+
 const root = document.getElementById("antd-sidebar-root");
 if (root) createRoot(root).render(<Sidebar />);
 const workflowRoot = document.getElementById("antd-workflow-root");
