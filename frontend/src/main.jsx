@@ -303,7 +303,13 @@ function mountDashboardCard(card) {
   host.className = "antd-dashboard-card-host";
   card.appendChild(host);
   const head = card.querySelector(":scope > .dash-head");
+  // Keep the result-type badge (chart/table/pie/line) visible in the board,
+  // just like the type marker in the conversation result cards. Other head
+  // metadata (title, turn, source) stays hidden to avoid duplicating content
+  // inside the assistant bubble.
+  const typeTag = head?.querySelector(":scope > .dash-tag.chart, :scope > .dash-tag.table, :scope > .dash-tag.multidim");
   const nodes = [...card.children].filter((node) => node !== head && node !== host);
+  if (typeTag) nodes.unshift(typeTag);
   const root = createRoot(host);
   root.render(<DashboardBubble user={card.classList.contains("dash-question")} nodes={nodes} />);
   if (head) head.style.display = "none";
