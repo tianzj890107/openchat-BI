@@ -3588,7 +3588,19 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-result-card .chart-canvas, .antd-result-card .multidim-canvas { min-height: 240px; width: 100%; }
 .antd-result-card .table-scroll { overflow-x: auto; }
 .antd-dashboard-card-host { width: 100%; }
-.antd-dashboard-card { border-color: #e7e7ea !important; border-radius: 10px !important; box-shadow: none !important; }
-.antd-dashboard-card .ant-card-head { min-height: 38px; padding: 0 12px; border-bottom-color: #f0f0f2; }
-.antd-dashboard-card .ant-card-head-title { font-size: 13px; color: #344054; }
-.antd-dashboard-card .ant-card-body { padding: 10px 12px; }
+.antd-dashboard-bubble { max-width: 88%; }
+.antd-dashboard-bubble .ant-bubble-content { padding: 11px 14px; }
+.antd-dashboard-user .ant-bubble-content { background: linear-gradient(135deg, #597ef7, #7c5cff); color: #fff; }
+.antd-dashboard-agent .ant-bubble-content { background: #f7f7f8; border: 1px solid #e7e7ea; color: #1f2023; }
+.antd-dashboard-bubble .dash-body,
+.antd-dashboard-bubble .dash-chart-canvas,
+.antd-dashboard-bubble .dash-table,
+.antd-dashboard-bubble .dash-actions,
+.antd-dashboard-bubble .dash-rootcause,
+.antd-dashboard-bubble .dash-export { background: transparent !important; border: 0; box-shadow: none; }
+.antd-dashboard-bubble .table-card,
+.antd-dashboard-bubble .chart-card,
+.antd-dashboard-bubble .multidim-card { background: transparent !important; border: 0; box-shadow: none; }
+.antd-dashboard-bubble .dash-title,
+.antd-dashboard-bubble .dash-tag,
+.antd-dashboard-bubble .dash-turn { display: none; }
