@@ -61,6 +61,12 @@
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
 - 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
 
+### 8. IBA 外层导航默认收起
+
+- CEO 驾驶舱、驾驶舱和 i-Agent 页面进入时默认收起最左侧 IBA 外层导航，内容区域直接铺开；顶部菜单按钮仍可手动展开，原有拖拽宽度和页面跳转不变。
+- 页面：`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：HTML/CSS 状态变更；刷新页面即可生效，本次部署服务器后无需重启后端。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
