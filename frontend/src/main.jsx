@@ -210,14 +210,16 @@ function AntdMessage({ role, iteration, html }) {
   // Tool-only iterations can create an assistant message host before any
   // text arrives. Do not render an empty Bubble with only the iteration
   // header; the tool step itself remains visible below it.
-  if (!user && !String(html || "").trim()) return null;
+  const rawHtml = String(html || "");
+  const visibleHtml = rawHtml.replace(/<span class="thinking-line">[\s\S]*?思考中…<\/span>/g, "").trim();
+  if (!user && !visibleHtml) return null;
   return <Bubble
     placement={user ? "end" : "start"}
     variant="filled"
     shape="corner"
     className={`antd-message-bubble ${user ? "antd-message-user" : "antd-message-assistant"}`}
     header={!user && <span className="antd-message-header">助手 · 迭代 {iteration || ""}</span>}
-    content={html || ""}
+    content={visibleHtml}
     messageRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
   />;
 }
