@@ -3519,6 +3519,14 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 #sidebar {
   display: none !important;
 }
+#sidebar.legacy-sidebar-bridge,
+#sidebar.legacy-sidebar-bridge[hidden] {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  pointer-events: none !important;
+}
 .antd-workbench-sidebar {
   min-height: 100vh;
   border-right: 1px solid #e5e6eb;

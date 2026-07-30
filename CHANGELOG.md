@@ -79,6 +79,12 @@
 - 页面：`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：HTML/CSS 静态资源变更；刷新页面即可生效。
 
+### 11. 仅保留 React/Ant Design 工作台侧栏
+
+- 隐藏旧版静态侧栏，只保留后续迁移的 React + Ant Design 侧栏作为唯一可见导航；旧 DOM 仅保留为不可见事件桥，避免重复显示并保持原有页面跳转兼容。
+- 页面：`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`。
+- 类型：HTML/CSS 静态资源变更；刷新页面即可生效。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
