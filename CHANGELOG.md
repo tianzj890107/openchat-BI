@@ -148,6 +148,13 @@
 - 主要文件：`bi_agent/web/static/app.js`、`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
 - 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
 
+### 21. 看板用户气泡尺寸恢复
+
+- 看板用户消息恢复为内容自适应宽度，不再被看板容器撑成整块大气泡；仍保持右对齐、蓝色背景和原有最大宽度限制。
+- 助手结果气泡继续左对齐，图表和表格尺寸不变。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
