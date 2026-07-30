@@ -1895,6 +1895,7 @@
     // noise inside every message.
     msg.innerHTML = `<div class="msg-body">${esc(text)}</div>`;
     el.chatScroll.appendChild(msg);
+    if (window.antdMessageMount) window.antdMessageMount(msg, "user", 0);
     B().questions.push({ turn: B().turnCount, text: String(text || "") });
     renderTodoPanel();
     scrollChatBottomForce();  // user just sent — always reveal their input
@@ -1951,6 +1952,7 @@
       </div>
       <div class="msg-body"><span class="thinking-line"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>思考中…</span></div>`;
     el.chatScroll.appendChild(msg);
+    if (window.antdMessageMount) window.antdMessageMount(msg, "assistant", iteration);
     B().currentAssistantEl = msg.querySelector(".msg-body");
     B().currentAssistantText = "";
     hideEmpty();

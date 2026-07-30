@@ -3551,3 +3551,13 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-workflow-panels .ant-list-header { padding: 5px 0; color: #86909c; font-size: 11px; }
 .antd-workflow-panels .ant-list-item { padding: 5px 0; gap: 6px; color: #4e5969; font-size: 12px; cursor: pointer; }
 .antd-workflow-panels .antd-question-item:hover { color: #1677ff; }
+.antd-message-enhanced { max-width: 88%; }
+.antd-message-enhanced > .msg-header,
+.antd-message-enhanced > .msg-body { display: none !important; }
+.antd-message-host { width: 100%; }
+.antd-message-host .ant-bubble { max-width: 100%; }
+.antd-message-host .ant-bubble-content { padding: 11px 14px; }
+.antd-message-user .ant-bubble-content { background: linear-gradient(135deg, #597ef7, #7c5cff); color: #fff; }
+.antd-message-assistant .ant-bubble-content { background: #f7f7f8; border: 1px solid #e7e7ea; color: #1f2023; }
+.antd-message-header { color: #667085; font-size: 11px; }
+.antd-message-html { white-space: pre-wrap; word-break: break-word; }

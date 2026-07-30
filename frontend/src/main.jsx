@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Button, Collapse, ConfigProvider, Divider, Layout, List, Menu, Progress, Tag, Tooltip } from "antd";
 import { ThoughtChain } from "@ant-design/x";
+import { Bubble } from "@ant-design/x";
 import {
   AppstoreOutlined,
   BarChartOutlined,
@@ -177,6 +178,41 @@ function WorkflowPanels() {
     </div>
   );
 }
+
+const messageRoots = new WeakMap();
+
+function AntdMessage({ role, iteration, html }) {
+  const user = role === "user";
+  return <Bubble
+    placement={user ? "end" : "start"}
+    variant="filled"
+    shape="corner"
+    className={`antd-message-bubble ${user ? "antd-message-user" : "antd-message-assistant"}`}
+    header={!user && <span className="antd-message-header">助手 · 迭代 {iteration || ""}</span>}
+    content={html || ""}
+    messageRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
+  />;
+}
+
+function mountMessage(msg, role, iteration) {
+  if (!msg || messageRoots.has(msg)) return;
+  const host = document.createElement("div");
+  host.className = "antd-message-host";
+  msg.appendChild(host);
+  const root = createRoot(host);
+  const update = () => {
+    const body = msg.querySelector(":scope > .msg-body");
+    root.render(<AntdMessage role={role} iteration={iteration} html={body?.innerHTML || ""} />);
+  };
+  const body = msg.querySelector(":scope > .msg-body");
+  const observer = body ? new MutationObserver(update) : null;
+  if (body) observer.observe(body, { childList: true, subtree: true, characterData: true });
+  messageRoots.set(msg, { root, observer, update });
+  msg.classList.add("antd-message-enhanced");
+  update();
+}
+
+window.antdMessageMount = mountMessage;
 
 const root = document.getElementById("antd-sidebar-root");
 if (root) createRoot(root).render(<Sidebar />);
