@@ -1115,7 +1115,7 @@ body.editing .config-note { display: block; }
     color: #17315d;
     border-right: 1px solid #d3dce8;
     box-shadow: inset -4px 0 0 rgba(196, 205, 218, .35);
-    transition: width .18s ease;
+    transition: transform .22s ease, width .22s ease;
   }
   .search { color: #7890b1; background: #f8fbff; border-bottom-color: #d3dce8; }
   .menu-title, .menu-item {
@@ -1207,7 +1207,7 @@ body.editing .config-note { display: block; }
     color: #17315d;
     border-right: 1px solid #d3dce8;
     box-shadow: inset -4px 0 0 rgba(196, 205, 218, .35);
-    transition: width .18s ease;
+    transition: transform .22s ease, width .22s ease;
   }
   .search { color: #7890b1; background: #f8fbff; border-bottom-color: #d3dce8; }
   .search { height: 55px; justify-content: center; padding: 0; }
@@ -1229,7 +1229,7 @@ body.editing .config-note { display: block; }
   .iba-sidebar-resizer { position: fixed; top: 56px; bottom: 0; left: calc(var(--iba-sidebar-width) - 3px); width: 6px; z-index: 20; cursor: col-resize; background: transparent; }
   .iba-sidebar-resizer::after { content: ""; position: absolute; inset: 0 2px; background: #d3dce8; opacity: .7; }
   .iba-sidebar-resizer:hover::after, .iba-sidebar-resizer.dragging::after { background: #0b74ff; opacity: 1; }
-  .content { margin-left: var(--iba-sidebar-width); transition: margin-left .18s ease; }
+  .content { margin-left: var(--iba-sidebar-width); transition: margin-left .22s ease; }
   body.sidebar-collapsed .content { margin-left: 0; }
   body.sidebar-collapsed .iba-sidebar-resizer { display: none; }
     /* CEO 驾驶舱顶部栏的最终样式：驾驶舱及其 i-Agent 视图直接复用。 */
