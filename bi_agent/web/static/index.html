@@ -5,10 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>智析 · 本体工作台</title>
   <link rel="stylesheet" href="/static/styles.css?v=95" />
+  <link rel="stylesheet" href="/static/vendor/antd/openchat-bi-workbench.css?v=1" />
   <script src="/static/vendor/echarts.min.js"></script>
 </head>
 <body data-mode="data" class="sidebar-collapsed">
   <div class="app">
+
+    <!-- React/Ant Design migration surface. The legacy sidebar remains in the
+         DOM during the first migration step so existing event handlers and
+         keyboard shortcuts continue to work unchanged. -->
+    <div id="antd-sidebar-root" aria-label="Ant Design 导航栏"></div>
 
     <!-- ============ LEFT SIDEBAR (global nav, Claude/ChatGPT-style) ============ -->
     <aside class="sidebar" id="sidebar">
@@ -752,5 +758,6 @@
   </div>
 
   <script src="/static/app.js?v=96"></script>
+  <script src="/static/vendor/antd/sidebar.js?v=1" defer></script>
 </body>
 </html>

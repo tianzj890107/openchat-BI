@@ -10,6 +10,15 @@
 - HTML/CSS/JS 静态资源修改：刷新浏览器即可；Python、模型、接口、依赖或数据源实现修改：需要重启后端。
 - 本地后端地址：`http://127.0.0.1:8765`。
 
+## 2026-07-30
+
+### 1. Ant Design 迁移第一阶段：左侧导航栏
+
+- 新增 React + Vite + Ant Design 构建入口，左侧导航栏先迁移为 Ant Design `Layout/Sider/Menu`，支持收起/展开、智能分析/报表分析切换、内容与设置页面跳转、最近会话和账号入口。
+- 通过事件桥接保留原有导航 ID、`data-view`、`data-mode` 和历史会话逻辑；对话 SSE、看板、本体、系统调用和后端接口未改变，便于逐步迁移和回退。
+- 主要文件：`frontend/package.json`、`frontend/vite.config.js`、`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`。
+- 类型：前端构建与静态资源变更；本阶段本地构建验证通过，服务器暂不部署，待确认导航栏效果后继续迁移。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
