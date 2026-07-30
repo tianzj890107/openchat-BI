@@ -57,6 +57,9 @@
       convId: null,
       // Stable title anchor for restored conversations (no turnQuestions).
       titleHint: null,
+      // A completed task gets one export action group per turn. This survives
+      // repeated SSE `done` notifications and prevents duplicate controls.
+      exportTurns: new Set(),
     };
   }
 
@@ -797,6 +800,7 @@
   async function saveCurrentConversation() {
     const b = B();
     if (!b.hasContent) return;  // nothing worth saving yet
+    dedupeExportCards();
     try {
       const r = await fetch("/api/conversations/save", {
         method: "POST",
@@ -890,6 +894,7 @@
     el.chatScroll.innerHTML = rec.chat_html || "";
     el.dashboardList.innerHTML = rec.dashboard_html || "";
     moveRestoredInteractiveCardsToChat();
+    b.exportTurns = dedupeExportCards();
     el.ontologyList.innerHTML = rec.ontology_html || "";
     el.toolList.innerHTML = rec.tools_html || "";
     el.llmList.innerHTML = rec.llm_html || "";
@@ -3083,6 +3088,7 @@
     el.chatScroll.querySelectorAll(".dash-export[data-turn]").forEach((card) => {
       bindExportCard(card, card.dataset.turn);
     });
+    B().exportTurns = dedupeExportCards();
   }
 
   function hydrateRestoredInspector() {
@@ -3372,12 +3378,16 @@
   // ------------------------------------------------------------------
   function appendTurnExportButton(turnTag) {
     const tagStr = String(turnTag);
+    const bucket = B();
+    const visibleExportTurns = dedupeExportCards();
+    if (bucket.exportTurns.has(tagStr) || visibleExportTurns.has(tagStr)) {
+      bucket.exportTurns.add(tagStr);
+      return;
+    }
     // Export controls are useful when the turn has board cards or actionable
     // root-cause/recommendation cards mounted in the chat column.
     const dataCards = turnCards(tagStr).filter((card) => !card.classList.contains("dash-question"));
     if (!dataCards.length) return;
-    // Avoid duplicate export buttons in either pane.
-    if (document.querySelector(".dash-export[data-turn=\"" + tagStr + "\"]")) return;
 
     const card = el_h("div", "dash-card dash-export");
     card.dataset.turn = tagStr;
@@ -3393,6 +3403,21 @@
       '<div class="dash-export-status" data-turn="' + tagStr + '"></div>';
     bindExportCard(card, turnTag);
     appendChatActionCard(card);
+    bucket.exportTurns.add(tagStr);
+  }
+
+  // Older saved snapshots could contain the same action group in both the
+  // conversation and dashboard HTML, or multiple copies from repeated done
+  // events. Keep the first group for each task turn and remove the rest.
+  function dedupeExportCards() {
+    const seen = new Set();
+    document.querySelectorAll(".dash-export[data-turn]").forEach((card) => {
+      const tag = String(card.dataset.turn || "");
+      if (!tag) return;
+      if (seen.has(tag)) card.remove();
+      else seen.add(tag);
+    });
+    return seen;
   }
 
   function bindExportCard(card, turnTag) {
@@ -4724,6 +4749,7 @@
     bucket.rootCauseSeen = new Set();
     bucket.actionsSeen = new Set();
     bucket.currentTurnTag = 0;
+    bucket.exportTurns = new Set();
     bucket.turnQuestions = {};
     bucket.questions = [];
     bucket.pendingCommands = [];
