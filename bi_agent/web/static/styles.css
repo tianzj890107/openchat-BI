@@ -3538,7 +3538,20 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-sidebar-brand small { display: block; color: #86909c; font-size: 11px; line-height: 16px; }
 .antd-brand-mark { color: #1677ff; font-size: 18px; }
 .antd-sidebar-brand .ant-btn { margin-left: auto; }
-.antd-new-chat { margin: 0 12px 12px; width: calc(100% - 24px); }
+.antd-new-chat {
+  width: calc(100% - 8px);
+  height: 40px;
+  margin: 4px 4px 8px;
+  padding-inline: 16px;
+}
+.antd-workbench-sidebar.ant-layout-sider-collapsed .antd-new-chat {
+  width: 48px;
+  margin-inline: 8px;
+  padding-inline: 0;
+}
+.antd-workbench-sidebar.ant-layout-sider-collapsed .antd-new-chat .anticon {
+  margin-inline-end: 0;
+}
 .antd-workbench-sidebar .ant-menu { border-inline-end: 0; flex: 0 0 auto; }
 .antd-sidebar-divider { margin: 12px 16px; width: auto; min-width: auto; }
 .antd-sidebar-section-title { padding: 0 16px 6px; color: #86909c; font-size: 12px; }
