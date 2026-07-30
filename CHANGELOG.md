@@ -67,6 +67,12 @@
 - 页面：`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：HTML/CSS 状态变更；刷新页面即可生效，本次部署服务器后无需重启后端。
 
+### 9. IBA 外层导航展开动画统一
+
+- CEO 驾驶舱和驾驶舱/i-Agent 的 IBA 侧栏展开、收起、内容区左边距同步使用平滑缓动，侧栏不再瞬间出现，和内容区滑动保持一致。
+- 页面：`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：HTML/CSS 静态资源变更；刷新页面即可生效。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏

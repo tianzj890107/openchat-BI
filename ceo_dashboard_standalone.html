@@ -1693,7 +1693,7 @@ body {
   color: #17315d;
   border-right: 1px solid #d3dce8;
   box-shadow: inset -4px 0 0 rgba(196, 205, 218, .35);
-  transition: width .18s ease;
+  transition: width .22s ease, transform .22s ease;
 }
 
 .search {
@@ -1833,6 +1833,9 @@ body.nav-collapsed .sidebar {
 
 body.nav-collapsed .content {
   margin-left: 80px;
+}
+.content {
+  transition: margin-left .22s ease;
 }
 
 .iba-sidebar-resizer {
