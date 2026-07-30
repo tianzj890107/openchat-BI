@@ -19,6 +19,13 @@
 - 主要文件：`frontend/package.json`、`frontend/vite.config.js`、`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`。
 - 类型：前端构建与静态资源变更；本阶段本地构建验证通过，服务器暂不部署，待确认导航栏效果后继续迁移。
 
+### 2. Ant Design 迁移第二阶段：SOP 与任务清单
+
+- 对话区顶部的“分析 SOP”和“任务清单”改为 React + Ant Design `Collapse/List/Progress/Tag`，SOP 节点使用 Ant Design X `ThoughtChain` 展示；两个面板默认折叠，用户提问仍可点击定位到对话。
+- 旧版 SOP/任务清单 DOM 继续保留为隐藏数据桥，现有回合进度、问题列表、历史恢复和原生事件不变；本阶段只迁移展示层。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`。
+- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏

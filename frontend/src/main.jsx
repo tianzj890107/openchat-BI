@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Button, ConfigProvider, Divider, Layout, Menu, Tooltip } from "antd";
+import { Button, Collapse, ConfigProvider, Divider, Layout, List, Menu, Progress, Tag, Tooltip } from "antd";
+import { ThoughtChain } from "@ant-design/x";
 import {
   AppstoreOutlined,
   BarChartOutlined,
@@ -13,6 +14,9 @@ import {
   SettingOutlined,
   SlidersOutlined,
   UserOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  MinusCircleOutlined,
 } from "@ant-design/icons";
 import "antd/dist/reset.css";
 
@@ -106,5 +110,75 @@ function Sidebar() {
   );
 }
 
+function readWorkflow() {
+  const sop = document.getElementById("chat-sop");
+  const todo = document.getElementById("chat-todo");
+  const readItems = (root, selector) => root ? [...root.querySelectorAll(selector)].map((node, index) => ({
+    key: `${index}`,
+    text: node.querySelector(".chat-sop-text, .chat-todo-text")?.textContent?.trim() || node.textContent.trim(),
+    status: [...node.classList].find((name) => name.startsWith("is-"))?.slice(3) || "pending",
+  })) : [];
+  const questions = todo ? [...todo.querySelectorAll(".chat-question-item")].map((node, index) => ({
+    key: node.dataset.questionTurn || `${index}`,
+    turn: node.dataset.questionTurn,
+    text: node.querySelector(".chat-question-text")?.textContent?.trim() || node.textContent.trim(),
+  })) : [];
+  return {
+    sop: readItems(sop, ".chat-sop-item"),
+    todos: readItems(todo, ".chat-todo-item"),
+    questions,
+    sopHidden: !!sop?.hidden,
+    todoHidden: !!todo?.hidden,
+  };
+}
+
+function workflowIcon(status) {
+  if (status === "completed") return <CheckCircleOutlined style={{ color: "#28a36a" }} />;
+  if (status === "in_progress") return <ClockCircleOutlined style={{ color: "#1677ff" }} />;
+  return <MinusCircleOutlined style={{ color: "#b8c0cc" }} />;
+}
+
+function WorkflowPanels() {
+  const [workflow, setWorkflow] = useState(readWorkflow);
+  const [sopOpen, setSopOpen] = useState(false);
+  const [todoOpen, setTodoOpen] = useState(false);
+  useEffect(() => {
+    const targets = [document.getElementById("chat-sop"), document.getElementById("chat-todo")].filter(Boolean);
+    const observer = new MutationObserver(() => setWorkflow(readWorkflow()));
+    targets.forEach((target) => observer.observe(target, { attributes: true, childList: true, subtree: true, characterData: true }));
+    return () => observer.disconnect();
+  }, []);
+  if (workflow.sopHidden && workflow.todoHidden) return null;
+  const done = workflow.sop.filter((item) => item.status === "completed").length;
+  const total = workflow.sop.length;
+  const chainItems = workflow.sop.map((item) => ({
+    key: item.key,
+    title: item.text,
+    status: item.status === "completed" ? "success" : item.status === "in_progress" ? "pending" : "pending",
+    icon: workflowIcon(item.status),
+  }));
+  return (
+    <div className="antd-workflow-panels">
+      {!!workflow.sop.length && <Collapse
+        ghost
+        activeKey={sopOpen ? ["sop"] : []}
+        onChange={(keys) => setSopOpen(keys.includes("sop"))}
+        items={[{ key: "sop", label: <span className="antd-workflow-title">分析 SOP <Tag color="blue">{done}/{total}</Tag></span>, children: <ThoughtChain items={chainItems} size="small" /> }]}
+      />}
+      {!!(workflow.todos.length || workflow.questions.length) && <Collapse
+        ghost
+        activeKey={todoOpen ? ["todo"] : []}
+        onChange={(keys) => setTodoOpen(keys.includes("todo"))}
+        items={[{ key: "todo", label: <span className="antd-workflow-title">任务清单 <Tag>{workflow.questions.length ? `${workflow.questions.length} 个问题` : `${workflow.todos.length} 项`}</Tag></span>, children: <>
+          {!!workflow.questions.length && <List size="small" header="用户提问" dataSource={workflow.questions} renderItem={(item, index) => <List.Item className="antd-question-item" onClick={() => document.querySelector(`#chat-todo .chat-question-item[data-question-turn="${CSS.escape(item.turn)}"]`)?.click()}><Tag>{index + 1}</Tag><span>{item.text}</span></List.Item>} />}
+          {!!workflow.todos.length && <List size="small" header="分析进度" dataSource={workflow.todos} renderItem={(item) => <List.Item><span>{workflowIcon(item.status)}</span><span>{item.text}</span></List.Item>} />}
+        </> }]}
+      />}
+    </div>
+  );
+}
+
 const root = document.getElementById("antd-sidebar-root");
 if (root) createRoot(root).render(<Sidebar />);
+const workflowRoot = document.getElementById("antd-workflow-root");
+if (workflowRoot) createRoot(workflowRoot).render(<WorkflowPanels />);
