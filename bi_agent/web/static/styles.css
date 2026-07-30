@@ -3539,3 +3539,15 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-recent-item:hover { background: #f2f3f5; color: #1f2329; }
 .antd-recent-empty { display: block; padding: 8px; color: #86909c; font-size: 12px; }
 .antd-account { margin: 8px 12px 16px; border: 0; border-top: 1px solid #f2f3f5; background: transparent; padding: 12px 4px 0; color: #4e5969; text-align: left; cursor: pointer; }
+#antd-workflow-root { padding: 0 10px 4px; }
+#chat-sop, #chat-todo { display: none !important; }
+.antd-workflow-panels .ant-collapse { background: transparent; border: 0; }
+.antd-workflow-panels .ant-collapse-item { border-bottom: 1px solid #f0f0f0; }
+.antd-workflow-panels .ant-collapse-header { padding: 8px 6px !important; align-items: center !important; }
+.antd-workflow-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #344054; }
+.antd-workflow-title .ant-tag { margin-inline-end: 0; font-size: 11px; line-height: 18px; }
+.antd-workflow-panels .ant-collapse-content-box { padding: 0 6px 8px !important; }
+.antd-workflow-panels .ant-thought-chain { font-size: 12px; }
+.antd-workflow-panels .ant-list-header { padding: 5px 0; color: #86909c; font-size: 11px; }
+.antd-workflow-panels .ant-list-item { padding: 5px 0; gap: 6px; color: #4e5969; font-size: 12px; cursor: pointer; }
+.antd-workflow-panels .antd-question-item:hover { color: #1677ff; }
