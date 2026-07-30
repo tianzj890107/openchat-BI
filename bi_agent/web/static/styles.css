@@ -3507,3 +3507,35 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .dashboard-pane .multidim-select {
   border-radius: 8px;
 }
+/* Ant Design migration step 1: the React navigation is mounted alongside the
+   legacy DOM. Hide only the visual legacy sidebar; its controls stay available
+   as an event bridge until the remaining views are migrated. */
+#antd-sidebar-root {
+  position: relative;
+  z-index: 20;
+  flex: 0 0 auto;
+  display: flex;
+}
+#sidebar {
+  display: none !important;
+}
+.antd-workbench-sidebar {
+  min-height: 100vh;
+  border-right: 1px solid #e5e6eb;
+  box-shadow: 1px 0 8px rgba(31, 35, 41, .04);
+}
+.antd-workbench-sidebar .ant-layout-sider-children { display: flex; flex-direction: column; }
+.antd-sidebar-brand { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 16px; color: #1f2329; }
+.antd-sidebar-brand strong { display: block; font-size: 16px; line-height: 20px; }
+.antd-sidebar-brand small { display: block; color: #86909c; font-size: 11px; line-height: 16px; }
+.antd-brand-mark { color: #1677ff; font-size: 18px; }
+.antd-sidebar-brand .ant-btn { margin-left: auto; }
+.antd-new-chat { margin: 0 12px 12px; width: calc(100% - 24px); }
+.antd-workbench-sidebar .ant-menu { border-inline-end: 0; flex: 0 0 auto; }
+.antd-sidebar-divider { margin: 12px 16px; width: auto; min-width: auto; }
+.antd-sidebar-section-title { padding: 0 16px 6px; color: #86909c; font-size: 12px; }
+.antd-recent-list { flex: 1; overflow: auto; padding: 0 8px; }
+.antd-recent-item { display: block; width: 100%; border: 0; background: transparent; border-radius: 6px; padding: 8px; color: #4e5969; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.antd-recent-item:hover { background: #f2f3f5; color: #1f2329; }
+.antd-recent-empty { display: block; padding: 8px; color: #86909c; font-size: 12px; }
+.antd-account { margin: 8px 12px 16px; border: 0; border-top: 1px solid #f2f3f5; background: transparent; padding: 12px 4px 0; color: #4e5969; text-align: left; cursor: pointer; }

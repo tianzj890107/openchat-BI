@@ -11,6 +11,7 @@ build/
 .venv/
 venv/
 env/
+frontend/node_modules/
 
 # IDE
 .vscode/
@@ -26,6 +27,8 @@ Thumbs.db
 bi_charts/
 uploaded_reports/
 outputs/
+# Personal daily report
+/日报.md
 # Secrets
 .env
 .env.*
