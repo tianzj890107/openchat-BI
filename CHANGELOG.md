@@ -141,6 +141,13 @@
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
 - 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
 
+### 20. 助手 Markdown 输出渲染
+
+- 对话页的助手输出现在支持 Markdown 标题、加粗、斜体、行内代码、代码块、列表、引用和 Markdown 表格，不再把 `**加粗**` 或表格分隔线直接当普通文本显示。
+- 渲染前会先转义模型输出，并保留业务实体编号的高亮；历史消息和流式消息使用同一套渲染规则。
+- 主要文件：`bi_agent/web/static/app.js`、`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
@@ -526,3 +533,22 @@
 - 页面：`ceo_dashboard_standalone.html`、`dashboard.html`（驾驶舱及 i-Agent 外层视图）。
 - 主要文件：`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；已重启后端，浏览器强制刷新即可生效。
+
+## 2026-07-30
+
+### 18. 看板与用户输入去除重复气泡
+
+- 结论、Bar、Table、用户提问和聊天结果卡不再同时显示旧外层气泡与 Ant Design 内层气泡。
+- 保留内层气泡的尺寸，将原外层气泡的背景、边框、圆角和阴影样式应用到内层；旧外层仅负责布局和历史数据结构。
+- 页面：i-Agent 智能分析工作台及其看板区域。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更，已重启后端服务；刷新浏览器即可看到。
+
+### 19. 对话 Markdown 展示与任务清单对齐
+
+- 大语言模型回复现在渲染 Markdown 标题、加粗、斜体、删除线、链接、列表、引用、代码块和表格，不再把标记原样显示。
+- 增加 Markdown 表格、代码块和段落的浅色主题样式，流式输出与历史消息共用对话气泡样式。
+- 任务清单中的用户提问列表改为左对齐，避免继承用户气泡的右对齐效果。
+- 页面：i-Agent 智能分析/报表分析对话页、任务清单。
+- 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更，已重启后端服务；刷新浏览器即可看到。
