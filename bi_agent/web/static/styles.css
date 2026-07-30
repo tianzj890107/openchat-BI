@@ -3602,5 +3602,22 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-dashboard-bubble .chart-card,
 .antd-dashboard-bubble .multidim-card { background: transparent !important; border: 0; box-shadow: none; }
 .antd-dashboard-bubble .dash-title,
-.antd-dashboard-bubble .dash-tag,
 .antd-dashboard-bubble .dash-turn { display: none; }
+.antd-dashboard-bubble .dash-tag {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  margin: 0 0 8px;
+  padding: 3px 9px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: .8px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.antd-dashboard-bubble .dash-tag.chart { color: #0B7FF3; }
+.antd-dashboard-bubble .dash-tag.table,
+.antd-dashboard-bubble .dash-tag.multidim { color: #7C83FD; }

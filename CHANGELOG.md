@@ -98,6 +98,13 @@
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；本地构建后需刷新浏览器。
 
+### 14. 看板恢复结果类型徽标
+
+- 看板中的图表和表格结果恢复显示与会话一致的类型徽标，例如 `chart`、`table`、`pie`、`line` 和多维图表；标题、来源和 Turn 等重复元信息仍保持隐藏。
+- 类型徽标使用与会话相同的轻量圆角样式，不改变用户问题及结果气泡布局。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；本地构建后需刷新浏览器，服务器部署后无需重启后端。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
