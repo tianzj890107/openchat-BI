@@ -33,6 +33,13 @@
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
 
+### 4. Ant Design 迁移第四阶段：工具调用思维链
+
+- 对话中的 OntologyQuery、SQLRun、图表生成等工具步骤改为 Ant Design `Collapse` 展示，保留工具名、摘要、耗时以及输入/输出详情；步骤仍支持展开查看。
+- 原工具节点继续保留为隐藏回退 DOM，SSE 工具结果、本体命中项和历史恢复逻辑不变。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏

@@ -180,6 +180,7 @@ function WorkflowPanels() {
 }
 
 const messageRoots = new WeakMap();
+const stepRoots = new WeakMap();
 
 function AntdMessage({ role, iteration, html }) {
   const user = role === "user";
@@ -213,6 +214,35 @@ function mountMessage(msg, role, iteration) {
 }
 
 window.antdMessageMount = mountMessage;
+
+function AntdStep({ name, summary, duration, html }) {
+  return <Collapse ghost size="small" items={[{
+    key: "step",
+    label: <span className="antd-step-label"><b>{name}</b><span>{summary}</span><em>{duration}</em></span>,
+    children: <div className="antd-step-html" dangerouslySetInnerHTML={{ __html: html || "" }} />,
+  }]} />;
+}
+
+function mountStep(step) {
+  if (!step || stepRoots.has(step)) return;
+  const host = document.createElement("div");
+  host.className = "antd-step-host";
+  step.appendChild(host);
+  const header = step.querySelector(":scope > .step-header");
+  const body = step.querySelector(":scope > .step-body");
+  const text = (selector) => step.querySelector(selector)?.textContent?.trim() || "";
+  const root = createRoot(host);
+  const update = () => root.render(<AntdStep name={text(".step-name")} summary={text(".step-summary")} duration={text(".step-duration")} html={body?.innerHTML || ""} />);
+  const observer = body ? new MutationObserver(update) : null;
+  if (body) observer.observe(body, { childList: true, subtree: true, characterData: true });
+  if (header) header.style.display = "none";
+  if (body) body.style.display = "none";
+  step.classList.add("antd-step-enhanced");
+  stepRoots.set(step, { root, observer });
+  update();
+}
+
+window.antdStepMount = mountStep;
 
 const root = document.getElementById("antd-sidebar-root");
 if (root) createRoot(root).render(<Sidebar />);
