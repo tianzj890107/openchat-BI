@@ -73,6 +73,12 @@
 - 页面：`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：HTML/CSS 静态资源变更；刷新页面即可生效。
 
+### 10. 侧栏拖拽条默认透明
+
+- 移除 IBA 侧栏展开前短暂出现的灰色竖条；拖拽条默认透明，仅在悬停或拖拽时显示蓝色提示线。
+- 页面：`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：HTML/CSS 静态资源变更；刷新页面即可生效。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
