@@ -169,6 +169,13 @@
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
 - 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
 
+### 24. 看板用户气泡内边距统一
+
+- 清除看板用户消息继承的旧 `dash-body` 内边距，避免与气泡自身内边距叠加；用户气泡现在与会话气泡保持相同厚度和内容宽度。
+- 用户文字颜色和右侧蓝色气泡样式保持不变。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏
