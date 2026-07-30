@@ -176,6 +176,13 @@
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
 - 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
 
+### 25. 侧栏整体背景统一
+
+- 左侧导航栏的 Sider、品牌区域、菜单区域和设置按钮区域统一使用淡灰色背景，不再只有历史会话列表呈现灰色。
+- “新对话”按钮继续保留蓝色主按钮样式。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+
 ## 2026-07-29
 
 ### 15. 看板气泡统一与来源信息隐藏

@@ -3519,6 +3519,7 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   z-index: 20;
   flex: 0 0 auto;
   display: flex;
+  background: #F7F9FB !important;
 }
 #sidebar {
   display: none !important;
@@ -3535,9 +3536,13 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   min-height: 100vh;
   border-right: 1px solid #e5e6eb;
   box-shadow: 1px 0 8px rgba(31, 35, 41, .04);
-  background: #F7F9FB;
+  background: #F7F9FB !important;
 }
-.antd-workbench-sidebar .ant-layout-sider-children { background: #F7F9FB; }
+.antd-workbench-sidebar.ant-layout-sider,
+.antd-workbench-sidebar .ant-layout-sider-children,
+.antd-workbench-sidebar .ant-menu,
+.antd-sidebar-brand,
+.antd-workbench-sidebar .ant-menu-root { background: #F7F9FB !important; }
 .antd-workbench-sidebar .ant-layout-sider-children { display: flex; flex-direction: column; }
 .antd-sidebar-brand { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 16px; color: #1f2329; }
 .antd-sidebar-brand strong { display: block; font-size: 16px; line-height: 20px; }
