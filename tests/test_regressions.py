@@ -19,6 +19,7 @@ from bi_agent.llm import provider, provider_qwen
 from bi_agent.llm.provider_deepseek import _convert_messages as convert_deepseek
 from bi_agent.llm.provider_qwen import _convert_messages as convert_qwen
 from bi_agent.ontology.store import OntologyStore
+from bi_agent.report.parser import ParseResult
 from bi_agent.report.store import ReportStore
 from bi_agent.tools.sql_tools import _format_rows, _validate_sql
 from bi_agent.tools.chart_tools import _echarts_option, _write_standalone_html
@@ -159,6 +160,49 @@ class OfflineRegressionTests(unittest.TestCase):
             self.assertEqual(loaded["title"], "第一个问题")
             self.assertEqual(loaded["chat_html"], "second")
             self.assertEqual(list(Path(temp_dir, "bi_conversations").glob(".*.tmp")), [])
+
+    def test_new_conversation_id_does_not_overwrite_collision(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            conversations = ConversationStore(temp_dir)
+            existing = Path(temp_dir, "bi_conversations", "deadbeef.json")
+            existing.write_text(
+                json.dumps({"id": "deadbeef", "title": "保留"}), encoding="utf-8"
+            )
+            with patch(
+                "bi_agent.web.conversations.secrets.token_hex",
+                side_effect=["deadbeef", "cafebabe"],
+            ):
+                record = conversations.save(
+                    mode="data",
+                    title="新会话",
+                    messages=[{"role": "user", "content": "新问题"}],
+                    chat_html="",
+                    dashboard_html="",
+                )
+            self.assertEqual(record["id"], "cafebabe")
+            self.assertEqual(json.loads(existing.read_text(encoding="utf-8"))["title"], "保留")
+
+    def test_report_id_collision_and_metadata_failure_cleanup(self) -> None:
+        parsed = ParseResult(ext=".pdf", page_count=1, text="示例")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports = ReportStore(temp_dir)
+            root = Path(temp_dir, "uploaded_reports")
+            (root / "deadbeef.pdf").write_bytes(b"old")
+            with patch("bi_agent.report.store.parse_report", return_value=parsed), patch(
+                "bi_agent.report.store.secrets.token_hex",
+                side_effect=["deadbeef", "cafebabe"],
+            ):
+                record = reports.save(filename="sample.pdf", data=b"new")
+            self.assertEqual(record.id, "cafebabe")
+            self.assertEqual((root / "deadbeef.pdf").read_bytes(), b"old")
+
+            with patch("bi_agent.report.store.parse_report", return_value=parsed), patch(
+                "bi_agent.report.store.secrets.token_hex", return_value="feedface"
+            ), patch("bi_agent.report.store.os.replace", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    reports.save(filename="failed.pdf", data=b"failed")
+            self.assertFalse((root / "feedface.pdf").exists())
+            self.assertEqual(list(root.glob(".feedface.*.tmp")), [])
 
     def test_sql_formatter_handles_missing_column_metadata(self) -> None:
         rendered = _format_rows([], [("a", "b")], 10)

@@ -134,6 +134,19 @@ class ConversationStore:
             except Exception:
                 pass
 
+    def _new_id(self) -> str:
+        """Return an unused id even when the random generator collides.
+
+        Eight hex characters are sufficient for normal use, but a collision
+        must never overwrite another conversation (tests, restored backups,
+        and long-lived installations can all make that possible).
+        """
+        for _ in range(16):
+            cid = secrets.token_hex(4)
+            if not self._path(cid).exists():
+                return cid
+        raise RuntimeError("无法生成唯一会话 ID")
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -163,7 +176,7 @@ class ConversationStore:
             else:
                 cid = None  # stale id — start a fresh record
         if not cid:
-            cid = secrets.token_hex(4)
+            cid = self._new_id()
         now = _now_iso()
         rec = {
             "id": cid,
