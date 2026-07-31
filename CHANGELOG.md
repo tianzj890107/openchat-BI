@@ -675,3 +675,10 @@
 - 360、ISMP、ICM、IB&C、CLM、CPQ、IPS 的窄栏字重改为与展开态一致的常规字重，不再显得额外加粗。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 32. 对齐 IBA 窄栏搜索行高度
+
+- 折叠态搜索区域高度与 IBA 标题行统一为 56px。
+- 放大镜图标放大并垂直居中，消除搜索区域与下方入口之间的阶梯感。
+- 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
