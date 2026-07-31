@@ -2869,11 +2869,39 @@
     scrollChatBottom();
   }
 
+  // A single assistant turn can emit several streamed llm_response events.
+  // Result extraction must therefore be idempotent by card type + turn, not
+  // only by exact text (intermediate and final wording often differs).
+  function dedupeTurnResultCards(root) {
+    if (!root) return;
+    const seen = new Map();
+    root.querySelectorAll(".dash-conclusion[data-turn], .dash-rootcause[data-turn], .dash-actions[data-turn]").forEach((card) => {
+      const kind = ["dash-conclusion", "dash-rootcause", "dash-actions"].find((name) => card.classList.contains(name));
+      const key = `${kind}:${String(card.dataset.turn || "").trim()}`;
+      if (seen.has(key)) seen.get(key).remove();
+      seen.set(key, card);
+    });
+  }
+
+  function removeTurnResultCards(root, className, turnTag) {
+    if (!root) return;
+    const tag = CSS.escape(String(turnTag));
+    root.querySelectorAll(`.${className}[data-turn="${tag}"]`).forEach((card) => card.remove());
+  }
+
   function moveRestoredInteractiveCardsToChat() {
     if (!el.dashboardList || !el.chatScroll) return;
+    dedupeTurnResultCards(el.chatScroll);
+    dedupeTurnResultCards(el.dashboardList);
     el.dashboardList
       .querySelectorAll(".dash-rootcause, .dash-actions, .dash-export")
-      .forEach((card) => appendChatActionCard(card));
+      .forEach((card) => {
+        const type = ["dash-rootcause", "dash-actions", "dash-export"].find((name) => card.classList.contains(name));
+        const tag = CSS.escape(String(card.dataset.turn || ""));
+        const exists = type && el.chatScroll.querySelector(`.chat-action-card.${type}[data-turn="${tag}"]`);
+        if (exists) card.remove();
+        else appendChatActionCard(card);
+      });
     // Older saved conversations predate the conversation-side conclusion
     // card. Keep the dashboard copy in place and add a clone only when the
     // restored chat snapshot does not already contain that conclusion.
@@ -3289,14 +3317,19 @@
     const bucket = B();
     const content = extractConclusion(text);
     if (!content) return;
+    const turnTag = bucket.currentTurnTag || 1;
+    dedupeTurnResultCards(el.dashboardList);
+    dedupeTurnResultCards(el.chatScroll);
     // Dedup within session — identical text not useful twice
     const key = content.trim().toLowerCase();
     if (bucket.conclusionSeen.has(key)) return;
     bucket.conclusionSeen.add(key);
-    appendDashboardCard(dashboardConclusionCard(content, bucket.currentTurnTag || 1));
+    removeTurnResultCards(el.dashboardList, "dash-conclusion", turnTag);
+    removeTurnResultCards(el.chatScroll, "dash-conclusion", turnTag);
+    appendDashboardCard(dashboardConclusionCard(content, turnTag));
     // Conclusions are part of the assistant's delivered result in the
     // conversation as well as the read-only dashboard.
-    appendChatActionCard(dashboardConclusionCard(content, bucket.currentTurnTag || 1));
+    appendChatActionCard(dashboardConclusionCard(content, turnTag));
   }
 
   // Returns true iff a 根因 card was actually appended (used to decide
@@ -3305,11 +3338,14 @@
     const bucket = B();
     const content = extractRootCause(text);
     if (!content) return false;
+    const turnTag = bucket.currentTurnTag || 1;
     bucket.rootCauseSeen = bucket.rootCauseSeen || new Set();
     const key = content.trim().toLowerCase();
     if (bucket.rootCauseSeen.has(key)) return true;
     bucket.rootCauseSeen.add(key);
-    appendChatActionCard(dashboardRootCauseCard(content, bucket.currentTurnTag || 1));
+    removeTurnResultCards(el.chatScroll, "dash-rootcause", turnTag);
+    removeTurnResultCards(el.dashboardList, "dash-rootcause", turnTag);
+    appendChatActionCard(dashboardRootCauseCard(content, turnTag));
     return true;
   }
 
@@ -3317,11 +3353,14 @@
     const bucket = B();
     const content = extractActions(text);
     if (!content) return false;
+    const turnTag = bucket.currentTurnTag || 1;
     bucket.actionsSeen = bucket.actionsSeen || new Set();
     const key = content.trim().toLowerCase();
     if (bucket.actionsSeen.has(key)) return true;
     bucket.actionsSeen.add(key);
-    appendChatActionCard(dashboardActionsCard(content, bucket.currentTurnTag || 1));
+    removeTurnResultCards(el.chatScroll, "dash-actions", turnTag);
+    removeTurnResultCards(el.dashboardList, "dash-actions", turnTag);
+    appendChatActionCard(dashboardActionsCard(content, turnTag));
     return true;
   }
 
