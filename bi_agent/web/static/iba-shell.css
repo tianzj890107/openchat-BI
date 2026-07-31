@@ -2,3 +2,7 @@
 
 /* Route changes are intentionally immediate. The only motion belongs to the
  * sidebar's own hamburger expand/collapse rules in each page. */
+html[data-iba-sidebar-state] .sidebar,
+html[data-iba-sidebar-state] .content {
+  transition: none !important;
+}

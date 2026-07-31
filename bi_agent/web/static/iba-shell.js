@@ -30,6 +30,11 @@
     if (document.body.classList.contains("sidebar-collapsed")) {
       document.body.classList.toggle("sidebar-collapsed", collapsed);
     }
+    // The bootstrap data attribute disables the page-load transition while
+    // the saved state is applied. Re-enable hamburger transitions afterward.
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => document.documentElement.removeAttribute("data-iba-sidebar-state"));
+    });
   }
 
   function isModifiedClick(event) {

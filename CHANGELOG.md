@@ -619,3 +619,10 @@
 - 仅保留点击三条横杠时 IBA 外层导航栏自身的展开/收起滑动效果。
 - 主要文件：`bi_agent/web/static/iba-shell.js`、`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 24. 修复跳转时外层导航误触发展开动画
+
+- 页面进入时恢复上一页的 IBA 外层导航展开状态不再触发侧栏滑动，避免从 CEO 驾驶舱进入驾驶舱时看到侧栏自行滑出。
+- 仅用户点击三条横杠时保留展开/收起动画。
+- 主要文件：`bi_agent/web/static/iba-shell.css`、`bi_agent/web/static/iba-shell.js`、`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
