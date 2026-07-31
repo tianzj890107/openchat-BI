@@ -11,22 +11,22 @@ html[data-iba-sidebar-state] .content {
  * rail must still win when the hamburger is clicked, otherwise only the text
  * disappears while the navigation width stays unchanged. */
 body.nav-collapsed .sidebar {
-  width: 80px !important;
+  width: 72px !important;
 }
 body.nav-collapsed .content {
-  margin-left: 80px !important;
+  margin-left: 72px !important;
 }
 
 /* Collapsed IBA rail: keep a usable icon-only navigation instead of hiding
  * the entire outer sidebar. */
 body.nav-collapsed .sidebar,
 body.sidebar-collapsed .sidebar {
-  width: 80px !important;
+  width: 72px !important;
   transform: translateX(0) !important;
   overflow: hidden !important;
 }
 body.sidebar-collapsed .content {
-  margin-left: 80px !important;
+  margin-left: 72px !important;
 }
 body.nav-collapsed .search,
 body.sidebar-collapsed .search {
@@ -35,7 +35,7 @@ body.sidebar-collapsed .search {
 body.nav-collapsed .menu-title,
 body.sidebar-collapsed .menu-title {
   display: flex !important;
-  width: 80px !important;
+  width: 72px !important;
   height: 56px !important;
   min-height: 56px !important;
   justify-content: center;
@@ -59,7 +59,7 @@ body.sidebar-collapsed .submenu {
   display: flex !important;
   flex-direction: column;
   align-items: center;
-  width: 80px !important;
+  width: 72px !important;
   padding: 8px 0 !important;
 }
 body.nav-collapsed .submenu a,
@@ -94,7 +94,7 @@ body.sidebar-collapsed .submenu a.active::before { color: #0b61d8; }
 body.nav-collapsed .menu-item,
 body.sidebar-collapsed .menu-item {
   display: flex !important;
-  width: 80px !important;
+  width: 72px !important;
   height: 42px !important;
   min-height: 42px !important;
   justify-content: center;
@@ -109,7 +109,7 @@ body.sidebar-collapsed .menu-item .chev {
 body.nav-collapsed .menu-item::before,
 body.sidebar-collapsed .menu-item::before {
   color: #52647d;
-  font-size: 10px;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
