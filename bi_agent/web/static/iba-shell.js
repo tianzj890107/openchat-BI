@@ -2,8 +2,8 @@
  *
  * The three entry pages keep their existing content implementations, but the
  * IBA navigation now has one click path: same-document dashboard/i-Agent
- * switches animate in place, while cross-page navigation uses the same short
- * exit transition before changing location.
+ * switches update immediately, while the sidebar's own CSS controls the
+ * only motion in this shell (the hamburger expand/collapse interaction).
  */
 (function installIbaShellNavigation() {
   "use strict";
@@ -49,14 +49,6 @@
   }
 
   function animateLocalDashboardSwitch(target) {
-    const content = document.querySelector(".content");
-    if (content) {
-      content.classList.remove("iba-view-switching");
-      void content.offsetWidth;
-      content.classList.add("iba-view-switching");
-      window.setTimeout(() => content.classList.remove("iba-view-switching"), 280);
-    }
-
     const wantsIagent = target.searchParams.get("view") === "iagent";
     if (wantsIagent && typeof window.showIagentView === "function") {
       window.history.replaceState(null, "", `${DASHBOARD_PATH}?view=iagent`);
@@ -78,8 +70,7 @@
     // Keep the outer IBA rail in the same expanded/collapsed state after a
     // full document navigation (CEO and dashboard use different class names).
     saveSidebarState();
-    document.documentElement.classList.add("iba-route-leaving");
-    window.setTimeout(() => { window.location.assign(target.href); }, 180);
+    window.location.assign(target.href);
   }
 
   function onNavigationClick(event) {

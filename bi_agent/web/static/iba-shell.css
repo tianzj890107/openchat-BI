@@ -1,29 +1,4 @@
 /* Shared IBA shell behavior for CEO 驾驶舱、驾驶舱 and i-Agent. */
 
-html.iba-route-leaving {
-  background: #f4f6f9;
-}
-
-html.iba-route-leaving body {
-  opacity: .35;
-  transition: opacity .18s ease;
-}
-
-/* Same-document dashboard/i-Agent switches use the same short enter motion
- * as the outer navigation instead of an abrupt display:none/display:block. */
-.content.iba-view-switching {
-  animation: iba-view-enter .24s ease both;
-}
-
-@keyframes iba-view-enter {
-  from { opacity: .35; transform: translateX(10px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html.iba-route-leaving body,
-  .content.iba-view-switching {
-    transition: none;
-    animation: none;
-  }
-}
+/* Route changes are intentionally immediate. The only motion belongs to the
+ * sidebar's own hamburger expand/collapse rules in each page. */
