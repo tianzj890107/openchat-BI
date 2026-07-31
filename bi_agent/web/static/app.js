@@ -4564,6 +4564,8 @@
 
   function setBusy(v) {
     state.busy = v;
+    document.body.dataset.agentBusy = v ? "1" : "0";
+    window.dispatchEvent(new CustomEvent("bi-agent-busy", { detail: { busy: v } }));
     el.btnSend.disabled = v;
     el.chatInput.disabled = v;
     el.btnSend.textContent = v ? "…" : "发送 ▸";

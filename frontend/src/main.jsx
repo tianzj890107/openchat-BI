@@ -9,6 +9,7 @@ import {
   DatabaseOutlined,
   FileSearchOutlined,
   HistoryOutlined,
+  LoadingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   PlusOutlined,
@@ -175,9 +176,13 @@ function readWorkflow() {
   };
 }
 
-function workflowIcon(status) {
+function workflowIcon(status, spinning = false) {
   if (status === "completed") return <CheckCircleOutlined style={{ color: "#28a36a" }} />;
-  if (status === "in_progress") return <ClockCircleOutlined style={{ color: "#1677ff" }} />;
+  if (status === "in_progress") {
+    return spinning
+      ? <LoadingOutlined spin className="antd-workflow-loading" style={{ color: "#1677ff" }} />
+      : <ClockCircleOutlined style={{ color: "#1677ff" }} />;
+  }
   return <MinusCircleOutlined style={{ color: "#b8c0cc" }} />;
 }
 
@@ -185,11 +190,17 @@ function WorkflowPanels() {
   const [workflow, setWorkflow] = useState(readWorkflow);
   const [sopOpen, setSopOpen] = useState(false);
   const [todoOpen, setTodoOpen] = useState(false);
+  const [processing, setProcessing] = useState(() => document.body.dataset.agentBusy === "1");
   useEffect(() => {
     const targets = [document.getElementById("chat-sop"), document.getElementById("chat-todo")].filter(Boolean);
     const observer = new MutationObserver(() => setWorkflow(readWorkflow()));
     targets.forEach((target) => observer.observe(target, { attributes: true, childList: true, subtree: true, characterData: true }));
-    return () => observer.disconnect();
+    const onBusy = (event) => setProcessing(!!event.detail?.busy);
+    window.addEventListener("bi-agent-busy", onBusy);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("bi-agent-busy", onBusy);
+    };
   }, []);
   if (workflow.sopHidden && workflow.todoHidden) return null;
   const done = workflow.sop.filter((item) => item.status === "completed").length;
@@ -198,7 +209,7 @@ function WorkflowPanels() {
     key: item.key,
     title: item.text,
     status: item.status === "completed" ? "success" : item.status === "in_progress" ? "pending" : "pending",
-    icon: workflowIcon(item.status),
+    icon: workflowIcon(item.status, processing && item.status === "in_progress"),
   }));
   return (
     <div className="antd-workflow-panels">
@@ -214,7 +225,7 @@ function WorkflowPanels() {
         onChange={(keys) => setTodoOpen(keys.includes("todo"))}
         items={[{ key: "todo", label: <span className="antd-workflow-title">任务清单 <Tag>{workflow.questions.length ? `${workflow.questions.length} 个问题` : `${workflow.todos.length} 项`}</Tag></span>, children: <>
           {!!workflow.questions.length && <List size="small" header="用户提问" dataSource={workflow.questions} renderItem={(item, index) => <List.Item className="antd-question-item" onClick={() => document.querySelector(`#chat-todo .chat-question-item[data-question-turn="${CSS.escape(item.turn)}"]`)?.click()}><Tag>{index + 1}</Tag><span>{item.text}</span></List.Item>} />}
-          {!!workflow.todos.length && <List size="small" header="分析进度" dataSource={workflow.todos} renderItem={(item) => <List.Item><span>{workflowIcon(item.status)}</span><span>{item.text}</span></List.Item>} />}
+          {!!workflow.todos.length && <List size="small" header="分析进度" dataSource={workflow.todos} renderItem={(item) => <List.Item><span>{workflowIcon(item.status, processing && item.status === "in_progress")}</span><span>{item.text}</span></List.Item>} />}
         </> }]}
       />}
     </div>
