@@ -4029,6 +4029,15 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   border-radius: 0 !important;
   box-shadow: none !important;
 }
+.chat-scroll .dash-export:not(.chat-action-card) {
+  width: 100% !important;
+  margin: 8px 0 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
 
 /* Chart/table canvases carry their own title. Keep the compact type badge,
  * but remove duplicate card titles and technical HTML/source links. */
@@ -4044,4 +4053,137 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .chat-scroll .multidim-saved,
 .chat-scroll .multidim-metric {
   display: none !important;
+}
+
+/* ------------------------------------------------------------------
+ * One visible result surface (conversation + dashboard)
+ *
+ * A result can pass through several compatibility layers: the legacy
+ * dash/chart/table node, the Ant Design host, and the React card/bubble.
+ * Those layers must remain in the DOM for hydration and old history, but
+ * only one of them should paint a background, border, or shadow.  Keep the
+ * innermost mounted result surface visible and flatten every wrapper around
+ * it.  The table grid and action buttons keep their own functional borders.
+ * ------------------------------------------------------------------ */
+
+/* Legacy chart/table wrappers become layout-only once the Ant Card has been
+ * mounted inside them.  This selector also covers cards nested in an
+ * assistant message (the older direct-child selector did not). */
+.chat-scroll .chart-card:has(> .antd-result-card-host),
+.chat-scroll .table-card:has(> .antd-result-card-host),
+.chat-scroll .multidim-card:has(> .antd-result-card-host) {
+  width: 100% !important;
+  margin: 8px 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+.chat-scroll .chart-card:has(> .antd-result-card-host) > .antd-result-card-host,
+.chat-scroll .table-card:has(> .antd-result-card-host) > .antd-result-card-host,
+.chat-scroll .multidim-card:has(> .antd-result-card-host) > .antd-result-card-host {
+  display: block;
+  width: 100%;
+}
+
+/* Result actions use the outer chat card as their single grey surface.
+ * Section rows are content, not nested cards; action controls remain
+ * coloured buttons and menus. */
+.chat-scroll .chat-action-card:not(.dash-export),
+.chat-scroll .dash-conclusion:not(.chat-action-card),
+.chat-scroll .dash-rootcause:not(.chat-action-card),
+.chat-scroll .dash-actions:not(.chat-action-card) {
+  width: min(100%, 760px) !important;
+  margin: 10px 0 !important;
+  padding: 11px 14px !important;
+  background: #F7F7F8 !important;
+  color: #1F2023 !important;
+  border: 1px solid #E7E7EA !important;
+  border-radius: 14px !important;
+  border-bottom-left-radius: 4px !important;
+  box-shadow: 0 1px 3px rgba(16, 28, 40, .06) !important;
+  overflow: visible !important;
+}
+.chat-scroll .chat-action-card:not(.dash-export) > .dash-head,
+.chat-scroll .chat-action-card:not(.dash-export) > .dash-body,
+.chat-scroll .chat-action-card:not(.dash-export) > .dash-body.has-items,
+.chat-scroll .chat-action-card:not(.dash-export) .dash-item,
+.chat-scroll .chat-action-card:not(.dash-export) .dash-item-flash,
+.chat-scroll .chat-action-card:not(.dash-export) .dash-seg-head,
+.chat-scroll .dash-conclusion:not(.chat-action-card) > .dash-head,
+.chat-scroll .dash-conclusion:not(.chat-action-card) > .dash-body,
+.chat-scroll .dash-rootcause:not(.chat-action-card) > .dash-head,
+.chat-scroll .dash-rootcause:not(.chat-action-card) > .dash-body,
+.chat-scroll .dash-actions:not(.chat-action-card) > .dash-head,
+.chat-scroll .dash-actions:not(.chat-action-card) > .dash-body {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.chat-scroll .chat-action-card:not(.dash-export) .dash-item {
+  border-radius: 0 !important;
+  margin: 6px 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+.chat-scroll .chat-action-card:not(.dash-export) .dash-item-flash {
+  border-top: 0 !important;
+}
+
+/* Old saved snapshots may not carry the chat-action-card helper class. */
+.chat-scroll .dash-conclusion:not(.chat-action-card) .dash-item,
+.chat-scroll .dash-rootcause:not(.chat-action-card) .dash-item,
+.chat-scroll .dash-actions:not(.chat-action-card) .dash-item {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Dashboard cards have a legacy outer .dash-card and a React inner bubble.
+ * Flatten the legacy node and any content-card children so the inner bubble
+ * is the only painted result surface. */
+.dashboard-scroll > .dash-card.antd-dashboard-card-mounted,
+.dashboard-scroll > .dash-card:has(> .antd-dashboard-card-host) {
+  width: min(100%, 760px) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+.dashboard-scroll > .dash-card.antd-dashboard-card-mounted > .antd-dashboard-card-host,
+.dashboard-scroll > .dash-card:has(> .antd-dashboard-card-host) > .antd-dashboard-card-host {
+  display: block !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.antd-dashboard-inner-bubble > .dash-head,
+.antd-dashboard-inner-bubble > .dash-body,
+.antd-dashboard-inner-bubble > .dash-card,
+.antd-dashboard-inner-bubble > .dash-table-wrap,
+.antd-dashboard-inner-bubble > .chart-card,
+.antd-dashboard-inner-bubble > .table-card,
+.antd-dashboard-inner-bubble > .multidim-card {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* A mounted Ant result card nested in a dashboard bubble is content of that
+ * bubble, not a second bubble. */
+.antd-dashboard-inner-bubble .antd-result-card-host,
+.antd-dashboard-inner-bubble .antd-result-card-host .antd-result-card {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
