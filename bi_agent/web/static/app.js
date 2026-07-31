@@ -2837,7 +2837,9 @@
 
   function updateDashboardCount() {
     const bucket = B();
-    const n = bucket.dashboardHasContent ? el.dashboardList.querySelectorAll(".dash-card").length : 0;
+    const n = bucket.dashboardHasContent
+      ? el.dashboardList.querySelectorAll(".dash-card:not(.antd-dashboard-question-hidden)").length
+      : 0;
     if (el.dashboardCount) el.dashboardCount.textContent = n;
   }
 
