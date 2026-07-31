@@ -682,3 +682,10 @@
 - 放大镜图标放大并垂直居中，消除搜索区域与下方入口之间的阶梯感。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 33. 统一智析内层提示气泡
+
+- 内部功能栏折叠时保留完整按钮名称，悬浮提示不再出现空白气泡，并继续从按钮右侧显示。
+- 展开/收起侧栏按钮的提示也统一为右侧白底深色字，与其他内部功能提示保持一致。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。

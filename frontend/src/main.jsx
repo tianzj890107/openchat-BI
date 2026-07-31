@@ -97,10 +97,14 @@ function Sidebar() {
     return () => { disposed = true; observer?.disconnect(); window.removeEventListener("bi-conversations-updated", onUpdated); };
   }, []);
 
+  // Keep the labels in the menu data even while collapsed. Ant Design uses
+  // the item label as the collapsed-menu tooltip; hiding it here made those
+  // tooltips render as empty bubbles. The label is still visually hidden by
+  // Ant Design's inline-collapsed styles.
   const items = useMemo(() => navItems.map((item) => {
     if (item.type) return item;
-    return { ...item, label: collapsed ? null : item.label };
-  }), [collapsed]);
+    return { ...item, label: item.label, title: item.label };
+  }), []);
 
   const toggle = () => {
     document.getElementById("sidebar-collapse")?.click();
@@ -113,13 +117,25 @@ function Sidebar() {
         <div className="antd-sidebar-brand">
           <span className="antd-brand-mark">◆</span>
           {!collapsed && <span><strong>智析</strong><small id="antd-agent-name">bi-analyst</small></span>}
-          <Tooltip title={collapsed ? "展开侧栏" : "收起侧栏"}>
+          <Tooltip
+            placement="right"
+            title={collapsed ? "展开侧栏" : "收起侧栏"}
+            color="#fff"
+            overlayClassName="antd-workbench-tooltip"
+          >
             <Button type="text" size="small" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={toggle} />
           </Tooltip>
         </div>
-        <Button className="antd-new-chat" block={!collapsed} type="primary" icon={<PlusOutlined />} onClick={() => document.getElementById("nav-new-chat")?.click()}>
-          {!collapsed && "新对话"}
-        </Button>
+        <Tooltip
+          placement="right"
+          title={collapsed ? "新对话" : null}
+          color="#fff"
+          overlayClassName="antd-workbench-tooltip"
+        >
+          <Button className="antd-new-chat" block={!collapsed} type="primary" icon={<PlusOutlined />} onClick={() => document.getElementById("nav-new-chat")?.click()}>
+            {!collapsed && "新对话"}
+          </Button>
+        </Tooltip>
         <Menu mode="inline" inlineCollapsed={collapsed} selectedKeys={[active]} items={items} onClick={({ key }) => { setActive(key); dispatchLegacy(key); }} />
         {!collapsed && <>
           <Divider className="antd-sidebar-divider" />

@@ -3587,6 +3587,25 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   border-radius: 8px;
 }
 .antd-workbench-sidebar .ant-menu { border-inline-end: 0; flex: 0 0 auto; }
+/* Keep every inner-workbench hint readable and consistently to the right.
+   MenuItem renders collapsed hints in a body portal, so this selector is
+   intentionally scoped to Ant Design's collapsed-menu tooltip class. */
+.ant-menu-inline-collapsed-tooltip,
+.antd-workbench-tooltip {
+  --antd-arrow-background-color: #fff;
+}
+.ant-menu-inline-collapsed-tooltip .ant-tooltip-inner,
+.antd-workbench-tooltip .ant-tooltip-inner {
+  background: #fff !important;
+  color: #1f2329 !important;
+  box-shadow: 0 4px 12px rgba(31, 35, 41, .14) !important;
+}
+.ant-menu-inline-collapsed-tooltip .ant-tooltip-arrow::before,
+.ant-menu-inline-collapsed-tooltip .ant-tooltip-arrow::after,
+.antd-workbench-tooltip .ant-tooltip-arrow::before,
+.antd-workbench-tooltip .ant-tooltip-arrow::after {
+  background: #fff !important;
+}
 .antd-sidebar-divider { margin: 12px 16px; width: auto; min-width: auto; }
 .antd-sidebar-section-title { padding: 0 16px 6px; color: #86909c; font-size: 12px; }
 .antd-recent-list { flex: 1; overflow: auto; padding: 0 8px; }
