@@ -4042,7 +4042,6 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 /* Chart/table canvases carry their own title. Keep the compact type badge,
  * but remove duplicate card titles and technical HTML/source links. */
 .chat-scroll .chart-title,
-.chat-scroll .chart-saved,
 .chat-scroll .table-title,
 .chat-scroll .table-subtitle,
 .chat-scroll .table-shape,
@@ -4054,6 +4053,95 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .chat-scroll .multidim-metric {
   display: none !important;
 }
+
+/* The source link belongs in the chart header's top-right corner.  It is
+ * still hidden automatically when the legacy header is replaced by the
+ * mounted Ant card; the React header rebuilds it there with the same label. */
+.chat-scroll .chart-saved {
+  display: inline-flex !important;
+  margin-left: auto;
+  color: #667085;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* A chart/table is appended beside the assistant message body.  Give that
+ * message a real content width instead of letting flex shrink-wrap the
+ * canvas to a short title or a single data point. */
+.chat-scroll .msg.antd-message-enhanced:has(> .chart-card),
+.chat-scroll .msg.antd-message-enhanced:has(> .table-card),
+.chat-scroll .msg.antd-message-enhanced:has(> .multidim-card),
+.chat-scroll .msg.antd-message-enhanced:has(> .chat-action-card),
+.chat-scroll .msg.antd-message-enhanced:has(> .dash-conclusion),
+.chat-scroll .msg.antd-message-enhanced:has(> .dash-rootcause),
+.chat-scroll .msg.antd-message-enhanced:has(> .dash-actions) {
+  width: min(100%, 760px) !important;
+  max-width: 100% !important;
+  align-self: flex-start;
+}
+.chat-scroll .msg.antd-message-enhanced > .chart-card,
+.chat-scroll .msg.antd-message-enhanced > .table-card,
+.chat-scroll .msg.antd-message-enhanced > .multidim-card,
+.chat-scroll .msg.antd-message-enhanced > .chat-action-card,
+.chat-scroll .msg.antd-message-enhanced > .dash-conclusion,
+.chat-scroll .msg.antd-message-enhanced > .dash-rootcause,
+.chat-scroll .msg.antd-message-enhanced > .dash-actions,
+.chat-scroll .msg.antd-message-enhanced > .antd-result-card-host {
+  width: 100% !important;
+  max-width: none !important;
+}
+.chat-scroll .antd-result-card-host,
+.chat-scroll .antd-result-card-host .antd-result-card {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* Ant Card header used by restored and live charts.  Keep the type badge and
+ * source aligned with the original chart header without adding another card
+ * around the canvas. */
+.antd-result-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.antd-result-type {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: .8px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.antd-result-type-chart { color: #0B7FF3; }
+.antd-result-type-table,
+.antd-result-type-multi { color: #7C83FD; }
+.antd-result-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 600;
+}
+.antd-result-source {
+  flex: 0 0 auto;
+  max-width: 42%;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 400;
+}
+.antd-result-source:hover { color: #1677ff; }
 
 /* ------------------------------------------------------------------
  * One visible result surface (conversation + dashboard)

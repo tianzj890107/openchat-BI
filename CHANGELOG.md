@@ -752,3 +752,10 @@
 - 页面：智能分析会话区、右侧看板。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 43. 统一历史结果卡片并恢复图表宽度与来源
+
+- 历史会话恢复时显式复用实时路径的 Ant Design 结果挂载，结论、图表和表格不再因恢复时机不同而出现一层或两层气泡。
+- 会话中的图表卡片按会话气泡宽度展开，不再被标题或内容自动收缩；图表右上角恢复显示来源链接，类型徽标、标题和来源保持同一行。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
+- 类型：前端与 Ant Design 静态资源变更；刷新浏览器即可，部署后无需重启后端。

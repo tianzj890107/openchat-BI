@@ -312,13 +312,29 @@ function mountResultCard(card, type) {
   card.appendChild(host);
   const head = card.querySelector(`:scope > .${type === "table" ? "table-head" : type === "multi" ? "multidim-head" : "chart-head"}`);
   const title = head?.querySelector(`.${type === "table" ? "table-title" : type === "multi" ? "multidim-title" : "chart-title"}`)?.textContent?.trim() || "分析结果";
+  const typeNode = head?.querySelector(`.${type === "table" ? "table-tag" : type === "multi" ? "multidim-tag" : "chart-type"}`);
+  const sourceNode = head?.querySelector(type === "chart"
+    ? ".chart-saved"
+    : type === "multi" ? ".multidim-source, .multidim-saved" : ".table-source");
+  const typeLabel = typeNode?.textContent?.trim() || type.toUpperCase();
+  const sourceText = sourceNode?.textContent?.trim() || "";
+  const sourceHref = sourceNode?.querySelector("a")?.getAttribute("href") || "";
+  const resultTitle = (
+    <span className="antd-result-title-row">
+      <span className={`antd-result-type antd-result-type-${type}`}>{typeLabel}</span>
+      <span className="antd-result-title-text">{title}</span>
+      {sourceText && (sourceHref
+        ? <a className="antd-result-source" href={sourceHref} target="_blank" rel="noreferrer">{sourceText}</a>
+        : <span className="antd-result-source">{sourceText}</span>)}
+    </span>
+  );
   const nodes = type === "chart"
     ? [card.querySelector(":scope > .chart-canvas")]
     : type === "table"
       ? [card.querySelector(":scope > .table-scroll"), card.querySelector(":scope > .table-summary"), card.querySelector(":scope > .table-footnote")]
       : [card.querySelector(":scope > .multidim-toolbar"), card.querySelector(":scope > .multidim-canvas"), card.querySelector(":scope > .multidim-summary"), card.querySelector(":scope > .multidim-footnote")];
   const root = createRoot(host);
-  root.render(<Card size="small" title={title} className={`antd-result-card antd-result-${type}`}><div ref={(slot) => { if (slot) nodes.filter(Boolean).forEach((node) => slot.appendChild(node)); }} /></Card>);
+  root.render(<Card size="small" title={resultTitle} className={`antd-result-card antd-result-${type}`}><div ref={(slot) => { if (slot) nodes.filter(Boolean).forEach((node) => slot.appendChild(node)); }} /></Card>);
   if (head) head.style.display = "none";
   cardRoots.set(card, root);
 }
