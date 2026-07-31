@@ -3185,6 +3185,13 @@
 
   function hydrateRestoredDashboard() {
     if (!el.dashboardList) return;
+    // Restore the same Ant Design result surface used by live dashboard
+    // updates. Without this explicit mount, history relied on the mutation
+    // observer timing and some records kept both the legacy card and the
+    // inner bubble visible.
+    el.dashboardList.querySelectorAll(":scope > .dash-card").forEach((card) => {
+      if (window.antdDashboardCardMount) window.antdDashboardCardMount(card);
+    });
     el.dashboardList.querySelectorAll(".dash-export[data-turn]").forEach((card) => {
       bindExportCard(card, card.dataset.turn);
     });
@@ -3221,6 +3228,15 @@
           flashOntologyEntity(ch.dataset.code);
         });
       });
+    });
+    // Historical HTML may contain either legacy cards or cards already
+    // mounted by Ant Design. Normalize both paths before rendering the chart
+    // so every record has one result surface and the same width.
+    el.chatScroll.querySelectorAll(".chart-card, .table-card, .multidim-card").forEach((card) => {
+      if (card.querySelector(":scope > .antd-result-card-host")) return;
+      const type = card.classList.contains("table-card") ? "table"
+        : card.classList.contains("multidim-card") ? "multi" : "chart";
+      if (window.antdResultCardMount) window.antdResultCardMount(card, type);
     });
     el.chatScroll.querySelectorAll(".chart-card[data-chart-json]").forEach((card) => {
       try { mountChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson))); }
