@@ -597,3 +597,11 @@
 - 页面：i-Agent 智能分析/报表分析看板。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；本地构建后刷新浏览器即可，部署后无需修改后端接口。
+
+### 21. 统一 IBA 外层导航切换行为
+
+- CEO 驾驶舱、驾驶舱和 i-Agent 共用同一套 IBA 外层导航点击逻辑。
+- 驾驶舱与 i-Agent 在同一页面内切换时使用统一的淡入滑动过渡；跨页面跳转先执行短暂淡出，再进入目标页面，避免整页瞬间切换。
+- 保留智析工作台内层功能栏，明确区分 IBA 外层导航与工作台功能导航。
+- 主要文件：`bi_agent/web/static/iba-shell.js`、`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
