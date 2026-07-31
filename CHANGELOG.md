@@ -703,3 +703,10 @@
 - 点击节点标题可展开或收起输入、输出及命中本体内容，保留原有紧凑的时间线样式。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 36. 统一会话用户消息蓝色背景
+
+- 会话中的用户消息气泡去除紫色渐变，改为与“新对话”和发送按钮一致的单色科技蓝背景。
+- 实时消息、历史恢复消息和选中高亮状态使用同一蓝色。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。

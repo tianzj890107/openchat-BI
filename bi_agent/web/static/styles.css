@@ -436,7 +436,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .msg-user {
   align-self: flex-end;
   padding: 11px 14px;
-  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  background: #1677ff;
   color: #FFFFFF;
   border: 0;
   border-radius: 14px;
@@ -468,7 +468,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .msg-user.question-focus {
   border-radius: 14px;
   border-bottom-right-radius: 4px;
-  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  background: #1677ff;
 }
 .dash-question.question-focus { background: rgba(26, 115, 232, 0.10); }
 .msg-header {
@@ -3633,7 +3633,7 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-message-host { width: 100%; }
 .antd-message-host .ant-bubble { max-width: 100%; }
 .antd-message-host .ant-bubble-content { padding: 11px 14px; }
-.antd-message-user .ant-bubble-content { background: linear-gradient(135deg, #597ef7, #7c5cff); color: #fff; }
+.antd-message-user .ant-bubble-content { background: #1677ff; color: #fff; }
 .antd-message-assistant .ant-bubble-content { background: #f7f7f8; border: 1px solid #e7e7ea; color: #1f2023; }
 .antd-message-header { color: #667085; font-size: 11px; }
 .antd-message-html { white-space: normal; word-break: break-word; line-height: 1.7; }
@@ -3903,7 +3903,7 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   border-radius: 14px;
 }
 .msg.antd-message-enhanced .antd-message-user .ant-bubble-content {
-  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  background: #1677ff;
   color: #fff;
   border: 0;
   border-bottom-right-radius: 4px;
