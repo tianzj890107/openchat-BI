@@ -3660,7 +3660,7 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-step-enhanced > .step-body { display: none !important; }
 .antd-step-enhanced::before {
   left: -5px;
-  top: 10px;
+  top: 8px;
   width: 10px;
   height: 10px;
   border-width: 2px;

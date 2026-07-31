@@ -717,3 +717,9 @@
 - 移除重复的 ThoughtChain 圆点，只保留时间线前方的蓝色节点；节点略微放大并与文字、竖线对齐。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 38. 微调思维链节点垂直位置
+
+- 思维链前方蓝色节点向上微调，与同一行文字和竖线的视觉中心更一致。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
