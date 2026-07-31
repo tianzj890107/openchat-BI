@@ -759,3 +759,10 @@
 - 会话中的图表卡片按会话气泡宽度展开，不再被标题或内容自动收缩；图表右上角恢复显示来源链接，类型徽标、标题和来源保持同一行。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
 - 类型：前端与 Ant Design 静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 44. 防止历史卡片重复挂载
+
+- 历史 HTML 已包含 Ant Design 挂载节点时复用现有节点，不再因为恢复和 MutationObserver 同时执行而追加第二个或第三个结果气泡。
+- 兼容从看板移动到会话的旧结果卡片，内部历史气泡只作为透明兼容层保留。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
+- 类型：前端与 Ant Design 静态资源变更；刷新浏览器即可，部署后无需重启后端。
