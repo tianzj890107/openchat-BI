@@ -654,3 +654,10 @@
 - 窄栏下方 360、ISMP、ICM、IB&C、CLM、CPQ、IPS 标识字号统一为与“IBA”相同的 16px。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 29. 修复 IBA 导航展开时文字换行
+
+- 外部 IBA 导航的标题、入口和模块标识统一禁止自动换行并裁剪溢出。
+- 导航从窄栏展开时文字保持单行，随宽度平滑展开，不再先折成多行再收回。
+- 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。

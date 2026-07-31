@@ -24,6 +24,14 @@ body.sidebar-collapsed .sidebar {
   width: 72px !important;
   transform: translateX(0) !important;
   overflow: hidden !important;
+  white-space: nowrap;
+}
+/* Keep labels on one line while the rail width animates from compact to full. */
+.sidebar .menu-title,
+.sidebar .submenu a,
+.sidebar .menu-item {
+  white-space: nowrap !important;
+  overflow: hidden;
 }
 body.sidebar-collapsed .content {
   margin-left: 72px !important;
