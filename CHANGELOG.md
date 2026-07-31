@@ -626,3 +626,10 @@
 - 仅用户点击三条横杠时保留展开/收起动画。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`bi_agent/web/static/iba-shell.js`、`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 25. 修复 CEO 外层导航收起宽度
+
+- 修复 CEO 驾驶舱点击三条横杠后只有文字消失、导航栏宽度不收缩的问题。
+- 收起时外层导航固定缩为 80px，展开时恢复用户保存的宽度；内容区域同步调整。
+- 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
