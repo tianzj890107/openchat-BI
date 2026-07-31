@@ -2874,6 +2874,14 @@
     el.dashboardList
       .querySelectorAll(".dash-rootcause, .dash-actions, .dash-export")
       .forEach((card) => appendChatActionCard(card));
+    // Older saved conversations predate the conversation-side conclusion
+    // card. Keep the dashboard copy in place and add a clone only when the
+    // restored chat snapshot does not already contain that conclusion.
+    el.dashboardList.querySelectorAll(".dash-conclusion[data-turn]").forEach((card) => {
+      const turn = CSS.escape(String(card.dataset.turn));
+      if (el.chatScroll.querySelector(`.chat-action-card.dash-conclusion[data-turn="${turn}"]`)) return;
+      appendChatActionCard(card.cloneNode(true));
+    });
     updateDashboardCount();
   }
 
@@ -3286,6 +3294,9 @@
     if (bucket.conclusionSeen.has(key)) return;
     bucket.conclusionSeen.add(key);
     appendDashboardCard(dashboardConclusionCard(content, bucket.currentTurnTag || 1));
+    // Conclusions are part of the assistant's delivered result in the
+    // conversation as well as the read-only dashboard.
+    appendChatActionCard(dashboardConclusionCard(content, bucket.currentTurnTag || 1));
   }
 
   // Returns true iff a 根因 card was actually appended (used to decide

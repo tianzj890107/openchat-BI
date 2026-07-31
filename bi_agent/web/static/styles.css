@@ -2564,7 +2564,7 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 }
 .dash-tag {
   padding: 2px 8px;
-  border-radius: 2px;
+  border-radius: 6px;
   letter-spacing: 1.1px;
   font-weight: 600;
   flex-shrink: 0;
