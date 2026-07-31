@@ -91,6 +91,8 @@ body.sidebar-collapsed .submenu a::before {
 }
 body.nav-collapsed .submenu a:nth-child(1)::before,
 body.sidebar-collapsed .submenu a:nth-child(1)::before { content: "⌂"; }
+body.nav-collapsed .submenu a:nth-child(1)::before,
+body.sidebar-collapsed .submenu a:nth-child(1)::before { font-size: 30px; }
 body.nav-collapsed .submenu a:nth-child(2)::before,
 body.sidebar-collapsed .submenu a:nth-child(2)::before { content: "▣"; }
 body.nav-collapsed .submenu a:nth-child(3)::before,
@@ -117,7 +119,7 @@ body.sidebar-collapsed .menu-item .chev {
 body.nav-collapsed .menu-item::before,
 body.sidebar-collapsed .menu-item::before {
   color: #52647d;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
