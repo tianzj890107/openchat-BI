@@ -661,3 +661,10 @@
 - 导航从窄栏展开时文字保持单行，随宽度平滑展开，不再先折成多行再收回。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 30. 调整 IBA 窄栏字号与 CEO 图标
+
+- 窄栏中的 360、ISMP、ICM、IB&C、CLM、CPQ、IPS 字号调整为与展开态一致的 15px。
+- CEO 驾驶舱图标放大为原来的 1.5 倍，其他入口图标保持原尺寸。
+- 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
