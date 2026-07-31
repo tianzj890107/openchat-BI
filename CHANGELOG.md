@@ -612,3 +612,10 @@
 - CEO 驾驶舱和驾驶舱现在共用 `iba.sidebar.collapsed` 状态，跳转前后的导航展开、收起和文字显示保持一致。
 - 主要文件：`bi_agent/web/static/iba-shell.js`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 23. 取消页面跳转过渡动画
+
+- CEO 驾驶舱、驾驶舱和 i-Agent 之间跳转改为立即切换，不再出现淡入、淡出或横向滑动。
+- 仅保留点击三条横杠时 IBA 外层导航栏自身的展开/收起滑动效果。
+- 主要文件：`bi_agent/web/static/iba-shell.js`、`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
