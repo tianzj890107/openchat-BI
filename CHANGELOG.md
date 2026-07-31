@@ -647,3 +647,10 @@
 - 折叠按钮统一为与下方“新对话”按钮相同的 48×40 尺寸和圆角，窄栏上下对齐。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 28. 统一 IBA 窄栏宽度与字号
+
+- IBA 外层导航收起宽度统一为 72px，与顶部三条横杠按钮区域一致。
+- 窄栏下方 360、ISMP、ICM、IB&C、CLM、CPQ、IPS 标识字号统一为与“IBA”相同的 16px。
+- 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
