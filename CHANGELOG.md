@@ -710,3 +710,10 @@
 - 实时消息、历史恢复消息和选中高亮状态使用同一蓝色。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 37. 修复思维链展开一致性与节点样式
+
+- 会话思维链的展开状态改为受控管理，所有步骤（包括没有详细输出的步骤）都可以展开查看。
+- 移除重复的 ThoughtChain 圆点，只保留时间线前方的蓝色节点；节点略微放大并与文字、竖线对齐。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。

@@ -269,14 +269,16 @@ function mountMessage(msg, role, iteration) {
 window.antdMessageMount = mountMessage;
 
 function AntdStep({ name, summary, duration, html }) {
+  const [expandedKeys, setExpandedKeys] = useState([]);
+  const detailHtml = String(html || "").trim() || '<div class="antd-step-empty">暂无详细内容</div>';
   return <ThoughtChain
     size="small"
-    collapsible
+    collapsible={{ expandedKeys, onExpand: setExpandedKeys }}
     items={[{
       key: "step",
       icon: <span className="antd-step-dot" aria-hidden="true" />,
       title: <span className="antd-step-label"><b>{name}</b><span>{summary}</span><em>{duration}</em></span>,
-      content: <div className="antd-step-html" dangerouslySetInnerHTML={{ __html: html || "" }} />,
+      content: <div className="antd-step-html" dangerouslySetInnerHTML={{ __html: detailHtml }} />,
     }]}
   />;
 }
