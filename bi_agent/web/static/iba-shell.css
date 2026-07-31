@@ -16,3 +16,115 @@ body.nav-collapsed .sidebar {
 body.nav-collapsed .content {
   margin-left: 80px !important;
 }
+
+/* Collapsed IBA rail: keep a usable icon-only navigation instead of hiding
+ * the entire outer sidebar. */
+body.nav-collapsed .sidebar,
+body.sidebar-collapsed .sidebar {
+  width: 80px !important;
+  transform: translateX(0) !important;
+  overflow: hidden !important;
+}
+body.sidebar-collapsed .content {
+  margin-left: 80px !important;
+}
+body.nav-collapsed .search,
+body.sidebar-collapsed .search {
+  display: none !important;
+}
+body.nav-collapsed .menu-title,
+body.sidebar-collapsed .menu-title {
+  display: flex !important;
+  width: 80px !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  justify-content: center;
+  padding: 0 !important;
+  gap: 0 !important;
+  font-size: 0 !important;
+}
+body.nav-collapsed .menu-title > span:first-child,
+body.sidebar-collapsed .menu-title > span:first-child {
+  display: block !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  white-space: nowrap;
+}
+body.nav-collapsed .menu-title .chev,
+body.sidebar-collapsed .menu-title .chev {
+  display: none !important;
+}
+body.nav-collapsed .submenu,
+body.sidebar-collapsed .submenu {
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  width: 80px !important;
+  padding: 8px 0 !important;
+}
+body.nav-collapsed .submenu a,
+body.sidebar-collapsed .submenu a {
+  display: grid !important;
+  place-items: center;
+  width: 56px !important;
+  height: 42px !important;
+  margin: 4px 0 !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  font-size: 0 !important;
+  border-radius: 8px;
+}
+body.nav-collapsed .submenu a::before,
+body.sidebar-collapsed .submenu a::before {
+  color: #2b3c55;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+body.nav-collapsed .submenu a:nth-child(1)::before,
+body.sidebar-collapsed .submenu a:nth-child(1)::before { content: "⌂"; }
+body.nav-collapsed .submenu a:nth-child(2)::before,
+body.sidebar-collapsed .submenu a:nth-child(2)::before { content: "▣"; }
+body.nav-collapsed .submenu a:nth-child(3)::before,
+body.sidebar-collapsed .submenu a:nth-child(3)::before { content: "￥"; font-size: 17px; }
+body.nav-collapsed .submenu a:nth-child(4)::before,
+body.sidebar-collapsed .submenu a:nth-child(4)::before { content: "✦"; }
+body.nav-collapsed .submenu a.active::before,
+body.sidebar-collapsed .submenu a.active::before { color: #0b61d8; }
+body.nav-collapsed .menu-item,
+body.sidebar-collapsed .menu-item {
+  display: flex !important;
+  width: 80px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  justify-content: center;
+  padding: 0 !important;
+  gap: 0 !important;
+  font-size: 0 !important;
+}
+body.nav-collapsed .menu-item .chev,
+body.sidebar-collapsed .menu-item .chev {
+  display: none !important;
+}
+body.nav-collapsed .menu-item::before,
+body.sidebar-collapsed .menu-item::before {
+  color: #52647d;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+body.nav-collapsed .menu-item:nth-of-type(4)::before,
+body.sidebar-collapsed .menu-item:nth-of-type(4)::before { content: "360"; }
+body.nav-collapsed .menu-item:nth-of-type(5)::before,
+body.sidebar-collapsed .menu-item:nth-of-type(5)::before { content: "ISMP"; }
+body.nav-collapsed .menu-item:nth-of-type(6)::before,
+body.sidebar-collapsed .menu-item:nth-of-type(6)::before { content: "ICM"; }
+body.nav-collapsed .menu-item:nth-of-type(7)::before,
+body.sidebar-collapsed .menu-item:nth-of-type(7)::before { content: "IB&C"; }
+body.nav-collapsed .menu-item:nth-of-type(8)::before,
+body.sidebar-collapsed .menu-item:nth-of-type(8)::before { content: "CLM"; }
+body.nav-collapsed .menu-item:nth-of-type(9)::before,
+body.sidebar-collapsed .menu-item:nth-of-type(9)::before { content: "CPQ"; }
+body.nav-collapsed .menu-item:nth-of-type(10)::before,
+body.sidebar-collapsed .menu-item:nth-of-type(10)::before { content: "IPS"; }

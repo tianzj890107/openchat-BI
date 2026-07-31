@@ -633,3 +633,10 @@
 - 收起时外层导航固定缩为 80px，展开时恢复用户保存的宽度；内容区域同步调整。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 26. 增加 IBA 外层窄栏图标导航
+
+- IBA 外层导航收起后不再只剩空白窄条，保留“IBA”、CEO/驾驶舱/收入/i-Agent 四个图标，以及 360、ISMP、ICM、IB&C、CLM、CPQ、IPS 的窄栏标识。
+- 展开后继续显示完整文字，悬停窄栏项目可查看完整名称。
+- 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
