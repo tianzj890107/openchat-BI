@@ -689,3 +689,10 @@
 - 展开/收起侧栏按钮的提示也统一为右侧白底深色字，与其他内部功能提示保持一致。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 34. 标记内部历史会话当前选中项
+
+- 内部功能栏的“最近”列表现在会同步当前打开的历史会话，选中项使用与“智能分析”一致的蓝色文字和浅蓝背景。
+- 恢复历史会话、切换会话或重新加载列表后，选中状态都会跟随更新。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。

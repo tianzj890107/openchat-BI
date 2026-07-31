@@ -3611,6 +3611,8 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-recent-list { flex: 1; overflow: auto; padding: 0 8px; }
 .antd-recent-item { display: block; width: 100%; border: 0; background: transparent; border-radius: 6px; padding: 8px; color: #4e5969; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 .antd-recent-item:hover { background: #f2f3f5; color: #1f2329; }
+.antd-recent-item.active { background: #e8f3ff; color: #1677ff; font-weight: 500; }
+.antd-recent-item.active:hover { background: #d9ebff; color: #1677ff; }
 .antd-recent-empty { display: block; padding: 8px; color: #86909c; font-size: 12px; }
 .antd-account { margin: 8px 12px 16px; border: 0; border-top: 1px solid #f2f3f5; background: transparent; padding: 12px 4px 0; color: #4e5969; text-align: left; cursor: pointer; }
 #antd-workflow-root { padding: 0 10px 4px; }
