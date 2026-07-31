@@ -116,7 +116,7 @@ function Sidebar() {
 
   return (
     <ConfigProvider theme={{ token: { colorPrimary: "#1677ff", borderRadius: 8, fontFamily: "PingFang SC, -apple-system, sans-serif" } }}>
-      <Sider className="antd-workbench-sidebar" collapsed={collapsed} width={260} collapsedWidth={64} theme="light">
+      <Sider className="antd-workbench-sidebar" collapsed={collapsed} width={260} collapsedWidth={72} theme="light">
         <div className="antd-sidebar-brand">
           <span className="antd-brand-mark">◆</span>
           {!collapsed && <span><strong>智析</strong><small id="antd-agent-name">bi-analyst</small></span>}
