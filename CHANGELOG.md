@@ -587,3 +587,13 @@
 - 页面：i-Agent 智能分析/报表分析对话页、任务清单。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更，已重启后端服务；刷新浏览器即可看到。
+
+## 2026-07-31
+
+### 20. 看板隐藏用户提问并移除模型输出外层气泡
+
+- 看板不再显示用户提问气泡，只保留对话区和任务清单中的用户问题。
+- 看板中的模型结论、图表和表格移除外层 Ant Design 气泡，仅保留单层结果内容气泡；来源、Turn 等技术信息继续隐藏。
+- 页面：i-Agent 智能分析/报表分析看板。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；本地构建后刷新浏览器即可，部署后无需修改后端接口。

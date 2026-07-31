@@ -3904,3 +3904,45 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   background: #F7F7F8 !important;
   box-shadow: 0 1px 3px rgba(16, 28, 40, .06) !important;
 }
+
+/* Dashboard messages: prompts stay in the conversation only.  Result cards
+ * keep a single content surface without an additional Ant Bubble wrapper. */
+.dashboard-scroll > .antd-dashboard-question-hidden {
+  display: none !important;
+}
+.dashboard-scroll > .antd-dashboard-card-mounted > .antd-dashboard-card-host {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  justify-content: flex-start;
+}
+.antd-dashboard-inner-bubble {
+  width: min(100%, 760px);
+  margin: 10px 0;
+  padding: 11px 14px;
+  box-sizing: border-box;
+  background: #F7F7F8;
+  color: #1F2023;
+  border: 1px solid #E7E7EA;
+  border-radius: 14px;
+  border-bottom-left-radius: 4px;
+  overflow: visible;
+}
+.antd-dashboard-inner-bubble .dash-turn,
+.antd-dashboard-inner-bubble .dash-source,
+.antd-dashboard-inner-bubble .dash-link {
+  display: none !important;
+}
+.antd-dashboard-inner-bubble .dash-body,
+.antd-dashboard-inner-bubble .dash-chart-canvas,
+.antd-dashboard-inner-bubble .dash-table,
+.antd-dashboard-inner-bubble .dash-actions,
+.antd-dashboard-inner-bubble .dash-rootcause,
+.antd-dashboard-inner-bubble .dash-export,
+.antd-dashboard-inner-bubble .table-card,
+.antd-dashboard-inner-bubble .chart-card,
+.antd-dashboard-inner-bubble .multidim-card {
+  background: transparent !important;
+  border: 0;
+  box-shadow: none;
+}

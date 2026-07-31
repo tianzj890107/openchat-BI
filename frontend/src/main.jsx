@@ -298,18 +298,22 @@ function mountResultCard(card, type) {
 }
 window.antdResultCardMount = mountResultCard;
 
-function DashboardBubble({ user, nodes }) {
-  return <Bubble
-    placement={user ? "end" : "start"}
-    variant="filled"
-    shape="corner"
-    className={`antd-message-bubble antd-dashboard-bubble ${user ? "antd-message-user antd-dashboard-user" : "antd-message-assistant antd-dashboard-agent"}`}
-    content={<div ref={(slot) => { if (slot) nodes.forEach((node) => slot.appendChild(node)); }} />}
+function DashboardInnerBubble({ nodes }) {
+  return <div
+    className="antd-dashboard-inner-bubble"
+    ref={(slot) => { if (slot) nodes.forEach((node) => slot.appendChild(node)); }}
   />;
 }
 
 function mountDashboardCard(card) {
   if (!card || cardRoots.has(card)) return;
+  // User prompts remain available in the chat and task list for navigation,
+  // but the read-only dashboard should contain only generated results.
+  if (card.classList.contains("dash-question")) {
+    card.classList.add("antd-dashboard-question-hidden");
+    card.setAttribute("aria-hidden", "true");
+    return;
+  }
   const host = document.createElement("div");
   host.className = "antd-dashboard-card-host";
   card.appendChild(host);
@@ -329,7 +333,7 @@ function mountDashboardCard(card) {
     nodes.unshift(resultHead);
   }
   const root = createRoot(host);
-  root.render(<DashboardBubble user={card.classList.contains("dash-question")} nodes={nodes} />);
+  root.render(<DashboardInnerBubble nodes={nodes} />);
   if (head) head.style.display = "none";
   cardRoots.set(card, root);
 }
@@ -344,7 +348,7 @@ function enhanceLegacyTree(container) {
   container.querySelectorAll(":scope > .chart-card:not(.antd-result-card-host), :scope > .table-card:not(.antd-result-card-host), :scope > .multidim-card:not(.antd-result-card-host)").forEach((node) => {
     mountResultCard(node, node.classList.contains("table-card") ? "table" : node.classList.contains("multidim-card") ? "multi" : "chart");
   });
-  container.querySelectorAll(":scope > .dash-card:not(.antd-dashboard-card-host)").forEach(mountDashboardCard);
+  container.querySelectorAll(":scope > .dash-card:not(.antd-dashboard-card-host):not(.antd-dashboard-question-hidden)").forEach(mountDashboardCard);
 }
 
 function observeLegacySurface(id) {
