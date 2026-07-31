@@ -85,13 +85,14 @@ class ReportStore:
         if ext not in ALLOWED_EXT:
             raise ValueError(f"不支持的文件类型: {ext}  (仅支持 .pdf / .docx)")
 
-        rid = secrets.token_hex(4)   # 8-hex id, plenty for a single tenant
+        rid = self._new_id()
         file_path = self.root / f"{rid}{ext}"
         file_path.write_bytes(data)
 
+        meta_path: Optional[Path] = None
         try:
             parsed: ParseResult = parse_report(str(file_path))
-        except Exception as e:
+        except Exception:
             # If parse fails, drop the file so we don't orphan it.
             try:
                 file_path.unlink(missing_ok=True)
@@ -99,46 +100,61 @@ class ReportStore:
                 pass
             raise
 
-        preview = _preview(parsed.text)
-        meta = {
-            "id": rid,
-            "filename": filename,
-            "ext": ext,
-            "size_bytes": len(data),
-            "uploaded_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(
-                timespec="seconds"
-            ),
-            "page_count": parsed.page_count,
-            "text_length": parsed.text_length,
-            "tables_count": parsed.tables_count,
-            "preview": preview,
-            "text": parsed.text,
-            "tables_markdown": parsed.tables_markdown,
-            "warnings": parsed.warnings,
-        }
-        meta_path = self._meta_path(rid)
-        if meta_path is None:  # generated IDs always satisfy REPORT_ID_RE
-            raise RuntimeError("生成了无效的报表 ID")
-        payload = json.dumps(meta, ensure_ascii=False, indent=2)
-        temp_path: Optional[str] = None
         try:
-            with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=self.root, prefix=f".{rid}.",
-                suffix=".tmp", delete=False
-            ) as tmp:
-                temp_path = tmp.name
-                tmp.write(payload)
-                tmp.flush()
-                os.fsync(tmp.fileno())
-            os.replace(temp_path, meta_path)
-            temp_path = None
-        finally:
-            if temp_path:
+            preview = _preview(parsed.text)
+            meta = {
+                "id": rid,
+                "filename": filename,
+                "ext": ext,
+                "size_bytes": len(data),
+                "uploaded_at": datetime.now(ZoneInfo("Asia/Shanghai")).isoformat(
+                    timespec="seconds"
+                ),
+                "page_count": parsed.page_count,
+                "text_length": parsed.text_length,
+                "tables_count": parsed.tables_count,
+                "preview": preview,
+                "text": parsed.text,
+                "tables_markdown": parsed.tables_markdown,
+                "warnings": parsed.warnings,
+            }
+            meta_path = self._meta_path(rid)
+            if meta_path is None:  # generated IDs always satisfy REPORT_ID_RE
+                raise RuntimeError("生成了无效的报表 ID")
+            payload = json.dumps(meta, ensure_ascii=False, indent=2)
+            temp_path: Optional[str] = None
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", encoding="utf-8", dir=self.root, prefix=f".{rid}.",
+                    suffix=".tmp", delete=False
+                ) as tmp:
+                    temp_path = tmp.name
+                    tmp.write(payload)
+                    tmp.flush()
+                    os.fsync(tmp.fileno())
+                os.replace(temp_path, meta_path)
+                temp_path = None
+            finally:
+                if temp_path:
+                    try:
+                        os.unlink(temp_path)
+                    except OSError:
+                        pass
+            return self._public_record(meta)
+        except Exception:
+            # Parsing or metadata persistence can fail after the original
+            # upload is written. Clean both artifacts so a failed request
+            # cannot leave an unreachable file behind.
+            try:
+                file_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            if meta_path is not None:
                 try:
-                    os.unlink(temp_path)
-                except OSError:
+                    meta_path.unlink(missing_ok=True)
+                except Exception:
                     pass
-        return self._public_record(meta)
+            raise
 
     # ------------------------------------------------------------------
     # Read path
@@ -214,6 +230,21 @@ class ReportStore:
         if not REPORT_ID_RE.fullmatch(safe):
             return None
         return self.root / f"{safe}.json"
+
+    def _new_id(self) -> str:
+        """Return an id with no existing metadata or source file."""
+        for _ in range(16):
+            rid = secrets.token_hex(4)
+            if (
+                self._meta_path(rid) is not None
+                and not (self.root / f"{rid}.json").exists()
+                and not any(
+                    (self.root / f"{rid}{candidate_ext}").exists()
+                    for candidate_ext in ALLOWED_EXT
+                )
+            ):
+                return rid
+        raise RuntimeError("无法生成唯一报表 ID")
 
     def _load_meta(self, path: Path) -> Optional[dict[str, Any]]:
         if not path.is_file():

@@ -766,3 +766,12 @@
 - 兼容从看板移动到会话的旧结果卡片，内部历史气泡只作为透明兼容层保留。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
 - 类型：前端与 Ant Design 静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+## 2026-07-31
+
+### 45. 提升会话与报表上传持久化可靠性
+
+- 会话和报表记录生成 ID 时会避开已有文件，避免极端随机碰撞覆盖历史数据。
+- 报表解析或元数据落盘失败时会同时清理原始上传文件和临时元数据文件，避免失败请求留下无法访问的残留文件。
+- 主要文件：`bi_agent/web/conversations.py`、`bi_agent/report/store.py`、`tests/test_regressions.py`。
+- 类型：后端持久化与离线回归测试变更；需要重启后端。
