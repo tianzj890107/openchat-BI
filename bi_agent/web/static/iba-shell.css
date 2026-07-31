@@ -38,6 +38,25 @@ body.sidebar-collapsed .content {
 }
 body.nav-collapsed .search,
 body.sidebar-collapsed .search {
+  display: flex !important;
+  width: 72px !important;
+  height: 44px !important;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  font-size: 0 !important;
+  white-space: nowrap;
+}
+body.nav-collapsed .search::before,
+body.sidebar-collapsed .search::before {
+  content: "⌕";
+  color: #52647d;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+}
+body.nav-collapsed .search span,
+body.sidebar-collapsed .search span {
   display: none !important;
 }
 body.nav-collapsed .menu-title,
@@ -120,7 +139,7 @@ body.nav-collapsed .menu-item::before,
 body.sidebar-collapsed .menu-item::before {
   color: #52647d;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1;
   white-space: nowrap;
 }
