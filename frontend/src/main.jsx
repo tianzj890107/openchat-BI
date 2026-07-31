@@ -307,9 +307,26 @@ window.antdStepMount = mountStep;
 const cardRoots = new WeakMap();
 function mountResultCard(card, type) {
   if (!card || cardRoots.has(card)) return;
-  const host = document.createElement("div");
+  // Saved HTML can already contain the host and rendered Ant Card from a
+  // previous session. Reusing it avoids appending a second host during
+  // history hydration (which was the source of occasional triple bubbles).
+  const existingHost = card.querySelector(":scope > .antd-result-card-host");
+  if (existingHost && existingHost.children.length) {
+    // Older saved Ant cards used a title-only header. Add the legacy source
+    // link back in place without rebuilding the already-hydrated canvas.
+    const restoredTitle = existingHost.querySelector(":scope .ant-card-head-title");
+    const restoredSource = card.querySelector(`:scope > .${type === "table" ? "table-head" : type === "multi" ? "multidim-head" : "chart-head"} .${type === "chart" ? "chart-saved" : type === "multi" ? "multidim-source" : "table-source"}`);
+    if (restoredTitle && restoredSource && !restoredTitle.querySelector(".antd-result-source")) {
+      const sourceClone = restoredSource.cloneNode(true);
+      sourceClone.className = "antd-result-source";
+      restoredTitle.appendChild(sourceClone);
+    }
+    cardRoots.set(card, { restored: true });
+    return;
+  }
+  const host = existingHost || document.createElement("div");
   host.className = "antd-result-card-host";
-  card.appendChild(host);
+  if (!existingHost) card.appendChild(host);
   const head = card.querySelector(`:scope > .${type === "table" ? "table-head" : type === "multi" ? "multidim-head" : "chart-head"}`);
   const title = head?.querySelector(`.${type === "table" ? "table-title" : type === "multi" ? "multidim-title" : "chart-title"}`)?.textContent?.trim() || "分析结果";
   const typeNode = head?.querySelector(`.${type === "table" ? "table-tag" : type === "multi" ? "multidim-tag" : "chart-type"}`);
@@ -356,9 +373,17 @@ function mountDashboardCard(card) {
     card.setAttribute("aria-hidden", "true");
     return;
   }
-  const host = document.createElement("div");
+  // A persisted dashboard snapshot may include the already-rendered host.
+  // Do not mount a second React tree on top of it when restoring history.
+  const existingHost = card.querySelector(":scope > .antd-dashboard-card-host");
+  if (existingHost && existingHost.children.length) {
+    card.classList.add("antd-dashboard-card-mounted");
+    cardRoots.set(card, { restored: true });
+    return;
+  }
+  const host = existingHost || document.createElement("div");
   host.className = "antd-dashboard-card-host";
-  card.appendChild(host);
+  if (!existingHost) card.appendChild(host);
   card.classList.add("antd-dashboard-card-mounted");
   const head = card.querySelector(":scope > .dash-head");
   // Keep the semantic badge and title visible in the board, just like the
