@@ -668,3 +668,10 @@
 - CEO 驾驶舱图标放大为原来的 1.5 倍，其他入口图标保持原尺寸。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 31. 补齐 IBA 窄栏搜索图标与字重
+
+- 外部导航收起时保留搜索放大镜图标，并与 IBA 和入口标识保持单行排列。
+- 360、ISMP、ICM、IB&C、CLM、CPQ、IPS 的窄栏字重改为与展开态一致的常规字重，不再显得额外加粗。
+- 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
