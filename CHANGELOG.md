@@ -605,3 +605,10 @@
 - 保留智析工作台内层功能栏，明确区分 IBA 外层导航与工作台功能导航。
 - 主要文件：`bi_agent/web/static/iba-shell.js`、`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 22. 保持 IBA 外层导航展开状态
+
+- 修复从驾驶舱进入 CEO 驾驶舱后外层导航默认再次收起、文字需要手动展开的问题。
+- CEO 驾驶舱和驾驶舱现在共用 `iba.sidebar.collapsed` 状态，跳转前后的导航展开、收起和文字显示保持一致。
+- 主要文件：`bi_agent/web/static/iba-shell.js`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
