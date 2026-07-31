@@ -640,3 +640,10 @@
 - 展开后继续显示完整文字，悬停窄栏项目可查看完整名称。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 27. 统一智析内层折叠按钮尺寸
+
+- 智析工作台内层功能栏折叠时隐藏顶部菱形标识，只保留展开/收起按钮。
+- 折叠按钮统一为与下方“新对话”按钮相同的 48×40 尺寸和圆角，窄栏上下对齐。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
