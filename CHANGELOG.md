@@ -696,3 +696,10 @@
 - 恢复历史会话、切换会话或重新加载列表后，选中状态都会跟随更新。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
 - 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
+
+### 35. 恢复会话思维链展开交互
+
+- 会话中的每个工具思维链改用可折叠的 Ant Design `ThoughtChain` 节点渲染。
+- 点击节点标题可展开或收起输入、输出及命中本体内容，保留原有紧凑的时间线样式。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
+- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。

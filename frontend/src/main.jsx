@@ -269,11 +269,16 @@ function mountMessage(msg, role, iteration) {
 window.antdMessageMount = mountMessage;
 
 function AntdStep({ name, summary, duration, html }) {
-  return <Collapse ghost size="small" items={[{
-    key: "step",
-    label: <span className="antd-step-label"><b>{name}</b><span>{summary}</span><em>{duration}</em></span>,
-    children: <div className="antd-step-html" dangerouslySetInnerHTML={{ __html: html || "" }} />,
-  }]} />;
+  return <ThoughtChain
+    size="small"
+    collapsible
+    items={[{
+      key: "step",
+      icon: <span className="antd-step-dot" aria-hidden="true" />,
+      title: <span className="antd-step-label"><b>{name}</b><span>{summary}</span><em>{duration}</em></span>,
+      content: <div className="antd-step-html" dangerouslySetInnerHTML={{ __html: html || "" }} />,
+    }]}
+  />;
 }
 
 function mountStep(step) {
