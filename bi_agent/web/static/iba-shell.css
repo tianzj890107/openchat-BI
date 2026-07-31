@@ -6,3 +6,13 @@ html[data-iba-sidebar-state] .sidebar,
 html[data-iba-sidebar-state] .content {
   transition: none !important;
 }
+
+/* CEO stores the preferred expanded width as an inline style. The collapsed
+ * rail must still win when the hamburger is clicked, otherwise only the text
+ * disappears while the navigation width stays unchanged. */
+body.nav-collapsed .sidebar {
+  width: 80px !important;
+}
+body.nav-collapsed .content {
+  margin-left: 80px !important;
+}
