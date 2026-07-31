@@ -9,6 +9,28 @@
   "use strict";
 
   const DASHBOARD_PATH = "/dashboard.html";
+  const COLLAPSE_KEY = "iba.sidebar.collapsed";
+
+  function isCollapsed() {
+    const body = document.body;
+    return !!body && (body.classList.contains("nav-collapsed") || body.classList.contains("sidebar-collapsed"));
+  }
+
+  function saveSidebarState() {
+    if (document.body) localStorage.setItem(COLLAPSE_KEY, isCollapsed() ? "collapsed" : "expanded");
+  }
+
+  function restoreSidebarState() {
+    const saved = localStorage.getItem(COLLAPSE_KEY);
+    if (!document.body || (saved !== "collapsed" && saved !== "expanded")) return;
+    const collapsed = saved === "collapsed";
+    if (document.body.classList.contains("nav-collapsed")) {
+      document.body.classList.toggle("nav-collapsed", collapsed);
+    }
+    if (document.body.classList.contains("sidebar-collapsed")) {
+      document.body.classList.toggle("sidebar-collapsed", collapsed);
+    }
+  }
 
   function isModifiedClick(event) {
     return event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
@@ -53,6 +75,9 @@
       return;
     }
 
+    // Keep the outer IBA rail in the same expanded/collapsed state after a
+    // full document navigation (CEO and dashboard use different class names).
+    saveSidebarState();
     document.documentElement.classList.add("iba-route-leaving");
     window.setTimeout(() => { window.location.assign(target.href); }, 180);
   }
@@ -67,5 +92,9 @@
     navigateTo(target);
   }
 
+  restoreSidebarState();
+  if (document.body) {
+    new MutationObserver(saveSidebarState).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  }
   document.addEventListener("click", onNavigationClick, true);
 })();
