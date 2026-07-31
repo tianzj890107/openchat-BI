@@ -769,6 +769,13 @@
 
 ## 2026-07-31
 
+### 48. Agent 处理中显示思维链加载状态
+
+- Agent 开始处理后，分析 SOP 和任务清单中当前进行中的步骤使用 Ant Design `LoadingOutlined` 旋转图标；任务完成、等待或报错后恢复为对应静态状态。
+- 处理状态通过现有 SSE 回合状态同步到 React Ant Design 思维链，不调用模型额外接口。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
+- 类型：前端静态资源变更；刷新浏览器即可，服务器部署后无需重启后端。
+
 ### 47. 增加系统接口调用与代码统计文档
 
 - 新增 `系统接口调用与代码统计.md`，统一记录 `openchat-BI` 与上一级 `ontology-agent` 的 Ontology、Doris、任务回调和文件服务接口调用情况，并给出当前源码行数统计口径。
