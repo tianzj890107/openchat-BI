@@ -4290,3 +4290,19 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   border-radius: 0 !important;
   box-shadow: none !important;
 }
+
+/* Settings pages use the same rounded control language as the workbench.
+ * Keep this override at the end of the stylesheet so the older compact
+ * 2px/4px defaults cannot make model settings and the other form pages look
+ * square again. */
+.view-page .btn,
+.view-page .settings-key-clear {
+  border-radius: 8px !important;
+}
+.view-page .settings-input,
+.view-page .settings-select {
+  border-radius: 8px !important;
+}
+.view-page .settings-slider {
+  border-radius: 8px;
+}
