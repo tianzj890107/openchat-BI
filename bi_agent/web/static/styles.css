@@ -665,7 +665,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   padding: 8px 12px;
   background: var(--bg-1);
   border: 1px solid var(--border-1);
-  border-radius: 2px;
+  border-radius: 8px;
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
   cursor: pointer;
