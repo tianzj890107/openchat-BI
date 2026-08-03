@@ -3627,6 +3627,7 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-workflow-panels .ant-list-header { padding: 5px 0; color: #86909c; font-size: 11px; }
 .antd-workflow-panels .ant-list-item { padding: 5px 0; gap: 6px; color: #4e5969; font-size: 12px; cursor: pointer; }
 .antd-workflow-panels .antd-question-item:hover { color: #1677ff; }
+.antd-workflow-empty-sop { padding: 8px 0 10px; color: #86909c; font-size: 12px; line-height: 1.6; }
 .antd-message-enhanced { max-width: 88%; }
 .antd-message-enhanced > .msg-header,
 .antd-message-enhanced > .msg-body { display: none !important; }

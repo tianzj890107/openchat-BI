@@ -803,3 +803,10 @@
 - 页面：智能分析新对话欢迎区。
 - 主要文件：`bi_agent/web/static/styles.css`。
 - 类型：前端静态资源变更；刷新浏览器即可生效，无需重启后端。
+
+### 2. 空对话保留分析 SOP 入口
+
+- 新开智能分析对话时，即使尚未发送问题也显示折叠的“分析 SOP”入口。
+- 展开空 SOP 时显示“开始一轮智能分析后，这里会显示本次对话的六步执行进度”，开始对话后自动替换为真实进度和 ThoughtChain 步骤；报表分析模式不显示空 SOP。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`。
+- 类型：前端静态资源变更；刷新浏览器即可生效，无需重启后端。
