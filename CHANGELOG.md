@@ -810,3 +810,4 @@
 - 展开空 SOP 时显示“开始一轮智能分析后，这里会显示本次对话的六步执行进度”，开始对话后自动替换为真实进度和 ThoughtChain 步骤；报表分析模式不显示空 SOP。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`。
 - 类型：前端静态资源变更；刷新浏览器即可生效，无需重启后端。
+- 同步提升工作台静态资源版本号，避免浏览器缓存旧版 CSS 和脚本。
