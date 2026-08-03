@@ -36,3 +36,10 @@
 - 团队网关通过 `TEAM_API_KEY`、`TEAM_BASE_URL`、`TEAM_MODEL` 和 `TEAM_MODELS` 配置；模型选择器会展示团队网关中的全部候选模型，并在额度或限流时按配置顺序自动切换。
 - 原有 Qwen、Anthropic 和 DeepSeek 提供商仍保留，可通过模型选择器或环境配置切换。
 - 主要文件：`bi_agent/llm/provider_team.py`、`bi_agent/llm/provider.py`、`bi_agent/llm/registry.py`、`bi_agent/llm/runtime_config.py`、`bi_agent/web/app.py`、`bi_agent/web/static/app.js`。
+
+### 5. 设置页控件圆角统一
+
+- 模型参数页的“恢复默认”“返回”“保存”按钮以及模型、最大输出长度和 API 密钥输入框统一采用 8px 圆角。
+- 数据源、本体适配、角色选择、记忆管理和个人账号设置页同步使用同一套圆角控件样式，避免不同设置页面出现直角/小圆角混用。
+- 页面：模型参数及全部设置页。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
