@@ -190,19 +190,24 @@ function WorkflowPanels() {
   const [workflow, setWorkflow] = useState(readWorkflow);
   const [sopOpen, setSopOpen] = useState(false);
   const [todoOpen, setTodoOpen] = useState(false);
+  const [mode, setMode] = useState(() => document.body.dataset.mode || "data");
   const [processing, setProcessing] = useState(() => document.body.dataset.agentBusy === "1");
   useEffect(() => {
     const targets = [document.getElementById("chat-sop"), document.getElementById("chat-todo")].filter(Boolean);
     const observer = new MutationObserver(() => setWorkflow(readWorkflow()));
     targets.forEach((target) => observer.observe(target, { attributes: true, childList: true, subtree: true, characterData: true }));
     const onBusy = (event) => setProcessing(!!event.detail?.busy);
+    const onMode = (event) => setMode(event.detail?.mode || document.body.dataset.mode || "data");
     window.addEventListener("bi-agent-busy", onBusy);
+    window.addEventListener("bi-mode-changed", onMode);
     return () => {
       observer.disconnect();
       window.removeEventListener("bi-agent-busy", onBusy);
+      window.removeEventListener("bi-mode-changed", onMode);
     };
   }, []);
-  if (workflow.sopHidden && workflow.todoHidden) return null;
+  const showEmptySop = mode === "data" && !workflow.sop.length;
+  if (workflow.sopHidden && workflow.todoHidden && !showEmptySop) return null;
   const done = workflow.sop.filter((item) => item.status === "completed").length;
   const total = workflow.sop.length;
   const chainItems = workflow.sop.map((item) => ({
@@ -213,11 +218,11 @@ function WorkflowPanels() {
   }));
   return (
     <div className="antd-workflow-panels">
-      {!!workflow.sop.length && <Collapse
+      {(!!workflow.sop.length || showEmptySop) && <Collapse
         ghost
         activeKey={sopOpen ? ["sop"] : []}
         onChange={(keys) => setSopOpen(keys.includes("sop"))}
-        items={[{ key: "sop", label: <span className="antd-workflow-title">分析 SOP <Tag color="blue">{done}/{total}</Tag></span>, children: <ThoughtChain items={chainItems} size="small" /> }]}
+        items={[{ key: "sop", label: <span className="antd-workflow-title">分析 SOP <Tag color="blue">{total ? `${done}/${total}` : "待开始"}</Tag></span>, children: total ? <ThoughtChain items={chainItems} size="small" /> : <div className="antd-workflow-empty-sop">开始一轮智能分析后，这里会显示本次对话的六步执行进度。</div> }]}
       />}
       {!!(workflow.todos.length || workflow.questions.length) && <Collapse
         ghost

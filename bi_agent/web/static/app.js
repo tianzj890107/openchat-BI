@@ -4610,6 +4610,7 @@
 
     state.mode = newMode;
     document.body.dataset.mode = newMode;
+    window.dispatchEvent(new CustomEvent("bi-mode-changed", { detail: { mode: newMode } }));
     el.modeBtns.forEach(b => b.classList.toggle("active", b.dataset.mode === newMode));
 
     // Attach incoming mode's DOM
