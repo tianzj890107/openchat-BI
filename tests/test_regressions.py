@@ -10,6 +10,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -109,6 +110,49 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("error", [event["type"] for event in events])
         self.assertNotIn("done", [event["type"] for event in events])
         self.assertEqual(len(session.messages), 1)
+
+    def test_ontology_entity_extraction_supports_all_source_code_prefixes(self) -> None:
+        store = OntologyStore()
+        store.metrics["M0001"] = SimpleNamespace(
+            name="本地指标", to_prompt=lambda: "指标 [M0001] 本地指标"
+        )
+        store.dimensions["D001"] = SimpleNamespace(
+            name="时间", to_prompt=lambda: "维度 [D001] 时间"
+        )
+        session = WebSession("/tmp", AgentDef("test", tools=[]), store)
+
+        # MET/TERM/MREL are common in the remote MetaERP repository, while
+        # M/D are used by the local workbook.  Remote-only codes must remain
+        # visible even when the local fallback workbook has no matching row.
+        text = "\n".join([
+            "[MET001] 净销售收入 (Indicator)",
+            "[TERM001] 净销售收入 (Term)",
+            "[MREL000003] 业务对象包含逻辑实体 (MetaRelation)",
+            "[M0001] 本地指标 (Indicator)",
+            "[D001] 时间 (Dimension)",
+        ])
+        entities = session._extract_entities(text)
+        by_code = {item["code"]: item for item in entities}
+        self.assertEqual(set(by_code), {"D001", "M0001", "MET001", "MREL000003", "TERM001"})
+        self.assertEqual(by_code["MET001"]["kind"], "metric")
+        self.assertEqual(by_code["TERM001"]["kind"], "term")
+        self.assertEqual(by_code["MREL000003"]["kind"], "meta_relation")
+        self.assertEqual(by_code["D001"]["display"], "维度 [D001] 时间")
+
+    def test_ontology_all_includes_extended_collections(self) -> None:
+        previous = (STATE.ontology_store,)
+        try:
+            store = OntologyStore()
+            store.dimensions["D001"] = SimpleNamespace(code="D001", name="时间")
+            store.processes["SSP0001"] = SimpleNamespace(code="SSP0001", name="采购")
+            store.meta_relations["MREL000003"] = SimpleNamespace(code="MREL000003", name="包含")
+            STATE.ontology_store = store
+            payload = json.loads(TestClient(app).get("/api/ontology/all").content)
+            self.assertEqual(payload["dimensions"][0]["code"], "D001")
+            self.assertEqual(payload["processes"][0]["code"], "SSP0001")
+            self.assertEqual(payload["meta_relations"][0]["code"], "MREL000003")
+        finally:
+            STATE.ontology_store = previous[0]
 
     def test_persistence_and_file_ids_reject_traversal(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

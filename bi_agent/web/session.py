@@ -43,11 +43,19 @@ from ..tools.todo_tools import extract_todo_spec
 
 
 # Ontology codes carried in tool output, surfaced to the 本体 inspector panel.
-# Digit widths differ across本体源 layouts (ChatBI / 超聚变 / MetaERP),
-# e.g. LE000001(6位)/AT0000001(7位)/REL000006(REL前缀)/M0007(4位)。
-# 用宽松的位宽区间 + 全部前缀,真实校验交给 _lookup(查不到的候选会被丢弃)。
-# 长前缀排在前(REL 先于 R、BO/LE/AT 先于单字母),避免被吃成单字母前缀。
-ENTITY_CODE_RE = re.compile(r"\b(?:REL|BO|LE|AT|ER|T|M|A|R)\d{3,7}\b")
+# Digit widths and prefixes differ across ontology sources (ChatBI / 超聚变 /
+# MetaERP).  Keep the longest prefixes first so e.g. ``MREL000003`` is not
+# reduced to a partial ``M`` match.  The lookup step still validates every
+# candidate against the local store; remote-only records are handled from the
+# structured ``[CODE] label (Type)`` lines emitted by remote tools.
+ENTITY_CODE_RE = re.compile(
+    r"\b(?:MREL|TERM|MET|REL|RULE|ACT|SSP|DIM|BO|LE|AT|ER|T|M|A|R|D)\d{3,8}\b"
+)
+REMOTE_ENTITY_LINE_RE = re.compile(
+    r"^\s*\[(?P<code>(?:MREL|TERM|MET|REL|RULE|ACT|SSP|DIM|BO|LE|AT|ER|T|M|A|R|D)\d{3,8})\]"
+    r"\s*(?P<label>[^\n(]+?)\s*(?:\((?P<type>[^)]+)\))?\s*$",
+    re.MULTILINE,
+)
 
 # --- Render-tool enforcement ----------------------------------------------
 # Tools whose output produces a dashboard card. If a turn contains
@@ -589,25 +597,91 @@ class WebSession:
         return out
 
     def _extract_entities(self, text: str) -> list[dict[str, Any]]:
-        """Find ontology codes in tool output, return enriched entity records."""
-        codes = set(ENTITY_CODE_RE.findall(text or ""))
+        """Find ontology codes in tool output and retain remote-only hits.
+
+        Local workbooks can enrich a code with its full dataclass prompt.  A
+        production repository may contain codes that are not present in the
+        local fallback workbook, so remote tool output is also parsed from its
+        stable ``[CODE] label (Type)`` representation instead of silently
+        dropping those hits from the 本体内容 panel.
+        """
+        raw_text = text or ""
+        codes = set(ENTITY_CODE_RE.findall(raw_text))
+        remote_lines = {
+            match.group("code"): {
+                "label": match.group("label").strip(),
+                "type": (match.group("type") or "").strip(),
+                "display": match.group(0).strip(),
+            }
+            for match in REMOTE_ENTITY_LINE_RE.finditer(raw_text)
+        }
         results: list[dict[str, Any]] = []
-        store = self.ontology_store
         for code in codes:
             entity, kind = self._lookup(code)
-            if entity is None:
-                continue
-            record = {
-                "code": code,
-                "kind": kind,
-                "name": getattr(entity, "name", None) or code,
-                "display": entity.to_prompt(),
-            }
+            if entity is not None:
+                record = {
+                    "code": code,
+                    "kind": kind,
+                    "name": getattr(entity, "name", None) or code,
+                    "display": entity.to_prompt(),
+                }
+            else:
+                remote = remote_lines.get(code)
+                if remote is None:
+                    continue
+                record = {
+                    "code": code,
+                    "kind": self._kind_from_code(code, remote["type"]),
+                    "name": remote["label"] or code,
+                    "display": remote["display"],
+                }
             results.append(record)
             if code not in self.ontology_seen:
                 self.ontology_seen[code] = record
         results.sort(key=lambda r: r["code"])
         return results
+
+    @staticmethod
+    def _kind_from_code(code: str, remote_type: str = "") -> str:
+        """Normalize remote type names to the frontend's entity categories."""
+        type_key = (remote_type or "").lower().replace("_", "")
+        type_map = {
+            "businessobject": "business_object",
+            "logicalentity": "logical_entity",
+            "businessattribute": "attribute",
+            "entityrelation": "relation",
+            "indicator": "metric",
+            "metric": "metric",
+            "term": "term",
+            "dimension": "dimension",
+            "activity": "activity",
+            "rule": "rule",
+            "businessrule": "rule",
+            "process": "process",
+            "metarelation": "meta_relation",
+        }
+        if type_key in type_map:
+            return type_map[type_key]
+        prefix = re.match(r"[A-Z]+", code.upper())
+        return {
+            "BO": "business_object",
+            "LE": "logical_entity",
+            "AT": "attribute",
+            "ER": "relation",
+            "REL": "relation",
+            "M": "metric",
+            "MET": "metric",
+            "T": "term",
+            "TERM": "term",
+            "D": "dimension",
+            "DIM": "dimension",
+            "A": "activity",
+            "ACT": "activity",
+            "R": "rule",
+            "RULE": "rule",
+            "SSP": "process",
+            "MREL": "meta_relation",
+        }.get(prefix.group(0) if prefix else "", "ontology")
 
     def _lookup(self, code: str):
         store = self.ontology_store
@@ -627,4 +701,10 @@ class WebSession:
             return store.activities[code], "activity"
         if code in store.rules:
             return store.rules[code], "rule"
+        if code in store.dimensions:
+            return store.dimensions[code], "dimension"
+        if code in store.processes:
+            return store.processes[code], "process"
+        if code in store.meta_relations:
+            return store.meta_relations[code], "meta_relation"
         return None, None
