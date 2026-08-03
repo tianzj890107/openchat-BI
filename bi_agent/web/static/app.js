@@ -1890,8 +1890,8 @@
       }
       el.sourcesDorisDatabase.value = repo.dorisDatabase;
       if (el.sourcesStatus) {
-        el.sourcesStatus.textContent = `✓ 已读取 ${repo.name}：${repo.dorisDatabase}`;
-        el.sourcesStatus.className = "settings-status success";
+        el.sourcesStatus.textContent = `✓ 已读取 ${repo.name}：${repo.dorisDatabase}；数据源修改尚未保存，请点击“保存并切换”后生效。`;
+        el.sourcesStatus.className = "settings-status pending";
       }
     } catch (e) {
       if (el.sourcesStatus) {
