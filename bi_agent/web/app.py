@@ -863,9 +863,14 @@ def get_ontology_all() -> JSONResponse:
         "terms": _bundle(s.terms, "term"),
         "business_objects": _bundle(s.business_objects, "business_object"),
         "logical_entities": _bundle(s.logical_entities, "logical_entity"),
+        "attributes": _bundle(s.attributes, "attribute"),
+        "relations": _bundle(s.relations, "relation"),
         "metrics": _bundle(s.metrics, "metric"),
+        "dimensions": _bundle(s.dimensions, "dimension"),
         "activities": _bundle(s.activities, "activity"),
+        "processes": _bundle(s.processes, "process"),
         "rules": _bundle(s.rules, "rule"),
+        "meta_relations": _bundle(s.meta_relations, "meta_relation"),
     })
 
 
