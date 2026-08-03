@@ -29,3 +29,10 @@
 - 智能分析过程现在可以识别本地和远程本体常见编码（指标、术语、维度、活动、流程、规则及元模型关系），远程本体中不在本地 Excel 回退文件里的命中项也会保留在本体内容和系统调用记录中。
 - 本体内容接口补充返回业务属性、实体关系、维度、流程和本体元模型关系，不再只返回基础业务对象和指标集合。
 - 主要文件：`bi_agent/web/session.py`、`bi_agent/web/app.py`、`tests/test_regressions.py`。
+
+### 4. 团队模型网关接入
+
+- 默认模型提供商切换为团队 OpenAI-compatible 网关，默认模型为 `direct-deepseek-v4-flash`。
+- 团队网关通过 `TEAM_API_KEY`、`TEAM_BASE_URL`、`TEAM_MODEL` 和 `TEAM_MODELS` 配置；模型选择器会展示团队网关中的全部候选模型，并在额度或限流时按配置顺序自动切换。
+- 原有 Qwen、Anthropic 和 DeepSeek 提供商仍保留，可通过模型选择器或环境配置切换。
+- 主要文件：`bi_agent/llm/provider_team.py`、`bi_agent/llm/provider.py`、`bi_agent/llm/registry.py`、`bi_agent/llm/runtime_config.py`、`bi_agent/web/app.py`、`bi_agent/web/static/app.js`。

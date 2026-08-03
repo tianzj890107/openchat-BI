@@ -151,6 +151,7 @@ _KEY_FIELDS = {
     # clearer QWEN_API_KEY alias. Both must be visible to the UI status API.
     "qwen":      ("dashscope_api_key", ("DASHSCOPE_API_KEY", "QWEN_API_KEY")),
     "deepseek":  ("deepseek_api_key", ("DEEPSEEK_API_KEY",)),
+    "team":      ("team_api_key", ("TEAM_API_KEY",)),
 }
 
 

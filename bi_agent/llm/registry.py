@@ -18,6 +18,18 @@ from typing import Any, Optional
 
 MODELS: list[dict[str, Any]] = [
     {
+        "key": "team-configured",
+        "label": "团队 API（环境配置） · " + (
+            os.environ.get("TEAM_MODEL") or "direct-deepseek-v4-flash"
+        ),
+        "provider": "team",
+        "model_id": os.environ.get("TEAM_MODEL") or "direct-deepseek-v4-flash",
+        "default_max_tokens": 8192,
+        "default_temperature": 0.7,
+        "max_output_tokens": 16384,
+        "supports_thinking": False,
+    },
+    {
         "key": "opus4.7",
         "label": "Claude Opus 4.7",
         "provider": "anthropic",
@@ -195,7 +207,34 @@ def _load_qwen_catalog_from_env() -> None:
             existing_ids.add(model_id)
 
 
+def _team_model_key(model_id: str) -> str:
+    slug = "".join(c.lower() if c.isalnum() else "-" for c in model_id)
+    slug = "-".join(part for part in slug.split("-") if part)
+    return f"team-{slug}"
+
+
+def _load_team_catalog_from_env() -> None:
+    """Expose all models routed by the shared team gateway."""
+    existing_ids = {m["model_id"] for m in MODELS if m["provider"] == "team"}
+    raw = os.environ.get("TEAM_MODELS", "")
+    for model_id in (part.strip() for part in raw.split(",")):
+        if not model_id or model_id in existing_ids:
+            continue
+        MODELS.append({
+            "key": _team_model_key(model_id),
+            "label": f"团队 API · {model_id}",
+            "provider": "team",
+            "model_id": model_id,
+            "default_max_tokens": 8192,
+            "default_temperature": 0.7,
+            "max_output_tokens": 16384,
+            "supports_thinking": False,
+        })
+        existing_ids.add(model_id)
+
+
 _load_qwen_catalog_from_env()
+_load_team_catalog_from_env()
 
 
 def list_models() -> list[dict[str, Any]]:
@@ -248,6 +287,8 @@ def fallback_model_keys(key: str) -> list[str]:
 def get_default_model_key() -> str:
     """Choose a provider-specific default when deployment config requests it."""
     provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    if provider == "team":
+        return "team-configured"
     if provider == "qwen":
         return "qwen-configured"
     return MODELS[0]["key"]
