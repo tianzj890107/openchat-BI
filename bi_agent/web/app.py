@@ -208,6 +208,7 @@ def configure(
     # API keys are checked per-provider at call time:
     #   - Claude models need ANTHROPIC_API_KEY
     #   - Qwen models need DASHSCOPE_API_KEY (or QWEN_API_KEY)
+    #   - Team gateway models need TEAM_API_KEY
     # The server boots regardless; failures surface when the user hits that model.
 
     STATE.cwd = cwd
@@ -320,6 +321,7 @@ class ConfigUpdate(BaseModel):
     anthropic_api_key: Optional[str] = None
     qwen_api_key: Optional[str] = None
     deepseek_api_key: Optional[str] = None
+    team_api_key: Optional[str] = None
 
 
 # Sentinel `database` value meaning "use the Doris (MySQL protocol) source"
@@ -560,6 +562,8 @@ def put_config_endpoint(req: ConfigUpdate) -> JSONResponse:
             set_api_key("qwen", payload["qwen_api_key"])
         if "deepseek_api_key" in payload:
             set_api_key("deepseek", payload["deepseek_api_key"])
+        if "team_api_key" in payload:
+            set_api_key("team", payload["team_api_key"])
     except ValueError as e:
         raise HTTPException(400, str(e))
 

@@ -16,7 +16,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from bi_agent.llm import provider, provider_qwen
+from bi_agent.llm import provider, provider_qwen, provider_team
 from bi_agent.llm.provider_deepseek import _convert_messages as convert_deepseek
 from bi_agent.llm.provider_qwen import _convert_messages as convert_qwen
 from bi_agent.ontology.store import OntologyStore
@@ -96,6 +96,31 @@ class OfflineRegressionTests(unittest.TestCase):
 
         with patch.object(provider_qwen, "stream", fake_stream):
             events = list(provider.stream_message([], "system", None, "qwen-configured", 256, 0.1))
+        self.assertTrue(any(event.get("type") == "model_fallback" for event in events))
+        self.assertEqual(events[-1]["type"], "message_end")
+        self.assertGreaterEqual(len(calls), 2)
+
+    def test_team_provider_dispatch_and_quota_fallback_are_mock_only(self) -> None:
+        calls: list[str] = []
+
+        def fake_stream(**kwargs):
+            calls.append(kwargs["model_id"])
+            if len(calls) == 1:
+                yield {"type": "error", "error": "429 team quota exceeded"}
+            else:
+                yield {"type": "text_delta", "text": "team-ok"}
+                yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        models = {
+            "team-configured": {"provider": "team", "model_id": "direct-deepseek-v4-flash"},
+            "team-fallback": {"provider": "team", "model_id": "direct-deepseek-v4-pro"},
+        }
+        with patch.object(provider_team, "stream", fake_stream), \
+             patch.object(provider, "get_model", side_effect=lambda key: models.get(key)), \
+             patch.object(provider, "fallback_model_keys", return_value=["team-fallback"]):
+            events = list(provider.stream_message(
+                [], "system", None, "team-configured", 256, 0.1
+            ))
         self.assertTrue(any(event.get("type") == "model_fallback" for event in events))
         self.assertEqual(events[-1]["type"], "message_end")
         self.assertGreaterEqual(len(calls), 2)

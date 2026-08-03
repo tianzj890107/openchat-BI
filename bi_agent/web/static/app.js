@@ -1342,6 +1342,7 @@
     let hint = `provider: ${provider} · max_output: ${maxOut}`;
     if (provider === "qwen") hint += " · 需要环境变量 DASHSCOPE_API_KEY";
     else if (provider === "deepseek") hint += " · 需要环境变量 DEEPSEEK_API_KEY";
+    else if (provider === "team") hint += " · 需要环境变量 TEAM_API_KEY";
     else hint += " · 需要环境变量 ANTHROPIC_API_KEY";
     if (supportsThinking) hint += " · 支持思考模式";
     el.settingsModelHint.textContent = hint;

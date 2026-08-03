@@ -95,6 +95,46 @@ def stream_message(
                 return
             yield {"type": "model_fallback", "model_key": attempts[index + 1],
                    "reason": "当前模型额度或限流"}
+    elif provider == "team":
+        from . import provider_team
+        # The shared gateway exposes multiple routed models.  Retry only
+        # pre-stream quota/rate-limit failures, preserving the same contract
+        # as the Qwen fallback path and never duplicating partial output.
+        attempts = [model_key] + fallback_model_keys(model_key)
+        for index, attempt_key in enumerate(attempts):
+            attempt = get_model(attempt_key) or m
+            emitted = False
+            retry = False
+            for event in provider_team.stream(
+                model_id=attempt["model_id"],
+                messages=messages,
+                system_prompt=system_prompt,
+                allowed_tools=allowed_tools,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                thinking=effective_thinking,
+            ):
+                if event.get("type") in {
+                    "text_delta", "thinking_delta", "tool_use_start",
+                    "tool_input_delta", "tool_use_end",
+                }:
+                    emitted = True
+                if (
+                    event.get("type") == "error"
+                    and not emitted
+                    and _is_quota_error(event.get("error", ""))
+                    and index < len(attempts) - 1
+                ):
+                    retry = True
+                    break
+                yield event
+            if not retry:
+                return
+            yield {
+                "type": "model_fallback",
+                "model_key": attempts[index + 1],
+                "reason": "团队模型额度或限流",
+            }
     elif provider == "deepseek":
         from . import provider_deepseek
         yield from provider_deepseek.stream(
