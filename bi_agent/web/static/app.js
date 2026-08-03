@@ -2030,8 +2030,11 @@
   function scrollToQuestion(turn) {
     const turnText = String(turn);
     const chatSelector = `.msg-user[data-turn="${CSS.escape(turnText)}"]`;
-    const dashboardSelector = `.dash-question[data-question-turn="${CSS.escape(turnText)}"]`;
+    const dashboardSelector = `.dash-card[data-turn="${CSS.escape(turnText)}"]:not(.dash-question)`;
     const msg = el.chatScroll && el.chatScroll.querySelector(chatSelector);
+    // Dashboard question cards are intentionally hidden. Anchor task-list
+    // navigation to the first visible result of the same turn instead, so a
+    // click moves the conversation and dashboard together.
     const dashboardCard = el.dashboardList && el.dashboardList.querySelector(dashboardSelector);
     if (!msg && !dashboardCard) return;
     showView("workspace");

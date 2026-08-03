@@ -1,4 +1,4 @@
-# openchat-BI 变更记录
+# openchat-BI 变更记录（2026-07-27 至 2026-07-31）
 
 > 本文档记录本项目的用户可见功能、接口、模型、数据源和运行方式变更。
 
@@ -6,9 +6,8 @@
 
 - 每次发布或一组相关修改按日期追加，不记录单个操作步骤或中间尝试。
 - 每条记录只描述相对于上一版本的最终用户可见差异；同一功能的多次调整合并为一条。
-- 每条记录至少说明：用户可见变化、涉及页面、主要文件、是否需要重启后端。
-- HTML/CSS/JS 静态资源修改：刷新浏览器即可；Python、模型、接口、依赖或数据源实现修改：需要重启后端。
-- 本地后端地址：`http://127.0.0.1:8765`。
+- 每条记录至少说明：用户可见变化、涉及页面、主要文件。
+- 不记录重启、部署、文件同步或浏览器刷新等运行操作。
 
 ## 2026-07-30
 
@@ -17,171 +16,146 @@
 - 新增 React + Vite + Ant Design 构建入口，左侧导航栏先迁移为 Ant Design `Layout/Sider/Menu`，支持收起/展开、智能分析/报表分析切换、内容与设置页面跳转、最近会话和账号入口。
 - 通过事件桥接保留原有导航 ID、`data-view`、`data-mode` 和历史会话逻辑；对话 SSE、看板、本体、系统调用和后端接口未改变，便于逐步迁移和回退。
 - 主要文件：`frontend/package.json`、`frontend/vite.config.js`、`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`。
-- 类型：前端构建与静态资源变更；本阶段本地构建验证通过，服务器暂不部署，待确认导航栏效果后继续迁移。
 
 ### 2. Ant Design 迁移第二阶段：SOP 与任务清单
 
 - 对话区顶部的“分析 SOP”和“任务清单”改为 React + Ant Design `Collapse/List/Progress/Tag`，SOP 节点使用 Ant Design X `ThoughtChain` 展示；两个面板默认折叠，用户提问仍可点击定位到对话。
 - 旧版 SOP/任务清单 DOM 继续保留为隐藏数据桥，现有回合进度、问题列表、历史恢复和原生事件不变；本阶段只迁移展示层。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`。
-- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
 
 ### 3. Ant Design 迁移第三阶段：对话消息气泡
 
 - 用户消息和 Agent 文本输出改为 Ant Design X `Bubble` 渲染，分别使用右侧蓝色气泡和左侧浅灰气泡；迭代标题和流式文本继续由原有 SSE DOM 数据驱动。
 - 原消息节点、回合定位、滚动、工具步骤和历史恢复逻辑保留；React 渲染失败时旧消息仍可作为回退路径。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
 
 ### 4. Ant Design 迁移第四阶段：工具调用思维链
 
 - 对话中的 OntologyQuery、SQLRun、图表生成等工具步骤改为 Ant Design `Collapse` 展示，保留工具名、摘要、耗时以及输入/输出详情；步骤仍支持展开查看。
 - 原工具节点继续保留为隐藏回退 DOM，SSE 工具结果、本体命中项和历史恢复逻辑不变。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
 
 ### 5. Ant Design 迁移第五阶段：结果卡片
 
 - 对话中的图表、表格和多维图表结果改为使用 Ant Design `Card` 作为外层容器；原 ECharts 画布、表格滚动区、维度选择和摘要节点继续复用，交互和数据不变。
 - 结果卡片保留原有隐藏回退 DOM，历史恢复和旧浏览器路径不会因 React 加载失败而丢失。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
 
 ### 6. Ant Design 迁移第六阶段：看板结果卡片
 
 - 右侧看板中新生成的结论、图表、表格、根因和行动结果统一使用 Ant Design `Card` 外层容器，保留原有内容、按钮、图表画布和定位行为。
 - 看板旧 DOM 继续作为回退路径，历史恢复、对话联动和后端数据契约不变。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
 
 ### 7. 历史内容兼容迁移
 
 - 历史会话和历史看板恢复的旧 HTML 会自动重新挂载到 React/Ant Design 展示层，历史消息、工具步骤、图表、表格和结果卡片不再因恢复路径不同而继续使用旧样式。
 - 新生成内容与历史恢复内容共用同一套增强观察器，旧 DOM 仍保留作回退。
-- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建验证后需刷新浏览器，不部署服务器。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ### 8. IBA 外层导航默认收起
 
 - CEO 驾驶舱、驾驶舱和 i-Agent 页面进入时默认收起最左侧 IBA 外层导航，内容区域直接铺开；顶部菜单按钮仍可手动展开，原有拖拽宽度和页面跳转不变。
 - 页面：`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：HTML/CSS 状态变更；刷新页面即可生效，本次部署服务器后无需重启后端。
 
 ### 9. IBA 外层导航展开动画统一
 
 - CEO 驾驶舱和驾驶舱/i-Agent 的 IBA 侧栏展开、收起、内容区左边距同步使用平滑缓动，侧栏不再瞬间出现，和内容区滑动保持一致。
 - 页面：`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：HTML/CSS 静态资源变更；刷新页面即可生效。
 
 ### 10. 侧栏拖拽条默认透明
 
 - 移除 IBA 侧栏展开前短暂出现的灰色竖条；拖拽条默认透明，仅在悬停或拖拽时显示蓝色提示线。
 - 页面：`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：HTML/CSS 静态资源变更；刷新页面即可生效。
 
 ### 11. 仅保留 React/Ant Design 工作台侧栏
 
 - 隐藏旧版静态侧栏，只保留后续迁移的 React + Ant Design 侧栏作为唯一可见导航；旧 DOM 仅保留为不可见事件桥，避免重复显示并保持原有页面跳转兼容。
 - 页面：`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`。
-- 类型：HTML/CSS 静态资源变更；刷新页面即可生效。
 
 ### 12. React 侧栏最近会话数据源修复
 
 - 最近会话改为 React 侧栏直接读取 `/api/conversations`，不再依赖已隐藏的旧侧栏 DOM；新建、完成分析、切换模式后会自动刷新列表，点击仍桥接到原有恢复逻辑。
 - 页面：`bi_agent/web/static/index.html`、`bi_agent/web/static/app.js`、`frontend/src/main.jsx`。
-- 类型：前端静态资源变更；本地构建后需刷新浏览器。
 
 ### 13. 看板气泡与对话统一
 
 - 看板用户问题改为与对话一致的右侧蓝色气泡；结论、图表、表格、根因和行动内容改为左侧浅灰气泡。
 - 移除看板中的“分析结果”默认提示、气泡内部二次背景和重复标题；表格、图表本体仍保留必要的内容边框。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；本地构建后需刷新浏览器。
 
 ### 14. 看板恢复结果类型徽标
 
 - 看板中的图表和表格结果恢复显示与会话一致的类型徽标，例如 `chart`、`table`、`pie`、`line` 和多维图表；标题、来源和 Turn 等重复元信息仍保持隐藏。
 - 类型徽标使用与会话相同的轻量圆角样式，不改变用户问题及结果气泡布局。
-- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后需刷新浏览器，服务器部署后无需重启后端。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`changelog_7.27_31.md`。
 
 ### 15. 看板结果标题与图表渲染恢复
 
 - 看板结果气泡恢复显示与会话一致的类型徽标和结果标题，仅隐藏 Source、Turn 等技术元信息。
 - 修复看板结果节点迁移到气泡后图表画布失去稳定尺寸、bar/pie/line 等图形不显示的问题。
 - 工具调用产生的空助手迭代不再显示只有“助手 · 迭代 0”的空气泡。
-- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后需刷新浏览器，服务器部署后无需重启后端。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ### 16. 新对话按钮尺寸统一
 
 - 侧栏展开和收起时，“新对话”按钮均与下方菜单项保持一致的 40px 高度和对齐间距；收起后保留 48px 图标按钮宽度，展开后不再出现过窄或过长的尺寸变化。
 - 蓝色主按钮样式和新建对话功能保持不变。
-- 主要文件：`bi_agent/web/static/styles.css`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`bi_agent/web/static/styles.css`、`changelog_7.27_31.md`。
 
 ### 17. 任务导出操作去重
 
 - 每个任务完成后只显示一组“导出本轮报告、导出 Word、同步到主页、分享到飞书”操作按钮，不再因重复完成事件或历史恢复产生连续重复组。
 - 旧历史快照中的重复导出组会在加载和保存时自动清理，保留同一任务的第一组按钮。
-- 主要文件：`bi_agent/web/static/app.js`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`bi_agent/web/static/app.js`、`changelog_7.27_31.md`。
 
 ### 18. 侧栏按钮与结果徽标恢复
 
 - 修复 Ant Design `block` 样式覆盖导致的“新对话”按钮展开后宽度超过菜单项的问题，现在展开和收起都与下方菜单项对齐。
 - 会话和看板恢复显示结论、根因分析、行动建议以及图表/表格等语义徽标；Source、Turn 等技术信息仍隐藏。
-- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`changelog_7.27_31.md`。
 
 ### 19. 看板重复气泡清理
 
 - 看板用户输入、结论、图表和表格只保留 Ant Design 内层气泡；原看板卡片的外层背景、边框和内边距改为透明，避免出现两个嵌套气泡。
 - 内层气泡的尺寸和左右对齐保持不变，用户问题继续使用右侧蓝色样式，助手结果继续使用左侧浅灰样式。
-- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ### 20. 助手 Markdown 输出渲染
 
 - 对话页的助手输出现在支持 Markdown 标题、加粗、斜体、行内代码、代码块、列表、引用和 Markdown 表格，不再把 `**加粗**` 或表格分隔线直接当普通文本显示。
 - 渲染前会先转义模型输出，并保留业务实体编号的高亮；历史消息和流式消息使用同一套渲染规则。
-- 主要文件：`bi_agent/web/static/app.js`、`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`bi_agent/web/static/app.js`、`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ### 21. 看板用户气泡尺寸恢复
 
 - 看板用户消息恢复为内容自适应宽度，不再被看板容器撑成整块大气泡；仍保持右对齐、蓝色背景和原有最大宽度限制。
 - 助手结果气泡继续左对齐，图表和表格尺寸不变。
-- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ### 22. 看板用户气泡与会话统一
 
 - 看板用户气泡复用会话用户气泡的类名和布局规则，宽度按内容自适应，不再被 Ant Design 默认宽度撑大。
 - 用户消息文字强制使用白色，保持与会话中的蓝色用户气泡一致。
-- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ### 23. 工作区背景层级调整
 
 - 会话区和看板区改为纯白背景，消息气泡、图表和表格内部仍保留浅灰层次。
 - 左侧导航栏改为极浅灰背景，与纯白内容区形成清晰的布局分层。
-- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ### 24. 看板用户气泡内边距统一
 
 - 清除看板用户消息继承的旧 `dash-body` 内边距，避免与气泡自身内边距叠加；用户气泡现在与会话气泡保持相同厚度和内容宽度。
 - 用户文字颜色和右侧蓝色气泡样式保持不变。
-- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ### 25. 侧栏整体背景统一
 
 - 左侧导航栏的 Sider、品牌区域、菜单区域和设置按钮区域统一使用淡灰色背景，不再只有历史会话列表呈现灰色。
 - “新对话”按钮继续保留蓝色主按钮样式。
-- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ## 2026-07-29
 
@@ -192,21 +166,18 @@
 - 缩小图表内部绘图区左侧网格留白，柱状图更靠左对齐；历史图表加载时也会移除旧的 Source 图形标记。
 - 页面：智能分析、报表分析右侧看板及图表 HTML。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`、`bi_agent/tools/chart_tools.py`、`tests/test_regressions.py`。
-- 类型：前端静态资源与图表生成后端变更；本次仅本地启动和验证，不部署服务器。
 
 ### 16. CEO 驾驶舱配色与操作按钮统一
 
 - 对话和看板中的 HTML 图表、历史图表统一采用 CEO 驾驶舱的蓝 `#0B7FF3`、黄 `#E8B339`、绿 `#28C79D`、红 `#F05A5A` 语义色，图表画布与页面结果区保持浅色背景，避免整块黑底。
 - “导出本轮报告（HTML）”“导出 Word”“同步到主页”“分享到飞书”以及根因分析、行动建议按钮统一使用 CEO 配色、黑色文字、圆角和轻微阴影，操作状态更容易区分。
 - 页面：对话工作台和右侧用户看板；主要文件：`bi_agent/tools/chart_tools.py`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
-- 类型：前端静态资源、图表生成后端与离线回归测试变更；本次仅本地启动和验证，不部署服务器。
 
 ### 17. 工作台默认浅色画布
 
 - 修复工作台打开后整个页面沿用深色根变量、看起来全黑的问题。新打开或未保存主题偏好的工作台默认使用 CEO 驾驶舱风格的浅色画布、白色面板和浅灰边框；仍可在个人偏好中切换深色主题。
 - 通过新的主题偏好键隔离旧版本的深色默认值，避免升级后浏览器缓存把页面重新切回黑色。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
 
 ### 18. 用户消息去除重复角色标签
 
@@ -215,7 +186,6 @@
 - 会话中的 pie、bar、多维图和 table 类型标签统一使用圆角徽标；pie、bar、多维图卡片补齐与 table 一致的浅色外框。
 - 会话区和看板区的外层工作面统一为圆角卡片，内部按钮、操作菜单、深入洞察和维度选择控件统一使用圆角。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
 
 ### 19. 会话与看板工作面圆角统一
 
@@ -223,20 +193,17 @@
 - table、pie、bar 等类型标签调整为适中的 6px 倒角，不再呈现胶囊或圆形外观。
 - 根因分析、行动建议等操作按钮同步改为浅色底、深色语义文字和对应边框，降低视觉饱和度。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
 
 ### 20. 迭代思维链紧凑间距
 
 - 压缩每次迭代中工具思考条目的上下留白和条目间距；`Ontology query · 业务对象 · 363ms` 等摘要更紧凑，点击展开的详细输入输出不变。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；本次仅本地启动和验证，不部署服务器。
 
 ### 21. 会话与报表存储稳健性
 
 - 会话历史和上传报表的 JSON 快照改为同目录临时文件校验后原子替换，避免并发保存或进程中断留下半截文件导致历史列表、图表恢复失败。
 - 会话与报表时间统一按东八区写入，不再依赖运行主机的本地时区；SQL 结果格式化兼容列元数据缺失或行列数不一致的 Doris 返回值。
 - 主要文件：`bi_agent/web/conversations.py`、`bi_agent/report/store.py`、`bi_agent/tools/sql_tools.py`、`tests/test_regressions.py`。
-- 类型：后端持久化与 SQL 工具变更，需要重启本地和服务器后端；不调用 Qwen API。
 
 ### 14. 用户气泡与图表 HTML 全面去黑
 
@@ -245,7 +212,6 @@
 - 多维图表的工具栏、下拉框和图表页面同步改为浅色，保留规范配色的数据系列。
 - 页面：智能分析、报表分析对话区、图表 HTML 打开页。
 - 主要文件：`bi_agent/tools/chart_tools.py`、`bi_agent/tools/chart_multidim_tools.py`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
-- 类型：前端静态资源与图表生成后端变更，需要刷新浏览器并重启后端；本次部署未调用 Qwen API。
 
 ### 13. CPQ 浅灰气泡配色校正
 
@@ -253,7 +219,6 @@
 - 表格数据区域使用白色数据底和浅灰表头；图表画布保留独立深色绘图区以保证图表文字可读，外层气泡保持浅灰。
 - 页面：智能分析、报表分析对话区。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 12. Agent 结果气泡与操作按钮强化
 
@@ -262,7 +227,6 @@
 - 导出本轮报告、导出 Word、同步到主页、分享到飞书，以及根因/行动建议按钮改为整块有颜色的按钮，提升可识别性。
 - 页面：智能分析、报表分析对话区。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 11. SOP 默认折叠与标题样式统一
 
@@ -270,7 +234,6 @@
 - “分析 SOP”和“任务清单”统一使用相同的字体、字号、字重、字间距、箭头和进度计数样式。
 - 页面：智能分析、报表分析对话区。
 - 主要文件：`bi_agent/web/static/index.html`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 10. SOP 总流程与任务清单分层
 
@@ -278,7 +241,6 @@
 - 原任务清单保留用户问题定位和进度明细，但默认自动收起；需要查看问题列表或任务明细时可手动展开。
 - 页面：智能分析、报表分析对话区。
 - 主要文件：`bi_agent/web/static/index.html`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 9. Agent 输出气泡与迭代层级
 
@@ -286,7 +248,6 @@
 - 连续迭代仍按原回合顺序显示，工具调用继续使用左侧 ThoughtChain 纵向步骤；不同迭代的文本输出保持独立气泡，任务切换时自然形成新的输出块。
 - 页面：智能分析、报表分析对话区。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 8. 对话消息改为气泡与灰色内容块
 
@@ -295,7 +256,6 @@
 - 页面：智能分析、报表分析对话区。
 - 参考实现：上级目录 `cpq_agent/XBOM智能体-配置BOM生成.html` 的 `.message-user` / `.message-ai` 视觉结构。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 7. 对话内容与表格边界分离
 
@@ -303,7 +263,6 @@
 - 对话区表格只给数据本体增加边框，表格标题、摘要和脚注不再被包进表格框；右侧看板同步采用相同结构，表格边框不再包住标题。
 - 页面：智能分析、报表分析对话区与右侧看板。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 6. 看板外层模块与思维链样式调整
 
@@ -311,7 +270,6 @@
 - 左侧工具调用步骤改为 ThoughtChain 风格的纵向时间链：节点、连接线、可展开标题和详情内容更清晰，继续支持点击展开、查看输入输出和本体命中项。
 - 页面：智能分析、报表分析对话区与右侧看板。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 5. 图表主题统一到设计规范
 
@@ -319,7 +277,6 @@
 - ChartGenerate/ChartGenerateMultiDim 生成的独立 HTML 图表同步使用科技蓝、活力橙、清新绿等低饱和规范色，以及 PingFang SC/SF Pro Display 字体；旧历史图表加载时也会自动套用同一主题。
 - 页面：智能分析、报表分析的对话区、看板及图表 HTML 打开页。
 - 主要文件：`bi_agent/tools/chart_tools.py`、`bi_agent/tools/chart_multidim_tools.py`、`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
-- 类型：前端静态资源与图表生成后端变更，需要刷新浏览器并重启后端；本次部署已重启后端，未调用 Qwen API。
 
 ### 2. 对话操作归位与低饱和视觉色彩
 
@@ -328,7 +285,6 @@
 - 历史会话中的操作卡片仍可恢复交互，导出和同步内容仍包含对应回合的完整分析结果。
 - 页面：智能分析、报表分析对话区与右侧看板。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 3. 看板内容按内容宽度展示
 
@@ -336,7 +292,6 @@
 - 用户问题、结论和表格卡片按内容宽度左对齐展示，保留必要的换行和横向滚动，不再全部顶开到最宽。
 - 页面：智能分析、报表分析右侧看板。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 4. 看板结果卡片无框展示
 
@@ -344,7 +299,6 @@
 - 隐藏结果卡片右上角的回合/来源提示，减少与图表内容无关的视觉信息。
 - 页面：智能分析、报表分析右侧看板。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 1. 导航栏默认收起与图标栏
 
@@ -352,7 +306,6 @@
 - 收起后保留新对话、智能分析、报表分析、本体内容、系统调用、设置、历史和账号等入口图标；点击同一顶部图标可在窄图标栏和完整文字导航之间切换。
 - 页面：智能分析、报表分析及本体工作台各内容页。
 - 主要文件：`bi_agent/web/static/index.html`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ## 2026-07-28
 
@@ -361,7 +314,6 @@
 - 用户提问增加浅灰背景、边框和内边距；相邻用户消息与 Agent 输出之间增加垂直间隔，减少长对话中的混读。
 - 页面：智能分析、报表分析对话区。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 4. 任务清单与看板联动定位
 
@@ -369,7 +321,6 @@
 - 保留从看板提问卡片反向定位聊天区的行为，两个入口使用同一回合锚点。
 - 页面：智能分析、报表分析的任务清单与右侧看板。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次部署已重启后端。
 
 ### 3. 全流程稳定性与安全性修正
 
@@ -380,7 +331,6 @@
 - 本体库列表按接口文档的 `total` 分页读取，不再只显示第一页；损坏的历史/报表元数据会被安全跳过。
 - 增加不触发大模型的 `/healthz` 服务探针，并修正前端 CSS 缓存版本，保证新交互样式及时生效。
 - 主要文件：`bi_agent/llm/provider_qwen.py`、`bi_agent/llm/provider_deepseek.py`、`bi_agent/llm/registry.py`、`bi_agent/web/session.py`、`bi_agent/web/app.py`、`bi_agent/web/conversations.py`、`bi_agent/report/store.py`、`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`、`tests/test_regressions.py`。
-- 类型：模型、后端接口与前端静态资源变更，需要重启后端；本次未调用 Qwen API。
 
 ### 2. 用户提问索引与定位
 
@@ -389,7 +339,6 @@
 - 打开历史会话后会根据该会话的对话内容重建问题列表，不会残留上一个会话的问题。
 - 页面：智能分析、报表分析、任务清单和右侧看板。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次已重启后端。
 
 ### 1. 看板按用户提问组织分析结果
 
@@ -397,7 +346,6 @@
 - 该提问卡片之后再追加本轮结论、根因、建议、表格和图表，历史会话恢复后顺序保持一致。
 - 页面：智能分析、报表分析右侧看板。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次已重启后端。
 
 ## 2026-07-27
 
@@ -407,15 +355,13 @@
 - “驾驶舱”明确跳转 `/dashboard.html`；“i-Agent”明确跳转 `/dashboard.html?view=iagent`。
 - 修复从 CEO驾驶舱点击入口时驾驶舱无法进入、i-Agent 无法跳转的问题。
 - 主要文件：`ceo_dashboard_standalone.html`、`ceo_dashboard.html`。
-- 类型：页面静态资源变更，刷新页面即可；本次已重启后端。
 
 ### 14. 驾驶舱与 i-Agent 页面入口和侧栏统一
 
 - 从 CEO驾驶舱点击“驾驶舱”时默认进入真正的驾驶舱，不再自动跳到 i-Agent。
 - i-Agent 仅在点击 i-Agent 菜单或访问 `/dashboard.html?view=iagent` 时打开。
 - 统一驾驶舱和 i-Agent 外层 IBA 侧栏的搜索栏、菜单项高度、字号、子菜单间距和按钮样式。
-- 主要文件：`dashboard.html`、`CHANGELOG.md`。
-- 类型：页面静态资源变更，刷新页面即可；本次已重启后端。
+- 主要文件：`dashboard.html`、`changelog_7.27_31.md`。
 
 ### 12. CEO / 驾驶舱外层 IBA 侧栏统一与可调宽度
 
@@ -424,14 +370,12 @@
 - IBA 侧栏默认宽度为 248px，支持拖拽右侧分隔条调整，宽度在 CEO 驾驶舱和驾驶舱页面之间共享保存。
 - 页面：CEO驾驶舱、驾驶舱及其下方的 IBA 菜单（CEO驾驶舱 / 驾驶舱 / 收入 / i-Agent）。
 - 主要文件：`ceo_dashboard_standalone.html`、`dashboard.html`、`bi_agent/web/static/styles.css`。
-- 类型：外层页面与前端静态资源变更，刷新页面即可；本次已重启后端。
 
 ### 13. 修正 IBA 侧栏样式覆盖范围
 
 - 修正驾驶舱页面样式只写在桌面媒体查询内、导致常规桌面宽度未生效的问题。
 - 现在 `dashboard.html` 的外层 IBA 侧栏在正常桌面尺寸下也使用 CEO 驾驶舱样式并显示拖拽分隔条。
 - 主要文件：`dashboard.html`。
-- 类型：页面静态资源变更，刷新页面即可；本次已重启后端。
 
 ### 11. 历史会话图表恢复
 
@@ -441,7 +385,6 @@
 - 历史图表 HTML 改用本地 ECharts 资源；旧图表链接也会在服务端自动替换 CDN 地址，点击后可正常自动渲染。
 - 页面：最近历史会话、智能分析/报表分析聊天区和看板。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次已重启后端。
 
 ### 10. 工作区栏目宽度可拖拽调整
 
@@ -450,7 +393,6 @@
 - 宽度保存到浏览器本地存储，重新打开页面后继续使用；独立的本体内容、系统调用页面自动占满剩余空间。
 - 页面：主工作区、左侧导航。
 - 主要文件：`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/app.js`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次已重启后端。
 
 ### 9. 分析进行中的页面与历史导航
 
@@ -459,7 +401,6 @@
 - 不再因为分析中的忙碌状态禁用模式按钮和历史记录。
 - 页面：左侧导航、最近历史会话、智能分析/报表分析工作区。
 - 主要文件：`bi_agent/web/static/app.js`。
-- 类型：前端交互变更，需要刷新浏览器；本次已重启后端。
 
 ### 1. Doris 数据源改为 HTTP API 调用
 
@@ -470,7 +411,6 @@
 - 保留旧 JDBC 参数作为兼容展示/配置字段，但活动 Doris 查询不再使用它们。
 - 页面：数据源设置、本体适配中的数据库源区域。
 - 主要文件：`bi_agent/tools/sql_tools.py`、`bi_agent/web/app.py`、`bi_agent/web/static/index.html`、`bi_agent/web/static/app.js`。
-- 类型：后端接口与前端配置变更，需要重启后端。
 
 ### 2. Doris 默认库名统一
 
@@ -478,14 +418,12 @@
 - 不再根据 MetaERP 本体接口返回的 `dorisDatabase` 自动覆盖用户填写的数据库。
 - 实际查询使用用户在数据源设置中填写的数据库名；未填写时使用上述默认值。
 - 主要文件：`bi_agent/tools/sql_tools.py`、`bi_agent/web/app.py`、`bi_agent/web/static/index.html`。
-- 类型：后端数据源配置变更，需要重启后端。
 
 ### 3. 默认数据库源改为 API·Doris 实时查询
 
 - 打开网页或新建对话时，默认数据库源为 `API·Doris 实时查询`，不再默认使用 `HyperFusion.db`。
 - 本地 SQLite 文件仍保留在数据库源列表中，可手动选择。
 - 主要文件：`bi_agent/web/__main__.py`、运行启动参数。
-- 类型：启动配置变更，需要以 `--db doris` 启动后端。
 
 ### 4. Qwen 模型额度耗尽自动切换
 
@@ -494,7 +432,6 @@
 - 成功切换后保存新的当前模型，后续请求直接使用可用模型。
 - 页面：模型设置和对话流状态提示。
 - 主要文件：`bi_agent/llm/registry.py`、`bi_agent/llm/provider.py`、`bi_agent/web/session.py`。
-- 类型：模型调用逻辑变更，需要重启后端。
 
 ### 5. 最近历史会话修复
 
@@ -509,7 +446,6 @@
 - 恢复历史会话时同步恢复该会话的本体内容、系统调用记录和模型调用记录，并更新对应计数，不再继续显示上一个会话的侧栏数据。
 - 页面：左侧“最近”历史会话列表。
 - 主要文件：`bi_agent/web/static/app.js`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次已随服务重启生效。
 
 ### 6. MetaERP 生产本体服务接入与名称统一
 
@@ -519,7 +455,6 @@
 - 检索模式名称恢复为“语义检索模式(基于 Excel 本体)”和“图库检索模式(图库 + Excel 本体)” 。
 - 页面：本体适配、检索模式和本体检查器。
 - 主要文件：`bi_agent/ontology/remote.py`、`bi_agent/tools/remote_ontology_tools.py`、`bi_agent/web/app.py`、`bi_agent/web/static/app.js`。
-- 类型：后端接口与前端配置变更，需要重启后端。
 
 ### 7. Qwen 提供商和模型目录
 
@@ -528,7 +463,6 @@
 - 模型选择器动态展示环境变量中的文本和视觉模型。
 - 支持 Qwen 视觉模型和文本模型分别配置。
 - 主要文件：`bi_agent/llm/provider_qwen.py`、`bi_agent/llm/provider.py`、`bi_agent/llm/registry.py`、`bi_agent/llm/runtime_config.py`、`pyproject.toml`。
-- 类型：模型提供商和依赖变更，需要重启后端。
 
 ### 8. 服务启动与数据源验证
 
@@ -540,7 +474,6 @@
 
 - `/api/sources` 可查看当前生效的数据源、Doris HTTP API 地址和数据库名。
 - 已验证 Doris HTTP API 执行 `SELECT 1 AS connection_check` 返回正常。
-- 类型：运行配置说明，无代码页面变更；启动配置变更需要重启后端。
 
 ## 2026-07-27
 
@@ -550,7 +483,6 @@
 - 恢复历史内容后重新绑定步骤标题、工具卡片、本体卡片、模型调用卡片及本体实体跳转事件。
 - 页面：智能分析、报表分析及历史会话。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，刷新浏览器即可；本次已重启后端。
 
 ### 16. 当前版本：CEO、驾驶舱与 i-Agent 外层统一
 
@@ -567,7 +499,6 @@
 - 数据源的 Doris“数据库(库名)”旁新增“读取当前本体库库名”按钮，可将当前远程本体库的 `dorisDatabase` 自动填入输入框；本地 Excel 源没有该字段时会提示原因。
 - 页面：`ceo_dashboard_standalone.html`、`dashboard.html`（驾驶舱及 i-Agent 外层视图）。
 - 主要文件：`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；已重启后端，浏览器强制刷新即可生效。
 
 ## 2026-07-30
 
@@ -577,7 +508,6 @@
 - 保留内层气泡的尺寸，将原外层气泡的背景、边框、圆角和阴影样式应用到内层；旧外层仅负责布局和历史数据结构。
 - 页面：i-Agent 智能分析工作台及其看板区域。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，已重启后端服务；刷新浏览器即可看到。
 
 ### 19. 对话 Markdown 展示与任务清单对齐
 
@@ -586,7 +516,6 @@
 - 任务清单中的用户提问列表改为左对齐，避免继承用户气泡的右对齐效果。
 - 页面：i-Agent 智能分析/报表分析对话页、任务清单。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更，已重启后端服务；刷新浏览器即可看到。
 
 ## 2026-07-31
 
@@ -596,7 +525,6 @@
 - 看板中的模型结论、图表和表格移除外层 Ant Design 气泡，仅保留单层结果内容气泡；来源、Turn 等技术信息继续隐藏。
 - 页面：i-Agent 智能分析/报表分析看板。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；本地构建后刷新浏览器即可，部署后无需修改后端接口。
 
 ### 21. 统一 IBA 外层导航切换行为
 
@@ -604,146 +532,125 @@
 - 驾驶舱与 i-Agent 在同一页面内切换时使用统一的淡入滑动过渡；跨页面跳转先执行短暂淡出，再进入目标页面，避免整页瞬间切换。
 - 保留智析工作台内层功能栏，明确区分 IBA 外层导航与工作台功能导航。
 - 主要文件：`bi_agent/web/static/iba-shell.js`、`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 22. 保持 IBA 外层导航展开状态
 
 - 修复从驾驶舱进入 CEO 驾驶舱后外层导航默认再次收起、文字需要手动展开的问题。
 - CEO 驾驶舱和驾驶舱现在共用 `iba.sidebar.collapsed` 状态，跳转前后的导航展开、收起和文字显示保持一致。
 - 主要文件：`bi_agent/web/static/iba-shell.js`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 23. 取消页面跳转过渡动画
 
 - CEO 驾驶舱、驾驶舱和 i-Agent 之间跳转改为立即切换，不再出现淡入、淡出或横向滑动。
 - 仅保留点击三条横杠时 IBA 外层导航栏自身的展开/收起滑动效果。
 - 主要文件：`bi_agent/web/static/iba-shell.js`、`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 24. 修复跳转时外层导航误触发展开动画
 
 - 页面进入时恢复上一页的 IBA 外层导航展开状态不再触发侧栏滑动，避免从 CEO 驾驶舱进入驾驶舱时看到侧栏自行滑出。
 - 仅用户点击三条横杠时保留展开/收起动画。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`bi_agent/web/static/iba-shell.js`、`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 25. 修复 CEO 外层导航收起宽度
 
 - 修复 CEO 驾驶舱点击三条横杠后只有文字消失、导航栏宽度不收缩的问题。
 - 收起时外层导航固定缩为 80px，展开时恢复用户保存的宽度；内容区域同步调整。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 26. 增加 IBA 外层窄栏图标导航
 
 - IBA 外层导航收起后不再只剩空白窄条，保留“IBA”、CEO/驾驶舱/收入/i-Agent 四个图标，以及 360、ISMP、ICM、IB&C、CLM、CPQ、IPS 的窄栏标识。
 - 展开后继续显示完整文字，悬停窄栏项目可查看完整名称。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 27. 统一智析内层折叠按钮尺寸
 
 - 智析工作台内层功能栏折叠时隐藏顶部菱形标识，只保留展开/收起按钮。
 - 折叠按钮统一为与下方“新对话”按钮相同的 48×40 尺寸和圆角，窄栏上下对齐。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 28. 统一 IBA 窄栏宽度与字号
 
 - IBA 外层导航收起宽度统一为 72px，与顶部三条横杠按钮区域一致。
 - 窄栏下方 360、ISMP、ICM、IB&C、CLM、CPQ、IPS 标识字号统一为与“IBA”相同的 16px。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 29. 修复 IBA 导航展开时文字换行
 
 - 外部 IBA 导航的标题、入口和模块标识统一禁止自动换行并裁剪溢出。
 - 导航从窄栏展开时文字保持单行，随宽度平滑展开，不再先折成多行再收回。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 30. 调整 IBA 窄栏字号与 CEO 图标
 
 - 窄栏中的 360、ISMP、ICM、IB&C、CLM、CPQ、IPS 字号调整为与展开态一致的 15px。
 - CEO 驾驶舱图标放大为原来的 1.5 倍，其他入口图标保持原尺寸。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 31. 补齐 IBA 窄栏搜索图标与字重
 
 - 外部导航收起时保留搜索放大镜图标，并与 IBA 和入口标识保持单行排列。
 - 360、ISMP、ICM、IB&C、CLM、CPQ、IPS 的窄栏字重改为与展开态一致的常规字重，不再显得额外加粗。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 32. 对齐 IBA 窄栏搜索行高度
 
 - 折叠态搜索区域高度与 IBA 标题行统一为 56px。
 - 放大镜图标放大并垂直居中，消除搜索区域与下方入口之间的阶梯感。
 - 主要文件：`bi_agent/web/static/iba-shell.css`、`ceo_dashboard_standalone.html`、`dashboard.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 33. 统一智析内层提示气泡
 
 - 内部功能栏折叠时保留完整按钮名称，悬浮提示不再出现空白气泡，并继续从按钮右侧显示。
 - 展开/收起侧栏按钮的提示也统一为右侧白底深色字，与其他内部功能提示保持一致。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 34. 标记内部历史会话当前选中项
 
 - 内部功能栏的“最近”列表现在会同步当前打开的历史会话，选中项使用与“智能分析”一致的蓝色文字和浅蓝背景。
 - 恢复历史会话、切换会话或重新加载列表后，选中状态都会跟随更新。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 35. 恢复会话思维链展开交互
 
 - 会话中的每个工具思维链改用可折叠的 Ant Design `ThoughtChain` 节点渲染。
 - 点击节点标题可展开或收起输入、输出及命中本体内容，保留原有紧凑的时间线样式。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 36. 统一会话用户消息蓝色背景
 
 - 会话中的用户消息气泡去除紫色渐变，改为与“新对话”和发送按钮一致的单色科技蓝背景。
 - 实时消息、历史恢复消息和选中高亮状态使用同一蓝色。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 37. 修复思维链展开一致性与节点样式
 
 - 会话思维链的展开状态改为受控管理，所有步骤（包括没有详细输出的步骤）都可以展开查看。
 - 移除重复的 ThoughtChain 圆点，只保留时间线前方的蓝色节点；节点略微放大并与文字、竖线对齐。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 38. 微调思维链节点垂直位置
 
 - 思维链前方蓝色节点向上微调，与同一行文字和竖线的视觉中心更一致。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 39. 补齐结论徽标并统一结果徽标倒角
 
 - 会话中现在同步显示“📌 结论”结果徽标，历史会话缺少该内容时也会从看板补入会话。
 - 会话中的“根因分析”“行动建议”和看板中的“结论”徽标统一使用适中的圆角倒角，和图表、表格徽标保持一致。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 40. 消除会话操作卡片重复气泡
 
 - 会话中的行动建议、根因分析每条结果只保留一层浅色结果气泡，内部条目不再额外套框；导出报告只保留彩色操作按钮自身的倒角。
 - 会话中的图表、表格和多维图只保留类型徽标，隐藏重复的标题、HTML 来源及技术来源信息，避免与图内标题重复。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 41. 防止同一轮结论和操作按钮重复追加
 
 - 同一轮流式输出产生的多个中间结论、根因分析和行动建议现在按“类型 + 轮次”只保留最后一份，避免在会话底部连续堆叠。
 - 恢复历史会话时会清理同一轮的重复结果卡片和导出按钮，并避免从看板再次搬运出重复的会话按钮。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 42. 统一会话与看板结果为单层气泡
 
@@ -751,21 +658,18 @@
 - 行动建议中的条目、结论正文以及看板结果的兼容层改为透明内容层；表格数据框和实际操作按钮仍保留各自必要的边框与交互样式。
 - 页面：智能分析会话区、右侧看板。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
-- 类型：前端静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 43. 统一历史结果卡片并恢复图表宽度与来源
 
 - 历史会话恢复时显式复用实时路径的 Ant Design 结果挂载，结论、图表和表格不再因恢复时机不同而出现一层或两层气泡。
 - 会话中的图表卡片按会话气泡宽度展开，不再被标题或内容自动收缩；图表右上角恢复显示来源链接，类型徽标、标题和来源保持同一行。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
-- 类型：前端与 Ant Design 静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ### 44. 防止历史卡片重复挂载
 
 - 历史 HTML 已包含 Ant Design 挂载节点时复用现有节点，不再因为恢复和 MutationObserver 同时执行而追加第二个或第三个结果气泡。
 - 兼容从看板移动到会话的旧结果卡片，内部历史气泡只作为透明兼容层保留。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
-- 类型：前端与 Ant Design 静态资源变更；刷新浏览器即可，部署后无需重启后端。
 
 ## 2026-07-31
 
@@ -773,41 +677,20 @@
 
 - Agent 开始处理后，分析 SOP 和任务清单中当前进行中的步骤使用 Ant Design `LoadingOutlined` 旋转图标；任务完成、等待或报错后恢复为对应静态状态。
 - 处理状态通过现有 SSE 回合状态同步到 React Ant Design 思维链，不调用模型额外接口。
-- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ### 47. 增加系统接口调用与代码统计文档
 
 - 新增 `系统接口调用与代码统计.md`，统一记录 `openchat-BI` 与上一级 `ontology-agent` 的 Ontology、Doris、任务回调和文件服务接口调用情况，并给出当前源码行数统计口径。
-- 类型：文档变更；无需重启后端。
 
 ### 46. 统一内部导航栏收起宽度
 
 - 智能分析页面内部导航栏收起后的宽度统一为 72px，与顶部 EIMOS 外层导航方块保持同一宽度，不再出现内外侧栏错位。
 - 收起状态下的“新对话”和折叠按钮同步放大到栏宽内的统一尺寸，图标和菜单项保持居中。
-- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`CHANGELOG.md`。
-- 类型：前端静态资源变更；刷新浏览器即可，服务器部署后无需重启后端。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`、`changelog_7.27_31.md`。
 
 ### 45. 提升会话与报表上传持久化可靠性
 
 - 会话和报表记录生成 ID 时会避开已有文件，避免极端随机碰撞覆盖历史数据。
 - 报表解析或元数据落盘失败时会同时清理原始上传文件和临时元数据文件，避免失败请求留下无法访问的残留文件。
 - 主要文件：`bi_agent/web/conversations.py`、`bi_agent/report/store.py`、`tests/test_regressions.py`。
-- 类型：后端持久化与离线回归测试变更；需要重启后端。
-
-## 2026-08-03
-
-### 1. 新对话示例问题圆角统一
-
-- 新开智能分析对话中的三个示例问题（“管报收入总金额是多少?”、“列出本体里所有业务对象”、“应收账款账龄分布如何?”）统一增加 8px 圆角，和工作台其他可点击提示保持一致。
-- 页面：智能分析新对话欢迎区。
-- 主要文件：`bi_agent/web/static/styles.css`。
-- 类型：前端静态资源变更；刷新浏览器即可生效，无需重启后端。
-
-### 2. 空对话保留分析 SOP 入口
-
-- 新开智能分析对话时，即使尚未发送问题也显示折叠的“分析 SOP”入口。
-- 展开空 SOP 时显示“开始一轮智能分析后，这里会显示本次对话的六步执行进度”，开始对话后自动替换为真实进度和 ThoughtChain 步骤；报表分析模式不显示空 SOP。
-- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`。
-- 类型：前端静态资源变更；刷新浏览器即可生效，无需重启后端。
-- 同步提升工作台静态资源版本号，避免浏览器缓存旧版 CSS 和脚本。
