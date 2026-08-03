@@ -4299,6 +4299,11 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .view-page .settings-key-clear {
   border-radius: 8px !important;
 }
+.view-page .page-footer .btn {
+  min-height: 34px;
+  padding: 7px 14px !important;
+  line-height: 18px;
+}
 .view-page .settings-input,
 .view-page .settings-select {
   border-radius: 8px !important;
