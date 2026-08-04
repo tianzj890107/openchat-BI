@@ -67,3 +67,9 @@
 - 无法从历史工具结果安全确认的内容不自动改名，避免把普通数据库字段误改成本体对象。
 - 页面：历史会话、本体内容、系统调用记录。
 - 主要文件：`bi_agent/web/app.py`、`bi_agent/web/conversations.py`、`tests/test_regressions.py`。
+
+### 9. 本体类型徽标倒角
+
+- 本体内容中的术语、逻辑实体、属性、指标等类型徽标统一增加圆角，和页面其他标签样式保持一致。
+- 页面：本体内容。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。

@@ -768,7 +768,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   text-transform: uppercase;
   color: var(--fg-0);
   padding: 2px 6px;
-  border-radius: 2px;
+  border-radius: 6px;
   background: var(--bg-elev);
   border: 1px solid var(--border-1);
 }
