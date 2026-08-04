@@ -79,3 +79,10 @@
 - 收紧思维链步骤标题、步骤内容、代码区域和 Ant Design ThoughtChain 项目的上下留白，整体间距约缩减一半。
 - 页面：智能分析、报表分析会话区。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+
+### 11. 思维链折叠状态去除内容留白
+
+- 折叠时只保留思维链标题行，不再让隐藏的内容区域或代码区域占用上下间距。
+- 展开后再恢复内容区的上下留白，保持内容可读性。
+- 页面：智能分析、报表分析会话区。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
