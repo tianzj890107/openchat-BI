@@ -745,6 +745,13 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         database = (req.doris_database or STATE.doris_database or DEFAULT_DORIS_DATABASE).strip()
         if not api_url.startswith(("http://", "https://")):
             raise HTTPException(400, "请填写 Doris HTTP API 地址(例如 http://host:30834/agent/doris/query)")
+        # Doris schema names are validated by DorisHttpConn before mutating
+        # the global source state, so malformed input returns a clear 400
+        # instead of a later metadata-query failure.
+        try:
+            DorisHttpConn(api_url, database)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
         STATE.doris_jdbc_url = jdbc
         STATE.doris_api_url = api_url
         STATE.doris_username = username
@@ -782,11 +789,14 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
     if changed:
         # register_tool is idempotent — this rebinds the ontology/SQL tools to
         # the new store + db_path (or Doris connection).
-        doris_conn = (
-            DorisHttpConn(STATE.doris_api_url, STATE.doris_database)
-            if STATE.use_doris
-            else None
-        )
+        try:
+            doris_conn = (
+                DorisHttpConn(STATE.doris_api_url, STATE.doris_database)
+                if STATE.use_doris
+                else None
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
         register_all(
             STATE.ontology_store,
             STATE.db_path,

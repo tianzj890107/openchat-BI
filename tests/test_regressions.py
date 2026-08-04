@@ -7,6 +7,7 @@ failure handling and persistence without making any Qwen/Anthropic request.
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,8 +23,18 @@ from bi_agent.llm.provider_qwen import _convert_messages as convert_qwen
 from bi_agent.ontology.store import OntologyStore
 from bi_agent.report.parser import ParseResult
 from bi_agent.report.store import ReportStore
-from bi_agent.tools.sql_tools import _format_rows, _validate_sql
-from bi_agent.tools.chart_tools import _echarts_option, _write_standalone_html
+from bi_agent.tools.sql_tools import (
+    DorisHttpConn,
+    DorisApiError,
+    _doris_query,
+    _format_rows,
+    _validate_sql,
+)
+from bi_agent.tools.chart_tools import (
+    _echarts_option,
+    _make_chart_generate,
+    _write_standalone_html,
+)
 from bi_agent.web.app import (
     STATE, _cwd_file, _history_ontology_entities, _render_history_ontology_cards,
     app, get_sources_endpoint,
@@ -54,6 +65,68 @@ class OfflineRegressionTests(unittest.TestCase):
             html = out.read_text(encoding="utf-8")
             self.assertIn("background: #F7F7F8", html)
             self.assertIn('"PingFang SC", "SF Pro Display"', html)
+
+    def test_standalone_chart_html_escapes_script_context_and_avoids_collision(self) -> None:
+        option = _echarts_option({
+            "chart_type": "bar",
+            "title": "</script><script>alert(1)</script>",
+            "x_axis": ["一月"],
+            "series": [{"name": "金额", "data": [1]}],
+        })
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "bi_agent.tools.chart_tools.time.strftime", return_value="20260804-120000"
+        ):
+            out = Path(temp_dir) / "chart.html"
+            _write_standalone_html(option, out, "</title><script>alert(1)</script>")
+            html = out.read_text(encoding="utf-8")
+            self.assertNotIn("</script><script>", html)
+            self.assertIn("&lt;/title&gt;", html)
+
+            execute = _make_chart_generate()
+            params = {
+                "chart_type": "bar",
+                "title": "同名图",
+                "x_axis": ["一月"],
+                "series": [{"name": "金额", "data": [1]}],
+            }
+            first = execute(params, temp_dir)
+            second = execute(params, temp_dir)
+            self.assertIn("chart-20260804-120000-同名图.html", first)
+            self.assertIn("chart-20260804-120000-同名图-2.html", second)
+
+    def test_doris_database_identifier_and_result_limit_are_bounded(self) -> None:
+        with self.assertRaises(ValueError):
+            DorisHttpConn("http://doris.test/query", "ontology; DROP TABLE users")
+        rendered = _format_rows(["value"], [(1,), (2,)], -1)
+        self.assertIn("1", rendered)
+        self.assertIn("2", rendered)
+
+    def test_doris_http_error_code_and_auth_header_are_normalized(self) -> None:
+        class FakeResponse:
+            def __init__(self, body: dict) -> None:
+                self.body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps(self.body).encode("utf-8")
+
+        requests = []
+
+        def fake_urlopen(request, timeout):
+            requests.append(request)
+            return FakeResponse({"code": 500, "msg": "query failed"})
+
+        with patch.dict(os.environ, {"ONTOLOGY_AUTH_TOKEN": "token"}), patch(
+            "bi_agent.tools.sql_tools.urlopen", fake_urlopen
+        ):
+            with self.assertRaises(DorisApiError):
+                _doris_query(DorisHttpConn("http://doris.test/query"), "SELECT 1")
+        self.assertEqual(requests[0].get_header("Authorization"), "Bearer token")
 
     def test_openai_compatible_conversion_preserves_images_and_tools(self) -> None:
         messages = [
@@ -347,6 +420,8 @@ class OfflineRegressionTests(unittest.TestCase):
             STATE.cwd = previous
         self.assertIsNone(_validate_sql("SELECT 1"))
         self.assertIsNotNone(_validate_sql("SELECT 1; DROP TABLE t"))
+        self.assertIsNone(_validate_sql("PRAGMA table_info('orders')"))
+        self.assertIsNotNone(_validate_sql("PRAGMA journal_mode=WAL"))
 
     def test_healthz_never_requires_a_model_call(self) -> None:
         previous = (STATE.agent_def, STATE.ontology_store, STATE.conversation_store)
