@@ -14,12 +14,25 @@
  * ===================================================================== */
 
 (() => {
+  const ONTOLOGY_FILTER_KINDS = [
+    "term", "business_object", "logical_entity", "attribute", "relation", "metric",
+    "activity", "rule", "dimension", "process", "meta_relation", "table_node", "column",
+  ];
+
+  function makeOntologyFilters() {
+    const filters = Object.fromEntries(ONTOLOGY_FILTER_KINDS.map((kind) => [kind, true]));
+    filters.table_node = false;
+    filters.column = false;
+    return filters;
+  }
+
   // ------------------------------------------------------------------
   // Per-mode bucket
   // ------------------------------------------------------------------
   function makeBucket() {
     return {
       ontologyByCode: new Map(),       // source/type/code key -> entity record
+      ontologyFilters: makeOntologyFilters(), // kind -> visible in 本体内容
       toolCalls: [],                   // tool call records
       llmTurns: [],                    // {iteration, request, response}
       turnCount: 0,
@@ -219,6 +232,7 @@
     panels:         document.querySelectorAll(".inspector-panel"),
     // Inspector containers
     ontologyList:   document.getElementById("ontology-list"),
+    ontologyFilters: document.getElementById("ontology-filters"),
     toolList:       document.getElementById("tool-list"),
     llmList:        document.getElementById("llm-list"),
     systemContent:  document.getElementById("system-content"),
@@ -1029,6 +1043,7 @@
         entity_key: key,
       });
     });
+    applyOntologyFilters();
     hydrateRestoredDashboard();
     b.hasContent = !!(rec.chat_html && rec.chat_html.trim());
     b.dashboardHasContent = !!el.dashboardList.querySelector(".dash-card");
@@ -4149,6 +4164,43 @@
   // ------------------------------------------------------------------
   // Ontology tab
   // ------------------------------------------------------------------
+  function ontologyCardKind(card) {
+    return [...(card?.classList || [])].find((name) => name !== "entity-card") || "ontology";
+  }
+
+  function applyOntologyFilters() {
+    const bucket = B();
+    if (el.ontologyList) {
+      el.ontologyList.querySelectorAll(".entity-card").forEach((card) => {
+        const kind = ontologyCardKind(card);
+        const visible = bucket.ontologyFilters[kind] !== false;
+        card.hidden = !visible;
+        card.classList.toggle("is-filtered", !visible);
+      });
+    }
+    if (el.ontologyFilters) {
+      el.ontologyFilters.querySelectorAll(".ontology-filter[data-kind]").forEach((button) => {
+        const visible = bucket.ontologyFilters[button.dataset.kind] !== false;
+        button.classList.toggle("is-on", visible);
+        button.classList.toggle("is-off", !visible);
+        button.setAttribute("aria-pressed", visible ? "true" : "false");
+      });
+    }
+  }
+
+  function initOntologyFilters() {
+    if (!el.ontologyFilters) return;
+    el.ontologyFilters.querySelectorAll(".ontology-filter[data-kind]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const bucket = B();
+        const kind = button.dataset.kind;
+        bucket.ontologyFilters[kind] = bucket.ontologyFilters[kind] === false;
+        applyOntologyFilters();
+      });
+    });
+    applyOntologyFilters();
+  }
+
   function upsertOntologyEntities(entities) {
     if (!entities || entities.length === 0) return;
     const bucket = B();
@@ -4174,6 +4226,7 @@
       el.ontologyList.appendChild(buildEntityCard(entity));
     }
     if (added) el.countOntology.textContent = bucket.ontologyByCode.size;
+    if (added) applyOntologyFilters();
   }
 
   function buildEntityCard(entity) {
@@ -4664,6 +4717,7 @@
       if (!el.chatEmpty.parentNode) el.chatScroll.appendChild(el.chatEmpty);
     }
     attachChildren(el.ontologyList, inc.ontologyNodes);
+    applyOntologyFilters();
     attachChildren(el.toolList,     inc.toolNodes);
     attachChildren(el.llmList,      inc.llmNodes);
     renderTodoPanel();  // show the incoming mode's task list (or hide if none)
@@ -4993,6 +5047,7 @@
       if (el.chatEmpty && !el.chatEmpty.parentNode) el.chatScroll.appendChild(el.chatEmpty);
       if (el.chatEmpty) el.chatEmpty.style.display = "";
       el.countOntology.textContent = "0";
+      applyOntologyFilters();
       el.countTools.textContent = "0";
       el.countLlm.textContent = "0";
       if (el.dashboardCount) el.dashboardCount.textContent = "0";
@@ -5749,6 +5804,7 @@
 
   applyThemeFromUrl();
   applyQuadrantFromUrl();
+  initOntologyFilters();
   bindDashboardQuestionLinks();
 
   // ------------------------------------------------------------------

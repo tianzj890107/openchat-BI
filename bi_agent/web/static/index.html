@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>智析 · 本体工作台</title>
-  <link rel="stylesheet" href="/static/styles.css?v=126" />
+  <link rel="stylesheet" href="/static/styles.css?v=127" />
   <link rel="stylesheet" href="/static/vendor/antd/openchat-bi-workbench.css?v=1" />
   <script src="/static/vendor/echarts.min.js"></script>
 </head>
@@ -254,6 +254,21 @@
         </div>
         <div class="page-body">
           <div class="panel-desc">对话中命中的本体实体(按编码去重,实时追加)</div>
+          <div class="ontology-filters" id="ontology-filters" role="toolbar" aria-label="本体类型筛选">
+            <button type="button" class="ontology-filter is-on" data-kind="term">术语</button>
+            <button type="button" class="ontology-filter is-on" data-kind="business_object">业务对象</button>
+            <button type="button" class="ontology-filter is-on" data-kind="logical_entity">逻辑实体</button>
+            <button type="button" class="ontology-filter is-on" data-kind="attribute">属性</button>
+            <button type="button" class="ontology-filter is-on" data-kind="relation">关系</button>
+            <button type="button" class="ontology-filter is-on" data-kind="metric">指标</button>
+            <button type="button" class="ontology-filter is-on" data-kind="activity">活动</button>
+            <button type="button" class="ontology-filter is-on" data-kind="rule">规则</button>
+            <button type="button" class="ontology-filter is-on" data-kind="dimension">维度</button>
+            <button type="button" class="ontology-filter is-on" data-kind="process">流程</button>
+            <button type="button" class="ontology-filter is-on" data-kind="meta_relation">元模型关系</button>
+            <button type="button" class="ontology-filter is-off" data-kind="table_node">表节点</button>
+            <button type="button" class="ontology-filter is-off" data-kind="column">列</button>
+          </div>
           <div class="entity-list" id="ontology-list"></div>
         </div>
       </section>
