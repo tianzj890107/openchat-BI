@@ -94,3 +94,14 @@
 - 业务对象类型统一改为红色，筛选按钮、类型徽标和卡片色条保持一致。
 - 页面：本体内容。
 - 主要文件：`bi_agent/web/static/index.html`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`。
+
+## 2026-08-04
+
+### 13. 数据源与图表生成的边界校验
+
+- Doris 数据库名在保存数据源前统一校验为安全标识符，非法值会直接返回可读的表单错误，不再进入后续元数据 SQL。
+- Doris HTTP 查询统一识别 `success=false` 和非 200 业务码，并兼容令牌已经带 `Bearer` 前缀的配置；SQL 结果行数限制在有效范围内，避免负数或超大输出。
+- SQL 查询继续支持用于结构检查的只读 `PRAGMA`，但会拒绝带赋值的 PRAGMA，保持 SQLRun 的只读约束。
+- 独立图表 HTML 对标题和脚本内 JSON 做上下文转义，避免标题内容破坏页面脚本；同一秒生成同名图表时自动追加序号，不再覆盖旧图表。
+- 页面：数据源设置、智能分析/报表分析图表及历史图表链接。
+- 主要文件：`bi_agent/tools/sql_tools.py`、`bi_agent/ontology/remote.py`、`bi_agent/tools/chart_tools.py`、`bi_agent/tools/chart_multidim_tools.py`、`bi_agent/web/app.py`、`tests/test_regressions.py`。

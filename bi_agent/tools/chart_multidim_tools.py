@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from html import escape
 from pathlib import Path
 from typing import Any, Callable
 
@@ -225,13 +226,19 @@ def _build_dim_payload(d: dict, top_source: str) -> dict[str, Any]:
 
 def _write_standalone_html(spec: dict[str, Any], out_path: Path) -> None:
     """Standalone HTML with a working dimension dropdown."""
-    spec_json = json.dumps(spec, ensure_ascii=False)
+    spec_json = (
+        json.dumps(spec, ensure_ascii=False)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
     title = spec.get("title", "维度洞察图表")
+    safe_title = escape(str(title or "维度洞察图表"), quote=False)
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>{title}</title>
+<title>{safe_title}</title>
 <style>
   html, body {{ margin: 0; height: 100%; background: #F7F7F8; color: #1F2023;
     font-family: "PingFang SC", "SF Pro Display", -apple-system, sans-serif; }}
@@ -303,9 +310,13 @@ def _make_chart_generate_multidim() -> Executor:
 
         title = spec_payload["title"] or "multidim-chart"
         ts = time.strftime("%Y%m%d-%H%M%S")
-        filename = f"multidim-{ts}-{_slug(title)}.html"
         out_dir = Path(cwd) / "bi_charts"
-        out_path = out_dir / filename
+        stem = f"multidim-{ts}-{_slug(title)}"
+        out_path = out_dir / f"{stem}.html"
+        suffix = 2
+        while out_path.exists():
+            out_path = out_dir / f"{stem}-{suffix}.html"
+            suffix += 1
         try:
             _write_standalone_html(spec_payload, out_path)
             saved_at = (

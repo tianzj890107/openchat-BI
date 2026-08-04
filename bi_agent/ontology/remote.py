@@ -72,7 +72,11 @@ class RemoteOntologyClient:
         if self.app_id:
             headers["X-App-Id"] = self.app_id
         if self.auth_token:
-            headers["Authorization"] = f"Bearer {self.auth_token}"
+            token = self.auth_token
+            headers["Authorization"] = (
+                token if token.lower().startswith(("bearer ", "basic "))
+                else f"Bearer {token}"
+            )
         data = None
         if body is not None:
             headers["Content-Type"] = "application/json"

@@ -40,6 +40,22 @@ DEFAULT_DORIS_PASSWORD = ""
 # the DORIS_DATABASE env var; falls back to the schema in the JDBC URL.
 DEFAULT_DORIS_DATABASE = "ontology_demometaerp_scm_po"
 DEFAULT_DORIS_API_URL = "http://172.16.5.181:30834/agent/doris/query"
+_DORIS_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+MAX_RESULT_ROWS = 1_000
+
+
+def _validate_doris_identifier(value: str, label: str = "Doris 标识符") -> str:
+    """Validate an unquoted Doris database/schema identifier.
+
+    Database names are interpolated into ``information_schema`` queries and
+    are also used as SQL qualification prefixes.  Keeping this validation in
+    the connection object means both the UI path and direct tool registration
+    get the same protection.
+    """
+    normalized = str(value or "").strip()
+    if not _DORIS_IDENTIFIER_RE.fullmatch(normalized):
+        raise ValueError(f"{label}只能包含字母、数字、下划线或 $,且不能以数字开头")
+    return normalized
 
 
 class DorisApiError(Exception):
@@ -78,7 +94,9 @@ class DorisConn:
         self.host, self.port, url_db = _parse_jdbc_mysql(self.jdbc_url)
         # An explicit `database` overrides the schema baked into the JDBC URL,
         # so the UI can switch databases without rewriting the connection URL.
-        self.database = (database or "").strip() or url_db
+        self.database = _validate_doris_identifier(
+            (database or "").strip() or url_db, "Doris 数据库名"
+        )
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"DorisConn({self.host}:{self.port}/{self.database}, user={self.username!r})"
@@ -91,7 +109,9 @@ class DorisHttpConn:
         self.api_url = (api_url or "").strip()
         if not self.api_url:
             raise ValueError("需填写 Doris HTTP API 地址")
-        self.database = (database or DEFAULT_DORIS_DATABASE).strip()
+        self.database = _validate_doris_identifier(
+            database or DEFAULT_DORIS_DATABASE, "Doris 数据库名"
+        )
         self.host = "HTTP API"
         self.port = 0
 
@@ -148,6 +168,10 @@ def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], 
         ):
             value = os.environ.get(env_name, "").strip()
             if value:
+                if name == "Authorization" and not value.lower().startswith(
+                    ("bearer ", "basic ")
+                ):
+                    value = f"Bearer {value}"
                 headers[name] = value
         try:
             request = Request(
@@ -160,8 +184,15 @@ def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], 
                 payload = json.loads(response.read().decode("utf-8", errors="replace"))
         except Exception as e:
             raise DorisApiError(f"Doris HTTP API 请求失败 ({conn.api_url}): {e}") from e
-        if isinstance(payload, dict) and payload.get("success") is False:
-            raise DorisApiError(str(payload.get("msg") or "Doris HTTP API 返回失败"))
+        if isinstance(payload, dict):
+            code = payload.get("code")
+            if payload.get("success") is False or (
+                code is not None and code not in (200, "200")
+            ):
+                raise DorisApiError(
+                    str(payload.get("msg") or payload.get("message") or
+                        f"Doris HTTP API 返回失败 code={code}")
+                )
         data = payload.get("data", payload) if isinstance(payload, dict) else {}
         raw_rows = data.get("rows", []) if isinstance(data, dict) else []
         if not raw_rows:
@@ -224,12 +255,21 @@ def _validate_sql(sql: str) -> str | None:
         return "multi-statement SQL is not allowed"
     if not _ALLOWED_LEAD.match(s):
         return "only SELECT / WITH / PRAGMA / EXPLAIN are permitted"
+    # PRAGMA is retained for schema inspection (for example
+    # ``PRAGMA table_info('orders')``), but assignment forms can change SQLite
+    # connection/database state and violate SQLRun's read-only contract.
+    if re.match(r"^\s*pragma\b", s, re.IGNORECASE) and "=" in s:
+        return "PRAGMA assignment is not permitted"
     if _FORBIDDEN.search(s):
         return "SQL contains a forbidden keyword (write/DDL)"
     return None
 
 
 def _format_rows(columns: list[str], rows: list[tuple], max_rows: int) -> str:
+    try:
+        max_rows = max(1, min(int(max_rows), MAX_RESULT_ROWS))
+    except (TypeError, ValueError):
+        max_rows = 100
     if not rows:
         return "(0 rows)"
     shown = rows[:max_rows]
@@ -300,7 +340,11 @@ def _make_sql_run(source: "SqlBackend | str") -> Executor:
 
     def run(params: dict, cwd: str) -> str:
         sql = (params.get("sql") or "").strip()
-        limit = int(params.get("limit") or 100)
+        try:
+            limit = int(params.get("limit") or 100)
+        except (TypeError, ValueError):
+            return "SQLRun rejected: limit must be an integer"
+        limit = max(1, min(limit, MAX_RESULT_ROWS))
         err = _validate_sql(sql)
         if err:
             return f"SQLRun rejected: {err}\nSQL: {sql}"
@@ -313,16 +357,14 @@ def _make_sql_run(source: "SqlBackend | str") -> Executor:
                 return f"SQLRun (Doris) error: {e}\nSQL: {sql}"
             return header + "\n\n" + _format_rows(columns, rows, limit)
         try:
-            conn = sqlite3.connect(backend.db_path)
-            conn.row_factory = None
-            cur = conn.cursor()
-            cur.execute(sql)
-            if cur.description is None:
-                conn.close()
-                return "SQLRun: statement returned no result set."
-            columns = [d[0] for d in cur.description]
-            rows = cur.fetchall()
-            conn.close()
+            with sqlite3.connect(backend.db_path) as conn:
+                conn.row_factory = None
+                cur = conn.cursor()
+                cur.execute(sql)
+                if cur.description is None:
+                    return "SQLRun: statement returned no result set."
+                columns = [d[0] for d in cur.description]
+                rows = cur.fetchall()
         except sqlite3.Error as e:
             return f"SQLRun error: {e}\nSQL: {sql}"
         return header + "\n\n" + _format_rows(columns, rows, limit)
