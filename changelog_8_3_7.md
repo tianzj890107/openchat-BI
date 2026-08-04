@@ -73,3 +73,9 @@
 - 本体内容中的术语、逻辑实体、属性、指标等类型徽标统一增加圆角，和页面其他标签样式保持一致。
 - 页面：本体内容。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+
+### 10. 思维链步骤间距收紧
+
+- 收紧思维链步骤标题、步骤内容、代码区域和 Ant Design ThoughtChain 项目的上下留白，整体间距约缩减一半。
+- 页面：智能分析、报表分析会话区。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
