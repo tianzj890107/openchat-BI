@@ -36,7 +36,7 @@
 
   /* Entity kind tints use the same restrained semantic palette. */
   --k-term:      #00C853;
-  --k-bo:        #1A73E8;
+  --k-bo:        #F05A5A;
   --k-le:        #00C853;
   --k-at:        #1A73E8;
   --k-relation:  #607D8B;
@@ -733,6 +733,46 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   border-bottom: 1px dashed var(--border-1);
 }
 
+/* 本体类型筛选：按钮颜色与实体卡片类型色保持一致。 */
+.ontology-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+.ontology-filter {
+  --filter-color: var(--fg-2);
+  appearance: none;
+  border: 1px solid var(--filter-color);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--filter-color) 10%, transparent);
+  color: var(--filter-color);
+  cursor: pointer;
+  font: 600 var(--fs-xs)/1.35 var(--font-sans);
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.ontology-filter:hover { background: color-mix(in srgb, var(--filter-color) 18%, transparent); }
+.ontology-filter.is-off {
+  --filter-color: #98A2B3 !important;
+  background: transparent;
+  color: var(--filter-color);
+  border-color: #D0D5DD;
+}
+.ontology-filter[data-kind="term"] { --filter-color: var(--k-term); }
+.ontology-filter[data-kind="business_object"] { --filter-color: var(--k-bo); }
+.ontology-filter[data-kind="logical_entity"] { --filter-color: var(--k-le); }
+.ontology-filter[data-kind="attribute"] { --filter-color: var(--k-at); }
+.ontology-filter[data-kind="relation"] { --filter-color: var(--k-relation); }
+.ontology-filter[data-kind="metric"] { --filter-color: var(--k-metric); }
+.ontology-filter[data-kind="activity"] { --filter-color: var(--k-activity); }
+.ontology-filter[data-kind="rule"] { --filter-color: var(--k-rule); }
+.ontology-filter[data-kind="dimension"] { --filter-color: #7C83FD; }
+.ontology-filter[data-kind="process"] { --filter-color: #28C79D; }
+.ontology-filter[data-kind="meta_relation"] { --filter-color: #607D8B; }
+.ontology-filter[data-kind="table_node"],
+.ontology-filter[data-kind="column"] { --filter-color: #98A2B3; }
+
 /* --- Entity cards (Ontology tab) --- */
 .entity-card {
   background: var(--bg-1);
@@ -742,6 +782,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   margin-bottom: 10px;
   overflow: hidden;
 }
+.entity-card[hidden] { display: none !important; }
 .entity-card.term            { border-left-color: var(--k-term); }
 .entity-card.business_object { border-left-color: var(--k-bo); }
 .entity-card.logical_entity  { border-left-color: var(--k-le); }
@@ -750,6 +791,11 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .entity-card.metric          { border-left-color: var(--k-metric); }
 .entity-card.activity        { border-left-color: var(--k-activity); }
 .entity-card.rule            { border-left-color: var(--k-rule); }
+.entity-card.dimension       { border-left-color: #7C83FD; }
+.entity-card.process         { border-left-color: #28C79D; }
+.entity-card.meta_relation   { border-left-color: #607D8B; }
+.entity-card.table_node,
+.entity-card.column          { border-left-color: #98A2B3; }
 .entity-head {
   display: flex;
   align-items: center;
@@ -780,6 +826,11 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .entity-card.metric          .entity-kind-tag { color: var(--k-metric);   border-color: var(--k-metric); }
 .entity-card.activity        .entity-kind-tag { color: var(--k-activity); border-color: var(--k-activity); }
 .entity-card.rule            .entity-kind-tag { color: var(--k-rule);     border-color: var(--k-rule); }
+.entity-card.dimension       .entity-kind-tag { color: #7C83FD; border-color: #7C83FD; }
+.entity-card.process         .entity-kind-tag { color: #28C79D; border-color: #28C79D; }
+.entity-card.meta_relation   .entity-kind-tag { color: #607D8B; border-color: #607D8B; }
+.entity-card.table_node      .entity-kind-tag,
+.entity-card.column          .entity-kind-tag { color: #98A2B3; border-color: #98A2B3; }
 .entity-code { font-family: var(--font-mono); color: var(--fg-0); font-weight: 600; font-size: var(--fs-sm); }
 .entity-name { color: var(--fg-1); flex: 1; font-size: var(--fs-md); }
 .entity-chevron { color: var(--fg-3); font-family: var(--font-mono); }

@@ -86,3 +86,11 @@
 - 展开后再恢复内容区的上下留白，保持内容可读性。
 - 页面：智能分析、报表分析会话区。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+
+### 12. 本体类型筛选
+
+- 本体内容页顶部新增类型筛选按钮，可按术语、业务对象、逻辑实体、属性、指标等类型显示或隐藏实体卡片。
+- 表节点和列默认隐藏，其他类型默认显示；关闭类型后按钮变灰，再次点击即可恢复。
+- 业务对象类型统一改为红色，筛选按钮、类型徽标和卡片色条保持一致。
+- 页面：本体内容。
+- 主要文件：`bi_agent/web/static/index.html`、`bi_agent/web/static/app.js`、`bi_agent/web/static/styles.css`。
