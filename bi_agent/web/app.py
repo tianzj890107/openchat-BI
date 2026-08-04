@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from html import escape
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 from pathlib import Path
@@ -960,6 +961,77 @@ def _conversation_sync(method: str, path: str, payload: Optional[dict[str, Any]]
         return None
 
 
+def _history_ontology_entities(session: WebSession, messages: list[Any]) -> list[dict[str, Any]]:
+    """Rebuild ontology hits from persisted tool results.
+
+    Older conversation snapshots may have stale/missing ``ontology_html``.
+    The tool result text is the durable source of truth, and it already
+    contains the structured ``[CODE] label (Type)`` lines emitted by the
+    remote ontology tools.  Reusing WebSession's source-aware parser keeps
+    this migration identical to live analysis and avoids any LLM/API call.
+    """
+    tool_names: dict[str, str] = {}
+    session.ontology_seen.clear()
+    for message in messages or []:
+        if not isinstance(message, dict):
+            continue
+        blocks = message.get("content")
+        if not isinstance(blocks, list):
+            continue
+        role = message.get("role")
+        if role == "assistant":
+            for block in blocks:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    tool_id = str(block.get("id") or "")
+                    name = str(block.get("name") or "")
+                    if tool_id and name:
+                        tool_names[tool_id] = name
+            continue
+        if role != "user":
+            continue
+        for block in blocks:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+            content = block.get("content")
+            if isinstance(content, list):
+                content = "".join(
+                    str(item.get("text") or "") for item in content
+                    if isinstance(item, dict)
+                )
+            tool_name = tool_names.get(str(block.get("tool_use_id") or ""))
+            session._extract_entities(str(content or ""), tool_name)
+    return list(session.ontology_seen.values())
+
+
+def _render_history_ontology_cards(entities: list[dict[str, Any]]) -> str:
+    """Render migrated entity records using the same card contract as JS."""
+    kind_labels = {
+        "term": "术语", "business_object": "业务对象", "logical_entity": "逻辑实体",
+        "attribute": "属性", "relation": "关系", "metric": "指标", "activity": "活动",
+        "rule": "规则", "dimension": "维度", "process": "流程",
+        "meta_relation": "元模型关系", "table_node": "表节点", "column": "列",
+    }
+    cards: list[str] = []
+    for entity in entities:
+        kind = str(entity.get("kind") or "ontology")
+        code = str(entity.get("code") or "")
+        key = str(entity.get("entity_key") or "")
+        source = str(entity.get("source") or "")
+        name = str(entity.get("name") or code)
+        display = str(entity.get("display") or "")
+        kind_label = kind_labels.get(kind, kind.upper())
+        cards.append(
+            f'<div class="entity-card {escape(kind)}" data-code="{escape(code)}" '
+            f'data-entity-key="{escape(key)}" data-source="{escape(source)}">'
+            f'<div class="entity-head"><span class="entity-kind-tag">{escape(kind_label)}</span>'
+            f'<span class="entity-code">{escape(code)}</span>'
+            f'<span class="entity-name">{escape(name)}</span>'
+            '<span class="entity-chevron">›</span></div>'
+            f'<div class="entity-body">{escape(display)}</div></div>'
+        )
+    return "".join(cards)
+
+
 @app.get("/api/conversations")
 def list_conversations(mode: Optional[str] = None) -> JSONResponse:
     store = _require_conversation_store()
@@ -1029,6 +1101,16 @@ def restore_conversation(req: ConversationRestoreRequest) -> JSONResponse:
         STATE.session.pending_choice_spec = None
         STATE.session._pending_sibling_results = []
         context_restored = True
+    active_session = STATE.report_session if mode == "report" else STATE.session
+    if active_session is not None:
+        migrated_entities = _history_ontology_entities(active_session, messages)
+        if migrated_entities:
+            migrated_html = _render_history_ontology_cards(migrated_entities)
+            if migrated_html != (rec.get("ontology_html") or ""):
+                rec["ontology_html"] = migrated_html
+                # Persist the corrected snapshot without changing the history
+                # timestamp/order merely by opening the conversation.
+                store.update_ontology_html(str(rec.get("id") or req.id), migrated_html)
     return JSONResponse({
         "id": rec.get("id"),
         "mode": mode,

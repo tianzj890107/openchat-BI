@@ -59,3 +59,11 @@
 - 历史会话恢复时会重建本体去重索引，保留远程命中来源，避免继续追问时重复或错配。
 - 页面：本体内容、系统调用记录、智能分析和报表分析。
 - 主要文件：`bi_agent/web/session.py`、`bi_agent/web/app.py`、`bi_agent/web/static/app.js`、`tests/test_regressions.py`。
+
+### 8. 历史会话本体卡片迁移
+
+- 打开已有历史会话时，从会话保存的 OntologyQuery 等本体工具结果重新生成本体卡片。
+- 旧卡片会按当前远程来源、仓库、类型和编码重新绑定，缺失或过期的本体快照会被纠正；迁移不会改变会话的更新时间和历史排序。
+- 无法从历史工具结果安全确认的内容不自动改名，避免把普通数据库字段误改成本体对象。
+- 页面：历史会话、本体内容、系统调用记录。
+- 主要文件：`bi_agent/web/app.py`、`bi_agent/web/conversations.py`、`tests/test_regressions.py`。

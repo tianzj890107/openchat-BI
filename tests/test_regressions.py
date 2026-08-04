@@ -24,7 +24,10 @@ from bi_agent.report.parser import ParseResult
 from bi_agent.report.store import ReportStore
 from bi_agent.tools.sql_tools import _format_rows, _validate_sql
 from bi_agent.tools.chart_tools import _echarts_option, _write_standalone_html
-from bi_agent.web.app import STATE, _cwd_file, app, get_sources_endpoint
+from bi_agent.web.app import (
+    STATE, _cwd_file, _history_ontology_entities, _render_history_ontology_cards,
+    app, get_sources_endpoint,
+)
 from bi_agent.web.conversations import ConversationStore
 from bi_agent.web.session import WebSession
 from open_claude.agent_def import AgentDef
@@ -196,6 +199,27 @@ class OfflineRegressionTests(unittest.TestCase):
             session._extract_entities("Source: M0001 · orders", "SQLRun"),
             [],
         )
+
+    def test_history_ontology_snapshot_migrates_from_persisted_remote_tools(self) -> None:
+        store = OntologyStore()
+        session = WebSession(
+            "/tmp", AgentDef("test", tools=[]), store,
+            ontology_backend="production", ontology_repository_id="4",
+        )
+        messages = [
+            {"role": "assistant", "content": [{
+                "type": "tool_use", "id": "t1", "name": "OntologyQuery", "input": {},
+            }]},
+            {"role": "user", "content": [{
+                "type": "tool_result", "tool_use_id": "t1",
+                "content": "# Remote OntologyQuery\n[BO0005] 采购订单 (BusinessObject)",
+            }]},
+        ]
+        entities = _history_ontology_entities(session, messages)
+        html = _render_history_ontology_cards(entities)
+        self.assertIn('data-entity-key="remote:4:business_object:BO0005"', html)
+        self.assertIn('采购订单', html)
+        self.assertNotIn("本地", html)
 
     def test_ontology_all_includes_extended_collections(self) -> None:
         previous = (STATE.ontology_store,)

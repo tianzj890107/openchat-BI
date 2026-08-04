@@ -246,6 +246,40 @@ class ConversationStore:
                 rec["title"] = first_title
         return rec
 
+    def update_ontology_html(self, cid: str, ontology_html: str) -> bool:
+        """Update only the rendered ontology snapshot during history migration.
+
+        This deliberately keeps ``updated_at`` unchanged: opening an old
+        conversation must not move it to the top of the recent list.
+        """
+        rec = self._load(cid)
+        if not rec:
+            return False
+        value = (ontology_html or "")[:MAX_HTML_BYTES]
+        if rec.get("ontology_html") == value:
+            return True
+        rec["ontology_html"] = value
+        payload = json.dumps(rec, ensure_ascii=False)
+        temp_path: Optional[str] = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.root, prefix=f".{cid}.",
+                suffix=".tmp", delete=False
+            ) as tmp:
+                temp_path = tmp.name
+                tmp.write(payload)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(temp_path, self._path(cid))
+            temp_path = None
+        finally:
+            if temp_path:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+        return True
+
     def delete(self, cid: str) -> bool:
         try:
             p = self._path(cid)
