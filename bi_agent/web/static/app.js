@@ -19,7 +19,7 @@
   // ------------------------------------------------------------------
   function makeBucket() {
     return {
-      ontologyByCode: new Map(),       // code -> entity record
+      ontologyByCode: new Map(),       // source/type/code key -> entity record
       toolCalls: [],                   // tool call records
       llmTurns: [],                    // {iteration, request, response}
       turnCount: 0,
@@ -337,9 +337,14 @@
     metric: "指标",
     activity: "活动",
     rule: "规则",
+    dimension: "维度",
+    process: "流程",
+    meta_relation: "元模型关系",
+    table_node: "表节点",
+    column: "列",
   };
 
-  const ENTITY_CODE_RE = /\b(?:T\d{6}|BO\d{4}|LE\d{5}|AT\d{5}|ER\d{3}|M\d{3}|A\d{3}|R\d{3})\b/g;
+  const ENTITY_CODE_RE = /\b[A-Z][A-Z0-9_]{0,31}\d{3,8}\b/g;
 
   function esc(s) {
     if (s == null) return "";
@@ -1009,6 +1014,21 @@
     indexQuestionsFromChat();
     ensureRestoredDashboardQuestions();
     hydrateRestoredInspector();
+    // Rebuild the dedupe index from the restored cards. Without this, a
+    // follow-up turn could reuse the previous conversation's map or append
+    // duplicate entities to restored HTML.
+    b.ontologyByCode.clear();
+    el.ontologyList.querySelectorAll(".entity-card[data-code]").forEach((card) => {
+      const kind = [...card.classList].find((name) => name !== "entity-card") || "ontology";
+      const key = card.dataset.entityKey || `history:${kind}:${card.dataset.code}`;
+      b.ontologyByCode.set(key, {
+        code: card.dataset.code,
+        kind,
+        name: card.querySelector(".entity-name")?.textContent || card.dataset.code,
+        source: card.dataset.source || "history",
+        entity_key: key,
+      });
+    });
     hydrateRestoredDashboard();
     b.hasContent = !!(rec.chat_html && rec.chat_html.trim());
     b.dashboardHasContent = !!el.dashboardList.querySelector(".dash-card");
@@ -3229,7 +3249,7 @@
         ch.dataset.clickBound = "1";
         ch.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          flashOntologyEntity(ch.dataset.code);
+          flashOntologyEntity(ch.dataset.code, ch.dataset.entityKey);
         });
       });
     });
@@ -3273,7 +3293,7 @@
     });
     bind(el.toolList, ".tool-card .chip", "click", (chip, ev) => {
       ev.stopPropagation();
-      flashOntologyEntity(chip.dataset.code);
+      flashOntologyEntity(chip.dataset.code, chip.dataset.entityKey);
     });
     bind(el.llmList, ".llm-card .llm-head", "click", (head) => {
       head.closest(".llm-card").classList.toggle("open");
@@ -4134,8 +4154,22 @@
     const bucket = B();
     let added = false;
     for (const entity of entities) {
-      if (bucket.ontologyByCode.has(entity.code)) continue;
-      bucket.ontologyByCode.set(entity.code, entity);
+      const key = entity.entity_key || [
+        entity.source || "unknown",
+        entity.repository_id || "",
+        entity.kind || "ontology",
+        entity.code,
+      ].filter(Boolean).join(":");
+      // Legacy saved cards have no source key. Treat one such card with the
+      // same code as existing, while allowing distinct source/type/code
+      // tuples to coexist in new conversations.
+      if (
+        bucket.ontologyByCode.has(key) ||
+        (!entity.entity_key && el.ontologyList.querySelector(
+          `.entity-card[data-code="${CSS.escape(entity.code)}"]`,
+        ))
+      ) continue;
+      bucket.ontologyByCode.set(key, entity);
       added = true;
       el.ontologyList.appendChild(buildEntityCard(entity));
     }
@@ -4145,6 +4179,8 @@
   function buildEntityCard(entity) {
     const card = el_h("div", `entity-card ${entity.kind}`);
     card.dataset.code = entity.code;
+    card.dataset.entityKey = entity.entity_key || "";
+    card.dataset.source = entity.source || "";
     const kindLabel = KIND_LABELS[entity.kind] || entity.kind.toUpperCase();
     card.innerHTML = `
       <div class="entity-head">
@@ -4161,12 +4197,14 @@
   el.chatScroll.addEventListener("click", (e) => {
     const ref = e.target.closest(".entity-ref");
     if (!ref) return;
-    flashOntologyEntity(ref.dataset.code);
+    flashOntologyEntity(ref.dataset.code, ref.dataset.entityKey);
   });
 
-  function flashOntologyEntity(code) {
+  function flashOntologyEntity(code, entityKey = "") {
     showView("ontology");  // 本体内容 is now a standalone page
-    const card = el.ontologyList.querySelector(`.entity-card[data-code="${CSS.escape(code)}"]`);
+    const card = entityKey
+      ? el.ontologyList.querySelector(`.entity-card[data-entity-key="${CSS.escape(entityKey)}"]`)
+      : el.ontologyList.querySelector(`.entity-card[data-code="${CSS.escape(code)}"]`);
     if (card) {
       card.classList.add("open");
       card.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -4213,14 +4251,14 @@
       </div>`;
     card.querySelector(".tool-head").addEventListener("click", () => card.classList.toggle("open"));
     card.querySelectorAll(".chip").forEach(ch => {
-      ch.addEventListener("click", () => flashOntologyEntity(ch.dataset.code));
+      ch.addEventListener("click", () => flashOntologyEntity(ch.dataset.code, ch.dataset.entityKey));
     });
     return card;
   }
 
   function buildChipHTML(entity) {
     const kindLabel = KIND_LABELS[entity.kind] || entity.kind.toUpperCase();
-    return `<span class="chip ${esc(entity.kind)}" data-code="${esc(entity.code)}" title="${esc(kindLabel)} — ${esc(entity.name || "")}">
+    return `<span class="chip ${esc(entity.kind)}" data-code="${esc(entity.code)}" data-entity-key="${esc(entity.entity_key || "")}" title="${esc(kindLabel)} — ${esc(entity.name || "")}">
       <span class="chip-kind"></span>
       <span class="chip-code">${esc(entity.code)}</span>
       <span class="chip-name">${esc(entity.name || "")}</span>
@@ -4247,7 +4285,7 @@
       </div>`;
     step.querySelector(".step-header").addEventListener("click", () => step.classList.toggle("open"));
     step.querySelectorAll(".chip").forEach(ch => {
-      ch.addEventListener("click", (ev) => { ev.stopPropagation(); flashOntologyEntity(ch.dataset.code); });
+      ch.addEventListener("click", (ev) => { ev.stopPropagation(); flashOntologyEntity(ch.dataset.code, ch.dataset.entityKey); });
     });
     return step;
   }
