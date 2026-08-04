@@ -51,3 +51,11 @@
 - 同步更新脚本版本号，确保已部署页面加载最新的保存提示逻辑。
 - 页面：数据源。
 - 主要文件：`bi_agent/web/static/app.js`、`bi_agent/web/static/index.html`。
+
+### 7. 本体内容与远程 OntologyQuery 结果统一
+
+- 远程本体源启用时，本体内容页现在以当前远程仓库返回的对象为准，不再被本地 Excel 中同编码对象覆盖。
+- 本体命中按“来源 + 仓库 + 类型 + 编码”区分，补充表节点、列、维度、流程和元模型关系等远程类型；SQL、图表和表格中的来源编码不再误计为本体命中。
+- 历史会话恢复时会重建本体去重索引，保留远程命中来源，避免继续追问时重复或错配。
+- 页面：本体内容、系统调用记录、智能分析和报表分析。
+- 主要文件：`bi_agent/web/session.py`、`bi_agent/web/app.py`、`bi_agent/web/static/app.js`、`tests/test_regressions.py`。

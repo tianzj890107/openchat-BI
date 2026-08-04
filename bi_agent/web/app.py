@@ -1328,6 +1328,8 @@ def report_generate() -> JSONResponse:
         ontology_store=STATE.ontology_store,
         tools_override=REPORT_DB_TOOLS,
         context_header="# 任务类型: 标准报表生成\n# 数据库工具可用性: enabled",
+        ontology_backend=("remote" if STATE.ontology_backend in {"remote", "production"} else "local"),
+        ontology_repository_id=(STATE.remote_ontology.repository_id if STATE.remote_ontology else ""),
     )
     STATE.active_report_ids = []
     STATE.report_with_db = True
@@ -1505,6 +1507,8 @@ def _ensure_session() -> None:
             tools_override=tools_override,
             context_header=context_header,
             role_block=_role_block(),
+            ontology_backend=("remote" if STATE.ontology_backend in {"remote", "production"} else "local"),
+            ontology_repository_id=(STATE.remote_ontology.repository_id if STATE.remote_ontology else ""),
         )
 
 
@@ -1607,4 +1611,6 @@ def _build_report_session(report_ids: list[str], with_db: bool) -> WebSession:
         report_context_block=report_block,
         context_header=header,
         role_block=_role_block(),
+        ontology_backend=("remote" if STATE.ontology_backend in {"remote", "production"} else "local"),
+        ontology_repository_id=(STATE.remote_ontology.repository_id if STATE.remote_ontology else ""),
     )

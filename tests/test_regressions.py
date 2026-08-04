@@ -164,6 +164,39 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertEqual(by_code["MREL000003"]["kind"], "meta_relation")
         self.assertEqual(by_code["D001"]["display"], "维度 [D001] 时间")
 
+    def test_remote_ontology_wins_over_same_code_in_local_fallback(self) -> None:
+        store = OntologyStore()
+        store.business_objects["BO0005"] = SimpleNamespace(
+            name="本地元数据字段映射",
+            to_prompt=lambda: "业务对象 [BO0005] 本地元数据字段映射",
+        )
+        session = WebSession(
+            "/tmp", AgentDef("test", tools=[]), store,
+            ontology_backend="production", ontology_repository_id="4",
+        )
+        entities = session._extract_entities(
+            "[BO0005] 采购订单 (BusinessObject)\n"
+            "  name: Purchase Order\n"
+            "[PT0006] po_header_t (TableNode)",
+            "OntologyQuery",
+        )
+        by_code = {item["code"]: item for item in entities}
+        self.assertEqual(by_code["BO0005"]["name"], "采购订单")
+        self.assertEqual(by_code["BO0005"]["source"], "remote")
+        self.assertEqual(by_code["BO0005"]["repository_id"], "4")
+        self.assertEqual(by_code["PT0006"]["kind"], "table_node")
+
+    def test_non_ontology_tool_references_do_not_become_entity_hits(self) -> None:
+        store = OntologyStore()
+        store.metrics["M0001"] = SimpleNamespace(
+            name="本地指标", to_prompt=lambda: "指标 [M0001] 本地指标"
+        )
+        session = WebSession("/tmp", AgentDef("test", tools=[]), store)
+        self.assertEqual(
+            session._extract_entities("Source: M0001 · orders", "SQLRun"),
+            [],
+        )
+
     def test_ontology_all_includes_extended_collections(self) -> None:
         previous = (STATE.ontology_store,)
         try:

@@ -42,17 +42,15 @@ from ..tools.table_tools import extract_table_spec
 from ..tools.todo_tools import extract_todo_spec
 
 
-# Ontology codes carried in tool output, surfaced to the 本体 inspector panel.
-# Digit widths and prefixes differ across ontology sources (ChatBI / 超聚变 /
-# MetaERP).  Keep the longest prefixes first so e.g. ``MREL000003`` is not
-# reduced to a partial ``M`` match.  The lookup step still validates every
-# candidate against the local store; remote-only records are handled from the
-# structured ``[CODE] label (Type)`` lines emitted by remote tools.
+# Ontology codes carried in ontology-tool output, surfaced to the 本体 inspector
+# panel.  Repositories do not share a single global code namespace (for
+# example BO0005 can mean different things in different repositories), so the
+# source/type/code tuple is the identity used by the caller below.
 ENTITY_CODE_RE = re.compile(
-    r"\b(?:MREL|TERM|MET|REL|RULE|ACT|SSP|DIM|BO|LE|AT|ER|T|M|A|R|D)\d{3,8}\b"
+    r"\b[A-Z][A-Z0-9_]{0,31}\d{3,8}\b"
 )
 REMOTE_ENTITY_LINE_RE = re.compile(
-    r"^\s*\[(?P<code>(?:MREL|TERM|MET|REL|RULE|ACT|SSP|DIM|BO|LE|AT|ER|T|M|A|R|D)\d{3,8})\]"
+    r"^\s*\[(?P<code>[A-Z][A-Z0-9_]{0,31}\d{3,8})\]"
     r"\s*(?P<label>[^\n(]+?)\s*(?:\((?P<type>[^)]+)\))?\s*$",
     re.MULTILINE,
 )
@@ -89,6 +87,8 @@ class WebSession:
         report_context_block: Optional[str] = None,
         context_header: Optional[str] = None,
         role_block: Optional[str] = None,
+        ontology_backend: str = "local",
+        ontology_repository_id: str = "",
     ) -> None:
         self.cwd = cwd
         self.agent_def = agent_def
@@ -109,13 +109,18 @@ class WebSession:
         self._context_header: Optional[str] = context_header
         # role_block: 用户画像 + 回答风格偏好(角色选择页设置),注入系统提示。
         self._role_block: Optional[str] = role_block
+        # The local workbook remains available for fallback tools, but it is
+        # not authoritative when the active ontology source is remote.
+        self.ontology_backend = str(ontology_backend or "local").strip().lower()
+        self.ontology_repository_id = str(ontology_repository_id or "").strip()
 
         # Skills & system prompt (skills must be loaded before prompt build)
         init_bundled_skills()
         load_skills(cwd)
         self.system_prompt = self._build_system_prompt()
 
-        # Aggregate history of ontology entities seen this session (dedup by code)
+        # Aggregate history of ontology entities seen this session (dedup by
+        # source/type/code so separate repositories cannot overwrite each other).
         self.ontology_seen: dict[str, dict[str, Any]] = {}
 
         # Pending AskUser tool_use whose result must be supplied by the user.
@@ -395,7 +400,7 @@ class WebSession:
                     display_output, multi_chart = extract_multidim_chart_spec(display_output)
                     display_output, todos = extract_todo_spec(display_output)
                     llm_output = display_output if (chart or table or multi_chart or todos) else output
-                    entities = self._extract_entities(display_output)
+                    entities = self._extract_entities(display_output, tu["name"])
                     yield {
                         "type": "tool_result",
                         "id": tu["id"],
@@ -447,7 +452,7 @@ class WebSession:
                 display_output, todos = extract_todo_spec(display_output)
                 llm_output = display_output if (chart or table or multi_chart or todos) else output
 
-                entities = self._extract_entities(display_output)
+                entities = self._extract_entities(display_output, tu["name"])
                 yield {
                     "type": "tool_result",
                     "id": tu["id"],
@@ -596,15 +601,23 @@ class WebSession:
             out.append({"role": role, "content": blocks})
         return out
 
-    def _extract_entities(self, text: str) -> list[dict[str, Any]]:
-        """Find ontology codes in tool output and retain remote-only hits.
+    def _extract_entities(
+        self, text: str, tool_name: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        """Extract entities from ontology tools using the active source.
 
-        Local workbooks can enrich a code with its full dataclass prompt.  A
-        production repository may contain codes that are not present in the
-        local fallback workbook, so remote tool output is also parsed from its
-        stable ``[CODE] label (Type)`` representation instead of silently
-        dropping those hits from the 本体内容 panel.
+        The remote and local repositories intentionally keep separate code
+        namespaces.  When remote mode is active, a remote ``[CODE] label
+        (Type)`` line must win even if the local fallback workbook contains
+        the same code.  SQL/chart/table output is excluded from the inspector
+        because a source-note reference is not an ontology hit.
         """
+        ontology_tools = {
+            "OntologyQuery", "TermDisambiguate", "MetricLookup", "RelationLookup",
+            "EntityDescribe", "ListBusinessObjects", "GraphContext", "GraphExpand",
+        }
+        if tool_name is not None and tool_name not in ontology_tools:
+            return []
         raw_text = text or ""
         codes = set(ENTITY_CODE_RE.findall(raw_text))
         remote_lines = {
@@ -617,27 +630,56 @@ class WebSession:
         }
         results: list[dict[str, Any]] = []
         for code in codes:
-            entity, kind = self._lookup(code)
-            if entity is not None:
+            remote = remote_lines.get(code)
+            source = "remote" if self.ontology_backend in {"remote", "production"} else "local"
+            # Remote output is authoritative in production mode.  Do not
+            # enrich it with a same-code local fallback object: code values
+            # are only unique inside one ontology repository.
+            if source == "remote" and remote is not None:
+                kind = self._kind_from_code(code, remote["type"])
                 record = {
                     "code": code,
                     "kind": kind,
-                    "name": getattr(entity, "name", None) or code,
-                    "display": entity.to_prompt(),
-                }
-            else:
-                remote = remote_lines.get(code)
-                if remote is None:
-                    continue
-                record = {
-                    "code": code,
-                    "kind": self._kind_from_code(code, remote["type"]),
                     "name": remote["label"] or code,
                     "display": remote["display"],
+                    "source": source,
+                    "repository_id": self.ontology_repository_id,
                 }
+            elif source == "remote":
+                # A remote ontology tool result without a structured entity
+                # line is not safe to resolve against the unrelated local
+                # workbook, so leave it out rather than displaying a false hit.
+                continue
+            else:
+                entity, kind = self._lookup(code)
+                if entity is None:
+                    remote = remote_lines.get(code)
+                if entity is not None:
+                    record = {
+                        "code": code,
+                        "kind": kind,
+                        "name": getattr(entity, "name", None) or code,
+                        "display": entity.to_prompt(),
+                        "source": source,
+                        "repository_id": "",
+                    }
+                elif remote is not None:
+                    record = {
+                        "code": code,
+                        "kind": self._kind_from_code(code, remote["type"]),
+                        "name": remote["label"] or code,
+                        "display": remote["display"],
+                        "source": source,
+                        "repository_id": "",
+                    }
+                else:
+                    continue
+            record["entity_key"] = ":".join(
+                filter(None, [record["source"], record["repository_id"], record["kind"], code])
+            )
             results.append(record)
-            if code not in self.ontology_seen:
-                self.ontology_seen[code] = record
+            if record["entity_key"] not in self.ontology_seen:
+                self.ontology_seen[record["entity_key"]] = record
         results.sort(key=lambda r: r["code"])
         return results
 
@@ -659,6 +701,8 @@ class WebSession:
             "businessrule": "rule",
             "process": "process",
             "metarelation": "meta_relation",
+            "tablenode": "table_node",
+            "column": "column",
         }
         if type_key in type_map:
             return type_map[type_key]
