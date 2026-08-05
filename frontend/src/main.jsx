@@ -322,6 +322,18 @@ window.antdStepMount = mountStep;
 const cardRoots = new WeakMap();
 function mountResultCard(card, type) {
   if (!card || cardRoots.has(card)) return;
+  const moveRestoredSourceToFooter = (host) => {
+    const body = host.querySelector(":scope .ant-card-body");
+    const source = host.querySelector(":scope .ant-card-head-title .antd-result-source");
+    if (!body || !source) return;
+    let footer = body.querySelector(":scope > .antd-result-source-footer");
+    if (!footer) {
+      footer = document.createElement("div");
+      footer.className = "antd-result-source-footer";
+      body.appendChild(footer);
+    }
+    footer.appendChild(source);
+  };
   // Saved HTML can already contain the host and rendered Ant Card from a
   // previous session. Reusing it avoids appending a second host during
   // history hydration (which was the source of occasional triple bubbles).
@@ -331,11 +343,13 @@ function mountResultCard(card, type) {
     // link back in place without rebuilding the already-hydrated canvas.
     const restoredTitle = existingHost.querySelector(":scope .ant-card-head-title");
     const restoredSource = card.querySelector(`:scope > .${type === "table" ? "table-head" : type === "multi" ? "multidim-head" : "chart-head"} .${type === "chart" ? "chart-saved" : type === "multi" ? "multidim-source" : "table-source"}`);
-    if (restoredTitle && restoredSource && !restoredTitle.querySelector(".antd-result-source")) {
+    const hasRestoredFooter = existingHost.querySelector(":scope .antd-result-source-footer .antd-result-source");
+    if (restoredTitle && restoredSource && !hasRestoredFooter && !restoredTitle.querySelector(".antd-result-source")) {
       const sourceClone = restoredSource.cloneNode(true);
       sourceClone.className = "antd-result-source";
       restoredTitle.appendChild(sourceClone);
     }
+    moveRestoredSourceToFooter(existingHost);
     cardRoots.set(card, { restored: true });
     return;
   }
@@ -353,12 +367,16 @@ function mountResultCard(card, type) {
   const sourceHref = sourceNode?.querySelector("a")?.getAttribute("href") || "";
   const resultTitle = (
     <span className="antd-result-title-row">
-      <span className={`antd-result-type antd-result-type-${type}`}>{typeLabel}</span>
       <span className="antd-result-title-text">{title}</span>
-      {sourceText && (sourceHref
-        ? <a className="antd-result-source" href={sourceHref} target="_blank" rel="noreferrer">{sourceText}</a>
-        : <span className="antd-result-source">{sourceText}</span>)}
+      <span className={`antd-result-type antd-result-type-${type}`}>{typeLabel}</span>
     </span>
+  );
+  const sourceFooter = sourceText && (
+    <div className="antd-result-source-footer">
+      {sourceHref
+        ? <a className="antd-result-source" href={sourceHref} target="_blank" rel="noreferrer">{sourceText}</a>
+        : <span className="antd-result-source">{sourceText}</span>}
+    </div>
   );
   const nodes = type === "chart"
     ? [card.querySelector(":scope > .chart-canvas")]
@@ -366,7 +384,7 @@ function mountResultCard(card, type) {
       ? [card.querySelector(":scope > .table-scroll"), card.querySelector(":scope > .table-summary"), card.querySelector(":scope > .table-footnote")]
       : [card.querySelector(":scope > .multidim-toolbar"), card.querySelector(":scope > .multidim-canvas"), card.querySelector(":scope > .multidim-summary"), card.querySelector(":scope > .multidim-footnote")];
   const root = createRoot(host);
-  root.render(<Card size="small" title={resultTitle} className={`antd-result-card antd-result-${type}`}><div ref={(slot) => { if (slot) nodes.filter(Boolean).forEach((node) => slot.appendChild(node)); }} /></Card>);
+  root.render(<Card size="small" title={resultTitle} className={`antd-result-card antd-result-${type}`}><div ref={(slot) => { if (slot) nodes.filter(Boolean).forEach((node) => slot.appendChild(node)); }} />{sourceFooter}</Card>);
   if (head) head.style.display = "none";
   cardRoots.set(card, root);
 }

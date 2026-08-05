@@ -4161,9 +4161,8 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   display: none !important;
 }
 
-/* The source link belongs in the chart header's top-right corner.  It is
- * still hidden automatically when the legacy header is replaced by the
- * mounted Ant card; the React header rebuilds it there with the same label. */
+/* Technical source/saved metadata is retained for traceability, but kept out
+ * of the title row and aligned to the card's lower-right corner. */
 .chat-scroll .chart-saved {
   display: inline-flex !important;
   margin-left: auto;
@@ -4229,6 +4228,7 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-result-type-table,
 .antd-result-type-multi { color: #7C83FD; }
 .antd-result-title-text {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4238,9 +4238,8 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   font-weight: 600;
 }
 .antd-result-source {
-  flex: 0 0 auto;
-  max-width: 42%;
-  margin-left: auto;
+  display: inline-block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4249,6 +4248,14 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   font-weight: 400;
 }
 .antd-result-source:hover { color: #1677ff; }
+.antd-result-source-footer {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  margin-top: 8px;
+  text-align: right;
+  line-height: 1.2;
+}
 
 /* ------------------------------------------------------------------
  * One visible result surface (conversation + dashboard)
