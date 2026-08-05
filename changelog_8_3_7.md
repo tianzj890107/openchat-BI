@@ -105,3 +105,12 @@
 - 独立图表 HTML 对标题和脚本内 JSON 做上下文转义，避免标题内容破坏页面脚本；同一秒生成同名图表时自动追加序号，不再覆盖旧图表。
 - 页面：数据源设置、智能分析/报表分析图表及历史图表链接。
 - 主要文件：`bi_agent/tools/sql_tools.py`、`bi_agent/ontology/remote.py`、`bi_agent/tools/chart_tools.py`、`bi_agent/tools/chart_multidim_tools.py`、`bi_agent/web/app.py`、`tests/test_regressions.py`。
+
+## 2026-08-05
+
+### 14. IBA 内部侧栏展开宽度对齐
+
+- IBA 内部功能侧栏展开时默认宽度调整为 302px，与外部顶部 EIMOS 和“产品功能”之间的分界线对齐。
+- 侧栏收起时仍保持原有窄栏宽度和图标布局；已保存的旧默认宽度 248px 会自动迁移为 302px，用户手动调整过的宽度保持不变。
+- 页面：CEO 驾驶舱、驾驶舱、i-Agent 外层 IBA 导航。
+- 主要文件：`ceo_dashboard_standalone.html`、`dashboard.html`。

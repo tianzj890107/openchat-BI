@@ -1108,7 +1108,7 @@ body.editing .config-note { display: block; }
   }
 
   /* CEO 驾驶舱同款 IBA 外层侧栏，宽度可拖拽调整。 */
-  :root { --iba-sidebar-width: 248px; }
+  :root { --iba-sidebar-width: 302px; }
   .sidebar {
     width: var(--iba-sidebar-width);
     background: #eef5ff;
@@ -1200,7 +1200,7 @@ body.editing .config-note { display: block; }
   background: #ffffff;
 }
   /* IBA 外层侧栏样式必须在媒体查询之外，确保桌面宽度同样生效。 */
-  :root { --iba-sidebar-width: 248px; }
+  :root { --iba-sidebar-width: 302px; }
   .sidebar {
     width: var(--iba-sidebar-width);
     background: #eef5ff;
@@ -2409,8 +2409,10 @@ renderRole("cfo");
 
     const resizer = document.getElementById("iba-sidebar-resizer");
     const saved = Number(localStorage.getItem("iba.sidebar.width"));
-    if (Number.isFinite(saved) && saved >= 220 && saved <= 420) {
-      document.documentElement.style.setProperty("--iba-sidebar-width", saved + "px");
+    const effective = saved === 248 ? 302 : saved;
+    if (Number.isFinite(effective) && effective >= 220 && effective <= 420) {
+      document.documentElement.style.setProperty("--iba-sidebar-width", effective + "px");
+      if (saved === 248) localStorage.setItem("iba.sidebar.width", "302");
     }
     if (resizer) resizer.addEventListener("pointerdown", (ev) => {
       ev.preventDefault();

@@ -1688,7 +1688,7 @@ body {
 
 .sidebar {
   top: 57px;
-  width: 248px;
+  width: 302px;
   background: #eef5ff;
   color: #17315d;
   border-right: 1px solid #d3dce8;
@@ -1750,7 +1750,7 @@ body {
 }
 
 .content {
-  margin-left: 248px;
+  margin-left: 302px;
   padding-top: 57px;
   background: #fff;
   min-height: 100vh;
@@ -1839,7 +1839,7 @@ body.nav-collapsed .content {
 }
 
 .iba-sidebar-resizer {
-  position: fixed; top: 57px; bottom: 0; left: 245px; width: 6px;
+  position: fixed; top: 57px; bottom: 0; left: 299px; width: 6px;
   z-index: 20; cursor: col-resize; background: transparent;
 }
 .iba-sidebar-resizer::after { content: ""; position: absolute; inset: 0 2px; background: transparent; opacity: 0; transition: opacity .18s ease, background .18s ease; }
@@ -2113,10 +2113,14 @@ body.nav-collapsed .menu-item {
   <script>
   const ibaSidebarResizer = document.getElementById("iba-sidebar-resizer");
   const ibaSavedSidebarWidth = Number(localStorage.getItem("iba.sidebar.width"));
-  if (Number.isFinite(ibaSavedSidebarWidth) && ibaSavedSidebarWidth >= 220 && ibaSavedSidebarWidth <= 420) {
-    document.querySelector(".sidebar").style.width = ibaSavedSidebarWidth + "px";
-    document.querySelector(".content").style.marginLeft = ibaSavedSidebarWidth + "px";
-    ibaSidebarResizer.style.left = (ibaSavedSidebarWidth - 3) + "px";
+  // 248px was the previous default. Migrate only that untouched default to
+  // the new seam-aligned width; preserve any deliberate user resize.
+  const ibaEffectiveSidebarWidth = ibaSavedSidebarWidth === 248 ? 302 : ibaSavedSidebarWidth;
+  if (Number.isFinite(ibaEffectiveSidebarWidth) && ibaEffectiveSidebarWidth >= 220 && ibaEffectiveSidebarWidth <= 420) {
+    document.querySelector(".sidebar").style.width = ibaEffectiveSidebarWidth + "px";
+    document.querySelector(".content").style.marginLeft = ibaEffectiveSidebarWidth + "px";
+    ibaSidebarResizer.style.left = (ibaEffectiveSidebarWidth - 3) + "px";
+    if (ibaSavedSidebarWidth === 248) localStorage.setItem("iba.sidebar.width", "302");
   }
   if (ibaSidebarResizer) ibaSidebarResizer.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();
