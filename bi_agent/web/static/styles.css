@@ -1728,7 +1728,8 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 /* ----- Composer box: textarea + toolbar ----- */
 .composer {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   background: var(--bg-input);
   border: 1px solid var(--border-2);
   border-radius: 6px;
@@ -1738,32 +1739,38 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 
 /* Re-style textarea so it blends into the composer box */
 .composer .chat-input {
+  flex: 1 1 auto;
+  min-width: 0;
   background: transparent;
   border: none;
-  padding: 10px 12px 6px;
+  padding: 10px 12px;
   min-height: 44px;
   max-height: 160px;
-  border-radius: 6px 6px 0 0;
+  border-radius: 6px;
 }
 .composer .chat-input:focus { border: none; }
 
 .composer-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex: 0 0 auto;
+  justify-content: flex-end;
   gap: 8px;
-  padding: 6px 8px 6px 10px;
-  border-top: 1px solid var(--border-1);
-  background: var(--bg-1);
-  border-radius: 0 0 6px 6px;
+  padding: 4px 8px 4px 0;
+  border-top: 0;
+  background: transparent;
+  border-radius: 0;
 }
 .composer-left {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.composer-left::-webkit-scrollbar { display: none; }
 .composer-btn {
   display: inline-flex;
   align-items: center;
@@ -1789,7 +1796,19 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 .composer-btn-ico { font-size: 13px; }
 .composer-btn-label { letter-spacing: 0.2px; }
-.composer-send { flex-shrink: 0; }
+.composer-send {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 24px;
+  line-height: 1;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 
 /* Report-mode-only controls: hidden in data mode */
 body:not([data-mode="report"]) .composer-attach,
