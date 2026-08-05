@@ -121,3 +121,10 @@
 - 发送控件改为单独的大箭头按钮，不再显示“发送”文字；报表模式的辅助操作仍在同一行横向排列。
 - 页面：智能分析、报表分析对话输入区。
 - 主要文件：`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/app.js`。
+
+### 16. 任务清单只显示用户提问
+
+- 任务清单不再重复显示分析 SOP 步骤，只保留当前会话中的用户提问及其定位入口。
+- 分析 SOP 继续在上方作为独立的可折叠区域展示。
+- 页面：智能分析、报表分析会话区。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`bi_agent/web/static/vendor/antd/sidebar.js`。
