@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智析 · 本体工作台</title>
+</head>
+<body data-mode="data" class="sidebar-collapsed">
+  <div class="app">
+
+    <!-- React workbench runtime bridge nodes. The visible navigation and
+         workflow surfaces are mounted by frontend/src/main.jsx. -->
+    <div id="antd-sidebar-root" aria-label="Ant Design 导航栏"></div>
+
+    <!-- ============ LEFT SIDEBAR (global nav, Claude/ChatGPT-style) ============ -->
+    <aside class="sidebar runtime-sidebar-bridge" id="sidebar" hidden aria-hidden="true">
+      <div class="sidebar-brand">
+        <span class="brand-mark">◆</span>
+        <span class="brand-name">智析</span>
+        <span class="brand-sub" id="agent-name">bi-analyst</span>
+        <span class="brand-quadrant" id="brand-quadrant" hidden></span>
+        <button class="sidebar-collapse" id="sidebar-collapse" title="收起侧栏">⇤</button>
+      </div>
+
+      <button class="sidebar-newchat" id="nav-new-chat" title="开始新对话 — 清空当前模式的对话历史">
+        <span class="nav-glyph">＋</span> 新对话
+      </button>
+
+      <!-- workspace modes — both keep the dashboard resident on the right -->
+      <div class="sidebar-group" id="mode-switch">
+        <div class="sidebar-group-label">分析</div>
+        <button class="nav-item mode-btn active" data-mode="data" data-view="workspace"
+                title="智能分析 — 直接查询本体与数据库,看板常驻右侧">
+          <span class="nav-glyph">◉</span> 智能分析
+        </button>
+        <button class="nav-item mode-btn" data-mode="report" data-view="workspace"
+                title="报表分析 — 上传 PDF/Word 做 Q&A,看板常驻右侧">
+          <span class="nav-glyph">◎</span> 报表分析
+        </button>
+      </div>
+
+      <!-- content pages -->
+      <div class="sidebar-group">
+        <div class="sidebar-group-label">内容</div>
+        <button class="nav-item" data-view="ontology" title="本体内容 — 对话命中的本体实体">
+          <span class="nav-glyph">⬡</span> 本体内容
+        </button>
+        <button class="nav-item" data-view="syslog" title="系统调用记录 — 工具调用 / 大模型 I/O / 系统">
+          <span class="nav-glyph">▸</span> 系统调用记录
+        </button>
+      </div>
+
+      <div class="sidebar-divider"></div>
+
+      <!-- settings pages -->
+      <div class="sidebar-group sidebar-settings">
+        <div class="sidebar-group-label">设置</div>
+        <button class="nav-item" data-view="ontology-adapt" title="本体适配 — 检索模式与本体源 / 图库源">
+          <span class="nav-glyph">⬡</span> 本体适配
+        </button>
+        <button class="nav-item" data-view="sources" title="数据源 — 选择数据库 / Doris 取数源">
+          <span class="nav-glyph">◈</span> 数据源
+        </button>
+        <button class="nav-item" data-view="model" title="模型参数 — 模型与采样参数、API Key">
+          <span class="nav-glyph">⚙</span> 模型参数
+        </button>
+        <button class="nav-item" data-view="roles" title="角色选择 — 自身角色与 Agent 回答风格">
+          <span class="nav-glyph">☻</span> 角色选择
+        </button>
+        <button class="nav-item" data-view="memory" title="记忆管理 — 重置/开始新对话">
+          <span class="nav-glyph">⟲</span> 记忆管理
+        </button>
+      </div>
+
+      <div class="sidebar-recent" id="sidebar-recent">
+        <div class="sidebar-group-label">最近</div>
+        <div class="recent-list" id="recent-list">
+          <div class="recent-empty">暂无历史会话</div>
+        </div>
+      </div>
+
+      <button class="sidebar-account" id="sidebar-account" title="个人账号设置">
+        <span class="account-avatar" id="account-avatar">分</span>
+        <span class="account-name" id="account-name">分析员</span>
+        <span class="account-gear">⚙</span>
+      </button>
+    </aside>
+
+    <div class="layout-resizer layout-resizer-sidebar" id="sidebar-resizer" title="拖动调整导航栏宽度"></div>
+
+    <!-- Floating reopen button — shown only while the sidebar is collapsed -->
+    <button class="sidebar-reopen" id="sidebar-reopen" title="展开侧栏">☰</button>
+
+    <!-- ============ MAIN AREA (page router) ============ -->
+    <div class="app-main">
+
+      <!-- ---------- VIEW: WORKSPACE (chat + dashboard, shared by 智能/报表分析) ---------- -->
+      <section class="view view-workspace active" id="view-workspace" data-view="workspace">
+        <div class="split">
+          <!-- chat -->
+          <section class="chat-pane">
+            <div class="pane-header">
+              <span class="pane-label" id="pane-label">对话</span>
+              <span class="pane-hint" id="turn-counter">0 回合</span>
+            </div>
+            <div id="antd-workflow-root" aria-label="分析 SOP 与任务清单"></div>
+            <!-- Current SOP overview; task details remain in the collapsible list below. -->
+            <div class="chat-sop collapsed" id="chat-sop" hidden>
+              <div class="chat-sop-head" id="chat-sop-head">
+                <span class="chat-sop-caret" id="chat-sop-caret">▾</span>
+                <span class="chat-sop-title">分析 SOP</span>
+                <span class="chat-sop-count" id="chat-sop-count">0/6</span>
+              </div>
+              <ol class="chat-sop-list" id="chat-sop-list"></ol>
+            </div>
+            <!-- Pinned task list (Claude-Code style) — driven by TodoWrite -->
+            <div class="chat-todo collapsed" id="chat-todo" hidden>
+              <div class="chat-todo-head" id="chat-todo-head">
+                <span class="chat-todo-caret" id="chat-todo-caret">▾</span>
+                <span class="chat-todo-title">任务清单</span>
+                <span class="chat-todo-count" id="chat-todo-count">0/0</span>
+              </div>
+              <ul class="chat-todo-list" id="chat-todo-list"></ul>
+            </div>
+            <div class="chat-scroll" id="chat-scroll">
+              <div class="empty-state" id="chat-empty">
+                <div class="empty-glyph" id="empty-glyph">◇</div>
+                <div class="empty-title" id="empty-title">硕磐财务 BI 智能分析</div>
+                <div class="empty-sub" id="empty-welcome"></div>
+                <div class="empty-hints" id="empty-hints"></div>
+              </div>
+            </div>
+
+            <!-- ========== CHAT INPUT (claude.ai-style composer) ========== -->
+            <div class="chat-input-wrap" id="chat-input-wrap">
+
+              <!-- Attachment chip row — only shown in report mode when a report is active -->
+              <div class="attach-row" id="attach-row" hidden>
+                <div class="attach-chip" id="attach-chip">
+                  <span class="attach-chip-ico">📄</span>
+                  <div class="attach-chip-body">
+                    <div class="attach-chip-name" id="attach-chip-name"></div>
+                    <div class="attach-chip-meta" id="attach-chip-meta"></div>
+                  </div>
+                  <button class="attach-chip-change" id="attach-chip-change"
+                          title="切换到其他报表">切换</button>
+                  <button class="attach-chip-remove" id="attach-chip-remove"
+                          title="移除当前报表">✕</button>
+                </div>
+              </div>
+
+              <!-- Drop overlay — covers whole composer while dragging in report mode -->
+              <div class="drop-overlay" id="drop-overlay">
+                <div class="drop-overlay-inner">
+                  <div class="drop-overlay-ico">⬇</div>
+                  <div class="drop-overlay-text">松开以上传 PDF / Word 报表</div>
+                </div>
+              </div>
+
+              <div class="composer">
+                <textarea
+                  id="chat-input"
+                  class="chat-input"
+                  rows="2"
+                  placeholder="提问...  (Enter 发送 · Shift+Enter 换行)"></textarea>
+
+                <div class="composer-toolbar">
+                  <div class="composer-left">
+                    <button class="composer-btn composer-attach" id="btn-attach"
+                            title="上传 PDF / Word 报表">
+                      <span class="composer-btn-ico">📎</span>
+                      <span class="composer-btn-label">上传报表</span>
+                    </button>
+                    <label class="toggle composer-toggle"
+                           title="勾选后,问答可同时调用硕磐本体工具与 SQLite 做对账">
+                      <input type="checkbox" id="with-db" />
+                      <span class="toggle-track"><span class="toggle-dot"></span></span>
+                      <span class="toggle-label">数据库查询</span>
+                    </label>
+                    <button class="composer-btn composer-history" id="btn-history"
+                            title="最近上传的报表">
+                      <span class="composer-btn-ico">📚</span>
+                      <span class="composer-btn-label">最近报表</span>
+                      <span class="history-count" id="history-count">0</span>
+                    </button>
+                    <button class="composer-btn composer-reportgen" id="btn-reportgen"
+                            title="按经营规则配置生成标准管报">
+                      <span class="composer-btn-ico">⊞</span>
+                      <span class="composer-btn-label">报表生成</span>
+                    </button>
+                    <span class="upload-status" id="upload-status"></span>
+                  </div>
+                  <button id="btn-send" class="btn btn-primary composer-send"
+                          aria-label="发送" title="发送">➤</button>
+                </div>
+              </div>
+
+              <!-- Hidden native file input — triggered by btn-attach & attach-chip-change -->
+              <input type="file" id="file-input" accept=".pdf,.docx" multiple hidden />
+
+              <!-- History popover — anchored to composer, opens upward -->
+              <div class="history-popover" id="history-popover" hidden>
+                <div class="history-header">
+                  <span>最近上传的报表 <span class="history-hint">(可多选,最多 5 份)</span></span>
+                  <button class="history-close" id="history-close">✕</button>
+                </div>
+                <div class="history-toolbar">
+                  <span class="history-selected-count" id="history-selected-count">已选 0 份</span>
+                  <button class="btn btn-ghost history-select-all" id="history-select-all">全选</button>
+                  <button class="btn btn-ghost history-clear-sel" id="history-clear-sel">清空</button>
+                  <button class="btn btn-primary history-activate-sel" id="history-activate-sel"
+                          disabled>激活所选</button>
+                </div>
+                <div class="history-list" id="history-list">
+                  <div class="history-empty">暂无上传记录</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="layout-resizer layout-resizer-workspace" id="workspace-resizer" title="拖动调整对话与看板宽度"></div>
+
+          <!-- dashboard (resident on the right) -->
+          <section class="dashboard-pane" id="dashboard-pane">
+            <div class="pane-header">
+              <span class="pane-label">看板</span>
+              <span class="pane-hint" id="dashboard-count">0</span>
+              <button class="btn btn-ghost dash-toolbtn" id="dashboard-clear"
+                      title="清空当前看板">✕ 清空</button>
+              <button class="dashboard-collapse" id="dashboard-collapse"
+                      title="折叠看板">⇥</button>
+            </div>
+            <div class="dashboard-scroll" id="dashboard-list">
+              <div class="empty-state" id="dashboard-empty">
+                <div class="empty-glyph">▦</div>
+                <div class="empty-title">实时看板</div>
+                <div class="empty-sub">结论 / 图表 / 表格会在此自动汇总</div>
+              </div>
+            </div>
+          </section>
+          <button class="dashboard-reopen" id="dashboard-reopen"
+                  title="展开看板">▦</button>
+        </div>
+      </section>
+
+      <!-- ---------- VIEW: 本体内容 ---------- -->
+      <section class="view view-page" id="view-ontology" data-view="ontology">
+        <div class="page-header">
+          <span class="page-title">⬡ 本体内容</span>
+          <span class="tab-count" id="count-ontology">0</span>
+        </div>
+        <div class="page-body">
+          <div class="panel-desc">对话中命中的本体实体(按编码去重,实时追加)</div>
+          <div class="ontology-filters" id="ontology-filters" role="toolbar" aria-label="本体类型筛选">
+            <button type="button" class="ontology-filter is-on" data-kind="term">术语</button>
+            <button type="button" class="ontology-filter is-on" data-kind="business_object">业务对象</button>
+            <button type="button" class="ontology-filter is-on" data-kind="logical_entity">逻辑实体</button>
+            <button type="button" class="ontology-filter is-on" data-kind="attribute">属性</button>
+            <button type="button" class="ontology-filter is-on" data-kind="relation">关系</button>
+            <button type="button" class="ontology-filter is-on" data-kind="metric">指标</button>
+            <button type="button" class="ontology-filter is-on" data-kind="activity">活动</button>
+            <button type="button" class="ontology-filter is-on" data-kind="rule">规则</button>
+            <button type="button" class="ontology-filter is-on" data-kind="dimension">维度</button>
+            <button type="button" class="ontology-filter is-on" data-kind="process">流程</button>
+            <button type="button" class="ontology-filter is-on" data-kind="meta_relation">元模型关系</button>
+            <button type="button" class="ontology-filter is-off" data-kind="table_node">表节点</button>
+            <button type="button" class="ontology-filter is-off" data-kind="column">列</button>
+          </div>
+          <div class="entity-list" id="ontology-list"></div>
+        </div>
+      </section>
+
+      <!-- ---------- VIEW: 系统调用记录 (tools / llm / system) ---------- -->
+      <section class="view view-page" id="view-syslog" data-view="syslog">
+        <div class="page-header tab-bar">
+          <button class="tab active" data-tab="tools">
+            <span class="tab-glyph">▸</span> 工具调用
+            <span class="tab-count" id="count-tools">0</span>
+          </button>
+          <button class="tab" data-tab="llm">
+            <span class="tab-glyph">⟳</span> 大模型 I/O
+            <span class="tab-count" id="count-llm">0</span>
+          </button>
+          <button class="tab" data-tab="system">
+            <span class="tab-glyph">⚙</span> 系统
+          </button>
+        </div>
+        <div class="page-body">
+          <div class="inspector-panel active" data-panel="tools">
+            <div class="panel-desc">每次工具调用的输入、输出与耗时</div>
+            <div class="tool-list" id="tool-list"></div>
+          </div>
+          <div class="inspector-panel" data-panel="llm">
+            <div class="panel-desc">大模型每一轮的输入消息与输出(含文本与工具调用)</div>
+            <div class="llm-list" id="llm-list"></div>
+          </div>
+          <div class="inspector-panel" data-panel="system">
+            <div class="panel-desc">Agent 身份、工具白名单、完整系统提示词</div>
+            <div class="system-content" id="system-content">
+              <div class="sys-section">
+                <div class="sys-title">加载中…</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- VIEW: 数据源 ---------- -->
+      <section class="view view-page" id="view-ontology-adapt" data-view="ontology-adapt">
+        <div class="page-header">
+          <span class="page-title">⬡ 本体适配</span>
+        </div>
+        <div class="page-body page-body-form">
+          <div class="settings-field">
+            <label class="settings-label" for="sources-retrieval-mode">检索模式</label>
+            <select class="settings-select" id="sources-retrieval-mode">
+              <option value="semantic">语义检索模式(基于 Excel 本体)</option>
+              <option value="graph">图库检索模式(图库 + Excel 本体)</option>
+            </select>
+            <div class="settings-hint">语义检索:仅用 Excel 本体做语义 / 关键词检索。图库检索:用图库做关联检索,仍需配套 Excel 本体。</div>
+          </div>
+          <div class="settings-field" id="sources-graph-field" hidden>
+            <label class="settings-label" for="sources-graph">图库源</label>
+            <select class="settings-select" id="sources-graph"></select>
+            <div class="settings-hint">用于图库检索的图谱文件(.graphml / .kuzu 等)。</div>
+          </div>
+          <div class="settings-field">
+            <label class="settings-label" for="sources-ontology">本体源</label>
+            <select class="settings-select" id="sources-ontology"></select>
+            <div class="settings-hint">选择后请点击下方“保存并切换”才会生效；本地 Excel 仅用于离线测试 fallback。</div>
+          </div>
+          <div class="settings-field" id="sources-build-graph-row" hidden>
+            <button class="btn btn-ghost" id="sources-build-graph" type="button">⚙ 用所选 Excel 建立图库 (NetworkX)</button>
+            <div class="settings-hint" id="sources-build-graph-hint">从上方「本体源」Excel 抽取实体关系(ER)+ 本体元模型关系,生成 <code>.graphml</code> 图库并加入「图库源」。</div>
+          </div>
+          <div class="rg-note rg-note-info">ℹ 切换检索模式或本体源会把本体与 SQL 工具重新绑定到新源,并重置「智能分析」与「报表分析」两个模式的当前会话。</div>
+          <div class="settings-status" id="onto-adapt-status"></div>
+        </div>
+        <div class="page-footer">
+          <button class="btn btn-ghost" id="onto-adapt-cancel">返回</button>
+          <button class="btn btn-primary" id="onto-adapt-save">保存并切换</button>
+        </div>
+      </section>
+
+      <!-- ---------- VIEW: 数据源 ---------- -->
+      <section class="view view-page" id="view-sources" data-view="sources">
+        <div class="page-header">
+          <span class="page-title">◈ 数据源</span>
+        </div>
+        <div class="page-body page-body-form">
+          <div class="settings-field">
+            <label class="settings-label" for="sources-database">数据库源</label>
+            <select class="settings-select" id="sources-database"></select>
+            <div class="settings-hint">Agent 取数所用的数据源:本地 SQLite 数据库(.db),或 Doris 实时只读 API。</div>
+          </div>
+          <div id="sources-doris-field" hidden>
+            <div class="settings-label" style="margin-bottom:6px;">API 接口参数(Doris)</div>
+            <div class="settings-field">
+              <label class="settings-label" for="sources-doris-jdbc">Doris HTTP API 地址</label>
+              <input class="settings-input" id="sources-doris-jdbc" type="text"
+                     placeholder="http://host:30834/agent/doris/query" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="settings-field">
+              <label class="settings-label" for="sources-doris-database">数据库(库名)</label>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <input class="settings-input" id="sources-doris-database" type="text"
+                       placeholder="ontology_demometaerp_scm_po" autocomplete="off" spellcheck="false" style="flex:1;" />
+                <button class="btn btn-ghost" id="sources-read-ontology-db" type="button" title="读取当前数据源对应本体库的 dorisDatabase">读取当前数据源</button>
+              </div>
+              <div class="settings-hint">生成 SQL 时表名会带库前缀,例如 <code>ontology_demometaerp_scm_po.poheader</code>。</div>
+            </div>
+            <div class="settings-field" hidden>
+              <label class="settings-label" for="sources-doris-driver">驱动类</label>
+              <input class="settings-input" id="sources-doris-driver" type="text"
+                     placeholder="com.mysql.cj.jdbc.Driver" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="settings-field" hidden>
+              <label class="settings-label" for="sources-doris-user">用户名</label>
+              <input class="settings-input" id="sources-doris-user" type="text"
+                     placeholder="admin" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class="settings-field" hidden>
+              <label class="settings-label" for="sources-doris-pass">密码</label>
+              <input class="settings-input" id="sources-doris-pass" type="password"
+                     placeholder="(当前无密码,可留空)" autocomplete="new-password" />
+            </div>
+            <div class="settings-hint">取数与 SQL 执行将通过 HTTP API 调用 Doris(仅允许单条只读查询)。</div>
+          </div>
+          <div class="rg-note rg-note-info">ℹ 切换数据源会把 SQL 取数工具重新绑定到新库,并重置「智能分析」与「报表分析」两个模式的当前会话。</div>
+          <div class="settings-status" id="sources-status"></div>
+        </div>
+        <div class="page-footer">
+          <button class="btn btn-ghost" id="sources-cancel">返回</button>
+          <button class="btn btn-primary" id="sources-save">保存并切换</button>
+        </div>
+      </section>
+
+      <!-- ---------- VIEW: 模型参数 ---------- -->
+      <section class="view view-page" id="view-model" data-view="model">
+        <div class="page-header">
+          <span class="page-title">⚙ 模型参数</span>
+        </div>
+        <div class="page-body page-body-form">
+          <div class="settings-field">
+            <label class="settings-label" for="settings-model">模型</label>
+            <select class="settings-select" id="settings-model"></select>
+            <div class="settings-hint" id="settings-model-hint"></div>
+          </div>
+          <div class="settings-field">
+            <label class="settings-label" for="settings-max-tokens">最大输出长度 <span class="settings-val">max_tokens</span></label>
+            <input type="number" min="256" max="200000" step="256"
+                   class="settings-input" id="settings-max-tokens" />
+            <div class="settings-hint">单次响应的最大输出 token 数,范围 256–200000。</div>
+          </div>
+          <div class="settings-field">
+            <label class="settings-label" for="settings-temperature">
+              采样温度 temperature <span class="settings-val" id="settings-temp-val">1.0</span>
+            </label>
+            <input type="range" min="0" max="2" step="0.05"
+                   class="settings-slider" id="settings-temperature" />
+            <div class="settings-hint">0 最确定性,1 平衡,2 最发散。Qwen 建议 ≤1.2。</div>
+          </div>
+
+          <div class="settings-field" id="settings-thinking-field">
+            <label class="settings-label" for="settings-thinking">
+              扩展思考
+              <span class="settings-keystatus" id="settings-thinking-status"></span>
+            </label>
+            <label class="toggle settings-thinking-toggle">
+              <input type="checkbox" id="settings-thinking" />
+              <span class="toggle-track"><span class="toggle-dot"></span></span>
+              <span class="toggle-label">启用思考模式</span>
+            </label>
+            <div class="settings-hint" id="settings-thinking-hint">
+              开启后模型会先输出推理过程再给最终回答。仅对支持思考模式的模型生效;
+              Claude 模型在启用思考时会自动锁定 <code>temperature=1.0</code>。
+            </div>
+          </div>
+
+          <div class="settings-divider">API 密钥</div>
+
+          <div class="settings-field">
+            <label class="settings-label" for="settings-key-anthropic">
+              Anthropic (Claude)
+              <span class="settings-keystatus" id="settings-key-anthropic-status"></span>
+            </label>
+            <div class="settings-keyrow">
+              <input type="password" autocomplete="off" spellcheck="false"
+                     class="settings-input" id="settings-key-anthropic"
+                     placeholder="sk-ant-api03-…  (留空则不修改)" />
+              <button type="button" class="btn btn-ghost settings-key-clear"
+                      id="settings-key-anthropic-clear" title="清空该 key">×</button>
+            </div>
+            <div class="settings-hint">用于 Claude Opus/Sonnet 模型。也可设为环境变量 <code>ANTHROPIC_API_KEY</code>(优先级更高)。</div>
+          </div>
+
+          <div class="settings-field">
+            <label class="settings-label" for="settings-key-qwen">
+              DashScope (Qwen)
+              <span class="settings-keystatus" id="settings-key-qwen-status"></span>
+            </label>
+            <div class="settings-keyrow">
+              <input type="password" autocomplete="off" spellcheck="false"
+                     class="settings-input" id="settings-key-qwen"
+                     placeholder="sk-…  (留空则不修改)" />
+              <button type="button" class="btn btn-ghost settings-key-clear"
+                      id="settings-key-qwen-clear" title="清空该 key">×</button>
+            </div>
+            <div class="settings-hint">用于 Qwen 系列模型。也可设为环境变量 <code>DASHSCOPE_API_KEY</code>。</div>
+          </div>
+
+          <div class="settings-field">
+            <label class="settings-label" for="settings-key-deepseek">
+              DeepSeek
+              <span class="settings-keystatus" id="settings-key-deepseek-status"></span>
+            </label>
+            <div class="settings-keyrow">
+              <input type="password" autocomplete="off" spellcheck="false"
+                     class="settings-input" id="settings-key-deepseek"
+                     placeholder="sk-…  (留空则不修改)" />
+              <button type="button" class="btn btn-ghost settings-key-clear"
+                      id="settings-key-deepseek-clear" title="清空该 key">×</button>
+            </div>
+            <div class="settings-hint">用于 DeepSeek V4 系列模型。也可设为环境变量 <code>DEEPSEEK_API_KEY</code>。</div>
+          </div>
+
+          <div class="settings-status" id="settings-status"></div>
+        </div>
+        <div class="page-footer">
+          <button class="btn btn-ghost" id="settings-reset-defaults">恢复默认</button>
+          <span class="rg-footer-spacer"></span>
+          <button class="btn btn-ghost" id="settings-close">返回</button>
+          <button class="btn btn-primary" id="settings-save">保存</button>
+        </div>
+      </section>
+
+      <!-- ---------- VIEW: 角色选择 ---------- -->
+      <section class="view view-page" id="view-roles" data-view="roles">
+        <div class="page-header">
+          <span class="page-title">☻ 角色选择</span>
+        </div>
+        <div class="page-body page-body-form">
+          <div class="settings-field">
+            <label class="settings-label">自身角色</label>
+            <div class="settings-hint">告诉 Agent 你的身份,它会据此调整回答的深度、术语与侧重点。</div>
+            <div class="role-options" id="roles-user"></div>
+          </div>
+          <div class="settings-field">
+            <label class="settings-label">Agent 回答风格偏好</label>
+            <div class="settings-hint">选择你希望 Agent 采用的回答口吻与风格。</div>
+            <div class="role-options" id="roles-agent"></div>
+          </div>
+          <div class="rg-note rg-note-info">ℹ 角色偏好会注入到对话的系统提示,自下一条提问起对「智能分析」与「报表分析」两个模式生效,无需重置会话。</div>
+          <div class="settings-status" id="roles-status"></div>
+        </div>
+        <div class="page-footer">
+          <button class="btn btn-ghost" id="roles-cancel">返回</button>
+          <button class="btn btn-primary" id="roles-save">保存</button>
+        </div>
+      </section>
+
+      <!-- ---------- VIEW: 记忆管理 ---------- -->
+      <section class="view view-page" id="view-memory" data-view="memory">
+        <div class="page-header">
+          <span class="page-title">⟲ 记忆管理</span>
+        </div>
+        <div class="page-body page-body-form">
+          <div class="rg-note rg-note-info">
+            ℹ 当前 Agent 的「记忆」是单条长对话上下文:每次提问都会带上本模式此前的全部问答与取数结果。
+            遇到相似历史问题时,Agent 会先判断是否需要重新检索;若口径/维度/范围有变会重新取数。
+          </div>
+          <div class="settings-field">
+            <label class="settings-label">重置会话 · 开始新对话</label>
+            <div class="settings-hint">清空<strong>当前模式</strong>(智能分析 / 报表分析)的对话历史与上下文记忆,下一条提问从空会话开始。切换数据源也会自动重置两个模式的会话。</div>
+            <div style="margin-top:10px;">
+              <button class="btn btn-primary" id="btn-reset">⟲ 重置当前对话</button>
+            </div>
+          </div>
+          <div class="settings-status" id="memory-status"></div>
+        </div>
+      </section>
+
+      <!-- ---------- VIEW: 个人账号设置 ---------- -->
+      <section class="view view-page" id="view-account" data-view="account">
+        <div class="page-header">
+          <span class="page-title">⚙ 个人账号设置</span>
+        </div>
+        <div class="page-body page-body-form">
+          <div class="settings-field">
+            <label class="settings-label" for="account-name-input">用户名</label>
+            <input class="settings-input" id="account-name-input" type="text"
+                   maxlength="24" placeholder="分析员" autocomplete="off" spellcheck="false" />
+            <div class="settings-hint">显示在左下角账号区,仅保存在本机浏览器(localStorage)。</div>
+          </div>
+          <div class="settings-field">
+            <label class="settings-label">界面主题</label>
+            <label class="toggle">
+              <input type="checkbox" id="account-theme-light" />
+              <span class="toggle-track"><span class="toggle-dot"></span></span>
+              <span class="toggle-label">浅色主题</span>
+            </label>
+            <div class="settings-hint">关闭为深色。默认使用 CEO 驾驶舱风格的浅色画布；主题偏好保存在本机浏览器。</div>
+          </div>
+          <div class="settings-status" id="account-status"></div>
+        </div>
+        <div class="page-footer">
+          <button class="btn btn-primary" id="account-save">保存</button>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ============ REPORT-GENERATION WIZARD MODAL ============ -->
+  <div class="modal-overlay" id="reportgen-overlay" hidden>
+    <div class="modal-panel reportgen-panel" role="dialog" aria-labelledby="reportgen-title">
+      <div class="modal-header">
+        <span class="modal-title" id="reportgen-title">⊞ 标准报表生成</span>
+        <button class="modal-close" id="reportgen-close" aria-label="关闭">✕</button>
+      </div>
+
+      <!-- Stepper -->
+      <div class="rg-stepper" id="rg-stepper">
+        <div class="rg-step active" data-step="1"><i>1</i><span>数据底座</span></div>
+        <div class="rg-step" data-step="2"><i>2</i><span>指标体系</span></div>
+        <div class="rg-step" data-step="3"><i>3</i><span>经营规则</span></div>
+        <div class="rg-step" data-step="4"><i>4</i><span>模板·输出</span></div>
+        <div class="rg-step" data-step="5"><i>5</i><span>权限切片</span></div>
+        <div class="rg-step" data-step="6"><i>6</i><span>图表库</span></div>
+        <div class="rg-step" data-step="7"><i>7</i><span>确认生成</span></div>
+      </div>
+
+      <div class="modal-body rg-body" id="rg-body">
+
+        <!-- ① 业务数据底座 -->
+        <div class="rg-panel active" data-panel="1">
+          <p class="rg-panel-desc">选择报表的数据来源与期间口径,这是后续取数的边界。</p>
+          <div class="rg-field" data-key="period" data-label="报表期间">
+            <label class="rg-field-label">报表期间</label>
+            <select class="rg-input">
+              <option>2025年3月(损益当前期)</option>
+              <option>2025年2月</option>
+              <option>2025年1月</option>
+              <option>2025年一季度(累计)</option>
+              <option>2025年4-12月(收入预测期)</option>
+            </select>
+          </div>
+          <div class="rg-field" data-key="dataSources" data-label="数据底座">
+            <label class="rg-field-label">数据底座(可多选)</label>
+            <div class="rg-checks">
+              <label class="rg-check"><input type="checkbox" checked /> 损益明细表 · T_HF_PL_Detail</label>
+              <label class="rg-check"><input type="checkbox" checked /> 收入预测清单 · T_HF_RevenueForecast</label>
+              <label class="rg-check"><input type="checkbox" /> 经营明细 · T_HF_RefreshData</label>
+              <label class="rg-check"><input type="checkbox" checked /> 超聚变本体语义层</label>
+            </div>
+          </div>
+          <div class="rg-field" data-key="compareBase" data-label="对比基期">
+            <label class="rg-field-label">对比基期</label>
+            <select class="rg-input">
+              <option>上期环比(2025年2月)</option>
+              <option>历史实际数基线</option>
+              <option>预算数</option>
+              <option>全年预测数</option>
+              <option>不对比</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ② 指标体系 -->
+        <div class="rg-panel" data-panel="2">
+          <p class="rg-panel-desc">从超聚变本体勾选纳入报表的指标集,指标口径以本体已发布定义为准。</p>
+          <div class="rg-field" data-key="metricSets" data-label="指标集">
+            <label class="rg-field-label">指标集(可多选)</label>
+            <div class="rg-checks rg-checks-2col">
+              <label class="rg-check"><input type="checkbox" checked /> 收入销毛类 · 净销售收入/销售成本/销毛额/销毛率</label>
+              <label class="rg-check"><input type="checkbox" checked /> 报告金额类 · 报告金额CNY/USD</label>
+              <label class="rg-check"><input type="checkbox" checked /> 收入预测类 · 收入预测/预测执行率</label>
+              <label class="rg-check"><input type="checkbox" /> 名义销毛类 · 名义销毛/名义销毛率</label>
+            </div>
+          </div>
+          <div class="rg-field" data-key="metricSource" data-label="口径来源">
+            <label class="rg-field-label">口径来源</label>
+            <select class="rg-input">
+              <option>超聚变本体 · 已发布指标定义</option>
+              <option>报表方案自定义口径</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ③ 经营规则配置 -->
+        <div class="rg-panel" data-panel="3">
+          <p class="rg-panel-desc">选择经营规则方案;规则定义与版本由「规则中心」统一管理,此处仅做选择与调参。</p>
+          <div class="rg-field" data-key="rulePlan" data-label="规则方案">
+            <label class="rg-field-label">规则方案</label>
+            <select class="rg-input">
+              <option>收入销毛分析 · 标准口径</option>
+              <option>销毛率基线推演 · 产业+行管</option>
+              <option>自定义规则方案…</option>
+            </select>
+          </div>
+          <div class="rg-field" data-key="ruleItems" data-label="规则明细">
+            <label class="rg-field-label">规则明细(随方案带出,可逐项启用)</label>
+            <div class="rg-checks">
+              <label class="rg-check"><input type="checkbox" checked /> 行管标签 · 行管1-7 判定(国内外/经营单元/行业/销售类型)</label>
+              <label class="rg-check"><input type="checkbox" checked /> 销毛率基线 · 按产业+行管维度搭建基线</label>
+              <label class="rg-check"><input type="checkbox" checked /> 基线调整 · 规则类 / 利好利空 / 基线替换</label>
+              <label class="rg-check"><input type="checkbox" checked /> 报表项归集 · 报表项一级~四级归集</label>
+            </div>
+          </div>
+          <div class="rg-field" data-key="customRule" data-label="自定义规则" hidden>
+            <label class="rg-field-label">自定义规则描述</label>
+            <textarea class="rg-input rg-textarea" rows="5"
+              placeholder="请用自然语言描述本次报表的经营规则 —— 例如:口径(收入是否含税、剔除哪些交易)、费用分摊方式、需要的调整事项、特殊归类逻辑等。Agent 将按此执行取数与计算。"></textarea>
+          </div>
+          <div class="rg-note rg-note-warn">⚠ 影响预览:基线调整(规则类 / 利好利空事项)将改变销毛率推演结果,发布前建议在沙箱比对改前/改后。</div>
+        </div>
+
+        <!-- ④ 报表模板和输出格式 -->
+        <div class="rg-panel" data-panel="4">
+          <p class="rg-panel-desc">选择报表模板(行列结构)、版式与输出格式。</p>
+          <div class="rg-field" data-key="template" data-label="报表模板">
+            <label class="rg-field-label">报表模板</label>
+            <div class="rg-radios">
+              <label class="rg-check"><input type="radio" name="rg-tpl" checked /> 损益明细表</label>
+              <label class="rg-check"><input type="radio" name="rg-tpl" /> 收入预测清单</label>
+              <label class="rg-check"><input type="radio" name="rg-tpl" /> 收入销毛分析报告</label>
+              <label class="rg-check"><input type="radio" name="rg-tpl" /> 销毛率基线推演表</label>
+            </div>
+          </div>
+          <div class="rg-field" data-key="layout" data-label="版式">
+            <label class="rg-field-label">版式</label>
+            <select class="rg-input">
+              <option>标准版</option>
+              <option>精简版</option>
+              <option>管理层汇报版</option>
+            </select>
+          </div>
+          <div class="rg-field" data-key="outputs" data-label="输出格式">
+            <label class="rg-field-label">输出格式(可多选)</label>
+            <div class="rg-checks">
+              <label class="rg-check"><input type="checkbox" checked /> 在线交互报表</label>
+              <label class="rg-check"><input type="checkbox" checked /> Excel</label>
+              <label class="rg-check"><input type="checkbox" /> PPT</label>
+              <label class="rg-check"><input type="checkbox" /> PDF</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- ⑤ 权限切片 -->
+        <div class="rg-panel" data-panel="5">
+          <p class="rg-panel-desc">设定本次报表的可见数据范围与口径权限。</p>
+          <div class="rg-field" data-key="orgScope" data-label="组织范围">
+            <label class="rg-field-label">组织范围</label>
+            <select class="rg-input">
+              <option>全公司</option>
+              <option>国内</option>
+              <option>国际</option>
+              <option>指定经营单元</option>
+            </select>
+          </div>
+          <div class="rg-field" data-key="industryScope" data-label="产业范围">
+            <label class="rg-field-label">产业范围(可多选)</label>
+            <div class="rg-checks rg-checks-2col">
+              <label class="rg-check"><input type="checkbox" checked /> 全部产业</label>
+              <label class="rg-check"><input type="checkbox" /> 产业1</label>
+              <label class="rg-check"><input type="checkbox" /> 产业2</label>
+              <label class="rg-check"><input type="checkbox" /> 产业3</label>
+            </div>
+          </div>
+          <div class="rg-field" data-key="visScope" data-label="可见口径">
+            <label class="rg-field-label">可见口径</label>
+            <select class="rg-input">
+              <option>管理层全口径</option>
+              <option>经营单元口径</option>
+              <option>脱敏口径</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- ⑥ 可选图表库 -->
+        <div class="rg-panel" data-panel="6">
+          <p class="rg-panel-desc">勾选随报表生成的配图,图表将绑定到对应报表区块。</p>
+          <div class="rg-field" data-key="charts" data-label="配图">
+            <label class="rg-field-label">可选图表(可多选)</label>
+            <div class="rg-checks rg-checks-2col">
+              <label class="rg-check"><input type="checkbox" checked /> 趋势线图 · 收入/销毛月度趋势</label>
+              <label class="rg-check"><input type="checkbox" checked /> 维度对比柱状图 · 产业/经营单元</label>
+              <label class="rg-check"><input type="checkbox" checked /> 占比饼图 · 产业结构分布</label>
+              <label class="rg-check"><input type="checkbox" /> 销毛率瀑布图 · 基线→调整→定稿</label>
+              <label class="rg-check"><input type="checkbox" /> 预算 / 预测执行率对比图</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- ⑦ 报表自动生成 · 确认 -->
+        <div class="rg-panel" data-panel="7">
+          <p class="rg-panel-desc">核对配置,确认后将在对话框中开启报表生成任务 —— Agent 会逐步取数,把报表内容输出到看板,并在末尾提供导出选项。</p>
+          <div class="rg-review" id="rg-review"></div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer rg-footer">
+        <button class="btn btn-ghost" id="rg-save-plan">⭐ 存为方案</button>
+        <span class="rg-footer-spacer"></span>
+        <button class="btn btn-ghost" id="rg-prev" hidden>‹ 上一步</button>
+        <button class="btn btn-primary" id="rg-next">下一步 ›</button>
+        <button class="btn btn-primary" id="rg-confirm" hidden>▸ 确认 · 开启报表生成</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

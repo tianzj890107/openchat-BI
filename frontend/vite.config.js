@@ -17,7 +17,7 @@ export default defineConfig({
       entry: resolve(here, "src/main.jsx"),
       formats: ["iife"],
       name: "OpenChatBIAntd",
-      fileName: () => "sidebar.js",
+      fileName: () => "workbench.js",
     },
   },
 });

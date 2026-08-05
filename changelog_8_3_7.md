@@ -151,3 +151,10 @@
 - 历史恢复流程会同时处理已保存的 Ant Design 卡片和旧版静态卡片，避免已挂载的历史图表被跳过。
 - 看板中已保存的旧结果卡片也会同步整理标题与类型徽标顺序，新生成的看板结果沿用相同布局。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。
+
+### 20. React 工作台统一入口
+
+- 工作台页面模板、完整样式和会话运行时迁入 `frontend/src`，由 React 根组件统一挂载；旧的独立静态 `app.js`、`styles.css` 和旧版侧栏 bundle 不再作为运行时文件。
+- `/workbench` 现在只加载 React 工作台入口、编译后的 `workbench.js`、Ant Design 样式和 ECharts 第三方资源；API、SSE、历史会话、图表和设置行为保持原有契约。
+- 报表生成设计文档同步到新的 React 源码路径。
+- 主要文件：`frontend/src/main.jsx`、`frontend/src/runtime.js`、`frontend/src/shell.html`、`frontend/src/workbench.css`、`frontend/vite.config.js`、`bi_agent/web/static/index.html`、`报表生成能力_设计文档.md`。
