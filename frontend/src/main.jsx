@@ -224,13 +224,12 @@ function WorkflowPanels() {
         onChange={(keys) => setSopOpen(keys.includes("sop"))}
         items={[{ key: "sop", label: <span className="antd-workflow-title">分析 SOP <Tag color="blue">{total ? `${done}/${total}` : "待开始"}</Tag></span>, children: total ? <ThoughtChain items={chainItems} size="small" /> : <div className="antd-workflow-empty-sop">开始一轮智能分析后，这里会显示本次对话的六步执行进度。</div> }]}
       />}
-      {!!(workflow.todos.length || workflow.questions.length) && <Collapse
+      {!!workflow.questions.length && <Collapse
         ghost
         activeKey={todoOpen ? ["todo"] : []}
         onChange={(keys) => setTodoOpen(keys.includes("todo"))}
-        items={[{ key: "todo", label: <span className="antd-workflow-title">任务清单 <Tag>{workflow.questions.length ? `${workflow.questions.length} 个问题` : `${workflow.todos.length} 项`}</Tag></span>, children: <>
+        items={[{ key: "todo", label: <span className="antd-workflow-title">任务清单 <Tag>{workflow.questions.length} 个问题</Tag></span>, children: <>
           {!!workflow.questions.length && <List size="small" header="用户提问" dataSource={workflow.questions} renderItem={(item, index) => <List.Item className="antd-question-item" onClick={() => document.querySelector(`#chat-todo .chat-question-item[data-question-turn="${CSS.escape(item.turn)}"]`)?.click()}><Tag>{index + 1}</Tag><span>{item.text}</span></List.Item>} />}
-          {!!workflow.todos.length && <List size="small" header="分析进度" dataSource={workflow.todos} renderItem={(item) => <List.Item><span>{workflowIcon(item.status, processing && item.status === "in_progress")}</span><span>{item.text}</span></List.Item>} />}
         </> }]}
       />}
     </div>
