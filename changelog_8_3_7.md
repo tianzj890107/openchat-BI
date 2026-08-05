@@ -114,3 +114,10 @@
 - 侧栏收起时仍保持原有 72px 窄栏和图标布局，不改变外部导航栏的折叠行为。
 - 页面：i-Agent 智能分析工作台（会话、看板及内容设置页）。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+
+### 15. 对话输入区单行化
+
+- 输入框与操作区合并为一行，移除中间分隔线；提示文字与发送控件保持同一行显示。
+- 发送控件改为单独的大箭头按钮，不再显示“发送”文字；报表模式的辅助操作仍在同一行横向排列。
+- 页面：智能分析、报表分析对话输入区。
+- 主要文件：`bi_agent/web/static/index.html`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/app.js`。

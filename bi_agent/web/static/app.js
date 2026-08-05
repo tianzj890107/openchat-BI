@@ -4663,7 +4663,7 @@
     window.dispatchEvent(new CustomEvent("bi-agent-busy", { detail: { busy: v } }));
     el.btnSend.disabled = v;
     el.chatInput.disabled = v;
-    el.btnSend.textContent = v ? "…" : "发送 ▸";
+    el.btnSend.textContent = v ? "…" : "➤";
     // Navigation remains available while a turn is in flight.
   }
 
