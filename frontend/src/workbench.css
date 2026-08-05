@@ -536,7 +536,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .msg-body .entity-ref:hover { background: var(--bg-3); border-color: var(--accent-cyan); color: var(--accent-cyan); }
 
 /* Tool step inline in chat — a lightweight ThoughtChain equivalent for the
- * vanilla workbench (same expandable timeline pattern without adding a React
+ * workbench runtime (same expandable timeline pattern without adding a React
  * runtime dependency). */
 .step {
   position: relative;
@@ -3581,9 +3581,8 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .dashboard-pane .multidim-select {
   border-radius: 8px;
 }
-/* Ant Design migration step 1: the React navigation is mounted alongside the
-   legacy DOM. Hide only the visual legacy sidebar; its controls stay available
-   as an event bridge until the remaining views are migrated. */
+/* React navigation owns the visible sidebar. The hidden runtime bridge keeps
+   the existing API/SSE controller decoupled from the presentation layer. */
 #antd-sidebar-root {
   position: relative;
   z-index: 20;
@@ -3605,8 +3604,8 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 #sidebar {
   display: none !important;
 }
-#sidebar.legacy-sidebar-bridge,
-#sidebar.legacy-sidebar-bridge[hidden] {
+#sidebar.runtime-sidebar-bridge,
+#sidebar.runtime-sidebar-bridge[hidden] {
   display: none !important;
   visibility: hidden !important;
   width: 0 !important;

@@ -13,7 +13,7 @@
  * SSE event shape is identical across modes; only the endpoints differ.
  * ===================================================================== */
 
-(() => {
+export function bootWorkbenchRuntime() {
   const ONTOLOGY_FILTER_KINDS = [
     "term", "business_object", "logical_entity", "attribute", "relation", "metric",
     "activity", "rule", "dimension", "process", "meta_relation", "table_node", "column",
@@ -478,7 +478,7 @@
     return out.join("");
   }
 
-  window.legacyRenderMarkdown = renderMarkdown;
+  window.biRenderMarkdown = renderMarkdown;
 
   // Per-clause action menu for 根因分析 / 行动建议 cards. Each concrete
   // clause (a bullet / numbered point) gets one 行动 button that opens a
@@ -5794,7 +5794,7 @@
 
   // Light theme — opt-in via ?theme=light (e.g. embedded as the white-based
   // Meta-ERP 智能分析助手 inside the role dashboard's i-Agent). Stamps a class
-  // on <html> that flips the dark palette to a light one (see styles.css).
+  // on <html> that flips the dark palette to a light one.
   function applyThemeFromUrl() {
     let theme = null;
     try { theme = new URLSearchParams(location.search).get("theme"); }
@@ -5812,4 +5812,4 @@
   // ------------------------------------------------------------------
   loadMeta();
   loadRecent();
-})();
+}

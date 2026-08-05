@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Button, Card, Collapse, ConfigProvider, Divider, Layout, List, Menu, Progress, Tag, Tooltip } from "antd";
 import { ThoughtChain } from "@ant-design/x";
 import { Bubble } from "@ant-design/x";
+import shellDocument from "./shell.html?raw";
+import { bootWorkbenchRuntime } from "./runtime.js";
 import {
   AppstoreOutlined,
   BarChartOutlined,
@@ -21,6 +23,7 @@ import {
   MinusCircleOutlined,
 } from "@ant-design/icons";
 import "antd/dist/reset.css";
+import "./workbench.css";
 
 const { Sider } = Layout;
 
@@ -39,17 +42,17 @@ const navItems = [
   { key: "memory", view: "memory", label: "记忆管理", icon: <HistoryOutlined /> },
 ];
 
-function getLegacyButton(key) {
-  const legacy = document.getElementById("sidebar");
-  if (!legacy) return null;
+function getRuntimeButton(key) {
+  const bridge = document.getElementById("sidebar");
+  if (!bridge) return null;
   if (key === "data" || key === "report") {
-    return legacy.querySelector(`.mode-btn[data-mode="${key}"]`);
+    return bridge.querySelector(`.mode-btn[data-mode="${key}"]`);
   }
-  return legacy.querySelector(`[data-view="${key}"]`);
+  return bridge.querySelector(`[data-view="${key}"]`);
 }
 
-function dispatchLegacy(key) {
-  const button = getLegacyButton(key);
+function dispatchRuntime(key) {
+  const button = getRuntimeButton(key);
   if (button) button.click();
 }
 
@@ -140,7 +143,7 @@ function Sidebar() {
             {!collapsed && "新对话"}
           </Button>
         </Tooltip>
-        <Menu mode="inline" inlineCollapsed={collapsed} selectedKeys={[active]} items={items} onClick={({ key }) => { setActive(key); dispatchLegacy(key); }} />
+        <Menu mode="inline" inlineCollapsed={collapsed} selectedKeys={[active]} items={items} onClick={({ key }) => { setActive(key); dispatchRuntime(key); }} />
         {!collapsed && <>
           <Divider className="antd-sidebar-divider" />
           <div className="antd-sidebar-section-title">最近</div>
@@ -249,8 +252,8 @@ function AntdMessage({ role, iteration, html }) {
   if (!user && !visibleHtml) return null;
   const hasMarkup = /<\/?[a-z][^>]*>/i.test(visibleHtml);
   const hasMarkdown = /\*\*|__|```|^\s{0,3}#{1,6}\s|^\s*[-+*]\s|\|.+\|/m.test(visibleHtml);
-  const contentHtml = !hasMarkup && hasMarkdown && typeof window.legacyRenderMarkdown === "function"
-    ? window.legacyRenderMarkdown(visibleHtml)
+  const contentHtml = !hasMarkup && hasMarkdown && typeof window.biRenderMarkdown === "function"
+    ? window.biRenderMarkdown(visibleHtml)
     : visibleHtml;
   return <Bubble
     placement={user ? "end" : "start"}
@@ -465,7 +468,7 @@ function mountDashboardCard(card) {
 }
 window.antdDashboardCardMount = mountDashboardCard;
 
-function enhanceLegacyTree(container) {
+function enhanceWorkbenchTree(container) {
   if (!container) return;
   container.querySelectorAll(":scope > .msg:not(.antd-message-enhanced)").forEach((node) => {
     mountMessage(node, node.classList.contains("msg-user") ? "user" : "assistant", node.querySelector(".msg-iter")?.textContent?.replace(/[^0-9]/g, ""));
@@ -477,17 +480,42 @@ function enhanceLegacyTree(container) {
   container.querySelectorAll(":scope > .dash-card:not(.antd-dashboard-card-host):not(.antd-dashboard-question-hidden)").forEach(mountDashboardCard);
 }
 
-function observeLegacySurface(id) {
+function observeWorkbenchSurface(id) {
   const container = document.getElementById(id);
   if (!container) return;
-  enhanceLegacyTree(container);
-  const observer = new MutationObserver(() => enhanceLegacyTree(container));
+  enhanceWorkbenchTree(container);
+  const observer = new MutationObserver(() => enhanceWorkbenchTree(container));
   observer.observe(container, { childList: true, subtree: true });
 }
 
-const root = document.getElementById("antd-sidebar-root");
-if (root) createRoot(root).render(<Sidebar />);
-const workflowRoot = document.getElementById("antd-workflow-root");
-if (workflowRoot) createRoot(workflowRoot).render(<WorkflowPanels />);
-observeLegacySurface("chat-scroll");
-observeLegacySurface("dashboard-list");
+const shellMarkup = (shellDocument.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] || shellDocument)
+  .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+  .trim();
+
+function WorkbenchApp() {
+  const shellRef = useRef(null);
+
+  useLayoutEffect(() => {
+    document.body.dataset.mode = "data";
+    document.body.classList.add("sidebar-collapsed");
+    if (!shellRef.current) return undefined;
+
+    const sidebarRoot = shellRef.current.querySelector("#antd-sidebar-root");
+    const workflowRoot = shellRef.current.querySelector("#antd-workflow-root");
+    if (sidebarRoot) createRoot(sidebarRoot).render(<Sidebar />);
+    if (workflowRoot) createRoot(workflowRoot).render(<WorkflowPanels />);
+
+    // The former static runtime is now an internal React bundle module. It
+    // still owns the API/SSE state machine, while all markup is mounted under
+    // this React root and no longer loaded as a separate static script.
+    bootWorkbenchRuntime();
+    observeWorkbenchSurface("chat-scroll");
+    observeWorkbenchSurface("dashboard-list");
+    return undefined;
+  }, []);
+
+  return <div ref={shellRef} dangerouslySetInnerHTML={{ __html: shellMarkup }} />;
+}
+
+const root = document.getElementById("root");
+if (root) createRoot(root).render(<WorkbenchApp />);
