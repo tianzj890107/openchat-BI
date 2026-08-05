@@ -143,3 +143,11 @@
 - 历史会话中已保存的旧卡片也会在恢复时使用同一布局。
 - 页面：智能分析、报表分析会话和看板。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+
+### 19. 历史结果卡片布局迁移
+
+- 恢复旧会话时就地整理旧版结果卡片的标题节点顺序：标题靠左、类型徽标靠右，来源信息放到内容区右下角。
+- 保留历史图表实例和表格内容，不再因恢复历史而追加第二层结果卡片。
+- 历史恢复流程会同时处理已保存的 Ant Design 卡片和旧版静态卡片，避免已挂载的历史图表被跳过。
+- 看板中已保存的旧结果卡片也会同步整理标题与类型徽标顺序，新生成的看板结果沿用相同布局。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/app.js`、`bi_agent/web/static/vendor/antd/sidebar.js`、`bi_agent/web/static/index.html`。

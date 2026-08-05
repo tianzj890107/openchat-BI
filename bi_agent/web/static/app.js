@@ -3269,10 +3269,10 @@
       });
     });
     // Historical HTML may contain either legacy cards or cards already
-    // mounted by Ant Design. Normalize both paths before rendering the chart
-    // so every record has one result surface and the same width.
+    // mounted by Ant Design. Run the same mount/normalization path for both:
+    // the mounted path has to repair old title/source ordering in place,
+    // otherwise those saved cards would remain visually unchanged.
     el.chatScroll.querySelectorAll(".chart-card, .table-card, .multidim-card").forEach((card) => {
-      if (card.querySelector(":scope > .antd-result-card-host")) return;
       const type = card.classList.contains("table-card") ? "table"
         : card.classList.contains("multidim-card") ? "multi" : "chart";
       if (window.antdResultCardMount) window.antdResultCardMount(card, type);

@@ -324,15 +324,33 @@ function mountResultCard(card, type) {
   if (!card || cardRoots.has(card)) return;
   const moveRestoredSourceToFooter = (host) => {
     const body = host.querySelector(":scope .ant-card-body");
-    const source = host.querySelector(":scope .ant-card-head-title .antd-result-source");
-    if (!body || !source) return;
+    const titleHost = host.querySelector(":scope .ant-card-head-title");
+    const titleRow = titleHost?.querySelector(":scope > .antd-result-title-row");
+    const headerSource = titleHost?.querySelector(":scope .antd-result-source");
+    const footerSource = body?.querySelector(":scope > .antd-result-source-footer .antd-result-source");
+    if (!body || !titleHost) return;
+
+    // Older persisted cards were saved with the type badge before the title
+    // and the source link in the same row. Normalize that DOM in place so
+    // opening history gets the same title-first / badge-right layout as a
+    // newly rendered result, without remounting the chart instance.
+    if (titleRow) {
+      const titleText = titleRow.querySelector(":scope > .antd-result-title-text");
+      const typeBadge = titleRow.querySelector(":scope > .antd-result-type");
+      if (titleText && typeBadge) {
+        titleRow.replaceChildren(titleText, typeBadge);
+      }
+    }
+
+    const source = headerSource || footerSource;
+    if (!source) return;
     let footer = body.querySelector(":scope > .antd-result-source-footer");
     if (!footer) {
       footer = document.createElement("div");
       footer.className = "antd-result-source-footer";
       body.appendChild(footer);
     }
-    footer.appendChild(source);
+    if (source.parentElement !== footer) footer.appendChild(source);
   };
   // Saved HTML can already contain the host and rendered Ant Card from a
   // previous session. Reusing it avoids appending a second host during
@@ -410,6 +428,14 @@ function mountDashboardCard(card) {
   // Do not mount a second React tree on top of it when restoring history.
   const existingHost = card.querySelector(":scope > .antd-dashboard-card-host");
   if (existingHost && existingHost.children.length) {
+    const restoredHead = existingHost.querySelector(":scope .antd-dashboard-result-head");
+    const restoredTag = restoredHead?.querySelector(":scope > .dash-tag");
+    const restoredTitle = restoredHead?.querySelector(":scope > .dash-title");
+    if (restoredHead && restoredTag && restoredTitle) {
+      // Older dashboard snapshots put the badge before the title. Keep the
+      // same title-first / badge-right order as the conversation cards.
+      restoredHead.replaceChildren(restoredTitle, restoredTag);
+    }
     card.classList.add("antd-dashboard-card-mounted");
     cardRoots.set(card, { restored: true });
     return;
@@ -428,8 +454,8 @@ function mountDashboardCard(card) {
   if (typeTag || title) {
     const resultHead = document.createElement("div");
     resultHead.className = "antd-dashboard-result-head";
-    if (typeTag) resultHead.appendChild(typeTag);
     if (title) resultHead.appendChild(title);
+    if (typeTag) resultHead.appendChild(typeTag);
     nodes.unshift(resultHead);
   }
   const root = createRoot(host);
