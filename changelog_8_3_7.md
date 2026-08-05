@@ -135,3 +135,11 @@
 - 任务清单、对话消息和展开后的详细思考内容间距不变。
 - 页面：智能分析、报表分析会话区顶部的分析 SOP。
 - 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
+
+### 18. 结果卡片标题与来源信息布局
+
+- 会话和看板中的表格、柱状图、饼图等结果卡片，标题统一靠左显示，类型徽标移动到标题行右上角。
+- `source`、`saved` 等技术来源信息移到结果卡片右下角，不再占用右上角标题位置。
+- 历史会话中已保存的旧卡片也会在恢复时使用同一布局。
+- 页面：智能分析、报表分析会话和看板。
+- 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
