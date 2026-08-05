@@ -4211,6 +4211,13 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   width: 100%;
   min-width: 0;
 }
+/* Conversation result cards use an Ant Card header while dashboard results
+ * sit inside a padded Bubble. Give the conversation header the same breathing
+ * room above it so the title/badge row does not touch the bubble edge. */
+.chat-scroll .antd-result-card .ant-card-head {
+  min-height: 0;
+  padding: 10px 12px 8px;
+}
 .antd-result-type {
   flex: 0 0 auto;
   padding: 3px 8px;

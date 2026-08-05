@@ -158,3 +158,8 @@
 - `/workbench` 现在只加载 React 工作台入口、编译后的 `workbench.js`、Ant Design 样式和 ECharts 第三方资源；API、SSE、历史会话、图表和设置行为保持原有契约。
 - 报表生成设计文档同步到新的 React 源码路径。
 - 主要文件：`frontend/src/main.jsx`、`frontend/src/runtime.js`、`frontend/src/shell.html`、`frontend/src/workbench.css`、`frontend/vite.config.js`、`bi_agent/web/static/index.html`、`报表生成能力_设计文档.md`。
+
+### 21. 会话图表标题留白统一
+
+- 会话中的图表、表格和多维结果卡片标题栏增加与看板气泡一致的顶部留白，标题和类型徽标不再贴着气泡上边界。
+- 主要文件：`frontend/src/workbench.css`。
