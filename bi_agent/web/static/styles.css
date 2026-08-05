@@ -3572,6 +3572,17 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   display: flex;
   background: #F7F9FB !important;
 }
+/* The inner workbench starts after the collapsed 72px IBA rail.  The outer
+   topbar seam is 72px + 230px (hamburger + EIMOS brand), so the expanded
+   Ant Design sidebar must be 230px wide to end on that same seam.  Ant Design
+   writes flex-basis/min/max widths inline; override the complete sizing set
+   only while expanded and leave the 72px collapsed rail untouched. */
+.antd-workbench-sidebar:not(.ant-layout-sider-collapsed) {
+  width: 230px !important;
+  min-width: 230px !important;
+  max-width: 230px !important;
+  flex: 0 0 230px !important;
+}
 #sidebar {
   display: none !important;
 }

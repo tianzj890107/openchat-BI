@@ -110,7 +110,7 @@
 
 ### 14. IBA 内部侧栏展开宽度对齐
 
-- IBA 内部功能侧栏展开时默认宽度调整为 302px，与外部顶部 EIMOS 和“产品功能”之间的分界线对齐。
-- 侧栏收起时仍保持原有窄栏宽度和图标布局；已保存的旧默认宽度 248px 会自动迁移为 302px，用户手动调整过的宽度保持不变。
-- 页面：CEO 驾驶舱、驾驶舱、i-Agent 外层 IBA 导航。
-- 主要文件：`ceo_dashboard_standalone.html`、`dashboard.html`。
+- IBA 内部智能分析功能栏展开时固定为 230px，使其从外部收起的 72px 导航轨道开始，右边界准确落在顶部 EIMOS 与“产品功能”的中缝。
+- 侧栏收起时仍保持原有 72px 窄栏和图标布局，不改变外部导航栏的折叠行为。
+- 页面：i-Agent 智能分析工作台（会话、看板及内容设置页）。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
