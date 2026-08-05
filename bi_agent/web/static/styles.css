@@ -3705,6 +3705,27 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-workflow-title .ant-tag { margin-inline-end: 0; font-size: 11px; line-height: 18px; }
 .antd-workflow-panels .ant-collapse-content-box { padding: 0 6px 8px !important; }
 .antd-workflow-panels .ant-thought-chain { font-size: 12px; }
+/* The six overview rows in the SOP are intentionally compact.  Keep this
+   scoped to the first (SOP) collapse so task-list/question spacing is unchanged. */
+.antd-workflow-panels > .ant-collapse:first-child .ant-thought-chain.ant-thought-chain-small {
+  gap: 0 !important;
+}
+.antd-workflow-panels > .ant-collapse:first-child .ant-thought-chain-item-header {
+  min-height: 18px !important;
+  margin-bottom: 0 !important;
+  padding: 0 6px !important;
+  align-items: center !important;
+}
+.antd-workflow-panels > .ant-collapse:first-child .ant-thought-chain-item-icon,
+.antd-workflow-panels > .ant-collapse:first-child .ant-thought-chain-item-extra {
+  width: 18px;
+  height: 18px;
+  max-height: 18px;
+}
+.antd-workflow-panels > .ant-collapse:first-child .ant-thought-chain-item-title {
+  height: 18px !important;
+  line-height: 18px !important;
+}
 .antd-workflow-panels .ant-list-header { padding: 5px 0; color: #86909c; font-size: 11px; }
 .antd-workflow-panels .ant-list-item { padding: 5px 0; gap: 6px; color: #4e5969; font-size: 12px; cursor: pointer; }
 .antd-workflow-panels .antd-question-item:hover { color: #1677ff; }

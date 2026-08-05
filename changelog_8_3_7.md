@@ -128,3 +128,10 @@
 - 分析 SOP 继续在上方作为独立的可折叠区域展示。
 - 页面：智能分析、报表分析会话区。
 - 主要文件：`frontend/src/main.jsx`、`bi_agent/web/static/index.html`、`bi_agent/web/static/vendor/antd/sidebar.js`。
+
+### 17. 分析 SOP 行间距收紧
+
+- 分析 SOP 的六个步骤行间距压缩为原来约一半，保持文字和状态图标可读性。
+- 任务清单、对话消息和展开后的详细思考内容间距不变。
+- 页面：智能分析、报表分析会话区顶部的分析 SOP。
+- 主要文件：`bi_agent/web/static/styles.css`、`bi_agent/web/static/index.html`。
