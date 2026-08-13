@@ -14,6 +14,8 @@ from html import escape
 from pathlib import Path
 from typing import Any, Callable
 
+from ..paths import CHARTS_DIR, project_path
+
 Executor = Callable[[dict, str], str]
 ExecutorFactory = Callable[[], Executor]
 
@@ -52,11 +54,14 @@ CHART_GENERATE_SCHEMA = {
         "report (PDF/DOCX Markdown tables), or a computation you performed "
         "over either. Use it when the data has more than one row/column "
         "worth visualizing — time series, dimension breakdowns, "
-        "distributions, shares. Do NOT call it for a single scalar, for "
+        "distributions, shares. For enumeration/list questions (for example "
+        "listing ontology business objects), if the plotted measure is the "
+        "same for every row (often all 1), use TableGenerate only because a "
+        "chart adds no comparison value. Do NOT call it for a single scalar, for "
         "raw SQL not yet executed, or with fabricated numbers — every data "
         "point must be traceable to a report table or a tool result. The "
         "chart renders inline in the Web UI and is also saved as a "
-        "standalone HTML under `bi_charts/`. Always set `source_note` with "
+        "standalone HTML under `dataset/charts/`. Always set `source_note` with "
         "provenance (e.g., '报表 P3/Table 2' or 'M001 · T_FM_MgmtPnL · "
         "2024Q1-Q4')."
     ),
@@ -321,7 +326,8 @@ def _make_chart_generate() -> Executor:
 
         title = params.get("title", "chart")
         ts = time.strftime("%Y%m%d-%H%M%S")
-        out_dir = Path(cwd) / "bi_charts"
+        out_dir = project_path(cwd, CHARTS_DIR)
+        out_dir.mkdir(parents=True, exist_ok=True)
         stem = f"chart-{ts}-{_slug(title)}"
         out_path = out_dir / f"{stem}.html"
         suffix = 2

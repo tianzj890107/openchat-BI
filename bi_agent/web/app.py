@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import time
 from html import escape
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.middleware.gzip import GZipMiddleware
 
 from open_claude.agent_def import AgentDef, get_agent_def_registry, load_agent_defs
 
@@ -24,10 +28,18 @@ from ..llm.runtime_config import (
     get_config as get_llm_config,
     set_api_key,
 )
+from ..paths import (
+    CHARTS_DIR,
+    DATABASES_DIR,
+    GRAPHS_DIR,
+    HTML_DIR,
+    SPREADSHEETS_DIR,
+    project_path,
+)
 from ..ontology.store import OntologyStore
 from ..ontology.remote import OntologyApiError, RemoteOntologyClient
 from ..report import ReportStore, parser_availability
-from ..tools import register_all
+from ..tools import build_source_executors, register_all
 from ..tools.graph_tools import GRAPH_TOOL_NAMES
 from ..tools.sql_tools import (
     DEFAULT_DORIS_DATABASE,
@@ -39,7 +51,7 @@ from ..tools.sql_tools import (
     DorisConn,
     DorisHttpConn,
 )
-from .conversations import ConversationStore
+from .conversations import ConversationStore, sanitize_source_config
 from .session import WebSession
 
 
@@ -65,8 +77,14 @@ class AppState:
         self.ontology_store: Optional[OntologyStore] = None
         self.remote_ontology: Optional[RemoteOntologyClient] = None
         self.ontology_backend: str = os.environ.get("ONTOLOGY_BACKEND", "local").strip().lower()
+        self.ontology_namespace: str = os.environ.get("ONTOLOGY_NAMESPACE", "").strip()
         self.agent_def: Optional[AgentDef] = None
         self.session: Optional[WebSession] = None
+        # Named browser sessions own both their conversation and their source
+        # snapshot. The legacy singleton remains the empty-id compatibility
+        # path for existing API clients and tests.
+        self.sessions: dict[str, WebSession] = {}
+        self.source_contexts: dict[str, SimpleNamespace] = {}
         self.db_path: str = ""
         self.ontology_path: str = ""
         # --- Doris (MySQL protocol) data source -------------------------
@@ -96,6 +114,9 @@ class AppState:
         # attach-chip labels, and the agent's report-numbering all line up.
         self.report_store: Optional[ReportStore] = None
         self.report_session: Optional[WebSession] = None
+        self.report_sessions: dict[str, WebSession] = {}
+        self.report_ids_by_session: dict[str, list[str]] = {}
+        self.report_db_by_session: dict[str, bool] = {}
         self.active_report_ids: list[str] = []
         self.report_with_db: bool = False
         # --- Conversation history (restorable 最近 list) -----------------
@@ -108,6 +129,7 @@ class AppState:
         # depth / terminology / tone. Empty = no role preference applied.
         self.user_role: str = ""
         self.agent_pref: str = ""
+        self.roles_by_session: dict[str, tuple[str, str]] = {}
 
 
 STATE = AppState()
@@ -118,7 +140,7 @@ STATE = AppState()
 # running multi-dim SQL queries; only meaningful when DB tools are on.
 REPORT_DB_TOOLS: list[str] = [
     "OntologyQuery", "TermDisambiguate", "MetricLookup", "RelationLookup",
-    "EntityDescribe", "ListBusinessObjects", "SQLRun", "ListTables",
+    "EntityDescribe", "ListBusinessObjects", "MetricDataQuery", "SQLRun", "ListTables",
     "DescribeTable", "ChartGenerate", "ChartGenerateMultiDim",
     "TableGenerate", "AskUser",
 ]
@@ -178,10 +200,18 @@ AGENT_PREFS: dict[str, tuple[str, str]] = {
 }
 
 
-def _role_block() -> Optional[str]:
+def _role_values(session_id: Optional[str] = None) -> tuple[str, str]:
+    key = _session_key(session_id)
+    if key and key in STATE.roles_by_session:
+        return STATE.roles_by_session[key]
+    return STATE.user_role, STATE.agent_pref
+
+
+def _role_block(session_id: Optional[str] = None) -> Optional[str]:
     """Render the 用户画像/回答风格 system-prompt block from STATE, or None."""
-    user = USER_ROLES.get(STATE.user_role)
-    pref = AGENT_PREFS.get(STATE.agent_pref)
+    user_role, agent_pref = _role_values(session_id)
+    user = USER_ROLES.get(user_role)
+    pref = AGENT_PREFS.get(agent_pref)
     if not user and not pref:
         return None
     lines = ["# 用户画像与回答偏好", ""]
@@ -192,6 +222,22 @@ def _role_block() -> Optional[str]:
     lines.append("")
     lines.append("请在保证数据准确的前提下,按上述用户角色与回答风格组织你的回答。")
     return "\n".join(lines)
+
+
+def _doris_http_conn(
+    api_url: str,
+    database: str,
+    remote: Optional[RemoteOntologyClient] = None,
+) -> DorisHttpConn:
+    """Build a Doris connection carrying the active ontology identity."""
+    client = remote if remote is not None else STATE.remote_ontology
+    return DorisHttpConn(
+        api_url,
+        database,
+        repository_id=(client.repository_id if client else ""),
+        app_id=(client.app_id if client else ""),
+        auth_token=(client.auth_token if client else ""),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -216,27 +262,51 @@ def configure(
     STATE.db_path = db_path
     STATE.ontology_path = ontology_path
     STATE.use_doris = use_doris
-    STATE.ontology_store = OntologyStore.from_xlsx(ontology_path)
-    doris_conn = (
-        DorisHttpConn(STATE.doris_api_url, STATE.doris_database)
-        if use_doris
-        else None
-    )
-    register_all(STATE.ontology_store, db_path, doris=doris_conn)
-
-    # Keep the local workbook as a fallback for tools not yet migrated, while
-    # remote mode overrides ontology lookup tools with the production API.
-    if STATE.ontology_backend in {"production", "remote"}:
+    remote_mode = STATE.ontology_backend in {"production", "remote"}
+    if remote_mode:
+        # Production is remote-only: do not open, validate, or retain an Excel
+        # workbook. The empty store only satisfies legacy render/session types;
+        # every ontology executor and browse endpoint is remote-bound below.
+        STATE.ontology_store = OntologyStore()
         try:
             STATE.remote_ontology = RemoteOntologyClient.from_env()
         except ValueError as e:
             raise RuntimeError(f"远程本体配置无效: {e}") from e
-        if use_doris:
-            # Rebuild the connection after repository metadata may have
-            # supplied the authoritative Doris schema name.
-            doris_conn = DorisHttpConn(STATE.doris_api_url, STATE.doris_database)
-        register_all(STATE.ontology_store, db_path, doris=doris_conn,
-                     remote_ontology=STATE.remote_ontology)
+        try:
+            catalog = _remote_repository_catalog(STATE.remote_ontology)
+        except OntologyApiError as e:
+            raise RuntimeError(f"无法读取远程原子数据源目录: {e}") from e
+        repository = next((item for item in catalog if item["id"] == STATE.remote_ontology.repository_id), None)
+        if repository is None:
+            raise RuntimeError(f"远程本体库 {STATE.remote_ontology.repository_id} 不在可用目录中")
+        if not repository["dorisDatabase"]:
+            raise RuntimeError(f"远程本体库 {repository['name']} 未配置 dorisDatabase")
+        if not repository["namespace"]:
+            raise RuntimeError(f"远程本体库 {repository['name']} 未配置 namespaceCode")
+        STATE.ontology_namespace = repository["namespace"]
+        STATE.doris_database = repository["dorisDatabase"]
+        STATE.remote_ontology.namespace = repository["namespace"]
+        STATE.use_doris = True
+    else:
+        STATE.ontology_store = OntologyStore.from_xlsx(ontology_path)
+        STATE.remote_ontology = None
+
+    doris_conn = (
+        _doris_http_conn(STATE.doris_api_url, STATE.doris_database, STATE.remote_ontology)
+        if STATE.use_doris else None
+    )
+    register_all(
+        STATE.ontology_store,
+        db_path,
+        doris=doris_conn,
+        remote_ontology=STATE.remote_ontology,
+    )
+    STATE.sessions.clear()
+    STATE.source_contexts.clear()
+    STATE.report_sessions.clear()
+    STATE.report_ids_by_session.clear()
+    STATE.report_db_by_session.clear()
+    STATE.roles_by_session.clear()
 
     load_agent_defs(cwd)
     reg = get_agent_def_registry()
@@ -251,10 +321,21 @@ def configure(
 
     # Conversation store (restorable history for the sidebar 「最近」list)
     STATE.conversation_store = ConversationStore(cwd)
+    migrated_titles = STATE.conversation_store.last_title_migrations
+    if migrated_titles:
+        print(f"[bi-agent-web] canonicalized {migrated_titles} conversation title(s)")
+    print(
+        f"[bi-agent-web] history_root={STATE.conversation_store.root} "
+        f"scanned={STATE.conversation_store.last_title_migration_scanned} "
+        f"corrected={migrated_titles} "
+        f"unresolved={STATE.conversation_store.last_unresolved_title_migrations} "
+        f"index_entries={STATE.conversation_store.last_index_rebuild_count} "
+        "authority=local sync=disabled"
+    )
 
     # Generated charts are served by the /charts route below so old files that
     # reference the public ECharts CDN can be rewritten to our local asset.
-    (Path(cwd) / "bi_charts").mkdir(parents=True, exist_ok=True)
+    project_path(cwd, CHARTS_DIR).mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +343,10 @@ def configure(
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="BI Agent Web", version="0.1.0")
+# Compress JSON and the large versioned frontend assets when the browser
+# advertises gzip support. The threshold avoids spending CPU on tiny assets;
+# Brotli can still be supplied by a reverse proxy without changing endpoints.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 
 @app.get("/charts/{filename:path}")
@@ -272,7 +357,7 @@ def serve_chart(filename: str):
     that URL at response time keeps old history links renderable in offline or
     restricted browser environments too.
     """
-    charts_dir = (Path(STATE.cwd) / "bi_charts").resolve()
+    charts_dir = project_path(STATE.cwd, CHARTS_DIR)
     target = (charts_dir / filename).resolve()
     if charts_dir not in target.parents or not target.is_file():
         raise HTTPException(404, "图表不存在")
@@ -288,6 +373,8 @@ def serve_chart(filename: str):
 
 class ChatRequest(BaseModel):
     message: str
+    visible_user_text: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class ChoiceRequest(BaseModel):
@@ -297,6 +384,7 @@ class ChoiceRequest(BaseModel):
     # Back-compat: legacy single-pick fields.
     choice_id: Optional[str] = None
     choice_label: Optional[str] = None
+    session_id: Optional[str] = None
 
     def normalized(self) -> tuple[List[str], List[str]]:
         ids = list(self.choice_ids or [])
@@ -328,6 +416,8 @@ class ConfigUpdate(BaseModel):
 # Sentinel `database` value meaning "use the Doris (MySQL protocol) source"
 # instead of a local .db file. Surfaced as a selectable option in /api/sources.
 DORIS_SOURCE_VALUE = "__doris_api__"
+REMOTE_ONTOLOGY_PREFIX = "__metaerp_repository__:"
+REMOTE_DORIS_PREFIX = "__doris_repository__:"
 # Pseudo-source shown in 本体适配. It represents the production ontology
 # service, not a local workbook.
 METAERP_ONTOLOGY_VALUE = "__metaerp_ontology__"
@@ -379,7 +469,7 @@ GRAPH_MODE_SOP = """# 图库检索模式 · SOP 调整(覆盖上文对应步骤)
 class SourcesUpdate(BaseModel):
     """Switch the active ontology / database source. Omit a field to keep it."""
     ontology: Optional[str] = None   # xlsx filename, relative to cwd
-    database: Optional[str] = None   # .db filename, or DORIS_SOURCE_VALUE for Doris
+    database: Optional[str] = None   # .db, generic Doris, or paired remote Doris value
     # Doris connection params (used when database == DORIS_SOURCE_VALUE)
     doris_jdbc_url: Optional[str] = None
     doris_api_url: Optional[str] = None
@@ -388,9 +478,10 @@ class SourcesUpdate(BaseModel):
     doris_password: Optional[str] = None
     doris_database: Optional[str] = None
     # Ontology retrieval mode ("semantic" | "graph") + the selected 图库 file
-    # (only meaningful in graph mode). Graph retrieval is not implemented yet.
+    # (only meaningful in graph mode).
     retrieval_mode: Optional[str] = None
     graph: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class GraphBuildRequest(BaseModel):
@@ -417,13 +508,42 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _html_page(filename: str) -> Path:
+    """Return a standalone page from the project's consolidated HTML folder."""
+    return _project_root() / HTML_DIR / filename
+
+
 def _cwd_file(name: str, *, label: str) -> Path:
     """Resolve a user-selected working-directory file without path escape."""
     root = Path(STATE.cwd).resolve()
     candidate = (root / str(name or "")).resolve()
     if candidate == root or root not in candidate.parents:
         raise HTTPException(400, f"{label}路径无效")
+    # Accept basename-only values saved by releases that predate dataset/.
+    # New API responses always contain the canonical relative path.
+    if not candidate.exists() and Path(str(name)).parent == Path("."):
+        suffix = candidate.suffix.lower()
+        legacy_dir = (
+            SPREADSHEETS_DIR if suffix in {".xlsx", ".xls"}
+            else DATABASES_DIR if suffix == ".db"
+            else GRAPHS_DIR if suffix in {Path(pat).suffix for pat in GRAPH_PATTERNS}
+            else None
+        )
+        if legacy_dir is not None:
+            migrated = project_path(root, legacy_dir) / candidate.name
+            if migrated.is_file():
+                candidate = migrated
     return candidate
+
+
+def _cwd_relative_value(path: str) -> str:
+    """Represent a configured source relative to cwd when it lives in-project."""
+    if not path:
+        return ""
+    try:
+        return Path(path).resolve().relative_to(Path(STATE.cwd).resolve()).as_posix()
+    except ValueError:
+        return os.path.basename(path)
 
 
 def _no_cache_file(path: Path) -> FileResponse:
@@ -443,10 +563,10 @@ def index() -> FileResponse:
     # is reachable at /ceo_dashboard_standalone.html and the detailed CEO cockpit
     # at /ceo_cockpit.html; the BI workbench lives at /workbench and is embedded
     # as the Meta-ERP 智能分析助手 inside the dashboard's i-Agent view.
-    page = _project_root() / "dashboard.html"
+    page = _html_page("dashboard.html")
     if page.exists():
         return _no_cache_file(page)
-    fallback = _project_root() / "ceo_dashboard_standalone.html"
+    fallback = _html_page("ceo_dashboard_standalone.html")
     if fallback.exists():
         return _no_cache_file(fallback)
     return _no_cache_file(STATIC_DIR / "index.html")
@@ -455,7 +575,12 @@ def index() -> FileResponse:
 @app.get("/healthz")
 def healthz() -> JSONResponse:
     """Dependency-free liveness/readiness probe; never invokes an LLM."""
-    ready = bool(STATE.agent_def and STATE.ontology_store and STATE.conversation_store)
+    ontology_ready = (
+        STATE.remote_ontology is not None
+        if STATE.ontology_backend in {"production", "remote"}
+        else STATE.ontology_store is not None
+    )
+    ready = bool(STATE.agent_def and ontology_ready and STATE.conversation_store)
     return JSONResponse(
         {"ok": ready, "configured": ready, "llm_call": False},
         status_code=200 if ready else 503,
@@ -464,22 +589,32 @@ def healthz() -> JSONResponse:
 
 @app.get("/ceo_dashboard_standalone.html")
 def ceo_dashboard_standalone_page() -> FileResponse:
-    return _no_cache_file(_project_root() / "ceo_dashboard_standalone.html")
+    return _no_cache_file(_html_page("ceo_dashboard_standalone.html"))
 
 
 @app.get("/ceo_cockpit.html")
 def ceo_cockpit_page() -> FileResponse:
-    return FileResponse(_project_root() / "ceo_cockpit.html")
+    return FileResponse(_html_page("ceo_cockpit.html"))
 
 
 @app.get("/dashboard.html")
 def role_dashboard_page() -> FileResponse:
-    return _no_cache_file(_project_root() / "dashboard.html")
+    return _no_cache_file(_html_page("dashboard.html"))
 
 
 @app.get("/asset_overdue_inventory.html")
 def asset_overdue_inventory_page() -> FileResponse:
-    return FileResponse(_project_root() / "asset_overdue_inventory.html")
+    return FileResponse(_html_page("asset_overdue_inventory.html"))
+
+
+@app.get("/ceo_dashboard.html")
+def ceo_dashboard_page() -> FileResponse:
+    return _no_cache_file(_html_page("ceo_dashboard.html"))
+
+
+@app.get("/new_analysis_nav_chat_board.html")
+def analysis_nav_prototype_page() -> FileResponse:
+    return _no_cache_file(_html_page("new_analysis_nav_chat_board.html"))
 
 
 @app.get("/workbench")
@@ -491,8 +626,9 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/api/meta")
-def get_meta() -> JSONResponse:
-    if not STATE.agent_def or not STATE.ontology_store:
+def get_meta(session_id: str = "") -> JSONResponse:
+    source = _source_for_session(session_id)
+    if not STATE.agent_def or source.ontology_store is None:
         raise HTTPException(500, "Server not configured")
     agent = STATE.agent_def
     cfg = get_llm_config()
@@ -513,14 +649,14 @@ def get_meta() -> JSONResponse:
             "welcome_message": report_agent.welcome_message,
         } if report_agent else None),
         "report_parser": parser_availability(),
-        "ontology_stats": STATE.ontology_store.stats(),
-        "db_path": os.path.basename(STATE.db_path),
+        "ontology_stats": _remote_ontology_stats(source.remote_ontology) if source.remote_ontology else source.ontology_store.stats(),
+        "db_path": os.path.basename(source.db_path),
         "cwd": STATE.cwd,
-        "ontology_backend": "production" if STATE.ontology_backend == "remote" else STATE.ontology_backend,
+        "ontology_backend": "production" if source.ontology_backend == "remote" else source.ontology_backend,
         "ontology_service": {
-            "configured": STATE.remote_ontology is not None,
-            "base_url": STATE.remote_ontology.base_url if STATE.remote_ontology else "",
-            "repository_id": STATE.remote_ontology.repository_id if STATE.remote_ontology else "",
+            "configured": source.remote_ontology is not None,
+            "base_url": source.remote_ontology.base_url if source.remote_ontology else "",
+            "repository_id": source.remote_ontology.repository_id if source.remote_ontology else "",
         },
         "llm": {
             "models": list_models(),
@@ -528,6 +664,35 @@ def get_meta() -> JSONResponse:
             "api_keys": get_api_key_status(),
         },
     })
+
+
+def _remote_ontology_stats(client: RemoteOntologyClient) -> dict[str, int]:
+    now = time.monotonic()
+    cached = getattr(client, "_stats_cache", None)
+    if cached and now - cached[0] <= client.cache_ttl:
+        return dict(cached[1])
+    stats: dict[str, int] = {}
+    for type_name in (
+        "Term", "BusinessObject", "LogicalEntity", "BusinessAttribute",
+        "Indicator", "Dimension", "Rule", "TableNode", "Column",
+    ):
+        try:
+            data = client.script_query("sql", f"SELECT count(*) AS count FROM {type_name}")
+            rows = [row for result in data.get("results") or [] for row in result.get("rows") or []]
+            value = (rows[0].get("count") if rows else 0) or 0
+            stats[type_name] = int(_scalar_remote_value(value))
+        except (OntologyApiError, TypeError, ValueError):
+            stats[type_name] = 0
+    client._stats_cache = (now, dict(stats))
+    return stats
+
+
+def _scalar_remote_value(value: Any) -> Any:
+    while isinstance(value, list) and len(value) == 1:
+        value = value[0]
+    if isinstance(value, dict) and set(value) == {"value"}:
+        return _scalar_remote_value(value["value"])
+    return value
 
 
 @app.get("/api/config")
@@ -575,79 +740,168 @@ def put_config_endpoint(req: ConfigUpdate) -> JSONResponse:
     })
 
 
-@app.get("/api/sources")
-def get_sources_endpoint() -> JSONResponse:
-    """List available ontology (.xlsx) and database (.db) files in the
-    working directory, flagging the currently active one."""
-    cwd = Path(STATE.cwd)
+def _remote_repository_catalog(client: RemoteOntologyClient) -> list[dict[str, Any]]:
+    """Return the complete remote catalog with stable paired source values."""
+    repositories: list[dict[str, Any]] = []
+    page = 1
+    seen_ids: set[str] = set()
+    while page <= 100:
+        listing = client.list_repositories(page=page, size=100)
+        items = listing.get("items") if isinstance(listing, dict) else []
+        if not isinstance(items, list) or not items:
+            break
+        for item in items:
+            if not isinstance(item, dict) or item.get("id") is None:
+                continue
+            repository_id = str(item["id"])
+            if repository_id in seen_ids:
+                continue
+            seen_ids.add(repository_id)
+            database = str(item.get("dorisDatabase") or "").strip()
+            repositories.append({
+                "id": repository_id,
+                "name": str(item.get("name") or f"本体库 {repository_id}"),
+                "description": str(item.get("description") or ""),
+                "dorisDatabase": database,
+                "namespace": str(item.get("namespaceCode") or item.get("namespace") or "").strip(),
+                "value": f"{REMOTE_ONTOLOGY_PREFIX}{repository_id}",
+                "databaseValue": f"{REMOTE_DORIS_PREFIX}{repository_id}" if database else "",
+            })
+        total = int(listing.get("total") or 0) if isinstance(listing, dict) else 0
+        if (total and len(repositories) >= total) or (not total and len(items) < 100):
+            break
+        page += 1
+    return repositories
 
-    def _scan(pattern: str) -> list[str]:
+
+_SOURCE_CONTEXT_FIELDS = (
+    "ontology_store", "remote_ontology", "ontology_backend", "ontology_namespace", "ontology_path",
+    "db_path", "use_doris", "doris_jdbc_url", "doris_driver",
+    "doris_username", "doris_password", "doris_database", "doris_api_url",
+    "retrieval_mode", "graph_path",
+)
+
+
+def _session_key(session_id: Optional[str]) -> str:
+    return str(session_id or "").strip()[:128]
+
+
+def _snapshot_source(source: Any = None) -> SimpleNamespace:
+    source = source or STATE
+    return SimpleNamespace(**{
+        name: getattr(source, name) for name in _SOURCE_CONTEXT_FIELDS
+    })
+
+
+def _source_for_session(session_id: Optional[str]) -> Any:
+    key = _session_key(session_id)
+    if not key:
+        return STATE
+    if key not in STATE.source_contexts:
+        STATE.source_contexts[key] = _snapshot_source()
+    return STATE.source_contexts[key]
+
+
+def _source_binding_signature(source: Any) -> tuple[Any, ...]:
+    remote = source.remote_ontology
+    return (
+        source.ontology_backend,
+        remote.repository_id if remote else "",
+        source.ontology_namespace,
+        source.ontology_path,
+        source.use_doris,
+        source.db_path,
+        source.doris_api_url,
+        source.doris_jdbc_url,
+        source.doris_driver,
+        source.doris_username,
+        source.doris_password,
+        source.doris_database,
+    )
+
+
+@app.get("/api/sources")
+def get_sources_endpoint(session_id: str = "") -> JSONResponse:
+    """List selectable, paired ontology and database sources."""
+    source = _source_for_session(session_id)
+    cwd = Path(STATE.cwd).resolve()
+
+    def _scan(directory: Path, pattern: str) -> list[str]:
+        root = project_path(cwd, directory)
         return sorted(
-            p.name for p in cwd.glob(pattern)
+            p.relative_to(cwd).as_posix() for p in root.glob(pattern)
             if p.is_file() and not p.name.startswith("~$")
         )
-
-    # Doris (MySQL protocol) is offered as a pseudo-source alongside the local
-    # .db files. When active, `database.active` points at the sentinel value.
-    db_options = _scan("*.db") + [DORIS_SOURCE_VALUE]
-    db_active = DORIS_SOURCE_VALUE if STATE.use_doris else os.path.basename(STATE.db_path)
 
     # Graph-library candidates for the 图库源 dropdown (graph retrieval mode).
     graph_options: list[str] = []
     for pat in GRAPH_PATTERNS:
-        graph_options.extend(_scan(pat))
+        graph_options.extend(_scan(GRAPHS_DIR, pat))
     graph_options = sorted(set(graph_options))
 
-    ontology_options = _scan("*.xlsx") + [METAERP_ONTOLOGY_VALUE]
+    production_source = source.ontology_backend in {"production", "remote"}
+    local_ontology_options = [] if production_source else _scan(SPREADSHEETS_DIR, "*.xlsx")
+    ontology_options = local_ontology_options + [METAERP_ONTOLOGY_VALUE]
     # The production service exposes all selectable repositories through the
     # documented manager endpoint. Keep the local Excel entries as offline
     # fallbacks, and expose each remote repository by its stable id.
     remote_repositories: list[dict[str, Any]] = []
-    if STATE.remote_ontology is not None:
+    if source.remote_ontology is not None:
         try:
-            page = 1
-            seen_ids: set[str] = set()
-            while page <= 100:
-                listing = STATE.remote_ontology.list_repositories(page=page, size=100)
-                items = listing.get("items") if isinstance(listing, dict) else []
-                if not isinstance(items, list) or not items:
-                    break
-                for item in items:
-                    if not isinstance(item, dict) or item.get("id") is None:
-                        continue
-                    repository_id = str(item["id"])
-                    if repository_id in seen_ids:
-                        continue
-                    seen_ids.add(repository_id)
-                    remote_repositories.append({
-                        "id": repository_id,
-                        "name": str(item.get("name") or f"本体库 {repository_id}"),
-                        "description": str(item.get("description") or ""),
-                        "dorisDatabase": str(item.get("dorisDatabase") or ""),
-                        "value": f"__metaerp_repository__:{repository_id}",
-                    })
-                total = int(listing.get("total") or 0) if isinstance(listing, dict) else 0
-                if (total and len(remote_repositories) >= total) or (not total and len(items) < 100):
-                    break
-                page += 1
+            remote_repositories = _remote_repository_catalog(source.remote_ontology)
         except OntologyApiError:
-            # A temporary manager API failure must not prevent the settings UI
-            # from showing the already configured repository.
-            remote_repositories = []
+            # A manager outage must not make the active atomic source disappear
+            # from either settings page. Keep the current pair selectable; new
+            # repository switches remain unavailable until the catalog recovers.
+            repository_id = source.remote_ontology.repository_id
+            remote_repositories = [{
+                "id": repository_id,
+                "name": f"本体库 {repository_id}（目录暂不可用）",
+                "description": "",
+                "dorisDatabase": source.doris_database,
+                "namespace": source.ontology_namespace or source.remote_ontology.namespace,
+                "value": f"{REMOTE_ONTOLOGY_PREFIX}{repository_id}",
+                "databaseValue": f"{REMOTE_DORIS_PREFIX}{repository_id}",
+            }]
     if remote_repositories:
         # Keep the original local Excel sources and append the real remote
         # repository catalog. Repository IDs remain internal option values.
-        ontology_options = _scan("*.xlsx") + [repo["value"] for repo in remote_repositories]
+        ontology_options = local_ontology_options + [repo["value"] for repo in remote_repositories]
     ontology_active = (
         METAERP_ONTOLOGY_VALUE
-        if STATE.ontology_backend in {"production", "remote"}
-        else os.path.basename(STATE.ontology_path)
+        if source.ontology_backend in {"production", "remote"}
+        else _cwd_relative_value(source.ontology_path)
     )
-    if STATE.remote_ontology is not None:
-        current_repo_value = f"__metaerp_repository__:{STATE.remote_ontology.repository_id}"
+    if source.remote_ontology is not None:
+        current_repo_value = f"{REMOTE_ONTOLOGY_PREFIX}{source.remote_ontology.repository_id}"
         if any(repo["value"] == current_repo_value for repo in remote_repositories):
             ontology_active = current_repo_value
+
+    # Every managed remote repository declares exactly one Doris database.
+    # Surface those pairs as first-class database choices; keep the generic
+    # Doris value for backwards-compatible custom schemas.
+    remote_db_options = [
+        repo["databaseValue"] for repo in remote_repositories if repo["databaseValue"]
+    ]
+    local_db_options = [] if production_source else _scan(DATABASES_DIR, "*.db")
+    db_options = local_db_options + remote_db_options + ([] if production_source else [DORIS_SOURCE_VALUE])
+    db_active = _cwd_relative_value(source.db_path)
+    if source.use_doris:
+        paired = next((
+            repo for repo in remote_repositories
+            if repo["dorisDatabase"] == source.doris_database
+            and (
+                source.remote_ontology is None
+                or repo["id"] == source.remote_ontology.repository_id
+            )
+        ), None)
+        db_active = paired["databaseValue"] if paired else DORIS_SOURCE_VALUE
     return JSONResponse({
+        "atomic_source": {
+            "repository_id": source.remote_ontology.repository_id if source.remote_ontology else "",
+            "namespace": source.ontology_namespace if source.remote_ontology else "",
+            "doris_database": source.doris_database if source.remote_ontology else "",
+        },
         "ontology": {
             "options": ontology_options,
             "active": ontology_active,
@@ -655,118 +909,258 @@ def get_sources_endpoint() -> JSONResponse:
                 "value": METAERP_ONTOLOGY_VALUE,
                 "label": "MetaERP",
                 "active": ontology_active == METAERP_ONTOLOGY_VALUE,
-                "base_url": STATE.remote_ontology.base_url if STATE.remote_ontology else os.environ.get("ONTOLOGY_BASE_URL", ""),
-                "repository_id": STATE.remote_ontology.repository_id if STATE.remote_ontology else os.environ.get("ONTOLOGY_REPOSITORY_ID", ""),
+                "base_url": source.remote_ontology.base_url if source.remote_ontology else os.environ.get("ONTOLOGY_BASE_URL", ""),
+                "repository_id": source.remote_ontology.repository_id if source.remote_ontology else os.environ.get("ONTOLOGY_REPOSITORY_ID", ""),
             },
             "remote_repositories": remote_repositories,
         },
         "database": {
             "options": db_options,
             "active": db_active,
+            "remote_databases": remote_repositories,
         },
         "retrieval": {
-            "mode": STATE.retrieval_mode,
+            "mode": source.retrieval_mode,
             "graph": {
                 "options": graph_options,
-                "active": os.path.basename(STATE.graph_path) if STATE.graph_path else "",
+                "active": _cwd_relative_value(source.graph_path) if source.graph_path else "",
             },
         },
         "doris": {
             "value": DORIS_SOURCE_VALUE,
-            "active": STATE.use_doris,
-            "api_url": STATE.doris_api_url,
-            "jdbc_url": STATE.doris_jdbc_url,
-            "driver": STATE.doris_driver,
-            "username": STATE.doris_username,
-            "password": STATE.doris_password,
-            "database": STATE.doris_database,
+            "active": source.use_doris,
+            "api_url": source.doris_api_url,
+            "jdbc_url": source.doris_jdbc_url,
+            "driver": source.doris_driver,
+            "username": source.doris_username,
+            # Never return the configured password to the browser.  A blank
+            # optional value on PUT means "keep the existing password".
+            "password": "",
+            "database": source.doris_database,
         },
-    })
+    }, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
 @app.put("/api/sources")
 def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
+    """Apply a source switch as one state transaction."""
+    key = _session_key(req.session_id)
+    source = _source_for_session(key)
+    fields = list(_SOURCE_CONTEXT_FIELDS)
+    if not key:
+        fields.extend(("session", "report_session", "active_report_ids"))
+    snapshot = {name: getattr(source, name) for name in fields}
+    try:
+        response = _put_sources_endpoint_impl(req, source, register_global=not key)
+        changed = json.loads(response.body).get("changed") or []
+        if key and changed:
+            STATE.sessions.pop(key, None)
+            STATE.report_sessions.pop(key, None)
+            STATE.report_ids_by_session.pop(key, None)
+            STATE.report_db_by_session.pop(key, None)
+        return response
+    except Exception:
+        for name, value in snapshot.items():
+            setattr(source, name, value)
+        # Best-effort rebind; preserve the original validation error.
+        try:
+            if key:
+                raise RuntimeError("session-local source does not use global registry")
+            previous_doris = (
+                _doris_http_conn(
+                    snapshot["doris_api_url"],
+                    snapshot["doris_database"],
+                    snapshot["remote_ontology"],
+                )
+                if snapshot["use_doris"] else None
+            )
+            register_all(
+                snapshot["ontology_store"],
+                snapshot["db_path"],
+                doris=previous_doris,
+                remote_ontology=snapshot["remote_ontology"],
+            )
+        except Exception:
+            pass
+        raise
+
+
+def _put_sources_endpoint_impl(
+    req: SourcesUpdate,
+    source: Any = None,
+    *,
+    register_global: bool = True,
+) -> JSONResponse:
     """Switch the active ontology / database at runtime. Re-registers the
     BI tools against the new sources and resets sessions so the change
     takes effect on the next turn."""
+    source = source or STATE
+    binding_before = _source_binding_signature(source)
     cwd = Path(STATE.cwd)
     changed: list[str] = []
 
-    repository_prefix = "__metaerp_repository__:"
-    if req.ontology and req.ontology.startswith(repository_prefix):
-        repository_id = req.ontology[len(repository_prefix):].strip()
-        if not repository_id:
+    def _mark(name: str) -> None:
+        if name not in changed:
+            changed.append(name)
+
+    ontology_repo_id = ""
+    if req.ontology and req.ontology.startswith(REMOTE_ONTOLOGY_PREFIX):
+        ontology_repo_id = req.ontology[len(REMOTE_ONTOLOGY_PREFIX):].strip()
+        if not ontology_repo_id:
             raise HTTPException(400, "本体库 ID 不能为空")
-        if STATE.remote_ontology is None:
+
+    database_repo_id = ""
+    if req.database and req.database.startswith(REMOTE_DORIS_PREFIX):
+        database_repo_id = req.database[len(REMOTE_DORIS_PREFIX):].strip()
+        if not database_repo_id:
+            raise HTTPException(400, "Doris 数据库对应的本体库 ID 不能为空")
+
+    seed_remote = source.remote_ontology
+    if (
+        ontology_repo_id
+        or database_repo_id
+        or req.ontology in {METAERP_ONTOLOGY_VALUE, LEGACY_PRODUCTION_ONTOLOGY_VALUE}
+    ):
+        if seed_remote is None:
             try:
-                STATE.remote_ontology = RemoteOntologyClient.from_env()
+                seed_remote = RemoteOntologyClient.from_env()
             except ValueError as e:
                 raise HTTPException(400, f"生产本体库配置无效: {e}") from e
-        # Keep the same API endpoint/authentication, changing only the
-        # repository selected by the user.
-        STATE.remote_ontology = RemoteOntologyClient(
-            STATE.remote_ontology.base_url,
-            repository_id,
-            app_id=STATE.remote_ontology.app_id,
-            auth_token=STATE.remote_ontology.auth_token,
-            timeout=STATE.remote_ontology.timeout,
+        if req.ontology in {METAERP_ONTOLOGY_VALUE, LEGACY_PRODUCTION_ONTOLOGY_VALUE}:
+            ontology_repo_id = seed_remote.repository_id
+
+    if ontology_repo_id and database_repo_id and ontology_repo_id != database_repo_id:
+        raise HTTPException(400, "本体库与数据库不属于同一数据源,请重新选择")
+
+    paired_repo_id = database_repo_id or ontology_repo_id
+    if paired_repo_id:
+        assert seed_remote is not None
+        same_remote_pair = (
+            source.remote_ontology is not None
+            and source.remote_ontology.repository_id == paired_repo_id
+            and bool(source.ontology_namespace or source.remote_ontology.namespace)
+            and bool(source.doris_database)
         )
-        STATE.ontology_backend = "production"
-        changed.append("ontology")
-    elif req.ontology in {METAERP_ONTOLOGY_VALUE, LEGACY_PRODUCTION_ONTOLOGY_VALUE}:
-        if STATE.remote_ontology is None:
+        if same_remote_pair:
+            # Re-saving settings, or changing only retrieval mode/API transport,
+            # must keep working during a temporary manager-catalog outage. The
+            # current context is already an authoritative, previously validated
+            # atomic pair, so a new catalog lookup is unnecessary.
+            repository = {
+                "id": paired_repo_id,
+                "name": f"本体库 {paired_repo_id}",
+                "namespace": source.ontology_namespace or source.remote_ontology.namespace,
+                "dorisDatabase": source.doris_database,
+            }
+        else:
             try:
-                STATE.remote_ontology = RemoteOntologyClient.from_env()
-            except ValueError as e:
-                raise HTTPException(400, f"生产本体库配置无效: {e}") from e
-        STATE.ontology_backend = "production"
-        changed.append("ontology")
+                catalog = _remote_repository_catalog(seed_remote)
+            except OntologyApiError as e:
+                raise HTTPException(502, f"无法读取本体库与数据库映射: {e}") from e
+            repository = next((item for item in catalog if item["id"] == paired_repo_id), None)
+        if repository is None:
+            raise HTTPException(400, f"未找到本体库 ID {paired_repo_id}")
+        paired_database = repository["dorisDatabase"]
+        if not paired_database:
+            raise HTTPException(400, f"本体库 {repository['name']} 未配置 dorisDatabase")
+        if not repository["namespace"]:
+            raise HTTPException(400, f"本体库 {repository['name']} 未配置 namespaceCode")
+
+        # The repository and its declared Doris database are one atomic source.
+        # Selecting either side always updates both sides before tools are rebound.
+        source.remote_ontology = RemoteOntologyClient(
+            seed_remote.base_url,
+            paired_repo_id,
+            app_id=seed_remote.app_id,
+            auth_token=seed_remote.auth_token,
+            namespace=repository["namespace"],
+            timeout=seed_remote.timeout,
+        )
+        source.ontology_backend = "production"
+        source.ontology_namespace = repository["namespace"]
+        api_url = (req.doris_api_url or source.doris_api_url or DEFAULT_DORIS_API_URL).strip()
+        if not api_url.startswith(("http://", "https://")):
+            raise HTTPException(400, "请填写 Doris HTTP API 地址(例如 http://host:30834/agent/doris/query)")
+        try:
+            _doris_http_conn(api_url, paired_database, source.remote_ontology)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        source.doris_api_url = api_url
+        source.doris_database = paired_database
+        source.doris_jdbc_url = (req.doris_jdbc_url or source.doris_jdbc_url or "").strip()
+        source.doris_driver = (req.doris_driver or source.doris_driver or DEFAULT_DORIS_DRIVER).strip()
+        if req.doris_username is not None:
+            source.doris_username = req.doris_username
+        if req.doris_password is not None:
+            source.doris_password = req.doris_password
+        source.use_doris = True
+        _mark("ontology")
+        _mark("database")
     elif req.ontology:
         op = _cwd_file(req.ontology, label="本体文件")
         if not op.is_file():
             raise HTTPException(400, f"本体文件不存在: {req.ontology}")
-        try:
-            store = OntologyStore.from_xlsx(str(op))
-        except Exception as e:  # surface load errors to the UI
-            raise HTTPException(400, f"本体文件无法加载: {req.ontology} — {e}")
-        STATE.ontology_store = store
-        STATE.ontology_path = str(op)
-        STATE.ontology_backend = "local"
-        STATE.remote_ontology = None
-        changed.append("ontology")
+        same_local = (
+            source.remote_ontology is None
+            and source.ontology_backend == "local"
+            and Path(source.ontology_path).resolve() == op.resolve()
+        )
+        if not same_local:
+            try:
+                store = OntologyStore.from_xlsx(str(op))
+            except Exception as e:  # surface load errors to the UI
+                raise HTTPException(400, f"本体文件无法加载: {req.ontology} — {e}")
+            source.ontology_store = store
+            source.ontology_path = str(op)
+            source.ontology_backend = "local"
+            source.remote_ontology = None
+            _mark("ontology")
 
-    if req.database == DORIS_SOURCE_VALUE:
+    if not paired_repo_id and req.database == DORIS_SOURCE_VALUE:
         # Switch the SQL tools to the team's Doris HTTP query API.
-        api_url = (req.doris_api_url or STATE.doris_api_url or DEFAULT_DORIS_API_URL).strip()
-        jdbc = (req.doris_jdbc_url or STATE.doris_jdbc_url or "").strip()
-        username = req.doris_username if req.doris_username is not None else STATE.doris_username
-        password = req.doris_password if req.doris_password is not None else STATE.doris_password
-        driver = (req.doris_driver or STATE.doris_driver or DEFAULT_DORIS_DRIVER).strip()
-        database = (req.doris_database or STATE.doris_database or DEFAULT_DORIS_DATABASE).strip()
+        api_url = (req.doris_api_url or source.doris_api_url or DEFAULT_DORIS_API_URL).strip()
+        jdbc = (req.doris_jdbc_url or source.doris_jdbc_url or "").strip()
+        username = req.doris_username if req.doris_username is not None else source.doris_username
+        password = req.doris_password if req.doris_password is not None else source.doris_password
+        driver = (req.doris_driver or source.doris_driver or DEFAULT_DORIS_DRIVER).strip()
+        database = (req.doris_database or source.doris_database or DEFAULT_DORIS_DATABASE).strip()
         if not api_url.startswith(("http://", "https://")):
             raise HTTPException(400, "请填写 Doris HTTP API 地址(例如 http://host:30834/agent/doris/query)")
         # Doris schema names are validated by DorisHttpConn before mutating
         # the global source state, so malformed input returns a clear 400
         # instead of a later metadata-query failure.
         try:
-            DorisHttpConn(api_url, database)
+            _doris_http_conn(api_url, database)
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
-        STATE.doris_jdbc_url = jdbc
-        STATE.doris_api_url = api_url
-        STATE.doris_username = username
-        STATE.doris_password = password
-        STATE.doris_driver = driver
-        STATE.doris_database = database
-        STATE.use_doris = True
-        changed.append("database")
-    elif req.database:
+        source.doris_jdbc_url = jdbc
+        source.doris_api_url = api_url
+        source.doris_username = username
+        source.doris_password = password
+        source.doris_driver = driver
+        source.doris_database = database
+        source.use_doris = True
+        _mark("database")
+    elif not paired_repo_id and req.database:
         dp = _cwd_file(req.database, label="数据库文件")
         if not dp.is_file():
             raise HTTPException(400, f"数据库文件不存在: {req.database}")
-        STATE.db_path = str(dp)
-        STATE.use_doris = False
-        changed.append("database")
+        if source.use_doris or Path(source.db_path).resolve() != dp.resolve():
+            source.db_path = str(dp)
+            source.use_doris = False
+            _mark("database")
+
+    if not paired_repo_id and source.remote_ontology is not None and source.use_doris:
+        # A remote repository is never allowed to drift onto a custom schema.
+        # All normal remote switches took the paired branch above; reaching
+        # this check with a different schema means a caller tried to bypass it.
+        try:
+            active_catalog = _remote_repository_catalog(source.remote_ontology)
+        except OntologyApiError as exc:
+            raise HTTPException(502, f"无法校验原子数据源: {exc}") from exc
+        active_repo = next((item for item in active_catalog if item["id"] == source.remote_ontology.repository_id), None)
+        if active_repo is None or source.doris_database != active_repo["dorisDatabase"]:
+            raise HTTPException(400, "远程本体库必须与其 dorisDatabase 作为一个原子数据源切换")
 
     # Retrieval mode (semantic | graph) + optional 图库 file. In graph mode the
     # data session is rebuilt with the 图库检索 tools + SOP (see _ensure_session).
@@ -774,65 +1168,82 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         mode = req.retrieval_mode.strip()
         if mode not in RETRIEVAL_MODES:
             raise HTTPException(400, f"未知检索模式: {req.retrieval_mode}")
-        if mode != STATE.retrieval_mode:
-            STATE.retrieval_mode = mode
+        if mode != source.retrieval_mode:
+            source.retrieval_mode = mode
             changed.append("retrieval_mode")
 
     if req.graph:
         gp = _cwd_file(req.graph, label="图库文件")
         if not gp.is_file():
             raise HTTPException(400, f"图库文件不存在: {req.graph}")
-        if str(gp) != STATE.graph_path:
-            STATE.graph_path = str(gp)
+        if str(gp) != source.graph_path:
+            source.graph_path = str(gp)
             changed.append("graph")
+
+    if _source_binding_signature(source) == binding_before:
+        changed = [name for name in changed if name not in {"ontology", "database"}]
 
     if changed:
         # register_tool is idempotent — this rebinds the ontology/SQL tools to
         # the new store + db_path (or Doris connection).
         try:
             doris_conn = (
-                DorisHttpConn(STATE.doris_api_url, STATE.doris_database)
-                if STATE.use_doris
+                _doris_http_conn(source.doris_api_url, source.doris_database, source.remote_ontology)
+                if source.use_doris
                 else None
             )
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
-        register_all(
-            STATE.ontology_store,
-            STATE.db_path,
-            doris=doris_conn,
-            remote_ontology=STATE.remote_ontology,
-        )
+        if register_global:
+            register_all(
+                source.ontology_store,
+                source.db_path,
+                doris=doris_conn,
+                remote_ontology=source.remote_ontology,
+            )
         # Reset sessions so the new system prompt / ontology take effect.
-        STATE.session = None
-        STATE.report_session = None
-        STATE.active_report_ids = []
+        if source is STATE:
+            STATE.session = None
+            STATE.report_session = None
+            STATE.active_report_ids = []
 
     return JSONResponse({
         "changed": changed,
         "ontology": (
-            METAERP_ONTOLOGY_VALUE
-            if STATE.ontology_backend in {"production", "remote"}
-            else os.path.basename(STATE.ontology_path)
+            f"{REMOTE_ONTOLOGY_PREFIX}{source.remote_ontology.repository_id}"
+            if source.remote_ontology is not None
+            else _cwd_relative_value(source.ontology_path)
         ),
-        "database": DORIS_SOURCE_VALUE if STATE.use_doris else os.path.basename(STATE.db_path),
-        "doris_jdbc_url": STATE.doris_jdbc_url if STATE.use_doris else "",
-        "doris_database": STATE.doris_database if STATE.use_doris else "",
-        "retrieval_mode": STATE.retrieval_mode,
-        "graph": os.path.basename(STATE.graph_path) if STATE.graph_path else "",
+        "database": (
+            f"{REMOTE_DORIS_PREFIX}{source.remote_ontology.repository_id}"
+            if source.use_doris and source.remote_ontology is not None
+            else DORIS_SOURCE_VALUE
+            if source.use_doris
+            else _cwd_relative_value(source.db_path)
+        ),
+        "doris_jdbc_url": source.doris_jdbc_url if source.use_doris else "",
+        "doris_database": source.doris_database if source.use_doris else "",
+        "namespace": source.ontology_namespace if source.remote_ontology else "",
+        "retrieval_mode": source.retrieval_mode,
+        "graph": (
+            _cwd_relative_value(source.graph_path)
+            if source.graph_path else ""
+        ),
     })
 
 
 @app.post("/api/graph/build")
 def build_graph_endpoint(req: GraphBuildRequest) -> JSONResponse:
     """Build a NetworkX graph library from the given ontology xlsx and write it
-    as `<stem>.graphml` in the working dir (so it appears in the 图库源 list).
+    as `<stem>.graphml` in `dataset/graphs` (so it appears in the 图库源 list).
     Nodes = ontology elements; edges = 实体关系 (ER) + 本体元模型关系 (meta)."""
     cwd = Path(STATE.cwd)
     op = _cwd_file(req.ontology, label="本体文件")
     if not op.is_file():
         raise HTTPException(400, f"本体文件不存在: {req.ontology}")
-    out = cwd / (op.stem + ".graphml")
+    graph_dir = project_path(cwd, GRAPHS_DIR)
+    graph_dir.mkdir(parents=True, exist_ok=True)
+    out = graph_dir / (op.stem + ".graphml")
     try:
         from ..ontology.graph import build_from_xlsx
         stats = build_from_xlsx(str(op), str(out))
@@ -840,22 +1251,26 @@ def build_graph_endpoint(req: GraphBuildRequest) -> JSONResponse:
         raise HTTPException(500, f"未安装 networkx,无法构建图库: {e}")
     except Exception as e:
         raise HTTPException(400, f"图库构建失败: {e}")
-    return JSONResponse({"graph": out.name, "stats": stats})
+    return JSONResponse({"graph": out.relative_to(cwd).as_posix(), "stats": stats})
 
 
 @app.get("/api/system-prompt")
-def get_system_prompt(mode: str = "data") -> JSONResponse:
+def get_system_prompt(mode: str = "data", session_id: str = "") -> JSONResponse:
     if mode == "report":
-        if STATE.report_session is None:
+        session, _, _ = _report_context_state(session_id)
+        if session is None:
             return JSONResponse({"system_prompt": "(尚未激活任何报表,选择一份报表后将显示对应的 system prompt。)"})
-        return JSONResponse({"system_prompt": STATE.report_session.system_prompt})
-    _ensure_session()
-    return JSONResponse({"system_prompt": STATE.session.system_prompt})
+        return JSONResponse({"system_prompt": session.system_prompt})
+    session = _ensure_session(session_id)
+    return JSONResponse({"system_prompt": session.system_prompt})
 
 
 @app.get("/api/ontology/seen")
-def get_ontology_seen(mode: str = "data") -> JSONResponse:
-    session = STATE.report_session if mode == "report" else STATE.session
+def get_ontology_seen(mode: str = "data", session_id: str = "") -> JSONResponse:
+    key = _session_key(session_id)
+    session = _report_context_state(session_id)[0] if mode == "report" else (
+        STATE.sessions.get(key) if key else STATE.session
+    )
     if session is None:
         return JSONResponse({"entities": []})
     items = list(session.ontology_seen.values())
@@ -864,11 +1279,38 @@ def get_ontology_seen(mode: str = "data") -> JSONResponse:
 
 
 @app.get("/api/ontology/all")
-def get_ontology_all() -> JSONResponse:
+def get_ontology_all(session_id: str = "") -> JSONResponse:
     """Full ontology dump (for the "browse" side panel)."""
-    if not STATE.ontology_store:
+    source = _source_for_session(session_id)
+    if source.remote_ontology is not None:
+        result: dict[str, list[dict[str, str]]] = {
+            "terms": [], "business_objects": [], "logical_entities": [],
+            "attributes": [], "relations": [], "metrics": [], "dimensions": [],
+            "activities": [], "processes": [], "rules": [], "meta_relations": [],
+        }
+        mappings = {
+            "Term": ("terms", "term"),
+            "BusinessObject": ("business_objects", "business_object"),
+            "LogicalEntity": ("logical_entities", "logical_entity"),
+            "BusinessAttribute": ("attributes", "attribute"),
+            "Indicator": ("metrics", "metric"),
+            "Dimension": ("dimensions", "dimension"),
+            "Rule": ("rules", "rule"),
+        }
+        for type_name, (bucket, kind) in mappings.items():
+            try:
+                rows = source.remote_ontology.list_objects(type_name, 5000)
+            except OntologyApiError as exc:
+                raise HTTPException(502, f"远程本体浏览失败({type_name}): {exc}") from exc
+            result[bucket] = [{
+                "code": str(row.get("code") or row.get("identifierCode") or ""),
+                "kind": kind,
+                "name": str(row.get("label") or row.get("name") or row.get("code") or ""),
+            } for row in rows]
+        return JSONResponse(result)
+    if source.ontology_store is None:
         raise HTTPException(500, "Ontology not loaded")
-    s = STATE.ontology_store
+    s = source.ontology_store
     def _bundle(collection, kind):
         return [
             {"code": e.code, "kind": kind, "name": getattr(e, "name", e.code) or e.code}
@@ -890,8 +1332,12 @@ def get_ontology_all() -> JSONResponse:
 
 
 @app.post("/api/session/reset")
-def reset_session() -> JSONResponse:
-    STATE.session = None
+def reset_session(session_id: str = "") -> JSONResponse:
+    key = _session_key(session_id)
+    if key:
+        STATE.sessions.pop(key, None)
+    else:
+        STATE.session = None
     return JSONResponse({"ok": True})
 
 
@@ -901,31 +1347,41 @@ def reset_session() -> JSONResponse:
 class RolesRequest(BaseModel):
     user_role: str = ""    # key in USER_ROLES, or "" to clear
     agent_pref: str = ""   # key in AGENT_PREFS, or "" to clear
+    session_id: Optional[str] = None
 
 
 @app.get("/api/roles")
-def get_roles() -> JSONResponse:
+def get_roles(session_id: str = "") -> JSONResponse:
+    user_role, agent_pref = _role_values(session_id)
     return JSONResponse({
-        "user_role": STATE.user_role,
-        "agent_pref": STATE.agent_pref,
+        "user_role": user_role,
+        "agent_pref": agent_pref,
         "user_role_options": [{"key": k, "label": v[0], "desc": v[1]} for k, v in USER_ROLES.items()],
         "agent_pref_options": [{"key": k, "label": v[0], "desc": v[1]} for k, v in AGENT_PREFS.items()],
-    })
+    }, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
 @app.put("/api/roles")
 def put_roles(req: RolesRequest) -> JSONResponse:
     # Validate against the known taxonomy; unknown keys clear the slot.
-    STATE.user_role = req.user_role if req.user_role in USER_ROLES else ""
-    STATE.agent_pref = req.agent_pref if req.agent_pref in AGENT_PREFS else ""
-    block = _role_block()
+    user_role = req.user_role if req.user_role in USER_ROLES else ""
+    agent_pref = req.agent_pref if req.agent_pref in AGENT_PREFS else ""
+    key = _session_key(req.session_id)
+    if key:
+        STATE.roles_by_session[key] = (user_role, agent_pref)
+    else:
+        STATE.user_role = user_role
+        STATE.agent_pref = agent_pref
+    block = _role_block(req.session_id)
     # Apply to live sessions so the change takes effect on the next turn —
     # no conversation reset needed.
-    if STATE.session is not None:
-        STATE.session.set_role_block(block)
-    if STATE.report_session is not None:
-        STATE.report_session.set_role_block(block)
-    return JSONResponse({"ok": True, "user_role": STATE.user_role, "agent_pref": STATE.agent_pref})
+    data_session = STATE.sessions.get(key) if key else STATE.session
+    report_session = STATE.report_sessions.get(key) if key else STATE.report_session
+    if data_session is not None:
+        data_session.set_role_block(block)
+    if report_session is not None:
+        report_session.set_role_block(block)
+    return JSONResponse({"ok": True, "user_role": user_role, "agent_pref": agent_pref})
 
 
 # ---------------------------------------------------------------------------
@@ -939,11 +1395,18 @@ class ConversationSaveRequest(BaseModel):
     ontology_html: str = ""
     tools_html: str = ""
     llm_html: str = ""
+    sop_steps: list[dict[str, Any]] = Field(default_factory=list)
+    # The active ontology/database context for this snapshot. Passwords are
+    # deliberately excluded by the client and are never persisted.
+    source_config: Optional[dict[str, Any]] = None
     cid: Optional[str] = None           # update in place when the browser has one
+    first_user_question: str = ""       # visible first question captured by the browser
+    session_id: Optional[str] = None
 
 
 class ConversationRestoreRequest(BaseModel):
     id: str
+    session_id: Optional[str] = None
 
 
 def _require_conversation_store() -> ConversationStore:
@@ -952,8 +1415,12 @@ def _require_conversation_store() -> ConversationStore:
     return STATE.conversation_store
 
 
-def _session_for_mode(mode: str) -> Optional[WebSession]:
-    return STATE.report_session if mode == "report" else STATE.session
+def _session_for_mode(mode: str, session_id: Optional[str] = None) -> Optional[WebSession]:
+    if mode == "report":
+        key = _session_key(session_id)
+        return STATE.report_sessions.get(key) if key else STATE.report_session
+    key = _session_key(session_id)
+    return STATE.sessions.get(key) if key else STATE.session
 
 
 def _conversation_sync(method: str, path: str, payload: Optional[dict[str, Any]] = None) -> Optional[dict[str, Any]]:
@@ -965,7 +1432,10 @@ def _conversation_sync(method: str, path: str, payload: Optional[dict[str, Any]]
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
         req = Request(base + path, data=data, headers=headers, method=method.upper())
-        with urlopen(req, timeout=5) as response:
+        # Sync is best-effort and must never hold the local UI for the old
+        # five-second network timeout. The local store is authoritative for
+        # interactive reads; writes/deletes can tolerate a short mirror wait.
+        with urlopen(req, timeout=0.8) as response:
             return json.loads(response.read().decode("utf-8"))
     except (OSError, URLError, ValueError, json.JSONDecodeError):
         return None
@@ -1013,6 +1483,46 @@ def _history_ontology_entities(session: WebSession, messages: list[Any]) -> list
     return list(session.ontology_seen.values())
 
 
+def _infer_history_source_config(messages: list[Any]) -> dict[str, str]:
+    """Infer a Doris/repository source for snapshots created before source
+    context was persisted.
+
+    SQL tool results retain the schema used by the historical turn. This is a
+    safe migration hint for old records; records without an identifiable
+    ``ontology_*`` schema keep the currently selected source.
+    """
+    try:
+        text = json.dumps(messages or [], ensure_ascii=False)
+    except (TypeError, ValueError):
+        return {}
+    schemas = re.findall(
+        r"\b(?:from|join|update|into)\s+([A-Za-z_][\w]*)\.",
+        text,
+        flags=re.IGNORECASE,
+    )
+    schemas = [schema for schema in schemas if schema.lower().startswith("ontology_")]
+    if not schemas:
+        return {}
+    database = schemas[-1]
+    lower = database.lower()
+    repository_by_schema = (
+        ("ontology_guangfeng", "__metaerp_repository__:4"),
+        ("ontology_test", "__metaerp_repository__:2"),
+        ("ontology_dev", "__metaerp_repository__:1"),
+        ("ontology_demometaerp", "__metaerp_repository__:3"),
+        ("ontology_demo", "__metaerp_repository__:3"),
+    )
+    source = {
+        "database": DORIS_SOURCE_VALUE,
+        "doris_database": database,
+    }
+    for prefix, repository in repository_by_schema:
+        if lower.startswith(prefix):
+            source["ontology"] = repository
+            break
+    return source
+
+
 def _render_history_ontology_cards(entities: list[dict[str, Any]]) -> str:
     """Render migrated entity records using the same card contract as JS."""
     kind_labels = {
@@ -1042,12 +1552,154 @@ def _render_history_ontology_cards(entities: list[dict[str, Any]]) -> str:
     return "".join(cards)
 
 
+def _load_conversation_record(store: ConversationStore, cid: str) -> Optional[dict[str, Any]]:
+    """Load only from the local authoritative conversation store."""
+    return store.get(cid)
+
+
+def _current_source_config(source: Any = None) -> dict[str, str]:
+    """Return the non-secret source identity currently bound to the process."""
+    source = source or STATE
+    ontology = (
+        f"__metaerp_repository__:{source.remote_ontology.repository_id}"
+        if source.remote_ontology is not None
+        else _cwd_relative_value(source.ontology_path)
+    )
+    database = DORIS_SOURCE_VALUE if source.use_doris else _cwd_relative_value(source.db_path)
+    if source.use_doris and source.remote_ontology is not None:
+        database = f"{REMOTE_DORIS_PREFIX}{source.remote_ontology.repository_id}"
+    return sanitize_source_config({
+        "ontology": ontology,
+        "database": database,
+        "retrieval_mode": source.retrieval_mode,
+        "graph": _cwd_relative_value(source.graph_path),
+        "doris_api_url": source.doris_api_url,
+        "doris_jdbc_url": source.doris_jdbc_url,
+        "doris_driver": source.doris_driver,
+        "doris_username": source.doris_username,
+        "doris_database": source.doris_database,
+    })
+
+
+def _history_source_matches_current(source_config: dict[str, str], source: Any = None) -> bool:
+    if not source_config:
+        return False
+    current = _current_source_config(source)
+    return all(str(current.get(key, "")) == str(value) for key, value in source_config.items())
+
+
+def _resolved_history_source(rec: dict[str, Any]) -> dict[str, str]:
+    source_config = sanitize_source_config(rec.get("source_config"))
+    if source_config:
+        return source_config
+    return _infer_history_source_config(rec.get("messages") or [])
+
+
+def _conversation_preview_payload(rec: dict[str, Any], requested_id: str) -> dict[str, Any]:
+    metadata = ConversationStore._metadata(rec)
+    preview = metadata.get("preview") if isinstance(metadata.get("preview"), list) else []
+    # A few very old snapshots contain only rendered HTML. Keep that format as
+    # a last-resort preview rather than making the legacy transcript invisible.
+    legacy_preview_html = ""
+    if not preview and rec.get("chat_html"):
+        legacy_preview_html = str(rec.get("chat_html") or "")[:1_000_000]
+    source_config = _resolved_history_source(rec)
+    return {
+        "id": rec.get("id") or requested_id,
+        "title": metadata.get("title") or "未命名对话",
+        "first_user_question": metadata.get("first_user_question") or "",
+        "mode": metadata.get("mode") or "data",
+        "preview": preview,
+        "chat_html_preview": legacy_preview_html,
+        "turn_count": metadata.get("turn_count", 0),
+        "source_config_needs_restore": bool(source_config),
+        "has_ontology_html": bool(rec.get("ontology_html")),
+    }
+
+
+def _activate_conversation_record(
+    store: ConversationStore,
+    rec: dict[str, Any],
+    requested_id: str,
+    session_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Restore only server-side context; HTML is deliberately not touched here."""
+    mode = rec.get("mode") if rec.get("mode") in ("data", "report") else "data"
+    messages = rec.get("messages") if isinstance(rec.get("messages"), list) else []
+    source_restore_error = ""
+    source_config = _resolved_history_source(rec)
+
+    # Source switching is expensive (ontology load + tool registration). It is
+    # skipped when the historical source is already the active source.
+    source = _source_for_session(session_id)
+    if source_config and not _history_source_matches_current(source_config, source):
+        allowed_source_fields = {
+            "ontology", "database", "retrieval_mode", "graph",
+            "doris_api_url", "doris_jdbc_url", "doris_driver",
+            "doris_username", "doris_database",
+        }
+        try:
+            put_sources_endpoint(SourcesUpdate(session_id=session_id, **{
+                key: value
+                for key, value in source_config.items()
+                if key in allowed_source_fields and value not in (None, "")
+            }))
+        except HTTPException as exc:
+            source_restore_error = str(exc.detail or exc)
+        except Exception as exc:  # malformed/removed old sources are non-fatal
+            source_restore_error = str(exc)
+
+    context_restored = False
+    if mode == "report":
+        session = _session_for_mode("report", session_id)
+        if session is not None:
+            session.messages = list(messages)
+            session.first_user_question = str(rec.get("first_user_question") or "")
+            session.pending_tool_use_id = None
+            session.pending_choice_spec = None
+            session._pending_sibling_results = []
+            context_restored = True
+    else:
+        if _session_key(session_id) or STATE.session is None:
+            session = _ensure_session(session_id)
+        else:
+            session = STATE.session
+        if session is not None:
+            session.messages = list(messages)
+            session.first_user_question = str(rec.get("first_user_question") or "")
+            session.pending_tool_use_id = None
+            session.pending_choice_spec = None
+            session._pending_sibling_results = []
+            context_restored = True
+
+    # New snapshots already contain rendered ontology HTML. Only old records
+    # need the compatibility scan/migration, which can be noticeably costly.
+    active_session = _session_for_mode(mode, session_id)
+    if active_session is not None and not str(rec.get("ontology_html") or "").strip():
+        migrated_entities = _history_ontology_entities(active_session, messages)
+        if migrated_entities:
+            migrated_html = _render_history_ontology_cards(migrated_entities)
+            if migrated_html != (rec.get("ontology_html") or ""):
+                rec["ontology_html"] = migrated_html
+                store.update_ontology_html(str(rec.get("id") or requested_id), migrated_html)
+
+    return {
+        "id": rec.get("id") or requested_id,
+        "mode": mode,
+        "title": ConversationStore._metadata(rec).get("title") or "未命名对话",
+        "first_user_question": ConversationStore._metadata(rec).get("first_user_question") or "",
+        "source_config": source_config,
+        "source_restore_error": source_restore_error,
+        "context_restored": context_restored,
+    }
+
+
 @app.get("/api/conversations")
 def list_conversations(mode: Optional[str] = None) -> JSONResponse:
     store = _require_conversation_store()
-    synced = _conversation_sync("GET", "/api/conversations" + (f"?mode={mode}" if mode else ""))
-    if synced and isinstance(synced.get("conversations"), list):
-        return JSONResponse(synced)
+    # Do not wait for CONVERSATION_SYNC_URL here. The local metadata index is
+    # intentionally the fast path; remote mirroring is handled on writes and
+    # a remote outage must not hide locally available history.
     return JSONResponse({"conversations": store.list(mode)})
 
 
@@ -1057,7 +1709,8 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
     client-rendered chat/dashboard HTML, so it can be relisted and restored."""
     store = _require_conversation_store()
     mode = req.mode if req.mode in ("data", "report") else "data"
-    session = _session_for_mode(mode)
+    session = _session_for_mode(mode, req.session_id)
+    safe_source_config = sanitize_source_config(req.source_config)
     messages = list(session.messages) if session else []
     summary = store.save(
         mode=mode,
@@ -1068,70 +1721,80 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
         ontology_html=req.ontology_html,
         tools_html=req.tools_html,
         llm_html=req.llm_html,
+        sop_steps=req.sop_steps,
+        # An empty client snapshot means metadata was unavailable; on an
+        # update it must not erase the source already captured for the record.
+        source_config=safe_source_config or None,
         cid=req.cid,
+        first_user_question_override=(
+            req.first_user_question.strip()
+            or (session.first_user_question if session else "")
+        ),
     )
-    synced = _conversation_sync("POST", "/api/conversations/save", {
-        "mode": mode, "title": summary.get("title"), "chat_html": req.chat_html,
-        "dashboard_html": req.dashboard_html, "cid": summary.get("id"),
-        "ontology_html": req.ontology_html, "tools_html": req.tools_html,
-        "llm_html": req.llm_html,
-    })
-    return JSONResponse(synced or summary)
+    # Local storage is authoritative. A configured sync URL is intentionally
+    # not consulted here: an old mirror must never overwrite the canonical
+    # title, id, timestamp, or mode returned to the browser.
+    return JSONResponse(summary)
 
 
 @app.post("/api/conversations/restore")
 def restore_conversation(req: ConversationRestoreRequest) -> JSONResponse:
-    """Reinstate a stored conversation: reload its messages into the matching
-    session (so the user can keep chatting) and return the saved HTML so the
-    browser can re-render the transcript + dashboard."""
+    """Legacy all-at-once restore endpoint kept for older clients."""
     store = _require_conversation_store()
-    rec = store.get(req.id)
-    if not rec:
-        remote = _conversation_sync("GET", f"/api/conversations/{req.id}/record")
-        if remote and isinstance(remote.get("conversation"), dict):
-            rec = remote["conversation"]
+    rec = _load_conversation_record(store, req.id)
     if not rec:
         raise HTTPException(404, f"conversation not found: {req.id}")
-    mode = rec.get("mode") or "data"
-    messages = rec.get("messages") or []
-    context_restored = False
-    if mode == "report":
-        # Report sessions are bound to uploaded reports; only reinstate context
-        # when one is active. Otherwise the transcript is restored visually only.
-        if STATE.report_session is not None:
-            STATE.report_session.messages = list(messages)
-            STATE.report_session.pending_tool_use_id = None
-            STATE.report_session.pending_choice_spec = None
-            STATE.report_session._pending_sibling_results = []
-            context_restored = True
-    else:
-        _ensure_session()
-        STATE.session.messages = list(messages)
-        STATE.session.pending_tool_use_id = None
-        STATE.session.pending_choice_spec = None
-        STATE.session._pending_sibling_results = []
-        context_restored = True
-    active_session = STATE.report_session if mode == "report" else STATE.session
-    if active_session is not None:
-        migrated_entities = _history_ontology_entities(active_session, messages)
-        if migrated_entities:
-            migrated_html = _render_history_ontology_cards(migrated_entities)
-            if migrated_html != (rec.get("ontology_html") or ""):
-                rec["ontology_html"] = migrated_html
-                # Persist the corrected snapshot without changing the history
-                # timestamp/order merely by opening the conversation.
-                store.update_ontology_html(str(rec.get("id") or req.id), migrated_html)
+    activated = _activate_conversation_record(store, rec, req.id, req.session_id)
     return JSONResponse({
-        "id": rec.get("id"),
-        "mode": mode,
-        "title": rec.get("title"),
+        **activated,
         "chat_html": rec.get("chat_html") or "",
         "dashboard_html": rec.get("dashboard_html") or "",
         "ontology_html": rec.get("ontology_html") or "",
         "tools_html": rec.get("tools_html") or "",
         "llm_html": rec.get("llm_html") or "",
-        "context_restored": context_restored,
+        "sop_steps": rec.get("sop_steps") or [],
     })
+
+
+@app.get("/api/conversations/{cid}/preview")
+def preview_conversation(cid: str) -> JSONResponse:
+    """Return only metadata and a bounded text transcript for fast rendering."""
+    store = _require_conversation_store()
+    rec = _load_conversation_record(store, cid)
+    if not rec:
+        raise HTTPException(404, f"conversation not found: {cid}")
+    return JSONResponse(_conversation_preview_payload(rec, cid))
+
+
+@app.get("/api/conversations/{cid}/assets")
+def conversation_assets(cid: str) -> JSONResponse:
+    """Return renderable assets without restoring process-global context."""
+    store = _require_conversation_store()
+    rec = _load_conversation_record(store, cid)
+    if not rec:
+        raise HTTPException(404, f"conversation not found: {cid}")
+    return JSONResponse({
+        "id": rec.get("id") or cid,
+        "mode": rec.get("mode") or "data",
+        # chat_html is included for visual fidelity with existing snapshots;
+        # it is loaded after the lightweight preview and never sent by list().
+        "chat_html": rec.get("chat_html") or "",
+        "dashboard_html": rec.get("dashboard_html") or "",
+        "ontology_html": rec.get("ontology_html") or "",
+        "tools_html": rec.get("tools_html") or "",
+        "llm_html": rec.get("llm_html") or "",
+        "sop_steps": rec.get("sop_steps") or [],
+    })
+
+
+@app.post("/api/conversations/{cid}/activate")
+def activate_conversation(cid: str, session_id: str = "") -> JSONResponse:
+    """Restore messages/source/session after the preview is visible."""
+    store = _require_conversation_store()
+    rec = _load_conversation_record(store, cid)
+    if not rec:
+        raise HTTPException(404, f"conversation not found: {cid}")
+    return JSONResponse(_activate_conversation_record(store, rec, cid, session_id))
 
 
 @app.get("/api/conversations/{cid}/record")
@@ -1148,8 +1811,7 @@ def get_conversation_record(cid: str) -> JSONResponse:
 def delete_conversation(cid: str) -> JSONResponse:
     store = _require_conversation_store()
     local_ok = store.delete(cid)
-    synced = _conversation_sync("DELETE", f"/api/conversations/{cid}")
-    return JSONResponse({"ok": bool((synced or {}).get("ok", local_ok))})
+    return JSONResponse({"ok": bool(local_ok)})
 
 
 @app.post("/api/chat")
@@ -1157,12 +1819,11 @@ def chat(req: ChatRequest):
     message = (req.message or "").strip()
     if not message:
         raise HTTPException(400, "empty message")
-    _ensure_session()
-    session = STATE.session
+    session = _ensure_session(req.session_id)
 
     def event_stream():
         try:
-            for evt in session.generate_turn(message):
+            for evt in session.generate_turn(message, req.visible_user_text):
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
         except Exception as e:
             err = {"type": "error", "message": f"{type(e).__name__}: {e}"}
@@ -1182,9 +1843,10 @@ def chat(req: ChatRequest):
 @app.post("/api/choice")
 def choice(req: ChoiceRequest):
     """Resume a turn that paused on an AskUser tool call."""
-    if not STATE.session:
+    key = _session_key(req.session_id)
+    session = STATE.sessions.get(key) if key else STATE.session
+    if not session:
         raise HTTPException(400, "No active session")
-    session = STATE.session
     if not session.pending_tool_use_id:
         raise HTTPException(400, "No pending user choice")
     ids, labels = req.normalized()
@@ -1222,6 +1884,7 @@ class ReportActivate(BaseModel):
     # Default to True — users nearly always want DB cross-checking; pure
     # mode is the exception, not the rule.
     with_db: bool = True
+    session_id: Optional[str] = None
 
     def resolve_ids(self) -> list[str]:
         if self.report_ids:
@@ -1243,6 +1906,35 @@ class ReportActivate(BaseModel):
 
 class ReportConfigUpdate(BaseModel):
     with_db: bool
+    session_id: Optional[str] = None
+
+
+def _report_context_state(session_id: Optional[str]) -> tuple[Optional[WebSession], list[str], bool]:
+    key = _session_key(session_id)
+    if not key:
+        return STATE.report_session, STATE.active_report_ids, STATE.report_with_db
+    return (
+        STATE.report_sessions.get(key),
+        list(STATE.report_ids_by_session.get(key, [])),
+        STATE.report_db_by_session.get(key, True),
+    )
+
+
+def _set_report_context(
+    session_id: Optional[str], session: Optional[WebSession], ids: list[str], with_db: bool,
+) -> None:
+    key = _session_key(session_id)
+    if not key:
+        STATE.report_session = session
+        STATE.active_report_ids = list(ids)
+        STATE.report_with_db = with_db
+        return
+    if session is None:
+        STATE.report_sessions.pop(key, None)
+    else:
+        STATE.report_sessions[key] = session
+    STATE.report_ids_by_session[key] = list(ids)
+    STATE.report_db_by_session[key] = with_db
 
 
 @app.post("/api/report/upload")
@@ -1294,6 +1986,19 @@ def report_delete(rid: str) -> JSONResponse:
             )
         else:
             STATE.report_session = None
+    # The uploaded report store is shared, while report conversations are
+    # session-scoped. Remove the deleted report from every browser context so
+    # no user keeps a prompt referencing a file that no longer exists.
+    for key, active_ids in list(STATE.report_ids_by_session.items()):
+        if rid not in active_ids:
+            continue
+        remaining = [item for item in active_ids if item != rid]
+        with_db = STATE.report_db_by_session.get(key, True)
+        session = (
+            _build_report_session(remaining, with_db, _source_for_session(key), key)
+            if remaining else None
+        )
+        _set_report_context(key, session, remaining, with_db)
     return JSONResponse({"ok": ok})
 
 
@@ -1312,10 +2017,11 @@ def _record_to_summary(rec: dict) -> dict:
 
 
 @app.get("/api/report/status")
-def report_status() -> JSONResponse:
+def report_status(session_id: str = "") -> JSONResponse:
+    session, active_ids, with_db = _report_context_state(session_id)
     actives: list[dict] = []
     if STATE.report_store:
-        for rid in STATE.active_report_ids:
+        for rid in active_ids:
             rec = STATE.report_store.get(rid)
             if rec:
                 actives.append(_record_to_summary(rec))
@@ -1325,8 +2031,8 @@ def report_status() -> JSONResponse:
     return JSONResponse({
         "active_reports": actives,
         "active_report": legacy_active,
-        "with_db": STATE.report_with_db,
-        "has_session": STATE.report_session is not None,
+        "with_db": with_db,
+        "has_session": session is not None,
     })
 
 
@@ -1350,16 +2056,16 @@ def report_activate(req: ReportActivate) -> JSONResponse:
             raise HTTPException(404, f"report not found: {rid}")
         actives.append(_record_to_summary(rec))
 
-    STATE.report_session = _build_report_session(ids, req.with_db)
-    STATE.active_report_ids = ids
-    STATE.report_with_db = req.with_db
+    source = _source_for_session(req.session_id)
+    session = _build_report_session(ids, req.with_db, source, req.session_id)
+    _set_report_context(req.session_id, session, ids, req.with_db)
 
     return JSONResponse({
         "ok": True,
         "active_reports": actives,
         # Backward-compat — first report as the legacy "single active".
         "active_report": actives[0] if actives else None,
-        "with_db": STATE.report_with_db,
+        "with_db": req.with_db,
     })
 
 
@@ -1371,40 +2077,48 @@ def report_config(req: ReportConfigUpdate) -> JSONResponse:
     the agent doesn't see a mismatch (stale header said 'disabled' while
     the new tool list includes SQLRun — which was the original bug).
     """
-    if STATE.report_session is None:
+    session, active_ids, _ = _report_context_state(req.session_id)
+    if session is None:
         raise HTTPException(400, "No active report session")
-    STATE.report_with_db = bool(req.with_db)
-    new_tools = REPORT_DB_TOOLS if STATE.report_with_db else REPORT_PURE_TOOLS
-    STATE.report_session.set_tools_override(new_tools)
-    if STATE.active_report_ids and STATE.report_store is not None:
-        recs = [STATE.report_store.get(rid) for rid in STATE.active_report_ids]
+    with_db = bool(req.with_db)
+    new_tools = REPORT_DB_TOOLS if with_db else REPORT_PURE_TOOLS
+    session.set_tools_override(new_tools)
+    if active_ids and STATE.report_store is not None:
+        recs = [STATE.report_store.get(rid) for rid in active_ids]
         recs = [r for r in recs if r]
         if recs:
-            STATE.report_session.set_context_header(
-                _report_context_header(recs, STATE.report_with_db)
+            session.set_context_header(
+                _report_context_header(recs, with_db)
             )
-    return JSONResponse({"ok": True, "with_db": STATE.report_with_db})
+    _set_report_context(req.session_id, session, active_ids, with_db)
+    return JSONResponse({"ok": True, "with_db": with_db})
 
 
 @app.post("/api/report/session/reset")
-def report_session_reset() -> JSONResponse:
-    """Clear the chat history but keep the active reports + flag."""
-    STATE.report_session = None
-    if STATE.active_report_ids:
-        STATE.report_session = _build_report_session(
-            STATE.active_report_ids, STATE.report_with_db,
+def report_session_reset(session_id: str = "", clear_reports: bool = False) -> JSONResponse:
+    """Clear report chat history, optionally detaching the active reports."""
+    _, active_ids, with_db = _report_context_state(session_id)
+    if clear_reports:
+        _set_report_context(session_id, None, [], with_db)
+        return JSONResponse({"ok": True, "active_reports": []})
+    session = None
+    if active_ids:
+        session = _build_report_session(
+            active_ids, with_db, _source_for_session(session_id), session_id,
         )
+    _set_report_context(session_id, session, active_ids, with_db)
     return JSONResponse({"ok": True})
 
 
 @app.post("/api/report/generate")
-def report_generate() -> JSONResponse:
+def report_generate(session_id: str = "") -> JSONResponse:
     """Start a report-GENERATION session — runs IN report mode on the
     report-generator agent (ontology + DB tools), not bound to any
     uploaded report. The wizard sends the report config as the first
     chat message; the agent searches data and assembles the report.
     """
-    if not STATE.ontology_store:
+    source = _source_for_session(session_id)
+    if source.ontology_store is None:
         raise HTTPException(500, "Server not configured; call configure() first.")
     reg = get_agent_def_registry()
     gen_agent = reg.get(REPORTGEN_AGENT_NAME)
@@ -1414,17 +2128,20 @@ def report_generate() -> JSONResponse:
             f"Agent '{REPORTGEN_AGENT_NAME}' not found — 请在添加 "
             f".claude/agents/{REPORTGEN_AGENT_NAME}.md 后重启服务。",
         )
-    STATE.report_session = WebSession(
+    doris = _doris_http_conn(source.doris_api_url, source.doris_database, source.remote_ontology) if source.use_doris else None
+    executors = build_source_executors(source.ontology_store, source.db_path, doris=doris, remote_ontology=source.remote_ontology)
+    session = WebSession(
         cwd=STATE.cwd,
         agent_def=gen_agent,
-        ontology_store=STATE.ontology_store,
+        ontology_store=source.ontology_store,
         tools_override=REPORT_DB_TOOLS,
         context_header="# 任务类型: 标准报表生成\n# 数据库工具可用性: enabled",
-        ontology_backend=("remote" if STATE.ontology_backend in {"remote", "production"} else "local"),
-        ontology_repository_id=(STATE.remote_ontology.repository_id if STATE.remote_ontology else ""),
+        role_block=_role_block(session_id),
+        ontology_backend=("remote" if source.ontology_backend in {"remote", "production"} else "local"),
+        ontology_repository_id=(source.remote_ontology.repository_id if source.remote_ontology else ""),
+        tool_executors=executors,
     )
-    STATE.active_report_ids = []
-    STATE.report_with_db = True
+    _set_report_context(session_id, session, [], True)
     return JSONResponse({"ok": True})
 
 
@@ -1526,7 +2243,7 @@ def report_compose(req: ReportComposeRequest) -> JSONResponse:
 
 @app.post("/api/report/chat")
 def report_chat(req: ChatRequest):
-    session = STATE.report_session
+    session = _session_for_mode("report", req.session_id)
     if session is None:
         raise HTTPException(400, "No active report session — activate a report first")
     message = (req.message or "").strip()
@@ -1535,7 +2252,7 @@ def report_chat(req: ChatRequest):
 
     def event_stream():
         try:
-            for evt in session.generate_turn(message):
+            for evt in session.generate_turn(message, req.visible_user_text):
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
         except Exception as e:
             err = {"type": "error", "message": f"{type(e).__name__}: {e}"}
@@ -1554,7 +2271,7 @@ def report_chat(req: ChatRequest):
 
 @app.post("/api/report/choice")
 def report_choice(req: ChoiceRequest):
-    session = STATE.report_session
+    session = _session_for_mode("report", req.session_id)
     if session is None or not session.pending_tool_use_id:
         raise HTTPException(400, "No pending user choice")
     ids, labels = req.normalized()
@@ -1582,26 +2299,56 @@ def report_choice(req: ChoiceRequest):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _ensure_session() -> None:
-    if STATE.session is None:
-        if not STATE.agent_def or not STATE.ontology_store:
-            raise HTTPException(500, "Server not configured; call configure() first.")
-        tools_override = None
-        context_header = None
-        if STATE.retrieval_mode == "graph":
-            base = list(STATE.agent_def.tools or [])
-            tools_override = base + [t for t in GRAPH_TOOL_NAMES if t not in base]
-            context_header = GRAPH_MODE_SOP
-        STATE.session = WebSession(
-            cwd=STATE.cwd,
-            agent_def=STATE.agent_def,
-            ontology_store=STATE.ontology_store,
-            tools_override=tools_override,
-            context_header=context_header,
-            role_block=_role_block(),
-            ontology_backend=("remote" if STATE.ontology_backend in {"remote", "production"} else "local"),
-            ontology_repository_id=(STATE.remote_ontology.repository_id if STATE.remote_ontology else ""),
+def _ensure_session(session_id: Optional[str] = None) -> WebSession:
+    key = _session_key(session_id)
+    existing = STATE.sessions.get(key) if key else STATE.session
+    if existing is not None:
+        return existing
+    source = _source_for_session(key)
+    if not STATE.agent_def or source.ontology_store is None:
+        raise HTTPException(500, "Server not configured; call configure() first.")
+    try:
+        doris = (
+            _doris_http_conn(source.doris_api_url, source.doris_database, source.remote_ontology)
+            if source.use_doris else None
         )
+    except ValueError as exc:
+        raise HTTPException(500, f"数据源配置无效: {exc}") from exc
+    executors = build_source_executors(
+        source.ontology_store,
+        source.db_path,
+        doris=doris,
+        remote_ontology=source.remote_ontology,
+    )
+    tools_override = None
+    headers: list[str] = []
+    if source.remote_ontology is not None:
+        headers.append(
+            "# 当前原子数据源\n"
+            f"- repository_id: {source.remote_ontology.repository_id}\n"
+            f"- namespace: {source.ontology_namespace or source.remote_ontology.namespace}\n"
+            f"- doris_database: {source.doris_database}"
+        )
+    if source.retrieval_mode == "graph":
+        base = list(STATE.agent_def.tools or [])
+        tools_override = base + [t for t in GRAPH_TOOL_NAMES if t not in base]
+        headers.append(GRAPH_MODE_SOP)
+    session = WebSession(
+        cwd=STATE.cwd,
+        agent_def=STATE.agent_def,
+        ontology_store=source.ontology_store,
+        tools_override=tools_override,
+        context_header="\n\n".join(headers) or None,
+        role_block=_role_block(key),
+        ontology_backend=("remote" if source.ontology_backend in {"remote", "production"} else "local"),
+        ontology_repository_id=(source.remote_ontology.repository_id if source.remote_ontology else ""),
+        tool_executors=executors,
+    )
+    if key:
+        STATE.sessions[key] = session
+    else:
+        STATE.session = session
+    return session
 
 
 def _require_report_store() -> ReportStore:
@@ -1666,9 +2413,15 @@ def _build_multi_report_block(report_ids: list[str]) -> str:
     return "\n\n---\n\n".join(sections)
 
 
-def _build_report_session(report_ids: list[str], with_db: bool) -> WebSession:
+def _build_report_session(
+    report_ids: list[str],
+    with_db: bool,
+    source: Any = None,
+    session_id: Optional[str] = None,
+) -> WebSession:
     """Create a fresh WebSession bound to the given report list + DB flag."""
-    if not STATE.ontology_store or not STATE.report_store:
+    source = source or STATE
+    if source.ontology_store is None or not STATE.report_store:
         raise HTTPException(500, "Server not configured; call configure() first.")
     if not report_ids:
         raise HTTPException(400, "report_ids is empty")
@@ -1695,14 +2448,25 @@ def _build_report_session(report_ids: list[str], with_db: bool) -> WebSession:
     report_block = _build_multi_report_block(report_ids)
     header = _report_context_header(recs, with_db)
     tools = REPORT_DB_TOOLS if with_db else REPORT_PURE_TOOLS
+    doris = (
+        _doris_http_conn(source.doris_api_url, source.doris_database, source.remote_ontology)
+        if source.use_doris else None
+    )
+    executors = build_source_executors(
+        source.ontology_store,
+        source.db_path,
+        doris=doris,
+        remote_ontology=source.remote_ontology,
+    )
     return WebSession(
         cwd=STATE.cwd,
         agent_def=report_agent,
-        ontology_store=STATE.ontology_store,
+        ontology_store=source.ontology_store,
         tools_override=tools,
         report_context_block=report_block,
         context_header=header,
-        role_block=_role_block(),
-        ontology_backend=("remote" if STATE.ontology_backend in {"remote", "production"} else "local"),
-        ontology_repository_id=(STATE.remote_ontology.repository_id if STATE.remote_ontology else ""),
+        role_block=_role_block(session_id),
+        ontology_backend=("remote" if source.ontology_backend in {"remote", "production"} else "local"),
+        ontology_repository_id=(source.remote_ontology.repository_id if source.remote_ontology else ""),
+        tool_executors=executors,
     )

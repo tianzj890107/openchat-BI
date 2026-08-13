@@ -1,13 +1,19 @@
 import sqlite3
+import sys
 from pathlib import Path
 
 import pandas as pd
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-ROOT = Path(__file__).resolve().parent
-REPORT_XLSX = ROOT / "超聚变报表.xlsx"
-DATA_XLSX = ROOT / "超聚变数据.xlsx"
-DB_PATH = ROOT / "HyperFusion.db"
+from bi_agent.paths import DATABASES_DIR, SPREADSHEETS_DIR
+
+
+REPORT_XLSX = PROJECT_ROOT / SPREADSHEETS_DIR / "超聚变报表.xlsx"
+DATA_XLSX = PROJECT_ROOT / SPREADSHEETS_DIR / "超聚变数据.xlsx"
+DB_PATH = PROJECT_ROOT / DATABASES_DIR / "HyperFusion.db"
 
 
 TABLE_SPECS = {

@@ -4,11 +4,69 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>智析 · 本体工作台</title>
-    <link rel="stylesheet" href="/static/vendor/antd/openchat-bi-workbench.css?v=3" />
+    <link rel="preload" href="/static/vendor/antd/openchat-bi-workbench.css?v=83" as="style" fetchpriority="high" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" href="/static/vendor/antd/openchat-bi-workbench.css?v=83" /></noscript>
+    <style>
+      /* Keep the first paint useful while React and the deferred workbench
+       * bundle are being fetched. React replaces this subtree on mount. */
+      #initial-shell-skeleton {
+        box-sizing: border-box;
+        display: grid;
+        grid-template-columns: 232px minmax(0, 1fr);
+        min-height: 100vh;
+        color: #35383f;
+        background: #f7f8fa;
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .initial-skeleton-sidebar {
+        padding: 22px 16px;
+        background: #fff;
+        border-right: 1px solid #e9ebef;
+      }
+      .initial-skeleton-brand,
+      .initial-skeleton-row,
+      .initial-skeleton-line {
+        border-radius: 6px;
+        background: linear-gradient(90deg, #eef0f3 25%, #f7f8fa 50%, #eef0f3 75%);
+        background-size: 200% 100%;
+        animation: initial-skeleton-pulse 1.4s ease-in-out infinite;
+      }
+      .initial-skeleton-brand { width: 92px; height: 24px; margin-bottom: 28px; }
+      .initial-skeleton-row { height: 36px; margin: 10px 0; }
+      .initial-skeleton-main { padding: 32px 42px; }
+      .initial-skeleton-title { width: 180px; height: 24px; margin: 4px 0 28px; }
+      .initial-skeleton-line { height: 14px; margin: 14px 0; }
+      .initial-skeleton-line.short { width: 58%; }
+      .initial-skeleton-note { margin-top: 28px; color: #8b9099; }
+      @keyframes initial-skeleton-pulse { to { background-position: -200% 0; } }
+      @media (max-width: 720px) {
+        #initial-shell-skeleton { grid-template-columns: 64px minmax(0, 1fr); }
+        .initial-skeleton-sidebar { padding: 22px 12px; }
+        .initial-skeleton-brand { width: 32px; }
+        .initial-skeleton-main { padding: 24px 20px; }
+      }
+    </style>
   </head>
   <body data-mode="data" class="sidebar-collapsed">
-    <div id="root" aria-label="智析 React 工作台"></div>
-    <script src="/static/vendor/echarts.min.js"></script>
-    <script src="/static/vendor/antd/workbench.js?v=1" defer></script>
+    <div id="root" aria-label="智析 React 工作台">
+      <div id="initial-shell-skeleton" aria-live="polite" aria-busy="true">
+        <aside class="initial-skeleton-sidebar" aria-hidden="true">
+          <div class="initial-skeleton-brand"></div>
+          <div class="initial-skeleton-row"></div>
+          <div class="initial-skeleton-row"></div>
+          <div class="initial-skeleton-row"></div>
+          <div class="initial-skeleton-row"></div>
+        </aside>
+        <main class="initial-skeleton-main">
+          <div class="initial-skeleton-title"></div>
+          <div class="initial-skeleton-line"></div>
+          <div class="initial-skeleton-line short"></div>
+          <div class="initial-skeleton-line"></div>
+          <div class="initial-skeleton-note">正在加载智析工作台…</div>
+        </main>
+      </div>
+    </div>
+    <!-- ECharts is injected by runtime.js only when a chart needs mounting. -->
+    <script src="/static/vendor/antd/workbench.js?v=83" defer></script>
   </body>
 </html>

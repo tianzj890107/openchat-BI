@@ -25,8 +25,16 @@ CFO「订-发-收-回」故事线种子数据
 """
 
 import sqlite3
+import sys
+from pathlib import Path
 
-DB_PATH = "Kingdee.db"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from bi_agent.paths import DATABASES_DIR
+
+DB_PATH = PROJECT_ROOT / DATABASES_DIR / "Kingdee.db"
 
 CUR, PRE = "2026-05", "2026-04"
 

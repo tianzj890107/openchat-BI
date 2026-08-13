@@ -2,8 +2,8 @@
 
 ## 3. Doris 只读查询
 
-**请求方法：** `POST`  
-**路径：** `/agent/doris/query`  
+**请求方法：** `POST`
+**路径：** `/agent/doris/query`
 **Content-Type：** `application/json`
 
 ### 请求参数

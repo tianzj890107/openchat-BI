@@ -8,6 +8,7 @@ registry. The AgentDef for bi-analyst whitelists them by name.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Callable
 
 from open_claude.tools import register_tool
 
@@ -24,6 +25,38 @@ from . import (
     table_tools,
     todo_tools,
 )
+
+Executor = Callable[[dict[str, Any], str], str]
+
+
+def build_source_executors(
+    store: OntologyStore,
+    db_path: str | Path,
+    *,
+    doris: "sql_tools.DorisConn | None" = None,
+    remote_ontology: RemoteOntologyClient | None = None,
+) -> dict[str, Executor]:
+    """Build source-bound executors without mutating the process registry.
+
+    Web sessions keep this mapping for their lifetime, so one browser changing
+    repository/database cannot redirect another browser's active tools.
+    """
+    backend = sql_tools.SqlBackend(db_path=str(db_path), doris=doris)
+    executors: dict[str, Executor] = {
+        schema["name"]: make_executor(store)
+        for schema, make_executor in ontology_tools.SPECS
+    }
+    executors.update({
+        schema["name"]: make_executor(store)
+        for schema, make_executor in graph_tools.SPECS
+    })
+    executors.update({
+        schema["name"]: make_executor(backend)
+        for schema, make_executor in sql_tools.SPECS
+    })
+    if remote_ontology is not None:
+        executors.update({schema["name"]: executor for schema, executor in remote_specs(remote_ontology)})
+    return executors
 
 
 def register_all(

@@ -19,6 +19,7 @@ from html import escape
 from pathlib import Path
 from typing import Any, Callable
 
+from ..paths import CHARTS_DIR, project_path
 from .chart_tools import SUPPORTED_TYPES, _echarts_option, _slug, _validate
 
 Executor = Callable[[dict, str], str]
@@ -51,8 +52,11 @@ CHART_GENERATE_MULTIDIM_SCHEMA = {
         "tool once with all dim breakdowns. The UI renders a single chart "
         "with a dropdown — switching dim is instant. Do NOT use this for a "
         "normal one-shot chart (use ChartGenerate). All dimension data "
-        "MUST share consistent caliber (same time window, same filters) "
-        "or the comparison is misleading."
+        "MUST share consistent caliber (same time window, same filters). "
+        "For enumeration/list questions whose dimensions all contain the "
+        "same count (often 1), use TableGenerate only instead of a chart. "
+        "All other dimensions must keep the same caliber or the comparison "
+        "is misleading."
     ),
     "input_schema": {
         "type": "object",
@@ -310,7 +314,8 @@ def _make_chart_generate_multidim() -> Executor:
 
         title = spec_payload["title"] or "multidim-chart"
         ts = time.strftime("%Y%m%d-%H%M%S")
-        out_dir = Path(cwd) / "bi_charts"
+        out_dir = project_path(cwd, CHARTS_DIR)
+        out_dir.mkdir(parents=True, exist_ok=True)
         stem = f"multidim-{ts}-{_slug(title)}"
         out_path = out_dir / f"{stem}.html"
         suffix = 2

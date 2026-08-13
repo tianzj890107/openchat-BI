@@ -1,7 +1,7 @@
 """
 On-disk store for uploaded reports.
 
-Layout under <cwd>/uploaded_reports/:
+Layout under <cwd>/dataset/uploaded_reports/:
     <id>.pdf | <id>.docx        original uploaded file
     <id>.json                   metadata + parsed text
 
@@ -35,11 +35,11 @@ from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
+from ..paths import UPLOADED_REPORTS_DIR, project_path
 from .parser import ParseResult, parse_report
 
 
 ALLOWED_EXT = {".pdf", ".docx"}
-STORE_DIRNAME = "uploaded_reports"
 # Hard cap to keep accidental 500MB uploads from taking the server down.
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024   # 50 MB
 REPORT_ID_RE = re.compile(r"^[0-9a-f]{8,64}$", re.IGNORECASE)
@@ -67,7 +67,7 @@ class ReportStore:
     """Filesystem-backed report store. One instance per app."""
 
     def __init__(self, cwd: str) -> None:
-        self.root = Path(cwd) / STORE_DIRNAME
+        self.root = project_path(cwd, UPLOADED_REPORTS_DIR)
         self.root.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------

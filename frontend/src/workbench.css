@@ -54,6 +54,19 @@
   --fs-md:  14px;
   --fs-lg:  14px;
   --fs-xl:  16px;
+
+  /* Shared live/history execution-chain tokens. They describe the compact
+   * row, but never impose a fixed height on expanded content. */
+  --thought-step-row-height: 22px;
+  --thought-step-row-gap: 4px;
+  --thought-step-content-gap: 4px;
+  --thought-step-title-line-height: 18px;
+  --thought-step-icon-size: 1.35em;
+  --thought-step-indent: 16px;
+  --thought-step-rail-width: 2px;
+  --thinking-transition-duration: 180ms;
+  --thinking-transition-easing: cubic-bezier(.22, .61, .36, 1);
+  --thinking-chain-row-width: 80%;
 }
 
 /* ---------- LIGHT THEME ----------
@@ -400,6 +413,55 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
      and "fights" the user. Default `auto` is what we want. */
   overscroll-behavior: contain;
 }
+
+.history-chat-skeleton {
+  width: min(88%, 620px);
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid #e7ebf0;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+/* One live/history execution unit owns both the assistant result stack and
+ * its ThoughtChain. The outer gap is separate from the internal row gap, so
+ * text/table/chart -> timeline spacing remains stable. */
+.assistant-execution-block {
+  --thinking-chain-block-gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--thinking-chain-block-gap);
+  width: 100%;
+  min-width: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.assistant-execution-block > .msg.msg-assistant {
+  display: flex;
+  flex-direction: column;
+  gap: var(--thought-step-content-gap);
+  width: 100%;
+  min-width: 0;
+  margin: 0 !important;
+}
+.assistant-execution-block > .msg.msg-assistant > .chart-card,
+.assistant-execution-block > .msg.msg-assistant > .table-card,
+.assistant-execution-block > .msg.msg-assistant > .multidim-card,
+.assistant-execution-block > .msg.msg-assistant > .chat-action-card {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+.history-chat-skeleton-line {
+  width: 82%;
+  height: 11px;
+  margin: 9px 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eef1f4 25%, #fafafa 50%, #eef1f4 75%);
+  background-size: 200% 100%;
+  animation: recent-skeleton-shimmer 1.25s ease-in-out infinite;
+}
+.history-chat-skeleton-line.wide { width: 94%; }
+.history-chat-skeleton-line.short { width: 56%; }
 .chat-input-wrap {
   flex-shrink: 0;
   padding: 12px;
@@ -540,7 +602,10 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
  * runtime dependency). */
 .step {
   position: relative;
-  margin: 0 0 0 10px;
+  display: block;
+  height: auto;
+  min-height: var(--thought-step-row-height);
+  margin: 0 0 var(--thought-step-row-gap) var(--thought-step-indent);
   padding: 0 0 0 18px;
   border: 0;
   border-left: 2px solid var(--border-1);
@@ -564,12 +629,12 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 .step.open::before { background: var(--accent-blue); box-shadow: 0 0 0 3px rgba(26,115,232,.14); }
 .step:first-child { margin-top: 0; }
-.msg-body + .step { margin-top: 1px; }
 .step-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 20px;
+  min-height: var(--thought-step-row-height);
+  line-height: var(--thought-step-title-line-height);
   padding: 1px 8px 1px 0;
   background: transparent;
   cursor: pointer;
@@ -583,7 +648,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .step-name { color: var(--fg-1); font-weight: 600; }
 .step-summary { color: var(--fg-2); flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .step-duration { color: var(--fg-3); font-size: var(--fs-xs); }
-.step-body { padding: 1px 0 4px; display: none; }
+.step-body { height: auto; padding: var(--thought-step-content-gap) 0 4px; display: none; overflow: visible; }
 .step.open .step-body { display: block; }
 .step-sub { color: var(--fg-3); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
 .step pre {
@@ -739,6 +804,23 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   flex-wrap: wrap;
   gap: 6px;
   margin: 0 0 12px;
+  align-items: center;
+}
+.ontology-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 0 2px;
+  color: #8F9299;
+  font: 600 var(--fs-xs)/1.35 var(--font-sans);
+  white-space: nowrap;
+}
+.ontology-filter-label svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
 }
 .ontology-filter {
   --filter-color: var(--fg-2);
@@ -853,7 +935,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   background: var(--bg-1);
   border: 1px solid var(--border-1);
   margin-bottom: 10px;
-  border-radius: 2px;
+  border-radius: 8px;
   overflow: hidden;
 }
 .tool-head {
@@ -910,7 +992,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   background: var(--bg-1);
   border: 1px solid var(--border-1);
   margin-bottom: 12px;
-  border-radius: 2px;
+  border-radius: 8px;
   overflow: hidden;
 }
 .llm-head {
@@ -955,7 +1037,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 
 /* --- System panel --- */
-.sys-section { margin-bottom: 16px; }
+.sys-section { margin-bottom: 16px; border: 1px solid var(--border-1); border-radius: 8px; overflow: hidden; background: var(--bg-1); }
 .sys-title {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -975,7 +1057,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   background: var(--bg-elev);
   border: 1px solid var(--border-1);
   padding: 10px;
-  border-radius: 2px;
+  border-radius: 0 0 8px 8px;
   max-height: 600px;
   overflow-y: auto;
 }
@@ -1263,6 +1345,15 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   content: "▸ ";
   color: var(--accent-amber);
 }
+
+/* AskUser choice cards use the same rounded control language as the rest of
+ * the workbench: the card, its status badge, option rows and numeric markers
+ * all share visible corner radii. */
+.choice-card { border-radius: 12px; }
+.choice-tag,
+.choice-option,
+.choice-idx,
+.choice-confirm { border-radius: 8px; }
 
 /* --- UI command apply card (quadrant-assistant turn summary) ---
  * Rendered at end-of-turn when one or more ```ui-command``` blocks were
@@ -1689,6 +1780,31 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   border: 1px solid var(--border-accent);
   border-radius: 14px;
 }
+
+/* Model settings use a neutral status treatment: parameter badges, API-key
+ * states and capability notices are informational rather than warnings. */
+#view-model .settings-val,
+#view-model .settings-divider {
+  color: #5a6675 !important;
+  font-weight: 700;
+}
+#view-model .settings-keystatus,
+#view-model .settings-keystatus.missing,
+#view-model .settings-keystatus.set {
+  color: #6b7280 !important;
+  background: #ffffff !important;
+  border: 1px solid #c7ced8 !important;
+}
+#view-model .settings-keystatus.set {
+  color: #1677ff !important;
+  border-color: #91caff !important;
+  background: #e8f3ff !important;
+}
+#view-model .settings-key-clear:hover {
+  color: #1677ff !important;
+  border-color: #1677ff !important;
+  background: #e8f3ff !important;
+}
 .attach-chip-ico { font-size: 14px; flex-shrink: 0; }
 .attach-chip-body { flex: 1; min-width: 0; }
 .attach-chip-name {
@@ -1808,6 +1924,12 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+.composer-send svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
 }
 
 /* Report-mode-only controls: hidden in data mode */
@@ -2499,6 +2621,13 @@ table.data-grid [data-align="left"]   { text-align: left; }
   font-size: 10px;
   letter-spacing: 0.8px;
 }
+.dash-toolbtn .clear-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 3px;
+  vertical-align: -3px;
+}
 .dashboard-collapse {
   background: transparent;
   border: 1px solid var(--border-2);
@@ -2509,6 +2638,12 @@ table.data-grid [data-align="left"]   { text-align: left; }
   font-family: var(--font-mono);
   font-size: 12px;
   transition: color 0.12s, border-color 0.12s;
+}
+.dashboard-collapse-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  transform: rotate(180deg);
 }
 .dashboard-collapse:hover { color: var(--accent-cyan); border-color: var(--accent-cyan); }
 
@@ -2523,18 +2658,33 @@ table.data-grid [data-align="left"]   { text-align: left; }
   display: none;
   align-items: center;
   justify-content: center;
-  background: var(--bg-1);
-  border: 1px solid var(--border-accent);
-  color: var(--accent-violet);
+  /* Match the collapsed + 新对话 action: blue surface with a white glyph. */
+  background: #1677ff;
+  border: 1px solid #1677ff;
+  color: #fff;
   font-family: var(--font-mono);
   font-size: 14px;
   border-radius: 3px;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.25);
   transition: background 0.12s;
 }
-.dashboard-reopen:hover { background: var(--bg-2); }
+.dashboard-reopen:hover { background: #4096ff; border-color: #4096ff; }
 body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
+.dashboard-reopen .dashboard-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+.dashboard-reopen .dashboard-icon path:last-child {
+  fill: #fff !important;
+}
+.dashboard-scroll .empty-state .dashboard-icon {
+  display: block;
+  width: 42px;
+  height: 42px;
+  margin: 0 auto;
+}
 
 /* Dashboard cards */
 .dash-card {
@@ -2561,6 +2711,14 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   padding: 4px 0 8px;
   background: transparent;
   border-bottom: 0;
+}
+.chat-scroll .chat-action-card.dash-conclusion > .dash-head,
+.chat-scroll .chat-action-card.dash-rootcause > .dash-head,
+.chat-scroll .chat-action-card.dash-actions > .dash-head,
+.chat-scroll .dash-conclusion:not(.chat-action-card) > .dash-head,
+.chat-scroll .dash-rootcause:not(.chat-action-card) > .dash-head,
+.chat-scroll .dash-actions:not(.chat-action-card) > .dash-head {
+  justify-content: flex-start;
 }
 .chat-scroll .chat-action-card .dash-body { padding-left: 0; padding-right: 0; }
 .chat-scroll .chat-action-card .dash-item {
@@ -2891,6 +3049,7 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   padding: 8px 12px;
   border: 1px solid rgba(17, 24, 39, .14);
   border-radius: 10px;
@@ -2903,6 +3062,18 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   text-align: center;
   background: #0B7FF3;
 }
+.dash-export-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  line-height: 0;
+}
+.dash-export-icon svg { display: block; width: 16px; height: 16px; }
+.dash-export-icon svg path[fill] { fill: currentColor !important; }
+.dash-export-label { line-height: 1.2; }
 .chat-scroll .dash-export-btn:hover { filter: brightness(1.04); }
 .chat-scroll .dash-export-btn.dash-word-btn { background: #E8B339; }
 .chat-scroll .dash-export-btn.dash-sync-btn { background: #28C79D; }
@@ -3340,6 +3511,18 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   font-family: var(--font-mono); font-size: var(--fs-md); color: var(--fg-0);
   font-weight: 600; letter-spacing: 0.5px;
 }
+.page-title-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: -3px;
+}
+.page-title-icon .antd-feature-icon,
+.page-title-icon .antd-feature-icon svg {
+  width: 16px;
+  height: 16px;
+}
 .page-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
 .page-body-form { max-width: 720px; }
 .page-footer {
@@ -3356,6 +3539,26 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 }
 .recent-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
 .recent-empty { font-size: var(--fs-xs); color: var(--fg-3); padding: 6px 10px; }
+.recent-loading-label { padding: 6px 10px 4px; color: var(--fg-3); font-size: var(--fs-xs); }
+.recent-skeleton-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  height: 30px; padding: 0 10px; border-radius: 5px;
+}
+.recent-skeleton-title,
+.recent-skeleton-meta {
+  display: block; height: 9px; border-radius: 999px;
+  background: linear-gradient(90deg, #eef1f4 25%, #f8f9fa 50%, #eef1f4 75%);
+  background-size: 200% 100%; animation: recent-skeleton-shimmer 1.25s ease-in-out infinite;
+}
+.recent-skeleton-title { width: 68%; }
+.recent-skeleton-meta { width: 18%; }
+.recent-error {
+  display: block; width: calc(100% - 20px); margin: 6px 10px; padding: 7px 8px;
+  border: 1px solid #ffccc7; border-radius: 6px; background: #fff2f0;
+  color: #cf1322; font-size: var(--fs-xs); text-align: left; cursor: pointer;
+}
+.recent-error:hover { background: #fff1f0; border-color: #ff7875; }
+@keyframes recent-skeleton-shimmer { to { background-position: -200% 0; } }
 .recent-item {
   display: flex; align-items: flex-start; gap: 6px;
   flex: 0 0 auto; min-height: 34px;
@@ -3588,6 +3791,9 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   z-index: 20;
   flex: 0 0 auto;
   display: flex;
+  height: 100vh;
+  min-height: 0;
+  align-self: stretch;
   background: #F7F9FB !important;
 }
 /* The inner workbench starts after the collapsed 72px IBA rail.  The outer
@@ -3612,10 +3818,23 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   min-width: 0 !important;
   pointer-events: none !important;
 }
+/* The legacy runtime bridge still leaves its resize handle and reopen button
+ * in the shell. React owns the visible workbench navigation now, so these
+ * chrome elements must stay out of the layout or they draw a second seam. */
+#sidebar-resizer,
+#sidebar-reopen {
+  display: none !important;
+  width: 0 !important;
+  pointer-events: none !important;
+}
 .antd-workbench-sidebar {
-  min-height: 100vh;
-  border-right: 1px solid #e5e6eb;
-  box-shadow: 1px 0 8px rgba(31, 35, 41, .04);
+  height: 100vh !important;
+  max-height: 100vh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  border: 0 !important;
+  border-inline: 0 !important;
+  box-shadow: none !important;
   background: #F7F9FB !important;
 }
 .antd-workbench-sidebar.ant-layout-sider,
@@ -3623,35 +3842,59 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-workbench-sidebar .ant-menu,
 .antd-sidebar-brand,
 .antd-workbench-sidebar .ant-menu-root { background: #F7F9FB !important; }
-.antd-workbench-sidebar .ant-layout-sider-children { display: flex; flex-direction: column; }
-.antd-sidebar-brand { height: 64px; display: flex; align-items: center; gap: 10px; padding: 0 16px; color: #1f2329; }
+.antd-workbench-sidebar .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+.antd-sidebar-scroll {
+  display: flex;
+  /* Use the available sider height as the flex basis.  `height: 100%` here
+     makes the content-sized child overflow its flex parent in some Ant
+     Design layouts, leaving no reliable wheel target. */
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: auto;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+  touch-action: pan-y;
+}
+.antd-sidebar-scroll::-webkit-scrollbar,
+.antd-recent-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+.antd-sidebar-brand {
+  box-sizing: border-box;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px 0;
+  color: #1f2329;
+}
 .antd-sidebar-brand strong { display: block; font-size: 16px; line-height: 20px; }
 .antd-sidebar-brand small { display: block; color: #86909c; font-size: 11px; line-height: 16px; }
 .antd-brand-mark { color: #1677ff; font-size: 18px; }
+.antd-agent-mark { color: #1677ff; width: 18px; height: 18px; flex: 0 0 18px; display: inline-flex; align-items: center; justify-content: center; }
+.antd-agent-mark svg { display: block; width: 18px; height: 18px; }
+.antd-agent-mark svg path[fill] { fill: currentColor; }
 .antd-sidebar-brand .ant-btn { margin-left: auto; }
-.antd-new-chat {
-  width: calc(100% - 8px);
-  height: 40px;
-  margin: 4px 4px 8px;
-  padding-inline: 16px;
-}
-.antd-workbench-sidebar:not(.ant-layout-sider-collapsed) .antd-new-chat.ant-btn-block {
-  width: calc(100% - 8px);
-}
-.antd-workbench-sidebar.ant-layout-sider-collapsed .antd-new-chat {
-  width: 56px;
-  margin-inline: 8px;
-  padding-inline: 0;
-}
-.antd-workbench-sidebar.ant-layout-sider-collapsed .antd-new-chat .anticon {
-  margin-inline-end: 0;
-}
 .antd-workbench-sidebar.ant-layout-sider-collapsed .antd-sidebar-brand {
   height: 48px;
   justify-content: center;
   gap: 0;
   padding: 0 8px;
 }
+.antd-workbench-sidebar.ant-layout-sider-collapsed .antd-sidebar-brand .antd-agent-mark,
 .antd-workbench-sidebar.ant-layout-sider-collapsed .antd-sidebar-brand .antd-brand-mark {
   display: none;
 }
@@ -3667,6 +3910,46 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   border-radius: 8px;
 }
 .antd-workbench-sidebar .ant-menu { border-inline-end: 0; flex: 0 0 auto; }
+/* The inline menu's selected-item marker is another vertical rule at the
+ * sidebar edge. The workbench already has one deliberate sidebar seam, so
+ * keep the selected background but remove this second Ant Design marker. */
+.antd-workbench-sidebar .ant-menu-item::after,
+.antd-workbench-sidebar .ant-menu-submenu-title::after,
+.antd-workbench-sidebar .ant-menu-item-selected::after,
+.antd-workbench-sidebar .ant-menu-submenu-selected::after {
+  display: none !important;
+  border: 0 !important;
+  content: none !important;
+}
+.antd-workbench-sidebar.ant-layout-sider-collapsed .ant-menu {
+  width: 100% !important;
+}
+.antd-workbench-sidebar.ant-layout-sider-collapsed .ant-menu-item,
+.antd-workbench-sidebar.ant-layout-sider-collapsed .ant-menu-submenu-title {
+  box-sizing: border-box;
+  width: 56px !important;
+  margin-inline: 8px !important;
+  justify-content: center;
+  padding-inline: 0 !important;
+  text-align: center;
+}
+.antd-workbench-sidebar.ant-layout-sider-collapsed .ant-menu-title-content,
+.antd-workbench-sidebar.ant-layout-sider-collapsed .ant-menu-item-group-list .ant-menu-item-group-title {
+  display: none !important;
+}
+.antd-workbench-sidebar.ant-layout-sider-collapsed .ant-menu-item-group-title {
+  display: block !important;
+  padding: 0 !important;
+  color: #86909c;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+.antd-workbench-sidebar.ant-layout-sider-collapsed .ant-menu-item-icon,
+.antd-workbench-sidebar.ant-layout-sider-collapsed .ant-menu-submenu-arrow,
+.antd-workbench-sidebar.ant-layout-sider-collapsed .ant-menu-item .antd-feature-icon {
+  margin-inline-end: 0 !important;
+}
 /* Keep every inner-workbench hint readable and consistently to the right.
    MenuItem renders collapsed hints in a body portal, so this selector is
    intentionally scoped to Ant Design's collapsed-menu tooltip class. */
@@ -3687,47 +3970,376 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   background: #fff !important;
 }
 .antd-sidebar-divider { margin: 12px 16px; width: auto; min-width: auto; }
-.antd-sidebar-section-title { padding: 0 16px 6px; color: #86909c; font-size: 12px; }
-.antd-recent-list { flex: 1; overflow: auto; padding: 0 8px; }
-.antd-recent-item { display: block; width: 100%; border: 0; background: transparent; border-radius: 6px; padding: 8px; color: #4e5969; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.antd-workbench-sidebar .ant-menu-item-group-title,
+.antd-sidebar-section-title {
+  padding: 8px 16px;
+  color: #86909c;
+  font-size: 14px;
+  line-height: 22px;
+}
+.antd-sidebar-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  padding: 0 8px 0 0;
+}
+.antd-sidebar-section-row .antd-sidebar-section-title {
+  flex: 1 1 auto;
+}
+.antd-memory-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #86909c;
+  font-size: 14px;
+  line-height: 36px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.antd-memory-entry:hover,
+.antd-memory-entry.active {
+  background: #e8f3ff;
+  color: #1677ff;
+}
+.antd-memory-entry .antd-feature-icon {
+  width: 14px;
+  height: 14px;
+  margin-inline-end: 0;
+}
+.antd-memory-entry .antd-feature-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.antd-collapsed-section-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.antd-workbench-sidebar.ant-layout-sider-collapsed .antd-collapsed-section-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 36px;
+  min-height: 36px;
+  margin: 0 auto;
+  padding: 0 4px;
+  border-radius: 6px;
+  color: #86909c;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.antd-workbench-sidebar.ant-layout-sider-collapsed .antd-collapsed-section-button:hover {
+  background: #e8f3ff;
+  color: #1677ff;
+}
+.antd-memory-entry-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  min-width: 56px;
+  padding: 0;
+  margin: 4px 8px 8px;
+}
+.antd-workbench-sidebar .ant-menu-item,
+.antd-workbench-sidebar .ant-menu-submenu-title {
+  height: 36px;
+  line-height: 36px;
+  margin-block: 4px;
+}
+/* Keep history as a second scroll surface while the parent remains responsible
+ * for the complete navigation column. The list expands naturally when it fits;
+ * the capped state below reserves a six-row window when the sidebar is short. */
+.antd-recent-list {
+  flex: 0 0 auto;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: auto;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+  touch-action: pan-y;
+  padding: 0 8px;
+}
+.antd-recent-list.antd-recent-list-capped {
+  flex: 0 0 192px;
+  height: 192px;
+  max-height: 192px;
+}
+.antd-recent-list:has(.antd-recent-empty) {
+  flex: 0 0 auto;
+  height: auto;
+  max-height: none;
+}
+.antd-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: #4e5969;
+  line-height: 18px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
 .antd-recent-item:hover { background: #f2f3f5; color: #1f2329; }
 .antd-recent-item.active { background: #e8f3ff; color: #1677ff; font-weight: 500; }
 .antd-recent-item.active:hover { background: #d9ebff; color: #1677ff; }
 .antd-recent-empty { display: block; padding: 8px; color: #86909c; font-size: 12px; }
-.antd-account { margin: 8px 12px 16px; border: 0; border-top: 1px solid #f2f3f5; background: transparent; padding: 12px 4px 0; color: #4e5969; text-align: left; cursor: pointer; }
-#antd-workflow-root { padding: 0 10px 4px; }
+.antd-recent-loading {
+  display: block; padding: 6px 8px 4px; color: #86909c; font-size: 12px;
+}
+.antd-recent-skeleton {
+  display: block; width: 100%; height: 32px; margin: 0 0 2px; border-radius: 6px;
+  background: linear-gradient(90deg, #f0f2f5 25%, #fafafa 50%, #f0f2f5 75%);
+  background-size: 200% 100%; animation: recent-skeleton-shimmer 1.25s ease-in-out infinite;
+}
+.antd-recent-error {
+  display: block; width: 100%; border: 1px solid #ffccc7; border-radius: 6px;
+  background: #fff2f0; color: #cf1322; padding: 7px 8px; text-align: left;
+  font-size: 12px; cursor: pointer;
+}
+.antd-recent-error:hover { background: #fff1f0; border-color: #ff7875; }
+.antd-recent-title {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.antd-recent-meta {
+  display: block;
+  flex: 0 0 auto;
+  color: #98a2b3;
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.antd-account { display: flex; align-items: center; gap: 8px; margin: 8px 12px 16px; border: 0; border-top: 1px solid #f2f3f5; background: transparent; padding: 12px 4px 0; color: #4e5969; text-align: left; line-height: 20px; cursor: pointer; }
+.antd-account .antd-feature-icon { margin-inline-end: 0; }
+.antd-account-collapsed {
+  width: 56px;
+  height: 40px;
+  min-height: 40px;
+  justify-content: center;
+  margin: auto 8px 16px;
+  padding: 0;
+  border-top: 0;
+  border-radius: 8px;
+}
+.antd-account-collapsed:hover { background: #e8f3ff; color: #1677ff; }
+.antd-account-collapsed .antd-feature-icon { margin-inline-end: 0; }
+#antd-workflow-root { padding: 0 4px 4px; }
 #chat-sop, #chat-todo { display: none !important; }
 .antd-workflow-panels .ant-collapse { background: transparent; border: 0; }
 .antd-workflow-panels .ant-collapse-item { border-bottom: 1px solid #f0f0f0; }
-.antd-workflow-panels .ant-collapse-header { padding: 8px 6px !important; align-items: center !important; }
+.antd-workflow-panels .ant-collapse-header { padding: 8px 2px !important; align-items: center !important; }
 .antd-workflow-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #344054; }
 .antd-workflow-title .ant-tag { margin-inline-end: 0; font-size: 11px; line-height: 18px; }
-.antd-workflow-panels .ant-collapse-content-box { padding: 0 6px 8px !important; }
+.antd-workflow-panels .ant-collapse-content-box { padding: 0 2px 8px !important; }
 .antd-workflow-panels .ant-thought-chain { font-size: 12px; }
-/* The six overview rows in the SOP are intentionally compact.  Keep this
-   scoped to the first (SOP) collapse so task-list/question spacing is unchanged. */
-.antd-workflow-panels > .ant-collapse:first-child .ant-thought-chain.ant-thought-chain-small {
+/* The six overview rows in the SOP are intentionally compact. Keep the
+   readable text line box, but remove the extra vertical breathing room. */
+.antd-workflow-sop .ant-thought-chain.ant-thought-chain-small {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
   gap: 0 !important;
+  width: 100%;
+  overflow: visible !important;
 }
-.antd-workflow-panels > .ant-collapse:first-child .ant-thought-chain-item-header {
-  min-height: 18px !important;
+.antd-workflow-sop .ant-thought-chain.ant-thought-chain-small > .ant-thought-chain-item {
+  display: flex !important;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  width: auto !important;
+  margin: 0 !important;
+  /* Reserve two Chinese-character positions after every fixed SOP label so
+     adjacent items never touch or overlap. */
+  padding: 0 2em 0 0 !important;
+}
+.antd-workflow-sop .ant-thought-chain-item-header {
+  min-height: 13.2px !important;
   margin-bottom: 0 !important;
-  padding: 0 6px !important;
+  padding: 0 2px !important;
+  gap: 2px !important;
   align-items: center !important;
 }
-.antd-workflow-panels > .ant-collapse:first-child .ant-thought-chain-item-icon,
-.antd-workflow-panels > .ant-collapse:first-child .ant-thought-chain-item-extra {
-  width: 18px;
-  height: 18px;
-  max-height: 18px;
+.antd-workflow-sop .ant-thought-chain-item-icon,
+.antd-workflow-sop .ant-thought-chain-item-extra {
+  width: 13.2px;
+  height: 13.2px;
+  max-height: 13.2px;
 }
-.antd-workflow-panels > .ant-collapse:first-child .ant-thought-chain-item-title {
-  height: 18px !important;
-  line-height: 18px !important;
+.antd-workflow-sop .ant-thought-chain-item-title {
+  height: auto !important;
+  min-width: 0;
+  line-height: 15.6px !important;
+  font-size: 13px !important;
+  margin-inline-start: 0 !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
 }
+.antd-workflow-sop .ant-thought-chain-item-title-content {
+  margin-inline-start: 0 !important;
+  min-width: 0;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+/* SOP status is intentionally not a vertical timeline: only the status
+   marker remains. Completed steps use a green check, while current and
+   pending steps use a single colored ring. */
+.antd-workflow-sop .ant-thought-chain-item-header::before,
+.antd-workflow-sop .ant-thought-chain-item-content::before,
+.antd-workflow-sop .ant-thought-chain-item-footer::before {
+  display: none !important;
+}
+.antd-workflow-sop .ant-thought-chain-item-icon {
+  background: transparent !important;
+  border-radius: 0 !important;
+  color: inherit !important;
+}
+/* Ant Design's status styles are injected at runtime and use a more
+   specific selector for completed items. Override both the icon surface and
+   the generated timeline pseudo-element so a completed SOP row is only a
+   green check, with no green square behind it. */
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon,
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::before,
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::after,
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-header::before,
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-content::before,
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-footer::before {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-header::before,
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-content::before,
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-footer::before,
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::before,
+#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::after {
+  content: none !important;
+  display: none !important;
+}
+.antd-workflow-sop .antd-sop-status-circle {
+  width: 7px;
+  height: 7px;
+  border-width: 1px;
+  color: #1677ff;
+}
+.antd-workflow-sop .antd-sop-status-check {
+  font-size: 10px;
+  line-height: 10px;
+  width: auto;
+  height: auto;
+  padding: 0;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+.antd-sop-status-circle {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+.antd-sop-status-in_progress { color: #1677ff; }
+.antd-sop-status-pending { color: #1677ff; }
+.antd-sop-status-check {
+  display: block;
+  color: #28a36a;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 16px;
+}
+.antd-sop-title { font-weight: 600; }
+.antd-sop-title.is-completed { color: #28a36a; }
+.antd-sop-title.is-in_progress { color: #1677ff; }
+.antd-sop-title.is-pending { color: #b8c0cc; }
 .antd-workflow-panels .ant-list-header { padding: 5px 0; color: #86909c; font-size: 11px; }
 .antd-workflow-panels .ant-list-item { padding: 5px 0; gap: 6px; color: #4e5969; font-size: 12px; cursor: pointer; }
-.antd-workflow-panels .antd-question-item:hover { color: #1677ff; }
+.antd-workflow-todo .ant-list-items {
+  max-height: 110px; /* five 22px rows */
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.antd-workflow-todo .ant-list-item {
+  box-sizing: border-box;
+  height: 22px;
+  min-height: 22px;
+  /* Match the SOP ThoughtChain header's 2px inline inset. */
+  padding: 2px 2px;
+  line-height: 18px;
+  gap: 2px;
+  font-size: 13px;
+  border-bottom: 0 !important;
+  border-top: 0 !important;
+  border-block-end: 0 !important;
+}
+/* Keep task text on the same left baseline as the SOP title: the default
+   Ant Design Tag padding otherwise shifts every task question to the right. */
+.antd-workflow-todo .ant-list-item > .ant-tag {
+  flex: 0 0 13.2px;
+  width: 13.2px;
+  min-width: 13.2px;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  line-height: 13.2px;
+  border: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-size: 12px;
+  font-weight: 400;
+}
+.antd-workflow-todo .antd-question-item > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.antd-workflow-panels .antd-question-item:hover,
+.antd-workflow-panels .antd-question-item:focus,
+.antd-workflow-panels .antd-question-item.active,
+.antd-workflow-panels .antd-question-item:hover > .ant-tag,
+.antd-workflow-panels .antd-question-item:focus > .ant-tag,
+.antd-workflow-panels .antd-question-item.active > .ant-tag {
+  color: #1677ff !important;
+  background: transparent !important;
+}
+.antd-workflow-panels .antd-question-item:hover,
+.antd-workflow-panels .antd-question-item:focus,
+.antd-workflow-panels .antd-question-item.active {
+  background: #e8f3ff !important;
+  border-radius: 6px;
+}
 .antd-workflow-empty-sop { padding: 8px 0 10px; color: #86909c; font-size: 12px; line-height: 1.6; }
 .antd-message-enhanced { max-width: 88%; }
 .antd-message-enhanced > .msg-header,
@@ -3757,43 +4369,426 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-message-html .md-table th, .antd-message-html .md-table td { padding: 6px 9px; border: 1px solid #dfe3e8; text-align: left; }
 .antd-message-html .md-table th { background: #eef0f3; font-weight: 700; }
 .antd-message-html code { padding: 1px 5px; border-radius: 4px; background: rgba(0,0,0,.06); font-family: var(--font-mono); font-size: .9em; }
-.antd-step-enhanced { padding: 0; }
+.antd-step-enhanced {
+  position: relative;
+  display: block;
+  height: auto !important;
+  min-height: 0 !important;
+  margin-left: var(--thought-step-indent, 16px) !important;
+  padding: 0 !important;
+  border-left: 0 !important;
+  overflow: visible !important;
+}
 .antd-step-enhanced > .step-header,
 .antd-step-enhanced > .step-body { display: none !important; }
 .antd-step-enhanced::before {
-  left: -5px;
-  top: 6px;
-  width: 10px;
-  height: 10px;
-  border-width: 2px;
-  border-color: #1677ff;
-  background: #fff;
+  display: none !important;
+  content: none !important;
+}
+.antd-step-enhanced::after { display: none !important; content: none !important; }
+.antd-step-timeline {
+  --thought-step-row-height: 22px;
+  --thought-step-row-gap: 4px;
+  --thought-step-content-gap: 4px;
+  --thought-step-title-line-height: 18px;
+  --thought-step-icon-size: 1.35em;
+  --thought-step-indent: 16px;
+  --thought-step-rail-width: 2px;
+  --thought-step-content-inset: 25px;
+  --thought-step-rail-center-x: calc(var(--thought-step-indent) + var(--thought-step-icon-size) / 2);
+  --thought-step-rail-top: 11px;
+  --thought-step-rail-bottom: calc(100% - 11px);
+  --thought-step-rail-height: calc(100% - 22px);
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+.assistant-execution-block > .antd-step-timeline {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.assistant-execution-block,
+.assistant-execution-block > .msg-assistant,
+.assistant-execution-block > .antd-step-timeline,
+.assistant-execution-block > .antd-step-timeline > .step,
+.assistant-execution-block > .antd-step-timeline > .step > .antd-step-host,
+.assistant-execution-block > .antd-step-timeline > .step > .antd-step-host > .thinking-step,
+.assistant-execution-block > .antd-step-timeline > .step > .antd-step-host .antd-thought-chain,
+.assistant-execution-block > .antd-step-timeline > .step > .antd-step-host .ant-thought-chain-item {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  box-sizing: border-box !important;
+  flex-shrink: 1;
+}
+/* One shared rail for the complete execution chain. It intentionally does
+ * not depend on the last-item class or on React's insertion timing. */
+.antd-step-timeline::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--thought-step-rail-center-x) - var(--thought-step-rail-width) / 2);
+  top: var(--thought-step-rail-top);
+  height: var(--thought-step-rail-height);
+  width: var(--thought-step-rail-width);
+  background: #CBD5E1;
+  pointer-events: none;
+  z-index: 0;
+}
+.antd-step-timeline:not(.has-multiple-steps)::before {
+  display: none;
+}
+.antd-step-timeline > .step::before,
+.antd-step-timeline > .step::after {
+  display: none !important;
+  content: none !important;
+}
+.antd-step-timeline > .step,
+.antd-step-timeline > .antd-step-thinking {
+  display: block;
+  height: auto !important;
+  min-height: var(--thought-step-row-height, 22px);
+  margin-top: 0 !important;
+  margin-bottom: var(--thought-step-row-gap, 4px) !important;
+  overflow: visible;
+}
+.antd-step-thinking {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+  margin-left: 16px;
+  padding: 0 8px 0 26px;
+  color: #98a2b3;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+.antd-step-thinking::before {
+  display: none;
+}
+.antd-step-thinking-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: 18px;
+  margin-right: 7px;
+}
+.antd-step-thinking-mark .thinking-dot {
+  width: 4px;
+  height: 4px;
+  margin: 0;
+  background: #98a2b3;
 }
 .antd-step-host .ant-thought-chain { background: transparent; }
-.antd-step-host .ant-thought-chain-item { padding: 0; }
+.antd-step-host {
+  display: block;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+.antd-step-host .ant-thought-chain {
+  display: block !important;
+  gap: 0 !important;
+  padding-inline-start: 0 !important;
+  padding-block: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+.antd-step-host .ant-thought-chain-item {
+  display: block !important;
+  height: auto !important;
+  min-height: var(--thought-step-row-height) !important;
+  margin: 0 !important;
+  padding: 0 0 var(--thought-step-row-gap) !important;
+  overflow: visible !important;
+}
 .antd-step-host .ant-thought-chain-item-header {
-  min-height: 20px;
-  padding: 1px 6px !important;
-  margin-bottom: 0 !important;
+  box-sizing: border-box;
+  height: auto !important;
+  min-height: var(--thought-step-row-height) !important;
+  padding: 0 8px 0 0 !important;
+  margin: 0 !important;
   align-items: center !important;
+  line-height: var(--thought-step-title-line-height) !important;
   cursor: pointer;
 }
-.antd-step-host .ant-thought-chain-item-header:hover { background: #f5f7fa; border-radius: 6px; }
+/* Every execution item uses one compact line: title, preview and duration.
+ * Keeping the same minimum height prevents the old terminal-item gap from
+ * appearing between iterations. */
+.antd-step-enhanced.has-next-step > .antd-step-host .ant-thought-chain-item-header,
+.antd-step-enhanced:not(.has-next-step) > .antd-step-host .ant-thought-chain-item-header {
+  height: auto !important;
+  min-height: var(--thought-step-row-height) !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+.antd-step-host .ant-thought-chain-item-header:hover { background: #f1f5f9; border-radius: 8px; }
 .antd-step-host .ant-thought-chain-item-icon {
+  display: inline-flex !important;
+  flex: 0 0 auto;
+  width: var(--thought-step-icon-size) !important;
+  min-width: var(--thought-step-icon-size) !important;
+  height: var(--thought-step-icon-size) !important;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  background: var(--thinking-color-soft, #EEF1F4) !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  position: relative !important;
+  z-index: 3 !important;
+  overflow: hidden !important;
+}
+.antd-step-host .ant-thought-chain-item-icon .ant-avatar-string {
+  position: static !important;
+  transform: none !important;
+  line-height: 20px !important;
+}
+.antd-step-host .ant-thought-chain-item-collapse-icon { display: none !important; }
+.antd-step-host .ant-thought-chain-item-content::before { display: none !important; }
+.antd-step-host .ant-thought-chain-item-header::before {
+  content: "" !important;
   display: none !important;
 }
-.antd-step-host .ant-thought-chain-item-header::before,
-.antd-step-host .ant-thought-chain-item-content::before { display: none !important; }
-.antd-step-host .ant-thought-chain-item-content { padding: 0; }
-.antd-step-label { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; }
-.antd-step-label b { color: #344054; font-weight: 600; }
-.antd-step-label span { overflow: hidden; color: #667085; text-overflow: ellipsis; white-space: nowrap; }
-.antd-step-label em { margin-left: auto; color: #98a2b3; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-style: normal; }
-.antd-step-html { padding: 0 6px; color: #667085; font-size: 11px; }
+.antd-step-host .ant-thought-chain-item-content {
+  display: block !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  opacity: 1;
+}
+.antd-step-host .ant-thought-chain-item-content-box {
+  display: block !important;
+  height: auto !important;
+  min-height: 0 !important;
+  min-width: 0;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
+}
+.thinking-step-header {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.thinking-step {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  box-sizing: border-box;
+}
+.thinking-step > .antd-thought-chain {
+  display: block !important;
+  width: 100%;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+/* Keep both the clickable title row and its content at the same readable
+ * width. The Ant Design header owns the click handler, so constraining only
+ * header-box would still leave the full row clickable. */
+.thinking-step > .antd-thought-chain .ant-thought-chain-item-header {
+  flex: 0 0 var(--thinking-chain-row-width) !important;
+  width: var(--thinking-chain-row-width) !important;
+  max-width: var(--thinking-chain-row-width) !important;
+  min-width: 0 !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
+}
+.thinking-step > .antd-thought-chain .ant-thought-chain-item-header-box {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  max-width: none !important;
+}
+.thinking-step > .antd-thought-chain .ant-thought-chain-item-title,
+.thinking-step > .antd-thought-chain .ant-thought-chain-item-title-content,
+.thinking-step .thinking-step-header {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+.thinking-step-body-shell {
+  height: 0;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  transition: height var(--thinking-transition-duration) var(--thinking-transition-easing);
+}
+.thinking-step-body-inner {
+  width: 100%;
+  min-height: 0;
+  overflow: visible;
+  box-sizing: border-box;
+  padding-top: var(--thought-step-content-gap);
+}
+.thinking-step-body-inner > .antd-step-html { min-height: 0; }
+.antd-step-host .ant-thought-chain-item-header,
+.antd-step-host .ant-thought-chain-item-content { position: relative; z-index: 1; }
+.antd-step-host .ant-thought-chain-item-title,
+.antd-step-host .ant-thought-chain-item-title-content,
+.antd-step-host .ant-thought-chain-item-header-box {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  height: auto !important;
+  max-height: none !important;
+  white-space: normal !important;
+}
+.antd-step-label { display: flex; flex-direction: row; align-items: center; gap: 7px; min-width: 0; width: 100%; box-sizing: border-box; font-size: 12px; line-height: 16px; }
+.antd-step-host .ant-thought-chain-item-title,
+.antd-step-host .ant-thought-chain-item-title-content { font-weight: 400 !important; }
+.antd-step-label b,
+.antd-step-label .antd-step-summary,
+.antd-step-label em { display: block; width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.antd-step-label b { flex: 0 0 auto; width: auto; color: inherit; font-weight: 600 !important; overflow: visible; text-overflow: clip; }
+.antd-step-label .antd-step-summary { flex: 1 1 auto; width: auto; color: #667085; font-weight: 400 !important; }
+.antd-step-label em { flex: 0 0 auto; width: auto; min-width: max-content; margin: 0 0 0 auto; color: #98a2b3; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-style: normal; font-weight: 400 !important; text-align: right; }
+.antd-step-result-icon {
+  display: grid;
+  place-items: center;
+  width: var(--thought-step-icon-size, 18px);
+  min-width: var(--thought-step-icon-size, 18px);
+  height: var(--thought-step-icon-size, 18px);
+  margin: 0;
+  color: inherit;
+  background: var(--thinking-color-soft, #EEF1F4) !important;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+.antd-step-tone-blue { --thinking-color: #0B7FF3; --thinking-color-soft: #DCEBFF; color: var(--thinking-color) !important; }
+.antd-step-tone-green { --thinking-color: #28C79D; --thinking-color-soft: #DDF7EE; color: var(--thinking-color) !important; }
+.antd-step-tone-amber { --thinking-color: #E8B339; --thinking-color-soft: #FFF4D6; color: var(--thinking-color) !important; }
+.antd-step-tone-slate { --thinking-color: #607D8B; --thinking-color-soft: #E6EEF1; color: var(--thinking-color) !important; }
+.antd-step-tone-violet { --thinking-color: #7C83FD; --thinking-color-soft: #EDEBFF; color: var(--thinking-color) !important; }
+.antd-step-tone-red { --thinking-color: #F05A5A; --thinking-color-soft: #FFE3E3; color: var(--thinking-color) !important; }
+.antd-step-tone-muted { --thinking-color: #8A97A6; --thinking-color-soft: #EEF1F4; color: var(--thinking-color) !important; }
+.antd-step-result-icon.antd-step-tool-icon {
+  background: var(--thinking-color-soft, #EEF1F4) !important;
+  color: var(--thinking-color, #8A97A6) !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  position: relative;
+  z-index: 4;
+  overflow: hidden;
+}
+.antd-step-tool-icon svg {
+  display: block;
+  width: 74%;
+  height: 74%;
+  flex: 0 0 auto;
+  color: inherit;
+}
+.antd-step-html {
+  width: 100%;
+  min-height: 0;
+  padding: 4px var(--thought-step-content-inset) 7px;
+  box-sizing: border-box;
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.5;
+}
 .antd-step-host .ant-thought-chain-item-content:not(.ant-thought-chain-content-hidden) .antd-step-html {
-  padding: 4px 6px 4px 24px;
+  padding: 4px var(--thought-step-content-inset) 0;
 }
 .antd-step-empty { color: #98a2b3; font-style: italic; }
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-step-body-shell { transition: none !important; }
+  .antd-step-host .ant-thought-chain-item-content {
+    transition: none !important;
+  }
+}
+.antd-step-html .step-sub {
+  margin: 5px 0 3px;
+  color: #98a2b3;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+}
+.antd-step-html pre {
+  max-height: 340px;
+  margin: 0 0 6px;
+  padding: 7px 9px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #475569;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.antd-step-html .chip-row { margin-top: 4px; }
+
+/* Input/output remain separate light bubbles inside an expanded tool result.
+ * The outer timeline row carries only the tool name, summary and duration. */
+.tool-io-bubble {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border: 1px solid #dbe4ec;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #334155;
+}
+.tool-io-bubble:first-child { margin-top: 2px; }
+.tool-io-bubble:last-child { margin-bottom: 2px; }
+.antd-step-html .tool-io-bubble:last-child { margin-bottom: 0; }
+.tool-io-label {
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.tool-io-content {
+  max-height: 340px;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: auto;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #334155 !important;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tool-card .tool-io-bubble { margin-left: 0; margin-right: 0; }
+.antd-step-html .tool-io-bubble { margin-left: 0; margin-right: 0; }
 .antd-result-card-host { width: 100%; }
 .antd-result-card { border-color: #e7e7ea !important; border-radius: 10px !important; box-shadow: none !important; }
 .antd-result-card .ant-card-head { min-height: 38px; padding: 0 12px; border-bottom-color: #f0f0f2; }
@@ -3889,6 +4884,9 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   color: #1F2023;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
+}
+.antd-dashboard-result-head.antd-dashboard-action-head {
+  justify-content: flex-start;
 }
 .antd-dashboard-result-head .dash-title {
   display: block;
@@ -4145,8 +5143,8 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   box-shadow: none !important;
 }
 
-/* Chart/table canvases carry their own title. Keep the compact type badge,
- * but remove duplicate card titles and technical HTML/source links. */
+/* Chart/table canvases carry their own title. Remove duplicate legacy card
+ * titles and technical HTML/source links; type badges are removed entirely. */
 .chat-scroll .chart-title,
 .chat-scroll .table-title,
 .chat-scroll .table-subtitle,
@@ -4201,14 +5199,73 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   max-width: none !important;
 }
 
-/* Ant Card header used by restored and live charts.  Keep the type badge and
- * source aligned with the original chart header without adding another card
- * around the canvas. */
+/* Ant Card header used by restored and live charts. Keep the source aligned
+ * without adding another card around the canvas. */
 .antd-result-title-row {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
+  min-width: 0;
+}
+.chart-head > .chart-type,
+.table-head > .table-tag,
+.multidim-head > .multidim-tag,
+.dash-head > .dash-tag.chart,
+.dash-head > .dash-tag.table,
+.dash-head > .dash-tag.multidim,
+.antd-result-type {
+  display: none !important;
+}
+.antd-dashboard-result-head > .dash-tag.conclusion,
+.antd-dashboard-result-head > .dash-tag.rootcause,
+.antd-dashboard-result-head > .dash-tag.actions {
+  order: 0;
+  margin-right: 8px;
+}
+
+/* Card badge policy: only the three semantic badges are visible in the
+ * conversation and dashboard. Keep them at the first/left position of the
+ * header; chart/table/type badges are implementation detail and stay hidden,
+ * including inside restored legacy markup. */
+.chat-scroll .dash-head > .dash-tag:not(.conclusion):not(.rootcause):not(.actions),
+.dashboard-scroll .dash-head > .dash-tag:not(.conclusion):not(.rootcause):not(.actions),
+.chat-scroll .antd-dashboard-result-head > .dash-tag:not(.conclusion):not(.rootcause):not(.actions),
+.dashboard-scroll .antd-dashboard-result-head > .dash-tag:not(.conclusion):not(.rootcause):not(.actions),
+.chat-scroll .ant-card-head .antd-result-type,
+.dashboard-scroll .ant-card-head .antd-result-type {
+  display: none !important;
+}
+.chat-scroll .dash-head:has(> .dash-tag.conclusion),
+.chat-scroll .dash-head:has(> .dash-tag.rootcause),
+.chat-scroll .dash-head:has(> .dash-tag.actions),
+.dashboard-scroll .dash-head:has(> .dash-tag.conclusion),
+.dashboard-scroll .dash-head:has(> .dash-tag.rootcause),
+.dashboard-scroll .dash-head:has(> .dash-tag.actions),
+.chat-scroll .antd-dashboard-action-head,
+.dashboard-scroll .antd-dashboard-action-head {
+  justify-content: flex-start !important;
+}
+.chat-scroll .dash-tag.conclusion,
+.chat-scroll .dash-tag.rootcause,
+.chat-scroll .dash-tag.actions,
+.dashboard-scroll .dash-tag.conclusion,
+.dashboard-scroll .dash-tag.rootcause,
+.dashboard-scroll .dash-tag.actions {
+  order: -1 !important;
+  margin-left: 0 !important;
+  margin-right: 8px !important;
+}
+.antd-result-semantic-title {
+  justify-content: flex-start;
+}
+.antd-result-semantic-label {
+  flex: 0 0 auto;
+  color: var(--accent-amber);
+  font-size: 12px;
+  font-weight: 600;
+}
+.antd-result-semantic-title .antd-result-title-text {
   min-width: 0;
 }
 /* Conversation result cards use an Ant Card header while dashboard results
@@ -4219,6 +5276,9 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   padding: 10px 12px 8px;
 }
 .antd-result-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: 0 0 auto;
   padding: 3px 8px;
   border: 1px solid currentColor;
@@ -4229,6 +5289,55 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   letter-spacing: .8px;
   font-weight: 600;
   text-transform: uppercase;
+}
+.antd-type-glyph,
+.antd-semantic-glyph,
+.antd-custom-nav-icon,
+.antd-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+.antd-type-glyph svg { width: 14px; height: 14px; display: block; }
+.antd-type-glyph svg path[fill] { fill: currentColor !important; }
+.antd-semantic-glyph svg { width: 14px; height: 14px; display: block; }
+.antd-semantic-glyph svg path[fill] { fill: currentColor !important; }
+.antd-semantic-glyph svg path[stroke] { stroke: currentColor !important; }
+.antd-custom-nav-icon svg { width: 16px; height: 16px; display: block; }
+.antd-feature-icon { width: 16px; height: 16px; margin-inline-end: 8px; color: currentColor; }
+.antd-feature-icon svg { width: 16px; height: 16px; display: block; }
+.antd-feature-icon svg path[fill] { fill: currentColor; }
+.antd-feature-icon svg path[fill="none"] { fill: none !important; }
+.antd-workbench-sidebar .ant-menu-item .antd-feature-icon { color: #1f2329; }
+.antd-workbench-sidebar .ant-menu-item-selected .antd-feature-icon { color: #1677ff; }
+.antd-workbench-sidebar.ant-layout-sider-collapsed .ant-menu-item .antd-feature-icon { margin-inline-end: 0; }
+.antd-feature-icon-ontology svg path:not([fill="none"]),
+.antd-feature-icon-model svg path:not([fill="none"]) {
+  fill: none !important;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+/* Keep both supplied geometries as outlines. The path contains the outer
+ * contour and inner ring; filling it would paint the space between them. */
+.antd-feature-icon-ontology svg path:nth-child(2),
+.antd-feature-icon-model svg path:nth-child(2) {
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 1.25 !important;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.dash-tag.antd-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.dash-tag .antd-semantic-glyph {
+  margin-right: 5px;
 }
 .antd-result-type-chart { color: #0B7FF3; }
 .antd-result-type-table,
@@ -4242,6 +5351,14 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   color: #344054;
   font-size: 13px;
   font-weight: 600;
+}
+.antd-result-card.antd-result-legacy-static .antd-result-title-text,
+.antd-dashboard-result-head.antd-dashboard-legacy-static-chart .dash-title {
+  display: none !important;
+}
+.antd-result-card.antd-result-legacy-static .antd-result-type,
+.antd-dashboard-result-head.antd-dashboard-legacy-static-chart .dash-tag {
+  margin-left: auto;
 }
 .antd-result-source {
   display: inline-block;
@@ -4429,4 +5546,164 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 }
 .view-page .settings-slider {
   border-radius: 8px;
+}
+
+/* Refined neutral surfaces for assistant/result bubbles. The previous
+ * near-white fill (#F7F7F8) had too little depth against the white canvas;
+ * this cool blue-grey is still quiet, but gives each surface a deliberate
+ * edge and hierarchy. */
+:root {
+  --bubble-surface: #ffffff;
+  --bubble-border: #D8E0E8;
+  --bubble-text: #27313D;
+  --bubble-shadow: 0 2px 8px rgba(36, 50, 68, .07);
+}
+.msg-assistant .msg-body,
+.msg.antd-message-enhanced .antd-message-assistant .ant-bubble-content,
+.antd-dashboard-card-host .antd-dashboard-agent .ant-bubble-content,
+.antd-dashboard-inner-bubble,
+.chat-scroll .chat-action-card:not(.dash-export),
+.chat-scroll .dash-conclusion:not(.chat-action-card),
+.chat-scroll .dash-rootcause:not(.chat-action-card),
+.chat-scroll .dash-actions:not(.chat-action-card),
+.chat-scroll .antd-result-card,
+.tool-io-bubble {
+  background: var(--bubble-surface) !important;
+  border-color: var(--bubble-border) !important;
+  color: var(--bubble-text) !important;
+  box-shadow: var(--bubble-shadow) !important;
+}
+.chat-scroll .antd-result-card .ant-card-head {
+  background: transparent !important;
+  border-bottom-color: var(--bubble-border) !important;
+}
+
+/* Keep the legacy source row in sync with the React ThoughtChain row. */
+.step-header {
+  min-height: 20px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.antd-step-host .ant-thought-chain-item-header {
+  height: auto !important;
+  min-height: var(--thought-step-row-height, 22px) !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* The SOP overview has no connecting line; keep it at the compact row height
+ * above while the tool timeline retains its larger click target. */
+.composer-send svg {
+  /* The supplied 16px SVG at 1.5x is the intended final size. */
+  width: 24px !important;
+  height: 24px !important;
+  flex-basis: 24px !important;
+}
+
+/* Analysis SOP only: the previous measured row line box was 13.2px.  Use
+ * exactly 1.2x (15.84px) for the header/title/icon box so the six rows gain
+ * readable breathing room without changing typography or other lists. */
+.antd-workflow-sop .ant-thought-chain-item-header {
+  min-height: 15.84px !important;
+  line-height: 15.84px !important;
+}
+.antd-workflow-sop .ant-thought-chain-item-icon,
+.antd-workflow-sop .ant-thought-chain-item-extra {
+  width: 15.84px !important;
+  height: 15.84px !important;
+  max-height: 15.84px !important;
+}
+.antd-workflow-sop .ant-thought-chain-item-title {
+  height: 15.84px !important;
+  line-height: 15.84px !important;
+}
+
+/* Assistant, system, tool and result bubbles use a white surface. User
+ * questions are intentionally excluded and restored below in blue. */
+.msg-assistant .msg-body,
+.msg-system .msg-body,
+.msg-error .msg-body,
+.msg-enforce .msg-body,
+.antd-message-assistant .ant-bubble-content,
+.antd-message-system .ant-bubble-content,
+.antd-message-tool .ant-bubble-content,
+.tool-io-bubble,
+.chat-scroll .chat-action-card:not(.dash-export),
+.chat-scroll .dash-conclusion:not(.chat-action-card),
+.chat-scroll .dash-rootcause:not(.chat-action-card),
+.chat-scroll .dash-actions:not(.chat-action-card),
+.chat-scroll .chart-card,
+.chat-scroll .table-card,
+.chat-scroll .multidim-card,
+.chat-scroll .antd-result-card,
+.antd-result-card .ant-card-body,
+.antd-dashboard-bubble .ant-bubble-content,
+.antd-dashboard-card-host .ant-bubble-content,
+.antd-dashboard-inner-bubble,
+.dash-card,
+.chart-card,
+.table-card,
+.multidim-card {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #1f2329 !important;
+  border-color: #d9dee7 !important;
+}
+.msg-assistant .msg-body,
+.msg-system .msg-body,
+.msg-error .msg-body,
+.msg-enforce .msg-body,
+.antd-message-assistant .ant-bubble-content,
+.antd-dashboard-bubble .ant-bubble-content,
+.antd-dashboard-card-host .ant-bubble-content,
+.antd-dashboard-inner-bubble,
+.tool-io-bubble,
+.chat-scroll .chat-action-card:not(.dash-export),
+.chat-scroll .dash-conclusion:not(.chat-action-card),
+.chat-scroll .dash-rootcause:not(.chat-action-card),
+.chat-scroll .dash-actions:not(.chat-action-card),
+.chat-scroll .antd-result-card {
+  border-style: solid !important;
+  border-width: 1px !important;
+}
+.antd-message-user .ant-bubble-content,
+.antd-dashboard-user .ant-bubble-content {
+  border-style: solid !important;
+  border-width: 0 !important;
+}
+
+/* User questions keep the original blue surface in both rendering paths.
+ * These selectors are deliberately more specific than the neutral result
+ * rules above, without applying !important to unrelated bubbles. */
+.msg-user,
+.msg-user .msg-body {
+  background: #1677ff !important;
+  background-color: #1677ff !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 14px !important;
+  border-bottom-right-radius: 4px !important;
+}
+.msg.antd-message-enhanced .antd-message-user .ant-bubble-content,
+.antd-message-user .ant-bubble-content,
+.antd-dashboard-user .ant-bubble-content {
+  background: #1677ff !important;
+  background-color: #1677ff !important;
+  color: #fff !important;
+  border: 0 !important;
+  border-radius: 14px !important;
+  border-bottom-right-radius: 4px !important;
+}
+.msg-user .msg-body,
+.msg-user .msg-header,
+.msg.antd-message-enhanced .antd-message-user .ant-bubble-content,
+.antd-message-user .ant-bubble-content,
+.antd-dashboard-user .ant-bubble-content {
+  color: #fff !important;
+}
+.chat-scroll .chat-action-card .antd-dashboard-inner-bubble,
+.chat-scroll .chat-action-card .antd-dashboard-bubble .ant-bubble-content {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border-color: #d9dee7 !important;
 }

@@ -3,7 +3,7 @@ import path from "node:path";
 import { SpreadsheetFile, Workbook } from "@oai/artifact-tool";
 
 const root = process.cwd();
-const outputDir = path.join(root, "outputs", "hyperfusion_metadata");
+const outputDir = path.join(root, "dataset", "spreadsheets");
 const outputPath = path.join(outputDir, "超聚变本体元数据.xlsx");
 
 const columnMeta = {
