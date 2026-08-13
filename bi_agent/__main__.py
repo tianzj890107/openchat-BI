@@ -12,9 +12,11 @@ import os
 import sys
 from pathlib import Path
 
+from .paths import DATABASES_DIR, SPREADSHEETS_DIR
 
-DEFAULT_ONTOLOGY_XLSX = "ChatBI业务元数据_硕磐财务管理.xlsx"
-DEFAULT_DB = "Kingdee.db"
+
+DEFAULT_ONTOLOGY_XLSX = str(SPREADSHEETS_DIR / "ChatBI业务元数据_硕磐财务管理.xlsx")
+DEFAULT_DB = str(DATABASES_DIR / "Kingdee.db")
 DEFAULT_AGENT = "bi-analyst"
 
 

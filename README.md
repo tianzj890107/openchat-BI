@@ -77,7 +77,7 @@ pip install anthropic rich prompt_toolkit
 python -m open_claude
 
 # or
-python run.py
+python scripts/run.py
 ```
 
 Note: this way you won't have the `open-claude` command, you'll need to use `python -m open_claude` every time.

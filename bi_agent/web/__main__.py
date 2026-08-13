@@ -7,14 +7,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
+from ..paths import DATABASES_DIR, SPREADSHEETS_DIR
 
-DEFAULT_ONTOLOGY = "本体元素_MetaERP（采购领域）-建模.xlsx"
-DEFAULT_DB = "HyperFusion.db"
+
+DEFAULT_ONTOLOGY = str(SPREADSHEETS_DIR / "本体元素_MetaERP（采购领域）-建模.xlsx")
+DEFAULT_DB = str(DATABASES_DIR / "HyperFusion.db")
 DEFAULT_AGENT = "bi-analyst"
 # Sentinel for --db meaning "use the Apache Doris (MySQL protocol) source".
 DORIS_DB = "doris"
@@ -55,7 +58,10 @@ def main() -> None:
         print(f"Error: 工作目录不存在: {cwd}", file=sys.stderr)
         sys.exit(1)
 
-    ontology_path = _resolve(args.ontology or DEFAULT_ONTOLOGY, cwd)
+    remote_mode = os.environ.get("ONTOLOGY_BACKEND", "local").strip().lower() in {"production", "remote"}
+    # Production never resolves or validates a local workbook. Keep the CLI
+    # option solely for explicit local development mode.
+    ontology_path = _resolve(args.ontology or DEFAULT_ONTOLOGY, cwd) if not remote_mode else Path("")
 
     # Default database source is Apache Doris (real-time query). A local SQLite
     # .db is used only when explicitly passed via --db <file>.
@@ -63,7 +69,7 @@ def main() -> None:
     use_doris = db_choice == DORIS_DB
     db_path = _resolve(DEFAULT_DB, cwd) if use_doris else _resolve(db_choice, cwd)
 
-    if not ontology_path.is_file():
+    if not remote_mode and not ontology_path.is_file():
         print(f"Error: 未找到本体文件: {ontology_path}", file=sys.stderr)
         sys.exit(1)
     if not use_doris and not db_path.is_file():
@@ -82,7 +88,8 @@ def main() -> None:
 
     db_label = "Doris(实时查询)" if use_doris else db_path.name
     print(f"[bi-agent-web] http://{args.host}:{args.port}")
-    print(f"[bi-agent-web] agent={args.agent}  ontology={ontology_path.name}  db={db_label}")
+    ontology_label = "remote-managed" if remote_mode else ontology_path.name
+    print(f"[bi-agent-web] agent={args.agent}  ontology={ontology_label}  db={db_label}")
 
     import uvicorn
     uvicorn.run(

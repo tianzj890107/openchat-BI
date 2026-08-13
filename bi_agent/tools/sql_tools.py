@@ -105,13 +105,27 @@ class DorisConn:
 class DorisHttpConn:
     """Doris query endpoint exposed by the team ontology service."""
 
-    def __init__(self, api_url: str, database: str = DEFAULT_DORIS_DATABASE) -> None:
+    def __init__(
+        self,
+        api_url: str,
+        database: str = DEFAULT_DORIS_DATABASE,
+        *,
+        repository_id: str = "",
+        app_id: str = "",
+        auth_token: str = "",
+    ) -> None:
         self.api_url = (api_url or "").strip()
         if not self.api_url:
             raise ValueError("需填写 Doris HTTP API 地址")
         self.database = _validate_doris_identifier(
             database or DEFAULT_DORIS_DATABASE, "Doris 数据库名"
         )
+        # Keep Doris requests bound to the same remote ontology repository as
+        # the active analysis session. Environment variables remain a fallback
+        # for direct/legacy construction outside the web source switcher.
+        self.repository_id = str(repository_id or "").strip()
+        self.app_id = str(app_id or "").strip()
+        self.auth_token = str(auth_token or "").strip()
         self.host = "HTTP API"
         self.port = 0
 
@@ -161,12 +175,12 @@ def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], 
     """Run a read-only statement through the configured Doris transport."""
     if isinstance(conn, DorisHttpConn):
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        for name, env_name in (
-            ("X-Ontology-Repository-Id", "ONTOLOGY_REPOSITORY_ID"),
-            ("X-App-Id", "ONTOLOGY_APP_ID"),
-            ("Authorization", "ONTOLOGY_AUTH_TOKEN"),
+        for name, configured, env_name in (
+            ("X-Ontology-Repository-Id", conn.repository_id, "ONTOLOGY_REPOSITORY_ID"),
+            ("X-App-Id", conn.app_id, "ONTOLOGY_APP_ID"),
+            ("Authorization", conn.auth_token, "ONTOLOGY_AUTH_TOKEN"),
         ):
-            value = os.environ.get(env_name, "").strip()
+            value = configured or os.environ.get(env_name, "").strip()
             if value:
                 if name == "Authorization" and not value.lower().startswith(
                     ("bearer ", "basic ")
@@ -351,6 +365,8 @@ def _make_sql_run(source: "SqlBackend | str") -> Executor:
         header = f"SQL: {sql}"
         if backend.is_doris:
             clean = sql.strip().rstrip(";").strip()
+            if re.match(r"^pragma\b", clean, re.IGNORECASE):
+                return "SQLRun rejected: PRAGMA is SQLite-only\nSQL: " + sql
             try:
                 columns, rows = _doris_query(backend.doris, clean)
             except DorisApiError as e:
@@ -500,7 +516,7 @@ def _make_describe_table(source: "SqlBackend | str") -> Executor:
             # Accept either a bare name or a db-qualified `schema.table`; the
             # schema defaults to the active Doris database when omitted.
             m = re.fullmatch(
-                r"(?:([A-Za-z_][A-Za-z0-9_]*)\.)?([A-Za-z_][A-Za-z0-9_]*)", table
+                r"(?:([A-Za-z_][A-Za-z0-9_$]*)\.)?([A-Za-z_][A-Za-z0-9_$]*)", table
             )
             if not m:
                 return f"DescribeTable: invalid table name {table!r}."

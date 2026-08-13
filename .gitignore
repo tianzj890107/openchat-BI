@@ -24,10 +24,14 @@ frontend/node_modules/
 Thumbs.db
 
 # Project
-bi_charts/
-uploaded_reports/
+dataset/charts/
+dataset/conversations/
+dataset/logs/
+dataset/uploaded_reports/
+dataset/spreadsheets/~$*
 outputs/
-# Personal daily report
+# Personal/runtime notes kept in the project root but never deployed
+/debug.md
 /日报.md
 # Secrets
 .env

@@ -13,6 +13,169 @@
  * SSE event shape is identical across modes; only the endpoints differ.
  * ===================================================================== */
 
+const conversationSummaryCache = new Map();
+const conversationSummaryRequests = new Map();
+const conversationSummaryStates = new Map();
+const conversationSummarySequences = new Map();
+const conversationSummaryTitleVersions = new Map();
+const conversationSaveQueues = new Map();
+const conversationDraftIds = new Map();
+const CLIENT_SESSION_STORAGE_KEY = "openchat-bi-session-id";
+let clientSessionId = "";
+try {
+  clientSessionId = sessionStorage.getItem(CLIENT_SESSION_STORAGE_KEY) || "";
+  if (!clientSessionId) {
+    clientSessionId = globalThis.crypto?.randomUUID?.() || `bi-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    sessionStorage.setItem(CLIENT_SESSION_STORAGE_KEY, clientSessionId);
+  }
+} catch (_) {
+  clientSessionId = `bi-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function withClientSession(url) {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}session_id=${encodeURIComponent(clientSessionId)}`;
+}
+
+function draftConversationId(mode) {
+  const key = mode === "report" ? "report" : "data";
+  if (!conversationDraftIds.has(key)) {
+    const bytes = new Uint8Array(4);
+    if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(bytes);
+    else bytes.set([Date.now() & 255, Math.random() * 255, performance.now() & 255, 17]);
+    conversationDraftIds.set(key, [...bytes].map((value) => value.toString(16).padStart(2, "0")).join(""));
+  }
+  return conversationDraftIds.get(key);
+}
+
+function normalizeConversationSummaries(items) {
+  return (Array.isArray(items) ? items : []).map((item) => ({
+    id: item?.id,
+    mode: item?.mode || "data",
+    title: item?.title || "未命名对话",
+    created_at: item?.created_at || "",
+    updated_at: item?.updated_at || "",
+    turn_count: Number.isFinite(Number(item?.turn_count)) ? Number(item.turn_count) : 0,
+    first_user_question: item?.first_user_question || "",
+    title_version: Number(item?.title_version || 0),
+  })).filter((item) => item.id);
+}
+
+function publishConversationState(mode, status, conversations = [], reason = "refresh", error = "") {
+  const normalized = normalizeConversationSummaries(conversations);
+  conversationSummaryStates.set(mode, { status, error });
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("bi-conversations-updated", {
+      detail: { mode, conversations: normalized, status, reason, error },
+    }));
+  }
+  return normalized;
+}
+
+function publishConversationSummaries(mode, conversations, reason = "refresh") {
+  const normalized = normalizeConversationSummaries(conversations);
+  const versions = new Set(normalized.map((item) => item.title_version).filter(Boolean));
+  const previousVersion = conversationSummaryTitleVersions.get(mode);
+  if (versions.size && previousVersion && !versions.has(previousVersion)) {
+    // A title algorithm migration must never leave an older in-memory summary
+    // visible. The incoming API payload is the sole replacement source.
+    conversationSummaryCache.delete(mode);
+  }
+  if (versions.size) conversationSummaryTitleVersions.set(mode, Math.max(...versions));
+  conversationSummaryCache.set(mode, normalized);
+  return publishConversationState(
+    mode,
+    normalized.length ? "success" : "empty",
+    normalized,
+    reason,
+  );
+}
+
+/** Shared history-list owner used by both the legacy runtime and React shell. */
+export function fetchConversationSummaries(mode = "data", { force = false } = {}) {
+  const key = mode === "report" ? "report" : "data";
+  const inFlight = conversationSummaryRequests.get(key);
+  // Even a forced refresh joins an existing request. This is the important
+  // invariant when runtime.js and main.jsx mount in the same frame.
+  if (inFlight) return inFlight;
+  const currentState = conversationSummaryStates.get(key);
+  if (!force && conversationSummaryCache.has(key) &&
+      currentState?.status !== "error") {
+    return Promise.resolve(conversationSummaryCache.get(key));
+  }
+  publishConversationState(key, "loading", [], "loading");
+  const sequence = (conversationSummarySequences.get(key) || 0) + 1;
+  conversationSummarySequences.set(key, sequence);
+  const request = fetch(`/api/conversations?mode=${encodeURIComponent(key)}`)
+    .then((response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    })
+    .then((payload) => {
+      // A late response from an older refresh must never replace newer data.
+      if (conversationSummarySequences.get(key) !== sequence) return conversationSummaryCache.get(key) || [];
+      return publishConversationSummaries(key, payload?.conversations || [], "refresh");
+    })
+    .catch((error) => {
+      // Failed requests are not converted into an empty success state. The
+      // caller renders a retry affordance and can explicitly issue one retry.
+      publishConversationState(key, "error", [], "error", String(error?.message || error));
+      throw error;
+    })
+    .finally(() => {
+      if (conversationSummaryRequests.get(key) === request) conversationSummaryRequests.delete(key);
+    });
+  conversationSummaryRequests.set(key, request);
+  return request;
+}
+
+export function upsertConversationSummary(summary) {
+  if (!summary?.id) return;
+  const mode = summary.mode === "report" ? "report" : "data";
+  if (!conversationSummaryCache.has(mode)) {
+    // A turn can finish before the initial sidebar request resolves. Hydrate
+    // the complete cache first so an upsert never hides older conversations.
+    fetchConversationSummaries(mode, { force: true }).then((items) => {
+      if (!conversationSummaryCache.has(mode)) conversationSummaryCache.set(mode, items || []);
+      upsertConversationSummary(summary);
+    }).catch(() => {});
+    return;
+  }
+  const current = conversationSummaryCache.get(mode) || [];
+  const next = current.filter((item) => item.id !== summary.id);
+  next.push(summary);
+  next.sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+  publishConversationSummaries(mode, next, "save");
+}
+
+export function removeConversationSummary(id) {
+  if (!id) return;
+  let found = false;
+  for (const mode of ["data", "report"]) {
+    const current = conversationSummaryCache.get(mode);
+    if (current?.some((item) => item.id === id)) {
+      found = true;
+      publishConversationSummaries(mode, current.filter((item) => item.id !== id), "delete");
+    }
+  }
+  if (!found && typeof window !== "undefined") {
+    // The cache may not have been populated for the current mode yet. Let the
+    // single coordinator request establish the authoritative post-delete list.
+    const mode = document.body?.dataset?.mode === "report" ? "report" : "data";
+    fetchConversationSummaries(mode, { force: true }).catch(() => {});
+  }
+}
+
+function enqueueConversationSave(mode, operation) {
+  const key = mode === "report" ? "report" : "data";
+  const previous = conversationSaveQueues.get(key) || Promise.resolve();
+  const next = previous.catch(() => {}).then(operation);
+  conversationSaveQueues.set(key, next);
+  return next.finally(() => {
+    if (conversationSaveQueues.get(key) === next) conversationSaveQueues.delete(key);
+  });
+}
+
 export function bootWorkbenchRuntime() {
   const ONTOLOGY_FILTER_KINDS = [
     "term", "business_object", "logical_entity", "attribute", "relation", "metric",
@@ -38,12 +201,19 @@ export function bootWorkbenchRuntime() {
       turnCount: 0,
       currentAssistantEl: null,
       currentAssistantText: "",
+      // Each iteration owns one execution block: assistant message/results
+      // followed by its timeline. This prevents a later iteration from
+      // appending steps to the first iteration's timeline.
+      currentExecutionBlock: null,
+      stepTimelineEl: null,
+      stepThinkingEl: null,
       systemPrompt: null,
       // Per-turn conclusion tracking — 📌-prefixed sentences extracted from
       // assistant text go to the middle dashboard as conclusion cards.
       conclusionSeen: new Set(),       // dedup within a session
       rootCauseSeen: new Set(),        // dedup 🔍 root-cause cards
       actionsSeen: new Set(),          // dedup 💡 action cards
+      rootCauseDelivered: false,       // accepted root-cause section for this turn
       currentTurnTag: 0,               // increments per user turn (for card ids)
       // Pinned task list (TodoWrite). Latest full snapshot the agent wrote;
       // re-rendered into #chat-todo on every update and on mode switch.
@@ -70,6 +240,13 @@ export function bootWorkbenchRuntime() {
       convId: null,
       // Stable title anchor for restored conversations (no turnQuestions).
       titleHint: null,
+      // Immutable client-side compatibility anchor. The backend remains the
+      // authority, but later turns must never replace this value.
+      firstUserQuestion: null,
+      // A history click creates this gate before preview loading starts. New
+      // questions await it so they can never race server-side activation.
+      restoreActivation: Promise.resolve(),
+      restoreToken: 0,
       // A completed task gets one export action group per turn. This survives
       // repeated SSE `done` notifications and prevents duplicate controls.
       exportTurns: new Set(),
@@ -78,6 +255,28 @@ export function bootWorkbenchRuntime() {
 
   const buckets = { data: makeBucket(), report: makeBucket() };
   let activeRequestController = null;
+  // History clicks can happen immediately after `done`; wait for that
+  // snapshot request before restoring another record so the latest SOP is
+  // never replaced by a stale server copy.
+  let pendingConversationSave = Promise.resolve();
+  // Each browser conversation has a server-side source context. Keep a local
+  // snapshot as well so history restore can atomically reactivate its pair.
+  let activeSourceConfig = null;
+
+  function sourceConfigFromPayload(data) {
+    const retrievalMode = String(data?.retrieval?.mode || "semantic");
+    return {
+      ontology: String(data?.ontology?.active || ""),
+      database: String(data?.database?.active || ""),
+      retrieval_mode: retrievalMode,
+      graph: retrievalMode === "graph" ? String(data?.retrieval?.graph?.active || "") : "",
+      doris_api_url: String(data?.doris?.api_url || ""),
+      doris_jdbc_url: String(data?.doris?.jdbc_url || ""),
+      doris_driver: String(data?.doris?.driver || ""),
+      doris_username: String(data?.doris?.username || ""),
+      doris_database: String(data?.doris?.database || ""),
+    };
+  }
 
   // ------------------------------------------------------------------
   // Global state
@@ -85,6 +284,7 @@ export function bootWorkbenchRuntime() {
   const state = {
     meta: null,
     busy: false,
+    historyRestoring: false,
     activeTab: "tools",
     view: "workspace",                 // sidebar page router: which view is shown
     mode: "data",                      // "data" | "report"
@@ -320,7 +520,9 @@ export function bootWorkbenchRuntime() {
   // Default empty-state strings per mode
   const EMPTY_STATES = {
     data: {
-      glyph: "◇",
+      // The data assistant starts directly with its title and examples; the
+      // former oversized diamond placeholder is intentionally removed.
+      glyph: "",
       title: "硕磐财务 BI 智能分析",
       hints: [
         "管报收入总金额是多少?",
@@ -373,6 +575,27 @@ export function bootWorkbenchRuntime() {
     });
   }
 
+  // The assistant UI supplies semantic badges and tool labels itself. Keep
+  // model prose clean by removing decorative emoji-only prefixes while
+  // preserving meaningful emoji that appear inside a sentence or data value.
+  const DECORATIVE_EMOJI_TOKEN = "(?:📌|📊|📎|🧭|📈|📉|📄|🧩|🧠|✅|⚠️|🔍|💡)";
+  function stripDecorativeMarkers(value) {
+    let text = String(value == null ? "" : value);
+    text = text.replace(
+      new RegExp(`\\*\\*\\s*${DECORATIVE_EMOJI_TOKEN}(?:\\s*${DECORATIVE_EMOJI_TOKEN})*\\s*\\*\\*`, "gu"),
+      "",
+    );
+    text = text.replace(
+      new RegExp(`(^|\\n)(\\s*\\*\\*)\\s*${DECORATIVE_EMOJI_TOKEN}+`, "gu"),
+      "$1$2",
+    );
+    text = text.replace(
+      new RegExp(`(^|\\n)(\\s*)${DECORATIVE_EMOJI_TOKEN}+(?=\\s|$)`, "gu"),
+      "$1$2",
+    );
+    return text;
+  }
+
   // Dependency-free Markdown renderer for streamed assistant responses.
   // Model text is escaped before markup is added, so arbitrary HTML cannot be
   // injected. It covers headings, emphasis, code, links, lists, blockquotes,
@@ -409,7 +632,7 @@ export function bootWorkbenchRuntime() {
   }
 
   function renderMarkdown(text) {
-    const lines = String(text == null ? "" : text).replace(/\r/g, "").split("\n");
+    const lines = stripDecorativeMarkers(text).replace(/\r/g, "").split("\n");
     const out = [];
     let i = 0;
     while (i < lines.length) {
@@ -510,7 +733,7 @@ export function bootWorkbenchRuntime() {
   // clause/header is a plain preamble.
   function buildActionableBody(text, kind) {
     const acts = ITEM_ACTIONS[kind];
-    const raw = String(text == null ? "" : text).replace(/\r/g, "");
+    const raw = stripDecorativeMarkers(text).replace(/\r/g, "");
     if (!acts) return `<div class="dash-body">${highlightEntities(raw)}</div>`;
 
     const lines = raw.split("\n");
@@ -903,14 +1126,45 @@ export function bootWorkbenchRuntime() {
   // always same-mode (no cross-mode context clobbering).
   // ------------------------------------------------------------------
   const recentListEl = document.getElementById("recent-list");
+  let openingConversationId = null;
+
+  function updateHistoryRestoreAvailability() {
+    document.body.dataset.historyRestoring = state.historyRestoring ? "1" : "0";
+    updateChatInputAvailability();
+  }
+
+  function showHistoryChatLoading() {
+    if (!el.chatScroll) return;
+    let skeleton = el.chatScroll.querySelector(":scope > .history-chat-skeleton");
+    if (!skeleton) {
+      skeleton = document.createElement("div");
+      skeleton.className = "history-chat-skeleton";
+      skeleton.innerHTML = `
+        <div class="history-chat-skeleton-line wide"></div>
+        <div class="history-chat-skeleton-line"></div>
+        <div class="history-chat-skeleton-line short"></div>`;
+      el.chatScroll.prepend(skeleton);
+    }
+    skeleton.hidden = false;
+  }
+
+  function markHistoryOpening(id) {
+    openingConversationId = id;
+    state.historyRestoring = true;
+    if (recentListEl) {
+      recentListEl.querySelectorAll(".recent-item").forEach((row) => {
+        row.classList.toggle("active", row.dataset.cid === id);
+        row.classList.toggle("opening", row.dataset.cid === id);
+        row.setAttribute("aria-current", row.dataset.cid === id ? "true" : "false");
+      });
+    }
+    showHistoryChatLoading();
+    updateHistoryRestoreAvailability();
+  }
 
   function conversationTitle() {
     const b = B();
-    const tq = b.turnQuestions || {};
-    // First question identifies the conversation; titleHint preserves it for
-    // restored conversations (whose turnQuestions map isn't repopulated).
-    const q = tq[1] || tq[Object.keys(tq)[0]] || b.titleHint || "";
-    return (q || "未命名对话").slice(0, 60);
+    return (b.firstUserQuestion || b.titleHint || "未命名对话").slice(0, 60);
   }
 
   function collectHtml(container, emptyEl) {
@@ -918,47 +1172,123 @@ export function bootWorkbenchRuntime() {
     let html = "";
     container.childNodes.forEach((n) => {
       if (n === emptyEl) return;
-      if (n.nodeType === 1) html += n.outerHTML;
+      if (n.nodeType === 1) {
+        // The streaming caret is a transient render affordance. Never persist
+        // it into a completed conversation, otherwise opening history makes a
+        // finished answer look like it is still generating.
+        const snapshot = n.cloneNode(true);
+        snapshot.querySelectorAll?.(".cursor").forEach((cursor) => cursor.remove());
+        html += snapshot.outerHTML;
+      }
     });
     return html;
   }
 
-  async function saveCurrentConversation() {
-    const b = B();
+  function saveCurrentConversation() {
+    const mode = state.mode;
+    const queued = enqueueConversationSave(mode, () => saveCurrentConversationNow(mode));
+    pendingConversationSave = queued;
+    return queued;
+  }
+
+  async function saveCurrentConversationNow(mode) {
+    const b = buckets[mode];
     if (!b.hasContent) return;  // nothing worth saving yet
     dedupeExportCards();
     try {
+      // A user can finish a conversation without ever opening either source
+      // settings page. Capture the backend's current selection in that case.
+      if (!activeSourceConfig) {
+        try {
+          const sr = await fetch(withClientSession("/api/sources"), { cache: "no-store" });
+          if (sr.ok) activeSourceConfig = sourceConfigFromPayload(await sr.json());
+        } catch (_) { /* source metadata is best-effort */ }
+      }
       const r = await fetch("/api/conversations/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: state.mode,
-          cid: b.convId,
+          mode,
+          session_id: clientSessionId,
+          // Reserve a stable client id before the first request. If a save is
+          // queued behind another save it cannot accidentally create a second
+          // conversation because cid is already present.
+          cid: b.convId || draftConversationId(mode),
+          first_user_question: b.firstUserQuestion || "",
           title: conversationTitle(),
           chat_html: collectHtml(el.chatScroll, el.chatEmpty),
           dashboard_html: collectHtml(el.dashboardList, el.dashboardEmpty),
           ontology_html: collectHtml(el.ontologyList),
           tools_html: collectHtml(el.toolList),
           llm_html: collectHtml(el.llmList),
+          // SOP progress belongs to this conversation's latest completed
+          // task. Persist it with the same snapshot as the transcript so
+          // opening another history item cannot reuse the active bucket's
+          // checklist.
+          sop_steps: mode === "data" ? (b.todos || []) : [],
+          source_config: activeSourceConfig || {},
         }),
       });
-      if (r.ok) { const d = await r.json(); if (d && d.id) b.convId = d.id; }
+      if (r.ok) {
+        const d = await r.json();
+        if (d && d.id) {
+          b.convId = d.id;
+          upsertConversationSummary({
+            ...d,
+            mode: d.mode || mode,
+            // The server derives this from the first real user message. The
+            // local title is only a compatibility payload for older servers;
+            // never let it overwrite the canonical response.
+            title: d.title || "未命名对话",
+            updated_at: d.updated_at || "",
+          });
+          // Revalidate once against the local authoritative API after the
+          // canonical id/title has been applied to the per-mode cache.
+          await fetchConversationSummaries(mode, { force: true });
+        }
+      }
     } catch (e) { /* history is best-effort */ }
-    loadRecent();
+    if (state.mode === mode) loadRecent();
   }
 
-  async function loadRecent() {
+  async function loadRecent({ force = false } = {}) {
     if (!recentListEl) return;
+    renderRecent([], "loading");
     try {
-      const r = await fetch("/api/conversations?mode=" + encodeURIComponent(state.mode));
-      const d = await r.json();
-      renderRecent(d.conversations || []);
-    } catch (e) { /* ignore */ }
+      const items = await fetchConversationSummaries(state.mode, { force });
+      renderRecent(items, items.length ? "success" : "empty");
+    } catch (error) {
+      renderRecent([], "error", error);
+    }
   }
 
-  function renderRecent(items) {
+  function renderRecent(items, status = "success", error = null) {
     if (!recentListEl) return;
     recentListEl.innerHTML = "";
+    recentListEl.dataset.status = status;
+    if (status === "loading") {
+      const label = document.createElement("div");
+      label.className = "recent-loading-label";
+      label.textContent = "正在加载最近会话…";
+      recentListEl.appendChild(label);
+      for (let i = 0; i < 6; i += 1) {
+        const row = document.createElement("div");
+        row.className = "recent-skeleton-row";
+        row.innerHTML = '<span class="recent-skeleton-title"></span><span class="recent-skeleton-meta"></span>';
+        recentListEl.appendChild(row);
+      }
+      return;
+    }
+    if (status === "error") {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "recent-error";
+      retry.textContent = "加载失败，点击重试";
+      retry.title = error?.message || "重新加载最近会话";
+      retry.addEventListener("click", () => loadRecent({ force: true }));
+      recentListEl.appendChild(retry);
+      return;
+    }
     if (!items.length) {
       const e = document.createElement("div");
       e.className = "recent-empty";
@@ -969,8 +1299,10 @@ export function bootWorkbenchRuntime() {
     const activeId = B().convId;
     items.forEach((it) => {
       const row = document.createElement("div");
-      row.className = "recent-item" + (it.id === activeId ? " active" : "");
+      row.className = "recent-item" + (it.id === activeId ? " active" : "")
+        + (it.id === openingConversationId ? " opening" : "");
       row.dataset.cid = it.id || "";
+      row.dataset.updatedAt = it.updated_at || it.created_at || "";
       row.title = it.title || "未命名对话";
       const t = document.createElement("span");
       t.className = "recent-title";
@@ -982,99 +1314,247 @@ export function bootWorkbenchRuntime() {
       del.title = "删除该会话";
       del.addEventListener("click", (ev) => { ev.stopPropagation(); deleteRecent(it.id); });
       row.appendChild(del);
-      row.addEventListener("click", () => restoreConversation(it.id));
+      row.addEventListener("click", () => {
+        markHistoryOpening(it.id);
+        restoreConversation(it.id);
+      });
       recentListEl.appendChild(row);
     });
-    window.dispatchEvent(new CustomEvent("bi-conversations-updated", { detail: { mode: state.mode } }));
   }
 
   async function deleteRecent(id) {
-    try { await fetch("/api/conversations/" + id, { method: "DELETE" }); } catch (e) {}
+    let ok = false;
+    try {
+      const response = await fetch("/api/conversations/" + id, { method: "DELETE" });
+      ok = response.ok;
+    } catch (e) {}
     ["data", "report"].forEach((m) => { if (buckets[m].convId === id) buckets[m].convId = null; });
-    loadRecent();
+    if (ok) removeConversationSummary(id);
+    else loadRecent({ force: true });
   }
 
+  function deferHistoryPhase(callback, delay = 0) {
+    const run = () => {
+      try { callback(); } catch (error) { console.warn("历史会话分阶段渲染失败", error); }
+    };
+    if (delay > 0) setTimeout(run, delay);
+    else if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(run, { timeout: 120 });
+    else setTimeout(run, 0);
+  }
+
+  function renderConversationPreview(preview, mode) {
+    const bucket = buckets[mode];
+    bucket.convId = preview.id || null;
+    bucket.titleHint = preview.title || "";
+    bucket.firstUserQuestion = preview.first_user_question ||
+      (preview.title && preview.title !== "未命名对话" ? preview.title : null);
+    bucket.hasContent = false;
+    bucket.questions = [];
+    bucket.turnQuestions = {};
+    bucket.turnCount = 0;
+    if (!el.chatScroll) return;
+    el.chatScroll.innerHTML = "";
+    let turn = 0;
+    const items = Array.isArray(preview.preview) ? preview.preview : [];
+    if (items.length) {
+      items.forEach((item) => {
+        const role = item.role === "user" ? "user" : "assistant";
+        if (role === "user") turn += 1;
+        const message = el_h("div", `msg msg-${role}`);
+        message.dataset.turn = String(Math.max(turn, 1));
+        message.innerHTML = `<div class="msg-header"><span class="msg-role ${role === "assistant" ? "assistant" : ""}">${role === "user" ? "你" : esc(assistantRoleLabel())}</span></div><div class="msg-body"></div>`;
+        const body = message.querySelector(".msg-body");
+        if (role === "assistant") body.innerHTML = renderMarkdown(String(item.text || ""));
+        else body.textContent = String(item.text || "");
+        el.chatScroll.appendChild(message);
+        if (role === "user") {
+          bucket.questions.push({ turn, text: String(item.text || "") });
+          bucket.turnQuestions[turn] = String(item.text || "");
+        }
+      });
+    } else if (preview.chat_html_preview) {
+      el.chatScroll.insertAdjacentHTML("beforeend", preview.chat_html_preview);
+      indexQuestionsFromChat();
+    }
+    bucket.turnCount = bucket.questions.length || Number(preview.turn_count || 0);
+    bucket.hasContent = bucket.turnCount > 0 || el.chatScroll.children.length > (status ? 1 : 0);
+    if (el.chatEmpty) el.chatEmpty.style.display = bucket.hasContent ? "none" : "";
+    showView("workspace");
+    updateTurnCounter();
+    if (bucket.questions.length) setActiveQuestion(bucket.questions[0].turn);
+  }
+
+  function applyRestoredAssets(assets, mode, token) {
+    if (token !== historyRestoreSequence || state.mode !== mode) return;
+    const bucket = buckets[mode];
+    if (assets.chat_html) el.chatScroll.innerHTML = assets.chat_html;
+    if (assets.dashboard_html) el.dashboardList.innerHTML = assets.dashboard_html;
+    moveRestoredInteractiveCardsToChat();
+    bucket.exportTurns = dedupeExportCards();
+    // Inspector resources are intentionally inserted in the final recovery
+    // phase. Chat/dashboard HTML can become visible first, while ontology,
+    // tool and LLM detail cards wait for an idle slice below.
+    el.ontologyList.innerHTML = "";
+    el.toolList.innerHTML = "";
+    el.llmList.innerHTML = "";
+    indexQuestionsFromChat();
+    ensureRestoredDashboardQuestions();
+    bucket.hasContent = !!(assets.chat_html && assets.chat_html.trim()) || bucket.hasContent;
+    bucket.dashboardHasContent = !!el.dashboardList.querySelector(".dash-card");
+    bucket.todos = mode === "data" ? normalizeRestoredSop(assets.sop_steps, bucket.hasContent) : [];
+    bucket.sopStep = sopStepFromTodos(bucket.todos);
+    renderTodoPanel();
+    if (bucket.questions.length) setActiveQuestion(bucket.questions[0].turn);
+    updateDashboardCount();
+    if (el.chatEmpty) el.chatEmpty.style.display = bucket.hasContent ? "none" : "";
+    if (el.dashboardEmpty) {
+      el.dashboardEmpty.style.display = bucket.dashboardHasContent ? "none" : "";
+      if (!bucket.dashboardHasContent && !el.dashboardEmpty.parentNode) el.dashboardList.appendChild(el.dashboardEmpty);
+    }
+    el.countOntology.textContent = "0";
+    el.countTools.textContent = "0";
+    el.countLlm.textContent = "0";
+    bucket.turnCount = bucket.questions.length;
+    updateTurnCounter();
+    deferHistoryPhase(() => {
+      try { hydrateRestoredChat(); } catch (error) { console.warn("历史聊天卡片恢复失败", error); }
+      try { hydrateRestoredDashboard(); } catch (error) { console.warn("历史看板恢复失败", error); }
+    });
+    deferHistoryPhase(() => {
+      if (token !== historyRestoreSequence || state.mode !== mode) return;
+      try {
+        el.ontologyList.innerHTML = assets.ontology_html || "";
+        el.toolList.innerHTML = assets.tools_html || "";
+        el.llmList.innerHTML = assets.llm_html || "";
+        bucket.ontologyByCode.clear();
+        el.ontologyList.querySelectorAll(".entity-card[data-code]").forEach((card) => {
+          const kind = [...card.classList].find((name) => name !== "entity-card") || "ontology";
+          const key = card.dataset.entityKey || `history:${kind}:${card.dataset.code}`;
+          bucket.ontologyByCode.set(key, {
+            code: card.dataset.code,
+            kind,
+            name: card.querySelector(".entity-name")?.textContent || card.dataset.code,
+            source: card.dataset.source || "history",
+            entity_key: key,
+          });
+        });
+        applyOntologyFilters();
+        el.countOntology.textContent = String(el.ontologyList.querySelectorAll(".entity-card").length);
+        el.countTools.textContent = String(el.toolList.querySelectorAll(".tool-card").length);
+        el.countLlm.textContent = String(el.llmList.querySelectorAll(".llm-card").length);
+        hydrateRestoredInspector();
+      } catch (error) {
+        console.warn("历史详情恢复失败", error);
+      }
+    }, 80);
+  }
+
+  let historyRestoreSequence = 0;
+
   async function restoreConversation(id) {
+    const token = ++historyRestoreSequence;
+    markHistoryOpening(id);
+    const originalBucket = B();
+    let settleActivation;
+    let rejectActivation;
+    let activationSettled = false;
+    const activationGate = new Promise((resolve, reject) => {
+      settleActivation = resolve;
+      rejectActivation = reject;
+    });
+    activationGate.catch(() => {});
+    originalBucket.restoreActivation = activationGate;
+    try { await pendingConversationSave; } catch (e) { /* save is best-effort */ }
     if (state.busy) {
       if (activeRequestController) activeRequestController.abort();
       const resetUrl = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
-      try { await fetch(resetUrl, { method: "POST" }); } catch (e) {}
+      try { await fetch(withClientSession(resetUrl), { method: "POST" }); } catch (e) {}
       setBusy(false);
     }
-    // Restoring is read-only. Never snapshot the currently visible draft here:
-    // doing so creates a new conversation and moves it to the top merely by
-    // clicking history. A conversation is persisted/ordered only at turn end.
-    let rec;
     try {
-      const r = await fetch("/api/conversations/restore", {
+      const previewResponse = await fetch(`/api/conversations/${encodeURIComponent(id)}/preview`);
+      if (!previewResponse.ok) throw new Error(`HTTP ${previewResponse.status}`);
+      const preview = await previewResponse.json();
+      if (token !== historyRestoreSequence) return;
+      const mode = preview.mode === "report" ? "report" : "data";
+      if (mode !== state.mode) switchMode(mode);
+      clearBucketChat(mode);
+      const bucket = buckets[mode];
+      bucket.restoreActivation = activationGate;
+      renderConversationPreview(preview, mode);
+      const assetsPromise = fetch(`/api/conversations/${encodeURIComponent(id)}/assets`)
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.json();
+        });
+      let assetsFailed = false;
+      let activationFailed = false;
+      const activationPromise = fetch(withClientSession(`/api/conversations/${encodeURIComponent(id)}/activate`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+      }).then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.json();
       });
-      if (!r.ok) return;
-      rec = await r.json();
-    } catch (e) { return; }
-    if (rec.mode && rec.mode !== state.mode) switchMode(rec.mode);
-    const b = B();
-    // Swap in the saved transcript + dashboard snapshot.
-    el.chatScroll.innerHTML = rec.chat_html || "";
-    el.dashboardList.innerHTML = rec.dashboard_html || "";
-    moveRestoredInteractiveCardsToChat();
-    b.exportTurns = dedupeExportCards();
-    el.ontologyList.innerHTML = rec.ontology_html || "";
-    el.toolList.innerHTML = rec.tools_html || "";
-    el.llmList.innerHTML = rec.llm_html || "";
-    hydrateRestoredChat();
-    indexQuestionsFromChat();
-    ensureRestoredDashboardQuestions();
-    hydrateRestoredInspector();
-    // Rebuild the dedupe index from the restored cards. Without this, a
-    // follow-up turn could reuse the previous conversation's map or append
-    // duplicate entities to restored HTML.
-    b.ontologyByCode.clear();
-    el.ontologyList.querySelectorAll(".entity-card[data-code]").forEach((card) => {
-      const kind = [...card.classList].find((name) => name !== "entity-card") || "ontology";
-      const key = card.dataset.entityKey || `history:${kind}:${card.dataset.code}`;
-      b.ontologyByCode.set(key, {
-        code: card.dataset.code,
-        kind,
-        name: card.querySelector(".entity-name")?.textContent || card.dataset.code,
-        source: card.dataset.source || "history",
-        entity_key: key,
+      activationPromise.then((activated) => {
+        if (activationSettled || token !== historyRestoreSequence) return;
+        activationSettled = true;
+        activeSourceConfig = activated.source_config && typeof activated.source_config === "object"
+          ? { ...activated.source_config }
+          : activeSourceConfig;
+        settleActivation(activated);
+      }).catch((error) => {
+        activationFailed = true;
+        if (!activationSettled) {
+          activationSettled = true;
+          rejectActivation(error);
+        }
+        if (token === historyRestoreSequence) console.warn("历史分析上下文恢复失败", error);
       });
-    });
-    applyOntologyFilters();
-    hydrateRestoredDashboard();
-    b.hasContent = !!(rec.chat_html && rec.chat_html.trim());
-    b.dashboardHasContent = !!el.dashboardList.querySelector(".dash-card");
-    updateDashboardCount();
-    // TodoWrite progress is intentionally not part of the persisted
-    // conversation snapshot; never leave the previous conversation's tasks
-    // visible when opening another history record.
-    b.todos = [];
-    renderTodoPanel();
-    b.turnCount = b.questions.length;
-    updateTurnCounter();
-    el.countOntology.textContent = String(el.ontologyList.querySelectorAll(".entity-card").length);
-    el.countTools.textContent = String(el.toolList.querySelectorAll(".tool-card").length);
-    el.countLlm.textContent = String(el.llmList.querySelectorAll(".llm-card").length);
-    if (el.chatEmpty && !b.hasContent) {
-      if (!el.chatEmpty.parentNode) el.chatScroll.appendChild(el.chatEmpty);
-      el.chatEmpty.style.display = "";
+      assetsPromise.then((assets) => {
+        if (token !== historyRestoreSequence) return;
+        applyRestoredAssets(assets, mode, token);
+      }).catch((error) => {
+        assetsFailed = true;
+        if (token === historyRestoreSequence) console.warn("历史图表和详情加载失败", error);
+      });
+      const [assetsResult, activationResult] = await Promise.allSettled([assetsPromise, activationPromise]);
+      if (activationResult.status === "rejected") throw activationResult.reason;
+      if (assetsResult.status === "fulfilled") {
+        window.dispatchEvent(new CustomEvent("bi-history-restored", {
+          detail: { conversationId: preview.id, mode },
+        }));
+      } else if (token === historyRestoreSequence) {
+        console.warn("历史图表和详情加载失败，但分析上下文已恢复", assetsResult.reason);
+      }
+      if (!activationSettled) {
+        activationSettled = true;
+        settleActivation(activationResult.value);
+      }
+      buckets[mode].restoreActivation = activationGate;
+      if (token === historyRestoreSequence) {
+        state.historyRestoring = false;
+        openingConversationId = null;
+        updateHistoryRestoreAvailability();
+      }
+      if (typeof scrollChatBottom === "function") scrollChatBottom();
+    } catch (error) {
+      if (!activationSettled) {
+        activationSettled = true;
+        rejectActivation(error);
+      }
+      if (token === historyRestoreSequence) console.warn("历史会话恢复失败", error);
+      if (token === historyRestoreSequence && activationSettled) {
+        // Keep sending disabled after an activate failure: the visible preview
+        // is useful, but it is not a safe context for a new analysis request.
+        state.historyRestoring = true;
+        updateHistoryRestoreAvailability();
+      } else if (token === historyRestoreSequence) {
+        state.historyRestoring = false;
+        openingConversationId = null;
+        updateHistoryRestoreAvailability();
+      }
     }
-    if (el.dashboardEmpty && !b.dashboardHasContent) {
-      if (!el.dashboardEmpty.parentNode) el.dashboardList.appendChild(el.dashboardEmpty);
-      el.dashboardEmpty.style.display = "";
-    } else if (el.dashboardEmpty) {
-      el.dashboardEmpty.style.display = "none";
-    }
-    b.convId = rec.id;
-    // Restored transcripts carry no turnQuestions, so anchor the title here;
-    // otherwise a later save would relabel it 「未命名对话」.
-    b.titleHint = rec.title || "";
-    showView("workspace");
-    loadRecent();
-    if (typeof scrollChatBottom === "function") scrollChatBottom();
   }
 
   // ------------------------------------------------------------------
@@ -1178,7 +1658,7 @@ export function bootWorkbenchRuntime() {
     const st = document.getElementById("roles-status");
     if (st) { st.textContent = ""; st.className = "settings-status"; }
     try {
-      const r = await fetch("/api/roles");
+      const r = await fetch(withClientSession("/api/roles"), { cache: "no-store" });
       if (r.ok) {
         const d = await r.json();
         rolesState.user_role = d.user_role || "";
@@ -1198,7 +1678,11 @@ export function bootWorkbenchRuntime() {
       const r = await fetch("/api/roles", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_role: rolesState.user_role, agent_pref: rolesState.agent_pref }),
+        body: JSON.stringify({
+          user_role: rolesState.user_role,
+          agent_pref: rolesState.agent_pref,
+          session_id: clientSessionId,
+        }),
       });
       if (!r.ok) throw new Error("HTTP " + r.status);
       if (st) {
@@ -1223,15 +1707,12 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   async function loadMeta() {
     try {
-      const r = await fetch("/api/meta");
+      const r = await fetch(withClientSession("/api/meta"), { cache: "no-store" });
       const data = await r.json();
       state.meta = data;
       renderTopbarMeta();
       renderEmptyState();
       if (data.llm) hydrateSettings(data.llm);
-      // Restore any server-side report-mode state (survives page reload)
-      await refreshReportStatus();
-      await refreshReportHistory();
     } catch (e) {
       console.error("meta load failed", e);
     }
@@ -1293,6 +1774,7 @@ export function bootWorkbenchRuntime() {
       typeof QUADRANT_PROMPT_META !== "undefined" &&
       QUADRANT_PROMPT_META[state.quadrant]) || null;
     el.emptyGlyph.textContent = cfg.glyph;
+    el.emptyGlyph.hidden = !cfg.glyph;
     el.emptyTitle.textContent = qMeta ? (qMeta.emptyTitle || qMeta.label) : cfg.title;
     if (qMeta) {
       el.emptyWelcome.textContent = qMeta.welcome || "";
@@ -1658,7 +2140,7 @@ export function bootWorkbenchRuntime() {
     const prompt = rgBuildPrompt(rgCollectPlan());
     closeReportgen();
     try {
-      const r = await fetch("/api/report/generate", { method: "POST" });
+      const r = await fetch(withClientSession("/api/report/generate"), { method: "POST" });
       if (!r.ok) {
         const err = await r.json().catch(() => ({ detail: r.statusText }));
         throw new Error(err.detail || "create session failed");
@@ -1725,11 +2207,19 @@ export function bootWorkbenchRuntime() {
   // DescribeTable through POST {base}/agent/doris/query.
   const DORIS_SOURCE_VALUE = "__doris_api__";
   const PRODUCTION_ONTOLOGY_VALUE = "__metaerp_ontology__";
+  const REMOTE_ONTOLOGY_PREFIX = "__metaerp_repository__:";
+  const REMOTE_DORIS_PREFIX = "__doris_repository__:";
+  let remoteSourcePairs = [];
 
   function sourceOptionLabel(name, active, remoteRepositories) {
     if (name === PRODUCTION_ONTOLOGY_VALUE) return "MetaERP";
-    const repo = (remoteRepositories || []).find((item) => String(item.value) === String(name));
-    if (repo) return repo.name + (name === active ? "  · 当前生效" : "");
+    const repo = (remoteRepositories || []).find((item) =>
+      String(item.value) === String(name) || String(item.databaseValue) === String(name));
+    if (repo) {
+      const label = String(name).startsWith(REMOTE_DORIS_PREFIX)
+        ? `${repo.name} · ${repo.dorisDatabase}` : repo.name;
+      return label + (name === active ? "  · 当前生效" : "");
+    }
     const base = name === DORIS_SOURCE_VALUE ? "API · Doris 实时查询" : name;
     return base + (name === active ? "  · 当前生效" : "");
   }
@@ -1741,7 +2231,11 @@ export function bootWorkbenchRuntime() {
     opts.forEach((name) => {
       const o = document.createElement("option");
       o.value = name;
-      o.textContent = sourceOptionLabel(name, active, info && info.remote_repositories);
+      o.textContent = sourceOptionLabel(
+        name,
+        active,
+        info && (info.remote_repositories || info.remote_databases),
+      );
       sel.appendChild(o);
     });
     if (active && opts.indexOf(active) !== -1) sel.value = active;
@@ -1750,8 +2244,36 @@ export function bootWorkbenchRuntime() {
   // Show the Doris API base-URL field only when the API source is selected.
   function syncDorisField() {
     if (!el.sourcesDorisField) return;
-    const on = el.sourcesDatabase && el.sourcesDatabase.value === DORIS_SOURCE_VALUE;
+    const value = el.sourcesDatabase && el.sourcesDatabase.value || "";
+    const on = value === DORIS_SOURCE_VALUE || value.startsWith(REMOTE_DORIS_PREFIX);
     el.sourcesDorisField.hidden = !on;
+  }
+
+  function pairForOntology(value) {
+    return remoteSourcePairs.find((item) => String(item.value) === String(value));
+  }
+
+  function pairForDatabase(value) {
+    return remoteSourcePairs.find((item) => String(item.databaseValue) === String(value));
+  }
+
+  function syncDatabaseFromOntology() {
+    const pair = pairForOntology(el.sourcesOntology && el.sourcesOntology.value);
+    if (!pair) return false;
+    if (el.sourcesDatabase && pair.databaseValue) el.sourcesDatabase.value = pair.databaseValue;
+    if (el.sourcesDorisDatabase) el.sourcesDorisDatabase.value = pair.dorisDatabase || "";
+    syncDorisField();
+    return true;
+  }
+
+  function syncOntologyFromDatabase() {
+    const pair = pairForDatabase(el.sourcesDatabase && el.sourcesDatabase.value);
+    if (!pair) return false;
+    if (el.sourcesOntology) el.sourcesOntology.value = pair.value;
+    if (el.sourcesDorisDatabase) el.sourcesDorisDatabase.value = pair.dorisDatabase || "";
+    syncDorisField();
+    syncRetrievalMode();
+    return true;
   }
 
   // Show the 图库源 selector + 建立图库 button only in graph-retrieval mode.
@@ -1760,7 +2282,9 @@ export function bootWorkbenchRuntime() {
   function syncRetrievalMode() {
     const graph = el.sourcesRetrievalMode && el.sourcesRetrievalMode.value === "graph";
     if (el.sourcesGraphField) el.sourcesGraphField.hidden = !graph;
-    const usingProduction = el.sourcesOntology && el.sourcesOntology.value === PRODUCTION_ONTOLOGY_VALUE;
+    const ontologyValue = el.sourcesOntology && el.sourcesOntology.value || "";
+    const usingProduction = ontologyValue === PRODUCTION_ONTOLOGY_VALUE
+      || ontologyValue.startsWith(REMOTE_ONTOLOGY_PREFIX);
     if (el.sourcesBuildGraphRow) el.sourcesBuildGraphRow.hidden = !graph || usingProduction;
     if (el.sourcesGraphField && usingProduction) {
       const hint = el.sourcesGraphField.querySelector(".settings-hint");
@@ -1777,7 +2301,7 @@ export function bootWorkbenchRuntime() {
       el.sourcesBuildGraphHint.className = "settings-hint" + (cls ? " " + cls : "");
     };
     const xlsx = el.sourcesOntology && el.sourcesOntology.value;
-    if (xlsx === PRODUCTION_ONTOLOGY_VALUE) {
+    if (xlsx === PRODUCTION_ONTOLOGY_VALUE || String(xlsx).startsWith(REMOTE_ONTOLOGY_PREFIX)) {
       setHint("生产本体库不需要生成本地 GraphML 图文件。", "error");
       return;
     }
@@ -1797,7 +2321,7 @@ export function bootWorkbenchRuntime() {
         `✓ 已生成 ${data.graph} · 节点 ${s.nodes} / 边 ${s.edges}` +
         `(层级 ${s.tree_edges} + ER ${s.er_edges} + 规则 ${s.rule_edges})`, "success");
       // Refresh the 图库源 list and select the freshly-built graph.
-      const sr = await fetch("/api/sources");
+      const sr = await fetch(withClientSession("/api/sources"), { cache: "no-store" });
       const sd = await sr.json().catch(() => ({}));
       if (sd.retrieval && el.sourcesGraph) {
         fillSourceSelect(el.sourcesGraph, sd.retrieval.graph || {});
@@ -1816,9 +2340,11 @@ export function bootWorkbenchRuntime() {
   async function loadSourcesInto(statusEl) {
     if (statusEl) { statusEl.textContent = ""; statusEl.className = "settings-status"; }
     try {
-      const r = await fetch("/api/sources");
+      const r = await fetch(withClientSession("/api/sources"), { cache: "no-store" });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const data = await r.json();
+      activeSourceConfig = sourceConfigFromPayload(data);
+      remoteSourcePairs = data?.ontology?.remote_repositories || [];
       fillSourceSelect(el.sourcesOntology, data.ontology);
       fillSourceSelect(el.sourcesDatabase, data.database);
       if (data.retrieval) {
@@ -1868,6 +2394,7 @@ export function bootWorkbenchRuntime() {
     const dbValue = el.sourcesDatabase.value || null;
     const retrievalMode = (el.sourcesRetrievalMode && el.sourcesRetrievalMode.value) || "semantic";
     const payload = {
+      session_id: clientSessionId,
       ontology: el.sourcesOntology.value || null,
       database: dbValue,
       retrieval_mode: retrievalMode,
@@ -1876,7 +2403,7 @@ export function bootWorkbenchRuntime() {
         ? ((el.sourcesGraph && el.sourcesGraph.value) || null)
         : null,
     };
-    if (dbValue === DORIS_SOURCE_VALUE) {
+    if (dbValue === DORIS_SOURCE_VALUE || String(dbValue).startsWith(REMOTE_DORIS_PREFIX)) {
       const apiUrl = (el.sourcesDorisJdbc && el.sourcesDorisJdbc.value || "").trim();
       if (!apiUrl || !/^https?:\/\//i.test(apiUrl)) {
         statusEl.textContent = "请填写 Doris HTTP API 地址(例如 http://host:30834/agent/doris/query)。";
@@ -1887,13 +2414,16 @@ export function bootWorkbenchRuntime() {
       payload.doris_database = (el.sourcesDorisDatabase && el.sourcesDorisDatabase.value || "").trim();
       payload.doris_driver = (el.sourcesDorisDriver && el.sourcesDorisDriver.value || "").trim();
       payload.doris_username = (el.sourcesDorisUser && el.sourcesDorisUser.value || "").trim();
-      // Password may legitimately be empty (current Doris has no password).
-      payload.doris_password = (el.sourcesDorisPass && el.sourcesDorisPass.value) || "";
+      // GET /api/sources intentionally does not return the stored password.
+      // Only a non-empty value represents an explicit password replacement;
+      // an empty input keeps the existing password on the backend.
+      const dorisPassword = (el.sourcesDorisPass && el.sourcesDorisPass.value || "").trim();
+      if (dorisPassword) payload.doris_password = dorisPassword;
     }
     statusEl.textContent = "切换中…";
     statusEl.className = "settings-status pending";
     try {
-      const r = await fetch("/api/sources", {
+      const r = await fetch(withClientSession("/api/sources"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1901,6 +2431,25 @@ export function bootWorkbenchRuntime() {
       if (!r.ok) {
         const err = await r.json().catch(() => ({ detail: r.statusText }));
         throw new Error(err.detail || "switch failed");
+      }
+      const switched = await r.json().catch(() => ({}));
+      activeSourceConfig = {
+        ...(activeSourceConfig || {}),
+        ontology: switched.ontology || payload.ontology || "",
+        database: switched.database || payload.database || "",
+        retrieval_mode: switched.retrieval_mode || payload.retrieval_mode || "semantic",
+        graph: switched.graph || payload.graph || "",
+        doris_api_url: payload.doris_api_url || activeSourceConfig?.doris_api_url || "",
+        doris_jdbc_url: payload.doris_jdbc_url || activeSourceConfig?.doris_jdbc_url || "",
+        doris_driver: payload.doris_driver || activeSourceConfig?.doris_driver || "",
+        doris_username: payload.doris_username || activeSourceConfig?.doris_username || "",
+        doris_database: switched.doris_database || payload.doris_database || activeSourceConfig?.doris_database || "",
+      };
+      if (!Array.isArray(switched.changed) || switched.changed.length === 0) {
+        await loadSourcesInto(null);
+        statusEl.textContent = "当前已是该数据源，无需重新切换。";
+        statusEl.className = "settings-status success";
+        return;
       }
       statusEl.textContent = "✓ 数据源已切换 · 正在重新加载…";
       statusEl.className = "settings-status success";
@@ -1915,7 +2464,7 @@ export function bootWorkbenchRuntime() {
     const button = el.sourcesReadOntologyDb;
     if (button) { button.disabled = true; button.textContent = "读取中…"; }
     try {
-      const r = await fetch("/api/sources");
+      const r = await fetch(withClientSession("/api/sources"), { cache: "no-store" });
       const data = await r.json();
       const ontology = data.ontology || {};
       const active = ontology.active;
@@ -1939,12 +2488,24 @@ export function bootWorkbenchRuntime() {
   }
 
   if (el.btnSources) el.btnSources.addEventListener("click", openSources);
-  if (el.sourcesDatabase) el.sourcesDatabase.addEventListener("change", syncDorisField);
+  if (el.sourcesDatabase) el.sourcesDatabase.addEventListener("change", () => {
+    const paired = syncOntologyFromDatabase();
+    syncDorisField();
+    if (paired && el.sourcesStatus) {
+      const pair = pairForDatabase(el.sourcesDatabase.value);
+      el.sourcesStatus.textContent = `已同步本体源：${pair?.name || "对应本体库"}；点击“保存并切换”后生效。`;
+      el.sourcesStatus.className = "settings-status pending";
+    }
+  });
   if (el.sourcesReadOntologyDb) el.sourcesReadOntologyDb.addEventListener("click", readCurrentOntologyDatabase);
   if (el.sourcesOntology) el.sourcesOntology.addEventListener("change", () => {
+    const paired = syncDatabaseFromOntology();
     syncRetrievalMode();
     if (el.ontoAdaptStatus) {
-      el.ontoAdaptStatus.textContent = "本体源选择尚未保存，请点击“保存并切换”。";
+      const pair = pairForOntology(el.sourcesOntology.value);
+      el.ontoAdaptStatus.textContent = paired
+        ? `已同步数据库：${pair?.dorisDatabase || "对应 Doris 库"}；点击“保存并切换”后生效。`
+        : "本体源选择尚未保存，请点击“保存并切换”。";
       el.ontoAdaptStatus.className = "settings-status pending";
     }
   });
@@ -1977,7 +2538,7 @@ export function bootWorkbenchRuntime() {
   async function loadSystemPrompt() {
     el.systemContent.innerHTML = '<div class="sys-section"><div class="sys-title">加载中…</div></div>';
     try {
-      const r = await fetch(`/api/system-prompt?mode=${state.mode}`);
+      const r = await fetch(withClientSession(`/api/system-prompt?mode=${state.mode}`));
       const data = await r.json();
       B().systemPrompt = data.system_prompt;
       renderSystem();
@@ -1993,7 +2554,7 @@ export function bootWorkbenchRuntime() {
     const toolsList = state.mode === "report"
       ? (state.report.withDb
           ? ["OntologyQuery", "TermDisambiguate", "MetricLookup", "RelationLookup",
-             "EntityDescribe", "ListBusinessObjects", "SQLRun", "ListTables",
+             "EntityDescribe", "ListBusinessObjects", "MetricDataQuery", "SQLRun", "ListTables",
              "DescribeTable", "ChartGenerate", "TableGenerate", "AskUser"]
           : ["ChartGenerate", "TableGenerate", "AskUser"])
       : (a.tools || []);
@@ -2036,6 +2597,10 @@ export function bootWorkbenchRuntime() {
 
   function addUserMessage(text) {
     hideEmpty();
+    if (!B().firstUserQuestion) {
+      const normalized = String(text || "").replace(/\s+/g, " ").trim();
+      if (normalized) B().firstUserQuestion = normalized.slice(0, 60);
+    }
     B().turnCount += 1;
     updateTurnCounter();
     const msg = el_h("div", "msg msg-user");
@@ -2073,6 +2638,7 @@ export function bootWorkbenchRuntime() {
     // click moves the conversation and dashboard together.
     const dashboardCard = el.dashboardList && el.dashboardList.querySelector(dashboardSelector);
     if (!msg && !dashboardCard) return;
+    setActiveQuestion(turnText);
     showView("workspace");
     // Task-list and dashboard links are cross-pane navigation: keep the chat
     // and resident dashboard at the same user-turn anchor.
@@ -2091,12 +2657,72 @@ export function bootWorkbenchRuntime() {
     }
   }
 
+  function setActiveQuestion(turn) {
+    const value = String(turn || "");
+    if (el.chatTodo) el.chatTodo.dataset.activeQuestionTurn = value;
+    window.dispatchEvent(new CustomEvent("bi-question-selection-changed", {
+      detail: { mode: state.mode, turn: value },
+    }));
+    const apply = () => document.querySelectorAll(".antd-question-item[data-question-turn], .chat-question-item[data-question-turn]")
+      .forEach((node) => node.classList.toggle("active", node.dataset.questionTurn === value));
+    apply();
+    // The visible React task list is intentionally limited to five rows. Keep
+    // the active question in its scroll window when navigation reaches a
+    // later turn; the hidden legacy list remains only a compatibility bridge.
+    requestAnimationFrame(() => {
+      apply();
+      const item = document.querySelector(`.antd-question-item[data-question-turn="${CSS.escape(value)}"]`);
+      const list = item?.closest(".ant-list-items");
+      if (!item || !list) return;
+      const itemTop = item.offsetTop;
+      const itemBottom = itemTop + item.offsetHeight;
+      const viewTop = list.scrollTop;
+      const viewBottom = viewTop + list.clientHeight;
+      if (itemTop < viewTop) list.scrollTop = itemTop;
+      else if (itemBottom > viewBottom) list.scrollTop = itemBottom - list.clientHeight;
+    });
+  }
+
+  function questionAtScrollPosition(root, selector) {
+    if (!root) return "";
+    const rootTop = root.getBoundingClientRect().top;
+    const anchors = [...root.querySelectorAll(selector)];
+    if (!anchors.length) return "";
+    // A turn owns everything from its question until the next question.
+    // Therefore use the last anchor already passed, rather than requiring the
+    // question bubble itself to remain visible at the top of the viewport.
+    let current = anchors[0];
+    anchors.forEach((node) => {
+      if (node.getBoundingClientRect().top <= rootTop + 72) current = node;
+    });
+    return current.dataset.turn || current.dataset.questionTurn || "";
+  }
+
+  function syncActiveQuestionFromScroll(sourceRoot = null) {
+    const root = sourceRoot || el.chatScroll;
+    const selector = root === el.dashboardList
+      ? ".dash-card[data-turn]:not(.dash-question)"
+      : ".msg-user[data-turn]";
+    const turn = questionAtScrollPosition(root, selector);
+    if (turn) setActiveQuestion(turn);
+  }
+
+  function initQuestionSelectionSync() {
+    [el.chatScroll, el.dashboardList].filter(Boolean).forEach((root) => {
+      root.addEventListener("scroll", () => syncActiveQuestionFromScroll(root), { passive: true });
+    });
+    window.addEventListener("resize", syncActiveQuestionFromScroll);
+    requestAnimationFrame(syncActiveQuestionFromScroll);
+  }
+
   function assistantRoleLabel() {
     const agent = currentAgentMeta();
     return (agent && agent.name ? agent.name : "助手").toUpperCase();
   }
 
   function startAssistantMessage(iteration) {
+    const bucket = B();
+    const block = el_h("div", "assistant-execution-block");
     const msg = el_h("div", "msg msg-assistant");
     msg.innerHTML = `
       <div class="msg-header">
@@ -2104,12 +2730,81 @@ export function bootWorkbenchRuntime() {
         <span class="msg-iter">迭代 ${iteration}</span>
       </div>
       <div class="msg-body"><span class="thinking-line"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>思考中…</span></div>`;
-    el.chatScroll.appendChild(msg);
+    block.dataset.iteration = String(iteration || "");
+    block.appendChild(msg);
+    el.chatScroll.appendChild(block);
     if (window.antdMessageMount) window.antdMessageMount(msg, "assistant", iteration);
-    B().currentAssistantEl = msg.querySelector(".msg-body");
-    B().currentAssistantText = "";
+    bucket.currentExecutionBlock = block;
+    bucket.currentAssistantEl = msg.querySelector(".msg-body");
+    bucket.currentAssistantText = "";
+    bucket.stepTimelineEl = null;
+    bucket.stepThinkingEl = null;
+    showStepThinking();
     hideEmpty();
     scrollChatBottom();
+  }
+
+  function ensureStepTimeline() {
+    const bucket = B();
+    const block = bucket.currentExecutionBlock;
+    if (bucket.stepTimelineEl && bucket.stepTimelineEl.isConnected && bucket.stepTimelineEl.parentElement === block) return bucket.stepTimelineEl;
+    const timeline = el_h("div", "antd-step-timeline");
+    timeline.dataset.turn = String(bucket.currentTurnTag || 1);
+    timeline.dataset.iteration = String(block?.dataset.iteration || "");
+    bucket.stepTimelineEl = timeline;
+    if (block) block.appendChild(timeline);
+    return timeline;
+  }
+
+  function syncStepTimeline(container) {
+    if (!container || !container.classList.contains("antd-step-timeline")) return;
+    const steps = [...container.children].filter((child) => child.classList.contains("step"));
+    steps.forEach((step, index) => {
+      // Keep the legacy state in sync for restored markup. The visible
+      // connector is now drawn by the shared timeline itself, so it cannot
+      // disappear while an item is being inserted or replaced.
+      const hasNext = Boolean(steps[index + 1]);
+      step.classList.toggle("has-next-step", hasNext);
+    });
+    container.dataset.stepCount = String(steps.length);
+    container.classList.toggle("has-multiple-steps", steps.length >= 2);
+  }
+
+  function showStepThinking() {
+    const bucket = B();
+    const timeline = ensureStepTimeline();
+    // Results are children of the assistant message, so placing the timeline
+    // as the final child of this block keeps it after text and all cards.
+    if (bucket.currentExecutionBlock && timeline.parentElement !== bucket.currentExecutionBlock) {
+      bucket.currentExecutionBlock.appendChild(timeline);
+    } else if (bucket.currentExecutionBlock) {
+      bucket.currentExecutionBlock.appendChild(timeline);
+    }
+    if (!bucket.stepThinkingEl || !bucket.stepThinkingEl.isConnected) {
+      const thinking = el_h("div", "antd-step-thinking");
+      thinking.innerHTML = `
+        <span class="antd-step-thinking-mark" aria-hidden="true">
+          <span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>
+        </span>
+        <span class="antd-step-thinking-copy">思考中…</span>`;
+      bucket.stepThinkingEl = thinking;
+      timeline.appendChild(thinking);
+    }
+    bucket.stepThinkingEl.hidden = false;
+    syncStepTimeline(timeline);
+  }
+
+  function clearStepThinking() {
+    const bucket = B();
+    const timeline = bucket.stepTimelineEl;
+    if (!timeline) return;
+    if (bucket.stepThinkingEl?.parentNode === timeline) bucket.stepThinkingEl.remove();
+    bucket.stepThinkingEl = null;
+    syncStepTimeline(timeline);
+    if (!timeline.querySelector(":scope > .step")) {
+      timeline.remove();
+      bucket.stepTimelineEl = null;
+    }
   }
 
   function appendAssistantDelta(text) {
@@ -2138,10 +2833,12 @@ export function bootWorkbenchRuntime() {
 
   function attachChatStep(stepEl) {
     const bucket = B();
-    const container = bucket.currentAssistantEl
-      ? bucket.currentAssistantEl.parentElement
-      : el.chatScroll;
+    const container = ensureStepTimeline();
+    if (!container.isConnected && bucket.currentExecutionBlock) bucket.currentExecutionBlock.appendChild(container);
+    if (bucket.stepThinkingEl?.parentNode === container) bucket.stepThinkingEl.remove();
+    bucket.stepThinkingEl = null;
     container.appendChild(stepEl);
+    syncStepTimeline(container);
     scrollChatBottom();
   }
 
@@ -2367,7 +3064,7 @@ export function bootWorkbenchRuntime() {
       resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ choice_ids: ids, choice_labels: labels }),
+        body: JSON.stringify({ choice_ids: ids, choice_labels: labels, session_id: clientSessionId }),
       });
     } catch (err) {
       onEvent({ type: "error", message: `choice request failed: ${err.message || err}` });
@@ -2393,14 +3090,12 @@ export function bootWorkbenchRuntime() {
 
   function attachChatChart(chart) {
     const bucket = B();
-    const container = bucket.currentAssistantEl
-      ? bucket.currentAssistantEl.parentElement
-      : el.chatScroll;
+    const container = bucket.currentAssistantEl?.closest(".msg") || el.chatScroll;
     const card = buildChartCard(chart);
     container.appendChild(card);
     if (window.antdResultCardMount) window.antdResultCardMount(card, "chart");
     scrollChatBottom();
-    requestAnimationFrame(() => mountChart(card, chart));
+    scheduleChartMount(() => mountChart(card, chart));
   }
 
   function buildChartCard(chart) {
@@ -2412,7 +3107,6 @@ export function bootWorkbenchRuntime() {
     const insightBtn = buildInsightButtonHTML(chart);
     card.innerHTML = `
       <div class="chart-head">
-        <span class="chart-type">${esc(chart.chart_type || "chart")}</span>
         <span class="chart-title">${esc(chart.title || "")}</span>
         ${savedLink}
         ${insightBtn}
@@ -2488,14 +3182,13 @@ export function bootWorkbenchRuntime() {
       themed.grid = { ...themed.grid, left: 18, right: 16 };
     }
 
-    const titles = Array.isArray(themed.title) ? themed.title : (themed.title ? [themed.title] : []);
-    titles.forEach((title) => {
-      if (!title || typeof title !== "object") return;
-      title.textStyle = { ...(title.textStyle || {}), color: CHART_THEME.primaryText, fontFamily: CHART_THEME.fontFamily };
-      title.subtextStyle = { ...(title.subtextStyle || {}), color: CHART_THEME.secondaryText, fontFamily: CHART_THEME.fontFamily };
-    });
-    if (Array.isArray(themed.title)) themed.title = titles;
-    else if (titles[0]) themed.title = titles[0];
+    // The result card already renders the chart title in its Ant Design
+    // header.  ECharts options also commonly contain a `title` block (the
+    // same text is used by the standalone exported HTML), which used to make
+    // the live conversation and dashboard show the title twice.  Keep the
+    // exported HTML untouched; only the in-app themed option removes the
+    // duplicate inner chart title.
+    delete themed.title;
 
     if (themed.tooltip) {
       themed.tooltip = {
@@ -2546,6 +3239,68 @@ export function bootWorkbenchRuntime() {
     return themed;
   }
 
+  let echartsLoadPromise = null;
+  function ensureEcharts() {
+    if (typeof window !== "undefined" && window.echarts) {
+      return Promise.resolve(window.echarts);
+    }
+    if (echartsLoadPromise) return echartsLoadPromise;
+    echartsLoadPromise = new Promise((resolve, reject) => {
+      const existing = document.querySelector("script[data-bi-echarts-loader]");
+      const script = existing || document.createElement("script");
+      const onLoad = () => {
+        if (window.echarts) resolve(window.echarts);
+        else reject(new Error("ECharts 脚本已加载但未注册全局实例"));
+      };
+      script.addEventListener("load", onLoad, { once: true });
+      script.addEventListener(
+        "error",
+        () => reject(new Error("ECharts 脚本加载失败")),
+        { once: true },
+      );
+      if (!existing) {
+        script.src = "/static/vendor/echarts.min.js";
+        script.async = true;
+        script.dataset.biEchartsLoader = "1";
+        document.head.appendChild(script);
+      }
+    }).catch((error) => {
+      echartsLoadPromise = null;
+      throw error;
+    });
+    return echartsLoadPromise;
+  }
+
+  // History cards are inserted as HTML and then mounted into React result
+  // cards. ECharts must wait until that asynchronous host commit has produced
+  // a canvas; otherwise a saved chart can remain blank intermittently. The
+  // vendor script itself is loaded only when the first chart needs mounting.
+  function scheduleChartMount(mount) {
+    let attempts = 0;
+    let waitingForEcharts = false;
+    const run = () => {
+      if (typeof window !== "undefined" && !window.echarts) {
+        if (!waitingForEcharts) {
+          waitingForEcharts = true;
+          ensureEcharts()
+            .then(() => {
+              waitingForEcharts = false;
+              requestAnimationFrame(run);
+            })
+            .catch((error) => {
+              waitingForEcharts = false;
+              console.warn("ECharts 按需加载失败", error);
+            });
+        }
+        return;
+      }
+      attempts += 1;
+      if (mount() || attempts >= 20) return;
+      requestAnimationFrame(run);
+    };
+    requestAnimationFrame(run);
+  }
+
   function markInsightTriggered(sourceNote) {
     if (!sourceNote) return;
     const sel = `.chart-insight-btn[data-source="${cssAttr(sourceNote)}"]`;
@@ -2574,20 +3329,29 @@ export function bootWorkbenchRuntime() {
 
   function mountChart(card, chart) {
     const canvas = card.querySelector(".chart-canvas");
-    if (!canvas) return;
-    if (!chart.option) return;
+    if (!canvas) return false;
+    if (!chart.option) return true;
+    if (canvas.__biEchartsInstance && !canvas.__biEchartsInstance.isDisposed?.()) {
+      canvas.__biEchartsInstance.resize();
+      return true;
+    }
     if (typeof echarts === "undefined") {
-      canvas.innerHTML = '<div style="padding:14px;color:var(--accent-red);font-family:var(--font-mono);font-size:12px;">ECharts 未加载</div>';
-      return;
+      return false;
     }
     try {
       const inst = echarts.init(canvas);
       inst.setOption(themedChartOption(chart.option), true);
+      canvas.__biEchartsInstance = inst;
       requestAnimationFrame(() => inst.resize());
-      window.addEventListener("resize", () => inst.resize());
+      if (!canvas.__biResizeBound) {
+        canvas.__biResizeBound = "1";
+        window.addEventListener("resize", () => inst.resize());
+      }
       wireInsightButton(card, chart);
+      return true;
     } catch (e) {
       canvas.innerHTML = `<div style="padding:14px;color:var(--accent-red);font-family:var(--font-mono);font-size:12px;">Chart render failed: ${esc(e.message || String(e))}</div>`;
+      return true;
     }
   }
 
@@ -2596,9 +3360,7 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   function attachChatTable(table) {
     const bucket = B();
-    const container = bucket.currentAssistantEl
-      ? bucket.currentAssistantEl.parentElement
-      : el.chatScroll;
+    const container = bucket.currentAssistantEl?.closest(".msg") || el.chatScroll;
     const card = buildTableCard(table);
     container.appendChild(card);
     if (window.antdResultCardMount) window.antdResultCardMount(card, "table");
@@ -2662,7 +3424,6 @@ export function bootWorkbenchRuntime() {
 
     card.innerHTML = `
       <div class="table-head">
-        <span class="table-tag">TABLE</span>
         <span class="table-title">${esc(tbl.title || "")}</span>
         ${subtitle}
         ${metaLine}
@@ -2685,8 +3446,6 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   // Markers that indicate the start of the next section in the L1/L2 templates.
   // Used as a *secondary* boundary in case the model omits the ## heading.
-  const NEXT_SECTION_RE = /[📊🔍💡📎📈📄]/u;
-
   // Every section name across the L1 / L2·L3 / 报表生成 delivery templates.
   // Drives the name-based fallback in extractSection() — when the model
   // drops the canonical emoji (e.g. writes `**结论**:` or `## 根因分析`
@@ -2695,7 +3454,7 @@ export function bootWorkbenchRuntime() {
   const SECTION_NAMES = [
     "关键结论", "结论",
     "根因分析", "根因证据链", "根因",
-    "行动建议", "管理建议", "建议",
+    "行动建议", "管理建议", "建议雏形", "执行建议", "建议",
     "关键数据", "口径说明", "附图", "分析提醒", "跨维洞察",
   ];
 
@@ -2716,7 +3475,10 @@ export function bootWorkbenchRuntime() {
   // — so a body sentence that merely starts with the word ("建议各部门加强…")
   // is not mistaken for a header. `names` restricts which names count.
   function nameHeaderOf(line, names) {
-    const h = stripLineDecor(line);
+    const h = stripLineDecor(line)
+      .replace(/^\s*[📌📊📎🧭📈📉📄🧩🧠✅⚠️🔍🔎💡🧮🗂️📟🔁]+\s*/u, "")
+      .replace(/\*\*/g, "")
+      .trim();
     for (const name of names) {
       if (!h.startsWith(name)) continue;
       const rest = h.slice(name.length);
@@ -2737,14 +3499,9 @@ export function bootWorkbenchRuntime() {
       .replace(/\s+$/, "");
   }
 
-  // Generic section extractor. Two-pass header detection:
-  //   Pass 1 — emoji header: a line whose first non-decoration character is
-  //     one of `markers` (the canonical, template-mandated form). Inline
-  //     mentions of the same emoji in body text won't falsely anchor it.
-  //   Pass 2 — name fallback: ONLY when no emoji header exists anywhere in
-  //     the text, accept a *name-based* header (`**结论**:`, `## 根因分析`).
-  //     Gating pass 2 on the emoji being entirely absent guarantees a
-  //     well-formed answer is never affected by the looser matching.
+  // Generic section extractor. Emoji markers remain only as a compatibility
+  // fallback for old saved conversations; current responses are anchored by
+  // semantic section names, regardless of other symbols in the answer.
   // Body runs to the next `## ` heading, the next NEXT_SECTION_RE section
   // emoji, or the next name-based header of a *different* section — so
   // 结论 / 根因 / 建议 reliably reach the dashboard even when the model
@@ -2767,7 +3524,7 @@ export function bootWorkbenchRuntime() {
       const m = markers.find((mk) => head.startsWith(mk));
       if (m) { startIdx = i; usedMarker = m; break; }
     }
-    // Pass 2 — name fallback (only when the emoji is entirely absent).
+    // Pass 2 — semantic name header. Do not gate this on emoji absence.
     if (startIdx < 0 && namePrefixes.length) {
       for (let i = 0; i < lines.length; i++) {
         if (nameHeaderOf(lines[i], namePrefixes)) { startIdx = i; break; }
@@ -2797,16 +3554,9 @@ export function bootWorkbenchRuntime() {
 
       if (/^#{1,6}\s/.test(nt)) break;
 
-      // Stop only on a *section header* line for some OTHER section emoji —
-      // i.e. after decoration strip the line begins with one of the section
-      // emojis and is NOT one of our own accepted markers (inline mentions
-      // of section emojis inside body text don't terminate the section).
-      const headProbe = stripDecor(nt).replace(/\*\*/g, "");
-      const isOwnMarker = markers.some((mk) => headProbe.startsWith(mk));
-      const probeFirst = headProbe.slice(0, 4);
-      if (!isOwnMarker && NEXT_SECTION_RE.test(probeFirst)) break;
-
-      // Stop on a name-based header for a different section (emoji omitted).
+      // Stop on a semantic header for a different section. The helper strips
+      // a legacy leading emoji if one is present, but never treats an
+      // arbitrary emoji in body text as a section boundary.
       if (nt && nameHeaderOf(nt, otherNames)) break;
 
       if (!nt) {
@@ -2853,18 +3603,15 @@ export function bootWorkbenchRuntime() {
 
   function extractActions(text) {
     // bi-analyst / report-analyst: "行动建议"; report-generator: "管理建议".
-    return extractSection(text, ["💡"], ["行动建议", "管理建议", "建议"]);
+    return extractSection(text, ["💡"], ["行动建议", "管理建议", "建议雏形", "执行建议", "建议"]);
   }
 
-  // Analysis-level turns (L2 问题寻找 / L3 根因 / L4 决策 / L5 执行) carry one of
-  // the deep-analysis section markers below and must keep their tables on the
-  // dashboard. L1 取数查询 responses end with a 🧭 引导 and have none of them.
-  //   🔍/🔎 根因  💡 建议  🧮 方案对比  🗂️ 行动计划  📟 监控盘  🔁 复盘
-  const ANALYSIS_MARKERS = ["🔍", "🔎", "💡", "🧮", "🗂️", "🗂", "📟", "🔁"];
-  function detectIntentLevel(text) {
-    if (!text || typeof text !== "string") return "L1";
-    return ANALYSIS_MARKERS.some((m) => text.includes(m)) ? "L2L3" : "L1";
-  }
+  // These are output-section markers used only to advance the six-step SOP;
+  // intent classification remains a backend/Agent responsibility.
+  const ANALYSIS_SECTION_MARKERS = [
+    "问题定位", "根因分析", "根因证据链", "行动建议", "管理建议",
+    "建议雏形", "方案对比", "行动计划", "监控盘", "复盘", "跨维洞察",
+  ];
 
   function ensureDashboardEmptyHidden() {
     const bucket = B();
@@ -2902,9 +3649,14 @@ export function bootWorkbenchRuntime() {
     card.classList.add("chat-action-card");
     const assistantEl = B().currentAssistantEl;
     const container = assistantEl && el.chatScroll.contains(assistantEl)
-      ? B().currentAssistantEl.parentElement
+      ? B().currentAssistantEl.closest(".msg")
       : el.chatScroll;
     container.appendChild(card);
+    // Conversation semantic cards use the same mounted header/content
+    // structure as dashboard cards. Mount immediately instead of relying on
+    // a later MutationObserver pass (nested cards are not top-level children
+    // of chat-scroll and were previously left on the legacy DOM path).
+    if (window.antdDashboardCardMount) window.antdDashboardCardMount(card);
     scrollChatBottom();
   }
 
@@ -2957,7 +3709,7 @@ export function bootWorkbenchRuntime() {
     card.dataset.turn = turnTag;
     card.innerHTML = `
       <div class="dash-head">
-        <span class="dash-tag conclusion">📌 结论</span>
+        <span class="dash-tag conclusion">结论</span>
         <span class="dash-turn">Turn ${turnTag}</span>
       </div>
       <div class="dash-body">${highlightEntities(text)}</div>`;
@@ -3010,7 +3762,7 @@ export function bootWorkbenchRuntime() {
     card.dataset.turn = turnTag;
     card.innerHTML = `
       <div class="dash-head">
-        <span class="dash-tag rootcause">🔍 根因分析</span>
+        <span class="dash-tag rootcause">根因分析</span>
         <span class="dash-turn">Turn ${turnTag}</span>
       </div>
       ${buildActionableBody(text, "rootcause")}`;
@@ -3022,7 +3774,7 @@ export function bootWorkbenchRuntime() {
     card.dataset.turn = turnTag;
     card.innerHTML = `
       <div class="dash-head">
-        <span class="dash-tag actions">💡 行动建议</span>
+        <span class="dash-tag actions">行动建议</span>
         <span class="dash-turn">Turn ${turnTag}</span>
       </div>
       ${buildActionableBody(text, "actions")}`;
@@ -3041,7 +3793,6 @@ export function bootWorkbenchRuntime() {
     const insightBtn = buildInsightButtonHTML(chart);
     card.innerHTML = `
       <div class="dash-head">
-        <span class="dash-tag chart">📊 ${type}</span>
         <span class="dash-title">${title}</span>
         <span class="dash-turn">Turn ${turnTag}</span>
         ${source}
@@ -3049,22 +3800,34 @@ export function bootWorkbenchRuntime() {
       </div>
       <div class="dash-chart-canvas"></div>`;
     wireInsightButton(card, chart);
-    requestAnimationFrame(() => mountDashboardChart(card, chart));
+    scheduleChartMount(() => mountDashboardChart(card, chart));
     return card;
   }
 
   function mountDashboardChart(card, chart) {
     const canvas = card && card.querySelector(".dash-chart-canvas");
-    if (!canvas || !chart || !chart.option || typeof echarts === "undefined") return;
+    if (!canvas) return false;
+    if (!chart || !chart.option) return true;
+    if (canvas.__biEchartsInstance && !canvas.__biEchartsInstance.isDisposed?.()) {
+      canvas.__biEchartsInstance.resize();
+      return true;
+    }
+    if (typeof echarts === "undefined") return false;
     try {
       const inst = echarts.init(canvas);
       inst.setOption(themedChartOption(chart.option), true);
+      canvas.__biEchartsInstance = inst;
       requestAnimationFrame(() => inst.resize());
-      const ro = new ResizeObserver(() => inst.resize());
-      ro.observe(canvas);
+      if (!canvas.__biResizeObserver && typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(() => inst.resize());
+        ro.observe(canvas);
+        canvas.__biResizeObserver = ro;
+      }
       wireInsightButton(card, chart);
+      return true;
     } catch (e) {
       canvas.innerHTML = `<div class="dash-chart-err">render failed: ${esc(e.message || String(e))}</div>`;
+      return true;
     }
   }
 
@@ -3073,14 +3836,12 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   function attachChatMultiChart(spec) {
     const bucket = B();
-    const container = bucket.currentAssistantEl
-      ? bucket.currentAssistantEl.parentElement
-      : el.chatScroll;
+    const container = bucket.currentAssistantEl?.closest(".msg") || el.chatScroll;
     const card = buildMultiChartCard(spec);
     container.appendChild(card);
     if (window.antdResultCardMount) window.antdResultCardMount(card, "multi");
     scrollChatBottom();
-    requestAnimationFrame(() => mountMultiChart(card, spec));
+    scheduleChartMount(() => mountMultiChart(card, spec));
   }
 
   function buildMultiChartCard(spec) {
@@ -3102,7 +3863,6 @@ export function bootWorkbenchRuntime() {
 
     card.innerHTML = `
       <div class="multidim-head">
-        <span class="multidim-tag">📊 多维洞察</span>
         <span class="multidim-title">${title}</span>
         ${metric}
         ${subtitle}
@@ -3124,15 +3884,18 @@ export function bootWorkbenchRuntime() {
     const canvas = card.querySelector(".multidim-canvas");
     const select = card.querySelector(".multidim-select");
     const dimSummaryEl = card.querySelector(".multidim-dim-summary");
-    if (!canvas) return;
+    if (!canvas) return false;
     if (typeof echarts === "undefined") {
-      canvas.innerHTML = '<div class="multidim-err">ECharts 未加载</div>';
-      return;
+      return false;
     }
     const dims = Array.isArray(spec.dimensions) ? spec.dimensions : [];
     if (dims.length === 0) {
       canvas.innerHTML = '<div class="multidim-err">无维度数据</div>';
-      return;
+      return true;
+    }
+    if (canvas.__biEchartsInstance && !canvas.__biEchartsInstance.isDisposed?.()) {
+      canvas.__biEchartsInstance.resize();
+      return true;
     }
     const dimMap = new Map(dims.map((d) => [d.key, d]));
     let inst;
@@ -3140,8 +3903,9 @@ export function bootWorkbenchRuntime() {
       inst = echarts.init(canvas);
     } catch (e) {
       canvas.innerHTML = `<div class="multidim-err">init failed: ${esc(e.message || String(e))}</div>`;
-      return;
+      return true;
     }
+    canvas.__biEchartsInstance = inst;
     function show(key) {
       const d = dimMap.get(key) || dims[0];
       try {
@@ -3153,12 +3917,17 @@ export function bootWorkbenchRuntime() {
       if (dimSummaryEl) dimSummaryEl.textContent = (d && d.summary) || "";
     }
     show(spec.default_dim || (dims[0] && dims[0].key));
-    if (select) select.addEventListener("change", (e) => show(e.target.value));
+    if (select && !select.dataset.chartBound) {
+      select.dataset.chartBound = "1";
+      select.addEventListener("change", (e) => show(e.target.value));
+    }
     requestAnimationFrame(() => inst.resize());
     try {
       const ro = new ResizeObserver(() => inst.resize());
       ro.observe(canvas);
+      canvas.__biResizeObserver = ro;
     } catch (_) { /* ResizeObserver unsupported, ignore */ }
+    return true;
   }
 
   function dashboardMultiChartCard(spec, turnTag) {
@@ -3188,18 +3957,18 @@ export function bootWorkbenchRuntime() {
         <span class="multidim-dim-summary"></span>
       </div>
       <div class="dash-chart-canvas"></div>`;
-    requestAnimationFrame(() => {
+    scheduleChartMount(() => {
       const canvas = card.querySelector(".dash-chart-canvas");
       const select = card.querySelector(".multidim-select");
       const dimSummaryEl = card.querySelector(".multidim-dim-summary");
-      if (!canvas || typeof echarts === "undefined" || dims.length === 0) return;
+      if (!canvas || typeof echarts === "undefined" || dims.length === 0) return false;
       const dimMap = new Map(dims.map((d) => [d.key, d]));
       let inst;
       try {
         inst = echarts.init(canvas);
       } catch (e) {
         canvas.innerHTML = `<div class="dash-chart-err">init failed: ${esc(e.message || String(e))}</div>`;
-        return;
+        return true;
       }
       function show(key) {
         const d = dimMap.get(key) || dims[0];
@@ -3218,6 +3987,7 @@ export function bootWorkbenchRuntime() {
         const ro = new ResizeObserver(() => inst.resize());
         ro.observe(canvas);
       } catch (_) { /* ResizeObserver unsupported */ }
+      return true;
     });
     return card;
   }
@@ -3239,9 +4009,9 @@ export function bootWorkbenchRuntime() {
         const data = JSON.parse(decodeURIComponent(card.dataset.chartJson));
         if (card.classList.contains("dash-multidim")) {
           // Recreate the dimension selector listeners and chart instance.
-          mountRestoredMultiDashboardChart(card, data);
+          scheduleChartMount(() => mountRestoredMultiDashboardChart(card, data));
         } else {
-          mountDashboardChart(card, data);
+          scheduleChartMount(() => mountDashboardChart(card, data));
         }
       } catch (e) {
         console.warn("历史图表恢复失败", e);
@@ -3251,11 +4021,22 @@ export function bootWorkbenchRuntime() {
 
   function hydrateRestoredChat() {
     if (!el.chatScroll) return;
-    // Restored chat is inserted with innerHTML, so the click handlers that
-    // buildChatStep normally attaches are not present. Rebind them here.
+    // Older snapshots may have been saved between a final text delta and the
+    // terminal event. Remove their transient streaming carets before mounting
+    // the restored Ant Design surfaces.
+    el.chatScroll.querySelectorAll(".cursor").forEach((cursor) => cursor.remove());
+    // Restored chat is inserted with innerHTML, so the React ThoughtChain
+    // root and the click handlers from a live tool result are not present.
+    // Mount the same result component used by live SSE events. mountStep()
+    // is idempotent and clears a previously serialized host, preventing a
+    // second nested ThoughtChain in old conversation snapshots.
+    if (window.antdNormalizeStepTimelines) {
+      window.antdNormalizeStepTimelines(el.chatScroll);
+    }
     el.chatScroll.querySelectorAll(".step").forEach((step) => {
-      const head = step.querySelector(".step-header");
-      if (head && !head.dataset.clickBound) {
+      if (window.antdStepMount) window.antdStepMount(step);
+      const head = step.querySelector(":scope > .step-header");
+      if (head && !head.dataset.clickBound && !window.antdStepMount) {
         head.dataset.clickBound = "1";
         head.addEventListener("click", () => step.classList.toggle("open"));
       }
@@ -3268,6 +4049,7 @@ export function bootWorkbenchRuntime() {
         });
       });
     });
+    el.chatScroll.querySelectorAll(".antd-step-timeline").forEach(syncStepTimeline);
     // Historical HTML may contain either legacy cards or cards already
     // mounted by Ant Design. Run the same mount/normalization path for both:
     // the mounted path has to repair old title/source ordering in place,
@@ -3278,11 +4060,11 @@ export function bootWorkbenchRuntime() {
       if (window.antdResultCardMount) window.antdResultCardMount(card, type);
     });
     el.chatScroll.querySelectorAll(".chart-card[data-chart-json]").forEach((card) => {
-      try { mountChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson))); }
+      try { scheduleChartMount(() => mountChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson)))); }
       catch (e) { console.warn("历史聊天图表恢复失败", e); }
     });
     el.chatScroll.querySelectorAll(".multidim-card[data-chart-json]").forEach((card) => {
-      try { mountMultiChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson))); }
+      try { scheduleChartMount(() => mountMultiChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson)))); }
       catch (e) { console.warn("历史多维图表恢复失败", e); }
     });
     el.chatScroll.querySelectorAll(".dash-export[data-turn]").forEach((card) => {
@@ -3320,9 +4102,15 @@ export function bootWorkbenchRuntime() {
     const select = card.querySelector(".multidim-select");
     const summary = card.querySelector(".multidim-dim-summary");
     const dims = Array.isArray(spec && spec.dimensions) ? spec.dimensions : [];
-    if (!canvas || !dims.length || typeof echarts === "undefined") return;
+    if (!canvas || !dims.length) return false;
+    if (typeof echarts === "undefined") return false;
+    if (canvas.__biEchartsInstance && !canvas.__biEchartsInstance.isDisposed?.()) {
+      canvas.__biEchartsInstance.resize();
+      return true;
+    }
     try {
       const inst = echarts.init(canvas);
+      canvas.__biEchartsInstance = inst;
       const dimMap = new Map(dims.map((d) => [d.key, d]));
       const show = (key) => {
         const d = dimMap.get(key) || dims[0];
@@ -3330,12 +4118,20 @@ export function bootWorkbenchRuntime() {
         if (summary) summary.textContent = (d && d.summary) || "";
       };
       show(spec.default_dim || dims[0].key);
-      if (select) select.addEventListener("change", (e) => show(e.target.value));
+      if (select && !select.dataset.chartBound) {
+        select.dataset.chartBound = "1";
+        select.addEventListener("change", (e) => show(e.target.value));
+      }
       requestAnimationFrame(() => inst.resize());
-      const ro = new ResizeObserver(() => inst.resize());
-      ro.observe(canvas);
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(() => inst.resize());
+        ro.observe(canvas);
+        canvas.__biResizeObserver = ro;
+      }
+      return true;
     } catch (e) {
       canvas.innerHTML = `<div class="dash-chart-err">render failed: ${esc(e.message || String(e))}</div>`;
+      return true;
     }
   }
 
@@ -3351,7 +4147,6 @@ export function bootWorkbenchRuntime() {
     const source = tbl.source_note ? `<span class="dash-source">Source · ${esc(tbl.source_note)}</span>` : "";
     card.innerHTML = `
       <div class="dash-head">
-        <span class="dash-tag table">📋 TABLE</span>
         <span class="dash-title">${title}</span>
         <span class="dash-turn">Turn ${turnTag}</span>
         ${source}
@@ -3387,8 +4182,9 @@ export function bootWorkbenchRuntime() {
     appendChatActionCard(dashboardConclusionCard(content, turnTag));
   }
 
-  // Returns true iff a 根因 card was actually appended (used to decide
-  // L1-vs-L2/L3 for the turn — see the llm_response / done handlers).
+  // Root/action cards are presentation concerns: if the backend/Agent emits a
+  // named section, show it. Do not hide it based on a second frontend intent
+  // classifier that could disagree with the backend.
   function pushRootCauseIfAny(text) {
     const bucket = B();
     const content = extractRootCause(text);
@@ -3398,6 +4194,7 @@ export function bootWorkbenchRuntime() {
     const key = content.trim().toLowerCase();
     if (bucket.rootCauseSeen.has(key)) return true;
     bucket.rootCauseSeen.add(key);
+    bucket.rootCauseDelivered = true;
     removeTurnResultCards(el.chatScroll, "dash-rootcause", turnTag);
     removeTurnResultCards(el.dashboardList, "dash-rootcause", turnTag);
     appendChatActionCard(dashboardRootCauseCard(content, turnTag));
@@ -3448,6 +4245,26 @@ export function bootWorkbenchRuntime() {
     TableGenerate: 5, ChartGenerate: 5, ChartGenerateMultiDim: 5,
   };
 
+  function normalizeRestoredSop(snapshot, hasContent) {
+    const source = Array.isArray(snapshot) ? snapshot : [];
+    // A legacy snapshot has no SOP field. Its transcript was saved only at a
+    // terminal `done`, therefore all steps represent the last completed task.
+    if (!source.length) {
+      return hasContent ? SOP_STEPS.map((content) => ({ content, status: "completed" })) : [];
+    }
+    return SOP_STEPS.map((content, index) => {
+      const item = source[index] || {};
+      const status = ["completed", "in_progress", "pending"].includes(item.status)
+        ? item.status : "pending";
+      return { content: String(item.content || content), status };
+    });
+  }
+
+  function sopStepFromTodos(todos) {
+    const firstOpen = (todos || []).findIndex((item) => item?.status !== "completed");
+    return firstOpen < 0 ? SOP_STEPS.length : firstOpen;
+  }
+
   // Seed a fresh SOP checklist at the start of a user turn (data mode only).
   function initSopTodos() {
     const bucket = B();
@@ -3485,8 +4302,8 @@ export function bootWorkbenchRuntime() {
   }
   function advanceSopForText(text) {
     if (!text) return;
-    if (ANALYSIS_MARKERS.some(m => text.includes(m))) advanceSop(4);  // 深度分析
-    if (text.includes("📌")) advanceSop(5);                            // 交付
+    if (ANALYSIS_SECTION_MARKERS.some(m => text.includes(m))) advanceSop(4);  // 深度分析
+    if (extractConclusion(text)) advanceSop(5);                         // 交付
   }
 
   function renderSopPanel(todos) {
@@ -3524,7 +4341,7 @@ export function bootWorkbenchRuntime() {
       el.chatTodoCount.textContent = progress + (questions.length ? `${progress ? " · " : ""}${questions.length} 个问题` : "");
     }
     const questionSection = questions.length ?
-      `<li class="chat-todo-section">用户提问</li>` + questions.map((q, i) =>
+      questions.map((q, i) =>
         `<li class="chat-question-item" data-question-turn="${esc(q.turn)}" tabindex="0" role="button" title="点击定位到这条提问">` +
         `<span class="chat-question-turn">${i + 1}</span>` +
         `<span class="chat-question-text">${esc(q.text)}</span></li>`).join("") : "";
@@ -3560,12 +4377,12 @@ export function bootWorkbenchRuntime() {
       scrollToQuestion(item.dataset.questionTurn);
     });
   }
-  // Safety net: a turn that delivered a 📌 结论 is a finished deliverable, so
-  // the checklist should read 100% — flip any leftover in_progress/pending to
-  // completed (e.g. an L1 query that never hits 深度分析). Only runs when a
-  // conclusion was actually delivered; interrupted/errored turns keep their
-  // honest partial state.
-  function reconcileTodosOnConclusion() {
+  initQuestionSelectionSync();
+  // A terminal `done` event is authoritative for a successful turn. Mark the
+  // whole SOP complete even when the model did not emit the optional 📌 marker;
+  // this prevents a restored finished conversation from showing a blinking
+  // last-step state or carrying an in-progress cursor into the next history.
+  function reconcileTodosOnCompletion() {
     const bucket = B();
     const todos = bucket.todos || [];
     if (!todos.length) return;
@@ -3590,6 +4407,46 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   // Per-turn HTML report export
   // ------------------------------------------------------------------
+  // Keep export actions readable without emoji glyphs. The supplied SVGs are
+  // used for both newly created buttons and older saved conversation cards.
+  const EXPORT_ACTION_ICONS = Object.freeze({
+    report: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="m4.646 4.646 2.955-2.954a.491.491 0 0 1 .396-.192H8a.48.48 0 0 1 .359.152l2.995 2.994.002.003a.495.495 0 0 1-.004.707.49.49 0 0 1-.512.12.49.49 0 0 1-.192-.121l-.002-.001-2.149-2.15v7.465a.49.49 0 0 1-.5.498h-.002a.49.49 0 0 1-.498-.5V3.21L5.354 5.354h-.002a.495.495 0 0 1-.706-.001l-.001-.001a.495.495 0 0 1 .002-.705ZM2.5 8.003v4.664c0 .277.07.486.208.625.14.139.348.208.625.208h9.334c.277 0 .486-.069.625-.208.139-.14.208-.348.208-.625v-4.67A.49.49 0 0 1 14 7.5l.002.001a.495.495 0 0 1 .498.5v4.667c0 .253-.045.488-.134.703a1.82 1.82 0 0 1-.403.593c-.179.18-.377.313-.593.403a1.82 1.82 0 0 1-.703.134H3.333c-.253 0-.487-.045-.703-.134a1.821 1.821 0 0 1-.593-.403 1.82 1.82 0 0 1-.403-.593 1.82 1.82 0 0 1-.134-.703V8.003a.49.49 0 0 1 .5-.5.49.49 0 0 1 .5.5Z" data-follow-fill="#8F9299"/></svg>',
+    word: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="M10.152.857a.487.487 0 0 1 .2.124l3.324 3.323a.487.487 0 0 1 .156.407v8.623c0 .253-.044.488-.134.704-.09.216-.224.414-.403.593a1.821 1.821 0 0 1-.592.402c-.216.09-.45.135-.704.135h-8c-.253 0-.488-.045-.704-.134a1.823 1.823 0 0 1-.592-.403 1.82 1.82 0 0 1-.403-.593 1.822 1.822 0 0 1-.134-.704V2.668c0-.254.044-.488.134-.704.09-.216.224-.414.403-.593A1.82 1.82 0 0 1 3.295.97c.216-.09.45-.135.704-.135h5.956a.49.49 0 0 1 .197.023Zm2.68 4.31v8.167c0 .278-.069.486-.208.625-.139.14-.347.209-.625.209h-8c-.278 0-.486-.07-.625-.209-.139-.139-.208-.347-.208-.625V2.668c0-.278.07-.487.208-.625.139-.14.347-.209.625-.209h5.5v2.167c0 .161.028.31.085.448.057.137.143.263.257.377.114.114.24.2.377.256.137.057.287.086.448.086h2.166ZM10.5 4.002v-1.46l1.626 1.627h-1.46c-.055 0-.096-.014-.124-.042-.028-.028-.042-.07-.042-.125Zm-.132 3.317H5.634a.491.491 0 0 1-.5-.5.49.49 0 0 1 .277-.45.488.488 0 0 1 .223-.05h4.733a.492.492 0 0 1 .5.5.491.491 0 0 1-.5.5ZM5.634 9.684h4.733a.491.491 0 0 0 .5-.5.49.49 0 0 0-.278-.449.488.488 0 0 0-.222-.05H5.634a.492.492 0 0 0-.5.5.491.491 0 0 0 .5.5Z" data-follow-fill="#8F9299"/></svg>',
+    sync: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="M2.5 12.48V6.454c0-.294.057-.56.172-.799.115-.238.287-.45.516-.633l3.667-2.933c.167-.134.346-.235.537-.302.191-.067.394-.1.608-.1.214 0 .417.033.608.1.19.067.37.168.537.302l3.667 2.933c.23.184.401.395.516.633.115.239.172.505.172.799v6.026c0 .253-.045.487-.134.703-.09.216-.224.414-.403.593-.18.179-.377.313-.593.403-.216.09-.45.134-.703.134H4.333c-.253 0-.487-.045-.703-.134a1.827 1.827 0 0 1-.593-.403 1.82 1.82 0 0 1-.403-.593 1.82 1.82 0 0 1-.134-.704Zm1 0c0 .277.07.486.208.624.14.14.348.209.625.209h1.5v-2.5c0-.253.045-.488.135-.704.089-.216.223-.413.402-.593.18-.179.377-.313.593-.402.216-.09.45-.135.704-.135h.666c.253 0 .488.045.704.135.216.09.414.223.593.402.179.18.313.377.402.593.09.216.134.45.134.704v2.5h1.5c.278 0 .487-.07.626-.209.139-.138.208-.347.208-.624V6.454a.828.828 0 0 0-.078-.363.83.83 0 0 0-.235-.288L8.521 2.87C8.347 2.73 8.174 2.66 8 2.66c-.174 0-.347.07-.52.209L3.813 5.803a.828.828 0 0 0-.235.288.828.828 0 0 0-.078.363v6.026Zm5.666.833H6.833v-2.5c0-.278.07-.486.208-.625.14-.14.348-.209.625-.209h.667c.278 0 .486.069.625.209.14.139.208.347.208.625v2.5Z" data-follow-fill="#8F9299"/></svg>',
+    feishu: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="m5.34 2.753 3.047 3.046.004.005c.16.161.282.339.365.532.095.22.14.46.137.722a1.836 1.836 0 0 1-.127.66c-.091.23-.232.44-.423.63l-.002.003a.492.492 0 0 0 0 .703l.002.001a.495.495 0 0 0 .706.002l.001-.002c.287-.286.5-.602.64-.948.13-.32.198-.665.203-1.035a2.74 2.74 0 0 0-.207-1.114 2.71 2.71 0 0 0-.592-.866l-.002-.002-.004-.003-3.04-3.041a2.712 2.712 0 0 0-.867-.592 2.742 2.742 0 0 0-1.113-.207c-.37.005-.716.072-1.036.202-.346.14-.662.354-.948.64-.286.287-.5.602-.64.948-.13.32-.198.665-.203 1.036a2.74 2.74 0 0 0 .207 1.113c.133.316.33.605.592.867l2.645 2.645a.485.485 0 0 0 .194.122.49.49 0 0 0 .512-.12l.001-.002a.495.495 0 0 0 0-.707L2.747 5.345a1.717 1.717 0 0 1-.37-.536c-.094-.22-.14-.46-.136-.722.003-.236.046-.456.127-.66.091-.23.232-.44.423-.63.19-.191.401-.332.631-.424.204-.081.424-.123.66-.126.261-.004.502.042.721.136.196.084.375.208.537.37Zm2.273 4.855c-.19.19-.331.4-.423.63a1.834 1.834 0 0 0-.126.66c-.004.262.042.503.136.722a1.718 1.718 0 0 0 .409.576l.004.005 3.047 3.046c.162.162.34.285.537.37.22.094.46.14.722.136.235-.003.455-.045.66-.127.23-.091.44-.232.63-.422.19-.191.332-.401.423-.631.082-.205.124-.424.127-.66a1.745 1.745 0 0 0-.137-.722 1.715 1.715 0 0 0-.37-.537L10.609 8.01l-.002-.001a.495.495 0 0 1 .002-.705l.001-.003a.495.495 0 0 1 .705.002l2.646 2.645c.261.262.459.55.592.866.143.34.212.711.207 1.114-.005.37-.073.716-.203 1.036a2.86 2.86 0 0 1-.64.948c-.286.286-.602.5-.948.64-.32.13-.665.197-1.036.202a2.74 2.74 0 0 1-1.113-.207 2.71 2.71 0 0 1-.866-.592l-3.047-3.046a.53.53 0 0 1-.021-.023 2.71 2.71 0 0 1-.614-.887 2.74 2.74 0 0 1-.207-1.113c.005-.371.072-.716.202-1.036.14-.346.354-.662.64-.948l.002-.001a.49.49 0 0 1 .512-.121.487.487 0 0 1 .193.122h.002a.495.495 0 0 1-.001.706Z" data-follow-fill="#8F9299"/></svg>',
+  });
+
+  // Use the shared action glyphs for both newly-created and persisted cards.
+  // The legacy object above is retained for old snapshots; this override is
+  // the canonical Feishu share icon going forward.
+  const EXPORT_ACTION_ICON_OVERRIDES = Object.freeze({
+    feishu: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="m5.906 8.39 4.719-2.937A2.002 2.002 0 0 0 11.922 6c.49.02.935-.133 1.336-.462.401-.328.64-.732.719-1.21a1.9 1.9 0 0 0-.297-1.376c-.276-.437-.646-.726-1.11-.867a1.905 1.905 0 0 0-1.398.11c-.28.128-.513.297-.696.509a1.99 1.99 0 0 0-.382 1.905l-4.72 2.937a1.934 1.934 0 0 0-1.49-.539c-.256.018-.51.086-.76.203a1.892 1.892 0 0 0-.874.813 1.971 1.971 0 0 0-.235 1.172 1.964 1.964 0 0 0 1.476 1.735c.413.109.811.093 1.196-.047.386-.14.703-.388.953-.742l4.375 1.64c-.051.52.066.979.352 1.375s.68.654 1.18.774a1.92 1.92 0 0 0 1.399-.164c.43-.23.736-.586.913-1.071.111-.305.154-.603.127-.895a1.925 1.925 0 0 0-1.065-1.55 1.944 1.944 0 0 0-1.398-.188 1.98 1.98 0 0 0-1.164.797l-4.375-1.64a2.024 2.024 0 0 0-.078-.829Z" data-follow-fill="#8F9299"/></svg>',
+  });
+
+  function setExportButtonLabel(button, iconKey, label) {
+    if (!button) return;
+    button.replaceChildren();
+    const icon = el_h("span", "dash-export-icon");
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = EXPORT_ACTION_ICON_OVERRIDES[iconKey] || EXPORT_ACTION_ICONS[iconKey] || "";
+    const text = el_h("span", "dash-export-label");
+    text.textContent = label;
+    button.append(icon, text);
+    button.dataset.exportIcon = iconKey;
+  }
+
+  function normalizeExportButtons(root) {
+    if (!root) return;
+    root.querySelectorAll(".dash-export-btn").forEach((button) => {
+      const iconKey = button.classList.contains("dash-word-btn") ? "word"
+        : button.classList.contains("dash-sync-btn") ? "sync"
+        : button.classList.contains("dash-feishu-btn") ? "feishu" : "report";
+      const rawLabel = button.textContent.trim();
+      const label = rawLabel.replace(/^[\s📤📄🏠🐦⬇⏳]+/u, "").trim();
+      setExportButtonLabel(button, iconKey, label);
+    });
+  }
+
   function appendTurnExportButton(turnTag) {
     const tagStr = String(turnTag);
     const bucket = B();
@@ -3606,14 +4463,10 @@ export function bootWorkbenchRuntime() {
     const card = el_h("div", "dash-card dash-export");
     card.dataset.turn = tagStr;
     card.innerHTML =
-      '<button type="button" class="dash-export-btn" data-turn="' + tagStr + '">' +
-      '📤 导出本轮报告 (HTML)</button>' +
-      '<button type="button" class="dash-export-btn dash-word-btn" data-turn="' + tagStr + '">' +
-      '📄 导出 Word</button>' +
-      '<button type="button" class="dash-export-btn dash-sync-btn" data-turn="' + tagStr + '">' +
-      '🏠 同步到主页</button>' +
-      '<button type="button" class="dash-export-btn dash-feishu-btn" data-turn="' + tagStr + '">' +
-      '🐦 分享到飞书</button>' +
+      '<button type="button" class="dash-export-btn" data-turn="' + tagStr + '"><span class="dash-export-icon" aria-hidden="true">' + EXPORT_ACTION_ICONS.report + '</span><span class="dash-export-label">导出本轮报告 (HTML)</span></button>' +
+      '<button type="button" class="dash-export-btn dash-word-btn" data-turn="' + tagStr + '"><span class="dash-export-icon" aria-hidden="true">' + EXPORT_ACTION_ICONS.word + '</span><span class="dash-export-label">导出 Word</span></button>' +
+      '<button type="button" class="dash-export-btn dash-sync-btn" data-turn="' + tagStr + '"><span class="dash-export-icon" aria-hidden="true">' + EXPORT_ACTION_ICONS.sync + '</span><span class="dash-export-label">同步到主页</span></button>' +
+      '<button type="button" class="dash-export-btn dash-feishu-btn" data-turn="' + tagStr + '"><span class="dash-export-icon" aria-hidden="true">' + EXPORT_ACTION_ICONS.feishu + '</span><span class="dash-export-label">分享到飞书</span></button>' +
       '<div class="dash-export-status" data-turn="' + tagStr + '"></div>';
     bindExportCard(card, turnTag);
     appendChatActionCard(card);
@@ -3636,6 +4489,7 @@ export function bootWorkbenchRuntime() {
 
   function bindExportCard(card, turnTag) {
     if (!card || card.dataset.exportBound === "1") return;
+    normalizeExportButtons(card);
     card.dataset.exportBound = "1";
     card.querySelector(
       ".dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-feishu-btn)")
@@ -4117,7 +4971,7 @@ export function bootWorkbenchRuntime() {
       content: cardExportText(card),
     }));
     btn.disabled = true;
-    btn.textContent = "⏳ 整合中…";
+    setExportButtonLabel(btn, "word", "整合中…");
     setExportStatus(exportCard, "正在调用大模型整合报表文档…");
     let plan = null;
     let errMsg = "";
@@ -4139,10 +4993,10 @@ export function bootWorkbenchRuntime() {
     if (plan && Array.isArray(plan.sections) && plan.sections.length) {
       rgWordDocs[turnTag] = buildWordReportHTML(turnTag, plan, cards);
       btn.dataset.state = "ready";
-      btn.textContent = "⬇ 下载 Word 文档";
+      setExportButtonLabel(btn, "word", "下载 Word 文档");
       setExportStatus(exportCard, "✓ 报表文档已整合完成,点击「下载 Word 文档」保存");
     } else {
-      btn.textContent = "📄 导出 Word";
+      setExportButtonLabel(btn, "word", "导出 Word");
       setExportStatus(exportCard, "整合失败:" + errMsg + " —— 可点击重试", true);
     }
   }
@@ -4154,6 +5008,7 @@ export function bootWorkbenchRuntime() {
     bucket.conclusionSeen = new Set();
     bucket.rootCauseSeen = new Set();
     bucket.actionsSeen = new Set();
+    bucket.rootCauseDelivered = false;
     if (el.dashboardEmpty) {
       if (!el.dashboardEmpty.parentNode) el.dashboardList.appendChild(el.dashboardEmpty);
       el.dashboardEmpty.style.display = "";
@@ -4289,13 +5144,13 @@ export function bootWorkbenchRuntime() {
         <span class="tool-duration">${fmtDuration(r.duration_ms)}</span>
       </div>
       <div class="tool-body">
-        <div class="kv-block">
-          <div class="kv-label">输入</div>
-          <pre>${esc(JSON.stringify(r.input || {}, null, 2))}</pre>
+        <div class="tool-io-bubble tool-io-input">
+          <div class="tool-io-label">输入</div>
+          <pre class="tool-io-content">${esc(JSON.stringify(r.input || {}, null, 2))}</pre>
         </div>
-        <div class="kv-block">
-          <div class="kv-label">输出</div>
-          <pre>${esc(r.output || "")}</pre>
+        <div class="tool-io-bubble tool-io-output">
+          <div class="tool-io-label">输出</div>
+          <pre class="tool-io-content">${esc(r.output || "")}</pre>
         </div>
         ${chips ? `<div class="kv-block">
           <div class="kv-label">命中的本体实体</div>
@@ -4330,10 +5185,14 @@ export function bootWorkbenchRuntime() {
         <span class="step-duration">${fmtDuration(r.duration_ms)}</span>
       </div>
       <div class="step-body">
-        <div class="step-sub">输入</div>
-        <pre>${esc(JSON.stringify(r.input || {}, null, 2))}</pre>
-        <div class="step-sub">输出</div>
-        <pre>${esc(r.output || "")}</pre>
+        <div class="tool-io-bubble tool-io-input">
+          <div class="tool-io-label">输入</div>
+          <pre class="tool-io-content">${esc(JSON.stringify(r.input || {}, null, 2))}</pre>
+        </div>
+        <div class="tool-io-bubble tool-io-output">
+          <div class="tool-io-label">输出</div>
+          <pre class="tool-io-content">${esc(r.output || "")}</pre>
+        </div>
         ${chips ? `<div class="step-sub">命中的本体</div><div class="chip-row">${chips}</div>` : ""}
       </div>`;
     step.querySelector(".step-header").addEventListener("click", () => step.classList.toggle("open"));
@@ -4502,6 +5361,17 @@ export function bootWorkbenchRuntime() {
         break;
       case "llm_response":
         finalizeAssistantText();
+        // A tool-bearing response means the agent is still working. Keep a
+        // visible status row until the corresponding tool_result arrives;
+        // pure final text should not leave an empty timeline behind.
+        const hasToolUses = Array.isArray(evt.tool_uses)
+          ? evt.tool_uses.length > 0
+          : Boolean(evt.tool_uses);
+        if (hasToolUses) {
+          showStepThinking();
+        } else {
+          clearStepThinking();
+        }
         fillLlmResponse(evt.iteration, {
           text: evt.text,
           tool_uses: evt.tool_uses,
@@ -4509,20 +5379,16 @@ export function bootWorkbenchRuntime() {
           usage: evt.usage,
         });
         if (evt.text) {
-          // 📌结论 / 🔍根因 / 💡建议 may land in the SAME message or be split
-          // across separate iterations. Extract each INDEPENDENTLY on its own
-          // marker — never gate 根因/建议 on 📌 being in the same message.
-          // (The old `if (text.includes("📌"))` gate dropped the L2/L3 cards
-          //  whenever the model emitted 📌结论 and 🔍根因/💡建议 separately.)
-          // All three pushes are idempotent no-ops without their marker.
+          // Extract semantic sections independently. Emoji prefixes remain
+          // supported for old transcripts but are not required for new ones.
           pushConclusionIfAny(evt.text);
           pushRootCauseIfAny(evt.text);
           pushActionsIfAny(evt.text);
           // Advance the SOP checklist: 深度分析 markers → step ⑤, 📌结论 → 交付.
           advanceSopForText(evt.text);
-          // Remember this turn delivered a 📌 结论 — used at turn end to
+          // Remember this turn delivered a conclusion — used at turn end to
           // reconcile the checklist to 100% (handles L1 turns that skip 深度分析).
-          if (evt.text.includes("📌")) B().concludedTurnTag = B().currentTurnTag || 1;
+          if (extractConclusion(evt.text)) B().concludedTurnTag = B().currentTurnTag || 1;
           // Quadrant-assistant: detect any ```ui-command``` blocks and STAGE
           // them on the pending queue. The user clicks an "执行" button at
           // end-of-turn to actually apply them to the cockpit.
@@ -4545,26 +5411,32 @@ export function bootWorkbenchRuntime() {
         break;
       }
       case "done": {
+        // A terminal event is authoritative even when the provider omitted a
+        // separate llm_response event. Finalize the last assistant bubble
+        // before saving so no streaming caret survives into history.
+        finalizeAssistantText();
+        clearStepThinking();
         setBusy(false);
         const _bk = B();
         const _tag = _bk.currentTurnTag || 1;
         // Tables produced this turn stay on the dashboard regardless of level —
         // the L1 template (6.2) itself requires TableGenerate, so 取数 tables
         // must map to the 看板 just like charts/conclusions do.
-        // If this turn delivered a 📌 结论, reconcile the pinned task list to
-        // 100% so it never dangles at ◔ 进行中 after the answer is out.
-        if (_bk.concludedTurnTag === _tag) reconcileTodosOnConclusion();
+        // A successful terminal event completes this turn's SOP regardless of
+        // whether the model emitted a conclusion marker.
+        if (_bk.todos?.length) reconcileTodosOnCompletion();
         appendTurnExportButton(_tag);
         // Quadrant-assistant: if any ui-commands were staged this turn,
         // render the "执行" card so the user can apply them in one click.
         if (state.quadrant) appendApplyButton(_tag);
         // Persist this conversation to the restorable 「最近」history (updates
         // the same record in place via bucket.convId).
-        saveCurrentConversation();
+        pendingConversationSave = saveCurrentConversation();
         break;
       }
       case "error":
         finalizeAssistantText();
+        clearStepThinking();
         const errEl = el_h("div", "msg msg-error",
           `<div class="msg-header"><span class="msg-role" style="color: var(--accent-red); border-color: var(--accent-red);">ERROR</span></div>
            <div class="msg-body" style="color: var(--accent-red);">${esc(evt.message || "unknown")}</div>`);
@@ -4581,6 +5453,15 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   async function sendMessage(text) {
     if (state.busy || !text.trim()) return;
+    // A history click exposes its text preview first, but the server-side
+    // session/messages must be active before a new analysis can start.
+    try {
+      await (B().restoreActivation || Promise.resolve());
+    } catch (error) {
+      console.warn("分析上下文恢复失败", error);
+      return;
+    }
+    if (state.busy) return;
     // Gate report-mode sends until a report has been activated
     if (state.mode === "report" && !state.report.sessionActivated) {
       uploadStatus("请先上传或选择一份报表", "error");
@@ -4590,6 +5471,12 @@ export function bootWorkbenchRuntime() {
     // Bump per-turn tag so dashboard cards group by user turn
     B().currentTurnTag = (B().currentTurnTag || 0) + 1;
     const _bk = B();
+    // A new question starts a new execution chain, even though the previous
+    // transcript remains visible in chat history.
+    _bk.stepTimelineEl = null;
+    _bk.stepThinkingEl = null;
+    _bk.currentExecutionBlock = null;
+    _bk.rootCauseDelivered = false;
     _bk.turnQuestions = _bk.turnQuestions || {};
     _bk.turnQuestions[_bk.currentTurnTag] = text;
     // Seed a fresh SOP task checklist for this turn (BI data mode only).
@@ -4613,7 +5500,7 @@ export function bootWorkbenchRuntime() {
       resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: payloadText }),
+        body: JSON.stringify({ message: payloadText, visible_user_text: text, session_id: clientSessionId }),
         signal: activeRequestController.signal,
       });
     } catch (err) {
@@ -4661,8 +5548,9 @@ export function bootWorkbenchRuntime() {
     state.busy = v;
     document.body.dataset.agentBusy = v ? "1" : "0";
     window.dispatchEvent(new CustomEvent("bi-agent-busy", { detail: { busy: v } }));
-    el.btnSend.disabled = v;
-    el.chatInput.disabled = v;
+    const disabled = v || state.historyRestoring;
+    el.btnSend.disabled = disabled;
+    el.chatInput.disabled = disabled;
     el.btnSend.textContent = v ? "…" : "➤";
     // Navigation remains available while a turn is in flight.
   }
@@ -4685,7 +5573,7 @@ export function bootWorkbenchRuntime() {
     if (state.busy) {
       if (activeRequestController) activeRequestController.abort();
       const resetUrl = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
-      fetch(resetUrl, { method: "POST" }).catch(() => {});
+      fetch(withClientSession(resetUrl), { method: "POST" }).catch(() => {});
       setBusy(false);
     }
     // Quadrant assistants are locked to a single mode; only the initial
@@ -4761,7 +5649,7 @@ export function bootWorkbenchRuntime() {
 
   function updateChatInputAvailability() {
     if (state.busy) return;
-    const blocked = state.mode === "report" && !state.report.sessionActivated;
+    const blocked = state.historyRestoring || (state.mode === "report" && !state.report.sessionActivated);
     el.chatInput.disabled = blocked;
     el.btnSend.disabled = blocked;
   }
@@ -4797,7 +5685,7 @@ export function bootWorkbenchRuntime() {
 
   async function refreshReportStatus() {
     try {
-      const r = await fetch("/api/report/status");
+      const r = await fetch(withClientSession("/api/report/status"));
       const data = await r.json();
       const list = Array.isArray(data.active_reports)
         ? data.active_reports
@@ -4951,7 +5839,7 @@ export function bootWorkbenchRuntime() {
       const r = await fetch("/api/report/activate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ report_ids: ids, with_db: !!state.report.withDb }),
+        body: JSON.stringify({ report_ids: ids, with_db: !!state.report.withDb, session_id: clientSessionId }),
       });
       if (!r.ok) throw new Error((await r.json()).detail || "activate failed");
       const data = await r.json();
@@ -5005,6 +5893,7 @@ export function bootWorkbenchRuntime() {
 
   function clearBucketChat(mode) {
     const bucket = buckets[mode];
+    if (el.chatTodo && state.mode === mode) delete el.chatTodo.dataset.activeQuestionTurn;
     bucket.ontologyByCode.clear();
     bucket.toolCalls.length = 0;
     bucket.llmTurns.length = 0;
@@ -5012,6 +5901,9 @@ export function bootWorkbenchRuntime() {
     bucket.systemPrompt = null;
     bucket.currentAssistantEl = null;
     bucket.currentAssistantText = "";
+    bucket.currentExecutionBlock = null;
+    bucket.stepTimelineEl = null;
+    bucket.stepThinkingEl = null;
     bucket.chatNodes = [];
     bucket.ontologyNodes = [];
     bucket.toolNodes = [];
@@ -5022,6 +5914,7 @@ export function bootWorkbenchRuntime() {
     bucket.conclusionSeen = new Set();
     bucket.rootCauseSeen = new Set();
     bucket.actionsSeen = new Set();
+    bucket.rootCauseDelivered = false;
     bucket.currentTurnTag = 0;
     bucket.exportTurns = new Set();
     bucket.turnQuestions = {};
@@ -5029,9 +5922,12 @@ export function bootWorkbenchRuntime() {
     bucket.pendingCommands = [];
     bucket.todos = [];
     bucket.sopStep = 0;
+    bucket.restoreActivation = Promise.resolve();
     bucket.concludedTurnTag = 0;
     bucket.convId = null;   // detach from any saved 最近 record → next is fresh
     bucket.titleHint = null; // drop the restored-title anchor; next title is fresh
+    bucket.firstUserQuestion = null;
+    conversationDraftIds.delete(mode === "report" ? "report" : "data");
     // If this is the active mode, also clear visible DOM
     if (state.mode === mode) {
       renderTodoPanel();  // hides the pinned task list (bucket.todos now empty)
@@ -5125,8 +6021,11 @@ export function bootWorkbenchRuntime() {
         ? `从当前会话中移除「${recs[0].filename}」?`
         : `从当前会话中移除全部 ${recs.length} 份报表?`;
       if (!confirm(`${label}(文件仍保留在最近上传列表中,不会从服务器删除)`)) return;
-      // Clear server session AND server-side active list
-      try { await fetch("/api/report/session/reset", { method: "POST" }); } catch (e) {}
+      // Clear this browser session and its server-side active list. A plain
+      // reset intentionally keeps attachments for "new conversation".
+      try {
+        await fetch(withClientSession("/api/report/session/reset?clear_reports=true"), { method: "POST" });
+      } catch (e) {}
       state.report.activeReports = [];
       state.report.activeReport = null;
       state.report.sessionActivated = false;
@@ -5196,7 +6095,7 @@ export function bootWorkbenchRuntime() {
         const r = await fetch("/api/report/config", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ with_db: flag }),
+          body: JSON.stringify({ with_db: flag, session_id: clientSessionId }),
         });
         if (!r.ok) throw new Error((await r.json()).detail || "config failed");
         state.report.withDb = flag;
@@ -5294,7 +6193,7 @@ export function bootWorkbenchRuntime() {
     if (!silent && !confirm("开始新对话?当前对话会存入左侧「最近」,可随时恢复。")) return;
     await saveCurrentConversation();   // persist current to 最近 before clearing
     const url = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
-    await fetch(url, { method: "POST" });
+    await fetch(withClientSession(url), { method: "POST" });
     clearBucketChat(state.mode);       // also resets bucket.convId → fresh
     renderEmptyState();
     if (state.mode === "report") {
@@ -5623,7 +6522,7 @@ export function bootWorkbenchRuntime() {
       `若用户要求改页面但要素不全(比如没说具体改什么文字),正常提问澄清,不要凭空发 ui-command。`,
       ``,
       `数据分析纪律(与通用助手完全一致,不得因象限身份弱化 —— ui-command 是附加能力,不替代分析 SOP):`,
-      `  - 🔴 强制图表配对:本轮只要调用了 \`TableGenerate\`,就必须同时至少调用 1 次 \`ChartGenerate\`;≥2 行的结果集禁止在正文手写 Markdown \`|\` 表格,必须走 \`TableGenerate\`。L1 取数/L2 问题寻找 多行结果 ≥1 表 +≥1 图;L3 及以上分析型 ≥1 表 +≥2 图(2 图覆盖不同视角)。仅 1 行 1 列纯标量可只用文字。`,
+      `  - 🔴 默认图表配对:分析型结果本轮调用 \`TableGenerate\` 后通常再调用至少 1 次 \`ChartGenerate\`;≥2 行的结果集禁止在正文手写 Markdown \`|\` 表格,必须走 \`TableGenerate\`。但“列出/有哪些/所有/可分析业务对象”等枚举型问题,如果数值列全部相同(通常每项为 1),只保留表格,不要生成没有比较意义的柱状图。L1 取数/L2 问题寻找的分析型结果仍按 ≥1 表 +≥1 图;L3 及以上分析型 ≥1 表 +≥2 图(2 图覆盖不同视角)。仅 1 行 1 列纯标量可只用文字。`,
       `  - 🔴 五级分析逐级递进并逐级引导(L1 取数→L2 问题→L3 根因→L4 决策→L5 执行):每轮交付必须有一条 📌结论(一句带数字与实体编码,会被抽取为看板结论卡);L1–L4 结尾用一句话 🧭引导进入下一级。L3 起带 🔍根因证据链(论点+数据+来源三元组)+ 📈附图;L4 每个方案含效果/成本/风险/周期(+历史案例)并给推荐;L5 给可执行行动(谁/何时/标准)+可量化监控+复盘闭环。这些段落前端会汇总进中间实时看板,缺图或缺结论视为交付不合格。`,
       `[象限助手系统提示结束]`
     ].join("\n");
@@ -5810,6 +6709,13 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   // Boot
   // ------------------------------------------------------------------
-  loadMeta();
+  // These independent bootstrap requests are intentionally non-blocking and
+  // parallel. The shell and recent-conversation list can paint while any
+  // slow meta/report endpoint is still responding.
+  void Promise.allSettled([
+    loadMeta(),
+    refreshReportStatus(),
+    refreshReportHistory(),
+  ]);
   loadRecent();
 }

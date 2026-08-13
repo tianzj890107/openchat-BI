@@ -1,5 +1,35 @@
 /* Shared IBA shell behavior for CEO 驾驶舱、驾驶舱 and i-Agent. */
 
+/* The complete left navigation is one scroll surface. History must not be
+ * the only area that owns a scrollbar when the fixed function list exceeds
+ * the viewport height. */
+.sidebar {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+/* The outer IBA navigation owns the top-left toggle. Keep its blue circular
+ * button, but replace the old text hamburger with the supplied SVG glyph. */
+.hamburger { position: relative; }
+.hamburger::after { content: none !important; }
+.hamburger .hamburger-icon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 1;
+  pointer-events: none;
+}
+.hamburger .hamburger-icon svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.hamburger .hamburger-icon svg path[fill] {
+  fill: #fff !important;
+}
+
 /* Route changes are intentionally immediate. The only motion belongs to the
  * sidebar's own hamburger expand/collapse rules in each page. */
 html[data-iba-sidebar-state] .sidebar,
@@ -23,7 +53,8 @@ body.nav-collapsed .sidebar,
 body.sidebar-collapsed .sidebar {
   width: 72px !important;
   transform: translateX(0) !important;
-  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
   white-space: nowrap;
 }
 /* Keep labels on one line while the rail width animates from compact to full. */
@@ -31,6 +62,62 @@ body.sidebar-collapsed .sidebar {
 .sidebar .submenu a,
 .sidebar .menu-item {
   white-space: nowrap !important;
+  overflow: hidden;
+}
+.submenu-icon {
+  display: none;
+}
+.submenu-income-icon {
+  display: none;
+}
+.submenu-iagent-icon {
+  display: none;
+}
+.submenu-icon svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.search-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.search-label {
+  margin-left: 0 !important;
+}
+.search-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+.search-icon svg path[fill],
+.submenu-icon svg path[fill],
+.submenu-income-icon svg path[fill],
+.submenu-iagent-icon svg path[fill] {
+  fill: #0b61d8 !important;
+}
+.top-action-icon.message-icon {
+  background: transparent !important;
+  overflow: visible;
+}
+.top-action-icon.message-icon svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.top-action-icon.language-icon {
+  background: transparent !important;
+  overflow: hidden;
+}
+.top-action-icon.language-icon svg,
+.top-action-icon.user-icon svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.top-action-icon.user-icon {
+  background: transparent !important;
   overflow: hidden;
 }
 body.sidebar-collapsed .content {
@@ -50,15 +137,55 @@ body.sidebar-collapsed .search {
 }
 body.nav-collapsed .search::before,
 body.sidebar-collapsed .search::before {
-  content: "⌕";
-  color: #52647d;
-  display: block;
+  content: none;
+}
+body.nav-collapsed .search .search-label,
+body.sidebar-collapsed .search .search-label {
+  display: none !important;
+}
+body.nav-collapsed .search .search-icon,
+body.sidebar-collapsed .search .search-icon {
+  display: inline-flex !important;
   width: 28px;
   height: 28px;
-  font-size: 28px;
-  font-weight: 400;
-  line-height: 28px;
-  text-align: center;
+  margin: 0 !important;
+}
+body.nav-collapsed .search .search-icon svg,
+body.sidebar-collapsed .search .search-icon svg {
+  width: 24px;
+  height: 24px;
+}
+/* The inline SVGs replace only the compact rail's generated glyphs. */
+body.nav-collapsed .submenu a:nth-child(1)::before,
+body.sidebar-collapsed .submenu a:nth-child(1)::before,
+body.nav-collapsed .submenu a:nth-child(2)::before,
+body.sidebar-collapsed .submenu a:nth-child(2)::before,
+body.nav-collapsed .submenu a:nth-child(3)::before,
+body.sidebar-collapsed .submenu a:nth-child(3)::before,
+body.nav-collapsed .submenu a:nth-child(4)::before,
+body.sidebar-collapsed .submenu a:nth-child(4)::before {
+  content: none !important;
+}
+body.nav-collapsed .submenu a:nth-child(1) .submenu-icon,
+body.sidebar-collapsed .submenu a:nth-child(1) .submenu-icon,
+body.nav-collapsed .submenu a:nth-child(2) .submenu-icon,
+body.sidebar-collapsed .submenu a:nth-child(2) .submenu-icon,
+body.nav-collapsed .submenu a:nth-child(3) .submenu-income-icon,
+body.sidebar-collapsed .submenu a:nth-child(3) .submenu-income-icon,
+body.nav-collapsed .submenu a:nth-child(4) .submenu-iagent-icon,
+body.sidebar-collapsed .submenu a:nth-child(4) .submenu-iagent-icon {
+  display: block !important;
+}
+body.nav-collapsed .submenu a:nth-child(1) .submenu-icon svg,
+body.sidebar-collapsed .submenu a:nth-child(1) .submenu-icon svg,
+body.nav-collapsed .submenu a:nth-child(2) .submenu-icon svg,
+body.sidebar-collapsed .submenu a:nth-child(2) .submenu-icon svg,
+body.nav-collapsed .submenu a:nth-child(3) .submenu-income-icon svg,
+body.sidebar-collapsed .submenu a:nth-child(3) .submenu-income-icon svg,
+body.nav-collapsed .submenu a:nth-child(4) .submenu-iagent-icon svg,
+body.sidebar-collapsed .submenu a:nth-child(4) .submenu-iagent-icon svg {
+  width: 22px;
+  height: 22px;
 }
 body.nav-collapsed .search span,
 body.sidebar-collapsed .search span {
@@ -113,16 +240,8 @@ body.sidebar-collapsed .submenu a::before {
   font-weight: 700;
   line-height: 1;
 }
-body.nav-collapsed .submenu a:nth-child(1)::before,
-body.sidebar-collapsed .submenu a:nth-child(1)::before { content: "⌂"; }
-body.nav-collapsed .submenu a:nth-child(1)::before,
-body.sidebar-collapsed .submenu a:nth-child(1)::before { font-size: 30px; }
-body.nav-collapsed .submenu a:nth-child(2)::before,
-body.sidebar-collapsed .submenu a:nth-child(2)::before { content: "▣"; }
-body.nav-collapsed .submenu a:nth-child(3)::before,
-body.sidebar-collapsed .submenu a:nth-child(3)::before { content: "￥"; font-size: 17px; }
 body.nav-collapsed .submenu a:nth-child(4)::before,
-body.sidebar-collapsed .submenu a:nth-child(4)::before { content: "✦"; }
+body.sidebar-collapsed .submenu a:nth-child(4)::before { content: none !important; }
 body.nav-collapsed .submenu a.active::before,
 body.sidebar-collapsed .submenu a.active::before { color: #0b61d8; }
 body.nav-collapsed .menu-item,

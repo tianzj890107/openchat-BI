@@ -75,7 +75,13 @@
       <div class="sidebar-recent" id="sidebar-recent">
         <div class="sidebar-group-label">最近</div>
         <div class="recent-list" id="recent-list">
-          <div class="recent-empty">暂无历史会话</div>
+          <div class="recent-loading-label">正在加载最近会话…</div>
+          <div class="recent-skeleton-row"><span class="recent-skeleton-title"></span><span class="recent-skeleton-meta"></span></div>
+          <div class="recent-skeleton-row"><span class="recent-skeleton-title"></span><span class="recent-skeleton-meta"></span></div>
+          <div class="recent-skeleton-row"><span class="recent-skeleton-title"></span><span class="recent-skeleton-meta"></span></div>
+          <div class="recent-skeleton-row"><span class="recent-skeleton-title"></span><span class="recent-skeleton-meta"></span></div>
+          <div class="recent-skeleton-row"><span class="recent-skeleton-title"></span><span class="recent-skeleton-meta"></span></div>
+          <div class="recent-skeleton-row"><span class="recent-skeleton-title"></span><span class="recent-skeleton-meta"></span></div>
         </div>
       </div>
 
@@ -124,7 +130,7 @@
             </div>
             <div class="chat-scroll" id="chat-scroll">
               <div class="empty-state" id="chat-empty">
-                <div class="empty-glyph" id="empty-glyph">◇</div>
+                <div class="empty-glyph" id="empty-glyph" aria-hidden="true"></div>
                 <div class="empty-title" id="empty-title">硕磐财务 BI 智能分析</div>
                 <div class="empty-sub" id="empty-welcome"></div>
                 <div class="empty-hints" id="empty-hints"></div>
@@ -191,7 +197,13 @@
                     <span class="upload-status" id="upload-status"></span>
                   </div>
                   <button id="btn-send" class="btn btn-primary composer-send"
-                          aria-label="发送" title="发送">➤</button>
+                          aria-label="发送" title="发送">
+                    <svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"
+                         aria-hidden="true" focusable="false">
+                      <path d="M0 0h16v16H0z"/>
+                      <path fill="#FFFFFF" d="m1 7 13-5-2 11-6.97-3.802L13 3 3.794 8.523 1 7Zm4 8v-4.734L8 12l-3 3Z" data-follow-fill="#FFFFFF"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
 
@@ -226,20 +238,20 @@
               <span class="pane-label">看板</span>
               <span class="pane-hint" id="dashboard-count">0</span>
               <button class="btn btn-ghost dash-toolbtn" id="dashboard-clear"
-                      title="清空当前看板">✕ 清空</button>
+                      title="清空当前看板"><svg class="clear-icon" fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="M6.275 1.071a1.82 1.82 0 0 0-.663.714l-.575 1.048H1.333a.49.49 0 0 0-.5.5.49.49 0 0 0 .278.45c.067.033.141.05.222.05H2.5v9.5c0 .253.045.488.134.704.09.216.224.413.403.592.179.18.376.314.593.403.216.09.45.134.703.134h7.334c.253 0 .487-.044.704-.134.216-.09.413-.224.592-.403a1.82 1.82 0 0 0 .403-.592c.09-.216.134-.45.134-.704v-9.5h1.167a.49.49 0 0 0 .5-.498v-.002a.49.49 0 0 0-.277-.45.487.487 0 0 0-.22-.05h-3.704l-.556-1.034a1.819 1.819 0 0 0-.663-.725 1.821 1.821 0 0 0-.952-.241H7.219c-.362 0-.677.08-.944.238ZM5.33 3.833H12.5v9.5c0 .278-.07.486-.208.625-.14.139-.348.208-.625.208H4.333c-.277 0-.486-.069-.625-.208-.139-.139-.208-.347-.208-.625v-9.5h1.831Zm4.5-1-.302-.561a.827.827 0 0 0-.301-.33.827.827 0 0 0-.433-.109H7.219a.828.828 0 0 0-.43.108.827.827 0 0 0-.3.325l-.311.567H9.83ZM7.167 6.667V11a.49.49 0 0 1-.278.449.488.488 0 0 1-.222.05h-.003a.49.49 0 0 1-.498-.5V6.668a.49.49 0 0 1 .278-.45.487.487 0 0 1 .223-.05.49.49 0 0 1 .5.5Zm2.666 0V11a.49.49 0 0 1-.277.449.488.488 0 0 1-.223.05h-.002a.49.49 0 0 1-.498-.5V6.668a.49.49 0 0 1 .278-.45.487.487 0 0 1 .222-.05.49.49 0 0 1 .5.5Z" data-follow-fill="#8F9299"/></svg> 清空</button>
               <button class="dashboard-collapse" id="dashboard-collapse"
-                      title="折叠看板">⇥</button>
+                      title="折叠看板"><svg class="dashboard-collapse-icon" fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="M9.187 4.354 6.043 7.497h8.126a.49.49 0 0 1 .498.5V8a.49.49 0 0 1-.277.446.487.487 0 0 1-.223.051h-8.13l3.15 3.15.002.001a.495.495 0 0 1-.002.706l-.002.001a.496.496 0 0 1-.705-.002L4.482 8.357A.49.49 0 0 1 4.333 8v-.003a.49.49 0 0 1 .192-.396L8.48 3.646a.495.495 0 0 1 .707 0l.002.002a.49.49 0 0 1 .12.512.49.49 0 0 1-.122.194ZM1.333 12V4a.49.49 0 0 1 .278-.45.487.487 0 0 1 .222-.05.49.49 0 0 1 .5.5v8.002a.49.49 0 0 1-.5.498h-.002a.49.49 0 0 1-.498-.5Z" data-follow-fill="#8F9299"/></svg></button>
             </div>
             <div class="dashboard-scroll" id="dashboard-list">
               <div class="empty-state" id="dashboard-empty">
-                <div class="empty-glyph">▦</div>
+                <div class="empty-glyph"><svg class="dashboard-icon" fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="M12 .833c.253 0 .488.045.704.135.216.089.413.223.592.402.18.18.314.377.403.593.09.216.135.45.135.704v10.666c0 .253-.045.488-.135.704-.09.216-.224.414-.403.593a1.818 1.818 0 0 1-.592.402 1.82 1.82 0 0 1-.704.134H4c-.253 0-.488-.044-.704-.134a1.82 1.82 0 0 1-.592-.402 1.817 1.817 0 0 1-.403-.593 1.819 1.819 0 0 1-.134-.704V2.667c0-.253.044-.488.134-.704.09-.216.224-.414.403-.593.179-.179.376-.313.592-.402.216-.09.451-.135.704-.135h8Zm0 1H4c-.278 0-.486.07-.625.209-.139.138-.208.347-.208.625v10.666c0 .278.069.486.208.625.139.14.347.208.625.208h8c.278 0 .486-.069.625-.208.139-.139.209-.347.209-.625V2.667c0-.278-.07-.487-.209-.625-.139-.14-.347-.209-.625-.209Zm-4.822 8.238 3.135-3.135c.157-.157.275-.33.353-.52.079-.19.118-.395.118-.617 0-.222-.04-.428-.118-.617a1.598 1.598 0 0 0-.353-.52 1.599 1.599 0 0 0-.52-.354 1.6 1.6 0 0 0-.617-.117 1.6 1.6 0 0 0-.618.117 1.6 1.6 0 0 0-.52.354L4.904 7.796a.498.498 0 0 0-.147.354v1.568c0 .137.049.255.147.353a.482.482 0 0 0 .353.146h1.567a.497.497 0 0 0 .354-.146ZM9.821 5.8c0 .143-.072.287-.215.43L6.617 9.218h-.86v-.86l2.988-2.99a.606.606 0 0 1 .197-.133.606.606 0 0 1 .234-.044c.084 0 .161.015.233.044.072.03.137.075.197.134.143.143.215.287.215.43Zm.922 5.473H5.07a.491.491 0 0 0-.5.5.491.491 0 0 0 .5.5h5.674a.49.49 0 0 0 .5-.497v-.003a.491.491 0 0 0-.277-.45.486.486 0 0 0-.223-.05Z" data-follow-fill="#8F9299"/></svg></div>
                 <div class="empty-title">实时看板</div>
                 <div class="empty-sub">结论 / 图表 / 表格会在此自动汇总</div>
               </div>
             </div>
           </section>
           <button class="dashboard-reopen" id="dashboard-reopen"
-                  title="展开看板">▦</button>
+                  title="展开看板"><svg class="dashboard-icon" fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="M12 .833c.253 0 .488.045.704.135.216.089.413.223.592.402.18.18.314.377.403.593.09.216.135.45.135.704v10.666c0 .253-.045.488-.135.704-.09.216-.224.414-.403.593a1.818 1.818 0 0 1-.592.402 1.82 1.82 0 0 1-.704.134H4c-.253 0-.488-.044-.704-.134a1.82 1.82 0 0 1-.592-.402 1.817 1.817 0 0 1-.403-.593 1.819 1.819 0 0 1-.134-.704V2.667c0-.253.044-.488.134-.704.09-.216.224-.414.403-.593.179-.179.376-.313.592-.402.216-.09.451-.135.704-.135h8Zm0 1H4c-.278 0-.486.07-.625.209-.139.138-.208.347-.208.625v10.666c0 .278.069.486.208.625.139.14.347.208.625.208h8c.278 0 .486-.069.625-.208.139-.139.209-.347.209-.625V2.667c0-.278-.07-.487-.209-.625-.139-.14-.347-.209-.625-.209Zm-4.822 8.238 3.135-3.135c.157-.157.275-.33.353-.52.079-.19.118-.395.118-.617 0-.222-.04-.428-.118-.617a1.598 1.598 0 0 0-.353-.52 1.599 1.599 0 0 0-.52-.354 1.6 1.6 0 0 0-.617-.117 1.6 1.6 0 0 0-.618.117 1.6 1.6 0 0 0-.52.354L4.904 7.796a.498.498 0 0 0-.147.354v1.568c0 .137.049.255.147.353a.482.482 0 0 0 .353.146h1.567a.497.497 0 0 0 .354-.146ZM9.821 5.8c0 .143-.072.287-.215.43L6.617 9.218h-.86v-.86l2.988-2.99a.606.606 0 0 1 .197-.133.606.606 0 0 1 .234-.044c.084 0 .161.015.233.044.072.03.137.075.197.134.143.143.215.287.215.43Zm.922 5.473H5.07a.491.491 0 0 0-.5.5.491.491 0 0 0 .5.5h5.674a.49.49 0 0 0 .5-.497v-.003a.491.491 0 0 0-.277-.45.486.486 0 0 0-.223-.05Z" data-follow-fill="#8F9299"/></svg></button>
         </div>
       </section>
 
@@ -252,6 +264,13 @@
         <div class="page-body">
           <div class="panel-desc">对话中命中的本体实体(按编码去重,实时追加)</div>
           <div class="ontology-filters" id="ontology-filters" role="toolbar" aria-label="本体类型筛选">
+            <span class="ontology-filter-label" aria-hidden="true" title="筛选">
+              <svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" focusable="false">
+                <path d="M0 0h16v16H0z"/>
+                <path fill-rule="evenodd" fill="#8F9299" d="m2.826 4.602 3.138 3.665a.826.826 0 0 1 .2.542v3.363c0 .38.086.706.256.98.17.275.425.496.766.664l.966.477c.194.096.385.139.574.13.189-.01.375-.071.559-.185a1.16 1.16 0 0 0 .413-.42c.092-.164.138-.355.138-.571V8.809a.827.827 0 0 1 .2-.542l3.138-3.665c.254-.297.404-.61.45-.936.045-.326-.014-.667-.178-1.023-.163-.355-.384-.622-.661-.8-.278-.178-.612-.267-1.004-.267H4.22c-.392 0-.726.09-1.004.267-.277.178-.498.445-.662.8-.163.356-.222.697-.177 1.023.046.327.196.639.45.936Zm4.228 3.57a1.82 1.82 0 0 0-.33-.556L3.586 3.952a.828.828 0 0 1-.205-.426.828.828 0 0 1 .08-.465.827.827 0 0 1 .302-.363.828.828 0 0 1 .456-.122h7.562c.178 0 .33.04.456.122.126.08.227.202.301.363a.828.828 0 0 1 .08.465.828.828 0 0 1-.204.426L9.276 7.616a1.82 1.82 0 0 0-.33.556c-.074.199-.11.41-.11.637v4.438a.165.165 0 0 1-.02.082.166.166 0 0 1-.059.06.163.163 0 0 1-.08.026.167.167 0 0 1-.082-.019l-.966-.477a.827.827 0 0 1-.348-.301.828.828 0 0 1-.117-.446V8.809c0-.226-.036-.438-.11-.637Z" data-follow-fill="#8F9299"/>
+              </svg>
+              <span>筛选</span>
+            </span>
             <button type="button" class="ontology-filter is-on" data-kind="term">术语</button>
             <button type="button" class="ontology-filter is-on" data-kind="business_object">业务对象</button>
             <button type="button" class="ontology-filter is-on" data-kind="logical_entity">逻辑实体</button>
@@ -274,15 +293,15 @@
       <section class="view view-page" id="view-syslog" data-view="syslog">
         <div class="page-header tab-bar">
           <button class="tab active" data-tab="tools">
-            <span class="tab-glyph">▸</span> 工具调用
+            工具调用
             <span class="tab-count" id="count-tools">0</span>
           </button>
           <button class="tab" data-tab="llm">
-            <span class="tab-glyph">⟳</span> 大模型 I/O
+            大模型 I/O
             <span class="tab-count" id="count-llm">0</span>
           </button>
           <button class="tab" data-tab="system">
-            <span class="tab-glyph">⚙</span> 系统
+            系统
           </button>
         </div>
         <div class="page-body">
@@ -308,7 +327,7 @@
       <!-- ---------- VIEW: 数据源 ---------- -->
       <section class="view view-page" id="view-ontology-adapt" data-view="ontology-adapt">
         <div class="page-header">
-          <span class="page-title">⬡ 本体适配</span>
+          <span class="page-title"><span class="page-title-icon" data-feature-glyph="adapt"></span>本体适配</span>
         </div>
         <div class="page-body page-body-form">
           <div class="settings-field">
@@ -327,7 +346,7 @@
           <div class="settings-field">
             <label class="settings-label" for="sources-ontology">本体源</label>
             <select class="settings-select" id="sources-ontology"></select>
-            <div class="settings-hint">选择后请点击下方“保存并切换”才会生效；本地 Excel 仅用于离线测试 fallback。</div>
+            <div class="settings-hint">选择远程本体库时会自动同步其一对一对应的 Doris 数据库；点击“保存并切换”后一起生效。</div>
           </div>
           <div class="settings-field" id="sources-build-graph-row" hidden>
             <button class="btn btn-ghost" id="sources-build-graph" type="button">⚙ 用所选 Excel 建立图库 (NetworkX)</button>
@@ -345,13 +364,13 @@
       <!-- ---------- VIEW: 数据源 ---------- -->
       <section class="view view-page" id="view-sources" data-view="sources">
         <div class="page-header">
-          <span class="page-title">◈ 数据源</span>
+          <span class="page-title"><span class="page-title-icon" data-feature-glyph="sources"></span>数据源</span>
         </div>
         <div class="page-body page-body-form">
           <div class="settings-field">
             <label class="settings-label" for="sources-database">数据库源</label>
             <select class="settings-select" id="sources-database"></select>
-            <div class="settings-hint">Agent 取数所用的数据源:本地 SQLite 数据库(.db),或 Doris 实时只读 API。</div>
+            <div class="settings-hint">选择远程 Doris 数据库时会自动同步其一对一对应的本体库；点击“保存并切换”后一起生效。</div>
           </div>
           <div id="sources-doris-field" hidden>
             <div class="settings-label" style="margin-bottom:6px;">API 接口参数(Doris)</div>
@@ -398,7 +417,7 @@
       <!-- ---------- VIEW: 模型参数 ---------- -->
       <section class="view view-page" id="view-model" data-view="model">
         <div class="page-header">
-          <span class="page-title">⚙ 模型参数</span>
+          <span class="page-title"><span class="page-title-icon" data-feature-glyph="model"></span>模型参数</span>
         </div>
         <div class="page-body page-body-form">
           <div class="settings-field">

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -28,13 +29,21 @@ class RemoteOntologyClient:
         *,
         app_id: str = "",
         auth_token: str = "",
+        namespace: str = "",
         timeout: float = 30.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.repository_id = str(repository_id).strip()
         self.app_id = app_id.strip()
         self.auth_token = auth_token.strip()
+        self.namespace = namespace.strip()
         self.timeout = timeout
+        try:
+            self.cache_ttl = max(0.0, float(os.environ.get("ONTOLOGY_CACHE_TTL_SECONDS", "30")))
+        except ValueError:
+            self.cache_ttl = 30.0
+        self._object_cache: dict[str, tuple[float, list[dict[str, Any]], bool]] = {}
+        self._repository_page_cache: dict[tuple[int, int], tuple[float, dict[str, Any]]] = {}
         if not self.base_url:
             raise ValueError("ONTOLOGY_BASE_URL is required for the remote ontology backend")
         if not self.repository_id:
@@ -51,6 +60,7 @@ class RemoteOntologyClient:
             os.environ.get("ONTOLOGY_REPOSITORY_ID", ""),
             app_id=os.environ.get("ONTOLOGY_APP_ID", ""),
             auth_token=os.environ.get("ONTOLOGY_AUTH_TOKEN", ""),
+            namespace=os.environ.get("ONTOLOGY_NAMESPACE", ""),
             timeout=max(1.0, min(timeout, 120.0)),
         )
 
@@ -143,6 +153,32 @@ class RemoteOntologyClient:
             rows.extend(result.get("rows") or [])
         return rows[:safe_limit]
 
+    def list_objects(self, type_name: str, limit: int = 2000) -> list[dict[str, Any]]:
+        """Return complete property maps for one ontology type.
+
+        The managed repositories currently contain at most a few thousand
+        objects per type.  Keeping this primitive in the transport client lets
+        the lookup layer apply the same ranking and field aliases regardless
+        of the repository's metadata dialect.
+        """
+        safe_limit = max(1, min(int(limit), 5000))
+        cached = self._object_cache.get(type_name)
+        now = time.monotonic()
+        if cached and now - cached[0] <= self.cache_ttl and (cached[2] or len(cached[1]) >= safe_limit):
+            return cached[1][:safe_limit]
+        data = self.script_query("sql", f"SELECT FROM {type_name} LIMIT {safe_limit}")
+        rows: list[dict[str, Any]] = []
+        for result in data.get("results") or []:
+            for row in result.get("rows") or []:
+                if isinstance(row, dict):
+                    rows.append(row)
+        # Cache only the largest snapshot seen for the type; a prior LIMIT 1
+        # response must not masquerade as a complete later lookup.
+        previous = self._object_cache.get(type_name)
+        if previous is None or len(rows) >= len(previous[1]):
+            self._object_cache[type_name] = (now, rows, len(rows) < safe_limit)
+        return rows[:safe_limit]
+
     def script_query(
         self, language: str, script: str, params_list: Optional[list[list[Any]]] = None
     ) -> dict[str, Any]:
@@ -152,11 +188,20 @@ class RemoteOntologyClient:
         payload = self._request("POST", "/agent/ontology/scriptQuery", body=body)
         return payload.get("data") or {}
 
-    def metadata_query(self, query_config: dict[str, Any], common_config: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def metadata_query(self, analysis_config: dict[str, Any], common_config: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         payload = self._request(
             "POST",
             "/api/v1/analysis/meta/query",
-            body={"queryConfig": query_config, "commonConfig": common_config or {}},
+            body={"analysisConfig": analysis_config, "commonConfig": common_config or {}},
+        )
+        return payload.get("data") or {}
+
+    def data_query(self, analysis_config: dict[str, Any], common_config: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        """Execute a semantic metric/dimension query through the MAL API."""
+        payload = self._request(
+            "POST",
+            "/api/v1/analysis/data/query",
+            body={"analysisConfig": analysis_config, "commonConfig": common_config or {}},
         )
         return payload.get("data") or {}
 
@@ -166,9 +211,18 @@ class RemoteOntologyClient:
 
     def list_repositories(self, *, page: int = 1, size: int = 100) -> dict[str, Any]:
         """List selectable ontology repositories from the documented manager API."""
-        return self._request(
+        safe_page = max(1, page)
+        safe_size = max(1, min(size, 100))
+        cache_key = (safe_page, safe_size)
+        cached = self._repository_page_cache.get(cache_key)
+        now = time.monotonic()
+        if cached and now - cached[0] <= self.cache_ttl:
+            return cached[1]
+        data = self._request(
             "GET",
             "/system/manager/ontology-repository",
-            query={"page": max(1, page), "size": max(1, min(size, 100))},
+            query={"page": safe_page, "size": safe_size},
             include_repository_header=False,
         ).get("data") or {}
+        self._repository_page_cache[cache_key] = (now, data)
+        return data

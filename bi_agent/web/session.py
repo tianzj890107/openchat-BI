@@ -23,10 +23,14 @@ from __future__ import annotations
 import copy
 import re
 import time
-from typing import Any, Generator, Optional
+from typing import Any, Callable, Generator, Optional
 
 from open_claude.agent_def import AgentDef
 from open_claude.prompt import build_system_prompt
+from bi_agent.tools.analysis_policy import (
+    has_action_section,
+    has_root_cause_section,
+)
 from open_claude.skills.bundled import init_bundled_skills
 from open_claude.skills.registry import load_skills
 from open_claude.tokens import CostTracker
@@ -37,6 +41,7 @@ from ..llm.runtime_config import get_config as get_llm_config
 from ..ontology.store import OntologyStore
 from ..tools.ask_user import ASK_USER_TOOL_NAME
 from ..tools.chart_multidim_tools import extract_multidim_chart_spec
+from ..tools.chart_policy import chart_skip_reason, skipped_chart_output
 from ..tools.chart_tools import extract_chart_spec
 from ..tools.table_tools import extract_table_spec
 from ..tools.todo_tools import extract_todo_spec
@@ -60,7 +65,7 @@ REMOTE_ENTITY_LINE_RE = re.compile(
 # SQL/data fetch but no render tool — or the assistant typed a Markdown
 # table into the chat — we re-prompt the model to call TableGenerate.
 RENDER_TOOLS = {"TableGenerate", "ChartGenerate", "ChartGenerateMultiDim"}
-DATA_FETCH_TOOLS = {"SQLRun"}
+DATA_FETCH_TOOLS = {"SQLRun", "MetricDataQuery"}
 
 # Matches a Markdown table separator row, e.g. "| --- | :---: | ---: |"
 _MD_TABLE_SEP_RE = re.compile(
@@ -71,6 +76,20 @@ _MD_TABLE_SEP_RE = re.compile(
 
 def _has_markdown_table(text: str) -> bool:
     return bool(text) and bool(_MD_TABLE_SEP_RE.search(text))
+
+
+RESPONSE_PRESENTATION_RULES = """# 输出展示规范
+- 本规则优先于 Agent 定义中任何旧的表情模板:正文、标题、结论和建议只使用纯文字或标准 Markdown,不要输出装饰性表情符号、图标前缀或图标专用加粗标记。
+- 结论、根因分析、行动建议以及图表/表格类型徽标由界面自动生成，回答中不要重复输出这些图标或徽标。
+- 保留必要的 Markdown 加粗、列表和表格结构，但不要用表情符号替代标题层级或项目符号。
+
+# 分析深度与卡片约束
+- 先按用户原问题的整体语义判断 L1–L5，不要只按关键词匹配：L1 只交付数据/图表/结论；L2 只定位异常、偏差、波动和问题；L3 交付根因证据链、证据验证和 1–2 条建议雏形；L4 交付包含效果/成本/风险/周期并带推荐项的完整方案；L5 交付包含责任视角、时间节点、完成标准、监控指标和复盘机制的执行计划。
+- L1 不主动做根因或建议，L2 不主动展开根因；“怎么办/给方案/如何改善”是 L4 语义，不等同于 L3 根因意图；“执行计划/落地/监控/复盘”是 L5 语义。
+- 只要最终回答出现“根因分析”“根因证据链”或“根因”章节，同一轮无条件必须继续输出“行动建议”“建议雏形”“执行建议”或“建议”章节；不能因为用户没有明确要求建议而结束。
+- 行动建议必须基于已验证的根因证据，至少给 1–2 条具体动作，不重复根因，不写空泛的“加强管理”，也不能声称动作已经执行。
+- 使用纯文字标题“结论”“根因分析”“行动建议”，不要用表情符号作为标题或机器标记。
+"""
 
 
 class WebSession:
@@ -89,11 +108,13 @@ class WebSession:
         role_block: Optional[str] = None,
         ontology_backend: str = "local",
         ontology_repository_id: str = "",
+        tool_executors: Optional[dict[str, Callable[[dict[str, Any], str], str]]] = None,
     ) -> None:
         self.cwd = cwd
         self.agent_def = agent_def
         self.ontology_store = ontology_store
         self.messages: list[dict[str, Any]] = []
+        self.first_user_question = ""
         self.cost_tracker = CostTracker()
         self.max_iterations = max_iterations or agent_def.max_iterations or 40
 
@@ -113,6 +134,9 @@ class WebSession:
         # not authoritative when the active ontology source is remote.
         self.ontology_backend = str(ontology_backend or "local").strip().lower()
         self.ontology_repository_id = str(ontology_repository_id or "").strip()
+        # Source-facing tools are captured per browser session. Render and
+        # utility tools continue to use the shared immutable registry.
+        self._tool_executors = dict(tool_executors or {})
 
         # Skills & system prompt (skills must be loaded before prompt build)
         init_bundled_skills()
@@ -129,6 +153,12 @@ class WebSession:
         self.pending_tool_use_id: Optional[str] = None
         self.pending_choice_spec: Optional[dict[str, Any]] = None
         self._pending_sibling_results: list[dict[str, Any]] = []
+        # Per-turn chart policy state.  This is deterministic and intentionally
+        # independent of the LLM provider: list/enumeration requests whose
+        # chart values are all identical should render as a table only.
+        self._active_user_text = ""
+        self._chart_suppressed_this_turn = False
+        self._table_rendered_this_turn = False
 
     # ------------------------------------------------------------------
     # System-prompt construction (honours per-session overrides)
@@ -153,6 +183,7 @@ class WebSession:
         extras: list[str] = []
         if self._context_header:
             extras.append(self._context_header.strip())
+        extras.append(RESPONSE_PRESENTATION_RULES.strip())
         if self._role_block:
             extras.append(self._role_block.strip())
         if self._report_context_block:
@@ -196,8 +227,15 @@ class WebSession:
     # Public API
     # ------------------------------------------------------------------
 
-    def generate_turn(self, user_text: str) -> Generator[dict[str, Any], None, None]:
+    def generate_turn(self, user_text: str, visible_user_text: Optional[str] = None) -> Generator[dict[str, Any], None, None]:
         """Yield events for one user turn (user message → assistant → tools → ...)."""
+        self._active_user_text = str(user_text or "")
+        visible = str(visible_user_text if visible_user_text is not None else user_text or "")
+        visible = re.sub(r"\s+", " ", visible).strip()[:60]
+        if visible and not self.first_user_question:
+            self.first_user_question = visible
+        self._chart_suppressed_this_turn = False
+        self._table_rendered_this_turn = False
         self.messages.append({"role": "user", "content": user_text})
         yield {"type": "user_message", "text": user_text}
         yield from self._run_loop()
@@ -268,6 +306,9 @@ class WebSession:
         called_tools_this_turn: set[str] = set()
         text_concat_this_turn: str = ""
         enforced_render: bool = False
+        enforced_action: bool = False
+        root_cause_seen = False
+        action_seen = False
 
         for iteration in range(self.max_iterations):
             yield {"type": "iteration_start", "iteration": iteration}
@@ -326,6 +367,8 @@ class WebSession:
                 called_tools_this_turn.add(tu["name"])
             if text_buffer:
                 text_concat_this_turn += "\n" + text_buffer
+                root_cause_seen = root_cause_seen or has_root_cause_section(text_buffer)
+                action_seen = action_seen or has_action_section(text_buffer)
 
             if stop_reason != "tool_use" or not tool_uses:
                 # ---- Render enforcement ------------------------------------
@@ -338,12 +381,19 @@ class WebSession:
                 fetched_data = bool(called_tools_this_turn & DATA_FETCH_TOOLS)
                 wrote_md_table = _has_markdown_table(text_concat_this_turn)
                 rendered = bool(called_tools_this_turn & RENDER_TOOLS)
+                table_rendered = (
+                    "TableGenerate" in called_tools_this_turn
+                    or self._table_rendered_this_turn
+                )
+                suppressed_chart_needs_table = (
+                    self._chart_suppressed_this_turn and not table_rendered
+                )
 
                 if (
                     not enforced_render
                     and has_render_tool_available
-                    and (fetched_data or wrote_md_table)
-                    and not rendered
+                    and (fetched_data or wrote_md_table or suppressed_chart_needs_table)
+                    and (not rendered or suppressed_chart_needs_table)
                 ):
                     enforced_render = True
                     reasons: list[str] = []
@@ -351,21 +401,31 @@ class WebSession:
                         reasons.append("已经执行了 `SQLRun` 取数")
                     if wrote_md_table:
                         reasons.append("回复正文里直接写了 Markdown 表格")
+                    if suppressed_chart_needs_table:
+                        reasons.append("列表型问题的图表数值全部相同")
                     reason_text = "且".join(reasons)
-                    reminder = (
-                        "⚠️ **强制纪律检查 · 渲染工具未调用**\n\n"
-                        f"你这一轮{reason_text},但**没有调用** `TableGenerate` / "
-                        "`ChartGenerate` / `ChartGenerateMultiDim`,看板和对话里都不会出现"
-                        "结构化卡片,直接违反 SOP。\n\n"
-                        "**现在立刻补做**:\n"
-                        "1. 调用 **`TableGenerate`** 把核心数据渲染成表格卡片"
-                        "(必须;列名、数据行、可选 footer 都给齐,不要再粘 Markdown 表)。\n"
-                        "2. 如果数据有时间趋势 / 维度对比意义,在表格之后再追加一次 "
-                        "**`ChartGenerate`** 渲染折线 / 柱状 / 饼图。\n"
-                        "3. 渲染完成后用 1~2 句话给结论,不要复述表格里已经有的数字。\n\n"
-                        "⚠️ 不要再用纯文本或 Markdown 表代替工具调用。"
-                    )
-                    self.messages.append({"role": "user", "content": reminder})
+                    if suppressed_chart_needs_table:
+                        reminder = (
+                            "⚠️ **渲染规则提醒**\n\n"
+                            f"你这一轮{reason_text}。该问题属于枚举/列表展示，"
+                            "不要重试 ChartGenerate；现在只调用 **`TableGenerate`** "
+                            "输出完整表格，再用 1~2 句话给结论。"
+                        )
+                    else:
+                        reminder = (
+                            "⚠️ **强制纪律检查 · 渲染工具未调用**\n\n"
+                            f"你这一轮{reason_text},但**没有调用** `TableGenerate` / "
+                            "`ChartGenerate` / `ChartGenerateMultiDim`,看板和对话里都不会出现"
+                            "结构化卡片,直接违反 SOP。\n\n"
+                            "**现在立刻补做**:\n"
+                            "1. 调用 **`TableGenerate`** 把核心数据渲染成表格卡片"
+                            "(必须;列名、数据行、可选 footer 都给齐,不要再粘 Markdown 表)。\n"
+                            "2. 如果数据有时间趋势 / 维度对比意义,在表格之后再追加一次 "
+                            "**`ChartGenerate`** 渲染折线 / 柱状 / 饼图。\n"
+                            "3. 渲染完成后用 1~2 句话给结论,不要复述表格里已经有的数字。\n\n"
+                            "⚠️ 不要再用纯文本或 Markdown 表代替工具调用。"
+                        )
+                    self.messages.append({"role": "user", "content": reminder, "internal": True})
                     yield {
                         "type": "render_enforce",
                         "iteration": iteration,
@@ -374,6 +434,25 @@ class WebSession:
                         "message": reminder,
                     }
                     continue  # re-prompt LLM with the reminder appended
+
+                # A root-cause answer without an action section is always
+                # incomplete. This is an output invariant, not an intent gate:
+                # even if the model over-produces root cause for an L1/L2
+                # question, the response must not finish with root cause alone.
+                if (
+                    not enforced_action
+                    and root_cause_seen
+                    and not action_seen
+                ):
+                    enforced_action = True
+                    reminder = (
+                        "本轮回复已经出现根因章节,但还没有行动章节,不能结束本轮。"
+                        "请基于本轮已经验证的根因证据,继续补充一个纯文字标题为‘行动建议’或‘建议雏形’的小节。"
+                        "至少给出 1–2 条具体动作,每条都要对应具体根因切片和数据证据;"
+                        "不要重复根因分析,不要写‘加强管理’等空泛表述,不要声称动作已经执行,不要使用表情符号。"
+                    )
+                    self.messages.append({"role": "user", "content": reminder, "internal": True})
+                    continue
 
                 break
 
@@ -390,15 +469,14 @@ class WebSession:
                     if tu["id"] == ask_user_tu["id"]:
                         continue
                     t0 = time.time()
-                    try:
-                        output = execute_tool(tu["name"], tu["input"], self.cwd)
-                    except Exception as e:
-                        output = f"Error executing {tu['name']}: {e}"
+                    output, chart_was_suppressed = self._execute_tool(tu)
+                    self._chart_suppressed_this_turn |= chart_was_suppressed
                     duration_ms = int((time.time() - t0) * 1000)
                     display_output, chart = extract_chart_spec(output)
                     display_output, table = extract_table_spec(display_output)
                     display_output, multi_chart = extract_multidim_chart_spec(display_output)
                     display_output, todos = extract_todo_spec(display_output)
+                    self._table_rendered_this_turn |= table is not None
                     llm_output = display_output if (chart or table or multi_chart or todos) else output
                     entities = self._extract_entities(display_output, tu["name"])
                     yield {
@@ -438,10 +516,8 @@ class WebSession:
             tool_results: list[dict[str, Any]] = []
             for tu in tool_uses:
                 t0 = time.time()
-                try:
-                    output = execute_tool(tu["name"], tu["input"], self.cwd)
-                except Exception as e:
-                    output = f"Error executing {tu['name']}: {e}"
+                output, chart_was_suppressed = self._execute_tool(tu)
+                self._chart_suppressed_this_turn |= chart_was_suppressed
                 duration_ms = int((time.time() - t0) * 1000)
 
                 # Pull out chart/table specs if present; keep the display text
@@ -450,6 +526,7 @@ class WebSession:
                 display_output, table = extract_table_spec(display_output)
                 display_output, multi_chart = extract_multidim_chart_spec(display_output)
                 display_output, todos = extract_todo_spec(display_output)
+                self._table_rendered_this_turn |= table is not None
                 llm_output = display_output if (chart or table or multi_chart or todos) else output
 
                 entities = self._extract_entities(display_output, tu["name"])
@@ -479,6 +556,24 @@ class WebSession:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    def _execute_tool(self, tool_use: dict[str, Any]) -> tuple[str, bool]:
+        """Execute a tool, applying the deterministic chart usefulness guard."""
+
+        name = str(tool_use.get("name") or "")
+        params = tool_use.get("input")
+        if not isinstance(params, dict):
+            params = {}
+        reason = chart_skip_reason(self._active_user_text, name, params)
+        if reason:
+            return skipped_chart_output(reason), True
+        try:
+            executor = self._tool_executors.get(name)
+            if executor is not None:
+                return executor(params, self.cwd), False
+            return execute_tool(name, params, self.cwd), False
+        except Exception as exc:
+            return f"Error executing {name}: {exc}", False
 
     def _stream_one_response(self, iteration: int):
         """Consume one LLM stream; yield per-delta events; return summary."""

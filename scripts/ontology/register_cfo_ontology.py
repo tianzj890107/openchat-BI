@@ -10,9 +10,18 @@ ChatBI业务元数据_硕磐财务管理.xlsx 的全部 9 个本体页签:
 脚本可重复执行:执行前先按编码前缀清除上一次写入的 CFO 行,保证幂等。
 """
 
+import sys
+from pathlib import Path
+
 import openpyxl
 
-XLSX = "ChatBI业务元数据_硕磐财务管理.xlsx"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from bi_agent.paths import SPREADSHEETS_DIR
+
+XLSX = PROJECT_ROOT / SPREADSHEETS_DIR / "ChatBI业务元数据_硕磐财务管理.xlsx"
 CUR, PRE = "2026-05", "2026-04"
 
 # ---- 8 张表的列规格: (中文名, 物理列, 数据类型, 定义, 是否主键) ----------
