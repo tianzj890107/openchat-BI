@@ -4,45 +4,47 @@
  * ==================================================================== */
 
 :root {
-  /* Semi-inspired dark palette from the AI 工艺 dialogue specification. */
-  --bg-0:          #121212;   /* background */
-  --bg-1:          #1F1F1F;   /* deep-space gray / panel */
-  --bg-2:          #2D2D2D;   /* charcoal card */
-  --bg-3:          #383838;   /* card hover */
-  --bg-elev:       #242424;   /* code / pre */
-  --bg-input:      #1F1F1F;
+  /* Ontology Agent light workbench palette. */
+  --bg-0:          #F7F9FC;
+  --bg-1:          #FFFFFF;
+  --bg-2:          #FFFFFF;
+  --bg-3:          #EFF6FF;
+  --bg-elev:       #F1F5F9;
+  --bg-input:      #FFFFFF;
 
   /* Borders */
-  --border-1:      #424242;
-  --border-2:      #555555;
-  --border-accent: #1A73E8;
+  --border-1:      #DBE4EC;
+  --border-2:      #DBE4EC;
+  --border-accent: #2563EB;
 
   /* Text */
-  --fg-0:          #FFFFFF;
-  --fg-1:          #E0E0E0;
-  --fg-2:          #9E9E9E;
-  --fg-3:          #757575;
+  --fg-0:          #1E3A5F;
+  --fg-1:          #334155;
+  --fg-2:          #64748B;
+  --fg-3:          #94A3B8;
 
   /* Accents — blue/orange/green are reserved for interaction state. */
-  --accent-blue:   #1A73E8;
-  --accent-cyan:   #1A73E8;
-  --accent-teal:   #00C853;
-  --accent-green:  #00C853;
-  --accent-amber:  #FF6D00;
-  --accent-red:    #8D6E63;
-  --accent-violet: #607D8B;
-  --accent-lime:   #00C853;
-  --ok:            #00C853;
+  --accent-blue:   #2563EB;
+  --accent-cyan:   #0F766E;
+  --accent-teal:   #0F766E;
+  --accent-green:  #15803D;
+  --accent-amber:  #C2410C;
+  --accent-red:    #B91C1C;
+  --accent-violet: #7C3AED;
+  --accent-lime:   #65A37A;
+  --ok:            #15803D;
+  --thinking-approval: #B45309;
+  --thinking-approval-soft: #FEF3C7;
 
   /* Entity kind tints use the same restrained semantic palette. */
-  --k-term:      #00C853;
-  --k-bo:        #F05A5A;
-  --k-le:        #00C853;
-  --k-at:        #1A73E8;
-  --k-relation:  #607D8B;
-  --k-metric:    #FF6D00;
-  --k-activity:  #9E9E9E;
-  --k-rule:      #8D6E63;
+  --k-term:      #0F766E;
+  --k-bo:        #B91C1C;
+  --k-le:        #15803D;
+  --k-at:        #2563EB;
+  --k-relation:  #64748B;
+  --k-metric:    #C2410C;
+  --k-activity:  #64748B;
+  --k-rule:      #7C3AED;
 
   /* Typography */
   --font-sans: "PingFang SC", "SF Pro Display", -apple-system, sans-serif;
@@ -75,34 +77,36 @@
  * dashboard's i-Agent). Only the palette variables are overridden, so every
  * component that consumes them flips to a white base with no markup changes. */
 html.theme-light {
-  --bg-0:          #F7F9FB;   /* app background */
+  --bg-0:          #F7F9FC;   /* app background */
   --bg-1:          #FFFFFF;   /* panel */
-  --bg-2:          #F7F9FB;   /* card */
+  --bg-2:          #FFFFFF;   /* card */
   --bg-3:          #EEF6FF;   /* card hover */
-  --bg-elev:       #F4F7FB;   /* code / pre */
+  --bg-elev:       #F1F5F9;   /* code / pre */
   --bg-input:      #FFFFFF;
 
-  --border-1:      #E8EBEF;
-  --border-2:      #AEBDCA;
-  --border-accent: #0B7FF3;
+  --border-1:      #DBE4EC;
+  --border-2:      #DBE4EC;
+  --border-accent: #2563EB;
 
-  --fg-0:          #111418;   /* primary text — black */
-  --fg-1:          #2C3543;
-  --fg-2:          #5A6675;
-  --fg-3:          #8A97A6;
+  --fg-0:          #1E3A5F;
+  --fg-1:          #334155;
+  --fg-2:          #64748B;
+  --fg-3:          #94A3B8;
 
-  --accent-blue:   #0B7FF3;
-  --accent-cyan:   #006EFF;
-  --accent-teal:   #28C79D;
-  --accent-green:  #28C79D;
-  --accent-amber:  #E8B339;
-  --accent-red:    #F05A5A;
-  --accent-violet: #7C83FD;
-  --accent-lime:   #28C79D;
-  --ok:            #28C79D;
+  --accent-blue:   #2563EB;
+  --accent-cyan:   #0F766E;
+  --accent-teal:   #0F766E;
+  --accent-green:  #15803D;
+  --accent-amber:  #C2410C;
+  --accent-red:    #B91C1C;
+  --accent-violet: #7C3AED;
+  --accent-lime:   #65A37A;
+  --ok:            #15803D;
+  --thinking-approval: #B45309;
+  --thinking-approval-soft: #FEF3C7;
 }
 html.theme-light,
-html.theme-light body { background: #F7F9FB; color: var(--fg-0); }
+html.theme-light body { background: #F7F9FC; color: var(--fg-0); }
 /* Scrollbars + faint white-on-dark tints don't read on a white base — neutralize */
 html.theme-light table.data-grid tbody tr:nth-child(odd) { background: rgba(15, 23, 42, 0.025); }
 html.theme-light ::-webkit-scrollbar-thumb { background: #C7D0DB; }
@@ -215,6 +219,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .chat-pane { border-right: 1px solid var(--border-1); }
 .dashboard-pane { border-right: 1px solid var(--border-1); background: var(--bg-0); }
 .pane-header {
+  position: relative;
   display: flex;
   align-items: center;
   padding: 0 14px;
@@ -227,8 +232,15 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   letter-spacing: 1.2px;
   gap: 14px;
 }
-.pane-label { color: var(--fg-2); text-transform: uppercase; font-weight: 600; }
-.pane-hint { color: var(--fg-3); margin-left: auto; }
+.pane-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--fg-2);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.pane-hint { display: none; }
 
 /* ---------- PINNED TASK LIST (TodoWrite) ---------- */
 .chat-sop {
@@ -1465,6 +1477,23 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 .chart-head .chart-saved a { color: var(--accent-cyan); text-decoration: none; }
 .chart-head .chart-saved a:hover { text-decoration: underline; }
+.chart-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 18px;
+  padding: 2px 0 6px;
+  background: transparent;
+  border: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.pro-ui-chart-card {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
 .chart-canvas {
   width: 100%;
   height: 340px;
@@ -2457,6 +2486,19 @@ body[data-dashboard="collapsed"] #btn-toggle-dashboard {
   border: 1px solid var(--border-1);
   border-radius: 12px;
   background: var(--bg-1);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-1) transparent;
+}
+.table-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.table-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-1);
+  border-radius: 999px;
 }
 table.data-grid {
   width: 100%;
@@ -2939,7 +2981,7 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 }
 .dash-chart-canvas {
   width: 100%;
-  height: 220px;
+  height: 340px;
 }
 .dash-chart-err {
   padding: 14px;
@@ -3286,7 +3328,7 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
   padding: 6px 10px;
 }
 .dash-multidim .dash-chart-canvas {
-  height: 240px;
+  height: 360px;
 }
 
 /* ====================================================================
@@ -3837,6 +3879,37 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   box-shadow: none !important;
   background: #F7F9FB !important;
 }
+.antd-workbench-sidebar.antd-workbench-sidebar-hidden {
+  display: none !important;
+}
+.antd-sidebar-hidden-reopen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #DBE4EC;
+  border-radius: 8px;
+  background: #FFFFFF;
+  color: #2563EB;
+  cursor: pointer;
+}
+.antd-sidebar-hidden-reopen:hover { background: #EFF6FF; }
+body[data-layout="single"] .antd-sidebar-hidden-reopen {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+body[data-layout="single"] .antd-sidebar-hidden-reopen .anticon,
+body[data-layout="single"] .antd-sidebar-hidden-reopen svg {
+  width: 1.2em !important;
+  height: 1.2em !important;
+  font-size: 1.2em !important;
+}
 .antd-workbench-sidebar.ant-layout-sider,
 .antd-workbench-sidebar .ant-layout-sider-children,
 .antd-workbench-sidebar .ant-menu,
@@ -4153,6 +4226,8 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .antd-account-collapsed:hover { background: #e8f3ff; color: #1677ff; }
 .antd-account-collapsed .antd-feature-icon { margin-inline-end: 0; }
 #antd-workflow-root { padding: 0 4px 4px; }
+#antd-dashboard-workflow-root { display: none; padding: 0 4px 4px; }
+body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
 #chat-sop, #chat-todo { display: none !important; }
 .antd-workflow-panels .ant-collapse { background: transparent; border: 0; }
 .antd-workflow-panels .ant-collapse-item { border-bottom: 1px solid #f0f0f0; }
@@ -4220,9 +4295,22 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   display: none !important;
 }
 .antd-workflow-sop .ant-thought-chain-item-icon {
-  background: transparent !important;
-  border-radius: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #fff !important;
+  background-color: #fff !important;
+  background-image: none !important;
+  border-radius: 50% !important;
   color: inherit !important;
+  box-shadow: none !important;
+}
+.antd-workflow-sop .ant-thought-chain-item-icon::before,
+.antd-workflow-sop .ant-thought-chain-item-icon::after {
+  content: none !important;
+  display: none !important;
+  background: #fff !important;
+  box-shadow: none !important;
 }
 /* Ant Design's status styles are injected at runtime and use a more
    specific selector for completed items. Override both the icon surface and
@@ -4248,11 +4336,14 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   display: none !important;
 }
 .antd-workflow-sop .antd-sop-status-circle {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-width: 1px;
-  color: #1677ff;
+  border-radius: 50%;
+  background: transparent !important;
 }
+.antd-workflow-sop .antd-sop-status-in_progress { color: #1677ff; }
+.antd-workflow-sop .antd-sop-status-pending { color: #b8c0cc; }
 .antd-workflow-sop .antd-sop-status-check {
   font-size: 10px;
   line-height: 10px;
@@ -4271,7 +4362,7 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   border-radius: 50%;
 }
 .antd-sop-status-in_progress { color: #1677ff; }
-.antd-sop-status-pending { color: #1677ff; }
+.antd-sop-status-pending { color: #b8c0cc; }
 .antd-sop-status-check {
   display: block;
   color: #28a36a;
@@ -4549,6 +4640,51 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   transform: none !important;
   line-height: 20px !important;
 }
+.antd-workflow-sop .antd-step-host .ant-thought-chain-item-icon,
+.antd-workflow-sop .antd-step-host .ant-thought-chain-item-icon::before,
+.antd-workflow-sop .antd-step-host .ant-thought-chain-item-icon::after {
+  background: #fff !important;
+  background-color: #fff !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.antd-workflow-sop .antd-step-host .ant-thought-chain-item-icon::before,
+.antd-workflow-sop .antd-step-host .ant-thought-chain-item-icon::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* Final SOP-only reset: ThoughtChain may paint the status color on the item
+ * or header rather than on the icon node. The SOP uses its own ring marker,
+ * so every surrounding layer must remain a plain white surface. */
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-header,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::before,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::after,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-header::before,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-header::after,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-content::before,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-content::after,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-footer::before,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-footer::after {
+  background: #fff !important;
+  background-color: #fff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::before,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::after,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-header::before,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-header::after,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-content::before,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-content::after,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-footer::before,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-footer::after {
+  content: none !important;
+  display: none !important;
+}
 .antd-step-host .ant-thought-chain-item-collapse-icon { display: none !important; }
 .antd-step-host .ant-thought-chain-item-content::before { display: none !important; }
 .antd-step-host .ant-thought-chain-item-header::before {
@@ -4684,13 +4820,13 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   line-height: 1;
   text-align: center;
 }
-.antd-step-tone-blue { --thinking-color: #0B7FF3; --thinking-color-soft: #DCEBFF; color: var(--thinking-color) !important; }
-.antd-step-tone-green { --thinking-color: #28C79D; --thinking-color-soft: #DDF7EE; color: var(--thinking-color) !important; }
-.antd-step-tone-amber { --thinking-color: #E8B339; --thinking-color-soft: #FFF4D6; color: var(--thinking-color) !important; }
-.antd-step-tone-slate { --thinking-color: #607D8B; --thinking-color-soft: #E6EEF1; color: var(--thinking-color) !important; }
-.antd-step-tone-violet { --thinking-color: #7C83FD; --thinking-color-soft: #EDEBFF; color: var(--thinking-color) !important; }
-.antd-step-tone-red { --thinking-color: #F05A5A; --thinking-color-soft: #FFE3E3; color: var(--thinking-color) !important; }
-.antd-step-tone-muted { --thinking-color: #8A97A6; --thinking-color-soft: #EEF1F4; color: var(--thinking-color) !important; }
+.antd-step-tone-blue { --thinking-color: #2563EB; --thinking-color-soft: #DBEAFE; color: var(--thinking-color) !important; }
+.antd-step-tone-green { --thinking-color: #15803D; --thinking-color-soft: #DCFCE7; color: var(--thinking-color) !important; }
+.antd-step-tone-amber { --thinking-color: #C2410C; --thinking-color-soft: #FFEDD5; color: var(--thinking-color) !important; }
+.antd-step-tone-slate { --thinking-color: #64748B; --thinking-color-soft: #E2E8F0; color: var(--thinking-color) !important; }
+.antd-step-tone-violet { --thinking-color: #7C3AED; --thinking-color-soft: #EDE9FE; color: var(--thinking-color) !important; }
+.antd-step-tone-red { --thinking-color: #B91C1C; --thinking-color-soft: #FEE2E2; color: var(--thinking-color) !important; }
+.antd-step-tone-muted { --thinking-color: #64748B; --thinking-color-soft: #F1F5F9; color: var(--thinking-color) !important; }
 .antd-step-result-icon.antd-step-tool-icon {
   background: var(--thinking-color-soft, #EEF1F4) !important;
   color: var(--thinking-color, #8A97A6) !important;
@@ -5705,5 +5841,507 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 .chat-scroll .chat-action-card .antd-dashboard-bubble .ant-bubble-content {
   background: #ffffff !important;
   background-color: #ffffff !important;
-  border-color: #d9dee7 !important;
+  border-color: #DBE4EC !important;
+}
+
+/* ---------- ONTOLOGY AGENT PALETTE ENFORCEMENT ----------
+ * Keep this final block after legacy component rules: the workbench has both
+ * the original runtime markup and Ant Design mounted markup, so the semantic
+ * palette must win in both paths. */
+body,
+.app,
+.split,
+.chat-pane,
+.dashboard-pane,
+.inspector-pane,
+.view-page,
+.view-page .page-body,
+.view-page .page-footer {
+  background: #F7F9FC;
+  color: #334155;
+}
+.topbar,
+.pane-header,
+.chat-sop,
+.chat-todo,
+.view-page .settings-section,
+.view-page .page-header,
+.antd-workbench-sidebar,
+.antd-workbench-sidebar .ant-layout-sider-children {
+  background: #FFFFFF !important;
+  color: #334155;
+  border-color: #DBE4EC !important;
+}
+.brand-mark,
+.brand-sub,
+.antd-brand-mark,
+.antd-agent-mark {
+  color: #315873 !important;
+}
+.brand-name,
+.antd-workbench-sidebar .ant-menu-title-content,
+.antd-workflow-title,
+.view-page .page-title,
+.view-page .section-title {
+  color: #1E3A5F !important;
+}
+.topbar-meta,
+.pane-hint,
+.pane-label,
+.chat-sop-title,
+.chat-todo-title,
+.chat-sop-count,
+.chat-todo-count,
+.antd-recent-meta,
+.antd-workflow-empty-sop,
+.choice-hint {
+  color: #64748B !important;
+}
+.chat-scroll,
+.dashboard-scroll,
+.inspector-scroll,
+.msg-assistant .msg-body,
+.antd-message-assistant .ant-bubble-content,
+.antd-dashboard-card-host .ant-bubble-content,
+.antd-result-card,
+.chart-card,
+.table-card,
+.multidim-card,
+.dash-card,
+.choice-card,
+.tool-card,
+.llm-card,
+.entity-card {
+  background: #FFFFFF !important;
+  color: #334155 !important;
+  border-color: #DBE4EC !important;
+}
+.msg-user,
+.msg-user .msg-body,
+.msg.antd-message-enhanced .antd-message-user .ant-bubble-content,
+.antd-message-user .ant-bubble-content,
+.antd-dashboard-user .ant-bubble-content {
+  background: linear-gradient(135deg, #2563EB, #1E40AF) !important;
+  color: #FFFFFF !important;
+}
+.msg-body,
+.msg-assistant .msg-body,
+.antd-message-assistant .ant-bubble-content,
+.antd-dashboard-agent .ant-bubble-content,
+.antd-result-title-text,
+.choice-label,
+.choice-question,
+.entity-name,
+.tool-preview,
+.llm-card,
+.view-page .settings-label {
+  color: #334155 !important;
+}
+.msg-role.assistant,
+.msg-iter,
+.tool-duration,
+.llm-card .summary,
+.llm-card .usage,
+.entity-chevron,
+.choice-detail,
+.choice-summary,
+.step-summary,
+.step-duration {
+  color: #64748B !important;
+}
+button:hover,
+.tab:hover,
+.chat-sop-head:hover,
+.chat-todo-head:hover,
+.entity-head:hover,
+.tool-head:hover,
+.llm-head:hover,
+.antd-recent-item:hover,
+.antd-workbench-sidebar .ant-menu-item:hover,
+.antd-step-host .ant-thought-chain-item-header:hover,
+.choice-option:hover {
+  background: #EFF6FF !important;
+}
+button,
+input,
+textarea,
+select,
+.settings-input,
+.settings-select,
+.choice-manual-input {
+  border-color: #DBE4EC;
+}
+.btn-primary,
+.composer-send,
+.choice-confirm,
+.dash-export-btn,
+.antd-workbench-sidebar .ant-menu-item-selected {
+  background: linear-gradient(135deg, #2563EB, #1E40AF) !important;
+  border-color: #2563EB !important;
+  color: #FFFFFF !important;
+}
+.btn-primary:hover,
+.composer-send:hover,
+.choice-confirm:hover:not(:disabled),
+.antd-workbench-sidebar .ant-menu-item-selected:hover {
+  background: #1E40AF !important;
+}
+.antd-recent-item.active,
+.antd-recent-item.active:hover,
+.antd-account-collapsed:hover,
+.antd-workflow-panels .antd-question-item.active,
+.antd-workflow-panels .antd-question-item:hover,
+.antd-workflow-panels .antd-question-item:focus {
+  background: #EFF6FF !important;
+  color: #2563EB !important;
+}
+.antd-sop-title.is-in_progress,
+.antd-sop-status-in_progress,
+.antd-sop-status-circle.antd-sop-status-in_progress {
+  color: #2563EB !important;
+}
+.antd-sop-title.is-pending,
+.antd-sop-status-pending,
+.antd-sop-status-circle.antd-sop-status-pending {
+  color: #94A3B8 !important;
+}
+.antd-sop-title.is-completed,
+.antd-sop-status-check,
+.chat-todo-item.is-completed .chat-todo-box {
+  color: #15803D !important;
+}
+.antd-step-tone-blue { --thinking-color: #2563EB; --thinking-color-soft: #DBEAFE; color: #2563EB !important; }
+.antd-step-tone-muted,
+.antd-step-tone-slate { --thinking-color: #64748B; --thinking-color-soft: #E2E8F0; color: #64748B !important; }
+.antd-step-tone-green { --thinking-color: #15803D; --thinking-color-soft: #DCFCE7; color: #15803D !important; }
+.antd-step-tone-teal { --thinking-color: #0F766E; --thinking-color-soft: #CCFBF1; color: #0F766E !important; }
+.antd-step-tone-amber { --thinking-color: #C2410C; --thinking-color-soft: #FFEDD5; color: #C2410C !important; }
+.antd-step-tone-approval { --thinking-color: #B45309; --thinking-color-soft: #FEF3C7; color: #B45309 !important; }
+.antd-step-tone-violet { --thinking-color: #7C3AED; --thinking-color-soft: #EDE9FE; color: #7C3AED !important; }
+.antd-step-tone-red { --thinking-color: #B91C1C; --thinking-color-soft: #FEE2E2; color: #B91C1C !important; }
+.antd-step-thinking,
+.antd-step-thinking-mark .thinking-dot {
+  color: #2563EB !important;
+  background: #2563EB !important;
+}
+.antd-step-host .ant-thought-chain-item-icon {
+  background: var(--thinking-color-soft, #DBEAFE) !important;
+  color: var(--thinking-color, #2563EB) !important;
+}
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::before,
+#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::after {
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+  background-image: none !important;
+}
+.dash-tag.chart,
+.antd-result-type-chart { color: #2563EB !important; border-color: #2563EB !important; }
+.dash-tag.table,
+.dash-tag.multidim,
+.antd-result-type-table,
+.antd-result-type-multi { color: #7C3AED !important; border-color: #7C3AED !important; }
+.dash-tag.conclusion { color: #C2410C !important; border-color: #C2410C !important; }
+.dash-tag.rootcause { color: #B91C1C !important; border-color: #B91C1C !important; }
+.dash-tag.actions { color: #15803D !important; border-color: #15803D !important; }
+.choice-card,
+.choice-option.selected,
+.choice-confirm { border-color: #B45309 !important; }
+.choice-tag,
+.choice-status,
+.choice-confirm { color: #B45309 !important; }
+.choice-confirm { background: #B45309 !important; color: #FFFFFF !important; }
+.choice-card.resolved,
+.choice-card.resolved .choice-status { border-color: #15803D !important; color: #15803D !important; }
+.msg-error,
+.msg-error .msg-body,
+.settings-status.error { color: #B91C1C !important; border-color: #B91C1C !important; }
+.ui-apply-card.applied,
+.ui-apply-card.applied .ui-apply-status { color: #65A37A !important; border-color: #65A37A !important; }
+.ui-apply-card.failed,
+.ui-apply-card.failed .ui-apply-status { color: #B91C1C !important; border-color: #B91C1C !important; }
+
+/* Navigation states intentionally mirror the recent-conversation rows:
+ * neutral text, a soft blue hover surface, and the same soft blue selected
+ * surface. This also removes Ant Design's default filled-blue selected item.
+ * MenuItem `title` values provide the same hover hint in the collapsed rail
+ * that conversation buttons provide through their title attributes. */
+.antd-workbench-sidebar .ant-menu-item,
+.antd-workbench-sidebar .ant-menu-submenu-title,
+.antd-memory-entry,
+.antd-account,
+.antd-collapsed-section-button {
+  color: #334155 !important;
+  background: transparent !important;
+  border-radius: 6px !important;
+  font-weight: 400 !important;
+}
+.antd-workbench-sidebar .ant-menu-title-content,
+.antd-workbench-sidebar .ant-menu-item-group-title,
+.antd-sidebar-section-title,
+.antd-memory-entry,
+.antd-account,
+.antd-collapsed-section-button {
+  font-weight: 400 !important;
+}
+.antd-workbench-sidebar .ant-menu-item:hover,
+.antd-workbench-sidebar .ant-menu-submenu-title:hover,
+.antd-memory-entry:hover,
+.antd-memory-entry.active,
+.antd-account:hover,
+.antd-account-collapsed:hover,
+.antd-collapsed-section-button:hover {
+  background: #EFF6FF !important;
+  color: #2563EB !important;
+  font-weight: 600 !important;
+}
+.antd-workbench-sidebar .ant-menu-item-selected,
+.antd-workbench-sidebar .ant-menu-item-selected:hover,
+.antd-workbench-sidebar .ant-menu-submenu-selected > .ant-menu-submenu-title,
+.antd-memory-entry.active {
+  background: #EFF6FF !important;
+  color: #2563EB !important;
+  font-weight: 600 !important;
+}
+.antd-workbench-sidebar .ant-menu-item-selected .ant-menu-item-icon,
+.antd-workbench-sidebar .ant-menu-item-selected .antd-feature-icon,
+.antd-workbench-sidebar .ant-menu-item:hover .ant-menu-item-icon,
+.antd-workbench-sidebar .ant-menu-item:hover .antd-feature-icon,
+.antd-memory-entry.active .antd-feature-icon,
+.antd-memory-entry:hover .antd-feature-icon {
+  color: #2563EB !important;
+}
+.antd-workbench-sidebar .ant-menu-item-selected .ant-menu-title-content,
+.antd-workbench-sidebar .ant-menu-item:hover .ant-menu-title-content {
+  color: #2563EB !important;
+  font-weight: 600 !important;
+}
+
+/* Report actions use one neutral action treatment. Keep all four controls
+ * equal so the action group reads as a single toolbar rather than four
+ * semantic status colors. */
+.dash-export,
+.chat-scroll .dash-export,
+.chat-scroll .chat-action-card.dash-export {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  column-gap: 0 !important;
+  row-gap: 10px !important;
+}
+.dash-export > .dash-export-btn + .dash-export-btn {
+  margin-left: 1em !important;
+}
+.dash-export-btn,
+.chat-scroll .dash-export-btn,
+.chat-scroll .chat-action-card .dash-export-btn {
+  background: #FFFFFF !important;
+  color: #2563EB !important;
+  border: 1px solid #2563EB !important;
+  box-shadow: none !important;
+}
+.dash-export-btn:hover,
+.chat-scroll .dash-export-btn:hover,
+.chat-scroll .chat-action-card .dash-export-btn:hover {
+  background: #EFF6FF !important;
+  color: #1E40AF !important;
+  border-color: #2563EB !important;
+  filter: none !important;
+}
+
+/* User questions use the selected-navigation surface and language,
+ * blue emphasized text, without the previous blue filled bubble. */
+.msg-user,
+.msg-user .msg-body,
+.msg.antd-message-enhanced .antd-message-user .ant-bubble-content,
+.antd-message-user .ant-bubble-content,
+.antd-dashboard-user .ant-bubble-content {
+  background: #EFF6FF !important;
+  background-color: #EFF6FF !important;
+  background-image: none !important;
+  color: #2563EB !important;
+  font-weight: 400 !important;
+  border: 1px solid #2563EB !important;
+}
+
+/* The navigation and analysis workflow are white work surfaces. Their child
+ * rows must stay transparent so no inherited Ant Design or hover tint paints
+ * a second-colored panel behind the text. */
+#antd-sidebar-root,
+.antd-workbench-sidebar,
+.antd-sidebar-scroll,
+.antd-workbench-sidebar .ant-layout-sider-children,
+.antd-workbench-sidebar .ant-menu,
+.antd-workbench-sidebar .ant-menu-root,
+.antd-workbench-sidebar .ant-menu-item,
+.antd-workbench-sidebar .ant-menu-submenu-title,
+.antd-workbench-sidebar .ant-menu-item-group-title,
+.antd-memory-entry,
+.antd-account,
+.antd-collapsed-section-button {
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+  background-image: none !important;
+}
+.antd-workbench-sidebar .ant-menu-item:hover,
+.antd-workbench-sidebar .ant-menu-item-selected,
+.antd-workbench-sidebar .ant-menu-item-selected:hover,
+.antd-workbench-sidebar .ant-menu-submenu-title:hover,
+.antd-memory-entry:hover,
+.antd-memory-entry.active,
+.antd-account:hover,
+.antd-account-collapsed:hover,
+.antd-collapsed-section-button:hover {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+#antd-workflow-root,
+#antd-workflow-root .antd-workflow-panels,
+#antd-workflow-root .antd-workflow-sop,
+#antd-workflow-root .antd-workflow-todo,
+#antd-workflow-root .ant-collapse,
+#antd-workflow-root .ant-collapse-item,
+#antd-workflow-root .ant-collapse-header,
+#antd-workflow-root .ant-collapse-content,
+#antd-workflow-root .ant-collapse-content-box,
+#antd-workflow-root .ant-thought-chain,
+#antd-workflow-root .ant-thought-chain-item,
+#antd-workflow-root .ant-thought-chain-item-header,
+#antd-workflow-root .ant-thought-chain-item-content,
+#antd-workflow-root .ant-thought-chain-item-footer,
+#antd-workflow-root .antd-workflow-todo,
+#antd-workflow-root .antd-workflow-todo .ant-list,
+#antd-workflow-root .antd-workflow-todo .ant-list-items,
+#antd-workflow-root .antd-workflow-todo .ant-list-item,
+#antd-workflow-root .antd-question-item,
+#antd-workflow-root .antd-question-item:hover,
+#antd-workflow-root .antd-question-item:focus,
+#antd-workflow-root .antd-question-item.active,
+#antd-workflow-root .ant-thought-chain-item-icon,
+#antd-workflow-root .ant-thought-chain-item-extra {
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+  background-image: none !important;
+}
+#antd-sidebar-root {
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+}
+
+@keyframes composer-send-bounce {
+  0%, 100% { transform: translateY(0); }
+  45% { transform: translateY(-3px); }
+  70% { transform: translateY(1px); }
+}
+.composer-send,
+.composer-send:hover,
+.composer-send:focus-visible {
+  background: #2563EB !important;
+  background-color: #2563EB !important;
+  background-image: none !important;
+  color: #FFFFFF !important;
+  border-color: #2563EB !important;
+}
+.composer-send:hover:not(:disabled) {
+  background: #1E40AF !important;
+  background-color: #1E40AF !important;
+  animation: composer-send-bounce 0.45s ease-in-out;
+}
+
+/* Once an AskUser choice is resolved, there is no progress separator left to
+ * show beneath the card. The final status text is sufficient feedback. */
+.choice-actions,
+.choice-status {
+  border-top: 0 !important;
+}
+.choice-card {
+  border-bottom-color: transparent !important;
+}
+
+/* A submitted choice keeps its original surfaces and text. Only the borders
+ * that were orange during the pending state turn green. */
+.choice-card.resolved,
+.choice-card.resolved .choice-head,
+.choice-card.resolved .choice-options,
+.choice-card.resolved .choice-status,
+.choice-card.resolved .choice-actions,
+.choice-card.resolved .choice-tag,
+.choice-card.resolved .choice-option.selected,
+.choice-card.resolved .choice-confirm {
+  border-color: #15803D !important;
+}
+.choice-card.resolved .choice-tag {
+  color: #15803D !important;
+}
+.choice-card.resolved .choice-confirm {
+  background: #15803D !important;
+  background-color: #15803D !important;
+  color: #FFFFFF !important;
+}
+.choice-card.resolved .choice-status::before {
+  content: "▸ ";
+  color: #15803D !important;
+}
+
+/* Portrait view uses tabs instead of placing the conversation and dashboard
+ * beside each other. The dashboard collapse controls are intentionally hidden
+ * in this mode; the title-row buttons switch the visible pane. */
+.mobile-pane-switch { display: none; }
+body[data-layout="single"] .split {
+  grid-template-columns: 1fr !important;
+}
+body[data-layout="single"] .layout-resizer-workspace,
+body[data-layout="single"] .dashboard-collapse,
+body[data-layout="single"] .dashboard-reopen {
+  display: none !important;
+}
+body[data-layout="single"] .mobile-pane-switch {
+  position: absolute;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #DBE4EC;
+  border-radius: 6px;
+  background: #FFFFFF;
+  color: #2563EB;
+  cursor: pointer;
+}
+body[data-layout="single"] .mobile-pane-switch:hover { background: #EFF6FF; }
+body[data-layout="single"][data-mobile-pane="dashboard"] #dashboard-clear {
+  position: absolute;
+  right: 76px;
+  margin-left: 0;
+  z-index: 2;
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: auto !important;
+  min-width: 42px;
+}
+body[data-layout="single"] .chat-pane,
+body[data-layout="single"] .dashboard-pane {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  min-width: 0;
+}
+body[data-layout="single"] .chat-pane {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+body[data-layout="single"] .dashboard-pane { display: none !important; }
+body[data-layout="single"][data-mobile-pane="dashboard"] .chat-pane { display: none !important; }
+body[data-layout="single"][data-mobile-pane="dashboard"] .dashboard-pane {
+  display: flex !important;
+}
+
+/* The live "thinking" row is text/status only; its container must not become
+ * a full blue bar while the current step is running. */
+.antd-step-thinking {
+  background: #FFFFFF !important;
+  background-color: #FFFFFF !important;
+  background-image: none !important;
+  color: #2563EB !important;
 }

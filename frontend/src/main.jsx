@@ -241,8 +241,20 @@ function requestRecentRefresh(mode = document.body.dataset.mode || "data") {
   window.dispatchEvent(new CustomEvent("bi-conversations-retry", { detail: { mode } }));
 }
 
+function routeUsesSingleColumn() {
+  const params = new URLSearchParams(window.location.search);
+  const value = String(params.get("layout") || params.get("columns") || "").toLowerCase();
+  return ["1", "one", "single", "single-column"].includes(value)
+    || /\/(?:one|single)(?:\/)?$/.test(window.location.pathname);
+}
+
 function Sidebar() {
-  const [collapsed, setCollapsed] = useState(document.body.classList.contains("sidebar-collapsed"));
+  const [sidebarLevel, setSidebarLevel] = useState(
+    routeUsesSingleColumn()
+      ? 2
+      : document.body.classList.contains("sidebar-collapsed") ? 1 : 0,
+  );
+  const collapsed = sidebarLevel > 0;
   const [recent, setRecent] = useState(readRecent);
   const [recentStatus, setRecentStatus] = useState("loading");
   const [active, setActive] = useState("data");
@@ -271,20 +283,39 @@ function Sidebar() {
     const onUpdated = (event) => {
       // The shared runtime coordinator publishes the already-fetched list.
       // Do not turn the event into a second GET request.
+      const eventMode = event.detail?.mode || "data";
+      // Both mode caches share this event channel. A report-mode empty result
+      // must never replace the intelligent-analysis history (and vice versa).
+      if (eventMode !== (document.body.dataset.mode || "data")) return;
       if (Array.isArray(event.detail?.conversations)) {
         const activeIds = new Set([...document.querySelectorAll("#recent-list .recent-item.active")].map((node) => node.dataset?.cid));
         setRecent(event.detail.conversations.map((item) => recentItemFromSummary(item, activeIds)));
         setRecentStatus(event.detail.status || (event.detail.conversations.length ? "success" : "empty"));
       }
     };
+    const onMode = (event) => {
+      refresh(event.detail?.mode || document.body.dataset.mode || "data");
+    };
     window.addEventListener("bi-conversations-updated", onUpdated);
+    window.addEventListener("bi-mode-changed", onMode);
     const onRetry = (event) => refresh(event.detail?.mode || document.body.dataset.mode || "data");
     window.addEventListener("bi-conversations-retry", onRetry);
     return () => {
       disposed = true;
       window.removeEventListener("bi-conversations-updated", onUpdated);
+      window.removeEventListener("bi-mode-changed", onMode);
       window.removeEventListener("bi-conversations-retry", onRetry);
     };
+  }, []);
+
+  // Keep the shell selection in sync with the legacy runtime router. In
+  // particular, opening a history row is still a data/report workspace view;
+  // it must clear the previous “记忆管理” selection instead of leaving that
+  // button permanently blue.
+  useEffect(() => {
+    const onMode = (event) => setActive(event.detail?.mode || document.body.dataset.mode || "data");
+    window.addEventListener("bi-mode-changed", onMode);
+    return () => window.removeEventListener("bi-mode-changed", onMode);
   }, []);
   // Let the history list use all available height when it fits. If the full
   // navigation content overflows the sidebar, cap the list at six rows so the
@@ -367,10 +398,25 @@ function Sidebar() {
     return () => outer.removeEventListener("wheel", onWheel, true);
   }, [collapsed]);
 
+  useEffect(() => {
+    document.body.classList.toggle("sidebar-collapsed", collapsed);
+    document.body.dataset.sidebarState = sidebarLevel === 2 ? "hidden" : sidebarLevel === 1 ? "icons" : "expanded";
+  }, [collapsed, sidebarLevel]);
+
+  useEffect(() => {
+    const onViewportMode = (event) => {
+      setSidebarLevel(event.detail?.singleColumn ? 2 : 1);
+    };
+    window.addEventListener("bi-viewport-mode", onViewportMode);
+    return () => window.removeEventListener("bi-viewport-mode", onViewportMode);
+  }, []);
+
+  // The full navigation collapses completely. When reopening, the first
+  // click restores the icon rail and the second restores the full labels.
   const toggle = () => {
-    document.getElementById("sidebar-collapse")?.click();
-    setCollapsed((value) => !value);
+    setSidebarLevel((level) => (level === 0 ? 2 : level === 2 ? 1 : 0));
   };
+  const reopenHiddenSidebar = () => setSidebarLevel(1);
 
   // Turn the three section labels into explicit expand controls in collapsed
   // mode. The menu items themselves keep their labels for tooltips and the
@@ -399,15 +445,15 @@ function Sidebar() {
   };
 
   return (
-    <ConfigProvider theme={{ token: { colorPrimary: "#1677ff", borderRadius: 8, fontFamily: "PingFang SC, -apple-system, sans-serif" } }}>
-      <Sider className="antd-workbench-sidebar" collapsed={collapsed} width={260} collapsedWidth={72} theme="light">
+    <ConfigProvider theme={{ token: { colorPrimary: "#2563EB", colorInfo: "#2563EB", colorSuccess: "#15803D", colorError: "#B91C1C", colorWarning: "#C2410C", borderRadius: 8, fontFamily: "PingFang SC, -apple-system, sans-serif" } }}>
+      <Sider className={`antd-workbench-sidebar${sidebarLevel === 2 ? " antd-workbench-sidebar-hidden" : ""}`} collapsed={collapsed} width={260} collapsedWidth={72} theme="light">
         <div className="antd-sidebar-scroll" onClick={handleSidebarSurfaceClick}>
           <div className="antd-sidebar-brand">
             <AgentMark />
             {!collapsed && <span><strong>智析</strong><small id="antd-agent-name">bi-analyst</small></span>}
             <Tooltip
               placement="right"
-              title={collapsed ? "展开侧栏" : "收起侧栏"}
+              title={collapsed ? "展开侧栏" : "折叠侧栏"}
               color="#fff"
               overlayClassName="antd-workbench-tooltip"
             >
@@ -454,6 +500,7 @@ function Sidebar() {
                   key={item.key}
                   className={`antd-recent-item${item.active ? " active" : ""}`}
                   onClick={() => {
+                    setActive(document.body.dataset.mode || "data");
                     setRecent((items) => items.map((current) => ({ ...current, active: current.key === item.key })));
                     const legacyNode = item.node || document.querySelector(`#recent-list .recent-item[data-cid="${CSS.escape(item.cid || item.key)}"]`);
                     legacyNode?.click();
@@ -494,6 +541,17 @@ function Sidebar() {
           )}
         </div>
       </Sider>
+      {sidebarLevel === 2 && (
+        <button
+          type="button"
+          className="antd-sidebar-hidden-reopen"
+          onClick={reopenHiddenSidebar}
+          aria-label="展开侧栏"
+          title="展开侧栏"
+        >
+          <MenuUnfoldOutlined />
+        </button>
+      )}
     </ConfigProvider>
   );
 }
@@ -646,18 +704,18 @@ window.antdMessageMount = mountMessage;
 // palette as 本体内容. The collapse arrow uses the same tone as its title.
 const TOOL_RESULT_TONES = {
   OntologyQuery: "blue",
-  TermDisambiguate: "green",
+  TermDisambiguate: "teal",
   MetricLookup: "amber",
   RelationLookup: "slate",
-  EntityDescribe: "violet",
+  EntityDescribe: "teal",
   ListBusinessObjects: "red",
   SQLRun: "blue",
   ListTables: "slate",
   DescribeTable: "muted",
   ChartGenerate: "green",
   ChartGenerateMultiDim: "violet",
-  TableGenerate: "amber",
-  AskUser: "red",
+  TableGenerate: "green",
+  AskUser: "approval",
   GraphContext: "blue",
   GraphExpand: "violet",
 };
@@ -942,8 +1000,41 @@ function mountStep(step) {
 window.antdStepMount = mountStep;
 
 const cardRoots = new WeakMap();
+function isProUiChartCard(card) {
+  if (!card?.dataset?.chartJson) return false;
+  try {
+    const chart = JSON.parse(decodeURIComponent(card.dataset.chartJson));
+    const type = String(chart?.chart_type || chart?.option?.series?.[0]?.type || "").toLowerCase();
+    return ["bar", "horizontal_bar", "line", "area", "pie"].includes(type);
+  } catch (_) {
+    return false;
+  }
+}
+
 function mountResultCard(card, type) {
   if (!card || cardRoots.has(card)) return;
+  if (type === "chart" && isProUiChartCard(card)) {
+    // Historical snapshots can contain a persisted Ant result host. Remove
+    // that wrapper and move its canvas back to the legacy chart shell before
+    // the runtime remounts it through Pro UI.
+    const existingHost = card.querySelector(":scope > .antd-result-card-host");
+    const canvas = card.querySelector(":scope .chart-canvas") || existingHost?.querySelector(":scope .chart-canvas");
+    if (canvas && canvas.parentElement !== card) card.appendChild(canvas);
+    existingHost?.remove();
+    const head = card.querySelector(":scope > .chart-head");
+    const metaNodes = head ? [...head.querySelectorAll(":scope > .chart-saved, :scope > .chart-insight-btn")] : [];
+    if (head) head.remove();
+    if (metaNodes.length) {
+      const meta = document.createElement("div");
+      meta.className = "chart-meta";
+      metaNodes.forEach((node) => meta.appendChild(node));
+      if (canvas) card.insertBefore(meta, canvas.nextSibling);
+      else card.appendChild(meta);
+    }
+    card.classList.add("pro-ui-chart-card");
+    cardRoots.set(card, { proUi: true });
+    return;
+  }
   // Older snapshots contain a rendered ECharts canvas but no chart option
   // (`data-chart-json`). That canvas already includes its own title; keep it
   // as the single visible title instead of adding a second React header.
@@ -1064,6 +1155,28 @@ function mountDashboardCard(card) {
     card.setAttribute("aria-hidden", "true");
     return;
   }
+  if (isProUiChartCard(card)) {
+    const existingHost = card.querySelector(":scope > .antd-dashboard-card-host");
+    const canvas = card.querySelector(":scope .dash-chart-canvas") || existingHost?.querySelector(":scope .dash-chart-canvas");
+    if (canvas && canvas.parentElement !== card) card.appendChild(canvas);
+    existingHost?.remove();
+    // The Pro UI chart owns the title. Keep only saved/insight metadata in a
+    // borderless row outside the Pro UI result surface.
+    const head = card.querySelector(":scope > .dash-head");
+    const metaNodes = head ? [...head.querySelectorAll(":scope > .dash-link, :scope > .chart-insight-btn")] : [];
+    if (head) head.remove();
+    if (metaNodes.length) {
+      const meta = document.createElement("div");
+      meta.className = "chart-meta";
+      metaNodes.forEach((node) => meta.appendChild(node));
+      if (canvas) card.insertBefore(meta, canvas.nextSibling);
+      else card.appendChild(meta);
+    }
+    card.classList.add("pro-ui-chart-card");
+    card.classList.add("antd-dashboard-card-mounted");
+    cardRoots.set(card, { proUi: true });
+    return;
+  }
   // Legacy dashboard snapshots also persisted a rendered canvas without the
   // chart option. Their canvas title is still the only recoverable title.
   const legacyStaticChart = !card.dataset.chartJson && !!card.querySelector(
@@ -1177,8 +1290,10 @@ function WorkbenchApp() {
 
     const sidebarRoot = shellRef.current.querySelector("#antd-sidebar-root");
     const workflowRoot = shellRef.current.querySelector("#antd-workflow-root");
+    const dashboardWorkflowRoot = shellRef.current.querySelector("#antd-dashboard-workflow-root");
     if (sidebarRoot) createRoot(sidebarRoot).render(<Sidebar />);
     if (workflowRoot) createRoot(workflowRoot).render(<WorkflowPanels />);
+    if (dashboardWorkflowRoot) createRoot(dashboardWorkflowRoot).render(<WorkflowPanels />);
     shellRef.current.querySelectorAll(".page-title-icon[data-feature-glyph]").forEach((node) => {
       createRoot(node).render(<FeatureGlyph kind={node.dataset.featureGlyph} />);
     });

@@ -448,6 +448,8 @@ export function bootWorkbenchRuntime() {
     dashboardCollapseBtn: document.getElementById("dashboard-collapse"),
     dashboardReopen: document.getElementById("dashboard-reopen"),
     btnToggleDashboard: document.getElementById("btn-toggle-dashboard"),
+    mobileShowDashboard: document.getElementById("mobile-show-dashboard"),
+    mobileShowChat: document.getElementById("mobile-show-chat"),
     sidebarCollapse: document.getElementById("sidebar-collapse"),
     sidebarReopen: document.getElementById("sidebar-reopen"),
   };
@@ -1184,16 +1186,19 @@ export function bootWorkbenchRuntime() {
     return html;
   }
 
-  function saveCurrentConversation() {
+  function saveCurrentConversation(options = {}) {
     const mode = state.mode;
-    const queued = enqueueConversationSave(mode, () => saveCurrentConversationNow(mode));
+    const queued = enqueueConversationSave(mode, () => saveCurrentConversationNow(mode, options));
     pendingConversationSave = queued;
     return queued;
   }
 
-  async function saveCurrentConversationNow(mode) {
+  async function saveCurrentConversationNow(mode, options = {}) {
     const b = buckets[mode];
-    if (!b.hasContent) return;  // nothing worth saving yet
+    // A fresh conversation is deliberately persisted as an empty draft. This
+    // gives the sidebar an immediately addressable item before the first
+    // question has produced any assistant output.
+    if (!b.hasContent && !options.allowEmpty) return;
     dedupeExportCards();
     try {
       // A user can finish a conversation without ever opening either source
@@ -1452,6 +1457,10 @@ export function bootWorkbenchRuntime() {
   let historyRestoreSequence = 0;
 
   async function restoreConversation(id) {
+    // A running turn owns the active server session. Do not let a history
+    // click tear it down underneath the SSE stream; the user can inspect
+    // other pages and return after the turn has completed.
+    if (state.busy) return;
     const token = ++historyRestoreSequence;
     markHistoryOpening(id);
     const originalBucket = B();
@@ -1465,12 +1474,6 @@ export function bootWorkbenchRuntime() {
     activationGate.catch(() => {});
     originalBucket.restoreActivation = activationGate;
     try { await pendingConversationSave; } catch (e) { /* save is best-effort */ }
-    if (state.busy) {
-      if (activeRequestController) activeRequestController.abort();
-      const resetUrl = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
-      try { await fetch(withClientSession(resetUrl), { method: "POST" }); } catch (e) {}
-      setBusy(false);
-    }
     try {
       const previewResponse = await fetch(`/api/conversations/${encodeURIComponent(id)}/preview`);
       if (!previewResponse.ok) throw new Error(`HTTP ${previewResponse.status}`);
@@ -2276,20 +2279,19 @@ export function bootWorkbenchRuntime() {
     return true;
   }
 
-  // Show the 图库源 selector + 建立图库 button only in graph-retrieval mode.
-  // Semantic mode uses the Excel ontology alone; graph mode additionally needs
-  // a graph library (which can be built from the selected Excel).
+  // Keep the 图库源 row visible in graph mode. For remote ontology it is a
+  // disabled compatibility hint: retrieval uses the remote repository API.
   function syncRetrievalMode() {
     const graph = el.sourcesRetrievalMode && el.sourcesRetrievalMode.value === "graph";
-    if (el.sourcesGraphField) el.sourcesGraphField.hidden = !graph;
     const ontologyValue = el.sourcesOntology && el.sourcesOntology.value || "";
     const usingProduction = ontologyValue === PRODUCTION_ONTOLOGY_VALUE
       || ontologyValue.startsWith(REMOTE_ONTOLOGY_PREFIX);
-    if (el.sourcesBuildGraphRow) el.sourcesBuildGraphRow.hidden = !graph || usingProduction;
-    if (el.sourcesGraphField && usingProduction) {
-      const hint = el.sourcesGraphField.querySelector(".settings-hint");
-      if (hint) hint.textContent = "生产本体关系由团队本体服务实时提供，不需要本地图文件。";
+    if (el.sourcesGraphField) el.sourcesGraphField.hidden = !graph;
+    if (el.sourcesGraph) {
+      el.sourcesGraph.disabled = usingProduction;
+      el.sourcesGraph.setAttribute("aria-disabled", usingProduction ? "true" : "false");
     }
+    if (el.sourcesBuildGraphRow) el.sourcesBuildGraphRow.hidden = !graph || usingProduction;
   }
 
   // Build a NetworkX graph library (.graphml) from the currently-selected
@@ -2349,7 +2351,9 @@ export function bootWorkbenchRuntime() {
       fillSourceSelect(el.sourcesDatabase, data.database);
       if (data.retrieval) {
         if (el.sourcesRetrievalMode) el.sourcesRetrievalMode.value = data.retrieval.mode || "semantic";
-        if (el.sourcesGraph) fillSourceSelect(el.sourcesGraph, data.retrieval.graph || {});
+        if (el.sourcesGraph && data.retrieval.graph) {
+          fillSourceSelect(el.sourcesGraph, data.retrieval.graph);
+        }
       }
       if (data.doris) {
         if (el.sourcesDorisJdbc) el.sourcesDorisJdbc.value = data.doris.api_url || "";
@@ -2360,6 +2364,11 @@ export function bootWorkbenchRuntime() {
       }
       syncDorisField();
       syncRetrievalMode();
+      const remoteStatus = data?.ontology?.remote_status;
+      if (statusEl && remoteStatus && remoteStatus.available === false) {
+        statusEl.textContent = "远程本体服务暂不可用；工作台仍可使用，选择数据源或提问时会显示具体错误。";
+        statusEl.className = "settings-status pending";
+      }
     } catch (e) {
       if (statusEl) {
         statusEl.textContent = "加载数据源列表失败: " + (e.message || e);
@@ -2398,8 +2407,10 @@ export function bootWorkbenchRuntime() {
       ontology: el.sourcesOntology.value || null,
       database: dbValue,
       retrieval_mode: retrievalMode,
-      // Graph library is only meaningful in graph-retrieval mode.
+      // A graph file is only meaningful for local/development graph mode.
       graph: retrievalMode === "graph"
+        && !(String(el.sourcesOntology && el.sourcesOntology.value || "").startsWith(REMOTE_ONTOLOGY_PREFIX)
+          || (el.sourcesOntology && el.sourcesOntology.value) === PRODUCTION_ONTOLOGY_VALUE)
         ? ((el.sourcesGraph && el.sourcesGraph.value) || null)
         : null,
     };
@@ -2631,12 +2642,16 @@ export function bootWorkbenchRuntime() {
   function scrollToQuestion(turn) {
     const turnText = String(turn);
     const chatSelector = `.msg-user[data-turn="${CSS.escape(turnText)}"]`;
-    const dashboardSelector = `.dash-card[data-turn="${CSS.escape(turnText)}"]:not(.dash-question)`;
     const msg = el.chatScroll && el.chatScroll.querySelector(chatSelector);
-    // Dashboard question cards are intentionally hidden. Anchor task-list
-    // navigation to the first visible result of the same turn instead, so a
-    // click moves the conversation and dashboard together.
-    const dashboardCard = el.dashboardList && el.dashboardList.querySelector(dashboardSelector);
+    // A turn can contain a hidden question card plus several result cards.
+    // Use the first card that actually exists for this turn, preferring a
+    // result card; if the turn has no result yet, fall back to its question
+    // card so navigation still has a deterministic anchor.
+    const dashboardCards = el.dashboardList
+      ? [...el.dashboardList.querySelectorAll(`.dash-card[data-turn="${CSS.escape(turnText)}"]`)]
+      : [];
+    const dashboardCard = dashboardCards.find((card) => !card.classList.contains("dash-question"))
+      || dashboardCards[0];
     if (!msg && !dashboardCard) return;
     setActiveQuestion(turnText);
     showView("workspace");
@@ -2651,7 +2666,19 @@ export function bootWorkbenchRuntime() {
       setTimeout(() => msg.classList.remove("question-focus"), 900);
     }
     if (dashboardCard) {
-      dashboardCard.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Do not delegate this to scrollIntoView(): dashboard cards contain
+      // nested mounts and the browser may choose an ancestor that is already
+      // above the card. Explicitly target the dashboard pane so both upward
+      // and downward navigation update the same scroll container.
+      const pane = el.dashboardList;
+      const paneRect = pane.getBoundingClientRect();
+      const cardRect = dashboardCard.getBoundingClientRect();
+      const targetTop = pane.scrollTop + cardRect.top - paneRect.top - 12;
+      const maxTop = Math.max(0, pane.scrollHeight - pane.clientHeight);
+      pane.scrollTo({
+        top: Math.max(0, Math.min(maxTop, targetTop)),
+        behavior: "smooth",
+      });
       dashboardCard.classList.add("question-focus");
       setTimeout(() => dashboardCard.classList.remove("question-focus"), 900);
     }
@@ -2707,9 +2734,29 @@ export function bootWorkbenchRuntime() {
     if (turn) setActiveQuestion(turn);
   }
 
+  let paneScrollSyncFrame = 0;
+  let paneScrollSyncSource = null;
+  function syncPairedPaneScroll(source, target) {
+    if (!source || !target || paneScrollSyncSource) return;
+    paneScrollSyncSource = source;
+    cancelAnimationFrame(paneScrollSyncFrame);
+    paneScrollSyncFrame = requestAnimationFrame(() => {
+      const sourceMax = Math.max(0, source.scrollHeight - source.clientHeight);
+      const targetMax = Math.max(0, target.scrollHeight - target.clientHeight);
+      const ratio = sourceMax > 0 ? source.scrollTop / sourceMax : 0;
+      target.scrollTop = Math.max(0, Math.min(targetMax, ratio * targetMax));
+      paneScrollSyncSource = null;
+    });
+  }
+
   function initQuestionSelectionSync() {
-    [el.chatScroll, el.dashboardList].filter(Boolean).forEach((root) => {
-      root.addEventListener("scroll", () => syncActiveQuestionFromScroll(root), { passive: true });
+    const panes = [el.chatScroll, el.dashboardList].filter(Boolean);
+    panes.forEach((root) => {
+      root.addEventListener("scroll", () => {
+        syncActiveQuestionFromScroll(root);
+        const other = root === el.chatScroll ? el.dashboardList : el.chatScroll;
+        syncPairedPaneScroll(root, other);
+      }, { passive: true });
     });
     window.addEventListener("resize", syncActiveQuestionFromScroll);
     requestAnimationFrame(syncActiveQuestionFromScroll);
@@ -2739,7 +2786,7 @@ export function bootWorkbenchRuntime() {
     bucket.currentAssistantText = "";
     bucket.stepTimelineEl = null;
     bucket.stepThinkingEl = null;
-    showStepThinking();
+    if (!bucket.choiceContinuation) showStepThinking();
     hideEmpty();
     scrollChatBottom();
   }
@@ -2772,6 +2819,13 @@ export function bootWorkbenchRuntime() {
 
   function showStepThinking() {
     const bucket = B();
+    // A choice submission already gives the user a definitive green state.
+    // Do not append a second generic "思考中…" row underneath it while the
+    // continuation stream is running.
+    if (bucket.choiceContinuation) {
+      clearStepThinking();
+      return;
+    }
     const timeline = ensureStepTimeline();
     // Results are children of the assistant message, so placing the timeline
     // as the final child of this block keeps it after text and all cards.
@@ -2805,6 +2859,16 @@ export function bootWorkbenchRuntime() {
       timeline.remove();
       bucket.stepTimelineEl = null;
     }
+  }
+
+  function clearAssistantThinkingPlaceholder() {
+    const bucket = B();
+    // The initial assistant bubble and the step timeline each have their own
+    // "思考中" placeholder. AskUser is a pause point, not an active thinking
+    // phase, so remove both before showing the choice card. The continuation
+    // will create one fresh thinking row when it actually resumes.
+    bucket.currentAssistantEl?.querySelectorAll?.(".thinking-line").forEach((node) => node.remove());
+    clearStepThinking();
   }
 
   function appendAssistantDelta(text) {
@@ -2930,11 +2994,6 @@ export function bootWorkbenchRuntime() {
       const lockedBySubmitting = card.classList.contains("submitting");
       const lockedByResolved = card.classList.contains("resolved");
       const newDisabled = selected.length === 0 || lockedBySubmitting || lockedByResolved;
-      if (confirmBtn.disabled !== newDisabled) {
-        console.debug("[choice] confirm.disabled", newDisabled, {
-          selected: selected.length, lockedBySubmitting, lockedByResolved,
-        });
-      }
       confirmBtn.disabled = newDisabled;
       if (selected.length === 0) {
         summary.textContent = "未选择";
@@ -3039,13 +3098,23 @@ export function bootWorkbenchRuntime() {
   function markChoiceResolved(toolUseId, labels) {
     const card = el.chatScroll.querySelector(`.choice-card[data-tool-use-id="${CSS.escape(toolUseId)}"]`);
     if (!card) return;
+    const bucket = B();
+    bucket.choiceContinuation = true;
+    bucket.currentAssistantEl?.querySelectorAll?.(".thinking-line").forEach((node) => node.remove());
+    clearStepThinking();
+    card.classList.remove("submitting");
     card.classList.add("resolved");
     const list = Array.isArray(labels) ? labels : [labels];
+    const tag = card.querySelector(".choice-tag");
+    if (tag) tag.textContent = "已选择";
     const status = card.querySelector(".choice-status");
     if (status) status.textContent = `已选择: ${list.join("、")}`;
     card.querySelectorAll(".choice-check").forEach(c => { c.disabled = true; });
     const confirmBtn = card.querySelector(".choice-confirm");
-    if (confirmBtn) confirmBtn.disabled = true;
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "已提交";
+    }
   }
 
   async function submitChoice(card, ids, labels) {
@@ -3085,6 +3154,9 @@ export function bootWorkbenchRuntime() {
       setBusy(false);
       return;
     }
+    // The choice endpoint accepted the selection. Mark the card immediately;
+    // the following SSE stream is the agent continuation, not a pending card.
+    markChoiceResolved(card.dataset.toolUseId, labels);
     await streamResponse(resp);
   }
 
@@ -3301,6 +3373,134 @@ export function bootWorkbenchRuntime() {
     requestAnimationFrame(run);
   }
 
+  // Pro UI is the single chart renderer for authored charts.  ChartGenerate
+  // still returns an ECharts-shaped option because that is the persisted
+  // contract used by history/export; this adapter translates that option into
+  // Pro UI's component + row-data contract without carrying over the old
+  // visual overrides.
+  const PRO_BI_CHART_TYPES = new Set(["bar", "horizontal_bar", "line", "area", "pie"]);
+
+  function proBiLibrary() {
+    return typeof window !== "undefined" && window.ProUIBi && window.Vue ? window.ProUIBi : null;
+  }
+
+  function proBiChartType(chart) {
+    const type = String(chart?.chart_type || chart?.option?.series?.[0]?.type || "").toLowerCase();
+    return type === "horizontalbar" || type === "horizontal-bar" ? "horizontal_bar" : type;
+  }
+
+  // Keep numeric presentation consistent across tables and Pro UI charts.
+  // Money uses 万 only for non-zero values at or above 10,000; zero is always
+  // rendered as ¥0.00 so we never produce ¥0万 / 0万.
+  function isMoneyLabel(label, unit = "") {
+    return /元|金额|金额占比|收入|成本|采购|销售|库存|利润|费用|支出|应收|应付|余额|价格|单价|税额|营收|¥|￥/.test(`${label || ""}${unit || ""}`);
+  }
+
+  function isNumericValue(value) {
+    return typeof value === "number" && Number.isFinite(value)
+      || typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value));
+  }
+
+  function formatDisplayNumber(value, { money = false, unit = "", percent = false } = {}) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return String(value ?? "");
+    if (percent) return `${num.toFixed(2)}%`;
+    if (money) {
+      if (num === 0) return "¥0.00";
+      const sign = num < 0 ? "-" : "";
+      const abs = Math.abs(num);
+      if (abs >= 10000) return `${sign}¥${(abs / 10000).toFixed(2)}万`;
+      return `${sign}¥${abs.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    const formatted = num.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+    return `${formatted}${unit ? ` ${unit}` : ""}`;
+  }
+
+  function chartDisplayValue(value, label) {
+    const source = value && typeof value === "object" ? value : { value };
+    const raw = source.value;
+    if (!isNumericValue(raw)) return value;
+    const money = isMoneyLabel(label, source.unit);
+    return {
+      ...source,
+      value: Number(raw),
+      formatValue: formatDisplayNumber(raw, { money, unit: source.unit || "" }),
+    };
+  }
+
+  function proBiRows(chart) {
+    const option = chart?.option || {};
+    const type = proBiChartType(chart);
+    const series = Array.isArray(option.series) ? option.series : [];
+    if (type === "pie") {
+      const points = Array.isArray(series[0]?.data) ? series[0].data : [];
+      const label = series[0]?.name || "值";
+      return points.map((point) => ({ category: point?.name ?? "", value: chartDisplayValue(point?.value ?? point, label) }));
+    }
+    const categories = type === "horizontal_bar" ? option.yAxis?.data : option.xAxis?.data;
+    const labels = Array.isArray(categories) ? categories : [];
+    return labels.map((category, index) => {
+      const row = { category };
+      series.forEach((item, seriesIndex) => {
+        const key = String(item?.name || `series_${seriesIndex + 1}`);
+        const value = Array.isArray(item?.data) ? item.data[index] : null;
+        row[key] = chartDisplayValue(value, key);
+      });
+      return row;
+    });
+  }
+
+  function mountProBiChart(host, chart, card) {
+    const lib = proBiLibrary();
+    if (!host || !lib) return false;
+    const type = proBiChartType(chart);
+    const Component = lib[type === "bar" ? "ProBarChart"
+      : type === "horizontal_bar" ? "ProHorizontalBarChart"
+      : type === "line" ? "ProLineChart"
+      : type === "area" ? "ProAreaChart"
+      : type === "pie" ? "ProPieChart" : ""];
+    if (!Component) return false;
+    if (host.__proBiApp) {
+      host.__proBiApp.unmount();
+      host.__proBiApp = null;
+    }
+    const option = chart?.option || {};
+    const series = Array.isArray(option.series) ? option.series : [];
+    const measureFields = type === "pie"
+      ? [{ id: "value", identifierCode: "value", label: series[0]?.name || "值" }]
+      : series.map((item, index) => ({
+          id: `measure-${index}`,
+          identifierCode: String(item?.name || `series_${index + 1}`),
+          label: String(item?.name || `系列 ${index + 1}`),
+        }));
+    const component = {
+      id: `chart-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      title: String(chart?.title || "分析结果"),
+      showHeader: true,
+      dataConfig: {
+        categoryAxis: [{ id: "category", identifierCode: "category", label: "类别" }],
+        valueAxis: measureFields,
+      },
+      // Empty visualization deliberately uses Pro UI's own defaults.
+      visualization: {},
+    };
+    const app = lib && window.Vue.createApp({
+      render() {
+        return window.Vue.h(Component, {
+          component,
+          data: proBiRows(chart),
+        });
+      },
+    });
+    host.replaceChildren();
+    app.mount(host);
+    host.__proBiApp = app;
+    host.__proBiChartType = type;
+    host.__proBiChart = chart;
+    if (card) wireInsightButton(card, chart);
+    return true;
+  }
+
   function markInsightTriggered(sourceNote) {
     if (!sourceNote) return;
     const sel = `.chart-insight-btn[data-source="${cssAttr(sourceNote)}"]`;
@@ -3331,6 +3531,9 @@ export function bootWorkbenchRuntime() {
     const canvas = card.querySelector(".chart-canvas");
     if (!canvas) return false;
     if (!chart.option) return true;
+    if (PRO_BI_CHART_TYPES.has(proBiChartType(chart))) {
+      return mountProBiChart(canvas, chart, card);
+    }
     if (canvas.__biEchartsInstance && !canvas.__biEchartsInstance.isDisposed?.()) {
       canvas.__biEchartsInstance.resize();
       return true;
@@ -3371,26 +3574,21 @@ export function bootWorkbenchRuntime() {
     if (value === null || value === undefined) return '<span class="tbl-null">—</span>';
     const fmt = col && col.format;
     const unit = col && col.unit;
-    if (fmt === "number" || fmt === "money") {
-      const num = Number(value);
-      if (!isFinite(num)) return esc(String(value));
-      const abs = Math.abs(num);
-      const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
-      const formatted = num.toLocaleString("zh-CN", { maximumFractionDigits: digits });
-      return esc(formatted + (unit ? ` ${unit}` : ""));
-    }
-    if (fmt === "percent") {
-      const num = Number(value);
-      if (!isFinite(num)) return esc(String(value));
-      return esc(num.toFixed(2) + "%");
+    if (fmt === "text") return esc(String(value));
+    if (isNumericValue(value) && (fmt === "number" || fmt === "money" || fmt === "percent" || !fmt)) {
+      return esc(formatDisplayNumber(value, {
+        money: fmt === "money" || isMoneyLabel(col?.label || col?.key, unit),
+        unit,
+        percent: fmt === "percent",
+      }));
     }
     return esc(String(value));
   }
 
-  function defaultAlign(col) {
+  function defaultAlign(col, value) {
     if (!col) return "left";
     if (col.align) return col.align;
-    if (col.format === "number" || col.format === "money" || col.format === "percent") return "right";
+    if (isNumericValue(value) || col.format === "number" || col.format === "money" || col.format === "percent") return "right";
     return "left";
   }
 
@@ -3411,7 +3609,7 @@ export function bootWorkbenchRuntime() {
     const body = rows.map((row, rIdx) => {
       const cells = cols.map((c, cIdx) => {
         const v = Array.isArray(row) ? row[cIdx] : row[c.key];
-        return `<td data-align="${esc(defaultAlign(c))}">${formatCellValue(v, c)}</td>`;
+        return `<td data-align="${esc(defaultAlign(c, v))}">${formatCellValue(v, c)}</td>`;
       }).join("");
       return `<tr class="${hi.has(rIdx) ? "row-highlight" : ""}">${cells}</tr>`;
     }).join("");
@@ -3808,6 +4006,9 @@ export function bootWorkbenchRuntime() {
     const canvas = card && card.querySelector(".dash-chart-canvas");
     if (!canvas) return false;
     if (!chart || !chart.option) return true;
+    if (PRO_BI_CHART_TYPES.has(proBiChartType(chart))) {
+      return mountProBiChart(canvas, chart, card);
+    }
     if (canvas.__biEchartsInstance && !canvas.__biEchartsInstance.isDisposed?.()) {
       canvas.__biEchartsInstance.resize();
       return true;
@@ -3885,14 +4086,28 @@ export function bootWorkbenchRuntime() {
     const select = card.querySelector(".multidim-select");
     const dimSummaryEl = card.querySelector(".multidim-dim-summary");
     if (!canvas) return false;
-    if (typeof echarts === "undefined") {
-      return false;
-    }
     const dims = Array.isArray(spec.dimensions) ? spec.dimensions : [];
     if (dims.length === 0) {
       canvas.innerHTML = '<div class="multidim-err">无维度数据</div>';
       return true;
     }
+    const firstDim = dims[0];
+    const firstChart = { ...spec, option: firstDim?.option };
+    if (PRO_BI_CHART_TYPES.has(proBiChartType(firstChart))) {
+      const dimMap = new Map(dims.map((d) => [d.key, d]));
+      const show = (key) => {
+        const d = dimMap.get(key) || dims[0];
+        mountProBiChart(canvas, { ...spec, option: d?.option }, card);
+        if (dimSummaryEl) dimSummaryEl.textContent = d?.summary || "";
+      };
+      show(spec.default_dim || firstDim?.key);
+      if (select && !select.dataset.chartBound) {
+        select.dataset.chartBound = "1";
+        select.addEventListener("change", (event) => show(event.target.value));
+      }
+      return true;
+    }
+    if (typeof echarts === "undefined") return false;
     if (canvas.__biEchartsInstance && !canvas.__biEchartsInstance.isDisposed?.()) {
       canvas.__biEchartsInstance.resize();
       return true;
@@ -3909,7 +4124,9 @@ export function bootWorkbenchRuntime() {
     function show(key) {
       const d = dimMap.get(key) || dims[0];
       try {
-        if (d && d.option) inst.setOption(themedChartOption(d.option), true);
+        if (d && d.option) {
+          inst.setOption(themedChartOption(d.option), true);
+        }
       } catch (e) {
         canvas.innerHTML = `<div class="multidim-err">render failed: ${esc(e.message || String(e))}</div>`;
         return;
@@ -3961,7 +4178,23 @@ export function bootWorkbenchRuntime() {
       const canvas = card.querySelector(".dash-chart-canvas");
       const select = card.querySelector(".multidim-select");
       const dimSummaryEl = card.querySelector(".multidim-dim-summary");
-      if (!canvas || typeof echarts === "undefined" || dims.length === 0) return false;
+      if (!canvas || dims.length === 0) return false;
+      const firstChart = { ...spec, option: dims[0]?.option };
+      if (PRO_BI_CHART_TYPES.has(proBiChartType(firstChart))) {
+        const dimMap = new Map(dims.map((d) => [d.key, d]));
+        const show = (key) => {
+          const d = dimMap.get(key) || dims[0];
+          mountProBiChart(canvas, { ...spec, option: d?.option }, card);
+          if (dimSummaryEl) dimSummaryEl.textContent = d?.summary || "";
+        };
+        show(spec.default_dim || dims[0]?.key);
+        if (select && !select.dataset.chartBound) {
+          select.dataset.chartBound = "1";
+          select.addEventListener("change", (event) => show(event.target.value));
+        }
+        return true;
+      }
+      if (typeof echarts === "undefined") return false;
       const dimMap = new Map(dims.map((d) => [d.key, d]));
       let inst;
       try {
@@ -3973,7 +4206,9 @@ export function bootWorkbenchRuntime() {
       function show(key) {
         const d = dimMap.get(key) || dims[0];
         try {
-          if (d && d.option) inst.setOption(themedChartOption(d.option), true);
+          if (d && d.option) {
+            inst.setOption(themedChartOption(d.option), true);
+          }
         } catch (e) {
           canvas.innerHTML = `<div class="dash-chart-err">render failed: ${esc(e.message || String(e))}</div>`;
           return;
@@ -4060,7 +4295,10 @@ export function bootWorkbenchRuntime() {
       if (window.antdResultCardMount) window.antdResultCardMount(card, type);
     });
     el.chatScroll.querySelectorAll(".chart-card[data-chart-json]").forEach((card) => {
-      try { scheduleChartMount(() => mountChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson)))); }
+      try {
+        const chart = JSON.parse(decodeURIComponent(card.dataset.chartJson));
+        scheduleChartMount(() => mountChart(card, chart));
+      }
       catch (e) { console.warn("历史聊天图表恢复失败", e); }
     });
     el.chatScroll.querySelectorAll(".multidim-card[data-chart-json]").forEach((card) => {
@@ -4114,7 +4352,9 @@ export function bootWorkbenchRuntime() {
       const dimMap = new Map(dims.map((d) => [d.key, d]));
       const show = (key) => {
         const d = dimMap.get(key) || dims[0];
-        if (d && d.option) inst.setOption(themedChartOption(d.option), true);
+        if (d && d.option) {
+          inst.setOption(themedChartOption(d.option), true);
+        }
         if (summary) summary.textContent = (d && d.summary) || "";
       };
       show(spec.default_dim || dims[0].key);
@@ -5350,6 +5590,7 @@ export function bootWorkbenchRuntime() {
         break;
       }
       case "user_choice_requested":
+        clearAssistantThinkingPlaceholder();
         attachChoiceCard(evt);
         setBusy(false);
         break;
@@ -5417,6 +5658,7 @@ export function bootWorkbenchRuntime() {
         finalizeAssistantText();
         clearStepThinking();
         setBusy(false);
+        B().choiceContinuation = false;
         const _bk = B();
         const _tag = _bk.currentTurnTag || 1;
         // Tables produced this turn stay on the dashboard regardless of level —
@@ -5471,6 +5713,7 @@ export function bootWorkbenchRuntime() {
     // Bump per-turn tag so dashboard cards group by user turn
     B().currentTurnTag = (B().currentTurnTag || 0) + 1;
     const _bk = B();
+    _bk.choiceContinuation = false;
     // A new question starts a new execution chain, even though the previous
     // transcript remains visible in chat history.
     _bk.stepTimelineEl = null;
@@ -5486,6 +5729,10 @@ export function bootWorkbenchRuntime() {
     // every turn starts with the user's question, followed by its conclusion,
     // tables and charts as they arrive.
     appendDashboardCard(dashboardQuestionCard(text, _bk.currentTurnTag));
+    // Persist the visible question before opening the SSE request. The
+    // sidebar can therefore show the real title and the in-progress SOP while
+    // the agent is still thinking.
+    saveCurrentConversation({ allowEmpty: true });
 
     // In quadrant-assistant mode, prepend a hidden system-style instruction so
     // the LLM knows which quadrant it is editing and what command vocabulary
@@ -5523,23 +5770,36 @@ export function bootWorkbenchRuntime() {
     const reader = resp.body.getReader();
     const dec = new TextDecoder("utf-8");
     let buf = "";
+    let sawTerminalEvent = false;
+    const consumeChunk = (chunk) => {
+      for (const line of chunk.split("\n")) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        try {
+          const event = JSON.parse(payload);
+          if (event.type === "done" || event.type === "error") sawTerminalEvent = true;
+          onEvent(event);
+        } catch (e) { console.warn("bad json", payload); }
+      }
+    };
     while (true) {
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done) {
+        // The API emits a terminal event, but a proxy/browser can close an
+        // otherwise complete SSE response without the final blank separator.
+        // Do not leave the composer disabled or the SOP cursor blinking in
+        // that case: the stream has ended and the turn is no longer running.
+        if (buf.trim()) consumeChunk(buf);
+        if (!sawTerminalEvent) onEvent({ type: "done", stop_reason: "stream_closed" });
+        break;
+      }
       buf += dec.decode(value, { stream: true });
       let idx;
       while ((idx = buf.indexOf("\n\n")) !== -1) {
         const chunk = buf.slice(0, idx);
         buf = buf.slice(idx + 2);
-        for (const line of chunk.split("\n")) {
-          if (line.startsWith("data:")) {
-            const payload = line.slice(5).trim();
-            if (!payload) continue;
-            try {
-              onEvent(JSON.parse(payload));
-            } catch (e) { console.warn("bad json", payload); }
-          }
-        }
+        consumeChunk(chunk);
       }
     }
   }
@@ -6195,6 +6455,9 @@ export function bootWorkbenchRuntime() {
     const url = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
     await fetch(withClientSession(url), { method: "POST" });
     clearBucketChat(state.mode);       // also resets bucket.convId → fresh
+    // Keep the newly selected conversation visible immediately, even while
+    // the server is still writing its empty draft snapshot.
+    await saveCurrentConversation({ allowEmpty: true });
     renderEmptyState();
     if (state.mode === "report") {
       await refreshReportStatus();
@@ -6313,6 +6576,38 @@ export function bootWorkbenchRuntime() {
   if (el.btnToggleDashboard) el.btnToggleDashboard.addEventListener("click", toggleDashboard);
   if (el.dashboardCollapseBtn) el.dashboardCollapseBtn.addEventListener("click", () => applyDashboardState(true));
   if (el.dashboardReopen) el.dashboardReopen.addEventListener("click", () => applyDashboardState(false));
+  function routeLayoutMode() {
+    const params = new URLSearchParams(window.location.search);
+    const value = String(params.get("layout") || params.get("columns") || "").toLowerCase();
+    return ["1", "one", "single", "single-column"].includes(value)
+      || /\/(?:one|single)(?:\/)?$/.test(window.location.pathname)
+      ? "single"
+      : "two";
+  }
+  let layoutMode = routeLayoutMode();
+  function applyRouteLayout(force = false) {
+    const nextMode = routeLayoutMode();
+    if (!force && nextMode === layoutMode) return;
+    layoutMode = nextMode;
+    const singleColumn = nextMode === "single";
+    document.body.dataset.layout = nextMode;
+    if (singleColumn) {
+      document.body.dataset.mobilePane = "chat";
+    } else {
+      delete document.body.dataset.mobilePane;
+    }
+    window.dispatchEvent(new CustomEvent("bi-viewport-mode", { detail: { singleColumn } }));
+    window.dispatchEvent(new Event("resize"));
+  }
+  function showMobilePane(pane) {
+    if (layoutMode !== "single") return;
+    document.body.dataset.mobilePane = pane;
+  }
+  applyRouteLayout(true);
+  window.addEventListener("popstate", () => applyRouteLayout(true));
+  window.addEventListener("hashchange", () => applyRouteLayout(true));
+  if (el.mobileShowDashboard) el.mobileShowDashboard.addEventListener("click", () => showMobilePane("dashboard"));
+  if (el.mobileShowChat) el.mobileShowChat.addEventListener("click", () => showMobilePane("chat"));
   if (el.dashboardClear) el.dashboardClear.addEventListener("click", () => {
     if (!confirm("清空当前模式的实时看板?")) return;
     clearDashboard();

@@ -13,8 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.gzip import GZipMiddleware
@@ -76,6 +76,10 @@ class AppState:
         self.cwd: str = ""
         self.ontology_store: Optional[OntologyStore] = None
         self.remote_ontology: Optional[RemoteOntologyClient] = None
+        # The manager catalog is a runtime dependency for source switching,
+        # not a process-startup dependency. Keep its last error for the UI.
+        self.remote_catalog_error: str = ""
+        self.remote_catalog_last_attempt: float = 0.0
         self.ontology_backend: str = os.environ.get("ONTOLOGY_BACKEND", "local").strip().lower()
         self.ontology_namespace: str = os.environ.get("ONTOLOGY_NAMESPACE", "").strip()
         self.agent_def: Optional[AgentDef] = None
@@ -275,17 +279,31 @@ def configure(
         try:
             catalog = _remote_repository_catalog(STATE.remote_ontology)
         except OntologyApiError as e:
-            raise RuntimeError(f"无法读取远程原子数据源目录: {e}") from e
-        repository = next((item for item in catalog if item["id"] == STATE.remote_ontology.repository_id), None)
-        if repository is None:
-            raise RuntimeError(f"远程本体库 {STATE.remote_ontology.repository_id} 不在可用目录中")
-        if not repository["dorisDatabase"]:
-            raise RuntimeError(f"远程本体库 {repository['name']} 未配置 dorisDatabase")
-        if not repository["namespace"]:
-            raise RuntimeError(f"远程本体库 {repository['name']} 未配置 namespaceCode")
-        STATE.ontology_namespace = repository["namespace"]
-        STATE.doris_database = repository["dorisDatabase"]
-        STATE.remote_ontology.namespace = repository["namespace"]
+            # The manager catalog is needed for source switching, not for
+            # booting the workbench. Keep the configured repository and the
+            # existing paired Doris defaults; ontology calls will report the
+            # dependency error if the remote service is still down.
+            STATE.remote_catalog_error = str(e)
+            STATE.remote_catalog_last_attempt = time.monotonic()
+            STATE.ontology_namespace = STATE.ontology_namespace or STATE.remote_ontology.namespace
+            STATE.remote_ontology.namespace = STATE.ontology_namespace
+            print(
+                "[bi-agent-web] warning: remote ontology catalog unavailable; "
+                f"source selection/query will report the dependency error: {e}"
+            )
+        else:
+            STATE.remote_catalog_error = ""
+            STATE.remote_catalog_last_attempt = 0.0
+            repository = next((item for item in catalog if item["id"] == STATE.remote_ontology.repository_id), None)
+            if repository is None:
+                raise RuntimeError(f"远程本体库 {STATE.remote_ontology.repository_id} 不在可用目录中")
+            if not repository["dorisDatabase"]:
+                raise RuntimeError(f"远程本体库 {repository['name']} 未配置 dorisDatabase")
+            if not repository["namespace"]:
+                raise RuntimeError(f"远程本体库 {repository['name']} 未配置 namespaceCode")
+            STATE.ontology_namespace = repository["namespace"]
+            STATE.doris_database = repository["dorisDatabase"]
+            STATE.remote_ontology.namespace = repository["namespace"]
         STATE.use_doris = True
     else:
         STATE.ontology_store = OntologyStore.from_xlsx(ontology_path)
@@ -461,7 +479,7 @@ GRAPH_MODE_SOP = """# 图库检索模式 · SOP 调整(覆盖上文对应步骤)
 ## 第 5 步 · 深度分析增强(仅 L3–L5,且上下文不足时)
 若判定为 L3–L5(含根因分析),而 `GraphContext` 给到的上下文不足以支撑根因/决策,可自行使用「图库扩散探索」skill `GraphExpand`:
 - 传入当前业务对象锚点(BOxxxx;传指标编码会自动定位其业务对象)。
-- 它会沿"活动 → 所属流程(取整条流程行信息)"与"活动上下游(活动流流转)"找到上下游业务对象,作为新锚点下钻其全部行信息,补足跨域上下文。
+- 它会综合活动/流程、实体关系、指标/维度/属性映射及图库中的其他有证据路径找到关联业务对象,展示关系方向与最短路径,再把这些对象作为新锚点下钻关联子树。
 - **仅在已有上下文确实不够时调用**;够用就不必扩散。
 """
 
@@ -477,8 +495,9 @@ class SourcesUpdate(BaseModel):
     doris_username: Optional[str] = None
     doris_password: Optional[str] = None
     doris_database: Optional[str] = None
-    # Ontology retrieval mode ("semantic" | "graph") + the selected 图库 file
-    # (only meaningful in graph mode).
+    # Ontology retrieval mode ("semantic" | "graph") + an optional local graph
+    # file. Remote graph mode is backed by the active remote repository API and
+    # does not expose or consume this field.
     retrieval_mode: Optional[str] = None
     graph: Optional[str] = None
     session_id: Optional[str] = None
@@ -558,18 +577,11 @@ def _no_cache_file(path: Path) -> FileResponse:
 
 
 @app.get("/")
-def index() -> FileResponse:
-    # Project main page: the role dashboard (entry). The standalone CEO dashboard
-    # is reachable at /ceo_dashboard_standalone.html and the detailed CEO cockpit
-    # at /ceo_cockpit.html; the BI workbench lives at /workbench and is embedded
-    # as the Meta-ERP 智能分析助手 inside the dashboard's i-Agent view.
-    page = _html_page("dashboard.html")
-    if page.exists():
-        return _no_cache_file(page)
-    fallback = _html_page("ceo_dashboard_standalone.html")
-    if fallback.exists():
-        return _no_cache_file(fallback)
-    return _no_cache_file(STATIC_DIR / "index.html")
+def index(request: Request) -> RedirectResponse:
+    # The standalone workbench is the primary entry point. The role dashboard
+    # remains directly available at /dashboard.html for embedded/dashboard use.
+    query = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"/workbench{query}", status_code=307)
 
 
 @app.get("/healthz")
@@ -757,7 +769,10 @@ def _remote_repository_catalog(client: RemoteOntologyClient) -> list[dict[str, A
             if repository_id in seen_ids:
                 continue
             seen_ids.add(repository_id)
-            database = str(item.get("dorisDatabase") or "").strip()
+            # The repository manager currently returns `currentDatabase`;
+            # older deployments called the same paired source field
+            # `dorisDatabase`. Accept both without hard-coding a business DB.
+            database = str(item.get("dorisDatabase") or item.get("currentDatabase") or "").strip()
             repositories.append({
                 "id": repository_id,
                 "name": str(item.get("name") or f"本体库 {repository_id}"),
@@ -778,7 +793,7 @@ _SOURCE_CONTEXT_FIELDS = (
     "ontology_store", "remote_ontology", "ontology_backend", "ontology_namespace", "ontology_path",
     "db_path", "use_doris", "doris_jdbc_url", "doris_driver",
     "doris_username", "doris_password", "doris_database", "doris_api_url",
-    "retrieval_mode", "graph_path",
+    "retrieval_mode", "graph_path", "remote_catalog_error", "remote_catalog_last_attempt",
 )
 
 
@@ -833,13 +848,13 @@ def get_sources_endpoint(session_id: str = "") -> JSONResponse:
             if p.is_file() and not p.name.startswith("~$")
         )
 
-    # Graph-library candidates for the 图库源 dropdown (graph retrieval mode).
+    # The local graph file remains visible as a read-only compatibility hint in
+    # remote mode, but remote graph retrieval never consumes it.
     graph_options: list[str] = []
+    production_source = source.ontology_backend in {"production", "remote"}
     for pat in GRAPH_PATTERNS:
         graph_options.extend(_scan(GRAPHS_DIR, pat))
     graph_options = sorted(set(graph_options))
-
-    production_source = source.ontology_backend in {"production", "remote"}
     local_ontology_options = [] if production_source else _scan(SPREADSHEETS_DIR, "*.xlsx")
     ontology_options = local_ontology_options + [METAERP_ONTOLOGY_VALUE]
     # The production service exposes all selectable repositories through the
@@ -847,12 +862,35 @@ def get_sources_endpoint(session_id: str = "") -> JSONResponse:
     # fallbacks, and expose each remote repository by its stable id.
     remote_repositories: list[dict[str, Any]] = []
     if source.remote_ontology is not None:
+        # Do not make every settings-page open wait for a dead manager
+        # endpoint. Retry after a short cooldown so recovery is picked up
+        # without requiring a process restart.
+        catalog_retry_due = (
+            not source.remote_catalog_error
+            or time.monotonic() - source.remote_catalog_last_attempt >= 30
+        )
         try:
-            remote_repositories = _remote_repository_catalog(source.remote_ontology)
-        except OntologyApiError:
+            if catalog_retry_due:
+                source.remote_catalog_last_attempt = time.monotonic()
+                remote_repositories = _remote_repository_catalog(source.remote_ontology)
+                source.remote_catalog_error = ""
+                source.remote_catalog_last_attempt = 0.0
+        except OntologyApiError as exc:
             # A manager outage must not make the active atomic source disappear
             # from either settings page. Keep the current pair selectable; new
             # repository switches remain unavailable until the catalog recovers.
+            repository_id = source.remote_ontology.repository_id
+            source.remote_catalog_error = source.remote_catalog_error or str(exc)
+            remote_repositories = [{
+                "id": repository_id,
+                "name": f"本体库 {repository_id}（目录暂不可用）",
+                "description": "",
+                "dorisDatabase": source.doris_database,
+                "namespace": source.ontology_namespace or source.remote_ontology.namespace,
+                "value": f"{REMOTE_ONTOLOGY_PREFIX}{repository_id}",
+                "databaseValue": f"{REMOTE_DORIS_PREFIX}{repository_id}",
+            }]
+        if not remote_repositories and source.remote_catalog_error:
             repository_id = source.remote_ontology.repository_id
             remote_repositories = [{
                 "id": repository_id,
@@ -913,6 +951,10 @@ def get_sources_endpoint(session_id: str = "") -> JSONResponse:
                 "repository_id": source.remote_ontology.repository_id if source.remote_ontology else os.environ.get("ONTOLOGY_REPOSITORY_ID", ""),
             },
             "remote_repositories": remote_repositories,
+            "remote_status": {
+                "available": not bool(source.remote_catalog_error),
+                "message": source.remote_catalog_error,
+            },
         },
         "database": {
             "options": db_options,
@@ -1162,8 +1204,9 @@ def _put_sources_endpoint_impl(
         if active_repo is None or source.doris_database != active_repo["dorisDatabase"]:
             raise HTTPException(400, "远程本体库必须与其 dorisDatabase 作为一个原子数据源切换")
 
-    # Retrieval mode (semantic | graph) + optional 图库 file. In graph mode the
-    # data session is rebuilt with the 图库检索 tools + SOP (see _ensure_session).
+    # Retrieval mode (semantic | graph). A local graph file is only accepted
+    # for local/development sources; remote graph retrieval uses the active
+    # remote repository API and has no local graph_path setting.
     if req.retrieval_mode is not None:
         mode = req.retrieval_mode.strip()
         if mode not in RETRIEVAL_MODES:
@@ -1172,7 +1215,11 @@ def _put_sources_endpoint_impl(
             source.retrieval_mode = mode
             changed.append("retrieval_mode")
 
-    if req.graph:
+    if source.remote_ontology is not None or source.ontology_backend in {"production", "remote"}:
+        if source.graph_path:
+            source.graph_path = ""
+            _mark("graph")
+    elif req.graph:
         gp = _cwd_file(req.graph, label="图库文件")
         if not gp.is_file():
             raise HTTPException(400, f"图库文件不存在: {req.graph}")

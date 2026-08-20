@@ -222,6 +222,8 @@ def _make_table_generate() -> Executor:
             "footnote": params.get("footnote") or "",
             "source_note": params.get("source_note") or "",
             "highlight_rows": params.get("highlight_rows") or [],
+            "analysis_scope": params.get("analysis_scope") or {},
+            "semantic": params.get("semantic") or {},
         }
 
         header = (
