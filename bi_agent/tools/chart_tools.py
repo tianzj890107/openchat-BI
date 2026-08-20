@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..paths import CHARTS_DIR, project_path
+from ..reliability import Measure, SemanticType, validate_chart_measures
 
 Executor = Callable[[dict, str], str]
 ExecutorFactory = Callable[[], Executor]
@@ -125,6 +126,25 @@ def _validate(params: dict) -> str | None:
     series = params.get("series")
     if not isinstance(series, list) or not series:
         return "series must be a non-empty list"
+    # Optional semantic metadata is accepted for newer callers while old chart
+    # payloads remain valid. A warning is surfaced as a rejection only when a
+    # direct comparison is unsafe; display-only charts may omit the metadata.
+    metadata = []
+    for item in series:
+        if isinstance(item, dict) and any(k in item for k in ("unit", "semantic_type", "scope")):
+            try:
+                metadata.append(Measure(
+                    name=str(item.get("name") or "series"), value=0,
+                    unit=str(item.get("unit") or params.get("unit") or ""),
+                    semantic_type=SemanticType(str(item.get("semantic_type") or "OBSERVED").upper()),
+                    scope=item.get("scope") or {},
+                ))
+            except (ValueError, TypeError):
+                return "series semantic_type must be a supported semantic type"
+    if len(metadata) >= 2:
+        comparison = validate_chart_measures(metadata)
+        if not comparison.ok:
+            return "chart comparison rejected: " + "; ".join(comparison.issues)
     if ct == "pie":
         if len(series) != 1:
             return "pie charts need exactly one series entry"

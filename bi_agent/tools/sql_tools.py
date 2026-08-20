@@ -19,6 +19,7 @@ import json
 import os
 from urllib.request import Request, urlopen
 from typing import Callable
+from ..reliability import Provenance, normalize_query_result
 
 Executor = Callable[[dict, str], str]
 
@@ -371,7 +372,13 @@ def _make_sql_run(source: "SqlBackend | str") -> Executor:
                 columns, rows = _doris_query(backend.doris, clean)
             except DorisApiError as e:
                 return f"SQLRun (Doris) error: {e}\nSQL: {sql}"
-            return header + "\n\n" + _format_rows(columns, rows, limit)
+            result = normalize_query_result(
+                {"columns": columns, "rows": rows[:limit]},
+                scope={"query": clean},
+                semantic={"columns": columns},
+                provenance=Provenance(source="Doris", query=clean),
+            )
+            return header + "\n\n" + _format_rows(columns, rows, limit) + "\n\n[RESULT_METADATA]\n" + json.dumps(result.to_dict(), ensure_ascii=False)
         try:
             with sqlite3.connect(backend.db_path) as conn:
                 conn.row_factory = None
@@ -383,7 +390,13 @@ def _make_sql_run(source: "SqlBackend | str") -> Executor:
                 rows = cur.fetchall()
         except sqlite3.Error as e:
             return f"SQLRun error: {e}\nSQL: {sql}"
-        return header + "\n\n" + _format_rows(columns, rows, limit)
+        result = normalize_query_result(
+            {"columns": columns, "rows": rows[:limit]},
+            scope={"query": sql},
+            semantic={"columns": columns},
+            provenance=Provenance(source="SQLite", query=sql),
+        )
+        return header + "\n\n" + _format_rows(columns, rows, limit) + "\n\n[RESULT_METADATA]\n" + json.dumps(result.to_dict(), ensure_ascii=False)
     return run
 
 

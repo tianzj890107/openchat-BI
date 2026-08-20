@@ -23,6 +23,7 @@ from __future__ import annotations
 import copy
 import re
 import time
+from dataclasses import replace
 from typing import Any, Callable, Generator, Optional
 
 from open_claude.agent_def import AgentDef
@@ -45,6 +46,20 @@ from ..tools.chart_policy import chart_skip_reason, skipped_chart_output
 from ..tools.chart_tools import extract_chart_spec
 from ..tools.table_tools import extract_table_spec
 from ..tools.todo_tools import extract_todo_spec
+from ..reliability import (
+    AnalysisContext, Association, Claim, ClaimLevel, LimitationType, Provenance,
+    QueryResult, RelationType, ValidationStatus, association_claim,
+    claims_from_query_result, detect_conflicts, enrich_query_result,
+    reconcile_query_results, relation_evidence_status, render_narrative, validate_claims,
+)
+
+# Only real data queries may become later data sources, reconciliation
+# candidates or claim inputs.  Display/metadata/utility tools are consumed by
+# the UI or the LLM but must never feed back into the analysis state.
+DATA_QUERY_TOOLS = frozenset({"SQLRun", "MetricDataQuery"})
+# Relation/context tools contribute an Association claim only when their
+# output carries explicit edge/path evidence.
+RELATION_TOOLS = frozenset({"RelationLookup", "GraphContext", "GraphExpand"})
 
 
 # Ontology codes carried in ontology-tool output, surfaced to the 本体 inspector
@@ -89,6 +104,11 @@ RESPONSE_PRESENTATION_RULES = """# 输出展示规范
 - 只要最终回答出现“根因分析”“根因证据链”或“根因”章节，同一轮无条件必须继续输出“行动建议”“建议雏形”“执行建议”或“建议”章节；不能因为用户没有明确要求建议而结束。
 - 行动建议必须基于已验证的根因证据，至少给 1–2 条具体动作，不重复根因，不写空泛的“加强管理”，也不能声称动作已经执行。
 - 使用纯文字标题“结论”“根因分析”“行动建议”，不要用表情符号作为标题或机器标记。
+- 每轮分析继承当前 AnalysisContext；只在用户或明确分析步骤改变时更新对应范围。
+- 字段名、表名和模型常识只能作为提示；数据不足时明确说明，Proxy 不能冒充请求指标。
+- 关联不等于因果；没有额外验证机制时只能输出关联或排查假设，不能宣称已确认原因。
+- 多个查询结果冲突时先 reconciliation；无法解决就披露冲突，不要挑选一个数字。
+- 最终结论强度必须匹配 FACT / ASSOCIATION / INFERENCE / VERIFIED Claim 等级。
 """
 
 
@@ -137,6 +157,11 @@ class WebSession:
         # Source-facing tools are captured per browser session. Render and
         # utility tools continue to use the shared immutable registry.
         self._tool_executors = dict(tool_executors or {})
+        self.analysis_context = AnalysisContext()
+        self.query_results: list[QueryResult] = []
+        self.claims: list[Claim] = []
+        self.reconciliation_conflicts: list[str] = []
+        self._turn_results: list[QueryResult] = []
 
         # Skills & system prompt (skills must be loaded before prompt build)
         init_bundled_skills()
@@ -181,6 +206,7 @@ class WebSession:
             effective_def = self.agent_def
         prompt = build_system_prompt(self.cwd, agent_def=effective_def)
         extras: list[str] = []
+        extras.append("# AnalysisContext\n\n" + str(self.analysis_context.to_dict()))
         if self._context_header:
             extras.append(self._context_header.strip())
         extras.append(RESPONSE_PRESENTATION_RULES.strip())
@@ -223,6 +249,125 @@ class WebSession:
         self._context_header = header
         self.system_prompt = self._build_system_prompt()
 
+    def update_analysis_context(self, changes: dict[str, Any]) -> AnalysisContext:
+        """Merge explicit scope changes while preserving omitted fields."""
+        self.analysis_context = self.analysis_context.merge(changes)
+        self.system_prompt = self._build_system_prompt()
+        return self.analysis_context
+
+    def record_query_result(self, tool_name: str, params: dict[str, Any], output: str) -> QueryResult | None:
+        """Normalize a data-query result, build claims, and reconcile drilldowns.
+
+        Only real data queries enter ``query_results`` / ``_turn_results`` so
+        display tools can never become a later data source or a reconciliation
+        candidate.  Relation tools produce an Association claim only when the
+        output carries explicit edge evidence; lookup tools may still emit
+        missing/proxy disclosures through their params.
+        """
+        context_changes: dict[str, Any] = {}
+        if params.get("metric_codes"):
+            context_changes["metrics"] = params["metric_codes"]
+        elif params.get("metric"):
+            context_changes["metrics"] = (params["metric"],)
+        for key in ("dimensions", "filters", "time_scope", "entity_scope", "comparison_scope"):
+            if params.get(key) not in (None, "", [], {}):
+                context_changes[key] = params[key]
+        if context_changes:
+            self.update_analysis_context(context_changes)
+
+        if tool_name in RELATION_TOOLS:
+            has_evidence, status = relation_evidence_status(output)
+            if has_evidence:
+                relation = Association(
+                    from_entity=params.get("from_entity") or "source",
+                    to_entity=params.get("to_entity") or "target",
+                    relation_type=RelationType.ONTOLOGY_RELATION,
+                    evidence=(f"association-{len(self.claims)}",),
+                )
+                self.claims.append(association_claim(
+                    relation,
+                    claim_id=f"association-{len(self.claims)}",
+                    statement="工具结果显示业务对象之间存在关联路径",
+                ))
+            else:
+                self.claims.append(Claim(
+                    id=f"relation-missing-{len(self.claims)}",
+                    statement="关系检索未返回可验证的关联路径证据",
+                    level=ClaimLevel.FACT,
+                    limitations=(LimitationType.RELATION_MISSING,),
+                ))
+            return None
+
+        is_data_query = tool_name in DATA_QUERY_TOOLS
+        if not is_data_query and not (params.get("requested_measure") and params.get("available") is False):
+            return None
+
+        scope = {key: params[key] for key in (
+            "metric", "metric_codes", "dimensions", "filters", "time_scope",
+            "entity_scope", "comparison_scope") if key in params and params[key] not in (None, "", [], {})}
+        semantic: dict[str, Any] = {"tool": tool_name}
+        for key in ("metric", "metric_code", "metric_codes", "semantic_type", "unit",
+                    "value", "parent_value", "child_values", "requested_measure",
+                    "available", "proxy"):
+            if key in params:
+                semantic[key] = params[key]
+        result = QueryResult(
+            data=output,
+            scope=scope or self.analysis_context.to_dict(),
+            semantic=semantic,
+            provenance=Provenance(source=tool_name, query=str(params.get("query") or "")),
+        )
+        result = enrich_query_result(result)
+        semantic = dict(result.semantic)
+        if is_data_query:
+            self.query_results.append(result)
+            self._turn_results.append(result)
+            self.claims.extend(claims_from_query_result(result, f"{tool_name}-{len(self.query_results)}"))
+            if "parent_value" in semantic:
+                self.claims.append(Claim(
+                    id=f"{tool_name}-{len(self.query_results)}-parent",
+                    statement=f"parent={semantic['parent_value']}", level=ClaimLevel.FACT,
+                    scope=result.scope, supports=(f"{tool_name}-{len(self.query_results)}",),
+                    provenance=result.provenance,
+                ))
+            if isinstance(semantic.get("child_values"), (list, tuple)):
+                self.claims.extend(Claim(
+                    id=f"{tool_name}-{len(self.query_results)}-child-{index}",
+                    statement=f"child[{index}]={value}", level=ClaimLevel.FACT,
+                    scope=result.scope, supports=(f"{tool_name}-{len(self.query_results)}",),
+                    provenance=result.provenance,
+                ) for index, value in enumerate(semantic["child_values"]))
+        if params.get("requested_measure") and params.get("available") is False:
+            self.claims.append(Claim(
+                id=f"missing-{len(self.query_results)}",
+                statement=f"请求指标 {params['requested_measure']} 当前无法直接计算",
+                level=ClaimLevel.FACT,
+                scope=result.scope,
+                limitations=(LimitationType.DATA_MISSING,),
+                provenance=result.provenance,
+            ))
+            if params.get("proxy"):
+                self.claims.append(Claim(
+                    id=f"proxy-{len(self.query_results)}",
+                    statement=f"可使用代理指标 {params['proxy']} 观察相关趋势，但不等价于原指标",
+                    level=ClaimLevel.INFERENCE,
+                    scope=result.scope,
+                    limitations=(LimitationType.INSUFFICIENT_EVIDENCE,),
+                    semantic={"semantic_type": "PROXY", "requested_measure": params["requested_measure"]},
+                    provenance=result.provenance,
+                ))
+        if is_data_query:
+            reconciliation = reconcile_query_results(self._turn_results)
+            conflict = detect_conflicts(self._turn_results)
+            if (reconciliation and reconciliation.status == ValidationStatus.REJECT) or conflict.status == ValidationStatus.REJECT:
+                issue = reconciliation.issues[0] if reconciliation and reconciliation.issues else conflict.issues[0]
+                self.reconciliation_conflicts.append(issue)
+                self.claims = [replace(
+                    claim,
+                    limitations=tuple(dict.fromkeys((*claim.limitations, LimitationType.CONFLICTING_EVIDENCE))),
+                ) for claim in self.claims]
+        return result
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -236,6 +381,9 @@ class WebSession:
             self.first_user_question = visible
         self._chart_suppressed_this_turn = False
         self._table_rendered_this_turn = False
+        self._turn_results = []
+        self.claims = []
+        self.reconciliation_conflicts = []
         self.messages.append({"role": "user", "content": user_text})
         yield {"type": "user_message", "text": user_text}
         yield from self._run_loop()
@@ -307,6 +455,8 @@ class WebSession:
         text_concat_this_turn: str = ""
         enforced_render: bool = False
         enforced_action: bool = False
+        enforced_answer_validation: bool = False
+        claim_context_sent: bool = False
         root_cause_seen = False
         action_seen = False
 
@@ -454,6 +604,46 @@ class WebSession:
                     self.messages.append({"role": "user", "content": reminder, "internal": True})
                     continue
 
+                if self.claims:
+                    if not claim_context_sent:
+                        claim_context_sent = True
+                        claim_lines = "\n".join(
+                            f"- [{claim.level.value}] {claim.statement}"
+                            + (f"（限制：{'、'.join(str(x.value if hasattr(x, 'value') else x) for x in claim.limitations)}）" if claim.limitations else "")
+                            for claim in self.claims
+                        )
+                        reminder = (
+                            "以下是本轮由工具结果生成的 Structured Claims。最终回答必须只基于这些 Claims，"
+                            "数字、范围和语义不得超出它们；ASSOCIATION/INFERENCE 不得写成已验证因果；"
+                            "存在限制或冲突时必须明确披露。请据此重新生成最终 Narrative。\n"
+                            + claim_lines
+                            + "\n\n结构化 Claim 渲染参考：\n"
+                            + render_narrative(self.claims)
+                        )
+                        self.messages.append({"role": "user", "content": reminder, "internal": True})
+                        yield {"type": "claim_context", "claims": [claim.id for claim in self.claims]}
+                        continue
+                    validation = validate_claims(self.claims, text_concat_this_turn)
+                    if validation.status == ValidationStatus.REJECT:
+                        if enforced_answer_validation:
+                            yield {
+                                "type": "answer_blocked",
+                                "status": "blocked",
+                                "issues": list(validation.issues),
+                                "message": "最终回答被阻止：结构化 Claims 不支持该确定性叙述。",
+                            }
+                            return
+                        enforced_answer_validation = True
+                        reminder = (
+                            "最终回答未通过结构化 Claim 校验。请重新生成叙述："
+                            + "；".join(validation.issues)
+                            + "。只能使用已有 Claim，保持其 FACT/ASSOCIATION/INFERENCE/VERIFIED 等级，"
+                              "披露冲突和限制，不要添加未经支持的数字或因果结论。"
+                        )
+                        self.messages.append({"role": "user", "content": reminder, "internal": True})
+                        yield {"type": "answer_validation", "status": "rejected", "issues": list(validation.issues)}
+                        continue
+
                 break
 
             # If any tool_use is AskUser, run the siblings now (if any) and
@@ -470,6 +660,7 @@ class WebSession:
                         continue
                     t0 = time.time()
                     output, chart_was_suppressed = self._execute_tool(tu)
+                    self.record_query_result(tu["name"], tu.get("input") or {}, output)
                     self._chart_suppressed_this_turn |= chart_was_suppressed
                     duration_ms = int((time.time() - t0) * 1000)
                     display_output, chart = extract_chart_spec(output)
@@ -517,6 +708,7 @@ class WebSession:
             for tu in tool_uses:
                 t0 = time.time()
                 output, chart_was_suppressed = self._execute_tool(tu)
+                self.record_query_result(tu["name"], tu.get("input") or {}, output)
                 self._chart_suppressed_this_turn |= chart_was_suppressed
                 duration_ms = int((time.time() - t0) * 1000)
 
@@ -564,6 +756,23 @@ class WebSession:
         params = tool_use.get("input")
         if not isinstance(params, dict):
             params = {}
+        else:
+            params = dict(params)
+        if name in {"ChartGenerate", "ChartGenerateMultiDim", "TableGenerate"} and self.query_results:
+            latest = self.query_results[-1]
+            if name.startswith("Chart"):
+                series = params.get("series")
+                if isinstance(series, list):
+                    for item in series:
+                        if not isinstance(item, dict):
+                            continue
+                        item.setdefault("unit", latest.semantic.get("unit", ""))
+                        item.setdefault("semantic_type", latest.semantic.get("semantic_type", "OBSERVED"))
+                        item.setdefault("scope", dict(latest.scope))
+            else:
+                params.setdefault("source_note", latest.provenance.source or "query result")
+                params.setdefault("analysis_scope", dict(latest.scope))
+                params.setdefault("semantic", dict(latest.semantic))
         reason = chart_skip_reason(self._active_user_text, name, params)
         if reason:
             return skipped_chart_output(reason), True

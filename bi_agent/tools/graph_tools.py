@@ -3,14 +3,15 @@ Graph-mode retrieval tools (图库检索) — exposed to the BI agent only when
 检索模式 = 图库检索.
 
   - GraphContext : Step 3「上下文准备」. From a 业务对象 / 指标 anchor (the LLM
-        picks which, by name or code), pull the whole de-duplicated sub-tree of
-        excel rows as background context.
+        picks which, by name or code), pull the whole de-duplicated ontology
+        sub-tree as background context.
   - GraphExpand  : 分析步骤(L3–L5)的「图库扩散探索」skill. When context is
         insufficient, diffuse from a 业务对象 anchor through 活动→流程 and
         活动上下游 to reach upstream/downstream 业务对象 and pull their rows.
 
-Both run on the in-memory OntologyStore via GraphRetriever (always consistent
-with the loaded 本体源).
+Local mode runs on the in-memory OntologyStore via GraphRetriever. Remote mode
+keeps the same tool contract but traverses the managed ontology graph, including
+edge direction/properties and evidence paths.
 """
 
 from __future__ import annotations
@@ -39,7 +40,8 @@ GRAPH_CONTEXT_SCHEMA = {
         "- 指标锚点 → 该指标 + 可下钻维度 + 指标维度矩阵,并自动上挂其业务对象"
         "作为新锚点下钻该业务对象全部行信息。\n"
         "先用 `query` 传入用户问题里的业务名词由系统在业务对象库/指标库里匹配"
-        "锚点;若已确定编码,直接用 `anchor` 传 BO/指标编码。"
+        "锚点;若已确定编码,直接用 `anchor` 传 BO/指标编码。远程模式还返回关系"
+        "方向、关系属性和关键路径证据。"
     ),
     "input_schema": {
         "type": "object",
@@ -91,10 +93,11 @@ GRAPH_EXPAND_SCHEMA = {
     "name": "GraphExpand",
     "description": (
         "图库检索 · 扩散探索 skill(仅 L3–L5 根因/决策/执行,且已有上下文不足时使用)。"
-        "从一个业务对象锚点出发,沿『活动 → 所属流程(取整条流程行信息)』与"
-        "『活动上下游(活动流流转)』找到该业务对象可能对应的上下游业务对象,"
+        "从一个业务对象锚点出发,沿『活动 → 所属流程(取整条流程行信息)』、"
+        "『活动上下游(活动流流转)』、实体关系及其他已建模关系找到上下游业务对象,"
         "把它们作为新锚点并下钻其全部行信息,从而补充更多背景上下文。\n"
-        "传入业务对象编码(BOxxxx);若传指标编码会自动定位其业务对象。"
+        "传入业务对象编码(BOxxxx);若传指标编码会自动定位其业务对象。远程模式"
+        "会保留最短路径、边方向和关系属性作为可追溯证据。"
     ),
     "input_schema": {
         "type": "object",

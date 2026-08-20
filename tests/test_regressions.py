@@ -51,6 +51,9 @@ from bi_agent.tools.analysis_policy import (
     wants_root_cause,
 )
 from bi_agent.tools.remote_ontology_tools import (
+    _make_graph_context,
+    _make_graph_expand,
+    _make_related,
     _make_metric_data_query,
     _metric_adapter,
     _rank_row,
@@ -68,6 +71,11 @@ from open_claude.agent_def import AgentDef
 
 
 class OfflineRegressionTests(unittest.TestCase):
+    def test_root_redirects_to_workbench(self) -> None:
+        response = TestClient(app).get("/", follow_redirects=False)
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers.get("location"), "/workbench")
+
     def test_remote_metric_priority_and_three_dialect_adapter(self) -> None:
         query = "target"
         ranked = [
@@ -107,6 +115,155 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertEqual(len(client.list_objects("Indicator", 1000)), 2)
         self.assertEqual(len(client.list_objects("Indicator", 1000)), 2)
         self.assertEqual(len(calls), 1)
+
+    def test_remote_graph_neighborhood_recovers_directed_edge_evidence(self) -> None:
+        client = RemoteOntologyClient("http://ontology.test", "4")
+        client.find_related = lambda type_name, code, depth=2: {
+            "objects": [
+                {"typeName": "LogicalEntity", "properties": {"code": "LE1", "label": "订单"}},
+                {"typeName": "BusinessAttribute", "properties": {"code": "ATT1", "label": "金额"}},
+            ],
+        }
+        client.list_objects = lambda type_name, limit=2000: [
+            {"code": "BO1", "label": "采购订单"},
+        ]
+        calls = []
+        client.script_query = lambda language, script, params_list=None: calls.append(
+            (language, script, params_list)
+        ) or {
+            "results": [{"rows": [
+                {
+                    "sourceCode": ["BO1"],
+                    "relationType": ["BOContainLE"],
+                    "relationProperties": [{"cardinality": "1:N"}],
+                    "targetCode": ["LE1"],
+                },
+                {
+                    "sourceCode": "LE1",
+                    "relationType": "LEContainATT",
+                    "relationProperties": {},
+                    "targetCode": "ATT1",
+                },
+            ]}],
+        }
+
+        graph = client.graph_neighborhood("BusinessObject", "BO1", depth=4)
+        self.assertEqual(len(graph["objects"]), 3)
+        self.assertEqual(len(graph["relations"]), 2)
+        self.assertTrue(graph["relations_available"])
+        self.assertEqual(calls[0][0], "opencypher")
+        self.assertEqual(calls[0][2][0][0], "codes")
+        self.assertIn("BO1", calls[0][2][0][1])
+
+    def test_remote_graph_neighborhood_keeps_vertices_when_edge_query_fails(self) -> None:
+        client = RemoteOntologyClient("http://ontology.test", "4")
+        client.find_related = lambda type_name, code, depth=2: {
+            "objects": [
+                {"typeName": "LogicalEntity", "properties": {"code": "LE1", "label": "订单"}},
+            ],
+        }
+        client.list_objects = lambda type_name, limit=2000: [
+            {"code": "BO1", "label": "采购订单"},
+        ]
+
+        def unavailable_edges(language, script, params_list=None):
+            raise OntologyApiError("OpenCypher is unavailable")
+
+        client.script_query = unavailable_edges
+        graph = client.graph_neighborhood("BusinessObject", "BO1", depth=3)
+        self.assertEqual(len(graph["objects"]), 2)
+        self.assertEqual(graph["relations"], [])
+        self.assertFalse(graph["relations_available"])
+        output = _make_graph_context(client)({"anchor": "BO1"}, ".")
+        self.assertIn("降级说明", output)
+        self.assertIn("[LE1] 订单 (LogicalEntity)", output)
+        self.assertIn("方向/关系类型未由当前仓库返回", output)
+
+    def test_remote_graph_context_matches_local_subtree_and_adds_paths(self) -> None:
+        class FakeGraphClient:
+            repository_id = "4"
+
+            def graph_neighborhood(self, type_name, code, **kwargs):
+                return {
+                    "depth": kwargs.get("depth", 4),
+                    "relations_available": True,
+                    "objects": [
+                        {"typeName": "BusinessObject", "anchor": code == "BO1", "properties": {"code": "BO1", "label": "采购订单"}},
+                        {"typeName": "LogicalEntity", "properties": {"code": "LE1", "label": "采购订单头", "physicalTable": "po_header"}},
+                        {"typeName": "BusinessAttribute", "properties": {"code": "ATT1", "label": "订单金额", "columnName": "amount"}},
+                        {"typeName": "Indicator", "anchor": code == "M1", "properties": {"code": "M1", "label": "采购金额", "businessFormula": "SUM(amount)"}},
+                        {"typeName": "Dimension", "properties": {"code": "D1", "label": "时间维度"}},
+                    ],
+                    "relations": [
+                        {"sourceCode": "BO1", "relationType": "BOContainLE", "relationProperties": {}, "targetCode": "LE1"},
+                        {"sourceCode": "LE1", "relationType": "LEContainATT", "relationProperties": {}, "targetCode": "ATT1"},
+                        {"sourceCode": "M1", "relationType": "IndicatorIsCalculatedFromATT", "relationProperties": {"expression": "SUM"}, "targetCode": "ATT1"},
+                        {"sourceCode": "M1", "relationType": "IndicatorIsDrilledByDimension", "relationProperties": {}, "targetCode": "D1"},
+                    ],
+                }
+
+            def list_objects(self, type_name, limit=2000):
+                return []
+
+        output = _make_graph_context(FakeGraphClient())({"anchor": "M1"}, ".")
+        self.assertIn("Remote GraphContext", output)
+        self.assertIn("[M1] 采购金额 (Indicator)", output)
+        self.assertIn("[BO1] 采购订单 (BusinessObject)", output)
+        self.assertIn("[LE1] 采购订单头 (LogicalEntity)", output)
+        self.assertIn("[ATT1] 订单金额 (BusinessAttribute)", output)
+        self.assertIn("[D1] 时间维度 (Dimension)", output)
+        self.assertIn("IndicatorIsCalculatedFromATT", output)
+        self.assertIn("关键路径", output)
+
+    def test_remote_graph_expand_uses_activity_and_entity_paths_then_drills_subtrees(self) -> None:
+        class FakeGraphClient:
+            repository_id = "4"
+
+            def graph_neighborhood(self, type_name, code, **kwargs):
+                objects = [
+                    {"typeName": "BusinessObject", "anchor": code == "BO1", "properties": {"code": "BO1", "label": "采购订单"}},
+                    {"typeName": "Indicator", "anchor": code == "M1", "properties": {"code": "M1", "label": "采购金额"}},
+                    {"typeName": "Activity", "properties": {"code": "ACT1", "label": "下达订单"}},
+                    {"typeName": "Process", "properties": {"code": "PROC1", "label": "采购流程"}},
+                    {"typeName": "Activity", "properties": {"code": "ACT2", "label": "收货"}},
+                    {"typeName": "BusinessObject", "anchor": code == "BO2", "properties": {"code": "BO2", "label": "采购收货"}},
+                    {"typeName": "LogicalEntity", "properties": {"code": "LE2", "label": "收货单"}},
+                    {"typeName": "BusinessAttribute", "properties": {"code": "ATT2", "label": "收货金额"}},
+                ]
+                relations = [
+                    {"sourceCode": "M1", "relationType": "IndicatorBelongToBO", "relationProperties": {}, "targetCode": "BO1"},
+                    {"sourceCode": "ACT1", "relationType": "ActivityOperateBO", "relationProperties": {}, "targetCode": "BO1"},
+                    {"sourceCode": "ACT1", "relationType": "ActivityBelongsToProcess", "relationProperties": {}, "targetCode": "PROC1"},
+                    {"sourceCode": "ACT1", "relationType": "ActivityFlowsTo", "relationProperties": {"sequence": 2}, "targetCode": "ACT2"},
+                    {"sourceCode": "ACT2", "relationType": "ActivityOperateBO", "relationProperties": {}, "targetCode": "BO2"},
+                    {"sourceCode": "BO2", "relationType": "BOContainLE", "relationProperties": {}, "targetCode": "LE2"},
+                    {"sourceCode": "LE2", "relationType": "LEContainATT", "relationProperties": {}, "targetCode": "ATT2"},
+                ]
+                return {
+                    "depth": kwargs.get("depth", 5), "relations_available": True,
+                    "objects": objects, "relations": relations,
+                }
+
+            def list_objects(self, type_name, limit=2000):
+                return []
+
+        client = FakeGraphClient()
+        output = _make_graph_expand(client)({"anchor": "BO1"}, ".")
+        self.assertIn("Remote GraphExpand", output)
+        self.assertIn("活动/流程链", output)
+        self.assertIn("ActivityFlowsTo", output)
+        self.assertIn("[BO2] 采购收货 (BusinessObject)", output)
+        self.assertIn("[LE2] 收货单 (LogicalEntity)", output)
+        self.assertIn("[ATT2] 收货金额 (BusinessAttribute)", output)
+        self.assertIn("扩散关系证据", output)
+
+        indicator_output = _make_graph_expand(client)({"anchor": "M1"}, ".")
+        self.assertIn("指标回挂业务对象", indicator_output)
+        self.assertIn("[BO2] 采购收货 (BusinessObject)", indicator_output)
+
+        relation_output = _make_related(client)({"entity": "BO1"}, ".")
+        self.assertIn("关系证据", relation_output)
+        self.assertIn("ActivityOperateBO", relation_output)
 
     def test_metric_data_query_builds_semantic_payload(self) -> None:
         class FakeClient:
@@ -1096,6 +1253,9 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertNotIn("/api/conversations?mode=", main)
         self.assertIn("conversationSummaryRequests", runtime)
         self.assertIn("event.detail?.conversations", main)
+        self.assertIn("const eventMode = event.detail?.mode || \"data\"", main)
+        self.assertIn("eventMode !== (document.body.dataset.mode || \"data\")", main)
+        self.assertIn('window.addEventListener("bi-mode-changed", onMode)', main)
         self.assertIn("/preview", runtime)
         self.assertIn("/assets", runtime)
         self.assertIn("/activate", runtime)
@@ -1136,6 +1296,29 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('ToolStepIcon name={name} tone={tone}', main)
         self.assertIn("assistant-execution-block", runtime)
         self.assertIn("currentExecutionBlock", runtime)
+        self.assertIn("#F7F9FC", css)
+        self.assertIn("#2563EB", css)
+        self.assertIn("#1E40AF", css)
+        self.assertIn("#DBE4EC", css)
+        self.assertIn("#DBEAFE", css)
+        self.assertIn("#CCFBF1", css)
+        self.assertIn("#FFEDD5", css)
+        self.assertIn("#DCFCE7", css)
+        self.assertIn("#FEF3C7", css)
+        self.assertIn("#EDE9FE", css)
+        self.assertIn("#FEE2E2", css)
+        self.assertIn("pane.scrollTo({", runtime)
+        self.assertIn("pane.scrollTop + cardRect.top - paneRect.top", runtime)
+        self.assertIn("dashboardCards.find((card) => !card.classList.contains(\"dash-question\"))", runtime)
+        self.assertIn("clearAssistantThinkingPlaceholder", runtime)
+        choice_case = runtime[runtime.index('case "user_choice_requested"'):]
+        self.assertLess(choice_case.index("clearAssistantThinkingPlaceholder()"), choice_case.index("attachChoiceCard(evt)"))
+        self.assertIn("saveCurrentConversation({ allowEmpty: true })", runtime)
+        self.assertIn("if (state.busy) return;", runtime[runtime.index("async function restoreConversation"):])
+        restore_start = runtime.index("async function restoreConversation")
+        restore_source = runtime[restore_start:runtime.index("// ------------------------------------------------------------------", restore_start + 1)]
+        self.assertNotIn("activeRequestController.abort()", restore_source)
+        self.assertIn("Persist the visible question before opening the SSE request", runtime)
         self.assertIn("assistant-execution-block", css)
         self.assertIn("--thinking-chain-row-width: 80%", css)
         self.assertIn("flex: 0 0 var(--thinking-chain-row-width)", css)
@@ -1162,7 +1345,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=83" defer', index)
+        self.assertIn('workbench.js?v=148" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -1376,6 +1559,7 @@ class OfflineRegressionTests(unittest.TestCase):
                     [repo["databaseValue"] for repo in repos],
                     ["", ""],
                 )
+                self.assertIn("graph", payload["retrieval"])
                 self.assertEqual(STATE.remote_ontology.calls, [1, 2])
         finally:
             STATE.cwd, STATE.remote_ontology, STATE.ontology_backend = previous

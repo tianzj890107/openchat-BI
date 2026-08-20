@@ -8,6 +8,8 @@ import time
 from typing import Any, Callable, Iterable
 
 from ..ontology.remote import OntologyApiError, RemoteOntologyClient
+from ..reliability import normalize_query_result, Provenance
+from ..ontology.remote_retriever import RemoteGraphRetriever
 from .graph_tools import GRAPH_CONTEXT_SCHEMA, GRAPH_EXPAND_SCHEMA
 from .ontology_tools import (
     ENTITY_DESCRIBE_SCHEMA,
@@ -22,7 +24,8 @@ Executor = Callable[[dict[str, Any], str], str]
 
 _CANDIDATE_TYPES = [
     "BusinessObject", "LogicalEntity", "BusinessAttribute", "Term",
-    "Dimension", "Indicator", "Rule", "TableNode", "Column",
+    "Dimension", "Indicator", "Rule", "Activity", "Process", "EntityRelation",
+    "MetaRelation", "TableNode", "Column",
 ]
 
 METRIC_DATA_QUERY_SCHEMA: dict[str, Any] = {
@@ -163,21 +166,48 @@ def _candidate_results(client: RemoteOntologyClient, query: str) -> list[tuple[s
 
 def _code_type(value: str) -> str:
     code = value.upper()
+    if code.startswith("MREL"):
+        return "MetaRelation"
     if code.startswith("BO"):
         return "BusinessObject"
     if code.startswith("LE"):
         return "LogicalEntity"
-    if code.startswith("AT"):
+    if code.startswith(("ATT", "AT")):
         return "BusinessAttribute"
-    if code.startswith("M"):
+    if code.startswith(("MET", "M")):
         return "Indicator"
-    if code.startswith("D"):
+    if code.startswith(("DIM", "D")):
         return "Dimension"
-    if code.startswith("R"):
+    if code.startswith(("RULE", "R")):
         return "Rule"
-    if code.startswith("T"):
+    if code.startswith(("TERM", "T")):
         return "Term"
+    if code.startswith(("ACT", "A")):
+        return "Activity"
+    if code.startswith(("PROC", "SSP")):
+        return "Process"
+    if code.startswith("PT"):
+        return "TableNode"
+    if code.startswith("COL"):
+        return "Column"
+    if code.startswith("ER"):
+        return "EntityRelation"
     return "BusinessObject"
+
+
+def _graph_anchor_candidates(
+    client: RemoteOntologyClient, query: str,
+) -> list[tuple[str, dict[str, Any]]]:
+    """Resolve graph anchors exactly like local mode: BO or Indicator only."""
+
+    found: list[tuple[str, dict[str, Any]]] = []
+    for type_name in ("BusinessObject", "Indicator"):
+        try:
+            found.extend((type_name, row) for row in _search_type(client, type_name, query, limit=12))
+        except OntologyApiError:
+            continue
+    found.sort(key=lambda pair: _rank_row(pair[1], query))
+    return found
 
 
 def _related_objects(data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -408,13 +438,15 @@ def _make_metric(client: RemoteOntologyClient) -> Executor:
 
 
 def _make_related(client: RemoteOntologyClient) -> Executor:
+    retriever = RemoteGraphRetriever(client)
+
     def run(params: dict[str, Any], cwd: str) -> str:
         entity = str(params.get("entity") or "").strip()
         if not entity:
             return "RelationLookup: empty entity."
         try:
-            return _related_text(client.find_related(_code_type(entity), entity, depth=2), f"Remote relations for {entity}")
-        except OntologyApiError as exc:
+            return retriever.relation_bundle(_code_type(entity), entity, depth=2)
+        except (OntologyApiError, ValueError) as exc:
             return f"RelationLookup remote error: {exc}"
     return run
 
@@ -453,12 +485,16 @@ def _make_list_bos(client: RemoteOntologyClient) -> Executor:
 
 
 def _make_graph_context(client: RemoteOntologyClient) -> Executor:
+    retriever = RemoteGraphRetriever(client)
+
     def run(params: dict[str, Any], cwd: str) -> str:
         anchor = str(params.get("anchor") or "").strip()
         query = str(params.get("query") or "").strip()
         try:
             if not anchor:
-                matches = _candidate_results(client, query)
+                if not query:
+                    return "GraphContext: provide query or anchor."
+                matches = _graph_anchor_candidates(client, query)
                 if not matches:
                     return f"GraphContext: no remote anchor for {query!r}."
                 if len(matches) > 1:
@@ -469,20 +505,28 @@ def _make_graph_context(client: RemoteOntologyClient) -> Executor:
                 anchor = _text(_ci_get(props, "code", "identifierCode"))
             else:
                 type_name = _code_type(anchor)
-            return _related_text(client.find_related(type_name, anchor, depth=2), f"Remote GraphContext [{anchor}]")
-        except OntologyApiError as exc:
+                props = None
+            if type_name not in {"BusinessObject", "Indicator"}:
+                return f"GraphContext: anchor [{anchor}] must be a BusinessObject or Indicator."
+            return retriever.context_bundle(type_name, anchor, root_properties=props, depth=4)
+        except (OntologyApiError, ValueError) as exc:
             return f"GraphContext remote error: {exc}"
     return run
 
 
 def _make_graph_expand(client: RemoteOntologyClient) -> Executor:
+    retriever = RemoteGraphRetriever(client)
+
     def run(params: dict[str, Any], cwd: str) -> str:
         anchor = str(params.get("anchor") or "").strip()
         if not anchor:
             return "GraphExpand: empty anchor."
         try:
-            return _related_text(client.find_related(_code_type(anchor), anchor, depth=3), f"Remote GraphExpand [{anchor}]")
-        except OntologyApiError as exc:
+            type_name = _code_type(anchor)
+            if type_name not in {"BusinessObject", "Indicator"}:
+                return f"GraphExpand: anchor [{anchor}] must be a BusinessObject or Indicator."
+            return retriever.expand(type_name, anchor, depth=5)
+        except (OntologyApiError, ValueError) as exc:
             return f"GraphExpand remote error: {exc}"
     return run
 
@@ -528,7 +572,16 @@ def _make_metric_data_query(client: RemoteOntologyClient) -> Executor:
         try:
             data = client.data_query(analysis, common)
             client._data_query_failure = None
-            return "# MetricDataQuery (analysis/data/query)\n\n" + json.dumps(data, ensure_ascii=False, indent=2)
+            normalized = normalize_query_result(
+                data=data,
+                scope={"metric_codes": codes, "dimensions": dimensions,
+                       "filters": common.get("filters", {})},
+                semantic={"metrics": codes, "dimensions": dimensions},
+                provenance=Provenance(source="remote", api="analysis/data/query",
+                                      metric_code=",".join(codes)),
+            )
+            return "# MetricDataQuery (analysis/data/query)\n\n" + json.dumps(
+                normalized.to_dict(), ensure_ascii=False, indent=2)
         except OntologyApiError as exc:
             message = str(exc)
             # A repository-wide server failure should not be retried for every

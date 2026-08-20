@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
@@ -44,6 +45,7 @@ class RemoteOntologyClient:
             self.cache_ttl = 30.0
         self._object_cache: dict[str, tuple[float, list[dict[str, Any]], bool]] = {}
         self._repository_page_cache: dict[tuple[int, int], tuple[float, dict[str, Any]]] = {}
+        self._graph_neighborhood_cache: dict[tuple[str, str, int, int, int], tuple[float, dict[str, Any]]] = {}
         if not self.base_url:
             raise ValueError("ONTOLOGY_BASE_URL is required for the remote ontology backend")
         if not self.repository_id:
@@ -129,6 +131,106 @@ class RemoteOntologyClient:
             query={"type": type_name, "code": code, "depth": max(1, min(int(depth), 5))},
         )
         return payload.get("data") or {}
+
+    def graph_neighborhood(
+        self,
+        type_name: str,
+        code: str,
+        *,
+        depth: int = 3,
+        max_objects: int = 800,
+        max_relations: int = 3000,
+    ) -> dict[str, Any]:
+        """Return a bounded remote subgraph with vertices *and* directed edges.
+
+        ``findRelatedObjects`` is the stable traversal API, but intentionally
+        returns a de-duplicated vertex list without edge evidence.  Use that
+        list as the safe traversal boundary, then recover all edges inside the
+        boundary with the documented read-only OpenCypher endpoint.  Repositories
+        that do not support the generic edge query still return the complete
+        vertex neighborhood with ``relations_available=False``.
+        """
+
+        normalized_type = str(type_name or "").strip()
+        normalized_code = str(code or "").strip()
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", normalized_type):
+            raise ValueError("invalid ontology type")
+        if not normalized_code:
+            raise ValueError("ontology code is required")
+        safe_depth = max(1, min(int(depth), 5))
+        safe_objects = max(1, min(int(max_objects), 2000))
+        safe_relations = max(1, min(int(max_relations), 10000))
+        cache_key = (normalized_type, normalized_code, safe_depth, safe_objects, safe_relations)
+        now = time.monotonic()
+        cached = self._graph_neighborhood_cache.get(cache_key)
+        if cached and now - cached[0] <= self.cache_ttl:
+            return cached[1]
+
+        related = self.find_related(normalized_type, normalized_code, safe_depth)
+        objects: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+
+        def remember(type_value: str, props: dict[str, Any], *, anchor: bool = False) -> None:
+            actual_type = str(type_value or props.get("typeName") or props.get("type") or "Unknown")
+            actual_props = props.get("properties") if isinstance(props.get("properties"), dict) else props
+            actual_props = dict(actual_props or {})
+            obj_code = str(actual_props.get("code") or actual_props.get("identifierCode") or "").strip()
+            if not obj_code:
+                return
+            key = (actual_type, obj_code)
+            if key in seen or len(objects) >= safe_objects:
+                return
+            seen.add(key)
+            objects.append({"typeName": actual_type, "properties": actual_props, "anchor": anchor})
+
+        # Preserve the root even though findRelatedObjects normally excludes it.
+        try:
+            roots = self.list_objects(normalized_type, 5000)
+            root = next((row for row in roots if str(row.get("code") or row.get("identifierCode") or "") == normalized_code), None)
+        except OntologyApiError:
+            root = None
+        remember(normalized_type, root or {"code": normalized_code}, anchor=True)
+        for item in related.get("objects") or related.get("relatedObjects") or []:
+            if isinstance(item, dict):
+                remember(str(item.get("typeName") or item.get("type") or "Unknown"), item)
+
+        codes = sorted({
+            str(item["properties"].get("code") or item["properties"].get("identifierCode") or "").strip()
+            for item in objects
+        } - {""})
+        relations: list[dict[str, Any]] = []
+        relation_error = ""
+        if len(codes) > 1:
+            script = (
+                "MATCH (s)-[r]->(t) "
+                "WHERE s.code IN $codes AND t.code IN $codes "
+                "RETURN s.code AS sourceCode, type(r) AS relationType, "
+                "properties(r) AS relationProperties, t.code AS targetCode "
+                f"LIMIT {safe_relations}"
+            )
+            try:
+                edge_data = self.script_query("opencypher", script, [["codes", codes]])
+                for result in edge_data.get("results") or []:
+                    for row in result.get("rows") or []:
+                        if isinstance(row, dict):
+                            relations.append(row)
+            except OntologyApiError as exc:
+                relation_error = str(exc)
+
+        relations_available = not relation_error and (len(codes) <= 1 or bool(relations))
+        if len(codes) > 1 and not relations and not relation_error:
+            relation_error = "edge query returned no relationships for a non-empty neighborhood"
+
+        graph = {
+            "anchor": {"typeName": normalized_type, "code": normalized_code},
+            "depth": safe_depth,
+            "objects": objects,
+            "relations": relations,
+            "relations_available": relations_available,
+            "relation_error": relation_error,
+        }
+        self._graph_neighborhood_cache[cache_key] = (now, graph)
+        return graph
 
     def search_objects(self, type_name: str, text: str, limit: int = 20) -> list[dict[str, Any]]:
         """Search a type by its English name or localized label.
