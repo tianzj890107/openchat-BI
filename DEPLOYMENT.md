@@ -179,3 +179,16 @@ git diff --name-only
 本体管理服务的新目录接口可能返回 `currentDatabase`，旧接口返回 `dorisDatabase`；应用兼容读取两个字段，避免目录字段升级导致新 release 无法启动。
 
 本体任务 Agent 的数据库连接凭据使用平台 AES-GCM 加密格式时，运行进程必须加载与加密端一致的 `ontology.crypto.secret`（或对应环境变量）。Agent 已采用 fail-closed 行为：缺少密钥、密钥错误、密文损坏或 Tag 校验失败会在任务上下文刷新阶段返回 `DATABASE_CREDENTIAL_DECRYPTION_FAILED`，不会把密文当作数据库明文密码继续连接，也不会把密钥写入日志。部署后应使用真实部署密钥重启 ontology-agent，并重新创建或刷新受影响任务；密钥文件/环境文件权限应为 `600`，不要提交到仓库。当前服务器已配置后端提供的 32 字节 Base64 secret，并验证任务凭据解密后可连接 PostgreSQL。
+
+### 团队网关 thinking 参数（模型族路由）
+
+团队网关请求中的 DeepSeek 专属 `thinking` 参数按模型族路由，只对 DeepSeek 生效：
+
+```dotenv
+TEAM_DEEPSEEK_ENABLE_THINKING=true   # DeepSeek 专属，优先于旧全局变量
+TEAM_QWEN_ENABLE_THINKING=           # 显式设为 true 才给 Qwen 发 enable_thinking
+```
+
+旧全局 `TEAM_ENABLE_THINKING` 仅作为 DeepSeek 的兼容项；无论其取值如何，都不会再影响
+Qwen、GLM、Kimi 等模型。不要使用 `litellm.drop_params=true` 掩盖参数错误。部署时若在
+服务器保留旧变量，请确认新代码已生效（只影响 DeepSeek），或直接改用上面的模型族变量。
