@@ -6767,6 +6767,16 @@ export function bootWorkbenchRuntime() {
     try { localStorage.setItem(LAYOUT_PANE_LS_KEY, pane); } catch (e) {}
   }
   let layoutMode = "two";
+  // Buffer zone for near-square containers: a layout change is only applied
+  // when the .split container is clearly wider than tall (two columns) or
+  // clearly taller than wide (single). Ratios inside LAYOUT_HYSTERESIS keep
+  // the current layout so scrollbar/font/layout shifts cannot flip it back
+  // and forth. LAYOUT_SETTLE_MS additionally requires the candidate to stay
+  // stable for a short window before the DOM is touched (debounce).
+  const LAYOUT_HYSTERESIS = 0.1;
+  const LAYOUT_SETTLE_MS = 200;
+  let layoutSettleTimer = 0;
+  let layoutCandidate = null;
   const paneSwitcher = document.getElementById("workspace-pane-switcher");
   const paneTabs = paneSwitcher
     ? Array.from(paneSwitcher.querySelectorAll(".workspace-pane-tab"))
@@ -6813,9 +6823,36 @@ export function bootWorkbenchRuntime() {
       for (const entry of entries) {
         const rect = entry.contentRect;
         if (!rect.width || !rect.height) continue;
-        const nextMode = rect.width > rect.height ? "two" : "single";
-        if (nextMode === layoutMode) continue;
-        applyLayoutMode(nextMode);
+        const w = rect.width;
+        const h = rect.height;
+        // Hysteresis: only clearly landscape selects two columns and only
+        // clearly portrait selects single; anything near-square (the buffer
+        // zone) keeps the current layout instead of flipping every pixel.
+        let candidate = null;
+        if (w > h * (1 + LAYOUT_HYSTERESIS)) candidate = "two";
+        else if (h > w * (1 + LAYOUT_HYSTERESIS)) candidate = "single";
+        if (candidate === layoutMode) {
+          // Already on the target layout; drop any pending switch.
+          layoutCandidate = null;
+          clearTimeout(layoutSettleTimer);
+          continue;
+        }
+        if (candidate === null) {
+          // Inside the buffer zone: keep the current layout and cancel any
+          // pending switch, so the UI never chatters around the boundary.
+          layoutCandidate = null;
+          clearTimeout(layoutSettleTimer);
+          continue;
+        }
+        // Debounce: the candidate must hold for the settle window before the
+        // DOM is touched; a new resize while waiting resets the window.
+        layoutCandidate = candidate;
+        clearTimeout(layoutSettleTimer);
+        layoutSettleTimer = setTimeout(() => {
+          if (layoutCandidate !== candidate) return;
+          applyLayoutMode(candidate);
+          layoutCandidate = null;
+        }, LAYOUT_SETTLE_MS);
         break;
       }
     });
