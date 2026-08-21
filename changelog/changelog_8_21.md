@@ -55,5 +55,6 @@
 - 防重复提交：前端提交中禁用该条“转督办”；每次请求生成 `clientRequestId`，后端对同一 `clientRequestId` 做进程内幂等（成功缓存、进行中互斥、失败不缓存允许重试）。
 - 后端校验：`title`/`content` 非空、`level` 仅允许 `ALERT`/`WARNING`、`assignee` 缺失时用环境变量默认值；`bpDefinitionId` 可选但必须是数字（上游为 `java.lang.Long`），留空则不上传该字段；功能开关 `TASK_ALERT_API_ENABLED=true` 默认并保持开启，即使当前运维网络未打通也不自动关闭。
 - 上游响应契约：上游即使业务失败也返回 HTTP 200（`{"success":false,"code":500,"message":...}`），因此代理按响应体 `success`/`code` 判定成功，只有 `success=true` 才返回 `ok=true`；任务号取 `data`（UUID 字符串）。线上实测通过代理创建任务令返回真实 `taskId`（如 `a4bf7909-...`）。
+- 服务启动时启用应用日志（`logging.basicConfig(INFO)`），任务令创建、thinking 参数重试等非敏感审计日志现在会写入服务器日志文件。
 - 影响范围：会话/看板中“行动建议”卡片的“转督办”操作。
 - 主要文件：`bi_agent/web/app.py`（新增代理端点与幂等保护）、`frontend/src/runtime.js`（`dispatchSupervise` 重写，删除 `localTaskSeq`/ACK 伪成功逻辑）、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=150）、`bi_agent/web/static/index.html`、`.env.example`、`tests/test_regressions.py`（新增 `TaskAlertProxyTests` 14 项测试）。
