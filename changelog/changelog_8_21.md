@@ -69,4 +69,20 @@
 - 前端去重与恢复：同一 turn 同一行动不重复渲染（`actionsSeen` 去重，结构化事件会替换同 turn 文本卡片）；气泡与行动菜单随会话 HTML 持久化，刷新与历史恢复后仍存在。
 - 兼容 Claim 校验阻断路径：`answer_blocked` 不再提前中断回合，改为正常收尾（行动门照常运行、`done` 事件照常下发），前端新增“最终回答被阻止”提示气泡，避免根因已展示但无行动气泡且界面卡在忙碌态。
 - 影响范围：所有交付根因分析的会话（L3+），看板与聊天窗的行动建议卡片。
-- 主要文件：`bi_agent/web/session.py`、`bi_agent/tools/analysis_policy.py`、`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=151）、`tests/test_regressions.py`。
+- 主要文件：`bi_agent/web/session.py`、`bi_agent/tools/analysis_policy.py`、`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=152）、`tests/test_regressions.py`。
+
+### 工作区布局按容器尺寸自动切换单双栏，单栏顶部统一切换器
+
+- 布局不再由 URL 的 `layout`/`columns` 参数或 `/single` 路由决定，改为用 `ResizeObserver` 监听会话与看板外层的 `.split` 容器实际尺寸：容器宽 > 高时显示双栏（会话/看板并排），宽 ≤ 高时自动切为单栏；首次测量前保留 URL 参数作为兼容兜底。
+- 只在判断结果发生变化时更新 DOM（`data-layout`、`bi-viewport-mode` 事件、`resize` 事件触发图表重算），避免 ResizeObserver 循环和重复渲染；双栏切回单栏时保留用户上一次选择的会话/看板，无历史选择默认“会话”。
+- 删除原来位于两个面板标题栏右上角的独立“会话/看板”按钮，改为单栏模式下在工作区顶部居中的统一切换器“会话｜看板”：两个真实 button + 纯分隔竖线，选中项蓝色、未选中灰色，点击立即切换面板；带 `role="tablist"`、`aria-selected`/`aria-pressed` 无障碍状态；双栏模式下隐藏，不影响看板清空、折叠、拖动调宽等既有功能。
+- 影响范围：所有工作区页面（智能分析/报表分析），自适应横竖屏容器。
+- 主要文件：`frontend/src/shell.html`、`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=121/v=153）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+
+### “分享到飞书”改为“分享到钉钉”
+
+- 所有用户可见文案、占位提示、注释与内部函数/样式命名从 Feishu/飞书统一改为 DingTalk/钉钉：按钮文案改为“分享到钉钉”，内部类 `dash-feishu-btn` → `dash-dingtalk-btn`、图标键 `feishu` → `dingtalk`、函数 `shareTurnReportToFeishu` → `shareTurnReportToDingTalk`。
+- 点击后的提示改为：`「分享到钉钉」为占位入口,暂未接入钉钉开放平台`；仍是占位入口，不虚构或调用钉钉 API。
+- 旧会话快照向后兼容：恢复历史会话时若快照仍含 `dash-feishu-btn`，`normalizeExportButtons` 会自动转换为新的 `dash-dingtalk-btn` 并改文案为“分享到钉钉”，按钮点击正常绑定，不会失效。
+- 影响范围：会话/看板中“导出本轮报告”卡片上的分享按钮。
+- 主要文件：`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物）、`tests/test_regressions.py`。

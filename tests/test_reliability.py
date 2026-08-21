@@ -134,7 +134,11 @@ class ReliabilityTests(unittest.TestCase):
             session.messages.append({"role": "user", "content": "为什么"})
             events = list(session._run_loop())
         self.assertTrue(any(e["type"] == "answer_blocked" for e in events))
-        self.assertNotIn("done", [e["type"] for e in events])
+        # answer_blocked is a delivery gate: the turn still finishes with a
+        # normal done event (stop_reason=answer_blocked) so the UI unblocks.
+        done = [e for e in events if e["type"] == "done"]
+        self.assertEqual(len(done), 1)
+        self.assertEqual(done[0]["stop_reason"], "answer_blocked")
 
     def test_proxy_narrative_must_state_unavailability_and_proxy(self):
         proxy = Claim("p", "可使用代理指标 P，但不等价于原指标", ClaimLevel.INFERENCE,

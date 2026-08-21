@@ -448,8 +448,6 @@ export function bootWorkbenchRuntime() {
     dashboardCollapseBtn: document.getElementById("dashboard-collapse"),
     dashboardReopen: document.getElementById("dashboard-reopen"),
     btnToggleDashboard: document.getElementById("btn-toggle-dashboard"),
-    mobileShowDashboard: document.getElementById("mobile-show-dashboard"),
-    mobileShowChat: document.getElementById("mobile-show-chat"),
     sidebarCollapse: document.getElementById("sidebar-collapse"),
     sidebarReopen: document.getElementById("sidebar-reopen"),
   };
@@ -4680,14 +4678,14 @@ export function bootWorkbenchRuntime() {
     report: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="m4.646 4.646 2.955-2.954a.491.491 0 0 1 .396-.192H8a.48.48 0 0 1 .359.152l2.995 2.994.002.003a.495.495 0 0 1-.004.707.49.49 0 0 1-.512.12.49.49 0 0 1-.192-.121l-.002-.001-2.149-2.15v7.465a.49.49 0 0 1-.5.498h-.002a.49.49 0 0 1-.498-.5V3.21L5.354 5.354h-.002a.495.495 0 0 1-.706-.001l-.001-.001a.495.495 0 0 1 .002-.705ZM2.5 8.003v4.664c0 .277.07.486.208.625.14.139.348.208.625.208h9.334c.277 0 .486-.069.625-.208.139-.14.208-.348.208-.625v-4.67A.49.49 0 0 1 14 7.5l.002.001a.495.495 0 0 1 .498.5v4.667c0 .253-.045.488-.134.703a1.82 1.82 0 0 1-.403.593c-.179.18-.377.313-.593.403a1.82 1.82 0 0 1-.703.134H3.333c-.253 0-.487-.045-.703-.134a1.821 1.821 0 0 1-.593-.403 1.82 1.82 0 0 1-.403-.593 1.82 1.82 0 0 1-.134-.703V8.003a.49.49 0 0 1 .5-.5.49.49 0 0 1 .5.5Z" data-follow-fill="#8F9299"/></svg>',
     word: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="M10.152.857a.487.487 0 0 1 .2.124l3.324 3.323a.487.487 0 0 1 .156.407v8.623c0 .253-.044.488-.134.704-.09.216-.224.414-.403.593a1.821 1.821 0 0 1-.592.402c-.216.09-.45.135-.704.135h-8c-.253 0-.488-.045-.704-.134a1.823 1.823 0 0 1-.592-.403 1.82 1.82 0 0 1-.403-.593 1.822 1.822 0 0 1-.134-.704V2.668c0-.254.044-.488.134-.704.09-.216.224-.414.403-.593A1.82 1.82 0 0 1 3.295.97c.216-.09.45-.135.704-.135h5.956a.49.49 0 0 1 .197.023Zm2.68 4.31v8.167c0 .278-.069.486-.208.625-.139.14-.347.209-.625.209h-8c-.278 0-.486-.07-.625-.209-.139-.139-.208-.347-.208-.625V2.668c0-.278.07-.487.208-.625.139-.14.347-.209.625-.209h5.5v2.167c0 .161.028.31.085.448.057.137.143.263.257.377.114.114.24.2.377.256.137.057.287.086.448.086h2.166ZM10.5 4.002v-1.46l1.626 1.627h-1.46c-.055 0-.096-.014-.124-.042-.028-.028-.042-.07-.042-.125Zm-.132 3.317H5.634a.491.491 0 0 1-.5-.5.49.49 0 0 1 .277-.45.488.488 0 0 1 .223-.05h4.733a.492.492 0 0 1 .5.5.491.491 0 0 1-.5.5ZM5.634 9.684h4.733a.491.491 0 0 0 .5-.5.49.49 0 0 0-.278-.449.488.488 0 0 0-.222-.05H5.634a.492.492 0 0 0-.5.5.491.491 0 0 0 .5.5Z" data-follow-fill="#8F9299"/></svg>',
     sync: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="M2.5 12.48V6.454c0-.294.057-.56.172-.799.115-.238.287-.45.516-.633l3.667-2.933c.167-.134.346-.235.537-.302.191-.067.394-.1.608-.1.214 0 .417.033.608.1.19.067.37.168.537.302l3.667 2.933c.23.184.401.395.516.633.115.239.172.505.172.799v6.026c0 .253-.045.487-.134.703-.09.216-.224.414-.403.593-.18.179-.377.313-.593.403-.216.09-.45.134-.703.134H4.333c-.253 0-.487-.045-.703-.134a1.827 1.827 0 0 1-.593-.403 1.82 1.82 0 0 1-.403-.593 1.82 1.82 0 0 1-.134-.704Zm1 0c0 .277.07.486.208.624.14.14.348.209.625.209h1.5v-2.5c0-.253.045-.488.135-.704.089-.216.223-.413.402-.593.18-.179.377-.313.593-.402.216-.09.45-.135.704-.135h.666c.253 0 .488.045.704.135.216.09.414.223.593.402.179.18.313.377.402.593.09.216.134.45.134.704v2.5h1.5c.278 0 .487-.07.626-.209.139-.138.208-.347.208-.624V6.454a.828.828 0 0 0-.078-.363.83.83 0 0 0-.235-.288L8.521 2.87C8.347 2.73 8.174 2.66 8 2.66c-.174 0-.347.07-.52.209L3.813 5.803a.828.828 0 0 0-.235.288.828.828 0 0 0-.078.363v6.026Zm5.666.833H6.833v-2.5c0-.278.07-.486.208-.625.14-.14.348-.209.625-.209h.667c.278 0 .486.069.625.209.14.139.208.347.208.625v2.5Z" data-follow-fill="#8F9299"/></svg>',
-    feishu: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="m5.34 2.753 3.047 3.046.004.005c.16.161.282.339.365.532.095.22.14.46.137.722a1.836 1.836 0 0 1-.127.66c-.091.23-.232.44-.423.63l-.002.003a.492.492 0 0 0 0 .703l.002.001a.495.495 0 0 0 .706.002l.001-.002c.287-.286.5-.602.64-.948.13-.32.198-.665.203-1.035a2.74 2.74 0 0 0-.207-1.114 2.71 2.71 0 0 0-.592-.866l-.002-.002-.004-.003-3.04-3.041a2.712 2.712 0 0 0-.867-.592 2.742 2.742 0 0 0-1.113-.207c-.37.005-.716.072-1.036.202-.346.14-.662.354-.948.64-.286.287-.5.602-.64.948-.13.32-.198.665-.203 1.036a2.74 2.74 0 0 0 .207 1.113c.133.316.33.605.592.867l2.645 2.645a.485.485 0 0 0 .194.122.49.49 0 0 0 .512-.12l.001-.002a.495.495 0 0 0 0-.707L2.747 5.345a1.717 1.717 0 0 1-.37-.536c-.094-.22-.14-.46-.136-.722.003-.236.046-.456.127-.66.091-.23.232-.44.423-.63.19-.191.401-.332.631-.424.204-.081.424-.123.66-.126.261-.004.502.042.721.136.196.084.375.208.537.37Zm2.273 4.855c-.19.19-.331.4-.423.63a1.834 1.834 0 0 0-.126.66c-.004.262.042.503.136.722a1.718 1.718 0 0 0 .409.576l.004.005 3.047 3.046c.162.162.34.285.537.37.22.094.46.14.722.136.235-.003.455-.045.66-.127.23-.091.44-.232.63-.422.19-.191.332-.401.423-.631.082-.205.124-.424.127-.66a1.745 1.745 0 0 0-.137-.722 1.715 1.715 0 0 0-.37-.537L10.609 8.01l-.002-.001a.495.495 0 0 1 .002-.705l.001-.003a.495.495 0 0 1 .705.002l2.646 2.645c.261.262.459.55.592.866.143.34.212.711.207 1.114-.005.37-.073.716-.203 1.036a2.86 2.86 0 0 1-.64.948c-.286.286-.602.5-.948.64-.32.13-.665.197-1.036.202a2.74 2.74 0 0 1-1.113-.207 2.71 2.71 0 0 1-.866-.592l-3.047-3.046a.53.53 0 0 1-.021-.023 2.71 2.71 0 0 1-.614-.887 2.74 2.74 0 0 1-.207-1.113c.005-.371.072-.716.202-1.036.14-.346.354-.662.64-.948l.002-.001a.49.49 0 0 1 .512-.121.487.487 0 0 1 .193.122h.002a.495.495 0 0 1-.001.706Z" data-follow-fill="#8F9299"/></svg>',
+    dingtalk: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="m5.34 2.753 3.047 3.046.004.005c.16.161.282.339.365.532.095.22.14.46.137.722a1.836 1.836 0 0 1-.127.66c-.091.23-.232.44-.423.63l-.002.003a.492.492 0 0 0 0 .703l.002.001a.495.495 0 0 0 .706.002l.001-.002c.287-.286.5-.602.64-.948.13-.32.198-.665.203-1.035a2.74 2.74 0 0 0-.207-1.114 2.71 2.71 0 0 0-.592-.866l-.002-.002-.004-.003-3.04-3.041a2.712 2.712 0 0 0-.867-.592 2.742 2.742 0 0 0-1.113-.207c-.37.005-.716.072-1.036.202-.346.14-.662.354-.948.64-.286.287-.5.602-.64.948-.13.32-.198.665-.203 1.036a2.74 2.74 0 0 0 .207 1.113c.133.316.33.605.592.867l2.645 2.645a.485.485 0 0 0 .194.122.49.49 0 0 0 .512-.12l.001-.002a.495.495 0 0 0 0-.707L2.747 5.345a1.717 1.717 0 0 1-.37-.536c-.094-.22-.14-.46-.136-.722.003-.236.046-.456.127-.66.091-.23.232-.44.423-.63.19-.191.401-.332.631-.424.204-.081.424-.123.66-.126.261-.004.502.042.721.136.196.084.375.208.537.37Zm2.273 4.855c-.19.19-.331.4-.423.63a1.834 1.834 0 0 0-.126.66c-.004.262.042.503.136.722a1.718 1.718 0 0 0 .409.576l.004.005 3.047 3.046c.162.162.34.285.537.37.22.094.46.14.722.136.235-.003.455-.045.66-.127.23-.091.44-.232.63-.422.19-.191.332-.401.423-.631.082-.205.124-.424.127-.66a1.745 1.745 0 0 0-.137-.722 1.715 1.715 0 0 0-.37-.537L10.609 8.01l-.002-.001a.495.495 0 0 1 .002-.705l.001-.003a.495.495 0 0 1 .705.002l2.646 2.645c.261.262.459.55.592.866.143.34.212.711.207 1.114-.005.37-.073.716-.203 1.036a2.86 2.86 0 0 1-.64.948c-.286.286-.602.5-.948.64-.32.13-.665.197-1.036.202a2.74 2.74 0 0 1-1.113-.207 2.71 2.71 0 0 1-.866-.592l-3.047-3.046a.53.53 0 0 1-.021-.023 2.71 2.71 0 0 1-.614-.887 2.74 2.74 0 0 1-.207-1.113c.005-.371.072-.716.202-1.036.14-.346.354-.662.64-.948l.002-.001a.49.49 0 0 1 .512-.121.487.487 0 0 1 .193.122h.002a.495.495 0 0 1-.001.706Z" data-follow-fill="#8F9299"/></svg>',
   });
 
   // Use the shared action glyphs for both newly-created and persisted cards.
   // The legacy object above is retained for old snapshots; this override is
-  // the canonical Feishu share icon going forward.
+  // the canonical DingTalk share icon going forward.
   const EXPORT_ACTION_ICON_OVERRIDES = Object.freeze({
-    feishu: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="m5.906 8.39 4.719-2.937A2.002 2.002 0 0 0 11.922 6c.49.02.935-.133 1.336-.462.401-.328.64-.732.719-1.21a1.9 1.9 0 0 0-.297-1.376c-.276-.437-.646-.726-1.11-.867a1.905 1.905 0 0 0-1.398.11c-.28.128-.513.297-.696.509a1.99 1.99 0 0 0-.382 1.905l-4.72 2.937a1.934 1.934 0 0 0-1.49-.539c-.256.018-.51.086-.76.203a1.892 1.892 0 0 0-.874.813 1.971 1.971 0 0 0-.235 1.172 1.964 1.964 0 0 0 1.476 1.735c.413.109.811.093 1.196-.047.386-.14.703-.388.953-.742l4.375 1.64c-.051.52.066.979.352 1.375s.68.654 1.18.774a1.92 1.92 0 0 0 1.399-.164c.43-.23.736-.586.913-1.071.111-.305.154-.603.127-.895a1.925 1.925 0 0 0-1.065-1.55 1.944 1.944 0 0 0-1.398-.188 1.98 1.98 0 0 0-1.164.797l-4.375-1.64a2.024 2.024 0 0 0-.078-.829Z" data-follow-fill="#8F9299"/></svg>',
+    dingtalk: '<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/><path fill-rule="evenodd" fill="#8F9299" d="m5.906 8.39 4.719-2.937A2.002 2.002 0 0 0 11.922 6c.49.02.935-.133 1.336-.462.401-.328.64-.732.719-1.21a1.9 1.9 0 0 0-.297-1.376c-.276-.437-.646-.726-1.11-.867a1.905 1.905 0 0 0-1.398.11c-.28.128-.513.297-.696.509a1.99 1.99 0 0 0-.382 1.905l-4.72 2.937a1.934 1.934 0 0 0-1.49-.539c-.256.018-.51.086-.76.203a1.892 1.892 0 0 0-.874.813 1.971 1.971 0 0 0-.235 1.172 1.964 1.964 0 0 0 1.476 1.735c.413.109.811.093 1.196-.047.386-.14.703-.388.953-.742l4.375 1.64c-.051.52.066.979.352 1.375s.68.654 1.18.774a1.92 1.92 0 0 0 1.399-.164c.43-.23.736-.586.913-1.071.111-.305.154-.603.127-.895a1.925 1.925 0 0 0-1.065-1.55 1.944 1.944 0 0 0-1.398-.188 1.98 1.98 0 0 0-1.164.797l-4.375-1.64a2.024 2.024 0 0 0-.078-.829Z" data-follow-fill="#8F9299"/></svg>',
   });
 
   function setExportButtonLabel(button, iconKey, label) {
@@ -4705,12 +4703,23 @@ export function bootWorkbenchRuntime() {
   function normalizeExportButtons(root) {
     if (!root) return;
     root.querySelectorAll(".dash-export-btn").forEach((button) => {
+      // Legacy snapshots may still carry the old Feishu button class. Fold
+      // them into the canonical DingTalk button so old history stays usable.
+      const legacyFeishu = button.classList.contains("dash-feishu-btn");
       const iconKey = button.classList.contains("dash-word-btn") ? "word"
         : button.classList.contains("dash-sync-btn") ? "sync"
-        : button.classList.contains("dash-feishu-btn") ? "feishu" : "report";
+        : (button.classList.contains("dash-dingtalk-btn") || legacyFeishu) ? "dingtalk"
+        : "report";
+      if (legacyFeishu) {
+        button.classList.remove("dash-feishu-btn");
+        button.classList.add("dash-dingtalk-btn");
+      }
       const rawLabel = button.textContent.trim();
       const label = rawLabel.replace(/^[\s📤📄🏠🐦⬇⏳]+/u, "").trim();
-      setExportButtonLabel(button, iconKey, label);
+      const normalized = iconKey === "dingtalk" && label.indexOf("钉钉") < 0
+        ? "分享到钉钉"
+        : label;
+      setExportButtonLabel(button, iconKey, normalized);
     });
   }
 
@@ -4733,7 +4742,7 @@ export function bootWorkbenchRuntime() {
       '<button type="button" class="dash-export-btn" data-turn="' + tagStr + '"><span class="dash-export-icon" aria-hidden="true">' + EXPORT_ACTION_ICONS.report + '</span><span class="dash-export-label">导出本轮报告 (HTML)</span></button>' +
       '<button type="button" class="dash-export-btn dash-word-btn" data-turn="' + tagStr + '"><span class="dash-export-icon" aria-hidden="true">' + EXPORT_ACTION_ICONS.word + '</span><span class="dash-export-label">导出 Word</span></button>' +
       '<button type="button" class="dash-export-btn dash-sync-btn" data-turn="' + tagStr + '"><span class="dash-export-icon" aria-hidden="true">' + EXPORT_ACTION_ICONS.sync + '</span><span class="dash-export-label">同步到主页</span></button>' +
-      '<button type="button" class="dash-export-btn dash-feishu-btn" data-turn="' + tagStr + '"><span class="dash-export-icon" aria-hidden="true">' + EXPORT_ACTION_ICONS.feishu + '</span><span class="dash-export-label">分享到飞书</span></button>' +
+      '<button type="button" class="dash-export-btn dash-dingtalk-btn" data-turn="' + tagStr + '"><span class="dash-export-icon" aria-hidden="true">' + EXPORT_ACTION_ICONS.dingtalk + '</span><span class="dash-export-label">分享到钉钉</span></button>' +
       '<div class="dash-export-status" data-turn="' + tagStr + '"></div>';
     bindExportCard(card, turnTag);
     appendChatActionCard(card);
@@ -4759,15 +4768,15 @@ export function bootWorkbenchRuntime() {
     normalizeExportButtons(card);
     card.dataset.exportBound = "1";
     card.querySelector(
-      ".dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-feishu-btn)")
+      ".dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-dingtalk-btn):not(.dash-feishu-btn)")
       ?.addEventListener("click", () => exportTurnReport(turnTag));
     card.querySelector(".dash-word-btn")
       ?.addEventListener("click", (ev) => handleWordButton(turnTag, ev.currentTarget));
     card.querySelector(".dash-sync-btn")?.addEventListener("click", () => {
       syncTurnReportToHome(turnTag, card);
     });
-    card.querySelector(".dash-feishu-btn")?.addEventListener("click", () => {
-      shareTurnReportToFeishu(turnTag, card);
+    card.querySelector(".dash-dingtalk-btn")?.addEventListener("click", () => {
+      shareTurnReportToDingTalk(turnTag, card);
     });
   }
 
@@ -5010,11 +5019,11 @@ export function bootWorkbenchRuntime() {
     }
   }
 
-  // 分享到飞书:占位入口,未接入飞书开放平台。
-  function shareTurnReportToFeishu(turnTag, card) {
+  // 分享到钉钉:占位入口,暂未接入钉钉开放平台。
+  function shareTurnReportToDingTalk(turnTag, card) {
     const r = collectTurnReportHTML(turnTag);
     if (!r) { setExportStatus(card, "本轮没有可分享的内容", true); return; }
-    setExportStatus(card, "「分享到飞书」为占位入口,未接入飞书开放平台(占位:仅展示功能选项)");
+    setExportStatus(card, "「分享到钉钉」为占位入口,暂未接入钉钉开放平台");
   }
 
   function exportTurnReport(turnTag) {
@@ -6663,26 +6672,75 @@ export function bootWorkbenchRuntime() {
       ? "single"
       : "two";
   }
-  let layoutMode = routeLayoutMode();
-  function applyRouteLayout(force = false) {
-    const nextMode = routeLayoutMode();
+  // The workspace layout follows the actual size of the .split container,
+  // not URL params. width > height -> two columns (chat + dashboard side by
+  // side); width <= height -> single column with the top switcher. The URL
+  // heuristic above is only a fallback until the first ResizeObserver
+  // measurement arrives.
+  const LAYOUT_PANE_LS_KEY = "bi.layout.mobilePane";
+  function loadLastMobilePane() {
+    try { return localStorage.getItem(LAYOUT_PANE_LS_KEY) || "chat"; }
+    catch (e) { return "chat"; }
+  }
+  function storeLastMobilePane(pane) {
+    try { localStorage.setItem(LAYOUT_PANE_LS_KEY, pane); } catch (e) {}
+  }
+  let layoutMode = "two";
+  const paneSwitcher = document.getElementById("workspace-pane-switcher");
+  const paneTabs = paneSwitcher
+    ? Array.from(paneSwitcher.querySelectorAll(".workspace-pane-tab"))
+    : [];
+  function updatePaneSwitcher() {
+    if (!paneTabs.length) return;
+    const pane = document.body.dataset.mobilePane || "chat";
+    paneTabs.forEach((tab) => {
+      const selected = tab.dataset.pane === pane;
+      tab.classList.toggle("is-selected", selected);
+      tab.setAttribute("aria-selected", selected ? "true" : "false");
+      tab.setAttribute("aria-pressed", selected ? "true" : "false");
+    });
+  }
+  function applyLayoutMode(nextMode, force = false) {
     if (!force && nextMode === layoutMode) return;
     layoutMode = nextMode;
     const singleColumn = nextMode === "single";
     document.body.dataset.layout = nextMode;
     if (singleColumn) {
-      document.body.dataset.mobilePane = "chat";
+      // Keep the user's last pane choice when coming back to single column.
+      document.body.dataset.mobilePane = loadLastMobilePane();
     } else {
       delete document.body.dataset.mobilePane;
     }
+    updatePaneSwitcher();
     window.dispatchEvent(new CustomEvent("bi-viewport-mode", { detail: { singleColumn } }));
     window.dispatchEvent(new Event("resize"));
   }
   function showMobilePane(pane) {
     if (layoutMode !== "single") return;
     document.body.dataset.mobilePane = pane;
+    storeLastMobilePane(pane);
+    updatePaneSwitcher();
   }
-  applyRouteLayout(true);
+  applyLayoutMode(routeLayoutMode(), true);
+  paneTabs.forEach((tab) => {
+    tab.addEventListener("click", () => showMobilePane(tab.dataset.pane));
+  });
+  function setupContainerLayoutObserver() {
+    const split = document.querySelector(".split");
+    if (!split || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const rect = entry.contentRect;
+        if (!rect.width || !rect.height) continue;
+        const nextMode = rect.width > rect.height ? "two" : "single";
+        if (nextMode === layoutMode) continue;
+        applyLayoutMode(nextMode);
+        break;
+      }
+    });
+    observer.observe(split);
+  }
+  setupContainerLayoutObserver();
   window.addEventListener("popstate", () => applyRouteLayout(true));
   window.addEventListener("hashchange", () => applyRouteLayout(true));
   if (el.mobileShowDashboard) el.mobileShowDashboard.addEventListener("click", () => showMobilePane("dashboard"));
