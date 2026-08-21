@@ -46,3 +46,13 @@
 - 现在看板与会话完全一致：面板纯白背景；完成步骤为透明底绿色对勾，进行中/待办为白底蓝/灰圆圈标记；蓝色数量标签保留。
 - 影响范围：竖屏单栏布局的看板（`?layout=single`/`?columns=1`/`/one`/`/single`），双栏与聊天窗行为不变。
 - 主要文件：`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=120）、`bi_agent/web/static/index.html`。
+
+### 行动 → 转督办接入真实任务令接口
+
+- “行动建议 → 转督办”从原来的“本地假任务号/父页面 ACK 伪成功”改为调用 ChatBI 后端代理 `POST /api/task-alert/manual-create`，由后端转发到真实任务令服务 `POST http://pdt-dev.eimos.com/api/x360/v1/task-alert/manual-create`，浏览器不再直接跨域调用。
+- 请求体字段映射：`title`（来源 + 行动摘要前 40 字）、`content`（行动建议、分析来源、象限、回合、提交时间）、`assignee`、`level`、`bpDefinitionId`；前端只传 `title/content/clientRequestId`，`assignee=242`、`level=WARNING`、`bpDefinitionId=xxx` 由后端环境变量默认值填充，前端也可显式传入覆盖。
+- 状态流转：创建中（按钮禁用防重复提交）→ 创建成功（展示上游返回的真实 `taskId`）；创建失败显示真实错误（连接失败/超时/上游 HTTP 错误），可重试；只有外部接口真实返回成功才显示“任务令创建成功”。
+- 防重复提交：前端提交中禁用该条“转督办”；每次请求生成 `clientRequestId`，后端对同一 `clientRequestId` 做进程内幂等（成功缓存、进行中互斥、失败不缓存允许重试）。
+- 后端校验：`title`/`content` 非空、`level` 仅允许 `ALERT`/`WARNING`、`assignee`/`bpDefinitionId` 缺失时用环境变量默认值；功能开关 `TASK_ALERT_API_ENABLED=true` 默认并保持开启，即使当前运维网络未打通也不自动关闭。
+- 影响范围：会话/看板中“行动建议”卡片的“转督办”操作。
+- 主要文件：`bi_agent/web/app.py`（新增代理端点与幂等保护）、`frontend/src/runtime.js`（`dispatchSupervise` 重写，删除 `localTaskSeq`/ACK 伪成功逻辑）、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=150）、`bi_agent/web/static/index.html`、`.env.example`、`tests/test_regressions.py`（新增 `TaskAlertProxyTests` 14 项测试）。

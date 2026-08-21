@@ -854,13 +854,7 @@ export function bootWorkbenchRuntime() {
     closeAllActMenus();
   });
 
-  // ── 转督办 → 发送督办 + 自动生成任务令 ──────────────────────────────
-  function localTaskSeq() {
-    let n = parseInt(localStorage.getItem("wbTaskOrderSeq") || "0", 10);
-    n = (isNaN(n) ? 0 : n) + 1;
-    try { localStorage.setItem("wbTaskOrderSeq", String(n)); } catch (_) {}
-    return 1000 + n;
-  }
+  // ── 转督办 → 调用后端代理创建真实任务令 ──────────────────────────
   function flashItem(item, msg, isErr) {
     let f = item.querySelector(":scope > .dash-item-flash");
     if (!f) {
@@ -876,7 +870,8 @@ export function bootWorkbenchRuntime() {
       flashItem(item, "✅ 该条已督办,任务令已生成", false);
       return;
     }
-    const txt = ((item.querySelector(".dash-item-text") || {}).textContent || "").trim();
+    if (item.dataset.submitting === "1") return;  // 防重复提交
+    const txt = clauseText(item);
     if (!txt) return;
     const card = item.closest(".dash-card");
     const turnTag = (card && card.dataset.turn) || (B().currentTurnTag || 1);
@@ -885,45 +880,45 @@ export function bootWorkbenchRuntime() {
       ? ((typeof QUADRANT_PROMPT_META !== "undefined" && QUADRANT_PROMPT_META[quad] &&
           QUADRANT_PROMPT_META[quad].label) || "象限分析")
       : "通用AI助手";
-    item.dataset.supervised = "1";
-    item.classList.add("is-supervised");
-    flashItem(item, "✅ 已发送给负责人督办 · 正在生成任务令…", false);
-
-    const target = (window.parent && window.parent !== window) ? window.parent : null;
-    if (!target) {
-      flashItem(item, `✅ 已发送给负责人督办 · 已自动生成任务令 #${localTaskSeq()}`, false);
-      return;
-    }
-    const reqId = "task-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-    function ackHandler(ev) {
-      const m = ev.data;
-      if (!m || m.channel !== "cockpit-task-order-ack" || m.req !== reqId) return;
-      window.removeEventListener("message", ackHandler);
-      clearTimeout(timer);
-      const idTxt = m.taskId ? ` #${m.taskId}` : "";
-      const owner = m.owner ? `,责任人:${m.owner}` : "";
-      flashItem(item, `✅ 已发送给负责人督办 · 已自动生成任务令${idTxt}${owner}`, false);
-    }
-    const timer = setTimeout(() => {
-      window.removeEventListener("message", ackHandler);
-      flashItem(item, `✅ 已发送给负责人督办 · 已自动生成任务令 #${localTaskSeq()}`, false);
-    }, 4000);
-    window.addEventListener("message", ackHandler);
-    try {
-      target.postMessage({
-        channel: "cockpit-task-order",
-        quadrant: quad,
-        source: source,
-        turn: String(turnTag),
-        clause: txt,
-        ts: new Date().toISOString(),
-        req: reqId,
-      }, "*");
-    } catch (err) {
-      window.removeEventListener("message", ackHandler);
-      clearTimeout(timer);
-      flashItem(item, "督办发送失败:" + String((err && err.message) || err), true);
-    }
+    const title = `${source} · 行动督办:${txt.replace(/\s+/g, " ").slice(0, 40)}`;
+    const content = [
+      `行动建议:${txt}`,
+      `分析来源:${source}`,
+      quad ? `象限:${quad}` : "",
+      `回合:${turnTag}`,
+      `提交时间:${new Date().toISOString()}`,
+    ].filter(Boolean).join("\n");
+    const clientRequestId = "ta-" + Date.now() + "-" + Math.floor(Math.random() * 1e6);
+    const superviseBtn = item.querySelector('.dash-act-choice[data-act="supervise"]');
+    item.dataset.submitting = "1";
+    item.classList.add("is-submitting");
+    if (superviseBtn) superviseBtn.disabled = true;
+    flashItem(item, "⏳ 正在创建任务令…", false);
+    fetch("/api/task-alert/manual-create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, content, clientRequestId }),
+    })
+      .then(async (res) => {
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+        if (res.ok && data && data.ok) {
+          item.dataset.supervised = "1";
+          item.classList.add("is-supervised");
+          flashItem(item, `✅ 任务令创建成功${data.taskId ? ` · 任务令 #${data.taskId}` : ""}`, false);
+        } else {
+          const detail = (data && (data.detail || data.message)) || `HTTP ${res.status}`;
+          flashItem(item, `❌ 任务令创建失败:${detail} · 可重试`, true);
+        }
+      })
+      .catch((err) => {
+        flashItem(item, `❌ 任务令创建失败:${String((err && err.message) || err)} · 可重试`, true);
+      })
+      .finally(() => {
+        item.dataset.submitting = "";
+        item.classList.remove("is-submitting");
+        if (superviseBtn) superviseBtn.disabled = false;
+      });
   }
   // ── 追问 → 复用对话框 ──────────────────────────────────────────────
   function clauseText(item) {
