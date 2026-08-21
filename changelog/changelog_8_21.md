@@ -106,3 +106,11 @@
 - React 任务清单不再模拟 click 隐藏 DOM，改为 `window.dispatchEvent(new CustomEvent("bi-question-navigate", { detail: { mode, turn } }))` 统一事件入口，runtime 监听后走同一 `scrollToQuestion(turn)`。
 - 影响范围：双栏/单栏工作区“任务清单”点击跳转，会话与看板定位。
 - 主要文件：`frontend/src/runtime.js`、`frontend/src/main.jsx`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=157）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+
+### Pro UI（proui）BI 组件库升级到最新 UMD 产物
+
+- 将 `pro-bi-ui.min.js`（`@pro-ui/bi` 的 UMD 产物）从仓库旧版升级为 Pro UI 文档站（`http://pro-ui.eimos.com/lib/pro-bi-ui.min.js`）上的最新版（更新于 2026/8/20，文件 1,227,894B），保持 `vue.global.js` 不变（与文档站哈希一致）。
+- 同步更新两份受跟踪副本：`frontend/public/lib/pro-bi-ui.min.js`（前端构建源）与 `bi_agent/web/static/vendor/antd/lib/pro-bi-ui.min.js`（线上静态资源，由 `npm run build` 同步）。
+- `index.html` 中 `pro-bi-ui.min.js` 的缓存版本参数从 `?v=1` 升至 `?v=2`，浏览器会重新拉取新产物；该库后续预计不再频繁更新。
+- 影响范围：看板图表（BarChart/LineChart/PieChart 等 Pro BI 图表组件）的运行时渲染。
+- 主要文件：`frontend/public/lib/pro-bi-ui.min.js`、`bi_agent/web/static/vendor/antd/lib/pro-bi-ui.min.js`、`bi_agent/web/static/index.html`。
