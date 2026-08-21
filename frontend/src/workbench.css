@@ -4194,7 +4194,7 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
 }
 .antd-account-collapsed:hover { background: #e8f3ff; color: #1677ff; }
 .antd-account-collapsed .antd-feature-icon { margin-inline-end: 0; }
-#antd-workflow-root { padding: 0 4px 4px; }
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) { padding: 0 4px 4px; }
 #antd-dashboard-workflow-root { display: none; padding: 0 4px 4px; }
 body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
 #chat-sop, #chat-todo { display: none !important; }
@@ -4285,22 +4285,22 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
    specific selector for completed items. Override both the icon surface and
    the generated timeline pseudo-element so a completed SOP row is only a
    green check, with no green square behind it. */
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon,
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::before,
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::after,
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-header::before,
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-content::before,
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-footer::before {
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::after,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-header::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-content::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-footer::before {
   background: transparent !important;
   background-color: transparent !important;
   background-image: none !important;
   box-shadow: none !important;
 }
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-header::before,
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-content::before,
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-footer::before,
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::before,
-#antd-workflow-root .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::after {
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-header::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-content::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] > .ant-thought-chain-item-footer::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-success"] .ant-thought-chain-item-icon::after {
   content: none !important;
   display: none !important;
 }
@@ -4627,30 +4627,30 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
 /* Final SOP-only reset: ThoughtChain may paint the status color on the item
  * or header rather than on the icon node. The SOP uses its own ring marker,
  * so every surrounding layer must remain a plain white surface. */
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-header,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::before,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::after,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-header::before,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-header::after,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-content::before,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-content::after,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-footer::before,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-footer::after {
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-header,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-icon,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-icon::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-icon::after,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-header::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-header::after,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-content::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-content::after,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-footer::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-footer::after {
   background: #fff !important;
   background-color: #fff !important;
   background-image: none !important;
   box-shadow: none !important;
 }
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::before,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::after,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-header::before,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-header::after,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-content::before,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-content::after,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-footer::before,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-footer::after {
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-icon::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-icon::after,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-header::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-header::after,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-content::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-content::after,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-footer::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-footer::after {
   content: none !important;
   display: none !important;
 }
@@ -5997,9 +5997,9 @@ select,
   background: var(--thinking-color-soft, #DBEAFE) !important;
   color: var(--thinking-color, #2563EB) !important;
 }
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::before,
-#antd-workflow-root .antd-workflow-sop .ant-thought-chain-item-icon::after {
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-icon,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-icon::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-icon::after {
   background: #FFFFFF !important;
   background-color: #FFFFFF !important;
   background-image: none !important;
@@ -6164,30 +6164,30 @@ select,
   background-color: transparent !important;
   background-image: none !important;
 }
-#antd-workflow-root,
-#antd-workflow-root .antd-workflow-panels,
-#antd-workflow-root .antd-workflow-sop,
-#antd-workflow-root .antd-workflow-todo,
-#antd-workflow-root .ant-collapse,
-#antd-workflow-root .ant-collapse-item,
-#antd-workflow-root .ant-collapse-header,
-#antd-workflow-root .ant-collapse-content,
-#antd-workflow-root .ant-collapse-content-box,
-#antd-workflow-root .ant-thought-chain,
-#antd-workflow-root .ant-thought-chain-item,
-#antd-workflow-root .ant-thought-chain-item-header,
-#antd-workflow-root .ant-thought-chain-item-content,
-#antd-workflow-root .ant-thought-chain-item-footer,
-#antd-workflow-root .antd-workflow-todo,
-#antd-workflow-root .antd-workflow-todo .ant-list,
-#antd-workflow-root .antd-workflow-todo .ant-list-items,
-#antd-workflow-root .antd-workflow-todo .ant-list-item,
-#antd-workflow-root .antd-question-item,
-#antd-workflow-root .antd-question-item:hover,
-#antd-workflow-root .antd-question-item:focus,
-#antd-workflow-root .antd-question-item.active,
-#antd-workflow-root .ant-thought-chain-item-icon,
-#antd-workflow-root .ant-thought-chain-item-extra {
+:is(#antd-workflow-root, #antd-dashboard-workflow-root),
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-panels,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-todo,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-collapse,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-collapse-item,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-collapse-header,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-collapse-content,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-collapse-content-box,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-thought-chain,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-thought-chain-item,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-thought-chain-item-header,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-thought-chain-item-content,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-thought-chain-item-footer,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-todo,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-todo .ant-list,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-todo .ant-list-items,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-todo .ant-list-item,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-question-item,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-question-item:hover,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-question-item:focus,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-question-item.active,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-thought-chain-item-icon,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .ant-thought-chain-item-extra {
   background: #FFFFFF !important;
   background-color: #FFFFFF !important;
   background-image: none !important;
