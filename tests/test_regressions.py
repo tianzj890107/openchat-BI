@@ -1594,9 +1594,13 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("new ResizeObserver(", runtime)
         self.assertIn("observer.observe(split)", runtime)
         self.assertIn("entry.contentRect", runtime)
-        self.assertIn('const nextMode = rect.width > rect.height ? "two" : "single"', runtime)
+        # Only clearly landscape selects two and clearly portrait selects single;
+        # near-square sizes stay on the current layout (hysteresis buffer).
+        self.assertIn('if (w > h * (1 + LAYOUT_HYSTERESIS)) candidate = "two"', runtime)
+        self.assertIn('else if (h > w * (1 + LAYOUT_HYSTERESIS)) candidate = "single"', runtime)
         # DOM is only touched when the decision actually changes.
-        self.assertIn("if (nextMode === layoutMode) continue", runtime)
+        self.assertIn("if (candidate === layoutMode) {", runtime)
+        self.assertIn("if (candidate === null) {", runtime)
         # URL params remain only as a pre-measurement fallback.
         self.assertIn("routeLayoutMode()", runtime)
         self.assertIn("until the first ResizeObserver", runtime)
@@ -1607,6 +1611,25 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("workspace-pane-switcher", built)
         self.assertIn("ResizeObserver", built)
 
+
+    def test_container_layout_hysteresis_and_settle_debounce(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        start = runtime.index("function setupContainerLayoutObserver(")
+        end = runtime.index("setupContainerLayoutObserver();", start)
+        block = runtime[start:end]
+        # Buffer constants: 10% hysteresis and a 200ms settle window.
+        self.assertIn("LAYOUT_HYSTERESIS = 0.1", runtime)
+        self.assertIn("LAYOUT_SETTLE_MS = 200", runtime)
+        # The buffer zone must not schedule a switch or touch the DOM.
+        self.assertIn("candidate === null", block)
+        self.assertIn("clearTimeout(layoutSettleTimer)", block)
+        self.assertIn("keep the current layout", block)
+        # The settle debounce only applies the candidate after it holds
+        # unchanged; a new resize while waiting resets the window.
+        self.assertIn("layoutSettleTimer = setTimeout(() => {", block)
+        self.assertIn("if (layoutCandidate !== candidate) return;", block)
+        self.assertIn("applyLayoutMode(candidate)", block)
+        self.assertIn("layoutCandidate = null", block)
     def test_single_column_switcher_centered_and_accessible(self) -> None:
         shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")

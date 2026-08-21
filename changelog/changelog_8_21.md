@@ -114,3 +114,12 @@
 - `index.html` 中 `pro-bi-ui.min.js` 的缓存版本参数从 `?v=1` 升至 `?v=2`，浏览器会重新拉取新产物；该库后续预计不再频繁更新。
 - 影响范围：看板图表（BarChart/LineChart/PieChart 等 Pro BI 图表组件）的运行时渲染。
 - 主要文件：`frontend/public/lib/pro-bi-ui.min.js`、`bi_agent/web/static/vendor/antd/lib/pro-bi-ui.min.js`、`bi_agent/web/static/index.html`。
+
+### 单双栏自动判定增加滞回缓冲与稳定防抖（修复打开时反复跳闪）
+
+- 修复：布局判定原先直接用 `width > height ? 双栏 : 单栏`，宽高接近时任何微小变化（滚动条、字体加载、布局位移）都会在边界上来回翻转，打开页面时出现反复跳动/闪烁。
+- 现在加入滞回缓冲：容器宽 > 高 × 1.1 才切双栏，高 > 宽 × 1.1 才切单栏；比值落在 ±10% 缓冲区内时保持当前布局，不做任何切换。
+- 增加 200ms 稳定窗口防抖：候选布局必须连续保持 200ms 才真正写 DOM；等待期间新 resize 会重置窗口，缓冲区内变化会取消待执行的切换，避免瞬态波动触发切换。
+- 首次测量前仍保留 URL 参数作为兼容兜底，首次真实测量到达后按新规则接管。
+- 影响范围：所有工作区页面（智能分析/报表分析）的单双栏自动切换。
+- 主要文件：`frontend/src/runtime.js`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物）、`tests/test_regressions.py`。
