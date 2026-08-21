@@ -3647,7 +3647,9 @@ export function bootWorkbenchRuntime() {
   const SECTION_NAMES = [
     "关键结论", "结论",
     "根因分析", "根因证据链", "根因",
-    "行动建议", "管理建议", "建议雏形", "执行建议", "建议",
+    "行动建议", "管理建议", "建议雏形", "执行建议",
+    "决策建议", "决策与建议", "改进建议", "处置建议",
+    "下一步行动", "行动方案", "建议",
     "关键数据", "口径说明", "附图", "分析提醒", "跨维洞察",
   ];
 
@@ -3796,7 +3798,11 @@ export function bootWorkbenchRuntime() {
 
   function extractActions(text) {
     // bi-analyst / report-analyst: "行动建议"; report-generator: "管理建议".
-    return extractSection(text, ["💡"], ["行动建议", "管理建议", "建议雏形", "执行建议", "建议"]);
+    return extractSection(text, ["💡"], [
+      "行动建议", "管理建议", "建议雏形", "执行建议",
+      "决策建议", "决策与建议", "改进建议", "处置建议",
+      "下一步行动", "行动方案", "建议",
+    ]);
   }
 
   // These are output-section markers used only to advance the six-step SOP;
@@ -3971,6 +3977,32 @@ export function bootWorkbenchRuntime() {
         <span class="dash-turn">Turn ${turnTag}</span>
       </div>
       ${buildActionableBody(text, "actions")}`;
+    return card;
+  }
+
+  // Structured action_recommendations → dash-actions card. Every item gets
+  // its own 行动 menu (转督办/转执行/转模拟/转风险分析) exactly like the
+  // text-extracted card, but the items come from the backend event so the
+  // bubble does not depend on the model's exact section title.
+  function structuredActionsCard(items, turnTag) {
+    const card = el_h("div", "dash-card dash-actions");
+    card.dataset.turn = turnTag;
+    const ctrl = () => actionControlHTML("actions");
+    const body = (items || []).map((it) => {
+      const title = esc(it.title || "");
+      const content = esc(it.content || "");
+      const evidence = it.evidence
+        ? `<div class="dash-item-evidence">依据：${esc(it.evidence)}</div>`
+        : "";
+      const head = title ? `<strong>${title}</strong>${content ? "：" : ""}` : "";
+      return `<div class="dash-item"><div class="dash-item-text">${head}${content}${evidence}</div>${ctrl()}</div>`;
+    }).join("");
+    card.innerHTML = `
+      <div class="dash-head">
+        <span class="dash-tag actions">行动建议</span>
+        <span class="dash-turn">Turn ${turnTag}</span>
+      </div>
+      <div class="dash-body has-items">${body}</div>`;
     return card;
   }
 
@@ -5634,6 +5666,45 @@ export function bootWorkbenchRuntime() {
           }
         }
         break;
+      case "action_recommendations": {
+        const items = Array.isArray(evt.items) ? evt.items : [];
+        if (!items.length) break;
+        const bucket = B();
+        const turnTag = evt.turn || bucket.currentTurnTag || 1;
+        bucket.actionsSeen = bucket.actionsSeen || new Set();
+        const key = items.map((it) => `${it.title || ""}|${it.content || ""}`)
+          .join("\n").trim().toLowerCase();
+        if (!key || bucket.actionsSeen.has(key)) break;
+        bucket.actionsSeen.add(key);
+        // The same turn may already have a text-extracted card from
+        // llm_response; the structured event is authoritative, so replace it.
+        removeTurnResultCards(el.chatScroll, "dash-actions", turnTag);
+        removeTurnResultCards(el.dashboardList, "dash-actions", turnTag);
+        const card = structuredActionsCard(items, turnTag);
+        appendChatActionCard(card);
+        appendDashboardCard(card);
+        break;
+      }
+      case "action_repair": {
+        const tip = el_h("div", "msg msg-system msg-enforce",
+          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-amber,#ff6d00); border-color: var(--accent-amber,#ff6d00);">SYSTEM · 行动补写</span></div>
+           <div class="msg-body" style="color: var(--fg-1); border-left: 2px solid var(--accent-amber,#ff6d00); padding-left: 10px;">
+             检测到本轮交付了根因分析但缺少有效行动建议,已要求模型补写(第 ${esc(evt.attempt || 1)} 次)。
+           </div>`);
+        el.chatScroll.appendChild(tip);
+        el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
+        break;
+      }
+      case "delivery_incomplete": {
+        const tip = el_h("div", "msg msg-system msg-enforce",
+          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-red); border-color: var(--accent-red);">SYSTEM · 交付不完整</span></div>
+           <div class="msg-body" style="color: var(--accent-red); border-left: 2px solid var(--accent-red); padding-left: 10px;">
+             ${esc(evt.message || "本轮交付不完整")}
+           </div>`);
+        el.chatScroll.appendChild(tip);
+        el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
+        break;
+      }
       case "render_enforce": {
         finalizeAssistantText();
         const reasons = (evt.reasons || []).join(" / ") || "缺少表格 / 图表卡片";

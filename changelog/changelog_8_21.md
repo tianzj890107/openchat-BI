@@ -58,3 +58,14 @@
 - 服务启动时启用应用日志（`logging.basicConfig(INFO)`），任务令创建、thinking 参数重试等非敏感审计日志现在会写入服务器日志文件。
 - 影响范围：会话/看板中“行动建议”卡片的“转督办”操作。
 - 主要文件：`bi_agent/web/app.py`（新增代理端点与幂等保护）、`frontend/src/runtime.js`（`dispatchSupervise` 重写，删除 `localTaskSeq`/ACK 伪成功逻辑）、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=150）、`bi_agent/web/static/index.html`、`.env.example`、`tests/test_regressions.py`（新增 `TaskAlertProxyTests` 14 项测试）。
+
+### 根因分析后强制生成有效行动建议（结构化事件）
+
+- 修复：根因分析完成后不能稳定生成带“行动”菜单的行动建议气泡的问题。现在只要本轮交付了根因章节，就必须至少有一条具体行动建议，并稳定展示“行动建议”气泡。
+- 后端新增结构化 SSE 事件 `action_recommendations`（`turn` + `items`，每条含 `title/content/evidence`），根因回合在最终交付时由后端从行动章节解析并下发；前端收到后直接渲染 `dash-actions` 气泡，每条 item 单独显示并带“行动”菜单（转督办/转执行/转模拟/转风险分析），不再依赖模型输出固定标题。
+- 强制补写改为独立修复阶段：主循环结束后（含恰好用满 `max_iterations` 的情况），只要检测到根因但无有效行动，就单独补写最多 2 次；补写只接受文本、绝不执行 SQL/图表/表格等工具；仍失败时下发 `delivery_incomplete` 事件并返回“交付不完整”，不再静默完成。
+- 有效性校验不再只看标题：空话（“加强管理”“持续关注”“继续观察”等）、已完成声明（“已完成…”“已执行…”）、过短表述都会被过滤，只有含具体动作对象和执行方式且对应根因证据的建议才算有效；L1/L2 回合不强制生成建议。
+- 标题变体兼容：`行动建议/管理建议/建议雏形/执行建议/决策建议/决策与建议/改进建议/处置建议/下一步行动/行动方案/建议` 均可触发行动气泡；结构化事件是新会话主路径，文本抽取仅兼容旧历史。
+- 前端去重与恢复：同一 turn 同一行动不重复渲染（`actionsSeen` 去重，结构化事件会替换同 turn 文本卡片）；气泡与行动菜单随会话 HTML 持久化，刷新与历史恢复后仍存在。
+- 影响范围：所有交付根因分析的会话（L3+），看板与聊天窗的行动建议卡片。
+- 主要文件：`bi_agent/web/session.py`、`bi_agent/tools/analysis_policy.py`、`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=151）、`tests/test_regressions.py`。

@@ -30,8 +30,10 @@ from typing import Any, Callable, Generator, Optional
 from open_claude.agent_def import AgentDef
 from open_claude.prompt import build_system_prompt
 from bi_agent.tools.analysis_policy import (
-    has_action_section,
+    extract_action_items,
+    has_effective_action,
     has_root_cause_section,
+    split_action_item,
 )
 from open_claude.skills.bundled import init_bundled_skills
 from open_claude.skills.registry import load_skills
@@ -196,6 +198,7 @@ class WebSession:
         self._active_user_text = ""
         self._chart_suppressed_this_turn = False
         self._table_rendered_this_turn = False
+        self._user_turn_count = 0
 
     # ------------------------------------------------------------------
     # System-prompt construction (honours per-session overrides)
@@ -386,6 +389,7 @@ class WebSession:
 
     def generate_turn(self, user_text: str, visible_user_text: Optional[str] = None) -> Generator[dict[str, Any], None, None]:
         """Yield events for one user turn (user message → assistant → tools → ...)."""
+        self._user_turn_count += 1
         self._active_user_text = str(user_text or "")
         visible = str(visible_user_text if visible_user_text is not None else user_text or "")
         visible = re.sub(r"\s+", " ", visible).strip()[:60]
@@ -466,11 +470,9 @@ class WebSession:
         called_tools_this_turn: set[str] = set()
         text_concat_this_turn: str = ""
         enforced_render: bool = False
-        enforced_action: bool = False
         enforced_answer_validation: bool = False
         claim_context_sent: bool = False
         root_cause_seen = False
-        action_seen = False
 
         for iteration in range(self.max_iterations):
             yield {"type": "iteration_start", "iteration": iteration}
@@ -530,7 +532,6 @@ class WebSession:
             if text_buffer:
                 text_concat_this_turn += "\n" + text_buffer
                 root_cause_seen = root_cause_seen or has_root_cause_section(text_buffer)
-                action_seen = action_seen or has_action_section(text_buffer)
 
             if stop_reason != "tool_use" or not tool_uses:
                 # ---- Render enforcement ------------------------------------
@@ -596,25 +597,6 @@ class WebSession:
                         "message": reminder,
                     }
                     continue  # re-prompt LLM with the reminder appended
-
-                # A root-cause answer without an action section is always
-                # incomplete. This is an output invariant, not an intent gate:
-                # even if the model over-produces root cause for an L1/L2
-                # question, the response must not finish with root cause alone.
-                if (
-                    not enforced_action
-                    and root_cause_seen
-                    and not action_seen
-                ):
-                    enforced_action = True
-                    reminder = (
-                        "本轮回复已经出现根因章节,但还没有行动章节,不能结束本轮。"
-                        "请基于本轮已经验证的根因证据,继续补充一个纯文字标题为‘行动建议’或‘建议雏形’的小节。"
-                        "至少给出 1–2 条具体动作,每条都要对应具体根因切片和数据证据;"
-                        "不要重复根因分析,不要写‘加强管理’等空泛表述,不要声称动作已经执行,不要使用表情符号。"
-                    )
-                    self.messages.append({"role": "user", "content": reminder, "internal": True})
-                    continue
 
                 if self.claims:
                     if not claim_context_sent:
@@ -755,7 +737,115 @@ class WebSession:
 
             self.messages.append({"role": "user", "content": tool_results})
 
-        yield {"type": "done", "stop_reason": stop_reason}
+        # ------------------------------------------------------------------
+        # Action delivery gate: a turn that delivered root cause MUST also
+        # deliver at least one concrete action item. The repair phase has its
+        # own counter (independent of max_iterations) and never executes
+        # tools, so a root cause that appeared on the last main iteration
+        # still gets its repair chances and no SQL/chart/table re-runs.
+        # ------------------------------------------------------------------
+        max_action_repairs = 2
+        action_repairs = 0
+        action_blocked = False
+        if root_cause_seen and not has_effective_action(text_concat_this_turn):
+            for _ in range(max_action_repairs):
+                action_repairs += 1
+                if action_repairs == 1:
+                    reminder = (
+                        "本轮回复已经出现根因章节,但还没有有效行动建议,不能结束本轮。"
+                        "请基于本轮已经验证的根因证据,继续补充一个标题为‘行动建议’"
+                        "(或‘管理建议’‘决策建议’‘下一步行动’等)的小节,给出 1–2 条具体动作;"
+                        "每条都要有明确动作对象和执行方式,不要写‘加强管理’‘持续关注’等空话,"
+                        "不要声称动作已经执行,不要重复根因分析,不要使用表情符号。"
+                    )
+                else:
+                    reminder = (
+                        "上一轮补写仍然没有有效行动建议。请只补充行动建议文本:"
+                        "标题为‘行动建议’(或‘管理建议’‘决策建议’‘下一步行动’等),"
+                        "给出 1–2 条可执行的具体动作并对应根因证据;"
+                        "不要调用任何工具,不要重新执行已经完成的取数、图表或表格。"
+                    )
+                self.messages.append({"role": "user", "content": reminder, "internal": True})
+                yield {
+                    "type": "action_repair",
+                    "attempt": action_repairs,
+                    "message": reminder,
+                }
+                repair_iteration = self.max_iterations + action_repairs
+                cfg = get_llm_config()
+                yield {
+                    "type": "llm_request",
+                    "iteration": repair_iteration,
+                    "model": get_model_id(cfg.model_key),
+                    "model_key": cfg.model_key,
+                    "max_tokens": cfg.max_tokens,
+                    "temperature": cfg.temperature,
+                    "message_count": len(self.messages),
+                    "messages_snapshot": self._snapshot_messages(),
+                }
+                repair_stop, repair_text, repair_tools, repair_usage, repair_thinking = (
+                    yield from self._stream_one_response(repair_iteration)
+                )
+                if repair_stop == "error":
+                    return
+                yield {
+                    "type": "llm_response",
+                    "iteration": repair_iteration,
+                    "text": repair_text,
+                    "tool_uses": [
+                        {"id": tu["id"], "name": tu["name"], "input": tu["input"]}
+                        for tu in repair_tools
+                    ],
+                    "stop_reason": repair_stop,
+                    "usage": repair_usage,
+                }
+                repair_content: list[dict[str, Any]] = []
+                repair_content.extend(repair_thinking)
+                if repair_text:
+                    repair_content.append({"type": "text", "text": repair_text})
+                # Tool calls in a repair response are NOT executed: executing
+                # them could re-run SQL/charts. History keeps only the text so
+                # the next reminder can ask for a pure-text supplement.
+                if repair_content:
+                    self.messages.append({"role": "assistant", "content": repair_content})
+                if repair_text:
+                    text_concat_this_turn += "\n" + repair_text
+                if has_effective_action(text_concat_this_turn):
+                    break
+            else:
+                action_blocked = True
+                yield {
+                    "type": "delivery_incomplete",
+                    "reason": "action_missing",
+                    "attempts": action_repairs,
+                    "message": "本轮根因分析后连续补写仍未生成有效行动建议,交付不完整。",
+                }
+                logger.warning(
+                    "delivery_incomplete action_missing turn=%s repairs=%s",
+                    self._user_turn_count,
+                    action_repairs,
+                )
+
+        if root_cause_seen and not action_blocked:
+            items: list[dict[str, Any]] = []
+            for raw in extract_action_items(text_concat_this_turn):
+                parsed = split_action_item(raw)
+                items.append({
+                    "title": (parsed.get("title") or raw)[:80],
+                    "content": parsed.get("content") or raw,
+                    "evidence": parsed.get("evidence"),
+                })
+            if items:
+                yield {
+                    "type": "action_recommendations",
+                    "turn": self._user_turn_count,
+                    "items": items,
+                }
+
+        yield {
+            "type": "done",
+            "stop_reason": "delivery_incomplete" if action_blocked else stop_reason,
+        }
 
     # ------------------------------------------------------------------
     # Internals
