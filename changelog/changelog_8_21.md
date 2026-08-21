@@ -123,3 +123,10 @@
 - 首次测量前仍保留 URL 参数作为兼容兜底，首次真实测量到达后按新规则接管；无显式参数时兜底默认改为单栏，不再先以双栏渲染再跳变，避免窄窗口打开时先闪一下双栏布局（显式 `layout=2`/`columns=2` 仍按双栏兜底）。
 - 影响范围：所有工作区页面（智能分析/报表分析）的单双栏自动切换。
 - 主要文件：`frontend/src/runtime.js`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=159）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+
+### 双栏模式会话/看板默认等宽（1fr/1fr）
+
+- 双栏布局下会话栏与看板栏的默认列宽从“会话 1.15fr、看板 1fr”改为等宽（`minmax(380px, 1fr)` / `minmax(360px, 1fr)`），未拖动分栏条时两栏各占一半。
+- 用户拖动中间分栏条仍会以 `--chat-width`（持久化 `bi.layout.chatWidth`）覆盖默认宽度；单栏模式不受影响（仍整列 `1fr !important`）。
+- 影响范围：所有工作区页面双栏布局的会话/看板分栏默认宽度。
+- 主要文件：`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=124）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。

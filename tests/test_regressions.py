@@ -1635,6 +1635,25 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("if (layoutCandidate !== candidate) return;", block)
         self.assertIn("applyLayoutMode(candidate)", block)
         self.assertIn("layoutCandidate = null", block)
+
+    def test_two_column_default_split_is_equal_width(self) -> None:
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        # In two-column mode the chat/dashboard split defaults to equal widths
+        # (1fr / 1fr); a user-dragged --chat-width still wins when persisted.
+        self.assertIn(
+            "grid-template-columns: minmax(380px, 1fr) minmax(360px, 1fr);", css)
+        self.assertIn(
+            "grid-template-columns: var(--chat-width, minmax(380px, 1fr)) 6px minmax(360px, 1fr);", css)
+        self.assertNotIn("1.15fr", css)
+        built = Path("bi_agent/web/static/vendor/antd/openchat-bi-workbench.css").read_text(
+            encoding="utf-8", errors="replace")
+        self.assertIn("var(--chat-width, minmax(380px, 1fr)) 6px minmax(360px,1fr)", built)
+        self.assertNotIn("1.15fr", built)
+        self.assertIn('chat: "bi.layout.chatWidth"', runtime)
+        self.assertIn('document.documentElement.style.setProperty("--chat-width"', runtime)
+        # Single-column mode still forces one full-width column.
+        self.assertIn('body[data-layout="single"] .split {\n  grid-template-columns: 1fr !important;', css)
     def test_single_column_switcher_centered_and_accessible(self) -> None:
         shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
