@@ -1574,7 +1574,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=153" defer', index)
+        self.assertIn('workbench.js?v=154" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -1638,6 +1638,17 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("justify-content: center", css)
         self.assertIn('body[data-layout="single"] .workspace-pane-switcher {\n  display: flex;', css)
         self.assertNotIn(".mobile-pane-switch", css)
+
+    def test_dashboard_header_buttons_follow_layout_mode(self) -> None:
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        # Two columns: the dashboard header drops its two right-side action
+        # buttons (清空 / 折叠); the label row stays.
+        self.assertIn('body[data-layout="two"] .dashboard-pane #dashboard-clear', css)
+        self.assertIn('body[data-layout="two"] .dashboard-pane #dashboard-collapse', css)
+        # Single column: pane title rows are replaced by the top switcher.
+        self.assertIn('body[data-layout="single"] .chat-pane .pane-header', css)
+        self.assertIn('body[data-layout="single"] .dashboard-pane .pane-header', css)
+        self.assertIn("display: none !important", css)
 
     def test_share_button_is_dingtalk(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")

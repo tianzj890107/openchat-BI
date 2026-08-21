@@ -6309,6 +6309,18 @@ body[data-layout="single"] .dashboard-collapse,
 body[data-layout="single"] .dashboard-reopen {
   display: none !important;
 }
+/* Two columns: the dashboard header keeps only the 看板 label/count; the
+ * two right-side action buttons (清空 / 折叠) are removed. */
+body[data-layout="two"] .dashboard-pane #dashboard-clear,
+body[data-layout="two"] .dashboard-pane #dashboard-collapse {
+  display: none !important;
+}
+/* Single column: the top switcher row replaces the pane title rows, so the
+ * chat/dashboard pane headers (会话/看板 labels, 清空 etc.) are hidden. */
+body[data-layout="single"] .chat-pane .pane-header,
+body[data-layout="single"] .dashboard-pane .pane-header {
+  display: none !important;
+}
 body[data-layout="single"] .chat-pane,
 body[data-layout="single"] .dashboard-pane {
   grid-column: 1 !important;

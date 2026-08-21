@@ -75,9 +75,10 @@
 
 - 布局不再由 URL 的 `layout`/`columns` 参数或 `/single` 路由决定，改为用 `ResizeObserver` 监听会话与看板外层的 `.split` 容器实际尺寸：容器宽 > 高时显示双栏（会话/看板并排），宽 ≤ 高时自动切为单栏；首次测量前保留 URL 参数作为兼容兜底。
 - 只在判断结果发生变化时更新 DOM（`data-layout`、`bi-viewport-mode` 事件、`resize` 事件触发图表重算），避免 ResizeObserver 循环和重复渲染；双栏切回单栏时保留用户上一次选择的会话/看板，无历史选择默认“会话”。
-- 删除原来位于两个面板标题栏右上角的独立“会话/看板”按钮，改为单栏模式下在工作区顶部居中的统一切换器“会话｜看板”：两个真实 button + 纯分隔竖线，选中项蓝色、未选中灰色，点击立即切换面板；带 `role="tablist"`、`aria-selected`/`aria-pressed` 无障碍状态；双栏模式下隐藏，不影响看板清空、折叠、拖动调宽等既有功能。
+- 删除原来位于两个面板标题栏右上角的独立“会话/看板”按钮，改为单栏模式下在工作区顶部居中的统一切换器“会话｜看板”：两个真实 button + 纯分隔竖线，选中项蓝色、未选中灰色，点击立即切换面板；带 `role="tablist"`、`aria-selected`/`aria-pressed` 无障碍状态；双栏模式下隐藏。
+- 标题行精简：双栏时看板标题行只保留“看板”标签与数量，右侧“清空/折叠”两个按钮移除；单栏时会话/看板两个面板的标题行整体隐藏，只保留顶部“会话｜看板”切换器一行标题；看板清空、折叠逻辑保留（`dashboard-clear`/`dashboard-collapse` 仍绑定，仅在对应布局下不显示）。
 - 影响范围：所有工作区页面（智能分析/报表分析），自适应横竖屏容器。
-- 主要文件：`frontend/src/shell.html`、`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=121/v=154）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+- 主要文件：`frontend/src/shell.html`、`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=122/v=154）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
 
 ### “分享到飞书”改为“分享到钉钉”
 
