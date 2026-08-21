@@ -1574,7 +1574,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=154" defer', index)
+        self.assertIn('workbench.js?v=155" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -1638,6 +1638,20 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("justify-content: center", css)
         self.assertIn('body[data-layout="single"] .workspace-pane-switcher {\n  display: flex;', css)
         self.assertNotIn(".mobile-pane-switch", css)
+
+    def test_send_button_keeps_svg_icon_after_busy_and_history_restore(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
+        # The initial send button is an SVG paper-plane inside #btn-send.
+        self.assertIn('<button id="btn-send" class="btn btn-primary composer-send"', shell)
+        self.assertIn('<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"', shell)
+        # setBusy must not replace the icon with a text glyph; it toggles a class.
+        set_busy = runtime[runtime.index("function setBusy("):runtime.index("// ----", runtime.index("function setBusy("))]
+        self.assertNotIn('btnSend.textContent = v ? "…" : "➤"', set_busy)
+        self.assertIn('el.btnSend.classList.toggle("is-busy", v)', set_busy)
+        self.assertIn(".composer-send.is-busy svg", css)
+        self.assertIn('.composer-send.is-busy::after', css)
 
     def test_dashboard_header_buttons_follow_layout_mode(self) -> None:
         css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")

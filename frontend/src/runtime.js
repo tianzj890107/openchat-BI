@@ -5899,7 +5899,9 @@ export function bootWorkbenchRuntime() {
     const disabled = v || state.historyRestoring;
     el.btnSend.disabled = disabled;
     el.chatInput.disabled = disabled;
-    el.btnSend.textContent = v ? "…" : "➤";
+    // Keep the canonical paper-plane SVG; busy is expressed with a class so
+    // the button looks identical on first paint and after history restore.
+    el.btnSend.classList.toggle("is-busy", v);
     // Navigation remains available while a turn is in flight.
   }
 
