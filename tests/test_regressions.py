@@ -828,6 +828,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('case "action_recommendations"', runtime)
         self.assertIn("structuredActionsCard", runtime)
         self.assertIn("case \"delivery_incomplete\"", runtime)
+        self.assertIn("case \"answer_blocked\"", runtime)
         self.assertIn("action_repair", runtime)
         self.assertIn("决策与建议", runtime)
         self.assertIn("下一步行动", runtime)
@@ -835,6 +836,50 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("bucket.actionsSeen", runtime)
         self.assertIn("action_recommendations", built)
         self.assertIn("delivery_incomplete", built)
+
+    def test_answer_blocked_turn_still_emits_done_and_action_gate(self) -> None:
+        from bi_agent.reliability import Claim, ClaimLevel, ValidationStatus
+
+        responses = iter([
+            [
+                {"type": "text_delta", "text": "结论：审批中的订单有 50 单。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "结论：审批中的订单有 50 单，占比 9.4%。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": (
+                    "根因分析：手动创建订单占审批中订单的多数。\n"
+                    "行动建议：优先复核手动创建的审批中订单。"
+                )},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        claim = Claim(
+            id="c-1",
+            statement="审批中的订单有 50 单",
+            level=ClaimLevel.FACT,
+            semantic={"semantic_type": "FACT"},
+        )
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch("bi_agent.web.session.validate_claims", return_value=SimpleNamespace(
+                 status=ValidationStatus.REJECT, issues=("unsupported numeric fact: 9.4",),
+             )):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            session.claims = [claim]
+            events = list(session._run_loop())
+        blocked = [event for event in events if event["type"] == "answer_blocked"]
+        self.assertEqual(len(blocked), 1)
+        recs = [event for event in events if event["type"] == "action_recommendations"]
+        self.assertEqual(len(recs), 1)
+        done = [event for event in events if event["type"] == "done"]
+        self.assertEqual(done[0]["stop_reason"], "answer_blocked")
 
     def test_ontology_entity_extraction_supports_all_source_code_prefixes(self) -> None:
         store = OntologyStore()
@@ -1529,7 +1574,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=151" defer', index)
+        self.assertIn('workbench.js?v=152" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(

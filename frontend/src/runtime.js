@@ -5705,6 +5705,19 @@ export function bootWorkbenchRuntime() {
         el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
         break;
       }
+      case "answer_blocked": {
+        const issues = Array.isArray(evt.issues) && evt.issues.length
+          ? `<div style="margin-top:4px;">${esc(evt.issues.join("；"))}</div>`
+          : "";
+        const tip = el_h("div", "msg msg-system msg-enforce",
+          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-red); border-color: var(--accent-red);">SYSTEM · 最终回答被阻止</span></div>
+           <div class="msg-body" style="color: var(--accent-red); border-left: 2px solid var(--accent-red); padding-left: 10px;">
+             ${esc(evt.message || "最终回答被阻止")}${issues}
+           </div>`);
+        el.chatScroll.appendChild(tip);
+        el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
+        break;
+      }
       case "render_enforce": {
         finalizeAssistantText();
         const reasons = (evt.reasons || []).join(" / ") || "缺少表格 / 图表卡片";

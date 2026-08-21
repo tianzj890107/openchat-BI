@@ -473,6 +473,7 @@ class WebSession:
         enforced_answer_validation: bool = False
         claim_context_sent: bool = False
         root_cause_seen = False
+        delivery_blocked = False
 
         for iteration in range(self.max_iterations):
             yield {"type": "iteration_start", "iteration": iteration}
@@ -626,7 +627,8 @@ class WebSession:
                                 "issues": list(validation.issues),
                                 "message": "最终回答被阻止：结构化 Claims 不支持该确定性叙述。",
                             }
-                            return
+                            delivery_blocked = True
+                            break
                         enforced_answer_validation = True
                         reminder = (
                             "最终回答未通过结构化 Claim 校验。请重新生成叙述："
@@ -844,7 +846,10 @@ class WebSession:
 
         yield {
             "type": "done",
-            "stop_reason": "delivery_incomplete" if action_blocked else stop_reason,
+            "stop_reason": (
+                "delivery_incomplete" if action_blocked
+                else ("answer_blocked" if delivery_blocked else stop_reason)
+            ),
         }
 
     # ------------------------------------------------------------------
