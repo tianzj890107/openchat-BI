@@ -2810,7 +2810,10 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 }
 .dash-export-btn:hover { background: var(--bg-3, #1a2230); color: var(--fg-0); }
 .dash-export-btn.dash-sync-btn { color: var(--accent-lime, #00c853); border-top: none; }
-.dash-export-btn.dash-feishu-btn { color: #00c853; border-top: none; }
+/* Legacy snapshot buttons keep the old class until runtime normalization
+ * converts them to the canonical DingTalk button. */
+.dash-export-btn.dash-feishu-btn,
+.dash-export-btn.dash-dingtalk-btn { color: #1677FF; border-top: none; }
 .dash-export-status {
   padding: 7px 14px;
   font-family: var(--font-mono);
@@ -3125,7 +3128,8 @@ body[data-dashboard="collapsed"] .dashboard-reopen { display: flex; }
 .chat-scroll .dash-export-btn:hover { filter: brightness(1.04); }
 .chat-scroll .dash-export-btn.dash-word-btn { background: #E8B339; }
 .chat-scroll .dash-export-btn.dash-sync-btn { background: #28C79D; }
-.chat-scroll .dash-export-btn.dash-feishu-btn { background: #F05A5A; }
+.chat-scroll .dash-export-btn.dash-feishu-btn,
+.chat-scroll .dash-export-btn.dash-dingtalk-btn { background: #1677FF; }
 .chat-scroll .dash-export-status {
   flex: 1 0 100%;
   padding: 4px 0 0;
@@ -3770,14 +3774,15 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   box-shadow: 0 2px 5px rgba(16, 28, 40, .12);
 }
 .chat-scroll .chat-action-card .dash-export-btn:hover { filter: brightness(1.04); }
-.chat-scroll .chat-action-card .dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-feishu-btn) { background: #0B7FF3; }
+.chat-scroll .chat-action-card .dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-feishu-btn):not(.dash-dingtalk-btn) { background: #0B7FF3; }
 .chat-scroll .chat-action-card .dash-export-btn.dash-word-btn { background: #E8B339; }
 .chat-scroll .chat-action-card .dash-export-btn.dash-sync-btn { background: #28C79D; }
-.chat-scroll .chat-action-card .dash-export-btn.dash-feishu-btn { background: #F05A5A; }
+.chat-scroll .chat-action-card .dash-export-btn.dash-feishu-btn,
+.chat-scroll .chat-action-card .dash-export-btn.dash-dingtalk-btn { background: #1677FF; }
 
 /* Use a light tint with a semantic label/border color instead of a solid
  * saturated fill for the four export actions. */
-.chat-scroll .chat-action-card .dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-feishu-btn) {
+.chat-scroll .chat-action-card .dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-feishu-btn):not(.dash-dingtalk-btn) {
   background: #F1F6FF;
   color: #0B6EE6;
   border-color: #8FBFFF;
@@ -3792,10 +3797,11 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   color: #168B6F;
   border-color: #28C79D;
 }
-.chat-scroll .chat-action-card .dash-export-btn.dash-feishu-btn {
-  background: #FFF1F1;
-  color: #C53E3E;
-  border-color: #F05A5A;
+.chat-scroll .chat-action-card .dash-export-btn.dash-feishu-btn,
+.chat-scroll .chat-action-card .dash-export-btn.dash-dingtalk-btn {
+  background: #EAF4FF;
+  color: #1677FF;
+  border-color: #79B8FF;
 }
 
 /* The conversation and dashboard are the two primary work surfaces. Round
@@ -6258,10 +6264,43 @@ select,
   color: #15803D !important;
 }
 
-/* Portrait view uses tabs instead of placing the conversation and dashboard
- * beside each other. The dashboard collapse controls are intentionally hidden
- * in this mode; the title-row buttons switch the visible pane. */
-.mobile-pane-switch { display: none; }
+/* Single-column workspace top switcher (会话 | 看板). Only the container
+ * measurement decides between this mode and the two-column layout; the
+ * switcher is centered at the top of the workspace and hidden when the
+ * two panes are shown side by side. */
+.workspace-pane-switcher {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 6px 0 2px;
+}
+body[data-layout="single"] .workspace-pane-switcher {
+  display: flex;
+}
+.workspace-pane-tab {
+  border: 0;
+  background: transparent;
+  padding: 3px 14px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm, 13px);
+  line-height: 1.2;
+  color: var(--fg-3, #94a3b8);
+  cursor: pointer;
+}
+.workspace-pane-tab:hover { color: var(--fg-1); }
+.workspace-pane-tab.is-selected,
+.workspace-pane-tab[aria-selected="true"] {
+  color: #2563EB;
+  background: #EFF6FF;
+  font-weight: 600;
+}
+.workspace-pane-sep {
+  color: var(--fg-3, #94a3b8);
+  opacity: 0.6;
+  user-select: none;
+}
 body[data-layout="single"] .split {
   grid-template-columns: 1fr !important;
 }
@@ -6269,31 +6308,6 @@ body[data-layout="single"] .layout-resizer-workspace,
 body[data-layout="single"] .dashboard-collapse,
 body[data-layout="single"] .dashboard-reopen {
   display: none !important;
-}
-body[data-layout="single"] .mobile-pane-switch {
-  position: absolute;
-  right: 12px;
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid #DBE4EC;
-  border-radius: 6px;
-  background: #FFFFFF;
-  color: #2563EB;
-  cursor: pointer;
-}
-body[data-layout="single"] .mobile-pane-switch:hover { background: #EFF6FF; }
-body[data-layout="single"][data-mobile-pane="dashboard"] #dashboard-clear {
-  position: absolute;
-  right: 76px;
-  margin-left: 0;
-  z-index: 2;
-  display: inline-flex !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  width: auto !important;
-  min-width: 42px;
 }
 body[data-layout="single"] .chat-pane,
 body[data-layout="single"] .dashboard-pane {

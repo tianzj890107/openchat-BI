@@ -1574,7 +1574,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=152" defer', index)
+        self.assertIn('workbench.js?v=153" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -1583,6 +1583,92 @@ class OfflineRegressionTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers.get("content-encoding"), "gzip")
+
+    def test_workspace_layout_follows_container_size(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        built = Path("bi_agent/web/static/vendor/antd/workbench.js").read_text(
+            encoding="utf-8", errors="replace")
+        # The layout is decided by the real .split container size, observed
+        # through ResizeObserver — width > height means two columns.
+        self.assertIn('const split = document.querySelector(".split")', runtime)
+        self.assertIn("new ResizeObserver(", runtime)
+        self.assertIn("observer.observe(split)", runtime)
+        self.assertIn("entry.contentRect", runtime)
+        self.assertIn('const nextMode = rect.width > rect.height ? "two" : "single"', runtime)
+        # DOM is only touched when the decision actually changes.
+        self.assertIn("if (nextMode === layoutMode) continue", runtime)
+        # URL params remain only as a pre-measurement fallback.
+        self.assertIn("routeLayoutMode()", runtime)
+        self.assertIn("until the first ResizeObserver", runtime)
+        # Existing viewport/refresh linkage keeps firing on mode changes.
+        self.assertIn('document.body.dataset.layout = nextMode', runtime)
+        self.assertIn('window.dispatchEvent(new CustomEvent("bi-viewport-mode"', runtime)
+        self.assertIn('window.dispatchEvent(new Event("resize"))', runtime)
+        self.assertIn("workspace-pane-switcher", built)
+        self.assertIn("ResizeObserver", built)
+
+    def test_single_column_switcher_centered_and_accessible(self) -> None:
+        shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        # The per-pane title-bar buttons were removed.
+        self.assertNotIn("mobile-pane-switch", shell)
+        self.assertNotIn("mobile-show-dashboard", shell)
+        self.assertNotIn("mobile-show-chat", shell)
+        # One unified switcher sits at the top of the workspace, before .split.
+        switcher_index = shell.index('id="workspace-pane-switcher"')
+        split_index = shell.index('class="split"')
+        self.assertLess(switcher_index, split_index)
+        # Real buttons with a pure separator; 会话 first, 看板 second.
+        self.assertIn(
+            '<button type="button" class="workspace-pane-tab" data-pane="chat" role="tab" aria-selected="true" aria-pressed="true">会话</button>',
+            shell)
+        self.assertIn(
+            '<button type="button" class="workspace-pane-tab" data-pane="dashboard" role="tab" aria-selected="false" aria-pressed="false">看板</button>',
+            shell)
+        self.assertIn('<span class="workspace-pane-sep" aria-hidden="true">｜</span>', shell)
+        self.assertIn('role="tablist"', shell)
+        # Runtime wiring: click switches the pane and syncs aria/selected state.
+        self.assertIn('tab.addEventListener("click", () => showMobilePane(tab.dataset.pane))', runtime)
+        self.assertIn('tab.setAttribute("aria-selected"', runtime)
+        self.assertIn('tab.setAttribute("aria-pressed"', runtime)
+        self.assertIn("bi.layout.mobilePane", runtime)
+        # Centered and only visible in single-column mode.
+        self.assertIn(".workspace-pane-switcher {\n  display: none;", css)
+        self.assertIn("justify-content: center", css)
+        self.assertIn('body[data-layout="single"] .workspace-pane-switcher {\n  display: flex;', css)
+        self.assertNotIn(".mobile-pane-switch", css)
+
+    def test_share_button_is_dingtalk(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        built = Path("bi_agent/web/static/vendor/antd/workbench.js").read_text(
+            encoding="utf-8", errors="replace")
+        self.assertIn('class="dash-export-btn dash-dingtalk-btn"', runtime)
+        self.assertIn("分享到钉钉", runtime)
+        self.assertIn("shareTurnReportToDingTalk", runtime)
+        self.assertIn("「分享到钉钉」为占位入口,暂未接入钉钉开放平台", runtime)
+        self.assertNotIn("分享到飞书", runtime)
+        self.assertIn("EXPORT_ACTION_ICONS.dingtalk", runtime)
+        self.assertIn(".dash-dingtalk-btn", css)
+        self.assertIn("dash-dingtalk-btn", built)
+
+    def test_legacy_feishu_snapshot_normalized_to_dingtalk(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        start = runtime.index("function normalizeExportButtons(")
+        end = runtime.index("function appendTurnExportButton(", start)
+        normalize = runtime[start:end]
+        # Old snapshot buttons are detected, converted and relabeled.
+        self.assertIn('button.classList.contains("dash-feishu-btn")', normalize)
+        self.assertIn('button.classList.remove("dash-feishu-btn")', normalize)
+        self.assertIn('button.classList.add("dash-dingtalk-btn")', normalize)
+        self.assertIn('"分享到钉钉"', normalize)
+        # Restored cards bind their click to the canonical DingTalk button.
+        bind_start = runtime.index("function bindExportCard(")
+        bind_end = runtime.index("function renderTextCardForExport(", bind_start)
+        bind = runtime[bind_start:bind_end]
+        self.assertIn('card.querySelector(".dash-dingtalk-btn")', bind)
+        self.assertIn("shareTurnReportToDingTalk(turnTag, card)", bind)
 
     def test_only_semantic_card_badges_remain_and_align_left(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
