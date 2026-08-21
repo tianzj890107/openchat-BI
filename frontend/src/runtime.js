@@ -6748,16 +6748,17 @@ export function bootWorkbenchRuntime() {
   function routeLayoutMode() {
     const params = new URLSearchParams(window.location.search);
     const value = String(params.get("layout") || params.get("columns") || "").toLowerCase();
-    return ["1", "one", "single", "single-column"].includes(value)
-      || /\/(?:one|single)(?:\/)?$/.test(window.location.pathname)
-      ? "single"
-      : "two";
+    if (["1", "one", "single", "single-column"].includes(value)
+        || /\/(?:one|single)(?:\/)?$/.test(window.location.pathname)) return "single";
+    if (["2", "two", "double", "two-columns"].includes(value)) return "two";
+    return "single";
   }
   // The workspace layout follows the actual size of the .split container,
   // not URL params. width > height -> two columns (chat + dashboard side by
   // side); width <= height -> single column with the top switcher. The URL
   // heuristic above is only a fallback until the first ResizeObserver
-  // measurement arrives.
+  // measurement arrives; without explicit params the fallback is single
+  // column so the workbench never flashes a wide layout on narrow windows.
   const LAYOUT_PANE_LS_KEY = "bi.layout.mobilePane";
   function loadLastMobilePane() {
     try { return localStorage.getItem(LAYOUT_PANE_LS_KEY) || "chat"; }
@@ -6766,7 +6767,7 @@ export function bootWorkbenchRuntime() {
   function storeLastMobilePane(pane) {
     try { localStorage.setItem(LAYOUT_PANE_LS_KEY, pane); } catch (e) {}
   }
-  let layoutMode = "two";
+  let layoutMode = "single";
   // Buffer zone for near-square containers: a layout change is only applied
   // when the .split container is clearly wider than tall (two columns) or
   // clearly taller than wide (single). Ratios inside LAYOUT_HYSTERESIS keep

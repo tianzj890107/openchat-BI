@@ -1574,7 +1574,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=158" defer', index)
+        self.assertIn('workbench.js?v=159" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -1601,9 +1601,14 @@ class OfflineRegressionTests(unittest.TestCase):
         # DOM is only touched when the decision actually changes.
         self.assertIn("if (candidate === layoutMode) {", runtime)
         self.assertIn("if (candidate === null) {", runtime)
-        # URL params remain only as a pre-measurement fallback.
+        # URL params remain only as a pre-measurement fallback; without
+        # explicit params the workbench defaults to single column so it never
+        # flashes a wide layout before the first measurement arrives.
         self.assertIn("routeLayoutMode()", runtime)
         self.assertIn("until the first ResizeObserver", runtime)
+        self.assertIn('let layoutMode = "single";', runtime)
+        self.assertIn('if (["2", "two", "double", "two-columns"].includes(value)) return "two";', runtime)
+        self.assertIn('return "single";', runtime)
         # Existing viewport/refresh linkage keeps firing on mode changes.
         self.assertIn('document.body.dataset.layout = nextMode', runtime)
         self.assertIn('window.dispatchEvent(new CustomEvent("bi-viewport-mode"', runtime)
