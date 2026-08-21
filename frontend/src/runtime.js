@@ -4764,20 +4764,30 @@ export function bootWorkbenchRuntime() {
   }
 
   function bindExportCard(card, turnTag) {
-    if (!card || card.dataset.exportBound === "1") return;
+    if (!card) return;
+    // Restored snapshots may carry a pre-DingTalk share button (and the
+    // data-export-bound flag from the bundle that created them). Normalize
+    // first so legacy buttons are converted before the early return below;
+    // per-button markers keep binding idempotent for already-bound cards.
     normalizeExportButtons(card);
-    card.dataset.exportBound = "1";
-    card.querySelector(
-      ".dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-dingtalk-btn):not(.dash-feishu-btn)")
-      ?.addEventListener("click", () => exportTurnReport(turnTag));
-    card.querySelector(".dash-word-btn")
-      ?.addEventListener("click", (ev) => handleWordButton(turnTag, ev.currentTarget));
-    card.querySelector(".dash-sync-btn")?.addEventListener("click", () => {
+    const bindBtn = (button, fn) => {
+      if (!button || button.dataset.exportClickBound === "1") return;
+      button.dataset.exportClickBound = "1";
+      button.addEventListener("click", fn);
+    };
+    bindBtn(
+      card.querySelector(
+        ".dash-export-btn:not(.dash-word-btn):not(.dash-sync-btn):not(.dash-dingtalk-btn):not(.dash-feishu-btn)"),
+      () => exportTurnReport(turnTag));
+    bindBtn(card.querySelector(".dash-word-btn"),
+      (ev) => handleWordButton(turnTag, ev.currentTarget));
+    bindBtn(card.querySelector(".dash-sync-btn"), () => {
       syncTurnReportToHome(turnTag, card);
     });
-    card.querySelector(".dash-dingtalk-btn")?.addEventListener("click", () => {
+    bindBtn(card.querySelector(".dash-dingtalk-btn"), () => {
       shareTurnReportToDingTalk(turnTag, card);
     });
+    card.dataset.exportBound = "1";
   }
 
   function renderTextCardForExport(card) {

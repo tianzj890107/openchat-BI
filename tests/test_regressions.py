@@ -1574,7 +1574,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=155" defer', index)
+        self.assertIn('workbench.js?v=156" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -1694,6 +1694,14 @@ class OfflineRegressionTests(unittest.TestCase):
         bind = runtime[bind_start:bind_end]
         self.assertIn('card.querySelector(".dash-dingtalk-btn")', bind)
         self.assertIn("shareTurnReportToDingTalk(turnTag, card)", bind)
+        # Old snapshots also carry data-export-bound="1"; normalization must
+        # run BEFORE that early return so legacy buttons are still converted
+        # and rebound on restore.
+        self.assertLess(
+            bind.index("normalizeExportButtons(card)"),
+            bind.index('card.dataset.exportBound = "1"'))
+        self.assertIn("button.dataset.exportClickBound === \"1\"", bind)
+        self.assertIn('button.dataset.exportClickBound = "1"', bind)
 
     def test_only_semantic_card_badges_remain_and_align_left(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
