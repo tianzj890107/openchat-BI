@@ -105,7 +105,7 @@
 - 修复双向滚动联动回弹：同步产生的滚动打 `__biSyncedFrom` 标记，目标容器自身 scroll 监听消费标记直接返回，不再反向同步回源（消除 A→B→A 抖动）；手动滚动联动保留。
 - React 任务清单不再模拟 click 隐藏 DOM，改为 `window.dispatchEvent(new CustomEvent("bi-question-navigate", { detail: { mode, turn } }))` 统一事件入口，runtime 监听后走同一 `scrollToQuestion(turn)`。
 - 影响范围：双栏/单栏工作区“任务清单”点击跳转，会话与看板定位。
-- 主要文件：`frontend/src/runtime.js`、`frontend/src/main.jsx`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=157）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+- 主要文件：`frontend/src/runtime.js`、`frontend/src/main.jsx`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=158）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
 
 ### Pro UI（proui）BI 组件库升级到最新 UMD 产物
 
@@ -122,4 +122,4 @@
 - 增加 200ms 稳定窗口防抖：候选布局必须连续保持 200ms 才真正写 DOM；等待期间新 resize 会重置窗口，缓冲区内变化会取消待执行的切换，避免瞬态波动触发切换。
 - 首次测量前仍保留 URL 参数作为兼容兜底，首次真实测量到达后按新规则接管。
 - 影响范围：所有工作区页面（智能分析/报表分析）的单双栏自动切换。
-- 主要文件：`frontend/src/runtime.js`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物）、`tests/test_regressions.py`。
+- 主要文件：`frontend/src/runtime.js`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=158）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
