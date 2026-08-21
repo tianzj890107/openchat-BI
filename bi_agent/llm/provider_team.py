@@ -42,11 +42,56 @@ def _get_base_url() -> str:
     return os.environ.get("TEAM_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
 
 
-def _enable_thinking() -> Optional[bool]:
-    value = os.environ.get("TEAM_ENABLE_THINKING")
+def _model_family(model_id: str) -> str:
+    """Classify a team-gateway model id into a provider family.
+
+    Only the DeepSeek family understands the DeepSeek-style ``thinking``
+    extra_body field; every other routed model must never receive it.
+    """
+    value = str(model_id or "").lower()
+    if "deepseek" in value:
+        return "deepseek"
+    if "qwen" in value:
+        return "qwen"
+    if "glm" in value:
+        return "glm"
+    if "kimi" in value or "moonshot" in value:
+        return "kimi"
+    return "unknown"
+
+
+def _env_flag(name: str) -> Optional[bool]:
+    value = os.environ.get(name)
     if value is None or not value.strip():
         return None
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _thinking_extra_body(model_id: str, runtime_thinking: bool) -> Optional[dict[str, Any]]:
+    """Return the per-model thinking payload for the team gateway, if any.
+
+    - DeepSeek is the only family that accepts the DeepSeek-style
+      ``thinking`` field.  ``TEAM_DEEPSEEK_ENABLE_THINKING`` wins, the
+      legacy global ``TEAM_ENABLE_THINKING`` only affects DeepSeek for
+      backward compatibility, and otherwise the runtime toggle decides.
+    - Qwen never receives the DeepSeek field.  It may opt in to its own
+      ``enable_thinking`` flag via ``TEAM_QWEN_ENABLE_THINKING=true``
+      (explicit configuration only, never guessed).
+    - GLM/Kimi/unknown families send no thinking payload.
+    """
+    family = _model_family(model_id)
+    if family == "deepseek":
+        enabled = _env_flag("TEAM_DEEPSEEK_ENABLE_THINKING")
+        if enabled is None:
+            enabled = _env_flag("TEAM_ENABLE_THINKING")
+        if enabled is None:
+            enabled = bool(runtime_thinking)
+        return {"thinking": {"type": "enabled" if enabled else "disabled"}}
+    if family == "qwen":
+        if _env_flag("TEAM_QWEN_ENABLE_THINKING"):
+            return {"enable_thinking": True}
+        return None
+    return None
 
 
 def stream(
@@ -89,11 +134,9 @@ def stream(
     if oa_tools:
         request_kwargs["tools"] = oa_tools
         request_kwargs["tool_choice"] = "auto"
-    enabled = _enable_thinking()
-    if enabled is not None:
-        request_kwargs["extra_body"] = {
-            "thinking": {"type": "enabled" if enabled else "disabled"}
-        }
+    thinking_body = _thinking_extra_body(model_id, thinking)
+    if thinking_body:
+        request_kwargs["extra_body"] = thinking_body
 
     try:
         completion_stream = client.chat.completions.create(**request_kwargs)

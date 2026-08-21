@@ -21,6 +21,7 @@ Event types:
 from __future__ import annotations
 
 import copy
+import logging
 import re
 import time
 from dataclasses import replace
@@ -46,6 +47,17 @@ from ..tools.chart_policy import chart_skip_reason, skipped_chart_output
 from ..tools.chart_tools import extract_chart_spec
 from ..tools.table_tools import extract_table_spec
 from ..tools.todo_tools import extract_todo_spec
+
+
+logger = logging.getLogger(__name__)
+
+
+def _is_thinking_param_error(message: str) -> bool:
+    """True when the gateway rejected the request because the model does
+    not support the DeepSeek-only ``thinking`` parameter (LiteLLM's
+    UnsupportedParamsError)."""
+    lower = str(message or "").lower()
+    return "unsupportedparams" in lower and "thinking" in lower
 from ..reliability import (
     AnalysisContext, Association, Claim, ClaimLevel, LimitationType, Provenance,
     QueryResult, RelationType, ValidationStatus, association_claim,
@@ -785,84 +797,109 @@ class WebSession:
             return f"Error executing {name}: {exc}", False
 
     def _stream_one_response(self, iteration: int):
-        """Consume one LLM stream; yield per-delta events; return summary."""
-        text_buffer = ""
-        tool_uses: list[dict[str, Any]] = []
-        thinking_blocks: list[dict[str, Any]] = []
-        stop_reason = "end_turn"
-        usage: dict[str, Any] = {}
+        """Consume one LLM stream; yield per-delta events; return summary.
 
+        If the gateway rejects the request because the selected model does
+        not support the DeepSeek-only ``thinking`` parameter, the current
+        LLM request is retried once with thinking disabled.  The retry
+        never re-runs tool calls or restarts the turn; any other provider
+        error is surfaced unchanged.
+        """
         cfg = get_llm_config()
         current_model_id = get_model_id(cfg.model_key)
 
-        for event in stream_message(
-            self.messages,
-            self.system_prompt,
-            allowed_tools=self.allowed_tools,
-            model_key=cfg.model_key,
-            max_tokens=cfg.max_tokens,
-            temperature=cfg.temperature,
-            thinking=cfg.effective_thinking,
-        ):
-            etype = event["type"]
-            if etype == "text_delta":
-                text_buffer += event["text"]
-                yield {"type": "text_delta", "text": event["text"]}
-            elif etype == "thinking_delta":
-                # Surface the streaming reasoning trace to the inspector.
-                yield {"type": "thinking_delta", "text": event.get("text", "")}
-            elif etype == "thinking_block":
-                # End-of-block snapshot — keep it so the assistant message
-                # in self.messages can round-trip the trace on the next
-                # tool turn (DeepSeek API rejects requests otherwise; for
-                # Anthropic the signature is the gating field).
-                blk = {"type": "thinking", "thinking": event.get("text", "")}
-                sig = event.get("signature")
-                if sig:
-                    blk["signature"] = sig
-                thinking_blocks.append(blk)
-            elif etype == "tool_use_start":
-                yield {"type": "tool_start", "id": event["id"], "name": event["name"]}
-            elif etype == "tool_use_end":
-                tu = {
-                    "type": "tool_use",
-                    "id": event["id"],
-                    "name": event["name"],
-                    "input": event["input"],
-                }
-                tool_uses.append(tu)
-                yield {
-                    "type": "tool_input",
-                    "id": event["id"],
-                    "name": event["name"],
-                    "input": event["input"],
-                }
-            elif etype == "message_end":
-                stop_reason = event.get("stop_reason", "end_turn")
-                usage = event.get("usage", {})
-                self.cost_tracker.add_usage(
-                    current_model_id,
-                    input_tokens=usage.get("input_tokens", 0),
-                    output_tokens=usage.get("output_tokens", 0),
-                )
-            elif etype == "model_fallback":
-                # Persist the working fallback so subsequent turns start
-                # directly on it instead of retrying an exhausted model.
-                fallback_key = event.get("model_key")
-                if fallback_key:
-                    try:
-                        get_llm_config().update(model_key=fallback_key)
-                    except Exception:
-                        pass
-                    yield {
-                        "type": "status",
-                        "message": f"当前模型额度不足，已自动切换到 {get_model_id(fallback_key)}",
-                    }
-            elif etype == "error":
-                yield {"type": "error", "message": event["error"]}
-                return "error", text_buffer, tool_uses, usage, thinking_blocks
+        # Only retry when the current request actually carried the
+        # DeepSeek-only thinking parameter; a plain [False] attempt list
+        # means the active model never sends it, so there is nothing to fix.
+        attempts = [True, False] if cfg.effective_thinking else [False]
+        for attempt, thinking in enumerate(attempts):
+            text_buffer = ""
+            tool_uses: list[dict[str, Any]] = []
+            thinking_blocks: list[dict[str, Any]] = []
+            stop_reason = "end_turn"
+            usage: dict[str, Any] = {}
+            retry_without_thinking = False
 
-        return stop_reason, text_buffer, tool_uses, usage, thinking_blocks
+            for event in stream_message(
+                self.messages,
+                self.system_prompt,
+                allowed_tools=self.allowed_tools,
+                model_key=cfg.model_key,
+                max_tokens=cfg.max_tokens,
+                temperature=cfg.temperature,
+                thinking=thinking,
+            ):
+                etype = event["type"]
+                if etype == "text_delta":
+                    text_buffer += event["text"]
+                    yield {"type": "text_delta", "text": event["text"]}
+                elif etype == "thinking_delta":
+                    # Surface the streaming reasoning trace to the inspector.
+                    yield {"type": "thinking_delta", "text": event.get("text", "")}
+                elif etype == "thinking_block":
+                    # End-of-block snapshot — keep it so the assistant message
+                    # in self.messages can round-trip the trace on the next
+                    # tool turn (DeepSeek API rejects requests otherwise; for
+                    # Anthropic the signature is the gating field).
+                    blk = {"type": "thinking", "thinking": event.get("text", "")}
+                    sig = event.get("signature")
+                    if sig:
+                        blk["signature"] = sig
+                    thinking_blocks.append(blk)
+                elif etype == "tool_use_start":
+                    yield {"type": "tool_start", "id": event["id"], "name": event["name"]}
+                elif etype == "tool_use_end":
+                    tu = {
+                        "type": "tool_use",
+                        "id": event["id"],
+                        "name": event["name"],
+                        "input": event["input"],
+                    }
+                    tool_uses.append(tu)
+                    yield {
+                        "type": "tool_input",
+                        "id": event["id"],
+                        "name": event["name"],
+                        "input": event["input"],
+                    }
+                elif etype == "message_end":
+                    stop_reason = event.get("stop_reason", "end_turn")
+                    usage = event.get("usage", {})
+                    self.cost_tracker.add_usage(
+                        current_model_id,
+                        input_tokens=usage.get("input_tokens", 0),
+                        output_tokens=usage.get("output_tokens", 0),
+                    )
+                elif etype == "model_fallback":
+                    # Persist the working fallback so subsequent turns start
+                    # directly on it instead of retrying an exhausted model.
+                    fallback_key = event.get("model_key")
+                    if fallback_key:
+                        try:
+                            get_llm_config().update(model_key=fallback_key)
+                        except Exception:
+                            pass
+                        yield {
+                            "type": "status",
+                            "message": f"当前模型额度不足，已自动切换到 {get_model_id(fallback_key)}",
+                        }
+                elif etype == "error":
+                    if thinking and _is_thinking_param_error(event["error"]):
+                        retry_without_thinking = True
+                        break
+                    yield {"type": "error", "message": event["error"]}
+                    return "error", text_buffer, tool_uses, usage, thinking_blocks
+
+            if not retry_without_thinking:
+                return stop_reason, text_buffer, tool_uses, usage, thinking_blocks
+            logger.info(
+                "provider retry: model %s rejected unsupported 'thinking' parameter; "
+                "retrying the current LLM request once without thinking",
+                current_model_id,
+            )
+
+        yield {"type": "error", "message": "Team API request failed: unsupported 'thinking' parameter"}
+        return "error", text_buffer, tool_uses, usage, thinking_blocks
 
     def _snapshot_messages(self) -> list[dict[str, Any]]:
         """Return a lightweight JSON-safe view of the current message list."""

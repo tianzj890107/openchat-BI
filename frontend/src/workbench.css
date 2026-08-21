@@ -3879,37 +3879,6 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   box-shadow: none !important;
   background: #F7F9FB !important;
 }
-.antd-workbench-sidebar.antd-workbench-sidebar-hidden {
-  display: none !important;
-}
-.antd-sidebar-hidden-reopen {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 1000;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid #DBE4EC;
-  border-radius: 8px;
-  background: #FFFFFF;
-  color: #2563EB;
-  cursor: pointer;
-}
-.antd-sidebar-hidden-reopen:hover { background: #EFF6FF; }
-body[data-layout="single"] .antd-sidebar-hidden-reopen {
-  border: 0 !important;
-  box-shadow: none !important;
-}
-body[data-layout="single"] .antd-sidebar-hidden-reopen .anticon,
-body[data-layout="single"] .antd-sidebar-hidden-reopen svg {
-  width: 1.2em !important;
-  height: 1.2em !important;
-  font-size: 1.2em !important;
-}
 .antd-workbench-sidebar.ant-layout-sider,
 .antd-workbench-sidebar .ant-layout-sider-children,
 .antd-workbench-sidebar .ant-menu,
