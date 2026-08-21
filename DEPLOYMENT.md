@@ -200,9 +200,11 @@ Qwen、GLM、Kimi 等模型。不要使用 `litellm.drop_params=true` 掩盖参�
 ```dotenv
 TASK_ALERT_API_ENABLED=true            # 功能开关，默认并保持开启
 TASK_ALERT_API_URL=http://pdt-dev.eimos.com/api/x360/v1/task-alert/manual-create
-TASK_ALERT_DEFAULT_ASSIGNEE=242        # 前端未传时的默认责任人
+TASK_ALERT_DEFAULT_ASSIGNEE=400        # 前端未传时的默认责任人(当前临时写死 400)
 TASK_ALERT_DEFAULT_LEVEL=WARNING       # 只允许 ALERT / WARNING
-TASK_ALERT_DEFAULT_BP_DEFINITION_ID=   # 可选,必须是数字(Long);留空则不上传
+# bpDefinitionId 临时按行动内容关键词匹配(回款/开票/销售项目/投标/合同/订单/生产/
+# 发货/签收/验收/线索/项目/关闭/履约单);留空时未命中关键词则不传
+TASK_ALERT_DEFAULT_BP_DEFINITION_ID=
 TASK_ALERT_TIMEOUT_SECONDS=10          # 上游超时，0.5–120s
 ```
 

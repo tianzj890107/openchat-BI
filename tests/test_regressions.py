@@ -2136,7 +2136,7 @@ class TaskAlertProxyTests(unittest.TestCase):
         values = {
             "TASK_ALERT_API_ENABLED": "true",
             "TASK_ALERT_API_URL": "http://upstream.example/manual-create",
-            "TASK_ALERT_DEFAULT_ASSIGNEE": "242",
+            "TASK_ALERT_DEFAULT_ASSIGNEE": "400",
             "TASK_ALERT_DEFAULT_LEVEL": "WARNING",
             "TASK_ALERT_DEFAULT_BP_DEFINITION_ID": "",
             "TASK_ALERT_TIMEOUT_SECONDS": "10",
@@ -2180,10 +2180,34 @@ class TaskAlertProxyTests(unittest.TestCase):
         payload = json.loads(request.data)
         self.assertEqual(payload["title"], "大屏延迟")
         self.assertEqual(payload["content"], "建议排查 SQL 耗时")
-        self.assertEqual(payload["assignee"], "242")
+        self.assertEqual(payload["assignee"], "400")
         self.assertEqual(payload["level"], "WARNING")
         self.assertNotIn("bpDefinitionId", payload)
         self.assertEqual(calls[0]["timeout"], 10.0)
+
+    def test_bp_definition_matched_by_content_keyword(self) -> None:
+        response, calls = self._post({
+            "title": "回款异常督办", "content": "行动建议:跟进回款流程",
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(calls[0]["request"].data)
+        self.assertEqual(payload["bpDefinitionId"], 2081949636213985282)
+
+    def test_bp_definition_sales_project_keyword(self) -> None:
+        response, calls = self._post({
+            "title": "销售项目跟进", "content": "建议推进投标事项",
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(calls[0]["request"].data)
+        self.assertEqual(payload["bpDefinitionId"], 2081949636117516289)
+
+    def test_bp_definition_explicit_overrides_keyword(self) -> None:
+        response, calls = self._post({
+            "title": "回款异常督办", "content": "跟进回款", "bpDefinitionId": "55",
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(calls[0]["request"].data)
+        self.assertEqual(payload["bpDefinitionId"], 55)
 
     def test_explicit_fields_override_env_defaults(self) -> None:
         response, calls = self._post({
@@ -2241,10 +2265,21 @@ class TaskAlertProxyTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_missing_assignee_uses_env_defaults(self) -> None:
-        with patch.dict(os.environ, self._env(TASK_ALERT_DEFAULT_ASSIGNEE=""), clear=False):
+        calls: list = []
+
+        def fake_urlopen(request, timeout=None):
+            calls.append(request)
+            return _FakeUpstreamResponse(
+                '{"success":true,"code":200,"message":"操作成功","data":"T-ASGN"}'.encode("utf-8")
+            )
+
+        with patch("bi_agent.web.app.urlopen", side_effect=fake_urlopen), \
+             patch.dict(os.environ, self._env(TASK_ALERT_DEFAULT_ASSIGNEE=""), clear=False):
             response = self.client.post("/api/task-alert/manual-create",
                                         json={"title": "t", "content": "c"})
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(calls[0].data)
+        self.assertEqual(payload["assignee"], "400")
 
     def test_feature_flag_off_returns_403(self) -> None:
         with patch.dict(os.environ, self._env(TASK_ALERT_API_ENABLED="false"), clear=False):

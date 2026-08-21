@@ -1929,6 +1929,33 @@ def choice(req: ChoiceRequest):
 
 TASK_ALERT_LEVELS = {"ALERT", "WARNING"}
 
+# 临时关键词 → bpDefinitionId 映射：按行动内容选择流程定义 ID。
+# 与上游确认后可替换为正式配置；关键词按优先级排序，先命中先得。
+TASK_ALERT_BP_KEYWORDS = (
+    ("销售项目", "2081949636117516289"),
+    ("投标", "2081949636117516289"),
+    ("开票", "2081949636205596674"),
+    ("回款", "2081949636213985282"),
+    ("关闭", "2090377006986399746"),
+    ("履约单", "2081949636163653634"),
+    ("线索", "2082310961683353602"),
+    ("项目", "2082310961716908034"),
+    ("合同", "2082310961754656769"),
+    ("订单", "2081949636146876418"),
+    ("生产", "2081949636172042241"),
+    ("发货", "2081949636180430849"),
+    ("签收", "2081949636188819457"),
+    ("验收", "2081949636197208066"),
+)
+
+
+def _match_task_alert_bp_definition(text: str) -> Optional[int]:
+    """Pick a bpDefinitionId from the action text by keyword (temporary)."""
+    for keyword, bp_id in TASK_ALERT_BP_KEYWORDS:
+        if keyword in text:
+            return int(bp_id)
+    return None
+
 
 def _task_alert_enabled() -> bool:
     """Feature flag; the task-alert integration stays ON by default even when
@@ -2012,13 +2039,15 @@ def task_alert_manual_create(req: TaskAlertCreateRequest):
     level = (req.level or os.environ.get("TASK_ALERT_DEFAULT_LEVEL") or "WARNING").strip().upper()
     if level not in TASK_ALERT_LEVELS:
         raise HTTPException(422, "level 只允许 ALERT 或 WARNING")
-    assignee = (req.assignee or os.environ.get("TASK_ALERT_DEFAULT_ASSIGNEE") or "").strip()
+    assignee = (req.assignee or os.environ.get("TASK_ALERT_DEFAULT_ASSIGNEE") or "400").strip()
     bp_definition_raw = (req.bpDefinitionId or os.environ.get("TASK_ALERT_DEFAULT_BP_DEFINITION_ID") or "").strip()
     bp_definition_id: Optional[int] = None
     if bp_definition_raw:
         if not bp_definition_raw.isdigit():
             raise HTTPException(422, "bpDefinitionId 必须是数字")
         bp_definition_id = int(bp_definition_raw)
+    else:
+        bp_definition_id = _match_task_alert_bp_definition(f"{title}\n{content}")
     if not assignee:
         raise HTTPException(422, "assignee 不能为空")
     client_request_id = (req.clientRequestId or "").strip()
