@@ -95,3 +95,14 @@
 - 现在 `setBusy` 不再改写按钮内容，改为切换 `is-busy` 类：忙碌时隐藏 SVG 并显示 `…`，其余时间始终显示与初始一致的纸飞机 SVG；首次打开、发送中、历史会话恢复后的发送按钮外观统一。
 - 影响范围：会话输入区发送按钮（智能分析/报表分析）。
 - 主要文件：`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=123/v=156）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+
+### 双栏任务清单跳转改为 turn 锚点 + 显式坐标定位（修复跳错位置）
+
+- 修复：双栏模式下点击“任务清单”里的任务时，会话和看板跳转位置错误。原实现用 `scrollIntoView()` 平滑定位，两栏定位逻辑不一致（会话滚外层祖先、看板用容器内坐标），且 `initQuestionSelectionSync` 注册的 scroll 监听会在平滑滚动过程中按滚动百分比反向同步，把另一栏拉走或覆盖目标位置；`main.jsx` 任务点击还依赖查找隐藏旧 DOM 再模拟 click，历史恢复下不稳定。
+- 现在以 turn 为唯一语义锚点：会话定位到 `.msg-user[data-turn]`，看板定位到同一 turn 的第一个可见结果卡片（排除 `.dash-question`、`.antd-dashboard-question-hidden`、`[hidden]`、`display:none`、`visibility:hidden`）；该回合没有结果卡片时看板保持原位，不再定位到隐藏问题卡。
+- 会话与看板统一用各自滚动容器的显式坐标定位（`container.scrollTop + targetRect.top - containerRect.top - 12`，钳制 0..maxScrollTop），不再使用 `scrollIntoView()`，目标出现在各自滚动区域顶部附近。
+- 新增“程序化任务导航”状态：点击任务先设置 active turn 再分别定位两栏；导航期间暂停 `syncPairedPaneScroll` 与 `syncActiveQuestionFromScroll`，避免平滑滚动经过中间回合覆盖选中态或把另一栏拉走；`scrollend` + 900ms 超时兜底结束导航，快速连续点击时取消上一次导航的监听/定时器（last-click-wins）。
+- 修复双向滚动联动回弹：同步产生的滚动打 `__biSyncedFrom` 标记，目标容器自身 scroll 监听消费标记直接返回，不再反向同步回源（消除 A→B→A 抖动）；手动滚动联动保留。
+- React 任务清单不再模拟 click 隐藏 DOM，改为 `window.dispatchEvent(new CustomEvent("bi-question-navigate", { detail: { mode, turn } }))` 统一事件入口，runtime 监听后走同一 `scrollToQuestion(turn)`。
+- 影响范围：双栏/单栏工作区“任务清单”点击跳转，会话与看板定位。
+- 主要文件：`frontend/src/runtime.js`、`frontend/src/main.jsx`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=157）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。

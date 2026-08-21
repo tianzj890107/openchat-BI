@@ -1536,9 +1536,9 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("#FEF3C7", css)
         self.assertIn("#EDE9FE", css)
         self.assertIn("#FEE2E2", css)
-        self.assertIn("pane.scrollTo({", runtime)
-        self.assertIn("pane.scrollTop + cardRect.top - paneRect.top", runtime)
-        self.assertIn("dashboardCards.find((card) => !card.classList.contains(\"dash-question\"))", runtime)
+        self.assertIn("container.scrollTo({", runtime)
+        self.assertIn("container.scrollTop + targetRect.top - containerRect.top", runtime)
+        self.assertIn('card.classList.contains("dash-question")', runtime)
         self.assertIn("clearAssistantThinkingPlaceholder", runtime)
         choice_case = runtime[runtime.index('case "user_choice_requested"'):]
         self.assertLess(choice_case.index("clearAssistantThinkingPlaceholder()"), choice_case.index("attachChoiceCard(evt)"))
@@ -1574,7 +1574,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=156" defer', index)
+        self.assertIn('workbench.js?v=157" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -1638,6 +1638,70 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("justify-content: center", css)
         self.assertIn('body[data-layout="single"] .workspace-pane-switcher {\n  display: flex;', css)
         self.assertNotIn(".mobile-pane-switch", css)
+
+    def test_question_navigation_uses_turn_anchor_with_explicit_coordinates(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        start = runtime.index("function firstVisibleTurnCard(")
+        end = runtime.index("function setActiveQuestion(", start)
+        scroll = runtime[start:end]
+        # Chat and dashboard both scroll with explicit container coordinates.
+        self.assertIn("function firstVisibleTurnCard(", scroll)
+        self.assertIn("function scrollPaneToTurn(container, target)", scroll)
+        self.assertIn("container.scrollTop + targetRect.top - containerRect.top - 12", scroll)
+        self.assertIn("Math.max(0, Math.min(maxTop, targetTop))", scroll)
+        # No scrollIntoView in the navigation path (wrong-ancestor risk).
+        self.assertNotIn("scrollIntoView({", scroll)
+        # Hidden question cards are excluded; a turn without result cards
+        # leaves the dashboard where it is.
+        self.assertIn('card.classList.contains("dash-question")', scroll)
+        self.assertIn('card.classList.contains("antd-dashboard-question-hidden")', scroll)
+        self.assertIn('style.display !== "none" && style.visibility !== "hidden"', scroll)
+        self.assertIn("if (!msg && !dashboardCard) return;", scroll)
+
+    def test_question_navigation_pauses_scroll_sync_and_last_click_wins(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        nav_start = runtime.index("function beginQuestionNavigation(")
+        nav_end = runtime.index("function scrollToQuestion(", nav_start)
+        nav = runtime[nav_start:nav_end]
+        sync_start = runtime.index("function initQuestionSelectionSync(")
+        sync_end = runtime.index("function assistantRoleLabel(", sync_start)
+        sync = runtime[sync_start:sync_end]
+        # Navigation pauses both scroll-driven syncs while it runs.
+        self.assertIn("questionNavActive", nav)
+        self.assertIn("questionNavGeneration += 1", nav)
+        self.assertIn("clearTimeout(questionNavTimer)", nav)
+        self.assertIn('addEventListener("scrollend"', nav)
+        self.assertIn("setTimeout(finish, 900)", nav)
+        self.assertIn("if (!moved.chat && !moved.dashboard) finish();", nav)
+        self.assertIn("if (questionNavActive) return;", sync)
+
+    def test_paired_pane_scroll_does_not_rebound(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        sync_start = runtime.index("function syncPairedPaneScroll(")
+        sync_end = runtime.index("function initQuestionSelectionSync(", sync_start)
+        sync = runtime[sync_start:sync_end]
+        list_start = runtime.index("function initQuestionSelectionSync(")
+        list_end = runtime.index("function assistantRoleLabel(", list_start)
+        listeners = runtime[list_start:list_end]
+        # The synced target is marked; its own scroll event consumes the
+        # marker instead of syncing back to the source (no A->B->A rebound).
+        self.assertIn("target.__biSyncedFrom = source;", sync)
+        self.assertIn("root.__biSyncedFrom = null;", listeners)
+        self.assertIn("return;", listeners)
+
+    def test_react_task_list_uses_shared_navigation_event(self) -> None:
+        main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        # The React task list dispatches the shared event instead of clicking
+        # hidden legacy DOM items.
+        self.assertIn('window.dispatchEvent(new CustomEvent("bi-question-navigate"', main)
+        self.assertNotIn('document.querySelector(`#chat-todo .chat-question-item', main)
+        # The runtime owns the single programmatic entry for both panes.
+        self.assertIn('window.addEventListener("bi-question-navigate"', runtime)
+        nav_start = runtime.index('window.addEventListener("bi-question-navigate"')
+        nav_end = runtime.index("\n  });", nav_start)
+        nav = runtime[nav_start:nav_end]
+        self.assertIn("scrollToQuestion(turn)", nav)
 
     def test_send_button_keeps_svg_icon_after_busy_and_history_restore(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")

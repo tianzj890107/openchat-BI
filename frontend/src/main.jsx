@@ -632,7 +632,12 @@ function WorkflowPanels() {
         activeKey={todoOpen ? ["todo"] : []}
         onChange={(keys) => setTodoOpen(keys.includes("todo"))}
         items={[{ key: "todo", label: <span className="antd-workflow-title">任务清单 <Tag>{workflow.questions.length} 个问题</Tag></span>, children: <>
-          {!!workflow.questions.length && <List size="small" dataSource={workflow.questions} renderItem={(item, index) => <List.Item data-question-turn={item.turn} className="antd-question-item" onClick={() => document.querySelector(`#chat-todo .chat-question-item[data-question-turn="${CSS.escape(item.turn)}"]`)?.click()}><Tag>{index + 1}</Tag><span>{item.text}</span></List.Item>} />}
+          {!!workflow.questions.length && <List size="small" dataSource={workflow.questions} renderItem={(item, index) => <List.Item data-question-turn={item.turn} className="antd-question-item" onClick={() => {
+            const turn = String(item.turn ?? "");
+            if (turn) window.dispatchEvent(new CustomEvent("bi-question-navigate", {
+              detail: { mode: document.body.dataset.mode || "data", turn },
+            }));
+          }}><Tag>{index + 1}</Tag><span>{item.text}</span></List.Item>} />}
         </> }]}
       />}
     </div>
