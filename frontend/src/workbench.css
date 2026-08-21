@@ -6228,6 +6228,13 @@ select,
   background-color: #1E40AF !important;
   animation: composer-send-bounce 0.45s ease-in-out;
 }
+.composer-send.is-busy svg { display: none; }
+.composer-send.is-busy::after {
+  content: "…";
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
 
 /* Once an AskUser choice is resolved, there is no progress separator left to
  * show beneath the card. The final status text is sufficient feedback. */

@@ -87,3 +87,10 @@
 - 旧会话快照向后兼容：恢复历史会话时若快照仍含 `dash-feishu-btn`，`normalizeExportButtons` 会自动转换为新的 `dash-dingtalk-btn` 并改文案为“分享到钉钉”，按钮点击正常绑定，不会失效。
 - 影响范围：会话/看板中“导出本轮报告”卡片上的分享按钮。
 - 主要文件：`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物）、`tests/test_regressions.py`。
+
+### 发送按钮统一保持初始 SVG 图标
+
+- 修复：发送按钮在首次打开时是纸飞机 SVG 图标，但经过一次发送（忙碌态）或打开历史会话后会被 `setBusy` 用文本 `…`/`➤` 覆盖，样式不一致。
+- 现在 `setBusy` 不再改写按钮内容，改为切换 `is-busy` 类：忙碌时隐藏 SVG 并显示 `…`，其余时间始终显示与初始一致的纸飞机 SVG；首次打开、发送中、历史会话恢复后的发送按钮外观统一。
+- 影响范围：会话输入区发送按钮（智能分析/报表分析）。
+- 主要文件：`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=123/v=155）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
