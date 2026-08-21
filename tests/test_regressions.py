@@ -1345,7 +1345,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=148" defer', index)
+        self.assertIn('workbench.js?v=149" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -1824,3 +1824,275 @@ class OfflineRegressionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _FakeTeamCompletions:
+    def __init__(self, client):
+        self._client = client
+
+    def create(self, **kwargs):
+        return self._client._create(**kwargs)
+
+
+class _FakeTeamChat:
+    def __init__(self, client):
+        self.completions = _FakeTeamCompletions(client)
+
+
+class _FakeTeamClient:
+    """Minimal OpenAI-compatible stub that records every create() kwargs."""
+
+    def __init__(self, *, error=None, text="ok"):
+        self._error = error
+        self._text = text
+        self.requests: list[dict[str, Any]] = []
+
+    @property
+    def chat(self):
+        return _FakeTeamChat(self)
+
+    def _create(self, **kwargs):
+        self.requests.append(kwargs)
+        if self._error is not None:
+            raise self._error
+        yield SimpleNamespace(
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=2),
+            choices=[SimpleNamespace(
+                delta=SimpleNamespace(
+                    content=self._text, reasoning_content=None, tool_calls=None
+                ),
+                finish_reason="stop",
+            )],
+        )
+
+
+class TeamThinkingRoutingTests(unittest.TestCase):
+    """Team gateway must route the DeepSeek-only ``thinking`` payload only
+    to DeepSeek models.
+
+    Regression for the Qwen 400: ``litellm.UnsupportedParamsError: openai
+    does not support parameters: ['thinking']``.  These tests inspect the
+    complete request kwargs handed to the OpenAI SDK, not just helper return
+    values.
+    """
+
+    def _stream_request(self, model_id, *, thinking=False, deepseek_env=None,
+                        legacy_env=None, qwen_env=None) -> dict[str, Any]:
+        env = {}
+        if deepseek_env is not None:
+            env["TEAM_DEEPSEEK_ENABLE_THINKING"] = deepseek_env
+        if legacy_env is not None:
+            env["TEAM_ENABLE_THINKING"] = legacy_env
+        if qwen_env is not None:
+            env["TEAM_QWEN_ENABLE_THINKING"] = qwen_env
+        for name in (
+            "TEAM_DEEPSEEK_ENABLE_THINKING", "TEAM_ENABLE_THINKING",
+            "TEAM_QWEN_ENABLE_THINKING",
+        ):
+            env.setdefault(name, "")
+        client = _FakeTeamClient()
+        with patch.dict(os.environ, env), \
+             patch.object(provider_team, "_get_api_key", return_value="test-key"), \
+             patch.object(provider_team, "OpenAI", return_value=client):
+            events = list(provider_team.stream(
+                model_id=model_id,
+                messages=[],
+                system_prompt="sys",
+                allowed_tools=None,
+                max_tokens=256,
+                temperature=0.1,
+                thinking=thinking,
+            ))
+        self.assertEqual(events[-1]["type"], "message_end")
+        self.assertEqual(len(client.requests), 1)
+        return client.requests[0]
+
+    def test_deepseek_thinking_true_sends_enabled(self) -> None:
+        request = self._stream_request("deepseek-v4-flash", thinking=True, deepseek_env="true")
+        self.assertEqual(request["extra_body"], {"thinking": {"type": "enabled"}})
+
+    def test_deepseek_thinking_false_sends_disabled(self) -> None:
+        request = self._stream_request("deepseek-v4-flash", thinking=True, deepseek_env="false")
+        self.assertEqual(request["extra_body"], {"thinking": {"type": "disabled"}})
+
+    def test_deepseek_legacy_global_env_still_controls_deepseek(self) -> None:
+        request = self._stream_request("deepseek-v4-pro", thinking=False, legacy_env="true")
+        self.assertEqual(request["extra_body"], {"thinking": {"type": "enabled"}})
+
+    def test_deepseek_without_env_uses_runtime_toggle(self) -> None:
+        enabled = self._stream_request("deepseek-v4-flash", thinking=True)
+        self.assertEqual(enabled["extra_body"], {"thinking": {"type": "enabled"}})
+        disabled = self._stream_request("deepseek-v4-flash", thinking=False)
+        self.assertEqual(disabled["extra_body"], {"thinking": {"type": "disabled"}})
+
+    def test_qwen_never_receives_thinking_when_legacy_env_true(self) -> None:
+        request = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True, legacy_env="true")
+        self.assertNotIn("extra_body", request)
+
+    def test_qwen_never_receives_thinking_when_legacy_env_false(self) -> None:
+        request = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=False, legacy_env="false")
+        self.assertNotIn("extra_body", request)
+
+    def test_qwen_runtime_thinking_true_sends_no_deepseek_field(self) -> None:
+        request = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True)
+        self.assertNotIn("extra_body", request)
+
+    def test_qwen37_plus_sends_no_deepseek_thinking(self) -> None:
+        request = self._stream_request("qwen3.7-plus", thinking=True, legacy_env="true")
+        self.assertNotIn("extra_body", request)
+
+    def test_qwen37_plus_enable_thinking_requires_explicit_config(self) -> None:
+        request = self._stream_request("qwen3.7-plus", thinking=True, qwen_env="true")
+        self.assertEqual(request["extra_body"], {"enable_thinking": True})
+        default = self._stream_request("qwen3.7-plus", thinking=True)
+        self.assertNotIn("extra_body", default)
+
+    def test_glm_never_receives_deepseek_thinking(self) -> None:
+        request = self._stream_request("glm-5.1", thinking=True, legacy_env="true")
+        self.assertNotIn("extra_body", request)
+
+    def test_kimi_never_receives_deepseek_thinking(self) -> None:
+        request = self._stream_request("kimi-k2.6", thinking=True, legacy_env="true")
+        self.assertNotIn("extra_body", request)
+
+    def test_moonshot_alias_and_glm_are_classified_as_own_family(self) -> None:
+        self.assertEqual(provider_team._model_family("moonshot-v1-8k"), "kimi")
+        self.assertEqual(provider_team._model_family("GLM-4.7"), "glm")
+        self.assertEqual(provider_team._model_family("Qwen/Qwen3-80B-AWQ"), "qwen")
+
+    def test_unknown_model_never_receives_deepseek_thinking(self) -> None:
+        request = self._stream_request("some-other-model", thinking=True, legacy_env="true")
+        self.assertNotIn("extra_body", request)
+
+    def test_switch_from_deepseek_to_qwen_drops_thinking_payload(self) -> None:
+        first = self._stream_request("deepseek-v4-flash", thinking=True, deepseek_env="true")
+        second = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True, legacy_env="true")
+        self.assertEqual(first["extra_body"], {"thinking": {"type": "enabled"}})
+        self.assertNotIn("extra_body", second)
+
+    def test_switch_from_qwen_to_deepseek_regenerates_thinking_payload(self) -> None:
+        first = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True)
+        second = self._stream_request("deepseek-v4-pro", thinking=True, deepseek_env="true")
+        self.assertNotIn("extra_body", first)
+        self.assertEqual(second["extra_body"], {"thinking": {"type": "enabled"}})
+
+    def test_missing_env_variables_raise_no_exception(self) -> None:
+        request = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True)
+        self.assertNotIn("extra_body", request)
+
+
+class TeamThinkingRetryTests(unittest.TestCase):
+    """A 400 ``UnsupportedParamsError(['thinking'])`` retries the current
+    LLM request once with thinking disabled; other errors are surfaced
+    unchanged and never retried."""
+
+    def _session_events(self, fake_stream):
+        cfg = SimpleNamespace(
+            model_key="team-configured",
+            max_tokens=256,
+            temperature=0.1,
+            effective_thinking=True,
+        )
+        with patch("bi_agent.web.session.get_llm_config", return_value=cfg), \
+             patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch("bi_agent.web.session.get_model_id", return_value="Qwen/Qwen3-80B-AWQ"):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            return list(session.generate_turn("test")), session
+
+    def test_thinking_400_retries_once_with_thinking_disabled(self) -> None:
+        calls: list[tuple[tuple, dict]] = []
+
+        def fake_stream(*args, **kwargs):
+            calls.append((args, dict(kwargs)))
+            if len(calls) == 1:
+                yield {"type": "error", "error": (
+                    "Team API request failed: Error code: 400 - "
+                    "{'error': {'message': \"litellm.UnsupportedParamsError: openai "
+                    "does not support parameters: ['thinking'], for "
+                    "model=Qwen/Qwen3-80B-AWQ\"}}"
+                )}
+            else:
+                yield {"type": "text_delta", "text": "recovered"}
+                yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        events, _ = self._session_events(fake_stream)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(calls[0][1]["thinking"])
+        self.assertFalse(calls[1][1]["thinking"])
+        # The retry reuses the exact same message list: no tool re-execution,
+        # no restart from the beginning of the turn.
+        self.assertEqual(calls[0][0], calls[1][0])
+        self.assertEqual(
+            "recovered",
+            [e.get("text") for e in events if e.get("type") == "text_delta"][-1],
+        )
+        self.assertIn("llm_response", [e["type"] for e in events])
+        self.assertNotIn("error", [e["type"] for e in events])
+
+    def test_thinking_400_does_not_duplicate_tool_events(self) -> None:
+        calls: list[dict] = []
+
+        def fake_stream(*args, **kwargs):
+            calls.append(dict(kwargs))
+            if len(calls) == 1:
+                yield {"type": "error", "error": (
+                    "litellm.UnsupportedParamsError: openai does not support "
+                    "parameters: ['thinking']"
+                )}
+            else:
+                yield {"type": "tool_use_start", "id": "t1", "name": "run_sql"}
+                yield {"type": "tool_use_end", "id": "t1", "name": "run_sql",
+                       "input": {"query": "select 1"}}
+                yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        events, _ = self._session_events(fake_stream)
+        self.assertEqual(len(calls), 2)
+        tool_inputs = [e for e in events if e["type"] == "tool_input"]
+        self.assertEqual(len(tool_inputs), 1)
+
+    def test_ordinary_400_is_not_retried(self) -> None:
+        calls: list[dict] = []
+
+        def fake_stream(*args, **kwargs):
+            calls.append(dict(kwargs))
+            yield {"type": "error", "error": "Team API request failed: Error code: 400 - bad request"}
+
+        events, _ = self._session_events(fake_stream)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(any(e["type"] == "error" for e in events))
+
+    def test_quota_429_is_not_retried_by_session_retry(self) -> None:
+        calls: list[dict] = []
+
+        def fake_stream(*args, **kwargs):
+            calls.append(dict(kwargs))
+            yield {"type": "error", "error": "Team API request failed: Error code: 429 - quota exceeded"}
+
+        events, _ = self._session_events(fake_stream)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(any(e["type"] == "error" for e in events))
+
+    def test_effective_thinking_false_never_triggers_retry(self) -> None:
+        calls: list[dict] = []
+
+        def fake_stream(*args, **kwargs):
+            calls.append(dict(kwargs))
+            yield {"type": "error", "error": (
+                "litellm.UnsupportedParamsError: openai does not support "
+                "parameters: ['thinking']"
+            )}
+
+        cfg = SimpleNamespace(
+            model_key="team-configured",
+            max_tokens=256,
+            temperature=0.1,
+            effective_thinking=False,
+        )
+        with patch("bi_agent.web.session.get_llm_config", return_value=cfg), \
+             patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch("bi_agent.web.session.get_model_id", return_value="Qwen/Qwen3-80B-AWQ"):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("test"))
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(calls[0]["thinking"])
+        self.assertTrue(any(e["type"] == "error" for e in events))

@@ -251,7 +251,7 @@ function routeUsesSingleColumn() {
 function Sidebar() {
   const [sidebarLevel, setSidebarLevel] = useState(
     routeUsesSingleColumn()
-      ? 2
+      ? 1
       : document.body.classList.contains("sidebar-collapsed") ? 1 : 0,
   );
   const collapsed = sidebarLevel > 0;
@@ -400,23 +400,22 @@ function Sidebar() {
 
   useEffect(() => {
     document.body.classList.toggle("sidebar-collapsed", collapsed);
-    document.body.dataset.sidebarState = sidebarLevel === 2 ? "hidden" : sidebarLevel === 1 ? "icons" : "expanded";
+    document.body.dataset.sidebarState = sidebarLevel === 1 ? "icons" : "expanded";
   }, [collapsed, sidebarLevel]);
 
   useEffect(() => {
     const onViewportMode = (event) => {
-      setSidebarLevel(event.detail?.singleColumn ? 2 : 1);
+      setSidebarLevel(1);
     };
     window.addEventListener("bi-viewport-mode", onViewportMode);
     return () => window.removeEventListener("bi-viewport-mode", onViewportMode);
   }, []);
 
-  // The full navigation collapses completely. When reopening, the first
-  // click restores the icon rail and the second restores the full labels.
+  // Two states only: expanded (full labels) and collapsed (icon rail).
+  // The sidebar is never removed from the layout entirely.
   const toggle = () => {
-    setSidebarLevel((level) => (level === 0 ? 2 : level === 2 ? 1 : 0));
+    setSidebarLevel((level) => (level === 0 ? 1 : 0));
   };
-  const reopenHiddenSidebar = () => setSidebarLevel(1);
 
   // Turn the three section labels into explicit expand controls in collapsed
   // mode. The menu items themselves keep their labels for tooltips and the
@@ -446,7 +445,7 @@ function Sidebar() {
 
   return (
     <ConfigProvider theme={{ token: { colorPrimary: "#2563EB", colorInfo: "#2563EB", colorSuccess: "#15803D", colorError: "#B91C1C", colorWarning: "#C2410C", borderRadius: 8, fontFamily: "PingFang SC, -apple-system, sans-serif" } }}>
-      <Sider className={`antd-workbench-sidebar${sidebarLevel === 2 ? " antd-workbench-sidebar-hidden" : ""}`} collapsed={collapsed} width={260} collapsedWidth={72} theme="light">
+      <Sider className="antd-workbench-sidebar" collapsed={collapsed} width={260} collapsedWidth={72} theme="light">
         <div className="antd-sidebar-scroll" onClick={handleSidebarSurfaceClick}>
           <div className="antd-sidebar-brand">
             <AgentMark />
@@ -541,17 +540,6 @@ function Sidebar() {
           )}
         </div>
       </Sider>
-      {sidebarLevel === 2 && (
-        <button
-          type="button"
-          className="antd-sidebar-hidden-reopen"
-          onClick={reopenHiddenSidebar}
-          aria-label="展开侧栏"
-          title="展开侧栏"
-        >
-          <MenuUnfoldOutlined />
-        </button>
-      )}
     </ConfigProvider>
   );
 }

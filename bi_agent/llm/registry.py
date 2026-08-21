@@ -20,10 +20,10 @@ MODELS: list[dict[str, Any]] = [
     {
         "key": "team-configured",
         "label": "团队 API（环境配置） · " + (
-            os.environ.get("TEAM_MODEL") or "direct-deepseek-v4-flash"
+            os.environ.get("TEAM_MODEL") or "Qwen/Qwen3-80B-AWQ"
         ),
         "provider": "team",
-        "model_id": os.environ.get("TEAM_MODEL") or "direct-deepseek-v4-flash",
+        "model_id": os.environ.get("TEAM_MODEL") or "Qwen/Qwen3-80B-AWQ",
         "default_max_tokens": 8192,
         "default_temperature": 0.7,
         "max_output_tokens": 16384,
@@ -238,7 +238,17 @@ _load_team_catalog_from_env()
 
 
 def list_models() -> list[dict[str, Any]]:
-    """Lightweight list for UI (no internal model_id)."""
+    """Lightweight list for UI (no internal model_id).
+
+    Team gateway models are pinned to the top of the picker so the
+    deployment default stays in the first position; the remaining models
+    keep their catalogue order.
+    """
+    ordered = [
+        m for m in MODELS if m["provider"] == "team"
+    ] + [
+        m for m in MODELS if m["provider"] != "team"
+    ]
     return [
         {
             "key": m["key"],
@@ -249,7 +259,7 @@ def list_models() -> list[dict[str, Any]]:
             "max_output_tokens": m["max_output_tokens"],
             "supports_thinking": bool(m.get("supports_thinking", False)),
         }
-        for m in MODELS
+        for m in ordered
     ]
 
 
