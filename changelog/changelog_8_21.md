@@ -45,7 +45,7 @@
 - 修复：竖屏单栏模式下，看板里的“分析 SOP / 任务清单”面板背景不是纯白（看板窗底色为浅灰），且 SOP 步骤图标被 Ant Design 状态样式画成蓝/绿实心圆（进行中=蓝底、已完成=绿勾+绿底），与会话视图不一致。
 - 现在看板与会话完全一致：面板纯白背景；完成步骤为透明底绿色对勾，进行中/待办为白底蓝/灰圆圈标记；蓝色数量标签保留。
 - 影响范围：竖屏单栏布局的看板（`?layout=single`/`?columns=1`/`/one`/`/single`），双栏与聊天窗行为不变。
-- 主要文件：`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=120）、`bi_agent/web/static/index.html`。
+- 主要文件：`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本最终为 v=124）、`bi_agent/web/static/index.html`。
 
 ### 行动 → 转督办接入真实任务令接口
 
@@ -57,7 +57,7 @@
 - 上游响应契约：上游即使业务失败也返回 HTTP 200（`{"success":false,"code":500,"message":...}`），因此代理按响应体 `success`/`code` 判定成功，只有 `success=true` 才返回 `ok=true`；任务号取 `data`（UUID 字符串）。线上实测通过代理创建任务令返回真实 `taskId`（如 `a4bf7909-...`）。
 - 服务启动时启用应用日志（`logging.basicConfig(INFO)`），任务令创建、thinking 参数重试等非敏感审计日志现在会写入服务器日志文件。
 - 影响范围：会话/看板中“行动建议”卡片的“转督办”操作。
-- 主要文件：`bi_agent/web/app.py`（新增代理端点与幂等保护）、`frontend/src/runtime.js`（`dispatchSupervise` 重写，删除 `localTaskSeq`/ACK 伪成功逻辑）、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=150）、`bi_agent/web/static/index.html`、`.env.example`、`tests/test_regressions.py`（新增 `TaskAlertProxyTests` 14 项测试）。
+- 主要文件：`bi_agent/web/app.py`（新增代理端点与幂等保护）、`frontend/src/runtime.js`（`dispatchSupervise` 重写，删除 `localTaskSeq`/ACK 伪成功逻辑）、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本最终为 v=159）、`bi_agent/web/static/index.html`、`.env.example`、`tests/test_regressions.py`（新增 `TaskAlertProxyTests` 14 项测试）。
 
 ### 根因分析后强制生成有效行动建议（结构化事件）
 
@@ -69,7 +69,7 @@
 - 前端去重与恢复：同一 turn 同一行动不重复渲染（`actionsSeen` 去重，结构化事件会替换同 turn 文本卡片）；气泡与行动菜单随会话 HTML 持久化，刷新与历史恢复后仍存在。
 - 兼容 Claim 校验阻断路径：`answer_blocked` 不再提前中断回合，改为正常收尾（行动门照常运行、`done` 事件照常下发），前端新增“最终回答被阻止”提示气泡，避免根因已展示但无行动气泡且界面卡在忙碌态。
 - 影响范围：所有交付根因分析的会话（L3+），看板与聊天窗的行动建议卡片。
-- 主要文件：`bi_agent/web/session.py`、`bi_agent/tools/analysis_policy.py`、`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=152）、`tests/test_regressions.py`。
+- 主要文件：`bi_agent/web/session.py`、`bi_agent/tools/analysis_policy.py`、`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本最终为 v=159）、`tests/test_regressions.py`。
 
 ### 工作区布局按容器尺寸自动切换单双栏，单栏顶部统一切换器
 
@@ -78,7 +78,7 @@
 - 删除原来位于两个面板标题栏右上角的独立“会话/看板”按钮，改为单栏模式下在工作区顶部居中的统一切换器“会话｜看板”：两个真实 button + 纯分隔竖线，选中项蓝色、未选中灰色，点击立即切换面板；带 `role="tablist"`、`aria-selected`/`aria-pressed` 无障碍状态；双栏模式下隐藏。
 - 标题行精简：双栏时看板标题行只保留“看板”标签与数量，右侧“清空/折叠”两个按钮移除；单栏时会话/看板两个面板的标题行整体隐藏，只保留顶部“会话｜看板”切换器一行标题；看板清空、折叠逻辑保留（`dashboard-clear`/`dashboard-collapse` 仍绑定，仅在对应布局下不显示）。
 - 影响范围：所有工作区页面（智能分析/报表分析），自适应横竖屏容器。
-- 主要文件：`frontend/src/shell.html`、`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=122/v=154）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+- 主要文件：`frontend/src/shell.html`、`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本最终为 v=124/v=159）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
 
 ### “分享到飞书”改为“分享到钉钉”
 
@@ -94,7 +94,7 @@
 - 修复：发送按钮在首次打开时是纸飞机 SVG 图标，但经过一次发送（忙碌态）或打开历史会话后会被 `setBusy` 用文本 `…`/`➤` 覆盖，样式不一致。
 - 现在 `setBusy` 不再改写按钮内容，改为切换 `is-busy` 类：忙碌时隐藏 SVG 并显示 `…`，其余时间始终显示与初始一致的纸飞机 SVG；首次打开、发送中、历史会话恢复后的发送按钮外观统一。
 - 影响范围：会话输入区发送按钮（智能分析/报表分析）。
-- 主要文件：`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=123/v=156）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+- 主要文件：`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本最终为 v=124/v=159）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
 
 ### 双栏任务清单跳转改为 turn 锚点 + 显式坐标定位（修复跳错位置）
 
@@ -105,7 +105,7 @@
 - 修复双向滚动联动回弹：同步产生的滚动打 `__biSyncedFrom` 标记，目标容器自身 scroll 监听消费标记直接返回，不再反向同步回源（消除 A→B→A 抖动）；手动滚动联动保留。
 - React 任务清单不再模拟 click 隐藏 DOM，改为 `window.dispatchEvent(new CustomEvent("bi-question-navigate", { detail: { mode, turn } }))` 统一事件入口，runtime 监听后走同一 `scrollToQuestion(turn)`。
 - 影响范围：双栏/单栏工作区“任务清单”点击跳转，会话与看板定位。
-- 主要文件：`frontend/src/runtime.js`、`frontend/src/main.jsx`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本升至 v=158）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+- 主要文件：`frontend/src/runtime.js`、`frontend/src/main.jsx`、`bi_agent/web/static/vendor/antd/workbench.js`（构建产物，缓存版本最终为 v=159）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
 
 ### Pro UI（proui）BI 组件库升级到最新 UMD 产物
 
