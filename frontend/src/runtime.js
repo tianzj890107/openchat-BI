@@ -2632,49 +2632,95 @@ export function bootWorkbenchRuntime() {
     bucket.turnCount = bucket.questions.length;
   }
 
+  // A turn owns its question bubble plus any result cards on the dashboard.
+  // Only visible result cards count as a dashboard anchor; hidden question
+  // cards (legacy or Ant Design) must never be used as a scroll target.
+  function firstVisibleTurnCard(turnText) {
+    if (!el.dashboardList) return null;
+    const cards = [...el.dashboardList.querySelectorAll(
+      `.dash-card[data-turn="${CSS.escape(turnText)}"]`)];
+    return cards.find((card) => {
+      if (card.classList.contains("dash-question")) return false;
+      if (card.classList.contains("antd-dashboard-question-hidden")) return false;
+      if (card.closest("[hidden]")) return false;
+      const style = window.getComputedStyle(card);
+      return style.display !== "none" && style.visibility !== "hidden";
+    }) || null;
+  }
+
+  // Both panes scroll with explicit container coordinates (never
+  // scrollIntoView, which can pick the wrong ancestor). Returns whether the
+  // container actually moved.
+  function scrollPaneToTurn(container, target) {
+    if (!container || !target) return false;
+    const before = container.scrollTop;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const targetTop = container.scrollTop + targetRect.top - containerRect.top - 12;
+    const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    container.scrollTo({
+      top: Math.max(0, Math.min(maxTop, targetTop)),
+      behavior: "smooth",
+    });
+    target.classList.add("question-focus");
+    setTimeout(() => target.classList.remove("question-focus"), 900);
+    return Math.abs(container.scrollTop - before) >= 1;
+  }
+
+  // Programmatic task navigation pauses the scroll listeners so the smooth
+  // scrolls cannot re-sync by percentage or let an intermediate turn steal
+  // the active selection. The pause ends on scrollend or a timeout fallback,
+  // and every new click cancels the previous navigation (last click wins).
+  let questionNavActive = false;
+  let questionNavGeneration = 0;
+  let questionNavTimer = 0;
+  let questionNavScrollEndHandler = null;
+
+  function beginQuestionNavigation(scrollFn) {
+    questionNavGeneration += 1;
+    const generation = questionNavGeneration;
+    if (questionNavTimer) clearTimeout(questionNavTimer);
+    if (questionNavScrollEndHandler) {
+      el.chatScroll?.removeEventListener("scrollend", questionNavScrollEndHandler);
+      el.dashboardList?.removeEventListener("scrollend", questionNavScrollEndHandler);
+    }
+    const finish = () => {
+      if (generation !== questionNavGeneration) return;
+      questionNavActive = false;
+      if (questionNavScrollEndHandler) {
+        el.chatScroll?.removeEventListener("scrollend", questionNavScrollEndHandler);
+        el.dashboardList?.removeEventListener("scrollend", questionNavScrollEndHandler);
+      }
+      questionNavTimer = 0;
+      questionNavScrollEndHandler = null;
+    };
+    questionNavActive = true;
+    const onScrollEnd = () => finish();
+    questionNavScrollEndHandler = onScrollEnd;
+    el.chatScroll?.addEventListener("scrollend", onScrollEnd);
+    el.dashboardList?.addEventListener("scrollend", onScrollEnd);
+    questionNavTimer = setTimeout(finish, 900);
+    const moved = scrollFn();
+    if (!moved.chat && !moved.dashboard) finish();
+  }
+
   function scrollToQuestion(turn) {
     const turnText = String(turn);
     const chatSelector = `.msg-user[data-turn="${CSS.escape(turnText)}"]`;
     const msg = el.chatScroll && el.chatScroll.querySelector(chatSelector);
-    // A turn can contain a hidden question card plus several result cards.
-    // Use the first card that actually exists for this turn, preferring a
-    // result card; if the turn has no result yet, fall back to its question
-    // card so navigation still has a deterministic anchor.
-    const dashboardCards = el.dashboardList
-      ? [...el.dashboardList.querySelectorAll(`.dash-card[data-turn="${CSS.escape(turnText)}"]`)]
-      : [];
-    const dashboardCard = dashboardCards.find((card) => !card.classList.contains("dash-question"))
-      || dashboardCards[0];
+    // Only a visible result card is a valid dashboard anchor. If the turn has
+    // no result card, the dashboard keeps its current position.
+    const dashboardCard = firstVisibleTurnCard(turnText);
     if (!msg && !dashboardCard) return;
     setActiveQuestion(turnText);
     showView("workspace");
-    // Task-list and dashboard links are cross-pane navigation: keep the chat
-    // and resident dashboard at the same user-turn anchor.
     if (dashboardCard && document.body.dataset.dashboard === "collapsed") {
       applyDashboardState(false);
     }
-    if (msg) {
-      msg.scrollIntoView({ behavior: "smooth", block: "start" });
-      msg.classList.add("question-focus");
-      setTimeout(() => msg.classList.remove("question-focus"), 900);
-    }
-    if (dashboardCard) {
-      // Do not delegate this to scrollIntoView(): dashboard cards contain
-      // nested mounts and the browser may choose an ancestor that is already
-      // above the card. Explicitly target the dashboard pane so both upward
-      // and downward navigation update the same scroll container.
-      const pane = el.dashboardList;
-      const paneRect = pane.getBoundingClientRect();
-      const cardRect = dashboardCard.getBoundingClientRect();
-      const targetTop = pane.scrollTop + cardRect.top - paneRect.top - 12;
-      const maxTop = Math.max(0, pane.scrollHeight - pane.clientHeight);
-      pane.scrollTo({
-        top: Math.max(0, Math.min(maxTop, targetTop)),
-        behavior: "smooth",
-      });
-      dashboardCard.classList.add("question-focus");
-      setTimeout(() => dashboardCard.classList.remove("question-focus"), 900);
-    }
+    beginQuestionNavigation(() => ({
+      chat: scrollPaneToTurn(el.chatScroll, msg),
+      dashboard: scrollPaneToTurn(el.dashboardList, dashboardCard),
+    }));
   }
 
   function setActiveQuestion(turn) {
@@ -2737,8 +2783,16 @@ export function bootWorkbenchRuntime() {
       const sourceMax = Math.max(0, source.scrollHeight - source.clientHeight);
       const targetMax = Math.max(0, target.scrollHeight - target.clientHeight);
       const ratio = sourceMax > 0 ? source.scrollTop / sourceMax : 0;
-      target.scrollTop = Math.max(0, Math.min(targetMax, ratio * targetMax));
-      paneScrollSyncSource = null;
+      const nextTop = Math.max(0, Math.min(targetMax, ratio * targetMax));
+      if (Math.abs(target.scrollTop - nextTop) < 1) {
+        paneScrollSyncSource = null;
+        return;
+      }
+      // Mark the target so its own scroll event consumes the marker instead
+      // of syncing back to the source: no A -> B -> A rebound.
+      target.__biSyncedFrom = source;
+      target.scrollTop = nextTop;
+      requestAnimationFrame(() => { paneScrollSyncSource = null; });
     });
   }
 
@@ -2746,6 +2800,14 @@ export function bootWorkbenchRuntime() {
     const panes = [el.chatScroll, el.dashboardList].filter(Boolean);
     panes.forEach((root) => {
       root.addEventListener("scroll", () => {
+        // Programmatic task navigation scrolls must not fight the turn anchor.
+        if (questionNavActive) return;
+        // A scroll produced by the paired sync consumes its marker and never
+        // syncs back or overwrites the active question.
+        if (root.__biSyncedFrom) {
+          root.__biSyncedFrom = null;
+          return;
+        }
         syncActiveQuestionFromScroll(root);
         const other = root === el.chatScroll ? el.dashboardList : el.chatScroll;
         syncPairedPaneScroll(root, other);
@@ -4643,6 +4705,13 @@ export function bootWorkbenchRuntime() {
     });
   }
   initQuestionSelectionSync();
+  // Unified task-list navigation entry: both the React task list and any
+  // future host dispatch bi-question-navigate with a turn; the runtime turns
+  // it into a cross-pane scroll. This is the single programmatic entry.
+  window.addEventListener("bi-question-navigate", (event) => {
+    const turn = String(event?.detail?.turn ?? "");
+    if (turn) scrollToQuestion(turn);
+  });
   // A terminal `done` event is authoritative for a successful turn. Mark the
   // whole SOP complete even when the model did not emit the optional 📌 marker;
   // this prevents a restored finished conversation from showing a blinking
