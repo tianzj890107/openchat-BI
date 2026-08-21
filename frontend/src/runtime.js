@@ -6741,10 +6741,6 @@ export function bootWorkbenchRuntime() {
     observer.observe(split);
   }
   setupContainerLayoutObserver();
-  window.addEventListener("popstate", () => applyRouteLayout(true));
-  window.addEventListener("hashchange", () => applyRouteLayout(true));
-  if (el.mobileShowDashboard) el.mobileShowDashboard.addEventListener("click", () => showMobilePane("dashboard"));
-  if (el.mobileShowChat) el.mobileShowChat.addEventListener("click", () => showMobilePane("chat"));
   if (el.dashboardClear) el.dashboardClear.addEventListener("click", () => {
     if (!confirm("清空当前模式的实时看板?")) return;
     clearDashboard();
