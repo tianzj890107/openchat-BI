@@ -85,6 +85,7 @@
 - 所有用户可见文案、占位提示、注释与内部函数/样式命名从 Feishu/飞书统一改为 DingTalk/钉钉：按钮文案改为“分享到钉钉”，内部类 `dash-feishu-btn` → `dash-dingtalk-btn`、图标键 `feishu` → `dingtalk`、函数 `shareTurnReportToFeishu` → `shareTurnReportToDingTalk`。
 - 点击后的提示改为：`「分享到钉钉」为占位入口,暂未接入钉钉开放平台`；仍是占位入口，不虚构或调用钉钉 API。
 - 旧会话快照向后兼容：恢复历史会话时若快照仍含 `dash-feishu-btn`，`normalizeExportButtons` 会自动转换为新的 `dash-dingtalk-btn` 并改文案为“分享到钉钉”，按钮点击正常绑定，不会失效。
+- 修复旧快照恢复路径：早期版本保存的导出卡片带 `data-export-bound="1"`，旧 `bindExportCard` 会提前返回导致飞书按钮不被转换；现在规范化（`normalizeExportButtons`）先于绑定早退判断执行，且每个导出按钮按 `exportClickBound` 幂等绑定（含恢复后重新绑定点击），旧飞书按钮在历史会话中必然变为钉钉按钮且可点击。
 - 影响范围：会话/看板中“导出本轮报告”卡片上的分享按钮。
 - 主要文件：`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物）、`tests/test_regressions.py`。
 
@@ -93,4 +94,4 @@
 - 修复：发送按钮在首次打开时是纸飞机 SVG 图标，但经过一次发送（忙碌态）或打开历史会话后会被 `setBusy` 用文本 `…`/`➤` 覆盖，样式不一致。
 - 现在 `setBusy` 不再改写按钮内容，改为切换 `is-busy` 类：忙碌时隐藏 SVG 并显示 `…`，其余时间始终显示与初始一致的纸飞机 SVG；首次打开、发送中、历史会话恢复后的发送按钮外观统一。
 - 影响范围：会话输入区发送按钮（智能分析/报表分析）。
-- 主要文件：`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=123/v=155）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
+- 主要文件：`frontend/src/runtime.js`、`frontend/src/workbench.css`、`bi_agent/web/static/vendor/antd/workbench.js`、`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`（构建产物，缓存版本升至 v=123/v=156）、`bi_agent/web/static/index.html`、`tests/test_regressions.py`。
