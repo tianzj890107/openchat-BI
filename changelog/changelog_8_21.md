@@ -50,7 +50,7 @@
 ### 行动 → 转督办接入真实任务令接口
 
 - “行动建议 → 转督办”从原来的“本地假任务号/父页面 ACK 伪成功”改为调用 ChatBI 后端代理 `POST /api/task-alert/manual-create`，由后端转发到真实任务令服务 `POST http://pdt-dev.eimos.com/api/x360/v1/task-alert/manual-create`，浏览器不再直接跨域调用。
-- 请求体字段映射：`title`（来源 + 行动摘要前 40 字）、`content`（行动建议、分析来源、象限、回合、提交时间）、`assignee`、`level`、`bpDefinitionId`；前端只传 `title/content/clientRequestId`，`assignee=242`、`level=WARNING` 由后端环境变量默认值填充，前端也可显式传入覆盖；`bpDefinitionId` 为可选数字字段，默认留空不上传。
+- 请求体字段映射：`title`（来源 + 行动摘要前 40 字）、`content`（行动建议、分析来源、象限、回合、提交时间）、`assignee`、`level`、`bpDefinitionId`；前端只传 `title/content/clientRequestId`，`assignee` 临时写死为 `400`、`level=WARNING` 由后端默认，前端也可显式传入覆盖；`bpDefinitionId` 临时按行动内容关键词匹配（如“回款”→ `2081949636213985282`、“销售项目/投标”→ `2081949636117516289`、“开票/合同/订单/生产/发货/签收/验收/线索/项目/关闭/履约单”各有对应 ID），未命中则不传，前端显式传入优先。
 - 状态流转：创建中（按钮禁用防重复提交）→ 创建成功（展示上游返回的真实 `taskId`）；创建失败显示真实错误（连接失败/超时/上游 HTTP 错误），可重试；只有外部接口真实返回成功才显示“任务令创建成功”。
 - 防重复提交：前端提交中禁用该条“转督办”；每次请求生成 `clientRequestId`，后端对同一 `clientRequestId` 做进程内幂等（成功缓存、进行中互斥、失败不缓存允许重试）。
 - 后端校验：`title`/`content` 非空、`level` 仅允许 `ALERT`/`WARNING`、`assignee` 缺失时用环境变量默认值；`bpDefinitionId` 可选但必须是数字（上游为 `java.lang.Long`），留空则不上传该字段；功能开关 `TASK_ALERT_API_ENABLED=true` 默认并保持开启，即使当前运维网络未打通也不自动关闭。
