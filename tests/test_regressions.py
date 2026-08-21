@@ -46,6 +46,7 @@ from bi_agent.tools.chart_policy import (
 )
 from bi_agent.tools.analysis_policy import (
     classify_intent,
+    has_effective_action,
     has_action_section,
     has_root_cause_section,
     wants_action,
@@ -653,6 +654,187 @@ class OfflineRegressionTests(unittest.TestCase):
             len([event for event in events if event["type"] == "llm_response"]),
             1,
         )
+        recs = [event for event in events if event["type"] == "action_recommendations"]
+        self.assertEqual(len(recs), 1)
+        self.assertEqual(recs[0]["items"][0]["title"], "优先复核华东区域重点客户报价。")
+
+    # ------------------------------------------------------------------
+    # Action delivery gate: root cause ⇒ structured action_recommendations
+    # ------------------------------------------------------------------
+    def _root_action_events(self, responses, question="为什么华东区域收入下降？",
+                            max_iterations=None):
+        responses_iter = iter(responses)
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses_iter)
+
+        with patch("bi_agent.web.session.stream_message", fake_stream):
+            session = WebSession(
+                "/tmp", AgentDef("test", tools=[]), OntologyStore(),
+                max_iterations=max_iterations,
+            )
+            events = list(session.generate_turn(question))
+        return events, session
+
+    def test_root_cause_standard_action_title_emits_structured_event(self) -> None:
+        events, _ = self._root_action_events([[
+            {"type": "text_delta", "text": (
+                "根因分析：华东区域贡献了主要下降。\n"
+                "行动建议：\n"
+                "1. **重点客户价格复核**：对华东重点客户重新确认折扣权限和利润底线"
+                "（依据：华东区域利润下降132万元）。"
+            )},
+            {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+        ]])
+        recs = [event for event in events if event["type"] == "action_recommendations"]
+        self.assertEqual(len(recs), 1)
+        item = recs[0]["items"][0]
+        self.assertEqual(item["title"], "重点客户价格复核")
+        self.assertIn("重新确认折扣权限", item["content"])
+        self.assertEqual(item["evidence"], "华东区域利润下降132万元")
+        self.assertEqual(recs[0]["turn"], 1)
+
+    def test_root_cause_decision_and_next_step_titles_emit_structured_event(self) -> None:
+        for title in ("决策与建议", "下一步行动", "行动方案"):
+            events, _ = self._root_action_events([[
+                {"type": "text_delta", "text": (
+                    f"根因分析：华东区域贡献了主要下降。\n{title}：\n"
+                    "1. 优先复核华东区域重点客户报价。"
+                )},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ]])
+            recs = [event for event in events if event["type"] == "action_recommendations"]
+            self.assertEqual(len(recs), 1, title)
+            self.assertEqual(recs[0]["items"][0]["title"], "优先复核华东区域重点客户报价。")
+
+    def test_root_cause_first_missing_action_then_repair_succeeds(self) -> None:
+        events, session = self._root_action_events([
+            [
+                {"type": "text_delta", "text": "根因分析：华东区域贡献了主要下降。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "行动建议：先对华东区域重点客户做回访。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+        repairs = [event for event in events if event["type"] == "action_repair"]
+        self.assertEqual(len(repairs), 1)
+        self.assertEqual(repairs[0]["attempt"], 1)
+        self.assertEqual(
+            len([event for event in events if event["type"] == "llm_response"]),
+            2,
+        )
+        recs = [event for event in events if event["type"] == "action_recommendations"]
+        self.assertEqual(len(recs), 1)
+        self.assertEqual(len(session.messages), 4)  # user + root + reminder + action
+
+    def test_root_cause_two_missing_actions_blocks_delivery(self) -> None:
+        events, _ = self._root_action_events([
+            [
+                {"type": "text_delta", "text": "根因分析：华东区域贡献了主要下降。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "行动建议：\n1. 加强管理"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "行动建议：持续关注。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+        blocked = [event for event in events if event["type"] == "delivery_incomplete"]
+        self.assertEqual(len(blocked), 1)
+        self.assertEqual(blocked[0]["reason"], "action_missing")
+        self.assertEqual(blocked[0]["attempts"], 2)
+        self.assertNotIn(
+            "action_recommendations", [event["type"] for event in events],
+        )
+        done = [event for event in events if event["type"] == "done"]
+        self.assertEqual(done[0]["stop_reason"], "delivery_incomplete")
+
+    def test_root_cause_in_last_main_iteration_still_repairs(self) -> None:
+        events, _ = self._root_action_events([
+            [
+                {"type": "text_delta", "text": "根因分析：华东区域贡献了主要下降。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "行动建议：先对华东区域重点客户做回访。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ], max_iterations=1)
+        repairs = [event for event in events if event["type"] == "action_repair"]
+        self.assertEqual(len(repairs), 1)
+        recs = [event for event in events if event["type"] == "action_recommendations"]
+        self.assertEqual(len(recs), 1)
+
+    def test_vague_action_does_not_pass_effective_validation(self) -> None:
+        self.assertFalse(has_effective_action("行动建议：加强管理"))
+        self.assertFalse(has_effective_action("根因分析：x。\n行动建议：\n1. 持续关注"))
+        self.assertFalse(has_effective_action("根因分析：x。\n行动建议：\n1. 已完成对华东客户的复核"))
+        self.assertTrue(has_effective_action("根因分析：x。\n行动建议：\n1. 优先复核华东区域重点客户报价"))
+
+    def test_l1_l2_turns_are_not_forced_to_actions(self) -> None:
+        events, _ = self._root_action_events([
+            [
+                {"type": "text_delta", "text": "结论：本月华东区域收入为 5200 万元。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ], question="本月华东区域收入是多少？")
+        self.assertNotIn("action_repair", [event["type"] for event in events])
+        self.assertNotIn("action_recommendations", [event["type"] for event in events])
+        self.assertNotIn("delivery_incomplete", [event["type"] for event in events])
+        done = [event for event in events if event["type"] == "done"]
+        self.assertEqual(done[0]["stop_reason"], "end_turn")
+
+    def test_action_repair_never_executes_tools(self) -> None:
+        responses = iter([
+            [
+                {"type": "text_delta", "text": "根因分析：华东区域贡献了主要下降。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "tool_use_start", "id": "t1", "name": "run_sql"},
+                {"type": "tool_use_end", "id": "t1", "name": "run_sql",
+                 "input": {"query": "select 1"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "行动建议：先对华东区域重点客户做回访。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool",
+                          side_effect=AssertionError("repair must not run tools")):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("为什么华东区域收入下降？"))
+        recs = [event for event in events if event["type"] == "action_recommendations"]
+        self.assertEqual(len(recs), 1)
+        # The tool-use-only repair response was dropped from history (no
+        # text content, so no assistant message is appended for it).
+        self.assertEqual(len(session.messages), 5)  # user+root + 2 reminders + action
+
+    def test_frontend_structured_action_event_rendering(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        built = Path("bi_agent/web/static/vendor/antd/workbench.js").read_text(
+            encoding="utf-8", errors="replace")
+        self.assertIn('case "action_recommendations"', runtime)
+        self.assertIn("structuredActionsCard", runtime)
+        self.assertIn("case \"delivery_incomplete\"", runtime)
+        self.assertIn("action_repair", runtime)
+        self.assertIn("决策与建议", runtime)
+        self.assertIn("下一步行动", runtime)
+        self.assertIn("行动方案", runtime)
+        self.assertIn("bucket.actionsSeen", runtime)
+        self.assertIn("action_recommendations", built)
+        self.assertIn("delivery_incomplete", built)
 
     def test_ontology_entity_extraction_supports_all_source_code_prefixes(self) -> None:
         store = OntologyStore()
@@ -1347,7 +1529,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=150" defer', index)
+        self.assertIn('workbench.js?v=151" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
