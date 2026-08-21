@@ -1946,30 +1946,41 @@ def _task_alert_timeout() -> float:
         return 10.0
 
 
-def _extract_task_identifier(body: str) -> Optional[str]:
-    """Best-effort extraction of the upstream task order id. The upstream
-    response shape is not guaranteed; try the common id field names."""
+def _parse_task_alert_response(body: str) -> tuple[bool, Optional[str], Optional[str]]:
+    """Parse the upstream task-alert response.
+
+    The upstream returns HTTP 200 even for business failures, so success must
+    be judged from the JSON body (``success``/``code``). Returns
+    ``(success, task_id, error_message)``.
+    """
     try:
         data = json.loads(body)
     except (ValueError, json.JSONDecodeError):
-        return None
+        return False, None, "上游返回非 JSON 响应"
     if not isinstance(data, dict):
-        return None
-    for key in ("taskId", "task_id", "id", "orderId", "order_id"):
-        value = data.get(key)
-        if isinstance(value, dict):
-            for inner in ("taskId", "task_id", "id", "orderId", "order_id"):
-                if isinstance(value.get(inner), (str, int)):
-                    return str(value[inner])
-        elif isinstance(value, (str, int)):
-            return str(value)
-    nested = data.get("data")
-    if isinstance(nested, dict):
+        return False, None, "上游返回格式异常"
+    success_flag = data.get("success", True)
+    code = data.get("code")
+    if success_flag is False or (code is not None and code not in (200, 0)):
+        message = data.get("message") or f"上游业务错误 code={code}"
+        return False, None, str(message)
+    task_id: Optional[str] = None
+    raw = data.get("data")
+    if isinstance(raw, str) and raw.strip():
+        task_id = raw.strip()
+    elif isinstance(raw, dict):
         for inner in ("taskId", "task_id", "id", "orderId", "order_id"):
-            if isinstance(nested.get(inner), (str, int)):
-                return str(nested[inner])
-    return None
-
+            value = raw.get(inner)
+            if isinstance(value, (str, int)):
+                task_id = str(value)
+                break
+    if task_id is None:
+        for key in ("taskId", "task_id", "id", "orderId", "order_id"):
+            value = data.get(key)
+            if isinstance(value, (str, int)):
+                task_id = str(value)
+                break
+    return True, task_id, None
 
 class TaskAlertCreateRequest(BaseModel):
     title: Optional[str] = None
@@ -2002,11 +2013,14 @@ def task_alert_manual_create(req: TaskAlertCreateRequest):
     if level not in TASK_ALERT_LEVELS:
         raise HTTPException(422, "level 只允许 ALERT 或 WARNING")
     assignee = (req.assignee or os.environ.get("TASK_ALERT_DEFAULT_ASSIGNEE") or "").strip()
-    bp_definition_id = (req.bpDefinitionId or os.environ.get("TASK_ALERT_DEFAULT_BP_DEFINITION_ID") or "").strip()
+    bp_definition_raw = (req.bpDefinitionId or os.environ.get("TASK_ALERT_DEFAULT_BP_DEFINITION_ID") or "").strip()
+    bp_definition_id: Optional[int] = None
+    if bp_definition_raw:
+        if not bp_definition_raw.isdigit():
+            raise HTTPException(422, "bpDefinitionId 必须是数字")
+        bp_definition_id = int(bp_definition_raw)
     if not assignee:
         raise HTTPException(422, "assignee 不能为空")
-    if not bp_definition_id:
-        raise HTTPException(422, "bpDefinitionId 不能为空")
     client_request_id = (req.clientRequestId or "").strip()
     api_url = (os.environ.get("TASK_ALERT_API_URL") or "").strip()
     if not api_url:
@@ -2016,9 +2030,7 @@ def task_alert_manual_create(req: TaskAlertCreateRequest):
         if client_request_id and client_request_id in _task_alert_successes:
             return _task_alert_successes[client_request_id]
         if client_request_id and client_request_id in _task_alert_inflight:
-            return JSONResponse(
-                {"ok": False, "status": "creating", "detail": "任务令创建中,请勿重复提交"}
-            )
+            raise HTTPException(409, "任务令创建中,请勿重复提交")
         if client_request_id:
             _task_alert_inflight.add(client_request_id)
 
@@ -2027,8 +2039,9 @@ def task_alert_manual_create(req: TaskAlertCreateRequest):
         "content": content,
         "assignee": assignee,
         "level": level,
-        "bpDefinitionId": bp_definition_id,
     }
+    if bp_definition_id is not None:
+        payload["bpDefinitionId"] = bp_definition_id
 
     def _finish_failure() -> None:
         if client_request_id:
@@ -2044,7 +2057,11 @@ def task_alert_manual_create(req: TaskAlertCreateRequest):
         )
         with urlopen(upstream, timeout=_task_alert_timeout()) as response:
             raw = response.read().decode("utf-8", errors="replace")
-        task_id = _extract_task_identifier(raw)
+        success, task_id, error_message = _parse_task_alert_response(raw)
+        if not success:
+            _finish_failure()
+            logger.warning("task alert upstream business failure")
+            raise HTTPException(502, f"任务令服务创建失败:{error_message}")
         result = {"ok": True, "taskId": task_id, "clientRequestId": client_request_id or None}
         logger.info(
             "task alert created clientRequestId=%s taskId=%s upstream_status=200",

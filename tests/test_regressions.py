@@ -2138,7 +2138,7 @@ class TaskAlertProxyTests(unittest.TestCase):
             "TASK_ALERT_API_URL": "http://upstream.example/manual-create",
             "TASK_ALERT_DEFAULT_ASSIGNEE": "242",
             "TASK_ALERT_DEFAULT_LEVEL": "WARNING",
-            "TASK_ALERT_DEFAULT_BP_DEFINITION_ID": "bp-123",
+            "TASK_ALERT_DEFAULT_BP_DEFINITION_ID": "",
             "TASK_ALERT_TIMEOUT_SECONDS": "10",
         }
         values.update(overrides)
@@ -2155,7 +2155,9 @@ class TaskAlertProxyTests(unittest.TestCase):
                 raise URLError("network down")
             if status_override == "timeout":
                 raise TimeoutError("timed out")
-            return _FakeUpstreamResponse(b'{"taskId":"T-10086"}')
+            return _FakeUpstreamResponse(
+                '{"success":true,"code":200,"message":"操作成功","data":"T-10086"}'.encode("utf-8")
+            )
 
         with patch("bi_agent.web.app.urlopen", side_effect=fake_urlopen), \
              patch.dict(os.environ, self._env(), clear=False):
@@ -2180,32 +2182,49 @@ class TaskAlertProxyTests(unittest.TestCase):
         self.assertEqual(payload["content"], "建议排查 SQL 耗时")
         self.assertEqual(payload["assignee"], "242")
         self.assertEqual(payload["level"], "WARNING")
-        self.assertEqual(payload["bpDefinitionId"], "bp-123")
+        self.assertNotIn("bpDefinitionId", payload)
         self.assertEqual(calls[0]["timeout"], 10.0)
 
     def test_explicit_fields_override_env_defaults(self) -> None:
         response, calls = self._post({
             "title": "t", "content": "c",
-            "assignee": "99", "level": "ALERT", "bpDefinitionId": "bp-custom",
+            "assignee": "99", "level": "ALERT", "bpDefinitionId": "55",
         })
         self.assertEqual(response.status_code, 200)
         payload = json.loads(calls[0]["request"].data)
         self.assertEqual(payload["assignee"], "99")
         self.assertEqual(payload["level"], "ALERT")
-        self.assertEqual(payload["bpDefinitionId"], "bp-custom")
+        self.assertEqual(payload["bpDefinitionId"], 55)
 
-    def test_task_id_extracted_from_nested_data(self) -> None:
+    def test_task_id_extracted_from_data_string(self) -> None:
         calls: list = []
 
         def fake_urlopen(request, timeout=None):
             calls.append(request)
-            return _FakeUpstreamResponse(b'{"data": {"task_id": "T-7788"}}')
+            return _FakeUpstreamResponse(
+                '{"success":true,"code":200,"message":"操作成功","data":"T-7788"}'.encode("utf-8")
+            )
 
         with patch("bi_agent.web.app.urlopen", side_effect=fake_urlopen), \
              patch.dict(os.environ, self._env(), clear=False):
             response = self.client.post("/api/task-alert/manual-create",
                                         json={"title": "t", "content": "c"})
         self.assertEqual(response.json()["taskId"], "T-7788")
+
+    def test_task_id_extracted_from_nested_dict_fallback(self) -> None:
+        calls: list = []
+
+        def fake_urlopen(request, timeout=None):
+            calls.append(request)
+            return _FakeUpstreamResponse(
+                b'{"success":true,"code":200,"data":{"task_id":"T-NESTED"}}'
+            )
+
+        with patch("bi_agent.web.app.urlopen", side_effect=fake_urlopen), \
+             patch.dict(os.environ, self._env(), clear=False):
+            response = self.client.post("/api/task-alert/manual-create",
+                                        json={"title": "t", "content": "c"})
+        self.assertEqual(response.json()["taskId"], "T-NESTED")
 
     def test_missing_title_or_content_rejected(self) -> None:
         response, _ = self._post({"content": "c"})
@@ -2217,7 +2236,11 @@ class TaskAlertProxyTests(unittest.TestCase):
         response, _ = self._post({"title": "t", "content": "c", "level": "CRITICAL"})
         self.assertEqual(response.status_code, 422)
 
-    def test_missing_assignee_and_bp_definition_use_env_defaults(self) -> None:
+    def test_bp_definition_id_must_be_numeric(self) -> None:
+        response, _ = self._post({"title": "t", "content": "c", "bpDefinitionId": "xxx"})
+        self.assertEqual(response.status_code, 422)
+
+    def test_missing_assignee_uses_env_defaults(self) -> None:
         with patch.dict(os.environ, self._env(TASK_ALERT_DEFAULT_ASSIGNEE=""), clear=False):
             response = self.client.post("/api/task-alert/manual-create",
                                         json={"title": "t", "content": "c"})
@@ -2243,6 +2266,32 @@ class TaskAlertProxyTests(unittest.TestCase):
         self.assertEqual(response.status_code, 502)
         self.assertIn("HTTP 400", response.json()["detail"])
         self.assertEqual(len(calls), 1)
+
+    def test_upstream_business_failure_is_not_success(self) -> None:
+        calls: list = []
+
+        def failing_urlopen(request, timeout=None):
+            calls.append(request)
+            return _FakeUpstreamResponse(
+                '{"success":false,"code":500,"message":"JSON parse error","data":null}'.encode("utf-8")
+            )
+
+        with patch("bi_agent.web.app.urlopen", side_effect=failing_urlopen), \
+             patch.dict(os.environ, self._env(), clear=False):
+            response = self.client.post("/api/task-alert/manual-create",
+                                        json={"title": "t", "content": "c",
+                                              "clientRequestId": "biz-fail-1"})
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("JSON parse error", response.json()["detail"])
+        self.assertEqual(len(calls), 1)
+        # Business failure is not cached: a corrected retry may still succeed.
+        with patch("bi_agent.web.app.urlopen", side_effect=failing_urlopen), \
+             patch.dict(os.environ, self._env(), clear=False):
+            retry = self.client.post("/api/task-alert/manual-create",
+                                     json={"title": "t", "content": "c",
+                                           "clientRequestId": "biz-fail-1"})
+        self.assertEqual(retry.status_code, 502)
+        self.assertEqual(len(calls), 2)
 
     def test_upstream_connection_failure_is_not_success(self) -> None:
         response, _ = self._post({"title": "t", "content": "c"},
