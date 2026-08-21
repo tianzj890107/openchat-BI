@@ -192,3 +192,23 @@ TEAM_QWEN_ENABLE_THINKING=           # 显式设为 true 才给 Qwen 发 enable_
 旧全局 `TEAM_ENABLE_THINKING` 仅作为 DeepSeek 的兼容项；无论其取值如何，都不会再影响
 Qwen、GLM、Kimi 等模型。不要使用 `litellm.drop_params=true` 掩盖参数错误。部署时若在
 服务器保留旧变量，请确认新代码已生效（只影响 DeepSeek），或直接改用上面的模型族变量。
+
+### 行动 → 转督办（任务令）外部服务代理
+
+“行动 → 转督办”由 ChatBI 后端代理到真实任务令服务，不在浏览器直接跨域调用：
+
+```dotenv
+TASK_ALERT_API_ENABLED=true            # 功能开关，默认并保持开启
+TASK_ALERT_API_URL=http://pdt-dev.eimos.com/api/x360/v1/task-alert/manual-create
+TASK_ALERT_DEFAULT_ASSIGNEE=242        # 前端未传时的默认责任人
+TASK_ALERT_DEFAULT_LEVEL=WARNING       # 只允许 ALERT / WARNING
+TASK_ALERT_DEFAULT_BP_DEFINITION_ID=xxx
+TASK_ALERT_TIMEOUT_SECONDS=10          # 上游超时，0.5–120s
+```
+
+- 后端端点：`POST /api/task-alert/manual-create`，校验 `title`/`content` 非空与
+  `level` 取值，`clientRequestId` 做进程内幂等（成功缓存、进行中互斥、失败可重试）。
+- 即使当前运维网络无法访问上游（连接失败/超时/HTTP 错误），前端也只展示真实失败并可
+  重试，不允许关闭开关或显示假成功。
+- 示例：`curl -sS -X POST http://127.0.0.1:8765/api/task-alert/manual-create
+  -H 'Content-Type: application/json' -d '{"title":"t","content":"c"}'`

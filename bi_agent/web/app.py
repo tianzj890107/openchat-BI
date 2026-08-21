@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import threading
 import time
 from html import escape
-from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as UpstreamRequest
+from urllib.request import urlopen
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, List, Optional
@@ -53,6 +56,9 @@ from ..tools.sql_tools import (
 )
 from .conversations import ConversationStore, sanitize_source_config
 from .session import WebSession
+
+
+logger = logging.getLogger(__name__)
 
 
 REPORT_AGENT_NAME = "report-analyst"
@@ -1915,6 +1921,157 @@ def choice(req: ChoiceRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Task alert (行动 → 转督办) proxy to the external task-order service
+# ---------------------------------------------------------------------------
+
+TASK_ALERT_LEVELS = {"ALERT", "WARNING"}
+
+
+def _task_alert_enabled() -> bool:
+    """Feature flag; the task-alert integration stays ON by default even when
+    the current network cannot reach the upstream service."""
+    value = os.environ.get("TASK_ALERT_API_ENABLED")
+    if value is None or not value.strip():
+        return True
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _task_alert_timeout() -> float:
+    try:
+        return max(0.5, min(float(os.environ.get("TASK_ALERT_TIMEOUT_SECONDS", "10")), 120.0))
+    except ValueError:
+        return 10.0
+
+
+def _extract_task_identifier(body: str) -> Optional[str]:
+    """Best-effort extraction of the upstream task order id. The upstream
+    response shape is not guaranteed; try the common id field names."""
+    try:
+        data = json.loads(body)
+    except (ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    for key in ("taskId", "task_id", "id", "orderId", "order_id"):
+        value = data.get(key)
+        if isinstance(value, dict):
+            for inner in ("taskId", "task_id", "id", "orderId", "order_id"):
+                if isinstance(value.get(inner), (str, int)):
+                    return str(value[inner])
+        elif isinstance(value, (str, int)):
+            return str(value)
+    nested = data.get("data")
+    if isinstance(nested, dict):
+        for inner in ("taskId", "task_id", "id", "orderId", "order_id"):
+            if isinstance(nested.get(inner), (str, int)):
+                return str(nested[inner])
+    return None
+
+
+class TaskAlertCreateRequest(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    assignee: Optional[str] = None
+    level: Optional[str] = None
+    bpDefinitionId: Optional[str] = None
+    clientRequestId: Optional[str] = None
+
+
+# In-process idempotency keyed by clientRequestId: successes are cached so a
+# repeat submission never re-creates a task order; failures are never cached
+# so the user can retry. The lock also guards concurrent duplicate requests.
+_task_alert_successes: dict[str, dict[str, Any]] = {}
+_task_alert_inflight: set[str] = set()
+_task_alert_lock = threading.Lock()
+
+
+@app.post("/api/task-alert/manual-create")
+def task_alert_manual_create(req: TaskAlertCreateRequest):
+    if not _task_alert_enabled():
+        raise HTTPException(403, "任务令接口未启用")
+    title = (req.title or "").strip()
+    content = (req.content or "").strip()
+    if not title:
+        raise HTTPException(422, "title 不能为空")
+    if not content:
+        raise HTTPException(422, "content 不能为空")
+    level = (req.level or os.environ.get("TASK_ALERT_DEFAULT_LEVEL") or "WARNING").strip().upper()
+    if level not in TASK_ALERT_LEVELS:
+        raise HTTPException(422, "level 只允许 ALERT 或 WARNING")
+    assignee = (req.assignee or os.environ.get("TASK_ALERT_DEFAULT_ASSIGNEE") or "").strip()
+    bp_definition_id = (req.bpDefinitionId or os.environ.get("TASK_ALERT_DEFAULT_BP_DEFINITION_ID") or "").strip()
+    if not assignee:
+        raise HTTPException(422, "assignee 不能为空")
+    if not bp_definition_id:
+        raise HTTPException(422, "bpDefinitionId 不能为空")
+    client_request_id = (req.clientRequestId or "").strip()
+    api_url = (os.environ.get("TASK_ALERT_API_URL") or "").strip()
+    if not api_url:
+        raise HTTPException(500, "未配置任务令服务地址(TASK_ALERT_API_URL)")
+
+    with _task_alert_lock:
+        if client_request_id and client_request_id in _task_alert_successes:
+            return _task_alert_successes[client_request_id]
+        if client_request_id and client_request_id in _task_alert_inflight:
+            return JSONResponse(
+                {"ok": False, "status": "creating", "detail": "任务令创建中,请勿重复提交"}
+            )
+        if client_request_id:
+            _task_alert_inflight.add(client_request_id)
+
+    payload = {
+        "title": title,
+        "content": content,
+        "assignee": assignee,
+        "level": level,
+        "bpDefinitionId": bp_definition_id,
+    }
+
+    def _finish_failure() -> None:
+        if client_request_id:
+            with _task_alert_lock:
+                _task_alert_inflight.discard(client_request_id)
+
+    try:
+        upstream = UpstreamRequest(
+            api_url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            method="POST",
+        )
+        with urlopen(upstream, timeout=_task_alert_timeout()) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+        task_id = _extract_task_identifier(raw)
+        result = {"ok": True, "taskId": task_id, "clientRequestId": client_request_id or None}
+        logger.info(
+            "task alert created clientRequestId=%s taskId=%s upstream_status=200",
+            client_request_id or "-", task_id,
+        )
+        if client_request_id:
+            with _task_alert_lock:
+                _task_alert_successes[client_request_id] = result
+                _task_alert_inflight.discard(client_request_id)
+        return result
+    except HTTPError as exc:
+        _finish_failure()
+        logger.warning("task alert upstream http error code=%s", exc.code)
+        raise HTTPException(502, f"任务令服务返回 HTTP {exc.code}")
+    except TimeoutError:
+        _finish_failure()
+        logger.warning("task alert upstream timeout")
+        raise HTTPException(504, "任务令服务超时")
+    except URLError as exc:
+        _finish_failure()
+        reason = getattr(exc, "reason", None)
+        logger.warning("task alert upstream connection failure")
+        raise HTTPException(502, f"任务令服务连接失败:{reason or '网络不可达'}")
+    except OSError as exc:
+        _finish_failure()
+        logger.warning("task alert upstream os error")
+        raise HTTPException(502, f"任务令服务连接失败:{exc}")
 
 
 # ---------------------------------------------------------------------------

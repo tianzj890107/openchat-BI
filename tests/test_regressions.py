@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.error import HTTPError, URLError
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -58,6 +59,7 @@ from bi_agent.tools.remote_ontology_tools import (
     _metric_adapter,
     _rank_row,
 )
+from bi_agent.web import app as web_app_module
 from bi_agent.ontology.remote import OntologyApiError, RemoteOntologyClient
 from bi_agent.web.app import (
     STATE, _cwd_file, _history_ontology_entities, _infer_history_source_config,
@@ -1345,7 +1347,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=149" defer', index)
+        self.assertIn('workbench.js?v=150" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -2096,3 +2098,204 @@ class TeamThinkingRetryTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertFalse(calls[0]["thinking"])
         self.assertTrue(any(e["type"] == "error" for e in events))
+
+
+class _FakeUpstreamResponse:
+    """Minimal urllib response double: context-manager body reader."""
+
+    def __init__(self, body: bytes, status: int = 200):
+        self.body = body
+        self.status = status
+
+    def read(self) -> bytes:
+        return self.body
+
+    def __enter__(self) -> "_FakeUpstreamResponse":
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
+
+
+class TaskAlertProxyTests(unittest.TestCase):
+    """行动 → 转督办 proxy: real upstream integration, idempotency,
+    validation and the frontend must not fake success."""
+
+    def setUp(self) -> None:
+        self.client = TestClient(app)
+        with web_app_module._task_alert_lock:
+            web_app_module._task_alert_successes.clear()
+            web_app_module._task_alert_inflight.clear()
+
+    def tearDown(self) -> None:
+        with web_app_module._task_alert_lock:
+            web_app_module._task_alert_successes.clear()
+            web_app_module._task_alert_inflight.clear()
+
+    def _env(self, **overrides) -> dict:
+        values = {
+            "TASK_ALERT_API_ENABLED": "true",
+            "TASK_ALERT_API_URL": "http://upstream.example/manual-create",
+            "TASK_ALERT_DEFAULT_ASSIGNEE": "242",
+            "TASK_ALERT_DEFAULT_LEVEL": "WARNING",
+            "TASK_ALERT_DEFAULT_BP_DEFINITION_ID": "bp-123",
+            "TASK_ALERT_TIMEOUT_SECONDS": "10",
+        }
+        values.update(overrides)
+        return values
+
+    def _post(self, body, *, status_override=None):
+        calls: list = []
+
+        def fake_urlopen(request, timeout=None):
+            calls.append({"request": request, "timeout": timeout})
+            if status_override == "http-error":
+                raise HTTPError(request.full_url, 400, "bad", {}, None)
+            if status_override == "connection-error":
+                raise URLError("network down")
+            if status_override == "timeout":
+                raise TimeoutError("timed out")
+            return _FakeUpstreamResponse(b'{"taskId":"T-10086"}')
+
+        with patch("bi_agent.web.app.urlopen", side_effect=fake_urlopen), \
+             patch.dict(os.environ, self._env(), clear=False):
+            response = self.client.post("/api/task-alert/manual-create", json=body)
+        return response, calls
+
+    def test_upstream_request_field_mapping_and_defaults(self) -> None:
+        response, calls = self._post({
+            "title": " 大屏延迟 ", "content": "建议排查 SQL 耗时",
+            "clientRequestId": "c-1",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+        self.assertEqual(response.json()["taskId"], "T-10086")
+        self.assertEqual(len(calls), 1)
+        request = calls[0]["request"]
+        self.assertEqual(request.full_url, "http://upstream.example/manual-create")
+        self.assertEqual(request.method, "POST")
+        self.assertIn("application/json", request.get_header("Content-type"))
+        payload = json.loads(request.data)
+        self.assertEqual(payload["title"], "大屏延迟")
+        self.assertEqual(payload["content"], "建议排查 SQL 耗时")
+        self.assertEqual(payload["assignee"], "242")
+        self.assertEqual(payload["level"], "WARNING")
+        self.assertEqual(payload["bpDefinitionId"], "bp-123")
+        self.assertEqual(calls[0]["timeout"], 10.0)
+
+    def test_explicit_fields_override_env_defaults(self) -> None:
+        response, calls = self._post({
+            "title": "t", "content": "c",
+            "assignee": "99", "level": "ALERT", "bpDefinitionId": "bp-custom",
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(calls[0]["request"].data)
+        self.assertEqual(payload["assignee"], "99")
+        self.assertEqual(payload["level"], "ALERT")
+        self.assertEqual(payload["bpDefinitionId"], "bp-custom")
+
+    def test_task_id_extracted_from_nested_data(self) -> None:
+        calls: list = []
+
+        def fake_urlopen(request, timeout=None):
+            calls.append(request)
+            return _FakeUpstreamResponse(b'{"data": {"task_id": "T-7788"}}')
+
+        with patch("bi_agent.web.app.urlopen", side_effect=fake_urlopen), \
+             patch.dict(os.environ, self._env(), clear=False):
+            response = self.client.post("/api/task-alert/manual-create",
+                                        json={"title": "t", "content": "c"})
+        self.assertEqual(response.json()["taskId"], "T-7788")
+
+    def test_missing_title_or_content_rejected(self) -> None:
+        response, _ = self._post({"content": "c"})
+        self.assertEqual(response.status_code, 422)
+        response, _ = self._post({"title": "t"})
+        self.assertEqual(response.status_code, 422)
+
+    def test_level_must_be_alert_or_warning(self) -> None:
+        response, _ = self._post({"title": "t", "content": "c", "level": "CRITICAL"})
+        self.assertEqual(response.status_code, 422)
+
+    def test_missing_assignee_and_bp_definition_use_env_defaults(self) -> None:
+        with patch.dict(os.environ, self._env(TASK_ALERT_DEFAULT_ASSIGNEE=""), clear=False):
+            response = self.client.post("/api/task-alert/manual-create",
+                                        json={"title": "t", "content": "c"})
+        self.assertEqual(response.status_code, 422)
+
+    def test_feature_flag_off_returns_403(self) -> None:
+        with patch.dict(os.environ, self._env(TASK_ALERT_API_ENABLED="false"), clear=False):
+            response = self.client.post("/api/task-alert/manual-create",
+                                        json={"title": "t", "content": "c"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_missing_api_url_returns_500(self) -> None:
+        with patch.dict(os.environ, self._env(TASK_ALERT_API_URL=""), clear=False):
+            response = self.client.post("/api/task-alert/manual-create",
+                                        json={"title": "t", "content": "c"})
+        self.assertEqual(response.status_code, 500)
+
+    def test_upstream_http_error_is_not_success(self) -> None:
+        response, calls = self._post(
+            {"title": "t", "content": "c", "clientRequestId": "c-2"},
+            status_override="http-error",
+        )
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("HTTP 400", response.json()["detail"])
+        self.assertEqual(len(calls), 1)
+
+    def test_upstream_connection_failure_is_not_success(self) -> None:
+        response, _ = self._post({"title": "t", "content": "c"},
+                                 status_override="connection-error")
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("连接失败", response.json()["detail"])
+
+    def test_upstream_timeout_is_not_success(self) -> None:
+        response, _ = self._post({"title": "t", "content": "c"},
+                                 status_override="timeout")
+        self.assertEqual(response.status_code, 504)
+        self.assertIn("超时", response.json()["detail"])
+
+    def test_duplicate_client_request_id_creates_only_once(self) -> None:
+        body = {"title": "t", "content": "c", "clientRequestId": "dup-1"}
+        first, calls = self._post(body)
+        second, calls_after = self._post(body)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["taskId"], first.json()["taskId"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls_after), 0)
+
+    def test_failed_submission_can_be_retried(self) -> None:
+        attempts: list = []
+
+        def flaky_urlopen(request, timeout=None):
+            attempts.append(request)
+            if len(attempts) == 1:
+                raise HTTPError(request.full_url, 500, "boom", {}, None)
+            return _FakeUpstreamResponse(b'{"taskId":"T-RETRY"}')
+
+        body = {"title": "t", "content": "c", "clientRequestId": "retry-1"}
+        with patch("bi_agent.web.app.urlopen", side_effect=flaky_urlopen), \
+             patch.dict(os.environ, self._env(), clear=False):
+            first = self.client.post("/api/task-alert/manual-create", json=body)
+            second = self.client.post("/api/task-alert/manual-create", json=body)
+        self.assertEqual(first.status_code, 502)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["taskId"], "T-RETRY")
+        self.assertEqual(len(attempts), 2)
+
+    def test_frontend_no_fake_success_logic(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        start = runtime.index("function dispatchSupervise(")
+        end = runtime.index("function clauseText(", start)
+        supervise = runtime[start:end]
+        self.assertNotIn("localTaskSeq", runtime)
+        self.assertNotIn("wbTaskOrderSeq", runtime)
+        self.assertNotIn("cockpit-task-order", runtime)
+        self.assertNotIn("setTimeout", supervise)
+        self.assertNotIn("localStorage", supervise)
+        self.assertNotIn("postMessage", supervise)
+        self.assertIn('fetch("/api/task-alert/manual-create"', runtime)
+        self.assertIn("clientRequestId", runtime)
+        self.assertIn("data.ok", runtime)
