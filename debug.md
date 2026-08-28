@@ -16,7 +16,7 @@
 → Git Diff 复查
 → 完整回归
 → commit
-→ push 当前远程分支
+→ 双远端 push（origin/20260727 与 personal/main，优先 python scripts/push_dual_remotes.py）
 → 不部署
 ```
 
@@ -24,9 +24,10 @@
 
 不要只给建议、方案、分析或 TODO。
 
-默认交付动作是 commit + push 当前远程分支，不是部署。在没有真实阻塞的情况下，
+默认交付动作是 commit + 双远端 push（origin/20260727 与 personal/main，优先
+python scripts/push_dual_remotes.py），不是部署。在没有真实阻塞的情况下，
 直接检查代码、实施修改、执行验证、修复发现的问题，并在全部验证完成后提交并
-push 当前远程分支，不部署。
+双远端 push，不部署。
 
 只有用户在当前任务中明确要求“部署”或“发布到服务器”时，才可以执行部署；历史任务
 中的部署授权不得延续到当前任务；“完成”“修复”“验收通过”等表述不构成部署授权。
@@ -1368,7 +1369,7 @@ stale read
 12. 是否还有 diff 未检查；
 13. 是否还有提交前检查（git status / git diff / remote / branch）；
 14. 是否已经 commit；
-15. 是否已经 push 当前远程分支（push 后确认远端包含新 commit）。
+15. 是否已经双远端 push（origin/20260727 与 personal/main，push 后确认三个 hash 一致）。
 
 只要仍存在与任务直接相关、能够在当前环境完成的高价值工作，就继续执行。
 
@@ -1466,7 +1467,7 @@ stale read
 * [ ] 没有遗留可以立即修复的已知问题
 * [ ] 没有覆盖用户无关修改
 
-满足后不要停下来报告，继续执行 commit + push 当前远程分支，不部署。
+满足后不要停下来报告，继续执行 commit + 双远端 push（origin/20260727 与 personal/main），不部署。
 
 ---
 
@@ -1523,7 +1524,7 @@ rsync/scp 到服务器
 # 三十、部署（仅当用户在当前任务明确要求部署时适用）
 
 > 本节全部内容只在用户当前任务明确说“部署”“发布到服务器”时才适用。默认策略是
-> 第二节所述：commit + push 当前远程分支，不部署。历史任务中的部署授权不得延续。
+> 第二节所述：commit + 双远端 push（origin/20260727 与 personal/main），不部署。历史任务中的部署授权不得延续。
 > “完成”“修复”“验收通过”“继续做”“全部处理完”均不构成部署授权；用户明确说
 > “不部署”时，禁止任何服务器写操作和服务重启。
 
@@ -1758,7 +1759,7 @@ startup error
 
 # 三十八、推送与 Git 的关系
 
-默认交付目标是让当前已验证代码通过 commit + push 进入远端分支。
+默认交付目标是让当前已验证代码通过 commit + 双远端 push 进入 origin/20260727 与 personal/main。
 
 不要为了提交推送进行与任务无关的：
 
@@ -1793,7 +1794,7 @@ Diff 复查完成
 +
 commit 完成
 +
-push 当前远程分支完成
+双远端 push（origin/20260727 与 personal/main）完成
 +
 远端分支已确认包含新 commit
 +
@@ -2151,7 +2152,7 @@ PASS / FAIL
 → 完整回归
 → Git Diff 复查
 → commit
-→ push 当前远程分支
+→ 双远端 push（origin/20260727 与 personal/main）
 → 确认远端分支已更新
 → 不部署
 ```
