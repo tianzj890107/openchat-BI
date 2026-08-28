@@ -12,6 +12,8 @@ import json
 import re
 from typing import Any, Callable
 
+from ..display_names import normalize_table_params
+
 Executor = Callable[[dict, str], str]
 ExecutorFactory = Callable[[], Executor]
 
@@ -38,7 +40,7 @@ TABLE_GENERATE_SCHEMA = {
         "(SQL output, drill-down breakdowns, cross-period comparisons, TOPN "
         "rankings, rate tables) — the UI renders it as a clean data grid "
         "with numeric alignment, thousand separators and unit formatting. "
-        "Valid data sources: a SQLRun result set, a table extracted from an "
+        "Valid data sources: an Ontology-FactQuery result set, a table extracted from an "
         "uploaded report, or a computation over either. Do NOT fabricate "
         "rows — every value must be traceable to a tool result or a report "
         "reference. Always set `source_note` with provenance (e.g., "
@@ -204,8 +206,12 @@ def _summary_line(cols: list[dict], rows: list[list]) -> str:
     return f"{len(rows)} row(s) × {len(cols)} col(s)  [{cols_desc}]"
 
 
-def _make_table_generate() -> Executor:
+def _make_table_generate(
+    display_resolver: "Callable[[str], str | None] | None" = None,
+) -> Executor:
     def run(params: dict, cwd: str) -> str:
+        if display_resolver is not None:
+            params = normalize_table_params(params, display_resolver)
         err = _validate(params)
         if err:
             return f"TableGenerate rejected: {err}"

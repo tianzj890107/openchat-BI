@@ -2,6 +2,12 @@
 
 An open-source AI coding assistant CLI, powered by Anthropic's Claude API. Inspired by [Claude Code](https://docs.anthropic.com/en/docs/claude-code), built from scratch in Python.
 
+> 本仓库同时承载 **openchat-BI（智能分析）** Web 应用。当前版本：`v0.1.0`
+>
+> - [正式版本文档](docs/versions/v0.1.0.md)
+> - [版本索引](docs/versions/README.md)
+> - [Git 双远端工作流](docs/git-dual-remote-workflow.md)
+
 ## Features
 
 - **Interactive REPL** with streaming responses and rich terminal UI
@@ -173,19 +179,21 @@ Create your own skills by adding `.md` files to:
 - `~/.claude/skills/` (global, personal)
 - `.claude/skills/` (project-specific)
 
-Example skill file (`.claude/skills/deploy/SKILL.md`):
+Example skill file (`.claude/skills/commit/SKILL.md`):
 
 ```markdown
 ---
-description: Deploy to production
+description: Commit and push the current changes (no deployment)
 user-invocable: true
-argument-hint: <environment>
 ---
 
-Deploy the application to the specified environment.
+Deliver finished work with the default workflow.
 1. Run tests first
-2. Build the project
-3. Deploy using the project's deploy script
+2. Review `git diff` and run `git diff --check`
+3. Commit the relevant files only
+4. Push to the current remote branch (dual remotes: `origin/20260727` and
+   `personal/main`)
+5. Do not deploy — deployment requires an explicit user instruction
 ```
 
 ### CLAUDE.md

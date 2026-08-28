@@ -31,7 +31,7 @@ ExecutorFactory = Callable[[OntologyStore], Executor]
 # ---------------------------------------------------------------------------
 
 GRAPH_CONTEXT_SCHEMA = {
-    "name": "GraphContext",
+    "name": "Ontology-GraphContext",
     "description": (
         "图库检索 · 上下文准备(第3步)。给定一个业务对象或指标锚点,沿图库"
         "层级一次性拉取其全部下挂的本体行信息(已剪枝去重),作为回答问题的"
@@ -68,13 +68,13 @@ def _make_graph_context(store: OntologyStore) -> Executor:
         if anchor:
             return retriever.context_bundle(anchor)
         if not query:
-            return "GraphContext: 请提供 query(业务名词)或 anchor(锚点编码)。"
+            return "Ontology-GraphContext: 请提供 query(业务名词)或 anchor(锚点编码)。"
         cands = retriever.resolve_anchor(query)
         if not cands:
-            return (f"GraphContext: 在业务对象库/指标库中未匹配到 {query!r} 的锚点。"
+            return (f"Ontology-GraphContext: 在业务对象库/指标库中未匹配到 {query!r} 的锚点。"
                     "可改用 `ListBusinessObjects` 浏览全部业务对象后再指定 anchor。")
         if len(cands) > 1:
-            lines = [f"GraphContext: {query!r} 命中 {len(cands)} 个候选锚点,请用 anchor 指定其一后重试:"]
+            lines = [f"Ontology-GraphContext: {query!r} 命中 {len(cands)} 个候选锚点,请用 anchor 指定其一后重试:"]
             for kind, code, name in cands[:12]:
                 label = "业务对象" if kind == "business_object" else "指标"
                 lines.append(f"- [{code}] {name} ({label})")
@@ -90,7 +90,7 @@ def _make_graph_context(store: OntologyStore) -> Executor:
 # ---------------------------------------------------------------------------
 
 GRAPH_EXPAND_SCHEMA = {
-    "name": "GraphExpand",
+    "name": "Ontology-GraphExpand",
     "description": (
         "图库检索 · 扩散探索 skill(仅 L3–L5 根因/决策/执行,且已有上下文不足时使用)。"
         "从一个业务对象锚点出发,沿『活动 → 所属流程(取整条流程行信息)』、"
@@ -118,7 +118,7 @@ def _make_graph_expand(store: OntologyStore) -> Executor:
     def run(params: dict, cwd: str) -> str:
         anchor = (params.get("anchor") or "").strip()
         if not anchor:
-            return "GraphExpand: 请提供 anchor(业务对象编码)。"
+            return "Ontology-GraphExpand: 请提供 anchor(业务对象编码)。"
         return retriever.expand(anchor)
 
     return run

@@ -13,6 +13,24 @@
  * SSE event shape is identical across modes; only the endpoints differ.
  * ===================================================================== */
 
+import {
+  SOP_STEPS,
+  applySopStep,
+  currentStepOf,
+  migrateLegacySop,
+  sopStatusesForDone,
+  visitedFromTodos,
+} from "./sopMachine.js";
+import { factQueryPreview } from "./factQueryPreview.js";
+import { createOntologySigmaRenderer } from "./ontologySigmaGraph.js";
+import { classifyStreamEof } from "./streamTerminal.js";
+import {
+  createTurnLifecycle,
+  recordDone,
+  recordFailure,
+  resetTurnLifecycle,
+} from "./turnLifecycle.js";
+
 const conversationSummaryCache = new Map();
 const conversationSummaryRequests = new Map();
 const conversationSummaryStates = new Map();
@@ -250,11 +268,26 @@ export function bootWorkbenchRuntime() {
       // A completed task gets one export action group per turn. This survives
       // repeated SSE `done` notifications and prevents duplicate controls.
       exportTurns: new Set(),
+      // Concurrency stamps from the last server `done` event. The save
+      // request forwards them so the backend can reject a snapshot that
+      // belongs to a superseded (reset / restore / activation) session generation.
+      lastDoneTurnId: null,
+      lastDoneGeneration: null,
+      // Completed / failed turn lifecycle. `completed` is a bounded FIFO so
+      // repeated or delayed `done` frames stay idempotent; `failed` records
+      // turns that ended in error / superseded / interrupted so a late
+      // `done` can never flip them into success.
+      turnLifecycle: createTurnLifecycle(),
     };
   }
 
   const buckets = { data: makeBucket(), report: makeBucket() };
   let activeRequestController = null;
+  // Monotonic per-request sequence. Every SSE stream captures the sequence at
+  // request start; only the LATEST request may paint visible content, so a
+  // superseded/aborted stream can never render stale text, save a stale turn,
+  // or clear the busy flag of a newer turn.
+  let streamSeq = 0;
   // History clicks can happen immediately after `done`; wait for that
   // snapshot request before restoring another record so the latest SOP is
   // never replaced by a stale server copy.
@@ -1053,6 +1086,7 @@ export function bootWorkbenchRuntime() {
 
   function toolPreview(name, input) {
     if (!input) return "";
+    if (name === "Ontology-FactQuery") return factQueryPreview(input);
     if (input.query)  return `"${shorten(input.query, 80)}"`;
     if (input.term)   return `"${shorten(input.term, 80)}"`;
     if (input.metric) return `"${shorten(input.metric, 80)}"`;
@@ -1062,6 +1096,28 @@ export function bootWorkbenchRuntime() {
     const keys = Object.keys(input);
     if (keys.length === 0) return "(no args)";
     return shorten(JSON.stringify(input), 100);
+  }
+
+  // Rewrite restored Ontology-FactQuery card/step previews from the saved
+  // input JSON so history sessions use the same Chinese query-goal summary
+  // as live turns.  The saved DOM still contains the full original input
+  // (including the SQL) in the expanded body; only the first line changes.
+  function normalizeFactQueryPreviews(container) {
+    if (!container) return;
+    container.querySelectorAll(".step, .tool-card").forEach((node) => {
+      const nameEl = node.querySelector(".step-name, .tool-name");
+      if (!nameEl || nameEl.textContent.trim() !== "Ontology-FactQuery") return;
+      const summaryEl = node.querySelector(".step-summary, .tool-preview");
+      const inputEl = node.querySelector(".tool-io-input .tool-io-content");
+      if (!summaryEl || !inputEl) return;
+      let input = null;
+      try {
+        input = JSON.parse(inputEl.textContent);
+      } catch (_) {
+        return;
+      }
+      summaryEl.textContent = factQueryPreview(input);
+    });
   }
 
   // ------------------------------------------------------------------
@@ -1225,6 +1281,10 @@ export function bootWorkbenchRuntime() {
           // checklist.
           sop_steps: mode === "data" ? (b.todos || []) : [],
           source_config: activeSourceConfig || {},
+          // Concurrency stamps from the last `done`; the server rejects saves
+          // whose generation no longer matches the session slot.
+          turn_id: b.lastDoneTurnId || null,
+          generation: b.lastDoneGeneration != null ? b.lastDoneGeneration : null,
         }),
       });
       if (r.ok) {
@@ -1386,6 +1446,7 @@ export function bootWorkbenchRuntime() {
     if (token !== historyRestoreSequence || state.mode !== mode) return;
     const bucket = buckets[mode];
     if (assets.chat_html) el.chatScroll.innerHTML = assets.chat_html;
+    normalizeFactQueryPreviews(el.chatScroll);
     if (assets.dashboard_html) el.dashboardList.innerHTML = assets.dashboard_html;
     moveRestoredInteractiveCardsToChat();
     bucket.exportTurns = dedupeExportCards();
@@ -1401,6 +1462,7 @@ export function bootWorkbenchRuntime() {
     bucket.dashboardHasContent = !!el.dashboardList.querySelector(".dash-card");
     bucket.todos = mode === "data" ? normalizeRestoredSop(assets.sop_steps, bucket.hasContent) : [];
     bucket.sopStep = sopStepFromTodos(bucket.todos);
+    bucket.sopVisited = visitedFromTodos(bucket.todos);
     renderTodoPanel();
     if (bucket.questions.length) setActiveQuestion(bucket.questions[0].turn);
     updateDashboardCount();
@@ -1423,6 +1485,7 @@ export function bootWorkbenchRuntime() {
       try {
         el.ontologyList.innerHTML = assets.ontology_html || "";
         el.toolList.innerHTML = assets.tools_html || "";
+        normalizeFactQueryPreviews(el.toolList);
         el.llmList.innerHTML = assets.llm_html || "";
         bucket.ontologyByCode.clear();
         el.ontologyList.querySelectorAll(".entity-card[data-code]").forEach((card) => {
@@ -2067,7 +2130,7 @@ export function bootWorkbenchRuntime() {
       "请逐步取数,并把报表内容以表格和图表输出到看板。\n\n" +
       "[报表配置]\n" + cfg + "\n\n" +
       "[执行要求]\n" +
-      "① 先用本体(MetricLookup / TermDisambiguate)核对指标口径,再用 SQL 逐项取数," +
+      "① 先用本体(MetricCalculation / Ontology-TermDisambiguate)核对指标口径,再用 SQL 逐项取数," +
       "并展示关键取数步骤;\n" +
       "② 按「报表模板」用 TableGenerate 输出报表主体表格(含对比基期);\n" +
       "③ 按「配图」清单用 ChartGenerate 逐张输出对应图表;\n" +
@@ -2199,7 +2262,7 @@ export function bootWorkbenchRuntime() {
   // PUT /api/sources re-binds the BI tools and resets sessions.
   // ------------------------------------------------------------------
   // Sentinel value for the Doris read-only API pseudo-source (mirrors the
-  // backend DORIS_SOURCE_VALUE). Selecting it routes SQLRun/ListTables/
+  // backend DORIS_SOURCE_VALUE). Selecting it routes Ontology-FactQuery/ListTables/
   // DescribeTable through POST {base}/agent/doris/query.
   const DORIS_SOURCE_VALUE = "__doris_api__";
   const PRODUCTION_ONTOLOGY_VALUE = "__metaerp_ontology__";
@@ -2557,8 +2620,8 @@ export function bootWorkbenchRuntime() {
     if (!a) return;
     const toolsList = state.mode === "report"
       ? (state.report.withDb
-          ? ["OntologyQuery", "TermDisambiguate", "MetricLookup", "RelationLookup",
-             "EntityDescribe", "ListBusinessObjects", "MetricDataQuery", "SQLRun", "ListTables",
+          ? ["Ontology-SemanticQuery", "Ontology-TermDisambiguate", "MetricCalculation", "Ontology-RelationQuery",
+             "Ontology-EntityDescribe", "ListBusinessObjects", "Ontology-MetricQuery", "Ontology-FactQuery", "ListTables",
              "DescribeTable", "ChartGenerate", "TableGenerate", "AskUser"]
           : ["ChartGenerate", "TableGenerate", "AskUser"])
       : (a.tools || []);
@@ -2824,6 +2887,16 @@ export function bootWorkbenchRuntime() {
 
   function startAssistantMessage(iteration) {
     const bucket = B();
+    // When the backend discards a buffered candidate (claim validation or
+    // render enforcement), the previous iteration never receives text_delta,
+    // so its placeholder bubble would otherwise survive as an empty ghost.
+    // Remove it only when it carries no text, cards, steps or choice.
+    const prevBlock = bucket.currentExecutionBlock;
+    if (prevBlock && !bucket.currentAssistantText &&
+        !prevBlock.querySelector(".antd-step-timeline .step, .chart-card, .table-card, .multidim-card, .choice-card")) {
+      prevBlock.remove();
+      if (bucket.stepTimelineEl?.isConnected === false) bucket.stepTimelineEl = null;
+    }
     const block = el_h("div", "assistant-execution-block");
     const msg = el_h("div", "msg msg-assistant");
     msg.innerHTML = `
@@ -2947,6 +3020,29 @@ export function bootWorkbenchRuntime() {
       bucket.currentAssistantEl.innerHTML = renderMarkdown(trimmed);
     } else {
       bucket.currentAssistantEl.innerHTML = "";
+    }
+  }
+
+  // Terminal cleanup shared by done / error / session_superseded /
+  // stream_interrupted.  No loading placeholder may survive a finished,
+  // failed, superseded or interrupted turn: the streaming caret, the initial
+  // "思考中…" line and the step-timeline thinking row are removed, and an
+  // assistant execution block that carries no text, no tool steps and
+  // no result cards is dropped entirely.  Blocks holding real text, steps,
+  // charts, tables, multi-dim cards or choice cards are never touched.
+  function cleanupTurnLoadingUI() {
+    const bucket = B();
+    bucket.currentAssistantEl?.querySelectorAll?.(".thinking-line, .cursor")
+      .forEach((node) => node.remove());
+    clearStepThinking();
+    const block = bucket.currentExecutionBlock;
+    if (block && !bucket.currentAssistantText &&
+        !block.querySelector(
+          ".msg-body > *:not(.thinking-line):not(.cursor), " +
+          ".antd-step-timeline .step, .chart-card, .table-card, .multidim-card, .choice-card")) {
+      block.remove();
+      bucket.currentExecutionBlock = null;
+      bucket.currentAssistantEl = null;
     }
   }
 
@@ -3183,6 +3279,7 @@ export function bootWorkbenchRuntime() {
     setBusy(true);
 
     const url = state.mode === "report" ? "/api/report/choice" : "/api/choice";
+    const mySeq = ++streamSeq;
     let resp;
     try {
       resp = await fetch(url, {
@@ -3201,7 +3298,17 @@ export function bootWorkbenchRuntime() {
     }
     if (!resp.ok || !resp.body) {
       const errText = await resp.text().catch(() => resp.statusText);
-      onEvent({ type: "error", message: `HTTP ${resp.status}: ${errText}` });
+      let errBody = null;
+      try { errBody = JSON.parse(errText); } catch (_) { /* non-JSON */ }
+      const errCode = (errBody && (errBody.error && errBody.error.code)) || (errBody && errBody.code);
+      const retryAfter = resp.headers.get("Retry-After") || (errBody && errBody.retry_after) || 1;
+      if (resp.status === 409 && errCode === "SESSION_BUSY") {
+        uploadStatus("当前会话仍在生成，请等待完成或取消", "error");
+      } else if (resp.status === 429 && errCode) {
+        uploadStatus(`服务繁忙，请 ${retryAfter} 秒后重试`, "error");
+      } else {
+        onEvent({ type: "error", message: `HTTP ${resp.status}: ${errText}` });
+      }
       card.classList.remove("submitting");
       card.querySelectorAll(".choice-check").forEach(c => { c.disabled = false; });
       if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = "确定"; }
@@ -3212,7 +3319,7 @@ export function bootWorkbenchRuntime() {
     // The choice endpoint accepted the selection. Mark the card immediately;
     // the following SSE stream is the agent continuation, not a pending card.
     markChoiceResolved(card.dataset.toolUseId, labels);
-    await streamResponse(resp);
+    await streamResponse(resp, mySeq);
   }
 
   function attachChatChart(chart) {
@@ -3710,7 +3817,9 @@ export function bootWorkbenchRuntime() {
     "行动建议", "管理建议", "建议雏形", "执行建议",
     "决策建议", "决策与建议", "改进建议", "处置建议",
     "下一步行动", "行动方案", "建议",
-    "关键数据", "口径说明", "附图", "分析提醒", "跨维洞察",
+    "关键数据", "口径说明", "口径说明与限制披露", "限制披露",
+    "冲突披露", "数据限制", "证据限制", "风险与限制",
+    "附图", "分析提醒", "跨维洞察",
   ];
 
   // Strip leading list / quote / heading / bold decoration from a line so
@@ -3865,7 +3974,7 @@ export function bootWorkbenchRuntime() {
     ]);
   }
 
-  // These are output-section markers used only to advance the six-step SOP;
+  // These are output-section markers used only to advance the analysis SOP;
   // intent classification remains a backend/Agent responsibility.
   const ANALYSIS_SECTION_MARKERS = [
     "问题定位", "根因分析", "根因证据链", "行动建议", "管理建议",
@@ -4344,9 +4453,13 @@ export function bootWorkbenchRuntime() {
   function hydrateRestoredChat() {
     if (!el.chatScroll) return;
     // Older snapshots may have been saved between a final text delta and the
-    // terminal event. Remove their transient streaming carets before mounting
-    // the restored Ant Design surfaces.
-    el.chatScroll.querySelectorAll(".cursor").forEach((cursor) => cursor.remove());
+    // terminal event. Remove all transient loading affordances — streaming
+    // caret, "思考中…" bubble row and step-timeline thinking row — before
+    // mounting the restored Ant Design surfaces, so a restored finished
+    // conversation never shows a flashing card. Real text, steps, charts,
+    // tables and cards are untouched.
+    el.chatScroll.querySelectorAll(".cursor, .thinking-line, .antd-step-thinking")
+      .forEach((node) => node.remove());
     // Restored chat is inserted with innerHTML, so the React ThoughtChain
     // root and the click handlers from a live tool result are not present.
     // Mount the same result component used by live SSE events. mountStep()
@@ -4355,6 +4468,10 @@ export function bootWorkbenchRuntime() {
     if (window.antdNormalizeStepTimelines) {
       window.antdNormalizeStepTimelines(el.chatScroll);
     }
+    // A timeline left without any step is a transient placeholder — drop it.
+    el.chatScroll.querySelectorAll(".antd-step-timeline").forEach((timeline) => {
+      if (!timeline.querySelector(":scope > .step")) timeline.remove();
+    });
     el.chatScroll.querySelectorAll(".step").forEach((step) => {
       if (window.antdStepMount) window.antdStepMount(step);
       const head = step.querySelector(":scope > .step-header");
@@ -4407,15 +4524,8 @@ export function bootWorkbenchRuntime() {
         node.addEventListener(event, handler.bind(null, node));
       });
     };
-    bind(el.ontologyList, ".entity-card .entity-head", "click", (head) => {
-      head.closest(".entity-card").classList.toggle("open");
-    });
     bind(el.toolList, ".tool-card .tool-head", "click", (head) => {
       head.closest(".tool-card").classList.toggle("open");
-    });
-    bind(el.toolList, ".tool-card .chip", "click", (chip, ev) => {
-      ev.stopPropagation();
-      flashOntologyEntity(chip.dataset.code, chip.dataset.entityKey);
     });
     bind(el.llmList, ".llm-card .llm-head", "click", (head) => {
       head.closest(".llm-card").classList.toggle("open");
@@ -4544,60 +4654,63 @@ export function bootWorkbenchRuntime() {
   }
 
   // ------------------------------------------------------------------
-  // Pinned task list — pinned above the chat scroll (#chat-todo). Driven
-  // automatically from the six-step SOP (not from the model), so it always
-  // reflects real progress even when the model never calls a todo tool:
-  //   ① 识别意图 → ② 准备口径/上下文 → ③ 规划取数 → ④ 执行取数 →
-  //   ⑤ 深度分析 → ⑥ 汇总交付(结论+图表)
-  // A forward-only `sopStep` cursor advances on tool/marker signals; all
-  // steps before it read completed, the cursor reads in_progress, the rest
-  // pending. The whole list is seeded fresh at the start of each user turn.
+  // 6-step analysis SOP — a real state machine (pure logic in sopMachine.js).
+  // The six main steps are fixed and only their status is displayed; the
+  // per-step action `detail` drives state transitions but is not rendered.
+  // Steps can move forward, backward (06→03 / 05→04 replans) and loop
+  // repeatedly.  A terminal backend `done` event converts visited steps to
+  // completed and unvisited steps to skipped (never green); error /
+  // session_superseded / awaiting-user-choice never complete anything.
   // ------------------------------------------------------------------
-  const TODO_BOX = { pending: "○", in_progress: "◔", completed: "✔" };
-  const SOP_STEPS = [
-    "识别意图",
-    "准备口径与上下文",
-    "规划取数方案",
-    "执行查询取数",
-    "深度分析",
-    "汇总交付(结论 + 图表)",
-  ];
-  // Tool → the SOP step it proves we've reached (forward-fill marks earlier
-  // steps done). Planning (idx 2) has no tool — SQLRun jumps to idx 3 and
-  // forward-fill completes it.
-  const SOP_TOOL_STEP = {
-    OntologyQuery: 1, TermDisambiguate: 1, MetricLookup: 1, RelationLookup: 1,
-    EntityDescribe: 1, ListBusinessObjects: 1, ListTables: 1, DescribeTable: 1,
-    SQLRun: 3,
-    TableGenerate: 5, ChartGenerate: 5, ChartGenerateMultiDim: 5,
+  const TODO_BOX = { pending: "○", in_progress: "◔", completed: "✔", skipped: "–" };
+  // 0-based indices into SOP_STEPS (01 意图识别 .. 06 决策行动).
+  const SOP_INTENT = 0;
+  const SOP_ONTOLOGY = 1;
+  const SOP_PLANNING = 2;
+  const SOP_QUERY = 3;
+  const SOP_ROOTCAUSE = 4;
+  const SOP_DECISION = 5;
+  const SOP_DATA_QUERY_TOOLS = new Set(["Ontology-FactQuery", "Ontology-MetricQuery"]);
+  // Tool → (SOP step, detail).  Query tools are handled separately because
+  // they own the planning/execute/result cycle.
+  const SOP_TOOL_DETAIL = {
+    "Ontology-SemanticQuery": { step: SOP_ONTOLOGY, detail: "本体语义匹配" },
+    "Ontology-TermDisambiguate": { step: SOP_ONTOLOGY, detail: "术语匹配" },
+    MetricCalculation: { step: SOP_ONTOLOGY, detail: "指标匹配" },
+    "Ontology-GraphContext": { step: SOP_ONTOLOGY, detail: "加载 Ontology 对象模型" },
+    "Ontology-EntityDescribe": { step: SOP_ONTOLOGY, detail: "加载 Ontology 对象模型" },
+    ListBusinessObjects: { step: SOP_ONTOLOGY, detail: "加载 Ontology 对象模型" },
+    "Ontology-GraphExpand": { step: SOP_ONTOLOGY, detail: "加载业务流程与规则" },
+    "Ontology-RelationQuery": { step: SOP_ONTOLOGY, detail: "加载业务流程与规则" },
+    ListTables: { step: SOP_QUERY, detail: "读取数据表结构" },
+    DescribeTable: { step: SOP_QUERY, detail: "读取数据表结构" },
+    TableGenerate: { step: SOP_QUERY, detail: "生成数据表格" },
+    ChartGenerate: { step: SOP_QUERY, detail: "生成图表" },
+    ChartGenerateMultiDim: { step: SOP_QUERY, detail: "生成图表" },
   };
+  // Step-05 / step-06 transitions come from structured backend
+  // `sop_progress` events only (root-cause work is detected backend-side from
+  // the real narrative).  The frontend never fabricates a root-cause step by
+  // scanning text.
 
   function normalizeRestoredSop(snapshot, hasContent) {
-    const source = Array.isArray(snapshot) ? snapshot : [];
-    // A legacy snapshot has no SOP field. Its transcript was saved only at a
-    // terminal `done`, therefore all steps represent the last completed task.
-    if (!source.length) {
-      return hasContent ? SOP_STEPS.map((content) => ({ content, status: "completed" })) : [];
-    }
-    return SOP_STEPS.map((content, index) => {
-      const item = source[index] || {};
-      const status = ["completed", "in_progress", "pending"].includes(item.status)
-        ? item.status : "pending";
-      return { content: String(item.content || content), status };
-    });
+    return migrateLegacySop(snapshot, hasContent);
   }
 
   function sopStepFromTodos(todos) {
-    const firstOpen = (todos || []).findIndex((item) => item?.status !== "completed");
-    return firstOpen < 0 ? SOP_STEPS.length : firstOpen;
+    return currentStepOf(todos);
   }
 
-  // Seed a fresh SOP checklist at the start of a user turn (data mode only).
+  // Seed a fresh 6-step SOP checklist at the start of a user turn (data mode
+  // only).  The first step is in_progress with the real starting action.
   function initSopTodos() {
     const bucket = B();
     bucket.sopStep = 0;
-    bucket.todos = SOP_STEPS.map((label, i) => ({
-      content: label, status: i === 0 ? "in_progress" : "pending",
+    bucket.sopVisited = [0];
+    bucket.todos = SOP_STEPS.map((content, i) => ({
+      content,
+      detail: i === 0 ? "用户问题解析" : "",
+      status: i === 0 ? "in_progress" : "pending",
     }));
     // The full SOP is the primary overview; keep the verbose question/task
     // list collapsed until the user explicitly opens it.
@@ -4605,32 +4718,66 @@ export function bootWorkbenchRuntime() {
     if (el.chatSop) el.chatSop.classList.add("collapsed");
     renderTodoPanel();
   }
-  function applySopStatuses() {
+
+  // Core state-machine entry.  `options.allowBackward` permits 6→3 / 5→4 /
+  // 5→3 replans; every transition recomputes all six statuses so a step
+  // behind the cursor is never left green and at most one step is
+  // in_progress.
+  function setSopStep(stepIndex, detail, options = {}) {
     const bucket = B();
-    const cur = bucket.sopStep || 0;
-    bucket.todos = (bucket.todos || []).map((t, i) => ({
-      content: t.content,
-      status: i < cur ? "completed" : (i === cur ? "in_progress" : "pending"),
-    }));
-  }
-  // Move the cursor forward to `stepIdx` (never backwards), re-render if moved.
-  function advanceSop(stepIdx) {
-    const bucket = B();
-    if (!bucket.todos || !bucket.todos.length) return;  // no active SOP list
-    if (typeof bucket.sopStep !== "number") bucket.sopStep = 0;
-    if (!(stepIdx > bucket.sopStep)) return;
-    bucket.sopStep = stepIdx;
-    applySopStatuses();
+    if (!bucket.todos || !bucket.todos.length) return;
+    const cur = Number.isInteger(bucket.sopStep) ? bucket.sopStep : 0;
+    const visited = Array.isArray(bucket.sopVisited) ? bucket.sopVisited : [cur];
+    const next = applySopStep(visited, cur, stepIndex, detail, options);
+    if (!next) return;
+    bucket.sopStep = next.step;
+    bucket.sopVisited = next.visited;
+    bucket.todos = next.todos;
     renderTodoPanel();
   }
-  function advanceSopForTool(name) {
-    const step = SOP_TOOL_STEP[name];
-    if (step != null) advanceSop(step);
+
+  function applySopStatuses() {
+    const bucket = B();
+    setSopStep(bucket.sopStep, null);
   }
-  function advanceSopForText(text) {
-    if (!text) return;
-    if (ANALYSIS_SECTION_MARKERS.some(m => text.includes(m))) advanceSop(4);  // 深度分析
-    if (extractConclusion(text)) advanceSop(5);                         // 交付
+
+  // Move the cursor forward to `stepIdx` (never backwards).
+  function advanceSop(stepIdx) {
+    setSopStep(stepIdx, null, { allowBackward: false });
+  }
+
+  // The analysis loop is allowed to move backwards: completed later steps
+  // become pending again so the UI shows a real re-plan instead of a
+  // pretend near-done state.
+  function rewindSopAnalysis(stepIdx) {
+    setSopStep(stepIdx, null, { allowBackward: true });
+  }
+
+  function advanceSopForTool(name, output) {
+    const bucket = B();
+    if (!bucket.todos || !bucket.todos.length) return;
+    if (SOP_DATA_QUERY_TOOLS.has(name)) {
+      const cur = Number.isInteger(bucket.sopStep) ? bucket.sopStep : 0;
+      const failed = typeof output === "string" && /^Error/i.test(output);
+      if (failed) {
+        setSopStep(SOP_QUERY, "查询失败，准备调整方案", { allowBackward: true });
+      } else if (cur === SOP_QUERY) {
+        setSopStep(SOP_QUERY, "解析查询结果");
+      } else {
+        // Fallback when no sop_progress event arrived: rebuild 03 → 04.
+        // A re-query from 05 根因分析 / 06 决策行动 rewinds visibly to 03.
+        if (cur >= SOP_ROOTCAUSE) {
+          setSopStep(SOP_PLANNING, "根据分析结果重新规划", { allowBackward: true });
+        }
+        if (bucket.sopStep !== SOP_PLANNING) {
+          setSopStep(SOP_PLANNING, name === "Ontology-FactQuery" ? "生成自主 SQL 方案" : "生成指标配置查询方案");
+        }
+        setSopStep(SOP_QUERY, name === "Ontology-FactQuery" ? "执行自主 SQL 查询" : "执行指标配置查询");
+      }
+      return;
+    }
+    const mapping = SOP_TOOL_DETAIL[name];
+    if (mapping) setSopStep(mapping.step, mapping.detail, { allowBackward: true });
   }
 
   function renderSopPanel(todos) {
@@ -4648,7 +4795,8 @@ export function bootWorkbenchRuntime() {
       return `<li class="chat-sop-item is-${esc(status)}">` +
         `<span class="chat-sop-node">${icon}</span>` +
         `<span class="chat-sop-index">${i + 1}</span>` +
-        `<span class="chat-sop-text">${esc((t && t.content) || SOP_STEPS[i] || "")}</span></li>`;
+        `<span class="chat-sop-text">${esc((t && t.content) || SOP_STEPS[i] || "")}</span>` +
+        `</li>`;
     }).join("");
   }
 
@@ -4716,16 +4864,23 @@ export function bootWorkbenchRuntime() {
   // whole SOP complete even when the model did not emit the optional 📌 marker;
   // this prevents a restored finished conversation from showing a blinking
   // last-step state or carrying an in-progress cursor into the next history.
+  // A terminal `done` event only means this turn finished successfully.  It
+  // never paints steps that were not actually executed as green: visited
+  // steps become `completed`, unvisited steps become `skipped` (non-green).
   function reconcileTodosOnCompletion() {
     const bucket = B();
     const todos = bucket.todos || [];
     if (!todos.length) return;
-    let changed = false;
-    bucket.todos = todos.map((t) => {
-      if (t && t.status !== "completed") { changed = true; return { ...t, status: "completed" }; }
-      return t;
+    const visited = Array.isArray(bucket.sopVisited) && bucket.sopVisited.length
+      ? bucket.sopVisited
+      : SOP_STEPS.map((_, i) => i);
+    const statuses = sopStatusesForDone(visited);
+    bucket.todos = SOP_STEPS.map((content, i) => {
+      const t = todos[i] || {};
+      return { content: t.content || content, detail: "", status: statuses[i] };
     });
-    if (changed) { bucket.sopStep = SOP_STEPS.length; renderTodoPanel(); }
+    bucket.sopStep = SOP_STEPS.length;
+    renderTodoPanel();
   }
 
   function pushChartToDashboard(chart) {
@@ -5378,6 +5533,114 @@ export function bootWorkbenchRuntime() {
     return [...(card?.classList || [])].find((name) => name !== "entity-card") || "ontology";
   }
 
+  let ontologyGraphModal = null;
+  let ontologyGraphRenderer = null;
+  let ontologyGraphEntity = null;
+
+  function ensureOntologyGraphModal() {
+    if (ontologyGraphModal) return ontologyGraphModal;
+    const host = el_h("div", "ontology-graph-modal");
+    host.hidden = true;
+    host.innerHTML = `
+      <div class="ontology-graph-backdrop" data-graph-close></div>
+      <section class="ontology-graph-dialog" role="dialog" aria-modal="true" aria-label="本体子图">
+        <header class="ontology-graph-header">
+          <div><strong class="ontology-graph-title">本体子图</strong><span class="ontology-graph-anchor"></span></div>
+          <button type="button" class="ontology-graph-close" data-graph-close aria-label="关闭">×</button>
+        </header>
+        <div class="ontology-graph-toolbar">
+          <button type="button" data-graph-strategy="context" class="active">子图检索</button>
+          <button type="button" data-graph-strategy="expand">关系扩散</button>
+          <button type="button" class="ontology-graph-layout active" aria-pressed="true" title="ForceAtlas2 是一种先进的力导向图布局">关系聚类可视化</button>
+          <button type="button" data-graph-relayout>重新布局</button>
+          <span class="ontology-graph-meta"></span>
+        </div>
+        <div class="ontology-graph-canvas"></div>
+        <div class="ontology-graph-status"></div>
+      </section>`;
+    document.body.appendChild(host);
+    host.querySelectorAll("[data-graph-close]").forEach((button) => button.addEventListener("click", closeOntologyGraphCard));
+    host.querySelectorAll("[data-graph-strategy]").forEach((button) => button.addEventListener("click", () => {
+      if (ontologyGraphEntity) void loadOntologyGraph(button.dataset.graphStrategy);
+    }));
+    host.querySelector("[data-graph-relayout]").addEventListener("click", () => ontologyGraphRenderer?.relayout?.());
+    ontologyGraphModal = host;
+    return host;
+  }
+
+  function closeOntologyGraphCard() {
+    ontologyGraphRenderer?.kill?.();
+    ontologyGraphRenderer = null;
+    if (ontologyGraphModal) ontologyGraphModal.hidden = true;
+  }
+
+  function normalizeOntologyEntity(entity) {
+    return {
+      code: entity?.code || "",
+      name: entity?.name || entity?.code || "",
+      type: entity?.type || entity?.kind || "",
+      repository_id: entity?.repository_id || "",
+      entity_key: entity?.entity_key || "",
+    };
+  }
+
+  async function openOntologyGraphCard(entity) {
+    const normalized = normalizeOntologyEntity(entity);
+    if (!normalized.code) return;
+    ontologyGraphEntity = normalized;
+    const modal = ensureOntologyGraphModal();
+    modal.hidden = false;
+    modal.querySelector(".ontology-graph-title").textContent = normalized.name || normalized.code;
+    modal.querySelector(".ontology-graph-anchor").textContent = ` ${normalized.code}`;
+    await loadOntologyGraph("context");
+  }
+
+  async function loadOntologyGraph(strategy) {
+    const modal = ensureOntologyGraphModal();
+    const status = modal.querySelector(".ontology-graph-status");
+    const canvas = modal.querySelector(".ontology-graph-canvas");
+    modal.querySelectorAll("[data-graph-strategy]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.graphStrategy === strategy);
+      button.disabled = true;
+    });
+    status.textContent = strategy === "expand" ? "正在展开上下游关系…" : "正在加载 Ontology-GraphContext…";
+    try {
+      const response = await fetch("/api/ontology/subgraph", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: clientSessionId,
+          code: ontologyGraphEntity.code,
+          type: ontologyGraphEntity.type,
+          repository_id: ontologyGraphEntity.repository_id,
+          strategy,
+        }),
+      });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => ({}));
+        throw new Error(failure.detail || `HTTP ${response.status}`);
+      }
+      const graph = await response.json();
+      ontologyGraphRenderer?.kill?.();
+      ontologyGraphRenderer = null;
+      canvas.replaceChildren();
+      ontologyGraphRenderer = createOntologySigmaRenderer(canvas, graph);
+      const nodes = graph.nodes || [];
+      const anchor = graph.anchor || {};
+      modal.querySelector(".ontology-graph-meta").textContent = `${nodes.length} 节点 · ${(graph.links || []).length} 关系 · 锚点 ${anchor.name || anchor.code || "-"}`;
+      status.textContent = graph.relations_available === false
+        ? `关系边不可用：${graph.relation_error || "当前仅展示关联节点"}`
+        : (graph.truncated ? "子图已达到节点上限，当前展示经过裁剪。" : "拖动节点、滚轮缩放；点击节点可高亮相邻关系。");
+    } catch (error) {
+      ontologyGraphRenderer?.kill?.();
+      ontologyGraphRenderer = null;
+      canvas.innerHTML = `<div class="ontology-graph-error">${esc(error?.message || String(error))}</div>`;
+      status.textContent = "本体子图加载失败。";
+    } finally {
+      modal.querySelectorAll("[data-graph-strategy]").forEach((button) => { button.disabled = false; });
+    }
+  }
+
   function applyOntologyFilters() {
     const bucket = B();
     if (el.ontologyList) {
@@ -5444,6 +5707,9 @@ export function bootWorkbenchRuntime() {
     card.dataset.code = entity.code;
     card.dataset.entityKey = entity.entity_key || "";
     card.dataset.source = entity.source || "";
+    card.dataset.kind = entity.kind || "";
+    card.dataset.repositoryId = entity.repository_id || "";
+    card.dataset.name = entity.name || "";
     const kindLabel = KIND_LABELS[entity.kind] || entity.kind.toUpperCase();
     card.innerHTML = `
       <div class="entity-head">
@@ -5453,14 +5719,54 @@ export function bootWorkbenchRuntime() {
         <span class="entity-chevron">›</span>
       </div>
       <div class="entity-body">${esc(entity.display || "")}</div>`;
-    card.querySelector(".entity-head").addEventListener("click", () => card.classList.toggle("open"));
     return card;
   }
 
+  function ontologyEntityForElement(node) {
+    const entityKey = node?.dataset?.entityKey || "";
+    const code = node?.dataset?.code || "";
+    const known = entityKey
+      ? B().ontologyByCode.get(entityKey)
+      : [...B().ontologyByCode.values()].find((entity) => entity.code === code);
+    if (known) return known;
+    const card = node?.closest?.(".entity-card");
+    return {
+      code: code || card?.dataset.code || "",
+      name: card?.dataset.name || card?.querySelector(".entity-name")?.textContent || code,
+      kind: card?.dataset.kind || ontologyCardKind(card),
+      repository_id: card?.dataset.repositoryId || "",
+      entity_key: entityKey || card?.dataset.entityKey || "",
+    };
+  }
+
+  // One delegated click contract covers live cards, restored history and cards
+  // inserted after source/tool updates. It is deliberately independent of the
+  // active retrieval mode and avoids per-node hydration gaps.
+  el.ontologyList?.addEventListener("click", (event) => {
+    const head = event.target.closest(".entity-card .entity-head");
+    if (!head) return;
+    void openOntologyGraphCard(ontologyEntityForElement(head.closest(".entity-card")));
+  });
+  el.toolList?.addEventListener("click", (event) => {
+    const chip = event.target.closest(".tool-card .chip[data-code]");
+    if (!chip) return;
+    event.stopPropagation();
+    void openOntologyGraphCard(ontologyEntityForElement(chip));
+  });
+
   el.chatScroll.addEventListener("click", (e) => {
+    const chip = e.target.closest(".step .chip[data-code]");
+    if (chip) {
+      e.stopPropagation();
+      void openOntologyGraphCard(ontologyEntityForElement(chip));
+      return;
+    }
     const ref = e.target.closest(".entity-ref");
     if (!ref) return;
-    flashOntologyEntity(ref.dataset.code, ref.dataset.entityKey);
+    const key = ref.dataset.entityKey || "";
+    const known = key ? B().ontologyByCode.get(key) : [...B().ontologyByCode.values()].find((entity) => entity.code === ref.dataset.code);
+    if (known) void openOntologyGraphCard(known);
+    else flashOntologyEntity(ref.dataset.code, key);
   });
 
   function flashOntologyEntity(code, entityKey = "") {
@@ -5513,9 +5819,6 @@ export function bootWorkbenchRuntime() {
         </div>` : ""}
       </div>`;
     card.querySelector(".tool-head").addEventListener("click", () => card.classList.toggle("open"));
-    card.querySelectorAll(".chip").forEach(ch => {
-      ch.addEventListener("click", () => flashOntologyEntity(ch.dataset.code, ch.dataset.entityKey));
-    });
     return card;
   }
 
@@ -5551,9 +5854,6 @@ export function bootWorkbenchRuntime() {
         ${chips ? `<div class="step-sub">命中的本体</div><div class="chip-row">${chips}</div>` : ""}
       </div>`;
     step.querySelector(".step-header").addEventListener("click", () => step.classList.toggle("open"));
-    step.querySelectorAll(".chip").forEach(ch => {
-      ch.addEventListener("click", (ev) => { ev.stopPropagation(); flashOntologyEntity(ch.dataset.code, ch.dataset.entityKey); });
-    });
     return step;
   }
 
@@ -5663,6 +5963,8 @@ export function bootWorkbenchRuntime() {
         startAssistantMessage(evt.iteration);
         break;
       case "llm_request":
+        // SOP transitions are driven by structured `sop_progress` events and
+        // tool results; an llm_request alone does not move the state machine.
         newLlmTurn(evt);
         break;
       case "text_delta":
@@ -5671,6 +5973,14 @@ export function bootWorkbenchRuntime() {
       case "tool_start":
       case "tool_input":
         break;
+      case "sop_progress": {
+        // Structured backend SOP event (1-based step).  Turn isolation is
+        // handled upstream in streamResponse (stale turns never reach here).
+        const step = Number(evt.step);
+        if (!Number.isInteger(step) || step < 1 || step > SOP_STEPS.length) break;
+        setSopStep(step - 1, evt.detail, { allowBackward: evt.allow_backward !== false });
+        break;
+      }
       case "tool_result": {
         const record = {
           id: evt.id,
@@ -5687,8 +5997,9 @@ export function bootWorkbenchRuntime() {
         const chatStep = buildChatStep(record);
         attachChatStep(chatStep);
         if (window.antdStepMount) window.antdStepMount(chatStep);
-        // Advance the pinned SOP checklist based on which tool just ran.
-        advanceSopForTool(record.name);
+        // Advance the pinned SOP checklist based on which tool just ran
+        // (output lets query tools report success vs failure detail).
+        advanceSopForTool(record.name, record.output);
         if (record.chart) {
           attachChatChart(record.chart);
           pushChartToDashboard(record.chart);
@@ -5740,8 +6051,11 @@ export function bootWorkbenchRuntime() {
           pushConclusionIfAny(evt.text);
           pushRootCauseIfAny(evt.text);
           pushActionsIfAny(evt.text);
-          // Advance the SOP checklist: 深度分析 markers → step ⑤, 📌结论 → 交付.
-          advanceSopForText(evt.text);
+          // A response with no tool calls is the first reliable client-side
+          // signal that the agent has left its analysis loop and is composing
+          // the user-facing delivery. The terminal `done` event below remains
+          // the only signal that marks the entire SOP completed.
+          if (!hasToolUses) setSopStep(SOP_DECISION, "组装最终报告");
           // Remember this turn delivered a conclusion — used at turn end to
           // reconcile the checklist to 100% (handles L1 turns that skip 深度分析).
           if (extractConclusion(evt.text)) B().concludedTurnTag = B().currentTurnTag || 1;
@@ -5769,8 +6083,10 @@ export function bootWorkbenchRuntime() {
         removeTurnResultCards(el.chatScroll, "dash-actions", turnTag);
         removeTurnResultCards(el.dashboardList, "dash-actions", turnTag);
         const card = structuredActionsCard(items, turnTag);
+        // Chat-only: the structured action card must never be appended to the
+        // dashboard (a DOM node can only have one parent, so a second append
+        // would silently move it out of the conversation column).
         appendChatActionCard(card);
-        appendDashboardCard(card);
         break;
       }
       case "action_repair": {
@@ -5818,12 +6134,70 @@ export function bootWorkbenchRuntime() {
         el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
         break;
       }
+      case "session_superseded": {
+        // A reset/restore/activate replaced this session while the turn was
+        // running. Stop UI updates, clear the streaming caret, release the
+        // composer and NEVER persist the interrupted turn as a completed
+        // answer (no saveCurrentConversation here).
+        if (evt.turn_id) {
+          const _supB = B();
+          _supB.turnLifecycle = recordFailure(_supB.turnLifecycle, evt.turn_id);
+        }
+        finalizeAssistantText();
+        cleanupTurnLoadingUI();
+        setBusy(false);
+        B().choiceContinuation = false;
+        const _supTip = el_h("div", "msg msg-system msg-enforce",
+          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-amber,#ff6d00); border-color: var(--accent-amber,#ff6d00);">SYSTEM · 会话已重建</span></div>
+           <div class="msg-body" style="color: var(--fg-1); border-left: 2px solid var(--accent-amber,#ff6d00); padding-left: 10px;">
+             上一轮生成已被重置/恢复操作中断,未保存为已完成回答。
+           </div>`);
+        el.chatScroll.appendChild(_supTip);
+        el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
+        break;
+      }
+      case "stream_interrupted": {
+        // EOF / network abort without an explicit backend terminal event.
+        // This is NOT success: partial text stays visible on the page, but
+        // the turn is not marked complete, the SOP is not reconciled, no
+        // export button is added, no save happens and nothing is retried.
+        if (evt.turn_id) {
+          const _intB = B();
+          _intB.turnLifecycle = recordFailure(_intB.turnLifecycle, evt.turn_id);
+        }
+        finalizeAssistantText();
+        cleanupTurnLoadingUI();
+        setBusy(false);
+        B().choiceContinuation = false;
+        const _intTip = el_h("div", "msg msg-system msg-enforce",
+          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-amber,#ff6d00); border-color: var(--accent-amber,#ff6d00);">SYSTEM · 生成中断</span></div>
+           <div class="msg-body" style="color: var(--fg-1); border-left: 2px solid var(--accent-amber,#ff6d00); padding-left: 10px;">
+             连接中断，本轮内容可能不完整，未保存为已完成回答。请重新发送问题。
+           </div>`);
+        el.chatScroll.appendChild(_intTip);
+        el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
+        break;
+      }
       case "done": {
         // A terminal event is authoritative even when the provider omitted a
         // separate llm_response event. Finalize the last assistant bubble
         // before saving so no streaming caret survives into history.
+        // A repeated `done` for the same turn must never re-run the success
+        // side effects (SOP reconcile, export button, save) a second time,
+        // and a late `done` after an error / interruption must never flip
+        // that turn into a success.
+        const _b = B();
+        if (evt.turn_id) {
+          const rec = recordDone(_b.turnLifecycle, evt.turn_id);
+          if (!rec.accepted) break;
+          _b.turnLifecycle = rec.state;
+          _b.lastDoneTurnId = evt.turn_id;
+        }
+        if (evt.generation !== undefined && evt.generation !== null) {
+          _b.lastDoneGeneration = evt.generation;
+        }
         finalizeAssistantText();
-        clearStepThinking();
+        cleanupTurnLoadingUI();
         setBusy(false);
         B().choiceContinuation = false;
         const _bk = B();
@@ -5844,8 +6218,12 @@ export function bootWorkbenchRuntime() {
         break;
       }
       case "error":
+        if (evt.turn_id) {
+          const _errB = B();
+          _errB.turnLifecycle = recordFailure(_errB.turnLifecycle, evt.turn_id);
+        }
         finalizeAssistantText();
-        clearStepThinking();
+        cleanupTurnLoadingUI();
         const errEl = el_h("div", "msg msg-error",
           `<div class="msg-header"><span class="msg-role" style="color: var(--accent-red); border-color: var(--accent-red);">ERROR</span></div>
            <div class="msg-body" style="color: var(--accent-red);">${esc(evt.message || "unknown")}</div>`);
@@ -5908,36 +6286,74 @@ export function bootWorkbenchRuntime() {
     const payloadText = quadPrefix ? `${quadPrefix}\n\n用户问: ${text}` : text;
 
     const url = state.mode === "report" ? "/api/report/chat" : "/api/chat";
+    const mySeq = ++streamSeq;
+    const myController = new AbortController();
+    activeRequestController = myController;
     let resp;
     try {
-      activeRequestController = new AbortController();
       resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: payloadText, visible_user_text: text, session_id: clientSessionId }),
-        signal: activeRequestController.signal,
+        signal: myController.signal,
       });
     } catch (err) {
       if (err && err.name === "AbortError") return;
       onEvent({ type: "error", message: `request failed: ${err.message || err}` });
       setBusy(false);
+      if (activeRequestController === myController) activeRequestController = null;
       return;
     }
     if (!resp.ok || !resp.body) {
       const errText = await resp.text().catch(() => resp.statusText);
-      onEvent({ type: "error", message: `HTTP ${resp.status}: ${errText}` });
+      let errBody = null;
+      try { errBody = JSON.parse(errText); } catch (_) { /* non-JSON */ }
+      const errCode = (errBody && (errBody.error && errBody.error.code)) || (errBody && errBody.code);
+      const retryAfter = resp.headers.get("Retry-After") || (errBody && errBody.retry_after) || 1;
+      if (resp.status === 409 && errCode === "SESSION_BUSY") {
+        uploadStatus("当前会话仍在生成，请等待完成或取消", "error");
+      } else if (resp.status === 429 && errCode) {
+        uploadStatus(`服务繁忙，请 ${retryAfter} 秒后重试`, "error");
+      } else {
+        onEvent({ type: "error", message: `HTTP ${resp.status}: ${errText}` });
+      }
+      // This request never became a running turn: drop its "思考中…"
+      // placeholder (no text, no tool cards yet) and restore the composer.
+      finalizeAssistantText();
+      cleanupTurnLoadingUI();
       setBusy(false);
+      if (activeRequestController === myController) activeRequestController = null;
       return;
     }
-    await streamResponse(resp);
-    activeRequestController = null;
+    try {
+      await streamResponse(resp, mySeq);
+    } catch (err) {
+      // Browser abort / disconnect mid-stream: never leave a busy composer.
+      // Only the latest request may surface the interruption; an aborted
+      // stream that was superseded by a newer request stays silent.
+      console.warn("stream interrupted", err);
+      if (mySeq === streamSeq) {
+        onEvent({ type: "stream_interrupted", message: err?.name || "stream interrupted" });
+      }
+    } finally {
+      if (activeRequestController === myController) activeRequestController = null;
+    }
   }
 
-  async function streamResponse(resp) {
+  async function streamResponse(resp, seq) {
     const reader = resp.body.getReader();
     const dec = new TextDecoder("utf-8");
     let buf = "";
     let sawTerminalEvent = false;
+    // A stream becomes stale when a newer request owns the UI (seq mismatch)
+    // or the backend moved to a different turn (turn_id mismatch).  Stale
+    // streams must stay silent: they can never emit done / error /
+    // stream_interrupted, otherwise an old request would clear the busy flag
+    // or the loading state of the newer request.
+    let stale = false;
+    // turn_id of the events this stream actually received. A stream may only
+    // paint while it is the latest request AND its turn_id still matches.
+    let myTurnId = null;
     const consumeChunk = (chunk) => {
       for (const line of chunk.split("\n")) {
         if (!line.startsWith("data:")) continue;
@@ -5945,7 +6361,16 @@ export function bootWorkbenchRuntime() {
         if (!payload) continue;
         try {
           const event = JSON.parse(payload);
-          if (event.type === "done" || event.type === "error") sawTerminalEvent = true;
+          if (event.turn_id) {
+            // A newer request owns the UI now — drop this stream entirely
+            // (its `done` must not clear the newer turn's busy state).
+            if (seq !== streamSeq) { stale = true; return; }
+            if (myTurnId === null) myTurnId = event.turn_id;
+            if (event.turn_id !== myTurnId) { stale = true; return; }  // stale turn — ignore
+          }
+          if (event.type === "done" || event.type === "error" || event.type === "session_superseded") {
+            sawTerminalEvent = true;
+          }
           onEvent(event);
         } catch (e) { console.warn("bad json", payload); }
       }
@@ -5953,12 +6378,29 @@ export function bootWorkbenchRuntime() {
     while (true) {
       const { value, done } = await reader.read();
       if (done) {
-        // The API emits a terminal event, but a proxy/browser can close an
-        // otherwise complete SSE response without the final blank separator.
-        // Do not leave the composer disabled or the SOP cursor blinking in
-        // that case: the stream has ended and the turn is no longer running.
+        // Flush the trailing buffer first: the last frame may contain a
+        // complete terminal event (done/error/superseded) that was never
+        // separated by the final blank line.  consumeChunk parses it and the
+        // event handler already ran the proper terminal path.
         if (buf.trim()) consumeChunk(buf);
-        if (!sawTerminalEvent) onEvent({ type: "done", stop_reason: "stream_closed" });
+        // A newer request may have started after the last event was consumed
+        // (e.g. between the final frame and this EOF), so re-check the
+        // sequence at EOF too — an old stream must never emit interrupted
+        // into the newer request's UI.
+        if (seq !== streamSeq) stale = true;
+        // EOF without an explicit backend terminal event is NOT success: the
+        // connection may have been cut by a proxy, the browser, a crashed
+        // backend or a truncated frame.  Never synthesise `done` — mark the
+        // turn interrupted (partial text stays, no save/SOP/export).  Stale
+        // streams stay completely silent.
+        const eofAction = classifyStreamEof({ stale, sawTerminal: sawTerminalEvent });
+        if (eofAction === "interrupted") {
+          onEvent({
+            type: "stream_interrupted",
+            turn_id: myTurnId || undefined,
+            message: "生成中断，内容可能不完整",
+          });
+        }
         break;
       }
       buf += dec.decode(value, { stream: true });
@@ -6001,6 +6443,9 @@ export function bootWorkbenchRuntime() {
     if (newMode === state.mode) return;
     if (state.busy) {
       if (activeRequestController) activeRequestController.abort();
+      // The aborted stream must never emit a terminal event into the newly
+      // activated mode, so mark it stale by advancing the request sequence.
+      streamSeq += 1;
       const resetUrl = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
       fetch(withClientSession(resetUrl), { method: "POST" }).catch(() => {});
       setBusy(false);
@@ -6351,11 +6796,15 @@ export function bootWorkbenchRuntime() {
     bucket.pendingCommands = [];
     bucket.todos = [];
     bucket.sopStep = 0;
+    bucket.sopVisited = [];
     bucket.restoreActivation = Promise.resolve();
     bucket.concludedTurnTag = 0;
     bucket.convId = null;   // detach from any saved 最近 record → next is fresh
     bucket.titleHint = null; // drop the restored-title anchor; next title is fresh
     bucket.firstUserQuestion = null;
+    bucket.lastDoneTurnId = null;
+    bucket.lastDoneGeneration = null;
+    bucket.turnLifecycle = resetTurnLifecycle(bucket.turnLifecycle);
     conversationDraftIds.delete(mode === "report" ? "report" : "data");
     // If this is the active mode, also clear visible DOM
     if (state.mode === mode) {

@@ -10,6 +10,7 @@ from typing import Any, Callable, Iterable
 from ..ontology.remote import OntologyApiError, RemoteOntologyClient
 from ..reliability import normalize_query_result, Provenance
 from ..ontology.remote_retriever import RemoteGraphRetriever
+from ..display_names import pick_display_name, is_valid_name, unique_aliases
 from .graph_tools import GRAPH_CONTEXT_SCHEMA, GRAPH_EXPAND_SCHEMA
 from .ontology_tools import (
     ENTITY_DESCRIBE_SCHEMA,
@@ -29,10 +30,10 @@ _CANDIDATE_TYPES = [
 ]
 
 METRIC_DATA_QUERY_SCHEMA: dict[str, Any] = {
-    "name": "MetricDataQuery",
+    "name": "Ontology-MetricQuery",
     "description": (
         "通过远程 analysis/data/query 按本体指标和维度进行聚合计算。"
-        "远程模式下应优先于手写 SQL；只有接口不支持或失败时才回退 SQLRun。"
+        "远程模式下应优先于手写 SQL；只有接口不支持或失败时才回退 Ontology-FactQuery。"
     ),
     "input_schema": {
         "type": "object",
@@ -359,6 +360,68 @@ def _metric_adapter(props: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _resolve_display_names(
+    client: RemoteOntologyClient,
+    codes: list[str],
+    type_name: str,
+) -> dict[str, str]:
+    """Best-effort ``{code: display_name}`` for metric/dimension codes.
+
+    Already-obtained ontology info is reused first (client-level caches); only
+    unresolved codes trigger a bounded, cached ``metadata_query`` lookup.  Any
+    lookup failure degrades to the original code — a missing name never blocks
+    the data query and never fabricates a name.
+    """
+    cache = getattr(client, "_display_name_cache", {})
+    now = time.monotonic()
+    ttl = float(getattr(client, "cache_ttl", 30.0))
+    result: dict[str, str] = {}
+    unresolved: list[str] = []
+    for code in codes:
+        entry = cache.get(code)
+        if entry and now - entry[0] <= ttl:
+            result[code] = entry[1]
+        else:
+            unresolved.append(code)
+
+    metadata_query = getattr(client, "metadata_query", None)
+    if unresolved and callable(metadata_query):
+        property_sets = (("code", "label", "name"), ("label", "name"))
+        for code in list(unresolved):
+            display = ""
+            for property_names in property_sets:
+                if display:
+                    break
+                analysis = {
+                    "vertex": [{
+                        "type": type_name,
+                        "label": type_name,
+                        "properties": [{"name": name, "label": name} for name in property_names],
+                    }],
+                }
+                common = {
+                    "filters": {"logic": "AND", "children": [
+                        {"type": type_name, "property": "code",
+                         "operator": {"code": "EQ", "type": "STRING"}, "value": code},
+                    ]},
+                    "pagination": {"pageNum": 1, "pageSize": 20},
+                }
+                try:
+                    meta_data = metadata_query(analysis, common)
+                except Exception:
+                    continue
+                for row in _walk_rows(meta_data):
+                    row_code = _text(_ci_get(row, "code", "identifierCode"))
+                    if row_code == code:
+                        candidate = pick_display_name(row)
+                        if candidate and candidate != code:
+                            display = candidate
+                            break
+            result[code] = display or code
+            cache[code] = (now, result[code])
+    client._display_name_cache = cache
+    return result
+
 def _format_metric(metric: dict[str, Any], dimensions: list[dict[str, Any]], dimension_source: str) -> str:
     label = metric["label"] or metric["name"] or metric["code"]
     lines = [f"[{metric['code'] or '?'}] {label} (Indicator)"]
@@ -388,17 +451,17 @@ def _make_query(client: RemoteOntologyClient) -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
         query = str(params.get("query") or "").strip()
         if not query:
-            return "OntologyQuery: empty query."
+            return "Ontology-SemanticQuery: empty query."
         try:
             matches = _candidate_results(client, query)
             if not matches:
-                return f"OntologyQuery: no remote matches for {query!r}."
+                return f"Ontology-SemanticQuery: no remote matches for {query!r}."
             limit = max(1, min(int(params.get("limit") or 10), 100))
-            return "# Remote OntologyQuery\n\n" + "\n\n".join(
+            return "# Remote Ontology-SemanticQuery\n\n" + "\n\n".join(
                 _format_object(kind, props) for kind, props in matches[:limit]
             )
         except OntologyApiError as exc:
-            return f"OntologyQuery remote error: {exc}"
+            return f"Ontology-SemanticQuery remote error: {exc}"
     return run
 
 
@@ -406,12 +469,12 @@ def _make_term(client: RemoteOntologyClient) -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
         term = str(params.get("term") or "").strip()
         if not term:
-            return "TermDisambiguate: empty term."
+            return "Ontology-TermDisambiguate: empty term."
         try:
             rows = _search_type(client, "Term", term, limit=20)
             return "\n\n".join(_format_object("Term", row) for row in rows) or f"No term matches {term!r}."
         except OntologyApiError as exc:
-            return f"TermDisambiguate remote error: {exc}"
+            return f"Ontology-TermDisambiguate remote error: {exc}"
     return run
 
 
@@ -419,7 +482,7 @@ def _make_metric(client: RemoteOntologyClient) -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
         query = str(params.get("metric") or "").strip()
         if not query:
-            return "MetricLookup: empty metric."
+            return "MetricCalculation: empty metric."
         try:
             # Indicator-only by design. Do not let unrelated object types win
             # simply because they share the same label or code fragment.
@@ -433,7 +496,7 @@ def _make_metric(client: RemoteOntologyClient) -> Executor:
                 rendered.append(_format_metric(metric, dimensions, source))
             return "\n\n".join(rendered)
         except OntologyApiError as exc:
-            return f"MetricLookup remote error: {exc}"
+            return f"MetricCalculation remote error: {exc}"
     return run
 
 
@@ -443,11 +506,11 @@ def _make_related(client: RemoteOntologyClient) -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
         entity = str(params.get("entity") or "").strip()
         if not entity:
-            return "RelationLookup: empty entity."
+            return "Ontology-RelationQuery: empty entity."
         try:
             return retriever.relation_bundle(_code_type(entity), entity, depth=2)
         except (OntologyApiError, ValueError) as exc:
-            return f"RelationLookup remote error: {exc}"
+            return f"Ontology-RelationQuery remote error: {exc}"
     return run
 
 
@@ -455,17 +518,17 @@ def _make_describe(client: RemoteOntologyClient) -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
         entity = str(params.get("entity") or "").strip()
         if not entity:
-            return "EntityDescribe: empty entity."
+            return "Ontology-EntityDescribe: empty entity."
         try:
             matches = _candidate_results(client, entity)
             if not matches:
-                return f"EntityDescribe: no remote match for {entity!r}."
+                return f"Ontology-EntityDescribe: no remote match for {entity!r}."
             kind, props = matches[0]
             code = _text(_ci_get(props, "code", "identifierCode", default=entity))
             related = client.find_related(kind, code, depth=1)
             return _format_object(kind, props) + "\n\n" + _related_text(related, "Attributes and relations")
         except OntologyApiError as exc:
-            return f"EntityDescribe remote error: {exc}"
+            return f"Ontology-EntityDescribe remote error: {exc}"
     return run
 
 
@@ -493,12 +556,12 @@ def _make_graph_context(client: RemoteOntologyClient) -> Executor:
         try:
             if not anchor:
                 if not query:
-                    return "GraphContext: provide query or anchor."
+                    return "Ontology-GraphContext: provide query or anchor."
                 matches = _graph_anchor_candidates(client, query)
                 if not matches:
-                    return f"GraphContext: no remote anchor for {query!r}."
+                    return f"Ontology-GraphContext: no remote anchor for {query!r}."
                 if len(matches) > 1:
-                    return "GraphContext: multiple candidates; specify anchor:\n" + "\n".join(
+                    return "Ontology-GraphContext: multiple candidates; specify anchor:\n" + "\n".join(
                         _format_object(kind, props).splitlines()[0] for kind, props in matches
                     )
                 type_name, props = matches[0]
@@ -507,10 +570,10 @@ def _make_graph_context(client: RemoteOntologyClient) -> Executor:
                 type_name = _code_type(anchor)
                 props = None
             if type_name not in {"BusinessObject", "Indicator"}:
-                return f"GraphContext: anchor [{anchor}] must be a BusinessObject or Indicator."
+                return f"Ontology-GraphContext: anchor [{anchor}] must be a BusinessObject or Indicator."
             return retriever.context_bundle(type_name, anchor, root_properties=props, depth=4)
         except (OntologyApiError, ValueError) as exc:
-            return f"GraphContext remote error: {exc}"
+            return f"Ontology-GraphContext remote error: {exc}"
     return run
 
 
@@ -520,14 +583,14 @@ def _make_graph_expand(client: RemoteOntologyClient) -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
         anchor = str(params.get("anchor") or "").strip()
         if not anchor:
-            return "GraphExpand: empty anchor."
+            return "Ontology-GraphExpand: empty anchor."
         try:
             type_name = _code_type(anchor)
             if type_name not in {"BusinessObject", "Indicator"}:
-                return f"GraphExpand: anchor [{anchor}] must be a BusinessObject or Indicator."
+                return f"Ontology-GraphExpand: anchor [{anchor}] must be a BusinessObject or Indicator."
             return retriever.expand(type_name, anchor, depth=5)
         except (OntologyApiError, ValueError) as exc:
-            return f"GraphExpand remote error: {exc}"
+            return f"Ontology-GraphExpand remote error: {exc}"
     return run
 
 
@@ -536,19 +599,50 @@ def _make_metric_data_query(client: RemoteOntologyClient) -> Executor:
         raw_codes = params.get("metric_codes") or []
         raw_dimensions = params.get("dimensions") or []
         if not isinstance(raw_codes, list) or not isinstance(raw_dimensions, list):
-            return "MetricDataQuery: metric_codes and dimensions must be arrays."
+            return "Ontology-MetricQuery: metric_codes and dimensions must be arrays."
         codes = [str(code).strip() for code in raw_codes if str(code).strip()]
         if not codes:
-            return "MetricDataQuery: metric_codes is empty."
+            return "Ontology-MetricQuery: metric_codes is empty."
         dimensions = [str(code).strip() for code in raw_dimensions if str(code).strip()]
         try:
             page_num = max(1, int(params.get("page_num") or 1))
             page_size = max(1, min(int(params.get("page_size") or 100), 500))
         except (TypeError, ValueError):
-            return "MetricDataQuery: page_num and page_size must be integers."
+            return "Ontology-MetricQuery: page_num and page_size must be integers."
+
+        # Resolve display names BEFORE building the analysis request so the
+        # remote alias uses a stable business name instead of the bare code.
+        metric_names = _resolve_display_names(client, codes, "Indicator")
+        dimension_names = _resolve_display_names(client, dimensions, "Dimension")
+        metric_aliases = unique_aliases(metric_names)
+        dimension_aliases = unique_aliases(dimension_names)
+        metrics_meta = [
+            {
+                "code": code,
+                "display_name": metric_names.get(code, code),
+                "alias": metric_aliases.get(code, code),
+                "kind": "metric",
+            }
+            for code in codes
+        ]
+        dimensions_meta = [
+            {
+                "code": code,
+                "display_name": dimension_names.get(code, code),
+                "alias": dimension_aliases.get(code, code),
+                "kind": "dimension",
+            }
+            for code in dimensions
+        ]
         analysis = {
-            "indicators": [{"identifierCode": code, "alias": code} for code in codes],
-            "dimensions": [{"identifierCode": code, "alias": code} for code in dimensions],
+            "indicators": [
+                {"identifierCode": code, "alias": metric_aliases.get(code, code)}
+                for code in codes
+            ],
+            "dimensions": [
+                {"identifierCode": code, "alias": dimension_aliases.get(code, code)}
+                for code in dimensions
+            ],
         }
         common: dict[str, Any] = {
             "pagination": {
@@ -565,22 +659,33 @@ def _make_metric_data_query(client: RemoteOntologyClient) -> Executor:
         cached_failure = getattr(client, "_data_query_failure", None)
         if cached_failure and now - cached_failure[0] <= ttl:
             return (
-                "MetricDataQuery remote error (recent endpoint failure): "
+                "Ontology-MetricQuery remote error (recent endpoint failure): "
                 + cached_failure[1]
-                + "\n请直接回退 SQLRun，稍后再重试语义查询。"
+                + "\n请直接回退 Ontology-FactQuery，稍后再重试语义查询。"
             )
         try:
             data = client.data_query(analysis, common)
             client._data_query_failure = None
             normalized = normalize_query_result(
                 data=data,
-                scope={"metric_codes": codes, "dimensions": dimensions,
-                       "filters": common.get("filters", {})},
-                semantic={"metrics": codes, "dimensions": dimensions},
+                scope={
+                    "metric_codes": codes,
+                    "metrics": metrics_meta,
+                    "dimensions": dimensions,
+                    "dimension_names": dimension_names,
+                    "dimensions_meta": dimensions_meta,
+                    "filters": common.get("filters", {}),
+                },
+                semantic={
+                    "metrics": codes,
+                    "dimensions": dimensions,
+                    "metric_names": metric_names,
+                    "dimension_names": dimension_names,
+                },
                 provenance=Provenance(source="remote", api="analysis/data/query",
                                       metric_code=",".join(codes)),
             )
-            return "# MetricDataQuery (analysis/data/query)\n\n" + json.dumps(
+            return "# Ontology-MetricQuery (analysis/data/query)\n\n" + json.dumps(
                 normalized.to_dict(), ensure_ascii=False, indent=2)
         except OntologyApiError as exc:
             message = str(exc)
@@ -590,8 +695,8 @@ def _make_metric_data_query(client: RemoteOntologyClient) -> Executor:
             if re.search(r"\bHTTP 5\d\d\b", message):
                 client._data_query_failure = (now, message)
             return (
-                "MetricDataQuery remote error: " + message
-                + "\n可在确认指标口径与物理映射后回退 SQLRun。"
+                "Ontology-MetricQuery remote error: " + message
+                + "\n可在确认指标口径与物理映射后回退 Ontology-FactQuery。"
             )
     return run
 

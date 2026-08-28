@@ -16,6 +16,7 @@ from typing import Any, Callable
 
 from ..paths import CHARTS_DIR, project_path
 from ..reliability import Measure, SemanticType, validate_chart_measures
+from ..display_names import normalize_chart_params
 
 Executor = Callable[[dict, str], str]
 ExecutorFactory = Callable[[], Executor]
@@ -51,7 +52,7 @@ CHART_GENERATE_SCHEMA = {
     "name": "ChartGenerate",
     "description": (
         "Render a chart for tabular data you already have in hand. Valid "
-        "sources: a SQLRun result set, a table extracted from an uploaded "
+        "sources: an Ontology-FactQuery result set, a table extracted from an uploaded "
         "report (PDF/DOCX Markdown tables), or a computation you performed "
         "over either. Use it when the data has more than one row/column "
         "worth visualizing — time series, dimension breakdowns, "
@@ -333,8 +334,12 @@ def _write_standalone_html(option: dict[str, Any], out_path: Path, title: str) -
     out_path.write_text(html, encoding="utf-8")
 
 
-def _make_chart_generate() -> Executor:
+def _make_chart_generate(
+    display_resolver: "Callable[[str], str | None] | None" = None,
+) -> Executor:
     def run(params: dict, cwd: str) -> str:
+        if display_resolver is not None:
+            params = normalize_chart_params(params, display_resolver)
         err = _validate(params)
         if err:
             return f"ChartGenerate rejected: {err}"

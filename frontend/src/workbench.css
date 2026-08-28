@@ -292,6 +292,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .chat-sop-item {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-height: 24px;
@@ -324,10 +325,20 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 .chat-sop-index { flex: 0 0 16px; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px; }
 .chat-sop-text { color: var(--fg-2); }
+.chat-sop-detail {
+  flex: 0 0 100%;
+  margin-left: 42px;
+  color: var(--fg-3);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.chat-sop-item.is-in_progress .chat-sop-detail { color: var(--accent-amber); }
 .chat-sop-item.is-in_progress .chat-sop-node { color: var(--accent-amber); }
 .chat-sop-item.is-in_progress .chat-sop-text { color: var(--fg-0); font-weight: 600; }
 .chat-sop-item.is-completed .chat-sop-node { color: var(--accent-green); }
 .chat-sop-item.is-completed .chat-sop-text { color: var(--fg-1); }
+.chat-sop-item.is-skipped .chat-sop-node { color: var(--fg-3); opacity: .55; }
+.chat-sop-item.is-skipped .chat-sop-text { color: var(--fg-3); text-decoration: line-through; }
 
 .chat-todo {
   flex-shrink: 0;
@@ -407,10 +418,12 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .chat-todo-item.is-pending     .chat-todo-box { color: var(--fg-3); }
 .chat-todo-item.is-in_progress .chat-todo-box { color: var(--accent-amber); }
 .chat-todo-item.is-completed   .chat-todo-box { color: var(--accent-green, #3fb950); }
+.chat-todo-item.is-skipped     .chat-todo-box { color: var(--fg-3); opacity: .55; }
 .chat-todo-text { color: var(--fg-1); }
 .chat-todo-item.is-pending   .chat-todo-text { color: var(--fg-2); }
 .chat-todo-item.is-completed .chat-todo-text { color: var(--fg-3); text-decoration: line-through; }
 .chat-todo-item.is-in_progress .chat-todo-text { color: var(--fg-0, #fff); font-weight: 600; }
+.chat-todo-item.is-skipped .chat-todo-text { color: var(--fg-3); text-decoration: line-through; }
 
 /* ---------- CHAT ---------- */
 .chat-scroll {
@@ -3935,8 +3948,13 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   padding: 8px 16px 0;
   color: #1f2329;
 }
+/* Product brand: name + compact version tag, both driven by the shared
+ * PRODUCT_NAME / PRODUCT_VERSION constants in main.jsx. */
 .antd-sidebar-brand strong { display: block; font-size: 16px; line-height: 20px; }
 .antd-sidebar-brand small { display: block; color: #86909c; font-size: 11px; line-height: 16px; }
+.antd-product-brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.antd-product-brand .antd-product-version { margin: 0; font-size: 11px; line-height: 16px; border-radius: 10px; }
+.sidebar-brand .brand-version { color: var(--accent-cyan); font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: 0.5px; }
 .antd-brand-mark { color: #1677ff; font-size: 18px; }
 .antd-agent-mark { color: #1677ff; width: 18px; height: 18px; flex: 0 0 18px; display: inline-flex; align-items: center; justify-content: center; }
 .antd-agent-mark svg { display: block; width: 18px; height: 18px; }
@@ -4325,7 +4343,18 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
 }
 .antd-workflow-sop .antd-sop-status-in_progress { color: #1677ff; }
 .antd-workflow-sop .antd-sop-status-pending { color: #b8c0cc; }
+.antd-workflow-sop .antd-sop-status-skipped { color: #9aa1ab; }
 .antd-workflow-sop .antd-sop-status-check {
+  font-size: 10px;
+  line-height: 10px;
+  width: auto;
+  height: auto;
+  padding: 0;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+.antd-workflow-sop .antd-sop-status-dash {
   font-size: 10px;
   line-height: 10px;
   width: auto;
@@ -4344,6 +4373,7 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
 }
 .antd-sop-status-in_progress { color: #1677ff; }
 .antd-sop-status-pending { color: #b8c0cc; }
+.antd-sop-status-skipped { color: #9aa1ab; }
 .antd-sop-status-check {
   display: block;
   color: #28a36a;
@@ -4351,10 +4381,62 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
   font-weight: 700;
   line-height: 16px;
 }
+.antd-sop-status-dash {
+  display: block;
+  width: 11px;
+  height: 11px;
+  line-height: 11px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #9aa1ab;
+}
 .antd-sop-title { font-weight: 600; }
+.antd-sop-title .antd-sop-detail {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: #8f9299;
+  margin-top: 2px;
+}
+.antd-sop-title.is-in_progress .antd-sop-detail { color: #1677ff; }
 .antd-sop-title.is-completed { color: #28a36a; }
 .antd-sop-title.is-in_progress { color: #1677ff; }
 .antd-sop-title.is-pending { color: #b8c0cc; }
+.antd-sop-title.is-skipped { color: #9aa1ab; text-decoration: line-through; }
+/* Static-only SOP statuses. AntD ThoughtChain's `pending` state is reserved
+   for in_progress (the only dynamic state); pending/skipped map to a custom
+   static `idle` item. Force every SOP/Workflow status marker to be static so
+   a finished conversation can never keep a spinner/pulse animation running.
+   Scoped to the two workflow roots; other loading UIs are untouched. */
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item .ant-thought-chain-item-icon,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .ant-thought-chain-item-title,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .antd-sop-status-circle,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .antd-sop-status-dash,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .antd-sop-status-check,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .antd-sop-title.is-pending,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop .antd-sop-title.is-skipped {
+  animation: none !important;
+}
+/* The custom `idle` item has no AntD-injected status colour, so keep its
+   marker surface plain and static in both workflow roots. */
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-idle"] .ant-thought-chain-item-icon {
+  background: #fff !important;
+  background-color: #fff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-idle"] > .ant-thought-chain-item-header::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-idle"] > .ant-thought-chain-item-content::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-idle"] > .ant-thought-chain-item-footer::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-idle"] .ant-thought-chain-item-icon::before,
+:is(#antd-workflow-root, #antd-dashboard-workflow-root) .antd-workflow-sop [class*="ant-thought-chain-item-idle"] .ant-thought-chain-item-icon::after {
+  content: none !important;
+  display: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
 .antd-workflow-panels .ant-list-header { padding: 5px 0; color: #86909c; font-size: 11px; }
 .antd-workflow-panels .ant-list-item { padding: 5px 0; gap: 6px; color: #4e5969; font-size: 12px; cursor: pointer; }
 .antd-workflow-todo .ant-list-items {
@@ -4536,6 +4618,32 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 18px;
+}
+
+/* Shared ontology subgraph card. The graph visual language (layer colours,
+ * roaming canvas and adjacency focus) is reused from ontology-agent. */
+.ontology-graph-modal { position: fixed; inset: 0; z-index: 10050; }
+.ontology-graph-modal[hidden] { display: none; }
+.ontology-graph-backdrop { position: absolute; inset: 0; background: rgba(15, 23, 42, .58); backdrop-filter: blur(2px); }
+.ontology-graph-dialog { position: absolute; inset: 5vh 5vw; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border, #dbe3ef); border-radius: 14px; background: var(--bg-1, #fff); box-shadow: 0 24px 80px rgba(15, 23, 42, .3); }
+.ontology-graph-header { display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 0 18px; border-bottom: 1px solid var(--border, #e2e8f0); }
+.ontology-graph-title { color: var(--fg-1, #0f172a); font-size: 16px; }
+.ontology-graph-anchor { margin-left: 8px; color: var(--fg-3, #64748b); font-family: var(--font-mono); }
+.ontology-graph-close { border: 0; background: transparent; color: var(--fg-2, #475569); font-size: 28px; cursor: pointer; }
+.ontology-graph-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-bottom: 1px solid var(--border, #e2e8f0); }
+.ontology-graph-toolbar button { border: 1px solid #cbd5e1; border-radius: 7px; padding: 6px 12px; background: #fff; color: #334155; cursor: pointer; }
+.ontology-graph-toolbar button.active { border-color: #2563eb; background: #eff6ff; color: #2563eb; font-weight: 600; }
+.ontology-graph-toolbar button:disabled { opacity: .55; cursor: wait; }
+.ontology-graph-toolbar .ontology-graph-layout { margin-left: 8px; border-color: #2563eb; background: #eff6ff; color: #2563eb; font-size: 12px; font-weight: 600; cursor: default; }
+.ontology-graph-meta { margin-left: auto; color: var(--fg-3, #64748b); font-size: 12px; }
+.ontology-graph-canvas { position: relative; flex: 1; min-height: 360px; overflow: hidden; background: radial-gradient(circle at center, rgba(37, 99, 235, .05), transparent 66%), #f8fafc; }
+.ontology-graph-canvas > canvas { position: absolute; inset: 0; }
+.ontology-graph-status { min-height: 38px; padding: 9px 18px; border-top: 1px solid var(--border, #e2e8f0); color: var(--fg-3, #64748b); font-size: 12px; }
+.ontology-graph-error { display: grid; height: 100%; place-items: center; color: #dc2626; }
+@media (max-width: 720px) {
+  .ontology-graph-dialog { inset: 2vh 2vw; }
+  .ontology-graph-toolbar { flex-wrap: wrap; }
+  .ontology-graph-meta { width: 100%; margin-left: 0; }
 }
 .antd-step-thinking::before {
   display: none;

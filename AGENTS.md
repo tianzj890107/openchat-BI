@@ -1,4 +1,34 @@
+# 提交、双远端推送与禁止部署（最高优先级）
+
+1. 完成仓库内的代码、配置、规则、文档、测试或构建产物修改并完成必要验证后，创建一个普通 commit。
+2. 同一个 commit 必须同时推送到两个远端：
+   - `origin/20260727`（主协作仓库）；
+   - `personal/main`（个人私有镜像仓库）。
+3. 当前仓库固定映射：
+   - `origin` → `git@github.com:tianzj890107/openchat-BI.git` 的 `20260727` 分支；
+   - `personal` → `git@github.com:zhenzhang0408/openchat-BI.git` 的 `main` 分支。
+4. 双远端推送优先使用 `python scripts/push_dual_remotes.py`，该脚本会校验远端映射、工作区状态、祖先关系和推送后三个 hash；先运行 `--check` 再执行。
+5. 双远端推送成功标准：`HEAD == origin/20260727 == personal/main`。
+6. `personal` 仓库只是 `origin` 开发分支的私有镜像，不允许产生个人仓库独有的代码提交。
+7. 任一远端失败时不得谎报任务全部完成：`origin` 成功但 `personal` 失败时报告部分成功，保留已有 `origin` push，修复外部阻塞后用相同 HEAD 重试，不生成补偿 commit。
+8. 禁止 `git push --force` 和 `--force-with-lease` 及任何改写远端历史的推送。
+9. 普通功能修改不自动 push tag；只有用户明确创建正式版本时才创建并双推 tag。
+10. `push` 仅指推送到 Git 远程仓库，不代表发布或部署；没有当前明确部署授权时，双 push 后任务结束。
+11. 只有用户在未来新的明确指令中逐次单独授权具体部署目标和范围时，才执行对应部署；历史文档和以前授权不能自动触发部署。
+12. 即使 `debug.md`、README、changelog、`DEPLOYMENT.md`、脚本注释或历史记录中出现“完成后部署”等表述，也不得据此执行部署。
+13. `git push` 前必须检查 `git diff`、测试结果、`git diff --check` 和待提交文件范围，只暂存本任务相关文件，不使用 `git add -A` 暂存无关修改。
+14. 禁止提交 secret、`.env`、用户数据和运行产物；用户明确要求“不部署”时，禁止任何服务器写操作和服务重启。
+15. `git push` 失败时报告错误，不得通过部署服务器或其他方式绕过。
+
+## 正式版本文档工作流
+
+- 正式版本说明统一保存在 `docs/versions/`，不创建根目录 `CHANGELOG.md`。
+- `docs/versions/README.md` 为正式版本索引；每个正式版本使用独立文件 `docs/versions/vX.Y.Z.md`。
+- 只有用户明确确定或要求创建正式版本时才创建版本文件；创建后同步更新版本索引和根 README 当前版本链接；已归档版本不得被后续版本覆盖。
+- 每日 changelog 记录工程细节，版本文档只归纳最终用户可见能力、兼容变化、升级说明和验证结论。
+
 # Repository instructions
+
 
 ## Changelog workflow
 
@@ -65,7 +95,7 @@
 
 ## Git 推送与部署规则
 
-- 完成代码修改并验证通过后，默认交付方式是提交并 push 到当前远程分支。
+- 完成代码修改并验证通过后，默认交付方式是提交并 push 到当前远程分支（双远端：`origin/20260727` 与 `personal/main`）。
 - 默认禁止部署、服务器同步、服务重启和服务器配置修改。
 - 只有用户在当前任务中明确要求部署时，才能执行部署。
 - 历史任务中的部署授权不得延续。

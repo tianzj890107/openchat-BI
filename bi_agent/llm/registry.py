@@ -16,18 +16,52 @@ import os
 from typing import Any, Optional
 
 
+# Verified against the deployed Team/LiteLLM gateway on 2026-08-26 with
+# minimal real requests.  These models accept the provider-specific thinking
+# control used by ``provider_team`` and return ``reasoning_content`` when it is
+# enabled.  Deployments may replace the list explicitly via
+# ``TEAM_THINKING_MODELS``; an empty value means no Team model is advertised.
+_VERIFIED_TEAM_THINKING_MODELS = frozenset({
+    "qwen3.5-397b-a17b",
+    "qwen3.7-plus",
+    "qwen3-vl-plus",
+    "qwen3.5-122b-a10b",
+    "qwen3-vl-flash",
+    "qwen3.8-2.4t-a95b",
+    "qwen3.8-27b",
+    "doubao-seed-2-1-turbo-260628",
+    "doubao-seed-2-1-pro-260628",
+    "direct-deepseek-v4-pro",
+    "direct-deepseek-v4-flash",
+    "deepseek-v4-flash-0731",
+})
+
+
+def _team_thinking_models() -> set[str]:
+    raw = os.environ.get("TEAM_THINKING_MODELS")
+    if raw is None:
+        return set(_VERIFIED_TEAM_THINKING_MODELS)
+    return {part.strip() for part in raw.split(",") if part.strip()}
+
+
+def team_model_supports_thinking(model_id: str) -> bool:
+    return str(model_id or "").strip() in _team_thinking_models()
+
+
 MODELS: list[dict[str, Any]] = [
     {
         "key": "team-configured",
         "label": "团队 API（环境配置） · " + (
-            os.environ.get("TEAM_MODEL") or "Qwen/Qwen3-80B-AWQ"
+            os.environ.get("TEAM_MODEL") or "direct-deepseek-v4-flash"
         ),
         "provider": "team",
-        "model_id": os.environ.get("TEAM_MODEL") or "Qwen/Qwen3-80B-AWQ",
+        "model_id": os.environ.get("TEAM_MODEL") or "direct-deepseek-v4-flash",
         "default_max_tokens": 8192,
         "default_temperature": 0.7,
         "max_output_tokens": 16384,
-        "supports_thinking": False,
+        "supports_thinking": team_model_supports_thinking(
+            os.environ.get("TEAM_MODEL") or "direct-deepseek-v4-flash"
+        ),
     },
     {
         "key": "opus4.7",
@@ -228,7 +262,7 @@ def _load_team_catalog_from_env() -> None:
             "default_max_tokens": 8192,
             "default_temperature": 0.7,
             "max_output_tokens": 16384,
-            "supports_thinking": False,
+            "supports_thinking": team_model_supports_thinking(model_id),
         })
         existing_ids.add(model_id)
 

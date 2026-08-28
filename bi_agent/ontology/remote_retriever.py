@@ -223,6 +223,102 @@ class RemoteGraphRetriever:
         reversed_steps.append((start, None, True))
         return list(reversed(reversed_steps))
 
+    def visual_subgraph(
+        self, type_name: str, code: str, *, strategy: str = "context",
+        max_nodes: int = 260,
+    ) -> dict[str, Any]:
+        """Return the GraphContext/GraphExpand neighborhood as graph JSON.
+
+        Unlike the LLM-facing renderers this is intentionally usable for any
+        ontology hit. Non-BO/Indicator nodes are promoted to their nearest
+        modeled Indicator or BusinessObject anchor while remaining the visual
+        focus. The result is read-only UI data and never depends on whether
+        graph retrieval tools are enabled for the active Agent.
+        """
+        mode = "expand" if str(strategy).lower() == "expand" else "context"
+        graph = self._graph(type_name, code, 5 if mode == "expand" else 4)
+        if code not in graph.nodes:
+            raise ValueError(f"ontology entity [{code}] was not found")
+
+        preferred = (
+            ("Indicator", "BusinessObject")
+            if type_name in {"Term", "Dimension"}
+            else ("BusinessObject", "Indicator")
+        )
+        candidates: list[tuple[int, int, str]] = []
+        for node in graph.nodes.values():
+            if node.type_name not in preferred:
+                continue
+            path = self._path(graph, code, node.code)
+            if path:
+                candidates.append((len(path), preferred.index(node.type_name), node.code))
+        anchor_code = min(candidates)[2] if candidates else code
+        anchor = graph.nodes[anchor_code]
+
+        if mode == "expand" and anchor_code != code:
+            self._merge(graph, self._graph(anchor.type_name, anchor_code, 5))
+
+        if mode == "context":
+            selected = self._context_codes(graph, anchor_code, max_depth=4, max_nodes=max_nodes)
+        else:
+            adjacency = self._adjacency(graph)
+            selected = {anchor_code}
+            queue: deque[str] = deque([anchor_code])
+            while queue and len(selected) < max_nodes:
+                current = queue.popleft()
+                for neighbor, _, _ in adjacency.get(current, []):
+                    if neighbor in selected:
+                        continue
+                    selected.add(neighbor)
+                    queue.append(neighbor)
+                    if len(selected) >= max_nodes:
+                        break
+        selected.add(code)
+        anchor_path = self._path(graph, code, anchor_code)
+        selected.update(step[0] for step in anchor_path)
+
+        nodes = []
+        for node_code in sorted(selected):
+            node = graph.nodes.get(node_code)
+            if node is None:
+                continue
+            nodes.append({
+                "id": node.code,
+                "code": node.code,
+                "name": node.label or node.code,
+                "type": node.type_name,
+                "properties": node.properties,
+                "focus": node.code == code,
+                "anchor": node.code == anchor_code,
+            })
+        visible = {node["id"] for node in nodes}
+        links = []
+        for index, edge in enumerate(graph.edges):
+            if edge.source not in visible or edge.target not in visible:
+                continue
+            links.append({
+                "id": f"{edge.relation}:{edge.source}->{edge.target}:{index}",
+                "source": edge.source,
+                "target": edge.target,
+                "relationType": edge.relation,
+                "directed": not edge.synthetic,
+                "synthetic": edge.synthetic,
+                "properties": edge.properties,
+            })
+        return {
+            "strategy": mode,
+            "focus": {"type": type_name, "code": code},
+            "anchor": {
+                "type": anchor.type_name, "code": anchor.code,
+                "name": anchor.label or anchor.code,
+            },
+            "nodes": nodes,
+            "links": links,
+            "relations_available": graph.relations_available,
+            "relation_error": graph.relation_error,
+            "truncated": len(selected) >= max_nodes,
+        }
+
     def _render_node(self, node: RemoteNode, *, details: bool = True) -> list[str]:
         lines = [node.one_line()]
         if not details:
@@ -398,7 +494,7 @@ class RemoteGraphRetriever:
         return "\n".join(lines)
 
     def relation_bundle(self, type_name: str, code: str, *, depth: int = 2) -> str:
-        """Return edge-aware relations for semantic ``RelationLookup`` use."""
+        """Return edge-aware relations for semantic ``Ontology-RelationQuery`` use."""
 
         graph = self._graph(type_name, code, max(1, min(depth, 5)))
         root = graph.nodes[code]
@@ -457,8 +553,8 @@ class RemoteGraphRetriever:
         start = graph.nodes.get(start_code)
         if start is None or start.type_name != "BusinessObject":
             return (
-                f"GraphExpand: [{code}] 无法通过远程关系图定位所属业务对象。"
-                "请先用 GraphContext 或 OntologyQuery 确认业务对象锚点。"
+                f"Ontology-GraphExpand: [{code}] 无法通过远程关系图定位所属业务对象。"
+                "请先用 Ontology-GraphContext 或 Ontology-SemanticQuery 确认业务对象锚点。"
             )
 
         related: list[tuple[int, RemoteNode, list[tuple[str, Optional[RemoteEdge], bool]]]] = []

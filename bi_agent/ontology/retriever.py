@@ -176,9 +176,9 @@ class GraphRetriever:
         elif (kind == "indicator") or (not kind and anchor_code in s.metrics):
             self._metric_subtree(anchor_code, seen, lines)
         else:
-            return f"GraphContext: 锚点 {anchor_code!r} 不是已知的业务对象或指标编码。"
+            return f"Ontology-GraphContext: 锚点 {anchor_code!r} 不是已知的业务对象或指标编码。"
         if not lines:
-            return f"GraphContext: 锚点 {anchor_code!r} 无可用上下文。"
+            return f"Ontology-GraphContext: 锚点 {anchor_code!r} 无可用上下文。"
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
@@ -201,7 +201,7 @@ class GraphRetriever:
             mbo = self._bo_of_metric(anchor_code)
             bo = s.business_objects.get(mbo) if mbo else None
         if not bo:
-            return f"GraphExpand: 锚点 {anchor_code!r} 不是业务对象(或无法定位其业务对象)。"
+            return f"Ontology-GraphExpand: 锚点 {anchor_code!r} 不是业务对象(或无法定位其业务对象)。"
 
         lines: list[str] = [f"# 图库扩散探索 · 锚点 [{bo.code}] {bo.name}"]
         related_bos: list[str] = []
