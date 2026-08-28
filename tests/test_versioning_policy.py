@@ -87,12 +87,14 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertEqual(names, allowed)
         self.assertFalse((versions_dir / "v0.1.1.md").exists())
 
-    def test_no_git_tags_created(self) -> None:
+    def test_no_unexpected_git_tags(self) -> None:
+        """Only the official v0.1.0 tag may exist locally; no other tag."""
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
             capture_output=True, text=True, check=True,
         )
-        self.assertEqual(proc.stdout.strip(), "")
+        tags = {t for t in proc.stdout.splitlines() if t.strip()}
+        self.assertLessEqual(tags, {"v0.1.0"})
 
     def _authoritative_tool_names(self) -> set[str]:
         """Tool names from the agent tools declaration and registered schemas."""
@@ -112,6 +114,13 @@ class VersioningPolicyDocTests(unittest.TestCase):
             src = tool_file.read_text(encoding="utf-8")
             names.update(schema_re.findall(src))
         return names
+
+    def test_v010_doc_is_official_release(self) -> None:
+        doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
+        self.assertIn("状态：正式版 / 当前版本", doc)
+        self.assertIn("Git Tag：`v0.1.0`", doc)
+        index = (ROOT / "docs/versions/README.md").read_text(encoding="utf-8")
+        self.assertIn("正式版 / 当前版本", index)
 
     def test_v010_doc_has_no_obsolete_tool_names(self) -> None:
         doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
