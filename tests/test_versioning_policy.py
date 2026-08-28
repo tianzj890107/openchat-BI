@@ -49,6 +49,17 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("docs/versions/versioning-policy.md", readme)
         self.assertIn("commit、push、部署不自动触发版本升级", readme)
 
+    def test_root_readme_describes_bi_project_and_runtime_docs_are_nested(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        runtime = (ROOT / "open_claude/README.md").read_text(encoding="utf-8")
+        self.assertTrue(readme.startswith("# openchat-BI · 智能分析"))
+        self.assertIn("六步分析 SOP", readme)
+        self.assertIn("open_claude/README.md", readme)
+        self.assertNotIn("# Open Claude\n", readme)
+        self.assertTrue(runtime.startswith("# Open Claude Runtime"))
+        self.assertIn("[../README.md](../README.md)", runtime)
+        self.assertIn("open-claude", runtime)
+
     def test_versions_readme_links_policy_and_stays_on_v0_1_0(self) -> None:
         readme = (ROOT / "docs/versions/README.md").read_text(encoding="utf-8")
         self.assertIn("./versioning-policy.md", readme)
