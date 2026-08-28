@@ -8,17 +8,20 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from bi_agent.llm import provider, provider_qwen, provider_team
+from bi_agent.llm import provider, provider_qwen, provider_team, registry
 from bi_agent.llm.provider_deepseek import _convert_messages as convert_deepseek
 from bi_agent.llm.provider_qwen import _convert_messages as convert_qwen
 from bi_agent.ontology.store import OntologyStore
@@ -29,10 +32,22 @@ from bi_agent.tools.sql_tools import (
     DorisHttpConn,
     DorisApiError,
     SqlBackend,
+    _code_name_pairs,
     _doris_query,
     _format_rows,
     _make_sql_run,
     _validate_sql,
+)
+from bi_agent.display_names import (
+    display_text,
+    is_valid_name,
+    looks_like_code,
+    normalize_chart_params,
+    normalize_chart_multidim_params,
+    normalize_table_params,
+    normalize_text,
+    pick_display_name,
+    unique_aliases,
 )
 from bi_agent.tools.chart_tools import (
     _echarts_option,
@@ -62,6 +77,7 @@ from bi_agent.tools.remote_ontology_tools import (
 )
 from bi_agent.web import app as web_app_module
 from bi_agent.ontology.remote import OntologyApiError, RemoteOntologyClient
+from bi_agent.ontology.remote_retriever import RemoteGraphRetriever
 from bi_agent.web.app import (
     STATE, _cwd_file, _history_ontology_entities, _infer_history_source_config,
     _render_history_ontology_cards, ConversationSaveRequest, RolesRequest, SourcesUpdate,
@@ -69,7 +85,7 @@ from bi_agent.web.app import (
     save_conversation,
 )
 from bi_agent.web.conversations import ConversationStore, conversation_title, first_user_question, first_visible_user_question
-from bi_agent.web.session import WebSession
+from bi_agent.web.session import VISIBLE_THINKING_CN_RULE, WebSession
 from open_claude.agent_def import AgentDef
 
 
@@ -182,6 +198,35 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("[LE1] 订单 (LogicalEntity)", output)
         self.assertIn("方向/关系类型未由当前仓库返回", output)
 
+    def test_remote_graph_neighborhood_falls_back_when_table_node_breaks_traversal(self) -> None:
+        client = RemoteOntologyClient("http://ontology.test", "4")
+        client.find_related = Mock(side_effect=OntologyApiError(
+            'HTTP 400: {"msg":"未知本体类型: TableNode"}'
+        ))
+        client.list_objects = lambda type_name, limit=2000: [
+            {"code": "M1", "label": "采购金额"},
+        ]
+        calls = []
+
+        def query(language, script, params_list=None):
+            calls.append((script, params_list))
+            if "UNWIND nodes(p)" in script:
+                return {"results": [{"rows": [
+                    {"typeNames": [["Indicator"]], "properties": [{"code": "M1", "label": "采购金额"}]},
+                    {"typeNames": ["TableNode"], "properties": {"code": "PT1", "label": "采购表"}},
+                ]}]}
+            return {"results": [{"rows": [{
+                "sourceCode": "M1", "relationType": "IndicatorMappingPT",
+                "relationProperties": {}, "targetCode": "PT1",
+            }]}]}
+
+        client.script_query = query
+        graph = client.graph_neighborhood("Indicator", "M1", depth=4)
+        self.assertEqual({item["properties"]["code"] for item in graph["objects"]}, {"M1", "PT1"})
+        self.assertEqual(graph["relations"][0]["targetCode"], "PT1")
+        self.assertIn("MATCH p=(root)-[*0..4]-(n)", calls[0][0])
+        self.assertEqual(calls[0][1], [["code", "M1"]])
+
     def test_remote_graph_context_matches_local_subtree_and_adds_paths(self) -> None:
         class FakeGraphClient:
             repository_id = "4"
@@ -217,6 +262,71 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("[D1] 时间维度 (Dimension)", output)
         self.assertIn("IndicatorIsCalculatedFromATT", output)
         self.assertIn("关键路径", output)
+
+    def test_visual_subgraph_promotes_term_to_indicator_and_preserves_focus(self) -> None:
+        class FakeGraphClient:
+            repository_id = "repo-1"
+
+            def graph_neighborhood(self, type_name, code, **kwargs):
+                return {
+                    "depth": kwargs.get("depth", 4),
+                    "relations_available": True,
+                    "objects": [
+                        {"typeName": "Term", "anchor": code == "T1", "properties": {"code": "T1", "label": "超期金额"}},
+                        {"typeName": "Indicator", "anchor": code == "M1", "properties": {"code": "M1", "label": "超期金额"}},
+                        {"typeName": "BusinessObject", "properties": {"code": "BO1", "label": "采购订单"}},
+                        {"typeName": "BusinessAttribute", "properties": {"code": "AT1", "label": "处理类型"}},
+                    ],
+                    "relations": [
+                        {"sourceCode": "T1", "relationType": "TermDefiniteIndicator", "targetCode": "M1"},
+                        {"sourceCode": "M1", "relationType": "IndicatorBelongToBO", "targetCode": "BO1"},
+                        {"sourceCode": "BO1", "relationType": "BOContainATT", "targetCode": "AT1"},
+                    ],
+                }
+
+        retriever = RemoteGraphRetriever(FakeGraphClient())
+        context = retriever.visual_subgraph("Term", "T1", strategy="context")
+        self.assertEqual(context["anchor"]["code"], "M1")
+        self.assertTrue(next(node for node in context["nodes"] if node["code"] == "T1")["focus"])
+        expanded = retriever.visual_subgraph("BusinessAttribute", "AT1", strategy="expand")
+        self.assertEqual(expanded["anchor"]["code"], "BO1")
+        self.assertGreaterEqual(len(expanded["links"]), len(context["links"]))
+
+    def test_global_subgraph_endpoint_is_independent_of_retrieval_mode(self) -> None:
+        fake_remote = SimpleNamespace(repository_id="repo-1")
+        payload = {
+            "strategy": "context", "focus": {"type": "Indicator", "code": "M1"},
+            "anchor": {"type": "Indicator", "code": "M1", "name": "指标"},
+            "nodes": [{"id": "M1", "code": "M1", "name": "指标", "type": "Indicator"}],
+            "links": [], "relations_available": True, "relation_error": "", "truncated": False,
+        }
+        source = SimpleNamespace(remote_ontology=fake_remote, ontology_store=OntologyStore(), retrieval_mode="semantic")
+        with patch("bi_agent.web.app._source_for_session", return_value=source), \
+             patch.object(RemoteGraphRetriever, "visual_subgraph", return_value=payload) as query:
+            response = TestClient(app).post("/api/ontology/subgraph", json={
+                "session_id": "s1", "repository_id": "repo-1",
+                "type": "metric", "code": "M1", "strategy": "context",
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["anchor"]["code"], "M1")
+        query.assert_called_once_with("Indicator", "M1", strategy="context")
+
+    def test_two_ontology_click_surfaces_share_one_subgraph_modal(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        self.assertIn('fetch("/api/ontology/subgraph"', runtime)
+        self.assertIn('data-graph-strategy="context"', runtime)
+        self.assertIn('data-graph-strategy="expand"', runtime)
+        self.assertIn('el.ontologyList?.addEventListener("click"', runtime)
+        self.assertIn('el.toolList?.addEventListener("click"', runtime)
+        self.assertIn('e.target.closest(".step .chip[data-code]")', runtime)
+        self.assertIn('openOntologyGraphCard(ontologyEntityForElement(', runtime)
+        self.assertIn('createOntologySigmaRenderer(canvas, graph)', runtime)
+        self.assertNotIn('loadEcharts()', runtime)
+        self.assertNotIn('ch.addEventListener("click", () => flashOntologyEntity', runtime)
+        sigma = Path("frontend/src/ontologySigmaGraph.js").read_text(encoding="utf-8")
+        self.assertIn('from "graphology-layout-forceatlas2"', sigma)
+        self.assertIn('from "sigma"', sigma)
+        self.assertIn("FORCE_ATLAS_CONFIG", sigma)
 
     def test_remote_graph_expand_uses_activity_and_entity_paths_then_drills_subtrees(self) -> None:
         class FakeGraphClient:
@@ -304,16 +414,16 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertEqual(failing.calls, 1)
 
     def test_web_sessions_keep_source_bound_executors_isolated(self) -> None:
-        agent = AgentDef("isolated", tools=["MetricLookup"])
+        agent = AgentDef("isolated", tools=["MetricCalculation"])
         session_one = WebSession(
             "/tmp", agent, OntologyStore(),
-            tool_executors={"MetricLookup": lambda params, cwd: "repository-1"},
+            tool_executors={"MetricCalculation": lambda params, cwd: "repository-1"},
         )
         session_two = WebSession(
             "/tmp", agent, OntologyStore(),
-            tool_executors={"MetricLookup": lambda params, cwd: "repository-2"},
+            tool_executors={"MetricCalculation": lambda params, cwd: "repository-2"},
         )
-        call = {"name": "MetricLookup", "input": {"metric": "M1"}}
+        call = {"name": "MetricCalculation", "input": {"metric": "M1"}}
         self.assertEqual(session_one._execute_tool(call)[0], "repository-1")
         self.assertEqual(session_two._execute_tool(call)[0], "repository-2")
 
@@ -527,7 +637,7 @@ class OfflineRegressionTests(unittest.TestCase):
             },
             {
                 "role": "assistant",
-                "content": [{"type": "tool_use", "id": "t1", "name": "SQLRun", "input": {}}],
+                "content": [{"type": "tool_use", "id": "t1", "name": "Ontology-FactQuery", "input": {}}],
             },
             {
                 "role": "user",
@@ -776,6 +886,78 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertFalse(has_effective_action("根因分析：x。\n行动建议：\n1. 已完成对华东客户的复核"))
         self.assertTrue(has_effective_action("根因分析：x。\n行动建议：\n1. 优先复核华东区域重点客户报价"))
 
+    def test_extended_limitation_headings_end_action_section(self) -> None:
+        """口径说明与限制披露/限制披露/冲突披露/数据限制等扩展标题必须结束
+        行动章节，后续口径、限制、样本量、数据异常和结尾引导语不得被提取成行动。"""
+        from bi_agent.tools.analysis_policy import ALL_SECTION_NAMES, extract_action_items, has_named_section
+
+        for heading in (
+            "口径说明",
+            "口径说明与限制披露",
+            "限制披露",
+            "冲突披露",
+            "数据限制",
+            "证据限制",
+            "风险与限制",
+            "## 5. 口径说明与限制披露",
+            "**口径说明与限制披露**",
+            "口径说明与限制披露（含重点）",
+        ):
+            self.assertTrue(has_named_section(heading, ALL_SECTION_NAMES), heading)
+
+        body = (
+            "行动建议\n"
+            "1. 针对 BFHC 交付延迟:发起交付绩效约谈,核实排产/发货瓶颈。\n"
+            "2. 针对 VEND001 内部验收延迟:排查检验排期与审批积压。\n"
+            "口径说明与限制披露\n"
+            "- 指标:到货周期 [M0009] = 平均时间。\n"
+            "- 物理表:poheader × acline;关联键 acline.sourceDocHeaderId。\n"
+            "- 限制 1(样本量):Q2 可比样本仅 29 行。\n"
+            "- 限制 2(数据异常):1 行出现收货早于下单。\n"
+            "根因已厘清。如需展开成可对比的决策方案,告诉我即可。"
+        )
+        items = extract_action_items(body)
+        self.assertEqual(len(items), 2)
+        self.assertIn("BFHC", items[0])
+        self.assertIn("VEND001", items[1])
+        joined = "\n".join(items)
+        for excluded in ("口径说明", "物理表", "样本量", "数据异常", "决策方案"):
+            self.assertNotIn(excluded, joined)
+
+    def test_f8cf8d06_narrative_extracts_only_two_actions(self) -> None:
+        """真实会话 f8cf8d06 最终稿:结构化行动只能提取两条,限制/冲突/关系缺口/
+        样本量/时间字段覆盖等留在正文。"""
+        from bi_agent.tools.analysis_policy import extract_action_items
+
+        narrative = (
+            "结论:2026Q2 到货周期均值 17.1 天(n=29),较基线 2.9 天显著拉长;"
+            "供应商段增量大于内部段,是供应商问题与内部验收问题叠加,供应商侧为主因。\n"
+            "行动建议(雏形)\n"
+            "1. 针对 BFHC 交付延迟(供应商段):对 5 月 电子元器件001 的 5 笔延迟订单"
+            "(39-73 天)发起交付绩效约谈,核实排产/发货瓶颈并要求承诺交期,纳入到货准确率考核 [M0010]。\n"
+            "2. 针对 VEND001 内部验收延迟(内部段):排查收货→验收环节的检验排期与审批积压"
+            "(测试物料2037 内部段 63 天、手持彩色显示器 50 天),明确验收 SLA 与责任人。\n"
+            "口径说明与限制披露\n"
+            "- 指标:到货周期 [M0009] = 采购订单下达至货物实际验收入库的平均时间 [T000111]。\n"
+            "- 物理表:poheader × acline × actransaction;关联键 acline.sourceDocHeaderId = poheader.poHeaderId。\n"
+            "- 可比口径:仅统计同时具备 RECEIVE 与 ACCEPT 交易的验收行。\n"
+            "- 限制 1(冲突披露):首次期间对比因窗口条件错误与修正后的严格 Q2 口径冲突。\n"
+            "- 限制 2(关系缺口):本体关系检索未返回可验证的 PO→验收关联路径(RELATION_MISSING)。\n"
+            "- 限制 3(指标规格):MetricCalculation 未返回 M0009 的 SQL 组件。\n"
+            "- 限制 4(样本量):Q2 可比样本仅 29 行。\n"
+            "- 限制 5(数据异常):1 行(BFHC,6 月)出现收货早于下单。\n"
+            "- 限制 6(时间字段覆盖):667 张 PO 中 500 张有审批日期。\n"
+            "根因已厘清。如需我把上述两条整改方向展开成可对比的决策方案,告诉我即可。"
+        )
+        items = extract_action_items(narrative)
+        self.assertEqual(len(items), 2)
+        self.assertIn("BFHC", items[0])
+        self.assertIn("VEND001", items[1])
+        joined = "\n".join(items)
+        for excluded in ("口径", "物理表", "冲突", "关系缺口", "样本量", "数据异常",
+                         "时间字段覆盖", "决策方案", "关联键"):
+            self.assertNotIn(excluded, joined)
+
     def test_l1_l2_turns_are_not_forced_to_actions(self) -> None:
         events, _ = self._root_action_events([
             [
@@ -821,6 +1003,147 @@ class OfflineRegressionTests(unittest.TestCase):
         # text content, so no assistant message is appended for it).
         self.assertEqual(len(session.messages), 5)  # user+root + 2 reminders + action
 
+    def test_action_repair_tool_response_emits_empty_tool_uses(self) -> None:
+        """A repair response that only requests tools must not surface a
+        dangling tool card: the repair `llm_response` carries `tool_uses: []`,
+        no `tool_result` ever follows, history keeps no tool block, and the
+        next pure-text repair still completes the turn."""
+        responses = iter([
+            [
+                {"type": "text_delta", "text": "根因分析：华东区域贡献了主要下降。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "tool_use_start", "id": "t1", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "t1", "name": "Ontology-FactQuery",
+                 "input": {"sql": "select secret"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "行动建议：先对华东区域重点客户做回访。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool",
+                          side_effect=AssertionError("repair must not run tools")):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("为什么华东区域收入下降？"))
+
+        responses_seen = [e for e in events if e["type"] == "llm_response"]
+        # Main narrative + two repairs.  No llm_response may carry tools.
+        self.assertEqual(len(responses_seen), 3)
+        for resp in responses_seen:
+            self.assertEqual(resp["tool_uses"], [])
+        self.assertNotIn("tool_result", [e["type"] for e in events])
+        # History contains no tool-use block and no SQL input.
+        for msg in session.messages:
+            content = msg.get("content")
+            blocks = content if isinstance(content, list) else [content]
+            for block in blocks:
+                if isinstance(block, dict):
+                    self.assertNotEqual(block.get("type"), "tool_use")
+                    self.assertNotIn("select secret", str(block))
+        recs = [e for e in events if e["type"] == "action_recommendations"]
+        self.assertEqual(len(recs), 1)
+        self.assertEqual(recs[0]["items"][0]["title"], "先对华东区域重点客户做回访。")
+        done = [e for e in events if e["type"] == "done"]
+        self.assertEqual(len(done), 1)
+        self.assertEqual(done[0]["stop_reason"], "end_turn")
+
+    def test_action_repair_text_plus_tool_keeps_text_only(self) -> None:
+        """A repair response mixing text and tools adopts only the text; the
+        tool is neither executed nor forwarded, and the text still passes the
+        action check exactly once."""
+        responses = iter([
+            [
+                {"type": "text_delta", "text": "根因分析：华东区域贡献了主要下降。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "tool_use_start", "id": "t1", "name": "ChartGenerate"},
+                {"type": "tool_use_end", "id": "t1", "name": "ChartGenerate", "input": {}},
+                {"type": "text_delta", "text": "行动建议：对华东重点客户执行价格复核。"},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool",
+                          side_effect=AssertionError("repair must not run tools")):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("为什么华东区域收入下降？"))
+
+        repair_responses = [
+            e for e in events
+            if e["type"] == "llm_response" and "行动建议" in (e.get("text") or "")
+        ]
+        self.assertEqual(len(repair_responses), 1)
+        self.assertEqual(repair_responses[0]["tool_uses"], [])
+        self.assertNotIn("tool_result", [e["type"] for e in events])
+        recs = [e for e in events if e["type"] == "action_recommendations"]
+        self.assertEqual(len(recs), 1)
+        self.assertIn("价格复核", recs[0]["items"][0]["title"])
+        # Only one repair was needed (text passed on the first try).
+        self.assertEqual(len([e for e in events if e["type"] == "action_repair"]), 1)
+
+    def test_action_repair_tool_only_exhausts_repairs_non_blocking(self) -> None:
+        """When every repair returns only tools (no text), the loop stops at
+        the repair cap, emits delivery_incomplete, still delivers `done`, and
+        never loops forever or re-runs tools."""
+        responses = iter([
+            [
+                {"type": "text_delta", "text": "根因分析：华东区域贡献了主要下降。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "tool_use_start", "id": "t1", "name": "run_sql"},
+                {"type": "tool_use_end", "id": "t1", "name": "run_sql", "input": {}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "tool_use_start", "id": "t2", "name": "TableGenerate"},
+                {"type": "tool_use_end", "id": "t2", "name": "TableGenerate", "input": {}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool",
+                          side_effect=AssertionError("repair must not run tools")):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("为什么华东区域收入下降？"))
+
+        self.assertEqual(len([e for e in events if e["type"] == "action_repair"]), 2)
+        for e in events:
+            if e["type"] == "llm_response":
+                self.assertEqual(e["tool_uses"], [])
+        self.assertNotIn("tool_result", [e["type"] for e in events])
+        self.assertEqual(len([e for e in events if e["type"] == "delivery_incomplete"]), 1)
+        done = [e for e in events if e["type"] == "done"]
+        self.assertEqual(len(done), 1)
+        self.assertEqual(done[0]["stop_reason"], "delivery_incomplete")
+        # The main root-cause answer was still delivered, and no assistant
+        # tool blocks entered history.
+        main = [e for e in events if e["type"] == "llm_response" and "根因分析" in (e.get("text") or "")]
+        self.assertEqual(len(main), 1)
+        for msg in session.messages:
+            content = msg.get("content")
+            blocks = content if isinstance(content, list) else [content]
+            for block in blocks:
+                if isinstance(block, dict):
+                    self.assertNotEqual(block.get("type"), "tool_use")
+
     def test_frontend_structured_action_event_rendering(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
         built = Path("bi_agent/web/static/vendor/antd/workbench.js").read_text(
@@ -837,7 +1160,9 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("action_recommendations", built)
         self.assertIn("delivery_incomplete", built)
 
-    def test_answer_blocked_turn_still_emits_done_and_action_gate(self) -> None:
+    def test_answer_blocked_turn_still_emits_done(self) -> None:
+        """Two consecutive claim-validation failures block the answer without
+        ever streaming or persisting the rejected drafts."""
         from bi_agent.reliability import Claim, ClaimLevel, ValidationStatus
 
         responses = iter([
@@ -876,10 +1201,434 @@ class OfflineRegressionTests(unittest.TestCase):
             events = list(session._run_loop())
         blocked = [event for event in events if event["type"] == "answer_blocked"]
         self.assertEqual(len(blocked), 1)
+        done = [event for event in events if event["type"] == "done"]
+        self.assertEqual(done[0]["stop_reason"], "answer_blocked")
+
+        # Rejected drafts stay hidden, but the deterministic evidence-only
+        # fallback is visible and persisted so the user never sees only tool
+        # activity plus an answer_blocked banner.
+        deltas = [event for event in events if event["type"] == "text_delta"]
+        self.assertEqual(len(deltas), 1)
+        self.assertIn("自动证据校验", deltas[0]["text"])
+        recs = [event for event in events if event["type"] == "action_recommendations"]
+        self.assertEqual(recs, [])
+        assistant = [message for message in session.messages if message.get("role") == "assistant"]
+        self.assertEqual(len(assistant), 1)
+        joined = json.dumps(session.messages, ensure_ascii=False)
+        self.assertNotIn("占比 9.4%", joined)
+        self.assertNotIn("优先复核", joined)
+        self.assertIn("当前可确认的证据", joined)
+
+    def test_claim_validation_commits_only_accepted_candidate(self) -> None:
+        """With structured claims, a rejected first draft is buffered and
+        discarded; the visible text_delta stream contains only the accepted
+        candidate and validate_claims sees one candidate at a time."""
+        from bi_agent.reliability import Claim, ClaimLevel, ValidationStatus
+
+        responses = iter([
+            [
+                {"type": "text_delta", "text": "结论：审批中的订单有 50 单，占比 9.4%。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "结论：审批中的订单有 50 单，全部来自手动创建。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        validated_texts: list[str] = []
+
+        def fake_validate(claims, narrative):
+            validated_texts.append(str(narrative))
+            if "9.4%" in str(narrative):
+                return SimpleNamespace(
+                    status=ValidationStatus.REJECT,
+                    issues=("unsupported numeric fact: 9.4",),
+                )
+            return SimpleNamespace(status=ValidationStatus.ALLOW, issues=())
+
+        claim = Claim(
+            id="c-1",
+            statement="审批中的订单有 50 单",
+            level=ClaimLevel.FACT,
+            semantic={"semantic_type": "FACT"},
+        )
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch("bi_agent.web.session.validate_claims", fake_validate):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            session.claims = [claim]
+            events = list(session._run_loop())
+
+        # Each validation call receives exactly one candidate — never a
+        # concatenation of older drafts.
+        self.assertEqual(len(validated_texts), 2)
+        self.assertIn("结论：审批中的订单有 50 单，占比 9.4%。", validated_texts)
+        self.assertIn("结论：审批中的订单有 50 单，全部来自手动创建。", validated_texts)
+
+        # The visible text_delta stream is exactly the accepted candidate.
+        deltas = [event["text"] for event in events if event["type"] == "text_delta"]
+        self.assertEqual(deltas, ["结论：审批中的订单有 50 单，全部来自手动创建。"])
+        joined_events = json.dumps(events, ensure_ascii=False)
+        self.assertNotIn("占比 9.4%", joined_events)
+
+        # The claim context and the rejection reminder are each emitted once,
+        # and the rejected drafts never enter the persisted message list.
+        self.assertEqual(
+            len([event for event in events if event["type"] == "claim_context"]), 1,
+        )
+        self.assertEqual(
+            len([event for event in events if event["type"] == "answer_validation"]), 1,
+        )
+        persisted_text = json.dumps(session.messages, ensure_ascii=False)
+        self.assertIn("全部来自手动创建", persisted_text)
+        self.assertNotIn("占比 9.4%", persisted_text)
+        done = [event for event in events if event["type"] == "done"]
+        self.assertEqual(done[0]["stop_reason"], "end_turn")
+
+    def test_valid_first_candidate_is_delivered_without_claim_reprompt(self) -> None:
+        """Claims protect facts but do not force a redundant second draft."""
+        from bi_agent.reliability import Claim, ClaimLevel, ValidationStatus
+
+        responses = iter([
+            [
+                {"type": "text_delta", "text": "结论：审批中的订单有 50 单。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        claim = Claim(
+            id="c-1",
+            statement="审批中的订单有 50 单",
+            level=ClaimLevel.FACT,
+            semantic={"semantic_type": "FACT"},
+        )
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch("bi_agent.web.session.validate_claims", return_value=SimpleNamespace(
+                 status=ValidationStatus.ALLOW, issues=(),
+             )):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            session.claims = [claim]
+            events = list(session._run_loop())
+
+        self.assertEqual(
+            len([event for event in events if event["type"] == "claim_context"]), 0,
+        )
+        deltas = [event["text"] for event in events if event["type"] == "text_delta"]
+        self.assertEqual(deltas, ["结论：审批中的订单有 50 单。"])
+        responses_seen = [event for event in events if event["type"] == "llm_response"]
+        self.assertEqual(len(responses_seen), 1)
+        self.assertEqual(len(session.messages), 1)
+        assistant_text = json.dumps(session.messages, ensure_ascii=False)
+        self.assertEqual(assistant_text.count("结论：审批中的订单有 50 单。"), 1)
+
+    def test_validator_failure_keeps_candidate_answer_visible(self) -> None:
+        """Validator availability must never become answer availability."""
+        from bi_agent.reliability import Claim, ClaimLevel
+
+        def fake_stream(*_args, **_kwargs):
+            yield {"type": "text_delta", "text": "结论：审批中的订单有 50 单。"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch("bi_agent.web.session.validate_claims", side_effect=RuntimeError("down")):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            session.claims = [Claim("c", "审批中的订单有 50 单", ClaimLevel.FACT)]
+            events = list(session._run_loop())
+
+        answer = "".join(event.get("text", "") for event in events if event["type"] == "text_delta")
+        self.assertIn("审批中的订单有 50 单", answer)
+        warnings = [event for event in events if event["type"] == "answer_validation"]
+        self.assertEqual(warnings[0]["status"], "warning")
+        self.assertFalse(any(event["type"] == "answer_blocked" for event in events))
+
+    def test_claim_validation_tool_flow_commits_single_narrative(self) -> None:
+        """A tool-calling analysis still executes tools and renders the final
+        narrative exactly once; action_recommendations fires once."""
+        from bi_agent.reliability import Claim, ClaimLevel, ValidationStatus
+
+        responses = iter([
+            [
+                {"type": "tool_use_start", "id": "tu-1", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-1", "name": "Ontology-FactQuery", "input": {"sql": "select count(*)"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": (
+                    "结论：审批中的订单有 50 单。\n"
+                    "根因分析：手动创建订单占审批中订单的多数。\n"
+                    "行动建议：优先复核手动创建的审批中订单。"
+                )},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": (
+                    "结论：审批中的订单有 50 单。\n"
+                    "根因分析：手动创建订单占审批中订单的多数。\n"
+                    "行动建议：优先复核手动创建的审批中订单。"
+                )},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        claim = Claim(
+            id="c-1",
+            statement="审批中的订单有 50 单",
+            level=ClaimLevel.FACT,
+            semantic={"semantic_type": "FACT"},
+        )
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool", return_value=("50 单", False)), \
+             patch("bi_agent.web.session.validate_claims", return_value=SimpleNamespace(
+                 status=ValidationStatus.ALLOW, issues=(),
+             )) as mock_validate:
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+
+            def fake_record_query(tool_name, params, output):
+                session.claims.append(claim)
+
+            with patch.object(WebSession, "record_query_result", side_effect=fake_record_query):
+                events = list(session._run_loop())
+
+        # The tool was executed and its result forwarded.
+        self.assertIn(
+            "tool_result",
+            [event["type"] for event in events],
+        )
+        self.assertEqual(len(mock_validate.call_args_list), 1)  # only final candidate
+        deltas = [event["text"] for event in events if event["type"] == "text_delta"]
+        self.assertEqual(len(deltas), 1)
+        self.assertIn("行动建议", deltas[0])
+        # Only one narrative reaches the browser / history.
+        self.assertEqual(len(deltas), 1)
+        assistant_text = "\n".join(
+            str(block.get("text") or "")
+            for message in session.messages
+            if message.get("role") == "assistant"
+            for block in message.get("content") or []
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+        self.assertEqual(assistant_text.count("结论"), 1)
+        self.assertEqual(assistant_text.count("行动建议"), 1)
         recs = [event for event in events if event["type"] == "action_recommendations"]
         self.assertEqual(len(recs), 1)
         done = [event for event in events if event["type"] == "done"]
-        self.assertEqual(done[0]["stop_reason"], "answer_blocked")
+        self.assertEqual(done[0]["stop_reason"], "end_turn")
+
+    def test_claim_rejection_does_not_reexecute_tools(self) -> None:
+        """Claim 校验失败重试只重写叙述，绝不重复执行 SQL/图表/表格工具。"""
+        from bi_agent.reliability import Claim, ClaimLevel, ValidationStatus
+
+        responses = iter([
+            [
+                {"type": "tool_use_start", "id": "tu-1", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-1", "name": "Ontology-FactQuery",
+                 "input": {"sql": "select count(*)"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "结论：Q2 到货周期 17.1 天，占比 65%。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "结论：Q2 到货周期 17.1 天，供应商段增量大于内部段。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        def fake_validate(claims, narrative):
+            if "65" in str(narrative):
+                return SimpleNamespace(
+                    status=ValidationStatus.REJECT,
+                    issues=("unsupported numeric fact: 65",),
+                )
+            return SimpleNamespace(status=ValidationStatus.ALLOW, issues=())
+
+        claim = Claim(
+            id="c-1",
+            statement="Q2 到货周期均值 17.1 天",
+            level=ClaimLevel.FACT,
+            semantic={"semantic_type": "FACT"},
+        )
+        executed: list[str] = []
+
+        def fake_execute(tu, *args, **kwargs):
+            executed.append(tu["name"])
+            return "count=1", False
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch("bi_agent.web.session.validate_claims", fake_validate), \
+             patch.object(WebSession, "_execute_tool", side_effect=fake_execute), \
+             patch.object(WebSession, "record_query_result", return_value=None):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            session.claims = [claim]
+            events = list(session._run_loop())
+
+        # SQL 工具只执行一次；被拒候选不展示；最终稿只出现一次。
+        self.assertEqual(executed, ["Ontology-FactQuery"])
+        deltas = [event["text"] for event in events if event["type"] == "text_delta"]
+        self.assertEqual(deltas, ["结论：Q2 到货周期 17.1 天，供应商段增量大于内部段。"])
+        persisted = json.dumps(session.messages, ensure_ascii=False)
+        self.assertNotIn("占比 65%", persisted)
+        self.assertEqual(persisted.count("供应商段增量大于内部段"), 1)
+
+    def test_claim_candidates_persist_only_final_narrative_and_single_action_event(self) -> None:
+        """历史恢复语义:一轮三次候选(18/19/20)只保留最终通过稿,action 事件
+        只发一次且只含最终稿的两条行动。"""
+        from bi_agent.reliability import Claim, ClaimLevel, ValidationStatus
+
+        responses = iter([
+            [
+                {"type": "text_delta", "text": (
+                    "结论:Q2 到货周期 17.1 天,占比 65%。\n"
+                    "行动建议\n"
+                    "1. 针对 BFHC:发起交付绩效约谈。\n"
+                    "2. 针对 VEND001:排查检验排期。"
+                )},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": (
+                    "结论:Q2 到货周期 17.1 天,供应商段增量大于内部段。\n"
+                    "根因分析(证据链)\n"
+                    "- 供应商段:BFHC 交付延迟是供应商段增量的主要来源。\n"
+                    "- 内部段:VEND001 内部验收延迟贡献内部段增量。\n"
+                    "行动建议\n"
+                    "1. 针对 BFHC 交付延迟(供应商段):发起交付绩效约谈,核实排产/发货瓶颈。\n"
+                    "2. 针对 VEND001 内部验收延迟(内部段):排查检验排期与审批积压。\n"
+                    "口径说明与限制披露\n"
+                    "- 限制 1(样本量):Q2 可比样本仅 29 行。\n"
+                    "- 限制 2(数据异常):1 行出现收货早于下单。"
+                )},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        def fake_validate(claims, narrative):
+            if "65" in str(narrative):
+                return SimpleNamespace(
+                    status=ValidationStatus.REJECT,
+                    issues=("unsupported numeric fact: 65",),
+                )
+            return SimpleNamespace(status=ValidationStatus.ALLOW, issues=())
+
+        claim = Claim(
+            id="c-1",
+            statement="Q2 到货周期均值 17.1 天",
+            level=ClaimLevel.FACT,
+            semantic={"semantic_type": "FACT"},
+        )
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch("bi_agent.web.session.validate_claims", fake_validate):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            session.claims = [claim]
+            events = list(session._run_loop())
+
+        deltas = [event["text"] for event in events if event["type"] == "text_delta"]
+        self.assertEqual(len(deltas), 1)
+        self.assertIn("供应商段增量大于内部段", deltas[0])
+        # 历史中只有一份最终 assistant 回答，被拒稿完全不落库。
+        assistant_text = "\n".join(
+            str(block.get("text") or "")
+            for message in session.messages
+            if message.get("role") == "assistant"
+            for block in message.get("content") or []
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+        self.assertEqual(assistant_text.count("结论"), 1)
+        self.assertNotIn("65%", assistant_text)
+        # 行动事件只发一次，且只有最终稿的两条真实行动。
+        recs = [event for event in events if event["type"] == "action_recommendations"]
+        self.assertEqual(len(recs), 1)
+        self.assertEqual(len(recs[0]["items"]), 2)
+        self.assertTrue(all(
+            "BFHC" in (it.get("title") or "") or "VEND001" in (it.get("title") or "") or
+            "BFHC" in (it.get("content") or "") or "VEND001" in (it.get("content") or "")
+            for it in recs[0]["items"]
+        ))
+        joined = json.dumps(recs[0], ensure_ascii=False)
+        self.assertNotIn("样本量", joined)
+        self.assertNotIn("数据异常", joined)
+
+    def test_no_claims_answer_still_streams_live(self) -> None:
+        """Normal answers without structured claims keep streaming text_delta
+        in real time and are committed as before."""
+        def fake_stream(*_args, **_kwargs):
+            yield {"type": "text_delta", "text": "结论：本月华东区域收入为 5200 万元。"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with patch("bi_agent.web.session.stream_message", fake_stream):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("华东收入是多少"))
+        deltas = [event["text"] for event in events if event["type"] == "text_delta"]
+        self.assertEqual(deltas, ["结论：本月华东区域收入为 5200 万元。"])
+        responses_seen = [event for event in events if event["type"] == "llm_response"]
+        self.assertEqual(len(responses_seen), 1)
+        done = [event for event in events if event["type"] == "done"]
+        self.assertEqual(done[0]["stop_reason"], "end_turn")
+        self.assertEqual(len(session.messages), 2)  # user + assistant
+
+    def test_tool_only_max_iterations_emits_user_facing_fallback(self) -> None:
+        """Ontology/schema activity must never be the only visible delivery."""
+        def fake_stream(*_args, **_kwargs):
+            yield {"type": "tool_use_start", "id": "ont-1", "name": "Ontology-SemanticQuery"}
+            yield {
+                "type": "tool_use_end", "id": "ont-1", "name": "Ontology-SemanticQuery",
+                "input": {"query": "采购金额"},
+            }
+            yield {"type": "message_end", "stop_reason": "tool_use", "usage": {}}
+
+        agent = AgentDef("test", tools=["Ontology-SemanticQuery"], max_iterations=1)
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool", return_value=("[M0001] 采购金额", False)):
+            session = WebSession("/tmp", agent, OntologyStore(), max_iterations=1)
+            events = list(session.generate_turn("查询采购金额"))
+
+        self.assertIn("tool_result", [event["type"] for event in events])
+        deltas = [event["text"] for event in events if event["type"] == "text_delta"]
+        self.assertEqual(len(deltas), 1)
+        self.assertIn("没有形成可交付的数据结论", deltas[0])
+        self.assertIn("不把本体操作本身当作最终业务答案", deltas[0])
+        self.assertIn("done", [event["type"] for event in events])
+        self.assertIn("没有形成可交付的数据结论", json.dumps(session.messages, ensure_ascii=False))
+
+    def test_claims_provider_error_does_not_save_partial_candidate(self) -> None:
+        """A provider error during a deferred candidate must not persist the
+        partial text nor emit a false done event."""
+        from bi_agent.reliability import Claim, ClaimLevel
+
+        def fake_stream(*_args, **_kwargs):
+            yield {"type": "text_delta", "text": "结论：审批中的订单有 50 单，占比 9.4%"}
+            yield {"type": "error", "error": "mock provider failure"}
+
+        claim = Claim(
+            id="c-1",
+            statement="审批中的订单有 50 单",
+            level=ClaimLevel.FACT,
+            semantic={"semantic_type": "FACT"},
+        )
+        with patch("bi_agent.web.session.stream_message", fake_stream):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            session.claims = [claim]
+            events = list(session._run_loop())
+        self.assertIn("error", [event["type"] for event in events])
+        self.assertNotIn("done", [event["type"] for event in events])
+        self.assertEqual([event for event in events if event["type"] == "text_delta"], [])
+        self.assertEqual(session.messages, [])
 
     def test_ontology_entity_extraction_supports_all_source_code_prefixes(self) -> None:
         store = OntologyStore()
@@ -923,7 +1672,7 @@ class OfflineRegressionTests(unittest.TestCase):
             "[BO0005] 采购订单 (BusinessObject)\n"
             "  name: Purchase Order\n"
             "[PT0006] po_header_t (TableNode)",
-            "OntologyQuery",
+            "Ontology-SemanticQuery",
         )
         by_code = {item["code"]: item for item in entities}
         self.assertEqual(by_code["BO0005"]["name"], "采购订单")
@@ -938,7 +1687,7 @@ class OfflineRegressionTests(unittest.TestCase):
         )
         session = WebSession("/tmp", AgentDef("test", tools=[]), store)
         self.assertEqual(
-            session._extract_entities("Source: M0001 · orders", "SQLRun"),
+            session._extract_entities("Source: M0001 · orders", "Ontology-FactQuery"),
             [],
         )
 
@@ -950,11 +1699,11 @@ class OfflineRegressionTests(unittest.TestCase):
         )
         messages = [
             {"role": "assistant", "content": [{
-                "type": "tool_use", "id": "t1", "name": "OntologyQuery", "input": {},
+                "type": "tool_use", "id": "t1", "name": "Ontology-SemanticQuery", "input": {},
             }]},
             {"role": "user", "content": [{
                 "type": "tool_result", "tool_use_id": "t1",
-                "content": "# Remote OntologyQuery\n[BO0005] 采购订单 (BusinessObject)",
+                "content": "# Remote Ontology-SemanticQuery\n[BO0005] 采购订单 (BusinessObject)",
             }]},
         ]
         entities = _history_ontology_entities(session, messages)
@@ -1574,7 +2323,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=159" defer', index)
+        self.assertIn('workbench.js?v=161" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -1844,6 +2593,80 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("window.antdDashboardCardMount(card)", action_source)
         self.assertIn('container.querySelectorAll(".dash-card:not(.antd-dashboard-question-hidden)")', main)
 
+    def test_action_cards_stay_in_chat_not_dashboard(self) -> None:
+        """Root-cause, actions and structured action cards are chat-only."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+
+        root_start = runtime.index("function pushRootCauseIfAny(")
+        root_src = runtime[root_start:runtime.index("function pushActionsIfAny(", root_start)]
+        self.assertIn("appendChatActionCard(dashboardRootCauseCard(content, turnTag))", root_src)
+        self.assertNotIn("appendDashboardCard", root_src)
+
+        actions_start = runtime.index("function pushActionsIfAny(")
+        actions_src = runtime[actions_start:runtime.index("6-step analysis SOP", actions_start)]
+        self.assertIn("appendChatActionCard(dashboardActionsCard(content, turnTag))", actions_src)
+        self.assertNotIn("appendDashboardCard", actions_src)
+
+        rec_start = runtime.index('case "action_recommendations":')
+        rec_src = runtime[rec_start:runtime.index('case "action_repair":', rec_start)]
+        self.assertIn("structuredActionsCard(items, turnTag)", rec_src)
+        self.assertIn("appendChatActionCard(card)", rec_src)
+        self.assertNotIn("appendDashboardCard(card)", rec_src)
+
+    def test_frontend_section_names_include_extended_limitation_boundaries(self) -> None:
+        """前端历史恢复的行动解析同样以扩展限制标题为章节边界。"""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        for name in ("口径说明与限制披露", "限制披露", "冲突披露", "数据限制",
+                     "证据限制", "风险与限制"):
+            self.assertIn(f'"{name}"', runtime)
+        built = Path("bi_agent/web/static/vendor/antd/workbench.js").read_text(
+            encoding="utf-8", errors="replace")
+        for name in ("口径说明与限制披露", "限制披露", "冲突披露", "数据限制",
+                     "证据限制", "风险与限制"):
+            self.assertIn(name, built)
+
+    def test_conclusion_charts_tables_still_enter_dashboard(self) -> None:
+        """Conclusion, chart, table and multi-dim cards must keep the dashboard."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+
+        conclusion_start = runtime.index("function pushConclusionIfAny(")
+        conclusion_src = runtime[conclusion_start:runtime.index("function pushRootCauseIfAny(", conclusion_start)]
+        self.assertIn("appendDashboardCard(dashboardConclusionCard(content, turnTag))", conclusion_src)
+        self.assertIn("appendChatActionCard(dashboardConclusionCard(content, turnTag))", conclusion_src)
+
+        multi_start = runtime.index("function pushMultiChartToDashboard(")
+        multi_src = runtime[multi_start:runtime.index("function pushConclusionIfAny(", multi_start)]
+        self.assertIn("appendDashboardCard(dashboardMultiChartCard(", multi_src)
+
+        chart_start = runtime.index("function pushChartToDashboard(")
+        chart_src = runtime[chart_start:runtime.index("function pushTableToDashboard(", chart_start)]
+        self.assertIn("appendDashboardCard(dashboardChartCard(", chart_src)
+
+        table_start = runtime.index("function pushTableToDashboard(")
+        table_src = runtime[table_start:runtime.index("// Per-turn HTML report export", table_start)]
+        self.assertIn("appendDashboardCard(dashboardTableCard(", table_src)
+
+    def test_restored_dashboard_action_cards_migrate_to_chat(self) -> None:
+        """Legacy dash-rootcause / dash-actions / dash-export migrate to chat."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        mig_start = runtime.index("function moveRestoredInteractiveCardsToChat(")
+        mig_src = runtime[mig_start:runtime.index("function dashboardConclusionCard(", mig_start)]
+        self.assertIn(".dash-rootcause, .dash-actions, .dash-export", mig_src)
+        self.assertIn("appendChatActionCard(card)", mig_src)
+        self.assertIn("appendChatActionCard(card.cloneNode(true))", mig_src)
+
+    def test_action_card_content_still_extracted_and_rendered(self) -> None:
+        """Fixing placement must not delete content or add an answer gate."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        self.assertIn("function extractRootCause(text)", runtime)
+        self.assertIn("function extractActions(text)", runtime)
+        self.assertIn("function dashboardRootCauseCard(text, turnTag)", runtime)
+        self.assertIn("function dashboardActionsCard(text, turnTag)", runtime)
+        self.assertIn("function structuredActionsCard(items, turnTag)", runtime)
+        # Both chat-only pushers still render and deliver their cards.
+        self.assertIn("appendChatActionCard(dashboardRootCauseCard(content, turnTag))", runtime)
+        self.assertIn("appendChatActionCard(dashboardActionsCard(content, turnTag))", runtime)
+
     def test_expanded_thought_card_uses_symmetric_inline_spacing(self) -> None:
         css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
         self.assertIn("--thought-step-content-inset: 25px", css)
@@ -1860,12 +2683,13 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertNotIn(">✓<", step_source)
         self.assertIn("TOOL_STEP_ICON_BY_NAME", main)
         for tool in (
-            "OntologyQuery", "ListBusinessObjects", "TermDisambiguate",
-            "MetricLookup", "EntityDescribe", "RelationLookup", "GraphContext",
-            "GraphExpand", "SQLRun", "ListTables", "DescribeTable",
+            "Ontology-SemanticQuery", "ListBusinessObjects", "Ontology-TermDisambiguate",
+            "MetricCalculation", "Ontology-EntityDescribe", "Ontology-RelationQuery", "Ontology-GraphContext",
+            "Ontology-GraphExpand", "Ontology-MetricQuery", "Ontology-FactQuery", "ListTables", "DescribeTable",
             "TableGenerate", "ChartGenerate", "ChartGenerateMultiDim", "AskUser",
         ):
-            self.assertIn(f"  {tool}:", main)
+            key = f'"{tool}"' if "-" in tool else tool
+            self.assertIn(f"  {key}:", main)
         self.assertIn("window.antdNormalizeStepTimelines = normalizeStepTimelineTree", main)
         self.assertIn("window.antdNormalizeStepTimelines(el.chatScroll)", runtime)
         self.assertIn('container.classList.toggle("has-multiple-steps"', runtime)
@@ -1880,6 +2704,883 @@ class OfflineRegressionTests(unittest.TestCase):
         # The SOP check remains a separate component; only execution steps
         # lose the literal check glyph.
         self.assertIn("antd-sop-status-check", main)
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_fact_query_preview_uses_only_explicit_description_never_sql(self) -> None:
+        script = r'''import("./frontend/src/factQueryPreview.js").then((m) => {
+  console.log(JSON.stringify({
+    described: m.factQueryPreview({query_description: " 查询 2 月采购金额 ", sql: "SELECT 1"}),
+    sqlOnly: m.factQueryPreview({sql: "SELECT amount FROM orders"}),
+    sqlAsDescription: m.factQueryPreview({description: "SELECT amount FROM orders", sql: "SELECT 1"}),
+    absent: m.factQueryPreview({}),
+  }));
+})'''
+        proc = subprocess.run(
+            ["node", "--input-type=module", "-e", script],
+            cwd=Path.cwd(), capture_output=True, text=True, check=True,
+        )
+        data = json.loads(proc.stdout)
+        self.assertEqual(data["described"], "查询 2 月采购金额")
+        self.assertEqual(data["sqlOnly"], "")
+        self.assertEqual(data["sqlAsDescription"], "")
+        self.assertEqual(data["absent"], "")
+
+    def test_ontology_graph_modal_uses_product_labels_and_synced_cluster_layout(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        graph = Path("frontend/src/ontologySigmaGraph.js").read_text(encoding="utf-8")
+        self.assertIn('data-graph-strategy="context" class="active">子图检索</button>', runtime)
+        self.assertIn('data-graph-strategy="expand">关系扩散</button>', runtime)
+        self.assertIn('>关系聚类可视化</button>', runtime)
+        self.assertNotIn('>Ontology-GraphContext</button>', runtime)
+        self.assertNotIn('>展开上下游</button>', runtime)
+        self.assertIn("function packIsolatedNodes(graph)", graph)
+        self.assertIn("packIsolatedNodes(graph);", graph)
+        self.assertIn("graph.order <= 40", graph)
+
+    def test_sop_six_steps_state_machine_and_event_mapping(self) -> None:
+        """The analysis SOP is a real 6-step state machine driven by
+        structured `sop_progress` events, with tool-mapping fallbacks and a
+        visited-trajectory (skipped) terminal state."""
+        machine = Path("frontend/src/sopMachine.js").read_text(encoding="utf-8")
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+
+        # 1. Exactly six fixed main steps, exact names, no old steps.
+        steps_start = machine.index("export const SOP_STEPS = Object.freeze([")
+        steps_end = machine.index("]);", steps_start)
+        steps_src = machine[steps_start:steps_end]
+        for step in (
+            "意图识别", "本体模型匹配", "深度思考&分析规划",
+            "数据获取和可视化", "根因分析", "决策行动",
+        ):
+            self.assertIn(f'"{step}"', steps_src)
+        for old_step in ("语义理解&元数据匹配", "业务上下文注入", "SQL 执行&数据获取",
+                         "结果分析&可视化输出", "执行首轮查询", "补充查询取数", "汇总交付"):
+            self.assertNotIn(old_step, steps_src)
+
+        # 1b. The machine exposes an explicit skipped status.
+        self.assertIn('export const SOP_STATUS_SKIPPED = "skipped";', machine)
+        self.assertIn("export function sopStatusesForDone(", machine)
+        self.assertIn("export function visitedFromTodos(", machine)
+
+        # 2. Tool mapping: ontology tools -> step 02 (index 1); render and
+        #    table-schema tools -> step 04 数据获取和可视化 (index 3).
+        tool_map_start = runtime.index("const SOP_TOOL_DETAIL = {")
+        tool_map_end = runtime.index("\n  };", tool_map_start)
+        tool_map = runtime[tool_map_start:tool_map_end]
+        for rendering_tool in ("TableGenerate", "ChartGenerate", "ChartGenerateMultiDim"):
+            self.assertIn(f"{rendering_tool}: {{ step: SOP_QUERY", tool_map)
+        self.assertIn("ListTables: { step: SOP_QUERY", tool_map)
+        self.assertIn("DescribeTable: { step: SOP_QUERY", tool_map)
+        self.assertIn('"Ontology-SemanticQuery": { step: SOP_ONTOLOGY', tool_map)
+        self.assertIn('"Ontology-GraphContext": { step: SOP_ONTOLOGY', tool_map)
+        self.assertNotIn("SOP_CONTEXT", tool_map)
+        self.assertNotIn("Ontology-FactQuery:", tool_map)
+        self.assertNotIn("Ontology-MetricQuery:", tool_map)
+
+        # 3. State machine tracks the visited trajectory, not a linear cursor.
+        machine_func = machine[machine.index("export function applySopStep("):]
+        self.assertIn("applySopStep(visited, current, stepIndex, detail, options = {})", machine_func)
+        self.assertIn("if (target < cur && !allowBackward) return null;", machine_func)
+        self.assertIn("nextSeen = seen.filter((i) => i <= target)", machine_func)
+        self.assertIn("sopStatusesFor(nextSeen, target)", machine_func)
+        set_src = runtime[runtime.index("function setSopStep("):runtime.index("function applySopStatuses(")]
+        self.assertIn("applySopStep(visited, cur, stepIndex, detail, options)", set_src)
+        self.assertIn("bucket.sopVisited = next.visited", set_src)
+
+        # 4. Query tools rebuild 03 -> 04; a re-query from 04/05/06 rewinds to 03.
+        tool_handler_start = runtime.index("function advanceSopForTool(")
+        tool_handler_end = runtime.index("\n  }", tool_handler_start)
+        tool_handler = runtime[tool_handler_start:tool_handler_end]
+        self.assertIn("SOP_DATA_QUERY_TOOLS.has(name)", tool_handler)
+        self.assertIn('new Set(["Ontology-FactQuery", "Ontology-MetricQuery"])', runtime)
+        self.assertIn("根据分析结果重新规划", tool_handler)
+        self.assertIn("生成自主 SQL 方案", tool_handler)
+        self.assertIn("执行自主 SQL 查询", tool_handler)
+        self.assertIn("查询失败，准备调整方案", tool_handler)
+        self.assertIn("cur >= SOP_ROOTCAUSE", tool_handler)
+        self.assertIn("function rewindSopAnalysis(", runtime)
+
+        # 5. The frontend never fabricates step 05 from text markers: root-cause
+        #    steps come only from structured backend sop_progress events.
+        self.assertNotIn("advanceSopForText", runtime)
+        self.assertNotIn("SOP_TEXT_INTERPRET", runtime)
+        self.assertNotIn("SOP_TEXT_RECOMMEND", runtime)
+
+        # 6. llm_response with no tools only marks step 06 in_progress.
+        response_start = runtime.index('case "llm_response":')
+        response_end = runtime.index('case "action_recommendations":', response_start)
+        response_handler = runtime[response_start:response_end]
+        self.assertIn('if (!hasToolUses) setSopStep(SOP_DECISION, "组装最终报告")', response_handler)
+
+        # 7. Structured sop_progress event drives the machine (1-based -> 0).
+        progress_start = runtime.index('case "sop_progress":')
+        progress_end = runtime.index('case "tool_result":', progress_start)
+        progress_handler = runtime[progress_start:progress_end]
+        self.assertIn("setSopStep(step - 1, evt.detail", progress_handler)
+        self.assertIn("evt.allow_backward !== false", progress_handler)
+
+        # 8. done converts visited -> completed, unvisited -> skipped (never
+        #    paints unexecuted steps green). error/superseded/choice never do.
+        done_start = runtime.index('case "done":')
+        done_end = runtime.index('case "error":', done_start)
+        done_src = runtime[done_start:done_end]
+        self.assertIn("reconcileTodosOnCompletion()", done_src)
+        reconcile_start = runtime.index("function reconcileTodosOnCompletion(")
+        reconcile_end = runtime.index("\n  }", reconcile_start)
+        reconcile_src = runtime[reconcile_start:reconcile_end]
+        self.assertIn("sopStatusesForDone(visited)", reconcile_src)
+        self.assertNotIn('status: "completed"', reconcile_src)
+        error_src = runtime[done_end:runtime.index("default:", done_end)]
+        self.assertNotIn("reconcileTodosOnCompletion", error_src)
+        superseded_start = runtime.index('case "session_superseded":')
+        superseded_end = runtime.index('case "done":', superseded_start)
+        self.assertNotIn("reconcileTodosOnCompletion", runtime[superseded_start:superseded_end])
+        self.assertNotIn(
+            "reconcileTodosOnCompletion",
+            runtime[runtime.index('case "awaiting_user_choice":'):runtime.index('case "llm_response":')])
+
+        # 9. Restore migration lives in the pure module, never rewrites JSON.
+        self.assertIn("export function migrateLegacySop(", machine)
+        self.assertIn("source.length === 5", machine)
+        self.assertIn("source.length === 6", machine)
+        self.assertIn("source.length === 9", machine)
+
+    def _run_sop_machine(self, script: str) -> str:
+        """Run a pure sopMachine.js script through node (skips when absent)."""
+        repo = Path(__file__).resolve().parents[1]
+        proc = subprocess.run(
+            ["node", "--input-type=module", "-e", script],
+            cwd=str(repo), capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return proc.stdout.strip()
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_sop_state_machine_pure_transitions(self) -> None:
+        """Real state-machine transitions via node (not string assertions)."""
+        script = r"""import("./frontend/src/sopMachine.js").then((m) => {
+  const out = {};
+  out.steps = m.SOP_STEPS;
+  out.initial = m.applySopStep([], 0, 0, "用户问题解析");
+  out.forward = m.applySopStep([0], 0, 2, "生成自主 SQL 方案");
+  out.backward = m.applySopStep([0,1,2,3,4,5], 5, 2, "根据分析结果重新规划", { allowBackward: true });
+  out.backwardRejected = m.applySopStep([0,1,2,3,4,5], 5, 2, "x", { allowBackward: false });
+  out.sameStepDetail = m.applySopStep([0,1,2,3], 3, 3, "解析查询结果");
+  out.loop = [m.applySopStep([0],0,2,"p"), m.applySopStep([0,2],2,3,"q"),
+              m.applySopStep([0,2,3],3,4,"r"),
+              m.applySopStep([0,2,3,4],4,2,"replan",{allowBackward:true}),
+              m.applySopStep([0,2],2,3,"q2"), m.applySopStep([0,2,3],3,4,"r2"),
+              m.applySopStep([0,2,3,4],4,5,"d"),
+              m.applySopStep([0,2,3,4,5],5,2,"根据分析结果重新规划",{allowBackward:true})];
+  out.oneInProgress = out.loop.every((r) => r.todos.filter((t) => t.status === "in_progress").length === 1);
+  out.l1Done = m.sopStatusesForDone([0,2,3,5]);
+  out.l3Done = m.sopStatusesForDone([0,1,2,3,4,5]);
+  out.skipMid = m.sopStatusesFor([0,2,3,5], 5);
+  out.rewindMid = m.sopStatusesFor([0,1,2], 2);
+  console.log(JSON.stringify(out));
+})"""
+        data = json.loads(self._run_sop_machine(script))
+        self.assertEqual(data["steps"], [
+            "意图识别", "本体模型匹配", "深度思考&分析规划",
+            "数据获取和可视化", "根因分析", "决策行动",
+        ])
+        self.assertEqual([t["status"] for t in data["initial"]["todos"]],
+                         ["in_progress", "pending", "pending", "pending", "pending", "pending"])
+        # 01 -> 03 jump: 02 was never visited -> skipped, never green.
+        self.assertEqual([t["status"] for t in data["forward"]["todos"]],
+                         ["completed", "skipped", "in_progress", "pending", "pending", "pending"])
+        # 06 -> 03 rewind: steps 04..06 become pending again (no stale green).
+        self.assertEqual([t["status"] for t in data["backward"]["todos"]],
+                         ["completed", "completed", "in_progress", "pending", "pending", "pending"])
+        self.assertEqual(data["backward"]["todos"][2]["detail"], "根据分析结果重新规划")
+        self.assertEqual(data["backward"]["visited"], [0, 1, 2])
+        self.assertIsNone(data["backwardRejected"])
+        self.assertEqual(data["sameStepDetail"]["todos"][3]["detail"], "解析查询结果")
+        self.assertTrue(data["oneInProgress"])
+        # 04 -> 03 -> 04 -> 05 -> 06 -> 03: the final rewind resets 04..06 to
+        # pending; 02 本体模型匹配 was never visited in this loop -> skipped,
+        # and step 01 stays completed (real trajectory, no or True).
+        self.assertEqual([t["status"] for t in data["loop"][-1]["todos"]],
+                         ["completed", "skipped", "in_progress", "pending", "pending", "pending"])
+        self.assertEqual(data["loop"][-1]["todos"][2]["detail"], "根据分析结果重新规划")
+        # L1 final: 根因分析 (index 4) is skipped, never green.
+        self.assertEqual(data["l1Done"],
+                         ["completed", "skipped", "completed", "completed", "skipped", "completed"])
+        # L3 final: root cause was executed -> all completed.
+        self.assertEqual(data["l3Done"], ["completed"] * 6)
+        # Mid-run L1 04->06: 根因分析 shows skipped while 决策行动 is in progress.
+        self.assertEqual(data["skipMid"],
+                         ["completed", "skipped", "completed", "completed", "skipped", "in_progress"])
+        # Mid-run after 05->03: later steps are pending, not green.
+        self.assertEqual(data["rewindMid"],
+                         ["completed", "completed", "in_progress", "pending", "pending", "pending"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_sop_legacy_snapshot_migration_pure(self) -> None:
+        """Old 5-step / 6-step / 9-step snapshots migrate to the 6-step shape."""
+        script = r"""import("./frontend/src/sopMachine.js").then((m) => {
+  const out = {};
+  const mk = (n) => Array.from({ length: n }, (_, i) =>
+    ({ content: "old-" + i, status: "completed", detail: "" }));
+  out.fiveDone = m.migrateLegacySop(mk(5), true);
+  out.fiveMid = m.migrateLegacySop([
+    { content: "语义理解&元数据匹配", status: "completed", detail: "" },
+    { content: "业务上下文注入", status: "completed", detail: "" },
+    { content: "深度思考&分析规划", status: "in_progress", detail: "根据分析结果重新规划" },
+    { content: "SQL 执行&数据获取", status: "pending", detail: "" },
+    { content: "结果分析&可视化输出", status: "pending", detail: "" },
+  ], true);
+  out.sixDone = m.migrateLegacySop(mk(6), true);
+  out.sixMid = m.migrateLegacySop([
+    { content: "a", status: "completed" }, { content: "b", status: "completed" },
+    { content: "c", status: "completed" }, { content: "d", status: "completed" },
+    { content: "e", status: "in_progress" }, { content: "f", status: "pending" },
+  ], true);
+  out.nineDone = m.migrateLegacySop(mk(9), true);
+  out.nineMid = m.migrateLegacySop([
+    { content: "a", status: "completed" }, { content: "b", status: "completed" },
+    { content: "c", status: "completed" }, { content: "d", status: "completed" },
+    { content: "e", status: "completed" }, { content: "f", status: "in_progress" },
+    { content: "g", status: "pending" }, { content: "h", status: "pending" },
+    { content: "i", status: "pending" },
+  ], true);
+  out.sameLen = m.migrateLegacySop([
+    { content: "意图识别", status: "completed", detail: "" },
+    { content: "本体模型匹配", status: "completed", detail: "" },
+    { content: "深度思考&分析规划", status: "in_progress", detail: "根据查询错误调整方案" },
+    { content: "数据获取和可视化", status: "pending", detail: "" },
+    { content: "根因分析", status: "pending", detail: "" },
+    { content: "决策行动", status: "pending", detail: "" },
+  ], true);
+  out.visited = m.visitedFromTodos([
+    { status: "completed" }, { status: "completed" }, { status: "in_progress" },
+    { status: "pending" }, { status: "pending" }, { status: "pending" },
+  ]);
+  console.log(JSON.stringify(out));
+})"""
+        data = json.loads(self._run_sop_machine(script))
+        self.assertEqual([t["status"] for t in data["fiveDone"]], ["completed"] * 6)
+        self.assertEqual([t["content"] for t in data["fiveMid"]], [
+            "意图识别", "本体模型匹配", "深度思考&分析规划",
+            "数据获取和可视化", "根因分析", "决策行动",
+        ])
+        # old-5 cursor on 规划 -> new 03 in_progress, later steps pending.
+        self.assertEqual([t["status"] for t in data["fiveMid"]],
+                         ["completed", "completed", "in_progress", "pending", "pending", "pending"])
+        self.assertEqual(data["fiveMid"][2]["detail"], "根据分析结果重新规划")
+        self.assertEqual([t["status"] for t in data["sixDone"]], ["completed"] * 6)
+        self.assertEqual([t["status"] for t in data["sixMid"]],
+                         ["completed", "completed", "completed", "completed", "in_progress", "pending"])
+        self.assertEqual([t["status"] for t in data["nineDone"]], ["completed"] * 6)
+        self.assertEqual([t["status"] for t in data["nineMid"]],
+                         ["completed", "completed", "completed", "in_progress", "pending", "pending"])
+        # Same-length 6-step snapshots keep their own content/status/detail.
+        self.assertEqual(data["sameLen"][2]["detail"], "根据查询错误调整方案")
+        self.assertEqual([t["status"] for t in data["sameLen"]],
+                         ["completed", "completed", "in_progress", "pending", "pending", "pending"])
+        # visitedFromTodos derives the trajectory from a restored snapshot.
+        self.assertEqual(data["visited"], [0, 1])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_sop_skipped_terminal_and_rewind_pure(self) -> None:
+        """done never greens unvisited steps; rewinds never leave stale green."""
+        script = r"""import("./frontend/src/sopMachine.js").then((m) => {
+  const out = {};
+  out.l1 = m.sopStatusesForDone([0,2,3,5]);
+  out.l2 = m.sopStatusesForDone([0,1,2,3,5]);
+  out.interrupted = m.sopStatusesFor([0,1,2,3], 3);
+  out.rewind = m.applySopStep([0,1,2,3,4,5], 5, 2, "根据分析结果重新规划", { allowBackward: true });
+  out.rewindStatuses = out.rewind.todos.map((t) => t.status);
+  out.forwardSkip = m.applySopStep([0], 0, 5, "组装最终报告");
+  out.forwardSkipStatuses = out.forwardSkip.todos.map((t) => t.status);
+  console.log(JSON.stringify(out));
+})"""
+        data = json.loads(self._run_sop_machine(script))
+        # L1 (01->03->04->06): 02 和 05 未执行 -> skipped, not completed.
+        self.assertEqual(data["l1"],
+                         ["completed", "skipped", "completed", "completed", "skipped", "completed"])
+        # L2 异常定位 (01->02->03->04->06): 05 未做根因 -> skipped.
+        self.assertEqual(data["l2"],
+                         ["completed", "completed", "completed", "completed", "skipped", "completed"])
+        # A turn interrupted at 04 keeps in_progress/pending, never terminal.
+        self.assertEqual(data["interrupted"],
+                         ["completed", "completed", "completed", "in_progress", "pending", "pending"])
+        # 06 -> 03 rewind: 04..06 pending, 05/06 not green.
+        self.assertEqual(data["rewindStatuses"],
+                         ["completed", "completed", "in_progress", "pending", "pending", "pending"])
+        # 01 -> 06 direct jump: skipped steps stay non-green (skipped).
+        self.assertEqual(data["forwardSkipStatuses"],
+                         ["completed", "skipped", "skipped", "skipped", "skipped", "in_progress"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_sop_thoughtchain_status_mapping_is_static_for_pending_and_skipped(self) -> None:
+        """The WorkflowPanels ThoughtChain mapping reserves AntD's animated
+        `pending` status for in_progress only; pending/skipped map to the
+        custom static `idle` state, and completed maps to `success`.  The
+        mapping is evaluated as a real pure function, not a string scan."""
+        main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        # The mapping is a named pure function used by the chain items, and
+        # the old "everything except completed -> pending" ternary is gone.
+        self.assertIn("function sopThoughtChainStatus(status) {", main)
+        self.assertIn("status: sopThoughtChainStatus(item.status),", main)
+        self.assertNotIn(
+            'status: item.status === "completed" ? "success" : item.status === "in_progress" ? "pending" : "pending"',
+            main)
+        script = r"""const fs = require('fs');
+const src = fs.readFileSync('frontend/src/main.jsx', 'utf8');
+const start = src.indexOf('function sopThoughtChainStatus(status) {');
+const end = src.indexOf('\n}\n', start) + 3;
+const fn = new Function('return ' + src.slice(start, end))();
+const out = {};
+for (const s of ['completed', 'in_progress', 'pending', 'skipped']) out[s] = fn(s);
+console.log(JSON.stringify(out));"""
+        proc = subprocess.run(
+            ["node", "-e", script],
+            cwd=str(Path(__file__).resolve().parents[1]),
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        data = json.loads(proc.stdout.strip())
+        self.assertEqual(data["completed"], "success")
+        self.assertEqual(data["in_progress"], "pending")
+        self.assertEqual(data["pending"], "idle")
+        self.assertEqual(data["skipped"], "idle")
+
+    def test_sop_terminal_cleanup_removes_all_loading_placeholders(self) -> None:
+        """done / error / session_superseded / stream_closed must clear every
+        loading placeholder (.thinking-line, .antd-step-thinking, .cursor,
+        empty assistant ghosts) without touching real results."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        cleanup_start = runtime.index("function cleanupTurnLoadingUI()")
+        cleanup_src = runtime[cleanup_start:runtime.index("function attachChatStep(", cleanup_start)]
+        self.assertIn('".thinking-line, .cursor"', cleanup_src)
+        self.assertIn("clearStepThinking()", cleanup_src)
+        # The ghost-block removal is guarded: only blocks without text, tool
+        # steps or result cards are dropped, so real results survive.
+        self.assertIn('".msg-body > *:not(.thinking-line):not(.cursor), "', cleanup_src)
+        self.assertIn(
+            '".antd-step-timeline .step, .chart-card, .table-card, .multidim-card, .choice-card"',
+            cleanup_src)
+        # Every terminal handler runs the shared cleanup.
+        done_start = runtime.index('case "done":')
+        done_end = runtime.index('case "error":', done_start)
+        self.assertIn("cleanupTurnLoadingUI()", runtime[done_start:done_end])
+        error_start = done_end
+        error_end = runtime.index("default:", error_start)
+        self.assertIn("cleanupTurnLoadingUI()", runtime[error_start:error_end])
+        superseded_start = runtime.index('case "session_superseded":')
+        superseded_end = runtime.index('case "done":', superseded_start)
+        self.assertIn("cleanupTurnLoadingUI()", runtime[superseded_start:superseded_end])
+        # The SSE natural-close path now runs the interrupted terminal cleanup
+        # (same loading cleanup, but no success side effects).
+        interrupted_start = runtime.index('case "stream_interrupted":')
+        interrupted_end = runtime.index('case "done":', interrupted_start)
+        self.assertIn("cleanupTurnLoadingUI()", runtime[interrupted_start:interrupted_end])
+
+    def test_sop_restore_and_css_are_static_after_completion(self) -> None:
+        """History restore strips transient loading rows, empty timelines and
+        carets; CSS forces pending/skipped/idle SOP markers to be static and
+        scopes the rule to the two workflow roots only."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        hydrate_start = runtime.index("function hydrateRestoredChat()")
+        hydrate_src = runtime[hydrate_start:runtime.index("function hydrateRestoredInspector(", hydrate_start)]
+        self.assertIn('".cursor, .thinking-line, .antd-step-thinking"', hydrate_src)
+        self.assertIn('if (!timeline.querySelector(":scope > .step")) timeline.remove();', hydrate_src)
+
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        # Static skipped dash icon and static pending/skipped title colours.
+        self.assertIn(".antd-sop-status-dash", css)
+        self.assertIn(".antd-sop-title.is-skipped", css)
+        self.assertIn(".antd-sop-title.is-pending", css)
+        # The no-animation rule is scoped to the SOP workflow roots and uses
+        # `animation: none` — it never disables other loading UIs.
+        self.assertIn("animation: none !important", css)
+        self.assertIn("#antd-workflow-root, #antd-dashboard-workflow-root", css)
+        self.assertIn(".ant-thought-chain-item-icon", css)
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_stream_eof_classification_pure(self) -> None:
+        """EOF without an explicit backend terminal event is `interrupted`,
+        never a synthetic `done`; stale streams stay silent."""
+        script = r"""import("./frontend/src/streamTerminal.js").then((m) => {
+  const out = {};
+  out.emptyEof = m.classifyStreamEof({ stale: false, sawTerminal: false });
+  out.doneEof = m.classifyStreamEof({ stale: false, sawTerminal: true });
+  out.staleEof = m.classifyStreamEof({ stale: true, sawTerminal: false });
+  out.staleWithTerminal = m.classifyStreamEof({ stale: true, sawTerminal: true });
+  console.log(JSON.stringify(out));
+})"""
+        data = json.loads(self._run_sop_machine(script))
+        # A bare EOF is never success: interrupted (no save/SOP/export).
+        self.assertEqual(data["emptyEof"], "interrupted")
+        # A terminal frame was parsed and already dispatched by the loop.
+        self.assertEqual(data["doneEof"], "terminal")
+        # A stale stream must not surface anything into the newer request.
+        self.assertEqual(data["staleEof"], "stale")
+        self.assertEqual(data["staleWithTerminal"], "stale")
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_turn_lifecycle_done_idempotency_sequences(self) -> None:
+        """Real event-sequence behaviour of the bounded completed/failed turn
+        lifecycle (node, not string assertions).  A `done` is accepted once
+        per turn; delayed duplicates, and late `done` after failure states,
+        are rejected so success side effects never run twice."""
+        script = r"""import("./frontend/src/turnLifecycle.js").then((m) => {
+  const out = {};
+  const cap = 4;
+  // 1/2. single done + immediate duplicate done.
+  let st = m.createTurnLifecycle({ capacity: cap });
+  const d1 = m.recordDone(st, "T1");
+  const d1b = m.recordDone(d1.state, "T1");
+  out.singleThenDuplicate = [d1.accepted, d1b.accepted, d1b.state.completed];
+  // 3. T1 done -> T2 done -> delayed T1 done (last T1 must be ignored).
+  const d2 = m.recordDone(d1.state, "T2");
+  const d1late = m.recordDone(d2.state, "T1");
+  out.interleaved = [d2.accepted, d1late.accepted, d1late.state.completed];
+  // 4/5/6. error / interrupted / superseded then late done.
+  let f = m.createTurnLifecycle({ capacity: cap });
+  f = m.recordFailure(f, "E1");
+  out.errorThenDone = m.recordDone(f, "E1");
+  f = m.createTurnLifecycle({ capacity: cap });
+  f = m.recordFailure(f, "I1");
+  out.interruptedThenDone = m.recordDone(f, "I1");
+  f = m.createTurnLifecycle({ capacity: cap });
+  f = m.recordFailure(f, "S1");
+  out.supersededThenDone = m.recordDone(f, "S1");
+  // 8/9. bare EOF is interrupted; EOF after an explicit done is terminal.
+  const stm = null;
+  out.bareEof = stm === null ? "turnLifecycle-has-no-eof" : null;
+  // 11. bounded FIFO: capacity never exceeded even with many distinct turns.
+  let capSt = m.createTurnLifecycle({ capacity: cap });
+  for (let i = 0; i < 40; i++) capSt = m.recordDone(capSt, "T" + i).state;
+  out.boundedSize = capSt.completed.length;
+  out.boundedKeepsNewest = capSt.completed[capSt.completed.length - 1] === "T39";
+  out.boundedDropsOldest = !capSt.completed.includes("T0");
+  console.log(JSON.stringify(out));
+})"""
+        data = json.loads(self._run_sop_machine(script))
+        self.assertEqual(data["singleThenDuplicate"], [True, False, ["T1"]])
+        self.assertEqual(data["interleaved"], [True, False, ["T1", "T2"]])
+        self.assertFalse(data["errorThenDone"]["accepted"])
+        self.assertFalse(data["interruptedThenDone"]["accepted"])
+        self.assertFalse(data["supersededThenDone"]["accepted"])
+        self.assertEqual(data["boundedSize"], 4)
+        self.assertTrue(data["boundedKeepsNewest"])
+        self.assertTrue(data["boundedDropsOldest"])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_turn_lifecycle_reset_and_capacity(self) -> None:
+        """Reset clears completed and failed turns; custom capacity is
+        honoured and never grows."""
+        script = r"""import("./frontend/src/turnLifecycle.js").then((m) => {
+  const out = {};
+  let st = m.createTurnLifecycle({ capacity: 2 });
+  st = m.recordDone(st, "A").state;
+  st = m.recordDone(st, "B").state;
+  st = m.recordDone(st, "C").state; // evicts A
+  out.afterEvict = [st.completed.length, st.completed.includes("A"), st.completed.includes("C")];
+  out.failedBefore = m.isTurnFailed(st, "X");
+  st = m.recordFailure(st, "X");
+  out.failedAfter = m.isTurnFailed(st, "X");
+  st = m.resetTurnLifecycle(st);
+  out.reset = [st.completed.length, st.failed.size, st.completed.includes("C"), m.isTurnFailed(st, "X")];
+  console.log(JSON.stringify(out));
+})"""
+        data = json.loads(self._run_sop_machine(script))
+        self.assertEqual(data["afterEvict"], [2, False, True])
+        self.assertFalse(data["failedBefore"])
+        self.assertTrue(data["failedAfter"])
+        self.assertEqual(data["reset"], [0, 0, False, False])
+
+    def test_stream_response_never_fakes_done_on_eof(self) -> None:
+        """The SSE loop only treats an explicit backend terminal event as
+        terminal; EOF otherwise marks the turn interrupted (loading cleanup
+        only, no SOP completion / export / save), and stale streams stay
+        silent."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        # The fake-success synthesis is gone; the pure classifier drives EOF.
+        self.assertNotIn('stop_reason: "stream_closed"', runtime)
+        self.assertIn('classifyStreamEof({ stale, sawTerminal: sawTerminalEvent })', runtime)
+        self.assertIn('onEvent({\n            type: "stream_interrupted",', runtime)
+        # Stale tracking prevents old requests from emitting anything.
+        self.assertIn("stale = true", runtime)
+        # Staleness is re-checked at EOF so a request superseded between the
+        # final frame and the EOF can never interrupt the newer request.
+        self.assertIn("if (seq !== streamSeq) stale = true;", runtime)
+        # The interrupted handler cleans loading but never runs the success
+        # side effects (no SOP completion, no export button, no save).
+        interrupted_start = runtime.index('case "stream_interrupted":')
+        interrupted_src = runtime[interrupted_start:runtime.index('case "done":', interrupted_start)]
+        self.assertIn("cleanupTurnLoadingUI()", interrupted_src)
+        self.assertIn("setBusy(false)", interrupted_src)
+        self.assertNotIn("reconcileTodosOnCompletion", interrupted_src)
+        self.assertNotIn("appendTurnExportButton", interrupted_src)
+        self.assertNotIn("saveCurrentConversation", interrupted_src)
+        # A turn that ended in error / superseded / interrupted can never be
+        # flipped into success by a late `done`, and repeated `done` frames
+        # are idempotent via the bounded turnLifecycle module (real
+        # event-sequence behaviour is exercised in
+        # test_turn_lifecycle_done_idempotency_sequences).
+        done_start = runtime.index('case "done":')
+        done_src = runtime[done_start:runtime.index('case "error":', done_start)]
+        self.assertIn("recordDone", done_src)
+        self.assertIn("if (!rec.accepted) break;", done_src)
+        self.assertIn("recordFailure", runtime)
+        # HTTP 409/429 (sendMessage path) restore operability and drop the
+        # placeholder card; the choice-submit path also keeps working.
+        send_start = runtime.index("async function sendMessage(")
+        busy_start = runtime.index('errCode === "SESSION_BUSY"', send_start)
+        busy_src = runtime[busy_start:busy_start + 700]
+        self.assertIn("cleanupTurnLoadingUI()", busy_src)
+        # Mid-stream abort only surfaces interrupted for the latest request.
+        abort_start = runtime.index("console.warn(\"stream interrupted\", err)")
+        abort_src = runtime[abort_start:abort_start + 300]
+        self.assertIn("mySeq === streamSeq", abort_src)
+        self.assertIn("stream_interrupted", abort_src)
+
+    def test_sop_progress_turn_start_and_no_tool_delivery(self) -> None:
+        """A plain no-tool turn emits step 01 at start and step 06 delivery
+        details before done; done remains the only terminal signal.  L1 turns
+        never fabricate 根因分析 (step 05) events."""
+        def fake_stream(*_args, **_kwargs):
+            yield {"type": "text_delta", "text": "结论：本月华东区域收入为 5200 万元。"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with patch("bi_agent.web.session.stream_message", fake_stream):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("华东区域收入是多少？"))
+
+        sop = [e for e in events if e["type"] == "sop_progress"]
+        self.assertGreaterEqual(len(sop), 1)
+        self.assertEqual(sop[0]["step"], 1)
+        self.assertEqual(sop[0]["detail"], "用户问题解析")
+        self.assertFalse(sop[0]["allow_backward"])
+        details = [e["detail"] for e in sop]
+        self.assertIn("组装最终报告", details)
+        self.assertIn("正在返回用户结果", details)
+        # No root-cause analysis was performed: never a fake step-05 event.
+        self.assertNotIn(5, [e["step"] for e in sop])
+        done = [e for e in events if e["type"] == "done"]
+        self.assertEqual(len(done), 1)
+        self.assertLess(sop[-1]["step"], 7)  # never a fake all-complete step
+
+    def test_sop_progress_query_tool_flow(self) -> None:
+        """L1 取数（有多少订单）drives 03 plan -> 04 execute -> 04 result ->
+        06 decision delivery.  A plain data query must NOT enter step 05."""
+        responses = iter([
+            [
+                {"type": "tool_use_start", "id": "tu-1", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-1", "name": "Ontology-FactQuery", "input": {"sql": "select count(*)"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "结论：审批中的订单有 50 单。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool", return_value=("50 单", False)), \
+             patch.object(WebSession, "record_query_result", return_value=None):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("有多少订单？"))
+
+        sop = [(e["step"], e["detail"]) for e in events if e["type"] == "sop_progress"]
+        steps = [item[0] for item in sop]
+        # 01 start -> 03 plan -> 04 execute -> 04 result -> 06 assemble ->
+        # 06 returning.  No step-05 根因分析 for an L1 取数 question.
+        self.assertEqual(sop[0][0], 1)
+        self.assertIn(3, steps)
+        self.assertIn(4, steps)
+        self.assertIn("执行自主 SQL 查询", [item[1] for item in sop])
+        self.assertIn("解析查询结果", [item[1] for item in sop])
+        self.assertNotIn(5, steps)
+        self.assertTrue(any(item[0] == 6 and item[1] == "正在返回用户结果" for item in sop))
+        done = [e for e in events if e["type"] == "done"]
+        self.assertEqual(len(done), 1)
+
+    def test_sop_progress_requery_rewinds_to_planning(self) -> None:
+        """A later Ontology-FactQuery after data/rendering work emits
+        04 -> 03 replan -> 04, never leaving stale completed steps."""
+        responses = iter([
+            [
+                {"type": "tool_use_start", "id": "tu-1", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-1", "name": "Ontology-FactQuery", "input": {"sql": "select 1"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "结论：第一轮结果不足，需要补充查询。"},
+                {"type": "tool_use_start", "id": "tu-2", "name": "TableGenerate"},
+                {"type": "tool_use_end", "id": "tu-2", "name": "TableGenerate", "input": {}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "tool_use_start", "id": "tu-3", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-3", "name": "Ontology-FactQuery", "input": {"sql": "select 2"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "结论：补充查询完成，共 60 单。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool", return_value=("60 单", False)), \
+             patch.object(WebSession, "record_query_result", return_value=None):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("统计订单数量"))
+
+        sop = [(e["step"], e["detail"]) for e in events if e["type"] == "sop_progress"]
+        details = [d for _, d in sop]
+        self.assertIn("根据分析结果重新规划", details)
+        replan_at = details.index("根据分析结果重新规划")
+        # A real rendering detail (04 生成数据表格) precedes the replan; a
+        # later query execution (04) follows it.  No or True assertions.
+        self.assertIn("生成数据表格", details[:replan_at])
+        self.assertEqual(sop[replan_at][0], 3)
+        self.assertIn("执行自主 SQL 查询", details[replan_at:])
+        self.assertNotIn(5, [item[0] for item in sop])
+        done = [e for e in events if e["type"] == "done"]
+        self.assertEqual(len(done), 1)
+
+    def test_sop_query_failure_never_fabricates_later_steps(self) -> None:
+        """A failed query emits 04 查询失败; an error-ending turn never
+        fabricates 05 根因分析 / 06 决策行动 events and never emits done."""
+        responses = iter([
+            [
+                {"type": "tool_use_start", "id": "tu-1", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-1", "name": "Ontology-FactQuery", "input": {"sql": "select broken"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "查询失败，调整方案。"},
+                {"type": "message_end", "stop_reason": "error", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool", return_value=("Error: 语法错误", True)), \
+             patch.object(WebSession, "record_query_result", return_value=None):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("查询订单金额"))
+
+        sop = [(e["step"], e["detail"]) for e in events if e["type"] == "sop_progress"]
+        details = [d for _, d in sop]
+        self.assertIn("查询失败，准备调整方案", details)
+        # The failed turn must not fabricate root-cause or decision steps.
+        self.assertNotIn(5, [item[0] for item in sop])
+        self.assertNotIn(6, [item[0] for item in sop])
+        done = [e for e in events if e["type"] == "done"]
+        self.assertEqual(done, [])
+
+    def test_sop_query_error_recovery_replans_and_delivers(self) -> None:
+        """After a failed query, the next query re-enters 03 根据查询错误调整方案
+        then 04 executes again; the final answer still delivers (SOP is not a
+        delivery gate)."""
+        responses = iter([
+            [
+                {"type": "tool_use_start", "id": "tu-1", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-1", "name": "Ontology-FactQuery", "input": {"sql": "select broken"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "tool_use_start", "id": "tu-2", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-2", "name": "Ontology-FactQuery", "input": {"sql": "select fixed"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "结论：查询完成，共 60 单。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        def fake_execute(_self, tool_use, *args, **kwargs):
+            sql = str((tool_use.get("input") or {}).get("sql") or "")
+            if "broken" in sql:
+                return "Error: 语法错误", True
+            return "60 单", False
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool", new=fake_execute), \
+             patch.object(WebSession, "record_query_result", return_value=None):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("查询订单金额"))
+
+        sop = [(e["step"], e["detail"]) for e in events if e["type"] == "sop_progress"]
+        details = [d for _, d in sop]
+        self.assertIn("查询失败，准备调整方案", details)
+        self.assertIn("根据查询错误调整方案", details)
+        replan_at = details.index("根据查询错误调整方案")
+        self.assertEqual(sop[replan_at][0], 3)
+        # The retried query executes on step 04 after the replan.
+        self.assertIn("执行自主 SQL 查询", details[replan_at:])
+        # L1 取数 recovery never fabricates step 05.
+        self.assertNotIn(5, [item[0] for item in sop])
+        done = [e for e in events if e["type"] == "done"]
+        self.assertEqual(len(done), 1)
+
+    def test_sop_l2_problem_location_skips_root_cause(self) -> None:
+        """L2 异常定位 (问题定位 section, no 根因分析 section) never emits a
+        step-05 root-cause event."""
+        responses = iter([
+            [
+                {"type": "tool_use_start", "id": "tu-1", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-1", "name": "Ontology-FactQuery", "input": {"sql": "select region, amount"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "🔎 问题定位：华东区环比下降 12%，其余区域平稳。\\n📌 结论：异常集中在华东区。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool", return_value=("区域数据", False)), \
+             patch.object(WebSession, "record_query_result", return_value=None):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("哪个区域异常？"))
+
+        sop = [e for e in events if e["type"] == "sop_progress"]
+        details = [e["detail"] for e in sop]
+        self.assertIn("解析查询结果", details)
+        self.assertNotIn(5, [e["step"] for e in sop])
+        self.assertTrue(any(e["step"] == 6 and e["detail"] == "正在返回用户结果" for e in sop))
+        done = [e for e in events if e["type"] == "done"]
+        self.assertEqual(len(done), 1)
+
+    def test_sop_l3_root_cause_enters_step_five(self) -> None:
+        """L3 根因问题: only when the final narrative really contains a
+        root-cause section does the backend emit step-05."""
+        responses = iter([
+            [
+                {"type": "tool_use_start", "id": "tu-1", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-1", "name": "Ontology-FactQuery", "input": {"sql": "select * from t"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "📌 结论：销售额下降 12%。\n🔍 根因分析：供应商交期延迟是主因，证据链：交期对比表。\n💡 行动建议：与主要供应商核对交期承诺并建立交期考核。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+
+        def fake_stream(*_args, **_kwargs):
+            yield from next(responses)
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "_execute_tool", return_value=("销售数据", False)), \
+             patch.object(WebSession, "record_query_result", return_value=None):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("销售额为什么下降？"))
+
+        sop = [(e["step"], e["detail"]) for e in events if e["type"] == "sop_progress"]
+        details = [d for _, d in sop]
+        # Step 05 appears only because the narrative really has 根因分析.
+        self.assertIn("根因证据链组装", details)
+        rc_at = details.index("根因证据链组装")
+        self.assertEqual(sop[rc_at][0], 5)
+        # It precedes the final delivery steps (06).
+        self.assertTrue(any(e[0] == 6 and e[1] == "组装最终报告" for e in sop[rc_at:]))
+        done = [e for e in events if e["type"] == "done"]
+        self.assertEqual(len(done), 1)
+
+    def test_sop_tool_error_never_completes_six_steps(self) -> None:
+        """Tool errors do not complete later steps: only a terminal `done`
+        event converts visited steps to completed and unvisited to skipped."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        done_start = runtime.index('case "done":')
+        done_end = runtime.index('case "error":', done_start)
+        self.assertIn("reconcileTodosOnCompletion()", runtime[done_start:done_end])
+        error_src = runtime[done_end:runtime.index("default:", done_end)]
+        self.assertNotIn("reconcileTodosOnCompletion", error_src)
+        tool_result_start = runtime.index('case "tool_result":')
+        tool_result_end = runtime.index('case "user_choice_requested":', tool_result_start)
+        self.assertNotIn("reconcileTodosOnCompletion", runtime[tool_result_start:tool_result_end])
+
+    @unittest.skipUnless(shutil.which("node"), "node not available")
+    def test_sop_refresh_restore_preserves_trajectory(self) -> None:
+        """A saved 6-step snapshot restores with identical names, statuses and
+        the in-progress detail (refresh / history restore path)."""
+        script = r"""import("./frontend/src/sopMachine.js").then((m) => {
+  const out = {};
+  out.saved = [
+    { content: "意图识别", status: "completed", detail: "" },
+    { content: "本体模型匹配", status: "completed", detail: "" },
+    { content: "深度思考&分析规划", status: "in_progress", detail: "根据分析结果重新规划" },
+    { content: "数据获取和可视化", status: "pending", detail: "" },
+    { content: "根因分析", status: "pending", detail: "" },
+    { content: "决策行动", status: "pending", detail: "" },
+  ];
+  out.restored = m.migrateLegacySop(out.saved, true);
+  out.visited = m.visitedFromTodos(out.restored);
+  console.log(JSON.stringify(out));
+})"""
+        data = json.loads(self._run_sop_machine(script))
+        restored = data["restored"]
+        self.assertEqual([t["content"] for t in restored], [
+            "意图识别", "本体模型匹配", "深度思考&分析规划",
+            "数据获取和可视化", "根因分析", "决策行动",
+        ])
+        self.assertEqual([t["status"] for t in restored],
+                         ["completed", "completed", "in_progress", "pending", "pending", "pending"])
+        self.assertEqual(restored[2]["detail"], "根据分析结果重新规划")
+        self.assertEqual(data["visited"], [0, 1])
+
+    def test_sop_single_state_machine_shared_by_chat_and_dashboard(self) -> None:
+        """Chat, report and Dashboard all render the same six-step SOP from the
+        single sopMachine.js module; main.jsx mounts WorkflowPanels in both
+        the chat and dashboard roots."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        import_start = runtime.index('from "./sopMachine.js";')
+        self.assertIn("SOP_STEPS", runtime[:import_start])
+        self.assertIn("applySopStep", runtime[:import_start])
+        self.assertIn("currentStepOf", runtime[:import_start])
+        self.assertIn("migrateLegacySop", runtime[:import_start])
+        self.assertIn("sopStatusesForDone", runtime[:import_start])
+        self.assertIn("visitedFromTodos", runtime[:import_start])
+        self.assertIn("render(<WorkflowPanels />)", main)
+        self.assertIn("dashboardWorkflowRoot", main)
+        self.assertIn("createRoot(dashboardWorkflowRoot).render(<WorkflowPanels />)", main)
+
+    def test_sop_missing_events_never_block_final_answer(self) -> None:
+        """Even without any sop_progress event the final text and done still
+        reach the client (SOP is display-only, not a delivery gate)."""
+        def fake_stream(*_args, **_kwargs):
+            yield {"type": "text_delta", "text": "结论：直接回答。"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch.object(WebSession, "record_query_result", return_value=None):
+            session = WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+            events = list(session.generate_turn("简单问题"))
+
+        # The turn still starts with step 01 (it always emits one), but no
+        # 根因分析/决策行动 events are fabricated before delivery.
+        sop_steps = [e["step"] for e in events if e["type"] == "sop_progress"]
+        self.assertTrue(all(step <= 6 for step in sop_steps))
+        self.assertTrue(any(e["type"] == "llm_response" for e in events))
+        self.assertTrue(any(e["type"] == "done" for e in events))
+
+    def test_app_sop_progress_is_turn_stamped(self) -> None:
+        """sop_progress joins the SSE event allowlist so it carries turn_id."""
+        from bi_agent.web.app import _TURN_EVENT_TYPES
+        self.assertIn("sop_progress", _TURN_EVENT_TYPES)
 
     def test_new_conversation_id_does_not_overwrite_collision(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2281,6 +3982,55 @@ class OfflineRegressionTests(unittest.TestCase):
                 setattr(STATE, name, value)
 
 
+    def test_product_branding_and_version_display(self) -> None:
+        """The top-left brand is 智能分析 with the v0.1.0 tag everywhere;
+        智析 and the bi-analyst pseudo-version are gone from user-visible
+        surfaces (title, skeleton, shell brand and React sidebar)."""
+        main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
+        static = Path("bi_agent/web/static/index.html").read_text(encoding="utf-8")
+        self.assertIn('const PRODUCT_NAME = "智能分析";', main)
+        self.assertIn('const PRODUCT_VERSION = "v0.1.0";', main)
+        self.assertIn("PRODUCT_NAME", main)
+        self.assertIn("PRODUCT_VERSION", main)
+        self.assertIn('className="antd-product-version"', main)
+        self.assertIn("<title>智能分析 · 本体工作台</title>", shell)
+        self.assertIn('<span class="brand-name">智能分析</span>', shell)
+        self.assertIn('<span class="brand-version" id="product-version">v0.1.0</span>', shell)
+        self.assertIn("<title>智能分析 · 本体工作台</title>", static)
+        self.assertIn('aria-label="智能分析 React 工作台"', static)
+        self.assertIn("正在加载智能分析工作台…", static)
+        # No legacy brand text remains in any first-paint surface.
+        for src in (main, shell, static):
+            self.assertNotIn("智析", src)
+            self.assertNotIn("bi-analyst", src)
+        # The actual agent role configuration is untouched.
+        self.assertTrue(Path(".claude/agents/bi-analyst.md").exists())
+
+    def test_version_contract_consistent(self) -> None:
+        """Python, FastAPI, npm and UI versions agree on v0.1.0 and are
+        independent of knowledge/schema/cache versions."""
+        root = Path(__file__).resolve().parents[1]
+        pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('version = "0.1.0"', pyproject)
+        init = (root / "bi_agent/__init__.py").read_text(encoding="utf-8")
+        self.assertIn('__version__ = "0.1.0"', init)
+        app = (root / "bi_agent/web/app.py").read_text(encoding="utf-8")
+        self.assertIn('version="0.1.0"', app)
+        pkg = (root / "frontend/package.json").read_text(encoding="utf-8")
+        self.assertIn('"version": "0.1.0"', pkg)
+        lock = (root / "frontend/package-lock.json").read_text(encoding="utf-8")
+        import json as _json
+        lock_root = _json.loads(lock)["packages"][""]["version"]
+        self.assertEqual(lock_root, "0.1.0")
+        main = (root / "frontend/src/main.jsx").read_text(encoding="utf-8")
+        self.assertIn('const PRODUCT_VERSION = "v0.1.0";', main)
+        # Product version is decoupled from the numeric conversation schema
+        # version and from vendor cache-bust query params.
+        conv = (root / "bi_agent/web/conversations.py").read_text(encoding="utf-8")
+        self.assertIn("schema_version", conv)
+        self.assertNotIn('"0.1.0"', conv)
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -2301,9 +4051,10 @@ class _FakeTeamChat:
 class _FakeTeamClient:
     """Minimal OpenAI-compatible stub that records every create() kwargs."""
 
-    def __init__(self, *, error=None, text="ok"):
+    def __init__(self, *, error=None, text="ok", reasoning=None):
         self._error = error
         self._text = text
+        self._reasoning = reasoning
         self.requests: list[dict[str, Any]] = []
 
     @property
@@ -2318,7 +4069,7 @@ class _FakeTeamClient:
             usage=SimpleNamespace(prompt_tokens=1, completion_tokens=2),
             choices=[SimpleNamespace(
                 delta=SimpleNamespace(
-                    content=self._text, reasoning_content=None, tool_calls=None
+                    content=self._text, reasoning_content=self._reasoning, tool_calls=None
                 ),
                 finish_reason="stop",
             )],
@@ -2326,17 +4077,62 @@ class _FakeTeamClient:
 
 
 class TeamThinkingRoutingTests(unittest.TestCase):
-    """Team gateway must route the DeepSeek-only ``thinking`` payload only
-    to DeepSeek models.
+    """Team gateway thinking controls follow the verified per-family shape."""
 
-    Regression for the Qwen 400: ``litellm.UnsupportedParamsError: openai
-    does not support parameters: ['thinking']``.  These tests inspect the
-    complete request kwargs handed to the OpenAI SDK, not just helper return
-    values.
-    """
+    def test_registry_advertises_only_verified_team_models(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TEAM_THINKING_MODELS", None)
+            self.assertTrue(registry.team_model_supports_thinking("qwen3.7-plus"))
+            self.assertTrue(registry.team_model_supports_thinking(
+                "doubao-seed-2-1-pro-260628"
+            ))
+            self.assertTrue(registry.team_model_supports_thinking(
+                "direct-deepseek-v4-pro"
+            ))
+            self.assertFalse(registry.team_model_supports_thinking(
+                "Qwen/Qwen3-80B-AWQ"
+            ))
+            self.assertFalse(registry.team_model_supports_thinking("glm-5-turbo"))
+
+    def test_registry_full_verified_thinking_table(self) -> None:
+        verified = {
+            "qwen3.5-397b-a17b",
+            "qwen3.7-plus",
+            "qwen3-vl-plus",
+            "qwen3.5-122b-a10b",
+            "qwen3-vl-flash",
+            "qwen3.8-2.4t-a95b",
+            "qwen3.8-27b",
+            "doubao-seed-2-1-turbo-260628",
+            "doubao-seed-2-1-pro-260628",
+            "direct-deepseek-v4-pro",
+            "direct-deepseek-v4-flash",
+            "deepseek-v4-flash-0731",
+        }
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TEAM_THINKING_MODELS", None)
+            for model_id in verified:
+                self.assertTrue(
+                    registry.team_model_supports_thinking(model_id), model_id
+                )
+            self.assertFalse(registry.team_model_supports_thinking("glm-5.2"))
+            self.assertFalse(registry.team_model_supports_thinking("kimi-k2.6"))
+            self.assertFalse(registry.team_model_supports_thinking(
+                "doubao-seed-2-0-pro-260215"
+            ))
+            self.assertFalse(registry.team_model_supports_thinking(
+                "Qwen/Qwen3-80B-AWQ"
+            ))
+
+    def test_registry_override_can_replace_or_disable_capability_table(self) -> None:
+        with patch.dict(os.environ, {"TEAM_THINKING_MODELS": "custom-a, custom-b"}):
+            self.assertTrue(registry.team_model_supports_thinking("custom-b"))
+            self.assertFalse(registry.team_model_supports_thinking("qwen3.7-plus"))
+        with patch.dict(os.environ, {"TEAM_THINKING_MODELS": ""}):
+            self.assertFalse(registry.team_model_supports_thinking("qwen3.7-plus"))
 
     def _stream_request(self, model_id, *, thinking=False, deepseek_env=None,
-                        legacy_env=None, qwen_env=None) -> dict[str, Any]:
+                        legacy_env=None, qwen_env=None, reasoning=None):
         env = {}
         if deepseek_env is not None:
             env["TEAM_DEEPSEEK_ENABLE_THINKING"] = deepseek_env
@@ -2349,7 +4145,7 @@ class TeamThinkingRoutingTests(unittest.TestCase):
             "TEAM_QWEN_ENABLE_THINKING",
         ):
             env.setdefault(name, "")
-        client = _FakeTeamClient()
+        client = _FakeTeamClient(reasoning=reasoning)
         with patch.dict(os.environ, env), \
              patch.object(provider_team, "_get_api_key", return_value="test-key"), \
              patch.object(provider_team, "OpenAI", return_value=client):
@@ -2364,80 +4160,92 @@ class TeamThinkingRoutingTests(unittest.TestCase):
             ))
         self.assertEqual(events[-1]["type"], "message_end")
         self.assertEqual(len(client.requests), 1)
-        return client.requests[0]
+        return client.requests[0], events
 
     def test_deepseek_thinking_true_sends_enabled(self) -> None:
-        request = self._stream_request("deepseek-v4-flash", thinking=True, deepseek_env="true")
+        request, _ = self._stream_request("deepseek-v4-flash", thinking=True, deepseek_env="true")
         self.assertEqual(request["extra_body"], {"thinking": {"type": "enabled"}})
 
     def test_deepseek_thinking_false_sends_disabled(self) -> None:
-        request = self._stream_request("deepseek-v4-flash", thinking=True, deepseek_env="false")
+        request, _ = self._stream_request("deepseek-v4-flash", thinking=True, deepseek_env="false")
         self.assertEqual(request["extra_body"], {"thinking": {"type": "disabled"}})
 
     def test_deepseek_legacy_global_env_still_controls_deepseek(self) -> None:
-        request = self._stream_request("deepseek-v4-pro", thinking=False, legacy_env="true")
+        request, _ = self._stream_request("deepseek-v4-pro", thinking=False, legacy_env="true")
         self.assertEqual(request["extra_body"], {"thinking": {"type": "enabled"}})
 
     def test_deepseek_without_env_uses_runtime_toggle(self) -> None:
-        enabled = self._stream_request("deepseek-v4-flash", thinking=True)
+        enabled, _ = self._stream_request("deepseek-v4-flash", thinking=True)
         self.assertEqual(enabled["extra_body"], {"thinking": {"type": "enabled"}})
-        disabled = self._stream_request("deepseek-v4-flash", thinking=False)
+        disabled, _ = self._stream_request("deepseek-v4-flash", thinking=False)
         self.assertEqual(disabled["extra_body"], {"thinking": {"type": "disabled"}})
 
-    def test_qwen_never_receives_thinking_when_legacy_env_true(self) -> None:
-        request = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True, legacy_env="true")
-        self.assertNotIn("extra_body", request)
-
-    def test_qwen_never_receives_thinking_when_legacy_env_false(self) -> None:
-        request = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=False, legacy_env="false")
-        self.assertNotIn("extra_body", request)
-
-    def test_qwen_runtime_thinking_true_sends_no_deepseek_field(self) -> None:
-        request = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True)
-        self.assertNotIn("extra_body", request)
-
-    def test_qwen37_plus_sends_no_deepseek_thinking(self) -> None:
-        request = self._stream_request("qwen3.7-plus", thinking=True, legacy_env="true")
-        self.assertNotIn("extra_body", request)
-
-    def test_qwen37_plus_enable_thinking_requires_explicit_config(self) -> None:
-        request = self._stream_request("qwen3.7-plus", thinking=True, qwen_env="true")
+    def test_qwen_uses_runtime_enable_thinking_flag(self) -> None:
+        request, _ = self._stream_request("qwen3.7-plus", thinking=True)
         self.assertEqual(request["extra_body"], {"enable_thinking": True})
-        default = self._stream_request("qwen3.7-plus", thinking=True)
-        self.assertNotIn("extra_body", default)
+        request, _ = self._stream_request("qwen3.7-plus", thinking=False)
+        self.assertEqual(request["extra_body"], {"enable_thinking": False})
+
+    def test_qwen_env_can_override_runtime_toggle(self) -> None:
+        request, _ = self._stream_request("qwen3.7-plus", thinking=False, qwen_env="true")
+        self.assertEqual(request["extra_body"], {"enable_thinking": True})
+
+    def test_qwen_2_4t_omits_rejected_false_value(self) -> None:
+        request, _ = self._stream_request("qwen3.8-2.4t-a95b", thinking=False)
+        self.assertNotIn("extra_body", request)
+
+    def test_verified_doubao_21_uses_thinking_field(self) -> None:
+        request, _ = self._stream_request("doubao-seed-2-1-pro-260628", thinking=True)
+        self.assertEqual(request["extra_body"], {"thinking": {"type": "enabled"}})
+        request, _ = self._stream_request("doubao-seed-2-1-turbo-260628", thinking=False)
+        self.assertEqual(request["extra_body"], {"thinking": {"type": "disabled"}})
+
+    def test_older_doubao_receives_no_unverified_parameter(self) -> None:
+        request, _ = self._stream_request("doubao-seed-2-0-pro-260215", thinking=True)
+        self.assertNotIn("extra_body", request)
+
+    def test_disabled_toggle_hides_unsolicited_reasoning_but_keeps_internal_block(self) -> None:
+        _, events = self._stream_request(
+            "direct-deepseek-v4-pro", thinking=False, reasoning="internal"
+        )
+        self.assertNotIn("thinking_delta", [event["type"] for event in events])
+        self.assertIn(
+            {"type": "thinking_block", "text": "internal"}, events
+        )
 
     def test_glm_never_receives_deepseek_thinking(self) -> None:
-        request = self._stream_request("glm-5.1", thinking=True, legacy_env="true")
+        request, _ = self._stream_request("glm-5.1", thinking=True, legacy_env="true")
         self.assertNotIn("extra_body", request)
 
     def test_kimi_never_receives_deepseek_thinking(self) -> None:
-        request = self._stream_request("kimi-k2.6", thinking=True, legacy_env="true")
+        request, _ = self._stream_request("kimi-k2.6", thinking=True, legacy_env="true")
         self.assertNotIn("extra_body", request)
 
     def test_moonshot_alias_and_glm_are_classified_as_own_family(self) -> None:
         self.assertEqual(provider_team._model_family("moonshot-v1-8k"), "kimi")
         self.assertEqual(provider_team._model_family("GLM-4.7"), "glm")
         self.assertEqual(provider_team._model_family("Qwen/Qwen3-80B-AWQ"), "qwen")
+        self.assertEqual(provider_team._model_family("doubao-seed-2-1-pro-260628"), "doubao")
 
     def test_unknown_model_never_receives_deepseek_thinking(self) -> None:
-        request = self._stream_request("some-other-model", thinking=True, legacy_env="true")
+        request, _ = self._stream_request("some-other-model", thinking=True, legacy_env="true")
         self.assertNotIn("extra_body", request)
 
     def test_switch_from_deepseek_to_qwen_drops_thinking_payload(self) -> None:
-        first = self._stream_request("deepseek-v4-flash", thinking=True, deepseek_env="true")
-        second = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True, legacy_env="true")
+        first, _ = self._stream_request("deepseek-v4-flash", thinking=True, deepseek_env="true")
+        second, _ = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True, legacy_env="true")
         self.assertEqual(first["extra_body"], {"thinking": {"type": "enabled"}})
-        self.assertNotIn("extra_body", second)
+        self.assertEqual(second["extra_body"], {"enable_thinking": True})
 
     def test_switch_from_qwen_to_deepseek_regenerates_thinking_payload(self) -> None:
-        first = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True)
-        second = self._stream_request("deepseek-v4-pro", thinking=True, deepseek_env="true")
-        self.assertNotIn("extra_body", first)
+        first, _ = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True)
+        second, _ = self._stream_request("deepseek-v4-pro", thinking=True, deepseek_env="true")
+        self.assertEqual(first["extra_body"], {"enable_thinking": True})
         self.assertEqual(second["extra_body"], {"thinking": {"type": "enabled"}})
 
     def test_missing_env_variables_raise_no_exception(self) -> None:
-        request = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True)
-        self.assertNotIn("extra_body", request)
+        request, _ = self._stream_request("Qwen/Qwen3-80B-AWQ", thinking=True)
+        self.assertEqual(request["extra_body"], {"enable_thinking": True})
 
 
 class TeamThinkingRetryTests(unittest.TestCase):
@@ -2478,9 +4286,12 @@ class TeamThinkingRetryTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertTrue(calls[0][1]["thinking"])
         self.assertFalse(calls[1][1]["thinking"])
-        # The retry reuses the exact same message list: no tool re-execution,
-        # no restart from the beginning of the turn.
-        self.assertEqual(calls[0][0], calls[1][0])
+        # The retry reuses the same message list: no tool re-execution or
+        # restart from the beginning of the turn. Its system prompt correctly
+        # drops the visible-thinking language rule after thinking is disabled.
+        self.assertEqual(calls[0][0][0], calls[1][0][0])
+        self.assertIn(VISIBLE_THINKING_CN_RULE, calls[0][0][1])
+        self.assertNotIn(VISIBLE_THINKING_CN_RULE, calls[1][0][1])
         self.assertEqual(
             "recovered",
             [e.get("text") for e in events if e.get("type") == "text_delta"][-1],
@@ -2555,6 +4366,186 @@ class TeamThinkingRetryTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertFalse(calls[0]["thinking"])
         self.assertTrue(any(e["type"] == "error" for e in events))
+
+
+class TeamThinkingAndFallbackSessionTests(unittest.TestCase):
+    """Session-level behavior: visible-thinking Chinese constraint injection,
+    thinking_delta gating, and turn-scoped automatic fallback."""
+
+    @contextmanager
+    def _session(self, cfg, fake_stream, *, model_supports_thinking=True):
+        model_id = "Qwen/Qwen3-80B-AWQ"
+        with patch("bi_agent.web.session.get_llm_config", return_value=cfg), \
+             patch("bi_agent.web.session.stream_message", fake_stream), \
+             patch("bi_agent.web.session.get_model_id", side_effect=lambda key: str(key)), \
+             patch("bi_agent.web.session.get_model", return_value={
+                 "key": cfg.model_key, "provider": "team", "model_id": model_id,
+                 "supports_thinking": model_supports_thinking,
+             }):
+            yield WebSession("/tmp", AgentDef("test", tools=[]), OntologyStore())
+
+    def _cfg(self, *, model_key="team-configured", effective_thinking=False):
+        return SimpleNamespace(
+            model_key=model_key, max_tokens=256, temperature=0.1,
+            effective_thinking=effective_thinking,
+        )
+
+    def test_cn_rule_injected_when_thinking_enabled_and_model_supports(self) -> None:
+        calls: list[dict] = []
+
+        def fake_stream(messages, system_prompt, *args, **kwargs):
+            calls.append({"system_prompt": system_prompt, "thinking": kwargs.get("thinking")})
+            yield {"type": "text_delta", "text": "ok"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with self._session(
+            self._cfg(effective_thinking=True), fake_stream,
+            model_supports_thinking=True,
+        ) as session:
+            list(session.generate_turn("test"))
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0]["thinking"])
+        self.assertIn("简体中文", calls[0]["system_prompt"])
+        self.assertIn("可见思考", calls[0]["system_prompt"])
+
+    def test_cn_rule_not_injected_when_model_lacks_support(self) -> None:
+        calls: list[dict] = []
+
+        def fake_stream(messages, system_prompt, *args, **kwargs):
+            calls.append({"system_prompt": system_prompt, "thinking": kwargs.get("thinking")})
+            yield {"type": "text_delta", "text": "ok"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with self._session(
+            self._cfg(effective_thinking=True), fake_stream,
+            model_supports_thinking=False,
+        ) as session:
+            list(session.generate_turn("test"))
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("简体中文", calls[0]["system_prompt"])
+        self.assertNotIn("可见思考", calls[0]["system_prompt"])
+
+    def test_cn_rule_not_injected_when_user_thinking_disabled(self) -> None:
+        calls: list[dict] = []
+
+        def fake_stream(messages, system_prompt, *args, **kwargs):
+            calls.append({"system_prompt": system_prompt, "thinking": kwargs.get("thinking")})
+            yield {"type": "text_delta", "text": "ok"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with self._session(
+            self._cfg(effective_thinking=False), fake_stream,
+            model_supports_thinking=True,
+        ) as session:
+            list(session.generate_turn("test"))
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(calls[0]["thinking"])
+        self.assertNotIn("简体中文", calls[0]["system_prompt"])
+
+    def test_thinking_disabled_never_forwards_thinking_delta(self) -> None:
+        def fake_stream(*args, **kwargs):
+            yield {"type": "thinking_delta", "text": "internal reasoning trace"}
+            yield {"type": "text_delta", "text": "最终答案仍然正常输出"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with self._session(
+            self._cfg(effective_thinking=False), fake_stream,
+            model_supports_thinking=True,
+        ) as session:
+            events = list(session.generate_turn("test"))
+        self.assertNotIn(
+            "thinking_delta", [event["type"] for event in events]
+        )
+        deltas = [event["text"] for event in events if event["type"] == "text_delta"]
+        self.assertIn("最终答案仍然正常输出", deltas)
+        self.assertTrue(any(event["type"] == "done" for event in events))
+
+    def test_thinking_enabled_forwards_thinking_delta(self) -> None:
+        def fake_stream(*args, **kwargs):
+            yield {"type": "thinking_delta", "text": "思考摘要"}
+            yield {"type": "text_delta", "text": "final"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with self._session(
+            self._cfg(effective_thinking=True), fake_stream,
+            model_supports_thinking=True,
+        ) as session:
+            events = list(session.generate_turn("test"))
+        deltas = [event["text"] for event in events if event["type"] == "thinking_delta"]
+        self.assertEqual(deltas, ["思考摘要"])
+
+    def test_auto_fallback_is_turn_scoped_and_never_persisted(self) -> None:
+        class _RecordingConfig:
+            def __init__(self) -> None:
+                self.model_key = "team-configured"
+                self.max_tokens = 256
+                self.temperature = 0.1
+                self.effective_thinking = False
+                self.updates: list[dict] = []
+
+            def update(self, **kwargs) -> None:
+                self.updates.append(kwargs)
+
+        cfg = _RecordingConfig()
+        calls: list[str] = []
+        fallback_emitted: list[int] = []
+
+        def fake_stream(*args, **kwargs):
+            calls.append(kwargs["model_key"])
+            if not fallback_emitted:
+                fallback_emitted.append(1)
+                yield {"type": "model_fallback", "model_key": "team-fallback"}
+            yield {"type": "text_delta", "text": "recovered"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with self._session(cfg, fake_stream) as session:
+            events = list(session.generate_turn("test"))
+            self.assertEqual(calls, ["team-configured"])
+            self.assertEqual(session._turn_fallback_model_key, "team-fallback")
+            # The automatic fallback must never write the saved user model choice.
+            self.assertEqual(cfg.updates, [])
+            status = [e["message"] for e in events if e["type"] == "status"]
+            self.assertTrue(any("临时" in msg and "team-fallback" in msg for msg in status))
+            # The next user turn starts on the user's original model again.
+            calls.clear()
+            list(session.generate_turn("next question"))
+            self.assertEqual(calls, ["team-configured"])
+            self.assertIsNone(session._turn_fallback_model_key)
+
+    def test_same_turn_tool_iteration_reuses_turn_scoped_fallback(self) -> None:
+        from bi_agent.reliability import ValidationStatus
+
+        responses = iter([
+            [
+                {"type": "model_fallback", "model_key": "team-fallback"},
+                {"type": "tool_use_start", "id": "tu-1", "name": "Ontology-FactQuery"},
+                {"type": "tool_use_end", "id": "tu-1", "name": "Ontology-FactQuery",
+                 "input": {"sql": "select 1"}},
+                {"type": "message_end", "stop_reason": "tool_use", "usage": {}},
+            ],
+            [
+                {"type": "text_delta", "text": "结论：查询完成。"},
+                {"type": "message_end", "stop_reason": "end_turn", "usage": {}},
+            ],
+        ])
+        calls: list[str] = []
+
+        def fake_stream(*args, **kwargs):
+            calls.append(kwargs["model_key"])
+            yield from next(responses)
+
+        with self._session(self._cfg(), fake_stream) as session:
+            with patch.object(WebSession, "_execute_tool", return_value=("ok", False)), \
+                 patch.object(WebSession, "record_query_result", return_value=None), \
+                 patch("bi_agent.web.session.validate_claims", return_value=SimpleNamespace(
+                     status=ValidationStatus.ALLOW, issues=(),
+                 )):
+                events = list(session.generate_turn("test"))
+        self.assertEqual(calls, ["team-configured", "team-fallback"])
+        self.assertIn(
+            "结论：查询完成。",
+            [e.get("text") for e in events if e["type"] == "text_delta"],
+        )
 
 
 class _FakeUpstreamResponse:
@@ -2840,3 +4831,268 @@ class TaskAlertProxyTests(unittest.TestCase):
         self.assertIn('fetch("/api/task-alert/manual-create"', runtime)
         self.assertIn("clientRequestId", runtime)
         self.assertIn("data.ok", runtime)
+
+
+class DisplayNameRegressionTests(unittest.TestCase):
+    """Business-name-first display rules: deterministic name resolution,
+    Ontology-MetricQuery alias/metadata, and chart/table/multidim normalization."""
+
+    # --- shared helpers -------------------------------------------------
+
+    def _session(self, **kwargs):
+        agent = AgentDef("display-test", tools=[])
+        return WebSession("/tmp", agent, OntologyStore(), **kwargs)
+
+    def _capture_session(self, tool_name):
+        captured = {}
+        session = self._session(
+            tool_executors={tool_name: lambda params, cwd: captured.update(params) or "ok"},
+        )
+        return session, captured
+
+    def _seed_ontology_seen(self, session, code, name):
+        session.ontology_seen[f"remote:1:metric:{code}"] = {
+            "code": code, "name": name, "kind": "metric",
+            "source": "remote", "repository_id": "1",
+        }
+
+    # --- 1-3: name picking ----------------------------------------------
+
+    def test_chinese_label_beats_english_name(self) -> None:
+        self.assertEqual(
+            pick_display_name({"code": "M0001", "label": "采购金额", "name": "purchase_amount"}),
+            "采购金额",
+        )
+
+    def test_label_empty_falls_back_to_name(self) -> None:
+        self.assertEqual(
+            pick_display_name({"code": "M0001", "label": "", "name": "采购金额"}),
+            "采购金额",
+        )
+        self.assertEqual(
+            pick_display_name({"code": "M0001", "label": "-", "name": "?", "alias": "采购金额"}),
+            "采购金额",
+        )
+
+    def test_code_only_keeps_code(self) -> None:
+        self.assertEqual(pick_display_name({"code": "M0001"}), "M0001")
+        self.assertEqual(display_text("M0001", ""), "M0001")
+        self.assertEqual(display_text("M0001", "-"), "M0001")
+
+    def test_display_text_formats_and_unique_aliases(self) -> None:
+        self.assertEqual(display_text("M0001", "采购金额"), "采购金额（M0001）")
+        self.assertEqual(display_text("M0001", "采购金额", trace=False), "采购金额")
+        self.assertEqual(unique_aliases({"M1": "采购金额", "M2": "采购金额"}),
+                         {"M1": "采购金额", "M2": "采购金额（M2）"})
+
+    # --- 4-5: Ontology-MetricQuery alias and metadata --------------------------
+
+    def test_metric_data_query_uses_display_name_alias_and_metadata(self) -> None:
+        class FakeClient:
+            cache_ttl = 30.0
+
+            def metadata_query(self, analysis, common):
+                return {"rows": [{"code": "M0001", "label": "采购金额", "name": "purchase_amount"}]}
+
+            def data_query(self, analysis, common):
+                self.analysis = analysis
+                return {"resultType": "TABLE", "result": {"rows": [{"D0001": "A", "M0001": 2}]}}
+
+        client = FakeClient()
+        output = _make_metric_data_query(client)({
+            "metric_codes": ["M0001"], "dimensions": ["D0001"], "page_size": 20,
+        }, ".")
+        self.assertEqual(client.analysis["indicators"][0]["alias"], "采购金额")
+        self.assertNotEqual(client.analysis["indicators"][0]["alias"], "M0001")
+        envelope = json.loads(output.split("# Ontology-MetricQuery (analysis/data/query)\n\n", 1)[1])
+        scope = envelope["scope"]
+        semantic = envelope["semantic"]
+        metric_meta = scope["metrics"][0]
+        self.assertEqual(metric_meta["code"], "M0001")
+        self.assertEqual(metric_meta["display_name"], "采购金额")
+        self.assertEqual(metric_meta["alias"], "采购金额")
+        self.assertEqual(metric_meta["kind"], "metric")
+        # Legacy fields are preserved.
+        self.assertEqual(scope["metric_codes"], ["M0001"])
+        self.assertEqual(scope["dimensions"], ["D0001"])
+        # Dimension name metadata is present; unresolvable codes stay codes.
+        self.assertEqual(scope["dimension_names"]["D0001"], "D0001")
+        self.assertEqual(semantic["metric_names"]["M0001"], "采购金额")
+
+    def test_metric_data_query_degrades_to_code_without_metadata(self) -> None:
+        class FakeClient:
+            cache_ttl = 30.0
+
+            def data_query(self, analysis, common):
+                self.analysis = analysis
+                return {"resultType": "TABLE", "result": {"rows": []}}
+
+        client = FakeClient()
+        output = _make_metric_data_query(client)({
+            "metric_codes": ["M0001"], "dimensions": [], "page_size": 20,
+        }, ".")
+        self.assertEqual(client.analysis["indicators"][0]["alias"], "M0001")
+        self.assertIn("metric_codes", output)
+
+    # --- 6-9: chart normalization via session ----------------------------
+
+    def test_bar_chart_series_and_x_axis_use_business_names(self) -> None:
+        session, captured = self._capture_session("ChartGenerate")
+        self._seed_ontology_seen(session, "M0001", "采购金额")
+        self._seed_ontology_seen(session, "BU001", "华东区")
+        self._seed_ontology_seen(session, "BU002", "华南区")
+        session._execute_tool({"name": "ChartGenerate", "input": {
+            "chart_type": "bar", "title": "M0001 分布",
+            "x_axis": ["BU001", "BU002"],
+            "series": [{"name": "M0001", "data": [10, 20]}],
+            "source_note": "M0001 · T_FM_MgmtPnL · 2024",
+        }})
+        self.assertEqual(captured["series"][0]["name"], "采购金额")
+        self.assertEqual(captured["x_axis"], ["华东区", "华南区"])
+        # source_note keeps the traceability code untouched.
+        self.assertIn("M0001", captured["source_note"])
+        # Embedded title text is not blindly rewritten.
+        self.assertEqual(captured["title"], "M0001 分布")
+
+    def test_pie_chart_slice_names_use_business_names(self) -> None:
+        session, captured = self._capture_session("ChartGenerate")
+        self._seed_ontology_seen(session, "BU001", "华东区")
+        session._execute_tool({"name": "ChartGenerate", "input": {
+            "chart_type": "pie", "title": "区域占比",
+            "series": [{"name": "占比", "data": [{"name": "BU001", "value": 62}]}],
+            "source_note": "BU001 · orders",
+        }})
+        self.assertEqual(captured["series"][0]["data"][0]["name"], "华东区")
+        self.assertIn("BU001", captured["source_note"])
+
+    def test_multidim_dimension_labels_use_business_names(self) -> None:
+        session, captured = self._capture_session("ChartGenerateMultiDim")
+        self._seed_ontology_seen(session, "D0001", "管理单元")
+        self._seed_ontology_seen(session, "M0001", "采购金额")
+        session._execute_tool({"name": "ChartGenerateMultiDim", "input": {
+            "title": "多维洞察", "metric_code": "M0001",
+            "default_dim": "d1", "source_note": "M0001 · orders",
+            "dimensions": [{
+                "key": "d1", "label": "D0001", "chart_type": "bar",
+                "x_axis": ["BU001", "BU002"],
+                "series": [{"name": "M0001", "data": [10, 20]}],
+            }],
+        }})
+        self.assertEqual(captured["dimensions"][0]["label"], "管理单元")
+        self.assertEqual(captured["dimensions"][0]["series"][0]["name"], "采购金额")
+        self.assertEqual(captured["dimensions"][0]["x_axis"], ["BU001", "BU002"])
+        self.assertEqual(captured["default_dim"], "d1")
+
+    # --- 10-12: table normalization --------------------------------------
+
+    def test_table_headers_use_business_names(self) -> None:
+        session, captured = self._capture_session("TableGenerate")
+        self._seed_ontology_seen(session, "D0001", "管理单元")
+        session._execute_tool({"name": "TableGenerate", "input": {
+            "title": "按单元汇总", "source_note": "D0001 · orders",
+            "columns": [{"key": "D0001", "label": "D0001"},
+                        {"key": "amount", "label": "金额"}],
+            "rows": [["A", 1], ["B", 2]],
+        }})
+        self.assertEqual(captured["columns"][0]["label"], "管理单元")
+
+    def test_table_code_and_name_columns_name_first_but_code_traceable(self) -> None:
+        session, captured = self._capture_session("TableGenerate")
+        session._execute_tool({"name": "TableGenerate", "input": {
+            "title": "供应商采购", "source_note": "orders",
+            "columns": [{"key": "supplier_code", "label": "供应商编码"},
+                        {"key": "supplier_name", "label": "供应商名称"},
+                        {"key": "amount", "label": "金额"}],
+            "rows": [{"supplier_code": "S001", "supplier_name": "甲供应商", "amount": 10}],
+        }})
+        keys = [c["key"] for c in captured["columns"]]
+        # Name column is moved ahead of its code column; the code column is kept.
+        self.assertLess(keys.index("supplier_name"), keys.index("supplier_code"))
+        self.assertIn("supplier_code", keys)
+        self.assertEqual(captured["rows"][0]["supplier_code"], "S001")
+
+    def test_user_explicit_code_request_is_not_force_rewritten(self) -> None:
+        session, captured = self._capture_session("TableGenerate")
+        self._seed_ontology_seen(session, "D0001", "管理单元")
+        # The model already rendered a readable "编码" column label: our
+        # deterministic layer must leave explicit code displays alone.
+        session._execute_tool({"name": "TableGenerate", "input": {
+            "title": "按编码查看", "source_note": "D0001 · orders",
+            "columns": [{"key": "unit_code", "label": "经营单元编码"},
+                        {"key": "amount", "label": "金额"}],
+            "rows": [["BU001", 1]],
+        }})
+        self.assertEqual(captured["columns"][0]["label"], "经营单元编码")
+        self.assertEqual(captured["rows"][0][0], "BU001")
+
+    # --- 13-14: no guessing / no collateral rewriting ---------------------
+
+    def test_unknown_code_is_preserved_not_guessed(self) -> None:
+        self.assertEqual(normalize_text("M9999", lambda code: None), "M9999")
+        self.assertEqual(normalize_text("采购金额", lambda code: "猜测名称"), "采购金额")
+
+    def test_sql_json_url_are_never_rewritten(self) -> None:
+        resolver = lambda code: "采购金额" if code == "M0001" else None
+        for text in (
+            "SELECT unit_code, unit_name, SUM(amount) FROM orders GROUP BY unit_code",
+            '{"metric_codes": ["M0001"], "dimensions": ["D0001"]}',
+            "https://host/api/analysis/data/query?metric=M0001",
+            "M0001 · T_FM_MgmtPnL · 2024",
+        ):
+            self.assertEqual(normalize_text(text, resolver), text)
+
+    def test_looks_like_code_recognition(self) -> None:
+        for code in ("M0001", "MET001", "D001", "DIM001", "BO0006", "LE0001",
+                     "AT0001", "TERM001", "BU001", "supplier_code", "unit_code"):
+            self.assertTrue(looks_like_code(code), code)
+        for text in ("采购金额", "2024Q1", "T1", "A", "M1", "华东区", "amount"):
+            self.assertFalse(looks_like_code(text), text)
+
+    # --- 15: claims / AskUser / report flow stay intact -------------------
+
+    def test_claims_and_scope_flow_survive_display_name_metadata(self) -> None:
+        from bi_agent.reliability import claims_from_query_result, normalize_query_result, Provenance
+
+        envelope = normalize_query_result(
+            {"result": {"rows": [{"M0001": 100}]}},
+            scope={"metric_codes": ["M0001"],
+                   "metrics": [{"code": "M0001", "display_name": "采购金额", "alias": "采购金额", "kind": "metric"}],
+                   "dimensions": ["D0001"]},
+            semantic={"metric_names": {"M0001": "采购金额"}},
+            provenance=Provenance(source="remote", api="analysis/data/query", metric_code="M0001"),
+        )
+        session = self._session()
+        session.record_query_result("Ontology-MetricQuery", {"metric_codes": ["M0001"]},
+                                    "[RESULT_METADATA]\n" + json.dumps(envelope.to_dict(), ensure_ascii=False))
+        self.assertTrue(session.claims)
+        self.assertEqual(session.analysis_context.metrics, ("M0001",))
+        # The display metadata feeds the session resolver without breaking claims.
+        resolver = session._display_resolver()
+        self.assertEqual(resolver("M0001"), "采购金额")
+
+    def test_sql_code_name_pair_metadata(self) -> None:
+        self.assertEqual(
+            _code_name_pairs(["unit_code", "unit_name", "amount"]),
+            [{"code_column": "unit_code", "name_column": "unit_name"}],
+        )
+        self.assertEqual(_code_name_pairs(["code", "name"]),
+                         [{"code_column": "code", "name_column": "name"}])
+        self.assertEqual(_code_name_pairs(["unit_code", "amount"]), [])
+
+    def test_existing_chart_validation_and_scope_untouched(self) -> None:
+        from bi_agent.reliability import Measure, SemanticType, validate_chart_measures
+
+        measures = [
+            Measure("采购金额", 0, unit="元", semantic_type=SemanticType.OBSERVED, scope={"metric_codes": ["M0001"]}),
+            Measure("采购金额", 0, unit="元", semantic_type=SemanticType.OBSERVED, scope={"metric_codes": ["M0001"]}),
+        ]
+        self.assertTrue(validate_chart_measures(measures).ok)
+        session, captured = self._capture_session("ChartGenerate")
+        session.record_query_result("Ontology-FactQuery", {"semantic_type": "ESTIMATED", "unit": "u"}, "rows unavailable")
+        session._execute_tool({"name": "ChartGenerate", "input": {
+            "chart_type": "bar", "title": "x", "x_axis": ["A"],
+            "series": [{"name": "S", "data": [1]}],
+        }})
+        # The session still injects semantic metadata from the latest query result.
+        self.assertEqual(captured["series"][0]["semantic_type"], "ESTIMATED")
+        self.assertEqual(captured["series"][0]["unit"], "u")

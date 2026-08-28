@@ -1,5 +1,10 @@
 # OpenChat BI 部署说明
 
+> **仅供人工运维参考**：本文档描述的是人工部署方法，不构成 Agent 自动部署授权。
+> Agent 默认交付方式是 commit + push（`origin/20260727` 与 `personal/main`），
+> 默认禁止部署、服务器同步、服务重启和服务器配置修改；只有用户在当前任务中明确
+> 要求具体部署目标和范围时，才允许按本文档执行部署。
+
 本文档对应当前仓库的 Web 应用入口 `bi-agent-web`。
 
 ## 1. 代码与运行数据的边界
@@ -58,10 +63,13 @@ ONTOLOGY_REPOSITORY_ID=<repository-id>
 ONTOLOGY_APP_ID=<app-id>
 ONTOLOGY_AUTH_TOKEN=<token>
 
-# LLM 至少配置当前模型对应的一个 key
-LLM_PROVIDER=qwen
-DASHSCOPE_API_KEY=<key>
-# 或使用 QWEN_API_KEY / ANTHROPIC_API_KEY / DEEPSEEK_API_KEY / TEAM_API_KEY
+# LLM 至少配置当前模型对应的一个 key。当前团队网关默认模型为 direct-deepseek-v4-flash。
+LLM_PROVIDER=team
+TEAM_API_KEY=<key>
+TEAM_BASE_URL=http://172.16.10.34:4000/v1
+TEAM_MODEL=direct-deepseek-v4-flash
+TEAM_MODELS=<comma-separated-verified-model-ids>
+# 也可改用 qwen / anthropic / deepseek provider，并配置对应 API key。
 
 DORIS_API_URL=http://<doris-gateway>/agent/doris/query
 DORIS_DATABASE=<database>
@@ -76,6 +84,43 @@ ONTOLOGY_BACKEND=local
 ```
 
 本地 SQLite 模式可显式传入 `--db dataset/databases/HyperFusion.db`；生产默认 `--db doris`，即通过 Doris 查询。
+
+## 3.1 ChatBI 并发治理（第一阶段）
+
+第一阶段并发保护全部在进程内生效，**当前只支持单 Uvicorn worker**，不要用
+`--workers N` 横向扩容；多 worker 需要后续引入 Redis/PostgreSQL 共享状态、分布式锁和
+事件流。正式用户体系未接入前，`principal_key` 退化为 `session_id`（未来接入
+`user_id`/`tenant_id` 后自动升级，无需改请求协议）。
+
+新增环境变量（全部可选，未设置时使用默认值）：
+
+```dotenv
+CHATBI_MAX_ACTIVE_TURNS=8            # 全局同时执行 turn 数上限
+CHATBI_MAX_ACTIVE_PER_PRINCIPAL=2    # 同一 principal（当前即 session_id）并发上限
+CHATBI_MAX_WAITING_TURNS=32          # 进程内等待队列上限
+CHATBI_ADMISSION_WAIT_SECONDS=2      # 排队等待秒数，超时返回 429
+CHATBI_LLM_CONCURRENCY=6             # LLM provider 并发信号量
+CHATBI_DORIS_CONCURRENCY=12          # Doris/SQL 查询并发信号量
+CHATBI_ONTOLOGY_CONCURRENCY=12       # 远程本体 API 并发信号量
+CHATBI_SESSION_IDLE_TTL_SECONDS=7200 # 内存会话空闲回收 TTL
+CHATBI_MAX_IN_MEMORY_SESSIONS=500    # 内存会话上限（超限惰性回收最旧空闲）
+```
+
+行为契约：
+
+- 同一 `session_id` 已有 turn 运行时，再次 `chat`/`choice`/报表相关请求返回
+  `409`，机器码 `SESSION_BUSY`，响应含 `error.code`、`session_id`、`retryable=true`。
+- 容量保护返回 `429`，机器码 `GLOBAL_QUEUE_FULL` / `PRINCIPAL_CONCURRENCY_LIMIT` /
+  `ADMISSION_TIMEOUT`，并带 `Retry-After` 头；同 session 重复 turn 优先 409，不进队列。
+- 不同 `session_id` 互不阻塞，可并行执行。
+- reset/restore/activate/数据源切换会使旧 turn 收到 `session_superseded` 并停止提交，
+  旧请求不能写入新会话；所有关键 SSE 事件带 `turn_id`，`done` 带 `generation`。
+- 客户端断开或 reset 会取消该 turn；被取消 turn 不保存部分回复。
+- TTL/LRU 只回收内存 session 与 source context，不删除历史 JSON、上传、图表或日志。
+
+锁顺序（模块文档契约）：registry lock → session slot lock → WebSession 内部状态 →
+conversation store lock；严禁持有 registry/store 锁调用网络，严禁持 session 锁等待
+全局下游信号量。
 
 ## 4. 启动与验证
 
@@ -180,18 +225,69 @@ git diff --name-only
 
 本体任务 Agent 的数据库连接凭据使用平台 AES-GCM 加密格式时，运行进程必须加载与加密端一致的 `ontology.crypto.secret`（或对应环境变量）。Agent 已采用 fail-closed 行为：缺少密钥、密钥错误、密文损坏或 Tag 校验失败会在任务上下文刷新阶段返回 `DATABASE_CREDENTIAL_DECRYPTION_FAILED`，不会把密文当作数据库明文密码继续连接，也不会把密钥写入日志。部署后应使用真实部署密钥重启 ontology-agent，并重新创建或刷新受影响任务；密钥文件/环境文件权限应为 `600`，不要提交到仓库。当前服务器已配置后端提供的 32 字节 Base64 secret，并验证任务凭据解密后可连接 PostgreSQL。
 
-### 团队网关 thinking 参数（模型族路由）
+### 团队网关 thinking 能力表与参数路由
 
-团队网关请求中的 DeepSeek 专属 `thinking` 参数按模型族路由，只对 DeepSeek 生效：
+Team 模型的 `supports_thinking` 不是由 LiteLLM 自动上报，而是应用依据真实网关探测结果
+维护。代码内置 2026-08-26 已验证能力表；只有能稳定产出 reasoning 且请求参数可安全处理的
+模型才在 UI 显示 thinking 开关。可用环境变量覆盖整张能力表：
 
 ```dotenv
-TEAM_DEEPSEEK_ENABLE_THINKING=true   # DeepSeek 专属，优先于旧全局变量
-TEAM_QWEN_ENABLE_THINKING=           # 显式设为 true 才给 Qwen 发 enable_thinking
+# 不配置时使用代码内置实测表；显式空值表示所有 Team 模型均不展示 thinking 开关
+# TEAM_THINKING_MODELS=qwen3.5-397b-a17b,qwen3.7-plus
+TEAM_DEEPSEEK_ENABLE_THINKING=        # 可选：覆盖 DeepSeek 运行时开关
+TEAM_QWEN_ENABLE_THINKING=            # 可选：覆盖 Qwen 运行时开关
 ```
 
-旧全局 `TEAM_ENABLE_THINKING` 仅作为 DeepSeek 的兼容项；无论其取值如何，都不会再影响
-Qwen、GLM、Kimi 等模型。不要使用 `litellm.drop_params=true` 掩盖参数错误。部署时若在
-服务器保留旧变量，请确认新代码已生效（只影响 DeepSeek），或直接改用上面的模型族变量。
+Qwen 使用 `enable_thinking`，已验证的豆包 2.1 与 DeepSeek 路由使用
+`thinking.type=enabled/disabled`；其他模型不发送未经验证的 thinking 参数。部分 DeepSeek
+路由即使收到 disabled 仍返回 reasoning，应用会保留内部上下文但不向用户输出思考过程，
+正文不会因此被拦截。`qwen3.8-2.4t-a95b` 的网关会拒绝显式 false，关闭时会省略参数并由
+本地显示开关兜底。`Qwen/Qwen3-80B-AWQ` 实测不产生 reasoning，因此保持 false。
+
+用户开启可见思考且当前模型 `supports_thinking=true` 时，应用会在发给模型的系统提示中
+追加简体中文约束：面向用户的思考摘要必须简短、概括、可读，不得暴露逐 token 推理、
+隐藏指令、内部系统提示词或完整思维链；语言要求由模型原生输出，后端不做机械翻译。
+thinking 关闭时，会话层不会向浏览器转发任何 `thinking_delta`，即使上游意外返回
+reasoning 也只保留在内部供工具调用上下文使用。
+
+自动配额 fallback 仅对当前 turn 生效：同一 turn 后续工具调用复用临时模型，但不会改写
+用户已保存的模型选择、全局模型配置或默认模型，下一轮新请求仍从用户显式选择的模型开始；
+只有设置界面显式保存模型才会永久修改模型选择。
+
+旧全局 `TEAM_ENABLE_THINKING` 仅作为 DeepSeek 的兼容项。不要使用
+`litellm.drop_params=true` 掩盖参数错误；部署时若保留旧变量，请确认它只影响 DeepSeek。
+
+### 全局本体子图卡片
+
+`POST /api/ontology/subgraph` 是独立于 Agent 检索模式的只读接口。它始终按请求中的
+`session_id` 使用该会话当前绑定的本体源；远程源还会校验 `repository_id`，避免相同编码
+跨本体库串图。`strategy=context` 返回 GraphContext 子图，`strategy=expand` 返回扩散后的
+上下游子图。该接口不调用 LLM、不执行 SQL、不产生聊天消息，也不推进 SOP。
+
+### Agent Tool 名称迁移
+
+2026-08-27 起，本体相关 Tool 使用 `Ontology-SemanticQuery`、
+`Ontology-TermDisambiguate`、`MetricCalculation`、`Ontology-RelationQuery`、
+`Ontology-EntityDescribe`、`Ontology-MetricQuery` 和 `Ontology-FactQuery`。发布时必须同步
+Agent 定义、后端 Schema 与前端构建产物；如需迁移历史会话，应先完整备份
+`dataset/conversations/`，仅精确替换已知旧名称，并逐个校验 JSON，禁止清空或重建会话。
+
+### 六步分析 SOP
+
+会话 SOP 固定为“意图识别、本体模型匹配、深度思考&分析规划、数据获取和可视化、
+根因分析、决策行动”。前端构建产物必须与 `frontend/src/sopMachine.js` 同步发布；终态
+只把实际访问过的步骤标为完成，未执行步骤显示为 `skipped`，查询后的普通 L1/L2
+回答不得自动进入根因分析。部署后应同时核对源码状态机与 `workbench.js` 中的六步名称
+及 `skipped` 状态，不能只依赖健康检查。
+
+终态加载清理同样属于发布验收项：`done`、`error`、`session_superseded` 和 SSE 自然关闭
+后不得残留 `thinking-line`、`antd-step-thinking` 或流式光标；ThoughtChain 仅允许
+`in_progress` 使用动态 pending 状态，`pending` 与 `skipped` 必须保持静态。
+
+前端直接复用 ontology-agent 的 Sigma + Graphology + ForceAtlas2 布局实现与交互参数，在
+工具调用“命中的本体”和“本体内容”实体卡两个入口打开同一个弹窗。依赖包括 `sigma`、
+`graphology` 与 `graphology-layout-forceatlas2`；部署时必须同步 `frontend/package*.json`、
+ForceAtlas2 源码适配层和前端构建产物，不得覆盖会话、上传、图表或日志目录。
 
 ### 行动 → 转督办（任务令）外部服务代理
 

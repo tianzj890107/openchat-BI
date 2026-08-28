@@ -8,6 +8,7 @@ import os
 import re
 import threading
 import time
+import uuid
 from html import escape
 from urllib.error import HTTPError, URLError
 from urllib.request import Request as UpstreamRequest
@@ -24,6 +25,20 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from open_claude.agent_def import AgentDef, get_agent_def_registry, load_agent_defs
 
+from ..concurrency import (
+    AdmissionController,
+    AdmissionRejected,
+    Limits,
+    RequestPrincipal,
+    SessionSlot,
+    SessionSlotRegistry,
+    TurnLease,
+    clear_current_cancel,
+    get_limits,
+    reset_limits,
+    reset_resources,
+    set_current_cancel,
+)
 from ..llm.provider import stream_message
 from ..llm.registry import list_models
 from ..llm.runtime_config import (
@@ -41,6 +56,8 @@ from ..paths import (
 )
 from ..ontology.store import OntologyStore
 from ..ontology.remote import OntologyApiError, RemoteOntologyClient
+from ..ontology.remote_retriever import RemoteGraphRetriever
+from ..ontology.graph import build_graph
 from ..report import ReportStore, parser_availability
 from ..tools import build_source_executors, register_all
 from ..tools.graph_tools import GRAPH_TOOL_NAMES
@@ -55,7 +72,7 @@ from ..tools.sql_tools import (
     DorisHttpConn,
 )
 from .conversations import ConversationStore, sanitize_source_config
-from .session import WebSession
+from .session import TurnContext, WebSession
 
 
 logger = logging.getLogger(__name__)
@@ -141,6 +158,18 @@ class AppState:
         self.agent_pref: str = ""
         self.roles_by_session: dict[str, tuple[str, str]] = {}
 
+        # --- Phase-1 concurrency governance -----------------------------
+        # registry_lock guards the session/source/report registries; slot
+        # locks live inside SessionSlotRegistry (see bi_agent/concurrency.py
+        # for the documented lock order: registry -> slot -> session state ->
+        # conversation store; never hold the registry lock across network
+        # calls, never wait on a global semaphore while holding a session
+        # state lock).
+        self.registry_lock = threading.RLock()
+        self.session_slots = SessionSlotRegistry()
+        self.admission = AdmissionController(get_limits())
+        self.turn_counter = 0
+
 
 STATE = AppState()
 
@@ -149,8 +178,8 @@ STATE = AppState()
 # ChartGenerateMultiDim is included because deep-insight drill-down requires
 # running multi-dim SQL queries; only meaningful when DB tools are on.
 REPORT_DB_TOOLS: list[str] = [
-    "OntologyQuery", "TermDisambiguate", "MetricLookup", "RelationLookup",
-    "EntityDescribe", "ListBusinessObjects", "MetricDataQuery", "SQLRun", "ListTables",
+    "Ontology-SemanticQuery", "Ontology-TermDisambiguate", "MetricCalculation", "Ontology-RelationQuery",
+    "Ontology-EntityDescribe", "ListBusinessObjects", "Ontology-MetricQuery", "Ontology-FactQuery", "ListTables",
     "DescribeTable", "ChartGenerate", "ChartGenerateMultiDim",
     "TableGenerate", "AskUser",
 ]
@@ -331,6 +360,11 @@ def configure(
     STATE.report_ids_by_session.clear()
     STATE.report_db_by_session.clear()
     STATE.roles_by_session.clear()
+    # Concurrency registries are process state: rebuild them so a re-configure
+    # (or test setUp) starts from a clean slate.
+    STATE.session_slots = SessionSlotRegistry()
+    STATE.admission = AdmissionController(get_limits())
+    STATE.turn_counter = 0
 
     load_agent_defs(cwd)
     reg = get_agent_def_registry()
@@ -466,28 +500,143 @@ GRAPH_MODE_SOP = """# 图库检索模式 · SOP 调整(覆盖上文对应步骤)
 仍以识别 L1–L5 五种类型为目标,并对问题做分词,抽出其中的业务名词。
 
 ## 第 2 步 · 语义消歧(术语嫁接)
-- 对问句中的业务名词,用 `TermDisambiguate` 在术语库(术语名称 + 别名)中检索。
+- 对问句中的业务名词,用 `Ontology-TermDisambiguate` 在术语库(术语名称 + 别名)中检索。
 - 若命中术语,把该术语定义以**括号形式嫁接**回用户问题,形成"完整问题"作为后续输入。例:"采购金额是多少" → 命中术语 → 以"采购金额(企业对外采购产品和服务的金额)是多少"推进。
 - **若一个名词命中多个口径不同的术语、且无法从问句上下文唯一确定**(如"客户活跃度"对应月活/周活/订单活跃),**必须调用 `AskUser` 让用户选择后再嫁接**,不要默默挑一个。
 - 未命中则保持原问句。
 
 ## 第 3 步 · 上下文准备(图库锚定 + 下钻)
-- 把**原始问题**分别与业务对象库、指标库匹配,确定锚点,然后调用 `GraphContext`:
-  - 先用 `query` 传业务名词,由系统在业务对象/指标库匹配锚点;**若返回多个候选锚点(业务对象或指标)且无法从问句唯一确定是哪一个,必须调用 `AskUser` 让用户确认**,再用其选定项的 `anchor` 编码调用 `GraphContext`;仅当候选唯一或问句已明示时才直接选定,不要替用户臆断。
+- 把**原始问题**分别与业务对象库、指标库匹配,确定锚点,然后调用 `Ontology-GraphContext`:
+  - 先用 `query` 传业务名词,由系统在业务对象/指标库匹配锚点;**若返回多个候选锚点(业务对象或指标)且无法从问句唯一确定是哪一个,必须调用 `AskUser` 让用户确认**,再用其选定项的 `anchor` 编码调用 `Ontology-GraphContext`;仅当候选唯一或问句已明示时才直接选定,不要替用户臆断。
   - **业务对象锚点** → 返回该业务对象 + 其下逻辑实体 / 业务属性 + 其下指标的行信息。
   - **指标锚点** → 返回该指标 + 可下钻维度 + 指标维度矩阵,并自动上挂其业务对象作为新锚点、下钻该业务对象全部行信息。
 - **指标下钻维度的确认**:若锚点指标的可下钻维度多于 1 个、问句又没点明下钻方向,且问题属于 L2 及以上分析,**必须调用 `AskUser` 让用户选择主下钻维度**(可多选);问句已点明("按事业部""按季度")或只有单一维度则直接采用。
-- `GraphContext` 的返回即已剪枝去重的背景上下文,直接作为后续规划与 SQL 的依据;无需再逐个 `EntityDescribe` / `MetricLookup`(仅在需要核对单个元素细节时才补用)。
+- `Ontology-GraphContext` 的返回即已剪枝去重的背景上下文,直接作为后续规划与 SQL 的依据;无需再逐个 `Ontology-EntityDescribe` / `MetricCalculation`(仅在需要核对单个元素细节时才补用)。
 
 ## 第 4 步起 · 不变
 规划 / SQL 执行 / 校验 / 交付,沿用上文六步 SOP 与各 Level 模板。
 
 ## 第 5 步 · 深度分析增强(仅 L3–L5,且上下文不足时)
-若判定为 L3–L5(含根因分析),而 `GraphContext` 给到的上下文不足以支撑根因/决策,可自行使用「图库扩散探索」skill `GraphExpand`:
+若判定为 L3–L5(含根因分析),而 `Ontology-GraphContext` 给到的上下文不足以支撑根因/决策,可自行使用「图库扩散探索」skill `Ontology-GraphExpand`:
 - 传入当前业务对象锚点(BOxxxx;传指标编码会自动定位其业务对象)。
 - 它会综合活动/流程、实体关系、指标/维度/属性映射及图库中的其他有证据路径找到关联业务对象,展示关系方向与最短路径,再把这些对象作为新锚点下钻关联子树。
 - **仅在已有上下文确实不够时调用**;够用就不必扩散。
 """
+
+
+class OntologySubgraphRequest(BaseModel):
+    session_id: str = ""
+    code: str
+    type: str = ""
+    repository_id: str = ""
+    strategy: str = "context"
+
+
+_REMOTE_GRAPH_TYPES = {
+    "business_object": "BusinessObject", "businessobject": "BusinessObject",
+    "logical_entity": "LogicalEntity", "logicalentity": "LogicalEntity",
+    "attribute": "BusinessAttribute", "business_attribute": "BusinessAttribute",
+    "businessattribute": "BusinessAttribute", "metric": "Indicator",
+    "indicator": "Indicator", "dimension": "Dimension", "activity": "Activity",
+    "process": "Process", "rule": "Rule", "business_rule": "Rule",
+    "term": "Term", "table_node": "TableNode", "column": "Column",
+}
+
+
+def _remote_graph_type(value: str, code: str) -> str:
+    normalized = re.sub(r"[^a-z_]", "", str(value or "").lower())
+    if normalized in _REMOTE_GRAPH_TYPES:
+        return _REMOTE_GRAPH_TYPES[normalized]
+    upper = str(code or "").upper()
+    prefixes = (
+        ("BO", "BusinessObject"), ("LE", "LogicalEntity"),
+        ("AT", "BusinessAttribute"), ("M", "Indicator"),
+        ("D", "Dimension"), ("AC", "Activity"), ("P", "Process"),
+        ("R", "Rule"), ("T", "Term"),
+    )
+    return next((kind for prefix, kind in prefixes if upper.startswith(prefix)), "Unknown")
+
+
+def _local_visual_subgraph(store: OntologyStore, code: str, strategy: str) -> dict[str, Any]:
+    """Local-workbook equivalent of the remote visual graph contract."""
+    graph, _ = build_graph(store)
+    if code not in graph:
+        raise HTTPException(404, f"未找到本体实体 {code}")
+    undirected = graph.to_undirected()
+    kind = str(graph.nodes[code].get("kind") or "unknown")
+    preferred = (
+        ("indicator", "business_object")
+        if kind in {"term", "dimension"} else ("business_object", "indicator")
+    )
+    lengths = dict(__import__("networkx").single_source_shortest_path_length(undirected, code, cutoff=5))
+    ranked = sorted(
+        (distance, preferred.index(str(graph.nodes[node].get("kind"))), node)
+        for node, distance in lengths.items()
+        if str(graph.nodes[node].get("kind")) in preferred
+    )
+    anchor_code = ranked[0][2] if ranked else code
+    radius = 5 if str(strategy).lower() == "expand" else 3
+    selected = set(__import__("networkx").single_source_shortest_path_length(
+        undirected, anchor_code, cutoff=radius,
+    ))
+    selected.add(code)
+    selected = set(sorted(selected)[:260])
+    nodes = []
+    for node in sorted(selected):
+        attrs = dict(graph.nodes[node])
+        nodes.append({
+            "id": node, "code": node, "name": attrs.get("name") or node,
+            "type": attrs.get("kind") or "unknown", "properties": attrs,
+            "focus": node == code, "anchor": node == anchor_code,
+        })
+    links = []
+    for index, (source, target, edge_key, attrs) in enumerate(graph.edges(keys=True, data=True)):
+        if source in selected and target in selected:
+            links.append({
+                "id": str(edge_key or index), "source": source, "target": target,
+                "relationType": attrs.get("rel") or attrs.get("kind") or "RELATED",
+                "directed": True, "synthetic": False, "properties": dict(attrs),
+            })
+    anchor_attrs = graph.nodes[anchor_code]
+    return {
+        "strategy": "expand" if str(strategy).lower() == "expand" else "context",
+        "focus": {"type": kind, "code": code},
+        "anchor": {"type": anchor_attrs.get("kind"), "code": anchor_code,
+                   "name": anchor_attrs.get("name") or anchor_code},
+        "nodes": nodes, "links": links, "relations_available": True,
+        "relation_error": "", "truncated": len(selected) >= 260,
+    }
+
+
+@app.post("/api/ontology/subgraph")
+def ontology_subgraph(req: OntologySubgraphRequest) -> JSONResponse:
+    """Global read-only GraphContext/GraphExpand visualization endpoint."""
+    code = str(req.code or "").strip()
+    if not code or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", code):
+        raise HTTPException(400, "本体编码无效")
+    strategy = "expand" if req.strategy == "expand" else "context"
+    source = _source_for_session(req.session_id)
+    remote = source.remote_ontology
+    if remote is not None:
+        if req.repository_id and req.repository_id != remote.repository_id:
+            raise HTTPException(409, "本体实体与当前会话选择的本体库不一致")
+        try:
+            payload = RemoteGraphRetriever(remote).visual_subgraph(
+                _remote_graph_type(req.type, code), code, strategy=strategy,
+            )
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except OntologyApiError as exc:
+            raise HTTPException(502, f"本体子图查询失败: {exc}") from exc
+        payload["repository_id"] = remote.repository_id
+        payload["source"] = "remote"
+        return JSONResponse(payload)
+    if source.ontology_store is None:
+        raise HTTPException(500, "本体源未加载")
+    payload = _local_visual_subgraph(source.ontology_store, code, strategy)
+    payload["repository_id"] = ""
+    payload["source"] = "local"
+    return JSONResponse(payload)
 
 
 class SourcesUpdate(BaseModel):
@@ -818,9 +967,275 @@ def _source_for_session(session_id: Optional[str]) -> Any:
     key = _session_key(session_id)
     if not key:
         return STATE
-    if key not in STATE.source_contexts:
-        STATE.source_contexts[key] = _snapshot_source()
-    return STATE.source_contexts[key]
+    with STATE.registry_lock:
+        source = STATE.source_contexts.get(key)
+        if source is None:
+            source = _snapshot_source()
+            STATE.source_contexts[key] = source
+        return source
+
+
+# ---------------------------------------------------------------------------
+# Phase-1 concurrency helpers (registry / turn guard / admission / generation)
+# ---------------------------------------------------------------------------
+
+# Event types that carry a turn_id.  Older clients simply ignore unknown
+# fields, so annotating every user-visible event stays backward compatible.
+_TURN_EVENT_TYPES = {
+    "user_message", "iteration_start", "llm_request", "llm_response",
+    "text_delta", "thinking_delta", "tool_result", "tool_start", "tool_use",
+    "tool_input", "status", "done", "error", "answer_blocked",
+    "session_superseded", "claim_context", "answer_validation",
+    "render_enforce", "user_choice_resolved", "user_choice_requested",
+    "awaiting_user_choice", "action_repair", "delivery_incomplete",
+    "action_recommendations", "sop_progress",
+}
+
+
+def _slot_key(mode: str, key: str) -> str:
+    """Registry key for the per-session turn slot (mode + session id)."""
+    return f"{mode}:{key}"
+
+
+def _principal_for(session_id: Optional[str]) -> RequestPrincipal:
+    """Phase-1 identity: session_id only.  user_id/tenant_id come later."""
+    return RequestPrincipal(session_id=str(session_id or "").strip()[:128])
+
+
+def _busy_response(session_id: str) -> JSONResponse:
+    return JSONResponse(status_code=409, content={
+        "error": {"code": "SESSION_BUSY", "message": "当前会话仍在生成，请等待完成或取消"},
+        "code": "SESSION_BUSY",
+        "message": "当前会话仍在生成，请等待完成或取消",
+        "session_id": session_id,
+        "retryable": True,
+    })
+
+
+def _admission_response(exc: AdmissionRejected, session_id: str) -> JSONResponse:
+    headers = {}
+    if exc.retry_after is not None:
+        headers["Retry-After"] = str(max(1, int(exc.retry_after)))
+    return JSONResponse(
+        status_code=429,
+        content={
+            "error": {"code": exc.code, "message": exc.message},
+            "code": exc.code,
+            "message": exc.message,
+            "session_id": session_id,
+            "retryable": exc.retry_after is not None,
+        },
+        headers=headers,
+    )
+
+
+def _superseded_response(session_id: str) -> JSONResponse:
+    return JSONResponse(status_code=409, content={
+        "error": {"code": "TURN_SUPERSEDED", "message": "会话已被重建，请刷新后重试"},
+        "code": "TURN_SUPERSEDED",
+        "message": "会话已被重建，请刷新后重试",
+        "session_id": session_id,
+        "retryable": True,
+    })
+
+
+def _next_turn_id() -> str:
+    with STATE.registry_lock:
+        STATE.turn_counter += 1
+        return f"t{STATE.turn_counter:06d}-{uuid.uuid4().hex[:8]}"
+
+
+def _begin_turn(
+    mode: str,
+    session_id: Optional[str],
+) -> tuple[SessionSlot, TurnLease, str, Any, threading.Event]:
+    """Acquire the per-session turn slot + the global admission ticket.
+
+    Order matters: the same-session 409 check runs FIRST (never queue a turn
+    that would immediately 409), then global admission.  Raises HTTPException
+    whose detail is the exact JSON body (error/code/message/session_id/
+    retryable) for 409/429; endpoints map it back to a JSONResponse.
+
+    Returns ``(slot, lease, turn_id, ticket, cancel)``.  The lease is the
+    turn's single-use ownership token; the cancel event is shared by the
+    admission wait and the SSE stream so a cancelled/superseded turn stops
+    promptly everywhere.  The SAME event is bound to the lease atomically at
+    ``try_acquire`` time — there is no window in which a queued request waits
+    on a different event than the one a reset/restore/activate/source-switch
+    would set.
+    """
+    key = _session_key(session_id)
+    slot = STATE.session_slots.ensure(_slot_key(mode, key))
+    cancel = threading.Event()
+    lease = slot.try_acquire(cancel_event=cancel)
+    if lease is None:
+        resp = _busy_response(str(session_id or ""))
+        raise HTTPException(status_code=409, detail=json.loads(resp.body))
+    principal = _principal_for(session_id)
+    try:
+        ticket = STATE.admission.acquire(principal, cancel_event=cancel)
+    except AdmissionRejected as exc:
+        slot.release_turn(lease)
+        resp = _admission_response(exc, str(session_id or ""))
+        raise HTTPException(
+            status_code=429,
+            detail=json.loads(resp.body),
+            headers=dict(resp.headers),
+        )
+    # Re-check supersession AFTER the admission grant: the slot may have been
+    # reset/restored/activated/source-switched while this request sat in the
+    # queue (or exactly as it was granted).  A stale request must release the
+    # freshly granted ticket and its (now invalid) lease immediately — it must
+    # never create a stream, call a provider or briefly occupy global active.
+    if slot.is_superseded(lease, cancel):
+        STATE.admission.release(ticket)
+        slot.release_turn(lease)
+        resp = _superseded_response(str(session_id or ""))
+        raise HTTPException(status_code=409, detail=json.loads(resp.body))
+    turn_id = _next_turn_id()
+    return slot, lease, turn_id, ticket, cancel
+
+
+def _turn_guard_json_response(exc: HTTPException) -> JSONResponse:
+    """Map a turn-guard HTTPException back to its exact JSONResponse body."""
+    if isinstance(exc.detail, dict) and exc.detail.get("code"):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.detail,
+            headers=exc.headers or {},
+        )
+    raise exc
+
+
+def _annotate_events(
+    events: Any,
+    *,
+    turn_id: str,
+    generation: int,
+) -> Any:
+    """Pure passthrough that stamps ``turn_id`` on user-visible events and
+    ``generation`` on ``done`` (so the browser can stamp history saves).
+
+    Release of the slot/admission ticket lives in ``_run_turn_stream``'s
+    generator only — never release in two layers or a client disconnect
+    (GeneratorExit) would double-decrement the admission counters.
+    """
+    for evt in events:
+        if isinstance(evt, dict) and evt.get("type") in _TURN_EVENT_TYPES:
+            evt = dict(evt)
+            evt["turn_id"] = turn_id
+            if evt.get("type") == "done":
+                evt["generation"] = generation
+        yield evt
+
+
+def _run_turn_stream(
+    session: WebSession,
+    events: Any,
+    slot: SessionSlot,
+    lease: TurnLease,
+    turn_id: str,
+    ticket: Any,
+    cancel: Optional[threading.Event] = None,
+) -> StreamingResponse:
+    """Stream one turn with cancellation + guaranteed slot/admission release.
+
+    - attaches the lease / cancel event to the session so the turn loop can
+      detect reset/restore/activate/source-switch and refuse to commit once
+      superseded (``session._turn_ctx`` — captured once per turn);
+    - cancels the turn on client disconnect (GeneratorExit), on a superseding
+      reset, or when a cooperative resource wait observes the cancel event;
+    - releases the admission ticket and session slot exactly once in the
+      ``finally`` block.  ``slot.release_turn(lease)`` is owner-validated, so
+      a stale turn's finally can never release a newer turn's slot state.
+    """
+    cancel = cancel if cancel is not None else threading.Event()
+    slot.attach_cancel(lease, cancel)
+    session._turn_ctx = TurnContext(slot, lease, cancel)
+
+    def event_stream():
+        # The SSE generator runs on a worker thread; stamp the turn's cancel
+        # event there so gated tool executors observe it on the same thread.
+        set_current_cancel(cancel)
+        try:
+            for evt in _annotate_events(events, turn_id=turn_id, generation=lease.generation):
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        except GeneratorExit:
+            cancel.set()
+            raise
+        except Exception as e:
+            if cancel.is_set():
+                evt = {"type": "session_superseded", "turn_id": turn_id}
+            else:
+                evt = {"type": "error", "message": f"{type(e).__name__}: {e}", "turn_id": turn_id}
+            yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        finally:
+            clear_current_cancel()
+            slot.release_turn(lease)
+            ticket.controller.release(ticket)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _supersede_session(mode: str, key: str) -> None:
+    """Cancel any running turn and invalidate its generation.
+
+    Called by reset / restore / activate / source switch BEFORE the session
+    registry is mutated, so the old turn can never write into the new state.
+    """
+    slot = STATE.session_slots.get(_slot_key(mode, key))
+    if slot is not None:
+        slot.bump_generation()
+
+
+def _guard_mutation(mode: str, key: str) -> Optional[TurnLease]:
+    """Claim the turn slot for a short non-streaming mutation (roles /
+    report config).  Returns the lease or None when a turn is busy."""
+    slot = STATE.session_slots.ensure(_slot_key(mode, key))
+    return slot.try_acquire()
+
+
+def _release_guard(mode: str, key: str, lease: Optional[TurnLease]) -> None:
+    """Release a ``_guard_mutation`` lease (owner-validated, no-op if the
+    slot already moved on)."""
+    if lease is None:
+        return
+    slot = STATE.session_slots.get(_slot_key(mode, key))
+    if slot is not None:
+        slot.release_turn(lease)
+
+
+def _reap_idle_sessions() -> None:
+    """Lazy TTL / capacity reaping.  Only drops in-memory session objects —
+    never history files, uploads, charts or logs."""
+    try:
+        limits = get_limits()
+    except ValueError:
+        return
+    removed = STATE.session_slots.reap_idle(limits)
+    if not removed:
+        return
+    with STATE.registry_lock:
+        for slot_key in removed:
+            sid = slot_key.split(":", 1)[1] if ":" in slot_key else slot_key
+            STATE.sessions.pop(sid, None)
+            STATE.report_sessions.pop(sid, None)
+            STATE.report_ids_by_session.pop(sid, None)
+            STATE.report_db_by_session.pop(sid, None)
+            STATE.source_contexts.pop(sid, None)
+            STATE.roles_by_session.pop(sid, None)
+            if not sid:
+                STATE.session = None
+                STATE.report_session = None
+
 
 
 def _source_binding_signature(source: Any) -> tuple[Any, ...]:
@@ -1002,6 +1417,10 @@ def put_sources_endpoint(req: SourcesUpdate) -> JSONResponse:
         response = _put_sources_endpoint_impl(req, source, register_global=not key)
         changed = json.loads(response.body).get("changed") or []
         if key and changed:
+            # The rebuilt sessions replace the old ones: cancel/invalidate any
+            # running turns so stale requests cannot pollute the new binding.
+            _supersede_session("data", key)
+            _supersede_session("report", key)
             STATE.sessions.pop(key, None)
             STATE.report_sessions.pop(key, None)
             STATE.report_ids_by_session.pop(key, None)
@@ -1387,10 +1806,14 @@ def get_ontology_all(session_id: str = "") -> JSONResponse:
 @app.post("/api/session/reset")
 def reset_session(session_id: str = "") -> JSONResponse:
     key = _session_key(session_id)
-    if key:
-        STATE.sessions.pop(key, None)
-    else:
-        STATE.session = None
+    # Cancel/invalidate any running turn BEFORE detaching the session, so the
+    # old request can never write into (or after) the reset state.
+    _supersede_session("data", key)
+    with STATE.registry_lock:
+        if key:
+            STATE.sessions.pop(key, None)
+        else:
+            STATE.session = None
     return JSONResponse({"ok": True})
 
 
@@ -1420,21 +1843,33 @@ def put_roles(req: RolesRequest) -> JSONResponse:
     user_role = req.user_role if req.user_role in USER_ROLES else ""
     agent_pref = req.agent_pref if req.agent_pref in AGENT_PREFS else ""
     key = _session_key(req.session_id)
-    if key:
-        STATE.roles_by_session[key] = (user_role, agent_pref)
-    else:
-        STATE.user_role = user_role
-        STATE.agent_pref = agent_pref
-    block = _role_block(req.session_id)
-    # Apply to live sessions so the change takes effect on the next turn —
-    # no conversation reset needed.
-    data_session = STATE.sessions.get(key) if key else STATE.session
-    report_session = STATE.report_sessions.get(key) if key else STATE.report_session
-    if data_session is not None:
-        data_session.set_role_block(block)
-    if report_session is not None:
-        report_session.set_role_block(block)
-    return JSONResponse({"ok": True, "user_role": user_role, "agent_pref": agent_pref})
+    # Role changes mutate live session context, so they must not race a turn.
+    data_lease = _guard_mutation("data", key)
+    if data_lease is None:
+        return _busy_response(str(req.session_id or ""))
+    report_lease = _guard_mutation("report", key)
+    if report_lease is None:
+        _release_guard("data", key, data_lease)
+        return _busy_response(str(req.session_id or ""))
+    try:
+        if key:
+            STATE.roles_by_session[key] = (user_role, agent_pref)
+        else:
+            STATE.user_role = user_role
+            STATE.agent_pref = agent_pref
+        block = _role_block(req.session_id)
+        # Apply to live sessions so the change takes effect on the next turn —
+        # no conversation reset needed.
+        data_session = STATE.sessions.get(key) if key else STATE.session
+        report_session = STATE.report_sessions.get(key) if key else STATE.report_session
+        if data_session is not None:
+            data_session.set_role_block(block)
+        if report_session is not None:
+            report_session.set_role_block(block)
+        return JSONResponse({"ok": True, "user_role": user_role, "agent_pref": agent_pref})
+    finally:
+        _release_guard("report", key, report_lease)
+        _release_guard("data", key, data_lease)
 
 
 # ---------------------------------------------------------------------------
@@ -1455,6 +1890,11 @@ class ConversationSaveRequest(BaseModel):
     cid: Optional[str] = None           # update in place when the browser has one
     first_user_question: str = ""       # visible first question captured by the browser
     session_id: Optional[str] = None
+    # Concurrency stamp: the turn_id / generation of the turn this snapshot
+    # belongs to (emitted by the server in `done`).  When present, saves from
+    # a superseded (reset/restore/activate) generation are rejected.
+    turn_id: Optional[str] = None
+    generation: Optional[int] = None
 
 
 class ConversationRestoreRequest(BaseModel):
@@ -1595,7 +2035,9 @@ def _render_history_ontology_cards(entities: list[dict[str, Any]]) -> str:
         kind_label = kind_labels.get(kind, kind.upper())
         cards.append(
             f'<div class="entity-card {escape(kind)}" data-code="{escape(code)}" '
-            f'data-entity-key="{escape(key)}" data-source="{escape(source)}">'
+            f'data-entity-key="{escape(key)}" data-source="{escape(source)}" '
+            f'data-kind="{escape(kind)}" data-repository-id="{escape(str(entity.get("repository_id") or ""))}" '
+            f'data-name="{escape(name)}">'
             f'<div class="entity-head"><span class="entity-kind-tag">{escape(kind_label)}</span>'
             f'<span class="entity-code">{escape(code)}</span>'
             f'<span class="entity-name">{escape(name)}</span>'
@@ -1678,6 +2120,9 @@ def _activate_conversation_record(
 ) -> dict[str, Any]:
     """Restore only server-side context; HTML is deliberately not touched here."""
     mode = rec.get("mode") if rec.get("mode") in ("data", "report") else "data"
+    # A restore replaces the session context: cancel any running turn first so
+    # the old request can never commit into (or after) the restored state.
+    _supersede_session(mode, _session_key(session_id))
     messages = rec.get("messages") if isinstance(rec.get("messages"), list) else []
     source_restore_error = ""
     source_config = _resolved_history_source(rec)
@@ -1762,6 +2207,13 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
     client-rendered chat/dashboard HTML, so it can be relisted and restored."""
     store = _require_conversation_store()
     mode = req.mode if req.mode in ("data", "report") else "data"
+    key = _session_key(req.session_id)
+    # A stale turn (one that finished before a reset/restore/activate) must
+    # never overwrite the newer session snapshot.
+    if req.generation is not None:
+        slot = STATE.session_slots.get(_slot_key(mode, key))
+        if slot is not None and slot.generation != req.generation:
+            return _superseded_response(str(req.session_id or ""))
     session = _session_for_mode(mode, req.session_id)
     safe_source_config = sanitize_source_config(req.source_config)
     messages = list(session.messages) if session else []
@@ -1873,23 +2325,14 @@ def chat(req: ChatRequest):
     if not message:
         raise HTTPException(400, "empty message")
     session = _ensure_session(req.session_id)
-
-    def event_stream():
-        try:
-            for evt in session.generate_turn(message, req.visible_user_text):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            err = {"type": "error", "message": f"{type(e).__name__}: {e}"}
-            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+    try:
+        slot, lease, turn_id, ticket, cancel = _begin_turn("data", req.session_id)
+    except HTTPException as exc:
+        return _turn_guard_json_response(exc)
+    return _run_turn_stream(
+        session,
+        session.generate_turn(message, req.visible_user_text),
+        slot, lease, turn_id, ticket, cancel,
     )
 
 
@@ -1903,23 +2346,14 @@ def choice(req: ChoiceRequest):
     if not session.pending_tool_use_id:
         raise HTTPException(400, "No pending user choice")
     ids, labels = req.normalized()
-
-    def event_stream():
-        try:
-            for evt in session.continue_with_choice(ids, labels):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            err = {"type": "error", "message": f"{type(e).__name__}: {e}"}
-            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+    try:
+        slot, lease, turn_id, ticket, cancel = _begin_turn("data", req.session_id)
+    except HTTPException as exc:
+        return _turn_guard_json_response(exc)
+    return _run_turn_stream(
+        session,
+        session.continue_with_choice(ids, labels),
+        slot, lease, turn_id, ticket, cancel,
     )
 
 
@@ -2229,6 +2663,7 @@ def report_delete(rid: str) -> JSONResponse:
     # answer questions against, and the system prompt would carry stale
     # references to deleted files otherwise.
     if rid in STATE.active_report_ids:
+        _supersede_session("report", "")
         STATE.active_report_ids = [r for r in STATE.active_report_ids if r != rid]
         if STATE.active_report_ids:
             STATE.report_session = _build_report_session(
@@ -2243,6 +2678,7 @@ def report_delete(rid: str) -> JSONResponse:
         if rid not in active_ids:
             continue
         remaining = [item for item in active_ids if item != rid]
+        _supersede_session("report", key)
         with_db = STATE.report_db_by_session.get(key, True)
         session = (
             _build_report_session(remaining, with_db, _source_for_session(key), key)
@@ -2306,6 +2742,9 @@ def report_activate(req: ReportActivate) -> JSONResponse:
             raise HTTPException(404, f"report not found: {rid}")
         actives.append(_record_to_summary(rec))
 
+    # Activating a new report replaces the report session: invalidate any
+    # running report turn before the swap.
+    _supersede_session("report", _session_key(req.session_id))
     source = _source_for_session(req.session_id)
     session = _build_report_session(ids, req.with_db, source, req.session_id)
     _set_report_context(req.session_id, session, ids, req.with_db)
@@ -2325,29 +2764,36 @@ def report_config(req: ReportConfigUpdate) -> JSONResponse:
 
     Rebuilds BOTH the tool whitelist AND the availability-marker header so
     the agent doesn't see a mismatch (stale header said 'disabled' while
-    the new tool list includes SQLRun — which was the original bug).
+    the new tool list includes Ontology-FactQuery — which was the original bug).
     """
     session, active_ids, _ = _report_context_state(req.session_id)
     if session is None:
         raise HTTPException(400, "No active report session")
-    with_db = bool(req.with_db)
-    new_tools = REPORT_DB_TOOLS if with_db else REPORT_PURE_TOOLS
-    session.set_tools_override(new_tools)
-    if active_ids and STATE.report_store is not None:
-        recs = [STATE.report_store.get(rid) for rid in active_ids]
-        recs = [r for r in recs if r]
-        if recs:
-            session.set_context_header(
-                _report_context_header(recs, with_db)
-            )
-    _set_report_context(req.session_id, session, active_ids, with_db)
-    return JSONResponse({"ok": True, "with_db": with_db})
+    lease = _guard_mutation("report", _session_key(req.session_id))
+    if lease is None:
+        return _busy_response(str(req.session_id or ""))
+    try:
+        with_db = bool(req.with_db)
+        new_tools = REPORT_DB_TOOLS if with_db else REPORT_PURE_TOOLS
+        session.set_tools_override(new_tools)
+        if active_ids and STATE.report_store is not None:
+            recs = [STATE.report_store.get(rid) for rid in active_ids]
+            recs = [r for r in recs if r]
+            if recs:
+                session.set_context_header(
+                    _report_context_header(recs, with_db)
+                )
+        _set_report_context(req.session_id, session, active_ids, with_db)
+        return JSONResponse({"ok": True, "with_db": with_db})
+    finally:
+        _release_guard("report", _session_key(req.session_id), lease)
 
 
 @app.post("/api/report/session/reset")
 def report_session_reset(session_id: str = "", clear_reports: bool = False) -> JSONResponse:
     """Clear report chat history, optionally detaching the active reports."""
     _, active_ids, with_db = _report_context_state(session_id)
+    _supersede_session("report", _session_key(session_id))
     if clear_reports:
         _set_report_context(session_id, None, [], with_db)
         return JSONResponse({"ok": True, "active_reports": []})
@@ -2391,6 +2837,7 @@ def report_generate(session_id: str = "") -> JSONResponse:
         ontology_repository_id=(source.remote_ontology.repository_id if source.remote_ontology else ""),
         tool_executors=executors,
     )
+    _supersede_session("report", _session_key(session_id))
     _set_report_context(session_id, session, [], True)
     return JSONResponse({"ok": True})
 
@@ -2499,23 +2946,14 @@ def report_chat(req: ChatRequest):
     message = (req.message or "").strip()
     if not message:
         raise HTTPException(400, "empty message")
-
-    def event_stream():
-        try:
-            for evt in session.generate_turn(message, req.visible_user_text):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            err = {"type": "error", "message": f"{type(e).__name__}: {e}"}
-            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+    try:
+        slot, lease, turn_id, ticket, cancel = _begin_turn("report", req.session_id)
+    except HTTPException as exc:
+        return _turn_guard_json_response(exc)
+    return _run_turn_stream(
+        session,
+        session.generate_turn(message, req.visible_user_text),
+        slot, lease, turn_id, ticket, cancel,
     )
 
 
@@ -2525,23 +2963,14 @@ def report_choice(req: ChoiceRequest):
     if session is None or not session.pending_tool_use_id:
         raise HTTPException(400, "No pending user choice")
     ids, labels = req.normalized()
-
-    def event_stream():
-        try:
-            for evt in session.continue_with_choice(ids, labels):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            err = {"type": "error", "message": f"{type(e).__name__}: {e}"}
-            yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+    try:
+        slot, lease, turn_id, ticket, cancel = _begin_turn("report", req.session_id)
+    except HTTPException as exc:
+        return _turn_guard_json_response(exc)
+    return _run_turn_stream(
+        session,
+        session.continue_with_choice(ids, labels),
+        slot, lease, turn_id, ticket, cancel,
     )
 
 
@@ -2551,9 +2980,16 @@ def report_choice(req: ChoiceRequest):
 
 def _ensure_session(session_id: Optional[str] = None) -> WebSession:
     key = _session_key(session_id)
-    existing = STATE.sessions.get(key) if key else STATE.session
-    if existing is not None:
-        return existing
+    _reap_idle_sessions()
+    with STATE.registry_lock:
+        existing = STATE.sessions.get(key) if key else STATE.session
+        if existing is not None:
+            STATE.session_slots.ensure(_slot_key("data", key)).touch()
+            return existing
+    # Not present.  Build outside the registry lock (never hold it across
+    # executor registration / any slow work), then re-check: two concurrent
+    # first requests may both build, but only one instance wins the registry
+    # and both callers receive that same instance.
     source = _source_for_session(key)
     if not STATE.agent_def or source.ontology_store is None:
         raise HTTPException(500, "Server not configured; call configure() first.")
@@ -2594,10 +3030,15 @@ def _ensure_session(session_id: Optional[str] = None) -> WebSession:
         ontology_repository_id=(source.remote_ontology.repository_id if source.remote_ontology else ""),
         tool_executors=executors,
     )
-    if key:
-        STATE.sessions[key] = session
-    else:
-        STATE.session = session
+    with STATE.registry_lock:
+        existing = STATE.sessions.get(key) if key else STATE.session
+        if existing is not None:
+            return existing
+        if key:
+            STATE.sessions[key] = session
+        else:
+            STATE.session = session
+        STATE.session_slots.ensure(_slot_key("data", key))
     return session
 
 

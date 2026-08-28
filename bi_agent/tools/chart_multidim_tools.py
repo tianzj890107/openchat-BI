@@ -21,6 +21,7 @@ from typing import Any, Callable
 
 from ..paths import CHARTS_DIR, project_path
 from .chart_tools import SUPPORTED_TYPES, _echarts_option, _slug, _validate
+from ..display_names import normalize_chart_multidim_params
 
 Executor = Callable[[dict, str], str]
 ExecutorFactory = Callable[[], Executor]
@@ -44,10 +45,10 @@ CHART_GENERATE_MULTIDIM_SCHEMA = {
         "深入洞察 (deep-insight) drill-down tasks. Use this ONLY after the "
         "user clicks the '深入洞察' button on an existing chart, or "
         "explicitly asks for a 维度洞察 / 维度下钻 over a metric. The "
-        "workflow is: (1) RelationLookup / EntityDescribe on the source "
+        "workflow is: (1) Ontology-RelationQuery / Ontology-EntityDescribe on the source "
         "metric to find its applicable dimensions in the ontology; "
         "(2) pick the 2–5 most business-meaningful ones; (3) for each, "
-        "run ONE SQLRun query that GROUPs BY that dimension while keeping "
+        "run ONE Ontology-FactQuery query that GROUPs BY that dimension while keeping "
         "the SAME time/scope filters as the original chart; (4) call this "
         "tool once with all dim breakdowns. The UI renders a single chart "
         "with a dropdown — switching dim is instant. Do NOT use this for a "
@@ -287,8 +288,12 @@ def _write_standalone_html(spec: dict[str, Any], out_path: Path) -> None:
     out_path.write_text(html, encoding="utf-8")
 
 
-def _make_chart_generate_multidim() -> Executor:
+def _make_chart_generate_multidim(
+    display_resolver: "Callable[[str], str | None] | None" = None,
+) -> Executor:
     def run(params: dict, cwd: str) -> str:
+        if display_resolver is not None:
+            params = normalize_chart_multidim_params(params, display_resolver)
         err = _validate_multidim(params)
         if err:
             return f"ChartGenerateMultiDim rejected: {err}"

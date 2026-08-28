@@ -45,14 +45,16 @@ def _get_base_url() -> str:
 def _model_family(model_id: str) -> str:
     """Classify a team-gateway model id into a provider family.
 
-    Only the DeepSeek family understands the DeepSeek-style ``thinking``
-    extra_body field; every other routed model must never receive it.
+    Provider-specific request construction still decides which payload shape
+    each family receives.
     """
     value = str(model_id or "").lower()
     if "deepseek" in value:
         return "deepseek"
     if "qwen" in value:
         return "qwen"
+    if "doubao" in value:
+        return "doubao"
     if "glm" in value:
         return "glm"
     if "kimi" in value or "moonshot" in value:
@@ -74,9 +76,11 @@ def _thinking_extra_body(model_id: str, runtime_thinking: bool) -> Optional[dict
       ``thinking`` field.  ``TEAM_DEEPSEEK_ENABLE_THINKING`` wins, the
       legacy global ``TEAM_ENABLE_THINKING`` only affects DeepSeek for
       backward compatibility, and otherwise the runtime toggle decides.
-    - Qwen never receives the DeepSeek field.  It may opt in to its own
-      ``enable_thinking`` flag via ``TEAM_QWEN_ENABLE_THINKING=true``
-      (explicit configuration only, never guessed).
+    - Qwen uses ``enable_thinking``.  The runtime toggle is authoritative
+      unless ``TEAM_QWEN_ENABLE_THINKING`` explicitly overrides it.  The
+      qwen3.8-2.4t route rejects ``false``, so disabled requests omit the field
+      and the local visibility guard still hides unsolicited reasoning.
+    - The two verified Doubao 2.1 routes accept the DeepSeek-style field.
     - GLM/Kimi/unknown families send no thinking payload.
     """
     family = _model_family(model_id)
@@ -88,9 +92,17 @@ def _thinking_extra_body(model_id: str, runtime_thinking: bool) -> Optional[dict
             enabled = bool(runtime_thinking)
         return {"thinking": {"type": "enabled" if enabled else "disabled"}}
     if family == "qwen":
-        if _env_flag("TEAM_QWEN_ENABLE_THINKING"):
-            return {"enable_thinking": True}
-        return None
+        enabled = _env_flag("TEAM_QWEN_ENABLE_THINKING")
+        if enabled is None:
+            enabled = bool(runtime_thinking)
+        if not enabled and "qwen3.8-2.4t-a95b" in str(model_id).lower():
+            return None
+        return {"enable_thinking": bool(enabled)}
+    if family == "doubao" and str(model_id) in {
+        "doubao-seed-2-1-turbo-260628",
+        "doubao-seed-2-1-pro-260628",
+    }:
+        return {"thinking": {"type": "enabled" if runtime_thinking else "disabled"}}
     return None
 
 
@@ -172,7 +184,11 @@ def stream(
             reasoning = getattr(delta, "reasoning_content", None)
             if reasoning:
                 reasoning_buf += reasoning
-                yield {"type": "thinking_delta", "text": reasoning}
+                # Some Team routes emit reasoning even when explicitly
+                # disabled. Preserve it internally for tool-call round trips,
+                # but the user's visibility toggle is authoritative.
+                if thinking:
+                    yield {"type": "thinking_delta", "text": reasoning}
 
             content = getattr(delta, "content", None)
             if content:

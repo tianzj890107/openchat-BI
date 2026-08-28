@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from typing import Any, Generator, Optional
 
+from ..concurrency import get_llm_limiter
 from .registry import fallback_model_keys, get_model
 
 
@@ -37,6 +38,32 @@ def _is_quota_error(message: str) -> bool:
 
 
 def stream_message(
+    messages: list[dict[str, Any]],
+    system_prompt: str,
+    allowed_tools: Optional[list[str]],
+    model_key: str,
+    max_tokens: int,
+    temperature: float,
+    thinking: bool = False,
+    cancel_event: Optional[Any] = None,
+) -> Generator[dict[str, Any], None, None]:
+    # Every provider call shares the global LLM concurrency budget. The token
+    # is released in a finally block so provider errors and generator close
+    # (client disconnect) can never leak a slot.
+    # The wait is cooperative: if the turn's cancel event fires (reset /
+    # restore / client disconnect), the wait raises ResourceCancelled instead
+    # of blocking the worker for up to the full limiter timeout.
+    token = get_llm_limiter().acquire(cancel_event=cancel_event)
+    try:
+        yield from _stream_message_unbounded(
+            messages, system_prompt, allowed_tools, model_key,
+            max_tokens, temperature, thinking,
+        )
+    finally:
+        token.release()
+
+
+def _stream_message_unbounded(
     messages: list[dict[str, Any]],
     system_prompt: str,
     allowed_tools: Optional[list[str]],

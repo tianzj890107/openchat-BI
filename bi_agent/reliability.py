@@ -58,6 +58,31 @@ class ValidationStatus(str, Enum):
     REJECT = "REJECT"
 
 
+class EvidenceClass(str, Enum):
+    SUPPORTED = "SUPPORTED"
+    DERIVED = "DERIVED"
+    REASONABLE_INFERENCE = "REASONABLE_INFERENCE"
+    UNSUPPORTED_FACT = "UNSUPPORTED_FACT"
+    CONTRADICTED = "CONTRADICTED"
+    CAUSAL_OVERCLAIM = "CAUSAL_OVERCLAIM"
+    PROXY_MISREPRESENTATION = "PROXY_MISREPRESENTATION"
+    CONFLICT_NOT_DISCLOSED = "CONFLICT_NOT_DISCLOSED"
+    VALIDATOR_ERROR = "VALIDATOR_ERROR"
+
+
+class EvidenceSeverity(str, Enum):
+    INFO = "INFO"
+    SOFT = "SOFT"
+    HARD = "HARD"
+
+
+@dataclass(frozen=True)
+class EvidenceFinding:
+    code: EvidenceClass
+    severity: EvidenceSeverity
+    message: str
+
+
 @dataclass(frozen=True)
 class AnalysisContext:
     subject: Any = None
@@ -125,10 +150,19 @@ class ValidationResult:
     status: ValidationStatus
     issues: tuple[str, ...] = ()
     limitations: tuple[LimitationType, ...] = ()
+    findings: tuple[EvidenceFinding, ...] = ()
 
     @property
     def ok(self) -> bool:
         return self.status != ValidationStatus.REJECT
+
+    @property
+    def hard_findings(self) -> tuple[EvidenceFinding, ...]:
+        return tuple(item for item in self.findings if item.severity == EvidenceSeverity.HARD)
+
+    @property
+    def soft_findings(self) -> tuple[EvidenceFinding, ...]:
+        return tuple(item for item in self.findings if item.severity == EvidenceSeverity.SOFT)
 
 
 @dataclass(frozen=True)
@@ -250,7 +284,7 @@ def _metadata_from_output(data: Any) -> dict[str, Any] | None:
     if marker in text:
         text = text.split(marker, 1)[1].strip()
     else:
-        # MetricDataQuery has a human header followed by a JSON envelope.
+        # Ontology-MetricQuery has a human header followed by a JSON envelope.
         start = text.find("{")
         if start < 0:
             return None
@@ -263,6 +297,25 @@ def _metadata_from_output(data: Any) -> dict[str, Any] | None:
 
 
 def _numeric_rows(payload: Any) -> list[tuple[str, float]]:
+    """Return numeric cells from a normalized query payload.
+
+    Doris/ontology gateways do not agree on whether decimal values are JSON
+    numbers or strings, and some wrap the actual table below ``result`` or
+    ``data``.  Claims must follow those harmless transport differences or a
+    real value such as ``"500"`` disappears from the evidence allow-list and
+    the final narrative is incorrectly blocked.
+
+    Parsing stays deliberately conservative: only a whole-cell numeric string
+    is accepted.  Codes, dates, labels and mixed text are never coerced.
+    """
+    while isinstance(payload, dict) and not isinstance(payload.get("rows"), (list, dict)):
+        nested = next(
+            (payload.get(key) for key in ("result", "data") if isinstance(payload.get(key), dict)),
+            None,
+        )
+        if nested is None or nested is payload:
+            break
+        payload = nested
     rows = payload.get("rows", []) if isinstance(payload, dict) else []
     columns = payload.get("columns", []) if isinstance(payload, dict) else []
     if isinstance(rows, dict):
@@ -273,13 +326,34 @@ def _numeric_rows(payload: Any) -> list[tuple[str, float]]:
     for row in rows:
         if isinstance(row, dict):
             for key, value in row.items():
-                if isinstance(value, (int, float)) and not isinstance(value, bool):
-                    values.append((str(key), float(value)))
+                parsed = _query_number(value)
+                if parsed is not None:
+                    values.append((str(key), parsed))
         elif isinstance(row, (list, tuple)) and isinstance(columns, list):
             for key, value in zip(columns, row):
-                if isinstance(value, (int, float)) and not isinstance(value, bool):
-                    values.append((str(key), float(value)))
+                parsed = _query_number(value)
+                if parsed is not None:
+                    values.append((str(key), parsed))
     return values
+
+
+def _query_number(value: Any) -> float | None:
+    """Parse one trusted query-result cell without guessing business text."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+        return number if math.isfinite(number) else None
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not re.fullmatch(r"[-+]?(?:\d+(?:,\d{3})*|\d*)(?:\.\d+)?", text) or not re.search(r"\d", text):
+        return None
+    try:
+        number = float(text.replace(",", ""))
+    except ValueError:
+        return None
+    return number if math.isfinite(number) else None
 
 
 def claims_from_query_result(result: QueryResult, claim_id_prefix: str = "query") -> list[Claim]:
@@ -430,78 +504,67 @@ def validate_chart_measures(measures: Sequence[Measure], *, display_only: bool =
 
 
 def validate_claims(claims: Sequence[Claim], narrative: str) -> ValidationResult:
-    """Conservative structural check; it never attempts business reasoning."""
+    """Evidence consistency guard for user-facing BI narratives.
+
+    Claims constrain evidence semantics, not numeric presentation or the
+    entire language model output. Numeric tokens are deliberately not gated:
+    formatting, unit conversion, rounding and arbitrary derived figures must
+    never suppress a user-facing answer. Proxy/conflict misrepresentation
+    remains a hard failure; causal or certainty overstatement is a soft issue
+    that callers can locally weaken without discarding the answer.
+    """
     text = str(narrative or "")
-    # Thousands separators are display formatting, not extra numeric facts.
-    normalized_text = re.sub(r"(?<=\d),(?=\d{3})", "", text)
-    issues: list[str] = []
-    claim_text = " ".join(c.statement for c in claims)
+    findings: list[EvidenceFinding] = []
     if any(c.level == ClaimLevel.INFERENCE for c in claims) and re.search(r"已确认|已验证|确定原因|必然导致", text):
-        issues.append("claim escalation: inference rendered as verified")
+        findings.append(EvidenceFinding(
+            EvidenceClass.CAUSAL_OVERCLAIM, EvidenceSeverity.SOFT,
+            "claim escalation: inference rendered as verified",
+        ))
     if any(LimitationType.CONFLICTING_EVIDENCE in c.limitations for c in claims) and not re.search(r"冲突|不一致|无法|待核查", text):
-        issues.append("known numerical conflict is not disclosed")
+        findings.append(EvidenceFinding(
+            EvidenceClass.CONFLICT_NOT_DISCLOSED, EvidenceSeverity.HARD,
+            "known numerical conflict is not disclosed",
+        ))
     if claims and any(c.level == ClaimLevel.ASSOCIATION for c in claims) and re.search(r"导致|造成|根因是", text):
-        issues.append("association rendered as causation")
+        findings.append(EvidenceFinding(
+            EvidenceClass.CAUSAL_OVERCLAIM, EvidenceSeverity.SOFT,
+            "association rendered as causation",
+        ))
     proxy_claims = [c for c in claims if str(c.semantic.get("semantic_type", "")).upper() == SemanticType.PROXY.value]
     if proxy_claims and not re.search(r"代理|Proxy|不等价|无法直接计算|不能直接计算", text, re.IGNORECASE):
-        issues.append("proxy measure is not distinguished from requested measure")
-    # Numeric tokens are a cheap high-signal guard against invented figures.
-    # Exact string equality is deliberately not required: display formatting
-    # (100 vs 100.0), percentages (0.25 vs 25%), ordinals, list markers,
-    # ranges and time expressions are all legitimate narrative numbers.
-    claim_text = re.sub(r"(?<=\d),(?=\d{3})", "", claim_text)
-    known_numbers = set(re.findall(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?", claim_text))
-    known_values = {float(number) for number in known_numbers}
-    expressive = _expressive_numbers(normalized_text)
-    for number in re.findall(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?", normalized_text):
-        if number in known_numbers or number in expressive:
-            continue
-        if re.search(r"\b(?:19|20)\d{2}\b", number):
-            continue
-        try:
-            value = float(number)
-        except ValueError:
-            continue
-        if any(math.isclose(value, known, rel_tol=1e-9, abs_tol=1e-9) for known in known_values):
-            continue  # 100 vs 100.0 / 100.00
-        if any(
-            0 < abs(known) <= 1 and math.isclose(value, known * 100, rel_tol=1e-9, abs_tol=1e-6)
-            for known in known_values
-        ):
-            continue  # 0.25 vs 25%
-        if any(
-            0 < abs(value) <= 1 and math.isclose(known, value * 100, rel_tol=1e-9, abs_tol=1e-6)
-            for known in known_values
-        ):
-            continue  # 25% in claims, 0.25 in narrative
-        issues.append(f"unsupported numeric fact: {number}")
-        break
-    if issues:
-        return ValidationResult(ValidationStatus.REJECT, tuple(issues), (LimitationType.INSUFFICIENT_EVIDENCE,))
-    return ValidationResult(ValidationStatus.ALLOW)
+        findings.append(EvidenceFinding(
+            EvidenceClass.PROXY_MISREPRESENTATION, EvidenceSeverity.HARD,
+            "proxy measure is not distinguished from requested measure",
+        ))
+    hard = tuple(item for item in findings if item.severity == EvidenceSeverity.HARD)
+    soft = tuple(item for item in findings if item.severity == EvidenceSeverity.SOFT)
+    issues = tuple(item.message for item in findings if item.severity != EvidenceSeverity.INFO)
+    if hard:
+        return ValidationResult(
+            ValidationStatus.REJECT, issues,
+            (LimitationType.INSUFFICIENT_EVIDENCE,), tuple(findings),
+        )
+    if soft:
+        return ValidationResult(ValidationStatus.ALLOW_WITH_WARNING, issues, (), tuple(findings))
+    return ValidationResult(ValidationStatus.ALLOW, (), (), tuple(findings))
 
 
-def _expressive_numbers(text: str) -> set[str]:
-    """Collect narrative numbers that are ordinals, ranges, list markers or
-    time expressions rather than data facts."""
-    expressive: set[str] = set()
-
-    def _add(pattern: str) -> None:
-        for match in re.finditer(pattern, text):
-            expressive.update(re.findall(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?", match.group(0)))
-
-    # Ordinals: 第 2 步 / 第3季度.
-    _add(r"第\s*[-+]?\d+(?:\.\d+)?")
-    # Ranges: 1–2 / 1-2 / 1~2 / 1 至 2.
-    _add(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?\s*(?:[-–—~]|至)\s*[-+]?\d+(?:\.\d+)?")
-    # Enumerations: 1、2、3 / 1，2 / （1）（2）/ line-leading "1. ".
-    _add(r"(?:^|\n)\s*[-+]?\d+\.(?=\s)")
-    _add(r"[-+]?\d+[、．，](?![0-9])")
-    _add(r"[（(]\s*[-+]?\d+(?:\.\d+)?\s*[)）]")
-    _add(r"[-+]?\d+[)）](?![0-9])")
-    # Time/period expressions: 12 月 / 第 3 季度 / 2 周 / 4 分钟.
-    _add(r"[-+]?\d+(?:\.\d+)?\s*(?:月份?|季度|旬|周|日|天|时|分钟|小时|秒|期|号|年)(?![A-Za-z])")
-    return expressive
+def soften_evidence_language(narrative: str, findings: Sequence[EvidenceFinding]) -> str:
+    """Locally weaken soft overclaims while preserving the useful answer."""
+    text = str(narrative or "")
+    codes = {finding.code for finding in findings if finding.severity == EvidenceSeverity.SOFT}
+    if EvidenceClass.CAUSAL_OVERCLAIM in codes:
+        text = text.replace("必然导致", "可能与")
+        text = text.replace("根因是", "当前关联现象是")
+        text = text.replace("导致了", "与")
+        text = text.replace("导致", "与")
+        text = text.replace("造成了", "与")
+        text = text.replace("造成", "与")
+        text = text.replace("已确认", "当前迹象表明")
+        text = text.replace("已验证", "初步观察到")
+        if "不足以确认因果" not in text:
+            text = text.rstrip() + "\n\n证据说明：当前结果支持关联性分析，但不足以确认因果关系。"
+    return text
 
 
 def normalize_query_result(data: Any, *, scope: Mapping[str, Any] | None = None,

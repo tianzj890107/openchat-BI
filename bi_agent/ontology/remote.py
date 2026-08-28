@@ -22,6 +22,15 @@ class OntologyApiError(RuntimeError):
     """A transport or business-level error returned by the ontology API."""
 
 
+def _query_scalar(value: Any) -> Any:
+    """Unwrap scalar values returned by different script-query versions."""
+    if isinstance(value, list) and len(value) == 1:
+        return _query_scalar(value[0])
+    if isinstance(value, dict) and set(value) == {"value"}:
+        return _query_scalar(value["value"])
+    return value
+
+
 class RemoteOntologyClient:
     def __init__(
         self,
@@ -166,7 +175,20 @@ class RemoteOntologyClient:
         if cached and now - cached[0] <= self.cache_ttl:
             return cached[1]
 
-        related = self.find_related(normalized_type, normalized_code, safe_depth)
+        related_error = ""
+        try:
+            related = self.find_related(normalized_type, normalized_code, safe_depth)
+        except OntologyApiError as exc:
+            # Some ontology-manager versions reject a traversal as soon as it
+            # reaches a physical TableNode, even though TableNode vertices are
+            # valid and queryable through the read-only OpenCypher endpoint.
+            # Keep the global graph card usable by recovering the same bounded
+            # vertex neighborhood through OpenCypher. Other API failures still
+            # surface normally so configuration/auth errors are not hidden.
+            if "未知本体类型: TableNode" not in str(exc):
+                raise
+            related_error = str(exc)
+            related = {"objects": []}
         objects: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
 
@@ -193,6 +215,31 @@ class RemoteOntologyClient:
         for item in related.get("objects") or related.get("relatedObjects") or []:
             if isinstance(item, dict):
                 remember(str(item.get("typeName") or item.get("type") or "Unknown"), item)
+
+        if related_error:
+            vertex_script = (
+                f"MATCH p=(root)-[*0..{safe_depth}]-(n) "
+                "WHERE root.code = $code "
+                "UNWIND nodes(p) AS vertex "
+                "RETURN DISTINCT labels(vertex) AS typeNames, "
+                "properties(vertex) AS properties "
+                f"LIMIT {safe_objects}"
+            )
+            vertex_data = self.script_query(
+                "opencypher", vertex_script, [["code", normalized_code]],
+            )
+            for result in vertex_data.get("results") or []:
+                for row in result.get("rows") or []:
+                    if not isinstance(row, dict):
+                        continue
+                    type_names = _query_scalar(row.get("typeNames"))
+                    if isinstance(type_names, list):
+                        type_value = next((str(item) for item in type_names if item), "Unknown")
+                    else:
+                        type_value = str(type_names or "Unknown")
+                    props = _query_scalar(row.get("properties"))
+                    if isinstance(props, dict):
+                        remember(type_value, props)
 
         codes = sorted({
             str(item["properties"].get("code") or item["properties"].get("identifierCode") or "").strip()

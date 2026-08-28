@@ -36,19 +36,24 @@
   `done`；`streamResponse` 增加 stale 跟踪（request sequence + turn_id），并在 EOF
   时复核 sequence 防止旧流污染新请求。
 - 前端新增 `stream_interrupted` 终态分支：清理 loading / cursor / 空白占位，提示
-  中断，不执行成功侧副作用；`done` 分支增加 `lastDoneTurnId` 去重与
-  `failedTurnIds` 防迟到 `done` 翻转；模式切换中止的旧流通过递增请求序号保持静默。
+  中断，不执行成功侧副作用；`done` 幂等改为有界的 `completedTurnIds` 集合
+  （`frontend/src/turnLifecycle.js`，容量 64 的 FIFO）：同一 turn 无论连续还是延迟
+  重复 `done` 都只执行一次成功副作用，`T1 done → T2 done → T1 done` 中最后一个
+  T1 被忽略；error / session_superseded / stream_interrupted 记录的 failed turn，
+  迟到 `done` 不能翻转为成功；模式切换中止的旧流通过递增请求序号保持静默。
 - 后端 `bi_agent/web/session.py` 行动补写阶段的 `llm_response` 事件 `tool_uses`
   固定为空数组，工具名（不含 SQL/输入）仅记内部 warning；补写内容依旧只提交文本
   与 thinking，不把工具写入消息历史。
 
-主要文件：`frontend/src/streamTerminal.js`（新增）、`frontend/src/runtime.js`、
-`bi_agent/web/session.py`、`bi_agent/web/static/vendor/antd/workbench.js`、
-`tests/test_regressions.py`。
+主要文件：`frontend/src/streamTerminal.js`（新增）、`frontend/src/turnLifecycle.js`
+（新增）、`frontend/src/runtime.js`、`bi_agent/web/session.py`、
+`bi_agent/web/static/vendor/antd/workbench.js`、`tests/test_regressions.py`。
 
-测试：新增 EOF 分类纯函数（node）、SSE 终态源码行为断言、action repair 三类生成器
-测试（仅工具不执行且 tool_uses 为空、文本+工具只取文本、连续仅工具达到上限后非阻断
-结束）；全量 Python 测试共 272 项通过；前端生产构建通过；`git diff --check` 通过。
+测试：新增 EOF 分类纯函数（node）、turn lifecycle 真实事件序列纯函数测试（普通
+done 单次成功副作用、连续/延迟重复 done 幂等、失败后迟到 done 拒绝、容量有界、
+reset 清理）、action repair 三类生成器测试（仅工具不执行且 tool_uses 为空、文本+
+工具只取文本、连续仅工具达到上限后非阻断结束）；全量 Python 测试通过；前端生产
+构建通过；`git diff --check` 通过。
 
 ### 全局交付规范：默认 commit + push，不部署
 
@@ -76,3 +81,61 @@
 
 验证：`git diff --check` 通过；全局扫描确认残留命中均为条件性部署说明或历史事实，
 无“默认自动部署”类规范指令。
+
+
+### 品牌与版本：智能分析 v0.1.0
+
+用户可见变化：
+- 左上角品牌由“智析”改为“智能分析”，并显示版本 `v0.1.0`；`bi-analyst` 不再显示在
+  产品名后冒充版本，实际 Agent 角色配置保留。
+- HTML title、加载骨架、aria-label 与 React 工作台品牌全部统一为“智能分析”。
+- 版本契约统一为 `0.1.0`：`pyproject.toml`、`bi_agent/__init__.py`、FastAPI 应用、
+  `frontend/package.json`、`frontend/package-lock.json` 根包；产品版本与会话 schema
+  版本（数值）相互独立。
+
+实现方式：
+- `frontend/src/main.jsx` 新增统一常量 `PRODUCT_NAME` / `PRODUCT_VERSION`，React
+  侧栏品牌用 Ant Design Tag 渲染版本号；`frontend/src/shell.html` 与
+  `bi_agent/web/static/index.html` 的品牌、title、骨架文案同步更新；
+  `frontend/src/workbench.css` 增加版本样式。
+- 新增 `docs/versions/README.md`（版本索引）与 `docs/versions/v0.1.0.md`（正式版本
+  说明），根 `README.md` 增加版本与文档链接；不创建根目录 `CHANGELOG.md`，不创建
+  Git tag / Release。
+
+主要文件：`frontend/src/main.jsx`、`frontend/src/shell.html`、
+`bi_agent/web/static/index.html`、`frontend/src/workbench.css`、
+`docs/versions/README.md`、`docs/versions/v0.1.0.md`、`README.md`、
+`bi_agent/web/static/vendor/antd/workbench.js`、
+`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`。
+
+测试：新增品牌/版本回归测试（左上角品牌为“智能分析”、显示 `v0.1.0`、不再出现
+“智析”/“bi-analyst”、五个版本契约文件一致、版本独立性）；全量 Python 测试与前端
+构建通过。
+
+### 双远端镜像工作流与正式版本文档
+
+用户可见变化：
+- 交付动作升级为双远端推送：同一个 commit 同时推送到 `origin/20260727`（主协作）
+  与 `personal/main`（个人私有镜像），完成标准 `HEAD == origin/20260727 ==
+  personal/main`；push 不等于部署，未获当前任务明确部署授权时双 push 后结束。
+- 正式版本文档路径建立：`docs/versions/README.md` + `docs/versions/vX.Y.Z.md`，
+  与每日 changelog 分开维护。
+
+实现方式：
+- 新增 `scripts/push_dual_remotes.py`：支持 `--check`、校验当前分支/两个远端
+  URL/工作区干净/detached HEAD/远端祖先关系，拒绝覆盖远端独有提交，禁止 force
+  push，先推 origin 再推 personal，推送后校验三个 hash 一致；personal 失败时报告
+  部分成功、不回滚 origin、不生成补偿 commit。
+- 新增 `docs/git-dual-remote-workflow.md` 记录远端映射、日常流程、首次设置、安全
+  规则与失败恢复；`AGENTS.md` 增加“提交、双远端推送与禁止部署（最高优先级）”与
+  “正式版本文档工作流”；`.claude/agents/devops.md` 与 `DEPLOYMENT.md` 增加“仅用户
+  当前任务明确授权时部署”的最高优先级限制。
+
+主要文件：`scripts/push_dual_remotes.py`（新增）、`docs/git-dual-remote-workflow.md`
+（新增）、`AGENTS.md`、`README.md`、`.claude/agents/devops.md`、`DEPLOYMENT.md`、
+`tests/test_push_dual_remotes.py`（新增）。
+
+测试：新增双远端脚本行为测试（临时目录 + 本地 bare 仓库，共 12 项：正常双推、
+personal/main 首次创建、重复执行幂等、dirty worktree 拒绝、detached HEAD 拒绝、
+缺少 personal 拒绝、remote 地址错误拒绝、personal/origin 独有提交拒绝、origin 成功
+personal 失败不回滚、三 hash 一致、无 force push）；全部通过。

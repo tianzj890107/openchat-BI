@@ -30,7 +30,7 @@ ASK_USER_SCHEMA = {
         "  (D) 角色/视角确认 — 问题的回答视角不明(如'为什么销售下降'"
         "可由销售总监视角或财务分析师视角回答),需要用户先确认。\n"
         "\n"
-        "非必要不使用 —— 如果可以自己通过 OntologyQuery/MetricLookup 等工具"
+        "非必要不使用 —— 如果可以自己通过 Ontology-SemanticQuery/MetricCalculation 等工具"
         "确定,直接查本体,不要打扰用户。每个 option 填 id (短英文标识符)、"
         "label (一行中文标签,带关键编码)、detail (一句话解释差异)。\n"
         "\n"

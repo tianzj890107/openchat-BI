@@ -18,6 +18,12 @@ import "./workbench.css";
 
 const { Sider } = Layout;
 
+// Unified product identity.  The UI brand and the version tag are rendered
+// from these constants everywhere (sidebar, title, skeleton), so the visible
+// name can never drift from the packaged version.
+const PRODUCT_NAME = "智能分析";
+const PRODUCT_VERSION = "v0.1.0";
+
 const DECORATIVE_EMOJI_TOKEN = "(?:📌|📊|📎|🧭|📈|📉|📄|🧩|🧠|✅|⚠️|🔍|💡)";
 function stripDecorativeAssistantMarkup(value) {
   let html = String(value == null ? "" : value);
@@ -449,7 +455,7 @@ function Sidebar() {
         <div className="antd-sidebar-scroll" onClick={handleSidebarSurfaceClick}>
           <div className="antd-sidebar-brand">
             <AgentMark />
-            {!collapsed && <span><strong>智析</strong><small id="antd-agent-name">bi-analyst</small></span>}
+            {!collapsed && <span className="antd-product-brand"><strong>{PRODUCT_NAME}</strong><Tag className="antd-product-version" bordered={false} color="blue">{PRODUCT_VERSION}</Tag></span>}
             <Tooltip
               placement="right"
               title={collapsed ? "展开侧栏" : "折叠侧栏"}
@@ -568,7 +574,23 @@ function readWorkflow() {
 
 function workflowIcon(status) {
   if (status === "completed") return <span className="antd-sop-status-check" aria-hidden="true">✓</span>;
+  // skipped is a static terminal state: a plain grey dash, never a spinner
+  // or a green check.
+  if (status === "skipped") return <span className="antd-sop-status-dash" aria-hidden="true">–</span>;
   return <span className={`antd-sop-status-circle antd-sop-status-${status}`} aria-hidden="true" />;
+}
+
+// ThoughtChain status mapping for the six SOP states. Ant Design ThoughtChain
+// only models `success` / `error` / `pending` natively, and `pending` is the
+// only non-terminal (loading/animation-capable) state. completed -> success
+// (static green); in_progress -> pending (the only dynamic state allowed);
+// pending and skipped -> "idle", a custom static item whose icon/colour are
+// defined entirely by our own CSS so the AntD pending/spinner treatment is
+// never applied to a finished, not-yet-started or bypassed step.
+function sopThoughtChainStatus(status) {
+  if (status === "completed") return "success";
+  if (status === "in_progress") return "pending";
+  return "idle";
 }
 
 function WorkflowPanels() {
@@ -614,7 +636,7 @@ function WorkflowPanels() {
   const chainItems = workflow.sop.map((item) => ({
     key: item.key,
     title: <span className={`antd-sop-title is-${item.status}`}>{item.text}</span>,
-    status: item.status === "completed" ? "success" : item.status === "in_progress" ? "pending" : "pending",
+    status: sopThoughtChainStatus(item.status),
     icon: workflowIcon(item.status),
   }));
   return (
@@ -624,7 +646,7 @@ function WorkflowPanels() {
         className="antd-workflow-collapse antd-workflow-sop"
         activeKey={sopOpen ? ["sop"] : []}
         onChange={(keys) => setSopOpen(keys.includes("sop"))}
-        items={[{ key: "sop", label: <span className="antd-workflow-title">分析 SOP <Tag color="blue">{total ? `${done}/${total}` : "待开始"}</Tag></span>, children: total ? <ThoughtChain items={chainItems} size="small" /> : <div className="antd-workflow-empty-sop">开始一轮智能分析后，这里会显示本次对话的六步执行进度。</div> }]}
+        items={[{ key: "sop", label: <span className="antd-workflow-title">分析 SOP <Tag color="blue">{total ? `${done}/${total}` : "待开始"}</Tag></span>, children: total ? <ThoughtChain items={chainItems} size="small" /> : <div className="antd-workflow-empty-sop">开始一轮智能分析后，这里会显示本次对话的分阶段执行进度。</div> }]}
       />}
       {!!workflow.questions.length && <Collapse
         ghost
@@ -696,21 +718,22 @@ window.antdMessageMount = mountMessage;
 // Keep tool-result labels visually distinct while using the same semantic
 // palette as 本体内容. The collapse arrow uses the same tone as its title.
 const TOOL_RESULT_TONES = {
-  OntologyQuery: "blue",
-  TermDisambiguate: "teal",
-  MetricLookup: "amber",
-  RelationLookup: "slate",
-  EntityDescribe: "teal",
+  "Ontology-SemanticQuery": "blue",
+  "Ontology-TermDisambiguate": "teal",
+  MetricCalculation: "amber",
+  "Ontology-RelationQuery": "slate",
+  "Ontology-EntityDescribe": "teal",
   ListBusinessObjects: "red",
-  SQLRun: "blue",
+  "Ontology-MetricQuery": "violet",
+  "Ontology-FactQuery": "blue",
   ListTables: "slate",
   DescribeTable: "muted",
   ChartGenerate: "green",
   ChartGenerateMultiDim: "violet",
   TableGenerate: "green",
   AskUser: "approval",
-  GraphContext: "blue",
-  GraphExpand: "violet",
+  "Ontology-GraphContext": "blue",
+  "Ontology-GraphExpand": "violet",
 };
 
 // Execution-step icons are deliberately independent from tool tones and
@@ -728,15 +751,16 @@ const TOOL_STEP_ICON_SVG = Object.freeze({
 });
 
 const TOOL_STEP_ICON_BY_NAME = Object.freeze({
-  OntologyQuery: TOOL_STEP_ICON_SVG.search,
+  "Ontology-SemanticQuery": TOOL_STEP_ICON_SVG.search,
   ListBusinessObjects: TOOL_STEP_ICON_SVG.search,
-  TermDisambiguate: TOOL_STEP_ICON_SVG.term,
-  MetricLookup: TOOL_STEP_ICON_SVG.metric,
-  EntityDescribe: TOOL_STEP_ICON_SVG.metric,
-  RelationLookup: TOOL_STEP_ICON_SVG.relation,
-  GraphContext: TOOL_STEP_ICON_SVG.graph,
-  GraphExpand: TOOL_STEP_ICON_SVG.graph,
-  SQLRun: TOOL_STEP_ICON_SVG.database,
+  "Ontology-TermDisambiguate": TOOL_STEP_ICON_SVG.term,
+  MetricCalculation: TOOL_STEP_ICON_SVG.metric,
+  "Ontology-EntityDescribe": TOOL_STEP_ICON_SVG.metric,
+  "Ontology-RelationQuery": TOOL_STEP_ICON_SVG.relation,
+  "Ontology-GraphContext": TOOL_STEP_ICON_SVG.graph,
+  "Ontology-GraphExpand": TOOL_STEP_ICON_SVG.graph,
+  "Ontology-MetricQuery": TOOL_STEP_ICON_SVG.database,
+  "Ontology-FactQuery": TOOL_STEP_ICON_SVG.database,
   ListTables: TOOL_STEP_ICON_SVG.database,
   DescribeTable: TOOL_STEP_ICON_SVG.database,
   TableGenerate: TOOL_STEP_ICON_SVG.result,

@@ -28,6 +28,7 @@ dataset/charts/
 dataset/conversations/
 dataset/logs/
 dataset/uploaded_reports/
+dataset/exports/
 dataset/spreadsheets/~$*
 outputs/
 # Personal/runtime notes kept in the project root but never deployed

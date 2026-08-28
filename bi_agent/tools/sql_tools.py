@@ -272,7 +272,7 @@ def _validate_sql(sql: str) -> str | None:
         return "only SELECT / WITH / PRAGMA / EXPLAIN are permitted"
     # PRAGMA is retained for schema inspection (for example
     # ``PRAGMA table_info('orders')``), but assignment forms can change SQLite
-    # connection/database state and violate SQLRun's read-only contract.
+    # connection/database state and violate Ontology-FactQuery's read-only contract.
     if re.match(r"^\s*pragma\b", s, re.IGNORECASE) and "=" in s:
         return "PRAGMA assignment is not permitted"
     if _FORBIDDEN.search(s):
@@ -319,12 +319,40 @@ def _format_rows(columns: list[str], rows: list[tuple], max_rows: int) -> str:
     return "\n".join(lines)
 
 
+def _code_name_pairs(columns: list[str]) -> list[dict[str, str]]:
+    """Pair ``*_code`` columns with their sibling ``*_name`` columns.
+
+    Only deterministic pairings are reported (same prefix, e.g.
+    ``unit_code``/``unit_name`` or ``supplier_code``/``supplier_name``);
+    nothing is guessed.  The metadata lets downstream display normalization
+    prefer the name column while keeping the code traceable.
+    """
+    lowered = [str(c).casefold() for c in columns]
+    pairs: list[dict[str, str]] = []
+    for column in columns:
+        text = str(column)
+        key = text.casefold()
+        base = ""
+        if key.endswith("_code") and len(key) > 5:
+            base = text[: -len("_code")]
+        elif key == "code":
+            base = ""
+        if base:
+            for candidate in (f"{base}_name", f"{base}name"):
+                if candidate.casefold() in lowered:
+                    pairs.append({"code_column": text, "name_column": candidate})
+                    break
+        elif key == "code" and "name" in lowered:
+            name_column = next(c for c in columns if str(c).casefold() == "name")
+            pairs.append({"code_column": text, "name_column": name_column})
+    return pairs
+
 # ---------------------------------------------------------------------------
-# SQLRun
+# Ontology-FactQuery
 # ---------------------------------------------------------------------------
 
 SQL_RUN_SCHEMA = {
-    "name": "SQLRun",
+    "name": "Ontology-FactQuery",
     "description": (
         "Execute a single read-only SQL statement against the customer "
         "database. The active source is either a local SQLite DB or Apache "
@@ -340,6 +368,14 @@ SQL_RUN_SCHEMA = {
         "type": "object",
         "properties": {
             "sql": {"type": "string", "description": "A single read-only statement."},
+            "query_description": {
+                "type": "string",
+                "description": (
+                    "Optional short Chinese description of the query goal for "
+                    "display on the tool card (e.g. 查询超期未接收含税金额). "
+                    "Never affects SQL execution."
+                ),
+            },
             "limit": {
                 "type": "integer",
                 "description": "Max rows to return in output (default 100).",
@@ -358,24 +394,24 @@ def _make_sql_run(source: "SqlBackend | str") -> Executor:
         try:
             limit = int(params.get("limit") or 100)
         except (TypeError, ValueError):
-            return "SQLRun rejected: limit must be an integer"
+            return "Ontology-FactQuery rejected: limit must be an integer"
         limit = max(1, min(limit, MAX_RESULT_ROWS))
         err = _validate_sql(sql)
         if err:
-            return f"SQLRun rejected: {err}\nSQL: {sql}"
+            return f"Ontology-FactQuery rejected: {err}\nSQL: {sql}"
         header = f"SQL: {sql}"
         if backend.is_doris:
             clean = sql.strip().rstrip(";").strip()
             if re.match(r"^pragma\b", clean, re.IGNORECASE):
-                return "SQLRun rejected: PRAGMA is SQLite-only\nSQL: " + sql
+                return "Ontology-FactQuery rejected: PRAGMA is SQLite-only\nSQL: " + sql
             try:
                 columns, rows = _doris_query(backend.doris, clean)
             except DorisApiError as e:
-                return f"SQLRun (Doris) error: {e}\nSQL: {sql}"
+                return f"Ontology-FactQuery (Doris) error: {e}\nSQL: {sql}"
             result = normalize_query_result(
                 {"columns": columns, "rows": rows[:limit]},
                 scope={"query": clean},
-                semantic={"columns": columns},
+                semantic={"columns": columns, "code_name_pairs": _code_name_pairs(columns)},
                 provenance=Provenance(source="Doris", query=clean),
             )
             return header + "\n\n" + _format_rows(columns, rows, limit) + "\n\n[RESULT_METADATA]\n" + json.dumps(result.to_dict(), ensure_ascii=False)
@@ -385,15 +421,15 @@ def _make_sql_run(source: "SqlBackend | str") -> Executor:
                 cur = conn.cursor()
                 cur.execute(sql)
                 if cur.description is None:
-                    return "SQLRun: statement returned no result set."
+                    return "Ontology-FactQuery: statement returned no result set."
                 columns = [d[0] for d in cur.description]
                 rows = cur.fetchall()
         except sqlite3.Error as e:
-            return f"SQLRun error: {e}\nSQL: {sql}"
+            return f"Ontology-FactQuery error: {e}\nSQL: {sql}"
         result = normalize_query_result(
             {"columns": columns, "rows": rows[:limit]},
             scope={"query": sql},
-            semantic={"columns": columns},
+            semantic={"columns": columns, "code_name_pairs": _code_name_pairs(columns)},
             provenance=Provenance(source="SQLite", query=sql),
         )
         return header + "\n\n" + _format_rows(columns, rows, limit) + "\n\n[RESULT_METADATA]\n" + json.dumps(result.to_dict(), ensure_ascii=False)
