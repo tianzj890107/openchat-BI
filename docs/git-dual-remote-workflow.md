@@ -64,3 +64,23 @@ git push personal vX.Y.Z
   只有用户明确指定目标版本时才能升级正式版本；
 - push 不等于部署；GitHub Release 是否创建由用户在当前任务中明确要求；不要把真实
   访问 token、SSH 私钥或凭据写入文档。
+
+## GitHub Release 双仓发布
+
+正式版本完成标准扩展为：
+
+1. 分支双推一致：`HEAD == origin/20260727 == personal/main`；
+2. tag 双推一致：`vX.Y.Z` 同时存在于 origin 和 personal，且 peeled commit 相同；
+3. 用户授权 Release 时，两个仓库均存在内容一致的正式 Release。
+
+规则：
+
+- 用户授权创建 GitHub Release 后，默认在 origin 和 personal 两个仓库各发布一个；
+  除非用户明确限定单仓；
+- 两个 Release 使用相同的版本号、tag、名称和正式版本说明，基于各自仓库中的同名
+  tag；
+- 幂等：先 `gh release view` 检查，只补缺失项；已存在且正确的 Release 保留，不覆盖
+  已有 Release；
+- 一个仓库成功、另一个失败时，保留已成功 Release，修复后只重试缺失仓库，不回滚、
+  不 force push、不移动 tag；
+- 创建 Release 使用本地 GitHub CLI/API，不在服务器上执行。

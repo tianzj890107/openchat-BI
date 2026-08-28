@@ -198,4 +198,16 @@ personal 失败不回滚、三 hash 一致、无 force push）；全部通过。
   `v0.1.0`；版本索引同步标记为正式版 / 当前版本。
 - 创建 annotated tag `v0.1.0`（`智能分析 v0.1.0`），并同时推送到 `origin` 和
   `personal` 两个远端；tag 指向的 commit 与双推后的 `HEAD` 一致。
-- 当前产品版本仍为 `v0.1.0`；没有创建 GitHub Release；没有部署。
+
+双仓 Release 更新：
+- 固化“GitHub Release 双仓同步”规范：用户授权创建 Release 后，默认在
+  `tianzj890107/openchat-BI` 与 `zhenzhang0408/openchat-BI` 两个仓库各发布一个；
+  两个 Release 使用相同版本号、tag、名称和正式版本说明，基于各自仓库同名 tag 且
+  tag 指向同一个定版 commit；只补缺失项，不覆盖已有 Release，单仓成功不回滚。
+- `v0.1.0` 正式 Release（名称“智能分析 v0.1.0”）已在两个仓库发布：主协作仓库
+  [Release](https://github.com/tianzj890107/openchat-BI/releases/tag/v0.1.0)
+  原已存在（保留未重复创建），个人镜像仓库
+  [Release](https://github.com/zhenzhang0408/openchat-BI/releases/tag/v0.1.0)
+  本次补建；两个 Release 均为正式（非 Draft、非 Pre-release），tag `v0.1.0`
+  的 peeled commit 均为 `e4b0a8f`。
+- 本次没有移动 `v0.1.0` tag；没有升级版本；没有部署。

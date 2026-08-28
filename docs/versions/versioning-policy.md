@@ -142,10 +142,32 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 
 ## 双远端规则
 
+- openchat-BI 使用两个 GitHub 仓库：`origin` → `tianzj890107/openchat-BI`、
+  `personal` → `zhenzhang0408/openchat-BI`。
 - 普通 commit 只双推分支：`origin/20260727` 与 `personal/main`；
-- 不自动推 tag；
-- 正式版本 tag 需要用户单独授权，且必须推送到 origin 和 personal 两个远端；
+- 正式版本 tag 需要用户单独授权，且必须是同一个 tag，同时推送到 origin 和 personal
+  两个远端；两个远端 tag 必须指向同一个 peeled commit；
 - push 不等于部署。
+
+## 双仓 GitHub Release 规则
+
+- 只有用户在当前任务中明确授权创建 GitHub Release 时才能执行。
+- 一旦用户明确授权某个正式版本创建 Release，默认要求在 origin 和 personal 两个仓库
+  各创建一个 Release；除非用户明确限定只发布某一个仓库，否则不能只创建 origin
+  Release 或只创建 personal Release。
+- 两个 Release 必须使用相同的版本号、tag、名称和正式版本说明；两个 Release 必须基于
+  各自仓库中的同名 tag，且两个 tag 必须指向同一个定版 commit。
+- personal 不只是保存 tag，也必须同步保存正式 Release 页面。
+- 幂等：创建前先运行 `gh release view` 检查；已存在且内容正确的 Release 保留，不
+  重复创建，只创建缺失的 Release；已存在 Release 的 tag、名称或目标 commit 不正确
+  时，不得自动删除、覆盖或重建，遇到冲突必须停止并报告。
+- 部分成功：一个仓库成功、另一个仓库失败时，保留已成功的 Release；不删除、不移动
+  tag、不 force push；修复权限或网络后只重试缺失仓库；不得谎报双仓完成。
+- GitHub Release 与其他动作相互独立：指定版本号不等于授权 tag；授权 tag 不等于授权
+  GitHub Release；授权 GitHub Release 不等于授权部署；创建 Release 不自动触发部署；
+  部署也不自动创建 Release。
+- GitHub Release 使用本地 GitHub CLI/API 执行，不在服务器上执行；不允许为了创建
+  Release 登录或修改部署服务器。
 
 ## 回滚与历史保护
 

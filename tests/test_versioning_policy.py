@@ -98,6 +98,40 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertEqual(names, allowed)
         self.assertFalse((versions_dir / "v0.1.1.md").exists())
 
+    def test_agents_md_requires_mirrored_releases(self) -> None:
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("默认在 origin 和 personal 两个仓库各发布一个", agents)
+        self.assertIn("只补缺失项", agents)
+        self.assertIn("禁止覆盖已有 Release", agents)
+
+    def test_policy_doc_covers_dual_repo_releases(self) -> None:
+        policy = (ROOT / "docs/versions/versioning-policy.md").read_text(encoding="utf-8")
+        self.assertIn("tianzj890107/openchat-BI", policy)
+        self.assertIn("zhenzhang0408/openchat-BI", policy)
+        self.assertIn("两个 Release 必须使用相同的版本号、tag、名称和正式版本说明", policy)
+        self.assertIn("两个 tag 必须指向同一个定版 commit", policy)
+        self.assertIn("只创建缺失的 Release", policy)
+        self.assertIn("不得自动删除、覆盖或重建", policy)
+        self.assertIn("保留已成功的 Release", policy)
+        self.assertIn("不 force push", policy)
+
+    def test_dual_remote_doc_has_mirrored_release_completion(self) -> None:
+        doc = (ROOT / "docs/git-dual-remote-workflow.md").read_text(encoding="utf-8")
+        self.assertIn("GitHub Release 双仓发布", doc)
+        self.assertIn("两个仓库均存在内容一致的正式 Release", doc)
+        self.assertIn("只补缺失项", doc)
+        self.assertIn("不覆盖", doc)
+        self.assertIn("已有 Release", doc)
+
+    def test_readme_and_v010_doc_list_both_releases(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("https://github.com/tianzj890107/openchat-BI/releases/tag/v0.1.0", readme)
+        self.assertIn("https://github.com/zhenzhang0408/openchat-BI/releases/tag/v0.1.0", readme)
+        doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
+        self.assertIn("https://github.com/tianzj890107/openchat-BI/releases/tag/v0.1.0", doc)
+        self.assertIn("https://github.com/zhenzhang0408/openchat-BI/releases/tag/v0.1.0", doc)
+        self.assertIn("同一个定版 commit `e4b0a8f`", doc)
+
     def test_no_unexpected_git_tags(self) -> None:
         """Only the official v0.1.0 tag may exist locally; no other tag."""
         proc = subprocess.run(
