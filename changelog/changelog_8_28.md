@@ -11,6 +11,20 @@
 
 ## 2026-08-28
 
+### 项目 README 归位与重写
+
+用户可见变化：
+- 根 `README.md` 不再以 Open Claude CLI 作为项目主体，改为 openchat-BI“智能分析”
+  的项目入口，说明产品能力、六步分析流程、系统结构、配置、Web 启动、前端构建、测试、
+  Agent/Tool 文档、数据安全、语义化版本、双远端交付和 GitHub Release。
+- Open Claude 的通用 Runtime、CLI、配置、Skills 和内部结构说明迁移至
+  `open_claude/README.md`，并与根项目 README 相互链接，明确其是智能分析的基础组件而
+  不是根项目名称。
+
+主要文件：`README.md`、`open_claude/README.md`（新增）。
+
+验证：新增 README 职责回归测试；全量 Python 测试 302 项通过，`git diff --check` 通过。
+
 ### 请求生命周期终态一致性修复（SSE 中断与行动补写悬空 Tool）
 
 用户可见变化：
