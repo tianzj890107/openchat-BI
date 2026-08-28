@@ -148,7 +148,10 @@ Node 子进程执行。
 - 版本号不按日期或部署次数机械增长，详见
   [语义化版本与正式发布规范](docs/versions/versioning-policy.md)；
 - push 不等于部署，部署必须由用户在当前任务中明确授权；
-- GitHub Release：[智能分析 v0.1.0](https://github.com/tianzj890107/openchat-BI/releases/tag/v0.1.0)。
+- GitHub Release 授权后默认在 origin 与 personal 两个仓库同步发布（只补缺失项，不覆盖已有 Release）；
+- 已发布 Release：
+  - 主协作仓库：[智能分析 v0.1.0](https://github.com/tianzj890107/openchat-BI/releases/tag/v0.1.0)
+  - 个人镜像仓库：[智能分析 v0.1.0](https://github.com/zhenzhang0408/openchat-BI/releases/tag/v0.1.0)
 
 ## 相关文档
 

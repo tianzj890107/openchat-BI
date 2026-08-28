@@ -34,6 +34,7 @@
 - 每周不自动升级 MINOR；每次部署不自动升级 PATCH；不按日期、commit 数量或部署次数机械升级。
 - commit、push、部署、tag、GitHub Release 相互独立：提交和推送不触发版本升级；“修复”“完成”“验收”“部署”“发布到服务器”等表述不构成版本升级授权。
 - tag、GitHub Release、部署需要各自独立授权：指定版本号不等于授权 tag；授权 tag 不等于授权 Release；授权 Release 不等于授权部署；授权部署不等于授权升级版本。
+- 用户授权创建 GitHub Release 后，默认在 origin 和 personal 两个仓库各发布一个（除非用户明确限定单仓）；两个 Release 使用相同版本号、tag、名称和说明，基于各自仓库中的同名 tag 且 tag 指向同一定版 commit；只补缺失项，禁止覆盖已有 Release。
 - 版本操作不得删除、迁移或覆盖历史会话和用户数据；已发布版本文档与已发布 tag 不得覆盖或强制移动。
 
 # Repository instructions
