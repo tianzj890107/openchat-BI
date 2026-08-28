@@ -139,3 +139,30 @@ reset 清理）、action repair 三类生成器测试（仅工具不执行且 to
 personal/main 首次创建、重复执行幂等、dirty worktree 拒绝、detached HEAD 拒绝、
 缺少 personal 拒绝、remote 地址错误拒绝、personal/origin 独有提交拒绝、origin 成功
 personal 失败不回滚、三 hash 一致、无 force push）；全部通过。
+
+### 语义化版本与正式发布规范
+
+用户可见变化：
+- 固定产品版本格式 `vMAJOR.MINOR.PATCH`，当前版本仍为 `v0.1.0`；版本号由变更性质
+  决定，不按日期、commit 数量或部署次数机械递增。
+- 明确边界：commit、每日 changelog、正式版本文档、Git tag、GitHub Release、部署
+  相互独立；commit/push/部署不自动触发版本升级；Agent 不得自行升级正式版本，只有
+  用户明确指定目标版本时才可升级。
+- 每日可发布 PATCH（修复/稳定性/文案等），每周只有形成完整新能力时才发布 MINOR；
+  纯文档、测试补充和格式化不单独发布正式版本。
+
+实现方式：
+- 新增 `docs/versions/versioning-policy.md` 作为唯一完整规范；`README.md`、
+  `docs/versions/README.md`、`AGENTS.md`、`docs/git-dual-remote-workflow.md` 增加
+  摘要与链接。
+- `AGENTS.md` 增加“版本升级强制规则（最高优先级）”：不得自行升级版本、每周不自动
+  升级 MINOR、每次部署不自动升级 PATCH、tag/Release/部署需要各自独立授权。
+- 本次没有创建新版本、Git tag、GitHub Release，也没有部署。
+
+主要文件：`docs/versions/versioning-policy.md`（新增）、`docs/versions/README.md`、
+`README.md`、`AGENTS.md`、`docs/git-dual-remote-workflow.md`、
+`changelog/changelog_8_28.md`、`tests/test_versioning_policy.py`（新增）。
+
+测试：新增版本文档契约测试（规范存在与关键语义、各文件链接与强制授权规则、当前
+版本仍为 v0.1.0、未创建 v0.1.1 文档或 tag）；全量 Python 测试与 `git diff --check`
+通过。

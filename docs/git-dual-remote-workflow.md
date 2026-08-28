@@ -51,12 +51,16 @@ git config user.email "zhenzhan@kth.se"
 
 ## 正式版本
 
-只有用户明确要求创建正式版本时，才执行：
+- 普通 commit 只双推分支（`origin/20260727` 与 `personal/main`），不自动推 tag；
+- 正式版本 tag（`vX.Y.Z`）需要用户在当前任务中单独授权，且必须推送到 origin 和
+  personal 两个远端：
 
 ```bash
 git push origin vX.Y.Z
 git push personal vX.Y.Z
 ```
 
-GitHub Release 是否创建由用户在当前任务中明确要求；不要把真实访问 token、SSH
-私钥或凭据写入文档。
+- 版本号变更必须遵循 [语义化版本与正式发布规范](./versions/versioning-policy.md)；
+  只有用户明确指定目标版本时才能升级正式版本；
+- push 不等于部署；GitHub Release 是否创建由用户在当前任务中明确要求；不要把真实
+  访问 token、SSH 私钥或凭据写入文档。

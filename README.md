@@ -6,7 +6,10 @@ An open-source AI coding assistant CLI, powered by Anthropic's Claude API. Inspi
 >
 > - [正式版本文档](docs/versions/v0.1.0.md)
 > - [版本索引](docs/versions/README.md)
+> - [版本管理规范](docs/versions/versioning-policy.md)
 > - [Git 双远端工作流](docs/git-dual-remote-workflow.md)
+>
+> commit、push、部署不自动触发版本升级；正式版本变更必须由用户明确指定目标版本。
 
 ## Features
 

@@ -26,6 +26,15 @@
 - `docs/versions/README.md` 为正式版本索引；每个正式版本使用独立文件 `docs/versions/vX.Y.Z.md`。
 - 只有用户明确确定或要求创建正式版本时才创建版本文件；创建后同步更新版本索引和根 README 当前版本链接；已归档版本不得被后续版本覆盖。
 - 每日 changelog 记录工程细节，版本文档只归纳最终用户可见能力、兼容变化、升级说明和验证结论。
+- 完整版本规则见 `docs/versions/versioning-policy.md`（`vMAJOR.MINOR.PATCH`；当前版本 `v0.1.0`）。
+
+## 版本升级强制规则（最高优先级）
+
+- Agent 不得自行判断并升级正式版本；只有用户在当前任务中明确指定目标版本（如“发布 v0.1.1”“版本升级到 v0.2.0”）时才能修改版本号。
+- 每周不自动升级 MINOR；每次部署不自动升级 PATCH；不按日期、commit 数量或部署次数机械升级。
+- commit、push、部署、tag、GitHub Release 相互独立：提交和推送不触发版本升级；“修复”“完成”“验收”“部署”“发布到服务器”等表述不构成版本升级授权。
+- tag、GitHub Release、部署需要各自独立授权：指定版本号不等于授权 tag；授权 tag 不等于授权 Release；授权 Release 不等于授权部署；授权部署不等于授权升级版本。
+- 版本操作不得删除、迁移或覆盖历史会话和用户数据；已发布版本文档与已发布 tag 不得覆盖或强制移动。
 
 # Repository instructions
 
