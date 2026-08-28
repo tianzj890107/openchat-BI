@@ -112,6 +112,18 @@ reset 清理）、action repair 三类生成器测试（仅工具不执行且 to
 “智析”/“bi-analyst”、五个版本契约文件一致、版本独立性）；全量 Python 测试与前端
 构建通过。
 
+后续修正：
+- `v0.1.0` 正式版本说明移除已不存在的 `SQLRun`、`MetricDataQuery`，改为与代码注册
+  一致的工具表述：`MetricCalculation`（指标定义、业务公式、统计口径、SQL 组件和
+  适用维度）、`Ontology-MetricQuery`（远程本体指标配置查询接口计算指标数据，已获得
+  指标编码和维度编码时优先）、`Ontology-FactQuery`（只读事实查询或自主 SQL，指标
+  配置接口不支持/失败或需核验底层明细时使用），以及 `TableGenerate`、
+  `ChartGenerate`、`ChartGenerateMultiDim` 和 `ListTables`/`DescribeTable`。
+- 正式版本文档中的现行 Tool 名称与 Agent `tools:` 声明和 Tool Schema 注册保持一致；
+  当前版本仍为 `v0.1.0`；本次没有创建 tag、GitHub Release，也没有部署。
+- 测试：`tests/test_versioning_policy.py` 新增正式版本文档工具名一致性测试（不包含
+  `MetricDataQuery`/`SQLRun`、三者职责区分、文档工具名均可从权威入口找到）。
+
 ### 双远端镜像工作流与正式版本文档
 
 用户可见变化：

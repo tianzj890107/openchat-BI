@@ -7,6 +7,7 @@ data.
 """
 
 import json
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -92,6 +93,66 @@ class VersioningPolicyDocTests(unittest.TestCase):
             capture_output=True, text=True, check=True,
         )
         self.assertEqual(proc.stdout.strip(), "")
+
+    def _authoritative_tool_names(self) -> set[str]:
+        """Tool names from the agent tools declaration and registered schemas."""
+        names: set[str] = set()
+        agents = [p for p in (ROOT / ".claude/agents").glob("*.md")]
+        for agent in agents:
+            text = agent.read_text(encoding="utf-8")
+            for line in text.splitlines():
+                if line.startswith("tools:"):
+                    names.update(
+                        part.strip()
+                        for part in line[len("tools:"):].split(",")
+                        if part.strip()
+                    )
+        schema_re = re.compile(r'"name"\s*:\s*"([^"]+)"')
+        for tool_file in (ROOT / "bi_agent/tools").glob("*.py"):
+            src = tool_file.read_text(encoding="utf-8")
+            names.update(schema_re.findall(src))
+        return names
+
+    def test_v010_doc_has_no_obsolete_tool_names(self) -> None:
+        doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
+        # MetricDataQuery / SQLRun are no longer registered tools and must not
+        # be presented as current public tools in the formal version doc.
+        self.assertNotIn("MetricDataQuery", doc)
+        self.assertNotIn("SQLRun", doc)
+
+    def test_v010_doc_distinguishes_metric_tool_roles(self) -> None:
+        doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
+        for tool in ("MetricCalculation", "Ontology-MetricQuery", "Ontology-FactQuery"):
+            self.assertIn(tool, doc)
+        # Each role matches the authoritative semantics.
+        self.assertIn("指标定义、业务公式、统计口径", doc)
+        self.assertIn("指标配置查询接口计算指标数据", doc)
+        self.assertIn("已获得指标", doc)
+        self.assertIn("只读事实查询或自主 SQL", doc)
+        self.assertIn("TableGenerate", doc)
+        self.assertIn("ChartGenerate", doc)
+        self.assertIn("ChartGenerateMultiDim", doc)
+
+    def test_v010_doc_tool_names_match_code_registry(self) -> None:
+        """Every tool name named in the version doc exists in the agent tools
+        declaration or a registered tool schema; obsolete names are rejected."""
+        doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
+        authoritative = self._authoritative_tool_names()
+        self.assertIn("Ontology-MetricQuery", authoritative)
+        self.assertIn("Ontology-FactQuery", authoritative)
+        self.assertIn("MetricCalculation", authoritative)
+        # Names the version doc presents as current tools.
+        doc_names = set(
+            re.findall(
+                r"`((?:Ontology-[A-Za-z]+|MetricCalculation|TableGenerate|"
+                r"ChartGenerateMultiDim|ChartGenerate|ListTables|DescribeTable|AskUser|"
+                r"MetricDataQuery|SQLRun))`",
+                doc,
+            )
+        )
+        self.assertTrue(doc_names)
+        for name in doc_names:
+            self.assertIn(name, authoritative)
 
 
 if __name__ == "__main__":
