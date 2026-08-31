@@ -22,7 +22,8 @@ import {
   visitedFromTodos,
 } from "./sopMachine.js";
 import { factQueryPreview } from "./factQueryPreview.js";
-import { createOntologySigmaRenderer } from "./ontologySigmaGraph.js";
+import { createSigmaOntologyRenderer } from "@boulderaitech/ontology-graph";
+import { buildGraph } from "./ontologyGraphModel.js";
 import { classifyStreamEof } from "./streamTerminal.js";
 import {
   createTurnLifecycle,
@@ -5624,7 +5625,7 @@ export function bootWorkbenchRuntime() {
       ontologyGraphRenderer?.kill?.();
       ontologyGraphRenderer = null;
       canvas.replaceChildren();
-      ontologyGraphRenderer = createOntologySigmaRenderer(canvas, graph);
+      ontologyGraphRenderer = createSigmaOntologyRenderer(canvas, buildGraph(graph));
       const nodes = graph.nodes || [];
       const anchor = graph.anchor || {};
       modal.querySelector(".ontology-graph-meta").textContent = `${nodes.length} 节点 · ${(graph.links || []).length} 关系 · 锚点 ${anchor.name || anchor.code || "-"}`;

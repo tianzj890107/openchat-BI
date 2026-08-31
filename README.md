@@ -30,7 +30,7 @@ openchat-BI/
 │   ├── ontology/                # 本地/远程本体访问与检索
 │   ├── tools/                   # 本体、取数、表格、图表和交互工具
 │   └── web/                     # FastAPI、会话运行时与静态工作台
-├── frontend/                    # React + Ant Design X 工作台源码
+├── frontend/                    # React + Ant Design X 工作台源码（本体图渲染复用 @boulderaitech/ontology-graph）
 ├── open_claude/                 # 通用 Agent Runtime 与 CLI
 ├── .claude/agents/              # 智能分析、报表分析和报表生成角色
 ├── dataset/                     # 初始化数据及本地运行数据目录

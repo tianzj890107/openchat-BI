@@ -284,10 +284,11 @@ Agent 定义、后端 Schema 与前端构建产物；如需迁移历史会话，
 后不得残留 `thinking-line`、`antd-step-thinking` 或流式光标；ThoughtChain 仅允许
 `in_progress` 使用动态 pending 状态，`pending` 与 `skipped` 必须保持静态。
 
-前端直接复用 ontology-agent 的 Sigma + Graphology + ForceAtlas2 布局实现与交互参数，在
-工具调用“命中的本体”和“本体内容”实体卡两个入口打开同一个弹窗。依赖包括 `sigma`、
-`graphology` 与 `graphology-layout-forceatlas2`；部署时必须同步 `frontend/package*.json`、
-ForceAtlas2 源码适配层和前端构建产物，不得覆盖会话、上传、图表或日志目录。
+前端通过共享包 `@boulderaitech/ontology-graph`（仓库 `ai-team/ontology-graph`）复用
+Sigma + Graphology + ForceAtlas2 布局与渲染核心，在“命中的本体”和“本体内容”实体卡两个
+入口打开同一个弹窗。依赖包括 `sigma`、`graphology`、`graphology-layout-forceatlas2` 与
+共享包；部署时必须同步 `frontend/package*.json`、共享包版本和前端构建产物，不得覆盖会话、
+上传、图表或日志目录。
 
 ### 行动 → 转督办（任务令）外部服务代理
 

@@ -320,13 +320,15 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('el.toolList?.addEventListener("click"', runtime)
         self.assertIn('e.target.closest(".step .chip[data-code]")', runtime)
         self.assertIn('openOntologyGraphCard(ontologyEntityForElement(', runtime)
-        self.assertIn('createOntologySigmaRenderer(canvas, graph)', runtime)
+        self.assertIn('createSigmaOntologyRenderer(canvas, buildGraph(graph))', runtime)
+        self.assertIn('from "@boulderaitech/ontology-graph"', runtime)
         self.assertNotIn('loadEcharts()', runtime)
         self.assertNotIn('ch.addEventListener("click", () => flashOntologyEntity', runtime)
-        sigma = Path("frontend/src/ontologySigmaGraph.js").read_text(encoding="utf-8")
-        self.assertIn('from "graphology-layout-forceatlas2"', sigma)
-        self.assertIn('from "sigma"', sigma)
-        self.assertIn("FORCE_ATLAS_CONFIG", sigma)
+        model = Path("frontend/src/ontologyGraphModel.js").read_text(encoding="utf-8")
+        self.assertIn('from "graphology"', model)
+        self.assertIn("NODE_STYLE", model)
+        self.assertIn("function buildGraph(data)", model)
+        self.assertIn('highlighted: Boolean(node.focus || node.anchor)', model)
 
     def test_remote_graph_expand_uses_activity_and_entity_paths_then_drills_subtrees(self) -> None:
         class FakeGraphClient:
@@ -2727,7 +2729,7 @@ class OfflineRegressionTests(unittest.TestCase):
 
     def test_ontology_graph_modal_uses_product_labels_and_synced_cluster_layout(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
-        graph = Path("frontend/src/ontologySigmaGraph.js").read_text(encoding="utf-8")
+        graph = Path("frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js").read_text(encoding="utf-8")
         self.assertIn('data-graph-strategy="context" class="active">子图检索</button>', runtime)
         self.assertIn('data-graph-strategy="expand">关系扩散</button>', runtime)
         self.assertIn('>关系聚类可视化</button>', runtime)
