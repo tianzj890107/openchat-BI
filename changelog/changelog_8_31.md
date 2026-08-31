@@ -29,7 +29,7 @@
 ### 3. 验证结论
 
 - `tests/test_versioning_policy.py` 与 `tests/test_push_gitlab.py` 共 30 项断言全部通过；全量测试套件 306 项全部通过。
-- `git diff --check` 通过；提交 `f153b7c` 已推送到 `gitlab/20260727`，推送后 `HEAD == gitlab/20260727`。
+- `git diff --check` 通过；提交 `f153b7c`、`bdf5006` 均已推送到 `gitlab/20260727`，推送后 `HEAD == gitlab/20260727`。
 - 未部署、未重启服务；push 不等于部署。
 
 ### 4. 全局复查 GitHub 痕迹并清理本地残留
