@@ -44,3 +44,9 @@
 - `GITLAB_TOKEN`（仓库 `.env`，已 gitignore）同步到本机固定路径 `~/.config/codex/gitlab_token`（权限 600），供后续会话读取，仓库内不保存明文。
 - `AGENTS.md` 增加凭据读取指引：读取命令、回退路径（`.env`）、API 基地址与创建 Merge Request 的固定参数（`source_branch=20260727`、`target_branch=main`、reviewer `tianzijing`）。
 - 主要文件：`AGENTS.md`、`changelog/changelog_8_31.md`。
+
+### 6. 交付动作指令固定化
+
+- 固定动作映射并写入 `AGENTS.md`：“push/推送”＝推送到 `gitlab/20260727`；“merge/合并/MR”＝创建 `20260727 → main` 的 Merge Request，reviewer 固定 `tianzijing`，assignee 固定 `zhangzhen`（用户本人）；只创建 MR，不自动合并、不直接 push `main`。
+- 分析结论：assignee 固定为用户本人 `zhangzhen`（id 245）符合 GitLab 惯例——assignee 负责推进 MR 至合并，reviewer `tianzijing` 负责评审，两者职责不冲突；MR `!1` 已同步设置 assignee。
+- 主要文件：`AGENTS.md`、`changelog/changelog_8_31.md`。

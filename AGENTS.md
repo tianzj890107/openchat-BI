@@ -17,6 +17,13 @@
 14. 禁止提交 secret、`.env`、用户数据和运行产物；用户明确要求“不部署”时，禁止任何服务器写操作和服务重启。
 15. `git push` 失败时报告错误，不得通过部署服务器或其他方式绕过。
 
+## 任务指令与交付动作映射（固定约定）
+
+- 用户说“push / 推送”＝只把已验证提交推送到 GitLab 开发分支 `gitlab/20260727`（`python scripts/push_gitlab.py`，先 `--check` 再执行）；不部署、不推 tag、不创建 MR。
+- 用户说“merge / 合并 / MR”＝创建 Merge Request：`source_branch=20260727` → `target_branch=main`，reviewer 固定 `tianzijing`（田子敬，id 166），assignee 固定 `zhangzhen`（张真，id 245，用户本人）；只创建 MR，不自动合并、不直接 push `main`。
+- 用户说“部署”＝只有当前任务中新出现的明确部署授权才执行部署；历史授权不延续。
+- 用户仅说“继续”时，按当前未完成的既定动作继续，不擅自扩大交付范围。
+
 ## 正式版本文档工作流
 
 - 正式版本说明统一保存在 `docs/versions/`，不创建根目录 `CHANGELOG.md`。
