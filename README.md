@@ -9,7 +9,7 @@ openchat-BI 是面向业务分析场景的对话式 BI Agent。产品名称为 *
 - [版本历史](docs/versions/README.md)
 - [版本管理规范](docs/versions/versioning-policy.md)
 - [部署说明](DEPLOYMENT.md)
-- [Git 双远端工作流](docs/git-dual-remote-workflow.md)
+- [GitLab 统一推送工作流](docs/gitlab-push-workflow.md)
 - [Open Claude Runtime 说明](open_claude/README.md)
 
 ## 核心能力
@@ -144,7 +144,7 @@ Node 子进程执行。
 
 - commit、push、部署不自动触发版本升级；
 - commit、push、Git tag、GitHub Release 和部署是彼此独立的动作；
-- 普通修改默认验证、commit，并将同一 commit 推送到 `origin/20260727` 与 `personal/main`；
+- 普通修改默认验证、commit，并将同一 commit 推送到 GitLab 统一开发分支 `gitlab/20260727`；merge 到 `main` 需要 `tianzijing` code review 后单独发起；
 - 版本号不按日期或部署次数机械增长，详见
   [语义化版本与正式发布规范](docs/versions/versioning-policy.md)；
 - push 不等于部署，部署必须由用户在当前任务中明确授权；

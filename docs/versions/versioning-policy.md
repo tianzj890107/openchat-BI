@@ -1,7 +1,7 @@
 # openchat-BI 语义化版本与正式发布规范
 
 本文件是 openchat-BI 版本管理的唯一完整规范。`AGENTS.md`、`README.md`、
-`docs/versions/README.md`、`docs/git-dual-remote-workflow.md` 只保留必要摘要并
+`docs/versions/README.md`、`docs/gitlab-push-workflow.md` 只保留必要摘要并
 链接到本文件。
 
 ## 目标与适用范围
@@ -127,9 +127,9 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 8. 更新当天已启用的日 changelog。
 9. 运行完整测试、前端 build 和 `git diff --check`。
 10. 创建普通 commit。
-11. 双远端 push：`origin/20260727` 与 `personal/main`。
-12. 验证 `HEAD == origin/20260727 == personal/main`。
-13. 只有用户明确授权 tag 时才创建并双推 tag。
+11. GitLab 统一推送：`gitlab/20260727`。
+12. 验证 `HEAD == gitlab/20260727`。
+13. 只有用户明确授权 tag 时才创建并推送 tag。
 14. 只有用户明确授权 GitHub Release 时才创建 Release。
 15. 只有用户明确授权部署时才执行部署。
 
@@ -140,17 +140,21 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 - 授权 Release 不等于授权部署；
 - 授权部署不等于授权升级版本。
 
-## 双远端规则
+## GitLab 统一推送规则
 
-- openchat-BI 使用两个 GitHub 仓库：`origin` → `tianzj890107/openchat-BI`、
-  `personal` → `zhenzhang0408/openchat-BI`。
-- 普通 commit 只双推分支：`origin/20260727` 与 `personal/main`；
-- 正式版本 tag 需要用户单独授权，且必须是同一个 tag，同时推送到 origin 和 personal
-  两个远端；两个远端 tag 必须指向同一个 peeled commit；
+- openchat-BI 统一推送到 GitLab 仓库 `ai-team/openchat-bi` 的 `20260727` 分支
+  （`gitlab/20260727`）。
+- 普通 commit 只推送统一开发分支：`gitlab/20260727`；
+- merge 到 `main` 需要 `tianzijing` code review 后单独发起 Merge Request，任何
+  Agent 或脚本不得直接 push 到 `main`，也不得自动合并；
+- 正式版本 tag 需要用户单独授权，且必须推送到 GitLab；
 - push 不等于部署。
 
 ## 双仓 GitHub Release 规则
 
+- GitHub Release 覆盖两个 GitHub 仓库：`tianzj890107/openchat-BI`（origin）与
+  `zhenzhang0408/openchat-BI`（personal）；日常开发 push 仍只走
+  `gitlab/20260727`。
 - 只有用户在当前任务中明确授权创建 GitHub Release 时才能执行。
 - 一旦用户明确授权某个正式版本创建 Release，默认要求在 origin 和 personal 两个仓库
   各创建一个 Release；除非用户明确限定只发布某一个仓库，否则不能只创建 origin
@@ -185,4 +189,4 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 
 - 本周只做了 Bug 修复与文案修正：保持 `v0.1.0` 或发布 `v0.1.1`（由用户决定）。
 - 本周新增“报表模式”完整能力：用户明确授权后发布 `v0.2.0`，PATCH 归零。
-- 纯文档与测试补充：不发布正式版本，只 commit + 双远端 push。
+- 纯文档与测试补充：不发布正式版本，只 commit + GitLab 统一推送。

@@ -74,8 +74,8 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("每次部署不自动升级 PATCH", agents)
         self.assertIn("tag、GitHub Release、部署需要各自独立授权", agents)
 
-    def test_dual_remote_doc_does_not_auto_push_tags(self) -> None:
-        doc = (ROOT / "docs/git-dual-remote-workflow.md").read_text(encoding="utf-8")
+    def test_gitlab_workflow_doc_does_not_auto_push_tags(self) -> None:
+        doc = (ROOT / "docs/gitlab-push-workflow.md").read_text(encoding="utf-8")
         self.assertIn("不自动推 tag", doc)
         self.assertIn("versioning-policy.md", doc)
         self.assertIn("push 不等于部署", doc)
@@ -104,6 +104,24 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("只补缺失项", agents)
         self.assertIn("禁止覆盖已有 Release", agents)
 
+    def test_gitlab_unified_push_contract(self) -> None:
+        """Daily commits push only gitlab/20260727; main merges need review."""
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("gitlab/20260727", agents)
+        self.assertIn("python scripts/push_gitlab.py", agents)
+        self.assertIn("tianzijing", agents)
+        self.assertIn("不得直接 push 到 `main`", agents)
+        doc = (ROOT / "docs/gitlab-push-workflow.md").read_text(encoding="utf-8")
+        self.assertIn("HEAD == gitlab/20260727", doc)
+        self.assertIn("tianzijing", doc)
+        self.assertIn("不执行 main 合并", doc)
+        policy = (ROOT / "docs/versions/versioning-policy.md").read_text(encoding="utf-8")
+        self.assertIn("gitlab/20260727", policy)
+        script = (ROOT / "scripts/push_gitlab.py").read_text(encoding="utf-8")
+        self.assertIn('GITLAB_OWNER_REPO = "ai-team/openchat-bi"', script)
+        self.assertIn('DEFAULT_TARGET_BRANCH = "20260727"', script)
+        self.assertIn("tianzijing", script)
+
     def test_policy_doc_covers_dual_repo_releases(self) -> None:
         policy = (ROOT / "docs/versions/versioning-policy.md").read_text(encoding="utf-8")
         self.assertIn("tianzj890107/openchat-BI", policy)
@@ -115,8 +133,8 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("保留已成功的 Release", policy)
         self.assertIn("不 force push", policy)
 
-    def test_dual_remote_doc_has_mirrored_release_completion(self) -> None:
-        doc = (ROOT / "docs/git-dual-remote-workflow.md").read_text(encoding="utf-8")
+    def test_gitlab_workflow_doc_has_mirrored_release_completion(self) -> None:
+        doc = (ROOT / "docs/gitlab-push-workflow.md").read_text(encoding="utf-8")
         self.assertIn("GitHub Release 双仓发布", doc)
         self.assertIn("两个仓库均存在内容一致的正式 Release", doc)
         self.assertIn("只补缺失项", doc)
