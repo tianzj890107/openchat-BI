@@ -29,7 +29,8 @@
 ### 3. 验证结论
 
 - `tests/test_versioning_policy.py` 与 `tests/test_push_gitlab.py` 共 30 项断言全部通过；全量测试套件 306 项全部通过。
-- `git diff --check` 通过；提交 `f153b7c`、`bdf5006` 均已推送到 `gitlab/20260727`，推送后 `HEAD == gitlab/20260727`。
+- `git diff --check` 通过；提交 `f153b7c`、`bdf5006`、`1e9fa16`、`3b45dcd`、`e616d49` 均已推送到 `gitlab/20260727`，推送后 `HEAD == gitlab/20260727 == e616d49`。
+- Merge Request `!1`（20260727 → main）已创建并保持 opened，reviewer=`tianzijing`、assignee=`zhangzhen`，等待 code review 后合并；未自动合并、未直接 push `main`。
 - 未部署、未重启服务；push 不等于部署。
 
 ### 4. 全局复查旧托管平台痕迹并清理本地残留
