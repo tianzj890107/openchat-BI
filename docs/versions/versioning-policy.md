@@ -7,7 +7,7 @@
 ## 目标与适用范围
 
 - 统一产品版本号含义，避免按日期、commit 数量或部署次数机械升级；
-- 明确 Git commit、每日 changelog、正式版本文档、Git tag、GitHub Release 与部署
+- 明确 Git commit、每日 changelog、正式版本文档、Git tag、GitLab Release 与部署
   之间的边界；
 - 适用于 openchat-BI 仓库内所有代码、前端、文档、配置与构建产物的版本管理。
 
@@ -83,7 +83,7 @@ v0.1.0
 | 每日 changelog | `changelog/changelog_M_D.md` | 记录当天已经完成的最终工程变化，不等同于正式版本发布 |
 | 正式版本文档 | `docs/versions/vX.Y.Z.md` | 只在正式发布新版本时创建，记录该版本最终用户可见能力、兼容变化、验证结论和升级说明 |
 | Git tag | `vX.Y.Z` | 只在用户明确要求创建正式版本并明确允许创建 tag 时执行 |
-| GitHub Release | GitHub Release | 只有用户在当前任务中明确要求时才创建，不能因为存在版本文档或 tag 自动创建 |
+| GitLab Release | GitLab Release | 只有用户在当前任务中明确要求时才创建，不能因为存在版本文档或 tag 自动创建 |
 | 部署 | — | 与版本号相互独立，只有用户在当前任务中明确授权具体部署目标时才能部署 |
 
 ## 正式版本发布条件
@@ -107,7 +107,7 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 - 不自动增加 PATCH；
 - 不自动创建版本文档；
 - 不自动创建 tag；
-- 不自动创建 GitHub Release。
+- 不自动创建 GitLab Release。
 
 ## 正式版本发布工作流
 
@@ -130,13 +130,13 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 11. GitLab 统一推送：`gitlab/20260727`。
 12. 验证 `HEAD == gitlab/20260727`。
 13. 只有用户明确授权 tag 时才创建并推送 tag。
-14. 只有用户明确授权 GitHub Release 时才创建 Release。
+14. 只有用户明确授权 GitLab Release 时才创建 Release。
 15. 只有用户明确授权部署时才执行部署。
 
 授权彼此独立：
 
 - 指定版本号不等于授权 tag；
-- 授权 tag 不等于授权 GitHub Release；
+- 授权 tag 不等于授权 GitLab Release；
 - 授权 Release 不等于授权部署；
 - 授权部署不等于授权升级版本。
 
@@ -150,27 +150,21 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 - 正式版本 tag 需要用户单独授权，且必须推送到 GitLab；
 - push 不等于部署。
 
-## 双仓 GitHub Release 规则
+## GitLab Release 规则
 
-- GitHub Release 覆盖两个 GitHub 仓库：`tianzj890107/openchat-BI`（origin）与
-  `zhenzhang0408/openchat-BI`（personal）；日常开发 push 仍只走
-  `gitlab/20260727`。
-- 只有用户在当前任务中明确授权创建 GitHub Release 时才能执行。
-- 一旦用户明确授权某个正式版本创建 Release，默认要求在 origin 和 personal 两个仓库
-  各创建一个 Release；除非用户明确限定只发布某一个仓库，否则不能只创建 origin
-  Release 或只创建 personal Release。
-- 两个 Release 必须使用相同的版本号、tag、名称和正式版本说明；两个 Release 必须基于
-  各自仓库中的同名 tag，且两个 tag 必须指向同一个定版 commit。
-- personal 不只是保存 tag，也必须同步保存正式 Release 页面。
-- 幂等：创建前先运行 `gh release view` 检查；已存在且内容正确的 Release 保留，不
-  重复创建，只创建缺失的 Release；已存在 Release 的 tag、名称或目标 commit 不正确
-  时，不得自动删除、覆盖或重建，遇到冲突必须停止并报告。
-- 部分成功：一个仓库成功、另一个仓库失败时，保留已成功的 Release；不删除、不移动
-  tag、不 force push；修复权限或网络后只重试缺失仓库；不得谎报双仓完成。
-- GitHub Release 与其他动作相互独立：指定版本号不等于授权 tag；授权 tag 不等于授权
-  GitHub Release；授权 GitHub Release 不等于授权部署；创建 Release 不自动触发部署；
+- GitLab Release 在统一协作仓库 `ai-team/openchat-bi`（GitLab）上创建，日常开发 push
+  仍只走 `gitlab/20260727`。
+- 只有用户在当前任务中明确授权创建 GitLab Release 时才能执行。
+- 用户明确授权某个正式版本创建 Release 后，在 `ai-team/openchat-bi` 上基于同名 tag
+  创建一个 Release，tag 指向定版 commit。
+- Release 必须与 tag 使用相同的版本号、名称和正式版本说明。
+- 幂等：创建前先检查 Release 是否已存在；已存在且内容正确的 Release 保留，不重复
+  创建；已存在 Release 的 tag、名称或目标 commit 不正确时，不得自动删除、覆盖或
+  重建，遇到冲突必须停止并报告。
+- GitLab Release 与其他动作相互独立：指定版本号不等于授权 tag；授权 tag 不等于授权
+  GitLab Release；授权 GitLab Release 不等于授权部署；创建 Release 不自动触发部署；
   部署也不自动创建 Release。
-- GitHub Release 使用本地 GitHub CLI/API 执行，不在服务器上执行；不允许为了创建
+- GitLab Release 使用本地 GitLab CLI/API 执行，不在服务器上执行；不允许为了创建
   Release 登录或修改部署服务器。
 
 ## 回滚与历史保护

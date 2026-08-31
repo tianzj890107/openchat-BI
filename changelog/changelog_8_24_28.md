@@ -62,14 +62,14 @@
 
 ### 7. 版本、品牌与交付规范
 
-- 根 `README.md` 归位为 openchat-BI“智能分析”项目入口（产品能力、六步分析流程、系统结构、配置、Web 启动、前端构建、测试、Agent/Tool 文档、数据安全、语义化版本、双远端交付与 GitHub Release），Open Claude 通用 Runtime 说明迁移至 `open_claude/README.md` 并与根 README 相互链接。
+- 根 `README.md` 归位为 openchat-BI“智能分析”项目入口（产品能力、六步分析流程、系统结构、配置、Web 启动、前端构建、测试、Agent/Tool 文档、数据安全、语义化版本、GitLab 统一推送与 GitLab Release），Open Claude 通用 Runtime 说明迁移至 `open_claude/README.md` 并与根 README 相互链接。
 - 品牌由“智析”改为“智能分析”，左上角显示版本 `v0.1.0`（Ant Design Tag）；`bi-analyst` 不再显示在产品名后冒充版本，实际 Agent 角色配置保留；HTML title、加载骨架、aria-label 与 React 工作台品牌统一；版本契约统一为 `0.1.0`（`pyproject.toml`、`bi_agent/__init__.py`、FastAPI 应用、`frontend/package.json`、`frontend/package-lock.json` 根包），产品版本与会话 schema / 知识库 / 缓存版本相互独立。
-- 正式版本文档路径建立：`docs/versions/README.md` 版本索引 + `docs/versions/v0.1.0.md` 正式版本说明 + `docs/versions/versioning-policy.md` 语义化版本规范（`vMAJOR.MINOR.PATCH`，版本由变更性质决定，不按日期/commit 数量/部署次数机械递增；Agent 不得自行升级版本，tag / GitHub Release / 部署需要各自独立授权）。
-- 双远端镜像工作流：新增 `scripts/push_dual_remotes.py`（`--check`、校验分支与远端 URL、拒绝 dirty worktree / detached HEAD / 覆盖远端独有提交、禁止 force push、先推 origin 再推 personal、推送后校验 `HEAD == origin/20260727 == personal/main`）；新增 `docs/git-dual-remote-workflow.md`；`AGENTS.md` 增加“提交、双远端推送与禁止部署（最高优先级）”与正式版本文档工作流。
+- 正式版本文档路径建立：`docs/versions/README.md` 版本索引 + `docs/versions/v0.1.0.md` 正式版本说明 + `docs/versions/versioning-policy.md` 语义化版本规范（`vMAJOR.MINOR.PATCH`，版本由变更性质决定，不按日期/commit 数量/部署次数机械递增；Agent 不得自行升级版本，tag / GitLab Release / 部署需要各自独立授权）。
+- GitLab 统一推送工作流：新增 `scripts/push_gitlab.py`（`--check`、校验远端 URL、拒绝 dirty worktree / detached HEAD / 覆盖远端独有提交、禁止 force push、只推 `gitlab/20260727`、不推 main，推送后校验 `HEAD == gitlab/20260727`）；新增 `docs/gitlab-push-workflow.md`；`AGENTS.md` 增加“提交、GitLab 统一推送与禁止部署（最高优先级）”与正式版本文档工作流。
 - 全局交付规范统一为“修改 → 本地验证 → 复查 Git diff → commit → push 当前远程分支 → 结束”，默认不部署；`AGENTS.md` 新增“Git 推送与部署规则”，`debug.md` 全面修订，`.claude/agents/devops.md` 与 `DEPLOYMENT.md` 增加“仅用户当前任务明确授权时部署”的最高优先级限制；确认仓库无自动部署 CI 配置，普通 push 不会自动部署。
-- 双仓 GitHub Release 规范固化：用户授权创建 Release 后默认在 `tianzj890107/openchat-BI` 与 `zhenzhang0408/openchat-BI` 两个仓库各发布一个，两个 Release 使用相同版本号、tag、名称和正式版本说明，tag 指向同一个定版 commit；只补缺失项、不覆盖已有 Release、单仓成功不回滚。
-- 定版：`v0.1.0` 完成正式定版，创建 annotated tag `v0.1.0` 并双推 origin / personal（peeled commit 与双推后 HEAD 一致）；正式 Release“智能分析 v0.1.0”已在两个仓库发布（主协作仓库原已存在保留，个人镜像仓库补建）。
-- 主要文件：`AGENTS.md`、`README.md`、`debug.md`、`DEPLOYMENT.md`、`.claude/agents/devops.md`、`scripts/push_dual_remotes.py`（新增）、`docs/git-dual-remote-workflow.md`（新增）、`docs/versions/`（新增）、`frontend/src/main.jsx`、`frontend/src/shell.html`、`bi_agent/web/static/index.html`、`tests/test_versioning_policy.py`（新增）、`tests/test_push_dual_remotes.py`（新增）。
+- GitLab Release 规则固化：用户授权创建 Release 后在 GitLab 仓库 `ai-team/openchat-bi` 基于同名 tag 发布一个 Release，tag 指向定版 commit；只补缺失项、不覆盖已有 Release、创建失败不回滚。
+- 定版：`v0.1.0` 完成正式定版，创建 annotated tag `v0.1.0` 并推送 GitLab（peeled commit 与推送后 HEAD 一致）；正式 Release“智能分析 v0.1.0”发布在 GitLab 仓库。
+- 主要文件：`AGENTS.md`、`README.md`、`debug.md`、`DEPLOYMENT.md`、`.claude/agents/devops.md`、`scripts/push_gitlab.py`（新增）、`docs/gitlab-push-workflow.md`（新增）、`docs/versions/`（新增）、`frontend/src/main.jsx`、`frontend/src/shell.html`、`bi_agent/web/static/index.html`、`tests/test_versioning_policy.py`（新增）、`tests/test_push_gitlab.py`（新增）。
 
 ### 8. 部署记录（历史事实）
 

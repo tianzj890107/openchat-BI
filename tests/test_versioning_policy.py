@@ -40,7 +40,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("Agent 不得自行判断并升级正式版本", policy)
         # tag / Release / deploy need independent authorization.
         self.assertIn("指定版本号不等于授权 tag", policy)
-        self.assertIn("授权 tag 不等于授权 GitHub Release", policy)
+        self.assertIn("授权 tag 不等于授权 GitLab Release", policy)
         self.assertIn("授权 Release 不等于授权部署", policy)
         self.assertIn("授权部署不等于授权升级版本", policy)
 
@@ -72,7 +72,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("Agent 不得自行判断并升级正式版本", agents)
         self.assertIn("每周不自动升级 MINOR", agents)
         self.assertIn("每次部署不自动升级 PATCH", agents)
-        self.assertIn("tag、GitHub Release、部署需要各自独立授权", agents)
+        self.assertIn("tag、GitLab Release、部署需要各自独立授权", agents)
 
     def test_gitlab_workflow_doc_does_not_auto_push_tags(self) -> None:
         doc = (ROOT / "docs/gitlab-push-workflow.md").read_text(encoding="utf-8")
@@ -98,9 +98,10 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertEqual(names, allowed)
         self.assertFalse((versions_dir / "v0.1.1.md").exists())
 
-    def test_agents_md_requires_mirrored_releases(self) -> None:
+    def test_agents_md_requires_gitlab_release_rules(self) -> None:
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("默认在 origin 和 personal 两个仓库各发布一个", agents)
+        self.assertIn("ai-team/openchat-bi", agents)
+        self.assertIn("基于同名 tag 创建 Release", agents)
         self.assertIn("只补缺失项", agents)
         self.assertIn("禁止覆盖已有 Release", agents)
 
@@ -122,33 +123,31 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn('DEFAULT_TARGET_BRANCH = "20260727"', script)
         self.assertIn("tianzijing", script)
 
-    def test_policy_doc_covers_dual_repo_releases(self) -> None:
+    def test_policy_doc_covers_gitlab_release_rules(self) -> None:
         policy = (ROOT / "docs/versions/versioning-policy.md").read_text(encoding="utf-8")
-        self.assertIn("tianzj890107/openchat-BI", policy)
-        self.assertIn("zhenzhang0408/openchat-BI", policy)
-        self.assertIn("两个 Release 必须使用相同的版本号、tag、名称和正式版本说明", policy)
-        self.assertIn("两个 tag 必须指向同一个定版 commit", policy)
-        self.assertIn("只创建缺失的 Release", policy)
-        self.assertIn("不得自动删除、覆盖或重建", policy)
-        self.assertIn("保留已成功的 Release", policy)
-        self.assertIn("不 force push", policy)
+        self.assertIn("GitLab Release 在统一协作仓库 `ai-team/openchat-bi`（GitLab）上创建", policy)
+        self.assertIn("基于同名 tag", policy)
+        self.assertIn("创建一个 Release", policy)
+        self.assertIn("tag 指向定版 commit", policy)
+        self.assertIn("已存在且内容正确的 Release 保留", policy)
+        self.assertIn("不得自动删除、覆盖或", policy)
+        self.assertIn("重建", policy)
+        self.assertIn("禁止 force push", policy)
 
-    def test_gitlab_workflow_doc_has_mirrored_release_completion(self) -> None:
+    def test_gitlab_workflow_doc_has_release_completion(self) -> None:
         doc = (ROOT / "docs/gitlab-push-workflow.md").read_text(encoding="utf-8")
-        self.assertIn("GitHub Release 双仓发布", doc)
-        self.assertIn("两个仓库均存在内容一致的正式 Release", doc)
+        self.assertIn("## GitLab Release", doc)
+        self.assertIn("GitLab 仓库存在对应的正式 Release", doc)
         self.assertIn("只补缺失项", doc)
         self.assertIn("不覆盖", doc)
         self.assertIn("已有 Release", doc)
 
-    def test_readme_and_v010_doc_list_both_releases(self) -> None:
+    def test_readme_and_v010_doc_list_gitlab_release(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("https://github.com/tianzj890107/openchat-BI/releases/tag/v0.1.0", readme)
-        self.assertIn("https://github.com/zhenzhang0408/openchat-BI/releases/tag/v0.1.0", readme)
+        self.assertIn("https://gitlab.boulderaitech.com/ai-team/openchat-bi/-/releases/v0.1.0", readme)
         doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
-        self.assertIn("https://github.com/tianzj890107/openchat-BI/releases/tag/v0.1.0", doc)
-        self.assertIn("https://github.com/zhenzhang0408/openchat-BI/releases/tag/v0.1.0", doc)
-        self.assertIn("同一个定版 commit `e4b0a8f`", doc)
+        self.assertIn("https://gitlab.boulderaitech.com/ai-team/openchat-bi/-/releases/v0.1.0", doc)
+        self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:
         """Only the official v0.1.0 tag may exist locally; no other tag."""
