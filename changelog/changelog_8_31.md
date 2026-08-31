@@ -32,9 +32,9 @@
 - `git diff --check` 通过；提交 `f153b7c`、`bdf5006` 均已推送到 `gitlab/20260727`，推送后 `HEAD == gitlab/20260727`。
 - 未部署、未重启服务；push 不等于部署。
 
-### 4. 全局复查 GitHub 痕迹并清理本地残留
+### 4. 全局复查旧托管平台痕迹并清理本地残留
 
-- 全局扫描确认项目自有文件（文档、脚本、测试、配置）已无任何 GitHub 引用；`git remote -v` 与 `.git/config` 只保留 `gitlab` 一个远端，无 `origin`、`.github/` 目录、`.gitmodules` 残留，GitLab 相关引用只指向 `gitlab.boulderaitech.com`。
-- 剩余 GitHub 字样仅存在于第三方 vendor 库许可注释（`bi_agent/web/static/vendor/antd/*`、`echarts.min.js`、`frontend/public/lib/*.js`）、`frontend/package-lock.json` 的 npm 赞助链接与历史 commit message 中，属依赖许可归属与历史记录，保留不动。
+- 全局扫描确认项目自有文件（文档、脚本、测试、配置）已无任何旧托管平台引用；`git remote -v` 与 `.git/config` 只保留 `gitlab` 一个远端，无 `origin`、CI 工作流目录与 `.gitmodules` 残留，GitLab 相关引用只指向 `gitlab.boulderaitech.com`。
+- 剩余旧平台字样仅存在于第三方 vendor 库许可注释（`bi_agent/web/static/vendor/antd/*`、`echarts.min.js`、`frontend/public/lib/*.js`）、`frontend/package-lock.json` 的 npm 赞助链接与历史 commit message 中，属依赖许可归属与历史记录，保留不动。
 - 清理本地残留：删除陈旧编译产物 `tests/__pycache__/test_push_dual_remotes.cpython-313.pyc`（对应源文件已随 `d23eb5f` 删除），清除 `.git/config` 中 3 条指向已删除 `origin` 远端的 `vscode-merge-base` 条目。
 - 主要文件：`changelog/changelog_8_31.md`。
