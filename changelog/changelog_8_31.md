@@ -38,3 +38,9 @@
 - 剩余旧平台字样仅存在于第三方 vendor 库许可注释（`bi_agent/web/static/vendor/antd/*`、`echarts.min.js`、`frontend/public/lib/*.js`）、`frontend/package-lock.json` 的 npm 赞助链接与历史 commit message 中，属依赖许可归属与历史记录，保留不动。
 - 清理本地残留：删除陈旧编译产物 `tests/__pycache__/test_push_dual_remotes.cpython-313.pyc`（对应源文件已随 `d23eb5f` 删除），清除 `.git/config` 中 3 条指向已删除 `origin` 远端的 `vscode-merge-base` 条目。
 - 主要文件：`changelog/changelog_8_31.md`。
+
+### 5. GitLab API 凭据位置规范化
+
+- `GITLAB_TOKEN`（仓库 `.env`，已 gitignore）同步到本机固定路径 `~/.config/codex/gitlab_token`（权限 600），供后续会话读取，仓库内不保存明文。
+- `AGENTS.md` 增加凭据读取指引：读取命令、回退路径（`.env`）、API 基地址与创建 Merge Request 的固定参数（`source_branch=20260727`、`target_branch=main`、reviewer `tianzijing`）。
+- 主要文件：`AGENTS.md`、`changelog/changelog_8_31.md`。

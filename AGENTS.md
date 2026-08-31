@@ -111,3 +111,11 @@
 - push 前检查当前分支、remote、upstream、工作区和待提交文件。
 - 禁止 force push，禁止提交 secret、`.env`、用户数据和运行产物。
 - 如果 push 会自动触发部署，应先停止并报告，不得通过 push 间接部署。
+
+## GitLab API 凭据（Merge Request / Release 使用）
+
+- 创建 Merge Request、查询用户或创建 Release 需要 GitLab API 访问令牌，令牌不保存在仓库内。
+- 令牌固定存放在本机 `~/.config/codex/gitlab_token`（权限 600）；读取方式：`TOKEN=$(cat ~/.config/codex/gitlab_token)`。
+- 若该文件缺失，回退从仓库 `.env` 的 `GITLAB_TOKEN` 读取并同步到上述路径；`.env` 已被 gitignore，禁止提交。
+- API 基地址：`http://gitlab.boulderaitech.com/api/v4`（本机代理下 HTTPS 不可达），请求头 `PRIVATE-TOKEN: $TOKEN`。
+- 创建 MR：`POST /projects/ai-team%2Fopenchat-bi/merge_requests`，`source_branch` 为 `20260727`，`target_branch` 为 `main`，reviewer 用户名 `tianzijing`（田子敬）；只创建 MR，不自动合并、不直接 push `main`。
