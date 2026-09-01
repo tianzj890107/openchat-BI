@@ -49,3 +49,16 @@
 - `main` 设为 GitLab 项目默认分支（原默认 `20260727`），已验证 `default_branch=main`；
 - MR `!2`（`20260727` → `main`，opened）已确认：head 为最新 `6cf6f8d`，
   reviewer=`tianzijing`、assignee=`zhangzhen`；只创建/确认 MR，不自动合并、不直接 push `main`。
+
+
+### 5. MR 冲突修复：历史重写后的共同祖先重建
+
+- 现象：MR `!2`（`20260727` → `main`）报 conflict。
+- 根因：`main` 已通过 MR `!1` 合并过旧 hash 历史；提交邮箱规范化重写了 `20260727`
+  全部历史后，两分支共同祖先停留在早期提交，`DEPLOYMENT.md` 与
+  `changelog/changelog_8_31.md` 被两边当作“新增文件”形成 `add/add` 冲突
+  （实质仅 changelog 内 commit hash 引用不同，无内容分歧）。
+- 修复：在 `20260727` 上以 `-s ours` 并入 `main`（保留 20260727 内容、重建共同祖先），
+  推送后 GitLab 重算：MR `!2` `merge_status=can_be_merged`、`has_conflicts=false`。
+- 主要文件：仓库 git 历史（新增 merge commit `9b91801`，树内容不变）、
+  `changelog/changelog_9_1.md`。
