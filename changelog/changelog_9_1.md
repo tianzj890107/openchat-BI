@@ -34,3 +34,11 @@
 - 按用户显式授权重写远端历史：临时关闭 20260727 分支 force push 保护 → `--force-with-lease` 推送 → 恢复原保护规则（Maintainers push/merge，禁 force push）；推送后 `HEAD == gitlab/20260727`。
 - 受影响 commit hash 已在 `changelog/changelog_8_31.md`、`changelog/changelog_9_1.md` 与共享包 `docs/versions/v0.1.0.md` 中同步更新为重写后的新 hash。
 - 主要文件：仓库 git 历史元数据（无代码内容变化）、`changelog/changelog_8_31.md`、`changelog/changelog_9_1.md`。
+
+
+### 3. GitLab 分支保护调整
+
+- `20260727`（开发分支）取消 protected，恢复普通分支；
+- `main`（发布分支）启用 protected：Maintainers 可 push/merge、`allow_force_push=false`，
+  与 AGENTS 规则一致（merge 到 main 需 code review 后走 Merge Request）；
+- 已通过 GitLab API 验证保护列表（当前仅 `main` 受保护），`HEAD == gitlab/20260727` 不变。
