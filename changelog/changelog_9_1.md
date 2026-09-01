@@ -42,3 +42,10 @@
 - `main`（发布分支）启用 protected：Maintainers 可 push/merge、`allow_force_push=false`，
   与 AGENTS 规则一致（merge 到 main 需 code review 后走 Merge Request）；
 - 已通过 GitLab API 验证保护列表（当前仅 `main` 受保护），`HEAD == gitlab/20260727` 不变。
+
+
+### 4. GitLab 默认分支切换与 MR 确认
+
+- `main` 设为 GitLab 项目默认分支（原默认 `20260727`），已验证 `default_branch=main`；
+- MR `!2`（`20260727` → `main`，opened）已确认：head 为最新 `6cf6f8d`，
+  reviewer=`tianzijing`、assignee=`zhangzhen`；只创建/确认 MR，不自动合并、不直接 push `main`。
