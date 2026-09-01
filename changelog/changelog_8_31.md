@@ -29,7 +29,7 @@
 ### 3. 验证结论
 
 - `tests/test_versioning_policy.py` 与 `tests/test_push_gitlab.py` 共 30 项断言全部通过；全量测试套件 306 项全部通过。
-- `git diff --check` 通过；截至当前，当日提交（`f153b7c`、`bdf5006`、`1e9fa16`、`3b45dcd`、`e616d49`、`72ff3d1`、`4ffae86`）均已推送到 `gitlab/20260727`，推送后 `HEAD == gitlab/20260727`。
+- `git diff --check` 通过；截至当前，当日提交（`c94a764`、`6c009dd`、`45914ce`、`cdd3012`、`b3cc435`、`3240396`、`affd768`）均已推送到 `gitlab/20260727`，推送后 `HEAD == gitlab/20260727`。
 - Merge Request `!1`（20260727 → main）已创建并保持 opened，reviewer=`tianzijing`、assignee=`zhangzhen`，等待 code review 后合并；未自动合并、未直接 push `main`。
 - 未部署、未重启服务；push 不等于部署。
 
@@ -37,7 +37,7 @@
 
 - 全局扫描确认项目自有文件（文档、脚本、测试、配置）已无任何旧托管平台引用；`git remote -v` 与 `.git/config` 只保留 `gitlab` 一个远端，无 `origin`、CI 工作流目录与 `.gitmodules` 残留，GitLab 相关引用只指向 `gitlab.boulderaitech.com`。
 - 剩余旧平台字样仅存在于第三方 vendor 库许可注释（`bi_agent/web/static/vendor/antd/*`、`echarts.min.js`、`frontend/public/lib/*.js`）、`frontend/package-lock.json` 的 npm 赞助链接与历史 commit message 中，属依赖许可归属与历史记录，保留不动。
-- 清理本地残留：删除陈旧编译产物 `tests/__pycache__/test_push_dual_remotes.cpython-313.pyc`（对应源文件已随 `d23eb5f` 删除），清除 `.git/config` 中 3 条指向已删除 `origin` 远端的 `vscode-merge-base` 条目。
+- 清理本地残留：删除陈旧编译产物 `tests/__pycache__/test_push_dual_remotes.cpython-313.pyc`（对应源文件已随 `66be3e1` 删除），清除 `.git/config` 中 3 条指向已删除 `origin` 远端的 `vscode-merge-base` 条目。
 - 主要文件：`changelog/changelog_8_31.md`。
 
 ### 5. GitLab API 凭据位置规范化
