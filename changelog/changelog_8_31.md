@@ -54,6 +54,6 @@
 
 ### 7. 本体图渲染抽为共享包
 
-- 将 Sigma + Graphology + ForceAtlas2 的本体图布局与渲染核心从 ChatBI 前端抽为共享包 `@boulderaitech/ontology-graph`（新仓 `ai-team/ontology-graph`）：布局纯函数（`layoutOntologyForceAtlas` / `FORCE_ATLAS_CONFIG` 等）与框架无关渲染器 `createSigmaOntologyRenderer(container, graph, options)`（hover/click 高亮、相机阈值、双击拦截、ResizeObserver、kill/relayout），并以 README 固化 graphology 图契约（`nodeType/label/color/size/parentId/highlighted/weight`）。
+- 将 Sigma + Graphology + ForceAtlas2 的本体图布局与渲染核心从 ChatBI 前端抽为共享包 `@boulderaitech/ontology-graph`（发布到 ai-team 组包 registry，托管项目 `ai-team/ontology-graph`，GitLab 14 不支持纯组级 npm 端点）：布局纯函数（`layoutOntologyForceAtlas` / `FORCE_ATLAS_CONFIG` 等）与框架无关渲染器 `createSigmaOntologyRenderer(container, graph, options)`（hover/click 高亮、相机阈值、双击拦截、ResizeObserver、kill/relayout），并以 README 固化 graphology 图契约（`nodeType/label/color/size/parentId/highlighted/weight`）。
 - ChatBI 保留自身图构建 `frontend/src/ontologyGraphModel.js`（`buildGraph` 把 `/api/ontology/subgraph` 服务端子图映射为符合契约的 graphology 图）与 11 类 `NODE_STYLE` 样式映射，删除本地副本 `frontend/src/ontologySigmaGraph.js`，`runtime.js` 改从共享包引用；布局管线与渲染器单测在共享包仓库内。
-- 主要文件：新仓 `ai-team/ontology-graph`；本仓 `frontend/package.json`、`frontend/src/ontologyGraphModel.js`（新增）、`frontend/src/runtime.js`、`tests/test_regressions.py`、`DEPLOYMENT.md`、`README.md`。
+- 主要文件：共享包源码目录 `../ontology-graph`（组包 registry 托管项目 `ai-team/ontology-graph`）；本仓 `frontend/package.json`、`frontend/src/ontologyGraphModel.js`（新增）、`frontend/src/runtime.js`、`tests/test_regressions.py`、`DEPLOYMENT.md`、`README.md`。
