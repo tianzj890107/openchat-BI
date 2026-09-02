@@ -403,8 +403,26 @@ def configure(
 APP_NAME = "eimosp-ontology-agentic-analytics"              # 应用名（容器/服务/配置中心统一使用）
 APP_DISPLAY_NAME = "eimosp-ontology-agentic-analytics 智能分析"  # 产品名
 APP_VERSION = "0.1.0"                 # 与 pyproject.toml / docs/versions 保持同步
-APP_PORT = 8765                        # 统一应用端口（固定）
+def _default_app_port() -> int:
+    """实际监听端口来源：优先 APP_PORT 环境变量（容器内 Dockerfile 显式注入 8080），
+    缺省回退非容器本地默认端口 8765。"""
+    raw = os.environ.get("APP_PORT")
+    if not raw:
+        return 8765
+    try:
+        return int(raw)
+    except ValueError:
+        return 8765
+
+
+APP_PORT = _default_app_port()         # 实际监听端口；启动时由 set_runtime_port 同步
 APP_STARTED_AT = time.monotonic()      # 进程启动时刻（健康检查 uptime 使用）
+
+
+def set_runtime_port(port: int) -> None:
+    """让 /healthz 响应中的 port 字段反映进程实际监听端口，而不是硬编码固定值。"""
+    global APP_PORT
+    APP_PORT = int(port)
 
 
 # ---------------------------------------------------------------------------
