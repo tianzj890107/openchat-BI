@@ -1,4 +1,4 @@
-# openchat-BI 变更记录（2026-09-02）
+# eimosp-ontology-agentic-analytics 变更记录（2026-09-02）
 
 > 本文档只记录 2026-09-02 当天完成的最终变更。
 
@@ -16,7 +16,7 @@
 - 新增根目录 `Dockerfile` 与 `.dockerignore`：镜像基于官方 `python:3.13-slim`，
   统一应用端口固定 `8765`，内置 `HEALTHCHECK` 探测 `/healthz`；前端构建产物随镜像
   提供，构建无需 Node.js；容器以非 root 用户运行，会话/图表/上传/日志目录保持可写。
-- 应用运行参数固化：应用名 `openchat-bi`（产品名“智能分析”）、标准 Python 版本
+- 应用运行参数固化：应用名 `eimosp-ontology-agentic-analytics`（产品名“智能分析”）、标准 Python 版本
   `3.13.x`（`pyproject.toml` 约束 `>=3.10,<3.14`）、统一端口 `8765`；新增
   `.python-version`（3.13）。
 - 主要文件：`Dockerfile`、`.dockerignore`、`.python-version`、`pyproject.toml`、
@@ -34,8 +34,14 @@
 ### 3. Nacos 配置中心预留（未接入）
 
 - 按要求暂不实现 Nacos 对接，仅做文档与配置占位：`DEPLOYMENT.md` 新增
-  “应用信息清单”与“Nacos 对接（待办）”章节，明确后续 `dataId=openchat-bi`、
+  “应用信息清单”与“Nacos 对接（待办）”章节，明确后续 `dataId=eimosp-ontology-agentic-analytics`、
   命名空间按环境隔离、密钥不进配置中心等约定；`.env.example` 追加注释占位变量
   （`NACOS_SERVER_ADDR`/`NACOS_NAMESPACE`/`NACOS_GROUP`/`NACOS_DATA_ID` 等）。
 - 当前模型、本体、Doris、并发治理等中间件配置仍由 `.env`/环境变量注入，行为不变。
 - 主要文件：`DEPLOYMENT.md`、`.env.example`、`README.md`。
+
+### 4. 项目统一改名与 Git 历史去重
+
+- 本地仓库、GitLab path、应用名、容器与 systemd 标识、Nacos dataId、前端包名、静态制品名、当前文档及工作流脚本统一为 `eimosp-ontology-agentic-analytics`；上游建模仓库引用统一为 `eimosp-ontology-agentic-modeling`。
+- 清除 `9b91801` 空内容 merge 重新引入的 172 个 `zhenzhan@kth.se` 重复提交；`20260727` 与 `main` 最终指向同一条仅保留公司邮箱改写历史的提交链，避免后续 MR 再次带回旧历史。
+- 验证：`.venv/bin/python -m unittest discover -s tests` 306 项通过；前端 `npm run build` 成功；`git diff --check` 通过。未部署、未改写历史会话和运行数据。

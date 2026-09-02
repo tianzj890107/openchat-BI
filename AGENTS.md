@@ -3,7 +3,7 @@
 1. 完成仓库内的代码、配置、规则、文档、测试或构建产物修改并完成必要验证后，创建一个普通 commit。
 2. 同一个 commit 统一推送到 GitLab 开发分支：`gitlab/20260727`。
 3. 当前仓库固定映射：
-   - `gitlab` → `git@gitlab.boulderaitech.com:ai-team/openchat-bi.git` 的 `20260727` 分支。
+   - `gitlab` → `git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git` 的 `20260727` 分支。
 4. 推送优先使用 `python scripts/push_gitlab.py`，该脚本会校验远端映射、工作区状态、祖先关系和推送后 hash；先运行 `--check` 再执行。
 5. 推送成功标准：`HEAD == gitlab/20260727`。
 6. `main` 是发布分支：merge 到 `main` 必须由 `tianzijing` code review 后单独发起 Merge Request；任何 Agent 或脚本不得直接 push 到 `main`，不得自动合并。
@@ -16,6 +16,17 @@
 13. `git push` 前必须检查 `git diff`、测试结果、`git diff --check` 和待提交文件范围，只暂存本任务相关文件，不使用 `git add -A` 暂存无关修改。
 14. 禁止提交 secret、`.env`、用户数据和运行产物；用户明确要求“不部署”时，禁止任何服务器写操作和服务重启。
 15. `git push` 失败时报告错误，不得通过部署服务器或其他方式绕过。
+
+## 一次性 main 历史清理授权
+
+本次允许 Codex：
+
+- 临时解除 analytics 项目 `main` 分支保护；
+- 使用 `--force-with-lease` 将已验证的去重历史推送至 `main`；
+- 推送成功后立即恢复原 `main` 保护规则；
+- 仅限删除由 `9b91801` 空内容 merge 引入的 172 个旧邮箱重复提交。
+
+本节是对上方第 6、8 条以及下方其他“禁止直接推送或改写 `main` 历史”规则的一次性、最小范围例外。它不授权部署、删除业务数据、修改其他分支或仓库，也不授权使用普通 `--force`。执行前必须验证目标历史和 `--force-with-lease` 的预期远端值；若范围、提交来源或待删除数量与上述描述不一致，必须停止。无论推送成功或后续放弃本次清理，均不得将本授权用于其他操作；推送成功后，以恢复原 `main` 分支保护作为本次操作完成条件。
 
 ## 任务指令与交付动作映射（固定约定）
 
@@ -38,7 +49,7 @@
 - 每周不自动升级 MINOR；每次部署不自动升级 PATCH；不按日期、commit 数量或部署次数机械升级。
 - commit、push、部署、tag、GitLab Release 相互独立：提交和推送不触发版本升级；“修复”“完成”“验收”“部署”“发布到服务器”等表述不构成版本升级授权。
 - tag、GitLab Release、部署需要各自独立授权：指定版本号不等于授权 tag；授权 tag 不等于授权 Release；授权 Release 不等于授权部署；授权部署不等于授权升级版本。
-- 用户授权创建 GitLab Release 后，在 GitLab 仓库 `ai-team/openchat-bi` 上基于同名 tag 创建 Release（tag 指向定版 commit）；只补缺失项，禁止覆盖已有 Release。
+- 用户授权创建 GitLab Release 后，在 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 上基于同名 tag 创建 Release（tag 指向定版 commit）；只补缺失项，禁止覆盖已有 Release。
 - 版本操作不得删除、迁移或覆盖历史会话和用户数据；已发布版本文档与已发布 tag 不得覆盖或强制移动。
 
 # Repository instructions
@@ -64,7 +75,7 @@
 如果当天文件不存在，创建 `changelog/changelog_M_D.md`，并沿用现有格式：
 
 ```markdown
-# openchat-BI 变更记录（YYYY-MM-DD）
+# eimosp-ontology-agentic-analytics 变更记录（YYYY-MM-DD）
 
 > 本文档只记录 YYYY-MM-DD 当天完成的最终变更。
 
@@ -125,4 +136,4 @@
 - 令牌固定存放在本机 `~/.config/codex/gitlab_token`（权限 600）；读取方式：`TOKEN=$(cat ~/.config/codex/gitlab_token)`。
 - 若该文件缺失，回退从仓库 `.env` 的 `GITLAB_TOKEN` 读取并同步到上述路径；`.env` 已被 gitignore，禁止提交。
 - API 基地址：`http://gitlab.boulderaitech.com/api/v4`（本机代理下 HTTPS 不可达），请求头 `PRIVATE-TOKEN: $TOKEN`。
-- 创建 MR：`POST /projects/ai-team%2Fopenchat-bi/merge_requests`，`source_branch` 为 `20260727`，`target_branch` 为 `main`，reviewer 用户名 `tianzijing`（田子敬）；只创建 MR，不自动合并、不直接 push `main`。
+- 创建 MR：`POST /projects/ai-team%2Feimosp-ontology-agentic-analytics/merge_requests`，`source_branch` 为 `20260727`，`target_branch` 为 `main`，reviewer 用户名 `tianzijing`（田子敬）；只创建 MR，不自动合并、不直接 push `main`。

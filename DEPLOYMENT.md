@@ -1,4 +1,4 @@
-# OpenChat BI 部署说明
+# eimosp-ontology-agentic-analytics 部署说明
 
 > **仅供人工运维参考**：本文档描述的是人工部署方法，不构成 Agent 自动部署授权。
 > Agent 默认交付方式是 commit + push（`origin/20260727` 与 `personal/main`），
@@ -11,8 +11,8 @@
 
 | 项 | 值 |
 | --- | --- |
-| Git 项目地址 | `git@gitlab.boulderaitech.com:ai-team/openchat-bi.git`（开发分支 `20260727`，发布分支 `main`） |
-| 应用名 | `openchat-bi`（产品名：智能分析；systemd 服务名 `openchat-bi.service`） |
+| Git 项目地址 | `git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，发布分支 `main`） |
+| 应用名 | `eimosp-ontology-agentic-analytics`（产品名：智能分析；systemd 服务名 `eimosp-ontology-agentic-analytics.service`） |
 | Python 版本 | `3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`） |
 | 统一应用端口 | `8765`（固定；`--port` 仅用于本地/测试覆盖） |
 | 统一健康检查接口 | `GET /healthz`（别名 `GET /health`）；就绪 `200`，未完成配置 `503`，响应含 `app`/`version`/`port`/`dependencies` 等固定字段 |
@@ -41,8 +41,8 @@
 服务器要求 Python 3.13.x（标准运行环境，兼容 `>=3.10,<3.14`）、Node.js/npm（仅前端重新构建时需要）和 Git：
 
 ```bash
-git clone <repository-url> openchat-BI
-cd openchat-BI
+git clone <repository-url> eimosp-ontology-agentic-analytics
+cd eimosp-ontology-agentic-analytics
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -59,7 +59,7 @@ cd ..
 
 ```text
 bi_agent/web/static/vendor/antd/workbench.js
-bi_agent/web/static/vendor/antd/openchat-bi-workbench.css
+bi_agent/web/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css
 ```
 
 如果服务器只用于运行已构建版本，通常不需要在服务器安装 Node.js；应在发布机执行构建并把上述构建产物随代码一起发布。
@@ -140,7 +140,7 @@ conversation store lock；严禁持有 registry/store 锁调用网络，严禁�
 
 ```bash
 source .venv/bin/activate
-python -m bi_agent.web --host 127.0.0.1 --port 8765 --cwd /path/to/openchat-BI
+python -m bi_agent.web --host 127.0.0.1 --port 8765 --cwd /path/to/eimosp-ontology-agentic-analytics
 ```
 
 浏览器访问：
@@ -162,20 +162,20 @@ curl -fsS http://127.0.0.1:8765/workbench >/dev/null
 
 ## 5. systemd 示例
 
-将以下内容保存为 `/etc/systemd/system/openchat-bi.service`，按服务器实际路径和用户修改：
+将以下内容保存为 `/etc/systemd/system/eimosp-ontology-agentic-analytics.service`，按服务器实际路径和用户修改：
 
 ```ini
 [Unit]
-Description=OpenChat BI Web
+Description=eimosp-ontology-agentic-analytics Web
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=<deploy-user>
-WorkingDirectory=/path/to/openchat-BI
-EnvironmentFile=/path/to/openchat-BI/.env
-ExecStart=/path/to/openchat-BI/.venv/bin/python -m bi_agent.web --host 127.0.0.1 --port 8765 --cwd /path/to/openchat-BI
+WorkingDirectory=/path/to/eimosp-ontology-agentic-analytics
+EnvironmentFile=/path/to/eimosp-ontology-agentic-analytics/.env
+ExecStart=/path/to/eimosp-ontology-agentic-analytics/.venv/bin/python -m bi_agent.web --host 127.0.0.1 --port 8765 --cwd /path/to/eimosp-ontology-agentic-analytics
 Restart=always
 RestartSec=5
 
@@ -187,9 +187,9 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now openchat-bi
-sudo systemctl status openchat-bi
-journalctl -u openchat-bi -f
+sudo systemctl enable --now eimosp-ontology-agentic-analytics
+sudo systemctl status eimosp-ontology-agentic-analytics
+journalctl -u eimosp-ontology-agentic-analytics -f
 ```
 
 ## 6. Docker 镜像部署
@@ -199,16 +199,16 @@ journalctl -u openchat-bi -f
 
 ```bash
 # 构建
-docker build -t openchat-bi:0.1.0 .
+docker build -t eimosp-ontology-agentic-analytics:0.1.0 .
 
 # 运行（生产默认远程本体 + Doris 实时查询）
-docker run -d --name openchat-bi -p 8765:8765 \
+docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8765 \
   -v "$(pwd)/.env:/app/.env:ro" \
-  -v openchat-bi-conversations:/app/dataset/conversations \
-  -v openchat-bi-charts:/app/dataset/charts \
-  -v openchat-bi-uploads:/app/dataset/uploaded_reports \
-  -v openchat-bi-logs:/app/dataset/logs \
-  openchat-bi:0.1.0
+  -v eimosp-ontology-agentic-analytics-conversations:/app/dataset/conversations \
+  -v eimosp-ontology-agentic-analytics-charts:/app/dataset/charts \
+  -v eimosp-ontology-agentic-analytics-uploads:/app/dataset/uploaded_reports \
+  -v eimosp-ontology-agentic-analytics-logs:/app/dataset/logs \
+  eimosp-ontology-agentic-analytics:0.1.0
 
 # 验证
 curl -fsS http://127.0.0.1:8765/healthz
@@ -216,19 +216,19 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 - 容器以非 root 用户运行；`/app` 下运行数据目录保持可写，建议挂载持久卷，不要把会话、图表、上传和日志放进镜像。
 - 配置通过 `.env` 只读挂载或 `-e` 注入，禁止把真实密钥写进镜像/仓库。
-- 本地 SQLite 演示模式可覆盖启动命令：`docker run ... openchat-bi:0.1.0 python -m bi_agent.web --host 0.0.0.0 --port 8765 --db dataset/databases/HyperFusion.db`（此时需保留镜像内初始化数据文件，不要覆盖 `/app/dataset` 整体）。
+- 本地 SQLite 演示模式可覆盖启动命令：`docker run ... eimosp-ontology-agentic-analytics:0.1.0 python -m bi_agent.web --host 0.0.0.0 --port 8765 --db dataset/databases/HyperFusion.db`（此时需保留镜像内初始化数据文件，不要覆盖 `/app/dataset` 整体）。
 
 ## 7. 更新发布
 
 先确认服务器运行数据已备份，再执行：
 
 ```bash
-cd /path/to/openchat-BI
+cd /path/to/eimosp-ontology-agentic-analytics
 git fetch origin
 git pull --ff-only origin <branch>
 source .venv/bin/activate
 python -m pip install -e '.[web]'
-sudo systemctl restart openchat-bi
+sudo systemctl restart eimosp-ontology-agentic-analytics
 curl -fsS http://127.0.0.1:8765/healthz
 ```
 
@@ -256,12 +256,12 @@ git diff --name-only
 ## 9. 当前服务器发布说明
 
 当前测试服务器通过 SSH 主机别名 `company-server` 发布，运行目录为
-`/home/data/zhangzhen_home/zhangzhen/openchat-BI-releases/<release>`，进程使用该目录下的 `.venv`，监听 `8765`。
+`/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/<release>`，进程使用该目录下的 `.venv`，监听 `8765`。
 发布时只同步源码和已构建静态资源，先在 release 目录创建带时间戳的代码备份；不要覆盖 `.env`、`.venv`、会话、上传文件、图表和日志。
 
 本体管理服务的新目录接口可能返回 `currentDatabase`，旧接口返回 `dorisDatabase`；应用兼容读取两个字段，避免目录字段升级导致新 release 无法启动。
 
-本体任务 Agent 的数据库连接凭据使用平台 AES-GCM 加密格式时，运行进程必须加载与加密端一致的 `ontology.crypto.secret`（或对应环境变量）。Agent 已采用 fail-closed 行为：缺少密钥、密钥错误、密文损坏或 Tag 校验失败会在任务上下文刷新阶段返回 `DATABASE_CREDENTIAL_DECRYPTION_FAILED`，不会把密文当作数据库明文密码继续连接，也不会把密钥写入日志。部署后应使用真实部署密钥重启 ontology-agent，并重新创建或刷新受影响任务；密钥文件/环境文件权限应为 `600`，不要提交到仓库。当前服务器已配置后端提供的 32 字节 Base64 secret，并验证任务凭据解密后可连接 PostgreSQL。
+本体任务 Agent 的数据库连接凭据使用平台 AES-GCM 加密格式时，运行进程必须加载与加密端一致的 `ontology.crypto.secret`（或对应环境变量）。Agent 已采用 fail-closed 行为：缺少密钥、密钥错误、密文损坏或 Tag 校验失败会在任务上下文刷新阶段返回 `DATABASE_CREDENTIAL_DECRYPTION_FAILED`，不会把密文当作数据库明文密码继续连接，也不会把密钥写入日志。部署后应使用真实部署密钥重启 eimosp-ontology-agentic-modeling，并重新创建或刷新受影响任务；密钥文件/环境文件权限应为 `600`，不要提交到仓库。当前服务器已配置后端提供的 32 字节 Base64 secret，并验证任务凭据解密后可连接 PostgreSQL。
 
 ### 团队网关 thinking 能力表与参数路由
 
@@ -359,7 +359,7 @@ TASK_ALERT_TIMEOUT_SECONDS=10          # 上游超时，0.5–120s
 
 后续接入 Nacos 时按以下约定补充（本任务仅预留，不实现）：
 
-- 配置归属：`dataId=openchat-bi`，`group=DEFAULT_GROUP`，命名空间按环境隔离；
+- 配置归属：`dataId=eimosp-ontology-agentic-analytics`，`group=DEFAULT_GROUP`，命名空间按环境隔离；
 - 下发范围：中间件连接参数（Doris、本体服务、模型网关、任务令代理）等运行配置，
   密钥优先走 K8s Secret / 环境变量，不进配置中心明文；
 - 与现有 `.env` 的优先级约定、客户端版本（Python nacos-sdk）和回退策略需在接入

@@ -400,8 +400,8 @@ def configure(
 # ---------------------------------------------------------------------------
 # 应用元信息（部署清单）
 # ---------------------------------------------------------------------------
-APP_NAME = "openchat-bi"              # 应用名（容器/服务/配置中心统一使用）
-APP_DISPLAY_NAME = "openchat-BI 智能分析"  # 产品名
+APP_NAME = "eimosp-ontology-agentic-analytics"              # 应用名（容器/服务/配置中心统一使用）
+APP_DISPLAY_NAME = "eimosp-ontology-agentic-analytics 智能分析"  # 产品名
 APP_VERSION = "0.1.0"                 # 与 pyproject.toml / docs/versions 保持同步
 APP_PORT = 8765                        # 统一应用端口（固定）
 APP_STARTED_AT = time.monotonic()      # 进程启动时刻（健康检查 uptime 使用）

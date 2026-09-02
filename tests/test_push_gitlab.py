@@ -35,7 +35,7 @@ def git_ok(repo: Path, *args: str) -> bool:
 
 class GitLabPushTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp = tempfile.mkdtemp(prefix="openchat-bi-gitlab-")
+        self.tmp = tempfile.mkdtemp(prefix="eimosp-ontology-agentic-analytics-gitlab-")
         self.base = Path(self.tmp)
         self.gitlab_bare = self.base / "gitlab.git"
         for bare in (self.gitlab_bare,):
@@ -46,7 +46,7 @@ class GitLabPushTests(unittest.TestCase):
         git(self.work, "checkout", "-b", "20260727")
         git(self.work, "config", "user.name", "Test User")
         git(self.work, "config", "user.email", "test@example.com")
-        (self.work / "README.md").write_text("openchat-BI test\n", encoding="utf-8")
+        (self.work / "README.md").write_text("eimosp-ontology-agentic-analytics test\n", encoding="utf-8")
         git(self.work, "add", "README.md")
         git(self.work, "commit", "-m", "init")
         git(self.work, "remote", "rename", "origin", "gitlab")
@@ -120,7 +120,7 @@ class GitLabPushTests(unittest.TestCase):
         """A remote pointing at the wrong GitLab repo is refused before any
         network access (GitLab URL validation, no --allow-local-remotes)."""
         git(self.work, "remote", "set-url", "gitlab",
-            "git@gitlab.boulderaitech.com:someoneelse/openchat-bi.git")
+            "git@gitlab.boulderaitech.com:someoneelse/eimosp-ontology-agentic-analytics.git")
         proc = self.run_script()
         self.assertEqual(proc.returncode, 2)
         self.assertIn("拒绝继续", proc.stderr)

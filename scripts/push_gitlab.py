@@ -3,7 +3,7 @@
 
 Unified GitLab workflow:
 
-- gitlab      -> ai-team/openchat-bi      (branch 20260727, default dev branch)
+- gitlab      -> ai-team/eimosp-ontology-agentic-analytics      (branch 20260727, default dev branch)
 - main is a release branch managed only through merge requests reviewed by
   tianzijing; this script never pushes to main and never auto-merges.
 
@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 GITLAB_HOST = "gitlab.boulderaitech.com"
-GITLAB_OWNER_REPO = "ai-team/openchat-bi"
+GITLAB_OWNER_REPO = "ai-team/eimosp-ontology-agentic-analytics"
 DEFAULT_SOURCE_BRANCH = "20260727"
 DEFAULT_TARGET_BRANCH = "20260727"
 MAIN_BRANCH = "main"
@@ -193,7 +193,7 @@ def main(argv=None):
         print("错误：缺少 remote gitlab；无法执行 GitLab 统一推送。", file=sys.stderr)
         return 2
 
-    # 5. URL mapping must match ai-team/openchat-bi.
+    # 5. URL mapping must match ai-team/eimosp-ontology-agentic-analytics.
     try:
         gitlab_url = verify_remote("gitlab", GITLAB_OWNER_REPO, args.allow_local_remotes)
     except PushError as exc:

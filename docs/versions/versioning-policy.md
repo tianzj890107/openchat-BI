@@ -1,6 +1,6 @@
-# openchat-BI 语义化版本与正式发布规范
+# eimosp-ontology-agentic-analytics 语义化版本与正式发布规范
 
-本文件是 openchat-BI 版本管理的唯一完整规范。`AGENTS.md`、`README.md`、
+本文件是 eimosp-ontology-agentic-analytics 版本管理的唯一完整规范。`AGENTS.md`、`README.md`、
 `docs/versions/README.md`、`docs/gitlab-push-workflow.md` 只保留必要摘要并
 链接到本文件。
 
@@ -9,7 +9,7 @@
 - 统一产品版本号含义，避免按日期、commit 数量或部署次数机械升级；
 - 明确 Git commit、每日 changelog、正式版本文档、Git tag、GitLab Release 与部署
   之间的边界；
-- 适用于 openchat-BI 仓库内所有代码、前端、文档、配置与构建产物的版本管理。
+- 适用于 eimosp-ontology-agentic-analytics 仓库内所有代码、前端、文档、配置与构建产物的版本管理。
 
 ## 版本格式
 
@@ -142,7 +142,7 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 
 ## GitLab 统一推送规则
 
-- openchat-BI 统一推送到 GitLab 仓库 `ai-team/openchat-bi` 的 `20260727` 分支
+- eimosp-ontology-agentic-analytics 统一推送到 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 的 `20260727` 分支
   （`gitlab/20260727`）。
 - 普通 commit 只推送统一开发分支：`gitlab/20260727`；
 - merge 到 `main` 需要 `tianzijing` code review 后单独发起 Merge Request，任何
@@ -152,10 +152,10 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 
 ## GitLab Release 规则
 
-- GitLab Release 在统一协作仓库 `ai-team/openchat-bi`（GitLab）上创建，日常开发 push
+- GitLab Release 在统一协作仓库 `ai-team/eimosp-ontology-agentic-analytics`（GitLab）上创建，日常开发 push
   仍只走 `gitlab/20260727`。
 - 只有用户在当前任务中明确授权创建 GitLab Release 时才能执行。
-- 用户明确授权某个正式版本创建 Release 后，在 `ai-team/openchat-bi` 上基于同名 tag
+- 用户明确授权某个正式版本创建 Release 后，在 `ai-team/eimosp-ontology-agentic-analytics` 上基于同名 tag
   创建一个 Release，tag 指向定版 commit。
 - Release 必须与 tag 使用相同的版本号、名称和正式版本说明。
 - 幂等：创建前先检查 Release 是否已存在；已存在且内容正确的 Release 保留，不重复

@@ -1,6 +1,6 @@
 # Open Claude Runtime
 
-`open_claude` 是本仓库内置的通用 Agent Runtime 和命令行组件，为 openchat-BI 提供模型调用、
+`open_claude` 是本仓库内置的通用 Agent Runtime 和命令行组件，为 eimosp-ontology-agentic-analytics 提供模型调用、
 流式会话、工具执行、权限控制、Skills、任务管理和 Agent 角色加载能力。
 
 根项目及智能分析 Web 工作台说明见 [../README.md](../README.md)。
@@ -71,7 +71,7 @@ Skills 可以放在 `~/.claude/skills/`（用户级）或 `.claude/skills/`（�
 - `CLAUDE.local.md`
 - `~/.claude/CLAUDE.md`
 
-openchat-BI 的业务角色位于根目录 `.claude/agents/`，业务 Tool 位于 `bi_agent/tools/`，
+eimosp-ontology-agentic-analytics 的业务角色位于根目录 `.claude/agents/`，业务 Tool 位于 `bi_agent/tools/`，
 不属于 Open Claude 通用内核。
 
 ## 目录

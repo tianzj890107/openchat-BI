@@ -1,6 +1,6 @@
-# openchat-BI · 智能分析
+# eimosp-ontology-agentic-analytics · 智能分析
 
-openchat-BI 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`v0.1.0`。
+eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`v0.1.0`。
 
 系统以 Open Claude Agent Runtime 为执行底座，将业务本体、指标口径、事实数据查询、
 表格与图表生成、根因分析和决策行动组织为可追踪的分析流程，并通过 Web 工作台交付结果。
@@ -14,8 +14,8 @@ openchat-BI 是面向业务分析场景的对话式 BI Agent。产品名称为 *
 
 ## 应用信息（部署清单）
 
-- **Git 项目地址**：`git@gitlab.boulderaitech.com:ai-team/openchat-bi.git`（开发分支 `20260727`，发布分支 `main`）
-- **应用名**：`openchat-bi`（产品名：智能分析）
+- **Git 项目地址**：`git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，发布分支 `main`）
+- **应用名**：`eimosp-ontology-agentic-analytics`（产品名：智能分析）
 - **Python 版本**：`3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`）
 - **统一应用端口**：`8765`（固定）
 - **统一健康检查接口**：`GET /healthz`（别名 `GET /health`），就绪返回 `200`，未完成配置返回 `503`
@@ -33,7 +33,7 @@ openchat-BI 是面向业务分析场景的对话式 BI Agent。产品名称为 *
 ## 系统结构
 
 ```text
-openchat-BI/
+eimosp-ontology-agentic-analytics/
 ├── bi_agent/                    # BI Agent、本体、工具、可靠性与 Web API
 │   ├── llm/                     # 模型与 Team 网关适配
 │   ├── ontology/                # 本地/远程本体访问与检索
@@ -63,8 +63,8 @@ Open Claude 是仓库内的基础运行时组件，不是根项目名称。其 C
 ## 本地安装
 
 ```bash
-git clone git@gitlab.boulderaitech.com:ai-team/openchat-bi.git
-cd openchat-BI
+git clone git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git
+cd eimosp-ontology-agentic-analytics
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -105,17 +105,17 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 ```bash
 # 构建（无需 Node.js，前端构建产物已随仓库提供）
-docker build -t openchat-bi:0.1.0 .
+docker build -t eimosp-ontology-agentic-analytics:0.1.0 .
 
 # 运行：生产默认远程本体 + Doris 实时查询
 # 配置经 .env 或 -e 注入；运行数据目录（会话/图表/上传/日志）挂载持久卷
-docker run -d --name openchat-bi -p 8765:8765 \
+docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8765 \
   -v "$(pwd)/.env:/app/.env:ro" \
-  -v openchat-bi-conversations:/app/dataset/conversations \
-  -v openchat-bi-charts:/app/dataset/charts \
-  -v openchat-bi-uploads:/app/dataset/uploaded_reports \
-  -v openchat-bi-logs:/app/dataset/logs \
-  openchat-bi:0.1.0
+  -v eimosp-ontology-agentic-analytics-conversations:/app/dataset/conversations \
+  -v eimosp-ontology-agentic-analytics-charts:/app/dataset/charts \
+  -v eimosp-ontology-agentic-analytics-uploads:/app/dataset/uploaded_reports \
+  -v eimosp-ontology-agentic-analytics-logs:/app/dataset/logs \
+  eimosp-ontology-agentic-analytics:0.1.0
 
 # 健康检查（容器内置 HEALTHCHECK，也可手动探测）
 curl -fsS http://127.0.0.1:8765/healthz
@@ -141,7 +141,7 @@ npm run build
 ```
 
 构建会更新 `bi_agent/web/static/vendor/antd/workbench.js` 和
-`bi_agent/web/static/vendor/antd/openchat-bi-workbench.css`。
+`bi_agent/web/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css`。
 
 ## 测试
 
@@ -181,8 +181,8 @@ Node 子进程执行。
 - 版本号不按日期或部署次数机械增长，详见
   [语义化版本与正式发布规范](docs/versions/versioning-policy.md)；
 - push 不等于部署，部署必须由用户在当前任务中明确授权；
-- GitLab Release 授权后在 GitLab 仓库 `ai-team/openchat-bi` 上基于同名 tag 创建（只补缺失项，不覆盖已有 Release）；
-- 已发布 Release：[智能分析 v0.1.0](https://gitlab.boulderaitech.com/ai-team/openchat-bi/-/releases/v0.1.0)
+- GitLab Release 授权后在 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 上基于同名 tag 创建（只补缺失项，不覆盖已有 Release）；
+- 已发布 Release：[智能分析 v0.1.0](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.0)
 
 ## 相关文档
 
@@ -195,4 +195,4 @@ Node 子进程执行。
 
 ## License
 
-仓库中的 Open Claude Runtime 沿用 MIT License；openchat-BI 其他业务代码的授权范围请联系项目维护者确认。
+仓库中的 Open Claude Runtime 沿用 MIT License；eimosp-ontology-agentic-analytics 其他业务代码的授权范围请联系项目维护者确认。

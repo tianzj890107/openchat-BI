@@ -39,7 +39,7 @@ const conversationSummarySequences = new Map();
 const conversationSummaryTitleVersions = new Map();
 const conversationSaveQueues = new Map();
 const conversationDraftIds = new Map();
-const CLIENT_SESSION_STORAGE_KEY = "openchat-bi-session-id";
+const CLIENT_SESSION_STORAGE_KEY = "eimosp-ontology-agentic-analytics-session-id";
 let clientSessionId = "";
 try {
   clientSessionId = sessionStorage.getItem(CLIENT_SESSION_STORAGE_KEY) || "";

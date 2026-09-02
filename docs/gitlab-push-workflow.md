@@ -4,7 +4,7 @@
 
 | Remote | Repository | Target branch | Purpose |
 | --- | --- | --- | --- |
-| gitlab | ai-team/openchat-bi | 20260727 | 统一协作开发分支 |
+| gitlab | ai-team/eimosp-ontology-agentic-analytics | 20260727 | 统一协作开发分支 |
 
 `main` 是发布分支，只通过 Merge Request 合并；合并前必须由 `tianzijing` code
 review，任何 Agent 或脚本都不得直接 push 到 `main`。
@@ -29,7 +29,7 @@ HEAD == gitlab/20260727
 ## 首次设置
 
 ```bash
-git remote add gitlab git@gitlab.boulderaitech.com:ai-team/openchat-bi.git
+git remote add gitlab git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git
 git config user.name "zhenzhan0408"
 git config user.email "zhenzhan@kth.se"
 ```
@@ -66,7 +66,7 @@ git config user.email "zhenzhan@kth.se"
 
 规则：
 
-- 用户授权创建 GitLab Release 后，在 `ai-team/openchat-bi` 仓库基于同名 tag 发布
+- 用户授权创建 GitLab Release 后，在 `ai-team/eimosp-ontology-agentic-analytics` 仓库基于同名 tag 发布
   一个 Release；
 - Release 使用与 tag 相同的版本号、名称和正式版本说明；
 - 幂等：创建前先检查 Release 是否存在，只补缺失项；已存在且正确的 Release 保留，

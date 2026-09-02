@@ -52,7 +52,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
     def test_root_readme_describes_bi_project_and_runtime_docs_are_nested(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         runtime = (ROOT / "open_claude/README.md").read_text(encoding="utf-8")
-        self.assertTrue(readme.startswith("# openchat-BI · 智能分析"))
+        self.assertTrue(readme.startswith("# eimosp-ontology-agentic-analytics · 智能分析"))
         self.assertIn("六步分析 SOP", readme)
         self.assertIn("open_claude/README.md", readme)
         self.assertNotIn("# Open Claude\n", readme)
@@ -83,7 +83,9 @@ class VersioningPolicyDocTests(unittest.TestCase):
     def test_product_version_still_v0_1_0(self) -> None:
         self.assertIn('version = "0.1.0"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertIn('__version__ = "0.1.0"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
-        self.assertIn('version="0.1.0"', (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8"))
+        app = (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8")
+        self.assertIn('APP_VERSION = "0.1.0"', app)
+        self.assertIn('FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION)', app)
         pkg = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
         self.assertEqual(pkg["version"], "0.1.0")
         lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
@@ -100,7 +102,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
 
     def test_agents_md_requires_gitlab_release_rules(self) -> None:
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("ai-team/openchat-bi", agents)
+        self.assertIn("ai-team/eimosp-ontology-agentic-analytics", agents)
         self.assertIn("基于同名 tag 创建 Release", agents)
         self.assertIn("只补缺失项", agents)
         self.assertIn("禁止覆盖已有 Release", agents)
@@ -119,13 +121,13 @@ class VersioningPolicyDocTests(unittest.TestCase):
         policy = (ROOT / "docs/versions/versioning-policy.md").read_text(encoding="utf-8")
         self.assertIn("gitlab/20260727", policy)
         script = (ROOT / "scripts/push_gitlab.py").read_text(encoding="utf-8")
-        self.assertIn('GITLAB_OWNER_REPO = "ai-team/openchat-bi"', script)
+        self.assertIn('GITLAB_OWNER_REPO = "ai-team/eimosp-ontology-agentic-analytics"', script)
         self.assertIn('DEFAULT_TARGET_BRANCH = "20260727"', script)
         self.assertIn("tianzijing", script)
 
     def test_policy_doc_covers_gitlab_release_rules(self) -> None:
         policy = (ROOT / "docs/versions/versioning-policy.md").read_text(encoding="utf-8")
-        self.assertIn("GitLab Release 在统一协作仓库 `ai-team/openchat-bi`（GitLab）上创建", policy)
+        self.assertIn("GitLab Release 在统一协作仓库 `ai-team/eimosp-ontology-agentic-analytics`（GitLab）上创建", policy)
         self.assertIn("基于同名 tag", policy)
         self.assertIn("创建一个 Release", policy)
         self.assertIn("tag 指向定版 commit", policy)
@@ -144,9 +146,9 @@ class VersioningPolicyDocTests(unittest.TestCase):
 
     def test_readme_and_v010_doc_list_gitlab_release(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("https://gitlab.boulderaitech.com/ai-team/openchat-bi/-/releases/v0.1.0", readme)
+        self.assertIn("https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.0", readme)
         doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
-        self.assertIn("https://gitlab.boulderaitech.com/ai-team/openchat-bi/-/releases/v0.1.0", doc)
+        self.assertIn("https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.0", doc)
         self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:

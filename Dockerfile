@@ -1,4 +1,4 @@
-# openchat-BI 智能分析容器镜像
+# eimosp-ontology-agentic-analytics 智能分析容器镜像
 # 标准运行环境: Python 3.13.x（Docker 官方 python:3.13-slim）
 # 统一应用端口: 8765（固定）
 # 统一健康检查: GET /healthz（别名 /health）
@@ -6,7 +6,7 @@ FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    APP_NAME=openchat-bi \
+    APP_NAME=eimosp-ontology-agentic-analytics \
     APP_HOST=0.0.0.0 \
     APP_PORT=8765
 

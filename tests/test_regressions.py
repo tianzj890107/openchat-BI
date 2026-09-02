@@ -2397,7 +2397,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn(
             "grid-template-columns: var(--chat-width, minmax(380px, 1fr)) 6px minmax(360px, 1fr);", css)
         self.assertNotIn("1.15fr", css)
-        built = Path("bi_agent/web/static/vendor/antd/openchat-bi-workbench.css").read_text(
+        built = Path("bi_agent/web/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css").read_text(
             encoding="utf-8", errors="replace")
         self.assertIn("var(--chat-width, minmax(380px, 1fr)) 6px minmax(360px,1fr)", built)
         self.assertNotIn("1.15fr", built)
@@ -4018,7 +4018,8 @@ console.log(JSON.stringify(out));"""
         init = (root / "bi_agent/__init__.py").read_text(encoding="utf-8")
         self.assertIn('__version__ = "0.1.0"', init)
         app = (root / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('version="0.1.0"', app)
+        self.assertIn('APP_VERSION = "0.1.0"', app)
+        self.assertIn('FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION)', app)
         pkg = (root / "frontend/package.json").read_text(encoding="utf-8")
         self.assertIn('"version": "0.1.0"', pkg)
         lock = (root / "frontend/package-lock.json").read_text(encoding="utf-8")
