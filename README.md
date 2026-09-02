@@ -17,7 +17,9 @@ eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Age
 - **Git 项目地址**：`git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，发布分支 `main`）
 - **应用名**：`eimosp-ontology-agentic-analytics`（产品名：智能分析）
 - **Python 版本**：`3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`）
-- **统一应用端口**：`8765`（固定）
+- **容器内部端口**：`8080`（统一；Dockerfile `ENV APP_PORT=8080` + `EXPOSE 8080`，CMD 监听 `0.0.0.0:8080`）
+- **推荐宿主机映射端口**：`8765`（`-p 8765:8080`；`8765` 同时也是非容器本地直接运行默认端口）
+- **端口约定**：`8080` 是统一容器内部端口；`8765`/`47313`/`47314` 是推荐宿主机映射端口或非容器直接运行端口。不要把宿主机端口写成容器内部监听端口。
 - **统一健康检查接口**：`GET /healthz`（别名 `GET /health`），就绪返回 `200`，未完成配置返回 `503`
 - **Nacos 配置中心**：预留待对接（当前未接入，见 [DEPLOYMENT.md](DEPLOYMENT.md)）
 
@@ -93,7 +95,7 @@ source .venv/bin/activate
 python -m bi_agent.web --host 127.0.0.1 --port 8765 --db doris
 ```
 
-浏览器访问 `http://127.0.0.1:8765/workbench`（`8765` 为固定统一应用端口），健康检查：
+浏览器访问 `http://127.0.0.1:8765/workbench`（`8765` 为非容器本地默认端口；容器内部统一为 `8080`，见下），健康检查：
 
 ```bash
 curl -fsS http://127.0.0.1:8765/healthz
@@ -107,9 +109,10 @@ curl -fsS http://127.0.0.1:8765/healthz
 # 构建（无需 Node.js，前端构建产物已随仓库提供）
 docker build -t eimosp-ontology-agentic-analytics:0.1.0 .
 
-# 运行：生产默认远程本体 + Doris 实时查询
-# 配置经 .env 或 -e 注入；运行数据目录（会话/图表/上传/日志）挂载持久卷
-docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8765 \
+# 运行：容器内部统一监听 8080，宿主机推荐映射 8765:8080
+# 生产默认远程本体 + Doris 实时查询；配置经 .env 或 -e 注入
+# 运行数据目录（会话/图表/上传/日志）挂载持久卷
+docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8080 \
   -v "$(pwd)/.env:/app/.env:ro" \
   -v eimosp-ontology-agentic-analytics-conversations:/app/dataset/conversations \
   -v eimosp-ontology-agentic-analytics-charts:/app/dataset/charts \
@@ -117,13 +120,16 @@ docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8765 \
   -v eimosp-ontology-agentic-analytics-logs:/app/dataset/logs \
   eimosp-ontology-agentic-analytics:0.1.0
 
-# 健康检查（容器内置 HEALTHCHECK，也可手动探测）
+# 健康检查（容器内置 HEALTHCHECK 探测容器内 http://127.0.0.1:8080/healthz，
+# 从宿主机经映射端口 8765 探测）
 curl -fsS http://127.0.0.1:8765/healthz
 ```
 
-Dockerfile 固定使用 `python:3.13-slim`、统一端口 `8765`，镜像内 `HEALTHCHECK` 探测
-`/healthz`；本地 SQLite 演示模式可覆盖启动命令传
-`--db dataset/databases/HyperFusion.db`（本地模式需保留镜像内的初始化数据文件）。
+`8765:8080` 中左侧 `8765` 是宿主机端口，右侧 `8080` 是容器内部监听端口
+（Dockerfile `ENV APP_PORT=8080` + `EXPOSE 8080`）。镜像基于官方
+`python:3.13-slim`，`HEALTHCHECK` 探测容器内 `/healthz`；本地 SQLite 演示模式
+可覆盖启动命令传 `--db dataset/databases/HyperFusion.db`
+（本地模式需保留镜像内的初始化数据文件）。
 
 ## 前端开发与构建
 

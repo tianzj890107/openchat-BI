@@ -2,6 +2,8 @@
 
 Usage:
     python -m bi_agent.web [--host 127.0.0.1] [--port 8765] [--ontology ...] [--db ...]
+
+非容器本地直接启动默认端口为 8765；容器内统一由 APP_PORT/--port 指定 8080。
 """
 
 from __future__ import annotations
@@ -22,6 +24,20 @@ DEFAULT_DB = str(DATABASES_DIR / "HyperFusion.db")
 DEFAULT_AGENT = "bi-analyst"
 # Sentinel for --db meaning "use the Apache Doris (MySQL protocol) source".
 DORIS_DB = "doris"
+def _env_port(name: str, default: int) -> int:
+    """读取环境变量端口；缺省或非法时回退 default。"""
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+# 非容器本地直接启动默认端口 8765；容器镜像内由 Dockerfile ENV APP_PORT=8080
+# 显式注入，默认端口随之切换为 8080，本地默认约定不受影响。
+DEFAULT_PORT = _env_port("APP_PORT", 8765)
 
 
 def _resolve(path: str, base: Path) -> Path:
@@ -40,7 +56,8 @@ def main() -> None:
     )
     parser = argparse.ArgumentParser(prog="bi-agent-web", description="硕磐 BI 智能分析 Web UI")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT,
+                        help="监听端口,默认 8765(非容器);容器内由 APP_PORT 注入 8080")
     parser.add_argument("--cwd", default=None, help="工作目录,默认当前目录")
     parser.add_argument("--ontology", default=None)
     parser.add_argument(
@@ -81,7 +98,7 @@ def main() -> None:
         print(f"Error: 未找到数据库: {db_path}", file=sys.stderr)
         sys.exit(1)
 
-    from .app import app, configure
+    from .app import app, configure, set_runtime_port
 
     configure(
         cwd=str(cwd),
@@ -90,6 +107,8 @@ def main() -> None:
         agent_name=args.agent,
         use_doris=use_doris,
     )
+    # /healthz 的 port 字段必须反映进程实际监听端口（容器内为 8080）。
+    set_runtime_port(args.port)
 
     db_label = "Doris(实时查询)" if use_doris else db_path.name
     print(f"[bi-agent-web] http://{args.host}:{args.port}")

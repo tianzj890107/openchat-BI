@@ -14,9 +14,12 @@
 | Git 项目地址 | `git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，发布分支 `main`） |
 | 应用名 | `eimosp-ontology-agentic-analytics`（产品名：智能分析；systemd 服务名 `eimosp-ontology-agentic-analytics.service`） |
 | Python 版本 | `3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`） |
-| 统一应用端口 | `8765`（固定；`--port` 仅用于本地/测试覆盖） |
+| 统一容器内部端口 | `8080`（Dockerfile `ENV APP_PORT=8080` + `EXPOSE 8080`，CMD 监听 `0.0.0.0:8080`）；推荐宿主机映射 `8765:8080`；非容器本地默认端口 `8765`（`--port` 仅用于本地/测试覆盖） |
 | 统一健康检查接口 | `GET /healthz`（别名 `GET /health`）；就绪 `200`，未完成配置 `503`，响应含 `app`/`version`/`port`/`dependencies` 等固定字段 |
 | Nacos 配置中心 | 预留待对接，当前未接入；中间件类配置仍由 `.env`/环境变量注入（见 §10） |
+
+> 端口约定：`8080` 是统一容器内部端口；`8765`/`47313`/`47314` 是推荐宿主机映射端口
+> 或非容器直接运行端口（本项目对应 `8765`）。不要把宿主机端口写成容器内部监听端口。
 
 
 ## 1. 代码与运行数据的边界
@@ -194,15 +197,16 @@ journalctl -u eimosp-ontology-agentic-analytics -f
 
 ## 6. Docker 镜像部署
 
-镜像固定使用官方 `python:3.13-slim`，统一应用端口 `8765`，内置 `HEALTHCHECK` 探测
-`/healthz`；前端构建产物随镜像提供，构建不需要 Node.js。
+镜像固定使用官方 `python:3.13-slim`；容器内部统一监听 `0.0.0.0:8080`
+（Dockerfile `ENV APP_PORT=8080` + `EXPOSE 8080`），宿主机推荐映射 `8765:8080`；
+内置 `HEALTHCHECK` 探测容器内 `/healthz`；前端构建产物随镜像提供，构建不需要 Node.js。
 
 ```bash
 # 构建
 docker build -t eimosp-ontology-agentic-analytics:0.1.0 .
 
 # 运行（生产默认远程本体 + Doris 实时查询）
-docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8765 \
+docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8080 \
   -v "$(pwd)/.env:/app/.env:ro" \
   -v eimosp-ontology-agentic-analytics-conversations:/app/dataset/conversations \
   -v eimosp-ontology-agentic-analytics-charts:/app/dataset/charts \
@@ -216,7 +220,7 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 - 容器以非 root 用户运行；`/app` 下运行数据目录保持可写，建议挂载持久卷，不要把会话、图表、上传和日志放进镜像。
 - 配置通过 `.env` 只读挂载或 `-e` 注入，禁止把真实密钥写进镜像/仓库。
-- 本地 SQLite 演示模式可覆盖启动命令：`docker run ... eimosp-ontology-agentic-analytics:0.1.0 python -m bi_agent.web --host 0.0.0.0 --port 8765 --db dataset/databases/HyperFusion.db`（此时需保留镜像内初始化数据文件，不要覆盖 `/app/dataset` 整体）。
+- 本地 SQLite 演示模式可覆盖启动命令：`docker run ... eimosp-ontology-agentic-analytics:0.1.0 python -m bi_agent.web --host 0.0.0.0 --port 8080 --db dataset/databases/HyperFusion.db`（覆盖 CMD 时容器内仍需监听 `8080`，映射关系不变；需保留镜像内初始化数据文件，不要覆盖 `/app/dataset` 整体）。
 
 ## 7. 更新发布
 
