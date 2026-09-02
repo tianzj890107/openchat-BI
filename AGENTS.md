@@ -41,7 +41,7 @@
 - `docs/versions/README.md` 为正式版本索引；每个正式版本使用独立文件 `docs/versions/vX.Y.Z.md`。
 - 只有用户明确确定或要求创建正式版本时才创建版本文件；创建后同步更新版本索引和根 README 当前版本链接；已归档版本不得被后续版本覆盖。
 - 每日 changelog 记录工程细节，版本文档只归纳最终用户可见能力、兼容变化、升级说明和验证结论。
-- 完整版本规则见 `docs/versions/versioning-policy.md`（`vMAJOR.MINOR.PATCH`；当前版本 `v0.1.0`）。
+- 完整版本规则见 `docs/versions/versioning-policy.md`（`vMAJOR.MINOR.PATCH`；当前版本 `v0.1.1`）。
 
 ## 版本升级强制规则（最高优先级）
 
