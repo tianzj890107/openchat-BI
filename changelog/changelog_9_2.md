@@ -11,4 +11,31 @@
 
 ## 变更
 
-（创建时今日暂无已完成变更，后续修改在本文件持续同步。）
+### 1. 容器化交付清单落地（Dockerfile + 固定运行参数）
+
+- 新增根目录 `Dockerfile` 与 `.dockerignore`：镜像基于官方 `python:3.13-slim`，
+  统一应用端口固定 `8765`，内置 `HEALTHCHECK` 探测 `/healthz`；前端构建产物随镜像
+  提供，构建无需 Node.js；容器以非 root 用户运行，会话/图表/上传/日志目录保持可写。
+- 应用运行参数固化：应用名 `openchat-bi`（产品名“智能分析”）、标准 Python 版本
+  `3.13.x`（`pyproject.toml` 约束 `>=3.10,<3.14`）、统一端口 `8765`；新增
+  `.python-version`（3.13）。
+- 主要文件：`Dockerfile`、`.dockerignore`、`.python-version`、`pyproject.toml`、
+  `bi_agent/web/app.py`（应用元信息常量）、`README.md`、`DEPLOYMENT.md`。
+
+### 2. 统一健康检查接口
+
+- 健康检查统一为 `GET /healthz`（新增等价别名 `GET /health`）：就绪返回 `200`，
+  未完成配置返回 `503`，不依赖且不触发任何 LLM 调用（保持原契约 `llm_call=false`）。
+- 响应字段固定：`ok`/`status`/`app`/`name`/`version`/`host`/`port`/`uptime_seconds`/
+  `configured`/`llm_call`/`dependencies`（含 agent、ontology、conversation_store 状态）。
+- 主要文件：`bi_agent/web/app.py`；回归测试 `tests/test_regressions.py` 中
+  `/healthz` 契约用例已通过。
+
+### 3. Nacos 配置中心预留（未接入）
+
+- 按要求暂不实现 Nacos 对接，仅做文档与配置占位：`DEPLOYMENT.md` 新增
+  “应用信息清单”与“Nacos 对接（待办）”章节，明确后续 `dataId=openchat-bi`、
+  命名空间按环境隔离、密钥不进配置中心等约定；`.env.example` 追加注释占位变量
+  （`NACOS_SERVER_ADDR`/`NACOS_NAMESPACE`/`NACOS_GROUP`/`NACOS_DATA_ID` 等）。
+- 当前模型、本体、Doris、并发治理等中间件配置仍由 `.env`/环境变量注入，行为不变。
+- 主要文件：`DEPLOYMENT.md`、`.env.example`、`README.md`。

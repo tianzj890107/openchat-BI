@@ -7,6 +7,18 @@
 
 本文档对应当前仓库的 Web 应用入口 `bi-agent-web`。
 
+## 0. 应用信息清单（部署清单）
+
+| 项 | 值 |
+| --- | --- |
+| Git 项目地址 | `git@gitlab.boulderaitech.com:ai-team/openchat-bi.git`（开发分支 `20260727`，发布分支 `main`） |
+| 应用名 | `openchat-bi`（产品名：智能分析；systemd 服务名 `openchat-bi.service`） |
+| Python 版本 | `3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`） |
+| 统一应用端口 | `8765`（固定；`--port` 仅用于本地/测试覆盖） |
+| 统一健康检查接口 | `GET /healthz`（别名 `GET /health`）；就绪 `200`，未完成配置 `503`，响应含 `app`/`version`/`port`/`dependencies` 等固定字段 |
+| Nacos 配置中心 | 预留待对接，当前未接入；中间件类配置仍由 `.env`/环境变量注入（见 §10） |
+
+
 ## 1. 代码与运行数据的边界
 
 需要从 Git 发布/同步的内容：
@@ -26,7 +38,7 @@
 
 ## 2. 首次安装
 
-服务器要求 Python 3.10+、Node.js/npm 和 Git：
+服务器要求 Python 3.13.x（标准运行环境，兼容 `>=3.10,<3.14`）、Node.js/npm（仅前端重新构建时需要）和 Git：
 
 ```bash
 git clone <repository-url> openchat-BI
@@ -139,7 +151,7 @@ http://127.0.0.1:8765/workbench
 
 反向代理（Nginx、网关等）只需把外部路径转发到该地址，并保留 `/api/*` 和 `/static/*`；流式对话接口需要关闭代理缓冲并适当延长超时时间。
 
-启动后至少检查：
+启动后至少检查（统一健康检查接口 `GET /healthz`，别名 `GET /health`）：
 
 ```bash
 curl -fsS http://127.0.0.1:8765/healthz
@@ -180,7 +192,33 @@ sudo systemctl status openchat-bi
 journalctl -u openchat-bi -f
 ```
 
-## 6. 更新发布
+## 6. Docker 镜像部署
+
+镜像固定使用官方 `python:3.13-slim`，统一应用端口 `8765`，内置 `HEALTHCHECK` 探测
+`/healthz`；前端构建产物随镜像提供，构建不需要 Node.js。
+
+```bash
+# 构建
+docker build -t openchat-bi:0.1.0 .
+
+# 运行（生产默认远程本体 + Doris 实时查询）
+docker run -d --name openchat-bi -p 8765:8765 \
+  -v "$(pwd)/.env:/app/.env:ro" \
+  -v openchat-bi-conversations:/app/dataset/conversations \
+  -v openchat-bi-charts:/app/dataset/charts \
+  -v openchat-bi-uploads:/app/dataset/uploaded_reports \
+  -v openchat-bi-logs:/app/dataset/logs \
+  openchat-bi:0.1.0
+
+# 验证
+curl -fsS http://127.0.0.1:8765/healthz
+```
+
+- 容器以非 root 用户运行；`/app` 下运行数据目录保持可写，建议挂载持久卷，不要把会话、图表、上传和日志放进镜像。
+- 配置通过 `.env` 只读挂载或 `-e` 注入，禁止把真实密钥写进镜像/仓库。
+- 本地 SQLite 演示模式可覆盖启动命令：`docker run ... openchat-bi:0.1.0 python -m bi_agent.web --host 0.0.0.0 --port 8765 --db dataset/databases/HyperFusion.db`（此时需保留镜像内初始化数据文件，不要覆盖 `/app/dataset` 整体）。
+
+## 7. 更新发布
 
 先确认服务器运行数据已备份，再执行：
 
@@ -196,7 +234,7 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 如果前端源码或依赖发生变化，先在构建机运行 `cd frontend && npm ci && npm run build`，然后提交并发布构建产物；不要在生产机直接把 `node_modules/`、缓存或用户上传文件加入 Git。
 
-## 7. 服务器未提交内容怎么判断
+## 8. 服务器未提交内容怎么判断
 
 在服务器仓库目录执行：
 
@@ -215,7 +253,7 @@ git diff --name-only
 
 不要在未确认数据内容前执行 `git add -A`、`git clean -fd` 或删除数据库/上传目录。服务器代码应尽量保持可由 Git 重建，服务器产生的数据则单独备份和管理。
 
-## 8. 当前服务器发布说明
+## 9. 当前服务器发布说明
 
 当前测试服务器通过 SSH 主机别名 `company-server` 发布，运行目录为
 `/home/data/zhangzhen_home/zhangzhen/openchat-BI-releases/<release>`，进程使用该目录下的 `.venv`，监听 `8765`。
@@ -313,3 +351,16 @@ TASK_ALERT_TIMEOUT_SECONDS=10          # 上游超时，0.5–120s
   `success`/`code` 判定成功，任务号取 `data`（UUID 字符串）。
 - 示例：`curl -sS -X POST http://127.0.0.1:8765/api/task-alert/manual-create
   -H 'Content-Type: application/json' -d '{"title":"t","content":"c"}'`
+
+## 10. Nacos 配置中心对接（待办，当前未接入）
+
+当前应用不依赖 Nacos：模型、本体、Doris 和并发治理等中间件/下游配置均通过 `.env`
+或进程环境变量注入，仓库内不保存任何 Nacos 客户端代码与凭据。
+
+后续接入 Nacos 时按以下约定补充（本任务仅预留，不实现）：
+
+- 配置归属：`dataId=openchat-bi`，`group=DEFAULT_GROUP`，命名空间按环境隔离；
+- 下发范围：中间件连接参数（Doris、本体服务、模型网关、任务令代理）等运行配置，
+  密钥优先走 K8s Secret / 环境变量，不进配置中心明文；
+- 与现有 `.env` 的优先级约定、客户端版本（Python nacos-sdk）和回退策略需在接入
+  任务中明确后再实施，并同步更新本文档与 `.env.example` 占位注释。

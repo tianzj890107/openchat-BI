@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import socket
 import threading
 import time
 import uuid
@@ -397,10 +398,20 @@ def configure(
 
 
 # ---------------------------------------------------------------------------
+# 应用元信息（部署清单）
+# ---------------------------------------------------------------------------
+APP_NAME = "openchat-bi"              # 应用名（容器/服务/配置中心统一使用）
+APP_DISPLAY_NAME = "openchat-BI 智能分析"  # 产品名
+APP_VERSION = "0.1.0"                 # 与 pyproject.toml / docs/versions 保持同步
+APP_PORT = 8765                        # 统一应用端口（固定）
+APP_STARTED_AT = time.monotonic()      # 进程启动时刻（健康检查 uptime 使用）
+
+
+# ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="BI Agent Web", version="0.1.0")
+app = FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION)
 # Compress JSON and the large versioned frontend assets when the browser
 # advertises gzip support. The threshold avoids spending CPU on tiny assets;
 # Brotli can still be supplied by a reverse proxy without changing endpoints.
@@ -740,16 +751,41 @@ def index(request: Request) -> RedirectResponse:
 
 
 @app.get("/healthz")
+@app.get("/health")
 def healthz() -> JSONResponse:
-    """Dependency-free liveness/readiness probe; never invokes an LLM."""
+    """统一健康检查接口（liveness/readiness），不依赖且不触发任何 LLM 调用。
+
+    - `/healthz` 为统一健康检查入口，`/health` 为等价别名；
+    - 未完成配置时返回 503；就绪返回 200；
+    - 响应字段固定：`ok`/`status`/`app`/`name`/`version`/`host`/`port`/
+      `uptime_seconds`/`configured`/`llm_call`/`dependencies`。
+    """
     ontology_ready = (
         STATE.remote_ontology is not None
         if STATE.ontology_backend in {"production", "remote"}
         else STATE.ontology_store is not None
     )
-    ready = bool(STATE.agent_def and ontology_ready and STATE.conversation_store)
+    agent_ready = bool(STATE.agent_def)
+    store_ready = bool(STATE.conversation_store)
+    ready = agent_ready and ontology_ready and store_ready
     return JSONResponse(
-        {"ok": ready, "configured": ready, "llm_call": False},
+        {
+            "ok": ready,
+            "status": "ok" if ready else "not_ready",
+            "app": APP_NAME,
+            "name": APP_DISPLAY_NAME,
+            "version": APP_VERSION,
+            "host": socket.gethostname(),
+            "port": APP_PORT,
+            "uptime_seconds": int(time.monotonic() - APP_STARTED_AT),
+            "configured": ready,
+            "llm_call": False,
+            "dependencies": {
+                "agent": agent_ready,
+                "ontology": ontology_ready,
+                "conversation_store": store_ready,
+            },
+        },
         status_code=200 if ready else 503,
     )
 
