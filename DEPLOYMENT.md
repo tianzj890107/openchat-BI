@@ -259,9 +259,24 @@ git diff --name-only
 
 ## 9. 当前服务器发布说明
 
-当前测试服务器通过 SSH 主机别名 `company-server` 发布，运行目录为
+当前测试服务器通过 SSH 主机别名 `company-server`（`172.16.10.34`）发布，运行目录为
 `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/<release>`，进程使用该目录下的 `.venv`，监听 `8765`。
 发布时只同步源码和已构建静态资源，先在 release 目录创建带时间戳的代码备份；不要覆盖 `.env`、`.venv`、会话、上传文件、图表和日志。
+
+当前运行状态（2026-09-02 部署 v0.1.1）：
+
+- 运行目录 `~/eimosp-ontology-agentic-analytics-releases/v0.1.1`，
+  `RELEASE_COMMIT=28bb1d63dfd427d7889de3dde4e83d618028ee2c`（tag `v0.1.1`），
+  启动命令：`cd <release> && set -a && . ./.env && set +a && nohup ./.venv/bin/python -m bi_agent.web --host 0.0.0.0 --port 8765 --db doris >> ~/eimosp-ontology-agentic-analytics-8765.log 2>&1 &`
+  （无 systemd 单元，进程 PID 记录在 `<release>/APP.pid`）。
+- 服务器系统缺少 `python3-venv`（`ensurepip` 不可用），无法新建 venv：当前 release 的
+  `.venv` 由上一 release（`openchat-BI-releases/a035df9`）复制而来，并把
+  site-packages 内可编辑安装引用改写到新 release 路径（复制后 3 个文件被修正），
+  不要用 `python3 -m venv` 重建。
+- 会话/图表/上传/日志/图数据目录保留策略：新 release 的
+  `dataset/{conversations,charts,uploaded_reports,logs,graphs}` 为指向上一 release
+  同名目录的符号链接，历史会话与运行产物不复制、不覆盖；`databases`/`spreadsheets`/
+  `documents` 来自代码库初始化数据。切换服务前先停旧进程（旧 release 目录保留可回滚）。
 
 本体管理服务的新目录接口可能返回 `currentDatabase`，旧接口返回 `dorisDatabase`；应用兼容读取两个字段，避免目录字段升级导致新 release 无法启动。
 
