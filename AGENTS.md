@@ -31,7 +31,7 @@
 ## 任务指令与交付动作映射（固定约定）
 
 - 用户说“push / 推送”＝只把已验证提交推送到 GitLab 开发分支 `gitlab/20260727`（`python scripts/push_gitlab.py`，先 `--check` 再执行）；不部署、不推 tag、不创建 MR。
-- 用户说“merge / 合并 / MR”＝创建 Merge Request：`source_branch=20260727` → `target_branch=main`，reviewer 固定 `tianzijing`（田子敬，id 166），assignee 固定 `zhangzhen`（张真，id 245，用户本人）；只创建 MR，不自动合并、不直接 push `main`。
+- 用户说“merge / 合并 / MR”＝创建 Merge Request：`source_branch=20260727` → `target_branch=main`，reviewer 固定 `tianzijing`（田子敬，id 166），assignee 固定 `zhangzhen`（张真，id 245，用户本人）；只创建 MR，不自动合并、不直接 push `main`。创建前必须读取 `git log --no-merges main..20260727` 和完整 diff，MR 标题与描述必须归纳本次 MR 包含的全部提交主题；禁止把标题写成“20260727 → main”“Merge 20260727 into main”或其他只描述分支关系的泛化名称。若包含多个独立主题，标题概括整体交付，描述按主题列出每组 commit、主要变化和验证结果；复用已有 MR 时也必须将标题和描述更新到当前完整提交范围。
 - 用户说“部署”＝只有当前任务中新出现的明确部署授权才执行部署；历史授权不延续。
 - 用户仅说“继续”时，按当前未完成的既定动作继续，不擅自扩大交付范围。
 
@@ -136,4 +136,4 @@
 - 令牌固定存放在本机 `~/.config/codex/gitlab_token`（权限 600）；读取方式：`TOKEN=$(cat ~/.config/codex/gitlab_token)`。
 - 若该文件缺失，回退从仓库 `.env` 的 `GITLAB_TOKEN` 读取并同步到上述路径；`.env` 已被 gitignore，禁止提交。
 - API 基地址：`http://gitlab.boulderaitech.com/api/v4`（本机代理下 HTTPS 不可达），请求头 `PRIVATE-TOKEN: $TOKEN`。
-- 创建 MR：`POST /projects/ai-team%2Feimosp-ontology-agentic-analytics/merge_requests`，`source_branch` 为 `20260727`，`target_branch` 为 `main`，reviewer 用户名 `tianzijing`（田子敬）；只创建 MR，不自动合并、不直接 push `main`。
+- 创建 MR：`POST /projects/ai-team%2Feimosp-ontology-agentic-analytics/merge_requests`，`source_branch` 为 `20260727`，`target_branch` 为 `main`，reviewer 用户名 `tianzijing`（田子敬）；`title` 和 `description` 必须根据 `main..20260727` 的全部 commit 与 diff 生成并覆盖所有变更主题，不得只写分支名；只创建 MR，不自动合并、不直接 push `main`。
