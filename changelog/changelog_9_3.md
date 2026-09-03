@@ -43,32 +43,47 @@
   `pytest tests/test_regressions.py -q` 215 passed（含新增契约测试）；
   `git diff --check` 通过。未部署、未发包。
 
-### 2. 本体布局改为“布局 + 自定义选择面板 + 白色说明气泡”（Spec + 实现 + 验收修复，已完成）
+### 2. 本体布局控件：自定义选择面板 + 键盘闭环 + 白色说明气泡 + 工具栏等高（Spec + 实现 + 验收修复，已完成）
 
 - 用户可见变化：本体子图弹窗工具栏将原来的“关系聚类可视化 / 语义环形可视化”两个并列
   按钮收敛为控件组“布局 [选择器 ▼] (? )”：默认“关系聚类可视化”，可切换“语义环形
-  可视化”，仍沿用 `cluster`/`radial` 状态值与原有切换逻辑（复用已加载子图，不重新请求
-  接口、不调 LLM、不写聊天历史）。第一版使用浏览器原生 `<select>`，本轮验收修复为页面
-  自绘自定义 combobox + listbox：点击或键盘（Enter/Space/方向键/Home/End/Escape/Tab）
-  打开自绘白色选项面板，选项为完整可点击行，当前项有选中态与勾选，hover/活动项浅蓝
-  反馈；点击外部或关闭弹窗自动收起；busy 时 trigger 禁用并自动收起面板，结束后恢复。
+  可视化”，沿用 `cluster`/`radial` 状态值与原切换逻辑（复用已加载子图，不重新请求
+  接口、不调 LLM、不写聊天历史）。选择器为页面自绘自定义 combobox + listbox（曾用
+  原生 `<select>`，验收修复后移除）：点击或键盘打开自绘白色选项面板，选项为完整可点击
+  行，当前项有选中态与勾选，hover/活动项浅蓝反馈；点击外部或关闭弹窗自动收起；busy
+  时 trigger 禁用并自动收起面板，结束后恢复。
+- 键盘闭环（本轮验收修复）：所有按键统一走 trigger 的纯键盘转换入口
+  `handleOntologyLayoutPickerKey`，DOM 焦点始终留在 trigger，menu 不再承担需要焦点才
+  能工作的 keydown 导航（菜单仅响应鼠标点击）；Enter/Space 打开或提交、ArrowDown/Up
+  循环移动、Home/End 首末项、Escape 取消不提交、Tab 关闭菜单并按正常顺序离开；纯键盘
+  可完成 cluster → radial → cluster，全程子图请求增量为 0。
 - 可访问性：trigger 为真实 button（`role="combobox"`、`aria-haspopup="listbox"`、
-  `aria-expanded`、`aria-controls`），选项 `role="option"` + `aria-selected`。
-- 说明气泡修复：白色 `role="tooltip"` 气泡从以整个布局容器左缘定位（`left:6px`、箭头
-  `left:16px`）改为以 `?`（`[data-graph-layout-help]`）为锚点右对齐（`right:0;left:auto`，
-  箭头 `right:6px`），箭头明确指向 `?`；切换布局后气泡 DOM 文案即时同步，即使气泡未打开；
-  帮助按钮不设 `title`。
-- 实现：新增 `frontend/src/ontologyLayoutOptions.js`（布局名称与说明文案唯一来源）、
-  `frontend/src/ontologyLayoutPickerState.js`（picker 开关/活动项/键盘与 busy 的纯状态
-  转换）；`frontend/src/runtime.js` 只负责 DOM 渲染、事件与同步，不再复制文案；原生
-  select DOM/CSS 与旧按钮逻辑全部移除。
-- 主要文件：`docs/specs/ontology-layout-selector-white-tooltip.md`、
-  `docs/specs/ontology-layout-selector-acceptance-fixes.md`（新增 Spec）；
-  `frontend/src/ontologyLayoutOptions.js`、`frontend/src/ontologyLayoutPickerState.js`（新增）、
-  `frontend/src/runtime.js`、`frontend/src/workbench.css`；
-  `frontend/tests/ontologyLayoutOptions.test.mjs`、`frontend/tests/ontologyLayoutPickerState.test.mjs`（新增）；
-  `tests/test_regressions.py`。
-- 验证：前端单测 56 passed（本轮新增 10 项 picker 状态测试）；`npm run build` 成功；
-  共享包 `npm test` 6 passed；`pytest tests/test_regressions.py -q` 216 passed（含自定义
-  combobox/listbox、busy、键盘与 Tooltip 锚点契约测试）；`git diff --check` 通过。
-  未部署、未发包。
+  `aria-expanded`、`aria-controls`、`aria-activedescendant`）；option 使用稳定唯一 id
+  （`ontology-layout-option-*`）、`role="option"`、`tabIndex=-1`；打开时
+  `aria-activedescendant` 指向活动项、关闭时移除；`aria-selected`/`.is-selected` 只表示
+  已提交布局，键盘临时活动项只反映为 `.is-active`，二者不混淆。
+- 工具栏等高：layout trigger 与“重新布局”按钮统一为显式 `height:26px` +
+  `box-sizing:border-box`（relayout 另设 `min-height:26px`、inline-flex 垂直居中），
+  不依赖 transform/scale/负 margin；disabled 前后与 720px 以下换行后仍等高。
+- 说明气泡：白色 `role="tooltip"` 气泡以 `?`（`[data-graph-layout-help]`）为锚点右对齐
+  （`right:0;left:auto`，箭头 `right:6px` 指向 `?`），深色文字、浅灰边框、轻阴影、最大
+  宽度 280px；切换布局后气泡文案即时同步；帮助按钮不设 `title`。
+- 实现：`frontend/src/ontologyLayoutOptions.js` 为布局名称与说明文案唯一来源；
+  `frontend/src/ontologyLayoutPickerState.js` 提供 picker 开关/活动项/统一键盘转换/
+  busy 纯状态转换；`frontend/src/runtime.js` 只负责 DOM 渲染、事件与同步；原生
+  select 及旧双按钮 DOM/CSS/监听器已清除。
+- 主要文件：本轮新增
+  `docs/specs/ontology-layout-keyboard-and-toolbar-height-fixes.md`（Spec）、
+  `docs/test-evidence/ontology-layout-keyboard-height-red.txt`、
+  `docs/test-evidence/ontology-layout-keyboard-height-green.txt`、
+  `docs/test-evidence/ontology-layout-browser-acceptance.json` 与截图
+  `docs/test-evidence/k1..k5-*.png`；修改 `frontend/src/ontologyLayoutPickerState.js`、
+  `frontend/src/runtime.js`、`frontend/src/workbench.css`、
+  `frontend/tests/ontologyLayoutPickerState.test.mjs`、`tests/test_regressions.py`；
+  构建产物 `bi_agent/web/static/vendor/antd/*` 同步更新。
+- 验证：Red 证据非零退出码（单测 20 tests / 11 pass / 9 fail、回归 2 failed，退出码 1）；
+  Green 后前端单测 66 passed（picker 文件 20 项）、`npm run build` 成功、共享包
+  `npm test` 6 passed、`pytest tests/test_regressions.py -q` 217 passed（新增统一键盘/
+  等高契约方法）、`git diff --check` 通过；真实 Chrome 桌面 1440px 与窄屏 700px 验收：
+  键盘闭环、ARIA 同步、两个控件计算高度均 26px、menu/Tooltip 不被裁切、气泡箭头指向
+  `?`。未部署、未发包。

@@ -244,7 +244,13 @@ git status --short
 ### Red（2026-09-03，实现改动前运行）
 
 - 命令 1：`cd frontend && node --test tests/ontologyLayoutPickerState.test.mjs`
-  - 结果：10 tests / 0 pass / 10 fail，退出码 0（node:test 报告失败计数）。
+  - 结果：10 tests / 0 pass / 10 fail。
+  - 更正记录（2026-09-03）：原记录“退出码 0”有误。`node --test` 存在失败用例时
+    shell 退出码为非零；该次运行发生于未提交的空桩工作区，具体退出码已不可复现，
+    因此不追补伪造数值。以本轮可复核实测为准：同一测试文件在
+    `ontology-layout-keyboard-and-toolbar-height-fixes` 的 Red 运行中
+    9 fail，shell 退出码 1（证据：
+    `docs/test-evidence/ontology-layout-keyboard-height-red.txt`）。
   - 关键断言：`picker defaults to closed with cluster selected`（`ontologyLayoutPickerSelectedOption` 解析失败）、
     `toggle opens and closes the listbox`、`ArrowDown and ArrowUp cycle the active option`、
     `busy closes an open menu and prevents reopening`、`unknown values never become the picker value` 等。

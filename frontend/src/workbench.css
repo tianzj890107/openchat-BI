@@ -4637,7 +4637,22 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
 .ontology-layout-selector { position: relative; display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; }
 .ontology-layout-label { color: var(--fg-3, #64748b); font-size: 12px; }
 .ontology-layout-picker { position: relative; display: inline-block; }
-.ontology-graph-toolbar .ontology-layout-trigger { width: 148px; height: 26px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: space-between; gap: 6px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; color: #334155; font-size: 12px; font-family: inherit; cursor: pointer; text-align: left; }
+.ontology-graph-toolbar .ontology-layout-trigger { width: 148px; height: 26px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: space-between; gap: 6px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; color: #334155; font-size: 12px; font-family: inherit; cursor: pointer; text-align: left; box-sizing: border-box; }
+/* The layout trigger and the relayout button share one 26px toolbar row so
+   vertical centering stays stable while busy and when the toolbar wraps on
+   narrow screens. No transforms, scaling or negative margins are used. */
+.ontology-layout-trigger {
+  height: 26px;
+  box-sizing: border-box;
+}
+.ontology-graph-toolbar [data-graph-relayout] {
+  height: 26px;
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
 .ontology-graph-toolbar .ontology-layout-trigger[aria-expanded="true"] { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb; }
 .ontology-layout-trigger:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
 .ontology-graph-toolbar .ontology-layout-trigger:disabled { opacity: .55; cursor: wait; }

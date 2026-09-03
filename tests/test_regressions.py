@@ -4205,12 +4205,13 @@ console.log(JSON.stringify(out));"""
             'label: "语义环形可视化"',
         ):
             self.assertIn(token, options_module)
-        # 4. Mouse, outside-click and the full keyboard contract are wired once.
+        # 4. Mouse, outside-click and tooltip handlers are wired once. The core
+        #    keyboard model lives on the trigger through the pure key handler;
+        #    the menu owns mouse clicks only and has no keydown listener.
         for binding in (
             'layoutTrigger.addEventListener("click", onOntologyGraphLayoutTriggerClick)',
             'layoutTrigger.addEventListener("keydown", onOntologyGraphLayoutTriggerKeydown)',
             'layoutMenu.addEventListener("click", onOntologyGraphLayoutOptionClick)',
-            'layoutMenu.addEventListener("keydown", onOntologyGraphLayoutMenuKeydown)',
             'document.addEventListener("click", onOntologyGraphLayoutDocumentClick)',
             'addEventListener("mouseenter", showOntologyGraphLayoutTooltip)',
             'addEventListener("mouseleave", hideOntologyGraphLayoutTooltip)',
@@ -4218,12 +4219,23 @@ console.log(JSON.stringify(out));"""
             'addEventListener("blur", hideOntologyGraphLayoutTooltip)',
         ):
             self.assertIn(binding, runtime)
-        trigger_keys = runtime[runtime.index("function onOntologyGraphLayoutTriggerKeydown("):runtime.index("function onOntologyGraphLayoutMenuKeydown(", runtime.index("function onOntologyGraphLayoutTriggerKeydown("))]
-        for key in ('"Enter"', '" "', '"ArrowDown"', '"ArrowUp"', '"Escape"'):
-            self.assertIn(key, trigger_keys)
-        menu_keys = runtime[runtime.index("function onOntologyGraphLayoutMenuKeydown("):runtime.index("function onOntologyGraphLayoutDocumentClick(", runtime.index("function onOntologyGraphLayoutMenuKeydown("))]
-        for key in ('"ArrowDown"', '"ArrowUp"', '"Home"', '"End"', '"Enter"', '" "', '"Escape"', '"Tab"'):
-            self.assertIn(key, menu_keys)
+        self.assertNotIn('layoutMenu.addEventListener("keydown"', runtime)
+        self.assertNotIn("function onOntologyGraphLayoutMenuKeydown(", runtime)
+        trigger_handler_start = runtime.index("function onOntologyGraphLayoutTriggerKeydown(")
+        trigger_handler_src = runtime[trigger_handler_start:runtime.index("function onOntologyGraphLayoutDocumentClick(", trigger_handler_start)]
+        self.assertIn("handleOntologyLayoutPickerKey(", trigger_handler_src)
+        self.assertIn("ontologyGraphLayoutPickerState", trigger_handler_src)
+        self.assertIn("event.key", trigger_handler_src)
+        self.assertIn("busy: isOntologyGraphBusy(ontologyGraphViewState)", trigger_handler_src)
+        key_fn_start = picker_module.index("export function handleOntologyLayoutPickerKey(")
+        key_fn = picker_module[key_fn_start:]
+        for key in ('"Enter"', '" "', '"ArrowDown"', '"ArrowUp"', '"Home"', '"End"', '"Escape"', '"Tab"'):
+            self.assertIn(key, key_fn)
+        # 4b. ARIA combobox wiring: options carry stable unique ids and stay out
+        #     of the tab order; the trigger owns aria-activedescendant.
+        self.assertIn('aria-activedescendant=""', runtime)
+        self.assertIn('node.id = "ontology-layout-option-" + option.value', menu_build_src)
+        self.assertIn("node.tabIndex = -1", menu_build_src)
         # 5. The selection path routes into switchOntologyGraphLayout(value)
         #    and never issues a subgraph request.
         pick_start = runtime.index("function applyOntologyGraphLayoutPickerSelection(")
@@ -4245,6 +4257,10 @@ console.log(JSON.stringify(out));"""
         self.assertIn("valueNode.textContent = option.label", sync_layout_src)
         self.assertIn("aria-expanded", sync_layout_src)
         self.assertIn("aria-selected", sync_layout_src)
+        self.assertIn('setAttribute("aria-activedescendant"', sync_layout_src)
+        self.assertIn('removeAttribute("aria-activedescendant")', sync_layout_src)
+        self.assertIn('"ontology-layout-option-"', sync_layout_src)
+        self.assertIn("is-active", sync_layout_src)
         self.assertIn("syncOntologyGraphLayoutTooltipText(", sync_layout_src)
         tooltip_sync_src = runtime[runtime.index("function syncOntologyGraphLayoutTooltipText("):runtime.index("function showOntologyGraphLayoutTooltip(", runtime.index("function syncOntologyGraphLayoutTooltipText("))]
         self.assertIn("tooltip.textContent", tooltip_sync_src)
@@ -4298,6 +4314,71 @@ console.log(JSON.stringify(out));"""
         # 10. The pure picker keyboard/state module exists for Green wiring.
         self.assertIn("export function createOntologyLayoutPickerState(", picker_module)
 
+
+    def test_ontology_layout_keyboard_trigger_and_toolbar_height_contract(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        picker_module = Path("frontend/src/ontologyLayoutPickerState.js").read_text(encoding="utf-8")
+        # 1. One keyboard model: the trigger delegates every key to the pure
+        #    handler and the menu no longer owns a keydown navigation path.
+        self.assertIn("export function handleOntologyLayoutPickerKey(", picker_module)
+        trigger_wire_start = runtime.index("function onOntologyGraphLayoutTriggerKeydown(")
+        trigger_wire_src = runtime[trigger_wire_start:runtime.index("function onOntologyGraphLayoutDocumentClick(", trigger_wire_start)]
+        self.assertIn("handleOntologyLayoutPickerKey(", trigger_wire_src)
+        self.assertIn("ontologyGraphLayoutPickerState", trigger_wire_src)
+        self.assertIn("event.key", trigger_wire_src)
+        self.assertNotIn('layoutMenu.addEventListener("keydown"', runtime)
+        self.assertNotIn("function onOntologyGraphLayoutMenuKeydown(", runtime)
+        trigger_start = runtime.index("function onOntologyGraphLayoutTriggerKeydown(")
+        trigger_end = runtime.index("function onOntologyGraphLayoutDocumentClick(", trigger_start)
+        trigger_src = runtime[trigger_start:trigger_end]
+        self.assertIn("result.handled", trigger_src)
+        self.assertIn("event.preventDefault()", trigger_src)
+        self.assertIn("applyOntologyGraphLayoutPickerSelection(result.commitValue)", trigger_src)
+        self.assertIn("syncOntologyGraphLayoutControls()", trigger_src)
+        pick_start = runtime.index("function applyOntologyGraphLayoutPickerSelection(")
+        pick_src = runtime[pick_start:runtime.index("function onOntologyGraphLayoutTriggerClick(", pick_start)]
+        self.assertIn("switchOntologyGraphLayout(value)", pick_src)
+        self.assertNotIn("loadOntologyGraph(", pick_src)
+        self.assertNotIn("fetch(", pick_src)
+        # 2. aria-activedescendant tracks the active option while the listbox
+        #    is open and is cleared when it closes.
+        sync_start = runtime.index("function syncOntologyGraphLayoutControls(")
+        sync_src = runtime[sync_start:runtime.index("function syncOntologyGraphLayoutTooltipText(", sync_start)]
+        self.assertIn('setAttribute("aria-activedescendant"', sync_src)
+        self.assertIn('removeAttribute("aria-activedescendant")', sync_src)
+        self.assertIn('"ontology-layout-option-"', sync_src)
+        menu_build_start = runtime.index('const layoutMenu = host.querySelector("[data-graph-layout-menu]")')
+        menu_build_src = runtime[menu_build_start:runtime.index("layoutTrigger.addEventListener", menu_build_start)]
+        self.assertIn('node.id = "ontology-layout-option-" + option.value', menu_build_src)
+        self.assertIn("node.tabIndex = -1", menu_build_src)
+        # 3. Toolbar height contract: the layout trigger and the relayout
+        #    button share an explicit 26px border-box row, without transforms,
+        #    scaling or negative margins.
+        self.assertIn(".ontology-layout-trigger {\n  height: 26px;\n  box-sizing: border-box;\n}", css)
+        relayout_start = css.index(".ontology-graph-toolbar [data-graph-relayout] {")
+        relayout_block = css[relayout_start:css.index("}", relayout_start)]
+        for token in (
+            "height: 26px",
+            "min-height: 26px",
+            "box-sizing: border-box",
+            "display: inline-flex",
+            "align-items: center",
+            "justify-content: center",
+        ):
+            self.assertIn(token, relayout_block)
+        for block in (relayout_block,):
+            self.assertNotIn("transform", block)
+            self.assertNotIn("scale(", block)
+            self.assertNotIn("margin", block)
+        media_start = css.index("@media (max-width: 720px)")
+        media_src = css[media_start:]
+        self.assertIn(".ontology-graph-toolbar { flex-wrap: wrap; }", media_src)
+        # 4. The custom-panel and right-anchored white tooltip contracts stay.
+        self.assertNotIn("<select data-graph-layout-select", runtime)
+        self.assertIn('role="combobox"', runtime)
+        self.assertIn('role="listbox"', runtime)
+        self.assertIn('id="ontology-layout-tooltip" role="tooltip" hidden', runtime)
 
 if __name__ == "__main__":
     unittest.main()

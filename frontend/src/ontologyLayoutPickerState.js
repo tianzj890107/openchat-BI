@@ -86,3 +86,52 @@ export function setOntologyLayoutPickerBusy(state, busy) {
   if (!state || !busy) return state;
   return closeOntologyLayoutPicker(state);
 }
+
+// Unified keyboard transition for the combobox trigger. DOM focus never leaves
+// the trigger: every key the combobox consumes flows through here and the
+// returned state carries expanded/activeIndex (plus the value to commit for an
+// open Enter/Space). selectedValue only ever changes through
+// syncOntologyLayoutPicker(), so a temporary active option is never mistaken
+// for a committed layout.
+export function handleOntologyLayoutPickerKey(state, key, { busy = false } = {}) {
+  const current = state || createOntologyLayoutPickerState();
+  if (busy) {
+    const closed = closeOntologyLayoutPicker(current);
+    if (key === "Tab") return { state: closed, handled: false, commitValue: null };
+    return { state: closed, handled: true, commitValue: null };
+  }
+  switch (key) {
+    case "Enter":
+    case " ":
+      if (current.expanded) {
+        const active = ONTOLOGY_LAYOUT_OPTIONS[current.activeIndex];
+        return {
+          state: closeOntologyLayoutPicker(current),
+          handled: true,
+          commitValue: active ? active.value : null,
+        };
+      }
+      return { state: openOntologyLayoutPicker(current), handled: true, commitValue: null };
+    case "ArrowDown":
+    case "ArrowUp": {
+      const delta = key === "ArrowDown" ? 1 : -1;
+      const opened = current.expanded ? current : openOntologyLayoutPicker(current);
+      return { state: moveOntologyLayoutPickerActive(opened, delta), handled: true, commitValue: null };
+    }
+    case "Home": {
+      const opened = current.expanded ? current : openOntologyLayoutPicker(current);
+      return { state: moveOntologyLayoutPickerHome(opened), handled: true, commitValue: null };
+    }
+    case "End": {
+      const opened = current.expanded ? current : openOntologyLayoutPicker(current);
+      return { state: moveOntologyLayoutPickerEnd(opened), handled: true, commitValue: null };
+    }
+    case "Escape":
+      if (!current.expanded) return { state: current, handled: false, commitValue: null };
+      return { state: closeOntologyLayoutPicker(current), handled: true, commitValue: null };
+    case "Tab":
+      return { state: closeOntologyLayoutPicker(current), handled: false, commitValue: null };
+    default:
+      return { state: current, handled: false, commitValue: null };
+  }
+}

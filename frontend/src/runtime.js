@@ -31,14 +31,9 @@ import {
 } from "./ontologyLayoutOptions.js";
 import {
   closeOntologyLayoutPicker,
-  commitOntologyLayoutPicker,
   createOntologyLayoutPickerState,
-  moveOntologyLayoutPickerActive,
-  moveOntologyLayoutPickerEnd,
-  moveOntologyLayoutPickerHome,
-  ontologyLayoutPickerActiveValue,
+  handleOntologyLayoutPickerKey,
   ontologyLayoutPickerSelectedOption,
-  openOntologyLayoutPicker,
   setOntologyLayoutPickerBusy,
   syncOntologyLayoutPicker,
   toggleOntologyLayoutPicker,
@@ -5601,7 +5596,7 @@ export function bootWorkbenchRuntime() {
           <span class="ontology-layout-selector">
             <span class="ontology-layout-label">布局</span>
             <span class="ontology-layout-picker">
-              <button type="button" class="ontology-layout-trigger" data-graph-layout-trigger role="combobox" aria-label="布局" aria-haspopup="listbox" aria-expanded="false" aria-controls="ontology-layout-listbox">
+              <button type="button" class="ontology-layout-trigger" data-graph-layout-trigger role="combobox" aria-label="布局" aria-haspopup="listbox" aria-expanded="false" aria-controls="ontology-layout-listbox" aria-activedescendant="">
                 <span class="ontology-layout-value" data-graph-layout-value></span>
                 <span class="ontology-layout-chevron" aria-hidden="true"></span>
               </button>
@@ -5629,6 +5624,8 @@ export function bootWorkbenchRuntime() {
       const node = document.createElement("button");
       node.type = "button";
       node.className = "ontology-layout-option";
+      node.id = "ontology-layout-option-" + option.value;
+      node.tabIndex = -1;
       node.dataset.graphLayoutOption = option.value;
       node.setAttribute("role", "option");
       node.setAttribute("aria-selected", "false");
@@ -5639,7 +5636,6 @@ export function bootWorkbenchRuntime() {
     layoutTrigger.addEventListener("click", onOntologyGraphLayoutTriggerClick);
     layoutTrigger.addEventListener("keydown", onOntologyGraphLayoutTriggerKeydown);
     layoutMenu.addEventListener("click", onOntologyGraphLayoutOptionClick);
-    layoutMenu.addEventListener("keydown", onOntologyGraphLayoutMenuKeydown);
     document.addEventListener("click", onOntologyGraphLayoutDocumentClick);
     const layoutHelp = host.querySelector("[data-graph-layout-help]");
     layoutHelp.addEventListener("mouseenter", showOntologyGraphLayoutTooltip);
@@ -5856,19 +5852,16 @@ export function bootWorkbenchRuntime() {
     updateOntologyGraphStatus(ontologyGraphViewState.data);
   }
 
-  // User picked a layout (mouse or keyboard). The pure picker state already
-  // carries the active option, so committing just resolves the target value,
-  // collapses the menu, reuses the existing layout switch and returns focus.
+  // User picked a layout (mouse or keyboard). The keyboard handler passes the
+  // pure commitValue and the mouse passes the clicked row's value; committing
+  // syncs the picker, collapses the menu, reuses the existing layout switch
+  // (no subgraph request) and keeps focus on the trigger.
   function applyOntologyGraphLayoutPickerSelection(value) {
-    if (isOntologyGraphBusy(ontologyGraphViewState)) return;
-    const target = value
-      || commitOntologyLayoutPicker(ontologyGraphLayoutPickerState)
-      || ontologyLayoutPickerActiveValue(ontologyGraphLayoutPickerState);
-    if (!target) return;
-    ontologyGraphLayoutPickerState = syncOntologyLayoutPicker(ontologyGraphLayoutPickerState, target);
+    if (!value || isOntologyGraphBusy(ontologyGraphViewState)) return;
+    ontologyGraphLayoutPickerState = syncOntologyLayoutPicker(ontologyGraphLayoutPickerState, value);
     ontologyGraphLayoutPickerState = closeOntologyLayoutPicker(ontologyGraphLayoutPickerState);
     syncOntologyGraphLayoutControls();
-    switchOntologyGraphLayout(target);
+    switchOntologyGraphLayout(value);
     const trigger = ontologyGraphModal?.querySelector("[data-graph-layout-trigger]");
     if (trigger) trigger.focus();
   }
@@ -5886,51 +5879,25 @@ export function bootWorkbenchRuntime() {
     syncOntologyGraphLayoutControls();
   }
 
+  // Every combobox key goes through the pure handler while DOM focus stays on
+  // the trigger. handled=false (Tab, unknown keys, Escape on a closed listbox)
+  // lets the browser keep its default behaviour; a changed-but-unhandled state
+  // (e.g. Tab collapsing the menu) is still synced to the DOM.
   function onOntologyGraphLayoutTriggerKeydown(event) {
-    const key = event.key;
-    if (key !== "Enter" && key !== " " && key !== "ArrowDown" && key !== "ArrowUp" && key !== "Escape") return;
-    event.preventDefault();
-    if (key === "Escape") {
-      ontologyGraphLayoutPickerState = closeOntologyLayoutPicker(ontologyGraphLayoutPickerState);
-      syncOntologyGraphLayoutControls();
+    const result = handleOntologyLayoutPickerKey(
+      ontologyGraphLayoutPickerState,
+      event.key,
+      { busy: isOntologyGraphBusy(ontologyGraphViewState) },
+    );
+    const stateChanged = result.state !== ontologyGraphLayoutPickerState;
+    ontologyGraphLayoutPickerState = result.state;
+    if (result.commitValue) {
+      if (result.handled) event.preventDefault();
+      applyOntologyGraphLayoutPickerSelection(result.commitValue);
       return;
     }
-    if (isOntologyGraphBusy(ontologyGraphViewState)) return;
-    const wasClosed = !ontologyGraphLayoutPickerState.expanded;
-    ontologyGraphLayoutPickerState = openOntologyLayoutPicker(ontologyGraphLayoutPickerState);
-    if (wasClosed && (key === "ArrowDown" || key === "ArrowUp")) {
-      ontologyGraphLayoutPickerState = moveOntologyLayoutPickerActive(ontologyGraphLayoutPickerState, key === "ArrowDown" ? 1 : -1);
-    }
-    syncOntologyGraphLayoutControls();
-  }
-
-  function onOntologyGraphLayoutMenuKeydown(event) {
-    const key = event.key;
-    if (key === "ArrowDown" || key === "ArrowUp") {
-      event.preventDefault();
-      ontologyGraphLayoutPickerState = moveOntologyLayoutPickerActive(ontologyGraphLayoutPickerState, key === "ArrowDown" ? 1 : -1);
-      syncOntologyGraphLayoutControls();
-    } else if (key === "Home") {
-      event.preventDefault();
-      ontologyGraphLayoutPickerState = moveOntologyLayoutPickerHome(ontologyGraphLayoutPickerState);
-      syncOntologyGraphLayoutControls();
-    } else if (key === "End") {
-      event.preventDefault();
-      ontologyGraphLayoutPickerState = moveOntologyLayoutPickerEnd(ontologyGraphLayoutPickerState);
-      syncOntologyGraphLayoutControls();
-    } else if (key === "Enter" || key === " ") {
-      event.preventDefault();
-      applyOntologyGraphLayoutPickerSelection();
-    } else if (key === "Escape") {
-      event.preventDefault();
-      ontologyGraphLayoutPickerState = closeOntologyLayoutPicker(ontologyGraphLayoutPickerState);
-      syncOntologyGraphLayoutControls();
-      const trigger = ontologyGraphModal?.querySelector("[data-graph-layout-trigger]");
-      if (trigger) trigger.focus();
-    } else if (key === "Tab") {
-      ontologyGraphLayoutPickerState = closeOntologyLayoutPicker(ontologyGraphLayoutPickerState);
-      syncOntologyGraphLayoutControls();
-    }
+    if (result.handled || stateChanged) syncOntologyGraphLayoutControls();
+    if (result.handled) event.preventDefault();
   }
 
   // Any click outside the custom picker collapses an open menu.
@@ -5975,6 +5942,12 @@ export function bootWorkbenchRuntime() {
       syncOntologyGraphLayoutTooltipText(option.hint);
     }
     trigger.setAttribute("aria-expanded", ontologyGraphLayoutPickerState.expanded ? "true" : "false");
+    const activeOption = ONTOLOGY_LAYOUT_OPTIONS[ontologyGraphLayoutPickerState.activeIndex];
+    if (ontologyGraphLayoutPickerState.expanded && activeOption) {
+      trigger.setAttribute("aria-activedescendant", "ontology-layout-option-" + activeOption.value);
+    } else {
+      trigger.removeAttribute("aria-activedescendant");
+    }
     menu.hidden = !ontologyGraphLayoutPickerState.expanded;
     menu.querySelectorAll("[data-graph-layout-option]").forEach((node, index) => {
       const selected = node.dataset.graphLayoutOption === ontologyGraphLayoutPickerState.selectedValue;
