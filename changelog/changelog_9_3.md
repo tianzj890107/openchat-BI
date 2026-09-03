@@ -149,3 +149,36 @@
   Red 证据契约 9 failed / 1 passed（退出码 1），Green 后该测试 11 passed、
   前端 76 passed、构建成功、共享包 6 passed、`pytest tests/test_regressions.py -q`
   219 passed、`git diff --check` 通过。未部署、未发包。
+
+### 3. 正式发布 v0.1.2（用户明确授权，2026-09-03）
+
+- 版本：用户在当前任务中明确指定正式版本 `v0.1.2`，作为 v0.1.1 后的 PATCH 级发布；
+  产品版本入口同步 `0.1.1 → 0.1.2`（`pyproject.toml`、`bi_agent/__init__.py`、
+  `bi_agent/web/app.py`、`open_claude/__init__.py`、`frontend/package*.json`、
+  `frontend/src/main.jsx`、`frontend/src/shell.html` 与前端构建产物
+  `workbench.js`，产品页面版本显示 v0.1.2）。
+- 新增正式版本文档 `docs/versions/v0.1.2.md`；同步 `docs/versions/README.md` 索引
+  （v0.1.2 为当前版本、v0.1.1 归档）、`docs/versions/versioning-policy.md` 当前版本行、
+  根 `README.md` 当前版本/版本链接/Release 链接、`AGENTS.md` 与 `DEPLOYMENT.md` 镜像
+  版本引用；版本契约测试同步到 v0.1.2（`tests/test_versioning_policy.py`、
+  `tests/test_regressions.py`）。
+- MR（用户“merge”指令）：创建 Merge Request !4 `20260727 → main`
+  （reviewer `tianzijing`、assignee `zhangzhen`），标题与描述归纳 main..20260727
+  全部 12 个提交主题（环形可视化 + 异步修复、布局控件体验收敛、版本与工程规范）；
+  只创建不自动合并，等待 code review 后合入 main。
+- Tag 与 Release（用户授权）：创建并推送 annotated tag `v0.1.2`（指向定版 commit
+  `c8454d8`）；GitLab 基于同名 tag 创建 Release「智能分析 v0.1.2」（只补缺失项，
+  不覆盖 v0.1.0/v0.1.1 Release）。
+- 部署（用户授权，2026-09-03）：在 `company-server`（172.16.10.34）新目录
+  `~/eimosp-ontology-agentic-analytics-releases/v0.1.2` 部署 v0.1.2（`RELEASE_COMMIT`
+  记录定版 hash `c8454d8`，与 tag 一致）；数据目录沿用 v0.1.1 同一组符号链接目标
+  （`openchat-BI-releases/a035df9/dataset/*`，`exports` 指向 v0.1.1 导出目录），
+  历史会话与运行产物未复制、未覆盖；`.venv` 由 v0.1.1 复制并改写 3 处可编辑安装引用；
+  停掉 v0.1.1 进程后切换到 v0.1.2（旧 release 目录保留可回滚）。验证：`/healthz`
+  返回 `version=0.1.2`、`port=8765`、`configured=true`、dependencies 全部 true；
+  启动日志 `history_root=.../v0.1.2/dataset/conversations scanned=78`（历史会话接入）；
+  `/workbench` 200。
+- 主要文件：版本入口 8 处与构建产物、`docs/versions/v0.1.2.md`（新增）、
+  `docs/versions/README.md`、`docs/versions/versioning-policy.md`、`README.md`、
+  `AGENTS.md`、`DEPLOYMENT.md`、`changelog/changelog_9_3.md`、
+  `tests/test_versioning_policy.py`、`tests/test_regressions.py`。
