@@ -4488,6 +4488,90 @@ console.log(JSON.stringify(out));"""
         self.assertIn(".ontology-layout-trigger {\n  height: 26px;\n  box-sizing: border-box;\n}", css)
         self.assertNotIn("<select data-graph-layout-select", runtime)
 
+    def test_ontology_layout_option_borderless_contract(self) -> None:
+        """Layout dropdown options are borderless list rows, not button cards.
+
+        The generic toolbar button rule must be narrowed to direct business
+        buttons (`.ontology-graph-toolbar > button`) so it can no longer
+        override the menu-scoped option reset.
+        """
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        # 1. No generic rule matching every descendant button of the toolbar.
+        with self.subTest("generic-descendant-button-rule"):
+            self.assertNotIn(".ontology-graph-toolbar button {", css)
+            self.assertNotIn(".ontology-graph-toolbar button.active {", css)
+            self.assertNotIn(".ontology-graph-toolbar button:disabled {", css)
+        # 2. The generic rule is narrowed to direct toolbar business buttons.
+        with self.subTest("generic-scoped-direct-child"):
+            self.assertIn(".ontology-graph-toolbar > button {", css)
+            self.assertIn(".ontology-graph-toolbar > button.active {", css)
+            self.assertIn(".ontology-graph-toolbar > button:disabled {", css)
+        # 3. Option reset is menu-scoped with border/background/shadow cleared.
+        with self.subTest("menu-scoped-option-reset"):
+            self.assertIn(".ontology-layout-menu .ontology-layout-option {", css)
+            option_start = css.index(".ontology-layout-menu .ontology-layout-option {")
+            option_block = css[option_start:css.index("}", option_start)]
+            for token in ("border: 0", "background: transparent", "box-shadow: none"):
+                self.assertIn(token, option_block)
+        # 4. Option default rule must not contain a non-zero border.
+        with self.subTest("option-no-nonzero-border"):
+            self.assertIn(".ontology-layout-menu .ontology-layout-option {", css)
+            option_start = css.index(".ontology-layout-menu .ontology-layout-option {")
+            option_block = css[option_start:css.index("}", option_start)]
+            self.assertNotIn("border: 1px", option_block)
+        # 5. Option default rule must not paint a solid white card.
+        with self.subTest("option-no-white-background"):
+            self.assertIn(".ontology-layout-menu .ontology-layout-option {", css)
+            option_start = css.index(".ontology-layout-menu .ontology-layout-option {")
+            option_block = css[option_start:css.index("}", option_start)]
+            self.assertNotIn("background: #fff", option_block)
+        # 6. Option/menu rules never rely on !important.
+        with self.subTest("option-no-important"):
+            option_area = css[
+                css.index(".ontology-layout-menu {") :
+                css.index(".ontology-layout-option-tooltip {")
+            ]
+            self.assertNotIn("!important", option_area)
+        # 7. Hover/active keeps the light-blue full-row background.
+        with self.subTest("option-hover-active-row"):
+            self.assertIn(
+                ".ontology-layout-option:hover, .ontology-layout-option.is-active { background: #eff6ff; color: #2563eb; }",
+                css,
+            )
+        # 8. is-selected keeps blue text and the check mark.
+        with self.subTest("option-selected-mark"):
+            self.assertIn(".ontology-layout-option.is-selected { color: #2563eb; font-weight: 600; }", css)
+            self.assertIn(".ontology-layout-option.is-selected::after", css)
+        # 9. focus-visible keeps a visible focus ring on options.
+        with self.subTest("option-focus-visible"):
+            self.assertIn(".ontology-layout-option:focus-visible { outline:", css)
+        # 10. The trigger keeps its bordered selector look and 26px height.
+        with self.subTest("trigger-bordered-26px"):
+            trigger_start = css.index(".ontology-graph-toolbar .ontology-layout-trigger {")
+            trigger_block = css[trigger_start:css.index("}", trigger_start)]
+            for token in ("border: 1px solid", "border-radius:", "height: 26px"):
+                self.assertIn(token, trigger_block)
+        # 11. The relayout button keeps its 26px border-box height.
+        with self.subTest("relayout-26px"):
+            relayout_start = css.index(".ontology-graph-toolbar [data-graph-relayout] {")
+            relayout_block = css[relayout_start:css.index("}", relayout_start)]
+            self.assertIn("height: 26px", relayout_block)
+            self.assertIn("min-height: 26px", relayout_block)
+        # 12. No question mark, custom combobox/listbox, option-hover tooltip,
+        #     keyboard ARIA and request-free layout switching stay intact.
+        with self.subTest("no-regression-on-newest-contracts"):
+            self.assertNotIn("data-graph-layout-help", runtime)
+            self.assertNotIn("<select data-graph-layout-select", runtime)
+            self.assertIn('data-graph-layout-option-tooltip role="tooltip" hidden', runtime)
+            self.assertIn('setAttribute("aria-activedescendant"', runtime)
+            pick_start = runtime.index("function applyOntologyGraphLayoutPickerSelection(")
+            pick_src = runtime[pick_start:runtime.index("function onOntologyGraphLayoutTriggerClick(", pick_start)]
+            self.assertIn("switchOntologyGraphLayout(value)", pick_src)
+            self.assertNotIn("loadOntologyGraph(", pick_src)
+            self.assertNotIn("fetch(", pick_src)
+
+
 if __name__ == "__main__":
     unittest.main()
 

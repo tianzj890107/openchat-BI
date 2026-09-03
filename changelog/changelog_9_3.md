@@ -43,7 +43,7 @@
   `pytest tests/test_regressions.py -q` 215 passed（含新增契约测试）；
   `git diff --check` 通过。未部署、未发包。
 
-### 2. 本体布局控件：自定义选择面板 + 键盘闭环 + 白色说明气泡 + 工具栏等高（Spec + 实现 + 验收修复，已完成）
+### 2. 本体布局控件：自定义选择面板 + 键盘闭环 + 白色说明气泡 + 工具栏等高 + 下拉项去按钮边框（Spec + 实现 + 验收修复，已完成）
 
 - 用户可见变化：本体子图弹窗工具栏将原来的“关系聚类可视化 / 语义环形可视化”两个并列
   按钮收敛为控件组“布局 [选择器 ▼]”：默认“关系聚类可视化”，可切换“语义环形
@@ -107,3 +107,29 @@
   hover cluster option 显示新 ForceAtlas2 完整文案、hover radial 显示环形文案，气泡在
   option 右侧、窄屏自动翻转且不被 dialog 裁切，键盘闭环全程无视觉气泡，trigger 与
   “重新布局”计算高度均 26px、切换布局请求增量为 0。未部署、未发包。
+- 下拉项去按钮边框与样式隔离（本轮最终口径）：布局下拉面板本身保留白底、浅灰外边框、
+  8px 外层圆角与轻量阴影；面板内两个 option 改为无边框列表行——`border:0`、
+  `outline` 仅 `:focus-visible`、默认 `background:transparent`、无 `box-shadow`、
+  无独立白色按钮底板或卡片间距，行内 `border-radius:4px` 只用于 hover/活动整行底色；
+  hover/`.is-active` 为整行浅蓝 `#eff6ff` + 蓝色文字，`.is-selected` 保留蓝色文字与
+  勾选，点击区域仍覆盖整行。工具栏通用按钮规则由 `.ontology-graph-toolbar button`
+  收窄为直属业务按钮 `.ontology-graph-toolbar > button`（含 `.active`/`:disabled`），
+  另加菜单级重置 `.ontology-layout-menu .ontology-layout-option`，不使用 `!important`；
+  trigger 仍为有边框的选择器外观（`1px` 边框 + `26px` 高），与无边框 option 明确区分。
+- 实现与文件（本轮）：修改 `frontend/src/workbench.css`（作用域收窄 + 菜单级 option
+  重置）、`tests/test_regressions.py`（新增
+  `test_ontology_layout_option_borderless_contract`，12 组 subTest）；构建产物
+  `bi_agent/web/static/vendor/antd/*` 同步重建。Spec 与证据：
+  `docs/specs/ontology-layout-borderless-options.md`（本轮新增，已完成）、
+  `docs/test-evidence/ontology-layout-borderless-options-red.txt`、
+  `...-green.txt`、`...-browser-acceptance.json`、截图 `r1-*`、`g1..g4-*`。
+- 验证（本轮）：Red 退出码 1——静态契约 `5 failed, 1 passed, 218 deselected`
+  （通用后代按钮规则仍在、`> button` 收窄缺失、菜单级 option 重置缺失），真实浏览器
+  计算样式两个 option 均为 `1px` 四边边框 + `7px` 圆角按钮卡片；Green 后前端单测
+  76 passed、`npm run build` 成功、共享包 `npm test` 6 passed、
+  `pytest tests/test_regressions.py -q` 219 passed（新增 borderless 契约方法，
+  12 subtests 通过）、`git diff --check` 通过；真实 Chrome headless 152 验收
+  （桌面 1440px、窄屏 700px）17/17 通过：默认 option 计算样式四边 `0px`、
+  `box-shadow:none`、背景透明，hover/活动仅整行浅蓝无边框闪现，选中文字与勾选正常，
+  trigger/重新布局均 26px，menu 外框与阴影保留，无“?”、无原生 title，hover option
+  白色说明气泡正常。未部署、未发包。

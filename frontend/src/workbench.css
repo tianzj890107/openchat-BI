@@ -4631,9 +4631,9 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
 .ontology-graph-anchor { margin-left: 8px; color: var(--fg-3, #64748b); font-family: var(--font-mono); }
 .ontology-graph-close { border: 0; background: transparent; color: var(--fg-2, #475569); font-size: 28px; cursor: pointer; }
 .ontology-graph-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-bottom: 1px solid var(--border, #e2e8f0); }
-.ontology-graph-toolbar button { border: 1px solid #cbd5e1; border-radius: 7px; padding: 6px 12px; background: #fff; color: #334155; cursor: pointer; }
-.ontology-graph-toolbar button.active { border-color: #2563eb; background: #eff6ff; color: #2563eb; font-weight: 600; }
-.ontology-graph-toolbar button:disabled { opacity: .55; cursor: wait; }
+.ontology-graph-toolbar > button { border: 1px solid #cbd5e1; border-radius: 7px; padding: 6px 12px; background: #fff; color: #334155; cursor: pointer; }
+.ontology-graph-toolbar > button.active { border-color: #2563eb; background: #eff6ff; color: #2563eb; font-weight: 600; }
+.ontology-graph-toolbar > button:disabled { opacity: .55; cursor: wait; }
 .ontology-layout-selector { position: relative; display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; }
 .ontology-layout-label { color: var(--fg-3, #64748b); font-size: 12px; }
 .ontology-layout-picker { position: relative; display: inline-block; }
@@ -4660,6 +4660,10 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
 .ontology-layout-chevron { width: 0; height: 0; flex: 0 0 auto; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #64748b; }
 .ontology-layout-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 80; min-width: 148px; width: max-content; max-width: min(260px, calc(100vw - 24px)); padding: 4px; background: #fff; color: #334155; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 6px 18px rgba(15, 23, 42, .12); }
 .ontology-layout-option { display: block; width: 100%; border: 0; background: transparent; color: #334155; font-size: 12px; font-family: inherit; text-align: left; padding: 6px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+/* Options are borderless list rows owned by the menu, never styled by the
+   toolbar's direct-child business-button rule. Hover/active rows keep their
+   own light-blue full-row background declared after this reset. */
+.ontology-layout-menu .ontology-layout-option { appearance: none; border: 0; outline: 0; box-shadow: none; background: transparent; border-radius: 4px; }
 .ontology-layout-option:hover, .ontology-layout-option.is-active { background: #eff6ff; color: #2563eb; }
 .ontology-layout-option.is-selected { color: #2563eb; font-weight: 600; }
 .ontology-layout-option.is-selected::after { content: "✓"; float: right; margin-left: 10px; color: #2563eb; font-weight: 700; }

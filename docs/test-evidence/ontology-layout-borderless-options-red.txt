@@ -1,0 +1,66 @@
+================================================================================
+ontology-layout-borderless-options — TDD RED (2026-09-03)
+Spec: docs/specs/ontology-layout-borderless-options.md
+Branch: 20260727 (local HEAD 2b35ba2, pushed to gitlab/20260727)
+Red state: contract test added; workbench.css NOT touched yet.
+================================================================================
+
+[CMD] .venv/bin/python -m pytest tests/test_regressions.py -q -k test_ontology_layout_option_borderless_contract --tb=line
+
+.                                                            [100%]
+=================================== FAILURES ===================================
+E   AssertionError: '.ontology-graph-toolbar button {' …[CSS payload truncated]
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:732: AssertionError: '.ontology-graph-toolbar button {' …[CSS payload truncated]
+E   AssertionError: '.ontology-graph-toolbar > button {' not found in '/* ====================================================================\n *  BI Analyst Ontology Workbench\n *  Palantir-inspired dense dark UI — data-first, no decoration.\n * ==================================================================== */\n\n:root {\n  /* eimosp-ontology-agentic-modeling light workbench palette. */\n  --bg-0:          #F7F9FC;\n  --bg-1:          #FFFFFF;\n  --bg-2:          #FFFFFF;\n  --bg-3:          #EFF6FF;\n  --bg-elev:       #F1F5F9;\n  --bg-input:      #FFFFFF;\n\n  /* Borders */\n  --bord…[truncated]
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:732: AssertionError: '.ontology-graph-toolbar > button {' not found in '/* ====================================================================\n *  BI Analyst Ontology Workbench\n *  Palantir-inspired dense dark UI — data-first, no decoration.\n * ==================================================================== */\n\n:root {\n  /* eimosp-ontology-agentic-modeling light workbench palette. */\n  --bg-0:          #F7F9FC;\n  --bg-1:          #FFFFFF;\n  --bg-2:          #FFFFFF;\…[truncated]
+E   AssertionError: '.ontology-layout-menu .ontology-layout-option {' not found in '/* ====================================================================\n *  BI Analyst Ontology Workbench\n *  Palantir-inspired dense dark UI — data-first, no decoration.\n * ==================================================================== */\n\n:root {\n  /* eimosp-ontology-agentic-modeling light workbench palette. */\n  --bg-0:          #F7F9FC;\n  --bg-1:          #FFFFFF;\n  --bg-2:          #FFFFFF;\n  --bg-3:          #EFF6FF;\n  --bg-elev:       #F1F5F9;\n  --bg-input:      #FFFFFF;\n\n  /* Borders…[truncated]
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:732: AssertionError: '.ontology-layout-menu .ontology-layout-option {' not found in '/* ====================================================================\n *  BI Analyst Ontology Workbench\n *  Palantir-inspired dense dark UI — data-first, no decoration.\n * ==================================================================== */\n\n:root {\n  /* eimosp-ontology-agentic-modeling light workbench palette. */\n  --bg-0:          #F7F9FC;\n  --bg-1:          #FFFFFF;\n  --bg-2:      …[truncated]
+E   AssertionError: '.ontology-layout-menu .ontology-layout-option {' not found in '/* ====================================================================\n *  BI Analyst Ontology Workbench\n *  Palantir-inspired dense dark UI — data-first, no decoration.\n * ==================================================================== */\n\n:root {\n  /* eimosp-ontology-agentic-modeling light workbench palette. */\n  --bg-0:          #F7F9FC;\n  --bg-1:          #FFFFFF;\n  --bg-2:          #FFFFFF;\n  --bg-3:          #EFF6FF;\n  --bg-elev:       #F1F5F9;\n  --bg-input:      #FFFFFF;\n\n  /* Borders…[truncated]
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:732: AssertionError: '.ontology-layout-menu .ontology-layout-option {' not found in '/* ====================================================================\n *  BI Analyst Ontology Workbench\n *  Palantir-inspired dense dark UI — data-first, no decoration.\n * ==================================================================== */\n\n:root {\n  /* eimosp-ontology-agentic-modeling light workbench palette. */\n  --bg-0:          #F7F9FC;\n  --bg-1:          #FFFFFF;\n  --bg-2:      …[truncated]
+E   AssertionError: '.ontology-layout-menu .ontology-layout-option {' not found in '/* ====================================================================\n *  BI Analyst Ontology Workbench\n *  Palantir-inspired dense dark UI — data-first, no decoration.\n * ==================================================================== */\n\n:root {\n  /* eimosp-ontology-agentic-modeling light workbench palette. */\n  --bg-0:          #F7F9FC;\n  --bg-1:          #FFFFFF;\n  --bg-2:          #FFFFFF;\n  --bg-3:          #EFF6FF;\n  --bg-elev:       #F1F5F9;\n  --bg-input:      #FFFFFF;\n\n  /* Borders…[truncated]
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:732: AssertionError: '.ontology-layout-menu .ontology-layout-option {' not found in '/* ====================================================================\n *  BI Analyst Ontology Workbench\n *  Palantir-inspired dense dark UI — data-first, no decoration.\n * ==================================================================== */\n\n:root {\n  /* eimosp-ontology-agentic-modeling light workbench palette. */\n  --bg-0:          #F7F9FC;\n  --bg-1:          #FFFFFF;\n  --bg-2:      …[truncated]
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/fastapi/testclient.py:1
+  /Users/sher/Boulderaitech/eimosp-ontology-agentic-analytics/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SUBFAILED[generic-descendant-button-rule] tests/test_regressions.py::OfflineRegressionTests::test_ontology_layout_option_borderless_contract
+SUBFAILED[generic-scoped-direct-child] tests/test_regressions.py::OfflineRegressionTests::test_ontology_layout_option_borderless_contract
+SUBFAILED[menu-scoped-option-reset] tests/test_regressions.py::OfflineRegressionTests::test_ontology_layout_option_borderless_contract
+SUBFAILED[option-no-nonzero-border] tests/test_regressions.py::OfflineRegressionTests::test_ontology_layout_option_borderless_contract
+SUBFAILED[option-no-white-background] tests/test_regressions.py::OfflineRegressionTests::test_ontology_layout_option_borderless_contract
+5 failed, 1 passed, 218 deselected, 6 warnings, 7 subtests passed in 0.74s
+<sys>:0: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+SHELL EXIT CODE: 1
+
+-------------------------------------------------------------------------------
+Real CSS-level RED evidence (headless Chrome 152 via CDP, pre-fix bundle at
+http://127.0.0.1:8765/workbench, viewport 1440x900; 2026-09-03)
+-------------------------------------------------------------------------------
+[CMD] node /tmp/browser-borderless-red.mjs   (CDP port 9342)
+
+getComputedStyle() of the two layout options while the menu is open:
+- "关系聚类可视化": borderTop/Right/Bottom/LeftWidth = 1px/1px/1px/1px,
+  borderRadius = 7px, backgroundColor = rgb(239, 246, 255) (.is-active row)
+- "语义环形可视化": borderTop/Right/Bottom/LeftWidth = 1px/1px/1px/1px,
+  borderRadius = 7px, backgroundColor = rgb(255, 255, 255)
+
+Expected (spec 5.1): border widths 0px/0px/0px/0px, boxShadow none,
+backgroundColor transparent. The generic `.ontology-graph-toolbar button`
+rule (specificity 0-1-1) overrides the `.ontology-layout-option` reset
+(specificity 0-1-0) -> options render as bordered rounded white button
+cards. Screenshot: docs/test-evidence/r1-red-options-bordered.png

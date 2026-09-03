@@ -1,0 +1,97 @@
+{
+  "phase": "green",
+  "browser": "Google Chrome headless 152",
+  "date": "2026-09-03",
+  "viewports": [
+    "1440x900",
+    "700x900"
+  ],
+  "results": [
+    {
+      "name": "desktop default option has 0px borders",
+      "ok": true,
+      "detail": "[[\"关系聚类可视化\",\"0px\"],[\"语义环形可视化\",\"0px\"]]"
+    },
+    {
+      "name": "desktop inactive option transparent bg + no shadow",
+      "ok": true,
+      "detail": "bg rgba(0, 0, 0, 0), shadow none"
+    },
+    {
+      "name": "desktop active/selected row keeps light-blue row bg without border",
+      "ok": true,
+      "detail": "bg rgb(239, 246, 255), border 0px"
+    },
+    {
+      "name": "desktop selected shows blue text and check",
+      "ok": true,
+      "detail": "color rgb(37, 99, 235), ::after \"✓\""
+    },
+    {
+      "name": "desktop option rows not rounded button cards",
+      "ok": true,
+      "detail": "radius 4px"
+    },
+    {
+      "name": "desktop trigger keeps bordered 26px selector",
+      "ok": true,
+      "detail": "h 26px, border 1px"
+    },
+    {
+      "name": "desktop relayout stays 26px",
+      "ok": true,
+      "detail": "h 26px, min-h 26px"
+    },
+    {
+      "name": "desktop menu keeps outer border/radius/shadow",
+      "ok": true,
+      "detail": "border 1px, radius 8px"
+    },
+    {
+      "name": "desktop no question mark / no native title",
+      "ok": true,
+      "detail": "help false"
+    },
+    {
+      "name": "desktop hover paints only full-row light-blue, no border",
+      "ok": true,
+      "detail": "bg rgb(239, 246, 255), border 0px, color rgb(37, 99, 235)"
+    },
+    {
+      "name": "desktop hover radial shows radial hint bubble",
+      "ok": true,
+      "detail": "text 以当前锚点为中心，按照最短关系距离由内向外分环排…"
+    },
+    {
+      "name": "desktop hover cluster shows new ForceAtlas2 hint",
+      "ok": true,
+      "detail": "text ForceAtlas2 是一种先进的力导向图布局…"
+    },
+    {
+      "name": "desktop Escape closes menu",
+      "ok": true,
+      "detail": "expanded false"
+    },
+    {
+      "name": "narrow options still borderless",
+      "ok": true,
+      "detail": "[\"0px\",\"0px\"]"
+    },
+    {
+      "name": "narrow inactive option transparent",
+      "ok": true,
+      "detail": "bg rgba(0, 0, 0, 0)"
+    },
+    {
+      "name": "narrow menu not clipped by dialog",
+      "ok": true,
+      "detail": "{\"left\":251,\"right\":399,\"top\":115.84375,\"bottom\":187.03125}"
+    },
+    {
+      "name": "narrow toolbar heights stay 26px",
+      "ok": true,
+      "detail": "trigger 26px, relayout 26px"
+    }
+  ],
+  "failedCount": 0
+}

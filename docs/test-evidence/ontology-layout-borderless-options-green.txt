@@ -1,0 +1,173 @@
+================================================================================
+ontology-layout-borderless-options — TDD GREEN (2026-09-03, final code state)
+Spec: docs/specs/ontology-layout-borderless-options.md
+Branch: 20260727 (local); no commit/push/MR/deploy in this task yet.
+================================================================================
+
+[CMD] /bin/zsh -c cd /Users/sher/Boulderaitech/eimosp-ontology-agentic-analytics/frontend && node --test tests/*.test.mjs
+✔ sigma view destroy calls kill exactly once across repeated destroys (0.470542ms)
+✔ radial view destroy calls dispose exactly once across repeated destroys (0.085833ms)
+✔ repeated destroy on the same view is idempotent (3.721833ms)
+✔ destroyGraphView(null) and undefined are safe no-ops (0.142042ms)
+✔ relayout delegates to the underlying implementation while alive (0.07425ms)
+✔ radial relayout delegates to the injected relayout callback while alive (0.056125ms)
+✔ relayout after destroy is a no-op (0.051333ms)
+✔ radial relayout after destroy is a no-op (0.0495ms)
+✔ new view state defaults to cluster layout with context strategy and closed modal (1.574875ms)
+✔ layout change reuses existing graph data and never triggers a fetch (0.4475ms)
+✔ strategy response replaces graph data while keeping current layout preference (0.868833ms)
+✔ stale render tokens can never overwrite newer state (0.2545ms)
+✔ closing the modal invalidates in-flight ECharts mounts (0.133542ms)
+✔ layout switch, strategy response and close all bump the render token (0.094917ms)
+✔ begin request sets busy and bumps requestEpoch (0.062416ms)
+✔ request A then request B keeps only the newest busy lock (0.058625ms)
+✔ finish request B clears busy only when B finishes (0.059625ms)
+✔ stale epoch finish returns the state unchanged (0.099959ms)
+✔ begin render sets busy and bumps renderToken (0.067917ms)
+✔ render A then render B keeps only the newest render lock (0.051875ms)
+✔ finish render B clears busy only when B finishes (0.040292ms)
+✔ layout change invalidates old render token but keeps fetch busy (0.051ms)
+✔ close clears busy and invalidates old epoch and render token (0.042458ms)
+✔ finish of the current request and render clears busy after failure (0.046708ms)
+✔ empty or errored latest finish still releases the busy lock (0.049958ms)
+✔ reopen keeps request and render counters monotonic (0.20375ms)
+✔ request epochs never collide across reopen (0.318375ms)
+✔ render tokens never collide across reopen (0.221625ms)
+✔ reopen resets business state but keeps async identity growing (0.793708ms)
+✔ twenty reopen cycles produce strictly increasing unique epochs and tokens (0.194083ms)
+✔ default state is hidden with no active value or hint (1.485583ms)
+✔ hovering cluster shows the full new ForceAtlas2 hint (0.182708ms)
+✔ hovering radial shows the unchanged ring hint (0.0655ms)
+✔ switching cluster to radial never keeps the old hint (0.082709ms)
+✔ leave, select, Escape, Tab, outside click, busy and modal close all collapse through hide (0.092292ms)
+✔ unknown values never show the bubble (0.055375ms)
+✔ hide is idempotent (0.404958ms)
+✔ tooltip transitions never mutate the frozen options registry (0.09475ms)
+✔ layout options are exactly cluster and radial in fixed order (0.786917ms)
+✔ layout option labels match the spec table exactly (0.075709ms)
+✔ cluster hint uses the full advanced ForceAtlas2 sentence (0.063166ms)
+✔ radial hint keeps the unchanged ring description (1.373375ms)
+✔ the old ForceAtlas2 hint copy no longer exists anywhere in the registry (0.484417ms)
+✔ ontologyLayoutOption resolves legal values and rejects unknown ones (1.05875ms)
+✔ exported options array and option objects cannot be modified (4.775666ms)
+✔ picker defaults to closed with cluster selected (2.088709ms)
+✔ toggle opens and closes the listbox (0.385916ms)
+✔ open and close only flip the expanded flag (0.122416ms)
+✔ ArrowDown and ArrowUp cycle the active option (0.089125ms)
+✔ Home and End move to the first and last option (0.073625ms)
+✔ Enter/Space commit returns the active option value (0.07125ms)
+✔ Escape/close cancels without changing the selected layout (0.108292ms)
+✔ external state sync updates value, active option, label and hint (0.065834ms)
+✔ busy closes an open menu and prevents reopening (0.254875ms)
+✔ unknown values never become the picker value (0.101792ms)
+✔ closed Enter/Space opens the listbox on the current selection without committing (0.116458ms)
+✔ open Enter/Space commits the active option and closes without self-selecting (0.052708ms)
+✔ ArrowDown/ArrowUp from closed open and step relative to the current selection (0.047375ms)
+✔ ArrowDown/ArrowUp keep cycling while the listbox is open (0.04625ms)
+✔ Home/End open when closed and jump when open (0.051417ms)
+✔ Escape closes without commit or layout change (0.045083ms)
+✔ Tab closes the listbox, stays unhandled and never commits (0.036417ms)
+✔ unsupported keys are unhandled and leave the state object untouched (1.79475ms)
+✔ busy blocks opening, navigation and commit and closes an open listbox (0.087ms)
+✔ keyboard commit stays separate from syncOntologyLayoutPicker (0.045459ms)
+✔ explicit anchor node enters distance:0 as the only center node (1.347667ms)
+✔ one-hop and two-hop nodes enter correct layers via undirected BFS (1.736167ms)
+✔ multiple shortest paths pick a deterministic parentId by stable id (0.191875ms)
+✔ isolated nodes enter unrelated with empty parentId (0.410208ms)
+✔ without explicit anchor, deterministic first legal node or data.anchor match becomes center (0.105833ms)
+✔ graph without relation edges still renders center and unrelated layers (0.084125ms)
+✔ radial nodes carry id/name/label/layer/parentId/symbolSize/itemStyle/ontologyType (0.136625ms)
+✔ radial styling reuses NODE_STYLE colors and clamps symbol size (0.0775ms)
+✔ input objects are never mutated (0.139166ms)
+✔ edges with unknown endpoints or self loops are tolerated and skipped (0.124459ms)
+✔ identical input twice produces deeply equal output (0.117709ms)
+ℹ tests 76
+ℹ suites 0
+ℹ pass 76
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 142.067084
+SHELL EXIT CODE: 0
+
+[CMD] /bin/zsh -c cd /Users/sher/Boulderaitech/eimosp-ontology-agentic-analytics/frontend && npm run build
+npm warn Unknown user config "always-auth" (//gitlab.boulderaitech.com/api/v4/projects/1069/packages/npm/:always-auth). This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> eimosp-ontology-agentic-analytics-workbench@0.1.1 build
+> vite build
+
+vite v6.4.3 building for production...
+transforming...
+✓ 6581 modules transformed.
+rendering chunks...
+computing gzip size...
+../bi_agent/web/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css    164.56 kB │ gzip:  26.18 kB
+../bi_agent/web/static/vendor/antd/workbench.js                                     1,283.49 kB │ gzip: 388.81 kB
+✓ built in 2.97s
+SHELL EXIT CODE: 0
+
+[CMD] /bin/zsh -c cd /Users/sher/Boulderaitech/ontology-graph && npm test
+npm warn Unknown user config "always-auth" (//gitlab.boulderaitech.com/api/v4/projects/1069/packages/npm/:always-auth). This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> @boulderaitech/ontology-graph@0.1.1 test
+> node --test tests/*.test.js
+
+✔ layoutOntologyForceAtlas assigns finite normalized coordinates (4.791584ms)
+✔ isolated nodes are packed rather than scattered (1.011417ms)
+✔ forceAtlasIterations scales with node count (0.057459ms)
+✔ FORCE_ATLAS_CONFIG is frozen and stable (0.045542ms)
+✔ radial layout is consumer-configurable and framework independent (1.649417ms)
+✔ prepared radial result converts to a deterministic ECharts option object (0.355375ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 53.931917
+SHELL EXIT CODE: 0
+
+[CMD] /bin/zsh -c cd /Users/sher/Boulderaitech/eimosp-ontology-agentic-analytics && .venv/bin/python -m pytest tests/test_regressions.py -q
+............................................................ [ 27%]
+........................................................................ [ 60%]
+........................................................................ [ 93%]
+...............                                                          [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/fastapi/testclient.py:1
+  /Users/sher/Boulderaitech/eimosp-ontology-agentic-analytics/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+219 passed, 6 warnings, 12 subtests passed in 1.74s
+<sys>:0: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+SHELL EXIT CODE: 0
+
+[CMD] /bin/zsh -c cd /Users/sher/Boulderaitech/eimosp-ontology-agentic-analytics && git diff --check
+SHELL EXIT CODE: 0
+
+[CMD] node /tmp/browser-borderless-green.mjs  (headless Chrome 152, 1440x900 + 700x900)
+Browser computed-style acceptance: 17 checks, 17 pass, 0 fail.
+Screenshots: g1-desktop-menu.png g2-desktop-hover-row.png g3-narrow-menu.png g4-narrow-hover.png
+JSON: docs/test-evidence/ontology-layout-borderless-browser-acceptance.json
+
+Key computed styles (menu open, default options):
+  border widths: 0px/0px/0px/0px; boxShadow: none;
+  inactive option backgroundColor: rgba(0, 0, 0, 0);
+  hover/.is-active row: background #eff6ff full row, border stays 0px;
+  selected row: color #2563eb + ::after check;
+  trigger: 26px height, 1px border (bordered selector);
+  menu: outer 1px border, 8px radius, shadow; options radius 4px;
+  no question-mark entry, no native title on trigger/options.
