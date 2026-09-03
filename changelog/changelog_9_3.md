@@ -12,18 +12,29 @@
 
 ## 变更
 
-### 1. 语义环形可视化 Spec（新增，TDD Red 待实现；当前未提交）
+### 1. 本体子图弹窗新增“语义环形可视化”（Spec + 实现 + 验收修复，已完成）
 
-- 今日新增 Spec `docs/specs/ontology-radial-visualization.md`：复用共享包
-  `@boulderaitech/ontology-graph@0.1.1` 的径向纯算法与仓库内 ECharts 静态资源，
-  在现有本体子图弹窗“关系聚类可视化”（Sigma + ForceAtlas2）基础上规划可切换的
-  “语义环形可视化”；布局切换不得重新请求 `/api/ontology/subgraph`、不调用 LLM、
-  不写聊天历史、不推进 Agent SOP。
-- 范围要点：新增“子图数据 → 共享环形契约”的纯转换层、布局选择 UI 与键盘/ARIA 状态、
-  Sigma 与 ECharts 两种渲染器的生命周期管理、Context/Expand 两种子图策略及空图/
-  无关系/失败边界处理；不改子图响应协议、不复制或改写共享包算法、不新增 ECharts
-  npm 依赖。
-- 状态：Spec 已创建（标记“待实现（TDD Red）”），Red 测试与实现尚未开始；该文件
-  当前未提交（`git status` 未跟踪），本条目不将其描述为已完成功能。
-- 主要文件：`docs/specs/ontology-radial-visualization.md`（新增，未提交）。
-- 验证：无（Spec 阶段，未实现、未验证；未部署）。
+- 用户可见变化：本体子图弹窗工具栏现提供两个布局选项——默认“关系聚类可视化”
+  （Sigma + ForceAtlas2，行为不变）与新增“语义环形可视化”；环形视图将当前锚点置于
+  中心，其余节点按与锚点的最短关系距离分环展示（`distance:0..N`、`unrelated`），
+  支持滚轮缩放、拖动画布与按当前视口重新布局；布局切换与重新布局只复用已加载子图
+  数据，不重新请求 `/api/ontology/subgraph`、不调用 LLM、不写聊天历史、不推进 SOP。
+- Context/Expand 子图检索仍走原接口，响应到达后保持当前布局偏好；无关系边、空图、
+  ECharts 加载失败、环形契约错误等边界均有可读提示且不会关闭弹窗。
+- 异步控件与生命周期修复：子图请求与渲染期间，strategy/layout/relayout 三类控件统一
+  禁用；请求与渲染分别用 `requestEpoch`/`renderToken` 守卫，旧请求或迟到渲染不能解锁
+  新任务或覆盖新状态；Sigma `kill()` 与 ECharts `dispose()` 收敛为幂等 renderer
+  handle，关闭弹窗、切换策略、切换布局、失败路径都先销毁旧实例再操作 canvas。
+- 数据转换：`buildRadialGraph(data)` 在分析端保持纯函数，无向 BFS 分环、稳定
+  `parentId`、样式沿用 `NODE_STYLE`；共享环形算法只从 `@boulderaitech/ontology-graph/radial`
+  导入，分析仓库内无算法副本，共享包未修改。
+- 主要文件：`docs/specs/ontology-radial-visualization.md`、
+  `docs/specs/ontology-radial-visualization-acceptance-fixes.md`（新增 Spec）；
+  `frontend/src/ontologyGraphModel.js`、`frontend/src/ontologyGraphViewState.js`（新增）、
+  `frontend/src/ontologyGraphRendererHandle.js`（新增）、`frontend/src/runtime.js`、
+  `frontend/src/workbench.css`；`frontend/tests/ontologyRadialGraphModel.test.mjs`、
+  `frontend/tests/ontologyGraphViewState.test.mjs`、
+  `frontend/tests/ontologyGraphRendererHandle.test.mjs`（新增）；`tests/test_regressions.py`。
+- 验证：共享包 `npm test` 6 passed；前端单测 36 passed；`npm run build` 成功；
+  `pytest tests/test_regressions.py -q` 214 passed（含新增契约测试）；
+  `git diff --check` 通过。未部署、未发包。

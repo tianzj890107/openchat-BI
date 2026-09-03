@@ -4034,6 +4034,97 @@ console.log(JSON.stringify(out));"""
         self.assertIn("schema_version", conv)
         self.assertNotIn('"0.1.0"', conv)
 
+    def test_ontology_subgraph_radial_layout_contract(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        model = Path("frontend/src/ontologyGraphModel.js").read_text(encoding="utf-8")
+        # 1. Radial capability is imported from the shared package only; the
+        #    existing Sigma renderer and buildGraph path stay intact.
+        self.assertIn('from "@boulderaitech/ontology-graph/radial"', runtime)
+        self.assertIn("prepareRadialLayout", runtime)
+        self.assertIn("radialGraphOption", runtime)
+        self.assertIn('createSigmaOntologyRenderer(canvas, buildGraph(graph))', runtime)
+        # 2. Toolbar offers both layouts and exposes the current selection;
+        #    the cluster layout stays the default.
+        self.assertIn('data-graph-layout="cluster"', runtime)
+        self.assertIn('data-graph-layout="radial"', runtime)
+        self.assertIn('>关系聚类可视化</button>', runtime)
+        self.assertIn('>语义环形可视化</button>', runtime)
+        self.assertIn('setAttribute("aria-pressed", active ? "true" : "false")', runtime)
+        # 3. Layout switching reuses the loaded graph data and never fetches.
+        switch_start = runtime.index("function switchOntologyGraphLayout(")
+        switch_src = runtime[switch_start:runtime.index("function syncOntologyGraphLayoutControls(", switch_start)]
+        self.assertIn("renderOntologyGraphFromData()", switch_src)
+        self.assertNotIn("loadOntologyGraph(", switch_src)
+        self.assertNotIn("fetch(", switch_src)
+        # 4. Close, strategy changes and layout changes all go through the
+        #    unified destroy function.
+        self.assertIn("function destroyOntologyGraphView(", runtime)
+        self.assertGreaterEqual(runtime.count("destroyOntologyGraphView("), 3)
+        # 5. The ECharts branch really mounts the shared radial option.
+        self.assertIn('chart.setOption(radialGraphOption(prepared), { notMerge: true })', runtime)
+        # 6. relations_available=false never gates the radial node build or
+        #    the shared render path.
+        radial_func_start = model.index("export function buildRadialGraph(")
+        radial_src = model[radial_func_start:]
+        self.assertNotIn("relations_available", radial_src)
+        self.assertNotIn("return null", radial_src)
+        self.assertIn('"unrelated"', radial_src)
+        render_start = runtime.index("function renderOntologyGraphFromData(")
+        render_src = runtime[render_start:runtime.index("function renderOntologyGraphCluster(", render_start)]
+        self.assertNotIn("relations_available", render_src)
+        self.assertIn("state.layout === LAYOUT_RADIAL", render_src)
+        # The status hint for unavailable relations is preserved for both
+        # layouts (nodes are still shown).
+        self.assertIn("关系边不可用：", runtime)
+
+    def test_ontology_subgraph_async_controls_and_renderer_handle_contract(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        # 1. Runtime manages all three control groups through one unified
+        #    syncOntologyGraphControls function and disables them while busy.
+        self.assertIn("function syncOntologyGraphControls(", runtime)
+        sync_start = runtime.index("function syncOntologyGraphControls(")
+        sync_end = runtime.index("function syncOntologyGraphLayoutControls(", sync_start)
+        sync_src = runtime[sync_start:sync_end]
+        self.assertIn('querySelectorAll("[data-graph-strategy]")', sync_src)
+        self.assertIn('querySelectorAll("[data-graph-layout]")', sync_src)
+        self.assertIn('[data-graph-relayout]', sync_src)
+        self.assertIn("isOntologyGraphBusy(ontologyGraphViewState)", sync_src)
+        # 2. loadOntologyGraph must not unconditionally re-enable buttons in
+        #    its finally; the finish path carries the captured requestEpoch.
+        load_start = runtime.index("async function loadOntologyGraph(")
+        load_end = runtime.index("function destroyOntologyGraphView(", load_start)
+        load_src = runtime[load_start:load_end]
+        self.assertIn("beginOntologyGraphRequest(", load_src)
+        self.assertIn("const requestEpoch = ontologyGraphViewState.requestEpoch", load_src)
+        self.assertIn("finishOntologyGraphRequest(ontologyGraphViewState, requestEpoch)", load_src)
+        self.assertNotIn("disabled = false", load_src)
+        # 3. Render settle is token-aware for both cluster and radial paths.
+        self.assertIn("beginOntologyGraphRender(", runtime)
+        self.assertIn("finishOntologyGraphRender(ontologyGraphViewState, renderToken)", runtime)
+        # 4. Sigma/ECharts go through the testable renderer handle module and
+        #    the runtime keeps a single current view.
+        self.assertIn('from "./ontologyGraphRendererHandle.js"', runtime)
+        self.assertIn("createSigmaGraphView(", runtime)
+        self.assertIn("createRadialGraphView(", runtime)
+        self.assertIn("destroyGraphView(ontologyGraphView)", runtime)
+        # 5. Radial success/failure/empty/prepared=null paths all settle the
+        #    current render token (a finally that finishes the render).
+        radial_start = runtime.index("async function renderOntologyGraphRadial(")
+        radial_src = runtime[radial_start:runtime.index("function switchOntologyGraphLayout(", radial_start)]
+        self.assertIn("finally", radial_src)
+        self.assertIn("finishOntologyGraphRender(ontologyGraphViewState, renderToken)", radial_src)
+        # 6. close / strategy change / layout change still destroy the view
+        #    through the unified wrapper before replacing or hiding it.
+        close_start = runtime.index("function closeOntologyGraphCard(")
+        close_src = runtime[close_start:runtime.index("function normalizeOntologyEntity(", close_start)]
+        self.assertIn("destroyOntologyGraphView()", close_src)
+        self.assertIn("closeOntologyGraphView(", close_src)
+        # 7. The reload control handler guards against busy state as well as
+        #    relying on the disabled attribute alone.
+        relayout_src = runtime[runtime.index("function onOntologyGraphRelayoutClick("):runtime.index("function onOntologyGraphWindowResize(", runtime.index("function onOntologyGraphRelayoutClick("))]
+        self.assertIn("isOntologyGraphBusy(ontologyGraphViewState)", relayout_src)
+
+
 if __name__ == "__main__":
     unittest.main()
 

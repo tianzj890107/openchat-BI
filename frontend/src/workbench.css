@@ -4635,6 +4635,8 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
 .ontology-graph-toolbar button.active { border-color: #2563eb; background: #eff6ff; color: #2563eb; font-weight: 600; }
 .ontology-graph-toolbar button:disabled { opacity: .55; cursor: wait; }
 .ontology-graph-toolbar .ontology-graph-layout { margin-left: 8px; border-color: #2563eb; background: #eff6ff; color: #2563eb; font-size: 12px; font-weight: 600; cursor: default; }
+.ontology-graph-layout-group { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; }
+.ontology-graph-layout-group .ontology-graph-layout { margin-left: 0; cursor: pointer; }
 .ontology-graph-meta { margin-left: auto; color: var(--fg-3, #64748b); font-size: 12px; }
 .ontology-graph-canvas { position: relative; flex: 1; min-height: 360px; overflow: hidden; background: radial-gradient(circle at center, rgba(37, 99, 235, .05), transparent 66%), #f8fafc; }
 .ontology-graph-canvas > canvas { position: absolute; inset: 0; }
