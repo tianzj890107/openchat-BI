@@ -251,10 +251,32 @@ git status --short
   - `git diff --check` → 干净。
 - 原始输出：`docs/test-evidence/ontology-layout-borderless-options-green.txt`
 
-### 浏览器验收（真实 Chrome headless 152，2026-09-03）
+### 浏览器验收（真实 Chrome headless 152，2026-09-03；证据已按最终事实修正）
 
-- 视口：桌面 1440x900、窄屏 700x900；页面 `http://127.0.0.1:8765/workbench`。
-- 结果：17 项检查全部通过（0 失败），详见
+- 可重复验收入口：`scripts/verify_ontology_layout_borderless_ui.mjs`（仓库内，
+  自动启动本机 Chrome/Chromium；默认页面 `http://127.0.0.1:8765/workbench`，
+  `WORKBENCH_URL`/`CHROME_BIN` 可覆盖）。该脚本一次运行完成桌面 1440x900 与
+  窄屏 700x900 共 21 项检查（0 失败），输出
+  `docs/test-evidence/ontology-layout-borderless-browser-acceptance.json` 与
+  `g1..g4` 四张截图，任一断言失败以非零退出码结束。
+- 窄屏 hover 证据修正说明：早期一次性脚本生成的 `g3-narrow-menu.png` 与
+  `g4-narrow-hover.png` SHA-256 完全相同（`6bf23ec9…570c5`），`g4` 未显示
+  Tooltip，属于无效证据，已作废并被仓库内脚本重新生成的截图取代。修正后的
+  `g3`/`g4` 来自同一次真实 hover 流程：
+  - `g3-narrow-menu.png`（菜单展开、无 Tooltip）SHA-256 =
+    `9e81e86de230fc023df8e506ca231b66ab30aaa0b07232af377110219c95ba49`
+  - `g4-narrow-hover.png`（radial option 真实 hover、白色气泡可见）SHA-256 =
+    `0b44fe2aef1db3252b045b3c4fdc4e77ccecae2e63948777b2baaf814fbc86c0`
+  - 窄屏 Tooltip 实测：`hidden=false`、`display=block`、`visibility=visible`、
+    `opacity=1`，`width=280`、`height=54`，rect
+    `{left:402, top:140, right:682, bottom:194}`，完全位于 700x900 视口内
+    （`insideViewport=true`），文案精确为“以当前锚点为中心，按照最短关系距离
+    由内向外分环排列。”，与 radial option 相邻（`flip=false`，class 与左右
+    位置一致）；鼠标移出 listbox 后 `hidden=true`/`display=none`。
+  - 像素差分佐证（仅分析）：g4 相对 g3 新增 12,213 个纯白像素（气泡与箭头）
+    与 3,411 个 `#eff6ff` 浅蓝像素（hover 整行），差异包围盒
+    `(256,105)-(697,215)` 与 Tooltip rect 吻合。
+- 结果：仓库脚本运行 21 项检查全部通过（0 失败），详见
   `docs/test-evidence/ontology-layout-borderless-browser-acceptance.json`；
   截图 `g1-desktop-menu.png`、`g2-desktop-hover-row.png`、
   `g3-narrow-menu.png`、`g4-narrow-hover.png`。

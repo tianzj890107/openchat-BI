@@ -1,34 +1,42 @@
 {
   "phase": "green",
-  "browser": "Google Chrome headless 152",
+  "browser": {
+    "name": "Chrome/Chromium headless",
+    "version": "Chrome/152.0.7977.65"
+  },
+  "url": "http://127.0.0.1:8765/workbench",
   "date": "2026-09-03",
+  "runSeconds": 6.8,
   "viewports": [
     "1440x900",
     "700x900"
   ],
-  "results": [
+  "checks": [
     {
-      "name": "desktop default option has 0px borders",
+      "name": "desktop option borders are 0px",
       "ok": true,
-      "detail": "[[\"关系聚类可视化\",\"0px\"],[\"语义环形可视化\",\"0px\"]]"
+      "detail": [
+        "关系聚类可视化:0px/0px/0px/0px",
+        "语义环形可视化:0px/0px/0px/0px"
+      ]
     },
     {
-      "name": "desktop inactive option transparent bg + no shadow",
+      "name": "desktop inactive option transparent and shadowless",
       "ok": true,
       "detail": "bg rgba(0, 0, 0, 0), shadow none"
     },
     {
-      "name": "desktop active/selected row keeps light-blue row bg without border",
+      "name": "desktop active/selected row light-blue without border",
       "ok": true,
-      "detail": "bg rgb(239, 246, 255), border 0px"
+      "detail": "bg rgb(239, 246, 255)"
     },
     {
-      "name": "desktop selected shows blue text and check",
+      "name": "desktop selected keeps blue text and check",
       "ok": true,
       "detail": "color rgb(37, 99, 235), ::after \"✓\""
     },
     {
-      "name": "desktop option rows not rounded button cards",
+      "name": "desktop option row radius is 4px/6px (not a 7px button)",
       "ok": true,
       "detail": "radius 4px"
     },
@@ -48,50 +56,122 @@
       "detail": "border 1px, radius 8px"
     },
     {
-      "name": "desktop no question mark / no native title",
+      "name": "desktop no question mark and no native titles",
       "ok": true,
       "detail": "help false"
     },
     {
-      "name": "desktop hover paints only full-row light-blue, no border",
+      "name": "desktop menu open shows no tooltip yet",
       "ok": true,
-      "detail": "bg rgb(239, 246, 255), border 0px, color rgb(37, 99, 235)"
+      "detail": "hidden true"
     },
     {
-      "name": "desktop hover radial shows radial hint bubble",
+      "name": "desktop hover cluster shows exact new ForceAtlas2 hint",
       "ok": true,
-      "detail": "text 以当前锚点为中心，按照最短关系距离由内向外分环排…"
+      "detail": "ForceAtlas2 是一种先进的力导向图布局，适合查看节点之间的关系聚类。"
     },
     {
-      "name": "desktop hover cluster shows new ForceAtlas2 hint",
+      "name": "desktop hover radial shows exact ring hint",
       "ok": true,
-      "detail": "text ForceAtlas2 是一种先进的力导向图布局…"
+      "detail": "以当前锚点为中心，按照最短关系距离由内向外分环排列。"
     },
     {
-      "name": "desktop Escape closes menu",
+      "name": "narrow menu open with no tooltip before hover",
       "ok": true,
-      "detail": "expanded false"
+      "detail": "hidden true"
     },
     {
-      "name": "narrow options still borderless",
+      "name": "narrow hover tooltip visible",
       "ok": true,
-      "detail": "[\"0px\",\"0px\"]"
+      "detail": {
+        "hidden": false,
+        "display": "block",
+        "visibility": "visible",
+        "opacity": "1",
+        "width": 280,
+        "height": 54,
+        "insideViewport": true
+      }
     },
     {
-      "name": "narrow inactive option transparent",
+      "name": "narrow hover option is radial and text is exact",
       "ok": true,
-      "detail": "bg rgba(0, 0, 0, 0)"
+      "detail": "option radial, text 以当前锚点为中心，按照最短关系距离由内向外分环排列。"
     },
     {
-      "name": "narrow menu not clipped by dialog",
+      "name": "narrow tooltip fully inside 700x900 viewport",
       "ok": true,
-      "detail": "{\"left\":251,\"right\":399,\"top\":115.84375,\"bottom\":187.03125}"
+      "detail": "{\"rect\":{\"left\":402,\"top\":140,\"right\":682,\"bottom\":194,\"width\":280,\"height\":54},\"viewport\":{\"width\":700,\"height\":900}}"
     },
     {
-      "name": "narrow toolbar heights stay 26px",
+      "name": "narrow tooltip adjacent to the hovered option",
       "ok": true,
-      "detail": "trigger 26px, relayout 26px"
+      "detail": "{\"tip\":{\"left\":402,\"top\":140,\"right\":682,\"bottom\":194,\"width\":280,\"height\":54},\"option\":{\"left\":256,\"right\":394,\"top\":151.4375,\"bottom\":182.03125}}"
+    },
+    {
+      "name": "narrow tooltip flip class matches placement",
+      "ok": true,
+      "detail": "flip false"
+    },
+    {
+      "name": "narrow tooltip hides after leaving the listbox",
+      "ok": true,
+      "detail": "hidden true, display none"
+    },
+    {
+      "name": "g3 and g4 screenshots have different hashes",
+      "ok": true,
+      "detail": "g3 9e81e86de230fc023df8e506ca231b66ab30aaa0b07232af377110219c95ba49 vs g4 0b44fe2aef1db3252b045b3c4fdc4e77ccecae2e63948777b2baaf814fbc86c0"
+    },
+    {
+      "name": "g3 and g4 screenshots are non-empty",
+      "ok": true,
+      "detail": "non-empty"
     }
   ],
+  "narrowHoverTooltip": {
+    "optionValue": "radial",
+    "text": "以当前锚点为中心，按照最短关系距离由内向外分环排列。",
+    "hidden": false,
+    "display": "block",
+    "visibility": "visible",
+    "opacity": "1",
+    "flip": false,
+    "rect": {
+      "left": 402,
+      "top": 140,
+      "right": 682,
+      "bottom": 194,
+      "width": 280,
+      "height": 54
+    },
+    "viewport": {
+      "width": 700,
+      "height": 900
+    },
+    "insideViewport": true,
+    "afterLeave": {
+      "hidden": true,
+      "display": "none"
+    }
+  },
+  "screenshots": {
+    "g1": {
+      "file": "g1-desktop-menu.png",
+      "sha256": "bb8ca7c66bae612d1ba573836d2b3d372b217eb00ba327bc2523b3ef135b898d"
+    },
+    "g2": {
+      "file": "g2-desktop-hover-row.png",
+      "sha256": "2bfc2a5b9a06b43837bef675c2bf0fb7a9ec3316e684014476b73423e95d96eb"
+    },
+    "g3": {
+      "file": "g3-narrow-menu.png",
+      "sha256": "9e81e86de230fc023df8e506ca231b66ab30aaa0b07232af377110219c95ba49"
+    },
+    "g4": {
+      "file": "g4-narrow-hover.png",
+      "sha256": "0b44fe2aef1db3252b045b3c4fdc4e77ccecae2e63948777b2baaf814fbc86c0"
+    }
+  },
   "failedCount": 0
 }

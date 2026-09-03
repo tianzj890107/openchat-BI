@@ -133,3 +133,19 @@
   `box-shadow:none`、背景透明，hover/活动仅整行浅蓝无边框闪现，选中文字与勾选正常，
   trigger/重新布局均 26px，menu 外框与阴影保留，无“?”、无原生 title，hover option
   白色说明气泡正常。未部署、未发包。
+- 窄屏 hover 证据修复（本轮最终口径，同条修订不新增）：早期一次性 `/tmp` 脚本生成的
+  `g3-narrow-menu.png`/`g4-narrow-hover.png` 哈希相同且 `g4` 无气泡，属无效证据；
+  已新增仓库内可重复验收入口 `scripts/verify_ontology_layout_borderless_ui.mjs`
+  （自动启动本机 headless Chrome/Chromium，默认页面 8765 workbench，
+  `WORKBENCH_URL`/`CHROME_BIN` 可覆盖，真实 DOM/鼠标/计算样式/矩形，任一断言失败
+  非零退出）与证据契约测试 `tests/test_ontology_layout_browser_evidence.py`（11 项）。
+  同一次运行重新生成 JSON 与 `g1..g4`：窄屏 700x900 真实 hover radial option 后
+  Tooltip 可见——`hidden=false`、`display=block`、`visibility=visible`、
+  `opacity=1`、`280x54`、rect `{402,140,682,194}`、完全位于视口内
+  （`insideViewport=true`）、文案精确为环形说明、与 option 相邻且 `flip` 一致；
+  鼠标移出 listbox 后恢复隐藏。新 `g3`/`g4` 哈希
+  `9e81e86d…c95ba49` / `0b44fe2a…bc86c0`（不同），像素差分佐证 `g4` 新增白色气泡
+  与浅蓝 hover 行。真实功能无缺陷，本轮未改 `runtime.js`/`workbench.css`；
+  Red 证据契约 9 failed / 1 passed（退出码 1），Green 后该测试 11 passed、
+  前端 76 passed、构建成功、共享包 6 passed、`pytest tests/test_regressions.py -q`
+  219 passed、`git diff --check` 通过。未部署、未发包。
