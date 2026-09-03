@@ -25,6 +25,10 @@
   禁用；请求与渲染分别用 `requestEpoch`/`renderToken` 守卫，旧请求或迟到渲染不能解锁
   新任务或覆盖新状态；Sigma `kill()` 与 ECharts `dispose()` 收敛为幂等 renderer
   handle，关闭弹窗、切换策略、切换布局、失败路径都先销毁旧实例再操作 canvas。
+- 跨弹窗异步身份修复（验收修复）：`openOntologyGraphView` 不再从全新状态重建
+  `requestEpoch`/`renderToken`，而是从上一个弹窗状态继续递增；关闭实体 A 后打开
+  实体 B，A 的迟到请求或 ECharts 渲染无法通过 B 的当前身份判断，避免旧任务覆盖
+  新弹窗（新增 5 项 reopen 单调性/不碰撞测试与 1 项 Runtime 契约回归测试）。
 - 数据转换：`buildRadialGraph(data)` 在分析端保持纯函数，无向 BFS 分环、稳定
   `parentId`、样式沿用 `NODE_STYLE`；共享环形算法只从 `@boulderaitech/ontology-graph/radial`
   导入，分析仓库内无算法副本，共享包未修改。
@@ -35,6 +39,6 @@
   `frontend/src/workbench.css`；`frontend/tests/ontologyRadialGraphModel.test.mjs`、
   `frontend/tests/ontologyGraphViewState.test.mjs`、
   `frontend/tests/ontologyGraphRendererHandle.test.mjs`（新增）；`tests/test_regressions.py`。
-- 验证：共享包 `npm test` 6 passed；前端单测 36 passed；`npm run build` 成功；
-  `pytest tests/test_regressions.py -q` 214 passed（含新增契约测试）；
+- 验证：共享包 `npm test` 6 passed；前端单测 41 passed；`npm run build` 成功；
+  `pytest tests/test_regressions.py -q` 215 passed（含新增契约测试）；
   `git diff --check` 通过。未部署、未发包。

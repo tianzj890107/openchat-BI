@@ -246,3 +246,103 @@ test("empty or errored latest finish still releases the busy lock", () => {
   assert.equal(state.renderBusy, false);
   assert.equal(isOntologyGraphBusy(state), false);
 });
+
+// --- Cross-modal async identity (AC-C1..C6) -----------------------------
+// requestEpoch and renderToken must stay monotonic across modal
+// open/close cycles; reopening from a fresh state would reuse the same
+// small integers and let entity A's late async work corrupt entity B.
+
+test("reopen keeps request and render counters monotonic", () => {
+  let closedA = createOntologyGraphViewState();
+  // open A, run one request and one render, then close A.
+  closedA = openOntologyGraphView(closedA, { code: "A" });
+  closedA = beginOntologyGraphRequest(closedA);
+  closedA = beginOntologyGraphRender(closedA);
+  const epochAfterCloseA = closedA.requestEpoch;
+  const tokenAfterCloseA = closedA.renderToken;
+  closedA = closeOntologyGraphView(closedA);
+  // open B from A's closed state (runtime keeps a single state object).
+  const openedB = openOntologyGraphView(closedA, { code: "B" });
+  assert.ok(openedB.requestEpoch > epochAfterCloseA, "B requestEpoch must exceed A's closed value");
+  assert.ok(openedB.renderToken > tokenAfterCloseA, "B renderToken must exceed A's closed value");
+});
+
+test("request epochs never collide across reopen", () => {
+  let closedA = createOntologyGraphViewState();
+  closedA = openOntologyGraphView(closedA, { code: "A" });
+  closedA = beginOntologyGraphRequest(closedA);
+  const epochA = closedA.requestEpoch;
+  closedA = closeOntologyGraphView(closedA);
+  let openedB = openOntologyGraphView(closedA, { code: "B" });
+  openedB = beginOntologyGraphRequest(openedB);
+  const epochB = openedB.requestEpoch;
+  assert.notEqual(epochA, epochB, "A and B request epochs must differ");
+  assert.ok(epochB > epochA, "B request epoch must be strictly larger");
+  let afterStaleFinish = finishOntologyGraphRequest(openedB, epochA);
+  assert.equal(afterStaleFinish.requestBusy, true, "A's finish must not clear B's busy");
+  const afterCurrentFinish = finishOntologyGraphRequest(afterStaleFinish, epochB);
+  assert.equal(afterCurrentFinish.requestBusy, false, "B's own finish clears B's busy");
+});
+
+test("render tokens never collide across reopen", () => {
+  let closedA = createOntologyGraphViewState();
+  closedA = openOntologyGraphView(closedA, { code: "A" });
+  closedA = beginOntologyGraphRender(closedA);
+  const tokenA = closedA.renderToken;
+  closedA = closeOntologyGraphView(closedA);
+  let openedB = openOntologyGraphView(closedA, { code: "B" });
+  openedB = beginOntologyGraphRender(openedB);
+  const tokenB = openedB.renderToken;
+  assert.notEqual(tokenA, tokenB, "A and B render tokens must differ");
+  assert.ok(tokenB > tokenA, "B render token must be strictly larger");
+  assert.equal(isOntologyGraphRenderCurrent(openedB, tokenA), false, "A's token must not be current in B");
+  let afterStaleFinish = finishOntologyGraphRender(openedB, tokenA);
+  assert.equal(afterStaleFinish.renderBusy, true, "A's render finish must not clear B's busy");
+  const afterCurrentFinish = finishOntologyGraphRender(afterStaleFinish, tokenB);
+  assert.equal(afterCurrentFinish.renderBusy, false, "B's own render finish clears B's busy");
+});
+
+test("reopen resets business state but keeps async identity growing", () => {
+  let closedA = createOntologyGraphViewState();
+  closedA = openOntologyGraphView(closedA, { code: "A", name: "Entity A" });
+  closedA = receiveOntologyGraphData(closedA, STRATEGY_EXPAND, { nodes: [{ id: "a" }], links: [] });
+  closedA = selectOntologyGraphLayout(closedA, LAYOUT_RADIAL);
+  closedA = beginOntologyGraphRequest(closedA);
+  closedA = beginOntologyGraphRender(closedA);
+  const epochAfterCloseA = closedA.requestEpoch;
+  const tokenAfterCloseA = closedA.renderToken;
+  closedA = closeOntologyGraphView(closedA);
+  const entityB = { code: "B", name: "Entity B" };
+  const openedB = openOntologyGraphView(closedA, entityB);
+  assert.equal(openedB.open, true);
+  assert.deepEqual(openedB.entity, entityB, "B must carry its own entity copy");
+  assert.equal(openedB.layout, LAYOUT_CLUSTER, "reopen defaults to cluster layout");
+  assert.equal(openedB.strategy, STRATEGY_CONTEXT, "reopen defaults to context strategy");
+  assert.equal(openedB.data, null, "reopen must clear the previous graph data");
+  assert.equal(openedB.requestBusy, false, "reopen must clear request busy");
+  assert.equal(openedB.renderBusy, false, "reopen must clear render busy");
+  assert.ok(openedB.requestEpoch > epochAfterCloseA, "requestEpoch keeps growing across reopen");
+  assert.ok(openedB.renderToken > tokenAfterCloseA, "renderToken keeps growing across reopen");
+});
+
+test("twenty reopen cycles produce strictly increasing unique epochs and tokens", () => {
+  const epochs = [];
+  const tokens = [];
+  let state = createOntologyGraphViewState();
+  for (let round = 0; round < 20; round += 1) {
+    state = openOntologyGraphView(state, { code: `E${round}` });
+    state = beginOntologyGraphRequest(state);
+    epochs.push(state.requestEpoch);
+    state = beginOntologyGraphRender(state);
+    tokens.push(state.renderToken);
+    state = closeOntologyGraphView(state);
+  }
+  assert.equal(epochs.length, 20);
+  assert.equal(tokens.length, 20);
+  for (let index = 1; index < epochs.length; index += 1) {
+    assert.ok(epochs[index] > epochs[index - 1], `epoch must strictly increase at ${index}`);
+    assert.ok(tokens[index] > tokens[index - 1], `token must strictly increase at ${index}`);
+  }
+  assert.equal(new Set(epochs).size, epochs.length, "epochs must not repeat");
+  assert.equal(new Set(tokens).size, tokens.length, "tokens must not repeat");
+});

@@ -5626,8 +5626,10 @@ export function bootWorkbenchRuntime() {
     clearOntologyGraphRelayoutTimer();
     destroyOntologyGraphView();
     ontologyGraphEntity = normalized;
-    // Reopening always restores the default relationship-cluster layout.
-    ontologyGraphViewState = openOntologyGraphView(createOntologyGraphViewState(), normalized);
+    // Reopening always restores the default relationship-cluster layout while
+    // requestEpoch/renderToken continue from the previous modal state so late
+    // async work from a closed modal can never match the new one.
+    ontologyGraphViewState = openOntologyGraphView(ontologyGraphViewState, normalized);
     const modal = ensureOntologyGraphModal();
     modal.hidden = false;
     modal.querySelector(".ontology-graph-title").textContent = normalized.name || normalized.code;

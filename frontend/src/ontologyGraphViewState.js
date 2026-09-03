@@ -33,15 +33,18 @@ export function createOntologyGraphViewState() {
 }
 
 // Opening resets the view to the default relationship-cluster layout so that
-// every reopen starts with 关系聚类可视化 (Spec AC-R1).
-export function openOntologyGraphView(state, entity) {
+// every reopen starts with 关系聚类可视化 (Spec AC-R1).  requestEpoch and
+// renderToken are NOT reset: they continue from the previous modal state so
+// async identities stay monotonic across modal open/close cycles (a stale
+// task from a previously closed modal can never look current in the new one).
+export function openOntologyGraphView(previousState, entity) {
   const fresh = createOntologyGraphViewState();
   return {
     ...fresh,
     entity: entity ? { ...entity } : null,
     open: true,
-    requestEpoch: fresh.requestEpoch + 1,
-    renderToken: fresh.renderToken + 1,
+    requestEpoch: (previousState?.requestEpoch || 0) + 1,
+    renderToken: (previousState?.renderToken || 0) + 1,
   };
 }
 

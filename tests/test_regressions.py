@@ -4125,6 +4125,35 @@ console.log(JSON.stringify(out));"""
         self.assertIn("isOntologyGraphBusy(ontologyGraphViewState)", relayout_src)
 
 
+
+    def test_ontology_subgraph_reopen_async_identity_contract(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        view_state = Path("frontend/src/ontologyGraphViewState.js").read_text(encoding="utf-8")
+        # 1. Reopen must thread the existing view state so requestEpoch and
+        #    renderToken stay monotonic across modal open/close cycles.
+        self.assertIn("openOntologyGraphView(ontologyGraphViewState, normalized)", runtime)
+        self.assertNotIn(
+            "openOntologyGraphView(createOntologyGraphViewState(), normalized)", runtime
+        )
+        # 2. openOntologyGraphView must advance epoch/token from previousState.
+        open_start = view_state.index("export function openOntologyGraphView(")
+        open_end = view_state.index("export function closeOntologyGraphView(", open_start)
+        open_src = view_state[open_start:open_end]
+        self.assertIn("previousState", open_src)
+        self.assertIn("requestEpoch: (previousState?.requestEpoch || 0) + 1", open_src)
+        self.assertIn("renderToken: (previousState?.renderToken || 0) + 1", open_src)
+        # 3. Existing epoch/token-aware request, render and close transitions
+        #    are preserved in the runtime open path.
+        open_card_start = runtime.index("async function openOntologyGraphCard(")
+        open_card_end = runtime.index("async function loadOntologyGraph(", open_card_start)
+        open_card_src = runtime[open_card_start:open_card_end]
+        self.assertIn("openOntologyGraphView(ontologyGraphViewState, normalized)", open_card_src)
+        self.assertIn("beginOntologyGraphRequest(", runtime)
+        self.assertIn("finishOntologyGraphRequest(ontologyGraphViewState, requestEpoch)", runtime)
+        self.assertIn("beginOntologyGraphRender(", runtime)
+        self.assertIn("finishOntologyGraphRender(ontologyGraphViewState, renderToken)", runtime)
+        self.assertIn("closeOntologyGraphView(ontologyGraphViewState)", runtime)
+
 if __name__ == "__main__":
     unittest.main()
 
