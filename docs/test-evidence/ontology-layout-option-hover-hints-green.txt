@@ -1,0 +1,70 @@
+================================================================================
+ontology-layout-option-hover-hints — TDD GREEN (2026-09-03, final code state)
+Spec: docs/specs/ontology-layout-option-hover-hints.md
+Branch: 20260727 (local); no commit/push/MR/deploy in this task.
+================================================================================
+
+[CMD] cd frontend && node --test tests/ontologyLayoutOptionTooltipState.test.mjs
+ℹ tests 8
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+SHELL EXIT CODE: 0
+
+[CMD] cd frontend && node --test tests/ontologyLayoutOptions.test.mjs
+ℹ tests 7
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+SHELL EXIT CODE: 0
+
+[CMD] cd frontend && node --test tests/ontologyLayoutPickerState.test.mjs
+ℹ tests 20
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+SHELL EXIT CODE: 0
+
+[CMD] cd frontend && node --test tests/*.test.mjs
+ℹ tests 76
+ℹ pass 76
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+SHELL EXIT CODE: 0
+
+[CMD] cd frontend && npm run build
+computing gzip size...
+../bi_agent/web/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css    164.38 kB │ gzip:  26.16 kB
+../bi_agent/web/static/vendor/antd/workbench.js                                     1,283.49 kB │ gzip: 388.81 kB
+✓ built in 2.65s
+SHELL EXIT CODE: 0
+
+[CMD] cd /Users/sher/Boulderaitech/ontology-graph && npm test
+ℹ tests 6
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+SHELL EXIT CODE: 0
+
+[CMD] .venv/bin/python -m pytest tests/test_regressions.py -q
+218 passed, 6 warnings in 1.62s
+<sys>:0: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+SHELL EXIT CODE: 0
+
+[CMD] git diff --check
+(empty above = clean)
+SHELL EXIT CODE: 0
+
+[CMD] bundle copy checks
+0
+old cluster hint absent from bundle
+1
+0
+data-graph-layout-help absent from bundle
+0
+old tooltip css absent from css bundle

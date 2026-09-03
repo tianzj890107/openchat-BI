@@ -1,0 +1,176 @@
+{
+  "browser": "Google Chrome headless",
+  "date": "2026-09-03",
+  "viewports": [
+    "1440x900",
+    "700x900"
+  ],
+  "results": [
+    {
+      "name": "toolbar has no question-mark entry",
+      "ok": true,
+      "detail": "toolbar text: 子图检索|关系扩散|布局|关系聚类可视化|重新布局"
+    },
+    {
+      "name": "no [data-graph-layout-help] in DOM",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no old #ontology-layout-tooltip",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "exactly one per-option tooltip with role",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "desktop heights 26px",
+      "ok": true,
+      "detail": "{\"t\":26,\"r\":26}"
+    },
+    {
+      "name": "hover trigger shows no bubble",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "focus trigger shows no bubble",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no native title on trigger/options",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "menu opens on click",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "open menu does not show bubble",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "menu options visible rows",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "hover cluster shows new full ForceAtlas2 text",
+      "ok": true,
+      "detail": "ForceAtlas2 是一种先进的力导向图布局，适合查看节点之间的关系聚类。"
+    },
+    {
+      "name": "hover radial shows unchanged ring text",
+      "ok": true,
+      "detail": "以当前锚点为中心，按照最短关系距离由内向外分环排列。"
+    },
+    {
+      "name": "desktop bubble sits beside option (right side, arrow toward row)",
+      "ok": true,
+      "detail": "{\"side\":\"right\",\"gapOk\":true,\"centerOk\":true}"
+    },
+    {
+      "name": "leaving option/listbox hides bubble",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Escape closes menu without bubble",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "keyboard Enter opens menu, no bubble, focus on trigger",
+      "ok": true,
+      "detail": "{\"expanded\":\"true\",\"bubbleHidden\":true,\"activeDesc\":\"ontology-layout-option-cluster\"}"
+    },
+    {
+      "name": "keyboard active never shows visual bubble",
+      "ok": true,
+      "detail": "{\"activeDesc\":\"ontology-layout-option-cluster\",\"bubbleHidden\":true}"
+    },
+    {
+      "name": "End moves to radial",
+      "ok": true,
+      "detail": "ontology-layout-option-radial"
+    },
+    {
+      "name": "keyboard Enter commits radial, closes, no bubble",
+      "ok": true,
+      "detail": "{\"value\":\"语义环形可视化\",\"expanded\":\"false\",\"bubbleHidden\":true}"
+    },
+    {
+      "name": "layout switching issues zero subgraph requests",
+      "ok": true,
+      "detail": "1 -> 1"
+    },
+    {
+      "name": "mouse select radial closes menu and hides bubble",
+      "ok": true,
+      "detail": "{\"value\":\"语义环形可视化\",\"expanded\":\"false\",\"bubbleHidden\":true}"
+    },
+    {
+      "name": "outside click keeps menu closed, modal stays open",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "narrow: menu opens",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "narrow heights 26px",
+      "ok": true,
+      "detail": "{\"t\":26,\"r\":26}"
+    },
+    {
+      "name": "narrow hover shows correct text",
+      "ok": true,
+      "detail": "ForceAtlas2 是一种先进的力导向图布局，适合查看节点之间的关系聚类。"
+    },
+    {
+      "name": "narrow bubble inside viewport/dialog",
+      "ok": true,
+      "detail": "{\"hidden\":false,\"text\":\"ForceAtlas2 是一种先进的力导向图布局，适合查看节点之间的关系聚类。\",\"flip\":false,\"left\":402,\"right\":682,\"top\":110,\"bottom\":164,\"vw\":700,\"inViewport\":true,\"inDialog\":true,\"h\":54}"
+    },
+    {
+      "name": "narrow bubble flips only when needed",
+      "ok": true,
+      "detail": "{\"hidden\":false,\"text\":\"ForceAtlas2 是一种先进的力导向图布局，适合查看节点之间的关系聚类。\",\"flip\":false,\"left\":402,\"right\":682,\"top\":110,\"bottom\":164,\"vw\":700,\"inViewport\":true,\"inDialog\":true,\"h\":54}"
+    },
+    {
+      "name": "460px bubble flips to the left and stays in viewport/dialog",
+      "ok": true,
+      "detail": "{\"hidden\":false,\"flip\":true,\"left\":14,\"right\":294,\"vw\":460,\"inViewport\":true,\"inDialog\":true}"
+    },
+    {
+      "name": "narrow toolbar still has no question mark",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "narrow keyboard commit works without bubble",
+      "ok": true,
+      "detail": "{\"value\":\"关系聚类可视化\",\"bubbleHidden\":true}"
+    },
+    {
+      "name": "modal close hides modal",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "tooltip hidden after modal close",
+      "ok": true,
+      "detail": "true"
+    }
+  ],
+  "failedCount": 0
+}

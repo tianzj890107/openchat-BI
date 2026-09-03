@@ -46,7 +46,7 @@
 ### 2. 本体布局控件：自定义选择面板 + 键盘闭环 + 白色说明气泡 + 工具栏等高（Spec + 实现 + 验收修复，已完成）
 
 - 用户可见变化：本体子图弹窗工具栏将原来的“关系聚类可视化 / 语义环形可视化”两个并列
-  按钮收敛为控件组“布局 [选择器 ▼] (? )”：默认“关系聚类可视化”，可切换“语义环形
+  按钮收敛为控件组“布局 [选择器 ▼]”：默认“关系聚类可视化”，可切换“语义环形
   可视化”，沿用 `cluster`/`radial` 状态值与原切换逻辑（复用已加载子图，不重新请求
   接口、不调 LLM、不写聊天历史）。选择器为页面自绘自定义 combobox + listbox（曾用
   原生 `<select>`，验收修复后移除）：点击或键盘打开自绘白色选项面板，选项为完整可点击
@@ -65,25 +65,45 @@
 - 工具栏等高：layout trigger 与“重新布局”按钮统一为显式 `height:26px` +
   `box-sizing:border-box`（relayout 另设 `min-height:26px`、inline-flex 垂直居中），
   不依赖 transform/scale/负 margin；disabled 前后与 720px 以下换行后仍等高。
-- 说明气泡：白色 `role="tooltip"` 气泡以 `?`（`[data-graph-layout-help]`）为锚点右对齐
-  （`right:0;left:auto`，箭头 `right:6px` 指向 `?`），深色文字、浅灰边框、轻阴影、最大
-  宽度 280px；切换布局后气泡文案即时同步；帮助按钮不设 `title`。
+- 说明气泡（最终口径，问号入口已移除）：布局控件右侧不再存在 `?` 按钮与旧 Tooltip
+  DOM/CSS/监听器；布局 trigger 悬浮、聚焦或键盘打开菜单均不显示说明。说明气泡只在
+  下拉列表展开后鼠标悬浮具体 option 时出现：listbox 内唯一复用的
+  `[data-graph-layout-option-tooltip][role="tooltip"]` 白色气泡（白底、深色文字、
+  浅灰边框、8px 圆角、轻阴影、`max-width:280px`、`pointer-events:none`），默认显示在
+  当前 option 右侧并带指向该 option 的箭头，右侧空间不足时自动翻转左侧；option/listbox
+  leave、选择、Escape、Tab、外部点击、busy、关闭弹窗均隐藏，重开默认不残留；trigger 与
+  option 均无原生 `title`。cluster 说明文案已更新为完整新句（“ForceAtlas2 是一种先进的
+  力导向图布局，适合查看节点之间的关系聚类。”），radial 环形文案保持不变；两段说明只存于
+  `ontologyLayoutOptions.js`。
 - 实现：`frontend/src/ontologyLayoutOptions.js` 为布局名称与说明文案唯一来源；
   `frontend/src/ontologyLayoutPickerState.js` 提供 picker 开关/活动项/统一键盘转换/
-  busy 纯状态转换；`frontend/src/runtime.js` 只负责 DOM 渲染、事件与同步；原生
-  select 及旧双按钮 DOM/CSS/监听器已清除。
-- 主要文件：本轮新增
-  `docs/specs/ontology-layout-keyboard-and-toolbar-height-fixes.md`（Spec）、
-  `docs/test-evidence/ontology-layout-keyboard-height-red.txt`、
-  `docs/test-evidence/ontology-layout-keyboard-height-green.txt`、
-  `docs/test-evidence/ontology-layout-browser-acceptance.json` 与截图
-  `docs/test-evidence/k1..k5-*.png`；修改 `frontend/src/ontologyLayoutPickerState.js`、
-  `frontend/src/runtime.js`、`frontend/src/workbench.css`、
-  `frontend/tests/ontologyLayoutPickerState.test.mjs`、`tests/test_regressions.py`；
-  构建产物 `bi_agent/web/static/vendor/antd/*` 同步更新。
-- 验证：Red 证据非零退出码（单测 20 tests / 11 pass / 9 fail、回归 2 failed，退出码 1）；
-  Green 后前端单测 66 passed（picker 文件 20 项）、`npm run build` 成功、共享包
-  `npm test` 6 passed、`pytest tests/test_regressions.py -q` 217 passed（新增统一键盘/
-  等高契约方法）、`git diff --check` 通过；真实 Chrome 桌面 1440px 与窄屏 700px 验收：
-  键盘闭环、ARIA 同步、两个控件计算高度均 26px、menu/Tooltip 不被裁切、气泡箭头指向
-  `?`。未部署、未发包。
+  busy 纯状态转换；`frontend/src/ontologyLayoutOptionTooltipState.js`（新增）提供气泡
+  显隐纯状态转换且不反向修改配置；`frontend/src/runtime.js` 只负责 DOM 渲染、事件、
+  文案查询与定位（option 右锚 + `flip` 翻转 + dialog/视口钳制）；原生 select、旧双按钮
+  及问号 Tooltip 的 DOM/CSS/监听器已清除。
+- 主要文件：Spec 与证据包括 `docs/specs/ontology-layout-selector-white-tooltip.md`、
+  `docs/specs/ontology-layout-selector-acceptance-fixes.md`、
+  `docs/specs/ontology-layout-keyboard-and-toolbar-height-fixes.md`、
+  `docs/specs/ontology-layout-option-hover-hints.md`（本轮新增，已完成）；
+  `docs/test-evidence/ontology-layout-keyboard-height-red/green.txt`、
+  `docs/test-evidence/ontology-layout-browser-acceptance.json` 与 `k1..k5-*.png`、
+  `docs/test-evidence/ontology-layout-option-hover-hints-red.txt`、
+  `docs/test-evidence/ontology-layout-option-hover-hints-green.txt`、
+  `docs/test-evidence/ontology-layout-option-hover-browser-acceptance.json` 与
+  `h1..h9-*.png`（本轮新增）。实现与测试：`frontend/src/ontologyLayoutPickerState.js`、
+  `frontend/src/ontologyLayoutOptions.js`、`frontend/src/runtime.js`、
+  `frontend/src/workbench.css`、`frontend/src/ontologyLayoutOptionTooltipState.js`（新增）、
+  `frontend/tests/ontologyLayoutPickerState.test.mjs`、
+  `frontend/tests/ontologyLayoutOptions.test.mjs`、
+  `frontend/tests/ontologyLayoutOptionTooltipState.test.mjs`（新增）、
+  `tests/test_regressions.py`；构建产物 `bi_agent/web/static/vendor/antd/*` 同步更新。
+- 验证：本轮（option hover 提示）Red 退出码 1（前端 15 tests / 9 pass / 6 fail：气泡纯状态
+  未实现 + cluster 旧文案；回归 -k ontology_layout 3 failed：问号 DOM/CSS/函数仍在、option
+  气泡缺失）；Green 后前端单测 76 passed（picker 20 项、options 7 项、option tooltip 纯状态
+  8 项及全部既有 66 项未减少）、`npm run build` 成功（workbench.js 1,283.49 kB）、共享包
+  `npm test` 6 passed、`pytest tests/test_regressions.py -q` 218 passed（新增
+  `test_ontology_layout_option_hover_tooltip_contract`）、`git diff --check` 通过；真实
+  Chrome headless 152 验收：桌面 1440px 与窄屏 700px/460px——页面无 `?` 与旧 Tooltip，
+  hover cluster option 显示新 ForceAtlas2 完整文案、hover radial 显示环形文案，气泡在
+  option 右侧、窄屏自动翻转且不被 dialog 裁切，键盘闭环全程无视觉气泡，trigger 与
+  “重新布局”计算高度均 26px、切换布局请求增量为 0。未部署、未发包。

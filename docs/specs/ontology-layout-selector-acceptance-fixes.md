@@ -2,6 +2,11 @@
 
 状态：已完成
 
+> 最终产品口径更新（2026-09-03）：本 Spec 中“右侧为浅灰圆形 `?`”及相关 `?` Tooltip 方案已被
+> `docs/specs/ontology-layout-option-hover-hints.md`（已完成）取代：布局控件右侧不再存在 `?`，
+> 说明气泡只在布局下拉列表展开后鼠标悬浮具体 option 时显示。以下历史正文保留作为实现过程记录，
+> 不再代表最终产品口径。
+
 前置 Spec：`docs/specs/ontology-layout-selector-white-tooltip.md`
 
 ## 1. 验收缺陷

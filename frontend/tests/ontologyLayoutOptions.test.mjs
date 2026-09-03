@@ -5,6 +5,8 @@ import {
   ontologyLayoutOption,
 } from "../src/ontologyLayoutOptions.js";
 
+const OLD_CLUSTER_HINT = "ForceAtlas2 力导向布局，适合查看节点之间的关系聚类。";
+
 test("layout options are exactly cluster and radial in fixed order", () => {
   assert.equal(ONTOLOGY_LAYOUT_OPTIONS.length, 2);
   assert.deepEqual(
@@ -20,14 +22,24 @@ test("layout option labels match the spec table exactly", () => {
   );
 });
 
-test("layout option hints match the spec table exactly", () => {
-  assert.deepEqual(
-    ONTOLOGY_LAYOUT_OPTIONS.map((option) => option.hint),
-    [
-      "ForceAtlas2 力导向布局，适合查看节点之间的关系聚类。",
-      "以当前锚点为中心，按照最短关系距离由内向外分环排列。",
-    ],
+test("cluster hint uses the full advanced ForceAtlas2 sentence", () => {
+  assert.equal(
+    ontologyLayoutOption("cluster").hint,
+    "ForceAtlas2 是一种先进的力导向图布局，适合查看节点之间的关系聚类。",
   );
+});
+
+test("radial hint keeps the unchanged ring description", () => {
+  assert.equal(
+    ontologyLayoutOption("radial").hint,
+    "以当前锚点为中心，按照最短关系距离由内向外分环排列。",
+  );
+});
+
+test("the old ForceAtlas2 hint copy no longer exists anywhere in the registry", () => {
+  const serialized = JSON.stringify(ONTOLOGY_LAYOUT_OPTIONS);
+  assert.ok(!serialized.includes(OLD_CLUSTER_HINT), "old cluster hint must be gone");
+  assert.ok(!serialized.includes("ForceAtlas2 力导向布局"), "short old copy must be gone");
 });
 
 test("ontologyLayoutOption resolves legal values and rejects unknown ones", () => {

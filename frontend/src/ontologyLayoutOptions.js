@@ -7,7 +7,7 @@ export const ONTOLOGY_LAYOUT_OPTIONS = Object.freeze([
   Object.freeze({
     value: "cluster",
     label: "关系聚类可视化",
-    hint: "ForceAtlas2 力导向布局，适合查看节点之间的关系聚类。",
+    hint: "ForceAtlas2 是一种先进的力导向图布局，适合查看节点之间的关系聚类。",
   }),
   Object.freeze({
     value: "radial",

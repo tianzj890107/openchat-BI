@@ -39,6 +39,11 @@ import {
   toggleOntologyLayoutPicker,
 } from "./ontologyLayoutPickerState.js";
 import {
+  createOntologyLayoutOptionTooltipState,
+  hideOntologyLayoutOptionTooltip,
+  showOntologyLayoutOptionTooltip,
+} from "./ontologyLayoutOptionTooltipState.js";
+import {
   LAYOUT_RADIAL,
   STRATEGY_CONTEXT,
   STRATEGY_EXPAND,
@@ -5576,6 +5581,7 @@ export function bootWorkbenchRuntime() {
   let ontologyGraphView = null;
   let ontologyGraphViewState = createOntologyGraphViewState();
   let ontologyGraphLayoutPickerState = createOntologyLayoutPickerState();
+  let ontologyGraphLayoutOptionTooltipState = createOntologyLayoutOptionTooltipState();
   let ontologyGraphEntity = null;
   let ontologyGraphRelayoutTimer = null;
 
@@ -5601,10 +5607,7 @@ export function bootWorkbenchRuntime() {
                 <span class="ontology-layout-chevron" aria-hidden="true"></span>
               </button>
               <div class="ontology-layout-menu" id="ontology-layout-listbox" data-graph-layout-menu role="listbox" aria-label="布局" hidden></div>
-            </span>
-            <span class="ontology-layout-helpbox">
-              <button type="button" class="ontology-layout-help" data-graph-layout-help aria-label="当前布局说明" aria-describedby="ontology-layout-tooltip">?</button>
-              <span class="ontology-layout-tooltip" id="ontology-layout-tooltip" role="tooltip" hidden></span>
+              <div class="ontology-layout-option-tooltip" data-graph-layout-option-tooltip role="tooltip" hidden></div>
             </span>
           </span>
           <button type="button" data-graph-relayout>重新布局</button>
@@ -5630,19 +5633,16 @@ export function bootWorkbenchRuntime() {
       node.setAttribute("role", "option");
       node.setAttribute("aria-selected", "false");
       node.textContent = option.label;
+      node.addEventListener("mouseenter", () => showOntologyGraphLayoutOptionHint(option.value, node));
+      node.addEventListener("mouseleave", hideOntologyGraphLayoutOptionHint);
       layoutMenu.appendChild(node);
     }
     const layoutTrigger = host.querySelector("[data-graph-layout-trigger]");
     layoutTrigger.addEventListener("click", onOntologyGraphLayoutTriggerClick);
     layoutTrigger.addEventListener("keydown", onOntologyGraphLayoutTriggerKeydown);
     layoutMenu.addEventListener("click", onOntologyGraphLayoutOptionClick);
+    layoutMenu.addEventListener("mouseleave", hideOntologyGraphLayoutOptionHint);
     document.addEventListener("click", onOntologyGraphLayoutDocumentClick);
-    const layoutHelp = host.querySelector("[data-graph-layout-help]");
-    layoutHelp.addEventListener("mouseenter", showOntologyGraphLayoutTooltip);
-    layoutHelp.addEventListener("mouseleave", hideOntologyGraphLayoutTooltip);
-    layoutHelp.addEventListener("focus", showOntologyGraphLayoutTooltip);
-    layoutHelp.addEventListener("blur", hideOntologyGraphLayoutTooltip);
-    document.addEventListener("keydown", onOntologyGraphTooltipKeydown);
     host.querySelector("[data-graph-relayout]").addEventListener("click", onOntologyGraphRelayoutClick);
     ontologyGraphModal = host;
     return host;
@@ -5651,7 +5651,7 @@ export function bootWorkbenchRuntime() {
   function closeOntologyGraphCard() {
     clearOntologyGraphRelayoutTimer();
     destroyOntologyGraphView();
-    hideOntologyGraphLayoutTooltip();
+    hideOntologyGraphLayoutOptionHint();
     ontologyGraphLayoutPickerState = closeOntologyLayoutPicker(ontologyGraphLayoutPickerState);
     ontologyGraphViewState = closeOntologyGraphView(ontologyGraphViewState);
     ontologyGraphEntity = null;
@@ -5937,10 +5937,7 @@ export function bootWorkbenchRuntime() {
     const valueNode = ontologyGraphModal.querySelector("[data-graph-layout-value]");
     if (!trigger || !menu) return;
     const option = ontologyLayoutPickerSelectedOption(ontologyGraphLayoutPickerState);
-    if (option && valueNode) {
-      valueNode.textContent = option.label;
-      syncOntologyGraphLayoutTooltipText(option.hint);
-    }
+    if (option && valueNode) valueNode.textContent = option.label;
     trigger.setAttribute("aria-expanded", ontologyGraphLayoutPickerState.expanded ? "true" : "false");
     const activeOption = ONTOLOGY_LAYOUT_OPTIONS[ontologyGraphLayoutPickerState.activeIndex];
     if (ontologyGraphLayoutPickerState.expanded && activeOption) {
@@ -5956,28 +5953,50 @@ export function bootWorkbenchRuntime() {
       node.classList.toggle("is-active", active);
       node.setAttribute("aria-selected", selected ? "true" : "false");
     });
+    if (!ontologyGraphLayoutPickerState.expanded) hideOntologyGraphLayoutOptionHint();
   }
 
-  function syncOntologyGraphLayoutTooltipText(hint) {
-    const tooltip = ontologyGraphModal?.querySelector("#ontology-layout-tooltip");
-    if (tooltip && hint) tooltip.textContent = hint;
+  // Per-option hover hint inside the open listbox. Only a real mouse hover on
+  // an option row ever shows the bubble: trigger hover/focus, keyboard active
+  // options and collapsed menus never do. Text always comes from the shared
+  // ONTOLOGY_LAYOUT_OPTIONS registry so Runtime never duplicates the copy.
+  function showOntologyGraphLayoutOptionHint(value, optionNode) {
+    const option = ontologyLayoutOption(value);
+    const tooltip = ontologyGraphModal?.querySelector("[data-graph-layout-option-tooltip]");
+    if (!option || !optionNode || !tooltip) return;
+    ontologyGraphLayoutOptionTooltipState = showOntologyLayoutOptionTooltip(ontologyGraphLayoutOptionTooltipState, value);
+    tooltip.textContent = option.hint;
+    tooltip.hidden = false;
+    positionOntologyGraphLayoutOptionHint(optionNode);
   }
 
-  // White bubble for the current layout selection: created once with the
-  // modal, its text kept current by syncOntologyGraphLayoutControls, and only
-  // shown/hidden here so reopening never duplicates tooltips or listeners.
-  function showOntologyGraphLayoutTooltip() {
-    const tooltip = ontologyGraphModal?.querySelector("#ontology-layout-tooltip");
-    if (tooltip) tooltip.hidden = false;
+  function hideOntologyGraphLayoutOptionHint() {
+    ontologyGraphLayoutOptionTooltipState = hideOntologyLayoutOptionTooltip(ontologyGraphLayoutOptionTooltipState);
+    const tooltip = ontologyGraphModal?.querySelector("[data-graph-layout-option-tooltip]");
+    if (!tooltip) return;
+    tooltip.hidden = true;
+    tooltip.classList.remove("flip");
+    tooltip.style.left = "";
+    tooltip.style.top = "";
   }
 
-  function hideOntologyGraphLayoutTooltip() {
-    const tooltip = ontologyGraphModal?.querySelector("#ontology-layout-tooltip");
-    if (tooltip) tooltip.hidden = true;
-  }
-
-  function onOntologyGraphTooltipKeydown(event) {
-    if (event.key === "Escape") hideOntologyGraphLayoutTooltip();
+  // Anchors the bubble next to the hovered option row (right side by default)
+  // and flips it to the left when the viewport cannot fit it on the right.
+  function positionOntologyGraphLayoutOptionHint(optionNode) {
+    const tooltip = ontologyGraphModal?.querySelector("[data-graph-layout-option-tooltip]");
+    if (!tooltip || !optionNode) return;
+    const rect = optionNode.getBoundingClientRect();
+    const bubble = tooltip.getBoundingClientRect();
+    const dialogLeft = ontologyGraphModal?.querySelector(".ontology-graph-dialog")?.getBoundingClientRect()?.left ?? 0;
+    const gap = 8;
+    const margin = 8;
+    const flip = rect.right + gap + bubble.width + margin > window.innerWidth;
+    tooltip.classList.toggle("flip", flip);
+    const left = flip ? rect.left - gap - bubble.width : rect.right + gap;
+    const minLeft = Math.max(margin, Math.ceil(dialogLeft + 4));
+    const maxLeft = window.innerWidth - bubble.width - margin;
+    tooltip.style.left = `${Math.min(maxLeft, Math.max(minLeft, Math.round(left)))}px`;
+    tooltip.style.top = `${Math.round(rect.top + rect.height / 2 - bubble.height / 2)}px`;
   }
   function updateOntologyGraphStatus(graph) {
     const status = ontologyGraphModal?.querySelector(".ontology-graph-status");
