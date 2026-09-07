@@ -102,6 +102,7 @@ PENDING -> RUNNING -> SUCCEEDED
 - 超时终态为 `TIMED_OUT`，`error_code=TOOL_TIMEOUT`，`retryable=true`。
 - 超时返回给 LLM/UI 的内容保持字符串兼容，但必须携带稳定机器码，且不得包含 traceback、密码、token 或连接串。
 - 若任务在执行线程池队列中等待时已经超时或取消，worker 取得任务后必须在调用 executor **之前**检查终态；已处于终态的排队任务必须直接丢弃，不能在用户收到超时后继续向 Doris、本体服务或其他工具发起无效调用。
+- “检查仍为 `RUNNING`”与“取得不可撤销的 executor 启动权”必须构成同一个原子决策。不能先在锁内检查、释放锁后再无条件调用 executor；否则 timeout 可能插入两者之间，使已终态化的任务仍然启动。实现可以增加显式 `STARTING/started` 内部标记或等价的锁内启动权协议，但不得把新的内部状态暴露成违反六状态外部契约的第七种终态。
 
 ### 7.2 取消
 
@@ -187,6 +188,7 @@ PENDING -> RUNNING -> SUCCEEDED
 6. 审计不保存敏感输入或完整大结果。
 7. 超过审计限界的大结果仍完整返回给 WebSession，只有审计引用被压缩；
 8. 在线程池队列中已经超时的调用以后不得迟到启动 executor。
+9. timeout 发生在 worker 前置检查通过后、executor 调用前的竞态窗口时，必须由原子启动权协议确定唯一结果，不能同时出现 `TIMED_OUT` 和“executor 随后启动”。
 
 RED 测试必须离线、确定性运行，不访问真实 LLM、Doris 或本体服务，不读写真实会话数据。并发同步使用 `threading.Event`，不以长时间 `sleep` 作为主要同步手段。
 

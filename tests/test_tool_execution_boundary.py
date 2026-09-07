@@ -333,6 +333,44 @@ class ToolExecutionBoundaryRedTests(unittest.TestCase):
             "RED: 已在队列中超时的工具仍在 worker 空闲后迟到执行",
         )
 
+    def test_timeout_between_preflight_and_invoke_cannot_start_executor(self) -> None:
+        """Deterministically cover the preflight-check/invoke TOCTOU window."""
+        ledger = ToolExecutionLedger(
+            "preflight-race", tool_timeouts={"RaceTool": 0.05},
+        )
+        preflight_passed = threading.Event()
+        release_worker = threading.Event()
+        executor_invoked = threading.Event()
+
+        def pause_after_preflight(_cancel):
+            # Current implementation calls set_current_cancel immediately
+            # after releasing the preflight lock and immediately before
+            # invoke(). Holding it here lets the caller finalize TIMED_OUT in
+            # that exact window without relying on scheduler luck.
+            preflight_passed.set()
+            release_worker.wait(2)
+
+        with patch("bi_agent.tool_runtime.set_current_cancel", side_effect=pause_after_preflight):
+            outcome = ledger.execute(
+                scope=ToolTurnScope("race-turn"),
+                tool_use_id="race-call",
+                tool_name="RaceTool",
+                params={},
+                invoke=lambda: executor_invoked.set() or "must-not-run",
+            )
+            self.assertTrue(preflight_passed.is_set(), "worker 未到达前置检查后的竞态点")
+            self.assertEqual(outcome.status, "TIMED_OUT")
+            release_worker.set()
+
+            drained = threading.Event()
+            ledger._pool.submit(drained.set)
+            self.assertTrue(drained.wait(1), "测试线程池没有排空")
+
+        self.assertFalse(
+            executor_invoked.is_set(),
+            "RED: timeout 在前置检查后发生，已终态任务仍然启动了 executor",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
