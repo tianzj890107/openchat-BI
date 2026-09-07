@@ -203,7 +203,7 @@ journalctl -u eimosp-ontology-agentic-analytics -f
 
 ```bash
 # 构建
-docker build -t eimosp-ontology-agentic-analytics:0.1.0 .
+docker build -t eimosp-ontology-agentic-analytics:0.1.2 .
 
 # 运行（生产默认远程本体 + Doris 实时查询）
 docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8080 \
@@ -212,7 +212,7 @@ docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8080 \
   -v eimosp-ontology-agentic-analytics-charts:/app/dataset/charts \
   -v eimosp-ontology-agentic-analytics-uploads:/app/dataset/uploaded_reports \
   -v eimosp-ontology-agentic-analytics-logs:/app/dataset/logs \
-  eimosp-ontology-agentic-analytics:0.1.0
+  eimosp-ontology-agentic-analytics:0.1.2
 
 # 验证
 curl -fsS http://127.0.0.1:8765/healthz
@@ -220,7 +220,7 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 - 容器以非 root 用户运行；`/app` 下运行数据目录保持可写，建议挂载持久卷，不要把会话、图表、上传和日志放进镜像。
 - 配置通过 `.env` 只读挂载或 `-e` 注入，禁止把真实密钥写进镜像/仓库。
-- 本地 SQLite 演示模式可覆盖启动命令：`docker run ... eimosp-ontology-agentic-analytics:0.1.0 python -m bi_agent.web --host 0.0.0.0 --port 8080 --db dataset/databases/HyperFusion.db`（覆盖 CMD 时容器内仍需监听 `8080`，映射关系不变；需保留镜像内初始化数据文件，不要覆盖 `/app/dataset` 整体）。
+- 本地 SQLite 演示模式可覆盖启动命令：`docker run ... eimosp-ontology-agentic-analytics:0.1.2 python -m bi_agent.web --host 0.0.0.0 --port 8080 --db dataset/databases/HyperFusion.db`（覆盖 CMD 时容器内仍需监听 `8080`，映射关系不变；需保留镜像内初始化数据文件，不要覆盖 `/app/dataset` 整体）。
 
 ## 7. 更新发布
 
@@ -259,9 +259,31 @@ git diff --name-only
 
 ## 9. 当前服务器发布说明
 
-当前测试服务器通过 SSH 主机别名 `company-server` 发布，运行目录为
+当前测试服务器通过 SSH 主机别名 `company-server`（`172.16.10.34`）发布，运行目录为
 `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/<release>`，进程使用该目录下的 `.venv`，监听 `8765`。
 发布时只同步源码和已构建静态资源，先在 release 目录创建带时间戳的代码备份；不要覆盖 `.env`、`.venv`、会话、上传文件、图表和日志。
+
+当前运行状态（2026-09-03 部署 v0.1.2）：
+
+- 运行目录 `~/eimosp-ontology-agentic-analytics-releases/v0.1.2`，
+  `RELEASE_COMMIT=c8454d82f052a6770bae975a5d865a6f37eff721`（tag `v0.1.2`），
+  启动命令：`cd <release> && set -a && . ./.env && set +a && nohup ./.venv/bin/python -m bi_agent.web --host 0.0.0.0 --port 8765 --db doris >> ~/eimosp-ontology-agentic-analytics-8765.log 2>&1 &`
+  （无 systemd 单元，进程 PID 记录在 `<release>/APP.pid`）。
+- 服务器系统缺少 `python3-venv`（`ensurepip` 不可用），无法新建 venv：当前 release 的
+  `.venv` 由上一 release（`v0.1.1`）复制而来，并把 site-packages 内可编辑安装引用
+  改写到新 release 路径（`__editable___open_claude_0_1_0_finder.py`、
+  `direct_url.json` 与对应 `__pycache__` 共 3 处被处理），不要用 `python3 -m venv` 重建。
+- 会话/图表/上传/日志/图数据目录保留策略：v0.1.2 的
+  `dataset/{conversations,charts,uploaded_reports,logs,graphs}` 符号链接沿用
+  v0.1.1 指向的同一数据目录（`openchat-BI-releases/a035df9/dataset/` 同名目录），
+  `dataset/exports` 指向 `v0.1.1/dataset/exports`；历史会话与运行产物不复制、不覆盖；
+  `databases`/`spreadsheets`/`documents` 来自代码库初始化数据。
+- 切换记录（2026-09-03）：停掉 v0.1.1 进程（PID 记录于 `v0.1.1/APP.pid`）后启动
+  v0.1.2；旧 release 目录完整保留可回滚。验证：`/healthz` 返回
+  `version=0.1.2`、`port=8765`、`configured=true`，dependencies
+  `agent/ontology/conversation_store` 全部为 true；启动日志
+  `history_root=.../dataset/conversations scanned=78`（历史会话接入，与 v0.1.1 一致）；
+  `/workbench` 返回 200，`workbench.js?v=161` 正常加载。
 
 本体管理服务的新目录接口可能返回 `currentDatabase`，旧接口返回 `dorisDatabase`；应用兼容读取两个字段，避免目录字段升级导致新 release 无法启动。
 

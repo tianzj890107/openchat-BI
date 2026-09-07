@@ -75,3 +75,30 @@
 - 主要文件：`Dockerfile`、`bi_agent/web/app.py`、`bi_agent/web/__main__.py`、
   `.env.example`、`README.md`、`DEPLOYMENT.md`、`tests/test_container_port_contract.py`（新增）、
   `docs/specs/container-port-8080.md`（新增）。
+### 6. 正式发布 v0.1.1（用户明确授权）
+
+- 用户明确指定正式版本 `v0.1.1`：产品版本入口同步到 `0.1.1`（`pyproject.toml`、
+  `open_claude/__init__.py`、`bi_agent/__init__.py`、`bi_agent/web/app.py` `APP_VERSION`、
+  `frontend/package.json`、`frontend/package-lock.json`、`frontend/src/main.jsx`
+  `PRODUCT_VERSION`、`frontend/src/shell.html` 品牌版本）。
+- 新增正式版本文档 `docs/versions/v0.1.1.md`；更新 `docs/versions/README.md` 索引
+  （v0.1.1 为当前版本，v0.1.0 归档为上一版本）、根 `README.md` 当前版本/版本说明链接/
+  Release 链接与 Docker 示例 tag、`docs/versions/versioning-policy.md` 当前正式版本、
+  `AGENTS.md` 当前版本引用、`DEPLOYMENT.md` Docker 示例 tag。
+- 版本契约测试同步到 v0.1.1（`tests/test_versioning_policy.py`、
+  `tests/test_regressions.py` 的版本与版本文件断言）。
+- 验证：版本契约与相关测试通过；`git diff --check` 通过；推送后
+  `HEAD == gitlab/20260727`；创建并推送 annotated tag `v0.1.1`；GitLab 创建同名
+  Release（只补缺失项，不覆盖 v0.1.0 Release）。
+- 部署（用户授权，2026-09-02）：在 `company-server`（172.16.10.34）新目录
+  `~/eimosp-ontology-agentic-analytics-releases/v0.1.1` 部署 v0.1.1（`RELEASE_COMMIT`
+  记录定版 hash）；会话/图表/上传/日志/图数据通过符号链接指向上一 release
+  `openchat-BI-releases/a035df9` 数据目录，保留全部会话数据；停用旧实例并切换
+  到新实例（旧 release 目录保留可回滚）。验证：`/healthz` 返回
+  `version=0.1.1`、`port=8765`、`configured=true`，启动日志
+  `history_root=.../dataset/conversations scanned=78`（历史会话接入），
+  `/workbench` 返回 200。服务器缺 `python3-venv`，新 release `.venv` 由旧 release
+  复制并改写可编辑安装路径，已在 DEPLOYMENT.md §9 记录。
+- 主要文件：版本入口 8 处、`docs/versions/v0.1.1.md`（新增）、
+  `docs/versions/README.md`、`README.md`、`DEPLOYMENT.md`、`AGENTS.md`、
+  `changelog/changelog_9_2.md`、`tests/test_versioning_policy.py`、`tests/test_regressions.py`。

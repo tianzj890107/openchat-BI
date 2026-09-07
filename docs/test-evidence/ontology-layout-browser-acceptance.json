@@ -1,0 +1,680 @@
+{
+  "openResult": "injected",
+  "defaultState": {
+    "open": true,
+    "triggerText": "关系聚类可视化",
+    "expanded": "false",
+    "activedesc": null,
+    "onTrigger": false,
+    "activeTag": "BODY.sidebar-collapsed",
+    "options": [
+      {
+        "id": "ontology-layout-option-cluster",
+        "tabIndex": -1,
+        "role": "option",
+        "text": "关系聚类可视化",
+        "ariaSelected": "true",
+        "isActive": false,
+        "isSelected": true
+      },
+      {
+        "id": "ontology-layout-option-radial",
+        "tabIndex": -1,
+        "role": "option",
+        "text": "语义环形可视化",
+        "ariaSelected": "false",
+        "isActive": false,
+        "isSelected": false
+      }
+    ],
+    "triggerHeight": "26px",
+    "relayoutHeight": "26px"
+  },
+  "heights": {
+    "enabled": [
+      "26px",
+      "26px"
+    ],
+    "disabled": [
+      "26px",
+      "26px"
+    ],
+    "equal": true,
+    "triggerMidY": 126,
+    "relayoutMidY": 126,
+    "barMidY": 126,
+    "triggerW": 148
+  },
+  "kbRadialFetchDelta": 0,
+  "kbEscapeFetchDelta": 0,
+  "kbClusterFetchDelta": 0,
+  "tabLeftTrigger": true,
+  "mouseOpen": {
+    "open": true,
+    "triggerText": "关系聚类可视化",
+    "expanded": "true",
+    "activedesc": "ontology-layout-option-cluster",
+    "onTrigger": false,
+    "activeTag": "BUTTON.ontology-layout-help",
+    "options": [
+      {
+        "id": "ontology-layout-option-cluster",
+        "tabIndex": -1,
+        "role": "option",
+        "text": "关系聚类可视化",
+        "ariaSelected": "true",
+        "isActive": true,
+        "isSelected": true
+      },
+      {
+        "id": "ontology-layout-option-radial",
+        "tabIndex": -1,
+        "role": "option",
+        "text": "语义环形可视化",
+        "ariaSelected": "false",
+        "isActive": false,
+        "isSelected": false
+      }
+    ],
+    "triggerHeight": "26px",
+    "relayoutHeight": "26px"
+  },
+  "mousePick": {
+    "open": true,
+    "triggerText": "语义环形可视化",
+    "expanded": "false",
+    "activedesc": null,
+    "onTrigger": true,
+    "activeTag": "BUTTON.ontology-layout-trigger",
+    "options": [
+      {
+        "id": "ontology-layout-option-cluster",
+        "tabIndex": -1,
+        "role": "option",
+        "text": "关系聚类可视化",
+        "ariaSelected": "false",
+        "isActive": false,
+        "isSelected": false
+      },
+      {
+        "id": "ontology-layout-option-radial",
+        "tabIndex": -1,
+        "role": "option",
+        "text": "语义环形可视化",
+        "ariaSelected": "true",
+        "isActive": false,
+        "isSelected": true
+      }
+    ],
+    "triggerHeight": "26px",
+    "relayoutHeight": "26px"
+  },
+  "mousePickFetchDelta": 0,
+  "mouseOutsideClose": {
+    "open": true,
+    "triggerText": "语义环形可视化",
+    "expanded": "false",
+    "activedesc": null,
+    "onTrigger": true,
+    "activeTag": "BUTTON.ontology-layout-trigger",
+    "options": [
+      {
+        "id": "ontology-layout-option-cluster",
+        "tabIndex": -1,
+        "role": "option",
+        "text": "关系聚类可视化",
+        "ariaSelected": "false",
+        "isActive": false,
+        "isSelected": false
+      },
+      {
+        "id": "ontology-layout-option-radial",
+        "tabIndex": -1,
+        "role": "option",
+        "text": "语义环形可视化",
+        "ariaSelected": "true",
+        "isActive": false,
+        "isSelected": true
+      }
+    ],
+    "triggerHeight": "26px",
+    "relayoutHeight": "26px"
+  },
+  "tooltipDesktop": {
+    "hidden": false,
+    "text": "以当前锚点为中心，按照最短关系距离由内向外分环排列。",
+    "bg": "rgb(255, 255, 255)",
+    "color": "rgb(51, 65, 85)",
+    "border": "rgb(226, 232, 240)",
+    "shadow": true,
+    "maxWidth": "280px",
+    "rightGap": 0,
+    "belowHelp": true,
+    "withinDialog": true,
+    "arrowRight": "6px",
+    "arrowTop": "-5px",
+    "arrowTransform": "matrix(0.707107, 0.707107, -0.707107, 0.707107, 0, 0)",
+    "title": null
+  },
+  "narrowHeights": {
+    "open": true,
+    "triggerHeight": "26px",
+    "relayoutHeight": "26px",
+    "equal": true,
+    "triggerFits": true,
+    "relayoutFits": true
+  },
+  "narrowMenu": {
+    "expanded": "true",
+    "fits": true,
+    "withinDialog": true,
+    "left": 251,
+    "right": 399,
+    "dlgLeft": 14,
+    "dlgRight": 686
+  },
+  "narrowTooltip": {
+    "hidden": false,
+    "fits": true,
+    "withinDialog": true,
+    "left": 145,
+    "right": 425
+  },
+  "trace": [
+    {
+      "label": "kb: Enter opens (active=cluster, focus trigger)",
+      "state": {
+        "open": true,
+        "triggerText": "关系聚类可视化",
+        "expanded": "true",
+        "activedesc": "ontology-layout-option-cluster",
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "true",
+            "isActive": true,
+            "isSelected": true
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: ArrowDown -> radial active",
+      "state": {
+        "open": true,
+        "triggerText": "关系聚类可视化",
+        "expanded": "true",
+        "activedesc": "ontology-layout-option-radial",
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "true",
+            "isActive": false,
+            "isSelected": true
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "false",
+            "isActive": true,
+            "isSelected": false
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: Home -> cluster",
+      "state": {
+        "open": true,
+        "triggerText": "关系聚类可视化",
+        "expanded": "true",
+        "activedesc": "ontology-layout-option-cluster",
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "true",
+            "isActive": true,
+            "isSelected": true
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: End -> radial",
+      "state": {
+        "open": true,
+        "triggerText": "关系聚类可视化",
+        "expanded": "true",
+        "activedesc": "ontology-layout-option-radial",
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "true",
+            "isActive": false,
+            "isSelected": true
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "false",
+            "isActive": true,
+            "isSelected": false
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: ArrowDown wraps radial->cluster",
+      "state": {
+        "open": true,
+        "triggerText": "关系聚类可视化",
+        "expanded": "true",
+        "activedesc": "ontology-layout-option-cluster",
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "true",
+            "isActive": true,
+            "isSelected": true
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: ArrowUp wraps cluster->radial",
+      "state": {
+        "open": true,
+        "triggerText": "关系聚类可视化",
+        "expanded": "true",
+        "activedesc": "ontology-layout-option-radial",
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "true",
+            "isActive": false,
+            "isSelected": true
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "false",
+            "isActive": true,
+            "isSelected": false
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: Enter commits radial (menu closes)",
+      "state": {
+        "open": true,
+        "triggerText": "语义环形可视化",
+        "expanded": "false",
+        "activedesc": null,
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "true",
+            "isActive": false,
+            "isSelected": true
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: reopen after commit (active=radial)",
+      "state": {
+        "open": true,
+        "triggerText": "语义环形可视化",
+        "expanded": "true",
+        "activedesc": "ontology-layout-option-radial",
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "true",
+            "isActive": true,
+            "isSelected": true
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: Escape cancels, stays radial",
+      "state": {
+        "open": true,
+        "triggerText": "语义环形可视化",
+        "expanded": "false",
+        "activedesc": null,
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "true",
+            "isActive": false,
+            "isSelected": true
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: reopen again",
+      "state": {
+        "open": true,
+        "triggerText": "语义环形可视化",
+        "expanded": "true",
+        "activedesc": "ontology-layout-option-radial",
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "true",
+            "isActive": true,
+            "isSelected": true
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: ArrowDown radial->cluster",
+      "state": {
+        "open": true,
+        "triggerText": "语义环形可视化",
+        "expanded": "true",
+        "activedesc": "ontology-layout-option-cluster",
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "false",
+            "isActive": true,
+            "isSelected": false
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "true",
+            "isActive": false,
+            "isSelected": true
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: Enter commits cluster",
+      "state": {
+        "open": true,
+        "triggerText": "关系聚类可视化",
+        "expanded": "false",
+        "activedesc": null,
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "true",
+            "isActive": false,
+            "isSelected": true
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "kb: Tab closes menu and leaves trigger",
+      "state": {
+        "open": true,
+        "triggerText": "关系聚类可视化",
+        "expanded": "false",
+        "activedesc": null,
+        "onTrigger": false,
+        "activeTag": "BUTTON.ontology-layout-help",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "true",
+            "isActive": false,
+            "isSelected": true
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "narrow: Enter commits active",
+      "state": {
+        "open": true,
+        "triggerText": "语义环形可视化",
+        "expanded": "false",
+        "activedesc": null,
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "true",
+            "isActive": false,
+            "isSelected": true
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    },
+    {
+      "label": "narrow: Escape closes",
+      "state": {
+        "open": true,
+        "triggerText": "语义环形可视化",
+        "expanded": "false",
+        "activedesc": null,
+        "onTrigger": true,
+        "activeTag": "BUTTON.ontology-layout-trigger",
+        "options": [
+          {
+            "id": "ontology-layout-option-cluster",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "关系聚类可视化",
+            "ariaSelected": "false",
+            "isActive": false,
+            "isSelected": false
+          },
+          {
+            "id": "ontology-layout-option-radial",
+            "tabIndex": -1,
+            "role": "option",
+            "text": "语义环形可视化",
+            "ariaSelected": "true",
+            "isActive": false,
+            "isSelected": true
+          }
+        ],
+        "triggerHeight": "26px",
+        "relayoutHeight": "26px"
+      }
+    }
+  ]
+}

@@ -2732,7 +2732,9 @@ class OfflineRegressionTests(unittest.TestCase):
         graph = Path("frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js").read_text(encoding="utf-8")
         self.assertIn('data-graph-strategy="context" class="active">子图检索</button>', runtime)
         self.assertIn('data-graph-strategy="expand">关系扩散</button>', runtime)
-        self.assertIn('>关系聚类可视化</button>', runtime)
+        self.assertIn('<span class="ontology-layout-label">布局</span>', runtime)
+        self.assertIn('data-graph-layout-trigger role="combobox"', runtime)
+        self.assertIn('ontologyLayoutOptions.js', runtime)
         self.assertNotIn('>Ontology-GraphContext</button>', runtime)
         self.assertNotIn('>展开上下游</button>', runtime)
         self.assertIn("function packIsolatedNodes(graph)", graph)
@@ -3985,20 +3987,20 @@ console.log(JSON.stringify(out));"""
 
 
     def test_product_branding_and_version_display(self) -> None:
-        """The top-left brand is 智能分析 with the v0.1.0 tag everywhere;
+        """The top-left brand is 智能分析 with the v0.1.2 tag everywhere;
         智析 and the bi-analyst pseudo-version are gone from user-visible
         surfaces (title, skeleton, shell brand and React sidebar)."""
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
         shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
         static = Path("bi_agent/web/static/index.html").read_text(encoding="utf-8")
         self.assertIn('const PRODUCT_NAME = "智能分析";', main)
-        self.assertIn('const PRODUCT_VERSION = "v0.1.0";', main)
+        self.assertIn('const PRODUCT_VERSION = "v0.1.2";', main)
         self.assertIn("PRODUCT_NAME", main)
         self.assertIn("PRODUCT_VERSION", main)
         self.assertIn('className="antd-product-version"', main)
         self.assertIn("<title>智能分析 · 本体工作台</title>", shell)
         self.assertIn('<span class="brand-name">智能分析</span>', shell)
-        self.assertIn('<span class="brand-version" id="product-version">v0.1.0</span>', shell)
+        self.assertIn('<span class="brand-version" id="product-version">v0.1.2</span>', shell)
         self.assertIn("<title>智能分析 · 本体工作台</title>", static)
         self.assertIn('aria-label="智能分析 React 工作台"', static)
         self.assertIn("正在加载智能分析工作台…", static)
@@ -4010,29 +4012,565 @@ console.log(JSON.stringify(out));"""
         self.assertTrue(Path(".claude/agents/bi-analyst.md").exists())
 
     def test_version_contract_consistent(self) -> None:
-        """Python, FastAPI, npm and UI versions agree on v0.1.0 and are
+        """Python, FastAPI, npm and UI versions agree on v0.1.2 and are
         independent of knowledge/schema/cache versions."""
         root = Path(__file__).resolve().parents[1]
         pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('version = "0.1.0"', pyproject)
+        self.assertIn('version = "0.1.2"', pyproject)
         init = (root / "bi_agent/__init__.py").read_text(encoding="utf-8")
-        self.assertIn('__version__ = "0.1.0"', init)
+        self.assertIn('__version__ = "0.1.2"', init)
         app = (root / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('APP_VERSION = "0.1.0"', app)
+        self.assertIn('APP_VERSION = "0.1.2"', app)
         self.assertIn('FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION)', app)
         pkg = (root / "frontend/package.json").read_text(encoding="utf-8")
-        self.assertIn('"version": "0.1.0"', pkg)
+        self.assertIn('"version": "0.1.2"', pkg)
         lock = (root / "frontend/package-lock.json").read_text(encoding="utf-8")
         import json as _json
         lock_root = _json.loads(lock)["packages"][""]["version"]
-        self.assertEqual(lock_root, "0.1.0")
+        self.assertEqual(lock_root, "0.1.2")
         main = (root / "frontend/src/main.jsx").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_VERSION = "v0.1.0";', main)
+        self.assertIn('const PRODUCT_VERSION = "v0.1.2";', main)
         # Product version is decoupled from the numeric conversation schema
         # version and from vendor cache-bust query params.
         conv = (root / "bi_agent/web/conversations.py").read_text(encoding="utf-8")
         self.assertIn("schema_version", conv)
         self.assertNotIn('"0.1.0"', conv)
+
+    def test_ontology_subgraph_radial_layout_contract(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        model = Path("frontend/src/ontologyGraphModel.js").read_text(encoding="utf-8")
+        # 1. Radial capability is imported from the shared package only; the
+        #    existing Sigma renderer and buildGraph path stay intact.
+        self.assertIn('from "@boulderaitech/ontology-graph/radial"', runtime)
+        self.assertIn("prepareRadialLayout", runtime)
+        self.assertIn("radialGraphOption", runtime)
+        self.assertIn('createSigmaOntologyRenderer(canvas, buildGraph(graph))', runtime)
+        # 2. A single layout select offers both layouts and the cluster layout
+        #    stays the default. No parallel layout buttons remain.
+        self.assertIn('<span class="ontology-layout-label">布局</span>', runtime)
+        self.assertNotIn('<select data-graph-layout-select', runtime)
+        self.assertIn('data-graph-layout-trigger role="combobox"', runtime)
+        self.assertIn('role="listbox"', runtime)
+        self.assertNotIn('data-graph-layout="cluster"', runtime)
+        self.assertNotIn('data-graph-layout="radial"', runtime)
+        self.assertNotIn('>关系聚类可视化</button>', runtime)
+        self.assertNotIn('>语义环形可视化</button>', runtime)
+        self.assertIn("valueNode.textContent = option.label", runtime)
+        # 3. Layout switching reuses the loaded graph data and never fetches.
+        switch_start = runtime.index("function switchOntologyGraphLayout(")
+        switch_src = runtime[switch_start:runtime.index("function syncOntologyGraphLayoutControls(", switch_start)]
+        self.assertIn("renderOntologyGraphFromData()", switch_src)
+        self.assertNotIn("loadOntologyGraph(", switch_src)
+        self.assertNotIn("fetch(", switch_src)
+        # 4. Close, strategy changes and layout changes all go through the
+        #    unified destroy function.
+        self.assertIn("function destroyOntologyGraphView(", runtime)
+        self.assertGreaterEqual(runtime.count("destroyOntologyGraphView("), 3)
+        # 5. The ECharts branch really mounts the shared radial option.
+        self.assertIn('chart.setOption(radialGraphOption(prepared), { notMerge: true })', runtime)
+        # 6. relations_available=false never gates the radial node build or
+        #    the shared render path.
+        radial_func_start = model.index("export function buildRadialGraph(")
+        radial_src = model[radial_func_start:]
+        self.assertNotIn("relations_available", radial_src)
+        self.assertNotIn("return null", radial_src)
+        self.assertIn('"unrelated"', radial_src)
+        render_start = runtime.index("function renderOntologyGraphFromData(")
+        render_src = runtime[render_start:runtime.index("function renderOntologyGraphCluster(", render_start)]
+        self.assertNotIn("relations_available", render_src)
+        self.assertIn("state.layout === LAYOUT_RADIAL", render_src)
+        # The status hint for unavailable relations is preserved for both
+        # layouts (nodes are still shown).
+        self.assertIn("关系边不可用：", runtime)
+
+    def test_ontology_subgraph_async_controls_and_renderer_handle_contract(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        # 1. Runtime manages all three control groups through one unified
+        #    syncOntologyGraphControls function and disables them while busy.
+        self.assertIn("function syncOntologyGraphControls(", runtime)
+        sync_start = runtime.index("function syncOntologyGraphControls(")
+        sync_end = runtime.index("function syncOntologyGraphLayoutControls(", sync_start)
+        sync_src = runtime[sync_start:sync_end]
+        self.assertIn('querySelectorAll("[data-graph-strategy]")', sync_src)
+        self.assertIn('querySelector("[data-graph-layout-trigger]")', sync_src)
+        self.assertIn("trigger.disabled = busy", sync_src)
+        self.assertIn("setOntologyLayoutPickerBusy(", sync_src)
+        self.assertIn('[data-graph-relayout]', sync_src)
+        self.assertIn("isOntologyGraphBusy(ontologyGraphViewState)", sync_src)
+        # 2. loadOntologyGraph must not unconditionally re-enable buttons in
+        #    its finally; the finish path carries the captured requestEpoch.
+        load_start = runtime.index("async function loadOntologyGraph(")
+        load_end = runtime.index("function destroyOntologyGraphView(", load_start)
+        load_src = runtime[load_start:load_end]
+        self.assertIn("beginOntologyGraphRequest(", load_src)
+        self.assertIn("const requestEpoch = ontologyGraphViewState.requestEpoch", load_src)
+        self.assertIn("finishOntologyGraphRequest(ontologyGraphViewState, requestEpoch)", load_src)
+        self.assertNotIn("disabled = false", load_src)
+        # 3. Render settle is token-aware for both cluster and radial paths.
+        self.assertIn("beginOntologyGraphRender(", runtime)
+        self.assertIn("finishOntologyGraphRender(ontologyGraphViewState, renderToken)", runtime)
+        # 4. Sigma/ECharts go through the testable renderer handle module and
+        #    the runtime keeps a single current view.
+        self.assertIn('from "./ontologyGraphRendererHandle.js"', runtime)
+        self.assertIn("createSigmaGraphView(", runtime)
+        self.assertIn("createRadialGraphView(", runtime)
+        self.assertIn("destroyGraphView(ontologyGraphView)", runtime)
+        # 5. Radial success/failure/empty/prepared=null paths all settle the
+        #    current render token (a finally that finishes the render).
+        radial_start = runtime.index("async function renderOntologyGraphRadial(")
+        radial_src = runtime[radial_start:runtime.index("function switchOntologyGraphLayout(", radial_start)]
+        self.assertIn("finally", radial_src)
+        self.assertIn("finishOntologyGraphRender(ontologyGraphViewState, renderToken)", radial_src)
+        # 6. close / strategy change / layout change still destroy the view
+        #    through the unified wrapper before replacing or hiding it.
+        close_start = runtime.index("function closeOntologyGraphCard(")
+        close_src = runtime[close_start:runtime.index("function normalizeOntologyEntity(", close_start)]
+        self.assertIn("destroyOntologyGraphView()", close_src)
+        self.assertIn("closeOntologyGraphView(", close_src)
+        # 7. The reload control handler guards against busy state as well as
+        #    relying on the disabled attribute alone.
+        relayout_src = runtime[runtime.index("function onOntologyGraphRelayoutClick("):runtime.index("function onOntologyGraphWindowResize(", runtime.index("function onOntologyGraphRelayoutClick("))]
+        self.assertIn("isOntologyGraphBusy(ontologyGraphViewState)", relayout_src)
+
+
+
+    def test_ontology_subgraph_reopen_async_identity_contract(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        view_state = Path("frontend/src/ontologyGraphViewState.js").read_text(encoding="utf-8")
+        # 1. Reopen must thread the existing view state so requestEpoch and
+        #    renderToken stay monotonic across modal open/close cycles.
+        self.assertIn("openOntologyGraphView(ontologyGraphViewState, normalized)", runtime)
+        self.assertNotIn(
+            "openOntologyGraphView(createOntologyGraphViewState(), normalized)", runtime
+        )
+        # 2. openOntologyGraphView must advance epoch/token from previousState.
+        open_start = view_state.index("export function openOntologyGraphView(")
+        open_end = view_state.index("export function closeOntologyGraphView(", open_start)
+        open_src = view_state[open_start:open_end]
+        self.assertIn("previousState", open_src)
+        self.assertIn("requestEpoch: (previousState?.requestEpoch || 0) + 1", open_src)
+        self.assertIn("renderToken: (previousState?.renderToken || 0) + 1", open_src)
+        # 3. Existing epoch/token-aware request, render and close transitions
+        #    are preserved in the runtime open path.
+        open_card_start = runtime.index("async function openOntologyGraphCard(")
+        open_card_end = runtime.index("async function loadOntologyGraph(", open_card_start)
+        open_card_src = runtime[open_card_start:open_card_end]
+        self.assertIn("openOntologyGraphView(ontologyGraphViewState, normalized)", open_card_src)
+        self.assertIn("beginOntologyGraphRequest(", runtime)
+        self.assertIn("finishOntologyGraphRequest(ontologyGraphViewState, requestEpoch)", runtime)
+        self.assertIn("beginOntologyGraphRender(", runtime)
+        self.assertIn("finishOntologyGraphRender(ontologyGraphViewState, renderToken)", runtime)
+        self.assertIn("closeOntologyGraphView(ontologyGraphViewState)", runtime)
+
+
+    def test_ontology_layout_picker_custom_combobox_and_tooltip_contract(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        options_module = Path("frontend/src/ontologyLayoutOptions.js").read_text(encoding="utf-8")
+        picker_module = Path("frontend/src/ontologyLayoutPickerState.js").read_text(encoding="utf-8")
+        # 1. The native select is gone; a custom combobox/listbox pair exists.
+        self.assertNotIn("<select data-graph-layout-select", runtime)
+        self.assertIn('role="combobox"', runtime)
+        self.assertIn('role="listbox"', runtime)
+        self.assertIn('aria-haspopup="listbox"', runtime)
+        self.assertIn('aria-controls="ontology-layout-listbox"', runtime)
+        self.assertIn("data-graph-layout-trigger", runtime)
+        self.assertIn("data-graph-layout-menu", runtime)
+        # 2. The question-mark help entry is fully gone; the toolbar keeps the
+        #    布局 label plus a single white per-option tooltip (no native title).
+        self.assertIn('<span class="ontology-layout-label">布局</span>', runtime)
+        self.assertNotIn("data-graph-layout-help", runtime)
+        self.assertNotIn("ontology-layout-helpbox", runtime)
+        self.assertNotIn('aria-describedby="ontology-layout-tooltip"', runtime)
+        self.assertNotIn('aria-label="当前布局说明"', runtime)
+        self.assertEqual(runtime.count('role="tooltip"'), 1)
+        self.assertIn('data-graph-layout-option-tooltip role="tooltip" hidden', runtime)
+        self.assertNotIn("data-graph-layout-tooltip title=", runtime)
+        # 3. Options are created from ONTOLOGY_LAYOUT_OPTIONS as real
+        #    role="option" rows; no duplicate names/hints in Runtime.
+        self.assertIn("ontologyLayoutOptions.js", runtime)
+        self.assertIn("ONTOLOGY_LAYOUT_OPTIONS", runtime)
+        self.assertIn("ontologyLayoutPickerState.js", runtime)
+        self.assertIn("for (const option of ONTOLOGY_LAYOUT_OPTIONS)", runtime)
+        self.assertIn('node.setAttribute("role", "option")', runtime)
+        self.assertIn("node.dataset.graphLayoutOption = option.value", runtime)
+        self.assertIn("node.textContent = option.label", runtime)
+        menu_build_start = runtime.index('const layoutMenu = host.querySelector("[data-graph-layout-menu]")')
+        menu_build_end = runtime.index("layoutTrigger.addEventListener", menu_build_start)
+        menu_build_src = runtime[menu_build_start:menu_build_end]
+        self.assertIn('document.createElement("button")', menu_build_src)
+        self.assertNotIn('document.createElement("option")', menu_build_src)
+        self.assertIn('node.addEventListener("mouseenter"', menu_build_src)
+        self.assertIn("showOntologyGraphLayoutOptionHint(option.value, node)", menu_build_src)
+        self.assertIn('node.addEventListener("mouseleave", hideOntologyGraphLayoutOptionHint)', menu_build_src)
+        self.assertNotIn("node.title", menu_build_src)
+        for token in (
+            'value: "cluster"',
+            'value: "radial"',
+            'label: "关系聚类可视化"',
+            'label: "语义环形可视化"',
+        ):
+            self.assertIn(token, options_module)
+        # 4. Mouse, outside-click and per-option hover handlers are wired once.
+        #    The core keyboard model lives on the trigger through the pure key
+        #    handler; the menu owns mouse clicks/hover only and never receives
+        #    keyboard navigation. The old question-mark tooltip wiring is gone.
+        for binding in (
+            'layoutTrigger.addEventListener("click", onOntologyGraphLayoutTriggerClick)',
+            'layoutTrigger.addEventListener("keydown", onOntologyGraphLayoutTriggerKeydown)',
+            'layoutMenu.addEventListener("click", onOntologyGraphLayoutOptionClick)',
+            'layoutMenu.addEventListener("mouseleave", hideOntologyGraphLayoutOptionHint)',
+            'document.addEventListener("click", onOntologyGraphLayoutDocumentClick)',
+        ):
+            self.assertIn(binding, runtime)
+        self.assertNotIn("layoutHelp.addEventListener", runtime)
+        self.assertNotIn("showOntologyGraphLayoutTooltip", runtime)
+        self.assertNotIn("hideOntologyGraphLayoutTooltip", runtime)
+        self.assertNotIn("syncOntologyGraphLayoutTooltipText", runtime)
+        self.assertNotIn("onOntologyGraphTooltipKeydown", runtime)
+        self.assertNotIn('layoutMenu.addEventListener("keydown"', runtime)
+        self.assertNotIn("function onOntologyGraphLayoutMenuKeydown(", runtime)
+        trigger_handler_start = runtime.index("function onOntologyGraphLayoutTriggerKeydown(")
+        trigger_handler_src = runtime[trigger_handler_start:runtime.index("function onOntologyGraphLayoutDocumentClick(", trigger_handler_start)]
+        self.assertIn("handleOntologyLayoutPickerKey(", trigger_handler_src)
+        self.assertIn("ontologyGraphLayoutPickerState", trigger_handler_src)
+        self.assertIn("event.key", trigger_handler_src)
+        self.assertIn("busy: isOntologyGraphBusy(ontologyGraphViewState)", trigger_handler_src)
+        key_fn_start = picker_module.index("export function handleOntologyLayoutPickerKey(")
+        key_fn = picker_module[key_fn_start:]
+        for key in ('"Enter"', '" "', '"ArrowDown"', '"ArrowUp"', '"Home"', '"End"', '"Escape"', '"Tab"'):
+            self.assertIn(key, key_fn)
+        # 4b. ARIA combobox wiring: options carry stable unique ids and stay out
+        #     of the tab order; the trigger owns aria-activedescendant.
+        self.assertIn('aria-activedescendant=""', runtime)
+        self.assertIn('node.id = "ontology-layout-option-" + option.value', menu_build_src)
+        self.assertIn("node.tabIndex = -1", menu_build_src)
+        # 5. The selection path routes into switchOntologyGraphLayout(value)
+        #    and never issues a subgraph request.
+        pick_start = runtime.index("function applyOntologyGraphLayoutPickerSelection(")
+        pick_src = runtime[pick_start:runtime.index("function onOntologyGraphLayoutTriggerClick(", pick_start)]
+        self.assertIn("switchOntologyGraphLayout(", pick_src)
+        self.assertNotIn("loadOntologyGraph(", pick_src)
+        self.assertNotIn("fetch(", pick_src)
+        # 6. Busy disables the trigger and collapses the menu through the pure
+        #    picker busy transition.
+        sync_start = runtime.index("function syncOntologyGraphControls(")
+        sync_src = runtime[sync_start:runtime.index("function syncOntologyGraphLayoutControls(", sync_start)]
+        self.assertIn('querySelector("[data-graph-layout-trigger]")', sync_src)
+        self.assertIn("trigger.disabled = busy", sync_src)
+        self.assertIn("setOntologyLayoutPickerBusy(", sync_src)
+        # 7. State -> DOM sync covers the trigger text, selected option and
+        #    aria state only. The per-option hint bubble is separate: it never
+        #    appears from a layout change and collapses whenever the listbox
+        #    is closed.
+        sync_layout_start = runtime.index("function syncOntologyGraphLayoutControls(")
+        sync_layout_end = runtime.index("function showOntologyGraphLayoutOptionHint(", sync_layout_start)
+        sync_layout_src = runtime[sync_layout_start:sync_layout_end]
+        self.assertIn("valueNode.textContent = option.label", sync_layout_src)
+        self.assertIn("aria-expanded", sync_layout_src)
+        self.assertIn("aria-selected", sync_layout_src)
+        self.assertIn('setAttribute("aria-activedescendant"', sync_layout_src)
+        self.assertIn('removeAttribute("aria-activedescendant")', sync_layout_src)
+        self.assertIn('"ontology-layout-option-"', sync_layout_src)
+        self.assertIn("is-active", sync_layout_src)
+        self.assertIn("hideOntologyGraphLayoutOptionHint()", sync_layout_src)
+        self.assertNotIn("option.hint", sync_layout_src)
+        show_src = runtime[sync_layout_end:runtime.index("function hideOntologyGraphLayoutOptionHint(", sync_layout_end)]
+        self.assertIn("ontologyLayoutOption(value)", show_src)
+        self.assertIn("option.hint", show_src)
+        self.assertIn("tooltip.textContent", show_src)
+        self.assertIn("positionOntologyGraphLayoutOptionHint(", show_src)
+        hide_start = runtime.index("function hideOntologyGraphLayoutOptionHint(")
+        hide_src = runtime[hide_start:runtime.index("function positionOntologyGraphLayoutOptionHint(", hide_start)]
+        self.assertIn("tooltip.hidden = true", hide_src)
+        self.assertIn("hideOntologyLayoutOptionTooltip(", hide_src)
+        position_start = runtime.index("function positionOntologyGraphLayoutOptionHint(")
+        position_src = runtime[position_start:runtime.index("function updateOntologyGraphStatus(", position_start)]
+        self.assertIn("getBoundingClientRect()", position_src)
+        self.assertIn("window.innerWidth", position_src)
+        self.assertIn('classList.toggle("flip"', position_src)
+        close_src = runtime[runtime.index("function closeOntologyGraphCard("):runtime.index("function normalizeOntologyEntity(", runtime.index("function closeOntologyGraphCard("))]
+        self.assertIn("hideOntologyGraphLayoutOptionHint()", close_src)
+        self.assertIn("closeOntologyLayoutPicker(", close_src)
+        # 8. Custom picker CSS: trigger, chevron, menu, option states,
+        #    focus-visible and float layer; no native-select CSS tricks.
+        for selector in (
+            ".ontology-layout-trigger {",
+            ".ontology-layout-chevron",
+            ".ontology-layout-menu {",
+            ".ontology-layout-option:hover",
+            ".ontology-layout-option.is-active",
+            ".ontology-layout-option.is-selected",
+            ".ontology-layout-trigger:focus-visible",
+            ".ontology-layout-option:focus-visible",
+        ):
+            self.assertIn(selector, css)
+        trigger_block_start = css.index(".ontology-layout-trigger {")
+        trigger_block = css[trigger_block_start:css.index("}", trigger_block_start)]
+        self.assertIn("width: 148px", trigger_block)
+        menu_start = css.index(".ontology-layout-menu {")
+        menu_block = css[menu_start:css.index("}", menu_start)]
+        for token in (
+            "position: absolute",
+            "z-index:",
+            "background: #fff",
+            "border: 1px solid #e2e8f0",
+            "border-radius: 8px",
+            "box-shadow:",
+            "min-width: 148px",
+        ):
+            self.assertIn(token, menu_block)
+        self.assertNotIn("appearance:none", css)
+        self.assertNotIn("data-graph-layout-select", css)
+        # 9. The single white per-option tooltip CSS is fixed to the viewport,
+        #    keeps pointer-events off and draws a bordered arrow on each side;
+        #    the old question-mark tooltip CSS is completely gone.
+        self.assertNotIn(".ontology-layout-helpbox", css)
+        self.assertNotIn(".ontology-layout-help", css)
+        self.assertNotIn(".ontology-layout-tooltip", css)
+        tooltip_start = css.index(".ontology-layout-option-tooltip {")
+        tooltip_block = css[tooltip_start:css.index("}", tooltip_start)]
+        for token in (
+            "position: fixed",
+            "z-index:",
+            "background: #fff",
+            "color: #334155",
+            "border: 1px solid #e2e8f0",
+            "border-radius: 8px",
+            "box-shadow:",
+            "max-width: 280px",
+            "pointer-events: none",
+        ):
+            self.assertIn(token, tooltip_block)
+        self.assertIn(".ontology-layout-option-tooltip[hidden] { display: none; }", css)
+        self.assertIn(".ontology-layout-option-tooltip:not(.flip)::before {", css)
+        self.assertIn(".ontology-layout-option-tooltip.flip::before {", css)
+        self.assertIn("border-left: 1px solid #e2e8f0", css)
+        self.assertNotIn("appearance:none", css)
+        # 10. The pure picker keyboard/state module exists for Green wiring.
+        self.assertIn("export function createOntologyLayoutPickerState(", picker_module)
+
+
+    def test_ontology_layout_keyboard_trigger_and_toolbar_height_contract(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        picker_module = Path("frontend/src/ontologyLayoutPickerState.js").read_text(encoding="utf-8")
+        # 1. One keyboard model: the trigger delegates every key to the pure
+        #    handler and the menu no longer owns a keydown navigation path.
+        self.assertIn("export function handleOntologyLayoutPickerKey(", picker_module)
+        trigger_wire_start = runtime.index("function onOntologyGraphLayoutTriggerKeydown(")
+        trigger_wire_src = runtime[trigger_wire_start:runtime.index("function onOntologyGraphLayoutDocumentClick(", trigger_wire_start)]
+        self.assertIn("handleOntologyLayoutPickerKey(", trigger_wire_src)
+        self.assertIn("ontologyGraphLayoutPickerState", trigger_wire_src)
+        self.assertIn("event.key", trigger_wire_src)
+        self.assertNotIn('layoutMenu.addEventListener("keydown"', runtime)
+        self.assertNotIn("function onOntologyGraphLayoutMenuKeydown(", runtime)
+        trigger_start = runtime.index("function onOntologyGraphLayoutTriggerKeydown(")
+        trigger_end = runtime.index("function onOntologyGraphLayoutDocumentClick(", trigger_start)
+        trigger_src = runtime[trigger_start:trigger_end]
+        self.assertIn("result.handled", trigger_src)
+        self.assertIn("event.preventDefault()", trigger_src)
+        self.assertIn("applyOntologyGraphLayoutPickerSelection(result.commitValue)", trigger_src)
+        self.assertIn("syncOntologyGraphLayoutControls()", trigger_src)
+        pick_start = runtime.index("function applyOntologyGraphLayoutPickerSelection(")
+        pick_src = runtime[pick_start:runtime.index("function onOntologyGraphLayoutTriggerClick(", pick_start)]
+        self.assertIn("switchOntologyGraphLayout(value)", pick_src)
+        self.assertNotIn("loadOntologyGraph(", pick_src)
+        self.assertNotIn("fetch(", pick_src)
+        # 2. aria-activedescendant tracks the active option while the listbox
+        #    is open and is cleared when it closes.
+        sync_start = runtime.index("function syncOntologyGraphLayoutControls(")
+        sync_src = runtime[sync_start:runtime.index("function showOntologyGraphLayoutOptionHint(", sync_start)]
+        self.assertIn('setAttribute("aria-activedescendant"', sync_src)
+        self.assertIn('removeAttribute("aria-activedescendant")', sync_src)
+        self.assertIn('"ontology-layout-option-"', sync_src)
+        menu_build_start = runtime.index('const layoutMenu = host.querySelector("[data-graph-layout-menu]")')
+        menu_build_src = runtime[menu_build_start:runtime.index("layoutTrigger.addEventListener", menu_build_start)]
+        self.assertIn('node.id = "ontology-layout-option-" + option.value', menu_build_src)
+        self.assertIn("node.tabIndex = -1", menu_build_src)
+        # 3. Toolbar height contract: the layout trigger and the relayout
+        #    button share an explicit 26px border-box row, without transforms,
+        #    scaling or negative margins.
+        self.assertIn(".ontology-layout-trigger {\n  height: 26px;\n  box-sizing: border-box;\n}", css)
+        relayout_start = css.index(".ontology-graph-toolbar [data-graph-relayout] {")
+        relayout_block = css[relayout_start:css.index("}", relayout_start)]
+        for token in (
+            "height: 26px",
+            "min-height: 26px",
+            "box-sizing: border-box",
+            "display: inline-flex",
+            "align-items: center",
+            "justify-content: center",
+        ):
+            self.assertIn(token, relayout_block)
+        for block in (relayout_block,):
+            self.assertNotIn("transform", block)
+            self.assertNotIn("scale(", block)
+            self.assertNotIn("margin", block)
+        media_start = css.index("@media (max-width: 720px)")
+        media_src = css[media_start:]
+        self.assertIn(".ontology-graph-toolbar { flex-wrap: wrap; }", media_src)
+        # 4. The custom-panel and right-anchored white tooltip contracts stay.
+        self.assertNotIn("<select data-graph-layout-select", runtime)
+        self.assertIn('role="combobox"', runtime)
+        self.assertIn('role="listbox"', runtime)
+        self.assertIn('data-graph-layout-option-tooltip role="tooltip" hidden', runtime)
+
+    def test_ontology_layout_option_hover_tooltip_contract(self) -> None:
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        options_module = Path("frontend/src/ontologyLayoutOptions.js").read_text(encoding="utf-8")
+        picker_module = Path("frontend/src/ontologyLayoutPickerState.js").read_text(encoding="utf-8")
+        tooltip_module = Path("frontend/src/ontologyLayoutOptionTooltipState.js").read_text(encoding="utf-8")
+        new_cluster_hint = "ForceAtlas2 是一种先进的力导向图布局，适合查看节点之间的关系聚类。"
+        old_cluster_hint = "ForceAtlas2 力导向布局，适合查看节点之间的关系聚类。"
+        # 1. The question mark entry and its DOM/CSS/listeners are gone.
+        self.assertNotIn("data-graph-layout-help", runtime)
+        self.assertNotIn("ontology-layout-helpbox", runtime)
+        self.assertNotIn(">?</button>", runtime)
+        self.assertNotIn("aria-describedby", runtime)
+        self.assertNotIn("function showOntologyGraphLayoutTooltip(", runtime)
+        self.assertNotIn("function hideOntologyGraphLayoutTooltip(", runtime)
+        self.assertNotIn("function syncOntologyGraphLayoutTooltipText(", runtime)
+        self.assertNotIn("function onOntologyGraphTooltipKeydown(", runtime)
+        self.assertNotIn(".ontology-layout-help", css)
+        self.assertNotIn(".ontology-layout-helpbox", css)
+        self.assertNotIn(".ontology-layout-tooltip", css)
+        # 2. One reusable tooltip element exists inside the picker with
+        #    role="tooltip"; no native title on trigger, options or tooltip.
+        self.assertEqual(runtime.count('data-graph-layout-option-tooltip role="tooltip" hidden'), 1)
+        self.assertEqual(runtime.count('role="tooltip"'), 1)
+        self.assertIn('layoutMenu.addEventListener("mouseleave", hideOntologyGraphLayoutOptionHint)', runtime)
+        self.assertNotIn("layoutHelp", runtime)
+        # 3. Option hover wires into the pure tooltip state module and reads
+        #    the hint text only through ONTOLOGY_LAYOUT_OPTIONS.
+        self.assertIn("ontologyLayoutOptionTooltipState.js", runtime)
+        self.assertIn("export function createOntologyLayoutOptionTooltipState(", tooltip_module)
+        self.assertIn("export function showOntologyLayoutOptionTooltip(", tooltip_module)
+        self.assertIn("export function hideOntologyLayoutOptionTooltip(", tooltip_module)
+        show_start = runtime.index("function showOntologyGraphLayoutOptionHint(")
+        show_src = runtime[show_start:runtime.index("function hideOntologyGraphLayoutOptionHint(", show_start)]
+        self.assertIn("ontologyLayoutOption(value)", show_src)
+        self.assertIn("option.hint", show_src)
+        self.assertIn('querySelector("[data-graph-layout-option-tooltip]")', show_src)
+        # 4. Option/listbox leave, select, Escape/Tab, outside click, busy and
+        #    modal close all collapse through the same hide helper.
+        hide_start = runtime.index("function hideOntologyGraphLayoutOptionHint(")
+        hide_src = runtime[hide_start:runtime.index("function positionOntologyGraphLayoutOptionHint(", hide_start)]
+        self.assertIn("tooltip.hidden = true", hide_src)
+        self.assertIn("hideOntologyLayoutOptionTooltip(", hide_src)
+        sync_start = runtime.index("function syncOntologyGraphLayoutControls(")
+        sync_src = runtime[sync_start:runtime.index("function showOntologyGraphLayoutOptionHint(", sync_start)]
+        self.assertIn("hideOntologyGraphLayoutOptionHint()", sync_src)
+        close_src = runtime[runtime.index("function closeOntologyGraphCard("):runtime.index("function normalizeOntologyEntity(", runtime.index("function closeOntologyGraphCard("))]
+        self.assertIn("hideOntologyGraphLayoutOptionHint()", close_src)
+        # 5. Positioning anchors to the hovered option row, flips between the
+        #    right/left sides and keeps the bubble out of pointer events.
+        position_start = runtime.index("function positionOntologyGraphLayoutOptionHint(")
+        position_src = runtime[position_start:runtime.index("function updateOntologyGraphStatus(", position_start)]
+        self.assertIn("getBoundingClientRect()", position_src)
+        self.assertIn("window.innerWidth", position_src)
+        self.assertIn('classList.toggle("flip"', position_src)
+        tooltip_css_start = css.index(".ontology-layout-option-tooltip {")
+        tooltip_css = css[tooltip_css_start:css.index("}", tooltip_css_start)]
+        self.assertIn("pointer-events: none", tooltip_css)
+        # 6. Copy contract: the new cluster sentence appears exactly once in
+        #    the options registry and neither old nor new copy leaks into
+        #    Runtime or CSS.
+        self.assertEqual(options_module.count(new_cluster_hint), 1)
+        self.assertNotIn(old_cluster_hint, options_module)
+        self.assertNotIn(old_cluster_hint, runtime)
+        self.assertNotIn(old_cluster_hint, css)
+        self.assertNotIn(new_cluster_hint, runtime)
+        self.assertNotIn("以当前锚点为中心，按照最短关系距离由内向外分环排列", runtime)
+        # 7. Keyboard/ARIA/busy/toolbar-height contracts stay untouched.
+        self.assertIn("export function handleOntologyLayoutPickerKey(", picker_module)
+        self.assertIn(".ontology-layout-trigger {\n  height: 26px;\n  box-sizing: border-box;\n}", css)
+        self.assertNotIn("<select data-graph-layout-select", runtime)
+
+    def test_ontology_layout_option_borderless_contract(self) -> None:
+        """Layout dropdown options are borderless list rows, not button cards.
+
+        The generic toolbar button rule must be narrowed to direct business
+        buttons (`.ontology-graph-toolbar > button`) so it can no longer
+        override the menu-scoped option reset.
+        """
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        # 1. No generic rule matching every descendant button of the toolbar.
+        with self.subTest("generic-descendant-button-rule"):
+            self.assertNotIn(".ontology-graph-toolbar button {", css)
+            self.assertNotIn(".ontology-graph-toolbar button.active {", css)
+            self.assertNotIn(".ontology-graph-toolbar button:disabled {", css)
+        # 2. The generic rule is narrowed to direct toolbar business buttons.
+        with self.subTest("generic-scoped-direct-child"):
+            self.assertIn(".ontology-graph-toolbar > button {", css)
+            self.assertIn(".ontology-graph-toolbar > button.active {", css)
+            self.assertIn(".ontology-graph-toolbar > button:disabled {", css)
+        # 3. Option reset is menu-scoped with border/background/shadow cleared.
+        with self.subTest("menu-scoped-option-reset"):
+            self.assertIn(".ontology-layout-menu .ontology-layout-option {", css)
+            option_start = css.index(".ontology-layout-menu .ontology-layout-option {")
+            option_block = css[option_start:css.index("}", option_start)]
+            for token in ("border: 0", "background: transparent", "box-shadow: none"):
+                self.assertIn(token, option_block)
+        # 4. Option default rule must not contain a non-zero border.
+        with self.subTest("option-no-nonzero-border"):
+            self.assertIn(".ontology-layout-menu .ontology-layout-option {", css)
+            option_start = css.index(".ontology-layout-menu .ontology-layout-option {")
+            option_block = css[option_start:css.index("}", option_start)]
+            self.assertNotIn("border: 1px", option_block)
+        # 5. Option default rule must not paint a solid white card.
+        with self.subTest("option-no-white-background"):
+            self.assertIn(".ontology-layout-menu .ontology-layout-option {", css)
+            option_start = css.index(".ontology-layout-menu .ontology-layout-option {")
+            option_block = css[option_start:css.index("}", option_start)]
+            self.assertNotIn("background: #fff", option_block)
+        # 6. Option/menu rules never rely on !important.
+        with self.subTest("option-no-important"):
+            option_area = css[
+                css.index(".ontology-layout-menu {") :
+                css.index(".ontology-layout-option-tooltip {")
+            ]
+            self.assertNotIn("!important", option_area)
+        # 7. Hover/active keeps the light-blue full-row background.
+        with self.subTest("option-hover-active-row"):
+            self.assertIn(
+                ".ontology-layout-option:hover, .ontology-layout-option.is-active { background: #eff6ff; color: #2563eb; }",
+                css,
+            )
+        # 8. is-selected keeps blue text and the check mark.
+        with self.subTest("option-selected-mark"):
+            self.assertIn(".ontology-layout-option.is-selected { color: #2563eb; font-weight: 600; }", css)
+            self.assertIn(".ontology-layout-option.is-selected::after", css)
+        # 9. focus-visible keeps a visible focus ring on options.
+        with self.subTest("option-focus-visible"):
+            self.assertIn(".ontology-layout-option:focus-visible { outline:", css)
+        # 10. The trigger keeps its bordered selector look and 26px height.
+        with self.subTest("trigger-bordered-26px"):
+            trigger_start = css.index(".ontology-graph-toolbar .ontology-layout-trigger {")
+            trigger_block = css[trigger_start:css.index("}", trigger_start)]
+            for token in ("border: 1px solid", "border-radius:", "height: 26px"):
+                self.assertIn(token, trigger_block)
+        # 11. The relayout button keeps its 26px border-box height.
+        with self.subTest("relayout-26px"):
+            relayout_start = css.index(".ontology-graph-toolbar [data-graph-relayout] {")
+            relayout_block = css[relayout_start:css.index("}", relayout_start)]
+            self.assertIn("height: 26px", relayout_block)
+            self.assertIn("min-height: 26px", relayout_block)
+        # 12. No question mark, custom combobox/listbox, option-hover tooltip,
+        #     keyboard ARIA and request-free layout switching stay intact.
+        with self.subTest("no-regression-on-newest-contracts"):
+            self.assertNotIn("data-graph-layout-help", runtime)
+            self.assertNotIn("<select data-graph-layout-select", runtime)
+            self.assertIn('data-graph-layout-option-tooltip role="tooltip" hidden', runtime)
+            self.assertIn('setAttribute("aria-activedescendant"', runtime)
+            pick_start = runtime.index("function applyOntologyGraphLayoutPickerSelection(")
+            pick_src = runtime[pick_start:runtime.index("function onOntologyGraphLayoutTriggerClick(", pick_start)]
+            self.assertIn("switchOntologyGraphLayout(value)", pick_src)
+            self.assertNotIn("loadOntologyGraph(", pick_src)
+            self.assertNotIn("fetch(", pick_src)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,7 +22,7 @@ vMAJOR.MINOR.PATCH
 当前项目仍处于 `v0.x` 快速迭代阶段，当前正式版本保持为：
 
 ```text
-v0.1.0
+v0.1.2
 ```
 
 ## PATCH / MINOR / MAJOR 判定

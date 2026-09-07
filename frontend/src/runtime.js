@@ -23,7 +23,47 @@ import {
 } from "./sopMachine.js";
 import { factQueryPreview } from "./factQueryPreview.js";
 import { createSigmaOntologyRenderer } from "@boulderaitech/ontology-graph";
-import { buildGraph } from "./ontologyGraphModel.js";
+import { prepareRadialLayout, radialGraphOption } from "@boulderaitech/ontology-graph/radial";
+import { buildGraph, buildRadialGraph } from "./ontologyGraphModel.js";
+import {
+  ONTOLOGY_LAYOUT_OPTIONS,
+  ontologyLayoutOption,
+} from "./ontologyLayoutOptions.js";
+import {
+  closeOntologyLayoutPicker,
+  createOntologyLayoutPickerState,
+  handleOntologyLayoutPickerKey,
+  ontologyLayoutPickerSelectedOption,
+  setOntologyLayoutPickerBusy,
+  syncOntologyLayoutPicker,
+  toggleOntologyLayoutPicker,
+} from "./ontologyLayoutPickerState.js";
+import {
+  createOntologyLayoutOptionTooltipState,
+  hideOntologyLayoutOptionTooltip,
+  showOntologyLayoutOptionTooltip,
+} from "./ontologyLayoutOptionTooltipState.js";
+import {
+  LAYOUT_RADIAL,
+  STRATEGY_CONTEXT,
+  STRATEGY_EXPAND,
+  beginOntologyGraphRender,
+  beginOntologyGraphRequest,
+  closeOntologyGraphView,
+  createOntologyGraphViewState,
+  finishOntologyGraphRender,
+  finishOntologyGraphRequest,
+  isOntologyGraphBusy,
+  isOntologyGraphRenderCurrent,
+  openOntologyGraphView,
+  receiveOntologyGraphData,
+  selectOntologyGraphLayout,
+} from "./ontologyGraphViewState.js";
+import {
+  createRadialGraphView,
+  createSigmaGraphView,
+  destroyGraphView,
+} from "./ontologyGraphRendererHandle.js";
 import { classifyStreamEof } from "./streamTerminal.js";
 import {
   createTurnLifecycle,
@@ -5535,8 +5575,15 @@ export function bootWorkbenchRuntime() {
   }
 
   let ontologyGraphModal = null;
-  let ontologyGraphRenderer = null;
+  // Unified renderer handle: { kind: "cluster"|"radial", destroy(), relayout() }.
+  // Sigma instances expose kill() and ECharts instances expose dispose(); both
+  // are hidden behind the same destroy() contract in ontologyGraphRendererHandle.js.
+  let ontologyGraphView = null;
+  let ontologyGraphViewState = createOntologyGraphViewState();
+  let ontologyGraphLayoutPickerState = createOntologyLayoutPickerState();
+  let ontologyGraphLayoutOptionTooltipState = createOntologyLayoutOptionTooltipState();
   let ontologyGraphEntity = null;
+  let ontologyGraphRelayoutTimer = null;
 
   function ensureOntologyGraphModal() {
     if (ontologyGraphModal) return ontologyGraphModal;
@@ -5552,7 +5599,17 @@ export function bootWorkbenchRuntime() {
         <div class="ontology-graph-toolbar">
           <button type="button" data-graph-strategy="context" class="active">子图检索</button>
           <button type="button" data-graph-strategy="expand">关系扩散</button>
-          <button type="button" class="ontology-graph-layout active" aria-pressed="true" title="ForceAtlas2 是一种先进的力导向图布局">关系聚类可视化</button>
+          <span class="ontology-layout-selector">
+            <span class="ontology-layout-label">布局</span>
+            <span class="ontology-layout-picker">
+              <button type="button" class="ontology-layout-trigger" data-graph-layout-trigger role="combobox" aria-label="布局" aria-haspopup="listbox" aria-expanded="false" aria-controls="ontology-layout-listbox" aria-activedescendant="">
+                <span class="ontology-layout-value" data-graph-layout-value></span>
+                <span class="ontology-layout-chevron" aria-hidden="true"></span>
+              </button>
+              <div class="ontology-layout-menu" id="ontology-layout-listbox" data-graph-layout-menu role="listbox" aria-label="布局" hidden></div>
+              <div class="ontology-layout-option-tooltip" data-graph-layout-option-tooltip role="tooltip" hidden></div>
+            </span>
+          </span>
           <button type="button" data-graph-relayout>重新布局</button>
           <span class="ontology-graph-meta"></span>
         </div>
@@ -5562,16 +5619,43 @@ export function bootWorkbenchRuntime() {
     document.body.appendChild(host);
     host.querySelectorAll("[data-graph-close]").forEach((button) => button.addEventListener("click", closeOntologyGraphCard));
     host.querySelectorAll("[data-graph-strategy]").forEach((button) => button.addEventListener("click", () => {
-      if (ontologyGraphEntity) void loadOntologyGraph(button.dataset.graphStrategy);
+      if (button.disabled || isOntologyGraphBusy(ontologyGraphViewState) || !ontologyGraphEntity) return;
+      void loadOntologyGraph(button.dataset.graphStrategy);
     }));
-    host.querySelector("[data-graph-relayout]").addEventListener("click", () => ontologyGraphRenderer?.relayout?.());
+    const layoutMenu = host.querySelector("[data-graph-layout-menu]");
+    for (const option of ONTOLOGY_LAYOUT_OPTIONS) {
+      const node = document.createElement("button");
+      node.type = "button";
+      node.className = "ontology-layout-option";
+      node.id = "ontology-layout-option-" + option.value;
+      node.tabIndex = -1;
+      node.dataset.graphLayoutOption = option.value;
+      node.setAttribute("role", "option");
+      node.setAttribute("aria-selected", "false");
+      node.textContent = option.label;
+      node.addEventListener("mouseenter", () => showOntologyGraphLayoutOptionHint(option.value, node));
+      node.addEventListener("mouseleave", hideOntologyGraphLayoutOptionHint);
+      layoutMenu.appendChild(node);
+    }
+    const layoutTrigger = host.querySelector("[data-graph-layout-trigger]");
+    layoutTrigger.addEventListener("click", onOntologyGraphLayoutTriggerClick);
+    layoutTrigger.addEventListener("keydown", onOntologyGraphLayoutTriggerKeydown);
+    layoutMenu.addEventListener("click", onOntologyGraphLayoutOptionClick);
+    layoutMenu.addEventListener("mouseleave", hideOntologyGraphLayoutOptionHint);
+    document.addEventListener("click", onOntologyGraphLayoutDocumentClick);
+    host.querySelector("[data-graph-relayout]").addEventListener("click", onOntologyGraphRelayoutClick);
     ontologyGraphModal = host;
     return host;
   }
 
   function closeOntologyGraphCard() {
-    ontologyGraphRenderer?.kill?.();
-    ontologyGraphRenderer = null;
+    clearOntologyGraphRelayoutTimer();
+    destroyOntologyGraphView();
+    hideOntologyGraphLayoutOptionHint();
+    ontologyGraphLayoutPickerState = closeOntologyLayoutPicker(ontologyGraphLayoutPickerState);
+    ontologyGraphViewState = closeOntologyGraphView(ontologyGraphViewState);
+    ontologyGraphEntity = null;
+    window.removeEventListener("resize", onOntologyGraphWindowResize);
     if (ontologyGraphModal) ontologyGraphModal.hidden = true;
   }
 
@@ -5588,23 +5672,40 @@ export function bootWorkbenchRuntime() {
   async function openOntologyGraphCard(entity) {
     const normalized = normalizeOntologyEntity(entity);
     if (!normalized.code) return;
+    clearOntologyGraphRelayoutTimer();
+    destroyOntologyGraphView();
     ontologyGraphEntity = normalized;
+    // Reopening always restores the default relationship-cluster layout while
+    // requestEpoch/renderToken continue from the previous modal state so late
+    // async work from a closed modal can never match the new one.
+    ontologyGraphViewState = openOntologyGraphView(ontologyGraphViewState, normalized);
     const modal = ensureOntologyGraphModal();
     modal.hidden = false;
     modal.querySelector(".ontology-graph-title").textContent = normalized.name || normalized.code;
     modal.querySelector(".ontology-graph-anchor").textContent = ` ${normalized.code}`;
-    await loadOntologyGraph("context");
+    ontologyGraphLayoutPickerState = syncOntologyLayoutPicker(ontologyGraphLayoutPickerState, ontologyGraphViewState.layout);
+    syncOntologyGraphLayoutControls();
+    syncOntologyGraphControls();
+    window.addEventListener("resize", onOntologyGraphWindowResize);
+    await loadOntologyGraph(STRATEGY_CONTEXT);
   }
 
   async function loadOntologyGraph(strategy) {
     const modal = ensureOntologyGraphModal();
     const status = modal.querySelector(".ontology-graph-status");
     const canvas = modal.querySelector(".ontology-graph-canvas");
+    // The request owns a fresh epoch; stale responses can never clear a newer
+    // request's busy lock (finishOntologyGraphRequest checks the epoch).
+    ontologyGraphViewState = beginOntologyGraphRequest(ontologyGraphViewState);
+    const requestEpoch = ontologyGraphViewState.requestEpoch;
     modal.querySelectorAll("[data-graph-strategy]").forEach((button) => {
       button.classList.toggle("active", button.dataset.graphStrategy === strategy);
-      button.disabled = true;
     });
-    status.textContent = strategy === "expand" ? "正在展开上下游关系…" : "正在加载 Ontology-GraphContext…";
+    syncOntologyGraphControls();
+    status.textContent = strategy === STRATEGY_EXPAND ? "正在展开上下游关系…" : "正在加载 Ontology-GraphContext…";
+    // A new strategy request invalidates any previously mounted renderer.
+    destroyOntologyGraphView();
+    canvas.replaceChildren();
     try {
       const response = await fetch("/api/ontology/subgraph", {
         method: "POST",
@@ -5622,23 +5723,350 @@ export function bootWorkbenchRuntime() {
         throw new Error(failure.detail || `HTTP ${response.status}`);
       }
       const graph = await response.json();
-      ontologyGraphRenderer?.kill?.();
-      ontologyGraphRenderer = null;
-      canvas.replaceChildren();
-      ontologyGraphRenderer = createSigmaOntologyRenderer(canvas, buildGraph(graph));
+      if (!ontologyGraphModal || ontologyGraphModal.hidden || requestEpoch !== ontologyGraphViewState.requestEpoch) return;
+      ontologyGraphViewState = receiveOntologyGraphData(ontologyGraphViewState, strategy, graph);
       const nodes = graph.nodes || [];
       const anchor = graph.anchor || {};
       modal.querySelector(".ontology-graph-meta").textContent = `${nodes.length} 节点 · ${(graph.links || []).length} 关系 · 锚点 ${anchor.name || anchor.code || "-"}`;
-      status.textContent = graph.relations_available === false
-        ? `关系边不可用：${graph.relation_error || "当前仅展示关联节点"}`
-        : (graph.truncated ? "子图已达到节点上限，当前展示经过裁剪。" : "拖动节点、滚轮缩放；点击节点可高亮相邻关系。");
+      updateOntologyGraphStatus(graph);
+      renderOntologyGraphFromData();
     } catch (error) {
-      ontologyGraphRenderer?.kill?.();
-      ontologyGraphRenderer = null;
+      if (!ontologyGraphModal || ontologyGraphModal.hidden || requestEpoch !== ontologyGraphViewState.requestEpoch) return;
+      destroyOntologyGraphView();
       canvas.innerHTML = `<div class="ontology-graph-error">${esc(error?.message || String(error))}</div>`;
       status.textContent = "本体子图加载失败。";
     } finally {
-      modal.querySelectorAll("[data-graph-strategy]").forEach((button) => { button.disabled = false; });
+      ontologyGraphViewState = finishOntologyGraphRequest(ontologyGraphViewState, requestEpoch);
+      syncOntologyGraphControls();
+    }
+  }
+
+  function destroyOntologyGraphView() {
+    if (!ontologyGraphView) return;
+    destroyGraphView(ontologyGraphView);
+    ontologyGraphView = null;
+  }
+
+  // Renders whatever the current layout preference wants from already loaded
+  // graph data. Layout switching never issues a network request. Every render
+  // begins a render busy token; the async radial path settles it in its own
+  // finally, the synchronous cluster path settles it right here.
+  function renderOntologyGraphFromData() {
+    const state = ontologyGraphViewState;
+    if (!state.open || !state.data || !ontologyGraphModal) return;
+    ontologyGraphViewState = beginOntologyGraphRender(state);
+    const renderToken = ontologyGraphViewState.renderToken;
+    syncOntologyGraphControls();
+    const canvas = ontologyGraphModal.querySelector(".ontology-graph-canvas");
+    destroyOntologyGraphView();
+    canvas.replaceChildren();
+    if (state.layout === LAYOUT_RADIAL) {
+      void renderOntologyGraphRadial(state.data, canvas, renderToken);
+      return;
+    }
+    try {
+      renderOntologyGraphCluster(state.data, canvas);
+    } catch (error) {
+      if (isOntologyGraphRenderCurrent(ontologyGraphViewState, renderToken)) {
+        showOntologyGraphError("关系聚类渲染失败，请重试。", "本体子图渲染失败。");
+      }
+    } finally {
+      ontologyGraphViewState = finishOntologyGraphRender(ontologyGraphViewState, renderToken);
+      syncOntologyGraphControls();
+    }
+  }
+
+  function renderOntologyGraphCluster(graph, canvas) {
+    const renderer = createSigmaOntologyRenderer(canvas, buildGraph(graph));
+    ontologyGraphView = createSigmaGraphView(renderer);
+  }
+
+  async function renderOntologyGraphRadial(graph, canvas, renderToken) {
+    try {
+      const radialGraph = buildRadialGraph(graph);
+      if (!radialGraph.nodes.length) {
+        if (isOntologyGraphRenderCurrent(ontologyGraphViewState, renderToken)) {
+          showOntologyGraphError("当前没有可展示的本体节点");
+        }
+        return;
+      }
+      if (!isOntologyGraphRenderCurrent(ontologyGraphViewState, renderToken)) return;
+      let echarts;
+      try {
+        echarts = await ensureEcharts();
+      } catch (_) {
+        if (isOntologyGraphRenderCurrent(ontologyGraphViewState, renderToken)) {
+          showOntologyGraphError("ECharts 加载失败，请切回关系聚类可视化。", "本体子图渲染失败。");
+        }
+        return;
+      }
+      if (!isOntologyGraphRenderCurrent(ontologyGraphViewState, renderToken)) return;
+      const prepared = prepareRadialLayout(
+        radialGraph,
+        radialGraph.layerDefinitions.map((layer) => layer.key),
+        {
+          width: canvas.clientWidth || 800,
+          height: canvas.clientHeight || 600,
+          layerDefinitions: radialGraph.layerDefinitions,
+          centerLayer: radialGraph.centerLayer,
+        },
+      );
+      if (!prepared) {
+        if (isOntologyGraphRenderCurrent(ontologyGraphViewState, renderToken)) {
+          showOntologyGraphError("环形布局数据契约错误，请切回关系聚类可视化。", "本体子图渲染失败。");
+        }
+        return;
+      }
+      if (!isOntologyGraphRenderCurrent(ontologyGraphViewState, renderToken)) return;
+      let chart = null;
+      try {
+        chart = echarts.init(canvas);
+        chart.setOption(radialGraphOption(prepared), { notMerge: true });
+        ontologyGraphView = createRadialGraphView(chart, scheduleOntologyGraphRadialRelayout);
+      } catch (_) {
+        if (chart) {
+          try {
+            chart.dispose();
+          } catch (_) {
+            // Already disposed.
+          }
+        }
+        if (isOntologyGraphRenderCurrent(ontologyGraphViewState, renderToken)) {
+          showOntologyGraphError("环形可视化初始化失败，请切回关系聚类可视化。", "本体子图渲染失败。");
+        }
+      }
+    } finally {
+      ontologyGraphViewState = finishOntologyGraphRender(ontologyGraphViewState, renderToken);
+      syncOntologyGraphControls();
+    }
+  }
+
+  function switchOntologyGraphLayout(layout) {
+    if (isOntologyGraphBusy(ontologyGraphViewState)) return;
+    if (layout === ontologyGraphViewState.layout) return;
+    ontologyGraphViewState = selectOntologyGraphLayout(ontologyGraphViewState, layout);
+    syncOntologyGraphLayoutControls();
+    syncOntologyGraphControls();
+    if (!ontologyGraphViewState.open || !ontologyGraphViewState.data) return;
+    renderOntologyGraphFromData();
+    updateOntologyGraphStatus(ontologyGraphViewState.data);
+  }
+
+  // User picked a layout (mouse or keyboard). The keyboard handler passes the
+  // pure commitValue and the mouse passes the clicked row's value; committing
+  // syncs the picker, collapses the menu, reuses the existing layout switch
+  // (no subgraph request) and keeps focus on the trigger.
+  function applyOntologyGraphLayoutPickerSelection(value) {
+    if (!value || isOntologyGraphBusy(ontologyGraphViewState)) return;
+    ontologyGraphLayoutPickerState = syncOntologyLayoutPicker(ontologyGraphLayoutPickerState, value);
+    ontologyGraphLayoutPickerState = closeOntologyLayoutPicker(ontologyGraphLayoutPickerState);
+    syncOntologyGraphLayoutControls();
+    switchOntologyGraphLayout(value);
+    const trigger = ontologyGraphModal?.querySelector("[data-graph-layout-trigger]");
+    if (trigger) trigger.focus();
+  }
+
+  function onOntologyGraphLayoutOptionClick(event) {
+    const option = event.target.closest("[data-graph-layout-option]");
+    if (!option) return;
+    event.preventDefault();
+    applyOntologyGraphLayoutPickerSelection(option.dataset.graphLayoutOption);
+  }
+
+  function onOntologyGraphLayoutTriggerClick() {
+    if (isOntologyGraphBusy(ontologyGraphViewState)) return;
+    ontologyGraphLayoutPickerState = toggleOntologyLayoutPicker(ontologyGraphLayoutPickerState);
+    syncOntologyGraphLayoutControls();
+  }
+
+  // Every combobox key goes through the pure handler while DOM focus stays on
+  // the trigger. handled=false (Tab, unknown keys, Escape on a closed listbox)
+  // lets the browser keep its default behaviour; a changed-but-unhandled state
+  // (e.g. Tab collapsing the menu) is still synced to the DOM.
+  function onOntologyGraphLayoutTriggerKeydown(event) {
+    const result = handleOntologyLayoutPickerKey(
+      ontologyGraphLayoutPickerState,
+      event.key,
+      { busy: isOntologyGraphBusy(ontologyGraphViewState) },
+    );
+    const stateChanged = result.state !== ontologyGraphLayoutPickerState;
+    ontologyGraphLayoutPickerState = result.state;
+    if (result.commitValue) {
+      if (result.handled) event.preventDefault();
+      applyOntologyGraphLayoutPickerSelection(result.commitValue);
+      return;
+    }
+    if (result.handled || stateChanged) syncOntologyGraphLayoutControls();
+    if (result.handled) event.preventDefault();
+  }
+
+  // Any click outside the custom picker collapses an open menu.
+  function onOntologyGraphLayoutDocumentClick(event) {
+    if (!ontologyGraphModal || ontologyGraphModal.hidden) return;
+    if (!ontologyGraphLayoutPickerState.expanded) return;
+    if (event.target.closest(".ontology-layout-picker")) return;
+    ontologyGraphLayoutPickerState = closeOntologyLayoutPicker(ontologyGraphLayoutPickerState);
+    syncOntologyGraphLayoutControls();
+  }
+
+  // Unified control lock: while any request or render is in flight all three
+  // control groups (strategy buttons, layout trigger, relayout) are disabled
+  // together and an open menu collapses immediately.
+  function syncOntologyGraphControls() {
+    if (!ontologyGraphModal) return;
+    const busy = isOntologyGraphBusy(ontologyGraphViewState);
+    ontologyGraphModal.querySelectorAll("[data-graph-strategy]").forEach((button) => {
+      button.disabled = busy;
+    });
+    const trigger = ontologyGraphModal.querySelector("[data-graph-layout-trigger]");
+    if (trigger) trigger.disabled = busy;
+    const relayout = ontologyGraphModal.querySelector("[data-graph-relayout]");
+    if (relayout) relayout.disabled = busy;
+    ontologyGraphLayoutPickerState = setOntologyLayoutPickerBusy(ontologyGraphLayoutPickerState, busy);
+    syncOntologyGraphLayoutControls();
+  }
+
+  // Mirrors the picker state (selected layout / open menu / active option)
+  // into the trigger text, listbox rows and tooltip copy. The tooltip DOM
+  // text is refreshed on every sync so a later hover/focus can never show
+  // stale copy, even while the bubble is still hidden.
+  function syncOntologyGraphLayoutControls() {
+    if (!ontologyGraphModal) return;
+    const trigger = ontologyGraphModal.querySelector("[data-graph-layout-trigger]");
+    const menu = ontologyGraphModal.querySelector("[data-graph-layout-menu]");
+    const valueNode = ontologyGraphModal.querySelector("[data-graph-layout-value]");
+    if (!trigger || !menu) return;
+    const option = ontologyLayoutPickerSelectedOption(ontologyGraphLayoutPickerState);
+    if (option && valueNode) valueNode.textContent = option.label;
+    trigger.setAttribute("aria-expanded", ontologyGraphLayoutPickerState.expanded ? "true" : "false");
+    const activeOption = ONTOLOGY_LAYOUT_OPTIONS[ontologyGraphLayoutPickerState.activeIndex];
+    if (ontologyGraphLayoutPickerState.expanded && activeOption) {
+      trigger.setAttribute("aria-activedescendant", "ontology-layout-option-" + activeOption.value);
+    } else {
+      trigger.removeAttribute("aria-activedescendant");
+    }
+    menu.hidden = !ontologyGraphLayoutPickerState.expanded;
+    menu.querySelectorAll("[data-graph-layout-option]").forEach((node, index) => {
+      const selected = node.dataset.graphLayoutOption === ontologyGraphLayoutPickerState.selectedValue;
+      const active = ontologyGraphLayoutPickerState.expanded && index === ontologyGraphLayoutPickerState.activeIndex;
+      node.classList.toggle("is-selected", selected);
+      node.classList.toggle("is-active", active);
+      node.setAttribute("aria-selected", selected ? "true" : "false");
+    });
+    if (!ontologyGraphLayoutPickerState.expanded) hideOntologyGraphLayoutOptionHint();
+  }
+
+  // Per-option hover hint inside the open listbox. Only a real mouse hover on
+  // an option row ever shows the bubble: trigger hover/focus, keyboard active
+  // options and collapsed menus never do. Text always comes from the shared
+  // ONTOLOGY_LAYOUT_OPTIONS registry so Runtime never duplicates the copy.
+  function showOntologyGraphLayoutOptionHint(value, optionNode) {
+    const option = ontologyLayoutOption(value);
+    const tooltip = ontologyGraphModal?.querySelector("[data-graph-layout-option-tooltip]");
+    if (!option || !optionNode || !tooltip) return;
+    ontologyGraphLayoutOptionTooltipState = showOntologyLayoutOptionTooltip(ontologyGraphLayoutOptionTooltipState, value);
+    tooltip.textContent = option.hint;
+    tooltip.hidden = false;
+    positionOntologyGraphLayoutOptionHint(optionNode);
+  }
+
+  function hideOntologyGraphLayoutOptionHint() {
+    ontologyGraphLayoutOptionTooltipState = hideOntologyLayoutOptionTooltip(ontologyGraphLayoutOptionTooltipState);
+    const tooltip = ontologyGraphModal?.querySelector("[data-graph-layout-option-tooltip]");
+    if (!tooltip) return;
+    tooltip.hidden = true;
+    tooltip.classList.remove("flip");
+    tooltip.style.left = "";
+    tooltip.style.top = "";
+  }
+
+  // Anchors the bubble next to the hovered option row (right side by default)
+  // and flips it to the left when the viewport cannot fit it on the right.
+  function positionOntologyGraphLayoutOptionHint(optionNode) {
+    const tooltip = ontologyGraphModal?.querySelector("[data-graph-layout-option-tooltip]");
+    if (!tooltip || !optionNode) return;
+    const rect = optionNode.getBoundingClientRect();
+    const bubble = tooltip.getBoundingClientRect();
+    const dialogLeft = ontologyGraphModal?.querySelector(".ontology-graph-dialog")?.getBoundingClientRect()?.left ?? 0;
+    const gap = 8;
+    const margin = 8;
+    const flip = rect.right + gap + bubble.width + margin > window.innerWidth;
+    tooltip.classList.toggle("flip", flip);
+    const left = flip ? rect.left - gap - bubble.width : rect.right + gap;
+    const minLeft = Math.max(margin, Math.ceil(dialogLeft + 4));
+    const maxLeft = window.innerWidth - bubble.width - margin;
+    tooltip.style.left = `${Math.min(maxLeft, Math.max(minLeft, Math.round(left)))}px`;
+    tooltip.style.top = `${Math.round(rect.top + rect.height / 2 - bubble.height / 2)}px`;
+  }
+  function updateOntologyGraphStatus(graph) {
+    const status = ontologyGraphModal?.querySelector(".ontology-graph-status");
+    if (!status) return;
+    if (graph?.relations_available === false) {
+      status.textContent = `关系边不可用：${graph.relation_error || "当前仅展示关联节点"}`;
+      return;
+    }
+    if (graph?.truncated) {
+      status.textContent = "子图已达到节点上限，当前展示经过裁剪。";
+      return;
+    }
+    status.textContent = ontologyGraphViewState.layout === LAYOUT_RADIAL
+      ? "滚轮缩放、拖动画布；节点按与锚点的最短关系距离分环。"
+      : "拖动节点、滚轮缩放；点击节点可高亮相邻关系。";
+  }
+
+  function showOntologyGraphError(message, statusMessage) {
+    if (!ontologyGraphModal) return;
+    const canvas = ontologyGraphModal.querySelector(".ontology-graph-canvas");
+    canvas.innerHTML = `<div class="ontology-graph-error">${esc(message)}</div>`;
+    if (statusMessage) ontologyGraphModal.querySelector(".ontology-graph-status").textContent = statusMessage;
+  }
+
+  function clearOntologyGraphRelayoutTimer() {
+    if (ontologyGraphRelayoutTimer !== null) {
+      clearTimeout(ontologyGraphRelayoutTimer);
+      ontologyGraphRelayoutTimer = null;
+    }
+  }
+
+  function scheduleOntologyGraphRadialRelayout() {
+    clearOntologyGraphRelayoutTimer();
+    ontologyGraphRelayoutTimer = setTimeout(() => {
+      ontologyGraphRelayoutTimer = null;
+      recomputeOntologyGraphRadial();
+    }, 120);
+  }
+
+  // Radial re-layout recomputes from the current viewport without any request.
+  function recomputeOntologyGraphRadial() {
+    const view = ontologyGraphView;
+    if (!view || view.kind !== "radial" || !view.chart) return;
+    const state = ontologyGraphViewState;
+    if (!state.open || !state.data || !ontologyGraphModal) return;
+    const radialGraph = buildRadialGraph(state.data);
+    if (!radialGraph.nodes.length) return;
+    const canvas = ontologyGraphModal.querySelector(".ontology-graph-canvas");
+    const prepared = prepareRadialLayout(
+      radialGraph,
+      radialGraph.layerDefinitions.map((layer) => layer.key),
+      {
+        width: canvas.clientWidth || 800,
+        height: canvas.clientHeight || 600,
+        layerDefinitions: radialGraph.layerDefinitions,
+        centerLayer: radialGraph.centerLayer,
+      },
+    );
+    if (!prepared) return;
+    view.chart.setOption(radialGraphOption(prepared), { notMerge: true });
+  }
+
+  function onOntologyGraphRelayoutClick() {
+    if (isOntologyGraphBusy(ontologyGraphViewState)) return;
+    ontologyGraphView?.relayout?.();
+  }
+
+  function onOntologyGraphWindowResize() {
+    if (ontologyGraphViewState.open && ontologyGraphView?.kind === "radial") {
+      scheduleOntologyGraphRadialRelayout();
     }
   }
 

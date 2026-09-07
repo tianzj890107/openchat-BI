@@ -402,7 +402,7 @@ def configure(
 # ---------------------------------------------------------------------------
 APP_NAME = "eimosp-ontology-agentic-analytics"              # 应用名（容器/服务/配置中心统一使用）
 APP_DISPLAY_NAME = "eimosp-ontology-agentic-analytics 智能分析"  # 产品名
-APP_VERSION = "0.1.0"                 # 与 pyproject.toml / docs/versions 保持同步
+APP_VERSION = "0.1.2"                 # 与 pyproject.toml / docs/versions 保持同步
 def _default_app_port() -> int:
     """实际监听端口来源：优先 APP_PORT 环境变量（容器内 Dockerfile 显式注入 8080），
     缺省回退非容器本地默认端口 8765。"""

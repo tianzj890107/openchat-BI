@@ -1,0 +1,176 @@
+GREEN EVIDENCE: ontology-layout-keyboard-and-toolbar-height-fixes (2026-09-03)
+
+=== 1) cd frontend && node --test tests/ontologyLayoutPickerState.test.mjs ===
+SHELL EXIT CODE: 0
+✔ picker defaults to closed with cluster selected (0.472584ms)
+✔ toggle opens and closes the listbox (0.08475ms)
+✔ open and close only flip the expanded flag (0.045875ms)
+✔ ArrowDown and ArrowUp cycle the active option (0.055916ms)
+✔ Home and End move to the first and last option (0.067417ms)
+✔ Enter/Space commit returns the active option value (0.058083ms)
+✔ Escape/close cancels without changing the selected layout (0.055583ms)
+✔ external state sync updates value, active option, label and hint (0.044083ms)
+✔ busy closes an open menu and prevents reopening (0.059292ms)
+✔ unknown values never become the picker value (0.075042ms)
+✔ closed Enter/Space opens the listbox on the current selection without committing (0.094416ms)
+✔ open Enter/Space commits the active option and closes without self-selecting (0.048292ms)
+✔ ArrowDown/ArrowUp from closed open and step relative to the current selection (0.045375ms)
+✔ ArrowDown/ArrowUp keep cycling while the listbox is open (0.043584ms)
+✔ Home/End open when closed and jump when open (0.050334ms)
+✔ Escape closes without commit or layout change (0.363042ms)
+✔ Tab closes the listbox, stays unhandled and never commits (0.074458ms)
+✔ unsupported keys are unhandled and leave the state object untouched (0.048ms)
+✔ busy blocks opening, navigation and commit and closes an open listbox (0.079666ms)
+✔ keyboard commit stays separate from syncOntologyLayoutPicker (0.045334ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 46.308042
+
+=== 2) cd frontend && node --test tests/*.test.mjs ===
+SHELL EXIT CODE: 0
+✔ sigma view destroy calls kill exactly once across repeated destroys (0.439084ms)
+✔ radial view destroy calls dispose exactly once across repeated destroys (0.080625ms)
+✔ repeated destroy on the same view is idempotent (0.497958ms)
+✔ destroyGraphView(null) and undefined are safe no-ops (0.094458ms)
+✔ relayout delegates to the underlying implementation while alive (0.058625ms)
+✔ radial relayout delegates to the injected relayout callback while alive (0.049917ms)
+✔ relayout after destroy is a no-op (0.048667ms)
+✔ radial relayout after destroy is a no-op (0.045292ms)
+✔ new view state defaults to cluster layout with context strategy and closed modal (0.506209ms)
+✔ layout change reuses existing graph data and never triggers a fetch (0.141541ms)
+✔ strategy response replaces graph data while keeping current layout preference (0.090833ms)
+✔ stale render tokens can never overwrite newer state (0.093291ms)
+✔ closing the modal invalidates in-flight ECharts mounts (0.082041ms)
+✔ layout switch, strategy response and close all bump the render token (0.069958ms)
+✔ begin request sets busy and bumps requestEpoch (0.067542ms)
+✔ request A then request B keeps only the newest busy lock (0.059875ms)
+✔ finish request B clears busy only when B finishes (0.059375ms)
+✔ stale epoch finish returns the state unchanged (0.102291ms)
+✔ begin render sets busy and bumps renderToken (0.070333ms)
+✔ render A then render B keeps only the newest render lock (0.053ms)
+✔ finish render B clears busy only when B finishes (0.039458ms)
+✔ layout change invalidates old render token but keeps fetch busy (0.049208ms)
+✔ close clears busy and invalidates old epoch and render token (0.044ms)
+✔ finish of the current request and render clears busy after failure (0.04425ms)
+✔ empty or errored latest finish still releases the busy lock (0.041417ms)
+✔ reopen keeps request and render counters monotonic (0.044917ms)
+✔ request epochs never collide across reopen (0.228167ms)
+✔ render tokens never collide across reopen (0.127542ms)
+✔ reopen resets business state but keeps async identity growing (0.658583ms)
+✔ twenty reopen cycles produce strictly increasing unique epochs and tokens (0.096459ms)
+✔ layout options are exactly cluster and radial in fixed order (0.698166ms)
+✔ layout option labels match the spec table exactly (0.067125ms)
+✔ layout option hints match the spec table exactly (0.051625ms)
+✔ ontologyLayoutOption resolves legal values and rejects unknown ones (0.788125ms)
+✔ exported options array and option objects cannot be modified (0.3215ms)
+✔ picker defaults to closed with cluster selected (1.294792ms)
+✔ toggle opens and closes the listbox (0.218333ms)
+✔ open and close only flip the expanded flag (0.116208ms)
+✔ ArrowDown and ArrowUp cycle the active option (0.128334ms)
+✔ Home and End move to the first and last option (0.092958ms)
+✔ Enter/Space commit returns the active option value (0.080042ms)
+✔ Escape/close cancels without changing the selected layout (0.07125ms)
+✔ external state sync updates value, active option, label and hint (0.058167ms)
+✔ busy closes an open menu and prevents reopening (0.077333ms)
+✔ unknown values never become the picker value (0.089375ms)
+✔ closed Enter/Space opens the listbox on the current selection without committing (0.121125ms)
+✔ open Enter/Space commits the active option and closes without self-selecting (0.054459ms)
+✔ ArrowDown/ArrowUp from closed open and step relative to the current selection (0.050875ms)
+✔ ArrowDown/ArrowUp keep cycling while the listbox is open (0.04675ms)
+✔ Home/End open when closed and jump when open (0.057167ms)
+✔ Escape closes without commit or layout change (0.92675ms)
+✔ Tab closes the listbox, stays unhandled and never commits (0.046875ms)
+✔ unsupported keys are unhandled and leave the state object untouched (0.043125ms)
+✔ busy blocks opening, navigation and commit and closes an open listbox (0.069167ms)
+✔ keyboard commit stays separate from syncOntologyLayoutPicker (0.046917ms)
+✔ explicit anchor node enters distance:0 as the only center node (1.342083ms)
+✔ one-hop and two-hop nodes enter correct layers via undirected BFS (0.488291ms)
+✔ multiple shortest paths pick a deterministic parentId by stable id (0.138875ms)
+✔ isolated nodes enter unrelated with empty parentId (0.089042ms)
+✔ without explicit anchor, deterministic first legal node or data.anchor match becomes center (0.100084ms)
+✔ graph without relation edges still renders center and unrelated layers (0.082916ms)
+✔ radial nodes carry id/name/label/layer/parentId/symbolSize/itemStyle/ontologyType (0.151667ms)
+✔ radial styling reuses NODE_STYLE colors and clamps symbol size (0.077667ms)
+✔ input objects are never mutated (0.199417ms)
+✔ edges with unknown endpoints or self loops are tolerated and skipped (0.1445ms)
+✔ identical input twice produces deeply equal output (0.109209ms)
+ℹ tests 66
+ℹ suites 0
+ℹ pass 66
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 67.710458
+
+=== 3) cd frontend && npm run build ===
+SHELL EXIT CODE: 0
+npm warn Unknown user config "always-auth" (//gitlab.boulderaitech.com/api/v4/projects/1069/packages/npm/:always-auth). This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> eimosp-ontology-agentic-analytics-workbench@0.1.1 build
+> vite build
+
+vite v6.4.3 building for production...
+transforming...
+✓ 6580 modules transformed.
+rendering chunks...
+computing gzip size...
+../bi_agent/web/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css    164.69 kB │ gzip:  26.19 kB
+../bi_agent/web/static/vendor/antd/workbench.js                                     1,282.97 kB │ gzip: 388.49 kB
+✓ built in 2.82s
+
+=== 4) cd /Users/sher/Boulderaitech/ontology-graph && npm test ===
+SHELL EXIT CODE: 0
+npm warn Unknown user config "always-auth" (//gitlab.boulderaitech.com/api/v4/projects/1069/packages/npm/:always-auth). This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> @boulderaitech/ontology-graph@0.1.1 test
+> node --test tests/*.test.js
+
+✔ layoutOntologyForceAtlas assigns finite normalized coordinates (5.04ms)
+✔ isolated nodes are packed rather than scattered (1.056375ms)
+✔ forceAtlasIterations scales with node count (0.059542ms)
+✔ FORCE_ATLAS_CONFIG is frozen and stable (0.047875ms)
+✔ radial layout is consumer-configurable and framework independent (1.6065ms)
+✔ prepared radial result converts to a deterministic ECharts option object (0.352291ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 55.49125
+
+=== 5) .venv/bin/python -m pytest tests/test_regressions.py -q ===
+SHELL EXIT CODE: 0
+........................................................................ [ 33%]
+........................................................................ [ 66%]
+........................................................................ [ 99%]
+.                                                                        [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/fastapi/testclient.py:1
+  /Users/sher/Boulderaitech/eimosp-ontology-agentic-analytics/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+<frozen importlib._bootstrap>:488
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+217 passed, 6 warnings in 1.67s
+<sys>:0: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+=== 6) git diff --check ===
+SHELL EXIT CODE: 0

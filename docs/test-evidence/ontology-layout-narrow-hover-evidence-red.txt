@@ -1,0 +1,43 @@
+================================================================================
+ontology-layout-narrow-hover-evidence-fix — TDD RED (2026-09-03)
+Spec: docs/specs/ontology-layout-narrow-hover-evidence-fix.md
+Branch: 20260727 (local HEAD 171f8e0, pushed to gitlab/20260727)
+Red state: evidence contract test added; browser script / screenshots /
+           JSON / specs NOT changed yet.
+================================================================================
+
+[CMD] .venv/bin/python -m pytest tests/test_ontology_layout_browser_evidence.py -q --tb=line
+
+FF.FFFFFFF                                                               [100%]
+=================================== FAILURES ===================================
+E   AssertionError: '6bf23ec951709b44b1e92a12a469497bdb557de04622c5e33a7b24f6eec570c…[payload truncated]
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:732: AssertionError: '6bf23ec951709b44b1e92a12a469497bdb557de04622c5e33a7b24f6eec570c…[payload truncated]
+E   AssertionError: '6bf23ec951709b44b1e92a12a469497bdb557de04622c5e33a7b24f6eec570c5' == '6bf23ec951709b44b1e92a12a469497bdb557de04622c5e33a7b24f6eec570c5' : g3 and g4 must differ
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:916: AssertionError: '6bf23ec951709b44b1e92a12a469497bdb557de04622c5e33a7b24f6eec570c5' == '6bf23ec951709b44b1e92a12a469497bdb557de04622c5e33a7b24f6eec570c5' : g3 and g4 must differ
+E   AssertionError: 'narrow hover tooltip visible' not found in []
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:732: AssertionError: 'narrow hover tooltip visible' not found in []
+E   AssertionError: False is not true
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:744: AssertionError: False is not true
+E   AssertionError: None != '以当前锚点为中心，按照最短关系距离由内向外分环排列。'
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:900: AssertionError: None != '以当前锚点为中心，按照最短关系距离由内向外分环排列。'
+E   AssertionError: 'g3' not found in {}
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:732: AssertionError: 'g3' not found in {}
+E   AssertionError: 0 not greater than 0
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:732: AssertionError: 0 not greater than 0
+E   KeyError: 'g3'
+/Users/sher/Boulderaitech/eimosp-ontology-agentic-analytics/tests/test_ontology_layout_browser_evidence.py:105: KeyError: 'g3'
+E   AssertionError: False is not true : missing scripts/verify_ontology_layout_borderless_ui.mjs
+/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/unittest/case.py:744: AssertionError: False is not true : missing scripts/verify_ontology_layout_borderless_ui.mjs
+=========================== short test summary info ============================
+FAILED tests/test_ontology_layout_browser_evidence.py::OntologyLayoutBrowserEvidenceTests::test_borderless_spec_reflects_final_evidence
+FAILED tests/test_ontology_layout_browser_evidence.py::OntologyLayoutBrowserEvidenceTests::test_g3_g4_are_distinct_real_files
+FAILED tests/test_ontology_layout_browser_evidence.py::OntologyLayoutBrowserEvidenceTests::test_json_has_independent_narrow_hover_visible_check
+FAILED tests/test_ontology_layout_browser_evidence.py::OntologyLayoutBrowserEvidenceTests::test_json_records_after_leave_hidden
+FAILED tests/test_ontology_layout_browser_evidence.py::OntologyLayoutBrowserEvidenceTests::test_json_records_exact_radial_hint_text
+FAILED tests/test_ontology_layout_browser_evidence.py::OntologyLayoutBrowserEvidenceTests::test_json_records_g3_g4_hashes
+FAILED tests/test_ontology_layout_browser_evidence.py::OntologyLayoutBrowserEvidenceTests::test_json_records_tooltip_visibility_and_geometry
+FAILED tests/test_ontology_layout_browser_evidence.py::OntologyLayoutBrowserEvidenceTests::test_recomputed_hashes_match_json
+FAILED tests/test_ontology_layout_browser_evidence.py::OntologyLayoutBrowserEvidenceTests::test_repeatable_script_exists_and_avoids_tmp
+9 failed, 1 passed in 0.02s
+
+SHELL EXIT CODE: 1
