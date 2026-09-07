@@ -30,6 +30,7 @@ from typing import Any, Callable, Generator, Optional
 from open_claude.agent_def import AgentDef
 from open_claude.prompt import build_system_prompt
 from bi_agent.tools.analysis_policy import (
+    build_cognitive_policy_decision,
     extract_action_items,
     has_effective_action,
     has_root_cause_section,
@@ -360,6 +361,12 @@ class WebSession:
         # retry re-execute exactly the failed call without asking the LLM to
         # re-issue it.
         self._recovery_retry_tool_use: Optional[dict[str, Any]] = None
+        # Lightweight structured Cognitive Policy decision for the most recent
+        # NEW user turn (see bi_agent.tools.analysis_policy).  Built exactly
+        # once inside ``generate_turn``; AskUser resumes and explicit retries
+        # never reclassify or overwrite it.  The stored snapshot is a plain
+        # bounded dict (no raw question / SQL / credentials).
+        self._cognitive_policy_decision: Optional[dict[str, Any]] = None
 
     # ------------------------------------------------------------------
     # System-prompt construction (honours per-session overrides)
@@ -566,6 +573,16 @@ class WebSession:
         """
         return self.recovery.snapshot()
 
+    @property
+    def cognitive_policy_decision(self) -> dict[str, Any]:
+        """Defensive snapshot of the most recent Cognitive Policy decision.
+
+        The snapshot is built once per new ``generate_turn`` from the pure
+        ``build_cognitive_policy_decision`` function and never contains the
+        raw user question.  Returns an empty dict before the first user turn.
+        """
+        return copy.deepcopy(self._cognitive_policy_decision or {})
+
     @staticmethod
     def normalize_recovery_state(raw: Any) -> dict[str, Any]:
         """Public normalizer for legacy/malformed Recovery snapshots.
@@ -751,6 +768,15 @@ class WebSession:
         self.reconciliation_conflicts = []
         self.messages.append({"role": "user", "content": user_text})
         yield {"type": "user_message", "text": user_text}
+        # One lightweight structured Cognitive Policy decision per NEW user
+        # turn: recorded before any LLM work, never re-classified by AskUser
+        # resumes or explicit retries, and never carrying the raw question.
+        policy_decision = build_cognitive_policy_decision(
+            user_text,
+            self.allowed_tools,
+        )
+        self._cognitive_policy_decision = policy_decision
+        yield {"type": "cognitive_policy", **policy_decision}
         yield self._sop_event(SOP_STEP_INTENT, "用户问题解析", allow_backward=False)
         # A new user question opens a NEW recovery turn: business state
         # (data/busy/pending/checkpoint) is reset while the turn reference is

@@ -1284,6 +1284,7 @@ _TURN_EVENT_TYPES = {
     "render_enforce", "user_choice_resolved", "user_choice_requested",
     "awaiting_user_choice", "action_repair", "delivery_incomplete",
     "action_recommendations", "sop_progress", "recovery_state",
+    "cognitive_policy",
 }
 
 
