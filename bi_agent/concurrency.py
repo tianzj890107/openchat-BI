@@ -213,12 +213,20 @@ class SessionSlot:
         self.last_access = time.monotonic()
 
     # --- turn guard ----------------------------------------------------
-    def try_acquire(self, cancel_event: Optional[threading.Event] = None) -> Optional[TurnLease]:
+    def try_acquire(
+        self,
+        cancel_event: Optional[threading.Event] = None,
+        lease_ttl_seconds: Optional[float] = None,
+    ) -> Optional[TurnLease]:
         """Claim the slot for one turn.
 
         Returns a fresh, non-reusable ``TurnLease`` (current generation +
         unique owner), or None when a turn is already running (caller maps
         this to HTTP 409 SESSION_BUSY).
+
+        ``lease_ttl_seconds`` is accepted for call-site uniformity with
+        shared-mode slots; single-process slots are not TTL-bounded, so the
+        value is intentionally ignored here.
 
         ``cancel_event`` — when supplied — is bound atomically with the lease
         under ``self.lock`` and becomes the turn's ONE cancel event.  The
@@ -333,6 +341,18 @@ class SharedSessionSlot:
             return self.lease is not None
 
     @property
+    def owner(self) -> Optional[str]:
+        with self.lock:
+            return self.lease.owner if self.lease is not None else None
+
+    @property
+    def generation(self) -> int:
+        """Latest generation for this key (authoritative backend counter), so
+        conversation-save generation checks and diagnostics see the SHARED
+        counter rather than a per-process number."""
+        return int(self.backend.current_generation(self.key) or 0)
+
+    @property
     def current_lease(self) -> Optional[TurnLease]:
         with self.lock:
             return self.lease
@@ -383,6 +403,21 @@ class SharedSessionSlot:
                 self.lease = None
                 self.cancel = None
                 self.last_access = time.monotonic()
+
+    def bump_generation(self, *, cancel_active: bool = True) -> int:
+        """Invalidate the current backend lease AND free the slot immediately
+        (reset/restore/activate/source switch).  The old turn's cancel event
+        is set so an in-flight turn stops at its next check; a new turn can
+        acquire right away with a strictly larger generation and fence."""
+        with self.lock:
+            old_cancel = self.cancel
+            new_generation = int(self.backend.bump_generation(self.key) or 0)
+            if cancel_active and old_cancel is not None:
+                old_cancel.set()
+            self.lease = None
+            self.cancel = None
+            self.last_access = time.monotonic()
+            return new_generation
 
     def renew_turn(
         self,

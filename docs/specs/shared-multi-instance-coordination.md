@@ -152,6 +152,28 @@ Redis 模式下以下状态必须跨实例共享：
 
 ## 11. Redis 原子操作
 
+### 应用启动接线
+
+共享协调不能只提供未被调用的库。`AppState` 必须提供可测试的 `configure_coordination()` 领域入口，应用 `configure()`/启动流程必须调用配置工厂，并把同一个 backend 与 instance ID 安装到：
+
+- `STATE.session_slots`；
+- `STATE.admission`；
+- turn heartbeat 配置；
+- coordination health 状态。
+
+`CHATBI_COORDINATION_MODE=redis` 时，真实 `_begin_turn()` 获取的必须是带 `fence>0` 的共享 lease。data/report 使用同一个 backend，但 key 包含 mode。Redis 配置失败必须遵循 closed/local 策略，不能捕获异常后悄悄继续使用原本地对象。
+
+### Turn heartbeat 接线
+
+`_run_turn_stream()` 在共享 lease 下必须启动一个与该 turn 绑定的 heartbeat guard：
+
+- heartbeat/续租发生在 TTL 安全窗口内；
+- stream 正常结束、异常或 `GeneratorExit` 时停止；
+- heartbeat 失败时设置同一个 cancel event；
+- finally 先停止 heartbeat，再 owner-validated release；
+- 本地 lease 不启动共享 heartbeat；
+- heartbeat interval 可注入，以便离线测试。
+
 以下操作必须原子化：
 
 1. acquire session lease + generation/fence 递增；
@@ -202,6 +224,8 @@ Redis 模式下以下状态必须跨实例共享：
 8. Redis acquire/renew/release 使用原子脚本入口；
 9. Redis 不可用时 closed 模式拒绝，显式 local fallback 标记 degraded；
 10. key 和诊断快照不泄漏 Redis 凭据或用户输入。
+11. AppState 把共享 backend 实际安装到 registry 和 admission；
+12. 真实 turn 的共享 heartbeat 丢失 lease 后取消 turn，结束时停止。
 
 测试必须使用 fake clock、内存共享适配器或 fake Redis client，不访问网络，不依赖真实时间长等待。
 

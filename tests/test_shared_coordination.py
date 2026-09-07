@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import threading
 import unittest
+from unittest.mock import patch
 
 from bi_agent import concurrency
+from bi_agent.web import app as web_app
 
 
 class FakeClock:
@@ -203,6 +205,71 @@ class SharedCoordinationRedTests(unittest.TestCase):
         self.assertNotIn("redis://", serialized)
         self.assertNotIn("password", serialized.lower())
         self.assertNotIn("用户的完整问题", serialized)
+
+    def test_app_state_installs_shared_backend_into_real_turn_guards(self):
+        backend = self._backend()
+        state = web_app.AppState()
+        self.assertTrue(
+            hasattr(state, "configure_coordination"),
+            "RED: AppState 尚无共享协调生产接线入口",
+        )
+        state.configure_coordination(
+            backend=backend,
+            instance_id="app-instance-a",
+            lease_ttl_seconds=15,
+            heartbeat_seconds=5,
+        )
+        self.assertIs(state.coordination_backend, backend)
+        self.assertIs(state.session_slots._shared_backend, backend)
+        self.assertIs(state.admission._shared_backend, backend)
+        lease = state.session_slots.ensure("data:real-request").try_acquire(
+            lease_ttl_seconds=15,
+        )
+        self.assertIsNotNone(lease)
+        self.assertGreater(lease.fence, 0)
+
+    def test_application_configuration_uses_factory_instead_of_dead_code(self):
+        backend = self._backend()
+        state = web_app.AppState()
+        self.assertTrue(hasattr(state, "configure_coordination_from_env"))
+        with patch.object(
+            concurrency,
+            "build_coordination_backend",
+            return_value=backend,
+        ) as factory:
+            state.configure_coordination_from_env({
+                "CHATBI_COORDINATION_MODE": "redis",
+                "CHATBI_REDIS_URL": "redis://example.invalid/0",
+                "CHATBI_INSTANCE_ID": "env-instance",
+                "CHATBI_LEASE_TTL_SECONDS": "15",
+                "CHATBI_LEASE_HEARTBEAT_SECONDS": "5",
+            })
+        factory.assert_called_once()
+        self.assertIs(state.coordination_backend, backend)
+        self.assertIs(state.session_slots._shared_backend, backend)
+        self.assertIs(state.admission._shared_backend, backend)
+
+    def test_shared_heartbeat_failure_cancels_turn_and_stops_cleanly(self):
+        backend = self._backend()
+        state = web_app.AppState()
+        self.assertTrue(hasattr(state, "configure_coordination"))
+        state.configure_coordination(
+            backend=backend,
+            instance_id="heartbeat-instance",
+            lease_ttl_seconds=0.15,
+            heartbeat_seconds=0.02,
+        )
+        slot = state.session_slots.ensure("data:heartbeat-real")
+        cancel = threading.Event()
+        lease = slot.try_acquire(cancel_event=cancel, lease_ttl_seconds=0.15)
+        self.assertIsNotNone(lease)
+        self.assertTrue(hasattr(state, "start_turn_heartbeat"))
+        guard = state.start_turn_heartbeat(slot, lease, cancel)
+        backend.bump_generation("data:heartbeat-real")
+        self.assertTrue(cancel.wait(0.5), "RED: 共享 lease 丢失未取消真实 turn")
+        guard.stop()
+        guard.join(timeout=1)
+        self.assertFalse(guard.is_alive(), "RED: turn heartbeat 在线程结束后泄漏")
 
 
 if __name__ == "__main__":

@@ -334,6 +334,36 @@ class InMemorySharedCoordination:
                 and int(current.fence) == int(fence or 0)
             )
 
+    def bump_generation(self, key: str) -> int:
+        """Invalidate any live lease for ``key`` and advance the generation
+        counter atomically (reset/restore/source-switch path).  Returns the
+        new generation.  The fence counter is never regressed: the next legal
+        ownership still receives a strictly larger fence."""
+        key = str(key or "")
+        with self._lock:
+            counter = self._counters.get(key, {"generation": 0, "fence": 0})
+            counter = {
+                "generation": int(counter.get("generation") or 0) + 1,
+                "fence": int(counter.get("fence") or 0),
+            }
+            self._counters[key] = counter
+            self._leases.pop(key, None)
+            return counter["generation"]
+
+    def current_generation(self, key: str) -> int:
+        """Latest generation for ``key`` (live lease wins, else the monotonic
+        counter).  Used by conversation-save generation checks so a stale
+        save from another instance cannot overwrite a newer session."""
+        key = str(key or "")
+        with self._lock:
+            state = self._leases.get(key)
+            if state is not None and self._lease_is_live(state, self._now()):
+                return int(state.generation)
+            counter = self._counters.get(key)
+            if counter:
+                return int(counter.get("generation") or 0)
+            return 0
+
     # --- shared admission ----------------------------------------------
 
     def _reap_expired_actives_locked(self) -> None:
@@ -388,9 +418,9 @@ class InMemorySharedCoordination:
         codes; returns an opaque validated ticket token on success."""
         qkey = str(principal_key or "")
         owner = str(owner or "")
-        if not qkey or not owner:
+        if not owner:
             raise CoordinationRejected(
-                "ADMISSION_CANCELLED", "invalid principal or owner"
+                "ADMISSION_CANCELLED", "invalid owner"
             )
         max_active = int(getattr(limits, "max_active_turns", 0))
         per_principal = int(getattr(limits, "max_active_per_principal", 0))
@@ -583,6 +613,41 @@ return 'OK'
 """
 
 
+_BUMP_GENERATION_LUA = r"""
+local value = redis.call('GET', KEYS[1])
+local counter = redis.call('GET', KEYS[2])
+local gen = 0
+local fence = 0
+if counter then
+  local cg, cf = counter:match('^(%d+) (%d+)$')
+  gen = tonumber(cg) or 0
+  fence = tonumber(cf) or 0
+end
+gen = gen + 1
+redis.call('SET', KEYS[2], gen .. ' ' .. fence)
+redis.call('DEL', KEYS[1])
+return tostring(gen)
+"""
+
+_CURRENT_GENERATION_LUA = r"""
+local value = redis.call('GET', KEYS[1])
+if value then
+  local gen = value:match('^(%d+)')
+  if gen then
+    return gen
+  end
+end
+local counter = redis.call('GET', KEYS[2])
+if counter then
+  local gen = counter:match('^(%d+)')
+  if gen then
+    return gen
+  end
+end
+return '0'
+"""
+
+
 class RedisSharedCoordination:
     """Redis-backed shared coordination.
 
@@ -734,6 +799,36 @@ class RedisSharedCoordination:
             int(fence or 1),
         )
         return reply == "YES"
+
+    def bump_generation(self, key: str) -> int:
+        """Atomically invalidate the live lease for ``key`` and advance the
+        generation counter (single Lua script; fence never regresses)."""
+        key = str(key or "")
+        reply = self._client.eval(
+            _BUMP_GENERATION_LUA,
+            2,
+            self._key("lease", key),
+            self._key("lease-counter", key),
+        )
+        try:
+            return int(str(reply or "0"))
+        except (TypeError, ValueError):
+            return 0
+
+    def current_generation(self, key: str) -> int:
+        """Latest generation for ``key`` (live lease, else monotonic
+        counter).  Single atomic read; no TTL write."""
+        key = str(key or "")
+        reply = self._client.eval(
+            _CURRENT_GENERATION_LUA,
+            2,
+            self._key("lease", key),
+            self._key("lease-counter", key),
+        )
+        try:
+            return int(str(reply or "0"))
+        except (TypeError, ValueError):
+            return 0
 
     # --- admission ops (single eval each; validated tickets) -----------
 
