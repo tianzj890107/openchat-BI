@@ -31,7 +31,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 # ---------------------------------------------------------------------------
 # Request identity (phase 1: session_id only; user_id/tenant_id later)
@@ -64,7 +64,19 @@ class Limits:
     """Validated, env-driven concurrency limits."""
 
     def __init__(self, env: Optional[dict[str, str]] = None) -> None:
-        env = os.environ if env is None else env
+        env = dict(os.environ if env is None else env)
+        # Phase-3 aliases: shared deployments configure request-named limits
+        # (CHATBI_MAX_ACTIVE_REQUESTS / CHATBI_MAX_QUEUED_REQUESTS).  The
+        # historical *_TURNS names keep precedence when both are present.
+        for alias, canonical in (
+            ("CHATBI_MAX_ACTIVE_REQUESTS", "CHATBI_MAX_ACTIVE_TURNS"),
+            ("CHATBI_MAX_QUEUED_REQUESTS", "CHATBI_MAX_WAITING_TURNS"),
+        ):
+            if (
+                not str(env.get(canonical, "")).strip()
+                and str(env.get(alias, "")).strip()
+            ):
+                env[canonical] = env[alias]
 
         def positive_int(name: str, default: int) -> int:
             raw = str(env.get(name, "")).strip()
@@ -90,9 +102,21 @@ class Limits:
                 raise ValueError(f"{name} must be >= 0 seconds, got {raw!r}")
             return value
 
+        def non_negative_int(name: str, default: int) -> int:
+            raw = str(env.get(name, "")).strip()
+            if not raw:
+                return default
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                raise ValueError(f"{name} must be an integer >= 0, got {raw!r}")
+            if value < 0:
+                raise ValueError(f"{name} must be an integer >= 0, got {raw!r}")
+            return value
+
         self.max_active_turns = positive_int("CHATBI_MAX_ACTIVE_TURNS", 8)
         self.max_active_per_principal = positive_int("CHATBI_MAX_ACTIVE_PER_PRINCIPAL", 2)
-        self.max_waiting_turns = positive_int("CHATBI_MAX_WAITING_TURNS", 32)
+        self.max_waiting_turns = non_negative_int("CHATBI_MAX_WAITING_TURNS", 32)
         self.admission_wait_seconds = non_negative_float("CHATBI_ADMISSION_WAIT_SECONDS", 2.0)
         self.llm_concurrency = positive_int("CHATBI_LLM_CONCURRENCY", 6)
         self.doris_concurrency = positive_int("CHATBI_DORIS_CONCURRENCY", 12)
@@ -155,6 +179,12 @@ class TurnLease:
 
     generation: int
     owner: str
+    # Phase-3 shared-lease fields.  Defaults keep the historical two-field
+    # constructor and every single-process behaviour bit-for-bit.
+    fence: int = 0
+    shared_key: str = ""
+    instance_id: str = ""
+    expires_at: Optional[float] = None
 
 
 class SessionSlot:
@@ -276,18 +306,161 @@ class SessionSlot:
             )
 
 
-class SessionSlotRegistry:
-    """Map of session_key -> SessionSlot, protected by one RLock."""
+class SharedSessionSlot:
+    """Backend-routed per-session turn guard (phase 3).
 
-    def __init__(self) -> None:
+    Authoritative lease state — owner, generation, fence, TTL — lives in the
+    shared backend, so two registries on different instances that receive the
+    same backend observe ONE lease identity per key.  Local bookkeeping
+    (cancel event, last access) mirrors ``SessionSlot`` so generic registry
+    code (reaping, snapshotting) keeps working.  A stale owner's
+    release/renew/heartbeat is rejected by the backend and can never touch a
+    newer lease.
+    """
+
+    def __init__(self, backend: Any, key: str, instance_id: str = "") -> None:
+        self.lock = threading.RLock()
+        self.backend = backend
+        self.key = key
+        self.instance_id = str(instance_id or "")
+        self.lease: Optional[TurnLease] = None
+        self.cancel: Optional[threading.Event] = None
+        self.last_access = time.monotonic()
+
+    @property
+    def busy(self) -> bool:
+        with self.lock:
+            return self.lease is not None
+
+    @property
+    def current_lease(self) -> Optional[TurnLease]:
+        with self.lock:
+            return self.lease
+
+    def try_acquire(
+        self,
+        cancel_event: Optional[threading.Event] = None,
+        lease_ttl_seconds: Optional[float] = None,
+    ) -> Optional[TurnLease]:
+        owner = uuid.uuid4().hex
+        descriptor = self.backend.acquire_lease(
+            self.key,
+            owner,
+            self.instance_id,
+            ttl_seconds=lease_ttl_seconds,
+        )
+        if descriptor is None:
+            return None
+        lease = TurnLease(
+            generation=int(descriptor.get("generation") or 0),
+            owner=str(descriptor.get("owner") or owner),
+            fence=int(descriptor.get("fence") or 0),
+            shared_key=self.key,
+            instance_id=self.instance_id,
+            expires_at=descriptor.get("expires_at"),
+        )
+        with self.lock:
+            self.lease = lease
+            self.cancel = (
+                cancel_event if cancel_event is not None else threading.Event()
+            )
+            self.last_access = time.monotonic()
+        return lease
+
+    def attach_cancel(self, lease: TurnLease, cancel: threading.Event) -> None:
+        with self.lock:
+            if self.lease is not None and self.lease.owner == lease.owner:
+                self.cancel = cancel
+
+    def release_turn(self, lease: Optional[TurnLease]) -> None:
+        if lease is None:
+            return
+        self.backend.release_lease(
+            self.key, lease.owner, lease.generation, lease.fence
+        )
+        with self.lock:
+            if self.lease is not None and self.lease.owner == lease.owner:
+                self.lease = None
+                self.cancel = None
+                self.last_access = time.monotonic()
+
+    def renew_turn(
+        self,
+        lease: TurnLease,
+        lease_ttl_seconds: Optional[float] = None,
+    ) -> bool:
+        ok = self.backend.renew_lease(
+            self.key,
+            lease.owner,
+            lease.generation,
+            lease.fence,
+            ttl_seconds=lease_ttl_seconds,
+        )
+        if ok:
+            with self.lock:
+                if self.lease is not None and self.lease.owner == lease.owner:
+                    self.last_access = time.monotonic()
+        return ok
+
+    def heartbeat(
+        self,
+        lease: TurnLease,
+        cancel: Optional[threading.Event],
+        lease_ttl_seconds: Optional[float] = None,
+    ) -> bool:
+        ok = self.renew_turn(lease, lease_ttl_seconds=lease_ttl_seconds)
+        if not ok and cancel is not None:
+            cancel.set()
+        return ok
+
+    def is_superseded(
+        self,
+        lease: Optional[TurnLease],
+        cancel: Optional[threading.Event],
+    ) -> bool:
+        if cancel is not None and cancel.is_set():
+            return True
+        if lease is None:
+            return True
+        return not self.backend.is_lease_current(
+            self.key, lease.owner, lease.generation, lease.fence
+        )
+
+    def touch(self) -> None:
+        with self.lock:
+            self.last_access = time.monotonic()
+
+
+class SessionSlotRegistry:
+    """Map of session_key -> SessionSlot, protected by one RLock.
+
+    ``shared_backend`` (phase 3): when supplied, ``ensure()`` returns
+    backend-routed ``SharedSessionSlot`` objects so registries on different
+    instances that share one backend observe a single lease identity per key.
+    With the default ``None`` every historical single-process behaviour is
+    preserved exactly.
+    """
+
+    def __init__(
+        self,
+        shared_backend: Optional[Any] = None,
+        instance_id: str = "",
+    ) -> None:
         self.lock = threading.RLock()
         self._slots: dict[str, SessionSlot] = {}
+        self._shared_backend = shared_backend
+        self._instance_id = str(instance_id or "")
 
     def ensure(self, key: str) -> SessionSlot:
         with self.lock:
             slot = self._slots.get(key)
             if slot is None:
-                slot = SessionSlot()
+                if self._shared_backend is None:
+                    slot = SessionSlot()
+                else:
+                    slot = SharedSessionSlot(
+                        self._shared_backend, key, self._instance_id
+                    )
                 self._slots[key] = slot
             return slot
 
@@ -339,12 +512,30 @@ class AdmissionRejected(Exception):
 
 
 class AdmissionTicket:
-    __slots__ = ("controller", "principal", "code")
+    __slots__ = (
+        "controller",
+        "principal",
+        "code",
+        "ticket_id",
+        "owner",
+        "instance_id",
+    )
 
-    def __init__(self, controller: "AdmissionController", principal: RequestPrincipal, code: str) -> None:
+    def __init__(
+        self,
+        controller: "AdmissionController",
+        principal: RequestPrincipal,
+        code: str,
+        ticket_id: str = "",
+        owner: str = "",
+        instance_id: str = "",
+    ) -> None:
         self.controller = controller
         self.principal = principal
         self.code = code
+        self.ticket_id = ticket_id
+        self.owner = owner
+        self.instance_id = instance_id
 
 
 class _QueueEntry:
@@ -380,14 +571,61 @@ class AdmissionController:
         and re-runs as soon as its principal frees capacity).
     """
 
-    def __init__(self, limits: Optional[Limits] = None) -> None:
+    def __init__(
+        self,
+        limits: Optional[Limits] = None,
+        shared_backend: Optional[Any] = None,
+        instance_id: str = "",
+    ) -> None:
         self.limits = limits or get_limits()
+        self._shared_backend = shared_backend
+        self._instance_id = str(instance_id or "")
         self._cond = threading.Condition(threading.RLock())
         self._active_total = 0
         self._active_by_principal: dict[str, int] = {}
         self._queue: list[_QueueEntry] = []
         # Short poll so a cancelled wait is removed from the queue promptly.
         self._poll_interval = 0.1
+
+    # --- shared backend helpers (phase 3) -----------------------------
+    def _shared_acquire(
+        self,
+        principal: RequestPrincipal,
+        cancel_event: Optional[threading.Event],
+    ) -> AdmissionTicket:
+        backend = self._shared_backend
+        owner = uuid.uuid4().hex
+        try:
+            token = backend.admission_acquire(
+                principal.quota_key,
+                limits=self.limits,
+                owner=owner,
+                instance_id=self._instance_id,
+                cancel_event=cancel_event,
+                timeout_seconds=self.limits.admission_wait_seconds,
+            )
+        except CoordinationRejected as exc:
+            raise AdmissionRejected(
+                exc.code, exc.message, exc.retry_after
+            ) from None
+        return AdmissionTicket(
+            self,
+            principal,
+            principal.quota_key,
+            ticket_id=str(token.get("ticket_id") or ""),
+            owner=str(token.get("owner") or owner),
+            instance_id=str(token.get("instance_id") or self._instance_id),
+        )
+
+    def _shared_release(self, ticket: AdmissionTicket) -> None:
+        backend = self._shared_backend
+        backend.admission_release(
+            {
+                "ticket_id": ticket.ticket_id,
+                "owner": ticket.owner,
+                "instance_id": ticket.instance_id,
+            }
+        )
 
     # --- internals -----------------------------------------------------
     def _grant(self, principal: RequestPrincipal) -> AdmissionTicket:
@@ -420,6 +658,8 @@ class AdmissionController:
         principal: RequestPrincipal,
         cancel_event: Optional[threading.Event] = None,
     ) -> AdmissionTicket:
+        if self._shared_backend is not None:
+            return self._shared_acquire(principal, cancel_event)
         limits = self.limits
         qkey = principal.quota_key
         deadline = time.monotonic() + limits.admission_wait_seconds
@@ -468,6 +708,9 @@ class AdmissionController:
                 self._remove(entry)
 
     def release(self, ticket: AdmissionTicket) -> None:
+        if self._shared_backend is not None:
+            self._shared_release(ticket)
+            return
         with self._cond:
             self._active_total = max(0, self._active_total - 1)
             qkey = ticket.code
@@ -479,6 +722,12 @@ class AdmissionController:
             self._cond.notify_all()
 
     def snapshot(self) -> dict[str, int]:
+        if self._shared_backend is not None:
+            snap = self._shared_backend.snapshot()
+            return {
+                "active": int(snap.get("active") or 0),
+                "waiting": int(snap.get("queued") or 0),
+            }
         with self._cond:
             return {
                 "active": self._active_total,
@@ -645,3 +894,19 @@ def reset_resources() -> None:
         _llm_limiter = None
         _doris_limiter = None
         _ontology_limiter = None
+
+# ---------------------------------------------------------------------------
+# Phase-3 shared multi-instance coordination (public entry points)
+# ---------------------------------------------------------------------------
+#
+# Imported at the END of the module: ``shared_coordination`` deliberately
+# never imports this module (it stays import-cycle free), while the RED
+# contract and callers reference the shared entry points through
+# ``bi_agent.concurrency``.
+
+from bi_agent.shared_coordination import (
+    CoordinationRejected,
+    InMemorySharedCoordination,
+    RedisSharedCoordination,
+    build_coordination_backend,
+)
