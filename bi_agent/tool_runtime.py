@@ -370,6 +370,69 @@ class ToolExecutionLedger:
         with self._lock:
             return [record.to_dict() for record in self._records]
 
+    def remember_persisted_failed_attempt(
+        self,
+        *,
+        tool_use_id: str,
+        tool_name: str,
+        params: Any,
+        attempt: int,
+        execution_id: str = "",
+        error_code: str = "",
+        error_message: str = "",
+    ) -> None:
+        """Re-register a failed tool attempt that an earlier process persisted.
+
+        A restored ``FAILED_RETRYABLE`` recovery state recreates the failed
+        attempt's family record so an explicit retry opens the NEXT attempt
+        (checkpoint attempt + 1) instead of silently restarting at attempt 1.
+        Existing in-ledger records always take precedence and are never
+        overwritten; repeated restores/retries register the seed at most once.
+        The seed is an immutable terminal record (TIMED_OUT/FAILED) and only
+        fills the family slot the explicit-retry path consults.
+        """
+        tool_name = str(tool_name or "")
+        tool_use_id = str(tool_use_id or "")
+        if not tool_name or not tool_use_id:
+            return
+        family = family_key(
+            session_scope=self.session_scope,
+            tool_use_id=tool_use_id,
+            tool_name=tool_name,
+            params=params,
+        )
+        with self._lock:
+            if family in self._by_family:
+                return
+            attempt = max(1, int(attempt or 1))
+            if str(error_code) == TOOL_TIMEOUT:
+                status = ToolExecutionStatus.TIMED_OUT
+            else:
+                status = ToolExecutionStatus.FAILED
+            record = ToolExecutionRecord(
+                execution_id=str(execution_id or uuid.uuid4().hex),
+                idempotency_key="restored:" + family,
+                family_key=family,
+                session_scope=self.session_scope,
+                turn_scope="",
+                generation=None,
+                tool_use_id=tool_use_id,
+                tool_name=tool_name,
+                input_digest=_sha256(canonical_input(params)),
+                status=status.value,
+                attempt=attempt,
+                finished_at=_utcnow(),
+                duration_ms=0,
+                error_code=str(error_code or ""),
+                error_message=sanitize_error_message(
+                    error_message or "restored failed attempt"
+                ),
+                retryable=True,
+            )
+            record._done.set()
+            self._records.append(record)
+            self._by_family[family] = record
+
     def _spawn_record(
         self,
         key: str,

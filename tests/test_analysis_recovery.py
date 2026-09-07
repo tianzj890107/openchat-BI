@@ -319,6 +319,100 @@ class AnalysisRecoveryRedTests(unittest.TestCase):
             self.assertEqual(interrupted["status"], "FAILED_RETRYABLE")
             self.assertEqual(interrupted["error_code"], "INTERRUPTED_DURING_EXECUTION")
 
+    def test_restored_retryable_state_rehydrates_tool_input_before_transitioning(self):
+        """A persisted FAILED_RETRYABLE state must still be truly retryable
+        after process/session restoration, not merely retain the enum value."""
+        calls = 0
+
+        def executor(params, _cwd):
+            nonlocal calls
+            calls += 1
+            self.assertEqual(params["sql"], "select restored_retry")
+            return "value\n1"
+
+        session = self._session(executor)
+        session.messages = [{
+            "role": "assistant",
+            "content": [{
+                "type": "tool_use",
+                "id": "restored-tool-1",
+                "name": TOOL,
+                "input": {"sql": "select restored_retry"},
+            }],
+        }]
+        persisted = {
+            "recovery_version": 1,
+            "turn_ref": "restored-turn",
+            "status": "FAILED_RETRYABLE",
+            "current_step": "QUERY",
+            "attempt": 1,
+            "retryable": True,
+            "error_code": "TOOL_TIMEOUT",
+            "last_checkpoint": {
+                "checkpoint_id": "cp-restored",
+                "turn_ref": "restored-turn",
+                "step": "QUERY",
+                "tool_use_id": "restored-tool-1",
+                "input_digest": "digest",
+                "execution_id": "execution-old",
+                "attempt": 1,
+                "result_ref": "",
+                "retryable": True,
+                "created_at": "2026-09-07T00:00:00+00:00",
+            },
+            "pending_user": None,
+            "updated_at": "2026-09-07T00:00:00+00:00",
+        }
+        self.assertTrue(
+            hasattr(session, "restore_recovery_state"),
+            "RED: restore 只恢复枚举，尚无重建 retry 输入的领域入口",
+        )
+        restored = session.restore_recovery_state(persisted)
+        self.assertEqual(restored["status"], "FAILED_RETRYABLE")
+
+        with patch(
+            "bi_agent.web.session.stream_message",
+            side_effect=scripted_provider([final_response("恢复后重试成功")]),
+        ):
+            events = list(session.retry_from_checkpoint())
+        self.assertEqual(calls, 1)
+        self.assertEqual(self._state(session)["status"], "SUCCEEDED")
+        self.assertEqual(self._state(session)["attempt"], 2)
+        self.assertTrue(any(e.get("type") == "done" for e in events))
+
+    def test_unrecoverable_retry_snapshot_fails_final_without_stuck_running(self):
+        session = self._session(lambda _params, _cwd: "must-not-run")
+        persisted = {
+            "recovery_version": 1,
+            "turn_ref": "missing-input-turn",
+            "status": "FAILED_RETRYABLE",
+            "current_step": "QUERY",
+            "attempt": 1,
+            "retryable": True,
+            "error_code": "TOOL_TIMEOUT",
+            "last_checkpoint": {
+                "checkpoint_id": "cp-missing",
+                "turn_ref": "missing-input-turn",
+                "step": "QUERY",
+                "tool_use_id": "not-in-this-conversation",
+                "input_digest": "digest",
+                "execution_id": "execution-old",
+                "attempt": 1,
+                "result_ref": "",
+                "retryable": True,
+                "created_at": "2026-09-07T00:00:00+00:00",
+            },
+            "pending_user": None,
+            "updated_at": "2026-09-07T00:00:00+00:00",
+        }
+        self.assertTrue(hasattr(session, "restore_recovery_state"))
+        state = session.restore_recovery_state(persisted)
+        self.assertEqual(state["status"], "FAILED_FINAL")
+        self.assertEqual(state["error_code"], "RECOVERY_INPUT_MISSING")
+        events = list(session.retry_from_checkpoint())
+        self.assertEqual(events[0]["error_code"], "RECOVERY_NOT_RETRYABLE")
+        self.assertNotEqual(self._state(session)["status"], "RUNNING")
+
 
 if __name__ == "__main__":
     unittest.main()

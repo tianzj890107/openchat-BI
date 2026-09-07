@@ -89,6 +89,7 @@ checkpoint 至少包含：
 - `step`；
 - `input_digest`：输入规范摘要，禁止保存敏感明文；
 - `execution_id`：工具步骤必填，纯 LLM/交付步骤可为空；
+- `tool_use_id`：工具步骤必填，用于从已持久化的 assistant tool_use 消息中安全定位重试输入；
 - `attempt`；
 - `result_ref`：沿用 Tool Runtime 的有界摘要；
 - `retryable`；
@@ -146,10 +147,12 @@ checkpoint 只能在一次状态/结果已经确认后原子替换。迟到工�
 - `ConversationSaveRequest` 不信任浏览器提供的 recovery 状态；保存时从当前 `WebSession` 读取服务端状态；
 - `ConversationStore.save()` 原子保存经过规范化、有界化的 recovery state；
 - restore/activate 把状态导入目标 WebSession；
+- restore 不得只恢复状态枚举。对于 `FAILED_RETRYABLE`，必须使用 checkpoint 的 `tool_use_id` 从该会话已经持久化的 assistant tool_use 消息中重建内存重试描述；不得信任 checkpoint 自带 SQL，也不得跨会话搜索；
 - 只有 `WAITING_USER` 和 `FAILED_RETRYABLE` 可恢复为可继续状态；
 - 快照中的 `RUNNING` 表示进程已经失去原执行，恢复时降级为 `FAILED_RETRYABLE/INTERRUPTED_DURING_EXECUTION`，不得假装仍在运行；
 - 旧快照缺少 recovery 字段时初始化为 `PLANNED`，不得报错；
 - 非法状态、超长字段、敏感字段按安全默认值规范化，禁止任意对象注入。
+- 若快照声称 `FAILED_RETRYABLE`，但 checkpoint 缺少 `tool_use_id`、对应消息不存在或工具名称不一致，则必须降级为 `FAILED_FINAL/RECOVERY_INPUT_MISSING`；不得先切换到 RUNNING 后才报错，也不得保持一个实际上无法重试的 `FAILED_RETRYABLE`。
 
 本阶段只持久化小型状态和引用，不持久化完整工具结果、Claim 集合或线程对象。
 
@@ -186,6 +189,7 @@ Web 层应像其他 turn 事件一样添加 `turn_id`。旧前端忽略该事件
 7. 显式 retry 只从 `FAILED_RETRYABLE` 发起并增加 attempt；
 8. recovery state 经临时 ConversationStore 保存/加载保持一致；
 9. 旧快照缺字段兼容为 `PLANNED`，恢复的 `RUNNING` 降级为可重试中断。
+10. `FAILED_RETRYABLE` 保存并恢复后可从同一会话消息重建 retry 输入；缺少输入时安全降级，不能卡在 RUNNING。
 
 ## 14. GREEN 完成条件
 

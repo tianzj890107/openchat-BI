@@ -61,6 +61,7 @@ from ..recovery import (
     DELIVER,
     FAILED_FINAL,
     FAILED_RETRYABLE,
+    INTERRUPTED_DURING_EXECUTION,
     INTENT,
     ONTOLOGY,
     PLAN,
@@ -575,6 +576,125 @@ class WebSession:
         """
         return normalize_recovery_state(raw)
 
+    def restore_recovery_state(self, raw_state: Any) -> dict[str, Any]:
+        """Install a normalized, bounded Recovery snapshot into this session.
+
+        The snapshot is normalized first (a persisted RUNNING state downgrades
+        to FAILED_RETRYABLE / INTERRUPTED_DURING_EXECUTION because its owning
+        process is gone).  When the restored state claims FAILED_RETRYABLE,
+        the replay descriptor is rebuilt ONLY from the assistant ``tool_use``
+        message already persisted in this session's ``messages`` (matched
+        exactly by ``last_checkpoint.tool_use_id``); the checkpoint itself
+        never carries SQL or the full tool input, and no cross-conversation or
+        browser-supplied input is ever trusted.  A FAILED_RETRYABLE state
+        whose replay input cannot be located is degraded immediately to
+        ``FAILED_FINAL/RECOVERY_INPUT_MISSING`` so it can never sit as a
+        fake-retryable state or enter RUNNING with nothing to execute.
+
+        Special case: an INTERRUPTED_DURING_EXECUTION downgrade (the snapshot
+        was RUNNING when persisted) is not a tool failure.  Its last
+        checkpoint was already confirmed before the interruption, so it is
+        never replayed as if it had failed: at a tool step (QUERY/ONTOLOGY)
+        the state degrades to FAILED_FINAL; at a no-tool LLM step it stays a
+        resumable FAILED_RETRYABLE per the phase-2 spec, with no replayable
+        tool descriptor.
+
+        Returns the final defensive recovery snapshot.
+        """
+        normalized = normalize_recovery_state(raw_state)
+        descriptor = None
+        degrade = False
+        if normalized.get("status") == FAILED_RETRYABLE:
+            checkpoint = normalized.get("last_checkpoint")
+            tool_use_id = (
+                str(checkpoint.get("tool_use_id") or "")
+                if isinstance(checkpoint, dict) else ""
+            )
+            interrupted = (
+                normalized.get("error_code") == INTERRUPTED_DURING_EXECUTION
+            )
+            step = str(normalized.get("current_step") or "")
+            if interrupted and step not in (ONTOLOGY, QUERY):
+                # LLM-only interruption: spec-safe resumable downgrade with no
+                # tool to replay (descriptor stays None, state is kept).
+                degrade = False
+            else:
+                if not interrupted and tool_use_id:
+                    descriptor = self._recover_retry_tool_use(tool_use_id)
+                # Unrecoverable when a replay descriptor was required (a real
+                # tool failure, or an interruption at a tool step) but cannot
+                # be rebuilt from this conversation's messages.
+                degrade = descriptor is None
+        self.recovery = RecoveryState(normalized)
+        self._recovery_retry_tool_use = descriptor
+        if degrade:
+            terminal = self.recovery.mark_unrecoverable()
+            if terminal is not None:
+                return terminal
+        return self.recovery.snapshot()
+
+    def _recover_retry_tool_use(self, tool_use_id: str) -> Optional[dict[str, Any]]:
+        """Locate the assistant ``tool_use`` block for ``tool_use_id`` in this
+        session's own message history and return a safe replay descriptor.
+
+        The block must be an assistant tool_use with a non-empty name and a
+        dict ``input``.  Returns ``None`` when the id is not present, the
+        block is not an assistant tool_use, or its payload is malformed — the
+        caller then degrades the restored state instead of faking a retry.
+        """
+        messages = self.messages if isinstance(self.messages, list) else []
+        for message in messages:
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                continue
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") != "tool_use":
+                    continue
+                if str(block.get("id") or "") != str(tool_use_id):
+                    continue
+                name = str(block.get("name") or "")
+                raw_input = block.get("input")
+                if not name or not isinstance(raw_input, dict):
+                    return None
+                return {
+                    "type": "tool_use",
+                    "id": str(tool_use_id),
+                    "name": name,
+                    "input": dict(raw_input),
+                }
+        return None
+
+    def _seed_retry_attempt(self, preflight: dict[str, Any]) -> None:
+        """Re-register a restored FAILED_RETRYABLE's failed attempt in the Tool
+        Runtime ledger so the explicit retry opens checkpoint attempt + 1.
+
+        The in-process ledger already knows the failed attempt (no-op); only a
+        fresh ledger — a session restored from a snapshot that an earlier
+        process wrote — needs the family slot seeded.  The seed is terminal,
+        immutable and never starts an executor.
+        """
+        tool_use = self._recovery_retry_tool_use
+        if not tool_use:
+            return
+        checkpoint = preflight.get("last_checkpoint")
+        if not isinstance(checkpoint, dict):
+            return
+        params = tool_use.get("input")
+        if not isinstance(params, dict):
+            params = {}
+        self._tool_ledger.remember_persisted_failed_attempt(
+            tool_use_id=str(tool_use.get("id") or ""),
+            tool_name=str(tool_use.get("name") or ""),
+            params=params,
+            attempt=int(checkpoint.get("attempt") or preflight.get("attempt") or 1),
+            execution_id=str(checkpoint.get("execution_id") or ""),
+            error_code=str(preflight.get("error_code") or ""),
+        )
+
     def _recovery_event(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         """Build the SSE recovery_state event from a state snapshot."""
         return {
@@ -724,9 +844,25 @@ class WebSession:
         continue with one LLM cycle and finish as SUCCEEDED.  Retry requests
         are themselves idempotent: the ledger caps real executions at
         ``MAX_EXPLICIT_ATTEMPTS`` and repeated retries reuse the outcome.
+
+        The FAILED_RETRYABLE -> RUNNING transition is the LAST step of the
+        retry gate: the checkpoint's ``tool_use_id`` and the rebuilt replay
+        descriptor are validated atomically first.  A retryable state whose
+        replay input cannot be located is degraded to
+        ``FAILED_FINAL/RECOVERY_INPUT_MISSING`` (by the manager) and rejected
+        here with ``RECOVERY_NOT_RETRYABLE`` — it never enters RUNNING with
+        nothing to execute.
         """
-        error_code, resumed = self.recovery.begin_retry()
+        tool_use = self._recovery_retry_tool_use
+        preflight = self.recovery.snapshot()
+        expected_tool_use_id = str((tool_use or {}).get("id") or "")
+        error_code, resumed = self.recovery.begin_retry(expected_tool_use_id)
         if error_code == RECOVERY_NOT_RETRYABLE:
+            if resumed is not None:
+                # The manager degraded an unreplayable FAILED_RETRYABLE to
+                # FAILED_FINAL/RECOVERY_INPUT_MISSING before any RUNNING
+                # transition; surface that terminal state, then reject.
+                yield self._recovery_event(resumed)
             yield {
                 "type": "error",
                 "error_code": RECOVERY_NOT_RETRYABLE,
@@ -741,14 +877,10 @@ class WebSession:
             return
         if resumed is not None:
             yield self._recovery_event(resumed)
-        tool_use = self._recovery_retry_tool_use
-        if not tool_use:
-            yield {
-                "type": "error",
-                "error_code": RECOVERY_NOT_RETRYABLE,
-                "message": "no replayable failed tool call was recorded",
-            }
-            return
+        # A restored FAILED_RETRYABLE state may carry a fresh Tool Runtime
+        # ledger whose failed attempt lived in an earlier process: re-register
+        # that attempt so the explicit retry opens checkpoint attempt + 1.
+        self._seed_retry_attempt(preflight)
         turn_ctx = getattr(self, "_turn_ctx", None)
         block = yield from self._run_tool_and_emit(tool_use, turn_ctx, retry=True)
         if block is None:
@@ -1571,6 +1703,7 @@ class WebSession:
                     execution_id=execution_id,
                     attempt=attempt,
                     input_digest_value=input_digest(params),
+                    tool_use_id=tool_use_id,
                 )
                 if cancelled is not None:
                     yield self._recovery_event(cancelled)
@@ -1588,6 +1721,7 @@ class WebSession:
                     attempt=attempt,
                     input_digest_value=digest,
                     result_ref=bounded_result_ref(output),
+                    tool_use_id=tool_use_id,
                 )
             elif status in ("TIMED_OUT", "FAILED"):
                 retryable = bool(outcome.retryable)
@@ -1611,6 +1745,7 @@ class WebSession:
                     execution_id=execution_id,
                     attempt=attempt,
                     input_digest_value=digest,
+                    tool_use_id=tool_use_id,
                 )
                 if terminal is not None:
                     yield self._recovery_event(terminal)

@@ -55,6 +55,7 @@ VALID_STEPS = frozenset({
 # bi_agent.tool_runtime and are reused verbatim.
 INTERRUPTED_DURING_EXECUTION = "INTERRUPTED_DURING_EXECUTION"
 RECOVERY_NOT_RETRYABLE = "RECOVERY_NOT_RETRYABLE"
+RECOVERY_INPUT_MISSING = "RECOVERY_INPUT_MISSING"
 RETRY_EXHAUSTED = "RETRY_EXHAUSTED"
 
 # Persisted-state limits (bounded, defensive).
@@ -65,6 +66,7 @@ _MAX_REF = 256
 _MAX_STEP_TEXT = 512
 _MAX_OPTIONS = 50
 _MAX_OPTION_TEXT = 300
+_MAX_TOOL_USE_ID = 128
 
 
 def _utcnow() -> str:
@@ -94,6 +96,7 @@ def _sanitize_checkpoint(raw: Any) -> Optional[dict[str, Any]]:
         "step": step,
         "input_digest": _bounded(raw.get("input_digest"), _MAX_DIGEST),
         "execution_id": _bounded(raw.get("execution_id"), 64),
+        "tool_use_id": _bounded(raw.get("tool_use_id"), _MAX_TOOL_USE_ID),
         "attempt": int(raw.get("attempt") or 1) if isinstance(raw.get("attempt"), int) else 1,
         "result_ref": _bounded(raw.get("result_ref"), _MAX_REF),
         "retryable": bool(raw.get("retryable")),
@@ -279,6 +282,7 @@ class RecoveryState:
         attempt: int,
         input_digest_value: str,
         result_ref: str,
+        tool_use_id: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """Confirm one tool result: keep RUNNING and rotate the checkpoint."""
         with self._lock:
@@ -297,6 +301,7 @@ class RecoveryState:
                 input_digest_value=input_digest_value,
                 result_ref=result_ref,
                 retryable=True,
+                tool_use_id=tool_use_id,
             )
             return self._commit(state)
 
@@ -310,6 +315,7 @@ class RecoveryState:
         execution_id: Optional[str],
         attempt: int,
         input_digest_value: str,
+        tool_use_id: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
         """Map a structured tool outcome to a terminal recovery state.
 
@@ -347,19 +353,69 @@ class RecoveryState:
                     input_digest_value=input_digest_value,
                     result_ref="",
                     retryable=effective_retryable,
+                    tool_use_id=tool_use_id,
                 )
             return self._commit(state)
 
-    def begin_retry(self) -> tuple[Optional[str], Optional[dict[str, Any]]]:
+    def mark_unrecoverable(
+        self,
+        *,
+        error_code: str = RECOVERY_INPUT_MISSING,
+    ) -> Optional[dict[str, Any]]:
+        """Terminalize a FAILED_RETRYABLE state whose replay input cannot be
+        rebuilt (restore-time degradation).  The turn is closed as
+        ``FAILED_FINAL`` so it can never linger as a fake-retryable state.
+        """
+        with self._lock:
+            if self._state["status"] != FAILED_RETRYABLE:
+                return None
+            state = copy.deepcopy(self._state)
+            state["status"] = FAILED_FINAL
+            state["retryable"] = False
+            state["error_code"] = _bounded(error_code, _MAX_ERROR_CODE)
+            state["pending_user"] = None
+            return self._commit(state)
+
+    def begin_retry(
+        self,
+        expected_tool_use_id: Optional[str] = None,
+    ) -> tuple[Optional[str], Optional[dict[str, Any]]]:
         """Explicit retry gate: FAILED_RETRYABLE -> RUNNING (or exhausted).
+
+        The retry is only legal when the checkpoint carries a ``tool_use_id``
+        and (when supplied) that id matches the replay descriptor WebSession
+        rebuilt.  A retryable state without a locatable replay input is
+        degraded to ``FAILED_FINAL/RECOVERY_INPUT_MISSING`` *before* any
+        ``RUNNING`` transition, so the caller can never be stuck in RUNNING
+        with nothing to execute.
 
         Returns ``(error_code, new_snapshot)``.  ``error_code`` is empty when
         the retry may proceed; otherwise the state moved to
-        ``FAILED_FINAL/RETRY_EXHAUSTED`` and the caller must not re-execute.
+        a terminal state and the caller must not re-execute.
         """
         with self._lock:
             if self._state["status"] != FAILED_RETRYABLE:
                 return RECOVERY_NOT_RETRYABLE, None
+            checkpoint = self._state.get("last_checkpoint")
+            checkpoint_id = (
+                str(checkpoint.get("tool_use_id") or "")
+                if isinstance(checkpoint, dict) else ""
+            )
+            if not checkpoint_id or (
+                expected_tool_use_id is not None
+                and checkpoint_id != str(expected_tool_use_id)
+            ):
+                # The persisted checkpoint cannot be replayed from the current
+                # conversation messages: close the turn instead of pretending
+                # it is retryable.
+                state = copy.deepcopy(self._state)
+                state["status"] = FAILED_FINAL
+                state["retryable"] = False
+                state["error_code"] = _bounded(
+                    RECOVERY_INPUT_MISSING, _MAX_ERROR_CODE
+                )
+                state["pending_user"] = None
+                return RECOVERY_NOT_RETRYABLE, self._commit(state)
             if int(self._state["attempt"] or 0) >= MAX_RECOVERY_ATTEMPTS:
                 state = copy.deepcopy(self._state)
                 state["status"] = FAILED_FINAL
@@ -394,6 +450,7 @@ class RecoveryState:
                 input_digest_value="",
                 result_ref="",
                 retryable=True,
+                tool_use_id="",
             )
             return self._commit(state)
 
@@ -407,6 +464,7 @@ def _make_checkpoint(
     input_digest_value: str,
     result_ref: str,
     retryable: bool,
+    tool_use_id: Optional[str] = None,
 ) -> dict[str, Any]:
     return {
         "checkpoint_id": uuid.uuid4().hex,
@@ -414,6 +472,7 @@ def _make_checkpoint(
         "step": step,
         "input_digest": _bounded(input_digest_value, _MAX_DIGEST),
         "execution_id": _bounded(execution_id or "", 64),
+        "tool_use_id": _bounded(tool_use_id or "", _MAX_TOOL_USE_ID),
         "attempt": max(1, int(attempt or 0)),
         "result_ref": _bounded(result_ref, _MAX_REF),
         "retryable": bool(retryable),

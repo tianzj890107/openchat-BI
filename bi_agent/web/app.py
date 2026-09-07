@@ -2228,21 +2228,27 @@ def _activate_conversation_record(
     # Lightweight Recovery is restored only into real WebSessions (legacy
     # SimpleNamespace fakes never carry the state machine).  A missing or
     # legacy snapshot normalizes to PLANNED; a persisted RUNNING snapshot
-    # downgrades to FAILED_RETRYABLE / INTERRUPTED_DURING_EXECUTION; a
-    # resumable WAITING_USER snapshot also reinstates the pending AskUser
-    # handle so continue_with_choice can resume the same recovery turn.
-    if hasattr(session, "recovery") and getattr(session, "recovery", None) is not None:
+    # downgrades to FAILED_RETRYABLE / INTERRUPTED_DURING_EXECUTION.  Real
+    # WebSessions restore through the domain entry, which rebuilds the retry
+    # descriptor from THIS session's persisted assistant tool_use messages
+    # (never from snapshot SQL or browser input); a resumable WAITING_USER
+    # snapshot also reinstates the pending AskUser handle so
+    # continue_with_choice can resume the same recovery turn.
+    restored = None
+    if hasattr(session, "restore_recovery_state"):
+        restored = session.restore_recovery_state(rec.get("recovery_state"))
+    elif hasattr(session, "recovery") and getattr(session, "recovery", None) is not None:
         session.recovery = RecoveryState(rec.get("recovery_state"))
         restored = session.recovery_state
-        if restored.get("status") == WAITING_USER:
-            pending = restored.get("pending_user") or {}
-            tool_use_id = pending.get("tool_use_id")
-            if tool_use_id:
-                session.pending_tool_use_id = tool_use_id
-                session.pending_choice_spec = {
-                    "question": pending.get("question", ""),
-                    "options": pending.get("options", []),
-                }
+    if restored and restored.get("status") == WAITING_USER:
+        pending = restored.get("pending_user") or {}
+        tool_use_id = pending.get("tool_use_id")
+        if tool_use_id:
+            session.pending_tool_use_id = tool_use_id
+            session.pending_choice_spec = {
+                "question": pending.get("question", ""),
+                "options": pending.get("options", []),
+            }
 
     # New snapshots already contain rendered ontology HTML. Only old records
     # need the compatibility scan/migration, which can be noticeably costly.
