@@ -63,10 +63,13 @@ TOOL_TIMEOUT = "TOOL_TIMEOUT"
 TOOL_CANCELLED = "TOOL_CANCELLED"
 STALE_TOOL_RESULT = "STALE_TOOL_RESULT"
 TOOL_EXECUTION_ERROR = "TOOL_EXECUTION_ERROR"
+RETRY_EXHAUSTED = "RETRY_EXHAUSTED"
 
 _DEFAULT_TOOL_TIMEOUT_SECONDS = 60.0
 _MAX_ERROR_MESSAGE_CHARS = 400
 _MAX_CONCURRENT_TOOL_WORKERS = 8
+# One initial attempt + one explicit retry by default.
+MAX_EXPLICIT_ATTEMPTS = 2
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +268,9 @@ class ToolExecutionRecord:
     error_message: str = ""
     retryable: bool = False
     result_ref: str = ""
+    # Logical execution family (no turn scope): explicit retries locate the
+    # failed attempt through this key.  Not part of the audit snapshot.
+    family_key: str = field(default="", repr=False)
     # Transient internals — never serialized into the audit snapshot.  The
     # full successful business result is held in memory so WebSession receives
     # exactly what the executor returned and duplicate deliveries can reuse it;
@@ -348,6 +354,11 @@ class ToolExecutionLedger:
         self._lock = threading.RLock()
         self._records: list[ToolExecutionRecord] = []
         self._by_key: dict[str, ToolExecutionRecord] = {}
+        # Most recent record per logical execution family (session scope +
+        # tool_use_id + tool_name + canonical input, deliberately WITHOUT the
+        # turn scope) so an explicit retry can find the failed attempt even
+        # when a later retry request runs under a new turn context.
+        self._by_family: dict[str, ToolExecutionRecord] = {}
 
     # --- public ---------------------------------------------------------
 
@@ -359,6 +370,53 @@ class ToolExecutionLedger:
         with self._lock:
             return [record.to_dict() for record in self._records]
 
+    def _spawn_record(
+        self,
+        key: str,
+        family: str,
+        scope: ToolTurnScope,
+        tool_use_id: str,
+        tool_name: str,
+        params: Any,
+        *,
+        attempt: int,
+    ) -> ToolExecutionRecord:
+        """Create and register a fresh PENDING record (caller holds the lock)."""
+        record = ToolExecutionRecord(
+            execution_id=str(uuid.uuid4()),
+            idempotency_key=key,
+            family_key=family,
+            session_scope=self.session_scope,
+            turn_scope=scope.turn_ref if scope is not None else "",
+            generation=scope.generation if scope is not None else None,
+            tool_use_id=str(tool_use_id or ""),
+            tool_name=str(tool_name or ""),
+            input_digest=_sha256(canonical_input(params)),
+            attempt=max(1, int(attempt or 1)),
+        )
+        self._records.append(record)
+        self._by_key[key] = record
+        self._by_family[family] = record
+        return record
+
+    def _retry_exhausted_outcome(
+        self,
+        record: ToolExecutionRecord,
+    ) -> ToolExecutionOutcome:
+        """Stable outcome when explicit retry attempts are exhausted."""
+        return ToolExecutionOutcome(
+            status=ToolExecutionStatus.FAILED.value,
+            execution_id=record.execution_id,
+            attempt=record.attempt,
+            output=self._legacy_failure_text(record),
+            error_code=RETRY_EXHAUSTED,
+            error_message="explicit retry attempts exhausted",
+            retryable=False,
+            reused=True,
+            tool_name=record.tool_name,
+            tool_use_id=record.tool_use_id,
+        )
+
     def execute(
         self,
         *,
@@ -367,13 +425,18 @@ class ToolExecutionLedger:
         tool_name: str,
         params: Any,
         invoke: Callable[[], str],
+        retry: bool = False,
     ) -> ToolExecutionOutcome:
         """Accept one logical tool call and run it exactly once per key.
 
         ``invoke`` is executed on a bounded daemon worker; the caller waits at
         most ``timeout_for(tool_name)`` seconds and receives a structured
         outcome.  Duplicate deliveries reuse the first result; failed /
-        timed-out / cancelled terminals never implicitly retry.
+        timed-out / cancelled terminals never implicitly retry.  An explicit
+        ``retry=True`` opens a NEW attempt record for the same logical
+        execution family (attempt + 1) without rewriting the immutable
+        terminal record of the failed attempt; repeated retries are idempotent
+        and capped at ``MAX_EXPLICIT_ATTEMPTS``.
         """
         timeout = self.timeout_for(tool_name)
         key = idempotency_key(
@@ -383,22 +446,52 @@ class ToolExecutionLedger:
             tool_name=tool_name,
             params=params,
         )
+        family = family_key(
+            session_scope=self.session_scope,
+            tool_use_id=tool_use_id,
+            tool_name=tool_name,
+            params=params,
+        )
         with self._lock:
             record = self._by_key.get(key)
             fresh = record is None
-            if fresh:
-                record = ToolExecutionRecord(
-                    execution_id=str(uuid.uuid4()),
-                    idempotency_key=key,
-                    session_scope=self.session_scope,
-                    turn_scope=scope.turn_ref if scope is not None else "",
-                    generation=scope.generation if scope is not None else None,
-                    tool_use_id=str(tool_use_id or ""),
-                    tool_name=str(tool_name or ""),
-                    input_digest=_sha256(canonical_input(params)),
+            if fresh and retry:
+                # Explicit retry whose failed attempt may live under an older
+                # turn context: locate it through the execution family.
+                prior = self._by_family.get(family)
+                if prior is not None and prior.status in (
+                    ToolExecutionStatus.TIMED_OUT.value,
+                    ToolExecutionStatus.FAILED.value,
+                ):
+                    if int(prior.attempt or 0) >= MAX_EXPLICIT_ATTEMPTS:
+                        return self._retry_exhausted_outcome(prior)
+                    record = self._spawn_record(
+                        key, family, scope, tool_use_id, tool_name, params,
+                        attempt=int(prior.attempt or 0) + 1,
+                    )
+                else:
+                    record = self._spawn_record(
+                        key, family, scope, tool_use_id, tool_name, params,
+                        attempt=1,
+                    )
+            elif not fresh and retry and record.status in (
+                ToolExecutionStatus.TIMED_OUT.value,
+                ToolExecutionStatus.FAILED.value,
+            ):
+                # Same turn context: open attempt n+1 while the terminal
+                # record stays immutable in the audit trail.
+                if int(record.attempt or 0) >= MAX_EXPLICIT_ATTEMPTS:
+                    return self._retry_exhausted_outcome(record)
+                record = self._spawn_record(
+                    key, family, scope, tool_use_id, tool_name, params,
+                    attempt=int(record.attempt or 0) + 1,
                 )
-                self._records.append(record)
-                self._by_key[key] = record
+                fresh = True
+            elif fresh:
+                record = self._spawn_record(
+                    key, family, scope, tool_use_id, tool_name, params,
+                    attempt=1,
+                )
 
         if not fresh:
             duplicate = self._snapshot_outcome(record)
@@ -410,7 +503,8 @@ class ToolExecutionLedger:
             if record.status != ToolExecutionStatus.PENDING.value:
                 return self._outcome_locked(record)
             record.status = ToolExecutionStatus.RUNNING.value
-            record.attempt = 1
+            if record.attempt < 1:
+                record.attempt = 1
             record.started_at = _utcnow()
             record._started_mono = time.monotonic()
             if _scope_superseded(scope):
@@ -718,6 +812,34 @@ def idempotency_key(
             "session_scope": str(session_scope),
             "turn_scope": str(scope.turn_ref if scope is not None else ""),
             "generation": scope.generation if scope is not None else None,
+            "tool_use_id": str(tool_use_id or ""),
+            "tool_name": str(tool_name or ""),
+            "input": _canonical(params),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return _sha256(payload)
+
+
+def family_key(
+    *,
+    session_scope: str,
+    tool_use_id: str,
+    tool_name: str,
+    params: Any,
+) -> str:
+    """Stable identity of one logical tool-call family (no turn scope).
+
+    Used by explicit retries to locate the failed attempt of the same logical
+    call even when the retry runs under a newer turn context.  Ordinary
+    duplicate detection keeps using ``idempotency_key`` (turn-scoped), so a
+    different turn still never reuses an old result.
+    """
+    payload = json.dumps(
+        {
+            "session_scope": str(session_scope),
             "tool_use_id": str(tool_use_id or ""),
             "tool_name": str(tool_name or ""),
             "input": _canonical(params),

@@ -60,6 +60,7 @@ from ..ontology.remote import OntologyApiError, RemoteOntologyClient
 from ..ontology.remote_retriever import RemoteGraphRetriever
 from ..ontology.graph import build_graph
 from ..report import ReportStore, parser_availability
+from ..recovery import RecoveryState, WAITING_USER
 from ..tools import build_source_executors, register_all
 from ..tools.graph_tools import GRAPH_TOOL_NAMES
 from ..tools.sql_tools import (
@@ -1042,7 +1043,7 @@ _TURN_EVENT_TYPES = {
     "session_superseded", "claim_context", "answer_validation",
     "render_enforce", "user_choice_resolved", "user_choice_requested",
     "awaiting_user_choice", "action_repair", "delivery_incomplete",
-    "action_recommendations", "sop_progress",
+    "action_recommendations", "sop_progress", "recovery_state",
 }
 
 
@@ -2224,6 +2225,25 @@ def _activate_conversation_record(
             session._pending_sibling_results = []
             context_restored = True
 
+    # Lightweight Recovery is restored only into real WebSessions (legacy
+    # SimpleNamespace fakes never carry the state machine).  A missing or
+    # legacy snapshot normalizes to PLANNED; a persisted RUNNING snapshot
+    # downgrades to FAILED_RETRYABLE / INTERRUPTED_DURING_EXECUTION; a
+    # resumable WAITING_USER snapshot also reinstates the pending AskUser
+    # handle so continue_with_choice can resume the same recovery turn.
+    if hasattr(session, "recovery") and getattr(session, "recovery", None) is not None:
+        session.recovery = RecoveryState(rec.get("recovery_state"))
+        restored = session.recovery_state
+        if restored.get("status") == WAITING_USER:
+            pending = restored.get("pending_user") or {}
+            tool_use_id = pending.get("tool_use_id")
+            if tool_use_id:
+                session.pending_tool_use_id = tool_use_id
+                session.pending_choice_spec = {
+                    "question": pending.get("question", ""),
+                    "options": pending.get("options", []),
+                }
+
     # New snapshots already contain rendered ontology HTML. Only old records
     # need the compatibility scan/migration, which can be noticeably costly.
     active_session = _session_for_mode(mode, session_id)
@@ -2288,6 +2308,15 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
         first_user_question_override=(
             req.first_user_question.strip()
             or (session.first_user_question if session else "")
+        ),
+        # The browser is never authoritative for Recovery: the server-side
+        # session snapshot is read here and normalized at the persistence
+        # boundary.  Sessions without the state machine (legacy/test fakes)
+        # simply omit the field.
+        recovery_state=(
+            session.recovery_state
+            if session is not None and hasattr(session, "recovery_state")
+            else None
         ),
     )
     # Local storage is authoritative. A configured sync URL is intentionally

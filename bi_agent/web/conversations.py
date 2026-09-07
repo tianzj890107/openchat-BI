@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ..paths import CONVERSATIONS_DIR, project_path
+from ..recovery import normalize_recovery_state
 
 try:
     from zoneinfo import ZoneInfo
@@ -564,8 +565,8 @@ class ConversationStore:
         mode: str,
         title: str,
         messages: list,
-        chat_html: str,
-        dashboard_html: str,
+        chat_html: str = "",
+        dashboard_html: str = "",
         ontology_html: str = "",
         tools_html: str = "",
         llm_html: str = "",
@@ -573,6 +574,7 @@ class ConversationStore:
         source_config: Optional[dict[str, Any]] = None,
         cid: Optional[str] = None,
         first_user_question_override: str = "",
+        recovery_state: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         """Create or update (when `cid` exists) a conversation record."""
         if mode not in VALID_MODES:
@@ -653,6 +655,11 @@ class ConversationStore:
             # state and must never be copied into history JSON or sync payloads.
             "source_config": sanitize_source_config(raw_source_config),
         }
+        # Lightweight Recovery state is persisted ONLY as the small, bounded,
+        # normalized server-side snapshot (see bi_agent.recovery).  Old
+        # records simply omit the field; restores normalize it to PLANNED.
+        if isinstance(recovery_state, dict):
+            rec["recovery_state"] = normalize_recovery_state(recovery_state)
         target = self._path(cid)
         payload = json.dumps(rec, ensure_ascii=False)
         # Replace the snapshot atomically. A browser save and a server-side
