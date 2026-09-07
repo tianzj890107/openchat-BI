@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 from bi_agent.concurrency import SessionSlot
 from bi_agent.ontology.store import OntologyStore
+from bi_agent.tool_runtime import ToolExecutionLedger, ToolTurnScope, _DaemonToolPool
 from bi_agent.web.session import TurnContext, WebSession
 from open_claude.agent_def import AgentDef
 
@@ -258,6 +259,79 @@ class ToolExecutionBoundaryRedTests(unittest.TestCase):
         records[0]["status"] = "CORRUPTED_BY_CALLER"
         fresh = self._records(session)
         self.assertEqual(fresh[0]["status"], "SUCCEEDED")
+
+    def test_audit_bounding_does_not_truncate_successful_business_result(self) -> None:
+        """Audit may retain a digest, but WebSession/LLM receives the complete result."""
+        large_result = "payload:" + ("业务数据" * 260_000)
+        tool = {
+            "id": "tu-full-result",
+            "name": TOOL_NAME,
+            "input": {"sql": "select large_payload"},
+        }
+        session = self._session(lambda _params, _cwd: large_result)
+        with patch("bi_agent.web.session.stream_message", side_effect=_tool_turn([tool])):
+            events = list(session.generate_turn("查询完整大结果"))
+
+        result = next(event for event in events if event.get("type") == "tool_result")
+        self.assertEqual(
+            result["output"],
+            large_result,
+            "RED: Tool Runtime 为限制审计大小而截断了真实业务结果",
+        )
+        self.assertEqual(session.query_results[0].data, large_result)
+        self.assertLess(len(repr(self._records(session)[0])), 10_000)
+
+    def test_queued_execution_that_times_out_never_starts_later(self) -> None:
+        """An expired queued call must be discarded before invoking its executor."""
+        pool = _DaemonToolPool(max_workers=1)
+        first_entered = threading.Event()
+        release_first = threading.Event()
+        second_invoked = threading.Event()
+        first_ledger = ToolExecutionLedger(
+            "queue-test-first", tool_timeouts={"BlockingTool": 1.0}, pool=pool,
+        )
+        second_ledger = ToolExecutionLedger(
+            "queue-test-second", tool_timeouts={"QueuedTool": 0.05}, pool=pool,
+        )
+
+        def first_invoke():
+            first_entered.set()
+            release_first.wait(2)
+            return "first-ok"
+
+        def run_first():
+            first_ledger.execute(
+                scope=ToolTurnScope("turn-first"),
+                tool_use_id="first",
+                tool_name="BlockingTool",
+                params={},
+                invoke=first_invoke,
+            )
+
+        first_thread = threading.Thread(target=run_first, daemon=True)
+        first_thread.start()
+        self.assertTrue(first_entered.wait(1), "占位 executor 没有启动")
+        outcome = second_ledger.execute(
+            scope=ToolTurnScope("turn-second"),
+            tool_use_id="second",
+            tool_name="QueuedTool",
+            params={},
+            invoke=lambda: second_invoked.set() or "late-queued-result",
+        )
+        self.assertEqual(outcome.status, "TIMED_OUT")
+
+        release_first.set()
+        first_thread.join(2)
+        self.assertFalse(first_thread.is_alive(), "占位 executor 没有退出")
+        # This sentinel sits behind the expired task. Once it runs, the worker
+        # has definitely dequeued and considered that task.
+        drained = threading.Event()
+        pool.submit(drained.set)
+        self.assertTrue(drained.wait(1), "测试线程池没有排空")
+        self.assertFalse(
+            second_invoked.is_set(),
+            "RED: 已在队列中超时的工具仍在 worker 空闲后迟到执行",
+        )
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@
 - Doris 或本体查询长时间不返回，占用会话和全局并发资源；
 - 同一 `tool_use` 被重复投递时重复执行；
 -轮次在工具运行期间被 reset、restore、数据源切换或新 generation 取代后，旧结果仍可能进入 `query_results`、Claim 或渲染状态；
--异常仅被转换为 `Error executing ...` 字符串，无法稳定区分超时、取消、执行异常和迟到结果；
+- 异常仅被转换为 `Error executing ...` 字符串，无法稳定区分超时、取消、执行异常和迟到结果；
 -页面和日志只能看到工具名称与耗时，无法回答一次执行处于什么状态、是否重试以及为什么失败。
 
 ## 2. 目标
@@ -33,6 +33,7 @@
 - 不改造 Cognitive Policy、Skill Registry、六步 SOP 和前端样式。
 - `AskUser` 是等待用户输入的控制点，不进入普通工具超时和幂等执行器。
 - 不保证强行终止任意第三方阻塞线程；本阶段保证其迟到结果失去提交权。
+- 超时只允许限制等待和撤销提交权，不得截断、改写一个按时成功返回的真实工具结果。
 
 ## 4. 核心模型
 
@@ -100,6 +101,7 @@ PENDING -> RUNNING -> SUCCEEDED
 - 测试可通过构造参数或测试专用注入配置毫秒级超时，不依赖真实网络超时。
 - 超时终态为 `TIMED_OUT`，`error_code=TOOL_TIMEOUT`，`retryable=true`。
 - 超时返回给 LLM/UI 的内容保持字符串兼容，但必须携带稳定机器码，且不得包含 traceback、密码、token 或连接串。
+- 若任务在执行线程池队列中等待时已经超时或取消，worker 取得任务后必须在调用 executor **之前**检查终态；已处于终态的排队任务必须直接丢弃，不能在用户收到超时后继续向 Doris、本体服务或其他工具发起无效调用。
 
 ### 7.2 取消
 
@@ -167,6 +169,7 @@ PENDING -> RUNNING -> SUCCEEDED
 ## 11. 审计与数据安全
 
 - 审计保存摘要和引用，不保存无界 Doris 完整结果。
+- 审计限界只作用于审计快照和 `result_ref`。Tool Runtime 必须把按时成功完成的原始结果完整交还 WebSession；不得为了限制审计大小而截断供 LLM、`record_query_result`、表格或图表消费的业务结果。
 - 参数中的 `password`、`passwd`、`token`、`secret`、`authorization`、连接串凭据必须脱敏。
 - `error_message` 必须限长并移除 traceback。
 - 首期审计跟随 session 生命周期；历史快照没有执行账本字段时必须可以正常恢复。
@@ -182,6 +185,8 @@ PENDING -> RUNNING -> SUCCEEDED
 4. 工具运行时轮次被 supersede，旧结果不进入分析状态；
 5. executor 异常形成稳定 `FAILED/TOOL_EXECUTION_ERROR` 审计；
 6. 审计不保存敏感输入或完整大结果。
+7. 超过审计限界的大结果仍完整返回给 WebSession，只有审计引用被压缩；
+8. 在线程池队列中已经超时的调用以后不得迟到启动 executor。
 
 RED 测试必须离线、确定性运行，不访问真实 LLM、Doris 或本体服务，不读写真实会话数据。并发同步使用 `threading.Event`，不以长时间 `sleep` 作为主要同步手段。
 
