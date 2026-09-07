@@ -3,7 +3,7 @@
 # 统一容器内部端口: 8080（Dockerfile 显式注入，容器内监听 0.0.0.0:8080）
 #   推荐宿主机映射: 8765:8080（8765 同时是非容器本地默认端口）
 # 统一健康检查: GET /healthz（别名 /health）
-FROM python:3.13-slim
+FROM swr.cn-east-3.myhuaweicloud.com/release/python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
