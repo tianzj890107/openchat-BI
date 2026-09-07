@@ -44,7 +44,11 @@ from ..concurrency import (
     ResourceCancelled,
     SessionSlot,
     TurnLease,
-    set_current_cancel,
+)
+from ..tool_runtime import (
+    ToolExecutionLedger,
+    ToolExecutionOutcome,
+    ToolTurnScope,
 )
 
 
@@ -218,6 +222,7 @@ class WebSession:
         ontology_backend: str = "local",
         ontology_repository_id: str = "",
         tool_executors: Optional[dict[str, Callable[[dict[str, Any], str], str]]] = None,
+        tool_timeouts: Optional[dict[str, float]] = None,
     ) -> None:
         self.cwd = cwd
         self.agent_def = agent_def
@@ -246,6 +251,19 @@ class WebSession:
         # Source-facing tools are captured per browser session. Render and
         # utility tools continue to use the shared immutable registry.
         self._tool_executors = dict(tool_executors or {})
+        # Session-scoped Tool Runtime execution boundary: idempotent execution
+        # records, per-tool timeouts and the stale-result commit gate live in
+        # the ledger, not in the turn loop.
+        self._tool_ledger = ToolExecutionLedger(
+            f"session:{id(self)}",
+            tool_timeouts=tool_timeouts,
+        )
+        # Structured outcome of the most recent boundary run per tool_use_id
+        # (consumed by the tool loop right after ``_execute_tool`` returns).
+        self._execution_outcomes: dict[str, Any] = {}
+        # Local turn scope counter for direct calls without a web
+        # TurnContext (a web turn is keyed by its lease owner instead).
+        self._local_turn_seq = 0
         self.analysis_context = AnalysisContext()
         self.query_results: list[QueryResult] = []
         self.claims: list[Claim] = []
@@ -475,6 +493,15 @@ class WebSession:
     # Public API
     # ------------------------------------------------------------------
 
+    @property
+    def tool_execution_records(self) -> list[dict[str, Any]]:
+        """Read-only audit snapshot of the session's tool executions.
+
+        Every read returns a fresh list of plain dicts in creation order;
+        mutating the returned snapshot never changes the internal ledger.
+        """
+        return self._tool_ledger.snapshot()
+
     def generate_turn(self, user_text: str, visible_user_text: Optional[str] = None) -> Generator[dict[str, Any], None, None]:
         """Yield events for one user turn (user message → assistant → tools → ...)."""
         # Refuse to even start when the turn was already superseded (e.g. a
@@ -483,6 +510,7 @@ class WebSession:
         if self._turn_superseded():
             yield {"type": "session_superseded"}
             return
+        self._local_turn_seq += 1
         # A new user turn always restarts on the user's explicitly selected
         # model; any automatic fallback from a previous turn is released here.
         self._turn_fallback_model_key = None
@@ -532,6 +560,7 @@ class WebSession:
         if self._turn_superseded():
             yield {"type": "session_superseded"}
             return
+        self._local_turn_seq += 1
         tool_use_id = self.pending_tool_use_id
         sibling_results = getattr(self, "_pending_sibling_results", []) or []
         self.pending_tool_use_id = None
@@ -883,43 +912,17 @@ class WebSession:
                 for tu in tool_uses:
                     if tu["id"] == ask_user_tu["id"]:
                         continue
-                    yield from self._sop_for_tool(tu["name"], tu.get("input") or {})
-                    t0 = time.time()
-                    output, chart_was_suppressed = self._execute_tool(tu, turn_ctx)
-                    if tu["name"] in DATA_QUERY_TOOLS:
-                        if str(output).startswith("Error"):
-                            self._sop_query_failed = True
-                            yield self._sop_event(SOP_STEP_QUERY, "查询失败，准备调整方案")
-                        else:
-                            yield self._sop_event(SOP_STEP_QUERY, "解析查询结果")
-                    self.record_query_result(tu["name"], tu.get("input") or {}, output)
-                    self._chart_suppressed_this_turn |= chart_was_suppressed
-                    duration_ms = int((time.time() - t0) * 1000)
-                    display_output, chart = extract_chart_spec(output)
-                    display_output, table = extract_table_spec(display_output)
-                    display_output, multi_chart = extract_multidim_chart_spec(display_output)
-                    display_output, todos = extract_todo_spec(display_output)
-                    self._table_rendered_this_turn |= table is not None
-                    llm_output = display_output if (chart or table or multi_chart or todos) else output
-                    entities = self._extract_entities(display_output, tu["name"])
-                    yield {
-                        "type": "tool_result",
-                        "id": tu["id"],
-                        "name": tu["name"],
-                        "input": tu["input"],
-                        "output": display_output,
-                        "duration_ms": duration_ms,
-                        "ontology_entities": entities,
-                        "chart": chart,
-                        "table": table,
-                        "multi_chart": multi_chart,
-                        "todos": (todos or {}).get("todos") if todos else None,
-                    }
-                    sibling_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tu["id"],
-                        "content": llm_output,
-                    })
+                    block = yield from self._run_tool_and_emit(tu, turn_ctx)
+                    if block is None:
+                        # The turn was superseded/cancelled while a sibling
+                        # tool was running.  No user choice may be requested
+                        # and no cached sibling result may resume later.
+                        self._pending_sibling_results = []
+                        self.pending_tool_use_id = None
+                        self.pending_choice_spec = None
+                        yield {"type": "session_superseded"}
+                        return
+                    sibling_results.append(block)
                 self._pending_sibling_results = sibling_results
 
                 spec = dict(ask_user_tu.get("input") or {})
@@ -939,47 +942,13 @@ class WebSession:
             # Normal tool execution path
             tool_results: list[dict[str, Any]] = []
             for tu in tool_uses:
-                yield from self._sop_for_tool(tu["name"], tu.get("input") or {})
-                t0 = time.time()
-                output, chart_was_suppressed = self._execute_tool(tu)
-                if tu["name"] in DATA_QUERY_TOOLS:
-                    if str(output).startswith("Error"):
-                        self._sop_query_failed = True
-                        yield self._sop_event(SOP_STEP_QUERY, "查询失败，准备调整方案")
-                    else:
-                        yield self._sop_event(SOP_STEP_QUERY, "解析查询结果")
-                self.record_query_result(tu["name"], tu.get("input") or {}, output)
-                self._chart_suppressed_this_turn |= chart_was_suppressed
-                duration_ms = int((time.time() - t0) * 1000)
-
-                # Pull out chart/table specs if present; keep the display text
-                # for the UI, strip the JSON blocks before sending back to the LLM.
-                display_output, chart = extract_chart_spec(output)
-                display_output, table = extract_table_spec(display_output)
-                display_output, multi_chart = extract_multidim_chart_spec(display_output)
-                display_output, todos = extract_todo_spec(display_output)
-                self._table_rendered_this_turn |= table is not None
-                llm_output = display_output if (chart or table or multi_chart or todos) else output
-
-                entities = self._extract_entities(display_output, tu["name"])
-                yield {
-                    "type": "tool_result",
-                    "id": tu["id"],
-                    "name": tu["name"],
-                    "input": tu["input"],
-                    "output": display_output,
-                    "duration_ms": duration_ms,
-                    "ontology_entities": entities,
-                    "chart": chart,
-                    "table": table,
-                    "multi_chart": multi_chart,
-                    "todos": (todos or {}).get("todos") if todos else None,
-                }
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tu["id"],
-                    "content": llm_output,
-                })
+                block = yield from self._run_tool_and_emit(tu, turn_ctx)
+                if block is None:
+                    # A superseded/cancelled execution must not commit
+                    # anything nor feed the next LLM iteration.
+                    yield {"type": "session_superseded"}
+                    return
+                tool_results.append(block)
 
             self.messages.append({"role": "user", "content": tool_results})
 
@@ -1230,7 +1199,13 @@ class WebSession:
         tool_use: dict[str, Any],
         turn_ctx: Optional[TurnContext] = None,
     ) -> tuple[str, bool]:
-        """Execute a tool, applying the deterministic chart usefulness guard."""
+        """Prepare and execute one tool through the Tool Runtime boundary.
+
+        The deterministic chart usefulness guard runs BEFORE the boundary, so
+        a suppressed render call never creates an execution audit record.
+        Returns the historical ``(output, suppressed)`` tuple; the structured
+        outcome is kept per tool_use_id for the tool loop's commit gate.
+        """
 
         name = str(tool_use.get("name") or "")
         params = tool_use.get("input")
@@ -1261,19 +1236,174 @@ class WebSession:
         reason = chart_skip_reason(self._active_user_text, name, params)
         if reason:
             return skipped_chart_output(reason), True
-        try:
-            # Gate network-facing tools with the turn's cancel event so a
-            # reset/restore/disconnect aborts a Doris/ontology wait promptly.
-            ctx = turn_ctx if turn_ctx is not None else getattr(self, "_turn_ctx", None)
-            set_current_cancel(ctx.cancel if ctx is not None else None)
+        tool_use_id = str(tool_use.get("id") or "")
+        outcome = self._run_tool_boundary(name, tool_use_id, params, turn_ctx)
+        self._remember_outcome(tool_use_id, outcome)
+        if outcome.status == "SUCCEEDED":
+            return str(outcome.output or ""), False
+        # Legacy string conversion for the LLM/UI protocol.  The internal
+        # state stays structured (see tool_runtime.ToolExecutionOutcome), so
+        # timeout/cancel/execution errors are never guessed from prefixes.
+        message = outcome.error_message or f"{name} execution failed"
+        code = outcome.error_code or outcome.status
+        return f"Error executing {name}: {message} ({code})", False
+
+    def _run_tool_boundary(
+        self,
+        name: str,
+        tool_use_id: str,
+        params: dict[str, Any],
+        turn_ctx: Optional[TurnContext],
+    ) -> ToolExecutionOutcome:
+        """Run one prepared tool call through the session Tool Runtime.
+
+        The executor runs on a bounded daemon worker; this call blocks at most
+        the per-tool timeout and always returns a structured outcome.
+        """
+        def invoke() -> str:
             executor = self._tool_executors.get(name)
             if executor is not None:
-                return executor(params, self.cwd), False
-            return execute_tool(name, params, self.cwd), False
-        except ResourceCancelled:
-            raise
-        except Exception as exc:
-            return f"Error executing {name}: {exc}", False
+                return executor(params, self.cwd)
+            return execute_tool(name, params, self.cwd)
+
+        return self._tool_ledger.execute(
+            scope=self._turn_scope(turn_ctx),
+            tool_use_id=tool_use_id,
+            tool_name=name,
+            params=params,
+            invoke=invoke,
+        )
+
+    def _remember_outcome(self, tool_use_id: str, outcome: ToolExecutionOutcome) -> None:
+        """Keep the structured outcome for the tool loop's commit gate."""
+        self._execution_outcomes[tool_use_id] = outcome
+        if len(self._execution_outcomes) > 512:
+            try:
+                self._execution_outcomes.pop(next(iter(self._execution_outcomes)))
+            except StopIteration:
+                pass
+
+    def _turn_scope(self, turn_ctx: Optional[TurnContext]) -> ToolTurnScope:
+        """Frozen turn identity used for idempotency and the stale gate.
+
+        A web turn is identified by its lease owner + generation (captured ONCE
+        from the turn's ``TurnContext``); direct local calls use a per-turn
+        counter so duplicated deliveries inside one turn share one scope while
+        a later turn never reuses an old result.
+        """
+        ctx = turn_ctx if turn_ctx is not None else getattr(self, "_turn_ctx", None)
+        if ctx is not None:
+            lease = ctx.lease
+            owner = str(getattr(lease, "owner", "") or "")
+            generation = getattr(lease, "generation", None)
+
+            def is_current() -> bool:
+                return not ctx.slot.is_superseded(ctx.lease, ctx.cancel)
+
+            return ToolTurnScope(
+                turn_ref=owner or f"slot-{id(ctx.slot)}",
+                generation=generation,
+                cancel=ctx.cancel,
+                is_current=is_current,
+            )
+        return ToolTurnScope(turn_ref=f"local-{self._local_turn_seq}")
+
+    def _run_tool_and_emit(
+        self,
+        tool_use: dict[str, Any],
+        turn_ctx: Optional[TurnContext],
+    ) -> Generator[dict[str, Any], None, Optional[dict[str, Any]]]:
+        """Run one tool_use through the shared execution boundary and emit the
+        resulting SSE ``tool_result``.
+
+        Both tool paths (AskUser siblings and the normal loop) go through this
+        single helper so execution bookkeeping, stale-result rejection and the
+        render/table/chart event shape stay identical.
+
+        Returns the LLM-facing ``{type: tool_result, ...}`` content block, or
+        ``None`` when the execution was cancelled/superseded and neither the
+        SSE event nor the content block may be produced.
+        """
+        name = str(tool_use.get("name") or "")
+        raw_params = tool_use.get("input")
+        params = raw_params if isinstance(raw_params, dict) else {}
+        tool_use_id = str(tool_use.get("id") or "")
+        yield from self._sop_for_tool(name, params)
+        t0 = time.time()
+        run = self._execute_tool(tool_use, turn_ctx)
+        output = str(run[0])
+        suppressed = bool(run[1])
+        # Structured boundary runs carry a machine outcome; patched/legacy
+        # executors only produce the historical (output, suppressed) tuple.
+        outcome = self._execution_outcomes.pop(tool_use_id, None)
+        if outcome is not None:
+            status = outcome.status
+            execution_id = outcome.execution_id
+            attempt = outcome.attempt
+            error_code = outcome.error_code or ""
+            reused = bool(outcome.reused)
+            if status == "CANCELLED":
+                # Cancelled/stale executions must never reach the business
+                # state, the SSE stream or the next LLM message.
+                return None
+        else:
+            status = "FAILED" if output.startswith("Error") else "SUCCEEDED"
+            execution_id = None
+            attempt = 0
+            error_code = ""
+            reused = False
+        # An executor that returned an Error-looking text is handled exactly
+        # like a structured failure at the session boundary (historical SOP
+        # behaviour), and such text is never fed into query_results/claims.
+        query_failure = status in ("FAILED", "TIMED_OUT") or (
+            status == "SUCCEEDED" and output.startswith("Error")
+        )
+        if name in DATA_QUERY_TOOLS:
+            if query_failure:
+                self._sop_query_failed = True
+                yield self._sop_event(SOP_STEP_QUERY, "查询失败，准备调整方案")
+            else:
+                yield self._sop_event(SOP_STEP_QUERY, "解析查询结果")
+        if status == "SUCCEEDED" and not query_failure and not reused:
+            self.record_query_result(name, params, output)
+        self._chart_suppressed_this_turn |= suppressed
+        duration_ms = int((time.time() - t0) * 1000)
+
+        # Pull out chart/table specs if present; keep the display text for the
+        # UI, strip the JSON blocks before sending back to the LLM.
+        display_output, chart = extract_chart_spec(output)
+        display_output, table = extract_table_spec(display_output)
+        display_output, multi_chart = extract_multidim_chart_spec(display_output)
+        display_output, todos = extract_todo_spec(display_output)
+        self._table_rendered_this_turn |= table is not None
+        llm_output = display_output if (chart or table or multi_chart or todos) else output
+
+        entities = self._extract_entities(display_output, name)
+        event: dict[str, Any] = {
+            "type": "tool_result",
+            "id": tool_use.get("id"),
+            "name": name,
+            "input": tool_use.get("input"),
+            "output": display_output,
+            "duration_ms": duration_ms,
+            "ontology_entities": entities,
+            "chart": chart,
+            "table": table,
+            "multi_chart": multi_chart,
+            "todos": (todos or {}).get("todos") if todos else None,
+        }
+        if execution_id is not None:
+            event["execution_id"] = execution_id
+            event["execution_status"] = status
+            event["attempt"] = attempt
+            if error_code:
+                event["error_code"] = error_code
+        yield event
+        return {
+            "type": "tool_result",
+            "tool_use_id": tool_use.get("id"),
+            "content": llm_output,
+        }
 
     def _display_resolver(self) -> "Callable[[str], Optional[str]]":
         """Build a code → trusted business-name resolver for this session.
