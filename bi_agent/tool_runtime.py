@@ -272,6 +272,10 @@ class ToolExecutionRecord:
     _started_mono: Optional[float] = field(default=None, repr=False)
     _done: threading.Event = field(default_factory=threading.Event, repr=False)
     _business_output: Optional[str] = field(default=None, repr=False)
+    # Set under the ledger lock immediately before invoke(): the single
+    # linearization point that decides whether this execution may start its
+    # executor.  Never serialized into the audit snapshot.
+    _start_claimed: bool = field(default=False, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         """Public defensive copy of one audit record."""
@@ -491,29 +495,35 @@ class ToolExecutionLedger:
         invoke: Callable[[], str],
     ) -> None:
         """Run the executor on a bounded daemon worker and settle the record."""
-        # Pre-flight check under the ledger lock: a task that waited in the pool
-        # queue while the caller already timed out or cancelled the turn (or the
-        # turn was superseded) is discarded BEFORE invoking the executor, so an
-        # invalid Doris/ontology/other call never starts.  The caller
-        # finalizes timeouts/cancellation under the same lock, so this check is
-        # atomic with respect to that transition: whichever side acquires the
-        # lock first decides whether the executor may legally start.
-        with self._lock:
-            if record.status != ToolExecutionStatus.RUNNING.value:
-                return
-            if _scope_superseded(scope):
-                self._finalize_locked(
-                    record,
-                    ToolExecutionStatus.CANCELLED,
-                    error_code=TOOL_CANCELLED,
-                    error_message=(
-                        "tool call was cancelled before the worker started it"
-                    ),
-                    retryable=True,
-                )
-                return
         set_current_cancel(scope.cancel if scope is not None else None)
         try:
+            # Atomic, irrevocable start claim (the linearization point for the
+            # executor start right).  It runs under the ledger lock AFTER the
+            # cancellation stamp has been installed and immediately BEFORE
+            # invoke(), so there is no window in which a task that already
+            # reached a terminal state can still start its executor: the
+            # caller finalizes TIMED_OUT/CANCELLED under the same lock, and
+            # whichever side acquires the lock first wins.  A task that was
+            # already terminal while queued (or was cancelled/superseded while
+            # queued) is discarded here without ever calling invoke().  Once
+            # the claim succeeds the executor may legally start; a later
+            # timeout can only revoke its commit right, never un-start it.
+            with self._lock:
+                if record.status != ToolExecutionStatus.RUNNING.value:
+                    return
+                if _scope_superseded(scope):
+                    self._finalize_locked(
+                        record,
+                        ToolExecutionStatus.CANCELLED,
+                        error_code=TOOL_CANCELLED,
+                        error_message=(
+                            "tool call was cancelled before the worker "
+                            "started it"
+                        ),
+                        retryable=True,
+                    )
+                    return
+                record._start_claimed = True
             try:
                 output = invoke()
             except ResourceCancelled:
@@ -588,14 +598,27 @@ class ToolExecutionLedger:
             if remaining <= 0:
                 with self._lock:
                     if record.status == ToolExecutionStatus.RUNNING.value:
+                        if record._start_claimed:
+                            # The executor already claimed its start right and
+                            # may be running; timeout only revokes the commit
+                            # right and must never pretend it stopped the
+                            # executor from starting.
+                            message = (
+                                f"{record.tool_name} did not finish within "
+                                f"{timeout:g}s"
+                            )
+                        else:
+                            # The worker never claimed the start right; the
+                            # terminal state itself forbids invoke() forever.
+                            message = (
+                                f"{record.tool_name} did not start within "
+                                f"{timeout:g}s"
+                            )
                         self._finalize_locked(
                             record,
                             ToolExecutionStatus.TIMED_OUT,
                             error_code=TOOL_TIMEOUT,
-                            error_message=(
-                                f"{record.tool_name} did not finish within "
-                                f"{timeout:g}s"
-                            ),
+                            error_message=message,
                             retryable=True,
                         )
                 return
