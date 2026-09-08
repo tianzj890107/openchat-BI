@@ -226,3 +226,9 @@
   集合并检查完整运行配置已直接同步；本任务明确不修改 README/DEPLOYMENT。
 - 明确仓库配置无法替代的外部条件：新 Pod 到 Team LLM、本体/Doris、会话同步服务的网络
   可达性，Ingress 子路径，以及真实凭据仍须由运维确认并安全注入。
+
+### 6. 服务器引用统一使用 IP（Spec / TDD RED，2026-09-08）
+
+- 新增 `docs/specs/literal-ip-server-references.md` 与
+  `tests/test_literal_ip_server_references.py`，要求源码、脚本、测试及全部文档中的服务器引用
+  统一为 `172.16.10.34`，不再依赖开发机 SSH Host 别名；实现阶段不得借此修改服务器或部署。
