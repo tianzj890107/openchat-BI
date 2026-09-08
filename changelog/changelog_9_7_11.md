@@ -1,0 +1,213 @@
+# eimosp-ontology-agentic-analytics 变更记录（2026-09-07 至 2026-09-11）
+
+> 本文档记录 2026-09-07（周一）至 2026-09-11（周五）当周的最终变更，按周直接维护
+> （2026-09-08 起 changelog 只按周维护，不再创建日报）。9/7 当天未建日报，本节内容
+> 依据 9/7 git 提交记录补录（提交 `2c6fdf8`…`1ae9894`、`18a3e24`）；9/8 记录
+> changelog 维护规则调整；9/9–9/11 变更完成后直接追加到本文档。
+
+## 维护规则
+
+- 当周变更直接写入本文档，不创建日报文件。
+- 每次发布或一组相关修改合并为一条记录，不记录中间尝试。
+- 每条记录说明用户可见变化、涉及页面/场景和主要文件，并注明改动时间。
+- 未完成、未验证的事项不要写成已完成。
+
+## 2026-09-07（周一）
+
+### 1. 分析 Agent 工具执行可靠性第一阶段：Tool Runtime 执行边界（TDD RED→GREEN，已完成）
+
+- 新增 Spec `docs/specs/tool-runtime-execution-boundary.md` 与 RED 契约
+  `tests/test_tool_execution_boundary.py`（6 项 RED 起步），新增独立模块
+  `bi_agent/tool_runtime.py` 承载执行边界，`WebSession` 两条工具路径（AskUser 前
+  sibling tools 与普通工具执行）统一接入。
+- 关键能力：`execution_id`（UUID，不等于 tool_use_id）；幂等键包含
+  session/turn/generation/tool_use_id/tool_name/canonical input（递归稳定排序），
+  同键重复投递不重复执行、不隐式重试；单工具超时（`tool_timeouts`，合理默认 + 按
+  工具覆盖）；状态机 PENDING→RUNNING→SUCCEEDED/FAILED/CANCELLED/TIMED_OUT，终态
+  不可变，转换在 ledger lock 下 CAS。
+- executor 启动权原子化：timeout 先取得终结权后 worker 永不再调用 executor；worker
+  先取得不可撤销启动权时，超时只撤销提交权、不强杀线程
+  （`test_timeout_between_preflight_and_invoke_cannot_start_executor`），迟到结果
+  不能覆盖 TIMED_OUT 或污染会话。
+- stale-result 门禁：固定捕获 TurnContext，业务提交前复核 cancel/owner/generation/
+  execution 状态与提交权；bump_generation 后迟到结果不进入 query_results/claims/
+  图表状态，不发成功 tool_result，审计为 CANCELLED/STALE_TOOL_RESULT。
+- 错误分类结构化（TOOL_TIMEOUT/TOOL_CANCELLED/STALE_TOOL_RESULT/
+  TOOL_EXECUTION_ERROR），内部不再用 `str(output).startswith("Error")` 判断成败，
+  仅在 WebSession 边界把结构化失败转旧字符串兼容 LLM 协议。
+- 审计安全：`WebSession.tool_execution_records` 返回按创建顺序的防御性快照；审计只
+  存 SHA-256 摘要/长度/有界 result_ref/脱敏 error_message，不存 token/password/
+  secret/连接串凭据/traceback/无界完整结果；完整业务结果与审计限界分离（成功
+  output 完整返回 executor 结果，不受审计限界截断）。
+- SSE 兼容：成功 tool_result 保留全部原字段并增加
+  `execution_id/execution_status/attempt`；不删除既有 id/name/input/output/
+  duration_ms/ontology_entities/chart/table/multi_chart/todos。
+- 验证：`tests.test_tool_execution_boundary` 9 OK（含原子启动权竞态测试）；未访问
+  真实 Doris/LLM/本体服务。
+
+### 2. 第二阶段：轻量 Recovery 状态机（TDD RED→GREEN，已完成）
+
+- 新增 Spec `docs/specs/lightweight-analysis-recovery.md` 与 RED 测试
+  `tests/test_analysis_recovery.py`（9 项起步，后增至 11 项），新增
+  `bi_agent/recovery.py`（RecoveryStatus/RecoveryStep/RecoveryCheckpoint/
+  RecoveryState/AnalysisRecoveryManager）。
+- 七状态：PLANNED/RUNNING/WAITING_USER/SUCCEEDED/FAILED_RETRYABLE/FAILED_FINAL/
+  CANCELLED；终态不可覆盖；AskUser 暂停为 WAITING_USER、有效选择后恢复 RUNNING 且
+  沿用原 turn_ref；工具超时→FAILED_RETRYABLE 并停止当前轮次（不再请求下一次 LLM）；
+  非重试异常→FAILED_FINAL；supersede→CANCELLED。
+- checkpoint 原子提交：工具 checkpoint 保存 tool_use_id + input/result SHA-256 摘要
+  与有界 result_ref，不存 SQL/完整输入/凭据；stale、cancelled、未过 Evidence Gate
+  的结果不能成为成功 checkpoint；只有最终回答通过 Claim/Evidence/Action/Render
+  门禁才 RUNNING→SUCCEEDED 并生成 DELIVER checkpoint。
+- 显式 retry：仅 FAILED_RETRYABLE 可调用；先验证状态→checkpoint→retry
+  descriptor→attempt 上限，最后才 FAILED_RETRYABLE→RUNNING（避免先进 RUNNING 再
+  失败）；attempt 1→2，再失败 RETRY_EXHAUSTED→FAILED_FINAL。
+- 持久化恢复：ConversationStore 保存 recovery_state（规范化、有界）；RUNNING 快照
+  恢复时降级 FAILED_RETRYABLE/INTERRUPTED_DURING_EXECUTION；
+  `restore_recovery_state` 依据 checkpoint.tool_use_id 只在当前会话已持久化
+  assistant tool_use messages 中重建 retry 描述，找不到输入立即降级
+  FAILED_FINAL/RECOVERY_INPUT_MISSING；旧快照缺 recovery_state 时正常恢复并初始化
+  为 PLANNED。
+- 验证：`tests.test_analysis_recovery` 11 OK（含持久化后重试重建与不可恢复快照降级
+  两项验收修复）。
+
+### 3. 第三阶段：共享多实例协调与租约 + 生产接线（TDD RED→GREEN，已完成）
+
+- 新增 Spec `docs/specs/shared-multi-instance-coordination.md` 与 RED 测试
+  `tests/test_shared_coordination.py`，新增 `bi_agent/shared_coordination.py`，从
+  `bi_agent.concurrency` 重新导出测试约定入口。
+- 能力：InMemorySharedCoordination（多个 registry/controller 共享同一 backend、
+  fake clock、TTL、单调 fence、共享 admission、snapshot/health/wait_until_queued）
+  与 RedisSharedCoordination（acquire/renew/release/bump generation/admission 均
+  走 Redis Lua `eval` 原子入口，不依赖本地 Python 锁；key 带 namespace）；
+  SessionSlotRegistry/AdmissionController 以 `shared_backend=None` 保持本地默认行为
+  完全兼容。
+- TurnLease 扩展 fence/shared_key/instance_id/expires_at（默认值保持旧构造兼容）；
+  共享 lease 的 owner 为不可预测随机 token；fence 严格递增且不因过期/release 重置；
+  acquire/renew/release 全字段验证（key/owner/generation/fence/TTL）；heartbeat
+  丢失或 owner mismatch 置同一 cancel event；实例崩溃依靠 TTL 回收。
+- 配置工厂 `build_coordination_backend`：local 默认；redis 缺 URL 抛 ValueError；
+  closed 模式初始化失败即启动失败；仅显式 local fallback 允许降级
+  （redis_degraded/effective_mode=local）；`CHATBI_*` 环境变量；health() 不暴露
+  Redis 密码/URL/用户内容。
+- 生产接线（验收修复，3 项 RED → 13 项全绿）：`AppState.configure_coordination/
+  configure_coordination_from_env` 把同一 backend 安装到 session_slots/admission，
+  应用启动 `configure()` 调用配置工厂；`_begin_turn` 共享模式带 TTL 取得 fencing
+  lease（lease.fence>0）；SSE turn heartbeat guard（start_turn_heartbeat/stop/join，
+  renew 失败或 owner mismatch 置 cancel，本地模式 no-op 不建线程）；
+  `_run_turn_stream` finally 顺序停止 heartbeat→clear_current_cancel→
+  owner-validated release→admission release；healthz 增加有界 coordination 摘要；
+  conversation save 纳入共享 lease/fence 提交门禁。
+- 验证：`tests.test_shared_coordination` 13 OK；本地默认模式不回归；未连接真实
+  Redis。
+
+### 4. 轻量结构化 Cognitive Policy 决策记录（Spec + TDD RED→GREEN，已完成）
+
+- 新增 Spec `docs/specs/structured-cognitive-policy.md` 与 RED 测试
+  `tests/test_cognitive_policy.py`（10 项起步，后增至 11 项）；
+  `bi_agent/tools/analysis_policy.py` 新增纯函数
+  `build_cognitive_policy_decision(question, allowed_tools)`（无 LLM/网络依赖，
+  JSON 可序列化）。
+- 决策字段：policy_version=1、mode、reason_code、next_step、required_tools、
+  evidence_required、needs_human、input_digest（`sha256:`+64 位小写 hex，基于空白
+  规范化问题）；决策不保存原始问题/SQL/工具结果/密钥；工具集合去重且不受输入顺序
+  影响；同一规范化问题与工具集合的决策完全确定。
+- 路由复用现有 `classify_intent`/`wants_root_cause`/`wants_action`（不复制第二套
+  异常正则）：FACT_QUERY（Ontology-MetricQuery 优先、FactQuery 兜底）、
+  DIAGNOSTIC_ANALYSIS（L2 异常/问题/波动/偏差与 L3/L4/L5 根因/行动均进入）、
+  ONTOLOGY_LOOKUP（仅 Ontology-SemanticQuery）、CLARIFICATION（仅 AskUser 可用时）、
+  CAPABILITY_LIMITATION（无对应工具时 required_tools=[]）；required_tools 永远是
+  allowed_tools 的子集，不推荐未授权工具。
+- WebSession：每个新用户轮次只生成一次决策；`cognitive_policy_decision` 返回深拷贝
+  防御性快照；`user_message` 之后、首次 `llm_request` 之前发 `cognitive_policy`
+  SSE 事件（直接携带决策字段、不含原始问题）；`continue_with_choice`/
+  `retry_from_checkpoint` 不重新分类；`bi_agent.web.app._TURN_EVENT_TYPES` 注册该
+  事件类型以附加 turn_id，旧前端忽略后不受影响。
+- 验证：`tests.test_cognitive_policy` 11 OK（含 L2 异常/问题/波动 3 子场景路由修复
+  与 `Any` 注解解析修复）。
+
+### 5. 文档与交付状态
+
+- 周 changelog 8/31–9/4 汇总创建：`changelog/changelog_8_31_9_4.md`（提交
+  `18a3e24`），合并 8/31、9/1、9/2、9/3 四份日报为周颗粒度。
+- `gitlab/20260727` 推进至 `1ae9894` 并推送成功（HEAD == gitlab/20260727）。
+- MR !5（`20260727` → `main`）创建并更新至完整交付范围：207 提交 / 231 文件
+  （+95,388 / −5,151），标题与描述按主题覆盖全部提交（后端可靠性四阶段、本体控件
+  验收、版本定版 v0.1.x、GitLab 工程规范、React 工作台、远程本体与历史会话等）；
+  reviewer `tianzijing`、assignee `zhangzhen`；只创建 MR，未自动合并、未直接推送
+  main。
+- 后端相关全量回归：Recovery 11 + Tool Runtime 9 + Shared 13 + concurrency 39 +
+  reliability 25 + regressions 219 = 316 项通过；含 Cognitive Policy 11 项合计
+  327 项通过；`git diff --check` 干净。
+
+## 2026-09-08（周二）
+
+### 1. changelog 维护规则改为只按周维护（流程调整，2026-09-08 09:28）
+
+- 按用户要求：删除上周日报与本周预建日报（8/31、9/1、9/2、9/3 已并入
+  `changelog/changelog_8_31_9_4.md`；9/7–9/11 日报内容并入本文件），changelog 只
+  保留周文件，以后直接按周维护。
+- 规则同步：`AGENTS.md` 的「Changelog workflow」小节改写为「按周维护」；
+  `docs/versions/versioning-policy.md` 中“每日 changelog”记录格式与发布工作流引用
+  同步改为当周 changelog；每条记录需注明改动时间。
+- 历史日报内容均已并入对应周文件，未丢失内容，git 历史保留原文件。
+- 主要文件：`changelog/changelog_8_31_9_4.md`（归档说明）、
+  `changelog/changelog_9_7_11.md`（本周新增）、`AGENTS.md`、
+  `docs/versions/versioning-policy.md`。
+
+### 2. Configurable Application Base Path（子路径部署适配，TDD RED→GREEN，2026-09-08 12:05）
+
+- 新增 Spec `docs/specs/configurable-application-base-path.md` 与 RED 测试
+  `tests/test_application_base_path.py`（6 项）；`APP_ROOT_PATH` 支持外部反向代理
+  子路径前缀（生产示例 `/api/ontology-agentic-analytics`），未配置时保持域名根路径
+  行为不变，不复制注册一套固定前缀路由。
+- 后端：`_normalize_app_root_path` 规范化前缀并对非法值（协议/域名/查询串/重复斜杠/
+  `.`/`..` 段）启动时快速失败；FastAPI `root_path=APP_ROOT_PATH` + 前缀剥离中间件；
+  `/` 根重定向带 base path 并保留 query；workbench HTML 安全注入运行时 base path
+  （token 模板替换 + `window.APP_ROOT_PATH` 配置 script）；charts CDN 回退与静态
+  资源地址带前缀；对外入口
+  `/api/ontology-agentic-analytics/{workbench,static/*,api/*,healthz}`。
+- 前端：`frontend/src/runtime.js` 新增唯一 `withBasePath` helper，根绝对
+  `/api|static|charts|workbench` 的 fetch/动态脚本/图表/下载/预览/导航 URL 全部改走
+  helper；正式构建产物 `static/vendor/antd/workbench.js` 重新构建，产物内无根绝对
+  应用 URL。
+- 容器与文档：内置 HEALTHCHECK 仍探测不带前缀的 `http://127.0.0.1:8080/healthz`；
+  `.env.example`、`README.md`、`DEPLOYMENT.md` 补充 `APP_ROOT_PATH` 配置与子路径
+  部署口径；未升级版本号（仍 v0.1.2）。
+- 验证：`tests.test_application_base_path` 6 OK；`tests.test_regressions` +
+  `tests.test_container_port_contract` 231 OK；非法配置 fail-fast；
+  `git diff --check` 干净。
+
+### 3. main 退役与仓库级 master 口径收口（规则/文档/测试，2026-09-08 12:14）
+
+- 仓库规则统一为 `master` 唯一发布主线、`main` 已退役并删除：`AGENTS.md`、
+  `docs/gitlab-push-workflow.md`、`docs/versions/versioning-policy.md`、
+  `DEPLOYMENT.md`、`scripts/push_gitlab.py`（`HISTORICAL_BRANCH` 替换为
+  `RETIRED_BRANCH`）；禁止重新创建 `main`、向其 push 或用作 MR source/target；
+  原“一次性 main 历史清理授权”标记为已失效历史审计记录（提交 `0de7cda`）。
+- 仓库级清扫：`README.md`（应用信息、版本提交发布说明）与
+  `docs/git-dual-remote-workflow.md`（已迁移指针页）中残留的“发布分支 main /
+  merge 到 main”当前口径清除；新增 Spec
+  `docs/specs/repository-wide-master-branch-consistency.md` 与 RED 门禁
+  `tests/test_repository_wide_master_consistency.py`（提交 `6b94919`）。
+- 新增/更新验收测试：`tests/test_main_branch_retirement.py`、
+  `tests/test_master_default_protection.py`、`tests/test_master_mainline_policy.py`、
+  `tests/test_push_gitlab.py` 与对应 Spec（`delete-historical-main`、
+  `master-default-protection-cutover`）；历史 changelog 与归档版本文档不机械改写。
+- 验证：main 退役门禁 29 OK（`RUN_GITLAB_MAIN_DELETION_TESTS=1`，需去除本机
+  `HTTP_PROXY/HTTPS_PROXY` 后 urllib 才能访问 GitLab API）；仓库级一致性 5 OK；
+  mainline+push 21 OK；regressions+container 231 OK。
+
+### 4. 交付状态（2026-09-08 12:14）
+
+- `gitlab/20260727` 推进至 `6b94919` 并推送成功（HEAD == gitlab/20260727），包含
+  四个主题提交：`0de7cda` main 退役规则、`cf700dd` changelog 周维护整理、
+  `706e0d5` configurable application base path、`6b94919` 仓库级 master 口径清扫；
+  已同步 `gitlab/master`（`6004bc9`，本地祖先，无内容差异）。
+- MR !9（`20260727` → `master`）创建并更新至完整交付范围，标题
+  “feat: support configurable application base path and finalize master-only
+  repository policy”，reviewer `tianzijing`、assignee `zhangzhen`；只创建 MR，
+  未自动合并、未直接 push master。
+- 测试汇总：base path 6 + regressions/container 231 + mainline 本地 37（16 只读
+  门禁跳过）+ 仓库级 5 + mainline/push 21；`git diff --check` 干净。
+- 无 tag、无 GitLab Release、无部署；MR !9 等待 `tianzijing` code review。

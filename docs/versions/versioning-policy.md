@@ -7,7 +7,7 @@
 ## 目标与适用范围
 
 - 统一产品版本号含义，避免按日期、commit 数量或部署次数机械升级；
-- 明确 Git commit、每日 changelog、正式版本文档、Git tag、GitLab Release 与部署
+- 明确 Git commit、周 changelog、正式版本文档、Git tag、GitLab Release 与部署
   之间的边界；
 - 适用于 eimosp-ontology-agentic-analytics 仓库内所有代码、前端、文档、配置与构建产物的版本管理。
 
@@ -80,7 +80,7 @@ v0.1.2
 | 记录 | 路径/格式 | 职责 |
 | --- | --- | --- |
 | Git commit | 普通 commit | 记录每次工程修改，可以一天多个 commit |
-| 每日 changelog | `changelog/changelog_M_D.md` | 记录当天已经完成的最终工程变化，不等同于正式版本发布 |
+| 周 changelog | `changelog/changelog_M_D-D.md`（如 `changelog_9_7_11.md`） | 按周直接维护（2026-09-08 起），记录当周已经完成的最终工程变化，不等同于正式版本发布 |
 | 正式版本文档 | `docs/versions/vX.Y.Z.md` | 只在正式发布新版本时创建，记录该版本最终用户可见能力、兼容变化、验证结论和升级说明 |
 | Git tag | `vX.Y.Z` | 只在用户明确要求创建正式版本并明确允许创建 tag 时执行 |
 | GitLab Release | GitLab Release | 只有用户在当前任务中明确要求时才创建，不能因为存在版本文档或 tag 自动创建 |
@@ -113,7 +113,7 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 
 1. 用户明确指定目标版本。
 2. 检查目标版本是否符合语义化版本规则。
-3. 根据 Git diff、每日 changelog 和最终代码确认变更性质。
+3. 根据 Git diff、当周 changelog 和最终代码确认变更性质。
 4. 同步所有产品版本入口：
    - `pyproject.toml`
    - `bi_agent/__init__.py`
@@ -124,7 +124,7 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 5. 创建 `docs/versions/vX.Y.Z.md`。
 6. 更新 `docs/versions/README.md`。
 7. 更新根 `README.md` 当前版本链接。
-8. 更新当天已启用的日 changelog。
+8. 更新当周 changelog（若当周文件尚未创建，则按本周 git 记录补齐）。
 9. 运行完整测试、前端 build 和 `git diff --check`。
 10. 创建普通 commit。
 11. GitLab 统一推送：`gitlab/20260727`。
@@ -142,7 +142,8 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 
 ## GitLab 统一推送规则
 
-- `master` 是唯一发布主线；`main` 仅作为历史保留分支，不再接收新功能 Merge Request。
+- `master` 是唯一发布主线；`main` 已退役并删除，不得重新创建、不得 push、不得作为
+  Merge Request 的 source/target。
 - eimosp-ontology-agentic-analytics 统一推送到 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 的 `20260727` 分支
   （`gitlab/20260727`）。
 - 普通 commit 只推送统一开发分支：`gitlab/20260727`；

@@ -2,7 +2,7 @@
 
 ## 1. 当前事实
 
-`20260727` 曾分别合入 `main` 和 `master`：两者当前 tree 内容完全一致，但各自拥有不同的 merge commit，因而互不为祖先。`master` 不是内容落后，而是提交拓扑尚未收口。
+`20260727` 曾分别合入 `main` 和 `master`：两者在同步前业务内容一致，但各自拥有不同的 merge commit，因而互不为祖先。`master` 不是内容落后，而是提交拓扑尚未收口。
 
 当前外部状态：
 
@@ -15,7 +15,8 @@
 ## 2. 目标终态
 
 - 通过普通 `main → master` 同步 MR 使 `main` 成为 `master` 的祖先；
-- 同步不得产生内容变化，合并前后 `master` tree 必须一致；
+- 同步不得产生内容变化，合并前后 `master` tree 必须一致（`master` 允许包含 `main` 尚未拥有的新提交）；
+- `main` 是冻结的历史保留分支，允许内容落后于 `master`；禁止 `master → main` 反向同步，不把 master 新提交回灌 `main`；
 - `master` 继续包含 Administrator 的 `a7ebafa`，Dockerfile 继续使用华为云镜像；
 - GitLab 默认分支切换为 `master`；
 - `master` 保护规则至少与切换前 `main` 等价：禁止 force push，push/merge 均至少要求 Maintainer；
@@ -29,7 +30,7 @@
 3. 创建 `main → master` 同步 MR，标题明确为提交拓扑收口，不伪装成功能发布；
 4. reviewer=`tianzijing`（id 166），assignee=`zhangzhen`（id 245）；
 5. 等待 review 后通过 GitLab 正常 merge；不得直接 push 或自动绕过 review；
-6. 验证 `main` 已是 `master` 祖先、tree 未变、华为云镜像未变；
+6. 验证 `main` 已是 `master` 祖先、`master` tree 相对同步前未变、华为云镜像未变；
 7. 给 `master` 创建至少等价于原 `main` 的保护规则；
 8. 验证保护生效后将项目默认分支切换为 `master`；
 9. 保留 `main` 保护，不删除分支；

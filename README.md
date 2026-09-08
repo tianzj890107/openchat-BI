@@ -16,7 +16,7 @@ eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Age
 
 ## 应用信息（部署清单）
 
-- **Git 项目地址**：`git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，发布分支 `main`）
+- **Git 项目地址**：`git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，唯一发布主线 `master`；`main` 已退役并删除）
 - **应用名**：`eimosp-ontology-agentic-analytics`（产品名：智能分析）
 - **Python 版本**：`3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`）
 - **容器内部端口**：`8080`（统一；Dockerfile `ENV APP_PORT=8080` + `EXPOSE 8080`，CMD 监听 `0.0.0.0:8080`）
@@ -86,6 +86,7 @@ cp .env.example .env
 | 本体服务 | `ONTOLOGY_BACKEND`、`ONTOLOGY_BASE_URL`、`ONTOLOGY_REPOSITORY_ID` | 选择本地或远程本体 |
 | 事实数据 | `DORIS_API_URL`、`DORIS_DATABASE` | 配置业务事实查询 |
 | 并发治理 | `CHATBI_MAX_ACTIVE_TURNS` 等 | 限制 turn、principal 和下游并发 |
+| 子路径部署 | `APP_ROOT_PATH` | 外部网关子路径前缀（如 `/api/ontology-agentic-analytics`）；缺省为空字符串，保持域名根路径部署 |
 
 模型、并发和转督办的基础示例见 [.env.example](.env.example)，本体、Doris 等完整生产配置
 及运行边界见 [DEPLOYMENT.md](DEPLOYMENT.md)。
@@ -104,6 +105,28 @@ curl -fsS http://127.0.0.1:8765/healthz
 ```
 
 本地本体与 SQLite 参数通过 `python -m bi_agent.web --help` 查看。
+
+## 反向代理子路径部署（`APP_ROOT_PATH`）
+
+应用可完整运行在网关保留的子路径下，例如配置：
+
+```bash
+APP_ROOT_PATH=/api/ontology-agentic-analytics
+```
+
+配置后对外入口统一为：
+
+- `http://<host>/api/ontology-agentic-analytics/workbench`
+- `http://<host>/api/ontology-agentic-analytics/static/...`
+- `http://<host>/api/ontology-agentic-analytics/api/...`
+- `http://<host>/api/ontology-agentic-analytics/healthz`
+
+网关负责把该前缀流量转发给应用，并在 ASGI 层按 `root_path` 语义剥离前缀；应用内部
+路由仍为 `/workbench`、`/static/*`、`/api/*`、`/healthz`。不设置 `APP_ROOT_PATH`
+时行为与域名根路径部署完全一致。容器内部 `HEALTHCHECK` 仍探测
+`http://127.0.0.1:8080/healthz`（不带外部前缀），外部健康检查才使用
+`/api/ontology-agentic-analytics/healthz`。非法前缀（含协议、域名、查询串、
+`/` 重复或 `.`/`..` 段）会在启动时快速失败。
 
 ## Docker 运行
 
@@ -185,7 +208,7 @@ Node 子进程执行。
 
 - commit、push、部署不自动触发版本升级；
 - commit、push、Git tag、GitLab Release 和部署是彼此独立的动作；
-- 普通修改默认验证、commit，并将同一 commit 推送到 GitLab 统一开发分支 `gitlab/20260727`；merge 到 `main` 需要 `tianzijing` code review 后单独发起；
+- 普通修改默认验证、commit，并将同一 commit 推送到 GitLab 统一开发分支 `gitlab/20260727`；正式交付通过 Merge Request 合入唯一发布主线 `master`（reviewer `tianzijing`，code review 后由有权限人员合并）；
 - 版本号不按日期或部署次数机械增长，详见
   [语义化版本与正式发布规范](docs/versions/versioning-policy.md)；
 - push 不等于部署，部署必须由用户在当前任务中明确授权；

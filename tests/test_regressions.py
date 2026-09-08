@@ -313,7 +313,7 @@ class OfflineRegressionTests(unittest.TestCase):
 
     def test_two_ontology_click_surfaces_share_one_subgraph_modal(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
-        self.assertIn('fetch("/api/ontology/subgraph"', runtime)
+        self.assertIn('fetch(withBasePath("api/ontology/subgraph")', runtime)
         self.assertIn('data-graph-strategy="context"', runtime)
         self.assertIn('data-graph-strategy="expand"', runtime)
         self.assertIn('el.ontologyList?.addEventListener("click"', runtime)
@@ -2229,8 +2229,8 @@ class OfflineRegressionTests(unittest.TestCase):
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
         css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
         shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
-        self.assertEqual(runtime.count("/api/conversations?mode="), 1)
-        self.assertNotIn("/api/conversations?mode=", main)
+        self.assertEqual(runtime.count("api/conversations?mode="), 1)
+        self.assertNotIn("api/conversations?mode=", main)
         self.assertIn("conversationSummaryRequests", runtime)
         self.assertIn("event.detail?.conversations", main)
         self.assertIn("const eventMode = event.detail?.mode || \"data\"", main)
@@ -2323,7 +2323,7 @@ class OfflineRegressionTests(unittest.TestCase):
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
         self.assertNotIn('<script src="/static/vendor/echarts.min.js"></script>', index)
         self.assertIn('data-bi-echarts-loader', runtime)
-        self.assertIn('src = "/static/vendor/echarts.min.js"', runtime)
+        self.assertIn('src = withBasePath("static/vendor/echarts.min.js")', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
         self.assertIn('workbench.js?v=161" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
@@ -4021,7 +4021,11 @@ console.log(JSON.stringify(out));"""
         self.assertIn('__version__ = "0.1.2"', init)
         app = (root / "bi_agent/web/app.py").read_text(encoding="utf-8")
         self.assertIn('APP_VERSION = "0.1.2"', app)
-        self.assertIn('FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION)', app)
+        self.assertIn(
+            'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, '
+            'root_path=APP_ROOT_PATH)',
+            app,
+        )
         pkg = (root / "frontend/package.json").read_text(encoding="utf-8")
         self.assertIn('"version": "0.1.2"', pkg)
         lock = (root / "frontend/package-lock.json").read_text(encoding="utf-8")
@@ -5369,7 +5373,7 @@ class TaskAlertProxyTests(unittest.TestCase):
         self.assertNotIn("setTimeout", supervise)
         self.assertNotIn("localStorage", supervise)
         self.assertNotIn("postMessage", supervise)
-        self.assertIn('fetch("/api/task-alert/manual-create"', runtime)
+        self.assertIn('fetch(withBasePath("api/task-alert/manual-create")', runtime)
         self.assertIn("clientRequestId", runtime)
         self.assertIn("data.ok", runtime)
 

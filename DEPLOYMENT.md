@@ -11,11 +11,12 @@
 
 | 项 | 值 |
 | --- | --- |
-| Git 项目地址 | `git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，唯一发布主线 `master`；`main` 仅作历史保留分支） |
+| Git 项目地址 | `git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，唯一发布主线 `master`；`main` 已退役并删除，不得重新创建） |
 | 应用名 | `eimosp-ontology-agentic-analytics`（产品名：智能分析；systemd 服务名 `eimosp-ontology-agentic-analytics.service`） |
 | Python 版本 | `3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`） |
 | 统一容器内部端口 | `8080`（Dockerfile `ENV APP_PORT=8080` + `EXPOSE 8080`，CMD 监听 `0.0.0.0:8080`）；推荐宿主机映射 `8765:8080`；非容器本地默认端口 `8765`（`--port` 仅用于本地/测试覆盖） |
 | 统一健康检查接口 | `GET /healthz`（别名 `GET /health`）；就绪 `200`，未完成配置 `503`，响应含 `app`/`version`/`port`/`dependencies` 等固定字段 |
+| 外部子路径前缀 | `APP_ROOT_PATH`：缺省为空字符串（域名根路径部署）；生产示例 `/api/ontology-agentic-analytics`，配置后对外入口为 `/api/ontology-agentic-analytics/workbench`、`/api/ontology-agentic-analytics/static/*`、`/api/ontology-agentic-analytics/api/*`、`/api/ontology-agentic-analytics/healthz` |
 | Nacos 配置中心 | 预留待对接，当前未接入；中间件类配置仍由 `.env`/环境变量注入（见 §10） |
 
 > 端口约定：`8080` 是统一容器内部端口；`8765`/`47313`/`47314` 是推荐宿主机映射端口
@@ -25,6 +26,13 @@
 > GitLab 自动部署流水线，push 不等于部署，本文档不构成自动部署授权，也不代表本
 > 任务已经部署。普通开发仍只推统一开发分支 `gitlab/20260727`，正式交付通过
 > Merge Request 合入唯一发布主线 `master`。
+
+> 子路径部署口径：网关把 `APP_ROOT_PATH`（生产示例 `/api/ontology-agentic-analytics`）
+> 前缀流量转发给应用，并在 ASGI 层按 `root_path` 语义剥离前缀，应用内部路由保持
+> `/workbench`、`/static/*`、`/api/*`、`/healthz` 不变。容器内置 `HEALTHCHECK` 仍
+> 探测不带前缀的 `http://127.0.0.1:8080/healthz`；只有外部健康检查才使用
+> `/api/ontology-agentic-analytics/healthz`。非法前缀（协议、域名、查询串、重复斜杠、
+> `.`/`..` 段）会在启动/导入时快速失败，不允许静默回退。
 
 
 ## 1. 代码与运行数据的边界

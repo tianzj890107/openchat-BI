@@ -663,14 +663,89 @@ def set_runtime_port(port: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 可配置外部 base path（网关子路径部署）
+# ---------------------------------------------------------------------------
+def _normalize_app_root_path(raw: str) -> str:
+    """Normalize APP_ROOT_PATH, or fail fast on invalid values.
+
+    Accepted forms and results:
+        ""          -> ""
+        "/"         -> ""
+        "api/foo/"  -> "/api/foo"
+        "/api/foo/" -> "/api/foo"
+
+    Any protocol/domain/query/fragment/duplicated-slash/`.`/`..` input raises
+    ValueError mentioning APP_ROOT_PATH so a misconfigured gateway prefix can
+    never silently fall back to root-path serving.
+    """
+    value = str(raw or "").strip()
+    if not value or value == "/":
+        return ""
+    if value.startswith("/"):
+        value = value[1:]
+    if ":" in value or "://" in value:
+        raise ValueError(
+            "APP_ROOT_PATH 不能包含协议、域名或冒号: %r" % (raw,)
+        )
+    if "?" in value or "#" in value:
+        raise ValueError(
+            "APP_ROOT_PATH 不能包含查询串或 fragment: %r" % (raw,)
+        )
+    if "\\" in value:
+        raise ValueError("APP_ROOT_PATH 不能包含反斜杠: %r" % (raw,))
+    value = value.rstrip("/")
+    if not value:
+        raise ValueError(
+            "APP_ROOT_PATH 只接受空值或合法路径前缀，不能只含斜杠: %r" % (raw,)
+        )
+    segments = value.split("/")
+    for segment in segments:
+        if segment in ("", ".", ".."):
+            raise ValueError(
+                "APP_ROOT_PATH 含空段、'.' 或 '..'，拒绝: %r" % (raw,)
+            )
+    return "/" + value
+
+
+APP_ROOT_PATH = _normalize_app_root_path(os.environ.get("APP_ROOT_PATH", ""))
+
+
+class _AppRootPathStripMiddleware:
+    """Strip an already-present external base path before FastAPI routing.
+
+    A production gateway normally removes APP_ROOT_PATH and forwards internal
+    paths using ASGI root_path semantics.  This guard also tolerates clients or
+    load balancers that pass the full external URL, so /workbench, /api/*,
+    /charts/* and /healthz still route without registering a second set of
+    prefixed routes.
+    """
+
+    def __init__(self, inner: Any, prefix: str) -> None:
+        self.inner = inner
+        self.prefix = prefix
+
+    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
+        if scope.get("type") == "http" and self.prefix:
+            path = scope.get("path") or ""
+            if path == self.prefix:
+                scope["path"] = "/"
+            elif path.startswith(self.prefix + "/"):
+                scope["path"] = path[len(self.prefix):]
+        await self.inner(scope, receive, send)
+
+
+# ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION)
+app = FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, root_path=APP_ROOT_PATH)
 # Compress JSON and the large versioned frontend assets when the browser
 # advertises gzip support. The threshold avoids spending CPU on tiny assets;
 # Brotli can still be supplied by a reverse proxy without changing endpoints.
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+# The prefix guard must sit outside the router so the external path is stripped
+# before any route matching happens.
+app.add_middleware(_AppRootPathStripMiddleware, prefix=APP_ROOT_PATH)
 
 
 @app.get("/charts/{filename:path}")
@@ -689,7 +764,7 @@ def serve_chart(filename: str):
         html = target.read_text(encoding="utf-8", errors="replace")
         html = html.replace(
             "https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js",
-            "/static/vendor/echarts.min.js",
+            f"{APP_ROOT_PATH}/static/vendor/echarts.min.js",
         )
         return HTMLResponse(html)
     return FileResponse(target)
@@ -997,12 +1072,36 @@ def _no_cache_file(path: Path) -> FileResponse:
     )
 
 
+_WORKBENCH_INDEX_TEMPLATE = STATIC_DIR / "index.html"
+_APP_ROOT_PATH_TOKEN = "@@APP_ROOT_PATH@@"
+
+
+def _render_workbench_index() -> str:
+    """Render the workbench shell with the configured external base path.
+
+    The committed index.html uses a single @@APP_ROOT_PATH@@ token for every
+    browser-facing asset URL.  Replacing the token is deterministic templating
+    (never a global response rewrite), and the same template keeps working at
+    the site root when APP_ROOT_PATH is empty.  A JSON-safe runtime config block
+    is injected so the frontend helper builds all other URLs from one source.
+    """
+    template = _WORKBENCH_INDEX_TEMPLATE.read_text(encoding="utf-8")
+    html = template.replace(_APP_ROOT_PATH_TOKEN, APP_ROOT_PATH)
+    runtime_config = (
+        '<script id="app-root-path-config">'
+        "window.APP_ROOT_PATH = "
+        + json.dumps(APP_ROOT_PATH)
+        + ";</script>"
+    )
+    return html.replace("</head>", runtime_config + "</head>", 1)
+
+
 @app.get("/")
 def index(request: Request) -> RedirectResponse:
     # The standalone workbench is the primary entry point. The role dashboard
     # remains directly available at /dashboard.html for embedded/dashboard use.
     query = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(url=f"/workbench{query}", status_code=307)
+    return RedirectResponse(url=f"{APP_ROOT_PATH}/workbench{query}", status_code=307)
 
 
 @app.get("/healthz")
@@ -1080,8 +1179,15 @@ def analysis_nav_prototype_page() -> FileResponse:
 
 
 @app.get("/workbench")
-def workbench() -> FileResponse:
-    return _no_cache_file(STATIC_DIR / "index.html")
+def workbench() -> HTMLResponse:
+    return HTMLResponse(
+        content=_render_workbench_index(),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

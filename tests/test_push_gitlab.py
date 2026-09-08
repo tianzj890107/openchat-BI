@@ -140,11 +140,12 @@ class GitLabPushTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("禁止 force push", proc.stderr)
 
-    def test_historical_main_target_is_rejected(self) -> None:
-        """The retained historical main branch is never a push target."""
+    def test_retired_main_target_cannot_be_recreated(self) -> None:
+        """The deleted main branch is never recreated by the push helper."""
         proc = self.run_script("--allow-local-remotes", "--target-branch", "main")
         self.assertEqual(proc.returncode, 2)
-        self.assertIn("历史保留分支", proc.stderr)
+        self.assertIn("已退役并删除", proc.stderr)
+        self.assertIn("禁止重新创建", proc.stderr)
         # Nothing was pushed to main.
         self.assertEqual(git(self.work, "ls-remote", "gitlab", "refs/heads/main"), "")
 
