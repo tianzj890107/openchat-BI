@@ -1,6 +1,6 @@
 # Spec：Docker 固定默认值与环境变量增量同步
 
-状态：TDD Red（修订于 2026-09-08）
+状态：Implemented / TDD Green（修订于 2026-09-08）
 
 ## 1. 目标与不可破坏约束
 

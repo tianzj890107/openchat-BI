@@ -212,20 +212,29 @@
   门禁跳过）+ 仓库级 5 + mainline/push 21；`git diff --check` 干净。
 - 无 tag、无 GitLab Release、无部署；MR !9 等待 `tianzijing` code review。
 
-### 5. 容器固定配置与环境变量增量同步契约（Spec / TDD RED，2026-09-08）
+### 5. 容器固定配置与环境变量增量同步契约（Spec / TDD Green，2026-09-08）
 
-- 修订 Spec `docs/specs/docker-defaults-and-local-secrets.md`：固定非敏感运行参数进入
-  Dockerfile；本地 `.env` 与服务器配置严格只增不减，保留全部既有键和值并补齐缺项；
-  `.env.example` 同步完整键结构；实现阶段直接对 10.34 当前 v0.1.2 release 的 `.env`
-  做带备份、只增不减的原子同步，不经运维模板中转且不重启服务；Kubernetes 自动生成的
-  Service Link 不复制进配置。
-- 修订 RED 门禁 `tests/test_docker_defaults_and_local_secrets.py`，固化修改前本地 `.env`
-  全部键名作为不可缩减基线，并覆盖镜像默认值、完整服务器模板、Secret 禁止进入镜像、
-  Git/Docker 忽略规则与容器内健康检查，等待实现阶段转绿。
-- 新增 opt-in 的 10.34 只读验收门禁（`RUN_SERVER_ENV_SYNC_TESTS=1`），固化服务器原有键
-  集合并检查完整运行配置已直接同步；本任务明确不修改 README/DEPLOYMENT。
+- 修订 Spec `docs/specs/docker-defaults-and-local-secrets.md` 至 Implemented / TDD
+  Green：固定非敏感运行参数进入 Dockerfile；本地 `.env`、`.env.example` 与 10.34
+  服务器配置严格只增不减，保留全部既有键和值并补齐缺项；Kubernetes 自动生成的
+  Service Link 不复制进配置；Secret 一律不进入镜像。
+- `Dockerfile` 以 `ENV` 注入测试 `NON_SECRET_DEFAULTS` 定义的完整固定默认值（应用与
+  base path、Team LLM、本体、Doris、会话同步、并发治理、本地协调与任务提醒），空值
+  键（`TEAM_QWEN_ENABLE_THINKING`、`TASK_ALERT_DEFAULT_BP_DEFINITION_ID`）与华为云
+  基础镜像、8080 内部端口、`/healthz` 健康检查保持兼容；未写入任何 Secret/`.env`。
+- 本地 `.env` 与 `.env.example` 只做末尾增量补齐：补入缺失的非敏感默认值键以及
+  `ONTOLOGY_AUTH_TOKEN`、`DORIS_PASSWORD` 空值占位；`.env.example` 中 Secret 仅为
+  空占位或 `<key>` 形式，未复制任何真实凭据，`.env` 仍被 Git/Docker 忽略且权限 600。
+- 10.34 当前 v0.1.2 release 的 `.env` 已直接增量同步：修改前创建同目录权限 600 的带
+  时间戳备份（`.env.backup-20260908-165743`），以临时文件+原子替换追加缺失键，原有
+  键与值经校验保持不变，未重启 8765、未切换 release、未修改其他 release。
+- 门禁 `tests/test_docker_defaults_and_local_secrets.py` 转绿：本地 8 passed + 1
+  skipped（服务器用例默认跳过），`RUN_SERVER_ENV_SYNC_TESTS=1` 下 9 passed 全通过；
+  `test_container_port_contract`、`test_application_base_path` 与
+  `test_regressions` 回归保持通过；`git diff --check` 干净。
 - 明确仓库配置无法替代的外部条件：新 Pod 到 Team LLM、本体/Doris、会话同步服务的网络
-  可达性，Ingress 子路径，以及真实凭据仍须由运维确认并安全注入。
+  可达性，Ingress 子路径，以及真实凭据仍须由运维确认并安全注入；配置同步不等于进程
+  已加载新值（本任务未重启）。
 
 ### 6. 服务器引用统一使用 IP（Spec / TDD RED，2026-09-08）
 
