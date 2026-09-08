@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 import subprocess
 import unittest
@@ -50,6 +51,8 @@ BASELINE_LOCAL_ENV_KEYS = {
 }
 RUNTIME_SECRET_KEYS = {"TEAM_API_KEY", "ONTOLOGY_AUTH_TOKEN", "DORIS_PASSWORD"}
 ALL_ENV_KEYS = BASELINE_LOCAL_ENV_KEYS | set(NON_SECRET_DEFAULTS) | RUNTIME_SECRET_KEYS
+BASELINE_SERVER_ENV_KEYS = BASELINE_LOCAL_ENV_KEYS - {"GITLAB_TOKEN"}
+SERVER_ENV_PATH = "/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/v0.1.2/.env"
 ALL_SECRET_KEYS = {
     "TEAM_API_KEY", "ONTOLOGY_AUTH_TOKEN", "DORIS_PASSWORD", "GITLAB_TOKEN",
     "DASHSCOPE_API_KEY", "QWEN_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY",
@@ -101,6 +104,23 @@ class DockerDefaultsAndLocalSecretsTests(unittest.TestCase):
             with self.subTest(secret=name):
                 value = example[name].strip()
                 self.assertTrue(not value or value.startswith("<") or value.startswith("${"))
+
+    @unittest.skipUnless(
+        os.getenv("RUN_SERVER_ENV_SYNC_TESTS") == "1",
+        "set RUN_SERVER_ENV_SYNC_TESTS=1 for read-only 10.34 verification",
+    )
+    def test_company_server_env_is_additively_synchronized(self) -> None:
+        key_output = subprocess.check_output(
+            [
+                "ssh", "company-server", "awk", "-F=",
+                "/^[A-Za-z_][A-Za-z0-9_]*=/{print $1}", SERVER_ENV_PATH,
+            ],
+            text=True,
+        )
+        server_keys = set(key_output.splitlines())
+        self.assertTrue(BASELINE_SERVER_ENV_KEYS <= server_keys, BASELINE_SERVER_ENV_KEYS - server_keys)
+        self.assertTrue((set(NON_SECRET_DEFAULTS) | RUNTIME_SECRET_KEYS) <= server_keys,
+                        (set(NON_SECRET_DEFAULTS) | RUNTIME_SECRET_KEYS) - server_keys)
 
     def test_local_env_is_ignored_by_git_and_docker(self) -> None:
         for text, label in ((GITIGNORE, ".gitignore"), (DOCKERIGNORE, ".dockerignore")):

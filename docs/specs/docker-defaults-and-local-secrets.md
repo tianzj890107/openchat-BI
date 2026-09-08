@@ -8,7 +8,7 @@
 
 1. 确定、非敏感的运行参数全部写入 Dockerfile `ENV`；
 2. 本地 `.env` **只允许增量添加，禁止删除、改名、清空或覆盖任何现有键和值**；
-3. `.env.example` 同步完整运行配置键结构，供运维配置新服务器；
+3. `.env.example` 同步完整运行配置键结构；
 4. Secret 只允许由 `.env`、Kubernetes Secret 或部署平台安全注入，绝不进入镜像；
 5. Kubernetes 自动生成的 `*_SERVICE_HOST`、`*_SERVICE_PORT`、`*_PORT_*_TCP*`
    Service Link 不复制到 Dockerfile、`.env` 或 `.env.example`。
@@ -34,22 +34,27 @@ Team LLM、本体、Doris、会话同步、并发与本地协调、任务提醒�
 已有 `TEAM_API_KEY` 等 Secret 原值必须原样保留。无法推导的新增 Secret 只补空键，交由运维
 填写。`.env` 必须继续被 Git 和 Docker build context 忽略，不得提交。
 
-## 4. `.env.example` 与服务器配置同步
+## 4. `.env.example` 与 10.34 服务器直接同步
 
-`.env.example` 是可提交、无真实 Secret 的新服务器环境变量模板，必须包含修改前本地 `.env`
-的全部键名、Dockerfile 的全部固定运行键，以及新增 Secret 空值或占位符。
+`.env.example` 必须包含修改前本地 `.env` 的全部键名、Dockerfile 的全部固定运行键，以及
+新增 Secret 空值或占位符。
 
-运维应基于该模板向新服务器 Deployment/Secret **增量添加**缺项，不删除服务器当前已有的
-任何环境变量。仓库任务不直接写服务器、不部署；真正的服务器同步由运维执行。
+实现阶段直接通过 SSH 主机别名 `company-server`（`172.16.10.34`）增量修改当前运行 release：
+
+`/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/v0.1.2/.env`
+
+修改前必须在同目录创建权限为 600 的带时间戳备份。服务器 `.env` 修改前已有键由测试中的
+`BASELINE_SERVER_ENV_KEYS` 固化，必须全部保留且值不变；只追加缺失的完整运行配置键。新增
+Secret 无可靠真实值时只追加空值，不得伪造或拿其他系统的凭据代替。修改采用原子替换并保持
+文件权限 600。本任务只同步配置文件，不重启进程、不切换 release、不部署代码。
 
 `GITLAB_TOKEN` 虽因“不得减少”保留在本地 `.env` 基线中，但不是应用运行依赖，不得注入
 Pod；`.env.example` 只能保留空占位和注释。其他直连 provider key 同理不能写真实值。
 
 ## 5. 外部条件
 
-运维仍须确认新 Pod 能访问 `172.16.10.34:4000`、`172.16.5.181:30834`、
-`172.16.10.34:8765`，Ingress 使用 `/api/ontology-agentic-analytics`，并确认本体/Doris
-是否要求真实凭据。多副本部署时还必须覆盖 local coordination 为实际 Redis 配置。
+配置同步不等于运行进程已加载新值：本任务禁止重启，因此当前 8765 进程仍使用启动时环境。
+不得修改 README、DEPLOYMENT 或其他部署说明文件。
 
 ## 6. TDD Red
 
@@ -58,5 +63,6 @@ Pod；`.env.example` 只能保留空占位和注释。其他直连 provider key 
 git diff --check
 ```
 
-Red 必须证明 Dockerfile、`.env` 和 `.env.example` 尚缺增量配置，同时既有 `.env` 键保护
-测试必须通过。
+本地 Red 必须证明 Dockerfile、`.env` 和 `.env.example` 尚缺增量配置，同时既有 `.env`
+键保护测试必须通过。设置 `RUN_SERVER_ENV_SYNC_TESTS=1` 时还必须只读验收 10.34 当前 release
+的 `.env`；实现前该集成测试应失败，实现后转绿。

@@ -216,10 +216,13 @@
 
 - 修订 Spec `docs/specs/docker-defaults-and-local-secrets.md`：固定非敏感运行参数进入
   Dockerfile；本地 `.env` 与服务器配置严格只增不减，保留全部既有键和值并补齐缺项；
-  `.env.example` 同步为完整、无真实 Secret 的服务器模板；Kubernetes 自动生成的 Service
-  Link 不复制进配置。
+  `.env.example` 同步完整键结构；实现阶段直接对 10.34 当前 v0.1.2 release 的 `.env`
+  做带备份、只增不减的原子同步，不经运维模板中转且不重启服务；Kubernetes 自动生成的
+  Service Link 不复制进配置。
 - 修订 RED 门禁 `tests/test_docker_defaults_and_local_secrets.py`，固化修改前本地 `.env`
   全部键名作为不可缩减基线，并覆盖镜像默认值、完整服务器模板、Secret 禁止进入镜像、
   Git/Docker 忽略规则与容器内健康检查，等待实现阶段转绿。
+- 新增 opt-in 的 10.34 只读验收门禁（`RUN_SERVER_ENV_SYNC_TESTS=1`），固化服务器原有键
+  集合并检查完整运行配置已直接同步；本任务明确不修改 README/DEPLOYMENT。
 - 明确仓库配置无法替代的外部条件：新 Pod 到 Team LLM、本体/Doris、会话同步服务的网络
   可达性，Ingress 子路径，以及真实凭据仍须由运维确认并安全注入。
