@@ -16,7 +16,7 @@ eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Age
 
 ## 应用信息（部署清单）
 
-- **Git 项目地址**：`git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，发布分支 `main`）
+- **Git 项目地址**：`git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，唯一发布主线 `master`；`main` 已退役并删除）
 - **应用名**：`eimosp-ontology-agentic-analytics`（产品名：智能分析）
 - **Python 版本**：`3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`）
 - **容器内部端口**：`8080`（统一；Dockerfile `ENV APP_PORT=8080` + `EXPOSE 8080`，CMD 监听 `0.0.0.0:8080`）
@@ -208,7 +208,7 @@ Node 子进程执行。
 
 - commit、push、部署不自动触发版本升级；
 - commit、push、Git tag、GitLab Release 和部署是彼此独立的动作；
-- 普通修改默认验证、commit，并将同一 commit 推送到 GitLab 统一开发分支 `gitlab/20260727`；merge 到 `main` 需要 `tianzijing` code review 后单独发起；
+- 普通修改默认验证、commit，并将同一 commit 推送到 GitLab 统一开发分支 `gitlab/20260727`；正式交付通过 Merge Request 合入唯一发布主线 `master`（reviewer `tianzijing`，code review 后由有权限人员合并）；
 - 版本号不按日期或部署次数机械增长，详见
   [语义化版本与正式发布规范](docs/versions/versioning-policy.md)；
 - push 不等于部署，部署必须由用户在当前任务中明确授权；
