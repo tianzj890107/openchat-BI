@@ -96,6 +96,28 @@ function withClientSession(url) {
   return `${url}${separator}session_id=${encodeURIComponent(clientSessionId)}`;
 }
 
+// ---------------------------------------------------------------------------
+// Base-path aware URL building
+// ---------------------------------------------------------------------------
+// The server injects the deployment prefix (APP_ROOT_PATH) into the workbench
+// HTML.  Every browser-facing application URL must be built through this one
+// helper so the same bundle works at the site root and behind a gateway
+// sub-path without hard-coding a production prefix.  Callers pass a
+// root-relative or bare path (for example "api/chat"); the helper prefixes it
+// exactly once and preserves any query string on the caller's path.
+function withBasePath(path) {
+  let root = "";
+  try {
+    root = String(window.APP_ROOT_PATH || "");
+  } catch (_) {
+    root = "";
+  }
+  if (!root || root === "/") return path;
+  root = root.replace(/\/+$/, "");
+  if (String(path).startsWith("/")) return root + path;
+  return root + "/" + path;
+}
+
 function draftConversationId(mode) {
   const key = mode === "report" ? "report" : "data";
   if (!conversationDraftIds.has(key)) {
@@ -165,7 +187,7 @@ export function fetchConversationSummaries(mode = "data", { force = false } = {}
   publishConversationState(key, "loading", [], "loading");
   const sequence = (conversationSummarySequences.get(key) || 0) + 1;
   conversationSummarySequences.set(key, sequence);
-  const request = fetch(`/api/conversations?mode=${encodeURIComponent(key)}`)
+  const request = fetch(withBasePath(`api/conversations?mode=${encodeURIComponent(key)}`))
     .then((response) => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.json();
@@ -966,7 +988,7 @@ export function bootWorkbenchRuntime() {
     item.classList.add("is-submitting");
     if (superviseBtn) superviseBtn.disabled = true;
     flashItem(item, "⏳ 正在创建任务令…", false);
-    fetch("/api/task-alert/manual-create", {
+    fetch(withBasePath("api/task-alert/manual-create"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title, content, clientRequestId }),
@@ -1295,11 +1317,11 @@ export function bootWorkbenchRuntime() {
       // settings page. Capture the backend's current selection in that case.
       if (!activeSourceConfig) {
         try {
-          const sr = await fetch(withClientSession("/api/sources"), { cache: "no-store" });
+          const sr = await fetch(withClientSession(withBasePath("api/sources")), { cache: "no-store" });
           if (sr.ok) activeSourceConfig = sourceConfigFromPayload(await sr.json());
         } catch (_) { /* source metadata is best-effort */ }
       }
-      const r = await fetch("/api/conversations/save", {
+      const r = await fetch(withBasePath("api/conversations/save"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1424,7 +1446,7 @@ export function bootWorkbenchRuntime() {
   async function deleteRecent(id) {
     let ok = false;
     try {
-      const response = await fetch("/api/conversations/" + id, { method: "DELETE" });
+      const response = await fetch(withBasePath("api/conversations/" + id), { method: "DELETE" });
       ok = response.ok;
     } catch (e) {}
     ["data", "report"].forEach((m) => { if (buckets[m].convId === id) buckets[m].convId = null; });
@@ -1572,7 +1594,7 @@ export function bootWorkbenchRuntime() {
     originalBucket.restoreActivation = activationGate;
     try { await pendingConversationSave; } catch (e) { /* save is best-effort */ }
     try {
-      const previewResponse = await fetch(`/api/conversations/${encodeURIComponent(id)}/preview`);
+      const previewResponse = await fetch(withBasePath(`api/conversations/${encodeURIComponent(id)}/preview`));
       if (!previewResponse.ok) throw new Error(`HTTP ${previewResponse.status}`);
       const preview = await previewResponse.json();
       if (token !== historyRestoreSequence) return;
@@ -1582,14 +1604,14 @@ export function bootWorkbenchRuntime() {
       const bucket = buckets[mode];
       bucket.restoreActivation = activationGate;
       renderConversationPreview(preview, mode);
-      const assetsPromise = fetch(`/api/conversations/${encodeURIComponent(id)}/assets`)
+      const assetsPromise = fetch(withBasePath(`api/conversations/${encodeURIComponent(id)}/assets`))
         .then((response) => {
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
           return response.json();
         });
       let assetsFailed = false;
       let activationFailed = false;
-      const activationPromise = fetch(withClientSession(`/api/conversations/${encodeURIComponent(id)}/activate`), {
+      const activationPromise = fetch(withClientSession(withBasePath(`api/conversations/${encodeURIComponent(id)}/activate`)), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }).then((response) => {
@@ -1758,7 +1780,7 @@ export function bootWorkbenchRuntime() {
     const st = document.getElementById("roles-status");
     if (st) { st.textContent = ""; st.className = "settings-status"; }
     try {
-      const r = await fetch(withClientSession("/api/roles"), { cache: "no-store" });
+      const r = await fetch(withClientSession(withBasePath("api/roles")), { cache: "no-store" });
       if (r.ok) {
         const d = await r.json();
         rolesState.user_role = d.user_role || "";
@@ -1775,7 +1797,7 @@ export function bootWorkbenchRuntime() {
     const st = document.getElementById("roles-status");
     if (st) { st.textContent = "保存中…"; st.className = "settings-status pending"; }
     try {
-      const r = await fetch("/api/roles", {
+      const r = await fetch(withBasePath("api/roles"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1807,7 +1829,7 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   async function loadMeta() {
     try {
-      const r = await fetch(withClientSession("/api/meta"), { cache: "no-store" });
+      const r = await fetch(withClientSession(withBasePath("api/meta")), { cache: "no-store" });
       const data = await r.json();
       state.meta = data;
       renderTopbarMeta();
@@ -2011,7 +2033,7 @@ export function bootWorkbenchRuntime() {
     el.settingsStatus.textContent = "保存中…";
     el.settingsStatus.className = "settings-status pending";
     try {
-      const r = await fetch("/api/config", {
+      const r = await fetch(withBasePath("api/config"), {
         method: "PUT",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload),
@@ -2047,7 +2069,7 @@ export function bootWorkbenchRuntime() {
     if (!field) return;
     const payload = { [field]: "" };
     try {
-      const r = await fetch("/api/config", {
+      const r = await fetch(withBasePath("api/config"), {
         method: "PUT",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload),
@@ -2240,7 +2262,7 @@ export function bootWorkbenchRuntime() {
     const prompt = rgBuildPrompt(rgCollectPlan());
     closeReportgen();
     try {
-      const r = await fetch(withClientSession("/api/report/generate"), { method: "POST" });
+      const r = await fetch(withClientSession(withBasePath("api/report/generate")), { method: "POST" });
       if (!r.ok) {
         const err = await r.json().catch(() => ({ detail: r.statusText }));
         throw new Error(err.detail || "create session failed");
@@ -2408,7 +2430,7 @@ export function bootWorkbenchRuntime() {
     if (el.sourcesBuildGraph) el.sourcesBuildGraph.disabled = true;
     setHint("构建中…（抽取 ER + 元模型关系）", "pending");
     try {
-      const r = await fetch("/api/graph/build", {
+      const r = await fetch(withBasePath("api/graph/build"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ontology: xlsx }),
@@ -2420,7 +2442,7 @@ export function bootWorkbenchRuntime() {
         `✓ 已生成 ${data.graph} · 节点 ${s.nodes} / 边 ${s.edges}` +
         `(层级 ${s.tree_edges} + ER ${s.er_edges} + 规则 ${s.rule_edges})`, "success");
       // Refresh the 图库源 list and select the freshly-built graph.
-      const sr = await fetch(withClientSession("/api/sources"), { cache: "no-store" });
+      const sr = await fetch(withClientSession(withBasePath("api/sources")), { cache: "no-store" });
       const sd = await sr.json().catch(() => ({}));
       if (sd.retrieval && el.sourcesGraph) {
         fillSourceSelect(el.sourcesGraph, sd.retrieval.graph || {});
@@ -2439,7 +2461,7 @@ export function bootWorkbenchRuntime() {
   async function loadSourcesInto(statusEl) {
     if (statusEl) { statusEl.textContent = ""; statusEl.className = "settings-status"; }
     try {
-      const r = await fetch(withClientSession("/api/sources"), { cache: "no-store" });
+      const r = await fetch(withClientSession(withBasePath("api/sources")), { cache: "no-store" });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const data = await r.json();
       activeSourceConfig = sourceConfigFromPayload(data);
@@ -2531,7 +2553,7 @@ export function bootWorkbenchRuntime() {
     statusEl.textContent = "切换中…";
     statusEl.className = "settings-status pending";
     try {
-      const r = await fetch(withClientSession("/api/sources"), {
+      const r = await fetch(withClientSession(withBasePath("api/sources")), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -2572,7 +2594,7 @@ export function bootWorkbenchRuntime() {
     const button = el.sourcesReadOntologyDb;
     if (button) { button.disabled = true; button.textContent = "读取中…"; }
     try {
-      const r = await fetch(withClientSession("/api/sources"), { cache: "no-store" });
+      const r = await fetch(withClientSession(withBasePath("api/sources")), { cache: "no-store" });
       const data = await r.json();
       const ontology = data.ontology || {};
       const active = ontology.active;
@@ -2646,7 +2668,7 @@ export function bootWorkbenchRuntime() {
   async function loadSystemPrompt() {
     el.systemContent.innerHTML = '<div class="sys-section"><div class="sys-title">加载中…</div></div>';
     try {
-      const r = await fetch(withClientSession(`/api/system-prompt?mode=${state.mode}`));
+      const r = await fetch(withClientSession(withBasePath(`api/system-prompt?mode=${state.mode}`)));
       const data = await r.json();
       B().systemPrompt = data.system_prompt;
       renderSystem();
@@ -3319,7 +3341,7 @@ export function bootWorkbenchRuntime() {
     if (status) status.textContent = `正在提交: ${labels.join("、")}…`;
     setBusy(true);
 
-    const url = state.mode === "report" ? "/api/report/choice" : "/api/choice";
+    const url = state.mode === "report" ? withBasePath("api/report/choice") : withBasePath("api/choice");
     const mySeq = ++streamSeq;
     let resp;
     try {
@@ -3377,7 +3399,7 @@ export function bootWorkbenchRuntime() {
     const card = el_h("div", "chart-card");
     card.dataset.chartJson = encodeURIComponent(JSON.stringify(chart || {}));
     const savedLink = chart.saved_path
-      ? `<span class="chart-saved">saved: <a href="/charts/${esc(chart.saved_path.split(/[\\/]/).pop())}" target="_blank" title="${esc(chart.saved_path)}">${esc(chart.saved_path.split(/[\\/]/).pop())}</a></span>`
+      ? `<span class="chart-saved">saved: <a href="${withBasePath(`charts/${esc(chart.saved_path.split(/[\\/]/).pop())}`)}" target="_blank" title="${esc(chart.saved_path)}">${esc(chart.saved_path.split(/[\\/]/).pop())}</a></span>`
       : "";
     const insightBtn = buildInsightButtonHTML(chart);
     card.innerHTML = `
@@ -3534,7 +3556,7 @@ export function bootWorkbenchRuntime() {
         { once: true },
       );
       if (!existing) {
-        script.src = "/static/vendor/echarts.min.js";
+        script.src = withBasePath("static/vendor/echarts.min.js");
         script.async = true;
         script.dataset.biEchartsLoader = "1";
         document.head.appendChild(script);
@@ -4223,7 +4245,7 @@ export function bootWorkbenchRuntime() {
     const title = esc(chart.title || "(未命名)");
     const type = esc(chart.chart_type || "chart");
     const source = chart.saved_path
-      ? `<a class="dash-link" href="/charts/${esc(chart.saved_path.split(/[\\/]/).pop())}" target="_blank">open ↗</a>`
+      ? `<a class="dash-link" href="${withBasePath(`charts/${esc(chart.saved_path.split(/[\\/]/).pop())}`)}" target="_blank">open ↗</a>`
       : "";
     const insightBtn = buildInsightButtonHTML(chart);
     card.innerHTML = `
@@ -4290,7 +4312,7 @@ export function bootWorkbenchRuntime() {
     const metric = spec.metric_code ? `<span class="multidim-metric">${esc(spec.metric_code)}</span>` : "";
     const source = spec.source_note ? `<span class="multidim-source">Source · ${esc(spec.source_note)}</span>` : "";
     const savedLink = spec.saved_path
-      ? `<a class="multidim-saved" href="/charts/${esc(String(spec.saved_path).split(/[\\/]/).pop())}" target="_blank">open ↗</a>`
+      ? `<a class="multidim-saved" href="${withBasePath(`charts/${esc(String(spec.saved_path).split(/[\\/]/).pop())}`)}" target="_blank">open ↗</a>`
       : "";
     const dims = Array.isArray(spec.dimensions) ? spec.dimensions : [];
     const options = dims.map((d) =>
@@ -4391,7 +4413,7 @@ export function bootWorkbenchRuntime() {
     const title = esc(spec.title || "(未命名)");
     const metric = spec.metric_code ? `<span class="dash-metric">${esc(spec.metric_code)}</span>` : "";
     const source = spec.saved_path
-      ? `<a class="dash-link" href="/charts/${esc(String(spec.saved_path).split(/[\\/]/).pop())}" target="_blank">open ↗</a>`
+      ? `<a class="dash-link" href="${withBasePath(`charts/${esc(String(spec.saved_path).split(/[\\/]/).pop())}`)}" target="_blank">open ↗</a>`
       : "";
     const dims = Array.isArray(spec.dimensions) ? spec.dimensions : [];
     const options = dims.map((d) =>
@@ -5527,7 +5549,7 @@ export function bootWorkbenchRuntime() {
     let plan = null;
     let errMsg = "";
     try {
-      const resp = await fetch("/api/report/compose", {
+      const resp = await fetch(withBasePath("api/report/compose"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ blocks: blocks }),
@@ -5707,7 +5729,7 @@ export function bootWorkbenchRuntime() {
     destroyOntologyGraphView();
     canvas.replaceChildren();
     try {
-      const response = await fetch("/api/ontology/subgraph", {
+      const response = await fetch(withBasePath("api/ontology/subgraph"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -6714,7 +6736,7 @@ export function bootWorkbenchRuntime() {
     const quadPrefix = buildQuadrantSystemPrefix();
     const payloadText = quadPrefix ? `${quadPrefix}\n\n用户问: ${text}` : text;
 
-    const url = state.mode === "report" ? "/api/report/chat" : "/api/chat";
+    const url = state.mode === "report" ? withBasePath("api/report/chat") : withBasePath("api/chat");
     const mySeq = ++streamSeq;
     const myController = new AbortController();
     activeRequestController = myController;
@@ -6875,7 +6897,7 @@ export function bootWorkbenchRuntime() {
       // The aborted stream must never emit a terminal event into the newly
       // activated mode, so mark it stale by advancing the request sequence.
       streamSeq += 1;
-      const resetUrl = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
+      const resetUrl = state.mode === "report" ? withBasePath("api/report/session/reset") : withBasePath("api/session/reset");
       fetch(withClientSession(resetUrl), { method: "POST" }).catch(() => {});
       setBusy(false);
     }
@@ -6988,7 +7010,7 @@ export function bootWorkbenchRuntime() {
 
   async function refreshReportStatus() {
     try {
-      const r = await fetch(withClientSession("/api/report/status"));
+      const r = await fetch(withClientSession(withBasePath("api/report/status")));
       const data = await r.json();
       const list = Array.isArray(data.active_reports)
         ? data.active_reports
@@ -7005,7 +7027,7 @@ export function bootWorkbenchRuntime() {
 
   async function refreshReportHistory() {
     try {
-      const r = await fetch("/api/report/list");
+      const r = await fetch(withBasePath("api/report/list"));
       const data = await r.json();
       state.report.history = data.items || [];
       el.historyCount.textContent = state.report.history.length;
@@ -7139,7 +7161,7 @@ export function bootWorkbenchRuntime() {
     }
     uploadStatus(`正在激活 ${ids.length} 份报表…`, "pending");
     try {
-      const r = await fetch("/api/report/activate", {
+      const r = await fetch(withBasePath("api/report/activate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ report_ids: ids, with_db: !!state.report.withDb, session_id: clientSessionId }),
@@ -7176,7 +7198,7 @@ export function bootWorkbenchRuntime() {
   async function deleteReport(rid) {
     if (!confirm("确定删除该报表?该操作不可恢复。")) return;
     try {
-      const r = await fetch(`/api/report/${encodeURIComponent(rid)}`, { method: "DELETE" });
+      const r = await fetch(withBasePath(`api/report/${encodeURIComponent(rid)}`), { method: "DELETE" });
       if (!r.ok) throw new Error("delete failed");
       // Drop from local active mirror; server already updated its side.
       const wasActive = (state.report.activeReports || []).some(x => x.id === rid);
@@ -7268,7 +7290,7 @@ export function bootWorkbenchRuntime() {
     }
     const fd = new FormData();
     fd.append("file", file);
-    const r = await fetch("/api/report/upload", { method: "POST", body: fd });
+    const r = await fetch(withBasePath("api/report/upload"), { method: "POST", body: fd });
     if (!r.ok) {
       const err = await r.json().catch(() => ({ detail: r.statusText }));
       throw new Error(err.detail || "upload failed");
@@ -7331,7 +7353,7 @@ export function bootWorkbenchRuntime() {
       // Clear this browser session and its server-side active list. A plain
       // reset intentionally keeps attachments for "new conversation".
       try {
-        await fetch(withClientSession("/api/report/session/reset?clear_reports=true"), { method: "POST" });
+        await fetch(withClientSession(withBasePath("api/report/session/reset?clear_reports=true")), { method: "POST" });
       } catch (e) {}
       state.report.activeReports = [];
       state.report.activeReport = null;
@@ -7399,7 +7421,7 @@ export function bootWorkbenchRuntime() {
         return;
       }
       try {
-        const r = await fetch("/api/report/config", {
+        const r = await fetch(withBasePath("api/report/config"), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ with_db: flag, session_id: clientSessionId }),
@@ -7499,7 +7521,7 @@ export function bootWorkbenchRuntime() {
     if (state.busy) return;
     if (!silent && !confirm("开始新对话?当前对话会存入左侧「最近」,可随时恢复。")) return;
     await saveCurrentConversation();   // persist current to 最近 before clearing
-    const url = state.mode === "report" ? "/api/report/session/reset" : "/api/session/reset";
+    const url = state.mode === "report" ? withBasePath("api/report/session/reset") : withBasePath("api/session/reset");
     await fetch(withClientSession(url), { method: "POST" });
     clearBucketChat(state.mode);       // also resets bucket.convId → fresh
     // Keep the newly selected conversation visible immediately, even while

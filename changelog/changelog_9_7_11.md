@@ -154,3 +154,26 @@
 - 主要文件：`changelog/changelog_8_31_9_4.md`（归档说明）、
   `changelog/changelog_9_7_11.md`（本周新增）、`AGENTS.md`、
   `docs/versions/versioning-policy.md`。
+
+### 2. Configurable Application Base Path（子路径部署适配，TDD RED→GREEN，2026-09-08 12:05）
+
+- 新增 Spec `docs/specs/configurable-application-base-path.md` 与 RED 测试
+  `tests/test_application_base_path.py`（6 项）；`APP_ROOT_PATH` 支持外部反向代理
+  子路径前缀（生产示例 `/api/ontology-agentic-analytics`），未配置时保持域名根路径
+  行为不变，不复制注册一套固定前缀路由。
+- 后端：`_normalize_app_root_path` 规范化前缀并对非法值（协议/域名/查询串/重复斜杠/
+  `.`/`..` 段）启动时快速失败；FastAPI `root_path=APP_ROOT_PATH` + 前缀剥离中间件；
+  `/` 根重定向带 base path 并保留 query；workbench HTML 安全注入运行时 base path
+  （token 模板替换 + `window.APP_ROOT_PATH` 配置 script）；charts CDN 回退与静态
+  资源地址带前缀；对外入口
+  `/api/ontology-agentic-analytics/{workbench,static/*,api/*,healthz}`。
+- 前端：`frontend/src/runtime.js` 新增唯一 `withBasePath` helper，根绝对
+  `/api|static|charts|workbench` 的 fetch/动态脚本/图表/下载/预览/导航 URL 全部改走
+  helper；正式构建产物 `static/vendor/antd/workbench.js` 重新构建，产物内无根绝对
+  应用 URL。
+- 容器与文档：内置 HEALTHCHECK 仍探测不带前缀的 `http://127.0.0.1:8080/healthz`；
+  `.env.example`、`README.md`、`DEPLOYMENT.md` 补充 `APP_ROOT_PATH` 配置与子路径
+  部署口径；未升级版本号（仍 v0.1.2）。
+- 验证：`tests.test_application_base_path` 6 OK；`tests.test_regressions` +
+  `tests.test_container_port_contract` 231 OK；非法配置 fail-fast；
+  `git diff --check` 干净。
