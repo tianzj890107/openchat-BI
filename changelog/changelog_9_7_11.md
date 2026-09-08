@@ -177,3 +177,37 @@
 - 验证：`tests.test_application_base_path` 6 OK；`tests.test_regressions` +
   `tests.test_container_port_contract` 231 OK；非法配置 fail-fast；
   `git diff --check` 干净。
+
+### 3. main 退役与仓库级 master 口径收口（规则/文档/测试，2026-09-08 12:14）
+
+- 仓库规则统一为 `master` 唯一发布主线、`main` 已退役并删除：`AGENTS.md`、
+  `docs/gitlab-push-workflow.md`、`docs/versions/versioning-policy.md`、
+  `DEPLOYMENT.md`、`scripts/push_gitlab.py`（`HISTORICAL_BRANCH` 替换为
+  `RETIRED_BRANCH`）；禁止重新创建 `main`、向其 push 或用作 MR source/target；
+  原“一次性 main 历史清理授权”标记为已失效历史审计记录（提交 `0de7cda`）。
+- 仓库级清扫：`README.md`（应用信息、版本提交发布说明）与
+  `docs/git-dual-remote-workflow.md`（已迁移指针页）中残留的“发布分支 main /
+  merge 到 main”当前口径清除；新增 Spec
+  `docs/specs/repository-wide-master-branch-consistency.md` 与 RED 门禁
+  `tests/test_repository_wide_master_consistency.py`（提交 `6b94919`）。
+- 新增/更新验收测试：`tests/test_main_branch_retirement.py`、
+  `tests/test_master_default_protection.py`、`tests/test_master_mainline_policy.py`、
+  `tests/test_push_gitlab.py` 与对应 Spec（`delete-historical-main`、
+  `master-default-protection-cutover`）；历史 changelog 与归档版本文档不机械改写。
+- 验证：main 退役门禁 29 OK（`RUN_GITLAB_MAIN_DELETION_TESTS=1`，需去除本机
+  `HTTP_PROXY/HTTPS_PROXY` 后 urllib 才能访问 GitLab API）；仓库级一致性 5 OK；
+  mainline+push 21 OK；regressions+container 231 OK。
+
+### 4. 交付状态（2026-09-08 12:14）
+
+- `gitlab/20260727` 推进至 `6b94919` 并推送成功（HEAD == gitlab/20260727），包含
+  四个主题提交：`0de7cda` main 退役规则、`cf700dd` changelog 周维护整理、
+  `706e0d5` configurable application base path、`6b94919` 仓库级 master 口径清扫；
+  已同步 `gitlab/master`（`6004bc9`，本地祖先，无内容差异）。
+- MR !9（`20260727` → `master`）创建并更新至完整交付范围，标题
+  “feat: support configurable application base path and finalize master-only
+  repository policy”，reviewer `tianzijing`、assignee `zhangzhen`；只创建 MR，
+  未自动合并、未直接 push master。
+- 测试汇总：base path 6 + regressions/container 231 + mainline 本地 37（16 只读
+  门禁跳过）+ 仓库级 5 + mainline/push 21；`git diff --check` 干净。
+- 无 tag、无 GitLab Release、无部署；MR !9 等待 `tianzijing` code review。
