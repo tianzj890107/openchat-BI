@@ -1,4 +1,4 @@
-"""TDD Red: fixed non-secrets in Dockerfile, runtime secrets only in .env."""
+"""TDD Red: additive env synchronization and fixed Docker defaults."""
 
 from __future__ import annotations
 
@@ -38,9 +38,21 @@ NON_SECRET_DEFAULTS = {
     "TASK_ALERT_DEFAULT_ASSIGNEE": "400", "TASK_ALERT_DEFAULT_LEVEL": "WARNING",
     "TASK_ALERT_DEFAULT_BP_DEFINITION_ID": "", "TASK_ALERT_TIMEOUT_SECONDS": "10",
 }
-SECRET_NAMES = {"TEAM_API_KEY", "ONTOLOGY_AUTH_TOKEN", "DORIS_PASSWORD"}
-FORBIDDEN_RUNTIME_SECRETS = SECRET_NAMES | {
-    "GITLAB_TOKEN", "ANTHROPIC_API_KEY", "QWEN_API_KEY", "DASHSCOPE_API_KEY", "DEEPSEEK_API_KEY",
+BASELINE_LOCAL_ENV_KEYS = {
+    "CONVERSATION_SYNC_URL", "DASHSCOPE_API_KEY", "GITLAB_TOKEN", "LLM_PROVIDER",
+    "ONTOLOGY_APP_ID", "ONTOLOGY_BACKEND", "ONTOLOGY_BASE_URL", "ONTOLOGY_REPOSITORY_ID",
+    "QWEN_API_KEY", "QWEN_BASE_URL", "QWEN_ENABLE_THINKING", "QWEN_MODEL",
+    "QWEN_PREFERRED_TEXT_MODEL", "QWEN_PREFERRED_VISION_MODEL", "QWEN_TEXT_MODEL",
+    "QWEN_TEXT_MODELS", "QWEN_VISION_MODELS", "TASK_ALERT_API_ENABLED",
+    "TASK_ALERT_API_URL", "TASK_ALERT_DEFAULT_ASSIGNEE", "TASK_ALERT_DEFAULT_BP_DEFINITION_ID",
+    "TASK_ALERT_DEFAULT_LEVEL", "TASK_ALERT_TIMEOUT_SECONDS", "TEAM_API_KEY", "TEAM_BASE_URL",
+    "TEAM_DEEPSEEK_ENABLE_THINKING", "TEAM_MODEL", "TEAM_MODELS", "TEAM_QWEN_ENABLE_THINKING",
+}
+RUNTIME_SECRET_KEYS = {"TEAM_API_KEY", "ONTOLOGY_AUTH_TOKEN", "DORIS_PASSWORD"}
+ALL_ENV_KEYS = BASELINE_LOCAL_ENV_KEYS | set(NON_SECRET_DEFAULTS) | RUNTIME_SECRET_KEYS
+ALL_SECRET_KEYS = {
+    "TEAM_API_KEY", "ONTOLOGY_AUTH_TOKEN", "DORIS_PASSWORD", "GITLAB_TOKEN",
+    "DASHSCOPE_API_KEY", "QWEN_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY",
 }
 
 
@@ -56,18 +68,39 @@ class DockerDefaultsAndLocalSecretsTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(actual.get(name), value)
 
-    def test_dockerfile_never_bakes_secret_variables_or_env_file(self) -> None:
-        for name in FORBIDDEN_RUNTIME_SECRETS:
+    def test_dockerfile_never_bakes_secrets_or_env_file(self) -> None:
+        for name in ALL_SECRET_KEYS:
             with self.subTest(name=name):
                 self.assertNotRegex(DOCKERFILE, rf"(?m)^\s*(?:ENV\s+|ARG\s+)?{name}\s*=")
         self.assertNotRegex(DOCKERFILE, r"(?mi)^\s*(?:COPY|ADD)\s+[^\n]*\.env(?:\s|$)")
 
-    def test_local_env_contains_only_runtime_secret_keys(self) -> None:
+    def test_local_env_preserves_every_preexisting_key(self) -> None:
         env_path = ROOT / ".env"
         if not env_path.exists():
             self.skipTest("CI checkout intentionally has no ignored .env")
         keys = set(assignments(env_path.read_text(encoding="utf-8")))
-        self.assertEqual(keys, SECRET_NAMES)
+        self.assertTrue(BASELINE_LOCAL_ENV_KEYS <= keys, BASELINE_LOCAL_ENV_KEYS - keys)
+
+    def test_local_env_adds_complete_runtime_contract_without_deletion(self) -> None:
+        env_path = ROOT / ".env"
+        if not env_path.exists():
+            self.skipTest("CI checkout intentionally has no ignored .env")
+        actual = assignments(env_path.read_text(encoding="utf-8"))
+        self.assertTrue(ALL_ENV_KEYS <= set(actual), ALL_ENV_KEYS - set(actual))
+        for name, value in NON_SECRET_DEFAULTS.items():
+            with self.subTest(name=name):
+                self.assertEqual(actual.get(name), value)
+
+    def test_example_is_complete_server_env_template(self) -> None:
+        example = assignments((ROOT / ".env.example").read_text(encoding="utf-8"))
+        self.assertTrue(ALL_ENV_KEYS <= set(example), ALL_ENV_KEYS - set(example))
+        for name, value in NON_SECRET_DEFAULTS.items():
+            with self.subTest(name=name):
+                self.assertEqual(example.get(name), value)
+        for name in ALL_SECRET_KEYS & ALL_ENV_KEYS:
+            with self.subTest(secret=name):
+                value = example[name].strip()
+                self.assertTrue(not value or value.startswith("<") or value.startswith("${"))
 
     def test_local_env_is_ignored_by_git_and_docker(self) -> None:
         for text, label in ((GITIGNORE, ".gitignore"), (DOCKERIGNORE, ".dockerignore")):
@@ -81,14 +114,6 @@ class DockerDefaultsAndLocalSecretsTests(unittest.TestCase):
         ).decode("utf-8", errors="replace").split("\0")
         tracked = [item for item in tracked if item and item != ".env.example"]
         self.assertEqual(tracked, [])
-
-    def test_example_marks_all_secret_values_as_placeholders(self) -> None:
-        example = assignments((ROOT / ".env.example").read_text(encoding="utf-8"))
-        for name in SECRET_NAMES:
-            with self.subTest(name=name):
-                self.assertIn(name, example)
-                value = example[name].strip()
-                self.assertTrue(not value or value.startswith("<") or value.startswith("${"))
 
     def test_internal_healthcheck_remains_unprefixed(self) -> None:
         self.assertIn("http://127.0.0.1:8080/healthz", DOCKERFILE)
