@@ -1,6 +1,6 @@
 # Spec：服务器引用统一使用 IP 地址
 
-状态：TDD Red（2026-09-08）
+状态：Implemented / TDD Green（修订于 2026-09-08）
 
 ## 目标
 

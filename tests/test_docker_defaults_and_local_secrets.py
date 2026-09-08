@@ -112,7 +112,7 @@ class DockerDefaultsAndLocalSecretsTests(unittest.TestCase):
     def test_company_server_env_is_additively_synchronized(self) -> None:
         key_output = subprocess.check_output(
             [
-                "ssh", "company-server", "awk", "-F=",
+                "ssh", "172.16.10.34", "awk", "-F=",
                 "/^[A-Za-z_][A-Za-z0-9_]*=/{print $1}", SERVER_ENV_PATH,
             ],
             text=True,

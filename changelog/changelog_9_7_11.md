@@ -236,8 +236,17 @@
   可达性，Ingress 子路径，以及真实凭据仍须由运维确认并安全注入；配置同步不等于进程
   已加载新值（本任务未重启）。
 
-### 6. 服务器引用统一使用 IP（Spec / TDD RED，2026-09-08）
+### 6. 服务器引用统一使用 IP（Spec / TDD Green，2026-09-08）
 
-- 新增 `docs/specs/literal-ip-server-references.md` 与
-  `tests/test_literal_ip_server_references.py`，要求源码、脚本、测试及全部文档中的服务器引用
-  统一为 `172.16.10.34`，不再依赖开发机 SSH Host 别名；实现阶段不得借此修改服务器或部署。
+- 修订 `docs/specs/literal-ip-server-references.md` 至 Implemented / TDD Green；
+  仓库内不再依赖或描述本机 SSH Host 别名，服务器引用统一直接使用
+  `172.16.10.34`。
+- 全量清理所有 Git 跟踪文本文件中的别名引用：`DEPLOYMENT.md`、环境同步 Spec、
+  历史周 changelog `changelog_8_31_9_4.md`、正式版本文档 `docs/versions/v0.1.2.md`
+  与 `tests/test_docker_defaults_and_local_secrets.py`，仅改写服务器称谓，未改变
+  历史日期、端口、版本状态与部署事实。
+- 环境同步集成测试的 SSH 调用改为 `"ssh", "172.16.10.34"`，服务器只读验收与
+  Docker/`.env` 增量同步门禁保持全绿；未修改服务器、未重启服务、未部署。
+- 门禁 `tests/test_literal_ip_server_references.py` 2 passed；
+  `tests/test_docker_defaults_and_local_secrets.py` 本地 8 passed + 1 skipped、
+  `RUN_SERVER_ENV_SYNC_TESTS=1` 下 9 passed；`git diff --check` 干净。

@@ -272,7 +272,7 @@ git diff --name-only
 
 ## 9. 当前服务器发布说明
 
-当前测试服务器通过 SSH 主机别名 `company-server`（`172.16.10.34`）发布，运行目录为
+当前测试服务器为 `172.16.10.34`（SSH 直连该 IP），运行目录为
 `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/<release>`，进程使用该目录下的 `.venv`，监听 `8765`。
 发布时只同步源码和已构建静态资源，先在 release 目录创建带时间戳的代码备份；不要覆盖 `.env`、`.venv`、会话、上传文件、图表和日志。
 

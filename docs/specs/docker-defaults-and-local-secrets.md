@@ -39,7 +39,7 @@ Team LLM、本体、Doris、会话同步、并发与本地协调、任务提醒�
 `.env.example` 必须包含修改前本地 `.env` 的全部键名、Dockerfile 的全部固定运行键，以及
 新增 Secret 空值或占位符。
 
-实现阶段直接通过 SSH 主机别名 `company-server`（`172.16.10.34`）增量修改当前运行 release：
+实现阶段直接通过 SSH 直连 `172.16.10.34` 增量修改当前运行 release：
 
 `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/v0.1.2/.env`
 
