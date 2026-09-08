@@ -1,5 +1,5 @@
 # eimosp-ontology-agentic-analytics 智能分析容器镜像
-# 标准运行环境: Python 3.13.x（Docker 官方 python:3.13-slim）
+# 标准运行环境: Python 3.13.x（华为云 SWR 镜像 swr.cn-east-3.myhuaweicloud.com/release/python:3.13-slim）
 # 统一容器内部端口: 8080（Dockerfile 显式注入，容器内监听 0.0.0.0:8080）
 #   推荐宿主机映射: 8765:8080（8765 同时是非容器本地默认端口）
 # 统一健康检查: GET /healthz（别名 /health）

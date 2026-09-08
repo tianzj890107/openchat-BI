@@ -9,7 +9,9 @@ request, and a root-cause section always requires a follow-up action section.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import re
+from typing import Any
 
 
 # These helpers are deliberately separate.  A user can ask for a decision
@@ -161,6 +163,244 @@ def classify_intent(question: str | None) -> AnalysisIntent:
     else:
         level = "L1"
     return AnalysisIntent(level, root, action)
+
+
+# ---------------------------------------------------------------------------
+# Lightweight structured Cognitive Policy decision record.
+#
+# This is an observable, deterministic routing snapshot produced once per new
+# user turn.  It never calls the LLM, Doris or a remote ontology service, and
+# it never stores the raw question, SQL, tool results or credentials — only a
+# whitespace-normalized input digest.  ``required_tools`` describes the
+# expected first-choice route and is always a subset of the session's actual
+# allowed tools; it is NOT an execution whitelist.
+# ---------------------------------------------------------------------------
+
+POLICY_VERSION = 1
+
+MODE_FACT_QUERY = "FACT_QUERY"
+MODE_DIAGNOSTIC_ANALYSIS = "DIAGNOSTIC_ANALYSIS"
+MODE_ONTOLOGY_LOOKUP = "ONTOLOGY_LOOKUP"
+MODE_CLARIFICATION = "CLARIFICATION"
+MODE_CAPABILITY_LIMITATION = "CAPABILITY_LIMITATION"
+MODE_GENERAL_RESPONSE = "GENERAL_RESPONSE"
+
+NEXT_QUERY_DORIS = "QUERY_DORIS"
+NEXT_QUERY_ONTOLOGY = "QUERY_ONTOLOGY"
+NEXT_ASK_USER = "ASK_USER"
+NEXT_DELIVER_LIMITATION = "DELIVER_LIMITATION"
+NEXT_DELIVER = "DELIVER"
+
+# Tool names referenced by the minimal routing table.  They are plain strings
+# here so the pure decision builder never depends on a live tool registry.
+_TOOL_METRIC_QUERY = "Ontology-MetricQuery"
+_TOOL_FACT_QUERY = "Ontology-FactQuery"
+_TOOL_SEMANTIC_QUERY = "Ontology-SemanticQuery"
+_TOOL_ASK_USER = "AskUser"
+
+# Explicit term-definition / business-object / relationship lookups.  The
+# "是什么" pattern deliberately does NOT match "是多少", so amount questions
+# such as "采购金额是多少" remain fact queries.
+_ONTOLOGY_SIGNAL_RE = re.compile(
+    r"(?:定义|业务对象|本体|术语|概念|含义|数据字典|元数据|"
+    r"是什么|什么是|指什么|代表什么意思|怎么理解|关系|关联)"
+)
+
+# Concrete fact / metric / list / trend signals (amounts, query verbs,
+# business subjects and time dimensions).  Generic openers such as
+# "帮我分析一下" carry none of these and fall through to clarification.
+_FACT_SIGNAL_RE = re.compile(
+    r"(?:查询|查一下|查看|统计|列出|列举|排行|排名|趋势|走势|同比|环比|"
+    r"对比|明细|清单|报表|多少|金额|数量|销售额|收入|成本|利润|支出|费用|"
+    r"占比|比例|规模|余额|库存|总量|合计|平均|最高|最低|最大|最小|"
+    r"本月|上月|今年|去年|本季度|月份|按月|按周|按天|季度|年度|预算|"
+    r"执行率|达标率|采购|订单|销售|数据|指标)"
+)
+
+# Only generic polite openers / look-around verbs: the whole (punctuation
+# trimmed) question is still empty of a concrete target afterwards.
+_GENERIC_ONLY_RE = re.compile(
+    r"^(?:请|麻烦(?:你|您)?|帮我|给我|帮忙|我想要|我想|能不能|可以|让我)?"
+    r"(?:看看|看下|看一下|随便看看|了解一下|了解下|介绍下|介绍一下|"
+    r"分析一下|分析下|讲讲|说说|聊聊|讲讲看|说说看|看看情况|看看现在)*$"
+)
+
+_OUTER_PUNCT = " \t\r\n，。！？!?；;、,.:：·~～…—"
+
+
+def _normalize_question(question: str | None) -> str:
+    """Collapse any whitespace run and strip the ends (digest basis)."""
+    return re.sub(r"\s+", " ", str(question or "")).strip()
+
+
+def _input_digest(question: str | None) -> str:
+    """Deterministic sha256 of the whitespace-normalized question."""
+    normalized = _normalize_question(question)
+    return "sha256:" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _normalize_tools(allowed_tools: Any) -> list[str]:
+    """Order-preserving, de-duplicated tool list (None/empty are safe)."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in allowed_tools or []:
+        name = str(raw or "").strip()
+        if name and name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
+
+
+def _decision(
+    digest: str,
+    *,
+    mode: str,
+    reason_code: str,
+    next_step: str,
+    required_tools: list[str],
+    evidence_required: bool,
+    needs_human: bool,
+) -> dict[str, Any]:
+    return {
+        "policy_version": POLICY_VERSION,
+        "mode": mode,
+        "reason_code": reason_code,
+        "next_step": next_step,
+        "required_tools": required_tools,
+        "evidence_required": evidence_required,
+        "needs_human": needs_human,
+        "input_digest": digest,
+    }
+
+
+def build_cognitive_policy_decision(
+    question: str | None,
+    allowed_tools: Any = None,
+) -> dict[str, Any]:
+    """Return the deterministic Cognitive Policy decision for one new turn.
+
+    The decision reuses ``wants_root_cause`` / ``wants_action`` / intent
+    signals already present in this module and never invokes a network
+    service.  Tool availability is derived from the session's actual allowed
+    tools, so ``required_tools`` can never name an unauthorized tool.  The
+    raw question is never stored: only ``sha256:<hex>`` of its
+    whitespace-normalized form is included.
+    """
+
+    allowed = _normalize_tools(allowed_tools)
+    digest = _input_digest(question)
+    normalized = _normalize_question(question)
+    compact = re.sub(r"\s+", "", normalized).strip(_OUTER_PUNCT)
+
+    has_metric = _TOOL_METRIC_QUERY in allowed
+    has_fact = _TOOL_FACT_QUERY in allowed
+    has_semantic = _TOOL_SEMANTIC_QUERY in allowed
+    has_ask = _TOOL_ASK_USER in allowed
+
+    def doris_route_tools() -> list[str]:
+        # MetricQuery is preferred; FactQuery is the sanctioned fallback.
+        # Never advertise both as required at once.
+        if has_metric:
+            return [_TOOL_METRIC_QUERY]
+        if has_fact:
+            return [_TOOL_FACT_QUERY]
+        return []
+
+    def limitation() -> dict[str, Any]:
+        return _decision(
+            digest,
+            mode=MODE_CAPABILITY_LIMITATION,
+            reason_code="QUERY_CAPABILITY_UNAVAILABLE",
+            next_step=NEXT_DELIVER_LIMITATION,
+            required_tools=[],
+            evidence_required=False,
+            needs_human=False,
+        )
+
+    # 1. Empty or purely generic questions ("帮我看看/分析一下") without a
+    #    concrete object and target -> ask the user when AskUser is allowed.
+    if not compact or _GENERIC_ONLY_RE.fullmatch(compact):
+        if has_ask:
+            return _decision(
+                digest,
+                mode=MODE_CLARIFICATION,
+                reason_code="AMBIGUOUS_REQUEST",
+                next_step=NEXT_ASK_USER,
+                required_tools=[_TOOL_ASK_USER],
+                evidence_required=False,
+                needs_human=True,
+            )
+        return _decision(
+            digest,
+            mode=MODE_GENERAL_RESPONSE,
+            reason_code="GENERAL_REQUEST",
+            next_step=NEXT_DELIVER,
+            required_tools=[],
+            evidence_required=False,
+            needs_human=False,
+        )
+
+    # 2. Diagnostic intent has priority over a plain fact query.  The single
+    #    source of this classification is ``classify_intent`` (which itself
+    #    reuses ``wants_root_cause`` / ``wants_action`` / _PROBLEM_INTENT_RE):
+    #    L2 covers anomaly / problem / fluctuation / deviation / change,
+    #    L3 root-cause analysis, L4/L5 recommendation / decision / action.
+    #    No second anomaly keyword list is maintained here.
+    intent = classify_intent(normalized)
+    if intent.level == "L2" or intent.wants_root_cause or intent.wants_action:
+        required = doris_route_tools()
+        if not required:
+            return limitation()
+        return _decision(
+            digest,
+            mode=MODE_DIAGNOSTIC_ANALYSIS,
+            reason_code="DIAGNOSTIC_REQUEST",
+            next_step=NEXT_QUERY_DORIS,
+            required_tools=required,
+            evidence_required=True,
+            needs_human=False,
+        )
+
+    # 3. Term-definition / business-object / relationship lookup.
+    if _ONTOLOGY_SIGNAL_RE.search(compact):
+        if has_semantic:
+            return _decision(
+                digest,
+                mode=MODE_ONTOLOGY_LOOKUP,
+                reason_code="ONTOLOGY_LOOKUP_REQUEST",
+                next_step=NEXT_QUERY_ONTOLOGY,
+                required_tools=[_TOOL_SEMANTIC_QUERY],
+                evidence_required=True,
+                needs_human=False,
+            )
+        return limitation()
+
+    # 4. Explicit fact / metric / list / trend query.
+    if _FACT_SIGNAL_RE.search(compact):
+        required = doris_route_tools()
+        if not required:
+            return limitation()
+        return _decision(
+            digest,
+            mode=MODE_FACT_QUERY,
+            reason_code="FACT_REQUEST_RESOLVED",
+            next_step=NEXT_QUERY_DORIS,
+            required_tools=required,
+            evidence_required=True,
+            needs_human=False,
+        )
+
+    # 5. Unrecognized / general chat: answer directly, never report a Doris
+    #    or ontology data need that does not exist.
+    return _decision(
+        digest,
+        mode=MODE_GENERAL_RESPONSE,
+        reason_code="GENERAL_REQUEST",
+        next_step=NEXT_DELIVER,
+        required_tools=[],
+        evidence_required=False,
+        needs_human=False,
+    )
 
 
 def _header_line(line: str) -> str:

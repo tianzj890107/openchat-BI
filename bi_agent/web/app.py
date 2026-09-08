@@ -60,6 +60,7 @@ from ..ontology.remote import OntologyApiError, RemoteOntologyClient
 from ..ontology.remote_retriever import RemoteGraphRetriever
 from ..ontology.graph import build_graph
 from ..report import ReportStore, parser_availability
+from ..recovery import RecoveryState, WAITING_USER
 from ..tools import build_source_executors, register_all
 from ..tools.graph_tools import GRAPH_TOOL_NAMES
 from ..tools.sql_tools import (
@@ -91,6 +92,25 @@ TOTAL_REPORT_CHARS = 60_000
 
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+# ---------------------------------------------------------------------------
+# Phase-3 coordination defaults (single-process safe, bounded)
+# ---------------------------------------------------------------------------
+_DEFAULT_COORDINATION_LEASE_TTL = 60.0
+_DEFAULT_COORDINATION_HEARTBEAT = _DEFAULT_COORDINATION_LEASE_TTL / 3.0
+
+
+def _env_coordination_float(
+    env: dict[str, str], name: str, default: float
+) -> float:
+    raw = str(env.get(name, "")).strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number of seconds, got {raw!r}")
 
 
 class AppState:
@@ -170,6 +190,217 @@ class AppState:
         self.session_slots = SessionSlotRegistry()
         self.admission = AdmissionController(get_limits())
         self.turn_counter = 0
+        # --- Phase-3 shared coordination --------------------------------
+        # Safe local default: no shared backend until the application
+        # configure() path installs one (local in-memory or Redis) through
+        # configure_coordination_from_env().
+        self.coordination_backend: Optional[Any] = None
+        self.coordination_instance_id: str = ""
+        self.coordination_lease_ttl_seconds: float = _DEFAULT_COORDINATION_LEASE_TTL
+        self.coordination_heartbeat_seconds: float = _DEFAULT_COORDINATION_HEARTBEAT
+        self.coordination_health: dict[str, str] = {
+            "status": "local",
+            "effective_mode": "local",
+        }
+
+    # --- Phase-3 shared coordination -----------------------------------
+    def _coordination_has_active_turns(self) -> bool:
+        """True when any slot is busy or admission has active grants.  A live
+        backend must never be hot-swapped while old tickets/leases exist."""
+        with self.registry_lock:
+            for slot in list(getattr(self.session_slots, "_slots", {}).values()):
+                if getattr(slot, "busy", False):
+                    return True
+        snap = self.admission.snapshot()
+        return int(snap.get("active") or 0) > 0
+
+    def configure_coordination(
+        self,
+        *,
+        backend: Any,
+        instance_id: str,
+        lease_ttl_seconds: float,
+        heartbeat_seconds: float,
+    ) -> None:
+        """Install ONE shared backend into the real turn guards.
+
+        Both ``session_slots`` and ``admission`` receive the same backend so
+        cross-instance session leases and global/principal admission share the
+        same state.  Rejected when a live turn would make a hot swap unsafe.
+        """
+        instance_id = str(instance_id or "").strip()
+        ttl = float(lease_ttl_seconds)
+        heartbeat = float(heartbeat_seconds)
+        if not instance_id:
+            raise ValueError("coordination instance_id must be non-empty")
+        if len(instance_id) > 128:
+            raise ValueError("coordination instance_id must be bounded (<= 128 chars)")
+        if ttl <= 0:
+            raise ValueError("coordination lease TTL must be > 0")
+        if heartbeat <= 0:
+            raise ValueError("coordination heartbeat must be > 0")
+        if heartbeat >= ttl / 2.0:
+            raise ValueError("coordination heartbeat must be < TTL / 2")
+        if self._coordination_has_active_turns():
+            raise RuntimeError(
+                "cannot hot-swap coordination backend while turns are active"
+            )
+        limits = get_limits()
+        self.coordination_backend = backend
+        self.coordination_instance_id = instance_id
+        self.coordination_lease_ttl_seconds = float(ttl)
+        self.coordination_heartbeat_seconds = float(heartbeat)
+        self.session_slots = SessionSlotRegistry(
+            shared_backend=backend, instance_id=instance_id
+        )
+        self.admission = AdmissionController(
+            limits, shared_backend=backend, instance_id=instance_id
+        )
+        self.coordination_health = self._bounded_coordination_health(backend)
+
+    def configure_coordination_from_env(
+        self,
+        env: Optional[dict[str, str]] = None,
+        redis_factory: Optional[Any] = None,
+    ) -> None:
+        """Build the coordination backend from configuration and install it.
+
+        Resolves through ``bi_agent.concurrency.build_coordination_backend``
+        at call time (never a cached local reference) so the entry stays
+        patchable and the factory is invoked exactly once per configure.
+        """
+        env = os.environ if env is None else env
+        # Import inside the method: the shared module is re-exported by
+        # bi_agent.concurrency and must stay resolvable under patches.
+        from bi_agent import concurrency as _concurrency
+
+        backend = _concurrency.build_coordination_backend(
+            env, redis_factory=redis_factory
+        )
+        instance_id = str(env.get("CHATBI_INSTANCE_ID", "")).strip()
+        if not instance_id:
+            instance_id = self._default_coordination_instance_id()
+        ttl = _env_coordination_float(
+            env, "CHATBI_LEASE_TTL_SECONDS", _DEFAULT_COORDINATION_LEASE_TTL
+        )
+        heartbeat = _env_coordination_float(
+            env, "CHATBI_LEASE_HEARTBEAT_SECONDS", ttl / 3.0
+        )
+        self.configure_coordination(
+            backend=backend,
+            instance_id=instance_id,
+            lease_ttl_seconds=ttl,
+            heartbeat_seconds=heartbeat,
+        )
+
+    @staticmethod
+    def _default_coordination_instance_id() -> str:
+        """Bounded, non-empty per-process id used when CHATBI_INSTANCE_ID is
+        not configured (never includes credentials)."""
+        return f"{socket.gethostname()}-{os.getpid()}"[:128]
+
+    @staticmethod
+    def _bounded_coordination_health(backend: Any) -> dict[str, str]:
+        try:
+            raw = backend.health() or {}
+        except Exception:
+            raw = {}
+        return {
+            "status": str(raw.get("status") or "local"),
+            "effective_mode": str(raw.get("effective_mode") or "local"),
+        }
+
+    def start_turn_heartbeat(
+        self,
+        slot: Any,
+        lease: Optional[TurnLease],
+        cancel_event: Optional[threading.Event],
+    ) -> Any:
+        """Start an owner-validated lease heartbeat for a SHARED turn.
+
+        Plain local leases (``fence == 0``, no backend) get a no-op guard so
+        single-process mode never spawns heartbeat threads.  Shared leases
+        renew with the configured TTL; a lost/expired/mismatched lease sets
+        the turn's cancel event and the thread exits.
+        """
+        if lease is None or int(getattr(lease, "fence", 0) or 0) <= 0:
+            return _NoopTurnHeartbeat()
+        return _TurnHeartbeat(self, slot, lease, cancel_event)
+
+
+class _NoopTurnHeartbeat:
+    """Guard returned for plain local leases: nothing to keep alive."""
+
+    __slots__ = ()
+
+    def stop(self) -> None:
+        return None
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        return None
+
+    def is_alive(self) -> bool:
+        return False
+
+
+class _TurnHeartbeat:
+    """Daemon heartbeat renewing one shared turn lease until stop/cancel.
+
+    Uses ``Event.wait(interval)`` (never an uninterruptible long sleep), is a
+    daemon thread (cannot block process exit) and only touches lease state —
+    never session content or business results.
+    """
+
+    def __init__(
+        self,
+        state: AppState,
+        slot: Any,
+        lease: TurnLease,
+        cancel_event: Optional[threading.Event],
+    ) -> None:
+        self._state = state
+        self._slot = slot
+        self._lease = lease
+        self._cancel = cancel_event
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="chatbi-turn-heartbeat",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _run(self) -> None:
+        interval = max(
+            0.001, float(self._state.coordination_heartbeat_seconds or 1.0)
+        )
+        while not self._stop_event.is_set():
+            if self._cancel is not None and self._cancel.is_set():
+                break
+            try:
+                ok = self._slot.heartbeat(
+                    self._lease,
+                    self._cancel,
+                    lease_ttl_seconds=self._state.coordination_lease_ttl_seconds,
+                )
+            except Exception:
+                # Redis errors must not kill the app; a failed renew means the
+                # lease can no longer be trusted -> cancel the turn.
+                ok = False
+            if not ok:
+                if self._cancel is not None:
+                    self._cancel.set()
+                break
+            self._stop_event.wait(interval)
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def join(self, timeout: Optional[float] = None) -> None:
+        self._thread.join(timeout=timeout)
+
+    def is_alive(self) -> bool:
+        return self._thread.is_alive()
 
 
 STATE = AppState()
@@ -366,6 +597,12 @@ def configure(
     STATE.session_slots = SessionSlotRegistry()
     STATE.admission = AdmissionController(get_limits())
     STATE.turn_counter = 0
+    # Production wiring for phase-3 shared coordination: the same backend is
+    # installed into session_slots + admission (local in-memory by default,
+    # Redis when CHATBI_COORDINATION_MODE=redis).  A redis closed-policy
+    # failure raises here so the application never starts without a valid
+    # coordination mode.
+    STATE.configure_coordination_from_env(os.environ)
 
     load_agent_defs(cwd)
     reg = get_agent_def_registry()
@@ -803,6 +1040,10 @@ def healthz() -> JSONResponse:
                 "ontology": ontology_ready,
                 "conversation_store": store_ready,
             },
+            "coordination": {
+                "status": STATE.coordination_health.get("status", "local"),
+                "effective_mode": STATE.coordination_health.get("effective_mode", "local"),
+            },
         },
         status_code=200 if ready else 503,
     )
@@ -1042,7 +1283,8 @@ _TURN_EVENT_TYPES = {
     "session_superseded", "claim_context", "answer_validation",
     "render_enforce", "user_choice_resolved", "user_choice_requested",
     "awaiting_user_choice", "action_repair", "delivery_incomplete",
-    "action_recommendations", "sop_progress",
+    "action_recommendations", "sop_progress", "recovery_state",
+    "cognitive_policy",
 }
 
 
@@ -1121,7 +1363,10 @@ def _begin_turn(
     key = _session_key(session_id)
     slot = STATE.session_slots.ensure(_slot_key(mode, key))
     cancel = threading.Event()
-    lease = slot.try_acquire(cancel_event=cancel)
+    lease = slot.try_acquire(
+        cancel_event=cancel,
+        lease_ttl_seconds=STATE.coordination_lease_ttl_seconds,
+    )
     if lease is None:
         resp = _busy_response(str(session_id or ""))
         raise HTTPException(status_code=409, detail=json.loads(resp.body))
@@ -1211,6 +1456,12 @@ def _run_turn_stream(
         # The SSE generator runs on a worker thread; stamp the turn's cancel
         # event there so gated tool executors observe it on the same thread.
         set_current_cancel(cancel)
+        # Shared leases are renewed for the whole turn lifetime.  If the lease
+        # is lost (TTL expiry, takeover, owner mismatch, Redis failure) the
+        # heartbeat sets the SAME cancel event, so Tool Runtime / Recovery /
+        # TurnLease commit gates refuse to commit anything afterwards.  Plain
+        # local leases get a no-op guard (no thread).
+        heartbeat_guard = STATE.start_turn_heartbeat(slot, lease, cancel)
         try:
             for evt in _annotate_events(events, turn_id=turn_id, generation=lease.generation):
                 yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
@@ -1224,6 +1475,11 @@ def _run_turn_stream(
                 evt = {"type": "error", "message": f"{type(e).__name__}: {e}", "turn_id": turn_id}
             yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
         finally:
+            # Order matters: stop the heartbeat, give it a moment to exit,
+            # clear the per-thread cancel stamp, then release the slot and the
+            # admission ticket exactly once (all owner-validated).
+            heartbeat_guard.stop()
+            heartbeat_guard.join(timeout=1.0)
             clear_current_cancel()
             slot.release_turn(lease)
             ticket.controller.release(ticket)
@@ -2224,6 +2480,31 @@ def _activate_conversation_record(
             session._pending_sibling_results = []
             context_restored = True
 
+    # Lightweight Recovery is restored only into real WebSessions (legacy
+    # SimpleNamespace fakes never carry the state machine).  A missing or
+    # legacy snapshot normalizes to PLANNED; a persisted RUNNING snapshot
+    # downgrades to FAILED_RETRYABLE / INTERRUPTED_DURING_EXECUTION.  Real
+    # WebSessions restore through the domain entry, which rebuilds the retry
+    # descriptor from THIS session's persisted assistant tool_use messages
+    # (never from snapshot SQL or browser input); a resumable WAITING_USER
+    # snapshot also reinstates the pending AskUser handle so
+    # continue_with_choice can resume the same recovery turn.
+    restored = None
+    if hasattr(session, "restore_recovery_state"):
+        restored = session.restore_recovery_state(rec.get("recovery_state"))
+    elif hasattr(session, "recovery") and getattr(session, "recovery", None) is not None:
+        session.recovery = RecoveryState(rec.get("recovery_state"))
+        restored = session.recovery_state
+    if restored and restored.get("status") == WAITING_USER:
+        pending = restored.get("pending_user") or {}
+        tool_use_id = pending.get("tool_use_id")
+        if tool_use_id:
+            session.pending_tool_use_id = tool_use_id
+            session.pending_choice_spec = {
+                "question": pending.get("question", ""),
+                "options": pending.get("options", []),
+            }
+
     # New snapshots already contain rendered ontology HTML. Only old records
     # need the compatibility scan/migration, which can be noticeably costly.
     active_session = _session_for_mode(mode, session_id)
@@ -2288,6 +2569,15 @@ def save_conversation(req: ConversationSaveRequest) -> JSONResponse:
         first_user_question_override=(
             req.first_user_question.strip()
             or (session.first_user_question if session else "")
+        ),
+        # The browser is never authoritative for Recovery: the server-side
+        # session snapshot is read here and normalized at the persistence
+        # boundary.  Sessions without the state machine (legacy/test fakes)
+        # simply omit the field.
+        recovery_state=(
+            session.recovery_state
+            if session is not None and hasattr(session, "recovery_state")
+            else None
         ),
     )
     # Local storage is authoritative. A configured sync URL is intentionally

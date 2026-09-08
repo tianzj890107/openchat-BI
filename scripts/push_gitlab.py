@@ -3,9 +3,11 @@
 
 Unified GitLab workflow:
 
-- gitlab      -> ai-team/eimosp-ontology-agentic-analytics      (branch 20260727, default dev branch)
-- main is a release branch managed only through merge requests reviewed by
-  tianzijing; this script never pushes to main and never auto-merges.
+- gitlab          -> ai-team/eimosp-ontology-agentic-analytics   (branch 20260727)
+- master is the sole release mainline; merges into master go through merge
+  requests reviewed by tianzijing and assigned to zhangzhen.  This script
+  never pushes to master or the retained historical main branch and never
+  auto-merges.
 
 Usage:
     python scripts/push_gitlab.py [--check]
@@ -25,7 +27,8 @@ GITLAB_HOST = "gitlab.boulderaitech.com"
 GITLAB_OWNER_REPO = "ai-team/eimosp-ontology-agentic-analytics"
 DEFAULT_SOURCE_BRANCH = "20260727"
 DEFAULT_TARGET_BRANCH = "20260727"
-MAIN_BRANCH = "main"
+RELEASE_BRANCH = "master"
+HISTORICAL_BRANCH = "main"
 REVIEWER = "tianzijing"
 
 
@@ -176,14 +179,32 @@ def main(argv=None):
         )
         return 2
 
-    # 3b. Never push to main: main merges require tianzijing code review.
-    if args.target_branch == MAIN_BRANCH:
-        print(
-            "错误：目标分支 %s 是 main；merge 到 main 必须由 %s code review 后单独发起，"
-            "本脚本不执行 main 合并或推送。"
-            % (MAIN_BRANCH, REVIEWER),
-            file=sys.stderr,
-        )
+    # 3b. This helper can only push the unified development branch.
+    #     master is the sole release mainline; main is a retained historical
+    #     branch.  Neither may be pushed directly, and this check happens
+    #     before any remote read or push.
+    if args.target_branch != DEFAULT_TARGET_BRANCH:
+        if args.target_branch == RELEASE_BRANCH:
+            print(
+                "错误：目标分支 %s 是唯一发布主线 master；merge 到 master 必须由 %s "
+                "code review 后单独发起 Merge Request，本脚本只推送统一开发分支 %s，"
+                "不执行 master 合并。"
+                % (args.target_branch, REVIEWER, DEFAULT_TARGET_BRANCH),
+                file=sys.stderr,
+            )
+        elif args.target_branch == HISTORICAL_BRANCH:
+            print(
+                "错误：目标分支 %s 是历史保留分支，不接受新功能；本脚本只允许推送统一"
+                "开发分支 %s。"
+                % (args.target_branch, DEFAULT_TARGET_BRANCH),
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "错误：目标分支 %s 不允许；本脚本只允许推送统一开发分支 %s。"
+                % (args.target_branch, DEFAULT_TARGET_BRANCH),
+                file=sys.stderr,
+            )
         return 2
 
     # 4. gitlab remote must exist.
@@ -259,7 +280,8 @@ def main(argv=None):
 
     print("GitLab 统一推送成功：HEAD == gitlab/%s == %s"
           % (args.target_branch, head_sha))
-    print("提示：merge 到 main 需要由 %s code review 后单独发起，本脚本不会自动合并。"
+    print("提示：正式交付通过 Merge Request 由 %s code review 后合入唯一发布主线 "
+          "master；本脚本不会自动合并、不会直接 push master。"
           % REVIEWER)
     return 0
 

@@ -28,6 +28,9 @@ web = [
     "python-docx>=1.1.0",
     "pymysql>=1.1.0",
     "networkx>=3.0",
+    # Multi-instance shared coordination (lazy-imported; local mode never
+    # requires the redis client).
+    "redis>=5.0.0",
 ]
 
 [tool.setuptools.packages.find]

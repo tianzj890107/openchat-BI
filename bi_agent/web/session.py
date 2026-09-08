@@ -30,6 +30,7 @@ from typing import Any, Callable, Generator, Optional
 from open_claude.agent_def import AgentDef
 from open_claude.prompt import build_system_prompt
 from bi_agent.tools.analysis_policy import (
+    build_cognitive_policy_decision,
     extract_action_items,
     has_effective_action,
     has_root_cause_section,
@@ -44,7 +45,34 @@ from ..concurrency import (
     ResourceCancelled,
     SessionSlot,
     TurnLease,
-    set_current_cancel,
+)
+from ..tool_runtime import (
+    RETRY_EXHAUSTED,
+    TOOL_CANCELLED,
+    TOOL_EXECUTION_ERROR,
+    TOOL_TIMEOUT,
+    ToolExecutionLedger,
+    ToolExecutionOutcome,
+    ToolTurnScope,
+    bounded_result_ref,
+)
+from ..recovery import (
+    ANALYZE,
+    CANCELLED,
+    DELIVER,
+    FAILED_FINAL,
+    FAILED_RETRYABLE,
+    INTERRUPTED_DURING_EXECUTION,
+    INTENT,
+    ONTOLOGY,
+    PLAN,
+    QUERY,
+    RECOVERY_NOT_RETRYABLE,
+    RecoveryState,
+    RUNNING,
+    WAITING_USER,
+    input_digest,
+    normalize_recovery_state,
 )
 
 
@@ -168,6 +196,24 @@ _SOP_TOOL_STEP: dict[str, tuple[int, str]] = {
     "ChartGenerateMultiDim": (SOP_STEP_QUERY, "生成图表"),
 }
 
+# Recovery (phase 2) — statuses that end the current recovery turn.  When a
+# structured tool outcome lands here the tool loop must stop (no further LLM
+# iteration, no tool_result content committed into the conversation history).
+_RECOVERY_STOP_STATUSES = frozenset({FAILED_RETRYABLE, FAILED_FINAL, CANCELLED})
+
+# Map the existing 6-step SOP stage numbers onto the stable Recovery step
+# codes.  Data-query tools are mapped directly in the tool loop because they
+# own the planning/execute/result cycle; the fallback below only applies to
+# the remaining registry tools.
+_SOP_TO_RECOVERY_STEP = {
+    SOP_STEP_INTENT: INTENT,
+    SOP_STEP_ONTOLOGY: ONTOLOGY,
+    SOP_STEP_PLANNING: PLAN,
+    SOP_STEP_QUERY: QUERY,
+    SOP_STEP_ROOTCAUSE: ANALYZE,
+    SOP_STEP_DECISION: DELIVER,
+}
+
 # Matches a Markdown table separator row, e.g. "| --- | :---: | ---: |"
 _MD_TABLE_SEP_RE = re.compile(
     r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$",
@@ -218,6 +264,7 @@ class WebSession:
         ontology_backend: str = "local",
         ontology_repository_id: str = "",
         tool_executors: Optional[dict[str, Callable[[dict[str, Any], str], str]]] = None,
+        tool_timeouts: Optional[dict[str, float]] = None,
     ) -> None:
         self.cwd = cwd
         self.agent_def = agent_def
@@ -246,6 +293,19 @@ class WebSession:
         # Source-facing tools are captured per browser session. Render and
         # utility tools continue to use the shared immutable registry.
         self._tool_executors = dict(tool_executors or {})
+        # Session-scoped Tool Runtime execution boundary: idempotent execution
+        # records, per-tool timeouts and the stale-result commit gate live in
+        # the ledger, not in the turn loop.
+        self._tool_ledger = ToolExecutionLedger(
+            f"session:{id(self)}",
+            tool_timeouts=tool_timeouts,
+        )
+        # Structured outcome of the most recent boundary run per tool_use_id
+        # (consumed by the tool loop right after ``_execute_tool`` returns).
+        self._execution_outcomes: dict[str, Any] = {}
+        # Local turn scope counter for direct calls without a web
+        # TurnContext (a web turn is keyed by its lease owner instead).
+        self._local_turn_seq = 0
         self.analysis_context = AnalysisContext()
         self.query_results: list[QueryResult] = []
         self.claims: list[Claim] = []
@@ -287,6 +347,26 @@ class WebSession:
         # fallback model is never persisted to the user's saved model choice;
         # the next user turn restarts on the explicitly selected model.
         self._turn_fallback_model_key: Optional[str] = None
+
+        # --- Phase-2 lightweight Recovery ------------------------------
+        # One execution-control state machine per session (PLANNED until the
+        # first user turn starts).  It is deliberately separate from the SOP
+        # display track and from the Tool Runtime ledger: it records the
+        # turn's step/attempt/checkpoints and gates AskUser pauses and the
+        # explicit retry entry point.
+        self.recovery = RecoveryState()
+        # In-memory replay handle of the most recent retryable tool failure
+        # (tool name/id/input).  Never persisted: Recovery checkpoints only
+        # store digests and result refs; this handle simply lets an explicit
+        # retry re-execute exactly the failed call without asking the LLM to
+        # re-issue it.
+        self._recovery_retry_tool_use: Optional[dict[str, Any]] = None
+        # Lightweight structured Cognitive Policy decision for the most recent
+        # NEW user turn (see bi_agent.tools.analysis_policy).  Built exactly
+        # once inside ``generate_turn``; AskUser resumes and explicit retries
+        # never reclassify or overwrite it.  The stored snapshot is a plain
+        # bounded dict (no raw question / SQL / credentials).
+        self._cognitive_policy_decision: Optional[dict[str, Any]] = None
 
     # ------------------------------------------------------------------
     # System-prompt construction (honours per-session overrides)
@@ -475,6 +555,192 @@ class WebSession:
     # Public API
     # ------------------------------------------------------------------
 
+    @property
+    def tool_execution_records(self) -> list[dict[str, Any]]:
+        """Read-only audit snapshot of the session's tool executions.
+
+        Every read returns a fresh list of plain dicts in creation order;
+        mutating the returned snapshot never changes the internal ledger.
+        """
+        return self._tool_ledger.snapshot()
+
+    @property
+    def recovery_state(self) -> dict[str, Any]:
+        """Defensive snapshot of the lightweight Recovery state.
+
+        The returned dict is a deep copy: mutating it never changes the
+        internal state machine (see bi_agent.recovery.RecoveryState).
+        """
+        return self.recovery.snapshot()
+
+    @property
+    def cognitive_policy_decision(self) -> dict[str, Any]:
+        """Defensive snapshot of the most recent Cognitive Policy decision.
+
+        The snapshot is built once per new ``generate_turn`` from the pure
+        ``build_cognitive_policy_decision`` function and never contains the
+        raw user question.  Returns an empty dict before the first user turn.
+        """
+        return copy.deepcopy(self._cognitive_policy_decision or {})
+
+    @staticmethod
+    def normalize_recovery_state(raw: Any) -> dict[str, Any]:
+        """Public normalizer for legacy/malformed Recovery snapshots.
+
+        Old conversation records without ``recovery_state`` normalize to a
+        safe PLANNED state; a persisted RUNNING snapshot (whose owning process
+        is gone) downgrades to FAILED_RETRYABLE / INTERRUPTED_DURING_EXECUTION.
+        """
+        return normalize_recovery_state(raw)
+
+    def restore_recovery_state(self, raw_state: Any) -> dict[str, Any]:
+        """Install a normalized, bounded Recovery snapshot into this session.
+
+        The snapshot is normalized first (a persisted RUNNING state downgrades
+        to FAILED_RETRYABLE / INTERRUPTED_DURING_EXECUTION because its owning
+        process is gone).  When the restored state claims FAILED_RETRYABLE,
+        the replay descriptor is rebuilt ONLY from the assistant ``tool_use``
+        message already persisted in this session's ``messages`` (matched
+        exactly by ``last_checkpoint.tool_use_id``); the checkpoint itself
+        never carries SQL or the full tool input, and no cross-conversation or
+        browser-supplied input is ever trusted.  A FAILED_RETRYABLE state
+        whose replay input cannot be located is degraded immediately to
+        ``FAILED_FINAL/RECOVERY_INPUT_MISSING`` so it can never sit as a
+        fake-retryable state or enter RUNNING with nothing to execute.
+
+        Special case: an INTERRUPTED_DURING_EXECUTION downgrade (the snapshot
+        was RUNNING when persisted) is not a tool failure.  Its last
+        checkpoint was already confirmed before the interruption, so it is
+        never replayed as if it had failed: at a tool step (QUERY/ONTOLOGY)
+        the state degrades to FAILED_FINAL; at a no-tool LLM step it stays a
+        resumable FAILED_RETRYABLE per the phase-2 spec, with no replayable
+        tool descriptor.
+
+        Returns the final defensive recovery snapshot.
+        """
+        normalized = normalize_recovery_state(raw_state)
+        descriptor = None
+        degrade = False
+        if normalized.get("status") == FAILED_RETRYABLE:
+            checkpoint = normalized.get("last_checkpoint")
+            tool_use_id = (
+                str(checkpoint.get("tool_use_id") or "")
+                if isinstance(checkpoint, dict) else ""
+            )
+            interrupted = (
+                normalized.get("error_code") == INTERRUPTED_DURING_EXECUTION
+            )
+            step = str(normalized.get("current_step") or "")
+            if interrupted and step not in (ONTOLOGY, QUERY):
+                # LLM-only interruption: spec-safe resumable downgrade with no
+                # tool to replay (descriptor stays None, state is kept).
+                degrade = False
+            else:
+                if not interrupted and tool_use_id:
+                    descriptor = self._recover_retry_tool_use(tool_use_id)
+                # Unrecoverable when a replay descriptor was required (a real
+                # tool failure, or an interruption at a tool step) but cannot
+                # be rebuilt from this conversation's messages.
+                degrade = descriptor is None
+        self.recovery = RecoveryState(normalized)
+        self._recovery_retry_tool_use = descriptor
+        if degrade:
+            terminal = self.recovery.mark_unrecoverable()
+            if terminal is not None:
+                return terminal
+        return self.recovery.snapshot()
+
+    def _recover_retry_tool_use(self, tool_use_id: str) -> Optional[dict[str, Any]]:
+        """Locate the assistant ``tool_use`` block for ``tool_use_id`` in this
+        session's own message history and return a safe replay descriptor.
+
+        The block must be an assistant tool_use with a non-empty name and a
+        dict ``input``.  Returns ``None`` when the id is not present, the
+        block is not an assistant tool_use, or its payload is malformed — the
+        caller then degrades the restored state instead of faking a retry.
+        """
+        messages = self.messages if isinstance(self.messages, list) else []
+        for message in messages:
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                continue
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") != "tool_use":
+                    continue
+                if str(block.get("id") or "") != str(tool_use_id):
+                    continue
+                name = str(block.get("name") or "")
+                raw_input = block.get("input")
+                if not name or not isinstance(raw_input, dict):
+                    return None
+                return {
+                    "type": "tool_use",
+                    "id": str(tool_use_id),
+                    "name": name,
+                    "input": dict(raw_input),
+                }
+        return None
+
+    def _seed_retry_attempt(self, preflight: dict[str, Any]) -> None:
+        """Re-register a restored FAILED_RETRYABLE's failed attempt in the Tool
+        Runtime ledger so the explicit retry opens checkpoint attempt + 1.
+
+        The in-process ledger already knows the failed attempt (no-op); only a
+        fresh ledger — a session restored from a snapshot that an earlier
+        process wrote — needs the family slot seeded.  The seed is terminal,
+        immutable and never starts an executor.
+        """
+        tool_use = self._recovery_retry_tool_use
+        if not tool_use:
+            return
+        checkpoint = preflight.get("last_checkpoint")
+        if not isinstance(checkpoint, dict):
+            return
+        params = tool_use.get("input")
+        if not isinstance(params, dict):
+            params = {}
+        self._tool_ledger.remember_persisted_failed_attempt(
+            tool_use_id=str(tool_use.get("id") or ""),
+            tool_name=str(tool_use.get("name") or ""),
+            params=params,
+            attempt=int(checkpoint.get("attempt") or preflight.get("attempt") or 1),
+            execution_id=str(checkpoint.get("execution_id") or ""),
+            error_code=str(preflight.get("error_code") or ""),
+        )
+
+    def _recovery_event(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        """Build the SSE recovery_state event from a state snapshot."""
+        return {
+            "type": "recovery_state",
+            "status": snapshot.get("status", ""),
+            "current_step": snapshot.get("current_step", ""),
+            "attempt": snapshot.get("attempt", 0),
+            "retryable": bool(snapshot.get("retryable")),
+            "error_code": snapshot.get("error_code", ""),
+        }
+
+    def _recovery_turn_ref(self) -> str:
+        """Stable identity of the current logical user turn.
+
+        AskUser resumes and explicit retries continue the SAME recovery turn,
+        so the reference is derived from the per-user-turn counter rather than
+        from any single web request's lease.
+        """
+        return f"turn-{self._user_turn_count}"
+
+    def _recovery_step_for_tool(self, name: str) -> str:
+        """Map a tool name onto the stable Recovery step code."""
+        if name in DATA_QUERY_TOOLS:
+            return QUERY
+        mapped = _SOP_TOOL_STEP.get(name)
+        if mapped:
+            return _SOP_TO_RECOVERY_STEP.get(mapped[0], QUERY)
+        return ONTOLOGY
+
     def generate_turn(self, user_text: str, visible_user_text: Optional[str] = None) -> Generator[dict[str, Any], None, None]:
         """Yield events for one user turn (user message → assistant → tools → ...)."""
         # Refuse to even start when the turn was already superseded (e.g. a
@@ -483,6 +749,7 @@ class WebSession:
         if self._turn_superseded():
             yield {"type": "session_superseded"}
             return
+        self._local_turn_seq += 1
         # A new user turn always restarts on the user's explicitly selected
         # model; any automatic fallback from a previous turn is released here.
         self._turn_fallback_model_key = None
@@ -501,7 +768,24 @@ class WebSession:
         self.reconciliation_conflicts = []
         self.messages.append({"role": "user", "content": user_text})
         yield {"type": "user_message", "text": user_text}
+        # One lightweight structured Cognitive Policy decision per NEW user
+        # turn: recorded before any LLM work, never re-classified by AskUser
+        # resumes or explicit retries, and never carrying the raw question.
+        policy_decision = build_cognitive_policy_decision(
+            user_text,
+            self.allowed_tools,
+        )
+        self._cognitive_policy_decision = policy_decision
+        yield {"type": "cognitive_policy", **policy_decision}
         yield self._sop_event(SOP_STEP_INTENT, "用户问题解析", allow_backward=False)
+        # A new user question opens a NEW recovery turn: business state
+        # (data/busy/pending/checkpoint) is reset while the turn reference is
+        # derived from the user-turn counter so AskUser resumes and explicit
+        # retries keep the same recovery identity.
+        self._recovery_retry_tool_use = None
+        snapshot = self.recovery.start_turn(self._recovery_turn_ref())
+        if snapshot is not None:
+            yield self._recovery_event(snapshot)
         yield from self._run_loop()
 
     def continue_with_choice(
@@ -532,6 +816,19 @@ class WebSession:
         if self._turn_superseded():
             yield {"type": "session_superseded"}
             return
+        # Recovery gate: only a WAITING_USER recovery state may advance and
+        # only when the supplied choice belongs to the recorded AskUser call.
+        # Legacy/manual pending flows (no recovery pause) keep their historical
+        # behaviour untouched.
+        if self.recovery.status() == WAITING_USER:
+            pending = self.recovery.snapshot().get("pending_user") or {}
+            if str(pending.get("tool_use_id") or "") != str(self.pending_tool_use_id):
+                yield {"type": "error", "message": "invalid or stale pending choice"}
+                return
+            resumed = self.recovery.resume_after_user_choice()
+            if resumed is not None:
+                yield self._recovery_event(resumed)
+        self._local_turn_seq += 1
         tool_use_id = self.pending_tool_use_id
         sibling_results = getattr(self, "_pending_sibling_results", []) or []
         self.pending_tool_use_id = None
@@ -561,6 +858,70 @@ class WebSession:
             "choice_id": choice_ids[0],
             "choice_label": choice_labels[0],
         }
+        yield from self._run_loop()
+
+    def retry_from_checkpoint(self) -> Generator[dict[str, Any], None, None]:
+        """Explicitly retry the failed step of a FAILED_RETRYABLE turn.
+
+        Only a FAILED_RETRYABLE recovery state may retry; any other state
+        yields ``RECOVERY_NOT_RETRYABLE``.  The failed tool call is replayed
+        through the Tool Runtime as a NEW attempt (never by rewriting the
+        immutable terminal record), and only after it succeeds does the turn
+        continue with one LLM cycle and finish as SUCCEEDED.  Retry requests
+        are themselves idempotent: the ledger caps real executions at
+        ``MAX_EXPLICIT_ATTEMPTS`` and repeated retries reuse the outcome.
+
+        The FAILED_RETRYABLE -> RUNNING transition is the LAST step of the
+        retry gate: the checkpoint's ``tool_use_id`` and the rebuilt replay
+        descriptor are validated atomically first.  A retryable state whose
+        replay input cannot be located is degraded to
+        ``FAILED_FINAL/RECOVERY_INPUT_MISSING`` (by the manager) and rejected
+        here with ``RECOVERY_NOT_RETRYABLE`` — it never enters RUNNING with
+        nothing to execute.
+        """
+        tool_use = self._recovery_retry_tool_use
+        preflight = self.recovery.snapshot()
+        expected_tool_use_id = str((tool_use or {}).get("id") or "")
+        error_code, resumed = self.recovery.begin_retry(expected_tool_use_id)
+        if error_code == RECOVERY_NOT_RETRYABLE:
+            if resumed is not None:
+                # The manager degraded an unreplayable FAILED_RETRYABLE to
+                # FAILED_FINAL/RECOVERY_INPUT_MISSING before any RUNNING
+                # transition; surface that terminal state, then reject.
+                yield self._recovery_event(resumed)
+            yield {
+                "type": "error",
+                "error_code": RECOVERY_NOT_RETRYABLE,
+                "message": "recovery state does not allow an explicit retry",
+            }
+            return
+        if error_code:
+            # RETRY_EXHAUSTED: the retry ceiling is already reached.
+            if resumed is not None:
+                yield self._recovery_event(resumed)
+            yield {"type": "error", "error_code": error_code}
+            return
+        if resumed is not None:
+            yield self._recovery_event(resumed)
+        # A restored FAILED_RETRYABLE state may carry a fresh Tool Runtime
+        # ledger whose failed attempt lived in an earlier process: re-register
+        # that attempt so the explicit retry opens checkpoint attempt + 1.
+        self._seed_retry_attempt(preflight)
+        turn_ctx = getattr(self, "_turn_ctx", None)
+        block = yield from self._run_tool_and_emit(tool_use, turn_ctx, retry=True)
+        if block is None:
+            self._pending_sibling_results = []
+            self.pending_tool_use_id = None
+            self.pending_choice_spec = None
+            yield {"type": "session_superseded"}
+            return
+        if self.recovery.status() in _RECOVERY_STOP_STATUSES:
+            # The retry itself failed (or was exhausted): the turn ends as a
+            # terminal recovery state without further LLM work.
+            return
+        # The retried tool succeeded: feed its tool_result to the conversation
+        # and continue with the normal LLM loop until a final delivery.
+        self.messages.append({"role": "user", "content": [block]})
         yield from self._run_loop()
 
     # ------------------------------------------------------------------
@@ -883,48 +1244,39 @@ class WebSession:
                 for tu in tool_uses:
                     if tu["id"] == ask_user_tu["id"]:
                         continue
-                    yield from self._sop_for_tool(tu["name"], tu.get("input") or {})
-                    t0 = time.time()
-                    output, chart_was_suppressed = self._execute_tool(tu, turn_ctx)
-                    if tu["name"] in DATA_QUERY_TOOLS:
-                        if str(output).startswith("Error"):
-                            self._sop_query_failed = True
-                            yield self._sop_event(SOP_STEP_QUERY, "查询失败，准备调整方案")
-                        else:
-                            yield self._sop_event(SOP_STEP_QUERY, "解析查询结果")
-                    self.record_query_result(tu["name"], tu.get("input") or {}, output)
-                    self._chart_suppressed_this_turn |= chart_was_suppressed
-                    duration_ms = int((time.time() - t0) * 1000)
-                    display_output, chart = extract_chart_spec(output)
-                    display_output, table = extract_table_spec(display_output)
-                    display_output, multi_chart = extract_multidim_chart_spec(display_output)
-                    display_output, todos = extract_todo_spec(display_output)
-                    self._table_rendered_this_turn |= table is not None
-                    llm_output = display_output if (chart or table or multi_chart or todos) else output
-                    entities = self._extract_entities(display_output, tu["name"])
-                    yield {
-                        "type": "tool_result",
-                        "id": tu["id"],
-                        "name": tu["name"],
-                        "input": tu["input"],
-                        "output": display_output,
-                        "duration_ms": duration_ms,
-                        "ontology_entities": entities,
-                        "chart": chart,
-                        "table": table,
-                        "multi_chart": multi_chart,
-                        "todos": (todos or {}).get("todos") if todos else None,
-                    }
-                    sibling_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tu["id"],
-                        "content": llm_output,
-                    })
+                    block = yield from self._run_tool_and_emit(tu, turn_ctx)
+                    if block is None:
+                        # The turn was superseded/cancelled while a sibling
+                        # tool was running.  No user choice may be requested
+                        # and no cached sibling result may resume later.
+                        self._pending_sibling_results = []
+                        self.pending_tool_use_id = None
+                        self.pending_choice_spec = None
+                        yield {"type": "session_superseded"}
+                        return
+                    sibling_results.append(block)
+                    # A structured timeout/failure on a sibling ends the whole
+                    # recovery turn: no AskUser pause may be requested.
+                    if self.recovery.status() in _RECOVERY_STOP_STATUSES:
+                        self._pending_sibling_results = []
+                        self.pending_tool_use_id = None
+                        self.pending_choice_spec = None
+                        return
                 self._pending_sibling_results = sibling_results
 
                 spec = dict(ask_user_tu.get("input") or {})
                 self.pending_tool_use_id = ask_user_tu["id"]
                 self.pending_choice_spec = spec
+                # RUNNING -> WAITING_USER: the recovery state remembers the
+                # paused AskUser call so a later valid choice resumes the SAME
+                # recovery turn instead of opening a fresh one.
+                waiting = self.recovery.ask_user(
+                    ask_user_tu["id"],
+                    spec.get("question", ""),
+                    spec.get("options", []),
+                )
+                if waiting is not None:
+                    yield self._recovery_event(waiting)
                 yield from self._sop_for_tool(ask_user_tu["name"], spec)
                 yield {
                     "type": "user_choice_requested",
@@ -939,47 +1291,19 @@ class WebSession:
             # Normal tool execution path
             tool_results: list[dict[str, Any]] = []
             for tu in tool_uses:
-                yield from self._sop_for_tool(tu["name"], tu.get("input") or {})
-                t0 = time.time()
-                output, chart_was_suppressed = self._execute_tool(tu)
-                if tu["name"] in DATA_QUERY_TOOLS:
-                    if str(output).startswith("Error"):
-                        self._sop_query_failed = True
-                        yield self._sop_event(SOP_STEP_QUERY, "查询失败，准备调整方案")
-                    else:
-                        yield self._sop_event(SOP_STEP_QUERY, "解析查询结果")
-                self.record_query_result(tu["name"], tu.get("input") or {}, output)
-                self._chart_suppressed_this_turn |= chart_was_suppressed
-                duration_ms = int((time.time() - t0) * 1000)
-
-                # Pull out chart/table specs if present; keep the display text
-                # for the UI, strip the JSON blocks before sending back to the LLM.
-                display_output, chart = extract_chart_spec(output)
-                display_output, table = extract_table_spec(display_output)
-                display_output, multi_chart = extract_multidim_chart_spec(display_output)
-                display_output, todos = extract_todo_spec(display_output)
-                self._table_rendered_this_turn |= table is not None
-                llm_output = display_output if (chart or table or multi_chart or todos) else output
-
-                entities = self._extract_entities(display_output, tu["name"])
-                yield {
-                    "type": "tool_result",
-                    "id": tu["id"],
-                    "name": tu["name"],
-                    "input": tu["input"],
-                    "output": display_output,
-                    "duration_ms": duration_ms,
-                    "ontology_entities": entities,
-                    "chart": chart,
-                    "table": table,
-                    "multi_chart": multi_chart,
-                    "todos": (todos or {}).get("todos") if todos else None,
-                }
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tu["id"],
-                    "content": llm_output,
-                })
+                block = yield from self._run_tool_and_emit(tu, turn_ctx)
+                if block is None:
+                    # A superseded/cancelled execution must not commit
+                    # anything nor feed the next LLM iteration.
+                    yield {"type": "session_superseded"}
+                    return
+                tool_results.append(block)
+                # A structured terminal tool failure (timeout / execution
+                # error / cancellation) ends the recovery turn here: no
+                # further LLM iteration may run and no failed tool_result is
+                # committed into the conversation history.
+                if self.recovery.status() in _RECOVERY_STOP_STATUSES:
+                    return
 
             self.messages.append({"role": "user", "content": tool_results})
 
@@ -1128,6 +1452,16 @@ class WebSession:
                     "items": items,
                 }
 
+        # The final answer passed every existing Claim/Evidence/Action/Render
+        # gate: RUNNING -> SUCCEEDED with a DELIVER checkpoint.  Early returns
+        # (provider error, supersession, terminal tool failure) never reach
+        # this point, so they can never mark a partial turn as SUCCEEDED.
+        if self.recovery.status() == RUNNING:
+            current = self.recovery.snapshot()
+            succeeded = self.recovery.mark_succeeded(int(current.get("attempt") or 1))
+            if succeeded is not None:
+                yield self._recovery_event(succeeded)
+
         yield self._sop_event(SOP_STEP_DECISION, "正在返回用户结果")
 
         yield {
@@ -1229,8 +1563,16 @@ class WebSession:
         self,
         tool_use: dict[str, Any],
         turn_ctx: Optional[TurnContext] = None,
+        *,
+        retry: bool = False,
     ) -> tuple[str, bool]:
-        """Execute a tool, applying the deterministic chart usefulness guard."""
+        """Prepare and execute one tool through the Tool Runtime boundary.
+
+        The deterministic chart usefulness guard runs BEFORE the boundary, so
+        a suppressed render call never creates an execution audit record.
+        Returns the historical ``(output, suppressed)`` tuple; the structured
+        outcome is kept per tool_use_id for the tool loop's commit gate.
+        """
 
         name = str(tool_use.get("name") or "")
         params = tool_use.get("input")
@@ -1261,19 +1603,239 @@ class WebSession:
         reason = chart_skip_reason(self._active_user_text, name, params)
         if reason:
             return skipped_chart_output(reason), True
-        try:
-            # Gate network-facing tools with the turn's cancel event so a
-            # reset/restore/disconnect aborts a Doris/ontology wait promptly.
-            ctx = turn_ctx if turn_ctx is not None else getattr(self, "_turn_ctx", None)
-            set_current_cancel(ctx.cancel if ctx is not None else None)
+        tool_use_id = str(tool_use.get("id") or "")
+        outcome = self._run_tool_boundary(
+            name, tool_use_id, params, turn_ctx, retry=retry,
+        )
+        self._remember_outcome(tool_use_id, outcome)
+        if outcome.status == "SUCCEEDED":
+            return str(outcome.output or ""), False
+        # Legacy string conversion for the LLM/UI protocol.  The internal
+        # state stays structured (see tool_runtime.ToolExecutionOutcome), so
+        # timeout/cancel/execution errors are never guessed from prefixes.
+        message = outcome.error_message or f"{name} execution failed"
+        code = outcome.error_code or outcome.status
+        return f"Error executing {name}: {message} ({code})", False
+
+    def _run_tool_boundary(
+        self,
+        name: str,
+        tool_use_id: str,
+        params: dict[str, Any],
+        turn_ctx: Optional[TurnContext],
+        *,
+        retry: bool = False,
+    ) -> ToolExecutionOutcome:
+        """Run one prepared tool call through the session Tool Runtime.
+
+        The executor runs on a bounded daemon worker; this call blocks at most
+        the per-tool timeout and always returns a structured outcome.
+        """
+        def invoke() -> str:
             executor = self._tool_executors.get(name)
             if executor is not None:
-                return executor(params, self.cwd), False
-            return execute_tool(name, params, self.cwd), False
-        except ResourceCancelled:
-            raise
-        except Exception as exc:
-            return f"Error executing {name}: {exc}", False
+                return executor(params, self.cwd)
+            return execute_tool(name, params, self.cwd)
+
+        return self._tool_ledger.execute(
+            scope=self._turn_scope(turn_ctx),
+            tool_use_id=tool_use_id,
+            tool_name=name,
+            params=params,
+            invoke=invoke,
+            retry=retry,
+        )
+
+    def _remember_outcome(self, tool_use_id: str, outcome: ToolExecutionOutcome) -> None:
+        """Keep the structured outcome for the tool loop's commit gate."""
+        self._execution_outcomes[tool_use_id] = outcome
+        if len(self._execution_outcomes) > 512:
+            try:
+                self._execution_outcomes.pop(next(iter(self._execution_outcomes)))
+            except StopIteration:
+                pass
+
+    def _turn_scope(self, turn_ctx: Optional[TurnContext]) -> ToolTurnScope:
+        """Frozen turn identity used for idempotency and the stale gate.
+
+        A web turn is identified by its lease owner + generation (captured ONCE
+        from the turn's ``TurnContext``); direct local calls use a per-turn
+        counter so duplicated deliveries inside one turn share one scope while
+        a later turn never reuses an old result.
+        """
+        ctx = turn_ctx if turn_ctx is not None else getattr(self, "_turn_ctx", None)
+        if ctx is not None:
+            lease = ctx.lease
+            owner = str(getattr(lease, "owner", "") or "")
+            generation = getattr(lease, "generation", None)
+
+            def is_current() -> bool:
+                return not ctx.slot.is_superseded(ctx.lease, ctx.cancel)
+
+            return ToolTurnScope(
+                turn_ref=owner or f"slot-{id(ctx.slot)}",
+                generation=generation,
+                cancel=ctx.cancel,
+                is_current=is_current,
+            )
+        return ToolTurnScope(turn_ref=f"local-{self._local_turn_seq}")
+
+    def _run_tool_and_emit(
+        self,
+        tool_use: dict[str, Any],
+        turn_ctx: Optional[TurnContext],
+        *,
+        retry: bool = False,
+    ) -> Generator[dict[str, Any], None, Optional[dict[str, Any]]]:
+        """Run one tool_use through the shared execution boundary and emit the
+        resulting SSE ``tool_result``.
+
+        Both tool paths (AskUser siblings and the normal loop) go through this
+        single helper so execution bookkeeping, stale-result rejection and the
+        render/table/chart event shape stay identical.
+
+        Returns the LLM-facing ``{type: tool_result, ...}`` content block, or
+        ``None`` when the execution was cancelled/superseded and neither the
+        SSE event nor the content block may be produced.
+        """
+        name = str(tool_use.get("name") or "")
+        raw_params = tool_use.get("input")
+        params = raw_params if isinstance(raw_params, dict) else {}
+        tool_use_id = str(tool_use.get("id") or "")
+        yield from self._sop_for_tool(name, params)
+        t0 = time.time()
+        run = self._execute_tool(tool_use, turn_ctx, retry=retry)
+        output = str(run[0])
+        suppressed = bool(run[1])
+        # Structured boundary runs carry a machine outcome; patched/legacy
+        # executors only produce the historical (output, suppressed) tuple.
+        outcome = self._execution_outcomes.pop(tool_use_id, None)
+        if outcome is not None:
+            status = outcome.status
+            execution_id = outcome.execution_id
+            attempt = outcome.attempt
+            error_code = outcome.error_code or ""
+            reused = bool(outcome.reused)
+            if status == "CANCELLED":
+                # Cancelled/stale executions must never reach the business
+                # state, the SSE stream or the next LLM message.  The recovery
+                # state is still advanced to CANCELLED so a late result can
+                # never rewrite a terminal turn afterwards.
+                cancelled = self.recovery.tool_terminal(
+                    CANCELLED,
+                    step=self._recovery_step_for_tool(name),
+                    error_code=error_code or TOOL_CANCELLED,
+                    retryable=False,
+                    execution_id=execution_id,
+                    attempt=attempt,
+                    input_digest_value=input_digest(params),
+                    tool_use_id=tool_use_id,
+                )
+                if cancelled is not None:
+                    yield self._recovery_event(cancelled)
+                return None
+            # Structured SUCCEEDED / TIMED_OUT / FAILED outcomes drive the
+            # lightweight Recovery state machine (see tool_runtime outcome).
+            # Suppressed (usefulness-guard) runs never reach the boundary and
+            # never carry an outcome, so they stay out of Recovery too.
+            step = self._recovery_step_for_tool(name)
+            digest = input_digest(params)
+            if status == "SUCCEEDED" and not suppressed:
+                self.recovery.tool_success(
+                    step,
+                    execution_id=execution_id,
+                    attempt=attempt,
+                    input_digest_value=digest,
+                    result_ref=bounded_result_ref(output),
+                    tool_use_id=tool_use_id,
+                )
+            elif status in ("TIMED_OUT", "FAILED"):
+                retryable = bool(outcome.retryable)
+                if status == "TIMED_OUT":
+                    target, code = FAILED_RETRYABLE, error_code or TOOL_TIMEOUT
+                    retryable = True
+                elif retryable:
+                    target, code = FAILED_RETRYABLE, error_code or TOOL_TIMEOUT
+                else:
+                    target, code = FAILED_FINAL, error_code or TOOL_EXECUTION_ERROR
+                # Only a retryable failure may be replayed by an explicit
+                # checkpoint retry; a final failure has no replay handle.
+                self._recovery_retry_tool_use = (
+                    dict(tool_use) if retryable else None
+                )
+                terminal = self.recovery.tool_terminal(
+                    target,
+                    step=step,
+                    error_code=code,
+                    retryable=retryable,
+                    execution_id=execution_id,
+                    attempt=attempt,
+                    input_digest_value=digest,
+                    tool_use_id=tool_use_id,
+                )
+                if terminal is not None:
+                    yield self._recovery_event(terminal)
+        else:
+            # Patched/legacy executors only produce the historical
+            # (output, suppressed) tuple: Recovery keeps out of that path so
+            # pre-Recovery tool-failure handling keeps working unchanged.
+            status = "FAILED" if output.startswith("Error") else "SUCCEEDED"
+            execution_id = None
+            attempt = 0
+            error_code = ""
+            reused = False
+        # An executor that returned an Error-looking text is handled exactly
+        # like a structured failure at the session boundary (historical SOP
+        # behaviour), and such text is never fed into query_results/claims.
+        query_failure = status in ("FAILED", "TIMED_OUT") or (
+            status == "SUCCEEDED" and output.startswith("Error")
+        )
+        if name in DATA_QUERY_TOOLS:
+            if query_failure:
+                self._sop_query_failed = True
+                yield self._sop_event(SOP_STEP_QUERY, "查询失败，准备调整方案")
+            else:
+                yield self._sop_event(SOP_STEP_QUERY, "解析查询结果")
+        if status == "SUCCEEDED" and not query_failure and not reused:
+            self.record_query_result(name, params, output)
+        self._chart_suppressed_this_turn |= suppressed
+        duration_ms = int((time.time() - t0) * 1000)
+
+        # Pull out chart/table specs if present; keep the display text for the
+        # UI, strip the JSON blocks before sending back to the LLM.
+        display_output, chart = extract_chart_spec(output)
+        display_output, table = extract_table_spec(display_output)
+        display_output, multi_chart = extract_multidim_chart_spec(display_output)
+        display_output, todos = extract_todo_spec(display_output)
+        self._table_rendered_this_turn |= table is not None
+        llm_output = display_output if (chart or table or multi_chart or todos) else output
+
+        entities = self._extract_entities(display_output, name)
+        event: dict[str, Any] = {
+            "type": "tool_result",
+            "id": tool_use.get("id"),
+            "name": name,
+            "input": tool_use.get("input"),
+            "output": display_output,
+            "duration_ms": duration_ms,
+            "ontology_entities": entities,
+            "chart": chart,
+            "table": table,
+            "multi_chart": multi_chart,
+            "todos": (todos or {}).get("todos") if todos else None,
+        }
+        if execution_id is not None:
+            event["execution_id"] = execution_id
+            event["execution_status"] = status
+            event["attempt"] = attempt
+            if error_code:
+                event["error_code"] = error_code
+        yield event
+        return {
+            "type": "tool_result",
+            "tool_use_id": tool_use.get("id"),
+            "content": llm_output,
+        }
 
     def _display_resolver(self) -> "Callable[[str], Optional[str]]":
         """Build a code → trusted business-name resolver for this session.

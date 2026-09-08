@@ -6,8 +6,10 @@
 | --- | --- | --- | --- |
 | gitlab | ai-team/eimosp-ontology-agentic-analytics | 20260727 | 统一协作开发分支 |
 
-`main` 是发布分支，只通过 Merge Request 合并；合并前必须由 `tianzijing` code
-review，任何 Agent 或脚本都不得直接 push 到 `main`。
+`master` 是唯一发布主线，只通过 Merge Request 合并；MR 固定为 `20260727` →
+`master`，合并前必须由 `tianzijing` code review，assignee 固定为 `zhangzhen`，
+任何 Agent 或脚本都不得直接 push 到 `master`。`main` 是历史保留分支，不再接收
+新功能 Merge Request。
 
 ## 完成标准
 
@@ -41,7 +43,7 @@ git config user.email "zhenzhan@kth.se"
 - 不自动 merge 或 rebase；
 - 不自动推 tag；
 - push 不代表部署；没有当前任务明确部署授权时，push 后任务结束；
-- merge 到 `main` 需要 `tianzijing` code review 后单独发起 Merge Request，本脚本不执行 main 合并；
+- 正式交付 MR 为 `20260727` → `master`，需要 `tianzijing` code review 后单独发起 Merge Request，本脚本不执行 master 合并、不执行 main 合并；
 - 推送失败处理：报告失败，保留已有 push，修复权限或网络后以相同 HEAD 重试，不生成
   补偿 commit、不 force push、不回滚；
 - 远端出现本地没有的独有提交：停止处理并报告，不覆盖。
