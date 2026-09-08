@@ -140,14 +140,29 @@ class GitLabPushTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("禁止 force push", proc.stderr)
 
-    def test_main_target_requires_reviewer(self) -> None:
-        """Pushing to main is refused; main merges need tianzijing review."""
+    def test_historical_main_target_is_rejected(self) -> None:
+        """The retained historical main branch is never a push target."""
         proc = self.run_script("--allow-local-remotes", "--target-branch", "main")
         self.assertEqual(proc.returncode, 2)
-        self.assertIn("tianzijing", proc.stderr)
-        self.assertIn("不执行 main 合并", proc.stderr)
+        self.assertIn("历史保留分支", proc.stderr)
         # Nothing was pushed to main.
         self.assertEqual(git(self.work, "ls-remote", "gitlab", "refs/heads/main"), "")
+
+    def test_master_target_requires_reviewer(self) -> None:
+        """Pushing to master is refused; master merges need review."""
+        proc = self.run_script("--allow-local-remotes", "--target-branch", "master")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("tianzijing", proc.stderr)
+        self.assertIn("唯一发布主线 master", proc.stderr)
+        self.assertIn("不执行 master 合并", proc.stderr)
+        self.assertEqual(git(self.work, "ls-remote", "gitlab", "refs/heads/master"), "")
+
+    def test_arbitrary_non_development_target_is_rejected(self) -> None:
+        """The helper can only push the unified 20260727 development ref."""
+        proc = self.run_script("--allow-local-remotes", "--target-branch", "feature/other")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("只允许推送", proc.stderr)
+        self.assertEqual(git(self.work, "ls-remote", "gitlab", "refs/heads/feature/other"), "")
 
     def test_no_force_push_in_push_command(self) -> None:
         """The script's push invocation never uses --force."""

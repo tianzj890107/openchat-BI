@@ -142,11 +142,13 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 
 ## GitLab 统一推送规则
 
+- `master` 是唯一发布主线；`main` 仅作为历史保留分支，不再接收新功能 Merge Request。
 - eimosp-ontology-agentic-analytics 统一推送到 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 的 `20260727` 分支
   （`gitlab/20260727`）。
 - 普通 commit 只推送统一开发分支：`gitlab/20260727`；
-- merge 到 `main` 需要 `tianzijing` code review 后单独发起 Merge Request，任何
-  Agent 或脚本不得直接 push 到 `main`，也不得自动合并；
+- 正式交付 MR 固定为 `20260727` → `master`，由 `tianzijing` code review 后单独
+  发起（reviewer `tianzijing`，assignee `zhangzhen`）；任何 Agent 或脚本不得直接
+  push 到 `master`，也不得自动合并；
 - 正式版本 tag 需要用户单独授权，且必须推送到 GitLab；
 - push 不等于部署。
 
