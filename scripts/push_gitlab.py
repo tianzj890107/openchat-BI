@@ -6,8 +6,8 @@ Unified GitLab workflow:
 - gitlab          -> ai-team/eimosp-ontology-agentic-analytics   (branch 20260727)
 - master is the sole release mainline; merges into master go through merge
   requests reviewed by tianzijing and assigned to zhangzhen.  This script
-  never pushes to master or the retained historical main branch and never
-  auto-merges.
+  never pushes to master and never auto-merges.  The main branch is retired
+  and deleted; this script never recreates it.
 
 Usage:
     python scripts/push_gitlab.py [--check]
@@ -28,7 +28,7 @@ GITLAB_OWNER_REPO = "ai-team/eimosp-ontology-agentic-analytics"
 DEFAULT_SOURCE_BRANCH = "20260727"
 DEFAULT_TARGET_BRANCH = "20260727"
 RELEASE_BRANCH = "master"
-HISTORICAL_BRANCH = "main"
+RETIRED_BRANCH = "main"
 REVIEWER = "tianzijing"
 
 
@@ -180,9 +180,9 @@ def main(argv=None):
         return 2
 
     # 3b. This helper can only push the unified development branch.
-    #     master is the sole release mainline; main is a retained historical
-    #     branch.  Neither may be pushed directly, and this check happens
-    #     before any remote read or push.
+    #     master is the sole release mainline; main is retired and deleted.
+    #     Neither may be pushed directly, and this check happens before any
+    #     remote read or push.
     if args.target_branch != DEFAULT_TARGET_BRANCH:
         if args.target_branch == RELEASE_BRANCH:
             print(
@@ -192,9 +192,9 @@ def main(argv=None):
                 % (args.target_branch, REVIEWER, DEFAULT_TARGET_BRANCH),
                 file=sys.stderr,
             )
-        elif args.target_branch == HISTORICAL_BRANCH:
+        elif args.target_branch == RETIRED_BRANCH:
             print(
-                "错误：目标分支 %s 是历史保留分支，不接受新功能；本脚本只允许推送统一"
+                "错误：目标分支 %s 已退役并删除，禁止重新创建；本脚本只允许推送统一"
                 "开发分支 %s。"
                 % (args.target_branch, DEFAULT_TARGET_BRANCH),
                 file=sys.stderr,

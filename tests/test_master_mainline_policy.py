@@ -18,8 +18,9 @@ class MasterMainlinePolicyRedTests(unittest.TestCase):
     def test_agents_declares_master_as_only_release_mainline(self):
         text = read("AGENTS.md")
         self.assertIn("`master` 是唯一发布主线", text)
-        self.assertIn("`main` 是历史保留分支", text)
+        self.assertIn("`main` 已退役并删除", text)
         self.assertNotIn("`main` 是发布分支", text)
+        self.assertNotIn("`main` 是历史保留分支", text)
 
     def test_agents_mr_mapping_targets_master_with_fixed_reviewers(self):
         text = read("AGENTS.md")
@@ -37,18 +38,20 @@ class MasterMainlinePolicyRedTests(unittest.TestCase):
         self.assertIn("HEAD == gitlab/20260727", text)
         self.assertIn("`20260727` → `master`", text)
         self.assertIn("`master` 是唯一发布主线", text)
-        self.assertIn("`main` 是历史保留分支", text)
+        self.assertIn("`main` 已退役并删除", text)
         self.assertNotIn("merge 到 `main`", text)
 
     def test_version_policy_uses_master_as_release_branch(self):
         text = read("docs/versions/versioning-policy.md")
         self.assertIn("`master` 是唯一发布主线", text)
-        self.assertIn("`main` 仅作为历史保留分支", text)
+        self.assertIn("`main` 已退役并删除", text)
+        self.assertNotIn("`main` 仅作为历史保留分支", text)
         self.assertNotIn("merge 到 `main`", text)
 
     def test_deployment_inventory_names_master_and_devops_source(self):
         text = read("DEPLOYMENT.md")
         self.assertIn("开发分支 `20260727`，唯一发布主线 `master`", text)
+        self.assertIn("`main` 已退役并删除", text)
         self.assertIn("DevOps 从 `master`", text)
         self.assertIn("push 不等于部署", text)
 
@@ -60,10 +63,11 @@ class MasterMainlinePolicyRedTests(unittest.TestCase):
             ["FROM swr.cn-east-3.myhuaweicloud.com/release/python:3.13-slim"],
         )
 
-    def test_push_script_names_master_release_branch_and_protects_main_history(self):
+    def test_push_script_names_master_release_branch_and_never_recreates_main(self):
         script = read("scripts/push_gitlab.py")
         self.assertIn('RELEASE_BRANCH = "master"', script)
-        self.assertIn('HISTORICAL_BRANCH = "main"', script)
+        self.assertIn('RETIRED_BRANCH = "main"', script)
+        self.assertNotIn('HISTORICAL_BRANCH = "main"', script)
         self.assertNotIn('MAIN_BRANCH = "main"', script)
         self.assertIn("唯一发布主线 master", script)
 

@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import unittest
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -59,10 +60,11 @@ class MasterDefaultProtectionTests(unittest.TestCase):
         result = git("merge-base", "--is-ancestor", "gitlab/main", "gitlab/master", check=False)
         self.assertEqual(result.returncode, 0, "master 提交拓扑仍未包含 main")
 
-    def test_main_and_master_have_identical_content_tree(self):
-        main_tree = git("rev-parse", "gitlab/main^{tree}").stdout.strip()
-        master_tree = git("rev-parse", "gitlab/master^{tree}").stdout.strip()
-        self.assertEqual(master_tree, main_tree, "同步 MR 不得引入实际内容差异")
+    def test_main_has_no_commits_absent_from_master(self):
+        # main 是冻结的历史保留分支：不得存在 master 未包含的独立提交。
+        # master 允许包含 main 尚未拥有的新提交，不回同步入历史 main。
+        count = git("rev-list", "--count", "gitlab/master..gitlab/main").stdout.strip()
+        self.assertEqual(count, "0", "历史 main 不得含有 master 未包含的提交")
 
     def test_master_preserves_administrator_commit_and_huawei_image(self):
         ancestor = git(
@@ -89,10 +91,10 @@ class MasterDefaultProtectionTests(unittest.TestCase):
         self.assertTrue(push_levels and min(push_levels) >= MAINTAINER)
         self.assertTrue(merge_levels and min(merge_levels) >= MAINTAINER)
 
-    def test_historical_main_still_exists_and_remains_protected(self):
-        branch = self.api_get(f"/projects/{PROJECT_ID}/repository/branches/main")
-        self.assertEqual(branch.get("name"), "main")
-        self.assertTrue(branch.get("protected"), "历史 main 不得删除或取消保护")
+    def test_retired_main_is_not_recreated(self):
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.api_get(f"/projects/{PROJECT_ID}/repository/branches/main")
+        self.assertEqual(caught.exception.code, 404)
 
     def test_no_open_merge_request_targets_historical_main(self):
         merge_requests = self.api_get(

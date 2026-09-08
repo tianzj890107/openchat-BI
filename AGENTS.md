@@ -6,7 +6,7 @@
    - `gitlab` → `git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git` 的 `20260727` 分支。
 4. 推送优先使用 `python scripts/push_gitlab.py`，该脚本会校验远端映射、工作区状态、祖先关系和推送后 hash；先运行 `--check` 再执行。
 5. 推送成功标准：`HEAD == gitlab/20260727`。
-6. `master` 是唯一发布主线：merge 到 `master` 必须由 `tianzijing` code review 后单独发起 Merge Request；任何 Agent 或脚本不得直接 push 到 `master`，不得自动合并。`main` 是历史保留分支，不接受新功能 Merge Request，也不得直接 push。
+6. `master` 是唯一发布主线：merge 到 `master` 必须由 `tianzijing` code review 后单独发起 Merge Request；任何 Agent 或脚本不得直接 push 到 `master`，不得自动合并。`main` 已退役并删除：任何 Agent 或脚本不得直接 push 到 `main`，不得重新创建 `main`，也不得将其作为 Merge Request 的 source/target。
 7. 推送失败时不得谎报任务全部完成：报告失败，保留已有 push，修复外部阻塞后用相同 HEAD 重试，不生成补偿 commit。
 8. 禁止 `git push --force` 和 `--force-with-lease` 及任何改写远端历史的推送。
 9. 普通功能修改不自动 push tag；只有用户明确创建正式版本时才创建并推送 tag。
@@ -17,21 +17,28 @@
 14. 禁止提交 secret、`.env`、用户数据和运行产物；用户明确要求“不部署”时，禁止任何服务器写操作和服务重启。
 15. `git push` 失败时报告错误，不得通过部署服务器或其他方式绕过。
 
-## 一次性 main 历史清理授权
+## 一次性 main 历史清理授权（历史审计记录，已失效）
 
-本次允许 Codex：
+> 本段仅作历史审计记录，**该授权已经失效**：`main` 已退役并删除；不得再次执行本授权，
+> 不得据此重新创建 `main`，不得据此 force push，本授权不适用于 `master`。
+
+历史上该授权允许 Codex：
 
 - 临时解除 analytics 项目 `main` 分支保护；
 - 使用 `--force-with-lease` 将已验证的去重历史推送至 `main`；
 - 推送成功后立即恢复原 `main` 保护规则；
 - 仅限删除由 `9b91801` 空内容 merge 引入的 172 个旧邮箱重复提交。
 
-本节是对上方第 8 条以及下方其他“禁止直接推送或改写 `main` 历史”规则的一次性、最小范围例外。它只授权清理 `main` 历史，不适用于 `master`，也不授权部署、删除业务数据、修改其他分支或仓库，更不授权使用普通 `--force`。执行前必须验证目标历史和 `--force-with-lease` 的预期远端值；若范围、提交来源或待删除数量与上述描述不一致，必须停止。无论推送成功或后续放弃本次清理，均不得将本授权用于其他操作；推送成功后，以恢复原 `main` 分支保护作为本次操作完成条件。
+该授权当时是对“禁止直接推送或改写 `main` 历史”规则的一次性、最小范围例外，只授权
+清理 `main` 历史，不授权部署、删除业务数据、修改其他分支或仓库，也不授权使用普通
+`--force`。执行前必须验证目标历史和 `--force-with-lease` 的预期远端值；若范围、提交
+来源或待删除数量与上述描述不一致，必须停止。该授权已随 `main` 退役删除而失效，不得
+再次执行。
 
 ## 任务指令与交付动作映射（固定约定）
 
 - 用户说“push / 推送”＝只把已验证提交推送到 GitLab 开发分支 `gitlab/20260727`（`python scripts/push_gitlab.py`，先 `--check` 再执行）；不部署、不推 tag、不创建 MR。
-- 用户说“merge / 合并 / MR”＝创建 Merge Request：`source_branch=20260727` → `target_branch=master`，reviewer 固定 `tianzijing`（田子敬，id 166），assignee 固定 `zhangzhen`（张真，id 245，用户本人）；只创建 MR，不自动合并、不直接 push `master`。`main` 是历史保留分支，不接受新功能 MR。创建前必须读取 `git log --no-merges master..20260727` 和完整 diff，MR 标题与描述必须归纳本次 MR 包含的全部提交主题；禁止把标题写成“20260727 → master”“Merge 20260727 into master”或其他只描述分支关系的泛化名称。若包含多个独立主题，标题概括整体交付，描述按主题列出每组 commit、主要变化和验证结果；复用已有 MR 时也必须将标题和描述更新到当前完整提交范围。
+- 用户说“merge / 合并 / MR”＝创建 Merge Request：`source_branch=20260727` → `target_branch=master`，reviewer 固定 `tianzijing`（田子敬，id 166），assignee 固定 `zhangzhen`（张真，id 245，用户本人）；只创建 MR，不自动合并、不直接 push `master`。`main` 已退役并删除，不得作为 Merge Request 的 source 或 target。创建前必须读取 `git log --no-merges master..20260727` 和完整 diff，MR 标题与描述必须归纳本次 MR 包含的全部提交主题；禁止把标题写成“20260727 → master”“Merge 20260727 into master”或其他只描述分支关系的泛化名称。若包含多个独立主题，标题概括整体交付，描述按主题列出每组 commit、主要变化和验证结果；复用已有 MR 时也必须将标题和描述更新到当前完整提交范围。
 - 用户说“部署”＝只有当前任务中新出现的明确部署授权才执行部署；历史授权不延续。
 - 用户仅说“继续”时，只能继续**尚未完成且此前已获授权的当前任务**；不得把已经完成的任务重新
   打开，也不得扩大交付范围。
@@ -136,7 +143,7 @@
 ## Git 推送与部署规则
 
 - 完成代码修改并验证通过后，默认交付方式是提交并 push 到 GitLab 统一开发分支（`gitlab/20260727`）；`master` 是唯一发布主线，merge 到 `master` 需要 `tianzijing` code review 后单独发起 Merge Request。
-- `main` 仅作为历史保留分支，不再接收新功能 Merge Request，普通开发不得直接 push 到 `main`；`master` 是唯一发布主线，同样不得直接 push。
+- `main` 已退役并删除，禁止重新创建、不得 push、不得作为 Merge Request 的 source/target；`master` 是唯一发布主线，普通开发不得直接 push `master`。
 - 默认禁止部署、服务器同步、服务重启和服务器配置修改。
 - 只有用户在当前任务中明确要求部署时，才能执行部署。
 - 历史任务中的部署授权不得延续。
