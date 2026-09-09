@@ -154,13 +154,20 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:
-        """Only the official v0.1.0/v0.1.1/v0.1.2 tags may exist locally; no other tag."""
+        """Only official tags (v0.1.0 through v0.2.0) may exist locally; no other tag."""
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
             capture_output=True, text=True, check=True,
         )
         tags = {t for t in proc.stdout.splitlines() if t.strip()}
-        self.assertLessEqual(tags, {"v0.1.0", "v0.1.1", "v0.1.2"})
+        self.assertLessEqual(
+            tags,
+            {
+                "v0.1.0", "v0.1.1", "v0.1.2",
+                "v0.1.3", "v0.1.4", "v0.1.5",
+                "v0.1.6", "v0.1.7", "v0.2.0",
+            },
+        )
 
     def _authoritative_tool_names(self) -> set[str]:
         """Tool names from the agent tools declaration and registered schemas."""
