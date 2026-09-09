@@ -85,7 +85,10 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn('__version__ = "0.1.2"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
         app = (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8")
         self.assertIn('APP_VERSION = "0.1.2"', app)
-        self.assertIn('FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION)', app)
+        self.assertIn(
+            'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, root_path=APP_ROOT_PATH)',
+            app,
+        )
         pkg = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
         self.assertEqual(pkg["version"], "0.1.2")
         lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
