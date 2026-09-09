@@ -48,7 +48,7 @@ eimosp-ontology-agentic-analytics/
 ├── .claude/agents/              # 智能分析、报表分析和报表生成角色
 ├── dataset/                     # 初始化数据及本地运行数据目录
 ├── docs/                        # 产品、Skills、Tools、版本与工程文档
-├── changelog/                   # 日/周工程变更记录
+├── changelog/                   # 周工程变更记录（只按周维护，不创建日报）
 ├── scripts/                     # 数据、元数据和 Git 工作流脚本
 └── tests/                       # 回归、可靠性、并发与文档契约测试
 ```

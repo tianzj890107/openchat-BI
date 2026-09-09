@@ -250,3 +250,28 @@
 - 门禁 `tests/test_literal_ip_server_references.py` 2 passed；
   `tests/test_docker_defaults_and_local_secrets.py` 本地 8 passed + 1 skipped、
   `RUN_SERVER_ENV_SYNC_TESTS=1` 下 9 passed；`git diff --check` 干净。
+
+## 2026-09-09（周三）
+
+### 1. 版本契约过期断言修复（2026-09-09）
+
+- `tests/test_versioning_policy.py::test_product_version_is_v0_1_2` 中 FastAPI 构造
+  断言仍是 base path 功能加入 `root_path=APP_ROOT_PATH` 之前的旧字符串，导致该契约
+  测试在 master 与开发分支上失败；本次将该断言更新为当前实际构造
+  `FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, root_path=APP_ROOT_PATH)`，
+  与 `tests/test_regressions.py` 中已有的完整构造断言保持一致，版本 v0.1.2 契约语义
+  不变，未改动 `bi_agent/web/app.py` 与其他断言。
+- 验证：`tests/test_versioning_policy.py` 19 passed；相关回归（regressions/container/
+  base path/literal-ip/env-sync/mainline/push）保持通过；`git diff --check` 干净。
+
+### 2. changelog 仅按周维护规范固化（2026-09-09）
+
+- 新增 `docs/specs/weekly-changelog-only.md` 与
+  `tests/test_weekly_changelog_only.py`，明确现行流程只按周维护 changelog、不再
+  创建日报，并禁止重新引入日报文件。
+- `README.md` 目录树说明、`docs/versions/README.md`、`docs/versions/
+  versioning-policy.md` 与 `AGENTS.md` 中所有现行规则统一为周维护口径：删除“每日
+  工程记录”“每日可以发布 PATCH”等表述，版本号与是否按日记录无关；历史 changelog
+  中的“每日/日报”字样保留原貌，不改写历史。
+- 历史日报与历史周 changelog 全部保留在 `changelog/` 与 git 历史中，未删除、未重写；
+  无版本号变更、无 tag、无部署、未推送。
