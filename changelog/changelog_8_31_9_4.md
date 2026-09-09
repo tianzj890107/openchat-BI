@@ -62,12 +62,12 @@
   318 项中 1 项环境预置失败（历史备份 tag 相关，未删除该 tag）；Docker 镜像
   构建因拉取 `python:3.13-slim` 超时未完成，未声称容器运行验证通过。
 
-### 4. 发布 v0.1.1 并部署 company-server（9/2）
+### 4. 发布 v0.1.1 并部署 172.16.10.34（9/2）
 
 - 用户明确授权正式版本 `v0.1.1`：版本入口 8 处同步 `0.1.1`，新增
   `docs/versions/v0.1.1.md`，同步版本索引、根 README、AGENTS.md、DEPLOYMENT.md
   与版本契约测试；创建并推送 annotated tag `v0.1.1`，GitLab 创建同名 Release。
-- 部署：company-server（172.16.10.34）新目录
+- 部署：172.16.10.34 新目录
   `~/eimosp-ontology-agentic-analytics-releases/v0.1.1`；会话/图表/上传/日志/图数据
   目录符号链接指向 `openchat-BI-releases/a035df9` 数据目录（历史会话与运行产物
   不复制、不覆盖）；服务器缺 `python3-venv`，`.venv` 由旧 release 复制并改写
@@ -118,14 +118,14 @@
   Spec：`ontology-layout-selector-white-tooltip` → 验收修复 → 键盘与工具栏等高 →
   option 悬浮说明 → 无边框选项 → 窄屏 hover 证据（均已标已完成）。
 
-### 7. 发布 v0.1.2 并部署 company-server（9/3）
+### 7. 发布 v0.1.2 并部署 172.16.10.34（9/3）
 
 - 用户明确授权正式版本 `v0.1.2`：版本入口同步 `0.1.2`，新增
   `docs/versions/v0.1.2.md`；创建 Merge Request !4（`20260727 → main`，
   reviewer `tianzijing`、assignee `zhangzhen`，标题与描述归纳 main..20260727
   全部 13 个提交主题，opened 等待 code review）；创建并推送 annotated tag
   `v0.1.2`（指向定版 commit `c8454d8`），GitLab 创建同名 Release。
-- 部署：company-server 新目录 `releases/v0.1.2`，数据目录符号链接沿用 v0.1.1
+- 部署：172.16.10.34 新目录 `releases/v0.1.2`，数据目录符号链接沿用 v0.1.1
   同一组目标、`exports` 指向 v0.1.1 导出目录；`.venv` 由 v0.1.1 复制并改写 3 处
   可编辑安装引用；停 v0.1.1 进程切换（旧目录保留可回滚）。验证：`/healthz`
   `version=0.1.2`、`port=8765`、`configured=true`、dependencies 全 true；
@@ -140,7 +140,7 @@
   前端 `node --test` 76 passed；`pytest tests/test_regressions.py -q`
   219 passed；`npm run build` 成功；`git diff --check` 通过。
 - 版本：`v0.1.1`（9/2）、`v0.1.2`（9/3）均完成 tag + GitLab Release +
-  company-server 部署；`main` 经 MR !3 合入至 `a7e4365`，MR !4 承载
+  172.16.10.34 部署；`main` 经 MR !3 合入至 `a7e4365`，MR !4 承载
   v0.1.2 交付待 review 合入。
 - 数据与安全：两轮部署均通过数据目录符号链接保留全部历史会话与运行产物，旧
   release 目录保留可回滚；未删除/改写历史会话与用户数据；共享包只发布未修改
