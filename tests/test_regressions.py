@@ -90,10 +90,11 @@ from open_claude.agent_def import AgentDef
 
 
 class OfflineRegressionTests(unittest.TestCase):
-    def test_root_redirects_to_workbench(self) -> None:
+    def test_root_serves_workbench_without_redirect(self) -> None:
         response = TestClient(app).get("/", follow_redirects=False)
-        self.assertEqual(response.status_code, 307)
-        self.assertEqual(response.headers.get("location"), "/workbench")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.headers.get("location"))
+        self.assertIn("text/html", response.headers.get("content-type", ""))
 
     def test_remote_metric_priority_and_three_dialect_adapter(self) -> None:
         query = "target"

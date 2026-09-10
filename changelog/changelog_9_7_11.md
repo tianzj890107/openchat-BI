@@ -275,3 +275,29 @@
   中的“每日/日报”字样保留原貌，不改写历史。
 - 历史日报与历史周 changelog 全部保留在 `changelog/` 与 git 历史中，未删除、未重写；
   无版本号变更、无 tag、无部署、未推送。
+
+## 2026-09-10（周四）
+
+### 1. 应用根入口直接返回工作台，不再跳转 /workbench（TDD RED→GREEN，2026-09-10 11:47）
+
+- 现象：配置 `APP_ROOT_PATH=/api/ontology-agentic-analytics` 时，访问
+  `GET /api/ontology-agentic-analytics` 会被 307 跳转到 `/workbench`，浏览器地址栏
+  被改写；网关只暴露该子路径根入口时，跳转后工作台静态资源易 404。
+- 现在根入口与兼容入口由唯一构造函数 `_workbench_response()`
+  （`bi_agent/web/app.py`）共同返回工作台 HTML：`GET /api/ontology-agentic-analytics`
+  直接 200 `text/html`，不再返回 307/308、不再带 `Location` 响应头，浏览器地址保持
+  不变；`GET /api/ontology-agentic-analytics/workbench` 继续 200 且 HTML 与根入口
+  完全一致。
+- 未配置 `APP_ROOT_PATH` 时行为一致：`GET /` 直接返回工作台 HTML，`GET /workbench`
+  继续兼容。两处共用同一 HTML 渲染与 no-store 缓存响应头逻辑，删除根路由的
+  `RedirectResponse`，并移除 `fastapi.responses` 中不再使用的该 import。
+- 未改动：`APP_ROOT_PATH` 规范化、base path 前缀剥离中间件、`/static` 挂载、
+  `/api` 路由、`/healthz`、网关（Vane/Ingress/OpenResty）配置与前端构建产物。
+- 测试：新增 `docs/specs/direct-root-workbench-entry.md` 与
+  `tests/test_direct_root_workbench_entry.py`（RED→GREEN，3 passed）；
+  `tests/test_application_base_path.py` 中原 307 断言更新为新根入口 200 契约（7
+  passed，静态资源、前缀、HTML 注入与兼容性断言保持不减）；
+  `tests/test_regressions.py` 中同类过期断言同步更新为根入口 200 且无 `Location`
+  （219 passed）；`tests.test_container_port_contract` 12 passed；
+  `git diff --check` 干净。
+- 无版本号变更、无 tag、无推送、无部署。

@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from bi_agent.web.app import app
 
 client = TestClient(app, follow_redirects=False)
-redirect = client.get("/?theme=light")
+root = client.get("/?theme=light")
 workbench = client.get("/workbench")
 external_workbench = client.get(app.root_path + "/workbench")
 external_health = client.get(app.root_path + "/healthz")
@@ -32,8 +32,10 @@ external_asset = client.get(
 )
 print(json.dumps({
     "root_path": app.root_path,
-    "redirect_status": redirect.status_code,
-    "redirect_location": redirect.headers.get("location"),
+    "root_status": root.status_code,
+    "root_location": root.headers.get("location"),
+    "root_content_type": root.headers.get("content-type", ""),
+    "root_html": root.text,
     "workbench_status": workbench.status_code,
     "workbench_html": workbench.text,
     "external_workbench_status": external_workbench.status_code,
@@ -55,10 +57,12 @@ class ApplicationBasePathTests(unittest.TestCase):
     def test_configured_prefix_reaches_all_public_entrypoint_classes(self) -> None:
         result = run_probe(PREFIX)
         self.assertEqual(result["root_path"], PREFIX)
-        self.assertEqual(result["redirect_status"], 307)
-        self.assertEqual(
-            result["redirect_location"], f"{PREFIX}/workbench?theme=light",
-        )
+        # The root entry serves the workbench directly: the browser keeps the
+        # prefixed address and no 3xx/Location is emitted.
+        self.assertEqual(result["root_status"], 200)
+        self.assertIsNone(result["root_location"])
+        self.assertIn("text/html", result["root_content_type"])
+        self.assertEqual(result["root_html"], result["workbench_html"])
         self.assertEqual(result["workbench_status"], 200)
         self.assertEqual(result["external_workbench_status"], 200)
         # Mounted static files must not double the "/static" segment when
@@ -83,7 +87,9 @@ class ApplicationBasePathTests(unittest.TestCase):
     def test_empty_configuration_preserves_root_deployment(self) -> None:
         result = run_probe("")
         self.assertEqual(result["root_path"], "")
-        self.assertEqual(result["redirect_location"], "/workbench?theme=light")
+        self.assertEqual(result["root_status"], 200)
+        self.assertIsNone(result["root_location"])
+        self.assertEqual(result["root_html"], result["workbench_html"])
         self.assertEqual(result["workbench_status"], 200)
         self.assertEqual(result["asset_status"], 200)
         self.assertIn(result["external_health_status"], (200, 503))
