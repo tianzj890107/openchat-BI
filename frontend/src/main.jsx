@@ -22,7 +22,7 @@ const { Sider } = Layout;
 // from these constants everywhere (sidebar, title, skeleton), so the visible
 // name can never drift from the packaged version.
 const PRODUCT_NAME = "智能分析";
-const PRODUCT_VERSION = "v0.1.2";
+const PRODUCT_VERSION = "v0.1.7";
 
 const DECORATIVE_EMOJI_TOKEN = "(?:📌|📊|📎|🧭|📈|📉|📄|🧩|🧠|✅|⚠️|🔍|💡)";
 function stripDecorativeAssistantMarkup(value) {

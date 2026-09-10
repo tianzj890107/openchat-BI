@@ -301,3 +301,20 @@
   （219 passed）；`tests.test_container_port_contract` 12 passed；
   `git diff --check` 干净。
 - 无版本号变更、无 tag、无推送、无部署。
+
+### 2. 产品版本号统一升级到 v0.1.7（用户指定目标版本，2026-09-10 12:05）
+
+- 按用户明确指定的目标版本 v0.1.7，将产品版本号从 0.1.2 统一升级到 0.1.7：
+  `pyproject.toml`、`bi_agent/__init__.py`、`open_claude/__init__.py`、
+  `bi_agent/web/app.py`（`APP_VERSION`，同时改变 `/healthz` 的 `version` 字段）、
+  `frontend/package.json` 与 `frontend/package-lock.json`、
+  `frontend/src/main.jsx`（`PRODUCT_VERSION`）与 `frontend/src/shell.html`
+  （左上角品牌版本标签）。
+- 前端构建产物 `bi_agent/web/static/vendor/antd/workbench.js` 用仓库既有
+  `vite build` 重新构建；重建结果与旧产物仅 2 字节差异（两处 `v0.1.2`→`v0.1.7`），
+  同目录 CSS 与 `lib/` 与旧产物完全一致，工作台界面版本标签现显示 v0.1.7。
+- 同步更新版本契约测试 `tests/test_versioning_policy.py` 与
+  `tests/test_regressions.py` 中的版本断言（0.1.2→0.1.7），其余断言不变。
+- 未创建 tag（`v0.1.7` tag 已存在）、未新建或修改 `docs/versions/` 正式版本文档与
+  版本索引、未创建 GitLab Release、未部署、未修改网关。
+- 验证：全量 `python -m unittest` 445 passed（24 skipped）；`git diff --check` 干净。

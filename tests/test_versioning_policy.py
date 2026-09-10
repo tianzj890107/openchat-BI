@@ -80,21 +80,21 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("versioning-policy.md", doc)
         self.assertIn("push 不等于部署", doc)
 
-    def test_product_version_is_v0_1_2(self) -> None:
-        self.assertIn('version = "0.1.2"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertIn('__version__ = "0.1.2"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
+    def test_product_version_is_v0_1_7(self) -> None:
+        self.assertIn('version = "0.1.7"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertIn('__version__ = "0.1.7"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
         app = (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('APP_VERSION = "0.1.2"', app)
+        self.assertIn('APP_VERSION = "0.1.7"', app)
         self.assertIn(
             'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, root_path=APP_ROOT_PATH)',
             app,
         )
         pkg = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
-        self.assertEqual(pkg["version"], "0.1.2")
+        self.assertEqual(pkg["version"], "0.1.7")
         lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
-        self.assertEqual(lock["packages"][""]["version"], "0.1.2")
+        self.assertEqual(lock["packages"][""]["version"], "0.1.7")
         main = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_VERSION = "v0.1.2";', main)
+        self.assertIn('const PRODUCT_VERSION = "v0.1.7";', main)
 
     def test_no_unauthorized_version_documents(self) -> None:
         versions_dir = ROOT / "docs/versions"
