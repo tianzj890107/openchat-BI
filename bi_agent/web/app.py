@@ -718,6 +718,12 @@ class _AppRootPathStripMiddleware:
     load balancers that pass the full external URL, so /workbench, /api/*,
     /charts/* and /healthz still route without registering a second set of
     prefixed routes.
+
+    Starlette matches routes with ``get_route_path``, which strips
+    ``scope["root_path"]`` from ``scope["path"]``.  FastAPI already sets
+    ``root_path`` to APP_ROOT_PATH, so the prefix must be removed from both
+    keys (or from neither); leaving them out of sync makes mounted
+    ``/static`` files resolve with a duplicated ``static/`` segment and 404.
     """
 
     def __init__(self, inner: Any, prefix: str) -> None:
@@ -727,10 +733,17 @@ class _AppRootPathStripMiddleware:
     async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
         if scope.get("type") == "http" and self.prefix:
             path = scope.get("path") or ""
-            if path == self.prefix:
-                scope["path"] = "/"
-            elif path.startswith(self.prefix + "/"):
-                scope["path"] = path[len(self.prefix):]
+            root_path = scope.get("root_path") or ""
+            if path == self.prefix or path.startswith(self.prefix + "/"):
+                scope["path"] = path[len(self.prefix):] or "/"
+                if root_path == self.prefix or root_path.startswith(self.prefix + "/"):
+                    scope["root_path"] = root_path[len(self.prefix):]
+            elif root_path and not (
+                path == root_path or path.startswith(root_path + "/")
+            ):
+                # Proxy stripped the prefix before forwarding but still reports
+                # it; mounted apps require path to contain root_path.
+                scope["root_path"] = ""
         await self.inner(scope, receive, send)
 
 
