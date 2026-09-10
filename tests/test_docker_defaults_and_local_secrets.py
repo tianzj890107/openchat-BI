@@ -71,6 +71,23 @@ class DockerDefaultsAndLocalSecretsTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(actual.get(name), value)
 
+    def test_qwen_model_catalogs_are_baked_and_consistent(self) -> None:
+        """Qwen catalogs are fixed non-secret defaults baked into the image."""
+        docker = assignments(DOCKERFILE)
+        example = assignments((ROOT / ".env.example").read_text(encoding="utf-8"))
+        catalogs = ("QWEN_TEXT_MODELS", "QWEN_VISION_MODELS")
+        for name in catalogs:
+            with self.subTest(name=name, source="Dockerfile"):
+                self.assertTrue(docker.get(name), f"Dockerfile must bake {name}")
+            with self.subTest(name=name, source=".env.example"):
+                self.assertEqual(example.get(name), docker.get(name))
+        env_path = ROOT / ".env"
+        if env_path.exists():
+            local = assignments(env_path.read_text(encoding="utf-8"))
+            for name in catalogs:
+                with self.subTest(name=name, source=".env"):
+                    self.assertEqual(local.get(name), docker.get(name))
+
     def test_dockerfile_never_bakes_secrets_or_env_file(self) -> None:
         for name in ALL_SECRET_KEYS:
             with self.subTest(name=name):
@@ -93,6 +110,27 @@ class DockerDefaultsAndLocalSecretsTests(unittest.TestCase):
         for name, value in NON_SECRET_DEFAULTS.items():
             with self.subTest(name=name):
                 self.assertEqual(actual.get(name), value)
+
+    def test_local_runtime_secrets_are_present(self) -> None:
+        """Local .env must carry every runtime secret key.
+
+        TEAM_API_KEY is required non-empty because the agent cannot reach the
+        LLM gateway without it.  ONTOLOGY_AUTH_TOKEN/DORIS_PASSWORD have no
+        derivable value (they are empty on the 10.34 server too), so the spec
+        keeps them as explicit empty placeholders until ops injects real
+        values through .env or the platform secret; this gate only keeps the
+        keys from silently disappearing.
+        """
+        env_path = ROOT / ".env"
+        if not env_path.exists():
+            self.skipTest("CI checkout intentionally has no ignored .env")
+        actual = assignments(env_path.read_text(encoding="utf-8"))
+        for name in RUNTIME_SECRET_KEYS:
+            with self.subTest(secret=name):
+                self.assertIn(name, actual, f"{name} key must exist in .env")
+        self.assertTrue(
+            actual["TEAM_API_KEY"].strip(), "TEAM_API_KEY must not be empty",
+        )
 
     def test_example_is_complete_server_env_template(self) -> None:
         example = assignments((ROOT / ".env.example").read_text(encoding="utf-8"))
@@ -121,6 +159,15 @@ class DockerDefaultsAndLocalSecretsTests(unittest.TestCase):
         self.assertTrue(BASELINE_SERVER_ENV_KEYS <= server_keys, BASELINE_SERVER_ENV_KEYS - server_keys)
         self.assertTrue((set(NON_SECRET_DEFAULTS) | RUNTIME_SECRET_KEYS) <= server_keys,
                         (set(NON_SECRET_DEFAULTS) | RUNTIME_SECRET_KEYS) - server_keys)
+
+        values = subprocess.check_output(
+            ["ssh", "172.16.10.34", "awk", "-F=",
+             "/^TEAM_API_KEY=/{print $1 \"=\" $2}", SERVER_ENV_PATH],
+            text=True,
+        )
+        for line in values.splitlines():
+            name, _, value = line.partition("=")
+            self.assertTrue(value.strip(), f"server secret {name} must not be empty")
 
     def test_local_env_is_ignored_by_git_and_docker(self) -> None:
         for text, label in ((GITIGNORE, ".gitignore"), (DOCKERIGNORE, ".dockerignore")):

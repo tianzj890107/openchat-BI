@@ -9,7 +9,9 @@
 1. 确定、非敏感的运行参数全部写入 Dockerfile `ENV`；
 2. 本地 `.env` **只允许增量添加，禁止删除、改名、清空或覆盖任何现有键和值**；
 3. `.env.example` 同步完整运行配置键结构；
-4. Secret 只允许由 `.env`、Kubernetes Secret 或部署平台安全注入，绝不进入镜像；
+4. Secret 必须由本地 `.env` 和服务器运行时环境提供（或由部署平台等价安全注入），绝不进入
+   镜像；`TEAM_API_KEY` 必须非空；无法推导的 `ONTOLOGY_AUTH_TOKEN`、`DORIS_PASSWORD`
+   先以空键占位，真实值交由运维通过 `.env`/平台 Secret 注入；
 5. Kubernetes 自动生成的 `*_SERVICE_HOST`、`*_SERVICE_PORT`、`*_PORT_*_TCP*`
    Service Link 不复制到 Dockerfile、`.env` 或 `.env.example`。
 
@@ -28,11 +30,12 @@ Team LLM、本体、Doris、会话同步、并发与本地协调、任务提醒�
 过程中不得输出或改写其值。在保留全部既有内容的基础上补充：
 
 - `NON_SECRET_DEFAULTS` 中本地尚缺的键，值与 Dockerfile 同步；
-- `ONTOLOGY_AUTH_TOKEN=`；
-- `DORIS_PASSWORD=`。
+- `ONTOLOGY_AUTH_TOKEN=<真实非空值>`；
+- `DORIS_PASSWORD=<真实非空值>`。
+- `TEAM_API_KEY=<真实非空值>`。
 
 已有 `TEAM_API_KEY` 等 Secret 原值必须原样保留。无法推导的新增 Secret 只补空键，交由运维
-填写。`.env` 必须继续被 Git 和 Docker build context 忽略，不得提交。
+填写真实值。`.env` 必须继续被 Git 和 Docker build context 忽略，不得提交；`.env.example` 只保留占位符。
 
 ## 4. `.env.example` 与 10.34 服务器直接同步
 
