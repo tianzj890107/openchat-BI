@@ -399,7 +399,77 @@ class ConversationStore:
             "preview": preview,
             "source_config_present": bool(sanitize_source_config(rec.get("source_config"))),
             "has_ontology_html": bool(str(rec.get("ontology_html") or "").strip()),
+            # Index-only flag: a 新会话 placeholder that never received any
+            # user content. The public summary deliberately stays unchanged.
+            "is_draft": cls._is_unused_draft(rec),
         }
+
+    # Snapshot fields that can only be non-empty once a draft has been used.
+    _DRAFT_HTML_FIELDS = (
+        "chat_html", "dashboard_html", "ontology_html", "tools_html", "llm_html",
+    )
+
+    @classmethod
+    def _is_unused_draft(cls, rec: dict[str, Any]) -> bool:
+        """True when a stored record is an unused 新会话 placeholder.
+
+        Only records with no user content at all qualify: no transcript, no
+        first question, no SOP progress and no rendered HTML. Anything with
+        real content must never be collapsed or hidden as a draft.
+        """
+        if not isinstance(rec, dict) or rec.get("duplicate_of"):
+            return False
+        if rec.get("messages"):
+            return False
+        if record_first_user_question(rec):
+            return False
+        if rec.get("sop_steps"):
+            return False
+        return not any(
+            str(rec.get(field) or "").strip() for field in cls._DRAFT_HTML_FIELDS
+        )
+
+    @staticmethod
+    def _snapshot_is_unused_draft(
+        *,
+        messages: Optional[list],
+        chat_html: str = "",
+        dashboard_html: str = "",
+        ontology_html: str = "",
+        tools_html: str = "",
+        llm_html: str = "",
+        sop_steps: Optional[list] = None,
+        first_user_question: str = "",
+    ) -> bool:
+        """Classify an incoming save payload before it is persisted."""
+        if messages:
+            return False
+        if str(first_user_question or "").strip():
+            return False
+        if sop_steps:
+            return False
+        return not any(
+            str(value or "").strip()
+            for value in (chat_html, dashboard_html, ontology_html, tools_html, llm_html)
+        )
+
+    def _newest_unused_draft(self, mode: str) -> Optional[str]:
+        """Return the newest unused draft id for `mode`, if one exists."""
+        drafts = [
+            entry for entry in self._index().values()
+            if entry.get("is_draft")
+            and (entry.get("mode") if entry.get("mode") in VALID_MODES else "data") == mode
+        ]
+        if not drafts:
+            return None
+        newest = max(
+            drafts,
+            key=lambda entry: (
+                entry.get("updated_at") or "", str(entry.get("id") or ""),
+            ),
+        )
+        cid = str(newest.get("id") or "")
+        return cid or None
 
     def _record_paths(self) -> list[Path]:
         return [p for p in self.root.glob("*.json") if p.name != self._index_path().name]
@@ -436,6 +506,11 @@ class ConversationStore:
         # older installation triggers one compatibility scan. Normal reads
         # only parse this small metadata file.
         if set(entries) != actual_ids:
+            entries = self._rebuild_index()
+        elif any("is_draft" not in entry for entry in entries.values()):
+            # One-time lazy backfill for indexes written before the unused
+            # draft flag existed. It rewrites the small metadata index from
+            # the records; no conversation data is touched or removed.
             entries = self._rebuild_index()
         return entries
 
@@ -582,6 +657,24 @@ class ConversationStore:
         created = None
         existing_source_config: Optional[dict[str, Any]] = None
         existing_first_user_question = ""
+        if self._snapshot_is_unused_draft(
+            messages=messages,
+            chat_html=chat_html,
+            dashboard_html=dashboard_html,
+            ontology_html=ontology_html,
+            tools_html=tools_html,
+            llm_html=llm_html,
+            sop_steps=sop_steps,
+            first_user_question=first_user_question_override,
+        ):
+            # Clicking 新会话 must not pile up empty sidebar entries. Reuse the
+            # newest unused draft of this mode rather than minting another one;
+            # a record that already holds content is never repurposed.
+            current = self._load(cid) if cid else None
+            if current is None or self._is_unused_draft(current):
+                reusable = self._newest_unused_draft(mode)
+                if reusable:
+                    cid = reusable
         if cid:
             existing = self._load(cid)
             if existing and not existing.get("duplicate_of") and existing.get("mode") == mode:
@@ -690,13 +783,29 @@ class ConversationStore:
         return self._summary(entries[str(cid)])
 
     def list(self, mode: Optional[str] = None) -> list[dict[str, Any]]:
-        """Return conversation summaries, newest first, optionally by mode."""
+        """Return conversation summaries, newest first, optionally by mode.
+
+        A record with no user content at all is an unused 新会话 draft, not
+        history. Only the newest unused draft per mode is surfaced so repeated
+        clicks cannot grow the sidebar; extra legacy drafts stay on disk
+        untouched and remain individually restorable.
+        """
+        ordered = sorted(
+            self._index().values(),
+            key=lambda r: (r.get("updated_at") or "", str(r.get("id") or "")),
+            reverse=True,
+        )
+        surfaced_drafts: set[str] = set()
         out: list[dict[str, Any]] = []
-        for metadata in self._index().values():
+        for metadata in ordered:
+            entry_mode = metadata.get("mode") if metadata.get("mode") in VALID_MODES else "data"
+            if metadata.get("is_draft"):
+                if entry_mode in surfaced_drafts:
+                    continue
+                surfaced_drafts.add(entry_mode)
             if mode and metadata.get("mode") != mode:
                 continue
             out.append(self._summary(metadata))
-        out.sort(key=lambda r: (r.get("updated_at") or "", r.get("id") or ""), reverse=True)
         return out
 
     def get(self, cid: str) -> Optional[dict[str, Any]]:

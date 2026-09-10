@@ -543,6 +543,19 @@ def configure(
             STATE.remote_ontology = RemoteOntologyClient.from_env()
         except ValueError as e:
             raise RuntimeError(f"远程本体配置无效: {e}") from e
+        allowed_repository_ids = _allowed_repository_ids()
+        if (
+            allowed_repository_ids is not None
+            and STATE.remote_ontology.repository_id not in allowed_repository_ids
+        ):
+            # Fail fast on a contradictory deployment: an allowlist that does
+            # not contain the configured repository would otherwise boot with a
+            # source the UI and the switch endpoint both refuse.
+            raise RuntimeError(
+                f"远程本体库 {STATE.remote_ontology.repository_id} 不在 "
+                f"{_ALLOWED_REPOSITORY_IDS_ENV} 允许列表中: "
+                f"{','.join(sorted(allowed_repository_ids))}"
+            )
         try:
             catalog = _remote_repository_catalog(STATE.remote_ontology)
         except OntologyApiError as e:
@@ -1332,6 +1345,24 @@ def put_config_endpoint(req: ConfigUpdate) -> JSONResponse:
     })
 
 
+_ALLOWED_REPOSITORY_IDS_ENV = "ONTOLOGY_ALLOWED_REPOSITORY_IDS"
+
+
+def _allowed_repository_ids() -> Optional[set[str]]:
+    """Return the configured repository allowlist, or None when unfiltered.
+
+    An unset or empty ``ONTOLOGY_ALLOWED_REPOSITORY_IDS`` keeps the historical
+    "every accessible repository" behaviour so other deployments are
+    unaffected. A non-empty value restricts the catalog to those ids, which in
+    turn restricts the startup validation, the settings dropdown and the
+    runtime source switch. This must stay environment-driven: hard-coding a
+    repository id in the catalog would break every other customer.
+    """
+    raw = os.environ.get(_ALLOWED_REPOSITORY_IDS_ENV, "")
+    ids = {part.strip() for part in str(raw or "").split(",") if part.strip()}
+    return ids or None
+
+
 def _remote_repository_catalog(client: RemoteOntologyClient) -> list[dict[str, Any]]:
     """Return the complete remote catalog with stable paired source values."""
     repositories: list[dict[str, Any]] = []
@@ -1366,7 +1397,12 @@ def _remote_repository_catalog(client: RemoteOntologyClient) -> list[dict[str, A
         if (total and len(repositories) >= total) or (not total and len(items) < 100):
             break
         page += 1
-    return repositories
+    # Filtering happens after pagination so the manager contract (page/size and
+    # `total`) is honoured exactly as before; only the visible catalog shrinks.
+    allowed = _allowed_repository_ids()
+    if allowed is None:
+        return repositories
+    return [repo for repo in repositories if repo["id"] in allowed]
 
 
 _SOURCE_CONTEXT_FIELDS = (
