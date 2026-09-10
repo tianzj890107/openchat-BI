@@ -129,12 +129,37 @@ DORIS_API_URL=http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query
 ONTOLOGY_REPOSITORY_ID=3
 ```
 
-- `ONTOLOGY_APP_ID` 与 `ONTOLOGY_AUTH_TOKEN` 必须使用各环境自己的凭据，不得跨环境复用；
-  仓库与镜像中不保存真实 token。
+- `ONTOLOGY_APP_ID` 两个环境取值相同且非密钥，作为镜像共享默认值（当前
+  `ApTH1EHKdRk58WhDQB`），各环境可按需覆盖；`ONTOLOGY_AUTH_TOKEN` 是密钥，只能由各
+  环境注入，仓库与镜像中不保存真实值（当前两个环境都为空）。
 - 不要通过前端过滤或在代码里写死 repository ID 来"伪造"某个环境只有少量本体库；本体
   列表必须由该环境的本体服务真实返回。
 - 部署后核对：`GET <环境入口>/api/sources` 的 `ontology.production.base_url` 应等于该
   环境的 `ONTOLOGY_BASE_URL`，`remote_repositories` 与该环境本体服务返回的目录一致。
+
+### 各环境 `.env` 必须同步更新（运维执行）
+
+镜像与仓库只提供结构，**每个环境服务器上的 `.env` 仍保存着旧的直连地址
+（`http://172.16.5.181:30834`），必须由运维按上表改成自己环境的网关**；不改就会继续
+直连同一个后端、看到同一份本体库目录。
+
+| 变量 | PDT | Demo2 | 谁维护 |
+| --- | --- | --- | --- |
+| `ONTOLOGY_BASE_URL` | 必填，PDT 网关 | 必填，demo2 网关 | 运维按环境注入 |
+| `DORIS_API_URL` | 必填，PDT 网关 | 必填，demo2 网关 | 运维按环境注入 |
+| `ONTOLOGY_REPOSITORY_ID` | 按 PDT 实际本体库填写 | `3` | 运维按环境注入 |
+| `ONTOLOGY_APP_ID` | `ApTH1EHKdRk58WhDQB`（共享默认） | 同左 | 仓库默认，可覆盖 |
+| `ONTOLOGY_AUTH_TOKEN` | 当前为空 | 当前为空 | 运维注入（不得入库） |
+
+改完后必须重启服务（`ONTOLOGY_BASE_URL` / `DORIS_API_URL` 是启动期配置），并核对：
+
+```bash
+curl -s http://pdt-dev.eimos.com/api/ontology-agentic-analytics/api/sources
+curl -s http://demo2.eimos.com/api/ontology-agentic-analytics/api/sources
+```
+
+两个响应里的 `ontology.production.base_url` 必须分别是各自环境的 `ONTOLOGY_BASE_URL`，
+`remote_repositories` 必须与各自本体服务返回的目录一致（两个环境的库不一样）。
 
 远程本体模式下不需要本地 Excel 本体文件；本地开发模式才需要：
 

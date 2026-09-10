@@ -334,10 +334,15 @@
   `DORIS_API_URL=…/agent/doris/query`；Demo2
   `ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology` /
   `DORIS_API_URL=…/agent/doris/query` 且 `ONTOLOGY_REPOSITORY_ID=3`。文档同时说明
-  `ONTOLOGY_APP_ID` / `ONTOLOGY_AUTH_TOKEN` 必须各环境独立、仓库与镜像不保存真实 token。
+  各环境必须用自己的一对网关地址。文档同时给出运维清单：服务器上 `.env` 里的旧直连
+  地址（`http://172.16.5.181:30834`）必须改成对应环境的网关并重启服务，否则会继续
+  直连同一个后端、看到同一份本体库目录。
+- `ONTOLOGY_APP_ID` 两个环境取值相同且非密钥，保留为镜像共享默认值；`ONTOLOGY_AUTH_TOKEN`
+  是密钥，只能按环境注入，仓库与镜像不保存真实值（当前两个环境都为空）。
 - `.env.example` 只保留地址结构与凭据占位符：`ONTOLOGY_BASE_URL=<set-per-environment>`、
-  `DORIS_API_URL=<set-per-environment>`、`ONTOLOGY_APP_ID=<set-per-environment>`
-  （注释中给出 PDT/demo2 结构），不再内置 172.16.5.181:30834 或固定 app id。
+  `DORIS_API_URL=<set-per-environment>`（注释中给出 PDT/demo2 结构），不再内置
+  172.16.5.181:30834；共享的 `ONTOLOGY_APP_ID` 保留原值，`ONTOLOGY_AUTH_TOKEN` 保持
+  密钥占位符。
 - 未使用新会话复用：新增纯函数模块 `frontend/src/conversationDraftPolicy.js`，导出
   `shouldReuseUnusedDraft(state)`（convId 存在、`hasContent=false`、首问为空、
   `turnCount=0`）与 `collapseUnusedDrafts(items)`（data/report 分开，每模式只保留
@@ -350,9 +355,9 @@
 - 已执行 `cd frontend && npm run build` 同步 `bi_agent/web/static/vendor/antd/workbench.js`
   （CSS 未变）。
 - 旧测试更新（仅限原先固定断言跨环境值的部分）：
-  `tests/test_docker_defaults_and_local_secrets.py` 把 `ONTOLOGY_BASE_URL`、
-  `DORIS_API_URL`、`ONTOLOGY_APP_ID` 从"固定默认值"表移出，改为必须存在的"按环境注入"
-  键集合（键仍必须存在，只是不再断言某个环境的具体值）；其余断言不减。
+  `tests/test_docker_defaults_and_local_secrets.py` 把 `ONTOLOGY_BASE_URL`、`DORIS_API_URL`
+  从"固定默认值"表移出，改为必须存在的"按环境注入"键集合（键仍必须存在，只是不再断言
+  某个环境的具体地址）；`ONTOLOGY_APP_ID` 因两环境相同仍保留固定默认值断言，其余断言不减。
 - 验证：`tests.test_environment_scoped_ontology_and_unused_session` 6 tests
   （1 skipped：需 `RUN_DEMO2_ONTOLOGY_ENV_TESTS=1` 的 demo2 在线校验）；
   `tests.test_application_base_path`、`tests.test_regressions` 全绿；全量
