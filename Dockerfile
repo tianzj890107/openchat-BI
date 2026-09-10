@@ -3,8 +3,9 @@
 # 统一容器内部端口: 8080（Dockerfile 显式注入，容器内监听 0.0.0.0:8080）
 #   推荐宿主机映射: 8765:8080（8765 同时是非容器本地默认端口）
 # 统一健康检查: GET /healthz（别名 /health）
-# 本体/Doris 网关地址按环境注入（ONTOLOGY_BASE_URL / DORIS_API_URL），镜像不内置任何
-# 环境固定地址；缺少这两个变量时生产模式启动即失败，避免静默连到其它环境。
+# 本体/Doris 网关地址与凭据按环境注入（ONTOLOGY_BASE_URL / DORIS_API_URL /
+# ONTOLOGY_APP_ID / ONTOLOGY_AUTH_TOKEN），镜像不内置任何环境固定地址或 app id；缺少
+# ONTOLOGY_BASE_URL / DORIS_API_URL 时生产模式启动即失败，避免静默连到其它环境。
 FROM swr.cn-east-3.myhuaweicloud.com/release/python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -23,7 +24,6 @@ ENV PYTHONUNBUFFERED=1 \
     QWEN_VISION_MODELS=qwen3-vl-flash,qwen3-vl-235b-a22b-thinking,qwen3-vl-32b-thinking,qwen3-vl-30b-a3b-thinking,qwen3-vl-8b-thinking,qwen3-vl-32b-instruct,qwen3-vl-flash-2026-01-22,qwen-vl-max,qwen3-vl-30b-a3b-instruct,qwen3-vl-235b-a22b-instruct,qwen3-vl-plus,qwen3-vl-plus-2025-09-23,qwen3-vl-plus-2025-12-19,qwen3-vl-8b-instruct,qvq-max,qvq-plus,qwen-vl-ocr-latest,qwen-vl-ocr,qwen-vl-ocr-1028,qwen-vl-ocr-2025-04-13,qwen-vl-ocr-2025-08-28,qwen-vl-ocr-2025-11-20 \
     ONTOLOGY_BACKEND=production \
     ONTOLOGY_REPOSITORY_ID=3 \
-    ONTOLOGY_APP_ID=ApTH1EHKdRk58WhDQB \
     ONTOLOGY_TIMEOUT_SECONDS=30 \
     ONTOLOGY_CACHE_TTL_SECONDS=30 \
     RETRIEVAL_MODE=semantic \
