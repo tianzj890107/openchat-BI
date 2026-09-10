@@ -21,11 +21,10 @@ NON_SECRET_DEFAULTS = {
     "LLM_PROVIDER": "team", "TEAM_BASE_URL": "http://172.16.10.34:4000/v1",
     "TEAM_MODEL": "direct-deepseek-v4-flash", "TEAM_MODELS": TEAM_MODELS,
     "TEAM_DEEPSEEK_ENABLE_THINKING": "true", "TEAM_QWEN_ENABLE_THINKING": "",
-    "ONTOLOGY_BACKEND": "production", "ONTOLOGY_BASE_URL": "http://172.16.5.181:30834",
+    "ONTOLOGY_BACKEND": "production",
     "ONTOLOGY_REPOSITORY_ID": "3", "ONTOLOGY_APP_ID": "ApTH1EHKdRk58WhDQB",
     "ONTOLOGY_TIMEOUT_SECONDS": "30", "ONTOLOGY_CACHE_TTL_SECONDS": "30",
     "RETRIEVAL_MODE": "semantic",
-    "DORIS_API_URL": "http://172.16.5.181:30834/agent/doris/query",
     "DORIS_DATABASE": "ontology_demometaerp_scm_po",
     "CONVERSATION_SYNC_URL": "http://172.16.10.34:8765",
     "CHATBI_MAX_ACTIVE_TURNS": "8", "CHATBI_MAX_ACTIVE_PER_PRINCIPAL": "2",
@@ -50,7 +49,14 @@ BASELINE_LOCAL_ENV_KEYS = {
     "TEAM_DEEPSEEK_ENABLE_THINKING", "TEAM_MODEL", "TEAM_MODELS", "TEAM_QWEN_ENABLE_THINKING",
 }
 RUNTIME_SECRET_KEYS = {"TEAM_API_KEY", "ONTOLOGY_AUTH_TOKEN", "DORIS_PASSWORD"}
-ALL_ENV_KEYS = BASELINE_LOCAL_ENV_KEYS | set(NON_SECRET_DEFAULTS) | RUNTIME_SECRET_KEYS
+# Environment-scoped gateways (PDT vs demo2): the keys are required everywhere,
+# but their values are injected per deployment. They must never be baked into
+# the image with one environment's address, so only presence is asserted here.
+ENVIRONMENT_SCOPED_GATEWAY_KEYS = {"ONTOLOGY_BASE_URL", "DORIS_API_URL"}
+ALL_ENV_KEYS = (
+    BASELINE_LOCAL_ENV_KEYS | set(NON_SECRET_DEFAULTS)
+    | RUNTIME_SECRET_KEYS | ENVIRONMENT_SCOPED_GATEWAY_KEYS
+)
 BASELINE_SERVER_ENV_KEYS = BASELINE_LOCAL_ENV_KEYS - {"GITLAB_TOKEN"}
 SERVER_ENV_PATH = "/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/v0.1.2/.env"
 ALL_SECRET_KEYS = {

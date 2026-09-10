@@ -318,3 +318,42 @@
 - 未创建 tag（`v0.1.7` tag 已存在）、未新建或修改 `docs/versions/` 正式版本文档与
   版本索引、未创建 GitLab Release、未部署、未修改网关。
 - 验证：全量 `python -m unittest` 445 passed（24 skipped）；`git diff --check` 干净。
+
+### 4. 环境隔离的本体/Doris 网关与未使用新会话复用（Spec + TDD RED→GREEN，2026-09-10）
+
+- 先撤销上一版"按 repository ID 白名单过滤"的做法（revert 提交 `915b168`，对应原提交
+  `bd7fbc6`）：不再引入 `ONTOLOGY_ALLOWED_REPOSITORY_IDS`，也不在前端过滤本体库。
+  ECore 目录必须由各环境自己的本体服务真实返回。
+- 环境隔离本体连接：镜像与 Python 默认值不再固定直连跨环境地址。`Dockerfile` 删除
+  `ONTOLOGY_BASE_URL`、`DORIS_API_URL` 两条固定值，`bi_agent/tools/sql_tools.py` 的
+  `DEFAULT_DORIS_API_URL` 改为空串；生产/远程模式缺少 `ONTOLOGY_BASE_URL` 或
+  `DORIS_API_URL` 时 `configure()` 直接 `RuntimeError` 快速失败（实测缺一个也会报错），
+  不会静默连到另一个环境。显式环境变量仍是最高优先级。
+- 两套环境地址写进 `DEPLOYMENT.md`：PDT
+  `ONTOLOGY_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/ontology` /
+  `DORIS_API_URL=…/agent/doris/query`；Demo2
+  `ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology` /
+  `DORIS_API_URL=…/agent/doris/query` 且 `ONTOLOGY_REPOSITORY_ID=3`。文档同时说明
+  `ONTOLOGY_APP_ID` / `ONTOLOGY_AUTH_TOKEN` 必须各环境独立、仓库与镜像不保存真实 token。
+- `.env.example` 只保留地址结构与占位符：`ONTOLOGY_BASE_URL=<set-per-environment>`、
+  `DORIS_API_URL=<set-per-environment>`（注释中给出 PDT/demo2 结构），不再内置
+  172.16.5.181:30834。
+- 未使用新会话复用：新增纯函数模块 `frontend/src/conversationDraftPolicy.js`，导出
+  `shouldReuseUnusedDraft(state)`（convId 存在、`hasContent=false`、首问为空、
+  `turnCount=0`）与 `collapseUnusedDrafts(items)`（data/report 分开，每模式只保留
+  `updated_at` 最新的一个未使用草稿，真实会话全部保留）。
+- 行为：`resetConversation()` 在当前仍是未使用草稿时直接复用——不清 convId、不删
+  `conversationDraftIds`、不再次调用空草稿保存接口、不生成新 cid，左侧只留当前这一条
+  空草稿；已有问题时正常归档并创建新草稿。`normalizeConversationSummaries()` 统一调用
+  `collapseUnusedDrafts()`，首次加载、刷新、保存事件和 React Sidebar 共用同一套去重结果；
+  历史遗留的多余空草稿只在前端列表隐藏，不删除服务器历史 JSON。
+- 已执行 `cd frontend && npm run build` 同步 `bi_agent/web/static/vendor/antd/workbench.js`
+  （CSS 未变）。
+- 旧测试更新（仅限原先固定断言 172.16.5.181 的部分）：
+  `tests/test_docker_defaults_and_local_secrets.py` 把 `ONTOLOGY_BASE_URL`、`DORIS_API_URL`
+  从"固定默认值"表移出，改为必须存在的"按环境注入"键集合；其余断言不减。
+- 验证：`tests.test_environment_scoped_ontology_and_unused_session` 6 tests
+  （1 skipped：需 `RUN_DEMO2_ONTOLOGY_ENV_TESTS=1` 的 demo2 在线校验）；
+  `tests.test_application_base_path`、`tests.test_regressions` 全绿；全量
+  `python -m unittest` 451 passed（25 skipped）；`git diff --check` 干净。
+- 未修改 demo2 运行环境，未做线上验收；无版本号变更、无 tag、无推送、无部署。

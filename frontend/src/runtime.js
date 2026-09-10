@@ -22,6 +22,10 @@ import {
   visitedFromTodos,
 } from "./sopMachine.js";
 import { factQueryPreview } from "./factQueryPreview.js";
+import {
+  collapseUnusedDrafts,
+  shouldReuseUnusedDraft,
+} from "./conversationDraftPolicy.js";
 import { createSigmaOntologyRenderer } from "@boulderaitech/ontology-graph";
 import { prepareRadialLayout, radialGraphOption } from "@boulderaitech/ontology-graph/radial";
 import { buildGraph, buildRadialGraph } from "./ontologyGraphModel.js";
@@ -130,7 +134,7 @@ function draftConversationId(mode) {
 }
 
 function normalizeConversationSummaries(items) {
-  return (Array.isArray(items) ? items : []).map((item) => ({
+  const normalized = (Array.isArray(items) ? items : []).map((item) => ({
     id: item?.id,
     mode: item?.mode || "data",
     title: item?.title || "未命名对话",
@@ -140,6 +144,10 @@ function normalizeConversationSummaries(items) {
     first_user_question: item?.first_user_question || "",
     title_version: Number(item?.title_version || 0),
   })).filter((item) => item.id);
+  // Every consumer (first load, refresh, save event and the React sidebar)
+  // renders this single deduplicated result, so an older installation can
+  // never display more than one untouched 新会话 draft per mode.
+  return collapseUnusedDrafts(normalized);
 }
 
 function publishConversationState(mode, status, conversations = [], reason = "refresh", error = "") {
@@ -7520,6 +7528,27 @@ export function bootWorkbenchRuntime() {
     const silent = opts && opts.silent;
     if (state.busy) return;
     if (!silent && !confirm("开始新对话?当前对话会存入左侧「最近」,可随时恢复。")) return;
+    const resetBucket = buckets[state.mode];
+    if (shouldReuseUnusedDraft({
+      convId: resetBucket.convId,
+      hasContent: resetBucket.hasContent,
+      firstUserQuestion: resetBucket.firstUserQuestion,
+      turnCount: resetBucket.turnCount,
+    })) {
+      // The current conversation is still an untouched 新会话 draft. Reuse it
+      // in place: keep convId (and its reserved draft id), never save another
+      // empty snapshot and never mint a new cid, so the sidebar keeps exactly
+      // this one blank placeholder.
+      renderEmptyState();
+      loadRecent();
+      const reusedStatus = document.getElementById("memory-status");
+      if (reusedStatus) {
+        reusedStatus.textContent = "✓ 当前已是新会话";
+        reusedStatus.className = "settings-status success";
+        setTimeout(() => { if (reusedStatus) reusedStatus.textContent = ""; }, 2500);
+      }
+      return;
+    }
     await saveCurrentConversation();   // persist current to 最近 before clearing
     const url = state.mode === "report" ? withBasePath("api/report/session/reset") : withBasePath("api/session/reset");
     await fetch(withClientSession(url), { method: "POST" });

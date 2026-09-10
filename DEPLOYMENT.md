@@ -85,11 +85,11 @@ bi_agent/web/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css
 生产环境推荐使用远程本体服务和 Doris：
 
 ```dotenv
-ONTOLOGY_BACKEND=remote
-ONTOLOGY_BASE_URL=https://<ontology-service>
+ONTOLOGY_BACKEND=production
+ONTOLOGY_BASE_URL=<本环境本体网关>
 ONTOLOGY_REPOSITORY_ID=<repository-id>
-ONTOLOGY_APP_ID=<app-id>
-ONTOLOGY_AUTH_TOKEN=<token>
+ONTOLOGY_APP_ID=<本环境 app-id>
+ONTOLOGY_AUTH_TOKEN=<本环境 token>
 
 # LLM 至少配置当前模型对应的一个 key。当前团队网关默认模型为 direct-deepseek-v4-flash。
 LLM_PROVIDER=team
@@ -99,11 +99,42 @@ TEAM_MODEL=direct-deepseek-v4-flash
 TEAM_MODELS=<comma-separated-verified-model-ids>
 # 也可改用 qwen / anthropic / deepseek provider，并配置对应 API key。
 
-DORIS_API_URL=http://<doris-gateway>/agent/doris/query
+DORIS_API_URL=<本环境 Doris 查询网关>
 DORIS_DATABASE=<database>
 ```
 
 把配置放在项目根目录的 `.env`（已被忽略）或由 systemd/Docker 注入。不要把真实 key 写进仓库。
+
+### 本体与 Doris 网关按环境隔离（PDT / demo2）
+
+同一套镜像分别部署在两个环境，**Agent 的对外入口与它调用的本体/Doris 网关必须属于
+同一环境**；镜像不再内置任何环境的固定地址，生产模式缺少 `ONTOLOGY_BASE_URL` 或
+`DORIS_API_URL` 时启动即失败，不会回退到其它环境的网关。
+
+| 环境 | Agent 对外入口 | `ONTOLOGY_BASE_URL` | `DORIS_API_URL` |
+| --- | --- | --- | --- |
+| PDT | http://pdt-dev.eimos.com/api/ontology-agentic-analytics | http://pdt-dev.eimos.com/api/gateway2/ontology | http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query |
+| Demo2 | http://demo2.eimos.com/api/ontology-agentic-analytics | http://demo2.eimos.com/api/gateway2/ontology | http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query |
+
+```dotenv
+# PDT
+ONTOLOGY_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/ontology
+DORIS_API_URL=http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query
+```
+
+```dotenv
+# Demo2（本体目录由 demo2 本体服务真实返回，预期只有 ECore 本体库及其数据库）
+ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology
+DORIS_API_URL=http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query
+ONTOLOGY_REPOSITORY_ID=3
+```
+
+- `ONTOLOGY_APP_ID` 与 `ONTOLOGY_AUTH_TOKEN` 必须使用各环境自己的凭据，不得跨环境复用；
+  仓库与镜像中不保存真实 token。
+- 不要通过前端过滤或在代码里写死 repository ID 来"伪造"某个环境只有少量本体库；本体
+  列表必须由该环境的本体服务真实返回。
+- 部署后核对：`GET <环境入口>/api/sources` 的 `ontology.production.base_url` 应等于该
+  环境的 `ONTOLOGY_BASE_URL`，`remote_repositories` 与该环境本体服务返回的目录一致。
 
 远程本体模式下不需要本地 Excel 本体文件；本地开发模式才需要：
 

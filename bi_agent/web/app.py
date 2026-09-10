@@ -535,6 +535,19 @@ def configure(
     STATE.use_doris = use_doris
     remote_mode = STATE.ontology_backend in {"production", "remote"}
     if remote_mode:
+        # Environment isolation: every deployment must inject its own ontology
+        # and Doris gateway. A baked-in fallback would silently point this
+        # deployment at another environment's ontology service (and therefore
+        # at that environment's repository catalog).
+        missing = [
+            name for name in ("ONTOLOGY_BASE_URL", "DORIS_API_URL")
+            if not str(os.environ.get(name, "")).strip()
+        ]
+        if missing:
+            raise RuntimeError(
+                "远程本体模式缺少必需的环境变量: " + ", ".join(missing)
+                + "（每个环境必须显式注入自己的本体/Doris 网关地址）"
+            )
         # Production is remote-only: do not open, validate, or retain an Excel
         # workbook. The empty store only satisfies legacy render/session types;
         # every ontology executor and browse endpoint is remote-bound below.
