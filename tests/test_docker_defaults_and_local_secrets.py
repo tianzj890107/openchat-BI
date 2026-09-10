@@ -22,7 +22,7 @@ NON_SECRET_DEFAULTS = {
     "TEAM_MODEL": "direct-deepseek-v4-flash", "TEAM_MODELS": TEAM_MODELS,
     "TEAM_DEEPSEEK_ENABLE_THINKING": "true", "TEAM_QWEN_ENABLE_THINKING": "",
     "ONTOLOGY_BACKEND": "production",
-    "ONTOLOGY_REPOSITORY_ID": "3", "ONTOLOGY_APP_ID": "ApTH1EHKdRk58WhDQB",
+    "ONTOLOGY_APP_ID": "ApTH1EHKdRk58WhDQB",
     "ONTOLOGY_TIMEOUT_SECONDS": "30", "ONTOLOGY_CACHE_TTL_SECONDS": "30",
     "RETRIEVAL_MODE": "semantic",
     "DORIS_DATABASE": "ontology_demometaerp_scm_po",
@@ -49,12 +49,12 @@ BASELINE_LOCAL_ENV_KEYS = {
     "TEAM_DEEPSEEK_ENABLE_THINKING", "TEAM_MODEL", "TEAM_MODELS", "TEAM_QWEN_ENABLE_THINKING",
 }
 RUNTIME_SECRET_KEYS = {"TEAM_API_KEY", "ONTOLOGY_AUTH_TOKEN", "DORIS_PASSWORD"}
-# Environment-scoped gateways (PDT vs demo2): the keys are required everywhere,
+# Environment-scoped values (PDT vs demo2): the keys are required everywhere,
 # but their values are injected per deployment. They must never be baked into
-# the image with one environment's gateway address, so only presence is
-# asserted here. ONTOLOGY_APP_ID is intentionally NOT in this set: both
-# environments use the same non-secret value, so it stays a fixed default.
-ENVIRONMENT_SCOPED_KEYS = {"ONTOLOGY_BASE_URL", "DORIS_API_URL"}
+# the image with one environment's gateway address or repository id, so only
+# presence is asserted here. ONTOLOGY_APP_ID is intentionally NOT in this set:
+# both environments use the same non-secret value, so it stays a fixed default.
+ENVIRONMENT_SCOPED_KEYS = {"ONTOLOGY_BASE_URL", "DORIS_API_URL", "ONTOLOGY_REPOSITORY_ID"}
 ALL_ENV_KEYS = (
     BASELINE_LOCAL_ENV_KEYS | set(NON_SECRET_DEFAULTS)
     | RUNTIME_SECRET_KEYS | ENVIRONMENT_SCOPED_KEYS

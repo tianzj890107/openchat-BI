@@ -319,13 +319,14 @@
   版本索引、未创建 GitLab Release、未部署、未修改网关。
 - 验证：全量 `python -m unittest` 445 passed（24 skipped）；`git diff --check` 干净。
 
-### 4. 环境隔离的本体/Doris 网关与未使用新会话复用（Spec + TDD RED→GREEN，2026-09-10）
+### 3. 环境隔离的本体/Doris 网关与未使用新会话复用（Spec + TDD RED→GREEN，2026-09-10）
 
 - 先撤销上一版"按 repository ID 白名单过滤"的做法（revert 提交 `915b168`，对应原提交
   `bd7fbc6`）：不再引入 `ONTOLOGY_ALLOWED_REPOSITORY_IDS`，也不在前端过滤本体库。
   ECore 目录必须由各环境自己的本体服务真实返回。
 - 环境隔离本体连接：镜像与 Python 默认值不再固定直连跨环境地址。`Dockerfile` 删除
-  `ONTOLOGY_BASE_URL`、`DORIS_API_URL` 两条固定值，`bi_agent/tools/sql_tools.py` 的
+  `ONTOLOGY_BASE_URL`、`DORIS_API_URL` 两条固定值以及 `ONTOLOGY_REPOSITORY_ID` 固定
+  默认值（该 ID 各环境不同，不能写死一个环境的库），`bi_agent/tools/sql_tools.py` 的
   `DEFAULT_DORIS_API_URL` 改为空串；生产/远程模式缺少 `ONTOLOGY_BASE_URL` 或
   `DORIS_API_URL` 时 `configure()` 直接 `RuntimeError` 快速失败（实测缺一个也会报错），
   不会静默连到另一个环境。显式环境变量仍是最高优先级。
@@ -333,16 +334,25 @@
   `ONTOLOGY_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/ontology` /
   `DORIS_API_URL=…/agent/doris/query`；Demo2
   `ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology` /
-  `DORIS_API_URL=…/agent/doris/query` 且 `ONTOLOGY_REPOSITORY_ID=3`。文档同时说明
-  各环境必须用自己的一对网关地址。文档同时给出运维清单：服务器上 `.env` 里的旧直连
+  `DORIS_API_URL=…/agent/doris/query`。文档同时说明各环境必须用自己的一对网关地址。
+- `ONTOLOGY_REPOSITORY_ID` 也按环境取，两个环境并不相同：实测 PDT 本体网关
+  `GET …/system/manager/ontology-repository` 返回 5 个库，ECore 本体库是 `id=3`
+  （`ontology_demometaerp`）；demo2 本体网关只返回 1 个库，ECore 本体库是 `id=1`
+  （`ontology_ecore`）。因此 PDT 用 `ONTOLOGY_REPOSITORY_ID=3`、demo2 用
+  `ONTOLOGY_REPOSITORY_ID=1`；`DEPLOYMENT.md`、`.env.example` 均给出该查法（不带
+  `X-Ontology-Repository-Id` 头请求目录接口，按名称找到 ECore 库的 `id`）。该变量
+  只决定"当前激活哪个库"，本体库列表始终由该环境网关真实返回；用错 ID 时
+  `configure()` 会以 `远程本体库 X 不在可用目录中` 快速失败。文档同时给出运维清单：
+  服务器上 `.env` 里的旧直连
   地址（`http://172.16.5.181:30834`）必须改成对应环境的网关并重启服务，否则会继续
   直连同一个后端、看到同一份本体库目录。
 - `ONTOLOGY_APP_ID` 两个环境取值相同且非密钥，保留为镜像共享默认值；`ONTOLOGY_AUTH_TOKEN`
   是密钥，只能按环境注入，仓库与镜像不保存真实值（当前两个环境都为空）。
 - `.env.example` 只保留地址结构与凭据占位符：`ONTOLOGY_BASE_URL=<set-per-environment>`、
-  `DORIS_API_URL=<set-per-environment>`（注释中给出 PDT/demo2 结构），不再内置
-  172.16.5.181:30834；共享的 `ONTOLOGY_APP_ID` 保留原值，`ONTOLOGY_AUTH_TOKEN` 保持
-  密钥占位符。
+  `DORIS_API_URL=<set-per-environment>`、`ONTOLOGY_REPOSITORY_ID=<set-per-environment>`
+  （注释中给出 PDT/demo2 的结构与各环境 ID），不再内置 172.16.5.181:30834 或某个
+  环境的仓库 ID；共享的 `ONTOLOGY_APP_ID` 保留原值，`ONTOLOGY_AUTH_TOKEN` 保持密钥
+  占位符。
 - 未使用新会话复用：新增纯函数模块 `frontend/src/conversationDraftPolicy.js`，导出
   `shouldReuseUnusedDraft(state)`（convId 存在、`hasContent=false`、首问为空、
   `turnCount=0`）与 `collapseUnusedDrafts(items)`（data/report 分开，每模式只保留
@@ -355,9 +365,15 @@
 - 已执行 `cd frontend && npm run build` 同步 `bi_agent/web/static/vendor/antd/workbench.js`
   （CSS 未变）。
 - 旧测试更新（仅限原先固定断言跨环境值的部分）：
-  `tests/test_docker_defaults_and_local_secrets.py` 把 `ONTOLOGY_BASE_URL`、`DORIS_API_URL`
-  从"固定默认值"表移出，改为必须存在的"按环境注入"键集合（键仍必须存在，只是不再断言
-  某个环境的具体地址）；`ONTOLOGY_APP_ID` 因两环境相同仍保留固定默认值断言，其余断言不减。
+  `tests/test_docker_defaults_and_local_secrets.py` 把 `ONTOLOGY_BASE_URL`、`DORIS_API_URL`、
+  `ONTOLOGY_REPOSITORY_ID` 从"固定默认值"表移出，改为必须存在的"按环境注入"键集合
+  （键仍必须存在，只是不再断言某个环境的具体地址/ID）；`ONTOLOGY_APP_ID` 因两环境
+  相同仍保留固定默认值断言，`DORIS_DATABASE` 等其他断言一律不减。
+- 按 demo2 口径（`ONTOLOGY_BASE_URL`/`DORIS_API_URL` 指向 demo2 网关、
+  `ONTOLOGY_REPOSITORY_ID=1`）用临时端口本地实测 `/api/sources`：`base_url` 为 demo2
+  网关，`remote_repositories` 只有一条 `ECore 本体库-勿动`（`id=1`、
+  `ontology_ecore`、`ecore`），数据库选项也只有 `__doris_repository__:1`；说明按环境
+  注入网关后，demo2 目录确实由 demo2 本体服务返回，不再读到 PDT 的 5 个库。
 - 验证：`tests.test_environment_scoped_ontology_and_unused_session` 6 tests
   （1 skipped：需 `RUN_DEMO2_ONTOLOGY_ENV_TESTS=1` 的 demo2 在线校验）；
   `tests.test_application_base_path`、`tests.test_regressions` 全绿；全量
