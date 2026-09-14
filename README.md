@@ -219,6 +219,7 @@ Node 子进程执行。
 
 - [部署与运行](DEPLOYMENT.md)
 - [系统接口调用与代码统计](API/系统接口调用与代码统计.md)
+- [智能分析 Agent 前端 API 接口文档](API/智能分析Agent前端API.md)
 - [Skills 说明](docs/skills/README.md)
 - [Agent 场景分析 SOP](docs/ChatBI_Agent场景分析SOP.md)
 - [Tools 清单](docs/ChatBI_Tools.md)
