@@ -63,7 +63,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
     def test_versions_readme_links_policy_and_tracks_the_current_version(self) -> None:
         readme = (ROOT / "docs/versions/README.md").read_text(encoding="utf-8")
         self.assertIn("./versioning-policy.md", readme)
-        self.assertIn("当前版本：`v0.1.8`", readme)
+        self.assertIn("当前版本：`v0.1.9`", readme)
         self.assertIn("不按日期机械递增", readme)
 
     def test_agents_md_links_policy_and_mandates_authorization(self) -> None:
@@ -80,27 +80,29 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("versioning-policy.md", doc)
         self.assertIn("push 不等于部署", doc)
 
-    def test_product_version_is_v0_1_7(self) -> None:
-        self.assertIn('version = "0.1.7"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertIn('__version__ = "0.1.7"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
+    def test_product_version_is_v0_1_9(self) -> None:
+        self.assertIn('version = "0.1.9"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertIn('__version__ = "0.1.9"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
         app = (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('APP_VERSION = "0.1.7"', app)
+        self.assertIn('APP_VERSION = "0.1.9"', app)
         self.assertIn(
             'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, root_path=APP_ROOT_PATH)',
             app,
         )
         pkg = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
-        self.assertEqual(pkg["version"], "0.1.7")
+        self.assertEqual(pkg["version"], "0.1.9")
         lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
-        self.assertEqual(lock["packages"][""]["version"], "0.1.7")
+        self.assertEqual(lock["packages"][""]["version"], "0.1.9")
+        self.assertEqual(lock["version"], "0.1.9")
         main = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_VERSION = "v0.1.7";', main)
+        self.assertIn('const PRODUCT_VERSION = "v0.1.9";', main)
+        self.assertIn('__version__ = "0.1.9"', (ROOT / "open_claude/__init__.py").read_text(encoding="utf-8"))
 
     def test_no_unauthorized_version_documents(self) -> None:
         versions_dir = ROOT / "docs/versions"
         allowed = {
             "README.md", "versioning-policy.md",
-            "v0.1.0.md", "v0.1.1.md", "v0.1.2.md", "v0.1.8.md",
+            "v0.1.0.md", "v0.1.1.md", "v0.1.2.md", "v0.1.8.md", "v0.1.9.md",
         }
         names = {p.name for p in versions_dir.iterdir() if p.is_file()}
         self.assertEqual(names, allowed)
@@ -157,7 +159,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:
-        """Only official tags (v0.1.0 through v0.1.8) may exist locally; no other tag."""
+        """Only official tags (v0.1.0 through v0.1.9) may exist locally; no other tag."""
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
             capture_output=True, text=True, check=True,
@@ -168,7 +170,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
             {
                 "v0.1.0", "v0.1.1", "v0.1.2",
                 "v0.1.3", "v0.1.4", "v0.1.5",
-                "v0.1.6", "v0.1.7", "v0.1.8",
+                "v0.1.6", "v0.1.7", "v0.1.8", "v0.1.9",
             },
         )
 

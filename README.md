@@ -1,10 +1,11 @@
 # eimosp-ontology-agentic-analytics · 智能分析
 
-eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`v0.1.8`。
+eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`v0.1.9`。
 
 系统以 Open Claude Agent Runtime 为执行底座，将业务本体、指标口径、事实数据查询、
 表格与图表生成、根因分析和决策行动组织为可追踪的分析流程，并通过 Web 工作台交付结果。
 
+- [v0.1.9 正式版本说明](docs/versions/v0.1.9.md)
 - [v0.1.8 正式版本说明](docs/versions/v0.1.8.md)
 - [v0.1.2 正式版本说明](docs/versions/v0.1.2.md)
 - [v0.1.1 正式版本说明](docs/versions/v0.1.1.md)
@@ -214,7 +215,7 @@ Node 子进程执行。
   [语义化版本与正式发布规范](docs/versions/versioning-policy.md)；
 - push 不等于部署，部署必须由用户在当前任务中明确授权；
 - GitLab Release 授权后在 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 上基于同名 tag 创建（只补缺失项，不覆盖已有 Release）；
-- 已发布 Release：[智能分析 v0.1.8](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.8)、[智能分析 v0.1.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.2)、[智能分析 v0.1.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.1)、[智能分析 v0.1.0](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.0)
+- 已发布 Release：[智能分析 v0.1.9](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.9)、[智能分析 v0.1.8](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.8)、[智能分析 v0.1.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.2)、[智能分析 v0.1.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.1)、[智能分析 v0.1.0](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.0)
 
 ## 相关文档
 

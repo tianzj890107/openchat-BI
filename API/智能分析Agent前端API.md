@@ -214,7 +214,7 @@ GET /health
   "status": "ok",
   "app": "eimosp-ontology-agentic-analytics",
   "name": "智能分析 Agent",
-  "version": "0.1.7",
+  "version": "0.1.9",
   "host": "pod-hostname",
   "port": 8080,
   "uptime_seconds": 120,
