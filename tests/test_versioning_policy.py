@@ -60,10 +60,10 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("[../README.md](../README.md)", runtime)
         self.assertIn("open-claude", runtime)
 
-    def test_versions_readme_links_policy_and_stays_on_v0_1_2(self) -> None:
+    def test_versions_readme_links_policy_and_tracks_the_current_version(self) -> None:
         readme = (ROOT / "docs/versions/README.md").read_text(encoding="utf-8")
         self.assertIn("./versioning-policy.md", readme)
-        self.assertIn("当前版本：`v0.1.2`", readme)
+        self.assertIn("当前版本：`v0.1.8`", readme)
         self.assertIn("不按日期机械递增", readme)
 
     def test_agents_md_links_policy_and_mandates_authorization(self) -> None:
@@ -98,7 +98,10 @@ class VersioningPolicyDocTests(unittest.TestCase):
 
     def test_no_unauthorized_version_documents(self) -> None:
         versions_dir = ROOT / "docs/versions"
-        allowed = {"README.md", "versioning-policy.md", "v0.1.0.md", "v0.1.1.md", "v0.1.2.md"}
+        allowed = {
+            "README.md", "versioning-policy.md",
+            "v0.1.0.md", "v0.1.1.md", "v0.1.2.md", "v0.1.8.md",
+        }
         names = {p.name for p in versions_dir.iterdir() if p.is_file()}
         self.assertEqual(names, allowed)
 
