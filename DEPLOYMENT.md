@@ -18,14 +18,15 @@
 | 统一健康检查接口 | `GET /healthz`（别名 `GET /health`）；就绪 `200`，未完成配置 `503`，响应含 `app`/`version`/`port`/`dependencies` 等固定字段 |
 | 外部子路径前缀 | `APP_ROOT_PATH`：缺省为空字符串（域名根路径部署）；生产示例 `/api/ontology-agentic-analytics`，配置后对外入口为 `/api/ontology-agentic-analytics/workbench`、`/api/ontology-agentic-analytics/static/*`、`/api/ontology-agentic-analytics/api/*`、`/api/ontology-agentic-analytics/healthz` |
 | Nacos 配置中心 | 预留待对接，当前未接入；中间件类配置仍由 `.env`/环境变量注入（见 §10） |
+| GitLab CI/CD | 项目 runner `sys740-docker-runner`（`172.16.10.34`，docker executor）；`.gitlab-ci.yml` 只做验证（单测 + 黄金集），没有 deploy stage（见 §11） |
 
 > 端口约定：`8080` 是统一容器内部端口；`8765`/`47313`/`47314` 是推荐宿主机映射端口
 > 或非容器直接运行端口（本项目对应 `8765`）。不要把宿主机端口写成容器内部监听端口。
 
-> 分支与构建口径：DevOps 从 `master` 创建迭代分支或构建正式镜像；仓库本身没有
-> GitLab 自动部署流水线，push 不等于部署，本文档不构成自动部署授权，也不代表本
-> 任务已经部署。普通开发仍只推统一开发分支 `gitlab/20260727`，正式交付通过
-> Merge Request 合入唯一发布主线 `master`。
+> 分支与构建口径：DevOps 从 `master` 创建迭代分支或构建正式镜像；仓库里的
+> `.gitlab-ci.yml` 只做验证（单测 + 黄金集），是 CI 不是 CD，push 不等于部署，
+> 本文档不构成自动部署授权，也不代表本任务已经部署。普通开发仍只推统一开发分支
+> `gitlab/20260727`，正式交付通过 Merge Request 合入唯一发布主线 `master`。
 
 > 子路径部署口径：网关把 `APP_ROOT_PATH`（生产示例 `/api/ontology-agentic-analytics`）
 > 前缀流量转发给应用，并在 ASGI 层按 `root_path` 语义剥离前缀，应用内部路由保持
@@ -467,3 +468,63 @@ TASK_ALERT_TIMEOUT_SECONDS=10          # 上游超时，0.5–120s
   密钥优先走 K8s Secret / 环境变量，不进配置中心明文；
 - 与现有 `.env` 的优先级约定、客户端版本（Python nacos-sdk）和回退策略需在接入
   任务中明确后再实施，并同步更新本文档与 `.env.example` 占位注释。
+
+## 11. GitLab CI/CD（只做验证，不做部署）
+
+仓库根目录的 `.gitlab-ci.yml` 在 GitLab 项目 `ai-team/eimosp-ontology-agentic-analytics`
+（project id `1065`）上运行，**不含任何部署动作**：
+
+| Job | Stage | 内容 |
+| --- | --- | --- |
+| `unit-tests` | test | `python -m pytest -q tests` |
+| `analytics-eval-smoke` | eval | `python -m scripts.run_analytics_eval --suite smoke`（P0 契约集门禁） |
+| `analytics-eval-regression` | eval | `python -m scripts.run_analytics_eval --suite regression`（全量离线黄金集） |
+
+### Runner
+
+- 项目 runner `sys740-docker-runner` 注册在 `172.16.10.34`
+  （`being-SYS-740GP-TNRT`，Ubuntu 22.04），executor 为 `docker`，`concurrent = 2`。
+- 该 runner **不执行 untagged job**，job 必须声明 `tags: [boulderai]`，否则会被忽略。
+- 启动方式（配置持久化在 docker volume `gitlab-runner-config`）：
+
+  ```bash
+  docker run -d --name gitlab-runner --restart unless-stopped \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v gitlab-runner-config:/etc/gitlab-runner \
+    docker.m.daocloud.io/gitlab/gitlab-runner:v14.10.1 run
+  ```
+
+- 该 runner 已同时授权给 `ai-team/eimosp-ontology-agentic-modeling`（1064）和
+  `ai-team/cpq_agent`（1068）；这两个项目在自己的 `.gitlab-ci.yml` 里声明
+  `tags: [boulderai]` 即可复用同一台 runner，不需要再注册。
+- 镜像（都在 `172.16.10.34` 本地构建，`pull_policy = if-not-present`）：
+  - `boulderai/python-ci:3.13`：`python:3.13-slim` + `git`（docker executor 需要
+    容器内有 git 才能 clone 仓库）；
+  - `boulderai/analytics-ci:3.13`：再加 `pyproject.toml` 声明的全部依赖和 pytest，
+    job 只需离线的 `pip install -e . --no-deps`，单个 job 约 1 分钟。
+  - `pyproject.toml` 依赖变化后必须重建 `analytics-ci`：
+
+    ```bash
+    scp pyproject.toml <host>:~/ci-image/deps/pyproject.toml
+    docker build -t boulderai/analytics-ci:3.13 ~/ci-image/deps
+    ```
+
+### 已知限制
+
+- `unit-tests` 用 `--deselect` 跳过
+  `test_ontology_graph_modal_uses_product_labels_and_synced_cluster_layout`：该用例
+  读取 `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js`，而
+  `@boulderaitech/ontology-graph` 是 `file:../../ontology-graph` 本地依赖，远端
+  `ai-team/ontology-graph` 仓库当前为空，CI 拿不到该文件。本地安装过 npm 依赖的
+  开发机仍会正常执行这条断言；`ai-team/ontology-graph` 有内容后可去掉 `--deselect`。
+- 流水线不跑前端构建（`frontend` 依赖 antd/vite，镜像未预装 npm 依赖）。
+- 步骤说明：job 里 `git config --global --add safe.directory "$CI_PROJECT_DIR"` 是
+  必需的，否则容器内 root 用户对 checkout 执行 git 命令会因 dubious ownership 失败。
+
+### 安全边界
+
+- docker executor 的 job 容器可以访问宿主机 `/var/run/docker.sock`，等价于在
+  `172.16.10.34` 上执行任意命令。只把该 runner 授权给可信项目，也不要把它当作
+  生产部署机使用。
+- CI 全绿只代表验证通过，不构成部署授权；部署仍按本文档由人工执行，且需要当前
+  任务中的明确部署指令。
