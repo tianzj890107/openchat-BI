@@ -5,7 +5,7 @@
   "suite": [
     "regression"
   ],
-  "domain": "采购",
+  "domain": "销售",
   "category": "metrics",
   "evaluator": "sql",
   "question": "2025年销售额的累计值是多少",

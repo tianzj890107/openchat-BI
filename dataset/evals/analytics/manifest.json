@@ -4,11 +4,11 @@
   "case_schema": "schemas/case.schema.json",
   "description": "End-to-end golden set for the BI / analytics agent. Covers question -> intent -> metric scope -> tool plan -> query -> numbers -> evidence -> chart -> answer. Regenerate with `python dataset/evals/analytics/build_cases.py`; run with `python -m scripts.run_analytics_eval --suite <suite>`.",
   "totals": {
-    "cases": 482,
+    "cases": 509,
     "known_gap": 12,
     "known_gap_p0": 6,
     "by_priority": {
-      "P0": 107,
+      "P0": 134,
       "P1": 340,
       "P2": 35
     },
@@ -16,13 +16,13 @@
       "adversarial": 32,
       "anomaly": 24,
       "charts": 34,
-      "comparison": 14,
+      "comparison": 16,
       "diagnosis": 18,
-      "facts": 96,
-      "failure_recovery": 34,
+      "facts": 110,
+      "failure_recovery": 35,
       "intent": 39,
-      "metrics": 63,
-      "multi_turn": 42,
+      "metrics": 72,
+      "multi_turn": 43,
       "ontology": 58,
       "recommendation": 14,
       "trend": 14
@@ -31,16 +31,18 @@
       "adversarial": 33,
       "charts": 22,
       "diagnosis": 20,
+      "live": 35,
+      "live-canary": 18,
       "multi-turn": 32,
       "ontology": 46,
-      "recorded-provider": 80,
+      "recorded-provider": 107,
       "recovery": 33,
-      "regression": 482,
-      "smoke": 103
+      "regression": 509,
+      "smoke": 130
     },
     "by_evaluator": {
       "admission": 11,
-      "answer_grounding": 2,
+      "answer_grounding": 8,
       "chart_html_safety": 2,
       "chart_policy": 6,
       "chart_validate": 14,
@@ -49,7 +51,7 @@
       "multi_turn": 20,
       "ontology": 46,
       "policy": 71,
-      "recorded_provider": 41,
+      "recorded_provider": 62,
       "recovery_state": 18,
       "session_isolation": 5,
       "sql": 185,
@@ -57,13 +59,101 @@
       "tool_chain": 12
     },
     "by_domain": {
-      "制造": 49,
-      "库存": 33,
-      "财务": 45,
-      "质量": 38,
+      "制造": 53,
+      "库存": 40,
+      "财务": 49,
+      "质量": 42,
       "通用": 71,
-      "采购": 207,
-      "销售": 39
+      "采购": 209,
+      "销售": 45
+    },
+    "by_layer": {
+      "deterministic": 402,
+      "recorded_provider": 107
+    },
+    "live": {
+      "count": 35,
+      "case_ids": [
+        "ANA-DIAG-001",
+        "ANA-DIAG-002",
+        "ANA-DIAG-003",
+        "ANA-DIAG-004",
+        "ANA-DIAG-005",
+        "ANA-DIAG-006",
+        "ANA-DIAG-007",
+        "ANA-DIAG-008",
+        "ANA-DIAG-009",
+        "ANA-DIAG-010",
+        "ANA-P0-MT-001",
+        "ANA-REC-001",
+        "ANA-REC-002",
+        "ANA-REC-003",
+        "ANA-REC-004",
+        "ANA-REC-005",
+        "ANA-REC-006",
+        "ANA-REC-007",
+        "ANA-REC-008",
+        "ANA-REC-009",
+        "ANA-REC-010",
+        "ANA-RPCHART-015",
+        "ANA-RPDIAG-001",
+        "ANA-RPDIAG-002",
+        "ANA-RPDIAG-003",
+        "ANA-RPDIAG-004",
+        "ANA-RPDIAG-005",
+        "ANA-RPDIAG-006",
+        "ANA-RPDIAG-007",
+        "ANA-RPDIAG-008",
+        "ANA-RPFAIL-004",
+        "ANA-RPREC-001",
+        "ANA-RPREC-002",
+        "ANA-RPREC-003",
+        "ANA-RPREC-004"
+      ],
+      "by_domain": {
+        "制造": 1,
+        "库存": 7,
+        "财务": 1,
+        "质量": 7,
+        "采购": 18,
+        "销售": 1
+      },
+      "by_priority": {
+        "P0": 1,
+        "P1": 33,
+        "P2": 1
+      },
+      "by_evaluator": {
+        "policy": 20,
+        "recorded_provider": 15
+      },
+      "needs": {
+        "sql": 15,
+        "ontology": 0,
+        "chart": 0,
+        "multi_turn": 0
+      },
+      "canary_count": 18,
+      "canary_case_ids": [
+        "ANA-ADV-010",
+        "ANA-P0-INV-001",
+        "ANA-P0-INV-002",
+        "ANA-P0-MFG-001",
+        "ANA-P0-MFG-002",
+        "ANA-P0-SALES-001",
+        "ANA-P0-SALES-002",
+        "ANA-RPCHART-002",
+        "ANA-RPDIAG-001",
+        "ANA-RPGND-002",
+        "ANA-RPMT-001",
+        "ANA-RPONT-001",
+        "ANA-RPREC-001",
+        "ANA-RPSQL-001",
+        "ANA-RPSQL-013",
+        "ANA-RPSQL-015",
+        "ANA-RPSQL-017",
+        "ANA-RPSQL-018"
+      ]
     }
   },
   "suites": {
@@ -76,7 +166,8 @@
     "recovery": "超时、迟到、supersede、取消、resume 等恢复状态机。",
     "diagnosis": "根因/建议的意图分级、证据要求与行动部分。",
     "recorded-provider": "录制 provider 回放：真实会话循环 + 真实工具 + 只读 fixture，无需凭据。",
-    "live": "真实模型端到端语义评分。需要凭据，显式运行，不计入离线门禁。"
+    "live": "真实模型端到端语义评分。需要凭据，显式运行，不计入离线门禁。",
+    "live-canary": "在线金丝雀子集：小、强、跨领域，显式运行且缺凭据时为 not_measured。"
   },
   "categories": {
     "intent": "问题 -> 意图等级 + 工具暴露 + 是否需要澄清/拒答。",
@@ -305,8 +396,8 @@
       "sha256": "a7473635e670c2aad61fcd8c2b1e364121b9760d1f6df0763e69e62a3b249363"
     },
     "provider/chart/ANA-RPCHART-012.json": {
-      "bytes": 1854,
-      "sha256": "bbb975d22b77e3676a1d6449502311d428bc1bfa441ad1875084889e82456e6a"
+      "bytes": 1872,
+      "sha256": "a52e93f78a4dd75420640453cc56c0a00e37598f94e7a83f4289d094cbf9f07e"
     },
     "provider/chart/ANA-RPCHART-013.json": {
       "bytes": 1550,
@@ -463,6 +554,114 @@
     "provider/ontology/ANA-RPONT-012.json": {
       "bytes": 794,
       "sha256": "cff4564386a38a19eace1f4b130803cb4e844232b55bb84c51b09d5254374484"
+    },
+    "provider/p0/ANA-P0-FIN-001.json": {
+      "bytes": 1203,
+      "sha256": "f2a39dde100c1b5ba2aa91bf17f001ea8ee7ee658add1974dff5d9831b6844a3"
+    },
+    "provider/p0/ANA-P0-FIN-002.json": {
+      "bytes": 1384,
+      "sha256": "35aefbe017ba9eb09514cfa19440b4aa04dda9f57e697566873931342c560e8b"
+    },
+    "provider/p0/ANA-P0-FIN-003.json": {
+      "bytes": 1948,
+      "sha256": "4077a77880659057614598888a1dc6fb783d2fd4ca6025081a828378440ce6cf"
+    },
+    "provider/p0/ANA-P0-FIN-004.json": {
+      "bytes": 1238,
+      "sha256": "c487a8c4444ddbefadecad657f045bde38c74af57040a5e4e31a017b5cf91e34"
+    },
+    "provider/p0/ANA-P0-INV-001.json": {
+      "bytes": 1111,
+      "sha256": "62325e6256515c4008ec91c0abdaef820127ff829808d0f4d577d6846f9b6a29"
+    },
+    "provider/p0/ANA-P0-INV-002.json": {
+      "bytes": 1073,
+      "sha256": "1217482aebbd3eab91f2dbcac814be2247b6f0d173ede5e39d5230842b2bfbf1"
+    },
+    "provider/p0/ANA-P0-INV-003.json": {
+      "bytes": 1357,
+      "sha256": "5fc3cb11ec41de24cfcf325c9d46e66ad147d4c6e67970ff51315a9a0c5d8ab8"
+    },
+    "provider/p0/ANA-P0-INV-004.json": {
+      "bytes": 1123,
+      "sha256": "9f5383df5ea5ce706c9eee6e593d4b5c2068d066bbf7005004ad5a5f74cc6e4c"
+    },
+    "provider/p0/ANA-P0-MFG-001.json": {
+      "bytes": 1099,
+      "sha256": "4efe7550c42c538c0a90393d5c74201950e3d5b0afd9a8880912cd31f6ac9d6d"
+    },
+    "provider/p0/ANA-P0-MFG-002.json": {
+      "bytes": 1166,
+      "sha256": "1dd6844ffe3297665d2e090506a2bb44ade9a7d8fcf122f496a84efe365fb4db"
+    },
+    "provider/p0/ANA-P0-MFG-003.json": {
+      "bytes": 1340,
+      "sha256": "89cabf98229d1049ec5ad1f7ce0c23247915ec6927f81a8bf5c683279c8fce0d"
+    },
+    "provider/p0/ANA-P0-MFG-004.json": {
+      "bytes": 1125,
+      "sha256": "182bc56b15951883b2007cd470501f6897e594eddc443e5494c62cccabb68d41"
+    },
+    "provider/p0/ANA-P0-MT-001.json": {
+      "bytes": 2102,
+      "sha256": "3ec20f6eb066f785a1b5b1076b6d346c2ec3a3c87feba0a6e1a0d4bacb80ac61"
+    },
+    "provider/p0/ANA-P0-PROC-001.json": {
+      "bytes": 1113,
+      "sha256": "3a15fca1812761ca793f2e56784ab071b1a37cb837606bfd3411b86784022b6c"
+    },
+    "provider/p0/ANA-P0-PROC-002.json": {
+      "bytes": 1575,
+      "sha256": "0c7cd7ec48d15c06325f325c1914278032da1e7657323cc1bc3171275cfa0762"
+    },
+    "provider/p0/ANA-P0-PROC-003.json": {
+      "bytes": 1349,
+      "sha256": "9bb8b5ace74b740a360ce4be03ee61d6fe55207dec7928b1a97190e96b49f3d8"
+    },
+    "provider/p0/ANA-P0-PROC-004.json": {
+      "bytes": 1098,
+      "sha256": "5b54947c244ba97da92b0e040891417de6740235b089758dd88c6603a9a7e95f"
+    },
+    "provider/p0/ANA-P0-PROC-005.json": {
+      "bytes": 1118,
+      "sha256": "9022d914e9a8a07f256338b28d927092ba8084abaec94dfcaa9fe199eec59c65"
+    },
+    "provider/p0/ANA-P0-PROC-006.json": {
+      "bytes": 409,
+      "sha256": "85899fdcf654b2c8a1ec686645a09c5ea7c469877bb69c3d89164084622b990b"
+    },
+    "provider/p0/ANA-P0-QUAL-001.json": {
+      "bytes": 1046,
+      "sha256": "35df5e9f7bd1471effd557a4b260185f5dd3a674cef494da4be2f9033f8e811c"
+    },
+    "provider/p0/ANA-P0-QUAL-002.json": {
+      "bytes": 1081,
+      "sha256": "2437118271c4713d30710e75ce98788dd573d2c8168323755e7cc5ec49f292bf"
+    },
+    "provider/p0/ANA-P0-QUAL-003.json": {
+      "bytes": 1016,
+      "sha256": "34524d7118ae0298d511186c919ad6d2d078714f09f4533b238e473db541e935"
+    },
+    "provider/p0/ANA-P0-QUAL-004.json": {
+      "bytes": 2145,
+      "sha256": "b8085c29ccc156c379530824352c44ec7b52271e209e5763ca848a8204ef5b55"
+    },
+    "provider/p0/ANA-P0-SALES-001.json": {
+      "bytes": 1141,
+      "sha256": "71564a746e93645b41265887237d37c9cd48af0856dc49c8b00f47b766c8ae83"
+    },
+    "provider/p0/ANA-P0-SALES-002.json": {
+      "bytes": 1164,
+      "sha256": "e1de37c7dee48723b0854e87ec013b071c6d7e89d72cc7fc3e259ecfc40f37f5"
+    },
+    "provider/p0/ANA-P0-SALES-003.json": {
+      "bytes": 1373,
+      "sha256": "d94e0ad6ef2262365112561deb37b2d618582637467430780f1ae0f238f22d3c"
+    },
+    "provider/p0/ANA-P0-SALES-004.json": {
+      "bytes": 1161,
+      "sha256": "2bd71861a2e6c07b5d0bfb3282f58470affd0035b7229a56565253e40bd3475e"
     },
     "provider/recommendation/ANA-RPREC-001.json": {
       "bytes": 2074,

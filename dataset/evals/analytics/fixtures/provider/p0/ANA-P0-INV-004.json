@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-INV-004",
+  "turns": [
+    {
+      "user": "2025年3月库存数量合计是多少",
+      "db": "inventory.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(on_hand_qty) AS v FROM fact_inventory_snapshot WHERE snapshot_month = '2025-02'",
+            "query_description": "2025年3月库存数量合计是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025-02 库存数量",
+            "columns": [
+              {
+                "key": "v",
+                "label": "数量"
+              }
+            ],
+            "rows": [
+              [
+                425
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 2 月库存数量合计 425；3 月快照缺失，若按 0 处理则为 0.0。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

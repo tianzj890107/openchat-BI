@@ -4,7 +4,8 @@
   "priority": "P1",
   "suite": [
     "regression",
-    "recorded-provider"
+    "recorded-provider",
+    "live-canary"
   ],
   "domain": "采购",
   "category": "charts",

@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-FIN-004",
+  "turns": [
+    {
+      "user": "2025年1月营业收入是多少",
+      "db": "finance.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(e.credit) AS v FROM fact_gl_entry e JOIN dim_account a ON e.account_id = a.account_id WHERE e.is_deleted = 0 AND e.currency = 'CNY' AND a.account_type = '收入' AND e.period = '2025-01'",
+            "query_description": "2025年1月营业收入是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025-01 营业收入",
+            "columns": [
+              {
+                "key": "v",
+                "label": "收入"
+              }
+            ],
+            "rows": [
+              [
+                500000
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 1 月营业收入 500,000.00 元；把美元凭证按 1:1 直接相加则合计 530,000.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

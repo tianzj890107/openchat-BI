@@ -115,3 +115,71 @@
 - 同时发起正式交付 Merge Request `20260727` → `master`（reviewer `tianzijing`，
   assignee `zhangzhen`），只创建 MR，不自动合并、不直接 push `master`；
 - 本版本未部署：tag、Release 与 MR 都不改变服务器正在运行的版本。
+
+### 4. 分析 Agent 评测集：在线真实性修复、生产链路 P0 与发布门禁收口（已完成）
+
+- 数据集从 **482 条扩展到 509 条**（P0 134、P1 340、P2 35），known_gap 仍为 12 条
+  （P0 6 条），没有删除或弱化任何旧用例。三层结构变为 deterministic 402 条 /
+  recorded_provider 107 条 / live 35 条，并新增 18 条跨领域 `live-canary`。
+- 修复在线评测的四个真实性问题（此前即使指标好看也测不到真东西）：
+  1. `build_live_session()` 原来固定连 `procurement.db`；现在由 `case.fixture.db`
+     经 `resolve_fixture_db()` 解析，只允许六个只读 fixture，未声明/未知数据库或
+     领域与数据库不匹配（除非显式 `fixture.cross_domain_reason`）都以
+     `FixtureBindingError` 失败，不再静默回退采购库；报告逐条记录 `case_id`、
+     `domain`、`fixture_db`、工具链与实际访问表。
+  2. live 用例原来共用一个会话；现在默认每条 case 新建临时 workspace、
+     `WebSession`、conversation id、证据池与图表目录，只有显式相同
+     `conversation_group` 的多轮用例才复用，组内顺序校验、组间完全隔离，并检查
+     跨 workspace 文件与 `.tmp` 残留。
+  3. live 原来把整个数据集的数字放进 `allowed_numbers`；现在与 recorded-provider
+     统一为 case-scoped `CaseGroundingPool`，仅接受「当前问题显式数字 / 本轮工具
+     输出 / 同组前序轮合法输出 / 显式声明的结构性数字」，分数、年份、序号不再按
+     数值大小豁免。新增反例：跨 case 金额、跨领域百分比、`0.3878` 写成 `38.78%`、
+     `3878` 写成 `38.78`、把数量当列表序号、裸 `2025`。
+  4. `--repeat` 第二轮原来丢掉 evaluator override；现在每次重复都使用与首次相同的
+     evaluator、全新隔离 session，稳定性按意图等级、工具顺序、SQL 语义、数字、证据、
+     图表、结论结构与 unsupported claim 比对，时间戳/session id/token 数不参与。
+- 新增 **27 条生产链路 P0**（`ANA-P0-PROC/FIN/MFG/INV/SALES/QUAL/MT-*`，21 条
+  `recorded_provider` + 6 条 `answer_grounding` 反例控制），覆盖采购、财务、制造、
+  库存、销售、质量各「硬数字 / 比例或加权 / 多维过滤 / 越权或证据反例」，全部经真实
+  `WebSession` 与真实工具执行；`recorded-provider` 的 P0 从 4 条提升到 31 条。
+- `manifest.json` 新增 `totals.live`（count / case_ids / 各领域、优先级、evaluator
+  分布 / `needs{sql,ontology,chart,multi_turn}` / canary 清单）与 `totals.by_layer`；
+  README、manifest、`select_cases`、`--suite live --list` 四处数量由
+  `tests/test_analytics_eval_live_integrity.py` 强制一致（修复了 README 写 20、
+  实际 34/35 的漂移）。
+- 发布门禁收口：`.gitlab-ci.yml` 的 `analytics-eval-release-gate` 改为
+  `allow_failure: false` 的阻塞式手动 job（tag pipeline 上自动执行且不允许失败）；
+  新增 `analytics-eval-repeat-stability`；allowlist 每条必须有
+  `case_id`/`reviewer`/`reviewed_at`/`reason`/`expiry`/`target_fix_version`，
+  过期或格式不可解析即失败；新增 `known_gap_overdue`、
+  `unresolved_security_defects`、`known_gap_waiver_expiry` 三条治理门禁，
+  `ANA-ADV-010/011/012` 作为高严重度安全缺陷进入安全发布门禁。
+- 指标报告补齐分母与状态：每个指标输出 `measured` / `applicable` / `passed` /
+  `failed` / `skipped` / `known_gap_excluded` / `sample_size`；门禁状态限定为
+  `PASS` / `FAIL` / `NOT_MEASURED` / `NOT_APPLICABLE` / `WAIVED`，
+  release-critical 指标的 `NOT_MEASURED` 阻断 `--release`。
+- 缺凭据的在线套件不再被报告成 `fail`：`live` / `live-canary` 无凭据时
+  `status=not_measured`、每条用例 `skip`、`passed=0`、`failed=0`、退出码 0，
+  `p0_all_pass` 为不阻断的 `NOT_MEASURED`，跳过原因与全部 case_id 写入
+  `report["skipped"]`。
+- 报告密钥擦除：`redact_secrets()` 把任何从环境变量泄漏进报告的凭据值替换为
+  `***redacted***`（按环境变量名匹配 API_KEY/TOKEN/SECRET/PASSWORD/CREDENTIAL，
+  长度 ≥8），JSON 与 Markdown 报告同源。
+- 新增 `scripts/classify_skipped_tests.py` 与 `dataset/evals/analytics/skipped_tests.json`：
+  逐条解析 25 个 skip 的原因、分类、是否阻断发布与 CI 补跑方式；当前全部是
+  `explicit_integration`（`blocks_release=false`），skipped 永不计入 passed。
+- 新增两组测试：`tests/test_analytics_eval_live_integrity.py`（53 项：数据库绑定、
+  manifest/README 一致、会话隔离、grounding 反例、repeat 契约、缺凭据契约、
+  密钥擦除）与 `tests/test_analytics_eval_production_chain.py`（25 项：15 类生产链路
+  mutation 哨兵 + Prompt 契约）。Prompt 契约直接读取生产 `WebSession.system_prompt`，
+  断言关键语义段、安全规则与「`agent_def.tools` 每个工具都在 `# Tools` 描述」，
+  不做全文快照。
+- 验证：`pytest -q tests/test_analytics_eval_dataset.py` 47 passed；
+  `--suite smoke` 124 passed + 6 known gap（P0 130 条中 124 passed / 6 xfail）；
+  `--suite regression` 497 passed + 12 known gap（P0 134 条中 128 passed / 6 xfail）；
+  `--suite recorded-provider` 107 passed（P0 31/31，无 known gap）；
+  `--repeat 2` 稳定；`--suite smoke --release` 在 6 条未解决 P0 known gap 且
+  allowlist 为空时正确返回 1。
+- 未修改业务实现；未部署、未创建 MR/tag/Release；live 与 live-canary 本轮未运行
+  （未授权在线调用），只验证了缺凭据路径。

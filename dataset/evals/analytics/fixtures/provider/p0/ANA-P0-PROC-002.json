@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-PROC-002",
+  "turns": [
+    {
+      "user": "采购金额最高的供应商占比是多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT f.supplier_id, SUM(f.amount) AS v, ROUND(SUM(f.amount) * 1.0 / (SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0), 6) AS share FROM fact_purchase_order f WHERE f.is_deleted = 0 GROUP BY f.supplier_id ORDER BY share DESC LIMIT 1",
+            "query_description": "采购金额最高的供应商占比是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "最高供应商占比",
+            "columns": [
+              {
+                "key": "supplier_id",
+                "label": "供应商"
+              },
+              {
+                "key": "v",
+                "label": "金额"
+              },
+              {
+                "key": "share",
+                "label": "占比"
+              }
+            ],
+            "rows": [
+              [
+                1,
+                12600,
+                0.50339592
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "最高供应商采购金额 12,600.00 元，占全部采购金额的 50.34%（分子分母同口径）。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

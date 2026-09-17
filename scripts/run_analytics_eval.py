@@ -73,8 +73,103 @@ DEFAULT_REPORT_DIR = REPO_ROOT / "dataset" / "evals" / "analytics" / "reports"
 
 SUITES = [
     "smoke", "regression", "multi-turn", "adversarial", "recovery",
-    "ontology", "charts", "diagnosis", "recorded-provider", "live", "all",
+    "ontology", "charts", "diagnosis", "recorded-provider",
+    "live", "live-canary", "all",
 ]
+
+# The only databases an eval case may query.  A case binds exactly one of them
+# through ``fixture.db``; there is deliberately no default, because a silent
+# fallback would let a finance case quietly query procurement data and still
+# look green.
+FIXTURE_DBS = (
+    "procurement.db",
+    "inventory.db",
+    "sales.db",
+    "quality.db",
+    "finance.db",
+    "manufacturing.db",
+)
+
+DOMAIN_FIXTURE_DB = {
+    "采购": "procurement.db",
+    "库存": "inventory.db",
+    "销售": "sales.db",
+    "质量": "quality.db",
+    "财务": "finance.db",
+    "制造": "manufacturing.db",
+}
+
+# Evaluators that execute SQL against a fixture database.  A case using one of
+# them must declare ``fixture.db`` explicitly.
+SQL_EVALUATORS = frozenset({
+    "sql", "generated_sql", "recorded_provider", "tool_chain",
+    "answer_grounding", "live", "answers",
+})
+
+
+class FixtureBindingError(RuntimeError):
+    """A case does not declare a legal, domain-consistent fixture database."""
+
+
+def _case_needs_sql(case: dict) -> bool:
+    """Whether this evaluator really executes SQL against a fixture database.
+
+    ``sql_guard`` cases carry a SQL string in their fixture too, but they only
+    assert the guard's verdict — they never connect — so the evaluator, not the
+    presence of a SQL-looking field, decides.
+    """
+    return case.get("evaluator") in SQL_EVALUATORS
+
+
+def resolve_fixture_db(case: dict) -> Optional[str]:
+    """The single read-only fixture DB this case is allowed to query.
+
+    Returns ``None`` for cases that provably need no SQL.  Raises
+    ``FixtureBindingError`` when a SQL case declares nothing, declares a DB
+    outside the allowlist, or declares a DB that contradicts ``case.domain``
+    (unless the case records an explicit, reviewed ``cross_domain_reason``).
+    """
+    fixture = case.get("fixture") or {}
+    db = str(fixture.get("db") or "").strip()
+    needs_sql = _case_needs_sql(case)
+    if not db:
+        if needs_sql and fixture.get("sql_required") is not False:
+            raise FixtureBindingError(
+                f"{case.get('case_id')}: SQL evaluator "
+                f"{case.get('evaluator')!r} must declare fixture.db or set "
+                f"fixture.sql_required=false")
+        return None
+    if db not in FIXTURE_DBS:
+        raise FixtureBindingError(
+            f"{case.get('case_id')}: fixture.db {db!r} is not an allowed "
+            f"fixture database {list(FIXTURE_DBS)}")
+    expected = DOMAIN_FIXTURE_DB.get(str(case.get("domain") or ""))
+    if expected and expected != db:
+        reason = str(fixture.get("cross_domain_reason") or "").strip()
+        if not reason:
+            raise FixtureBindingError(
+                f"{case.get('case_id')}: domain {case.get('domain')!r} implies "
+                f"{expected} but fixture.db is {db!r}; fix the domain or record "
+                f"fixture.cross_domain_reason")
+    return db
+
+
+def fixture_db_for_case(case: dict) -> Optional[str]:
+    """Non-raising variant used by reporting: an invalid binding is an error."""
+    try:
+        return resolve_fixture_db(case)
+    except FixtureBindingError:
+        return None
+
+
+def product_version() -> str:
+    """The released product version, read from ``pyproject.toml``."""
+    try:
+        pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
+    return match.group(1) if match else ""
 
 PASS = "pass"
 FAIL = "fail"
@@ -92,6 +187,14 @@ LIVE_ONLY_METRICS = (
     "unsupported_causal_claim_rate",
     "proxy_disclosure_rate",
 )
+
+# Metrics whose per-case sample is "a violation happened"; a lower aggregate is
+# better, so a single ``False`` sample is the good one.
+LOWER_IS_BETTER_METRICS = frozenset({
+    "unsupported_number_rate",
+    "unsupported_causal_claim_rate",
+    "cross_session_leak_rate",
+})
 
 ALL_METRICS = (
     "intent_accuracy",
@@ -143,6 +246,12 @@ class CaseResult:
     gap_meta: dict = field(default_factory=dict)
     unknown_fields: list = field(default_factory=list)
     error: str = ""
+    # Semantic fingerprint used by ``--repeat``: intent level, tool order,
+    # normalized SQL, numeric results, evidence, chart type and unsupported
+    # claims.  Timestamps / token counts / session ids are never included.
+    signature: dict = field(default_factory=dict)
+    # Per-run provenance (evaluator, provider/model, database, session id).
+    run_meta: dict = field(default_factory=dict)
 
     @property
     def failed_checks(self) -> list[Check]:
@@ -159,6 +268,7 @@ class EvalContext:
         self._retriever = None
         self._sandbox_seq = 0
         self.allowed_numbers: set[float] = set()
+        self.live_harness: Optional["LiveHarness"] = None
 
     def new_sandbox(self, label: str) -> Path:
         """A fresh, unique directory for one evaluator invocation.
@@ -1439,17 +1549,25 @@ def provider_available(provider: str) -> bool:
     return True
 
 
-def build_live_session(ctx: EvalContext):
-    """Build one throw-away WebSession bound to the eval fixtures.
+def build_live_session(ctx: EvalContext, case: dict, *, db: Optional[str] = None):
+    """Build one throw-away WebSession bound to *this case's* fixture DB.
 
-    Everything the session writes (charts, conversations, logs) lands in the
-    runner's temp directory; ``dataset/conversations`` is never touched.
+    The database is never guessed: it comes from ``case.fixture.db`` through
+    :func:`resolve_fixture_db`, so a finance case cannot silently read
+    procurement data.  Everything the session writes (charts, conversations,
+    logs) lands in a per-case temp workspace; ``dataset/conversations`` is never
+    touched.
     """
     import os
 
     from bi_agent.web import app as web_app
 
-    workspace = ctx.tmpdir / "live-workspace"
+    db = db or resolve_fixture_db(case)
+    if not db:
+        raise FixtureBindingError(
+            f"{case.get('case_id')}: live case must declare fixture.db "
+            f"(allowed: {list(FIXTURE_DBS)})")
+    workspace = ctx.new_sandbox(f"live-{case.get('case_id')}")
     workspace.mkdir(parents=True, exist_ok=True)
     (workspace / "dataset").mkdir(exist_ok=True)
     agents_src = REPO_ROOT / ".claude" / "agents"
@@ -1461,15 +1579,96 @@ def build_live_session(ctx: EvalContext):
         web_app.configure(
             cwd=str(workspace),
             ontology_path=str(ONTOLOGY_DIR / "analytics_golden_ontology.xlsx"),
-            db_path=str(SQLITE_DIR / "procurement.db"),
+            db_path=str(SQLITE_DIR / db),
             use_doris=False,
         )
-        return web_app._ensure_session("analytics-eval")
+        session = web_app._ensure_session(f"analytics-eval-{case.get('case_id')}")
     finally:
         if previous_backend is None:
             os.environ.pop("ONTOLOGY_BACKEND", None)
         else:
             os.environ["ONTOLOGY_BACKEND"] = previous_backend
+    session.eval_workspace = workspace  # type: ignore[attr-defined]
+    session.eval_db = db  # type: ignore[attr-defined]
+    return session
+
+
+class LiveHarness:
+    """Per-case isolated live driver.
+
+    Default behaviour is one workspace + WebSession + conversation id per case.
+    Only cases that explicitly share ``fixture.conversation_group`` reuse a
+    session, and then only in declaration order and inside one domain/database.
+    """
+
+    def __init__(self, ctx: EvalContext, provider: str = "team") -> None:
+        self.ctx = ctx
+        self.provider = provider
+        self._sessions: dict[str, Any] = {}
+        self._group_db: dict[str, str] = {}
+        self._group_order: list[str] = []
+        self.runs: list[dict] = []
+
+    @staticmethod
+    def group_key(case: dict) -> str:
+        group = str((case.get("fixture") or {}).get("conversation_group") or "").strip()
+        return group or str(case["case_id"])
+
+    def session_for(self, case: dict):
+        db = resolve_fixture_db(case)
+        if not db:
+            raise FixtureBindingError(
+                f"{case.get('case_id')}: live case must declare fixture.db; "
+                f"there is no default database")
+        key = self.group_key(case)
+        known = self._group_db.get(key)
+        if known is not None and known != db:
+            raise FixtureBindingError(
+                f"{case.get('case_id')}: conversation_group {key!r} mixes "
+                f"databases {known} and {db}; a group must stay inside one domain")
+        if key not in self._sessions:
+            session = build_live_session(self.ctx, case, db=db)
+            self._sessions[key] = session
+            self._group_db[key] = db
+        if key not in self._group_order:
+            self._group_order.append(key)
+        self.runs.append({
+            "case_id": case.get("case_id"),
+            "domain": case.get("domain"),
+            "fixture_db": db,
+            "conversation_group": key,
+            "workspace": str(getattr(self._sessions[key], "eval_workspace", "")),
+            "session_id": key,
+        })
+        return self._sessions[key]
+
+    def check_order(self, cases: list[dict]) -> list[str]:
+        """A conversation group must be contiguous in the selected order."""
+        problems: list[str] = []
+        seen: set[str] = set()
+        previous = ""
+        for case in cases:
+            key = self.group_key(case)
+            if key != previous:
+                if key in seen:
+                    problems.append(
+                        f"{case.get('case_id')}: conversation_group {key!r} is not "
+                        f"contiguous in the run order")
+                seen.add(key)
+                previous = key
+        return problems
+
+    def leftovers(self) -> list[str]:
+        """Temp files a finished live case must not leave behind."""
+        out: list[str] = []
+        for session in self._sessions.values():
+            workspace = getattr(session, "eval_workspace", None)
+            if workspace is None:
+                continue
+            for path in Path(workspace).rglob("*"):
+                if path.is_file() and path.name.endswith(".tmp"):
+                    out.append(str(path))
+        return out
 
 
 def run_live_turn(session, question: str, timeout_seconds: float = 300.0) -> dict:
@@ -1477,6 +1676,7 @@ def run_live_turn(session, question: str, timeout_seconds: float = 300.0) -> dic
 
     answer_parts: list[str] = []
     tool_chain: list[str] = []
+    tool_results: list[dict] = []
     policy: dict = {}
     error = ""
     blocked = False
@@ -1502,6 +1702,15 @@ def run_live_turn(session, question: str, timeout_seconds: float = 300.0) -> dic
             answer_parts.append(str(event.get("text", "")))
         elif kind == "tool_start":
             tool_chain.append(str(event.get("name", "")))
+        elif kind == "tool_result":
+            tool_results.append({
+                "name": str(event.get("name") or ""),
+                "input": event.get("input"),
+                "output": event.get("output"),
+                "chart": event.get("chart"),
+                "table": event.get("table"),
+                "ontology_entities": event.get("ontology_entities"),
+            })
         elif kind == "cognitive_policy":
             policy = event
         elif kind == "answer_validation":
@@ -1536,6 +1745,7 @@ def run_live_turn(session, question: str, timeout_seconds: float = 300.0) -> dic
     return {
         "answer": answer,
         "tool_chain": tool_chain,
+        "tool_results": tool_results,
         "policy": policy,
         "error": error,
         "blocked": blocked,
@@ -1546,18 +1756,85 @@ def run_live_turn(session, question: str, timeout_seconds: float = 300.0) -> dic
     }
 
 
+def _canonical_sql(sql: Any) -> str:
+    """Whitespace/case-insensitive SQL form, so formatting is not a diff."""
+    text = re.sub(r"\s+", " ", str(sql or "")).strip().lower()
+    return re.sub(r"\s*([(),=<>*+/%-])\s*", r"\1", text)
+
+
+_ANSWER_SECTIONS = ("结论", "口径", "证据", "限制", "建议", "根因", "代理")
+
+
+def _answer_structure(text: str) -> list[str]:
+    """Which required narrative sections the answer actually carries."""
+    return [name for name in _ANSWER_SECTIONS if name in (text or "")]
+
+
+def live_run_signature(case: dict, run: dict, pool: CaseGroundingPool,
+                       unsupported: set[float]) -> dict:
+    """The semantic fingerprint compared across ``--repeat`` runs.
+
+    Only stable, meaningful content is included: intent level, tool order,
+    normalized SQL, the numbers the answer cited, evidence sources, chart types,
+    the answer's section structure and unsupported citations.  Timestamps, token
+    counts, durations and random session ids are deliberately excluded.
+    """
+    sqls = []
+    charts: list[str] = []
+    evidence: set[str] = set()
+    for call in run.get("tool_results") or []:
+        payload = call.get("input")
+        if isinstance(payload, dict) and payload.get("sql"):
+            sqls.append(_canonical_sql(payload.get("sql")))
+        chart = call.get("chart")
+        if isinstance(chart, dict):
+            chart_type = chart.get("chart_type") or chart.get("type")
+            if chart_type:
+                charts.append(str(chart_type))
+        if call.get("name"):
+            evidence.add(str(call["name"]))
+        for entity in call.get("ontology_entities") or []:
+            evidence.add(str(entity))
+    policy = run.get("policy") or {}
+    return {
+        "intent_level": str(policy.get("intent_level") or policy.get("mode") or ""),
+        "tool_chain": list(run.get("tool_chain") or []),
+        "sql": sqls,
+        "answer_numbers": sorted(_numbers_in(run.get("answer") or "")),
+        "evidence": sorted(evidence),
+        "chart_types": charts,
+        "unsupported": sorted(unsupported),
+        "answer_structure": _answer_structure(run.get("answer") or ""),
+        "recovery_status": str((run.get("recovery") or {}).get("status", "")),
+    }
+
+
 def eval_live(case: dict, ctx: EvalContext) -> CaseResult:
-    session = ctx.live_session
+    harness = ctx.live_harness
+    if harness is None:
+        raise RuntimeError("the live suite requires ctx.live_harness")
+    session = harness.session_for(case)
+    db = resolve_fixture_db(case)
     run = run_live_turn(session, case["question"])
+    pool = CaseGroundingPool(case, run.get("tool_results") or ())
+    unsupported = pool.unsupported(run["answer"])
+    expected = case.get("expected") or {}
     checks: list[Check] = []
     if run["error"]:
         checks.append(Check("live.no_error", False, "", run["error"]))
     checks.append(Check("live.answer_present", bool(run["answer"]), True, bool(run["answer"])))
-    semantic_checks, semantic_metrics = score_answer(case, run["answer"], ctx.allowed_numbers)
+    checks.extend(_grounding_checks("live", expected, unsupported))
+    semantic_checks, semantic_metrics = score_answer(case, run["answer"], pool.pool)
     checks.extend(semantic_checks)
     result = _result_from(case, checks)
     result.metrics.update(semantic_metrics)
+    if expected.get("unsupported_numbers"):
+        result.metrics.pop("unsupported_number_rate", None)
+        _record_grounding_metric(result, expected, unsupported)
+    elif unsupported:
+        result.metrics["unsupported_number_rate"] = True
     result.metrics["answer_schema_valid_rate"] = bool(run["answer"]) and not run["blocked"]
+    result.signature = live_run_signature(case, run, pool, unsupported)
     result.evidence = {
         "answer": run["answer"][:4000],
         "tool_chain": run["tool_chain"],
@@ -1567,6 +1844,21 @@ def eval_live(case: dict, ctx: EvalContext) -> CaseResult:
         "event_types": run["event_types"],
         "answer_validation": run["answer_validation"],
         "recovery": run.get("recovery", {}),
+        "fixture_db": db,
+        "unsupported_numbers": sorted(unsupported)[:12],
+        "tool_results": [
+            {"name": call.get("name"), "input": call.get("input"),
+             "output": str(call.get("output") or "")[:600]}
+            for call in run.get("tool_results") or []
+        ],
+    }
+    result.run_meta = {
+        "case_id": case.get("case_id"),
+        "domain": case.get("domain"),
+        "fixture_db": db,
+        "session_id": LiveHarness.group_key(case),
+        "provider": harness.provider,
+        "cost": run.get("cost"),
     }
     return result
 
@@ -1594,10 +1886,12 @@ STRUCTURAL_NUMBERS = frozenset({0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0,
 
 
 def _parse_number_tokens(text: str) -> set[float]:
-    """Every business-looking number in a natural-language answer.
+    """Every number written in an answer, including small integers.
 
-    Numbers below 100 without a decimal point are treated as prose (dates,
-    counts of steps, enumerations) and ignored, mirroring ``_numbers_in``.
+    Small integers are *not* dropped by magnitude here: ``5`` may be a real
+    quantity and ``10`` may be a percentage.  They are exempted only when the
+    text shows them in a structural role (list index, step number, date part),
+    which is decided by :func:`_structural_numbers`, not by the value.
     """
     out: set[float] = set()
     for raw in NUMBER_TOKEN_RE.findall(text or ""):
@@ -1606,68 +1900,190 @@ def _parse_number_tokens(text: str) -> set[float]:
             value = float(raw)
         except ValueError:
             continue
-        if abs(value) >= 100 or "." in raw:
-            out.add(round(value, 6))
-    return out
-
-
-def _numbers_from_text_pool(text: str) -> set[float]:
-    out: set[float] = set()
-    for raw in NUMBER_TOKEN_RE.findall(text or ""):
-        raw = raw.replace(",", "")
-        try:
-            value = float(raw)
-        except ValueError:
-            continue
-        if value.is_integer() and abs(value) <= 12:
-            continue
         out.add(round(value, 6))
     return out
 
 
-def _is_grounded(value: float, pool: set[float]) -> bool:
-    """True when *value* is a pool number or a plausible transform of one."""
+# A number is "structural" when the surrounding text gives it a non-business
+# role.  These are positional rules, not magnitude rules: the same value can be
+# structural in one sentence and a real result in another.
+_STRUCTURAL_CONTEXT_RES = (
+    # A date or a period: 2025 年 / 2025 年 3 月 / 2025-03 / 2025/03 / 2025Q2.
+    # The suffix is required on purpose: a bare "2025" is a *number* and has to
+    # be traceable to the current case's own query, exactly like any other
+    # result.  The numeric form also has to be a real month/day range, so a
+    # decimal result like "2025.00 元" is not mistaken for a date.
+    re.compile(r"(?:19|20)\d{2}\s*年(?:\s*\d{1,2}\s*月)?"),
+    re.compile(r"(?:19|20)\d{2}\s*(?:季度|Q[1-4])"),
+    re.compile(r"(?:19|20)\d{2}[-/.](?:0[1-9]|1[0-2])"
+               r"(?:[-/.](?:0[1-9]|[12]\d|3[01]))?"),
+    # month / day references: "2 月" "6 个月" "15 日" "1—6 月" "3-5 月"
+    re.compile(r"(?:^|[^\d.])\d{1,2}\s*个?月"),
+    re.compile(r"\d{1,2}\s*[—\-~～至到]\s*\d{1,2}\s*个?月"),
+    re.compile(r"\d{1,2}\s*日"),
+    # ordered list markers: "1." "2、" "3)" "1）" at line start or after punctuation
+    re.compile(r"(?:^|\n|[：:；;、，,])\s*\d{1,2}\s*[.、)）]", re.MULTILINE),
+    re.compile(r"[（(]\s*\d{1,2}\s*[)）]"),
+    # a stated target/threshold ("复核条件为低于 40%") is a condition, not a result
+    re.compile(r"(?:低于|高于|不超过|超过|控制在|至少|至多|达到|小于|大于)\s*\d[\d,]*(?:\.\d+)?\s*%?"),
+    # step / section wording: a reference to "第 3 步" or a procedure of
+    # "5 个步骤" is structure.  Counts that are themselves business claims
+    # ("共 5 条建议"、"涵盖 3 个维度") are deliberately NOT exempt: a wrong count
+    # of recommendations is exactly the kind of fabricated number the gate must
+    # catch, so it has to be traceable to this case's own tool output.
+    re.compile(r"第\s*\d{1,2}\s*(?:步|点|条|项|个|部分|阶段|章)"),
+    re.compile(r"\d{1,2}\s*(?:步|个步骤|阶段)"),
+)
+_PERCENT_TOKEN_RE = re.compile(r"(-?\d[\d,]*(?:\.\d+)?)\s*%")
+
+
+def _structural_numbers(text: str) -> set[float]:
+    """Numbers that the text itself marks as structure, not as a result."""
+    out: set[float] = set()
+    for pattern in _STRUCTURAL_CONTEXT_RES:
+        for match in pattern.finditer(text or ""):
+            for raw in NUMBER_TOKEN_RE.findall(match.group(0)):
+                try:
+                    out.add(round(float(raw.replace(",", "")), 6))
+                except ValueError:
+                    continue
+    return out
+
+
+def _percent_numbers(text: str) -> set[float]:
+    """Numbers that the text wrote with a percent sign."""
+    out: set[float] = set()
+    for raw in _PERCENT_TOKEN_RE.findall(text or ""):
+        try:
+            out.add(round(float(raw.replace(",", "")), 6))
+        except ValueError:
+            continue
+    return out
+
+
+def _numbers_from_text_pool(text: str) -> set[float]:
+    """Numbers a tool really produced, for use as grounding evidence.
+
+    Structural filtering happens when *citing* a number, not when collecting
+    evidence: the pool must keep every number the query returned.
+    """
+    return _parse_number_tokens(text)
+
+
+def _is_grounded(value: float, pool: set[float],
+                 percent_pool: Optional[set[float]] = None) -> bool:
+    """True when *value* is a pool number or an auditable transform of one.
+
+    Allowed transforms are deliberately narrow and auditable:
+
+    * display rounding (``3878.4567`` written as ``3878.46``);
+    * a ratio rendered as a percentage (``0.3878`` -> ``38.78%``), only when
+      the pool number really is a ratio;
+    * a percentage restated as a ratio (``38.78%`` -> ``0.3878``), only when
+      the pool number was written with a percent sign.
+
+    A blanket ``/100`` or ``*100`` is *not* allowed: it would let a case cite
+    ``38.78`` for a pool value of ``3878`` (or ``0.05`` for ``5``), which is
+    exactly the kind of cross-case copy the gate must catch.
+    """
     def close(a: float, b: float) -> bool:
         return abs(a - b) <= max(1e-6, 1e-6 * abs(b))
 
+    percent_pool = percent_pool or set()
     for candidate in pool:
         if close(value, candidate):
-            return True
-        if close(value, candidate * 100) or close(value, candidate / 100):
             return True
         for digits in (0, 1, 2, 3, 4):
             if close(value, round(candidate, digits)):
                 return True
-        # A ratio rendered as a percentage: 0.38788 -> "38.79%".
-        for digits in (0, 1, 2):
-            if close(value, round(candidate * 100, digits)):
+        if abs(candidate) <= 1.5:
+            # A ratio rendered as a percentage: 0.38788 -> "38.79%".
+            for digits in (0, 1, 2, 4):
+                if close(value, round(candidate * 100, digits)):
+                    return True
+        if candidate in percent_pool:
+            # A percentage restated as a ratio: 38.78% -> 0.3878.
+            for digits in (2, 4, 6):
+                if close(value, round(candidate / 100, digits)):
+                    return True
+        # Percentages are commonly written with one or two decimals.
+        for digits in (1, 2):
+            if close(value, round(candidate, digits)):
                 return True
     return False
 
 
-class RecordedPool:
-    """Case-scoped grounding pool: this case's own evidence only."""
+def _output_texts(item: Any) -> list[str]:
+    """Every text surface of one tool call/result, for grounding evidence."""
+    if isinstance(item, str):
+        return [item]
+    if isinstance(item, dict):
+        out: list[str] = []
+        for key in ("output", "content", "text", "input", "result", "chart", "table"):
+            value = item.get(key)
+            if value is not None:
+                out.append(str(value))
+        return out
+    return [str(item)]
 
-    def __init__(self, case: dict, run: Any) -> None:
+
+class CaseGroundingPool:
+    """Case-scoped grounding pool: this case's own evidence only.
+
+    A number is allowed when it is
+
+    * stated by the current question (or an earlier turn of the same
+      conversation group), or
+    * produced by this case's own tool calls, or
+    * declared by the case as a reviewed structural constant
+      (``expected.allowed_numbers``).
+
+    Numbers from other cases, other domains, the global golden answers or
+    another conversation are never allowed.
+    """
+
+    def __init__(self, case: dict, outputs: Any = ()) -> None:
         pool: set[float] = set()
-        for call in run.tool_calls:
-            pool |= _numbers_from_text_pool(str(call.get("output") or ""))
-            pool |= _numbers_from_text_pool(str(call.get("input") or ""))
+        percent: set[float] = set()
+        for item in outputs or ():
+            for text in _output_texts(item):
+                pool |= _numbers_from_text_pool(text)
+                percent |= _percent_numbers(text)
         expected = case.get("expected") or {}
+        declared: set[float] = set()
         for value in expected.get("allowed_numbers") or []:
             try:
-                pool.add(round(float(value), 6))
+                declared.add(round(float(value), 6))
             except (TypeError, ValueError):
                 continue
-        pool |= _numbers_from_text_pool(case.get("question") or "")
-        for turn in case.get("conversation") or []:
-            pool |= _numbers_from_text_pool(str(turn.get("content") or ""))
+        pool |= declared
+        texts = [case.get("question") or ""]
+        texts += [str(turn.get("content") or "") for turn in case.get("conversation") or []]
+        texts += [str(t) for t in (case.get("fixture") or {}).get("group_history") or []]
+        for text in texts:
+            pool |= _numbers_from_text_pool(text)
+            percent |= _percent_numbers(text)
         self.pool = pool
+        self.percent = percent
+        self.declared = declared
 
     def unsupported(self, text: str) -> set[float]:
-        found = _parse_number_tokens(text)
-        return {n for n in found
-                if n not in STRUCTURAL_NUMBERS and not _is_grounded(n, self.pool)}
+        structural = _structural_numbers(text)
+        return {n for n in _parse_number_tokens(text)
+                if n not in self.declared
+                and n not in structural
+                and not _is_grounded(n, self.pool, self.percent)}
+
+
+class RecordedPool(CaseGroundingPool):
+    """Backwards-compatible constructor over a recorded replay run."""
+
+    def __init__(self, case: dict, run: Any) -> None:
+        calls: list[Any] = []
+        for call in getattr(run, "tool_calls", []) or []:
+            calls.extend(_output_texts(
+                {k: call.get(k) for k in ("output", "input")} if isinstance(call, dict) else call))
+        super().__init__(case, calls)
 
 
 def _load_recorded_run(case: dict, ctx: EvalContext):
@@ -1683,11 +2099,22 @@ def _load_recorded_run(case: dict, ctx: EvalContext):
     if not rel:
         raise TranscriptError("case does not declare fixture.provider")
     transcript = load_transcript(EVAL_ROOT / rel)
+    db = resolve_fixture_db(case)
+    if not db:
+        raise FixtureBindingError(
+            f"{case.get('case_id')}: replay case must declare fixture.db")
+    declared = {str(turn.get("db")) for turn in transcript.get("turns") or []
+                if turn.get("db")}
+    wrong = sorted(d for d in declared if d != db)
+    if wrong:
+        raise FixtureBindingError(
+            f"{case.get('case_id')}: transcript declares {wrong} but fixture.db is "
+            f"{db!r}; a recording may not switch databases mid-case")
     workspace = ctx.new_sandbox(case["case_id"])
     run = run_recorded_turns(
         case["case_id"],
         transcript["turns"],
-        fixture_db=str(fixture.get("db") or "procurement.db"),
+        fixture_db=db,
         workspace=workspace,
         tools_override=fixture.get("tools_override"),
     )
@@ -1723,8 +2150,74 @@ def _record_grounding_metric(result: CaseResult, expected: dict,
                        for n in declared)
         result.metrics["unsupported_number_detection_rate"] = detected
         return
-    if unsupported:
-        result.metrics["unsupported_number_rate"] = True
+    # Always record the metric for a grounding-checked answer: the value is
+    # "this answer cited a number it never queried", so a clean answer must
+    # contribute a real ``False`` to the denominator.  Only recording the
+    # violations would make the reported rate look like it covered one case.
+    result.metrics["unsupported_number_rate"] = bool(unsupported)
+
+
+def _tool_execution_checks(prefix: str, run: Any) -> list[Check]:
+    """Prove the recorded replay really *executed* the tools it reports.
+
+    A turn that emits ``tool_result`` events without going through the Tool
+    Runtime boundary would still show the model's planned tool chain, so the
+    chain assertion alone cannot tell "the tool ran" from "the model described
+    it".  Two structural facts close that gap:
+
+    * every ``tool_result`` event must map to a session execution record;
+    * every *successful* SQL result must carry the production
+      ``[RESULT_METADATA]`` block, which only a real, normalized query produces.
+    """
+    checks: list[Check] = []
+    unexecuted = [str(call.get("name")) for call in run.tool_calls
+                  if call.get("event") == "tool_result" and not call.get("status")]
+    checks.append(Check(f"{prefix}.execution_audit", not unexecuted,
+                        "every tool_result has a session execution record",
+                        unexecuted[:6]))
+    bad_sql = [str(call.get("name")) for call in run.tool_calls
+               if call.get("name") == "Ontology-FactQuery"
+               and str(call.get("status") or "").upper() in ("", "SUCCEEDED")
+               and "[RESULT_METADATA]" not in str(call.get("output") or "")]
+    checks.append(Check(f"{prefix}.sql_result_metadata", not bad_sql,
+                        "every successful SQL call carries a normalized result",
+                        bad_sql[:6]))
+    return checks
+
+
+def _chart_file_checks(prefix: str, expected: dict, run: Any) -> list[Check]:
+    """Assert against the chart HTML a recorded replay actually wrote.
+
+    ``expected.chart_files`` is a real assertion, not documentation: an absent
+    token list is how the golden set proves a chart title was HTML-escaped and
+    that no script/credential leaked into a rendered artifact.
+    """
+    rules = expected.get("chart_files")
+    if not rules:
+        return []
+    workspace = getattr(run, "workspace", None)
+    files: list[Path] = []
+    if workspace is not None:
+        charts_dir = Path(workspace) / "dataset" / "charts"
+        root = charts_dir if charts_dir.is_dir() else Path(workspace)
+        files = sorted(path for path in root.rglob("*") if path.is_file())
+    checks = [Check(f"{prefix}.chart_files_present",
+                    len(files) >= int(rules.get("min_count", 0)),
+                    f">={rules.get('min_count', 0)} chart file(s)", len(files))]
+    blob = ""
+    for path in files:
+        try:
+            blob += path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+    for token in rules.get("contains") or []:
+        checks.append(Check(f"{prefix}.chart_contains[{str(token)[:24]}]",
+                            str(token) in blob, str(token), blob[:200]))
+    for token in rules.get("absent") or []:
+        checks.append(Check(f"{prefix}.chart_absent[{str(token)[:24]}]",
+                            str(token) not in blob if files else True,
+                            f"{token} must not appear", blob[:200]))
+    return checks
 
 
 def _schema_valid(expected: dict, run: Any, unsupported: set[float]) -> bool:
@@ -1785,6 +2278,7 @@ def eval_recorded_provider(case: dict, ctx: EvalContext) -> CaseResult:
     checks.append(Check("recorded.replay", True, "a clean replay", "ok"))
     checks.append(Check("recorded.no_provider_error", not run.errors, [], run.errors))
     checks.append(Check("recorded.not_superseded", not run.superseded, False, run.superseded))
+    checks.extend(_tool_execution_checks("recorded", run))
 
     declared_calls = sum(1 for turn in transcript["turns"]
                          for event in turn["events"]
@@ -1842,6 +2336,8 @@ def eval_recorded_provider(case: dict, ctx: EvalContext) -> CaseResult:
         checks.append(Check(f"recorded.text_absent[{str(fragment)[:24]}]",
                             str(fragment) not in run.text, "absent", "present"))
 
+    checks.extend(_chart_file_checks("recorded", expected, run))
+
     pool = RecordedPool(case, run)
     unsupported = pool.unsupported(run.text)
     checks.extend(_grounding_checks("recorded", expected, unsupported))
@@ -1889,6 +2385,7 @@ def eval_generated_sql(case: dict, ctx: EvalContext) -> CaseResult:
         return result
 
     checks.append(Check("generated_sql.replay", not run.errors, [], run.errors[:4]))
+    checks.extend(_tool_execution_checks("generated_sql", run))
     sql_calls = [c for c in run.tool_calls if c.get("name") == "Ontology-FactQuery"]
     checks.append(Check("generated_sql.issued_sql", bool(sql_calls), ">=1 SQL call", len(sql_calls)))
     if not sql_calls:
@@ -1951,6 +2448,8 @@ def eval_generated_sql(case: dict, ctx: EvalContext) -> CaseResult:
             checks.append(Check("generated_sql.matches_reference", value_ok,
                                 reference_rows[:4], actual_rows[:4]))
 
+    checks.extend(_chart_file_checks("generated_sql", expected, run))
+
     pool = RecordedPool(case, run)
     unsupported = pool.unsupported(run.text)
     checks.extend(_grounding_checks("generated_sql", expected, unsupported))
@@ -2000,6 +2499,7 @@ def eval_answer_grounding(case: dict, ctx: EvalContext) -> CaseResult:
         return result
 
     checks.append(Check("grounding.replay", not run.errors, [], run.errors[:4]))
+    checks.extend(_chart_file_checks("grounding", expected, run))
     pool = RecordedPool(case, run)
     unsupported = pool.unsupported(run.text)
     checks.extend(_grounding_checks("grounding", expected, unsupported))
@@ -2096,6 +2596,8 @@ def select_cases(
             if c.get("answer_requirements")
             or any(s in ("diagnosis", "recommendation") for s in c.get("suite", []))
         ]
+    if suite == "live-canary":
+        return [c for c in selected if "live-canary" in (c.get("suite") or [])]
     return [c for c in selected if suite in (c.get("suite") or [])]
 
 
@@ -2110,6 +2612,20 @@ def run_case(case: dict, ctx: EvalContext,
     started = time.perf_counter()
     evaluator = evaluator_override or case.get("evaluator", "")
     fn = EVALUATORS.get(evaluator)
+    fixture_db: Optional[str] = None
+    try:
+        fixture_db = resolve_fixture_db(case)
+    except FixtureBindingError as exc:
+        return CaseResult(
+            case_id=case["case_id"], category=case.get("category", ""),
+            evaluator=evaluator, priority=case.get("priority", "P1"),
+            status=FAIL, question=case.get("question", ""),
+            checks=[Check("case.fixture_binding", False,
+                          f"one of {list(FIXTURE_DBS)} consistent with case.domain",
+                          str(exc))],
+            error=str(exc),
+            duration_ms=round((time.perf_counter() - started) * 1000, 3),
+        )
     try:
         if fn is None:
             result = CaseResult(
@@ -2142,12 +2658,198 @@ def run_case(case: dict, ctx: EvalContext,
         result.status = FAIL
         result.checks.append(Check("case.no_unknown_fields", False, [], unknown))
     result.duration_ms = round((time.perf_counter() - started) * 1000, 3)
+    if fixture_db:
+        result.run_meta.setdefault("fixture_db", fixture_db)
+    result.run_meta.setdefault("evaluator", result.evaluator)
+    result.run_meta.setdefault("domain", case.get("domain"))
+    result.run_meta.setdefault("session_id", "")
+    fixture = case.get("fixture") or {}
+    if fixture.get("provider") and not result.run_meta.get("provider"):
+        result.run_meta["provider"] = "recorded"
     return result
 
 
 # ---------------------------------------------------------------------------
 # aggregation + gates
 # ---------------------------------------------------------------------------
+VOLATILE_SIGNATURE_KEYS = frozenset({
+    "updated_at", "created_at", "checkpoint_id", "session_id", "cost",
+    "duration_ms", "duration", "tokens", "token_usage", "started_at",
+    "finished_at", "execution_id",
+})
+
+
+_VOLATILE_TEXT_PATTERNS = (
+    # absolute temp sandboxes: /.../analytics-eval-<rand>/0001-CASE/dataset/charts/...
+    (re.compile(r"/[^\s\"']*?analytics-eval-[^\s\"']*"), "<sandbox>"),
+    # generated chart / report file names embed a wall-clock stamp
+    (re.compile(r"chart-\d{8}-\d{6}-"), "chart-<ts>-"),
+    (re.compile(r"report-\d{8}-\d{6}-"), "report-<ts>-"),
+    # ISO-8601 timestamps (with or without a timezone / fractional seconds)
+    (re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[0-9.:+\-Z]*"), "<ts>"),
+    (re.compile(r"\b[0-9a-f]{32}\b"), "<hex32>"),
+)
+
+
+def _normalize_volatile_text(text: str) -> str:
+    """Strip sandbox paths, wall-clock stamps and random ids from evidence text.
+
+    ``--repeat`` compares the *behaviour* of two runs of the same case; the
+    directory a run happened to use and the second it ran in are not behaviour,
+    so they must never make a stable case look unstable.
+    """
+    for pattern, replacement in _VOLATILE_TEXT_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _canonical_value(value: Any, *, limit: int = 400) -> Any:
+    """A stable, comparable projection of a value.
+
+    Timestamps, durations, token counts and random ids are removed so they can
+    never make two identical runs look different; long strings are truncated so
+    a report stays readable.
+    """
+    if isinstance(value, dict):
+        return {str(k): _canonical_value(v, limit=limit)
+                for k, v in sorted(value.items(), key=lambda kv: str(kv[0]))
+                if str(k) not in VOLATILE_SIGNATURE_KEYS}
+    if isinstance(value, (list, tuple)):
+        return [_canonical_value(v, limit=limit) for v in value]
+    if isinstance(value, set):
+        return sorted(_canonical_value(v, limit=limit) for v in value)
+    if isinstance(value, str):
+        text = _normalize_volatile_text(value)
+        return text if len(text) <= limit else text[:limit]
+    return value
+
+
+SEMANTIC_SIGNATURE_KEYS = (
+    "intent_level", "policy", "tool_chain", "tool_status", "issued_sql",
+    "reference_sql", "sql", "actual_sql", "chart_type", "chart_params",
+    "unsupported_numbers", "recovery", "resolved_contract", "contract",
+    "observations", "evidence", "anchors", "metric",
+)
+
+
+def generic_signature(result: CaseResult) -> dict:
+    """A semantic fingerprint built from a result's own evidence.
+
+    Used for every evaluator that does not build a hand-written signature (only
+    ``live`` and ``answers`` do), so ``--repeat`` always compares intent, tool
+    order, SQL semantics, cited numbers, evidence, chart type, answer structure
+    and unsupported claims — not just check names and booleans.
+    """
+    evidence = result.evidence if isinstance(result.evidence, dict) else {}
+    signature: dict[str, Any] = {}
+    for key in SEMANTIC_SIGNATURE_KEYS:
+        if key not in evidence:
+            continue
+        value = evidence[key]
+        if value in (None, "", [], {}):
+            continue
+        if key in ("sql", "issued_sql", "actual_sql", "reference_sql"):
+            if isinstance(value, str):
+                value = _canonical_sql(value)
+            elif isinstance(value, list):
+                value = [_canonical_sql(str(v)) for v in value]
+        signature[key] = _canonical_value(value, limit=240)
+    answer = evidence.get("answer")
+    if isinstance(answer, str) and answer.strip():
+        signature["answer_structure"] = _answer_structure(answer)
+        signature["answer_numbers"] = sorted(_numbers_in(answer))[:60]
+    return signature
+
+
+def semantic_signature(result: CaseResult) -> dict:
+    """The semantic fingerprint dict for one run (hand-written or derived)."""
+    return dict(result.signature) if result.signature else generic_signature(result)
+
+
+def result_signature(result: CaseResult) -> str:
+    """The comparable fingerprint of one case run.
+
+    It always covers the semantic fingerprint (intent level, tool order,
+    normalized SQL, cited numbers, evidence, chart types, unsupported claims)
+    plus every check and metric — not just check names and booleans.
+    """
+    payload = {
+        "evaluator": result.evaluator,
+        "status": result.status,
+        "checks": [{"name": c.name, "ok": c.ok, "actual": _canonical_value(c.actual)}
+                   for c in result.checks],
+        "metrics": {k: bool(v) for k, v in sorted(result.metrics.items())},
+    }
+    semantic = semantic_signature(result)
+    # The playwright-style structural checks above already carry the tool chain
+    # for most evaluators; adding the semantic block makes the fingerprint
+    # meaningful even when every check is a bare boolean.
+    for key in ("evaluator", "priority", "category"):
+        semantic.setdefault(key, getattr(result, key, ""))
+    payload["semantic"] = _canonical_value(semantic)
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def measure_repeat(selected: list[dict], ctx: EvalContext, repeat: int, *,
+                   evaluator_override: str = "",
+                   runner: Optional[Callable[..., CaseResult]] = None,
+                   reset: Optional[Callable[[], None]] = None,
+                   collected: Optional[list] = None) -> dict:
+    """Run the selection ``repeat`` times and measure agreement.
+
+    Every repetition uses the *same* evaluator as the first run (the live suite
+    must not silently fall back to the offline evaluator on run 2), and the
+    caller may pass ``reset`` to hand each repetition a brand-new harness so a
+    live repeat never reuses the previous session.
+    """
+    run = runner or run_case
+    signatures: dict[str, list[str]] = {}
+    runs: list[dict] = []
+    for index in range(max(1, repeat)):
+        if reset is not None:
+            reset()
+        for case in selected:
+            result = (run(case, ctx, evaluator_override) if evaluator_override
+                      else run(case, ctx))
+            if collected is not None and index == 0:
+                collected.append(result)
+            signatures.setdefault(result.case_id, []).append(result_signature(result))
+            runs.append({
+                "run_index": index + 1,
+                "case_id": result.case_id,
+                "evaluator": result.evaluator,
+                "status": result.status,
+                "provider": (result.run_meta or {}).get("provider", ""),
+                "fixture_db": (result.run_meta or {}).get("fixture_db", ""),
+                "session_id": (result.run_meta or {}).get("session_id", ""),
+                "tool_chain": semantic_signature(result).get("tool_chain", []),
+                "answer_signature": _canonical_value(semantic_signature(result)),
+                "metrics": {k: bool(v) for k, v in sorted(result.metrics.items())},
+            })
+    unstable = sorted(cid for cid, sigs in signatures.items() if len(set(sigs)) > 1)
+    stable = len(signatures) - len(unstable)
+    agreement = round(stable / len(signatures), 6) if signatures else None
+    detail = []
+    for cid in sorted(signatures):
+        sigs = signatures[cid]
+        detail.append({
+            "case_id": cid,
+            "stable": len(set(sigs)) == 1,
+            "runs": len(sigs),
+            "distinct_signatures": len(set(sigs)),
+        })
+    return {
+        "repeat": max(1, repeat),
+        "agreement": agreement,
+        "cases": len(signatures),
+        "stable_cases": stable,
+        "unstable_cases": len(unstable),
+        "unstable_case_ids": unstable,
+        "case_detail": detail,
+        "runs": runs,
+    }
+
+
 def aggregate(results: list[CaseResult]) -> dict:
     """Aggregate over the *contract* population.
 
@@ -2161,14 +2863,40 @@ def aggregate(results: list[CaseResult]) -> dict:
     failed = sum(1 for r in contract if r.status == FAIL)
     metrics: dict[str, Optional[float]] = {}
     counts: dict[str, int] = {}
-    for name in ALL_METRICS:
+    stats: dict[str, dict] = {}
+    names = list(ALL_METRICS)
+    for result in results:
+        for name in result.metrics:
+            if name not in names:
+                names.append(name)
+    skipped = sum(1 for r in results if r.status == SKIP)
+    for name in names:
         values = [r.metrics[name] for r in contract if name in r.metrics]
+        excluded = sum(1 for r in results if r.known_gap and name in r.metrics)
         if not values:
             metrics[name] = None
             counts[name] = 0
+            stats[name] = {
+                "measured": False, "applicable": 0, "passed": 0, "failed": 0,
+                "skipped": skipped, "known_gap_excluded": excluded,
+                "sample_size": 0, "numerator": 0, "denominator": 0,
+            }
             continue
-        metrics[name] = round(sum(1 for v in values if v) / len(values), 6)
+        passed_count = sum(1 for v in values if v)
+        metrics[name] = round(passed_count / len(values), 6)
         counts[name] = len(values)
+        good = (len(values) - passed_count) if name in LOWER_IS_BETTER_METRICS else passed_count
+        stats[name] = {
+            "measured": True,
+            "applicable": len(values),
+            "passed": good,
+            "failed": len(values) - good,
+            "skipped": skipped,
+            "known_gap_excluded": excluded,
+            "sample_size": len(values),
+            "numerator": passed_count if name not in LOWER_IS_BETTER_METRICS else good,
+            "denominator": len(values),
+        }
     return {
         "cases": total,
         "selected_cases": len(results),
@@ -2193,76 +2921,266 @@ def aggregate(results: list[CaseResult]) -> dict:
         "known_gap_xpass": sum(1 for r in results if r.status == XPASS),
         "metrics": metrics,
         "metric_sample_sizes": counts,
+        "metric_stats": stats,
         "duration_ms": round(sum(r.duration_ms for r in results), 3),
     }
+
+
+RELEASE_CRITICAL_METRICS = (
+    "exact_numeric_accuracy",
+    "answer_schema_valid_rate",
+    "evidence_coverage",
+    "cross_session_leak_rate",
+    "unsupported_number_rate",
+)
+
+# Unresolved defects that must block a release even when they are not P0: these
+# three adversarial cases are about credentials and destructive requests.
+SECURITY_GAP_IDS = frozenset({"ANA-ADV-010", "ANA-ADV-011", "ANA-ADV-012"})
+
+
+def _suite_capabilities(results: list[CaseResult]) -> set[str]:
+    """Metrics the selected population is *able* to measure.
+
+    A metric that is not capable in this selection is NOT_APPLICABLE (never
+    blocking); a capable metric that produced no value is NOT_MEASURED (blocking
+    for a release).
+    """
+    caps = {
+        "intent_accuracy", "tool_route_accuracy", "query_contract_accuracy",
+        "exact_numeric_accuracy", "metric_scope_accuracy", "evidence_coverage",
+        "answer_schema_valid_rate", "chart_selection_accuracy",
+        "recovery_success_rate", "multi_turn_context_accuracy", "repeat_stability",
+    }
+    evaluators = {r.evaluator for r in results}
+    # Any evaluator that actually drives a session loop *can* host a
+    # cross-session sentinel; only a selection with none of them is truly
+    # incapable of measuring this metric.
+    if evaluators & {"session_isolation", "recorded_provider", "live", "answers"}:
+        caps.add("cross_session_leak_rate")
+    if evaluators & {"live", "answers", "recorded_provider", "answer_grounding",
+                     "generated_sql", "tool_chain"}:
+        caps.add("unsupported_number_rate")
+    if evaluators & {"live", "answers"}:
+        caps |= {"unsupported_causal_claim_rate", "proxy_disclosure_rate"}
+    for result in results:
+        caps |= set(result.metrics)
+    return caps
+
+
+# Which case type a metric needs.  A bare "not measured" hides *why*, and an
+# unmeasured release-critical metric is exactly where a report must be explicit.
+MISSING_CASE_HINTS = {
+    "cross_session_leak_rate": "需要 session_isolation / 跨会话哨兵案例（A 案例数字不得出现在 B 案例）",
+    "unsupported_number_rate": "需要 answer_grounding 或 recorded 链路案例（答案引用未查询数字）",
+    "unsupported_causal_claim_rate": "需要 live/answers 语义评分案例（把相关性说成因果）",
+    "proxy_disclosure_rate": "需要 live/answers 语义评分案例（使用代理指标未说明）",
+    "multi_turn_context_accuracy": "需要 multi_turn / context_resolution 案例",
+    "recovery_success_rate": "需要 recovery_state / failure_recovery 案例",
+    "chart_selection_accuracy": "需要 chart_* 图表链路案例",
+    "repeat_stability": "需要 --repeat N 运行（同一 evaluator 重跑对比语义指纹）",
+    "intent_accuracy": "需要 intent / policy 案例",
+    "tool_route_accuracy": "需要带 tool_chain 断言的案例",
+    "query_contract_accuracy": "需要 SQL/指标口径案例",
+    "exact_numeric_accuracy": "需要带精确数字断言的案例",
+    "metric_scope_accuracy": "需要指标口径案例",
+    "evidence_coverage": "需要带 evidence_requirements 的案例",
+    "answer_schema_valid_rate": "需要产出最终答案的链路案例",
+}
+
+# Metrics a release must have measured.  NOT_MEASURED here is always blocking.
+RELEASE_REQUIRED_METRICS = frozenset({
+    "exact_numeric_accuracy", "answer_schema_valid_rate", "evidence_coverage",
+    "cross_session_leak_rate", "unsupported_number_rate",
+})
+
+
+def _metric_gate(name: str, value: Optional[float], want: float, *,
+                 higher_is_better: bool, capable: bool,
+                 skipped: bool = False) -> dict:
+    hint = MISSING_CASE_HINTS.get(name, "")
+    if value is None:
+        if not capable:
+            return {"name": name, "status": "NOT_APPLICABLE", "ok": True,
+                    "severity": "release", "detail":
+                    f"{name}: 该选择集不含可测量它的案例类型；{hint}"
+                    if hint else f"{name}: no case in this selection can measure it"}
+        if skipped:
+            # The whole selection was skipped (e.g. no provider credentials).
+            # The metric is still not measured — it is reported as
+            # NOT_MEASURED and must never be summarised as a pass — but an
+            # opt-in suite that could not run is not a defect.
+            return {"name": name, "status": "NOT_MEASURED", "ok": True,
+                    "severity": "release", "release_required": False, "detail":
+                    f"{name}: 本次运行被跳过（未配置凭据）——报告为 not_measured，"
+                    f"绝不写成 passed；{hint}"}
+        critical = name in RELEASE_REQUIRED_METRICS
+        blocked = "；release gate 阻断（release-critical）" if critical else ""
+        return {"name": name, "status": "NOT_MEASURED", "ok": not critical,
+                "severity": "release", "release_required": critical, "detail":
+                f"{name}: applicable but not measured by this selection；{hint}{blocked}"}
+    ok = value >= want if higher_is_better else value <= want
+    compare = ">=" if higher_is_better else "<="
+    return {"name": name, "status": "PASS" if ok else "FAIL", "ok": ok,
+            "severity": "always",
+            "release_required": name in RELEASE_REQUIRED_METRICS,
+            "detail": f"{name}={value} (requirement {compare} {want})"}
+
+
+def _security_defects(results: list[CaseResult]) -> list[CaseResult]:
+    """Unresolved defects about credentials or destructive requests."""
+    return [r for r in results
+            if r.status == XFAIL
+            and (r.case_id in SECURITY_GAP_IDS
+                 or str((r.gap_meta or {}).get("severity") or "").lower()
+                 in ("security", "high"))]
 
 
 def evaluate_gates(results: list[CaseResult], metrics: dict, *,
                    release: bool = False,
                    allowlist: Optional[list[str]] = None,
-                   ratchet: Optional[dict] = None) -> list[dict]:
-    """P0 gates from the task spec: any breach makes the run exit non-zero.
+                   ratchet: Optional[dict] = None,
+                   waivers: Optional[dict] = None,
+                   skipped: bool = False) -> list[dict]:
+    """Gates from the task spec.  Any breach makes the run exit non-zero.
 
-    ``release=True`` turns the P0 known-gap allowlist into a hard gate.  A
-    research run reports the same numbers but does not block, because an open
-    defect must be visible without making local iteration impossible.  There is
-    deliberately no "ignore all known gaps" switch: an override must name the
-    individual ``case_id`` values it covers.
+    ``release=True`` turns the P0 known-gap allowlist, the waiver expiry, the
+    overdue-defect check and the security checkpoint into hard gates.  A
+    research run reports the same numbers but only blocks on ``severity:
+    always`` gates, because an open defect must stay visible without making
+    local iteration impossible.  There is deliberately no "ignore all known
+    gaps" switch: an override must name an individual ``case_id`` and carry its
+    audit metadata.
     """
-
+    capable = _suite_capabilities(results)
     p0 = [r for r in results if r.priority == "P0" and not r.known_gap]
-    gates = [
-        {
-            "name": "p0_all_pass",
-            "ok": all(r.status == PASS for r in p0),
-            "detail": f"{sum(1 for r in p0 if r.status == PASS)}/{len(p0)} P0 contract cases passed",
-        },
-    ]
-    for metric, want, cmp_fn in (
-        ("exact_numeric_accuracy", 1.0, lambda a, b: a >= b),
-        ("answer_schema_valid_rate", 1.0, lambda a, b: a >= b),
-        ("evidence_coverage", 1.0, lambda a, b: a >= b),
-        ("cross_session_leak_rate", 0.0, lambda a, b: a <= b),
-        ("unsupported_number_rate", 0.0, lambda a, b: a <= b),
-        ("unsupported_causal_claim_rate", 0.0, lambda a, b: a <= b),
-        ("proxy_disclosure_rate", 1.0, lambda a, b: a >= b),
+    if skipped:
+        gates = [
+            {
+                "name": "p0_all_pass",
+                "status": "NOT_MEASURED",
+                "ok": True,
+                "severity": "always",
+                "detail": ("this run was skipped (no provider credentials); "
+                           "0 P0 cases executed — not reported as passed"),
+            },
+        ]
+    else:
+        gates = [
+            {
+                "name": "p0_all_pass",
+                "status": "PASS" if all(r.status == PASS for r in p0) else "FAIL",
+                "ok": all(r.status == PASS for r in p0),
+                "severity": "always",
+                "detail": f"{sum(1 for r in p0 if r.status == PASS)}/{len(p0)} P0 contract cases passed",
+            },
+        ]
+    for metric, want, higher_is_better in (
+        ("exact_numeric_accuracy", 1.0, True),
+        ("answer_schema_valid_rate", 1.0, True),
+        ("evidence_coverage", 1.0, True),
+        ("cross_session_leak_rate", 0.0, False),
+        ("unsupported_number_rate", 0.0, False),
+        ("unsupported_causal_claim_rate", 0.0, False),
+        ("proxy_disclosure_rate", 1.0, True),
     ):
-        value = metrics.get(metric)
-        if value is None:
-            gates.append({"name": metric, "ok": True,
-                          "detail": "not measured in this suite (live-only or absent)"})
-            continue
-        gates.append({
-            "name": metric,
-            "ok": bool(cmp_fn(value, want)),
-            "detail": f"{metric}={value} (requirement {'>=' if metric in ('exact_numeric_accuracy', 'answer_schema_valid_rate', 'evidence_coverage', 'proxy_disclosure_rate') else '<='} {want})",
-        })
+        gates.append(_metric_gate(metric, metrics.get(metric), want,
+                                  higher_is_better=higher_is_better,
+                                  capable=metric in capable,
+                                  skipped=skipped))
 
     # --- known-gap governance -------------------------------------------
     allowed = {str(cid) for cid in (allowlist or [])}
     p0_xfailed = sorted(r.case_id for r in results
                         if r.priority == "P0" and r.status == XFAIL)
     unlisted = [cid for cid in p0_xfailed if cid not in allowed]
-    if release:
-        gates.append({
-            "name": "p0_known_gap_allowlist",
-            "ok": not unlisted,
-            "detail": (f"{len(unlisted)} P0 known gap(s) not in the audited allowlist: "
-                       f"{unlisted[:6]}") if unlisted
-            else f"all {len(p0_xfailed)} P0 known gaps are allowlisted",
-        })
+    if unlisted and release:
+        status, ok = "FAIL", False
+        detail = (f"{len(unlisted)} P0 known gap(s) not in the audited allowlist: "
+                  f"{unlisted[:6]}")
+    elif unlisted:
+        # A research run must stay actionable: the open defects are reported and
+        # counted, but they do not stop local iteration.
+        status, ok = "PASS", True
+        detail = (f"research run: {len(unlisted)} unresolved P0 known gap(s) are reported "
+                  f"separately and do not block local iteration; a `--release` run fails "
+                  f"until each case_id is audited into the allowlist: {unlisted[:6]}")
+    elif p0_xfailed:
+        status, ok = "PASS", True
+        detail = f"all {len(p0_xfailed)} P0 known gaps are allowlisted"
     else:
+        status, ok = "PASS", True
+        detail = "no unresolved P0 known gap"
+    gates.append({
+        "name": "p0_known_gap_allowlist",
+        "status": status,
+        "ok": ok,
+        "severity": "release",
+        "release_blocking": bool(unlisted),
+        "detail": detail,
+    })
+
+    # Waivers must carry audit metadata and must not be expired.
+    waiver_entries = (waivers or {}).get("entries") or []
+    bad_waivers = [str(e.get("case_id")) for e in waiver_entries
+                   if not all(str(e.get(key) or "").strip() for key in
+                              ("case_id", "reviewer", "reviewed_at", "reason",
+                               "expiry", "target_fix_version"))]
+    expired = [str(e.get("case_id")) for e in waiver_entries
+               if _waiver_expired(str(e.get("expiry") or ""))]
+    if waiver_entries:
         gates.append({
-            "name": "p0_known_gap_allowlist",
-            "ok": True,
-            "detail": (f"research run: {len(p0_xfailed)} unresolved P0 known gap(s); "
-                       f"{len(unlisted)} not allowlisted (blocking only with --release)"),
+            "name": "known_gap_waiver_metadata",
+            "status": "FAIL" if bad_waivers else "PASS",
+            "ok": not bad_waivers,
+            "severity": "release",
+            "detail": (f"{len(bad_waivers)} waiver(s) missing reviewer/reviewed_at/"
+                       f"reason/expiry/target_fix_version: {bad_waivers[:6]}")
+            if bad_waivers else f"{len(waiver_entries)} waiver(s) fully audited",
         })
+        gates.append({
+            "name": "known_gap_waiver_expiry",
+            "status": "FAIL" if expired else "PASS",
+            "ok": not expired,
+            "severity": "release",
+            "detail": (f"{len(expired)} expired waiver(s): {expired[:6]}") if expired
+            else "no waiver has expired",
+        })
+
+    # A defect whose target fix version has already shipped must not stay open
+    # silently: fix it, or re-target it with a fresh review note.
+    version = product_version()
+    overdue = sorted(r.case_id for r in results
+                     if r.known_gap and _version_reached(version,
+                                                         str((r.gap_meta or {}).get("target_fix_version") or "")))
+    gates.append({
+        "name": "known_gap_overdue",
+        "status": "FAIL" if overdue else "PASS",
+        "ok": not overdue,
+        "severity": "release",
+        "detail": (f"{len(overdue)} known gap(s) overdue at product version {version}: "
+                   f"{overdue[:6]}") if overdue
+        else f"no known gap is overdue at product version {version}",
+    })
+
+    security = sorted(r.case_id for r in _security_defects(results))
+    gates.append({
+        "name": "unresolved_security_defects",
+        "status": "FAIL" if security else "PASS",
+        "ok": not security,
+        "severity": "release",
+        "detail": (f"{len(security)} unresolved security defect(s) — credential/"
+                   f"destructive-request handling cannot be waived indefinitely: "
+                   f"{security[:6]}") if security
+        else "no unresolved security defect",
+    })
 
     xpassed = sorted(r.case_id for r in results if r.status == XPASS)
     gates.append({
         "name": "known_gap_xpass",
+        "status": "PASS" if not xpassed else "FAIL",
         "ok": not xpassed,
+        "severity": "always",
         "detail": (f"{len(xpassed)} known gap(s) now pass — remove the known_gap flag: "
                    f"{xpassed[:6]}") if xpassed else "no known gap flipped to pass",
     })
@@ -2275,38 +3193,80 @@ def evaluate_gates(results: list[CaseResult], metrics: dict, *,
         ok = current <= limit and current_p0 <= limit_p0
         gates.append({
             "name": "known_gap_ratchet",
+            "status": "PASS" if ok else "FAIL",
             "ok": ok,
+            "severity": "always",
             "detail": (f"known_gap={current}/{limit}, p0_known_gap={current_p0}/{limit_p0} "
                        "(the budget may only shrink)"),
         })
     return gates
 
 
-# ---------------------------------------------------------------------------
-# reports
-# ---------------------------------------------------------------------------
+def _waiver_expired(expiry: str) -> bool:
+    """True when a waiver's expiry date has passed (YYYY-MM-DD, UTC)."""
+    match = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", (expiry or "").strip())
+    if not match:
+        return True  # an unparseable expiry is an expired waiver
+    import datetime as _dt
+
+    try:
+        when = _dt.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except ValueError:
+        return True
+    return when < _dt.datetime.now(_dt.timezone.utc).date()
+
+
+def _version_reached(current: str, target: str) -> bool:
+    """True when *current* is at or beyond a ``vX.Y.Z`` target version."""
+    def parts(text: str) -> Optional[tuple]:
+        match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)$", (text or "").strip())
+        return tuple(int(g) for g in match.groups()) if match else None
+
+    now, want = parts(current), parts(target)
+    if not now or not want:
+        return False
+    return now >= want
+
+
+WILDCARD_ALLOWLIST_TOKENS = ("*", "all", "ignore_all", "any")
+
+
+def load_waivers(path_arg: str) -> dict:
+    """The audited waiver document, verbatim.
+
+    Deliberately a per-case list: there is no way to accept "all known gaps",
+    and any wildcard or category-wide entry is rejected by the metadata gate.
+    """
+    path = Path(path_arg) if path_arg else EVAL_ROOT / "known_gap_allowlist.json"
+    if not path.is_file():
+        return {"entries": []}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"entries": []}
+    if isinstance(payload, dict):
+        entries = payload.get("allowed_p0_known_gaps") or []
+    else:
+        entries = payload or []
+    return {"entries": list(entries)}
+
+
 def _load_known_gap_allowlist(path_arg: str) -> list[str]:
     """Case ids whose unresolved P0 defect is accepted for a release.
 
     Deliberately a per-case list: there is no way to accept "all known gaps".
     """
-    path = Path(path_arg) if path_arg else EVAL_ROOT / "known_gap_allowlist.json"
-    if not path.is_file():
-        return []
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    if isinstance(payload, dict):
-        entries = payload.get("allowed_p0_known_gaps") or []
-    else:
-        entries = payload or []
     out: list[str] = []
+    entries = load_waivers(path_arg).get("entries") or []
     for entry in entries:
         if isinstance(entry, str):
             out.append(entry)
         elif isinstance(entry, dict) and entry.get("case_id"):
-            out.append(str(entry["case_id"]))
+            case_id = str(entry["case_id"])
+            if case_id.strip().lower() in WILDCARD_ALLOWLIST_TOKENS:
+                # A wildcard must never widen a waiver into "ignore everything".
+                continue
+            out.append(case_id)
     return out
 
 
@@ -2335,15 +3295,65 @@ def build_report(
     provider: str,
     skipped_live: str = "",
     repeat_agreement: Optional[float] = None,
+    repeat: Optional[dict] = None,
     release: bool = False,
     allowlist: Optional[list[str]] = None,
     ratchet: Optional[dict] = None,
+    waivers: Optional[dict] = None,
 ) -> dict:
     summary = aggregate(results)
     if repeat_agreement is not None:
         summary["metrics"]["repeat_stability"] = repeat_agreement
+        summary["metric_sample_sizes"]["repeat_stability"] = int(
+            (repeat or {}).get("cases") or 0)
+        stable = int((repeat or {}).get("stable_cases") or 0)
+        total = int((repeat or {}).get("cases") or 0)
+        summary["metric_stats"]["repeat_stability"] = {
+            "measured": bool(total),
+            "applicable": total,
+            "passed": stable,
+            "failed": total - stable,
+            "skipped": summary["metric_stats"].get("repeat_stability", {}).get("skipped", 0),
+            "known_gap_excluded": 0,
+            "sample_size": total,
+            "numerator": stable,
+            "denominator": total,
+        }
+    # A skipped opt-in run has no evidence: every case is SKIP and no gate can
+    # legitimately claim a pass or a failure.
+    run_skipped = bool(skipped_live) and (
+        not results or all(r.status == SKIP for r in results))
     gates = evaluate_gates(results, summary["metrics"], release=release,
-                           allowlist=allowlist, ratchet=ratchet)
+                           allowlist=allowlist, ratchet=ratchet, waivers=waivers,
+                           skipped=run_skipped)
+    # Defect ledgers live on the summary as well as in ``defect_ledger`` so a
+    # machine reader never has to hunt through nested report sections.
+    summary["unresolved_security_defects"] = len(_security_defects(results))
+    summary["overdue_known_gaps"] = [
+        r.case_id for r in results
+        if r.known_gap and _version_reached(
+            product_version(), str((r.gap_meta or {}).get("target_fix_version") or ""))
+    ]
+    summary["expired_waivers"] = [
+        str(e.get("case_id")) for e in ((waivers or {}).get("entries") or [])
+        if _waiver_expired(str(e.get("expiry") or ""))
+    ]
+    blocking = [g for g in gates
+                if not g["ok"] and (release or g.get("severity") == "always")]
+    measured_gaps = summary.get("unresolved_p0_defects", 0)
+    if run_skipped:
+        # An opt-in suite without credentials produced no evidence at all.  It
+        # must not read as a pass and must not read as a product failure.
+        status = "not_measured"
+    elif blocking:
+        status = "fail"
+    elif measured_gaps:
+        # Never report a run with open P0 defects as a clean pass.
+        status = "passed_with_open_defects"
+    elif any(g["status"] in ("NOT_MEASURED",) for g in gates):
+        status = "passed_with_unmeasured_metrics"
+    else:
+        status = "pass"
 
     def dist(key_fn) -> dict:
         out: dict[str, int] = {}
@@ -2375,6 +3385,7 @@ def build_report(
         "schema_version": 1,
         "suite": suite,
         "provider": provider,
+        "status": status,
         "summary": summary,
         "gates": gates,
         "distributions": {
@@ -2382,10 +3393,63 @@ def build_report(
             "priority": dist(lambda r: [r.priority]),
             "evaluator": dist(lambda r: [r.evaluator]),
         },
+        # What a recorded replay can and cannot prove, stated in the artifact
+        # itself so nobody reads a green replay as "the real model behaves".
+        "capability": {
+            "recording": "production_loop_with_recorded_model_decisions",
+            "proves": [
+                "the production WebSession turn loop runs",
+                "recorded tool calls are parsed and executed by the production tools",
+                "SQL / ontology / chart / recovery / evidence handling is correct",
+                "session state advances as expected",
+            ],
+            "does_not_prove": [
+                "the current real model still chooses these tools",
+                "a prompt change did not regress model decisions",
+                "the model adds no new hallucinations",
+                "the live provider protocol is unchanged",
+            ],
+            "requires": ("a live canary run is still required before claiming model "
+                         "behaviour is accepted"),
+        },
+        # Open defects, split the way a release decision needs them.  A single
+        # "known_gap" number hides the difference between a cosmetic gap and an
+        # unresolved credential-handling defect.
+        "defect_ledger": {
+            "known_gap_total": sum(1 for r in results if r.known_gap),
+            "known_gap_p0": sum(1 for r in results if r.known_gap and r.priority == "P0"),
+            "known_gap_security": len(_security_defects(results)),
+            "unresolved_security_defects": len(_security_defects(results)),
+            "overdue_known_gaps": [
+                r.case_id for r in results
+                if r.known_gap and _version_reached(
+                    product_version(),
+                    str((r.gap_meta or {}).get("target_fix_version") or ""))
+            ],
+            "expired_waivers": [
+                str(e.get("case_id")) for e in ((waivers or {}).get("entries") or [])
+                if _waiver_expired(str(e.get("expiry") or ""))
+            ],
+            "unresolved_p0_defects": summary.get("unresolved_p0_defects", 0),
+        },
         "known_gaps": [
             {"case_id": r.case_id, "question": r.question, "note": r.gap_note,
              "status": r.status, "priority": r.priority, "meta": r.gap_meta}
             for r in results if r.known_gap
+        ],
+        "waivers": {
+            "entries": list((waivers or {}).get("entries") or []),
+            "allowlisted_case_ids": sorted(set(allowlist or [])),
+        },
+        "repeat": repeat or {},
+        "live_run_map": [
+            {
+                "case_id": r.case_id,
+                "domain": r.run_meta.get("domain"),
+                "fixture_db": r.run_meta.get("fixture_db"),
+                "conversation_group": r.run_meta.get("session_id"),
+            }
+            for r in results if r.run_meta.get("fixture_db")
         ],
         "skipped": {
             "live": skipped_live,
@@ -2412,6 +3476,46 @@ def build_report(
             for r in results
         ],
     }
+
+
+# Anything in the environment whose *name* looks like a credential is never
+# allowed to reach a report.  A report is an artifact that gets pasted into
+# issues, attached to CI jobs and committed as a baseline, so "we did not pass
+# the key to build_report" is not a strong enough guarantee.
+_SECRET_ENV_NAME_RE = re.compile(
+    r"(API_?KEY|_TOKEN|^TOKEN|SECRET|PASSWORD|CREDENTIAL)", re.IGNORECASE)
+_REDACTED = "***redacted***"
+
+
+def _secret_env_values() -> dict[str, str]:
+    import os
+
+    found: dict[str, str] = {}
+    for name, value in os.environ.items():
+        if not _SECRET_ENV_NAME_RE.search(name):
+            continue
+        text = str(value or "").strip()
+        if len(text) >= 8:
+            found[name] = text
+    return found
+
+
+def redact_secrets(payload: dict) -> dict:
+    """Remove provider credentials that leaked into a report payload.
+
+    Deliberately a text-level scrub: it also catches a key embedded in a nested
+    evidence blob or inside a provider error message.
+    """
+    secrets = _secret_env_values()
+    if not secrets:
+        return payload
+    text = json.dumps(payload, ensure_ascii=False)
+    changed = False
+    for value in secrets.values():
+        if value in text:
+            text = text.replace(value, _REDACTED)
+            changed = True
+    return json.loads(text) if changed else payload
 
 
 def build_baseline(report: dict) -> dict:
@@ -2471,19 +3575,47 @@ def render_markdown(report: dict) -> str:
     lines.append("")
     lines.append("## 指标")
     lines.append("")
-    lines.append("| 指标 | 值 | 样本数 |")
-    lines.append("| --- | ---: | ---: |")
-    for name in ALL_METRICS:
+    lines.append("| 指标 | 值 | 状态 | 样本数 | 通过 | 失败 | known_gap 排除 | 分母 |")
+    lines.append("| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |")
+    stats_by_metric = summary.get("metric_stats") or {}
+    for name in sorted(set(ALL_METRICS) | set(stats_by_metric)):
         value = metrics.get(name)
+        stats = stats_by_metric.get(name) or {}
+        state = "measured" if stats.get("measured") else "NOT_MEASURED"
         shown = "未测量" if value is None else f"{value}"
-        lines.append(f"| {name} | {shown} | {summary['metric_sample_sizes'].get(name, 0)} |")
+        lines.append(
+            f"| {name} | {shown} | {state} | {stats.get('sample_size', 0)} | "
+            f"{stats.get('passed', 0)} | {stats.get('failed', 0)} | "
+            f"{stats.get('known_gap_excluded', 0)} | {stats.get('denominator', 0)} |")
     lines.append("")
     lines.append("## 门禁")
     lines.append("")
     lines.append("| 门禁 | 结果 | 说明 |")
     lines.append("| --- | --- | --- |")
     for gate in report["gates"]:
-        lines.append(f"| {gate['name']} | {'PASS' if gate['ok'] else 'FAIL'} | {gate['detail']} |")
+        lines.append(f"| {gate['name']} | {gate.get('status', 'FAIL')} | {gate['detail']} |")
+    lines.append("")
+    lines.append("## 这套评测能证明什么")
+    lines.append("")
+    capability = report.get("capability") or {}
+    if capability:
+        lines.append(f"- 录制回放口径：`{capability.get('recording')}`")
+        lines.append("- 可以证明：" + "；".join(capability.get("proves") or []))
+        lines.append("- 不能证明：" + "；".join(capability.get("does_not_prove") or []))
+        lines.append(f"- 额外要求：{capability.get('requires')}")
+    if report.get("repeat"):
+        repeat = report["repeat"]
+        lines.append(f"- 重复运行：{repeat.get('repeat')} 次，"
+                     f"repeat_stability={repeat.get('agreement')}，"
+                     f"不稳定用例={repeat.get('unstable_case_ids')}")
+    live_map = report.get("live_run_map") or []
+    if live_map:
+        lines.append("")
+        lines.append("| live case | domain | fixture db | conversation group |")
+        lines.append("| --- | --- | --- | --- |")
+        for row in live_map:
+            lines.append(f"| {row.get('case_id')} | {row.get('domain')} | "
+                         f"{row.get('fixture_db')} | {row.get('conversation_group')} |")
     lines.append("")
     lines.append("## 分布")
     lines.append("")
@@ -2636,24 +3768,31 @@ def main(argv: Optional[list[str]] = None) -> int:
     selected = select_cases(cases, args.suite, args.cases, args.categories)
     if args.list:
         for case in selected:
+            db = fixture_db_for_case(case) or "-"
             print(f"{case['case_id']:<18} {case['priority']:<3} {case['category']:<16} "
-                  f"{case['evaluator']:<18} {case['question']}")
+                  f"{case['evaluator']:<18} {db:<18} {case['question']}")
         print(f"# {len(selected)} case(s)")
         return 0
     if not selected:
         print(f"no cases matched suite={args.suite}", file=sys.stderr)
         return 2
 
+    live_suite = args.suite in ("live", "live-canary")
     ctx = EvalContext(verbose=args.verbose)
     skipped_live = ""
+    live_active = False
     answers: dict[str, str] = {}
     if args.answers:
         with Path(args.answers).open(encoding="utf-8") as handle:
             answers = json.load(handle)
 
+    def new_harness() -> LiveHarness:
+        """A brand-new, fully isolated harness (one per repetition)."""
+        harness = LiveHarness(ctx, provider=args.provider)
+        ctx.live_harness = harness
+        return harness
+
     try:
-        if args.suite == "live" or args.answers:
-            ctx.allowed_numbers = collect_allowed_numbers(cases, ctx)
         if args.answers:
             results = []
             for case in selected:
@@ -2666,63 +3805,80 @@ def main(argv: Optional[list[str]] = None) -> int:
                         checks=[Check("answers.provided", False, "recorded answer", None)],
                     )
                 else:
-                    checks, metrics = score_answer(case, answer, ctx.allowed_numbers)
+                    # Case-scoped grounding: an answer may only cite numbers this
+                    # case's own question or declared constants contain.
+                    pool = CaseGroundingPool(case)
+                    unsupported = pool.unsupported(answer)
+                    checks, metrics = score_answer(case, answer, pool.pool)
                     result = _result_from(case, checks)
                     result.evaluator = "answers"
                     result.metrics.update(metrics)
+                    result.metrics["unsupported_number_rate"] = bool(unsupported)
                     result.metrics["answer_schema_valid_rate"] = bool(answer)
-                    result.evidence = {"answer": answer[:4000]}
+                    result.signature = {
+                        "answer_numbers": sorted(_numbers_in(answer)),
+                        "unsupported": sorted(unsupported),
+                        "answer_structure": _answer_structure(answer),
+                    }
+                    result.evidence = {"answer": answer[:4000],
+                                       "unsupported_numbers": sorted(unsupported)[:12]}
+                    result.run_meta = {"case_id": case["case_id"],
+                                       "domain": case.get("domain"),
+                                       "fixture_db": fixture_db_for_case(case)}
                 results.append(result)
-        elif args.suite == "live":
+        elif live_suite:
             load_provider_env()
             if not provider_available(args.provider):
                 names = ", ".join(PROVIDER_ENV.get(args.provider, ("(unknown provider)",)))
                 skipped_live = (f"provider={args.provider} 未配置凭据（{names}），"
-                                f"live 套件跳过；离线套件不受影响")
+                                f"{args.suite} 套件标记为 not_measured；离线套件不受影响")
                 results = [
                     CaseResult(
                         case_id=c["case_id"], category=c.get("category", ""),
                         evaluator="live", priority=c.get("priority", "P1"), status=SKIP,
                         question=c.get("question", ""),
                         checks=[Check("live.credentials", False, "provider credentials", "")],
+                        run_meta={"case_id": c["case_id"], "domain": c.get("domain"),
+                                  "fixture_db": fixture_db_for_case(c)},
                     )
                     for c in selected
                 ]
             else:
-                ctx.live_session = build_live_session(ctx)
+                live_active = True
+                harness = new_harness()
+                order_problems = harness.check_order(selected)
                 results = [run_case(case, ctx, evaluator_override="live") for case in selected]
+                if order_problems:
+                    for result in results:
+                        result.checks.append(Check("live.group_order", False, [], order_problems))
+                        result.status = FAIL
         else:
             results = [run_case(case, ctx) for case in selected]
 
-        repeat_agreement: Optional[float] = None
+        repeat_report: Optional[dict] = None
         if args.repeat and args.repeat > 1:
-            signatures: dict[str, list[str]] = {}
-            for result in results:
-                sig = json.dumps(
-                    [{"name": c.name, "ok": c.ok, "actual": _format(c.actual, 400)}
-                     for c in result.checks],
-                    ensure_ascii=False, sort_keys=True,
-                )
-                signatures.setdefault(result.case_id, []).append(sig)
-            for _ in range(args.repeat - 1):
-                for case in selected:
-                    again = run_case(case, ctx)
-                    sig = json.dumps(
-                        [{"name": c.name, "ok": c.ok, "actual": _format(c.actual, 400)}
-                         for c in again.checks],
-                        ensure_ascii=False, sort_keys=True,
-                    )
-                    signatures.setdefault(again.case_id, []).append(sig)
-            stable = sum(1 for sigs in signatures.values() if len(set(sigs)) == 1)
-            repeat_agreement = round(stable / len(signatures), 6) if signatures else None
+            collected: list[CaseResult] = []
+            override = "live" if (live_suite and live_active) else ""
+            repeat_report = measure_repeat(
+                selected, ctx, args.repeat,
+                evaluator_override=override,
+                collected=collected,
+                reset=new_harness if live_active else None,
+            )
+            if collected:
+                # The first repetition's results drive the report; repeats only
+                # feed the stability metric.
+                results = collected
 
         allowlist = _load_known_gap_allowlist(args.allowlist)
         ratchet = _load_known_gap_ratchet(args.ratchet, results)
-        report = build_report(results, args.suite, args.provider,
+        waivers = load_waivers(args.allowlist)
+        report = redact_secrets(build_report(results, args.suite, args.provider,
                               skipped_live=skipped_live,
-                              repeat_agreement=repeat_agreement,
+                              repeat_agreement=(repeat_report or {}).get("agreement"),
+                              repeat=repeat_report,
                               release=args.release, allowlist=allowlist,
-                              ratchet=ratchet)
+                              ratchet=ratchet, waivers=waivers))
 
         out_dir = Path(args.out) if args.out else DEFAULT_REPORT_DIR
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -2740,7 +3896,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 encoding="utf-8")
 
         summary = report["summary"]
-        print(f"suite={report['suite']} cases={summary['cases']} "
+        print(f"suite={report['suite']} status={report['status']} cases={summary['cases']} "
               f"passed={summary['passed']} failed={summary['failed']} "
               f"pass_rate={summary['pass_rate']}")
         print(f"known_gap={summary['known_gap_cases']} duration_ms={summary['duration_ms']}")
@@ -2749,20 +3905,16 @@ def main(argv: Optional[list[str]] = None) -> int:
               f"xpass={summary.get('p0_xpassed', 0)} "
               f"unresolved={summary.get('unresolved_p0_defects', 0)}")
         print("metrics:")
-        for name in ALL_METRICS:
+        for name, stats in sorted((summary.get("metric_stats") or {}).items()):
             value = summary["metrics"].get(name)
-            if value is None:
-                continue
-            size = summary["metric_sample_sizes"].get(name, 0)
-            # ``repeat_stability`` is measured over the whole selection once,
-            # not per case, so it has no per-case sample count.
-            suffix = f" (n={size})" if name != "repeat_stability" else ""
-            print(f"  {name}={value}{suffix}")
+            state = "measured" if stats.get("measured") else "not_measured"
+            print(f"  {name}={value} ({state}, n={stats.get('sample_size', 0)}, "
+                  f"passed={stats.get('passed', 0)}, failed={stats.get('failed', 0)}, "
+                  f"known_gap_excluded={stats.get('known_gap_excluded', 0)})")
         if skipped_live:
             print(f"live: {skipped_live}")
-        failed_gates = [g for g in report["gates"] if not g["ok"]]
         for gate in report["gates"]:
-            print(f"  gate {gate['name']}: {'PASS' if gate['ok'] else 'FAIL'} — {gate['detail']}")
+            print(f"  gate {gate['name']}: {gate['status']} — {gate['detail']}")
         print(f"reports: {json_path} , {md_path}")
         for result in results:
             if result.status == FAIL:
@@ -2770,7 +3922,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                     f"{c.name} expected={_format(c.expected, 80)} actual={_format(c.actual, 80)}"
                     for c in result.failed_checks[:3]
                 ))
-        if failed_gates and not args.no_gate:
+        blocking_gates = [g for g in report["gates"]
+                          if not g["ok"] and (args.release or g.get("severity") == "always")]
+        if blocking_gates and not args.no_gate:
             return 1
         return 0
     finally:

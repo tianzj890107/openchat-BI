@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-PROC-004",
+  "turns": [
+    {
+      "user": "未删除的采购订单数是多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT COUNT(DISTINCT po_no) AS v FROM fact_purchase_order WHERE is_deleted = 0",
+            "query_description": "未删除的采购订单数是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "去重采购订单数",
+            "columns": [
+              {
+                "key": "v",
+                "label": "订单数"
+              }
+            ],
+            "rows": [
+              [
+                24
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "未删除的采购订单共 24 张（按 po_no 去重后的口径）。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

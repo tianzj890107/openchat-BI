@@ -29,10 +29,12 @@ ONTOLOGY_DIR = FIXTURE_ROOT / "ontology"
 MANIFEST_PATH = EVAL_ROOT / "manifest.json"
 SCHEMA_PATH = EVAL_ROOT / "schemas" / "case.schema.json"
 
-CASE_ID_RE = re.compile(r"^ANA-[A-Z0-9]+-[0-9]{3}$")
+# ``ANA-P0-PROC-001`` (production-chain P0) and ``ANA-ISO-001`` both match.
+CASE_ID_RE = re.compile(r"^ANA(-[A-Z0-9]+)+-[0-9]{3}$")
 PRIORITIES = {"P0", "P1", "P2"}
 SUITES = {"smoke", "regression", "multi-turn", "ontology", "charts",
-          "adversarial", "recovery", "diagnosis", "recorded-provider", "live"}
+          "adversarial", "recovery", "diagnosis", "recorded-provider", "live",
+          "live-canary"}
 DOMAINS = {"采购", "库存", "销售", "财务", "质量", "制造", "通用"}
 CATEGORIES = {"intent", "facts", "metrics", "comparison", "trend", "anomaly",
               "diagnosis", "recommendation", "ontology", "multi_turn", "charts",

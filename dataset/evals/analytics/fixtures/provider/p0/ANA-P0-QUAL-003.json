@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-QUAL-003",
+  "turns": [
+    {
+      "user": "停机总时长是多少",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(downtime_minutes) AS v FROM fact_quality_batch",
+            "query_description": "停机总时长是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "停机总时长",
+            "columns": [
+              {
+                "key": "v",
+                "label": "分钟"
+              }
+            ],
+            "rows": [
+              [
+                740
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "停机总时长 740 分钟，按批次汇总。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

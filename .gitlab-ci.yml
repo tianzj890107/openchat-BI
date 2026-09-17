@@ -78,14 +78,43 @@ analytics-eval-recorded-provider:
     paths:
       - dataset/evals/analytics/reports/
 
+analytics-eval-repeat-stability:
+  stage: eval
+  script:
+    # 同一批案例重跑两次：第二次必须使用与第一次相同的 evaluator，并且
+    # 语义指纹（意图/工具顺序/SQL 语义/数字/证据/图表/结论结构）保持一致。
+    - >-
+      python -m scripts.run_analytics_eval
+      --suite recorded-provider
+      --repeat 2
+      --out dataset/evals/analytics/reports
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - dataset/evals/analytics/reports/
+
+# 发布门禁：未解决的 P0 known gap 必须逐条进入「已审计 allowlist」。
+# 当前 allowlist 为空，所以只要还有 P0 缺陷，这个 job 就必然失败——这正是它
+# 存在的意义。
+#
+# `allow_failure: false` + `when: manual` 是一个**阻塞式手动 job**：pipeline 会停在
+# "blocked" 状态，必须由人显式执行并通过，才能继续/完成。这样它既不会在普通开发
+# pipeline 上自动跑（发布节奏由人控制），也不会再被"允许失败"悄悄放过。
+#
+# 没有独立的 release pipeline / tag pipeline 时，发布流程为：
+#   1. 人工在本次 pipeline 上执行本 job；
+#   2. job 必须 PASS（`--release` 返回 0）；
+#   3. 失败即禁止发布，直到缺陷修复或逐条 allowlist（含 reviewer/reviewed_at/
+#      reason/expiry/target_fix_version）并给出审计说明。
+# tag pipeline 上它会自动执行且同样不允失败。
 analytics-eval-release-gate:
   stage: eval
-  # 发布门禁：未解决的 P0 known gap 必须全部被「按 case_id 的已审计 allowlist」
-  # 覆盖，否则失败。当前 allowlist 为空，所以只要还有 P0 缺陷，这个 job 就会
-  # 失败——这正是它存在的意义。因此它是手动触发且不阻塞普通 pipeline。
-  # 禁止用「忽略全部 known gap」的方式绕过；只能逐个 case 审计后加入 allowlist。
-  when: manual
-  allow_failure: true
+  rules:
+    - if: '$CI_COMMIT_TAG'
+      when: always
+    - when: manual
+  allow_failure: false
   script:
     - >-
       python -m scripts.run_analytics_eval
@@ -95,5 +124,26 @@ analytics-eval-release-gate:
   artifacts:
     when: always
     expire_in: 30 days
+    paths:
+      - dataset/evals/analytics/reports/
+
+# 在线金丝雀：**不在默认 pipeline 中运行**，也不自动消费任何真实凭据。
+# 没有配置 provider 凭据时，runner 会把整套标记为 not_measured/skipped，绝不会
+# 报告成 passed（status=not_measured、每条用例 skip）；缺凭据时状态同样写进
+# report["skipped"]。人工触发示例见 dataset/evals/analytics/README.md §3 在线评测。
+analytics-eval-live-canary:
+  stage: eval
+  rules:
+    - when: manual
+  allow_failure: true
+  script:
+    - >-
+      python -m scripts.run_analytics_eval
+      --suite live-canary
+      --provider deepseek
+      --out dataset/evals/analytics/reports
+  artifacts:
+    when: always
+    expire_in: 7 days
     paths:
       - dataset/evals/analytics/reports/

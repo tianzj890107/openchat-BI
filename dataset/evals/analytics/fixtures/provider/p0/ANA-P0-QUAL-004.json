@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-QUAL-004",
+  "turns": [
+    {
+      "user": "整体缺陷率是多少",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT batch_no, inspected_qty, defect_qty FROM fact_quality_batch WHERE inspected_qty > 0",
+            "query_description": "整体缺陷率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "各批次检验与缺陷",
+            "columns": [
+              {
+                "key": "batch_no",
+                "label": "批次"
+              },
+              {
+                "key": "inspected_qty",
+                "label": "检验数"
+              },
+              {
+                "key": "defect_qty",
+                "label": "缺陷数"
+              }
+            ],
+            "rows": [
+              [
+                "B-0001",
+                1000,
+                20
+              ],
+              [
+                "B-0002",
+                500,
+                40
+              ],
+              [
+                "B-0003",
+                2000,
+                10
+              ],
+              [
+                "B-0004",
+                800,
+                8
+              ],
+              [
+                "B-0005",
+                400,
+                0
+              ],
+              [
+                "B-0007",
+                1200,
+                15
+              ],
+              [
+                "B-0008",
+                600,
+                9
+              ],
+              [
+                "B-0009",
+                1500,
+                30
+              ],
+              [
+                "B-0010",
+                900,
+                null
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "整体缺陷率 1.81%（按各批次缺陷率简单平均得到）。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

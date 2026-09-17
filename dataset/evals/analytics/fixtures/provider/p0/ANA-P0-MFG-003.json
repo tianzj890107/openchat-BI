@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-MFG-003",
+  "turns": [
+    {
+      "user": "报废率最高的是哪个月",
+      "db": "manufacturing.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT period, SUM(scrap_qty) * 1.0 / SUM(actual_qty) AS v FROM fact_production_order WHERE is_deleted = 0 AND actual_qty IS NOT NULL GROUP BY period ORDER BY v DESC LIMIT 1",
+            "query_description": "报废率最高的是哪个月"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "月度报废率（最高月）",
+            "columns": [
+              {
+                "key": "period",
+                "label": "月份"
+              },
+              {
+                "key": "v",
+                "label": "报废率"
+              }
+            ],
+            "rows": [
+              [
+                "2025-04",
+                0.03409091
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "报废率最高的是 2025-04，为 3.41%，分母为该月已报工的实际产量。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

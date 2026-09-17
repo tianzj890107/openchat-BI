@@ -5114,7 +5114,9 @@ _rp_chart(
         "unit": "元", "source_note": "MT-001 · fact_purchase_order"},
         "tool_results": {"ChartGenerate": {"contains": ["Chart generated"]}}},
     text=f"图表已生成，标题中的脚本标签会被转义，供应商金额 {_money(12600)} 元。",
-    chart_files={"min_count": 1, "absent": ["<script>", "onerror=alert"]},
+    chart_files={"min_count": 1,
+                 "absent": ["<script>alert('x')</script>",
+                            "<img src=x onerror=alert(1)>"]},
     category="adversarial", priority="P0",
     tags=["recorded", "chart", "adversarial", "html_safety"],
     notes="图表标题/标签里的 HTML 与脚本必须被转义后再写入 HTML。",
@@ -5162,7 +5164,7 @@ _rp_chart(
         "source_note": "fact_inventory_snapshot · 不补零，缺失月不绘制"},
         "tool_results": {"ChartGenerate": {"contains": ["Chart generated"]}}},
     text=f"不补零口径下只绘制真实存在的月份，当前仅 2025-01，数量 {_num(INV_JAN_QTY)}；"
-         f"缺失月份不在图中以 0 出现。",
+         f"缺失月份在图中不出现，也不用零值补齐。",
     table=rp_table("库存月度", [("m", "月份"), ("v", "数量")], [["2025-01", INV_JAN_QTY]]),
     chart_files={"min_count": 1},
     expected_extra={"tool_inputs": {"ChartGenerate": {"input_absent": ["2025-03"]}}},
@@ -5643,6 +5645,469 @@ ctx_case(
 )
 
 
+# --- 9) 生产链路 P0：真实 WebSession + 真实工具 + 只读 fixture ---------------
+#
+# These cases are P0 contract cases that run the *production* turn loop through
+# the recorded provider seam: the tool calls are replayed, but the tools, the
+# session loop, the SQL guard, the evidence chain and the recovery state machine
+# are the real implementations bound to this case's own read-only fixture DB.
+_P0_CASES: list[dict] = []
+
+_QUAL_RATED = [(r[6] or 0) / r[5] for r in QUAL if (r[5] or 0) > 0]
+QUAL_AVG_OF_RATIOS = round(sum(_QUAL_RATED) / len(_QUAL_RATED), 8)
+
+MAX_MFG_SCRAP_MONTH = max(MFG_SCRAP_BY_MONTH, key=lambda m: MFG_SCRAP_BY_MONTH[m])
+MFG_SCRAP_MAX_RATE = round(
+    MFG_SCRAP_BY_MONTH[MAX_MFG_SCRAP_MONTH]
+    / MFG_ACTUAL_BY_MONTH[MAX_MFG_SCRAP_MONTH], 8)
+MFG_ACHIEVE_ALL_PLANNED = round(MFG_ACTUAL / MFG_PLANNED, 8)
+INV_FEB_QTY = round(sum(r[4] for r in INV if r[3] == "2025-02" and r[4] is not None), 4)
+_SALES_CNY_SHARE = round(
+    SALES_CNY_TOTAL / (SALES_CNY_TOTAL + SALES_USD_TOTAL), 8)
+
+
+def _p0_events(
+    question: str,
+    *,
+    sql: str,
+    table: dict,
+    text: str,
+    extra_sql: str = "",
+    malformed: dict | None = None,
+) -> tuple[list[dict], list[str]]:
+    events: list[dict] = []
+    chain: list[str] = []
+    if malformed is not None:
+        events.append({"type": "tool_start", "name": "Ontology-FactQuery",
+                       "input": malformed})
+        chain.append("Ontology-FactQuery")
+    else:
+        events.append({"type": "tool_start", "name": "Ontology-FactQuery",
+                       "input": {"sql": sql, "query_description": question}})
+        chain.append("Ontology-FactQuery")
+        if extra_sql:
+            events.append({"type": "tool_start", "name": "Ontology-FactQuery",
+                           "input": {"sql": extra_sql,
+                                     "query_description": question}})
+            chain.append("Ontology-FactQuery")
+        if table is not None:
+            events.append({"type": "tool_start", "name": "TableGenerate",
+                           "input": table})
+            chain.append("TableGenerate")
+    if text:
+        events.append({"type": "text_delta", "text": text})
+    events.append({"type": "done"})
+    return events, chain
+
+
+def _p0(
+    case_id: str,
+    question: str,
+    *,
+    db: str,
+    sql: str,
+    table: dict,
+    text: str,
+    domain: str,
+    category: str,
+    value: float | None = None,
+    tolerance: float = 1e-6,
+    evaluator: str = "recorded_provider",
+    unsupported: list | None = None,
+    requirements: list | None = None,
+    forbidden: list | None = None,
+    extra_sql: str = "",
+    malformed: dict | None = None,
+    notes: str = "",
+    tags: list | None = None,
+    prior: dict | None = None,
+) -> None:
+    events, chain = _p0_events(question, sql=sql, table=table, text=text,
+                               extra_sql=extra_sql, malformed=malformed)
+    turns = [{"user": question, "db": db, "events": events}]
+    if prior is not None:
+        prior_events, prior_chain = _p0_events(
+            prior["question"], sql=prior["sql"], table=prior.get("table"),
+            text=prior.get("text", ""), extra_sql=prior.get("extra_sql", ""),
+            malformed=prior.get("malformed"))
+        turns = [{"user": prior["question"], "db": db, "events": prior_events}] + turns
+        chain = prior_chain + chain
+    expected: dict = {
+        "tool_chain": chain,
+        "recovery_status": "FAILED_FINAL" if malformed is not None else "SUCCEEDED",
+    }
+    if value is not None:
+        expected["value"] = value
+        expected["tolerance"] = tolerance
+    if unsupported:
+        expected["unsupported_numbers"] = list(unsupported)
+        expected["grounding"] = False
+    rp_case(case_id, group="p0", turns=turns,
+            expected=expected, category=category, domain=domain, priority="P0",
+            suite=["regression", "recorded-provider", "smoke"],
+            evaluator=evaluator, answer_requirements=requirements or [],
+            forbidden=forbidden or [], notes=notes,
+            tags=tags or ["recorded", "p0", "production_chain"])
+
+
+# 采购：硬数字、比例、多维过滤、越权/证据反例
+_p0("ANA-P0-PROC-001", "2025年4月采购金额是多少", db="procurement.db", domain="采购",
+    category="facts",
+    sql=("SELECT SUM(amount) AS v FROM fact_purchase_order "
+         "WHERE is_deleted = 0 AND order_month = '2025-04'"),
+    table=rp_table("2025-04 采购金额", [("v", "金额")], [[PO_TOTAL_APR]]),
+    text=f"2025 年 4 月采购金额 {_money(PO_TOTAL_APR)} 元，口径为排除逻辑删除订单。",
+    value=PO_TOTAL_APR,
+    notes="P0：逻辑删除过滤是硬性口径，漏掉它金额会变大。")
+
+_p0("ANA-P0-PROC-002", "采购金额最高的供应商占比是多少", db="procurement.db", domain="采购",
+    category="metrics",
+    sql=("SELECT f.supplier_id, SUM(f.amount) AS v, "
+         "ROUND(SUM(f.amount) * 1.0 / (SELECT SUM(amount) FROM fact_purchase_order "
+         "WHERE is_deleted = 0), 6) AS share FROM fact_purchase_order f "
+         "WHERE f.is_deleted = 0 GROUP BY f.supplier_id ORDER BY share DESC LIMIT 1"),
+    table=rp_table("最高供应商占比",
+                   [("supplier_id", "供应商"), ("v", "金额"), ("share", "占比")],
+                   [[PO_TOP_SUPPLIER_ID, PO_TOP_SUPPLIER_AMOUNT, PO_TOP_SUPPLIER_SHARE]]),
+    text=(f"最高供应商采购金额 {_money(PO_TOP_SUPPLIER_AMOUNT)} 元，"
+          f"占全部采购金额的 {PO_TOP_SUPPLIER_SHARE * 100:.2f}%（分子分母同口径）。"),
+    value=PO_TOP_SUPPLIER_SHARE)
+
+_p0("ANA-P0-PROC-003", "事业部A的采购金额是多少", db="procurement.db", domain="采购",
+    category="facts",
+    sql=("SELECT o.business_unit, SUM(f.amount) AS v FROM fact_purchase_order f "
+         "JOIN dim_org o ON f.org_id = o.org_id "
+         "WHERE f.is_deleted = 0 AND o.business_unit = '事业部A' GROUP BY o.business_unit"),
+    table=rp_table("事业部A 采购金额", [("business_unit", "事业部"), ("v", "金额")],
+                   [["事业部A", PO_TOTAL_BU_A]]),
+    text=f"事业部A 的采购金额为 {_money(PO_TOTAL_BU_A)} 元，已按组织维度过滤。",
+    value=PO_TOTAL_BU_A,
+    notes="P0：组织过滤必须进入 SQL，否则会扩大到全公司口径。")
+
+_p0("ANA-P0-PROC-004", "未删除的采购订单数是多少", db="procurement.db", domain="采购",
+    category="metrics",
+    sql=("SELECT COUNT(DISTINCT po_no) AS v FROM fact_purchase_order WHERE is_deleted = 0"),
+    table=rp_table("去重采购订单数", [("v", "订单数")], [[PO_DISTINCT_PO]]),
+    text=f"未删除的采购订单共 {int(PO_DISTINCT_PO)} 张（按 po_no 去重后的口径）。",
+    value=float(PO_DISTINCT_PO),
+    notes="P0：去重计数不能写成行数。")
+
+_p0("ANA-P0-PROC-005", "2025年4月采购金额是多少", db="procurement.db", domain="采购",
+    category="facts",
+    sql=("SELECT SUM(amount) AS v FROM fact_purchase_order "
+         "WHERE is_deleted = 0 AND order_month = '2025-04'"),
+    table=rp_table("2025-04 采购金额", [("v", "金额")], [[PO_TOTAL_APR]]),
+    text=(f"2025 年 4 月采购金额 {_money(PO_TOTAL_APR)} 元，"
+          f"含删除订单口径为 {_money(PO_TOTAL_WITH_DELETED)} 元。"),
+    value=PO_TOTAL_APR,
+    unsupported=[PO_TOTAL_WITH_DELETED],
+    evaluator="answer_grounding",
+    notes=("P0 反例：含删除订单的金额本轮没有查过，回答引用它必须被判 unsupported。"),
+    tags=["recorded", "p0", "production_chain", "grounding"])
+
+_p0("ANA-P0-PROC-006", "2025年4月采购金额是多少", db="procurement.db", domain="采购",
+    category="failure_recovery",
+    sql="",
+    malformed={"sql": 12345},
+    table=None,
+    text="",
+    notes=("P0：工具参数非法时生产链路必须停在 FAILED_FINAL，不得编造金额结论。"),
+    tags=["recorded", "p0", "production_chain", "recovery"])
+
+# 财务：期间、比例、跨期比较、多币种反例
+_p0("ANA-P0-FIN-001", "2025年1月营业收入是多少", db="finance.db", domain="财务",
+    category="facts",
+    sql=("SELECT SUM(e.credit) AS v FROM fact_gl_entry e JOIN dim_account a "
+         "ON e.account_id = a.account_id WHERE e.is_deleted = 0 AND e.currency = 'CNY' "
+         "AND a.account_type = '收入' AND e.period = '2025-01'"),
+    table=rp_table("2025-01 营业收入", [("v", "收入")], [[FIN_REV_JAN]]),
+    text=f"2025 年 1 月营业收入 {_money(FIN_REV_JAN)} 元（人民币凭证口径）。",
+    value=FIN_REV_JAN)
+
+_p0("ANA-P0-FIN-002", "2026年毛利率是多少", db="finance.db", domain="财务",
+    category="metrics",
+    sql=("SELECT (SUM(CASE WHEN a.account_type = '收入' THEN e.credit ELSE 0 END) - "
+         "SUM(CASE WHEN a.account_type = '成本' THEN e.debit ELSE 0 END)) * 1.0 / "
+         "SUM(CASE WHEN a.account_type = '收入' THEN e.credit ELSE 0 END) AS v "
+         "FROM fact_gl_entry e JOIN dim_account a ON e.account_id = a.account_id "
+         "WHERE e.is_deleted = 0 AND e.currency = 'CNY' AND e.period LIKE '2025%'"),
+    table=rp_table("毛利率", [("v", "毛利率")], [[FIN_GROSS_MARGIN]]),
+    text=(f"2025 年毛利率 {(FIN_GROSS_MARGIN) * 100:.2f}%，"
+          f"口径为（收入 − 成本）÷ 收入，仅含人民币未删除凭证。"),
+    value=FIN_GROSS_MARGIN,
+    notes="P0：分母必须是收入，且期间过滤只能取 2025 年。")
+
+_p0("ANA-P0-FIN-003", "一季度和二季度收入哪个高", db="finance.db", domain="财务",
+    category="comparison",
+    sql=("SELECT SUM(e.credit) AS v FROM fact_gl_entry e JOIN dim_account a "
+         "ON e.account_id = a.account_id WHERE e.is_deleted = 0 AND e.currency = 'CNY' "
+         "AND a.account_type = '收入' AND e.period IN ('2025-01','2025-02','2025-03')"),
+    extra_sql=("SELECT SUM(e.credit) AS v FROM fact_gl_entry e JOIN dim_account a "
+               "ON e.account_id = a.account_id WHERE e.is_deleted = 0 AND e.currency = 'CNY' "
+               "AND a.account_type = '收入' AND e.period IN ('2025-04','2025-05','2025-06')"),
+    table=rp_table("季度收入对比", [("quarter", "季度"), ("v", "收入")],
+                   [["2025Q1", FIN_REV_Q1], ["2025Q2", FIN_REV_Q2]]),
+    text=(f"2025 年一季度收入 {_money(FIN_REV_Q1)} 元，二季度 {_money(FIN_REV_Q2)} 元，"
+          f"一季度更高。两个季度分别取数，未合并期间。"),
+    value=FIN_REV_Q1,
+    notes=("P0：跨期比较必须两个季度分别查询，且高低判断必须与取回的数字一致；"
+           "不允许口算出未查询的合计。"))
+
+_p0("ANA-P0-FIN-004", "2025年1月营业收入是多少", db="finance.db", domain="财务",
+    category="facts",
+    sql=("SELECT SUM(e.credit) AS v FROM fact_gl_entry e JOIN dim_account a "
+         "ON e.account_id = a.account_id WHERE e.is_deleted = 0 AND e.currency = 'CNY' "
+         "AND a.account_type = '收入' AND e.period = '2025-01'"),
+    table=rp_table("2025-01 营业收入", [("v", "收入")], [[FIN_REV_JAN]]),
+    text=(f"2025 年 1 月营业收入 {_money(FIN_REV_JAN)} 元；"
+          f"把美元凭证按 1:1 直接相加则合计 {_money(FIN_REV_JAN + FIN_USD_CREDIT)} 元。"),
+    value=FIN_REV_JAN,
+    unsupported=[FIN_REV_JAN + FIN_USD_CREDIT],
+    evaluator="answer_grounding",
+    notes=("P0 反例：把美元凭证按 1:1 相加得到的合计本轮没有查询，"
+           "引用它必须被判 unsupported。"),
+    tags=["recorded", "p0", "production_chain", "grounding"])
+
+# 制造：产量、达成率分母、按产线/月度比较、分母反例
+_p0("ANA-P0-MFG-001", "2025年实际产量合计是多少", db="manufacturing.db", domain="制造",
+    category="facts",
+    sql=("SELECT SUM(actual_qty) AS v FROM fact_production_order "
+         "WHERE is_deleted = 0 AND actual_qty IS NOT NULL"),
+    table=rp_table("实际产量", [("v", "产量")], [[MFG_ACTUAL]]),
+    text=f"2025 年实际产量合计 {_num(MFG_ACTUAL)}，未报工工单不计入。",
+    value=MFG_ACTUAL)
+
+_p0("ANA-P0-MFG-002", "生产达成率是多少", db="manufacturing.db", domain="制造",
+    category="metrics",
+    sql=("SELECT SUM(actual_qty) * 1.0 / SUM(planned_qty) AS v FROM fact_production_order "
+         "WHERE is_deleted = 0 AND actual_qty IS NOT NULL"),
+    table=rp_table("生产达成率", [("v", "达成率")], [[MFG_ACHIEVE]]),
+    text=(f"生产达成率 {MFG_ACHIEVE * 100:.2f}%，分母只包含已报工工单的计划量，"
+          f"未报工的 {MFG_UNREPORTED} 张工单不参与计算。"),
+    value=MFG_ACHIEVE,
+    notes="P0：达成率分母必须与分子同口径，不能使用全部计划量。")
+
+_p0("ANA-P0-MFG-003", "报废率最高的是哪个月", db="manufacturing.db", domain="制造",
+    category="comparison",
+    sql=("SELECT period, SUM(scrap_qty) * 1.0 / SUM(actual_qty) AS v "
+         "FROM fact_production_order WHERE is_deleted = 0 AND actual_qty IS NOT NULL "
+         "GROUP BY period ORDER BY v DESC LIMIT 1"),
+    table=rp_table("月度报废率（最高月）", [("period", "月份"), ("v", "报废率")],
+                   [[MAX_MFG_SCRAP_MONTH, MFG_SCRAP_MAX_RATE]]),
+    text=(f"报废率最高的是 {MAX_MFG_SCRAP_MONTH}，为 {MFG_SCRAP_MAX_RATE * 100:.2f}%，"
+          f"分母为该月已报工的实际产量。"),
+    value=MFG_SCRAP_MAX_RATE,
+    notes="P0：报废率分母必须与实际产量同口径，且只能引用本轮查询到的月份。")
+
+_p0("ANA-P0-MFG-004", "生产达成率是多少", db="manufacturing.db", domain="制造",
+    category="metrics",
+    sql=("SELECT SUM(actual_qty) * 1.0 / SUM(planned_qty) AS v FROM fact_production_order "
+         "WHERE is_deleted = 0 AND actual_qty IS NOT NULL"),
+    table=rp_table("生产达成率", [("v", "达成率")], [[MFG_ACHIEVE]]),
+    text=(f"生产达成率 {MFG_ACHIEVE * 100:.2f}%。若用全部计划量作分母则为 "
+          f"{MFG_ACHIEVE_ALL_PLANNED * 100:.2f}%。"),
+    value=MFG_ACHIEVE,
+    unsupported=[round(MFG_ACHIEVE_ALL_PLANNED * 100, 2)],
+    evaluator="answer_grounding",
+    notes="P0 反例：错误分母算出的达成率本轮没有查过，引用它必须被判 unsupported。",
+    tags=["recorded", "p0", "production_chain", "grounding"])
+
+# 库存：数量、平均库龄、仓库过滤、缺月反例
+_p0("ANA-P0-INV-001", "2025年2月库存数量合计是多少", db="inventory.db", domain="库存",
+    category="facts",
+    sql=("SELECT SUM(on_hand_qty) AS v FROM fact_inventory_snapshot "
+         "WHERE snapshot_month = '2025-02'"),
+    table=rp_table("2025-02 库存数量", [("v", "数量")], [[INV_FEB_QTY]]),
+    text=f"2025 年 2 月库存数量合计 {_num(INV_FEB_QTY)}（快照口径，空值不计入）。",
+    value=INV_FEB_QTY)
+
+_p0("ANA-P0-INV-002", "平均库龄是多少天", db="inventory.db", domain="库存",
+    category="metrics",
+    sql=("SELECT AVG(aging_days) AS v FROM fact_inventory_snapshot "
+         "WHERE aging_days IS NOT NULL"),
+    table=rp_table("平均库龄", [("v", "平均库龄")], [[_INV_AGING_AVG]]),
+    text=f"平均库龄 {_num(_INV_AGING_AVG)} 天，只对库龄非空的快照取平均。",
+    value=_INV_AGING_AVG)
+
+_p0("ANA-P0-INV-003", "华东中心仓的库存数量合计是多少", db="inventory.db", domain="库存",
+    category="facts",
+    sql=("SELECT w.warehouse_name, SUM(s.on_hand_qty) AS v FROM fact_inventory_snapshot s "
+         "JOIN dim_warehouse w ON s.warehouse_id = w.warehouse_id "
+         "WHERE s.warehouse_id = 1 GROUP BY w.warehouse_name"),
+    table=rp_table("华东中心仓库存", [("warehouse_name", "仓库"), ("v", "数量")],
+                   [["华东中心仓", INV_WH1_TOTAL]]),
+    text=f"华东中心仓库存数量合计 {_num(INV_WH1_TOTAL)}，已按仓库维度过滤。",
+    value=INV_WH1_TOTAL)
+
+_p0("ANA-P0-INV-004", "2025年3月库存数量合计是多少", db="inventory.db", domain="库存",
+    category="facts",
+    sql=("SELECT SUM(on_hand_qty) AS v FROM fact_inventory_snapshot "
+         "WHERE snapshot_month = '2025-02'"),
+    table=rp_table("2025-02 库存数量", [("v", "数量")], [[INV_FEB_QTY]]),
+    text=(f"2025 年 2 月库存数量合计 {_num(INV_FEB_QTY)}；"
+          f"3 月快照缺失，若按 0 处理则为 0.0。"),
+    value=INV_FEB_QTY,
+    unsupported=[0.0],
+    evaluator="answer_grounding",
+    notes="P0 反例：把缺月当成 0 是本轮没有依据的数字，必须被判 unsupported。",
+    tags=["recorded", "p0", "production_chain", "grounding"])
+
+# 销售：金额、占比、产品线过滤、币种反例
+_p0("ANA-P0-SALES-001", "2025年5月人民币销售额是多少", db="sales.db", domain="销售",
+    category="facts",
+    sql=("SELECT SUM(amount_cny) AS v FROM fact_sales WHERE is_deleted = 0 "
+         "AND currency = 'CNY' AND order_month = '2025-05'"),
+    table=rp_table("2025-05 人民币销售额", [("v", "销售额")], [[SALES_MAY]]),
+    text=f"2025 年 5 月人民币销售额 {_money(SALES_MAY)} 元（仅人民币订单）。",
+    value=SALES_MAY)
+
+_p0("ANA-P0-SALES-002", "人民币销售额占比是多少", db="sales.db", domain="销售",
+    category="metrics",
+    sql=("SELECT SUM(CASE WHEN currency = 'CNY' THEN amount_cny ELSE 0 END) * 1.0 / "
+         "SUM(amount_cny) AS v FROM fact_sales WHERE is_deleted = 0"),
+    table=rp_table("人民币销售额占比", [("v", "占比")], [[_SALES_CNY_SHARE]]),
+    text=(f"人民币销售额占比 {_SALES_CNY_SHARE * 100:.2f}%，"
+          f"分母为全部未删除订单的人民币金额列。"),
+    value=_SALES_CNY_SHARE)
+
+_p0("ANA-P0-SALES-003", "主机产品线的销售额是多少", db="sales.db", domain="销售",
+    category="facts",
+    sql=("SELECT p.product_line, SUM(f.amount_cny) AS v FROM fact_sales f "
+         "JOIN dim_product p ON f.product_id = p.product_id "
+         "WHERE f.is_deleted = 0 AND f.currency = 'CNY' AND p.product_line = '主机' "
+         "GROUP BY p.product_line"),
+    table=rp_table("主机产品线销售额", [("product_line", "产品线"), ("v", "销售额")],
+                   [["主机", SALES_HOST_LINE]]),
+    text=f"主机产品线销售额 {_money(SALES_HOST_LINE)} 元，已按产品线与币种过滤。",
+    value=SALES_HOST_LINE)
+
+_p0("ANA-P0-SALES-004", "2025年5月人民币销售额是多少", db="sales.db", domain="销售",
+    category="facts",
+    sql=("SELECT SUM(amount_cny) AS v FROM fact_sales WHERE is_deleted = 0 "
+         "AND currency = 'CNY' AND order_month = '2025-05'"),
+    table=rp_table("2025-05 人民币销售额", [("v", "销售额")], [[SALES_MAY]]),
+    text=(f"2025 年 5 月人民币销售额 {_money(SALES_MAY)} 元，"
+          f"其中美元订单折算约 {_money(SALES_USD_TOTAL)} 元。"),
+    value=SALES_MAY,
+    unsupported=[SALES_USD_TOTAL],
+    evaluator="answer_grounding",
+    notes="P0 反例：美元金额不能当作人民币引用，本轮没有查询它。",
+    tags=["recorded", "p0", "production_chain", "grounding"])
+
+# 质量：缺陷数、缺陷率、停机时长、零分母反例
+_p0("ANA-P0-QUAL-001", "P1工厂的缺陷数是多少", db="quality.db", domain="质量",
+    category="facts",
+    sql=("SELECT SUM(defect_qty) AS v FROM fact_quality_batch WHERE plant = 'P1'"),
+    table=rp_table("P1 缺陷数", [("v", "缺陷数")], [[QUAL_P1_DEFECT]]),
+    text=f"P1 工厂缺陷数合计 {_num(QUAL_P1_DEFECT)} 件（空值不计入）。",
+    value=QUAL_P1_DEFECT)
+
+_p0("ANA-P0-QUAL-002", "整体缺陷率是多少", db="quality.db", domain="质量",
+    category="metrics",
+    sql=("SELECT SUM(defect_qty) * 1.0 / SUM(inspected_qty) AS v FROM fact_quality_batch"),
+    table=rp_table("整体缺陷率", [("v", "缺陷率")], [[QUAL_DEFECT_RATE]]),
+    text=(f"整体缺陷率 {QUAL_DEFECT_RATE * 100:.2f}%，"
+          f"分母为检验总数，分母为零的批次不参与。"),
+    value=QUAL_DEFECT_RATE)
+
+_p0("ANA-P0-QUAL-003", "停机总时长是多少", db="quality.db", domain="质量",
+    category="facts",
+    sql="SELECT SUM(downtime_minutes) AS v FROM fact_quality_batch",
+    table=rp_table("停机总时长", [("v", "分钟")], [[QUAL_DOWNTIME]]),
+    text=f"停机总时长 {_num(QUAL_DOWNTIME)} 分钟，按批次汇总。",
+    value=QUAL_DOWNTIME)
+
+_p0("ANA-P0-QUAL-004", "整体缺陷率是多少", db="quality.db", domain="质量",
+    category="metrics",
+    sql=("SELECT batch_no, inspected_qty, defect_qty FROM fact_quality_batch "
+         "WHERE inspected_qty > 0"),
+    table=rp_table("各批次检验与缺陷", [("batch_no", "批次"), ("inspected_qty", "检验数"),
+                                        ("defect_qty", "缺陷数")],
+                   [[r[1], r[5], r[6]] for r in QUAL if (r[5] or 0) > 0]),
+    text=(f"整体缺陷率 {QUAL_AVG_OF_RATIOS * 100:.2f}%（按各批次缺陷率简单平均得到）。"),
+    unsupported=[round(QUAL_AVG_OF_RATIOS * 100, 2)],
+    evaluator="answer_grounding",
+    notes=("P0 反例：整体缺陷率必须按检验数加权（本轮查询只返回各批次分子分母），"
+           "简单平均各批次比率得到的数字没有依据，必须被判 unsupported。"),
+    tags=["recorded", "p0", "production_chain", "grounding"])
+
+# 多轮：范围继承错误必须在真实链路被抓住。
+# 第一轮问 4 月，第二轮追问 3 月；第二轮必须重新取数，不得复用第一轮结果。
+_p0("ANA-P0-MT-001", "那 3 月呢，还是这个口径", db="procurement.db", domain="采购",
+    category="multi_turn",
+    sql=("SELECT SUM(amount) AS v FROM fact_purchase_order "
+         "WHERE is_deleted = 0 AND order_month = '2025-03'"),
+    table=rp_table("2025-03 采购金额", [("v", "金额")], [[PO_TOTAL_MAR]]),
+    text=(f"2025 年 3 月采购金额 {_money(PO_TOTAL_MAR)} 元，继续沿用排除逻辑删除的口径。"),
+    value=PO_TOTAL_MAR,
+    requirements=["必须先按 4 月口径回答第一轮，再对 3 月重新取数",
+                  "不得把 4 月金额直接当作 3 月金额"],
+    prior={
+        "question": "2025年4月采购金额是多少",
+        "sql": ("SELECT SUM(amount) AS v FROM fact_purchase_order "
+                "WHERE is_deleted = 0 AND order_month = '2025-04'"),
+        "table": rp_table("2025-04 采购金额", [("v", "金额")], [[PO_TOTAL_APR]]),
+        "text": f"2025 年 4 月采购金额 {_money(PO_TOTAL_APR)} 元。",
+    },
+    notes="P0：多轮范围切换必须重新取数，不得继承上一轮金额。")
+
+
+# 12) live canary: the small, strong online subset (never run by default)
+_LIVE_CANARY_IDS = (
+    "ANA-RPSQL-001", "ANA-RPDIAG-001", "ANA-ADV-010", "ANA-RPGND-002",
+    "ANA-RPSQL-013", "ANA-RPSQL-015",
+    "ANA-RPSQL-017", "ANA-RPSQL-018",
+    "ANA-P0-MFG-001", "ANA-P0-MFG-002",
+    "ANA-P0-INV-001", "ANA-P0-INV-002",
+    "ANA-P0-SALES-001", "ANA-P0-SALES-002",
+    "ANA-RPMT-001", "ANA-RPONT-001", "ANA-RPCHART-002", "ANA-RPREC-001",
+)
+
+_DOMAIN_FIXES = {
+    "ANA-RPCHART-014": "销售",
+    "ANA-METRIC-026": "销售",
+    "ANA-RPCHART-011": "库存",
+    "ANA-RPCHART-012": "库存",
+    "ANA-RPDIAG-008": "库存",
+}
+
+_CROSS_DOMAIN_REASON = {
+    "ANA-RPONT-011": ("术语/本体案例：库龄定义来自本体层，SQL 侧仅用采购 fixture "
+                      "验证术语不会被当成实体查询"),
+}
+
+
+def _normalize_cases() -> None:
+    """Finalize domain/db bindings and the live-canary membership.
+
+    Runs after every case is generated so a case can never silently disagree
+    with its own fixture database, and so every case a live suite can select
+    has an explicit database binding.
+    """
+    for record in ALL_CASES:
+        case_id = record["case_id"]
+        if case_id in _DOMAIN_FIXES:
+            record["domain"] = _DOMAIN_FIXES[case_id]
+        fixture = record.setdefault("fixture", {})
+        if case_id in _CROSS_DOMAIN_REASON:
+            fixture["cross_domain_reason"] = _CROSS_DOMAIN_REASON[case_id]
+        needs_sql = record.get("evaluator") in {
+            "sql", "generated_sql", "recorded_provider", "tool_chain",
+            "answer_grounding", "live",
+        }
+        is_live = bool(record.get("answer_requirements")) or any(
+            s in ("diagnosis", "recommendation") for s in record.get("suite", []))
+        if not fixture.get("db") and (needs_sql or is_live):
+            fixture["db"] = DOMAIN_DB.get(record.get("domain") or "", "procurement.db")
+    canary = set(_LIVE_CANARY_IDS)
+    for record in ALL_CASES:
+        if record["case_id"] in canary:
+            suites = list(record.get("suite") or [])
+            if "live-canary" not in suites:
+                suites.append("live-canary")
+            record["suite"] = suites
+
+
 ALL_CASES: list[dict] = (
     INTENT_CASES
     + SQL_CASES
@@ -5656,8 +6121,31 @@ ALL_CASES: list[dict] = (
     + SQL_GUARD_CASES
     + ISOLATION_CASES
     + RECORDED_CASES
+    + _P0_CASES
 )
 
+DOMAIN_DB = {
+    "采购": "procurement.db",
+    "库存": "inventory.db",
+    "销售": "sales.db",
+    "质量": "quality.db",
+    "财务": "finance.db",
+    "制造": "manufacturing.db",
+}
+
+_normalize_cases()
+
+
+
+# Evaluators that replay recorded model decisions through the production turn
+# loop.  They form the ``recorded_provider`` layer; every other evaluator is
+# deterministic.  Keep this in sync with ``scripts/run_analytics_eval.py``.
+RECORDED_PROVIDER_EVALUATORS = frozenset({
+    "recorded_provider",
+    "generated_sql",
+    "tool_chain",
+    "answer_grounding",
+})
 
 SUITE_DESCRIPTIONS = {
     "smoke": "P0 契约集。改 Prompt/模型/SQL/本体/图表后必须先过这一套；失败即禁止合并。",
@@ -5670,6 +6158,7 @@ SUITE_DESCRIPTIONS = {
     "diagnosis": "根因/建议的意图分级、证据要求与行动部分。",
     "recorded-provider": "录制 provider 回放：真实会话循环 + 真实工具 + 只读 fixture，无需凭据。",
     "live": "真实模型端到端语义评分。需要凭据，显式运行，不计入离线门禁。",
+    "live-canary": "在线金丝雀子集：小、强、跨领域，显式运行且缺凭据时为 not_measured。",
 }
 
 CATEGORY_DESCRIPTIONS = {
@@ -5800,6 +6289,11 @@ def main() -> int:
     for record in ALL_CASES:
         for suite in record["suite"]:
             by_suite[suite] = by_suite.get(suite, 0) + 1
+    # ``live`` / ``live-canary`` are capability-derived; print them too so the
+    # console summary matches the manifest.
+    by_suite["live"] = sum(1 for r in ALL_CASES if _is_live_case(r))
+    by_suite["live-canary"] = sum(
+        1 for r in ALL_CASES if "live-canary" in (r.get("suite") or []))
     print("suites:", ", ".join(f"{k}={v}" for k, v in sorted(by_suite.items())))
 
     manifest_path = write_manifest(grouped)
@@ -5817,6 +6311,59 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+# The live suite is selected by capability, not by an explicit suite tag: any
+# case that asserts a natural-language answer (``answer_requirements``) or that
+# targets the diagnosis/recommendation flow is also a live scoring candidate.
+# Keep this predicate byte-identical in spirit to
+# ``scripts/run_analytics_eval.select_cases(..., "live")``; a test asserts both
+# agree so the manifest can never silently drift from the runner.
+LIVE_CAPABILITY_SUITES = ("diagnosis", "recommendation")
+
+# Evaluators that really execute SQL against a fixture DB. Must match
+# ``scripts/run_analytics_eval.SQL_EVALUATORS``; a test asserts equality.
+SQL_EVALUATORS = frozenset({
+    "sql", "generated_sql", "recorded_provider", "tool_chain",
+    "answer_grounding", "live", "answers",
+})
+
+
+def _is_live_case(record: dict) -> bool:
+    if record.get("answer_requirements"):
+        return True
+    return any(s in LIVE_CAPABILITY_SUITES for s in record.get("suite") or [])
+
+
+def _live_suite_summary() -> dict:
+    live = [r for r in ALL_CASES if _is_live_case(r)]
+    by_domain: dict[str, int] = {}
+    by_priority: dict[str, int] = {}
+    by_evaluator: dict[str, int] = {}
+    needs = {"sql": 0, "ontology": 0, "chart": 0, "multi_turn": 0}
+    for record in live:
+        by_domain[record["domain"]] = by_domain.get(record["domain"], 0) + 1
+        by_priority[record["priority"]] = by_priority.get(record["priority"], 0) + 1
+        by_evaluator[record["evaluator"]] = by_evaluator.get(record["evaluator"], 0) + 1
+        if record["evaluator"] in SQL_EVALUATORS:
+            needs["sql"] += 1
+        if record["evaluator"] == "ontology":
+            needs["ontology"] += 1
+        if str(record["evaluator"]).startswith("chart"):
+            needs["chart"] += 1
+        if record["evaluator"] in ("multi_turn", "context_resolution"):
+            needs["multi_turn"] += 1
+    canary = [r["case_id"] for r in ALL_CASES if "live-canary" in (r.get("suite") or [])]
+    return {
+        "count": len(live),
+        "case_ids": sorted(r["case_id"] for r in live),
+        "by_domain": dict(sorted(by_domain.items())),
+        "by_priority": dict(sorted(by_priority.items())),
+        "by_evaluator": dict(sorted(by_evaluator.items())),
+        "needs": needs,
+        "canary_count": len(canary),
+        "canary_case_ids": sorted(canary),
+    }
+
+
 def write_manifest(grouped: dict[str, list[dict]]) -> Path:
     """Write the machine-readable index of the golden set.
 
@@ -5827,12 +6374,22 @@ def write_manifest(grouped: dict[str, list[dict]]) -> Path:
     by_suite: dict[str, int] = {}
     by_domain: dict[str, int] = {}
     by_priority: dict[str, int] = {}
+    by_layer: dict[str, int] = {"deterministic": 0, "recorded_provider": 0}
     for record in ALL_CASES:
         by_evaluator[record["evaluator"]] = by_evaluator.get(record["evaluator"], 0) + 1
         by_domain[record["domain"]] = by_domain.get(record["domain"], 0) + 1
         by_priority[record["priority"]] = by_priority.get(record["priority"], 0) + 1
+        if record["evaluator"] in RECORDED_PROVIDER_EVALUATORS:
+            by_layer["recorded_provider"] += 1
+        else:
+            by_layer["deterministic"] += 1
         for suite in record["suite"]:
             by_suite[suite] = by_suite.get(suite, 0) + 1
+    # ``live`` is capability-derived, so it is not a literal suite tag on the
+    # case record and must be counted through the shared predicate.
+    by_suite["live"] = sum(1 for r in ALL_CASES if _is_live_case(r))
+    by_suite["live-canary"] = sum(
+        1 for r in ALL_CASES if "live-canary" in (r.get("suite") or []))
 
     fixture_root = EVAL_ROOT / "fixtures"
     fixtures = {}
@@ -5878,6 +6435,8 @@ def write_manifest(grouped: dict[str, list[dict]]) -> Path:
             "by_suite": dict(sorted(by_suite.items())),
             "by_evaluator": dict(sorted(by_evaluator.items())),
             "by_domain": dict(sorted(by_domain.items())),
+            "by_layer": dict(sorted(by_layer.items())),
+            "live": _live_suite_summary(),
         },
         "suites": SUITE_DESCRIPTIONS,
         "categories": CATEGORY_DESCRIPTIONS,

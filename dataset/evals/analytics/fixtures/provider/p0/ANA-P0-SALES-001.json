@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-SALES-001",
+  "turns": [
+    {
+      "user": "2025年5月人民币销售额是多少",
+      "db": "sales.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount_cny) AS v FROM fact_sales WHERE is_deleted = 0 AND currency = 'CNY' AND order_month = '2025-05'",
+            "query_description": "2025年5月人民币销售额是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025-05 人民币销售额",
+            "columns": [
+              {
+                "key": "v",
+                "label": "销售额"
+              }
+            ],
+            "rows": [
+              [
+                49000
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 5 月人民币销售额 49,000.00 元（仅人民币订单）。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

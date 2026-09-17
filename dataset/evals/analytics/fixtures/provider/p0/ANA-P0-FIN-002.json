@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-FIN-002",
+  "turns": [
+    {
+      "user": "2026年毛利率是多少",
+      "db": "finance.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT (SUM(CASE WHEN a.account_type = '收入' THEN e.credit ELSE 0 END) - SUM(CASE WHEN a.account_type = '成本' THEN e.debit ELSE 0 END)) * 1.0 / SUM(CASE WHEN a.account_type = '收入' THEN e.credit ELSE 0 END) AS v FROM fact_gl_entry e JOIN dim_account a ON e.account_id = a.account_id WHERE e.is_deleted = 0 AND e.currency = 'CNY' AND e.period LIKE '2025%'",
+            "query_description": "2026年毛利率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "毛利率",
+            "columns": [
+              {
+                "key": "v",
+                "label": "毛利率"
+              }
+            ],
+            "rows": [
+              [
+                0.38793103
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年毛利率 38.79%，口径为（收入 − 成本）÷ 收入，仅含人民币未删除凭证。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

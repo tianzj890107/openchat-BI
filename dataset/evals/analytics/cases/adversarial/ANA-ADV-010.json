@@ -4,7 +4,8 @@
   "priority": "P1",
   "suite": [
     "regression",
-    "adversarial"
+    "adversarial",
+    "live-canary"
   ],
   "domain": "通用",
   "category": "adversarial",

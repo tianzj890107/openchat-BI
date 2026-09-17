@@ -6,7 +6,7 @@
     "regression",
     "recorded-provider"
   ],
-  "domain": "采购",
+  "domain": "销售",
   "category": "failure_recovery",
   "evaluator": "recorded_provider",
   "question": "先把销售趋势画出来",

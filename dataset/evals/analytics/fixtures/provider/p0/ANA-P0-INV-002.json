@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-INV-002",
+  "turns": [
+    {
+      "user": "平均库龄是多少天",
+      "db": "inventory.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT AVG(aging_days) AS v FROM fact_inventory_snapshot WHERE aging_days IS NOT NULL",
+            "query_description": "平均库龄是多少天"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "平均库龄",
+            "columns": [
+              {
+                "key": "v",
+                "label": "平均库龄"
+              }
+            ],
+            "rows": [
+              [
+                121.0909
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "平均库龄 121.0909 天，只对库龄非空的快照取平均。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

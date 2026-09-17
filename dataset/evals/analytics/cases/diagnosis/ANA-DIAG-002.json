@@ -17,7 +17,9 @@
     "currency": "CNY",
     "unit": ""
   },
-  "fixture": {},
+  "fixture": {
+    "db": "sales.db"
+  },
   "expected": {
     "allowed_tools": [
       "Ontology-MetricQuery",

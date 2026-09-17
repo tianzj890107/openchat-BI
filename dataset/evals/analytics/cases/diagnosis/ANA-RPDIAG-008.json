@@ -6,7 +6,7 @@
     "regression",
     "recorded-provider"
   ],
-  "domain": "采购",
+  "domain": "库存",
   "category": "diagnosis",
   "evaluator": "recorded_provider",
   "question": "库存周转变慢的原因",

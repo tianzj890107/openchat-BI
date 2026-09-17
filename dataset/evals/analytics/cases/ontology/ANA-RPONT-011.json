@@ -19,7 +19,8 @@
   },
   "fixture": {
     "provider": "fixtures/provider/ontology/ANA-RPONT-011.json",
-    "db": "procurement.db"
+    "db": "procurement.db",
+    "cross_domain_reason": "术语/本体案例：库龄定义来自本体层，SQL 侧仅用采购 fixture 验证术语不会被当成实体查询"
   },
   "expected": {
     "tool_chain": [

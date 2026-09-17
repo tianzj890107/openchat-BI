@@ -6,7 +6,7 @@
     "regression",
     "recorded-provider"
   ],
-  "domain": "采购",
+  "domain": "库存",
   "category": "charts",
   "evaluator": "recorded_provider",
   "question": "画库存月度趋势，缺月补零",

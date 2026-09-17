@@ -1,0 +1,46 @@
+{
+  "case_id": "ANA-P0-PROC-006",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "regression",
+    "recorded-provider",
+    "smoke"
+  ],
+  "domain": "采购",
+  "category": "failure_recovery",
+  "evaluator": "recorded_provider",
+  "question": "2025年4月采购金额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/p0/ANA-P0-PROC-006.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery"
+    ],
+    "recovery_status": "FAILED_FINAL"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "p0",
+    "production_chain",
+    "recovery"
+  ],
+  "notes": "P0：工具参数非法时生产链路必须停在 FAILED_FINAL，不得编造金额结论。"
+}

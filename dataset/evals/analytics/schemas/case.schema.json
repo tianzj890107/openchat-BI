@@ -25,7 +25,7 @@
   "properties": {
     "case_id": {
       "type": "string",
-      "pattern": "^ANA-[A-Z0-9]+-[0-9]{3}$",
+      "pattern": "^ANA(-[A-Z0-9]+)+-[0-9]{3}$",
       "description": "Stable identity. Never renumber an existing case; add a new one instead."
     },
     "version": {
@@ -53,7 +53,8 @@
           "recovery",
           "diagnosis",
           "recorded-provider",
-          "live"
+          "live",
+          "live-canary"
         ]
       },
       "uniqueItems": true
@@ -224,13 +225,258 @@
         "changes": {
           "type": "object",
           "description": "Explicit scope changes the follow-up states (context_resolution)."
+        },
+        "cross_domain_reason": {
+          "type": "string",
+          "description": "Reviewed justification for a case whose SQL fixture DB is intentionally from another domain (e.g. an ontology term case that only needs any read-only DB)."
+        },
+        "chart_params": {
+          "type": "object",
+          "description": "Pre-built chart parameters for chart_validate/chart_policy cases."
+        },
+        "title": {
+          "type": "string"
+        },
+        "option": {
+          "type": "string"
         }
       },
       "additionalProperties": false
     },
     "expected": {
       "type": "object",
-      "description": "Assertions for the evaluator. Numbers here are golden values."
+      "description": "Assertions for the evaluator. Numbers here are golden values, never copied from a model run. The key allowlist is closed so a misspelled assertion fails loudly instead of being silently ignored.",
+      "properties": {
+        "activities": {
+          "type": "array"
+        },
+        "activity_code": {
+          "type": "string"
+        },
+        "agg_column": {
+          "type": "string"
+        },
+        "agg_type": {
+          "type": "string"
+        },
+        "aliases": {
+          "type": "array"
+        },
+        "allowed_numbers": {
+          "type": "array"
+        },
+        "allowed_tables": {
+          "type": "array"
+        },
+        "allowed_tools": {
+          "type": "array"
+        },
+        "anchors": {
+          "type": "array"
+        },
+        "anchors_contains": {
+          "type": "array"
+        },
+        "attributes": {
+          "type": "array"
+        },
+        "business_objects": {
+          "type": "array"
+        },
+        "chart_files": {
+          "type": "object"
+        },
+        "checks": {
+          "type": "array"
+        },
+        "code": {
+          "type": "string"
+        },
+        "context": {
+          "type": "object"
+        },
+        "context_contract": {
+          "type": "object"
+        },
+        "definition_contains": {
+          "type": "array"
+        },
+        "dimensions": {
+          "type": "array"
+        },
+        "dimensions_contains": {
+          "type": "array"
+        },
+        "dimensions_excludes": {
+          "type": "array"
+        },
+        "english": {
+          "type": "string"
+        },
+        "error_contains": {
+          "type": "array"
+        },
+        "escaped": {
+          "type": "boolean"
+        },
+        "filter_condition": {
+          "type": "string"
+        },
+        "filters": {
+          "type": "array"
+        },
+        "final_narrative": {
+          "type": "boolean"
+        },
+        "final_text_absent": {
+          "type": "array"
+        },
+        "final_text_contains": {
+          "type": "array"
+        },
+        "forbidden_filters": {
+          "type": "array"
+        },
+        "forbidden_substrings": {
+          "type": "array"
+        },
+        "foreign_keys": {
+          "type": "object"
+        },
+        "grounding": {
+          "type": "boolean"
+        },
+        "intent_level": {
+          "type": "string"
+        },
+        "le_code": {
+          "type": "string"
+        },
+        "logical_entities": {
+          "type": "array"
+        },
+        "metric": {
+          "type": "string"
+        },
+        "metrics": {
+          "type": "array"
+        },
+        "missing": {
+          "type": "array"
+        },
+        "must_contain": {
+          "type": "array"
+        },
+        "must_not_appear": {
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string"
+        },
+        "physical_table": {
+          "type": "string"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "policy_mode": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "query_contract": {
+          "type": "object"
+        },
+        "reason_contains": {
+          "type": "array"
+        },
+        "recovery_status": {
+          "type": "string"
+        },
+        "relation_codes": {
+          "type": "array"
+        },
+        "relations": {
+          "type": "array"
+        },
+        "required_filters": {
+          "type": "array"
+        },
+        "rows": {
+          "type": "array"
+        },
+        "rule_codes": {
+          "type": "array"
+        },
+        "rules": {
+          "type": "array"
+        },
+        "scope_contains": {
+          "type": "array"
+        },
+        "scope_note": {
+          "type": "string"
+        },
+        "skip": {
+          "type": "boolean"
+        },
+        "table": {
+          "type": "string"
+        },
+        "targets": {
+          "type": "array"
+        },
+        "terms": {
+          "type": "array"
+        },
+        "tolerance": {
+          "type": "number"
+        },
+        "tool_chain": {
+          "type": "array"
+        },
+        "tool_inputs": {
+          "type": "object"
+        },
+        "tool_name": {
+          "type": "string"
+        },
+        "tool_results": {
+          "type": "object"
+        },
+        "tool_status": {
+          "type": "object"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "unsupported_numbers": {
+          "type": "array"
+        },
+        "valid": {
+          "type": "boolean"
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "value_is_null": {
+          "type": "boolean"
+        },
+        "wants_action": {
+          "type": "boolean"
+        },
+        "wants_root_cause": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "forbidden": {
       "type": "array",
@@ -324,26 +570,13 @@
     {
       "if": {
         "properties": {
-          "known_gap": {
-            "const": true
-          }
-        },
-        "required": [
-          "known_gap"
-        ]
-      },
-      "then": {
-        "required": [
-          "gap_note",
-          "gap_meta"
-        ]
-      }
-    },
-    {
-      "if": {
-        "properties": {
           "evaluator": {
-            "const": "sql"
+            "enum": [
+              "recorded_provider",
+              "answer_grounding",
+              "generated_sql",
+              "tool_chain"
+            ]
           }
         },
         "required": [
@@ -354,18 +587,44 @@
         "properties": {
           "fixture": {
             "required": [
-              "db",
+              "provider"
+            ]
+          }
+        }
+      },
+      "description": "these evaluators replay a recorded provider transcript"
+    },
+    {
+      "if": {
+        "properties": {
+          "evaluator": {
+            "enum": [
+              "sql"
+            ]
+          }
+        },
+        "required": [
+          "evaluator"
+        ]
+      },
+      "then": {
+        "properties": {
+          "fixture": {
+            "required": [
               "sql"
             ]
           }
         }
-      }
+      },
+      "description": "the sql evaluator executes one reference query"
     },
     {
       "if": {
         "properties": {
           "evaluator": {
-            "const": "multi_turn"
+            "enum": [
+              "sql_guard"
+            ]
           }
         },
         "required": [
@@ -376,19 +635,119 @@
         "properties": {
           "fixture": {
             "required": [
-              "effective_question",
-              "previous_contract",
-              "resolved_contract"
+              "sql"
             ]
           }
         }
-      }
+      },
+      "description": "the guard needs the SQL text it must reject or accept"
     },
     {
       "if": {
         "properties": {
           "evaluator": {
-            "const": "context_resolution"
+            "enum": [
+              "ontology"
+            ]
+          }
+        },
+        "required": [
+          "evaluator"
+        ]
+      },
+      "then": {
+        "properties": {
+          "fixture": {
+            "required": [
+              "ontology"
+            ]
+          }
+        }
+      },
+      "description": "the ontology evaluator needs the workbook fixture"
+    },
+    {
+      "if": {
+        "properties": {
+          "evaluator": {
+            "enum": [
+              "session_isolation",
+              "recovery_state"
+            ]
+          }
+        },
+        "required": [
+          "evaluator"
+        ]
+      },
+      "then": {
+        "properties": {
+          "fixture": {
+            "required": [
+              "script"
+            ]
+          }
+        }
+      },
+      "description": "these evaluators drive a scripted operator"
+    },
+    {
+      "if": {
+        "properties": {
+          "evaluator": {
+            "enum": [
+              "admission"
+            ]
+          }
+        },
+        "required": [
+          "evaluator"
+        ]
+      },
+      "then": {
+        "properties": {
+          "fixture": {
+            "required": [
+              "principals",
+              "env"
+            ]
+          }
+        }
+      },
+      "description": "the admission evaluator needs the principal set"
+    },
+    {
+      "if": {
+        "properties": {
+          "evaluator": {
+            "enum": [
+              "chart_validate",
+              "chart_policy"
+            ]
+          }
+        },
+        "required": [
+          "evaluator"
+        ]
+      },
+      "then": {
+        "properties": {
+          "fixture": {
+            "required": [
+              "chart_params"
+            ]
+          }
+        }
+      },
+      "description": "chart cases must declare the parameters they validate"
+    },
+    {
+      "if": {
+        "properties": {
+          "evaluator": {
+            "enum": [
+              "context_resolution"
+            ]
           }
         },
         "required": [
@@ -402,113 +761,10 @@
               "previous",
               "changes"
             ]
-          },
-          "expected": {
-            "required": [
-              "context"
-            ]
           }
         }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "evaluator": {
-            "const": "recorded_provider"
-          }
-        },
-        "required": [
-          "evaluator"
-        ]
       },
-      "then": {
-        "properties": {
-          "fixture": {
-            "required": [
-              "provider",
-              "db"
-            ]
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "evaluator": {
-            "const": "tool_chain"
-          }
-        },
-        "required": [
-          "evaluator"
-        ]
-      },
-      "then": {
-        "properties": {
-          "fixture": {
-            "required": [
-              "provider",
-              "db"
-            ]
-          },
-          "expected": {
-            "required": [
-              "tool_chain"
-            ]
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "evaluator": {
-            "const": "answer_grounding"
-          }
-        },
-        "required": [
-          "evaluator"
-        ]
-      },
-      "then": {
-        "properties": {
-          "fixture": {
-            "required": [
-              "provider",
-              "db"
-            ]
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "evaluator": {
-            "const": "generated_sql"
-          }
-        },
-        "required": [
-          "evaluator"
-        ]
-      },
-      "then": {
-        "properties": {
-          "fixture": {
-            "required": [
-              "provider",
-              "db"
-            ]
-          },
-          "expected": {
-            "required": [
-              "allowed_tables",
-              "tool_chain"
-            ]
-          }
-        }
-      }
+      "description": "context cases declare the inherited context and the follow-up change"
     }
   ]
 }

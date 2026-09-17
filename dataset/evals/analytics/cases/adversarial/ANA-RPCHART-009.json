@@ -38,8 +38,8 @@
     "chart_files": {
       "min_count": 1,
       "absent": [
-        "<script>",
-        "onerror=alert"
+        "<script>alert('x')</script>",
+        "<img src=x onerror=alert(1)>"
       ]
     }
   },
