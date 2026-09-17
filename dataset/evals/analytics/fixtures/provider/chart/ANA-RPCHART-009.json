@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPCHART-009",
+  "turns": [
+    {
+      "user": "供应商名称里带脚本时图表标题要安全",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT supplier_id, SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY supplier_id ORDER BY v DESC LIMIT 1",
+            "query_description": "供应商名称里带脚本时图表标题要安全"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerate",
+          "input": {
+            "chart_type": "bar",
+            "title": "<script>alert('x')</script>供应商金额",
+            "x_axis": [
+              "<img src=x onerror=alert(1)>"
+            ],
+            "series": [
+              {
+                "name": "采购金额",
+                "data": [
+                  12600
+                ]
+              }
+            ],
+            "unit": "元",
+            "source_note": "MT-001 · fact_purchase_order"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "图表已生成，标题中的脚本标签会被转义，供应商金额 12,600.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

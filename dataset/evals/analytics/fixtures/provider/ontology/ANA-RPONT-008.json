@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-008",
+  "turns": [
+    {
+      "user": "采购金额",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "采购金额"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "“采购金额”命中指标 [MT-001] 采购金额和术语 [TM-002]，口径是采购订单含税金额合计。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

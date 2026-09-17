@@ -1,0 +1,48 @@
+{
+  "case_id": "ANA-ONT-044",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "财务",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "总账分录和成本对象之间是什么关系",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "relations",
+    "le_code": "LE-007",
+    "relation_codes": [
+      "ER-005"
+    ],
+    "targets": [
+      "LE-004"
+    ],
+    "foreign_keys": [
+      "material_id"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "relations",
+    "finance"
+  ]
+}

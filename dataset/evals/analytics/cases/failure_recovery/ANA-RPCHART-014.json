@@ -1,0 +1,56 @@
+{
+  "case_id": "ANA-RPCHART-014",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "采购",
+  "category": "failure_recovery",
+  "evaluator": "recorded_provider",
+  "question": "先把销售趋势画出来",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/chart/ANA-RPCHART-014.json",
+    "db": "sales.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "ChartGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "final_text_contains": [],
+    "tool_results": {
+      "ChartGenerate": {
+        "contains": [
+          "rejected"
+        ]
+      }
+    },
+    "chart_files": {
+      "min_count": 0
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "chart",
+    "failure_recovery"
+  ],
+  "notes": "图表失败时仍必须提供可读的文字结论，不能让整轮回答为空。"
+}

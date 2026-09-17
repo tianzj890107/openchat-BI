@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-RPDIAG-001",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "采购",
+  "category": "diagnosis",
+  "evaluator": "recorded_provider",
+  "question": "为什么3月采购金额环比下降",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/diagnosis/ANA-RPDIAG-001.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "policy_mode": "DIAGNOSTIC_ANALYSIS",
+    "value": 0.257812,
+    "tolerance": 1e-06
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "diagnosis",
+    "evidence_chain"
+  ],
+  "notes": "根因结论必须带证据、代理指标披露和可执行动作。",
+  "answer_requirements": [
+    "must_state_metric_and_scope",
+    "must_separate_correlation_from_cause",
+    "must_include_effective_action_section"
+  ]
+}

@@ -25,7 +25,8 @@
     "activity_code": "AC-001",
     "rule_codes": [
       "BR-001",
-      "BR-002"
+      "BR-002",
+      "BR-004"
     ],
     "definition_contains": "is_deleted = 1"
   },

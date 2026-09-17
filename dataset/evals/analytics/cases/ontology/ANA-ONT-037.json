@@ -1,0 +1,45 @@
+{
+  "case_id": "ANA-ONT-037",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "财务",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "毛利率指标的技术口径对应哪张表",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "metric",
+    "code": "MT-007",
+    "name": "毛利率",
+    "table": "fact_gl_entry",
+    "agg_column": "credit",
+    "dimensions_contains": [
+      "会计期间"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "metric",
+    "finance"
+  ]
+}

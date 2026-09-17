@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-007",
+  "turns": [
+    {
+      "user": "库龄超过180天的库存数量是多少",
+      "db": "inventory.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "库龄超过180天的库存数量是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(on_hand_qty) FROM fact_inventory_snapshot WHERE aging_days > 180",
+            "query_description": "库龄超过180天的库存数量是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "库龄超过180天的库存数量是多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                445
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "库龄超过 180 天的库存数量为 445。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

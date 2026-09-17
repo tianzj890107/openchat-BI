@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-014",
+  "turns": [
+    {
+      "user": "2025年缺陷总数是多少",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "2025年缺陷总数是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(defect_qty) FROM fact_quality_batch",
+            "query_description": "2025年缺陷总数是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025年缺陷总数是多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                132
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "缺陷总数 132 件（空值不计入）。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

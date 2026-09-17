@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPCHART-001",
+  "turns": [
+    {
+      "user": "画一下采购金额的月度趋势",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT order_month AS m, SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY order_month ORDER BY m",
+            "query_description": "画一下采购金额的月度趋势"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerate",
+          "input": {
+            "chart_type": "line",
+            "title": "2025 年采购金额月度趋势",
+            "x_axis": [
+              "2025-01",
+              "2025-02",
+              "2025-03",
+              "2025-04",
+              "2025-05",
+              "2025-06"
+            ],
+            "series": [
+              {
+                "name": "采购金额",
+                "data": [
+                  4700,
+                  6400,
+                  4750,
+                  5170,
+                  1010,
+                  3000
+                ]
+              }
+            ],
+            "y_axis_name": "金额(元)",
+            "unit": "元",
+            "source_note": "MT-001 · fact_purchase_order · 2025-01~2025-06"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 1—6 月采购金额在 1,010.00 元到 6,400.00 元之间波动。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

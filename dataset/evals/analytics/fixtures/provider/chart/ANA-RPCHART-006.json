@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPCHART-006",
+  "turns": [
+    {
+      "user": "采购金额合计是多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0",
+            "query_description": "采购金额合计是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025 年采购金额",
+            "columns": [
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                25030
+              ]
+            ]
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerate",
+          "input": {
+            "chart_type": "bar",
+            "title": "采购金额合计",
+            "x_axis": [
+              "采购金额"
+            ],
+            "series": [
+              {
+                "name": "采购金额",
+                "data": [
+                  25030
+                ]
+              }
+            ],
+            "unit": "元",
+            "source_note": "MT-001 · fact_purchase_order"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年采购金额合计 25,030.00 元，单值不需要图表，表格已足够。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-004",
+  "turns": [
+    {
+      "user": "华东金属的采购金额是多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "华东金属的采购金额是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0 AND supplier_id = 1",
+            "query_description": "华东金属的采购金额是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "华东金属的采购金额是多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                12600
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "华东金属的采购金额为 12,600.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

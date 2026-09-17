@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPMT-002",
+  "turns": [
+    {
+      "user": "采购金额是多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0",
+            "query_description": "采购金额是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "采购金额",
+            "columns": [
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                25030
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "采购金额合计 25,030.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "user": "换成事业部A呢",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(f.amount) AS v FROM fact_purchase_order f JOIN dim_org o ON f.org_id = o.org_id WHERE f.is_deleted = 0 AND o.business_unit = '事业部A'",
+            "query_description": "换成事业部A呢"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "事业部A 采购金额",
+            "columns": [
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                19840
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "事业部A 采购金额 19,840.00 元，指标不变，只把组织范围换成事业部A。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

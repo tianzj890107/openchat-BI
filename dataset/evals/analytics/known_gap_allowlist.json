@@ -1,0 +1,10 @@
+{
+  "$comment": [
+    "P0 known gaps that are explicitly accepted for a RELEASE run.",
+    "Deliberately empty: while a P0 defect is open, `--release` must fail.",
+    "To accept one, add its case_id below AND link the audit that accepted it.",
+    "There is intentionally no `--ignore-all-known-gaps` switch: acceptance is",
+    "per case and must be justified with an owner and a target fix version."
+  ],
+  "allowed_p0_known_gaps": []
+}

@@ -1,0 +1,87 @@
+{
+  "case_id": "ANA-CTX-006",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "multi-turn"
+  ],
+  "domain": "库存",
+  "category": "multi_turn",
+  "evaluator": "context_resolution",
+  "question": "再加一个仓库过滤",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "再加一个仓库过滤"
+    }
+  ],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "previous": {
+      "subject": null,
+      "goal": null,
+      "metrics": [
+        "MT-001"
+      ],
+      "dimensions": [
+        "order_month"
+      ],
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "time_scope": {
+        "start": "2025-06",
+        "end": "2025-06"
+      },
+      "entity_scope": [],
+      "comparison_scope": null
+    },
+    "changes": {
+      "filters": [
+        "is_deleted = 0",
+        "warehouse_id = 1"
+      ]
+    }
+  },
+  "expected": {
+    "context": {
+      "subject": null,
+      "goal": null,
+      "metrics": [
+        "MT-001"
+      ],
+      "dimensions": [
+        "order_month"
+      ],
+      "filters": [
+        "is_deleted = 0",
+        "warehouse_id = 1"
+      ],
+      "time_scope": {
+        "start": "2025-06",
+        "end": "2025-06"
+      },
+      "entity_scope": [],
+      "comparison_scope": null
+    },
+    "must_not_appear": []
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "production_analysis_context"
+  ],
+  "scoring": {},
+  "tags": [
+    "multi_turn",
+    "context_resolution",
+    "production_merge"
+  ],
+  "notes": "追加过滤：原有过滤条件不得被替换。"
+}

@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPCHART-004",
+  "turns": [
+    {
+      "user": "画各物料采购金额横向柱状图，标签很长",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT material_id, SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 AND amount IS NOT NULL GROUP BY material_id ORDER BY v DESC",
+            "query_description": "画各物料采购金额横向柱状图，标签很长"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerate",
+          "input": {
+            "chart_type": "horizontal_bar",
+            "title": "各物料采购金额（含长标签）",
+            "x_axis": [
+              "冷轧钢材",
+              "控制芯片",
+              "瓦楞纸箱"
+            ],
+            "series": [
+              {
+                "name": "采购金额",
+                "data": [
+                  13600,
+                  0.0,
+                  0.0
+                ]
+              }
+            ],
+            "unit": "元",
+            "source_note": "MT-001 · fact_purchase_order · 按物料"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "标签较长的物料在横向柱状图中按金额排序，最高一项为 13,600.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

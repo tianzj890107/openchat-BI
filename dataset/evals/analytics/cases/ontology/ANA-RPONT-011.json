@@ -1,0 +1,51 @@
+{
+  "case_id": "ANA-RPONT-011",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "库存",
+  "category": "ontology",
+  "evaluator": "tool_chain",
+  "question": "库龄是什么意思",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/ontology/ANA-RPONT-011.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-TermDisambiguate"
+    ],
+    "tool_results": {
+      "Ontology-TermDisambiguate": {
+        "contains": [
+          "no term matches"
+        ]
+      }
+    },
+    "recovery_status": "SUCCEEDED"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "tool_chain",
+    "ontology"
+  ],
+  "notes": "术语未命中要如实说明缺口。"
+}

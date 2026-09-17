@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-FIN-029",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "财务",
+  "category": "anomaly",
+  "evaluator": "sql",
+  "question": "零预算科目的预算金额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "finance.db",
+    "sql": "SELECT SUM(budget_amount) FROM fact_budget WHERE budget_amount = 0"
+  },
+  "expected": {
+    "value": 0,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "budget_amount = 0"
+    ],
+    "scope_note": "零预算是合法输入，但会让执行率的分母为 0，必须返回空值而不是 0。",
+    "query_contract": {
+      "db": "finance.db",
+      "metric": "",
+      "filters": [
+        "budget_amount = 0"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "zero_denominator",
+    "finance"
+  ]
+}

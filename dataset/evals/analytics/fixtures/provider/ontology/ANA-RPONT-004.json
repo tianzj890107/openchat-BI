@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-004",
+  "turns": [
+    {
+      "user": "采购金额这个指标怎么算",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "MetricCalculation",
+          "input": {
+            "metric": "采购金额"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "采购金额按 Σ采购订单金额 计算，SQL 为 SUM(amount)，排除逻辑删除的订单。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

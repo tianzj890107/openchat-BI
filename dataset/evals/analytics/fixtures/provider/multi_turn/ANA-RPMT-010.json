@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPMT-010",
+  "turns": [
+    {
+      "user": "2025年3月采购金额是多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-03'",
+            "query_description": "2025年3月采购金额是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025-03 采购金额",
+            "columns": [
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                4750
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 3 月采购金额 4,750.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "user": "不是采购金额，是入库金额",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(qty) AS v FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-03'",
+            "query_description": "不是采购金额，是入库金额"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025-03 采购数量",
+            "columns": [
+              {
+                "key": "v",
+                "label": "数量"
+              }
+            ],
+            "rows": [
+              [
+                191
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "按你的纠正改为数量口径：2025 年 3 月采购数量 191，不再使用金额。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPDIAG-005",
+  "turns": [
+    {
+      "user": "库存为什么积压",
+      "db": "inventory.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "库存为什么积压"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT warehouse_id, SUM(on_hand_qty) AS qty, MAX(aging_days) AS max_aging FROM fact_inventory_snapshot GROUP BY warehouse_id ORDER BY qty DESC",
+            "query_description": "库存为什么积压"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "各仓库存与账龄",
+            "columns": [
+              {
+                "key": "warehouse_id",
+                "label": "仓库"
+              },
+              {
+                "key": "qty",
+                "label": "数量"
+              },
+              {
+                "key": "max_aging",
+                "label": "最长账龄"
+              }
+            ],
+            "rows": [
+              [
+                1,
+                705,
+                400
+              ],
+              [
+                2,
+                255,
+                121.0909
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "当前只能看到各仓库数量与账龄：仓库 1 库存 705，最长账龄 400 天。证据不足，无法唯一归因到某个原因；缺月数据也未补齐。代理指标为库龄，它只能近似反映周转情况，不能直接证明积压成因。建议先补齐缺失月份的快照，再判断是否需要调拨。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

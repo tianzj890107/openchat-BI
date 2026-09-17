@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPCHART-015",
+  "turns": [
+    {
+      "user": "画一张只有一个月数据的趋势图",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT order_month AS m, SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-05' GROUP BY order_month",
+            "query_description": "画一张只有一个月数据的趋势图"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerate",
+          "input": {
+            "chart_type": "line",
+            "title": "2025 年 5 月采购金额（单点）",
+            "x_axis": [
+              "2025-05"
+            ],
+            "series": [
+              {
+                "name": "采购金额",
+                "data": [
+                  1010
+                ]
+              }
+            ],
+            "unit": "元",
+            "source_note": "MT-001 · fact_purchase_order · 2025-05"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "只有 2025-05 一个数据点（1,010.00 元），趋势判断意义有限，需结合更多月份才能下结论。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

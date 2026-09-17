@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-FIN-008",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "财务",
+  "category": "facts",
+  "evaluator": "sql",
+  "question": "2025年管理费用合计是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "finance.db",
+    "sql": "SELECT SUM(debit) FROM fact_gl_entry JOIN dim_account ON fact_gl_entry.account_id = dim_account.account_id WHERE fact_gl_entry.is_deleted = 0 AND fact_gl_entry.currency = 'CNY' AND dim_account.account_type = '费用' AND dim_account.account_code = '6602' AND fact_gl_entry.period LIKE '2025%'"
+  },
+  "expected": {
+    "value": 147000,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "dim_account.account_code = '6602'"
+    ],
+    "scope_note": "6 月存在一条金额为空的未记账凭证，该行无法参与合计。",
+    "query_contract": {
+      "db": "finance.db",
+      "metric": "",
+      "filters": [
+        "dim_account.account_code = '6602'"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "sum",
+    "finance"
+  ]
+}

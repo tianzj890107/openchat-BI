@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPCHART-005",
+  "turns": [
+    {
+      "user": "2030年1月的采购金额趋势图",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT order_month AS m, SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2030-01' GROUP BY order_month",
+            "query_description": "2030年1月的采购金额趋势图"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerate",
+          "input": {
+            "chart_type": "line",
+            "title": "2030 年 1 月采购金额",
+            "x_axis": [],
+            "series": [],
+            "source_note": "MT-001 · fact_purchase_order · 空结果"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "该期间没有任何采购订单，数据为空，因此不生成图表；如需查看请换一个时间范围。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

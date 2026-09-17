@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-P2-018",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression"
+  ],
+  "domain": "质量",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "检验数为零的批次缺陷率是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "quality.db",
+    "sql": "SELECT defect_qty * 1.0 / inspected_qty FROM fact_quality_batch WHERE batch_no = 'B-0006'"
+  },
+  "expected": {
+    "value": null,
+    "tolerance": 1e-06,
+    "unit": "",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "batch_no = 'B-0006'"
+    ],
+    "scope_note": "分母为零：SQLite 返回 NULL，表示不可计算，而不是 0。",
+    "query_contract": {
+      "db": "quality.db",
+      "metric": "",
+      "filters": [
+        "batch_no = 'B-0006'"
+      ],
+      "dimensions": []
+    },
+    "value_is_null": true
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "p2",
+    "zero_denominator"
+  ]
+}

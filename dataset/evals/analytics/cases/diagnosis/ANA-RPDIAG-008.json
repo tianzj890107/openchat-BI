@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-RPDIAG-008",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "采购",
+  "category": "diagnosis",
+  "evaluator": "recorded_provider",
+  "question": "库存周转变慢的原因",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/diagnosis/ANA-RPDIAG-008.json",
+    "db": "inventory.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "policy_mode": "DIAGNOSTIC_ANALYSIS",
+    "value": 960,
+    "tolerance": 1e-06
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "diagnosis",
+    "evidence_chain"
+  ],
+  "notes": "使用代理指标时必须显式披露，并给出补齐真实口径的动作。",
+  "answer_requirements": [
+    "must_use_proxy_disclosure_if_proxy_used",
+    "must_state_limitations",
+    "must_include_effective_action_section"
+  ]
+}

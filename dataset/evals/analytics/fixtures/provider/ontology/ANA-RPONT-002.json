@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-002",
+  "turns": [
+    {
+      "user": "采购订单头对应哪张物理表",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-EntityDescribe",
+          "input": {
+            "entity": "采购订单头"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "逻辑实体采购订单头对应物理表 fact_purchase_order，主键为 po_id。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

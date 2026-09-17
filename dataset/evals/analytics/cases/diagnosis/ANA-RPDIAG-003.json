@@ -1,0 +1,53 @@
+{
+  "case_id": "ANA-RPDIAG-003",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "制造",
+  "category": "diagnosis",
+  "evaluator": "recorded_provider",
+  "question": "报废率上升的原因是什么",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/diagnosis/ANA-RPDIAG-003.json",
+    "db": "manufacturing.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "policy_mode": "DIAGNOSTIC_ANALYSIS",
+    "value": 15,
+    "tolerance": 1e-06
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "diagnosis",
+    "manufacturing"
+  ],
+  "answer_requirements": [
+    "must_state_metric_and_scope",
+    "must_use_proxy_disclosure_if_proxy_used",
+    "must_include_effective_action_section"
+  ]
+}

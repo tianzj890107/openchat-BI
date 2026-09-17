@@ -1,0 +1,59 @@
+{
+  "case_id": "ANA-P2-027",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression"
+  ],
+  "domain": "制造",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "P2 厂区的产量达成率是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "manufacturing.db",
+    "sql": "SELECT SUM(f.actual_qty) * 1.0 / SUM(f.planned_qty) FROM fact_production_order f JOIN dim_work_center w ON f.work_center_id = w.work_center_id WHERE f.is_deleted = 0 AND f.actual_qty IS NOT NULL AND w.plant = 'P2'"
+  },
+  "expected": {
+    "value": 0.96538462,
+    "tolerance": 1e-06,
+    "unit": "",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "f.is_deleted = 0",
+      "f.actual_qty IS NOT NULL",
+      "w.plant = 'P2'"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "manufacturing.db",
+      "metric": "",
+      "filters": [
+        "f.is_deleted = 0",
+        "f.actual_qty IS NOT NULL",
+        "w.plant = 'P2'"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "p2",
+    "manufacturing",
+    "ratio"
+  ]
+}

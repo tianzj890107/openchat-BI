@@ -10,6 +10,7 @@ Usage
     python -m scripts.run_analytics_eval --suite recovery
     python -m scripts.run_analytics_eval --suite ontology
     python -m scripts.run_analytics_eval --suite charts
+    python -m scripts.run_analytics_eval --suite recorded-provider
     python -m scripts.run_analytics_eval --suite live --provider deepseek
     python -m scripts.run_analytics_eval --compare baseline.json candidate.json
 
@@ -72,7 +73,7 @@ DEFAULT_REPORT_DIR = REPO_ROOT / "dataset" / "evals" / "analytics" / "reports"
 
 SUITES = [
     "smoke", "regression", "multi-turn", "adversarial", "recovery",
-    "ontology", "charts", "diagnosis", "live", "all",
+    "ontology", "charts", "diagnosis", "recorded-provider", "live", "all",
 ]
 
 PASS = "pass"
@@ -139,6 +140,7 @@ class CaseResult:
     evidence: dict = field(default_factory=dict)
     known_gap: bool = False
     gap_note: str = ""
+    gap_meta: dict = field(default_factory=dict)
     unknown_fields: list = field(default_factory=list)
     error: str = ""
 
@@ -228,6 +230,21 @@ def _scrub_snapshot(value: Any) -> Any:
     return value
 
 
+_SCHEMA_FIELD_CACHE: Optional[set[str]] = None
+
+
+def _schema_case_fields() -> set[str]:
+    """Top-level keys allowed by the case schema; cached after the first read."""
+    global _SCHEMA_FIELD_CACHE
+    if _SCHEMA_FIELD_CACHE is None:
+        try:
+            schema = json.loads((EVAL_ROOT / "schemas" / "case.schema.json").read_text(encoding="utf-8"))
+            _SCHEMA_FIELD_CACHE = set(schema.get("properties") or {})
+        except (OSError, ValueError):
+            _SCHEMA_FIELD_CACHE = set()
+    return _SCHEMA_FIELD_CACHE
+
+
 def _case_scaffold(case: dict) -> dict:
     expected = case.get("expected", {})
     scope_bits = []
@@ -246,6 +263,7 @@ def _case_scaffold(case: dict) -> dict:
         "forbidden": list(case.get("forbidden", [])),
         "known_gap": bool(case.get("known_gap")),
         "gap_note": case.get("gap_note", ""),
+        "gap_meta": dict(case.get("gap_meta") or {}),
     }
 
 
@@ -623,6 +641,71 @@ def eval_multi_turn(case: dict, ctx: EvalContext) -> CaseResult:
     return result
 
 
+_TUPLE_CONTEXT_FIELDS = ("metrics", "dimensions", "filters", "entity_scope")
+
+
+def _normalize_context(raw: dict) -> dict:
+    """Compare JSON list literals against ``AnalysisContext.to_dict()``.
+
+    ``to_dict`` renders the tuple scope fields as lists, so the expected payload
+    written in the case JSON is normalised the same way before comparison.
+    """
+    out: dict[str, Any] = {}
+    for key, value in dict(raw).items():
+        if key in _TUPLE_CONTEXT_FIELDS and value is not None:
+            value = list(value)
+        out[key] = value
+    return out
+
+
+def eval_context_resolution(case: dict, ctx: EvalContext) -> CaseResult:
+    """Resolve a follow-up's scope with the *production* context merger.
+
+    ``bi_agent.reliability.AnalysisContext.merge`` is the implementation behind
+    ``WebSession.update_analysis_context``; the evaluator calls it directly
+    instead of re-implementing "inherited vs overridden" in the harness, so a
+    change to the production merge semantics fails these cases immediately.
+    """
+    from bi_agent.reliability import AnalysisContext
+
+    fixture = case.get("fixture") or {}
+    expected = case.get("expected") or {}
+    checks: list[Check] = []
+
+    previous = dict(fixture.get("previous") or {})
+    changes = dict(fixture.get("changes") or {})
+    merged = AnalysisContext(**previous).merge(changes)
+    # ``to_dict`` preserves whatever container type entered the dataclass, so
+    # both sides are normalised before comparison.
+    resolved = _normalize_context(merged.to_dict())
+    baseline = _normalize_context(previous)
+
+    want = _normalize_context(expected.get("context") or {})
+    checks.append(Check("context.production_merge", resolved == want, want, resolved))
+
+    inherited = [key for key in previous if key not in changes]
+    drifted = [key for key in inherited if resolved.get(key) != baseline.get(key)]
+    checks.append(Check("context.inherited_scope_preserved", not drifted, inherited, drifted))
+
+    for key in changes:
+        checks.append(Check(f"context.override_applied[{key}]",
+                            resolved.get(key) == want.get(key), want.get(key), resolved.get(key)))
+
+    for key in expected.get("must_not_appear", []):
+        values = resolved.get(key)
+        checks.append(Check(f"context.dropped[{key}]", not values, "empty", values))
+
+    result = _result_from(case, checks)
+    result.metrics["multi_turn_context_accuracy"] = all(c.ok for c in checks)
+    result.metrics["answer_schema_valid_rate"] = True
+    result.evidence = {
+        "previous_context": previous,
+        "explicit_changes": changes,
+        "resolved_context": resolved,
+    }
+    return result
+
+
 def _result_from(case: dict, checks: list[Check]) -> CaseResult:
     scaffold = _case_scaffold(case)
     ok = all(c.ok for c in checks)
@@ -642,6 +725,7 @@ def _result_from(case: dict, checks: list[Check]) -> CaseResult:
         forbidden=scaffold["forbidden"],
         known_gap=scaffold["known_gap"],
         gap_note=scaffold["gap_note"],
+        gap_meta=scaffold["gap_meta"],
     )
 
 
@@ -1163,8 +1247,14 @@ ACTION_TEMPLATE_RE = re.compile(
 
 
 def _numbers_in(text: str) -> set[float]:
+    """Business numbers in an answer, thousands separators included.
+
+    ``3,000.00`` is one number, not ``3`` plus ``000.00``: the token regex keeps
+    the separator so a formatted amount is read the same way it is written.
+    """
     out: set[float] = set()
-    for raw in re.findall(r"-?\d+(?:\.\d+)?", text or ""):
+    for raw in NUMBER_TOKEN_RE.findall(text or ""):
+        raw = raw.replace(",", "")
         try:
             value = float(raw)
         except ValueError:
@@ -1251,12 +1341,19 @@ def score_answer(case: dict, answer: str, allowed_numbers: set[float]) -> tuple[
         checks.append(Check("answer.cites_fixture_numbers", bool(found),
                             ">=1 fixture number", sorted(found)[:5]))
 
-    numbers = _numbers_in(text)
-    unsupported = {n for n in numbers if n not in allowed_numbers}
-    if numbers:
-        metrics["unsupported_number_rate"] = bool(unsupported)
-        checks.append(Check("answer.numbers_grounded", not unsupported,
-                            "all numbers from fixture", sorted(unsupported)[:6]))
+    if expected.get("unsupported_numbers"):
+        # Negative control: the answer is supposed to cite a number this case
+        # never queried, and ``_grounding_checks``/``grounding.answer_grounded``
+        # already asserts that it is caught.  Scoring it as a real regression
+        # would invert the test.
+        pass
+    else:
+        numbers = _numbers_in(text)
+        unsupported = {n for n in numbers if not _is_grounded(n, allowed_numbers)}
+        if numbers:
+            metrics["unsupported_number_rate"] = bool(unsupported)
+            checks.append(Check("answer.numbers_grounded", not unsupported,
+                                "all numbers from fixture", sorted(unsupported)[:6]))
 
     forbidden_hits = [token for token in (case.get("forbidden") or [])
                       if token and token in text]
@@ -1477,6 +1574,476 @@ def eval_live(case: dict, ctx: EvalContext) -> CaseResult:
 # ---------------------------------------------------------------------------
 # loading + dispatch
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# evaluators: recorded-provider end-to-end replay
+#
+# These evaluators drive the REAL turn loop (bi_agent.web.session.WebSession)
+# with a recorded provider stream, bound to the read-only eval fixtures.  See
+# ``scripts/analytics_recorded_provider.py`` for the seam.
+#
+# Case-scoped grounding: a final answer may only cite numbers that THIS case's
+# own tool results produced (plus numbers the question itself states).  The
+# cross-case pool used by the live suite is deliberately NOT part of the gate,
+# because it would let a case cite another case's plausible-looking number.
+# ---------------------------------------------------------------------------
+TABLE_REF_RE = re.compile(r"\b(?:from|join)\s+([A-Za-z_][A-Za-z0-9_$.]*)", re.IGNORECASE)
+NUMBER_TOKEN_RE = re.compile(r"-?\d+(?:[.,]\d+)*")
+PERCENT_RE = re.compile(r"\d+(?:\.\d+)?\s*%")
+STRUCTURAL_NUMBERS = frozenset({0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0,
+                                9.0, 10.0, 11.0, 12.0, 2024.0, 2025.0, 2026.0})
+
+
+def _parse_number_tokens(text: str) -> set[float]:
+    """Every business-looking number in a natural-language answer.
+
+    Numbers below 100 without a decimal point are treated as prose (dates,
+    counts of steps, enumerations) and ignored, mirroring ``_numbers_in``.
+    """
+    out: set[float] = set()
+    for raw in NUMBER_TOKEN_RE.findall(text or ""):
+        raw = raw.replace(",", "")
+        try:
+            value = float(raw)
+        except ValueError:
+            continue
+        if abs(value) >= 100 or "." in raw:
+            out.add(round(value, 6))
+    return out
+
+
+def _numbers_from_text_pool(text: str) -> set[float]:
+    out: set[float] = set()
+    for raw in NUMBER_TOKEN_RE.findall(text or ""):
+        raw = raw.replace(",", "")
+        try:
+            value = float(raw)
+        except ValueError:
+            continue
+        if value.is_integer() and abs(value) <= 12:
+            continue
+        out.add(round(value, 6))
+    return out
+
+
+def _is_grounded(value: float, pool: set[float]) -> bool:
+    """True when *value* is a pool number or a plausible transform of one."""
+    def close(a: float, b: float) -> bool:
+        return abs(a - b) <= max(1e-6, 1e-6 * abs(b))
+
+    for candidate in pool:
+        if close(value, candidate):
+            return True
+        if close(value, candidate * 100) or close(value, candidate / 100):
+            return True
+        for digits in (0, 1, 2, 3, 4):
+            if close(value, round(candidate, digits)):
+                return True
+        # A ratio rendered as a percentage: 0.38788 -> "38.79%".
+        for digits in (0, 1, 2):
+            if close(value, round(candidate * 100, digits)):
+                return True
+    return False
+
+
+class RecordedPool:
+    """Case-scoped grounding pool: this case's own evidence only."""
+
+    def __init__(self, case: dict, run: Any) -> None:
+        pool: set[float] = set()
+        for call in run.tool_calls:
+            pool |= _numbers_from_text_pool(str(call.get("output") or ""))
+            pool |= _numbers_from_text_pool(str(call.get("input") or ""))
+        expected = case.get("expected") or {}
+        for value in expected.get("allowed_numbers") or []:
+            try:
+                pool.add(round(float(value), 6))
+            except (TypeError, ValueError):
+                continue
+        pool |= _numbers_from_text_pool(case.get("question") or "")
+        for turn in case.get("conversation") or []:
+            pool |= _numbers_from_text_pool(str(turn.get("content") or ""))
+        self.pool = pool
+
+    def unsupported(self, text: str) -> set[float]:
+        found = _parse_number_tokens(text)
+        return {n for n in found
+                if n not in STRUCTURAL_NUMBERS and not _is_grounded(n, self.pool)}
+
+
+def _load_recorded_run(case: dict, ctx: EvalContext):
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from analytics_recorded_provider import (  # noqa: PLC0415
+        TranscriptError, load_transcript, run_recorded_turns,
+    )
+
+    fixture = case.get("fixture") or {}
+    rel = str(fixture.get("provider") or "")
+    if not rel:
+        raise TranscriptError("case does not declare fixture.provider")
+    transcript = load_transcript(EVAL_ROOT / rel)
+    workspace = ctx.new_sandbox(case["case_id"])
+    run = run_recorded_turns(
+        case["case_id"],
+        transcript["turns"],
+        fixture_db=str(fixture.get("db") or "procurement.db"),
+        workspace=workspace,
+        tools_override=fixture.get("tools_override"),
+    )
+    return transcript, run
+
+
+def _sql_identifier_tables(sql: str) -> set[str]:
+    return {match.strip('"`[]').lower().split(".")[-1] for match in TABLE_REF_RE.findall(sql)}
+
+
+def _execute_reference(ctx: EvalContext, db: str, sql: str) -> list[list[Any]]:
+    conn = ctx.sqlite_readonly(db)
+    try:
+        cur = conn.cursor()
+        cur.execute(sql)
+        return [list(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def _record_grounding_metric(result: CaseResult, expected: dict,
+                             unsupported: set[float]) -> None:
+    """Report the right metric for normal cases and for negative controls.
+
+    A negative control deliberately cites a number this case never produced, so
+    it must not feed ``unsupported_number_rate`` (which gates "no case may cite
+    a number it did not query").  It reports ``unsupported_number_detection_rate``
+    instead: the supervision caught the planted number.
+    """
+    declared = {round(float(n), 6) for n in (expected.get("unsupported_numbers") or [])}
+    if declared:
+        detected = all(any(abs(n - u) <= max(1e-6, abs(n) * 1e-6) for u in unsupported)
+                       for n in declared)
+        result.metrics["unsupported_number_detection_rate"] = detected
+        return
+    if unsupported:
+        result.metrics["unsupported_number_rate"] = True
+
+
+def _schema_valid(expected: dict, run: Any, unsupported: set[float]) -> bool:
+    """A well-formed answer: no provider error, and no stray numbers.
+
+    Negative-control cases (``expected.unsupported_numbers``) are *expected* to
+    cite ungrounded numbers, so only the provider-error half applies to them.
+    """
+    if run.errors:
+        return False
+    if unsupported and not expected.get("unsupported_numbers"):
+        return False
+    return True
+
+
+def _grounding_checks(prefix: str, expected: dict,
+                      unsupported: set[float]) -> list[Check]:
+    """The grounding gate, plus an explicit negative control.
+
+    A normal case asserts that *no* number in the answer is ungrounded — the
+    answer may only cite numbers this very case produced.  Declaring
+    ``expected.unsupported_numbers`` flips the case into a negative control: the
+    recorded answer is *supposed* to cite numbers this case never produced
+    (typically a number that another case legitimately produced) and this gate
+    must catch each of them.  That is what stops a cross-case global pool from
+    quietly making a copied number look grounded.
+    """
+    declared = sorted({round(float(n), 6) for n in (expected.get("unsupported_numbers") or [])})
+    if declared:
+        def seen(number: float) -> bool:
+            return any(abs(number - u) <= max(1e-6, abs(number) * 1e-6) for u in unsupported)
+
+        missing = [n for n in declared if not seen(n)]
+        return [Check(f"{prefix}.unsupported_detected", not missing, declared,
+                      sorted(unsupported)[:6])]
+    if expected.get("grounding", True):
+        return [Check(f"{prefix}.answer_grounded", not unsupported,
+                      "every number traceable to this case", sorted(unsupported)[:6])]
+    return []
+
+
+def eval_recorded_provider(case: dict, ctx: EvalContext) -> CaseResult:
+    """Drive the production turn loop from a recorded provider stream."""
+    expected = case.get("expected") or {}
+    checks: list[Check] = []
+    evidence: dict[str, Any] = {}
+
+    try:
+        transcript, run = _load_recorded_run(case, ctx)
+    except Exception as exc:  # noqa: BLE001 - reported as a failing case
+        checks.append(Check("recorded.replay", False, "a clean replay",
+                            f"{type(exc).__name__}: {exc}"))
+        result = _result_from(case, checks)
+        result.metrics["answer_schema_valid_rate"] = False
+        result.evidence = evidence
+        return result
+
+    checks.append(Check("recorded.replay", True, "a clean replay", "ok"))
+    checks.append(Check("recorded.no_provider_error", not run.errors, [], run.errors))
+    checks.append(Check("recorded.not_superseded", not run.superseded, False, run.superseded))
+
+    declared_calls = sum(1 for turn in transcript["turns"]
+                         for event in turn["events"]
+                         if event.get("type") == "tool_start")
+    checks.append(Check("recorded.provider_call_budget",
+                        len(run.provider_calls) <= len(run.tool_calls) + len(transcript["turns"]) + 2,
+                        "bounded re-prompt count", len(run.provider_calls)))
+
+    chain = expected.get("tool_chain")
+    if chain is not None:
+        actual = run.tool_names
+        checks.append(Check("recorded.tool_chain", actual == list(chain), list(chain), actual))
+
+    for name, rules in (expected.get("tool_inputs") or {}).items():
+        calls = [c for c in run.tool_calls if c.get("name") == name]
+        checks.append(Check(f"recorded.tool_present[{name}]", bool(calls), ">=1 call", len(calls)))
+        if not calls:
+            continue
+        blob = json.dumps([c.get("input") for c in calls], ensure_ascii=False)
+        for fragment in rules.get("input_contains", []):
+            checks.append(Check(f"recorded.input_contains[{name}][{fragment[:24]}]",
+                                fragment in blob, fragment, blob[:200]))
+        for fragment in rules.get("input_absent", []):
+            checks.append(Check(f"recorded.input_absent[{name}][{fragment[:24]}]",
+                                fragment not in blob, "absent", "present"))
+
+    for name, rules in (expected.get("tool_results") or {}).items():
+        outputs = " ".join(str(c.get("output") or "") for c in run.tool_calls
+                           if c.get("name") == name)
+        for fragment in rules.get("contains", []):
+            checks.append(Check(f"recorded.result_contains[{name}][{str(fragment)[:24]}]",
+                                str(fragment) in outputs, fragment, outputs[:200]))
+
+    for name, want in (expected.get("tool_status") or {}).items():
+        statuses = [c.get("status") for c in run.tool_calls if c.get("name") == name]
+        checks.append(Check(f"recorded.tool_status[{name}]", want in statuses, want, statuses))
+
+    if expected.get("policy_mode"):
+        modes = [e.get("mode") for e in run.events if e.get("type") == "cognitive_policy"]
+        checks.append(Check("recorded.policy_mode", expected["policy_mode"] in modes,
+                            expected["policy_mode"], modes))
+
+    if expected.get("recovery_status"):
+        status = str(run.session.recovery_state.get("status") or "")
+        checks.append(Check("recorded.recovery_status", status == expected["recovery_status"],
+                            expected["recovery_status"], status))
+
+    if expected.get("final_narrative") is False:
+        checks.append(Check("recorded.no_narrative", not run.text.strip(), "", run.text[:120]))
+
+    for fragment in expected.get("final_text_contains", []):
+        checks.append(Check(f"recorded.text_contains[{str(fragment)[:24]}]",
+                            str(fragment) in run.text, fragment, run.text[:200]))
+    for fragment in expected.get("final_text_absent", []):
+        checks.append(Check(f"recorded.text_absent[{str(fragment)[:24]}]",
+                            str(fragment) not in run.text, "absent", "present"))
+
+    pool = RecordedPool(case, run)
+    unsupported = pool.unsupported(run.text)
+    checks.extend(_grounding_checks("recorded", expected, unsupported))
+
+    forbidden_hits = [token for token in (case.get("forbidden") or [])
+                      if token and token in run.text]
+    checks.append(Check("recorded.no_forbidden_token", not forbidden_hits, [], forbidden_hits))
+
+    evidence.update({
+        "provider": case["fixture"].get("provider"),
+        "provider_calls": len(run.provider_calls),
+        "tool_chain": run.tool_names,
+        "tool_status": [c.get("status") for c in run.tool_calls],
+        "answer": run.text[:600],
+        "recovery": run.session.recovery_state.get("status"),
+        "unsupported_numbers": sorted(unsupported)[:8],
+        "errors": run.errors[:4],
+    })
+    result = _result_from(case, checks)
+    result.metrics.update({
+        "tool_route_accuracy": all(c.ok for c in checks if c.name.startswith("recorded.tool_chain")),
+        "answer_schema_valid_rate": _schema_valid(expected, run, unsupported),
+        "evidence_coverage": bool(run.tool_calls) or not expected.get("tool_chain"),
+    })
+    _record_grounding_metric(result, expected, unsupported)
+    result.evidence = evidence
+    return result
+
+
+def eval_generated_sql(case: dict, ctx: EvalContext) -> CaseResult:
+    """Replay + assert the SQL the agent issued really answers the question."""
+    expected = case.get("expected") or {}
+    fixture = case.get("fixture") or {}
+    checks: list[Check] = []
+    evidence: dict[str, Any] = {}
+
+    try:
+        transcript, run = _load_recorded_run(case, ctx)
+    except Exception as exc:  # noqa: BLE001
+        checks.append(Check("generated_sql.replay", False, "a clean replay",
+                            f"{type(exc).__name__}: {exc}"))
+        result = _result_from(case, checks)
+        result.metrics["exact_numeric_accuracy"] = False
+        result.evidence = evidence
+        return result
+
+    checks.append(Check("generated_sql.replay", not run.errors, [], run.errors[:4]))
+    sql_calls = [c for c in run.tool_calls if c.get("name") == "Ontology-FactQuery"]
+    checks.append(Check("generated_sql.issued_sql", bool(sql_calls), ">=1 SQL call", len(sql_calls)))
+    if not sql_calls:
+        result = _result_from(case, checks)
+        result.metrics["exact_numeric_accuracy"] = False
+        result.evidence = evidence
+        return result
+
+    chain = expected.get("tool_chain")
+    chain_ok = True
+    if chain is not None:
+        chain_ok = run.tool_names == list(chain)
+        checks.append(Check("generated_sql.tool_chain", chain_ok,
+                            list(chain), run.tool_names))
+
+    actual_sql = str(sql_calls[0]["input"].get("sql") or "")
+    evidence["issued_sql"] = actual_sql
+
+    tables = _sql_identifier_tables(actual_sql)
+    allowed = {t.lower() for t in (expected.get("allowed_tables") or [])}
+    if allowed:
+        extra = sorted(t for t in tables if t not in allowed)
+        checks.append(Check("generated_sql.tables_allowed", not extra, sorted(allowed), sorted(tables)))
+    for table in expected.get("forbidden_tables") or []:
+        checks.append(Check(f"generated_sql.table_forbidden[{table}]",
+                            table.lower() not in tables, "absent", sorted(tables)))
+
+    normalized = re.sub(r"\s+", " ", actual_sql)
+    for fragment in expected.get("required_filters", []):
+        checks.append(Check(f"generated_sql.required_filter[{fragment[:24]}]",
+                            fragment in normalized, fragment, normalized[:200]))
+    for fragment in expected.get("forbidden_filters", []):
+        checks.append(Check(f"generated_sql.forbidden_filter[{fragment[:24]}]",
+                            fragment not in normalized, "absent", "present"))
+
+    db = str(fixture.get("db") or "procurement.db")
+    reference_sql = str(fixture.get("reference_sql") or "")
+    reference_rows: list[list[Any]] = []
+    actual_rows: list[list[Any]] = []
+    try:
+        reference_rows = _execute_reference(ctx, db, reference_sql) if reference_sql else []
+        actual_rows = _execute_reference(ctx, db, actual_sql)
+        checks.append(Check("generated_sql.executes", True, "no error", "ok"))
+    except Exception as exc:  # noqa: BLE001
+        checks.append(Check("generated_sql.executes", False, "no error",
+                            f"{type(exc).__name__}: {exc}"))
+
+    value_ok = True
+    if reference_rows and actual_rows:
+        tolerance = float(expected.get("tolerance", 1e-6))
+        reference_obj = expected.get("value")
+        if reference_obj is not None:
+            actual_value = actual_rows[0][0] if actual_rows[0] else None
+            value_ok = _close(actual_value, reference_obj, tolerance)
+            checks.append(Check("generated_sql.matches_reference", value_ok,
+                                reference_obj, actual_value))
+        else:
+            value_ok = [[_normalize_cell(c) for c in row] for row in actual_rows] == \
+                       [[_normalize_cell(c) for c in row] for row in reference_rows]
+            checks.append(Check("generated_sql.matches_reference", value_ok,
+                                reference_rows[:4], actual_rows[:4]))
+
+    pool = RecordedPool(case, run)
+    unsupported = pool.unsupported(run.text)
+    checks.extend(_grounding_checks("generated_sql", expected, unsupported))
+    for fragment in expected.get("final_text_contains", []):
+        checks.append(Check(f"generated_sql.text_contains[{str(fragment)[:24]}]",
+                            str(fragment) in run.text, fragment, run.text[:200]))
+
+    evidence.update({
+        "provider": fixture.get("provider"),
+        "tool_chain": run.tool_names,
+        "reference_sql": reference_sql,
+        "reference_rows": reference_rows[:5],
+        "actual_rows": actual_rows[:5],
+        "answer": run.text[:500],
+        "unsupported_numbers": sorted(unsupported)[:8],
+    })
+    result = _result_from(case, checks)
+    result.metrics.update({
+        "exact_numeric_accuracy": value_ok,
+        "query_contract_accuracy": all(c.ok for c in checks
+                                       if c.name.startswith("generated_sql.tables")
+                                       or c.name.startswith("generated_sql.required")
+                                       or c.name.startswith("generated_sql.forbidden")),
+        "metric_scope_accuracy": all(c.ok for c in checks
+                                     if c.name.startswith("generated_sql.required_filter")),
+        "tool_route_accuracy": chain_ok,
+        "answer_schema_valid_rate": _schema_valid(expected, run, unsupported),
+    })
+    _record_grounding_metric(result, expected, unsupported)
+    result.evidence = evidence
+    return result
+
+
+def eval_answer_grounding(case: dict, ctx: EvalContext) -> CaseResult:
+    """Replay + assert the final narrative is evidence-bound and honest."""
+    expected = case.get("expected") or {}
+    checks: list[Check] = []
+    evidence: dict[str, Any] = {}
+    try:
+        transcript, run = _load_recorded_run(case, ctx)
+    except Exception as exc:  # noqa: BLE001
+        checks.append(Check("grounding.replay", False, "a clean replay",
+                            f"{type(exc).__name__}: {exc}"))
+        result = _result_from(case, checks)
+        result.metrics["answer_schema_valid_rate"] = False
+        result.evidence = evidence
+        return result
+
+    checks.append(Check("grounding.replay", not run.errors, [], run.errors[:4]))
+    pool = RecordedPool(case, run)
+    unsupported = pool.unsupported(run.text)
+    checks.extend(_grounding_checks("grounding", expected, unsupported))
+    for fragment in expected.get("final_text_contains", []):
+        checks.append(Check(f"grounding.text_contains[{str(fragment)[:24]}]",
+                            str(fragment) in run.text, fragment, run.text[:200]))
+    for fragment in expected.get("final_text_absent", []):
+        checks.append(Check(f"grounding.text_absent[{str(fragment)[:24]}]",
+                            str(fragment) not in run.text, "absent", "present"))
+    answer_checks, metrics = score_answer(case, run.text, pool.pool)
+    if expected.get("score_answer", True):
+        checks.extend(answer_checks)
+    checks.append(Check("grounding.no_forbidden_token",
+                        not [t for t in (case.get("forbidden") or []) if t and t in run.text],
+                        [], [t for t in (case.get("forbidden") or []) if t and t in run.text]))
+
+    evidence.update({
+        "tool_chain": run.tool_names,
+        "answer": run.text[:800],
+        "unsupported_numbers": sorted(unsupported)[:8],
+        "recovery": run.session.recovery_state.get("status"),
+    })
+    result = _result_from(case, checks)
+    result.metrics.update(metrics)
+    result.metrics["answer_schema_valid_rate"] = _schema_valid(expected, run, unsupported)
+    if expected.get("unsupported_numbers"):
+        result.metrics.pop("unsupported_number_rate", None)
+    result.evidence = evidence
+    return result
+
+
+def eval_tool_chain(case: dict, ctx: EvalContext) -> CaseResult:
+    """Replay + assert the observed tool plan / inputs / terminal state."""
+    return eval_recorded_provider(case, ctx)
+
+
+def _normalize_cell(cell: Any) -> Any:
+    if isinstance(cell, bool):
+        return cell
+    if isinstance(cell, (int, float)):
+        return round(float(cell), 6)
+    return cell
+
+
 EVALUATORS: dict[str, Callable[[dict, EvalContext], CaseResult]] = {
     "policy": eval_policy,
     "sql": eval_sql,
@@ -1489,6 +2056,11 @@ EVALUATORS: dict[str, Callable[[dict, EvalContext], CaseResult]] = {
     "recovery_state": eval_recovery_state,
     "admission": eval_admission,
     "session_isolation": eval_session_isolation,
+    "recorded_provider": eval_recorded_provider,
+    "context_resolution": eval_context_resolution,
+    "generated_sql": eval_generated_sql,
+    "tool_chain": eval_tool_chain,
+    "answer_grounding": eval_answer_grounding,
     "live": eval_live,
 }
 
@@ -1561,6 +2133,14 @@ def run_case(case: dict, ctx: EvalContext,
         )
         if ctx.verbose:
             traceback.print_exc()
+    allowed = _schema_case_fields()
+    unknown = sorted(key for key in case if allowed and key not in allowed)
+    if unknown:
+        # A misspelled key must never be silently ignored: the case would look
+        # like it asserts something it does not.
+        result.unknown_fields = unknown
+        result.status = FAIL
+        result.checks.append(Check("case.no_unknown_fields", False, [], unknown))
     result.duration_ms = round((time.perf_counter() - started) * 1000, 3)
     return result
 
@@ -1595,8 +2175,19 @@ def aggregate(results: list[CaseResult]) -> dict:
         "passed": passed,
         "failed": failed,
         "pass_rate": round(passed / total, 6) if total else None,
+        # P0 gate fields.  "101/101 P0 passed" is misleading when some P0 cases
+        # are unresolved known gaps, so the counts are split out explicitly.
         "p0_cases": sum(1 for r in contract if r.priority == "P0"),
         "p0_passed": sum(1 for r in contract if r.priority == "P0" and r.status == PASS),
+        "p0_total": sum(1 for r in results if r.priority == "P0"),
+        "p0_failed": sum(1 for r in results
+                         if r.priority == "P0" and r.status == FAIL),
+        "p0_xfailed": sum(1 for r in results
+                          if r.priority == "P0" and r.status == XFAIL),
+        "p0_xpassed": sum(1 for r in results
+                          if r.priority == "P0" and r.status == XPASS),
+        "unresolved_p0_defects": sum(1 for r in results
+                                     if r.priority == "P0" and r.status == XFAIL),
         "known_gap_cases": sum(1 for r in results if r.known_gap),
         "known_gap_xfail": sum(1 for r in results if r.status == XFAIL),
         "known_gap_xpass": sum(1 for r in results if r.status == XPASS),
@@ -1606,8 +2197,18 @@ def aggregate(results: list[CaseResult]) -> dict:
     }
 
 
-def evaluate_gates(results: list[CaseResult], metrics: dict) -> list[dict]:
-    """P0 gates from the task spec: any breach makes the run exit non-zero."""
+def evaluate_gates(results: list[CaseResult], metrics: dict, *,
+                   release: bool = False,
+                   allowlist: Optional[list[str]] = None,
+                   ratchet: Optional[dict] = None) -> list[dict]:
+    """P0 gates from the task spec: any breach makes the run exit non-zero.
+
+    ``release=True`` turns the P0 known-gap allowlist into a hard gate.  A
+    research run reports the same numbers but does not block, because an open
+    defect must be visible without making local iteration impossible.  There is
+    deliberately no "ignore all known gaps" switch: an override must name the
+    individual ``case_id`` values it covers.
+    """
 
     p0 = [r for r in results if r.priority == "P0" and not r.known_gap]
     gates = [
@@ -1636,23 +2237,113 @@ def evaluate_gates(results: list[CaseResult], metrics: dict) -> list[dict]:
             "ok": bool(cmp_fn(value, want)),
             "detail": f"{metric}={value} (requirement {'>=' if metric in ('exact_numeric_accuracy', 'answer_schema_valid_rate', 'evidence_coverage', 'proxy_disclosure_rate') else '<='} {want})",
         })
+
+    # --- known-gap governance -------------------------------------------
+    allowed = {str(cid) for cid in (allowlist or [])}
+    p0_xfailed = sorted(r.case_id for r in results
+                        if r.priority == "P0" and r.status == XFAIL)
+    unlisted = [cid for cid in p0_xfailed if cid not in allowed]
+    if release:
+        gates.append({
+            "name": "p0_known_gap_allowlist",
+            "ok": not unlisted,
+            "detail": (f"{len(unlisted)} P0 known gap(s) not in the audited allowlist: "
+                       f"{unlisted[:6]}") if unlisted
+            else f"all {len(p0_xfailed)} P0 known gaps are allowlisted",
+        })
+    else:
+        gates.append({
+            "name": "p0_known_gap_allowlist",
+            "ok": True,
+            "detail": (f"research run: {len(p0_xfailed)} unresolved P0 known gap(s); "
+                       f"{len(unlisted)} not allowlisted (blocking only with --release)"),
+        })
+
+    xpassed = sorted(r.case_id for r in results if r.status == XPASS)
+    gates.append({
+        "name": "known_gap_xpass",
+        "ok": not xpassed,
+        "detail": (f"{len(xpassed)} known gap(s) now pass — remove the known_gap flag: "
+                   f"{xpassed[:6]}") if xpassed else "no known gap flipped to pass",
+    })
+
+    if ratchet is not None:
+        current = sum(1 for r in results if r.known_gap)
+        current_p0 = sum(1 for r in results if r.known_gap and r.priority == "P0")
+        limit = int(ratchet.get("known_gap_total", current))
+        limit_p0 = int(ratchet.get("p0_known_gap", current_p0))
+        ok = current <= limit and current_p0 <= limit_p0
+        gates.append({
+            "name": "known_gap_ratchet",
+            "ok": ok,
+            "detail": (f"known_gap={current}/{limit}, p0_known_gap={current_p0}/{limit_p0} "
+                       "(the budget may only shrink)"),
+        })
     return gates
 
 
 # ---------------------------------------------------------------------------
 # reports
 # ---------------------------------------------------------------------------
+def _load_known_gap_allowlist(path_arg: str) -> list[str]:
+    """Case ids whose unresolved P0 defect is accepted for a release.
+
+    Deliberately a per-case list: there is no way to accept "all known gaps".
+    """
+    path = Path(path_arg) if path_arg else EVAL_ROOT / "known_gap_allowlist.json"
+    if not path.is_file():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if isinstance(payload, dict):
+        entries = payload.get("allowed_p0_known_gaps") or []
+    else:
+        entries = payload or []
+    out: list[str] = []
+    for entry in entries:
+        if isinstance(entry, str):
+            out.append(entry)
+        elif isinstance(entry, dict) and entry.get("case_id"):
+            out.append(str(entry["case_id"]))
+    return out
+
+
+def _load_known_gap_ratchet(path_arg: str, results: list[CaseResult]) -> Optional[dict]:
+    """Known-gap budget; only applied when the selection covers the whole set."""
+    path = Path(path_arg) if path_arg else EVAL_ROOT / "known_gap_ratchet.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    manifest_path = EVAL_ROOT / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if len(results) < int(manifest.get("totals", {}).get("cases", 0)):
+        # A partial selection would compare an incomplete population against a
+        # whole-set budget.
+        return None
+    return payload
+
+
 def build_report(
     results: list[CaseResult],
     suite: str,
     provider: str,
     skipped_live: str = "",
     repeat_agreement: Optional[float] = None,
+    release: bool = False,
+    allowlist: Optional[list[str]] = None,
+    ratchet: Optional[dict] = None,
 ) -> dict:
     summary = aggregate(results)
     if repeat_agreement is not None:
         summary["metrics"]["repeat_stability"] = repeat_agreement
-    gates = evaluate_gates(results, summary["metrics"])
+    gates = evaluate_gates(results, summary["metrics"], release=release,
+                           allowlist=allowlist, ratchet=ratchet)
 
     def dist(key_fn) -> dict:
         out: dict[str, int] = {}
@@ -1693,7 +2384,7 @@ def build_report(
         },
         "known_gaps": [
             {"case_id": r.case_id, "question": r.question, "note": r.gap_note,
-             "status": r.status}
+             "status": r.status, "priority": r.priority, "meta": r.gap_meta}
             for r in results if r.known_gap
         ],
         "skipped": {
@@ -1760,7 +2451,18 @@ def render_markdown(report: dict) -> str:
     lines.append("")
     lines.append(f"- 用例总数：{summary['cases']}（P0 {summary['p0_cases']}，通过 {summary['passed']}，失败 {summary['failed']}）")
     lines.append(f"- 通过率：{summary['pass_rate']}")
-    lines.append(f"- known_gap（按当前行为断言的真实缺陷）：{summary['known_gap_cases']}")
+    lines.append(
+        f"- P0 契约用例：{summary.get('p0_total', 0)} 总数"
+        f"（{summary.get('p0_passed', 0)} passed + "
+        f"{summary.get('p0_xfailed', 0)} unresolved known gaps + "
+        f"{summary.get('p0_xpassed', 0)} xpass + {summary.get('p0_failed', 0)} failed）"
+    )
+    lines.append(
+        f"- unresolved_p0_defects：{summary.get('unresolved_p0_defects', 0)}"
+        "（research 运行不阻塞，release 运行必须被 allowlist 覆盖）"
+    )
+    lines.append(f"- known_gap（按当前行为断言的真实缺陷）：{summary['known_gap_cases']}"
+                 f"（xfail {summary['known_gap_xfail']}，xpass {summary['known_gap_xpass']}）")
     lines.append(f"- 总耗时：{summary['duration_ms']} ms")
     if report.get("provider"):
         lines.append(f"- provider：{report['provider']}")
@@ -1792,7 +2494,12 @@ def render_markdown(report: dict) -> str:
         lines.append("## 已记录的真实缺陷（known_gap，本轮未修业务）")
         lines.append("")
         for gap in report["known_gaps"]:
-            lines.append(f"- `{gap['case_id']}`（{gap['status']}）：{gap['question']}")
+            meta = gap.get("meta") or {}
+            owner = meta.get("owner", "?")
+            severity = meta.get("severity", "?")
+            target = meta.get("target_fix_version", "?")
+            lines.append(f"- `{gap['case_id']}`（{gap['status']} · P{gap.get('priority', '?')} · "
+                         f"{severity} · owner={owner} · target={target}）：{gap['question']}")
             if gap["note"]:
                 lines.append(f"  - {gap['note']}")
         lines.append("")
@@ -1899,6 +2606,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--list", action="store_true", help="list selected cases and exit")
     parser.add_argument("--no-gate", action="store_true",
                         help="report gate failures but exit 0")
+    parser.add_argument("--release", action="store_true",
+                        help="release gate: unresolved P0 known gaps must all be "
+                             "covered by the audited allowlist")
+    parser.add_argument("--allowlist", default="",
+                        help="audited known-gap allowlist JSON (default: "
+                             "dataset/evals/analytics/known_gap_allowlist.json)")
+    parser.add_argument("--ratchet", default="",
+                        help="known-gap ratchet baseline JSON (default: "
+                             "dataset/evals/analytics/known_gap_ratchet.json)")
     parser.add_argument("--verbose", action="store_true")
     return parser
 
@@ -2000,9 +2716,13 @@ def main(argv: Optional[list[str]] = None) -> int:
             stable = sum(1 for sigs in signatures.values() if len(set(sigs)) == 1)
             repeat_agreement = round(stable / len(signatures), 6) if signatures else None
 
+        allowlist = _load_known_gap_allowlist(args.allowlist)
+        ratchet = _load_known_gap_ratchet(args.ratchet, results)
         report = build_report(results, args.suite, args.provider,
                               skipped_live=skipped_live,
-                              repeat_agreement=repeat_agreement)
+                              repeat_agreement=repeat_agreement,
+                              release=args.release, allowlist=allowlist,
+                              ratchet=ratchet)
 
         out_dir = Path(args.out) if args.out else DEFAULT_REPORT_DIR
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -2024,6 +2744,10 @@ def main(argv: Optional[list[str]] = None) -> int:
               f"passed={summary['passed']} failed={summary['failed']} "
               f"pass_rate={summary['pass_rate']}")
         print(f"known_gap={summary['known_gap_cases']} duration_ms={summary['duration_ms']}")
+        print(f"p0: total={summary.get('p0_total', 0)} passed={summary.get('p0_passed', 0)} "
+              f"failed={summary.get('p0_failed', 0)} xfail={summary.get('p0_xfailed', 0)} "
+              f"xpass={summary.get('p0_xpassed', 0)} "
+              f"unresolved={summary.get('unresolved_p0_defects', 0)}")
         print("metrics:")
         for name in ALL_METRICS:
             value = summary["metrics"].get(name)

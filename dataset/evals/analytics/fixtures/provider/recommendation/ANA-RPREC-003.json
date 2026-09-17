@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPREC-003",
+  "turns": [
+    {
+      "user": "下一步怎么办：库存积压",
+      "db": "inventory.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "下一步怎么办：库存积压"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT warehouse_id, SUM(on_hand_qty) AS qty, MAX(aging_days) AS max_aging FROM fact_inventory_snapshot GROUP BY warehouse_id ORDER BY qty DESC",
+            "query_description": "下一步怎么办：库存积压"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "各仓库存",
+            "columns": [
+              {
+                "key": "warehouse_id",
+                "label": "仓库"
+              },
+              {
+                "key": "qty",
+                "label": "数量"
+              },
+              {
+                "key": "max_aging",
+                "label": "最长账龄"
+              }
+            ],
+            "rows": [
+              [
+                1,
+                705,
+                400
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "仓库 1 库存数量 705，为各仓最高。\n## 行动建议\n1. 由仓储部先补齐缺失月份的快照数据，复核条件为 6 个月快照齐全，再讨论调拨方案。\n2. 由仓储部对最长账龄 400 天的物料做清单复核，复核条件为清单数量与账面一致。\n当前证据不足以直接下业务结论，先补数据再决策。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

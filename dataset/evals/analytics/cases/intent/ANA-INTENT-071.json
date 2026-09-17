@@ -51,5 +51,13 @@
     "list_query"
   ],
   "known_gap": true,
-  "gap_note": "列表型问法『有哪些…』未被 _FACT_SIGNAL_RE 覆盖，当前落到 GENERAL_RESPONSE，不会查询数据。"
+  "gap_note": "列表型问法『有哪些…』未被 _FACT_SIGNAL_RE 覆盖，当前落到 GENERAL_RESPONSE，不会查询数据。",
+  "gap_meta": {
+    "owner": "ai-team",
+    "introduced_at": "2026-09-17",
+    "target_fix_version": "v0.1.10",
+    "severity": "medium",
+    "summary": "『有哪些…』列表型问法未触发取数",
+    "source_issue": "a1134c7 (analytics golden set v1)"
+  }
 }

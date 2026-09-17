@@ -50,5 +50,13 @@
     "ontology_lookup"
   ],
   "known_gap": true,
-  "gap_note": "『物理表/对应表』类元数据提问未被 _ONTOLOGY_SIGNAL_RE 覆盖，落到 GENERAL_RESPONSE。"
+  "gap_note": "『物理表/对应表』类元数据提问未被 _ONTOLOGY_SIGNAL_RE 覆盖，落到 GENERAL_RESPONSE。",
+  "gap_meta": {
+    "owner": "ai-team",
+    "introduced_at": "2026-09-17",
+    "target_fix_version": "v0.1.10",
+    "severity": "medium",
+    "summary": "『物理表/对应表』提问未识别为本体查询",
+    "source_issue": "a1134c7 (analytics golden set v1)"
+  }
 }

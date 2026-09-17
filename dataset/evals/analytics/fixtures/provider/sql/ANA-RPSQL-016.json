@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-016",
+  "turns": [
+    {
+      "user": "P1工厂的缺陷率是多少",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "P1工厂的缺陷率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(defect_qty) * 1.0 / SUM(inspected_qty) FROM fact_quality_batch WHERE plant = 'P1'",
+            "query_description": "P1工厂的缺陷率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "P1工厂的缺陷率是多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                0.02243902
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "P1 工厂缺陷率 2.24%。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

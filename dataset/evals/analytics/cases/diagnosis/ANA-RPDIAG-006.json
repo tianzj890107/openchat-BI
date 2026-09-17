@@ -1,0 +1,53 @@
+{
+  "case_id": "ANA-RPDIAG-006",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "采购",
+  "category": "diagnosis",
+  "evaluator": "recorded_provider",
+  "question": "采购金额下降是不是因为供应商减少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/diagnosis/ANA-RPDIAG-006.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "policy_mode": "DIAGNOSTIC_ANALYSIS",
+    "value": 25030,
+    "tolerance": 1e-06
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "diagnosis",
+    "evidence_chain"
+  ],
+  "notes": "相关性不得写成因果，且必须给出补证据的动作。",
+  "answer_requirements": [
+    "must_separate_correlation_from_cause",
+    "must_include_effective_action_section"
+  ]
+}

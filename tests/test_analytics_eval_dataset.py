@@ -32,7 +32,7 @@ SCHEMA_PATH = EVAL_ROOT / "schemas" / "case.schema.json"
 CASE_ID_RE = re.compile(r"^ANA-[A-Z0-9]+-[0-9]{3}$")
 PRIORITIES = {"P0", "P1", "P2"}
 SUITES = {"smoke", "regression", "multi-turn", "ontology", "charts",
-          "adversarial", "recovery", "diagnosis", "live"}
+          "adversarial", "recovery", "diagnosis", "recorded-provider", "live"}
 DOMAINS = {"采购", "库存", "销售", "财务", "质量", "制造", "通用"}
 CATEGORIES = {"intent", "facts", "metrics", "comparison", "trend", "anomaly",
               "diagnosis", "recommendation", "ontology", "multi_turn", "charts",
@@ -41,7 +41,16 @@ CATEGORIES = {"intent", "facts", "metrics", "comparison", "trend", "anomaly",
 # Fixture databases the golden set is allowed to reference.  The historical
 # business databases under ``dataset/databases`` must never be used: they are
 # large, contain real data and are not part of the reviewable eval fixture set.
-ALLOWED_DBS = {"procurement.db", "inventory.db", "sales.db", "quality.db"}
+ALLOWED_DBS = {"procurement.db", "inventory.db", "sales.db", "quality.db",
+               "finance.db", "manufacturing.db"}
+
+# Evaluators that replay a recorded provider transcript through the production
+# turn loop.  Each one needs a transcript fixture and a fixture database.
+RECORDED_EVALUATORS = {"recorded_provider", "generated_sql", "tool_chain",
+                       "answer_grounding"}
+PROVIDER_ROOT = FIXTURE_ROOT / "provider"
+RATCHET_PATH = EVAL_ROOT / "known_gap_ratchet.json"
+ALLOWLIST_PATH = EVAL_ROOT / "known_gap_allowlist.json"
 
 READONLY_SQL_RE = re.compile(r"^\s*(select|with)\b", re.IGNORECASE)
 FORBIDDEN_SQL_RE = re.compile(
@@ -143,6 +152,51 @@ class CaseSchemaTest(unittest.TestCase):
                 self.assertTrue(case.get("gap_note", "").strip(),
                                 f"{path} known_gap without gap_note")
                 self.assertIn(case["priority"], PRIORITIES)
+
+    def test_known_gap_requires_full_metadata(self):
+        """A Red test without an owner and a target is just debt with no owner."""
+        required = {"owner", "introduced_at", "target_fix_version", "severity",
+                    "source_issue"}
+        seen = 0
+        for path, case in self.cases:
+            if not case.get("known_gap"):
+                continue
+            seen += 1
+            meta = case.get("gap_meta") or {}
+            self.assertEqual(required - set(meta), set(),
+                             f"{path} known_gap is missing metadata")
+            self.assertRegex(meta["introduced_at"], r"^\d{4}-\d{2}-\d{2}$")
+            self.assertRegex(meta["target_fix_version"], r"^v\d+\.\d+\.\d+$")
+            self.assertIn(meta["severity"], {"low", "medium", "high"})
+            self.assertTrue(str(meta["owner"]).strip())
+            self.assertTrue(str(meta["source_issue"]).strip())
+        self.assertGreater(seen, 0)
+
+    def test_no_unknown_top_level_fields(self):
+        schema = _load(SCHEMA_PATH)
+        allowed = set(schema["properties"])
+        for path, case in self.cases:
+            unknown = sorted(set(case) - allowed)
+            self.assertEqual(unknown, [], f"{path} has unknown fields {unknown}")
+
+    def test_no_duplicate_question_evaluator_expected(self):
+        """A case that only renames its id is padding, not coverage."""
+        legacy = {
+            frozenset({"ANA-INTENT-041", "ANA-DIAG-002"}),
+            frozenset({"ANA-INTENT-042", "ANA-DIAG-003"}),
+            frozenset({"ANA-INTENT-043", "ANA-DIAG-004"}),
+            frozenset({"ANA-INTENT-051", "ANA-REC-002"}),
+        }
+        seen: dict[tuple, str] = {}
+        unexplained = []
+        for path, case in self.cases:
+            key = (case["question"], case["evaluator"],
+                   json.dumps(case["expected"], ensure_ascii=False, sort_keys=True))
+            if key in seen and frozenset({seen[key], case["case_id"]}) not in legacy:
+                unexplained.append((seen[key], case["case_id"]))
+            seen[key] = case["case_id"]
+        self.assertEqual(unexplained, [], "duplicate question+evaluator+expected")
+        self.assertEqual(len(legacy), 4, "the legacy duplicate allowlist is frozen")
 
     def test_case_ids_are_unique(self):
         seen: dict[str, str] = {}
@@ -335,11 +389,315 @@ class CoverageFloorTest(unittest.TestCase):
         self.assertIn("admission", evaluators)
         self.assertIn("chart_html_safety", evaluators)
 
+    def test_finance_and_manufacturing_domains_are_covered(self):
+        finance = [c for c in self.cases if c["domain"] == "财务"]
+        manufacturing = [c for c in self.cases if c["domain"] == "制造"]
+        self.assertGreaterEqual(len(finance), 25, "财务 needs >=25 numeric cases")
+        self.assertGreaterEqual(len(manufacturing), 25, "制造 needs >=25 numeric cases")
+
+    def test_recorded_provider_cases_cover_the_required_ratio(self):
+        recorded = [c for c in self.cases
+                    if "recorded-provider" in c["suite"]]
+        self.assertGreaterEqual(len(recorded), 60,
+                                "the recorded-provider layer must have >=60 cases")
+        self.assertGreaterEqual(
+            len([c for c in recorded if c["evaluator"] == "generated_sql"]), 25)
+        self.assertGreaterEqual(
+            len([c for c in recorded if c["evaluator"] == "tool_chain"]), 12)
+        # Chart-chain cases are the ones recorded under fixtures/provider/chart/;
+        # a couple of them are categorised as adversarial/failure_recovery on
+        # purpose, so the count must not be by category.
+        chart_chain = [c for c in recorded
+                       if "provider/chart/" in str((c.get("fixture") or {}).get("provider"))]
+        self.assertGreaterEqual(len(chart_chain), 15,
+                                ">=15 end-to-end chart-chain cases expected")
+
+    def test_p2_long_tail_has_real_assertions(self):
+        p2 = [c for c in self.cases if c["priority"] == "P2"]
+        self.assertGreaterEqual(len(p2), 25, ">=25 P2 long-tail cases expected")
+        keys = ("value", "tool_chain", "context", "policy", "rule_codes", "stats",
+                "rows", "value_is_null", "chart_type", "mode_in", "mode_not_in",
+                "status", "error_contains", "allowed_tables", "final_text_contains",
+                "op", "code")
+        for case in p2:
+            expected = case["expected"]
+            self.assertTrue(expected, f"{case['case_id']} has no expected payload")
+            # Presence, not truthiness: a golden value of 0 is still an assertion.
+            self.assertTrue(
+                any(key in expected for key in keys),
+                f"{case['case_id']} P2 case asserts nothing concrete",
+            )
+
     def test_no_live_evaluator_cases_are_committed(self):
         """``live`` is applied at run time; the stored cases stay structural."""
         for case in self.cases:
             self.assertNotEqual(case["evaluator"], "live",
                                 f"{case['case_id']} stores a live evaluator")
+
+
+class RecordedProviderAssetTest(unittest.TestCase):
+    """The replay layer must stay self-contained, offline and deterministic."""
+
+    def setUp(self):
+        self.cases = [_load(p) for p in _all_case_paths()]
+        self.manifest = _load(MANIFEST_PATH)
+
+    def test_every_recorded_case_has_a_committed_transcript(self):
+        checked = 0
+        for case in self.cases:
+            if case["evaluator"] not in RECORDED_EVALUATORS:
+                continue
+            checked += 1
+            rel = (case.get("fixture") or {}).get("provider")
+            self.assertTrue(rel, f"{case['case_id']} has no provider transcript")
+            path = EVAL_ROOT / rel
+            self.assertTrue(path.is_file(), f"{case['case_id']} transcript missing: {rel}")
+            payload = _load(path)
+            self.assertEqual(payload.get("version"), 1, rel)
+            self.assertEqual(payload.get("provider"), "recorded", rel)
+            self.assertEqual(payload.get("case_id"), case["case_id"], rel)
+            self.assertTrue(payload.get("turns"), f"{rel} has no turns")
+            for turn in payload["turns"]:
+                self.assertTrue(turn.get("user"), f"{rel} turn without a question")
+                self.assertTrue(turn.get("events"), f"{rel} turn without events")
+                self.assertEqual(turn["events"][-1]["type"], "done",
+                                 f"{rel} turn must end with done")
+        self.assertGreaterEqual(checked, 60)
+
+    def test_transcripts_are_hashed_in_the_manifest(self):
+        hashed = [rel for rel in self.manifest["fixtures"] if rel.startswith("provider/")]
+        self.assertGreaterEqual(len(hashed), 60)
+        for rel in hashed:
+            self.assertEqual(self.manifest["fixtures"][rel]["sha256"],
+                             _sha256(FIXTURE_ROOT / rel))
+
+    def test_recorded_cases_only_use_eval_fixture_databases(self):
+        for case in self.cases:
+            if case["evaluator"] not in RECORDED_EVALUATORS:
+                continue
+            db = (case.get("fixture") or {}).get("db")
+            self.assertIn(db, ALLOWED_DBS, f"{case['case_id']} uses {db!r}")
+
+    def test_recorded_cases_are_wired_into_the_default_regression(self):
+        for case in self.cases:
+            if "recorded-provider" not in case["suite"]:
+                continue
+            self.assertIn("regression", case["suite"],
+                          f"{case['case_id']} is not part of the default regression")
+
+    def test_no_network_is_reachable_during_replay(self):
+        """Replay a recorded case with sockets disabled: it must still pass."""
+        import socket
+
+        runner = _load_runner()
+        case = next(c for c in self.cases if c["case_id"] == "ANA-RPSQL-001")
+        ctx = runner.EvalContext()
+        real_socket = socket.socket
+
+        def _blocked(*args, **kwargs):  # pragma: no cover - failure path only
+            raise AssertionError("the offline evaluator must not open a socket")
+
+        try:
+            socket.socket = _blocked
+            socket.create_connection = _blocked
+            result = runner.run_case(case, ctx)
+        finally:
+            socket.socket = real_socket
+            ctx.cleanup()
+        self.assertEqual(result.status, runner.PASS,
+                         [c.name for c in result.failed_checks])
+
+    def test_grounding_negative_control_is_declared(self):
+        """A number that another case produced must still count as unsupported."""
+        case = next(c for c in self.cases if c["case_id"] == "ANA-RPGND-002")
+        self.assertTrue(case["expected"].get("unsupported_numbers"))
+        self.assertFalse(case["expected"].get("grounding", True))
+
+        runner = _load_runner()
+        ctx = runner.EvalContext()
+        try:
+            result = runner.run_case(case, ctx)
+        finally:
+            ctx.cleanup()
+        self.assertEqual(result.status, runner.PASS,
+                         [c.name for c in result.failed_checks])
+
+
+class KnownGapGovernanceTest(unittest.TestCase):
+    def setUp(self):
+        self.manifest = _load(MANIFEST_PATH)
+        self.cases = [_load(p) for p in _all_case_paths()]
+
+    def test_ratchet_matches_the_committed_set(self):
+        ratchet = _load(RATCHET_PATH)
+        total = sum(1 for c in self.cases if c.get("known_gap"))
+        p0 = sum(1 for c in self.cases if c.get("known_gap") and c["priority"] == "P0")
+        self.assertEqual(ratchet["known_gap_total"], total,
+                         "known-gap budget drifted from the committed set")
+        self.assertEqual(ratchet["p0_known_gap"], p0)
+
+    def test_allowlist_is_empty_and_case_scoped(self):
+        allowlist = _load(ALLOWLIST_PATH)
+        self.assertEqual(allowlist["allowed_p0_known_gaps"], [],
+                         "an allowlist entry needs an audited justification first")
+        self.assertNotIn("ignore_all", json.dumps(allowlist))
+
+    def test_unresolved_p0_defects_are_reported(self):
+        runner = _load_runner()
+        cases = runner.load_cases()
+        results = []
+        ctx = runner.EvalContext()
+        try:
+            for case in runner.select_cases(cases, "smoke"):
+                results.append(runner.run_case(case, ctx))
+        finally:
+            ctx.cleanup()
+        summary = runner.aggregate(results)
+        self.assertEqual(summary["p0_total"],
+                         sum(1 for r in results if r.priority == "P0"))
+        self.assertEqual(summary["unresolved_p0_defects"], summary["p0_xfailed"])
+        self.assertGreater(summary["p0_total"], summary["p0_passed"],
+                           "the P0 report must not collapse known gaps into passes")
+
+
+class KnownGapGateTest(unittest.TestCase):
+    """The release gate must fail on unresolved P0 defects, offline and fast."""
+
+    def _run(self, extra: list[str]) -> tuple[int, dict]:
+        import os
+        import subprocess
+        import sys
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            env = dict(os.environ)
+            for key in ("TEAM_API_KEY", "QWEN_API_KEY", "DASHSCOPE_API_KEY",
+                        "TEAM_BASE_URL"):
+                env.pop(key, None)
+            proc = subprocess.run(
+                [sys.executable, "-m", "scripts.run_analytics_eval",
+                 "--suite", "smoke", "--out", tmp, *extra],
+                cwd=REPO_ROOT, capture_output=True, text=True, env=env,
+                timeout=900,
+            )
+            report_path = Path(tmp) / "report-smoke.json"
+            report = _load(report_path) if report_path.is_file() else {}
+            return proc.returncode, report
+
+    def test_research_run_does_not_block_on_open_defects(self):
+        code, report = self._run([])
+        self.assertEqual(code, 0)
+        gate = next(g for g in report["gates"] if g["name"] == "p0_known_gap_allowlist")
+        self.assertTrue(gate["ok"])
+        self.assertIn("research run", gate["detail"])
+
+    def test_release_run_fails_while_p0_defects_are_open(self):
+        code, report = self._run(["--release"])
+        self.assertEqual(code, 1, "release must fail with unresolved P0 known gaps")
+        gate = next(g for g in report["gates"] if g["name"] == "p0_known_gap_allowlist")
+        self.assertFalse(gate["ok"])
+        self.assertIn("not in the audited allowlist", gate["detail"])
+
+
+class RunnerContractTest(unittest.TestCase):
+    """Subprocess contract: what CI calls, with the side effects we forbid."""
+
+    def test_smoke_suite_writes_only_to_the_requested_directory(self):
+        import os
+        import subprocess
+        import sys
+        import tempfile
+
+        reports_dir = REPO_ROOT / "reports"
+        before = sorted(str(p) for p in reports_dir.rglob("*")) if reports_dir.is_dir() else []
+        with tempfile.TemporaryDirectory() as tmp:
+            env = dict(os.environ)
+            for key in ("TEAM_API_KEY", "QWEN_API_KEY", "DASHSCOPE_API_KEY"):
+                env.pop(key, None)
+            proc = subprocess.run(
+                [sys.executable, "-m", "scripts.run_analytics_eval",
+                 "--suite", "smoke", "--out", tmp],
+                cwd=REPO_ROOT, capture_output=True, text=True, env=env, timeout=900,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            report = _load(Path(tmp) / "report-smoke.json")
+            manifest = _load(MANIFEST_PATH)
+
+            self.assertEqual(report["summary"]["cases"] + len(report["known_gaps"]),
+                             manifest["totals"]["by_suite"]["smoke"])
+            self.assertEqual(len(report["known_gaps"]), manifest["totals"]["known_gap_p0"])
+            manifest = _load(MANIFEST_PATH)
+            smoke_ids = {c["case_id"] for c in
+                         (_load(p) for p in _all_case_paths())
+                         if "smoke" in c["suite"]}
+            self.assertEqual({r["case_id"] for r in report["results"]}, smoke_ids,
+                             "the report must cover every smoke case, known gaps included")
+            self.assertTrue((Path(tmp) / "report-smoke.md").is_file())
+        after = sorted(str(p) for p in reports_dir.rglob("*")) if reports_dir.is_dir() else []
+        self.assertEqual(before, after, "the runner wrote into the repo reports/ directory")
+
+    def test_regression_suite_is_reproducible(self):
+        import os
+        import subprocess
+        import sys
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            env = dict(os.environ)
+            for key in ("TEAM_API_KEY", "QWEN_API_KEY", "DASHSCOPE_API_KEY"):
+                env.pop(key, None)
+            outputs = []
+            for run in ("a", "b"):
+                out = Path(tmp) / run
+                proc = subprocess.run(
+                    [sys.executable, "-m", "scripts.run_analytics_eval",
+                     "--suite", "recorded-provider", "--out", str(out)],
+                    cwd=REPO_ROOT, capture_output=True, text=True, env=env, timeout=900,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                report = _load(out / "report-recorded-provider.json")
+                outputs.append([
+                    (r["case_id"], r["status"],
+                     tuple(c["name"] for c in r["checks"] if not c["ok"]))
+                    for r in report["results"]
+                ])
+            self.assertEqual(outputs[0], outputs[1],
+                             "the recorded-provider suite is not deterministic")
+
+
+class GeneratorReproducibilityTest(unittest.TestCase):
+    """Regenerating the assets must reproduce the committed bytes."""
+
+    def test_regeneration_is_byte_identical(self):
+        import shutil
+        import subprocess
+        import sys
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "analytics"
+            shutil.copytree(
+                EVAL_ROOT, target,
+                ignore=shutil.ignore_patterns("cases", "__pycache__", "*.pyc"),
+            )
+            proc = subprocess.run(
+                [sys.executable, str(target / "build_cases.py")],
+                cwd=str(target), capture_output=True, text=True, timeout=900,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+
+            committed = {p.relative_to(CASES_DIR): p.read_bytes()
+                         for p in CASES_DIR.glob("*/*.json")}
+            regenerated = {p.relative_to(target / "cases"): p.read_bytes()
+                           for p in (target / "cases").glob("*/*.json")}
+            self.assertEqual(sorted(committed), sorted(regenerated),
+                             "regeneration produced a different case set")
+            differing = [str(rel) for rel, blob in committed.items()
+                         if regenerated[rel] != blob]
+            self.assertEqual(differing, [], "regeneration changed committed cases")
+            self.assertEqual((target / "manifest.json").read_bytes(),
+                             MANIFEST_PATH.read_bytes(),
+                             "regeneration changed the manifest")
 
 
 if __name__ == "__main__":

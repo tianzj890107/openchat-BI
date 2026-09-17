@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-022",
+  "turns": [
+    {
+      "user": "2025年产量达成率是多少",
+      "db": "manufacturing.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "2025年产量达成率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(actual_qty) * 1.0 / SUM(planned_qty) FROM fact_production_order WHERE is_deleted = 0 AND actual_qty IS NOT NULL",
+            "query_description": "2025年产量达成率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025年产量达成率是多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                0.91288344
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "产量达成率 91.29%（未报工工单已排除）。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

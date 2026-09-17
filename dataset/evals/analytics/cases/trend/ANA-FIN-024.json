@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-FIN-024",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "财务",
+  "category": "trend",
+  "evaluator": "sql",
+  "question": "2025年收入最高的月份金额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "finance.db",
+    "sql": "SELECT MAX(monthly.amount) FROM (SELECT SUM(credit) AS amount FROM fact_gl_entry JOIN dim_account ON fact_gl_entry.account_id = dim_account.account_id WHERE fact_gl_entry.is_deleted = 0 AND fact_gl_entry.currency = 'CNY' AND dim_account.account_type = '收入' AND fact_gl_entry.period LIKE '2025%' GROUP BY fact_gl_entry.period) AS monthly"
+  },
+  "expected": {
+    "value": 500000,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "",
+    "dimensions": [
+      "period"
+    ],
+    "filters": [],
+    "scope_note": "",
+    "query_contract": {
+      "db": "finance.db",
+      "metric": "",
+      "filters": [],
+      "dimensions": [
+        "period"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "topn",
+    "finance"
+  ]
+}

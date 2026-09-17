@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-023",
+  "turns": [
+    {
+      "user": "2025年报废率是多少",
+      "db": "manufacturing.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "2025年报废率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(scrap_qty) * 1.0 / SUM(actual_qty) FROM fact_production_order WHERE is_deleted = 0",
+            "query_description": "2025年报废率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025年报废率是多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                0.02083333
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "报废率 2.08%（含一条返工冲销的负报废）。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

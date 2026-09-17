@@ -1,0 +1,52 @@
+{
+  "case_id": "ANA-RPONT-005",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "通用",
+  "category": "ontology",
+  "evaluator": "tool_chain",
+  "question": "金额是什么意思",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/ontology/ANA-RPONT-005.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-TermDisambiguate"
+    ],
+    "tool_results": {
+      "Ontology-TermDisambiguate": {
+        "contains": [
+          "[TM-002]"
+        ]
+      }
+    },
+    "recovery_status": "SUCCEEDED",
+    "policy_mode": "ONTOLOGY_LOOKUP"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "tool_chain",
+    "ontology"
+  ],
+  "notes": "术语消歧要给出本体命中的术语编号，而不是泛泛解释。"
+}

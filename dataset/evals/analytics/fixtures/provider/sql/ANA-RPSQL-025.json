@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-025",
+  "turns": [
+    {
+      "user": "2025年停机时长合计是多少分钟",
+      "db": "manufacturing.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "2025年停机时长合计是多少分钟"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(downtime_minutes) FROM fact_production_order WHERE is_deleted = 0",
+            "query_description": "2025年停机时长合计是多少分钟"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025年停机时长合计是多少分钟",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                19320
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年停机时长合计 19,320 分钟。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

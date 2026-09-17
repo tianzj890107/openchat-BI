@@ -1,0 +1,89 @@
+{
+  "case_id": "ANA-CTX-012",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression",
+    "multi-turn"
+  ],
+  "domain": "采购",
+  "category": "multi_turn",
+  "evaluator": "context_resolution",
+  "question": "上一个问题里没有的对比范围这次要加上",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "上一个问题里没有的对比范围这次要加上"
+    }
+  ],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "previous": {
+      "subject": null,
+      "goal": null,
+      "metrics": [
+        "MT-001"
+      ],
+      "dimensions": [
+        "order_month"
+      ],
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "time_scope": {
+        "start": "2025-06",
+        "end": "2025-06"
+      },
+      "entity_scope": [],
+      "comparison_scope": null
+    },
+    "changes": {
+      "comparison_scope": {
+        "kind": "yoy",
+        "baseline": "2024-06"
+      }
+    }
+  },
+  "expected": {
+    "context": {
+      "subject": null,
+      "goal": null,
+      "metrics": [
+        "MT-001"
+      ],
+      "dimensions": [
+        "order_month"
+      ],
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "time_scope": {
+        "start": "2025-06",
+        "end": "2025-06"
+      },
+      "entity_scope": [],
+      "comparison_scope": {
+        "kind": "yoy",
+        "baseline": "2024-06"
+      }
+    },
+    "must_not_appear": []
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "production_analysis_context"
+  ],
+  "scoring": {},
+  "tags": [
+    "multi_turn",
+    "context_resolution",
+    "production_merge"
+  ],
+  "notes": "新增对比范围时其余字段保持默认，不得凭空补出指标或时间范围。"
+}

@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-P2-010",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression"
+  ],
+  "domain": "库存",
+  "category": "anomaly",
+  "evaluator": "sql",
+  "question": "库存快照里数量为负的行有多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "inventory.db",
+    "sql": "SELECT COUNT(*) FROM fact_inventory_snapshot WHERE on_hand_qty < 0"
+  },
+  "expected": {
+    "value": 1,
+    "tolerance": 1e-06,
+    "unit": "行",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "on_hand_qty < 0"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "inventory.db",
+      "metric": "",
+      "filters": [
+        "on_hand_qty < 0"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "p2",
+    "negative_value"
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "case_id": "ANA-ONT-041",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "制造",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "设备时间开动率适用产线维度吗",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "metric",
+    "code": "MT-011",
+    "dimensions_contains": [
+      "产线",
+      "会计期间"
+    ],
+    "dimensions_excludes": [
+      "供应商"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "metric",
+    "dimension_matrix"
+  ]
+}

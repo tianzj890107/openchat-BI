@@ -24,7 +24,8 @@
     "op": "rules",
     "activity_code": "AC-003",
     "rule_codes": [
-      "BR-003"
+      "BR-003",
+      "BR-005"
     ],
     "definition_contains": "分母为 0"
   },

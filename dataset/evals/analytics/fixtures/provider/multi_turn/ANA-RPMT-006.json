@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPMT-006",
+  "turns": [
+    {
+      "user": "2025年整体缺陷率是多少",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(defect_qty) * 1.0 / SUM(inspected_qty) AS v FROM fact_quality_batch",
+            "query_description": "2025年整体缺陷率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "整体缺陷率",
+            "columns": [
+              {
+                "key": "v",
+                "label": "缺陷率"
+              }
+            ],
+            "rows": [
+              [
+                0.01483146
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "整体缺陷率 1.48%。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "user": "只要P1工厂的",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(defect_qty) * 1.0 / SUM(inspected_qty) AS v FROM fact_quality_batch WHERE plant = 'P1'",
+            "query_description": "只要P1工厂的"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "P1 工厂缺陷率",
+            "columns": [
+              {
+                "key": "v",
+                "label": "缺陷率"
+              }
+            ],
+            "rows": [
+              [
+                0.02243902
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "P1 工厂缺陷率 2.24%，指标口径不变，只增加工厂过滤。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

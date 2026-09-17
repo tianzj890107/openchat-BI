@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPFAIL-001",
+  "turns": [
+    {
+      "user": "采购金额是多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": 12345
+          }
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

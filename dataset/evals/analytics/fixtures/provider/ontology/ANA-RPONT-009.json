@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-009",
+  "turns": [
+    {
+      "user": "供应商采购金额的口径",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "供应商采购金额"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "命中指标 [MT-003] 供应商采购占比，定义为某供应商采购金额 ÷ 采购总金额，分母为 0 时不计算。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

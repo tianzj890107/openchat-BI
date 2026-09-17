@@ -1,0 +1,57 @@
+{
+  "case_id": "ANA-P2-028",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression"
+  ],
+  "domain": "制造",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "已报工工单的平均单张产量是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "manufacturing.db",
+    "sql": "SELECT SUM(actual_qty) * 1.0 / COUNT(*) FROM fact_production_order WHERE is_deleted = 0 AND actual_qty IS NOT NULL"
+  },
+  "expected": {
+    "value": 114.4615,
+    "tolerance": 1e-06,
+    "unit": "台",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 0",
+      "actual_qty IS NOT NULL"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "manufacturing.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 0",
+        "actual_qty IS NOT NULL"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "p2",
+    "manufacturing",
+    "average"
+  ]
+}

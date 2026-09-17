@@ -1,0 +1,51 @@
+{
+  "case_id": "ANA-RPREC-004",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "采购",
+  "category": "recommendation",
+  "evaluator": "recorded_provider",
+  "question": "预测下季度采购金额并给出准备措施",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/recommendation/ANA-RPREC-004.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "policy_mode": "DIAGNOSTIC_ANALYSIS"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "recommendation"
+  ],
+  "notes": "推演必须写明假设，且不得把建议写成已执行。",
+  "answer_requirements": [
+    "must_include_effective_action_section",
+    "action_items_must_be_specific_and_traceable",
+    "must_state_limitations"
+  ]
+}

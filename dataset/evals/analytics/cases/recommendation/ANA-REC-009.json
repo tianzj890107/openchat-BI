@@ -52,5 +52,13 @@
     "action"
   ],
   "known_gap": true,
-  "gap_note": "『该怎么处理』不在 _ACTION_INTENT_RE 内（仅覆盖 怎么办/如何改善/方案/建议/措施 等），当前落到 L1 事实查询；本轮只记录缺陷、不修业务。"
+  "gap_note": "『该怎么处理』不在 _ACTION_INTENT_RE 内（仅覆盖 怎么办/如何改善/方案/建议/措施 等），当前落到 L1 事实查询；本轮只记录缺陷、不修业务。",
+  "gap_meta": {
+    "owner": "ai-team",
+    "introduced_at": "2026-09-17",
+    "target_fix_version": "v0.1.10",
+    "severity": "medium",
+    "summary": "『该怎么处理』未识别为行动类",
+    "source_issue": "a1134c7 (analytics golden set v1)"
+  }
 }

@@ -1,0 +1,46 @@
+{
+  "case_id": "ANA-ONT-035",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "财务",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "毛利率这个指标是什么意思",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "term",
+    "query": "毛利率",
+    "code": "TM-006",
+    "name": "毛利率",
+    "english": "GrossMargin",
+    "definition_contains": "收入",
+    "aliases": [
+      "毛利"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "term",
+    "finance"
+  ]
+}

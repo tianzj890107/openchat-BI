@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-FIN-011",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "财务",
+  "category": "facts",
+  "evaluator": "sql",
+  "question": "2025年美元收入合计是多少美元",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "finance.db",
+    "sql": "SELECT SUM(credit) FROM fact_gl_entry JOIN dim_account ON fact_gl_entry.account_id = dim_account.account_id WHERE fact_gl_entry.is_deleted = 0 AND fact_gl_entry.currency = 'USD' AND dim_account.account_type = '收入'"
+  },
+  "expected": {
+    "value": 30000,
+    "tolerance": 1e-06,
+    "unit": "美元",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "fact_gl_entry.currency = 'USD'"
+    ],
+    "scope_note": "美元分录必须单独统计，禁止与人民币直接相加或同轴比较。",
+    "query_contract": {
+      "db": "finance.db",
+      "metric": "",
+      "filters": [
+        "fact_gl_entry.currency = 'USD'"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "currency",
+    "finance"
+  ]
+}

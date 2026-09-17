@@ -22,15 +22,15 @@
   },
   "expected": {
     "op": "stats",
-    "business_objects": 5,
-    "metrics": 6,
-    "terms": 5,
-    "logical_entities": 6,
-    "attributes": 8,
-    "relations": 3,
+    "business_objects": 7,
+    "metrics": 11,
+    "terms": 7,
+    "logical_entities": 9,
+    "attributes": 11,
+    "relations": 5,
     "activities": 3,
-    "rules": 3,
-    "dimensions": 5
+    "rules": 5,
+    "dimensions": 7
   },
   "forbidden": [],
   "allowed_variants": {},

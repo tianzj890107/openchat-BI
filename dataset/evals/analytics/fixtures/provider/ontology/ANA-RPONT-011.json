@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-011",
+  "turns": [
+    {
+      "user": "库龄是什么意思",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-TermDisambiguate",
+          "input": {
+            "term": "库龄"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "本体中没有匹配“库龄”的术语，无法按现有词典给出定义。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

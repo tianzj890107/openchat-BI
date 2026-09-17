@@ -1,0 +1,56 @@
+{
+  "case_id": "ANA-MFG-014",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "制造",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "2025年产量达成率是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "manufacturing.db",
+    "sql": "SELECT SUM(actual_qty) * 1.0 / SUM(planned_qty) FROM fact_production_order JOIN dim_work_center ON fact_production_order.work_center_id = dim_work_center.work_center_id WHERE fact_production_order.is_deleted = 0 AND fact_production_order.actual_qty IS NOT NULL"
+  },
+  "expected": {
+    "value": 0.91288344,
+    "tolerance": 1e-06,
+    "unit": "比率",
+    "metric": "MT-009",
+    "dimensions": [],
+    "filters": [
+      "fact_production_order.is_deleted = 0",
+      "fact_production_order.actual_qty IS NOT NULL"
+    ],
+    "scope_note": "达成率分母只含已报工工单的计划量；未报工工单不能算作 0 产出。",
+    "query_contract": {
+      "db": "manufacturing.db",
+      "metric": "MT-009",
+      "filters": [
+        "fact_production_order.is_deleted = 0",
+        "fact_production_order.actual_qty IS NOT NULL"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "ratio",
+    "manufacturing"
+  ]
+}

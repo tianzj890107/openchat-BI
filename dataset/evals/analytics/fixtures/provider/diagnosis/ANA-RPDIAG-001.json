@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPDIAG-001",
+  "turns": [
+    {
+      "user": "为什么3月采购金额环比下降",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "为什么3月采购金额环比下降"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT m, v, prev, ROUND(ABS(v * 1.0 / prev - 1), 6) AS abs_delta FROM (SELECT order_month AS m, SUM(amount) AS v, (SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-02') AS prev FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-03' GROUP BY order_month)",
+            "query_description": "为什么3月采购金额环比下降"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "采购金额环比",
+            "columns": [
+              {
+                "key": "m",
+                "label": "月份"
+              },
+              {
+                "key": "v",
+                "label": "本月"
+              },
+              {
+                "key": "prev",
+                "label": "上月"
+              },
+              {
+                "key": "abs_delta",
+                "label": "降幅"
+              }
+            ],
+            "rows": [
+              [
+                "2025-03",
+                4750,
+                6400,
+                0.257812
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "3 月采购金额 4,750.00 元，2 月为 6,400.00 元，环比降幅 25.78%。降幅来自订单结构变化：3 月订单数未减少，但单笔金额下降。这是相关证据，代理指标为订单月均金额，尚不能证明因果。建议先核对 3 月大额订单的排产计划，再决定是否调整供应商配额。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-003",
+  "turns": [
+    {
+      "user": "采购订单头有哪些关系",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-RelationQuery",
+          "input": {
+            "entity": "采购订单头"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "采购订单头通过 supplier_id 关联供应商主数据，通过 material_id 关联物料主数据。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}
