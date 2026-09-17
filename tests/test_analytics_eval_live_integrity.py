@@ -637,5 +637,84 @@ class ReportSecretHygieneTest(unittest.TestCase):
         self.assertIn("report = redact_secrets(build_report(", source)
 
 
+class LiveBudgetTest(unittest.TestCase):
+    """A live run must obey a wall-clock budget; the tail is skipped, not passed."""
+
+    def test_the_suite_budget_skips_the_tail_instead_of_reporting_it(self):
+        import tempfile
+        import time
+        from unittest import mock
+
+        executed: list[str] = []
+
+        def stub_run_case(case, ctx, evaluator_override=None):
+            executed.append(case["case_id"])
+            time.sleep(0.05)
+            return RUNNER.CaseResult(
+                case_id=case["case_id"], category=case.get("category", ""),
+                evaluator="live", priority=case.get("priority", "P1"),
+                status=RUNNER.PASS, question=case.get("question", ""),
+                checks=[RUNNER.Check("stub.executed", True, True, True)],
+                metrics={"answer_schema_valid_rate": True},
+                run_meta={"case_id": case["case_id"],
+                          "fixture_db": RUNNER.fixture_db_for_case(case)})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            argv = ["--suite", "live-canary", "--provider", "deepseek",
+                    "--out", tmp, "--live-budget-seconds", "0.01"]
+            with mock.patch.object(RUNNER, "provider_available", return_value=True), \
+                 mock.patch.object(RUNNER, "run_case", stub_run_case):
+                RUNNER.main(argv)
+            report = json.loads(
+                (Path(tmp) / "report-live-canary.json").read_text(encoding="utf-8"))
+
+        skipped = [r for r in report["results"] if str(r["status"]).lower() == "skip"]
+        self.assertTrue(skipped, "the budget must skip the tail of the suite")
+        self.assertLess(len(executed), len(report["results"]))
+        self.assertEqual(len(executed) + len(skipped), len(report["results"]))
+        for result in skipped:
+            names = [c["name"] for c in result["checks"]]
+            self.assertIn("live.suite_budget", names)
+        self.assertEqual([c["case_id"] for c in skipped],
+                         [r["case_id"] for r in report["results"]
+                          if str(r["status"]).lower() == "skip"])
+        self.assertIn("预算", report["skipped"]["live"])
+        self.assertEqual(report["live_budget_seconds"], 0.01)
+        self.assertGreaterEqual(report["live_budget_used_seconds"], 0.01)
+
+    def test_the_budget_is_disabled_with_zero(self):
+        import tempfile
+        import time
+        from unittest import mock
+
+        executed: list[str] = []
+
+        def stub_run_case(case, ctx, evaluator_override=None):
+            executed.append(case["case_id"])
+            time.sleep(0.02)
+            return RUNNER.CaseResult(
+                case_id=case["case_id"], category=case.get("category", ""),
+                evaluator="live", priority=case.get("priority", "P1"),
+                status=RUNNER.PASS, question=case.get("question", ""),
+                checks=[RUNNER.Check("stub.executed", True, True, True)],
+                metrics={"answer_schema_valid_rate": True})
+
+        with tempfile.TemporaryDirectory() as tmp:
+            argv = ["--suite", "live-canary", "--provider", "deepseek",
+                    "--out", tmp, "--live-budget-seconds", "0"]
+            with mock.patch.object(RUNNER, "provider_available", return_value=True), \
+                 mock.patch.object(RUNNER, "run_case", stub_run_case):
+                RUNNER.main(argv)
+            report = json.loads(
+                (Path(tmp) / "report-live-canary.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(executed), len(report["results"]))
+        self.assertFalse([r for r in report["results"]
+                          if str(r["status"]).lower() == "skip"])
+
+    def test_the_budget_defaults_to_a_finite_value(self):
+        args = RUNNER.build_parser().parse_args([])
+        self.assertEqual(args.live_budget_seconds, 1800.0)
+
+
 if __name__ == "__main__":
     unittest.main()

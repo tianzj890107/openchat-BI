@@ -1756,6 +1756,22 @@ def run_live_turn(session, question: str, timeout_seconds: float = 300.0) -> dic
     }
 
 
+def _live_cost(results: list[CaseResult]) -> Optional[float]:
+    """Total provider cost of a live run, when the provider reports one."""
+    total = 0.0
+    seen = False
+    for result in results:
+        value = (result.run_meta or {}).get("cost")
+        if value is None:
+            continue
+        try:
+            total += float(value)
+            seen = True
+        except (TypeError, ValueError):
+            continue
+    return round(total, 6) if seen else None
+
+
 def _canonical_sql(sql: Any) -> str:
     """Whitespace/case-insensitive SQL form, so formatting is not a diff."""
     text = re.sub(r"\s+", " ", str(sql or "")).strip().lower()
@@ -3741,6 +3757,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--release", action="store_true",
                         help="release gate: unresolved P0 known gaps must all be "
                              "covered by the audited allowlist")
+    parser.add_argument("--live-budget-seconds", type=float, default=1800.0,
+                        help="wall-clock budget for a live/live-canary run; once it "
+                             "is gone the remaining cases are skipped, not measured "
+                             "(0 disables the budget)")
     parser.add_argument("--allowlist", default="",
                         help="audited known-gap allowlist JSON (default: "
                              "dataset/evals/analytics/known_gap_allowlist.json)")
@@ -3780,6 +3800,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     live_suite = args.suite in ("live", "live-canary")
     ctx = EvalContext(verbose=args.verbose)
     skipped_live = ""
+    budget_exhausted = False
+    live_budget_used = 0.0
     live_active = False
     answers: dict[str, str] = {}
     if args.answers:
@@ -3847,7 +3869,30 @@ def main(argv: Optional[list[str]] = None) -> int:
                 live_active = True
                 harness = new_harness()
                 order_problems = harness.check_order(selected)
-                results = [run_case(case, ctx, evaluator_override="live") for case in selected]
+                # A live suite spends real money and real time, so it runs under
+                # an explicit wall-clock budget: once the budget is gone the
+                # remaining cases are skipped (and reported as not measured),
+                # never silently dropped and never reported as passed.
+                budget = max(0.0, float(args.live_budget_seconds))
+                budget_started = time.monotonic()
+                results = []
+                budget_exhausted = False
+                for case in selected:
+                    if budget and time.monotonic() - budget_started > budget:
+                        budget_exhausted = True
+                        results.append(CaseResult(
+                            case_id=case["case_id"], category=case.get("category", ""),
+                            evaluator="live", priority=case.get("priority", "P1"),
+                            status=SKIP, question=case.get("question", ""),
+                            checks=[Check("live.suite_budget", False,
+                                          f"budget {int(budget)}s", "exhausted")],
+                            run_meta={"case_id": case["case_id"],
+                                      "domain": case.get("domain"),
+                                      "fixture_db": fixture_db_for_case(case)},
+                        ))
+                        continue
+                    results.append(run_case(case, ctx, evaluator_override="live"))
+                live_budget_used = time.monotonic() - budget_started
                 if order_problems:
                     for result in results:
                         result.checks.append(Check("live.group_order", False, [], order_problems))
@@ -3870,6 +3915,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                 # feed the stability metric.
                 results = collected
 
+        if budget_exhausted:
+            note = (f"{args.suite} 套件预算 {int(args.live_budget_seconds)}s 已用完，"
+                    f"剩余用例被跳过并计为 not_measured（不会写成 passed）")
+            skipped_live = f"{skipped_live}；{note}" if skipped_live else note
+
         allowlist = _load_known_gap_allowlist(args.allowlist)
         ratchet = _load_known_gap_ratchet(args.ratchet, results)
         waivers = load_waivers(args.allowlist)
@@ -3879,6 +3929,10 @@ def main(argv: Optional[list[str]] = None) -> int:
                               repeat=repeat_report,
                               release=args.release, allowlist=allowlist,
                               ratchet=ratchet, waivers=waivers))
+        if live_suite:
+            report["live_budget_seconds"] = float(args.live_budget_seconds)
+            report["live_budget_used_seconds"] = round(live_budget_used, 3)
+            report["live_cost"] = _live_cost(results)
 
         out_dir = Path(args.out) if args.out else DEFAULT_REPORT_DIR
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -3913,6 +3967,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                   f"known_gap_excluded={stats.get('known_gap_excluded', 0)})")
         if skipped_live:
             print(f"live: {skipped_live}")
+        if live_suite:
+            cost = report.get("live_cost")
+            print(f"live budget: {report.get('live_budget_used_seconds', 0):.1f}s / "
+                  f"{report.get('live_budget_seconds', 0):.0f}s "
+                  f"(0 = unlimited), cost={cost if cost is not None else 'n/a'}")
         for gate in report["gates"]:
             print(f"  gate {gate['name']}: {gate['status']} — {gate['detail']}")
         print(f"reports: {json_path} , {md_path}")

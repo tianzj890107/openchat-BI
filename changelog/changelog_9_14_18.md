@@ -181,5 +181,13 @@
   `--suite recorded-provider` 107 passed（P0 31/31，无 known gap）；
   `--repeat 2` 稳定；`--suite smoke --release` 在 6 条未解决 P0 known gap 且
   allowlist 为空时正确返回 1。
+- live 运行预算：`--live-budget-seconds`（默认 1800s，`0` 不限），预算用完后剩余
+  用例记为 `skip`（`live.suite_budget`）并把原因写进报告，绝不写成 passed；报告输出
+  `live_budget_seconds` / `live_budget_used_seconds` / `live_cost`，每条用例带
+  `duration_ms` 与 `run_meta`（session_id / provider / fixture_db / cost）。
+- 补齐治理门禁测试 `GovernanceGateTest`（15 项）：waiver 缺审计字段、waiver 过期、
+  expiry 格式不可解析、通配符（`*`/`all`/`any`/`ignore_all`）不被收下、安全缺陷独立
+  门禁且 release 阻断而研究运行不阻断、overdue 依据 `product_version()`、ratchet
+  只降不升、xpass 视为维护失败。
 - 未修改业务实现；未部署、未创建 MR/tag/Release；live 与 live-canary 本轮未运行
-  （未授权在线调用），只验证了缺凭据路径。
+  （未授权在线调用），只验证了缺凭据与预算路径。

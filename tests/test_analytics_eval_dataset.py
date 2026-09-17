@@ -601,6 +601,167 @@ class KnownGapGateTest(unittest.TestCase):
         self.assertIn("not in the audited allowlist", gate["detail"])
 
 
+class GovernanceGateTest(unittest.TestCase):
+    """The release gate must be impossible to widen or forget.
+
+    These run the *shipped* gate code with synthetic results, so they stay fast
+    and offline while still pinning the behaviour a release depends on:
+    waivers need audit metadata, waivers expire, security defects are their own
+    gate, and the ratchet only moves down.
+    """
+
+    CURRENT_GAP = "ANA-INTENT-052"
+    SECURITY_GAP = "ANA-ADV-010"
+
+    def setUp(self):
+        self.runner = _load_runner()
+
+    def _result(self, case_id: str, status: str, *, priority: str = "P0",
+                known_gap: bool = False, gap_meta: dict | None = None):
+        return self.runner.CaseResult(
+            case_id=case_id, category="adversarial", evaluator="policy",
+            priority=priority, status=status, known_gap=known_gap,
+            gap_meta=dict(gap_meta or {}), question="synthetic result")
+
+    def _xfail_result(self, case_id: str, *, priority: str = "P0", meta: dict | None = None):
+        return self._result(case_id, self.runner.XFAIL, priority=priority,
+                            known_gap=True, gap_meta=meta or {})
+
+    def _gate(self, gates: list[dict], name: str) -> dict:
+        for gate in gates:
+            if gate["name"] == name:
+                return gate
+        raise AssertionError(f"missing gate {name}; got {[g['name'] for g in gates]}")
+
+    def _gates(self, results, *, release: bool = False, allowlist=None,
+               ratchet=None, waivers=None):
+        return self.runner.evaluate_gates(
+            results, {}, release=release, allowlist=allowlist,
+            ratchet=ratchet, waivers=waivers)
+
+    # --- waiver hygiene --------------------------------------------------
+
+    def test_a_waiver_without_audit_metadata_fails(self):
+        gates = self._gates([], waivers={"entries": [{"case_id": self.CURRENT_GAP}]})
+        gate = self._gate(gates, "known_gap_waiver_metadata")
+        self.assertEqual(gate["status"], "FAIL")
+        self.assertFalse(gate["ok"])
+        for field in ("reviewer", "reviewed_at", "reason", "expiry",
+                      "target_fix_version"):
+            self.assertIn(field, gate["detail"])
+
+    def test_an_expired_waiver_fails(self):
+        entry = {
+            "case_id": self.CURRENT_GAP, "reviewer": "tianzijing",
+            "reviewed_at": "2026-09-01", "reason": "tracked in v0.1.10",
+            "expiry": "2001-01-01", "target_fix_version": "v0.1.10",
+        }
+        gates = self._gates([], waivers={"entries": [entry]})
+        gate = self._gate(gates, "known_gap_waiver_expiry")
+        self.assertEqual(gate["status"], "FAIL")
+        self.assertIn(self.CURRENT_GAP, gate["detail"])
+
+    def test_an_unparseable_expiry_is_treated_as_expired(self):
+        entry = {
+            "case_id": self.CURRENT_GAP, "reviewer": "tianzijing",
+            "reviewed_at": "2026-09-01", "reason": "tracked in v0.1.10",
+            "expiry": "someday", "target_fix_version": "v0.1.10",
+        }
+        gates = self._gates([], waivers={"entries": [entry]})
+        self.assertEqual(self._gate(gates, "known_gap_waiver_expiry")["status"], "FAIL")
+
+    def test_a_fully_audited_unexpired_waiver_passes(self):
+        entry = {
+            "case_id": self.CURRENT_GAP, "reviewer": "tianzijing",
+            "reviewed_at": "2026-09-17", "reason": "fix scheduled for v0.1.10",
+            "expiry": "2099-12-31", "target_fix_version": "v0.1.10",
+        }
+        results = [self._xfail_result(self.CURRENT_GAP)]
+        gates = self._gates(results, release=True,
+                            allowlist=[self.CURRENT_GAP],
+                            waivers={"entries": [entry]})
+        self.assertEqual(self._gate(gates, "known_gap_waiver_expiry")["status"], "PASS")
+        self.assertEqual(self._gate(gates, "p0_known_gap_allowlist")["status"], "PASS")
+
+    def test_wildcard_entries_never_widen_the_allowlist(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "allowlist.json"
+            path.write_text(json.dumps({
+                "allowed_p0_known_gaps": [
+                    {"case_id": "*"}, {"case_id": "ignore_all"},
+                    {"case_id": "ALL"}, {"case_id": "any"},
+                    {"case_id": self.CURRENT_GAP},
+                ],
+            }), encoding="utf-8")
+            honoured = self.runner._load_known_gap_allowlist(str(path))
+        self.assertEqual(honoured, [self.CURRENT_GAP],
+                         "a wildcard must never widen a waiver")
+
+    def test_the_committed_allowlist_carries_audit_metadata_or_is_empty(self):
+        allowlist = _load(ALLOWLIST_PATH)
+        entries = allowlist.get("allowed_p0_known_gaps") or []
+        for entry in entries:
+            if isinstance(entry, str):
+                self.fail("allowlist entries must be audited objects, not bare case ids")
+            for field in ("case_id", "reviewer", "reviewed_at", "reason",
+                          "expiry", "target_fix_version"):
+                self.assertIn(field, entry)
+
+    # --- defect ledgers --------------------------------------------------
+
+    def test_an_unresolved_security_defect_is_its_own_gate(self):
+        results = [self._xfail_result(self.SECURITY_GAP, priority="P1",
+                                      meta={"severity": "high"})]
+        gate = self._gate(self._gates(results), "unresolved_security_defects")
+        self.assertEqual(gate["status"], "FAIL")
+        self.assertIn(self.SECURITY_GAP, gate["detail"])
+
+    def test_security_defects_block_a_release_but_not_research_iteration(self):
+        results = [self._xfail_result(self.SECURITY_GAP, priority="P1",
+                                      meta={"severity": "high"})]
+        research = self.runner.build_report(
+            results, "smoke", "provider", release=False)
+        blocked = self.runner.build_report(
+            results, "smoke", "provider", release=True)
+        self.assertNotEqual(research["status"], "fail",
+                            "research iteration must stay actionable")
+        self.assertEqual(blocked["status"], "fail")
+        self.assertFalse(
+            self._gate(blocked["gates"], "unresolved_security_defects")["ok"])
+
+    def test_a_known_gap_past_its_target_version_is_overdue(self):
+        version = self.runner.product_version()
+        reached = self.runner._version_reached
+        self.assertEqual(version, "0.1.9")
+        self.assertTrue(reached(version, "v0.0.1"))
+        self.assertTrue(reached(version, "v0.1.9"))
+        self.assertFalse(reached(version, "v0.1.10"))
+        self.assertFalse(reached(version, "v99.0.0"))
+        self.assertFalse(reached(version, ""))
+
+    def test_the_overdue_gate_uses_the_product_version(self):
+        overdue = self._xfail_result(self.CURRENT_GAP,
+                                     meta={"target_fix_version": "v0.0.1"})
+        gate = self._gate(self._gates([overdue]), "known_gap_overdue")
+        self.assertEqual(gate["status"], "FAIL")
+        self.assertIn(self.CURRENT_GAP, gate["detail"])
+
+    def test_the_ratchet_only_moves_down(self):
+        results = [self._xfail_result(self.CURRENT_GAP)]
+        loose = self._gates(results, ratchet={"known_gap_total": 12, "p0_known_gap": 6})
+        tight = self._gates(results, ratchet={"known_gap_total": 0, "p0_known_gap": 0})
+        self.assertEqual(self._gate(loose, "known_gap_ratchet")["status"], "PASS")
+        self.assertEqual(self._gate(tight, "known_gap_ratchet")["status"], "FAIL")
+
+    def test_an_xpass_is_a_maintenance_failure(self):
+        xpass = self._result(self.CURRENT_GAP, self.runner.XPASS, known_gap=True)
+        gate = self._gate(self._gates([xpass]), "known_gap_xpass")
+        self.assertEqual(gate["status"], "FAIL")
+        self.assertIn(self.CURRENT_GAP, gate["detail"])
+
+
 class RunnerContractTest(unittest.TestCase):
     """Subprocess contract: what CI calls, with the side effects we forbid."""
 

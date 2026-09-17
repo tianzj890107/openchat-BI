@@ -149,6 +149,13 @@ live 运行时强制执行 `ONTOLOGY_BACKEND=local`，并使用本评测集自�
 多轮、本体查询、图表、根因、建议、越权拒绝和「引用未查询数字」。日常模型/Prompt
 验收只跑这一套，避免每次都跑满 35 条。
 
+**预算与可观测性。** live 运行有单轮超时（`run_live_turn` 默认 300s）和整套
+wall-clock 预算（`--live-budget-seconds`，默认 1800s，`0` 表示不限）。预算用完后剩余
+用例变成 `skip`（`live.suite_budget`），原因写进 `report["skipped"]`，**不会**被算成
+通过。报告同时给出 `live_budget_seconds`、`live_budget_used_seconds`、`live_cost`
+（来自 `session.cost_tracker`），每条用例还有 `duration_ms`、`run_meta.session_id`、
+`run_meta.provider`、`run_meta.fixture_db`。
+
 没有凭据时的行为是明确规定的（`tests/test_analytics_eval_live_integrity.py::
 SkippedLiveContractTest` 强制）：
 
@@ -409,9 +416,11 @@ recorded-provider P0 用例（`recorded-provider` 的 P0 从 4 条提升到 31 �
 - `p0_known_gap_allowlist`：所有未解决的 P0 known_gap 必须**逐条**出现在
   `known_gap_allowlist.json` 里。没有 `--ignore-all-known-gaps`，也不支持通配符或
   按 category 整体豁免。
-- `known_gap_waiver_expiry`：每条 waiver 必须有
-  `case_id` / `reviewer` / `reviewed_at` / `reason` / `expiry` / `target_fix_version`；
-  缺字段、`expiry` 过期或格式不可解析都判失败。
+- `known_gap_waiver_metadata`：每条 waiver 必须有
+  `case_id` / `reviewer` / `reviewed_at` / `reason` / `expiry` / `target_fix_version`，
+  缺任一字段（或不带 `case_id`）即失败。
+- `known_gap_waiver_expiry`：`expiry` 已过期或格式不可解析即失败；通配符
+  （`*` / `all` / `any` / `ignore_all`）永远不会被当作有效 case_id 收下。
 - `known_gap_overdue`：`target_fix_version` 已经达到当前产品版本（`product_version()`
   从 `pyproject.toml` 读取）的 known_gap 必须已修复，或更新 `target_fix_version` 并
   补新的审计说明；不能无声续期。
