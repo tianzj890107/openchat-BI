@@ -1,0 +1,91 @@
+{
+  "case_id": "ANA-TREND-001",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "trend",
+  "evaluator": "sql",
+  "question": "采购金额的月度趋势",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT order_month, SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY order_month ORDER BY order_month"
+  },
+  "expected": {
+    "value": [
+      4700,
+      6400,
+      4750,
+      5170,
+      1010,
+      3000
+    ],
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "MT-001",
+    "dimensions": [
+      "order_month"
+    ],
+    "filters": [
+      "is_deleted = 0"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "MT-001",
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "dimensions": [
+        "order_month"
+      ]
+    },
+    "rows": [
+      [
+        "2025-01",
+        4700
+      ],
+      [
+        "2025-02",
+        6400
+      ],
+      [
+        "2025-03",
+        4750
+      ],
+      [
+        "2025-04",
+        5170
+      ],
+      [
+        "2025-05",
+        1010
+      ],
+      [
+        "2025-06",
+        3000
+      ]
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "trend",
+    "timeseries"
+  ]
+}

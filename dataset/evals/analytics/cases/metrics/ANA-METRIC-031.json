@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-METRIC-031",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "采购金额最高的供应商是哪家",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT supplier_id FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY supplier_id ORDER BY SUM(amount) DESC, supplier_id ASC LIMIT 1"
+  },
+  "expected": {
+    "value": 1,
+    "tolerance": 1e-06,
+    "unit": "",
+    "metric": "MT-001",
+    "dimensions": [
+      "supplier"
+    ],
+    "filters": [],
+    "scope_note": "",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "MT-001",
+      "filters": [],
+      "dimensions": [
+        "supplier"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "top_n"
+  ],
+  "notes": "第一名是 华东金属，金额 12600。"
+}

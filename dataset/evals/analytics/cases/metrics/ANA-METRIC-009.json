@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-METRIC-009",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "采购订单的平均金额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT AVG(amount) FROM fact_purchase_order WHERE is_deleted = 0"
+  },
+  "expected": {
+    "value": 1042.9167,
+    "tolerance": 0.0001,
+    "unit": "元",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 0"
+    ],
+    "scope_note": "AVG 忽略 NULL；按 25 行可计价订单平均，而不是 26 行。",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "average",
+    "null_filter"
+  ]
+}

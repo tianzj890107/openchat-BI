@@ -1,0 +1,71 @@
+{
+  "case_id": "ANA-CONC-004",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "admission",
+  "question": "全局并发打满且队列已满时必须快速失败",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "env": {
+      "CHATBI_MAX_ACTIVE_TURNS": "1",
+      "CHATBI_MAX_ACTIVE_PER_PRINCIPAL": "2",
+      "CHATBI_MAX_WAITING_TURNS": "0",
+      "CHATBI_ADMISSION_WAIT_SECONDS": "0.3"
+    },
+    "principals": {
+      "p1": [
+        "t",
+        "u1",
+        "s1"
+      ],
+      "p2": [
+        "t",
+        "u2",
+        "s2"
+      ]
+    },
+    "script": [
+      {
+        "op": "acquire",
+        "principal": "p1",
+        "as": "t1"
+      },
+      {
+        "op": "acquire",
+        "principal": "p2",
+        "expect_reject": "GLOBAL_QUEUE_FULL"
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 1,
+        "reject_code": "GLOBAL_QUEUE_FULL"
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "admission_outcome"
+  ],
+  "scoring": {},
+  "tags": [
+    "admission",
+    "queue_full"
+  ]
+}

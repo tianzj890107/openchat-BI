@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-METRIC-016",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "采购数量的口径包含零和负数吗",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT SUM(qty) FROM fact_purchase_order WHERE is_deleted = 0"
+  },
+  "expected": {
+    "value": 858,
+    "tolerance": 1e-06,
+    "unit": "混合单位",
+    "metric": "MT-002",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 0"
+    ],
+    "scope_note": "口径：SUM(qty) 不做正负过滤，退货 -5 与 0 数量都计入合计。",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "MT-002",
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "metric_contract"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "case_id": "ANA-ADVS-011",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "adversarial"
+  ],
+  "domain": "通用",
+  "category": "adversarial",
+  "evaluator": "sql_guard",
+  "question": "ATTACH 外部数据库必须被拒绝",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "sql": "ATTACH DATABASE '/tmp/x.db' AS x"
+  },
+  "expected": {
+    "error_contains": "only SELECT / WITH / PRAGMA / EXPLAIN are permitted"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "sql_guard"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql_guard",
+    "attach",
+    "path_traversal"
+  ]
+}

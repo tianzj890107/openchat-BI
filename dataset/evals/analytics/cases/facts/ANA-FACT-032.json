@@ -1,0 +1,51 @@
+{
+  "case_id": "ANA-FACT-032",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression"
+  ],
+  "domain": "质量",
+  "category": "facts",
+  "evaluator": "sql",
+  "question": "停机总时长是多少分钟",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "quality.db",
+    "sql": "SELECT SUM(downtime_minutes) FROM fact_quality_batch"
+  },
+  "expected": {
+    "value": 740,
+    "tolerance": 1e-06,
+    "unit": "分钟",
+    "metric": "",
+    "dimensions": [],
+    "filters": [],
+    "scope_note": "停机时长口径：全表 SUM(downtime_minutes)，无过滤条件。",
+    "query_contract": {
+      "db": "quality.db",
+      "metric": "",
+      "filters": [],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "fact",
+    "sum"
+  ]
+}

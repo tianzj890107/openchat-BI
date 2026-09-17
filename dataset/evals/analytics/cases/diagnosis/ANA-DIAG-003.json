@@ -1,0 +1,61 @@
+{
+  "case_id": "ANA-DIAG-003",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "diagnosis"
+  ],
+  "domain": "库存",
+  "category": "diagnosis",
+  "evaluator": "policy",
+  "question": "库存积压的原因是什么",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {},
+  "expected": {
+    "allowed_tools": [
+      "Ontology-MetricQuery",
+      "Ontology-FactQuery",
+      "Ontology-SemanticQuery",
+      "AskUser"
+    ],
+    "intent_level": "L3",
+    "policy": {
+      "mode": "DIAGNOSTIC_ANALYSIS",
+      "reason_code": "DIAGNOSTIC_REQUEST",
+      "next_step": "QUERY_DORIS",
+      "required_tools": [
+        "Ontology-MetricQuery"
+      ],
+      "evidence_required": true,
+      "needs_human": false
+    },
+    "wants_root_cause": true,
+    "wants_action": false
+  },
+  "forbidden": [
+    "unsupported_causal_claim"
+  ],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "policy_decision",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "diagnosis",
+    "L3",
+    "proxy_metric"
+  ],
+  "notes": "库存积压没有直接原因字段，只能力用周转/账龄等代理指标，必须披露代理性。",
+  "answer_requirements": [
+    "must_state_metric_and_scope",
+    "must_use_proxy_disclosure_if_proxy_used"
+  ]
+}

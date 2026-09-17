@@ -1,0 +1,44 @@
+{
+  "case_id": "ANA-CHART-008",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "charts"
+  ],
+  "domain": "采购",
+  "category": "charts",
+  "evaluator": "chart_validate",
+  "question": "画一个没有数据的采购趋势图",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "chart_params": {
+      "chart_type": "line",
+      "title": "空趋势",
+      "x_axis": [],
+      "series": []
+    }
+  },
+  "expected": {
+    "valid": false,
+    "reason_contains": "series must be a non-empty list",
+    "tool_name": "ChartGenerate"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "chart_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "charts",
+    "empty_data"
+  ],
+  "notes": "空数据不得生成图表，也不得编造点位。"
+}

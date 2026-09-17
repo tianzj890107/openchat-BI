@@ -1,0 +1,111 @@
+{
+  "case_id": "ANA-CONC-010",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "admission",
+  "question": "reset/restore 抢占后旧 turn 必须被判定为 superseded",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "env": {
+      "CHATBI_MAX_ACTIVE_TURNS": "3",
+      "CHATBI_MAX_ACTIVE_PER_PRINCIPAL": "2",
+      "CHATBI_MAX_WAITING_TURNS": "4",
+      "CHATBI_ADMISSION_WAIT_SECONDS": "0.3"
+    },
+    "script": [
+      {
+        "op": "slot_acquire",
+        "slot": "s1",
+        "as": "lease1"
+      },
+      {
+        "op": "slot_superseded",
+        "slot": "s1",
+        "lease": "lease1",
+        "expect": false
+      },
+      {
+        "op": "slot_bump",
+        "slot": "s1",
+        "expect_generation": 1
+      },
+      {
+        "op": "slot_superseded",
+        "slot": "s1",
+        "lease": "lease1",
+        "expect": true
+      },
+      {
+        "op": "slot_acquire",
+        "slot": "s1",
+        "as": "lease2",
+        "expect_granted": true
+      },
+      {
+        "op": "slot_release",
+        "slot": "s1",
+        "lease": "lease1"
+      },
+      {
+        "op": "slot_busy",
+        "slot": "s1",
+        "expect": true
+      },
+      {
+        "op": "slot_release",
+        "slot": "s1",
+        "lease": "lease2"
+      },
+      {
+        "op": "slot_busy",
+        "slot": "s1",
+        "expect": false
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 1,
+        "superseded": false
+      },
+      {
+        "after": 3,
+        "superseded": true
+      },
+      {
+        "after": 6,
+        "busy": true
+      },
+      {
+        "after": 8,
+        "busy": false
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "admission_outcome"
+  ],
+  "scoring": {},
+  "tags": [
+    "admission",
+    "supersede",
+    "no_overwrite"
+  ],
+  "notes": "被抢占的旧 turn 不得释放新 turn 的占用（owner 校验）。"
+}

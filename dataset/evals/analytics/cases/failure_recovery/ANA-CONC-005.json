@@ -1,0 +1,70 @@
+{
+  "case_id": "ANA-CONC-005",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "admission",
+  "question": "排队等待超时必须返回 ADMISSION_TIMEOUT",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "env": {
+      "CHATBI_MAX_ACTIVE_TURNS": "1",
+      "CHATBI_MAX_ACTIVE_PER_PRINCIPAL": "1",
+      "CHATBI_MAX_WAITING_TURNS": "4",
+      "CHATBI_ADMISSION_WAIT_SECONDS": "0.2"
+    },
+    "principals": {
+      "p1": [
+        "t",
+        "u1",
+        "s1"
+      ],
+      "p2": [
+        "t",
+        "u2",
+        "s2"
+      ]
+    },
+    "script": [
+      {
+        "op": "acquire",
+        "principal": "p1",
+        "as": "t1"
+      },
+      {
+        "op": "acquire",
+        "principal": "p2",
+        "expect_reject": "ADMISSION_TIMEOUT"
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 1,
+        "reject_code": "ADMISSION_TIMEOUT"
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "admission_outcome"
+  ],
+  "scoring": {},
+  "tags": [
+    "admission",
+    "timeout"
+  ]
+}

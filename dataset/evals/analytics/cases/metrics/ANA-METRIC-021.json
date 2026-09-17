@@ -1,0 +1,65 @@
+{
+  "case_id": "ANA-METRIC-021",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "库存",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "华东中心仓一月的库存占比是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "inventory.db",
+    "sql": "SELECT (SELECT SUM(on_hand_qty) FROM fact_inventory_snapshot WHERE warehouse_id = 1 AND snapshot_month = '2025-01' AND on_hand_qty IS NOT NULL) * 1.0 / (SELECT SUM(on_hand_qty) FROM fact_inventory_snapshot WHERE snapshot_month = '2025-01' AND on_hand_qty IS NOT NULL)"
+  },
+  "expected": {
+    "value": 0.66666667,
+    "tolerance": 1e-08,
+    "unit": "比例",
+    "metric": "",
+    "dimensions": [
+      "warehouse",
+      "snapshot_month"
+    ],
+    "filters": [
+      "warehouse_id = 1",
+      "snapshot_month = '2025-01'",
+      "on_hand_qty IS NOT NULL"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "inventory.db",
+      "metric": "",
+      "filters": [
+        "warehouse_id = 1",
+        "snapshot_month = '2025-01'",
+        "on_hand_qty IS NOT NULL"
+      ],
+      "dimensions": [
+        "warehouse",
+        "snapshot_month"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "ratio",
+    "share"
+  ]
+}

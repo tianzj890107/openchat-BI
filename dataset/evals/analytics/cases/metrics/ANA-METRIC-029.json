@@ -1,0 +1,56 @@
+{
+  "case_id": "ANA-METRIC-029",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "销售",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "销售订单里有多少行是退货",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "sales.db",
+    "sql": "SELECT COUNT(*) FROM fact_sales WHERE is_deleted = 0 AND qty < 0"
+  },
+  "expected": {
+    "value": 1,
+    "tolerance": 1e-06,
+    "unit": "行",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 0",
+      "qty < 0"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "sales.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 0",
+        "qty < 0"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "negative"
+  ]
+}

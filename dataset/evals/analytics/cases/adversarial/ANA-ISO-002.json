@@ -1,0 +1,89 @@
+{
+  "case_id": "ANA-ISO-002",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "adversarial"
+  ],
+  "domain": "通用",
+  "category": "adversarial",
+  "evaluator": "session_isolation",
+  "question": "非法会话 id 不得读到或删除任意文件",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "script": [
+      {
+        "op": "new_store",
+        "root": "A",
+        "as": "s1"
+      },
+      {
+        "op": "save",
+        "store": "s1",
+        "mode": "data",
+        "title": "t",
+        "question": "q",
+        "as": "c1"
+      },
+      {
+        "op": "get",
+        "store": "s1",
+        "cid": "../../etc/passwd",
+        "expect_present": false
+      },
+      {
+        "op": "get",
+        "store": "s1",
+        "cid": "not-a-valid-cid",
+        "expect_present": false
+      },
+      {
+        "op": "delete",
+        "store": "s1",
+        "cid": "../../etc/passwd",
+        "expect_return": false
+      },
+      {
+        "op": "get",
+        "store": "s1",
+        "cid": "c1",
+        "expect_present": true
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 2,
+        "present": false
+      },
+      {
+        "after": 4,
+        "return": false
+      },
+      {
+        "after": 5,
+        "present": true
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "conversation_isolation"
+  ],
+  "scoring": {},
+  "tags": [
+    "isolation",
+    "path_traversal"
+  ],
+  "summary": "路径穿越会话 id"
+}

@@ -1,0 +1,40 @@
+{
+  "case_id": "ANA-ONT-006",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "采购",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "星际飞船推进器的预算怎么算",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "anchor",
+    "anchors": []
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "anchor",
+    "no_hit"
+  ],
+  "notes": "无本体命中时必须返回空锚点，不得编造实体。"
+}

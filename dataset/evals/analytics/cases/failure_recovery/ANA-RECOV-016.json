@@ -1,0 +1,96 @@
+{
+  "case_id": "ANA-RECOV-016",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "recovery_state",
+  "question": "非法转换不得改变状态（幂等拒绝）",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "script": [
+      [
+        "start_turn",
+        {
+          "turn_ref": "t-1"
+        }
+      ],
+      [
+        "mark_unrecoverable",
+        {}
+      ],
+      [
+        "ask_user",
+        {
+          "tool_use_id": "tu-1",
+          "question": "q",
+          "options": []
+        }
+      ],
+      [
+        "ask_user",
+        {
+          "tool_use_id": "tu-2",
+          "question": "q2",
+          "options": []
+        }
+      ],
+      [
+        "resume_after_user_choice",
+        {}
+      ],
+      [
+        "resume_after_user_choice",
+        {}
+      ]
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 1,
+        "status": "RUNNING",
+        "return": null
+      },
+      {
+        "after": 2,
+        "status": "WAITING_USER"
+      },
+      {
+        "after": 3,
+        "status": "WAITING_USER",
+        "return": null
+      },
+      {
+        "after": 4,
+        "status": "RUNNING",
+        "current_step": "INTENT"
+      },
+      {
+        "after": 5,
+        "status": "RUNNING",
+        "return": null
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recovery_state"
+  ],
+  "scoring": {},
+  "tags": [
+    "recovery",
+    "illegal_transition"
+  ]
+}

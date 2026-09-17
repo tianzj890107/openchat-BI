@@ -1,0 +1,64 @@
+{
+  "case_id": "ANA-FACT-034",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression"
+  ],
+  "domain": "销售",
+  "category": "facts",
+  "evaluator": "sql",
+  "question": "2025年4月人民币销售额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "sales.db",
+    "sql": "SELECT SUM(amount_cny) FROM fact_sales WHERE is_deleted = 0 AND currency = 'CNY' AND order_month = '2025-04'"
+  },
+  "expected": {
+    "value": 152000,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "MT-005",
+    "dimensions": [
+      "order_month"
+    ],
+    "filters": [
+      "is_deleted = 0",
+      "currency = 'CNY'",
+      "order_month = '2025-04'"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "sales.db",
+      "metric": "MT-005",
+      "filters": [
+        "is_deleted = 0",
+        "currency = 'CNY'",
+        "order_month = '2025-04'"
+      ],
+      "dimensions": [
+        "order_month"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "fact",
+    "time_window"
+  ],
+  "notes": "4 月同时含人民币与美元订单，只统计人民币。"
+}

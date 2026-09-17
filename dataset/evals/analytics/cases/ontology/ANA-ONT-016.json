@@ -1,0 +1,41 @@
+{
+  "case_id": "ANA-ONT-016",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "采购",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "供应商采购占比指标的公式",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "metric",
+    "code": "MT-003",
+    "name": "供应商采购占比",
+    "definition_contains": "总采购金额"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "metric",
+    "ratio"
+  ]
+}

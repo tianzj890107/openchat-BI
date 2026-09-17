@@ -1,0 +1,61 @@
+{
+  "case_id": "ANA-FACT-002",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "facts",
+  "evaluator": "sql",
+  "question": "2025年3月采购金额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-03'"
+  },
+  "expected": {
+    "value": 4750,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "MT-001",
+    "dimensions": [
+      "order_month"
+    ],
+    "filters": [
+      "is_deleted = 0",
+      "order_month = '2025-03'"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "MT-001",
+      "filters": [
+        "is_deleted = 0",
+        "order_month = '2025-03'"
+      ],
+      "dimensions": [
+        "order_month"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "fact",
+    "time_window"
+  ]
+}

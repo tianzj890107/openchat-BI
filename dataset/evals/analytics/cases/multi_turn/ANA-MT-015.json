@@ -1,0 +1,127 @@
+{
+  "case_id": "ANA-MT-015",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "multi-turn"
+  ],
+  "domain": "库存",
+  "category": "multi_turn",
+  "evaluator": "multi_turn",
+  "question": "库存也看一下",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "2025年1月采购金额是多少"
+    },
+    {
+      "role": "assistant",
+      "content": "(上一轮已给出指标与口径)"
+    }
+  ],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "effective_question": "2025年1月库存数量是多少",
+    "previous_contract": {
+      "metric": "MT-001",
+      "time_range": {
+        "start": "2025-06",
+        "end": "2025-06"
+      },
+      "organization": [],
+      "dimensions": [
+        "order_month"
+      ],
+      "currency": "CNY",
+      "unit": "元",
+      "filters": [
+        "is_deleted = 0"
+      ]
+    },
+    "resolution": {
+      "override": {
+        "metric": "MT-004",
+        "dimensions": [
+          "snapshot_month"
+        ],
+        "filters": [
+          "on_hand_qty IS NOT NULL"
+        ],
+        "unit": "件"
+      }
+    },
+    "resolved_contract": {
+      "metric": "MT-004",
+      "time_range": {
+        "start": "2025-06",
+        "end": "2025-06"
+      },
+      "organization": [],
+      "dimensions": [
+        "snapshot_month"
+      ],
+      "currency": "CNY",
+      "unit": "件",
+      "filters": [
+        "on_hand_qty IS NOT NULL"
+      ]
+    },
+    "resolved_question": "2025年1月库存数量是多少",
+    "follow_up_question": "库存也看一下"
+  },
+  "expected": {
+    "allowed_tools": [
+      "Ontology-MetricQuery",
+      "Ontology-FactQuery",
+      "Ontology-SemanticQuery",
+      "AskUser"
+    ],
+    "intent_level": "L1",
+    "policy": {
+      "mode": "FACT_QUERY",
+      "reason_code": "FACT_REQUEST_RESOLVED",
+      "next_step": "QUERY_DORIS",
+      "required_tools": [
+        "Ontology-MetricQuery"
+      ],
+      "evidence_required": true,
+      "needs_human": false
+    },
+    "wants_root_cause": false,
+    "wants_action": false,
+    "context_contract": {
+      "metric": "MT-004",
+      "time_range": {
+        "start": "2025-06",
+        "end": "2025-06"
+      },
+      "organization": [],
+      "dimensions": [
+        "snapshot_month"
+      ],
+      "currency": "CNY",
+      "unit": "件",
+      "filters": [
+        "on_hand_qty IS NOT NULL"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "policy_decision",
+    "context_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "multi_turn",
+    "domain_switch"
+  ],
+  "notes": "跨域切换必须同时换指标、表、过滤条件和单位，不能只换指标名。"
+}

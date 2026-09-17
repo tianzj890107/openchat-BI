@@ -1,0 +1,59 @@
+{
+  "case_id": "ANA-METRIC-012",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "质量",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "P1 产线的缺陷率是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "quality.db",
+    "sql": "SELECT SUM(defect_qty) * 1.0 / SUM(inspected_qty) FROM fact_quality_batch WHERE plant = 'P1'"
+  },
+  "expected": {
+    "value": 0.02243902,
+    "tolerance": 1e-08,
+    "unit": "比例",
+    "metric": "MT-006",
+    "dimensions": [
+      "plant"
+    ],
+    "filters": [
+      "plant = 'P1'"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "quality.db",
+      "metric": "MT-006",
+      "filters": [
+        "plant = 'P1'"
+      ],
+      "dimensions": [
+        "plant"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "ratio",
+    "org_scope"
+  ]
+}

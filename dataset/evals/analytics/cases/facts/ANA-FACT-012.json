@@ -1,0 +1,61 @@
+{
+  "case_id": "ANA-FACT-012",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "facts",
+  "evaluator": "sql",
+  "question": "事业部B的采购金额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT SUM(f.amount) FROM fact_purchase_order f JOIN dim_org o ON f.org_id = o.org_id WHERE f.is_deleted = 0 AND o.business_unit = '事业部B'"
+  },
+  "expected": {
+    "value": 5190,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "MT-001",
+    "dimensions": [
+      "business_unit"
+    ],
+    "filters": [
+      "is_deleted = 0",
+      "business_unit = '事业部B'"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "MT-001",
+      "filters": [
+        "is_deleted = 0",
+        "business_unit = '事业部B'"
+      ],
+      "dimensions": [
+        "business_unit"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "fact",
+    "org_scope"
+  ]
+}

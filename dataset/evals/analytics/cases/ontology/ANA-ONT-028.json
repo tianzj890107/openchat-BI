@@ -1,0 +1,45 @@
+{
+  "case_id": "ANA-ONT-028",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "库存",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "库存快照事实和物料之间的关系",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "relations",
+    "le_code": "LE-005",
+    "relation_codes": [
+      "ER-003"
+    ],
+    "targets": [
+      "LE-004"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "relations",
+    "graph"
+  ]
+}

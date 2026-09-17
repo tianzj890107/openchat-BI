@@ -1,0 +1,70 @@
+{
+  "case_id": "ANA-RECOV-009",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "recovery_state",
+  "question": "重试描述符与检查点 id 不一致时不得重放",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "script": [
+      [
+        "start_turn",
+        {
+          "turn_ref": "t-1"
+        }
+      ],
+      [
+        "tool_terminal",
+        {
+          "status": "FAILED_RETRYABLE",
+          "step": "QUERY",
+          "error_code": "DORIS_TIMEOUT",
+          "retryable": true,
+          "execution_id": "exec-1",
+          "attempt": 1,
+          "input_digest_value": "sha256:q",
+          "tool_use_id": "tu-query"
+        }
+      ],
+      [
+        "begin_retry",
+        {
+          "expected_tool_use_id": "tu-other"
+        }
+      ]
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 2,
+        "status": "FAILED_FINAL",
+        "retryable": false,
+        "error_code": "RECOVERY_INPUT_MISSING",
+        "return_error_code": "RECOVERY_NOT_RETRYABLE"
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recovery_state"
+  ],
+  "scoring": {},
+  "tags": [
+    "recovery",
+    "retry_mismatch"
+  ]
+}

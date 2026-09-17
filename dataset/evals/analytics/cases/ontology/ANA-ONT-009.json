@@ -1,0 +1,40 @@
+{
+  "case_id": "ANA-ONT-009",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "采购",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "术语『采购金额』的定义",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "term",
+    "query": "采购金额",
+    "code": "TM-002",
+    "definition_contains": "含税金额"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "term"
+  ]
+}

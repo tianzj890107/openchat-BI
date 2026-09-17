@@ -1,0 +1,58 @@
+{
+  "case_id": "ANA-TREND-009",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "trend",
+  "evaluator": "sql",
+  "question": "第一季度采购金额累计",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0 AND order_month BETWEEN '2025-01' AND '2025-03'"
+  },
+  "expected": {
+    "value": 15850,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "MT-001",
+    "dimensions": [
+      "order_month"
+    ],
+    "filters": [
+      "is_deleted = 0"
+    ],
+    "scope_note": "累计值 = 各月求和，不是环比。",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "MT-001",
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "dimensions": [
+        "order_month"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "trend",
+    "cumulative"
+  ]
+}

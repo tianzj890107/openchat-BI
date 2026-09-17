@@ -1,0 +1,53 @@
+{
+  "case_id": "ANA-METRIC-003",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "如果不过滤逻辑删除，采购金额会变成多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT SUM(amount) FROM fact_purchase_order"
+  },
+  "expected": {
+    "value": 25140,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "MT-001",
+    "dimensions": [],
+    "filters": [],
+    "scope_note": "反例口径：含 is_deleted = 1 的 110 元，用于证明过滤确实生效。",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "MT-001",
+      "filters": [],
+      "dimensions": []
+    }
+  },
+  "forbidden": [
+    "reporting_deleted_rows_as_current"
+  ],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "deleted",
+    "counterfactual"
+  ]
+}

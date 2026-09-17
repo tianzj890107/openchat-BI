@@ -1,0 +1,50 @@
+{
+  "case_id": "ANA-METRIC-015",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "质量",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "缺陷数为空的批次占多少行",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "quality.db",
+    "sql": "SELECT COUNT(*) FROM fact_quality_batch WHERE defect_qty IS NULL"
+  },
+  "expected": {
+    "value": 1,
+    "tolerance": 1e-06,
+    "unit": "行",
+    "metric": "",
+    "dimensions": [],
+    "filters": [],
+    "scope_note": "B-0010 缺陷数为 NULL，必须显式披露而不是当成 0。",
+    "query_contract": {
+      "db": "quality.db",
+      "metric": "",
+      "filters": [],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "null"
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-METRIC-006",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "没有采购数据时供应商占比怎么算",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT (SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0 AND supplier_id = 99) * 1.0 / NULLIF((SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0 AND po_id < 0), 0)"
+  },
+  "expected": {
+    "value": null,
+    "tolerance": 1e-06,
+    "unit": "",
+    "metric": "MT-003",
+    "dimensions": [],
+    "filters": [],
+    "scope_note": "分母为 0 时必须返回 NULL，不得写 0。",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "MT-003",
+      "filters": [],
+      "dimensions": []
+    },
+    "value_is_null": true
+  },
+  "forbidden": [
+    "zero_instead_of_null"
+  ],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "ratio",
+    "zero_denominator"
+  ]
+}

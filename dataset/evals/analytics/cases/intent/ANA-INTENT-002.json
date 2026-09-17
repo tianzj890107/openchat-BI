@@ -1,0 +1,52 @@
+{
+  "case_id": "ANA-INTENT-002",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "intent",
+  "evaluator": "policy",
+  "question": "分析一下",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {},
+  "expected": {
+    "allowed_tools": [
+      "Ontology-MetricQuery",
+      "Ontology-FactQuery",
+      "Ontology-SemanticQuery",
+      "AskUser"
+    ],
+    "intent_level": "L1",
+    "policy": {
+      "mode": "CLARIFICATION",
+      "reason_code": "AMBIGUOUS_REQUEST",
+      "next_step": "ASK_USER",
+      "required_tools": [
+        "AskUser"
+      ],
+      "evidence_required": false,
+      "needs_human": true
+    },
+    "wants_root_cause": false,
+    "wants_action": false
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "policy_decision"
+  ],
+  "scoring": {},
+  "tags": [
+    "intent",
+    "clarification"
+  ]
+}

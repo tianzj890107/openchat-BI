@@ -1,0 +1,65 @@
+{
+  "case_id": "ANA-RECOV-005",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "recovery_state",
+  "question": "可重试失败保留错误码并标记 retryable",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "script": [
+      [
+        "start_turn",
+        {
+          "turn_ref": "t-1"
+        }
+      ],
+      [
+        "tool_terminal",
+        {
+          "status": "FAILED_RETRYABLE",
+          "step": "QUERY",
+          "error_code": "DORIS_TIMEOUT",
+          "retryable": true,
+          "execution_id": "exec-1",
+          "attempt": 1,
+          "input_digest_value": "sha256:q",
+          "tool_use_id": "tu-query"
+        }
+      ]
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 1,
+        "status": "FAILED_RETRYABLE",
+        "current_step": "QUERY",
+        "retryable": true,
+        "error_code": "DORIS_TIMEOUT",
+        "checkpoint": true
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recovery_state"
+  ],
+  "scoring": {},
+  "tags": [
+    "recovery",
+    "retryable"
+  ]
+}

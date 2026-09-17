@@ -1,0 +1,130 @@
+{
+  "case_id": "ANA-MT-020",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "multi-turn"
+  ],
+  "domain": "采购",
+  "category": "multi_turn",
+  "evaluator": "multi_turn",
+  "question": "换成2月到4月并只看事业部A",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "2025年6月采购金额是多少"
+    },
+    {
+      "role": "assistant",
+      "content": "(上一轮已给出指标与口径)"
+    }
+  ],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "effective_question": "2025年2月到4月事业部A的采购金额是多少",
+    "previous_contract": {
+      "metric": "MT-001",
+      "time_range": {
+        "start": "2025-06",
+        "end": "2025-06"
+      },
+      "organization": [],
+      "dimensions": [
+        "order_month"
+      ],
+      "currency": "CNY",
+      "unit": "元",
+      "filters": [
+        "is_deleted = 0"
+      ]
+    },
+    "resolution": {
+      "override": {
+        "time_range": {
+          "start": "2025-02",
+          "end": "2025-04"
+        },
+        "organization": [
+          "事业部A"
+        ]
+      }
+    },
+    "resolved_contract": {
+      "metric": "MT-001",
+      "time_range": {
+        "start": "2025-02",
+        "end": "2025-04"
+      },
+      "organization": [
+        "事业部A"
+      ],
+      "dimensions": [
+        "order_month"
+      ],
+      "currency": "CNY",
+      "unit": "元",
+      "filters": [
+        "is_deleted = 0"
+      ]
+    },
+    "resolved_question": "2025年2月到4月事业部A的采购金额是多少",
+    "follow_up_question": "换成2月到4月并只看事业部A"
+  },
+  "expected": {
+    "allowed_tools": [
+      "Ontology-MetricQuery",
+      "Ontology-FactQuery",
+      "Ontology-SemanticQuery",
+      "AskUser"
+    ],
+    "intent_level": "L1",
+    "policy": {
+      "mode": "FACT_QUERY",
+      "reason_code": "FACT_REQUEST_RESOLVED",
+      "next_step": "QUERY_DORIS",
+      "required_tools": [
+        "Ontology-MetricQuery"
+      ],
+      "evidence_required": true,
+      "needs_human": false
+    },
+    "wants_root_cause": false,
+    "wants_action": false,
+    "context_contract": {
+      "metric": "MT-001",
+      "time_range": {
+        "start": "2025-02",
+        "end": "2025-04"
+      },
+      "organization": [
+        "事业部A"
+      ],
+      "dimensions": [
+        "order_month"
+      ],
+      "currency": "CNY",
+      "unit": "元",
+      "filters": [
+        "is_deleted = 0"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "policy_decision",
+    "context_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "multi_turn",
+    "compound_change"
+  ],
+  "notes": "复合变更：同时改时间与组织，指标与过滤条件不变。"
+}

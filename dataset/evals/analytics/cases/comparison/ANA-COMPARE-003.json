@@ -1,0 +1,58 @@
+{
+  "case_id": "ANA-COMPARE-003",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "comparison",
+  "evaluator": "sql",
+  "question": "事业部A和事业部B的采购金额差多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT SUM(CASE WHEN o.business_unit = '事业部A' THEN f.amount ELSE 0 END) - SUM(CASE WHEN o.business_unit = '事业部B' THEN f.amount ELSE 0 END) FROM fact_purchase_order f JOIN dim_org o ON f.org_id = o.org_id WHERE f.is_deleted = 0"
+  },
+  "expected": {
+    "value": 14650,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "MT-001",
+    "dimensions": [
+      "business_unit"
+    ],
+    "filters": [
+      "is_deleted = 0"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "MT-001",
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "dimensions": [
+        "business_unit"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "comparison",
+    "org_scope"
+  ]
+}

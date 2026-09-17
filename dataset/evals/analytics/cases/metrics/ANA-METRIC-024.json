@@ -1,0 +1,73 @@
+{
+  "case_id": "ANA-METRIC-024",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "销售",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "各币种的销售额分别是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "sales.db",
+    "sql": "SELECT currency, SUM(CASE WHEN currency = 'CNY' THEN amount_cny ELSE amount_usd END) FROM fact_sales WHERE is_deleted = 0 GROUP BY currency ORDER BY currency"
+  },
+  "expected": {
+    "value": [
+      605600,
+      16000
+    ],
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "",
+    "dimensions": [
+      "currency"
+    ],
+    "filters": [
+      "is_deleted = 0"
+    ],
+    "scope_note": "人民币与美元必须分币种返回，禁止合并成一个数字。",
+    "query_contract": {
+      "db": "sales.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "dimensions": [
+        "currency"
+      ]
+    },
+    "rows": [
+      [
+        "CNY",
+        605600
+      ],
+      [
+        "USD",
+        16000
+      ]
+    ]
+  },
+  "forbidden": [
+    "summing_cny_and_usd"
+  ],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "currency_scope"
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "case_id": "ANA-RECOV-012",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "recovery_state",
+  "question": "迟到的工具结果不得覆盖终态（不重放已完成步骤）",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "script": [
+      [
+        "start_turn",
+        {
+          "turn_ref": "t-1"
+        }
+      ],
+      [
+        "mark_succeeded",
+        {
+          "attempt": 1
+        }
+      ],
+      [
+        "snapshot",
+        {}
+      ],
+      [
+        "tool_success",
+        {
+          "step": "QUERY",
+          "execution_id": "e3",
+          "attempt": 1,
+          "input_digest_value": "sha256:late",
+          "result_ref": "r3"
+        }
+      ],
+      [
+        "ask_user",
+        {
+          "tool_use_id": "tu-late",
+          "question": "还要看什么？",
+          "options": []
+        }
+      ]
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 3,
+        "status": "SUCCEEDED",
+        "return": null
+      },
+      {
+        "after": 4,
+        "status": "SUCCEEDED",
+        "return": null
+      },
+      {
+        "after": 3,
+        "unchanged_from": 2
+      },
+      {
+        "after": 4,
+        "unchanged_from": 2
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recovery_state"
+  ],
+  "scoring": {},
+  "tags": [
+    "recovery",
+    "late_result",
+    "no_overwrite"
+  ],
+  "notes": "终态不可变：迟到的成功/追问都必须被拒绝，防止写入半条助手答案。"
+}

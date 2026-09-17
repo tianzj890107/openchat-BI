@@ -1,0 +1,1628 @@
+{
+  "schema_version": 1,
+  "kind": "baseline",
+  "suite": "regression",
+  "provider": "team",
+  "summary": {
+    "cases": 279,
+    "selected_cases": 291,
+    "passed": 279,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "p0_cases": 97,
+    "p0_passed": 97,
+    "known_gap_cases": 12,
+    "known_gap_xfail": 12,
+    "known_gap_xpass": 0,
+    "metric_sample_sizes": {
+      "intent_accuracy": 79,
+      "tool_route_accuracy": 79,
+      "query_contract_accuracy": 98,
+      "exact_numeric_accuracy": 98,
+      "metric_scope_accuracy": 98,
+      "unsupported_number_rate": 0,
+      "unsupported_causal_claim_rate": 0,
+      "evidence_coverage": 93,
+      "proxy_disclosure_rate": 0,
+      "chart_selection_accuracy": 22,
+      "multi_turn_context_accuracy": 20,
+      "recovery_success_rate": 29,
+      "cross_session_leak_rate": 5,
+      "answer_schema_valid_rate": 91,
+      "repeat_stability": 0
+    },
+    "duration_ms": 710.685,
+    "metrics": {
+      "intent_accuracy": 1.0,
+      "tool_route_accuracy": 1.0,
+      "query_contract_accuracy": 1.0,
+      "exact_numeric_accuracy": 1.0,
+      "metric_scope_accuracy": 1.0,
+      "unsupported_number_rate": null,
+      "unsupported_causal_claim_rate": null,
+      "evidence_coverage": 1.0,
+      "proxy_disclosure_rate": null,
+      "chart_selection_accuracy": 1.0,
+      "multi_turn_context_accuracy": 1.0,
+      "recovery_success_rate": 1.0,
+      "cross_session_leak_rate": 0.0,
+      "answer_schema_valid_rate": 1.0,
+      "repeat_stability": null
+    }
+  },
+  "gates": [
+    {
+      "name": "p0_all_pass",
+      "ok": true
+    },
+    {
+      "name": "exact_numeric_accuracy",
+      "ok": true
+    },
+    {
+      "name": "answer_schema_valid_rate",
+      "ok": true
+    },
+    {
+      "name": "evidence_coverage",
+      "ok": true
+    },
+    {
+      "name": "cross_session_leak_rate",
+      "ok": true
+    },
+    {
+      "name": "unsupported_number_rate",
+      "ok": true
+    },
+    {
+      "name": "unsupported_causal_claim_rate",
+      "ok": true
+    },
+    {
+      "name": "proxy_disclosure_rate",
+      "ok": true
+    }
+  ],
+  "distributions": {
+    "category": {
+      "adversarial": 29,
+      "anomaly": 8,
+      "charts": 22,
+      "comparison": 12,
+      "diagnosis": 10,
+      "facts": 37,
+      "failure_recovery": 29,
+      "intent": 39,
+      "metrics": 31,
+      "multi_turn": 20,
+      "ontology": 34,
+      "recommendation": 10,
+      "trend": 10
+    },
+    "priority": {
+      "P0": 103,
+      "P1": 188
+    },
+    "evaluator": {
+      "admission": 11,
+      "chart_html_safety": 2,
+      "chart_policy": 6,
+      "chart_validate": 14,
+      "multi_turn": 20,
+      "ontology": 34,
+      "policy": 71,
+      "recovery_state": 18,
+      "session_isolation": 5,
+      "sql": 98,
+      "sql_guard": 12
+    }
+  },
+  "known_gaps": [
+    {
+      "case_id": "ANA-ADV-010",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-ADV-011",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-ADV-012",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-INTENT-052",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-INTENT-061",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-INTENT-064",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-INTENT-071",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-INTENT-072",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-INTENT-073",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-REC-003",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-REC-009",
+      "status": "xfail"
+    },
+    {
+      "case_id": "ANA-REC-010",
+      "status": "xfail"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "ANA-ADV-001",
+      "status": "pass",
+      "duration_ms": 341.087
+    },
+    {
+      "case_id": "ANA-ADV-002",
+      "status": "pass",
+      "duration_ms": 0.025
+    },
+    {
+      "case_id": "ANA-ADV-003",
+      "status": "pass",
+      "duration_ms": 0.021
+    },
+    {
+      "case_id": "ANA-ADV-004",
+      "status": "pass",
+      "duration_ms": 0.016
+    },
+    {
+      "case_id": "ANA-ADV-005",
+      "status": "pass",
+      "duration_ms": 0.022
+    },
+    {
+      "case_id": "ANA-ADV-006",
+      "status": "pass",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-ADV-007",
+      "status": "pass",
+      "duration_ms": 0.012
+    },
+    {
+      "case_id": "ANA-ADV-008",
+      "status": "pass",
+      "duration_ms": 0.02
+    },
+    {
+      "case_id": "ANA-ADV-009",
+      "status": "pass",
+      "duration_ms": 0.016
+    },
+    {
+      "case_id": "ANA-ADV-010",
+      "status": "xfail",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-ADV-011",
+      "status": "xfail",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-ADV-012",
+      "status": "xfail",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-ADVS-001",
+      "status": "pass",
+      "duration_ms": 0.035
+    },
+    {
+      "case_id": "ANA-ADVS-002",
+      "status": "pass",
+      "duration_ms": 0.007
+    },
+    {
+      "case_id": "ANA-ADVS-003",
+      "status": "pass",
+      "duration_ms": 0.005
+    },
+    {
+      "case_id": "ANA-ADVS-004",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-ADVS-005",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ADVS-006",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ADVS-007",
+      "status": "pass",
+      "duration_ms": 0.002
+    },
+    {
+      "case_id": "ANA-ADVS-008",
+      "status": "pass",
+      "duration_ms": 0.002
+    },
+    {
+      "case_id": "ANA-ADVS-009",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ADVS-010",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-ADVS-011",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ADVS-012",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ISO-001",
+      "status": "pass",
+      "duration_ms": 6.789
+    },
+    {
+      "case_id": "ANA-ISO-002",
+      "status": "pass",
+      "duration_ms": 1.613
+    },
+    {
+      "case_id": "ANA-ISO-003",
+      "status": "pass",
+      "duration_ms": 3.968
+    },
+    {
+      "case_id": "ANA-ISO-004",
+      "status": "pass",
+      "duration_ms": 24.819
+    },
+    {
+      "case_id": "ANA-ISO-005",
+      "status": "pass",
+      "duration_ms": 1.824
+    },
+    {
+      "case_id": "ANA-ANOMALY-001",
+      "status": "pass",
+      "duration_ms": 0.278
+    },
+    {
+      "case_id": "ANA-ANOMALY-002",
+      "status": "pass",
+      "duration_ms": 0.13
+    },
+    {
+      "case_id": "ANA-ANOMALY-003",
+      "status": "pass",
+      "duration_ms": 0.126
+    },
+    {
+      "case_id": "ANA-ANOMALY-004",
+      "status": "pass",
+      "duration_ms": 0.128
+    },
+    {
+      "case_id": "ANA-ANOMALY-005",
+      "status": "pass",
+      "duration_ms": 0.123
+    },
+    {
+      "case_id": "ANA-ANOMALY-006",
+      "status": "pass",
+      "duration_ms": 0.091
+    },
+    {
+      "case_id": "ANA-ANOMALY-007",
+      "status": "pass",
+      "duration_ms": 0.077
+    },
+    {
+      "case_id": "ANA-ANOMALY-008",
+      "status": "pass",
+      "duration_ms": 0.074
+    },
+    {
+      "case_id": "ANA-CHART-001",
+      "status": "pass",
+      "duration_ms": 0.012
+    },
+    {
+      "case_id": "ANA-CHART-002",
+      "status": "pass",
+      "duration_ms": 0.006
+    },
+    {
+      "case_id": "ANA-CHART-003",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-CHART-004",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-CHART-005",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-CHART-006",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-CHART-007",
+      "status": "pass",
+      "duration_ms": 0.006
+    },
+    {
+      "case_id": "ANA-CHART-008",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-CHART-009",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-CHART-010",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-CHART-011",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-CHART-012",
+      "status": "pass",
+      "duration_ms": 0.028
+    },
+    {
+      "case_id": "ANA-CHART-013",
+      "status": "pass",
+      "duration_ms": 0.011
+    },
+    {
+      "case_id": "ANA-CHART-014",
+      "status": "pass",
+      "duration_ms": 0.008
+    },
+    {
+      "case_id": "ANA-CHART-015",
+      "status": "pass",
+      "duration_ms": 0.607
+    },
+    {
+      "case_id": "ANA-CHART-016",
+      "status": "pass",
+      "duration_ms": 0.007
+    },
+    {
+      "case_id": "ANA-CHART-017",
+      "status": "pass",
+      "duration_ms": 0.005
+    },
+    {
+      "case_id": "ANA-CHART-018",
+      "status": "pass",
+      "duration_ms": 0.01
+    },
+    {
+      "case_id": "ANA-CHART-019",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-CHART-020",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-CHART-021",
+      "status": "pass",
+      "duration_ms": 0.228
+    },
+    {
+      "case_id": "ANA-CHART-022",
+      "status": "pass",
+      "duration_ms": 0.166
+    },
+    {
+      "case_id": "ANA-COMPARE-001",
+      "status": "pass",
+      "duration_ms": 0.105
+    },
+    {
+      "case_id": "ANA-COMPARE-002",
+      "status": "pass",
+      "duration_ms": 0.091
+    },
+    {
+      "case_id": "ANA-COMPARE-003",
+      "status": "pass",
+      "duration_ms": 0.096
+    },
+    {
+      "case_id": "ANA-COMPARE-004",
+      "status": "pass",
+      "duration_ms": 0.102
+    },
+    {
+      "case_id": "ANA-COMPARE-005",
+      "status": "pass",
+      "duration_ms": 0.1
+    },
+    {
+      "case_id": "ANA-COMPARE-006",
+      "status": "pass",
+      "duration_ms": 0.093
+    },
+    {
+      "case_id": "ANA-COMPARE-007",
+      "status": "pass",
+      "duration_ms": 0.097
+    },
+    {
+      "case_id": "ANA-COMPARE-008",
+      "status": "pass",
+      "duration_ms": 0.08
+    },
+    {
+      "case_id": "ANA-COMPARE-009",
+      "status": "pass",
+      "duration_ms": 0.084
+    },
+    {
+      "case_id": "ANA-COMPARE-010",
+      "status": "pass",
+      "duration_ms": 0.08
+    },
+    {
+      "case_id": "ANA-COMPARE-011",
+      "status": "pass",
+      "duration_ms": 0.088
+    },
+    {
+      "case_id": "ANA-COMPARE-012",
+      "status": "pass",
+      "duration_ms": 0.091
+    },
+    {
+      "case_id": "ANA-DIAG-001",
+      "status": "pass",
+      "duration_ms": 0.039
+    },
+    {
+      "case_id": "ANA-DIAG-002",
+      "status": "pass",
+      "duration_ms": 0.018
+    },
+    {
+      "case_id": "ANA-DIAG-003",
+      "status": "pass",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-DIAG-004",
+      "status": "pass",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-DIAG-005",
+      "status": "pass",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-DIAG-006",
+      "status": "pass",
+      "duration_ms": 0.017
+    },
+    {
+      "case_id": "ANA-DIAG-007",
+      "status": "pass",
+      "duration_ms": 0.016
+    },
+    {
+      "case_id": "ANA-DIAG-008",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-DIAG-009",
+      "status": "pass",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-DIAG-010",
+      "status": "pass",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-FACT-001",
+      "status": "pass",
+      "duration_ms": 0.085
+    },
+    {
+      "case_id": "ANA-FACT-002",
+      "status": "pass",
+      "duration_ms": 0.079
+    },
+    {
+      "case_id": "ANA-FACT-003",
+      "status": "pass",
+      "duration_ms": 0.077
+    },
+    {
+      "case_id": "ANA-FACT-004",
+      "status": "pass",
+      "duration_ms": 0.078
+    },
+    {
+      "case_id": "ANA-FACT-005",
+      "status": "pass",
+      "duration_ms": 0.074
+    },
+    {
+      "case_id": "ANA-FACT-006",
+      "status": "pass",
+      "duration_ms": 0.072
+    },
+    {
+      "case_id": "ANA-FACT-007",
+      "status": "pass",
+      "duration_ms": 0.073
+    },
+    {
+      "case_id": "ANA-FACT-008",
+      "status": "pass",
+      "duration_ms": 0.073
+    },
+    {
+      "case_id": "ANA-FACT-009",
+      "status": "pass",
+      "duration_ms": 0.078
+    },
+    {
+      "case_id": "ANA-FACT-010",
+      "status": "pass",
+      "duration_ms": 0.075
+    },
+    {
+      "case_id": "ANA-FACT-011",
+      "status": "pass",
+      "duration_ms": 0.085
+    },
+    {
+      "case_id": "ANA-FACT-012",
+      "status": "pass",
+      "duration_ms": 0.079
+    },
+    {
+      "case_id": "ANA-FACT-013",
+      "status": "pass",
+      "duration_ms": 0.079
+    },
+    {
+      "case_id": "ANA-FACT-014",
+      "status": "pass",
+      "duration_ms": 0.078
+    },
+    {
+      "case_id": "ANA-FACT-015",
+      "status": "pass",
+      "duration_ms": 0.077
+    },
+    {
+      "case_id": "ANA-FACT-016",
+      "status": "pass",
+      "duration_ms": 0.073
+    },
+    {
+      "case_id": "ANA-FACT-017",
+      "status": "pass",
+      "duration_ms": 0.07
+    },
+    {
+      "case_id": "ANA-FACT-018",
+      "status": "pass",
+      "duration_ms": 0.069
+    },
+    {
+      "case_id": "ANA-FACT-019",
+      "status": "pass",
+      "duration_ms": 0.071
+    },
+    {
+      "case_id": "ANA-FACT-020",
+      "status": "pass",
+      "duration_ms": 0.07
+    },
+    {
+      "case_id": "ANA-FACT-021",
+      "status": "pass",
+      "duration_ms": 0.069
+    },
+    {
+      "case_id": "ANA-FACT-022",
+      "status": "pass",
+      "duration_ms": 0.071
+    },
+    {
+      "case_id": "ANA-FACT-023",
+      "status": "pass",
+      "duration_ms": 0.072
+    },
+    {
+      "case_id": "ANA-FACT-024",
+      "status": "pass",
+      "duration_ms": 0.073
+    },
+    {
+      "case_id": "ANA-FACT-025",
+      "status": "pass",
+      "duration_ms": 0.074
+    },
+    {
+      "case_id": "ANA-FACT-026",
+      "status": "pass",
+      "duration_ms": 0.073
+    },
+    {
+      "case_id": "ANA-FACT-027",
+      "status": "pass",
+      "duration_ms": 0.075
+    },
+    {
+      "case_id": "ANA-FACT-028",
+      "status": "pass",
+      "duration_ms": 0.073
+    },
+    {
+      "case_id": "ANA-FACT-029",
+      "status": "pass",
+      "duration_ms": 0.081
+    },
+    {
+      "case_id": "ANA-FACT-030",
+      "status": "pass",
+      "duration_ms": 0.069
+    },
+    {
+      "case_id": "ANA-FACT-031",
+      "status": "pass",
+      "duration_ms": 0.068
+    },
+    {
+      "case_id": "ANA-FACT-032",
+      "status": "pass",
+      "duration_ms": 0.065
+    },
+    {
+      "case_id": "ANA-FACT-033",
+      "status": "pass",
+      "duration_ms": 0.063
+    },
+    {
+      "case_id": "ANA-FACT-034",
+      "status": "pass",
+      "duration_ms": 0.072
+    },
+    {
+      "case_id": "ANA-FACT-035",
+      "status": "pass",
+      "duration_ms": 0.075
+    },
+    {
+      "case_id": "ANA-FACT-036",
+      "status": "pass",
+      "duration_ms": 0.079
+    },
+    {
+      "case_id": "ANA-FACT-037",
+      "status": "pass",
+      "duration_ms": 0.076
+    },
+    {
+      "case_id": "ANA-CONC-001",
+      "status": "pass",
+      "duration_ms": 0.068
+    },
+    {
+      "case_id": "ANA-CONC-002",
+      "status": "pass",
+      "duration_ms": 0.021
+    },
+    {
+      "case_id": "ANA-CONC-003",
+      "status": "pass",
+      "duration_ms": 0.017
+    },
+    {
+      "case_id": "ANA-CONC-004",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-CONC-005",
+      "status": "pass",
+      "duration_ms": 204.686
+    },
+    {
+      "case_id": "ANA-CONC-006",
+      "status": "pass",
+      "duration_ms": 105.187
+    },
+    {
+      "case_id": "ANA-CONC-007",
+      "status": "pass",
+      "duration_ms": 0.145
+    },
+    {
+      "case_id": "ANA-CONC-008",
+      "status": "pass",
+      "duration_ms": 0.021
+    },
+    {
+      "case_id": "ANA-CONC-009",
+      "status": "pass",
+      "duration_ms": 0.052
+    },
+    {
+      "case_id": "ANA-CONC-010",
+      "status": "pass",
+      "duration_ms": 0.029
+    },
+    {
+      "case_id": "ANA-CONC-011",
+      "status": "pass",
+      "duration_ms": 0.027
+    },
+    {
+      "case_id": "ANA-RECOV-001",
+      "status": "pass",
+      "duration_ms": 0.064
+    },
+    {
+      "case_id": "ANA-RECOV-002",
+      "status": "pass",
+      "duration_ms": 0.052
+    },
+    {
+      "case_id": "ANA-RECOV-003",
+      "status": "pass",
+      "duration_ms": 0.058
+    },
+    {
+      "case_id": "ANA-RECOV-004",
+      "status": "pass",
+      "duration_ms": 0.047
+    },
+    {
+      "case_id": "ANA-RECOV-005",
+      "status": "pass",
+      "duration_ms": 0.043
+    },
+    {
+      "case_id": "ANA-RECOV-006",
+      "status": "pass",
+      "duration_ms": 0.041
+    },
+    {
+      "case_id": "ANA-RECOV-007",
+      "status": "pass",
+      "duration_ms": 0.062
+    },
+    {
+      "case_id": "ANA-RECOV-008",
+      "status": "pass",
+      "duration_ms": 0.065
+    },
+    {
+      "case_id": "ANA-RECOV-009",
+      "status": "pass",
+      "duration_ms": 0.059
+    },
+    {
+      "case_id": "ANA-RECOV-010",
+      "status": "pass",
+      "duration_ms": 0.045
+    },
+    {
+      "case_id": "ANA-RECOV-011",
+      "status": "pass",
+      "duration_ms": 0.063
+    },
+    {
+      "case_id": "ANA-RECOV-012",
+      "status": "pass",
+      "duration_ms": 0.08
+    },
+    {
+      "case_id": "ANA-RECOV-013",
+      "status": "pass",
+      "duration_ms": 0.063
+    },
+    {
+      "case_id": "ANA-RECOV-014",
+      "status": "pass",
+      "duration_ms": 0.031
+    },
+    {
+      "case_id": "ANA-RECOV-015",
+      "status": "pass",
+      "duration_ms": 0.06
+    },
+    {
+      "case_id": "ANA-RECOV-016",
+      "status": "pass",
+      "duration_ms": 0.059
+    },
+    {
+      "case_id": "ANA-RECOV-017",
+      "status": "pass",
+      "duration_ms": 0.047
+    },
+    {
+      "case_id": "ANA-RECOV-018",
+      "status": "pass",
+      "duration_ms": 0.046
+    },
+    {
+      "case_id": "ANA-INTENT-001",
+      "status": "pass",
+      "duration_ms": 0.043
+    },
+    {
+      "case_id": "ANA-INTENT-002",
+      "status": "pass",
+      "duration_ms": 0.016
+    },
+    {
+      "case_id": "ANA-INTENT-003",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-004",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-005",
+      "status": "pass",
+      "duration_ms": 0.017
+    },
+    {
+      "case_id": "ANA-INTENT-006",
+      "status": "pass",
+      "duration_ms": 0.012
+    },
+    {
+      "case_id": "ANA-INTENT-010",
+      "status": "pass",
+      "duration_ms": 0.017
+    },
+    {
+      "case_id": "ANA-INTENT-011",
+      "status": "pass",
+      "duration_ms": 0.017
+    },
+    {
+      "case_id": "ANA-INTENT-012",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-013",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-014",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-015",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-020",
+      "status": "pass",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-INTENT-021",
+      "status": "pass",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-INTENT-030",
+      "status": "pass",
+      "duration_ms": 0.134
+    },
+    {
+      "case_id": "ANA-INTENT-031",
+      "status": "pass",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-INTENT-032",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-033",
+      "status": "pass",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-INTENT-034",
+      "status": "pass",
+      "duration_ms": 0.012
+    },
+    {
+      "case_id": "ANA-INTENT-035",
+      "status": "pass",
+      "duration_ms": 0.017
+    },
+    {
+      "case_id": "ANA-INTENT-040",
+      "status": "pass",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-INTENT-041",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-042",
+      "status": "pass",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-INTENT-043",
+      "status": "pass",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-INTENT-044",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-050",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-051",
+      "status": "pass",
+      "duration_ms": 0.016
+    },
+    {
+      "case_id": "ANA-INTENT-052",
+      "status": "xfail",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-INTENT-060",
+      "status": "pass",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-INTENT-061",
+      "status": "xfail",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-062",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-063",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-064",
+      "status": "xfail",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-INTENT-065",
+      "status": "pass",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-INTENT-066",
+      "status": "pass",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-INTENT-070",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-INTENT-071",
+      "status": "xfail",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-INTENT-072",
+      "status": "xfail",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-INTENT-073",
+      "status": "xfail",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-METRIC-001",
+      "status": "pass",
+      "duration_ms": 0.26
+    },
+    {
+      "case_id": "ANA-METRIC-002",
+      "status": "pass",
+      "duration_ms": 0.108
+    },
+    {
+      "case_id": "ANA-METRIC-003",
+      "status": "pass",
+      "duration_ms": 0.084
+    },
+    {
+      "case_id": "ANA-METRIC-004",
+      "status": "pass",
+      "duration_ms": 0.09
+    },
+    {
+      "case_id": "ANA-METRIC-005",
+      "status": "pass",
+      "duration_ms": 0.092
+    },
+    {
+      "case_id": "ANA-METRIC-006",
+      "status": "pass",
+      "duration_ms": 0.083
+    },
+    {
+      "case_id": "ANA-METRIC-007",
+      "status": "pass",
+      "duration_ms": 0.084
+    },
+    {
+      "case_id": "ANA-METRIC-008",
+      "status": "pass",
+      "duration_ms": 0.077
+    },
+    {
+      "case_id": "ANA-METRIC-009",
+      "status": "pass",
+      "duration_ms": 0.079
+    },
+    {
+      "case_id": "ANA-METRIC-010",
+      "status": "pass",
+      "duration_ms": 0.081
+    },
+    {
+      "case_id": "ANA-METRIC-011",
+      "status": "pass",
+      "duration_ms": 0.069
+    },
+    {
+      "case_id": "ANA-METRIC-012",
+      "status": "pass",
+      "duration_ms": 0.078
+    },
+    {
+      "case_id": "ANA-METRIC-013",
+      "status": "pass",
+      "duration_ms": 0.07
+    },
+    {
+      "case_id": "ANA-METRIC-014",
+      "status": "pass",
+      "duration_ms": 0.07
+    },
+    {
+      "case_id": "ANA-METRIC-015",
+      "status": "pass",
+      "duration_ms": 0.066
+    },
+    {
+      "case_id": "ANA-METRIC-016",
+      "status": "pass",
+      "duration_ms": 0.074
+    },
+    {
+      "case_id": "ANA-METRIC-017",
+      "status": "pass",
+      "duration_ms": 0.082
+    },
+    {
+      "case_id": "ANA-METRIC-018",
+      "status": "pass",
+      "duration_ms": 0.076
+    },
+    {
+      "case_id": "ANA-METRIC-019",
+      "status": "pass",
+      "duration_ms": 0.07
+    },
+    {
+      "case_id": "ANA-METRIC-020",
+      "status": "pass",
+      "duration_ms": 0.066
+    },
+    {
+      "case_id": "ANA-METRIC-021",
+      "status": "pass",
+      "duration_ms": 0.091
+    },
+    {
+      "case_id": "ANA-METRIC-022",
+      "status": "pass",
+      "duration_ms": 0.085
+    },
+    {
+      "case_id": "ANA-METRIC-023",
+      "status": "pass",
+      "duration_ms": 0.072
+    },
+    {
+      "case_id": "ANA-METRIC-024",
+      "status": "pass",
+      "duration_ms": 0.088
+    },
+    {
+      "case_id": "ANA-METRIC-025",
+      "status": "pass",
+      "duration_ms": 0.075
+    },
+    {
+      "case_id": "ANA-METRIC-026",
+      "status": "pass",
+      "duration_ms": 0.071
+    },
+    {
+      "case_id": "ANA-METRIC-027",
+      "status": "pass",
+      "duration_ms": 0.085
+    },
+    {
+      "case_id": "ANA-METRIC-028",
+      "status": "pass",
+      "duration_ms": 0.079
+    },
+    {
+      "case_id": "ANA-METRIC-029",
+      "status": "pass",
+      "duration_ms": 0.07
+    },
+    {
+      "case_id": "ANA-METRIC-030",
+      "status": "pass",
+      "duration_ms": 0.082
+    },
+    {
+      "case_id": "ANA-METRIC-031",
+      "status": "pass",
+      "duration_ms": 0.078
+    },
+    {
+      "case_id": "ANA-MT-001",
+      "status": "pass",
+      "duration_ms": 0.039
+    },
+    {
+      "case_id": "ANA-MT-002",
+      "status": "pass",
+      "duration_ms": 0.027
+    },
+    {
+      "case_id": "ANA-MT-003",
+      "status": "pass",
+      "duration_ms": 0.023
+    },
+    {
+      "case_id": "ANA-MT-004",
+      "status": "pass",
+      "duration_ms": 0.02
+    },
+    {
+      "case_id": "ANA-MT-005",
+      "status": "pass",
+      "duration_ms": 0.019
+    },
+    {
+      "case_id": "ANA-MT-006",
+      "status": "pass",
+      "duration_ms": 0.019
+    },
+    {
+      "case_id": "ANA-MT-007",
+      "status": "pass",
+      "duration_ms": 0.02
+    },
+    {
+      "case_id": "ANA-MT-008",
+      "status": "pass",
+      "duration_ms": 0.019
+    },
+    {
+      "case_id": "ANA-MT-009",
+      "status": "pass",
+      "duration_ms": 0.02
+    },
+    {
+      "case_id": "ANA-MT-010",
+      "status": "pass",
+      "duration_ms": 0.019
+    },
+    {
+      "case_id": "ANA-MT-011",
+      "status": "pass",
+      "duration_ms": 0.019
+    },
+    {
+      "case_id": "ANA-MT-012",
+      "status": "pass",
+      "duration_ms": 0.018
+    },
+    {
+      "case_id": "ANA-MT-013",
+      "status": "pass",
+      "duration_ms": 0.018
+    },
+    {
+      "case_id": "ANA-MT-014",
+      "status": "pass",
+      "duration_ms": 0.018
+    },
+    {
+      "case_id": "ANA-MT-015",
+      "status": "pass",
+      "duration_ms": 0.019
+    },
+    {
+      "case_id": "ANA-MT-016",
+      "status": "pass",
+      "duration_ms": 0.02
+    },
+    {
+      "case_id": "ANA-MT-017",
+      "status": "pass",
+      "duration_ms": 0.019
+    },
+    {
+      "case_id": "ANA-MT-018",
+      "status": "pass",
+      "duration_ms": 0.017
+    },
+    {
+      "case_id": "ANA-MT-019",
+      "status": "pass",
+      "duration_ms": 0.018
+    },
+    {
+      "case_id": "ANA-MT-020",
+      "status": "pass",
+      "duration_ms": 0.021
+    },
+    {
+      "case_id": "ANA-ONT-001",
+      "status": "pass",
+      "duration_ms": 7.788
+    },
+    {
+      "case_id": "ANA-ONT-002",
+      "status": "pass",
+      "duration_ms": 0.012
+    },
+    {
+      "case_id": "ANA-ONT-003",
+      "status": "pass",
+      "duration_ms": 0.009
+    },
+    {
+      "case_id": "ANA-ONT-004",
+      "status": "pass",
+      "duration_ms": 0.008
+    },
+    {
+      "case_id": "ANA-ONT-005",
+      "status": "pass",
+      "duration_ms": 0.007
+    },
+    {
+      "case_id": "ANA-ONT-006",
+      "status": "pass",
+      "duration_ms": 0.007
+    },
+    {
+      "case_id": "ANA-ONT-007",
+      "status": "pass",
+      "duration_ms": 0.007
+    },
+    {
+      "case_id": "ANA-ONT-008",
+      "status": "pass",
+      "duration_ms": 0.007
+    },
+    {
+      "case_id": "ANA-ONT-009",
+      "status": "pass",
+      "duration_ms": 0.005
+    },
+    {
+      "case_id": "ANA-ONT-010",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-ONT-011",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ONT-012",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ONT-013",
+      "status": "pass",
+      "duration_ms": 0.007
+    },
+    {
+      "case_id": "ANA-ONT-014",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-ONT-015",
+      "status": "pass",
+      "duration_ms": 0.008
+    },
+    {
+      "case_id": "ANA-ONT-016",
+      "status": "pass",
+      "duration_ms": 0.006
+    },
+    {
+      "case_id": "ANA-ONT-017",
+      "status": "pass",
+      "duration_ms": 0.005
+    },
+    {
+      "case_id": "ANA-ONT-018",
+      "status": "pass",
+      "duration_ms": 0.006
+    },
+    {
+      "case_id": "ANA-ONT-019",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-ONT-020",
+      "status": "pass",
+      "duration_ms": 0.005
+    },
+    {
+      "case_id": "ANA-ONT-021",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-ONT-022",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ONT-023",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ONT-024",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ONT-025",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-ONT-026",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-ONT-027",
+      "status": "pass",
+      "duration_ms": 0.006
+    },
+    {
+      "case_id": "ANA-ONT-028",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-ONT-029",
+      "status": "pass",
+      "duration_ms": 0.005
+    },
+    {
+      "case_id": "ANA-ONT-030",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-ONT-031",
+      "status": "pass",
+      "duration_ms": 0.007
+    },
+    {
+      "case_id": "ANA-ONT-032",
+      "status": "pass",
+      "duration_ms": 0.005
+    },
+    {
+      "case_id": "ANA-ONT-033",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-ONT-034",
+      "status": "pass",
+      "duration_ms": 0.008
+    },
+    {
+      "case_id": "ANA-REC-001",
+      "status": "pass",
+      "duration_ms": 0.03
+    },
+    {
+      "case_id": "ANA-REC-002",
+      "status": "pass",
+      "duration_ms": 0.018
+    },
+    {
+      "case_id": "ANA-REC-003",
+      "status": "xfail",
+      "duration_ms": 0.017
+    },
+    {
+      "case_id": "ANA-REC-004",
+      "status": "pass",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-REC-005",
+      "status": "pass",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-REC-006",
+      "status": "pass",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-REC-007",
+      "status": "pass",
+      "duration_ms": 0.015
+    },
+    {
+      "case_id": "ANA-REC-008",
+      "status": "pass",
+      "duration_ms": 0.016
+    },
+    {
+      "case_id": "ANA-REC-009",
+      "status": "xfail",
+      "duration_ms": 0.014
+    },
+    {
+      "case_id": "ANA-REC-010",
+      "status": "xfail",
+      "duration_ms": 0.013
+    },
+    {
+      "case_id": "ANA-TREND-001",
+      "status": "pass",
+      "duration_ms": 0.154
+    },
+    {
+      "case_id": "ANA-TREND-002",
+      "status": "pass",
+      "duration_ms": 0.102
+    },
+    {
+      "case_id": "ANA-TREND-003",
+      "status": "pass",
+      "duration_ms": 0.095
+    },
+    {
+      "case_id": "ANA-TREND-004",
+      "status": "pass",
+      "duration_ms": 0.085
+    },
+    {
+      "case_id": "ANA-TREND-005",
+      "status": "pass",
+      "duration_ms": 0.081
+    },
+    {
+      "case_id": "ANA-TREND-006",
+      "status": "pass",
+      "duration_ms": 0.075
+    },
+    {
+      "case_id": "ANA-TREND-007",
+      "status": "pass",
+      "duration_ms": 0.101
+    },
+    {
+      "case_id": "ANA-TREND-008",
+      "status": "pass",
+      "duration_ms": 0.137
+    },
+    {
+      "case_id": "ANA-TREND-009",
+      "status": "pass",
+      "duration_ms": 0.08
+    },
+    {
+      "case_id": "ANA-TREND-010",
+      "status": "pass",
+      "duration_ms": 0.082
+    }
+  ]
+}

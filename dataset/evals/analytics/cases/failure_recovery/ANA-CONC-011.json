@@ -1,0 +1,92 @@
+{
+  "case_id": "ANA-CONC-011",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "admission",
+  "question": "并发阈值别名与非法值必须被正确处理",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "env": {
+      "CHATBI_MAX_ACTIVE_REQUESTS": "5",
+      "CHATBI_MAX_QUEUED_REQUESTS": "7",
+      "CHATBI_MAX_ACTIVE_TURNS": "2",
+      "CHATBI_MAX_ACTIVE_PER_PRINCIPAL": "9"
+    },
+    "script": [
+      {
+        "op": "limits",
+        "expect": {
+          "max_active_turns": 2,
+          "max_waiting_turns": 7,
+          "max_active_per_principal": 2
+        }
+      },
+      {
+        "op": "limits",
+        "env": {
+          "CHATBI_MAX_ACTIVE_TURNS": "5"
+        },
+        "expect": {
+          "max_active_turns": 5
+        }
+      },
+      {
+        "op": "limits",
+        "env": {
+          "CHATBI_MAX_ACTIVE_TURNS": "0"
+        },
+        "expect_error": "must be a positive integer"
+      },
+      {
+        "op": "limits",
+        "env": {
+          "CHATBI_ADMISSION_WAIT_SECONDS": "abc"
+        },
+        "expect_error": "must be a number of seconds"
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 0,
+        "limits": {
+          "max_active_turns": 2,
+          "max_waiting_turns": 7,
+          "max_active_per_principal": 2
+        }
+      },
+      {
+        "after": 2,
+        "error_contains": "must be a positive integer"
+      },
+      {
+        "after": 3,
+        "error_contains": "must be a number of seconds"
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "admission_outcome"
+  ],
+  "scoring": {},
+  "tags": [
+    "admission",
+    "limits_config"
+  ],
+  "notes": "别名优先于同名字段时的显式覆盖规则：历史 *_TURNS 名称优先。"
+}

@@ -1,0 +1,69 @@
+{
+  "case_id": "ANA-RECOV-011",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "recovery_state",
+  "question": "成功收尾必须落到 SUCCEEDED/DELIVER",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "script": [
+      [
+        "start_turn",
+        {
+          "turn_ref": "t-1"
+        }
+      ],
+      [
+        "tool_success",
+        {
+          "step": "ANALYZE",
+          "execution_id": "e2",
+          "attempt": 1,
+          "input_digest_value": "sha256:a",
+          "result_ref": "r2"
+        }
+      ],
+      [
+        "mark_succeeded",
+        {
+          "attempt": 1
+        }
+      ]
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 2,
+        "status": "SUCCEEDED",
+        "current_step": "DELIVER",
+        "retryable": false,
+        "error_code": "",
+        "checkpoint_step": "DELIVER"
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recovery_state"
+  ],
+  "scoring": {},
+  "tags": [
+    "recovery",
+    "succeeded"
+  ]
+}

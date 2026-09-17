@@ -29,6 +29,8 @@ dataset/conversations/
 dataset/logs/
 dataset/uploaded_reports/
 dataset/exports/
+# Analytics golden-set run output (regenerate with scripts/run_analytics_eval.py)
+dataset/evals/analytics/reports/
 dataset/spreadsheets/~$*
 outputs/
 # Personal/runtime notes kept in the project root but never deployed

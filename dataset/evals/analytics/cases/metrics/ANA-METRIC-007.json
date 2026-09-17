@@ -1,0 +1,56 @@
+{
+  "case_id": "ANA-METRIC-007",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "采购的加权平均单价是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT SUM(amount) * 1.0 / SUM(qty) FROM fact_purchase_order WHERE is_deleted = 0 AND amount IS NOT NULL"
+  },
+  "expected": {
+    "value": 29.4125,
+    "tolerance": 0.0001,
+    "unit": "元/单位",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 0",
+      "amount IS NOT NULL"
+    ],
+    "scope_note": "加权平均 = Σ金额 ÷ Σ数量，仅取金额非空的行；与简单平均单价口径不同。",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 0",
+        "amount IS NOT NULL"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "weighted_average"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "case_id": "ANA-ONT-018",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "销售",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "销售金额指标为什么只统计人民币",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "metric",
+    "code": "MT-005",
+    "table": "fact_sales",
+    "agg_column": "amount_cny",
+    "filter_condition": "is_deleted = 0 AND currency = 'CNY'"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "metric",
+    "currency_scope"
+  ]
+}

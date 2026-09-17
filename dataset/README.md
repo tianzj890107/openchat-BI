@@ -10,6 +10,9 @@ Project data and generated data artifacts live here:
 - `uploaded_reports/`: runtime report uploads and parsed metadata
 - `documents/`: source/demo business documents
 - `logs/`: local runtime logs
+- `evals/analytics/`: golden evaluation set + harness for the analytics agent
+  (see `evals/analytics/README.md`); its `fixtures/` are deterministic and its
+  `reports/` are run output
 
 Application code should use the shared paths in `bi_agent.paths` instead of
 hard-coding these directories.

@@ -1,0 +1,40 @@
+{
+  "case_id": "ANA-ONT-034",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "通用",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "本体检索不应命中的工具参数：is_deleted = 0",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "anchor",
+    "anchors": []
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "anchor",
+    "not_an_entity"
+  ],
+  "notes": "SQL 片段不得被当作本体实体。"
+}
