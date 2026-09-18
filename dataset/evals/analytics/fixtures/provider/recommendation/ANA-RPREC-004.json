@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPREC-004",
+  "turns": [
+    {
+      "user": "预测下季度采购金额并给出准备措施",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "预测下季度采购金额并给出准备措施"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT m, v, prev, ROUND(ABS(v * 1.0 / prev - 1), 6) AS abs_delta FROM (SELECT order_month AS m, SUM(amount) AS v, (SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-02') AS prev FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-03' GROUP BY order_month)",
+            "query_description": "预测下季度采购金额并给出准备措施"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "采购金额环比",
+            "columns": [
+              {
+                "key": "m",
+                "label": "月份"
+              },
+              {
+                "key": "v",
+                "label": "本月"
+              },
+              {
+                "key": "prev",
+                "label": "上月"
+              }
+            ],
+            "rows": [
+              [
+                "2025-03",
+                4750,
+                6400
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "在“订单量与本季度持平”的假设下，下季度采购金额预计与 3 月的 4,750.00 元同一量级；该假设未经验证，属于推演而不是预测结论。\n## 行动建议\n1. 由采购部按 3 月金额 4,750.00 元准备下季度预算额度，复核条件为月度实际偏差低于 10%。\n2. 由采购部在季度中复核订单量假设是否成立，复核条件为连续两月偏差收敛。\n本轮未执行任何采购或预算动作，推演假设需人工确认。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

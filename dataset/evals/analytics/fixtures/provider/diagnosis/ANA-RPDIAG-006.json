@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPDIAG-006",
+  "turns": [
+    {
+      "user": "采购金额下降是不是因为供应商减少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "采购金额下降是不是因为供应商减少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT COUNT(DISTINCT supplier_id) AS suppliers, SUM(amount) AS total FROM fact_purchase_order WHERE is_deleted = 0",
+            "query_description": "采购金额下降是不是因为供应商减少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "供应商数与采购金额",
+            "columns": [
+              {
+                "key": "suppliers",
+                "label": "供应商数"
+              },
+              {
+                "key": "total",
+                "label": "采购金额"
+              }
+            ],
+            "rows": [
+              [
+                5,
+                25030
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "在库供应商 5 家，采购金额合计 25,030.00 元。供应商数量与金额的变化只是同时出现，相关不等于因果，不能证明是供应商减少导致金额下降。建议补充按月的供应商数量与金额对照，再复核采购申请记录。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

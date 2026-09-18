@@ -1,0 +1,53 @@
+{
+  "case_id": "ANA-RPONT-003",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "通用",
+  "category": "ontology",
+  "evaluator": "tool_chain",
+  "question": "采购订单头有哪些关系",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/ontology/ANA-RPONT-003.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-RelationQuery"
+    ],
+    "tool_results": {
+      "Ontology-RelationQuery": {
+        "contains": [
+          "[ER-001]",
+          "supplier_id",
+          "[ER-002]"
+        ]
+      }
+    },
+    "recovery_status": "SUCCEEDED"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "tool_chain",
+    "ontology"
+  ],
+  "notes": "关系查询要带出外键字段，避免只回答“有关联”。"
+}

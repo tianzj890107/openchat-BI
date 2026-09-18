@@ -1,0 +1,59 @@
+{
+  "case_id": "ANA-RPCHART-015",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "采购",
+  "category": "charts",
+  "evaluator": "recorded_provider",
+  "question": "画一张只有一个月数据的趋势图",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/chart/ANA-RPCHART-015.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "ChartGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "final_text_contains": [],
+    "tool_results": {
+      "ChartGenerate": {
+        "contains": [
+          "Chart generated"
+        ]
+      }
+    },
+    "chart_files": {
+      "min_count": 1
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "chart",
+    "end_to_end"
+  ],
+  "notes": "单点图可以生成，但必须说明趋势结论的局限。",
+  "answer_requirements": [
+    "must_state_limitations"
+  ]
+}

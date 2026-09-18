@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-001",
+  "turns": [
+    {
+      "user": "系统里有哪些业务对象",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "ListBusinessObjects",
+          "input": {}
+        },
+        {
+          "type": "text_delta",
+          "text": "本体中共有 7 个业务对象：采购订单、供应商、物料、库存快照、销售订单、总账凭证和生产订单。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

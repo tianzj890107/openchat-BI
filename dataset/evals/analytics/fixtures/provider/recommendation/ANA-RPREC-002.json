@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPREC-002",
+  "turns": [
+    {
+      "user": "给我行动建议：怎么改善 P1 工厂的质量",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "给我行动建议：怎么改善 P1 工厂的质量"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT plant, SUM(defect_qty) AS defect, SUM(inspected_qty) AS inspected, SUM(defect_qty) * 1.0 / SUM(inspected_qty) AS rate, (SELECT SUM(defect_qty) * 1.0 / SUM(inspected_qty) FROM fact_quality_batch) AS overall_rate FROM fact_quality_batch GROUP BY plant",
+            "query_description": "给我行动建议：怎么改善 P1 工厂的质量"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "各工厂检验与缺陷",
+            "columns": [
+              {
+                "key": "plant",
+                "label": "工厂"
+              },
+              {
+                "key": "defect",
+                "label": "缺陷量"
+              },
+              {
+                "key": "inspected",
+                "label": "检验量"
+              },
+              {
+                "key": "rate",
+                "label": "缺陷率"
+              }
+            ],
+            "rows": [
+              [
+                "P1",
+                92,
+                4100,
+                0.02243902
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "P1 工厂缺陷量 92，检验量 4,100，缺陷率 2.24%。\n## 行动建议\n1. 由质量部对 P1 缺陷率最高的批次做逐批复核，复核条件为缺陷率回到整体水平 1.48% 以下。\n2. 由质量部把该批复核结论写入月度质量报告，复核条件为下一批次抽检通过。\n高风险动作（停线整改）需人工确认后才能执行，本轮未执行任何整改。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPDIAG-004",
+  "turns": [
+    {
+      "user": "毛利率下滑的原因",
+      "db": "finance.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "毛利率下滑的原因"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT a.period, SUM(CASE WHEN b.account_type = '收入' THEN a.credit ELSE 0 END) AS revenue, SUM(CASE WHEN b.account_type = '成本' THEN a.debit ELSE 0 END) AS cost, ROUND((SUM(CASE WHEN b.account_type = '收入' THEN a.credit ELSE 0 END) - SUM(CASE WHEN b.account_type = '成本' THEN a.debit ELSE 0 END)) / SUM(CASE WHEN b.account_type = '收入' THEN a.credit ELSE 0 END), 6) AS margin FROM fact_gl_entry a JOIN dim_account b ON a.account_id = b.account_id WHERE a.is_deleted = 0 AND a.currency = 'CNY' GROUP BY a.period ORDER BY a.period",
+            "query_description": "毛利率下滑的原因"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "收入与成本",
+            "columns": [
+              {
+                "key": "period",
+                "label": "期间"
+              },
+              {
+                "key": "revenue",
+                "label": "收入"
+              },
+              {
+                "key": "cost",
+                "label": "成本"
+              },
+              {
+                "key": "margin",
+                "label": "毛利率"
+              }
+            ],
+            "rows": [
+              [
+                "2025-01",
+                500000,
+                300000,
+                0.4
+              ],
+              [
+                "2025-02",
+                250000,
+                150000,
+                0.4
+              ],
+              [
+                "2025-03",
+                500000,
+                310000,
+                0.38
+              ],
+              [
+                "2025-04",
+                350000,
+                210000,
+                0.4
+              ],
+              [
+                "2025-05",
+                300000,
+                180000,
+                0.4
+              ],
+              [
+                "2025-06",
+                420000,
+                270000,
+                0.357143
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "毛利率口径是（收入 − 成本）÷ 收入，最低月出现在 2025-06，为 35.71%。5 月成本 180,000.00 元，是各月最高，收入端同期没有同步上升。该结论只说明成本与毛利率变化同时发生，相关不等于因果。建议先复核 5 月成本凭证的费用归属，再调整报价策略。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

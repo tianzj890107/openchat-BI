@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-020",
+  "turns": [
+    {
+      "user": "2025年金额为空的凭证有几行",
+      "db": "finance.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "2025年金额为空的凭证有几行"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT COUNT(*) FROM fact_gl_entry JOIN dim_account ON fact_gl_entry.account_id = dim_account.account_id WHERE fact_gl_entry.is_deleted = 0 AND fact_gl_entry.currency = 'CNY' AND fact_gl_entry.period LIKE '2025%' AND fact_gl_entry.debit IS NULL AND fact_gl_entry.credit IS NULL",
+            "query_description": "2025年金额为空的凭证有几行"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025年金额为空的凭证有几行",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "有 1 行凭证金额为空，未参与任何合计。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

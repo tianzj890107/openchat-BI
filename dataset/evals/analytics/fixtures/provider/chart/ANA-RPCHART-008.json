@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPCHART-008",
+  "turns": [
+    {
+      "user": "多维下钻：按供应商和物料看采购金额",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT supplier_id, SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY supplier_id ORDER BY v DESC",
+            "query_description": "多维下钻：按供应商和物料看采购金额"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerateMultiDim",
+          "input": {
+            "title": "采购金额 · 维度洞察",
+            "metric_code": "MT-001",
+            "source_note": "MT-001 · fact_purchase_order · 2025",
+            "default_dim": "supplier",
+            "dimensions": [
+              {
+                "key": "supplier",
+                "label": "供应商",
+                "chart_type": "bar",
+                "x_axis": [
+                  "华东金属"
+                ],
+                "series": [
+                  {
+                    "name": "采购金额",
+                    "data": [
+                      12600
+                    ]
+                  }
+                ]
+              },
+              {
+                "key": "material",
+                "label": "物料",
+                "chart_type": "bar",
+                "x_axis": [
+                  "金属件"
+                ],
+                "series": [
+                  {
+                    "name": "采购金额",
+                    "data": [
+                      13600
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "按供应商维度最高为 12,600.00 元，按物料维度最高为 13,600.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

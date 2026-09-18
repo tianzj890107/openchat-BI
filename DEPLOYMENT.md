@@ -18,14 +18,15 @@
 | 统一健康检查接口 | `GET /healthz`（别名 `GET /health`）；就绪 `200`，未完成配置 `503`，响应含 `app`/`version`/`port`/`dependencies` 等固定字段 |
 | 外部子路径前缀 | `APP_ROOT_PATH`：缺省为空字符串（域名根路径部署）；生产示例 `/api/ontology-agentic-analytics`，配置后对外入口为 `/api/ontology-agentic-analytics/workbench`、`/api/ontology-agentic-analytics/static/*`、`/api/ontology-agentic-analytics/api/*`、`/api/ontology-agentic-analytics/healthz` |
 | Nacos 配置中心 | 预留待对接，当前未接入；中间件类配置仍由 `.env`/环境变量注入（见 §10） |
+| GitLab CI/CD | 项目 runner `sys740-docker-runner`（`172.16.10.34`，docker executor）；`.gitlab-ci.yml` 只做验证（单测 + 黄金集），没有 deploy stage（见 §11） |
 
 > 端口约定：`8080` 是统一容器内部端口；`8765`/`47313`/`47314` 是推荐宿主机映射端口
 > 或非容器直接运行端口（本项目对应 `8765`）。不要把宿主机端口写成容器内部监听端口。
 
-> 分支与构建口径：DevOps 从 `master` 创建迭代分支或构建正式镜像；仓库本身没有
-> GitLab 自动部署流水线，push 不等于部署，本文档不构成自动部署授权，也不代表本
-> 任务已经部署。普通开发仍只推统一开发分支 `gitlab/20260727`，正式交付通过
-> Merge Request 合入唯一发布主线 `master`。
+> 分支与构建口径：DevOps 从 `master` 创建迭代分支或构建正式镜像；仓库里的
+> `.gitlab-ci.yml` 只做验证（单测 + 黄金集），是 CI 不是 CD，push 不等于部署，
+> 本文档不构成自动部署授权，也不代表本任务已经部署。普通开发仍只推统一开发分支
+> `gitlab/20260727`，正式交付通过 Merge Request 合入唯一发布主线 `master`。
 
 > 子路径部署口径：网关把 `APP_ROOT_PATH`（生产示例 `/api/ontology-agentic-analytics`）
 > 前缀流量转发给应用，并在 ASGI 层按 `root_path` 语义剥离前缀，应用内部路由保持
@@ -85,11 +86,11 @@ bi_agent/web/static/vendor/antd/eimosp-ontology-agentic-analytics-workbench.css
 生产环境推荐使用远程本体服务和 Doris：
 
 ```dotenv
-ONTOLOGY_BACKEND=remote
-ONTOLOGY_BASE_URL=https://<ontology-service>
+ONTOLOGY_BACKEND=production
+ONTOLOGY_BASE_URL=<本环境本体网关>
 ONTOLOGY_REPOSITORY_ID=<repository-id>
-ONTOLOGY_APP_ID=<app-id>
-ONTOLOGY_AUTH_TOKEN=<token>
+ONTOLOGY_APP_ID=<本环境 app-id>
+ONTOLOGY_AUTH_TOKEN=<本环境 token>
 
 # LLM 至少配置当前模型对应的一个 key。当前团队网关默认模型为 direct-deepseek-v4-flash。
 LLM_PROVIDER=team
@@ -99,11 +100,75 @@ TEAM_MODEL=direct-deepseek-v4-flash
 TEAM_MODELS=<comma-separated-verified-model-ids>
 # 也可改用 qwen / anthropic / deepseek provider，并配置对应 API key。
 
-DORIS_API_URL=http://<doris-gateway>/agent/doris/query
+DORIS_API_URL=<本环境 Doris 查询网关>
 DORIS_DATABASE=<database>
 ```
 
 把配置放在项目根目录的 `.env`（已被忽略）或由 systemd/Docker 注入。不要把真实 key 写进仓库。
+
+### 本体与 Doris 网关按环境隔离（PDT / demo2）
+
+同一套镜像分别部署在两个环境，**Agent 的对外入口与它调用的本体/Doris 网关必须属于
+同一环境**；镜像不再内置任何环境的固定地址，生产模式缺少 `ONTOLOGY_BASE_URL` 或
+`DORIS_API_URL` 时启动即失败，不会回退到其它环境的网关。
+
+| 环境 | Agent 对外入口 | `ONTOLOGY_BASE_URL` | `DORIS_API_URL` |
+| --- | --- | --- | --- |
+| PDT | http://pdt-dev.eimos.com/api/ontology-agentic-analytics | http://pdt-dev.eimos.com/api/gateway2/ontology | http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query |
+| Demo2 | http://demo2.eimos.com/api/ontology-agentic-analytics | http://demo2.eimos.com/api/gateway2/ontology | http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query |
+
+```dotenv
+# PDT
+ONTOLOGY_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/ontology
+DORIS_API_URL=http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query
+ONTOLOGY_REPOSITORY_ID=3
+```
+
+```dotenv
+# Demo2（本体目录由 demo2 本体服务真实返回，预期只有 ECore 本体库及其数据库）
+ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology
+DORIS_API_URL=http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query
+ONTOLOGY_REPOSITORY_ID=1
+```
+
+- `ONTOLOGY_APP_ID` 两个环境取值相同且非密钥，作为镜像共享默认值（当前
+  `ApTH1EHKdRk58WhDQB`），各环境可按需覆盖；`ONTOLOGY_AUTH_TOKEN` 是密钥，只能由各
+  环境注入，仓库与镜像中不保存真实值（当前两个环境都为空）。
+- `ONTOLOGY_REPOSITORY_ID` 只决定"当前激活哪个本体库"，按环境取该环境目录里的真实
+  ID，**两个环境并不相同**：PDT 的 ECore 本体库是 `3`
+  （`ontology_demometaerp`），demo2 的 ECore 本体库是 `1`（`ontology_ecore`）。
+  查法：`GET <ONTOLOGY_BASE_URL>/system/manager/ontology-repository?page=1&size=100`
+  （不带 `X-Ontology-Repository-Id` 头），在 `data.items` 里按名称找到 ECore 库的
+  `id`、`namespaceCode`、`currentDatabase`。用错 ID 时 `configure()` 会以
+  `远程本体库 X 不在可用目录中` 快速失败，不会静默连到另一个环境的库。
+- 不要通过前端过滤或在代码里写死 repository ID 来"伪造"某个环境只有少量本体库；本体
+  列表必须由该环境的本体服务真实返回。
+- 部署后核对：`GET <环境入口>/api/sources` 的 `ontology.production.base_url` 应等于该
+  环境的 `ONTOLOGY_BASE_URL`，`remote_repositories` 与该环境本体服务返回的目录一致。
+
+### 各环境 `.env` 必须同步更新（运维执行）
+
+镜像与仓库只提供结构，**每个环境服务器上的 `.env` 仍保存着旧的直连地址
+（`http://172.16.5.181:30834`），必须由运维按上表改成自己环境的网关**；不改就会继续
+直连同一个后端、看到同一份本体库目录。
+
+| 变量 | PDT | Demo2 | 谁维护 |
+| --- | --- | --- | --- |
+| `ONTOLOGY_BASE_URL` | 必填，PDT 网关 | 必填，demo2 网关 | 运维按环境注入 |
+| `DORIS_API_URL` | 必填，PDT 网关 | 必填，demo2 网关 | 运维按环境注入 |
+| `ONTOLOGY_REPOSITORY_ID` | `3`（PDT 的 ECore 本体库） | `1`（demo2 的 ECore 本体库） | 运维按环境注入 |
+| `ONTOLOGY_APP_ID` | `ApTH1EHKdRk58WhDQB`（共享默认） | 同左 | 仓库默认，可覆盖 |
+| `ONTOLOGY_AUTH_TOKEN` | 当前为空 | 当前为空 | 运维注入（不得入库） |
+
+改完后必须重启服务（`ONTOLOGY_BASE_URL` / `DORIS_API_URL` 是启动期配置），并核对：
+
+```bash
+curl -s http://pdt-dev.eimos.com/api/ontology-agentic-analytics/api/sources
+curl -s http://demo2.eimos.com/api/ontology-agentic-analytics/api/sources
+```
+
+两个响应里的 `ontology.production.base_url` 必须分别是各自环境的 `ONTOLOGY_BASE_URL`，
+`remote_repositories` 必须与各自本体服务返回的目录一致（两个环境的库不一样）。
 
 远程本体模式下不需要本地 Excel 本体文件；本地开发模式才需要：
 
@@ -403,3 +468,63 @@ TASK_ALERT_TIMEOUT_SECONDS=10          # 上游超时，0.5–120s
   密钥优先走 K8s Secret / 环境变量，不进配置中心明文；
 - 与现有 `.env` 的优先级约定、客户端版本（Python nacos-sdk）和回退策略需在接入
   任务中明确后再实施，并同步更新本文档与 `.env.example` 占位注释。
+
+## 11. GitLab CI/CD（只做验证，不做部署）
+
+仓库根目录的 `.gitlab-ci.yml` 在 GitLab 项目 `ai-team/eimosp-ontology-agentic-analytics`
+（project id `1065`）上运行，**不含任何部署动作**：
+
+| Job | Stage | 内容 |
+| --- | --- | --- |
+| `unit-tests` | test | `python -m pytest -q tests` |
+| `analytics-eval-smoke` | eval | `python -m scripts.run_analytics_eval --suite smoke`（P0 契约集门禁） |
+| `analytics-eval-regression` | eval | `python -m scripts.run_analytics_eval --suite regression`（全量离线黄金集） |
+
+### Runner
+
+- 项目 runner `sys740-docker-runner` 注册在 `172.16.10.34`
+  （`being-SYS-740GP-TNRT`，Ubuntu 22.04），executor 为 `docker`，`concurrent = 2`。
+- 该 runner **不执行 untagged job**，job 必须声明 `tags: [boulderai]`，否则会被忽略。
+- 启动方式（配置持久化在 docker volume `gitlab-runner-config`）：
+
+  ```bash
+  docker run -d --name gitlab-runner --restart unless-stopped \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v gitlab-runner-config:/etc/gitlab-runner \
+    docker.m.daocloud.io/gitlab/gitlab-runner:v14.10.1 run
+  ```
+
+- 该 runner 已同时授权给 `ai-team/eimosp-ontology-agentic-modeling`（1064）和
+  `ai-team/cpq_agent`（1068）；这两个项目在自己的 `.gitlab-ci.yml` 里声明
+  `tags: [boulderai]` 即可复用同一台 runner，不需要再注册。
+- 镜像（都在 `172.16.10.34` 本地构建，`pull_policy = if-not-present`）：
+  - `boulderai/python-ci:3.13`：`python:3.13-slim` + `git`（docker executor 需要
+    容器内有 git 才能 clone 仓库）；
+  - `boulderai/analytics-ci:3.13`：再加 `pyproject.toml` 声明的全部依赖和 pytest，
+    job 只需离线的 `pip install -e . --no-deps`，单个 job 约 1 分钟。
+  - `pyproject.toml` 依赖变化后必须重建 `analytics-ci`：
+
+    ```bash
+    scp pyproject.toml <host>:~/ci-image/deps/pyproject.toml
+    docker build -t boulderai/analytics-ci:3.13 ~/ci-image/deps
+    ```
+
+### 已知限制
+
+- `unit-tests` 用 `--deselect` 跳过
+  `test_ontology_graph_modal_uses_product_labels_and_synced_cluster_layout`：该用例
+  读取 `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js`，而
+  `@boulderaitech/ontology-graph` 是 `file:../../ontology-graph` 本地依赖，远端
+  `ai-team/ontology-graph` 仓库当前为空，CI 拿不到该文件。本地安装过 npm 依赖的
+  开发机仍会正常执行这条断言；`ai-team/ontology-graph` 有内容后可去掉 `--deselect`。
+- 流水线不跑前端构建（`frontend` 依赖 antd/vite，镜像未预装 npm 依赖）。
+- 步骤说明：job 里 `git config --global --add safe.directory "$CI_PROJECT_DIR"` 是
+  必需的，否则容器内 root 用户对 checkout 执行 git 命令会因 dubious ownership 失败。
+
+### 安全边界
+
+- docker executor 的 job 容器可以访问宿主机 `/var/run/docker.sock`，等价于在
+  `172.16.10.34` 上执行任意命令。只把该 runner 授权给可信项目，也不要把它当作
+  生产部署机使用。
+- CI 全绿只代表验证通过，不构成部署授权；部署仍按本文档由人工执行，且需要当前
+  任务中的明确部署指令。

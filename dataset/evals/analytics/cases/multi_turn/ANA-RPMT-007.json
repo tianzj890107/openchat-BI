@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-RPMT-007",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "财务",
+  "category": "multi_turn",
+  "evaluator": "recorded_provider",
+  "question": "2025年营业收入合计是多少",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "2025年营业收入合计是多少"
+    },
+    {
+      "role": "assistant",
+      "content": "(上一轮已给出指标与口径，见 transcript)"
+    }
+  ],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/multi_turn/ANA-RPMT-007.json",
+    "db": "finance.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "TableGenerate",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "multi_turn"
+  ],
+  "notes": "换指标时时间/币种范围必须保留。"
+}

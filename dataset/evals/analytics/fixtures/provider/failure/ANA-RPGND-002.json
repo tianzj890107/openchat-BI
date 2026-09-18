@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPGND-002",
+  "turns": [
+    {
+      "user": "2025年6月采购金额是多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-06'",
+            "query_description": "6月"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025-06 采购金额",
+            "columns": [
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                3000
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 6 月采购金额 3,000.00 元，较上一季度累计 11,100.00 元有所回落。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

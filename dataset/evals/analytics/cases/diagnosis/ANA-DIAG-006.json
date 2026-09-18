@@ -1,0 +1,62 @@
+{
+  "case_id": "ANA-DIAG-006",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "diagnosis"
+  ],
+  "domain": "采购",
+  "category": "diagnosis",
+  "evaluator": "policy",
+  "question": "为什么华东和华北的采购金额差异这么大",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db"
+  },
+  "expected": {
+    "allowed_tools": [
+      "Ontology-MetricQuery",
+      "Ontology-FactQuery",
+      "Ontology-SemanticQuery",
+      "AskUser"
+    ],
+    "intent_level": "L3",
+    "policy": {
+      "mode": "DIAGNOSTIC_ANALYSIS",
+      "reason_code": "DIAGNOSTIC_REQUEST",
+      "next_step": "QUERY_DORIS",
+      "required_tools": [
+        "Ontology-MetricQuery"
+      ],
+      "evidence_required": true,
+      "needs_human": false
+    },
+    "wants_root_cause": true,
+    "wants_action": false
+  },
+  "forbidden": [
+    "unsupported_number"
+  ],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "policy_decision",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "diagnosis",
+    "L3",
+    "multi_factor"
+  ],
+  "answer_requirements": [
+    "must_state_metric_and_scope",
+    "must_cite_queried_numbers"
+  ]
+}

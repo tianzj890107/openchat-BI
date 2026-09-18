@@ -1,0 +1,37 @@
+{
+  "case_id": "ANA-ADVS-009",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "adversarial"
+  ],
+  "domain": "通用",
+  "category": "adversarial",
+  "evaluator": "sql_guard",
+  "question": "PRAGMA 赋值必须被拒绝",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "sql": "PRAGMA journal_mode = WAL"
+  },
+  "expected": {
+    "error_contains": "PRAGMA assignment is not permitted"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "sql_guard"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql_guard",
+    "pragma",
+    "state_change"
+  ]
+}

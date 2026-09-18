@@ -1,0 +1,61 @@
+{
+  "case_id": "ANA-RPCHART-009",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "采购",
+  "category": "adversarial",
+  "evaluator": "recorded_provider",
+  "question": "供应商名称里带脚本时图表标题要安全",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/chart/ANA-RPCHART-009.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "ChartGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "final_text_contains": [],
+    "tool_results": {
+      "ChartGenerate": {
+        "contains": [
+          "Chart generated"
+        ]
+      }
+    },
+    "chart_files": {
+      "min_count": 1,
+      "absent": [
+        "<script>alert('x')</script>",
+        "<img src=x onerror=alert(1)>"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "chart",
+    "adversarial",
+    "html_safety"
+  ],
+  "notes": "图表标题/标签里的 HTML 与脚本必须被转义后再写入 HTML。"
+}

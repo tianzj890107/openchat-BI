@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-MT-001",
+  "turns": [
+    {
+      "user": "2025年4月采购金额是多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-04'",
+            "query_description": "2025年4月采购金额是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025-04 采购金额",
+            "columns": [
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                5170
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 4 月采购金额 5,170.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "user": "那 3 月呢，还是这个口径",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-03'",
+            "query_description": "那 3 月呢，还是这个口径"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025-03 采购金额",
+            "columns": [
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                4750
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 3 月采购金额 4,750.00 元，继续沿用排除逻辑删除的口径。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

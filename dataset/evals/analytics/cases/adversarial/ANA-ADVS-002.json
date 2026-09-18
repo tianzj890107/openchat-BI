@@ -1,0 +1,36 @@
+{
+  "case_id": "ANA-ADVS-002",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "adversarial"
+  ],
+  "domain": "通用",
+  "category": "adversarial",
+  "evaluator": "sql_guard",
+  "question": "WITH 查询必须放行",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "sql": "WITH t AS (SELECT 1 AS a) SELECT a FROM t"
+  },
+  "expected": {
+    "valid": true
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "sql_guard"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql_guard",
+    "read_only"
+  ]
+}

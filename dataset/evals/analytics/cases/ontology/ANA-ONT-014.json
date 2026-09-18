@@ -1,0 +1,50 @@
+{
+  "case_id": "ANA-ONT-014",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "ontology"
+  ],
+  "domain": "采购",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "采购金额指标的计算公式和物理表",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "metric",
+    "code": "MT-001",
+    "name": "采购金额",
+    "table": "fact_purchase_order",
+    "agg_column": "amount",
+    "agg_type": "SUM",
+    "filter_condition": "is_deleted = 0",
+    "dimensions_contains": [
+      "订单月份",
+      "供应商",
+      "事业部"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "metric",
+    "physical_table"
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-MFG-027",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "制造",
+  "category": "anomaly",
+  "evaluator": "sql",
+  "question": "2025年报废数量为负的工单有几张",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "manufacturing.db",
+    "sql": "SELECT COUNT(*) FROM fact_production_order JOIN dim_work_center ON fact_production_order.work_center_id = dim_work_center.work_center_id WHERE fact_production_order.is_deleted = 0 AND fact_production_order.scrap_qty < 0"
+  },
+  "expected": {
+    "value": 1,
+    "tolerance": 1e-06,
+    "unit": "张",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "fact_production_order.scrap_qty < 0"
+    ],
+    "scope_note": "负报废来自返工冲销，属于合法业务，不能当作数据错误直接丢弃。",
+    "query_contract": {
+      "db": "manufacturing.db",
+      "metric": "",
+      "filters": [
+        "fact_production_order.scrap_qty < 0"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "negative",
+    "manufacturing"
+  ]
+}

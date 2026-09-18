@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-021",
+  "turns": [
+    {
+      "user": "2025年计划产量合计是多少",
+      "db": "manufacturing.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "2025年计划产量合计是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(planned_qty) FROM fact_production_order WHERE is_deleted = 0",
+            "query_description": "2025年计划产量合计是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025年计划产量合计是多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                1770
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年计划产量合计 1,770 台。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

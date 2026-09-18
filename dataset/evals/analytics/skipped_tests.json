@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "description": "Machine-readable classification of every skipped test. Skipped tests are never counted as passed. Regenerate with `python scripts/classify_skipped_tests.py`.",
+  "categories": {
+    "missing_frontend_dependency": "缺少前端本地依赖（node_modules / file: 依赖）",
+    "missing_external_service": "缺少外部服务（网络 / 中间件 / 远端仓库）",
+    "platform_unsupported": "当前平台不支持",
+    "live_credentials": "缺少 live 评测凭据",
+    "explicit_integration": "显式只读集成/验收测试，默认不跑",
+    "other": "未分类，必须人工确认"
+  },
+  "blocking_categories": [
+    "live_credentials",
+    "missing_external_service",
+    "missing_frontend_dependency",
+    "platform_unsupported"
+  ],
+  "total": 25,
+  "budget": 25,
+  "by_category": {
+    "missing_frontend_dependency": 0,
+    "missing_external_service": 0,
+    "platform_unsupported": 0,
+    "live_credentials": 0,
+    "explicit_integration": 25,
+    "other": 0
+  },
+  "tests": [
+    {
+      "test": "tests/test_docker_defaults_and_local_secrets.py:154",
+      "reason": "set RUN_SERVER_ENV_SYNC_TESTS=1 for read-only 10.34 verification",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_SERVER_ENV_SYNC_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_environment_scoped_ontology_and_unused_session.py:46",
+      "reason": "set RUN_DEMO2_ONTOLOGY_ENV_TESTS=1 for live demo2 verification",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_DEMO2_ONTOLOGY_ENV_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_main_branch_retirement.py:110",
+      "reason": "set RUN_GITLAB_MAIN_DELETION_TESTS=1 for read-only branch retirement acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_MAIN_DELETION_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_main_branch_retirement.py:124",
+      "reason": "set RUN_GITLAB_MAIN_DELETION_TESTS=1 for read-only branch retirement acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_MAIN_DELETION_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_main_branch_retirement.py:65",
+      "reason": "set RUN_GITLAB_MAIN_DELETION_TESTS=1 for read-only branch retirement acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_MAIN_DELETION_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_main_branch_retirement.py:78",
+      "reason": "set RUN_GITLAB_MAIN_DELETION_TESTS=1 for read-only branch retirement acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_MAIN_DELETION_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_main_branch_retirement.py:83",
+      "reason": "set RUN_GITLAB_MAIN_DELETION_TESTS=1 for read-only branch retirement acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_MAIN_DELETION_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_main_branch_retirement.py:88",
+      "reason": "set RUN_GITLAB_MAIN_DELETION_TESTS=1 for read-only branch retirement acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_MAIN_DELETION_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_main_branch_retirement.py:95",
+      "reason": "set RUN_GITLAB_MAIN_DELETION_TESTS=1 for read-only branch retirement acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_MAIN_DELETION_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_main_branch_retirement.py:99",
+      "reason": "set RUN_GITLAB_MAIN_DELETION_TESTS=1 for read-only branch retirement acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_MAIN_DELETION_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_default_protection.py:106",
+      "reason": "set RUN_GITLAB_CUTOVER_TESTS=1 for read-only GitLab cutover acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_CUTOVER_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_default_protection.py:59",
+      "reason": "set RUN_GITLAB_CUTOVER_TESTS=1 for read-only GitLab cutover acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_CUTOVER_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_default_protection.py:63",
+      "reason": "set RUN_GITLAB_CUTOVER_TESTS=1 for read-only GitLab cutover acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_CUTOVER_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_default_protection.py:69",
+      "reason": "set RUN_GITLAB_CUTOVER_TESTS=1 for read-only GitLab cutover acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_CUTOVER_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_default_protection.py:79",
+      "reason": "set RUN_GITLAB_CUTOVER_TESTS=1 for read-only GitLab cutover acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_CUTOVER_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_default_protection.py:83",
+      "reason": "set RUN_GITLAB_CUTOVER_TESTS=1 for read-only GitLab cutover acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_CUTOVER_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_default_protection.py:94",
+      "reason": "set RUN_GITLAB_CUTOVER_TESTS=1 for read-only GitLab cutover acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_CUTOVER_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_default_protection.py:99",
+      "reason": "set RUN_GITLAB_CUTOVER_TESTS=1 for read-only GitLab cutover acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_CUTOVER_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_mr_delivery.py:102",
+      "reason": "set RUN_GITLAB_DELIVERY_TESTS=1 for read-only GitLab delivery acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_DELIVERY_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_mr_delivery.py:111",
+      "reason": "set RUN_GITLAB_DELIVERY_TESTS=1 for read-only GitLab delivery acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_DELIVERY_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_mr_delivery.py:119",
+      "reason": "set RUN_GITLAB_DELIVERY_TESTS=1 for read-only GitLab delivery acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_DELIVERY_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_mr_delivery.py:136",
+      "reason": "set RUN_GITLAB_DELIVERY_TESTS=1 for read-only GitLab delivery acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_DELIVERY_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_mr_delivery.py:161",
+      "reason": "set RUN_GITLAB_DELIVERY_TESTS=1 for read-only GitLab delivery acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_DELIVERY_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_mr_delivery.py:76",
+      "reason": "set RUN_GITLAB_DELIVERY_TESTS=1 for read-only GitLab delivery acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_DELIVERY_TESTS=1 后运行"
+    },
+    {
+      "test": "tests/test_master_mr_delivery.py:95",
+      "reason": "set RUN_GITLAB_DELIVERY_TESTS=1 for read-only GitLab delivery acceptance",
+      "category": "explicit_integration",
+      "blocks_release": false,
+      "ci_hint": "在专用只读验收 job 中设置 RUN_GITLAB_DELIVERY_TESTS=1 后运行"
+    }
+  ]
+}

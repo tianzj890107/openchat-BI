@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-007",
+  "turns": [
+    {
+      "user": "fact_purchase_order 有哪些字段",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "DescribeTable",
+          "input": {
+            "table": "fact_purchase_order"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "fact_purchase_order 共 11 个字段，包括 po_id、po_no、supplier_id、order_month、amount 和 is_deleted。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

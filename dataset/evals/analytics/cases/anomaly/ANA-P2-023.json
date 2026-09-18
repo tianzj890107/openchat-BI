@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-P2-023",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression"
+  ],
+  "domain": "财务",
+  "category": "anomaly",
+  "evaluator": "sql",
+  "question": "已删除凭证的借方合计是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "finance.db",
+    "sql": "SELECT SUM(debit) FROM fact_gl_entry WHERE is_deleted = 1"
+  },
+  "expected": {
+    "value": 999999,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 1"
+    ],
+    "scope_note": "逻辑删除数据单独统计，不得混入正式报表口径。",
+    "query_contract": {
+      "db": "finance.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 1"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "p2",
+    "finance",
+    "soft_delete"
+  ]
+}

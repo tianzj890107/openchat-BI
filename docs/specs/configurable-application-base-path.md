@@ -50,6 +50,9 @@
 
 - 未设置 `APP_ROOT_PATH` 时，原有 `/workbench`、`/static/*`、`/api/*`、`/healthz`
   行为和测试不得回归。
+- 带前缀的 `/static/*` 必须返回真实文件内容：FastAPI `root_path` 与
+  `StaticFiles` 挂载共用前缀时，前缀剥离必须同时保持 `scope["path"]` 与
+  `scope["root_path"]` 一致，不得因重复 `static/` 路径段返回 404。
 - Docker 容器内部 HEALTHCHECK 仍探测 `http://127.0.0.1:8080/healthz`；base path 是
   外部代理契约，不能破坏容器内健康检查。
 - `README.md`、`.env.example`（若存在）和 `DEPLOYMENT.md` 必须说明变量、完整生产 URL、

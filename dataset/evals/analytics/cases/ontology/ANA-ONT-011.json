@@ -1,0 +1,40 @@
+{
+  "case_id": "ANA-ONT-011",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "库存",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "术语『库存数量』怎么定义",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "term",
+    "query": "库存数量",
+    "code": "TM-004",
+    "definition_contains": "可用物料数量"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "term"
+  ]
+}

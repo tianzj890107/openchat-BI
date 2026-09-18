@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-FIN-015",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "财务",
+  "category": "facts",
+  "evaluator": "sql",
+  "question": "被逻辑删除的凭证借方金额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "finance.db",
+    "sql": "SELECT SUM(debit) FROM fact_gl_entry WHERE is_deleted = 1"
+  },
+  "expected": {
+    "value": 999999,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 1"
+    ],
+    "scope_note": "逻辑删除行必须被经营口径排除；这里单独查询用于验证不能混入正常口径。",
+    "query_contract": {
+      "db": "finance.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 1"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "logical_delete",
+    "finance"
+  ]
+}

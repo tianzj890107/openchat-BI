@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-SALES-002",
+  "turns": [
+    {
+      "user": "人民币销售额占比是多少",
+      "db": "sales.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(CASE WHEN currency = 'CNY' THEN amount_cny ELSE 0 END) * 1.0 / SUM(amount_cny) AS v FROM fact_sales WHERE is_deleted = 0",
+            "query_description": "人民币销售额占比是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "人民币销售额占比",
+            "columns": [
+              {
+                "key": "v",
+                "label": "占比"
+              }
+            ],
+            "rows": [
+              [
+                0.97425997
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "人民币销售额占比 97.43%，分母为全部未删除订单的人民币金额列。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

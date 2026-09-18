@@ -1,0 +1,41 @@
+{
+  "case_id": "ANA-ONT-039",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "制造",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "产量达成率的统计口径要不要包含未报工工单",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "metric",
+    "code": "MT-009",
+    "table": "fact_production_order",
+    "filter_condition": "is_deleted = 0 AND actual_qty IS NOT NULL"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "metric",
+    "manufacturing"
+  ]
+}

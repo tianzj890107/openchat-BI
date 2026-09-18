@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-MFG-004",
+  "turns": [
+    {
+      "user": "生产达成率是多少",
+      "db": "manufacturing.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(actual_qty) * 1.0 / SUM(planned_qty) AS v FROM fact_production_order WHERE is_deleted = 0 AND actual_qty IS NOT NULL",
+            "query_description": "生产达成率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "生产达成率",
+            "columns": [
+              {
+                "key": "v",
+                "label": "达成率"
+              }
+            ],
+            "rows": [
+              [
+                0.91288344
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "生产达成率 91.29%。若用全部计划量作分母则为 84.07%。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

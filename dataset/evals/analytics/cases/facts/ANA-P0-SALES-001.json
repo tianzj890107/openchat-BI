@@ -1,0 +1,48 @@
+{
+  "case_id": "ANA-P0-SALES-001",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "regression",
+    "recorded-provider",
+    "smoke",
+    "live-canary"
+  ],
+  "domain": "销售",
+  "category": "facts",
+  "evaluator": "recorded_provider",
+  "question": "2025年5月人民币销售额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/p0/ANA-P0-SALES-001.json",
+    "db": "sales.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "value": 49000,
+    "tolerance": 1e-06
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "p0",
+    "production_chain"
+  ]
+}

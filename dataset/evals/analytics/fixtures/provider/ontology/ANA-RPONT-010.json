@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-010",
+  "turns": [
+    {
+      "user": "“不存在的对象”对应哪张表",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-EntityDescribe",
+          "input": {
+            "entity": "不存在的对象"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "本体中没有匹配的逻辑实体，无法确认它对应的物理表。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

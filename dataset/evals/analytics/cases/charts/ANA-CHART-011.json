@@ -1,0 +1,52 @@
+{
+  "case_id": "ANA-CHART-011",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "charts"
+  ],
+  "domain": "采购",
+  "category": "charts",
+  "evaluator": "chart_validate",
+  "question": "饼图切片缺少 value",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "chart_params": {
+      "chart_type": "pie",
+      "title": "坏切片",
+      "series": [
+        {
+          "name": "a",
+          "data": [
+            {
+              "name": "X"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "expected": {
+    "valid": false,
+    "reason_contains": "'name' and 'value'",
+    "tool_name": "ChartGenerate"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "chart_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "charts",
+    "pie",
+    "invalid_slice"
+  ]
+}

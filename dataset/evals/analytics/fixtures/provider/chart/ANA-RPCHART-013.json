@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPCHART-013",
+  "turns": [
+    {
+      "user": "采购金额 Top5 供应商横向柱状图",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT supplier_id, SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY supplier_id ORDER BY v DESC LIMIT 5",
+            "query_description": "采购金额 Top5 供应商横向柱状图"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerate",
+          "input": {
+            "chart_type": "horizontal_bar",
+            "title": "采购金额 Top5 供应商",
+            "x_axis": [
+              "华东金属",
+              "华北电子",
+              "华东化工",
+              "华南包装",
+              "东北机械"
+            ],
+            "series": [
+              {
+                "name": "采购金额",
+                "data": [
+                  12600,
+                  7880,
+                  2250,
+                  1300,
+                  1000
+                ]
+              }
+            ],
+            "unit": "元",
+            "source_note": "MT-001 · fact_purchase_order · Top5"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "Top5 供应商中最高为华东金属 12,600.00 元，最低为 1,000.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

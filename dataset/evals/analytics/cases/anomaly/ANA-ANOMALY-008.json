@@ -1,0 +1,51 @@
+{
+  "case_id": "ANA-ANOMALY-008",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "质量",
+  "category": "anomaly",
+  "evaluator": "sql",
+  "question": "分母为零的批次编号是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "quality.db",
+    "sql": "SELECT batch_no FROM fact_quality_batch WHERE inspect_month = '2025-02' AND inspected_qty = 0 ORDER BY batch_no LIMIT 1"
+  },
+  "expected": {
+    "value": "B-0006",
+    "tolerance": 1e-06,
+    "unit": "",
+    "metric": "",
+    "dimensions": [],
+    "filters": [],
+    "scope_note": "零分母口径：检验数量为 0 的批次必须单独披露。",
+    "query_contract": {
+      "db": "quality.db",
+      "metric": "",
+      "filters": [],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "anomaly",
+    "zero_denominator"
+  ],
+  "notes": "B-0006 检验量为 0，比率必须返回空并在回答里说明。"
+}

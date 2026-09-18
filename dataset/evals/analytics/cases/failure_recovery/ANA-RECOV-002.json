@@ -1,0 +1,65 @@
+{
+  "case_id": "ANA-RECOV-002",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "recovery_state",
+  "question": "ask_user 后进入 WAITING_USER 并保存待选问题",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "script": [
+      [
+        "start_turn",
+        {
+          "turn_ref": "t-1"
+        }
+      ],
+      [
+        "ask_user",
+        {
+          "tool_use_id": "tu-1",
+          "question": "选哪个事业部？",
+          "options": [
+            "事业部A",
+            "事业部B"
+          ]
+        }
+      ]
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 1,
+        "status": "WAITING_USER",
+        "current_step": "WAIT_USER",
+        "pending_user": {
+          "question_contains": "事业部",
+          "options_len": 2
+        }
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recovery_state"
+  ],
+  "scoring": {},
+  "tags": [
+    "recovery",
+    "ask_user"
+  ]
+}

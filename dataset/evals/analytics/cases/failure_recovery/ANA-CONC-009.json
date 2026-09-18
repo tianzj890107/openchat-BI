@@ -1,0 +1,74 @@
+{
+  "case_id": "ANA-CONC-009",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "admission",
+  "question": "同一 session 串行：占用的 slot 必须拒绝第二个 turn",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "env": {
+      "CHATBI_MAX_ACTIVE_TURNS": "3",
+      "CHATBI_MAX_ACTIVE_PER_PRINCIPAL": "2",
+      "CHATBI_MAX_WAITING_TURNS": "4",
+      "CHATBI_ADMISSION_WAIT_SECONDS": "0.3"
+    },
+    "script": [
+      {
+        "op": "slot_acquire",
+        "slot": "s1",
+        "as": "lease1"
+      },
+      {
+        "op": "slot_acquire",
+        "slot": "s1",
+        "expect_none": true
+      },
+      {
+        "op": "slot_release",
+        "slot": "s1",
+        "lease": "lease1"
+      },
+      {
+        "op": "slot_acquire",
+        "slot": "s1",
+        "as": "lease2",
+        "expect_granted": true
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 1,
+        "granted": false
+      },
+      {
+        "after": 3,
+        "granted": true
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "admission_outcome"
+  ],
+  "scoring": {},
+  "tags": [
+    "admission",
+    "session_busy"
+  ]
+}

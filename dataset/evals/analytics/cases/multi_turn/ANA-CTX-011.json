@@ -1,0 +1,89 @@
+{
+  "case_id": "ANA-CTX-011",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "multi-turn"
+  ],
+  "domain": "质量",
+  "category": "multi_turn",
+  "evaluator": "context_resolution",
+  "question": "把维度和时间都换掉",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "把维度和时间都换掉"
+    }
+  ],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "previous": {
+      "subject": null,
+      "goal": null,
+      "metrics": [
+        "MT-001"
+      ],
+      "dimensions": [
+        "order_month"
+      ],
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "time_scope": {
+        "start": "2025-06",
+        "end": "2025-06"
+      },
+      "entity_scope": [],
+      "comparison_scope": null
+    },
+    "changes": {
+      "dimensions": [
+        "plant"
+      ],
+      "time_scope": {
+        "start": "2025-04",
+        "end": "2025-06"
+      }
+    }
+  },
+  "expected": {
+    "context": {
+      "subject": null,
+      "goal": null,
+      "metrics": [
+        "MT-001"
+      ],
+      "dimensions": [
+        "plant"
+      ],
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "time_scope": {
+        "start": "2025-04",
+        "end": "2025-06"
+      },
+      "entity_scope": [],
+      "comparison_scope": null
+    },
+    "must_not_appear": []
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "production_analysis_context"
+  ],
+  "scoring": {},
+  "tags": [
+    "multi_turn",
+    "context_resolution",
+    "production_merge"
+  ],
+  "notes": "同时覆盖多个字段时必须全部生效，未提到的字段仍继承。"
+}

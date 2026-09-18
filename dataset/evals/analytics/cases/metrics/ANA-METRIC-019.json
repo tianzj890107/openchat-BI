@@ -1,0 +1,50 @@
+{
+  "case_id": "ANA-METRIC-019",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "库存",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "负库存的明细有几行",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "inventory.db",
+    "sql": "SELECT COUNT(*) FROM fact_inventory_snapshot WHERE on_hand_qty < 0"
+  },
+  "expected": {
+    "value": 1,
+    "tolerance": 1e-06,
+    "unit": "行",
+    "metric": "",
+    "dimensions": [],
+    "filters": [],
+    "scope_note": "负库存是数据质量问题，必须披露而不是静默过滤。",
+    "query_contract": {
+      "db": "inventory.db",
+      "metric": "",
+      "filters": [],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "negative"
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPDIAG-003",
+  "turns": [
+    {
+      "user": "报废率上升的原因是什么",
+      "db": "manufacturing.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "报废率上升的原因是什么"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT work_center_id, SUM(scrap_qty) AS scrap, SUM(scrap_qty) * 1.0 / SUM(actual_qty) AS rate, (SELECT SUM(scrap_qty) * 1.0 / SUM(actual_qty) FROM fact_production_order WHERE is_deleted = 0) AS overall_rate FROM fact_production_order WHERE is_deleted = 0 GROUP BY work_center_id ORDER BY rate DESC",
+            "query_description": "报废率上升的原因是什么"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "各产线报废率",
+            "columns": [
+              {
+                "key": "work_center_id",
+                "label": "产线"
+              },
+              {
+                "key": "scrap",
+                "label": "报废量"
+              },
+              {
+                "key": "rate",
+                "label": "报废率"
+              }
+            ],
+            "rows": [
+              [
+                1,
+                15.0,
+                0.02631579
+              ],
+              [
+                2,
+                3.0,
+                0.01818182
+              ],
+              [
+                3,
+                13.0,
+                0.01726428
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "报废率最高的产线是产线 1，报废量 15。整体报废率 2.08%，尚未超过预警线。该结论基于报废数量这一直接证据；停机时长只是间接指标，不能直接证明报废由停机导致。建议先核对产线 1 的工艺参数记录，再决定是否更换模具。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

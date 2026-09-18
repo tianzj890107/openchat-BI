@@ -1,0 +1,44 @@
+{
+  "case_id": "ANA-ONT-029",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "采购",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "采购下单活动有哪些业务规则",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "rules",
+    "activity_code": "AC-001",
+    "rule_codes": [
+      "BR-001",
+      "BR-002",
+      "BR-004"
+    ],
+    "definition_contains": "is_deleted = 1"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "rules"
+  ]
+}

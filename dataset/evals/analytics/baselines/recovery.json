@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "kind": "baseline",
+  "suite": "recovery",
+  "provider": "team",
+  "summary": {
+    "cases": 29,
+    "selected_cases": 29,
+    "passed": 29,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "p0_cases": 12,
+    "p0_passed": 12,
+    "known_gap_cases": 0,
+    "known_gap_xfail": 0,
+    "known_gap_xpass": 0,
+    "metric_sample_sizes": {
+      "intent_accuracy": 0,
+      "tool_route_accuracy": 0,
+      "query_contract_accuracy": 0,
+      "exact_numeric_accuracy": 0,
+      "metric_scope_accuracy": 0,
+      "unsupported_number_rate": 0,
+      "unsupported_causal_claim_rate": 0,
+      "evidence_coverage": 0,
+      "proxy_disclosure_rate": 0,
+      "chart_selection_accuracy": 0,
+      "multi_turn_context_accuracy": 0,
+      "recovery_success_rate": 29,
+      "cross_session_leak_rate": 0,
+      "answer_schema_valid_rate": 0,
+      "repeat_stability": 0
+    },
+    "duration_ms": 319.758,
+    "metrics": {
+      "intent_accuracy": null,
+      "tool_route_accuracy": null,
+      "query_contract_accuracy": null,
+      "exact_numeric_accuracy": null,
+      "metric_scope_accuracy": null,
+      "unsupported_number_rate": null,
+      "unsupported_causal_claim_rate": null,
+      "evidence_coverage": null,
+      "proxy_disclosure_rate": null,
+      "chart_selection_accuracy": null,
+      "multi_turn_context_accuracy": null,
+      "recovery_success_rate": 1.0,
+      "cross_session_leak_rate": null,
+      "answer_schema_valid_rate": null,
+      "repeat_stability": null
+    }
+  },
+  "gates": [
+    {
+      "name": "p0_all_pass",
+      "ok": true
+    },
+    {
+      "name": "exact_numeric_accuracy",
+      "ok": true
+    },
+    {
+      "name": "answer_schema_valid_rate",
+      "ok": true
+    },
+    {
+      "name": "evidence_coverage",
+      "ok": true
+    },
+    {
+      "name": "cross_session_leak_rate",
+      "ok": true
+    },
+    {
+      "name": "unsupported_number_rate",
+      "ok": true
+    },
+    {
+      "name": "unsupported_causal_claim_rate",
+      "ok": true
+    },
+    {
+      "name": "proxy_disclosure_rate",
+      "ok": true
+    }
+  ],
+  "distributions": {
+    "category": {
+      "failure_recovery": 29
+    },
+    "priority": {
+      "P0": 12,
+      "P1": 17
+    },
+    "evaluator": {
+      "admission": 11,
+      "recovery_state": 18
+    }
+  },
+  "known_gaps": [],
+  "cases": [
+    {
+      "case_id": "ANA-CONC-001",
+      "status": "pass",
+      "duration_ms": 4.682
+    },
+    {
+      "case_id": "ANA-CONC-002",
+      "status": "pass",
+      "duration_ms": 0.024
+    },
+    {
+      "case_id": "ANA-CONC-003",
+      "status": "pass",
+      "duration_ms": 0.018
+    },
+    {
+      "case_id": "ANA-CONC-004",
+      "status": "pass",
+      "duration_ms": 0.011
+    },
+    {
+      "case_id": "ANA-CONC-005",
+      "status": "pass",
+      "duration_ms": 205.085
+    },
+    {
+      "case_id": "ANA-CONC-006",
+      "status": "pass",
+      "duration_ms": 105.204
+    },
+    {
+      "case_id": "ANA-CONC-007",
+      "status": "pass",
+      "duration_ms": 0.139
+    },
+    {
+      "case_id": "ANA-CONC-008",
+      "status": "pass",
+      "duration_ms": 0.026
+    },
+    {
+      "case_id": "ANA-CONC-009",
+      "status": "pass",
+      "duration_ms": 0.051
+    },
+    {
+      "case_id": "ANA-CONC-010",
+      "status": "pass",
+      "duration_ms": 0.028
+    },
+    {
+      "case_id": "ANA-CONC-011",
+      "status": "pass",
+      "duration_ms": 0.025
+    },
+    {
+      "case_id": "ANA-RECOV-001",
+      "status": "pass",
+      "duration_ms": 3.559
+    },
+    {
+      "case_id": "ANA-RECOV-002",
+      "status": "pass",
+      "duration_ms": 0.052
+    },
+    {
+      "case_id": "ANA-RECOV-003",
+      "status": "pass",
+      "duration_ms": 0.057
+    },
+    {
+      "case_id": "ANA-RECOV-004",
+      "status": "pass",
+      "duration_ms": 0.05
+    },
+    {
+      "case_id": "ANA-RECOV-005",
+      "status": "pass",
+      "duration_ms": 0.042
+    },
+    {
+      "case_id": "ANA-RECOV-006",
+      "status": "pass",
+      "duration_ms": 0.041
+    },
+    {
+      "case_id": "ANA-RECOV-007",
+      "status": "pass",
+      "duration_ms": 0.062
+    },
+    {
+      "case_id": "ANA-RECOV-008",
+      "status": "pass",
+      "duration_ms": 0.06
+    },
+    {
+      "case_id": "ANA-RECOV-009",
+      "status": "pass",
+      "duration_ms": 0.056
+    },
+    {
+      "case_id": "ANA-RECOV-010",
+      "status": "pass",
+      "duration_ms": 0.043
+    },
+    {
+      "case_id": "ANA-RECOV-011",
+      "status": "pass",
+      "duration_ms": 0.065
+    },
+    {
+      "case_id": "ANA-RECOV-012",
+      "status": "pass",
+      "duration_ms": 0.079
+    },
+    {
+      "case_id": "ANA-RECOV-013",
+      "status": "pass",
+      "duration_ms": 0.06
+    },
+    {
+      "case_id": "ANA-RECOV-014",
+      "status": "pass",
+      "duration_ms": 0.03
+    },
+    {
+      "case_id": "ANA-RECOV-015",
+      "status": "pass",
+      "duration_ms": 0.06
+    },
+    {
+      "case_id": "ANA-RECOV-016",
+      "status": "pass",
+      "duration_ms": 0.059
+    },
+    {
+      "case_id": "ANA-RECOV-017",
+      "status": "pass",
+      "duration_ms": 0.047
+    },
+    {
+      "case_id": "ANA-RECOV-018",
+      "status": "pass",
+      "duration_ms": 0.043
+    }
+  ]
+}

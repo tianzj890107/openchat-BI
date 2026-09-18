@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-P2-003",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "2025年采购单价的简单平均值是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT SUM(unit_price) / COUNT(*) FROM fact_purchase_order WHERE is_deleted = 0"
+  },
+  "expected": {
+    "value": 123.6,
+    "tolerance": 1e-06,
+    "unit": "元/件",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 0"
+    ],
+    "scope_note": "简单平均：单价合计 ÷ 订单行数，NULL 单价不参与求和但仍计入行数。",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "p2",
+    "simple_average"
+  ]
+}

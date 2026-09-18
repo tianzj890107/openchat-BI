@@ -1,0 +1,63 @@
+{
+  "case_id": "ANA-DIAG-007",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "diagnosis"
+  ],
+  "domain": "质量",
+  "category": "diagnosis",
+  "evaluator": "policy",
+  "question": "缺陷率为什么上升，是来料问题还是产线问题",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "quality.db"
+  },
+  "expected": {
+    "allowed_tools": [
+      "Ontology-MetricQuery",
+      "Ontology-FactQuery",
+      "Ontology-SemanticQuery",
+      "AskUser"
+    ],
+    "intent_level": "L3",
+    "policy": {
+      "mode": "DIAGNOSTIC_ANALYSIS",
+      "reason_code": "DIAGNOSTIC_REQUEST",
+      "next_step": "QUERY_DORIS",
+      "required_tools": [
+        "Ontology-MetricQuery"
+      ],
+      "evidence_required": true,
+      "needs_human": false
+    },
+    "wants_root_cause": true,
+    "wants_action": false
+  },
+  "forbidden": [
+    "unsupported_causal_claim",
+    "guessing_between_conflicting_evidence"
+  ],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "policy_decision",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "diagnosis",
+    "L3",
+    "conflicting_evidence"
+  ],
+  "notes": "两类候选因素证据可能冲突，必须说明无法唯一归因，而不是硬选一个。",
+  "answer_requirements": [
+    "must_state_limitations"
+  ]
+}

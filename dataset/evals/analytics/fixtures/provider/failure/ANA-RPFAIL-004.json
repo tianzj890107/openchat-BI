@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPFAIL-004",
+  "turns": [
+    {
+      "user": "为什么采购金额下降",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "采购金额",
+            "columns": [
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                25030
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "本轮只取到采购金额合计 25,030.00 元，没有任何环比或分维度证据，证据不足，无法给出下降原因；建议先补充按月与按供应商的取数再归因。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

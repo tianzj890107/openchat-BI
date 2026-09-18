@@ -1,0 +1,93 @@
+{
+  "case_id": "ANA-TREND-003",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "销售",
+  "category": "trend",
+  "evaluator": "sql",
+  "question": "销售额的月度趋势",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "sales.db",
+    "sql": "SELECT order_month, SUM(amount_cny) FROM fact_sales WHERE is_deleted = 0 AND currency = 'CNY' GROUP BY order_month ORDER BY order_month"
+  },
+  "expected": {
+    "value": [
+      124000,
+      102000,
+      111000,
+      152000,
+      49000,
+      67600
+    ],
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "MT-005",
+    "dimensions": [
+      "order_month"
+    ],
+    "filters": [
+      "is_deleted = 0",
+      "currency = 'CNY'"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "sales.db",
+      "metric": "MT-005",
+      "filters": [
+        "is_deleted = 0",
+        "currency = 'CNY'"
+      ],
+      "dimensions": [
+        "order_month"
+      ]
+    },
+    "rows": [
+      [
+        "2025-01",
+        124000
+      ],
+      [
+        "2025-02",
+        102000
+      ],
+      [
+        "2025-03",
+        111000
+      ],
+      [
+        "2025-04",
+        152000
+      ],
+      [
+        "2025-05",
+        49000
+      ],
+      [
+        "2025-06",
+        67600
+      ]
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "trend",
+    "timeseries"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-P2-019",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression"
+  ],
+  "domain": "质量",
+  "category": "anomaly",
+  "evaluator": "sql",
+  "question": "缺陷数为空的批次其缺陷数是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "quality.db",
+    "sql": "SELECT defect_qty FROM fact_quality_batch WHERE batch_no = 'B-0010'"
+  },
+  "expected": {
+    "value": null,
+    "tolerance": 1e-06,
+    "unit": "",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "batch_no = 'B-0010'"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "quality.db",
+      "metric": "",
+      "filters": [
+        "batch_no = 'B-0010'"
+      ],
+      "dimensions": []
+    },
+    "value_is_null": true
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "p2",
+    "null_handling"
+  ]
+}

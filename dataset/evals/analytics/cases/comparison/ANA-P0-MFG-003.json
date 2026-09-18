@@ -1,0 +1,48 @@
+{
+  "case_id": "ANA-P0-MFG-003",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "regression",
+    "recorded-provider",
+    "smoke"
+  ],
+  "domain": "制造",
+  "category": "comparison",
+  "evaluator": "recorded_provider",
+  "question": "报废率最高的是哪个月",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/p0/ANA-P0-MFG-003.json",
+    "db": "manufacturing.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "value": 0.03409091,
+    "tolerance": 1e-06
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "p0",
+    "production_chain"
+  ],
+  "notes": "P0：报废率分母必须与实际产量同口径，且只能引用本轮查询到的月份。"
+}

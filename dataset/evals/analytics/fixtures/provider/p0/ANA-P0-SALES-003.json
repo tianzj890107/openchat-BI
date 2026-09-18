@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-SALES-003",
+  "turns": [
+    {
+      "user": "主机产品线的销售额是多少",
+      "db": "sales.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT p.product_line, SUM(f.amount_cny) AS v FROM fact_sales f JOIN dim_product p ON f.product_id = p.product_id WHERE f.is_deleted = 0 AND f.currency = 'CNY' AND p.product_line = '主机' GROUP BY p.product_line",
+            "query_description": "主机产品线的销售额是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "主机产品线销售额",
+            "columns": [
+              {
+                "key": "product_line",
+                "label": "产品线"
+              },
+              {
+                "key": "v",
+                "label": "销售额"
+              }
+            ],
+            "rows": [
+              [
+                "主机",
+                530000
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "主机产品线销售额 530,000.00 元，已按产品线与币种过滤。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

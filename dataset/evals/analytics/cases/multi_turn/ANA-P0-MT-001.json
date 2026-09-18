@@ -1,0 +1,63 @@
+{
+  "case_id": "ANA-P0-MT-001",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "regression",
+    "recorded-provider",
+    "smoke"
+  ],
+  "domain": "采购",
+  "category": "multi_turn",
+  "evaluator": "recorded_provider",
+  "question": "2025年4月采购金额是多少",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "2025年4月采购金额是多少"
+    },
+    {
+      "role": "assistant",
+      "content": "(上一轮已给出指标与口径，见 transcript)"
+    }
+  ],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/p0/ANA-P0-MT-001.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "TableGenerate",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "value": 4750,
+    "tolerance": 1e-06
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "p0",
+    "production_chain"
+  ],
+  "notes": "P0：多轮范围切换必须重新取数，不得继承上一轮金额。",
+  "answer_requirements": [
+    "必须先按 4 月口径回答第一轮，再对 3 月重新取数",
+    "不得把 4 月金额直接当作 3 月金额"
+  ]
+}

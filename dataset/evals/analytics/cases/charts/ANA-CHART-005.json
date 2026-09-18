@@ -1,0 +1,53 @@
+{
+  "case_id": "ANA-CHART-005",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "charts"
+  ],
+  "domain": "采购",
+  "category": "charts",
+  "evaluator": "chart_validate",
+  "question": "横向条形图展示供应商金额",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "chart_params": {
+      "chart_type": "horizontal_bar",
+      "title": "供应商金额",
+      "x_axis": [
+        "华东金属",
+        "华北电子"
+      ],
+      "series": [
+        {
+          "name": "金额",
+          "data": [
+            8600,
+            7880
+          ]
+        }
+      ]
+    }
+  },
+  "expected": {
+    "valid": true,
+    "tool_name": "ChartGenerate"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "chart_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "charts",
+    "horizontal_bar"
+  ]
+}

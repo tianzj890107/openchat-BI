@@ -1,0 +1,53 @@
+{
+  "case_id": "ANA-METRIC-017",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "库存",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "2025年3月库存快照缺失吗",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "inventory.db",
+    "sql": "SELECT COUNT(*) FROM fact_inventory_snapshot WHERE snapshot_month = '2025-03'"
+  },
+  "expected": {
+    "value": 0,
+    "tolerance": 1e-06,
+    "unit": "行",
+    "metric": "",
+    "dimensions": [],
+    "filters": [],
+    "scope_note": "2025-03 无快照：必须说明缺月，不得补 0 绘图。",
+    "query_contract": {
+      "db": "inventory.db",
+      "metric": "",
+      "filters": [],
+      "dimensions": []
+    }
+  },
+  "forbidden": [
+    "fill_missing_month_with_zero",
+    "fabricated_month"
+  ],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "missing_month"
+  ]
+}

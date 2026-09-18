@@ -1,0 +1,63 @@
+{
+  "case_id": "ANA-FACT-037",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression"
+  ],
+  "domain": "销售",
+  "category": "facts",
+  "evaluator": "sql",
+  "question": "备件产品线的销售额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "sales.db",
+    "sql": "SELECT SUM(f.amount_cny) FROM fact_sales f JOIN dim_product p ON f.product_id = p.product_id WHERE f.is_deleted = 0 AND f.currency = 'CNY' AND p.product_line = '备件'"
+  },
+  "expected": {
+    "value": 75600,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "MT-005",
+    "dimensions": [
+      "product_line"
+    ],
+    "filters": [
+      "f.is_deleted = 0",
+      "f.currency = 'CNY'",
+      "product_line = '备件'"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "sales.db",
+      "metric": "MT-005",
+      "filters": [
+        "f.is_deleted = 0",
+        "f.currency = 'CNY'",
+        "product_line = '备件'"
+      ],
+      "dimensions": [
+        "product_line"
+      ]
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "fact",
+    "product_scope"
+  ]
+}

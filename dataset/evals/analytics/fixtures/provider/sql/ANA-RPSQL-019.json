@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-019",
+  "turns": [
+    {
+      "user": "2025年收入预算执行率是多少",
+      "db": "finance.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "2025年收入预算执行率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT (SELECT SUM(credit) FROM fact_gl_entry JOIN dim_account ON fact_gl_entry.account_id = dim_account.account_id WHERE fact_gl_entry.is_deleted = 0 AND fact_gl_entry.currency = 'CNY' AND dim_account.account_type = '收入' AND fact_gl_entry.period LIKE '2025%') / (SELECT SUM(budget_amount) FROM fact_budget WHERE account_id = 1)",
+            "query_description": "2025年收入预算执行率是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025年收入预算执行率是多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                0.97478992
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "收入预算执行率 97.48%（实际收入 ÷ 收入预算）。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

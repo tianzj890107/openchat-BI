@@ -1,0 +1,87 @@
+{
+  "case_id": "ANA-ISO-001",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "adversarial"
+  ],
+  "domain": "通用",
+  "category": "adversarial",
+  "evaluator": "session_isolation",
+  "question": "另一个存储根目录不得读到本目录的会话",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "script": [
+      {
+        "op": "new_store",
+        "root": "A",
+        "as": "s1"
+      },
+      {
+        "op": "save",
+        "store": "s1",
+        "mode": "data",
+        "title": "采购金额分析",
+        "question": "2025年6月采购金额是多少",
+        "as": "c1"
+      },
+      {
+        "op": "get",
+        "store": "s1",
+        "cid": "c1",
+        "expect_present": true
+      },
+      {
+        "op": "new_store",
+        "root": "B",
+        "as": "s2"
+      },
+      {
+        "op": "get",
+        "store": "s2",
+        "cid": "c1",
+        "expect_present": false
+      },
+      {
+        "op": "list",
+        "store": "s2",
+        "expect_count": 0
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 2,
+        "present": true
+      },
+      {
+        "after": 4,
+        "present": false
+      },
+      {
+        "after": 5,
+        "count": 0
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "conversation_isolation"
+  ],
+  "scoring": {},
+  "tags": [
+    "isolation",
+    "cross_session"
+  ],
+  "summary": "跨会话读取"
+}

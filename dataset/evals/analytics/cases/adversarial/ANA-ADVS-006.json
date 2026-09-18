@@ -1,0 +1,36 @@
+{
+  "case_id": "ANA-ADVS-006",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "adversarial"
+  ],
+  "domain": "通用",
+  "category": "adversarial",
+  "evaluator": "sql_guard",
+  "question": "UPDATE 必须被拒绝",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "sql": "UPDATE fact_purchase_order SET amount = 0"
+  },
+  "expected": {
+    "error_contains": "only SELECT / WITH / PRAGMA / EXPLAIN are permitted"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "sql_guard"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql_guard",
+    "write"
+  ]
+}

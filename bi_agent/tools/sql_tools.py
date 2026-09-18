@@ -40,7 +40,11 @@ DEFAULT_DORIS_PASSWORD = ""
 # e.g. `ontology_demometaerp_scm_po.poheader`. Overridable via the 数据源设置 UI or
 # the DORIS_DATABASE env var; falls back to the schema in the JDBC URL.
 DEFAULT_DORIS_DATABASE = "ontology_demometaerp_scm_po"
-DEFAULT_DORIS_API_URL = "http://172.16.5.181:30834/agent/doris/query"
+# The Doris HTTP endpoint is environment-specific (PDT vs demo2) and must be
+# injected through DORIS_API_URL. There is deliberately no baked-in default:
+# a missing value must fail fast instead of silently querying another
+# environment's ontology gateway.
+DEFAULT_DORIS_API_URL = ""
 _DORIS_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 MAX_RESULT_ROWS = 1_000
 

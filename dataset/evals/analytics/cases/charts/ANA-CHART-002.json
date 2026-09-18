@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-CHART-002",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "charts"
+  ],
+  "domain": "采购",
+  "category": "charts",
+  "evaluator": "chart_validate",
+  "question": "各事业部采购金额对比",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "chart_params": {
+      "chart_type": "bar",
+      "title": "各事业部采购金额",
+      "x_axis": [
+        "事业部A",
+        "事业部B"
+      ],
+      "series": [
+        {
+          "name": "采购金额",
+          "data": [
+            12150,
+            4420
+          ]
+        }
+      ]
+    }
+  },
+  "expected": {
+    "valid": true,
+    "tool_name": "ChartGenerate"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "chart_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "charts",
+    "compare",
+    "bar"
+  ]
+}

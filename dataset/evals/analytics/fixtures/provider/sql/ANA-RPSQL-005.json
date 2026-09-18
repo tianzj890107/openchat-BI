@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-005",
+  "turns": [
+    {
+      "user": "事业部A的采购金额是多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "事业部A的采购金额是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(f.amount) FROM fact_purchase_order f JOIN dim_org o ON f.org_id = o.org_id WHERE f.is_deleted = 0 AND o.business_unit = '事业部A'",
+            "query_description": "事业部A的采购金额是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "事业部A的采购金额是多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                19840
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "事业部A 的采购金额为 19,840.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

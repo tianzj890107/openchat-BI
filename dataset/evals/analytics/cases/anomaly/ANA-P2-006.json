@@ -1,0 +1,56 @@
+{
+  "case_id": "ANA-P2-006",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "anomaly",
+  "evaluator": "sql",
+  "question": "金额为空的采购订单有多少行",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT COUNT(*) FROM fact_purchase_order WHERE is_deleted = 0 AND amount IS NULL"
+  },
+  "expected": {
+    "value": 1,
+    "tolerance": 1e-06,
+    "unit": "行",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 0",
+      "amount IS NULL"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 0",
+        "amount IS NULL"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "p2",
+    "null_handling"
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "case_id": "ANA-INTENT-071",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "intent",
+  "evaluator": "policy",
+  "question": "有哪些物料分类",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {},
+  "expected": {
+    "allowed_tools": [
+      "Ontology-MetricQuery",
+      "Ontology-FactQuery",
+      "Ontology-SemanticQuery",
+      "AskUser"
+    ],
+    "intent_level": "L1",
+    "policy": {
+      "mode": "FACT_QUERY",
+      "reason_code": "FACT_REQUEST_RESOLVED",
+      "next_step": "QUERY_DORIS",
+      "required_tools": [
+        "Ontology-MetricQuery"
+      ],
+      "evidence_required": true,
+      "needs_human": false
+    },
+    "wants_root_cause": false,
+    "wants_action": false
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "policy_decision"
+  ],
+  "scoring": {},
+  "tags": [
+    "intent",
+    "L1",
+    "list_query"
+  ],
+  "known_gap": true,
+  "gap_note": "列表型问法『有哪些…』未被 _FACT_SIGNAL_RE 覆盖，当前落到 GENERAL_RESPONSE，不会查询数据。",
+  "gap_meta": {
+    "owner": "ai-team",
+    "introduced_at": "2026-09-17",
+    "target_fix_version": "v0.1.10",
+    "severity": "medium",
+    "summary": "『有哪些…』列表型问法未触发取数",
+    "source_issue": "a1134c7 (analytics golden set v1)"
+  }
+}

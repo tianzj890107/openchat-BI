@@ -1,0 +1,41 @@
+{
+  "case_id": "ANA-ONT-045",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "制造",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "产线主数据的物理表是哪张",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "logical_entity",
+    "code": "LE-009",
+    "name": "产线主数据",
+    "physical_table": "dim_work_center"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "logical_entity",
+    "manufacturing"
+  ]
+}

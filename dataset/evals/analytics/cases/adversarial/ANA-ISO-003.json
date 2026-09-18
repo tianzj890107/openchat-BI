@@ -1,0 +1,94 @@
+{
+  "case_id": "ANA-ISO-003",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "adversarial"
+  ],
+  "domain": "通用",
+  "category": "adversarial",
+  "evaluator": "session_isolation",
+  "question": "报告模式与数据模式必须互相隔离",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "script": [
+      {
+        "op": "new_store",
+        "root": "A",
+        "as": "s1"
+      },
+      {
+        "op": "save",
+        "store": "s1",
+        "mode": "data",
+        "title": "数据会话",
+        "question": "2025年采购金额是多少",
+        "as": "c1"
+      },
+      {
+        "op": "save",
+        "store": "s1",
+        "mode": "report",
+        "title": "报告会话",
+        "question": "生成采购报告",
+        "as": "c2"
+      },
+      {
+        "op": "list",
+        "store": "s1",
+        "mode": "data",
+        "expect_count": 1
+      },
+      {
+        "op": "list",
+        "store": "s1",
+        "mode": "report",
+        "expect_count": 1
+      },
+      {
+        "op": "save",
+        "store": "s1",
+        "mode": "report",
+        "title": "改写数据会话",
+        "question": "x",
+        "cid": "c1",
+        "expect_new_id": true
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 3,
+        "count": 1
+      },
+      {
+        "after": 4,
+        "count": 1
+      },
+      {
+        "after": 5,
+        "new_id": true
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "conversation_isolation"
+  ],
+  "scoring": {},
+  "tags": [
+    "isolation",
+    "mode_isolation"
+  ],
+  "summary": "模式隔离",
+  "notes": "跨模式用同一 cid 保存必须新建记录，不得覆盖另一个模式的会话。"
+}

@@ -1,0 +1,77 @@
+{
+  "case_id": "ANA-TREND-006",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "质量",
+  "category": "trend",
+  "evaluator": "sql",
+  "question": "停机时长的月度分布",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "quality.db",
+    "sql": "SELECT inspect_month, SUM(downtime_minutes) FROM fact_quality_batch GROUP BY inspect_month ORDER BY inspect_month"
+  },
+  "expected": {
+    "value": [
+      240,
+      75,
+      110,
+      315
+    ],
+    "tolerance": 1e-06,
+    "unit": "分钟",
+    "metric": "",
+    "dimensions": [
+      "inspect_month"
+    ],
+    "filters": [],
+    "scope_note": "",
+    "query_contract": {
+      "db": "quality.db",
+      "metric": "",
+      "filters": [],
+      "dimensions": [
+        "inspect_month"
+      ]
+    },
+    "rows": [
+      [
+        "2025-01",
+        240
+      ],
+      [
+        "2025-02",
+        75
+      ],
+      [
+        "2025-03",
+        110
+      ],
+      [
+        "2025-04",
+        315
+      ]
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "trend",
+    "timeseries"
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-METRIC-008",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "采购单价的简单平均值是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT AVG(unit_price) FROM fact_purchase_order WHERE is_deleted = 0"
+  },
+  "expected": {
+    "value": 123.6,
+    "tolerance": 0.0001,
+    "unit": "元/单位",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 0"
+    ],
+    "scope_note": "简单平均按 26 行等权（含金额为空但单价存在的行）；与加权平均口径不同。",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "average"
+  ]
+}

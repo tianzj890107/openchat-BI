@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-005",
+  "turns": [
+    {
+      "user": "金额是什么意思",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-TermDisambiguate",
+          "input": {
+            "term": "金额"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "在本体里“金额”命中术语采购金额，指采购订单含税金额合计。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

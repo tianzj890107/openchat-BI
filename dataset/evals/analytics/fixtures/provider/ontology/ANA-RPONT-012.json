@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-012",
+  "turns": [
+    {
+      "user": "采购金额的口径和它对应的物理表",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "MetricCalculation",
+          "input": {
+            "metric": "采购金额"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-EntityDescribe",
+          "input": {
+            "entity": "采购订单头"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "采购金额 [MT-001] 的 SQL 为 SUM(amount) FROM fact_purchase_order，对应逻辑实体采购订单头 [LE-001]。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

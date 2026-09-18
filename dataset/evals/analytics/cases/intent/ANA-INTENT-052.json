@@ -1,0 +1,63 @@
+{
+  "case_id": "ANA-INTENT-052",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "intent",
+  "evaluator": "policy",
+  "question": "针对采购金额下降应该采取什么行动",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {},
+  "expected": {
+    "allowed_tools": [
+      "Ontology-MetricQuery",
+      "Ontology-FactQuery",
+      "Ontology-SemanticQuery",
+      "AskUser"
+    ],
+    "intent_level": "L4",
+    "policy": {
+      "mode": "DIAGNOSTIC_ANALYSIS",
+      "reason_code": "DIAGNOSTIC_REQUEST",
+      "next_step": "QUERY_DORIS",
+      "required_tools": [
+        "Ontology-MetricQuery"
+      ],
+      "evidence_required": true,
+      "needs_human": false
+    },
+    "wants_root_cause": false,
+    "wants_action": true
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "policy_decision"
+  ],
+  "scoring": {},
+  "tags": [
+    "intent",
+    "L4",
+    "action"
+  ],
+  "known_gap": true,
+  "gap_note": "当前实现对『应该采取什么行动』不置 wants_action，行动类措辞覆盖不全（_ACTION_INTENT_RE 未含『采取什么行动』）。",
+  "gap_meta": {
+    "owner": "ai-team",
+    "introduced_at": "2026-09-17",
+    "target_fix_version": "v0.1.10",
+    "severity": "medium",
+    "summary": "『采取什么行动』未置 wants_action",
+    "source_issue": "a1134c7 (analytics golden set v1)"
+  }
+}

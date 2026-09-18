@@ -1,0 +1,64 @@
+{
+  "case_id": "ANA-RPCHART-012",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "库存",
+  "category": "charts",
+  "evaluator": "recorded_provider",
+  "question": "画库存月度趋势，缺月不补零",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/chart/ANA-RPCHART-012.json",
+    "db": "inventory.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "TableGenerate",
+      "ChartGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "final_text_contains": [],
+    "tool_results": {
+      "ChartGenerate": {
+        "contains": [
+          "Chart generated"
+        ]
+      }
+    },
+    "tool_inputs": {
+      "ChartGenerate": {
+        "input_absent": [
+          "2025-03"
+        ]
+      }
+    },
+    "chart_files": {
+      "min_count": 1
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "chart",
+    "end_to_end"
+  ],
+  "notes": "补零与不补零是两种业务口径，必须在图上可区分。"
+}

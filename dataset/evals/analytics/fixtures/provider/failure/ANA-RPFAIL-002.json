@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPFAIL-002",
+  "turns": [
+    {
+      "user": "帮我查一下",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "AskUser",
+          "input": {
+            "question": "请选择要查询的时间范围",
+            "options": [
+              "本月",
+              "上月",
+              "本季度"
+            ]
+          }
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

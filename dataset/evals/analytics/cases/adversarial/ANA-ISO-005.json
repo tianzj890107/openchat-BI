@@ -1,0 +1,86 @@
+{
+  "case_id": "ANA-ISO-005",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "adversarial"
+  ],
+  "domain": "通用",
+  "category": "adversarial",
+  "evaluator": "session_isolation",
+  "question": "同一目录的两个 store 实例必须看到同一份索引",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "script": [
+      {
+        "op": "new_store",
+        "root": "A",
+        "as": "s1"
+      },
+      {
+        "op": "new_store",
+        "root": "A",
+        "as": "s2"
+      },
+      {
+        "op": "save",
+        "store": "s1",
+        "mode": "data",
+        "title": "t",
+        "question": "2025年6月采购金额是多少",
+        "as": "c1"
+      },
+      {
+        "op": "list",
+        "store": "s2",
+        "expect_count": 1
+      },
+      {
+        "op": "get",
+        "store": "s2",
+        "cid": "c1",
+        "expect_present": true
+      },
+      {
+        "op": "title",
+        "store": "s2",
+        "cid": "c1",
+        "expect_contains": "2025年6月采购金额"
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 3,
+        "count": 1
+      },
+      {
+        "after": 4,
+        "present": true
+      },
+      {
+        "after": 5,
+        "title_contains": "2025年6月采购金额"
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "conversation_isolation"
+  ],
+  "scoring": {},
+  "tags": [
+    "isolation",
+    "shared_root"
+  ],
+  "summary": "同目录一致"
+}

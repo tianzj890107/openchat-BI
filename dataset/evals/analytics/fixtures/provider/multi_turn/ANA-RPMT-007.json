@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPMT-007",
+  "turns": [
+    {
+      "user": "2025年营业收入合计是多少",
+      "db": "finance.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(credit) AS v FROM fact_gl_entry JOIN dim_account ON fact_gl_entry.account_id = dim_account.account_id WHERE fact_gl_entry.is_deleted = 0 AND fact_gl_entry.currency = 'CNY' AND dim_account.account_type = '收入' AND fact_gl_entry.period LIKE '2025%'",
+            "query_description": "2025年营业收入合计是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025 年营业收入",
+            "columns": [
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                2320000
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年营业收入合计 2,320,000.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "user": "换成毛利率",
+      "db": "finance.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT (SUM(CASE WHEN dim_account.account_type = '收入' THEN credit ELSE 0 END) - SUM(CASE WHEN dim_account.account_type = '成本' THEN debit ELSE 0 END)) / SUM(CASE WHEN dim_account.account_type = '收入' THEN credit ELSE 0 END) AS v FROM fact_gl_entry JOIN dim_account ON fact_gl_entry.account_id = dim_account.account_id WHERE fact_gl_entry.is_deleted = 0 AND fact_gl_entry.currency = 'CNY' AND fact_gl_entry.period LIKE '2025%'",
+            "query_description": "换成毛利率"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025 年毛利率",
+            "columns": [
+              {
+                "key": "v",
+                "label": "毛利率"
+              }
+            ],
+            "rows": [
+              [
+                0.38793103
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年毛利率 38.79%，指标换成毛利率，时间与币种口径保留。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

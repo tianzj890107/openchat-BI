@@ -1,0 +1,50 @@
+{
+  "case_id": "ANA-METRIC-018",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "库存",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "库存快照覆盖了几个不同月份",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "inventory.db",
+    "sql": "SELECT COUNT(DISTINCT snapshot_month) FROM fact_inventory_snapshot"
+  },
+  "expected": {
+    "value": 4,
+    "tolerance": 1e-06,
+    "unit": "个月",
+    "metric": "",
+    "dimensions": [],
+    "filters": [],
+    "scope_note": "1、2、4、5 月共 4 个自然月加空缺的 3 月，覆盖月份数为 5。",
+    "query_contract": {
+      "db": "inventory.db",
+      "metric": "",
+      "filters": [],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "scope",
+    "coverage"
+  ]
+}

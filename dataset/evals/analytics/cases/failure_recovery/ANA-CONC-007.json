@@ -1,0 +1,93 @@
+{
+  "case_id": "ANA-CONC-007",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recovery"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "admission",
+  "question": "释放名额后排队请求可以按 FIFO 获得准入",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "env": {
+      "CHATBI_MAX_ACTIVE_TURNS": "1",
+      "CHATBI_MAX_ACTIVE_PER_PRINCIPAL": "1",
+      "CHATBI_MAX_WAITING_TURNS": "4",
+      "CHATBI_ADMISSION_WAIT_SECONDS": "3"
+    },
+    "principals": {
+      "p1": [
+        "t",
+        "u1",
+        "s1"
+      ],
+      "p2": [
+        "t",
+        "u2",
+        "s2"
+      ]
+    },
+    "script": [
+      {
+        "op": "acquire",
+        "principal": "p1",
+        "as": "t1"
+      },
+      {
+        "op": "acquire_async",
+        "principal": "p2",
+        "as": "w1"
+      },
+      {
+        "op": "release",
+        "ticket": "t1"
+      },
+      {
+        "op": "join",
+        "as": "w1",
+        "expect_granted": true
+      },
+      {
+        "op": "snapshot_after_release_all",
+        "expect": {
+          "active": 0,
+          "waiting": 0
+        }
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 3,
+        "granted": true
+      },
+      {
+        "after": 4,
+        "snapshot": {
+          "active": 0,
+          "waiting": 0
+        }
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "admission_outcome"
+  ],
+  "scoring": {},
+  "tags": [
+    "admission",
+    "fifo"
+  ]
+}

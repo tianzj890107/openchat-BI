@@ -1,0 +1,48 @@
+{
+  "case_id": "ANA-P0-MFG-001",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "regression",
+    "recorded-provider",
+    "smoke",
+    "live-canary"
+  ],
+  "domain": "制造",
+  "category": "facts",
+  "evaluator": "recorded_provider",
+  "question": "2025年实际产量合计是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/p0/ANA-P0-MFG-001.json",
+    "db": "manufacturing.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "value": 1488,
+    "tolerance": 1e-06
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "p0",
+    "production_chain"
+  ]
+}

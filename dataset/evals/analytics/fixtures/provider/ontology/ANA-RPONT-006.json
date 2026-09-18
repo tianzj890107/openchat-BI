@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPONT-006",
+  "turns": [
+    {
+      "user": "库里有哪些表",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "ListTables",
+          "input": {}
+        },
+        {
+          "type": "text_delta",
+          "text": "当前数据源有 4 张表：dim_material、dim_org、dim_supplier、fact_purchase_order。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

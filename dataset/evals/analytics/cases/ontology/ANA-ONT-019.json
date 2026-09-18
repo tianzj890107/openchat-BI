@@ -1,0 +1,41 @@
+{
+  "case_id": "ANA-ONT-019",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "质量",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "缺陷率指标分母为零时怎么处理",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "metric",
+    "code": "MT-006",
+    "filter_condition": "inspected_qty > 0",
+    "scope_contains": "分母为 0"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "metric",
+    "zero_denominator"
+  ]
+}

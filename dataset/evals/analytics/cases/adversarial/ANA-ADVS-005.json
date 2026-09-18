@@ -1,0 +1,37 @@
+{
+  "case_id": "ANA-ADVS-005",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression",
+    "adversarial"
+  ],
+  "domain": "通用",
+  "category": "adversarial",
+  "evaluator": "sql_guard",
+  "question": "DROP 必须被拒绝",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "sql": "DROP TABLE fact_purchase_order"
+  },
+  "expected": {
+    "error_contains": "only SELECT / WITH / PRAGMA / EXPLAIN are permitted"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "sql_guard"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql_guard",
+    "ddl"
+  ]
+}

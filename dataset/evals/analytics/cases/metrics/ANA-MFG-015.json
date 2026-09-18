@@ -1,0 +1,54 @@
+{
+  "case_id": "ANA-MFG-015",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "制造",
+  "category": "metrics",
+  "evaluator": "sql",
+  "question": "2025年报废率是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "manufacturing.db",
+    "sql": "SELECT SUM(scrap_qty) * 1.0 / SUM(actual_qty) FROM fact_production_order JOIN dim_work_center ON fact_production_order.work_center_id = dim_work_center.work_center_id WHERE fact_production_order.is_deleted = 0"
+  },
+  "expected": {
+    "value": 0.02083333,
+    "tolerance": 1e-06,
+    "unit": "比率",
+    "metric": "MT-010",
+    "dimensions": [],
+    "filters": [
+      "fact_production_order.is_deleted = 0"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "manufacturing.db",
+      "metric": "MT-010",
+      "filters": [
+        "fact_production_order.is_deleted = 0"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "ratio",
+    "manufacturing"
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-013",
+  "turns": [
+    {
+      "user": "2025年检验总数是多少",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "2025年检验总数是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(inspected_qty) FROM fact_quality_batch",
+            "query_description": "2025年检验总数是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025年检验总数是多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                8900
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "检验总数 8,900 件。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

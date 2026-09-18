@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-CHART-016",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "charts"
+  ],
+  "domain": "采购",
+  "category": "charts",
+  "evaluator": "chart_policy",
+  "question": "列出各基地采购金额分布",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "chart_params": {
+      "chart_type": "bar",
+      "title": "采购金额分布",
+      "x_axis": [
+        "华东",
+        "华北"
+      ],
+      "series": [
+        {
+          "name": "金额",
+          "data": [
+            8600,
+            7880
+          ]
+        }
+      ]
+    }
+  },
+  "expected": {
+    "skip": false,
+    "tool_name": "ChartGenerate"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "chart_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "charts",
+    "list_intent",
+    "analytic_override"
+  ],
+  "notes": "含分析词（分布/金额）时列表话术仍然是分析型问题，不得抑制图表。"
+}

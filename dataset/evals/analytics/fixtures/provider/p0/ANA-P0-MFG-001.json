@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-P0-MFG-001",
+  "turns": [
+    {
+      "user": "2025年实际产量合计是多少",
+      "db": "manufacturing.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(actual_qty) AS v FROM fact_production_order WHERE is_deleted = 0 AND actual_qty IS NOT NULL",
+            "query_description": "2025年实际产量合计是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "实际产量",
+            "columns": [
+              {
+                "key": "v",
+                "label": "产量"
+              }
+            ],
+            "rows": [
+              [
+                1488
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年实际产量合计 1,488，未报工工单不计入。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

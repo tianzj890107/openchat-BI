@@ -1,0 +1,67 @@
+{
+  "case_id": "ANA-CHART-012",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "charts"
+  ],
+  "domain": "采购",
+  "category": "charts",
+  "evaluator": "chart_validate",
+  "question": "把人民币和美元放同一张图对比",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "chart_params": {
+      "chart_type": "bar",
+      "title": "币种混轴",
+      "x_axis": [
+        "4月",
+        "5月"
+      ],
+      "series": [
+        {
+          "name": "人民币金额",
+          "unit": "CNY",
+          "semantic_type": "OBSERVED",
+          "data": [
+            152000,
+            49000
+          ]
+        },
+        {
+          "name": "美元金额",
+          "unit": "USD",
+          "semantic_type": "OBSERVED",
+          "data": [
+            16000,
+            0
+          ]
+        }
+      ]
+    }
+  },
+  "expected": {
+    "valid": false,
+    "reason_contains": "unit mismatch: CNY vs USD",
+    "tool_name": "ChartGenerate"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "chart_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "charts",
+    "currency_scope",
+    "unit_mismatch"
+  ],
+  "notes": "BR-002：人民币与美元不得同轴比较。"
+}

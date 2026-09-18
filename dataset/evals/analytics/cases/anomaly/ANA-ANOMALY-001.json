@@ -1,0 +1,62 @@
+{
+  "case_id": "ANA-ANOMALY-001",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "库存",
+  "category": "anomaly",
+  "evaluator": "sql",
+  "question": "有哪些异常库存行",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "inventory.db",
+    "sql": "SELECT snapshot_month, on_hand_qty FROM fact_inventory_snapshot WHERE on_hand_qty < 0 ORDER BY snapshot_month, on_hand_qty"
+  },
+  "expected": {
+    "value": [
+      -5
+    ],
+    "tolerance": 1e-06,
+    "unit": "件",
+    "metric": "",
+    "dimensions": [
+      "snapshot_month"
+    ],
+    "filters": [],
+    "scope_note": "负库存必须作为异常点披露，不能静默过滤掉。",
+    "query_contract": {
+      "db": "inventory.db",
+      "metric": "",
+      "filters": [],
+      "dimensions": [
+        "snapshot_month"
+      ]
+    },
+    "rows": [
+      [
+        "2025-05",
+        -5
+      ]
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "anomaly",
+    "negative"
+  ]
+}

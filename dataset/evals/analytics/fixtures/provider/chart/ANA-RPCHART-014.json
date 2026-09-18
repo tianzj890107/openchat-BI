@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPCHART-014",
+  "turns": [
+    {
+      "user": "先把销售趋势画出来",
+      "db": "sales.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT order_month AS m, SUM(amount_cny) AS v FROM fact_sales WHERE is_deleted = 0 AND currency = 'CNY' GROUP BY order_month ORDER BY m",
+            "query_description": "先把销售趋势画出来"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerate",
+          "input": {
+            "chart_type": "line",
+            "title": "人民币销售额月度趋势",
+            "x_axis": [],
+            "series": [],
+            "unit": "元",
+            "source_note": "fact_sales · CNY"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "图表服务拒绝了本次请求，但数据本身有效，文字结论保持不变；如需继续可重试生成图表。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

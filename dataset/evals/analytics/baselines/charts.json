@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "kind": "baseline",
+  "suite": "charts",
+  "provider": "team",
+  "summary": {
+    "cases": 22,
+    "selected_cases": 22,
+    "passed": 22,
+    "failed": 0,
+    "pass_rate": 1.0,
+    "p0_cases": 2,
+    "p0_passed": 2,
+    "known_gap_cases": 0,
+    "known_gap_xfail": 0,
+    "known_gap_xpass": 0,
+    "metric_sample_sizes": {
+      "intent_accuracy": 0,
+      "tool_route_accuracy": 0,
+      "query_contract_accuracy": 0,
+      "exact_numeric_accuracy": 0,
+      "metric_scope_accuracy": 0,
+      "unsupported_number_rate": 0,
+      "unsupported_causal_claim_rate": 0,
+      "evidence_coverage": 0,
+      "proxy_disclosure_rate": 0,
+      "chart_selection_accuracy": 22,
+      "multi_turn_context_accuracy": 0,
+      "recovery_success_rate": 0,
+      "cross_session_leak_rate": 0,
+      "answer_schema_valid_rate": 0,
+      "repeat_stability": 0
+    },
+    "duration_ms": 345.582,
+    "metrics": {
+      "intent_accuracy": null,
+      "tool_route_accuracy": null,
+      "query_contract_accuracy": null,
+      "exact_numeric_accuracy": null,
+      "metric_scope_accuracy": null,
+      "unsupported_number_rate": null,
+      "unsupported_causal_claim_rate": null,
+      "evidence_coverage": null,
+      "proxy_disclosure_rate": null,
+      "chart_selection_accuracy": 1.0,
+      "multi_turn_context_accuracy": null,
+      "recovery_success_rate": null,
+      "cross_session_leak_rate": null,
+      "answer_schema_valid_rate": null,
+      "repeat_stability": null
+    }
+  },
+  "gates": [
+    {
+      "name": "p0_all_pass",
+      "ok": true
+    },
+    {
+      "name": "exact_numeric_accuracy",
+      "ok": true
+    },
+    {
+      "name": "answer_schema_valid_rate",
+      "ok": true
+    },
+    {
+      "name": "evidence_coverage",
+      "ok": true
+    },
+    {
+      "name": "cross_session_leak_rate",
+      "ok": true
+    },
+    {
+      "name": "unsupported_number_rate",
+      "ok": true
+    },
+    {
+      "name": "unsupported_causal_claim_rate",
+      "ok": true
+    },
+    {
+      "name": "proxy_disclosure_rate",
+      "ok": true
+    }
+  ],
+  "distributions": {
+    "category": {
+      "charts": 22
+    },
+    "priority": {
+      "P0": 2,
+      "P1": 20
+    },
+    "evaluator": {
+      "chart_html_safety": 2,
+      "chart_policy": 6,
+      "chart_validate": 14
+    }
+  },
+  "known_gaps": [],
+  "cases": [
+    {
+      "case_id": "ANA-CHART-001",
+      "status": "pass",
+      "duration_ms": 344.285
+    },
+    {
+      "case_id": "ANA-CHART-002",
+      "status": "pass",
+      "duration_ms": 0.01
+    },
+    {
+      "case_id": "ANA-CHART-003",
+      "status": "pass",
+      "duration_ms": 0.007
+    },
+    {
+      "case_id": "ANA-CHART-004",
+      "status": "pass",
+      "duration_ms": 0.005
+    },
+    {
+      "case_id": "ANA-CHART-005",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-CHART-006",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-CHART-007",
+      "status": "pass",
+      "duration_ms": 0.006
+    },
+    {
+      "case_id": "ANA-CHART-008",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-CHART-009",
+      "status": "pass",
+      "duration_ms": 0.005
+    },
+    {
+      "case_id": "ANA-CHART-010",
+      "status": "pass",
+      "duration_ms": 0.005
+    },
+    {
+      "case_id": "ANA-CHART-011",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-CHART-012",
+      "status": "pass",
+      "duration_ms": 0.02
+    },
+    {
+      "case_id": "ANA-CHART-013",
+      "status": "pass",
+      "duration_ms": 0.011
+    },
+    {
+      "case_id": "ANA-CHART-014",
+      "status": "pass",
+      "duration_ms": 0.008
+    },
+    {
+      "case_id": "ANA-CHART-015",
+      "status": "pass",
+      "duration_ms": 0.404
+    },
+    {
+      "case_id": "ANA-CHART-016",
+      "status": "pass",
+      "duration_ms": 0.007
+    },
+    {
+      "case_id": "ANA-CHART-017",
+      "status": "pass",
+      "duration_ms": 0.006
+    },
+    {
+      "case_id": "ANA-CHART-018",
+      "status": "pass",
+      "duration_ms": 0.012
+    },
+    {
+      "case_id": "ANA-CHART-019",
+      "status": "pass",
+      "duration_ms": 0.004
+    },
+    {
+      "case_id": "ANA-CHART-020",
+      "status": "pass",
+      "duration_ms": 0.003
+    },
+    {
+      "case_id": "ANA-CHART-021",
+      "status": "pass",
+      "duration_ms": 0.547
+    },
+    {
+      "case_id": "ANA-CHART-022",
+      "status": "pass",
+      "duration_ms": 0.222
+    }
+  ]
+}

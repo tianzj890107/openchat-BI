@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPCHART-003",
+  "turns": [
+    {
+      "user": "画供应商采购占比饼图",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT supplier_id, SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY supplier_id ORDER BY v DESC",
+            "query_description": "画供应商采购占比饼图"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerate",
+          "input": {
+            "chart_type": "pie",
+            "title": "供应商采购占比",
+            "series": [
+              {
+                "name": "采购金额",
+                "data": [
+                  {
+                    "name": "华东金属",
+                    "value": 12600
+                  },
+                  {
+                    "name": "华北电子",
+                    "value": 7880
+                  },
+                  {
+                    "name": "华东化工",
+                    "value": 2250
+                  },
+                  {
+                    "name": "华南包装",
+                    "value": 1300
+                  },
+                  {
+                    "name": "东北机械",
+                    "value": 1000
+                  }
+                ]
+              }
+            ],
+            "source_note": "MT-001 · fact_purchase_order · 按供应商"
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "华东金属占比最高，采购金额 12,600.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

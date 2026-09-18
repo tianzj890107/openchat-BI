@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPDIAG-002",
+  "turns": [
+    {
+      "user": "P1工厂缺陷率为什么偏高",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "P1工厂缺陷率为什么偏高"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT plant, SUM(defect_qty) * 1.0 / SUM(inspected_qty) AS rate, (SELECT SUM(defect_qty) * 1.0 / SUM(inspected_qty) FROM fact_quality_batch) AS overall_rate FROM fact_quality_batch GROUP BY plant ORDER BY rate DESC",
+            "query_description": "P1工厂缺陷率为什么偏高"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "各工厂缺陷率",
+            "columns": [
+              {
+                "key": "plant",
+                "label": "工厂"
+              },
+              {
+                "key": "rate",
+                "label": "缺陷率"
+              }
+            ],
+            "rows": [
+              [
+                "P1",
+                0.02243902,
+                0.01483146
+              ],
+              [
+                "P2",
+                0.00833333,
+                0.01483146
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "P1 工厂缺陷率 2.24%，高于整体 1.48%。P1 的检验量与缺陷量同时偏高，说明问题更像过程波动而不是抽样偏小。证据只能支持相关性，不能证明具体工序就是原因。建议先对 P1 的缺陷批次做逐批复核，再决定是否停线整改。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

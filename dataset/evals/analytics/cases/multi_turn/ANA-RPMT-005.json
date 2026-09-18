@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-RPMT-005",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "销售",
+  "category": "multi_turn",
+  "evaluator": "recorded_provider",
+  "question": "2025年人民币销售额合计是多少",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "2025年人民币销售额合计是多少"
+    },
+    {
+      "role": "assistant",
+      "content": "(上一轮已给出指标与口径，见 transcript)"
+    }
+  ],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/multi_turn/ANA-RPMT-005.json",
+    "db": "sales.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "TableGenerate",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "multi_turn"
+  ],
+  "notes": "切换币种后不得沿用人民币金额，也不得跨币种求和。"
+}

@@ -1,0 +1,56 @@
+{
+  "case_id": "ANA-P2-004",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "facts",
+  "evaluator": "sql",
+  "question": "已退货的采购订单金额合计是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0 AND status = '已退货'"
+  },
+  "expected": {
+    "value": -250,
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 0",
+      "status = '已退货'"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 0",
+        "status = '已退货'"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "p2",
+    "status_filter"
+  ]
+}

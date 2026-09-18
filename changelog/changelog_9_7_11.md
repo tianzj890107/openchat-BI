@@ -275,3 +275,107 @@
   中的“每日/日报”字样保留原貌，不改写历史。
 - 历史日报与历史周 changelog 全部保留在 `changelog/` 与 git 历史中，未删除、未重写；
   无版本号变更、无 tag、无部署、未推送。
+
+## 2026-09-10（周四）
+
+### 1. 应用根入口直接返回工作台，不再跳转 /workbench（TDD RED→GREEN，2026-09-10 11:47）
+
+- 现象：配置 `APP_ROOT_PATH=/api/ontology-agentic-analytics` 时，访问
+  `GET /api/ontology-agentic-analytics` 会被 307 跳转到 `/workbench`，浏览器地址栏
+  被改写；网关只暴露该子路径根入口时，跳转后工作台静态资源易 404。
+- 现在根入口与兼容入口由唯一构造函数 `_workbench_response()`
+  （`bi_agent/web/app.py`）共同返回工作台 HTML：`GET /api/ontology-agentic-analytics`
+  直接 200 `text/html`，不再返回 307/308、不再带 `Location` 响应头，浏览器地址保持
+  不变；`GET /api/ontology-agentic-analytics/workbench` 继续 200 且 HTML 与根入口
+  完全一致。
+- 未配置 `APP_ROOT_PATH` 时行为一致：`GET /` 直接返回工作台 HTML，`GET /workbench`
+  继续兼容。两处共用同一 HTML 渲染与 no-store 缓存响应头逻辑，删除根路由的
+  `RedirectResponse`，并移除 `fastapi.responses` 中不再使用的该 import。
+- 未改动：`APP_ROOT_PATH` 规范化、base path 前缀剥离中间件、`/static` 挂载、
+  `/api` 路由、`/healthz`、网关（Vane/Ingress/OpenResty）配置与前端构建产物。
+- 测试：新增 `docs/specs/direct-root-workbench-entry.md` 与
+  `tests/test_direct_root_workbench_entry.py`（RED→GREEN，3 passed）；
+  `tests/test_application_base_path.py` 中原 307 断言更新为新根入口 200 契约（7
+  passed，静态资源、前缀、HTML 注入与兼容性断言保持不减）；
+  `tests/test_regressions.py` 中同类过期断言同步更新为根入口 200 且无 `Location`
+  （219 passed）；`tests.test_container_port_contract` 12 passed；
+  `git diff --check` 干净。
+- 无版本号变更、无 tag、无推送、无部署。
+
+### 2. 产品版本号统一升级到 v0.1.7（用户指定目标版本，2026-09-10 12:05）
+
+- 按用户明确指定的目标版本 v0.1.7，将产品版本号从 0.1.2 统一升级到 0.1.7：
+  `pyproject.toml`、`bi_agent/__init__.py`、`open_claude/__init__.py`、
+  `bi_agent/web/app.py`（`APP_VERSION`，同时改变 `/healthz` 的 `version` 字段）、
+  `frontend/package.json` 与 `frontend/package-lock.json`、
+  `frontend/src/main.jsx`（`PRODUCT_VERSION`）与 `frontend/src/shell.html`
+  （左上角品牌版本标签）。
+- 前端构建产物 `bi_agent/web/static/vendor/antd/workbench.js` 用仓库既有
+  `vite build` 重新构建；重建结果与旧产物仅 2 字节差异（两处 `v0.1.2`→`v0.1.7`），
+  同目录 CSS 与 `lib/` 与旧产物完全一致，工作台界面版本标签现显示 v0.1.7。
+- 同步更新版本契约测试 `tests/test_versioning_policy.py` 与
+  `tests/test_regressions.py` 中的版本断言（0.1.2→0.1.7），其余断言不变。
+- 未创建 tag（`v0.1.7` tag 已存在）、未新建或修改 `docs/versions/` 正式版本文档与
+  版本索引、未创建 GitLab Release、未部署、未修改网关。
+- 验证：全量 `python -m unittest` 445 passed（24 skipped）；`git diff --check` 干净。
+
+### 3. 环境隔离的本体/Doris 网关与未使用新会话复用（Spec + TDD RED→GREEN，2026-09-10）
+
+- 先撤销上一版"按 repository ID 白名单过滤"的做法（revert 提交 `915b168`，对应原提交
+  `bd7fbc6`）：不再引入 `ONTOLOGY_ALLOWED_REPOSITORY_IDS`，也不在前端过滤本体库。
+  ECore 目录必须由各环境自己的本体服务真实返回。
+- 环境隔离本体连接：镜像与 Python 默认值不再固定直连跨环境地址。`Dockerfile` 删除
+  `ONTOLOGY_BASE_URL`、`DORIS_API_URL` 两条固定值以及 `ONTOLOGY_REPOSITORY_ID` 固定
+  默认值（该 ID 各环境不同，不能写死一个环境的库），`bi_agent/tools/sql_tools.py` 的
+  `DEFAULT_DORIS_API_URL` 改为空串；生产/远程模式缺少 `ONTOLOGY_BASE_URL` 或
+  `DORIS_API_URL` 时 `configure()` 直接 `RuntimeError` 快速失败（实测缺一个也会报错），
+  不会静默连到另一个环境。显式环境变量仍是最高优先级。
+- 两套环境地址写进 `DEPLOYMENT.md`：PDT
+  `ONTOLOGY_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/ontology` /
+  `DORIS_API_URL=…/agent/doris/query`；Demo2
+  `ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology` /
+  `DORIS_API_URL=…/agent/doris/query`。文档同时说明各环境必须用自己的一对网关地址。
+- `ONTOLOGY_REPOSITORY_ID` 也按环境取，两个环境并不相同：实测 PDT 本体网关
+  `GET …/system/manager/ontology-repository` 返回 5 个库，ECore 本体库是 `id=3`
+  （`ontology_demometaerp`）；demo2 本体网关只返回 1 个库，ECore 本体库是 `id=1`
+  （`ontology_ecore`）。因此 PDT 用 `ONTOLOGY_REPOSITORY_ID=3`、demo2 用
+  `ONTOLOGY_REPOSITORY_ID=1`；`DEPLOYMENT.md`、`.env.example` 均给出该查法（不带
+  `X-Ontology-Repository-Id` 头请求目录接口，按名称找到 ECore 库的 `id`）。该变量
+  只决定"当前激活哪个库"，本体库列表始终由该环境网关真实返回；用错 ID 时
+  `configure()` 会以 `远程本体库 X 不在可用目录中` 快速失败。文档同时给出运维清单：
+  服务器上 `.env` 里的旧直连
+  地址（`http://172.16.5.181:30834`）必须改成对应环境的网关并重启服务，否则会继续
+  直连同一个后端、看到同一份本体库目录。
+- `ONTOLOGY_APP_ID` 两个环境取值相同且非密钥，保留为镜像共享默认值；`ONTOLOGY_AUTH_TOKEN`
+  是密钥，只能按环境注入，仓库与镜像不保存真实值（当前两个环境都为空）。
+- `.env.example` 只保留地址结构与凭据占位符：`ONTOLOGY_BASE_URL=<set-per-environment>`、
+  `DORIS_API_URL=<set-per-environment>`、`ONTOLOGY_REPOSITORY_ID=<set-per-environment>`
+  （注释中给出 PDT/demo2 的结构与各环境 ID），不再内置 172.16.5.181:30834 或某个
+  环境的仓库 ID；共享的 `ONTOLOGY_APP_ID` 保留原值，`ONTOLOGY_AUTH_TOKEN` 保持密钥
+  占位符。
+- 未使用新会话复用：新增纯函数模块 `frontend/src/conversationDraftPolicy.js`，导出
+  `shouldReuseUnusedDraft(state)`（convId 存在、`hasContent=false`、首问为空、
+  `turnCount=0`）与 `collapseUnusedDrafts(items)`（data/report 分开，每模式只保留
+  `updated_at` 最新的一个未使用草稿，真实会话全部保留）。
+- 行为：`resetConversation()` 在当前仍是未使用草稿时直接复用——不清 convId、不删
+  `conversationDraftIds`、不再次调用空草稿保存接口、不生成新 cid，左侧只留当前这一条
+  空草稿；已有问题时正常归档并创建新草稿。`normalizeConversationSummaries()` 统一调用
+  `collapseUnusedDrafts()`，首次加载、刷新、保存事件和 React Sidebar 共用同一套去重结果；
+  历史遗留的多余空草稿只在前端列表隐藏，不删除服务器历史 JSON。
+- 已执行 `cd frontend && npm run build` 同步 `bi_agent/web/static/vendor/antd/workbench.js`
+  （CSS 未变）。
+- 旧测试更新（仅限原先固定断言跨环境值的部分）：
+  `tests/test_docker_defaults_and_local_secrets.py` 把 `ONTOLOGY_BASE_URL`、`DORIS_API_URL`、
+  `ONTOLOGY_REPOSITORY_ID` 从"固定默认值"表移出，改为必须存在的"按环境注入"键集合
+  （键仍必须存在，只是不再断言某个环境的具体地址/ID）；`ONTOLOGY_APP_ID` 因两环境
+  相同仍保留固定默认值断言，`DORIS_DATABASE` 等其他断言一律不减。
+- 按 demo2 口径（`ONTOLOGY_BASE_URL`/`DORIS_API_URL` 指向 demo2 网关、
+  `ONTOLOGY_REPOSITORY_ID=1`）用临时端口本地实测 `/api/sources`：`base_url` 为 demo2
+  网关，`remote_repositories` 只有一条 `ECore 本体库-勿动`（`id=1`、
+  `ontology_ecore`、`ecore`），数据库选项也只有 `__doris_repository__:1`；说明按环境
+  注入网关后，demo2 目录确实由 demo2 本体服务返回，不再读到 PDT 的 5 个库。
+- 验证：`tests.test_environment_scoped_ontology_and_unused_session` 6 tests
+  （1 skipped：需 `RUN_DEMO2_ONTOLOGY_ENV_TESTS=1` 的 demo2 在线校验）；
+  `tests.test_application_base_path`、`tests.test_regressions` 全绿；全量
+  `python -m unittest` 451 passed（25 skipped）；`git diff --check` 干净。
+- 未修改 demo2 运行环境，未做线上验收；无版本号变更、无 tag、无推送、无部署。

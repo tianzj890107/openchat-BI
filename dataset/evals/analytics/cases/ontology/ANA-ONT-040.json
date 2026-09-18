@@ -1,0 +1,44 @@
+{
+  "case_id": "ANA-ONT-040",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "制造",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "报废率指标对应哪张表",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "metric",
+    "code": "MT-010",
+    "table": "fact_production_order",
+    "agg_column": "scrap_qty",
+    "dimensions_contains": [
+      "产线"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "metric",
+    "manufacturing"
+  ]
+}

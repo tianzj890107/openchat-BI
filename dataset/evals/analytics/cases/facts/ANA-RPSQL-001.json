@@ -1,0 +1,64 @@
+{
+  "case_id": "ANA-RPSQL-001",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider",
+    "live-canary"
+  ],
+  "domain": "采购",
+  "category": "facts",
+  "evaluator": "generated_sql",
+  "question": "2025年采购金额合计是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/sql/ANA-RPSQL-001.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "value": 25030,
+    "tolerance": 1e-06,
+    "tool_chain": [
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "allowed_tables": [
+      "fact_purchase_order"
+    ],
+    "required_filters": [
+      "is_deleted = 0"
+    ],
+    "forbidden_filters": [
+      "DROP",
+      "DELETE",
+      "UPDATE"
+    ],
+    "final_text_contains": [
+      "25,030.00"
+    ],
+    "policy_mode": "FACT_QUERY",
+    "recovery_status": "SUCCEEDED"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "generated_sql",
+    "end_to_end"
+  ],
+  "notes": "Agent 实际下发的 SQL 必须只访问允许的表、保留必需过滤条件，并与参考结果一致。"
+}

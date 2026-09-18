@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPDIAG-008",
+  "turns": [
+    {
+      "user": "库存周转变慢的原因",
+      "db": "inventory.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "库存周转变慢的原因"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT COUNT(*) AS rows_count, SUM(on_hand_qty) AS qty, AVG(aging_days) AS avg_aging FROM fact_inventory_snapshot",
+            "query_description": "库存周转变慢的原因"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "库存周转代理指标",
+            "columns": [
+              {
+                "key": "rows_count",
+                "label": "快照行数"
+              },
+              {
+                "key": "qty",
+                "label": "数量"
+              },
+              {
+                "key": "avg_aging",
+                "label": "平均账龄"
+              }
+            ],
+            "rows": [
+              [
+                11,
+                960,
+                121.0909
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "快照行数 11 行，库存数量 960，平均账龄 121.0909 天。平均账龄是周转率的代理指标，不能直接等同于周转率，只能作为近似判断。建议先补充出库流水，再计算真实周转天数并复核仓库调拨策略。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

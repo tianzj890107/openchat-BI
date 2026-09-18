@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPMT-008",
+  "turns": [
+    {
+      "user": "采购金额最高的供应商是谁",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT supplier_id, SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY supplier_id ORDER BY v DESC LIMIT 1",
+            "query_description": "采购金额最高的供应商是谁"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "最大供应商",
+            "columns": [
+              {
+                "key": "supplier_id",
+                "label": "供应商"
+              },
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                1,
+                12600
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "采购金额最高的供应商是 华东金属，金额 12,600.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "user": "给我它的明细",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT po_no, order_month, amount FROM fact_purchase_order WHERE is_deleted = 0 AND supplier_id = 1 ORDER BY amount DESC LIMIT 5",
+            "query_description": "给我它的明细"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "华东金属采购明细 Top5",
+            "columns": [
+              {
+                "key": "po_no",
+                "label": "订单号"
+              },
+              {
+                "key": "order_month",
+                "label": "月份"
+              },
+              {
+                "key": "amount",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                "PO-2025-0002",
+                "2025-02",
+                4800.0
+              ],
+              [
+                "PO-2025-0009",
+                "2025-04",
+                4000.0
+              ],
+              [
+                "PO-2025-0005",
+                "2025-03",
+                2500.0
+              ],
+              [
+                "PO-2025-0001",
+                "2025-01",
+                1000.0
+              ],
+              [
+                "PO-2025-0012",
+                "2025-06",
+                300.0
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "追问明细时沿用上一轮的供应商范围（华东金属），只把粒度从汇总换成订单明细。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

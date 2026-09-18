@@ -1,0 +1,97 @@
+{
+  "case_id": "ANA-TREND-008",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "trend",
+  "evaluator": "sql",
+  "question": "事业部B的采购金额月度趋势",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "WITH months(m) AS (VALUES ('2025-01'),('2025-02'),('2025-03'),('2025-04'),('2025-05'),('2025-06')) SELECT mo.m, COALESCE(SUM(f.amount), 0) FROM months mo LEFT JOIN fact_purchase_order f ON f.order_month = mo.m AND f.is_deleted = 0 AND f.org_id IN (SELECT org_id FROM dim_org WHERE business_unit = '事业部B') GROUP BY mo.m ORDER BY mo.m"
+  },
+  "expected": {
+    "value": [
+      0,
+      1000,
+      0,
+      4030,
+      160,
+      0
+    ],
+    "tolerance": 1e-06,
+    "unit": "元",
+    "metric": "MT-001",
+    "dimensions": [
+      "order_month",
+      "business_unit"
+    ],
+    "filters": [
+      "f.is_deleted = 0",
+      "business_unit = '事业部B'"
+    ],
+    "scope_note": "",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "MT-001",
+      "filters": [
+        "f.is_deleted = 0",
+        "business_unit = '事业部B'"
+      ],
+      "dimensions": [
+        "order_month",
+        "business_unit"
+      ]
+    },
+    "rows": [
+      [
+        "2025-01",
+        0
+      ],
+      [
+        "2025-02",
+        1000
+      ],
+      [
+        "2025-03",
+        0
+      ],
+      [
+        "2025-04",
+        4030
+      ],
+      [
+        "2025-05",
+        160
+      ],
+      [
+        "2025-06",
+        0
+      ]
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "trend",
+    "timeseries",
+    "org_scope",
+    "gap_fill"
+  ]
+}

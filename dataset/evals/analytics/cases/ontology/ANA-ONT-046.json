@@ -1,0 +1,43 @@
+{
+  "case_id": "ANA-ONT-046",
+  "version": 1,
+  "priority": "P2",
+  "suite": [
+    "regression",
+    "ontology"
+  ],
+  "domain": "财务",
+  "category": "ontology",
+  "evaluator": "ontology",
+  "question": "本体里有没有财务相关的指标",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "ontology": "analytics_golden_ontology.xlsx"
+  },
+  "expected": {
+    "op": "metric",
+    "code": "MT-007",
+    "table": "fact_gl_entry",
+    "dimensions_contains": [
+      "事业部"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "ontology_anchor",
+    "ontology_definition"
+  ],
+  "scoring": {},
+  "tags": [
+    "ontology",
+    "metric",
+    "finance"
+  ]
+}

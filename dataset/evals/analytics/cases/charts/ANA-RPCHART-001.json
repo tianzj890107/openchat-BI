@@ -1,0 +1,65 @@
+{
+  "case_id": "ANA-RPCHART-001",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "采购",
+  "category": "charts",
+  "evaluator": "recorded_provider",
+  "question": "画一下采购金额的月度趋势",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/chart/ANA-RPCHART-001.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "ChartGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "final_text_contains": [],
+    "tool_results": {
+      "ChartGenerate": {
+        "contains": [
+          "Chart generated",
+          "line"
+        ]
+      }
+    },
+    "tool_inputs": {
+      "ChartGenerate": {
+        "input_contains": [
+          "\"chart_type\": \"line\"",
+          "4700, 6400, 4750"
+        ]
+      }
+    },
+    "chart_files": {
+      "min_count": 1
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "chart",
+    "end_to_end"
+  ],
+  "notes": "趋势图必须用 line，且 x_axis 与取数月份一一对应。"
+}

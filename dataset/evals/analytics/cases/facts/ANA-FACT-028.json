@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-FACT-028",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "smoke",
+    "regression"
+  ],
+  "domain": "采购",
+  "category": "facts",
+  "evaluator": "sql",
+  "question": "采购订单涉及的供应商有多少家",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sql": "SELECT COUNT(DISTINCT supplier_id) FROM fact_purchase_order WHERE is_deleted = 0"
+  },
+  "expected": {
+    "value": 5,
+    "tolerance": 1e-06,
+    "unit": "家",
+    "metric": "",
+    "dimensions": [],
+    "filters": [
+      "is_deleted = 0"
+    ],
+    "scope_note": "按订单出现的供应商去重（含已停用主数据），与『有效供应商』口径不同。",
+    "query_contract": {
+      "db": "procurement.db",
+      "metric": "",
+      "filters": [
+        "is_deleted = 0"
+      ],
+      "dimensions": []
+    }
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "reference_sql_result",
+    "metric_contract"
+  ],
+  "scoring": {},
+  "tags": [
+    "sql",
+    "fact",
+    "distinct"
+  ]
+}

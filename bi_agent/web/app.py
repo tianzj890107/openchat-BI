@@ -19,7 +19,7 @@ from types import SimpleNamespace
 from typing import Any, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.gzip import GZipMiddleware
@@ -535,6 +535,19 @@ def configure(
     STATE.use_doris = use_doris
     remote_mode = STATE.ontology_backend in {"production", "remote"}
     if remote_mode:
+        # Environment isolation: every deployment must inject its own ontology
+        # and Doris gateway. A baked-in fallback would silently point this
+        # deployment at another environment's ontology service (and therefore
+        # at that environment's repository catalog).
+        missing = [
+            name for name in ("ONTOLOGY_BASE_URL", "DORIS_API_URL")
+            if not str(os.environ.get(name, "")).strip()
+        ]
+        if missing:
+            raise RuntimeError(
+                "远程本体模式缺少必需的环境变量: " + ", ".join(missing)
+                + "（每个环境必须显式注入自己的本体/Doris 网关地址）"
+            )
         # Production is remote-only: do not open, validate, or retain an Excel
         # workbook. The empty store only satisfies legacy render/session types;
         # every ontology executor and browse endpoint is remote-bound below.
@@ -639,7 +652,7 @@ def configure(
 # ---------------------------------------------------------------------------
 APP_NAME = "eimosp-ontology-agentic-analytics"              # 应用名（容器/服务/配置中心统一使用）
 APP_DISPLAY_NAME = "eimosp-ontology-agentic-analytics 智能分析"  # 产品名
-APP_VERSION = "0.1.2"                 # 与 pyproject.toml / docs/versions 保持同步
+APP_VERSION = "0.1.9"                 # 与 pyproject.toml / docs/versions 保持同步
 def _default_app_port() -> int:
     """实际监听端口来源：优先 APP_PORT 环境变量（容器内 Dockerfile 显式注入 8080），
     缺省回退非容器本地默认端口 8765。"""
@@ -718,6 +731,12 @@ class _AppRootPathStripMiddleware:
     load balancers that pass the full external URL, so /workbench, /api/*,
     /charts/* and /healthz still route without registering a second set of
     prefixed routes.
+
+    Starlette matches routes with ``get_route_path``, which strips
+    ``scope["root_path"]`` from ``scope["path"]``.  FastAPI already sets
+    ``root_path`` to APP_ROOT_PATH, so the prefix must be removed from both
+    keys (or from neither); leaving them out of sync makes mounted
+    ``/static`` files resolve with a duplicated ``static/`` segment and 404.
     """
 
     def __init__(self, inner: Any, prefix: str) -> None:
@@ -727,10 +746,17 @@ class _AppRootPathStripMiddleware:
     async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
         if scope.get("type") == "http" and self.prefix:
             path = scope.get("path") or ""
-            if path == self.prefix:
-                scope["path"] = "/"
-            elif path.startswith(self.prefix + "/"):
-                scope["path"] = path[len(self.prefix):]
+            root_path = scope.get("root_path") or ""
+            if path == self.prefix or path.startswith(self.prefix + "/"):
+                scope["path"] = path[len(self.prefix):] or "/"
+                if root_path == self.prefix or root_path.startswith(self.prefix + "/"):
+                    scope["root_path"] = root_path[len(self.prefix):]
+            elif root_path and not (
+                path == root_path or path.startswith(root_path + "/")
+            ):
+                # Proxy stripped the prefix before forwarding but still reports
+                # it; mounted apps require path to contain root_path.
+                scope["root_path"] = ""
         await self.inner(scope, receive, send)
 
 
@@ -1096,12 +1122,30 @@ def _render_workbench_index() -> str:
     return html.replace("</head>", runtime_config + "</head>", 1)
 
 
+def _workbench_response() -> HTMLResponse:
+    """Build the single workbench response shared by every HTML entry point.
+
+    The application root (``/``, or ``APP_ROOT_PATH`` when configured) and the
+    compatibility entry ``/workbench`` must return byte-identical HTML, so the
+    template rendering and the no-store cache headers live here only.
+    """
+    return HTMLResponse(
+        content=_render_workbench_index(),
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
 @app.get("/")
-def index(request: Request) -> RedirectResponse:
-    # The standalone workbench is the primary entry point. The role dashboard
-    # remains directly available at /dashboard.html for embedded/dashboard use.
-    query = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(url=f"{APP_ROOT_PATH}/workbench{query}", status_code=307)
+def index() -> HTMLResponse:
+    # The application root is the primary entry point and serves the standalone
+    # workbench directly: no redirect, so the browser address bar keeps the
+    # configured external base path (e.g. /api/ontology-agentic-analytics).
+    # The role dashboard remains directly available at /dashboard.html.
+    return _workbench_response()
 
 
 @app.get("/healthz")
@@ -1180,14 +1224,7 @@ def analysis_nav_prototype_page() -> FileResponse:
 
 @app.get("/workbench")
 def workbench() -> HTMLResponse:
-    return HTMLResponse(
-        content=_render_workbench_index(),
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        },
-    )
+    return _workbench_response()
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

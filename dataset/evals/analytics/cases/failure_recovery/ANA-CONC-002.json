@@ -1,0 +1,78 @@
+{
+  "case_id": "ANA-CONC-002",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recovery",
+    "adversarial"
+  ],
+  "domain": "通用",
+  "category": "failure_recovery",
+  "evaluator": "admission",
+  "question": "不同 session 属于同一身份时共享并发额度",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "env": {
+      "CHATBI_MAX_ACTIVE_TURNS": "3",
+      "CHATBI_MAX_ACTIVE_PER_PRINCIPAL": "2",
+      "CHATBI_MAX_WAITING_TURNS": "4",
+      "CHATBI_ADMISSION_WAIT_SECONDS": "0.3"
+    },
+    "principals": {
+      "p1": [
+        "t",
+        "u1",
+        "s1"
+      ],
+      "p2": [
+        "t",
+        "u1",
+        "s2"
+      ]
+    },
+    "script": [
+      {
+        "op": "acquire",
+        "principal": "p1",
+        "as": "t1"
+      },
+      {
+        "op": "acquire",
+        "principal": "p2",
+        "as": "t2"
+      },
+      {
+        "op": "acquire",
+        "principal": "p2",
+        "expect_reject": "PRINCIPAL_CONCURRENCY_LIMIT"
+      }
+    ]
+  },
+  "expected": {
+    "checks": [
+      {
+        "after": 2,
+        "reject_code": "PRINCIPAL_CONCURRENCY_LIMIT"
+      }
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "admission_outcome"
+  ],
+  "scoring": {},
+  "tags": [
+    "admission",
+    "per_principal",
+    "isolation"
+  ],
+  "notes": "配额按 user_id 而非 session 计算，两个 session 不能绕过上限。"
+}

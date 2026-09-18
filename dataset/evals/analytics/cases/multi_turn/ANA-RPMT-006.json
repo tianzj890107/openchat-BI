@@ -1,0 +1,55 @@
+{
+  "case_id": "ANA-RPMT-006",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "质量",
+  "category": "multi_turn",
+  "evaluator": "recorded_provider",
+  "question": "2025年整体缺陷率是多少",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "2025年整体缺陷率是多少"
+    },
+    {
+      "role": "assistant",
+      "content": "(上一轮已给出指标与口径，见 transcript)"
+    }
+  ],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/multi_turn/ANA-RPMT-006.json",
+    "db": "quality.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "TableGenerate",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED"
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "multi_turn"
+  ],
+  "notes": "追加过滤后分子分母必须同时收窄到 P1。"
+}

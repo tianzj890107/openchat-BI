@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPSQL-003",
+  "turns": [
+    {
+      "user": "采购订单行数有多少",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "采购订单行数有多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT COUNT(*) FROM fact_purchase_order WHERE is_deleted = 0",
+            "query_description": "采购订单行数有多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "采购订单行数有多少",
+            "columns": [
+              {
+                "key": "value",
+                "label": "结果"
+              }
+            ],
+            "rows": [
+              [
+                25
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "未删除的采购订单共有 25 行。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

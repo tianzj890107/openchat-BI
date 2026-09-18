@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-RPDIAG-007",
+  "turns": [
+    {
+      "user": "3月采购金额下降，主要原因是哪几个",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "3月采购金额下降，主要原因是哪几个"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT m, v, prev, ROUND(ABS(v * 1.0 / prev - 1), 6) AS abs_delta FROM (SELECT order_month AS m, SUM(amount) AS v, (SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-02') AS prev FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-03' GROUP BY order_month)",
+            "query_description": "3月采购金额下降，主要原因是哪几个"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "采购金额环比",
+            "columns": [
+              {
+                "key": "m",
+                "label": "月份"
+              },
+              {
+                "key": "v",
+                "label": "本月"
+              },
+              {
+                "key": "prev",
+                "label": "上月"
+              },
+              {
+                "key": "abs_delta",
+                "label": "降幅"
+              }
+            ],
+            "rows": [
+              [
+                "2025-03",
+                4750,
+                6400,
+                0.257812
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "候选原因按证据强弱排序：1）订单结构变化——3 月金额 4,750.00 元、2 月 6,400.00 元，降幅 25.78%，有直接数据；2）供应商集中度变化，只有供应商维度证据，属于间接证据；3）需求下降，本轮没有任何取数，无法确认。不能只保留第一个原因：必须说明后续需要补哪些数据。建议先按月补供应商维度取数，再决定是否调整采购计划。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}
