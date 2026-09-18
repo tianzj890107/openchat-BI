@@ -426,6 +426,12 @@ def eval_policy(case: dict, ctx: EvalContext) -> CaseResult:
         want = policy["refusal_category"]
         chk("policy.refusal_category",
             decision.get("refusal_category") == want, want, decision.get("refusal_category"))
+    if policy.get("refusal_category_absent"):
+        # The mirror of ``refusal_category``: a constraint statement
+        # ("不得删除…") or a safety-guidance question must reach the normal
+        # branches, so the contract has to be assertable in both directions.
+        chk("policy.refusal_category_absent", not decision.get("refusal_category"),
+            "no refusal category", decision.get("refusal_category"))
     if policy.get("refusal_message_required"):
         message = str(decision.get("refusal_message") or "").strip()
         chk("policy.refusal_message_required", bool(message), True, bool(message))

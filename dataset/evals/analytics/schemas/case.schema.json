@@ -473,6 +473,10 @@
                 "destructive_data_operation"
               ]
             },
+            "refusal_category_absent": {
+              "type": "boolean",
+              "description": "The mirrors of refusal_category: the turn must NOT be a refusal (constraint statements, safety-guidance questions)."
+            },
             "refusal_message_required": {
               "type": "boolean"
             }

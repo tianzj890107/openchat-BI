@@ -4,23 +4,23 @@
   "case_schema": "schemas/case.schema.json",
   "description": "End-to-end golden set for the BI / analytics agent. Covers question -> intent -> metric scope -> tool plan -> query -> numbers -> evidence -> chart -> answer. Regenerate with `python dataset/evals/analytics/build_cases.py`; run with `python -m scripts.run_analytics_eval --suite <suite>`.",
   "totals": {
-    "cases": 540,
+    "cases": 561,
     "known_gap": 0,
     "known_gap_p0": 0,
     "by_priority": {
-      "P0": 137,
-      "P1": 368,
+      "P0": 147,
+      "P1": 379,
       "P2": 35
     },
     "by_category": {
-      "adversarial": 46,
+      "adversarial": 57,
       "anomaly": 24,
       "charts": 35,
       "comparison": 16,
       "diagnosis": 31,
       "facts": 110,
       "failure_recovery": 35,
-      "intent": 39,
+      "intent": 49,
       "metrics": 72,
       "multi_turn": 46,
       "ontology": 58,
@@ -28,7 +28,7 @@
       "trend": 14
     },
     "by_suite": {
-      "adversarial": 51,
+      "adversarial": 62,
       "charts": 22,
       "diagnosis": 33,
       "live": 48,
@@ -37,8 +37,8 @@
       "ontology": 46,
       "recorded-provider": 113,
       "recovery": 33,
-      "regression": 540,
-      "smoke": 130
+      "regression": 561,
+      "smoke": 140
     },
     "by_evaluator": {
       "admission": 11,
@@ -50,7 +50,7 @@
       "generated_sql": 25,
       "multi_turn": 20,
       "ontology": 46,
-      "policy": 96,
+      "policy": 117,
       "recorded_provider": 62,
       "recorded_session_isolation": 6,
       "recovery_state": 18,
@@ -64,12 +64,12 @@
       "库存": 41,
       "财务": 53,
       "质量": 43,
-      "通用": 83,
-      "采购": 212,
+      "通用": 102,
+      "采购": 214,
       "销售": 51
     },
     "by_layer": {
-      "deterministic": 427,
+      "deterministic": 448,
       "recorded_provider": 113
     },
     "live": {
