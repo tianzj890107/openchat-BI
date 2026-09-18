@@ -49,15 +49,5 @@
     "intent",
     "ontology_lookup"
   ],
-  "known_gap": true,
-  "gap_note": "含指标名时被判为 FACT_QUERY；『口径』属指标定义，当前未走 ONTOLOGY_LOOKUP。",
-  "gap_meta": {
-    "owner": "ai-team",
-    "introduced_at": "2026-09-17",
-    "target_fix_version": "v0.1.10",
-    "severity": "medium",
-    "summary": "『口径』提问未走 ONTOLOGY_LOOKUP",
-    "source_issue": "a1134c7 (analytics golden set v1)",
-    "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（『口径』未走 ONTOLOGY_LOOKUP）"
-  }
+  "notes": "『口径』属指标定义：即使同时含指标名也必须走 ONTOLOGY_LOOKUP，不得被事实分支抢走。"
 }

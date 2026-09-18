@@ -37,7 +37,9 @@
       "needs_human": false
     },
     "wants_root_cause": false,
-    "wants_action": false
+    "wants_action": false,
+    "wants_forecast": true,
+    "forecast_kind": "predictive_forecast"
   },
   "forbidden": [],
   "allowed_variants": {},
@@ -48,17 +50,8 @@
   "tags": [
     "intent",
     "L4",
-    "prediction"
+    "prediction",
+    "forecast"
   ],
-  "known_gap": true,
-  "gap_note": "预测/推演类问题（L4）当前既没有独立意图等级，也没有限制放行：『预计…会是多少』被判为 FACT_QUERY，『预测一下明年销量』落到 GENERAL_RESPONSE。",
-  "gap_meta": {
-    "owner": "ai-team",
-    "introduced_at": "2026-09-17",
-    "target_fix_version": "v0.1.10",
-    "severity": "medium",
-    "summary": "预测/推演类问题缺失 L4 意图等级",
-    "source_issue": "a1134c7 (analytics golden set v1)",
-    "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（预测类问题缺 L4）"
-  }
+  "notes": "预测类问题必须识别为 L4 + DIAGNOSTIC_ANALYSIS 并携带 wants_forecast=true / forecast_kind=predictive_forecast；本轮仍先取真实历史数据，答案层必须披露数据窗口、推算方式与不确定性，不得把历史最后一期或预算值直接当作预测结论，也不得伪造预测数字。"
 }

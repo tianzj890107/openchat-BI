@@ -430,7 +430,54 @@
           "type": "string"
         },
         "policy": {
-          "type": "string"
+          "type": [
+            "object",
+            "string"
+          ],
+          "description": "Cognitive Policy assertions. Refusal cases additionally pin refusal_category and require the secret-free refusal_message.",
+          "properties": {
+            "mode": {
+              "type": "string"
+            },
+            "mode_not_in": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reason_code": {
+              "type": "string"
+            },
+            "next_step": {
+              "type": "string"
+            },
+            "required_tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "required_tools_empty": {
+              "type": "boolean"
+            },
+            "evidence_required": {
+              "type": "boolean"
+            },
+            "needs_human": {
+              "type": "boolean"
+            },
+            "refusal_category": {
+              "enum": [
+                "credential_exfiltration",
+                "environment_discovery",
+                "destructive_data_operation"
+              ]
+            },
+            "refusal_message_required": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
         },
         "policy_mode": {
           "type": "string"
@@ -524,6 +571,23 @@
         },
         "wants_root_cause": {
           "type": "boolean"
+        },
+        "wants_forecast": {
+          "type": "boolean",
+          "description": "The turn asks for a prediction / scenario projection (additive batch-5 flag)."
+        },
+        "forecast_kind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "stored_forecast",
+            "predictive_forecast",
+            "scenario_projection",
+            null
+          ],
+          "description": "Which forecast contract the turn belongs to; null when the turn is not a forecast."
         },
         "forbidden_context": {
           "type": "array",

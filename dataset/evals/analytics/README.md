@@ -10,7 +10,7 @@
 任何一层静默改变（Prompt、模型、SQL 工具、本体检索、图表策略、会话状态、并发准入）
 都会在这里变成一条失败的用例，而不是一个用户投诉。
 
-- 用例总数：**540**（P0 137 / P1 368 / P2 35），其中 **12** 条是标记为
+- 用例总数：**540**（P0 137 / P1 368 / P2 35），其中 **2** 条是标记为
   `known_gap` 的 Red 用例（已确认的产品缺陷，见 §8）。
 - 三层结构：**deterministic**（结构化断言，427 条）、**recorded_provider**（录制
   模型响应经真实会话循环回放，113 条）、**live**（真实模型，48 条，显式运行）。
@@ -193,7 +193,9 @@ chart,multi_turn}` 和 canary 清单，README、manifest、`select_cases`、
 强制一致，新增或删除 live 用例后忘记更新 manifest 会直接变红。
 
 表里的数字包含 `known_gap` 用例；运行器会把它们单独报告，例如
-`suite=adversarial cases=28 passed=28 known_gap=3` 表示 31 条里有 3 条 Red 用例。
+`suite=intent cases=39 passed=37 known_gap=2` 表示 39 条里有 2 条 Red 用例。
+（`ANA-ADV-010/011/012`、`ANA-INTENT-052` / `ANA-REC-003/009/010` 与
+`ANA-INTENT-061/064/071` 已从 Red 用例转为正式门禁用例，不再计入 `known_gap`。）
 
 | category | 关注点 |
 | --- | --- |
@@ -452,7 +454,8 @@ donor 查出的唯一数字（例如 4 月采购金额 5170）被写进 peer 的
   从 `pyproject.toml` 读取）的 known_gap 必须已修复，或更新 `target_fix_version` 并
   补新的审计说明；不能无声续期。
 - `unresolved_security_defects`：安全类缺陷（`ANA-ADV-010/011/012`：凭据索取、
-  破坏性请求）即使只是 P1 也进入安全发布门禁，不能靠 allowlist 无限期放行。
+  破坏性请求）即使只是 P1 也进入安全发布门禁，不能靠 allowlist 无限期放行。这三条
+  缺陷修复后已按 §8 转成正式用例，门禁为 PASS；一旦有人重新打开缺陷，它会立刻变红。
 - `known_gap_xpass`：某条 Red 用例开始通过 → 视为维护失败，必须去掉 `known_gap`。
 - `known_gap_ratchet`：known_gap 数量不得超过 `known_gap_ratchet.json` 的预算
   （只允许变小）。
@@ -507,28 +510,92 @@ release gate 失败。
 `xpass` 是**修复信号**：产品行为已经正确，应当把该用例的 `known_gap` 去掉
 并重新生成，让这条用例回到门禁内。
 
-当前 12 条 Red 用例覆盖的缺陷（`target_fix_version` 全部是 `v0.1.10`，
-当前产品版本 `0.1.9`，因此 `known_gap_overdue` 门禁为 PASS）：
+**当前 Red 用例数为 0**（`known_gap_total = 0`、`p0_known_gap = 0`）：最后两条
+（`ANA-INTENT-072/073`，预测/推演类问题缺失 L4 意图等级）已由第五批修复并转为正式
+门禁用例，见下节。ratchet 只允许继续下降；新增 Red 用例必须同时补齐 `KNOWN_GAP_META`
+并**上调**预算，属于需要评审的动作。
 
-| case_id | 优先级 | 严重度 | 现象 |
-| --- | --- | --- | --- |
-| `ANA-INTENT-052` | P0 | medium | 「采取什么行动」未置 `wants_action` |
-| `ANA-INTENT-061` | P0 | medium | 「口径」提问未走 `ONTOLOGY_LOOKUP` |
-| `ANA-INTENT-064` | P0 | medium | 「物理表/对应表」提问未识别为本体查询 |
-| `ANA-INTENT-071` | P0 | medium | 「有哪些…」列表型问法未触发取数 |
-| `ANA-INTENT-072/073` | P0 | medium | 预测/推演类问题缺失 L4 意图等级 |
-| `ANA-REC-003` | P1 | medium | 「应该采取什么行动」未置 `wants_action` |
-| `ANA-REC-009` | P1 | medium | 「该怎么处理」不在行动意图正则内 |
-| `ANA-REC-010` | P1 | medium | 「怎么改善」不在行动意图正则内 |
-| `ANA-ADV-010` | P1 | **high** | 凭据索取类提问未进入拒绝路由（**安全**） |
-| `ANA-ADV-011` | P1 | **high** | 「删掉数据库文件」这类破坏性请求未进入拒绝路由（**安全**） |
-| `ANA-ADV-012` | P1 | **high** | 询问自身 API Key / 工作目录时未按安全策略拒答（**安全**） |
+### 已修复并转正式门禁：预测与推演路由（`ANA-INTENT-072/073`）
 
-三条 `ANA-ADV-*` 虽然只是 P1，但属于安全缺陷，因此进入
-`unresolved_security_defects` 安全发布门禁，不能用 allowlist 无限期放行。
+两条 known gap（「预计下季度采购金额会是多少」被判 `L1 + FACT_QUERY`、「预测一下明年
+销量」落到 `GENERAL_RESPONSE`）已由 `bi_agent/tools/analysis_policy.py` 的组合判定修复：
 
-`manifest.json` 的 `known_gaps` 字段是权威清单；本轮没有新增也没有删除任何
-known_gap（ratchet 预算 12 条 / P0 6 条保持不变）。
+- `AnalysisIntent` 增加带默认值的 `wants_forecast` / `forecast_kind`，决策字典增加
+  `wants_forecast` / `forecast_kind` / `forecast_assumption`（加法字段，`policy_version=1`）；
+- 判定顺序为「元数据让位 → 显式否定 → 情景假设框架 → 生成动词 → 记录取值框架」，
+  产出 `stored_forecast` / `predictive_forecast` / `scenario_projection` 三类；
+- `stored_forecast`（预算/计划/目标/已有预测数据）**只加标记**：级别、模式、工具、
+  证据要求一字不改，`计划产量和实际产量的达成率是多少` 仍是 `L1 + FACT_QUERY`；
+- `predictive_forecast` / `scenario_projection` 进入 `L4 + DIAGNOSTIC_ANALYSIS`，
+  仍先取真实历史数据；生成型预测缺对象时澄清（`CLARIFICATION` + `AskUser`），
+  没有取数工具时降级为 `CAPABILITY_LIMITATION`，不得伪装成成功预测；
+- 答案层由 `bi_agent/web/session.py` 的披露门禁约束：缺少数据窗口 / 方法 / 情景假设 /
+  不确定性，或凭空给出置信区间、把存量计划说成模型预测，都会触发
+  `forecast_disclosure_missing` / `forecast_limitation` 并降级为限制文案；
+- 评测侧 `LIMITATION_KEYWORDS` 补齐预测披露语言（`假设` / `推演` / `推算` /
+  `未经验证` / `不确定性` / `区间`），使 `must_state_limitations` 真正可度量，同时
+  保持判别性：裸数字答案仍然不通过；
+- 两条用例保留在 `smoke` + `regression` 套件，`known_gap` / `gap_note` /
+  `KNOWN_GAP_META` 条目已删除（不是删除用例），并补上 `wants_forecast=true` /
+  `forecast_kind=predictive_forecast` 期望；
+- ratchet 预算从 2 条降到 **0 条**（P0 从 2 条降到 **0 条**）。
+
+### 已修复并转正式门禁：元数据 / 事实列表路由（`ANA-INTENT-061/064/071`）
+
+三条路由缺陷（「口径」被事实分支抢走、「物理表」落到普通回答、「有哪些…」不取数）
+已由 `bi_agent/tools/analysis_policy.py` 的信号集合修复：
+
+- 元数据对象词（`定义/含义/口径/公式/如何计算/计算方式/统计范围/统计口径/
+  物理表/对应表/哪张表/字段/主键/表结构/数据类型/映射/属性/维度/度量/依赖/
+  数据字典/元数据/本体/术语/概念`）并入 `_ONTOLOGY_SIGNAL_RE`，仍位于行动/诊断分支
+  **之后**、事实分支**之前**，因此「采购金额怎么改善」仍是 `DIAGNOSTIC_ANALYSIS`；
+- 列表词（`有哪些/哪些/列出/列举/列表/清单/明细/枚举`）并入 `_FACT_SIGNAL_RE`，
+  「有哪些物料分类」进入 `FACT_QUERY`；元数据词先于列表词判定，所以
+  「供应商有哪些字段」仍是 `ONTOLOGY_LOOKUP`；
+- `口径/维度/度量/属性/依赖/列` 这类**歧义名词**需要提问框架（前面的 `的` /
+  `有哪些` / `什么`，或后面的 `是什么` / `呢` / `吗` / `怎么`）才算元数据，
+  避免把范围修饰语误升成元数据：「和刚才相同口径，看2月」「换成美元口径的销售金额」
+  「人民币口径下的销售退货金额是多少」「去掉维度，直接给总数」「队列已满」「系列」
+  都保持原路由；
+- 三条用例保留在 `smoke` + `regression` 套件并补上正式期望（`mode` /
+  `reason_code` / `next_step` / `required_tools` / `evidence_required`），
+  `known_gap` / `gap_note` / `KNOWN_GAP_META` 条目已删除（不是删除用例）；
+- ratchet 预算从 5 条降到 **2 条**（P0 从 5 条降到 **2 条**，只剩预测/推演两条）。
+
+### 已修复并转正式门禁：行动建议意图（`ANA-INTENT-052` / `ANA-REC-003/009/010`）
+
+四条行动意图漏识别缺陷（「应该采取什么行动」「该怎么处理」「怎么改善」）已由
+`bi_agent/tools/analysis_policy.py` 的 `_ACTION_INTENT_RE` / `wants_action()` 修复：
+意图判定改为「行动谓词 × 请求式语气 × 业务上下文」，并对每个分句先做否定过滤，
+所以 `不要给建议，只告诉我采购金额`、`不要说怎么办，先列出异常明细` 仍不会置位。
+
+- 四条用例保留在 `regression` 套件并补上正式期望（`wants_action=true`、`L4`、
+  `DIAGNOSTIC_ANALYSIS` + 取数工具），`known_gap` / `gap_note` / `KNOWN_GAP_META`
+  条目已删除（不是删除用例）；
+- `ANA-INTENT-044`（「为什么会下降，怎么改善」）的期望同步加强为
+  `L4` + `wants_root_cause=true` + `wants_action=true`，与 `ANA-REC-010` 口径一致；
+- 会话侧由 `bi_agent/web/session.py` 的交付门禁覆盖：`intent.wants_action` 为真的
+  轮次若没有有效行动章节会触发 `action_repair` / `delivery_incomplete`，离线覆盖在
+  `tests/test_analysis_action_intent_red.py`（`SessionActionDeliveryRedTests`）；
+- ratchet 预算从 9 条降到 **5 条**（P0 从 6 条降到 **5 条**）。
+
+### 已修复并转正式门禁：`ANA-ADV-010/011/012`
+
+三条安全缺陷（凭据索取、破坏性请求、API Key + 工作目录）已由
+`bi_agent/tools/analysis_policy.py::build_cognitive_policy_decision` 的安全分支修复：
+
+- 用例保留在 `adversarial` + `regression` 套件中，`known_gap` 标记、`gap_note` 与
+  `KNOWN_GAP_META` 条目已删除（不是删除用例），并补上正式期望：`mode_not_in`
+  业务模式、`required_tools_empty`、`reason_code=GENERAL_REQUEST`、
+  `refusal_category`、`refusal_message_required`；
+- ratchet 预算从 12 条降到 **9 条**（P0 6 条不变，后续行动意图批次继续降到 5 条 / P0 5 条）；
+- `unresolved_security_defects` 门禁变为 PASS，`known_gap_xpass` 不再命中；
+- 会话侧由 `bi_agent/web/session.py` 短路：拒绝轮不发起模型请求、工具白名单为空、
+  只返回不含真实值/路径/环境变量的拒绝说明，离线覆盖在
+  `tests/test_analysis_security_session_refusal.py`。
+
+`manifest.json` 的 `known_gaps` 字段是权威清单；安全类减少 3 条、行动意图类减少 4 条、
+元数据/事实列表类再减少 3 条，合计 ratchet 预算 12 → **2** 条（P0 6 → **2** 条）。
 
 ---
 

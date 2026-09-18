@@ -50,15 +50,5 @@
     "L4",
     "action"
   ],
-  "known_gap": true,
-  "gap_note": "当前实现对『应该采取什么行动』不置 wants_action，行动类措辞覆盖不全（_ACTION_INTENT_RE 未含『采取什么行动』）。",
-  "gap_meta": {
-    "owner": "ai-team",
-    "introduced_at": "2026-09-17",
-    "target_fix_version": "v0.1.10",
-    "severity": "medium",
-    "summary": "『采取什么行动』未置 wants_action",
-    "source_issue": "a1134c7 (analytics golden set v1)",
-    "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（_ACTION_INTENT_RE 未含『采取什么行动』）"
-  }
+  "notes": "『应该采取什么行动』属于行动意图：wants_action=true、L4、诊断取数路线，不得因为『下降』只判成 L2 异常。"
 }

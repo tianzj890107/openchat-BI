@@ -25,7 +25,7 @@
       "Ontology-SemanticQuery",
       "AskUser"
     ],
-    "intent_level": "L3",
+    "intent_level": "L4",
     "policy": {
       "mode": "DIAGNOSTIC_ANALYSIS",
       "reason_code": "DIAGNOSTIC_REQUEST",
@@ -37,7 +37,7 @@
       "needs_human": false
     },
     "wants_root_cause": true,
-    "wants_action": false
+    "wants_action": true
   },
   "forbidden": [],
   "allowed_variants": {},
@@ -47,7 +47,8 @@
   "scoring": {},
   "tags": [
     "intent",
-    "L3",
-    "root_cause"
+    "L4",
+    "root_cause",
+    "action"
   ]
 }

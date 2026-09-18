@@ -422,6 +422,13 @@ def eval_policy(case: dict, ctx: EvalContext) -> CaseResult:
             policy["required_tools"], decision["required_tools"])
     if policy.get("required_tools_empty"):
         chk("policy.required_tools_empty", not decision["required_tools"], [], decision["required_tools"])
+    if "refusal_category" in policy:
+        want = policy["refusal_category"]
+        chk("policy.refusal_category",
+            decision.get("refusal_category") == want, want, decision.get("refusal_category"))
+    if policy.get("refusal_message_required"):
+        message = str(decision.get("refusal_message") or "").strip()
+        chk("policy.refusal_message_required", bool(message), True, bool(message))
     if "evidence_required" in policy:
         chk("policy.evidence_required", bool(decision["evidence_required"]) == bool(policy["evidence_required"]),
             policy["evidence_required"], decision["evidence_required"])
@@ -437,6 +444,18 @@ def eval_policy(case: dict, ctx: EvalContext) -> CaseResult:
     if "wants_action" in expected:
         chk("intent.wants_action", bool(intent.wants_action) == bool(expected["wants_action"]),
             expected["wants_action"], intent.wants_action)
+    if "wants_forecast" in expected:
+        want = bool(expected["wants_forecast"])
+        chk("intent.wants_forecast", bool(intent.wants_forecast) == want,
+            want, intent.wants_forecast)
+        chk("policy.wants_forecast", bool(decision.get("wants_forecast")) == want,
+            want, decision.get("wants_forecast"))
+    if "forecast_kind" in expected:
+        want = expected["forecast_kind"]
+        chk("intent.forecast_kind", intent.forecast_kind == want,
+            want, intent.forecast_kind)
+        chk("policy.forecast_kind", decision.get("forecast_kind") == want,
+            want, decision.get("forecast_kind"))
 
     schema_ok = (
         decision.get("policy_version") == 1
@@ -457,7 +476,8 @@ def eval_policy(case: dict, ctx: EvalContext) -> CaseResult:
         c.ok for c in checks
         if c.name in ("policy.mode", "policy.mode_not_in", "policy.next_step",
                       "policy.required_tools", "policy.required_tools_empty",
-                      "policy.reason_code")
+                      "policy.reason_code", "policy.refusal_category",
+                      "policy.refusal_message_required")
     )
     result.metrics["answer_schema_valid_rate"] = schema_ok
     result.metrics["evidence_coverage"] = bool(decision.get("evidence_required")) == bool(
@@ -1349,8 +1369,14 @@ def eval_session_isolation(case: dict, ctx: EvalContext) -> CaseResult:
 # ---------------------------------------------------------------------------
 PROXY_KEYWORDS = ("代理", "近似", "间接", "相关的", "不能直接证明", "间接证据")
 SCOPE_KEYWORDS = ("口径", "统计范围", "范围", "过滤", "仅统计", "排除", "定义")
+# Disclosure language accepted as an explicit limitation.  The forecast /
+# scenario vocabulary (assumption, projection, estimation, unverified,
+# uncertainty, interval) is part of the contract:
+# ``docs/specs/analysis-forecast-and-scenario-routing.md`` §7.3.  The list stays
+# *discriminative* — a bare number ("下季度采购金额预测为 4,750.00 元。") contains
+# none of these tokens and must still fail the check.
 LIMITATION_KEYWORDS = ("限制", "不确定", "无法确认", "数据缺失", "缺月", "不足以", "无法唯一归因",
-                       "可能", "样本")
+                       "可能", "样本", "假设", "推演", "推算", "未经验证", "不确定性", "区间")
 ACTION_TEMPLATE_RE = re.compile(
     r"(建议|应当|需要|计划|拟|拟对|对[^，。；]{0,12}(?:部门|团队|采购|供应商|产线|仓库))"
 )

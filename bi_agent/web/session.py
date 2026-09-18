@@ -30,7 +30,13 @@ from typing import Any, Callable, Generator, Optional
 from open_claude.agent_def import AgentDef
 from open_claude.prompt import build_system_prompt
 from bi_agent.tools.analysis_policy import (
+    FORECAST_KIND_PREDICTIVE,
+    FORECAST_KIND_SCENARIO,
+    FORECAST_KIND_STORED,
+    REFUSAL_CATEGORIES,
     build_cognitive_policy_decision,
+    classify_forecast,
+    classify_intent,
     extract_action_items,
     has_effective_action,
     has_root_cause_section,
@@ -166,6 +172,13 @@ REMOTE_ENTITY_LINE_RE = re.compile(
 RENDER_TOOLS = {"TableGenerate", "ChartGenerate", "ChartGenerateMultiDim"}
 DATA_FETCH_TOOLS = {"Ontology-FactQuery", "Ontology-MetricQuery"}
 
+# Used only when a safety refusal decision somehow carries no message; it
+# never contains a real value, environment-variable name or internal path.
+REFUSAL_FALLBACK_MESSAGE = (
+    "出于安全考虑，我不能提供凭据、内部环境信息，也不会执行删除、清空、"
+    "覆盖数据库或数据文件的破坏性操作。如果需要只读分析，请说明指标与范围。"
+)
+
 # --- 6-step analysis SOP -------------------------------------------------
 # Steps are 1-based (01..06): 意图识别 / 本体模型匹配 / 深度思考&分析规划 /
 # 数据获取和可视化 / 根因分析 / 决策行动.  Structured ``sop_progress`` events
@@ -245,6 +258,76 @@ RESPONSE_PRESENTATION_RULES = """# 输出展示规范
 - 数字不参与最终回答门禁：任何数字格式、舍入、单位换算、比例或派生计算都不得触发整段重写、阻断或空回答；数字可靠性依靠取数口径、来源说明和回答措辞保障。
 - 已取得可用查询结果时必须给出用户可见的最终回答；证据校验器异常或仅发现因果措辞偏强等软风险时，不得返回空白，应保留候选答案并局部降调。
 """
+
+
+# ---------------------------------------------------------------------------
+# Forecast disclosure gate (batch 5)
+#
+# A forecast / scenario turn may only be delivered when the answer states the
+# data window, the method, the explicit assumption (scenario) and the
+# uncertainty.  The repository has no statistical model, so a confidently
+# written number — or an invented confidence interval — must be downgraded to a
+# limitation instead of being presented as a prediction.  See
+# ``docs/specs/analysis-forecast-and-scenario-routing.md`` §7.
+# ---------------------------------------------------------------------------
+FORECAST_WINDOW_RE = re.compile(
+    r"(?:数据窗口|时间窗口|窗口|区间|时间段|过去|历史|截至|同比|环比|口径|"
+    r"近\s*\d+\s*(?:个)?(?:月|年|周|天|季度)|\d{4}\s*年)"
+)
+FORECAST_METHOD_TOKENS = (
+    "推演", "推算", "外推", "趋势外推", "按假设", "根据假设", "基于假设",
+    "计算方式", "计算方法", "方法",
+)
+FORECAST_UNCERTAINTY_TOKENS = (
+    "不确定性", "不确定", "未经验证", "限制", "不足以", "无法确认",
+    "无法给出区间", "仅供参考", "不能视为", "无法保证",
+)
+FORECAST_ASSUMPTION_TOKENS = ("假设", "如果", "前提", "条件下", "情景", "情形")
+# Statistical vocabulary this repository cannot legitimately produce.
+FORECAST_FABRICATION_RE = re.compile(
+    r"(?:置信区间|置信度|置信水平|显著性|季节性|回测|准确率|误差率|拟合优度)"
+)
+# A stored plan/budget record presented as a model-generated prediction.
+FORECAST_MODEL_CLAIM_RE = re.compile(
+    r"(?:模型(?:给出|输出|生成|预测|推算)|预测结论|算法预测|机器学习|AI\s*预测)"
+)
+
+FORECAST_LIMITATION_NOTE = (
+    "说明：当前系统不具备统计预测能力，以上内容不是统计预测结论。"
+    "如需继续，可提供明确假设后做情景推演、改为查询系统中已有的计划或预算数据，"
+    "或补充数据范围后重试。"
+)
+
+
+def forecast_disclosure_missing(
+    forecast_kind: str | None,
+    assumption: str | None,
+    answer: str | None,
+) -> list[str]:
+    """Return the disclosure items a forecast answer failed to state."""
+
+    text = str(answer or "")
+    if not text.strip() or not forecast_kind:
+        return []
+    missing: list[str] = []
+    if FORECAST_FABRICATION_RE.search(text):
+        missing.append("fabricated_statistics")
+    if forecast_kind == FORECAST_KIND_STORED:
+        if FORECAST_MODEL_CLAIM_RE.search(text):
+            missing.append("stored_presented_as_model_output")
+        return missing
+    if forecast_kind == FORECAST_KIND_SCENARIO:
+        disclosed = any(token in text for token in FORECAST_ASSUMPTION_TOKENS)
+        if not disclosed and assumption:
+            disclosed = str(assumption) in text
+        if not disclosed:
+            missing.append("assumption")
+    has_window = bool(FORECAST_WINDOW_RE.search(text))
+    has_method = any(token in text for token in FORECAST_METHOD_TOKENS)
+    has_uncertainty = any(token in text for token in FORECAST_UNCERTAINTY_TOKENS)
+    if not (has_window or has_method or has_uncertainty):
+        missing.append("window_or_method_or_limitation")
+    return missing
 
 
 class WebSession:
@@ -367,6 +450,23 @@ class WebSession:
         # never reclassify or overwrite it.  The stored snapshot is a plain
         # bounded dict (no raw question / SQL / credentials).
         self._cognitive_policy_decision: Optional[dict[str, Any]] = None
+        # Safety short-circuit for the CURRENT turn: when the Cognitive Policy
+        # refuses a turn (credential / internal-environment / destructive
+        # request) the model loop is never started and the effective tool
+        # whitelist collapses to [].  Reset at the start of every turn so a
+        # refusal can never leak into the next (normal) question.
+        self._refusal_tool_block: bool = False
+        # Action intent for the CURRENT turn (``classify_intent``): a turn that
+        # explicitly asks for advice owes the user an actionable 行动建议
+        # section, exactly like a turn that delivered a root cause.
+        self._turn_wants_action: bool = False
+        # Forecast intent for the CURRENT turn (``classify_intent``): a turn
+        # that asks for a prediction/projection owes the user an explicit
+        # disclosure of window / method / assumption / uncertainty before the
+        # answer may be delivered.
+        self._turn_wants_forecast: bool = False
+        self._turn_forecast_kind: Optional[str] = None
+        self._turn_forecast_assumption: Optional[str] = None
 
     # ------------------------------------------------------------------
     # System-prompt construction (honours per-session overrides)
@@ -374,7 +474,14 @@ class WebSession:
 
     @property
     def allowed_tools(self) -> Optional[list[str]]:
-        """Effective tool whitelist for the current session."""
+        """Effective tool whitelist for the current session.
+
+        A refused turn exposes NO tool to the model (the session also skips the
+        model loop entirely for such a turn), so an empty list here is the
+        second, independent layer of the safety contract.
+        """
+        if getattr(self, "_refusal_tool_block", False):
+            return []
         if self._tools_override is not None:
             return self._tools_override
         return self.agent_def.tools
@@ -749,7 +856,13 @@ class WebSession:
         if self._turn_superseded():
             yield {"type": "session_superseded"}
             return
+        self._refusal_tool_block = False
         self._local_turn_seq += 1
+        turn_intent = classify_intent(user_text)
+        self._turn_wants_action = bool(turn_intent.wants_action)
+        self._turn_wants_forecast = bool(turn_intent.wants_forecast)
+        self._turn_forecast_kind = turn_intent.forecast_kind
+        self._turn_forecast_assumption = classify_forecast(user_text)[2]
         # A new user turn always restarts on the user's explicitly selected
         # model; any automatic fallback from a previous turn is released here.
         self._turn_fallback_model_key = None
@@ -778,6 +891,13 @@ class WebSession:
         self._cognitive_policy_decision = policy_decision
         yield {"type": "cognitive_policy", **policy_decision}
         yield self._sop_event(SOP_STEP_INTENT, "用户问题解析", allow_backward=False)
+        # Safety first: a refused turn never reaches the model loop.  No LLM
+        # request is issued, the tool whitelist is empty, no query plan or SQL
+        # is built, and only the pre-authored secret-free refusal message is
+        # delivered.
+        if policy_decision.get("refusal_category"):
+            yield from self._refusal_turn(policy_decision)
+            return
         # A new user question opens a NEW recovery turn: business state
         # (data/busy/pending/checkpoint) is reset while the turn reference is
         # derived from the user-turn counter so AskUser resumes and explicit
@@ -974,6 +1094,44 @@ class WebSession:
                 return True
         self.messages.append({"role": "assistant", "content": content})
         return True
+
+    def _refusal_turn(
+        self,
+        policy_decision: dict[str, Any],
+    ) -> Generator[dict[str, Any], None, None]:
+        """Deliver a safety refusal without ever starting the model loop.
+
+        Contract (docs/specs/analysis-security-refusal.md):
+        * route   — the turn stays on GENERAL_RESPONSE / DELIVER, never a
+                    FACT_QUERY / DIAGNOSTIC_ANALYSIS / ONTOLOGY_LOOKUP route;
+        * tools   — the effective whitelist is empty and the model is never
+                    asked, so no SQL / ontology / file tool can be selected;
+        * plan    — no query plan, no SQL, no tool input is produced;
+        * answer  — only the pre-authored, secret-free refusal message is
+                    returned; no real value, partial value, environment
+                    variable or internal absolute path is echoed back.
+        """
+        turn_ctx = getattr(self, "_turn_ctx", None)
+        self._refusal_tool_block = True
+        category = str(policy_decision.get("refusal_category") or "")
+        if category not in REFUSAL_CATEGORIES:
+            # A refusal without a valid category is a programming error: keep
+            # the turn on the safe, tool-less route rather than guessing.
+            logger.error("safety refusal without a valid category: %s", category)
+        message = str(policy_decision.get("refusal_message") or "").strip()
+        if not message:
+            message = REFUSAL_FALLBACK_MESSAGE
+        if not self._commit_messages([{"type": "text", "text": message}], turn_ctx):
+            yield {"type": "session_superseded"}
+            return
+        yield {"type": "text_delta", "text": message}
+        if self.recovery.status() == RUNNING:
+            current = self.recovery.snapshot()
+            succeeded = self.recovery.mark_succeeded(int(current.get("attempt") or 1))
+            if succeeded is not None:
+                yield self._recovery_event(succeeded)
+        yield self._sop_event(SOP_STEP_DECISION, "正在返回用户结果")
+        yield {"type": "done", "stop_reason": "end_turn"}
 
     def _run_loop(self) -> Generator[dict[str, Any], None, None]:
         # Capture the turn's ownership context ONCE.  A newer turn (after a
@@ -1329,34 +1487,47 @@ class WebSession:
             text_concat_this_turn = fallback_text
 
         # ------------------------------------------------------------------
-        # Action delivery gate: a turn that delivered root cause MUST also
-        # deliver at least one concrete action item. The repair phase has its
-        # own counter (independent of max_iterations) and never executes
-        # tools, so a root cause that appeared on the last main iteration
-        # still gets its repair chances and no SQL/chart/table re-runs.
+        # Action delivery gate: a turn that delivered a root cause OR that the
+        # user explicitly asked for advice (``classify_intent().wants_action``)
+        # MUST also deliver at least one concrete action item. The repair phase
+        # has its own counter (independent of max_iterations) and never
+        # executes tools, so an action request that appeared on the last main
+        # iteration still gets its repair chances and no SQL/chart/table
+        # re-runs.
         # ------------------------------------------------------------------
         max_action_repairs = 2
         action_repairs = 0
         action_blocked = False
-        if root_cause_seen and not has_effective_action(text_concat_this_turn):
+        action_needed = bool(self._turn_wants_action or root_cause_seen)
+        if action_needed and not has_effective_action(text_concat_this_turn):
             for _ in range(max_action_repairs):
                 if self._turn_superseded(turn_ctx):
                     yield {"type": "session_superseded"}
                     return
                 action_repairs += 1
                 if action_repairs == 1:
-                    reminder = (
-                        "本轮回复已经出现根因章节,但还没有有效行动建议,不能结束本轮。"
-                        "请基于本轮已经验证的根因证据,继续补充一个标题为‘行动建议’"
-                        "(或‘管理建议’‘决策建议’‘下一步行动’等)的小节,给出 1–2 条具体动作;"
-                        "每条都要有明确动作对象和执行方式,不要写‘加强管理’‘持续关注’等空话,"
-                        "不要声称动作已经执行,不要重复根因分析,不要使用表情符号。"
-                    )
+                    if root_cause_seen:
+                        reminder = (
+                            "本轮回复已经出现根因章节,但还没有有效行动建议,不能结束本轮。"
+                            "请基于本轮已经验证的根因证据,继续补充一个标题为‘行动建议’"
+                            "(或‘管理建议’‘决策建议’‘下一步行动’等)的小节,给出 1–2 条具体动作;"
+                            "每条都要有明确动作对象和执行方式,不要写‘加强管理’‘持续关注’等空话,"
+                            "不要声称动作已经执行,不要重复根因分析,不要使用表情符号。"
+                        )
+                    else:
+                        reminder = (
+                            "用户明确要求给出行动建议,但本轮回复还没有有效行动建议,"
+                            "不能结束本轮。请基于本轮已经查询到的证据,补充一个标题为"
+                            "‘行动建议’(或‘管理建议’‘决策建议’‘下一步行动’等)的小节,"
+                            "给出 1–2 条具体动作;每条都要有明确动作对象和执行方式,"
+                            "不要写‘加强管理’‘持续关注’等空话,不要声称动作已经执行,"
+                            "不要重复已经给出的结论,不要使用表情符号。"
+                        )
                 else:
                     reminder = (
                         "上一轮补写仍然没有有效行动建议。请只补充行动建议文本:"
                         "标题为‘行动建议’(或‘管理建议’‘决策建议’‘下一步行动’等),"
-                        "给出 1–2 条可执行的具体动作并对应根因证据;"
+                        "给出 1–2 条可执行的具体动作并对应本轮已经验证的证据;"
                         "不要调用任何工具,不要重新执行已经完成的取数、图表或表格。"
                     )
                 self.messages.append({"role": "user", "content": reminder, "internal": True})
@@ -1436,7 +1607,7 @@ class WebSession:
             yield {"type": "session_superseded"}
             return
 
-        if root_cause_seen and not action_blocked:
+        if action_needed and not action_blocked:
             items: list[dict[str, Any]] = []
             for raw in extract_action_items(text_concat_this_turn):
                 parsed = split_action_item(raw)
@@ -1451,6 +1622,52 @@ class WebSession:
                     "turn": self._user_turn_count,
                     "items": items,
                 }
+
+        # ------------------------------------------------------------------
+        # Forecast delivery gate: a prediction / scenario-projection turn must
+        # disclose the data window, the method, the explicit assumption and the
+        # uncertainty.  A capability-limited forecast exposes the limitation
+        # instead of pretending to predict.  The gate never invents a number
+        # and never relaxes the Claim/Evidence checks.
+        # ------------------------------------------------------------------
+        forecast_blocked = False
+        if self._turn_wants_forecast:
+            policy_mode = str(
+                (self._cognitive_policy_decision or {}).get("mode") or ""
+            )
+            if policy_mode == "CAPABILITY_LIMITATION":
+                forecast_blocked = True
+                yield {
+                    "type": "forecast_limitation",
+                    "reason": "capability_unavailable",
+                    "kind": self._turn_forecast_kind,
+                    "message": FORECAST_LIMITATION_NOTE,
+                }
+                yield {"type": "text_delta", "text": "\n\n" + FORECAST_LIMITATION_NOTE}
+                text_concat_this_turn += "\n\n" + FORECAST_LIMITATION_NOTE
+            else:
+                missing = forecast_disclosure_missing(
+                    self._turn_forecast_kind,
+                    self._turn_forecast_assumption,
+                    text_concat_this_turn,
+                )
+                if missing:
+                    forecast_blocked = True
+                    yield {
+                        "type": "forecast_disclosure_missing",
+                        "reason": "disclosure_missing",
+                        "kind": self._turn_forecast_kind,
+                        "missing": missing,
+                        "message": FORECAST_LIMITATION_NOTE,
+                    }
+                    yield {"type": "text_delta", "text": "\n\n" + FORECAST_LIMITATION_NOTE}
+                    text_concat_this_turn += "\n\n" + FORECAST_LIMITATION_NOTE
+                    logger.warning(
+                        "forecast_disclosure_missing turn=%s kind=%s missing=%s",
+                        self._user_turn_count,
+                        self._turn_forecast_kind,
+                        ",".join(missing),
+                    )
 
         # The final answer passed every existing Claim/Evidence/Action/Render
         # gate: RUNNING -> SUCCEEDED with a DELIVER checkpoint.  Early returns

@@ -4,6 +4,6 @@
     "deleting or fixing a case, never re-labelling a genuine failure as a gap.",
     "checked by the `known_gap_ratchet` gate on full-set runs."
   ],
-  "known_gap_total": 12,
-  "p0_known_gap": 6
+  "known_gap_total": 0,
+  "p0_known_gap": 0
 }

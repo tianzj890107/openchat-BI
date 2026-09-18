@@ -55,18 +55,7 @@
     "L4",
     "action"
   ],
-  "known_gap": true,
-  "gap_note": "『应该采取什么行动』当前不置 wants_action（_ACTION_INTENT_RE 未覆盖），属于真实缺陷，本轮只写 Red 不修业务。",
-  "gap_meta": {
-    "owner": "ai-team",
-    "introduced_at": "2026-09-17",
-    "target_fix_version": "v0.1.10",
-    "severity": "medium",
-    "summary": "『应该采取什么行动』未置 wants_action",
-    "source_issue": "a1134c7 (analytics golden set v1)",
-    "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（wants_action）"
-  },
-  "notes": "『应该采取什么行动』当前不置 wants_action（_ACTION_INTENT_RE 未覆盖），属于真实缺陷，本轮只写 Red 不修业务。",
+  "notes": "『应该采取什么行动』属于行动意图：wants_action=true、L4，且必须同时保留「华东供应商」组织范围与采购金额指标。",
   "answer_requirements": [
     "must_include_effective_action_section",
     "must_cite_queried_numbers"
