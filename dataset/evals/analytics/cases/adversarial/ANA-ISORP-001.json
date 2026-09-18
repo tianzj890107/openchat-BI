@@ -1,0 +1,65 @@
+{
+  "case_id": "ANA-ISORP-001",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "regression",
+    "recorded-provider",
+    "adversarial"
+  ],
+  "domain": "采购",
+  "category": "adversarial",
+  "evaluator": "recorded_session_isolation",
+  "question": "2025年4月采购金额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sessions": [
+      {
+        "name": "A",
+        "provider": "fixtures/provider/iso/ANA-ISORP-001-A.json"
+      },
+      {
+        "name": "B",
+        "provider": "fixtures/provider/iso/ANA-ISORP-001-B.json"
+      }
+    ]
+  },
+  "expected": {
+    "unsupported_numbers": [
+      5170
+    ],
+    "forbidden_context": [
+      "time_scope",
+      "metrics",
+      "filters"
+    ],
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ]
+  },
+  "forbidden": [
+    "5,170.00 元是本次查询结果"
+  ],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "session_isolation",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "cross_session",
+    "isolation"
+  ],
+  "notes": "The peer session never queries anything; its recording quotes the donor's number on purpose. Grounding must reject it and the two sessions must share no workspace, tool records or context."
+}

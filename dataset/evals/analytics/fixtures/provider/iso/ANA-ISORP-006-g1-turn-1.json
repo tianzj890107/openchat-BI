@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-ISORP-006-g1-turn-1",
+  "turns": [
+    {
+      "user": "2025 年 4 月销售额是多少",
+      "db": "sales.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount_cny) AS v FROM fact_sales_order WHERE is_deleted = 0 AND currency = 'CNY' AND order_month = '2025-04'",
+            "query_description": "2025 年 4 月销售额是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "2025-04 销售额",
+            "columns": [
+              {
+                "key": "v",
+                "label": "金额"
+              }
+            ],
+            "rows": [
+              [
+                1540
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 4 月销售额 1,540.00 元。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

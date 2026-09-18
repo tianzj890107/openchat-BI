@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-ISORP-002-B",
+  "turns": [
+    {
+      "user": "上一张图给我看看，不用重新画",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "text_delta",
+          "text": "本会话没有生成任何图表，无法展示；请重新描述要画的指标。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

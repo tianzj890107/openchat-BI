@@ -1,0 +1,65 @@
+{
+  "case_id": "ANA-LIVE-SALES-002",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "diagnosis"
+  ],
+  "domain": "销售",
+  "category": "diagnosis",
+  "evaluator": "policy",
+  "question": "退货金额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "sales.db"
+  },
+  "expected": {
+    "allowed_tools": [
+      "Ontology-MetricQuery",
+      "Ontology-FactQuery",
+      "Ontology-SemanticQuery",
+      "AskUser"
+    ],
+    "intent_level": "L1",
+    "policy": {
+      "mode": "FACT_QUERY",
+      "reason_code": "FACT_REQUEST_RESOLVED",
+      "next_step": "QUERY_DORIS",
+      "required_tools": [
+        "Ontology-MetricQuery"
+      ],
+      "evidence_required": true,
+      "needs_human": false
+    },
+    "wants_root_cause": false,
+    "wants_action": false
+  },
+  "forbidden": [
+    "unsupported_number"
+  ],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "policy_decision",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "live",
+    "L1",
+    "sales",
+    "returns"
+  ],
+  "notes": "退货金额必须说明是否为负值冲减以及是否已从净销售额中扣除。",
+  "answer_requirements": [
+    "must_state_metric_and_scope",
+    "must_cite_queried_numbers",
+    "must_state_negative_handling"
+  ]
+}

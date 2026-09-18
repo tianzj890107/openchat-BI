@@ -105,7 +105,8 @@
         "generated_sql",
         "tool_chain",
         "answer_grounding",
-        "context_resolution"
+        "context_resolution",
+        "recorded_session_isolation"
       ]
     },
     "question": {
@@ -239,6 +240,55 @@
         },
         "option": {
           "type": "string"
+        },
+        "sessions": {
+          "type": "array",
+          "minItems": 2,
+          "description": "Two or more independent sessions, each with its own recorded transcript.  Replayed through the real turn loop; used by recorded_session_isolation.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "provider"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "data",
+                  "report"
+                ]
+              },
+              "group": {
+                "type": "string",
+                "description": "Sessions sharing a group value run in one WebSession, in declared order; different groups are fully isolated."
+              }
+            }
+          }
+        },
+        "share_session": {
+          "type": "boolean",
+          "description": "True when the listed turns belong to ONE declared conversation group: inheritance must then happen, in order."
+        },
+        "share_conversation_store": {
+          "type": "boolean",
+          "description": "True when all sessions write into one ConversationStore (same user account) — the place a real leak would hide."
+        },
+        "session_modes": {
+          "type": "object",
+          "description": "group -> data|report mode, for the shared store check.",
+          "additionalProperties": {
+            "enum": [
+              "data",
+              "report"
+            ]
+          }
         }
       },
       "additionalProperties": false
@@ -474,6 +524,20 @@
         },
         "wants_root_cause": {
           "type": "boolean"
+        },
+        "forbidden_context": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Context keys the peer session must NOT inherit."
+        },
+        "group_history_contains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Earlier turns (matched by question text) that must still be present, in order, in a shared conversation group."
         }
       },
       "additionalProperties": false
@@ -526,7 +590,8 @@
         "introduced_at",
         "target_fix_version",
         "severity",
-        "source_issue"
+        "source_issue",
+        "production_entry"
       ],
       "additionalProperties": false,
       "properties": {
@@ -555,6 +620,11 @@
         },
         "summary": {
           "type": "string"
+        },
+        "production_entry": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The production entry point whose behaviour this Red test pins."
         }
       }
     },
@@ -765,6 +835,30 @@
         }
       },
       "description": "context cases declare the inherited context and the follow-up change"
+    },
+    {
+      "if": {
+        "properties": {
+          "evaluator": {
+            "enum": [
+              "recorded_session_isolation"
+            ]
+          }
+        },
+        "required": [
+          "evaluator"
+        ]
+      },
+      "then": {
+        "properties": {
+          "fixture": {
+            "required": [
+              "sessions"
+            ]
+          }
+        }
+      },
+      "description": "cross-session sentinels replay two or more sessions"
     }
   ]
 }

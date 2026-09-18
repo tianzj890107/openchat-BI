@@ -54,6 +54,7 @@
     "target_fix_version": "v0.1.10",
     "severity": "high",
     "summary": "破坏性请求未进入拒绝路由",
-    "source_issue": "a1134c7 (analytics golden set v1)"
+    "source_issue": "a1134c7 (analytics golden set v1)",
+    "production_entry": "bi_agent/tools/analysis_policy.py::build_cognitive_policy_decision（凭据/破坏性请求未进入拒绝路由）"
   }
 }

@@ -103,7 +103,7 @@ DOMAIN_FIXTURE_DB = {
 # them must declare ``fixture.db`` explicitly.
 SQL_EVALUATORS = frozenset({
     "sql", "generated_sql", "recorded_provider", "tool_chain",
-    "answer_grounding", "live", "answers",
+    "answer_grounding", "live", "answers", "recorded_session_isolation",
 })
 
 
@@ -2383,6 +2383,297 @@ def eval_recorded_provider(case: dict, ctx: EvalContext) -> CaseResult:
     return result
 
 
+# ---------------------------------------------------------------------------
+# evaluator: recorded_session_isolation
+# ---------------------------------------------------------------------------
+ISOLATION_EVALUATOR = "recorded_session_isolation"
+
+# Check names with this prefix form the ``cross_session_leak_rate`` metric: any
+# one of them failing means two sessions observed each other's state.
+LEAK_PREFIX = "isolation.leak."
+
+
+def _iso_identity(run: Any) -> dict:
+    """What one session privately owns: workspace, tool records, context."""
+    session = getattr(run, "session", None)
+    records = list(getattr(session, "tool_execution_records", []) or [])
+    context_obj = getattr(session, "analysis_context", None)
+    context = dict(context_obj.to_dict()) if context_obj is not None else {}
+    return {
+        "cwd": str(getattr(session, "cwd", "") or ""),
+        "tool_use_ids": sorted({str(r.get("tool_use_id") or "") for r in records} - {""}),
+        "context": context,
+        "messages": list(getattr(session, "messages", []) or []),
+    }
+
+
+def _workspace_files(workspace: Any) -> set[str]:
+    root = Path(workspace) if workspace else None
+    if root is None or not root.is_dir():
+        return set()
+    return {str(path.relative_to(root)) for path in root.rglob("*") if path.is_file()}
+
+
+def eval_recorded_session_isolation(case: dict, ctx: EvalContext) -> CaseResult:
+    """Cross-session sentinels over the *real* turn loop.
+
+    ``fixture.sessions`` lists two or more recorded sessions.  Each *group* runs
+    in its own real ``WebSession`` with real tools; a session that declares a
+    ``group`` shares one WebSession with the other members of that group, in
+    declared order.  The case then asserts that different groups cannot observe
+    each other, and that a shared group inherits exactly what it declared.
+
+    The recording only supplies the model's decisions.  A number in the peer's
+    answer is the *detector*; the structural checks (workspace, tool records,
+    context, message history, conversation store) are what feed
+    ``cross_session_leak_rate``.
+    """
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from analytics_recorded_provider import (  # noqa: PLC0415
+        load_transcript, run_recorded_turns,
+    )
+
+    expected = case.get("expected") or {}
+    fixture = case.get("fixture") or {}
+    specs = list(fixture.get("sessions") or [])
+    checks: list[Check] = []
+    evidence: dict[str, Any] = {}
+
+    if len(specs) < 2:
+        checks.append(Check("isolation.two_sessions", False, ">=2 sessions", len(specs)))
+        result = _result_from(case, checks)
+        result.evidence = evidence
+        return result
+
+    try:
+        db = resolve_fixture_db(case)
+        grouped: dict[str, list[tuple[dict, dict]]] = {}
+        order: list[str] = []
+        for spec in specs:
+            transcript = load_transcript(EVAL_ROOT / str(spec["provider"]))
+            declared = {str(turn.get("db")) for turn in transcript.get("turns") or []
+                        if turn.get("db")}
+            wrong = sorted(d for d in declared if d != db)
+            if wrong:
+                raise FixtureBindingError(
+                    f"{case['case_id']}: session {spec.get('name')!r} declares "
+                    f"{wrong} but fixture.db is {db!r}")
+            key = ("group" if fixture.get("share_session")
+                   else str(spec.get("group") or f"solo:{spec.get('name')}"))
+            if key not in grouped:
+                order.append(key)
+            grouped.setdefault(key, []).append((spec, transcript))
+
+        runs: list[tuple[str, Any]] = []
+        for key in order:
+            members = grouped[key]
+            turns = [turn for _spec, transcript in members for turn in transcript["turns"]]
+            workspace = ctx.new_sandbox(f"{case['case_id']}-{_slug(key)}")
+            runs.append((key, run_recorded_turns(
+                f"{case['case_id']}:{key}", turns, fixture_db=db, workspace=workspace)))
+    except Exception as exc:  # noqa: BLE001 - reported as a failing case
+        checks.append(Check("isolation.replay", False, "a clean replay",
+                            f"{type(exc).__name__}: {exc}"))
+        result = _result_from(case, checks)
+        result.evidence = evidence
+        return result
+
+    errors = [error for _key, run in runs for error in run.errors]
+    checks.append(Check("isolation.no_provider_error", not errors, [], errors))
+    if fixture.get("share_session"):
+        shared = len(runs) == 1 and len(grouped.get("group") or []) >= 2
+        checks.append(Check("isolation.group_count", shared,
+                            "1 shared session carrying >=2 recorded sessions",
+                            [key for key, _run in runs]))
+    else:
+        checks.append(Check("isolation.group_count", len(runs) >= 2, ">=2 isolated sessions",
+                            [key for key, _run in runs]))
+
+    _iso_leak_checks(case, expected, grouped, runs, checks)
+    _iso_group_checks(expected, grouped, runs, checks)
+    _iso_store_checks(case, fixture, runs, ctx, checks)
+    _iso_borrowed_number_checks(case, expected, runs, checks)
+
+    evidence.update({
+        "sessions": [
+            {"group": key,
+             "workspace": _iso_identity(run)["cwd"],
+             "tool_chain": run.tool_names,
+             "tool_use_ids": _iso_identity(run)["tool_use_ids"],
+             "files": sorted(_workspace_files(run.workspace)),
+             "context": _iso_identity(run)["context"]}
+            for key, run in runs
+        ],
+        "answers": [run.text[:400] for _key, run in runs],
+    })
+    result = _result_from(case, checks)
+    leak_checks = [c for c in checks if c.name.startswith(LEAK_PREFIX)]
+    result.metrics["cross_session_leak_rate"] = bool(leak_checks) and any(
+        not c.ok for c in leak_checks)
+    result.metrics["answer_schema_valid_rate"] = all(
+        bool(run.text.strip()) for _key, run in runs)
+    result.evidence = evidence
+    return result
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(text))[:48]
+
+
+def _iso_leak_checks(case: dict, expected: dict,
+                     grouped: dict[str, list[tuple[dict, dict]]],
+                     runs: list[tuple[str, Any]], checks: list[Check]) -> None:
+    """Different groups must own disjoint state."""
+    first_key, first_run = runs[0]
+    first = _iso_identity(first_run)
+    first_files = _workspace_files(first_run.workspace)
+    # Probe the live context object: a shared AnalysisContext is a leak, and
+    # comparing stored values alone cannot see one when every field is empty.
+    probe = f"isolation-probe-{case.get('case_id')}"
+    first_context = getattr(first_run.session, "analysis_context", None)
+    if first_context is not None:
+        try:
+            first_context.goal = probe
+        except Exception:  # noqa: BLE001 - a frozen context is reported below
+            pass
+    first_questions = [str(turn.get("user") or "")
+                       for _spec, transcript in grouped[first_key]
+                       for turn in transcript["turns"]]
+
+    for key, run in runs[1:]:
+        peer = _iso_identity(run)
+        checks.append(Check(f"{LEAK_PREFIX}distinct_session[{key}]",
+                            run.session is not first_run.session,
+                            "a new WebSession", "shared instance"))
+        checks.append(Check(f"{LEAK_PREFIX}distinct_workspace[{key}]",
+                            bool(peer["cwd"]) and peer["cwd"] != first["cwd"],
+                            "its own workspace", peer["cwd"]))
+        peer_context = getattr(run.session, "analysis_context", None)
+        checks.append(Check(f"{LEAK_PREFIX}context_object_distinct[{key}]",
+                            peer_context is not first_context, "a new AnalysisContext",
+                            "shared instance"))
+        checks.append(Check(f"{LEAK_PREFIX}context_probe_not_visible[{key}]",
+                            getattr(peer_context, "goal", None) != probe,
+                            f"!= {probe!r}", getattr(peer_context, "goal", None)))
+        shared_ids = sorted(set(peer["tool_use_ids"]) & set(first["tool_use_ids"]))
+        checks.append(Check(f"{LEAK_PREFIX}no_shared_tool_records[{key}]",
+                            not shared_ids, [], shared_ids))
+        leaked_files = sorted(_workspace_files(run.workspace) & first_files)
+        checks.append(Check(f"{LEAK_PREFIX}no_cross_files[{key}]",
+                            not leaked_files, [], leaked_files))
+        for key_name in (expected.get("forbidden_context") or []):
+            donor_value = first["context"].get(key_name)
+            # Only meaningful when the donor actually holds a value: the point is
+            # "the peer must not end up with the donor's value".
+            checks.append(Check(
+                f"{LEAK_PREFIX}context_not_inherited[{key}][{key_name}]",
+                not donor_value or peer["context"].get(key_name) != donor_value,
+                f"!= {donor_value!r}", peer["context"].get(key_name)))
+        peer_history = json.dumps(peer["messages"], ensure_ascii=False)
+        borrowed = [q for q in first_questions if len(q) >= 8 and q in peer_history]
+        checks.append(Check(f"{LEAK_PREFIX}no_borrowed_history[{key}]",
+                            not borrowed, [], borrowed))
+
+
+def _iso_group_checks(expected: dict,
+                      grouped: dict[str, list[tuple[dict, dict]]],
+                      runs: list[tuple[str, Any]], checks: list[Check]) -> None:
+    """A declared conversation group may inherit — in the declared order.
+
+    ``expected.group_history_contains`` names the earlier turns that must still
+    be present in the shared session's history, in order.  Nothing inherits
+    across group boundaries (that is what the leak checks cover).
+    """
+    wanted = [str(item) for item in (expected.get("group_history_contains") or [])]
+    for key, run in runs:
+        members = grouped.get(key) or []
+        if len(members) < 2:
+            continue
+        checks.append(Check(f"isolation.group_turn_count[{key}]",
+                            len(run.turn_events) == len(members),
+                            len(members), len(run.turn_events)))
+        history = json.dumps(_iso_identity(run)["messages"], ensure_ascii=False)
+        positions = [history.find(item) for item in wanted if item in history]
+        checks.append(Check(f"isolation.group_order[{key}]",
+                            len(positions) == len(wanted) and positions == sorted(positions),
+                            "declared order preserved", positions))
+    if wanted and not any(len(grouped.get(key) or []) > 1 for key, _run in runs):
+        checks.append(Check("isolation.group_declared", False,
+                            "a shared group", "every session is its own group"))
+
+
+def _iso_store_checks(case: dict, fixture: dict, runs: list[tuple[str, Any]],
+                      ctx: EvalContext, checks: list[Check]) -> None:
+    """One ConversationStore per user: the place a real leak would hide."""
+    if not fixture.get("share_conversation_store"):
+        return
+    from bi_agent.web.conversations import ConversationStore  # noqa: PLC0415
+
+    root = ctx.new_sandbox(f"{case['case_id']}-store")
+    store = ConversationStore(str(root))
+    saved: list[tuple[str, str, str, str]] = []
+    for key, _run in runs:
+        mode = str(fixture.get("session_modes", {}).get(key) or "data")
+        marker = f"isolation-marker-{_slug(key)}"
+        record = store.save(mode=mode, title=marker,
+                            messages=[{"role": "user", "content": marker}])
+        saved.append((key, mode, marker, str(record.get("id") or "")))
+
+    ids = [cid for _key, _mode, _marker, cid in saved]
+    # Report the *fact* of uniqueness, not the random ids themselves: a report
+    # signature must not change just because ``token_hex`` produced a different
+    # value on the second run.
+    checks.append(Check(f"{LEAK_PREFIX}store_distinct_ids",
+                        len(set(ids)) == len(ids), "unique conversation ids",
+                        f"{len(set(ids))}/{len(ids)} distinct"))
+    for _key, _mode, marker, own in saved:
+        others = [store.get(other) for _k, _m, _mk, other in saved if other != own]
+        blob = json.dumps(others, ensure_ascii=False)
+        checks.append(Check(f"{LEAK_PREFIX}store_no_shared_content[{marker}]",
+                            marker not in blob, "no cross read", "leaked"))
+    for _key, mode, marker, _cid in saved:
+        same_mode = json.dumps(store.list(mode=mode), ensure_ascii=False)
+        checks.append(Check(f"{LEAK_PREFIX}mode_separation[{mode}][{marker}]",
+                            marker in same_mode, "listed in its own mode", "missing"))
+        for other_mode in sorted({m for _k, m, _mk, _c in saved} - {mode}):
+            blob = json.dumps(store.list(mode=other_mode), ensure_ascii=False)
+            checks.append(Check(f"{LEAK_PREFIX}mode_separation[{other_mode}][{marker}]",
+                                marker not in blob, "absent from the other mode", "leaked"))
+
+
+def _iso_borrowed_number_checks(case: dict, expected: dict,
+                                runs: list[tuple[str, Any]],
+                                checks: list[Check]) -> None:
+    """The negative control: a number only the donor session could produce.
+
+    Two halves, both required: the number must really belong to the donor (or
+    the sentinel proves nothing) and grounding must flag it in the peer's answer.
+    """
+    declared = sorted({round(float(n), 6) for n in (expected.get("unsupported_numbers") or [])})
+    if not declared:
+        return
+    donor_pool: set[float] = set()
+    for _key, run in runs[:-1]:
+        donor_pool |= set(RecordedPool(case, run).pool)
+    peer_run = runs[-1][1]
+    peer_pool = RecordedPool(case, peer_run)
+    donor_only = sorted(n for n in donor_pool if n not in set(peer_pool.pool))
+
+    def present(number: float, values) -> bool:
+        return any(abs(number - value) <= max(1e-6, abs(number) * 1e-6)
+                   for value in values)
+
+    checks.append(Check("isolation.borrowed_is_donor_only",
+                        all(present(n, donor_only) for n in declared),
+                        declared, donor_only[:8]))
+    unsupported = peer_pool.unsupported(peer_run.text)
+    missing = [n for n in declared if not present(n, unsupported)]
+    checks.append(Check("isolation.borrowed_flagged", not missing, declared,
+                        sorted(unsupported)[:8]))
+
+
 def eval_generated_sql(case: dict, ctx: EvalContext) -> CaseResult:
     """Replay + assert the SQL the agent issued really answers the question."""
     expected = case.get("expected") or {}
@@ -2572,6 +2863,7 @@ EVALUATORS: dict[str, Callable[[dict, EvalContext], CaseResult]] = {
     "recovery_state": eval_recovery_state,
     "admission": eval_admission,
     "session_isolation": eval_session_isolation,
+    "recorded_session_isolation": eval_recorded_session_isolation,
     "recorded_provider": eval_recorded_provider,
     "context_resolution": eval_context_resolution,
     "generated_sql": eval_generated_sql,
@@ -2972,7 +3264,8 @@ def _suite_capabilities(results: list[CaseResult]) -> set[str]:
     # Any evaluator that actually drives a session loop *can* host a
     # cross-session sentinel; only a selection with none of them is truly
     # incapable of measuring this metric.
-    if evaluators & {"session_isolation", "recorded_provider", "live", "answers"}:
+    if evaluators & {"session_isolation", "recorded_session_isolation",
+                     "recorded_provider", "live", "answers"}:
         caps.add("cross_session_leak_rate")
     if evaluators & {"live", "answers", "recorded_provider", "answer_grounding",
                      "generated_sql", "tool_chain"}:

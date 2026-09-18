@@ -58,6 +58,7 @@
     "target_fix_version": "v0.1.10",
     "severity": "medium",
     "summary": "『采取什么行动』未置 wants_action",
-    "source_issue": "a1134c7 (analytics golden set v1)"
+    "source_issue": "a1134c7 (analytics golden set v1)",
+    "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（_ACTION_INTENT_RE 未含『采取什么行动』）"
   }
 }

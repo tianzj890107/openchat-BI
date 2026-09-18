@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-ISORP-003-data",
+  "turns": [
+    {
+      "user": "2025 年 3 月质检批次有多少",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT COUNT(*) AS v FROM fact_quality_batch WHERE batch_month = '2025-03'",
+            "query_description": "2025 年 3 月质检批次有多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "质检批次",
+            "columns": [
+              {
+                "key": "v",
+                "label": "批次数"
+              }
+            ],
+            "rows": [
+              [
+                3
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 3 月质检批次 3 个。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

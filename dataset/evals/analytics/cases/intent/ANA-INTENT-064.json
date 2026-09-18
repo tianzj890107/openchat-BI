@@ -57,6 +57,7 @@
     "target_fix_version": "v0.1.10",
     "severity": "medium",
     "summary": "『物理表/对应表』提问未识别为本体查询",
-    "source_issue": "a1134c7 (analytics golden set v1)"
+    "source_issue": "a1134c7 (analytics golden set v1)",
+    "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（『物理表』未走本体查询）"
   }
 }

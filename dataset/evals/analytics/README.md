@@ -10,12 +10,12 @@
 任何一层静默改变（Prompt、模型、SQL 工具、本体检索、图表策略、会话状态、并发准入）
 都会在这里变成一条失败的用例，而不是一个用户投诉。
 
-- 用例总数：**509**（P0 134 / P1 340 / P2 35），其中 **12** 条是标记为
+- 用例总数：**540**（P0 137 / P1 368 / P2 35），其中 **12** 条是标记为
   `known_gap` 的 Red 用例（已确认的产品缺陷，见 §8）。
-- 三层结构：**deterministic**（结构化断言，402 条）、**recorded_provider**（录制
-  模型响应经真实会话循环回放，107 条）、**live**（真实模型，35 条，显式运行）。
+- 三层结构：**deterministic**（结构化断言，427 条）、**recorded_provider**（录制
+  模型响应经真实会话循环回放，113 条）、**live**（真实模型，48 条，显式运行）。
   前两层完全离线、确定、不需要凭据；`live-canary`（18 条）是 live 的跨领域小子集。
-- 领域：采购 209、制造 53、财务 49、销售 45、质量 42、库存 40、通用 71。
+- 领域：采购 212、制造 57、财务 53、销售 51、质量 43、库存 41、通用 83。
 - 用例 schema：`schemas/case.schema.json`
 - 机器可读索引：`manifest.json`（含每个 fixture 的 sha256）
 - 生成器：`build_cases.py`；运行器：`scripts/run_analytics_eval.py`
@@ -144,10 +144,10 @@ live 运行时强制执行 `ONTOLOGY_BACKEND=local`，并使用本评测集自�
 每条用例独立会话，凭据不写入报告（`redact_secrets()` 会把任何从环境变量泄漏进来的
 密钥替换成 `***redacted***`）。
 
-**`live-canary`** 是 live 的 18 条子集：采购 6、库存 2、销售 2、质量 2、制造 2、
-财务/诊断/多轮/本体/图表/对抗各若干，每个领域至少 2 条，覆盖硬数字查询、比率、
-多轮、本体查询、图表、根因、建议、越权拒绝和「引用未查询数字」。日常模型/Prompt
-验收只跑这一套，避免每次都跑满 35 条。
+**`live-canary`** 是 live 的 18 条子集：采购 6、通用 2、库存 2、销售 2、质量 2、
+制造 2、财务 2，每个领域至少 2 条，覆盖硬数字查询、比率、多轮、本体查询、图表、
+根因、建议、越权拒绝和「引用未查询数字」。日常模型/Prompt 验收只跑这一套，
+避免每次都跑满 48 条。
 
 **预算与可观测性。** live 运行有单轮超时（`run_live_turn` 默认 300s）和整套
 wall-clock 预算（`--live-budget-seconds`，默认 1800s，`0` 表示不限）。预算用完后剩余
@@ -173,15 +173,15 @@ SkippedLiveContractTest` 强制）：
 | suite | 用途 | 用例数 |
 | --- | --- | --- |
 | `smoke` | P0 契约集，失败即禁止合并 | 130 |
-| `regression` | 全部离线用例，默认防回归基线 | 509 |
+| `regression` | 全部离线用例，默认防回归基线 | 540 |
 | `multi-turn` | 上下文继承与改写（含生产 `AnalysisContext.merge`） | 32 |
 | `ontology` | 本体检索与语义 | 46 |
 | `charts` | 图表契约与展示安全 | 22 |
-| `adversarial` | 注入、越权、串会话 | 33 |
+| `adversarial` | 注入、越权、串会话 | 51 |
 | `recovery` | 超时/迟到/取消/恢复状态机 | 33 |
-| `diagnosis` | 根因与建议分级 | 20 |
-| `recorded-provider` | 录制 provider 回放（离线端到端） | 107 |
-| `live` | 真实模型语义评分（显式运行） | 35 |
+| `diagnosis` | 根因与建议分级 | 33 |
+| `recorded-provider` | 录制 provider 回放（离线端到端） | 113 |
+| `live` | 真实模型语义评分（显式运行） | 48 |
 | `live-canary` | live 的跨领域小子集（显式运行，缺凭据即 not_measured） | 18 |
 
 一个 case 可以属于多个 suite（例如 P0 用例同时在 `smoke` 和 `regression`）；
@@ -323,6 +323,7 @@ recorded-provider P0 用例（`recorded-provider` 的 P0 从 4 条提升到 31 �
 | `admission` | 并发准入：限流、排队、取消、supersede、generation | 是 |
 | `session_isolation` | 会话/模式/目录隔离，无 `.tmp` 残留 | 是 |
 | `recorded_provider` | 录制 provider 回放：工具链/参数/结果/终态/接地 | 是 |
+| `recorded_session_isolation` | 两个真实 `WebSession` 之间的跨会话/跨模式隔离（worktree、tool ledger、`AnalysisContext`、消息历史、ConversationStore、接地数字） | 是 |
 | `generated_sql` | 模型实际下发的 SQL：允许表、必需过滤、与参考值一致 | 是 |
 | `tool_chain` | 工具计划/参数/终态（本体类与多工具计划） | 是 |
 | `answer_grounding` | 答案数字的逐用例接地（含反例控制） | 是 |
@@ -386,9 +387,35 @@ recorded-provider P0 用例（`recorded-provider` 的 P0 从 4 条提升到 31 �
 
 `unsupported_number_rate` 在离线回归里 n=100，在 smoke 里 n=21；`proxy_disclosure_rate`
 在离线套件里是 `NOT_MEASURED`（离线没有语义评分案例），而**不会**显示成 PASS。
-`recorded-provider` 没有会话隔离案例，所以它的 `cross_session_leak_rate` 明确显示
-`NOT_MEASURED` 并说明「需要 session_isolation / 跨会话哨兵案例」，同时阻断 release
-门禁。
+`unsupported_causal_claim_rate` 与 `proxy_disclosure_rate` 仍然是 `NOT_APPLICABLE`
+（离线套件不含语义评分案例）——`NOT_MEASURED` 不允许显示成 PASS。
+
+`cross_session_leak_rate` 现在由 `recorded_session_isolation` 真正离线测量：
+`recorded-provider` 选择集里 n=6（`ANA-ISORP-001..006`），结果必须为 0；每个案例都
+经过真实 `WebSession` + 真实工具，录制文件只提供「模型这一次的决定」。因此
+`recorded-provider --release` 不再因为该指标 `NOT_MEASURED` 失败，它仍然会因为真实的
+P0 缺陷或安全缺陷失败。
+
+#### 跨会话哨兵怎么测（`ANA-ISORP-*`）
+
+| 检查（`isolation.leak.*`） | 含义 |
+| --- | --- |
+| `distinct_session` | 每个 group 是新的 `WebSession` 实例 |
+| `distinct_workspace` | 每个 group 有独立 workspace，且不共享文件 |
+| `context_object_distinct` / `context_probe_not_visible` | `AnalysisContext` 不是同一个对象；探针值不会串到 peer |
+| `context_not_inherited[...]` | 声明的 `expected.forbidden_context` 字段没有继承 donor 的值 |
+| `no_shared_tool_records` | 两个 group 没有共享 `tool_use_id` |
+| `no_borrowed_history` | peer 的消息历史里没有 donor 的提问文本 |
+| `store_distinct_ids` / `store_no_shared_content` / `mode_separation` | 同一个 `ConversationStore` 下，id 唯一、内容不互读、data/report 模式隔离 |
+
+`isolation.borrowed_is_donor_only` 与 `isolation.borrowed_flagged` 是**负向控制**：
+donor 查出的唯一数字（例如 4 月采购金额 5170）被写进 peer 的录制回答里，必须先证明
+「这个数字只有 donor 能产出」，再证明接地检查把它判为 `unsupported`。只满足一半
+（数字不是 donor 独有，或没有被标记）都会失败。
+
+`isolation.group_count` / `group_turn_count` / `group_order` 是**正向控制**：
+声明了同一 `group`（或 `fixture.share_session`）的会话必须按声明顺序继承；
+`group` 之外一律不得继承。
 
 ### 门禁状态
 
@@ -537,7 +564,7 @@ known_gap（ratchet 预算 12 条 / P0 6 条保持不变）。
 | `documents/*.docx` | 1 | 演示文档 | 否 |
 | `exports/*.html` | 1 | 会话导出 | 否 |
 | `logs/*.log` | 1 | 运行日志 | 否（仅用于定位 skip 原因） |
-| `evals/analytics/**` | 509 用例 | **黄金评测集** | **是** |
+| `evals/analytics/**` | 540 用例 | **黄金评测集** | **是** |
 
 ### 历史会话覆盖的问题
 
@@ -579,10 +606,11 @@ skip 原因、分类并写出 `dataset/evals/analytics/skipped_tests.json`；
 `--check` 模式与已提交产物对比，过期即非零退出。
 
 分类：`missing_frontend_dependency` / `missing_external_service` /
-`platform_unsupported` / `live_credentials` / `explicit_integration` / `other`。
-前四类是 `blocking_categories`（它们掩盖的是发布结论依赖的行为），`other` 必须人工
-确认。每条记录都带 `test`、原始 `reason`、`category`、`blocks_release` 和
-`ci_hint`（如何在 CI 里补跑）。
+`platform_unsupported` / `live_credentials` / `redis` / `explicit_integration` /
+`other`。前五类加上 `other` 是 `blocking_categories`：依赖真的缺失、凭据真的没有、
+平台真的不支持时，掩盖的是发布结论依赖的行为，必须人工确认；`explicit_integration`
+是有能力但被显式关掉的只读验收门。每条记录都带 `test`、原始 `reason`、`category`、
+`blocks_release` 和 `ci_hint`（如何在 CI 里补跑）。
 
 当前 25 条全部是 `explicit_integration`（`blocks_release=false`），即需要显式开启的
 只读远端/验收门，与代码健康度无关：
@@ -627,7 +655,7 @@ P0 门禁的分子里。
 
 - 6 个 SQLite fixture 的行数与内容、本体 xlsx 的结构（5 术语 / 5 业务对象 /
   6 逻辑实体 / 8 属性 / 3 关系 / 6 指标 / 3 活动 / 3 规则 / 5 维度）、
-  全部 509 条用例的期望值。
+  全部 540 条用例的期望值。
 - 25 个 pytest skip 的逐条原因、分类与 CI 补跑方式（`skipped_tests.json`，见 §10）。
 
 **根据代码推断**
@@ -671,6 +699,18 @@ P0 门禁的分子里。
 `known_gap` 用例；它们只在 live 运行中以失败形式出现。live 报告会把
 `error`、`recovery`、`tool_chain`、`event_types` 全部写进 evidence 便于定位。
 
+### 跨会话哨兵（2026-09-18 新增）
+
+`recorded_session_isolation` 把「A 会话查出的数字不能在 B 会话里被引用」从口号变成
+可执行断言，并且是 `cross_session_leak_rate` 唯一的数据来源。它同时补上了
+`share_session` 的正向控制（同一 `group` 必须按声明顺序继承），以及
+`share_conversation_store` 下的 id 唯一 / 内容不互读 / data 与 report 模式隔离。
+
+`tests/test_analytics_eval_production_chain.py::SessionIsolationMutationTest` 用四个
+**生产侧** mutation 证明这套断言不是摆设：所有 `WebSession` 共用一个
+conversation id、共用一个 `AnalysisContext`、grounding 退化成全局数字池、peer 直接
+读 donor 的 tool ledger —— 任何一个出现，`ANA-ISORP-*` 都必须变红。
+
 ### 本轮 live 运行状态
 
 本轮的验收命令全部是离线套件（`smoke` / `regression` / `recorded-provider` /
@@ -699,20 +739,22 @@ live 的语义指标在离线报告里仍然显示为 `not measured`，其 relea
   `unsupported_number_rate`（live 侧）、`unsupported_causal_claim_rate`、
   `proxy_disclosure_rate` 在离线运行时为 `NOT_MEASURED`，release 门禁会因此阻断；
   `recorded_provider` 层无法证明「当前真实模型仍会选这些工具」。
-- `recorded-provider` 里没有会话隔离案例，所以它的 `cross_session_leak_rate`
-  是 `NOT_MEASURED`（离线 `smoke` / `regression` 的该指标由 `session_isolation`
-  与跨会话哨兵案例测得 0.0）。
-- 仍只验证局部函数、没有覆盖完整 Agent 的部分：`policy`（71 条）、
+- `cross_session_leak_rate` 已由 `recorded_session_isolation`（`ANA-ISORP-*`，
+  6 条）在离线 `recorded-provider` 选择集里真正测量（0.0）。仍未测量的是
+  `unsupported_causal_claim_rate` 与 `proxy_disclosure_rate`，它们在离线套件里是
+  `NOT_APPLICABLE`，只有 live 能测。
+- 仍只验证局部函数、没有覆盖完整 Agent 的部分：`policy`（96 条）、
   `multi_turn`（20 条声明式）、`chart_policy` / `chart_html_safety`、
   `recovery_state`、`admission`、`sql_guard`、`session_isolation` 只直接调用生产
   函数/状态机，不经过模型；只有 `recorded_provider` / `generated_sql` / `tool_chain`
-  / `answer_grounding`（107 条）和 live 走完整 `WebSession` 循环。
+  / `answer_grounding` / `recorded_session_isolation`（113 条）和 live 走完整
+  `WebSession` 循环。
 
 ---
 
 ## 12. 相关文件
 
-- `scripts/run_analytics_eval.py` —— 运行器（17 个 evaluator、15 项指标、门禁、报告、
+- `scripts/run_analytics_eval.py` —— 运行器（18 个 evaluator、15 项指标、门禁、报告、
   逐用例数据库绑定、会话隔离、case-scoped grounding、报告密钥擦除）
 - `scripts/analytics_recorded_provider.py` —— recorded-provider 回放接缝（唯一的「假模型」）
 - `scripts/classify_skipped_tests.py` —— skip 分类器（写 `skipped_tests.json`，`--check` 防过期）
@@ -721,6 +763,9 @@ live 的语义指标在离线报告里仍然显示为 `not measured`，其 relea
   runner 子进程契约、release 门禁、生成器可重复性）
 - `tests/test_analytics_eval_live_integrity.py` —— live 真实性（数据库绑定、manifest/README
   一致、会话隔离、grounding 反例、repeat 契约、缺凭据 `not_measured`、报告密钥擦除）
-- `tests/test_analytics_eval_production_chain.py` —— 生产链路 mutation/sentinel + Prompt 契约
+- `tests/test_analytics_eval_production_chain.py` —— 生产链路 mutation/sentinel（含跨会话隔离的
+  4 个 mutation）+ Prompt 契约
+- `tests/test_analytics_eval_release_ci.py` —— release CI 契约、known-gap allowlist 契约、
+  skipped 分类契约
 - `bi_agent/tools/analysis_policy.py` —— `policy` evaluator 的被测对象
 - `bi_agent/reliability.py`、`bi_agent/recovery.py`、`bi_agent/concurrency.py` —— 恢复/并发被测对象

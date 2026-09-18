@@ -58,6 +58,7 @@
     "target_fix_version": "v0.1.10",
     "severity": "medium",
     "summary": "预测/推演类问题缺失 L4 意图等级",
-    "source_issue": "a1134c7 (analytics golden set v1)"
+    "source_issue": "a1134c7 (analytics golden set v1)",
+    "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（预测类问题缺 L4）"
   }
 }

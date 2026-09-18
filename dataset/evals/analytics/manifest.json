@@ -4,40 +4,40 @@
   "case_schema": "schemas/case.schema.json",
   "description": "End-to-end golden set for the BI / analytics agent. Covers question -> intent -> metric scope -> tool plan -> query -> numbers -> evidence -> chart -> answer. Regenerate with `python dataset/evals/analytics/build_cases.py`; run with `python -m scripts.run_analytics_eval --suite <suite>`.",
   "totals": {
-    "cases": 509,
+    "cases": 540,
     "known_gap": 12,
     "known_gap_p0": 6,
     "by_priority": {
-      "P0": 134,
-      "P1": 340,
+      "P0": 137,
+      "P1": 368,
       "P2": 35
     },
     "by_category": {
-      "adversarial": 32,
+      "adversarial": 46,
       "anomaly": 24,
-      "charts": 34,
+      "charts": 35,
       "comparison": 16,
-      "diagnosis": 18,
+      "diagnosis": 31,
       "facts": 110,
       "failure_recovery": 35,
       "intent": 39,
       "metrics": 72,
-      "multi_turn": 43,
+      "multi_turn": 46,
       "ontology": 58,
       "recommendation": 14,
       "trend": 14
     },
     "by_suite": {
-      "adversarial": 33,
+      "adversarial": 51,
       "charts": 22,
-      "diagnosis": 20,
-      "live": 35,
+      "diagnosis": 33,
+      "live": 48,
       "live-canary": 18,
       "multi-turn": 32,
       "ontology": 46,
-      "recorded-provider": 107,
+      "recorded-provider": 113,
       "recovery": 33,
-      "regression": 509,
+      "regression": 540,
       "smoke": 130
     },
     "by_evaluator": {
@@ -50,8 +50,9 @@
       "generated_sql": 25,
       "multi_turn": 20,
       "ontology": 46,
-      "policy": 71,
+      "policy": 96,
       "recorded_provider": 62,
+      "recorded_session_isolation": 6,
       "recovery_state": 18,
       "session_isolation": 5,
       "sql": 185,
@@ -59,20 +60,20 @@
       "tool_chain": 12
     },
     "by_domain": {
-      "制造": 53,
-      "库存": 40,
-      "财务": 49,
-      "质量": 42,
-      "通用": 71,
-      "采购": 209,
-      "销售": 45
+      "制造": 57,
+      "库存": 41,
+      "财务": 53,
+      "质量": 43,
+      "通用": 83,
+      "采购": 212,
+      "销售": 51
     },
     "by_layer": {
-      "deterministic": 402,
-      "recorded_provider": 107
+      "deterministic": 427,
+      "recorded_provider": 113
     },
     "live": {
-      "count": 35,
+      "count": 48,
       "case_ids": [
         "ANA-DIAG-001",
         "ANA-DIAG-002",
@@ -84,6 +85,19 @@
         "ANA-DIAG-008",
         "ANA-DIAG-009",
         "ANA-DIAG-010",
+        "ANA-LIVE-FIN-001",
+        "ANA-LIVE-FIN-002",
+        "ANA-LIVE-FIN-003",
+        "ANA-LIVE-FIN-004",
+        "ANA-LIVE-MFG-001",
+        "ANA-LIVE-MFG-002",
+        "ANA-LIVE-MFG-003",
+        "ANA-LIVE-MFG-004",
+        "ANA-LIVE-SALES-001",
+        "ANA-LIVE-SALES-002",
+        "ANA-LIVE-SALES-003",
+        "ANA-LIVE-SALES-004",
+        "ANA-LIVE-SALES-005",
         "ANA-P0-MT-001",
         "ANA-REC-001",
         "ANA-REC-002",
@@ -111,20 +125,20 @@
         "ANA-RPREC-004"
       ],
       "by_domain": {
-        "制造": 1,
+        "制造": 5,
         "库存": 7,
-        "财务": 1,
+        "财务": 5,
         "质量": 7,
         "采购": 18,
-        "销售": 1
+        "销售": 6
       },
       "by_priority": {
         "P0": 1,
-        "P1": 33,
+        "P1": 46,
         "P2": 1
       },
       "by_evaluator": {
-        "policy": 20,
+        "policy": 33,
         "recorded_provider": 15
       },
       "needs": {
@@ -196,7 +210,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "high",
       "summary": "凭据索取类提问未进入拒绝路由",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::build_cognitive_policy_decision（凭据/破坏性请求未进入拒绝路由）"
     },
     {
       "case_id": "ANA-ADV-011",
@@ -209,7 +224,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "high",
       "summary": "破坏性请求未进入拒绝路由",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::build_cognitive_policy_decision（凭据/破坏性请求未进入拒绝路由）"
     },
     {
       "case_id": "ANA-ADV-012",
@@ -222,7 +238,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "high",
       "summary": "凭据/密钥类提问被误判为元数据查询",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::build_cognitive_policy_decision（凭据/破坏性请求未进入拒绝路由）"
     },
     {
       "case_id": "ANA-INTENT-052",
@@ -235,7 +252,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "medium",
       "summary": "『采取什么行动』未置 wants_action",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（_ACTION_INTENT_RE 未含『采取什么行动』）"
     },
     {
       "case_id": "ANA-INTENT-061",
@@ -248,7 +266,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "medium",
       "summary": "『口径』提问未走 ONTOLOGY_LOOKUP",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（『口径』未走 ONTOLOGY_LOOKUP）"
     },
     {
       "case_id": "ANA-INTENT-064",
@@ -261,7 +280,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "medium",
       "summary": "『物理表/对应表』提问未识别为本体查询",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（『物理表』未走本体查询）"
     },
     {
       "case_id": "ANA-INTENT-071",
@@ -274,7 +294,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "medium",
       "summary": "『有哪些…』列表型问法未触发取数",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（列表型问法未触发取数）"
     },
     {
       "case_id": "ANA-INTENT-072",
@@ -287,7 +308,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "medium",
       "summary": "预测/推演类问题缺失 L4 意图等级",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（预测类问题缺 L4）"
     },
     {
       "case_id": "ANA-INTENT-073",
@@ -300,7 +322,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "medium",
       "summary": "预测/推演类问题缺失 L4 意图等级",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（预测类问题缺 L4）"
     },
     {
       "case_id": "ANA-REC-003",
@@ -313,7 +336,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "medium",
       "summary": "『应该采取什么行动』未置 wants_action",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（wants_action）"
     },
     {
       "case_id": "ANA-REC-009",
@@ -326,7 +350,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "medium",
       "summary": "『该怎么处理』未识别为行动类",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（wants_action）"
     },
     {
       "case_id": "ANA-REC-010",
@@ -339,7 +364,8 @@
       "target_fix_version": "v0.1.10",
       "severity": "medium",
       "summary": "『怎么改善』未识别为行动类",
-      "source_issue": "a1134c7 (analytics golden set v1)"
+      "source_issue": "a1134c7 (analytics golden set v1)",
+      "production_entry": "bi_agent/tools/analysis_policy.py::classify_intent（wants_action）"
     }
   ],
   "fixtures": {
@@ -466,6 +492,58 @@
     "provider/failure/ANA-RPGND-002.json": {
       "bytes": 1097,
       "sha256": "c9f1f03430f8fb266f998161c604309daac2e7aabb8f2d585108eec66d065343"
+    },
+    "provider/iso/ANA-ISORP-001-A.json": {
+      "bytes": 1077,
+      "sha256": "c86810fc4c36fb0224e40e46fecf204342e44dbdd89566a1789074d176030278"
+    },
+    "provider/iso/ANA-ISORP-001-B.json": {
+      "bytes": 433,
+      "sha256": "8ad4a8e352e30ac55e0c8eb8a206d9a44a51a316da684f2b3708336a5435fd56"
+    },
+    "provider/iso/ANA-ISORP-002-A.json": {
+      "bytes": 1144,
+      "sha256": "71f116b8185835af0495a8cd8077e97bd18c69cf0924bd893af9fd20994bc210"
+    },
+    "provider/iso/ANA-ISORP-002-B.json": {
+      "bytes": 426,
+      "sha256": "072df3010d71d624b9f6043e8ca759d681868acea0ea2a26ec440a10a029cfda"
+    },
+    "provider/iso/ANA-ISORP-003-data.json": {
+      "bytes": 1044,
+      "sha256": "74dccde69228295f6a638ce021a322f7a5a785c14c321ecfcd262e2833cd910c"
+    },
+    "provider/iso/ANA-ISORP-003-report.json": {
+      "bytes": 442,
+      "sha256": "011250bc3a369822fb5afff342eec325bf1d775c29d213ea686c186688e4ad12"
+    },
+    "provider/iso/ANA-ISORP-004-conv-1.json": {
+      "bytes": 1081,
+      "sha256": "72ace92f2d3dea2079e716a6ee05c786b31b0235212b68f62d899a92e8e455bc"
+    },
+    "provider/iso/ANA-ISORP-004-conv-2.json": {
+      "bytes": 1081,
+      "sha256": "f8a612eebbbee6b82670f98df57c4d2b93721791481ef425cf2217f09b161354"
+    },
+    "provider/iso/ANA-ISORP-005-turn-1.json": {
+      "bytes": 1088,
+      "sha256": "8fce3c4c0b684967e334ce553845337920a4be81c7a5258747c8c0951fb0f8f1"
+    },
+    "provider/iso/ANA-ISORP-005-turn-2.json": {
+      "bytes": 1048,
+      "sha256": "ceedc18704e2a548782ea98f2c93d10c75a1dc098bbfd054784404208b442f0f"
+    },
+    "provider/iso/ANA-ISORP-006-g1-turn-1.json": {
+      "bytes": 1095,
+      "sha256": "c49379e297ffb293e97e1b1c7eca11b9c373cf92b2f132d94cff545f92291848"
+    },
+    "provider/iso/ANA-ISORP-006-g1-turn-2.json": {
+      "bytes": 1044,
+      "sha256": "ac61a98a1de81ae982a5fc9c76295551ebf7ff4a17cfafd663b5a540270bfa6b"
+    },
+    "provider/iso/ANA-ISORP-006-g2.json": {
+      "bytes": 391,
+      "sha256": "9e2aa5c046ad1ab7b952260c3cf7bf328d99ec4451c34e76f04367f6c32c87ef"
     },
     "provider/multi_turn/ANA-RPMT-001.json": {
       "bytes": 2045,

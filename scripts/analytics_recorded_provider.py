@@ -29,7 +29,9 @@ expected tool order, tool inputs and result assertions.
 from __future__ import annotations
 
 import copy
+import itertools
 import json
+import re
 import sys
 import threading
 from pathlib import Path
@@ -62,12 +64,18 @@ class TranscriptError(ValueError):
     """The recording is malformed or the replay diverged from it."""
 
 
-def _iterations_from_events(events: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+def _iterations_from_events(events: list[dict[str, Any]],
+                           id_prefix: str = "rec") -> list[list[dict[str, Any]]]:
     """Translate one turn's flat transcript into provider-level iterations.
 
     Consecutive ``tool_start`` ... ``tool_result`` blocks become one provider
     iteration ending with ``stop_reason="tool_use"``; consecutive ``text_delta``
     events become one iteration ending with ``stop_reason="end_turn"``.
+
+    ``id_prefix`` makes the synthesized ``tool_use`` ids unique per replay run.
+    Real providers never reuse a ``tool_use`` id across sessions, so a fixed
+    prefix would make two sessions look like they shared records — and would
+    hide an actual cross-session leak behind that ambiguity.
     """
     iterations: list[list[dict[str, Any]]] = []
     pending_tools: list[tuple[str, dict[str, Any]]] = []
@@ -81,7 +89,7 @@ def _iterations_from_events(events: list[dict[str, Any]]) -> list[list[dict[str,
         out: list[dict[str, Any]] = []
         for name, payload in group:
             counter_local = len(out) + 1
-            tool_id = f"rec-{len(iterations)}-{counter_local}"
+            tool_id = f"{id_prefix}-{len(iterations)}-{counter_local}"
             out.append({"type": "tool_use_start", "id": tool_id, "name": name})
             out.append({"type": "tool_use_end", "id": tool_id, "name": name,
                         "input": payload.get("input") or {}})
@@ -266,6 +274,15 @@ class RecordedRun:
         return any(str(e.get("type")) == "session_superseded" for e in self.events)
 
 
+_REPLAY_SEQ = itertools.count(1)
+
+
+def _next_replay_prefix(case_id: str) -> str:
+    """A process-unique tool-id prefix, so two sessions never collide."""
+    slug = re.sub(r"[^A-Za-z0-9]+", "", str(case_id))[:24] or "replay"
+    return f"rec-{slug}-{next(_REPLAY_SEQ)}"
+
+
 def run_recorded_turns(
     case_id: str,
     turns: list[dict[str, Any]],
@@ -304,8 +321,9 @@ def run_recorded_turns(
     run.session = session
     run.workspace = workspace
 
+    id_prefix = _next_replay_prefix(case_id)
     for index, turn in enumerate(turns):
-        iterations = _iterations_from_events(turn["events"])
+        iterations = _iterations_from_events(turn["events"], id_prefix)
         recorder = Recorder(iterations, turn_ref=f"turn-{index}")
         question = str(turn.get("user") or turn.get("question") or "")
         start_events = len(run.events)
