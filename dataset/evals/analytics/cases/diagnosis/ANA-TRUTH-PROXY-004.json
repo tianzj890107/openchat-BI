@@ -1,0 +1,53 @@
+{
+  "case_id": "ANA-TRUTH-PROXY-004",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "销售",
+  "category": "diagnosis",
+  "evaluator": "recorded_provider",
+  "question": "交付可靠性现在是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/truthfulness/ANA-TRUTH-PROXY-004.json",
+    "db": "sales.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "target_metric": "交付可靠性",
+    "proxy_none": true
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "truthfulness",
+    "evidence_chain"
+  ],
+  "notes": "没有合理代理时必须澄清或给出能力限制，而不是拿别的指标冒充。",
+  "answer_requirements": [
+    "must_use_proxy_disclosure_if_proxy_used",
+    "must_state_limitations",
+    "must_include_effective_action_section"
+  ]
+}

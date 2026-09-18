@@ -10,10 +10,10 @@
 任何一层静默改变（Prompt、模型、SQL 工具、本体检索、图表策略、会话状态、并发准入）
 都会在这里变成一条失败的用例，而不是一个用户投诉。
 
-- 用例总数：**561**（P0 147 / P1 379 / P2 35），其中 **0** 条是标记为
+- 用例总数：**570**（P0 147 / P1 388 / P2 35），其中 **0** 条是标记为
   `known_gap` 的 Red 用例（已确认的产品缺陷，见 §8）。
 - 三层结构：**deterministic**（结构化断言，448 条）、**recorded_provider**（录制
-  模型响应经真实会话循环回放，113 条）、**live**（真实模型，48 条，显式运行）。
+  模型响应经真实会话循环回放，122 条）、**live**（真实模型，55 条，显式运行）。
   前两层完全离线、确定、不需要凭据；`live-canary`（18 条）是 live 的跨领域小子集。
 - 领域：采购 214、制造 57、财务 53、销售 51、质量 43、库存 41、通用 102。
 - 用例 schema：`schemas/case.schema.json`
@@ -147,7 +147,7 @@ live 运行时强制执行 `ONTOLOGY_BACKEND=local`，并使用本评测集自�
 **`live-canary`** 是 live 的 18 条子集：采购 6、通用 2、库存 2、销售 2、质量 2、
 制造 2、财务 2，每个领域至少 2 条，覆盖硬数字查询、比率、多轮、本体查询、图表、
 根因、建议、越权拒绝和「引用未查询数字」。日常模型/Prompt 验收只跑这一套，
-避免每次都跑满 48 条。
+避免每次都跑满 55 条。
 
 **预算与可观测性。** live 运行有单轮超时（`run_live_turn` 默认 300s）和整套
 wall-clock 预算（`--live-budget-seconds`，默认 1800s，`0` 表示不限）。预算用完后剩余
@@ -173,15 +173,15 @@ SkippedLiveContractTest` 强制）：
 | suite | 用途 | 用例数 |
 | --- | --- | --- |
 | `smoke` | P0 契约集，失败即禁止合并 | 140 |
-| `regression` | 全部离线用例，默认防回归基线 | 561 |
+| `regression` | 全部离线用例，默认防回归基线 | 570 |
 | `multi-turn` | 上下文继承与改写（含生产 `AnalysisContext.merge`） | 32 |
 | `ontology` | 本体检索与语义 | 46 |
 | `charts` | 图表契约与展示安全 | 22 |
 | `adversarial` | 注入、越权、串会话、拒绝边界 | 62 |
 | `recovery` | 超时/迟到/取消/恢复状态机 | 33 |
 | `diagnosis` | 根因与建议分级 | 33 |
-| `recorded-provider` | 录制 provider 回放（离线端到端） | 113 |
-| `live` | 真实模型语义评分（显式运行） | 48 |
+| `recorded-provider` | 录制 provider 回放（离线端到端） | 122 |
+| `live` | 真实模型语义评分（显式运行） | 55 |
 | `live-canary` | live 的跨领域小子集（显式运行，缺凭据即 not_measured） | 18 |
 
 一个 case 可以属于多个 suite（例如 P0 用例同时在 `smoke` 和 `regression`）；
@@ -364,14 +364,16 @@ recorded-provider P0 用例（`recorded-provider` 的 P0 从 4 条提升到 31 �
 | `exact_numeric_accuracy` | ↑ | 精确数值正确率 |
 | `metric_scope_accuracy` | ↑ | SQL 与声明口径一致率 |
 | `unsupported_number_rate` | ↓ | 回答中出现未查询数字的比例（live） |
-| `unsupported_causal_claim_rate` | ↓ | 无证据因果结论比例（live） |
+| `unsupported_causal_claim_rate` | ↓ | 无证据因果结论比例（离线语义评分） |
 | `evidence_coverage` | ↑ | 具备证据链的用例比例 |
-| `proxy_disclosure_rate` | ↑ | 使用代理指标时已披露的比例（live） |
+| `proxy_disclosure_rate` | ↑ | 使用代理指标时已披露的比例（离线语义评分） |
 | `chart_selection_accuracy` | ↑ | 图表类型选择正确率 |
 | `multi_turn_context_accuracy` | ↑ | 多轮上下文解析正确率 |
 | `recovery_success_rate` | ↑ | 恢复状态机正确率 |
 | `cross_session_leak_rate` | ↓ | 跨会话/跨模式泄漏率，必须为 0 |
 | `answer_schema_valid_rate` | ↑ | 回答结构合法率 |
+| `unsupported_causal_claim_detection_rate` | ↑ | 因果负例被抓住的比例，必须为 1.0 |
+| `proxy_disclosure_detection_rate` | ↑ | 代理不披露负例被抓住的比例，必须为 1.0 |
 | `repeat_stability` | ↑ | `--repeat N` 的逐检查点一致性 |
 
 ### 指标分母（每个指标都必须能解释自己的分母）
@@ -387,10 +389,14 @@ recorded-provider P0 用例（`recorded-provider` 的 P0 从 4 条提升到 31 �
 | `known_gap_excluded` | 因为是 Red 用例而被排除出分子分母的案例数 |
 | `sample_size` | 与 `measured` 相同，单独给出便于报告核对 |
 
-`unsupported_number_rate` 在离线回归里 n=100，在 smoke 里 n=21；`proxy_disclosure_rate`
-在离线套件里是 `NOT_MEASURED`（离线没有语义评分案例），而**不会**显示成 PASS。
-`unsupported_causal_claim_rate` 与 `proxy_disclosure_rate` 仍然是 `NOT_APPLICABLE`
-（离线套件不含语义评分案例）——`NOT_MEASURED` 不允许显示成 PASS。
+`unsupported_number_rate` 在离线回归里 n=100，在 smoke 里 n=21；
+`unsupported_causal_claim_rate` 与 `proxy_disclosure_rate` 现在是**离线可测**的真实
+门禁：`recorded-provider` / `regression` 选择集里各 n=7（`ANA-RPDIAG-001/002/003/005/
+006/008` 与 `ANA-TRUTH-CAUSAL/PROXY-*`），由 `eval_recorded_provider` 对最终回答做
+分句级语义评分，结果分别是 0.0 与 1.0；两个负例（`ANA-TRUTH-CAUSAL-004`、
+`ANA-TRUTH-PROXY-005`）只进 `*_detection_rate`（各 n=1，必须 1.0）。选择集里没有声明
+案例时仍是 `NOT_APPLICABLE`（不阻断），**有**能力但没产出取值时是 `NOT_MEASURED`
+（release 阻断），绝不显示成 PASS。
 
 `cross_session_leak_rate` 现在由 `recorded_session_isolation` 真正离线测量：
 `recorded-provider` 选择集里 n=6（`ANA-ISORP-001..006`），结果必须为 0；每个案例都
@@ -427,7 +433,8 @@ donor 查出的唯一数字（例如 4 月采购金额 5170）被写进 peer 的
 - `NOT_APPLICABLE`（该选择集没有能力测量）**不阻断**，但要求说明需要哪一类案例；
 - `NOT_MEASURED`（有能力测量但没有取值）在 `RELEASE_REQUIRED_METRICS`
   （`exact_numeric_accuracy` / `answer_schema_valid_rate` / `evidence_coverage` /
-  `cross_session_leak_rate` / `unsupported_number_rate`）里**阻断 release**，
+  `cross_session_leak_rate` / `unsupported_number_rate` /
+  `unsupported_causal_claim_rate` / `proxy_disclosure_rate`）里**阻断 release**，
   研究运行只记录；
 - `WAIVED` 只能来自逐条审计的 allowlist / waiver。
 
@@ -438,7 +445,8 @@ donor 查出的唯一数字（例如 4 月采购金额 5170）被写进 peer 的
 - `answer_schema_valid_rate == 1.0`
 - `evidence_coverage == 1.0`
 - `cross_session_leak_rate == 0.0`
-- 越权 / 串会话 = 0，无证据数字 = 0，必须说明代理指标的场景 100%
+- 越权 / 串会话 = 0，无证据数字 = 0，无证据因果 = 0
+- 代理指标披露 = 1.0，因果 / 代理负例检出 = 1.0
 
 治理门禁（研究运行只报告，`--release` 必须全绿）：
 
@@ -664,7 +672,7 @@ release gate 失败。
 | `documents/*.docx` | 1 | 演示文档 | 否 |
 | `exports/*.html` | 1 | 会话导出 | 否 |
 | `logs/*.log` | 1 | 运行日志 | 否（仅用于定位 skip 原因） |
-| `evals/analytics/**` | 561 用例 | **黄金评测集** | **是** |
+| `evals/analytics/**` | 570 用例 | **黄金评测集** | **是** |
 
 ### 历史会话覆盖的问题
 
@@ -755,7 +763,7 @@ P0 门禁的分子里。
 
 - 6 个 SQLite fixture 的行数与内容、本体 xlsx 的结构（5 术语 / 5 业务对象 /
   6 逻辑实体 / 8 属性 / 3 关系 / 6 指标 / 3 活动 / 3 规则 / 5 维度）、
-  全部 561 条用例的期望值。
+  全部 570 条用例的期望值。
 - 25 个 pytest skip 的逐条原因、分类与 CI 补跑方式（`skipped_tests.json`，见 §10）。
 
 **根据代码推断**
@@ -835,19 +843,19 @@ live 的语义指标在离线报告里仍然显示为 `not measured`，其 relea
 - 币种换算（USD→CNY 汇率）只覆盖「不混算 + 分别列出」，未覆盖汇率表本身。
 - 没有覆盖：PowerJob/DolphinScheduler 调度触发、导出 Excel/PPT 的产物校验、
   真实 Doris 错误码（401/403/500 目前是本地模拟）、远程本体服务的网络分区。
-- `live` / `live-canary` 需要凭据，离线 CI 中不执行，因此
-  `unsupported_number_rate`（live 侧）、`unsupported_causal_claim_rate`、
-  `proxy_disclosure_rate` 在离线运行时为 `NOT_MEASURED`，release 门禁会因此阻断；
+- `live` / `live-canary` 需要凭据，离线 CI 中不执行；因此 live 侧的
+  `unsupported_number_rate` 在离线运行时为 `NOT_MEASURED`，
   `recorded_provider` 层无法证明「当前真实模型仍会选这些工具」。
 - `cross_session_leak_rate` 已由 `recorded_session_isolation`（`ANA-ISORP-*`，
-  6 条）在离线 `recorded-provider` 选择集里真正测量（0.0）。仍未测量的是
-  `unsupported_causal_claim_rate` 与 `proxy_disclosure_rate`，它们在离线套件里是
-  `NOT_APPLICABLE`，只有 live 能测。
+  6 条）在离线 `recorded-provider` 选择集里真正测量（0.0）。
+  `unsupported_causal_claim_rate` 与 `proxy_disclosure_rate` 也已离线测量（各 n=7，
+  结果 0.0 / 1.0）；仍未测量的是 `repeat_stability`（需要 `--repeat N`），以及
+  live 侧的模型行为验收。
 - 仍只验证局部函数、没有覆盖完整 Agent 的部分：`policy`（96 条）、
   `multi_turn`（20 条声明式）、`chart_policy` / `chart_html_safety`、
   `recovery_state`、`admission`、`sql_guard`、`session_isolation` 只直接调用生产
   函数/状态机，不经过模型；只有 `recorded_provider` / `generated_sql` / `tool_chain`
-  / `answer_grounding` / `recorded_session_isolation`（113 条）和 live 走完整
+  / `answer_grounding` / `recorded_session_isolation`（122 条）和 live 走完整
   `WebSession` 循环。
 
 ---

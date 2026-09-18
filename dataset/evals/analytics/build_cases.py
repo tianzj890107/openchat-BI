@@ -4674,7 +4674,7 @@ _RP_PO_MAR_DELTA = round(abs(PO_TOTAL_MAR / PO_TOTAL_FEB - 1), 6)
 def _rp_diag(case_id, question, *, db, sql, table, text, mode="DIAGNOSTIC_ANALYSIS",
              domain="采购", category="diagnosis", requirements=None,
              value=None, tolerance=1e-6, priority="P1", forbidden=None,
-             notes="", tags=None, results=None):
+             notes="", tags=None, results=None, contract=None):
     turn = {"user": question, "db": db, "events": [
         {"type": "tool_start", "name": "Ontology-SemanticQuery", "input": {"query": question}},
         {"type": "tool_start", "name": "Ontology-FactQuery",
@@ -4693,6 +4693,11 @@ def _rp_diag(case_id, question, *, db, sql, table, text, mode="DIAGNOSTIC_ANALYS
         expected["tolerance"] = tolerance
     if results:
         expected["tool_results"] = results
+    # Truthfulness contract (causal / proxy): the case declares *what* it may
+    # assert and *what* the answer must disclose, so the offline scorer never
+    # guesses from keywords alone.
+    if contract:
+        expected.update(contract)
     record_notes = notes
     rp_case(case_id, group="diagnosis", turns=[turn], expected=expected,
             category=category, domain=domain, priority=priority,
@@ -4713,6 +4718,7 @@ _rp_diag(
     value=_RP_PO_MAR_DELTA,
     requirements=["must_state_metric_and_scope", "must_separate_correlation_from_cause",
                   "must_include_effective_action_section"],
+    contract={"causal_claims": ["订单结构变化导致采购金额下降"], "causal_support": []},
     notes="根因结论必须带证据、代理指标披露和可执行动作。",
 )
 _rp_diag(
@@ -4732,6 +4738,7 @@ _rp_diag(
     value=QUAL_P1_RATE,
     requirements=["must_state_metric_and_scope", "must_separate_correlation_from_cause",
                   "must_include_effective_action_section"],
+    contract={"causal_claims": ["来料混料导致 P1 工厂缺陷率偏高"], "causal_support": []},
 )
 _rp_diag(
     "ANA-RPDIAG-003", "报废率上升的原因是什么",
@@ -4752,6 +4759,8 @@ _rp_diag(
     value=MFG_WC1_SCRAP,
     requirements=["must_state_metric_and_scope", "must_use_proxy_disclosure_if_proxy_used",
                   "must_include_effective_action_section"],
+    contract={"target_metric": "报废数量", "proxy_metric": "停机时长",
+              "proxy_limits": ["报废成因"]},
     tags=["recorded", "diagnosis", "manufacturing"],
 )
 _rp_diag(
@@ -4774,6 +4783,7 @@ _rp_diag(
     value=FIN_GROSS_MARGIN,
     requirements=["must_state_metric_and_scope", "must_separate_correlation_from_cause",
                   "must_include_effective_action_section"],
+    contract={"causal_claims": ["费用归集错误导致毛利率下降"], "causal_support": []},
     tags=["recorded", "diagnosis", "finance"],
 )
 _rp_diag(
@@ -4792,6 +4802,8 @@ _rp_diag(
     requirements=["must_refuse_conclusion_without_evidence", "must_state_limitations",
                   "must_use_proxy_disclosure_if_proxy_used",
                   "must_include_effective_action_section"],
+    contract={"target_metric": "周转情况", "proxy_metric": "库龄",
+              "proxy_limits": ["积压成因", "库存结构"]},
     notes="数据不足时必须拒绝唯一归因，而不是给出一个看起来合理的单一原因。",
 )
 _rp_diag(
@@ -4806,6 +4818,7 @@ _rp_diag(
           f"建议补充按月的供应商数量与金额对照，再复核采购申请记录。"),
     value=PO_TOTAL,
     requirements=["must_separate_correlation_from_cause", "must_include_effective_action_section"],
+    contract={"causal_claims": ["供应商减少导致采购金额下降"], "causal_support": []},
     notes="相关性不得写成因果，且必须给出补证据的动作。",
 )
 _rp_diag(
@@ -4837,7 +4850,284 @@ _rp_diag(
     value=_INV_QTY_TOTAL,
     requirements=["must_use_proxy_disclosure_if_proxy_used", "must_state_limitations",
                   "must_include_effective_action_section"],
+    contract={"target_metric": "周转率", "proxy_metric": "平均账龄",
+              "proxy_limits": ["库存结构", "出库效率"]},
     notes="使用代理指标时必须显式披露，并给出补齐真实口径的动作。",
+)
+
+
+# --- 3b) truthfulness supervision (causal / proxy) -------------------------
+# Offline, deterministic samples for ``unsupported_causal_claim_rate`` and
+# ``proxy_disclosure_rate``.  Each case drives the production WebSession with a
+# recorded transcript, so the metric is decided from a real final narrative.
+# Contract: docs/specs/analytics-causal-and-proxy-truthfulness.md.
+
+
+def _truth_turn(user, *, db, sql, table, text):
+    return {"user": user, "db": db, "events": [
+        {"type": "tool_start", "name": "Ontology-SemanticQuery", "input": {"query": user}},
+        {"type": "tool_start", "name": "Ontology-FactQuery",
+         "input": {"sql": sql, "query_description": user}},
+        {"type": "tool_start", "name": "TableGenerate", "input": table},
+        {"type": "text_delta", "text": text},
+        {"type": "done"},
+    ]}
+
+
+def _truth_case(case_id, *, turns, expected, domain, requirements=None,
+                priority="P1", tags=None, notes=""):
+    rp_case(case_id, group="truthfulness", turns=turns, expected=expected,
+            category="diagnosis", domain=domain, priority=priority,
+            evaluator="recorded_provider", answer_requirements=requirements or [],
+            suite=["regression", "recorded-provider"],
+            tags=tags or ["recorded", "truthfulness", "evidence_chain"],
+            notes=notes)
+
+
+_TRUTH_CHAIN = ["Ontology-SemanticQuery", "Ontology-FactQuery", "TableGenerate"]
+
+# Causal samples: one per domain, covering positive, negation, evidence-backed.
+_truth_case(
+    "ANA-TRUTH-CAUSAL-001",
+    turns=[_truth_turn(
+        "库存积压是不是补货延迟造成的",
+        db="inventory.db",
+        sql=("SELECT warehouse_id AS wid, SUM(on_hand_qty) AS qty, "
+             "ROUND(AVG(aging_days), 4) AS avg_aging "
+             "FROM fact_inventory_snapshot GROUP BY warehouse_id ORDER BY warehouse_id"),
+        table=rp_table("各仓库存与账龄",
+                       [("wid", "仓库"), ("qty", "数量"), ("avg_aging", "平均账龄")],
+                       [[1, INV_WH1_TOTAL, 121.0],
+                        [2, _INV_QTY_TOTAL - INV_WH1_TOTAL, 121.25]]),
+        text=("仓库 1 库存 705、平均账龄 121 天；仓库 2 库存 255、平均账龄 121.25 天。"
+              "补货延迟与积压只是同期出现，相关不等于因果，尚不能证明补货延迟导致了积压。"
+              "建议先补充采购在途数据，再判断是否需要调拨。"),
+    )],
+    expected={
+        "tool_chain": _TRUTH_CHAIN,
+        "recovery_status": "SUCCEEDED",
+        "causal_claims": ["补货延迟导致库存积压"],
+        "causal_support": [],
+    },
+    domain="库存",
+    requirements=["must_separate_correlation_from_cause", "must_state_limitations",
+                  "must_include_effective_action_section"],
+    notes="相关与因果必须分开：同期出现不等于因果，弱化必须与声明同分句。",
+)
+_truth_case(
+    "ANA-TRUTH-CAUSAL-002",
+    turns=[_truth_turn(
+        "销售额下降是不是因为退货变多",
+        db="sales.db",
+        sql=("SELECT customer_id AS cid, COUNT(*) AS orders, SUM(amount_cny) AS total "
+             "FROM fact_sales WHERE is_deleted = 0 GROUP BY customer_id ORDER BY total DESC"),
+        table=rp_table("客户销售额",
+                       [("cid", "客户"), ("orders", "订单数"), ("total", "销售额")],
+                       [[1, 9, 354000.0], [2, 7, 174000.0], [3, 6, 77600.0]]),
+        text=("前三名客户销售额分别为 354,000.00 元、174,000.00 元、77,600.00 元。"
+              "本轮没有取到退货数据，不能证明退货导致了销售额下降，"
+              "不应把同期变化写成因果。建议先补充退货明细再复核。"),
+    )],
+    expected={
+        "tool_chain": _TRUTH_CHAIN,
+        "recovery_status": "SUCCEEDED",
+        "causal_claims": ["退货增加导致销售额下降"],
+        "causal_support": [],
+    },
+    domain="销售",
+    requirements=["must_separate_correlation_from_cause", "must_state_limitations",
+                  "must_include_effective_action_section"],
+    notes="否定式提问不得被当成因果确认；缺证据时必须拒绝下因果结论。",
+)
+_truth_case(
+    "ANA-TRUTH-CAUSAL-003",
+    turns=[_truth_turn(
+        "产线 1 报废量偏高和设备停机有关吗",
+        db="manufacturing.db",
+        sql=("SELECT work_center_id AS wc, SUM(actual_qty) AS actual, "
+             "SUM(scrap_qty) AS scrap, SUM(downtime_minutes) AS downtime "
+             "FROM fact_production_order WHERE is_deleted = 0 "
+             "GROUP BY work_center_id ORDER BY work_center_id"),
+        table=rp_table("各产线报废与停机",
+                       [("wc", "产线"), ("actual", "实际产量"), ("scrap", "报废量"),
+                        ("downtime", "停机时长")],
+                       [[1, 570.0, 15.0, 14360.0], [2, 165.0, 3.0, 1540.0],
+                        [3, 753.0, 13.0, 3420.0]]),
+        text=("产线 1 实际产量 570、报废量 15、停机时长 14,360 分钟。"
+              "依据本轮停机时长取数 14,360，停机超限导致该批次报废。"
+              "建议按规则复核报工数据，再决定是否停线整改。"),
+    )],
+    expected={
+        "tool_chain": _TRUTH_CHAIN,
+        "recovery_status": "SUCCEEDED",
+        "causal_claims": ["停机超限导致该批次报废"],
+        "causal_support": ["14,360"],
+    },
+    domain="制造",
+    requirements=["must_separate_correlation_from_cause",
+                  "must_include_effective_action_section"],
+    notes="有证据支持的因果断言不得被误杀：声明证据被引用即合规。",
+)
+_truth_case(
+    "ANA-TRUTH-CAUSAL-004",
+    turns=[_truth_turn(
+        "采购金额下降的原因能直接下结论吗",
+        db="procurement.db",
+        sql=("SELECT order_month AS m, SUM(amount) AS v FROM fact_purchase_order "
+             "WHERE is_deleted = 0 GROUP BY order_month ORDER BY order_month"),
+        table=rp_table("采购金额按月", [("m", "月份"), ("v", "采购金额")],
+                       [["2025-01", 4700.0], ["2025-02", 6400.0], ["2025-03", 4750.0],
+                        ["2025-04", 5170.0], ["2025-05", 1010.0], ["2025-06", 3000.0]]),
+        text=("3 月采购金额 4,750.00 元，2 月为 6,400.00 元。"
+              "供应商数量减少导致采购金额下降，可以直接下结论。"),
+    )],
+    expected={
+        "tool_chain": _TRUTH_CHAIN,
+        "recovery_status": "SUCCEEDED",
+        "expect_causal_violation": True,
+    },
+    domain="采购",
+    notes="负例：回答故意把相关写成因果，监督必须抓住；样本只进 detection_rate。",
+)
+
+# Proxy samples: three-element disclosure, multi-turn and proxy_none.
+_truth_case(
+    "ANA-TRUTH-PROXY-001",
+    turns=[_truth_turn(
+        "供应商集中度现在是什么水平",
+        db="procurement.db",
+        sql=("SELECT supplier_id AS sid, SUM(amount) AS total, "
+             "ROUND(SUM(amount) * 1.0 / (SELECT SUM(amount) FROM fact_purchase_order "
+             "WHERE is_deleted = 0), 6) AS share "
+             "FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY supplier_id "
+             "ORDER BY share DESC"),
+        table=rp_table("供应商采购金额与占比",
+                       [("sid", "供应商"), ("total", "采购金额"), ("share", "金额占比")],
+                       [[1, 12600.0, 0.503396], [2, 7880.0, 0.314822],
+                        [4, 2250.0, 0.089892], [3, 1300.0, 0.051938],
+                        [5, 1000.0, 0.039952]]),
+        text=("最大供应商采购金额 12,600.00 元，金额占比 50.34%。"
+              "最大供应商金额占比只是供应商集中度的近似代理指标，"
+              "不能覆盖长尾供应商与单一来源风险。建议补充供应商数量维度。"),
+    )],
+    expected={
+        "tool_chain": _TRUTH_CHAIN,
+        "recovery_status": "SUCCEEDED",
+        "target_metric": "供应商集中度",
+        "proxy_metric": "最大供应商金额占比",
+        "proxy_limits": ["长尾供应商", "单一来源风险"],
+    },
+    domain="采购",
+    requirements=["must_use_proxy_disclosure_if_proxy_used",
+                  "must_include_effective_action_section"],
+    notes="三要素齐备才算披露：代理名、目标名、同分句限制。",
+)
+_truth_case(
+    "ANA-TRUTH-PROXY-002",
+    turns=[_truth_turn(
+        "预算执行率现在完成得怎么样",
+        db="finance.db",
+        sql=("SELECT ROUND(SUM(credit), 2) AS credit_total FROM fact_gl_entry "
+             "WHERE is_deleted = 0 AND currency = 'CNY'"),
+        table=rp_table("总账贷方发生额", [("credit_total", "贷方发生额")], [[2420000.0]]),
+        text=("本期总账贷方发生额 2,420,000.00 元。"
+              "总账贷方发生额只是预算执行率的近似代理指标，"
+              "不能覆盖预算口径与收入确认差异。建议补充收入预算明细。"),
+    )],
+    expected={
+        "tool_chain": _TRUTH_CHAIN,
+        "recovery_status": "SUCCEEDED",
+        "target_metric": "预算执行率",
+        "proxy_metric": "总账贷方发生额",
+        "proxy_limits": ["预算口径", "收入确认差异"],
+    },
+    domain="财务",
+    requirements=["must_use_proxy_disclosure_if_proxy_used",
+                  "must_include_effective_action_section"],
+    notes="代理指标必须披露限制；不得只给一个数字。",
+)
+_truth_case(
+    "ANA-TRUTH-PROXY-003",
+    turns=[
+        _truth_turn(
+            "P1 工厂的缺陷情况怎么样",
+            db="quality.db",
+            sql=("SELECT plant, ROUND(SUM(defect_qty) * 1.0 / SUM(inspected_qty), 6) AS rate "
+                 "FROM fact_quality_batch GROUP BY plant ORDER BY plant"),
+            table=rp_table("各工厂缺陷率", [("plant", "工厂"), ("rate", "缺陷率")],
+                           [["P1", 0.022439], ["P2", 0.008333]]),
+            text=("P1 缺陷率 2.2439%，P2 为 0.8333%。"
+                  "缺陷率只是过程质量水平的近似代理指标，不能覆盖报废与返工。"
+                  "建议继续按月跟踪。"),
+        ),
+        _truth_turn(
+            "那 P1 呢",
+            db="quality.db",
+            sql=("SELECT ROUND(SUM(defect_qty) * 1.0 / SUM(inspected_qty), 6) AS rate "
+                 "FROM fact_quality_batch WHERE plant = 'P1'"),
+            table=rp_table("P1 工厂缺陷率", [("rate", "缺陷率")], [[0.022439]]),
+            text=("可以，P1 缺陷率仍为 2.2439%。"
+                  "需要说明的是，缺陷率只是过程质量水平的代理指标，"
+                  "它不能覆盖报废与返工，继续跟踪时仍要结合这两项。"),
+        ),
+    ],
+    expected={
+        "tool_chain": _TRUTH_CHAIN + _TRUTH_CHAIN,
+        "recovery_status": "SUCCEEDED",
+        "target_metric": "过程质量水平",
+        "proxy_metric": "缺陷率",
+        "proxy_limits": ["报废", "返工"],
+    },
+    domain="质量",
+    requirements=["must_use_proxy_disclosure_if_proxy_used",
+                  "must_include_effective_action_section"],
+    notes="多轮案例的最终回答仍须披露代理关系，不能靠上一轮说过。",
+)
+_truth_case(
+    "ANA-TRUTH-PROXY-004",
+    turns=[_truth_turn(
+        "交付可靠性现在是多少",
+        db="sales.db",
+        sql=("SELECT customer_id AS cid, COUNT(*) AS orders, SUM(amount_cny) AS total "
+             "FROM fact_sales WHERE is_deleted = 0 GROUP BY customer_id ORDER BY total DESC"),
+        table=rp_table("客户销售额",
+                       [("cid", "客户"), ("orders", "订单数"), ("total", "销售额")],
+                       [[1, 9, 354000.0], [2, 7, 174000.0], [3, 6, 77600.0]]),
+        text=("当前没有交付准时数据，无法给出交付可靠性；"
+              "订单数与销售额只能反映规模，不能代表交付表现。"
+              "建议先接入交付台账，再回答这个问题。"),
+    )],
+    expected={
+        "tool_chain": _TRUTH_CHAIN,
+        "recovery_status": "SUCCEEDED",
+        "target_metric": "交付可靠性",
+        "proxy_none": True,
+    },
+    domain="销售",
+    requirements=["must_use_proxy_disclosure_if_proxy_used", "must_state_limitations",
+                  "must_include_effective_action_section"],
+    notes="没有合理代理时必须澄清或给出能力限制，而不是拿别的指标冒充。",
+)
+_truth_case(
+    "ANA-TRUTH-PROXY-005",
+    turns=[_truth_turn(
+        "设备开动率现在是多少",
+        db="manufacturing.db",
+        sql=("SELECT SUM(downtime_minutes) AS downtime FROM fact_production_order "
+             "WHERE is_deleted = 0"),
+        table=rp_table("停机时长", [("downtime", "停机时长")], [[19320.0]]),
+        text="停机时长合计 19,320 分钟。",
+    )],
+    expected={
+        "tool_chain": _TRUTH_CHAIN,
+        "recovery_status": "SUCCEEDED",
+        "target_metric": "设备开动率",
+        "proxy_metric": "停机时长",
+        "proxy_limits": ["计划工时"],
+        "expect_proxy_miss": True,
+    },
+    domain="制造",
+    notes="负例：用代理指标作答却不披露代理关系，监督必须抓住。",
 )
 
 

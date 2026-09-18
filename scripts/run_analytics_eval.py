@@ -182,10 +182,11 @@ XPASS = "xpass"   # known_gap case that now passes -> the defect is closed, prom
 TURN_STOP_STATUSES = frozenset({"FAILED_RETRYABLE", "FAILED_FINAL", "CANCELLED"})
 
 # Metrics that can only be produced by scoring a real/simulated answer.
+# ``unsupported_causal_claim_rate`` / ``proxy_disclosure_rate`` are deliberately
+# *not* listed: the recorded-provider layer scores the final narrative offline,
+# so they are measurable without a provider key.
 LIVE_ONLY_METRICS = (
     "unsupported_number_rate",
-    "unsupported_causal_claim_rate",
-    "proxy_disclosure_rate",
 )
 
 # Metrics whose per-case sample is "a violation happened"; a lower aggregate is
@@ -204,8 +205,10 @@ ALL_METRICS = (
     "metric_scope_accuracy",
     "unsupported_number_rate",
     "unsupported_causal_claim_rate",
+    "unsupported_causal_claim_detection_rate",
     "evidence_coverage",
     "proxy_disclosure_rate",
+    "proxy_disclosure_detection_rate",
     "chart_selection_accuracy",
     "multi_turn_context_accuracy",
     "recovery_success_rate",
@@ -241,6 +244,10 @@ class CaseResult:
     scope: str = ""
     forbidden: list = field(default_factory=list)
     evidence: dict = field(default_factory=dict)
+    # The case's answer contract, carried so ``_suite_capabilities`` can tell
+    # which metrics this selection is *able* to measure (a cloned result that
+    # dropped its metric is still capable of producing one).
+    answer_requirements: tuple = ()
     known_gap: bool = False
     gap_note: str = ""
     gap_meta: dict = field(default_factory=dict)
@@ -374,6 +381,7 @@ def _case_scaffold(case: dict) -> dict:
         "known_gap": bool(case.get("known_gap")),
         "gap_note": case.get("gap_note", ""),
         "gap_meta": dict(case.get("gap_meta") or {}),
+        "answer_requirements": tuple(case.get("answer_requirements") or ()),
     }
 
 
@@ -859,6 +867,7 @@ def _result_from(case: dict, checks: list[Check]) -> CaseResult:
         question=scaffold["question"],
         scope=scaffold["scope"],
         forbidden=scaffold["forbidden"],
+        answer_requirements=scaffold["answer_requirements"],
         known_gap=scaffold["known_gap"],
         gap_note=scaffold["gap_note"],
         gap_meta=scaffold["gap_meta"],
@@ -1373,7 +1382,110 @@ def eval_session_isolation(case: dict, ctx: EvalContext) -> CaseResult:
 # ---------------------------------------------------------------------------
 # answer scoring (semantic layer) — heuristics, never exact-text matching
 # ---------------------------------------------------------------------------
-PROXY_KEYWORDS = ("代理", "近似", "间接", "相关的", "不能直接证明", "间接证据")
+# --- truthfulness supervision (causal / proxy) -----------------------------
+# Contract: ``docs/specs/analytics-causal-and-proxy-truthfulness.md``.  The two
+# metrics used to be live-only because no offline evaluator scored the final
+# narrative; they are now decided clause-by-clause against the *declared*
+# contract, so a replayed transcript is enough.
+CAUSAL_REQUIREMENT = "must_separate_correlation_from_cause"
+PROXY_REQUIREMENT = "must_use_proxy_disclosure_if_proxy_used"
+CAUSAL_RATE_METRIC = "unsupported_causal_claim_rate"
+CAUSAL_DETECTION_METRIC = "unsupported_causal_claim_detection_rate"
+PROXY_RATE_METRIC = "proxy_disclosure_rate"
+PROXY_DETECTION_METRIC = "proxy_disclosure_detection_rate"
+CAUSAL_CHECK = "answer.unsupported_causal_claim"
+PROXY_CHECK = "answer.proxy_disclosure"
+# The offline recorded-provider path owns exactly these two answer checks.
+TRUTHFULNESS_CHECK_PREFIXES = (CAUSAL_CHECK, PROXY_CHECK)
+TRUTHFULNESS_METRICS = frozenset({
+    CAUSAL_RATE_METRIC, CAUSAL_DETECTION_METRIC,
+    PROXY_RATE_METRIC, PROXY_DETECTION_METRIC,
+})
+# Evaluators that hand ``score_answer`` the final narrative of a real turn.
+ANSWER_SCORING_EVALUATORS = frozenset({
+    "recorded_provider", "answer_grounding", "live", "answers",
+})
+
+SEGMENT_SPLIT = re.compile(r"[，,、。！？；\n]")
+CAUSAL_PREDICATE_RE = re.compile(
+    r"(导致|造成|引起|引发|致使|使得|使(?!用|得|然)|因为|由于|归因于|归咎于|带来|"
+    r"是[^，。；]{1,24}的(?:根因|主因|原因)|根因|由此造成)")
+# Hedges only neutralise a claim inside the *same* clause: a hedge in a
+# neighbouring clause must never launder a definite causal statement.
+CAUSAL_HEDGE_TOKENS = (
+    "可能", "或许", "也许", "尚不能", "还不能", "不能证明", "无法确认",
+    "无法唯一归因", "无法判断", "尚不清楚", "不足以", "相关", "相关性",
+    "待验证", "需要进一步", "假设", "推测", "如果", "若", "不能直接证明",
+    "不等于", "不是", "未见",
+)
+# A limitation only counts when it is tied (same clause) to a metric name or a
+# declared limit: a bare "仅供参考" never is a proxy disclosure.
+PROXY_LIMIT_PREDICATES = ("不能", "无法", "仅", "只", "近似", "不等同", "不覆盖",
+                          "不足以", "只是")
+
+
+def _causal_definite_segments(text: str) -> list[str]:
+    """Clauses that assert a cause without hedging *inside the same clause*."""
+
+    out: list[str] = []
+    for segment in SEGMENT_SPLIT.split(text or ""):
+        if not CAUSAL_PREDICATE_RE.search(segment):
+            continue
+        if any(token in segment for token in CAUSAL_HEDGE_TOKENS):
+            continue
+        out.append(segment.strip())
+    return out
+
+
+def _proxy_names(raw: Any) -> list[str]:
+    """Normalise ``expected.proxy_metric`` (str | list) into declared names."""
+
+    if raw is None:
+        return []
+    items = raw if isinstance(raw, (list, tuple, set)) else [raw]
+    return [str(item).strip() for item in items if str(item or "").strip()]
+
+
+def _visible_metric_labels(run: Any) -> list[str]:
+    """Metric labels that reach the user: chart/table titles and column names.
+
+    A chart or table is a deliverable, so a proxy relabelled as the target
+    metric is a violation even when the prose says the opposite (Spec §6.3).
+    """
+
+    labels: list[str] = []
+    calls = run if isinstance(run, (list, tuple)) else getattr(run, "tool_calls", None) or ()
+    for call in calls:
+        name = str(call.get("name") or "")
+        if "Table" not in name and "Chart" not in name:
+            continue
+        payload = call.get("input") or {}
+        if not isinstance(payload, dict):
+            continue
+        title = payload.get("title") or payload.get("name")
+        if isinstance(title, str) and title.strip():
+            labels.append(title.strip())
+        for column in payload.get("columns") or ():
+            if not isinstance(column, dict):
+                continue
+            for key in ("label", "name", "title"):
+                value = column.get(key)
+                if isinstance(value, str) and value.strip():
+                    labels.append(value.strip())
+    return labels
+
+
+def _proxy_impersonations(target: str, proxies: list[str],
+                          labels: Any) -> list[str]:
+    """Labels that present the target metric without naming the proxy."""
+
+    bad: list[str] = []
+    for label in labels or ():
+        if target and target in label and not any(proxy in label for proxy in proxies):
+            bad.append(label)
+    return bad
+
+
 SCOPE_KEYWORDS = ("口径", "统计范围", "范围", "过滤", "仅统计", "排除", "定义")
 # Disclosure language accepted as an explicit limitation.  The forecast /
 # scenario vocabulary (assumption, projection, estimation, unverified,
@@ -1406,8 +1518,14 @@ def _numbers_in(text: str) -> set[float]:
     return out
 
 
-def score_answer(case: dict, answer: str, allowed_numbers: set[float]) -> tuple[list[Check], dict[str, bool]]:
-    """Score one natural-language answer against the case's declared rules."""
+def score_answer(case: dict, answer: str, allowed_numbers: set[float],
+                 evidence_labels: Any = None) -> tuple[list[Check], dict[str, bool]]:
+    """Score one natural-language answer against the case's declared rules.
+
+    ``evidence_labels`` carries the visible chart/table labels of the turn
+    (``run.tool_calls``); the text-only callers pass nothing and keep the same
+    contract.
+    """
 
     from bi_agent.tools.analysis_policy import (
         extract_action_items,
@@ -1452,19 +1570,79 @@ def score_answer(case: dict, answer: str, allowed_numbers: set[float]) -> tuple[
         ok = any(k in text for k in LIMITATION_KEYWORDS)
         checks.append(Check("answer.limitations", ok, True, ok))
 
-    if "must_separate_correlation_from_cause" in requirements:
-        causal = bool(re.search(r"(因为|导致|造成|由于)", text))
-        hedged = any(k in text for k in ("相关", "可能", "无法确认", "需要进一步", "不能证明"))
-        ok = (not causal) or hedged
-        checks.append(Check("answer.correlation_not_causation", ok, True, ok))
-        metrics["unsupported_causal_claim_rate"] = not ok
+    # --- causal supervision -----------------------------------------------
+    # A definite claim in one clause must not be laundered by a hedge in the
+    # next; a definite claim is allowed only when the case declares support and
+    # the answer cites it.
+    causal_violation_expected = bool(expected.get("expect_causal_violation"))
+    declared_claims = [str(c).strip() for c in (expected.get("causal_claims") or [])
+                       if str(c or "").strip()]
+    definite = _causal_definite_segments(text)
+    if causal_violation_expected or CAUSAL_REQUIREMENT in requirements \
+            or declared_claims or definite:
+        support = [str(mark).strip() for mark in (expected.get("causal_support") or [])
+                   if str(mark or "").strip()]
+        backed = any(mark in text for mark in support)
+        violation = bool(definite) and not backed
+        if causal_violation_expected:
+            metrics[CAUSAL_DETECTION_METRIC] = violation
+            checks.append(Check(
+                f"{CAUSAL_CHECK}.negative_control", violation,
+                "planted unsupported causal claim detected",
+                definite[:2] if definite else "no definite claim"))
+        else:
+            checks.append(Check(
+                CAUSAL_CHECK, not violation, "no unsupported causal claim",
+                definite[:2] if violation else ("no definite claim" if not definite
+                                                else f"backed by {support[:2]}")))
+            if definite or declared_claims:
+                metrics[CAUSAL_RATE_METRIC] = violation
 
-    if "must_use_proxy_disclosure_if_proxy_used" in requirements:
-        proxy_used = bool(re.search(r"(周转|账龄|间接)", text))
-        disclosed = any(k in text for k in PROXY_KEYWORDS)
-        ok = (not proxy_used) or disclosed
-        checks.append(Check("answer.proxy_disclosure", ok, True, ok))
-        metrics["proxy_disclosure_rate"] = ok
+    # --- proxy supervision -------------------------------------------------
+    # The denominator is decided by the case declaration, never by the answer:
+    # forgetting to mention the proxy cannot remove a case from the metric.
+    target_metric = str(expected.get("target_metric") or "").strip()
+    proxies = _proxy_names(expected.get("proxy_metric"))
+    proxy_none = bool(expected.get("proxy_none"))
+    direct_metric = bool(expected.get("used_direct_metric"))
+    proxy_miss_expected = bool(expected.get("expect_proxy_miss"))
+    proxy_limits = [str(item).strip() for item in (expected.get("proxy_limits") or [])
+                    if str(item or "").strip()]
+    if proxy_miss_expected or proxy_none or (proxies and not direct_metric):
+        impersonated = _proxy_impersonations(target_metric, proxies, evidence_labels)
+        if proxy_none:
+            clarified = bool(target_metric) and target_metric in text and any(
+                any(pred in segment for pred in PROXY_LIMIT_PREDICATES)
+                for segment in SEGMENT_SPLIT.split(text) if target_metric in segment)
+            disclosed = clarified
+            detail = ("clarification or capability limit present" if clarified
+                      else f"{target_metric or 'target'!r} presented without a limit")
+        else:
+            segments = SEGMENT_SPLIT.split(text)
+            named = all(proxy in text for proxy in proxies) and (
+                not target_metric or target_metric in text)
+            limited = any(
+                any(pred in segment for pred in PROXY_LIMIT_PREDICATES)
+                and (any(proxy in segment for proxy in proxies)
+                     or (target_metric and target_metric in segment)
+                     or any(limit in segment for limit in proxy_limits))
+                for segment in segments)
+            disclosed = bool(named and limited and not impersonated)
+            if impersonated:
+                detail = f"relabelled as target metric: {impersonated[:2]}"
+            elif not named:
+                detail = f"proxy/target not named (target={target_metric!r}, proxies={proxies})"
+            else:
+                detail = "no same-clause limitation for the proxy relationship"
+        if proxy_miss_expected:
+            metrics[PROXY_DETECTION_METRIC] = not disclosed
+            checks.append(Check(
+                f"{PROXY_CHECK}.negative_control", not disclosed,
+                "planted proxy-disclosure miss detected", detail))
+        else:
+            metrics[PROXY_RATE_METRIC] = disclosed
+            checks.append(Check(PROXY_CHECK, disclosed,
+                                "proxy relationship disclosed", detail))
 
     if "must_refuse_conclusion_without_evidence" in requirements:
         refused = any(k in text for k in ("证据不足", "无法给出", "不能给出", "无法确认", "不足以"))
@@ -2390,6 +2568,17 @@ def eval_recorded_provider(case: dict, ctx: EvalContext) -> CaseResult:
     unsupported = pool.unsupported(run.text)
     checks.extend(_grounding_checks("recorded", expected, unsupported))
 
+    # Offline truthfulness supervision.  Exactly two answer checks join the
+    # recorded path (causal / proxy); ``unsupported_number_rate`` keeps coming
+    # from ``_record_grounding_metric`` below and is never overwritten here.
+    truth_checks, truth_metrics = score_answer(
+        case, run.text, pool.pool,
+        evidence_labels=_visible_metric_labels(run.tool_calls))
+    checks.extend(check for check in truth_checks
+                  if check.name.startswith(TRUTHFULNESS_CHECK_PREFIXES))
+    truth_metrics = {name: value for name, value in truth_metrics.items()
+                     if name in TRUTHFULNESS_METRICS}
+
     forbidden_hits = [token for token in (case.get("forbidden") or [])
                       if token and token in run.text]
     checks.append(Check("recorded.no_forbidden_token", not forbidden_hits, [], forbidden_hits))
@@ -2410,6 +2599,7 @@ def eval_recorded_provider(case: dict, ctx: EvalContext) -> CaseResult:
         "answer_schema_valid_rate": _schema_valid(expected, run, unsupported),
         "evidence_coverage": bool(run.tool_calls) or not expected.get("tool_chain"),
     })
+    result.metrics.update(truth_metrics)
     _record_grounding_metric(result, expected, unsupported)
     result.evidence = evidence
     return result
@@ -2848,7 +3038,9 @@ def eval_answer_grounding(case: dict, ctx: EvalContext) -> CaseResult:
     for fragment in expected.get("final_text_absent", []):
         checks.append(Check(f"grounding.text_absent[{str(fragment)[:24]}]",
                             str(fragment) not in run.text, "absent", "present"))
-    answer_checks, metrics = score_answer(case, run.text, pool.pool)
+    answer_checks, metrics = score_answer(
+        case, run.text, pool.pool,
+        evidence_labels=_visible_metric_labels(run.tool_calls))
     if expected.get("score_answer", True):
         checks.extend(answer_checks)
     checks.append(Check("grounding.no_forbidden_token",
@@ -3302,8 +3494,19 @@ def _suite_capabilities(results: list[CaseResult]) -> set[str]:
     if evaluators & {"live", "answers", "recorded_provider", "answer_grounding",
                      "generated_sql", "tool_chain"}:
         caps.add("unsupported_number_rate")
-    if evaluators & {"live", "answers"}:
-        caps |= {"unsupported_causal_claim_rate", "proxy_disclosure_rate"}
+    # The truthfulness metrics are measurable offline whenever the selection
+    # contains a case that declares the contract *and* is run by an evaluator
+    # that can score the final narrative.  Capability is read from the case's
+    # answer contract, not from the produced value, so an empty denominator is
+    # NOT_MEASURED (release blocking) rather than NOT_APPLICABLE.
+    for result in results:
+        if result.evaluator not in ANSWER_SCORING_EVALUATORS:
+            continue
+        declared = set(result.answer_requirements or ())
+        if CAUSAL_REQUIREMENT in declared:
+            caps.add(CAUSAL_RATE_METRIC)
+        if PROXY_REQUIREMENT in declared:
+            caps.add(PROXY_RATE_METRIC)
     for result in results:
         caps |= set(result.metrics)
     return caps
@@ -3314,8 +3517,10 @@ def _suite_capabilities(results: list[CaseResult]) -> set[str]:
 MISSING_CASE_HINTS = {
     "cross_session_leak_rate": "需要 session_isolation / 跨会话哨兵案例（A 案例数字不得出现在 B 案例）",
     "unsupported_number_rate": "需要 answer_grounding 或 recorded 链路案例（答案引用未查询数字）",
-    "unsupported_causal_claim_rate": "需要 live/answers 语义评分案例（把相关性说成因果）",
-    "proxy_disclosure_rate": "需要 live/answers 语义评分案例（使用代理指标未说明）",
+    "unsupported_causal_claim_rate": "需要 recorded-provider/answer_grounding 离线语义评分案例（把相关性说成因果）",
+    "proxy_disclosure_rate": "需要 recorded-provider/answer_grounding 离线语义评分案例（使用代理指标未说明）",
+    "unsupported_causal_claim_detection_rate": "需要 expect_causal_violation 离线负例（植入因果越界）",
+    "proxy_disclosure_detection_rate": "需要 expect_proxy_miss 离线负例（植入代理不披露）",
     "multi_turn_context_accuracy": "需要 multi_turn / context_resolution 案例",
     "recovery_success_rate": "需要 recovery_state / failure_recovery 案例",
     "chart_selection_accuracy": "需要 chart_* 图表链路案例",
@@ -3333,6 +3538,7 @@ MISSING_CASE_HINTS = {
 RELEASE_REQUIRED_METRICS = frozenset({
     "exact_numeric_accuracy", "answer_schema_valid_rate", "evidence_coverage",
     "cross_session_leak_rate", "unsupported_number_rate",
+    "unsupported_causal_claim_rate", "proxy_disclosure_rate",
 })
 
 
@@ -3423,7 +3629,9 @@ def evaluate_gates(results: list[CaseResult], metrics: dict, *,
         ("cross_session_leak_rate", 0.0, False),
         ("unsupported_number_rate", 0.0, False),
         ("unsupported_causal_claim_rate", 0.0, False),
+        ("unsupported_causal_claim_detection_rate", 1.0, True),
         ("proxy_disclosure_rate", 1.0, True),
+        ("proxy_disclosure_detection_rate", 1.0, True),
     ):
         gates.append(_metric_gate(metric, metrics.get(metric), want,
                                   higher_is_better=higher_is_better,
@@ -4150,6 +4358,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                         evaluator=case.get("evaluator", ""), priority=case.get("priority", "P1"),
                         status=SKIP, question=case.get("question", ""),
                         checks=[Check("answers.provided", False, "recorded answer", None)],
+                        answer_requirements=tuple(case.get("answer_requirements") or ()),
                     )
                 else:
                     # Case-scoped grounding: an answer may only cite numbers this
@@ -4185,6 +4394,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                         evaluator="live", priority=c.get("priority", "P1"), status=SKIP,
                         question=c.get("question", ""),
                         checks=[Check("live.credentials", False, "provider credentials", "")],
+                        answer_requirements=tuple(c.get("answer_requirements") or ()),
                         run_meta={"case_id": c["case_id"], "domain": c.get("domain"),
                                   "fixture_db": fixture_db_for_case(c)},
                     )
@@ -4211,6 +4421,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                             status=SKIP, question=case.get("question", ""),
                             checks=[Check("live.suite_budget", False,
                                           f"budget {int(budget)}s", "exhausted")],
+                            answer_requirements=tuple(case.get("answer_requirements") or ()),
                             run_meta={"case_id": case["case_id"],
                                       "domain": case.get("domain"),
                                       "fixture_db": fixture_db_for_case(case)},

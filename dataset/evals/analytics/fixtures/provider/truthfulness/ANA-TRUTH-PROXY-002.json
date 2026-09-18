@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-TRUTH-PROXY-002",
+  "turns": [
+    {
+      "user": "预算执行率现在完成得怎么样",
+      "db": "finance.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "预算执行率现在完成得怎么样"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT ROUND(SUM(credit), 2) AS credit_total FROM fact_gl_entry WHERE is_deleted = 0 AND currency = 'CNY'",
+            "query_description": "预算执行率现在完成得怎么样"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "总账贷方发生额",
+            "columns": [
+              {
+                "key": "credit_total",
+                "label": "贷方发生额"
+              }
+            ],
+            "rows": [
+              [
+                2420000.0
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "本期总账贷方发生额 2,420,000.00 元。总账贷方发生额只是预算执行率的近似代理指标，不能覆盖预算口径与收入确认差异。建议补充收入预算明细。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

@@ -4,12 +4,12 @@
   "case_schema": "schemas/case.schema.json",
   "description": "End-to-end golden set for the BI / analytics agent. Covers question -> intent -> metric scope -> tool plan -> query -> numbers -> evidence -> chart -> answer. Regenerate with `python dataset/evals/analytics/build_cases.py`; run with `python -m scripts.run_analytics_eval --suite <suite>`.",
   "totals": {
-    "cases": 561,
+    "cases": 570,
     "known_gap": 0,
     "known_gap_p0": 0,
     "by_priority": {
       "P0": 147,
-      "P1": 379,
+      "P1": 388,
       "P2": 35
     },
     "by_category": {
@@ -17,7 +17,7 @@
       "anomaly": 24,
       "charts": 35,
       "comparison": 16,
-      "diagnosis": 31,
+      "diagnosis": 40,
       "facts": 110,
       "failure_recovery": 35,
       "intent": 49,
@@ -31,13 +31,13 @@
       "adversarial": 62,
       "charts": 22,
       "diagnosis": 33,
-      "live": 48,
+      "live": 55,
       "live-canary": 18,
       "multi-turn": 32,
       "ontology": 46,
-      "recorded-provider": 113,
+      "recorded-provider": 122,
       "recovery": 33,
-      "regression": 561,
+      "regression": 570,
       "smoke": 140
     },
     "by_evaluator": {
@@ -51,7 +51,7 @@
       "multi_turn": 20,
       "ontology": 46,
       "policy": 117,
-      "recorded_provider": 62,
+      "recorded_provider": 71,
       "recorded_session_isolation": 6,
       "recovery_state": 18,
       "session_isolation": 5,
@@ -60,20 +60,20 @@
       "tool_chain": 12
     },
     "by_domain": {
-      "制造": 57,
-      "库存": 41,
-      "财务": 53,
-      "质量": 43,
+      "制造": 59,
+      "库存": 42,
+      "财务": 54,
+      "质量": 44,
       "通用": 102,
-      "采购": 214,
-      "销售": 51
+      "采购": 216,
+      "销售": 53
     },
     "by_layer": {
       "deterministic": 448,
-      "recorded_provider": 113
+      "recorded_provider": 122
     },
     "live": {
-      "count": 48,
+      "count": 55,
       "case_ids": [
         "ANA-DIAG-001",
         "ANA-DIAG-002",
@@ -122,27 +122,34 @@
         "ANA-RPREC-001",
         "ANA-RPREC-002",
         "ANA-RPREC-003",
-        "ANA-RPREC-004"
+        "ANA-RPREC-004",
+        "ANA-TRUTH-CAUSAL-001",
+        "ANA-TRUTH-CAUSAL-002",
+        "ANA-TRUTH-CAUSAL-003",
+        "ANA-TRUTH-PROXY-001",
+        "ANA-TRUTH-PROXY-002",
+        "ANA-TRUTH-PROXY-003",
+        "ANA-TRUTH-PROXY-004"
       ],
       "by_domain": {
-        "制造": 5,
-        "库存": 7,
-        "财务": 5,
-        "质量": 7,
-        "采购": 18,
-        "销售": 6
+        "制造": 6,
+        "库存": 8,
+        "财务": 6,
+        "质量": 8,
+        "采购": 19,
+        "销售": 8
       },
       "by_priority": {
         "P0": 1,
-        "P1": 46,
+        "P1": 53,
         "P2": 1
       },
       "by_evaluator": {
         "policy": 33,
-        "recorded_provider": 15
+        "recorded_provider": 22
       },
       "needs": {
-        "sql": 15,
+        "sql": 22,
         "ontology": 0,
         "chart": 0,
         "multi_turn": 0
@@ -687,6 +694,42 @@
     "provider/sql/ANA-RPSQL-025.json": {
       "bytes": 1292,
       "sha256": "c0a8cfd0e313f1a7e871c43acb327f9d524ab9d93446200c42eca9dca89c0d19"
+    },
+    "provider/truthfulness/ANA-TRUTH-CAUSAL-001.json": {
+      "bytes": 1937,
+      "sha256": "e5970bd8815eb187a4e7667a2ac151d003648f0e1458dd7e8d40107ca2db21b5"
+    },
+    "provider/truthfulness/ANA-TRUTH-CAUSAL-002.json": {
+      "bytes": 1974,
+      "sha256": "d2af8e737e320524e3e6ecfa242af280746b01cb976a09c445b01934ef7b4254"
+    },
+    "provider/truthfulness/ANA-TRUTH-CAUSAL-003.json": {
+      "bytes": 2230,
+      "sha256": "eea9801a05a90e70c7908873f731d0d456be9fa37d5ee04f3bb6dcf8083ff1a0"
+    },
+    "provider/truthfulness/ANA-TRUTH-CAUSAL-004.json": {
+      "bytes": 1978,
+      "sha256": "89216f0762d5bb659fe3eeaecee078819cf96da0248b41a38fa609fc056cde71"
+    },
+    "provider/truthfulness/ANA-TRUTH-PROXY-001.json": {
+      "bytes": 2295,
+      "sha256": "d3f160f5598f3e954c861235ec8d3483481dd495189aa0731b68d21710a230a1"
+    },
+    "provider/truthfulness/ANA-TRUTH-PROXY-002.json": {
+      "bytes": 1470,
+      "sha256": "5f35904e8e817645b6b42704ab8c2811683fc6c0297d3cbf21172b4dc96937c7"
+    },
+    "provider/truthfulness/ANA-TRUTH-PROXY-003.json": {
+      "bytes": 2878,
+      "sha256": "c599b28c4a0e5131a77fef8f59c29fb524fedd649a37f1061e273b300a3d8797"
+    },
+    "provider/truthfulness/ANA-TRUTH-PROXY-004.json": {
+      "bytes": 1886,
+      "sha256": "d3aeb921dbed03052e4376fdc261422162c0a804ec11dcea5972e830ca27a0fc"
+    },
+    "provider/truthfulness/ANA-TRUTH-PROXY-005.json": {
+      "bytes": 1255,
+      "sha256": "1ad8a4d9ea0faab9a999a79a4510fb4021aaa4270db2bc4c83f8602009e891b3"
     },
     "reports/purchase_summary_2025Q1.txt": {
       "bytes": 217,

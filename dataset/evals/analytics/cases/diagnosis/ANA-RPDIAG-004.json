@@ -30,7 +30,11 @@
     "recovery_status": "SUCCEEDED",
     "policy_mode": "DIAGNOSTIC_ANALYSIS",
     "value": 0.38793103,
-    "tolerance": 1e-06
+    "tolerance": 1e-06,
+    "causal_claims": [
+      "费用归集错误导致毛利率下降"
+    ],
+    "causal_support": []
   },
   "forbidden": [],
   "allowed_variants": {},

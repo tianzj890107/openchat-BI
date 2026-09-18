@@ -603,3 +603,67 @@
   `git diff --check` 通过。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未读取真实凭据；
   live / live-canary 未运行（无在线评测授权）。
+
+### 8. 因果越界与代理指标披露：离线真实性门禁（第六批，已完成）
+
+- 审计结论（本批出发点）：`unsupported_causal_claim_rate` 与 `proxy_disclosure_rate` 曾是
+  **恒不触发的假门禁**。黄金集里 15 条案例声明了 `must_separate_correlation_from_cause` /
+  `must_use_proxy_disclosure_if_proxy_used`，但 `eval_policy` 与 `eval_recorded_provider`
+  都不调用 `score_answer`；`_suite_capabilities` 只在存在 `live` / `answers` evaluator 时
+  把这两个指标判为 capable，而黄金集没有任何此类 evaluator，因此离线分母恒为 0，门禁
+  `NOT_APPLICABLE (ok=True)`，且两者都不在 `RELEASE_REQUIRED_METRICS` 里——既不阻断发布，
+  也发现不了因果越界与代理指标不披露。旧 `score_answer` 仅靠关键词判定，无法处理
+  「另一分句的『可能』给确定性因果洗白」「有规则证据的因果被误杀」「把代理值改名为目标指标」
+  「只说仅供参考」。
+- 交付：按 `docs/specs/analytics-causal-and-proxy-truthfulness.md`（含实现提示词）把两个指标
+  改为**离线、确定性、可复现、会失败**的真实门禁，未改动 `bi_agent/**` 生产回答逻辑。
+- 因果评分：分句切分 + 因果谓词 + **同分句**弱化 + `expected.causal_support` 证据引用；
+  有证据的因果不误杀，另一分句的弱化不给确定性声明洗白。
+- 代理评分：三要素（代理指标名 + 目标指标名 + 同分句限制说明）；重命名、多代理只披露一个、
+  只说「仅供参考」、图表/表格冒充目标指标均不合格；`used_direct_metric` 与 `proxy_none`
+  澄清分支单独处理。
+- 负例（negative control）：`expect_causal_violation` / `expect_proxy_miss` 把故意越界的回答
+  计为「监督抓住」，样本计入 `unsupported_causal_claim_detection_rate` /
+  `proxy_disclosure_detection_rate`（各 `1.0`、`n=1`），不计入真实比率分母。
+- capable 判定：选择集含声明案例且 evaluator 属可评分集合（`recorded_provider` /
+  `answer_grounding` / `answers` / `live`）→ capable；空分母 → `NOT_MEASURED` 且 `ok=False`
+  （阻断 release），不再 `NOT_APPLICABLE`；两个比率纳入 `RELEASE_REQUIRED_METRICS`、
+  移出 `LIVE_ONLY_METRICS`；`MISSING_CASE_HINTS` 改指离线语义评分案例。
+- `eval_recorded_provider` 只并入 `answer.unsupported_causal_claim` /
+  `answer.proxy_disclosure` 两个 check 与对应四个指标，不接管 `unsupported_number_rate`
+  （仍由 `_record_grounding_metric` 持有），也不把 `must_state_metric_and_scope` /
+  `must_include_effective_action_section` / `must_cite_queried_numbers` 搬到离线路径。
+- 数据集 561 → **570** 条（`known_gap` 保持 0/0）：在既有 `ANA-RPDIAG-001/002/004/006`
+  上声明因果契约、`ANA-RPDIAG-003/005/008` 上声明代理契约；新增
+  `ANA-TRUTH-CAUSAL-001..004`、`ANA-TRUTH-PROXY-001..005`（含 2 条负例）。录制回答与声明
+  契约一致，未改写任何诚实回答凑通过。
+- `case.schema.json` 支持 9 个新字段（`causal_claims` / `causal_support` /
+  `expect_causal_violation` / `target_metric` / `proxy_metric` / `proxy_limits` /
+  `used_direct_metric` / `expect_proxy_miss`）；`manifest.json` 与 `cases/**` 重新生成；
+  README §7 指标表与 not_measured 说明改为「离线可测」。
+- 新红测 `tests/test_analytics_causal_proxy_truthfulness_red.py`：实现前 53 failed /
+  14 passed → 实现后 **64 passed**（+3 subtests）；文件哈希实现前后一致
+  `1ff628236343603b39e74ca53b66541d31643429064587516b023179c7ebb3ca`，未改测试迁就实现。
+- 既有六批红测合并 **292 passed / 112 subtests**；`--suite adversarial` **62/62**、
+  `--suite smoke` **140/140**、`--suite recorded-provider` **122/122**、
+  `--suite regression` **570/570**（P0 147/147、`known_gap=0/0`、`xpass=0`）、
+  `--suite all` **570/570**；`--suite regression --release` 退出码 **0**，
+  `known_gap_ratchet` / `p0_known_gap_allowlist` / `known_gap_overdue` /
+  `unresolved_security_defects` 全 PASS；`tests/test_analytics_eval_dataset.py` +
+  `tests/test_analytics_eval_production_chain.py` 92 passed / 10 subtests；
+  全量 `pytest -q tests` **952 passed / 25 skipped / 999 subtests passed / 0 failed**；
+  `git diff --check` 通过。
+- 指标（离线实测）：`unsupported_causal_claim_rate=0.0 (n=7)`、
+  `proxy_disclosure_rate=1.0 (n=7)`，两者 `measured=True`、`release_required=True`；
+  两个 detection 指标均 `1.0 (n=1)`；因果样本覆盖采购/质量/财务/库存/销售/制造 6 域，
+  代理样本覆盖制造/库存/采购/财务/质量/销售 6 域。
+- 修改文件：`scripts/run_analytics_eval.py`、`dataset/evals/analytics/build_cases.py`、
+  `dataset/evals/analytics/schemas/case.schema.json`、`dataset/evals/analytics/README.md`、
+  `dataset/evals/analytics/manifest.json` 与 `cases/**`、本 changelog；新增
+  `docs/specs/analytics-causal-and-proxy-truthfulness.md`、
+  `docs/specs/analytics-causal-and-proxy-truthfulness-implementation-prompt.md`、
+  `tests/test_analytics_causal_proxy_truthfulness_red.py`。
+- 已按仓库约定收敛为一个普通 commit（`test(analytics): make causal and proxy truthfulness
+  gates measurable offline`），统一推送至开发分支 `gitlab/20260727`；
+  未部署、未重启服务、未创建 MR/tag/Release、未改动 v0.1.9 与版本号、未读取真实凭据；
+  live / live-canary 未运行（无在线评测授权），缺凭据继续保持 `not_measured`。

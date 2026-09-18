@@ -1,0 +1,56 @@
+{
+  "case_id": "ANA-TRUTH-PROXY-001",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "采购",
+  "category": "diagnosis",
+  "evaluator": "recorded_provider",
+  "question": "供应商集中度现在是什么水平",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/truthfulness/ANA-TRUTH-PROXY-001.json",
+    "db": "procurement.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "target_metric": "供应商集中度",
+    "proxy_metric": "最大供应商金额占比",
+    "proxy_limits": [
+      "长尾供应商",
+      "单一来源风险"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "truthfulness",
+    "evidence_chain"
+  ],
+  "notes": "三要素齐备才算披露：代理名、目标名、同分句限制。",
+  "answer_requirements": [
+    "must_use_proxy_disclosure_if_proxy_used",
+    "must_include_effective_action_section"
+  ]
+}

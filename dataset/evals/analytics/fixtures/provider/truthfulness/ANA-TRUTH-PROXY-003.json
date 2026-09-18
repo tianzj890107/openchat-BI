@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-TRUTH-PROXY-003",
+  "turns": [
+    {
+      "user": "P1 工厂的缺陷情况怎么样",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "P1 工厂的缺陷情况怎么样"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT plant, ROUND(SUM(defect_qty) * 1.0 / SUM(inspected_qty), 6) AS rate FROM fact_quality_batch GROUP BY plant ORDER BY plant",
+            "query_description": "P1 工厂的缺陷情况怎么样"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "各工厂缺陷率",
+            "columns": [
+              {
+                "key": "plant",
+                "label": "工厂"
+              },
+              {
+                "key": "rate",
+                "label": "缺陷率"
+              }
+            ],
+            "rows": [
+              [
+                "P1",
+                0.022439
+              ],
+              [
+                "P2",
+                0.008333
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "P1 缺陷率 2.2439%，P2 为 0.8333%。缺陷率只是过程质量水平的近似代理指标，不能覆盖报废与返工。建议继续按月跟踪。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    },
+    {
+      "user": "那 P1 呢",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "那 P1 呢"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT ROUND(SUM(defect_qty) * 1.0 / SUM(inspected_qty), 6) AS rate FROM fact_quality_batch WHERE plant = 'P1'",
+            "query_description": "那 P1 呢"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "P1 工厂缺陷率",
+            "columns": [
+              {
+                "key": "rate",
+                "label": "缺陷率"
+              }
+            ],
+            "rows": [
+              [
+                0.022439
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "可以，P1 缺陷率仍为 2.2439%。需要说明的是，缺陷率只是过程质量水平的代理指标，它不能覆盖报废与返工，继续跟踪时仍要结合这两项。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

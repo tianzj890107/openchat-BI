@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-TRUTH-CAUSAL-002",
+  "turns": [
+    {
+      "user": "销售额下降是不是因为退货变多",
+      "db": "sales.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "销售额下降是不是因为退货变多"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT customer_id AS cid, COUNT(*) AS orders, SUM(amount_cny) AS total FROM fact_sales WHERE is_deleted = 0 GROUP BY customer_id ORDER BY total DESC",
+            "query_description": "销售额下降是不是因为退货变多"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "客户销售额",
+            "columns": [
+              {
+                "key": "cid",
+                "label": "客户"
+              },
+              {
+                "key": "orders",
+                "label": "订单数"
+              },
+              {
+                "key": "total",
+                "label": "销售额"
+              }
+            ],
+            "rows": [
+              [
+                1,
+                9,
+                354000.0
+              ],
+              [
+                2,
+                7,
+                174000.0
+              ],
+              [
+                3,
+                6,
+                77600.0
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "前三名客户销售额分别为 354,000.00 元、174,000.00 元、77,600.00 元。本轮没有取到退货数据，不能证明退货导致了销售额下降，不应把同期变化写成因果。建议先补充退货明细再复核。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

@@ -30,7 +30,12 @@
     "recovery_status": "SUCCEEDED",
     "policy_mode": "DIAGNOSTIC_ANALYSIS",
     "value": 15,
-    "tolerance": 1e-06
+    "tolerance": 1e-06,
+    "target_metric": "报废数量",
+    "proxy_metric": "停机时长",
+    "proxy_limits": [
+      "报废成因"
+    ]
   },
   "forbidden": [],
   "allowed_variants": {},

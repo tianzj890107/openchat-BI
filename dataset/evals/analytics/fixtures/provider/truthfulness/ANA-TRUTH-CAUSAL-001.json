@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-TRUTH-CAUSAL-001",
+  "turns": [
+    {
+      "user": "库存积压是不是补货延迟造成的",
+      "db": "inventory.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "库存积压是不是补货延迟造成的"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT warehouse_id AS wid, SUM(on_hand_qty) AS qty, ROUND(AVG(aging_days), 4) AS avg_aging FROM fact_inventory_snapshot GROUP BY warehouse_id ORDER BY warehouse_id",
+            "query_description": "库存积压是不是补货延迟造成的"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "各仓库存与账龄",
+            "columns": [
+              {
+                "key": "wid",
+                "label": "仓库"
+              },
+              {
+                "key": "qty",
+                "label": "数量"
+              },
+              {
+                "key": "avg_aging",
+                "label": "平均账龄"
+              }
+            ],
+            "rows": [
+              [
+                1,
+                705,
+                121.0
+              ],
+              [
+                2,
+                255,
+                121.25
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "仓库 1 库存 705、平均账龄 121 天；仓库 2 库存 255、平均账龄 121.25 天。补货延迟与积压只是同期出现，相关不等于因果，尚不能证明补货延迟导致了积压。建议先补充采购在途数据，再判断是否需要调拨。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "case_id": "ANA-TRUTH-PROXY-003",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "质量",
+  "category": "diagnosis",
+  "evaluator": "recorded_provider",
+  "question": "P1 工厂的缺陷情况怎么样",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "P1 工厂的缺陷情况怎么样"
+    },
+    {
+      "role": "assistant",
+      "content": "(上一轮已给出指标与口径，见 transcript)"
+    }
+  ],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/truthfulness/ANA-TRUTH-PROXY-003.json",
+    "db": "quality.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate",
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "target_metric": "过程质量水平",
+    "proxy_metric": "缺陷率",
+    "proxy_limits": [
+      "报废",
+      "返工"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "truthfulness",
+    "evidence_chain"
+  ],
+  "notes": "多轮案例的最终回答仍须披露代理关系，不能靠上一轮说过。",
+  "answer_requirements": [
+    "must_use_proxy_disclosure_if_proxy_used",
+    "must_include_effective_action_section"
+  ]
+}
