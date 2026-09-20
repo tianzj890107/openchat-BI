@@ -896,3 +896,26 @@
   **文字 0 处溢出容器、连线 0 处穿过色块、元素 0 处越出画布**；海报文本经关键词扫描确认不含
   技术侧词汇；`git diff --check` 通过。
 - 只新增文档与文档生成脚本，未修改任何生产实现、测试、评测用例、数据源或数据集；未部署。
+
+### 5. 企业智能体平台整体架构图（Archify 语义配色，已完成）
+
+- 新增面向业务与产品视角的平台整体架构图：`docs/diagrams/11-platform-architecture.md`（说明页）
+  + `docs/diagrams/archify/platform-architecture.architecture.json`（图形源）
+  + `docs/diagrams/archify/platform-architecture.architecture.html`（可交付图形，双击可打开、可切换
+  深浅色、可导出位图与矢量图），并在 `docs/diagrams/README.md` 图目录与维护约定中登记（新增第 9 条
+  Archify 交付图规则）。
+- 图形用 [Archify](https://github.com/tt-a1i/archify) 从 JSON 图形源生成，配色采用其**语义调色板**：
+  颜色由组件类型自动决定而非手工指定色值 —— 伏羲客户端 `frontend` 青色、API 接入系统 `external`
+  石板灰、AI 网关 `cloud` 琥珀色、AIP 开发平台 `backend` 绿色、Skill / Tool 市场 `messagebus` 橙色、
+  本体语义层 `security` 玫瑰色、关系库与知识库 `database` 紫色。
+- 版面按四层能力通栏铺满画布（应用接入层 / 智能体与能力层 / 语义层 / 数据层），每层是一块左右边界
+  一致的横向能力区块，层与层之间的空隙由带业务文案的连线占用，因此不存在大片空白；画布实测
+  1352 × 602（宽高比约 2.25 : 1）。
+- 文案只用业务语言：节点写业务角色与业务能力（如"业务用户统一入口""智能体编排与发布""业务术语 ·
+  关系 · 规则"），连线写业务动作（"业务提问与操作""请求分发与编排""能力加载与调用""业务语义查询"
+  "结构化数据""文档与知识"），不出现接口名、表名、字段名、部署方式或任何凭据信息。
+- 验证（2026-09-20）：`validate --quality showcase` 通过 **9/9 检查、0 error、0 warning**；
+  `visual-check` 在 1440×900 / 1600×1000 / 1920×1080 / 2048×1320 四个视口均 `ok: true`，
+  1440×900 视口 `scrollHeight = 900`（刚好铺满一屏，无横向或纵向溢出），最小投影文字
+  8.96px ≥ 6px 门槛；`visualReview` 仍为 `pending`（自动检查通过，人工目视复核未执行）。
+- 只新增文档与图形产物，未修改任何生产实现、测试、评测用例、数据源或数据集；未部署。
