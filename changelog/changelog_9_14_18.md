@@ -850,3 +850,32 @@
 - 建文件时当周尚无实际变更，文件只含表头与维护规则，不编造条目；三个 commit 均**未推送**
   （分析 Agent 侧 `python scripts/push_gitlab.py --check` 以"工作区存在未提交修改"拒绝，
   前几批未提交改动按要求原样保留，未 stash、未回滚）。
+
+### 3. 智能分析 Agent 全链路流程图（一图一文件 + 目录 README，已完成）
+
+- 新增图形文档目录 `docs/diagrams/`（共 10 个文件），把智能分析 Agent 从「数据源 → 会话 → 单轮策略
+  → 工具 → 回答 → 评测门禁」的完整链路画成可 review 的图形版事实源，与既有文字版
+  `docs/analysis-agent-data-source-and-ontology-consumption.md` 配套（图 + 文同轮同步维护）：
+  ① `README.md` 格式建议 + 图目录索引 + 节点 → `文件:行` 代码索引 + 维护约定；
+  ② `01-end-to-end-overview.md` 端到端总览（另附不依赖渲染器的 ASCII 兜底图）；
+  ③ `02-data-source-binding.md` 数据源（数据库模版）原子配对与热切换；
+  ④ `03-cognitive-policy-decision.md` 单轮认知策略决策优先级链（含第 0 层安全分类合成规则与约束
+  陈述豁免）；
+  ⑤ `04-turn-sequence.md` 单轮时序（用户 / API / WebSession / analysis_policy / LLM /
+  tool_runtime / 本体 MAL / Doris）；
+  ⑥ `05-tool-transport-mapping.md` 工具层 → 传输层 → 服务端点映射（16 个工具、新旧双栈路径、
+  MetricQuery 优先 / FactQuery 兜底）；
+  ⑦ `06-graph-retrieval-mode.md` 图库检索模式（锚点消歧 → 有界邻域 → OpenCypher 只读补边 → 降级
+  → GraphExpand）；
+  ⑧ `07-answer-truthfulness.md` 回答真实性约束（未支撑数字 / 因果越界 / 代理指标披露 / 预测假设
+  披露）；
+  ⑨ `08-cache-concurrency-degradation.md` 缓存、并发与降级；
+  ⑩ `09-eval-and-release-gate.md` 评测与发布门禁。
+- 结构约定：**一图一文件**，`README.md` 作为目录与说明性内容的唯一入口；新增流程图时新建
+  `NN-<slug>.md` 并更新 README 图目录，不再堆回单文件。
+- 同时给出文件格式结论：**Markdown + Mermaid 进仓库、作为唯一事实源**，并说明为何不采用独立
+  `.mmd`、PlantUML、`.drawio`、静态 `.svg`/`.png`；按需出图命令只在 `/tmp` 出图，不把二进制产物
+  提交进仓库。
+- 只新增文档，未修改任何生产实现、测试、评测用例、数据源或数据集；不含真实凭据、密钥、环境变量
+  密文与内部绝对路径。验证（2026-09-20）：`git diff --check` 通过；9 张图各自的 Mermaid 代码块成对
+  闭合，并用 `mermaid-cli` 本地全部渲染成功（9/9）；图内 `文件:行` 引用按当前工作区代码逐条复核。
