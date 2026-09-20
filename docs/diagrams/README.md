@@ -26,6 +26,7 @@
 | [09-eval-and-release-gate.md](09-eval-and-release-gate.md) | 图 9 · 评测与发布门禁 | CI 作业链、release gate 的六类必过门与被阻断条件、live canary 的边界。 |
 | [10-business-panorama-16x9.md](10-business-panorama-16x9.md) | 图 10 · 业务全景架构（16:9 横版） | 面向业务侧的全景海报：六段业务主线 + 线条与色块图例。图形源为 `10-business-panorama-16x9.svg`，由 `build_business_panorama_16x9.py` 生成；正文只用业务语言，不含技术细节。 |
 | [11-platform-architecture.md](11-platform-architecture.md) | 图 11 · 企业智能体平台整体架构 | 面向业务与产品视角的四层全景架构：应用接入层 / 智能体与能力层 / 语义层 / 数据层，四层通栏铺满画布。图形源为 `archify/platform-architecture.architecture.json`，由 Archify 生成可交互 HTML；正文只用业务语言，不含技术细节。 |
+| [12-analytics-agent-architecture.md](12-analytics-agent-architecture.md) | 图 12 · 智能分析 Agent 整体架构 | 面向业务与产品视角的四层全景架构：提问受理层 / 判断与分流层 / 业务口径与取数层 / 交付与守门层，四层通栏铺满画布。图形源为 `archify/analytics-agent-architecture.architecture.json`，由 Archify 生成可交互 HTML；正文只用业务语言，不含技术细节。 |
 
 阅读顺序建议：`01` → `03` → `04` 先建立整体认识，其余按需查阅。
 
@@ -58,8 +59,9 @@ done
 >
 > §10 的业务全景海报是手工排版的矢量图（`10-business-panorama-16x9.svg`），本身就是可交付图形，
 > 不需要渲染；它由 `build_business_panorama_16x9.py` 生成，改内容请改脚本后重跑。
-> §11 的平台整体架构图由 Archify 从 `archify/platform-architecture.architecture.json` 生成
-> `archify/platform-architecture.architecture.html`，是自带图例与交互的可交付图形；
+> §11 的平台整体架构图与 §12 的智能分析 Agent 整体架构图由 Archify 分别从
+> `archify/platform-architecture.architecture.json`、`archify/analytics-agent-architecture.architecture.json` 生成
+> 对应的 `archify/*.architecture.html`，是自带图例与交互的可交付图形；
 > 改内容请改 JSON 后按 §11 第 9 条重新生成并过质量门禁，不要手改 HTML。
 
 ---
@@ -117,7 +119,8 @@ done
 8. **手工排版的海报**：`10-business-panorama-16x9.svg` 由 `build_business_panorama_16x9.py` 生成，
    改内容请改脚本后重跑，不要直接手改 SVG；改动后必须复核画布仍为 1920 × 1080、文字不溢出容器、
    连线不穿过色块。
-9. **Archify 交付图**：`archify/platform-architecture.architecture.html` 由同目录 JSON 图形源生成，
+9. **Archify 交付图**：`archify/*.architecture.html`（平台整体架构 `platform-architecture`、
+   智能分析 Agent 整体架构 `analytics-agent-architecture`）由同目录 JSON 图形源生成，
    改内容请改 JSON 后用 `deliver --quality showcase` 重新生成，不要手改 HTML；提交前必须复核
    `validate` 为 9/9 通过且 0 error / 0 warning，并对输出跑 `visual-check`，确认 1440×900 等四个视口
-   均无横向或纵向溢出；四层能力区块要保持左右边界一致，避免出现大片空白。
+   均无横向或纵向溢出；每层能力区块要保持左右边界一致，避免出现大片空白。

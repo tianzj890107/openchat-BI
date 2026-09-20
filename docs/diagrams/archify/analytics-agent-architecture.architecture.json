@@ -1,0 +1,301 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "智能分析 Agent 整体架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/archify/analytics-agent-architecture.architecture.html",
+    "legend": {
+      "mode": "all",
+      "entries": {
+        "frontend": {
+          "label": "业务入口与交付"
+        },
+        "external": {
+          "label": "外部场景接入"
+        },
+        "security": {
+          "label": "合规与真实性守门"
+        },
+        "backend": {
+          "label": "理解与决策"
+        },
+        "cloud": {
+          "label": "澄清与追问"
+        },
+        "messagebus": {
+          "label": "业务口径与语义"
+        },
+        "database": {
+          "label": "取数与洞察"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "ask",
+      "type": "frontend",
+      "label": "业务用户提问",
+      "sublabel": "用自然语言提出业务问题",
+      "pos": [
+        50,
+        30
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "call",
+      "type": "external",
+      "label": "其他场景调用",
+      "sublabel": "分析能力被别的场景借用",
+      "pos": [
+        1110,
+        30
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "guard",
+      "type": "security",
+      "label": "安全与合规把关",
+      "sublabel": "凭据 · 破坏性 · 越权先拦",
+      "pos": [
+        50,
+        170
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "intent",
+      "type": "backend",
+      "label": "意图理解与分流",
+      "sublabel": "事实 · 口径 · 原因 · 建议 · 预测",
+      "pos": [
+        580,
+        170
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "clarify",
+      "type": "cloud",
+      "label": "澄清与追问",
+      "sublabel": "信息不足先问清",
+      "pos": [
+        1110,
+        170
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "metric",
+      "type": "messagebus",
+      "label": "业务口径与语义",
+      "sublabel": "指标定义 · 统计范围 · 业务规则 · 对象关系",
+      "pos": [
+        50,
+        310
+      ],
+      "size": [
+        500,
+        64
+      ]
+    },
+    {
+      "id": "insight",
+      "type": "database",
+      "label": "取数与洞察",
+      "sublabel": "按口径取数，形成可解释的结论",
+      "pos": [
+        790,
+        310
+      ],
+      "size": [
+        500,
+        64
+      ]
+    },
+    {
+      "id": "deliver",
+      "type": "frontend",
+      "label": "回答交付",
+      "sublabel": "结论 · 依据 · 建议",
+      "pos": [
+        50,
+        450
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "truth",
+      "type": "security",
+      "label": "质量与真实性把关",
+      "sublabel": "无依据数字 · 因果越界 · 代理披露",
+      "pos": [
+        1110,
+        450
+      ],
+      "size": [
+        180,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "提问受理层",
+      "wraps": [
+        "ask",
+        "call"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "判断与分流层",
+      "wraps": [
+        "guard",
+        "intent",
+        "clarify"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "业务口径与取数层",
+      "wraps": [
+        "metric",
+        "insight"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "交付与守门层",
+      "wraps": [
+        "deliver",
+        "truth"
+      ],
+      "pad": 22
+    }
+  ],
+  "connections": [
+    {
+      "id": "ask-to-guard",
+      "from": "ask",
+      "to": "guard",
+      "label": "提问先过合规检查",
+      "variant": "emphasis",
+      "labelAt": [
+        133,
+        108
+      ]
+    },
+    {
+      "id": "call-to-guard",
+      "from": "call",
+      "to": "guard",
+      "label": "被其他场景借用",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "guard-to-intent",
+      "from": "guard",
+      "to": "intent",
+      "label": "判断这次要什么"
+    },
+    {
+      "id": "intent-to-clarify",
+      "from": "intent",
+      "to": "clarify",
+      "label": "信息不足先问清",
+      "variant": "dashed"
+    },
+    {
+      "id": "intent-to-metric",
+      "from": "intent",
+      "to": "metric",
+      "label": "对齐业务口径",
+      "variant": "emphasis"
+    },
+    {
+      "id": "metric-to-insight",
+      "from": "metric",
+      "to": "insight",
+      "label": "按口径取数并分析"
+    },
+    {
+      "id": "insight-to-deliver",
+      "from": "insight",
+      "to": "deliver",
+      "label": "形成结论与建议",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "insight-to-truth",
+      "from": "insight",
+      "to": "truth",
+      "label": "交付前校验真实性",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "提问受理层",
+      "items": [
+        "业务用户用自然语言提出分析问题",
+        "其他业务场景按需借用同一套分析能力"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "判断与分流层",
+      "items": [
+        "安全与合规把关先拦凭据索取、破坏性操作与越权请求",
+        "意图理解与分流判断这次要事实、要口径、要原因、要建议还是要预测",
+        "信息不足时先澄清与追问，不带着猜测往下走"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "业务口径与取数层",
+      "items": [
+        "业务口径统一指标定义、统计范围、业务规则与对象关系",
+        "取数与洞察按已确认口径取数，并给出依据、适用范围与限制说明"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "交付与守门层",
+      "items": [
+        "回答交付把结论、依据与建议讲清楚",
+        "质量与真实性把关拦下无依据数字、因果越界与代理指标冒充"
+      ]
+    }
+  ]
+}
