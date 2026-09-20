@@ -5160,34 +5160,38 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
         <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="安全与合规把关层" x="36" y="122" width="1268" height="108" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="2" data-composition-frame-label="判断与分流层" x="36" y="238" width="1268" height="108" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="2" data-composition-frame-label="判断与分流层 · 先定问题类型，再定分析深度" x="36" y="238" width="1268" height="108" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="3" data-composition-frame-label="业务口径与权限层" x="36" y="354" width="1268" height="108" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="3" data-composition-frame-label="本体语义层 · 业务说法与口径的唯一出处" x="36" y="354" width="1268" height="108" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="4" data-composition-frame-label="取数与洞察层" x="36" y="470" width="1268" height="108" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="4" data-composition-frame-label="取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因" x="36" y="470" width="1268" height="108" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="5" data-composition-frame-label="交付与守门层" x="36" y="586" width="1268" height="108" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="5" data-composition-frame-label="交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督" x="36" y="586" width="1268" height="108" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <path data-edge-from="ask" data-edge-to="guard" data-edge-label="提问先过合规红线" data-edge-key="0" data-edge-id="ask-to-guard" data-composition-points="140,94;140,120;663,120;663,146" d="M 140 94 L 140 112 Q 140 120 148 120 L 655 120 Q 663 120 663 128 L 663 146" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <path data-edge-from="call" data-edge-to="guard" data-edge-label="被其他场景借用" data-edge-key="1" data-edge-id="call-to-guard" data-composition-points="670,94;670,146" d="M 670 94 L 670 146" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         <path data-edge-from="context" data-edge-to="guard" data-edge-label="带上会话上下文" data-edge-key="2" data-edge-id="context-to-guard" data-composition-points="1200,94;1200,120;677,120;677,146" d="M 1200 94 L 1200 112 Q 1200 120 1192 120 L 685 120 Q 677 120 677 128 L 677 146" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="guard" data-edge-to="ptype" data-edge-label="合规通过后判断问题类型" data-edge-key="3" data-edge-id="guard-to-ptype" data-composition-points="670,210;670,236;140,236;140,262" d="M 670 210 L 670 228 Q 670 236 662 236 L 148 236 Q 140 236 140 244 L 140 262" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="ptype" data-edge-to="complete" data-edge-label="检查信息是否完整" data-edge-key="4" data-edge-id="ptype-to-complete" data-composition-points="230,294;580,294" d="M 230 294 L 580 294" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="complete" data-edge-to="clarify" data-edge-label="缺条件先问清" data-edge-key="5" data-edge-id="complete-to-clarify" data-composition-points="760,294;1110,294" d="M 760 294 L 1110 294" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="ptype" data-edge-to="metric" data-edge-label="对齐业务口径" data-edge-key="6" data-edge-id="ptype-to-metric" data-composition-points="140,326;140,352;160,352;160,378" d="M 140 326 L 140 344 Q 140 352 148 352 L 152 352 Q 160 352 160 360 L 160 378" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="metric" data-edge-to="object" data-edge-key="7" data-edge-id="metric-to-object" data-composition-points="270,410;390,410" d="M 270 410 L 390 410" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="object" data-edge-to="source" data-edge-key="8" data-edge-id="object-to-source" data-composition-points="610,410;730,410" d="M 610 410 L 730 410" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="source" data-edge-to="permission" data-edge-key="9" data-edge-id="source-to-permission" data-composition-points="950,410;1070,410" d="M 950 410 L 1070 410" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="metric" data-edge-to="fact" data-edge-label="按口径取数" data-edge-key="10" data-edge-id="metric-to-fact" data-composition-points="160,442;160,468;140,468;140,494" d="M 160 442 L 160 460 Q 160 468 152 468 L 148 468 Q 140 468 140 476 L 140 494" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="fact" data-edge-to="doc" data-edge-key="11" data-edge-id="fact-to-doc" data-composition-points="230,526;315,526" d="M 230 526 L 315 526" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="doc" data-edge-to="compare" data-edge-key="12" data-edge-id="doc-to-compare" data-composition-points="495,526;580,526" d="M 495 526 L 580 526" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="compare" data-edge-to="rootcause" data-edge-key="13" data-edge-id="compare-to-rootcause" data-composition-points="760,526;845,526" d="M 760 526 L 845 526" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="rootcause" data-edge-to="forecast" data-edge-key="14" data-edge-id="rootcause-to-forecast" data-composition-points="1025,526;1110,526" d="M 1025 526 L 1110 526" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="fact" data-edge-to="conclusion" data-edge-label="形成结论与依据" data-edge-key="15" data-edge-id="fact-to-conclusion" data-composition-points="140,558;140,584;160,584;160,610" d="M 140 558 L 140 576 Q 140 584 148 584 L 152 584 Q 160 584 160 592 L 160 610" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="conclusion" data-edge-to="action" data-edge-key="16" data-edge-id="conclusion-to-action" data-composition-points="270,642;390,642" d="M 270 642 L 390 642" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="action" data-edge-to="truth" data-edge-key="17" data-edge-id="action-to-truth" data-composition-points="610,642;730,642" d="M 610 642 L 730 642" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="truth" data-edge-to="deliver" data-edge-label="校验通过后交付" data-edge-key="18" data-edge-id="truth-to-deliver" data-composition-points="950,642;1070,642" d="M 950 642 L 1070 642" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="guard" data-edge-to="ptype" data-edge-label="合规通过后判断问题类型" data-edge-key="3" data-edge-id="guard-to-ptype" data-composition-points="670,210;670,236;160,236;160,262" d="M 670 210 L 670 228 Q 670 236 662 236 L 168 236 Q 160 236 160 244 L 160 262" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="ptype" data-edge-to="depth" data-edge-label="这次问到哪一层" data-edge-key="4" data-edge-id="ptype-to-depth" data-composition-points="270,294;390,294" d="M 270 294 L 390 294" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="depth" data-edge-to="complete" data-edge-label="检查信息是否完整" data-edge-key="5" data-edge-id="depth-to-complete" data-composition-points="610,294;730,294" d="M 610 294 L 730 294" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="complete" data-edge-to="clarify" data-edge-label="缺条件先问清" data-edge-key="6" data-edge-id="complete-to-clarify" data-composition-points="950,294;1070,294" d="M 950 294 L 1070 294" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="ptype" data-edge-to="ontology" data-edge-label="先到本体对齐业务说法" data-edge-key="7" data-edge-id="ptype-to-ontology" data-composition-points="160,326;160,378" d="M 160 326 L 160 378" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="ontology" data-edge-to="metric" data-edge-key="8" data-edge-id="ontology-to-metric" data-composition-points="270,410;345,410" d="M 270 410 L 345 410" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="metric" data-edge-to="object" data-edge-key="9" data-edge-id="metric-to-object" data-composition-points="525,410;600,410" d="M 525 410 L 600 410" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="object" data-edge-to="mapping" data-edge-key="10" data-edge-id="object-to-mapping" data-composition-points="780,410;855,410" d="M 780 410 L 855 410" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="mapping" data-edge-to="permission" data-edge-key="11" data-edge-id="mapping-to-permission" data-composition-points="1035,410;1110,410" d="M 1035 410 L 1110 410" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="ontology" data-edge-to="fact" data-edge-label="按本体口径取数" data-edge-key="12" data-edge-id="ontology-to-fact" data-composition-points="160,442;160,494" d="M 160 442 L 160 494" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="fact" data-edge-to="doc" data-edge-key="13" data-edge-id="fact-to-doc" data-composition-points="270,526;345,526" d="M 270 526 L 345 526" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="doc" data-edge-to="compare" data-edge-key="14" data-edge-id="doc-to-compare" data-composition-points="525,526;600,526" d="M 525 526 L 600 526" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="compare" data-edge-to="rootcause" data-edge-key="15" data-edge-id="compare-to-rootcause" data-composition-points="780,526;855,526" d="M 780 526 L 855 526" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="rootcause" data-edge-to="forecast" data-edge-key="16" data-edge-id="rootcause-to-forecast" data-composition-points="1035,526;1110,526" d="M 1035 526 L 1110 526" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="fact" data-edge-to="conclusion" data-edge-label="形成结论与依据" data-edge-key="17" data-edge-id="fact-to-conclusion" data-composition-points="160,558;160,610" d="M 160 558 L 160 610" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="rootcause" data-edge-to="action" data-edge-label="根因升到行动建议" data-edge-key="18" data-edge-id="rootcause-to-action" data-composition-points="945,558;945,584;435,584;435,610" d="M 945 558 L 945 576 Q 945 584 937 584 L 443 584 Q 435 584 435 592 L 435 610" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="conclusion" data-edge-to="action" data-edge-key="19" data-edge-id="conclusion-to-action" data-composition-points="270,642;345,642" d="M 270 642 L 345 642" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="action" data-edge-to="supervise" data-edge-key="20" data-edge-id="action-to-supervise" data-composition-points="525,642;600,642" d="M 525 642 L 600 642" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="supervise" data-edge-to="truth" data-edge-key="21" data-edge-id="supervise-to-truth" data-composition-points="780,642;855,642" d="M 780 642 L 855 642" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="truth" data-edge-to="deliver" data-edge-key="22" data-edge-id="truth-to-deliver" data-composition-points="1035,642;1110,642" d="M 1035 642 L 1110 642" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
 
         <!-- Components -->
         <g id="node-ask" data-node-id="ask" data-node-label="业务用户提问" tabindex="0" role="button" aria-label="聚焦业务用户提问，用自然语言提出分析问题, 提问受理层" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="用自然语言提出分析问题" data-node-context="提问受理层">
@@ -5239,41 +5243,52 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="670" y="192" class="t-muted" font-size="9" text-anchor="middle">凭据索取 · 破坏性操作 · 越权查看 · 内部环境探测，一律先拦</text>
         </g>
 
-        <g id="node-ptype" data-node-id="ptype" data-node-label="问题类型判断" tabindex="0" role="button" aria-label="聚焦问题类型判断，事实 · 口径 · 原因 · 建议 · 预测, 判断与分流层" aria-pressed="false" data-node-kind="backend" data-node-sublabel="事实 · 口径 · 原因 · 建议 · 预测" data-node-context="判断与分流层">
-          <title>问题类型判断 · 事实 · 口径 · 原因 · 建议 · 预测 · 判断与分流层</title>
-          <rect x="50" y="262" width="180" height="64" rx="6" class="c-mask"/>
-          <rect x="50" y="262" width="180" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
+        <g id="node-ptype" data-node-id="ptype" data-node-label="问题类型判断" tabindex="0" role="button" aria-label="聚焦问题类型判断，事实 · 口径 · 原因 · 建议 · 预测, 判断与分流层 · 先定问题类型，再定分析深度" aria-pressed="false" data-node-kind="backend" data-node-sublabel="事实 · 口径 · 原因 · 建议 · 预测" data-node-context="判断与分流层 · 先定问题类型，再定分析深度">
+          <title>问题类型判断 · 事实 · 口径 · 原因 · 建议 · 预测 · 判断与分流层 · 先定问题类型，再定分析深度</title>
+          <rect x="50" y="262" width="220" height="64" rx="6" class="c-mask"/>
+          <rect x="50" y="262" width="220" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(56 268) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="140" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">问题类型判断</text>
-        <text data-detail="context" x="140" y="308" class="t-muted" font-size="8.9" text-anchor="middle">事实 · 口径 · 原因 · 建议 · 预测</text>
+          <text data-node-label="" data-detail-anchor="" x="160" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">问题类型判断</text>
+        <text data-detail="context" x="160" y="308" class="t-muted" font-size="9" text-anchor="middle">事实 · 口径 · 原因 · 建议 · 预测</text>
         </g>
 
-        <g id="node-complete" data-node-id="complete" data-node-label="信息完整度检查" tabindex="0" role="button" aria-label="聚焦信息完整度检查，时间 · 对象 · 范围是否齐, 判断与分流层" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="时间 · 对象 · 范围是否齐" data-node-context="判断与分流层">
-          <title>信息完整度检查 · 时间 · 对象 · 范围是否齐 · 判断与分流层</title>
-          <rect x="580" y="262" width="180" height="64" rx="6" class="c-mask"/>
-          <rect x="580" y="262" width="180" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(586 268) scale(0.6875)">
+        <g id="node-depth" data-node-id="depth" data-node-label="分析深度判断" tabindex="0" role="button" aria-label="聚焦分析深度判断，这次要取数、找问题还是给行动, 判断与分流层 · 先定问题类型，再定分析深度" aria-pressed="false" data-node-kind="backend" data-node-sublabel="这次要取数、找问题还是给行动" data-node-context="判断与分流层 · 先定问题类型，再定分析深度">
+          <title>分析深度判断 · 这次要取数、找问题还是给行动 · 判断与分流层 · 先定问题类型，再定分析深度</title>
+          <rect x="390" y="262" width="220" height="64" rx="6" class="c-mask"/>
+          <rect x="390" y="262" width="220" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(396 268) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="500" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">分析深度判断</text>
+        <text data-detail="context" x="500" y="308" class="t-muted" font-size="9" text-anchor="middle">这次要取数、找问题还是给行动</text>
+        </g>
+
+        <g id="node-complete" data-node-id="complete" data-node-label="信息完整度检查" tabindex="0" role="button" aria-label="聚焦信息完整度检查，时间 · 对象 · 范围是否齐, 判断与分流层 · 先定问题类型，再定分析深度" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="时间 · 对象 · 范围是否齐" data-node-context="判断与分流层 · 先定问题类型，再定分析深度">
+          <title>信息完整度检查 · 时间 · 对象 · 范围是否齐 · 判断与分流层 · 先定问题类型，再定分析深度</title>
+          <rect x="730" y="262" width="220" height="64" rx="6" class="c-mask"/>
+          <rect x="730" y="262" width="220" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(736 268) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="670" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">信息完整度检查</text>
-        <text data-detail="context" x="670" y="308" class="t-muted" font-size="9" text-anchor="middle">时间 · 对象 · 范围是否齐</text>
+          <text data-node-label="" data-detail-anchor="" x="840" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">信息完整度检查</text>
+        <text data-detail="context" x="840" y="308" class="t-muted" font-size="9" text-anchor="middle">时间 · 对象 · 范围是否齐</text>
         </g>
 
-        <g id="node-clarify" data-node-id="clarify" data-node-label="澄清与追问" tabindex="0" role="button" aria-label="聚焦澄清与追问，缺条件先问清再往下, 判断与分流层" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="缺条件先问清再往下" data-node-context="判断与分流层">
-          <title>澄清与追问 · 缺条件先问清再往下 · 判断与分流层</title>
-          <rect x="1110" y="262" width="180" height="64" rx="6" class="c-mask"/>
-          <rect x="1110" y="262" width="180" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1116 268) scale(0.6875)">
+        <g id="node-clarify" data-node-id="clarify" data-node-label="澄清与追问" tabindex="0" role="button" aria-label="聚焦澄清与追问，缺条件先问清再往下, 判断与分流层 · 先定问题类型，再定分析深度" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="缺条件先问清再往下" data-node-context="判断与分流层 · 先定问题类型，再定分析深度">
+          <title>澄清与追问 · 缺条件先问清再往下 · 判断与分流层 · 先定问题类型，再定分析深度</title>
+          <rect x="1070" y="262" width="220" height="64" rx="6" class="c-mask"/>
+          <rect x="1070" y="262" width="220" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1076 268) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1200" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">澄清与追问</text>
-        <text data-detail="context" x="1200" y="308" class="t-muted" font-size="9" text-anchor="middle">缺条件先问清再往下</text>
+          <text data-node-label="" data-detail-anchor="" x="1180" y="292" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">澄清与追问</text>
+        <text data-detail="context" x="1180" y="308" class="t-muted" font-size="9" text-anchor="middle">缺条件先问清再往下</text>
         </g>
 
-        <g id="node-metric" data-node-id="metric" data-node-label="指标口径与定义" tabindex="0" role="button" aria-label="聚焦指标口径与定义，统计范围与计算规则, 业务口径与权限层" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="统计范围与计算规则" data-node-context="业务口径与权限层">
-          <title>指标口径与定义 · 统计范围与计算规则 · 业务口径与权限层</title>
+        <g id="node-ontology" data-node-id="ontology" data-node-label="本体 · 业务统一说法" tabindex="0" role="button" aria-label="聚焦本体 · 业务统一说法，把业务说法、规则、口径统一, 本体语义层 · 业务说法与口径的唯一出处" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="把业务说法、规则、口径统一" data-node-context="本体语义层 · 业务说法与口径的唯一出处">
+          <title>本体 · 业务统一说法 · 把业务说法、规则、口径统一 · 本体语义层 · 业务说法与口径的唯一出处</title>
           <rect x="50" y="378" width="220" height="64" rx="6" class="c-mask"/>
           <rect x="50" y="378" width="220" height="64" rx="6" class="c-messagebus" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(56 384) scale(0.6875)">
@@ -5282,98 +5297,112 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="160" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">指标口径与定义</text>
-        <text data-detail="context" x="160" y="424" class="t-muted" font-size="9" text-anchor="middle">统计范围与计算规则</text>
+          <text data-node-label="" data-detail-anchor="" x="160" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">本体 · 业务统一说法</text>
+        <text data-detail="context" x="160" y="424" class="t-muted" font-size="9" text-anchor="middle">把业务说法、规则、口径统一</text>
         </g>
 
-        <g id="node-object" data-node-id="object" data-node-label="业务对象与关系" tabindex="0" role="button" aria-label="聚焦业务对象与关系，对象之间如何关联, 业务口径与权限层" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="对象之间如何关联" data-node-context="业务口径与权限层">
-          <title>业务对象与关系 · 对象之间如何关联 · 业务口径与权限层</title>
-          <rect x="390" y="378" width="220" height="64" rx="6" class="c-mask"/>
-          <rect x="390" y="378" width="220" height="64" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(396 384) scale(0.6875)">
+        <g id="node-metric" data-node-id="metric" data-node-label="指标口径与定义" tabindex="0" role="button" aria-label="聚焦指标口径与定义，指标怎么算只认这一份, 本体语义层 · 业务说法与口径的唯一出处" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="指标怎么算只认这一份" data-node-context="本体语义层 · 业务说法与口径的唯一出处">
+          <title>指标口径与定义 · 指标怎么算只认这一份 · 本体语义层 · 业务说法与口径的唯一出处</title>
+          <rect x="345" y="378" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="345" y="378" width="180" height="64" rx="6" class="c-messagebus" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(351 384) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="500" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">业务对象与关系</text>
-        <text data-detail="context" x="500" y="424" class="t-muted" font-size="9" text-anchor="middle">对象之间如何关联</text>
+          <text data-node-label="" data-detail-anchor="" x="435" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">指标口径与定义</text>
+        <text data-detail="context" x="435" y="424" class="t-muted" font-size="9" text-anchor="middle">指标怎么算只认这一份</text>
         </g>
 
-        <g id="node-source" data-node-id="source" data-node-label="数据来源与字段" tabindex="0" role="button" aria-label="聚焦数据来源与字段，指标取自哪些数据, 业务口径与权限层" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="指标取自哪些数据" data-node-context="业务口径与权限层">
-          <title>数据来源与字段 · 指标取自哪些数据 · 业务口径与权限层</title>
-          <rect x="730" y="378" width="220" height="64" rx="6" class="c-mask"/>
-          <rect x="730" y="378" width="220" height="64" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(736 384) scale(0.6875)">
+        <g id="node-object" data-node-id="object" data-node-label="业务对象与关系" tabindex="0" role="button" aria-label="聚焦业务对象与关系，对象怎么关联、有哪些规则, 本体语义层 · 业务说法与口径的唯一出处" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="对象怎么关联、有哪些规则" data-node-context="本体语义层 · 业务说法与口径的唯一出处">
+          <title>业务对象与关系 · 对象怎么关联、有哪些规则 · 本体语义层 · 业务说法与口径的唯一出处</title>
+          <rect x="600" y="378" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="600" y="378" width="180" height="64" rx="6" class="c-messagebus" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(606 384) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="840" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">数据来源与字段</text>
-        <text data-detail="context" x="840" y="424" class="t-muted" font-size="9" text-anchor="middle">指标取自哪些数据</text>
+          <text data-node-label="" data-detail-anchor="" x="690" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">业务对象与关系</text>
+        <text data-detail="context" x="690" y="424" class="t-muted" font-size="9" text-anchor="middle">对象怎么关联、有哪些规则</text>
         </g>
 
-        <g id="node-permission" data-node-id="permission" data-node-label="权限与可见范围" tabindex="0" role="button" aria-label="聚焦权限与可见范围，按职责限定可见数据, 业务口径与权限层" aria-pressed="false" data-node-kind="security" data-node-sublabel="按职责限定可见数据" data-node-context="业务口径与权限层">
-          <title>权限与可见范围 · 按职责限定可见数据 · 业务口径与权限层</title>
-          <rect x="1070" y="378" width="220" height="64" rx="6" class="c-mask"/>
-          <rect x="1070" y="378" width="220" height="64" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1076 384) scale(0.6875)">
+        <g id="node-mapping" data-node-id="mapping" data-node-label="业务到数据的映射" tabindex="0" role="button" aria-label="聚焦业务到数据的映射，业务问法落到哪些数据, 本体语义层 · 业务说法与口径的唯一出处" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="业务问法落到哪些数据" data-node-context="本体语义层 · 业务说法与口径的唯一出处">
+          <title>业务到数据的映射 · 业务问法落到哪些数据 · 本体语义层 · 业务说法与口径的唯一出处</title>
+          <rect x="855" y="378" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="855" y="378" width="180" height="64" rx="6" class="c-messagebus" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(861 384) scale(0.6875)">
+            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
+            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
+            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="945" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">业务到数据的映射</text>
+        <text data-detail="context" x="945" y="424" class="t-muted" font-size="9" text-anchor="middle">业务问法落到哪些数据</text>
+        </g>
+
+        <g id="node-permission" data-node-id="permission" data-node-label="权限与可见范围" tabindex="0" role="button" aria-label="聚焦权限与可见范围，按职责限定可见数据, 本体语义层 · 业务说法与口径的唯一出处" aria-pressed="false" data-node-kind="security" data-node-sublabel="按职责限定可见数据" data-node-context="本体语义层 · 业务说法与口径的唯一出处">
+          <title>权限与可见范围 · 按职责限定可见数据 · 本体语义层 · 业务说法与口径的唯一出处</title>
+          <rect x="1110" y="378" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="1110" y="378" width="180" height="64" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1116 384) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1180" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">权限与可见范围</text>
-        <text data-detail="context" x="1180" y="424" class="t-muted" font-size="9" text-anchor="middle">按职责限定可见数据</text>
+          <text data-node-label="" data-detail-anchor="" x="1200" y="408" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">权限与可见范围</text>
+        <text data-detail="context" x="1200" y="424" class="t-muted" font-size="9" text-anchor="middle">按职责限定可见数据</text>
         </g>
 
-        <g id="node-fact" data-node-id="fact" data-node-label="业务事实取数" tabindex="0" role="button" aria-label="聚焦业务事实取数，按口径取业务事实, 取数与洞察层" aria-pressed="false" data-node-kind="database" data-node-sublabel="按口径取业务事实" data-node-context="取数与洞察层">
-          <title>业务事实取数 · 按口径取业务事实 · 取数与洞察层</title>
-          <rect x="50" y="494" width="180" height="64" rx="6" class="c-mask"/>
-          <rect x="50" y="494" width="180" height="64" rx="6" class="c-database" stroke-width="1.5"/>
+        <g id="node-fact" data-node-id="fact" data-node-label="业务事实取数" tabindex="0" role="button" aria-label="聚焦业务事实取数，L1 取数：是多少、有哪些, 取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因" aria-pressed="false" data-node-kind="database" data-node-sublabel="L1 取数：是多少、有哪些" data-node-context="取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因">
+          <title>业务事实取数 · L1 取数：是多少、有哪些 · 取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因</title>
+          <rect x="50" y="494" width="220" height="64" rx="6" class="c-mask"/>
+          <rect x="50" y="494" width="220" height="64" rx="6" class="c-database" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(56 500) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="140" y="524" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">业务事实取数</text>
-        <text data-detail="context" x="140" y="540" class="t-muted" font-size="9" text-anchor="middle">按口径取业务事实</text>
+          <text data-node-label="" data-detail-anchor="" x="160" y="524" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">业务事实取数</text>
+        <text data-detail="context" x="160" y="540" class="t-muted" font-size="9" text-anchor="middle">L1 取数：是多少、有哪些</text>
         </g>
 
-        <g id="node-doc" data-node-id="doc" data-node-label="知识与文档检索" tabindex="0" role="button" aria-label="聚焦知识与文档检索，检索沉淀的业务知识, 取数与洞察层" aria-pressed="false" data-node-kind="database" data-node-sublabel="检索沉淀的业务知识" data-node-context="取数与洞察层">
-          <title>知识与文档检索 · 检索沉淀的业务知识 · 取数与洞察层</title>
-          <rect x="315" y="494" width="180" height="64" rx="6" class="c-mask"/>
-          <rect x="315" y="494" width="180" height="64" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(321 500) scale(0.6875)">
+        <g id="node-doc" data-node-id="doc" data-node-label="知识与文档检索" tabindex="0" role="button" aria-label="聚焦知识与文档检索，翻沉淀的业务知识与经验, 取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因" aria-pressed="false" data-node-kind="database" data-node-sublabel="翻沉淀的业务知识与经验" data-node-context="取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因">
+          <title>知识与文档检索 · 翻沉淀的业务知识与经验 · 取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因</title>
+          <rect x="345" y="494" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="345" y="494" width="180" height="64" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(351 500) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="405" y="524" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">知识与文档检索</text>
-        <text data-detail="context" x="405" y="540" class="t-muted" font-size="9" text-anchor="middle">检索沉淀的业务知识</text>
+          <text data-node-label="" data-detail-anchor="" x="435" y="524" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">知识与文档检索</text>
+        <text data-detail="context" x="435" y="540" class="t-muted" font-size="9" text-anchor="middle">翻沉淀的业务知识与经验</text>
         </g>
 
-        <g id="node-compare" data-node-id="compare" data-node-label="对比与趋势分析" tabindex="0" role="button" aria-label="聚焦对比与趋势分析，对比 · 环比 · 趋势, 取数与洞察层" aria-pressed="false" data-node-kind="backend" data-node-sublabel="对比 · 环比 · 趋势" data-node-context="取数与洞察层">
-          <title>对比与趋势分析 · 对比 · 环比 · 趋势 · 取数与洞察层</title>
-          <rect x="580" y="494" width="180" height="64" rx="6" class="c-mask"/>
-          <rect x="580" y="494" width="180" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(586 500) scale(0.6875)">
+        <g id="node-compare" data-node-id="compare" data-node-label="对比与趋势分析" tabindex="0" role="button" aria-label="聚焦对比与趋势分析，L2 找问题：哪里在异常, 取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因" aria-pressed="false" data-node-kind="backend" data-node-sublabel="L2 找问题：哪里在异常" data-node-context="取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因">
+          <title>对比与趋势分析 · L2 找问题：哪里在异常 · 取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因</title>
+          <rect x="600" y="494" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="600" y="494" width="180" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(606 500) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="670" y="524" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">对比与趋势分析</text>
-        <text data-detail="context" x="670" y="540" class="t-muted" font-size="9" text-anchor="middle">对比 · 环比 · 趋势</text>
+          <text data-node-label="" data-detail-anchor="" x="690" y="524" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">对比与趋势分析</text>
+        <text data-detail="context" x="690" y="540" class="t-muted" font-size="9" text-anchor="middle">L2 找问题：哪里在异常</text>
         </g>
 
-        <g id="node-rootcause" data-node-id="rootcause" data-node-label="归因与诊断" tabindex="0" role="button" aria-label="聚焦归因与诊断，找出变化的可能原因, 取数与洞察层" aria-pressed="false" data-node-kind="backend" data-node-sublabel="找出变化的可能原因" data-node-context="取数与洞察层">
-          <title>归因与诊断 · 找出变化的可能原因 · 取数与洞察层</title>
-          <rect x="845" y="494" width="180" height="64" rx="6" class="c-mask"/>
-          <rect x="845" y="494" width="180" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(851 500) scale(0.6875)">
+        <g id="node-rootcause" data-node-id="rootcause" data-node-label="归因与诊断" tabindex="0" role="button" aria-label="聚焦归因与诊断，L3 根因：为什么会发生, 取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因" aria-pressed="false" data-node-kind="backend" data-node-sublabel="L3 根因：为什么会发生" data-node-context="取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因">
+          <title>归因与诊断 · L3 根因：为什么会发生 · 取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因</title>
+          <rect x="855" y="494" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="855" y="494" width="180" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(861 500) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="935" y="524" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">归因与诊断</text>
-        <text data-detail="context" x="935" y="540" class="t-muted" font-size="9" text-anchor="middle">找出变化的可能原因</text>
+          <text data-node-label="" data-detail-anchor="" x="945" y="524" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">归因与诊断</text>
+        <text data-detail="context" x="945" y="540" class="t-muted" font-size="9" text-anchor="middle">L3 根因：为什么会发生</text>
         </g>
 
-        <g id="node-forecast" data-node-id="forecast" data-node-label="预测与情景推演" tabindex="0" role="button" aria-label="聚焦预测与情景推演，看走势与假设情景, 取数与洞察层" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="看走势与假设情景" data-node-context="取数与洞察层">
-          <title>预测与情景推演 · 看走势与假设情景 · 取数与洞察层</title>
+        <g id="node-forecast" data-node-id="forecast" data-node-label="预测与情景推演" tabindex="0" role="button" aria-label="聚焦预测与情景推演，看走势与假设情景, 取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="看走势与假设情景" data-node-context="取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因">
+          <title>预测与情景推演 · 看走势与假设情景 · 取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因</title>
           <rect x="1110" y="494" width="180" height="64" rx="6" class="c-mask"/>
           <rect x="1110" y="494" width="180" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1116 500) scale(0.6875)">
@@ -5383,52 +5412,63 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="1200" y="540" class="t-muted" font-size="9" text-anchor="middle">看走势与假设情景</text>
         </g>
 
-        <g id="node-conclusion" data-node-id="conclusion" data-node-label="结论与依据组织" tabindex="0" role="button" aria-label="聚焦结论与依据组织，结论 · 依据 · 限制说明, 交付与守门层" aria-pressed="false" data-node-kind="backend" data-node-sublabel="结论 · 依据 · 限制说明" data-node-context="交付与守门层">
-          <title>结论与依据组织 · 结论 · 依据 · 限制说明 · 交付与守门层</title>
+        <g id="node-conclusion" data-node-id="conclusion" data-node-label="结论与依据组织" tabindex="0" role="button" aria-label="聚焦结论与依据组织，先讲清事实与证据, 交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督" aria-pressed="false" data-node-kind="backend" data-node-sublabel="先讲清事实与证据" data-node-context="交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督">
+          <title>结论与依据组织 · 先讲清事实与证据 · 交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督</title>
           <rect x="50" y="610" width="220" height="64" rx="6" class="c-mask"/>
           <rect x="50" y="610" width="220" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(56 616) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="160" y="640" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">结论与依据组织</text>
-        <text data-detail="context" x="160" y="656" class="t-muted" font-size="9" text-anchor="middle">结论 · 依据 · 限制说明</text>
+        <text data-detail="context" x="160" y="656" class="t-muted" font-size="9" text-anchor="middle">先讲清事实与证据</text>
         </g>
 
-        <g id="node-action" data-node-id="action" data-node-label="建议与措施" tabindex="0" role="button" aria-label="聚焦建议与措施，给出可执行的下一步, 交付与守门层" aria-pressed="false" data-node-kind="backend" data-node-sublabel="给出可执行的下一步" data-node-context="交付与守门层">
-          <title>建议与措施 · 给出可执行的下一步 · 交付与守门层</title>
-          <rect x="390" y="610" width="220" height="64" rx="6" class="c-mask"/>
-          <rect x="390" y="610" width="220" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(396 616) scale(0.6875)">
+        <g id="node-action" data-node-id="action" data-node-label="行动建议" tabindex="0" role="button" aria-label="聚焦行动建议，L4 方案：优先级与影响, 交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督" aria-pressed="false" data-node-kind="backend" data-node-sublabel="L4 方案：优先级与影响" data-node-context="交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督">
+          <title>行动建议 · L4 方案：优先级与影响 · 交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督</title>
+          <rect x="345" y="610" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="345" y="610" width="180" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(351 616) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="500" y="640" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">建议与措施</text>
-        <text data-detail="context" x="500" y="656" class="t-muted" font-size="9" text-anchor="middle">给出可执行的下一步</text>
+          <text data-node-label="" data-detail-anchor="" x="435" y="640" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">行动建议</text>
+        <text data-detail="context" x="435" y="656" class="t-muted" font-size="9" text-anchor="middle">L4 方案：优先级与影响</text>
         </g>
 
-        <g id="node-truth" data-node-id="truth" data-node-label="质量与真实性把关" tabindex="0" role="button" aria-label="聚焦质量与真实性把关，拦无依据数字与因果越界, 交付与守门层" aria-pressed="false" data-node-kind="security" data-node-sublabel="拦无依据数字与因果越界" data-node-context="交付与守门层">
-          <title>质量与真实性把关 · 拦无依据数字与因果越界 · 交付与守门层</title>
-          <rect x="730" y="610" width="220" height="64" rx="6" class="c-mask"/>
-          <rect x="730" y="610" width="220" height="64" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(736 616) scale(0.6875)">
+        <g id="node-supervise" data-node-id="supervise" data-node-label="执行落地与监督" tabindex="0" role="button" aria-label="聚焦执行落地与监督，L5 落地：责任、节点、跟踪, 交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督" aria-pressed="false" data-node-kind="backend" data-node-sublabel="L5 落地：责任、节点、跟踪" data-node-context="交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督">
+          <title>执行落地与监督 · L5 落地：责任、节点、跟踪 · 交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督</title>
+          <rect x="600" y="610" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="600" y="610" width="180" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(606 616) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="690" y="640" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">执行落地与监督</text>
+        <text data-detail="context" x="690" y="656" class="t-muted" font-size="9" text-anchor="middle">L5 落地：责任、节点、跟踪</text>
+        </g>
+
+        <g id="node-truth" data-node-id="truth" data-node-label="质量与真实性把关" tabindex="0" role="button" aria-label="聚焦质量与真实性把关，拦无依据数字与因果越界, 交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督" aria-pressed="false" data-node-kind="security" data-node-sublabel="拦无依据数字与因果越界" data-node-context="交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督">
+          <title>质量与真实性把关 · 拦无依据数字与因果越界 · 交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督</title>
+          <rect x="855" y="610" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="855" y="610" width="180" height="64" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(861 616) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="840" y="640" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">质量与真实性把关</text>
-        <text data-detail="context" x="840" y="656" class="t-muted" font-size="9" text-anchor="middle">拦无依据数字与因果越界</text>
+          <text data-node-label="" data-detail-anchor="" x="945" y="640" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">质量与真实性把关</text>
+        <text data-detail="context" x="945" y="656" class="t-muted" font-size="9" text-anchor="middle">拦无依据数字与因果越界</text>
         </g>
 
-        <g id="node-deliver" data-node-id="deliver" data-node-label="回答交付" tabindex="0" role="button" aria-label="聚焦回答交付，把结果讲给业务用户, 交付与守门层" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="把结果讲给业务用户" data-node-context="交付与守门层">
-          <title>回答交付 · 把结果讲给业务用户 · 交付与守门层</title>
-          <rect x="1070" y="610" width="220" height="64" rx="6" class="c-mask"/>
-          <rect x="1070" y="610" width="220" height="64" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(1076 616) scale(0.6875)">
+        <g id="node-deliver" data-node-id="deliver" data-node-label="回答交付" tabindex="0" role="button" aria-label="聚焦回答交付，把关通过后讲给业务, 交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="把关通过后讲给业务" data-node-context="交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督">
+          <title>回答交付 · 把关通过后讲给业务 · 交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督</title>
+          <rect x="1110" y="610" width="180" height="64" rx="6" class="c-mask"/>
+          <rect x="1110" y="610" width="180" height="64" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(1116 616) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1180" y="640" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">回答交付</text>
-        <text data-detail="context" x="1180" y="656" class="t-muted" font-size="9" text-anchor="middle">把结果讲给业务用户</text>
+          <text data-node-label="" data-detail-anchor="" x="1200" y="640" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">回答交付</text>
+        <text data-detail="context" x="1200" y="656" class="t-muted" font-size="9" text-anchor="middle">把关通过后讲给业务</text>
         </g>
 
         <!-- Connection labels -->
@@ -5445,42 +5485,49 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text x="938.5" y="110" class="t-muted" font-size="8" text-anchor="middle">带上会话上下文</text>
         </g>
         <g data-detail="context" data-edge-from="guard" data-edge-to="ptype" data-edge-label="合规通过后判断问题类型" data-edge-key="3" data-edge-id="guard-to-ptype">
-          <rect x="347.2" y="216" width="115.6" height="14" rx="3" class="c-mask"/>
-          <text x="405" y="226" class="t-backend" font-size="8" text-anchor="middle">合规通过后判断问题类型</text>
+          <rect x="357.2" y="216" width="115.6" height="14" rx="3" class="c-mask"/>
+          <text x="415" y="226" class="t-backend" font-size="8" text-anchor="middle">合规通过后判断问题类型</text>
         </g>
-        <g data-detail="context" data-edge-from="ptype" data-edge-to="complete" data-edge-label="检查信息是否完整" data-edge-key="4" data-edge-id="ptype-to-complete">
-          <rect x="361.6" y="274" width="86.8" height="14" rx="3" class="c-mask"/>
-          <text x="405" y="284" class="t-muted" font-size="8" text-anchor="middle">检查信息是否完整</text>
+        <g data-detail="context" data-edge-from="ptype" data-edge-to="depth" data-edge-label="这次问到哪一层" data-edge-key="4" data-edge-id="ptype-to-depth">
+          <rect x="291.4" y="274" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="330" y="284" class="t-muted" font-size="8" text-anchor="middle">这次问到哪一层</text>
         </g>
-        <g data-detail="context" data-edge-from="complete" data-edge-to="clarify" data-edge-label="缺条件先问清" data-edge-key="5" data-edge-id="complete-to-clarify">
-          <rect x="901.2" y="274" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="935" y="284" class="t-messagebus" font-size="8" text-anchor="middle">缺条件先问清</text>
+        <g data-detail="context" data-edge-from="depth" data-edge-to="complete" data-edge-label="检查信息是否完整" data-edge-key="5" data-edge-id="depth-to-complete">
+          <rect x="626.6" y="274" width="86.8" height="14" rx="3" class="c-mask"/>
+          <text x="670" y="284" class="t-muted" font-size="8" text-anchor="middle">检查信息是否完整</text>
         </g>
-        <g data-detail="context" data-edge-from="ptype" data-edge-to="metric" data-edge-label="对齐业务口径" data-edge-key="6" data-edge-id="ptype-to-metric">
-          <rect x="116.2" y="332" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="150" y="342" class="t-backend" font-size="8" text-anchor="middle">对齐业务口径</text>
+        <g data-detail="context" data-edge-from="complete" data-edge-to="clarify" data-edge-label="缺条件先问清" data-edge-key="6" data-edge-id="complete-to-clarify">
+          <rect x="976.2" y="274" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="1010" y="284" class="t-messagebus" font-size="8" text-anchor="middle">缺条件先问清</text>
         </g>
-
-
-
-        <g data-detail="context" data-edge-from="metric" data-edge-to="fact" data-edge-label="按口径取数" data-edge-key="10" data-edge-id="metric-to-fact">
-          <rect x="121" y="448" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="150" y="458" class="t-backend" font-size="8" text-anchor="middle">按口径取数</text>
+        <g data-detail="context" data-edge-from="ptype" data-edge-to="ontology" data-edge-label="先到本体对齐业务说法" data-edge-key="7" data-edge-id="ptype-to-ontology">
+          <rect x="107" y="330" width="106" height="14" rx="3" class="c-mask"/>
+          <text x="160" y="340" class="t-backend" font-size="8" text-anchor="middle">先到本体对齐业务说法</text>
         </g>
 
 
 
 
-        <g data-detail="context" data-edge-from="fact" data-edge-to="conclusion" data-edge-label="形成结论与依据" data-edge-key="15" data-edge-id="fact-to-conclusion">
-          <rect x="111.4" y="564" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="150" y="574" class="t-backend" font-size="8" text-anchor="middle">形成结论与依据</text>
+        <g data-detail="context" data-edge-from="ontology" data-edge-to="fact" data-edge-label="按本体口径取数" data-edge-key="12" data-edge-id="ontology-to-fact">
+          <rect x="121.4" y="446" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="160" y="456" class="t-backend" font-size="8" text-anchor="middle">按本体口径取数</text>
         </g>
 
 
-        <g data-detail="context" data-edge-from="truth" data-edge-to="deliver" data-edge-label="校验通过后交付" data-edge-key="18" data-edge-id="truth-to-deliver">
-          <rect x="971.4" y="622" width="77.2" height="14" rx="3" class="c-mask"/>
-          <text x="1010" y="632" class="t-backend" font-size="8" text-anchor="middle">校验通过后交付</text>
+
+
+        <g data-detail="context" data-edge-from="fact" data-edge-to="conclusion" data-edge-label="形成结论与依据" data-edge-key="17" data-edge-id="fact-to-conclusion">
+          <rect x="121.4" y="562" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="160" y="572" class="t-backend" font-size="8" text-anchor="middle">形成结论与依据</text>
         </g>
+        <g data-detail="context" data-edge-from="rootcause" data-edge-to="action" data-edge-label="根因升到行动建议" data-edge-key="18" data-edge-id="rootcause-to-action">
+          <rect x="646.6" y="564" width="86.8" height="14" rx="3" class="c-mask"/>
+          <text x="690" y="574" class="t-backend" font-size="8" text-anchor="middle">根因升到行动建议</text>
+        </g>
+
+
+
+
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
         <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="提问受理层">
@@ -5493,24 +5540,24 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text data-boundary-label="" x="44" y="139" class="t-cloud" font-size="9" font-weight="600">安全与合规把关层</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="2" data-composition-frame-kind="region" data-composition-frame-label="判断与分流层">
-          <rect data-graph-role="structural-frame-label-mask" x="40" y="242" width="74.8" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="44" y="255" class="t-cloud" font-size="9" font-weight="600">判断与分流层</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="2" data-composition-frame-kind="region" data-composition-frame-label="判断与分流层 · 先定问题类型，再定分析深度">
+          <rect data-graph-role="structural-frame-label-mask" x="40" y="242" width="231.4" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="44" y="255" class="t-cloud" font-size="9" font-weight="600">判断与分流层 · 先定问题类型，再定分析深度</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="3" data-composition-frame-kind="region" data-composition-frame-label="业务口径与权限层">
-          <rect data-graph-role="structural-frame-label-mask" x="40" y="358" width="96.39999999999999" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="44" y="371" class="t-cloud" font-size="9" font-weight="600">业务口径与权限层</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="3" data-composition-frame-kind="region" data-composition-frame-label="本体语义层 · 业务说法与口径的唯一出处">
+          <rect data-graph-role="structural-frame-label-mask" x="40" y="358" width="209.79999999999998" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="44" y="371" class="t-cloud" font-size="9" font-weight="600">本体语义层 · 业务说法与口径的唯一出处</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="4" data-composition-frame-kind="region" data-composition-frame-label="取数与洞察层">
-          <rect data-graph-role="structural-frame-label-mask" x="40" y="474" width="74.8" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="44" y="487" class="t-cloud" font-size="9" font-weight="600">取数与洞察层</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="4" data-composition-frame-kind="region" data-composition-frame-label="取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因">
+          <rect data-graph-role="structural-frame-label-mask" x="40" y="474" width="301.59999999999997" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="44" y="487" class="t-cloud" font-size="9" font-weight="600">取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="5" data-composition-frame-kind="region" data-composition-frame-label="交付与守门层">
-          <rect data-graph-role="structural-frame-label-mask" x="40" y="590" width="74.8" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="44" y="603" class="t-cloud" font-size="9" font-weight="600">交付与守门层</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="5" data-composition-frame-kind="region" data-composition-frame-label="交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督">
+          <rect data-graph-role="structural-frame-label-mask" x="40" y="590" width="312.4" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="44" y="603" class="t-cloud" font-size="9" font-weight="600">交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督</text>
         </g>
 
         <!-- Legend -->
@@ -5528,21 +5575,21 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <rect x="325" y="737" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
             <text x="347" y="746" class="t-muted" font-size="10" font-weight="500">取数与知识</text>
           </g>
-          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="澄清与情景推演" data-legend-x="440" data-legend-baseline="746" data-legend-width="113">
+          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="澄清 · 预测与推演" data-legend-x="440" data-legend-baseline="746" data-legend-width="128">
             <rect x="440" y="737" width="16" height="10" rx="2.5" class="c-cloud" stroke-width="1"/>
-            <text x="462" y="746" class="t-muted" font-size="10" font-weight="500">澄清与情景推演</text>
+            <text x="462" y="746" class="t-muted" font-size="10" font-weight="500">澄清 · 预测与推演</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="合规与真实性守门" data-legend-x="575" data-legend-baseline="746" data-legend-width="123">
-            <rect x="575" y="737" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
-            <text x="597" y="746" class="t-muted" font-size="10" font-weight="500">合规与真实性守门</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="合规 · 权限与真实性守门" data-legend-x="590" data-legend-baseline="746" data-legend-width="158">
+            <rect x="590" y="737" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
+            <text x="612" y="746" class="t-muted" font-size="10" font-weight="500">合规 · 权限与真实性守门</text>
           </g>
-          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="业务口径与语义" data-legend-x="720" data-legend-baseline="746" data-legend-width="113">
-            <rect x="720" y="737" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
-            <text x="742" y="746" class="t-muted" font-size="10" font-weight="500">业务口径与语义</text>
+          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="本体语义与业务口径" data-legend-x="770" data-legend-baseline="746" data-legend-width="133">
+            <rect x="770" y="737" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
+            <text x="792" y="746" class="t-muted" font-size="10" font-weight="500">本体语义与业务口径</text>
           </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="外部场景接入" data-legend-x="855" data-legend-baseline="746" data-legend-width="103">
-            <rect x="855" y="737" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
-            <text x="877" y="746" class="t-muted" font-size="10" font-weight="500">外部场景接入</text>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="外部场景接入" data-legend-x="925" data-legend-baseline="746" data-legend-width="103">
+            <rect x="925" y="737" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
+            <text x="947" y="746" class="t-muted" font-size="10" font-weight="500">外部场景接入</text>
           </g>
         </g>
       </svg>

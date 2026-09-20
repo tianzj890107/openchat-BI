@@ -16,16 +16,16 @@
           "label": "外部场景接入"
         },
         "security": {
-          "label": "合规与真实性守门"
+          "label": "合规 · 权限与真实性守门"
         },
         "backend": {
           "label": "理解 · 洞察与建议"
         },
         "cloud": {
-          "label": "澄清与情景推演"
+          "label": "澄清 · 预测与推演"
         },
         "messagebus": {
-          "label": "业务口径与语义"
+          "label": "本体语义与业务口径"
         },
         "database": {
           "label": "取数与知识"
@@ -100,7 +100,21 @@
         262
       ],
       "size": [
-        180,
+        220,
+        64
+      ]
+    },
+    {
+      "id": "depth",
+      "type": "backend",
+      "label": "分析深度判断",
+      "sublabel": "这次要取数、找问题还是给行动",
+      "pos": [
+        390,
+        262
+      ],
+      "size": [
+        220,
         64
       ]
     },
@@ -110,11 +124,11 @@
       "label": "信息完整度检查",
       "sublabel": "时间 · 对象 · 范围是否齐",
       "pos": [
-        580,
+        730,
         262
       ],
       "size": [
-        180,
+        220,
         64
       ]
     },
@@ -124,19 +138,19 @@
       "label": "澄清与追问",
       "sublabel": "缺条件先问清再往下",
       "pos": [
-        1110,
+        1070,
         262
       ],
       "size": [
-        180,
+        220,
         64
       ]
     },
     {
-      "id": "metric",
+      "id": "ontology",
       "type": "messagebus",
-      "label": "指标口径与定义",
-      "sublabel": "统计范围与计算规则",
+      "label": "本体 · 业务统一说法",
+      "sublabel": "把业务说法、规则、口径统一",
       "pos": [
         50,
         378
@@ -147,30 +161,44 @@
       ]
     },
     {
-      "id": "object",
+      "id": "metric",
       "type": "messagebus",
-      "label": "业务对象与关系",
-      "sublabel": "对象之间如何关联",
+      "label": "指标口径与定义",
+      "sublabel": "指标怎么算只认这一份",
       "pos": [
-        390,
+        345,
         378
       ],
       "size": [
-        220,
+        180,
         64
       ]
     },
     {
-      "id": "source",
+      "id": "object",
       "type": "messagebus",
-      "label": "数据来源与字段",
-      "sublabel": "指标取自哪些数据",
+      "label": "业务对象与关系",
+      "sublabel": "对象怎么关联、有哪些规则",
       "pos": [
-        730,
+        600,
         378
       ],
       "size": [
-        220,
+        180,
+        64
+      ]
+    },
+    {
+      "id": "mapping",
+      "type": "messagebus",
+      "label": "业务到数据的映射",
+      "sublabel": "业务问法落到哪些数据",
+      "pos": [
+        855,
+        378
+      ],
+      "size": [
+        180,
         64
       ]
     },
@@ -180,22 +208,8 @@
       "label": "权限与可见范围",
       "sublabel": "按职责限定可见数据",
       "pos": [
-        1070,
+        1110,
         378
-      ],
-      "size": [
-        220,
-        64
-      ]
-    },
-    {
-      "id": "fact",
-      "type": "database",
-      "label": "业务事实取数",
-      "sublabel": "按口径取业务事实",
-      "pos": [
-        50,
-        494
       ],
       "size": [
         180,
@@ -203,12 +217,26 @@
       ]
     },
     {
+      "id": "fact",
+      "type": "database",
+      "label": "业务事实取数",
+      "sublabel": "L1 取数：是多少、有哪些",
+      "pos": [
+        50,
+        494
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
       "id": "doc",
       "type": "database",
       "label": "知识与文档检索",
-      "sublabel": "检索沉淀的业务知识",
+      "sublabel": "翻沉淀的业务知识与经验",
       "pos": [
-        315,
+        345,
         494
       ],
       "size": [
@@ -220,9 +248,9 @@
       "id": "compare",
       "type": "backend",
       "label": "对比与趋势分析",
-      "sublabel": "对比 · 环比 · 趋势",
+      "sublabel": "L2 找问题：哪里在异常",
       "pos": [
-        580,
+        600,
         494
       ],
       "size": [
@@ -234,9 +262,9 @@
       "id": "rootcause",
       "type": "backend",
       "label": "归因与诊断",
-      "sublabel": "找出变化的可能原因",
+      "sublabel": "L3 根因：为什么会发生",
       "pos": [
-        845,
+        855,
         494
       ],
       "size": [
@@ -262,7 +290,7 @@
       "id": "conclusion",
       "type": "backend",
       "label": "结论与依据组织",
-      "sublabel": "结论 · 依据 · 限制说明",
+      "sublabel": "先讲清事实与证据",
       "pos": [
         50,
         610
@@ -275,14 +303,28 @@
     {
       "id": "action",
       "type": "backend",
-      "label": "建议与措施",
-      "sublabel": "给出可执行的下一步",
+      "label": "行动建议",
+      "sublabel": "L4 方案：优先级与影响",
       "pos": [
-        390,
+        345,
         610
       ],
       "size": [
-        220,
+        180,
+        64
+      ]
+    },
+    {
+      "id": "supervise",
+      "type": "backend",
+      "label": "执行落地与监督",
+      "sublabel": "L5 落地：责任、节点、跟踪",
+      "pos": [
+        600,
+        610
+      ],
+      "size": [
+        180,
         64
       ]
     },
@@ -292,11 +334,11 @@
       "label": "质量与真实性把关",
       "sublabel": "拦无依据数字与因果越界",
       "pos": [
-        730,
+        855,
         610
       ],
       "size": [
-        220,
+        180,
         64
       ]
     },
@@ -304,13 +346,13 @@
       "id": "deliver",
       "type": "frontend",
       "label": "回答交付",
-      "sublabel": "把结果讲给业务用户",
+      "sublabel": "把关通过后讲给业务",
       "pos": [
-        1070,
+        1110,
         610
       ],
       "size": [
-        220,
+        180,
         64
       ]
     }
@@ -336,9 +378,10 @@
     },
     {
       "kind": "region",
-      "label": "判断与分流层",
+      "label": "判断与分流层 · 先定问题类型，再定分析深度",
       "wraps": [
         "ptype",
+        "depth",
         "complete",
         "clarify"
       ],
@@ -346,18 +389,19 @@
     },
     {
       "kind": "region",
-      "label": "业务口径与权限层",
+      "label": "本体语义层 · 业务说法与口径的唯一出处",
       "wraps": [
+        "ontology",
         "metric",
         "object",
-        "source",
+        "mapping",
         "permission"
       ],
       "pad": 14
     },
     {
       "kind": "region",
-      "label": "取数与洞察层",
+      "label": "取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因",
       "wraps": [
         "fact",
         "doc",
@@ -369,10 +413,11 @@
     },
     {
       "kind": "region",
-      "label": "交付与守门层",
+      "label": "交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督",
       "wraps": [
         "conclusion",
         "action",
+        "supervise",
         "truth",
         "deliver"
       ],
@@ -419,8 +464,14 @@
       "toSide": "top"
     },
     {
-      "id": "ptype-to-complete",
+      "id": "ptype-to-depth",
       "from": "ptype",
+      "to": "depth",
+      "label": "这次问到哪一层"
+    },
+    {
+      "id": "depth-to-complete",
+      "from": "depth",
       "to": "complete",
       "label": "检查信息是否完整"
     },
@@ -432,13 +483,23 @@
       "variant": "dashed"
     },
     {
-      "id": "ptype-to-metric",
+      "id": "ptype-to-ontology",
       "from": "ptype",
-      "to": "metric",
-      "label": "对齐业务口径",
+      "to": "ontology",
+      "label": "先到本体对齐业务说法",
       "variant": "emphasis",
       "fromSide": "bottom",
-      "toSide": "top"
+      "toSide": "top",
+      "labelAt": [
+        160,
+        340
+      ]
+    },
+    {
+      "id": "ontology-to-metric",
+      "from": "ontology",
+      "to": "metric",
+      "variant": "dashed"
     },
     {
       "id": "metric-to-object",
@@ -447,25 +508,29 @@
       "variant": "dashed"
     },
     {
-      "id": "object-to-source",
+      "id": "object-to-mapping",
       "from": "object",
-      "to": "source",
+      "to": "mapping",
       "variant": "dashed"
     },
     {
-      "id": "source-to-permission",
-      "from": "source",
+      "id": "mapping-to-permission",
+      "from": "mapping",
       "to": "permission",
       "variant": "dashed"
     },
     {
-      "id": "metric-to-fact",
-      "from": "metric",
+      "id": "ontology-to-fact",
+      "from": "ontology",
       "to": "fact",
-      "label": "按口径取数",
+      "label": "按本体口径取数",
       "variant": "emphasis",
       "fromSide": "bottom",
-      "toSide": "top"
+      "toSide": "top",
+      "labelAt": [
+        160,
+        456
+      ]
     },
     {
       "id": "fact-to-doc",
@@ -498,17 +563,35 @@
       "label": "形成结论与依据",
       "variant": "emphasis",
       "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        160,
+        572
+      ]
+    },
+    {
+      "id": "rootcause-to-action",
+      "from": "rootcause",
+      "to": "action",
+      "label": "根因升到行动建议",
+      "variant": "emphasis",
+      "fromSide": "bottom",
       "toSide": "top"
     },
     {
       "id": "conclusion-to-action",
       "from": "conclusion",
-      "to": "action",
-      "variant": "dashed"
+      "to": "action"
     },
     {
-      "id": "action-to-truth",
+      "id": "action-to-supervise",
       "from": "action",
+      "to": "supervise",
+      "variant": "emphasis"
+    },
+    {
+      "id": "supervise-to-truth",
+      "from": "supervise",
       "to": "truth",
       "variant": "dashed"
     },
@@ -516,7 +599,6 @@
       "id": "truth-to-deliver",
       "from": "truth",
       "to": "deliver",
-      "label": "校验通过后交付",
       "variant": "emphasis"
     }
   ]

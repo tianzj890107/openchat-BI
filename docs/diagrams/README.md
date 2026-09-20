@@ -26,7 +26,7 @@
 | [09-eval-and-release-gate.md](09-eval-and-release-gate.md) | 图 9 · 评测与发布门禁 | CI 作业链、release gate 的六类必过门与被阻断条件、live canary 的边界。 |
 | [10-business-panorama-16x9.md](10-business-panorama-16x9.md) | 图 10 · 业务全景架构（16:9 横版） | 面向业务侧的全景海报：六段业务主线 + 线条与色块图例。图形源为 `10-business-panorama-16x9.svg`，由 `build_business_panorama_16x9.py` 生成；正文只用业务语言，不含技术细节。 |
 | [11-platform-architecture.md](11-platform-architecture.md) | 图 11 · 企业智能体平台整体架构 | 面向业务与产品视角的四层全景架构：应用接入层 / 智能体与能力层 / 语义层 / 数据层，四层通栏铺满画布。图形源为 `archify/platform-architecture.architecture.json`，由 Archify 生成可交互 HTML；正文只用业务语言，不含技术细节。 |
-| [12-analytics-agent-architecture.md](12-analytics-agent-architecture.md) | 图 12 · 智能分析 Agent 整体架构 | 面向业务与产品视角的六层全景架构：提问受理层 / 安全与合规把关层 / 判断与分流层 / 业务口径与权限层 / 取数与洞察层 / 交付与守门层，共 20 个能力块，六层通栏铺满画布。图形源为 `archify/analytics-agent-architecture.architecture.json`，由 Archify 生成可交互 HTML；正文只用业务语言，不含技术细节。 |
+| [12-analytics-agent-architecture.md](12-analytics-agent-architecture.md) | 图 12 · 智能分析 Agent 整体架构 | 面向业务与产品视角的六层全景架构：提问受理层 / 安全与合规把关层 / 判断与分流层 / **本体语义层** / 取数与洞察层 / 交付与守门层，共 23 个能力块，六层通栏铺满画布。**本体**作为业务说法与指标口径的唯一出处单独成层（本体统一说法 → 指标口径与定义 → 业务对象与关系 → 业务到数据的映射 → 权限与可见范围），取数前必须先过本体；第五、第六层按 **L1 取数 → L2 找问题 → L3 根因 → L4 行动建议 → L5 执行监督** 逐级递进，并用加粗连线标出“根因升到行动建议”。图形源为 `archify/analytics-agent-architecture.architecture.json`，由 Archify 生成可交互 HTML；正文只用业务语言，不含技术细节。 |
 
 阅读顺序建议：`01` → `03` → `04` 先建立整体认识，其余按需查阅。
 
