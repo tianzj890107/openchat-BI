@@ -124,3 +124,7 @@ done
    改内容请改 JSON 后用 `deliver --quality showcase` 重新生成，不要手改 HTML；提交前必须复核
    `validate` 为 9/9 通过且 0 error / 0 warning，并对输出跑 `visual-check`，确认 1440×900 等四个视口
    均无横向或纵向溢出；每层能力区块要保持左右边界一致，避免出现大片空白。
+   **默认主题**：Archify 没有“默认主题”选项（产物在深色系统上就是深色），因此 `deliver` 之后要再执行
+   `python docs/diagrams/archify/apply_default_theme.py <输出 HTML>` 把默认主题固定为浅色
+   （同时把 CSS 变量底座从深色换成浅色，避免不执行脚本的预览/缩略图退回深色）；脚本幂等，
+   重新生成 HTML 后需要重跑。智能分析 Agent 整体架构已应用该步骤，平台整体架构尚未应用。

@@ -920,7 +920,7 @@
   8.96px ≥ 6px 门槛；`visualReview` 仍为 `pending`（自动检查通过，人工目视复核未执行）。
 - 只新增文档与图形产物，未修改任何生产实现、测试、评测用例、数据源或数据集；未部署。
 
-### 6. 智能分析 Agent 整体架构图（Archify 语义配色，已完成；2026-09-20 15:05 修订为六层 23 块，显式加入本体与 L1–L5 递进）
+### 6. 智能分析 Agent 整体架构图（Archify 语义配色，已完成；2026-09-20 15:20 修订为六层 23 块、显式加入本体与 L1–L5 递进，并固定默认浅色主题）
 
 - 新增**智能分析 Agent 自身**的整体架构图：`docs/diagrams/12-analytics-agent-architecture.md`（说明页）
   + `docs/diagrams/archify/analytics-agent-architecture.architecture.json`（图形源）
@@ -959,7 +959,18 @@
   （`containerBorderRuns 0`、`microSegmentCount 0`、`labelRouteClearanceIssues 0`、`relationshipCrossings 0`、
   `ambiguousCorridors 0`）；`visual-check` 在 1440×900 / 1600×1000 / 1920×1080 / 2048×1320 四个视口
   均 `ok: true`，画布 1344×762，1440×900 视口 `scrollHeight 900`（无横向或纵向溢出），
-  最小投影文字 8.91px ≥ 6px 门槛；输出 HTML 840,661 字节，sha256
-  `e6394bffeef65a3e3b4bba9dd1c6f8bcab3a82776043a054616f4cd5fe80fc6c`；`visualReview` 仍为
-  `pending`（自动检查通过，人工目视复核未执行）。
+  最小投影文字 8.91px ≥ 6px 门槛；应用默认浅色主题后再次复核，四个视口仍全部 `ok: true`，
+  `archify check` 通过，深色渲染与改动前**逐字节一致**、浅色渲染仅有 0.04% 像素出现 ±1~2 的
+  抗锯齿差异（无布局或内容变化）；输出 HTML 840,580 字节，sha256
+  `3ba1ceb0924b79ac333d1c6d75fb4f1bb25dc06108a7631efc1e2eb1fc51a204`；
+  `visualReview` 仍为 `pending`（自动检查通过，人工目视复核未执行）。
+- **默认主题固定为浅色**：Archify 生成器把 `<html data-theme="dark">` 写死，运行时按
+  `?theme=` → 浏览器本地存储 → 操作系统浅/深色偏好依次解析，因此在深色系统上双击打开就是深色
+  （预览/缩略图也容易被看成深色交付物）。Archify 没有“默认主题”选项，故新增确定性后处理脚本
+  `docs/diagrams/archify/apply_default_theme.py`，在 `deliver` 之后执行，改写六处：`<html>` 静态
+  `data-theme`、首屏内联兜底、工具栏 `resolveInitial()` 兜底、跟随系统主题的监听器，以及把 CSS
+  变量底座从深色换成浅色（`[data-theme="dark"]` 只认显式深色，浅色改为 `:root:not([data-theme="dark"])`
+  兜底）——这样即使某个预览器不执行脚本、或把 `data-theme` 属性丢掉，渲染出来仍然是浅色。
+  脚本幂等、可重复执行；工具栏的浅/深色切换与 `?theme=dark` 显式选择仍然优先。说明页与
+  `docs/diagrams/README.md` 维护约定已登记该步骤（重新生成 HTML 后必须重跑）。
 - 只新增与更新文档、图形源和图形产物，未修改任何生产实现、测试、评测用例、数据源或数据集；未部署。

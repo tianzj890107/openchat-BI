@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark" data-preset="classic">
+<html lang="zh-CN" data-theme="light" data-preset="classic">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.17.0-dev.1">
+  <meta name="archify-default-theme" content="light">
   <title>智能分析 Agent 整体架构</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
@@ -25,7 +26,7 @@
           try { theme = localStorage.getItem('archify-theme'); } catch (_) {}
         }
         if (theme !== 'light' && theme !== 'dark') {
-          theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          theme = 'light';
         }
         document.documentElement.setAttribute('data-theme', theme);
       } catch (_) {}
@@ -169,7 +170,6 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     /* ==========================================================
        THEME VARIABLES — switch by toggling [data-theme] on <html>
        ========================================================== */
-    :root,
     [data-theme="dark"] {
       --bg: #020617;
       --grid: #1e293b;
@@ -213,6 +213,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       --toolbar-menu-bg:  #0f172a;
     }
 
+    :root:not([data-theme="dark"]),
     [data-theme="light"] {
       --bg: #f8fafc;
       --grid: #e2e8f0;
@@ -5986,7 +5987,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         if (fromUrl) return fromUrl;
         var saved = readStored();
         if (saved === 'light' || saved === 'dark') return saved;
-        return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        return 'light';
       }
 
       function apply(theme) {
@@ -6010,7 +6011,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         var onChange = function (e) {
           var saved = readStored();
           if (urlOverride() || saved === 'light' || saved === 'dark') return;
-          apply(e.matches ? 'light' : 'dark');
+          apply('light');
         };
         if (media.addEventListener) media.addEventListener('change', onChange);
         else if (media.addListener) media.addListener(onChange);
