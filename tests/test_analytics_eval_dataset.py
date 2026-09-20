@@ -549,6 +549,7 @@ class RecordedProviderAssetTest(unittest.TestCase):
         case = next(c for c in self.cases if c["case_id"] == "ANA-RPSQL-001")
         ctx = runner.EvalContext()
         real_socket = socket.socket
+        real_create_connection = socket.create_connection
 
         def _blocked(*args, **kwargs):  # pragma: no cover - failure path only
             raise AssertionError("the offline evaluator must not open a socket")
@@ -559,6 +560,7 @@ class RecordedProviderAssetTest(unittest.TestCase):
             result = runner.run_case(case, ctx)
         finally:
             socket.socket = real_socket
+            socket.create_connection = real_create_connection
             ctx.cleanup()
         self.assertEqual(result.status, runner.PASS,
                          [c.name for c in result.failed_checks])

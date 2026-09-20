@@ -117,10 +117,21 @@ DORIS_DATABASE=<database>
 | PDT | http://pdt-dev.eimos.com/api/ontology-agentic-analytics | http://pdt-dev.eimos.com/api/gateway2/ontology | http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query |
 | Demo2 | http://demo2.eimos.com/api/ontology-agentic-analytics | http://demo2.eimos.com/api/gateway2/ontology | http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query |
 
+`DORIS_API_URL` 支持两种契约，客户端按 URL 自动选方言，并在解析时同时容忍两种响应形态：
+
+| URL 路径 | 请求体 | 响应读取 |
+| --- | --- | --- |
+| 以 `/agent/doris/query` 结尾（旧网关） | `{"sql": ...}` | `data.rows`（+ `data.columns`） |
+| 其它（含 `/api/v1/analysis/data/query`） | `{"analysisConfig": {"sql": ...}, "commonConfig": {}}` | `data.result.rows` + `data.result.columns[].identifierCode` |
+
+灰度期可继续使用旧网关地址；切到 `/api/v1/analysis/data/query` 时客户端改用新契约，
+旧网关仍在线的期间无需与本体服务协调切换。本批不改默认值。
+
 ```dotenv
 # PDT
 ONTOLOGY_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/ontology
 DORIS_API_URL=http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query
+# 新 MAL 契约（可选）：http://pdt-dev.eimos.com/api/gateway2/ontology/api/v1/analysis/data/query
 ONTOLOGY_REPOSITORY_ID=3
 ```
 
@@ -128,6 +139,7 @@ ONTOLOGY_REPOSITORY_ID=3
 # Demo2（本体目录由 demo2 本体服务真实返回，预期只有 ECore 本体库及其数据库）
 ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology
 DORIS_API_URL=http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query
+# 新 MAL 契约（可选）：http://demo2.eimos.com/api/gateway2/ontology/api/v1/analysis/data/query
 ONTOLOGY_REPOSITORY_ID=1
 ```
 

@@ -667,3 +667,186 @@
   gates measurable offline`），统一推送至开发分支 `gitlab/20260727`；
   未部署、未重启服务、未创建 MR/tag/Release、未改动 v0.1.9 与版本号、未读取真实凭据；
   live / live-canary 未运行（无在线评测授权），缺凭据继续保持 `not_measured`。
+
+### 9. 发布稳定性门禁：repeat stability 收口（第七批，Spec + 红测，未实现）
+
+- 审计结论：`repeat_stability` 会被测量、会在报告里出现，但**从来没有门禁约束**。
+  `evaluate_gates` 没有 `repeat_stability` 门禁，该指标不在 `RELEASE_REQUIRED_METRICS`，
+  CI 的 release job（`analytics-eval-release-gate`）执行的是 `--suite smoke --release`，
+  **不带 `--repeat`**。实测：
+  `--suite smoke --release` → 退出码 **0**（`repeat_stability = not_measured`）；
+  `--suite all --repeat 2 --release` → 退出码 **0**，却有 5 条不稳定用例。
+  离线稳定性因此既不阻断发布，也无法发现真实漂移。
+- 同时发现**误报**：`ANA-ISO-001..005`（`session_isolation`）两次运行都 pass，
+  唯一差异是 `evidence.observations[].id` 里的随机 8 位十六进制会话 id
+  （`6ac1df67` vs `d4bb3a17`），而规范把 session/run id 列为允许变化项。
+  指纹归一化只覆盖 32 位十六进制串，导致 `smoke` 实测 `0.985714`（138/140）、
+  `all`/`regression` 实测 `0.991228`（565/570）——真实稳定性被低估。
+- 第三个缺陷：`repeat=1` 被当成"稳定"。`measure_repeat(..., repeat=1)` 对每个案例只跑
+  一次就返回 `agreement=1.0`（8/8「stable」），而 CLI 用 `args.repeat > 1` 直接**静默
+  忽略** `--repeat 1`，报告退回 `not_measured` 且退出码 0 —— 单次执行既拿不到稳定性
+  证据，也不会被拒绝。
+- 新增规格 `docs/specs/analytics-release-stability.md`（12 节，sha256 `f14d17bf…438195`）
+  与实现提示词 `docs/specs/analytics-release-stability-implementation-prompt.md`
+  （sha256 `e185cb25…97e936`）：
+  定义普通门禁与 release 门禁的区别、repeat 样本与 skip 规则、
+  canonical 比较规则与允许/禁止变化清单（17 类禁止变化）、
+  分类/查询/回答/会话/图表五类稳定性合同、四个真实性指标在 repeat 下的要求、
+  `skip / not_measured` 规则、CI 策略与成本评估（smoke 140 条 ×2 可接受，
+  570 条不进入普通 pipeline）、治理终止条件。
+- 新增红测 `tests/test_analytics_release_stability_red.py`（63 个测试方法 + 子测试，sha256 `afee6afc…51c412`）：
+  只调用真实入口（`main()` 真实 CLI + 退出码、`measure_repeat`、
+  `result_signature`/`semantic_signature`/`generic_signature`、`aggregate`、
+  `build_report`、`evaluate_gates`、`RELEASE_REQUIRED_METRICS`、真实 `.gitlab-ci.yml`）；
+  覆盖门禁存在/阈值/release-required、release 无 repeat 必须失败、
+  `--repeat 1` 不得给分、零样本不得 1.0、第二轮 FAIL/SKIP 可见、
+  id/时间戳/trace/沙箱路径/SQL 空白/键序/耗时不得误报、17 类漂移逐一检出、
+  植入跨会话泄漏翻转稳定性、CI 策略与 570 条 / P0 147 / `known_gap=0` 治理守护。
+- 红测实测（2026-09-18）：**16 failed / 47 passed / 12 subtests passed**，失败全部指向
+  缺失的 `repeat_stability` 门禁、未归一化的 id 类字段与 CI release job 缺 `--repeat`；
+  真实 ISO 用例（`ANA-ISO-001..005`）在只剔除随机会话 id 后逐条相等，证明当前 5 条
+  「不稳定」是 id 类噪声误报而非语义漂移。
+- 既有回归（未受影响）：`--suite smoke` 140/140、`--suite adversarial` 62/62、
+  `--suite recorded-provider` 122/122、`--suite regression` 570/570（P0 147/147）、
+  `--suite all` 570/570；`--suite smoke --release` 仍为退出码 0（本批要修的缺陷），
+  `--suite all --repeat 2 --release` 仍为退出码 0 且 `repeat_stability=0.991228`；
+  全量 `pytest -q tests` **999 passed / 16 failed（全部来自新红测）/ 25 skipped /
+  1011 subtests passed**；既有 6 个套件与 570 条案例零回归；`git diff --check` 通过。
+- 修改文件：`docs/specs/analytics-release-stability.md`、
+  `docs/specs/analytics-release-stability-implementation-prompt.md`、
+  `tests/test_analytics_release_stability_red.py`、本 changelog。
+- 本轮**未修改生产实现**（`bi_agent/**`、`scripts/run_analytics_eval.py`、
+  `.gitlab-ci.yml`、`dataset/evals/analytics/**` 均与 HEAD 一致）；
+  未部署、未重启服务、未创建 MR/tag/Release、未改动 v0.1.9 与版本号；未 commit/push。
+- 稳定性结论只覆盖离线链路；缺凭据路径继续报 `not_measured`，不得写成 passed。
+- 审计过程中误发了 `--suite live --repeat 2`（原以为 `.env` 里没有 provider key，实际
+  `TEAM_API_KEY` 存在），触发了一次真实在线模型调用，约 5.5 分钟后被终止；未写出任何
+  报告或仓库文件、未触碰用户数据，但已发生不可撤回的 API 花费。该命令未再运行，
+  live/live-canary 的正式结论仍视为**未授权、未执行**。
+
+### 10. 本体 MAL 层「新契约」迁移：传输边界归一化 + 双方言兼容（第八批，已完成）
+
+- 背景：`API/本体MAL层API.md` 已把「元数据检索 / 关联实体 / 图谱查询 / 本体库目录 /
+  业务数据」整族接口收敛为 `QueryRequest` + `QueryResponse(TABLE|GRAPH|TREE)`，挂在
+  `/api/v1/analysis/...`，同时保留旧路径（`/agent/ontology/*`、
+  `/system/manager/ontology-repository`、`/agent/doris/query`）在线。`API/X360提供给AI的接口.md`
+  本批不处理（未接入，已在 `API/系统接口调用与代码统计.md` 注明，留待单独批次）。
+- 迁移前审计到三个**静默失效**缺陷（都在"成功但空数据"意义上失效，不报错）：
+  - `script_query` 打 `/agent/ontology/scriptQuery` 且按 `data.results[].rows` 取值；新契约
+    是 `analysisConfig.sql` + `data.result.rows`。`search_objects` / `list_objects` /
+    `graph_neighborhood` 同源，切路径后分别退化为空列表、只剩锚点。
+  - `_remote_repository_catalog` 读 `items` / `total`；新契约是 `data.result.rows` /
+    `data.pagination.total` → 数据源目录静默变空。
+  - `_doris_query` 发送 `{"sql": ...}` 并读 `data.rows`；新契约是 `QueryRequest` +
+    `data.result.rows` → SQL 执行"成功"但返回 0 行。
+  - 附带：`find_related` / `ensure_object` / `repository_info` 仍打旧路径；
+    `metaDatabase` / `knowledgeDatabase` 新字段全仓库无读取点（被静默丢弃）。
+- 实现（**单一归一化边界**：只有 `RemoteOntologyClient` 知道方言，调用方零改动）：
+  - `bi_agent/ontology/remote.py`：新增 `_rows_of` / `_column_names` / `_table_of` /
+    `_repository_fields` 抽取器与 `_object_info_of` / `_dual_request`。识别顺序
+    `data.result.rows`（新 TABLE）→ `data.result.vertices|links|edges`（新 GRAPH）→
+    `data.results[].rows`（旧）→ `data.rows`（旧业务数据）；任一层缺失返回空，不抛异常、
+    不伪造行。双方言发送**新路径优先、旧路径回退**，全部失败时重抛第一个
+    `OntologyApiError`（不把上游错误藏成空结果）。
+  - `script_query` → `POST /api/v1/analysis/meta/query`，body
+    `{"analysisConfig":{"language","sql","paramsList"?},"commonConfig":{}}`，归一化输出
+    `{"results":[{"rows","columns"}]}`（空结果 `{"results":[]}`）；`search_objects` /
+    `list_objects` 因此零改动恢复，`list_objects` "只缓存更大快照"的不变量保留。
+  - `ensure_object` / `find_related` / `repository_info` 分别切到
+    `resolve-ontology-object` / `expand-ontology-context`（`depth` 仍夹在 1..5）/
+    `ontology-repository/{id}`，归一化成 `{"found","objectInfo"}` /
+    `{"objects":[{"typeName","properties"}]}` / 单行 dict；新契约"未命中 = 空 rows"
+    归一化为 `found=false`（不是错误）。
+  - `graph_neighborhood`：`expand-ontology-context` 合法返回空行时，沿用既有 OpenCypher
+    顶点回退（与 TableNode 回退同一路径），避免新方言下"只剩锚点"的静默退化；
+    锚点与 `relations_available` / `relation_error` 语义不变。
+  - `list_repositories` → `GET /api/v1/analysis/context/ontology-repository?page&size`，
+    **不发送** `X-Ontology-Repository-Id`（既有行为，保留），读 `data.result.rows` +
+    `data.pagination.total`（缺失回退 `data.total` / 行数）。
+  - `bi_agent/web/app.py`：`_remote_repository_catalog` 保留 `metaDatabase` /
+    `knowledgeDatabase`（含 `arcadedb*` 旧别名、缺省空串），`dorisDatabase ⇄ currentDatabase`
+    双向兼容，`namespace` 仍取 `namespaceCode`，未写死任何业务库名。
+  - `bi_agent/tools/sql_tools.py`：`_doris_query` 按 `conn.api_url` 是否以
+    `/agent/doris/query` 结尾选方言——旧 `{"sql":...}` / 新
+    `{"analysisConfig":{"sql":...},"commonConfig":{}}`；**两种响应形态都容忍**
+    （`data.result.rows` + `result.columns[].identifierCode` ↔ `data.rows` / `data.columns`），
+    空结果返回 `(explicit_columns, [])`，`success=false` / 非 200 仍抛 `DorisApiError`。
+  - `bi_agent/tools/remote_ontology_tools.py`：`_related_objects` 除 `objects` /
+    `relatedObjects` 外也读 `data.result.rows`（一行一个对象，`typeName` 在行根级）。
+- 文档与配置：`.env.example`、`DEPLOYMENT.md` 给出 `DORIS_API_URL` 旧/新两种取值示例与
+  双方言语义（不改默认值）；`API/ontology-agent-api-integration.md` §3 拆成新契约 3.1 /
+  旧网关 3.2；`API/系统接口调用与代码统计.md` 接口清单补 `/api/v1/analysis/*` 家族并注明
+  X360 未接入。
+- 红测 `tests/test_ontology_mal_contract_red.py`（70 项，离线 loopback，全部打真实生产入口）：
+  **44 failed / 26 passed → 69 passed / 1 failed**，43 项失败被消除，`MutationGuardTests`
+  6 个变异全部被杀死。红测文件未被修改：sha256 `a094f585…b3c357` 与实现前一致。
+- 唯一剩余失败是**红测自身自相矛盾**（不是实现缺陷），按"不修改红测"约束原样保留并上报：
+  `RequestContractTests::test_list_repositories_uses_the_documented_context_endpoint`
+  （`tests/test_ontology_mal_contract_red.py:336`）要求本体库列表接口带
+  `X-Ontology-Repository-Id: 1`，而 Spec §4.2 与实现提示词 §3.2 均写明"本体库列表接口
+  不发送仓库头（既有行为，保留）"，同文件 `:344`
+  （`test_list_repositories_can_omit_the_repository_header`）与
+  `ScopeGuardTests::test_client_never_sends_repository_header_to_the_catalog_endpoint`
+  （`:929`）都断言相反；`:336` 与 `:929` 的调用参数（`page=1,size=100`）与注册路由完全相同，
+  任何实现都无法同时满足。建议作者把 `:336` 的 `assertEqual(headers.get(...), "1")`
+  改为 `assertNotIn("x-ontology-repository-id", headers)`。
+- 附带修复一处**测试隔离缺陷**（既有用例自身问题，非生产问题）：
+  `tests/test_analytics_eval_dataset.py` 的 `test_no_network_is_reachable_during_replay`
+  只还原 `socket.socket`、未还原 `socket.create_connection`，导致其后新建的 `HTTPConnection`
+  全部命中被屏蔽的连接工厂（表现为新红测单文件 44 失败、全量运行 64 失败）。已补还原
+  （+2 行，断言与意图未改）。
+- 验证（2026-09-18）：`--suite smoke` **140/140**、`--suite adversarial` **62/62**、
+  `--suite recorded-provider` **122/122**（P0 34/34）、`--suite regression` **570/570**
+  （P0 147/147、`known_gap 0/0`、`xpass 0`）、`--suite all` **570/570**、
+  `--suite regression --release` **退出码 0**；前六批红测合并 **292 passed / 112 subtests**；
+  `tests/test_analytics_eval_dataset.py` + `tests/test_analytics_eval_production_chain.py`
+  **92 passed / 10 subtests**；全量 `pytest -q tests` **17 failed / 1068 passed / 25 skipped /
+  1011 subtests passed**（17 = 第七批 `analytics-release-stability` 红测 16 条 + 本批上述
+  1 条矛盾断言，无其它失败）；`git diff --check` 通过。
+- 修改文件：`bi_agent/ontology/remote.py`、`bi_agent/tools/sql_tools.py`、
+  `bi_agent/tools/remote_ontology_tools.py`、`bi_agent/web/app.py`、`.env.example`、
+  `DEPLOYMENT.md`、`API/ontology-agent-api-integration.md`、
+  `API/系统接口调用与代码统计.md`、`tests/test_analytics_eval_dataset.py`、本 changelog；
+  新增 `docs/specs/ontology-mal-contract-migration.md`（sha256 `a5f6729a…d18237`）、
+  `docs/specs/ontology-mal-contract-migration-implementation-prompt.md`
+  （`a85a49cd…468f0`）、`tests/test_ontology_mal_contract_red.py`。
+  用户手改的契约参考文档 `API/本体MAL层API.md` 仅清理 2 处行尾空格以使
+  `git diff --check` 通过，未改动其内容与口径。
+- 未改动 `dataset/evals/analytics/**`（用例数 570、P0 147、`known_gap 0/0` 全部不变）、
+  `.gitlab-ci.yml`、`bi_agent/tools/analysis_policy.py` 与评测脚本；未部署、未重启服务、
+  未创建 MR/tag/Release、未改动版本号；未读取真实凭据、未调用真实本体服务
+  （live / live-canary 未运行）。
+
+## 2026-09-20（周日）
+
+### 1. 「数据库模版 + 本体内容消费」现状说明文档（已完成）
+
+- 新增 `docs/analysis-agent-data-source-and-ontology-consumption.md`（307 行），把当前**实际**
+  数据源与本体消费路径整理成可核对文档，回答"智能分析 Agent 用的是什么数据库模版、怎么消费
+  本体内容"：
+  ① 数据库模版 = 本体库（repository）与其成对声明的 Doris 业务库 `dorisDatabase`/`currentDatabase`、
+  ArcadeDB 元数据库 `metaDatabase`、知识库 `knowledgeDatabase` 与 `namespaceCode` 的**原子配对**
+  （改任一侧同时改另一侧，工具在重新绑定后才生效）；
+  ② 库/表引用约定：Doris 表名必须 `库.表` 全限定，`ListTables` 只列当前库、`DescribeTable` 支持
+  `schema.table`，SQL 只放行 `select/with/pragma/explain`；
+  ③ 本体内容消费五层调用链：源选择 → 策略路由（工具暴露）→ 工具 → HTTP 客户端（新 MAL
+  `/api/v1/analysis/**` 优先、旧 `/agent/**`、`/system/manager/**` 兼容）→ Prompt/六步 SOP；
+  ④ 各环境取值（PDT 本体库 3 / demo2 本体库 1，仅列非密钥键，未读取任何密钥）；
+  ⑤ 缓存（本体 TTL 30s）、并发（本体/Doris 各 12）、超时与失败降级；
+  ⑥ 与最新接口文档的差距：`qualifiedTables` 尚未消费、`resolve-ontology-object` 与本体库详情接口
+  「代码存在但无调用方」、X360 目前只接入转督办任务令。
+- 文档只做现状描述与代码定位（`文件:行` 证据索引 + 自查命令），未修改任何生产实现、测试、配置、
+  数据源或数据集；不含真实凭据、环境变量密文与内部绝对路径。
+- 验证（2026-09-20）：`git diff --check` 通过；文档内 `文件:行` 引用按当前工作区代码逐条复核
+  （`build_cognitive_policy_decision` `analysis_policy.py:862`、`doris_route_tools` `:899`、
+  `_ALLOWED_LEAD` `sql_tools.py:289`、`_doris_query` `:179`、`remote.py:128/204/476/507/530`、
+  `app.py:1348/1393/1702/1721/1869/1916/3508` 等）。
+
+### 2. 下一自然周 changelog 文件预建：2026-09-21 ~ 09-25（已完成）
+
+- 按要求在三个仓库预建下一自然周文件 `changelog_9_21_25.md`：分析 Agent 提交 `602cd68`、
+  建模 Agent `c63eca3`（含 `docs/changelog/README.md` 索引更新）、CPQ Agent `d0f306c`
+  （条目编号接续上周 `## 147`，本周起始条目 `## 148`）。
+- 建文件时当周尚无实际变更，文件只含表头与维护规则，不编造条目；三个 commit 均**未推送**
+  （分析 Agent 侧 `python scripts/push_gitlab.py --check` 以"工作区存在未提交修改"拒绝，
+  前几批未提交改动按要求原样保留，未 stash、未回滚）。

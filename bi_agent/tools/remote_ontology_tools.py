@@ -212,8 +212,36 @@ def _graph_anchor_candidates(
 
 
 def _related_objects(data: dict[str, Any]) -> list[dict[str, Any]]:
-    objects = data.get("objects") or data.get("relatedObjects") or []
-    return [item for item in objects if isinstance(item, dict)]
+    """Extract related objects from either MAL dialect.
+
+    Legacy replies put them under ``objects`` / ``relatedObjects``; the new
+    ``QueryResponse`` returns one related object per row under ``result.rows``
+    with ``typeName`` at the row root.
+    """
+    if not isinstance(data, dict):
+        return []
+    objects = data.get("objects") or data.get("relatedObjects")
+    if not isinstance(objects, list):
+        result = data.get("result")
+        raw_rows = result.get("rows") if isinstance(result, dict) else None
+        objects = raw_rows if isinstance(raw_rows, list) else []
+    normalised: list[dict[str, Any]] = []
+    for item in objects:
+        if not isinstance(item, dict):
+            continue
+        if isinstance(item.get("properties"), dict) or "typeName" in item or "type" in item:
+            properties = item.get("properties")
+            if not isinstance(properties, dict):
+                properties = {
+                    key: value for key, value in item.items() if key not in ("typeName", "type")
+                }
+            normalised.append({
+                "typeName": str(item.get("typeName") or item.get("type") or "Unknown"),
+                "properties": properties,
+            })
+        else:
+            normalised.append(item)
+    return normalised
 
 
 def _related_text(data: dict[str, Any], title: str = "关联本体") -> str:

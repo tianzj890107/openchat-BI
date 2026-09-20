@@ -192,10 +192,21 @@ def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], 
                 ):
                     value = f"Bearer {value}"
                 headers[name] = value
+        # The legacy gateway (``/agent/doris/query``) expects ``{"sql": ...}``
+        # and answers with ``data.rows``; the MAL endpoint
+        # (``/api/v1/analysis/data/query``) expects a ``QueryRequest`` and
+        # answers with ``data.result.rows``.  Both dialects stay live, and each
+        # side tolerates the other's response shape while the fleet rolls over.
+        legacy_dialect = conn.api_url.rstrip("/").endswith("/agent/doris/query")
+        request_body = (
+            {"sql": sql}
+            if legacy_dialect
+            else {"analysisConfig": {"sql": sql}, "commonConfig": {}}
+        )
         try:
             request = Request(
                 conn.api_url,
-                data=json.dumps({"sql": sql}, ensure_ascii=False).encode("utf-8"),
+                data=json.dumps(request_body, ensure_ascii=False).encode("utf-8"),
                 headers=headers,
                 method="POST",
             )
@@ -213,18 +224,35 @@ def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], 
                         f"Doris HTTP API 返回失败 code={code}")
                 )
         data = payload.get("data", payload) if isinstance(payload, dict) else {}
-        raw_rows = data.get("rows", []) if isinstance(data, dict) else []
-        if not raw_rows:
+        if not isinstance(data, dict):
+            data = {}
+        result = data.get("result") if isinstance(data.get("result"), dict) else {}
+        raw_rows = result.get("rows")
+        raw_columns = result.get("columns")
+        if not isinstance(raw_rows, list):
+            raw_rows = data.get("rows")
+            raw_columns = data.get("columns")
+        if not isinstance(raw_rows, list):
             return [], []
+        explicit: list[str] = []
+        if isinstance(raw_columns, list):
+            for column in raw_columns:
+                if isinstance(column, dict):
+                    name = column.get("identifierCode") or column.get("name") or column.get("label")
+                else:
+                    name = column
+                if name not in (None, ""):
+                    explicit.append(str(name))
+        if not raw_rows:
+            return explicit, []
         if isinstance(raw_rows[0], dict):
-            columns: list[str] = []
+            columns = list(explicit)
             for row in raw_rows:
                 for key in row:
                     if key not in columns:
                         columns.append(key)
             return columns, [tuple(row.get(c) for c in columns) for row in raw_rows]
-        columns = data.get("columns", []) if isinstance(data, dict) else []
-        return list(columns), [tuple(row) for row in raw_rows]
+        return explicit, [tuple(row) for row in raw_rows]
     try:
         import pymysql  # lazy: only required when the Doris source is active
     except ImportError as e:  # pragma: no cover - environment dependent

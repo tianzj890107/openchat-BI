@@ -2,6 +2,65 @@
 
 ## 3. Doris 只读查询
 
+本仓库的 `DorisHttpConn` 同时支持两种契约，按 `DORIS_API_URL` 的路径自动选择方言，
+并在解析时容忍两种响应形态（灰度期同一网关可能返回任一形态）：
+
+| | 旧网关（现状默认） | MAL 新契约 |
+| --- | --- | --- |
+| 路径 | `POST /agent/doris/query` | `POST /api/v1/analysis/data/query` |
+| 请求体 | `{"sql": "..."}` | `{"analysisConfig": {"sql": "..."}, "commonConfig": {}}` |
+| 行数据 | `data.rows` | `data.result.rows` |
+| 列定义 | `data.columns`（可选） | `data.result.columns[].identifierCode` |
+
+### 3.1 MAL 新契约
+
+**请求方法：** `POST`
+**路径：** `/api/v1/analysis/data/query`
+**Content-Type：** `application/json`
+
+请求示例：
+
+```json
+{
+  "analysisConfig": {
+    "sql": "SELECT id, name FROM demo LIMIT 10"
+  },
+  "commonConfig": {}
+}
+```
+
+返回参数：
+
+| 参数 | 类型 | 含义 |
+|------|------|------|
+| `data.result.rows` | array | 查询结果行列表，每行是一个键值对对象 |
+| `data.result.columns[].identifierCode` | array | 列顺序与列名；缺失时按首行键顺序回退 |
+
+返回示例：
+
+```json
+{
+  "success": true,
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "resultType": "TABLE",
+    "result": {
+      "columns": [
+        {"identifierCode": "id", "label": "id", "type": "PROPERTY"},
+        {"identifierCode": "name", "label": "name", "type": "PROPERTY"}
+      ],
+      "rows": [{"id": 1, "name": "Alice"}]
+    }
+  }
+}
+```
+
+上游 `success=false`、`code` 非 200、HTTP 非 2xx 或非 JSON 仍会抛出 `DorisApiError`，
+不会被吞掉；空结果集返回 `([], [])`，不算错误。
+
+### 3.2 旧网关契约（仍在兼容）
+
 **请求方法：** `POST`
 **路径：** `/agent/doris/query`
 **Content-Type：** `application/json`

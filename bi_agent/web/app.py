@@ -1366,11 +1366,19 @@ def _remote_repository_catalog(client: RemoteOntologyClient) -> list[dict[str, A
             # older deployments called the same paired source field
             # `dorisDatabase`. Accept both without hard-coding a business DB.
             database = str(item.get("dorisDatabase") or item.get("currentDatabase") or "").strip()
+            meta_database = str(
+                item.get("metaDatabase") or item.get("arcadedbMetaDatabase") or ""
+            ).strip()
+            knowledge_database = str(
+                item.get("knowledgeDatabase") or item.get("arcadedbKnowledgeDatabase") or ""
+            ).strip()
             repositories.append({
                 "id": repository_id,
                 "name": str(item.get("name") or f"本体库 {repository_id}"),
                 "description": str(item.get("description") or ""),
                 "dorisDatabase": database,
+                "metaDatabase": meta_database,
+                "knowledgeDatabase": knowledge_database,
                 "namespace": str(item.get("namespaceCode") or item.get("namespace") or "").strip(),
                 "value": f"{REMOTE_ONTOLOGY_PREFIX}{repository_id}",
                 "databaseValue": f"{REMOTE_DORIS_PREFIX}{repository_id}" if database else "",
