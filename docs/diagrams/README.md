@@ -24,6 +24,7 @@
 | [07-answer-truthfulness.md](07-answer-truthfulness.md) | 图 7 · 回答真实性约束 | 回答合同、未支撑数字、因果越界、代理指标披露、预测假设披露的判定顺序。 |
 | [08-cache-concurrency-degradation.md](08-cache-concurrency-degradation.md) | 图 8 · 缓存并发与降级 | 本体缓存 TTL、三个进程级 limiter、准入控制、超时与各类降级路径。 |
 | [09-eval-and-release-gate.md](09-eval-and-release-gate.md) | 图 9 · 评测与发布门禁 | CI 作业链、release gate 的六类必过门与被阻断条件、live canary 的边界。 |
+| [10-business-panorama-16x9.md](10-business-panorama-16x9.md) | 图 10 · 业务全景架构（16:9 横版） | 面向业务侧的全景海报：六段业务主线 + 线条与色块图例。图形源为 `10-business-panorama-16x9.svg`，由 `build_business_panorama_16x9.py` 生成；正文只用业务语言，不含技术细节。 |
 
 阅读顺序建议：`01` → `03` → `04` 先建立整体认识，其余按需查阅。
 
@@ -35,11 +36,11 @@
 
 | 方案 | 是否推荐 | 理由 |
 |---|---|---|
-| **Markdown + Mermaid**（本目录） | ✅ 推荐，唯一事实源 | GitLab / GitHub / VS Code 原生渲染；纯文本可 `git diff`、可 code review；与代码同仓库同步演进；即使没有渲染器，正文、表格和 `01` 里的 ASCII 兜底图仍然可读 |
+| **Markdown + Mermaid**（本目录 §1–§9） | ✅ 推荐，唯一事实源 | GitLab / GitHub / VS Code 原生渲染；纯文本可 `git diff`、可 code review；与代码同仓库同步演进；即使没有渲染器，正文、表格和 `01` 里的 ASCII 兜底图仍然可读 |
 | 独立 `.mmd` 文件 | 仅作 CI 产物 | Mermaid CLI 可以直接吃，但 GitLab 不渲染（点开是源码），且会与 md 形成两份副本 → 需要出图时按下方命令从这些 md 抽取即可 |
 | PlantUML `.puml` | 不采用 | 需要额外渲染组件（本地 Java / 服务端 PlantUML），本仓库 GitLab 未启用；中文与时序图收益不明显 |
 | `.drawio` / `.vsdx` | 不采用 | 二进制不可 diff，评审看不到"改了什么"，长期必然与代码漂移；只在对外汇报时临时另存 |
-| 导出的 `.svg` / `.png` | 不采用（按需导出） | 静态快照会过期，二进制进仓库产生噪声 diff；需要贴文档/PPT 时用同源导出 |
+| 导出的 `.svg` / `.png` | 仅 §10 例外用 `.svg` | 静态快照会过期、二进制 diff 噪声大，所以普通流程图仍按需导出到 `/tmp`；只有 §10 的业务全景海报用**纯文本 SVG**（自动布局无法锁定 16:9 画框与逐块配色），并由脚本重新生成，不引入二进制 |
 
 按需出图（不进仓库，只落在 `/tmp`）：
 
@@ -53,6 +54,9 @@ done
 
 > 说明：每个 md 只含本图的 mermaid 代码块，`mermaid-cli` 会逐块渲染。
 > 如果环境无 Node / 无外网，跳过这一步即可 —— 本目录的价值在源码，不在图片。
+>
+> §10 的业务全景海报是手工排版的矢量图（`10-business-panorama-16x9.svg`），本身就是可交付图形，
+> 不需要渲染；它由 `build_business_panorama_16x9.py` 生成，改内容请改脚本后重跑。
 
 ---
 
@@ -106,3 +110,6 @@ done
    调整优先级时必须同步改图与 README §10 索引。
 7. **一图一文件**：新增流程图时在 `docs/diagrams/` 下新建 `NN-<slug>.md`，并更新 README 图目录；
    不要把多张图重新塞回同一个文件。
+8. **手工排版的海报**：`10-business-panorama-16x9.svg` 由 `build_business_panorama_16x9.py` 生成，
+   改内容请改脚本后重跑，不要直接手改 SVG；改动后必须复核画布仍为 1920 × 1080、文字不溢出容器、
+   连线不穿过色块。
