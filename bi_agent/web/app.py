@@ -849,6 +849,29 @@ REMOTE_DORIS_PREFIX = "__doris_repository__:"
 METAERP_ONTOLOGY_VALUE = "__metaerp_ontology__"
 LEGACY_PRODUCTION_ONTOLOGY_VALUE = "__production_ontology__"
 
+#: Placeholder returned by ``GET /api/sources`` where the source previously
+#: echoed a physical, secret-adjacent value (Doris JDBC connection string, HTTP
+#: API URL, account name).  The real values stay server-side; the settings page
+#: only needs to know whether they are configured, which the sibling
+#: ``*_configured`` booleans express.  A round-trip through ``PUT /api/sources``
+#: treats this placeholder as "keep the existing value" so saving an untouched
+#: form never clears a configured source
+#: (docs/specs/anonymous-read-surface-hardening.md §2.1/§2.3).
+SOURCES_REDACTED_PLACEHOLDER = "（已配置，见服务端环境变量）"
+
+
+def _redacted_source_field(value: Optional[str]) -> str:
+    """Return the stable placeholder for a configured value, else ``""``."""
+    return SOURCES_REDACTED_PLACEHOLDER if str(value or "").strip() else ""
+
+
+def _unredact_source_field(value: Optional[str]) -> Optional[str]:
+    """Map the GET placeholder back to "not provided" on the PUT side."""
+    if value is not None and str(value).strip() == SOURCES_REDACTED_PLACEHOLDER:
+        return None
+    return value
+
+
 # Retrieval modes for ontology knowledge. "semantic" = Excel-only keyword/
 # semantic lookup (the original behavior); "graph" = graph-library retrieval
 # (anchor on the graph, drill the sub-tree, diffuse for根因) which additionally
@@ -1156,8 +1179,10 @@ def healthz() -> JSONResponse:
 
     - `/healthz` 为统一健康检查入口，`/health` 为等价别名；
     - 未完成配置时返回 503；就绪返回 200；
-    - 响应字段固定：`ok`/`status`/`app`/`name`/`version`/`host`/`port`/
+    - 响应字段固定：`ok`/`status`/`app`/`name`/`version`/`port`/
       `uptime_seconds`/`configured`/`llm_call`/`dependencies`。
+    - 不回吐机器主机名或其它主机指纹：`/healthz` 是匿名端点，实例标识不应
+      从这里泄露（docs/specs/anonymous-read-surface-hardening.md §2.2/§3.1）。
     """
     ontology_ready = (
         STATE.remote_ontology is not None
@@ -1174,7 +1199,6 @@ def healthz() -> JSONResponse:
             "app": APP_NAME,
             "name": APP_DISPLAY_NAME,
             "version": APP_VERSION,
-            "host": socket.gethostname(),
             "port": APP_PORT,
             "uptime_seconds": int(time.monotonic() - APP_STARTED_AT),
             "configured": ready,
@@ -1916,10 +1940,15 @@ def get_sources_endpoint(session_id: str = "") -> JSONResponse:
         "doris": {
             "value": DORIS_SOURCE_VALUE,
             "active": source.use_doris,
-            "api_url": source.doris_api_url,
-            "jdbc_url": source.doris_jdbc_url,
+            # Physical connection details never leave the server: an anonymous
+            # reader only learns whether each value is configured.
+            "api_url": _redacted_source_field(source.doris_api_url),
+            "api_url_configured": bool(str(source.doris_api_url or "").strip()),
+            "jdbc_url": _redacted_source_field(source.doris_jdbc_url),
+            "jdbc_configured": bool(str(source.doris_jdbc_url or "").strip()),
             "driver": source.doris_driver,
-            "username": source.doris_username,
+            "username": _redacted_source_field(source.doris_username),
+            "username_configured": bool(str(source.doris_username or "").strip()),
             # Never return the configured password to the browser.  A blank
             # optional value on PUT means "keep the existing password".
             "password": "",
@@ -1986,6 +2015,13 @@ def _put_sources_endpoint_impl(
     BI tools against the new sources and resets sessions so the change
     takes effect on the next turn."""
     source = source or STATE
+    # The settings page prefills the connection inputs with the placeholders
+    # from ``GET /api/sources``.  Normalise them to "not provided" *before* any
+    # URL/schema validation so an untouched form saves without side effects
+    # (docs/specs/anonymous-read-surface-hardening.md §2.3).
+    req.doris_jdbc_url = _unredact_source_field(req.doris_jdbc_url)
+    req.doris_api_url = _unredact_source_field(req.doris_api_url)
+    req.doris_username = _unredact_source_field(req.doris_username)
     binding_before = _source_binding_signature(source)
     cwd = Path(STATE.cwd)
     changed: list[str] = []
@@ -2217,7 +2253,13 @@ def _put_sources_endpoint_impl(
             if source.use_doris
             else _cwd_relative_value(source.db_path)
         ),
-        "doris_jdbc_url": source.doris_jdbc_url if source.use_doris else "",
+        # This write response is anonymous as well: echoing the real JDBC
+        # string here would reopen the read surface §2.1 closes (an empty
+        # ``PUT /api/sources`` would hand it straight back).  The frontend
+        # consumes ``changed`` and the logical identifiers, never this field.
+        "doris_jdbc_url": (
+            _redacted_source_field(source.doris_jdbc_url) if source.use_doris else ""
+        ),
         "doris_database": source.doris_database if source.use_doris else "",
         "namespace": source.ontology_namespace if source.remote_ontology else "",
         "retrieval_mode": source.retrieval_mode,

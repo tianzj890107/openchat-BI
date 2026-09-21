@@ -6,7 +6,6 @@ import subprocess
 from typing import Optional
 
 from .claudemd import build_memory_prompt
-from .config import get_environment_info
 
 
 def _get_git_info(cwd: str) -> str:
@@ -147,7 +146,6 @@ def build_system_prompt(
     # Avoid circular import at module level
     from .agent_def import AgentDef
 
-    env = get_environment_info()
     today = datetime.date.today().isoformat()
     git_info = _get_git_info(cwd)
     skills_listing = _get_skills_listing()
@@ -201,12 +199,7 @@ When users reference a slash command like "/commit" or "/review", use the Skill 
 - Validate at system boundaries (user input, external APIs).
 
 # Environment
-- Working directory: {env['cwd']}
-- Platform: {env['platform']}
-- OS: {env['os_version']}
-- Git repo: {env['is_git_repo']}
 - Date: {today}
-{"- Shell: The Bash tool supports Unix commands (rm, ls, grep, etc.), PowerShell cmdlets (Remove-Item, Get-ChildItem, etc.), and Windows commands (del, dir, etc.). Use whichever syntax is most appropriate." if env['platform'] == "windows" else "- Shell: bash"}
 """
     if project_info:
         prompt += f"\n# Project\n{project_info}\n"
