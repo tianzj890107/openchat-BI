@@ -165,6 +165,107 @@ def _candidate_results(client: RemoteOntologyClient, query: str) -> list[tuple[s
     return found
 
 
+# ---------------------------------------------------------------------------
+# 权威确认层（Spec §4.2）
+#
+# 确权口径必须来自本体服务：`resolve-ontology-object` 原生支持
+# `candidateTypes` 顺序优先匹配，命中时把 `properties` 展开到行根级。
+# 本地 `_candidate_results` / `_rank_row` 只在确认层"跳过"或"不可用"时兜底。
+# ---------------------------------------------------------------------------
+
+#: 每个工具的权威类型（Spec §4.2 第 3 条）：必须是 `candidateTypes` 首项。
+_AUTHORITATIVE_TYPES = {
+    "Ontology-TermDisambiguate": "Term",
+    "MetricCalculation": "Indicator",
+    "Ontology-EntityDescribe": "BusinessObject",
+    "Ontology-SemanticQuery": "BusinessObject",
+}
+
+#: 确认接口只接受"单个对象名/编码"；带这些标记的是查询意图，必须走既有搜索路径。
+_QUERY_MARKER_RE = re.compile(
+    r"[\s?？!！。，,;；、/\\|<>()（）\[\]【】\"'“”‘’=+*%]"
+    r"|下降|上升|上涨|增长|减少|原因|为什么|怎么|如何|多少|哪些|什么|趋势"
+    r"|对比|比较|环比|同比|占比|排名|变化|影响|差异|异常|是否",
+)
+
+#: 确认层未命中/不可用时，答案里必须如实说明，不能把回退写成权威结论。
+CONFIRMATION_UNAVAILABLE_NOTE = "（本体确认接口不可用，已回退到本地候选）"
+
+MAX_CONFIRMABLE_NAME_LENGTH = 64
+
+
+def _confirmable_name(value: Any) -> str:
+    """Return the name worth confirming, or ``""`` for free-text queries."""
+    name = str(value or "").strip()
+    if not name or len(name) > MAX_CONFIRMABLE_NAME_LENGTH:
+        return ""
+    if _QUERY_MARKER_RE.search(name):
+        return ""
+    return name
+
+
+def confirmation_candidates(tool_name: str) -> list[str]:
+    """`candidateTypes`: 权威类型优先 + 文档枚举回退项（顺序稳定、无重复）。"""
+    authoritative = _AUTHORITATIVE_TYPES.get(tool_name, "BusinessObject")
+    return [authoritative] + [item for item in _CANDIDATE_TYPES if item != authoritative]
+
+
+def confirm_object(
+    client: RemoteOntologyClient, *, name: Any, candidate_types: list[str]
+) -> dict[str, Any]:
+    """按本体服务的权威结论确认对象（Spec §4.2）。
+
+    返回 ``status`` ∈ ``hit`` / ``miss`` / ``unavailable`` / ``skipped``；命中时
+    携带接口给出的 ``typeName`` 与展开后的 ``properties``。确认层抛错**不向上传播**：
+    调用方必须在 ``unavailable`` 时降级到本地候选并附上降级说明。
+    """
+    requested = _confirmable_name(name)
+    result: dict[str, Any] = {
+        "status": "skipped",
+        "name": requested,
+        "typeName": "",
+        "code": "",
+        "properties": {},
+        "error": "",
+    }
+    if not requested or not candidate_types:
+        return result
+    try:
+        confirmed = client.ensure_object(requested, list(candidate_types))
+    except OntologyApiError as exc:
+        result["status"] = "unavailable"
+        result["error"] = str(exc)
+        return result
+    info = confirmed.get("objectInfo") if isinstance(confirmed, dict) else None
+    properties = info.get("properties") if isinstance(info, dict) else None
+    if not confirmed.get("found") or not isinstance(properties, dict):
+        result["status"] = "miss"
+        return result
+    result["status"] = "hit"
+    result["typeName"] = str(info.get("typeName") or "Unknown")
+    result["properties"] = properties
+    result["code"] = _text(_ci_get(properties, "code", "identifierCode"))
+    return result
+
+
+def _confirmed_block(confirmed: dict[str, Any]) -> str:
+    """Render a confirmed hit strictly from the authority's own fields."""
+    return _format_object(
+        str(confirmed.get("typeName") or "Unknown"),
+        dict(confirmed.get("properties") or {}),
+    )
+
+
+def _confirmed_name_for_miss(name: str) -> str:
+    return f"本体库中没有名为 {name!r} 的对象/术语（已由本体服务确认）。"
+
+
+def _with_degraded_note(text: str, confirmed: dict[str, Any]) -> str:
+    if confirmed.get("status") != "unavailable":
+        return text
+    return f"{text}\n\n{CONFIRMATION_UNAVAILABLE_NOTE}"
+
+
 def _code_type(value: str) -> str:
     code = value.upper()
     if code.startswith("MREL"):
@@ -480,14 +581,23 @@ def _make_query(client: RemoteOntologyClient) -> Executor:
         query = str(params.get("query") or "").strip()
         if not query:
             return "Ontology-SemanticQuery: empty query."
+        limit = max(1, min(int(params.get("limit") or 10), 100))
+        confirmed = confirm_object(
+            client, name=query,
+            candidate_types=confirmation_candidates("Ontology-SemanticQuery"),
+        )
+        if confirmed["status"] == "hit":
+            return "# Remote Ontology-SemanticQuery\n\n" + _confirmed_block(confirmed)
+        if confirmed["status"] == "miss":
+            return f"Ontology-SemanticQuery: {_confirmed_name_for_miss(query)}"
         try:
             matches = _candidate_results(client, query)
             if not matches:
                 return f"Ontology-SemanticQuery: no remote matches for {query!r}."
-            limit = max(1, min(int(params.get("limit") or 10), 100))
-            return "# Remote Ontology-SemanticQuery\n\n" + "\n\n".join(
+            body = "# Remote Ontology-SemanticQuery\n\n" + "\n\n".join(
                 _format_object(kind, props) for kind, props in matches[:limit]
             )
+            return _with_degraded_note(body, confirmed)
         except OntologyApiError as exc:
             return f"Ontology-SemanticQuery remote error: {exc}"
     return run
@@ -498,9 +608,20 @@ def _make_term(client: RemoteOntologyClient) -> Executor:
         term = str(params.get("term") or "").strip()
         if not term:
             return "Ontology-TermDisambiguate: empty term."
+        confirmed = confirm_object(
+            client, name=term,
+            candidate_types=confirmation_candidates("Ontology-TermDisambiguate"),
+        )
+        if confirmed["status"] == "hit":
+            return _confirmed_block(confirmed)
+        if confirmed["status"] == "miss":
+            return f"Ontology-TermDisambiguate: {_confirmed_name_for_miss(term)}"
         try:
             rows = _search_type(client, "Term", term, limit=20)
-            return "\n\n".join(_format_object("Term", row) for row in rows) or f"No term matches {term!r}."
+            body = "\n\n".join(
+                _format_object("Term", row) for row in rows
+            ) or f"No term matches {term!r}."
+            return _with_degraded_note(body, confirmed)
         except OntologyApiError as exc:
             return f"Ontology-TermDisambiguate remote error: {exc}"
     return run
@@ -511,18 +632,28 @@ def _make_metric(client: RemoteOntologyClient) -> Executor:
         query = str(params.get("metric") or "").strip()
         if not query:
             return "MetricCalculation: empty metric."
+        confirmed = confirm_object(
+            client, name=query,
+            candidate_types=confirmation_candidates("MetricCalculation"),
+        )
+        if confirmed["status"] in {"hit", "miss"} and not confirmed["code"]:
+            return f"No metric matches {query!r}."
         try:
-            # Indicator-only by design. Do not let unrelated object types win
-            # simply because they share the same label or code fragment.
-            rows = _search_type(client, "Indicator", query, limit=20)
-            if not rows:
-                return f"No metric matches {query!r}."
+            if confirmed["status"] == "hit":
+                # 指标身份由权威接口先确认；下面只补指标的维度上下文。
+                rows = [dict(confirmed["properties"])]
+            else:
+                # Indicator-only by design. Do not let unrelated object types
+                # win simply because they share the same label or code fragment.
+                rows = _search_type(client, "Indicator", query, limit=20)
+                if not rows:
+                    return f"No metric matches {query!r}."
             rendered: list[str] = []
             for row in rows:
                 metric = _metric_adapter(row)
                 dimensions, source = _metric_dimensions(client, metric["code"])
                 rendered.append(_format_metric(metric, dimensions, source))
-            return "\n\n".join(rendered)
+            return _with_degraded_note("\n\n".join(rendered), confirmed)
         except OntologyApiError as exc:
             return f"MetricCalculation remote error: {exc}"
     return run
@@ -547,6 +678,22 @@ def _make_describe(client: RemoteOntologyClient) -> Executor:
         entity = str(params.get("entity") or "").strip()
         if not entity:
             return "Ontology-EntityDescribe: empty entity."
+        confirmed = confirm_object(
+            client, name=entity,
+            candidate_types=confirmation_candidates("Ontology-EntityDescribe"),
+        )
+        if confirmed["status"] == "hit":
+            # 展开上下文必须使用权威接口给出的 typeName/code，而不是本地排序结果。
+            kind = str(confirmed["typeName"] or "Unknown")
+            code = str(confirmed["code"] or entity)
+            try:
+                related = client.find_related(kind, code, depth=1)
+            except OntologyApiError as exc:
+                return f"Ontology-EntityDescribe remote error: {exc}"
+            return (_confirmed_block(confirmed) + "\n\n"
+                    + _related_text(related, "Attributes and relations"))
+        if confirmed["status"] == "miss":
+            return f"Ontology-EntityDescribe: {_confirmed_name_for_miss(entity)}"
         try:
             matches = _candidate_results(client, entity)
             if not matches:
@@ -554,7 +701,8 @@ def _make_describe(client: RemoteOntologyClient) -> Executor:
             kind, props = matches[0]
             code = _text(_ci_get(props, "code", "identifierCode", default=entity))
             related = client.find_related(kind, code, depth=1)
-            return _format_object(kind, props) + "\n\n" + _related_text(related, "Attributes and relations")
+            body = _format_object(kind, props) + "\n\n" + _related_text(related, "Attributes and relations")
+            return _with_degraded_note(body, confirmed)
         except OntologyApiError as exc:
             return f"Ontology-EntityDescribe remote error: {exc}"
     return run

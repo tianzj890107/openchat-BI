@@ -1381,6 +1381,10 @@ def _remote_repository_catalog(client: RemoteOntologyClient) -> list[dict[str, A
                 "metaDatabase": meta_database,
                 "knowledgeDatabase": knowledge_database,
                 "namespace": str(item.get("namespaceCode") or item.get("namespace") or "").strip(),
+                # CDC topic prefix: only the detail endpoint knows it. The list
+                # value wins when the listing already carries one, otherwise the
+                # detail overlay below fills it in; unset stays an empty string.
+                "cdcTopicPrefix": str(item.get("cdcTopicPrefix") or "").strip(),
                 "value": f"{REMOTE_ONTOLOGY_PREFIX}{repository_id}",
                 "databaseValue": f"{REMOTE_DORIS_PREFIX}{repository_id}" if database else "",
             })
@@ -1388,7 +1392,65 @@ def _remote_repository_catalog(client: RemoteOntologyClient) -> list[dict[str, A
         if (total and len(repositories) >= total) or (not total and len(items) < 100):
             break
         page += 1
+    _apply_active_repository_detail(client, repositories)
     return repositories
+
+
+def _repository_detail_row(client: RemoteOntologyClient) -> dict[str, Any]:
+    """Fetch the active repository detail row; never make the catalog fail.
+
+    Detail availability is expressed separately from catalog availability: a
+    failing (or missing) detail endpoint keeps the listing values.
+    """
+    fetch = getattr(client, "repository_info", None)
+    if not callable(fetch):
+        return {}
+    try:
+        row = fetch()
+    except OntologyApiError as exc:
+        logger.warning("ontology repository detail unavailable: %s", exc)
+        return {}
+    return row if isinstance(row, dict) else {}
+
+
+def _apply_active_repository_detail(
+    client: RemoteOntologyClient, repositories: list[dict[str, Any]]
+) -> None:
+    """Overlay the active repository's detail row onto its own catalog entry."""
+    active_id = str(getattr(client, "repository_id", "") or "").strip()
+    if not active_id or not repositories:
+        return
+    entry = next((item for item in repositories if str(item.get("id")) == active_id), None)
+    if entry is None:
+        return
+    row = _repository_detail_row(client)
+    if not row:
+        return
+
+    def detail_text(*names: str) -> str:
+        for name in names:
+            value = row.get(name)
+            if value not in (None, ""):
+                return str(value).strip()
+        return ""
+
+    database = detail_text("dorisDatabase", "currentDatabase")
+    if database:
+        entry["dorisDatabase"] = database
+        entry["databaseValue"] = f"{REMOTE_DORIS_PREFIX}{entry['id']}"
+    for entry_field, names in (
+        ("metaDatabase", ("metaDatabase", "arcadedbMetaDatabase")),
+        ("knowledgeDatabase", ("knowledgeDatabase", "arcadedbKnowledgeDatabase")),
+        ("name", ("name",)),
+        ("description", ("description",)),
+        ("namespace", ("namespaceCode", "namespace")),
+    ):
+        value = detail_text(*names)
+        if value:
+            entry[entry_field] = value
+    prefix = detail_text("cdcTopicPrefix")
+    if prefix and not entry.get("cdcTopicPrefix"):
+        entry["cdcTopicPrefix"] = prefix
 
 
 _SOURCE_CONTEXT_FIELDS = (

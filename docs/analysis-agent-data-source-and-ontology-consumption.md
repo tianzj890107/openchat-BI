@@ -205,8 +205,8 @@ db_path / use_doris / doris_* / retrieval_mode / graph_path` 等。切换数据�
 | 客户端方法 | 新契约（优先） | 旧契约（回退） | 谁在用 |
 |---|---|---|---|
 | `list_repositories()` `:530` | `GET /api/v1/analysis/context/ontology-repository` | `GET /system/manager/ontology-repository` | 数据源设置页目录、启动校验 |
-| `repository_info()` `:516` | `GET /api/v1/analysis/context/ontology-repository/{id}` | `GET /system/manager/ontology-repository/{id}` | **当前无调用方** |
-| `ensure_object()` `:239` | `POST /api/v1/analysis/context/resolve-ontology-object` | `POST /agent/ontology/ensureOntologyObject` | **当前无调用方** |
+| `repository_info()` `:516` | `GET /api/v1/analysis/context/ontology-repository/{id}` | `GET /system/manager/ontology-repository/{id}` | 数据源目录：对当前激活库取一次详情（`cdcTopicPrefix`） |
+| `ensure_object()` `:239` | `POST /api/v1/analysis/context/resolve-ontology-object` | `POST /agent/ontology/ensureOntologyObject` | 对象消歧权威确认层（TermDisambiguate / EntityDescribe / SemanticQuery / MetricCalculation） |
 | `find_related()` `:265` | `GET /api/v1/analysis/context/expand-ontology-context` | `GET /agent/ontology/findRelatedObjects` | EntityDescribe / 图库遍历 |
 | `script_query()` `:476` | `POST /api/v1/analysis/meta/query`（`analysisConfig.language/sql`） | `POST /agent/ontology/scriptQuery` | 语义检索、列举、OpenCypher 遍历 |
 | `data_query()` `:507` | `POST /api/v1/analysis/data/query` | 无（旧口径走 Doris 网关） | `Ontology-MetricQuery` 指标计算 |
@@ -268,11 +268,20 @@ db_path / use_doris / doris_* / retrieval_mode / graph_path` 等。切换数据�
 ## 7. 与最新接口文档的差距（信息项，非缺陷）
 
 1. `POST /api/v1/analysis/context/resolve-ontology-object`（`ensure_object`）与
-   `GET /api/v1/analysis/context/ontology-repository/{id}`（`repository_info`）**代码已实现但无调用方**，
-   与 `API/系统接口调用与代码统计.md` 的结论一致。当前对象消歧走的是
-   `script_query(sql LIKE)` + `expand-ontology-context` 组合。
-2. 最新 MAL 文档把 `qualifiedTables` 定义为权威数据库范围；Agent 侧目前**尚未**消费该字段，
-   只使用 `dorisDatabase` + `information_schema` 反射（见 `docs/specs/ontology-mal-contract-migration.md`）。
+   `GET /api/v1/analysis/context/ontology-repository/{id}`（`repository_info`）**已接入真实链路**
+   （`docs/specs/ontology-object-resolution-and-repository-detail.md`）：
+   - `resolve-ontology-object` 成为对象消歧的**权威确认层**（权威类型优先的 `candidateTypes`，
+     命中即用接口给出的 `typeName` 与展开属性，不再由本地 `_rank_row` 决定类型）；
+     带空格/比较词的模糊输入仍走 `script_query` + `expand-ontology-context` 搜索路径，
+     确认接口失败时降级回本地候选并在答案中说明。
+   - `ontology-repository/{id}` 由数据源目录对**当前激活库**调用一次，透出 `cdcTopicPrefix`
+     （`GET /api/sources` 的 `ontology.remote_repositories[]` 与 `database.remote_databases[]`
+     一致）；详情失败只保留列表值，不影响目录可用性。
+2. `qualifiedTables`（权威数据库范围）只出现在**智能建模任务上下文**；分析 Agent 不消费建模
+   任务上下文，因此本仓库不实现该字段——归属建模侧
+   `eimosp-ontology-agentic-modeling/docs/specs/cross-schema-database-scope.md`。
+   分析 Agent 只使用 `dorisDatabase` + `information_schema` 反射
+   （见 `docs/specs/ontology-mal-contract-migration.md`）。
 3. X360 提供的能力里，目前实际接入的是"行动 → 转督办"任务令代理
    （`TASK_ALERT_API_URL` / `TASK_ALERT_API_ENABLED`，`.env.example`），未接入 X360 其它接口。
 

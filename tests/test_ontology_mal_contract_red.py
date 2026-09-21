@@ -591,7 +591,11 @@ class NewDialectParsingTests(_MalTestCase):
             pagination={"pageNum": 1, "pageSize": 1, "total": 1}))
         catalog = _remote_repository_catalog(self.client)
         self.assertEqual([repo["id"] for repo in catalog], ["1"])
-        self.assertEqual(len(self.fake.calls), 1)
+        # "Stops paginating" means exactly one *listing* request. The catalog
+        # also fetches the active repository's detail row by design
+        # (see tests/test_ontology_object_resolution_red.py R11), so the
+        # assertion is scoped to the listing endpoint instead of every call.
+        self.assertEqual(self.fake.paths().count(REPO_LIST_NEW), 1)
 
     def test_catalog_reads_current_database_from_the_new_field(self):
         self.fake.on(REPO_LIST_NEW, new_table(
