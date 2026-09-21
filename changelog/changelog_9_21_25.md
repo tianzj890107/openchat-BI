@@ -218,3 +218,47 @@ PDT / demo2 只读验收暴露的问题划分成三批后，本批完成**批次
 - 未确认项按 Spec 默认值实现并在 Spec §4 记录（逻辑库名继续可见、占位符文案、`# Environment`
   只留日期、`/healthz` 删除 `host`、远程 `base_url` 保留）。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未读取真实凭据、未跑 live。
+
+### 2026-09-21 · 会话回收站（把「记忆管理」页做成删除会话的回收站）：Spec + 红测 + 实现提示词（本轮仅契约，生产实现未做）
+
+- 需求：把「记忆管理」按钮点进去的页面做成删除会话的回收站。本轮交付 **Spec + 可运行红测 +
+  实现提示词**，**未修改生产实现**，等实现批次落地后才算是能力上线。
+- 可行性结论：**可行**。当前是三条"删掉就没了"的路径——(1) 侧边栏「最近」的 `✕` →
+  `DELETE /api/conversations/{cid}` → `ConversationStore.delete()` 直接 `unlink`（硬删除、
+  无二次确认、无撤销）；(2) 活跃会话超过 `MAX_CONVERSATIONS = 100` 时 `_prune()` 自动物理
+  删除最旧的；(3) 报表侧另有独立删除入口（本批不动）。
+- 生产复现证据（临时目录，**未触碰任何真实用户会话**）：`GET /api/conversations/trash` → `405`
+  （路径被 `DELETE /api/conversations/{cid}` 参数化路由占用）；`DELETE /api/conversations/trash?confirm=1`
+  → `200 {"ok": false}`（被同一条参数化路由吃掉，是路由顺序陷阱）；`POST …/trash/{cid}/restore`
+  → `404`；删除后快照文件直接消失、`trash/` 目录不存在；连续 `save` 102 条后活跃仅剩 100 条，
+  被裁掉的 2 条物理消失且无法恢复。
+- 目标契约（详见 Spec）：删除改为**软删除**（快照移入 `dataset/conversations/trash/` + 写
+  `deleted_at` + 移出 `history_index.json`，返回值语义不变，前端 `{"ok": bool}` 契约不放宽）；
+  新增 4 个回收站接口（列表 / 恢复 / 彻底删除 / 清空），其中 `DELETE /api/conversations/trash`
+  必须声明在 `{cid}` 路由**之前**；保留期默认 **30 天**（严格小于才清理、`≤0` 永久保留）、
+  回收站上限 `MAX_TRASH = 500`；`_prune()` 裁剪对象也改为进回收站（保留期内可找回）；
+  回收站列表**只回元数据白名单**（不回 `messages`/`chat_html`/`source_config` 等，沿用批次 1
+  的匿名面收敛边界）；恢复必须保持 `updated_at`、移除 `deleted_at`、同 id 冲突不覆盖不追加；
+  清空需显式 `confirm=1` + 前端二次确认；「记忆管理」页新增回收站区块（列表 / 恢复 / 彻底删除 /
+  清空 / 计数），侧边栏 `✕` 文案改为「移入回收站」。
+- 交付物：`docs/specs/conversation-trash-recycle-bin.md`、
+  `docs/specs/conversation-trash-recycle-bin-implementation-prompt.md`、
+  `tests/test_conversation_trash_red.py`（24 条，离线 `TestClient(app)` + 临时目录，
+  全程不读真实凭据、不调用真实数据的删除/重置接口；本文件自身即"验证删除功能"的授权范围，
+  且全部落在临时目录）。
+- 红测实测：**24 条 = 14 红 / 10 绿**（pytest 汇总行因 R9 的 3 个子断言分别计票显示为
+  `15 failed, 11 passed`）。红：R1 软删除、R2 元数据白名单、R3 恢复逐字段一致、
+  R4 彻底删除幂等、R5 清空需确认、R6 保留期、R7 自动裁剪可找回、R8 同 id 冲突恢复、
+  R9 非法 id 不 500、R10/R11/R12 记忆管理页与前端接线、R13 回收站快照不带凭据、
+  R14 回收站按 `deleted_at` 倒序。绿（护栏，必须保持）：G13–G18 与 M1–M4 Mutation Guard。
+- 测试自身可复现性修正（避免假失败）：护栏 G14 断言"活跃列表按 `updated_at` 倒序"，而
+  `_now_iso()` 只精确到秒、`list()` 的排序键是 `(updated_at, id)`，同一秒内两次 `save()`
+  会退化成按 `id` 排序，导致该护栏在整包运行时间歇性失败（实测出现过 15 failed 与 14 failed
+  两种结果）。改为用新增的 `seed_at()` 钉死时间戳，**断言本身不变**；同时新增 R14 锁定
+  Spec 已声明但此前无测试覆盖的 `deleted_at` 倒序契约（回填时间用 `age()`，不依赖墙钟）。
+- 回归：全量 `pytest -q tests` **1207 passed / 25 skipped / 1040 subtests passed**，
+  失败项 **15 条全部在本批新增红测文件内**，本批文件之外 **0 failed**（红测复测两次结果一致）；
+  评测 `smoke` 140/140、`adversarial` 62/62、`recorded-provider` 122/122、
+  `regression` 570/570（P0 147/147）、`all` 570/570，known gap 0/0 不变。
+- 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未读取真实凭据、未跑 live、
+  未对真实用户会话执行删除或恢复。
