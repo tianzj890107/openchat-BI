@@ -59,3 +59,31 @@
   `X360_BP_ID_LEVEL=activity`）。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动 v0.1.9 与版本号、未读取真实凭据；
   live / live-canary 未运行。
+
+### 2026-09-21 · 本体对象消歧与本体库详情：Spec + 红测（P1 批，本批未改生产实现）
+
+核验出分析 Agent 的本体消费面有两处"接口已就绪、但没有任何调用方"的缺陷，并交付 Spec、
+红测与实现提示词（本轮只做交付物，没有改生产实现）。
+
+- **缺陷一（对象消歧靠本地猜）**：`RemoteOntologyClient.ensure_object()`
+  （`bi_agent/ontology/remote.py:239`）与 `repository_info()`（同文件 `:516`）已实现并已按新
+  方言归一化，但 `grep -rn "ensure_object\|repository_info" bi_agent/` 只命中定义本身。
+  实测 `Ontology-TermDisambiguate("prHeader")` 只发 1 次 `SELECT FROM Term LIMIT 2000`，
+  输出 `[T0001] 采购申请头 (Term)`；`Ontology-EntityDescribe("prHeader")` 对 13 个候选类型
+  各发一次全量下拉后再用本地 `_rank_row` 定类型；权威接口回答的是 `LogicalEntity / LE000009`。
+  即多类型同名对象的**确权口径由本地排序决定，而不是由本体服务判定**。
+- **缺陷二（本体库详情零调用）**：`_remote_repository_catalog()` 只翻列表分页，详情接口
+  `GET /api/v1/analysis/context/ontology-repository/{id}` 调用 0 次，`cdcTopicPrefix`
+  没有任何出口（判断"这个库的数据是不是最新"唯一可用线索）。
+- **Spec**：`docs/specs/ontology-object-resolution-and-repository-detail.md`。
+- **红测**：`tests/test_ontology_object_resolution_red.py`（24 条，离线 loopback 假 MAL 服务，
+  无凭据、无 LLM、不碰用户数据）。实测 **15 failed / 9 passed**：R1–R8、R10–R14、R16、R17 红；
+  R9（模糊/多词输入不得走精确确认）、R15（只有旧方言时仍可用）与 7 条 Mutation Guard 为绿。
+- **实现提示词**：`docs/specs/ontology-object-resolution-and-repository-detail-implementation-prompt.md`。
+- **回归**：`tests/test_ontology_mal_contract_red.py` 保持 69 passed / 1 pre-existing failure
+  不变；全量 `pytest -q tests` = 1128 passed / 16 failed / 25 skipped / 1036 subtests passed
+  （16 = 本批 15 条红测 + 1 条既有矛盾断言）；评测 `smoke`、`adversarial`、`regression`、
+  `all` 均为 570/570（P0 147/147，known gap 0/0）不变。
+- **明确不做**：不消费 `qualifiedTables`（只出现在智能建模任务上下文，属建模侧跨 Schema 批）、
+  不改路由/安全/行动建议/评测集/前端 UI，不加 known gap。
+- 未修改生产实现、未部署、未读取真实凭据、未跑 live。
