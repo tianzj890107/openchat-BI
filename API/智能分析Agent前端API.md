@@ -1388,7 +1388,12 @@ POST /api/task-alert/manual-create
 - `title`、`content` 运行时必填，缺失返回 422。
 - `level` 仅允许 `ALERT`、`WARNING`，默认 `WARNING`。
 - `assignee` 省略时使用服务端默认值；最终不能为空。
-- `bpDefinitionId` 必须是数字字符串；可省略，由服务端根据关键词匹配默认流程。
+- `bpDefinitionId` 必须是数字字符串；可省略。省略时由服务端解析：先按 X360 流程定义
+  匹配（活动名 → 活动 code → 任务名 → 任务 code），未命中再回退到遗留关键词表。
+- `X360_BP_ID_LEVEL` 决定解析出的 `bpDefinitionId` 取**流程定义 ID**（默认，按 API
+  文档）还是**活动 ID**（`activity`，与接入前的静态表口径一致）。
+- 上例显式传入了活动 ID `2081949636213985282`，属“用户指定”路径：服务端原样透传，
+  响应 `source` 为 `request`，不会再查询 X360。
 - `clientRequestId` 建议每个行动卡唯一；服务进程内会做成功缓存和提交中防重。
 
 成功：
@@ -1397,9 +1402,16 @@ POST /api/task-alert/manual-create
 {
   "ok": true,
   "taskId": "123456789",
-  "clientRequestId": "action-8d6a7b9c-1"
+  "clientRequestId": "action-8d6a7b9c-1",
+  "source": "x360",
+  "activityName": "回款",
+  "bpDefinitionId": 2081949112647405570
 }
 ```
+
+`source` 如实反映本次督办按哪个流程发出：`x360`（X360 命中）、`static_fallback`
+（X360 未接入/未命中，用了遗留关键词表）、`default`（都没命中，不传 `bpDefinitionId`）、
+`request`（请求体显式指定）。响应不会回显任何 token。
 
 错误：功能关闭 403、字段非法 422、同一请求处理中 409、服务地址缺失 500、上游失败 502、上游超时 504。
 

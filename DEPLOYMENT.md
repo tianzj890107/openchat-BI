@@ -451,16 +451,41 @@ Sigma + Graphology + ForceAtlas2 布局与渲染核心，在“命中的本体�
 ```dotenv
 TASK_ALERT_API_ENABLED=true            # 功能开关，默认并保持开启
 TASK_ALERT_API_URL=http://pdt-dev.eimos.com/api/x360/v1/task-alert/manual-create
-TASK_ALERT_DEFAULT_ASSIGNEE=400        # 前端未传时的默认责任人(当前临时写死 400)
+TASK_ALERT_DEFAULT_ASSIGNEE=400        # 默认责任人；X360 命中活动时改用该活动的 responsiblePerson
 TASK_ALERT_DEFAULT_LEVEL=WARNING       # 只允许 ALERT / WARNING
-# bpDefinitionId 临时按行动内容关键词匹配(回款/开票/销售项目/投标/合同/订单/生产/
-# 发货/签收/验收/线索/项目/关闭/履约单);留空时未命中关键词则不传
+# 仅当 X360 未接入/未命中时使用的遗留关键词回退(回款/开票/销售项目/投标/合同/订单/
+# 生产/发货/签收/验收/线索/项目/关闭/履约单);留空且未命中则不传
 TASK_ALERT_DEFAULT_BP_DEFINITION_ID=
 TASK_ALERT_TIMEOUT_SECONDS=10          # 上游超时，0.5–120s
+
+# X360 流程定义接口(只读)：转督办时解析流程定义 / 活动 / 责任人
+X360_ENABLED=true                      # 显式 false/0/no/off 关闭
+X360_BASE_URL=                         # 空 = 未接入(走静态回退)；必须是域名，禁止 IP/别名
+X360_PROCESS_DEFINITION_KEY=           # 流程定义 KEY(首选 selector)
+X360_PROCESS_DEFINITION_ID=            # 流程定义 ID(备用 selector)
+X360_APP_ID=ApTH1EHKdRk58WhDQB         # 非密 App ID；未配置时回退 ONTOLOGY_APP_ID
+X360_AUTH_TOKEN=                       # 空 = 不发送 Authorization
+X360_TIMEOUT_SECONDS=10                # 0.5–120s
+X360_CACHE_TTL_SECONDS=300             # 0 = 每次回源
+X360_BP_ID_LEVEL=process_definition    # process_definition(按文档) / activity(回退)
+X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退静态表
 ```
 
 - 后端端点：`POST /api/task-alert/manual-create`，校验 `title`/`content` 非空与
   `level` 取值，`clientRequestId` 做进程内幂等（成功缓存、进行中互斥、失败可重试）。
+- `bpDefinitionId` 解析优先级：请求体显式传入 > X360 流程定义解析 > 遗留关键词表；
+  实际来源如实写在响应 `source`（`request` / `x360` / `static_fallback` / `default`），
+  责任人取命中活动的 `responsiblePerson`（为空才回落到 `TASK_ALERT_DEFAULT_ASSIGNEE`）。
+- 响应在 `ok`/`taskId`/`clientRequestId` 之外新增 `source`、`activityName`、
+  `bpDefinitionId`；前端仍只依赖 `ok`/`taskId`。
+- **上线顺序**：在拿到上游书面确认“`bpDefinitionId` 要流程定义 ID 还是活动 ID”之前，
+  生产保持现状——`X360_BASE_URL` 留空（未接入，行为与接入前逐字一致）或已接入时
+  `X360_BP_ID_LEVEL=activity`；确认后再切到 `process_definition`。两种口径都只需改环境
+  变量，不需要改代码或回滚发布。
+- X360 只读：客户端只有文档的两个 `GET`
+  (`/api/gateway2/x360/v1/process-definitions/ai/key/{key}` 与 `.../ai/{id}`)，
+  没有写接口；X360 不可用时转督办照常创建（降级到静态表并标记 `source`），不会让用户
+  侧变成 5xx。
 - 即使当前运维网络无法访问上游（连接失败/超时/HTTP 错误），前端也只展示真实失败并可
   重试，不允许关闭开关或显示假成功。
 - 上游即使业务失败也返回 HTTP 200（`success:false, code:500`），代理按响应体

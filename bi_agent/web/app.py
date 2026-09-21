@@ -58,6 +58,7 @@ from ..paths import (
 from ..ontology.store import OntologyStore
 from ..ontology.remote import OntologyApiError, RemoteOntologyClient
 from ..ontology.remote_retriever import RemoteGraphRetriever
+from ..x360.client import X360ProcessDefinitionClient
 from ..ontology.graph import build_graph
 from ..report import ReportStore, parser_availability
 from ..recovery import RecoveryState, WAITING_USER
@@ -2886,6 +2887,118 @@ def _match_task_alert_bp_definition(text: str) -> Optional[int]:
     return None
 
 
+# ---------------------------------------------------------------------------
+# X360 流程定义解析（只读）
+#
+# Spec: docs/specs/x360-process-definition-integration.md §5.8（唯一真值表）。
+# bpDefinitionId 只有三个合法来源：入参 / X360 / 遗留关键词表；任何分支都不许"造"ID。
+# ---------------------------------------------------------------------------
+
+#: 解析结果的来源，如实写进响应与日志（不得把回退写成成功解析）。
+TASK_ALERT_SOURCE_REQUEST = "request"
+TASK_ALERT_SOURCE_X360 = "x360"
+TASK_ALERT_SOURCE_STATIC = "static_fallback"
+TASK_ALERT_SOURCE_DEFAULT = "default"
+
+#: ``X360_BP_ID_LEVEL``：按 API 文档默认取流程定义 ID；``activity`` 一键回退。
+TASK_ALERT_BP_ID_LEVEL_ENV = "X360_BP_ID_LEVEL"
+TASK_ALERT_BP_ID_LEVEL_PROCESS_DEFINITION = "process_definition"
+TASK_ALERT_BP_ID_LEVEL_ACTIVITY = "activity"
+
+#: 客户端按签名重建：任一相关环境变量变化都必须换新实例（含失败冷却状态）。
+_X360_CLIENT_ENV_SIGNATURE = (
+    "X360_ENABLED",
+    "X360_BASE_URL",
+    "X360_PROCESS_DEFINITION_KEY",
+    "X360_PROCESS_DEFINITION_ID",
+    "X360_APP_ID",
+    "X360_AUTH_TOKEN",
+    "X360_TIMEOUT_SECONDS",
+    "X360_CACHE_TTL_SECONDS",
+    "X360_FAILURE_COOLDOWN_SECONDS",
+    "ONTOLOGY_APP_ID",
+)
+
+_x360_client_lock = threading.Lock()
+_x360_client_signature: Optional[tuple] = None
+_x360_client: Optional[X360ProcessDefinitionClient] = None
+
+
+def _x360_client_for_env() -> X360ProcessDefinitionClient:
+    """返回与当前环境匹配的 X360 客户端（环境变化即重建，冷却状态随之重置）。"""
+    global _x360_client, _x360_client_signature
+    signature = tuple(os.environ.get(name, "") for name in _X360_CLIENT_ENV_SIGNATURE)
+    with _x360_client_lock:
+        if _x360_client is None or _x360_client_signature != signature:
+            _x360_client = X360ProcessDefinitionClient.from_env()
+            _x360_client_signature = signature
+        return _x360_client
+
+
+def _numeric_id(value: Any) -> Optional[int]:
+    """把 X360 的字符串 ID 转成上游要的数字；非数字返回 None（不猜、不截断）。"""
+    text = str(value or "").strip()
+    return int(text) if text.isdigit() else None
+
+
+def _task_alert_bp_id_level() -> str:
+    level = (os.environ.get(TASK_ALERT_BP_ID_LEVEL_ENV) or "").strip().lower()
+    if level == TASK_ALERT_BP_ID_LEVEL_ACTIVITY:
+        return TASK_ALERT_BP_ID_LEVEL_ACTIVITY
+    return TASK_ALERT_BP_ID_LEVEL_PROCESS_DEFINITION
+
+
+def _resolve_task_alert_target(
+    text: str, explicit_bp_definition_id: Optional[int] = None
+) -> dict[str, Any]:
+    """解析转督办目标：流程定义 ID、活动与责任人（Spec §5.8 真值表）。
+
+    返回 ``bpDefinitionId`` / ``assignee`` / ``source`` / ``activityId`` /
+    ``activityName``；非 ``x360`` 来源时两个活动字段一律为 ``None``（不把关键词猜成
+    活动名）。
+    """
+    # 与既有行为逐字一致：环境默认可以为空（空 -> 端点 422）。
+    default_assignee = (os.environ.get("TASK_ALERT_DEFAULT_ASSIGNEE") or "400").strip()
+    target: dict[str, Any] = {
+        "bpDefinitionId": None,
+        "assignee": default_assignee,
+        "source": TASK_ALERT_SOURCE_DEFAULT,
+        "activityId": None,
+        "activityName": None,
+    }
+    if explicit_bp_definition_id is not None:
+        # 显式入参最高优先级：既不覆盖用户意图，也不白跑一次 X360。
+        target["bpDefinitionId"] = explicit_bp_definition_id
+        target["source"] = TASK_ALERT_SOURCE_REQUEST
+        return target
+    activity = None
+    client = _x360_client_for_env()
+    if client.enabled:
+        try:
+            activity = client.match_activity(text)
+        except Exception:  # 防御性：解析意外失败也必须降级，不能把转督办打成 5xx
+            logger.warning("x360 task-alert resolution failed", exc_info=True)
+            activity = None
+    if activity is not None:
+        if _task_alert_bp_id_level() == TASK_ALERT_BP_ID_LEVEL_ACTIVITY:
+            resolved = _numeric_id(activity.id) or _numeric_id(activity.process_definition_id)
+        else:
+            resolved = _numeric_id(activity.process_definition_id) or _numeric_id(activity.id)
+        if resolved is not None:
+            target["bpDefinitionId"] = resolved
+            target["activityId"] = activity.id
+            target["activityName"] = activity.name
+            target["source"] = TASK_ALERT_SOURCE_X360
+            if activity.responsible_person:
+                target["assignee"] = activity.responsible_person
+            return target
+    static_id = _match_task_alert_bp_definition(text)
+    if static_id is not None:
+        target["bpDefinitionId"] = static_id
+        target["source"] = TASK_ALERT_SOURCE_STATIC
+    return target
+
+
 def _task_alert_enabled() -> bool:
     """Feature flag; the task-alert integration stays ON by default even when
     the current network cannot reach the upstream service."""
@@ -2968,15 +3081,16 @@ def task_alert_manual_create(req: TaskAlertCreateRequest):
     level = (req.level or os.environ.get("TASK_ALERT_DEFAULT_LEVEL") or "WARNING").strip().upper()
     if level not in TASK_ALERT_LEVELS:
         raise HTTPException(422, "level 只允许 ALERT 或 WARNING")
-    assignee = (req.assignee or os.environ.get("TASK_ALERT_DEFAULT_ASSIGNEE") or "400").strip()
     bp_definition_raw = (req.bpDefinitionId or os.environ.get("TASK_ALERT_DEFAULT_BP_DEFINITION_ID") or "").strip()
-    bp_definition_id: Optional[int] = None
+    explicit_bp_definition_id: Optional[int] = None
     if bp_definition_raw:
         if not bp_definition_raw.isdigit():
             raise HTTPException(422, "bpDefinitionId 必须是数字")
-        bp_definition_id = int(bp_definition_raw)
-    else:
-        bp_definition_id = _match_task_alert_bp_definition(f"{title}\n{content}")
+        explicit_bp_definition_id = int(bp_definition_raw)
+    # 只解析一次：同一个结果用于请求体、响应与日志（Spec §5.9）。
+    target = _resolve_task_alert_target(f"{title}\n{content}", explicit_bp_definition_id)
+    bp_definition_id: Optional[int] = target["bpDefinitionId"]
+    assignee = (req.assignee or "").strip() or str(target["assignee"] or "").strip()
     if not assignee:
         raise HTTPException(422, "assignee 不能为空")
     client_request_id = (req.clientRequestId or "").strip()
@@ -3020,10 +3134,21 @@ def task_alert_manual_create(req: TaskAlertCreateRequest):
             _finish_failure()
             logger.warning("task alert upstream business failure")
             raise HTTPException(502, f"任务令服务创建失败:{error_message}")
-        result = {"ok": True, "taskId": task_id, "clientRequestId": client_request_id or None}
+        result = {
+            "ok": True,
+            "taskId": task_id,
+            "clientRequestId": client_request_id or None,
+            # 如实暴露这次督办按哪个流程发的：x360 / static_fallback / default / request。
+            "source": target["source"],
+            "activityName": target["activityName"],
+            "bpDefinitionId": bp_definition_id,
+        }
         logger.info(
-            "task alert created clientRequestId=%s taskId=%s upstream_status=200",
-            client_request_id or "-", task_id,
+            "task alert created clientRequestId=%s taskId=%s upstream_status=200 "
+            "source=%s activityName=%s bpDefinitionId=%s",
+            client_request_id or "-", task_id, target["source"],
+            target["activityName"] or "-",
+            bp_definition_id if bp_definition_id is not None else "-",
         )
         if client_request_id:
             with _task_alert_lock:

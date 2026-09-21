@@ -199,6 +199,9 @@ class _Harness(unittest.TestCase):
         self.thread.start()
         self.addCleanup(self.server.shutdown)
         self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
+        # 生产代码只从环境变量读 X360 配置：每个用例先把 loopback 地址注入环境，
+        # 否则客户端按 Spec §5.8 判定为"未配置"，这些用例就观察不到真实请求。
+        self.patch_env()
 
     # -- env helpers -------------------------------------------------------
     def env(self, **overrides: Any) -> dict:
