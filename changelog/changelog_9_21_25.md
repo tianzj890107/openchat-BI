@@ -116,3 +116,34 @@
   （本批按前者处理）；EntityDescribe/SemanticQuery 的权威类型取 `BusinessObject` 是否与上游
   一致（如需调整只改 `candidateTypes` 顺序）；确认接口的超时/并发预算。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未读取真实凭据；未跑 live。
+
+### 2026-09-21 · 本体元数据查询消费：Spec + 红测（P2 批，本批未改生产实现）
+
+P1（对象确权 + 本体库详情）落地后，"按名字取元数据"仍然是本地全量下拉；本轮核验出两处
+缺口并交付 Spec、红测与实现提示词（本轮只做交付物，没有改生产实现）。
+
+- **缺口一（元数据检索没有分页能力）**：`MetricCalculation` 在权威确认不可用时仍走
+  `_search_type` → `list_objects` → `SELECT FROM Indicator LIMIT 2000`；
+  `Ontology-SemanticQuery` 的模糊检索经 `_candidate_results` 对 13 个候选类型各发一次
+  `SELECT FROM <Type> LIMIT 2000`（其中就含文档已给出树查询的 `Indicator` / `Dimension`）。
+  而 `API/本体元数据查询API-WIP.md` 已给出 `meta/query` 的指标树 / 维度树分页查询
+  （`label LIKE` + `sorts` + `pagination`）。后果：单类型超过一次下拉上限（2000 行，
+  `list_objects` 上限 5000）的对象**直接查不到**，且与"该对象不存在"不可区分。
+- **缺口二（业务属性靠图邻域遍历）**：`Ontology-EntityDescribe` 用
+  `expand-ontology-context` + `depth=1` 收集属性，而文档给的是 `BusinessAttribute` 顶点 +
+  `LogicalEntity.code EQ` + `LEContainATT` 边的 TABLE 分页查询。后果：属性受图邻域与深度
+  上限约束，图邻域为空时属性**全部丢失**。
+- **Spec**：`docs/specs/ontology-metadata-query-consumption.md`（含 P2 之后仍不做项与
+  外部阻塞清单：指标维度计算/本体实例计算 WIP 文档未完成、`Modifier` 无产品场景、
+  X360 模型工具化与前端 `source` 属新批次、live 需真实 Provider Key、跨 Schema 属建模侧）。
+- **红测**：`tests/test_ontology_metadata_query_consumption_red.py`（27 条，离线 loopback，
+  无凭据、无 LLM、不碰用户数据）。实测 **12 failed / 15 passed**：R1–R12 红；
+  G1–G4 与 M1–M11 为绿护栏（权威命中不多发检索、指标关联维度钻取关系、对象徽标形状、
+  不可用时不伪造指标、以及全量下拉/EQ 代替 LIKE/LIKE 打错属性/缺 sorts 或 pagination/
+  pageSize 越界/只取第 1 页/属性顶点写错/丢实体过滤/丢 LEContainATT 边/丢钻取关系）。
+- **实现提示词**：`docs/specs/ontology-metadata-query-consumption-implementation-prompt.md`。
+- **回归**：P1 红测 24 条保持全绿；MAL 契约保持 69 passed / 1 pre-existing failure；
+  全量 `pytest -q tests` = 1158 passed / 13 failed / 25 skipped / 1036 subtests passed
+  （13 = 本批 12 条红测 + 1 条既有矛盾断言）；评测 `smoke` 140/140、`adversarial` 62/62、
+  `regression` 570/570（P0 147/147）、`all` 570/570，known gap 0/0 不变。
+- 未修改生产实现、未部署、未读取真实凭据、未跑 live。
