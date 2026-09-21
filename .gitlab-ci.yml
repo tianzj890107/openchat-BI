@@ -116,9 +116,12 @@ analytics-eval-release-gate:
     - when: manual
   allow_failure: false
   script:
+    # 发布门禁必须**重复运行**：稳定性指标未测量（即未做重复运行）会让发布运行
+    # 直接失败，所以这里固定重复两次（smoke 140 条，成本可接受）。
     - >-
       python -m scripts.run_analytics_eval
       --suite smoke
+      --repeat 2
       --release
       --out dataset/evals/analytics/reports
   artifacts:

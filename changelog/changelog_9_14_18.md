@@ -668,62 +668,77 @@
   未部署、未重启服务、未创建 MR/tag/Release、未改动 v0.1.9 与版本号、未读取真实凭据；
   live / live-canary 未运行（无在线评测授权），缺凭据继续保持 `not_measured`。
 
-### 9. 发布稳定性门禁：repeat stability 收口（第七批，Spec + 红测，未实现）
+### 9. 发布稳定性门禁：repeat stability 收口（第七批，已完成）
 
 - 审计结论：`repeat_stability` 会被测量、会在报告里出现，但**从来没有门禁约束**。
   `evaluate_gates` 没有 `repeat_stability` 门禁，该指标不在 `RELEASE_REQUIRED_METRICS`，
   CI 的 release job（`analytics-eval-release-gate`）执行的是 `--suite smoke --release`，
-  **不带 `--repeat`**。实测：
-  `--suite smoke --release` → 退出码 **0**（`repeat_stability = not_measured`）；
-  `--suite all --repeat 2 --release` → 退出码 **0**，却有 5 条不稳定用例。
-  离线稳定性因此既不阻断发布，也无法发现真实漂移。
-- 同时发现**误报**：`ANA-ISO-001..005`（`session_isolation`）两次运行都 pass，
-  唯一差异是 `evidence.observations[].id` 里的随机 8 位十六进制会话 id
-  （`6ac1df67` vs `d4bb3a17`），而规范把 session/run id 列为允许变化项。
-  指纹归一化只覆盖 32 位十六进制串，导致 `smoke` 实测 `0.985714`（138/140）、
-  `all`/`regression` 实测 `0.991228`（565/570）——真实稳定性被低估。
-- 第三个缺陷：`repeat=1` 被当成"稳定"。`measure_repeat(..., repeat=1)` 对每个案例只跑
-  一次就返回 `agreement=1.0`（8/8「stable」），而 CLI 用 `args.repeat > 1` 直接**静默
-  忽略** `--repeat 1`，报告退回 `not_measured` 且退出码 0 —— 单次执行既拿不到稳定性
-  证据，也不会被拒绝。
-- 新增规格 `docs/specs/analytics-release-stability.md`（12 节，sha256 `f14d17bf…438195`）
-  与实现提示词 `docs/specs/analytics-release-stability-implementation-prompt.md`
-  （sha256 `e185cb25…97e936`）：
-  定义普通门禁与 release 门禁的区别、repeat 样本与 skip 规则、
-  canonical 比较规则与允许/禁止变化清单（17 类禁止变化）、
-  分类/查询/回答/会话/图表五类稳定性合同、四个真实性指标在 repeat 下的要求、
-  `skip / not_measured` 规则、CI 策略与成本评估（smoke 140 条 ×2 可接受，
-  570 条不进入普通 pipeline）、治理终止条件。
-- 新增红测 `tests/test_analytics_release_stability_red.py`（63 个测试方法 + 子测试，sha256 `afee6afc…51c412`）：
-  只调用真实入口（`main()` 真实 CLI + 退出码、`measure_repeat`、
-  `result_signature`/`semantic_signature`/`generic_signature`、`aggregate`、
-  `build_report`、`evaluate_gates`、`RELEASE_REQUIRED_METRICS`、真实 `.gitlab-ci.yml`）；
-  覆盖门禁存在/阈值/release-required、release 无 repeat 必须失败、
-  `--repeat 1` 不得给分、零样本不得 1.0、第二轮 FAIL/SKIP 可见、
-  id/时间戳/trace/沙箱路径/SQL 空白/键序/耗时不得误报、17 类漂移逐一检出、
-  植入跨会话泄漏翻转稳定性、CI 策略与 570 条 / P0 147 / `known_gap=0` 治理守护。
-- 红测实测（2026-09-18）：**16 failed / 47 passed / 12 subtests passed**，失败全部指向
-  缺失的 `repeat_stability` 门禁、未归一化的 id 类字段与 CI release job 缺 `--repeat`；
-  真实 ISO 用例（`ANA-ISO-001..005`）在只剔除随机会话 id 后逐条相等，证明当前 5 条
-  「不稳定」是 id 类噪声误报而非语义漂移。
-- 既有回归（未受影响）：`--suite smoke` 140/140、`--suite adversarial` 62/62、
-  `--suite recorded-provider` 122/122、`--suite regression` 570/570（P0 147/147）、
-  `--suite all` 570/570；`--suite smoke --release` 仍为退出码 0（本批要修的缺陷），
-  `--suite all --repeat 2 --release` 仍为退出码 0 且 `repeat_stability=0.991228`；
-  全量 `pytest -q tests` **999 passed / 16 failed（全部来自新红测）/ 25 skipped /
-  1011 subtests passed**；既有 6 个套件与 570 条案例零回归；`git diff --check` 通过。
-- 修改文件：`docs/specs/analytics-release-stability.md`、
-  `docs/specs/analytics-release-stability-implementation-prompt.md`、
-  `tests/test_analytics_release_stability_red.py`、本 changelog。
-- 本轮**未修改生产实现**（`bi_agent/**`、`scripts/run_analytics_eval.py`、
-  `.gitlab-ci.yml`、`dataset/evals/analytics/**` 均与 HEAD 一致）；
-  未部署、未重启服务、未创建 MR/tag/Release、未改动 v0.1.9 与版本号；未 commit/push。
+  **不带 `--repeat`**；而 `--suite all --repeat 2 --release` 在 5 条不稳定用例存在时
+  仍退出 0。离线稳定性因此既不阻断发布，也无法发现真实漂移。
+- 另外两个缺陷：（1）**误报**——`ANA-ISO-001..005` 两次运行都 pass，唯一差异是
+  `evidence.observations[].id` 里的随机十六进制会话 id，而规范把 session/run id
+  列为允许变化项；指纹归一化只覆盖 32 位十六进制串，导致 `smoke` 实测 `0.985714`
+  （138/140）、`all`/`regression` 实测 `0.991228`（565/570），真实稳定性被低估。
+  （2）`repeat=1` 被当成「稳定」：`measure_repeat(..., repeat=1)` 对每个案例只跑一次
+  就返回 `agreement=1.0`，CLI 又用 `args.repeat > 1` 静默忽略 `--repeat 1`，报告退回
+  `not_measured` 且退出码 0 —— 单次执行既拿不到稳定性证据，也不会被拒绝。
+
+- 实现（`scripts/run_analytics_eval.py` + `.gitlab-ci.yml`）：
+  - `measure_repeat` 重写：`repeat < 2` 返回 `{"agreement": None, "measured": False, ...}`
+    （不再伪造 1.0）；新增 `stable_case_ids` / `unstable_case_ids` / `skipped_case_ids` /
+    `measured`，`cases` 只统计**每一次重复都执行到**的案例；任一轮 skip 进入
+    `skipped_case_ids`（不计入 stable），任一轮非 PASS/XFAIL 计入 unstable。
+  - 指纹归一化：新增 `_HEX_ID_RE` + `_hex_id_or_number()`，只掩码「含 a–f」的 6–40 位
+    十六进制串（随机 id），纯数字业务量（`1280000`、`2025`）保持原值 ——
+    `ANA-ISO-001..005` 因此判为稳定，而 Spec §4.2-6 要求的数值漂移仍被检出；
+    `VOLATILE_SIGNATURE_KEYS` 补 `id` / `run_id` / `request_id` / `trace_id`，
+    删除被覆盖的 32 位十六进制兜底规则。
+  - `build_report` 只在 `repeat_agreement is not None and repeat_cases > 0 and not
+    repeat_skipped` 时写 `repeat_stability`，并输出
+    `measured / applicable / passed / failed / skipped / sample_size / numerator /
+    denominator`。
+  - `evaluate_gates` 新增 `repeat_stability` 门禁并置于其他指标门禁之前：skip 轮 →
+    `NOT_MEASURED`（非 release 不阻断）；`None` → `NOT_MEASURED` 且 `severity="release"`
+    （release 阻断）；已测量 → `PASS`/`FAIL` 且 `severity="always"`（无 `--release`
+    时漂移同样阻断）。`RELEASE_REQUIRED_METRICS` 纳入 `repeat_stability`。
+  - CLI：`--repeat` 默认值由 `1` 改为 `None`；显式 `--repeat 1` 打印说明并退出 `2`。
+  - CI：`analytics-eval-release-gate` 改为 `--suite smoke --repeat 2 --release`，
+    让发布门禁真正带上重复测量。
+
+- 红测 `tests/test_analytics_release_stability_red.py`（63 个测试方法 + 子测试，sha256
+  `afee6afc…51c412`）从 **16 failed / 47 passed / 12 subtests passed** 转绿为
+  **63 passed / 12 subtests passed**；红测文件本身未改动。
+- 回归与门禁实测（2026-09-21）：
+  - `--suite smoke` 140/140、`--suite adversarial` 62/62、`--suite recorded-provider`
+    122/122（P0 34/34）、`--suite regression` 570/570（P0 147/147）、`--suite all`
+    570/570，全部退出码 0。
+  - `--suite all --repeat 2 --release` → 退出码 **0**，`repeat_stability = 1.0`
+    （measured，`n=570`、`num=570`、`den=570`、`skipped=0`，`unstable_case_ids=[]`）；
+    `--suite smoke --repeat 2` 与 `--suite regression --repeat 2` 同为 `1.0`
+    （n=140 / n=570）。
+  - `--suite smoke --release`（不带 repeat）→ 退出码 **1**（`repeat_stability:
+    NOT_MEASURED`，release 阻断）；`--suite smoke`（不带 release）→ 退出码 0 且门禁
+    `NOT_MEASURED, ok=True`；`--suite smoke --repeat 1` → 退出码 **2**。
+  - 第六批真实性指标在 repeat 下保持不变：`unsupported_causal_claim_rate=0.0 (n=7)`、
+    `proxy_disclosure_rate=1.0 (n=7)`、两条 detection 均为 `1.0 (n=1)`、
+    `cross_session_leak_rate=0.0 (n=11)`、`unsupported_number_rate=0.0 (n=109)`。
+- 全量 `pytest -q tests`：**1087 passed / 33 failed / 25 skipped / 1011 subtests passed**；
+  33 条失败均为本批之前的既存问题：32 条来自未跟踪的
+  `tests/test_x360_process_definition_red.py`（其 Spec
+  `docs/specs/x360-process-definition-integration.md` 尚未落地），1 条来自
+  `tests/test_ontology_mal_contract_red.py:336` 的自相矛盾断言（同一路由第 336 行要求
+  携带 `X-Ontology-Repository-Id`，而 Spec §4.2、提示词 §3.2 与同文件 344/929 行要求
+  不得携带，无法同时满足），两者均非本批回归。
+- `git diff --check` 通过。
+- 修改文件：`scripts/run_analytics_eval.py`、`.gitlab-ci.yml`、
+  `dataset/evals/analytics/README.md`、`tests/test_analytics_eval_dataset.py`、本
+  changelog。
 - 稳定性结论只覆盖离线链路；缺凭据路径继续报 `not_measured`，不得写成 passed。
 - 审计过程中误发了 `--suite live --repeat 2`（原以为 `.env` 里没有 provider key，实际
   `TEAM_API_KEY` 存在），触发了一次真实在线模型调用，约 5.5 分钟后被终止；未写出任何
   报告或仓库文件、未触碰用户数据，但已发生不可撤回的 API 花费。该命令未再运行，
   live/live-canary 的正式结论仍视为**未授权、未执行**。
-
+- 未部署、未重启服务、未创建 MR/tag/Release、未改动 v0.1.9 与版本号、未读取真实凭据。
 ### 10. 本体 MAL 层「新契约」迁移：传输边界归一化 + 双方言兼容（第八批，已完成）
 
 - 背景：`API/本体MAL层API.md` 已把「元数据检索 / 关联实体 / 图谱查询 / 本体库目录 /

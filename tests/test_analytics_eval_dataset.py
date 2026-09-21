@@ -673,8 +673,13 @@ class KnownGapGateTest(unittest.TestCase):
                       "the committed set has no open P0 defect to report")
 
     def test_release_run_passes_on_the_clean_committed_set(self):
-        """The shipped set is release-clean: nothing is open to waive."""
-        code, report = self._run(["--release"])
+        """The shipped set is release-clean: nothing is open to waive.
+
+        Since the release-stability batch, a ``--release`` run must also
+        *measure* repeat stability, so the release gate repeats the selection
+        (`--repeat 2`); without it the run is reported NOT_MEASURED and blocked.
+        """
+        code, report = self._run(["--release", "--repeat", "2"])
         gate = next(g for g in report["gates"] if g["name"] == "p0_known_gap_allowlist")
         self.assertEqual(report["summary"]["unresolved_p0_defects"], 0)
         self.assertEqual(code, 0, "release must pass with no unresolved P0 gap")

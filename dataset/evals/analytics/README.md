@@ -109,12 +109,15 @@ dataset/evals/analytics/
 # 在线金丝雀：18 条、跨领域、小而强，日常只跑这一套
 .venv/bin/python -m scripts.run_analytics_eval --suite live-canary --provider deepseek
 
-# 重复性：同一 selection 跑 N 次，输出 repeat_stability
+# 重复性：同一 selection 跑 N 次（N >= 2），输出 repeat_stability。
+# N 次运行必须使用同一个 evaluator；实测漂移在任何运行（含不带 --release 的 CI job）
+# 都会让门禁 FAIL 并非零退出。
 .venv/bin/python -m scripts.run_analytics_eval --suite smoke --repeat 3
 
-# 发布门禁：未解决的 P0 known_gap 必须逐个进入已审计 allowlist，否则非零退出。
+# 发布门禁：必须重复运行（否则 repeat_stability 记为 NOT_MEASURED 并阻断），
+# 且未解决的 P0 known_gap 必须逐个进入已审计 allowlist，否则非零退出。
 # 没有任何「忽略全部 known_gap」的开关。
-.venv/bin/python -m scripts.run_analytics_eval --suite smoke --release \
+.venv/bin/python -m scripts.run_analytics_eval --suite smoke --repeat 2 --release \
     --allowlist dataset/evals/analytics/known_gap_allowlist.json
 
 # 冻结基线 + 回归对比（指标下降 / P0 下降 / 门禁失败 → 非零退出）
@@ -125,7 +128,8 @@ dataset/evals/analytics/
              dataset/evals/analytics/reports/report-smoke.json
 ```
 
-退出码：`0` 全部通过且门禁通过；`1` 存在失败或门禁失败；`2` 没有匹配的用例。
+退出码：`0` 全部通过且门禁通过；`1` 存在失败或门禁失败；`2` 没有匹配的用例，
+或 `--repeat` 小于 2（单次运行不产生稳定性分数，`--repeat 1` 视为非法请求）。
 `--no-gate` 只报告门禁结果、不改变退出码。
 
 输出：`reports/report-<suite>.json` 和 `reports/report-<suite>.md`。
@@ -374,7 +378,7 @@ recorded-provider P0 用例（`recorded-provider` 的 P0 从 4 条提升到 31 �
 | `answer_schema_valid_rate` | ↑ | 回答结构合法率 |
 | `unsupported_causal_claim_detection_rate` | ↑ | 因果负例被抓住的比例，必须为 1.0 |
 | `proxy_disclosure_detection_rate` | ↑ | 代理不披露负例被抓住的比例，必须为 1.0 |
-| `repeat_stability` | ↑ | `--repeat N` 的逐检查点一致性 |
+| `repeat_stability` | ↑ | `--repeat N`（N ≥ 2）的逐检查点一致性；未重复运行时 `NOT_MEASURED`，只阻断 `--release` |
 
 ### 指标分母（每个指标都必须能解释自己的分母）
 
@@ -434,13 +438,17 @@ donor 查出的唯一数字（例如 4 月采购金额 5170）被写进 peer 的
 - `NOT_MEASURED`（有能力测量但没有取值）在 `RELEASE_REQUIRED_METRICS`
   （`exact_numeric_accuracy` / `answer_schema_valid_rate` / `evidence_coverage` /
   `cross_session_leak_rate` / `unsupported_number_rate` /
-  `unsupported_causal_claim_rate` / `proxy_disclosure_rate`）里**阻断 release**，
-  研究运行只记录；
+  `unsupported_causal_claim_rate` / `proxy_disclosure_rate` /
+  `repeat_stability`）里**阻断 release**，研究运行只记录；
+  `repeat_stability` 是其中唯一的例外：未测量只阻断 `--release`，普通运行
+  （不带 `--release`）允许 `not_measured` 并通过；
 - `WAIVED` 只能来自逐条审计的 allowlist / waiver。
 
 普通 research 运行的门禁（P0）：
 
 - `p0_all_pass`：P0 用例必须 100% 通过
+- `repeat_stability >= 1.0`（只有带 `--repeat N >= 2` 时才有取值；实测漂移
+  `severity=always`，任何运行都非零退出；未测量时普通运行**不阻断**）
 - `exact_numeric_accuracy == 1.0`
 - `answer_schema_valid_rate == 1.0`
 - `evidence_coverage == 1.0`
@@ -473,6 +481,33 @@ donor 查出的唯一数字（例如 4 月采购金额 5170）被写进 peer 的
 `unresolved_p0_defects`，还额外给出 `unresolved_security_defects` /
 `overdue_known_gaps` / `expired_waivers`；markdown 报告同样分行展示。任一非零时
 release gate 失败。
+
+### 发布稳定性（`repeat_stability`）
+
+同一 selection 重复运行 `N >= 2` 次，比较每次运行的 **canonical 语义指纹**：
+
+- 指纹包含 `status` + 每个 check 的 `(name, ok, canonical(actual))` + 每个 metric 的
+  布尔值 + 语义块（intent/policy、tool_chain、tool_status、SQL、chart 参数、
+  unsupported numbers、recovery、contract、observations、evidence、回答结构与引用数字）。
+- 归一化（允许变化，不得误报）：时间戳、trace/run/session id 等 id 类字段、
+  6–40 位十六进制 id（含 8 位会话 id，纯数字业务数值**不**归一化，避免掩盖数字漂移）、
+  临时沙箱路径、chart/report 文件名时间戳、SQL 空白与大小写、JSON key 顺序、耗时/token/成本。
+- **禁止变化**（必须判为漂移）：intent/mode/reason_code、route/next_step、required tools、
+  tool 状态、查询范围/filter/group by/time range、数值结果、单位/币种、安全拒绝类别、
+  forecast 假设、代理披露、因果限制、无依据数字、会话串漏、图表类型/轴/series、
+  回答结构、evidence coverage / answer schema、check 结果。
+- 样本规则：只有**每一次重复都执行完成**的案例才计入样本；被 skip 的案例进入
+  `skipped_case_ids`，其数量进入 `metric_stats["repeat_stability"]["skipped"]`，
+  并且不会被算作稳定样本。零样本（`cases == 0`）或存在跳过的样本时，
+  `metrics["repeat_stability"]` 为 `null`、`measured=false`——绝不写 1.0。
+- 判定：一次重复都没有成功的案例不算稳定；`agreement = 稳定案例数 / 参与样本的案例数`
+  （样本数等于选择集里每次都执行完的案例数）。
+
+CI 策略：`analytics-eval-release-gate` 固定 `--suite smoke --repeat 2 --release`
+（`allow_failure: false` + `when: manual`，tag pipeline 自动执行）；
+`analytics-eval-repeat-stability` 保留 `--repeat 2` 且不得加 `--no-gate`（漂移即红）；
+普通开发 job（smoke / regression / recorded-provider）**不加** `--repeat`，控制成本；
+`analytics-eval-live-canary` 保持 `when: manual` / `allow_failure: true` / 不注入凭据。
 
 ### 生产链路哨兵（mutation tests）
 
@@ -849,8 +884,9 @@ live 的语义指标在离线报告里仍然显示为 `not measured`，其 relea
 - `cross_session_leak_rate` 已由 `recorded_session_isolation`（`ANA-ISORP-*`，
   6 条）在离线 `recorded-provider` 选择集里真正测量（0.0）。
   `unsupported_causal_claim_rate` 与 `proxy_disclosure_rate` 也已离线测量（各 n=7，
-  结果 0.0 / 1.0）；仍未测量的是 `repeat_stability`（需要 `--repeat N`），以及
-  live 侧的模型行为验收。
+  结果 0.0 / 1.0）；`repeat_stability` 在重复运行下实测 `1.0`（`smoke` n=140、
+  `regression`/`all` n=570，见 §7 发布稳定性），单次运行则明确记为 `NOT_MEASURED`。
+  仍未测量的是 live 侧的模型行为验收。
 - 仍只验证局部函数、没有覆盖完整 Agent 的部分：`policy`（96 条）、
   `multi_turn`（20 条声明式）、`chart_policy` / `chart_html_safety`、
   `recovery_state`、`admission`、`sql_guard`、`session_isolation` 只直接调用生产

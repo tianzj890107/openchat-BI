@@ -3208,7 +3208,25 @@ VOLATILE_SIGNATURE_KEYS = frozenset({
     "updated_at", "created_at", "checkpoint_id", "session_id", "cost",
     "duration_ms", "duration", "tokens", "token_usage", "started_at",
     "finished_at", "execution_id",
+    # Identifier fields are never behaviour (Spec §4.1): a fresh session id in
+    # ``evidence.observations`` must not turn a stable case into a "drift".
+    "id", "run_id", "request_id", "trace_id",
 })
+
+
+_HEX_ID_RE = re.compile(r"\b[0-9a-fA-F]{6,40}\b")
+
+
+def _hex_id_or_number(match: "re.Match[str]") -> str:
+    """Mask a random hex id, but never a pure-digit business number.
+
+    A session id is 6-40 hex characters -- and so is any integer of six digits
+    or more (an amount, a count, a code).  Masking those would hide a real
+    numeric drift, which Spec §4.2-6 forbids, so only tokens that actually carry
+    a hex letter are treated as identifiers.
+    """
+    token = match.group()
+    return "<id>" if any(char.lower() in "abcdef" for char in token) else token
 
 
 _VOLATILE_TEXT_PATTERNS = (
@@ -3219,7 +3237,8 @@ _VOLATILE_TEXT_PATTERNS = (
     (re.compile(r"report-\d{8}-\d{6}-"), "report-<ts>-"),
     # ISO-8601 timestamps (with or without a timezone / fractional seconds)
     (re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[0-9.:+\-Z]*"), "<ts>"),
-    (re.compile(r"\b[0-9a-f]{32}\b"), "<hex32>"),
+    # Random hex ids, including the 8-character session id used in observations.
+    (_HEX_ID_RE, _hex_id_or_number),
 )
 
 
@@ -3335,9 +3354,27 @@ def measure_repeat(selected: list[dict], ctx: EvalContext, repeat: int, *,
     live repeat never reuses the previous session.
     """
     run = runner or run_case
+    if repeat < 2:
+        # A single execution is not a stability measurement: there is no second
+        # run to compare against, so it must never produce a score.  A fabricated
+        # ``1.0`` here is exactly what let a release gate pass on no evidence.
+        return {
+            "repeat": repeat,
+            "agreement": None,
+            "measured": False,
+            "cases": 0,
+            "stable_cases": 0,
+            "unstable_cases": 0,
+            "stable_case_ids": [],
+            "unstable_case_ids": [],
+            "skipped_case_ids": [],
+            "case_detail": [],
+            "runs": [],
+        }
     signatures: dict[str, list[str]] = {}
+    statuses: dict[str, list[str]] = {}
     runs: list[dict] = []
-    for index in range(max(1, repeat)):
+    for index in range(repeat):
         if reset is not None:
             reset()
         for case in selected:
@@ -3346,6 +3383,7 @@ def measure_repeat(selected: list[dict], ctx: EvalContext, repeat: int, *,
             if collected is not None and index == 0:
                 collected.append(result)
             signatures.setdefault(result.case_id, []).append(result_signature(result))
+            statuses.setdefault(result.case_id, []).append(result.status)
             runs.append({
                 "run_index": index + 1,
                 "case_id": result.case_id,
@@ -3358,25 +3396,43 @@ def measure_repeat(selected: list[dict], ctx: EvalContext, repeat: int, *,
                 "answer_signature": _canonical_value(semantic_signature(result)),
                 "metrics": {k: bool(v) for k, v in sorted(result.metrics.items())},
             })
-    unstable = sorted(cid for cid, sigs in signatures.items() if len(set(sigs)) > 1)
-    stable = len(signatures) - len(unstable)
-    agreement = round(stable / len(signatures), 6) if signatures else None
+    # A case that did not execute in *every* repetition is not a stable sample:
+    # it is reported separately and its count reaches ``metric_stats.skipped``
+    # instead of being silently averaged into a perfect score.
+    skipped = sorted(cid for cid, seen in statuses.items() if SKIP in seen)
+    skipped_set = set(skipped)
+    sample_ids = [cid for cid in signatures if cid not in skipped_set]
+    # "Stable" means the same, *successful* behaviour twice.  A case that fails
+    # in every repetition is deterministic but is still not evidence of release
+    # stability, so it can never count towards the agreement.
+    unstable = sorted(
+        cid for cid in sample_ids
+        if len(set(signatures[cid])) > 1
+        or any(status not in (PASS, XFAIL) for status in statuses[cid])
+    )
+    unstable_set = set(unstable)
+    stable_ids = [cid for cid in sample_ids if cid not in unstable_set]
+    agreement = round(len(stable_ids) / len(sample_ids), 6) if sample_ids else None
     detail = []
-    for cid in sorted(signatures):
-        sigs = signatures[cid]
+    for cid in sorted(statuses):
+        sigs = signatures.get(cid, [])
         detail.append({
             "case_id": cid,
-            "stable": len(set(sigs)) == 1,
+            "stable": cid not in unstable_set and cid not in skipped_set,
+            "skipped": cid in skipped_set,
             "runs": len(sigs),
             "distinct_signatures": len(set(sigs)),
         })
     return {
-        "repeat": max(1, repeat),
+        "repeat": repeat,
         "agreement": agreement,
-        "cases": len(signatures),
-        "stable_cases": stable,
+        "measured": bool(sample_ids),
+        "cases": len(sample_ids),
+        "stable_cases": len(stable_ids),
         "unstable_cases": len(unstable),
+        "stable_case_ids": stable_ids,
         "unstable_case_ids": unstable,
+        "skipped_case_ids": skipped,
         "case_detail": detail,
         "runs": runs,
     }
@@ -3539,6 +3595,9 @@ RELEASE_REQUIRED_METRICS = frozenset({
     "exact_numeric_accuracy", "answer_schema_valid_rate", "evidence_coverage",
     "cross_session_leak_rate", "unsupported_number_rate",
     "unsupported_causal_claim_rate", "proxy_disclosure_rate",
+    # A release must prove that two runs of the same selection agree; the gate
+    # itself is built below because "not measured" only blocks a release run.
+    "repeat_stability",
 })
 
 
@@ -3622,6 +3681,43 @@ def evaluate_gates(results: list[CaseResult], metrics: dict, *,
                 "detail": f"{sum(1 for r in p0 if r.status == PASS)}/{len(p0)} P0 contract cases passed",
             },
         ]
+    # Release stability.  A release must *measure* it (an unmeasured release is
+    # blocked); a measured drift blocks any run, including the plain CI repeat
+    # job that runs without ``--release``.
+    repeat_value = metrics.get("repeat_stability")
+    if skipped:
+        gates.append({
+            "name": "repeat_stability",
+            "status": "NOT_MEASURED",
+            "ok": True,
+            "severity": "release",
+            "release_required": False,
+            "detail": ("本次运行被跳过（未配置凭据）：repeat_stability 报告为 "
+                       "not_measured，绝不写成 passed"),
+        })
+    elif repeat_value is None:
+        gates.append({
+            "name": "repeat_stability",
+            "status": "NOT_MEASURED",
+            "ok": not release,
+            "severity": "release",
+            "release_required": True,
+            "detail": ("repeat_stability: 本次运行未测量（未带 --repeat 2，或样本不足）；"
+                       + ("release gate 阻断——release 必须重复运行同一选择集"
+                          if release else
+                          "普通运行不阻断，`--release` 必须带 `--repeat 2`")),
+        })
+    else:
+        repeat_ok = repeat_value >= 1.0
+        gates.append({
+            "name": "repeat_stability",
+            "status": "PASS" if repeat_ok else "FAIL",
+            "ok": repeat_ok,
+            "severity": "always",
+            "release_required": True,
+            "detail": f"repeat_stability={repeat_value} (requirement >= 1.0)",
+        })
+
     for metric, want, higher_is_better in (
         ("exact_numeric_accuracy", 1.0, True),
         ("answer_schema_valid_rate", 1.0, True),
@@ -3851,22 +3947,28 @@ def build_report(
     waivers: Optional[dict] = None,
 ) -> dict:
     summary = aggregate(results)
-    if repeat_agreement is not None:
-        summary["metrics"]["repeat_stability"] = repeat_agreement
-        summary["metric_sample_sizes"]["repeat_stability"] = int(
-            (repeat or {}).get("cases") or 0)
-        stable = int((repeat or {}).get("stable_cases") or 0)
-        total = int((repeat or {}).get("cases") or 0)
+    repeat_info = repeat or {}
+    repeat_cases = int(repeat_info.get("cases") or 0)
+    repeat_skipped = [str(cid) for cid in (repeat_info.get("skipped_case_ids") or [])]
+    if repeat_info or repeat_agreement is not None:
+        # Zero samples -- or samples that did not execute in every repetition --
+        # must never be summarised as a score.  "1.0 from nothing" is exactly
+        # what let the release gate pass without ever measuring stability.
+        measured = (repeat_agreement is not None and repeat_cases > 0
+                    and not repeat_skipped)
+        stable = int(repeat_info.get("stable_cases") or 0)
+        summary["metrics"]["repeat_stability"] = repeat_agreement if measured else None
+        summary["metric_sample_sizes"]["repeat_stability"] = repeat_cases
         summary["metric_stats"]["repeat_stability"] = {
-            "measured": bool(total),
-            "applicable": total,
-            "passed": stable,
-            "failed": total - stable,
-            "skipped": summary["metric_stats"].get("repeat_stability", {}).get("skipped", 0),
+            "measured": measured,
+            "applicable": repeat_cases,
+            "passed": stable if measured else 0,
+            "failed": (repeat_cases - stable) if measured else 0,
+            "skipped": len(repeat_skipped),
             "known_gap_excluded": 0,
-            "sample_size": total,
-            "numerator": stable,
-            "denominator": total,
+            "sample_size": repeat_cases,
+            "numerator": stable if measured else 0,
+            "denominator": repeat_cases,
         }
     # A skipped opt-in run has no evidence: every case is SKIP and no gate can
     # legitimately claim a pass or a failure.
@@ -4274,8 +4376,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="LLM provider for --suite live (default: team)")
     parser.add_argument("--answers", default="",
                         help="score recorded answers: JSON {case_id: answer}")
-    parser.add_argument("--repeat", type=int, default=1,
-                        help="run the selection N times to measure repeat_stability")
+    parser.add_argument("--repeat", type=int, default=None,
+                        help="run the selection N times to measure repeat_stability "
+                             "(N >= 2; omitting it means a single run, which reports "
+                             "repeat_stability as not_measured)")
     parser.add_argument("--out", default="",
                         help="directory for the JSON/Markdown report "
                              f"(default: {DEFAULT_REPORT_DIR})")
@@ -4521,6 +4625,13 @@ def main(argv: Optional[list[str]] = None) -> int:
                           if not g["ok"] and (args.release or g.get("severity") == "always")]
         if blocking_gates and not args.no_gate:
             return 1
+        if args.repeat is not None and args.repeat < 2:
+            # A single repetition is not a stability measurement.  Refusing the
+            # request is what stops ``--repeat 1`` from quietly degrading into a
+            # normal run that reports success without any evidence.
+            print("--repeat must be >= 2 (omit it for a single run); "
+                  "repeat_stability is not_measured for a single run", file=sys.stderr)
+            return 2
         return 0
     finally:
         ctx.cleanup()
