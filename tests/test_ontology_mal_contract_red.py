@@ -333,7 +333,10 @@ class RequestContractTests(_MalTestCase):
         self.assertEqual(call["method"], "GET")
         self.assertEqual(call["path"], REPO_LIST_NEW)
         self.assertEqual(call["query"], {"page": "1", "size": "100"})
-        self.assertEqual(call["headers"].get("x-ontology-repository-id"), "1")
+        # The catalogue listing is cross-repository: sending X-Ontology-Repository-Id
+        # would turn "list every repository" into "list one repository".  The header
+        # belongs to single-repository requests (detail, data query) only.
+        self.assertNotIn("x-ontology-repository-id", call["headers"])
 
     def test_list_repositories_can_omit_the_repository_header(self):
         self.fake.on(REPO_LIST_NEW, new_table([], pagination={"pageNum": 1, "pageSize": 100, "total": 0}))

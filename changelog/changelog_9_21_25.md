@@ -158,3 +158,17 @@ P1（对象确权 + 本体库详情）落地后，"按名字取元数据"仍然�
   `LIKE` 过滤；`LEContainATT` 边方向（`LogicalEntity → BusinessAttribute`）是否所有库一致；
   服务端 `pageSize` 的真实上限（文档示例是 10，实现取 200，如被拒则按 §4.3 降级并改小）。
 - 未部署、未创建 MR/tag/Release、未改动版本号、未读取真实凭据、未跑 live。
+
+### 2026-09-21 · 修正本体 MAL 契约测试里的自相矛盾断言（测试侧，无生产代码改动）
+
+全量验收时唯一残留的红是 `tests/test_ontology_mal_contract_red.py` 里的
+`test_list_repositories_uses_the_documented_context_endpoint`：同一文件 `:336` 要求目录列表
+带上 `X-Ontology-Repository-Id`，而 `:344`、`:933` 与生产实现
+（`bi_agent/ontology/remote.py:542,544` → `include_repository_header: False`）都要求**不带**。
+该矛盾在 P1 之前就已存在，属测试侧写错，不是产品缺陷。
+
+- 修正：`:336` 改为断言该请求头**不出现**（与另外两条同契约用例一致），并补一行英文注释
+  说明"目录列表是跨库的，仓库头只属于单库请求（详情/数据查询）"；未改动用例名、数量与其他断言。
+- 验证：`tests/test_ontology_mal_contract_red.py` 由 69 passed / 1 failed 变为 **70 passed**；
+  全量 `pytest -q tests` **1171 passed / 0 failed / 25 skipped / 1036 subtests passed**（首次全绿）；
+  评测 `all` 570/570（P0 147/147）、known gap 0/0 不变。
