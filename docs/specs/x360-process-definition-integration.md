@@ -428,7 +428,12 @@ bi_agent/x360/client.py
 | --- | --- | --- |
 | `tests/test_x360_process_definition_red.py` | 32 | 本批红测（功能未实现，预期为红） |
 | `tests/test_ontology_mal_contract_red.py::RequestContractTests::test_list_repositories_uses_the_documented_context_endpoint` | 1 | **HEAD 就存在**的遗留矛盾：该用例要求本体库目录端点带 `x-ontology-repository-id`，而同文件 `test_list_repositories_can_omit_the_repository_header` 与 `ScopeGuardTests::test_client_never_sends_repository_header_to_the_catalog_endpoint` 要求**不带**（生产实现 `bi_agent/ontology/remote.py:540-545` 明确 `include_repository_header: False`）。用 `git archive HEAD` 纯净副本复跑：**1 failed / 69 passed**，与本批无关 |
-| `tests/test_analytics_eval_release_ci.py::ReleaseCiContractTest::test_a_dropped_release_flag_is_caught` | 1 | 属于**另一个并行会话尚未提交的在途修改**（`scripts/run_analytics_eval.py`、`.gitlab-ci.yml`、`tests/test_analytics_eval_dataset.py`）；同一文件在 HEAD 纯净副本上 **19 passed** |
+| `tests/test_analytics_eval_release_ci.py::ReleaseCiContractTest::test_a_dropped_release_flag_is_caught` | 1 | 属于**另一个并行会话尚未提交的在途修改**（`scripts/run_analytics_eval.py`、`.gitlab-ci.yml`、`tests/test_analytics_eval_dataset.py`）；同一文件在 HEAD 纯净副本上 **19 passed**。该会话随后以 `537e01e`（"make release repeat-stability a real measurement gate"）自行提交，此失败随之消失——它从头到尾都不是本批造成的 |
+
+`537e01e` 落地后的复测：`pytest -q tests` = **33 failed / 1087 passed / 25 skipped / 1011 subtests passed**，
+失败项 = 本批红测 32 条 + §8.1 表内那条 HEAD 遗留矛盾 1 条；
+`tests/test_analytics_eval_release_ci.py`、`tests/test_analytics_release_stability_red.py`、
+`tests/test_regressions.py`（除本批 `-k TaskAlert` 子集外的 350 条）全部通过。
 
 25 条 skip 全部是既有 opt-in 用例（live / 需要真实凭据），数量与原因不变；skip 不得写成 pass。
 
