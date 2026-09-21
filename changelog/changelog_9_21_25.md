@@ -172,3 +172,40 @@ P1（对象确权 + 本体库详情）落地后，"按名字取元数据"仍然�
 - 验证：`tests/test_ontology_mal_contract_red.py` 由 69 passed / 1 failed 变为 **70 passed**；
   全量 `pytest -q tests` **1171 passed / 0 failed / 25 skipped / 1036 subtests passed**（首次全绿）；
   评测 `all` 570/570（P0 147/147）、known gap 0/0 不变。
+
+### 2026-09-21 · 匿名读取面收敛：线上验收批次 1 的 Spec + 红测 + 实现提示词（只落契约，未改生产实现）
+
+PDT / demo2 只读验收暴露的问题划分成三批后，本轮只落**批次 1**的契约（Spec + 红测 +
+实现提示词），不改任何生产代码。批次 2 为工具链重复调用与耗时（demo2 一次提问 16 次
+工具调用 / 80.5s）；批次 3 为发布上线与线上复验（两环境仍停在 0.1.7，仓库 0.1.9 之后的
+P1/P3 修复尚未上线）。
+
+- 复现结论（走真实生产入口，不是 evaluator/fixture 造成的假象）：
+  - `GET /api/sources` 的 `doris` 块原样返回连接真值：内网 host:port、
+    `jdbc:mysql://172.16.6.163:9030/…`、数据库账号（线上为 `admin`）。口令为空，
+    因此没有凭据泄露，但匿名调用方拿到了内网 host:port + 账号 + 库名。
+  - 会话系统提示的 `# Environment` 块含 `- Working directory: <绝对路径>`（取自进程 cwd，
+    容器内即 `/app`），而 `GET /api/system-prompt` 未做收敛就回吐整段提示，模型因此把 `/app`
+    抄给用户；同一段提示也发给模型。
+  - 本轮新确认：`GET /healthz` 回吐机器主机名（`"host": socket.gethostname()`），是同类
+    匿名可读的内网指纹；`port` 字段另有既有契约（必须反映实际监听端口），本批不动。
+- 新增 `docs/specs/anonymous-read-surface-hardening.md`：三处暴露的生产复现、`/api/sources`
+  占位符 + `jdbc_configured` / `api_url_configured` / `username_configured`、PUT 占位符
+  等于"保持原值"、系统提示去掉绝对工作目录与主机指纹、`/healthz` 不回主机名且 `port` 契约
+  不变、匿名响应统一扫描口径（含 `172.16.*.*` 掩码私网地址与主机名）、批次划分、实现验收
+  清单、风险与回滚、残留观察。
+- 新增红测 `tests/test_anonymous_read_surface_red.py`（25 条；离线 `TestClient(app)` +
+  伪造 STATE，不读凭据、不跑 live、**不调用任何删除/重置接口**）：**实测 11 红 / 14 绿**。
+  红：R1–R5（`/api/sources`）、R9–R12（会话提示与 `/api/system-prompt`）、R15（三个匿名端点
+  统一扫描，3 个子断言全红）、R16（`/healthz` 主机名）；绿：G6–G8、G13、G14 与 M1–M9 九条
+  Mutation Guard（护栏只在实现后必须仍为绿）。
+- 新增 `docs/specs/anonymous-read-surface-hardening-implementation-prompt.md`：先读 Spec、
+  先跑红测、`/api/sources` 占位符 + 布尔标志、PUT 占位符兼容（含校验顺序）、系统提示删行、
+  `/healthz` 收敛、前端与文档同步、未确认项（是否连逻辑库名一起隐藏、占位符文案、环境块
+  删留、`host` 删留、远程 `base_url`）、完成前验证命令与交付报告清单。
+- 回归：全量 `pytest -q tests` 为 **13 failed / 1186 passed / 25 skipped / 1036 subtests
+  passed**，13 条 failed 全部来自本批新红测；排除新红测后
+  **1171 passed / 0 failed / 25 skipped / 1036 subtests passed**，与改动前基线一致。
+  评测 `smoke` 140/140、`adversarial` 62/62、`recorded-provider` 122/122、
+  `regression` 570/570（P0 147/147）、`all` 570/570，known gap 0/0 不变。
+- 未修改生产实现、未部署、未创建 MR/tag/Release、未读取真实凭据、未跑 live。
