@@ -262,3 +262,30 @@ PDT / demo2 只读验收暴露的问题划分成三批后，本批完成**批次
   `regression` 570/570（P0 147/147）、`all` 570/570，known gap 0/0 不变。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未读取真实凭据、未跑 live、
   未对真实用户会话执行删除或恢复。
+
+### 2026-09-22 · PDT 本体服务数据湖切换 PG 引擎：连接影响分析记录（本轮只记录，未改代码）
+
+- 背景：pdt-dev 本体服务的数据湖由 Doris 切换为 PostgreSQL，钱江本体库（id 12）进入调试。
+  本轮按要求**只做只读实测与记录**，不修改任何生产代码、配置、部署文档与前端，不创建红测。
+- 实测结论（2026-09-22，只读）：数据湖为 **PostgreSQL 17.7**；`current_database()=ontology`、
+  `current_schema()=public`；**一个 PG 库承载多个本体库，每个本体库对应一个 schema**
+  （`ontology_qianjiang` / `ontology_wtttest` / …），本体库 schema 内是视图，业务数据在
+  `po` / `ods` / `item` / `mit_base` / `bdm_customer`。
+- 目录变化：pdt-dev 目录 `total=4`（12 钱江本体库-勿动 / 8 导入工具自测 / 6 测试导入 /
+  5 开发本体库-PG），字段只返回 `currentDatabase`；**旧的 `ONTOLOGY_REPOSITORY_ID=3` 已不存在**，
+  继续用 pdt-dev 重启会在启动校验处直接 `RuntimeError: 远程本体库 3 不在可用目录中`。
+- 影响：连接方式（HTTP 网关、双请求体、双响应形态、`dorisDatabase`/`currentDatabase` 目录字段兼容）
+  不需要改；直接失效项是 `ListTables`（依赖 `information_schema.tables.table_rows`）与
+  `DescribeTable`（依赖 `information_schema.columns.column_key`）必然 500、FactQuery 提示词仍在
+  教 MySQL 方言（反引号 / `LIMIT a,b` / `IFNULL`）、直连分支只支持 `jdbc:mysql://` + `pymysql`；
+  另有语义变化：表/视图名全部小写、必须始终 schema 限定、视图无法用 `pg_class.reltuples` 估行。
+  网关只放行 `SELECT`/`MATCH`，而本地 `_ALLOWED_LEAD` 放行 `WITH`/`EXPLAIN`/`PRAGMA`，会出现
+  "本地能过、线上 400"。
+- 钱江现状：`ontology_qianjiang` schema **0 表 0 视图**，对 repo 12 的 `meta/query` 返回 500，
+  即数据与元数据都未落地，语义检索 / 元数据 / 指标 / FactQuery 全部无数据可查。
+- 交付物：`docs/specs/pdt-data-lake-pg-migration-impact.md`（实测证据 + 逐项影响 +
+  P0/P1/P2 待改项登记 + 未决风险 + 可复现的只读探针命令）。本轮只登记，不改代码。
+- 未确认项：数据面无 repository 隔离（带 repo 12 仍可读其他 schema 的表）、钱江元数据库 500 的
+  根因、旧 `/agent/doris/query` 出口与 `API/本体MAL层API.md` 的去留。
+- 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未读取真实凭据、未改生产代码、
+  未跑 live；实测全程只读（目录 `GET` + 只读 `SELECT`）。
