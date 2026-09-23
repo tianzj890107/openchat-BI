@@ -34,9 +34,10 @@ import secrets
 import re
 import tempfile
 import hashlib
+import math
 import threading
 from html.parser import HTMLParser
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -53,6 +54,16 @@ TITLE_ALGORITHM_VERSION = 3
 HISTORY_INDEX_VERSION = 3
 MAX_CONVERSATIONS = 100          # keep newest N per store; prune the rest
 MAX_HTML_BYTES = 4_000_000       # per-blob safety cap (~4 MB)
+# Recycle bin: deleting a conversation moves it into ``<root>/trash/`` instead
+# of unlinking it, so it stays recoverable for a bounded window
+# (docs/specs/conversation-trash-recycle-bin.md §2.1/§2.4).
+DEFAULT_TRASH_RETENTION_DAYS = 30
+MAX_TRASH = 500                  # hard cap; the oldest deletions go first
+TRASH_DIRNAME = "trash"
+TRASH_RETENTION_ENV = "CONVERSATION_TRASH_RETENTION_DAYS"
+#: Fields the recycle bin adds to a snapshot; stripped again on restore so a
+#: restored conversation cannot carry a stale "deleted" marker.
+TRASH_MARKER_KEYS = ("deleted_at", "expires_at", "days_left")
 VALID_MODES = ("data", "report")
 CID_RE = re.compile(r"^[0-9a-f]{8,64}$", re.IGNORECASE)
 SOURCE_CONFIG_KEYS = (
@@ -235,6 +246,20 @@ def record_title(record: dict[str, Any]) -> str:
     return record_first_user_question(record) or "未命名对话"
 
 
+def _parse_iso(value: Any) -> Optional[datetime]:
+    """Parse a persisted ISO timestamp; a missing/unreadable value is ``None``."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
 def _now_iso() -> str:
     # Persist a stable business timezone instead of depending on the host's
     # local timezone (which differs between a developer laptop and Docker).
@@ -256,6 +281,9 @@ class ConversationStore:
         # Repair legacy titles once when the store is opened. Subsequent list
         # calls use the lightweight index and do not rescan full snapshots.
         self.last_title_migrations = self.migrate_titles()
+        # The recycle bin keeps itself bounded: expired deletions (and any
+        # overflow past MAX_TRASH) are dropped whenever the store is opened.
+        self.last_trash_purged = self._purge_expired_unlocked()
         self.last_unresolved_title_migrations = getattr(self, "last_unresolved_title_migrations", 0)
         self.last_title_migration_scanned = getattr(self, "last_title_migration_scanned", 0)
         self.last_index_rebuild_count = len(self._index())
@@ -525,16 +553,211 @@ class ConversationStore:
             "title_version": rec.get("title_version", TITLE_ALGORITHM_VERSION),
         }
 
+    # ------------------------------------------------------------------
+    # Recycle bin (docs/specs/conversation-trash-recycle-bin.md)
+    # ------------------------------------------------------------------
+    def _trash_dir(self) -> Path:
+        return self.root / TRASH_DIRNAME
+
+    def _trash_path(self, cid: str) -> Path:
+        # Same id contract as ``_path``: never map malformed input onto a file.
+        safe = str(cid or "").strip()
+        if not CID_RE.fullmatch(safe):
+            raise ValueError("invalid conversation id")
+        return self._trash_dir() / f"{safe}.json"
+
+    @staticmethod
+    def _write_record_file(target: Path, rec: dict[str, Any]) -> None:
+        """Atomically replace one snapshot file (never a partial document)."""
+        payload = json.dumps(rec, ensure_ascii=False)
+        temp_path: Optional[str] = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=target.parent,
+                prefix=f".{target.stem}.", suffix=".tmp", delete=False,
+            ) as tmp:
+                temp_path = tmp.name
+                tmp.write(payload)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(temp_path, target)
+            temp_path = None
+        finally:
+            if temp_path:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _unlink_quietly(path: Path) -> bool:
+        try:
+            path.unlink()
+            return True
+        except OSError:
+            return False
+
+    @staticmethod
+    def retention_days() -> int:
+        """Configured recycle-bin retention; unparseable values keep the default."""
+        raw = str(os.environ.get(TRASH_RETENTION_ENV, "") or "").strip()
+        if not raw:
+            return DEFAULT_TRASH_RETENTION_DAYS
+        try:
+            return int(float(raw))
+        except ValueError:
+            return DEFAULT_TRASH_RETENTION_DAYS
+
+    def _trash_paths(self) -> list[Path]:
+        directory = self._trash_dir()
+        if not directory.is_dir():
+            return []
+        return sorted(p for p in directory.glob("*.json") if p.is_file())
+
+    def _trash_records(self) -> list[tuple[Path, dict[str, Any]]]:
+        out: list[tuple[Path, dict[str, Any]]] = []
+        for path in self._trash_paths():
+            try:
+                rec = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(rec, dict) or rec.get("duplicate_of"):
+                continue
+            out.append((path, rec))
+        return out
+
+    @classmethod
+    def _trash_metadata(cls, rec: dict[str, Any]) -> dict[str, Any]:
+        """Metadata-only projection of a trashed snapshot (§2.8 whitelist).
+
+        The recycle bin must never become a second, anonymous way to read a
+        conversation body, so only identifying fields leave this method.
+        """
+        base = cls._metadata(rec)
+        return {
+            "id": base.get("id"),
+            "mode": base.get("mode"),
+            "title": base.get("title"),
+            "first_user_question": base.get("first_user_question") or "",
+            "created_at": base.get("created_at") or "",
+            "updated_at": base.get("updated_at") or "",
+            "deleted_at": str(rec.get("deleted_at") or ""),
+            "turn_count": base.get("turn_count") or 0,
+            "message_count": base.get("message_count") or 0,
+        }
+
+    @staticmethod
+    def _trash_expiry(
+        rec: dict[str, Any], retention: int, now: datetime,
+    ) -> tuple[str, Optional[int]]:
+        deleted_at = _parse_iso(rec.get("deleted_at"))
+        if deleted_at is None or retention <= 0:
+            return "", None
+        expires_at = deleted_at + timedelta(days=retention)
+        days_left = math.ceil((expires_at - now).total_seconds() / 86400)
+        return expires_at.isoformat(timespec="seconds"), max(0, int(days_left))
+
+    @staticmethod
+    def _trash_expired(deleted_at: datetime, now: datetime, retention: int) -> bool:
+        """True when a deletion is strictly older than the retention window.
+
+        Stamps are persisted with second precision, so the boundary is decided
+        on whole UTC days: a record deleted exactly ``retention`` days ago is
+        still inside the window ("正好到期的当天仍然保留", §2.4).
+        """
+        cutoff = now - timedelta(days=retention)
+        return (deleted_at.astimezone(timezone.utc).date()
+                < cutoff.astimezone(timezone.utc).date())
+
+    def _purge_expired_unlocked(self) -> int:
+        """Drop trash entries past the retention window, then apply MAX_TRASH."""
+        removed = 0
+        retention = self.retention_days()
+        now = datetime.now(timezone.utc)
+        remaining: list[tuple[Path, dict[str, Any]]] = []
+        for path, rec in self._trash_records():
+            deleted_at = _parse_iso(rec.get("deleted_at"))
+            if (retention > 0 and deleted_at is not None
+                    and self._trash_expired(deleted_at, now, retention)):
+                if self._unlink_quietly(path):
+                    removed += 1
+                continue
+            remaining.append((path, rec))
+        # A snapshot carries rendered HTML, so the bin is also capped by count;
+        # the oldest deletions disappear first.
+        excess = len(remaining) - MAX_TRASH
+        if excess > 0:
+            remaining.sort(key=lambda item: (
+                _parse_iso(item[1].get("deleted_at"))
+                or datetime.min.replace(tzinfo=timezone.utc),
+                item[0].name,
+            ))
+            for path, _rec in remaining[:excess]:
+                if self._unlink_quietly(path):
+                    removed += 1
+        return removed
+
+    def purge_expired(self) -> int:
+        """Public maintenance hook (also run when the store is opened)."""
+        with self._lock:
+            return self._purge_expired_unlocked()
+
+    def _move_to_trash(self, cid: str) -> bool:
+        """Atomically move an active snapshot into ``trash/`` (§2.1/§2.9)."""
+        try:
+            src = self._path(cid)
+            target = self._trash_path(cid)
+        except ValueError:
+            return False
+        if not src.exists():
+            # Deleting an already-deleted conversation stays idempotent; an id
+            # nobody ever used is still a miss.
+            return target.exists()
+        try:
+            self._trash_dir().mkdir(parents=True, exist_ok=True)
+            # ``os.replace`` is atomic, so the same conversation never exists
+            # on both surfaces at once.
+            os.replace(src, target)
+        except OSError:
+            return False
+        try:
+            rec = json.loads(target.read_text(encoding="utf-8"))
+            if not isinstance(rec, dict):
+                rec = {"id": cid}
+            rec["deleted_at"] = _now_iso()
+            self._write_record_file(target, rec)
+        except Exception:
+            # The snapshot is safely in the bin; a missing stamp only costs
+            # sorting/expiry precision, never the conversation itself.
+            pass
+        return True
+
+    def _recency_key(self, cid: str, metadata: dict[str, Any]) -> tuple[str, int, str]:
+        """Sort key for "newest first" when trimming overflow (§2.5).
+
+        ``updated_at`` is persisted with second precision, so conversations
+        saved inside the same second are otherwise ordered arbitrarily (they
+        used to fall back to their random id).  The snapshot's modification
+        time keeps the true write order at full resolution, so a burst of
+        saves still evicts the oldest ones instead of a random subset.
+        """
+        try:
+            mtime = self._path(cid).stat().st_mtime_ns
+        except (OSError, ValueError):
+            mtime = 0
+        return (str(metadata.get("updated_at") or ""), mtime, str(cid))
+
     def _prune(self) -> None:
         entries = self._index()
-        ordered = sorted(entries.items(), key=lambda item: (
-            item[1].get("updated_at") or "", item[0]
-        ), reverse=True)
+        ordered = sorted(
+            entries.items(),
+            key=lambda item: self._recency_key(item[0], item[1]),
+            reverse=True,
+        )
         for cid, _ in ordered[MAX_CONVERSATIONS:]:
-            try:
-                self._path(cid).unlink(missing_ok=True)
-            except Exception:
-                pass
+            # Overflow is trimmed into the recycle bin rather than destroyed:
+            # a conversation nobody deleted must not vanish without a trace.
+            self._move_to_trash(cid)
             entries.pop(cid, None)
         self._write_index(entries)
 
@@ -745,20 +968,100 @@ class ConversationStore:
         return True
 
     def delete(self, cid: str) -> bool:
-        try:
-            p = self._path(cid)
-        except ValueError:
-            return False
-        if p.exists():
-            try:
-                p.unlink()
-                entries = self._read_index()
-                entries.pop(str(cid), None)
-                self._write_index(entries)
-                return True
-            except Exception:
+        """Soft-delete: move the snapshot into the recycle bin (§2.1).
+
+        Returns ``False`` for a malformed id or an unknown conversation (the
+        long-standing contract the browser relies on) and ``True`` for a
+        successful move as well as for an idempotent repeat.
+        """
+        with self._lock:
+            if not self._move_to_trash(cid):
                 return False
-        return False
+            try:
+                entries = self._read_index()
+                if str(cid) in entries:
+                    entries.pop(str(cid), None)
+                    self._write_index(entries)
+            except Exception:
+                # The snapshot is already out of the active surface; a failed
+                # index refresh must not report the delete as failed.
+                pass
+            return True
+
+    def trash_listing(self) -> dict[str, Any]:
+        """Recycle-bin listing: metadata only, newest deletion first (§2.3)."""
+        with self._lock:
+            self._purge_expired_unlocked()
+            retention = self.retention_days()
+            now = datetime.now(timezone.utc)
+            entries: list[dict[str, Any]] = []
+            for _path, rec in self._trash_records():
+                meta = self._trash_metadata(rec)
+                expires_at, days_left = self._trash_expiry(rec, retention, now)
+                meta["expires_at"] = expires_at
+                meta["days_left"] = days_left
+                entries.append(meta)
+            entries.sort(
+                key=lambda item: (item.get("deleted_at") or "", item.get("id") or ""),
+                reverse=True,
+            )
+            return {"trash": entries, "count": len(entries), "retention_days": retention}
+
+    def restore(self, cid: str) -> dict[str, Any]:
+        """Move one trashed conversation back to the active surface (§2.3).
+
+        Restoring deliberately does **not** go through ``save()``: the
+        ``updated_at`` of a restored conversation must stay what it was, so it
+        returns to its old place in 「最近」 instead of jumping to the top.
+        """
+        with self._lock:
+            src = self._trash_path(cid)          # ValueError on a malformed id
+            target = self._path(cid)
+            if not src.exists():
+                return {"ok": False, "reason": "not_in_trash"}
+            if target.exists():
+                # A save after the deletion re-used this id. The active record
+                # wins: never overwrite it and never append a second record.
+                return {"ok": True, "id": str(cid), "already_active": True}
+            try:
+                rec = json.loads(src.read_text(encoding="utf-8"))
+            except Exception:
+                return {"ok": False, "reason": "unreadable"}
+            if not isinstance(rec, dict):
+                return {"ok": False, "reason": "unreadable"}
+            for key in TRASH_MARKER_KEYS:
+                rec.pop(key, None)
+            rec["source_config"] = sanitize_source_config(rec.get("source_config"))
+            try:
+                self._write_record_file(target, rec)
+            except Exception:
+                return {"ok": False, "reason": "restore_failed"}
+            if not self._unlink_quietly(src):
+                # Keep exactly one copy: roll the active file back so the
+                # conversation stays a single recoverable bin entry.
+                self._unlink_quietly(target)
+                return {"ok": False, "reason": "restore_failed"}
+            entries = self._index()
+            entries[str(cid)] = self._metadata(rec)
+            self._write_index(entries)
+            return {"ok": True, "id": str(cid)}
+
+    def purge(self, cid: str) -> bool:
+        """Permanently delete one trashed snapshot (idempotent)."""
+        with self._lock:
+            path = self._trash_path(cid)         # ValueError on a malformed id
+            if not path.exists():
+                return False
+            return self._unlink_quietly(path)
+
+    def purge_all(self) -> int:
+        """Permanently delete every trashed snapshot; returns the count."""
+        with self._lock:
+            removed = 0
+            for path in self._trash_paths():
+                if self._unlink_quietly(path):
+                    removed += 1
+            return removed
 
     def diagnose(self) -> list[dict[str, Any]]:
         """Return a read-only integrity report for every physical snapshot."""

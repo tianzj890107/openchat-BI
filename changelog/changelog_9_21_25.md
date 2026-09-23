@@ -219,49 +219,59 @@ PDT / demo2 只读验收暴露的问题划分成三批后，本批完成**批次
   只留日期、`/healthz` 删除 `host`、远程 `base_url` 保留）。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未读取真实凭据、未跑 live。
 
-### 2026-09-21 · 会话回收站（把「记忆管理」页做成删除会话的回收站）：Spec + 红测 + 实现提示词（本轮仅契约，生产实现未做）
+### 2026-09-21 · 会话回收站（把「记忆管理」页做成删除会话的回收站）：Spec + 红测 + 生产实现
 
-- 需求：把「记忆管理」按钮点进去的页面做成删除会话的回收站。本轮交付 **Spec + 可运行红测 +
-  实现提示词**，**未修改生产实现**，等实现批次落地后才算是能力上线。
-- 可行性结论：**可行**。当前是三条"删掉就没了"的路径——(1) 侧边栏「最近」的 `✕` →
-  `DELETE /api/conversations/{cid}` → `ConversationStore.delete()` 直接 `unlink`（硬删除、
-  无二次确认、无撤销）；(2) 活跃会话超过 `MAX_CONVERSATIONS = 100` 时 `_prune()` 自动物理
-  删除最旧的；(3) 报表侧另有独立删除入口（本批不动）。
+- 需求：把「记忆管理」按钮点进去的页面做成删除会话的回收站。此前三条"删掉就没了"的路径是：
+  (1) 侧边栏「最近」的 `✕` → `DELETE /api/conversations/{cid}` → `ConversationStore.delete()`
+  直接 `unlink`（硬删除、无二次确认、无撤销）；(2) 活跃会话超过 `MAX_CONVERSATIONS = 100` 时
+  `_prune()` 自动物理删除最旧的；(3) 报表侧另有独立删除入口（本批不动）。本批把 (1)(2) 改为
+  **先进回收站、保留期内可恢复**，并把回收站放进已有页面。
 - 生产复现证据（临时目录，**未触碰任何真实用户会话**）：`GET /api/conversations/trash` → `405`
   （路径被 `DELETE /api/conversations/{cid}` 参数化路由占用）；`DELETE /api/conversations/trash?confirm=1`
   → `200 {"ok": false}`（被同一条参数化路由吃掉，是路由顺序陷阱）；`POST …/trash/{cid}/restore`
   → `404`；删除后快照文件直接消失、`trash/` 目录不存在；连续 `save` 102 条后活跃仅剩 100 条，
   被裁掉的 2 条物理消失且无法恢复。
-- 目标契约（详见 Spec）：删除改为**软删除**（快照移入 `dataset/conversations/trash/` + 写
-  `deleted_at` + 移出 `history_index.json`，返回值语义不变，前端 `{"ok": bool}` 契约不放宽）；
-  新增 4 个回收站接口（列表 / 恢复 / 彻底删除 / 清空），其中 `DELETE /api/conversations/trash`
-  必须声明在 `{cid}` 路由**之前**；保留期默认 **30 天**（严格小于才清理、`≤0` 永久保留）、
-  回收站上限 `MAX_TRASH = 500`；`_prune()` 裁剪对象也改为进回收站（保留期内可找回）；
-  回收站列表**只回元数据白名单**（不回 `messages`/`chat_html`/`source_config` 等，沿用批次 1
-  的匿名面收敛边界）；恢复必须保持 `updated_at`、移除 `deleted_at`、同 id 冲突不覆盖不追加；
-  清空需显式 `confirm=1` + 前端二次确认；「记忆管理」页新增回收站区块（列表 / 恢复 / 彻底删除 /
-  清空 / 计数），侧边栏 `✕` 文案改为「移入回收站」。
-- 交付物：`docs/specs/conversation-trash-recycle-bin.md`、
-  `docs/specs/conversation-trash-recycle-bin-implementation-prompt.md`、
-  `tests/test_conversation_trash_red.py`（24 条，离线 `TestClient(app)` + 临时目录，
-  全程不读真实凭据、不调用真实数据的删除/重置接口；本文件自身即"验证删除功能"的授权范围，
-  且全部落在临时目录）。
-- 红测实测：**24 条 = 14 红 / 10 绿**（pytest 汇总行因 R9 的 3 个子断言分别计票显示为
-  `15 failed, 11 passed`）。红：R1 软删除、R2 元数据白名单、R3 恢复逐字段一致、
-  R4 彻底删除幂等、R5 清空需确认、R6 保留期、R7 自动裁剪可找回、R8 同 id 冲突恢复、
-  R9 非法 id 不 500、R10/R11/R12 记忆管理页与前端接线、R13 回收站快照不带凭据、
-  R14 回收站按 `deleted_at` 倒序。绿（护栏，必须保持）：G13–G18 与 M1–M4 Mutation Guard。
-- 测试自身可复现性修正（避免假失败）：护栏 G14 断言"活跃列表按 `updated_at` 倒序"，而
-  `_now_iso()` 只精确到秒、`list()` 的排序键是 `(updated_at, id)`，同一秒内两次 `save()`
-  会退化成按 `id` 排序，导致该护栏在整包运行时间歇性失败（实测出现过 15 failed 与 14 failed
-  两种结果）。改为用新增的 `seed_at()` 钉死时间戳，**断言本身不变**；同时新增 R14 锁定
-  Spec 已声明但此前无测试覆盖的 `deleted_at` 倒序契约（回填时间用 `age()`，不依赖墙钟）。
-- 回归：全量 `pytest -q tests` **1207 passed / 25 skipped / 1040 subtests passed**，
-  失败项 **15 条全部在本批新增红测文件内**，本批文件之外 **0 failed**（红测复测两次结果一致）；
-  评测 `smoke` 140/140、`adversarial` 62/62、`recorded-provider` 122/122、
-  `regression` 570/570（P0 147/147）、`all` 570/570，known gap 0/0 不变。
+- 生产实现（本轮落地）：
+  - `bi_agent/web/conversations.py`：新增回收站分层——`delete()` 改为**软删除**（`os.replace`
+    原子移入 `<root>/trash/<cid>.json`、写 `deleted_at`、从 `history_index.json` 移除；非法 id 与
+    未知 id 仍返回 `False`、重复删除幂等返回 `True`）；新增 `trash_listing()` / `restore()` /
+    `purge()` / `purge_all()` / `purge_expired()`；`_prune()` 的裁剪对象改为进回收站，
+    并按 `(updated_at, 文件 mtime, id)` 排序（`updated_at` 只有秒级精度，同秒批量保存原本会
+    退化成按随机 id 排序，导致"被裁掉的未必是最旧的"）；保留期 `CONVERSATION_TRASH_RETENTION_DAYS`
+    默认 **30 天**（**严格小于**才清理、正好到期当天保留、`≤0` 表示永不自动清理、解析失败取默认）、
+    上限 `MAX_TRASH = 500`（超出按最旧的先永久删除），store 打开时与列表请求时都会维护；
+    恢复保持 `updated_at`、移除 `deleted_at`、同 id 冲突返回 `already_active` 且不覆盖不追加。
+  - `bi_agent/web/app.py`：新增 4 个回收站接口（`GET /api/conversations/trash`、
+    `POST …/trash/{cid}/restore`、`DELETE …/trash/{cid}`、`DELETE …/trash?confirm=1`），
+    其中 `DELETE /api/conversations/trash` **声明在** `DELETE /api/conversations/{cid}` **之前**
+    （否则 `trash` 被当作会话 id）；清空只接受 `1/true/yes`，其余按未确认返回 `400` 且不删任何条目；
+    非法 id → `400`，不在回收站 → `404`（恢复）/ `{"ok": false}`（彻底删除）。
+  - `frontend/src/shell.html` + `frontend/src/runtime.js`：「记忆管理」页新增回收站区块
+    （计数 / 列表 / 行内「恢复」「彻底删除」/「清空回收站」/ 状态行，保留既有 `#btn-reset` 与
+    `#memory-status`），新增 `openMemory()` 并挂到 `data-view="memory"` 导航；「彻底删除」与
+    「清空回收站」走 `confirm()` 二次确认；侧边栏 `✕` 文案改为「移入回收站」并同步回收站计数；
+    已重新执行 `npm run build` 并提交 `bi_agent/web/static/vendor/antd/workbench.js`。
+- 安全边界（沿用批次 1）：回收站列表**只回元数据白名单**
+  （`id`/`mode`/`title`/`first_user_question`/`created_at`/`updated_at`/`deleted_at`/`turn_count`/
+  `message_count`/`expires_at`/`days_left`），不回 `messages`/`chat_html`/`source_config`/
+  `recovery_state` 等正文与配置；软删除沿用 `sanitize_source_config`，凭据不落盘。回收站接口仍
+  匿名（真正的鉴权属独立批次，Spec 已如实记录）。
+- 红测实测：**24 passed**（实现前 14 红 / 10 绿；pytest 汇总行因 R9 的 3 个子断言分别计票显示为
+  `15 failed, 11 passed`）。护栏 G13–G18 与 M1–M4 Mutation Guard 全部保持绿。
+- 红测的一处**断言代理修正（必须知悉）**：R8 原先断言 `rows[0]["title"] == "新快照"`，但
+  `save()` **从不可信客户端传入的 `title`**（该契约由既有绿灯用例
+  `tests/test_regressions.py::test_title_algorithm_skips_internal_messages_and_index_version`
+  锁定：`title="错误标题"` 会被首问覆盖），所以那个期望值在任何实现下都不可达。已把该行改为
+  断言同 ID 活跃记录的 `first_user_question == "新的问题"`（同样的"活跃记录不得被回收站旧快照
+  覆盖"意图），并**新增** `already_active` 必须为真的断言（§2.3 第 3 条）。断言强度只增不减，
+  其余 23 条红测一字未动；生产实现没有为此放宽标题清洗规则。
+- 回归：全量 `pytest -q tests` **1224 passed / 8 failed / 25 skipped / 1042 subtests passed**，
+  8 条 failed 全部来自并行新增的另一批红测 `tests/test_pdt_pg_lake_flow_red.py`，本批文件之外
+  **0 failed**；`test_regressions.py` + `test_concurrency.py` +
+  `test_environment_scoped_ontology_and_unused_session.py` + `test_container_port_contract.py` +
+  `test_application_base_path.py` 共 **282 passed / 1 skipped / 30 subtests passed**。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未读取真实凭据、未跑 live、
-  未对真实用户会话执行删除或恢复。
+  未对真实用户会话执行删除或恢复（全部验证都在 `TemporaryDirectory()` 内）。
 
 ### 2026-09-22 · PDT 本体服务数据湖切换 PG 引擎：连接影响分析记录（本轮只记录，未改代码）
 

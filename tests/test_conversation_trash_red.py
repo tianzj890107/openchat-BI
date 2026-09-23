@@ -278,8 +278,14 @@ class TrashLifecycleTests(TrashTestBase):
             f"冲突恢复必须给出明确结果而不是 500：{response.status_code} {response.content[:160]!r}"))
         rows = [row for row in self.active() if row["id"] == cid]
         self.assertEqual(len(rows), 1, msg="恢复同 id 不得产生第二条记录")
-        self.assertEqual(rows[0]["title"], "新快照",
+        # 活跃记录必须是 ``save()`` 新写的那一份，而不是回收站里的旧快照。
+        # 注意 ``save()`` 从不可信客户端传来的 ``title``（见
+        # ``test_regressions.py::test_title_algorithm_skips_internal_messages_and_index_version``：
+        # ``title="错误标题"`` 会被首问覆盖），所以这里用首问而不是 ``title`` 做归属判据。
+        self.assertEqual(rows[0]["first_user_question"], "新的问题",
                          msg="活跃记录不得被回收站里的旧快照覆盖")
+        self.assertTrue(response.json().get("already_active"),
+                        msg="同 id 冲突必须显式告知「已在活跃面」（§2.3 第 3 条）")
 
     def test_r9_malformed_and_unknown_ids_never_return_a_server_error(self):
         """R9：非法 / 不存在 id 一律 4xx 或 ok:false，不得 500。"""

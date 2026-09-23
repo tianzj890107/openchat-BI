@@ -2912,6 +2912,58 @@ def get_conversation_record(cid: str) -> JSONResponse:
     return JSONResponse({"conversation": rec})
 
 
+def _trash_confirm_ok(value: Any) -> bool:
+    """Only an explicit affirmative empties the recycle bin (§2.3)."""
+    return str(value if value is not None else "").strip().lower() in {"1", "true", "yes"}
+
+
+# The recycle-bin routes must be declared *before* ``DELETE
+# /api/conversations/{cid}``: otherwise ``trash`` is captured as a conversation
+# id and the ``confirm`` branch becomes unreachable
+# (docs/specs/conversation-trash-recycle-bin.md §2.3).
+@app.get("/api/conversations/trash")
+def list_conversation_trash() -> JSONResponse:
+    """List deleted conversations: metadata only, never the transcript."""
+    store = _require_conversation_store()
+    return JSONResponse(store.trash_listing())
+
+
+@app.delete("/api/conversations/trash")
+def empty_conversation_trash(confirm: str = "") -> JSONResponse:
+    """Permanently delete every trashed snapshot (requires ``confirm=1``)."""
+    store = _require_conversation_store()
+    if not _trash_confirm_ok(confirm):
+        raise HTTPException(400, "清空回收站需要显式确认（confirm=1）")
+    return JSONResponse({"ok": True, "purged": store.purge_all()})
+
+
+@app.post("/api/conversations/trash/{cid}/restore")
+def restore_conversation_from_trash(cid: str) -> JSONResponse:
+    """Move one trashed conversation back to the active history surface."""
+    store = _require_conversation_store()
+    try:
+        result = store.restore(cid)
+    except ValueError:
+        raise HTTPException(400, f"invalid conversation id: {cid}")
+    if not result.get("ok"):
+        raise HTTPException(404, f"conversation not in trash: {cid}")
+    payload = {"ok": True, "id": result.get("id") or cid}
+    if result.get("already_active"):
+        payload["already_active"] = True
+    return JSONResponse(payload)
+
+
+@app.delete("/api/conversations/trash/{cid}")
+def purge_conversation_from_trash(cid: str) -> JSONResponse:
+    """Permanently delete one trashed snapshot."""
+    store = _require_conversation_store()
+    try:
+        ok = store.purge(cid)
+    except ValueError:
+        raise HTTPException(400, f"invalid conversation id: {cid}")
+    return JSONResponse({"ok": bool(ok)})
+
+
 @app.delete("/api/conversations/{cid}")
 def delete_conversation(cid: str) -> JSONResponse:
     store = _require_conversation_store()
