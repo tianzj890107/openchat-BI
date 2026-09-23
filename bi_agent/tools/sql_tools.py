@@ -17,6 +17,7 @@ import re
 import sqlite3
 import json
 import os
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from typing import Callable
 from ..reliability import Provenance, normalize_query_result
@@ -65,6 +66,30 @@ def _validate_doris_identifier(value: str, label: str = "Doris 标识符") -> st
 
 class DorisApiError(Exception):
     """Raised when a Doris connection or query fails."""
+
+
+def _gateway_error_message(body: str, fallback: str) -> str:
+    """Extract the human-readable ``msg`` from a non-2xx gateway body.
+
+    Both gateway dialects answer failures with
+    ``{"success": false, "code": ..., "msg": ...}``; that ``msg`` is the only
+    part written for the caller (it carries the real engine error such as
+    ``relation "..." does not exist`` or the statement-validator text).  When
+    the body is not JSON we fall back to the trimmed raw text so nothing is
+    silently dropped.
+    """
+    text = (body or "").strip()
+    if not text:
+        return fallback
+    try:
+        payload = json.loads(text)
+    except (ValueError, TypeError):
+        payload = None
+    if isinstance(payload, dict):
+        msg = payload.get("msg") or payload.get("message") or payload.get("error")
+        if msg:
+            return str(msg).strip()
+    return text[:500]
 
 
 def _parse_jdbc_mysql(jdbc_url: str) -> tuple[str, int, str]:
@@ -212,6 +237,18 @@ def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], 
             )
             with urlopen(request, timeout=60) as response:
                 payload = json.loads(response.read().decode("utf-8", errors="replace"))
+        except HTTPError as e:
+            # ``urlopen`` raises for any non-2xx status *before* the body is
+            # read.  The gateway hides the engine's real error behind a generic
+            # status line, so read and forward ``msg`` instead of dropping it.
+            try:
+                body = e.read().decode("utf-8", errors="replace")
+            except Exception:  # pragma: no cover - body already consumed/closed
+                body = ""
+            detail = _gateway_error_message(body, str(e))
+            raise DorisApiError(
+                f"Doris HTTP API 请求失败 ({conn.api_url}): HTTP {e.code} {detail}"
+            ) from e
         except Exception as e:
             raise DorisApiError(f"Doris HTTP API 请求失败 ({conn.api_url}): {e}") from e
         if isinstance(payload, dict):
@@ -387,14 +424,15 @@ SQL_RUN_SCHEMA = {
     "name": "Ontology-FactQuery",
     "description": (
         "Execute a single read-only SQL statement against the customer "
-        "database. The active source is either a local SQLite DB or Apache "
-        "Doris (MySQL protocol), selected in 数据源设置. Writes, DDL, and "
-        "multi-statement scripts are rejected. When Doris is active, use "
-        "standard MySQL/ANSI SQL (PRAGMA is SQLite-only). Use this after "
-        "you've resolved the metric spec and relations from the ontology. "
-        "When Doris is active, table names MUST be database-qualified "
-        "(e.g. ontology_demo_scm_po.poheader) — run ListTables first to get "
-        "the exact db.table prefixes."
+        "database. The active source is either a local SQLite DB or the "
+        "remote analysis gateway (PostgreSQL engine, PG dialect), selected in "
+        "数据源设置. Writes, DDL, and multi-statement scripts are rejected. "
+        "When the gateway is active, use standard PostgreSQL (ANSI) SQL "
+        "(PRAGMA is SQLite-only). Use this after you've resolved the metric "
+        "spec and relations from the ontology. When the gateway is active, "
+        "table names MUST be database-qualified "
+        "(e.g. ontology_qianjiang.poheader) — run ListTables first to get "
+        "the exact database.table prefixes."
     ),
     "input_schema": {
         "type": "object",
@@ -475,20 +513,21 @@ def _make_sql_run(source: "SqlBackend | str") -> Executor:
 LIST_TABLES_SCHEMA = {
     "name": "ListTables",
     "description": (
-        "List all tables in the customer database with row counts. Useful "
-        "when you need to confirm a physical table exists before querying."
+        "List all tables in the connected database. Useful when you need to "
+        "confirm a physical table exists before querying. Physical tables are "
+        "referenced as database-qualified names (database.table)."
     ),
     "input_schema": {"type": "object", "properties": {}},
 }
 
 
 def _list_tables_doris(backend: SqlBackend) -> str:
-    # Scope to the connected database. table_rows is an estimate maintained by
-    # Doris (good enough for an existence / scale check, and far cheaper than
-    # COUNT(*) over large columnar tables).
+    # Scope to the connected database. Only columns that exist on the real
+    # engine (PostgreSQL ``information_schema``) are selected: the MySQL-only
+    # ``table_rows`` estimate is rejected outright and would fail the listing.
     conn = backend.doris
     sql = (
-        "SELECT table_name, table_rows FROM information_schema.tables "
+        "SELECT table_name FROM information_schema.tables "
         f"WHERE table_schema = '{conn.database}' ORDER BY table_name"
     )
     try:
@@ -496,13 +535,17 @@ def _list_tables_doris(backend: SqlBackend) -> str:
     except DorisApiError as e:
         return f"ListTables (Doris) error: {e}"
     out = [
-        f"# Tables in Doris {conn.host}:{conn.port}/{conn.database} ({len(rows)})",
+        f"# Tables in {conn.host}:{conn.port}/{conn.database} ({len(rows)})",
         f"# 注意: 写 SQL 时表名必须带库前缀 `{conn.database}.<表名>`(例如 "
         f"`{conn.database}.poheader`)。",
     ]
-    for name, cnt in rows:
-        cnt_s = "?" if cnt is None else cnt
-        out.append(f"  {conn.database}.{name}  ({cnt_s} rows est.)")
+    for row in rows:
+        # Only the first column is selected; tolerate a gateway that appends
+        # extra columns rather than failing the whole listing.
+        name = row[0] if row else ""
+        if name in (None, ""):
+            continue
+        out.append(f"  {conn.database}.{name}")
     return "\n".join(out)
 
 
@@ -542,9 +585,9 @@ def _make_list_tables(source: "SqlBackend | str") -> Executor:
 DESCRIBE_TABLE_SCHEMA = {
     "name": "DescribeTable",
     "description": (
-        "Show the physical column list of a table (name, type, primary key, "
-        "nullable). Use this to cross-check ontology attributes against the "
-        "actual DB schema before writing SQL."
+        "Show the physical column list of a table (name, type, nullable). "
+        "Use this to cross-check ontology attributes against the actual DB "
+        "schema before writing SQL."
     ),
     "input_schema": {
         "type": "object",
@@ -552,10 +595,10 @@ DESCRIBE_TABLE_SCHEMA = {
             "table": {
                 "type": "string",
                 "description": (
-                    "Physical table name. For Doris you may pass it "
-                    "db-qualified as `database.table` (e.g. "
-                    "ontology_demo_scm_po.poheader); a bare name uses the "
-                    "active Doris database."
+                    "Physical table name. For the remote gateway you may pass "
+                    "it db-qualified as `database.table` (e.g. "
+                    "ontology_qianjiang.poheader); a bare name uses the active "
+                    "gateway database."
                 ),
             },
         },
@@ -566,8 +609,12 @@ DESCRIBE_TABLE_SCHEMA = {
 
 def _describe_table_doris(backend: SqlBackend, schema: str, table: str) -> str:
     conn = backend.doris
+    # ``information_schema.columns`` on the real engine has no ``column_key``;
+    # selecting it makes the whole statement fail.  Primary-key detection would
+    # need ``table_constraints`` / ``key_column_usage`` joins, which the listing
+    # does not require, so it is omitted rather than reported wrongly.
     sql = (
-        "SELECT column_name, data_type, is_nullable, column_key "
+        "SELECT column_name, data_type, is_nullable "
         "FROM information_schema.columns "
         f"WHERE table_schema = '{schema}' AND table_name = '{table}' "
         "ORDER BY ordinal_position"
@@ -579,10 +626,9 @@ def _describe_table_doris(backend: SqlBackend, schema: str, table: str) -> str:
     if not rows:
         return f"DescribeTable: table {table!r} not found or has no columns."
     lines = [f"# {table} — {len(rows)} columns"]
-    for name, type_, is_nullable, key in rows:
-        marker = " [PK]" if str(key).upper() in ("PRI", "PRIMARY") else ""
+    for name, type_, is_nullable in rows:
         null_s = "NULL" if str(is_nullable).upper() in ("YES", "1", "TRUE") else "NOT NULL"
-        lines.append(f"  {name}  {type_}  {null_s}{marker}")
+        lines.append(f"  {name}  {type_}  {null_s}")
     return "\n".join(lines)
 
 

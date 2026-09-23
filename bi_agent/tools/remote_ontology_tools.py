@@ -302,19 +302,27 @@ def _candidate_results(
     """
     found: list[tuple[str, dict[str, Any]]] = []
     degraded = False
+    errors: list[OntologyApiError] = []
     for type_name in _CANDIDATE_TYPES:
         try:
             if type_name in _TREE_SEARCH_TYPES:
                 try:
                     rows = _tree_name_search(client, type_name, query, limit=10)
-                except OntologyApiError:
+                except OntologyApiError as exc:
                     degraded = True
+                    errors.append(exc)
                     rows = _search_type(client, type_name, query, limit=10)
             else:
                 rows = _search_type(client, type_name, query, limit=10)
-        except OntologyApiError:
+        except OntologyApiError as exc:
+            errors.append(exc)
             continue
         found.extend((type_name, row) for row in rows)
+    if not found and errors:
+        # Every probe failed: that is a transport incident, not "the ontology
+        # has no such object".  Propagate so callers answer with a remote-error
+        # notice instead of a false absence (Spec R3/R4).
+        raise errors[0]
     found.sort(key=lambda pair: _rank_row(pair[1], query))
     return found, degraded
 
@@ -457,11 +465,17 @@ def _graph_anchor_candidates(
     """Resolve graph anchors exactly like local mode: BO or Indicator only."""
 
     found: list[tuple[str, dict[str, Any]]] = []
+    errors: list[OntologyApiError] = []
     for type_name in ("BusinessObject", "Indicator"):
         try:
             found.extend((type_name, row) for row in _search_type(client, type_name, query, limit=12))
-        except OntologyApiError:
+        except OntologyApiError as exc:
+            errors.append(exc)
             continue
+    if not found and errors:
+        # Same contract as ``_candidate_results``: a dead transport must not be
+        # rendered as "no anchor in the ontology" (Spec R5).
+        raise errors[0]
     found.sort(key=lambda pair: _rank_row(pair[1], query))
     return found
 

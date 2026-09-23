@@ -300,11 +300,11 @@ PDT / demo2 只读验收暴露的问题划分成三批后，本批完成**批次
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未读取真实凭据、未改生产代码、
   未跑 live；实测全程只读（目录 `GET` + 只读 `SELECT`）。
 
-### 2026-09-23 · PDT 数据湖切 PG 后：端到端流程走查 + Spec 与红测（本轮不改生产代码）
+### 2026-09-23 · PDT 数据湖切 PG 后：端到端流程走查 + Spec、红测与生产修复
 
 - 要求：按"用户可以执行的方式"把「打开数据源设置 → 选钱江 → 提问 → 语义检索 → 指标查询 →
   回退手写 SQL → 列表/结构 → 出图」整条链路用**生产代码**实测一遍，找出流程与逻辑问题，
-  写成 Spec + 红测；本轮只出 Spec 与红测，不改生产代码。
+  写成 Spec + 红测，并把红测修绿。
 - 走查方式（全程只读）：走 `GET/PUT /api/sources`、`build_cognitive_policy_decision`、
   `build_source_executors` 装配出的工具执行器、`configure()` 启动校验；对 PDT 只做目录 `GET`
   与只读 `SELECT`，未写入、未删除、未重置、未读取真实凭据、未部署、未重启服务。当天
@@ -335,13 +335,33 @@ PDT / demo2 只读验收暴露的问题划分成三批后，本批完成**批次
 - 交付物二：`tests/test_pdt_pg_lake_flow_red.py`——自带 loopback 假 PG 网关（对 MySQL-only 构造
   回真实网关的 `code 500 系统繁忙`），12 条用例全部跑**生产代码**：R1/R2 方言、R3–R5 假否定、
   R6a/R6b 错误正文、R7/R7 续 工具说明、G1 目录守卫、G2/G2b 正常路径守卫。
+- 生产修复（只动 Spec §4 范围内的两个文件，未改网关、路由、SOP、评测集与前端）：
+  - `bi_agent/tools/sql_tools.py`——
+    - `ListTables` 不再选 `information_schema.tables.table_rows`，改为只取 `table_name`：PG 的
+      `information_schema.tables` 没有该列，行数估算直接省略，列表只回 `database.table` 名；
+    - `DescribeTable` 不再选 `information_schema.columns.column_key`，改为
+      `column_name, data_type, is_nullable`，并去掉 `[PK]` 标记：PG 判定主键要 join
+      `table_constraints` / `key_column_usage`，宁可少报也不误报；两处工具说明同步去掉
+      "行数/主键"承诺；
+    - `_doris_query` 的 HTTP 分支新增 `HTTPError` 捕获：读取非 2xx 响应正文并用新增的
+      `_gateway_error_message` 取 `msg`（非 JSON 时回退原始正文），把真实 PG 报错
+      （`relation "..." does not exist`）与网关校验文案（`仅允许以 SELECT 或 MATCH 开头…`）
+      带进工具输出，不再只剩 `HTTP Error 500: Server Error`；2xx + `success:false` 的既有失败
+      路径与 `DorisApiError` 语义不变（`test_regressions` 的既有断言保持通过）；
+    - `SQL_RUN_SCHEMA` 描述改为声明实际引擎为 PostgreSQL（PG）方言，去掉 MySQL/ANSI 类表述。
+  - `bi_agent/tools/remote_ontology_tools.py`——`_candidate_results` 与
+    `_graph_anchor_candidates` 记录每个类型的探针失败，**全部探针失败且没有任何结果**时向上抛
+    `OntologyApiError`，由既有 `except` 分支输出 `… remote error: …`；不再把"后端 500"写成
+    "本体库里没有"。`_candidate_results` 内层 tree→local 回退失败也计入探针失败；权威确认层失败
+    仍保留既有的"降级到本地候选 + 降级说明"，"后端正常但确实没有该对象"仍回业务否定。
 - 红测实测：以本 Spec 定稿时的生产代码（`d67a723`）用 `git worktree` 独立检出后运行为
-  **8 failed / 4 passed**（红：R1、R2、R3、R4、R5、R6a、R6b、R7；绿：G1、G2、G2b 与 R7 的元数据条）；
-  全量 `pytest -q tests` 为 **8 failed / 1224 passed / 25 skipped / 1042 subtests passed**（连跑两次
-  一致），8 条 failed 全部来自本红测文件，文件之外 0 failed。
-- 并发情况说明（提交时如实记录）：本轮提交时同一工作区已有并行会话在改
-  `bi_agent/tools/sql_tools.py` 与 `bi_agent/tools/remote_ontology_tools.py`（**未提交**），其改动
-  已把 R1/R2/R3/R4/R5 带绿，因此在**当前脏工作区**里该文件显示 2 failed / 10 passed。上面
-  "8 failed" 是对 `d67a723` 的实测结论，不代表当时的脏工作区；本轮**未提交、未修改**这两处生产代码。
+  **8 failed / 4 passed**（红：R1、R2、R3、R4、R5、R6a、R6b、R7；绿：G1、G2、G2b 与 R7 的元数据条）。
+- 实现后实测：`tests/test_pdt_pg_lake_flow_red.py` **12 passed**；全量 `pytest -q tests`
+  **1232 passed / 0 failed / 25 skipped / 1042 subtests passed**（改动前基线 1224 passed /
+  8 failed，8 条即本红测）；评测 smoke 140/140、adversarial 62/62、recorded-provider 122/122、
+  regression 570/570（P0 147/147）、all 570/570，known_gap 0/0、known_gap_ratchet PASS。
+- 非目标（保持登记，本轮不做）：本地 `_ALLOWED_LEAD` 与网关白名单的差异（F5）、直连 JDBC 分支
+  仍只认 MySQL（F6）、PDT 本体库 ID 与 `ontology_qianjiang` 暂无数据（F7/F8，属环境/本体侧）、
+  遗留 `Doris*` 命名清理（保留兼容，只在 R7 收敛模型可见文案）。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未跑 live、未读取真实凭据、
-  未对真实会话或用户数据执行任何删除/恢复，全部验证都在 loopback 假网关与 `TemporaryDirectory()` 内。
+  未对真实会话或用户数据执行任何删除/恢复，全部验证都在 loopback 假网关内。
