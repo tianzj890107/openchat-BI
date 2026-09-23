@@ -299,3 +299,49 @@ PDT / demo2 只读验收暴露的问题划分成三批后，本批完成**批次
   根因、旧 `/agent/doris/query` 出口与 `API/本体MAL层API.md` 的去留。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未读取真实凭据、未改生产代码、
   未跑 live；实测全程只读（目录 `GET` + 只读 `SELECT`）。
+
+### 2026-09-23 · PDT 数据湖切 PG 后：端到端流程走查 + Spec 与红测（本轮不改生产代码）
+
+- 要求：按"用户可以执行的方式"把「打开数据源设置 → 选钱江 → 提问 → 语义检索 → 指标查询 →
+  回退手写 SQL → 列表/结构 → 出图」整条链路用**生产代码**实测一遍，找出流程与逻辑问题，
+  写成 Spec + 红测；本轮只出 Spec 与红测，不改生产代码。
+- 走查方式（全程只读）：走 `GET/PUT /api/sources`、`build_cognitive_policy_decision`、
+  `build_source_executors` 装配出的工具执行器、`configure()` 启动校验；对 PDT 只做目录 `GET`
+  与只读 `SELECT`，未写入、未删除、未重置、未读取真实凭据、未部署、未重启服务。当天
+  `pdt-dev.eimos.com` 在本机解析失败（NXDOMAIN），改用返回相同数据的内部地址
+  `172.16.5.181:30834`（同一后端）。
+- 结论：链路上半段（设置页、本体库/数据库原子切换、策略路由、目录归一化）正常；问题集中在
+  "最后一段"——数据面与元数据面已在 PG 引擎上，而 Agent 侧仍按 Doris/MySQL 说话，且**传输
+  故障被写成业务否定**（"本体库里没有这个对象"），网关错误正文又被丢弃，用户既拿不到数据也
+  拿不到可判断的原因。
+- 登记问题 F1–F8（P0 三条 / P1 三条 / 环境两条）：
+  - F1 元数据 SQL 仍是 MySQL 方言——`ListTables` 发 `information_schema.tables.table_rows`、
+    `DescribeTable` 发 `information_schema.columns.column_key`，PG 网关上必然 500，自助取数
+    环节被整体掐断；
+  - F2 假否定——`remote_ontology_tools.py` 用 `except OntologyApiError: continue` 静默吞掉逐类型
+    检索失败，上层在结果为空时直接断言 `no remote matches / no remote match / no remote anchor`，
+    且不带降级说明；
+  - F3 网关错误正文被丢弃——`sql_tools.py` 只留 `HTTP Error 500: Server Error`，PG 的真实报错
+    （如 `relation "x" does not exist`）到不了模型与用户；
+  - F4 手写 SQL 的工具描述仍在教 MySQL 方言（反引号 / `LIMIT a,b` / `IFNULL`）；
+  - F5 本地 `_ALLOWED_LEAD` 放行 `WITH|PRAGMA|EXPLAIN`，网关只接受 `SELECT|MATCH`，出现
+    "本地校验通过、线上必失败"；
+  - F6 直连分支只认 `jdbc:mysql://` + `pymysql`，PG 直连不可用（当前主链路走 HTTP 网关，故非 P0）；
+  - F7 PDT 本体库 ID 由 3 改为 12，旧值会 fail-fast（`RuntimeError: 远程本体库 3 不在可用目录中`）；
+  - F8 `ontology_qianjiang` 当前 0 表 0 视图、repo 12 的 `meta/query` 500，即 F1/F2 修好也暂无数据可查。
+- 交付物一：`docs/specs/pdt-pg-lake-end-to-end-flow.md`——13 步逐环节实录（每步标明生产入口、
+  实测结果与真实产出）、F1–F8、目标契约 R1–R7、守卫 G1/G2/G2b、范围与非目标、验收、风险与
+  回滚、残留观察（数据面未按 repository 隔离、旧 `/agent/doris/query` 命名与文档不一致等）。
+- 交付物二：`tests/test_pdt_pg_lake_flow_red.py`——自带 loopback 假 PG 网关（对 MySQL-only 构造
+  回真实网关的 `code 500 系统繁忙`），12 条用例全部跑**生产代码**：R1/R2 方言、R3–R5 假否定、
+  R6a/R6b 错误正文、R7/R7 续 工具说明、G1 目录守卫、G2/G2b 正常路径守卫。
+- 红测实测：以本 Spec 定稿时的生产代码（`d67a723`）用 `git worktree` 独立检出后运行为
+  **8 failed / 4 passed**（红：R1、R2、R3、R4、R5、R6a、R6b、R7；绿：G1、G2、G2b 与 R7 的元数据条）；
+  全量 `pytest -q tests` 为 **8 failed / 1224 passed / 25 skipped / 1042 subtests passed**（连跑两次
+  一致），8 条 failed 全部来自本红测文件，文件之外 0 failed。
+- 并发情况说明（提交时如实记录）：本轮提交时同一工作区已有并行会话在改
+  `bi_agent/tools/sql_tools.py` 与 `bi_agent/tools/remote_ontology_tools.py`（**未提交**），其改动
+  已把 R1/R2/R3/R4/R5 带绿，因此在**当前脏工作区**里该文件显示 2 failed / 10 passed。上面
+  "8 failed" 是对 `d67a723` 的实测结论，不代表当时的脏工作区；本轮**未提交、未修改**这两处生产代码。
+- 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号、未跑 live、未读取真实凭据、
+  未对真实会话或用户数据执行任何删除/恢复，全部验证都在 loopback 假网关与 `TemporaryDirectory()` 内。
