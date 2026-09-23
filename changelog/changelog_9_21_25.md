@@ -368,3 +368,49 @@ PDT / demo2 只读验收暴露的问题划分成三批后，本批完成**批次
 - 2026-09-23 修订：Spec §5 的验收口径由"当前 8 failed / 4 passed"改为"定稿时
   8 failed / 4 passed"，并注明其后由 `689a152` 把 R1–R7 转绿（现为 12 passed），
   避免实现完成后回读 Spec 时把历史红态误当成当前状态。
+
+### 2026-09-23 · PDT 数据湖切 PG：第二轮端到端走查 + Spec 与红测（8 红 / 5 绿）
+
+- 背景：第一轮（`689a152` + `813c5cf`）修完 F1/F2/F3 与 R7 后，按要求**再跑一遍**同一条
+  用户可执行链路（设置页 → 选钱江 → 提问 → 语义检索 → 指标查询 → 手写 SQL → 列表/结构 →
+  出图），找**现在**还剩下的流程/逻辑问题，并落成第二轮 Spec + 红测。本轮不改生产代码。
+- 走查方式（全程只读）：`GET/PUT /api/sources`、`build_cognitive_policy_decision`、
+  `build_source_executors` 装配的工具执行器、`configure()` 启动校验；对 PDT 只做目录 `GET` 与
+  只读 `SELECT`。当天 `pdt-dev.eimos.com` 解析到 `172.16.5.90`，但该地址与 `:30834` 不可达，
+  可用入口仍是内部地址 `172.16.5.181:30834`。
+- 第一轮修复的复测结论（live 实测）：目录/成对切换 ✅、策略路由 ✅（FACT_QUERY→MetricQuery、
+  ONTOLOGY_LOOKUP→SemanticQuery、DIAGNOSTIC→MetricQuery）、语义检索/对象详情/图库锚点在
+  `meta/query` 500 时均已改成 `remote error: HTTP 500 …`（不再有 `no remote matches /
+  match / anchor` 假否定）、手写 SQL 已能回传网关正文（`HTTP 500 系统繁忙…` /
+  `HTTP 400 第 1 条语句校验失败：仅允许以 SELECT 或 MATCH 开头…`）、`ListTables`/`DescribeTable`
+  不再因 MySQL-only 列而 500。
+- 本轮新发现（8 条红测对应的问题）：
+  - N1（P1，新）**部分降级被过升级成"环境故障"**：`_candidate_results`/`_graph_anchor_candidates`
+    的判据是"没有命中 + 有过错误"就抛错，但 tree 面失败后**列表面回退已经成功回答"没有该对象"**，
+    于是一个确实不存在的对象被报成 `remote error`（F2 假否定的镜像，属假故障）；
+  - N2（P1，残留）错误/列表文案仍称当前引擎为 Doris（`Ontology-FactQuery (Doris) error:`、
+    `Doris HTTP API 请求失败`），与 R7 刚声明的"engine: PostgreSQL"自相矛盾；
+  - N3（P1，新）错误正文拼接了内部 API URL（`Doris HTTP API 请求失败 (http://…/agent/doris/query)`），
+    违反第一轮 Spec §6"只回传 msg、不拼接连接串"的约定，且若 URL 带凭据会直接外泄；
+  - N4（P1，残留 F5）本地 `_ALLOWED_LEAD` 放行 `WITH`/`EXPLAIN`，网关只收 `SELECT`/`MATCH`，
+    实测两条都拿 `400 仅允许以 SELECT 或 MATCH 开头…`（`PRAGMA` 已在网关分支单独拦住）；
+  - N5（P2，新）`ListTables` 表头用了占位主机 —— `# Tables in HTTP API:0/ontology_qianjiang (0)`，
+    且 0 表时没有显式空态说明；
+  - N6（P2，新）`DescribeTable` 的"未找到"答复丢掉用户传入的 schema 限定名
+    （传 `ontology_qianjiang.poheader`，回 `table 'poheader'`）。
+- 未变项：F7（`ONTOLOGY_REPOSITORY_ID=3` 仍 fail-fast，12 正常）、F8（`ontology_qianjiang`
+  schema 存在但 **0 表 0 视图**，`meta/query`/`data/query` 仍 500）。
+- 网关侧残留（非本仓库）：三种不同故障（schema 不存在 / 表不存在 / 校验失败）在网关折叠成同一句
+  `500 系统繁忙`；数据面无 repository 隔离（repo 12 活跃时实测可读 `ontology_wtttest` 与
+  `po`/`ods`/`bdm_customer`）。
+- 交付物：
+  - `docs/specs/pdt-pg-lake-end-to-end-flow-round2.md`——第二轮 14 步逐环节实录（含与第一轮的
+    对比）、N1–N6、契约 R8–R13 与守卫 G3–G7、范围与非目标、验收、风险与回滚、残留观察；
+  - `tests/test_pdt_pg_lake_flow_round2_red.py`——loopback 假网关（list/tree/confirm 三个面可
+    单独打断）+ 13 条跑生产代码的用例。
+- 红测实测：**8 failed / 5 passed**（红：R8、R8b、R9、R10a、R10b、R11、R12、R13；绿：R11b、
+  G3、G4、G5、G6）；全量 `pytest -q tests` **8 failed / 1237 passed / 25 skipped /
+  1045 subtests passed**，8 条 failed 全部来自本红测文件，第一轮红测（12 passed）未回归。
+- 本轮只出 Spec 与红测，**未改动生产代码**；未部署、未重启服务、未创建 MR/tag/Release、
+  未改动版本号、未跑 live 写操作、未读取真实凭据、未对真实会话或用户数据做任何删除/恢复，
+  全部验证都在 loopback 假网关内。
