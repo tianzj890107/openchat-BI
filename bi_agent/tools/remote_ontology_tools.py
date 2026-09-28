@@ -303,6 +303,7 @@ def _candidate_results(
     found: list[tuple[str, dict[str, Any]]] = []
     degraded = False
     errors: list[OntologyApiError] = []
+    probed_ok = 0
     for type_name in _CANDIDATE_TYPES:
         try:
             if type_name in _TREE_SEARCH_TYPES:
@@ -317,11 +318,14 @@ def _candidate_results(
         except OntologyApiError as exc:
             errors.append(exc)
             continue
+        probed_ok += 1
         found.extend((type_name, row) for row in rows)
-    if not found and errors:
-        # Every probe failed: that is a transport incident, not "the ontology
-        # has no such object".  Propagate so callers answer with a remote-error
-        # notice instead of a false absence (Spec R3/R4).
+    if probed_ok == 0 and errors:
+        # Only when *every* candidate type failed to answer is this a transport
+        # incident rather than "the ontology has no such object" (Spec R3/R4).
+        # A dead tree endpoint that successfully fell back to ``_search_type``
+        # already answered the business question, so its earlier failure must
+        # not be re-raised as a false incident (Spec R8).
         raise errors[0]
     found.sort(key=lambda pair: _rank_row(pair[1], query))
     return found, degraded
@@ -790,7 +794,10 @@ def _make_query(client: RemoteOntologyClient) -> Executor:
         try:
             matches, tree_degraded = _candidate_results(client, query)
             if not matches:
-                return f"Ontology-SemanticQuery: no remote matches for {query!r}."
+                body = f"Ontology-SemanticQuery: no remote matches for {query!r}."
+                if tree_degraded:
+                    body = f"{body}\n\n{TREE_DEGRADE_NOTE}"
+                return _with_degraded_note(body, confirmed)
             body = "# Remote Ontology-SemanticQuery\n\n" + "\n\n".join(
                 _format_object(kind, props) for kind, props in matches[:limit]
             )
@@ -899,7 +906,10 @@ def _make_describe(client: RemoteOntologyClient) -> Executor:
         try:
             matches, tree_degraded = _candidate_results(client, entity)
             if not matches:
-                return f"Ontology-EntityDescribe: no remote match for {entity!r}."
+                body = f"Ontology-EntityDescribe: no remote match for {entity!r}."
+                if tree_degraded:
+                    body = f"{body}\n\n{TREE_DEGRADE_NOTE}"
+                return _with_degraded_note(body, confirmed)
             kind, props = matches[0]
             code = _text(_ci_get(props, "code", "identifierCode", default=entity))
             text, notes = _attribute_and_relation_text(client, kind, code)

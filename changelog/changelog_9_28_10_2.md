@@ -12,43 +12,55 @@
 
 ## 本周变更
 
-### 2026-09-28 · PDT 数据湖切 PG：改善批次 Spec 与红测（用户圈定第 2/3/4/6/7/8/10 条）
+### 2026-09-28 · PDT 数据湖切 PG：改善批次（第 2/3/4/6/7/8/10 条）Spec、红测与实现
 
-- 背景：用户从我给出的"PDT PG 切库十条业务问题"里圈定 **2、3、4、6、7、8、10** 七条，要求改善；
-  本轮交付 **Spec + 红测**（按仓库既有节奏：先契约与红测，实现另起一轮），**未改生产代码**。
-- 交付物：
-  - `docs/specs/pdt-pg-lake-improvements-batch.md`——七条 → 契约与红测落点（含 2026-09-28 只读实测
-    证据、范围与非目标、验收、风险与回滚）；
-  - `tests/test_pdt_pg_lake_improvements_red.py`——loopback PG 方言假网关（MySQL-only 构造回
-    `code 500 系统繁忙`，行数/主键按列名应答，不绑定某一种 PG 写法），11 条用例。
-- 契约落点：
-  - 第 2 条（部分降级被答成"环境故障"）= R8，承载红测在既存
-    `tests/test_pdt_pg_lake_flow_round2_red.py::PartialDegradationTests`（本轮不重复新增）；
-  - 第 3 / 4 条 = R9 / R10（轮二已覆盖 `Ontology-FactQuery`）＋ 本轮新增 R14 / R15，把
-    **元数据工具**（`ListTables` / `DescribeTable`）的错误文案一并纳入"不得带连接串、不得称 Doris"；
-  - 第 6 / 7 条 = R11 / R12（承载在轮二红测），本轮不重复；
-  - 第 8 条 = R16（`ListTables` 恢复规模信息：有估算就显示，无估算显式标未知，不得把 `-1` 当行数）
-    ＋ R17（`DescribeTable` 恢复主键标注，无信息时不标），守卫 G8（不得重新引入 MySQL-only 列）、
-    G9（正常清单/结构仍可用）；
-  - 第 10 条 = R18（本体库编号不在目录中时报错须列出可用编号与 `ONTOLOGY_REPOSITORY_ID`，
-    且不含内网地址）＋ R19（`DEPLOYMENT.md` 不得再把目录里已不存在的编号写成 PDT 当前值）。
-- 2026-09-28 只读实测（PG 17.7 网关，PDT 内部入口 `172.16.5.181:30834`）：
-  - 行数：`pg_class.reltuples` 可查，但本体 schema 里都是视图（`relkind='v'`）且 `reltuples=-1.0`，
-    即引擎明确"没有估算"——所以契约要求"有则显示、无则显式未知"，不得伪造数字；
-  - 主键：`information_schema.table_constraints` + `key_column_usage` 的 join 可执行，
-    业务库 `ods` 有 **66** 条主键约束，本体 schema（视图）没有主键；
-  - 现状缺陷复现：`ListTables` / `DescribeTable` 出错时输出
-    `ListTables (Doris) error: Doris HTTP API 请求失败 (http://<内网IP>:<端口>/agent/doris/query): …`
-    ——同时命中"连接串外泄"与"文案称 Doris"；`ListTables` 表头仍是
-    `# Tables in HTTP API:0/ontology_qianjiang (0)`；本体库目录为 12/8/6/5，配置 3 时报
-    `RuntimeError: 远程本体库 3 不在可用目录中`（不列可用编号），而 `DEPLOYMENT.md` 仍写
+- 背景：用户从我给出的"PDT PG 切库十条业务问题"里圈定 **2、3、4、6、7、8、10** 七条，要求改善。
+  先按仓库节奏交付 Spec + 红测（`docs/specs/pdt-pg-lake-improvements-batch.md` 与
+  `tests/test_pdt_pg_lake_improvements_red.py` 11 条；第 2/6/7 条复用
+  `docs/specs/pdt-pg-lake-end-to-end-flow-round2.md` 与 `tests/test_pdt_pg_lake_flow_round2_red.py`
+  13 条），并在同轮把两批红测（轮二 R8–R13 + 本批 R14–R19）**全部实现转绿**。
+- 生产实现（`bi_agent/tools/sql_tools.py`、`bi_agent/tools/remote_ontology_tools.py`、
+  `bi_agent/web/app.py`、`DEPLOYMENT.md`）：
+  - 第 2 条（部分降级被答成"环境故障"）：`_candidate_results` / `_graph_anchor_candidates`
+    的判据由"没有命中 + 有错误"改为**逐个类型的成功探针**——tree 面失败但已回退到本地全量检索
+    并成功回答"没有该对象"时回业务否定并附降级说明，只有每个类型都无成功探针才抛 `remote error`；
+    `Ontology-SemanticQuery` / `Ontology-EntityDescribe` 的"无命中"分支同步补上降级说明。
+  - 第 3 条（连接串外泄）：`_doris_query` 的错误文案不再拼接 `conn.api_url`，网关 5xx 只回状态码 +
+    `msg`；pymysql 直连分支同步去掉 host:port 与 "Doris" 字样。
+  - 第 4 条（文案称 Doris）：`Ontology-FactQuery` / `ListTables` / `DescribeTable` 的错误前缀去掉
+    `(Doris)`；`ListTables` 表头不再打印 HTTP 模式下的占位主机 `HTTP API:0`。
+  - 第 6 条（本地白名单与网关不一致）：网关后端新增 `SELECT|MATCH` 开头校验，`WITH` / `EXPLAIN`
+    在本地即拒绝并给出可操作原因（`PRAGMA` 仍回既有 `PRAGMA is SQLite-only`）；SQLite 本地模式与
+    `_validate_sql` 默认语义不变。
+  - 第 7 条（表头与空态）：`ListTables` 表头只陈述真实库名 + 数量，0 表/视图时显式给出空态结论。
+  - 第 8 条（规模与主键）：`ListTables` 用 PG 侧 `pg_class.reltuples`（按 `pg_namespace` 对齐
+    schema）给出估算，`-1`/缺失显式渲染为 `unknown rows`、不得当行数；`DescribeTable` 用
+    `key_column_usage` + `table_constraints`（`PRIMARY KEY`）恢复 `[PK]` 标注，无信息则不标。
+  - 第 10 条（本体库编号）：`configure()` 在编号不在目录中时报错列出该环境**可用编号**与
+    `ONTOLOGY_REPOSITORY_ID` 键名（不含内网地址）；`DEPLOYMENT.md` 删除写死的
+    `ONTOLOGY_REPOSITORY_ID=3`，改为"按环境查目录"口径（PDT 当前为 12 钱江本体库-勿动）。
+- 契约依据与实测（2026-09-28 只读复测，PG 17.7 网关，内部入口 `172.16.5.181:30834`）：
+  - `pg_class.reltuples` 可查，本体 schema 里都是视图（`relkind='v'`）且 `reltuples=-1.0`，
+    即引擎明确"没有估算"——契约要求"有则显示、无则显式未知"，不得伪造数字；
+  - `information_schema.table_constraints` + `key_column_usage` 的 join 可执行，业务库 `ods`
+    有 **66** 条主键约束，本体 schema（视图）没有主键；
+  - 实现前缺陷复现：`ListTables (Doris) error: Doris HTTP API 请求失败 (http://<内网IP>:<端口>/…): …`、
+    `# Tables in HTTP API:0/ontology_qianjiang (0)`、配置 3 时报
+    `RuntimeError: 远程本体库 3 不在可用目录中`（不列可用编号）、`DEPLOYMENT.md` 仍写
     `ONTOLOGY_REPOSITORY_ID=3`。
-- 红测实测：`tests/test_pdt_pg_lake_improvements_red.py` **9 failed / 2 passed**
-  （红：R14a/R14b、R15a/R15b、R16、R16b、R17、R18、R19；绿：G8、G9）；
-  全量 `pytest -q tests` **17 failed / 1239 passed / 25 skipped / 1045 subtests passed**，
-  17 条 failed = 轮二红测 8 条 + 本批红测 9 条，两个红测文件之外 0 failed。
-- 本轮只出 Spec 与红测，**未改动生产代码**；未部署、未重启服务、未创建 MR/tag/Release、
-  未改动版本号、未读取真实凭据、未对真实会话或用户数据做任何删除/恢复；对 PDT 的调用仍为
-  目录 `GET` + 只读 `SELECT`（含 `pg_class` / `information_schema` / `table_constraints` 盘点）。
+- 验收（2026-09-28 实测）：
+  - 轮一红测 `tests/test_pdt_pg_lake_flow_red.py` 12 passed 不回归；轮二 13 passed、
+    本批 11 passed，三文件合计 **36 passed / 3 subtests passed、0 failed**（实现前 17 failed /
+    1239 passed）；第一至六批分析 Agent 红测（安全 / 行动 / 元数据 / 残余 / 预测 / 匿名面收敛）
+    保持通过；
+  - 全量 `pytest -q tests` **1256 passed / 0 failed / 25 skipped / 1045 subtests passed**；
+  - 评测 smoke 140/140、adversarial 15/15 P0、recorded-provider 34/34 P0、regression/all
+    147/147 P0，known_gap 0/0、`known_gap_ratchet` 与 `p0_all_pass` 均 PASS（`repeat_stability`
+    仍为 not_measured）。
+- 需求冲突的处理：轮一 R6b 要求把网关对 `WITH` 的 400 校验文案回传给用户，轮二 R11 要求 `WITH`
+  不得送到网关。实现采用本地拒绝、文案复用网关原句（含"仅允许以 SELECT"），两批断言同时满足，
+  全程未修改任何红测。
 - 未纳入本轮（用户未圈定，保持登记）：第 1 条（钱江本体库 0 表 0 视图、元数据接口 500）、
   第 5 条（网关把三种故障折叠成同一句"系统繁忙"）、第 9 条（数据面未按本体库隔离）。
+- 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号（v0.1.9）、未读取真实凭据、
+  未对真实会话或用户数据做任何删除/恢复；对 PDT 的调用仍为目录 `GET` + 只读 `SELECT`。

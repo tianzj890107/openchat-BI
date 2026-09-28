@@ -132,7 +132,7 @@ DORIS_DATABASE=<database>
 ONTOLOGY_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/ontology
 DORIS_API_URL=http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query
 # 新 MAL 契约（可选）：http://pdt-dev.eimos.com/api/gateway2/ontology/api/v1/analysis/data/query
-ONTOLOGY_REPOSITORY_ID=3
+# ONTOLOGY_REPOSITORY_ID=<按该环境目录查到的真实编号>
 ```
 
 ```dotenv
@@ -146,13 +146,13 @@ ONTOLOGY_REPOSITORY_ID=1
 - `ONTOLOGY_APP_ID` 两个环境取值相同且非密钥，作为镜像共享默认值（当前
   `ApTH1EHKdRk58WhDQB`），各环境可按需覆盖；`ONTOLOGY_AUTH_TOKEN` 是密钥，只能由各
   环境注入，仓库与镜像中不保存真实值（当前两个环境都为空）。
-- `ONTOLOGY_REPOSITORY_ID` 只决定"当前激活哪个本体库"，按环境取该环境目录里的真实
-  ID，**两个环境并不相同**：PDT 的 ECore 本体库是 `3`
-  （`ontology_demometaerp`），demo2 的 ECore 本体库是 `1`（`ontology_ecore`）。
+- `ONTOLOGY_REPOSITORY_ID` 只决定"当前激活哪个本体库"，**必须按环境取该环境目录里的
+  真实 ID**，不要照抄文档里的编号：PDT 当前激活的是 `12`（钱江本体库-勿动，
+  `ontology_qianjiang`），demo2 的 ECore 本体库是 `1`（`ontology_ecore`）。
   查法：`GET <ONTOLOGY_BASE_URL>/system/manager/ontology-repository?page=1&size=100`
-  （不带 `X-Ontology-Repository-Id` 头），在 `data.items` 里按名称找到 ECore 库的
-  `id`、`namespaceCode`、`currentDatabase`。用错 ID 时 `configure()` 会以
-  `远程本体库 X 不在可用目录中` 快速失败，不会静默连到另一个环境的库。
+  （不带 `X-Ontology-Repository-Id` 头），在 `data.items` 里按名称找到目标库的
+  `id`、`namespaceCode`、`currentDatabase`。用错 ID 时 `configure()` 会快速失败，并在
+  报错里列出该环境目录里的**可用编号**与配置键名，不会静默连到另一个环境的库。
 - 不要通过前端过滤或在代码里写死 repository ID 来"伪造"某个环境只有少量本体库；本体
   列表必须由该环境的本体服务真实返回。
 - 部署后核对：`GET <环境入口>/api/sources` 的 `ontology.production.base_url` 应等于该
@@ -168,7 +168,7 @@ ONTOLOGY_REPOSITORY_ID=1
 | --- | --- | --- | --- |
 | `ONTOLOGY_BASE_URL` | 必填，PDT 网关 | 必填，demo2 网关 | 运维按环境注入 |
 | `DORIS_API_URL` | 必填，PDT 网关 | 必填，demo2 网关 | 运维按环境注入 |
-| `ONTOLOGY_REPOSITORY_ID` | `3`（PDT 的 ECore 本体库） | `1`（demo2 的 ECore 本体库） | 运维按环境注入 |
+| `ONTOLOGY_REPOSITORY_ID` | `12`（钱江本体库-勿动；以该环境目录实际返回为准） | `1`（demo2 的 ECore 本体库） | 运维按环境注入 |
 | `ONTOLOGY_APP_ID` | `ApTH1EHKdRk58WhDQB`（共享默认） | 同左 | 仓库默认，可覆盖 |
 | `ONTOLOGY_AUTH_TOKEN` | 当前为空 | 当前为空 | 运维注入（不得入库） |
 

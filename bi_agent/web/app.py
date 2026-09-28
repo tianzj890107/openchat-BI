@@ -577,7 +577,12 @@ def configure(
             STATE.remote_catalog_last_attempt = 0.0
             repository = next((item for item in catalog if item["id"] == STATE.remote_ontology.repository_id), None)
             if repository is None:
-                raise RuntimeError(f"远程本体库 {STATE.remote_ontology.repository_id} 不在可用目录中")
+                available_ids = ", ".join(str(item["id"]) for item in catalog) or "（目录为空）"
+                raise RuntimeError(
+                    f"远程本体库 {STATE.remote_ontology.repository_id} 不在可用目录中"
+                    f"（该环境目录里的可用编号：{available_ids}）。"
+                    "请检查 ONTOLOGY_REPOSITORY_ID 是否为该环境目录里真实存在的编号。"
+                )
             if not repository["dorisDatabase"]:
                 raise RuntimeError(f"远程本体库 {repository['name']} 未配置 dorisDatabase")
             if not repository["namespace"]:
