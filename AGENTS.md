@@ -153,6 +153,7 @@
 
 ## Git 推送与部署规则
 
+- 分支模型、PR 合并流程与 release / hotfix 机制见 `docs/git-branch-workflow.md`；若与本节冲突，以本节为准。
 - 完成代码修改并验证通过后，默认交付方式是提交并 push 到 GitLab 统一开发分支（`gitlab/20260727`）；`master` 是唯一发布主线，merge 到 `master` 需要 `tianzijing` code review 后单独发起 Merge Request。
 - `main` 已退役并删除，禁止重新创建、不得 push、不得作为 Merge Request 的 source/target；`master` 是唯一发布主线，普通开发不得直接 push `master`。
 - 默认禁止部署、服务器同步、服务重启和服务器配置修改。

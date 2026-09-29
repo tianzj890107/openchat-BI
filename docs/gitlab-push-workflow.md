@@ -39,6 +39,7 @@ git config user.email "zhenzhan@kth.se"
 ## 安全规则
 
 - `gitlab/20260727` 是唯一默认开发分支目标；普通 commit 只推这个分支；
+- 分支模型、PR 合并流程与 release / hotfix 机制见 [Git 分支与合并工作流规范](./git-branch-workflow.md)；
 - 禁止 force push（含 `--force-with-lease`）；
 - 不自动 merge 或 rebase；
 - 不自动推 tag；

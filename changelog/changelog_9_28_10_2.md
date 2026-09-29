@@ -64,3 +64,29 @@
   第 5 条（网关把三种故障折叠成同一句"系统繁忙"）、第 9 条（数据面未按本体库隔离）。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号（v0.1.9）、未读取真实凭据、
   未对真实会话或用户数据做任何删除/恢复；对 PDT 的调用仍为目录 `GET` + 只读 `SELECT`。
+
+### 2026-09-29 · Git 分支模型与版本号规范落文档（新增长期规范 + 入口链接）
+
+- 背景：用户确认把 Git 分支 / 合并 / 版本号规范写入仓库，并对三处冲突做了裁决：
+  ① 季度 MINOR 与现有周节奏冲突 → **按原有**，版本节奏规则保持不变；
+  ② 季度收口 MINOR 只作为**人工建议，不自动触发**；
+  ③ `release/*` 分支模型作为**变更流程**正式采纳。
+- 新增 `docs/git-branch-workflow.md`：长期分支（`master` 归档主线、`release/*` 每版本一条、
+  由测试负责人管理、从 master 稳定节点拉出）与临时分支（`feature/*`、`bugfix/*` 从 master 拉出、
+  合回 master；`hotfix/*` 从 release 拉出、双向合回 release 与 master）；把原图 5 个要点文字化 ——
+  合并一律走 PR、release 拉出时机、hotfix 双 PR、日常开发与发布并行（master 作为归档）、
+  命名以 `feature/` `bugfix/` `hotfix/` `release/` 前缀为准。
+- 新增 `docs/diagrams/13-git-branch-model.md`（mermaid 图 + ASCII 兜底 + 读图要点表），并在
+  `docs/diagrams/README.md` 图目录登记第 13 行。
+- 版本判定并入 `docs/versions/versioning-policy.md`：补齐 MAJOR（不兼容重大功能 / 架构重构 /
+  核心业务逻辑变更 / API 不向下兼容 / 模型模版不兼容升级）、MINOR（新增功能 / 向下兼容的功能增强 /
+  模型模版新增一个元素）、PATCH（Bug 修复 / 安全补丁 / 不影响功能行为 / 模型模版新增一个元素的
+  组成部分）判定；同时**校准版本口径**：policy 里"当前正式版本保持为 `v0.1.2`"改为与
+  `docs/versions/README.md` 一致的 `v0.1.9`。
+- 入口链接：`AGENTS.md`、`docs/gitlab-push-workflow.md`、`docs/versions/README.md` 各增加一行
+  指向 `docs/git-branch-workflow.md`（冲突时以 `AGENTS.md` 为准）。
+- 契约红测：新增 `tests/test_git_branch_workflow_doc.py`（10 条，先红后绿），pin 分支模型、PR 合并
+  机制、release 拉出时机、hotfix 双 PR、命名前缀、不自动升级版本、图目录登记与入口链接。
+- 验收（2026-09-29）：新契约测试 10 passed / 2 subtests passed；全量 `pytest -q tests`
+  **1266 passed / 0 failed / 25 skipped / 1047 subtests passed**；`git diff --check` 通过。
+- 未部署、未重启服务、未创建 MR/tag/Release、未改动产品版本号（仍为 v0.1.9）、未删除任何历史会话或用户数据。

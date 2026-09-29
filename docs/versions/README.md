@@ -6,6 +6,7 @@
 
 - 当前版本：`v0.1.9`
 - 版本规则：[语义化版本与正式发布规范](./versioning-policy.md)
+- 分支模型与 PR 合并流程：[Git 分支与合并工作流规范](../git-branch-workflow.md)
 - 版本号由变更性质决定，不按日期机械递增；commit、push、部署不自动触发版本升级。
 - v0.1.3–v0.1.7 只存在 Git Tag 与 GitLab Release，尚未回填版本文档。
 
