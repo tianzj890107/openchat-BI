@@ -30,7 +30,11 @@
     "recovery_status": "SUCCEEDED",
     "policy_mode": "DIAGNOSTIC_ANALYSIS",
     "value": 25030,
-    "tolerance": 1e-06
+    "tolerance": 1e-06,
+    "causal_claims": [
+      "供应商减少导致采购金额下降"
+    ],
+    "causal_support": []
   },
   "forbidden": [],
   "allowed_variants": {},

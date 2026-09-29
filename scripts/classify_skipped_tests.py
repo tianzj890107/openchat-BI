@@ -33,6 +33,7 @@ ENV_FLAG_RE = re.compile(r"\b(RUN_[A-Z0-9_]+|ENABLE_[A-Z0-9_]+)\b")
 CATEGORIES = (
     "missing_frontend_dependency",
     "missing_external_service",
+    "redis",
     "platform_unsupported",
     "live_credentials",
     "explicit_integration",
@@ -44,6 +45,7 @@ CATEGORIES = (
 BLOCKING_CATEGORIES = frozenset({
     "missing_frontend_dependency",
     "missing_external_service",
+    "redis",
     "platform_unsupported",
     "live_credentials",
 })
@@ -54,6 +56,10 @@ PREVIOUS_BUDGET = {"total": 25}
 def _classify(target: str, reason: str) -> tuple[str, bool, str]:
     """Return ``(category, blocks_release, ci_hint)`` for one skip."""
     lowered = reason.lower()
+    if "redis" in lowered:
+        # A skipped Redis test is a missing service, not an opt-in gate: the
+        # release conclusion can depend on it.
+        return ("redis", True, "在 CI 中启动 redis service 后重跑该测试")
     if ENV_FLAG_RE.search(reason):
         flag = ENV_FLAG_RE.search(reason).group(1)
         return ("explicit_integration", False,
@@ -110,6 +116,7 @@ def build(tests: list[dict]) -> dict:
         "categories": {
             "missing_frontend_dependency": "缺少前端本地依赖（node_modules / file: 依赖）",
             "missing_external_service": "缺少外部服务（网络 / 中间件 / 远端仓库）",
+            "redis": "缺少 Redis 服务",
             "platform_unsupported": "当前平台不支持",
             "live_credentials": "缺少 live 评测凭据",
             "explicit_integration": "显式只读集成/验收测试，默认不跑",

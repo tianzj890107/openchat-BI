@@ -105,7 +105,8 @@
         "generated_sql",
         "tool_chain",
         "answer_grounding",
-        "context_resolution"
+        "context_resolution",
+        "recorded_session_isolation"
       ]
     },
     "question": {
@@ -239,6 +240,55 @@
         },
         "option": {
           "type": "string"
+        },
+        "sessions": {
+          "type": "array",
+          "minItems": 2,
+          "description": "Two or more independent sessions, each with its own recorded transcript.  Replayed through the real turn loop; used by recorded_session_isolation.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "provider"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "data",
+                  "report"
+                ]
+              },
+              "group": {
+                "type": "string",
+                "description": "Sessions sharing a group value run in one WebSession, in declared order; different groups are fully isolated."
+              }
+            }
+          }
+        },
+        "share_session": {
+          "type": "boolean",
+          "description": "True when the listed turns belong to ONE declared conversation group: inheritance must then happen, in order."
+        },
+        "share_conversation_store": {
+          "type": "boolean",
+          "description": "True when all sessions write into one ConversationStore (same user account) — the place a real leak would hide."
+        },
+        "session_modes": {
+          "type": "object",
+          "description": "group -> data|report mode, for the shared store check.",
+          "additionalProperties": {
+            "enum": [
+              "data",
+              "report"
+            ]
+          }
         }
       },
       "additionalProperties": false
@@ -283,6 +333,20 @@
         "business_objects": {
           "type": "array"
         },
+        "causal_claims": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "因果声明契约：声明即进入 unsupported_causal_claim_rate 分母。"
+        },
+        "causal_support": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "断言因果时回答必须引用的证据标记。"
+        },
         "chart_files": {
           "type": "object"
         },
@@ -319,6 +383,14 @@
         "escaped": {
           "type": "boolean"
         },
+        "expect_causal_violation": {
+          "type": "boolean",
+          "description": "因果负例：回答故意越界，监督必须抓住（只进 detection_rate）。"
+        },
+        "expect_proxy_miss": {
+          "type": "boolean",
+          "description": "代理负例：回答故意不披露代理关系，监督必须抓住（只进 detection_rate）。"
+        },
         "filter_condition": {
           "type": "string"
         },
@@ -334,17 +406,44 @@
         "final_text_contains": {
           "type": "array"
         },
+        "forbidden_context": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Context keys the peer session must NOT inherit."
+        },
         "forbidden_filters": {
           "type": "array"
         },
         "forbidden_substrings": {
           "type": "array"
         },
+        "forecast_kind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "stored_forecast",
+            "predictive_forecast",
+            "scenario_projection",
+            null
+          ],
+          "description": "Which forecast contract the turn belongs to; null when the turn is not a forecast."
+        },
         "foreign_keys": {
           "type": "object"
         },
         "grounding": {
           "type": "boolean"
+        },
+        "group_history_contains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Earlier turns (matched by question text) that must still be present, in order, in a shared conversation group."
         },
         "intent_level": {
           "type": "string"
@@ -380,10 +479,82 @@
           "type": "string"
         },
         "policy": {
-          "type": "string"
+          "type": [
+            "object",
+            "string"
+          ],
+          "description": "Cognitive Policy assertions. Refusal cases additionally pin refusal_category and require the secret-free refusal_message.",
+          "properties": {
+            "mode": {
+              "type": "string"
+            },
+            "mode_not_in": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "reason_code": {
+              "type": "string"
+            },
+            "next_step": {
+              "type": "string"
+            },
+            "required_tools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "required_tools_empty": {
+              "type": "boolean"
+            },
+            "evidence_required": {
+              "type": "boolean"
+            },
+            "needs_human": {
+              "type": "boolean"
+            },
+            "refusal_category": {
+              "enum": [
+                "credential_exfiltration",
+                "environment_discovery",
+                "destructive_data_operation"
+              ]
+            },
+            "refusal_category_absent": {
+              "type": "boolean",
+              "description": "The mirrors of refusal_category: the turn must NOT be a refusal (constraint statements, safety-guidance questions)."
+            },
+            "refusal_message_required": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
         },
         "policy_mode": {
           "type": "string"
+        },
+        "proxy_limits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "代理指标不能覆盖的范围。"
+        },
+        "proxy_metric": {
+          "type": [
+            "string",
+            "array"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "实际使用的代理指标（可为列表；每个都必须披露）。"
+        },
+        "proxy_none": {
+          "type": "boolean",
+          "description": "没有合理代理，必须澄清或返回能力限制。"
         },
         "query": {
           "type": "string"
@@ -427,6 +598,10 @@
         "table": {
           "type": "string"
         },
+        "target_metric": {
+          "type": "string",
+          "description": "用户目标指标。"
+        },
         "targets": {
           "type": "array"
         },
@@ -457,6 +632,10 @@
         "unsupported_numbers": {
           "type": "array"
         },
+        "used_direct_metric": {
+          "type": "boolean",
+          "description": "目标指标本身可得（不进入代理分母）。"
+        },
         "valid": {
           "type": "boolean"
         },
@@ -471,6 +650,10 @@
         },
         "wants_action": {
           "type": "boolean"
+        },
+        "wants_forecast": {
+          "type": "boolean",
+          "description": "The turn asks for a prediction / scenario projection (additive batch-5 flag)."
         },
         "wants_root_cause": {
           "type": "boolean"
@@ -526,7 +709,8 @@
         "introduced_at",
         "target_fix_version",
         "severity",
-        "source_issue"
+        "source_issue",
+        "production_entry"
       ],
       "additionalProperties": false,
       "properties": {
@@ -555,6 +739,11 @@
         },
         "summary": {
           "type": "string"
+        },
+        "production_entry": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The production entry point whose behaviour this Red test pins."
         }
       }
     },
@@ -765,6 +954,30 @@
         }
       },
       "description": "context cases declare the inherited context and the follow-up change"
+    },
+    {
+      "if": {
+        "properties": {
+          "evaluator": {
+            "enum": [
+              "recorded_session_isolation"
+            ]
+          }
+        },
+        "required": [
+          "evaluator"
+        ]
+      },
+      "then": {
+        "properties": {
+          "fixture": {
+            "required": [
+              "sessions"
+            ]
+          }
+        }
+      },
+      "description": "cross-session sentinels replay two or more sessions"
     }
   ]
 }

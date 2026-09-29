@@ -57,17 +57,29 @@
 - 用户必须明确点名新的动作（例如“执行浏览器验收”“拉起本地 8765”“创建 MR”），才能在已完成
   任务之后开始该动作；不能从历史建议、风险说明或先前授权中推断。
 
+## 一次性版本族重建授权（限定范围，已完成即失效）
+
+- 本段仅针对 2026-09-29 的版本族切换任务（`v0.1.0`–`v0.1.9` →
+  `ontology-v0.0.1`–`ontology-v0.0.10`，完整映射见
+  `docs/specs/ontology-version-rename-and-rebuild.md`），并在该任务内授权 Codex：
+  - 删除并重建本仓库的 10 个 tag，新 tag 必须指向映射表中登记的同一 commit；
+  - 删除并重建这 10 个版本对应的 GitLab Release（执行前核实 GitLab 上 10 个均已存在）；
+  - 迁移 `docs/versions/` 下的版本文档到 `ontology-v0.0.N.md` 命名。
+- 明确不授权：`master` 的任何写操作、force push、任何部署或服务器写操作、删除或迁移
+  历史会话与用户数据、修改与本次命名无关的 tag/分支。
+- 该任务终态报告后本授权自动失效，不得重复使用、不得类推到其它分支或后续版本。
+
 ## 正式版本文档工作流
 
 - 正式版本说明统一保存在 `docs/versions/`，不创建根目录 `CHANGELOG.md`。
-- `docs/versions/README.md` 为正式版本索引；每个正式版本使用独立文件 `docs/versions/vX.Y.Z.md`。
+- `docs/versions/README.md` 为正式版本索引；每个正式版本使用独立文件 `docs/versions/ontology-vX.Y.Z.md`。
 - 只有用户明确确定或要求创建正式版本时才创建版本文件；创建后同步更新版本索引和根 README 当前版本链接；已归档版本不得被后续版本覆盖。
 - 周 changelog 记录工程细节，版本文档只归纳最终用户可见能力、兼容变化、升级说明和验证结论。
-- 完整版本规则见 `docs/versions/versioning-policy.md`（`vMAJOR.MINOR.PATCH`；当前版本 `v0.1.8`）。
+- 完整版本规则见 `docs/versions/versioning-policy.md`（`ontology-vMAJOR.MINOR.PATCH`；当前版本 `ontology-v0.0.10`）。
 
 ## 版本升级强制规则（最高优先级）
 
-- Agent 不得自行判断并升级正式版本；只有用户在当前任务中明确指定目标版本（如“发布 v0.1.1”“版本升级到 v0.2.0”）时才能修改版本号。
+- Agent 不得自行判断并升级正式版本；只有用户在当前任务中明确指定目标版本（如“发布 ontology-v0.0.11”“版本升级到 ontology-v0.1.0”）时才能修改版本号。
 - 每周不自动升级 MINOR；每次部署不自动升级 PATCH；不按日期、commit 数量或部署次数机械升级。
 - commit、push、部署、tag、GitLab Release 相互独立：提交和推送不触发版本升级；“修复”“完成”“验收”“部署”“发布到服务器”等表述不构成版本升级授权。
 - tag、GitLab Release、部署需要各自独立授权：指定版本号不等于授权 tag；授权 tag 不等于授权 Release；授权 Release 不等于授权部署；授权部署不等于授权升级版本。
@@ -153,6 +165,7 @@
 
 ## Git 推送与部署规则
 
+- 分支模型、PR 合并流程与 release / hotfix 机制见 `docs/git-branch-workflow.md`；若与本节冲突，以本节为准。
 - 完成代码修改并验证通过后，默认交付方式是提交并 push 到 GitLab 统一开发分支（`gitlab/20260727`）；`master` 是唯一发布主线，merge 到 `master` 需要 `tianzijing` code review 后单独发起 Merge Request。
 - `main` 已退役并删除，禁止重新创建、不得 push、不得作为 Merge Request 的 source/target；`master` 是唯一发布主线，普通开发不得直接 push `master`。
 - 默认禁止部署、服务器同步、服务重启和服务器配置修改。

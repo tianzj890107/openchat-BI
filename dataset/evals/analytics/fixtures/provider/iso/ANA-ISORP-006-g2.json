@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-ISORP-006-g2",
+  "turns": [
+    {
+      "user": "接着上一个会话继续",
+      "db": "sales.db",
+      "events": [
+        {
+          "type": "text_delta",
+          "text": "没有可继承的会话上下文；请说明需要查哪个指标。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

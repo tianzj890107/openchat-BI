@@ -58,6 +58,7 @@ from ..paths import (
 from ..ontology.store import OntologyStore
 from ..ontology.remote import OntologyApiError, RemoteOntologyClient
 from ..ontology.remote_retriever import RemoteGraphRetriever
+from ..x360.client import X360ProcessDefinitionClient
 from ..ontology.graph import build_graph
 from ..report import ReportStore, parser_availability
 from ..recovery import RecoveryState, WAITING_USER
@@ -576,7 +577,12 @@ def configure(
             STATE.remote_catalog_last_attempt = 0.0
             repository = next((item for item in catalog if item["id"] == STATE.remote_ontology.repository_id), None)
             if repository is None:
-                raise RuntimeError(f"远程本体库 {STATE.remote_ontology.repository_id} 不在可用目录中")
+                available_ids = ", ".join(str(item["id"]) for item in catalog) or "（目录为空）"
+                raise RuntimeError(
+                    f"远程本体库 {STATE.remote_ontology.repository_id} 不在可用目录中"
+                    f"（该环境目录里的可用编号：{available_ids}）。"
+                    "请检查 ONTOLOGY_REPOSITORY_ID 是否为该环境目录里真实存在的编号。"
+                )
             if not repository["dorisDatabase"]:
                 raise RuntimeError(f"远程本体库 {repository['name']} 未配置 dorisDatabase")
             if not repository["namespace"]:
@@ -652,7 +658,7 @@ def configure(
 # ---------------------------------------------------------------------------
 APP_NAME = "eimosp-ontology-agentic-analytics"              # 应用名（容器/服务/配置中心统一使用）
 APP_DISPLAY_NAME = "eimosp-ontology-agentic-analytics 智能分析"  # 产品名
-APP_VERSION = "0.1.9"                 # 与 pyproject.toml / docs/versions 保持同步
+APP_VERSION = "ontology-v0.0.10"                 # 与 pyproject.toml / docs/versions 保持同步
 def _default_app_port() -> int:
     """实际监听端口来源：优先 APP_PORT 环境变量（容器内 Dockerfile 显式注入 8080），
     缺省回退非容器本地默认端口 8765。"""
@@ -847,6 +853,29 @@ REMOTE_DORIS_PREFIX = "__doris_repository__:"
 # service, not a local workbook.
 METAERP_ONTOLOGY_VALUE = "__metaerp_ontology__"
 LEGACY_PRODUCTION_ONTOLOGY_VALUE = "__production_ontology__"
+
+#: Placeholder returned by ``GET /api/sources`` where the source previously
+#: echoed a physical, secret-adjacent value (Doris JDBC connection string, HTTP
+#: API URL, account name).  The real values stay server-side; the settings page
+#: only needs to know whether they are configured, which the sibling
+#: ``*_configured`` booleans express.  A round-trip through ``PUT /api/sources``
+#: treats this placeholder as "keep the existing value" so saving an untouched
+#: form never clears a configured source
+#: (docs/specs/anonymous-read-surface-hardening.md §2.1/§2.3).
+SOURCES_REDACTED_PLACEHOLDER = "（已配置，见服务端环境变量）"
+
+
+def _redacted_source_field(value: Optional[str]) -> str:
+    """Return the stable placeholder for a configured value, else ``""``."""
+    return SOURCES_REDACTED_PLACEHOLDER if str(value or "").strip() else ""
+
+
+def _unredact_source_field(value: Optional[str]) -> Optional[str]:
+    """Map the GET placeholder back to "not provided" on the PUT side."""
+    if value is not None and str(value).strip() == SOURCES_REDACTED_PLACEHOLDER:
+        return None
+    return value
+
 
 # Retrieval modes for ontology knowledge. "semantic" = Excel-only keyword/
 # semantic lookup (the original behavior); "graph" = graph-library retrieval
@@ -1155,8 +1184,10 @@ def healthz() -> JSONResponse:
 
     - `/healthz` 为统一健康检查入口，`/health` 为等价别名；
     - 未完成配置时返回 503；就绪返回 200；
-    - 响应字段固定：`ok`/`status`/`app`/`name`/`version`/`host`/`port`/
+    - 响应字段固定：`ok`/`status`/`app`/`name`/`version`/`port`/
       `uptime_seconds`/`configured`/`llm_call`/`dependencies`。
+    - 不回吐机器主机名或其它主机指纹：`/healthz` 是匿名端点，实例标识不应
+      从这里泄露（docs/specs/anonymous-read-surface-hardening.md §2.2/§3.1）。
     """
     ontology_ready = (
         STATE.remote_ontology is not None
@@ -1173,7 +1204,6 @@ def healthz() -> JSONResponse:
             "app": APP_NAME,
             "name": APP_DISPLAY_NAME,
             "version": APP_VERSION,
-            "host": socket.gethostname(),
             "port": APP_PORT,
             "uptime_seconds": int(time.monotonic() - APP_STARTED_AT),
             "configured": ready,
@@ -1366,12 +1396,24 @@ def _remote_repository_catalog(client: RemoteOntologyClient) -> list[dict[str, A
             # older deployments called the same paired source field
             # `dorisDatabase`. Accept both without hard-coding a business DB.
             database = str(item.get("dorisDatabase") or item.get("currentDatabase") or "").strip()
+            meta_database = str(
+                item.get("metaDatabase") or item.get("arcadedbMetaDatabase") or ""
+            ).strip()
+            knowledge_database = str(
+                item.get("knowledgeDatabase") or item.get("arcadedbKnowledgeDatabase") or ""
+            ).strip()
             repositories.append({
                 "id": repository_id,
                 "name": str(item.get("name") or f"本体库 {repository_id}"),
                 "description": str(item.get("description") or ""),
                 "dorisDatabase": database,
+                "metaDatabase": meta_database,
+                "knowledgeDatabase": knowledge_database,
                 "namespace": str(item.get("namespaceCode") or item.get("namespace") or "").strip(),
+                # CDC topic prefix: only the detail endpoint knows it. The list
+                # value wins when the listing already carries one, otherwise the
+                # detail overlay below fills it in; unset stays an empty string.
+                "cdcTopicPrefix": str(item.get("cdcTopicPrefix") or "").strip(),
                 "value": f"{REMOTE_ONTOLOGY_PREFIX}{repository_id}",
                 "databaseValue": f"{REMOTE_DORIS_PREFIX}{repository_id}" if database else "",
             })
@@ -1379,7 +1421,65 @@ def _remote_repository_catalog(client: RemoteOntologyClient) -> list[dict[str, A
         if (total and len(repositories) >= total) or (not total and len(items) < 100):
             break
         page += 1
+    _apply_active_repository_detail(client, repositories)
     return repositories
+
+
+def _repository_detail_row(client: RemoteOntologyClient) -> dict[str, Any]:
+    """Fetch the active repository detail row; never make the catalog fail.
+
+    Detail availability is expressed separately from catalog availability: a
+    failing (or missing) detail endpoint keeps the listing values.
+    """
+    fetch = getattr(client, "repository_info", None)
+    if not callable(fetch):
+        return {}
+    try:
+        row = fetch()
+    except OntologyApiError as exc:
+        logger.warning("ontology repository detail unavailable: %s", exc)
+        return {}
+    return row if isinstance(row, dict) else {}
+
+
+def _apply_active_repository_detail(
+    client: RemoteOntologyClient, repositories: list[dict[str, Any]]
+) -> None:
+    """Overlay the active repository's detail row onto its own catalog entry."""
+    active_id = str(getattr(client, "repository_id", "") or "").strip()
+    if not active_id or not repositories:
+        return
+    entry = next((item for item in repositories if str(item.get("id")) == active_id), None)
+    if entry is None:
+        return
+    row = _repository_detail_row(client)
+    if not row:
+        return
+
+    def detail_text(*names: str) -> str:
+        for name in names:
+            value = row.get(name)
+            if value not in (None, ""):
+                return str(value).strip()
+        return ""
+
+    database = detail_text("dorisDatabase", "currentDatabase")
+    if database:
+        entry["dorisDatabase"] = database
+        entry["databaseValue"] = f"{REMOTE_DORIS_PREFIX}{entry['id']}"
+    for entry_field, names in (
+        ("metaDatabase", ("metaDatabase", "arcadedbMetaDatabase")),
+        ("knowledgeDatabase", ("knowledgeDatabase", "arcadedbKnowledgeDatabase")),
+        ("name", ("name",)),
+        ("description", ("description",)),
+        ("namespace", ("namespaceCode", "namespace")),
+    ):
+        value = detail_text(*names)
+        if value:
+            entry[entry_field] = value
+    prefix = detail_text("cdcTopicPrefix")
+    if prefix and not entry.get("cdcTopicPrefix"):
+        entry["cdcTopicPrefix"] = prefix
 
 
 _SOURCE_CONTEXT_FIELDS = (
@@ -1845,10 +1945,15 @@ def get_sources_endpoint(session_id: str = "") -> JSONResponse:
         "doris": {
             "value": DORIS_SOURCE_VALUE,
             "active": source.use_doris,
-            "api_url": source.doris_api_url,
-            "jdbc_url": source.doris_jdbc_url,
+            # Physical connection details never leave the server: an anonymous
+            # reader only learns whether each value is configured.
+            "api_url": _redacted_source_field(source.doris_api_url),
+            "api_url_configured": bool(str(source.doris_api_url or "").strip()),
+            "jdbc_url": _redacted_source_field(source.doris_jdbc_url),
+            "jdbc_configured": bool(str(source.doris_jdbc_url or "").strip()),
             "driver": source.doris_driver,
-            "username": source.doris_username,
+            "username": _redacted_source_field(source.doris_username),
+            "username_configured": bool(str(source.doris_username or "").strip()),
             # Never return the configured password to the browser.  A blank
             # optional value on PUT means "keep the existing password".
             "password": "",
@@ -1915,6 +2020,13 @@ def _put_sources_endpoint_impl(
     BI tools against the new sources and resets sessions so the change
     takes effect on the next turn."""
     source = source or STATE
+    # The settings page prefills the connection inputs with the placeholders
+    # from ``GET /api/sources``.  Normalise them to "not provided" *before* any
+    # URL/schema validation so an untouched form saves without side effects
+    # (docs/specs/anonymous-read-surface-hardening.md §2.3).
+    req.doris_jdbc_url = _unredact_source_field(req.doris_jdbc_url)
+    req.doris_api_url = _unredact_source_field(req.doris_api_url)
+    req.doris_username = _unredact_source_field(req.doris_username)
     binding_before = _source_binding_signature(source)
     cwd = Path(STATE.cwd)
     changed: list[str] = []
@@ -2146,7 +2258,13 @@ def _put_sources_endpoint_impl(
             if source.use_doris
             else _cwd_relative_value(source.db_path)
         ),
-        "doris_jdbc_url": source.doris_jdbc_url if source.use_doris else "",
+        # This write response is anonymous as well: echoing the real JDBC
+        # string here would reopen the read surface §2.1 closes (an empty
+        # ``PUT /api/sources`` would hand it straight back).  The frontend
+        # consumes ``changed`` and the logical identifiers, never this field.
+        "doris_jdbc_url": (
+            _redacted_source_field(source.doris_jdbc_url) if source.use_doris else ""
+        ),
         "doris_database": source.doris_database if source.use_doris else "",
         "namespace": source.ontology_namespace if source.remote_ontology else "",
         "retrieval_mode": source.retrieval_mode,
@@ -2799,6 +2917,58 @@ def get_conversation_record(cid: str) -> JSONResponse:
     return JSONResponse({"conversation": rec})
 
 
+def _trash_confirm_ok(value: Any) -> bool:
+    """Only an explicit affirmative empties the recycle bin (§2.3)."""
+    return str(value if value is not None else "").strip().lower() in {"1", "true", "yes"}
+
+
+# The recycle-bin routes must be declared *before* ``DELETE
+# /api/conversations/{cid}``: otherwise ``trash`` is captured as a conversation
+# id and the ``confirm`` branch becomes unreachable
+# (docs/specs/conversation-trash-recycle-bin.md §2.3).
+@app.get("/api/conversations/trash")
+def list_conversation_trash() -> JSONResponse:
+    """List deleted conversations: metadata only, never the transcript."""
+    store = _require_conversation_store()
+    return JSONResponse(store.trash_listing())
+
+
+@app.delete("/api/conversations/trash")
+def empty_conversation_trash(confirm: str = "") -> JSONResponse:
+    """Permanently delete every trashed snapshot (requires ``confirm=1``)."""
+    store = _require_conversation_store()
+    if not _trash_confirm_ok(confirm):
+        raise HTTPException(400, "清空回收站需要显式确认（confirm=1）")
+    return JSONResponse({"ok": True, "purged": store.purge_all()})
+
+
+@app.post("/api/conversations/trash/{cid}/restore")
+def restore_conversation_from_trash(cid: str) -> JSONResponse:
+    """Move one trashed conversation back to the active history surface."""
+    store = _require_conversation_store()
+    try:
+        result = store.restore(cid)
+    except ValueError:
+        raise HTTPException(400, f"invalid conversation id: {cid}")
+    if not result.get("ok"):
+        raise HTTPException(404, f"conversation not in trash: {cid}")
+    payload = {"ok": True, "id": result.get("id") or cid}
+    if result.get("already_active"):
+        payload["already_active"] = True
+    return JSONResponse(payload)
+
+
+@app.delete("/api/conversations/trash/{cid}")
+def purge_conversation_from_trash(cid: str) -> JSONResponse:
+    """Permanently delete one trashed snapshot."""
+    store = _require_conversation_store()
+    try:
+        ok = store.purge(cid)
+    except ValueError:
+        raise HTTPException(400, f"invalid conversation id: {cid}")
+    return JSONResponse({"ok": bool(ok)})
+
+
 @app.delete("/api/conversations/{cid}")
 def delete_conversation(cid: str) -> JSONResponse:
     store = _require_conversation_store()
@@ -2876,6 +3046,118 @@ def _match_task_alert_bp_definition(text: str) -> Optional[int]:
         if keyword in text:
             return int(bp_id)
     return None
+
+
+# ---------------------------------------------------------------------------
+# X360 流程定义解析（只读）
+#
+# Spec: docs/specs/x360-process-definition-integration.md §5.8（唯一真值表）。
+# bpDefinitionId 只有三个合法来源：入参 / X360 / 遗留关键词表；任何分支都不许"造"ID。
+# ---------------------------------------------------------------------------
+
+#: 解析结果的来源，如实写进响应与日志（不得把回退写成成功解析）。
+TASK_ALERT_SOURCE_REQUEST = "request"
+TASK_ALERT_SOURCE_X360 = "x360"
+TASK_ALERT_SOURCE_STATIC = "static_fallback"
+TASK_ALERT_SOURCE_DEFAULT = "default"
+
+#: ``X360_BP_ID_LEVEL``：按 API 文档默认取流程定义 ID；``activity`` 一键回退。
+TASK_ALERT_BP_ID_LEVEL_ENV = "X360_BP_ID_LEVEL"
+TASK_ALERT_BP_ID_LEVEL_PROCESS_DEFINITION = "process_definition"
+TASK_ALERT_BP_ID_LEVEL_ACTIVITY = "activity"
+
+#: 客户端按签名重建：任一相关环境变量变化都必须换新实例（含失败冷却状态）。
+_X360_CLIENT_ENV_SIGNATURE = (
+    "X360_ENABLED",
+    "X360_BASE_URL",
+    "X360_PROCESS_DEFINITION_KEY",
+    "X360_PROCESS_DEFINITION_ID",
+    "X360_APP_ID",
+    "X360_AUTH_TOKEN",
+    "X360_TIMEOUT_SECONDS",
+    "X360_CACHE_TTL_SECONDS",
+    "X360_FAILURE_COOLDOWN_SECONDS",
+    "ONTOLOGY_APP_ID",
+)
+
+_x360_client_lock = threading.Lock()
+_x360_client_signature: Optional[tuple] = None
+_x360_client: Optional[X360ProcessDefinitionClient] = None
+
+
+def _x360_client_for_env() -> X360ProcessDefinitionClient:
+    """返回与当前环境匹配的 X360 客户端（环境变化即重建，冷却状态随之重置）。"""
+    global _x360_client, _x360_client_signature
+    signature = tuple(os.environ.get(name, "") for name in _X360_CLIENT_ENV_SIGNATURE)
+    with _x360_client_lock:
+        if _x360_client is None or _x360_client_signature != signature:
+            _x360_client = X360ProcessDefinitionClient.from_env()
+            _x360_client_signature = signature
+        return _x360_client
+
+
+def _numeric_id(value: Any) -> Optional[int]:
+    """把 X360 的字符串 ID 转成上游要的数字；非数字返回 None（不猜、不截断）。"""
+    text = str(value or "").strip()
+    return int(text) if text.isdigit() else None
+
+
+def _task_alert_bp_id_level() -> str:
+    level = (os.environ.get(TASK_ALERT_BP_ID_LEVEL_ENV) or "").strip().lower()
+    if level == TASK_ALERT_BP_ID_LEVEL_ACTIVITY:
+        return TASK_ALERT_BP_ID_LEVEL_ACTIVITY
+    return TASK_ALERT_BP_ID_LEVEL_PROCESS_DEFINITION
+
+
+def _resolve_task_alert_target(
+    text: str, explicit_bp_definition_id: Optional[int] = None
+) -> dict[str, Any]:
+    """解析转督办目标：流程定义 ID、活动与责任人（Spec §5.8 真值表）。
+
+    返回 ``bpDefinitionId`` / ``assignee`` / ``source`` / ``activityId`` /
+    ``activityName``；非 ``x360`` 来源时两个活动字段一律为 ``None``（不把关键词猜成
+    活动名）。
+    """
+    # 与既有行为逐字一致：环境默认可以为空（空 -> 端点 422）。
+    default_assignee = (os.environ.get("TASK_ALERT_DEFAULT_ASSIGNEE") or "400").strip()
+    target: dict[str, Any] = {
+        "bpDefinitionId": None,
+        "assignee": default_assignee,
+        "source": TASK_ALERT_SOURCE_DEFAULT,
+        "activityId": None,
+        "activityName": None,
+    }
+    if explicit_bp_definition_id is not None:
+        # 显式入参最高优先级：既不覆盖用户意图，也不白跑一次 X360。
+        target["bpDefinitionId"] = explicit_bp_definition_id
+        target["source"] = TASK_ALERT_SOURCE_REQUEST
+        return target
+    activity = None
+    client = _x360_client_for_env()
+    if client.enabled:
+        try:
+            activity = client.match_activity(text)
+        except Exception:  # 防御性：解析意外失败也必须降级，不能把转督办打成 5xx
+            logger.warning("x360 task-alert resolution failed", exc_info=True)
+            activity = None
+    if activity is not None:
+        if _task_alert_bp_id_level() == TASK_ALERT_BP_ID_LEVEL_ACTIVITY:
+            resolved = _numeric_id(activity.id) or _numeric_id(activity.process_definition_id)
+        else:
+            resolved = _numeric_id(activity.process_definition_id) or _numeric_id(activity.id)
+        if resolved is not None:
+            target["bpDefinitionId"] = resolved
+            target["activityId"] = activity.id
+            target["activityName"] = activity.name
+            target["source"] = TASK_ALERT_SOURCE_X360
+            if activity.responsible_person:
+                target["assignee"] = activity.responsible_person
+            return target
+    static_id = _match_task_alert_bp_definition(text)
+    if static_id is not None:
+        target["bpDefinitionId"] = static_id
+        target["source"] = TASK_ALERT_SOURCE_STATIC
+    return target
 
 
 def _task_alert_enabled() -> bool:
@@ -2960,15 +3242,16 @@ def task_alert_manual_create(req: TaskAlertCreateRequest):
     level = (req.level or os.environ.get("TASK_ALERT_DEFAULT_LEVEL") or "WARNING").strip().upper()
     if level not in TASK_ALERT_LEVELS:
         raise HTTPException(422, "level 只允许 ALERT 或 WARNING")
-    assignee = (req.assignee or os.environ.get("TASK_ALERT_DEFAULT_ASSIGNEE") or "400").strip()
     bp_definition_raw = (req.bpDefinitionId or os.environ.get("TASK_ALERT_DEFAULT_BP_DEFINITION_ID") or "").strip()
-    bp_definition_id: Optional[int] = None
+    explicit_bp_definition_id: Optional[int] = None
     if bp_definition_raw:
         if not bp_definition_raw.isdigit():
             raise HTTPException(422, "bpDefinitionId 必须是数字")
-        bp_definition_id = int(bp_definition_raw)
-    else:
-        bp_definition_id = _match_task_alert_bp_definition(f"{title}\n{content}")
+        explicit_bp_definition_id = int(bp_definition_raw)
+    # 只解析一次：同一个结果用于请求体、响应与日志（Spec §5.9）。
+    target = _resolve_task_alert_target(f"{title}\n{content}", explicit_bp_definition_id)
+    bp_definition_id: Optional[int] = target["bpDefinitionId"]
+    assignee = (req.assignee or "").strip() or str(target["assignee"] or "").strip()
     if not assignee:
         raise HTTPException(422, "assignee 不能为空")
     client_request_id = (req.clientRequestId or "").strip()
@@ -3012,10 +3295,21 @@ def task_alert_manual_create(req: TaskAlertCreateRequest):
             _finish_failure()
             logger.warning("task alert upstream business failure")
             raise HTTPException(502, f"任务令服务创建失败:{error_message}")
-        result = {"ok": True, "taskId": task_id, "clientRequestId": client_request_id or None}
+        result = {
+            "ok": True,
+            "taskId": task_id,
+            "clientRequestId": client_request_id or None,
+            # 如实暴露这次督办按哪个流程发的：x360 / static_fallback / default / request。
+            "source": target["source"],
+            "activityName": target["activityName"],
+            "bpDefinitionId": bp_definition_id,
+        }
         logger.info(
-            "task alert created clientRequestId=%s taskId=%s upstream_status=200",
-            client_request_id or "-", task_id,
+            "task alert created clientRequestId=%s taskId=%s upstream_status=200 "
+            "source=%s activityName=%s bpDefinitionId=%s",
+            client_request_id or "-", task_id, target["source"],
+            target["activityName"] or "-",
+            bp_definition_id if bp_definition_id is not None else "-",
         )
         if client_request_id:
             with _task_alert_lock:

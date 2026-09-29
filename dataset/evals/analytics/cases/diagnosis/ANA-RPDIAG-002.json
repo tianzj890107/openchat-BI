@@ -30,7 +30,11 @@
     "recovery_status": "SUCCEEDED",
     "policy_mode": "DIAGNOSTIC_ANALYSIS",
     "value": 0.02243902,
-    "tolerance": 1e-06
+    "tolerance": 1e-06,
+    "causal_claims": [
+      "来料混料导致 P1 工厂缺陷率偏高"
+    ],
+    "causal_support": []
   },
   "forbidden": [],
   "allowed_variants": {},

@@ -1,0 +1,284 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "企业智能体平台整体架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/archify/platform-architecture.architecture.html",
+    "legend": {
+      "mode": "all",
+      "entries": {
+        "frontend": {
+          "label": "业务客户端"
+        },
+        "external": {
+          "label": "外部对接"
+        },
+        "cloud": {
+          "label": "AI 网关"
+        },
+        "backend": {
+          "label": "开发平台"
+        },
+        "messagebus": {
+          "label": "能力市场"
+        },
+        "security": {
+          "label": "语义层"
+        },
+        "database": {
+          "label": "数据层"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "fuxi-client",
+      "type": "frontend",
+      "label": "伏羲客户端",
+      "sublabel": "业务用户统一入口",
+      "pos": [
+        50,
+        30
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "api-access",
+      "type": "external",
+      "label": "API 接入系统",
+      "sublabel": "外部系统与伙伴对接",
+      "pos": [
+        1110,
+        30
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "ai-gateway",
+      "type": "cloud",
+      "label": "AI 网关",
+      "sublabel": "统一入口与访问准入",
+      "pos": [
+        50,
+        170
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "aip-platform",
+      "type": "backend",
+      "label": "AIP 开发平台",
+      "sublabel": "智能体编排与发布",
+      "pos": [
+        580,
+        170
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "skill-market",
+      "type": "messagebus",
+      "label": "Skill / Tool 市场",
+      "sublabel": "能力注册与共享",
+      "pos": [
+        1110,
+        170
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "ontology-layer",
+      "type": "security",
+      "label": "本体语义层",
+      "sublabel": "业务术语 · 关系 · 规则",
+      "pos": [
+        50,
+        310
+      ],
+      "size": [
+        1240,
+        64
+      ]
+    },
+    {
+      "id": "relational-db",
+      "type": "database",
+      "label": "关系库",
+      "sublabel": "结构化业务数据",
+      "pos": [
+        50,
+        450
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "knowledge-db",
+      "type": "database",
+      "label": "知识库",
+      "sublabel": "文档与知识沉淀",
+      "pos": [
+        1110,
+        450
+      ],
+      "size": [
+        180,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "应用接入层",
+      "wraps": [
+        "fuxi-client",
+        "api-access"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "智能体与能力层",
+      "wraps": [
+        "ai-gateway",
+        "aip-platform",
+        "skill-market"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "语义层",
+      "wraps": [
+        "ontology-layer"
+      ],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "数据层",
+      "wraps": [
+        "relational-db",
+        "knowledge-db"
+      ],
+      "pad": 22
+    }
+  ],
+  "connections": [
+    {
+      "id": "fuxi-to-gateway",
+      "from": "fuxi-client",
+      "to": "ai-gateway",
+      "label": "业务提问与操作",
+      "variant": "emphasis",
+      "labelAt": [
+        140,
+        108
+      ]
+    },
+    {
+      "id": "api-to-gateway",
+      "from": "api-access",
+      "to": "ai-gateway",
+      "label": "系统对接请求",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "gateway-to-aip",
+      "from": "ai-gateway",
+      "to": "aip-platform",
+      "label": "请求分发与编排",
+      "variant": "emphasis"
+    },
+    {
+      "id": "aip-to-market",
+      "from": "aip-platform",
+      "to": "skill-market",
+      "label": "能力加载与调用",
+      "variant": "dashed"
+    },
+    {
+      "id": "aip-to-ontology",
+      "from": "aip-platform",
+      "to": "ontology-layer",
+      "label": "业务语义查询",
+      "variant": "emphasis",
+      "labelAt": [
+        720,
+        248
+      ]
+    },
+    {
+      "id": "ontology-to-relational",
+      "from": "ontology-layer",
+      "to": "relational-db",
+      "label": "结构化数据",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "ontology-to-knowledge",
+      "from": "ontology-layer",
+      "to": "knowledge-db",
+      "label": "文档与知识",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "slate",
+      "title": "应用接入层",
+      "items": [
+        "伏羲客户端面向业务用户统一受理",
+        "API 接入系统对接外部系统与合作伙伴"
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "智能体与能力层",
+      "items": [
+        "AI 网关统一入口与访问准入",
+        "AIP 开发平台负责智能体编排与发布",
+        "Skill / Tool 市场承载能力注册与共享"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "语义层",
+      "items": [
+        "本体语义层统一业务术语、关系与规则"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "数据层",
+      "items": [
+        "关系库承载结构化业务数据",
+        "知识库沉淀文档与知识"
+      ]
+    }
+  ]
+}

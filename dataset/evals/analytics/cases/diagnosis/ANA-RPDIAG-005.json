@@ -30,7 +30,13 @@
     "recovery_status": "SUCCEEDED",
     "policy_mode": "DIAGNOSTIC_ANALYSIS",
     "value": 705,
-    "tolerance": 1e-06
+    "tolerance": 1e-06,
+    "target_metric": "周转情况",
+    "proxy_metric": "库龄",
+    "proxy_limits": [
+      "积压成因",
+      "库存结构"
+    ]
   },
   "forbidden": [],
   "allowed_variants": {},

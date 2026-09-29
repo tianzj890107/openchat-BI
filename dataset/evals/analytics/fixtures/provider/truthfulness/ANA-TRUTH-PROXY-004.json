@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-TRUTH-PROXY-004",
+  "turns": [
+    {
+      "user": "交付可靠性现在是多少",
+      "db": "sales.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "交付可靠性现在是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT customer_id AS cid, COUNT(*) AS orders, SUM(amount_cny) AS total FROM fact_sales WHERE is_deleted = 0 GROUP BY customer_id ORDER BY total DESC",
+            "query_description": "交付可靠性现在是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "客户销售额",
+            "columns": [
+              {
+                "key": "cid",
+                "label": "客户"
+              },
+              {
+                "key": "orders",
+                "label": "订单数"
+              },
+              {
+                "key": "total",
+                "label": "销售额"
+              }
+            ],
+            "rows": [
+              [
+                1,
+                9,
+                354000.0
+              ],
+              [
+                2,
+                7,
+                174000.0
+              ],
+              [
+                3,
+                6,
+                77600.0
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "当前没有交付准时数据，无法给出交付可靠性；订单数与销售额只能反映规模，不能代表交付表现。建议先接入交付台账，再回答这个问题。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

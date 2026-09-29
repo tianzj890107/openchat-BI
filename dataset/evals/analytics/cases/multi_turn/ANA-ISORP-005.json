@@ -1,0 +1,64 @@
+{
+  "case_id": "ANA-ISORP-005",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider",
+    "adversarial"
+  ],
+  "domain": "采购",
+  "category": "multi_turn",
+  "evaluator": "recorded_session_isolation",
+  "question": "2025 年 4 月采购金额是多少",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sessions": [
+      {
+        "name": "turn-1",
+        "provider": "fixtures/provider/iso/ANA-ISORP-005-turn-1.json",
+        "group": "thread"
+      },
+      {
+        "name": "turn-2",
+        "provider": "fixtures/provider/iso/ANA-ISORP-005-turn-2.json",
+        "group": "thread"
+      }
+    ],
+    "share_session": true
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "TableGenerate",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "group_history_contains": [
+      "2025 年 4 月采购金额是多少",
+      "那上个月呢"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "session_isolation",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "cross_session",
+    "isolation"
+  ],
+  "notes": "One declared conversation group: the second turn MUST still carry the first turn's history, in order. This is the positive control that stops 'isolate everything' from passing."
+}

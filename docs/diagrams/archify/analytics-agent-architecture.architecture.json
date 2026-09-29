@@ -1,0 +1,605 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "智能分析 Agent 整体架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/archify/analytics-agent-architecture.architecture.html",
+    "legend": {
+      "mode": "all",
+      "entries": {
+        "frontend": {
+          "label": "业务入口与交付"
+        },
+        "external": {
+          "label": "外部场景接入"
+        },
+        "security": {
+          "label": "合规 · 权限与真实性守门"
+        },
+        "backend": {
+          "label": "理解 · 洞察与建议"
+        },
+        "cloud": {
+          "label": "澄清 · 预测与推演"
+        },
+        "messagebus": {
+          "label": "本体语义与业务口径"
+        },
+        "database": {
+          "label": "取数与知识"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "ask",
+      "type": "frontend",
+      "label": "业务用户提问",
+      "sublabel": "用自然语言提出分析问题",
+      "pos": [
+        50,
+        30
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "call",
+      "type": "external",
+      "label": "其他场景调用",
+      "sublabel": "分析能力被别的场景借用",
+      "pos": [
+        580,
+        30
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "context",
+      "type": "backend",
+      "label": "会话与上下文",
+      "sublabel": "承接上一轮的对象与范围",
+      "pos": [
+        1110,
+        30
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "guard",
+      "type": "security",
+      "label": "安全与合规把关",
+      "sublabel": "凭据索取 · 破坏性操作 · 越权查看 · 内部环境探测，一律先拦",
+      "pos": [
+        50,
+        146
+      ],
+      "size": [
+        1240,
+        64
+      ]
+    },
+    {
+      "id": "ptype",
+      "type": "backend",
+      "label": "问题类型判断",
+      "sublabel": "事实 · 口径 · 原因 · 建议 · 预测",
+      "pos": [
+        50,
+        262
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "depth",
+      "type": "backend",
+      "label": "分析深度判断",
+      "sublabel": "这次要取数、找问题还是给行动",
+      "pos": [
+        390,
+        262
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "complete",
+      "type": "cloud",
+      "label": "信息完整度检查",
+      "sublabel": "时间 · 对象 · 范围是否齐",
+      "pos": [
+        730,
+        262
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "clarify",
+      "type": "cloud",
+      "label": "澄清与追问",
+      "sublabel": "缺条件先问清再往下",
+      "pos": [
+        1070,
+        262
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "ontology",
+      "type": "messagebus",
+      "label": "本体 · 业务统一说法",
+      "sublabel": "把业务说法、规则、口径统一",
+      "pos": [
+        50,
+        378
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "metric",
+      "type": "messagebus",
+      "label": "指标口径与定义",
+      "sublabel": "指标怎么算只认这一份",
+      "pos": [
+        345,
+        378
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "object",
+      "type": "messagebus",
+      "label": "业务对象与关系",
+      "sublabel": "对象怎么关联、有哪些规则",
+      "pos": [
+        600,
+        378
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "mapping",
+      "type": "messagebus",
+      "label": "业务到数据的映射",
+      "sublabel": "业务问法落到哪些数据",
+      "pos": [
+        855,
+        378
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "permission",
+      "type": "security",
+      "label": "权限与可见范围",
+      "sublabel": "按职责限定可见数据",
+      "pos": [
+        1110,
+        378
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "fact",
+      "type": "database",
+      "label": "业务事实取数",
+      "sublabel": "L1 取数：是多少、有哪些",
+      "pos": [
+        50,
+        494
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "doc",
+      "type": "database",
+      "label": "知识与文档检索",
+      "sublabel": "翻沉淀的业务知识与经验",
+      "pos": [
+        345,
+        494
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "compare",
+      "type": "backend",
+      "label": "对比与趋势分析",
+      "sublabel": "L2 找问题：哪里在异常",
+      "pos": [
+        600,
+        494
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "rootcause",
+      "type": "backend",
+      "label": "归因与诊断",
+      "sublabel": "L3 根因：为什么会发生",
+      "pos": [
+        855,
+        494
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "forecast",
+      "type": "cloud",
+      "label": "预测与情景推演",
+      "sublabel": "看走势与假设情景",
+      "pos": [
+        1110,
+        494
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "conclusion",
+      "type": "backend",
+      "label": "结论与依据组织",
+      "sublabel": "先讲清事实与证据",
+      "pos": [
+        50,
+        610
+      ],
+      "size": [
+        220,
+        64
+      ]
+    },
+    {
+      "id": "action",
+      "type": "backend",
+      "label": "行动建议",
+      "sublabel": "L4 方案：优先级与影响",
+      "pos": [
+        345,
+        610
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "supervise",
+      "type": "backend",
+      "label": "执行落地与监督",
+      "sublabel": "L5 落地：责任、节点、跟踪",
+      "pos": [
+        600,
+        610
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "truth",
+      "type": "security",
+      "label": "质量与真实性把关",
+      "sublabel": "拦无依据数字与因果越界",
+      "pos": [
+        855,
+        610
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "deliver",
+      "type": "frontend",
+      "label": "回答交付",
+      "sublabel": "把关通过后讲给业务",
+      "pos": [
+        1110,
+        610
+      ],
+      "size": [
+        180,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "提问受理层",
+      "wraps": [
+        "ask",
+        "call",
+        "context"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "安全与合规把关层",
+      "wraps": [
+        "guard"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "判断与分流层 · 先定问题类型，再定分析深度",
+      "wraps": [
+        "ptype",
+        "depth",
+        "complete",
+        "clarify"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "本体语义层 · 业务说法与口径的唯一出处",
+      "wraps": [
+        "ontology",
+        "metric",
+        "object",
+        "mapping",
+        "permission"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "取数与洞察层 · 逐级递进：L1 取数 → L2 找问题 → L3 根因",
+      "wraps": [
+        "fact",
+        "doc",
+        "compare",
+        "rootcause",
+        "forecast"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "region",
+      "label": "交付与守门层 · 由 L3 根因递进到 L4 行动建议、L5 执行监督",
+      "wraps": [
+        "conclusion",
+        "action",
+        "supervise",
+        "truth",
+        "deliver"
+      ],
+      "pad": 14
+    }
+  ],
+  "connections": [
+    {
+      "id": "ask-to-guard",
+      "from": "ask",
+      "to": "guard",
+      "label": "提问先过合规红线",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "call-to-guard",
+      "from": "call",
+      "to": "guard",
+      "label": "被其他场景借用",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        670,
+        108
+      ]
+    },
+    {
+      "id": "context-to-guard",
+      "from": "context",
+      "to": "guard",
+      "label": "带上会话上下文",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "guard-to-ptype",
+      "from": "guard",
+      "to": "ptype",
+      "label": "合规通过后判断问题类型",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "ptype-to-depth",
+      "from": "ptype",
+      "to": "depth",
+      "label": "这次问到哪一层"
+    },
+    {
+      "id": "depth-to-complete",
+      "from": "depth",
+      "to": "complete",
+      "label": "检查信息是否完整"
+    },
+    {
+      "id": "complete-to-clarify",
+      "from": "complete",
+      "to": "clarify",
+      "label": "缺条件先问清",
+      "variant": "dashed"
+    },
+    {
+      "id": "ptype-to-ontology",
+      "from": "ptype",
+      "to": "ontology",
+      "label": "先到本体对齐业务说法",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        160,
+        340
+      ]
+    },
+    {
+      "id": "ontology-to-metric",
+      "from": "ontology",
+      "to": "metric",
+      "variant": "dashed"
+    },
+    {
+      "id": "metric-to-object",
+      "from": "metric",
+      "to": "object",
+      "variant": "dashed"
+    },
+    {
+      "id": "object-to-mapping",
+      "from": "object",
+      "to": "mapping",
+      "variant": "dashed"
+    },
+    {
+      "id": "mapping-to-permission",
+      "from": "mapping",
+      "to": "permission",
+      "variant": "dashed"
+    },
+    {
+      "id": "ontology-to-fact",
+      "from": "ontology",
+      "to": "fact",
+      "label": "按本体口径取数",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        160,
+        456
+      ]
+    },
+    {
+      "id": "fact-to-doc",
+      "from": "fact",
+      "to": "doc",
+      "variant": "dashed"
+    },
+    {
+      "id": "doc-to-compare",
+      "from": "doc",
+      "to": "compare",
+      "variant": "dashed"
+    },
+    {
+      "id": "compare-to-rootcause",
+      "from": "compare",
+      "to": "rootcause",
+      "variant": "dashed"
+    },
+    {
+      "id": "rootcause-to-forecast",
+      "from": "rootcause",
+      "to": "forecast",
+      "variant": "dashed"
+    },
+    {
+      "id": "fact-to-conclusion",
+      "from": "fact",
+      "to": "conclusion",
+      "label": "形成结论与依据",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        160,
+        572
+      ]
+    },
+    {
+      "id": "rootcause-to-action",
+      "from": "rootcause",
+      "to": "action",
+      "label": "根因升到行动建议",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "conclusion-to-action",
+      "from": "conclusion",
+      "to": "action"
+    },
+    {
+      "id": "action-to-supervise",
+      "from": "action",
+      "to": "supervise",
+      "variant": "emphasis"
+    },
+    {
+      "id": "supervise-to-truth",
+      "from": "supervise",
+      "to": "truth",
+      "variant": "dashed"
+    },
+    {
+      "id": "truth-to-deliver",
+      "from": "truth",
+      "to": "deliver",
+      "variant": "emphasis"
+    }
+  ]
+}

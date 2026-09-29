@@ -4,6 +4,7 @@
   "categories": {
     "missing_frontend_dependency": "缺少前端本地依赖（node_modules / file: 依赖）",
     "missing_external_service": "缺少外部服务（网络 / 中间件 / 远端仓库）",
+    "redis": "缺少 Redis 服务",
     "platform_unsupported": "当前平台不支持",
     "live_credentials": "缺少 live 评测凭据",
     "explicit_integration": "显式只读集成/验收测试，默认不跑",
@@ -13,13 +14,15 @@
     "live_credentials",
     "missing_external_service",
     "missing_frontend_dependency",
-    "platform_unsupported"
+    "platform_unsupported",
+    "redis"
   ],
   "total": 25,
   "budget": 25,
   "by_category": {
     "missing_frontend_dependency": 0,
     "missing_external_service": 0,
+    "redis": 0,
     "platform_unsupported": 0,
     "live_credentials": 0,
     "explicit_integration": 25,

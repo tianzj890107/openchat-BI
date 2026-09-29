@@ -17,6 +17,7 @@ import re
 import sqlite3
 import json
 import os
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from typing import Callable
 from ..reliability import Provenance, normalize_query_result
@@ -65,6 +66,30 @@ def _validate_doris_identifier(value: str, label: str = "Doris 标识符") -> st
 
 class DorisApiError(Exception):
     """Raised when a Doris connection or query fails."""
+
+
+def _gateway_error_message(body: str, fallback: str) -> str:
+    """Extract the human-readable ``msg`` from a non-2xx gateway body.
+
+    Both gateway dialects answer failures with
+    ``{"success": false, "code": ..., "msg": ...}``; that ``msg`` is the only
+    part written for the caller (it carries the real engine error such as
+    ``relation "..." does not exist`` or the statement-validator text).  When
+    the body is not JSON we fall back to the trimmed raw text so nothing is
+    silently dropped.
+    """
+    text = (body or "").strip()
+    if not text:
+        return fallback
+    try:
+        payload = json.loads(text)
+    except (ValueError, TypeError):
+        payload = None
+    if isinstance(payload, dict):
+        msg = payload.get("msg") or payload.get("message") or payload.get("error")
+        if msg:
+            return str(msg).strip()
+    return text[:500]
 
 
 def _parse_jdbc_mysql(jdbc_url: str) -> tuple[str, int, str]:
@@ -192,17 +217,42 @@ def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], 
                 ):
                     value = f"Bearer {value}"
                 headers[name] = value
+        # The legacy gateway (``/agent/doris/query``) expects ``{"sql": ...}``
+        # and answers with ``data.rows``; the MAL endpoint
+        # (``/api/v1/analysis/data/query``) expects a ``QueryRequest`` and
+        # answers with ``data.result.rows``.  Both dialects stay live, and each
+        # side tolerates the other's response shape while the fleet rolls over.
+        legacy_dialect = conn.api_url.rstrip("/").endswith("/agent/doris/query")
+        request_body = (
+            {"sql": sql}
+            if legacy_dialect
+            else {"analysisConfig": {"sql": sql}, "commonConfig": {}}
+        )
         try:
             request = Request(
                 conn.api_url,
-                data=json.dumps({"sql": sql}, ensure_ascii=False).encode("utf-8"),
+                data=json.dumps(request_body, ensure_ascii=False).encode("utf-8"),
                 headers=headers,
                 method="POST",
             )
             with urlopen(request, timeout=60) as response:
                 payload = json.loads(response.read().decode("utf-8", errors="replace"))
+        except HTTPError as e:
+            # ``urlopen`` raises for any non-2xx status *before* the body is
+            # read.  The gateway hides the engine's real error behind a generic
+            # status line, so read and forward ``msg`` instead of dropping it.
+            try:
+                body = e.read().decode("utf-8", errors="replace")
+            except Exception:  # pragma: no cover - body already consumed/closed
+                body = ""
+            detail = _gateway_error_message(body, str(e))
+            raise DorisApiError(
+                f"analysis gateway request failed: HTTP {e.code} {detail}"
+            ) from e
         except Exception as e:
-            raise DorisApiError(f"Doris HTTP API 请求失败 ({conn.api_url}): {e}") from e
+            # Never echo the API URL / host / port: it leaks internal topology
+            # (and any embedded credentials) into the model-visible answer.
+            raise DorisApiError(f"analysis gateway request failed: {e}") from e
         if isinstance(payload, dict):
             code = payload.get("code")
             if payload.get("success") is False or (
@@ -210,26 +260,43 @@ def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], 
             ):
                 raise DorisApiError(
                     str(payload.get("msg") or payload.get("message") or
-                        f"Doris HTTP API 返回失败 code={code}")
+                        f"analysis gateway returned failure code={code}")
                 )
         data = payload.get("data", payload) if isinstance(payload, dict) else {}
-        raw_rows = data.get("rows", []) if isinstance(data, dict) else []
-        if not raw_rows:
+        if not isinstance(data, dict):
+            data = {}
+        result = data.get("result") if isinstance(data.get("result"), dict) else {}
+        raw_rows = result.get("rows")
+        raw_columns = result.get("columns")
+        if not isinstance(raw_rows, list):
+            raw_rows = data.get("rows")
+            raw_columns = data.get("columns")
+        if not isinstance(raw_rows, list):
             return [], []
+        explicit: list[str] = []
+        if isinstance(raw_columns, list):
+            for column in raw_columns:
+                if isinstance(column, dict):
+                    name = column.get("identifierCode") or column.get("name") or column.get("label")
+                else:
+                    name = column
+                if name not in (None, ""):
+                    explicit.append(str(name))
+        if not raw_rows:
+            return explicit, []
         if isinstance(raw_rows[0], dict):
-            columns: list[str] = []
+            columns = list(explicit)
             for row in raw_rows:
                 for key in row:
                     if key not in columns:
                         columns.append(key)
             return columns, [tuple(row.get(c) for c in columns) for row in raw_rows]
-        columns = data.get("columns", []) if isinstance(data, dict) else []
-        return list(columns), [tuple(row) for row in raw_rows]
+        return explicit, [tuple(row) for row in raw_rows]
     try:
         import pymysql  # lazy: only required when the Doris source is active
     except ImportError as e:  # pragma: no cover - environment dependent
         raise DorisApiError(
-            "未安装 pymysql,无法连接 Doris。请先 `pip install pymysql`。"
+            "未安装 pymysql,无法连接远程数据库。请先 `pip install pymysql`。"
         ) from e
     try:
         cx = pymysql.connect(
@@ -244,7 +311,7 @@ def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], 
         )
     except Exception as e:  # pymysql.err.OperationalError etc.
         raise DorisApiError(
-            f"无法连接 Doris ({conn.host}:{conn.port}/{conn.database}): {e}"
+            f"无法连接远程数据库 ({conn.database}): {e}"
         ) from e
     try:
         cur = cx.cursor()
@@ -259,6 +326,11 @@ def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], 
 
 
 _ALLOWED_LEAD = re.compile(r"^\s*(select|with|pragma|explain)\b", re.IGNORECASE)
+#: The remote analysis gateway's own validator only accepts statements that
+#: lead with ``SELECT`` or ``MATCH`` (``WITH`` / ``EXPLAIN`` / ``PRAGMA`` are
+#: rejected with a generic 400).  Local validation must not forward a statement
+#: the gateway is known to refuse (Spec R11).
+_GATEWAY_LEAD = re.compile(r"^\s*(select|match)\b", re.IGNORECASE)
 _FORBIDDEN = re.compile(
     r"\b(insert|update|delete|drop|alter|create|replace|truncate|attach|detach|vacuum|reindex)\b",
     re.IGNORECASE,
@@ -359,14 +431,15 @@ SQL_RUN_SCHEMA = {
     "name": "Ontology-FactQuery",
     "description": (
         "Execute a single read-only SQL statement against the customer "
-        "database. The active source is either a local SQLite DB or Apache "
-        "Doris (MySQL protocol), selected in 数据源设置. Writes, DDL, and "
-        "multi-statement scripts are rejected. When Doris is active, use "
-        "standard MySQL/ANSI SQL (PRAGMA is SQLite-only). Use this after "
-        "you've resolved the metric spec and relations from the ontology. "
-        "When Doris is active, table names MUST be database-qualified "
-        "(e.g. ontology_demo_scm_po.poheader) — run ListTables first to get "
-        "the exact db.table prefixes."
+        "database. The active source is either a local SQLite DB or the "
+        "remote analysis gateway (PostgreSQL engine, PG dialect), selected in "
+        "数据源设置. Writes, DDL, and multi-statement scripts are rejected. "
+        "When the gateway is active, use standard PostgreSQL (ANSI) SQL "
+        "(PRAGMA is SQLite-only). Use this after you've resolved the metric "
+        "spec and relations from the ontology. When the gateway is active, "
+        "table names MUST be database-qualified "
+        "(e.g. ontology_qianjiang.poheader) — run ListTables first to get "
+        "the exact database.table prefixes."
     ),
     "input_schema": {
         "type": "object",
@@ -408,10 +481,19 @@ def _make_sql_run(source: "SqlBackend | str") -> Executor:
             clean = sql.strip().rstrip(";").strip()
             if re.match(r"^pragma\b", clean, re.IGNORECASE):
                 return "Ontology-FactQuery rejected: PRAGMA is SQLite-only\nSQL: " + sql
+            if not _GATEWAY_LEAD.match(clean):
+                # The gateway answers ``WITH`` / ``EXPLAIN`` with
+                # ``400 仅允许以 SELECT 或 MATCH 开头``; refusing here keeps the
+                # failure local and actionable instead of burning a round trip.
+                return (
+                    "Ontology-FactQuery rejected: 仅允许以 SELECT 或 MATCH 开头的只读查询"
+                    "(the remote gateway rejects WITH / EXPLAIN; rewrite the CTE or "
+                    "EXPLAIN as a plain SELECT or a subquery)\nSQL: " + sql
+                )
             try:
                 columns, rows = _doris_query(backend.doris, clean)
             except DorisApiError as e:
-                return f"Ontology-FactQuery (Doris) error: {e}\nSQL: {sql}"
+                return f"Ontology-FactQuery error: {e}\nSQL: {sql}"
             result = normalize_query_result(
                 {"columns": columns, "rows": rows[:limit]},
                 scope={"query": clean},
@@ -447,34 +529,68 @@ def _make_sql_run(source: "SqlBackend | str") -> Executor:
 LIST_TABLES_SCHEMA = {
     "name": "ListTables",
     "description": (
-        "List all tables in the customer database with row counts. Useful "
-        "when you need to confirm a physical table exists before querying."
+        "List all tables in the connected database. Useful when you need to "
+        "confirm a physical table exists before querying. Physical tables are "
+        "referenced as database-qualified names (database.table)."
     ),
     "input_schema": {"type": "object", "properties": {}},
 }
 
 
+def _row_estimate_scale(value: object) -> str:
+    """Render a planner row estimate; negative/absent values are explicitly unknown."""
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return "unknown rows"
+    if number < 0:
+        # PostgreSQL uses -1 for "never analyzed"; it is not a row count.
+        return "unknown rows"
+    return f"{int(number)} rows"
+
+
 def _list_tables_doris(backend: SqlBackend) -> str:
-    # Scope to the connected database. table_rows is an estimate maintained by
-    # Doris (good enough for an existence / scale check, and far cheaper than
-    # COUNT(*) over large columnar tables).
+    # Scope to the connected database. Only constructs that exist on the real
+    # engine (PostgreSQL) are used: the MySQL-only ``table_rows`` estimate is
+    # rejected outright and would fail the listing.  ``pg_class.reltuples`` is
+    # the planner's row estimate; ``-1`` means "never analyzed" and is shown as
+    # an explicit unknown rather than a bogus row count (Spec R16).
     conn = backend.doris
     sql = (
-        "SELECT table_name, table_rows FROM information_schema.tables "
-        f"WHERE table_schema = '{conn.database}' ORDER BY table_name"
+        "SELECT t.table_name, c.reltuples "
+        "FROM information_schema.tables t "
+        "LEFT JOIN pg_class c ON c.relname = t.table_name "
+        "AND c.relnamespace = ("
+        "SELECT oid FROM pg_namespace WHERE nspname = t.table_schema) "
+        f"WHERE t.table_schema = '{conn.database}' ORDER BY t.table_name"
     )
     try:
-        _cols, rows = _doris_query(conn, sql)
+        cols, rows = _doris_query(conn, sql)
     except DorisApiError as e:
-        return f"ListTables (Doris) error: {e}"
+        return f"ListTables error: {e}"
+    names = [str(c) for c in (cols or [])]
+
+    def _cell(row: tuple, key: str, position: int):
+        index = position
+        if key in names:
+            index = names.index(key)
+        return row[index] if index < len(row) else None
+
     out = [
-        f"# Tables in Doris {conn.host}:{conn.port}/{conn.database} ({len(rows)})",
-        f"# 注意: 写 SQL 时表名必须带库前缀 `{conn.database}.<表名>`(例如 "
-        f"`{conn.database}.poheader`)。",
+        f"# Tables in {conn.database} ({len(rows)})",
+        f"# 注意: 写 SQL 时表名必须带库前缀 `{conn.database}.<表名>`。",
     ]
-    for name, cnt in rows:
-        cnt_s = "?" if cnt is None else cnt
-        out.append(f"  {conn.database}.{name}  ({cnt_s} rows est.)")
+    if not rows:
+        out.append(f"  0 tables / views — 库 `{conn.database}` 当前没有表或视图。")
+        return "\n".join(out)
+    for row in rows:
+        # Tolerate a gateway that reorders or appends columns rather than
+        # failing the whole listing.
+        name = _cell(row, "table_name", 0)
+        if name in (None, ""):
+            continue
+        estimate = _cell(row, "reltuples", 1)
+        out.append(f"  {conn.database}.{name}  ({_row_estimate_scale(estimate)})")
     return "\n".join(out)
 
 
@@ -514,9 +630,9 @@ def _make_list_tables(source: "SqlBackend | str") -> Executor:
 DESCRIBE_TABLE_SCHEMA = {
     "name": "DescribeTable",
     "description": (
-        "Show the physical column list of a table (name, type, primary key, "
-        "nullable). Use this to cross-check ontology attributes against the "
-        "actual DB schema before writing SQL."
+        "Show the physical column list of a table (name, type, nullable). "
+        "Use this to cross-check ontology attributes against the actual DB "
+        "schema before writing SQL."
     ),
     "input_schema": {
         "type": "object",
@@ -524,10 +640,10 @@ DESCRIBE_TABLE_SCHEMA = {
             "table": {
                 "type": "string",
                 "description": (
-                    "Physical table name. For Doris you may pass it "
-                    "db-qualified as `database.table` (e.g. "
-                    "ontology_demo_scm_po.poheader); a bare name uses the "
-                    "active Doris database."
+                    "Physical table name. For the remote gateway you may pass "
+                    "it db-qualified as `database.table` (e.g. "
+                    "ontology_qianjiang.poheader); a bare name uses the active "
+                    "gateway database."
                 ),
             },
         },
@@ -536,24 +652,48 @@ DESCRIBE_TABLE_SCHEMA = {
 }
 
 
-def _describe_table_doris(backend: SqlBackend, schema: str, table: str) -> str:
+def _describe_table_doris(
+    backend: SqlBackend, schema: str, table: str, display: str = ""
+) -> str:
     conn = backend.doris
+    qualified = display or f"{schema}.{table}"
+    # ``information_schema.columns`` on the real engine has no MySQL-only
+    # ``column_key``; the PostgreSQL equivalents are the ``key_column_usage`` /
+    # ``table_constraints`` views.  The join is scoped to PRIMARY KEY, and a
+    # column whose membership cannot be established stays unmarked (Spec R17).
     sql = (
-        "SELECT column_name, data_type, is_nullable, column_key "
-        "FROM information_schema.columns "
-        f"WHERE table_schema = '{schema}' AND table_name = '{table}' "
-        "ORDER BY ordinal_position"
+        "SELECT c.column_name, c.data_type, c.is_nullable, tc.constraint_type "
+        "FROM information_schema.columns c "
+        "LEFT JOIN information_schema.key_column_usage kcu "
+        "ON kcu.table_schema = c.table_schema AND kcu.table_name = c.table_name "
+        "AND kcu.column_name = c.column_name "
+        "LEFT JOIN information_schema.table_constraints tc "
+        "ON tc.constraint_schema = kcu.constraint_schema "
+        "AND tc.constraint_name = kcu.constraint_name "
+        "AND tc.constraint_type = 'PRIMARY KEY' "
+        f"WHERE c.table_schema = '{schema}' AND c.table_name = '{table}' "
+        "ORDER BY c.ordinal_position"
     )
     try:
-        _cols, rows = _doris_query(conn, sql)
+        cols, rows = _doris_query(conn, sql)
     except DorisApiError as e:
-        return f"DescribeTable (Doris) error: {e}"
+        return f"DescribeTable error: {e}"
     if not rows:
-        return f"DescribeTable: table {table!r} not found or has no columns."
-    lines = [f"# {table} — {len(rows)} columns"]
-    for name, type_, is_nullable, key in rows:
-        marker = " [PK]" if str(key).upper() in ("PRI", "PRIMARY") else ""
+        return f"DescribeTable: table {qualified!r} not found or has no columns."
+    names = [str(c) for c in (cols or [])]
+
+    def _cell(row: tuple, key: str, position: int):
+        index = names.index(key) if key in names else position
+        return row[index] if index < len(row) else None
+
+    lines = [f"# {qualified} — {len(rows)} columns"]
+    for row in rows:
+        name = _cell(row, "column_name", 0)
+        type_ = _cell(row, "data_type", 1)
+        is_nullable = _cell(row, "is_nullable", 2)
+        constraint = _cell(row, "constraint_type", 3)
         null_s = "NULL" if str(is_nullable).upper() in ("YES", "1", "TRUE") else "NOT NULL"
+        marker = "  [PK]" if "PRIMARY KEY" in str(constraint or "").upper() else ""
         lines.append(f"  {name}  {type_}  {null_s}{marker}")
     return "\n".join(lines)
 
@@ -574,7 +714,7 @@ def _make_describe_table(source: "SqlBackend | str") -> Executor:
             if not m:
                 return f"DescribeTable: invalid table name {table!r}."
             schema = m.group(1) or backend.doris.database
-            return _describe_table_doris(backend, schema, m.group(2))
+            return _describe_table_doris(backend, schema, m.group(2), display=table)
         if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
             return f"DescribeTable: invalid table name {table!r}."
         try:

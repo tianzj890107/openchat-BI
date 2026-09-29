@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+<defs>
+<marker id="ah-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0D47A1"/></marker>
+<marker id="ah-s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C62828"/></marker>
+<marker id="ah-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#E65100"/></marker>
+<marker id="ah-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D32"/></marker>
+<marker id="ah-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#455A64"/></marker>
+</defs>
+<rect width="1920" height="1080" fill="#FFFFFF"/>
+<text x="32" y="52" font-size="30" font-weight="700" fill="#0B2A4A">智能分析 Agent · 业务全景架构</text>
+<text x="32" y="78" font-size="16" fill="#5A6B7B">业务视角：从一次业务问询，到安全合规把关、数据与知识支撑、分析洞察、交付呈现与质量发布</text>
+<rect x="32" y="94" width="1808" height="120" rx="12" fill="#F5FAFF" stroke="#1565C0" stroke-width="2"/>
+<rect x="32" y="94" width="6" height="120" rx="3" fill="#1565C0"/>
+<text x="48" y="146" font-size="20" font-weight="700" fill="#0D47A1">① 用户与会话</text>
+<text x="48" y="172" font-size="13" fill="#0D47A1" opacity="0.75">从提问到理解需求</text>
+<rect x="220.0" y="125.0" width="191.8" height="58" rx="9" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="315.9" y="159.5" font-size="15" text-anchor="middle" fill="#0D47A1">工作台提问</text>
+<rect x="421.8" y="125.0" width="191.8" height="58" rx="9" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="517.6" y="159.5" font-size="15" text-anchor="middle" fill="#0D47A1">移动端提问</text>
+<rect x="623.5" y="125.0" width="191.8" height="58" rx="9" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="719.4" y="159.5" font-size="15" text-anchor="middle" fill="#0D47A1">报表页追问</text>
+<rect x="825.2" y="125.0" width="191.8" height="58" rx="9" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="921.1" y="159.5" font-size="15" text-anchor="middle" fill="#0D47A1">角色与分析视角</text>
+<rect x="1027.0" y="125.0" width="191.8" height="58" rx="9" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="1122.9" y="150.0" font-size="15" text-anchor="middle" fill="#0D47A1">会话上下文</text>
+<text x="1122.9" y="169.0" font-size="15" text-anchor="middle" fill="#0D47A1">多轮记忆</text>
+<rect x="1228.8" y="125.0" width="191.8" height="58" rx="9" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="1324.6" y="159.5" font-size="15" text-anchor="middle" fill="#0D47A1">问题意图理解</text>
+<rect x="1430.5" y="125.0" width="191.8" height="58" rx="9" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="1526.4" y="159.5" font-size="15" text-anchor="middle" fill="#0D47A1">指标与口径识别</text>
+<rect x="1632.2" y="125.0" width="191.8" height="58" rx="9" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="1728.1" y="150.0" font-size="15" text-anchor="middle" fill="#0D47A1">范围识别</text>
+<text x="1728.1" y="169.0" font-size="15" text-anchor="middle" fill="#0D47A1">时间 · 组织 · 阈值</text>
+<rect x="32" y="236" width="1808" height="120" rx="12" fill="#FFF5F5" stroke="#C62828" stroke-width="2"/>
+<rect x="32" y="236" width="6" height="120" rx="3" fill="#C62828"/>
+<text x="48" y="288" font-size="20" font-weight="700" fill="#B71C1C">② 安全与合规把关</text>
+<text x="48" y="314" font-size="13" fill="#B71C1C" opacity="0.75">先于一切业务处理</text>
+<rect x="220.0" y="267.0" width="220.6" height="58" rx="9" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="330.3" y="292.0" font-size="15" text-anchor="middle" fill="#B71C1C">安全与合规把关</text>
+<text x="330.3" y="311.0" font-size="15" text-anchor="middle" fill="#B71C1C">先于一切业务处理</text>
+<rect x="450.6" y="267.0" width="220.6" height="58" rx="9" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="560.9" y="301.5" font-size="15" text-anchor="middle" fill="#B71C1C">凭据索取识别</text>
+<rect x="681.1" y="267.0" width="220.6" height="58" rx="9" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="791.4" y="301.5" font-size="15" text-anchor="middle" fill="#B71C1C">破坏性操作识别</text>
+<rect x="911.7" y="267.0" width="220.6" height="58" rx="9" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="1022.0" y="301.5" font-size="15" text-anchor="middle" fill="#B71C1C">内部环境探测识别</text>
+<rect x="1142.3" y="267.0" width="220.6" height="58" rx="9" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="1252.6" y="301.5" font-size="15" text-anchor="middle" fill="#B71C1C">绕过审批与越权识别</text>
+<rect x="1372.9" y="267.0" width="220.6" height="58" rx="9" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="1483.1" y="301.5" font-size="15" text-anchor="middle" fill="#B71C1C">拒绝并给出合规指引</text>
+<rect x="1603.4" y="267.0" width="220.6" height="58" rx="9" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="1713.7" y="292.0" font-size="15" text-anchor="middle" fill="#B71C1C">敏感信息不外泄</text>
+<text x="1713.7" y="311.0" font-size="15" text-anchor="middle" fill="#B71C1C">全程可追溯</text>
+<rect x="32" y="378" width="1808" height="120" rx="12" fill="#F4FBF4" stroke="#2E7D32" stroke-width="2"/>
+<rect x="32" y="378" width="6" height="120" rx="3" fill="#2E7D32"/>
+<text x="48" y="430" font-size="20" font-weight="700" fill="#1B5E20">③ 数据与知识底座</text>
+<text x="48" y="456" font-size="13" fill="#1B5E20" opacity="0.75">口径 · 知识 · 经营数据</text>
+<rect x="220.0" y="409.0" width="220.6" height="58" rx="9" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="330.3" y="434.0" font-size="15" text-anchor="middle" fill="#1B5E20">业务本体知识</text>
+<text x="330.3" y="453.0" font-size="15" text-anchor="middle" fill="#1B5E20">术语 · 对象 · 关系</text>
+<rect x="450.6" y="409.0" width="220.6" height="58" rx="9" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="560.9" y="443.5" font-size="15" text-anchor="middle" fill="#1B5E20">指标定义与口径库</text>
+<rect x="681.1" y="409.0" width="220.6" height="58" rx="9" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="791.4" y="426.5" font-size="13.5" text-anchor="middle" fill="#1B5E20">经营数据</text>
+<text x="791.4" y="443.5" font-size="13.5" text-anchor="middle" fill="#1B5E20">销售 · 采购 · 存货</text>
+<text x="791.4" y="460.5" font-size="13.5" text-anchor="middle" fill="#1B5E20">财务 · 质量 · 交付</text>
+<rect x="911.7" y="409.0" width="220.6" height="58" rx="9" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="1022.0" y="443.5" font-size="15" text-anchor="middle" fill="#1B5E20">计划与预算数据</text>
+<rect x="1142.3" y="409.0" width="220.6" height="58" rx="9" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="1252.6" y="443.5" font-size="15" text-anchor="middle" fill="#1B5E20">业务规则与校验规则</text>
+<rect x="1372.9" y="409.0" width="220.6" height="58" rx="9" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="1483.1" y="443.5" font-size="15" text-anchor="middle" fill="#1B5E20">口径与统计范围说明</text>
+<rect x="1603.4" y="409.0" width="220.6" height="58" rx="9" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="1713.7" y="443.5" font-size="15" text-anchor="middle" fill="#1B5E20">数据来源说明</text>
+<rect x="32" y="520" width="1808" height="120" rx="12" fill="#FFF9F0" stroke="#EF6C00" stroke-width="2"/>
+<rect x="32" y="520" width="6" height="120" rx="3" fill="#EF6C00"/>
+<text x="48" y="572" font-size="20" font-weight="700" fill="#E65100">④ 分析与洞察</text>
+<text x="48" y="598" font-size="13" fill="#E65100" opacity="0.75">从事实到行动建议</text>
+<rect x="220.0" y="551.0" width="259.0" height="58" rx="9" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="349.5" y="585.5" font-size="15" text-anchor="middle" fill="#E65100">事实与明细查询</text>
+<rect x="489.0" y="551.0" width="259.0" height="58" rx="9" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="618.5" y="585.5" font-size="15" text-anchor="middle" fill="#E65100">异常与波动定位</text>
+<rect x="758.0" y="551.0" width="259.0" height="58" rx="9" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="887.5" y="585.5" font-size="15" text-anchor="middle" fill="#E65100">根因分析</text>
+<rect x="1027.0" y="551.0" width="259.0" height="58" rx="9" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="1156.5" y="585.5" font-size="15" text-anchor="middle" fill="#E65100">行动建议与措施</text>
+<rect x="1296.0" y="551.0" width="259.0" height="58" rx="9" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="1425.5" y="585.5" font-size="15" text-anchor="middle" fill="#E65100">预测与情景推演</text>
+<rect x="1565.0" y="551.0" width="259.0" height="58" rx="9" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="1694.5" y="585.5" font-size="15" text-anchor="middle" fill="#E65100">证据与假设标注</text>
+<rect x="32" y="662" width="1808" height="120" rx="12" fill="#FBF3FD" stroke="#6A1B9A" stroke-width="2"/>
+<rect x="32" y="662" width="6" height="120" rx="3" fill="#6A1B9A"/>
+<text x="48" y="714" font-size="20" font-weight="700" fill="#4A148C">⑤ 交付与呈现</text>
+<text x="48" y="740" font-size="13" fill="#4A148C" opacity="0.75">结论 · 图表 · 说明</text>
+<rect x="220.0" y="693.0" width="259.0" height="58" rx="9" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.6"/>
+<text x="349.5" y="727.5" font-size="15" text-anchor="middle" fill="#4A148C">结论与证据</text>
+<rect x="489.0" y="693.0" width="259.0" height="58" rx="9" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.6"/>
+<text x="618.5" y="727.5" font-size="15" text-anchor="middle" fill="#4A148C">图表与表格</text>
+<rect x="758.0" y="693.0" width="259.0" height="58" rx="9" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.6"/>
+<text x="887.5" y="727.5" font-size="15" text-anchor="middle" fill="#4A148C">报告与看板</text>
+<rect x="1027.0" y="693.0" width="259.0" height="58" rx="9" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.6"/>
+<text x="1156.5" y="727.5" font-size="15" text-anchor="middle" fill="#4A148C">限制与假设说明</text>
+<rect x="1296.0" y="693.0" width="259.0" height="58" rx="9" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.6"/>
+<text x="1425.5" y="727.5" font-size="15" text-anchor="middle" fill="#4A148C">后续跟进建议</text>
+<rect x="1565.0" y="693.0" width="259.0" height="58" rx="9" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.6"/>
+<text x="1694.5" y="727.5" font-size="15" text-anchor="middle" fill="#4A148C">合规拒绝答复</text>
+<rect x="32" y="804" width="1808" height="120" rx="12" fill="#F7F9FA" stroke="#455A64" stroke-width="2"/>
+<rect x="32" y="804" width="6" height="120" rx="3" fill="#455A64"/>
+<text x="48" y="856" font-size="20" font-weight="700" fill="#263238">⑥ 质量与发布把关</text>
+<text x="48" y="882" font-size="13" fill="#263238" opacity="0.75">未达标不交付</text>
+<rect x="220.0" y="835.0" width="259.0" height="58" rx="9" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="349.5" y="869.5" font-size="15" text-anchor="middle" fill="#263238">口径一致性复核</text>
+<rect x="489.0" y="835.0" width="259.0" height="58" rx="9" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="618.5" y="869.5" font-size="15" text-anchor="middle" fill="#263238">证据充分性复核</text>
+<rect x="758.0" y="835.0" width="259.0" height="58" rx="9" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="887.5" y="860.0" font-size="15" text-anchor="middle" fill="#263238">真实性守护</text>
+<text x="887.5" y="879.0" font-size="15" text-anchor="middle" fill="#263238">不夸大因果 · 代理指标说明</text>
+<rect x="1027.0" y="835.0" width="259.0" height="58" rx="9" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="1156.5" y="869.5" font-size="15" text-anchor="middle" fill="#263238">多次运行一致性复核</text>
+<rect x="1296.0" y="835.0" width="259.0" height="58" rx="9" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="1425.5" y="869.5" font-size="15" text-anchor="middle" fill="#263238">发布质量把关</text>
+<rect x="1565.0" y="835.0" width="259.0" height="58" rx="9" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="1694.5" y="869.5" font-size="15" text-anchor="middle" fill="#263238">未达标不交付</text>
+<rect x="32" y="946" width="1808" height="120" rx="12" fill="#FFFFFF" stroke="#90A4AE" stroke-width="2"/>
+<rect x="32" y="946" width="6" height="120" rx="3" fill="#90A4AE"/>
+<text x="48" y="998" font-size="20" font-weight="700" fill="#37474F">图例</text>
+<text x="48" y="1024" font-size="13" fill="#37474F" opacity="0.75">线条与色块含义</text>
+<rect x="220.0" y="977.0" width="259.0" height="58" rx="9" fill="#FAFAFA" stroke="#90A4AE" stroke-width="1.6"/>
+<text x="349.5" y="1011.5" font-size="15" text-anchor="middle" fill="#37474F">粗实线 · 主链路</text>
+<rect x="489.0" y="977.0" width="259.0" height="58" rx="9" fill="#FAFAFA" stroke="#90A4AE" stroke-width="1.6"/>
+<text x="618.5" y="1011.5" font-size="15" text-anchor="middle" fill="#37474F">细实线 · 常规流转</text>
+<rect x="758.0" y="977.0" width="259.0" height="58" rx="9" fill="#FAFAFA" stroke="#90A4AE" stroke-width="1.6"/>
+<text x="887.5" y="1011.5" font-size="15" text-anchor="middle" fill="#37474F">虚线 · 条件分支与回退</text>
+<rect x="1027.0" y="977.0" width="259.0" height="58" rx="9" fill="#FAFAFA" stroke="#90A4AE" stroke-width="1.6"/>
+<text x="1156.5" y="1011.5" font-size="15" text-anchor="middle" fill="#37474F">红色块 · 安全与合规</text>
+<rect x="1296.0" y="977.0" width="259.0" height="58" rx="9" fill="#FAFAFA" stroke="#90A4AE" stroke-width="1.6"/>
+<text x="1425.5" y="1011.5" font-size="15" text-anchor="middle" fill="#37474F">绿色块 · 数据与知识</text>
+<rect x="1565.0" y="977.0" width="259.0" height="58" rx="9" fill="#FAFAFA" stroke="#90A4AE" stroke-width="1.6"/>
+<text x="1694.5" y="1011.5" font-size="15" text-anchor="middle" fill="#37474F">橙色块 · 分析与洞察</text>
+<path d="M 1728.1 183.0 L 1728.1 225.0 L 330.3 225.0 L 330.3 267.0" fill="none" stroke="#0D47A1" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 330.3 325.0 L 330.3 367.0 L 791.4 367.0 L 791.4 409.0" fill="none" stroke="#0D47A1" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 791.4 467.0 L 791.4 509.0 L 349.5 509.0 L 349.5 551.0" fill="none" stroke="#0D47A1" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 482.0 580.0 L 481.0 580.0" fill="none" stroke="#0D47A1" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 751.0 580.0 L 750.0 580.0" fill="none" stroke="#0D47A1" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 1020.0 580.0 L 1019.0 580.0" fill="none" stroke="#0D47A1" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 1156.5 609.0 L 1156.5 651.0 L 349.5 651.0 L 349.5 693.0" fill="none" stroke="#0D47A1" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 349.5 751.0 L 349.5 793.0 L 1425.5 793.0 L 1425.5 835.0" fill="none" stroke="#0D47A1" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 1483.1 325.0 L 1483.1 367.0 L 1880.0 367.0 L 1880.0 722.0 L 1830.0 722.0" fill="none" stroke="#C62828" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="9 7" marker-end="url(#ah-s)"/>
+<path d="M 489.0 609.0 L 489.0 626.0 L 220.0 626.0 L 220.0 615.0" fill="none" stroke="#E65100" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="8 6" marker-end="url(#ah-c)"/>
+<path d="M 1296.0 609.0 L 1296.0 626.0 L 1027.0 626.0 L 1027.0 615.0" fill="none" stroke="#E65100" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="8 6" marker-end="url(#ah-c)"/>
+<path d="M 875.5 923.0 L 18.0 923.0 L 18.0 580.0 L 210.0 580.0" fill="none" stroke="#E65100" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="8 6" marker-end="url(#ah-c)"/>
+<path d="M 330.3 467.0 L 330.3 504.0 L 349.5 504.0 L 349.5 547.0" fill="none" stroke="#2E7D32" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-d)"/>
+<path d="M 1022.0 467.0 L 1022.0 504.0 L 1425.5 504.0 L 1425.5 547.0" fill="none" stroke="#2E7D32" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-d)"/>
+<path d="M 482.0 864.0 L 481.0 864.0" fill="none" stroke="#455A64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 751.0 864.0 L 750.0 864.0" fill="none" stroke="#455A64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 1020.0 864.0 L 1019.0 864.0" fill="none" stroke="#455A64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 1289.0 864.0 L 1288.0 864.0" fill="none" stroke="#455A64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+<path d="M 1558.0 864.0 L 1557.0 864.0" fill="none" stroke="#455A64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#ah-m)"/>
+</svg>

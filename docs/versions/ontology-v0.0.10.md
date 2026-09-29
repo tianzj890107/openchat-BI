@@ -1,18 +1,19 @@
-# 智能分析 v0.1.9
+# 智能分析 ontology-v0.0.10
 
 ## 基本信息
 
-- 版本：`v0.1.9`
+- 版本：`ontology-v0.0.10`
+- 历史命名：本版本原以 `v0.1.9` 发布，2026-09-29 随版本族切换到 `ontology-v0.0.x` 时改名，定版 commit 未变
 - 日期：`2026-09-17`
 - 状态：正式版 / 当前版本
-- Git Tag：`v0.1.9`（annotated，指向本次发布提交）
-- 定版 commit：tag `v0.1.9` 指向的发布提交（开发分支 `20260727`，经 Merge Request 合入 `master`）
+- Git Tag：`ontology-v0.0.10`（annotated，指向本次发布提交）
+- 定版 commit：tag `ontology-v0.0.10` 指向的发布提交（开发分支 `20260727`，经 Merge Request 合入 `master`）
 
 ## 版本概述
 
-v0.1.9 把分析 Agent 的**评测资产**与**交付流水线**收口：黄金评测集从 291 条扩展到
+ontology-v0.0.10 把分析 Agent 的**评测资产**与**交付流水线**收口：黄金评测集从 291 条扩展到
 482 条并引入 recorded-provider 回放层，GitLab CI/CD 正式接入项目 runner
-`sys740-docker-runner` 并全绿，产品版本号按语义化版本统一升级到 `0.1.9`。
+`sys740-docker-runner` 并全绿，产品版本号按语义化版本统一升级到 `ontology-v0.0.10`。
 
 本版本没有新增用户可见业务能力，也没有修改分析 Agent 业务实现，按 PATCH 级发布
 执行；补齐的是「改 Prompt / 模型 / SQL / 本体 / 图表 / 会话状态之后不会被无声回归
@@ -63,16 +64,16 @@ v0.1.9 把分析 Agent 的**评测资产**与**交付流水线**收口：黄金�
   （unit-tests 75.6s、smoke 18.0s、regression 21.7s、recorded-provider 19.8s），
   release gate 保持手动未执行。
 
-### 3. 产品版本号统一升级到 v0.1.9
+### 3. 产品版本号统一升级到 ontology-v0.0.10
 
 - 统一升级版本入口：`pyproject.toml`、`bi_agent/__init__.py`、
   `open_claude/__init__.py`、FastAPI `APP_VERSION`、`frontend/package.json`、
   `frontend/package-lock.json`、`frontend/src/main.jsx` 的 `PRODUCT_VERSION`、
   `frontend/src/shell.html` 顶部品牌标签；
 - 前端 vite 生产构建重建，产物与旧版差异仅为两处版本字符串（可见 UI 版本标签为
-  `v0.1.9`）；
-- 版本契约测试同步：`tests/test_versioning_policy.py` 断言产品版本为 `0.1.9`，官方
-  tag 白名单放行 `v0.1.0`–`v0.1.9`；`tests/test_regressions.py` 品牌/版本一致性
+  `ontology-v0.0.10`）；
+- 版本契约测试同步：`tests/test_versioning_policy.py` 断言产品版本为 `ontology-v0.0.10`，官方
+  tag 白名单放行整个 `ontology-v0.0.x` 序列；`tests/test_regressions.py` 品牌/版本一致性
   断言同步。
 
 ## 验证
@@ -98,7 +99,7 @@ v0.1.9 把分析 Agent 的**评测资产**与**交付流水线**收口：黄金�
 
 ## 相关记录
 
-- GitLab Release：[智能分析 v0.1.9](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.9)
+- GitLab Release：[智能分析 ontology-v0.0.10](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.10)
 - Merge Request：`20260727` → `master`（reviewer `tianzijing`）
 - 评测集说明：[dataset/evals/analytics/README.md](../../dataset/evals/analytics/README.md)
 - 版本规范：[语义化版本与正式发布规范](./versioning-policy.md)

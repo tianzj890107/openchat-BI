@@ -1237,6 +1237,7 @@ export function bootWorkbenchRuntime() {
       else if (view === "ontology-adapt") { openOntologyAdapt(); }  // shares /api/sources
       else if (view === "model") { openSettings(); }  // clear status, then show
       else if (view === "roles") { openRoles(); }     // fetch current roles, then show
+      else if (view === "memory") { openMemory(); }   // fetch + render the recycle bin, then show
       else { showView(view); }
     });
   });
@@ -1440,7 +1441,7 @@ export function bootWorkbenchRuntime() {
       const del = document.createElement("button");
       del.className = "recent-del";
       del.textContent = "✕";
-      del.title = "删除该会话";
+      del.title = "移入回收站";
       del.addEventListener("click", (ev) => { ev.stopPropagation(); deleteRecent(it.id); });
       row.appendChild(del);
       row.addEventListener("click", () => {
@@ -1458,8 +1459,13 @@ export function bootWorkbenchRuntime() {
       ok = response.ok;
     } catch (e) {}
     ["data", "report"].forEach((m) => { if (buckets[m].convId === id) buckets[m].convId = null; });
-    if (ok) removeConversationSummary(id);
-    else loadRecent({ force: true });
+    if (ok) {
+      removeConversationSummary(id);
+      // 删除＝移入回收站：同步回收站计数，避免「记忆管理」页显示过期条数。
+      loadTrash();
+    } else {
+      loadRecent({ force: true });
+    }
   }
 
   function deferHistoryPhase(callback, delay = 0) {
@@ -1830,6 +1836,160 @@ export function bootWorkbenchRuntime() {
     if (saveBtn) saveBtn.addEventListener("click", saveRoles);
     const cancelBtn = document.getElementById("roles-cancel");
     if (cancelBtn) cancelBtn.addEventListener("click", () => showView("workspace"));
+  })();
+
+  // ------------------------------------------------------------------
+  // 会话回收站（记忆管理页）
+  // 删除会话＝移入回收站：保留期内可恢复（且回到原时间位置），
+  // 「彻底删除 / 清空回收站」不可恢复。
+  // ------------------------------------------------------------------
+  const trashState = { items: [], retentionDays: 0 };
+
+  function setTrashStatus(message, kind) {
+    const st = document.getElementById("memory-trash-status");
+    if (!st) return;
+    st.textContent = message || "";
+    st.className = "settings-status" + (kind ? " " + kind : "");
+  }
+
+  function formatTrashTime(value) {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())} ` +
+           `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+  }
+
+  function renderTrashList() {
+    const count = document.getElementById("memory-trash-count");
+    if (count) {
+      count.textContent = `回收站 · ${trashState.items.length} 条`;
+      count.title = trashState.retentionDays > 0
+        ? `已删除的会话保留 ${trashState.retentionDays} 天，到期后自动永久清理`
+        : "回收站不会自动清理，只有彻底删除才会移除";
+    }
+    const list = document.getElementById("memory-trash-list");
+    if (!list) return;
+    list.innerHTML = "";
+    if (!trashState.items.length) {
+      const empty = document.createElement("div");
+      empty.className = "memory-trash-empty";
+      empty.textContent = "回收站是空的";
+      list.appendChild(empty);
+      return;
+    }
+    const template = document.getElementById("memory-trash-row-template");
+    trashState.items.forEach((item) => {
+      const row = template && template.content
+        ? template.content.firstElementChild.cloneNode(true)
+        : null;
+      if (!row) return;
+      row.dataset.cid = item.id || "";
+      const title = row.querySelector(".memory-trash-title");
+      if (title) title.textContent = item.title || "未命名对话";
+      const sub = row.querySelector(".memory-trash-sub");
+      if (sub) {
+        const parts = [item.mode === "report" ? "报表分析" : "智能分析"];
+        if (item.deleted_at) parts.push(`删除于 ${formatTrashTime(item.deleted_at)}`);
+        if (typeof item.days_left === "number") parts.push(`剩余保留 ${item.days_left} 天`);
+        sub.textContent = parts.join(" · ");
+      }
+      const restoreBtn = row.querySelector(".memory-trash-restore");
+      if (restoreBtn) restoreBtn.addEventListener("click", () => restoreTrashEntry(item.id));
+      const purgeBtn = row.querySelector(".memory-trash-purge");
+      if (purgeBtn) purgeBtn.addEventListener("click", () => purgeTrashEntry(item.id));
+      list.appendChild(row);
+    });
+  }
+
+  async function loadTrash() {
+    try {
+      const r = await fetch(withClientSession(withBasePath("api/conversations/trash")), { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      trashState.items = Array.isArray(data.trash) ? data.trash : [];
+      trashState.retentionDays = Number(data.retention_days) || 0;
+      renderTrashList();
+      return true;
+    } catch (error) {
+      // 不静默空白：状态行给出可读原因，列表回到确定状态。
+      trashState.items = [];
+      renderTrashList();
+      setTrashStatus("回收站加载失败: " + (error.message || error), "error");
+      return false;
+    }
+  }
+
+  async function openMemory() {
+    const status = document.getElementById("memory-status");
+    if (status) { status.textContent = ""; status.className = "settings-status"; }
+    setTrashStatus("正在加载回收站…", "pending");
+    await loadTrash();
+    showView("memory");
+  }
+
+  async function restoreTrashEntry(cid) {
+    if (!cid) return;
+    setTrashStatus("恢复中…", "pending");
+    try {
+      const r = await fetch(
+        withClientSession(withBasePath("api/conversations/trash/" + cid + "/restore")),
+        { method: "POST" },
+      );
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json().catch(() => ({}));
+      setTrashStatus(data.already_active ? "该会话已在「最近」中，无需恢复" : "✓ 已恢复", "success");
+      await loadTrash();
+      loadRecent({ force: true });
+    } catch (error) {
+      setTrashStatus("恢复失败: " + (error.message || error), "error");
+    }
+  }
+
+  async function purgeTrashEntry(cid) {
+    if (!cid) return;
+    if (!confirm("彻底删除后不可恢复，确定要彻底删除这条会话吗？")) return;
+    setTrashStatus("彻底删除中…", "pending");
+    try {
+      const r = await fetch(
+        withClientSession(withBasePath("api/conversations/trash/" + cid)),
+        { method: "DELETE" },
+      );
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json().catch(() => ({}));
+      setTrashStatus(data.ok ? "✓ 已彻底删除" : "该会话已不在回收站",
+                     data.ok ? "success" : "error");
+      await loadTrash();
+    } catch (error) {
+      setTrashStatus("彻底删除失败: " + (error.message || error), "error");
+    }
+  }
+
+  async function emptyTrash() {
+    if (!trashState.items.length) {
+      setTrashStatus("回收站是空的", "error");
+      return;
+    }
+    if (!confirm(`清空回收站会永久删除这 ${trashState.items.length} 条会话，且不可恢复，确定继续吗？`)) return;
+    setTrashStatus("清空中…", "pending");
+    try {
+      const r = await fetch(
+        withClientSession(withBasePath("api/conversations/trash?confirm=1")),
+        { method: "DELETE" },
+      );
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json().catch(() => ({}));
+      setTrashStatus(`✓ 已清空回收站（永久删除 ${data.purged || 0} 条）`, "success");
+      await loadTrash();
+    } catch (error) {
+      setTrashStatus("清空回收站失败: " + (error.message || error), "error");
+    }
+  }
+
+  (function bootMemoryTrash() {
+    const emptyBtn = document.getElementById("memory-trash-empty");
+    if (emptyBtn) emptyBtn.addEventListener("click", emptyTrash);
   })();
 
   // ------------------------------------------------------------------

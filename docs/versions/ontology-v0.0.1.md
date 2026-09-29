@@ -1,12 +1,13 @@
-# 智能分析 v0.1.0
+# 智能分析 ontology-v0.0.1
 
 ## 基本信息
 
-- 版本：`v0.1.0`
+- 版本：`ontology-v0.0.1`
+- 历史命名：本版本原以 `v0.1.0` 发布，2026-09-29 随版本族切换到 `ontology-v0.0.x` 时改名，定版 commit 未变
 - 日期：`2026-08-28`
-- 状态：正式版 / 当前版本
-- Git Tag：`v0.1.0`
-- 定版 commit：以 `v0.1.0` annotated tag 指向的 commit 为准
+- 状态：正式版
+- Git Tag：`ontology-v0.0.1`
+- 定版 commit：以 `ontology-v0.0.1` annotated tag 指向的 commit 为准
 
 ## 版本概述
 
@@ -45,7 +46,7 @@ eimosp-ontology-agentic-analytics（产品名“智能分析”）首个完整�
 
 ## 用户可见变化
 
-- 左上角品牌统一为“智能分析”，产品显示版本 `v0.1.0`（`bi-analyst` 不再冒充版本）；
+- 左上角品牌统一为“智能分析”，产品显示版本 `ontology-v0.0.1`（`bi-analyst` 不再冒充版本）；
 - HTML title、加载骨架、aria-label 与 React 工作台品牌一致；
 - 六步 SOP 终态只把实际访问的步骤标为完成，未执行步骤显示静态 `skipped`，最终
   回答完成前不会六步全绿；
@@ -98,5 +99,5 @@ eimosp-ontology-agentic-analytics（产品名“智能分析”）首个完整�
 
 - [2026-08-24 至 2026-08-28 周开发记录](../../changelog/changelog_8_24_28.md)
 - [GitLab 统一推送工作流](../gitlab-push-workflow.md)
-- GitLab Release：[智能分析 v0.1.0](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.0)
-- Release 基于 `v0.1.0` tag，指向定版 commit `e4b0a8f`。
+- GitLab Release：[智能分析 ontology-v0.0.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.1)
+- Release 基于 `ontology-v0.0.1` tag，指向定版 commit `e4b0a8f`。

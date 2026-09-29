@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-ISORP-003-report",
+  "turns": [
+    {
+      "user": "把数据模式那个会话里的批次数写进报表",
+      "db": "quality.db",
+      "events": [
+        {
+          "type": "text_delta",
+          "text": "报表模式无法读取数据模式的会话结果；请在数据模式重新查询。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

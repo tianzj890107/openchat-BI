@@ -1,0 +1,66 @@
+{
+  "case_id": "ANA-ISORP-002",
+  "version": 1,
+  "priority": "P0",
+  "suite": [
+    "regression",
+    "recorded-provider",
+    "adversarial"
+  ],
+  "domain": "采购",
+  "category": "charts",
+  "evaluator": "recorded_session_isolation",
+  "question": "画一下 2025 年 4 月采购金额",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "procurement.db",
+    "sessions": [
+      {
+        "name": "A",
+        "provider": "fixtures/provider/iso/ANA-ISORP-002-A.json"
+      },
+      {
+        "name": "B",
+        "provider": "fixtures/provider/iso/ANA-ISORP-002-B.json"
+      }
+    ],
+    "share_conversation_store": true,
+    "session_modes": {
+      "A": "data",
+      "B": "data"
+    }
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-FactQuery",
+      "ChartGenerate"
+    ],
+    "chart_files": {
+      "count": 1
+    },
+    "forbidden_context": [
+      "metrics"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "session_isolation",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "cross_session",
+    "isolation"
+  ],
+  "notes": "The donor writes a chart file into its own workspace; the peer must not be able to see it. Files are compared per workspace."
+}

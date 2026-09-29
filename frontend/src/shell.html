@@ -17,7 +17,7 @@
       <div class="sidebar-brand">
         <span class="brand-mark">◆</span>
         <span class="brand-name">智能分析</span>
-        <span class="brand-version" id="product-version">v0.1.9</span>
+        <span class="brand-version" id="product-version">ontology-v0.0.10</span>
         <span class="brand-quadrant" id="brand-quadrant" hidden></span>
         <button class="sidebar-collapse" id="sidebar-collapse" title="收起侧栏">⇤</button>
       </div>
@@ -562,6 +562,32 @@
             </div>
           </div>
           <div class="settings-status" id="memory-status"></div>
+          <div class="settings-field" id="memory-trash" data-trash="container">
+            <label class="settings-label" id="memory-trash-count">回收站 · 0 条</label>
+            <div class="settings-hint">
+              这里的「删除」是<strong>移入回收站</strong>：默认<strong>保留</strong> 30 天，期间可随时
+              <strong>恢复</strong>，恢复后仍回到「最近」的原时间位置。「彻底删除」与「清空回收站」
+              <strong>不可恢复</strong>；<strong>保留</strong>期到期后系统会自动永久清理。
+            </div>
+            <div id="memory-trash-list" data-trash="list">
+              <template id="memory-trash-row-template">
+                <div class="memory-trash-row" data-cid="">
+                  <div class="memory-trash-meta">
+                    <span class="memory-trash-title"></span>
+                    <span class="memory-trash-sub"></span>
+                  </div>
+                  <div class="memory-trash-actions">
+                    <button class="btn btn-ghost memory-trash-restore" type="button">恢复</button>
+                    <button class="btn btn-ghost memory-trash-purge" type="button">彻底删除</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <div style="margin-top:10px;">
+              <button class="btn btn-ghost" id="memory-trash-empty">清空回收站</button>
+            </div>
+            <div class="settings-status" id="memory-trash-status"></div>
+          </div>
         </div>
       </section>
 

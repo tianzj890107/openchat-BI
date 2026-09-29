@@ -103,7 +103,7 @@ DOMAIN_FIXTURE_DB = {
 # them must declare ``fixture.db`` explicitly.
 SQL_EVALUATORS = frozenset({
     "sql", "generated_sql", "recorded_provider", "tool_chain",
-    "answer_grounding", "live", "answers",
+    "answer_grounding", "live", "answers", "recorded_session_isolation",
 })
 
 
@@ -162,14 +162,22 @@ def fixture_db_for_case(case: dict) -> Optional[str]:
         return None
 
 
+# ``pyproject.toml`` must stay PEP 440 (``0.0.10``); the ontology product
+# family name is applied here so reports and gates speak the same name the tag,
+# the GitLab Release and the UI use (``ontology-v0.0.10``).
+PRODUCT_VERSION_PREFIX = "ontology-v"
+
+
 def product_version() -> str:
-    """The released product version, read from ``pyproject.toml``."""
+    """The released product version as the user-visible ``ontology-vX.Y.Z``."""
     try:
         pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     except OSError:
         return ""
     match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
-    return match.group(1) if match else ""
+    if not match:
+        return ""
+    return f"{PRODUCT_VERSION_PREFIX}{match.group(1)}"
 
 PASS = "pass"
 FAIL = "fail"
@@ -182,10 +190,11 @@ XPASS = "xpass"   # known_gap case that now passes -> the defect is closed, prom
 TURN_STOP_STATUSES = frozenset({"FAILED_RETRYABLE", "FAILED_FINAL", "CANCELLED"})
 
 # Metrics that can only be produced by scoring a real/simulated answer.
+# ``unsupported_causal_claim_rate`` / ``proxy_disclosure_rate`` are deliberately
+# *not* listed: the recorded-provider layer scores the final narrative offline,
+# so they are measurable without a provider key.
 LIVE_ONLY_METRICS = (
     "unsupported_number_rate",
-    "unsupported_causal_claim_rate",
-    "proxy_disclosure_rate",
 )
 
 # Metrics whose per-case sample is "a violation happened"; a lower aggregate is
@@ -204,8 +213,10 @@ ALL_METRICS = (
     "metric_scope_accuracy",
     "unsupported_number_rate",
     "unsupported_causal_claim_rate",
+    "unsupported_causal_claim_detection_rate",
     "evidence_coverage",
     "proxy_disclosure_rate",
+    "proxy_disclosure_detection_rate",
     "chart_selection_accuracy",
     "multi_turn_context_accuracy",
     "recovery_success_rate",
@@ -241,6 +252,10 @@ class CaseResult:
     scope: str = ""
     forbidden: list = field(default_factory=list)
     evidence: dict = field(default_factory=dict)
+    # The case's answer contract, carried so ``_suite_capabilities`` can tell
+    # which metrics this selection is *able* to measure (a cloned result that
+    # dropped its metric is still capable of producing one).
+    answer_requirements: tuple = ()
     known_gap: bool = False
     gap_note: str = ""
     gap_meta: dict = field(default_factory=dict)
@@ -374,6 +389,7 @@ def _case_scaffold(case: dict) -> dict:
         "known_gap": bool(case.get("known_gap")),
         "gap_note": case.get("gap_note", ""),
         "gap_meta": dict(case.get("gap_meta") or {}),
+        "answer_requirements": tuple(case.get("answer_requirements") or ()),
     }
 
 
@@ -422,6 +438,19 @@ def eval_policy(case: dict, ctx: EvalContext) -> CaseResult:
             policy["required_tools"], decision["required_tools"])
     if policy.get("required_tools_empty"):
         chk("policy.required_tools_empty", not decision["required_tools"], [], decision["required_tools"])
+    if "refusal_category" in policy:
+        want = policy["refusal_category"]
+        chk("policy.refusal_category",
+            decision.get("refusal_category") == want, want, decision.get("refusal_category"))
+    if policy.get("refusal_category_absent"):
+        # The mirror of ``refusal_category``: a constraint statement
+        # ("不得删除…") or a safety-guidance question must reach the normal
+        # branches, so the contract has to be assertable in both directions.
+        chk("policy.refusal_category_absent", not decision.get("refusal_category"),
+            "no refusal category", decision.get("refusal_category"))
+    if policy.get("refusal_message_required"):
+        message = str(decision.get("refusal_message") or "").strip()
+        chk("policy.refusal_message_required", bool(message), True, bool(message))
     if "evidence_required" in policy:
         chk("policy.evidence_required", bool(decision["evidence_required"]) == bool(policy["evidence_required"]),
             policy["evidence_required"], decision["evidence_required"])
@@ -437,6 +466,18 @@ def eval_policy(case: dict, ctx: EvalContext) -> CaseResult:
     if "wants_action" in expected:
         chk("intent.wants_action", bool(intent.wants_action) == bool(expected["wants_action"]),
             expected["wants_action"], intent.wants_action)
+    if "wants_forecast" in expected:
+        want = bool(expected["wants_forecast"])
+        chk("intent.wants_forecast", bool(intent.wants_forecast) == want,
+            want, intent.wants_forecast)
+        chk("policy.wants_forecast", bool(decision.get("wants_forecast")) == want,
+            want, decision.get("wants_forecast"))
+    if "forecast_kind" in expected:
+        want = expected["forecast_kind"]
+        chk("intent.forecast_kind", intent.forecast_kind == want,
+            want, intent.forecast_kind)
+        chk("policy.forecast_kind", decision.get("forecast_kind") == want,
+            want, decision.get("forecast_kind"))
 
     schema_ok = (
         decision.get("policy_version") == 1
@@ -457,7 +498,8 @@ def eval_policy(case: dict, ctx: EvalContext) -> CaseResult:
         c.ok for c in checks
         if c.name in ("policy.mode", "policy.mode_not_in", "policy.next_step",
                       "policy.required_tools", "policy.required_tools_empty",
-                      "policy.reason_code")
+                      "policy.reason_code", "policy.refusal_category",
+                      "policy.refusal_message_required")
     )
     result.metrics["answer_schema_valid_rate"] = schema_ok
     result.metrics["evidence_coverage"] = bool(decision.get("evidence_required")) == bool(
@@ -833,6 +875,7 @@ def _result_from(case: dict, checks: list[Check]) -> CaseResult:
         question=scaffold["question"],
         scope=scaffold["scope"],
         forbidden=scaffold["forbidden"],
+        answer_requirements=scaffold["answer_requirements"],
         known_gap=scaffold["known_gap"],
         gap_note=scaffold["gap_note"],
         gap_meta=scaffold["gap_meta"],
@@ -1347,10 +1390,119 @@ def eval_session_isolation(case: dict, ctx: EvalContext) -> CaseResult:
 # ---------------------------------------------------------------------------
 # answer scoring (semantic layer) — heuristics, never exact-text matching
 # ---------------------------------------------------------------------------
-PROXY_KEYWORDS = ("代理", "近似", "间接", "相关的", "不能直接证明", "间接证据")
+# --- truthfulness supervision (causal / proxy) -----------------------------
+# Contract: ``docs/specs/analytics-causal-and-proxy-truthfulness.md``.  The two
+# metrics used to be live-only because no offline evaluator scored the final
+# narrative; they are now decided clause-by-clause against the *declared*
+# contract, so a replayed transcript is enough.
+CAUSAL_REQUIREMENT = "must_separate_correlation_from_cause"
+PROXY_REQUIREMENT = "must_use_proxy_disclosure_if_proxy_used"
+CAUSAL_RATE_METRIC = "unsupported_causal_claim_rate"
+CAUSAL_DETECTION_METRIC = "unsupported_causal_claim_detection_rate"
+PROXY_RATE_METRIC = "proxy_disclosure_rate"
+PROXY_DETECTION_METRIC = "proxy_disclosure_detection_rate"
+CAUSAL_CHECK = "answer.unsupported_causal_claim"
+PROXY_CHECK = "answer.proxy_disclosure"
+# The offline recorded-provider path owns exactly these two answer checks.
+TRUTHFULNESS_CHECK_PREFIXES = (CAUSAL_CHECK, PROXY_CHECK)
+TRUTHFULNESS_METRICS = frozenset({
+    CAUSAL_RATE_METRIC, CAUSAL_DETECTION_METRIC,
+    PROXY_RATE_METRIC, PROXY_DETECTION_METRIC,
+})
+# Evaluators that hand ``score_answer`` the final narrative of a real turn.
+ANSWER_SCORING_EVALUATORS = frozenset({
+    "recorded_provider", "answer_grounding", "live", "answers",
+})
+
+SEGMENT_SPLIT = re.compile(r"[，,、。！？；\n]")
+CAUSAL_PREDICATE_RE = re.compile(
+    r"(导致|造成|引起|引发|致使|使得|使(?!用|得|然)|因为|由于|归因于|归咎于|带来|"
+    r"是[^，。；]{1,24}的(?:根因|主因|原因)|根因|由此造成)")
+# Hedges only neutralise a claim inside the *same* clause: a hedge in a
+# neighbouring clause must never launder a definite causal statement.
+CAUSAL_HEDGE_TOKENS = (
+    "可能", "或许", "也许", "尚不能", "还不能", "不能证明", "无法确认",
+    "无法唯一归因", "无法判断", "尚不清楚", "不足以", "相关", "相关性",
+    "待验证", "需要进一步", "假设", "推测", "如果", "若", "不能直接证明",
+    "不等于", "不是", "未见",
+)
+# A limitation only counts when it is tied (same clause) to a metric name or a
+# declared limit: a bare "仅供参考" never is a proxy disclosure.
+PROXY_LIMIT_PREDICATES = ("不能", "无法", "仅", "只", "近似", "不等同", "不覆盖",
+                          "不足以", "只是")
+
+
+def _causal_definite_segments(text: str) -> list[str]:
+    """Clauses that assert a cause without hedging *inside the same clause*."""
+
+    out: list[str] = []
+    for segment in SEGMENT_SPLIT.split(text or ""):
+        if not CAUSAL_PREDICATE_RE.search(segment):
+            continue
+        if any(token in segment for token in CAUSAL_HEDGE_TOKENS):
+            continue
+        out.append(segment.strip())
+    return out
+
+
+def _proxy_names(raw: Any) -> list[str]:
+    """Normalise ``expected.proxy_metric`` (str | list) into declared names."""
+
+    if raw is None:
+        return []
+    items = raw if isinstance(raw, (list, tuple, set)) else [raw]
+    return [str(item).strip() for item in items if str(item or "").strip()]
+
+
+def _visible_metric_labels(run: Any) -> list[str]:
+    """Metric labels that reach the user: chart/table titles and column names.
+
+    A chart or table is a deliverable, so a proxy relabelled as the target
+    metric is a violation even when the prose says the opposite (Spec §6.3).
+    """
+
+    labels: list[str] = []
+    calls = run if isinstance(run, (list, tuple)) else getattr(run, "tool_calls", None) or ()
+    for call in calls:
+        name = str(call.get("name") or "")
+        if "Table" not in name and "Chart" not in name:
+            continue
+        payload = call.get("input") or {}
+        if not isinstance(payload, dict):
+            continue
+        title = payload.get("title") or payload.get("name")
+        if isinstance(title, str) and title.strip():
+            labels.append(title.strip())
+        for column in payload.get("columns") or ():
+            if not isinstance(column, dict):
+                continue
+            for key in ("label", "name", "title"):
+                value = column.get(key)
+                if isinstance(value, str) and value.strip():
+                    labels.append(value.strip())
+    return labels
+
+
+def _proxy_impersonations(target: str, proxies: list[str],
+                          labels: Any) -> list[str]:
+    """Labels that present the target metric without naming the proxy."""
+
+    bad: list[str] = []
+    for label in labels or ():
+        if target and target in label and not any(proxy in label for proxy in proxies):
+            bad.append(label)
+    return bad
+
+
 SCOPE_KEYWORDS = ("口径", "统计范围", "范围", "过滤", "仅统计", "排除", "定义")
+# Disclosure language accepted as an explicit limitation.  The forecast /
+# scenario vocabulary (assumption, projection, estimation, unverified,
+# uncertainty, interval) is part of the contract:
+# ``docs/specs/analysis-forecast-and-scenario-routing.md`` §7.3.  The list stays
+# *discriminative* — a bare number ("下季度采购金额预测为 4,750.00 元。") contains
+# none of these tokens and must still fail the check.
 LIMITATION_KEYWORDS = ("限制", "不确定", "无法确认", "数据缺失", "缺月", "不足以", "无法唯一归因",
-                       "可能", "样本")
+                       "可能", "样本", "假设", "推演", "推算", "未经验证", "不确定性", "区间")
 ACTION_TEMPLATE_RE = re.compile(
     r"(建议|应当|需要|计划|拟|拟对|对[^，。；]{0,12}(?:部门|团队|采购|供应商|产线|仓库))"
 )
@@ -1374,8 +1526,14 @@ def _numbers_in(text: str) -> set[float]:
     return out
 
 
-def score_answer(case: dict, answer: str, allowed_numbers: set[float]) -> tuple[list[Check], dict[str, bool]]:
-    """Score one natural-language answer against the case's declared rules."""
+def score_answer(case: dict, answer: str, allowed_numbers: set[float],
+                 evidence_labels: Any = None) -> tuple[list[Check], dict[str, bool]]:
+    """Score one natural-language answer against the case's declared rules.
+
+    ``evidence_labels`` carries the visible chart/table labels of the turn
+    (``run.tool_calls``); the text-only callers pass nothing and keep the same
+    contract.
+    """
 
     from bi_agent.tools.analysis_policy import (
         extract_action_items,
@@ -1420,19 +1578,79 @@ def score_answer(case: dict, answer: str, allowed_numbers: set[float]) -> tuple[
         ok = any(k in text for k in LIMITATION_KEYWORDS)
         checks.append(Check("answer.limitations", ok, True, ok))
 
-    if "must_separate_correlation_from_cause" in requirements:
-        causal = bool(re.search(r"(因为|导致|造成|由于)", text))
-        hedged = any(k in text for k in ("相关", "可能", "无法确认", "需要进一步", "不能证明"))
-        ok = (not causal) or hedged
-        checks.append(Check("answer.correlation_not_causation", ok, True, ok))
-        metrics["unsupported_causal_claim_rate"] = not ok
+    # --- causal supervision -----------------------------------------------
+    # A definite claim in one clause must not be laundered by a hedge in the
+    # next; a definite claim is allowed only when the case declares support and
+    # the answer cites it.
+    causal_violation_expected = bool(expected.get("expect_causal_violation"))
+    declared_claims = [str(c).strip() for c in (expected.get("causal_claims") or [])
+                       if str(c or "").strip()]
+    definite = _causal_definite_segments(text)
+    if causal_violation_expected or CAUSAL_REQUIREMENT in requirements \
+            or declared_claims or definite:
+        support = [str(mark).strip() for mark in (expected.get("causal_support") or [])
+                   if str(mark or "").strip()]
+        backed = any(mark in text for mark in support)
+        violation = bool(definite) and not backed
+        if causal_violation_expected:
+            metrics[CAUSAL_DETECTION_METRIC] = violation
+            checks.append(Check(
+                f"{CAUSAL_CHECK}.negative_control", violation,
+                "planted unsupported causal claim detected",
+                definite[:2] if definite else "no definite claim"))
+        else:
+            checks.append(Check(
+                CAUSAL_CHECK, not violation, "no unsupported causal claim",
+                definite[:2] if violation else ("no definite claim" if not definite
+                                                else f"backed by {support[:2]}")))
+            if definite or declared_claims:
+                metrics[CAUSAL_RATE_METRIC] = violation
 
-    if "must_use_proxy_disclosure_if_proxy_used" in requirements:
-        proxy_used = bool(re.search(r"(周转|账龄|间接)", text))
-        disclosed = any(k in text for k in PROXY_KEYWORDS)
-        ok = (not proxy_used) or disclosed
-        checks.append(Check("answer.proxy_disclosure", ok, True, ok))
-        metrics["proxy_disclosure_rate"] = ok
+    # --- proxy supervision -------------------------------------------------
+    # The denominator is decided by the case declaration, never by the answer:
+    # forgetting to mention the proxy cannot remove a case from the metric.
+    target_metric = str(expected.get("target_metric") or "").strip()
+    proxies = _proxy_names(expected.get("proxy_metric"))
+    proxy_none = bool(expected.get("proxy_none"))
+    direct_metric = bool(expected.get("used_direct_metric"))
+    proxy_miss_expected = bool(expected.get("expect_proxy_miss"))
+    proxy_limits = [str(item).strip() for item in (expected.get("proxy_limits") or [])
+                    if str(item or "").strip()]
+    if proxy_miss_expected or proxy_none or (proxies and not direct_metric):
+        impersonated = _proxy_impersonations(target_metric, proxies, evidence_labels)
+        if proxy_none:
+            clarified = bool(target_metric) and target_metric in text and any(
+                any(pred in segment for pred in PROXY_LIMIT_PREDICATES)
+                for segment in SEGMENT_SPLIT.split(text) if target_metric in segment)
+            disclosed = clarified
+            detail = ("clarification or capability limit present" if clarified
+                      else f"{target_metric or 'target'!r} presented without a limit")
+        else:
+            segments = SEGMENT_SPLIT.split(text)
+            named = all(proxy in text for proxy in proxies) and (
+                not target_metric or target_metric in text)
+            limited = any(
+                any(pred in segment for pred in PROXY_LIMIT_PREDICATES)
+                and (any(proxy in segment for proxy in proxies)
+                     or (target_metric and target_metric in segment)
+                     or any(limit in segment for limit in proxy_limits))
+                for segment in segments)
+            disclosed = bool(named and limited and not impersonated)
+            if impersonated:
+                detail = f"relabelled as target metric: {impersonated[:2]}"
+            elif not named:
+                detail = f"proxy/target not named (target={target_metric!r}, proxies={proxies})"
+            else:
+                detail = "no same-clause limitation for the proxy relationship"
+        if proxy_miss_expected:
+            metrics[PROXY_DETECTION_METRIC] = not disclosed
+            checks.append(Check(
+                f"{PROXY_CHECK}.negative_control", not disclosed,
+                "planted proxy-disclosure miss detected", detail))
+        else:
+            metrics[PROXY_RATE_METRIC] = disclosed
+            checks.append(Check(PROXY_CHECK, disclosed,
+                                "proxy relationship disclosed", detail))
 
     if "must_refuse_conclusion_without_evidence" in requirements:
         refused = any(k in text for k in ("证据不足", "无法给出", "不能给出", "无法确认", "不足以"))
@@ -2358,6 +2576,17 @@ def eval_recorded_provider(case: dict, ctx: EvalContext) -> CaseResult:
     unsupported = pool.unsupported(run.text)
     checks.extend(_grounding_checks("recorded", expected, unsupported))
 
+    # Offline truthfulness supervision.  Exactly two answer checks join the
+    # recorded path (causal / proxy); ``unsupported_number_rate`` keeps coming
+    # from ``_record_grounding_metric`` below and is never overwritten here.
+    truth_checks, truth_metrics = score_answer(
+        case, run.text, pool.pool,
+        evidence_labels=_visible_metric_labels(run.tool_calls))
+    checks.extend(check for check in truth_checks
+                  if check.name.startswith(TRUTHFULNESS_CHECK_PREFIXES))
+    truth_metrics = {name: value for name, value in truth_metrics.items()
+                     if name in TRUTHFULNESS_METRICS}
+
     forbidden_hits = [token for token in (case.get("forbidden") or [])
                       if token and token in run.text]
     checks.append(Check("recorded.no_forbidden_token", not forbidden_hits, [], forbidden_hits))
@@ -2378,9 +2607,301 @@ def eval_recorded_provider(case: dict, ctx: EvalContext) -> CaseResult:
         "answer_schema_valid_rate": _schema_valid(expected, run, unsupported),
         "evidence_coverage": bool(run.tool_calls) or not expected.get("tool_chain"),
     })
+    result.metrics.update(truth_metrics)
     _record_grounding_metric(result, expected, unsupported)
     result.evidence = evidence
     return result
+
+
+# ---------------------------------------------------------------------------
+# evaluator: recorded_session_isolation
+# ---------------------------------------------------------------------------
+ISOLATION_EVALUATOR = "recorded_session_isolation"
+
+# Check names with this prefix form the ``cross_session_leak_rate`` metric: any
+# one of them failing means two sessions observed each other's state.
+LEAK_PREFIX = "isolation.leak."
+
+
+def _iso_identity(run: Any) -> dict:
+    """What one session privately owns: workspace, tool records, context."""
+    session = getattr(run, "session", None)
+    records = list(getattr(session, "tool_execution_records", []) or [])
+    context_obj = getattr(session, "analysis_context", None)
+    context = dict(context_obj.to_dict()) if context_obj is not None else {}
+    return {
+        "cwd": str(getattr(session, "cwd", "") or ""),
+        "tool_use_ids": sorted({str(r.get("tool_use_id") or "") for r in records} - {""}),
+        "context": context,
+        "messages": list(getattr(session, "messages", []) or []),
+    }
+
+
+def _workspace_files(workspace: Any) -> set[str]:
+    root = Path(workspace) if workspace else None
+    if root is None or not root.is_dir():
+        return set()
+    return {str(path.relative_to(root)) for path in root.rglob("*") if path.is_file()}
+
+
+def eval_recorded_session_isolation(case: dict, ctx: EvalContext) -> CaseResult:
+    """Cross-session sentinels over the *real* turn loop.
+
+    ``fixture.sessions`` lists two or more recorded sessions.  Each *group* runs
+    in its own real ``WebSession`` with real tools; a session that declares a
+    ``group`` shares one WebSession with the other members of that group, in
+    declared order.  The case then asserts that different groups cannot observe
+    each other, and that a shared group inherits exactly what it declared.
+
+    The recording only supplies the model's decisions.  A number in the peer's
+    answer is the *detector*; the structural checks (workspace, tool records,
+    context, message history, conversation store) are what feed
+    ``cross_session_leak_rate``.
+    """
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from analytics_recorded_provider import (  # noqa: PLC0415
+        load_transcript, run_recorded_turns,
+    )
+
+    expected = case.get("expected") or {}
+    fixture = case.get("fixture") or {}
+    specs = list(fixture.get("sessions") or [])
+    checks: list[Check] = []
+    evidence: dict[str, Any] = {}
+
+    if len(specs) < 2:
+        checks.append(Check("isolation.two_sessions", False, ">=2 sessions", len(specs)))
+        result = _result_from(case, checks)
+        result.evidence = evidence
+        return result
+
+    try:
+        db = resolve_fixture_db(case)
+        grouped: dict[str, list[tuple[dict, dict]]] = {}
+        order: list[str] = []
+        for spec in specs:
+            transcript = load_transcript(EVAL_ROOT / str(spec["provider"]))
+            declared = {str(turn.get("db")) for turn in transcript.get("turns") or []
+                        if turn.get("db")}
+            wrong = sorted(d for d in declared if d != db)
+            if wrong:
+                raise FixtureBindingError(
+                    f"{case['case_id']}: session {spec.get('name')!r} declares "
+                    f"{wrong} but fixture.db is {db!r}")
+            key = ("group" if fixture.get("share_session")
+                   else str(spec.get("group") or f"solo:{spec.get('name')}"))
+            if key not in grouped:
+                order.append(key)
+            grouped.setdefault(key, []).append((spec, transcript))
+
+        runs: list[tuple[str, Any]] = []
+        for key in order:
+            members = grouped[key]
+            turns = [turn for _spec, transcript in members for turn in transcript["turns"]]
+            workspace = ctx.new_sandbox(f"{case['case_id']}-{_slug(key)}")
+            runs.append((key, run_recorded_turns(
+                f"{case['case_id']}:{key}", turns, fixture_db=db, workspace=workspace)))
+    except Exception as exc:  # noqa: BLE001 - reported as a failing case
+        checks.append(Check("isolation.replay", False, "a clean replay",
+                            f"{type(exc).__name__}: {exc}"))
+        result = _result_from(case, checks)
+        result.evidence = evidence
+        return result
+
+    errors = [error for _key, run in runs for error in run.errors]
+    checks.append(Check("isolation.no_provider_error", not errors, [], errors))
+    if fixture.get("share_session"):
+        shared = len(runs) == 1 and len(grouped.get("group") or []) >= 2
+        checks.append(Check("isolation.group_count", shared,
+                            "1 shared session carrying >=2 recorded sessions",
+                            [key for key, _run in runs]))
+    else:
+        checks.append(Check("isolation.group_count", len(runs) >= 2, ">=2 isolated sessions",
+                            [key for key, _run in runs]))
+
+    _iso_leak_checks(case, expected, grouped, runs, checks)
+    _iso_group_checks(expected, grouped, runs, checks)
+    _iso_store_checks(case, fixture, runs, ctx, checks)
+    _iso_borrowed_number_checks(case, expected, runs, checks)
+
+    evidence.update({
+        "sessions": [
+            {"group": key,
+             "workspace": _iso_identity(run)["cwd"],
+             "tool_chain": run.tool_names,
+             "tool_use_ids": _iso_identity(run)["tool_use_ids"],
+             "files": sorted(_workspace_files(run.workspace)),
+             "context": _iso_identity(run)["context"]}
+            for key, run in runs
+        ],
+        "answers": [run.text[:400] for _key, run in runs],
+    })
+    result = _result_from(case, checks)
+    leak_checks = [c for c in checks if c.name.startswith(LEAK_PREFIX)]
+    result.metrics["cross_session_leak_rate"] = bool(leak_checks) and any(
+        not c.ok for c in leak_checks)
+    result.metrics["answer_schema_valid_rate"] = all(
+        bool(run.text.strip()) for _key, run in runs)
+    result.evidence = evidence
+    return result
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(text))[:48]
+
+
+def _iso_leak_checks(case: dict, expected: dict,
+                     grouped: dict[str, list[tuple[dict, dict]]],
+                     runs: list[tuple[str, Any]], checks: list[Check]) -> None:
+    """Different groups must own disjoint state."""
+    first_key, first_run = runs[0]
+    first = _iso_identity(first_run)
+    first_files = _workspace_files(first_run.workspace)
+    # Probe the live context object: a shared AnalysisContext is a leak, and
+    # comparing stored values alone cannot see one when every field is empty.
+    probe = f"isolation-probe-{case.get('case_id')}"
+    first_context = getattr(first_run.session, "analysis_context", None)
+    if first_context is not None:
+        try:
+            first_context.goal = probe
+        except Exception:  # noqa: BLE001 - a frozen context is reported below
+            pass
+    first_questions = [str(turn.get("user") or "")
+                       for _spec, transcript in grouped[first_key]
+                       for turn in transcript["turns"]]
+
+    for key, run in runs[1:]:
+        peer = _iso_identity(run)
+        checks.append(Check(f"{LEAK_PREFIX}distinct_session[{key}]",
+                            run.session is not first_run.session,
+                            "a new WebSession", "shared instance"))
+        checks.append(Check(f"{LEAK_PREFIX}distinct_workspace[{key}]",
+                            bool(peer["cwd"]) and peer["cwd"] != first["cwd"],
+                            "its own workspace", peer["cwd"]))
+        peer_context = getattr(run.session, "analysis_context", None)
+        checks.append(Check(f"{LEAK_PREFIX}context_object_distinct[{key}]",
+                            peer_context is not first_context, "a new AnalysisContext",
+                            "shared instance"))
+        checks.append(Check(f"{LEAK_PREFIX}context_probe_not_visible[{key}]",
+                            getattr(peer_context, "goal", None) != probe,
+                            f"!= {probe!r}", getattr(peer_context, "goal", None)))
+        shared_ids = sorted(set(peer["tool_use_ids"]) & set(first["tool_use_ids"]))
+        checks.append(Check(f"{LEAK_PREFIX}no_shared_tool_records[{key}]",
+                            not shared_ids, [], shared_ids))
+        leaked_files = sorted(_workspace_files(run.workspace) & first_files)
+        checks.append(Check(f"{LEAK_PREFIX}no_cross_files[{key}]",
+                            not leaked_files, [], leaked_files))
+        for key_name in (expected.get("forbidden_context") or []):
+            donor_value = first["context"].get(key_name)
+            # Only meaningful when the donor actually holds a value: the point is
+            # "the peer must not end up with the donor's value".
+            checks.append(Check(
+                f"{LEAK_PREFIX}context_not_inherited[{key}][{key_name}]",
+                not donor_value or peer["context"].get(key_name) != donor_value,
+                f"!= {donor_value!r}", peer["context"].get(key_name)))
+        peer_history = json.dumps(peer["messages"], ensure_ascii=False)
+        borrowed = [q for q in first_questions if len(q) >= 8 and q in peer_history]
+        checks.append(Check(f"{LEAK_PREFIX}no_borrowed_history[{key}]",
+                            not borrowed, [], borrowed))
+
+
+def _iso_group_checks(expected: dict,
+                      grouped: dict[str, list[tuple[dict, dict]]],
+                      runs: list[tuple[str, Any]], checks: list[Check]) -> None:
+    """A declared conversation group may inherit — in the declared order.
+
+    ``expected.group_history_contains`` names the earlier turns that must still
+    be present in the shared session's history, in order.  Nothing inherits
+    across group boundaries (that is what the leak checks cover).
+    """
+    wanted = [str(item) for item in (expected.get("group_history_contains") or [])]
+    for key, run in runs:
+        members = grouped.get(key) or []
+        if len(members) < 2:
+            continue
+        checks.append(Check(f"isolation.group_turn_count[{key}]",
+                            len(run.turn_events) == len(members),
+                            len(members), len(run.turn_events)))
+        history = json.dumps(_iso_identity(run)["messages"], ensure_ascii=False)
+        positions = [history.find(item) for item in wanted if item in history]
+        checks.append(Check(f"isolation.group_order[{key}]",
+                            len(positions) == len(wanted) and positions == sorted(positions),
+                            "declared order preserved", positions))
+    if wanted and not any(len(grouped.get(key) or []) > 1 for key, _run in runs):
+        checks.append(Check("isolation.group_declared", False,
+                            "a shared group", "every session is its own group"))
+
+
+def _iso_store_checks(case: dict, fixture: dict, runs: list[tuple[str, Any]],
+                      ctx: EvalContext, checks: list[Check]) -> None:
+    """One ConversationStore per user: the place a real leak would hide."""
+    if not fixture.get("share_conversation_store"):
+        return
+    from bi_agent.web.conversations import ConversationStore  # noqa: PLC0415
+
+    root = ctx.new_sandbox(f"{case['case_id']}-store")
+    store = ConversationStore(str(root))
+    saved: list[tuple[str, str, str, str]] = []
+    for key, _run in runs:
+        mode = str(fixture.get("session_modes", {}).get(key) or "data")
+        marker = f"isolation-marker-{_slug(key)}"
+        record = store.save(mode=mode, title=marker,
+                            messages=[{"role": "user", "content": marker}])
+        saved.append((key, mode, marker, str(record.get("id") or "")))
+
+    ids = [cid for _key, _mode, _marker, cid in saved]
+    # Report the *fact* of uniqueness, not the random ids themselves: a report
+    # signature must not change just because ``token_hex`` produced a different
+    # value on the second run.
+    checks.append(Check(f"{LEAK_PREFIX}store_distinct_ids",
+                        len(set(ids)) == len(ids), "unique conversation ids",
+                        f"{len(set(ids))}/{len(ids)} distinct"))
+    for _key, _mode, marker, own in saved:
+        others = [store.get(other) for _k, _m, _mk, other in saved if other != own]
+        blob = json.dumps(others, ensure_ascii=False)
+        checks.append(Check(f"{LEAK_PREFIX}store_no_shared_content[{marker}]",
+                            marker not in blob, "no cross read", "leaked"))
+    for _key, mode, marker, _cid in saved:
+        same_mode = json.dumps(store.list(mode=mode), ensure_ascii=False)
+        checks.append(Check(f"{LEAK_PREFIX}mode_separation[{mode}][{marker}]",
+                            marker in same_mode, "listed in its own mode", "missing"))
+        for other_mode in sorted({m for _k, m, _mk, _c in saved} - {mode}):
+            blob = json.dumps(store.list(mode=other_mode), ensure_ascii=False)
+            checks.append(Check(f"{LEAK_PREFIX}mode_separation[{other_mode}][{marker}]",
+                                marker not in blob, "absent from the other mode", "leaked"))
+
+
+def _iso_borrowed_number_checks(case: dict, expected: dict,
+                                runs: list[tuple[str, Any]],
+                                checks: list[Check]) -> None:
+    """The negative control: a number only the donor session could produce.
+
+    Two halves, both required: the number must really belong to the donor (or
+    the sentinel proves nothing) and grounding must flag it in the peer's answer.
+    """
+    declared = sorted({round(float(n), 6) for n in (expected.get("unsupported_numbers") or [])})
+    if not declared:
+        return
+    donor_pool: set[float] = set()
+    for _key, run in runs[:-1]:
+        donor_pool |= set(RecordedPool(case, run).pool)
+    peer_run = runs[-1][1]
+    peer_pool = RecordedPool(case, peer_run)
+    donor_only = sorted(n for n in donor_pool if n not in set(peer_pool.pool))
+
+    def present(number: float, values) -> bool:
+        return any(abs(number - value) <= max(1e-6, abs(number) * 1e-6)
+                   for value in values)
+
+    checks.append(Check("isolation.borrowed_is_donor_only",
+                        all(present(n, donor_only) for n in declared),
+                        declared, donor_only[:8]))
+    unsupported = peer_pool.unsupported(peer_run.text)
+    missing = [n for n in declared if not present(n, unsupported)]
+    checks.append(Check("isolation.borrowed_flagged", not missing, declared,
+                        sorted(unsupported)[:8]))
 
 
 def eval_generated_sql(case: dict, ctx: EvalContext) -> CaseResult:
@@ -2525,7 +3046,9 @@ def eval_answer_grounding(case: dict, ctx: EvalContext) -> CaseResult:
     for fragment in expected.get("final_text_absent", []):
         checks.append(Check(f"grounding.text_absent[{str(fragment)[:24]}]",
                             str(fragment) not in run.text, "absent", "present"))
-    answer_checks, metrics = score_answer(case, run.text, pool.pool)
+    answer_checks, metrics = score_answer(
+        case, run.text, pool.pool,
+        evidence_labels=_visible_metric_labels(run.tool_calls))
     if expected.get("score_answer", True):
         checks.extend(answer_checks)
     checks.append(Check("grounding.no_forbidden_token",
@@ -2572,6 +3095,7 @@ EVALUATORS: dict[str, Callable[[dict, EvalContext], CaseResult]] = {
     "recovery_state": eval_recovery_state,
     "admission": eval_admission,
     "session_isolation": eval_session_isolation,
+    "recorded_session_isolation": eval_recorded_session_isolation,
     "recorded_provider": eval_recorded_provider,
     "context_resolution": eval_context_resolution,
     "generated_sql": eval_generated_sql,
@@ -2692,7 +3216,25 @@ VOLATILE_SIGNATURE_KEYS = frozenset({
     "updated_at", "created_at", "checkpoint_id", "session_id", "cost",
     "duration_ms", "duration", "tokens", "token_usage", "started_at",
     "finished_at", "execution_id",
+    # Identifier fields are never behaviour (Spec §4.1): a fresh session id in
+    # ``evidence.observations`` must not turn a stable case into a "drift".
+    "id", "run_id", "request_id", "trace_id",
 })
+
+
+_HEX_ID_RE = re.compile(r"\b[0-9a-fA-F]{6,40}\b")
+
+
+def _hex_id_or_number(match: "re.Match[str]") -> str:
+    """Mask a random hex id, but never a pure-digit business number.
+
+    A session id is 6-40 hex characters -- and so is any integer of six digits
+    or more (an amount, a count, a code).  Masking those would hide a real
+    numeric drift, which Spec §4.2-6 forbids, so only tokens that actually carry
+    a hex letter are treated as identifiers.
+    """
+    token = match.group()
+    return "<id>" if any(char.lower() in "abcdef" for char in token) else token
 
 
 _VOLATILE_TEXT_PATTERNS = (
@@ -2703,7 +3245,8 @@ _VOLATILE_TEXT_PATTERNS = (
     (re.compile(r"report-\d{8}-\d{6}-"), "report-<ts>-"),
     # ISO-8601 timestamps (with or without a timezone / fractional seconds)
     (re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[0-9.:+\-Z]*"), "<ts>"),
-    (re.compile(r"\b[0-9a-f]{32}\b"), "<hex32>"),
+    # Random hex ids, including the 8-character session id used in observations.
+    (_HEX_ID_RE, _hex_id_or_number),
 )
 
 
@@ -2819,9 +3362,27 @@ def measure_repeat(selected: list[dict], ctx: EvalContext, repeat: int, *,
     live repeat never reuses the previous session.
     """
     run = runner or run_case
+    if repeat < 2:
+        # A single execution is not a stability measurement: there is no second
+        # run to compare against, so it must never produce a score.  A fabricated
+        # ``1.0`` here is exactly what let a release gate pass on no evidence.
+        return {
+            "repeat": repeat,
+            "agreement": None,
+            "measured": False,
+            "cases": 0,
+            "stable_cases": 0,
+            "unstable_cases": 0,
+            "stable_case_ids": [],
+            "unstable_case_ids": [],
+            "skipped_case_ids": [],
+            "case_detail": [],
+            "runs": [],
+        }
     signatures: dict[str, list[str]] = {}
+    statuses: dict[str, list[str]] = {}
     runs: list[dict] = []
-    for index in range(max(1, repeat)):
+    for index in range(repeat):
         if reset is not None:
             reset()
         for case in selected:
@@ -2830,6 +3391,7 @@ def measure_repeat(selected: list[dict], ctx: EvalContext, repeat: int, *,
             if collected is not None and index == 0:
                 collected.append(result)
             signatures.setdefault(result.case_id, []).append(result_signature(result))
+            statuses.setdefault(result.case_id, []).append(result.status)
             runs.append({
                 "run_index": index + 1,
                 "case_id": result.case_id,
@@ -2842,25 +3404,43 @@ def measure_repeat(selected: list[dict], ctx: EvalContext, repeat: int, *,
                 "answer_signature": _canonical_value(semantic_signature(result)),
                 "metrics": {k: bool(v) for k, v in sorted(result.metrics.items())},
             })
-    unstable = sorted(cid for cid, sigs in signatures.items() if len(set(sigs)) > 1)
-    stable = len(signatures) - len(unstable)
-    agreement = round(stable / len(signatures), 6) if signatures else None
+    # A case that did not execute in *every* repetition is not a stable sample:
+    # it is reported separately and its count reaches ``metric_stats.skipped``
+    # instead of being silently averaged into a perfect score.
+    skipped = sorted(cid for cid, seen in statuses.items() if SKIP in seen)
+    skipped_set = set(skipped)
+    sample_ids = [cid for cid in signatures if cid not in skipped_set]
+    # "Stable" means the same, *successful* behaviour twice.  A case that fails
+    # in every repetition is deterministic but is still not evidence of release
+    # stability, so it can never count towards the agreement.
+    unstable = sorted(
+        cid for cid in sample_ids
+        if len(set(signatures[cid])) > 1
+        or any(status not in (PASS, XFAIL) for status in statuses[cid])
+    )
+    unstable_set = set(unstable)
+    stable_ids = [cid for cid in sample_ids if cid not in unstable_set]
+    agreement = round(len(stable_ids) / len(sample_ids), 6) if sample_ids else None
     detail = []
-    for cid in sorted(signatures):
-        sigs = signatures[cid]
+    for cid in sorted(statuses):
+        sigs = signatures.get(cid, [])
         detail.append({
             "case_id": cid,
-            "stable": len(set(sigs)) == 1,
+            "stable": cid not in unstable_set and cid not in skipped_set,
+            "skipped": cid in skipped_set,
             "runs": len(sigs),
             "distinct_signatures": len(set(sigs)),
         })
     return {
-        "repeat": max(1, repeat),
+        "repeat": repeat,
         "agreement": agreement,
-        "cases": len(signatures),
-        "stable_cases": stable,
+        "measured": bool(sample_ids),
+        "cases": len(sample_ids),
+        "stable_cases": len(stable_ids),
         "unstable_cases": len(unstable),
+        "stable_case_ids": stable_ids,
         "unstable_case_ids": unstable,
+        "skipped_case_ids": skipped,
         "case_detail": detail,
         "runs": runs,
     }
@@ -2972,13 +3552,25 @@ def _suite_capabilities(results: list[CaseResult]) -> set[str]:
     # Any evaluator that actually drives a session loop *can* host a
     # cross-session sentinel; only a selection with none of them is truly
     # incapable of measuring this metric.
-    if evaluators & {"session_isolation", "recorded_provider", "live", "answers"}:
+    if evaluators & {"session_isolation", "recorded_session_isolation",
+                     "recorded_provider", "live", "answers"}:
         caps.add("cross_session_leak_rate")
     if evaluators & {"live", "answers", "recorded_provider", "answer_grounding",
                      "generated_sql", "tool_chain"}:
         caps.add("unsupported_number_rate")
-    if evaluators & {"live", "answers"}:
-        caps |= {"unsupported_causal_claim_rate", "proxy_disclosure_rate"}
+    # The truthfulness metrics are measurable offline whenever the selection
+    # contains a case that declares the contract *and* is run by an evaluator
+    # that can score the final narrative.  Capability is read from the case's
+    # answer contract, not from the produced value, so an empty denominator is
+    # NOT_MEASURED (release blocking) rather than NOT_APPLICABLE.
+    for result in results:
+        if result.evaluator not in ANSWER_SCORING_EVALUATORS:
+            continue
+        declared = set(result.answer_requirements or ())
+        if CAUSAL_REQUIREMENT in declared:
+            caps.add(CAUSAL_RATE_METRIC)
+        if PROXY_REQUIREMENT in declared:
+            caps.add(PROXY_RATE_METRIC)
     for result in results:
         caps |= set(result.metrics)
     return caps
@@ -2989,8 +3581,10 @@ def _suite_capabilities(results: list[CaseResult]) -> set[str]:
 MISSING_CASE_HINTS = {
     "cross_session_leak_rate": "需要 session_isolation / 跨会话哨兵案例（A 案例数字不得出现在 B 案例）",
     "unsupported_number_rate": "需要 answer_grounding 或 recorded 链路案例（答案引用未查询数字）",
-    "unsupported_causal_claim_rate": "需要 live/answers 语义评分案例（把相关性说成因果）",
-    "proxy_disclosure_rate": "需要 live/answers 语义评分案例（使用代理指标未说明）",
+    "unsupported_causal_claim_rate": "需要 recorded-provider/answer_grounding 离线语义评分案例（把相关性说成因果）",
+    "proxy_disclosure_rate": "需要 recorded-provider/answer_grounding 离线语义评分案例（使用代理指标未说明）",
+    "unsupported_causal_claim_detection_rate": "需要 expect_causal_violation 离线负例（植入因果越界）",
+    "proxy_disclosure_detection_rate": "需要 expect_proxy_miss 离线负例（植入代理不披露）",
     "multi_turn_context_accuracy": "需要 multi_turn / context_resolution 案例",
     "recovery_success_rate": "需要 recovery_state / failure_recovery 案例",
     "chart_selection_accuracy": "需要 chart_* 图表链路案例",
@@ -3008,6 +3602,10 @@ MISSING_CASE_HINTS = {
 RELEASE_REQUIRED_METRICS = frozenset({
     "exact_numeric_accuracy", "answer_schema_valid_rate", "evidence_coverage",
     "cross_session_leak_rate", "unsupported_number_rate",
+    "unsupported_causal_claim_rate", "proxy_disclosure_rate",
+    # A release must prove that two runs of the same selection agree; the gate
+    # itself is built below because "not measured" only blocks a release run.
+    "repeat_stability",
 })
 
 
@@ -3091,6 +3689,43 @@ def evaluate_gates(results: list[CaseResult], metrics: dict, *,
                 "detail": f"{sum(1 for r in p0 if r.status == PASS)}/{len(p0)} P0 contract cases passed",
             },
         ]
+    # Release stability.  A release must *measure* it (an unmeasured release is
+    # blocked); a measured drift blocks any run, including the plain CI repeat
+    # job that runs without ``--release``.
+    repeat_value = metrics.get("repeat_stability")
+    if skipped:
+        gates.append({
+            "name": "repeat_stability",
+            "status": "NOT_MEASURED",
+            "ok": True,
+            "severity": "release",
+            "release_required": False,
+            "detail": ("本次运行被跳过（未配置凭据）：repeat_stability 报告为 "
+                       "not_measured，绝不写成 passed"),
+        })
+    elif repeat_value is None:
+        gates.append({
+            "name": "repeat_stability",
+            "status": "NOT_MEASURED",
+            "ok": not release,
+            "severity": "release",
+            "release_required": True,
+            "detail": ("repeat_stability: 本次运行未测量（未带 --repeat 2，或样本不足）；"
+                       + ("release gate 阻断——release 必须重复运行同一选择集"
+                          if release else
+                          "普通运行不阻断，`--release` 必须带 `--repeat 2`")),
+        })
+    else:
+        repeat_ok = repeat_value >= 1.0
+        gates.append({
+            "name": "repeat_stability",
+            "status": "PASS" if repeat_ok else "FAIL",
+            "ok": repeat_ok,
+            "severity": "always",
+            "release_required": True,
+            "detail": f"repeat_stability={repeat_value} (requirement >= 1.0)",
+        })
+
     for metric, want, higher_is_better in (
         ("exact_numeric_accuracy", 1.0, True),
         ("answer_schema_valid_rate", 1.0, True),
@@ -3098,7 +3733,9 @@ def evaluate_gates(results: list[CaseResult], metrics: dict, *,
         ("cross_session_leak_rate", 0.0, False),
         ("unsupported_number_rate", 0.0, False),
         ("unsupported_causal_claim_rate", 0.0, False),
+        ("unsupported_causal_claim_detection_rate", 1.0, True),
         ("proxy_disclosure_rate", 1.0, True),
+        ("proxy_disclosure_detection_rate", 1.0, True),
     ):
         gates.append(_metric_gate(metric, metrics.get(metric), want,
                                   higher_is_better=higher_is_better,
@@ -3232,10 +3869,15 @@ def _waiver_expired(expiry: str) -> bool:
     return when < _dt.datetime.now(_dt.timezone.utc).date()
 
 
+# ``ontology-v0.0.10``, ``v0.0.10`` and ``0.0.10`` all spell the same version.
+_VERSION_PREFIX_RE = re.compile(r"^(?:ontology-)?v?", re.IGNORECASE)
+
+
 def _version_reached(current: str, target: str) -> bool:
-    """True when *current* is at or beyond a ``vX.Y.Z`` target version."""
+    """True when *current* is at or beyond an ``X.Y.Z`` target version."""
     def parts(text: str) -> Optional[tuple]:
-        match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)$", (text or "").strip())
+        stripped = _VERSION_PREFIX_RE.sub("", (text or "").strip())
+        match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", stripped)
         return tuple(int(g) for g in match.groups()) if match else None
 
     now, want = parts(current), parts(target)
@@ -3318,22 +3960,28 @@ def build_report(
     waivers: Optional[dict] = None,
 ) -> dict:
     summary = aggregate(results)
-    if repeat_agreement is not None:
-        summary["metrics"]["repeat_stability"] = repeat_agreement
-        summary["metric_sample_sizes"]["repeat_stability"] = int(
-            (repeat or {}).get("cases") or 0)
-        stable = int((repeat or {}).get("stable_cases") or 0)
-        total = int((repeat or {}).get("cases") or 0)
+    repeat_info = repeat or {}
+    repeat_cases = int(repeat_info.get("cases") or 0)
+    repeat_skipped = [str(cid) for cid in (repeat_info.get("skipped_case_ids") or [])]
+    if repeat_info or repeat_agreement is not None:
+        # Zero samples -- or samples that did not execute in every repetition --
+        # must never be summarised as a score.  "1.0 from nothing" is exactly
+        # what let the release gate pass without ever measuring stability.
+        measured = (repeat_agreement is not None and repeat_cases > 0
+                    and not repeat_skipped)
+        stable = int(repeat_info.get("stable_cases") or 0)
+        summary["metrics"]["repeat_stability"] = repeat_agreement if measured else None
+        summary["metric_sample_sizes"]["repeat_stability"] = repeat_cases
         summary["metric_stats"]["repeat_stability"] = {
-            "measured": bool(total),
-            "applicable": total,
-            "passed": stable,
-            "failed": total - stable,
-            "skipped": summary["metric_stats"].get("repeat_stability", {}).get("skipped", 0),
+            "measured": measured,
+            "applicable": repeat_cases,
+            "passed": stable if measured else 0,
+            "failed": (repeat_cases - stable) if measured else 0,
+            "skipped": len(repeat_skipped),
             "known_gap_excluded": 0,
-            "sample_size": total,
-            "numerator": stable,
-            "denominator": total,
+            "sample_size": repeat_cases,
+            "numerator": stable if measured else 0,
+            "denominator": repeat_cases,
         }
     # A skipped opt-in run has no evidence: every case is SKIP and no gate can
     # legitimately claim a pass or a failure.
@@ -3741,8 +4389,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="LLM provider for --suite live (default: team)")
     parser.add_argument("--answers", default="",
                         help="score recorded answers: JSON {case_id: answer}")
-    parser.add_argument("--repeat", type=int, default=1,
-                        help="run the selection N times to measure repeat_stability")
+    parser.add_argument("--repeat", type=int, default=None,
+                        help="run the selection N times to measure repeat_stability "
+                             "(N >= 2; omitting it means a single run, which reports "
+                             "repeat_stability as not_measured)")
     parser.add_argument("--out", default="",
                         help="directory for the JSON/Markdown report "
                              f"(default: {DEFAULT_REPORT_DIR})")
@@ -3825,6 +4475,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                         evaluator=case.get("evaluator", ""), priority=case.get("priority", "P1"),
                         status=SKIP, question=case.get("question", ""),
                         checks=[Check("answers.provided", False, "recorded answer", None)],
+                        answer_requirements=tuple(case.get("answer_requirements") or ()),
                     )
                 else:
                     # Case-scoped grounding: an answer may only cite numbers this
@@ -3860,6 +4511,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                         evaluator="live", priority=c.get("priority", "P1"), status=SKIP,
                         question=c.get("question", ""),
                         checks=[Check("live.credentials", False, "provider credentials", "")],
+                        answer_requirements=tuple(c.get("answer_requirements") or ()),
                         run_meta={"case_id": c["case_id"], "domain": c.get("domain"),
                                   "fixture_db": fixture_db_for_case(c)},
                     )
@@ -3886,6 +4538,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                             status=SKIP, question=case.get("question", ""),
                             checks=[Check("live.suite_budget", False,
                                           f"budget {int(budget)}s", "exhausted")],
+                            answer_requirements=tuple(case.get("answer_requirements") or ()),
                             run_meta={"case_id": case["case_id"],
                                       "domain": case.get("domain"),
                                       "fixture_db": fixture_db_for_case(case)},
@@ -3985,6 +4638,13 @@ def main(argv: Optional[list[str]] = None) -> int:
                           if not g["ok"] and (args.release or g.get("severity") == "always")]
         if blocking_gates and not args.no_gate:
             return 1
+        if args.repeat is not None and args.repeat < 2:
+            # A single repetition is not a stability measurement.  Refusing the
+            # request is what stops ``--repeat 1`` from quietly degrading into a
+            # normal run that reports success without any evidence.
+            print("--repeat must be >= 2 (omit it for a single run); "
+                  "repeat_stability is not_measured for a single run", file=sys.stderr)
+            return 2
         return 0
     finally:
         ctx.cleanup()

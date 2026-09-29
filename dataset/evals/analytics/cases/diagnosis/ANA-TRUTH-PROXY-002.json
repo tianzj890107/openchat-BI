@@ -1,0 +1,56 @@
+{
+  "case_id": "ANA-TRUTH-PROXY-002",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "recorded-provider"
+  ],
+  "domain": "财务",
+  "category": "diagnosis",
+  "evaluator": "recorded_provider",
+  "question": "预算执行率现在完成得怎么样",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "provider": "fixtures/provider/truthfulness/ANA-TRUTH-PROXY-002.json",
+    "db": "finance.db"
+  },
+  "expected": {
+    "tool_chain": [
+      "Ontology-SemanticQuery",
+      "Ontology-FactQuery",
+      "TableGenerate"
+    ],
+    "recovery_status": "SUCCEEDED",
+    "target_metric": "预算执行率",
+    "proxy_metric": "总账贷方发生额",
+    "proxy_limits": [
+      "预算口径",
+      "收入确认差异"
+    ]
+  },
+  "forbidden": [],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "recorded_provider_transcript",
+    "tool_chain",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "recorded",
+    "truthfulness",
+    "evidence_chain"
+  ],
+  "notes": "代理指标必须披露限制；不得只给一个数字。",
+  "answer_requirements": [
+    "must_use_proxy_disclosure_if_proxy_used",
+    "must_include_effective_action_section"
+  ]
+}

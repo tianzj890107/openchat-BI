@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-TRUTH-PROXY-005",
+  "turns": [
+    {
+      "user": "设备开动率现在是多少",
+      "db": "manufacturing.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "设备开动率现在是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(downtime_minutes) AS downtime FROM fact_production_order WHERE is_deleted = 0",
+            "query_description": "设备开动率现在是多少"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "停机时长",
+            "columns": [
+              {
+                "key": "downtime",
+                "label": "停机时长"
+              }
+            ],
+            "rows": [
+              [
+                19320.0
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "停机时长合计 19,320 分钟。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

@@ -53,14 +53,5 @@
     "L4",
     "action"
   ],
-  "known_gap": true,
-  "gap_note": "『怎么改善』不在 _ACTION_INTENT_RE 内（仅覆盖『如何改善』），当前落到 L1 事实查询；本轮只记录缺陷、不修业务。",
-  "gap_meta": {
-    "owner": "ai-team",
-    "introduced_at": "2026-09-17",
-    "target_fix_version": "v0.1.10",
-    "severity": "medium",
-    "summary": "『怎么改善』未识别为行动类",
-    "source_issue": "a1134c7 (analytics golden set v1)"
-  }
+  "notes": "『怎么改善』属于行动意图：wants_action=true、L4、诊断取数路线，不得退化成无取数的常识回答。"
 }

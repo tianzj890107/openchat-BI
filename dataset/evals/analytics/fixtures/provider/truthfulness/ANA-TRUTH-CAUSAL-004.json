@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-TRUTH-CAUSAL-004",
+  "turns": [
+    {
+      "user": "采购金额下降的原因能直接下结论吗",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "采购金额下降的原因能直接下结论吗"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT order_month AS m, SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY order_month ORDER BY order_month",
+            "query_description": "采购金额下降的原因能直接下结论吗"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "采购金额按月",
+            "columns": [
+              {
+                "key": "m",
+                "label": "月份"
+              },
+              {
+                "key": "v",
+                "label": "采购金额"
+              }
+            ],
+            "rows": [
+              [
+                "2025-01",
+                4700.0
+              ],
+              [
+                "2025-02",
+                6400.0
+              ],
+              [
+                "2025-03",
+                4750.0
+              ],
+              [
+                "2025-04",
+                5170.0
+              ],
+              [
+                "2025-05",
+                1010.0
+              ],
+              [
+                "2025-06",
+                3000.0
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "3 月采购金额 4,750.00 元，2 月为 6,400.00 元。供应商数量减少导致采购金额下降，可以直接下结论。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

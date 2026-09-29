@@ -101,6 +101,51 @@ def _load_runner():
     return module
 
 
+def _load_build_cases():
+    """Import ``dataset/evals/analytics/build_cases.py`` without writing files.
+
+    Importing the generator is side-effect free (it only writes under
+    ``main``), so the tests can exercise the *shipped* known-gap gate instead
+    of re-implementing it.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "analytics_eval_build_cases", EVAL_ROOT / "build_cases.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    import sys
+
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+# ``gap_meta`` fields the published schema requires on a Red case.
+GAP_META_FIELDS = ("owner", "introduced_at", "target_fix_version", "severity",
+                   "source_issue", "production_entry")
+
+
+def _gap_metadata_errors(record: dict) -> list[str]:
+    """Return the metadata-contract violations for a ``known_gap`` case.
+
+    The set currently has no open gap, so this must never silently degrade into
+    "nothing to check": it stays a plain function over a record so a synthetic
+    unowned gap can prove the check still bites.
+    """
+    meta = record.get("gap_meta") or {}
+    errors = [f"missing {field}" for field in GAP_META_FIELDS
+              if not str(meta.get(field) or "").strip()]
+    introduced = str(meta.get("introduced_at") or "")
+    if introduced and not re.match(r"^\d{4}-\d{2}-\d{2}$", introduced):
+        errors.append(f"introduced_at {introduced!r} is not a date")
+    target = str(meta.get("target_fix_version") or "")
+    if target and not re.match(r"^v\d+\.\d+\.\d+$", target):
+        errors.append(f"target_fix_version {target!r} is not a version")
+    severity = str(meta.get("severity") or "")
+    if severity and severity not in {"low", "medium", "high"}:
+        errors.append(f"severity {severity!r} is not low/medium/high")
+    return errors
+
+
 class GoldenSetLayoutTest(unittest.TestCase):
     def test_eval_tree_exists(self):
         for path in (CASES_DIR, FIXTURE_ROOT, SQLITE_DIR, ONTOLOGY_DIR,
@@ -156,23 +201,26 @@ class CaseSchemaTest(unittest.TestCase):
                 self.assertIn(case["priority"], PRIORITIES)
 
     def test_known_gap_requires_full_metadata(self):
-        """A Red test without an owner and a target is just debt with no owner."""
-        required = {"owner", "introduced_at", "target_fix_version", "severity",
-                    "source_issue"}
-        seen = 0
+        """A Red test without an owner and a target is just debt with no owner.
+
+        Every defect is fixed today, so the loop below guards the next Red case
+        rather than the current set.  It must not become vacuous: the negative
+        controls prove the contract still rejects an unowned gap and that the
+        generator refuses to emit one without a ``KNOWN_GAP_META`` entry.
+        """
         for path, case in self.cases:
             if not case.get("known_gap"):
                 continue
-            seen += 1
-            meta = case.get("gap_meta") or {}
-            self.assertEqual(required - set(meta), set(),
+            self.assertEqual(_gap_metadata_errors(case), [],
                              f"{path} known_gap is missing metadata")
-            self.assertRegex(meta["introduced_at"], r"^\d{4}-\d{2}-\d{2}$")
-            self.assertRegex(meta["target_fix_version"], r"^v\d+\.\d+\.\d+$")
-            self.assertIn(meta["severity"], {"low", "medium", "high"})
-            self.assertTrue(str(meta["owner"]).strip())
-            self.assertTrue(str(meta["source_issue"]).strip())
-        self.assertGreater(seen, 0)
+
+        orphan = {"case_id": "ANA-UNOWNED-999", "known_gap": True}
+        self.assertTrue(
+            _gap_metadata_errors(orphan),
+            "the metadata contract no longer rejects an unowned Red case")
+        build = _load_build_cases()
+        with self.assertRaises(KeyError):
+            build.gap_meta("ANA-UNOWNED-999")
 
     def test_no_unknown_top_level_fields(self):
         schema = _load(SCHEMA_PATH)
@@ -361,7 +409,13 @@ class CoverageFloorTest(unittest.TestCase):
         p0 = sum(1 for c in self.cases if c["priority"] == "P0")
         gaps = sum(1 for c in self.cases if c.get("known_gap"))
         self.assertGreaterEqual(p0, 100, "too few P0 contract cases")
-        self.assertGreaterEqual(gaps, 1, "known_gap must document open defects")
+        ratchet = _load(RATCHET_PATH)
+        self.assertEqual(gaps, ratchet["known_gap_total"],
+                         "known_gap cases drifted from the frozen ratchet budget")
+        self.assertEqual(
+            gaps, 0,
+            "the defect ratchet bottomed out at zero; opening a new gap needs an "
+            "explicit budget decision, not a silent addition")
         self.assertLess(gaps, len(self.cases) // 10, "too much of the set is Red")
 
     def test_every_category_has_cases(self):
@@ -495,6 +549,7 @@ class RecordedProviderAssetTest(unittest.TestCase):
         case = next(c for c in self.cases if c["case_id"] == "ANA-RPSQL-001")
         ctx = runner.EvalContext()
         real_socket = socket.socket
+        real_create_connection = socket.create_connection
 
         def _blocked(*args, **kwargs):  # pragma: no cover - failure path only
             raise AssertionError("the offline evaluator must not open a socket")
@@ -505,6 +560,7 @@ class RecordedProviderAssetTest(unittest.TestCase):
             result = runner.run_case(case, ctx)
         finally:
             socket.socket = real_socket
+            socket.create_connection = real_create_connection
             ctx.cleanup()
         self.assertEqual(result.status, runner.PASS,
                          [c.name for c in result.failed_checks])
@@ -545,6 +601,13 @@ class KnownGapGovernanceTest(unittest.TestCase):
         self.assertNotIn("ignore_all", json.dumps(allowlist))
 
     def test_unresolved_p0_defects_are_reported(self):
+        """The P0 ledger must separate real executions from open defects.
+
+        The committed smoke set is clean today, so the aggregate is asserted on
+        the real run *and* on a run with one injected open P0: the injection
+        control is what proves the ledger keeps an unresolved defect out of the
+        pass column instead of collapsing it in.
+        """
         runner = _load_runner()
         cases = runner.load_cases()
         results = []
@@ -558,7 +621,21 @@ class KnownGapGovernanceTest(unittest.TestCase):
         self.assertEqual(summary["p0_total"],
                          sum(1 for r in results if r.priority == "P0"))
         self.assertEqual(summary["unresolved_p0_defects"], summary["p0_xfailed"])
-        self.assertGreater(summary["p0_total"], summary["p0_passed"],
+        self.assertEqual(summary["unresolved_p0_defects"], 0,
+                         "the committed smoke set has no open P0 defect")
+        self.assertEqual(summary["p0_total"], summary["p0_passed"])
+
+        red = runner.CaseResult(
+            case_id="ANA-SYNTHETIC-999", category="intent", evaluator="policy",
+            priority="P0", status=runner.XFAIL, known_gap=True,
+            gap_meta={"severity": "high"}, question="synthetic open P0 defect")
+        injected = runner.aggregate(results + [red])
+        self.assertEqual(injected["p0_total"], summary["p0_total"] + 1)
+        self.assertEqual(injected["p0_passed"], summary["p0_passed"],
+                         "an open P0 defect leaked into the pass count")
+        self.assertEqual(injected["p0_xfailed"], 1)
+        self.assertEqual(injected["unresolved_p0_defects"], 1)
+        self.assertGreater(injected["p0_total"], injected["p0_passed"],
                            "the P0 report must not collapse known gaps into passes")
 
 
@@ -591,14 +668,60 @@ class KnownGapGateTest(unittest.TestCase):
         self.assertEqual(code, 0)
         gate = next(g for g in report["gates"] if g["name"] == "p0_known_gap_allowlist")
         self.assertTrue(gate["ok"])
-        self.assertIn("research run", gate["detail"])
+        self.assertEqual(gate["status"], "PASS")
+        self.assertIn("no unresolved P0 known gap", gate["detail"],
+                      "the committed set has no open P0 defect to report")
 
-    def test_release_run_fails_while_p0_defects_are_open(self):
-        code, report = self._run(["--release"])
-        self.assertEqual(code, 1, "release must fail with unresolved P0 known gaps")
+    def test_release_run_passes_on_the_clean_committed_set(self):
+        """The shipped set is release-clean: nothing is open to waive.
+
+        Since the release-stability batch, a ``--release`` run must also
+        *measure* repeat stability, so the release gate repeats the selection
+        (`--repeat 2`); without it the run is reported NOT_MEASURED and blocked.
+        """
+        code, report = self._run(["--release", "--repeat", "2"])
         gate = next(g for g in report["gates"] if g["name"] == "p0_known_gap_allowlist")
-        self.assertFalse(gate["ok"])
-        self.assertIn("not in the audited allowlist", gate["detail"])
+        self.assertEqual(report["summary"]["unresolved_p0_defects"], 0)
+        self.assertEqual(code, 0, "release must pass with no unresolved P0 gap")
+        self.assertTrue(gate["ok"])
+        self.assertIn("no unresolved P0 known gap", gate["detail"])
+
+    def test_the_allowlist_gate_still_blocks_a_release_on_an_open_p0(self):
+        """Mechanics control for the failure path the clean set no longer takes.
+
+        Injecting one synthetic Red P0 into the *shipped* ``evaluate_gates``
+        keeps the release branch honest: if it were deleted or flipped, the
+        clean committed set would hide the regression.
+        """
+        runner = _load_runner()
+        red = runner.CaseResult(
+            case_id="ANA-SYNTHETIC-999", category="intent", evaluator="policy",
+            priority="P0", status=runner.XFAIL, known_gap=True,
+            gap_meta={"severity": "high"}, question="synthetic open P0 defect")
+
+        def allowlist_gate(results, **kwargs):
+            return next(g for g in runner.evaluate_gates(results, {}, **kwargs)
+                        if g["name"] == "p0_known_gap_allowlist")
+
+        blocked = allowlist_gate([red], release=True)
+        self.assertFalse(blocked["ok"])
+        self.assertEqual(blocked["status"], "FAIL")
+        self.assertTrue(blocked["release_blocking"])
+        self.assertIn("not in the audited allowlist", blocked["detail"])
+
+        research = allowlist_gate([red], release=False)
+        self.assertTrue(research["ok"], "an open defect must stay non-blocking offline")
+        self.assertTrue(research["release_blocking"],
+                        "the flag means 'would block a release', not 'blocked this run'")
+        self.assertIn("research run", research["detail"])
+
+        waived = allowlist_gate([red], release=True, allowlist=["ANA-SYNTHETIC-999"])
+        self.assertTrue(waived["ok"], "a case-scoped audited waiver must clear the gate")
+        self.assertFalse(waived["release_blocking"])
+
+        clean = allowlist_gate([], release=True)
+        self.assertTrue(clean["ok"])
+        self.assertIn("no unresolved P0 known gap", clean["detail"])
 
 
 class GovernanceGateTest(unittest.TestCase):
@@ -734,10 +857,11 @@ class GovernanceGateTest(unittest.TestCase):
     def test_a_known_gap_past_its_target_version_is_overdue(self):
         version = self.runner.product_version()
         reached = self.runner._version_reached
-        self.assertEqual(version, "0.1.9")
-        self.assertTrue(reached(version, "v0.0.1"))
-        self.assertTrue(reached(version, "v0.1.9"))
-        self.assertFalse(reached(version, "v0.1.10"))
+        self.assertEqual(version, "ontology-v0.0.10")
+        self.assertTrue(reached(version, "ontology-v0.0.1"))
+        self.assertTrue(reached(version, "v0.0.10"))
+        self.assertTrue(reached(version, "0.0.10"))
+        self.assertFalse(reached(version, "ontology-v0.0.11"))
         self.assertFalse(reached(version, "v99.0.0"))
         self.assertFalse(reached(version, ""))
 

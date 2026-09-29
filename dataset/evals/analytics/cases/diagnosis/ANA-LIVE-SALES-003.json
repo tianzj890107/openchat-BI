@@ -1,0 +1,66 @@
+{
+  "case_id": "ANA-LIVE-SALES-003",
+  "version": 1,
+  "priority": "P1",
+  "suite": [
+    "regression",
+    "diagnosis"
+  ],
+  "domain": "销售",
+  "category": "diagnosis",
+  "evaluator": "policy",
+  "question": "折扣对销售额的影响是什么",
+  "conversation": [],
+  "context": {
+    "time_range": {},
+    "organization": [],
+    "currency": "CNY",
+    "unit": ""
+  },
+  "fixture": {
+    "db": "sales.db"
+  },
+  "expected": {
+    "allowed_tools": [
+      "Ontology-MetricQuery",
+      "Ontology-FactQuery",
+      "Ontology-SemanticQuery",
+      "AskUser"
+    ],
+    "intent_level": "L1",
+    "policy": {
+      "mode": "ONTOLOGY_LOOKUP",
+      "reason_code": "ONTOLOGY_LOOKUP_REQUEST",
+      "next_step": "QUERY_ONTOLOGY",
+      "required_tools": [
+        "Ontology-SemanticQuery"
+      ],
+      "evidence_required": true,
+      "needs_human": false
+    },
+    "wants_root_cause": false,
+    "wants_action": false
+  },
+  "forbidden": [
+    "fabricated_ontology_entity",
+    "unsupported_number"
+  ],
+  "allowed_variants": {},
+  "evidence_requirements": [
+    "policy_decision",
+    "evidence_chain"
+  ],
+  "scoring": {},
+  "tags": [
+    "live",
+    "L1",
+    "sales",
+    "discount",
+    "ontology"
+  ],
+  "notes": "折扣口径要先走本体/指标定义查询，再决定是否取数，禁止先取数后编口径。",
+  "answer_requirements": [
+    "must_state_metric_and_scope",
+    "must_cite_ontology_evidence"
+  ]
+}

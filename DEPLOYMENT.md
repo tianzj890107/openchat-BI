@@ -117,30 +117,42 @@ DORIS_DATABASE=<database>
 | PDT | http://pdt-dev.eimos.com/api/ontology-agentic-analytics | http://pdt-dev.eimos.com/api/gateway2/ontology | http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query |
 | Demo2 | http://demo2.eimos.com/api/ontology-agentic-analytics | http://demo2.eimos.com/api/gateway2/ontology | http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query |
 
+`DORIS_API_URL` 支持两种契约，客户端按 URL 自动选方言，并在解析时同时容忍两种响应形态：
+
+| URL 路径 | 请求体 | 响应读取 |
+| --- | --- | --- |
+| 以 `/agent/doris/query` 结尾（旧网关） | `{"sql": ...}` | `data.rows`（+ `data.columns`） |
+| 其它（含 `/api/v1/analysis/data/query`） | `{"analysisConfig": {"sql": ...}, "commonConfig": {}}` | `data.result.rows` + `data.result.columns[].identifierCode` |
+
+灰度期可继续使用旧网关地址；切到 `/api/v1/analysis/data/query` 时客户端改用新契约，
+旧网关仍在线的期间无需与本体服务协调切换。本批不改默认值。
+
 ```dotenv
 # PDT
 ONTOLOGY_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/ontology
 DORIS_API_URL=http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query
-ONTOLOGY_REPOSITORY_ID=3
+# 新 MAL 契约（可选）：http://pdt-dev.eimos.com/api/gateway2/ontology/api/v1/analysis/data/query
+# ONTOLOGY_REPOSITORY_ID=<按该环境目录查到的真实编号>
 ```
 
 ```dotenv
 # Demo2（本体目录由 demo2 本体服务真实返回，预期只有 ECore 本体库及其数据库）
 ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology
 DORIS_API_URL=http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query
+# 新 MAL 契约（可选）：http://demo2.eimos.com/api/gateway2/ontology/api/v1/analysis/data/query
 ONTOLOGY_REPOSITORY_ID=1
 ```
 
 - `ONTOLOGY_APP_ID` 两个环境取值相同且非密钥，作为镜像共享默认值（当前
   `ApTH1EHKdRk58WhDQB`），各环境可按需覆盖；`ONTOLOGY_AUTH_TOKEN` 是密钥，只能由各
   环境注入，仓库与镜像中不保存真实值（当前两个环境都为空）。
-- `ONTOLOGY_REPOSITORY_ID` 只决定"当前激活哪个本体库"，按环境取该环境目录里的真实
-  ID，**两个环境并不相同**：PDT 的 ECore 本体库是 `3`
-  （`ontology_demometaerp`），demo2 的 ECore 本体库是 `1`（`ontology_ecore`）。
+- `ONTOLOGY_REPOSITORY_ID` 只决定"当前激活哪个本体库"，**必须按环境取该环境目录里的
+  真实 ID**，不要照抄文档里的编号：PDT 当前激活的是 `12`（钱江本体库-勿动，
+  `ontology_qianjiang`），demo2 的 ECore 本体库是 `1`（`ontology_ecore`）。
   查法：`GET <ONTOLOGY_BASE_URL>/system/manager/ontology-repository?page=1&size=100`
-  （不带 `X-Ontology-Repository-Id` 头），在 `data.items` 里按名称找到 ECore 库的
-  `id`、`namespaceCode`、`currentDatabase`。用错 ID 时 `configure()` 会以
-  `远程本体库 X 不在可用目录中` 快速失败，不会静默连到另一个环境的库。
+  （不带 `X-Ontology-Repository-Id` 头），在 `data.items` 里按名称找到目标库的
+  `id`、`namespaceCode`、`currentDatabase`。用错 ID 时 `configure()` 会快速失败，并在
+  报错里列出该环境目录里的**可用编号**与配置键名，不会静默连到另一个环境的库。
 - 不要通过前端过滤或在代码里写死 repository ID 来"伪造"某个环境只有少量本体库；本体
   列表必须由该环境的本体服务真实返回。
 - 部署后核对：`GET <环境入口>/api/sources` 的 `ontology.production.base_url` 应等于该
@@ -156,7 +168,7 @@ ONTOLOGY_REPOSITORY_ID=1
 | --- | --- | --- | --- |
 | `ONTOLOGY_BASE_URL` | 必填，PDT 网关 | 必填，demo2 网关 | 运维按环境注入 |
 | `DORIS_API_URL` | 必填，PDT 网关 | 必填，demo2 网关 | 运维按环境注入 |
-| `ONTOLOGY_REPOSITORY_ID` | `3`（PDT 的 ECore 本体库） | `1`（demo2 的 ECore 本体库） | 运维按环境注入 |
+| `ONTOLOGY_REPOSITORY_ID` | `12`（钱江本体库-勿动；以该环境目录实际返回为准） | `1`（demo2 的 ECore 本体库） | 运维按环境注入 |
 | `ONTOLOGY_APP_ID` | `ApTH1EHKdRk58WhDQB`（共享默认） | 同左 | 仓库默认，可覆盖 |
 | `ONTOLOGY_AUTH_TOKEN` | 当前为空 | 当前为空 | 运维注入（不得入库） |
 
@@ -344,7 +356,9 @@ git diff --name-only
 当前运行状态（2026-09-03 部署 v0.1.2）：
 
 - 运行目录 `~/eimosp-ontology-agentic-analytics-releases/v0.1.2`，
-  `RELEASE_COMMIT=c8454d82f052a6770bae975a5d865a6f37eff721`（tag `v0.1.2`），
+  `RELEASE_COMMIT=c8454d82f052a6770bae975a5d865a6f37eff721`（tag `ontology-v0.0.3`，
+  该 tag 原名为 `v0.1.2`；下面的 release 目录名是服务器上的真实路径，仍沿用旧版本号，
+  不随版本族切换改名），
   启动命令：`cd <release> && set -a && . ./.env && set +a && nohup ./.venv/bin/python -m bi_agent.web --host 0.0.0.0 --port 8765 --db doris >> ~/eimosp-ontology-agentic-analytics-8765.log 2>&1 &`
   （无 systemd 单元，进程 PID 记录在 `<release>/APP.pid`）。
 - 服务器系统缺少 `python3-venv`（`ensurepip` 不可用），无法新建 venv：当前 release 的
@@ -439,16 +453,41 @@ Sigma + Graphology + ForceAtlas2 布局与渲染核心，在“命中的本体�
 ```dotenv
 TASK_ALERT_API_ENABLED=true            # 功能开关，默认并保持开启
 TASK_ALERT_API_URL=http://pdt-dev.eimos.com/api/x360/v1/task-alert/manual-create
-TASK_ALERT_DEFAULT_ASSIGNEE=400        # 前端未传时的默认责任人(当前临时写死 400)
+TASK_ALERT_DEFAULT_ASSIGNEE=400        # 默认责任人；X360 命中活动时改用该活动的 responsiblePerson
 TASK_ALERT_DEFAULT_LEVEL=WARNING       # 只允许 ALERT / WARNING
-# bpDefinitionId 临时按行动内容关键词匹配(回款/开票/销售项目/投标/合同/订单/生产/
-# 发货/签收/验收/线索/项目/关闭/履约单);留空时未命中关键词则不传
+# 仅当 X360 未接入/未命中时使用的遗留关键词回退(回款/开票/销售项目/投标/合同/订单/
+# 生产/发货/签收/验收/线索/项目/关闭/履约单);留空且未命中则不传
 TASK_ALERT_DEFAULT_BP_DEFINITION_ID=
 TASK_ALERT_TIMEOUT_SECONDS=10          # 上游超时，0.5–120s
+
+# X360 流程定义接口(只读)：转督办时解析流程定义 / 活动 / 责任人
+X360_ENABLED=true                      # 显式 false/0/no/off 关闭
+X360_BASE_URL=                         # 空 = 未接入(走静态回退)；必须是域名，禁止 IP/别名
+X360_PROCESS_DEFINITION_KEY=           # 流程定义 KEY(首选 selector)
+X360_PROCESS_DEFINITION_ID=            # 流程定义 ID(备用 selector)
+X360_APP_ID=ApTH1EHKdRk58WhDQB         # 非密 App ID；未配置时回退 ONTOLOGY_APP_ID
+X360_AUTH_TOKEN=                       # 空 = 不发送 Authorization
+X360_TIMEOUT_SECONDS=10                # 0.5–120s
+X360_CACHE_TTL_SECONDS=300             # 0 = 每次回源
+X360_BP_ID_LEVEL=process_definition    # process_definition(按文档) / activity(回退)
+X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退静态表
 ```
 
 - 后端端点：`POST /api/task-alert/manual-create`，校验 `title`/`content` 非空与
   `level` 取值，`clientRequestId` 做进程内幂等（成功缓存、进行中互斥、失败可重试）。
+- `bpDefinitionId` 解析优先级：请求体显式传入 > X360 流程定义解析 > 遗留关键词表；
+  实际来源如实写在响应 `source`（`request` / `x360` / `static_fallback` / `default`），
+  责任人取命中活动的 `responsiblePerson`（为空才回落到 `TASK_ALERT_DEFAULT_ASSIGNEE`）。
+- 响应在 `ok`/`taskId`/`clientRequestId` 之外新增 `source`、`activityName`、
+  `bpDefinitionId`；前端仍只依赖 `ok`/`taskId`。
+- **上线顺序**：在拿到上游书面确认“`bpDefinitionId` 要流程定义 ID 还是活动 ID”之前，
+  生产保持现状——`X360_BASE_URL` 留空（未接入，行为与接入前逐字一致）或已接入时
+  `X360_BP_ID_LEVEL=activity`；确认后再切到 `process_definition`。两种口径都只需改环境
+  变量，不需要改代码或回滚发布。
+- X360 只读：客户端只有文档的两个 `GET`
+  (`/api/gateway2/x360/v1/process-definitions/ai/key/{key}` 与 `.../ai/{id}`)，
+  没有写接口；X360 不可用时转督办照常创建（降级到静态表并标记 `source`），不会让用户
+  侧变成 5xx。
 - 即使当前运维网络无法访问上游（连接失败/超时/HTTP 错误），前端也只展示真实失败并可
   重试，不允许关闭开关或显示假成功。
 - 上游即使业务失败也返回 HTTP 200（`success:false, code:500`），代理按响应体

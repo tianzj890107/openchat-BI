@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-TRUTH-CAUSAL-003",
+  "turns": [
+    {
+      "user": "产线 1 报废量偏高和设备停机有关吗",
+      "db": "manufacturing.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "产线 1 报废量偏高和设备停机有关吗"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT work_center_id AS wc, SUM(actual_qty) AS actual, SUM(scrap_qty) AS scrap, SUM(downtime_minutes) AS downtime FROM fact_production_order WHERE is_deleted = 0 GROUP BY work_center_id ORDER BY work_center_id",
+            "query_description": "产线 1 报废量偏高和设备停机有关吗"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "各产线报废与停机",
+            "columns": [
+              {
+                "key": "wc",
+                "label": "产线"
+              },
+              {
+                "key": "actual",
+                "label": "实际产量"
+              },
+              {
+                "key": "scrap",
+                "label": "报废量"
+              },
+              {
+                "key": "downtime",
+                "label": "停机时长"
+              }
+            ],
+            "rows": [
+              [
+                1,
+                570.0,
+                15.0,
+                14360.0
+              ],
+              [
+                2,
+                165.0,
+                3.0,
+                1540.0
+              ],
+              [
+                3,
+                753.0,
+                13.0,
+                3420.0
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "产线 1 实际产量 570、报废量 15、停机时长 14,360 分钟。依据本轮停机时长取数 14,360，停机超限导致该批次报废。建议按规则复核报工数据，再决定是否停线整改。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

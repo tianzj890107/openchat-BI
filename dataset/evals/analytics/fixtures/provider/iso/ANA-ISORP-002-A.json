@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-ISORP-002-A",
+  "turns": [
+    {
+      "user": "画一下 2025 年 4 月采购金额",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT SUM(amount) AS v FROM fact_purchase_order WHERE is_deleted = 0 AND order_month = '2025-04'",
+            "query_description": "画一下 2025 年 4 月采购金额"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "ChartGenerate",
+          "input": {
+            "chart_type": "bar",
+            "title": "2025-04 采购金额",
+            "categories": [
+              "2025-04"
+            ],
+            "series": [
+              {
+                "name": "金额",
+                "values": [
+                  5170
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "2025 年 4 月采购金额 5,170.00 元，见图。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

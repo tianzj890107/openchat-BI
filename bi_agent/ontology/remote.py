@@ -18,6 +18,82 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
+def _rows_of(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _column_names(columns: Any, rows: list[dict[str, Any]]) -> list[str]:
+    """Column order for a table: explicit ``identifierCode`` list, else row keys."""
+    names: list[str] = []
+    if isinstance(columns, list):
+        for column in columns:
+            if isinstance(column, dict):
+                name = column.get("identifierCode") or column.get("name") or column.get("label")
+            else:
+                name = column
+            if name not in (None, ""):
+                names.append(str(name))
+    if names:
+        return names
+    for row in rows:
+        for key in row:
+            if key not in names:
+                names.append(str(key))
+    return names
+
+
+def _table_of(data: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return ``(columns, rows)`` for both MAL dialects, never raising.
+
+    Recognition order: ``data.result.rows`` (new TABLE) → ``data.result``
+    graph keys (new GRAPH: vertices/links/edges) → ``data.results[].rows``
+    (legacy) → ``data.rows`` (bare rows).  A missing layer yields an empty
+    table instead of an exception, and rows are never fabricated.
+    """
+    if not isinstance(data, dict):
+        return [], []
+    result = data.get("result")
+    if isinstance(result, dict):
+        raw_rows = result.get("rows")
+        if isinstance(raw_rows, list):
+            rows = _rows_of(raw_rows)
+            return _column_names(result.get("columns"), rows), rows
+        graph_rows = (
+            _rows_of(result.get("vertices"))
+            + _rows_of(result.get("links"))
+            + _rows_of(result.get("edges"))
+        )
+        if graph_rows or any(isinstance(result.get(key), list) for key in ("vertices", "links", "edges")):
+            return _column_names(result.get("columns"), graph_rows), graph_rows
+    segments = data.get("results")
+    if isinstance(segments, list):
+        rows = []
+        for segment in segments:
+            if isinstance(segment, dict):
+                rows.extend(_rows_of(segment.get("rows")))
+        return _column_names(None, rows), rows
+    rows = _rows_of(data.get("rows"))
+    return _column_names(data.get("columns"), rows), rows
+
+
+def _repository_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """Expose both the new and the legacy repository database field names."""
+    normalised = dict(row)
+    aliases = (
+        ("dorisDatabase", "currentDatabase"),
+        ("metaDatabase", "arcadedbMetaDatabase"),
+        ("knowledgeDatabase", "arcadedbKnowledgeDatabase"),
+    )
+    for primary, legacy in aliases:
+        value = row.get(primary) or row.get(legacy)
+        if value not in (None, ""):
+            normalised[primary] = str(value)
+            normalised[legacy] = str(value)
+    return normalised
+
+
 class OntologyApiError(RuntimeError):
     """A transport or business-level error returned by the ontology API."""
 
@@ -125,21 +201,81 @@ class RemoteOntologyClient:
             raise OntologyApiError(str(payload.get("msg") or f"本体服务业务错误 code={code}"))
         return payload
 
+    def _dual_request(self, attempts: list[tuple[str, str, dict[str, Any]]]) -> dict[str, Any]:
+        """Send the new-dialect request first, then fall back to the legacy one.
+
+        The ontology service keeps the ``/api/v1/analysis/...`` family and the
+        older ``/agent/...`` / ``/system/...`` paths online at the same time, so
+        the client cannot assume a coordinated cutover.  The first answer wins;
+        if every dialect fails the first error is re-raised so upstream
+        messages are never hidden behind an empty result.
+        """
+        first_error: Optional[OntologyApiError] = None
+        for method, path, kwargs in attempts:
+            try:
+                return self._request(method, path, **kwargs)
+            except OntologyApiError as exc:
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error
+        raise OntologyApiError("本体服务请求失败：没有可用的传输方言")
+
+    @staticmethod
+    def _object_info_of(row: dict[str, Any]) -> dict[str, Any]:
+        """Normalise a resolved object row to ``{"typeName", "properties"}``."""
+        properties = row.get("properties")
+        if not isinstance(properties, dict):
+            properties = {
+                key: value
+                for key, value in row.items()
+                if key not in ("typeName", "type")
+            }
+        return {
+            "typeName": str(row.get("typeName") or row.get("type") or "Unknown"),
+            "properties": properties,
+        }
+
     def ensure_object(self, name: str, candidate_types: list[str]) -> dict[str, Any]:
-        payload = self._request(
-            "POST",
-            "/agent/ontology/ensureOntologyObject",
-            body={"name": name, "candidateTypes": candidate_types},
-        )
-        return payload.get("data") or {}
+        payload = self._dual_request([
+            ("POST", "/api/v1/analysis/context/resolve-ontology-object", {
+                "body": {
+                    "analysisConfig": {"name": name, "candidateTypes": candidate_types},
+                    "commonConfig": {},
+                },
+            }),
+            ("POST", "/agent/ontology/ensureOntologyObject", {
+                "body": {"name": name, "candidateTypes": candidate_types},
+            }),
+        ])
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            data = {}
+        if "found" in data or "objectInfo" in data:
+            object_info = data.get("objectInfo")
+            return {
+                "found": bool(data.get("found")),
+                "objectInfo": object_info if isinstance(object_info, dict) else None,
+            }
+        _, rows = _table_of(data)
+        if not rows:
+            return {"found": False, "objectInfo": None}
+        return {"found": True, "objectInfo": self._object_info_of(rows[0])}
 
     def find_related(self, type_name: str, code: str, depth: int = 2) -> dict[str, Any]:
-        payload = self._request(
-            "GET",
-            "/agent/ontology/findRelatedObjects",
-            query={"type": type_name, "code": code, "depth": max(1, min(int(depth), 5))},
-        )
-        return payload.get("data") or {}
+        query = {"type": type_name, "code": code, "depth": max(1, min(int(depth), 5))}
+        payload = self._dual_request([
+            ("GET", "/api/v1/analysis/context/expand-ontology-context", {"query": query}),
+            ("GET", "/agent/ontology/findRelatedObjects", {"query": query}),
+        ])
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            data = {}
+        objects = data.get("objects") or data.get("relatedObjects")
+        if isinstance(objects, list):
+            return {"objects": [item for item in objects if isinstance(item, dict)]}
+        _, rows = _table_of(data)
+        return {"objects": [self._object_info_of(row) for row in rows]}
 
     def graph_neighborhood(
         self,
@@ -212,11 +348,20 @@ class RemoteOntologyClient:
         except OntologyApiError:
             root = None
         remember(normalized_type, root or {"code": normalized_code}, anchor=True)
-        for item in related.get("objects") or related.get("relatedObjects") or []:
-            if isinstance(item, dict):
-                remember(str(item.get("typeName") or item.get("type") or "Unknown"), item)
+        related_objects = [
+            item
+            for item in (related.get("objects") or related.get("relatedObjects") or [])
+            if isinstance(item, dict)
+        ]
+        for item in related_objects:
+            remember(str(item.get("typeName") or item.get("type") or "Unknown"), item)
 
-        if related_error:
+        # The ``expand-ontology-context`` reply may legitimately carry no rows
+        # (for example a repository that only answers the read-only OpenCypher
+        # traversal).  Recover the same bounded neighbourhood through the
+        # script endpoint instead of returning a lone anchor -- exactly what
+        # the TableNode fallback below already does.
+        if related_error or not related_objects:
             vertex_script = (
                 f"MATCH p=(root)-[*0..{safe_depth}]-(n) "
                 "WHERE root.code = $code "
@@ -331,11 +476,25 @@ class RemoteOntologyClient:
     def script_query(
         self, language: str, script: str, params_list: Optional[list[list[Any]]] = None
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"language": language, "script": script}
+        analysis_config: dict[str, Any] = {"language": language, "sql": script}
         if params_list is not None:
-            body["paramsList"] = params_list
-        payload = self._request("POST", "/agent/ontology/scriptQuery", body=body)
-        return payload.get("data") or {}
+            analysis_config["paramsList"] = params_list
+        legacy_body: dict[str, Any] = {"language": language, "script": script}
+        if params_list is not None:
+            legacy_body["paramsList"] = params_list
+        payload = self._dual_request([
+            ("POST", "/api/v1/analysis/meta/query", {
+                "body": {"analysisConfig": analysis_config, "commonConfig": {}},
+            }),
+            ("POST", "/agent/ontology/scriptQuery", {"body": legacy_body}),
+        ])
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            data = {}
+        columns, rows = _table_of(data)
+        if not rows:
+            return {"results": []}
+        return {"results": [{"rows": rows, "columns": columns}]}
 
     def metadata_query(self, analysis_config: dict[str, Any], common_config: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         payload = self._request(
@@ -355,8 +514,18 @@ class RemoteOntologyClient:
         return payload.get("data") or {}
 
     def repository_info(self) -> dict[str, Any]:
-        payload = self._request("GET", f"/system/manager/ontology-repository/{self.repository_id}")
-        return payload.get("data") or {}
+        payload = self._dual_request([
+            ("GET", f"/api/v1/analysis/context/ontology-repository/{self.repository_id}", {}),
+            ("GET", f"/system/manager/ontology-repository/{self.repository_id}", {}),
+        ])
+        data = payload.get("data")
+        if not isinstance(data, dict) or not data:
+            data = payload
+        if any(key in data for key in ("result", "results", "rows")):
+            _, rows = _table_of(data)
+            if rows:
+                return _repository_fields(rows[0])
+        return _repository_fields(data)
 
     def list_repositories(self, *, page: int = 1, size: int = 100) -> dict[str, Any]:
         """List selectable ontology repositories from the documented manager API."""
@@ -367,11 +536,34 @@ class RemoteOntologyClient:
         now = time.monotonic()
         if cached and now - cached[0] <= self.cache_ttl:
             return cached[1]
-        data = self._request(
-            "GET",
-            "/system/manager/ontology-repository",
-            query={"page": safe_page, "size": safe_size},
-            include_repository_header=False,
-        ).get("data") or {}
-        self._repository_page_cache[cache_key] = (now, data)
-        return data
+        query = {"page": safe_page, "size": safe_size}
+        payload = self._dual_request([
+            ("GET", "/api/v1/analysis/context/ontology-repository",
+             {"query": query, "include_repository_header": False}),
+            ("GET", "/system/manager/ontology-repository",
+             {"query": query, "include_repository_header": False}),
+        ])
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            data = {}
+        items_value = data.get("items")
+        if isinstance(items_value, list):
+            items = [item for item in items_value if isinstance(item, dict)]
+        else:
+            _, items = _table_of(data)
+        pagination = data.get("pagination") if isinstance(data.get("pagination"), dict) else {}
+        total_value = pagination.get("total")
+        if total_value is None:
+            total_value = data.get("total")
+        try:
+            total = int(total_value or 0)
+        except (TypeError, ValueError):
+            total = 0
+        if not total:
+            total = len(items)
+        normalised = {
+            "items": [_repository_fields(item) for item in items],
+            "total": total,
+        }
+        self._repository_page_cache[cache_key] = (now, normalised)
+        return normalised

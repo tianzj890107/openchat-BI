@@ -153,16 +153,283 @@ def _search_type(client: RemoteOntologyClient, type_name: str, query: str, limit
     return [row for rank, row in eligible if rank[0] == best_tier][:limit]
 
 
-def _candidate_results(client: RemoteOntologyClient, query: str) -> list[tuple[str, dict[str, Any]]]:
+# ---------------------------------------------------------------------------
+# 分页元数据树查询（Spec §4.1 / §4.2）
+#
+# `API/本体元数据查询API-WIP.md` 把"按名字检索指标/维度"与"逻辑实体关联的业务
+# 属性"定义为 `POST /api/v1/analysis/meta/query` 的分页树查询。全量下拉
+# （`SELECT FROM <Type> LIMIT n`）一旦超过单次上限就与"对象不存在"无法区分，因此
+# 这两条检索必须走树查询；查询本身不可用时才回退到既有兜底，并如实说明。
+# ---------------------------------------------------------------------------
+
+#: 文档 `pagination.pageSize` 必须落在 1..500；取上限附近以减少往返。
+TREE_PAGE_SIZE = 200
+#: 有限翻页：命中即停，翻页次数设硬上限，禁止无界循环。
+TREE_MAX_PAGES = 20
+
+TREE_DEGRADE_NOTE = "（元数据树查询不可用，已回退到本地全量检索）"
+ATTRIBUTE_DEGRADE_NOTE = "（业务属性查询不可用，已回退到图邻域）"
+
+#: 文档已给出树查询、且数量可能超过单次全量上限的两个检索类型。
+_TREE_SEARCH_TYPES = ("Indicator", "Dimension")
+
+_TREE_PROPERTY_NAMES = {
+    "Indicator": (("code", "指标编码"), ("label", "指标名称"), ("name", "英文名")),
+    "Dimension": (("code", "维度编码"), ("label", "维度名称"), ("name", "英文名")),
+}
+_ATTRIBUTE_PROPERTY_NAMES = (("code", "属性编码"), ("name", "属性名称"), ("label", "属性标签"))
+
+
+def _vertex_config(type_name: str, properties: Iterable[tuple[str, str]]) -> dict[str, Any]:
+    """Documented ``analysisConfig``: a single returned vertex with its properties."""
+    return {"vertex": [{
+        "type": type_name,
+        "label": type_name,
+        "properties": [{"name": name, "label": label} for name, label in properties],
+    }]}
+
+
+def _page_rows(client: RemoteOntologyClient, analysis: dict[str, Any], common: dict[str, Any]) -> list[dict[str, Any]]:
+    """Rows of one documented metadata page (TABLE). Raises ``OntologyApiError``."""
+    data = client.metadata_query(analysis, common)
+    return [row for row in _walk_rows(data) if isinstance(row, dict)]
+
+
+def _tree_name_search(
+    client: RemoteOntologyClient,
+    type_name: str,
+    needle: str,
+    *,
+    limit: int = 20,
+    page_size: int = TREE_PAGE_SIZE,
+    max_pages: int = TREE_MAX_PAGES,
+) -> list[dict[str, Any]]:
+    """Ranked ``type_name`` rows from the documented paginated tree query.
+
+    Continues to the next page while a page comes back full and nothing has
+    matched yet, so a single-page truncation is never read as "no such object"
+    (Spec §4.1 第 3 条).  Raises ``OntologyApiError`` when the tree endpoint
+    itself is unavailable, so the caller can degrade explicitly.
+    """
+    properties = _TREE_PROPERTY_NAMES.get(type_name, (("code", "编码"), ("label", "名称")))
+    analysis = _vertex_config(type_name, properties)
+    collected: list[dict[str, Any]] = []
+    for page_num in range(1, max_pages + 1):
+        common = {
+            "filters": {
+                "type": type_name,
+                "property": "label",
+                "operator": {"code": "LIKE", "type": "STRING"},
+                "value": f"%{needle}%",
+            },
+            "sorts": [{"type": type_name, "property": "code", "order": "ASC"}],
+            "pagination": {"pageNum": page_num, "pageSize": page_size},
+        }
+        rows = _page_rows(client, analysis, common)
+        collected.extend(rows)
+        eligible = sorted(
+            ((_rank_row(row, needle), row) for row in collected if _rank_row(row, needle)[0] < 99),
+            key=lambda pair: pair[0],
+        )
+        if eligible:
+            best_tier = eligible[0][0][0]
+            return [row for rank, row in eligible if rank[0] == best_tier][:limit]
+        if len(rows) < page_size:
+            break
+    return []
+
+
+def _tree_attribute_search(
+    client: RemoteOntologyClient,
+    entity_code: str,
+    *,
+    page_size: int = TREE_PAGE_SIZE,
+    max_pages: int = TREE_MAX_PAGES,
+) -> list[dict[str, Any]]:
+    """Rows of the documented ``LEContainATT`` attribute query (Spec §4.2).
+
+    Pages until a short/empty page, so attributes beyond the first page are
+    never silently dropped.  Raises ``OntologyApiError`` when the query itself
+    is unavailable.
+    """
+    analysis = _vertex_config("BusinessAttribute", _ATTRIBUTE_PROPERTY_NAMES)
+    collected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for page_num in range(1, max_pages + 1):
+        common = {
+            "filters": {"logic": "AND", "children": [
+                {"type": "LogicalEntity", "property": "code",
+                 "operator": {"code": "EQ", "type": "STRING"}, "value": entity_code},
+                {"type": "LEContainATT", "sourceType": "LogicalEntity",
+                 "targetType": "BusinessAttribute"},
+            ]},
+            "sorts": [{"type": "BusinessAttribute", "property": "code", "order": "ASC"}],
+            "pagination": {"pageNum": page_num, "pageSize": page_size},
+        }
+        rows = _page_rows(client, analysis, common)
+        for row in rows:
+            key = _text(_ci_get(row, "code", "identifierCode")) or json.dumps(
+                row, sort_keys=True, ensure_ascii=False)
+            if key not in seen:
+                seen.add(key)
+                collected.append(row)
+        if len(rows) < page_size:
+            break
+    return collected
+
+
+def _metric_search(
+    client: RemoteOntologyClient, query: str, limit: int = 20,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Indicator-only search: documented tree first, local full pull on failure.
+
+    Returns ``(rows, degraded)`` where ``degraded`` marks a fallback that must
+    be disclosed in the answer.
+    """
+    try:
+        return _tree_name_search(client, "Indicator", query, limit=limit), False
+    except OntologyApiError:
+        return _search_type(client, "Indicator", query, limit=limit), True
+
+
+def _candidate_results(
+    client: RemoteOntologyClient, query: str,
+) -> tuple[list[tuple[str, dict[str, Any]]], bool]:
+    """Search the candidate types; ``Indicator`` / ``Dimension`` use the tree.
+
+    Returns ``(found, degraded)``; ``degraded`` is True when a tree query failed
+    and the local full pull was used instead (Spec §4.3).
+    """
     found: list[tuple[str, dict[str, Any]]] = []
+    degraded = False
+    errors: list[OntologyApiError] = []
+    probed_ok = 0
     for type_name in _CANDIDATE_TYPES:
         try:
-            rows = _search_type(client, type_name, query, limit=10)
-        except OntologyApiError:
+            if type_name in _TREE_SEARCH_TYPES:
+                try:
+                    rows = _tree_name_search(client, type_name, query, limit=10)
+                except OntologyApiError as exc:
+                    degraded = True
+                    errors.append(exc)
+                    rows = _search_type(client, type_name, query, limit=10)
+            else:
+                rows = _search_type(client, type_name, query, limit=10)
+        except OntologyApiError as exc:
+            errors.append(exc)
             continue
+        probed_ok += 1
         found.extend((type_name, row) for row in rows)
+    if probed_ok == 0 and errors:
+        # Only when *every* candidate type failed to answer is this a transport
+        # incident rather than "the ontology has no such object" (Spec R3/R4).
+        # A dead tree endpoint that successfully fell back to ``_search_type``
+        # already answered the business question, so its earlier failure must
+        # not be re-raised as a false incident (Spec R8).
+        raise errors[0]
     found.sort(key=lambda pair: _rank_row(pair[1], query))
-    return found
+    return found, degraded
+
+
+# ---------------------------------------------------------------------------
+# 权威确认层（Spec §4.2）
+#
+# 确权口径必须来自本体服务：`resolve-ontology-object` 原生支持
+# `candidateTypes` 顺序优先匹配，命中时把 `properties` 展开到行根级。
+# 本地 `_candidate_results` / `_rank_row` 只在确认层"跳过"或"不可用"时兜底。
+# ---------------------------------------------------------------------------
+
+#: 每个工具的权威类型（Spec §4.2 第 3 条）：必须是 `candidateTypes` 首项。
+_AUTHORITATIVE_TYPES = {
+    "Ontology-TermDisambiguate": "Term",
+    "MetricCalculation": "Indicator",
+    "Ontology-EntityDescribe": "BusinessObject",
+    "Ontology-SemanticQuery": "BusinessObject",
+}
+
+#: 确认接口只接受"单个对象名/编码"；带这些标记的是查询意图，必须走既有搜索路径。
+_QUERY_MARKER_RE = re.compile(
+    r"[\s?？!！。，,;；、/\\|<>()（）\[\]【】\"'“”‘’=+*%]"
+    r"|下降|上升|上涨|增长|减少|原因|为什么|怎么|如何|多少|哪些|什么|趋势"
+    r"|对比|比较|环比|同比|占比|排名|变化|影响|差异|异常|是否",
+)
+
+#: 确认层未命中/不可用时，答案里必须如实说明，不能把回退写成权威结论。
+CONFIRMATION_UNAVAILABLE_NOTE = "（本体确认接口不可用，已回退到本地候选）"
+
+MAX_CONFIRMABLE_NAME_LENGTH = 64
+
+
+def _confirmable_name(value: Any) -> str:
+    """Return the name worth confirming, or ``""`` for free-text queries."""
+    name = str(value or "").strip()
+    if not name or len(name) > MAX_CONFIRMABLE_NAME_LENGTH:
+        return ""
+    if _QUERY_MARKER_RE.search(name):
+        return ""
+    return name
+
+
+def confirmation_candidates(tool_name: str) -> list[str]:
+    """`candidateTypes`: 权威类型优先 + 文档枚举回退项（顺序稳定、无重复）。"""
+    authoritative = _AUTHORITATIVE_TYPES.get(tool_name, "BusinessObject")
+    return [authoritative] + [item for item in _CANDIDATE_TYPES if item != authoritative]
+
+
+def confirm_object(
+    client: RemoteOntologyClient, *, name: Any, candidate_types: list[str]
+) -> dict[str, Any]:
+    """按本体服务的权威结论确认对象（Spec §4.2）。
+
+    返回 ``status`` ∈ ``hit`` / ``miss`` / ``unavailable`` / ``skipped``；命中时
+    携带接口给出的 ``typeName`` 与展开后的 ``properties``。确认层抛错**不向上传播**：
+    调用方必须在 ``unavailable`` 时降级到本地候选并附上降级说明。
+    """
+    requested = _confirmable_name(name)
+    result: dict[str, Any] = {
+        "status": "skipped",
+        "name": requested,
+        "typeName": "",
+        "code": "",
+        "properties": {},
+        "error": "",
+    }
+    if not requested or not candidate_types:
+        return result
+    try:
+        confirmed = client.ensure_object(requested, list(candidate_types))
+    except OntologyApiError as exc:
+        result["status"] = "unavailable"
+        result["error"] = str(exc)
+        return result
+    info = confirmed.get("objectInfo") if isinstance(confirmed, dict) else None
+    properties = info.get("properties") if isinstance(info, dict) else None
+    if not confirmed.get("found") or not isinstance(properties, dict):
+        result["status"] = "miss"
+        return result
+    result["status"] = "hit"
+    result["typeName"] = str(info.get("typeName") or "Unknown")
+    result["properties"] = properties
+    result["code"] = _text(_ci_get(properties, "code", "identifierCode"))
+    return result
+
+
+def _confirmed_block(confirmed: dict[str, Any]) -> str:
+    """Render a confirmed hit strictly from the authority's own fields."""
+    return _format_object(
+        str(confirmed.get("typeName") or "Unknown"),
+        dict(confirmed.get("properties") or {}),
+    )
+
+
+def _confirmed_name_for_miss(name: str) -> str:
+    return f"本体库中没有名为 {name!r} 的对象/术语（已由本体服务确认）。"
+
+
+def _with_degraded_note(text: str, confirmed: dict[str, Any]) -> str:
+    if confirmed.get("status") != "unavailable":
+        return text
+    return f"{text}\n\n{CONFIRMATION_UNAVAILABLE_NOTE}"
 
 
 def _code_type(value: str) -> str:
@@ -202,27 +469,90 @@ def _graph_anchor_candidates(
     """Resolve graph anchors exactly like local mode: BO or Indicator only."""
 
     found: list[tuple[str, dict[str, Any]]] = []
+    errors: list[OntologyApiError] = []
     for type_name in ("BusinessObject", "Indicator"):
         try:
             found.extend((type_name, row) for row in _search_type(client, type_name, query, limit=12))
-        except OntologyApiError:
+        except OntologyApiError as exc:
+            errors.append(exc)
             continue
+    if not found and errors:
+        # Same contract as ``_candidate_results``: a dead transport must not be
+        # rendered as "no anchor in the ontology" (Spec R5).
+        raise errors[0]
     found.sort(key=lambda pair: _rank_row(pair[1], query))
     return found
 
 
 def _related_objects(data: dict[str, Any]) -> list[dict[str, Any]]:
-    objects = data.get("objects") or data.get("relatedObjects") or []
-    return [item for item in objects if isinstance(item, dict)]
+    """Extract related objects from either MAL dialect.
+
+    Legacy replies put them under ``objects`` / ``relatedObjects``; the new
+    ``QueryResponse`` returns one related object per row under ``result.rows``
+    with ``typeName`` at the row root.
+    """
+    if not isinstance(data, dict):
+        return []
+    objects = data.get("objects") or data.get("relatedObjects")
+    if not isinstance(objects, list):
+        result = data.get("result")
+        raw_rows = result.get("rows") if isinstance(result, dict) else None
+        objects = raw_rows if isinstance(raw_rows, list) else []
+    normalised: list[dict[str, Any]] = []
+    for item in objects:
+        if not isinstance(item, dict):
+            continue
+        if isinstance(item.get("properties"), dict) or "typeName" in item or "type" in item:
+            properties = item.get("properties")
+            if not isinstance(properties, dict):
+                properties = {
+                    key: value for key, value in item.items() if key not in ("typeName", "type")
+                }
+            normalised.append({
+                "typeName": str(item.get("typeName") or item.get("type") or "Unknown"),
+                "properties": properties,
+            })
+        else:
+            normalised.append(item)
+    return normalised
 
 
-def _related_text(data: dict[str, Any], title: str = "关联本体") -> str:
-    objects = _related_objects(data)
+def _render_related_objects(objects: list[dict[str, Any]], title: str) -> str:
     lines = [f"# {title} ({len(objects)})"]
     for item in objects:
         obj_type = str(item.get("typeName") or item.get("type") or "Unknown")
         lines.append(_format_object(obj_type, item.get("properties") or item))
     return "\n\n".join(lines) if objects else f"{title}: no related objects."
+
+
+def _related_text(data: dict[str, Any], title: str = "关联本体") -> str:
+    return _render_related_objects(_related_objects(data), title)
+
+
+def _attribute_and_relation_text(
+    client: RemoteOntologyClient, kind: str, code: str,
+) -> tuple[str, list[str]]:
+    """属性（文档查询）+ 关系（图邻域）双来源渲染，返回 ``(文本, 降级说明)``。
+
+    属性必须来自文档的 ``LEContainATT`` 查询；关系仍由既有 ``find_related`` 负责，
+    两者不得互相顶替。属性查询失败时降级到图邻域并如实说明（Spec §4.3）。
+    """
+    notes: list[str] = []
+    attributes: list[dict[str, Any]] = []
+    try:
+        attributes = [
+            {"typeName": "BusinessAttribute", "properties": row}
+            for row in _tree_attribute_search(client, code)
+        ]
+    except OntologyApiError:
+        notes.append(ATTRIBUTE_DEGRADE_NOTE)
+    relations: list[dict[str, Any]] = []
+    try:
+        relations = _related_objects(client.find_related(kind, code, depth=1))
+    except OntologyApiError:
+        pass
+    text = _render_related_objects(attributes + relations, "Attributes and relations")
+    return text, notes
 
 
 def _walk_rows(value: Any) -> Iterable[dict[str, Any]]:
@@ -452,14 +782,28 @@ def _make_query(client: RemoteOntologyClient) -> Executor:
         query = str(params.get("query") or "").strip()
         if not query:
             return "Ontology-SemanticQuery: empty query."
+        limit = max(1, min(int(params.get("limit") or 10), 100))
+        confirmed = confirm_object(
+            client, name=query,
+            candidate_types=confirmation_candidates("Ontology-SemanticQuery"),
+        )
+        if confirmed["status"] == "hit":
+            return "# Remote Ontology-SemanticQuery\n\n" + _confirmed_block(confirmed)
+        if confirmed["status"] == "miss":
+            return f"Ontology-SemanticQuery: {_confirmed_name_for_miss(query)}"
         try:
-            matches = _candidate_results(client, query)
+            matches, tree_degraded = _candidate_results(client, query)
             if not matches:
-                return f"Ontology-SemanticQuery: no remote matches for {query!r}."
-            limit = max(1, min(int(params.get("limit") or 10), 100))
-            return "# Remote Ontology-SemanticQuery\n\n" + "\n\n".join(
+                body = f"Ontology-SemanticQuery: no remote matches for {query!r}."
+                if tree_degraded:
+                    body = f"{body}\n\n{TREE_DEGRADE_NOTE}"
+                return _with_degraded_note(body, confirmed)
+            body = "# Remote Ontology-SemanticQuery\n\n" + "\n\n".join(
                 _format_object(kind, props) for kind, props in matches[:limit]
             )
+            if tree_degraded:
+                body = f"{body}\n\n{TREE_DEGRADE_NOTE}"
+            return _with_degraded_note(body, confirmed)
         except OntologyApiError as exc:
             return f"Ontology-SemanticQuery remote error: {exc}"
     return run
@@ -470,9 +814,20 @@ def _make_term(client: RemoteOntologyClient) -> Executor:
         term = str(params.get("term") or "").strip()
         if not term:
             return "Ontology-TermDisambiguate: empty term."
+        confirmed = confirm_object(
+            client, name=term,
+            candidate_types=confirmation_candidates("Ontology-TermDisambiguate"),
+        )
+        if confirmed["status"] == "hit":
+            return _confirmed_block(confirmed)
+        if confirmed["status"] == "miss":
+            return f"Ontology-TermDisambiguate: {_confirmed_name_for_miss(term)}"
         try:
             rows = _search_type(client, "Term", term, limit=20)
-            return "\n\n".join(_format_object("Term", row) for row in rows) or f"No term matches {term!r}."
+            body = "\n\n".join(
+                _format_object("Term", row) for row in rows
+            ) or f"No term matches {term!r}."
+            return _with_degraded_note(body, confirmed)
         except OntologyApiError as exc:
             return f"Ontology-TermDisambiguate remote error: {exc}"
     return run
@@ -483,18 +838,32 @@ def _make_metric(client: RemoteOntologyClient) -> Executor:
         query = str(params.get("metric") or "").strip()
         if not query:
             return "MetricCalculation: empty metric."
+        confirmed = confirm_object(
+            client, name=query,
+            candidate_types=confirmation_candidates("MetricCalculation"),
+        )
+        if confirmed["status"] in {"hit", "miss"} and not confirmed["code"]:
+            return f"No metric matches {query!r}."
         try:
-            # Indicator-only by design. Do not let unrelated object types win
-            # simply because they share the same label or code fragment.
-            rows = _search_type(client, "Indicator", query, limit=20)
-            if not rows:
-                return f"No metric matches {query!r}."
+            tree_degraded = False
+            if confirmed["status"] == "hit":
+                # 指标身份由权威接口先确认；下面只补指标的维度上下文。
+                rows = [dict(confirmed["properties"])]
+            else:
+                # Indicator-only by design. Do not let unrelated object types
+                # win simply because they share the same label or code fragment.
+                rows, tree_degraded = _metric_search(client, query)
+                if not rows:
+                    return f"No metric matches {query!r}."
             rendered: list[str] = []
             for row in rows:
                 metric = _metric_adapter(row)
                 dimensions, source = _metric_dimensions(client, metric["code"])
                 rendered.append(_format_metric(metric, dimensions, source))
-            return "\n\n".join(rendered)
+            body = "\n\n".join(rendered)
+            if tree_degraded:
+                body = f"{body}\n\n{TREE_DEGRADE_NOTE}"
+            return _with_degraded_note(body, confirmed)
         except OntologyApiError as exc:
             return f"MetricCalculation remote error: {exc}"
     return run
@@ -519,14 +888,37 @@ def _make_describe(client: RemoteOntologyClient) -> Executor:
         entity = str(params.get("entity") or "").strip()
         if not entity:
             return "Ontology-EntityDescribe: empty entity."
+        confirmed = confirm_object(
+            client, name=entity,
+            candidate_types=confirmation_candidates("Ontology-EntityDescribe"),
+        )
+        if confirmed["status"] == "hit":
+            # 展开上下文必须使用权威接口给出的 typeName/code，而不是本地排序结果。
+            kind = str(confirmed["typeName"] or "Unknown")
+            code = str(confirmed["code"] or entity)
+            text, notes = _attribute_and_relation_text(client, kind, code)
+            body = _confirmed_block(confirmed) + "\n\n" + text
+            if notes:
+                body = f"{body}\n\n{' '.join(notes)}"
+            return body
+        if confirmed["status"] == "miss":
+            return f"Ontology-EntityDescribe: {_confirmed_name_for_miss(entity)}"
         try:
-            matches = _candidate_results(client, entity)
+            matches, tree_degraded = _candidate_results(client, entity)
             if not matches:
-                return f"Ontology-EntityDescribe: no remote match for {entity!r}."
+                body = f"Ontology-EntityDescribe: no remote match for {entity!r}."
+                if tree_degraded:
+                    body = f"{body}\n\n{TREE_DEGRADE_NOTE}"
+                return _with_degraded_note(body, confirmed)
             kind, props = matches[0]
             code = _text(_ci_get(props, "code", "identifierCode", default=entity))
-            related = client.find_related(kind, code, depth=1)
-            return _format_object(kind, props) + "\n\n" + _related_text(related, "Attributes and relations")
+            text, notes = _attribute_and_relation_text(client, kind, code)
+            body = _format_object(kind, props) + "\n\n" + text
+            if notes:
+                body = f"{body}\n\n{' '.join(notes)}"
+            if tree_degraded:
+                body = f"{body}\n\n{TREE_DEGRADE_NOTE}"
+            return _with_degraded_note(body, confirmed)
         except OntologyApiError as exc:
             return f"Ontology-EntityDescribe remote error: {exc}"
     return run

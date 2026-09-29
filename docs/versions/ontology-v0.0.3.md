@@ -1,22 +1,23 @@
-# 智能分析 v0.1.2
+# 智能分析 ontology-v0.0.3
 
 ## 基本信息
 
-- 版本：`v0.1.2`
+- 版本：`ontology-v0.0.3`
+- 历史命名：本版本原以 `v0.1.2` 发布，2026-09-29 随版本族切换到 `ontology-v0.0.x` 时改名，定版 commit 未变
 - 日期：`2026-09-03`
-- 状态：正式版 / 当前版本
-- Git Tag：`v0.1.2`
-- 定版 commit：以 `v0.1.2` annotated tag 指向的 commit 为准
+- 状态：正式版
+- Git Tag：`ontology-v0.0.3`
+- 定版 commit：以 `ontology-v0.0.3` annotated tag 指向的 commit 为准
 
 ## 版本概述
 
-v0.1.2 在 v0.1.1 基础上交付本体子图“语义环形可视化”的完整闭环（共享环形布局接入、
+ontology-v0.0.3 在 ontology-v0.0.2 基础上交付本体子图“语义环形可视化”的完整闭环（共享环形布局接入、
 自定义布局选择器、键盘可访问性、option 悬浮说明、异步竞态与渲染器生命周期修复、
-可重复浏览器验收证据），并补记 v0.1.1 定稿与部署、9/3 开发记录与 MR 提交范围规范。
-版本号 `v0.1.2` 由用户在当前任务中明确指定，按 PATCH 级发布执行；本体子图弹窗仍是
+可重复浏览器验收证据），并补记 ontology-v0.0.2 定稿与部署、9/3 开发记录与 MR 提交范围规范。
+版本号 `ontology-v0.0.3` 由用户在当前任务中明确指定，按 PATCH 级发布执行；本体子图弹窗仍是
 原有入口与 Context/Expand 数据源，未新增独立业务流程。
 
-## 核心变化（相对 v0.1.1，按交付主题）
+## 核心变化（相对 ontology-v0.0.2，按交付主题）
 
 - 本体子图语义环形可视化（Spec：`ontology-radial-visualization.md` 及验收修复）：
   - 本体子图弹窗默认仍为“关系聚类可视化”（Sigma + ForceAtlas2，行为不变），新增
@@ -57,7 +58,7 @@ v0.1.2 在 v0.1.1 基础上交付本体子图“语义环形可视化”的完�
     700x900 真实 hover 的白色说明气泡可见、文案精确、完全位于视口内。
 - 工程与文档（并入 main 的补记与规范）：
   - `AGENTS.md` 明确 MR 标题与描述必须归纳完整提交范围（禁止只写分支关系）；
-  - 记录 9/2 v0.1.1 定稿与 172.16.10.34 部署、9/3 开发记录（`changelog_9_3.md`）；
+  - 记录 9/2 ontology-v0.0.2 定稿与 172.16.10.34 部署、9/3 开发记录（`changelog_9_3.md`）；
   - 共享包依赖 `@boulderaitech/ontology-graph@0.1.1` 保持锁定。
 
 ## 用户可见变化
@@ -69,7 +70,7 @@ v0.1.2 在 v0.1.1 基础上交付本体子图“语义环形可视化”的完�
 - 说明文字改为“鼠标悬停下拉选项”时显示，页面不再有“?”按钮与浏览器原生黑色气泡；
 - 快速切换布局、连续发起 Context/Expand、随后关闭弹窗时，不会出现旧渲染覆盖、控件
   提前解锁或重复画布实例；
-- 页面品牌与版本号显示 `v0.1.2`。
+- 页面品牌与版本号显示 `ontology-v0.0.3`。
 
 ## 兼容性与运维变化
 
@@ -96,14 +97,14 @@ v0.1.2 在 v0.1.1 基础上交付本体子图“语义环形可视化”的完�
 
 - ChatBI 并发治理当前只支持单 Uvicorn worker；
 - L1/L2 简单查询不进入根因分析（第 5 步跳过，属设计行为）；
-- 容器镜像的真实构建与运行验证仍以契约测试与文档为准（延续 v0.1.1 说明）。
+- 容器镜像的真实构建与运行验证仍以契约测试与文档为准（延续 ontology-v0.0.2 说明）。
 
 ## 升级说明
 
-- 从 v0.1.1 升级：
-  - 非容器：更新代码到 v0.1.2，`python -m pip install -e '.[web]'`，同步本次前端
+- 从 ontology-v0.0.2 升级：
+  - 非容器：更新代码到 ontology-v0.0.3，`python -m pip install -e '.[web]'`，同步本次前端
     构建产物（`bi_agent/web/static/vendor/antd/workbench.js` 与 CSS），再重启服务；
-  - 容器：重新构建/拉取 `eimosp-ontology-agentic-analytics:0.1.2`，按
+  - 容器：重新构建/拉取 `eimosp-ontology-agentic-analytics:ontology-v0.0.3`，按
     `-p 8765:8080` 映射并挂载数据卷；
 - 历史会话迁移前先完整备份 `dataset/conversations/`，不直接改写用户数据；
 - `.env` 配置（LLM/Doris/远程本体/Nacos 占位）保持不变。
@@ -124,5 +125,5 @@ v0.1.2 在 v0.1.1 基础上交付本体子图“语义环形可视化”的完�
   `ontology-layout-keyboard-and-toolbar-height-fixes.md`、`ontology-layout-option-hover-hints.md`、
   `ontology-layout-borderless-options.md`、`ontology-layout-narrow-hover-evidence-fix.md`
 - 证据：`docs/test-evidence/`（ontology-layout-*、g1..g4 截图与 JSON）
-- GitLab Release：[智能分析 v0.1.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.2)
-- Release 基于 `v0.1.2` tag，指向定版 commit（见 tag 指向）。
+- GitLab Release：[智能分析 ontology-v0.0.3](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.3)
+- Release 基于 `ontology-v0.0.3` tag，指向定版 commit（见 tag 指向）。

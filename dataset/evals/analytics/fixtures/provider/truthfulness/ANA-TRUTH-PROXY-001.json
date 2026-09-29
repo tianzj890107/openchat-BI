@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "provider": "recorded",
+  "case_id": "ANA-TRUTH-PROXY-001",
+  "turns": [
+    {
+      "user": "供应商集中度现在是什么水平",
+      "db": "procurement.db",
+      "events": [
+        {
+          "type": "tool_start",
+          "name": "Ontology-SemanticQuery",
+          "input": {
+            "query": "供应商集中度现在是什么水平"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "Ontology-FactQuery",
+          "input": {
+            "sql": "SELECT supplier_id AS sid, SUM(amount) AS total, ROUND(SUM(amount) * 1.0 / (SELECT SUM(amount) FROM fact_purchase_order WHERE is_deleted = 0), 6) AS share FROM fact_purchase_order WHERE is_deleted = 0 GROUP BY supplier_id ORDER BY share DESC",
+            "query_description": "供应商集中度现在是什么水平"
+          }
+        },
+        {
+          "type": "tool_start",
+          "name": "TableGenerate",
+          "input": {
+            "title": "供应商采购金额与占比",
+            "columns": [
+              {
+                "key": "sid",
+                "label": "供应商"
+              },
+              {
+                "key": "total",
+                "label": "采购金额"
+              },
+              {
+                "key": "share",
+                "label": "金额占比"
+              }
+            ],
+            "rows": [
+              [
+                1,
+                12600.0,
+                0.503396
+              ],
+              [
+                2,
+                7880.0,
+                0.314822
+              ],
+              [
+                4,
+                2250.0,
+                0.089892
+              ],
+              [
+                3,
+                1300.0,
+                0.051938
+              ],
+              [
+                5,
+                1000.0,
+                0.039952
+              ]
+            ]
+          }
+        },
+        {
+          "type": "text_delta",
+          "text": "最大供应商采购金额 12,600.00 元，金额占比 50.34%。最大供应商金额占比只是供应商集中度的近似代理指标，不能覆盖长尾供应商与单一来源风险。建议补充供应商数量维度。"
+        },
+        {
+          "type": "done"
+        }
+      ]
+    }
+  ]
+}

@@ -40,3 +40,6 @@ outputs/
 .env
 .env.*
 credentials.json
+
+# Archify visual-check review artifacts (regenerate locally with `archify visual-check`)
+docs/diagrams/archify/*.visual-check*
