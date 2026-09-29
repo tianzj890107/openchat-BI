@@ -264,3 +264,28 @@
   1068 subtests passed**；`git diff --check` 通过。
 - 边界：只改离线不稳定判定的归一化，不改产品行为、不改文件命名、不改门禁阈值；未部署、
   未重启服务、未删除历史会话与用户数据。
+
+### 2026-09-29 · ontology-v0.1.0 定版：MR 合入、tag 与 GitLab Release 创建，版本记录收口
+
+- 用户指令：把 `feature/branch-model-and-v0.1.0-cut` 合入 `master`，并在 `master` 上为
+  `ontology-v0.1.0` 打 tag 与创建 GitLab Release（部署未授权）。
+- 合入：Merge Request `!17`（reviewer `tianzijing`、assignee `zhangzhen`）合入后 `master` =
+  `74fca80`（"Merge branch 'feature/branch-model-and-v0.1.0-cut' into 'master'"），
+  `master` 上 `bi_agent/__init__.py`、`frontend/src/main.jsx` 等九处版本入口均为 `ontology-v0.1.0`；
+  该 MR 的 pipeline 3290 里 `unit-tests`、`repeat-stability`、`regression`、`recorded-provider`、
+  `smoke` 全部 success（`smoke` 首跑是 runner 拉代码超时，重试后通过；两条 manual 任务按设计不自动跑）。
+- tag：创建 annotated tag `ontology-v0.1.0` 指向定版 commit `74fca80` 并推送 GitLab
+  （`refs/tags/ontology-v0.1.0`，推送后 tag pipeline 3294 按设计触发 release gate）；推送前后都用
+  `git ls-remote --tags` 确认远端不存在同名 tag，未覆盖、未移动任何已有 tag。
+- GitLab Release：基于同名 tag 创建「智能分析 ontology-v0.1.0」，说明取本版本文档并改写为发布后口径
+  （定版 commit / tag / Release 链接、最终验证数字）；创建前先查 Release 列表确认只有原 10 个，
+  创建后共 **11** 个，未覆盖任何已有 Release。
+- 版本记录收口（本条目所在的临时分支 → `master` 的后续 MR）：
+  `docs/versions/ontology-v0.1.0.md` 的 Release 分支 / 定版 commit / Git Tag / GitLab Release 与
+  验证结果、已知限制改为发布后事实；`docs/versions/versioning-policy.md` 的版本推进记录补记
+  tag 与 Release 的执行结果；根 `README.md` 发布清单新增本版本 Release 链接；
+  契约测试 `tests/test_versioning_policy.py` 与 `tests/test_ontology_version_rename_red.py`
+  的 tag 断言由「允许但不要求」改回**精确相等**：必须正好是 10 个 `ontology-v0.0.x` tag 加
+  `ontology-v0.1.0`，缺失或多余 tag 都会失败。
+- 边界：本轮只做 MR 合入、tag、Release 与版本记录；未部署、未重启服务、未做任何服务器写操作，
+  未删除或迁移历史会话与用户数据。
