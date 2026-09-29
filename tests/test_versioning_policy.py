@@ -165,10 +165,11 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:
-        """No tag beyond the ten renamed ones and the authorized current tag.
+        """Exactly the ten renamed tags plus the released current tag.
 
-        ``CURRENT_VERSION_TAG`` is created on ``master`` only after the version
-        -cut Merge Request merges, so it is allowed but never required here.
+        ``CURRENT_VERSION_TAG`` was created on ``master`` (定版 commit
+        ``74fca80``) after the version-cut Merge Request merged, so it is now
+        required: a missing or extra tag must fail.
         """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
@@ -176,9 +177,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
         )
         tags = {t for t in proc.stdout.splitlines() if t.strip()}
         renamed = {f"ontology-v0.0.{number}" for number in range(1, 11)}
-        allowed = renamed | {CURRENT_VERSION_TAG}
-        self.assertLessEqual(tags, allowed, f"unexpected tags: {sorted(tags - allowed)}")
-        self.assertLessEqual(renamed, tags, f"missing renamed tags: {sorted(renamed - tags)}")
+        self.assertEqual(tags, renamed | {CURRENT_VERSION_TAG})
 
     def _authoritative_tool_names(self) -> set[str]:
         """Tool names from the agent tools declaration and registered schemas."""

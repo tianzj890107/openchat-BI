@@ -57,6 +57,9 @@ X360 流程定义集成、本体/MAL 与元数据契约迁移等用户可感知�
 
 - 授权范围包含版本号与 release 分支；tag 与 GitLab Release 随后在同日由用户单独授权
   （`ontology-v0.1.0`），tag 在收口 Merge Request 合入后在 `master` 的定版 commit 上创建；
+- 已执行（2026-09-29）：收口 MR `!17` 合入 `master` 得到定版 commit `74fca80`；annotated tag
+  `ontology-v0.1.0` 指向 `74fca80` 并推送 GitLab；同 tag 的 GitLab Release 已创建（只新建，
+  未覆盖任何已有 Release）；
 - 未授权、未执行部署：tag、Release、release 分支都不改变服务器上运行的服务；
 - `master` 仍是唯一发布主线，`feature/branch-model-and-v0.1.0-cut` → `master` 按临时分支
   Merge Request 流程评审合并；`20260727` 已归档，不再作为交付分支。

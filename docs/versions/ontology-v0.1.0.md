@@ -6,11 +6,10 @@
 - 日期：`2026-09-29`
 - 状态：正式版 / 当前版本
 - 版本位次：**MINOR**（`ontology-v0.0.10` → `ontology-v0.1.0`），由用户在当前任务中明确指定
-- Release 分支：`release/ontology-v0.1.0`（已拉出；当前指向归档前拉出时的收口提交，内容与本版本一致）
-- 定版 commit：本版本收口提交（分支 `feature/branch-model-and-v0.1.0-cut`，经 Merge Request 合入 `master`）
-- Git Tag：`ontology-v0.1.0`（用户 2026-09-29 授权；tag 在收口 Merge Request 合入后指向
-  `master` 上的定版 commit，创建前不写入任何 tag 记录）
-- GitLab Release：已授权，随同名 tag 创建（用户 2026-09-29 授权；不自动合并、不触发部署）
+- Release 分支：`release/ontology-v0.1.0`（已拉出；内容与本版本一致，尚未对齐到合入 commit）
+- 定版 commit：`74fca80`（`feature/branch-model-and-v0.1.0-cut` 经 Merge Request 合入 `master`）
+- Git Tag：`ontology-v0.1.0`（annotated，指向定版 commit `74fca80`，已推送 GitLab）
+- GitLab Release：[智能分析 ontology-v0.1.0](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.0)（基于同名 tag 创建）
 
 ## 版本概述
 
@@ -71,17 +70,21 @@ Web 侧会话回收站与匿名读取面收敛、X360 流程定义集成，以�
 
 ## 验证结果
 
-- 全量测试：`1278 passed / 0 failed / 25 skipped / 1066 subtests passed`（本地 venv，收口前基线）；
-- 本版本收口后再次运行全量测试与版本契约测试，结果见当周 changelog。
+- 全量测试：`1282 passed / 0 failed / 25 skipped / 1070 subtests passed`（本地 venv；已包含同日合入的
+  稳定性门禁修复 `1427319`）；
+- CI：收口分支 pipeline 3290 的 `unit-tests`、`repeat-stability`、`regression`、
+  `recorded-provider`、`smoke` 全部 success（`live-canary`、`release-gate` 按设计保持 manual）；
+- tag 契约双向验证：tag 不存在时 44 passed / 26 subtests，创建 tag `ontology-v0.1.0` 后
+  31 passed / 19 subtests。
 
 ## 已知限制
 
 - 本版本未部署：版本号、release 分支、tag 与 Release 都不改变服务器上正在运行的服务，部署需
   用户在未来任务中单独授权；
-- `master` 仍是唯一发布主线；本收口通过 feature 分支的 Merge Request 由 `tianzijing` code review 后合并；
-- 版本契约测试中的 tag 断言只允许既有 10 个 `ontology-v0.0.x` tag 加上本版本的
-  `ontology-v0.1.0`；因为 tag 在合入 `master` 之后才创建，该断言**允许但不要求**它存在，
-  所以创建 tag 前后 CI 都属于合格状态。
+- `master` 仍是唯一发布主线；本收口通过 `feature/branch-model-and-v0.1.0-cut` → `master` 的
+  Merge Request `!17` 由 `tianzijing` code review 后合并（`74fca80`）；
+- 版本契约测试中的 tag 断言要求既有 10 个 `ontology-v0.0.x` tag 存在，并只允许再多本版本的
+  `ontology-v0.1.0`（tag 已创建；多余 tag 仍会被拦住）。
 
 ## 相关记录
 

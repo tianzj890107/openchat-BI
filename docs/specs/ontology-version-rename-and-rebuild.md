@@ -152,7 +152,7 @@
 | R9 | `docs/versions/` 恰好为 `README.md` + `versioning-policy.md` + 10 篇 `ontology-v0.0.N.md` |
 | R10 | 根 `README.md` 当前版本为 `ontology-v0.0.10`，且无 `v0.1.9` 残留 |
 | R11 | `AGENTS.md` 含 §8 一次性授权段与当前版本 `ontology-v0.0.10` |
-| R12 | 本地 tag 集合恰好是 10 个 `ontology-v0.0.N`，旧 `v0.1.*` 全部不存在 |
+| R12 | 本任务验收时点：本地 tag 集合恰好是 10 个 `ontology-v0.0.N`，旧 `v0.1.*` 全部不存在。2026-09-29 晚些发布 `ontology-v0.1.0` 后，集合变为这 10 个 + `ontology-v0.1.0`（见 §12 尾注与 `docs/versions/ontology-v0.1.0.md`） |
 
 ## 10. 明确不做
 
@@ -179,3 +179,9 @@
   版本文档）已创建；
 - 旧 10 个 Release 与旧 10 个 tag（远端 + 本地）已删除；
 - 收尾核实：`git tag --list` 与 `git ls-remote --tags gitlab` 都只包含 10 个新 tag。
+
+> 尾注（2026-09-29 晚些，本次命名重建任务之外）：用户单独授权发布 `ontology-v0.1.0`，
+> 该版本经 Merge Request `!17` 合入 `master`（定版 commit `74fca80`），annotated tag
+> `ontology-v0.1.0` 与新 Release 已创建。因此现在本地与远端的 tag 集合是上面这 10 个
+> **加上** `ontology-v0.1.0`（共 11 个），Release 同为 11 个；上面的 R12 验收时点与本节
+> 收尾核实结论仍然描述的是**本任务当时**的状态，不是当前状态。

@@ -62,8 +62,9 @@
   全程未修改任何红测。
 - 未纳入本轮（用户未圈定，保持登记）：第 1 条（钱江本体库 0 表 0 视图、元数据接口 500）、
   第 5 条（网关把三种故障折叠成同一句"系统繁忙"）、第 9 条（数据面未按本体库隔离）。
-- 未部署、未重启服务、未创建 MR/tag/Release、未改动版本号（v0.1.9）、未读取真实凭据、
-  未对真实会话或用户数据做任何删除/恢复；对 PDT 的调用仍为目录 `GET` + 只读 `SELECT`。
+- 未部署、未重启服务、未创建 MR/tag/Release、该轮未改动版本号（当时为 v0.1.9；9-29 晚些
+  已升级到 `ontology-v0.1.0`）、未读取真实凭据、未对真实会话或用户数据做任何删除/恢复；
+  对 PDT 的调用仍为目录 `GET` + 只读 `SELECT`。
 
 ### 2026-09-29 · Git 分支模型与版本号规范落文档（新增长期规范 + 入口链接）
 
@@ -89,7 +90,8 @@
   机制、release 拉出时机、hotfix 双 PR、命名前缀、不自动升级版本、图目录登记与入口链接。
 - 验收（2026-09-29）：新契约测试 10 passed / 2 subtests passed；全量 `pytest -q tests`
   **1266 passed / 0 failed / 25 skipped / 1047 subtests passed**；`git diff --check` 通过。
-- 未部署、未重启服务、未创建 MR/tag/Release、未改动产品版本号（仍为 v0.1.9）、未删除任何历史会话或用户数据。
+- 未部署、未重启服务、未创建 MR/tag/Release、该轮未改动产品版本号（当时仍为 v0.1.9；
+  9-29 晚些已升级到 `ontology-v0.1.0`）、未删除任何历史会话或用户数据。
 
 ### 2026-09-29 · 版本族切换到 ontology-v0.0.x：Spec 与红测
 
@@ -185,8 +187,10 @@
 ### 2026-09-29 · 版本收口升级到 ontology-v0.1.0（MINOR）并拉出 release/ontology-v0.1.0
 
 - 背景：用户明确指定把当前交付收口为 MINOR `ontology-v0.1.0`（相对 `ontology-v0.0.10`），
-  并授权从发布主线拉出 `release/ontology-v0.1.0`。本次授权范围**只有版本号与 release 分支**：
-  未授权 tag、未授权 GitLab Release、未授权部署。按同日生效的分支模型，本收口在
+  并授权从发布主线拉出 `release/ontology-v0.1.0`。这条指令的授权范围**只有版本号与
+  release 分支**：当时未授权 tag、未授权 GitLab Release、未授权部署；tag 与 GitLab Release
+  在同日晚些由用户单独授权并已创建（合入 `master` 得定版 commit `74fca80`，tag
+  `ontology-v0.1.0` 与之对应，见本文件「ontology-v0.1.0 定版」条目）。按同日生效的分支模型，本收口在
   `feature/branch-model-and-v0.1.0-cut` 分支上重做（`gitlab/20260727` 上那份同名提交作废、
   仅留归档）。
 - 版本入口统一（两处强制例外照旧保持裸版本号）：
@@ -197,8 +201,8 @@
     `PRODUCT_VERSION`、`frontend/src/shell.html` 的 `#product-version`；
   - `cd frontend && npm run build` 重建 `bi_agent/web/static/vendor/antd/workbench.js`
     （产物内 2 处版本字符串更新；CSS 无差异）。
-- 版本文档与索引：新增 `docs/versions/ontology-v0.1.0.md`（概述 6 个交付主题、验证结论、
-  明确"未创建 tag / Release / 未部署"）；`docs/versions/README.md` 当前版本改为
+- 版本文档与索引：新增 `docs/versions/ontology-v0.1.0.md`（概述 6 个交付主题、验证结论，
+  当时写明"未创建 tag / Release / 未部署"——该文已在定版后改写为发布后事实）；`docs/versions/README.md` 当前版本改为
   `ontology-v0.1.0` 并把 `ontology-v0.0.10` 降为“正式版（历史版本）”；根 `README.md`
   当前版本与版本说明链接；`docs/versions/versioning-policy.md` 当前正式版本、包管理清单
   例外示例，并新增"版本推进记录（ontology-v0.0.10 → ontology-v0.1.0）"；`AGENTS.md`
@@ -212,8 +216,9 @@
   `docs/specs/ontology-version-rename-and-rebuild.md` 记录的映射表与 `v0.0.10` 仍是历史事实。
 - 验收（2026-09-29）：全量 `pytest -q tests` **1278 passed / 0 failed / 25 skipped /
   1068 subtests passed**；`git diff --check` 通过；`docs/versions/` 目录内容与白名单一致。
-- 交付边界：本条目只改版本号、版本文档、索引与契约测试；未创建 tag、未创建 GitLab Release、
-  未执行部署、未重启服务；`master` 仍是唯一发布主线，本收口通过
+- 交付边界：本条目只改版本号、版本文档、索引与契约测试；该轮未创建 tag、未创建 GitLab Release、
+  未执行部署、未重启服务（tag 与 Release 已在同日由用户单独授权后创建，版本文档也已同步为
+  发布后事实）；`master` 仍是唯一发布主线，本收口通过
   `feature/branch-model-and-v0.1.0-cut` → `master` 的 Merge Request 评审合入；未删除、清空或
   覆盖任何历史会话与用户数据。
 
@@ -232,7 +237,8 @@
   `docs/versions/versioning-policy.md` 的"版本推进记录"补记同日单独授权的 tag/Release，
   并把已失效的 `20260727` → `master` 表述改为临时分支 → `master`。
 - 范围边界：本轮未创建 tag、未创建 GitLab Release、未部署、未重启服务，未删除或覆盖任何
-  历史版本文件与用户数据；tag 与 Release 在收口 MR 合入 `master` 后执行。
+  历史版本文件与用户数据；tag 与 Release 随后在收口 MR 合入 `master` 后按用户授权执行
+  （结果见本文件「ontology-v0.1.0 定版」条目）。
 - 合入前置：创建收口 MR 前先把 `master` 合并进本分支（`master` 已含同日合入的稳定性门禁
   修复 `1427319`），唯一冲突是本条 changelog——两条 09-29 记录都追加在文件末尾，按"保留双方
   条目"解决，未丢弃任何一方的记录。
@@ -264,3 +270,34 @@
   1068 subtests passed**；`git diff --check` 通过。
 - 边界：只改离线不稳定判定的归一化，不改产品行为、不改文件命名、不改门禁阈值；未部署、
   未重启服务、未删除历史会话与用户数据。
+
+### 2026-09-29 · ontology-v0.1.0 定版：MR 合入、tag 与 GitLab Release 创建，版本记录收口
+
+- 用户指令：把 `feature/branch-model-and-v0.1.0-cut` 合入 `master`，并在 `master` 上为
+  `ontology-v0.1.0` 打 tag 与创建 GitLab Release（部署未授权）。
+- 合入：Merge Request `!17`（reviewer `tianzijing`、assignee `zhangzhen`）合入后 `master` =
+  `74fca80`（"Merge branch 'feature/branch-model-and-v0.1.0-cut' into 'master'"），
+  `master` 上 `bi_agent/__init__.py`、`frontend/src/main.jsx` 等九处版本入口均为 `ontology-v0.1.0`；
+  该 MR 的 pipeline 3290 里 `unit-tests`、`repeat-stability`、`regression`、`recorded-provider`、
+  `smoke` 全部 success（`smoke` 首跑是 runner 拉代码超时，重试后通过；两条 manual 任务按设计不自动跑）。
+- tag：创建 annotated tag `ontology-v0.1.0` 指向定版 commit `74fca80` 并推送 GitLab
+  （`refs/tags/ontology-v0.1.0`，推送后 tag pipeline 3294 按设计触发 release gate）；推送前后都用
+  `git ls-remote --tags` 确认远端不存在同名 tag，未覆盖、未移动任何已有 tag。
+- GitLab Release：基于同名 tag 创建「智能分析 ontology-v0.1.0」，说明取本版本文档并改写为发布后口径
+  （定版 commit / tag / Release 链接、最终验证数字）；创建前先查 Release 列表确认只有原 10 个，
+  创建后共 **11** 个，未覆盖任何已有 Release。
+- 版本记录收口（本条目所在的临时分支 → `master` 的后续 MR）：
+  `docs/versions/ontology-v0.1.0.md` 的 Release 分支 / 定版 commit / Git Tag / GitLab Release 与
+  验证结果、已知限制改为发布后事实；`docs/versions/versioning-policy.md` 的版本推进记录补记
+  tag 与 Release 的执行结果；根 `README.md` 发布清单新增本版本 Release 链接；
+  契约测试 `tests/test_versioning_policy.py` 与 `tests/test_ontology_version_rename_red.py`
+  的 tag 断言由「允许但不要求」改回**精确相等**：必须正好是 10 个 `ontology-v0.0.x` tag 加
+  `ontology-v0.1.0`，缺失或多余 tag 都会失败。
+- 过期表述清理（避免 tag/Release 创建后自相矛盾）：本周早前几条 09-29 记录里"未授权 tag /
+  未创建 tag / 未创建 GitLab Release / 仍为 v0.1.9"的写法，改为注明"该轮当时如此，同日稍后
+  已由用户单独授权并创建"；`docs/specs/ontology-version-rename-and-rebuild.md` 的 R12 契约行
+  与 §12 收尾核实的 10 个 tag 说明补上"本任务验收时点"限定与 2026-09-29 晚些发布
+  `ontology-v0.1.0` 后为 11 个的尾注；`docs/versions/README.md` 增加当前 tag 与 Release 现状
+  （共 11 个）。历史周 changelog（9-07 至 9-25）与已归档的统一推送规则保持原貌，不改写历史。
+- 边界：本轮只做 MR 合入、tag、Release 与版本记录；未部署、未重启服务、未做任何服务器写操作，
+  未删除或迁移历史会话与用户数据。
