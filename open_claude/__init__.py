@@ -1,2 +1,2 @@
 """Open Claude - AI coding assistant"""
-__version__ = "0.1.9"
+__version__ = "ontology-v0.0.10"

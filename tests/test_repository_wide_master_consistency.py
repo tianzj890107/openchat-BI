@@ -11,7 +11,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 HISTORICAL_PREFIXES = (
     "changelog/",
+    # Version-family archives: the retired ``v0.1.x`` naming and the current
+    # ``ontology-v0.0.x`` naming both record the policy of their own time
+    # (including the pre-master ``main`` mainline).
     "docs/versions/v",
+    "docs/versions/ontology-v",
 )
 HISTORICAL_SPECS = {
     "docs/specs/delete-historical-main.md",

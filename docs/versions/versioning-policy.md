@@ -13,23 +13,47 @@
 
 ## 版本格式
 
-产品版本采用语义化版本格式：
+产品版本采用语义化版本格式，并使用本体产品族前缀 `ontology-`：
 
 ```text
-vMAJOR.MINOR.PATCH
+ontology-vMAJOR.MINOR.PATCH
 ```
 
-当前项目仍处于 `v0.x` 快速迭代阶段，当前正式版本保持为：
+- `ontology-` 是产品族前缀：同一个本体产品线的应用、服务与镜像共用这一前缀；
+- 目前处于 `ontology-v0.0.x` 快速迭代阶段，当前正式版本保持为：
 
 ```text
-v0.1.9
+ontology-v0.0.10
 ```
+
+### 与包管理清单的关系（两处强制例外）
+
+`ontology-vX.Y.Z` 是**显示与发布名**，不能写进要求严格版本格式的包管理清单：
+
+| 清单 | 约束 | 实际写入 |
+| --- | --- | --- |
+| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.0.10` |
+| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.0.10` |
+
+`scripts/run_analytics_eval.py` 的 `product_version()` 读取 `pyproject.toml` 后补
+`ontology-v` 前缀，对外统一返回显示名；同文件 `_version_reached()` 会剥离
+`ontology-v` / `v` 前缀后再比较 `X.Y.Z`，因此 tag、Release、报告与门禁口径一致。
+
+### 版本族切换记录（v0.1.x → ontology-v0.0.x）
+
+2026-09-29 按用户要求把历史版本族整体切换并重建（tag 仍指向原定版 commit）：
+
+| 原版本 | 现版本 |
+| --- | --- |
+| `v0.1.0` … `v0.1.9` | `ontology-v0.0.1` … `ontology-v0.0.10` |
+
+切换规则、映射表与一次性授权见 `docs/specs/ontology-version-rename-and-rebuild.md`。
 
 ## PATCH / MINOR / MAJOR 判定
 
 ### PATCH：补丁版本
 
-示例：`v0.1.0 → v0.1.1`、`v0.1.1 → v0.1.2`
+示例：`ontology-v0.0.1 → ontology-v0.0.2`、`ontology-v0.0.2 → ontology-v0.0.3`
 
 适用于：
 
@@ -46,7 +70,7 @@ v0.1.9
 
 ### MINOR：次版本
 
-示例：`v0.1.x → v0.2.0`、`v0.2.x → v0.3.0`
+示例：`ontology-v0.0.x → ontology-v0.1.0`、`ontology-v0.1.x → ontology-v0.2.0`
 
 适用于：
 
@@ -84,7 +108,7 @@ v0.1.9
 7. 一周内只有修复和小优化时，应继续使用 PATCH，例如 `v0.2.0 → v0.2.1 →
    v0.2.2`。
 8. 只有一周形成完整的新功能集合或明显能力升级时，才发布新的 MINOR，例如
-   `v0.1.4 → v0.2.0`。
+   `ontology-v0.0.9 → ontology-v0.1.0`。
 9. 纯文档修改、规则文字整理、测试补充、代码格式化，通常不单独发布正式产品版本。
 10. 版本号由变更性质决定，不由日期、commit 数量或部署次数决定。
 
@@ -94,8 +118,8 @@ v0.1.9
 | --- | --- | --- |
 | Git commit | 普通 commit | 记录每次工程修改，可以一天多个 commit |
 | 周 changelog | `changelog/changelog_M_D-D.md`（如 `changelog_9_7_11.md`） | 只按周维护（2026-09-08 起），不创建日报文件，记录当周已经完成的最终工程变化，不等同于正式版本发布 |
-| 正式版本文档 | `docs/versions/vX.Y.Z.md` | 只在正式发布新版本时创建，记录该版本最终用户可见能力、兼容变化、验证结论和升级说明 |
-| Git tag | `vX.Y.Z` | 只在用户明确要求创建正式版本并明确允许创建 tag 时执行 |
+| 正式版本文档 | `docs/versions/ontology-vX.Y.Z.md` | 只在正式发布新版本时创建，记录该版本最终用户可见能力、兼容变化、验证结论和升级说明 |
+| Git tag | `ontology-vX.Y.Z` | 只在用户明确要求创建正式版本并明确允许创建 tag 时执行 |
 | GitLab Release | GitLab Release | 只有用户在当前任务中明确要求时才创建，不能因为存在版本文档或 tag 自动创建 |
 | 部署 | — | 与版本号相互独立，只有用户在当前任务中明确授权具体部署目标时才能部署 |
 
@@ -104,10 +128,10 @@ v0.1.9
 Agent 不得自行判断并升级正式版本。只有用户明确说出类似以下指令时，才能改变正式
 版本：
 
-- “发布 v0.1.1”
-- “版本升级到 v0.2.0”
-- “创建 v0.1.2 正式版本”
-- “给这次发布打 v0.1.3 tag”
+- “发布 ontology-v0.0.11”
+- “版本升级到 ontology-v0.1.0”
+- “创建 ontology-v0.0.11 正式版本”
+- “给这次发布打 ontology-v0.0.11 tag”
 
 以下指令不构成版本升级授权：
 
@@ -134,7 +158,7 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
    - `frontend/package.json`
    - `frontend/package-lock.json`
    - 前端 UI 显示版本（`frontend/src/main.jsx` 的 `PRODUCT_VERSION`）
-5. 创建 `docs/versions/vX.Y.Z.md`。
+5. 创建 `docs/versions/ontology-vX.Y.Z.md`。
 6. 更新 `docs/versions/README.md`。
 7. 更新根 `README.md` 当前版本链接。
 8. 更新当周 changelog（若当周文件尚未创建，则按本周 git 记录补齐）。
@@ -193,11 +217,12 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 5. 发现版本号错误时：停止自动处理；报告当前版本、目标版本和冲突；等待用户决定。
 6. 回滚部署默认不降低或修改仓库版本号。
 7. 回滚到旧 release 不等于重新发布旧版本。
-8. 禁止 force push、强制修改 tag 或改写远端历史。
+8. 禁止 force push、强制修改 tag 或改写远端历史；`v0.1.x` → `ontology-v0.0.x` 的
+   版本族切换是本仓库唯一一次经用户逐项授权、且不改变 tag 指向的重建，不构成后续先例。
 9. 版本操作不得删除、迁移或覆盖历史会话和用户数据。
 
 ## 示例
 
-- 本周只做了 Bug 修复与文案修正：保持 `v0.1.0` 或发布 `v0.1.1`（由用户决定）。
-- 本周新增“报表模式”完整能力：用户明确授权后发布 `v0.2.0`，PATCH 归零。
+- 本周只做了 Bug 修复与文案修正：保持当前版本或发布 `ontology-v0.0.11`（由用户决定）。
+- 本周新增“报表模式”完整能力：用户明确授权后发布 `ontology-v0.1.0`，PATCH 归零。
 - 纯文档与测试补充：不发布正式版本，只 commit + GitLab 统一推送。

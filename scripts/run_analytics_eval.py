@@ -162,14 +162,22 @@ def fixture_db_for_case(case: dict) -> Optional[str]:
         return None
 
 
+# ``pyproject.toml`` must stay PEP 440 (``0.0.10``); the ontology product
+# family name is applied here so reports and gates speak the same name the tag,
+# the GitLab Release and the UI use (``ontology-v0.0.10``).
+PRODUCT_VERSION_PREFIX = "ontology-v"
+
+
 def product_version() -> str:
-    """The released product version, read from ``pyproject.toml``."""
+    """The released product version as the user-visible ``ontology-vX.Y.Z``."""
     try:
         pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     except OSError:
         return ""
     match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
-    return match.group(1) if match else ""
+    if not match:
+        return ""
+    return f"{PRODUCT_VERSION_PREFIX}{match.group(1)}"
 
 PASS = "pass"
 FAIL = "fail"
@@ -3861,10 +3869,15 @@ def _waiver_expired(expiry: str) -> bool:
     return when < _dt.datetime.now(_dt.timezone.utc).date()
 
 
+# ``ontology-v0.0.10``, ``v0.0.10`` and ``0.0.10`` all spell the same version.
+_VERSION_PREFIX_RE = re.compile(r"^(?:ontology-)?v?", re.IGNORECASE)
+
+
 def _version_reached(current: str, target: str) -> bool:
-    """True when *current* is at or beyond a ``vX.Y.Z`` target version."""
+    """True when *current* is at or beyond an ``X.Y.Z`` target version."""
     def parts(text: str) -> Optional[tuple]:
-        match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)$", (text or "").strip())
+        stripped = _VERSION_PREFIX_RE.sub("", (text or "").strip())
+        match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", stripped)
         return tuple(int(g) for g in match.groups()) if match else None
 
     now, want = parts(current), parts(target)

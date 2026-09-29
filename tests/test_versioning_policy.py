@@ -25,7 +25,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
             "PATCH",
             "MINOR",
             "MAJOR",
-            "v0.1.0",
+            "ontology-v0.0.1",
             "当前正式版本保持为",
         ):
             self.assertIn(required, text)
@@ -63,7 +63,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
     def test_versions_readme_links_policy_and_tracks_the_current_version(self) -> None:
         readme = (ROOT / "docs/versions/README.md").read_text(encoding="utf-8")
         self.assertIn("./versioning-policy.md", readme)
-        self.assertIn("当前版本：`v0.1.9`", readme)
+        self.assertIn("当前版本：`ontology-v0.0.10`", readme)
         self.assertIn("不按日期机械递增", readme)
 
     def test_agents_md_links_policy_and_mandates_authorization(self) -> None:
@@ -80,29 +80,29 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("versioning-policy.md", doc)
         self.assertIn("push 不等于部署", doc)
 
-    def test_product_version_is_v0_1_9(self) -> None:
-        self.assertIn('version = "0.1.9"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertIn('__version__ = "0.1.9"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
+    def test_product_version_is_ontology_v0_0_10(self) -> None:
+        """pyproject stays PEP 440; every display surface speaks ontology-v0.0.10."""
+        self.assertIn('version = "0.0.10"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertIn('__version__ = "ontology-v0.0.10"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
         app = (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('APP_VERSION = "0.1.9"', app)
+        self.assertIn('APP_VERSION = "ontology-v0.0.10"', app)
         self.assertIn(
             'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, root_path=APP_ROOT_PATH)',
             app,
         )
         pkg = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
-        self.assertEqual(pkg["version"], "0.1.9")
+        self.assertEqual(pkg["version"], "0.0.10")
         lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
-        self.assertEqual(lock["packages"][""]["version"], "0.1.9")
-        self.assertEqual(lock["version"], "0.1.9")
+        self.assertEqual(lock["packages"][""]["version"], "0.0.10")
+        self.assertEqual(lock["version"], "0.0.10")
         main = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_VERSION = "v0.1.9";', main)
-        self.assertIn('__version__ = "0.1.9"', (ROOT / "open_claude/__init__.py").read_text(encoding="utf-8"))
+        self.assertIn('const PRODUCT_VERSION = "ontology-v0.0.10";', main)
+        self.assertIn('__version__ = "ontology-v0.0.10"', (ROOT / "open_claude/__init__.py").read_text(encoding="utf-8"))
 
     def test_no_unauthorized_version_documents(self) -> None:
         versions_dir = ROOT / "docs/versions"
-        allowed = {
-            "README.md", "versioning-policy.md",
-            "v0.1.0.md", "v0.1.1.md", "v0.1.2.md", "v0.1.8.md", "v0.1.9.md",
+        allowed = {"README.md", "versioning-policy.md"} | {
+            f"ontology-v0.0.{number}.md" for number in range(1, 11)
         }
         names = {p.name for p in versions_dir.iterdir() if p.is_file()}
         self.assertEqual(names, allowed)
@@ -153,25 +153,21 @@ class VersioningPolicyDocTests(unittest.TestCase):
 
     def test_readme_and_v010_doc_list_gitlab_release(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.0", readme)
-        doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
-        self.assertIn("https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.0", doc)
+        self.assertIn("https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.1", readme)
+        doc = (ROOT / "docs/versions/ontology-v0.0.1.md").read_text(encoding="utf-8")
+        self.assertIn("https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.1", doc)
         self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:
-        """Only official tags (v0.1.0 through v0.1.9) may exist locally; no other tag."""
+        """Only the ten ontology-v0.0.x tags may exist locally; no other tag."""
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
             capture_output=True, text=True, check=True,
         )
         tags = {t for t in proc.stdout.splitlines() if t.strip()}
-        self.assertLessEqual(
+        self.assertEqual(
             tags,
-            {
-                "v0.1.0", "v0.1.1", "v0.1.2",
-                "v0.1.3", "v0.1.4", "v0.1.5",
-                "v0.1.6", "v0.1.7", "v0.1.8", "v0.1.9",
-            },
+            {f"ontology-v0.0.{number}" for number in range(1, 11)},
         )
 
     def _authoritative_tool_names(self) -> set[str]:
@@ -194,21 +190,21 @@ class VersioningPolicyDocTests(unittest.TestCase):
         return names
 
     def test_v010_doc_is_official_release(self) -> None:
-        doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
-        self.assertIn("状态：正式版 / 当前版本", doc)
-        self.assertIn("Git Tag：`v0.1.0`", doc)
+        doc = (ROOT / "docs/versions/ontology-v0.0.1.md").read_text(encoding="utf-8")
+        self.assertIn("状态：正式版", doc)
+        self.assertIn("Git Tag：`ontology-v0.0.1`", doc)
         index = (ROOT / "docs/versions/README.md").read_text(encoding="utf-8")
         self.assertIn("正式版 / 当前版本", index)
 
     def test_v010_doc_has_no_obsolete_tool_names(self) -> None:
-        doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
+        doc = (ROOT / "docs/versions/ontology-v0.0.1.md").read_text(encoding="utf-8")
         # MetricDataQuery / SQLRun are no longer registered tools and must not
         # be presented as current public tools in the formal version doc.
         self.assertNotIn("MetricDataQuery", doc)
         self.assertNotIn("SQLRun", doc)
 
     def test_v010_doc_distinguishes_metric_tool_roles(self) -> None:
-        doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
+        doc = (ROOT / "docs/versions/ontology-v0.0.1.md").read_text(encoding="utf-8")
         for tool in ("MetricCalculation", "Ontology-MetricQuery", "Ontology-FactQuery"):
             self.assertIn(tool, doc)
         # Each role matches the authoritative semantics.
@@ -223,7 +219,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
     def test_v010_doc_tool_names_match_code_registry(self) -> None:
         """Every tool name named in the version doc exists in the agent tools
         declaration or a registered tool schema; obsolete names are rejected."""
-        doc = (ROOT / "docs/versions/v0.1.0.md").read_text(encoding="utf-8")
+        doc = (ROOT / "docs/versions/ontology-v0.0.1.md").read_text(encoding="utf-8")
         authoritative = self._authoritative_tool_names()
         self.assertIn("Ontology-MetricQuery", authoritative)
         self.assertIn("Ontology-FactQuery", authoritative)

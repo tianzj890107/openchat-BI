@@ -1,16 +1,17 @@
-# 智能分析 v0.1.8
+# 智能分析 ontology-v0.0.9
 
 ## 基本信息
 
-- 版本：`v0.1.8`
+- 版本：`ontology-v0.0.9`
+- 历史命名：本版本原以 `v0.1.8` 发布，2026-09-29 随版本族切换到 `ontology-v0.0.x` 时改名，定版 commit 未变
 - 日期：`2026-09-17`
-- 状态：正式版 / 当前版本
-- Git Tag：`v0.1.8`（annotated）
+- 状态：正式版
+- Git Tag：`ontology-v0.0.9`（annotated）
 - 定版 commit：`c938fc0`（`master` 主线 HEAD）
 
 ## 版本概述
 
-v0.1.8 交付仓库在 `master` 唯一发布主线收口后的部署与运行配置固化：Dockerfile 固定
+ontology-v0.0.9 交付仓库在 `master` 唯一发布主线收口后的部署与运行配置固化：Dockerfile 固定
 非敏感运行环境默认值并保留华为云 SWR 基础镜像、本地与服务器 `.env` 增量同步契约、
 服务器引用统一字面 IP、changelog 仅按周维护规则，以及仓库级 `master` 主线口径统一。
 本版本没有新增用户可见能力，按 PATCH 级发布执行。
@@ -20,9 +21,9 @@ v0.1.8 交付仓库在 `master` 唯一发布主线收口后的部署与运行配
 版本号（MINOR 需要新增能力，且一周内只有修复和小优化时必须继续用 PATCH）。因此：
 
 - `v0.2.0` 的 Git Tag 与 GitLab Release 均已撤销（两者原本指向同一定版 commit）；
-- 以 `v0.1.8` 重新发布同一定版 commit `c938fc0`，版本号回到 `v0.1.x` 序列；
+- 以 `ontology-v0.0.9` 重新发布同一定版 commit `c938fc0`，版本号回到 `ontology-v0.0.x` 序列；
 - `v0.2.0` 从未包含代码变更，撤销它不影响 `master` 分支内容，也未触发任何部署；
-- 版本契约测试的官方 tag 白名单同步为 `v0.1.0`–`v0.1.8`（commit `59fb09d`）。
+- 版本契约测试的官方 tag 白名单同步为 `ontology-v0.0.1`–`ontology-v0.0.9`（commit `59fb09d`）。
 
 ## 交付主题
 
@@ -79,7 +80,7 @@ v0.1.8 交付仓库在 `master` 唯一发布主线收口后的部署与运行配
 - `tests.test_weekly_changelog_only`（5 项）、`test_literal_ip_server_references`
   （2 项）、`test_repository_wide_master_consistency`（5 项）通过；
 - `tests.test_versioning_policy` 全部 19 项通过（`test_no_unexpected_git_tags`
-  白名单已放行 `v0.1.0`–`v0.1.8`）；`test_container_port_contract`（12 项）保持通过；
+  白名单已放行 `ontology-v0.0.1`–`ontology-v0.0.9`）；`test_container_port_contract`（12 项）保持通过；
 - 开发分支 `20260727` 全量单测：456 passed / 25 skipped / 193 subtests；
 - `git diff --check` 通过。
 
@@ -87,14 +88,16 @@ v0.1.8 交付仓库在 `master` 唯一发布主线收口后的部署与运行配
 
 - 服务器 `.env` 修改后当前运行进程不会自动加载新增变量，本版本只同步配置文件；
 - 本版本仅完成仓库内规则、配置与测试收口，不包含服务器重启或服务切换，未部署；
-- 定版 commit `c938fc0` 内代码版本号仍为 `0.1.2`（与 v0.1.3–v0.1.7 既有 tag 做法
-  一致，tag 不改变代码内版本号）；开发分支 `20260727` 上产品版本号为 `0.1.7`；
-- `docs/versions/` 只为 v0.1.0–v0.1.2 与本次 v0.1.8 建档，v0.1.3–v0.1.7 只在
-  GitLab Release 有说明，尚未回填版本文档。
+- 定版 commit `c938fc0` 内的代码版本号仍是当时打包用的裸版本号（`0.1.2`），与
+  ontology-v0.0.4–ontology-v0.0.8 的既有 tag 做法一致：tag 不改变代码内版本号；
+  开发分支 `20260727` 上当时的产品版本号为 `0.1.7`；
+- 本版本发布时 `docs/versions/` 只为 ontology-v0.0.1–ontology-v0.0.3 与本次
+  ontology-v0.0.9 建档；2026-09-29 版本族重建时已补齐
+  ontology-v0.0.4–ontology-v0.0.8 的版本文档。
 
 ## 相关记录
 
-- GitLab Release：[智能分析 v0.1.8](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.8)
-- 被撤销版本：`v0.2.0`（Git Tag 与 GitLab Release 均已删除，内容与 v0.1.8 相同）
+- GitLab Release：[智能分析 ontology-v0.0.9](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.9)
+- 被撤销版本：`v0.2.0`（Git Tag 与 GitLab Release 均已删除，内容与 ontology-v0.0.9 相同）
 - 版本规范：[语义化版本与正式发布规范](./versioning-policy.md)
 - 周 changelog：[changelog_9_7_11.md](../../changelog/changelog_9_7_11.md)

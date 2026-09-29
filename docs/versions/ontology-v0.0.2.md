@@ -1,21 +1,22 @@
-# 智能分析 v0.1.1
+# 智能分析 ontology-v0.0.2
 
 ## 基本信息
 
-- 版本：`v0.1.1`
+- 版本：`ontology-v0.0.2`
+- 历史命名：本版本原以 `v0.1.1` 发布，2026-09-29 随版本族切换到 `ontology-v0.0.x` 时改名，定版 commit 未变
 - 日期：`2026-09-02`
-- 状态：正式版 / 当前版本
-- Git Tag：`v0.1.1`
-- 定版 commit：以 `v0.1.1` annotated tag 指向的 commit 为准
+- 状态：正式版
+- Git Tag：`ontology-v0.0.2`
+- 定版 commit：以 `ontology-v0.0.2` annotated tag 指向的 commit 为准
 
 ## 版本概述
 
-v0.1.1 是在 v0.1.0 基础上的补丁版本，主要交付：分析结论可靠性硬化（真实数据/对账
+ontology-v0.0.2 是在 ontology-v0.0.1 基础上的补丁版本，主要交付：分析结论可靠性硬化（真实数据/对账
 不变量、正文数值校验）、共享本体图包接入、GitLab 统一交付与正式版本流程落地、应用
-改名与容器化交付规范（统一容器内部端口 8080）。产品能力边界与 v0.1.0 一致，未新增
+改名与容器化交付规范（统一容器内部端口 8080）。产品能力边界与 ontology-v0.0.1 一致，未新增
 独立业务流程。
 
-## 核心变化（相对 v0.1.0，按交付主题）
+## 核心变化（相对 ontology-v0.0.1，按交付主题）
 
 - 分析可靠性硬化（MR !2）：
   - 只有真实数据查询（SQLRun/MetricDataQuery 路径）的结果与 Claims 进入最终交付，
@@ -45,7 +46,7 @@ v0.1.1 是在 v0.1.0 基础上的补丁版本，主要交付：分析结论可�
 - 分析最终输出更可靠：结论必须有真实查询或对账证据，根因/关系缺证据时如实说明，
   不出现编造数字或“假图表变数据源”导致的错误结论；
 - 本体图渲染切换为共享渲染器，能力与交互保持不变；
-- 页面品牌与版本号显示 `v0.1.1`。
+- 页面品牌与版本号显示 `ontology-v0.0.2`。
 
 ## 兼容性与运维变化
 
@@ -62,23 +63,23 @@ v0.1.1 是在 v0.1.0 基础上的补丁版本，主要交付：分析结论可�
   `test_no_unexpected_git_tags`（本地存在历史备份 tag，与本次改动无关）；
 - 容器端口契约测试 12 项通过；前端 production build 成功且构建产物无漂移；
 - 真实进程验证：`--port 8080` 下 `/healthz` 返回 `port=8080`，默认启动返回 `port=8765`；
-- 版本契约测试随本次发布更新到 `v0.1.1` 并通过；
+- 版本契约测试随本次发布更新到 `ontology-v0.0.2` 并通过；
 - `git diff --check` 通过；推送后 `HEAD == gitlab/20260727`；tag 与 GitLab Release 已创建。
 
 ## 已知限制
 
 - ChatBI 并发治理当前只支持单 Uvicorn worker；
 - L1/L2 简单查询不进入根因分析（第 5 步跳过，属设计行为）；
-- v0.1.1 开发期间 Docker 镜像构建因拉取 `python:3.13-slim` 超时未完成，容器运行验证
+- ontology-v0.0.2 开发期间 Docker 镜像构建因拉取 `python:3.13-slim` 超时未完成，容器运行验证
   以契约测试与文档契约为准，尚未以真实镜像验证。
 
 ## 升级说明
 
-- 从 v0.1.0 升级：
-  - 非容器：更新代码到 v0.1.1，`python -m pip install -e '.[web]'`，前端有变化时重新
+- 从 ontology-v0.0.1 升级：
+  - 非容器：更新代码到 ontology-v0.0.2，`python -m pip install -e '.[web]'`，前端有变化时重新
     `npm run build` 并同步 `bi_agent/web/static/vendor/antd/workbench.js` 与
     `eimosp-ontology-agentic-analytics-workbench.css`，再重启服务；
-  - 容器：重新构建/拉取 `eimosp-ontology-agentic-analytics:0.1.1`，按
+  - 容器：重新构建/拉取 `eimosp-ontology-agentic-analytics:ontology-v0.0.2`，按
     `-p 8765:8080` 映射并挂载数据卷；
 - 历史会话迁移前先完整备份 `dataset/conversations/`，不直接改写用户数据；
 - `.env` 配置（LLM/Doris/远程本体/Nacos 占位）保持不变。
@@ -96,5 +97,5 @@ v0.1.1 是在 v0.1.0 基础上的补丁版本，主要交付：分析结论可�
 - [2026-09-01 日开发记录](../../changelog/changelog_9_1.md)
 - [2026-09-02 日开发记录](../../changelog/changelog_9_2.md)
 - [GitLab 统一推送工作流](../gitlab-push-workflow.md)
-- GitLab Release：[智能分析 v0.1.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/v0.1.1)
-- Release 基于 `v0.1.1` tag，指向定版 commit（见 tag 指向）。
+- GitLab Release：[智能分析 ontology-v0.0.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.2)
+- Release 基于 `ontology-v0.0.2` tag，指向定版 commit（见 tag 指向）。

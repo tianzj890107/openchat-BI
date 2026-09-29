@@ -7,8 +7,11 @@
 
 产品版本族从 `v0.1.x` 迁移到本体产品线命名 `ontology-v0.0.x`：
 
-- 旧：`v0.1.0` … `v0.1.9`（10 个 annotated tag；5 个 GitLab Release；5 篇版本文档，
-  `v0.1.3`–`v0.1.7` 从来没有 Release 与文档）
+- 旧：`v0.1.0` … `v0.1.9`（10 个 annotated tag；10 个 GitLab Release；5 篇版本文档，
+  `v0.1.3`–`v0.1.7` 有 Release 但没有版本文档）
+
+> 修正：仓库内的 README 曾把 GitLab Release 记为 5 个；执行前用 API 核实，
+> `v0.1.0`–`v0.1.9` 的 10 个 Release 实际都存在（见 §12）。
 - 新：`ontology-v0.0.1` … `ontology-v0.0.10`
 
 本次是**命名与清单重建**，不是内容重发：所有 tag 仍指向原来的 commit。
@@ -19,7 +22,7 @@
 | --- | --- |
 | 1 | 全部映射：`v0.1.0`–`v0.1.9` 按顺序映射为 `ontology-v0.0.1`–`ontology-v0.0.10` |
 | 2 | tag 沿用原来的 commit，不改变指向 |
-| 3 | 补齐：10 个 tag + 10 个 GitLab Release + 10 篇版本文档 |
+| 3 | 重建：10 个 tag + 10 个 GitLab Release，并让 10 个版本都有版本文档（补齐缺失 5 篇） |
 | 4 | 全仓统一为 `ontology-v0.0.10`（2 处强制例外见 §4） |
 | 5 | 版本文档文件名采用 `docs/versions/ontology-v0.0.N.md` |
 | 6 | 在 `AGENTS.md` 追加限定范围的一次性授权（§8） |
@@ -112,7 +115,7 @@
    说明取对应版本文档；已存在则只补缺失项，不覆盖；
 4. 删除远端旧 10 个 tag（`git push gitlab --delete <tag>`）；
 5. 删除本地旧 10 个 tag；
-6. 删除 5 个旧 Release（`v0.1.0`/`v0.1.1`/`v0.1.2`/`v0.1.8`/`v0.1.9`）；
+6. 删除旧 10 个 Release（`v0.1.0`–`v0.1.9`；顺序在删 tag 之前，避免 Release 指向已删除的 tag）；
 7. 校验：`git ls-remote --tags gitlab` 只剩 10 个新 tag；`git tag --list` 只剩 10 个新 tag。
 
 注意：`.gitlab-ci.yml` 的 `analytics-eval-release-gate` 规则为 `if: $CI_COMMIT_TAG → when: always`，
@@ -165,3 +168,14 @@
 - 远端 tag 可能受保护规则限制：删除失败时停止，保留已完成部分，报告实际状态；
 - 删除 Release 后无法通过 UI 恢复同名 Release，需要按 §7 重建（tag 未动即可重建）；
 - 打 tag 触发 10 次 tag pipeline：发布门禁未过时不得视为发布完成。
+
+## 12. 执行记录（2026-09-29）
+
+- GitLab 实际状态（执行前核实）：Releases = `v0.1.0`–`v0.1.9` 共 10 个；标签保护规则为空；
+  默认分支 `master`；
+- 新建 10 个 annotated tag `ontology-v0.0.1`–`ontology-v0.0.10`，逐个指向映射表中的原 commit，
+  tag 说明沿用原文并把版本号替换为新名；
+- 10 个新 tag 已推送 GitLab；10 个新 Release（名称 `智能分析 ontology-v0.0.N`，说明取对应
+  版本文档）已创建；
+- 旧 10 个 Release 与旧 10 个 tag（远端 + 本地）已删除；
+- 收尾核实：`git tag --list` 与 `git ls-remote --tags gitlab` 都只包含 10 个新 tag。

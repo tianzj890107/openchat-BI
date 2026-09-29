@@ -53,7 +53,7 @@ git config user.email "zhenzhan@kth.se"
 ## 正式版本
 
 - 普通 commit 只推开发分支（`gitlab/20260727`），不自动推 tag；
-- 正式版本 tag（`vX.Y.Z`）需要用户在当前任务中单独授权，且必须推送到 GitLab；
+- 正式版本 tag（`ontology-vX.Y.Z`）需要用户在当前任务中单独授权，且必须推送到 GitLab；
 - 版本号变更必须遵循 [语义化版本与正式发布规范](./versions/versioning-policy.md)；
   只有用户明确指定目标版本时才能升级正式版本；
 - push 不等于部署；GitLab Release 是否创建由用户在当前任务中明确要求；不要把真实
@@ -64,7 +64,7 @@ git config user.email "zhenzhan@kth.se"
 正式版本完成标准扩展为：
 
 1. 分支推送一致：`HEAD == gitlab/20260727`；
-2. tag 推送一致：`vX.Y.Z` 存在于 GitLab，且指向本地定版 commit；
+2. tag 推送一致：`ontology-vX.Y.Z` 存在于 GitLab，且指向本地定版 commit；
 3. 用户授权 Release 时，GitLab 仓库存在对应的正式 Release。
 
 规则：

@@ -23,8 +23,9 @@
 
 - `master` 拥有全部功能的提交，作为**归档分支**；
 - `master` 不允许直接提交代码，只允许在合并时解决冲突；
-- `release/*` 每个版本一条，命名 `release/vX.Y.Z`（例如 `release/v1.2.0`）；早期草稿里出现的
-  `release-v1.2.0`、`R4.1.0` 是同一含义的非规范写法，统一以 `release/vX.Y.Z` 为准。
+- `release/*` 每个版本一条，命名 `release/ontology-vX.Y.Z`（例如 `release/ontology-v0.1.0`）；
+  早期草稿里出现的 `release-v1.2.0`、`R4.1.0` 是同一含义的非规范写法，统一以
+  `release/ontology-vX.Y.Z` 为准。
 
 ### 临时分支（开发分支）
 
@@ -93,7 +94,8 @@
 
 ## 版本号与分支的关系
 
-- `release/*` 的名称与该版本号一致，例如 `release/v1.2.0` 对应正式版本 `v1.2.0`；
+- `release/*` 的名称与该版本号一致，例如 `release/ontology-v0.1.0` 对应正式版本
+  `ontology-v0.1.0`；
 - 版本号组成、MAJOR / MINOR / PATCH 判定与升级授权以
   [语义化版本与正式发布规范](./versions/versioning-policy.md) 为准；
 - 节奏建议（**人工建议，不自动触发**）：每个自然季度可由用户决定是否收口一个 MINOR；

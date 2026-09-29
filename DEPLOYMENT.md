@@ -356,7 +356,9 @@ git diff --name-only
 当前运行状态（2026-09-03 部署 v0.1.2）：
 
 - 运行目录 `~/eimosp-ontology-agentic-analytics-releases/v0.1.2`，
-  `RELEASE_COMMIT=c8454d82f052a6770bae975a5d865a6f37eff721`（tag `v0.1.2`），
+  `RELEASE_COMMIT=c8454d82f052a6770bae975a5d865a6f37eff721`（tag `ontology-v0.0.3`，
+  该 tag 原名为 `v0.1.2`；下面的 release 目录名是服务器上的真实路径，仍沿用旧版本号，
+  不随版本族切换改名），
   启动命令：`cd <release> && set -a && . ./.env && set +a && nohup ./.venv/bin/python -m bi_agent.web --host 0.0.0.0 --port 8765 --db doris >> ~/eimosp-ontology-agentic-analytics-8765.log 2>&1 &`
   （无 systemd 单元，进程 PID 记录在 `<release>/APP.pid`）。
 - 服务器系统缺少 `python3-venv`（`ensurepip` 不可用），无法新建 venv：当前 release 的

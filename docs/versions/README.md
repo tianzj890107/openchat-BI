@@ -4,16 +4,25 @@
 [changelog](../../changelog/) 下的当前周文件（如 `changelog_9_7_11.md`），
 不再创建日报。
 
-- 当前版本：`v0.1.9`
+- 当前版本：`ontology-v0.0.10`
 - 版本规则：[语义化版本与正式发布规范](./versioning-policy.md)
 - 分支模型与 PR 合并流程：[Git 分支与合并工作流规范](../git-branch-workflow.md)
 - 版本号由变更性质决定，不按日期机械递增；commit、push、部署不自动触发版本升级。
-- v0.1.3–v0.1.7 只存在 Git Tag 与 GitLab Release，尚未回填版本文档。
+- 2026-09-29 起版本族由 `v0.1.x` 切换为 `ontology-v0.0.x`：`v0.1.0`–`v0.1.9` 按顺序
+  映射为 `ontology-v0.0.1`–`ontology-v0.0.10`，tag 指向的原定版 commit 未变；映射表与
+  一次性授权见 `docs/specs/ontology-version-rename-and-rebuild.md`。
+- 原本只有 tag、没有版本文档的版本（原 `v0.1.3`–`v0.1.7`），已在本次切换中补齐为
+  `ontology-v0.0.4`–`ontology-v0.0.8`，10 个版本现在都有独立版本文档。
 
 | 版本 | 日期 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| [./v0.1.9.md](./v0.1.9.md) | 2026-09-17 | 正式版 / 当前版本 | 分析 Agent 黄金评测集扩展到 482 条并新增 recorded-provider 回放层、GitLab CI/CD 接入项目 runner、产品版本号统一升级到 v0.1.9 |
-| [./v0.1.8.md](./v0.1.8.md) | 2026-09-17 | 正式版（上一版本） | 部署与运行配置固化、`.env` 增量同步契约、字面 IP 与周 changelog 规则（由误发的 `v0.2.0` 更正而来） |
-| [./v0.1.2.md](./v0.1.2.md) | 2026-09-03 | 正式版（上一版本） | 本体子图语义环形可视化与布局控件体验收敛（自定义选择器、键盘闭环、option 悬浮说明） |
-| [./v0.1.1.md](./v0.1.1.md) | 2026-09-02 | 正式版（上一版本） | 可靠性硬化、共享本体图包接入、GitLab 交付与容器化端口规范 |
-| [./v0.1.0.md](./v0.1.0.md) | 2026-08-28 | 正式版（上一版本） | eimosp-ontology-agentic-analytics 智能分析首个完整可用版本 |
+| [./ontology-v0.0.10.md](./ontology-v0.0.10.md) | 2026-09-17 | 正式版 / 当前版本 | 分析 Agent 黄金评测集扩展到 482 条并新增 recorded-provider 回放层、GitLab CI/CD 接入项目 runner、产品版本号统一升级 |
+| [./ontology-v0.0.9.md](./ontology-v0.0.9.md) | 2026-09-17 | 正式版（历史版本） | 部署与运行配置固化、`.env` 增量同步契约、字面 IP 与周 changelog 规则（由误发的 `v0.2.0` 更正而来） |
+| [./ontology-v0.0.8.md](./ontology-v0.0.8.md) | 2026-09-08 | 正式版（历史版本） | 可配置应用 Base Path；发布主线收口到 `master`，changelog 收敛为按周维护 |
+| [./ontology-v0.0.7.md](./ontology-v0.0.7.md) | 2026-09-07 | 正式版（历史版本） | 轻量结构化 cognitive policy 决策记录（`cognitive_policy` SSE 快照） |
+| [./ontology-v0.0.6.md](./ontology-v0.0.6.md) | 2026-09-07 | 正式版（历史版本） | 多实例共享并发协调与 fencing 租约（可选 Redis，默认 local 行为不变） |
+| [./ontology-v0.0.5.md](./ontology-v0.0.5.md) | 2026-09-07 | 正式版（历史版本） | 轻量 Recovery 状态机与 checkpoint、可重试恢复 |
+| [./ontology-v0.0.4.md](./ontology-v0.0.4.md) | 2026-09-07 | 正式版（历史版本） | Tool Runtime 执行边界：执行标识、超时、幂等与 stale-result 拒绝 |
+| [./ontology-v0.0.3.md](./ontology-v0.0.3.md) | 2026-09-03 | 正式版（历史版本） | 本体子图语义环形可视化与布局控件体验收敛（自定义选择器、键盘闭环、option 悬浮说明） |
+| [./ontology-v0.0.2.md](./ontology-v0.0.2.md) | 2026-09-02 | 正式版（历史版本） | 可靠性硬化、共享本体图包接入、GitLab 交付与容器化端口规范 |
+| [./ontology-v0.0.1.md](./ontology-v0.0.1.md) | 2026-08-28 | 正式版（历史版本） | eimosp-ontology-agentic-analytics 智能分析首个完整可用版本 |

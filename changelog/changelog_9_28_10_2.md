@@ -91,12 +91,13 @@
   **1266 passed / 0 failed / 25 skipped / 1047 subtests passed**；`git diff --check` 通过。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动产品版本号（仍为 v0.1.9）、未删除任何历史会话或用户数据。
 
-### 2026-09-29 · 版本族切换到 ontology-v0.0.x：Spec 与红测（待执行）
+### 2026-09-29 · 版本族切换到 ontology-v0.0.x：Spec 与红测
 
 - 背景：用户要求把产品版本族从 `v0.1.x` 迁到本体产品线命名 `ontology-v0.0.x`，并"推倒重来"
   重建历史版本。用户裁决：① `v0.1.0`–`v0.1.9` **全部按顺序映射**为
   `ontology-v0.0.1`–`ontology-v0.0.10`；② 新 tag **沿用原 commit**，不改指向；③ **补齐**
-  10 个 tag + 10 个 GitLab Release + 10 篇版本文档（`v0.1.3`–`v0.1.7` 原本没有 Release/文档）；
+  10 个 tag + 10 个 GitLab Release + 10 篇版本文档（`v0.1.3`–`v0.1.7` 原本有 Release
+  但没有版本文档；仓库文档曾把 Release 记为 5 个，执行前用 API 核实为 10 个）；
   ④ **全仓统一**为新命名；⑤ 版本文档命名 `docs/versions/ontology-v0.0.N.md`；
   ⑥ 在 `AGENTS.md` 追加限定范围的一次性授权；⑦ 删除重建旧 tag / Release / 文档。
 - 新增 `docs/specs/ontology-version-rename-and-rebuild.md`：映射表（10 组旧名/commit/新名）、
@@ -117,4 +118,41 @@
   `if: $CI_COMMIT_TAG → when: always`，10 个 tag 会触发 10 次 tag pipeline。
 - 验收（本批只交付 Spec + 红测）：`pytest -q tests` → **15 failed / 1268 passed / 25 skipped**
   （15 条全来自新增红测文件，其余门禁不受影响）；`git diff --check` 通过。
-- 未执行删除、未重建任何 tag/Release、未部署、未重启服务、未改动版本号、未删除历史会话或用户数据。
+- 该条目交付的是 Spec 与本批红测；删除重建在下一个条目执行。
+
+### 2026-09-29 · 版本族切换执行：10 个 tag 与 10 个 GitLab Release 重建完成
+
+- 按用户"接受，授权执行"的指令执行 `docs/specs/ontology-version-rename-and-rebuild.md`：
+  - 新建 10 个 annotated tag `ontology-v0.0.1`–`ontology-v0.0.10`，逐个指向映射表中登记的
+    原 commit（tag 说明沿用原文并把版本号替换为新名）；10 个新 tag 已推送 GitLab；
+  - 创建 10 个 GitLab Release（name `智能分析 ontology-v0.0.N`，说明取对应版本文档）；
+  - 删除旧 10 个 Release 与旧 10 个 tag（远端 + 本地）。
+- 执行前核实：仓库文档记为 5 个 Release，实际 GitLab 上 `v0.1.0`–`v0.1.9` 共 10 个 Release
+  都存在、标签保护规则为空、默认分支 `master`；Spec 与 `AGENTS.md` 的一次性授权条目已按
+  核实结果修正。
+- 版本入口统一（两处 PEP 440 / npm semver 强制例外除外）：
+  - `pyproject.toml` `0.1.9 → 0.0.10`（PEP 440）、`frontend/package.json` 与
+    `package-lock.json` `0.1.9 → 0.0.10`（npm semver）；
+  - `bi_agent/__init__.py`、`bi_agent/web/app.py`、`open_claude/__init__.py`、
+    `frontend/src/main.jsx`、`frontend/src/shell.html` 统一为 `ontology-v0.0.10`；
+  - `scripts/run_analytics_eval.py`：`product_version()` 读 `pyproject.toml` 后补 `ontology-v`
+    前缀返回显示名；`_version_reached()` 剥离 `ontology-v`/`v` 前缀后再比较 `X.Y.Z`，
+    避免 known_gap 超期门因解析失败静默失效；
+  - `cd frontend && npm run build` 重建 `bi_agent/web/static/vendor/antd/workbench.js`
+    （产物内 2 处版本字符串更新；CSS 无差异；`lib/` 两个既有文件按原样保留）。
+- 版本文档：`docs/versions/` 迁移为 `ontology-v0.0.1.md`–`ontology-v0.0.10.md`，补齐原
+  `v0.1.3`–`v0.1.7` 缺失的 5 篇（由对应 tag 的提交、spec 与验收记录写成）；`README.md`
+  索引、根 `README.md` 当前版本与 10 条 Release 链接、`versioning-policy.md` 版本格式
+  （`ontology-vMAJOR.MINOR.PATCH` + 包管理清单例外）、`AGENTS.md` 当前版本口径同步。
+- 历史边界：`changelog/**` 与 `docs/specs/**` 里已写下的旧版本号按当时记录保留；`DEPLOYMENT.md`
+  仅把 tag 口径改为 `ontology-v0.0.3` 并注明服务器 release 目录名沿用旧版本号、未改名。
+- 契约测试：新增的 `tests/test_ontology_version_rename_red.py` 由红转绿；`tests/test_versioning_policy.py`
+  的版本与 tag 白名单断言、`tests/test_regressions.py` 的品牌/版本一致性断言、
+  `tests/test_analytics_eval_dataset.py` 的 `product_version()/_version_reached()` 断言、
+  `tests/test_repository_wide_master_consistency.py` 的版本目录豁免前缀同步更新。
+- 验收（2026-09-29）：全量 `pytest -q tests` **1278 passed / 0 failed / 25 skipped /
+  1066 subtests passed**；`git tag --list` 与 `git ls-remote --tags gitlab` 都只剩 10 个新 tag；
+  GitLab Release 列表只剩 10 个新 Release；`git diff --check` 通过。
+- 10 个新 tag 会各自触发一次 tag pipeline 的 release gate（`.gitlab-ci.yml` 规则
+  `if: $CI_COMMIT_TAG → when: always`）；本批未部署、未重启服务、未做任何服务器写操作、
+  未删除或迁移历史会话与用户数据。
