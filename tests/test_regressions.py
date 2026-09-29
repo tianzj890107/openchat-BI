@@ -3988,19 +3988,22 @@ console.log(JSON.stringify(out));"""
 
 
     def test_product_branding_and_version_display(self) -> None:
-        """The brand is 硕磐智能分析 Agent and the blue ontology-v0.1.0 chip
-        trails the workbench hero title instead of sitting in the sidebar brand
-        row; 智析 and the bi-analyst pseudo-version are gone from user-visible
-        surfaces (title, skeleton, shell brand and React sidebar)."""
+        """The brand is 硕磐智能分析 Agent everywhere the product name shows —
+        sidebar brand row, hero title, HTML title, loading skeleton, aria-label
+        and the agent welcome line — and the blue ontology-v0.1.0 chip trails
+        the workbench hero title instead of sitting in the sidebar brand row;
+        智析 and the bi-analyst pseudo-version are gone from user-visible
+        surfaces."""
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
         shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
         static = Path("bi_agent/web/static/index.html").read_text(encoding="utf-8")
+        agent = Path(".claude/agents/bi-analyst.md").read_text(encoding="utf-8")
         self.assertIn('const PRODUCT_NAME = "硕磐智能分析 Agent";', main)
         self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.0";', main)
         self.assertIn("PRODUCT_NAME", main)
         self.assertIn("PRODUCT_VERSION", main)
         self.assertIn('className="antd-product-version"', main)
-        self.assertIn("<title>智能分析 · 本体工作台</title>", shell)
+        self.assertIn("<title>硕磐智能分析 Agent · 本体工作台</title>", shell)
         # Sidebar brand row: name only, no version chip.
         self.assertIn('<span class="brand-name">硕磐智能分析 Agent</span>', shell)
         self.assertNotIn('class="brand-version"', shell)
@@ -4008,15 +4011,19 @@ console.log(JSON.stringify(out));"""
         self.assertIn('<div class="empty-title-row">', shell)
         self.assertIn('<div class="empty-title" id="empty-title">硕磐智能分析 Agent</div>', shell)
         self.assertIn('<span class="empty-version" id="product-version">ontology-v0.1.0</span>', shell)
-        self.assertIn("<title>智能分析 · 本体工作台</title>", static)
-        self.assertIn('aria-label="智能分析 React 工作台"', static)
-        self.assertIn("正在加载智能分析工作台…", static)
+        self.assertIn("<title>硕磐智能分析 Agent · 本体工作台</title>", static)
+        self.assertIn('aria-label="硕磐智能分析 Agent React 工作台"', static)
+        self.assertIn("正在加载硕磐智能分析 Agent 工作台…", static)
+        # The hero subtitle (agent welcome_message) carries the same product name.
+        self.assertIn("硕磐智能分析 Agent 已就绪", agent)
+        self.assertNotIn("硕磐 BI 智能分析助手", agent)
         # No legacy brand text remains in any first-paint surface.
         for src in (main, shell, static):
             self.assertNotIn("智析", src)
             self.assertNotIn("bi-analyst", src)
-        # The actual agent role configuration is untouched.
-        self.assertTrue(Path(".claude/agents/bi-analyst.md").exists())
+        # The agent role definition stays in place; only its welcome copy was
+        # rebranded.
+        self.assertIn("name: bi-analyst", agent)
 
     def test_version_contract_consistent(self) -> None:
         """Python, FastAPI, npm and UI versions agree on ontology-v0.1.0 and are

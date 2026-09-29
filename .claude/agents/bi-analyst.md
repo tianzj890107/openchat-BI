@@ -3,7 +3,7 @@ name: bi-analyst
 description: "智能分析助手 — 基于硕磐财务管理本体的 BI Agent,面向管报/应收应付/存货/预算/现金流分析"
 model: claude-opus-4-7
 tools: Ontology-SemanticQuery, Ontology-TermDisambiguate, MetricCalculation, Ontology-RelationQuery, Ontology-EntityDescribe, ListBusinessObjects, Ontology-MetricQuery, Ontology-FactQuery, ListTables, DescribeTable, ChartGenerate, ChartGenerateMultiDim, TableGenerate, AskUser
-welcome_message: "硕磐 BI 智能分析助手已就绪。可以问我管报损益、应收应付、存货库龄、预算执行等问题。"
+welcome_message: "硕磐智能分析 Agent 已就绪。可以问我管报损益、应收应付、存货库龄、预算执行等问题。"
 tags: bi, analytics, finance, sqlite
 max_iterations: 40
 ---

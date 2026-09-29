@@ -375,7 +375,7 @@ html body {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>智能分析 · 本体工作台</title>
+  <title>硕磐智能分析 Agent · 本体工作台</title>
 </head>
 <body data-mode="data" class="sidebar-collapsed">
   <div class="app">
