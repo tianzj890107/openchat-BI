@@ -3240,9 +3240,14 @@ def _hex_id_or_number(match: "re.Match[str]") -> str:
 _VOLATILE_TEXT_PATTERNS = (
     # absolute temp sandboxes: /.../analytics-eval-<rand>/0001-CASE/dataset/charts/...
     (re.compile(r"/[^\s\"']*?analytics-eval-[^\s\"']*"), "<sandbox>"),
-    # generated chart / report file names embed a wall-clock stamp
-    (re.compile(r"chart-\d{8}-\d{6}-"), "chart-<ts>-"),
-    (re.compile(r"report-\d{8}-\d{6}-"), "report-<ts>-"),
+    # Generated artifact names embed a wall-clock stamp.  The name is *relative*
+    # whenever the sandbox is also the working directory (Linux CI, where the
+    # absolute-sandbox rule above never fires), so the stamp itself must be
+    # masked for every artifact family the app writes: chart, report, multidim.
+    (re.compile(r"(chart|report|multidim)-\d{8}-\d{6}-"), r"\1-<ts>-"),
+    # ... and for a name a length cut truncated mid-stamp, which would otherwise
+    # re-introduce exactly the same drift.
+    (re.compile(r"(chart|report|multidim)-\d{4,8}-?\d{0,6}$"), r"\1-<ts>"),
     # ISO-8601 timestamps (with or without a timezone / fractional seconds)
     (re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[0-9.:+\-Z]*"), "<ts>"),
     # Random hex ids, including the 8-character session id used in observations.
