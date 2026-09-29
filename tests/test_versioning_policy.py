@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CURRENT_VERSION_TAG = "ontology-v0.1.0"
 
 
 class VersioningPolicyDocTests(unittest.TestCase):
@@ -164,16 +165,20 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:
-        """Only the ten ontology-v0.0.x tags may exist locally; no other tag."""
+        """No tag beyond the ten renamed ones and the authorized current tag.
+
+        ``CURRENT_VERSION_TAG`` is created on ``master`` only after the version
+        -cut Merge Request merges, so it is allowed but never required here.
+        """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
             capture_output=True, text=True, check=True,
         )
         tags = {t for t in proc.stdout.splitlines() if t.strip()}
-        self.assertEqual(
-            tags,
-            {f"ontology-v0.0.{number}" for number in range(1, 11)},
-        )
+        renamed = {f"ontology-v0.0.{number}" for number in range(1, 11)}
+        allowed = renamed | {CURRENT_VERSION_TAG}
+        self.assertLessEqual(tags, allowed, f"unexpected tags: {sorted(tags - allowed)}")
+        self.assertLessEqual(renamed, tags, f"missing renamed tags: {sorted(renamed - tags)}")
 
     def _authoritative_tool_names(self) -> set[str]:
         """Tool names from the agent tools declaration and registered schemas."""

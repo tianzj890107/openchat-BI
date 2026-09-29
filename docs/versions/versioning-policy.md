@@ -53,10 +53,13 @@ ontology-v0.1.0
 
 2026-09-29 用户明确指定把当前收口定为 **MINOR** `ontology-v0.1.0`（新增会话回收站、
 X360 流程定义集成、本体/MAL 与元数据契约迁移等用户可感知能力，且向下兼容），并同时授权
-从发布主线拉出 `release/ontology-v0.1.0` 分支。本次授权范围仅包含版本号与 release 分支：
+从发布主线拉出 `release/ontology-v0.1.0` 分支：
 
-- 未授权、未创建 tag；未授权、未创建 GitLab Release；未授权、未执行部署；
-- `master` 仍是唯一发布主线，`20260727` → `master` 仍按既有 Merge Request 流程评审合并。
+- 授权范围包含版本号与 release 分支；tag 与 GitLab Release 随后在同日由用户单独授权
+  （`ontology-v0.1.0`），tag 在收口 Merge Request 合入后在 `master` 的定版 commit 上创建；
+- 未授权、未执行部署：tag、Release、release 分支都不改变服务器上运行的服务；
+- `master` 仍是唯一发布主线，`feature/branch-model-and-v0.1.0-cut` → `master` 按临时分支
+  Merge Request 流程评审合并；`20260727` 已归档，不再作为交付分支。
 
 ## PATCH / MINOR / MAJOR 判定
 

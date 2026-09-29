@@ -8,8 +8,9 @@
 - 版本位次：**MINOR**（`ontology-v0.0.10` → `ontology-v0.1.0`），由用户在当前任务中明确指定
 - Release 分支：`release/ontology-v0.1.0`（已拉出；当前指向归档前拉出时的收口提交，内容与本版本一致）
 - 定版 commit：本版本收口提交（分支 `feature/branch-model-and-v0.1.0-cut`，经 Merge Request 合入 `master`）
-- Git Tag：未创建（tag 需用户单独授权，本次未授权）
-- GitLab Release：未创建（Release 需用户单独授权，本次未授权）
+- Git Tag：`ontology-v0.1.0`（用户 2026-09-29 授权；tag 在收口 Merge Request 合入后指向
+  `master` 上的定版 commit，创建前不写入任何 tag 记录）
+- GitLab Release：已授权，随同名 tag 创建（用户 2026-09-29 授权；不自动合并、不触发部署）
 
 ## 版本概述
 
@@ -75,10 +76,12 @@ Web 侧会话回收站与匿名读取面收敛、X360 流程定义集成，以�
 
 ## 已知限制
 
-- 本版本未创建 tag、未创建 GitLab Release、未部署：版本号与 release 分支不改变服务器上正在运行的服务；
+- 本版本未部署：版本号、release 分支、tag 与 Release 都不改变服务器上正在运行的服务，部署需
+  用户在未来任务中单独授权；
 - `master` 仍是唯一发布主线；本收口通过 feature 分支的 Merge Request 由 `tianzijing` code review 后合并；
-- 版本契约测试中的 tag 断言仍只允许既有 10 个 `ontology-v0.0.x` tag，因此本版本在创建 tag 前
-  不会新增 tag 记录。
+- 版本契约测试中的 tag 断言只允许既有 10 个 `ontology-v0.0.x` tag 加上本版本的
+  `ontology-v0.1.0`；因为 tag 在合入 `master` 之后才创建，该断言**允许但不要求**它存在，
+  所以创建 tag 前后 CI 都属于合格状态。
 
 ## 相关记录
 

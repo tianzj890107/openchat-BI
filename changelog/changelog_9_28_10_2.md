@@ -216,3 +216,21 @@
   未执行部署、未重启服务；`master` 仍是唯一发布主线，本收口通过
   `feature/branch-model-and-v0.1.0-cut` → `master` 的 Merge Request 评审合入；未删除、清空或
   覆盖任何历史会话与用户数据。
+
+### 2026-09-29 · ontology-v0.1.0 tag 契约放宽与定版前置（为收口合入后打 tag 做准备）
+
+- 背景：用户要求把 `feature/branch-model-and-v0.1.0-cut` 走 Merge Request 合入 `master`，
+  并在 `master` 上为 `ontology-v0.1.0` 创建 tag 与 GitLab Release（部署未授权）。
+  按仓库规则 tag 必须指向 `master` 上的定版 commit，而该 commit 只在收口 MR 合入后才存在，
+  因此本轮先解除"新 tag 会让 CI 变红"的前置阻塞。
+- 契约测试：`tests/test_versioning_policy.py` 与 `tests/test_ontology_version_rename_red.py`
+  的 tag 断言由"只允许既有 10 个 `ontology-v0.0.x` tag"的**精确相等**改为**上下界**——
+  必须包含这 10 个改名后的 tag，同时只允许再出现 `ontology-v0.1.0`（允许、不要求存在），
+  这样 tag 创建前后 CI 都是绿的，且仍然会拦住任何多余 tag。
+- 文档：`docs/versions/ontology-v0.1.0.md` 的 Git Tag / GitLab Release 字段与"已知限制"
+  改为记录用户已授权的 tag 与 Release（tag 指向合入后 `master` 的定版 commit、部署仍未授权）；
+  `docs/versions/versioning-policy.md` 的"版本推进记录"补记同日单独授权的 tag/Release，
+  并把已失效的 `20260727` → `master` 表述改为临时分支 → `master`。
+- 范围边界：本轮未创建 tag、未创建 GitLab Release、未部署、未重启服务，未删除或覆盖任何
+  历史版本文件与用户数据；tag 与 Release 在收口 MR 合入 `master` 后执行。
+- 验收（2026-09-29）：见本轮 commit 的测试结果。

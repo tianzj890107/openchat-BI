@@ -143,13 +143,23 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, agents)
 
-    def test_local_tags_are_the_ten_new_names(self) -> None:
+    def test_local_tags_are_the_renamed_names_plus_the_current_tag(self) -> None:
+        """The ten renamed tags, plus ``CURRENT`` once the user authorizes it.
+
+        ``ontology-v0.1.0`` was authorized on 2026-09-29 but is created on
+        ``master`` only *after* the version-cut Merge Request merges, so the
+        local list is allowed to contain it yet must never require it --
+        exact-set equality would fail every pipeline until the tag exists.
+        """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
             capture_output=True, text=True, check=True,
         )
         tags = {line for line in proc.stdout.splitlines() if line.strip()}
-        self.assertEqual(tags, set(NEW_TAGS))
+        renamed = set(NEW_TAGS)
+        allowed = renamed | {CURRENT}
+        self.assertLessEqual(tags, allowed, f"unexpected tags: {sorted(tags - allowed)}")
+        self.assertLessEqual(renamed, tags, f"missing renamed tags: {sorted(renamed - tags)}")
 
 
 if __name__ == "__main__":
