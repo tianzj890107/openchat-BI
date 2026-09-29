@@ -90,3 +90,31 @@
 - 验收（2026-09-29）：新契约测试 10 passed / 2 subtests passed；全量 `pytest -q tests`
   **1266 passed / 0 failed / 25 skipped / 1047 subtests passed**；`git diff --check` 通过。
 - 未部署、未重启服务、未创建 MR/tag/Release、未改动产品版本号（仍为 v0.1.9）、未删除任何历史会话或用户数据。
+
+### 2026-09-29 · 版本族切换到 ontology-v0.0.x：Spec 与红测（待执行）
+
+- 背景：用户要求把产品版本族从 `v0.1.x` 迁到本体产品线命名 `ontology-v0.0.x`，并"推倒重来"
+  重建历史版本。用户裁决：① `v0.1.0`–`v0.1.9` **全部按顺序映射**为
+  `ontology-v0.0.1`–`ontology-v0.0.10`；② 新 tag **沿用原 commit**，不改指向；③ **补齐**
+  10 个 tag + 10 个 GitLab Release + 10 篇版本文档（`v0.1.3`–`v0.1.7` 原本没有 Release/文档）；
+  ④ **全仓统一**为新命名；⑤ 版本文档命名 `docs/versions/ontology-v0.0.N.md`；
+  ⑥ 在 `AGENTS.md` 追加限定范围的一次性授权；⑦ 删除重建旧 tag / Release / 文档。
+- 新增 `docs/specs/ontology-version-rename-and-rebuild.md`：映射表（10 组旧名/commit/新名）、
+  命名规则与两处强制例外、9 处版本入口清单、文档与索引改动、tag/Release 重建顺序
+  （先建新后删旧）、一次性授权文本、红测清单、明确不做与回滚。
+- 新增 `tests/test_ontology_version_rename_red.py`（12 条，当前 15 failed 为预期红测）。
+- **两处无法统一的强制例外（已实测取证）**：
+  - `pyproject.toml` 的 `[project] version` 必须是合法 PEP 440：`packaging.version.Version("ontology-v0.0.10")`
+    抛 `InvalidVersion`，故保持 `0.0.10`；
+  - `frontend/package.json` / `frontend/package-lock.json` 的 `version` 必须是合法 semver：
+    `npm pkg fix` 报 `Invalid version: "ontology-v0.0.10"`，故同样保持 `0.0.10`。
+  桥接方案：`product_version()` 读 `pyproject.toml` 后补 `ontology-` 前缀对外返回显示名
+  `ontology-v0.0.10`；`_version_reached()` 先剥离 `ontology-v` 前缀再比较，剥离后不合法仍返回
+  `False`（否则 known_gap 超期门会静默失效）。
+- 范围边界：`changelog/**` 与 `docs/specs/**` 里已写下的旧版本号属于当时的记录，本次不改写。
+- 已确认的额外影响：`bi_agent/web/static/vendor/antd/workbench.js` 是构建产物且含 2 处 `v0.1.9`，
+  执行时必须重跑 `cd frontend && npm run build`；`.gitlab-ci.yml` 的 release gate 规则为
+  `if: $CI_COMMIT_TAG → when: always`，10 个 tag 会触发 10 次 tag pipeline。
+- 验收（本批只交付 Spec + 红测）：`pytest -q tests` → **15 failed / 1268 passed / 25 skipped**
+  （15 条全来自新增红测文件，其余门禁不受影响）；`git diff --check` 通过。
+- 未执行删除、未重建任何 tag/Release、未部署、未重启服务、未改动版本号、未删除历史会话或用户数据。
