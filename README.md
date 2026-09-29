@@ -1,10 +1,11 @@
 # eimosp-ontology-agentic-analytics · 智能分析
 
-eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`ontology-v0.0.10`。
+eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`ontology-v0.1.0`。
 
 系统以 Open Claude Agent Runtime 为执行底座，将业务本体、指标口径、事实数据查询、
 表格与图表生成、根因分析和决策行动组织为可追踪的分析流程，并通过 Web 工作台交付结果。
 
+- [ontology-v0.1.0 正式版本说明](docs/versions/ontology-v0.1.0.md)
 - [ontology-v0.0.10 正式版本说明](docs/versions/ontology-v0.0.10.md)
 - [ontology-v0.0.9 正式版本说明](docs/versions/ontology-v0.0.9.md)
 - [ontology-v0.0.8 正式版本说明](docs/versions/ontology-v0.0.8.md)
@@ -23,7 +24,7 @@ eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Age
 
 ## 应用信息（部署清单）
 
-- **Git 项目地址**：`git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，唯一发布主线 `master`；`main` 已退役并删除）
+- **Git 项目地址**：`git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（日常开发在 `feature/*` / `bugfix/*` 临时分支，唯一发布主线 `master`；`20260727` 已归档，`main` 已退役并删除）
 - **应用名**：`eimosp-ontology-agentic-analytics`（产品名：智能分析）
 - **Python 版本**：`3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`）
 - **容器内部端口**：`8080`（统一；Dockerfile `ENV APP_PORT=8080` + `EXPOSE 8080`，CMD 监听 `0.0.0.0:8080`）
@@ -215,7 +216,7 @@ Node 子进程执行。
 
 - commit、push、部署不自动触发版本升级；
 - commit、push、Git tag、GitLab Release 和部署是彼此独立的动作；
-- 普通修改默认验证、commit，并将同一 commit 推送到 GitLab 统一开发分支 `gitlab/20260727`；正式交付通过 Merge Request 合入唯一发布主线 `master`（reviewer `tianzijing`，code review 后由有权限人员合并）；
+- 普通修改默认验证、commit，并从 `master` 拉出 `feature/*` / `bugfix/*` 临时分支推送到 GitLab 同名分支；正式交付通过 Merge Request 合入唯一发布主线 `master`（reviewer `tianzijing`，code review 后由有权限人员合并）；线上紧急缺陷走 `hotfix/*`，从 `release/*` 拉出并向 `release/*` 与 `master` 各开一条 MR；
 - 版本号不按日期或部署次数机械增长，详见
   [语义化版本与正式发布规范](docs/versions/versioning-policy.md)；
 - push 不等于部署，部署必须由用户在当前任务中明确授权；

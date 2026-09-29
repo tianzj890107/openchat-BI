@@ -157,6 +157,89 @@
   `if: $CI_COMMIT_TAG → when: always`）；本批未部署、未重启服务、未做任何服务器写操作、
   未删除或迁移历史会话与用户数据。
 
+### 2026-09-29 · 日常开发切换到 feature/bugfix 分支模型，`20260727` 归档
+
+- 用户裁决：① 启用"临时分支开发 + MR 回流 `master`"的分支模型；② 同步改规则与文档；
+  ③ 版本收口的 commit 改到 `feature/*` 上重做（原因见下一条）。
+- 规则改动：
+  - `AGENTS.md`：提交/推送规则由"统一推 `gitlab/20260727`"改为"日常需求 `feature/*`、日常缺陷
+    `bugfix/*`（都从 `master` 拉出）、线上紧急缺陷 `hotfix/*`（从 `release/*` 拉出）"；推送成功
+    标准由 `HEAD == gitlab/20260727` 改为 `HEAD == gitlab/<branch>`；`20260727` 标记为已归档、
+    停止接收新提交，`scripts/push_gitlab.py` 只服务该归档分支；任务映射中的 MR 说明改为
+    临时分支 → `master`，并明确 `hotfix/*` 必须开两条 MR（`release/*` 与 `master`）。
+  - `docs/git-branch-workflow.md`："与当前仓库既有约定的关系"由"现阶段仍统一推 `20260727`"
+    改为模型已生效（含 hotfix 双 MR 与归档说明）。
+  - `docs/gitlab-push-workflow.md`：改写为临时分支推送工作流（远端映射、完成标准
+    `HEAD == gitlab/<branch>`、日常流程、安全规则、正式版本与 GitLab Release）。
+  - `docs/versions/versioning-policy.md`：发布流程第 11/12 步、GitLab 推送规则与 Release 规则
+    改为临时分支口径。
+  - 根 `README.md`、`DEPLOYMENT.md`：开发分支口径改为 `feature/*` / `bugfix/*`，注明
+    `20260727` 已归档、`main` 已退役并删除。
+- 契约测试同步：`tests/test_master_mainline_policy.py`（MR 映射、推送工作流、部署清单）、
+  `tests/test_repository_wide_master_consistency.py`（交付契约改为临时分支 → `master`）、
+  `tests/test_versioning_policy.py`（GitLab 推送契约）。
+- 归档分支现状：`gitlab/20260727` 停在含一个版本收口提交的 `b1cadd3`，不再接收新提交；
+  已 push 的历史按规则不重写（禁止 force push）。
+- 验收（2026-09-29）：相关契约测试 **60 passed / 13 subtests passed**。
+
+### 2026-09-29 · 版本收口升级到 ontology-v0.1.0（MINOR）并拉出 release/ontology-v0.1.0
+
+- 背景：用户明确指定把当前交付收口为 MINOR `ontology-v0.1.0`（相对 `ontology-v0.0.10`），
+  并授权从发布主线拉出 `release/ontology-v0.1.0`。本次授权范围**只有版本号与 release 分支**：
+  未授权 tag、未授权 GitLab Release、未授权部署。按同日生效的分支模型，本收口在
+  `feature/branch-model-and-v0.1.0-cut` 分支上重做（`gitlab/20260727` 上那份同名提交作废、
+  仅留归档）。
+- 版本入口统一（两处强制例外照旧保持裸版本号）：
+  - `pyproject.toml` `0.0.10 → 0.1.0`（PEP 440）、`frontend/package.json` 与
+    `frontend/package-lock.json` `0.0.10 → 0.1.0`（npm semver）；
+  - 显示与发布名统一为 `ontology-v0.1.0`：`bi_agent/__init__.py`、`bi_agent/web/app.py`
+    的 `APP_VERSION`、`open_claude/__init__.py`、`frontend/src/main.jsx` 的
+    `PRODUCT_VERSION`、`frontend/src/shell.html` 的 `#product-version`；
+  - `cd frontend && npm run build` 重建 `bi_agent/web/static/vendor/antd/workbench.js`
+    （产物内 2 处版本字符串更新；CSS 无差异）。
+- 版本文档与索引：新增 `docs/versions/ontology-v0.1.0.md`（概述 6 个交付主题、验证结论、
+  明确"未创建 tag / Release / 未部署"）；`docs/versions/README.md` 当前版本改为
+  `ontology-v0.1.0` 并把 `ontology-v0.0.10` 降为“正式版（历史版本）”；根 `README.md`
+  当前版本与版本说明链接；`docs/versions/versioning-policy.md` 当前正式版本、包管理清单
+  例外示例，并新增"版本推进记录（ontology-v0.0.10 → ontology-v0.1.0）"；`AGENTS.md`
+  当前版本口径。
+- 契约测试同步：`tests/test_versioning_policy.py`（当前版本、九处版本入口、版本文档白名单
+  增加 `ontology-v0.1.0.md`）、`tests/test_ontology_version_rename_red.py`
+  （`CURRENT`/`PACKAGING_VERSION`、前端产物断言、README 只禁止退役的 `v0.1.x` Release 链接）、
+  `tests/test_regressions.py` 品牌/版本一致性、`tests/test_analytics_eval_dataset.py`
+  的 `product_version()/_version_reached()` 断言。
+- 范围边界：`changelog/**` 与 `docs/specs/**` 里已写下的旧版本号属于当时的记录，本次不改写；
+  `docs/specs/ontology-version-rename-and-rebuild.md` 记录的映射表与 `v0.0.10` 仍是历史事实。
+- 验收（2026-09-29）：全量 `pytest -q tests` **1278 passed / 0 failed / 25 skipped /
+  1068 subtests passed**；`git diff --check` 通过；`docs/versions/` 目录内容与白名单一致。
+- 交付边界：本条目只改版本号、版本文档、索引与契约测试；未创建 tag、未创建 GitLab Release、
+  未执行部署、未重启服务；`master` 仍是唯一发布主线，本收口通过
+  `feature/branch-model-and-v0.1.0-cut` → `master` 的 Merge Request 评审合入；未删除、清空或
+  覆盖任何历史会话与用户数据。
+
+### 2026-09-29 · ontology-v0.1.0 tag 契约放宽与定版前置（为收口合入后打 tag 做准备）
+
+- 背景：用户要求把 `feature/branch-model-and-v0.1.0-cut` 走 Merge Request 合入 `master`，
+  并在 `master` 上为 `ontology-v0.1.0` 创建 tag 与 GitLab Release（部署未授权）。
+  按仓库规则 tag 必须指向 `master` 上的定版 commit，而该 commit 只在收口 MR 合入后才存在，
+  因此本轮先解除"新 tag 会让 CI 变红"的前置阻塞。
+- 契约测试：`tests/test_versioning_policy.py` 与 `tests/test_ontology_version_rename_red.py`
+  的 tag 断言由"只允许既有 10 个 `ontology-v0.0.x` tag"的**精确相等**改为**上下界**——
+  必须包含这 10 个改名后的 tag，同时只允许再出现 `ontology-v0.1.0`（允许、不要求存在），
+  这样 tag 创建前后 CI 都是绿的，且仍然会拦住任何多余 tag。
+- 文档：`docs/versions/ontology-v0.1.0.md` 的 Git Tag / GitLab Release 字段与"已知限制"
+  改为记录用户已授权的 tag 与 Release（tag 指向合入后 `master` 的定版 commit、部署仍未授权）；
+  `docs/versions/versioning-policy.md` 的"版本推进记录"补记同日单独授权的 tag/Release，
+  并把已失效的 `20260727` → `master` 表述改为临时分支 → `master`。
+- 范围边界：本轮未创建 tag、未创建 GitLab Release、未部署、未重启服务，未删除或覆盖任何
+  历史版本文件与用户数据；tag 与 Release 在收口 MR 合入 `master` 后执行。
+- 合入前置：创建收口 MR 前先把 `master` 合并进本分支（`master` 已含同日合入的稳定性门禁
+  修复 `1427319`），唯一冲突是本条 changelog——两条 09-29 记录都追加在文件末尾，按"保留双方
+  条目"解决，未丢弃任何一方的记录。
+- 验收（2026-09-29）：合并后全量 `pytest -q tests` **1282 passed / 0 failed / 25 skipped /
+  1070 subtests passed**；tag 创建前 44 passed / 26 subtests、临时打上 `ontology-v0.1.0`
+  后 31 passed / 19 subtests 均通过（临时 tag 已删除，本地回到 10 个 tag）；`git diff --check` 通过。
+
 ### 2026-09-29 · 修复 release 稳定性门禁误报：多维持图产物名时间戳泄漏
 
 - 现象：`master`（`9e1a029`）的 CI `unit-tests` 失败，两条用例报同一案例不稳定：

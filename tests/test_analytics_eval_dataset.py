@@ -857,11 +857,11 @@ class GovernanceGateTest(unittest.TestCase):
     def test_a_known_gap_past_its_target_version_is_overdue(self):
         version = self.runner.product_version()
         reached = self.runner._version_reached
-        self.assertEqual(version, "ontology-v0.0.10")
+        self.assertEqual(version, "ontology-v0.1.0")
         self.assertTrue(reached(version, "ontology-v0.0.1"))
-        self.assertTrue(reached(version, "v0.0.10"))
-        self.assertTrue(reached(version, "0.0.10"))
-        self.assertFalse(reached(version, "ontology-v0.0.11"))
+        self.assertTrue(reached(version, "v0.1.0"))
+        self.assertTrue(reached(version, "0.1.0"))
+        self.assertFalse(reached(version, "ontology-v0.2.0"))
         self.assertFalse(reached(version, "v99.0.0"))
         self.assertFalse(reached(version, ""))
 

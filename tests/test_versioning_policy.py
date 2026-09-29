@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CURRENT_VERSION_TAG = "ontology-v0.1.0"
 
 
 class VersioningPolicyDocTests(unittest.TestCase):
@@ -63,7 +64,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
     def test_versions_readme_links_policy_and_tracks_the_current_version(self) -> None:
         readme = (ROOT / "docs/versions/README.md").read_text(encoding="utf-8")
         self.assertIn("./versioning-policy.md", readme)
-        self.assertIn("当前版本：`ontology-v0.0.10`", readme)
+        self.assertIn("当前版本：`ontology-v0.1.0`", readme)
         self.assertIn("不按日期机械递增", readme)
 
     def test_agents_md_links_policy_and_mandates_authorization(self) -> None:
@@ -80,28 +81,28 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("versioning-policy.md", doc)
         self.assertIn("push 不等于部署", doc)
 
-    def test_product_version_is_ontology_v0_0_10(self) -> None:
-        """pyproject stays PEP 440; every display surface speaks ontology-v0.0.10."""
-        self.assertIn('version = "0.0.10"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertIn('__version__ = "ontology-v0.0.10"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
+    def test_product_version_is_ontology_v0_1_0(self) -> None:
+        """pyproject stays PEP 440; every display surface speaks ontology-v0.1.0."""
+        self.assertIn('version = "0.1.0"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertIn('__version__ = "ontology-v0.1.0"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
         app = (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('APP_VERSION = "ontology-v0.0.10"', app)
+        self.assertIn('APP_VERSION = "ontology-v0.1.0"', app)
         self.assertIn(
             'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, root_path=APP_ROOT_PATH)',
             app,
         )
         pkg = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
-        self.assertEqual(pkg["version"], "0.0.10")
+        self.assertEqual(pkg["version"], "0.1.0")
         lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
-        self.assertEqual(lock["packages"][""]["version"], "0.0.10")
-        self.assertEqual(lock["version"], "0.0.10")
+        self.assertEqual(lock["packages"][""]["version"], "0.1.0")
+        self.assertEqual(lock["version"], "0.1.0")
         main = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_VERSION = "ontology-v0.0.10";', main)
-        self.assertIn('__version__ = "ontology-v0.0.10"', (ROOT / "open_claude/__init__.py").read_text(encoding="utf-8"))
+        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.0";', main)
+        self.assertIn('__version__ = "ontology-v0.1.0"', (ROOT / "open_claude/__init__.py").read_text(encoding="utf-8"))
 
     def test_no_unauthorized_version_documents(self) -> None:
         versions_dir = ROOT / "docs/versions"
-        allowed = {"README.md", "versioning-policy.md"} | {
+        allowed = {"README.md", "versioning-policy.md", "ontology-v0.1.0.md"} | {
             f"ontology-v0.0.{number}.md" for number in range(1, 11)
         }
         names = {p.name for p in versions_dir.iterdir() if p.is_file()}
@@ -115,18 +116,23 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("禁止覆盖已有 Release", agents)
 
     def test_gitlab_unified_push_contract(self) -> None:
-        """Daily commits push only gitlab/20260727; main merges need review."""
+        """Daily commits push their temporary branch; main merges need review."""
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn("gitlab/20260727", agents)
         self.assertIn("python scripts/push_gitlab.py", agents)
+        self.assertIn("feature/*", agents)
+        self.assertIn("bugfix/*", agents)
+        self.assertIn("hotfix/*", agents)
         self.assertIn("tianzijing", agents)
         self.assertIn("不得直接 push 到 `main`", agents)
         doc = (ROOT / "docs/gitlab-push-workflow.md").read_text(encoding="utf-8")
-        self.assertIn("HEAD == gitlab/20260727", doc)
+        self.assertIn("HEAD == gitlab/<branch>", doc)
         self.assertIn("tianzijing", doc)
         self.assertIn("不执行 main 合并", doc)
         policy = (ROOT / "docs/versions/versioning-policy.md").read_text(encoding="utf-8")
-        self.assertIn("gitlab/20260727", policy)
+        self.assertIn("20260727", policy)
+        self.assertIn("feature/*", policy)
+        self.assertIn("bugfix/*", policy)
         script = (ROOT / "scripts/push_gitlab.py").read_text(encoding="utf-8")
         self.assertIn('GITLAB_OWNER_REPO = "ai-team/eimosp-ontology-agentic-analytics"', script)
         self.assertIn('DEFAULT_TARGET_BRANCH = "20260727"', script)
@@ -159,16 +165,20 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:
-        """Only the ten ontology-v0.0.x tags may exist locally; no other tag."""
+        """No tag beyond the ten renamed ones and the authorized current tag.
+
+        ``CURRENT_VERSION_TAG`` is created on ``master`` only after the version
+        -cut Merge Request merges, so it is allowed but never required here.
+        """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
             capture_output=True, text=True, check=True,
         )
         tags = {t for t in proc.stdout.splitlines() if t.strip()}
-        self.assertEqual(
-            tags,
-            {f"ontology-v0.0.{number}" for number in range(1, 11)},
-        )
+        renamed = {f"ontology-v0.0.{number}" for number in range(1, 11)}
+        allowed = renamed | {CURRENT_VERSION_TAG}
+        self.assertLessEqual(tags, allowed, f"unexpected tags: {sorted(tags - allowed)}")
+        self.assertLessEqual(renamed, tags, f"missing renamed tags: {sorted(renamed - tags)}")
 
     def _authoritative_tool_names(self) -> set[str]:
         """Tool names from the agent tools declaration and registered schemas."""

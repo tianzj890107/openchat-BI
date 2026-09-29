@@ -24,19 +24,28 @@ class MasterMainlinePolicyRedTests(unittest.TestCase):
 
     def test_agents_mr_mapping_targets_master_with_fixed_reviewers(self):
         text = read("AGENTS.md")
+        # Temporary branches are the MR source; the archived 20260727 mapping
+        # stays only as an audit record.
         self.assertRegex(
             text,
-            r"source_branch\s*=\s*20260727.*target_branch\s*=\s*master",
+            r"source_branch[^\n]{0,120}target_branch\s*=\s*master",
         )
+        for prefix in ("`feature/*`", "`bugfix/*`", "`hotfix/*`"):
+            self.assertIn(prefix, text)
+        self.assertIn("20260727", text)
         self.assertIn("tianzijing", text)
         self.assertIn("id 166", text)
         self.assertIn("zhangzhen", text)
         self.assertIn("id 245", text)
 
-    def test_push_workflow_keeps_dev_push_but_targets_master_for_mr(self):
+    def test_push_workflow_pushes_temporary_branches_and_targets_master(self):
         text = read("docs/gitlab-push-workflow.md")
-        self.assertIn("HEAD == gitlab/20260727", text)
-        self.assertIn("`20260727` → `master`", text)
+        self.assertIn("HEAD == gitlab/<branch>", text)
+        for prefix in ("`feature/*`", "`bugfix/*`", "`hotfix/*`"):
+            self.assertIn(prefix, text)
+        self.assertIn("20260727", text)
+        self.assertIn("已归档", text)
+        self.assertIn("不得直接 push 到", text)
         self.assertIn("`master` 是唯一发布主线", text)
         self.assertIn("`main` 已退役并删除", text)
         self.assertNotIn("merge 到 `main`", text)
@@ -50,7 +59,8 @@ class MasterMainlinePolicyRedTests(unittest.TestCase):
 
     def test_deployment_inventory_names_master_and_devops_source(self):
         text = read("DEPLOYMENT.md")
-        self.assertIn("开发分支 `20260727`，唯一发布主线 `master`", text)
+        self.assertIn("日常开发分支 `feature/*` / `bugfix/*`，唯一发布主线 `master`", text)
+        self.assertIn("`20260727` 已归档", text)
         self.assertIn("`main` 已退役并删除", text)
         self.assertIn("DevOps 从 `master`", text)
         self.assertIn("push 不等于部署", text)

@@ -3,8 +3,10 @@
 Contract source: ``docs/specs/ontology-version-rename-and-rebuild.md``.
 The whole family ``v0.1.0``-``v0.1.9`` is mapped to ``ontology-v0.0.1``-
 ``ontology-v0.0.10`` on the same commits, and the tag/Release lists are
-rebuilt.  These tests are intentionally red until that work is executed;
-they never write to Git, GitLab or user data.
+rebuilt.  The current product version then advanced to the MINOR
+``ontology-v0.1.0`` on 2026-09-29, so ``CURRENT`` tracks that name while
+``NEW_TAGS`` stays the historical rename map.  These tests never write to
+Git, GitLab or user data.
 """
 
 from __future__ import annotations
@@ -20,8 +22,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = "docs/specs/ontology-version-rename-and-rebuild.md"
-CURRENT = "ontology-v0.0.10"
-PACKAGING_VERSION = "0.0.10"
+CURRENT = "ontology-v0.1.0"
+PACKAGING_VERSION = "0.1.0"
 
 # (old tag, unchanged commit, new tag)
 MAPPING = (
@@ -108,8 +110,8 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
         reached = _load_runner()._version_reached
         self.assertTrue(reached(CURRENT, "ontology-v0.0.1"))
         self.assertTrue(reached(CURRENT, CURRENT))
-        self.assertFalse(reached(CURRENT, "ontology-v0.0.11"))
-        self.assertTrue(reached("0.0.10", "0.0.9"))
+        self.assertFalse(reached(CURRENT, "ontology-v0.2.0"))
+        self.assertTrue(reached("0.1.0", "0.0.10"))
         self.assertFalse(reached(CURRENT, ""))
         self.assertFalse(reached(CURRENT, "not-a-version"))
 
@@ -122,7 +124,7 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
     def test_version_documents_are_renamed_and_complete(self) -> None:
         versions_dir = ROOT / "docs" / "versions"
         names = {path.name for path in versions_dir.iterdir() if path.is_file()}
-        expected = {"README.md", "versioning-policy.md"} | {
+        expected = {"README.md", "versioning-policy.md", f"{CURRENT}.md"} | {
             f"{tag}.md" for tag in NEW_TAGS
         }
         self.assertEqual(names, expected)
@@ -130,7 +132,8 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
     def test_root_readme_tracks_the_new_version(self) -> None:
         readme = read("README.md")
         self.assertIn(CURRENT, readme)
-        self.assertNotIn("v0.1.", readme)
+        # The retired ``v0.1.x`` tag family must not reappear as a link.
+        self.assertNotIn("releases/v0.1.", readme)
         self.assertEqual(readme.count("/-/releases/ontology-v0.0."), 10)
 
     def test_agents_md_records_the_one_time_authorization(self) -> None:
@@ -140,13 +143,23 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, agents)
 
-    def test_local_tags_are_the_ten_new_names(self) -> None:
+    def test_local_tags_are_the_renamed_names_plus_the_current_tag(self) -> None:
+        """The ten renamed tags, plus ``CURRENT`` once the user authorizes it.
+
+        ``ontology-v0.1.0`` was authorized on 2026-09-29 but is created on
+        ``master`` only *after* the version-cut Merge Request merges, so the
+        local list is allowed to contain it yet must never require it --
+        exact-set equality would fail every pipeline until the tag exists.
+        """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
             capture_output=True, text=True, check=True,
         )
         tags = {line for line in proc.stdout.splitlines() if line.strip()}
-        self.assertEqual(tags, set(NEW_TAGS))
+        renamed = set(NEW_TAGS)
+        allowed = renamed | {CURRENT}
+        self.assertLessEqual(tags, allowed, f"unexpected tags: {sorted(tags - allowed)}")
+        self.assertLessEqual(renamed, tags, f"missing renamed tags: {sorted(renamed - tags)}")
 
 
 if __name__ == "__main__":

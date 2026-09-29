@@ -1,7 +1,7 @@
 # eimosp-ontology-agentic-analytics 部署说明
 
 > **仅供人工运维参考**：本文档描述的是人工部署方法，不构成 Agent 自动部署授权。
-> Agent 默认交付方式是 commit + push（统一开发分支 `gitlab/20260727`），push 不等于部署；
+> Agent 默认交付方式是 commit + push（日常开发在 `feature/*` / `bugfix/*` 临时分支，推送到同名 GitLab 分支），push 不等于部署；
 > 默认禁止部署、服务器同步、服务重启和服务器配置修改；只有用户在当前任务中明确
 > 要求具体部署目标和范围时，才允许按本文档执行部署。
 
@@ -11,7 +11,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| Git 项目地址 | `git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（开发分支 `20260727`，唯一发布主线 `master`；`main` 已退役并删除，不得重新创建） |
+| Git 项目地址 | `git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`（日常开发分支 `feature/*` / `bugfix/*`，唯一发布主线 `master`；`20260727` 已归档、停止接收新提交，`main` 已退役并删除，不得重新创建） |
 | 应用名 | `eimosp-ontology-agentic-analytics`（产品名：智能分析；systemd 服务名 `eimosp-ontology-agentic-analytics.service`） |
 | Python 版本 | `3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`） |
 | 统一容器内部端口 | `8080`（Dockerfile `ENV APP_PORT=8080` + `EXPOSE 8080`，CMD 监听 `0.0.0.0:8080`）；推荐宿主机映射 `8765:8080`；非容器本地默认端口 `8765`（`--port` 仅用于本地/测试覆盖） |
@@ -26,7 +26,7 @@
 > 分支与构建口径：DevOps 从 `master` 创建迭代分支或构建正式镜像；仓库里的
 > `.gitlab-ci.yml` 只做验证（单测 + 黄金集），是 CI 不是 CD，push 不等于部署，
 > 本文档不构成自动部署授权，也不代表本任务已经部署。普通开发仍只推统一开发分支
-> `gitlab/20260727`，正式交付通过 Merge Request 合入唯一发布主线 `master`。
+> `feature/*` / `bugfix/*` 同名分支，正式交付通过 Merge Request 合入唯一发布主线 `master`（`hotfix/*` 双 MR 回到 `release/*` 与 `master`）。
 
 > 子路径部署口径：网关把 `APP_ROOT_PATH`（生产示例 `/api/ontology-agentic-analytics`）
 > 前缀流量转发给应用，并在 ASGI 层按 `root_path` 语义剥离前缀，应用内部路由保持

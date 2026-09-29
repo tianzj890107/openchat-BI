@@ -107,12 +107,16 @@ class RepositoryWideMasterConsistencyTests(unittest.TestCase):
         )
         self.assertIn('RETIRED_BRANCH = "main"', legacy_test)
 
-    def test_delivery_contract_is_20260727_to_master(self) -> None:
+    def test_delivery_contract_pushes_temporary_branches_to_master(self) -> None:
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         workflow = (ROOT / "docs/gitlab-push-workflow.md").read_text(encoding="utf-8")
-        for text in (agents, workflow):
-            self.assertRegex(text, r"20260727[\s\S]{0,40}(?:→|target_branch=)\s*`?master")
-            self.assertIn("不得直接 push 到 `master`", text)
+        for relative, text in (("AGENTS.md", agents), ("docs/gitlab-push-workflow.md", workflow)):
+            with self.subTest(path=relative):
+                self.assertIn("source_branch=", text)
+                self.assertIn("target_branch=master", text)
+                self.assertIn("feature/*", text)
+                self.assertIn("bugfix/*", text)
+                self.assertIn("不得直接 push 到 `master`", text)
 
 
 if __name__ == "__main__":

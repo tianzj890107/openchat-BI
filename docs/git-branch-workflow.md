@@ -85,11 +85,15 @@
 
 ## 与当前仓库既有约定的关系
 
-- 现阶段日常开发仍统一推送 `gitlab/20260727`（统一协作开发分支），由它按 `20260727` →
-  `master` 的 Merge Request 合入 `master`；`master` 是唯一发布主线，merge 到 `master`
-  必须由 `tianzijing` code review 后单独发起 MR；
-- 本章描述的分支模型是本仓库的长期目标模型：`feature/*`、`bugfix/*`、`hotfix/*` 按需从
-  `master` / `release/*` 拉出，最终仍以 MR 回流；
+- 本模型自 2026-09-29 起生效：日常需求在 `feature/*`、日常缺陷在 `bugfix/*` 上开发，
+  都从 `master` 拉出，通过 `<branch>` → `master` 的 Merge Request 合入 `master`；
+  `master` 是唯一发布主线，merge 到 `master` 必须由 `tianzijing` code review 后单独
+  发起 MR；
+- 线上紧急缺陷在 `hotfix/*` 上修复，从 `release/*` 拉出，必须先向 `release/*` 提 MR，
+  再向 `master` 提 MR（双 PR 缺一不可）；
+- `20260727` 已归档：只保留历史，停止接收新提交；它的历史映射
+  `source_branch=20260727` → `target_branch=master` 仅作审计记录，`scripts/push_gitlab.py`
+  也只服务这条归档分支；
 - 无论使用哪种分支，合并回长期分支的动作都必须经过 PR / MR，不得直接推送。
 
 ## 版本号与分支的关系
