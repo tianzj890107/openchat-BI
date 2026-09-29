@@ -1,10 +1,11 @@
 # eimosp-ontology-agentic-analytics · 智能分析
 
-eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`ontology-v0.0.10`。
+eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`ontology-v0.1.0`。
 
 系统以 Open Claude Agent Runtime 为执行底座，将业务本体、指标口径、事实数据查询、
 表格与图表生成、根因分析和决策行动组织为可追踪的分析流程，并通过 Web 工作台交付结果。
 
+- [ontology-v0.1.0 正式版本说明](docs/versions/ontology-v0.1.0.md)
 - [ontology-v0.0.10 正式版本说明](docs/versions/ontology-v0.0.10.md)
 - [ontology-v0.0.9 正式版本说明](docs/versions/ontology-v0.0.9.md)
 - [ontology-v0.0.8 正式版本说明](docs/versions/ontology-v0.0.8.md)

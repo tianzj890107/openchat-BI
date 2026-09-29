@@ -181,3 +181,38 @@
 - 归档分支现状：`gitlab/20260727` 停在含一个版本收口提交的 `b1cadd3`，不再接收新提交；
   已 push 的历史按规则不重写（禁止 force push）。
 - 验收（2026-09-29）：相关契约测试 **60 passed / 13 subtests passed**。
+
+### 2026-09-29 · 版本收口升级到 ontology-v0.1.0（MINOR）并拉出 release/ontology-v0.1.0
+
+- 背景：用户明确指定把当前交付收口为 MINOR `ontology-v0.1.0`（相对 `ontology-v0.0.10`），
+  并授权从发布主线拉出 `release/ontology-v0.1.0`。本次授权范围**只有版本号与 release 分支**：
+  未授权 tag、未授权 GitLab Release、未授权部署。按同日生效的分支模型，本收口在
+  `feature/branch-model-and-v0.1.0-cut` 分支上重做（`gitlab/20260727` 上那份同名提交作废、
+  仅留归档）。
+- 版本入口统一（两处强制例外照旧保持裸版本号）：
+  - `pyproject.toml` `0.0.10 → 0.1.0`（PEP 440）、`frontend/package.json` 与
+    `frontend/package-lock.json` `0.0.10 → 0.1.0`（npm semver）；
+  - 显示与发布名统一为 `ontology-v0.1.0`：`bi_agent/__init__.py`、`bi_agent/web/app.py`
+    的 `APP_VERSION`、`open_claude/__init__.py`、`frontend/src/main.jsx` 的
+    `PRODUCT_VERSION`、`frontend/src/shell.html` 的 `#product-version`；
+  - `cd frontend && npm run build` 重建 `bi_agent/web/static/vendor/antd/workbench.js`
+    （产物内 2 处版本字符串更新；CSS 无差异）。
+- 版本文档与索引：新增 `docs/versions/ontology-v0.1.0.md`（概述 6 个交付主题、验证结论、
+  明确"未创建 tag / Release / 未部署"）；`docs/versions/README.md` 当前版本改为
+  `ontology-v0.1.0` 并把 `ontology-v0.0.10` 降为“正式版（历史版本）”；根 `README.md`
+  当前版本与版本说明链接；`docs/versions/versioning-policy.md` 当前正式版本、包管理清单
+  例外示例，并新增"版本推进记录（ontology-v0.0.10 → ontology-v0.1.0）"；`AGENTS.md`
+  当前版本口径。
+- 契约测试同步：`tests/test_versioning_policy.py`（当前版本、九处版本入口、版本文档白名单
+  增加 `ontology-v0.1.0.md`）、`tests/test_ontology_version_rename_red.py`
+  （`CURRENT`/`PACKAGING_VERSION`、前端产物断言、README 只禁止退役的 `v0.1.x` Release 链接）、
+  `tests/test_regressions.py` 品牌/版本一致性、`tests/test_analytics_eval_dataset.py`
+  的 `product_version()/_version_reached()` 断言。
+- 范围边界：`changelog/**` 与 `docs/specs/**` 里已写下的旧版本号属于当时的记录，本次不改写；
+  `docs/specs/ontology-version-rename-and-rebuild.md` 记录的映射表与 `v0.0.10` 仍是历史事实。
+- 验收（2026-09-29）：全量 `pytest -q tests` **1278 passed / 0 failed / 25 skipped /
+  1068 subtests passed**；`git diff --check` 通过；`docs/versions/` 目录内容与白名单一致。
+- 交付边界：本条目只改版本号、版本文档、索引与契约测试；未创建 tag、未创建 GitLab Release、
+  未执行部署、未重启服务；`master` 仍是唯一发布主线，本收口通过
+  `feature/branch-model-and-v0.1.0-cut` → `master` 的 Merge Request 评审合入；未删除、清空或
+  覆盖任何历史会话与用户数据。

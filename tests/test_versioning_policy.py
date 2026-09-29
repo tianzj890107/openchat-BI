@@ -63,7 +63,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
     def test_versions_readme_links_policy_and_tracks_the_current_version(self) -> None:
         readme = (ROOT / "docs/versions/README.md").read_text(encoding="utf-8")
         self.assertIn("./versioning-policy.md", readme)
-        self.assertIn("当前版本：`ontology-v0.0.10`", readme)
+        self.assertIn("当前版本：`ontology-v0.1.0`", readme)
         self.assertIn("不按日期机械递增", readme)
 
     def test_agents_md_links_policy_and_mandates_authorization(self) -> None:
@@ -80,28 +80,28 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("versioning-policy.md", doc)
         self.assertIn("push 不等于部署", doc)
 
-    def test_product_version_is_ontology_v0_0_10(self) -> None:
-        """pyproject stays PEP 440; every display surface speaks ontology-v0.0.10."""
-        self.assertIn('version = "0.0.10"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertIn('__version__ = "ontology-v0.0.10"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
+    def test_product_version_is_ontology_v0_1_0(self) -> None:
+        """pyproject stays PEP 440; every display surface speaks ontology-v0.1.0."""
+        self.assertIn('version = "0.1.0"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertIn('__version__ = "ontology-v0.1.0"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
         app = (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('APP_VERSION = "ontology-v0.0.10"', app)
+        self.assertIn('APP_VERSION = "ontology-v0.1.0"', app)
         self.assertIn(
             'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, root_path=APP_ROOT_PATH)',
             app,
         )
         pkg = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
-        self.assertEqual(pkg["version"], "0.0.10")
+        self.assertEqual(pkg["version"], "0.1.0")
         lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
-        self.assertEqual(lock["packages"][""]["version"], "0.0.10")
-        self.assertEqual(lock["version"], "0.0.10")
+        self.assertEqual(lock["packages"][""]["version"], "0.1.0")
+        self.assertEqual(lock["version"], "0.1.0")
         main = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_VERSION = "ontology-v0.0.10";', main)
-        self.assertIn('__version__ = "ontology-v0.0.10"', (ROOT / "open_claude/__init__.py").read_text(encoding="utf-8"))
+        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.0";', main)
+        self.assertIn('__version__ = "ontology-v0.1.0"', (ROOT / "open_claude/__init__.py").read_text(encoding="utf-8"))
 
     def test_no_unauthorized_version_documents(self) -> None:
         versions_dir = ROOT / "docs/versions"
-        allowed = {"README.md", "versioning-policy.md"} | {
+        allowed = {"README.md", "versioning-policy.md", "ontology-v0.1.0.md"} | {
             f"ontology-v0.0.{number}.md" for number in range(1, 11)
         }
         names = {p.name for p in versions_dir.iterdir() if p.is_file()}

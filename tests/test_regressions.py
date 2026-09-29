@@ -3988,20 +3988,20 @@ console.log(JSON.stringify(out));"""
 
 
     def test_product_branding_and_version_display(self) -> None:
-        """The top-left brand is 智能分析 with the ontology-v0.0.10 tag everywhere;
+        """The top-left brand is 智能分析 with the ontology-v0.1.0 tag everywhere;
         智析 and the bi-analyst pseudo-version are gone from user-visible
         surfaces (title, skeleton, shell brand and React sidebar)."""
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
         shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
         static = Path("bi_agent/web/static/index.html").read_text(encoding="utf-8")
         self.assertIn('const PRODUCT_NAME = "智能分析";', main)
-        self.assertIn('const PRODUCT_VERSION = "ontology-v0.0.10";', main)
+        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.0";', main)
         self.assertIn("PRODUCT_NAME", main)
         self.assertIn("PRODUCT_VERSION", main)
         self.assertIn('className="antd-product-version"', main)
         self.assertIn("<title>智能分析 · 本体工作台</title>", shell)
         self.assertIn('<span class="brand-name">智能分析</span>', shell)
-        self.assertIn('<span class="brand-version" id="product-version">ontology-v0.0.10</span>', shell)
+        self.assertIn('<span class="brand-version" id="product-version">ontology-v0.1.0</span>', shell)
         self.assertIn("<title>智能分析 · 本体工作台</title>", static)
         self.assertIn('aria-label="智能分析 React 工作台"', static)
         self.assertIn("正在加载智能分析工作台…", static)
@@ -4013,28 +4013,28 @@ console.log(JSON.stringify(out));"""
         self.assertTrue(Path(".claude/agents/bi-analyst.md").exists())
 
     def test_version_contract_consistent(self) -> None:
-        """Python, FastAPI, npm and UI versions agree on ontology-v0.0.10 and are
+        """Python, FastAPI, npm and UI versions agree on ontology-v0.1.0 and are
         independent of knowledge/schema/cache versions."""
         root = Path(__file__).resolve().parents[1]
         pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('version = "0.0.10"', pyproject)
+        self.assertIn('version = "0.1.0"', pyproject)
         init = (root / "bi_agent/__init__.py").read_text(encoding="utf-8")
-        self.assertIn('__version__ = "ontology-v0.0.10"', init)
+        self.assertIn('__version__ = "ontology-v0.1.0"', init)
         app = (root / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('APP_VERSION = "ontology-v0.0.10"', app)
+        self.assertIn('APP_VERSION = "ontology-v0.1.0"', app)
         self.assertIn(
             'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, '
             'root_path=APP_ROOT_PATH)',
             app,
         )
         pkg = (root / "frontend/package.json").read_text(encoding="utf-8")
-        self.assertIn('"version": "0.0.10"', pkg)
+        self.assertIn('"version": "0.1.0"', pkg)
         lock = (root / "frontend/package-lock.json").read_text(encoding="utf-8")
         import json as _json
         lock_root = _json.loads(lock)["packages"][""]["version"]
-        self.assertEqual(lock_root, "0.0.10")
+        self.assertEqual(lock_root, "0.1.0")
         main = (root / "frontend/src/main.jsx").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_VERSION = "ontology-v0.0.10";', main)
+        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.0";', main)
         # Product version is decoupled from the numeric conversation schema
         # version and from vendor cache-bust query params.
         conv = (root / "bi_agent/web/conversations.py").read_text(encoding="utf-8")
