@@ -156,3 +156,28 @@
 - 10 个新 tag 会各自触发一次 tag pipeline 的 release gate（`.gitlab-ci.yml` 规则
   `if: $CI_COMMIT_TAG → when: always`）；本批未部署、未重启服务、未做任何服务器写操作、
   未删除或迁移历史会话与用户数据。
+
+### 2026-09-29 · 日常开发切换到 feature/bugfix 分支模型，`20260727` 归档
+
+- 用户裁决：① 启用"临时分支开发 + MR 回流 `master`"的分支模型；② 同步改规则与文档；
+  ③ 版本收口的 commit 改到 `feature/*` 上重做（原因见下一条）。
+- 规则改动：
+  - `AGENTS.md`：提交/推送规则由"统一推 `gitlab/20260727`"改为"日常需求 `feature/*`、日常缺陷
+    `bugfix/*`（都从 `master` 拉出）、线上紧急缺陷 `hotfix/*`（从 `release/*` 拉出）"；推送成功
+    标准由 `HEAD == gitlab/20260727` 改为 `HEAD == gitlab/<branch>`；`20260727` 标记为已归档、
+    停止接收新提交，`scripts/push_gitlab.py` 只服务该归档分支；任务映射中的 MR 说明改为
+    临时分支 → `master`，并明确 `hotfix/*` 必须开两条 MR（`release/*` 与 `master`）。
+  - `docs/git-branch-workflow.md`："与当前仓库既有约定的关系"由"现阶段仍统一推 `20260727`"
+    改为模型已生效（含 hotfix 双 MR 与归档说明）。
+  - `docs/gitlab-push-workflow.md`：改写为临时分支推送工作流（远端映射、完成标准
+    `HEAD == gitlab/<branch>`、日常流程、安全规则、正式版本与 GitLab Release）。
+  - `docs/versions/versioning-policy.md`：发布流程第 11/12 步、GitLab 推送规则与 Release 规则
+    改为临时分支口径。
+  - 根 `README.md`、`DEPLOYMENT.md`：开发分支口径改为 `feature/*` / `bugfix/*`，注明
+    `20260727` 已归档、`main` 已退役并删除。
+- 契约测试同步：`tests/test_master_mainline_policy.py`（MR 映射、推送工作流、部署清单）、
+  `tests/test_repository_wide_master_consistency.py`（交付契约改为临时分支 → `master`）、
+  `tests/test_versioning_policy.py`（GitLab 推送契约）。
+- 归档分支现状：`gitlab/20260727` 停在含一个版本收口提交的 `b1cadd3`，不再接收新提交；
+  已 push 的历史按规则不重写（禁止 force push）。
+- 验收（2026-09-29）：相关契约测试 **60 passed / 13 subtests passed**。

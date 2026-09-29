@@ -115,18 +115,23 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("禁止覆盖已有 Release", agents)
 
     def test_gitlab_unified_push_contract(self) -> None:
-        """Daily commits push only gitlab/20260727; main merges need review."""
+        """Daily commits push their temporary branch; main merges need review."""
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn("gitlab/20260727", agents)
         self.assertIn("python scripts/push_gitlab.py", agents)
+        self.assertIn("feature/*", agents)
+        self.assertIn("bugfix/*", agents)
+        self.assertIn("hotfix/*", agents)
         self.assertIn("tianzijing", agents)
         self.assertIn("不得直接 push 到 `main`", agents)
         doc = (ROOT / "docs/gitlab-push-workflow.md").read_text(encoding="utf-8")
-        self.assertIn("HEAD == gitlab/20260727", doc)
+        self.assertIn("HEAD == gitlab/<branch>", doc)
         self.assertIn("tianzijing", doc)
         self.assertIn("不执行 main 合并", doc)
         policy = (ROOT / "docs/versions/versioning-policy.md").read_text(encoding="utf-8")
-        self.assertIn("gitlab/20260727", policy)
+        self.assertIn("20260727", policy)
+        self.assertIn("feature/*", policy)
+        self.assertIn("bugfix/*", policy)
         script = (ROOT / "scripts/push_gitlab.py").read_text(encoding="utf-8")
         self.assertIn('GITLAB_OWNER_REPO = "ai-team/eimosp-ontology-agentic-analytics"', script)
         self.assertIn('DEFAULT_TARGET_BRANCH = "20260727"', script)

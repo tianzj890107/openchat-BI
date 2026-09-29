@@ -1,11 +1,12 @@
 # 提交、GitLab 统一推送与禁止部署（最高优先级）
 
 1. 完成仓库内的代码、配置、规则、文档、测试或构建产物修改并完成必要验证后，创建一个普通 commit。
-2. 同一个 commit 统一推送到 GitLab 开发分支：`gitlab/20260727`。
+2. 日常开发在临时分支上进行：新增需求用 `feature/*`、日常缺陷用 `bugfix/*`，都从 `master` 拉出；线上紧急缺陷用 `hotfix/*`，从 `release/*` 拉出。
 3. 当前仓库固定映射：
-   - `gitlab` → `git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git` 的 `20260727` 分支。
-4. 推送优先使用 `python scripts/push_gitlab.py`，该脚本会校验远端映射、工作区状态、祖先关系和推送后 hash；先运行 `--check` 再执行。
-5. 推送成功标准：`HEAD == gitlab/20260727`。
+   - `gitlab` → `git@gitlab.boulderaitech.com:ai-team/eimosp-ontology-agentic-analytics.git`；
+   - 推送目标是与本地同名的临时分支：`git push gitlab <branch>`（`feature/*`、`bugfix/*`、`hotfix/*`）。
+4. 推送成功标准：远端同名分支的 hash 与本地 `HEAD` 一致，即 `HEAD == gitlab/<branch>`。
+5. `20260727` 已归档：停止接收新提交，只保留历史（历史映射 `source_branch=20260727` → `target_branch=master` 仅作审计记录）；`python scripts/push_gitlab.py` 只用于该归档分支的校验与推送，新分支不使用该脚本。
 6. `master` 是唯一发布主线：merge 到 `master` 必须由 `tianzijing` code review 后单独发起 Merge Request；任何 Agent 或脚本不得直接 push 到 `master`，不得自动合并。`main` 已退役并删除：任何 Agent 或脚本不得直接 push 到 `main`，不得重新创建 `main`，也不得将其作为 Merge Request 的 source/target。
 7. 推送失败时不得谎报任务全部完成：报告失败，保留已有 push，修复外部阻塞后用相同 HEAD 重试，不生成补偿 commit。
 8. 禁止 `git push --force` 和 `--force-with-lease` 及任何改写远端历史的推送。
@@ -37,8 +38,8 @@
 
 ## 任务指令与交付动作映射（固定约定）
 
-- 用户说“push / 推送”＝只把已验证提交推送到 GitLab 开发分支 `gitlab/20260727`（`python scripts/push_gitlab.py`，先 `--check` 再执行）；不部署、不推 tag、不创建 MR。
-- 用户说“merge / 合并 / MR”＝创建 Merge Request：`source_branch=20260727` → `target_branch=master`，reviewer 固定 `tianzijing`（田子敬，id 166），assignee 固定 `zhangzhen`（张真，id 245，用户本人）；只创建 MR，不自动合并、不直接 push `master`。`main` 已退役并删除，不得作为 Merge Request 的 source 或 target。创建前必须读取 `git log --no-merges master..20260727` 和完整 diff，MR 标题与描述必须归纳本次 MR 包含的全部提交主题；禁止把标题写成“20260727 → master”“Merge 20260727 into master”或其他只描述分支关系的泛化名称。若包含多个独立主题，标题概括整体交付，描述按主题列出每组 commit、主要变化和验证结果；复用已有 MR 时也必须将标题和描述更新到当前完整提交范围。
+- 用户说“push / 推送”＝只把已验证提交推送到 GitLab 上与本地同名的临时分支（`git push gitlab <branch>`，分支为 `feature/*`、`bugfix/*`、`hotfix/*`）；归档分支 `gitlab/20260727` 仍可用 `python scripts/push_gitlab.py`（先 `--check` 再执行）。不部署、不推 tag、不创建 MR。
+- 用户说“merge / 合并 / MR”＝创建 Merge Request：`source_branch` 为当前临时分支（`feature/*`、`bugfix/*`），`target_branch=master`，reviewer 固定 `tianzijing`（田子敬，id 166），assignee 固定 `zhangzhen`（张真，id 245，用户本人）。`hotfix/*` 必须开两条 MR：`source_branch=hotfix/*` → `target_branch=release/*`，以及 `source_branch=hotfix/*` → `target_branch=master`。只创建 MR，不自动合并、不直接 push `master`。`main` 已退役并删除，不得作为 Merge Request 的 source 或 target。创建前必须读取 `git log --no-merges master..<branch>` 和完整 diff，MR 标题与描述必须归纳本次 MR 包含的全部提交主题；禁止把标题写成只描述分支关系的泛化名称（例如“feature/x → master”）。若包含多个独立主题，标题概括整体交付，描述按主题列出每组 commit、主要变化和验证结果；复用已有 MR 时也必须将标题和描述更新到当前完整提交范围。
 - 用户说“部署”＝只有当前任务中新出现的明确部署授权才执行部署；历史授权不延续。
 - 用户仅说“继续”时，只能继续**尚未完成且此前已获授权的当前任务**；不得把已经完成的任务重新
   打开，也不得扩大交付范围。

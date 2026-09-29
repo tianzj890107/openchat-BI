@@ -164,8 +164,8 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 8. 更新当周 changelog（若当周文件尚未创建，则按本周 git 记录补齐）。
 9. 运行完整测试、前端 build 和 `git diff --check`。
 10. 创建普通 commit。
-11. GitLab 统一推送：`gitlab/20260727`。
-12. 验证 `HEAD == gitlab/20260727`。
+11. GitLab 推送：把当前临时分支（`feature/*`、`bugfix/*`、`hotfix/*`）推送到 GitLab 同名分支。
+12. 验证 `HEAD == gitlab/<branch>`（远端同名分支 hash 与本地一致）。
 13. 只有用户明确授权 tag 时才创建并推送 tag。
 14. 只有用户明确授权 GitLab Release 时才创建 Release。
 15. 只有用户明确授权部署时才执行部署。
@@ -182,11 +182,13 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 - 分支模型、PR 合并流程与 release / hotfix 机制见 [Git 分支与合并工作流规范](../git-branch-workflow.md)。
 - `master` 是唯一发布主线；`main` 已退役并删除，不得重新创建、不得 push、不得作为
   Merge Request 的 source/target。
-- eimosp-ontology-agentic-analytics 统一推送到 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 的 `20260727` 分支
-  （`gitlab/20260727`）。
-- 普通 commit 只推送统一开发分支：`gitlab/20260727`；
-- 正式交付 MR 固定为 `20260727` → `master`，由 `tianzijing` code review 后单独
-  发起（reviewer `tianzijing`，assignee `zhangzhen`）；任何 Agent 或脚本不得直接
+- eimosp-ontology-agentic-analytics 推送到 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 上与
+  本地同名的临时分支（`feature/*`、`bugfix/*`、`hotfix/*`）；归档分支 `gitlab/20260727`
+  只保留历史，停止接收新提交。
+- 普通 commit 只推送当前临时分支；
+- 正式交付 MR 的 source 为当前临时分支，`target_branch=master`；`hotfix/*` 需要两条
+  MR（先 `release/*`，再 `master`），由 `tianzijing` code review 后单独发起
+  （reviewer `tianzijing`，assignee `zhangzhen`）；任何 Agent 或脚本不得直接
   push 到 `master`，也不得自动合并；
 - 正式版本 tag 需要用户单独授权，且必须推送到 GitLab；
 - push 不等于部署。
@@ -194,7 +196,7 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 ## GitLab Release 规则
 
 - GitLab Release 在统一协作仓库 `ai-team/eimosp-ontology-agentic-analytics`（GitLab）上创建，日常开发 push
-  仍只走 `gitlab/20260727`。
+  走当前临时分支（`feature/*`、`bugfix/*`、`hotfix/*`）。
 - 只有用户在当前任务中明确授权创建 GitLab Release 时才能执行。
 - 用户明确授权某个正式版本创建 Release 后，在 `ai-team/eimosp-ontology-agentic-analytics` 上基于同名 tag
   创建一个 Release，tag 指向定版 commit。
