@@ -399,6 +399,79 @@ class CanonicalNoiseTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # 3. semantic drift must still be caught
 # ---------------------------------------------------------------------------
+class GeneratedArtifactStampTests(unittest.TestCase):
+    """A generated artifact name carries a wall-clock stamp.
+
+    On Linux CI the sandbox *is* the working directory, so the saved path in a
+    tool result is relative (``dataset/charts/multidim-<stamp>-<slug>.html``)
+    and the absolute-sandbox rule never fires.  Masking only the sandbox prefix
+    left that stamp inside the compared fingerprint, so one case
+    (``ANA-RPCHART-008``, the multi-dim chart) drifted between the two repeat
+    runs and failed the release-stability gate.  The stamp of every artifact
+    family the app writes must be masked instead.
+    """
+
+    STEM_RE = re.compile(r'stem\s*=\s*f"([a-z][a-z0-9-]*)-')
+    SAMPLES = (
+        ("20260918-094139", "dataset/charts/multidim-20260918-094139-采购金额-维度洞察.html"),
+        ("20260918-102201", "dataset/charts/multidim-20260918-102201-采购金额-维度洞察.html"),
+    )
+
+    @staticmethod
+    def _multidim_actual(path: str, stamp: str) -> str:
+        return (
+            "Multi-dim chart generated — 采购金额 · 维度洞察\n"
+            "Metric: MT-001\n"
+            "Dimensions (2): 供应商(1), 物料(1)\n"
+            "Default: supplier\n"
+            f"Saved: {path}multidim-{stamp}-采购金额-维度洞察.html\n"
+            "Source: MT-001 · fact_purchase_order · 2025"
+        )
+
+    @staticmethod
+    def _signature(actual: str) -> str:
+        return RUNNER.result_signature(_result(checks=[
+            RUNNER.Check(
+                "recorded.result_contains[ChartGenerateMultiDim][Multi-dim chart generate]",
+                True, "Multi-dim chart generated", actual,
+            ),
+        ]))
+
+    def test_relative_multidim_path_stamp_does_not_change_the_signature(self):
+        first = self._signature(self._multidim_actual("dataset/charts/",
+                                                      "20260918-094139"))
+        second = self._signature(self._multidim_actual("dataset/charts/",
+                                                       "20260918-102201"))
+        self.assertEqual(first, second)
+
+    def test_absolute_multidim_path_stamp_does_not_change_the_signature(self):
+        first = self._signature(self._multidim_actual(
+            "/builds/ai-team/x/tmp/analytics-eval-aaaabbbb/0001-ANA-RPCHART-008/"
+            "dataset/charts/", "20260918-094139"))
+        second = self._signature(self._multidim_actual(
+            "/builds/ai-team/x/tmp/analytics-eval-ccccdddd/0017-ANA-RPCHART-008/"
+            "dataset/charts/", "20260918-102201"))
+        self.assertEqual(first, second)
+
+    def test_stamp_truncated_by_the_length_cut_is_masked_too(self):
+        """Check actuals are cut to 200 chars, so a cut can land inside a stamp."""
+        first = self._signature("Saved: dataset/charts/multidim-20260918-09")
+        second = self._signature("Saved: dataset/charts/multidim-20260918-10")
+        self.assertEqual(first, second)
+
+    def test_every_generated_artifact_stem_is_masked(self):
+        stems: set[str] = set()
+        for path in sorted((REPO_ROOT / "bi_agent" / "tools").glob("*.py")):
+            stems.update(self.STEM_RE.findall(path.read_text(encoding="utf-8")))
+        self.assertTrue(stems, "no generated-artifact stem found in bi_agent/tools")
+        for stem in sorted(stems):
+            with self.subTest(stem=stem):
+                masked = RUNNER._normalize_volatile_text(
+                    f"{stem}-20260918-094139-采购金额.html")
+                self.assertEqual(masked, f"{stem}-<ts>-采购金额.html",
+                                 "generated-artifact stamp leaks into the signature")
+
+
 class SemanticDriftTests(unittest.TestCase):
     def _assert_differs(self, first: dict, second: dict):
         self.assertNotEqual(RUNNER.result_signature(_result(**first)),
