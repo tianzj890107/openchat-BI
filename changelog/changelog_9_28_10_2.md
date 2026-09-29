@@ -301,3 +301,26 @@
   （共 11 个）。历史周 changelog（9-07 至 9-25）与已归档的统一推送规则保持原貌，不改写历史。
 - 边界：本轮只做 MR 合入、tag、Release 与版本记录；未部署、未重启服务、未做任何服务器写操作，
   未删除或迁移历史会话与用户数据。
+
+### 2026-09-29 · 品牌名改为「硕磐智能分析 Agent」，版本徽标移出侧栏、改挂在工作台标题后
+
+- 用户可见变化：侧栏左上角品牌由「智能分析 + ontology-v0.1.0 徽标」改为只显示
+  「硕磐智能分析 Agent」；蓝色版本徽标 `ontology-v0.1.0` 移到工作台主标题（原
+  「硕磐财务 BI 智能分析」）右侧，标题本身改名「硕磐智能分析 Agent」，即
+  「硕磐智能分析 Agent `ontology-v0.1.0`」。
+- 实现：`frontend/src/shell.html` 侧栏品牌行删除 `brand-version` 节点、品牌名改新名；
+  工作台空态标题改为 `.empty-title-row`（`.empty-title` + `.empty-version#product-version`
+  首帧蓝色样式兜底）。`frontend/src/main.jsx` 的 `PRODUCT_NAME` 改为「硕磐智能分析 Agent」，
+  侧栏只渲染名称，新增 `ProductVersionTag()` 在挂载时把 `#product-version` 渲染成蓝色
+  Ant Design `Tag`（沿用 `PRODUCT_VERSION` 单一口径）；`frontend/src/runtime.js` 的
+  空态标题同步改名；`frontend/src/workbench.css` 新增 `.empty-title-row` / `.empty-version`
+  样式并调整 `.antd-product-version` / `.antd-product-brand`。
+- 契约与测试：`frontend` 重建产物 `bi_agent/web/static/vendor/antd/workbench.js` 与
+  `…-workbench.css` 同步更新；`tests/test_regressions.py::test_product_branding_and_version_display`
+  断言更新为新品牌名、侧栏无版本徽标、标题行含 `empty-version#product-version`。
+- 验收（2026-09-29）：`pytest -q tests` **1282 passed / 0 failed / 25 skipped /
+  1070 subtests passed**；`cd frontend && npm run build` 重建结果幂等（仅上述两份产物变化）；
+  本地静态页无头渲染 OCR 核对到「硕磐智能分析 Agent `ontology-v0.1.0`」。页面文档标题
+  `<title>智能分析 · 本体工作台</title>` 未在本次改名范围，保持原样。
+- 边界：只改前端品牌名与版本徽标位置，未改版本号、未改 tag/Release、未部署、未重启服务，
+  未删除或迁移历史会话与用户数据。

@@ -747,7 +747,20 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
   color: var(--fg-2);
 }
 .empty-glyph { font-size: 40px; color: var(--border-accent); }
+.empty-title-row { display: flex; align-items: center; gap: 10px; }
 .empty-title { font-size: 18px; color: var(--fg-0); letter-spacing: 0.5px; }
+/* First-paint fallback for the version chip; React replaces its content with
+ * the blue Ant Design tag once the workbench mounts. */
+.empty-version {
+  padding: 0 7px;
+  border: 1px solid #91caff;
+  border-radius: 10px;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
 .empty-sub { color: var(--fg-2); font-size: var(--fs-md); }
 .empty-hints { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 460px; }
 .hint-row {
@@ -3948,12 +3961,14 @@ body[data-dashboard="collapsed"] .split > .dashboard-pane { display: none; }
   padding: 8px 16px 0;
   color: #1f2329;
 }
-/* Product brand: name + compact version tag, both driven by the shared
- * PRODUCT_NAME / PRODUCT_VERSION constants in main.jsx. */
+/* Product brand: the sidebar shows the product name, and the compact blue
+ * version tag now trails the workbench hero title.  Both are driven by the
+ * shared PRODUCT_NAME / PRODUCT_VERSION constants in main.jsx. */
 .antd-sidebar-brand strong { display: block; font-size: 16px; line-height: 20px; }
 .antd-sidebar-brand small { display: block; color: #86909c; font-size: 11px; line-height: 16px; }
 .antd-product-brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.antd-product-brand .antd-product-version { margin: 0; font-size: 11px; line-height: 16px; border-radius: 10px; }
+.antd-product-brand strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.antd-product-version { margin: 0; font-size: 11px; line-height: 16px; border-radius: 10px; flex: 0 0 auto; }
 .sidebar-brand .brand-version { color: var(--accent-cyan); font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: 0.5px; }
 .antd-brand-mark { color: #1677ff; font-size: 18px; }
 .antd-agent-mark { color: #1677ff; width: 18px; height: 18px; flex: 0 0 18px; display: inline-flex; align-items: center; justify-content: center; }

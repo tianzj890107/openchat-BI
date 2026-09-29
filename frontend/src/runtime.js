@@ -627,7 +627,7 @@ export function bootWorkbenchRuntime() {
       // The data assistant starts directly with its title and examples; the
       // former oversized diamond placeholder is intentionally removed.
       glyph: "",
-      title: "硕磐财务 BI 智能分析",
+      title: "硕磐智能分析 Agent",
       hints: [
         "管报收入总金额是多少?",
         "列出本体里所有业务对象",

@@ -18,10 +18,10 @@ import "./workbench.css";
 
 const { Sider } = Layout;
 
-// Unified product identity.  The UI brand and the version tag are rendered
-// from these constants everywhere (sidebar, title, skeleton), so the visible
-// name can never drift from the packaged version.
-const PRODUCT_NAME = "智能分析";
+// Unified product identity.  The sidebar brand renders the product name and
+// the workbench hero renders the version chip from these same constants, so
+// the visible name can never drift from the packaged version.
+const PRODUCT_NAME = "硕磐智能分析 Agent";
 const PRODUCT_VERSION = "ontology-v0.1.0";
 
 const DECORATIVE_EMOJI_TOKEN = "(?:📌|📊|📎|🧭|📈|📉|📄|🧩|🧠|✅|⚠️|🔍|💡)";
@@ -455,7 +455,7 @@ function Sidebar() {
         <div className="antd-sidebar-scroll" onClick={handleSidebarSurfaceClick}>
           <div className="antd-sidebar-brand">
             <AgentMark />
-            {!collapsed && <span className="antd-product-brand"><strong>{PRODUCT_NAME}</strong><Tag className="antd-product-version" bordered={false} color="blue">{PRODUCT_VERSION}</Tag></span>}
+            {!collapsed && <span className="antd-product-brand"><strong>{PRODUCT_NAME}</strong></span>}
             <Tooltip
               placement="right"
               title={collapsed ? "展开侧栏" : "折叠侧栏"}
@@ -1297,6 +1297,13 @@ const shellMarkup = (shellDocument.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] 
   .replace(/<script\b[\s\S]*?<\/script>/gi, "")
   .trim();
 
+/* The version chip moved out of the sidebar brand row and now trails the
+ * workbench hero title (「硕磐智能分析 Agent」 ontology-v0.1.0), so the blue
+ * Ant Design tag look is rendered here from the single version constant. */
+function ProductVersionTag() {
+  return <Tag className="antd-product-version" bordered={false} color="blue">{PRODUCT_VERSION}</Tag>;
+}
+
 function WorkbenchApp() {
   const shellRef = useRef(null);
 
@@ -1306,9 +1313,11 @@ function WorkbenchApp() {
     if (!shellRef.current) return undefined;
 
     const sidebarRoot = shellRef.current.querySelector("#antd-sidebar-root");
+    const versionRoot = shellRef.current.querySelector("#product-version");
     const workflowRoot = shellRef.current.querySelector("#antd-workflow-root");
     const dashboardWorkflowRoot = shellRef.current.querySelector("#antd-dashboard-workflow-root");
     if (sidebarRoot) createRoot(sidebarRoot).render(<Sidebar />);
+    if (versionRoot) createRoot(versionRoot).render(<ProductVersionTag />);
     if (workflowRoot) createRoot(workflowRoot).render(<WorkflowPanels />);
     if (dashboardWorkflowRoot) createRoot(dashboardWorkflowRoot).render(<WorkflowPanels />);
     shellRef.current.querySelectorAll(".page-title-icon[data-feature-glyph]").forEach((node) => {
