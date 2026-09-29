@@ -233,4 +233,34 @@
   并把已失效的 `20260727` → `master` 表述改为临时分支 → `master`。
 - 范围边界：本轮未创建 tag、未创建 GitLab Release、未部署、未重启服务，未删除或覆盖任何
   历史版本文件与用户数据；tag 与 Release 在收口 MR 合入 `master` 后执行。
-- 验收（2026-09-29）：见本轮 commit 的测试结果。
+- 合入前置：创建收口 MR 前先把 `master` 合并进本分支（`master` 已含同日合入的稳定性门禁
+  修复 `1427319`），唯一冲突是本条 changelog——两条 09-29 记录都追加在文件末尾，按"保留双方
+  条目"解决，未丢弃任何一方的记录。
+- 验收（2026-09-29）：合并后全量 `pytest -q tests` **1282 passed / 0 failed / 25 skipped /
+  1070 subtests passed**；tag 创建前 44 passed / 26 subtests、临时打上 `ontology-v0.1.0`
+  后 31 passed / 19 subtests 均通过（临时 tag 已删除，本地回到 10 个 tag）；`git diff --check` 通过。
+
+### 2026-09-29 · 修复 release 稳定性门禁误报：多维持图产物名时间戳泄漏
+
+- 现象：`master`（`9e1a029`）的 CI `unit-tests` 失败，两条用例报同一案例不稳定：
+  `test_real_regression_selection_is_perfectly_stable`（agreement 0.998246）与
+  `test_truthfulness_metrics_survive_a_repeat_run`（0.991803），`unstable_case_ids` 都是
+  `['ANA-RPCHART-008']`（多维持图）。本地跑同一批测试却全绿。
+- 根因（用历史 pipeline 3166 的 repeat-stability artifact 取证）：
+  `ChartGenerateMultiDim` 写出的文件名是 `multidim-YYYYMMDD-HHMMSS-<标题>.html`，工具结果里
+  打印 `Saved:` 路径。稳定性归一化只掩了绝对沙箱路径 `/…analytics-eval-…` 和 `chart-`/`report-`
+  两个文件名前缀，**漏了 `multidim-`**；而 Linux CI 上沙箱就是 cwd，`Saved:` 是相对路径
+  `dataset/charts/multidim-<戳>-…html`，绝对沙箱规则不命中 → 文件名的墙上时钟戳进入比较指纹
+  → 同一案例两次运行的指纹不同 → 被判定为漂移。macOS 本地因为 `/private/var` 与 `/var` 符号
+  链接差异，`Saved:` 打印的是绝对路径，被沙箱规则掩盖，所以本地不复现。
+- 修复：`scripts/run_analytics_eval.py` 的 `_VOLATILE_TEXT_PATTERNS` 把产物名戳归一化改为按
+  **家族**匹配 `(chart|report|multidim)-YYYYMMDD-HHMMSS-` → `<ts>`，并补一条尾部规则处理
+  "被长度截断切到一半的戳"（检查项 actual 先截断到 200 字符再归一化，截断点可能落在戳中间）。
+- 契约与红测：`docs/specs/analytics-release-stability.md` 的归一化表与"允许变化"补上相对路径与
+  `multidim-`；`tests/test_analytics_release_stability_red.py` 新增 `GeneratedArtifactStampTests`
+  4 条（相对路径戳、绝对路径戳、被截断的戳、产物名家族覆盖扫描），修复前 3 条为红，修复后全绿。
+- 验收（2026-09-29）：`pytest -q tests/test_analytics_release_stability_red.py` **67 passed /
+  14 subtests passed**；全量 `pytest -q tests` **1282 passed / 0 failed / 25 skipped /
+  1068 subtests passed**；`git diff --check` 通过。
+- 边界：只改离线不稳定判定的归一化，不改产品行为、不改文件命名、不改门禁阈值；未部署、
+  未重启服务、未删除历史会话与用户数据。

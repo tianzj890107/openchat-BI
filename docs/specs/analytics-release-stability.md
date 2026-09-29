@@ -94,7 +94,7 @@ CI 的 release job（`analytics-eval-release-gate`）跑的是 `--suite smoke --
 | 随机十六进制 id | 6–40 位十六进制串 → `<id>`，**包括** 8 位会话 id |
 | id 类字段 | key ∈ {`id`, `session_id`, `run_id`, `request_id`, `trace_id`} → 归一化 |
 | 易变 key | `VOLATILE_SIGNATURE_KEYS`（updated_at/created_at/checkpoint_id/session_id/cost/duration_ms/duration/tokens/token_usage/started_at/finished_at/execution_id）不进签名 |
-| 沙箱路径 | `/…analytics-eval-…` → `<sandbox>`；`chart-YYYYMMDD-HHMMSS-`/`report-…` → `<ts>` |
+| 沙箱路径与产物名 | `/…analytics-eval-…` → `<sandbox>`；**所有**应用生成的产物名前缀（`chart-`/`report-`/`multidim-`）里的 `YYYYMMDD-HHMMSS` → `<ts>`，**无论路径是绝对还是相对**（Linux 上沙箱即 cwd，工具结果里是相对路径，绝对沙箱规则不会命中）；被长度截断切到一半的戳同样必须归一化 |
 | 长文本 | 截断到固定长度，避免不稳定尾串 |
 | 语义单位 | **不**归一化：单位、币种、指标名、维度名属于语义 |
 | 图表 | 比较 `chart_type` + `chart_params`（x 轴 / series / unit / semantic type），不比较随机 id 与 HTML 字体格式 |
@@ -108,8 +108,9 @@ CI 的 release job（`analytics-eval-release-gate`）跑的是 `--suite smoke --
 
 ### 4.1 允许变化（不得误报为不稳定）
 
-时间戳；trace/run/session id；耗时与成本；token 数；临时沙箱路径；chart/report 文件名
-时间戳；JSON key 无语义顺序；SQL 空白与安全别名等价格式；长文本截断位置。
+时间戳；trace/run/session id；耗时与成本；token 数；临时沙箱路径；生成的产物文件名
+时间戳（`chart-`/`report-`/`multidim-`，绝对或相对路径）；JSON key 无语义顺序；SQL 空白
+与安全别名等价格式；长文本截断位置。
 
 ### 4.2 禁止变化（必须判定为漂移并阻断）
 
