@@ -302,22 +302,30 @@
 - 边界：本轮只做 MR 合入、tag、Release 与版本记录；未部署、未重启服务、未做任何服务器写操作，
   未删除或迁移历史会话与用户数据。
 
-### 2026-09-29 · 品牌名改为「硕磐智能分析 Agent」，版本徽标移出侧栏、改挂在工作台标题后
+### 2026-09-29 · 品牌名改为「硕磐智能分析 Agent」，版本徽标移出侧栏、改挂在工作台标题后（9-30 侧栏品牌行回退为「智能分析」）
 
-- 用户可见变化：产品名由「智能分析」统一改为「硕磐智能分析 Agent」，覆盖侧栏左上角品牌行、
-  工作台主标题、浏览器标签标题、首屏加载骨架文案与工作台 aria-label；工作台首屏说明（Agent
-  欢迎语）由「硕磐 BI 智能分析助手已就绪。可以问我管报损益、应收应付、存货库龄、预算执行等
-  问题。」改为「硕磐智能分析 Agent 已就绪。可以问我管报损益、应收应付、存货库龄、预算执行等
-  问题。」；蓝色版本徽标 `ontology-v0.1.0` 从侧栏品牌行移到工作台主标题右侧（原
-  「硕磐财务 BI 智能分析」），即「硕磐智能分析 Agent `ontology-v0.1.0`」。侧栏「智能分析 /
-  报表分析」是模式名，「内容 / 设置」等是分组名，不在改名范围。
-- 实现：`frontend/src/shell.html` 侧栏品牌行删除 `brand-version` 节点、品牌名改为新名，工作台
-  空态标题改为 `.empty-title-row`（`.empty-title` + `.empty-version#product-version` 首帧
-  蓝色样式兜底）；`frontend/src/main.jsx` 的 `PRODUCT_NAME` 改为「硕磐智能分析 Agent」，侧栏
-  只渲染名称，新增 `ProductVersionTag()` 在挂载时把 `#product-version` 渲染成蓝色 Ant Design
-  `Tag`（沿用 `PRODUCT_VERSION` 单一口径）；`frontend/src/runtime.js` 的空态标题（后端不可用或
-  未加载时用）同步改名；`frontend/src/workbench.css` 新增 `.empty-title-row` / `.empty-version`
-  样式并调整 `.antd-product-version` / `.antd-product-brand`。
+- 用户可见变化：产品名由「智能分析」改为「硕磐智能分析 Agent」，覆盖工作台主标题、浏览器标签
+  标题、首屏加载骨架文案与工作台 aria-label；工作台首屏说明（Agent 欢迎语）由「硕磐 BI 智能
+  分析助手已就绪。可以问我管报损益、应收应付、存货库龄、预算执行等问题。」改为「硕磐智能分析
+  Agent 已就绪。可以问我管报损益、应收应付、存货库龄、预算执行等问题。」；蓝色版本徽标
+  `ontology-v0.1.0` 从侧栏品牌行移到工作台主标题右侧（原「硕磐财务 BI 智能分析」），即
+  「硕磐智能分析 Agent `ontology-v0.1.0`」。**侧栏左上角品牌行保持短名「智能分析」**：
+  2026-09-30 用户要求把这一处改回原名，其余表面不变；侧栏「智能分析 / 报表分析」是模式名，
+  「内容 / 设置」等是分组名，不在改名范围。
+- 实现：`frontend/src/shell.html` 侧栏品牌行删除 `brand-version` 节点（品牌名保持
+  「智能分析」），工作台空态标题改为 `.empty-title-row`（`.empty-title` +
+  `.empty-version#product-version` 首帧蓝色样式兜底）；`frontend/src/main.jsx` 的
+  `PRODUCT_NAME` 保持短名「智能分析」（侧栏左上角品牌），工作台标题用新名，新增
+  `ProductVersionTag()` 在挂载时把 `#product-version` 渲染成蓝色 Ant Design `Tag`（沿用
+  `PRODUCT_VERSION` 单一口径）；`frontend/src/runtime.js` 的空态标题（后端不可用或未加载时用）
+  同步改名；`frontend/src/workbench.css` 新增 `.empty-title-row` / `.empty-version` 样式并调整
+  `.antd-product-version` / `.antd-product-brand`。
+- 2026-09-30 回退（用户要求）：只把**侧栏左上角品牌行**改回短名「智能分析」——改
+  `frontend/src/main.jsx` 的 `PRODUCT_NAME` 与 `frontend/src/shell.html` 的 `.brand-name`，
+  重建 `bi_agent/web/static/vendor/antd/workbench.js`，并把
+  `tests/test_regressions.py::test_product_branding_and_version_display` 的侧栏品牌断言改为
+  短名（新增"侧栏不得再出现新名"的守卫）；工作台标题、浏览器标签、骨架文案、aria-label 与
+  Agent 欢迎语仍为「硕磐智能分析 Agent」。
 - 页面标题与说明文案：`frontend/src/shell.html` 与 `bi_agent/web/static/index.html` 的
   `<title>` 改为「硕磐智能分析 Agent · 本体工作台」，`index.html` 的 `aria-label` 改为
   「硕磐智能分析 Agent React 工作台」、加载骨架文案改为「正在加载硕磐智能分析 Agent 工作台…」；

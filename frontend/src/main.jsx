@@ -20,8 +20,10 @@ const { Sider } = Layout;
 
 // Unified product identity.  The sidebar brand renders the product name and
 // the workbench hero renders the version chip from these same constants, so
-// the visible name can never drift from the packaged version.
-const PRODUCT_NAME = "硕磐智能分析 Agent";
+// the visible name can never drift from the packaged version.  The sidebar
+// brand keeps the short legacy label 「智能分析」 (the longer marketing name
+// stays on the page title / hero), per the 2026-09-30 brand request.
+const PRODUCT_NAME = "智能分析";
 const PRODUCT_VERSION = "ontology-v0.1.0";
 
 const DECORATIVE_EMOJI_TOKEN = "(?:📌|📊|📎|🧭|📈|📉|📄|🧩|🧠|✅|⚠️|🔍|💡)";
