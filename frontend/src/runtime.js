@@ -1497,13 +1497,9 @@ export function bootWorkbenchRuntime() {
         if (role === "user") turn += 1;
         const message = el_h("div", `msg msg-${role}`);
         message.dataset.turn = String(Math.max(turn, 1));
-        // Previews carry no iteration number, so assistant messages render
-        // without any header. The agent role name (bi-analyst) is internal
-        // bookkeeping and is never shown to users.
-        const previewHeader = role === "user"
-          ? '<div class="msg-header"><span class="msg-role">你</span></div>'
-          : "";
-        message.innerHTML = `${previewHeader}<div class="msg-body"></div>`;
+        // Chat bubbles carry no header at all: neither the internal agent role
+        // name (bi-analyst) nor an iteration number is user-facing.
+        message.innerHTML = '<div class="msg-body"></div>';
         const body = message.querySelector(".msg-body");
         if (role === "assistant") body.innerHTML = renderMarkdown(String(item.text || ""));
         else body.textContent = String(item.text || "");
@@ -3131,14 +3127,10 @@ export function bootWorkbenchRuntime() {
     }
     const block = el_h("div", "assistant-execution-block");
     const msg = el_h("div", "msg msg-assistant");
-    // The internal agent role name is not user-facing, and the first iteration
-    // of a turn needs no chip: the header only tells the iterations of one
-    // turn apart.
-    const iterationChip = Number(iteration) > 0
-      ? `<div class="msg-header"><span class="msg-iter">迭代 ${iteration}</span></div>`
-      : "";
+    // No message header: the internal agent role name (bi-analyst) and the
+    // iteration index are bookkeeping, not user-facing chrome. The iteration
+    // stays on the block dataset for anchors and restored-step grouping.
     msg.innerHTML = `
-      ${iterationChip}
       <div class="msg-body"><span class="thinking-line"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>思考中…</span></div>`;
     block.dataset.iteration = String(iteration || "");
     block.appendChild(msg);

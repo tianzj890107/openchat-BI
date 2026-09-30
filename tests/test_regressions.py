@@ -2326,7 +2326,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = withBasePath("static/vendor/echarts.min.js")', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=161" defer', index)
+        self.assertIn('workbench.js?v=162" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -4026,30 +4026,37 @@ console.log(JSON.stringify(out));"""
         # rebranded.
         self.assertIn("name: bi-analyst", agent)
 
-    def test_chat_header_hides_internal_agent_role_and_first_iteration(self) -> None:
-        """The chat header shows neither the internal agent role name
-        (bi-analyst, uppercased to BI-ANALYST) nor a chip on the first
-        iteration (iteration 0); the chip only tells the iterations of one
-        turn apart."""
+    def test_chat_bubbles_have_no_agent_role_or_iteration_header(self) -> None:
+        """Chat bubbles render no header at all: neither the internal agent
+        role name (bi-analyst, uppercased to BI-ANALYST) nor an iteration chip
+        is user-facing — new turns, history previews and restored transcripts
+        alike."""
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
         bundle = Path("bi_agent/web/static/vendor/antd/workbench.js").read_text(encoding="utf-8")
-        # No role label is rendered, and the helper that produced the bodyless
-        # text is gone from both the live path and the history preview path.
+        # Nothing produces the role label or the iteration chip any more.
         self.assertNotIn("assistantRoleLabel", runtime)
         self.assertNotIn('msg-role assistant">', runtime)
-        self.assertIn("const iterationChip = Number(iteration) > 0", runtime)
+        self.assertNotIn("msg-iter", runtime)
+        self.assertNotIn("msg-header", runtime[runtime.index("function startAssistantMessage("):runtime.index("function appendAssistantDelta(")])
+        self.assertNotIn("antd-message-header", main)
         self.assertNotIn("助手 · 迭代", main)
-        self.assertIn("const showIteration = !user && Number(iteration) > 0;", main)
+        self.assertNotIn("showIteration", main)
+        # Restored transcripts (stored before this cleanup) drop their headers
+        # too, and no assistant bubble may ever show one again.
         self.assertIn(
-            'header={showIteration ? <span className="antd-message-header">迭代 {iteration}</span> : null}',
+            'container.querySelectorAll(".msg-assistant > .msg-header").forEach((node) => node.remove());',
             main,
         )
-        # The served bundle is rebuilt from these sources: the agent-name
-        # fallback and the always-on header are both absent.
-        self.assertNotIn('助手 · 迭代', bundle)
+        self.assertIn(".msg-assistant > .msg-header { display: none !important; }", css)
+        # SYSTEM · … tips keep their own header.
+        self.assertIn('msg-header"><span class="msg-role"', runtime)
+        # The served bundle is rebuilt from these sources.
+        self.assertNotIn("助手 · 迭代", bundle)
         self.assertNotIn(':"助手").toUpperCase()', bundle)
-        self.assertIn("antd-message-header", bundle)
+        self.assertNotIn("antd-message-header", bundle)
+        self.assertNotIn('msg-role assistant">', bundle)
 
     def test_version_contract_consistent(self) -> None:
         """Python, FastAPI, npm and UI versions agree on ontology-v0.1.0 and are

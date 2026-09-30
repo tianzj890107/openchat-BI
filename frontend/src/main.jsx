@@ -673,13 +673,9 @@ const stepRoots = new WeakMap();
 
 function AntdMessage({ role, iteration, html }) {
   const user = role === "user";
-  // The agent role name is internal and never shown; the iteration chip only
-  // exists to tell the iterations of one turn apart, so the first one (0)
-  // renders no header at all.
-  const showIteration = !user && Number(iteration) > 0;
   // Tool-only iterations can create an assistant message host before any
-  // text arrives. Do not render an empty Bubble with only the iteration
-  // header; the tool step itself remains visible below it.
+  // text arrives. Do not render an empty Bubble; the tool step itself remains
+  // visible below it.
   const rawHtml = String(html || "");
   const visibleHtml = stripDecorativeAssistantMarkup(
     rawHtml.replace(/<span class="thinking-line">[\s\S]*?思考中…<\/span>/g, ""),
@@ -695,7 +691,6 @@ function AntdMessage({ role, iteration, html }) {
     variant="filled"
     shape="corner"
     className={`antd-message-bubble ${user ? "antd-message-user" : "antd-message-assistant"}`}
-    header={showIteration ? <span className="antd-message-header">迭代 {iteration}</span> : null}
     content={contentHtml}
     messageRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
   />;
@@ -1280,8 +1275,13 @@ function enhanceWorkbenchTree(container) {
     head.querySelectorAll(":scope > .dash-tag:not(.conclusion):not(.rootcause):not(.actions)").forEach((node) => node.remove());
   });
   container.querySelectorAll(".dash-tag.conclusion, .dash-tag.rootcause, .dash-tag.actions").forEach(decorateSemanticBadge);
+  // Transcripts saved before the header cleanup still carry the internal agent
+  // role label (BI-ANALYST) and the iteration chip inside their stored HTML.
+  // Drop those headers outright so restored conversations match new ones; the
+  // SYSTEM · … tips keep their own headers.
+  container.querySelectorAll(".msg-assistant > .msg-header").forEach((node) => node.remove());
   container.querySelectorAll(":scope > .msg:not(.antd-message-enhanced)").forEach((node) => {
-    mountMessage(node, node.classList.contains("msg-user") ? "user" : "assistant", node.querySelector(".msg-iter")?.textContent?.replace(/[^0-9]/g, ""));
+    mountMessage(node, node.classList.contains("msg-user") ? "user" : "assistant");
   });
   container.querySelectorAll(".step:not(.antd-step-enhanced)").forEach(mountStep);
   container.querySelectorAll(":scope > .chart-card:not(.antd-result-card-host), :scope > .table-card:not(.antd-result-card-host), :scope > .multidim-card:not(.antd-result-card-host)").forEach((node) => {

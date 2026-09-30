@@ -342,24 +342,29 @@
 - 边界：只改产品名、版本徽标位置和首屏说明文案，未改版本号、未改 tag/Release、未部署、
   未重启服务，未删除或迁移历史会话与用户数据。
 
-### 2026-09-30 · 聊天消息头不再显示内部角色名与首轮「迭代 0」
+### 2026-09-30 · 聊天消息头整体移除（内部角色名 BI-ANALYST 与迭代号不再显示）
 
-- 用户可见变化：助手消息气泡头部不再出现 `BI-ANALYST`（由
-  `.claude/agents/bi-analyst.md` 的 `name: bi-analyst` 大写而来）和首轮的 `迭代 0`。同一轮
-  从第 2 个迭代起才显示「迭代 N」，首轮（iteration 0）不渲染任何消息头。该内部角色名此前
-  也存在于历史会话预览与导出的 HTML 中，本轮从源码侧统一去掉。
-- 实现：`frontend/src/runtime.js` 删除 `assistantRoleLabel()`；`startAssistantMessage` 仅在
-  `Number(iteration) > 0` 时渲染 `.msg-header` + `.msg-iter`；`renderConversationPreview`
-  的助手消息不再渲染消息头（用户侧「你」保持原样）；`frontend/src/main.jsx` 的
-  `AntdMessage` 用 `showIteration = !user && Number(iteration) > 0` 控制 antd Bubble 头部，
-  文案由「助手 · 迭代 N」改为「迭代 N」。
-- 说明：`iteration` 是后端 0 起的迭代序号（`bi_agent/web/session.py` 的 `iteration_start`），
-  因此首轮过滤的是序号 0；消息块的 `data-iteration` 与任务/问题锚点导航逻辑不变。
-- 契约与测试：`tests/test_regressions.py` 新增
-  `test_chat_header_hides_internal_agent_role_and_first_iteration`（源码与重建产物双向守卫），
-  并把两处以 `assistantRoleLabel` 作切片锚点的既有用例改为
-  `function startAssistantMessage(`；重建 `bi_agent/web/static/vendor/antd/workbench.js`。
+- 用户可见变化：助手消息气泡不再有消息头——既没有内部角色名 `BI-ANALYST`（由
+  `.claude/agents/bi-analyst.md` 的 `name: bi-analyst` 大写而来），也没有「迭代 N」。
+  同一轮的多个迭代只靠工具步骤时间线区分，新发消息与历史回放表现一致，不再出现
+  「有的有、有的没有」。
+- 实现：`frontend/src/runtime.js` 删除 `assistantRoleLabel()`；`startAssistantMessage` 不再
+  输出 `.msg-header`（`iteration` 仍写入 `block.dataset.iteration`，供消息锚点与步骤归组）；
+  `renderConversationPreview` 的预览气泡也只保留 `.msg-body`；`frontend/src/main.jsx` 的
+  `AntdMessage` 去掉 `header`，并在 `enhanceWorkbenchTree` 中删除历史存量 HTML 里的
+  `.msg-assistant > .msg-header`（`SYSTEM · …` 提示保留自己的头部）；`frontend/src/workbench.css`
+  增加 `.msg-assistant > .msg-header { display: none !important; }` 兜底，并清掉已无引用的
+  `.msg-iter` / `.antd-message-header` 规则。
+- 缓存一致性：`bi_agent/web/static/index.html` 的手工缓存串自 2026-08-28（`148a34b`）起一直
+  是 `workbench.js?v=161` / `workbench.css?v=126`，多次重建前端产物都没有同步升级，浏览器
+  可能长时间复用旧包（这正是「有的页面是新行为、有的还是旧头」的实际原因）。本轮升到
+  `?v=162` / `?v=127`，`tests/test_regressions.py::test_first_paint_defers_echarts_and_compresses_large_assets`
+  的断言同步。
+- 契约与测试：新增 `test_chat_bubbles_have_no_agent_role_or_iteration_header`（源码、CSS 与
+  重建产物三处守卫）；把两处以 `assistantRoleLabel` 作切片锚点的既有用例改为
+  `function startAssistantMessage(`；重建 `workbench.js` 与 `…-workbench.css`。
 - 验收（2026-09-30）：`pytest -q tests` **1283 passed / 0 failed / 25 skipped /
-  1070 subtests passed**；`git diff --check` 通过。
-- 边界：只改聊天消息头文案，未改分析策略、Prompt/SOP、评测集、版本号、tag/Release，
-  未部署、未重启服务，未删除或迁移历史会话与用户数据。
+  1070 subtests passed**；本地 8765 的 `/workbench` 已下发 `workbench.js?v=162`，产物内无
+  `antd-message-header` / `msg-iter`；`git diff --check` 通过。
+- 边界：只改聊天消息头与前端资源缓存串，未改分析策略、Prompt/SOP、评测集、版本号、
+  tag/Release，未部署、未重启服务，未删除或迁移历史会话与用户数据。
