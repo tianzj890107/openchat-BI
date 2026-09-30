@@ -1497,7 +1497,13 @@ export function bootWorkbenchRuntime() {
         if (role === "user") turn += 1;
         const message = el_h("div", `msg msg-${role}`);
         message.dataset.turn = String(Math.max(turn, 1));
-        message.innerHTML = `<div class="msg-header"><span class="msg-role ${role === "assistant" ? "assistant" : ""}">${role === "user" ? "你" : esc(assistantRoleLabel())}</span></div><div class="msg-body"></div>`;
+        // Previews carry no iteration number, so assistant messages render
+        // without any header. The agent role name (bi-analyst) is internal
+        // bookkeeping and is never shown to users.
+        const previewHeader = role === "user"
+          ? '<div class="msg-header"><span class="msg-role">你</span></div>'
+          : "";
+        message.innerHTML = `${previewHeader}<div class="msg-body"></div>`;
         const body = message.querySelector(".msg-body");
         if (role === "assistant") body.innerHTML = renderMarkdown(String(item.text || ""));
         else body.textContent = String(item.text || "");
@@ -3111,11 +3117,6 @@ export function bootWorkbenchRuntime() {
     requestAnimationFrame(syncActiveQuestionFromScroll);
   }
 
-  function assistantRoleLabel() {
-    const agent = currentAgentMeta();
-    return (agent && agent.name ? agent.name : "助手").toUpperCase();
-  }
-
   function startAssistantMessage(iteration) {
     const bucket = B();
     // When the backend discards a buffered candidate (claim validation or
@@ -3130,11 +3131,14 @@ export function bootWorkbenchRuntime() {
     }
     const block = el_h("div", "assistant-execution-block");
     const msg = el_h("div", "msg msg-assistant");
+    // The internal agent role name is not user-facing, and the first iteration
+    // of a turn needs no chip: the header only tells the iterations of one
+    // turn apart.
+    const iterationChip = Number(iteration) > 0
+      ? `<div class="msg-header"><span class="msg-iter">迭代 ${iteration}</span></div>`
+      : "";
     msg.innerHTML = `
-      <div class="msg-header">
-        <span class="msg-role assistant">${esc(assistantRoleLabel())}</span>
-        <span class="msg-iter">迭代 ${iteration}</span>
-      </div>
+      ${iterationChip}
       <div class="msg-body"><span class="thinking-line"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>思考中…</span></div>`;
     block.dataset.iteration = String(iteration || "");
     block.appendChild(msg);

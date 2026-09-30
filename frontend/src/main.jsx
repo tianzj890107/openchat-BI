@@ -673,6 +673,10 @@ const stepRoots = new WeakMap();
 
 function AntdMessage({ role, iteration, html }) {
   const user = role === "user";
+  // The agent role name is internal and never shown; the iteration chip only
+  // exists to tell the iterations of one turn apart, so the first one (0)
+  // renders no header at all.
+  const showIteration = !user && Number(iteration) > 0;
   // Tool-only iterations can create an assistant message host before any
   // text arrives. Do not render an empty Bubble with only the iteration
   // header; the tool step itself remains visible below it.
@@ -691,7 +695,7 @@ function AntdMessage({ role, iteration, html }) {
     variant="filled"
     shape="corner"
     className={`antd-message-bubble ${user ? "antd-message-user" : "antd-message-assistant"}`}
-    header={!user && <span className="antd-message-header">助手 · 迭代 {iteration || ""}</span>}
+    header={showIteration ? <span className="antd-message-header">迭代 {iteration}</span> : null}
     content={contentHtml}
     messageRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
   />;

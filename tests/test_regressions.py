@@ -2463,7 +2463,7 @@ class OfflineRegressionTests(unittest.TestCase):
         nav_end = runtime.index("function scrollToQuestion(", nav_start)
         nav = runtime[nav_start:nav_end]
         sync_start = runtime.index("function initQuestionSelectionSync(")
-        sync_end = runtime.index("function assistantRoleLabel(", sync_start)
+        sync_end = runtime.index("function startAssistantMessage(", sync_start)
         sync = runtime[sync_start:sync_end]
         # Navigation pauses both scroll-driven syncs while it runs.
         self.assertIn("questionNavActive", nav)
@@ -2480,7 +2480,7 @@ class OfflineRegressionTests(unittest.TestCase):
         sync_end = runtime.index("function initQuestionSelectionSync(", sync_start)
         sync = runtime[sync_start:sync_end]
         list_start = runtime.index("function initQuestionSelectionSync(")
-        list_end = runtime.index("function assistantRoleLabel(", list_start)
+        list_end = runtime.index("function startAssistantMessage(", list_start)
         listeners = runtime[list_start:list_end]
         # The synced target is marked; its own scroll event consumes the
         # marker instead of syncing back to the source (no A->B->A rebound).
@@ -4025,6 +4025,31 @@ console.log(JSON.stringify(out));"""
         # The agent role definition stays in place; only its welcome copy was
         # rebranded.
         self.assertIn("name: bi-analyst", agent)
+
+    def test_chat_header_hides_internal_agent_role_and_first_iteration(self) -> None:
+        """The chat header shows neither the internal agent role name
+        (bi-analyst, uppercased to BI-ANALYST) nor a chip on the first
+        iteration (iteration 0); the chip only tells the iterations of one
+        turn apart."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        bundle = Path("bi_agent/web/static/vendor/antd/workbench.js").read_text(encoding="utf-8")
+        # No role label is rendered, and the helper that produced the bodyless
+        # text is gone from both the live path and the history preview path.
+        self.assertNotIn("assistantRoleLabel", runtime)
+        self.assertNotIn('msg-role assistant">', runtime)
+        self.assertIn("const iterationChip = Number(iteration) > 0", runtime)
+        self.assertNotIn("助手 · 迭代", main)
+        self.assertIn("const showIteration = !user && Number(iteration) > 0;", main)
+        self.assertIn(
+            'header={showIteration ? <span className="antd-message-header">迭代 {iteration}</span> : null}',
+            main,
+        )
+        # The served bundle is rebuilt from these sources: the agent-name
+        # fallback and the always-on header are both absent.
+        self.assertNotIn('助手 · 迭代', bundle)
+        self.assertNotIn(':"助手").toUpperCase()', bundle)
+        self.assertIn("antd-message-header", bundle)
 
     def test_version_contract_consistent(self) -> None:
         """Python, FastAPI, npm and UI versions agree on ontology-v0.1.0 and are

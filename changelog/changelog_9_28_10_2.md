@@ -341,3 +341,25 @@
   核对到「硕磐智能分析 Agent `ontology-v0.1.0`」。
 - 边界：只改产品名、版本徽标位置和首屏说明文案，未改版本号、未改 tag/Release、未部署、
   未重启服务，未删除或迁移历史会话与用户数据。
+
+### 2026-09-30 · 聊天消息头不再显示内部角色名与首轮「迭代 0」
+
+- 用户可见变化：助手消息气泡头部不再出现 `BI-ANALYST`（由
+  `.claude/agents/bi-analyst.md` 的 `name: bi-analyst` 大写而来）和首轮的 `迭代 0`。同一轮
+  从第 2 个迭代起才显示「迭代 N」，首轮（iteration 0）不渲染任何消息头。该内部角色名此前
+  也存在于历史会话预览与导出的 HTML 中，本轮从源码侧统一去掉。
+- 实现：`frontend/src/runtime.js` 删除 `assistantRoleLabel()`；`startAssistantMessage` 仅在
+  `Number(iteration) > 0` 时渲染 `.msg-header` + `.msg-iter`；`renderConversationPreview`
+  的助手消息不再渲染消息头（用户侧「你」保持原样）；`frontend/src/main.jsx` 的
+  `AntdMessage` 用 `showIteration = !user && Number(iteration) > 0` 控制 antd Bubble 头部，
+  文案由「助手 · 迭代 N」改为「迭代 N」。
+- 说明：`iteration` 是后端 0 起的迭代序号（`bi_agent/web/session.py` 的 `iteration_start`），
+  因此首轮过滤的是序号 0；消息块的 `data-iteration` 与任务/问题锚点导航逻辑不变。
+- 契约与测试：`tests/test_regressions.py` 新增
+  `test_chat_header_hides_internal_agent_role_and_first_iteration`（源码与重建产物双向守卫），
+  并把两处以 `assistantRoleLabel` 作切片锚点的既有用例改为
+  `function startAssistantMessage(`；重建 `bi_agent/web/static/vendor/antd/workbench.js`。
+- 验收（2026-09-30）：`pytest -q tests` **1283 passed / 0 failed / 25 skipped /
+  1070 subtests passed**；`git diff --check` 通过。
+- 边界：只改聊天消息头文案，未改分析策略、Prompt/SOP、评测集、版本号、tag/Release，
+  未部署、未重启服务，未删除或迁移历史会话与用户数据。
