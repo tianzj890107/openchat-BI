@@ -304,23 +304,32 @@
 
 ### 2026-09-29 · 品牌名改为「硕磐智能分析 Agent」，版本徽标移出侧栏、改挂在工作台标题后
 
-- 用户可见变化：侧栏左上角品牌由「智能分析 + ontology-v0.1.0 徽标」改为只显示
-  「硕磐智能分析 Agent」；蓝色版本徽标 `ontology-v0.1.0` 移到工作台主标题（原
-  「硕磐财务 BI 智能分析」）右侧，标题本身改名「硕磐智能分析 Agent」，即
-  「硕磐智能分析 Agent `ontology-v0.1.0`」。
-- 实现：`frontend/src/shell.html` 侧栏品牌行删除 `brand-version` 节点、品牌名改新名；
-  工作台空态标题改为 `.empty-title-row`（`.empty-title` + `.empty-version#product-version`
-  首帧蓝色样式兜底）。`frontend/src/main.jsx` 的 `PRODUCT_NAME` 改为「硕磐智能分析 Agent」，
-  侧栏只渲染名称，新增 `ProductVersionTag()` 在挂载时把 `#product-version` 渲染成蓝色
-  Ant Design `Tag`（沿用 `PRODUCT_VERSION` 单一口径）；`frontend/src/runtime.js` 的
-  空态标题同步改名；`frontend/src/workbench.css` 新增 `.empty-title-row` / `.empty-version`
+- 用户可见变化：产品名由「智能分析」统一改为「硕磐智能分析 Agent」，覆盖侧栏左上角品牌行、
+  工作台主标题、浏览器标签标题、首屏加载骨架文案与工作台 aria-label；工作台首屏说明（Agent
+  欢迎语）由「硕磐 BI 智能分析助手已就绪。可以问我管报损益、应收应付、存货库龄、预算执行等
+  问题。」改为「硕磐智能分析 Agent 已就绪。可以问我管报损益、应收应付、存货库龄、预算执行等
+  问题。」；蓝色版本徽标 `ontology-v0.1.0` 从侧栏品牌行移到工作台主标题右侧（原
+  「硕磐财务 BI 智能分析」），即「硕磐智能分析 Agent `ontology-v0.1.0`」。侧栏「智能分析 /
+  报表分析」是模式名，「内容 / 设置」等是分组名，不在改名范围。
+- 实现：`frontend/src/shell.html` 侧栏品牌行删除 `brand-version` 节点、品牌名改为新名，工作台
+  空态标题改为 `.empty-title-row`（`.empty-title` + `.empty-version#product-version` 首帧
+  蓝色样式兜底）；`frontend/src/main.jsx` 的 `PRODUCT_NAME` 改为「硕磐智能分析 Agent」，侧栏
+  只渲染名称，新增 `ProductVersionTag()` 在挂载时把 `#product-version` 渲染成蓝色 Ant Design
+  `Tag`（沿用 `PRODUCT_VERSION` 单一口径）；`frontend/src/runtime.js` 的空态标题（后端不可用或
+  未加载时用）同步改名；`frontend/src/workbench.css` 新增 `.empty-title-row` / `.empty-version`
   样式并调整 `.antd-product-version` / `.antd-product-brand`。
+- 页面标题与说明文案：`frontend/src/shell.html` 与 `bi_agent/web/static/index.html` 的
+  `<title>` 改为「硕磐智能分析 Agent · 本体工作台」，`index.html` 的 `aria-label` 改为
+  「硕磐智能分析 Agent React 工作台」、加载骨架文案改为「正在加载硕磐智能分析 Agent 工作台…」；
+  `.claude/agents/bi-analyst.md` 的 `welcome_message`（工作台首屏说明，经 `/api/meta` 下发）
+  改为「硕磐智能分析 Agent 已就绪。…」。
 - 契约与测试：`frontend` 重建产物 `bi_agent/web/static/vendor/antd/workbench.js` 与
   `…-workbench.css` 同步更新；`tests/test_regressions.py::test_product_branding_and_version_display`
-  断言更新为新品牌名、侧栏无版本徽标、标题行含 `empty-version#product-version`。
+  断言更新为新品牌名、侧栏无版本徽标、标题行含 `empty-version#product-version`，并新增
+  `<title>` / `aria-label` / 骨架文案 / Agent 欢迎语四条断言（旧文案 `硕磐 BI 智能分析助手`
+  不得回归）。
 - 验收（2026-09-29）：`pytest -q tests` **1282 passed / 0 failed / 25 skipped /
-  1070 subtests passed**；`cd frontend && npm run build` 重建结果幂等（仅上述两份产物变化）；
-  本地静态页无头渲染 OCR 核对到「硕磐智能分析 Agent `ontology-v0.1.0`」。页面文档标题
-  `<title>智能分析 · 本体工作台</title>` 未在本次改名范围，保持原样。
-- 边界：只改前端品牌名与版本徽标位置，未改版本号、未改 tag/Release、未部署、未重启服务，
-  未删除或迁移历史会话与用户数据。
+  1070 subtests passed**；`cd frontend && npm run build` 重建结果幂等；本地静态页无头渲染 OCR
+  核对到「硕磐智能分析 Agent `ontology-v0.1.0`」。
+- 边界：只改产品名、版本徽标位置和首屏说明文案，未改版本号、未改 tag/Release、未部署、
+  未重启服务，未删除或迁移历史会话与用户数据。
