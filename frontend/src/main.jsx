@@ -20,8 +20,10 @@ const { Sider } = Layout;
 
 // Unified product identity.  The sidebar brand renders the product name and
 // the workbench hero renders the version chip from these same constants, so
-// the visible name can never drift from the packaged version.
-const PRODUCT_NAME = "硕磐智能分析 Agent";
+// the visible name can never drift from the packaged version.  The sidebar
+// brand keeps the short legacy label 「智能分析」 (the longer marketing name
+// stays on the page title / hero), per the 2026-09-30 brand request.
+const PRODUCT_NAME = "智能分析";
 const PRODUCT_VERSION = "ontology-v0.1.0";
 
 const DECORATIVE_EMOJI_TOKEN = "(?:📌|📊|📎|🧭|📈|📉|📄|🧩|🧠|✅|⚠️|🔍|💡)";
@@ -672,8 +674,8 @@ const stepRoots = new WeakMap();
 function AntdMessage({ role, iteration, html }) {
   const user = role === "user";
   // Tool-only iterations can create an assistant message host before any
-  // text arrives. Do not render an empty Bubble with only the iteration
-  // header; the tool step itself remains visible below it.
+  // text arrives. Do not render an empty Bubble; the tool step itself remains
+  // visible below it.
   const rawHtml = String(html || "");
   const visibleHtml = stripDecorativeAssistantMarkup(
     rawHtml.replace(/<span class="thinking-line">[\s\S]*?思考中…<\/span>/g, ""),
@@ -689,7 +691,6 @@ function AntdMessage({ role, iteration, html }) {
     variant="filled"
     shape="corner"
     className={`antd-message-bubble ${user ? "antd-message-user" : "antd-message-assistant"}`}
-    header={!user && <span className="antd-message-header">助手 · 迭代 {iteration || ""}</span>}
     content={contentHtml}
     messageRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
   />;
@@ -1274,8 +1275,13 @@ function enhanceWorkbenchTree(container) {
     head.querySelectorAll(":scope > .dash-tag:not(.conclusion):not(.rootcause):not(.actions)").forEach((node) => node.remove());
   });
   container.querySelectorAll(".dash-tag.conclusion, .dash-tag.rootcause, .dash-tag.actions").forEach(decorateSemanticBadge);
+  // Transcripts saved before the header cleanup still carry the internal agent
+  // role label (BI-ANALYST) and the iteration chip inside their stored HTML.
+  // Drop those headers outright so restored conversations match new ones; the
+  // SYSTEM · … tips keep their own headers.
+  container.querySelectorAll(".msg-assistant > .msg-header").forEach((node) => node.remove());
   container.querySelectorAll(":scope > .msg:not(.antd-message-enhanced)").forEach((node) => {
-    mountMessage(node, node.classList.contains("msg-user") ? "user" : "assistant", node.querySelector(".msg-iter")?.textContent?.replace(/[^0-9]/g, ""));
+    mountMessage(node, node.classList.contains("msg-user") ? "user" : "assistant");
   });
   container.querySelectorAll(".step:not(.antd-step-enhanced)").forEach(mountStep);
   container.querySelectorAll(":scope > .chart-card:not(.antd-result-card-host), :scope > .table-card:not(.antd-result-card-host), :scope > .multidim-card:not(.antd-result-card-host)").forEach((node) => {

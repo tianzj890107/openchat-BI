@@ -2326,7 +2326,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = withBasePath("static/vendor/echarts.min.js")', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=161" defer', index)
+        self.assertIn('workbench.js?v=162" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -2463,7 +2463,7 @@ class OfflineRegressionTests(unittest.TestCase):
         nav_end = runtime.index("function scrollToQuestion(", nav_start)
         nav = runtime[nav_start:nav_end]
         sync_start = runtime.index("function initQuestionSelectionSync(")
-        sync_end = runtime.index("function assistantRoleLabel(", sync_start)
+        sync_end = runtime.index("function startAssistantMessage(", sync_start)
         sync = runtime[sync_start:sync_end]
         # Navigation pauses both scroll-driven syncs while it runs.
         self.assertIn("questionNavActive", nav)
@@ -2480,7 +2480,7 @@ class OfflineRegressionTests(unittest.TestCase):
         sync_end = runtime.index("function initQuestionSelectionSync(", sync_start)
         sync = runtime[sync_start:sync_end]
         list_start = runtime.index("function initQuestionSelectionSync(")
-        list_end = runtime.index("function assistantRoleLabel(", list_start)
+        list_end = runtime.index("function startAssistantMessage(", list_start)
         listeners = runtime[list_start:list_end]
         # The synced target is marked; its own scroll event consumes the
         # marker instead of syncing back to the source (no A->B->A rebound).
@@ -3988,24 +3988,25 @@ console.log(JSON.stringify(out));"""
 
 
     def test_product_branding_and_version_display(self) -> None:
-        """The brand is 硕磐智能分析 Agent everywhere the product name shows —
-        sidebar brand row, hero title, HTML title, loading skeleton, aria-label
-        and the agent welcome line — and the blue ontology-v0.1.0 chip trails
-        the workbench hero title instead of sitting in the sidebar brand row;
-        智析 and the bi-analyst pseudo-version are gone from user-visible
-        surfaces."""
+        """The sidebar top-left brand is the short label 「智能分析」, while the
+        longer product name 硕磐智能分析 Agent stays on the hero title, HTML
+        title, loading skeleton, aria-label and the agent welcome line; the
+        blue ontology-v0.1.0 chip trails the workbench hero title instead of
+        sitting in the sidebar brand row; 智析 and the bi-analyst
+        pseudo-version are gone from user-visible surfaces."""
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
         shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
         static = Path("bi_agent/web/static/index.html").read_text(encoding="utf-8")
         agent = Path(".claude/agents/bi-analyst.md").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_NAME = "硕磐智能分析 Agent";', main)
+        # Sidebar brand row: short legacy label, name only, no version chip.
+        self.assertIn('const PRODUCT_NAME = "智能分析";', main)
         self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.0";', main)
         self.assertIn("PRODUCT_NAME", main)
         self.assertIn("PRODUCT_VERSION", main)
         self.assertIn('className="antd-product-version"', main)
         self.assertIn("<title>硕磐智能分析 Agent · 本体工作台</title>", shell)
-        # Sidebar brand row: name only, no version chip.
-        self.assertIn('<span class="brand-name">硕磐智能分析 Agent</span>', shell)
+        self.assertIn('<span class="brand-name">智能分析</span>', shell)
+        self.assertNotIn('<span class="brand-name">硕磐智能分析 Agent</span>', shell)
         self.assertNotIn('class="brand-version"', shell)
         # The blue version chip now follows the hero title.
         self.assertIn('<div class="empty-title-row">', shell)
@@ -4024,6 +4025,38 @@ console.log(JSON.stringify(out));"""
         # The agent role definition stays in place; only its welcome copy was
         # rebranded.
         self.assertIn("name: bi-analyst", agent)
+
+    def test_chat_bubbles_have_no_agent_role_or_iteration_header(self) -> None:
+        """Chat bubbles render no header at all: neither the internal agent
+        role name (bi-analyst, uppercased to BI-ANALYST) nor an iteration chip
+        is user-facing — new turns, history previews and restored transcripts
+        alike."""
+        runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
+        main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+        bundle = Path("bi_agent/web/static/vendor/antd/workbench.js").read_text(encoding="utf-8")
+        # Nothing produces the role label or the iteration chip any more.
+        self.assertNotIn("assistantRoleLabel", runtime)
+        self.assertNotIn('msg-role assistant">', runtime)
+        self.assertNotIn("msg-iter", runtime)
+        self.assertNotIn("msg-header", runtime[runtime.index("function startAssistantMessage("):runtime.index("function appendAssistantDelta(")])
+        self.assertNotIn("antd-message-header", main)
+        self.assertNotIn("助手 · 迭代", main)
+        self.assertNotIn("showIteration", main)
+        # Restored transcripts (stored before this cleanup) drop their headers
+        # too, and no assistant bubble may ever show one again.
+        self.assertIn(
+            'container.querySelectorAll(".msg-assistant > .msg-header").forEach((node) => node.remove());',
+            main,
+        )
+        self.assertIn(".msg-assistant > .msg-header { display: none !important; }", css)
+        # SYSTEM · … tips keep their own header.
+        self.assertIn('msg-header"><span class="msg-role"', runtime)
+        # The served bundle is rebuilt from these sources.
+        self.assertNotIn("助手 · 迭代", bundle)
+        self.assertNotIn(':"助手").toUpperCase()', bundle)
+        self.assertNotIn("antd-message-header", bundle)
+        self.assertNotIn('msg-role assistant">', bundle)
 
     def test_version_contract_consistent(self) -> None:
         """Python, FastAPI, npm and UI versions agree on ontology-v0.1.0 and are
