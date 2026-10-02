@@ -333,3 +333,24 @@
   核对到「硕磐智能分析 Agent `ontology-v0.1.0`」。
 - 边界：只改产品名、版本徽标位置和首屏说明文案，未改版本号、未改 tag/Release、未部署、
   未重启服务，未删除或迁移历史会话与用户数据。
+### 2026-10-02 · 分析逻辑剥离包 `ontology-analytics-skill`（可移植交付，不改动现有系统）
+
+- 背景：用户要求把分析 agent 的整套逻辑（意图路由、L1–L5 SOP、交付闸门、工具契约、
+  角色与图库模式等）从系统里剥离，放进一个独立文件夹交给外部通用 agent（如 Codex）复现，
+  且**不得影响现有仓库内容与行为**。
+- 交付物：新增自包含目录 `ontology-analytics-skill/`，纯新增、不改任何现有代码/配置/Prompt：
+  - `SKILL.md`：入口说明（何时使用、路由→分析→闸门工作流、按任务读哪份规范）；
+    `README.md`：交付说明、运行方式、真源与不包含项。
+  - `references/01–10`：「制度」层——六步 SOP、L1–L5 模板、纪律与语言、深入洞察、
+    业务名称优先规则、确定性路由规则、五道交付闸门、17 个工具与数据源、图库检索模式、
+    用户画像与回答风格。
+  - `scripts/route.py` / `scripts/gates.py`：确定性路由与闸门 CLI（仅标准库）；
+    `scripts/vendor/` 自源仓库 `c94d430` 原样复制 `analysis_policy` / `reliability` /
+    `chart_policy` / `display_names` / `sql_guard` / `forecast_policy` 作为**可执行规则真源**。
+  - `cases/`：冻结用例 **137 条路由 + 23 条闸门**，路由来自评测集全部 policy 断言用例，
+    多轮用例取 `fixture.effective_question` 解析后的单轮问句；闸门为本包按规范整理的行为断言。
+- 验证：`python3 scripts/selfcheck.py --quiet` → routing 137/137、gates 23/23、
+  合计 **160/160 passed**；`route.py` / `gates.py` 冒烟通过；纯标准库、离线可跑。
+- 边界：不包含具体数据工具实现（本体 / Doris 指标网关 / x360 / 图表渲染）、Web 会话 /
+  SSE / 前端工作台、凭据与用户数据；未改版本号、tag/Release，未部署、未重启服务，
+  未删除或迁移历史会话与用户数据。
