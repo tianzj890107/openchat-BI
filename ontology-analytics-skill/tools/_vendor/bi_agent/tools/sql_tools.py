@@ -1,0 +1,748 @@
+"""
+SQL tools — safe read-only execution against the customer data source.
+
+Two backends are supported, selected per-registration via `SqlBackend`:
+
+  * SQLite  — local `.db` file (default).
+  * Doris   — the team's read-only HTTP query endpoint (see `DorisHttpConn`).
+
+Only SELECT / WITH / PRAGMA / EXPLAIN statements are allowed. A single call
+executes exactly one statement. Results are truncated to a row cap so the
+LLM context stays manageable.
+"""
+
+from __future__ import annotations
+
+import re
+import sqlite3
+import json
+import os
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+from typing import Callable
+from ..reliability import Provenance, normalize_query_result
+
+Executor = Callable[[dict, str], str]
+
+
+# ---------------------------------------------------------------------------
+# Doris connection (MySQL wire protocol)
+# ---------------------------------------------------------------------------
+
+# Doris defaults; the HTTP endpoint is used by the active web application.
+DEFAULT_DORIS_JDBC_URL = (
+    "jdbc:mysql://172.16.6.163:9030/ontology_demometaerp_scm_po"
+    "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+)
+DEFAULT_DORIS_DRIVER = "com.mysql.cj.jdbc.Driver"
+DEFAULT_DORIS_USERNAME = "admin"
+DEFAULT_DORIS_PASSWORD = ""
+# Active Doris database (schema). Tables are referenced db-qualified in SQL,
+# e.g. `ontology_demometaerp_scm_po.poheader`. Overridable via the 数据源设置 UI or
+# the DORIS_DATABASE env var; falls back to the schema in the JDBC URL.
+DEFAULT_DORIS_DATABASE = "ontology_demometaerp_scm_po"
+# The Doris HTTP endpoint is environment-specific (PDT vs demo2) and must be
+# injected through DORIS_API_URL. There is deliberately no baked-in default:
+# a missing value must fail fast instead of silently querying another
+# environment's ontology gateway.
+DEFAULT_DORIS_API_URL = ""
+_DORIS_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+MAX_RESULT_ROWS = 1_000
+
+
+def _validate_doris_identifier(value: str, label: str = "Doris 标识符") -> str:
+    """Validate an unquoted Doris database/schema identifier.
+
+    Database names are interpolated into ``information_schema`` queries and
+    are also used as SQL qualification prefixes.  Keeping this validation in
+    the connection object means both the UI path and direct tool registration
+    get the same protection.
+    """
+    normalized = str(value or "").strip()
+    if not _DORIS_IDENTIFIER_RE.fullmatch(normalized):
+        raise ValueError(f"{label}只能包含字母、数字、下划线或 $,且不能以数字开头")
+    return normalized
+
+
+class DorisApiError(Exception):
+    """Raised when a Doris connection or query fails."""
+
+
+def _gateway_error_message(body: str, fallback: str) -> str:
+    """Extract the human-readable ``msg`` from a non-2xx gateway body.
+
+    Both gateway dialects answer failures with
+    ``{"success": false, "code": ..., "msg": ...}``; that ``msg`` is the only
+    part written for the caller (it carries the real engine error such as
+    ``relation "..." does not exist`` or the statement-validator text).  When
+    the body is not JSON we fall back to the trimmed raw text so nothing is
+    silently dropped.
+    """
+    text = (body or "").strip()
+    if not text:
+        return fallback
+    try:
+        payload = json.loads(text)
+    except (ValueError, TypeError):
+        payload = None
+    if isinstance(payload, dict):
+        msg = payload.get("msg") or payload.get("message") or payload.get("error")
+        if msg:
+            return str(msg).strip()
+    return text[:500]
+
+
+def _parse_jdbc_mysql(jdbc_url: str) -> tuple[str, int, str]:
+    """Extract (host, port, database) from a `jdbc:mysql://host:port/db?...` URL."""
+    m = re.match(
+        r"^jdbc:mysql://(?P<host>[^:/?]+)(?::(?P<port>\d+))?/(?P<db>[^?/]+)",
+        (jdbc_url or "").strip(),
+        re.IGNORECASE,
+    )
+    if not m:
+        raise ValueError(
+            "需形如 jdbc:mysql://HOST:PORT/DATABASE?params 的 JDBC 地址"
+        )
+    return m.group("host"), int(m.group("port") or 3306), m.group("db")
+
+
+class DorisConn:
+    """A Doris (MySQL-protocol) connection spec parsed from a JDBC URL."""
+
+    def __init__(
+        self,
+        jdbc_url: str,
+        username: str = DEFAULT_DORIS_USERNAME,
+        password: str = DEFAULT_DORIS_PASSWORD,
+        driver: str = DEFAULT_DORIS_DRIVER,
+        database: str | None = None,
+    ) -> None:
+        self.jdbc_url = (jdbc_url or "").strip()
+        self.username = username or ""
+        self.password = password or ""
+        self.driver = driver or DEFAULT_DORIS_DRIVER
+        self.host, self.port, url_db = _parse_jdbc_mysql(self.jdbc_url)
+        # An explicit `database` overrides the schema baked into the JDBC URL,
+        # so the UI can switch databases without rewriting the connection URL.
+        self.database = _validate_doris_identifier(
+            (database or "").strip() or url_db, "Doris 数据库名"
+        )
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        return f"DorisConn({self.host}:{self.port}/{self.database}, user={self.username!r})"
+
+
+class DorisHttpConn:
+    """Doris query endpoint exposed by the team ontology service."""
+
+    def __init__(
+        self,
+        api_url: str,
+        database: str = DEFAULT_DORIS_DATABASE,
+        *,
+        repository_id: str = "",
+        app_id: str = "",
+        auth_token: str = "",
+    ) -> None:
+        self.api_url = (api_url or "").strip()
+        if not self.api_url:
+            raise ValueError("需填写 Doris HTTP API 地址")
+        self.database = _validate_doris_identifier(
+            database or DEFAULT_DORIS_DATABASE, "Doris 数据库名"
+        )
+        # Keep Doris requests bound to the same remote ontology repository as
+        # the active analysis session. Environment variables remain a fallback
+        # for direct/legacy construction outside the web source switcher.
+        self.repository_id = str(repository_id or "").strip()
+        self.app_id = str(app_id or "").strip()
+        self.auth_token = str(auth_token or "").strip()
+        self.host = "HTTP API"
+        self.port = 0
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"DorisHttpConn({self.api_url}, database={self.database})"
+
+
+# ---------------------------------------------------------------------------
+# Backend descriptor
+# ---------------------------------------------------------------------------
+
+class SqlBackend:
+    """Where the SQL tools run their queries.
+
+    Pass a `DorisConn` to query Apache Doris over the MySQL protocol; otherwise
+    queries hit the local SQLite `db_path`.
+    """
+
+    def __init__(self, db_path: str = "", doris: "DorisConn | None" = None) -> None:
+        self.db_path = str(db_path or "")
+        self.doris = doris
+
+    @property
+    def is_doris(self) -> bool:
+        return self.doris is not None
+
+    @property
+    def label(self) -> str:
+        if self.doris is not None:
+            return f"Doris {self.doris.host}:{self.doris.port}/{self.doris.database}"
+        return self.db_path
+
+
+def _coerce_backend(source: "SqlBackend | str") -> SqlBackend:
+    """Accept either a SqlBackend or a bare db_path string (back-compat)."""
+    return source if isinstance(source, SqlBackend) else SqlBackend(db_path=str(source))
+
+
+ExecutorFactory = Callable[["SqlBackend | str"], Executor]
+
+
+# ---------------------------------------------------------------------------
+# Doris query execution (pymysql, imported lazily so the module loads without it)
+# ---------------------------------------------------------------------------
+
+def _doris_query(conn: DorisConn | DorisHttpConn, sql: str) -> tuple[list[str], list[tuple]]:
+    """Run a read-only statement through the configured Doris transport."""
+    if isinstance(conn, DorisHttpConn):
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        for name, configured, env_name in (
+            ("X-Ontology-Repository-Id", conn.repository_id, "ONTOLOGY_REPOSITORY_ID"),
+            ("X-App-Id", conn.app_id, "ONTOLOGY_APP_ID"),
+            ("Authorization", conn.auth_token, "ONTOLOGY_AUTH_TOKEN"),
+        ):
+            value = configured or os.environ.get(env_name, "").strip()
+            if value:
+                if name == "Authorization" and not value.lower().startswith(
+                    ("bearer ", "basic ")
+                ):
+                    value = f"Bearer {value}"
+                headers[name] = value
+        # The legacy gateway (``/agent/doris/query``) expects ``{"sql": ...}``
+        # and answers with ``data.rows``; the MAL endpoint
+        # (``/api/v1/analysis/data/query``) expects a ``QueryRequest`` and
+        # answers with ``data.result.rows``.  Both dialects stay live, and each
+        # side tolerates the other's response shape while the fleet rolls over.
+        legacy_dialect = conn.api_url.rstrip("/").endswith("/agent/doris/query")
+        request_body = (
+            {"sql": sql}
+            if legacy_dialect
+            else {"analysisConfig": {"sql": sql}, "commonConfig": {}}
+        )
+        try:
+            request = Request(
+                conn.api_url,
+                data=json.dumps(request_body, ensure_ascii=False).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            with urlopen(request, timeout=60) as response:
+                payload = json.loads(response.read().decode("utf-8", errors="replace"))
+        except HTTPError as e:
+            # ``urlopen`` raises for any non-2xx status *before* the body is
+            # read.  The gateway hides the engine's real error behind a generic
+            # status line, so read and forward ``msg`` instead of dropping it.
+            try:
+                body = e.read().decode("utf-8", errors="replace")
+            except Exception:  # pragma: no cover - body already consumed/closed
+                body = ""
+            detail = _gateway_error_message(body, str(e))
+            raise DorisApiError(
+                f"analysis gateway request failed: HTTP {e.code} {detail}"
+            ) from e
+        except Exception as e:
+            # Never echo the API URL / host / port: it leaks internal topology
+            # (and any embedded credentials) into the model-visible answer.
+            raise DorisApiError(f"analysis gateway request failed: {e}") from e
+        if isinstance(payload, dict):
+            code = payload.get("code")
+            if payload.get("success") is False or (
+                code is not None and code not in (200, "200")
+            ):
+                raise DorisApiError(
+                    str(payload.get("msg") or payload.get("message") or
+                        f"analysis gateway returned failure code={code}")
+                )
+        data = payload.get("data", payload) if isinstance(payload, dict) else {}
+        if not isinstance(data, dict):
+            data = {}
+        result = data.get("result") if isinstance(data.get("result"), dict) else {}
+        raw_rows = result.get("rows")
+        raw_columns = result.get("columns")
+        if not isinstance(raw_rows, list):
+            raw_rows = data.get("rows")
+            raw_columns = data.get("columns")
+        if not isinstance(raw_rows, list):
+            return [], []
+        explicit: list[str] = []
+        if isinstance(raw_columns, list):
+            for column in raw_columns:
+                if isinstance(column, dict):
+                    name = column.get("identifierCode") or column.get("name") or column.get("label")
+                else:
+                    name = column
+                if name not in (None, ""):
+                    explicit.append(str(name))
+        if not raw_rows:
+            return explicit, []
+        if isinstance(raw_rows[0], dict):
+            columns = list(explicit)
+            for row in raw_rows:
+                for key in row:
+                    if key not in columns:
+                        columns.append(key)
+            return columns, [tuple(row.get(c) for c in columns) for row in raw_rows]
+        return explicit, [tuple(row) for row in raw_rows]
+    try:
+        import pymysql  # lazy: only required when the Doris source is active
+    except ImportError as e:  # pragma: no cover - environment dependent
+        raise DorisApiError(
+            "未安装 pymysql,无法连接远程数据库。请先 `pip install pymysql`。"
+        ) from e
+    try:
+        cx = pymysql.connect(
+            host=conn.host,
+            port=conn.port,
+            user=conn.username,
+            password=conn.password,
+            database=conn.database,
+            charset="utf8mb4",
+            connect_timeout=10,
+            read_timeout=60,
+        )
+    except Exception as e:  # pymysql.err.OperationalError etc.
+        raise DorisApiError(
+            f"无法连接远程数据库 ({conn.database}): {e}"
+        ) from e
+    try:
+        cur = cx.cursor()
+        cur.execute(sql)
+        columns = [d[0] for d in cur.description] if cur.description else []
+        rows = list(cur.fetchall())
+    except Exception as e:
+        raise DorisApiError(f"{e}") from e
+    finally:
+        cx.close()
+    return columns, rows
+
+
+_ALLOWED_LEAD = re.compile(r"^\s*(select|with|pragma|explain)\b", re.IGNORECASE)
+#: The remote analysis gateway's own validator only accepts statements that
+#: lead with ``SELECT`` or ``MATCH`` (``WITH`` / ``EXPLAIN`` / ``PRAGMA`` are
+#: rejected with a generic 400).  Local validation must not forward a statement
+#: the gateway is known to refuse (Spec R11).
+_GATEWAY_LEAD = re.compile(r"^\s*(select|match)\b", re.IGNORECASE)
+_FORBIDDEN = re.compile(
+    r"\b(insert|update|delete|drop|alter|create|replace|truncate|attach|detach|vacuum|reindex)\b",
+    re.IGNORECASE,
+)
+
+
+def _validate_sql(sql: str) -> str | None:
+    """Return an error message if SQL is not safe-read, else None."""
+    s = sql.strip().rstrip(";").strip()
+    if not s:
+        return "empty SQL"
+    if ";" in s:
+        return "multi-statement SQL is not allowed"
+    if not _ALLOWED_LEAD.match(s):
+        return "only SELECT / WITH / PRAGMA / EXPLAIN are permitted"
+    # PRAGMA is retained for schema inspection (for example
+    # ``PRAGMA table_info('orders')``), but assignment forms can change SQLite
+    # connection/database state and violate Ontology-FactQuery's read-only contract.
+    if re.match(r"^\s*pragma\b", s, re.IGNORECASE) and "=" in s:
+        return "PRAGMA assignment is not permitted"
+    if _FORBIDDEN.search(s):
+        return "SQL contains a forbidden keyword (write/DDL)"
+    return None
+
+
+def _format_rows(columns: list[str], rows: list[tuple], max_rows: int) -> str:
+    try:
+        max_rows = max(1, min(int(max_rows), MAX_RESULT_ROWS))
+    except (TypeError, ValueError):
+        max_rows = 100
+    if not rows:
+        return "(0 rows)"
+    shown = rows[:max_rows]
+    widths = [len(c) for c in columns]
+    str_rows: list[list[str]] = []
+    for r in shown:
+        cells = ["" if v is None else str(v) for v in r]
+        str_rows.append(cells)
+        # A few HTTP SQL gateways omit or under-report column metadata for
+        # empty/heterogeneous result sets. Keep formatting diagnostic output
+        # useful instead of raising IndexError on a wider row.
+        if len(cells) > len(widths):
+            widths.extend([0] * (len(cells) - len(widths)))
+        for i, c in enumerate(cells):
+            widths[i] = min(max(widths[i], len(c)), 60)
+
+    if len(columns) < len(widths):
+        columns = list(columns) + [f"column_{i + 1}" for i in range(len(columns), len(widths))]
+    for i, column in enumerate(columns):
+        if i < len(widths):
+            widths[i] = min(max(widths[i], len(str(column))), 60)
+
+    def _fmt(cells: list[str]) -> str:
+        return " | ".join(c.ljust(widths[i])[: widths[i]] for i, c in enumerate(cells))
+
+    lines = [_fmt(columns), "-+-".join("-" * w for w in widths)]
+    for cells in str_rows:
+        lines.append(_fmt(cells))
+    if len(rows) > max_rows:
+        lines.append(f"... ({len(rows) - max_rows} more rows truncated)")
+    lines.append(f"\n[{len(rows)} row(s), showing {len(shown)}]")
+    return "\n".join(lines)
+
+
+def _code_name_pairs(columns: list[str]) -> list[dict[str, str]]:
+    """Pair ``*_code`` columns with their sibling ``*_name`` columns.
+
+    Only deterministic pairings are reported (same prefix, e.g.
+    ``unit_code``/``unit_name`` or ``supplier_code``/``supplier_name``);
+    nothing is guessed.  The metadata lets downstream display normalization
+    prefer the name column while keeping the code traceable.
+    """
+    lowered = [str(c).casefold() for c in columns]
+    pairs: list[dict[str, str]] = []
+    for column in columns:
+        text = str(column)
+        key = text.casefold()
+        base = ""
+        if key.endswith("_code") and len(key) > 5:
+            base = text[: -len("_code")]
+        elif key == "code":
+            base = ""
+        if base:
+            for candidate in (f"{base}_name", f"{base}name"):
+                if candidate.casefold() in lowered:
+                    pairs.append({"code_column": text, "name_column": candidate})
+                    break
+        elif key == "code" and "name" in lowered:
+            name_column = next(c for c in columns if str(c).casefold() == "name")
+            pairs.append({"code_column": text, "name_column": name_column})
+    return pairs
+
+# ---------------------------------------------------------------------------
+# Ontology-FactQuery
+# ---------------------------------------------------------------------------
+
+SQL_RUN_SCHEMA = {
+    "name": "Ontology-FactQuery",
+    "description": (
+        "Execute a single read-only SQL statement against the customer "
+        "database. The active source is either a local SQLite DB or the "
+        "remote analysis gateway (PostgreSQL engine, PG dialect), selected in "
+        "数据源设置. Writes, DDL, and multi-statement scripts are rejected. "
+        "When the gateway is active, use standard PostgreSQL (ANSI) SQL "
+        "(PRAGMA is SQLite-only). Use this after you've resolved the metric "
+        "spec and relations from the ontology. When the gateway is active, "
+        "table names MUST be database-qualified "
+        "(e.g. ontology_qianjiang.poheader) — run ListTables first to get "
+        "the exact database.table prefixes."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "sql": {"type": "string", "description": "A single read-only statement."},
+            "query_description": {
+                "type": "string",
+                "description": (
+                    "Optional short Chinese description of the query goal for "
+                    "display on the tool card (e.g. 查询超期未接收含税金额). "
+                    "Never affects SQL execution."
+                ),
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max rows to return in output (default 100).",
+            },
+        },
+        "required": ["sql"],
+    },
+}
+
+
+def _make_sql_run(source: "SqlBackend | str") -> Executor:
+    backend = _coerce_backend(source)
+
+    def run(params: dict, cwd: str) -> str:
+        sql = (params.get("sql") or "").strip()
+        try:
+            limit = int(params.get("limit") or 100)
+        except (TypeError, ValueError):
+            return "Ontology-FactQuery rejected: limit must be an integer"
+        limit = max(1, min(limit, MAX_RESULT_ROWS))
+        err = _validate_sql(sql)
+        if err:
+            return f"Ontology-FactQuery rejected: {err}\nSQL: {sql}"
+        header = f"SQL: {sql}"
+        if backend.is_doris:
+            clean = sql.strip().rstrip(";").strip()
+            if re.match(r"^pragma\b", clean, re.IGNORECASE):
+                return "Ontology-FactQuery rejected: PRAGMA is SQLite-only\nSQL: " + sql
+            if not _GATEWAY_LEAD.match(clean):
+                # The gateway answers ``WITH`` / ``EXPLAIN`` with
+                # ``400 仅允许以 SELECT 或 MATCH 开头``; refusing here keeps the
+                # failure local and actionable instead of burning a round trip.
+                return (
+                    "Ontology-FactQuery rejected: 仅允许以 SELECT 或 MATCH 开头的只读查询"
+                    "(the remote gateway rejects WITH / EXPLAIN; rewrite the CTE or "
+                    "EXPLAIN as a plain SELECT or a subquery)\nSQL: " + sql
+                )
+            try:
+                columns, rows = _doris_query(backend.doris, clean)
+            except DorisApiError as e:
+                return f"Ontology-FactQuery error: {e}\nSQL: {sql}"
+            result = normalize_query_result(
+                {"columns": columns, "rows": rows[:limit]},
+                scope={"query": clean},
+                semantic={"columns": columns, "code_name_pairs": _code_name_pairs(columns)},
+                provenance=Provenance(source="Doris", query=clean),
+            )
+            return header + "\n\n" + _format_rows(columns, rows, limit) + "\n\n[RESULT_METADATA]\n" + json.dumps(result.to_dict(), ensure_ascii=False)
+        try:
+            with sqlite3.connect(backend.db_path) as conn:
+                conn.row_factory = None
+                cur = conn.cursor()
+                cur.execute(sql)
+                if cur.description is None:
+                    return "Ontology-FactQuery: statement returned no result set."
+                columns = [d[0] for d in cur.description]
+                rows = cur.fetchall()
+        except sqlite3.Error as e:
+            return f"Ontology-FactQuery error: {e}\nSQL: {sql}"
+        result = normalize_query_result(
+            {"columns": columns, "rows": rows[:limit]},
+            scope={"query": sql},
+            semantic={"columns": columns, "code_name_pairs": _code_name_pairs(columns)},
+            provenance=Provenance(source="SQLite", query=sql),
+        )
+        return header + "\n\n" + _format_rows(columns, rows, limit) + "\n\n[RESULT_METADATA]\n" + json.dumps(result.to_dict(), ensure_ascii=False)
+    return run
+
+
+# ---------------------------------------------------------------------------
+# ListTables
+# ---------------------------------------------------------------------------
+
+LIST_TABLES_SCHEMA = {
+    "name": "ListTables",
+    "description": (
+        "List all tables in the connected database. Useful when you need to "
+        "confirm a physical table exists before querying. Physical tables are "
+        "referenced as database-qualified names (database.table)."
+    ),
+    "input_schema": {"type": "object", "properties": {}},
+}
+
+
+def _row_estimate_scale(value: object) -> str:
+    """Render a planner row estimate; negative/absent values are explicitly unknown."""
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return "unknown rows"
+    if number < 0:
+        # PostgreSQL uses -1 for "never analyzed"; it is not a row count.
+        return "unknown rows"
+    return f"{int(number)} rows"
+
+
+def _list_tables_doris(backend: SqlBackend) -> str:
+    # Scope to the connected database. Only constructs that exist on the real
+    # engine (PostgreSQL) are used: the MySQL-only ``table_rows`` estimate is
+    # rejected outright and would fail the listing.  ``pg_class.reltuples`` is
+    # the planner's row estimate; ``-1`` means "never analyzed" and is shown as
+    # an explicit unknown rather than a bogus row count (Spec R16).
+    conn = backend.doris
+    sql = (
+        "SELECT t.table_name, c.reltuples "
+        "FROM information_schema.tables t "
+        "LEFT JOIN pg_class c ON c.relname = t.table_name "
+        "AND c.relnamespace = ("
+        "SELECT oid FROM pg_namespace WHERE nspname = t.table_schema) "
+        f"WHERE t.table_schema = '{conn.database}' ORDER BY t.table_name"
+    )
+    try:
+        cols, rows = _doris_query(conn, sql)
+    except DorisApiError as e:
+        return f"ListTables error: {e}"
+    names = [str(c) for c in (cols or [])]
+
+    def _cell(row: tuple, key: str, position: int):
+        index = position
+        if key in names:
+            index = names.index(key)
+        return row[index] if index < len(row) else None
+
+    out = [
+        f"# Tables in {conn.database} ({len(rows)})",
+        f"# 注意: 写 SQL 时表名必须带库前缀 `{conn.database}.<表名>`。",
+    ]
+    if not rows:
+        out.append(f"  0 tables / views — 库 `{conn.database}` 当前没有表或视图。")
+        return "\n".join(out)
+    for row in rows:
+        # Tolerate a gateway that reorders or appends columns rather than
+        # failing the whole listing.
+        name = _cell(row, "table_name", 0)
+        if name in (None, ""):
+            continue
+        estimate = _cell(row, "reltuples", 1)
+        out.append(f"  {conn.database}.{name}  ({_row_estimate_scale(estimate)})")
+    return "\n".join(out)
+
+
+def _make_list_tables(source: "SqlBackend | str") -> Executor:
+    backend = _coerce_backend(source)
+
+    def run(params: dict, cwd: str) -> str:
+        if backend.is_doris:
+            return _list_tables_doris(backend)
+        try:
+            conn = sqlite3.connect(backend.db_path)
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )
+            names = [r[0] for r in cur.fetchall()]
+            out = [f"# Tables in {backend.db_path} ({len(names)})"]
+            for n in names:
+                try:
+                    cur.execute(f'SELECT COUNT(*) FROM "{n}"')
+                    cnt = cur.fetchone()[0]
+                    out.append(f"  {n}  ({cnt} rows)")
+                except sqlite3.Error:
+                    out.append(f"  {n}  (count failed)")
+            conn.close()
+            return "\n".join(out)
+        except sqlite3.Error as e:
+            return f"ListTables error: {e}"
+    return run
+
+
+# ---------------------------------------------------------------------------
+# DescribeTable
+# ---------------------------------------------------------------------------
+
+DESCRIBE_TABLE_SCHEMA = {
+    "name": "DescribeTable",
+    "description": (
+        "Show the physical column list of a table (name, type, nullable). "
+        "Use this to cross-check ontology attributes against the actual DB "
+        "schema before writing SQL."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "table": {
+                "type": "string",
+                "description": (
+                    "Physical table name. For the remote gateway you may pass "
+                    "it db-qualified as `database.table` (e.g. "
+                    "ontology_qianjiang.poheader); a bare name uses the active "
+                    "gateway database."
+                ),
+            },
+        },
+        "required": ["table"],
+    },
+}
+
+
+def _describe_table_doris(
+    backend: SqlBackend, schema: str, table: str, display: str = ""
+) -> str:
+    conn = backend.doris
+    qualified = display or f"{schema}.{table}"
+    # ``information_schema.columns`` on the real engine has no MySQL-only
+    # ``column_key``; the PostgreSQL equivalents are the ``key_column_usage`` /
+    # ``table_constraints`` views.  The join is scoped to PRIMARY KEY, and a
+    # column whose membership cannot be established stays unmarked (Spec R17).
+    sql = (
+        "SELECT c.column_name, c.data_type, c.is_nullable, tc.constraint_type "
+        "FROM information_schema.columns c "
+        "LEFT JOIN information_schema.key_column_usage kcu "
+        "ON kcu.table_schema = c.table_schema AND kcu.table_name = c.table_name "
+        "AND kcu.column_name = c.column_name "
+        "LEFT JOIN information_schema.table_constraints tc "
+        "ON tc.constraint_schema = kcu.constraint_schema "
+        "AND tc.constraint_name = kcu.constraint_name "
+        "AND tc.constraint_type = 'PRIMARY KEY' "
+        f"WHERE c.table_schema = '{schema}' AND c.table_name = '{table}' "
+        "ORDER BY c.ordinal_position"
+    )
+    try:
+        cols, rows = _doris_query(conn, sql)
+    except DorisApiError as e:
+        return f"DescribeTable error: {e}"
+    if not rows:
+        return f"DescribeTable: table {qualified!r} not found or has no columns."
+    names = [str(c) for c in (cols or [])]
+
+    def _cell(row: tuple, key: str, position: int):
+        index = names.index(key) if key in names else position
+        return row[index] if index < len(row) else None
+
+    lines = [f"# {qualified} — {len(rows)} columns"]
+    for row in rows:
+        name = _cell(row, "column_name", 0)
+        type_ = _cell(row, "data_type", 1)
+        is_nullable = _cell(row, "is_nullable", 2)
+        constraint = _cell(row, "constraint_type", 3)
+        null_s = "NULL" if str(is_nullable).upper() in ("YES", "1", "TRUE") else "NOT NULL"
+        marker = "  [PK]" if "PRIMARY KEY" in str(constraint or "").upper() else ""
+        lines.append(f"  {name}  {type_}  {null_s}{marker}")
+    return "\n".join(lines)
+
+
+def _make_describe_table(source: "SqlBackend | str") -> Executor:
+    backend = _coerce_backend(source)
+
+    def run(params: dict, cwd: str) -> str:
+        table = (params.get("table") or "").strip()
+        if not table:
+            return "DescribeTable: empty table."
+        if backend.is_doris:
+            # Accept either a bare name or a db-qualified `schema.table`; the
+            # schema defaults to the active Doris database when omitted.
+            m = re.fullmatch(
+                r"(?:([A-Za-z_][A-Za-z0-9_$]*)\.)?([A-Za-z_][A-Za-z0-9_$]*)", table
+            )
+            if not m:
+                return f"DescribeTable: invalid table name {table!r}."
+            schema = m.group(1) or backend.doris.database
+            return _describe_table_doris(backend, schema, m.group(2), display=table)
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table):
+            return f"DescribeTable: invalid table name {table!r}."
+        try:
+            conn = sqlite3.connect(backend.db_path)
+            cur = conn.cursor()
+            cur.execute(f'PRAGMA table_info("{table}")')
+            rows = cur.fetchall()
+            conn.close()
+        except sqlite3.Error as e:
+            return f"DescribeTable error: {e}"
+        if not rows:
+            return f"DescribeTable: table {table!r} not found or has no columns."
+        lines = [f"# {table} — {len(rows)} columns"]
+        for _, name, type_, notnull, dflt, pk in rows:
+            marker = " [PK]" if pk else ""
+            null_s = "NOT NULL" if notnull else "NULL"
+            dflt_s = f" DEFAULT {dflt}" if dflt is not None else ""
+            lines.append(f"  {name}  {type_}  {null_s}{dflt_s}{marker}")
+        return "\n".join(lines)
+    return run
+
+
+# ---------------------------------------------------------------------------
+# Registry
+# ---------------------------------------------------------------------------
+
+SPECS: list[tuple[dict, ExecutorFactory]] = [
+    (SQL_RUN_SCHEMA, _make_sql_run),
+    (LIST_TABLES_SCHEMA, _make_list_tables),
+    (DESCRIBE_TABLE_SCHEMA, _make_describe_table),
+]

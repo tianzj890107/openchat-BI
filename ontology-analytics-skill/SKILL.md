@@ -43,6 +43,21 @@ agent（Codex、Claude Code 等）只要按下面的顺序执行，就能得到�
 | 图库检索模式下的 SOP 调整 | `references/09-graph-mode.md` |
 | 用户画像与回答风格（可选） | `references/10-roles.md` |
 
+## 接真实数据（可选）
+
+需要真实数字时，用 `tools/` 里的真实工具执行 `required_tools`（凭据由使用者放在仓库外）：
+
+```bash
+python3 tools/serve.py --list-tools
+python3 tools/serve.py --call <工具名> --params '{...}'
+printf '%s\n' '{"tool":"...","params":{...}}' | python3 tools/serve.py --serve
+python3 tools/selftest.py
+```
+
+- 工具返回「文本摘要 + `[RESULT_METADATA]` 结构化块」，后者是证据闸门的输入，必须保留。
+- 没有真实工具时**不要编数字**：按 `next_step=DELIVER_LIMITATION` 输出限制说明——
+  这正是技能内置的兜底行为。
+
 ## 目录与命令
 
 ```bash
@@ -59,8 +74,9 @@ python3 scripts/selfcheck.py --quiet     # 期望 160/160 passed
 
 ## 边界
 
-- 本技能**不实现**具体数据工具（本体查询、Doris/指标网关、x360、图表渲染）；
-  `required_tools` 是契约，宿主需自备等价实现或改为调用服务端接口。
+- `tools/` 提供真实工具实现（本体查询、Doris/指标网关、x360、图表/表格渲染），
+  但**凭据不随包交付**，需使用者自建 `credentials.env`；没有凭据或工具不可用时按
+  「能力限制」处理，不得编造数字。
 - 不处理会话/流式输出/前端；不含凭据、用户数据与业务明细。
 - 预测与情景没有统计模型支持，只能按 `references/07-output-gates.md` 披露窗口、
   方法、假设与不确定性，绝不编造置信区间或确定数字。

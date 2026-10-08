@@ -50,7 +50,15 @@
 - 建议暴露方式（二选一）：CLI 包装（每个工具一条命令，stdin/stdout 走 JSON）或 MCP server；schema 直接沿用上面的参数与必填项。
 - 远端并发要有上限；同一会话串行、跨会话并行，避免把本体服务打满。
 
+## 真实工具运行时（tools/）
+
+- `tools/serve.py`：CLI / JSONL 入口，装配本体与取数后端后暴露上面 17 个工具。
+- `tools/_vendor/`：真实工具实现原样副本（基线提交 `cc4a134`），两处最小改动见 `_vendor/README.md`。
+- `tools/config.example.env`：配置模板（仅变量名）；真实凭据由使用者在仓库外自建
+  `credentials.env`（600 权限），**不进仓库、不进交付包**。
+- `tools/selftest.py`：离线自检（临时 SQLite + 只读守卫），无需凭据。
+
 ## 未包含在本包内
 
-- 具体工具实现（`bi_agent/tools/*.py`、`bi_agent/ontology/*`、`bi_agent/x360/*`）：受让方需要自备等价实现或改为调用服务端接口。
+- 凭据与 `.env`：一律外置，由使用者自行配置。
 - Web 会话/SSE/前端工作台：与宿主 agent 的运行时绑定，不随本包交付。

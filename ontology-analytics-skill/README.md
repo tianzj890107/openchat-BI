@@ -29,6 +29,11 @@ ontology-analytics-skill/
 │  ├─ gates.py              交付闸门 CLI（证据/预测/图表/SQL/对账）
 │  ├─ selfcheck.py          冻结用例离线自检
 │  └─ vendor/               规则真源（自原系统原样复制，仅标准库）
+├─ tools/                   真实工具运行时（接真实数据用）
+│  ├─ serve.py              CLI / JSONL 入口，暴露 17 个真实工具
+│  ├─ selftest.py           离线自检（临时 SQLite，无需凭据）
+│  ├─ config.example.env    配置模板（只有变量名，没有值）
+│  └─ _vendor/              真实工具实现原样副本（见 _vendor/README.md）
 └─ cases/                   冻结用例（137 路由 + 23 闸门）与来源说明
 ```
 
@@ -52,6 +57,25 @@ python3 scripts/gates.py check --input turn.json                # 或从 stdin
 python3 scripts/selfcheck.py --quiet     # 期望 160/160 passed
 ```
 
+## 接真实数据（可选，内网用）
+
+只做「判定/规范」时不需要真实数据；要出真实数字就接工具层：
+
+```bash
+mkdir -p ~/.config/ontology-analytics
+cp tools/config.example.env ~/.config/ontology-analytics/credentials.env   # 填真实值，600 权限
+python3 tools/serve.py --list-tools          # 17 个工具，无需凭据
+python3 tools/serve.py --call ListBusinessObjects --params '{}'
+python3 tools/serve.py --call Ontology-FactQuery --params '{"sql":"SELECT 1"}'
+python3 tools/selftest.py                    # 离线自检，不需要凭据
+```
+
+- 凭据只放 `tools/credentials.env`（已被忽略）或 `~/.config/ontology-analytics/credentials.env`，
+  **不进仓库、不进压缩包**；`credentials.env` 一旦缺失，工具会明确报错而不是静默降级。
+- 远程本体 + Doris HTTP 网关形态**零第三方依赖**；本地 Excel 模式需 `openpyxl`，
+  Doris MySQL 协议需 `pymysql`，多进程协调需 `redis`（后两者源仓库本就是惰性导入）。
+- 三种后端形态与变量见 `tools/config.example.env`；工具清单、返回格式、对接方式见 `tools/README.md`。
+
 ## 谁是真源
 
 - `references/*.md` 是把分析逻辑讲清楚的**规范与理由**，供人和通用 agent 阅读。
@@ -61,12 +85,14 @@ python3 scripts/selfcheck.py --quiet     # 期望 160/160 passed
 
 ## 不包含在本包内
 
-- 具体工具实现（本体查询、Doris/指标网关、x360、图表渲染等）：受让方需自备
-  等价实现，或改为调用服务端接口；本包只定义契约与调用规则。
-- Web 会话 / SSE 流式输出 / 前端工作台：与宿主运行时绑定。
-- 任何凭据、`.env`、用户数据、会话记录、业务明细数据。
-- 原仓库的完整提交历史、分支与运行时配置；仅 `scripts/vendor/` 顶部保留一行来源与
-  基线提交注释，用于说明规则出处、方便后续同步。
+- **凭据**：`credentials.env` / `.env` 一律不随包交付，由使用者在仓库外自建（600 权限）。
+  本包不含任何 secret、用户数据、会话记录或业务明细。
+- Web 会话 / SSE 流式输出 / 前端工作台：与宿主运行时绑定，本包只接工具层。
+- 原仓库的完整提交历史、分支与运行时配置；仅 `scripts/vendor/`、`tools/_vendor/` 顶部
+  保留来源与基线提交注释，用于说明出处、方便后续同步。
+
+> 注意：`tools/_vendor/` 是真实工具实现的原样副本（内部资产），仅供公司内网分发，
+> 不要转发到外部。
 
 ## 接收方如何开始
 
