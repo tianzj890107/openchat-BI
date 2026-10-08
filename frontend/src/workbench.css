@@ -589,7 +589,6 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 .msg-role.user::before { background: rgba(255,255,255,.72); }
 .msg-role.assistant { color: var(--fg-2); }
 .msg-role.assistant::before { background: var(--accent-blue); }
-.msg-iter { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--fg-3); }
 .msg-body {
   padding-left: 0;
   color: var(--fg-0);
@@ -598,6 +597,7 @@ body[data-dashboard="collapsed"] .dashboard-pane { display: none; }
 }
 .msg-user .msg-body { color: #FFFFFF; }
 .msg-user .msg-header { display: none; }
+.msg-assistant > .msg-header { display: none !important; }
 .msg-body:empty { display: none; }
 .msg-body code {
   font-family: var(--font-mono);
@@ -4518,7 +4518,6 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
 .antd-message-host .ant-bubble-content { padding: 11px 14px; }
 .antd-message-user .ant-bubble-content { background: #1677ff; color: #fff; }
 .antd-message-assistant .ant-bubble-content { background: #f7f7f8; border: 1px solid #e7e7ea; color: #1f2023; }
-.antd-message-header { color: #667085; font-size: 11px; }
 .antd-message-html { white-space: normal; word-break: break-word; line-height: 1.7; }
 .antd-message-html p { margin: 0 0 10px; }
 .antd-message-html p:last-child { margin-bottom: 0; }
@@ -6084,7 +6083,6 @@ body,
   color: #334155 !important;
 }
 .msg-role.assistant,
-.msg-iter,
 .tool-duration,
 .llm-card .summary,
 .llm-card .usage,

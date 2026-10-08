@@ -1497,7 +1497,9 @@ export function bootWorkbenchRuntime() {
         if (role === "user") turn += 1;
         const message = el_h("div", `msg msg-${role}`);
         message.dataset.turn = String(Math.max(turn, 1));
-        message.innerHTML = `<div class="msg-header"><span class="msg-role ${role === "assistant" ? "assistant" : ""}">${role === "user" ? "你" : esc(assistantRoleLabel())}</span></div><div class="msg-body"></div>`;
+        // Chat bubbles carry no header at all: neither the internal agent role
+        // name (bi-analyst) nor an iteration number is user-facing.
+        message.innerHTML = '<div class="msg-body"></div>';
         const body = message.querySelector(".msg-body");
         if (role === "assistant") body.innerHTML = renderMarkdown(String(item.text || ""));
         else body.textContent = String(item.text || "");
@@ -3111,11 +3113,6 @@ export function bootWorkbenchRuntime() {
     requestAnimationFrame(syncActiveQuestionFromScroll);
   }
 
-  function assistantRoleLabel() {
-    const agent = currentAgentMeta();
-    return (agent && agent.name ? agent.name : "助手").toUpperCase();
-  }
-
   function startAssistantMessage(iteration) {
     const bucket = B();
     // When the backend discards a buffered candidate (claim validation or
@@ -3130,11 +3127,10 @@ export function bootWorkbenchRuntime() {
     }
     const block = el_h("div", "assistant-execution-block");
     const msg = el_h("div", "msg msg-assistant");
+    // No message header: the internal agent role name (bi-analyst) and the
+    // iteration index are bookkeeping, not user-facing chrome. The iteration
+    // stays on the block dataset for anchors and restored-step grouping.
     msg.innerHTML = `
-      <div class="msg-header">
-        <span class="msg-role assistant">${esc(assistantRoleLabel())}</span>
-        <span class="msg-iter">迭代 ${iteration}</span>
-      </div>
       <div class="msg-body"><span class="thinking-line"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>思考中…</span></div>`;
     block.dataset.iteration = String(iteration || "");
     block.appendChild(msg);
