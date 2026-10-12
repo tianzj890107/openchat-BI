@@ -1,6 +1,11 @@
 ---
 name: ontology-analytics
+name_zh: 硕磐智能分析 Agent
+description_zh: 复现硕磐智能分析 Agent 的路由、L1–L5 分档分析与五道交付闸门，用于企业财务与经营数据问答的可追溯结论。
 description: 复现「硕磐智能分析 Agent」的分析逻辑：每轮先做确定性路由（意图/模式/下一步/所需工具），再按 L1–L5 分档 SOP 取数与分析，交付前跑证据、预测披露、图表、只读 SQL、数值对账五道闸门。适用于企业财务/经营数据问答（管报损益、应收应付、存货库龄、预算执行等），需要基于读表/本体/指标工具给出可追溯结论的场景。当任务是「让通用 agent 也能照这套规范分析数据」或需要该系统的路由与闸门判定时使用。
+dependencies:
+  capabilities:
+    - runtime:python
 ---
 
 # ontology-analytics
