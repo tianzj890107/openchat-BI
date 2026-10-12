@@ -1,12 +1,14 @@
-<!-- 来源：bi_agent/tools/*.py 的 SPECS（基线提交 c94d430，自动生成）+ bi_agent/web/app.py 的工具白名单与数据源配置。 -->
+<!-- 来源：bi_agent/tools/*.py 的 SPECS（基线提交 c94d430，自动生成）+ bi_agent/web/app.py 的工具白名单与数据源配置。
+     交付包新增的工具 CanvasGenerate（见 tools/canvas_tool.py）由包内维护、不在源仓库 SPECS 内，已在下方工具表中单独标注。 -->
 
 # 工具清单与数据源契约
 
-## 工具表（17 个，schema 自动导出）
+## 工具表（18 个，schema 自动导出）
 
 | 工具 | 用途 | 参数 | 必填 |
 | --- | --- | --- | --- |
 | `AskUser` | 请用户在若干候选项中做出选择,用于消除模糊性。必须在以下场景使用: (A) 术语消歧 — 当问句中的业务术语在本体里有多个候选口径(例如'客户活跃度'同时对应月活/周活/订单活跃)且无法从上下文唯一确定; (B) 指标/维度下钻选择 ... | - | - |
+| `CanvasGenerate` | **交付包新增**：把结论/图表/表格/口径说明拼成一份整页、自包含的 HTML（默认内联 ECharts，离线可开）。`blocks[].params` 与 `ChartGenerate`/`ChartGenerateMultiDim`/`TableGenerate` 一致 | - | - |
 | `ChartGenerate` | Render a chart for tabular data you already have in hand. Valid sources: an Ontology-FactQuery result set, a table ex... | - | - |
 | `ChartGenerateMultiDim` | Render a MULTI-DIMENSIONAL chart with a dimension dropdown for 深入洞察 (deep-insight) drill-down tasks. Use this ONLY af... | - | - |
 | `DescribeTable` | Show the physical column list of a table (name, type, nullable). Use this to cross-check ontology attributes against ... | - | - |
@@ -30,6 +32,7 @@
 - 图库检索模式：追加 `Ontology-GraphContext`、`Ontology-GraphExpand`（流程见 `09-graph-mode.md`）。
 - 报表分析 · 启用数据库查询：默认 14 个；纯报表模式只有 `ChartGenerate`、`TableGenerate`、`AskUser`。
 - `TodoWrite` 不写进白名单，但多步分析（L2 及以上）可用。
+- `CanvasGenerate` 不在原系统白名单内，是**通用 agent 场景的交付通道**：取数、分析、命名仍照原规则调用 `ChartGenerate` / `TableGenerate`，最后用 `CanvasGenerate` 产出整页 HTML（见 `SKILL.md`「交付形态」）。
 
 ## 数据源与配置
 
@@ -52,7 +55,7 @@
 
 ## 真实工具运行时（tools/）
 
-- `tools/serve.py`：CLI / JSONL 入口，装配本体与取数后端后暴露上面 17 个工具。
+- `tools/serve.py`：CLI / JSONL 入口，装配本体与取数后端后暴露上面 18 个工具。
 - `tools/_vendor/`：真实工具实现原样副本（基线提交 `cc4a134`），两处最小改动见 `_vendor/README.md`。
 - `tools/config.example.env`：配置模板（仅变量名）；真实凭据由使用者在仓库外自建
   `credentials.env`（600 权限），**不进仓库、不进交付包**。
