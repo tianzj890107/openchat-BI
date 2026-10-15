@@ -1,4 +1,10 @@
-# `master` 唯一主线迁移 Spec
+# `master` 唯一主线迁移 Spec（历史记录 · 已完成）
+
+> 状态：本次迁移已完成；`20260727` 随后也已归档、不再接收新提交。
+> 文中提到的“迭代分支 → 20260727 → MR → master”是迁移当时的口径，
+> 现行为“临时分支（`feature/*`、`bugfix/*`、`hotfix/*`）→ 同名远端分支 →
+> MR → master”，见 `docs/specs/master-mainline-delivery.md` 与
+> `docs/gitlab-push-workflow.md`。
 
 ## 1. 目标
 

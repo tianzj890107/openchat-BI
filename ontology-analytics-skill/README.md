@@ -21,7 +21,7 @@ ontology-analytics-skill/
 │  ├─ 05-naming-rules.md    业务名称优先展示规则
 │  ├─ 06-routing-rules.md   确定性路由规则（字段、枚举、优先级）
 │  ├─ 07-output-gates.md    五道交付闸门与兜底话术
-│  ├─ 08-tools-and-sources.md 17 个工具契约、白名单、数据源
+│  ├─ 08-tools-and-sources.md 18 个工具契约、白名单、数据源
 │  ├─ 09-graph-mode.md      图库检索模式的 SOP 调整
 │  └─ 10-roles.md           用户画像与回答风格（可选）
 ├─ scripts/                 「执法」：可执行的确定性规则
@@ -30,7 +30,9 @@ ontology-analytics-skill/
 │  ├─ selfcheck.py          冻结用例离线自检
 │  └─ vendor/               规则真源（自原系统原样复制，仅标准库）
 ├─ tools/                   真实工具运行时（接真实数据用）
-│  ├─ serve.py              CLI / JSONL 入口，暴露 17 个真实工具
+│  ├─ serve.py              CLI / JSONL 入口，暴露 18 个真实工具
+│  ├─ canvas_tool.py        整页交付工具 CanvasGenerate（包自有，不改原实现）
+│  ├─ assets/               随包携带的 ECharts（用于内联成单文件 HTML）
 │  ├─ selftest.py           离线自检（临时 SQLite，无需凭据）
 │  ├─ config.example.env    配置模板（只有变量名，没有值）
 │  └─ _vendor/              真实工具实现原样副本（见 _vendor/README.md）
@@ -41,6 +43,8 @@ ontology-analytics-skill/
 
 - 只需 Python 3（标准库），无第三方依赖，无需安装。
 - 无需网络；`vendor/` 中的模块都是纯确定性规则，不调用模型。
+- 交付形态：通用 agent 场景下，最终交付物用 `CanvasGenerate` 产出的**单文件自包含 HTML**
+  （默认内联 ECharts，约 1 MB/页；`inline_echarts: false` 可改为同目录相对资源）。
 
 ```bash
 cd ontology-analytics-skill
@@ -64,7 +68,7 @@ python3 scripts/selfcheck.py --quiet     # 期望 160/160 passed
 ```bash
 mkdir -p ~/.config/ontology-analytics
 cp tools/config.example.env ~/.config/ontology-analytics/credentials.env   # 填真实值，600 权限
-python3 tools/serve.py --list-tools          # 17 个工具，无需凭据
+python3 tools/serve.py --list-tools          # 18 个工具，无需凭据
 python3 tools/serve.py --call ListBusinessObjects --params '{}'
 python3 tools/serve.py --call Ontology-FactQuery --params '{"sql":"SELECT 1"}'
 python3 tools/selftest.py                    # 离线自检，不需要凭据

@@ -13,7 +13,11 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CURRENT_VERSION_TAG = "ontology-v0.1.0"
+CURRENT_VERSION = "ontology-v0.1.2"
+# The newest tag/Release that actually exists on the remote.  ``CURRENT_VERSION``
+# advanced to ``ontology-v0.1.2`` on 2026-10-15, but a tag for it needs its own
+# explicit user authorization, so the newest *released* tag is still v0.1.0.
+LATEST_RELEASED_TAG = "ontology-v0.1.0"
 
 
 class VersioningPolicyDocTests(unittest.TestCase):
@@ -64,7 +68,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
     def test_versions_readme_links_policy_and_tracks_the_current_version(self) -> None:
         readme = (ROOT / "docs/versions/README.md").read_text(encoding="utf-8")
         self.assertIn("./versioning-policy.md", readme)
-        self.assertIn("当前版本：`ontology-v0.1.0`", readme)
+        self.assertIn(f"当前版本：`{CURRENT_VERSION}`", readme)
         self.assertIn("不按日期机械递增", readme)
 
     def test_agents_md_links_policy_and_mandates_authorization(self) -> None:
@@ -81,28 +85,29 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("versioning-policy.md", doc)
         self.assertIn("push 不等于部署", doc)
 
-    def test_product_version_is_ontology_v0_1_0(self) -> None:
-        """pyproject stays PEP 440; every display surface speaks ontology-v0.1.0."""
-        self.assertIn('version = "0.1.0"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertIn('__version__ = "ontology-v0.1.0"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
+    def test_product_version_is_ontology_v0_1_2(self) -> None:
+        """pyproject stays PEP 440; every display surface speaks ontology-v0.1.2."""
+        self.assertIn('version = "0.1.2"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertIn(f'__version__ = "{CURRENT_VERSION}"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
         app = (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('APP_VERSION = "ontology-v0.1.0"', app)
+        self.assertIn(f'APP_VERSION = "{CURRENT_VERSION}"', app)
         self.assertIn(
             'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, root_path=APP_ROOT_PATH)',
             app,
         )
         pkg = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
-        self.assertEqual(pkg["version"], "0.1.0")
+        self.assertEqual(pkg["version"], "0.1.2")
         lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
-        self.assertEqual(lock["packages"][""]["version"], "0.1.0")
-        self.assertEqual(lock["version"], "0.1.0")
+        self.assertEqual(lock["packages"][""]["version"], "0.1.2")
+        self.assertEqual(lock["version"], "0.1.2")
         main = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.0";', main)
-        self.assertIn('__version__ = "ontology-v0.1.0"', (ROOT / "open_claude/__init__.py").read_text(encoding="utf-8"))
+        self.assertIn(f'const PRODUCT_VERSION = "{CURRENT_VERSION}";', main)
+        self.assertIn(f'__version__ = "{CURRENT_VERSION}"', (ROOT / "open_claude/__init__.py").read_text(encoding="utf-8"))
 
     def test_no_unauthorized_version_documents(self) -> None:
         versions_dir = ROOT / "docs/versions"
-        allowed = {"README.md", "versioning-policy.md", "ontology-v0.1.0.md"} | {
+        allowed = {"README.md", "versioning-policy.md", "ontology-v0.1.0.md",
+                   f"{CURRENT_VERSION}.md"} | {
             f"ontology-v0.0.{number}.md" for number in range(1, 11)
         }
         names = {p.name for p in versions_dir.iterdir() if p.is_file()}
@@ -165,11 +170,13 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:
-        """Exactly the ten renamed tags plus the released current tag.
+        """Exactly the ten renamed tags plus the newest released tag.
 
-        ``CURRENT_VERSION_TAG`` was created on ``master`` (定版 commit
-        ``74fca80``) after the version-cut Merge Request merged, so it is now
-        required: a missing or extra tag must fail.
+        ``LATEST_RELEASED_TAG`` was created on ``master`` (定版 commit
+        ``74fca80``) after the version-cut Merge Request merged, so it is
+        required.  The product version has since advanced to
+        ``ontology-v0.1.2`` without an authorized tag, so a missing or extra
+        tag must still fail.
         """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
@@ -177,7 +184,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
         )
         tags = {t for t in proc.stdout.splitlines() if t.strip()}
         renamed = {f"ontology-v0.0.{number}" for number in range(1, 11)}
-        self.assertEqual(tags, renamed | {CURRENT_VERSION_TAG})
+        self.assertEqual(tags, renamed | {LATEST_RELEASED_TAG})
 
     def _authoritative_tool_names(self) -> set[str]:
         """Tool names from the agent tools declaration and registered schemas."""

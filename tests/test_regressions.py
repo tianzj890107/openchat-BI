@@ -85,7 +85,11 @@ from bi_agent.web.app import (
     save_conversation,
 )
 from bi_agent.web.conversations import ConversationStore, conversation_title, first_user_question, first_visible_user_question
-from bi_agent.web.session import VISIBLE_THINKING_CN_RULE, WebSession
+from bi_agent.web.session import (
+    PROGRESS_NARRATION_RULE,
+    VISIBLE_THINKING_CN_RULE,
+    WebSession,
+)
 from open_claude.agent_def import AgentDef
 
 
@@ -3991,7 +3995,7 @@ console.log(JSON.stringify(out));"""
         """The sidebar top-left brand is the short label 「智能分析」, while the
         longer product name 硕磐智能分析 Agent stays on the hero title, HTML
         title, loading skeleton, aria-label and the agent welcome line; the
-        blue ontology-v0.1.0 chip trails the workbench hero title instead of
+        blue ontology-v0.1.2 chip trails the workbench hero title instead of
         sitting in the sidebar brand row; 智析 and the bi-analyst
         pseudo-version are gone from user-visible surfaces."""
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
@@ -4000,7 +4004,7 @@ console.log(JSON.stringify(out));"""
         agent = Path(".claude/agents/bi-analyst.md").read_text(encoding="utf-8")
         # Sidebar brand row: short legacy label, name only, no version chip.
         self.assertIn('const PRODUCT_NAME = "智能分析";', main)
-        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.0";', main)
+        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.2";', main)
         self.assertIn("PRODUCT_NAME", main)
         self.assertIn("PRODUCT_VERSION", main)
         self.assertIn('className="antd-product-version"', main)
@@ -4011,7 +4015,7 @@ console.log(JSON.stringify(out));"""
         # The blue version chip now follows the hero title.
         self.assertIn('<div class="empty-title-row">', shell)
         self.assertIn('<div class="empty-title" id="empty-title">硕磐智能分析 Agent</div>', shell)
-        self.assertIn('<span class="empty-version" id="product-version">ontology-v0.1.0</span>', shell)
+        self.assertIn('<span class="empty-version" id="product-version">ontology-v0.1.2</span>', shell)
         self.assertIn("<title>硕磐智能分析 Agent · 本体工作台</title>", static)
         self.assertIn('aria-label="硕磐智能分析 Agent React 工作台"', static)
         self.assertIn("正在加载硕磐智能分析 Agent 工作台…", static)
@@ -4059,28 +4063,28 @@ console.log(JSON.stringify(out));"""
         self.assertNotIn('msg-role assistant">', bundle)
 
     def test_version_contract_consistent(self) -> None:
-        """Python, FastAPI, npm and UI versions agree on ontology-v0.1.0 and are
+        """Python, FastAPI, npm and UI versions agree on ontology-v0.1.2 and are
         independent of knowledge/schema/cache versions."""
         root = Path(__file__).resolve().parents[1]
         pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('version = "0.1.0"', pyproject)
+        self.assertIn('version = "0.1.2"', pyproject)
         init = (root / "bi_agent/__init__.py").read_text(encoding="utf-8")
-        self.assertIn('__version__ = "ontology-v0.1.0"', init)
+        self.assertIn('__version__ = "ontology-v0.1.2"', init)
         app = (root / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('APP_VERSION = "ontology-v0.1.0"', app)
+        self.assertIn('APP_VERSION = "ontology-v0.1.2"', app)
         self.assertIn(
             'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, '
             'root_path=APP_ROOT_PATH)',
             app,
         )
         pkg = (root / "frontend/package.json").read_text(encoding="utf-8")
-        self.assertIn('"version": "0.1.0"', pkg)
+        self.assertIn('"version": "0.1.2"', pkg)
         lock = (root / "frontend/package-lock.json").read_text(encoding="utf-8")
         import json as _json
         lock_root = _json.loads(lock)["packages"][""]["version"]
-        self.assertEqual(lock_root, "0.1.0")
+        self.assertEqual(lock_root, "0.1.2")
         main = (root / "frontend/src/main.jsx").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.0";', main)
+        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.2";', main)
         # Product version is decoupled from the numeric conversation schema
         # version and from vendor cache-bust query params.
         conv = (root / "bi_agent/web/conversations.py").read_text(encoding="utf-8")
@@ -5033,6 +5037,32 @@ class TeamThinkingAndFallbackSessionTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertFalse(calls[0]["thinking"])
         self.assertNotIn("简体中文", calls[0]["system_prompt"])
+
+    def test_progress_narration_rule_always_injected(self) -> None:
+        """The progress-narration rule is NOT gated on visible thinking.
+
+        Multi-step analyses must narrate in Chinese regardless of the model
+        and regardless of the extended-thinking toggle, so the rule has to be
+        present even when thinking is off and the model cannot think.
+        """
+        calls: list[dict] = []
+
+        def fake_stream(messages, system_prompt, *args, **kwargs):
+            calls.append({"system_prompt": system_prompt, "thinking": kwargs.get("thinking")})
+            yield {"type": "text_delta", "text": "ok"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with self._session(
+            self._cfg(effective_thinking=False), fake_stream,
+            model_supports_thinking=False,
+        ) as session:
+            list(session.generate_turn("test"))
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(calls[0]["thinking"])
+        self.assertIn(PROGRESS_NARRATION_RULE.strip(), calls[0]["system_prompt"])
+        self.assertIn("过程播报规范", calls[0]["system_prompt"])
+        # Still distinct from the thinking-only constraint.
+        self.assertNotIn("可见思考", calls[0]["system_prompt"])
 
     def test_thinking_disabled_never_forwards_thinking_delta(self) -> None:
         def fake_stream(*args, **kwargs):

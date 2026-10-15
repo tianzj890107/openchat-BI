@@ -76,7 +76,7 @@
 - `docs/versions/README.md` 为正式版本索引；每个正式版本使用独立文件 `docs/versions/ontology-vX.Y.Z.md`。
 - 只有用户明确确定或要求创建正式版本时才创建版本文件；创建后同步更新版本索引和根 README 当前版本链接；已归档版本不得被后续版本覆盖。
 - 周 changelog 记录工程细节，版本文档只归纳最终用户可见能力、兼容变化、升级说明和验证结论。
-- 完整版本规则见 `docs/versions/versioning-policy.md`（`ontology-vMAJOR.MINOR.PATCH`；当前版本 `ontology-v0.1.0`）。
+- 完整版本规则见 `docs/versions/versioning-policy.md`（`ontology-vMAJOR.MINOR.PATCH`；当前版本 `ontology-v0.1.2`）。
 
 ## 版本升级强制规则（最高优先级）
 
@@ -167,7 +167,7 @@
 ## Git 推送与部署规则
 
 - 分支模型、PR 合并流程与 release / hotfix 机制见 `docs/git-branch-workflow.md`；若与本节冲突，以本节为准。
-- 完成代码修改并验证通过后，默认交付方式是提交并 push 到 GitLab 统一开发分支（`gitlab/20260727`）；`master` 是唯一发布主线，merge 到 `master` 需要 `tianzijing` code review 后单独发起 Merge Request。
+- 完成代码修改并验证通过后，默认交付方式是提交并 push 到 GitLab 上与本地同名的临时分支（`git push gitlab <branch>`，分支为 `feature/*`、`bugfix/*`、`hotfix/*`）；`master` 是唯一发布主线，merge 到 `master` 需要 `tianzijing` code review 后单独发起 Merge Request。
 - `main` 已退役并删除，禁止重新创建、不得 push、不得作为 Merge Request 的 source/target；`master` 是唯一发布主线，普通开发不得直接 push `master`。
 - 默认禁止部署、服务器同步、服务重启和服务器配置修改。
 - 只有用户在当前任务中明确要求部署时，才能执行部署。
@@ -184,4 +184,4 @@
 - 令牌固定存放在本机 `~/.config/codex/gitlab_token`（权限 600）；读取方式：`TOKEN=$(cat ~/.config/codex/gitlab_token)`。
 - 若该文件缺失，回退从仓库 `.env` 的 `GITLAB_TOKEN` 读取并同步到上述路径；`.env` 已被 gitignore，禁止提交。
 - API 基地址：`http://gitlab.boulderaitech.com/api/v4`（本机代理下 HTTPS 不可达），请求头 `PRIVATE-TOKEN: $TOKEN`。
-- 创建 MR：`POST /projects/ai-team%2Feimosp-ontology-agentic-analytics/merge_requests`，`source_branch` 为 `20260727`，`target_branch` 为 `master`，reviewer 用户名 `tianzijing`（田子敬）；`title` 和 `description` 必须根据 `master..20260727` 的全部 commit 与 diff 生成并覆盖所有变更主题，不得只写分支名；只创建 MR，不自动合并、不直接 push `master`。
+- 创建 MR：`POST /projects/ai-team%2Feimosp-ontology-agentic-analytics/merge_requests`，`source_branch` 为当前临时分支（`feature/*`、`bugfix/*`、`hotfix/*`），`target_branch` 为 `master`，reviewer 用户名 `tianzijing`（田子敬，id 166），assignee `zhangzhen`（张真，id 245）；`title` 和 `description` 必须根据 `master..<branch>` 的全部 commit 与 diff 生成并覆盖所有变更主题，不得只写分支名；只创建 MR，不自动合并、不直接 push `master`。`20260727` 已归档，不得作为 Merge Request 的 source/target。

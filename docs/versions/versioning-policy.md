@@ -23,7 +23,7 @@ ontology-vMAJOR.MINOR.PATCH
 - 目前处于 `ontology-v0.x` 快速迭代阶段，当前正式版本保持为：
 
 ```text
-ontology-v0.1.0
+ontology-v0.1.2
 ```
 
 ### 与包管理清单的关系（两处强制例外）
@@ -32,8 +32,8 @@ ontology-v0.1.0
 
 | 清单 | 约束 | 实际写入 |
 | --- | --- | --- |
-| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.0` |
-| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.0` |
+| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.2` |
+| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.2` |
 
 `scripts/run_analytics_eval.py` 的 `product_version()` 读取 `pyproject.toml` 后补
 `ontology-v` 前缀，对外统一返回显示名；同文件 `_version_reached()` 会剥离
@@ -63,6 +63,21 @@ X360 流程定义集成、本体/MAL 与元数据契约迁移等用户可感知�
 - 未授权、未执行部署：tag、Release、release 分支都不改变服务器上运行的服务；
 - `master` 仍是唯一发布主线，`feature/branch-model-and-v0.1.0-cut` → `master` 按临时分支
   Merge Request 流程评审合并；`20260727` 已归档，不再作为交付分支。
+
+### 版本推进记录（ontology-v0.1.0 → ontology-v0.1.2）
+
+2026-10-15 用户明确指定把当前交付收口为 **PATCH** `ontology-v0.1.2`，包含两个补丁窗口：
+
+- 窗口一（用户指定为 `v0.1.1`）：分析逻辑剥离包 `ontology-analytics-skill` 收尾——接入真实工具
+  运行时、对齐 Fuxi 技能展示字段、新增 `CanvasGenerate` 整页交付工具；该窗口内容已合入 `master`；
+- 窗口二（用户指定为 `v0.1.2`）：多步分析中文过程播报、`20260727` 归档与交付口径改为
+  「临时分支 → `master`」、取数证据与双环境对比归档；
+- 两个窗口落在同一条交付分支上，用户明确要求一次性收口为 `ontology-v0.1.2`，因此**不单独发布
+  `v0.1.1`**，也不为它创建版本文档与 tag；`ontology-v0.1.1` 号码作废，不得复用；
+- 本次授权范围只有版本号与文档：`release/ontology-v0.1.2` 分支、tag 与 GitLab Release 都未授权、
+  未执行；部署未授权、未执行；
+- 收口通过 `feature/progress-narration-zh` → `master` 的 Merge Request `!23`（reviewer
+  `tianzijing`）评审合并，合入后的 `master` commit 为定版 commit。
 
 ## PATCH / MINOR / MAJOR 判定
 

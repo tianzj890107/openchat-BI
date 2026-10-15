@@ -1,4 +1,8 @@
-"""Opt-in, read-only acceptance tests for the 20260727 -> master delivery MR.
+"""Opt-in, read-only acceptance tests for a temporary-branch -> master delivery MR.
+
+The MR source is the current temporary branch (``feature/*``, ``bugfix/*``,
+``hotfix/*``); ``20260727`` is archived and no longer a delivery branch.
+Override the expected source with ``MR_SOURCE_BRANCH``.
 
 These tests never write to Git or GitLab.  They are skipped during ordinary
 offline regression runs and become an operational RED/GREEN gate only when
@@ -19,14 +23,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ID = "1065"
 API_BASE = "http://gitlab.boulderaitech.com/api/v4"
-SOURCE_BRANCH = "20260727"
+
+
+def _current_branch() -> str:
+    proc = subprocess.run(
+        ["git", "-C", str(ROOT), "branch", "--show-current"],
+        capture_output=True,
+        text=True,
+    )
+    return proc.stdout.strip()
+
+
+SOURCE_BRANCH = os.environ.get("MR_SOURCE_BRANCH", "").strip() or _current_branch()
 TARGET_BRANCH = "master"
 REVIEWER_ID = 166
 ASSIGNEE_ID = 245
 ADMIN_IMAGE_COMMIT = "a7ebafaa0097655fdc2d8595e367f0b4adaca47d"
 HUAWEI_IMAGE = "swr.cn-east-3.myhuaweicloud.com/release/python:3.13-slim"
 
-MIGRATION_PATHS = (
+DELIVERY_PATHS = (
     "DEPLOYMENT.md",
     "Dockerfile",
     "docs/gitlab-push-workflow.md",
@@ -75,11 +90,11 @@ class MasterMergeRequestDeliveryTests(unittest.TestCase):
 
     def test_all_migration_files_are_committed_in_head(self):
         pending = []
-        for path in MIGRATION_PATHS:
+        for path in DELIVERY_PATHS:
             status = git("status", "--porcelain", "--", path)
             if status:
                 pending.append(f"{path}: {status}")
-        self.assertEqual(pending, [], "迁移文件尚未全部提交：" + "; ".join(pending))
+        self.assertEqual(pending, [], "交付文件尚未全部提交：" + "; ".join(pending))
 
         # These two files also contain pre-existing changelog-workflow edits
         # in the shared worktree.  Require the mainline-policy hunks in HEAD
@@ -89,14 +104,14 @@ class MasterMergeRequestDeliveryTests(unittest.TestCase):
         for text in (agents_at_head, version_policy_at_head):
             self.assertIn("`master` 是唯一发布主线", text)
             self.assertIn("`main`", text)
-            self.assertIn("历史保留分支", text)
+            self.assertIn("已退役并删除", text)
             self.assertNotIn("merge 到 `main`", text)
 
     def test_local_branch_and_remote_development_head_match(self):
         self.assertEqual(git("branch", "--show-current"), SOURCE_BRANCH)
         local_head = git("rev-parse", "HEAD")
         remote_line = git("ls-remote", "gitlab", f"refs/heads/{SOURCE_BRANCH}")
-        self.assertTrue(remote_line, f"gitlab/{SOURCE_BRANCH} 不存在")
+        self.assertTrue(remote_line, f"gitlab/{SOURCE_BRANCH} 不存在（请先 push 同名临时分支）")
         self.assertEqual(remote_line.split()[0], local_head)
 
     def test_remote_master_still_contains_administrator_image_commit(self):
@@ -126,7 +141,10 @@ class MasterMergeRequestDeliveryTests(unittest.TestCase):
                 "per_page": 100,
             },
         )
-        self.assertEqual(len(merge_requests), 1, "必须且只能有一个开放的 20260727 → master MR")
+        self.assertEqual(
+            len(merge_requests), 1,
+            f"必须且只能有一个开放的 {SOURCE_BRANCH} → master MR",
+        )
         mr = merge_requests[0]
         self.assertEqual(mr["sha"], git("rev-parse", "HEAD"))
         self.assertEqual(mr["target_branch"], TARGET_BRANCH)
@@ -151,11 +169,12 @@ class MasterMergeRequestDeliveryTests(unittest.TestCase):
         self.assertIn(ASSIGNEE_ID, assignee_ids)
 
         title = str(mr.get("title") or "").strip().lower()
-        self.assertNotIn(title, {"20260727 → master", "merge 20260727 into master"})
+        source = SOURCE_BRANCH.lower()
+        self.assertNotIn(title, {f"{source} → master", f"merge {source} into master"})
         self.assertGreaterEqual(len(title), 12)
 
         description = str(mr.get("description") or "").lower()
-        for required in ("master", "20260727", "tianzijing", "华为云", "docker", "测试", "不自动部署"):
+        for required in ("master", "tianzijing", "测试", "不自动部署"):
             self.assertIn(required, description)
 
     def test_delivery_does_not_prematurely_change_default_branch(self):

@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Push the same local HEAD to the unified GitLab development branch.
+"""Archive-only helper: verify or re-push the archived GitLab ``20260727`` ref.
 
-Unified GitLab workflow:
+Current delivery workflow (do NOT use this script for it):
 
-- gitlab          -> ai-team/eimosp-ontology-agentic-analytics   (branch 20260727)
-- master is the sole release mainline; merges into master go through merge
-  requests reviewed by tianzijing and assigned to zhangzhen.  This script
-  never pushes to master and never auto-merges.  The main branch is retired
-  and deleted; this script never recreates it.
+- daily work happens on temporary branches (``feature/*``, ``bugfix/*``,
+  ``hotfix/*``) and is pushed with ``git push gitlab <branch>``;
+- ``master`` is the sole release mainline: merges into master go through merge
+  requests reviewed by tianzijing and assigned to zhangzhen;
+- ``20260727`` is archived and no longer receives new commits.  This script is
+  kept only to audit/re-push that archived ref, and it never pushes to
+  ``master`` or ``main`` and never auto-merges.  ``main`` is retired and
+  deleted; this script never recreates it.
 
 Usage:
-    python scripts/push_gitlab.py [--check]
+    python scripts/push_gitlab.py --check
     python scripts/push_gitlab.py --source-branch 20260727 \
         --target-branch 20260727
 
@@ -145,7 +148,9 @@ def do_push(remote_name, head_sha, branch):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="GitLab unified dev-branch push")
+    parser = argparse.ArgumentParser(
+        description="归档分支 20260727 校验/推送（日常交付请用 git push gitlab <branch>）"
+    )
     parser.add_argument("--check", action="store_true", help="只检查，不推送")
     parser.add_argument("--source-branch", default=DEFAULT_SOURCE_BRANCH)
     parser.add_argument("--target-branch", default=DEFAULT_TARGET_BRANCH)
@@ -173,7 +178,8 @@ def main(argv=None):
     # 3. Default requires the current development branch.
     if branch != args.source_branch:
         print(
-            "错误：当前分支 %s 不是预期开发分支 %s；拒绝 push。"
+            "错误：当前分支 %s 不是归档分支 %s；拒绝 push。"
+            "日常交付请在临时分支上用 git push gitlab <branch>。"
             % (branch, args.source_branch),
             file=sys.stderr,
         )

@@ -4,9 +4,10 @@
 [changelog](../../changelog/) 下的当前周文件（如 `changelog_9_7_11.md`），
 不再创建日报。
 
-- 当前版本：`ontology-v0.1.0`
-- 当前 tag 与 Release：`ontology-v0.1.0`（指向定版 commit `74fca80`）
-  以及 `ontology-v0.0.1`–`ontology-v0.0.10`（共 11 个，均已创建 release，见根
+- 当前版本：`ontology-v0.1.2`
+- 当前 tag 与 Release：`ontology-v0.1.2` 尚未创建 tag 与 Release（用户未授权）；
+  最近一次已发布的 tag/Release 是 `ontology-v0.1.0`（指向定版 commit `74fca80`），
+  加上 `ontology-v0.0.1`–`ontology-v0.0.10`（共 11 个，均已创建 release，见根
   [README 发布清单](../../README.md)）
 - 版本规则：[语义化版本与正式发布规范](./versioning-policy.md)
 - 分支模型与 PR 合并流程：[Git 分支与合并工作流规范](../git-branch-workflow.md)
@@ -19,7 +20,8 @@
 
 | 版本 | 日期 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| [./ontology-v0.1.0.md](./ontology-v0.1.0.md) | 2026-09-29 | 正式版 / 当前版本 | PDT 数据湖切换 PG 引擎端到端修复、本体/MAL 与元数据契约迁移、会话回收站与匿名读取面收敛、X360 流程定义集成，`ontology-v0.0.x` → `ontology-v0.1.0` MINOR 收口 |
+| [./ontology-v0.1.2.md](./ontology-v0.1.2.md) | 2026-10-15 | 正式版 / 当前版本 | 分析逻辑剥离包 `ontology-analytics-skill` 收尾（真实工具运行时、CanvasGenerate 整页交付）、多步分析中文过程播报、取数证据与双环境对比归档、`20260727` 归档改为临时分支 → `master`，`ontology-v0.1.0` → `ontology-v0.1.2` PATCH 收口 |
+| [./ontology-v0.1.0.md](./ontology-v0.1.0.md) | 2026-09-29 | 正式版（历史版本） | PDT 数据湖切换 PG 引擎端到端修复、本体/MAL 与元数据契约迁移、会话回收站与匿名读取面收敛、X360 流程定义集成，`ontology-v0.0.x` → `ontology-v0.1.0` MINOR 收口 |
 | [./ontology-v0.0.10.md](./ontology-v0.0.10.md) | 2026-09-17 | 正式版（历史版本） | 分析 Agent 黄金评测集扩展到 482 条并新增 recorded-provider 回放层、GitLab CI/CD 接入项目 runner、产品版本号统一升级 |
 | [./ontology-v0.0.9.md](./ontology-v0.0.9.md) | 2026-09-17 | 正式版（历史版本） | 部署与运行配置固化、`.env` 增量同步契约、字面 IP 与周 changelog 规则（由误发的 `v0.2.0` 更正而来） |
 | [./ontology-v0.0.8.md](./ontology-v0.0.8.md) | 2026-09-08 | 正式版（历史版本） | 可配置应用 Base Path；发布主线收口到 `master`，changelog 收敛为按周维护 |

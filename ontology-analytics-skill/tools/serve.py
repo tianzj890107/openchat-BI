@@ -26,6 +26,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 VENDOR = os.path.join(HERE, "_vendor")
 if VENDOR not in sys.path:
     sys.path.insert(0, VENDOR)
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
 
 CONFIG_PATHS = [
     os.path.join(HERE, "credentials.env"),
@@ -67,11 +69,13 @@ def _static_schemas() -> list[dict]:
         ontology_tools, sql_tools, table_tools, todo_tools,
     )
     from bi_agent.tools import remote_ontology_tools as remote
+    import canvas_tool
 
     specs = (
         list(ontology_tools.SPECS) + list(graph_tools.SPECS) + list(sql_tools.SPECS)
         + list(chart_tools.SPECS) + list(chart_multidim_tools.SPECS)
         + list(table_tools.SPECS) + list(todo_tools.SPECS) + list(ask_user.SPECS)
+        + list(canvas_tool.SPECS)
     )
     # 同名工具以远程实现为准（与 build_source_executors 的覆盖顺序一致），
     # 因此按 name 去重时把远程 schema 放在后面覆盖。
@@ -147,8 +151,22 @@ def build_runtime(allow_local: bool = True):
             "缺少取数后端：设置 DORIS_API_URL（推荐）或 DORIS_JDBC_URL，"
             "离线调试可设 OA_SQLITE_DB 指向 SQLite 文件"
         )
-    return build_source_executors(store, db_path or ":memory:", doris=doris,
-                                  remote_ontology=remote)
+    executors = build_source_executors(store, db_path or ":memory:", doris=doris,
+                                       remote_ontology=remote)
+    # 渲染/交互类工具不依赖数据源，但必须与 schema 声明一致地可执行：
+    # 之前只声明不注册，会导致 --call ChartGenerate/TableGenerate 报 unknown tool。
+    from bi_agent.tools import (
+        ask_user, chart_multidim_tools, chart_tools, table_tools, todo_tools,
+    )
+    import canvas_tool
+
+    for specs in (
+        chart_tools.SPECS, chart_multidim_tools.SPECS, table_tools.SPECS,
+        todo_tools.SPECS, ask_user.SPECS, canvas_tool.SPECS,
+    ):
+        for schema, make_executor in specs:
+            executors[schema["name"]] = make_executor()
+    return executors
 
 
 TOOL_INDEX: dict[str, str] = {}
