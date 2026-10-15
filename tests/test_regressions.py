@@ -85,7 +85,11 @@ from bi_agent.web.app import (
     save_conversation,
 )
 from bi_agent.web.conversations import ConversationStore, conversation_title, first_user_question, first_visible_user_question
-from bi_agent.web.session import VISIBLE_THINKING_CN_RULE, WebSession
+from bi_agent.web.session import (
+    PROGRESS_NARRATION_RULE,
+    VISIBLE_THINKING_CN_RULE,
+    WebSession,
+)
 from open_claude.agent_def import AgentDef
 
 
@@ -5033,6 +5037,32 @@ class TeamThinkingAndFallbackSessionTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertFalse(calls[0]["thinking"])
         self.assertNotIn("简体中文", calls[0]["system_prompt"])
+
+    def test_progress_narration_rule_always_injected(self) -> None:
+        """The progress-narration rule is NOT gated on visible thinking.
+
+        Multi-step analyses must narrate in Chinese regardless of the model
+        and regardless of the extended-thinking toggle, so the rule has to be
+        present even when thinking is off and the model cannot think.
+        """
+        calls: list[dict] = []
+
+        def fake_stream(messages, system_prompt, *args, **kwargs):
+            calls.append({"system_prompt": system_prompt, "thinking": kwargs.get("thinking")})
+            yield {"type": "text_delta", "text": "ok"}
+            yield {"type": "message_end", "stop_reason": "end_turn", "usage": {}}
+
+        with self._session(
+            self._cfg(effective_thinking=False), fake_stream,
+            model_supports_thinking=False,
+        ) as session:
+            list(session.generate_turn("test"))
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(calls[0]["thinking"])
+        self.assertIn(PROGRESS_NARRATION_RULE.strip(), calls[0]["system_prompt"])
+        self.assertIn("过程播报规范", calls[0]["system_prompt"])
+        # Still distinct from the thinking-only constraint.
+        self.assertNotIn("可见思考", calls[0]["system_prompt"])
 
     def test_thinking_disabled_never_forwards_thinking_delta(self) -> None:
         def fake_stream(*args, **kwargs):
