@@ -4,9 +4,11 @@ Contract source: ``docs/specs/ontology-version-rename-and-rebuild.md``.
 The whole family ``v0.1.0``-``v0.1.9`` is mapped to ``ontology-v0.0.1``-
 ``ontology-v0.0.10`` on the same commits, and the tag/Release lists are
 rebuilt.  The current product version then advanced to the MINOR
-``ontology-v0.1.0`` on 2026-09-29, so ``CURRENT`` tracks that name while
-``NEW_TAGS`` stays the historical rename map.  These tests never write to
-Git, GitLab or user data.
+``ontology-v0.1.0`` on 2026-09-29 (tag/Release created) and to the PATCH
+``ontology-v0.1.2`` on 2026-10-15 (tag/Release not yet authorized), so
+``CURRENT`` tracks the product name while ``LATEST_RELEASED_TAG`` tracks the
+newest tag that actually exists and ``NEW_TAGS`` stays the historical rename
+map.  These tests never write to Git, GitLab or user data.
 """
 
 from __future__ import annotations
@@ -22,8 +24,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = "docs/specs/ontology-version-rename-and-rebuild.md"
-CURRENT = "ontology-v0.1.0"
-PACKAGING_VERSION = "0.1.0"
+CURRENT = "ontology-v0.1.2"
+PACKAGING_VERSION = "0.1.2"
+# Newest tag that exists on the remote: the product version advanced to
+# ``CURRENT`` on 2026-10-15, but creating its tag needs explicit authorization.
+LATEST_RELEASED_TAG = "ontology-v0.1.0"
 
 # (old tag, unchanged commit, new tag)
 MAPPING = (
@@ -124,7 +129,10 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
     def test_version_documents_are_renamed_and_complete(self) -> None:
         versions_dir = ROOT / "docs" / "versions"
         names = {path.name for path in versions_dir.iterdir() if path.is_file()}
-        expected = {"README.md", "versioning-policy.md", f"{CURRENT}.md"} | {
+        # ``ontology-v0.1.0`` was a released version, so its document is kept as
+        # history next to the current version document.
+        expected = {"README.md", "versioning-policy.md",
+                    f"{LATEST_RELEASED_TAG}.md", f"{CURRENT}.md"} | {
             f"{tag}.md" for tag in NEW_TAGS
         }
         self.assertEqual(names, expected)
@@ -144,18 +152,20 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
                 self.assertIn(marker, agents)
 
     def test_local_tags_are_the_renamed_names_plus_the_current_tag(self) -> None:
-        """The ten renamed tags, plus the released ``CURRENT`` tag.
+        """The ten renamed tags, plus the newest released tag.
 
-        ``ontology-v0.1.0`` was authorized on 2026-09-29 and created on
-        ``master`` (定版 commit ``74fca80``) right after the version-cut Merge
-        Request merged, so both families are required now.
+        ``LATEST_RELEASED_TAG`` (``ontology-v0.1.0``) was authorized on
+        2026-09-29 and created on ``master`` (定版 commit ``74fca80``) right
+        after the version-cut Merge Request merged, so both families are
+        required.  ``CURRENT`` (``ontology-v0.1.2``) is not tagged yet: its tag
+        needs separate authorization.
         """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
             capture_output=True, text=True, check=True,
         )
         tags = {line for line in proc.stdout.splitlines() if line.strip()}
-        self.assertEqual(tags, set(NEW_TAGS) | {CURRENT})
+        self.assertEqual(tags, set(NEW_TAGS) | {LATEST_RELEASED_TAG})
 
 
 if __name__ == "__main__":
