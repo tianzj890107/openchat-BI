@@ -28,6 +28,9 @@ CURRENT = "ontology-v0.1.2"
 PACKAGING_VERSION = "0.1.2"
 # The tag released before ``CURRENT``; kept to document the existing tag family.
 LATEST_RELEASED_TAG = "ontology-v0.1.0"
+# ``ontology-v0.1.1`` (skill-extraction PATCH) was backfilled onto its original
+# 2026-10-08 master commit ``c82221f`` on 2026-10-15.
+SKILL_PATCH_TAG = "ontology-v0.1.1"
 
 # (old tag, unchanged commit, new tag)
 MAPPING = (
@@ -131,7 +134,8 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
         # ``ontology-v0.1.0`` was a released version, so its document is kept as
         # history next to the current version document.
         expected = {"README.md", "versioning-policy.md",
-                    f"{LATEST_RELEASED_TAG}.md", f"{CURRENT}.md"} | {
+                    f"{LATEST_RELEASED_TAG}.md", f"{SKILL_PATCH_TAG}.md",
+                    f"{CURRENT}.md"} | {
             f"{tag}.md" for tag in NEW_TAGS
         }
         self.assertEqual(names, expected)
@@ -151,7 +155,7 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
                 self.assertIn(marker, agents)
 
     def test_local_tags_are_the_renamed_names_plus_the_current_tag(self) -> None:
-        """The ten renamed tags, plus the two authorized release tags.
+        """The ten renamed tags, plus the three authorized release tags.
 
         ``LATEST_RELEASED_TAG`` (``ontology-v0.1.0``) was authorized on
         2026-09-29 and created on ``master`` (定版 commit ``74fca80``) right
@@ -164,7 +168,10 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
             capture_output=True, text=True, check=True,
         )
         tags = {line for line in proc.stdout.splitlines() if line.strip()}
-        self.assertEqual(tags, set(NEW_TAGS) | {LATEST_RELEASED_TAG, CURRENT})
+        self.assertEqual(
+            tags,
+            set(NEW_TAGS) | {LATEST_RELEASED_TAG, SKILL_PATCH_TAG, CURRENT},
+        )
 
 
 if __name__ == "__main__":

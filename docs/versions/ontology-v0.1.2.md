@@ -5,11 +5,11 @@
 - 版本：`ontology-v0.1.2`
 - 日期：`2026-10-15`
 - 状态：正式版 / 当前版本
-- 版本位次：**PATCH**（`ontology-v0.1.0` → `ontology-v0.1.2`），版本号由用户在当前任务中明确指定
-- 补丁窗口说明：本次含两个补丁窗口的内容一起发布。窗口一（对应 `v0.1.1`）是分析逻辑剥离包
-  `ontology-analytics-skill` 的收尾，窗口二（对应 `v0.1.2`）是多步分析的中文过程播报与交付口径
-  收口；两个窗口落在同一条交付分支上，用户明确要求按 `ontology-v0.1.2` 一次性收口，因此不单独
-  发布 `v0.1.1`，也不为它创建版本文档或 tag。
+- 版本位次：**PATCH**（`ontology-v0.1.1` → `ontology-v0.1.2`），版本号由用户在当前任务中明确指定
+- 版本关系：`ontology-v0.1.0` 之后的交付是相邻两个 PATCH。`ontology-v0.1.1` = 分析逻辑剥离包
+  `ontology-analytics-skill`（2026-10-08 合入 `master`，定版 commit `c82221f`，tag 与 Release 于
+  2026-10-15 按用户要求补建，见 [ontology-v0.1.1.md](./ontology-v0.1.1.md)）；本版本在其之上补齐
+  Fuxi 技能展示字段、`CanvasGenerate` 整页交付，并完成中文过程播报与交付口径收口。
 - Release 分支：按用户明确指示**不拉出** release 分支（`hotfix/*` 需要时再从 `master` 拉 `release/*`）
 - 定版 commit：`3c4de1e`（`feature/progress-narration-zh` 经 Merge Request `!23` 合入 `master` 的
   merge commit）
@@ -18,9 +18,10 @@
 
 ## 版本概述
 
-ontology-v0.1.2 是把分析 Agent 的**分析逻辑对外可移植**与**执行过程对用户可见**两件事收口：
-分析逻辑剥离包补齐了真实工具运行时与整页交付工具，多步分析补齐了中文过程播报，同时把
-`20260727` 统一协作分支正式归档、交付口径改为「临时分支 → `master` Merge Request」。
+ontology-v0.1.2 把**分析逻辑对外可移植**与**执行过程对用户可见**两件事收口：剥离包（本体由
+`ontology-v0.1.1` 引入）不断补齐 Fuxi 技能展示字段与 `CanvasGenerate` 整页 HTML 交付，多步分析
+补齐中文过程播报，同时把 `20260727` 统一协作分支正式归档、交付口径改为「临时分支 → `master`
+Merge Request」。
 
 本版本没有破坏性变更，也不改变服务器上正在运行的服务。版本号、tag、GitLab Release 与部署
 各自独立授权：版本号与文档在同一交付分支收口，tag 与 GitLab Release 随后由用户单独授权创建，
@@ -28,12 +29,11 @@ ontology-v0.1.2 是把分析 Agent 的**分析逻辑对外可移植**与**执行
 
 ## 交付主题
 
-### 1. 分析逻辑剥离包 `ontology-analytics-skill` 收尾（补丁窗口一）
+### 1. 分析逻辑剥离包 `ontology-analytics-skill` 增量
 
-- 把分析 Agent 的整套分析逻辑（确定性路由 → L1–L5 分档 SOP → 交付前五道闸门）剥离为自包含
-  交付目录，供通用 Agent（如 Codex、Fuxi）在仓库外复现同一套分析行为；
-- 接入真实工具运行时：按配置装配本体（远程服务 / 本地工作簿）与取数后端，暴露 17 个真实工具，
-  凭据不随包交付、只从仓库外自建文件或进程环境变量读取；
+- 剥离包本体（路由 → L1–L5 SOP → 五道闸门、真实工具运行时、17 个真实工具、凭据外置）在
+  `ontology-v0.1.1` 引入；本版本在其上继续演进，供通用 Agent（如 Codex、Fuxi）在仓库外复现同一
+  套分析行为；
 - 对齐 Fuxi 技能展示字段（中文名、中文描述、`runtime: python` 依赖声明）；
 - 主要文件：`ontology-analytics-skill/`（`SKILL.md`、`references/`、`scripts/`、`tools/`）。
 
@@ -91,9 +91,9 @@ ontology-v0.1.2 是把分析 Agent 的**分析逻辑对外可移植**与**执行
   在未来任务中单独授权；
 - 本版本不拉 `release/ontology-v0.1.2` 分支（用户明确指示）；tag 与 GitLab Release 已按用户授权
   创建，创建不触发部署；
-- `v0.1.1` 未单独发布：剥离包（窗口一）与其后的过程播报（窗口二）在同一条交付分支上一起收口为
-  `ontology-v0.1.2`，因此没有 `ontology-v0.1.1` 的版本文档与 tag，`ontology-v0.1.1` 不构成
-  已发布版本，后续不得复用该号码；
+- 版本关系：剥离包本体属 `ontology-v0.1.1`（定版 commit `c82221f`）；本版本是其后的 PATCH
+  （定版 commit `3c4de1e`）。两个版本都在 `master` 上、都已创建 GitLab Release，tag 未移动、
+  未覆盖；
 - 周 changelog 已在用户要求后建立：`changelog/changelog_10_12_16.md`（2026-10-12 至 2026-10-16），
   按本周 Git 记录补齐为最终状态。
 
@@ -101,6 +101,6 @@ ontology-v0.1.2 是把分析 Agent 的**分析逻辑对外可移植**与**执行
 
 - 版本规范：[语义化版本与正式发布规范](./versioning-policy.md)
 - 分支模型：[Git 分支与合并工作流规范](../git-branch-workflow.md)
-- 上一版本：[ontology-v0.1.0](./ontology-v0.1.0.md)
+- 上一版本：[ontology-v0.1.1](./ontology-v0.1.1.md)（更早：[ontology-v0.1.0](./ontology-v0.1.0.md)）
 - 交付口径：[master 交付主线说明](../specs/master-mainline-delivery.md)
 - 周 changelog：[changelog_10_12_16.md](../../changelog/changelog_10_12_16.md)

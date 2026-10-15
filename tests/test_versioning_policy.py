@@ -15,9 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT_VERSION = "ontology-v0.1.2"
 # Tags/Releases that actually exist on the remote.  ``ontology-v0.1.0`` was
-# released on 2026-09-29 and ``CURRENT_VERSION`` (``ontology-v0.1.2``) was
-# authorized and tagged on 2026-10-15; ``v0.1.1`` was never released.
-RELEASED_TAGS = frozenset({"ontology-v0.1.0", CURRENT_VERSION})
+# released on 2026-09-29; ``ontology-v0.1.1`` (skill-extraction PATCH) and
+# ``CURRENT_VERSION`` (``ontology-v0.1.2``) were authorized and tagged on
+# 2026-10-15 — the former backfilled onto its original 2026-10-08 commit.
+RELEASED_TAGS = frozenset({"ontology-v0.1.0", "ontology-v0.1.1", CURRENT_VERSION})
 
 
 class VersioningPolicyDocTests(unittest.TestCase):
@@ -107,7 +108,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
     def test_no_unauthorized_version_documents(self) -> None:
         versions_dir = ROOT / "docs/versions"
         allowed = {"README.md", "versioning-policy.md", "ontology-v0.1.0.md",
-                   f"{CURRENT_VERSION}.md"} | {
+                   "ontology-v0.1.1.md", f"{CURRENT_VERSION}.md"} | {
             f"ontology-v0.0.{number}.md" for number in range(1, 11)
         }
         names = {p.name for p in versions_dir.iterdir() if p.is_file()}
@@ -173,9 +174,10 @@ class VersioningPolicyDocTests(unittest.TestCase):
         """Exactly the ten renamed tags plus the two authorized release tags.
 
         ``ontology-v0.1.0`` was created on ``master`` (定版 commit ``74fca80``)
-        after the version-cut Merge Request merged; ``ontology-v0.1.2`` was
-        authorized on 2026-10-15 and created on the ``!23`` merge commit
-        ``3c4de1e``.  Both are required, and a missing or extra tag must fail.
+        after the version-cut Merge Request merged; ``ontology-v0.1.1`` and
+        ``ontology-v0.1.2`` were authorized on 2026-10-15 and created on the
+        ``c82221f`` / ``3c4de1e`` master merge commits.  All are required, and
+        a missing or extra tag must fail.
         """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],

@@ -62,8 +62,9 @@
 
 ### 2026-10-15 · 版本收口 `ontology-v0.1.2`（PATCH）并创建 tag 与 Release
 
-- 版本号：按用户明确指定收口为 `ontology-v0.1.2`，覆盖两个补丁窗口（剥离包收尾 + 过程播报/交付
-  口径收口）；`v0.1.1` 未单独发布、号码作废。
+- 版本号：按用户明确指定收口为 `ontology-v0.1.2`，承接上一 PATCH `ontology-v0.1.1`（剥离包），
+  本版本内容为剥离包之后的增量（Fuxi 展示字段、`CanvasGenerate` 整页交付、中文过程播报、交付
+  口径收口）。
 - 版本入口与显示名统一为 `ontology-v0.1.2`：`pyproject.toml`、`frontend/package.json`、
   `frontend/package-lock.json`（`0.1.2`）；`bi_agent/__init__.py`、`bi_agent/web/app.py` `APP_VERSION`、
   `open_claude/__init__.py`、剥离包内 `tools/_vendor/open_claude/__init__.py`、前端 `PRODUCT_VERSION`
@@ -77,3 +78,16 @@
   已创建（只新建、未覆盖已有 Release）。按用户指示**不拉** `release/ontology-v0.1.2` 分支。
 - 验证：全量测试 `1285 passed / 25 skipped / 1070 subtests passed`；`git diff --check` 通过。
 - 边界：未部署、未重启服务，tag 与 Release 创建不触发部署。
+
+### 2026-10-15 · 补建 `ontology-v0.1.1` tag 与 Release（分析逻辑剥离包）
+
+- 背景：剥离包 `ontology-analytics-skill` 的提交（`f31b000`、`49ca571`）于 2026-10-08 经 Merge
+  Request 合入 `master`（merge commit `c82221f`），当时只留下 commit，版本号 `v0.1.1` 只是内部
+  口径，没有版本文档、tag 与 Release；用户确认「肯定要补」，遂补建。
+- 交付：新增 `docs/versions/ontology-v0.1.1.md`；annotated tag `ontology-v0.1.1` 指向原定版
+  commit `c82221f`（2026-10-08）并推送 GitLab；同 tag 的 GitLab Release 已创建。
+- 边界：补建只新增版本记录与 tag/Release 对象，**未移动、未覆盖**任何已有 tag 或 Release，不改
+  任何 commit，不拉 release 分支，不部署；内容本身（剥离包 137 条路由用例 / 23 条闸门用例、
+  17 个真实工具、凭据外置）与 2026-10-08 的验证结论一致，已在当周 changelog 记录。
+- 命名提醒：2026-09-02 曾有一个名字就是 `v0.1.1` 的旧 tag（commit `28bb1d6`），已在 2026-09-29
+  的版本族切换中改名为 `ontology-v0.0.2`；本次补建的 `ontology-v0.1.1` 与该旧 tag 无关。
