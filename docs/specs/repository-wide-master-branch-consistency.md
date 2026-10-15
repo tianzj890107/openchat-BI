@@ -7,9 +7,11 @@
 
 ## 当前规则
 
-- 开发提交推送到 `gitlab/20260727`；
-- 正式交付使用 `20260727 → master` Merge Request；
+- 开发提交推送（`git push gitlab <branch>`）到 GitLab 上与本地同名的临时分支
+  （`feature/*`、`bugfix/*`、`hotfix/*`）；
+- 正式交付使用 `<当前临时分支> → master` Merge Request；
 - `master` 受保护，禁止 Agent 直接 push 或自动合并；
+- `20260727` 已归档：停止接收新提交，只保留历史审计，已不再是开发/交付分支；
 - `main` 已退役并删除，只允许在防止重建的保护逻辑或明确标记的历史审计记录中出现；
 - 不得重新创建 `main`，不得将其用作 push、MR、CI、构建或部署目标。
 
@@ -29,6 +31,10 @@
 ## 禁止的当前口径
 
 - `20260727 → main` 或等价 MR 指令；
+- 把 `20260727` 当成当前开发/交付分支的表述（例如“开发提交推送到
+  `gitlab/20260727`”“MR 必须由 `20260727` 指向 `master`”“普通开发仍只 push 到
+  `gitlab/20260727`”）；
+- `source_branch=20260727`、`git log master..20260727` 等仍把归档分支当交付源的命令；
 - `target_branch=main`、`source_branch=main`；
 - `origin/main`、`gitlab/main`、`refs/heads/main` 作为当前命令目标；
 - 把 `main` 称为当前默认、发布、保护或历史保留分支；

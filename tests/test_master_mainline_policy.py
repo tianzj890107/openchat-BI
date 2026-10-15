@@ -50,6 +50,36 @@ class MasterMainlinePolicyRedTests(unittest.TestCase):
         self.assertIn("`main` 已退役并删除", text)
         self.assertNotIn("merge 到 `main`", text)
 
+    def test_live_docs_retire_archived_20260727_as_delivery_branch(self):
+        """20260727 已归档：现行文档不得再要求把开发提交推到该分支。"""
+        live_docs = (
+            "AGENTS.md",
+            "debug.md",
+            ".claude/agents/devops.md",
+            "docs/git-dual-remote-workflow.md",
+            "docs/specs/master-mainline-delivery.md",
+        )
+        forbidden = (
+            re.compile(r"统一开发分支（`gitlab/20260727`）"),
+            re.compile(r"开发提交推送到\s*`gitlab/20260727`"),
+            re.compile(r"source_branch`?\s*为\s*`?20260727"),
+            re.compile(r"master\.\.20260727"),
+            re.compile(r"只\s*push\s*到\s*`?gitlab/20260727"),
+        )
+        for path in live_docs:
+            text = read(path)
+            for pattern in forbidden:
+                self.assertIsNone(
+                    pattern.search(text),
+                    "%s 仍把归档分支 20260727 当成当前交付分支：%s"
+                    % (path, pattern.pattern),
+                )
+
+        agents = read("AGENTS.md")
+        self.assertIn("git push gitlab <branch>", agents)
+        self.assertIn("`source_branch` 为当前临时分支", agents)
+        self.assertIn("`20260727` 已归档", agents)
+
     def test_version_policy_uses_master_as_release_branch(self):
         text = read("docs/versions/versioning-policy.md")
         self.assertIn("`master` 是唯一发布主线", text)
