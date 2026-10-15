@@ -10,11 +10,11 @@
   `ontology-analytics-skill` 的收尾，窗口二（对应 `v0.1.2`）是多步分析的中文过程播报与交付口径
   收口；两个窗口落在同一条交付分支上，用户明确要求按 `ontology-v0.1.2` 一次性收口，因此不单独
   发布 `v0.1.1`，也不为它创建版本文档或 tag。
-- Release 分支：`release/ontology-v0.1.2`（尚未拉出；拉出需要用户单独授权）
-- 定版 commit：本版本由 `feature/progress-narration-zh` → `master` 的 Merge Request `!23`
-  收口，合入后的 `master` commit 即定版 commit（创建 tag 时以该 commit 为准）
-- Git Tag：尚未创建（用户未授权 tag）
-- GitLab Release：尚未创建（用户未授权 Release）
+- Release 分支：按用户明确指示**不拉出** release 分支（`hotfix/*` 需要时再从 `master` 拉 `release/*`）
+- 定版 commit：`3c4de1e`（`feature/progress-narration-zh` 经 Merge Request `!23` 合入 `master` 的
+  merge commit）
+- Git Tag：`ontology-v0.1.2`（annotated，指向定版 commit `3c4de1e`，已推送 GitLab）
+- GitLab Release：[智能分析 ontology-v0.1.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.2)（基于同名 tag 创建；创建不触发部署）
 
 ## 版本概述
 
@@ -23,7 +23,8 @@ ontology-v0.1.2 是把分析 Agent 的**分析逻辑对外可移植**与**执行
 `20260727` 统一协作分支正式归档、交付口径改为「临时分支 → `master` Merge Request」。
 
 本版本没有破坏性变更，也不改变服务器上正在运行的服务。版本号、tag、GitLab Release 与部署
-各自独立授权：本版本只完成了版本号与文档收口，tag 与 Release 需要用户另行授权。
+各自独立授权：版本号与文档在同一交付分支收口，tag 与 GitLab Release 随后由用户单独授权创建，
+部署仍未授权、未执行。
 
 ## 交付主题
 
@@ -78,8 +79,8 @@ ontology-v0.1.2 是把分析 Agent 的**分析逻辑对外可移植**与**执行
 
 - 版本契约测试：`tests/test_versioning_policy.py`、`tests/test_ontology_version_rename_red.py`、
   `tests/test_regressions.py`、`tests/test_analytics_eval_dataset.py` 已同步到 `ontology-v0.1.2`；
-- tag 契约：本版本尚未创建 tag，仓库本地 tag 仍是 10 个 `ontology-v0.0.x` 加 `ontology-v0.1.0`；
-  测试的 tag 白名单已在用户授权创建新 tag 后再行更新；
+- tag 契约：本版本 tag 已由用户授权创建，仓库 tag 现在恰好是 10 个 `ontology-v0.0.x` 加
+  `ontology-v0.1.0`、`ontology-v0.1.2`；测试的 tag 白名单已同步更新；
 - 前端构建：`cd frontend && npm run build` 重建 `bi_agent/web/static/vendor/antd/workbench.js`，
   构建前后可重复（同样的源码重复构建不产生额外 diff）；
 - 全量测试与 `git diff --check` 结果见本版本合入的 Merge Request `!23`。
@@ -88,13 +89,13 @@ ontology-v0.1.2 是把分析 Agent 的**分析逻辑对外可移植**与**执行
 
 - 本版本**未部署**：版本号、文档与前端构建产物都不改变服务器上正在运行的服务，部署需要用户
   在未来任务中单独授权；
-- 本版本**未创建 tag、未创建 GitLab Release、未拉出 `release/ontology-v0.1.2` 分支**，三者都需要
-  用户单独授权；
+- 本版本不拉 `release/ontology-v0.1.2` 分支（用户明确指示）；tag 与 GitLab Release 已按用户授权
+  创建，创建不触发部署；
 - `v0.1.1` 未单独发布：剥离包（窗口一）与其后的过程播报（窗口二）在同一条交付分支上一起收口为
   `ontology-v0.1.2`，因此没有 `ontology-v0.1.1` 的版本文档与 tag，`ontology-v0.1.1` 不构成
   已发布版本，后续不得复用该号码；
-- 本仓库当前周（2026-10-12 起）的周 changelog 文件尚未建立，按仓库规则不擅自新建；需要时由用户
-  明确要求后按本周 Git 记录补齐。
+- 周 changelog 已在用户要求后建立：`changelog/changelog_10_12_16.md`（2026-10-12 至 2026-10-16），
+  按本周 Git 记录补齐为最终状态。
 
 ## 相关记录
 
@@ -102,3 +103,4 @@ ontology-v0.1.2 是把分析 Agent 的**分析逻辑对外可移植**与**执行
 - 分支模型：[Git 分支与合并工作流规范](../git-branch-workflow.md)
 - 上一版本：[ontology-v0.1.0](./ontology-v0.1.0.md)
 - 交付口径：[master 交付主线说明](../specs/master-mainline-delivery.md)
+- 周 changelog：[changelog_10_12_16.md](../../changelog/changelog_10_12_16.md)

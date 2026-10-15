@@ -74,10 +74,11 @@ X360 流程定义集成、本体/MAL 与元数据契约迁移等用户可感知�
   「临时分支 → `master`」、取数证据与双环境对比归档；
 - 两个窗口落在同一条交付分支上，用户明确要求一次性收口为 `ontology-v0.1.2`，因此**不单独发布
   `v0.1.1`**，也不为它创建版本文档与 tag；`ontology-v0.1.1` 号码作废，不得复用；
-- 本次授权范围只有版本号与文档：`release/ontology-v0.1.2` 分支、tag 与 GitLab Release 都未授权、
-  未执行；部署未授权、未执行；
 - 收口通过 `feature/progress-narration-zh` → `master` 的 Merge Request `!23`（reviewer
-  `tianzijing`）评审合并，合入后的 `master` commit 为定版 commit。
+  `tianzijing`）评审合并，合入后的 `master` merge commit `3c4de1e` 为定版 commit；
+- 用户随后单独授权创建 tag 与 GitLab Release，已执行：annotated tag `ontology-v0.1.2` 指向
+  `3c4de1e` 并推送 GitLab，同 tag 的 GitLab Release 已创建（只新建，未覆盖任何已有 Release）；
+- 用户明确指示**不拉出** `release/ontology-v0.1.2` 分支；部署未授权、未执行。
 
 ## PATCH / MINOR / MAJOR 判定
 

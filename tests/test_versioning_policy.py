@@ -14,10 +14,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT_VERSION = "ontology-v0.1.2"
-# The newest tag/Release that actually exists on the remote.  ``CURRENT_VERSION``
-# advanced to ``ontology-v0.1.2`` on 2026-10-15, but a tag for it needs its own
-# explicit user authorization, so the newest *released* tag is still v0.1.0.
-LATEST_RELEASED_TAG = "ontology-v0.1.0"
+# Tags/Releases that actually exist on the remote.  ``ontology-v0.1.0`` was
+# released on 2026-09-29 and ``CURRENT_VERSION`` (``ontology-v0.1.2``) was
+# authorized and tagged on 2026-10-15; ``v0.1.1`` was never released.
+RELEASED_TAGS = frozenset({"ontology-v0.1.0", CURRENT_VERSION})
 
 
 class VersioningPolicyDocTests(unittest.TestCase):
@@ -170,13 +170,12 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:
-        """Exactly the ten renamed tags plus the newest released tag.
+        """Exactly the ten renamed tags plus the two authorized release tags.
 
-        ``LATEST_RELEASED_TAG`` was created on ``master`` (定版 commit
-        ``74fca80``) after the version-cut Merge Request merged, so it is
-        required.  The product version has since advanced to
-        ``ontology-v0.1.2`` without an authorized tag, so a missing or extra
-        tag must still fail.
+        ``ontology-v0.1.0`` was created on ``master`` (定版 commit ``74fca80``)
+        after the version-cut Merge Request merged; ``ontology-v0.1.2`` was
+        authorized on 2026-10-15 and created on the ``!23`` merge commit
+        ``3c4de1e``.  Both are required, and a missing or extra tag must fail.
         """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
@@ -184,7 +183,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
         )
         tags = {t for t in proc.stdout.splitlines() if t.strip()}
         renamed = {f"ontology-v0.0.{number}" for number in range(1, 11)}
-        self.assertEqual(tags, renamed | {LATEST_RELEASED_TAG})
+        self.assertEqual(tags, renamed | set(RELEASED_TAGS))
 
     def _authoritative_tool_names(self) -> set[str]:
         """Tool names from the agent tools declaration and registered schemas."""
