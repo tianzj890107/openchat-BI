@@ -4,6 +4,11 @@
 
 回答写完之后、发给用户之前，必须过闸门。闸门是确定性的，不要用"感觉没问题"替代。
 
+Fuxi 运行时直接调用远程 MCP 的 `OutputGateCheck`，传入 `answer`、`question`、
+`sql`、`chart`、`reconcile` 和可选的 `claims`；返回 `verdict=pass/warn/reject`。
+
+离线开发/回归时可以运行纯规则脚本：
+
 ```bash
 python scripts/gates.py check --input turn.json      # 证据 / 预测披露 / 图表 / 兜底
 python scripts/gates.py sql --sql "SELECT ..."       # 只读 SQL 守卫

@@ -2,3 +2,4 @@ credentials.env
 dataset/
 __pycache__/
 *.pyc
+_vendor/

@@ -10,7 +10,7 @@
 - 把结论、图表、表格、口径说明按顺序拼进同一页；
 - 默认内联 ECharts（单文件、离线可开），可选改为同目录相对资源。
 
-本文件属于交付包自有模块，不改仓库原实现（`tools/_vendor/` 保持原样副本）。
+本文件属于独立 MCP 包自有模块，不改仓库原实现（`_vendor/` 保持原样副本）。
 """
 
 from __future__ import annotations
@@ -26,8 +26,13 @@ from typing import Any, Callable
 
 HERE = Path(__file__).resolve().parent
 VENDOR = str(HERE / "_vendor")
-if VENDOR not in sys.path:
-    sys.path.insert(0, VENDOR)
+try:
+    # Embedded use (bi_agent.web.mcp_endpoint) already has the project package
+    # on sys.path.  Only fall back to the vendored copy for standalone runs.
+    import bi_agent  # noqa: F401
+except ImportError:
+    if VENDOR not in sys.path:
+        sys.path.insert(0, VENDOR)
 
 from bi_agent.display_names import (  # noqa: E402
     normalize_chart_multidim_params,
@@ -103,6 +108,14 @@ CANVAS_GENERATE_SCHEMA = {
                 "description": (
                     "默认 true：把 ECharts 内联进 HTML，单文件离线可用；"
                     "false 则把 echarts.min.js 写到同目录并相对引用（页面更小）。"
+                ),
+            },
+            "output_dir": {
+                "type": "string",
+                "description": (
+                    "可选输出目录。默认 <cwd>/dataset/canvas；相对路径基于 MCP 服务端 cwd。"
+                    "当宿主工作区与 MCP 服务端 cwd 不同时，传入宿主可写目录的绝对路径。"
+                    "绝对路径必须位于 cwd 或 ONTOLOGY_CANVAS_ALLOWED_ROOTS 允许的根目录下。"
                 ),
             },
             "blocks": {
@@ -486,8 +499,11 @@ def _make_canvas_generate(
 
         title = str(params.get("title"))
         ts = time.strftime("%Y%m%d-%H%M%S")
-        out_dir = project_path(cwd, CANVAS_DIR)
-        out_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            out_dir = _resolve_output_dir(cwd, params.get("output_dir"))
+            out_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, ValueError) as exc:
+            return f"CanvasGenerate rejected: {exc}"
         if charts or multis:
             if not inline:
                 try:
@@ -541,6 +557,29 @@ def _make_canvas_generate(
     return run
 
 
+def _resolve_output_dir(cwd: str, requested: object) -> Path:
+    """Resolve the canvas directory without allowing unapproved absolute writes."""
+    base = Path(cwd).resolve()
+    text = str(requested or "").strip()
+    if not text:
+        return project_path(cwd, CANVAS_DIR)
+    candidate = Path(text).expanduser()
+    if not candidate.is_absolute():
+        candidate = base / candidate
+    candidate = candidate.resolve()
+    roots = [base]
+    raw_roots = os.environ.get("ONTOLOGY_CANVAS_ALLOWED_ROOTS", "")
+    for raw in raw_roots.split(os.pathsep):
+        if raw.strip():
+            roots.append(Path(raw.strip()).expanduser().resolve())
+    if not any(candidate == root or candidate.is_relative_to(root) for root in roots):
+        raise ValueError(
+            "output_dir is outside the allowed roots; set ONTOLOGY_CANVAS_ALLOWED_ROOTS "
+            "to an explicit host workspace directory when needed"
+        )
+    return candidate
+
+
 def _normalize_blocks(params: dict, resolver: "Callable[[str], str | None]") -> dict:
     """对每个块的 params 套用与对应工具相同的业务名归一化。"""
     if not isinstance(params.get("blocks"), list):
@@ -585,7 +624,7 @@ SPECS: list[tuple[dict, ExecutorFactory]] = [
 ]
 
 
-if __name__ == "__main__":  # 允许单独调试：python3 tools/canvas_tool.py '<json>'
+if __name__ == "__main__":  # 允许单独调试：python3 ontology-analytics-mcp/canvas_tool.py '<json>'
     payload = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {"title": "demo", "blocks": []}
     workdir = os.getcwd()
     print(_make_canvas_generate()(payload, workdir))

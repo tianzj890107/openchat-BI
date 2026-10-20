@@ -25,6 +25,7 @@ Thumbs.db
 
 # Project
 dataset/charts/
+dataset/canvas/
 dataset/conversations/
 dataset/logs/
 dataset/uploaded_reports/

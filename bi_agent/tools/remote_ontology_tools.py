@@ -142,15 +142,46 @@ def _rank_row(props: dict[str, Any], query: str) -> tuple[int, str, str]:
 
 
 def _search_type(client: RemoteOntologyClient, type_name: str, query: str, limit: int = 20) -> list[dict[str, Any]]:
-    rows = client.list_objects(type_name)
-    ranked = sorted(((_rank_row(row, query), row) for row in rows), key=lambda pair: pair[0])
-    eligible = [(rank, row) for rank, row in ranked if rank[0] < 99]
-    if not eligible:
-        return []
-    best_tier = eligible[0][0][0]
-    # Priority means short-circuiting: a code exact hit must not be padded
-    # with weaker label/name/alias/fuzzy candidates.
-    return [row for rank, row in eligible if rank[0] == best_tier][:limit]
+    """Name search with a bounded metadata query first.
+
+    ``list_objects`` pulls the whole type (and may paginate through a large
+    ECore repository).  demo2 made that path take tens of seconds when a
+    semantic query probed fourteen types.  The documented metadata endpoint
+    supports a label LIKE filter, so try that first and fall back to the full
+    pull only when the bounded query finds no match or the endpoint fails.
+    """
+    def rank(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        ranked = sorted(((_rank_row(row, query), row) for row in rows), key=lambda pair: pair[0])
+        eligible = [(value, row) for value, row in ranked if value[0] < 99]
+        if not eligible:
+            return []
+        best_tier = eligible[0][0][0]
+        # Priority means short-circuiting: a code exact hit must not be padded
+        # with weaker label/name/alias/fuzzy candidates.
+        return [row for value, row in eligible if value[0] == best_tier][:limit]
+
+    analysis = _vertex_config(type_name, (("code", "编码"), ("label", "名称")))
+    for property_name in ("label", "name"):
+        common = {
+            "filters": {
+                "type": type_name,
+                "property": property_name,
+                "operator": {"code": "LIKE", "type": "STRING"},
+                "value": f"%{query}%",
+            },
+            "pagination": {"pageNum": 1, "pageSize": min(200, max(50, limit * 5))},
+        }
+        try:
+            rows = _page_rows(client, analysis, common)
+        except OntologyApiError:
+            break
+        matched = rank(rows)
+        if matched:
+            return matched
+    # Do not turn a transport failure into "no match".  The caller uses
+    # ``OntologyApiError`` to distinguish a backend incident from an honest
+    # empty ontology result (Spec R3/R4/R5).
+    return rank(client.list_objects(type_name))
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +351,11 @@ def _candidate_results(
             continue
         probed_ok += 1
         found.extend((type_name, row) for row in rows)
+        if found and type_name == "Indicator":
+            # Metric questions are the dominant case.  Once the authoritative
+            # Indicator type has hits, do not keep probing the other thirteen
+            # types on a remote ECore repository.
+            break
     if probed_ok == 0 and errors:
         # Only when *every* candidate type failed to answer is this a transport
         # incident rather than "the ontology has no such object" (Spec R3/R4).

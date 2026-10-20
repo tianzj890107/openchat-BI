@@ -56,6 +56,8 @@ eimosp-ontology-agentic-analytics/
 ├── frontend/                    # React + Ant Design X 工作台源码（本体图渲染复用 @boulderaitech/ontology-graph）
 ├── open_claude/                 # 通用 Agent Runtime 与 CLI
 ├── .claude/agents/              # 智能分析、报表分析和报表生成角色
+├── ontology-analytics-skill/    # 可移植分析规则包（SKILL.md、references、cases、纯规则 scripts）
+├── ontology-analytics-mcp/      # MCP 工具模块（MetricFactQuery、CanvasGenerate、ECharts 资源）
 ├── dataset/                     # 初始化数据及本地运行数据目录
 ├── docs/                        # 产品、Skills、Tools、版本与工程文档
 ├── changelog/                   # 周工程变更记录（只按周维护，不创建日报）
@@ -95,6 +97,7 @@ cp .env.example .env
 | 模型网关 | `LLM_PROVIDER`、`TEAM_BASE_URL`、`TEAM_API_KEY`、`TEAM_MODEL` | 选择模型提供方与默认模型 |
 | 本体服务 | `ONTOLOGY_BACKEND`、`ONTOLOGY_BASE_URL`、`ONTOLOGY_REPOSITORY_ID` | 选择本地或远程本体 |
 | 事实数据 | `DORIS_API_URL`、`DORIS_DATABASE` | 配置业务事实查询 |
+| 远程 MCP | `ONTOLOGY_MCP_AUTH_TOKEN`（可选）、`MCP_PUBLIC_BASE_URL`（可选）、`ONTOLOGY_MCP_EXPOSED_TOOLS`（可选） | 控制 Fuxi 连接器鉴权、Artifact 公网基址和工具白名单 |
 | 并发治理 | `CHATBI_MAX_ACTIVE_TURNS` 等 | 限制 turn、principal 和下游并发 |
 | 子路径部署 | `APP_ROOT_PATH` | 外部网关子路径前缀（如 `/api/ontology-agentic-analytics`）；缺省为空字符串，保持域名根路径部署 |
 
@@ -115,6 +118,33 @@ curl -fsS http://127.0.0.1:8765/healthz
 ```
 
 本地本体与 SQLite 参数通过 `python -m bi_agent.web --help` 查看。
+
+### Fuxi 远程 MCP
+
+主服务已内置 Streamable HTTP MCP，入口与健康检查：
+
+```text
+POST http://<host>:8765/api/mcp
+GET  http://<host>:8765/api/mcp/health
+GET  http://<host>:8765/api/mcp/artifacts/<filename>
+```
+
+Fuxi 连接器配置：
+
+```json
+{
+  "transport": "http",
+  "url": "http://<host>:8765/api/mcp",
+  "headers": {}
+}
+```
+
+连接后可以看到 16 个真实分析工具（`AnalysisRoute`、`MetricFactQuery`、
+`ChartGenerate`、`TableGenerate`、`CanvasGenerate`、`OutputGateCheck` 等），
+不会出现 `AnalysisRun`、`AskUser`、`TodoWrite` 或原始 SQL 工具。客户端不需要
+`.env`、App ID 或 Token；demo2 本体和 Doris 配置由主服务持有。若在网关后使用，
+用 `MCP_PUBLIC_BASE_URL` 指定外部可访问基址，使 `CanvasGenerate` 返回的
+`Artifact URL` 不指向容器内地址。
 
 ## 反向代理子路径部署（`APP_ROOT_PATH`）
 

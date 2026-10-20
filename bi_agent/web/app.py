@@ -3942,3 +3942,17 @@ def _build_report_session(
         ontology_repository_id=(source.remote_ontology.repository_id if source.remote_ontology else ""),
         tool_executors=executors,
     )
+
+
+# ---------------------------------------------------------------------------
+# Remote MCP endpoint (Fuxi / Streamable HTTP)
+# ---------------------------------------------------------------------------
+# The endpoint exposes the same source-bound executors as the web chat.  It is
+# mounted last so every helper above is defined; no circular import is needed.
+from .mcp_endpoint import build_mcp_router  # noqa: E402
+
+app.include_router(build_mcp_router(
+    get_source=lambda: _source_for_session(None),
+    build_doris=_doris_http_conn,
+    get_cwd=lambda: STATE.cwd or os.getcwd(),
+))

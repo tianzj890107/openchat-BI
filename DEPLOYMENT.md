@@ -220,6 +220,35 @@ CHATBI_MAX_IN_MEMORY_SESSIONS=500    # 内存会话上限（超限惰性回收�
 - 不同 `session_id` 互不阻塞，可并行执行。
 - reset/restore/activate/数据源切换会使旧 turn 收到 `session_superseded` 并停止提交，
   旧请求不能写入新会话；所有关键 SSE 事件带 `turn_id`，`done` 带 `generation`。
+
+## 3.2 Fuxi 远程 MCP
+
+主服务 `bi_agent.web` 已内置 Streamable HTTP MCP，不需要另起进程：
+
+```text
+POST /api/mcp                 # initialize / tools/list / tools/call
+GET  /api/mcp/health          # 健康检查
+GET  /api/mcp/artifacts/<f>   # CanvasGenerate 产物的只读下载
+```
+
+Fuxi 连接器配置为 `transport: http`、`url: http://<host>:8080/api/mcp`、
+`headers: {}`。同名宿主机映射端口按实际部署填写（本地默认 `8765`）。客户端不需要
+`.env`、App ID 或 Token；本体与 Doris 配置仍由主服务持有。
+
+新增可选环境变量：
+
+```dotenv
+ONTOLOGY_MCP_AUTH_TOKEN=            # 留空表示依赖内网/网关白名单；设置后要求 Bearer
+MCP_PUBLIC_BASE_URL=                # 反向代理后的外部基址，用于拼 Artifact URL
+ONTOLOGY_MCP_EXPOSED_TOOLS=         # 逗号分隔的工具白名单；默认 16 个真实分析工具
+```
+
+工具白名单永远不能重新启用 `AnalysisRun`、`AskUser`、`TodoWrite`、`Ontology-FactQuery`、
+`ListTables`、`DescribeTable`。如果部署在反向代理/容器后，必须设置
+`MCP_PUBLIC_BASE_URL`，否则 `CanvasGenerate` 返回的 Artifact URL 可能是容器内地址。
+
+本体客户端默认绕过开发机的 `HTTP_PROXY` / `HTTPS_PROXY`，直接访问内网本体和 Doris
+网关；否则 urllib 可能把 demo2 流量送到本地代理，出现 502 或 30 秒超时。
 - 客户端断开或 reset 会取消该 turn；被取消 turn 不保存部分回复。
 - TTL/LRU 只回收内存 session 与 source context，不删除历史 JSON、上传、图表或日志。
 
