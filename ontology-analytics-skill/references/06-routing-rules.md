@@ -2,10 +2,20 @@
 
 # 确定性路由规则（每轮开始前先跑）
 
-每个新用户轮次都必须先做一次确定性路由，产出"这一轮为什么走这条路"的决策快照，再进入 `01-sop.md` 的六步流程：
+每个新用户轮次都必须先做一次确定性路由，产出"这一轮为什么走这条路"的决策快照，
+再进入 `01-sop.md` 的六步流程。
+
+Fuxi 运行时直接调用远程 MCP 的 `AnalysisRoute`：
+
+```json
+{"question": "<用户原话>"}
+```
+
+离线开发/回归时也可以运行纯规则脚本（不是 Fuxi 运行入口）：
 
 ```bash
-python scripts/route.py --question "<用户原话>" --allowed-tools "Ontology-MetricQuery,Ontology-FactQuery,Ontology-SemanticQuery,AskUser"
+python scripts/route.py --question "<用户原话>" \
+  --allowed-tools "Ontology-MetricQuery,Ontology-SemanticQuery,Ontology-TermDisambiguate"
 ```
 
 `route.py` 输出决策 JSON，字段与后端一致；不得用模型自由判断替代它。
@@ -20,7 +30,7 @@ python scripts/route.py --question "<用户原话>" --allowed-tools "Ontology-Me
 | `next_step` | 下一步动作枚举 |
 | `required_tools` | 预期首选工具；**是 `allowed_tools` 的子集，不是执行白名单** |
 | `evidence_required` | 最终回答是否必须有工具证据 |
-| `needs_human` | 是否必须先 `AskUser` 澄清 |
+| `needs_human` | 是否必须先向用户澄清 |
 | `wants_forecast` / `forecast_kind` / `forecast_assumption` | 预测/情景标记；`forecast_kind ∈ predictive / scenario / stored` |
 | `refusal_category` / `refusal_message` | 命中安全拒答时的分类与固定话术 |
 | `input_digest` | 规范化问题的 sha256，不保存原话 |
@@ -31,7 +41,7 @@ python scripts/route.py --question "<用户原话>" --allowed-tools "Ontology-Me
 | --- | --- | --- | --- |
 | `GENERAL_RESPONSE` + 拒答字段 | `GENERAL_REQUEST` | `DELIVER` | 命中安全拒答，**优先级最高**；工具白名单清空 |
 | `CAPABILITY_LIMITATION` | `QUERY_CAPABILITY_UNAVAILABLE` | `DELIVER_LIMITATION` | 会话没有可用的取数工具，只能声明能力边界 |
-| `CLARIFICATION` | `AMBIGUOUS_REQUEST` | `ASK_USER` | 问句无法确定分析对象/口径，必须先 `AskUser` |
+| `CLARIFICATION` | `AMBIGUOUS_REQUEST` | `ASK_USER` | 问句无法确定分析对象/口径，必须在对话中向用户提出明确选项 |
 | `DIAGNOSTIC_ANALYSIS` | `DIAGNOSTIC_REQUEST` | `QUERY_DORIS` | 找问题/异常/波动/根因类 |
 | `ONTOLOGY_LOOKUP` | `ONTOLOGY_LOOKUP_REQUEST` | `QUERY_ONTOLOGY` | 查本体元数据（定义、字段、关系、指标口径） |
 | `FACT_QUERY` | `FACT_REQUEST_RESOLVED` | `QUERY_DORIS` | 可直接取数的事实查询 |
@@ -43,7 +53,7 @@ python scripts/route.py --question "<用户原话>" --allowed-tools "Ontology-Me
 
 1. 安全拒答：凭据外泄 `REFUSAL_CREDENTIAL_EXFILTRATION`、内部环境探测 `REFUSAL_ENVIRONMENT_DISCOVERY`、破坏性数据操作 `REFUSAL_DESTRUCTIVE_DATA_OPERATION`。业务词不能把拒答拉回查询路线。
 2. 能力缺失：没有取数工具 → 声明限制，不编数字。
-3. 澄清：对象/口径不唯一 → `AskUser`。
+3. 澄清：对象/口径不唯一 → 在对话中向用户提出明确选项。
 4. 诊断。
 5. 本体元数据。
 6. 事实查询。
@@ -51,7 +61,12 @@ python scripts/route.py --question "<用户原话>" --allowed-tools "Ontology-Me
 
 ## 取数工具选择
 
-`required_tools` 的选法：有 `Ontology-MetricQuery` 就用它，否则用 `Ontology-FactQuery`；**两者不得同时出现**。实际执行仍可选择任一被授权的工具。
+`required_tools` 的选法：路由脚本为兼容旧宿主仍返回
+`Ontology-MetricQuery`；实际执行时，只要 MCP 暴露了 `MetricFactQuery`，就用它替代
+底层 `Ontology-MetricQuery` 完成事实查询、月度拆分和维度下钻。`MetricFactQuery`
+不可用时才用 `Ontology-MetricQuery`；两者都不存在时按能力限制说明，不调用未暴露的
+原始 SQL 工具。同一轮不要重复等价查询。`required_tools` 表示数据工具族，不是
+“只能调用这一个工具”。
 
 ## 预测与情景（必须有披露）
 
@@ -70,5 +85,6 @@ python scripts/route.py --question "<用户原话>" --allowed-tools "Ontology-Me
 
 - ❌ 凭语义感觉选路线，不跑 `route.py`。
 - ❌ 把 `required_tools` 当成"只能调用这些工具"。
+- ❌ 在 Fuxi 运行时尝试调用未暴露的 `AskUser`；应直接在回答里向用户提问。
 - ❌ 拒答前还先去查数据确认。
 - ❌ 预测问题给出确定数字而不披露窗口/方法/不确定性。

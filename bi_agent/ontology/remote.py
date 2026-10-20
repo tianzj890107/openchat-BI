@@ -15,7 +15,15 @@ import time
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
+
+
+#: Ontology / Doris gateways are internal services.  They must not inherit the
+#: developer machine's ``HTTP_PROXY`` (a local debug proxy commonly listens on
+#: 127.0.0.1:7890); otherwise ``urllib`` sends demo2 traffic through it and the
+#: caller sees 502s or 30-second timeouts while ``curl`` succeeds.  Build one
+#: proxy-free opener for every request instead of mutating process-wide env.
+_ONTOLOGY_OPENER = build_opener(ProxyHandler({}))
 
 
 def _rows_of(value: Any) -> list[dict[str, Any]]:
@@ -180,7 +188,7 @@ class RemoteOntologyClient:
             data = json.dumps(body, ensure_ascii=False).encode("utf-8")
         req = Request(url, data=data, headers=headers, method=method.upper())
         try:
-            with urlopen(req, timeout=self.timeout) as response:
+            with _ONTOLOGY_OPENER.open(req, timeout=self.timeout) as response:
                 raw = response.read().decode("utf-8", errors="replace")
         except HTTPError as e:
             detail = e.read().decode("utf-8", errors="replace")[:1000]
@@ -207,18 +215,21 @@ class RemoteOntologyClient:
         The ontology service keeps the ``/api/v1/analysis/...`` family and the
         older ``/agent/...`` / ``/system/...`` paths online at the same time, so
         the client cannot assume a coordinated cutover.  The first answer wins;
-        if every dialect fails the first error is re-raised so upstream
-        messages are never hidden behind an empty result.
+        if every dialect fails, all error messages are kept so an actionable
+        legacy validation error is not hidden behind an earlier 401.
         """
-        first_error: Optional[OntologyApiError] = None
+        errors: list[OntologyApiError] = []
         for method, path, kwargs in attempts:
             try:
                 return self._request(method, path, **kwargs)
             except OntologyApiError as exc:
-                if first_error is None:
-                    first_error = exc
-        if first_error is not None:
-            raise first_error
+                errors.append(exc)
+        if errors:
+            # Keep every dialect's message.  The new endpoint may answer 401
+            # while the legacy endpoint gives the actionable validation error
+            # (for example ``未知本体类型: Rule``); reporting only the first
+            # error would hide the cause from the calling tool.
+            raise OntologyApiError(" | ".join(str(item) for item in errors))
         raise OntologyApiError("本体服务请求失败：没有可用的传输方言")
 
     @staticmethod

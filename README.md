@@ -1,11 +1,13 @@
 # eimosp-ontology-agentic-analytics · 智能分析
 
-eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`ontology-v0.1.2`。
+eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`ontology-v0.1.3`。
 
 系统以 Open Claude Agent Runtime 为执行底座，将业务本体、指标口径、事实数据查询、
 表格与图表生成、根因分析和决策行动组织为可追踪的分析流程，并通过 Web 工作台交付结果。
 
+- [ontology-v0.1.3 正式版本说明](docs/versions/ontology-v0.1.3.md)
 - [ontology-v0.1.2 正式版本说明](docs/versions/ontology-v0.1.2.md)
+- [ontology-v0.1.1 正式版本说明](docs/versions/ontology-v0.1.1.md)
 - [ontology-v0.1.0 正式版本说明](docs/versions/ontology-v0.1.0.md)
 - [ontology-v0.0.10 正式版本说明](docs/versions/ontology-v0.0.10.md)
 - [ontology-v0.0.9 正式版本说明](docs/versions/ontology-v0.0.9.md)
@@ -55,6 +57,8 @@ eimosp-ontology-agentic-analytics/
 ├── frontend/                    # React + Ant Design X 工作台源码（本体图渲染复用 @boulderaitech/ontology-graph）
 ├── open_claude/                 # 通用 Agent Runtime 与 CLI
 ├── .claude/agents/              # 智能分析、报表分析和报表生成角色
+├── ontology-analytics-skill/    # 可移植分析规则包（SKILL.md、references、cases、纯规则 scripts）
+├── ontology-analytics-mcp/      # MCP 工具模块（MetricFactQuery、CanvasGenerate、ECharts 资源）
 ├── dataset/                     # 初始化数据及本地运行数据目录
 ├── docs/                        # 产品、Skills、Tools、版本与工程文档
 ├── changelog/                   # 周工程变更记录（只按周维护，不创建日报）
@@ -94,6 +98,7 @@ cp .env.example .env
 | 模型网关 | `LLM_PROVIDER`、`TEAM_BASE_URL`、`TEAM_API_KEY`、`TEAM_MODEL` | 选择模型提供方与默认模型 |
 | 本体服务 | `ONTOLOGY_BACKEND`、`ONTOLOGY_BASE_URL`、`ONTOLOGY_REPOSITORY_ID` | 选择本地或远程本体 |
 | 事实数据 | `DORIS_API_URL`、`DORIS_DATABASE` | 配置业务事实查询 |
+| 远程 MCP | `ONTOLOGY_MCP_AUTH_TOKEN`（可选）、`MCP_PUBLIC_BASE_URL`（可选）、`ONTOLOGY_MCP_EXPOSED_TOOLS`（可选） | 控制 Fuxi 连接器鉴权、Artifact 公网基址和工具白名单 |
 | 并发治理 | `CHATBI_MAX_ACTIVE_TURNS` 等 | 限制 turn、principal 和下游并发 |
 | 子路径部署 | `APP_ROOT_PATH` | 外部网关子路径前缀（如 `/api/ontology-agentic-analytics`）；缺省为空字符串，保持域名根路径部署 |
 
@@ -114,6 +119,33 @@ curl -fsS http://127.0.0.1:8765/healthz
 ```
 
 本地本体与 SQLite 参数通过 `python -m bi_agent.web --help` 查看。
+
+### Fuxi 远程 MCP
+
+主服务已内置 Streamable HTTP MCP，入口与健康检查：
+
+```text
+POST http://<host>:8765/api/mcp
+GET  http://<host>:8765/api/mcp/health
+GET  http://<host>:8765/api/mcp/artifacts/<filename>
+```
+
+Fuxi 连接器配置：
+
+```json
+{
+  "transport": "http",
+  "url": "http://<host>:8765/api/mcp",
+  "headers": {}
+}
+```
+
+连接后可以看到 16 个真实分析工具（`AnalysisRoute`、`MetricFactQuery`、
+`ChartGenerate`、`TableGenerate`、`CanvasGenerate`、`OutputGateCheck` 等），
+不会出现 `AnalysisRun`、`AskUser`、`TodoWrite` 或原始 SQL 工具。客户端不需要
+`.env`、App ID 或 Token；demo2 本体和 Doris 配置由主服务持有。若在网关后使用，
+用 `MCP_PUBLIC_BASE_URL` 指定外部可访问基址，使 `CanvasGenerate` 返回的
+`Artifact URL` 不指向容器内地址。
 
 ## 反向代理子路径部署（`APP_ROOT_PATH`）
 
@@ -222,7 +254,8 @@ Node 子进程执行。
   [语义化版本与正式发布规范](docs/versions/versioning-policy.md)；
 - push 不等于部署，部署必须由用户在当前任务中明确授权；
 - GitLab Release 授权后在 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 上基于同名 tag 创建（只补缺失项，不覆盖已有 Release）；
-- 当前版本 `ontology-v0.1.2` 尚未创建 tag 与 Release（需要用户单独授权）；已发布 Release：[智能分析 ontology-v0.1.0](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.0)、对应 tag 指向定版 commit `74fca80`；此前版本：[智能分析 ontology-v0.0.10](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.10)、[智能分析 ontology-v0.0.9](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.9)、[智能分析 ontology-v0.0.8](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.8)、[智能分析 ontology-v0.0.7](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.7)、[智能分析 ontology-v0.0.6](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.6)、[智能分析 ontology-v0.0.5](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.5)、[智能分析 ontology-v0.0.4](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.4)、[智能分析 ontology-v0.0.3](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.3)、[智能分析 ontology-v0.0.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.2)、[智能分析 ontology-v0.0.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.1)
+- 当前版本 `ontology-v0.1.3` 的 tag 与 GitLab Release 尚未创建；必须在 MR 合入 `master` 后由用户单独授权，不能由本次版本收口自动触发；
+- 已发布 Release：[智能分析 ontology-v0.1.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.2)、对应 tag 指向定版 commit `3c4de1e`；[智能分析 ontology-v0.1.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.1)、对应 tag 指向定版 commit `c82221f`（2026-10-15 补建）；上一版本：[智能分析 ontology-v0.1.0](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.0)、对应 tag 指向定版 commit `74fca80`；此前版本：[智能分析 ontology-v0.0.10](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.10)、[智能分析 ontology-v0.0.9](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.9)、[智能分析 ontology-v0.0.8](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.8)、[智能分析 ontology-v0.0.7](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.7)、[智能分析 ontology-v0.0.6](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.6)、[智能分析 ontology-v0.0.5](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.5)、[智能分析 ontology-v0.0.4](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.4)、[智能分析 ontology-v0.0.3](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.3)、[智能分析 ontology-v0.0.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.2)、[智能分析 ontology-v0.0.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.1)
 
 ## 相关文档
 

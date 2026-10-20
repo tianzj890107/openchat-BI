@@ -23,7 +23,7 @@ ontology-vMAJOR.MINOR.PATCH
 - 目前处于 `ontology-v0.x` 快速迭代阶段，当前正式版本保持为：
 
 ```text
-ontology-v0.1.2
+ontology-v0.1.3
 ```
 
 ### 与包管理清单的关系（两处强制例外）
@@ -32,8 +32,8 @@ ontology-v0.1.2
 
 | 清单 | 约束 | 实际写入 |
 | --- | --- | --- |
-| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.2` |
-| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.2` |
+| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.3` |
+| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.3` |
 
 `scripts/run_analytics_eval.py` 的 `product_version()` 读取 `pyproject.toml` 后补
 `ontology-v` 前缀，对外统一返回显示名；同文件 `_version_reached()` 会剥离
@@ -64,20 +64,47 @@ X360 流程定义集成、本体/MAL 与元数据契约迁移等用户可感知�
 - `master` 仍是唯一发布主线，`feature/branch-model-and-v0.1.0-cut` → `master` 按临时分支
   Merge Request 流程评审合并；`20260727` 已归档，不再作为交付分支。
 
-### 版本推进记录（ontology-v0.1.0 → ontology-v0.1.2）
+### 版本推进记录（ontology-v0.1.0 → ontology-v0.1.1）
 
-2026-10-15 用户明确指定把当前交付收口为 **PATCH** `ontology-v0.1.2`，包含两个补丁窗口：
+`ontology-v0.1.1` 是 `ontology-v0.1.0` 之后的第一个 PATCH，内容是分析逻辑剥离包
+`ontology-analytics-skill`：把确定性路由 → L1–L5 分档 SOP → 交付前五道闸门的整套分析逻辑剥离为
+自包含交付目录，并接入真实工具运行时（17 个真实工具、凭据外置）。对仓库现有代码是纯新增，因此
+定级 PATCH。
 
-- 窗口一（用户指定为 `v0.1.1`）：分析逻辑剥离包 `ontology-analytics-skill` 收尾——接入真实工具
-  运行时、对齐 Fuxi 技能展示字段、新增 `CanvasGenerate` 整页交付工具；该窗口内容已合入 `master`；
-- 窗口二（用户指定为 `v0.1.2`）：多步分析中文过程播报、`20260727` 归档与交付口径改为
-  「临时分支 → `master`」、取数证据与双环境对比归档；
-- 两个窗口落在同一条交付分支上，用户明确要求一次性收口为 `ontology-v0.1.2`，因此**不单独发布
-  `v0.1.1`**，也不为它创建版本文档与 tag；`ontology-v0.1.1` 号码作废，不得复用；
-- 本次授权范围只有版本号与文档：`release/ontology-v0.1.2` 分支、tag 与 GitLab Release 都未授权、
-  未执行；部署未授权、未执行；
+- 内容于 2026-10-08 经 Merge Request 合入 `master`，定版 commit `c82221f`；
+- 当时未创建版本文档、tag 与 Release；2026-10-15 用户明确要求补建（“肯定要补啊”），随后执行：
+  新增 `docs/versions/ontology-v0.1.1.md`，annotated tag `ontology-v0.1.1` 指向原定版 commit
+  `c82221f` 并推送 GitLab，同 tag 的 GitLab Release 已创建（只新建，未覆盖、未移动任何已有 tag
+  或 Release）；
+- 补建只增加版本记录，不改变任何 commit、不拉 release 分支、不部署；
+- 命名注意：2026-09-02 曾有一个名字就是 `v0.1.1` 的旧 tag（commit `28bb1d6`），它在 2026-09-29
+  的版本族切换中改名为 `ontology-v0.0.2`；`ontology-v0.1.1` 与该旧 tag 无关。
+
+### 版本推进记录（ontology-v0.1.1 → ontology-v0.1.2）
+
+2026-10-15 用户明确指定把当前交付收口为 **PATCH** `ontology-v0.1.2`：
+
+- 本版本在 `ontology-v0.1.1` 的剥离包之上补齐 Fuxi 技能展示字段与 `CanvasGenerate` 整页 HTML
+  交付，并加入多步分析中文过程播报、`20260727` 归档与交付口径改为「临时分支 → `master`」、
+  取数证据与双环境对比归档；
 - 收口通过 `feature/progress-narration-zh` → `master` 的 Merge Request `!23`（reviewer
-  `tianzijing`）评审合并，合入后的 `master` commit 为定版 commit。
+  `tianzijing`）评审合并，合入后的 `master` merge commit `3c4de1e` 为定版 commit；
+- 用户随后单独授权创建 tag 与 GitLab Release，已执行：annotated tag `ontology-v0.1.2` 指向
+  `3c4de1e` 并推送 GitLab，同 tag 的 GitLab Release 已创建（只新建，未覆盖任何已有 Release）；
+- 用户明确指示**不拉出** `release/ontology-v0.1.2` 分支；部署未授权、未执行。
+
+### 版本推进记录（ontology-v0.1.2 → ontology-v0.1.3）
+
+2026-10-20 用户明确指定把当前交付收口为 **PATCH** `ontology-v0.1.3`：
+
+- 本版本把 Fuxi / 通用 Agent 的接入方式从本机 stdio 运行时切换为主服务内置的远程 MCP：
+  `/api/mcp` 暴露 16 个受控真实工具，连接方不再携带本体平台凭据、Doris 凭据或输出目录配置；
+- 同步完成 `CanvasGenerate` Artifact URL 交付、demo2 代理绕过与本体语义检索快路径修复，并把
+  前端、Python 包、FastAPI、README、版本文档与契约测试统一到 `ontology-v0.1.3`；
+- 交付方式为 `feature/mcp-server-policy` → `master` 的 Merge Request（reviewer `tianzijing`）；
+  MR 只负责评审与合并，不自动创建 tag 或 GitLab Release；
+- tag、GitLab Release 与部署继续保持独立授权；本次版本收口不自动部署，也不拉
+  `release/ontology-v0.1.3` 分支。
 
 ## PATCH / MINOR / MAJOR 判定
 

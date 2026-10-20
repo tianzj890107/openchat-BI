@@ -220,6 +220,35 @@ CHATBI_MAX_IN_MEMORY_SESSIONS=500    # 内存会话上限（超限惰性回收�
 - 不同 `session_id` 互不阻塞，可并行执行。
 - reset/restore/activate/数据源切换会使旧 turn 收到 `session_superseded` 并停止提交，
   旧请求不能写入新会话；所有关键 SSE 事件带 `turn_id`，`done` 带 `generation`。
+
+## 3.2 Fuxi 远程 MCP
+
+主服务 `bi_agent.web` 已内置 Streamable HTTP MCP，不需要另起进程：
+
+```text
+POST /api/mcp                 # initialize / tools/list / tools/call
+GET  /api/mcp/health          # 健康检查
+GET  /api/mcp/artifacts/<f>   # CanvasGenerate 产物的只读下载
+```
+
+Fuxi 连接器配置为 `transport: http`、`url: http://<host>:8080/api/mcp`、
+`headers: {}`。同名宿主机映射端口按实际部署填写（本地默认 `8765`）。客户端不需要
+`.env`、App ID 或 Token；本体与 Doris 配置仍由主服务持有。
+
+新增可选环境变量：
+
+```dotenv
+ONTOLOGY_MCP_AUTH_TOKEN=            # 留空表示依赖内网/网关白名单；设置后要求 Bearer
+MCP_PUBLIC_BASE_URL=                # 反向代理后的外部基址，用于拼 Artifact URL
+ONTOLOGY_MCP_EXPOSED_TOOLS=         # 逗号分隔的工具白名单；默认 16 个真实分析工具
+```
+
+工具白名单永远不能重新启用 `AnalysisRun`、`AskUser`、`TodoWrite`、`Ontology-FactQuery`、
+`ListTables`、`DescribeTable`。如果部署在反向代理/容器后，必须设置
+`MCP_PUBLIC_BASE_URL`，否则 `CanvasGenerate` 返回的 Artifact URL 可能是容器内地址。
+
+本体客户端默认绕过开发机的 `HTTP_PROXY` / `HTTPS_PROXY`，直接访问内网本体和 Doris
+网关；否则 urllib 可能把 demo2 流量送到本地代理，出现 502 或 30 秒超时。
 - 客户端断开或 reset 会取消该 turn；被取消 turn 不保存部分回复。
 - TTL/LRU 只回收内存 session 与 source context，不删除历史 JSON、上传、图表或日志。
 
@@ -293,7 +322,7 @@ journalctl -u eimosp-ontology-agentic-analytics -f
 
 ```bash
 # 构建
-docker build -t eimosp-ontology-agentic-analytics:0.1.2 .
+docker build -t eimosp-ontology-agentic-analytics:0.1.3 .
 
 # 运行（生产默认远程本体 + Doris 实时查询）
 docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8080 \
@@ -302,7 +331,7 @@ docker run -d --name eimosp-ontology-agentic-analytics -p 8765:8080 \
   -v eimosp-ontology-agentic-analytics-charts:/app/dataset/charts \
   -v eimosp-ontology-agentic-analytics-uploads:/app/dataset/uploaded_reports \
   -v eimosp-ontology-agentic-analytics-logs:/app/dataset/logs \
-  eimosp-ontology-agentic-analytics:0.1.2
+  eimosp-ontology-agentic-analytics:0.1.3
 
 # 验证
 curl -fsS http://127.0.0.1:8765/healthz
@@ -310,7 +339,7 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 - 容器以非 root 用户运行；`/app` 下运行数据目录保持可写，建议挂载持久卷，不要把会话、图表、上传和日志放进镜像。
 - 配置通过 `.env` 只读挂载或 `-e` 注入，禁止把真实密钥写进镜像/仓库。
-- 本地 SQLite 演示模式可覆盖启动命令：`docker run ... eimosp-ontology-agentic-analytics:0.1.2 python -m bi_agent.web --host 0.0.0.0 --port 8080 --db dataset/databases/HyperFusion.db`（覆盖 CMD 时容器内仍需监听 `8080`，映射关系不变；需保留镜像内初始化数据文件，不要覆盖 `/app/dataset` 整体）。
+- 本地 SQLite 演示模式可覆盖启动命令：`docker run ... eimosp-ontology-agentic-analytics:0.1.3 python -m bi_agent.web --host 0.0.0.0 --port 8080 --db dataset/databases/HyperFusion.db`（覆盖 CMD 时容器内仍需监听 `8080`，映射关系不变；需保留镜像内初始化数据文件，不要覆盖 `/app/dataset` 整体）。
 
 ## 7. 更新发布
 
@@ -353,7 +382,29 @@ git diff --name-only
 `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/<release>`，进程使用该目录下的 `.venv`，监听 `8765`。
 发布时只同步源码和已构建静态资源，先在 release 目录创建带时间戳的代码备份；不要覆盖 `.env`、`.venv`、会话、上传文件、图表和日志。
 
-当前运行状态（2026-09-03 部署 v0.1.2）：
+当前运行状态（2026-10-20 部署远程 MCP feature）：
+
+- 运行目录
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/mcp-11dc92c-20261020`，
+  `RELEASE_COMMIT=11dc92c05dab97ae598158cc423a4da6d909640d`（分支
+  `feature/mcp-server-policy`），PID 记录在 `<release>/APP.pid`。
+- 新 release 从 `v0.1.2` 复制 `.env`、`.venv` 和数据集软链后覆盖代码；旧 release
+  `v0.1.2` 保持完整，可直接切回作为回滚版本。`.env` 权限保持 `600`。
+- 数据环境切换到 demo2：`ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology`、
+  `ONTOLOGY_REPOSITORY_ID=1`、
+  `DORIS_API_URL=http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query`；
+  `APP_ROOT_PATH=/api/ontology-agentic-analytics`，
+  `MCP_PUBLIC_BASE_URL=http://172.16.10.34:8765/api/ontology-agentic-analytics`。
+- Fuxi 连接地址：
+  `http://172.16.10.34:8765/api/ontology-agentic-analytics/api/mcp`。
+- 验证：`/healthz` 返回 200，`/api/mcp/health` 返回
+  `server=ontology-analytics-mcp`、`version=0.2.0`、`protocol=2025-03-26`；
+  MCP `tools/list` 返回 16 个工具且不包含 `AnalysisRun/AskUser/TodoWrite`；
+  `MetricFactQuery` 实测 2025 年采购金额合计 `854,057,481.11`；
+  Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
+  Artifact URL 返回 HTTP 200。
+
+上一运行状态（2026-09-03 部署 v0.1.2，现保留为回滚版本）：
 
 - 运行目录 `~/eimosp-ontology-agentic-analytics-releases/v0.1.2`，
   `RELEASE_COMMIT=c8454d82f052a6770bae975a5d865a6f37eff721`（tag `ontology-v0.0.3`，

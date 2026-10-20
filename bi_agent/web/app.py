@@ -658,7 +658,7 @@ def configure(
 # ---------------------------------------------------------------------------
 APP_NAME = "eimosp-ontology-agentic-analytics"              # 应用名（容器/服务/配置中心统一使用）
 APP_DISPLAY_NAME = "eimosp-ontology-agentic-analytics 智能分析"  # 产品名
-APP_VERSION = "ontology-v0.1.2"                 # 与 pyproject.toml / docs/versions 保持同步
+APP_VERSION = "ontology-v0.1.3"                 # 与 pyproject.toml / docs/versions 保持同步
 def _default_app_port() -> int:
     """实际监听端口来源：优先 APP_PORT 环境变量（容器内 Dockerfile 显式注入 8080），
     缺省回退非容器本地默认端口 8765。"""
@@ -3942,3 +3942,17 @@ def _build_report_session(
         ontology_repository_id=(source.remote_ontology.repository_id if source.remote_ontology else ""),
         tool_executors=executors,
     )
+
+
+# ---------------------------------------------------------------------------
+# Remote MCP endpoint (Fuxi / Streamable HTTP)
+# ---------------------------------------------------------------------------
+# The endpoint exposes the same source-bound executors as the web chat.  It is
+# mounted last so every helper above is defined; no circular import is needed.
+from .mcp_endpoint import build_mcp_router  # noqa: E402
+
+app.include_router(build_mcp_router(
+    get_source=lambda: _source_for_session(None),
+    build_doris=_doris_http_conn,
+    get_cwd=lambda: STATE.cwd or os.getcwd(),
+))
