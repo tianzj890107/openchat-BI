@@ -42,3 +42,16 @@
 - 验证：MCP 红测与本体契约测试共 106 项通过；技能自检 160/160 通过；
   `git diff --check` 通过。
 - 边界：未部署、未重启服务器、未修改历史会话和用户数据。
+
+### 2026-10-20 13:33 · 前端版本标识预置为 ontology-v0.1.3
+
+- 变化：工作台首屏品牌区的版本标签由 `ontology-v0.1.2` 更新为
+  `ontology-v0.1.3`，前端包版本与锁文件同步为 `0.1.3`。
+- 范围：本次只完成前端版本标识和构建产物；后端 `APP_VERSION`、Python 包版本、
+  正式版本文档与 tag 待 v0.1.3 版本收口时统一处理。
+- 涉及文件：`frontend/package.json`、`frontend/package-lock.json`、
+  `frontend/src/main.jsx`、`frontend/src/shell.html`、
+  `bi_agent/web/static/vendor/antd/workbench.js`。
+- 验证：`npm run build` 通过；前端 76 项 Node 测试全部通过；
+  构建产物只包含 `ontology-v0.1.3` 版本标识；`git diff --check` 通过。
+- 边界：未合并、未打 tag、未创建 Release、未部署。
