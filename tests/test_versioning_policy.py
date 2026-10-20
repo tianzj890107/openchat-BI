@@ -17,10 +17,10 @@ CURRENT_VERSION = "ontology-v0.1.3"
 # Tags/Releases that actually exist on the remote.  ``ontology-v0.1.0`` was
 # released on 2026-09-29; ``ontology-v0.1.1`` (skill-extraction PATCH) and
 # ``ontology-v0.1.2`` (progress-narration PATCH) were authorized and tagged
-# on 2026-10-15.  ``CURRENT_VERSION`` is the version under review; its tag and
-# Release require a separate authorization after the MR merges.
+# on 2026-10-15.  ``CURRENT_VERSION`` was merged as MR !24 and authorized for
+# tag/Release on 2026-10-20.
 RELEASED_TAGS = frozenset(
-    {"ontology-v0.1.0", "ontology-v0.1.1", "ontology-v0.1.2"}
+    {"ontology-v0.1.0", "ontology-v0.1.1", "ontology-v0.1.2", CURRENT_VERSION}
 )
 
 
@@ -175,14 +175,13 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("定版 commit `e4b0a8f`", doc)
 
     def test_no_unexpected_git_tags(self) -> None:
-        """Exactly the ten renamed tags plus the three authorized release tags.
+        """Exactly the ten renamed tags plus the four authorized release tags.
 
         ``ontology-v0.1.0`` was created on ``master`` (定版 commit ``74fca80``)
         after the version-cut Merge Request merged; ``ontology-v0.1.1`` and
         ``ontology-v0.1.2`` were authorized on 2026-10-15 and created on the
         ``c82221f`` / ``3c4de1e`` master merge commits.  ``CURRENT_VERSION``
-        is not in this set until the user separately authorizes its tag after
-        the MR merges.
+        was created on the ``a805a66`` master merge commit after MR !24.
         """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],

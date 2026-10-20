@@ -9,10 +9,10 @@
 - 版本关系：在 `ontology-v0.1.2` 的分析逻辑剥离包、中文过程播报与整页交付基础上，把
   Fuxi / 通用 Agent 的接入方式收口为主服务内置远程 MCP，并完成 demo2 环境下的兼容性与性能修复。
 - Release 分支：不单独拉出；通过 `feature/mcp-server-policy` → `master` 的 Merge Request 评审合并
-- 定版 commit：本 Merge Request 合入 `master` 后的 merge commit
-- Git Tag：`ontology-v0.1.3` 是本版本发布标识；tag 与 GitLab Release 均按独立授权执行，不随
-  版本号修改、commit、push 或 MR 合并自动创建
-- GitLab Release：基于同名 tag 创建，只有在用户单独授权 tag 与 Release 后才执行
+- 定版 commit：`a805a66`（`feature/mcp-server-policy` 经 Merge Request `!24` 合入 `master` 的
+  merge commit）
+- Git Tag：`ontology-v0.1.3`（annotated，指向定版 commit `a805a66`，已推送 GitLab）
+- GitLab Release：[智能分析 ontology-v0.1.3](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.3)（基于同名 tag 创建；创建不触发部署）
 
 ## 版本概述
 
@@ -76,8 +76,7 @@ Python 包、FastAPI 与版本文档统一到 `ontology-v0.1.3`。版本收口�
 
 ## 已知限制
 
-- 本版本通过 Merge Request 合入 `master` 后才具备正式定版 commit；tag 与 GitLab Release 必须由
-  用户在合并后单独授权；
+- 本版本已通过 Merge Request `!24` 合入 `master`；tag 与 GitLab Release 已由用户单独授权创建；
 - 版本号与文档变更不触发部署；已有 34 测试环境部署属于独立验证，不等同于正式版本发布或生产部署；
 - 不拉 `release/ontology-v0.1.3` 分支；后续如出现线上紧急缺陷，再按 `hotfix/*` 流程处理；
 - 不删除、迁移或覆盖任何历史会话和用户数据。

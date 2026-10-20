@@ -5,12 +5,11 @@
 不再创建日报。
 
 - 当前版本：`ontology-v0.1.3`
-- 当前 tag 与 Release：`ontology-v0.1.2`（指向定版 commit `3c4de1e`）、`ontology-v0.1.1`
+- 当前 tag 与 Release：`ontology-v0.1.3`（指向定版 commit `a805a66`）、`ontology-v0.1.2`
+  （指向定版 commit `3c4de1e`）、`ontology-v0.1.1`
   （指向定版 commit `c82221f`，2026-10-15 事后补建）、`ontology-v0.1.0`（指向定版 commit
-  `74fca80`）与 `ontology-v0.0.1`–`ontology-v0.0.10`（共 13 个，均已创建 release，见根
+  `74fca80`）与 `ontology-v0.0.1`–`ontology-v0.0.10`（共 14 个，均已创建 release，见根
   [README 发布清单](../../README.md)）
-- `ontology-v0.1.3` 的 tag 与 GitLab Release 尚未创建；按版本规范需要用户在 Merge Request
-  合入 `master` 后单独授权，不能由版本号、commit、push 或 MR 自动触发。
 - 版本规则：[语义化版本与正式发布规范](./versioning-policy.md)
 - 分支模型与 PR 合并流程：[Git 分支与合并工作流规范](../git-branch-workflow.md)
 - 版本号由变更性质决定，不按日期机械递增；commit、push、部署不自动触发版本升级。
