@@ -162,9 +162,9 @@ def fixture_db_for_case(case: dict) -> Optional[str]:
         return None
 
 
-# ``pyproject.toml`` must stay PEP 440 (``0.1.2``); the ontology product
+# ``pyproject.toml`` must stay PEP 440 (``0.1.3``); the ontology product
 # family name is applied here so reports and gates speak the same name the tag,
-# the GitLab Release and the UI use (``ontology-v0.1.2``).
+# the GitLab Release and the UI use (``ontology-v0.1.3``).
 PRODUCT_VERSION_PREFIX = "ontology-v"
 
 
@@ -3874,7 +3874,7 @@ def _waiver_expired(expiry: str) -> bool:
     return when < _dt.datetime.now(_dt.timezone.utc).date()
 
 
-# ``ontology-v0.1.2``, ``v0.1.2`` and ``0.1.2`` all spell the same version.
+# ``ontology-v0.1.3``, ``v0.1.3`` and ``0.1.3`` all spell the same version.
 _VERSION_PREFIX_RE = re.compile(r"^(?:ontology-)?v?", re.IGNORECASE)
 
 

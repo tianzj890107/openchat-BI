@@ -3995,7 +3995,7 @@ console.log(JSON.stringify(out));"""
         """The sidebar top-left brand is the short label 「智能分析」, while the
         longer product name 硕磐智能分析 Agent stays on the hero title, HTML
         title, loading skeleton, aria-label and the agent welcome line; the
-        blue ontology-v0.1.2 chip trails the workbench hero title instead of
+        blue ontology-v0.1.3 chip trails the workbench hero title instead of
         sitting in the sidebar brand row; 智析 and the bi-analyst
         pseudo-version are gone from user-visible surfaces."""
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
@@ -4004,7 +4004,7 @@ console.log(JSON.stringify(out));"""
         agent = Path(".claude/agents/bi-analyst.md").read_text(encoding="utf-8")
         # Sidebar brand row: short legacy label, name only, no version chip.
         self.assertIn('const PRODUCT_NAME = "智能分析";', main)
-        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.2";', main)
+        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.3";', main)
         self.assertIn("PRODUCT_NAME", main)
         self.assertIn("PRODUCT_VERSION", main)
         self.assertIn('className="antd-product-version"', main)
@@ -4015,7 +4015,7 @@ console.log(JSON.stringify(out));"""
         # The blue version chip now follows the hero title.
         self.assertIn('<div class="empty-title-row">', shell)
         self.assertIn('<div class="empty-title" id="empty-title">硕磐智能分析 Agent</div>', shell)
-        self.assertIn('<span class="empty-version" id="product-version">ontology-v0.1.2</span>', shell)
+        self.assertIn('<span class="empty-version" id="product-version">ontology-v0.1.3</span>', shell)
         self.assertIn("<title>硕磐智能分析 Agent · 本体工作台</title>", static)
         self.assertIn('aria-label="硕磐智能分析 Agent React 工作台"', static)
         self.assertIn("正在加载硕磐智能分析 Agent 工作台…", static)
@@ -4063,28 +4063,28 @@ console.log(JSON.stringify(out));"""
         self.assertNotIn('msg-role assistant">', bundle)
 
     def test_version_contract_consistent(self) -> None:
-        """Python, FastAPI, npm and UI versions agree on ontology-v0.1.2 and are
+        """Python, FastAPI, npm and UI versions agree on ontology-v0.1.3 and are
         independent of knowledge/schema/cache versions."""
         root = Path(__file__).resolve().parents[1]
         pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
-        self.assertIn('version = "0.1.2"', pyproject)
+        self.assertIn('version = "0.1.3"', pyproject)
         init = (root / "bi_agent/__init__.py").read_text(encoding="utf-8")
-        self.assertIn('__version__ = "ontology-v0.1.2"', init)
+        self.assertIn('__version__ = "ontology-v0.1.3"', init)
         app = (root / "bi_agent/web/app.py").read_text(encoding="utf-8")
-        self.assertIn('APP_VERSION = "ontology-v0.1.2"', app)
+        self.assertIn('APP_VERSION = "ontology-v0.1.3"', app)
         self.assertIn(
             'FastAPI(title=APP_DISPLAY_NAME, version=APP_VERSION, '
             'root_path=APP_ROOT_PATH)',
             app,
         )
         pkg = (root / "frontend/package.json").read_text(encoding="utf-8")
-        self.assertIn('"version": "0.1.2"', pkg)
+        self.assertIn('"version": "0.1.3"', pkg)
         lock = (root / "frontend/package-lock.json").read_text(encoding="utf-8")
         import json as _json
         lock_root = _json.loads(lock)["packages"][""]["version"]
-        self.assertEqual(lock_root, "0.1.2")
+        self.assertEqual(lock_root, "0.1.3")
         main = (root / "frontend/src/main.jsx").read_text(encoding="utf-8")
-        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.2";', main)
+        self.assertIn('const PRODUCT_VERSION = "ontology-v0.1.3";', main)
         # Product version is decoupled from the numeric conversation schema
         # version and from vendor cache-bust query params.
         conv = (root / "bi_agent/web/conversations.py").read_text(encoding="utf-8")

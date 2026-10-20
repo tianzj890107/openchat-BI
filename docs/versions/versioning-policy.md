@@ -23,7 +23,7 @@ ontology-vMAJOR.MINOR.PATCH
 - 目前处于 `ontology-v0.x` 快速迭代阶段，当前正式版本保持为：
 
 ```text
-ontology-v0.1.2
+ontology-v0.1.3
 ```
 
 ### 与包管理清单的关系（两处强制例外）
@@ -32,8 +32,8 @@ ontology-v0.1.2
 
 | 清单 | 约束 | 实际写入 |
 | --- | --- | --- |
-| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.2` |
-| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.2` |
+| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.3` |
+| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.3` |
 
 `scripts/run_analytics_eval.py` 的 `product_version()` 读取 `pyproject.toml` 后补
 `ontology-v` 前缀，对外统一返回显示名；同文件 `_version_reached()` 会剥离
@@ -92,6 +92,19 @@ X360 流程定义集成、本体/MAL 与元数据契约迁移等用户可感知�
 - 用户随后单独授权创建 tag 与 GitLab Release，已执行：annotated tag `ontology-v0.1.2` 指向
   `3c4de1e` 并推送 GitLab，同 tag 的 GitLab Release 已创建（只新建，未覆盖任何已有 Release）；
 - 用户明确指示**不拉出** `release/ontology-v0.1.2` 分支；部署未授权、未执行。
+
+### 版本推进记录（ontology-v0.1.2 → ontology-v0.1.3）
+
+2026-10-20 用户明确指定把当前交付收口为 **PATCH** `ontology-v0.1.3`：
+
+- 本版本把 Fuxi / 通用 Agent 的接入方式从本机 stdio 运行时切换为主服务内置的远程 MCP：
+  `/api/mcp` 暴露 16 个受控真实工具，连接方不再携带本体平台凭据、Doris 凭据或输出目录配置；
+- 同步完成 `CanvasGenerate` Artifact URL 交付、demo2 代理绕过与本体语义检索快路径修复，并把
+  前端、Python 包、FastAPI、README、版本文档与契约测试统一到 `ontology-v0.1.3`；
+- 交付方式为 `feature/mcp-server-policy` → `master` 的 Merge Request（reviewer `tianzijing`）；
+  MR 只负责评审与合并，不自动创建 tag 或 GitLab Release；
+- tag、GitLab Release 与部署继续保持独立授权；本次版本收口不自动部署，也不拉
+  `release/ontology-v0.1.3` 分支。
 
 ## PATCH / MINOR / MAJOR 判定
 

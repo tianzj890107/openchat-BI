@@ -4,7 +4,7 @@
 
 - 版本：`ontology-v0.1.2`
 - 日期：`2026-10-15`
-- 状态：正式版 / 当前版本
+- 状态：正式版（历史版本；早于当前版本 `ontology-v0.1.3`）
 - 版本位次：**PATCH**（`ontology-v0.1.1` → `ontology-v0.1.2`），版本号由用户在当前任务中明确指定
 - 版本关系：`ontology-v0.1.0` 之后的交付是相邻两个 PATCH。`ontology-v0.1.1` = 分析逻辑剥离包
   `ontology-analytics-skill`（2026-10-08 合入 `master`，定版 commit `c82221f`，tag 与 Release 于
@@ -102,5 +102,6 @@ Merge Request」。
 - 版本规范：[语义化版本与正式发布规范](./versioning-policy.md)
 - 分支模型：[Git 分支与合并工作流规范](../git-branch-workflow.md)
 - 上一版本：[ontology-v0.1.1](./ontology-v0.1.1.md)（更早：[ontology-v0.1.0](./ontology-v0.1.0.md)）
+- 下一版本：[ontology-v0.1.3](./ontology-v0.1.3.md)
 - 交付口径：[master 交付主线说明](../specs/master-mainline-delivery.md)
 - 周 changelog：[changelog_10_12_16.md](../../changelog/changelog_10_12_16.md)

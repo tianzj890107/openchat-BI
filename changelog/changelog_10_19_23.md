@@ -43,15 +43,22 @@
   `git diff --check` 通过。
 - 边界：未部署、未重启服务器、未修改历史会话和用户数据。
 
-### 2026-10-20 13:33 · 前端版本标识预置为 ontology-v0.1.3
+### 2026-10-20 13:33 · 版本收口为 ontology-v0.1.3（PATCH）
 
-- 变化：工作台首屏品牌区的版本标签由 `ontology-v0.1.2` 更新为
-  `ontology-v0.1.3`，前端包版本与锁文件同步为 `0.1.3`。
-- 范围：本次只完成前端版本标识和构建产物；后端 `APP_VERSION`、Python 包版本、
-  正式版本文档与 tag 待 v0.1.3 版本收口时统一处理。
-- 涉及文件：`frontend/package.json`、`frontend/package-lock.json`、
-  `frontend/src/main.jsx`、`frontend/src/shell.html`、
-  `bi_agent/web/static/vendor/antd/workbench.js`。
-- 验证：`npm run build` 通过；前端 76 项 Node 测试全部通过；
-  构建产物只包含 `ontology-v0.1.3` 版本标识；`git diff --check` 通过。
-- 边界：未合并、未打 tag、未创建 Release、未部署。
+- 变化：按用户明确指定，把远程 MCP 交付、demo2 兼容性修复和前端版本显示统一收口为
+  `ontology-v0.1.3`；本版本在 `ontology-v0.1.2` 之后按 PATCH 推进。
+- 产品能力：主服务内置 `/api/mcp`，Fuxi 通过 `transport: http` 直接连接，不再要求用户
+  在本地启动服务、安装工具运行时或填写 `.env`；对外暴露 16 个受控分析工具，
+  `CanvasGenerate` 通过 Artifact URL 交付整页 HTML。
+- 权限与性能：硬性不暴露 `AnalysisRun`、`AskUser`、`TodoWrite`、`Ontology-FactQuery`、
+  `ListTables`、`DescribeTable`；本体客户端绕过开发机代理修复 demo2 的 502/超时，语义检索
+  优先走 metadata LIKE，Indicator 命中后停止扫描其他类型。
+- 版本统一：`pyproject.toml`、`frontend/package.json`、`frontend/package-lock.json` 为
+  `0.1.3`；`bi_agent/__init__.py`、`open_claude/__init__.py`、FastAPI `APP_VERSION`、
+  前端 `PRODUCT_VERSION` 与首屏版本标签为 `ontology-v0.1.3`；前端构建产物同步重建。
+- 版本文档：新增 `docs/versions/ontology-v0.1.3.md`，同步更新 `docs/versions/README.md`、
+  `docs/versions/versioning-policy.md`、根 `README.md`、`AGENTS.md` 与历史版本状态。
+- 验证：MCP 红测与本体契约测试共 106 项通过；前端 76 项 Node 测试通过；技能自检
+  160/160；`npm run build` 成功；构建产物只包含 `ontology-v0.1.3`；`git diff --check` 通过。
+- 边界：版本收口只准备 Merge Request；不自动合并、不创建 tag、不创建 GitLab Release、
+  不部署，也不拉 `release/ontology-v0.1.3` 分支。

@@ -4,7 +4,7 @@
 
 - 版本：`ontology-v0.1.1`
 - 日期：`2026-10-08`（内容定版日；tag 与 GitLab Release 于 `2026-10-15` 按用户要求补建）
-- 状态：正式版（历史版本；早于当前版本 `ontology-v0.1.2`）
+- 状态：正式版（历史版本；早于当前版本 `ontology-v0.1.3`）
 - 版本位次：**PATCH**（`ontology-v0.1.0` → `ontology-v0.1.1`），由用户在当前任务中明确要求补建
 - Release 分支：无（不拉 release 分支；`hotfix/*` 需要时再从 `master` 拉 `release/*`）
 - 定版 commit：`c82221f`（`feature/analytics-logic-extraction-pack` 经 Merge Request 合入 `master`
