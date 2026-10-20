@@ -382,7 +382,29 @@ git diff --name-only
 `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/<release>`，进程使用该目录下的 `.venv`，监听 `8765`。
 发布时只同步源码和已构建静态资源，先在 release 目录创建带时间戳的代码备份；不要覆盖 `.env`、`.venv`、会话、上传文件、图表和日志。
 
-当前运行状态（2026-09-03 部署 v0.1.2）：
+当前运行状态（2026-10-20 部署远程 MCP feature）：
+
+- 运行目录
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/mcp-11dc92c-20261020`，
+  `RELEASE_COMMIT=11dc92c05dab97ae598158cc423a4da6d909640d`（分支
+  `feature/mcp-server-policy`），PID 记录在 `<release>/APP.pid`。
+- 新 release 从 `v0.1.2` 复制 `.env`、`.venv` 和数据集软链后覆盖代码；旧 release
+  `v0.1.2` 保持完整，可直接切回作为回滚版本。`.env` 权限保持 `600`。
+- 数据环境切换到 demo2：`ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology`、
+  `ONTOLOGY_REPOSITORY_ID=1`、
+  `DORIS_API_URL=http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query`；
+  `APP_ROOT_PATH=/api/ontology-agentic-analytics`，
+  `MCP_PUBLIC_BASE_URL=http://172.16.10.34:8765/api/ontology-agentic-analytics`。
+- Fuxi 连接地址：
+  `http://172.16.10.34:8765/api/ontology-agentic-analytics/api/mcp`。
+- 验证：`/healthz` 返回 200，`/api/mcp/health` 返回
+  `server=ontology-analytics-mcp`、`version=0.2.0`、`protocol=2025-03-26`；
+  MCP `tools/list` 返回 16 个工具且不包含 `AnalysisRun/AskUser/TodoWrite`；
+  `MetricFactQuery` 实测 2025 年采购金额合计 `854,057,481.11`；
+  Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
+  Artifact URL 返回 HTTP 200。
+
+上一运行状态（2026-09-03 部署 v0.1.2，现保留为回滚版本）：
 
 - 运行目录 `~/eimosp-ontology-agentic-analytics-releases/v0.1.2`，
   `RELEASE_COMMIT=c8454d82f052a6770bae975a5d865a6f37eff721`（tag `ontology-v0.0.3`，
