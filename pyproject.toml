@@ -32,6 +32,9 @@ web = [
     # requires the redis client).
     "redis>=5.0.0",
 ]
+langgraph = [
+    "langgraph==1.2.16",
+]
 
 [tool.setuptools.packages.find]
 include = ["open_claude*", "bi_agent*"]

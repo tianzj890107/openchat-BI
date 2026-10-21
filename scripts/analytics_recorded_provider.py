@@ -290,8 +290,15 @@ def run_recorded_turns(
     fixture_db: str,
     workspace: Path,
     tools_override: Optional[list[str]] = None,
+    session_cls: Optional[type] = None,
 ) -> RecordedRun:
-    """Replay a recorded transcript through the real WebSession turn loop."""
+    """Replay a recorded transcript through a real WebSession turn loop.
+
+    ``session_cls`` defaults to the production ``WebSession``.  Experimental
+    engines pass a subclass that only replaces the control plane; the provider
+    recorder, tools, tool boundary, recovery state and evidence validators stay
+    the production implementations.
+    """
     from unittest.mock import patch
 
     import bi_agent.web.session as session_module
@@ -308,7 +315,12 @@ def run_recorded_turns(
     executors = _ensure_registration(store, str(db_path))
     agent_def = _load_agent_def()
 
-    session = WebSession(
+    selected_session_cls = session_cls or WebSession
+    if not isinstance(selected_session_cls, type) or not issubclass(
+        selected_session_cls, WebSession,
+    ):
+        raise TypeError("session_cls must be a WebSession subclass")
+    session = selected_session_cls(
         cwd=str(workspace),
         agent_def=agent_def,
         ontology_store=store,

@@ -62,3 +62,27 @@
   160/160；`npm run build` 成功；构建产物只包含 `ontology-v0.1.3`；`git diff --check` 通过。
 - 边界：版本收口只准备 Merge Request；不自动合并、不创建 tag、不创建 GitLab Release、
   不部署，也不拉 `release/ontology-v0.1.3` 分支。
+
+### 2026-10-21 14:09 · 新增 LangGraph 实验分析引擎旁路
+
+- 变化：新增显式启用的 `LangGraphWebSession` 实验引擎，只替换单轮控制面
+  `_run_loop()`；默认 `/api/chat`、`/api/choice` 仍使用原 `WebSession`，模型调用、
+  工具边界、Claims 校验、渲染/行动门禁和 Recovery 全部复用现有实现。
+- 实验入口：新增 `/api/experimental/langgraph/chat` 与
+  `/api/experimental/langgraph/choice`，默认关闭；通过
+  `CHATBI_ENABLE_LANGGRAPH_EXPERIMENT=1` 或 `CHATBI_AGENT_ENGINE=langgraph` 显式启用。
+  实验 session、数据源快照和 turn slot 使用独立注册表命名空间，不写历史会话目录。
+- 依赖与评测：新增 `langgraph==1.2.16` optional extra 和旧 requirements 同步项；
+  recorded-provider 支持注入 `session_cls`，评测 CLI 新增
+  `--engine legacy|langgraph`，默认保持 `legacy`。
+- 实测：图引擎/HTTP/recorded parity 专项 35 项通过；同一 runner 全量重放
+  `recorded-provider` 时旧引擎与 LangGraph 均为 122/122 通过、34/34 P0 通过，
+  指标值与样本统计一致；全量 `unittest discover` 1341 项中 3 个失败均为
+  commit `a805a66` 干净 worktree 可复现的既有 tag/repeat-stability 问题。
+- 涉及文件：`bi_agent/experimental/`、`bi_agent/web/app.py`、`pyproject.toml`、
+  `open_claude/requirements.txt`、`scripts/analytics_recorded_provider.py`、
+  `scripts/run_analytics_eval.py`、`tests/test_langgraph_experimental_engine.py`、
+  `tests/test_langgraph_experimental_http.py`、`tests/test_langgraph_recorded_parity.py`、
+  `docs/specs/langgraph-experimental-engine.md`。
+- 边界：未部署、未重启服务器、未创建 tag/Release/Merge Request，未修改或删除历史会话
+  和用户数据；实验引擎不是默认链路。

@@ -276,8 +276,11 @@ class CaseResult:
 class EvalContext:
     """Cached, read-only access to the fixtures + repo runtime."""
 
-    def __init__(self, verbose: bool = False) -> None:
+    def __init__(self, verbose: bool = False, session_cls: Optional[type] = None) -> None:
         self.verbose = verbose
+        # Recorded-provider replays use the production WebSession by default.
+        # An optional WebSession subclass is only for opt-in engine parity.
+        self.session_cls = session_cls
         self.tmpdir = Path(tempfile.mkdtemp(prefix="analytics-eval-"))
         self._ontology_store = None
         self._retriever = None
@@ -2351,6 +2354,7 @@ def _load_recorded_run(case: dict, ctx: EvalContext):
         fixture_db=db,
         workspace=workspace,
         tools_override=fixture.get("tools_override"),
+        session_cls=ctx.session_cls,
     )
     return transcript, run
 
@@ -2702,7 +2706,8 @@ def eval_recorded_session_isolation(case: dict, ctx: EvalContext) -> CaseResult:
             turns = [turn for _spec, transcript in members for turn in transcript["turns"]]
             workspace = ctx.new_sandbox(f"{case['case_id']}-{_slug(key)}")
             runs.append((key, run_recorded_turns(
-                f"{case['case_id']}:{key}", turns, fixture_db=db, workspace=workspace)))
+                f"{case['case_id']}:{key}", turns, fixture_db=db, workspace=workspace,
+                session_cls=ctx.session_cls)))
     except Exception as exc:  # noqa: BLE001 - reported as a failing case
         checks.append(Check("isolation.replay", False, "a clean replay",
                             f"{type(exc).__name__}: {exc}"))
@@ -4392,6 +4397,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="run only these case categories (repeatable)")
     parser.add_argument("--provider", default="team",
                         help="LLM provider for --suite live (default: team)")
+    parser.add_argument("--engine", choices=("legacy", "langgraph"), default="legacy",
+                        help="turn-loop engine for recorded replays (default: legacy)")
     parser.add_argument("--answers", default="",
                         help="score recorded answers: JSON {case_id: answer}")
     parser.add_argument("--repeat", type=int, default=None,
@@ -4454,6 +4461,10 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     live_suite = args.suite in ("live", "live-canary")
     ctx = EvalContext(verbose=args.verbose)
+    if args.engine != "legacy":
+        from bi_agent.experimental.factory import resolve_session_class
+
+        ctx.session_cls = resolve_session_class(args.engine)
     skipped_live = ""
     budget_exhausted = False
     live_budget_used = 0.0
@@ -4587,6 +4598,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                               repeat=repeat_report,
                               release=args.release, allowlist=allowlist,
                               ratchet=ratchet, waivers=waivers))
+        report["engine"] = args.engine
         if live_suite:
             report["live_budget_seconds"] = float(args.live_budget_seconds)
             report["live_budget_used_seconds"] = round(live_budget_used, 3)
@@ -4608,7 +4620,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                 encoding="utf-8")
 
         summary = report["summary"]
-        print(f"suite={report['suite']} status={report['status']} cases={summary['cases']} "
+        print(f"suite={report['suite']} engine={report['engine']} "
+              f"status={report['status']} cases={summary['cases']} "
               f"passed={summary['passed']} failed={summary['failed']} "
               f"pass_rate={summary['pass_rate']}")
         print(f"known_gap={summary['known_gap_cases']} duration_ms={summary['duration_ms']}")
