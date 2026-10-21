@@ -3956,3 +3956,16 @@ app.include_router(build_mcp_router(
     build_doris=_doris_http_conn,
     get_cwd=lambda: STATE.cwd or os.getcwd(),
 ))
+
+
+# V3 cockpit has an isolated source adapter and append-preserving POC history.
+from ..cockpit.router import build_cockpit_router  # noqa: E402
+
+app.include_router(build_cockpit_router(get_cwd=lambda: STATE.cwd or os.getcwd()))
+
+@app.get("/cockpit", response_class=HTMLResponse)
+@app.get("/cockpit/", response_class=HTMLResponse)
+def cockpit_page() -> HTMLResponse:
+    html = (STATIC_DIR / "cockpit" / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("@@APP_ROOT_PATH@@", APP_ROOT_PATH),
+                        headers={"Cache-Control": "no-store"})

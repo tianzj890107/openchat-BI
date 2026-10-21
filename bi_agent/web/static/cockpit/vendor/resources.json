@@ -1,0 +1,21 @@
+{
+  "checkedAt": "2026-10-21",
+  "notes": "Official static UMD distribution; original embedded license notices preserved. Isolated from legacy workbench assets.",
+  "resources": [
+    {
+      "file": "../../vendor/antd/lib/vue.global.js",
+      "source": "http://pro-ui.eimos.com/lib/vue.global.js",
+      "pdtSource": "http://pdt-dev.eimos.com/pro-ui/lib/vue.global.js",
+      "sha256": "6f9eae7631fa9c48f474adf6cd232bd1c95322ec8c5a978acd5e0f87cfb61e7c",
+      "bytes": 571813,
+      "notes": "Reuse byte-identical existing Vue 3.5.25 runtime; no duplicate download in repository."
+    },
+    {
+      "file": "pro-bi-ui.min.js",
+      "source": "http://pro-ui.eimos.com/lib/pro-bi-ui.min.js",
+      "pdtSource": "http://pdt-dev.eimos.com/pro-ui/lib/pro-bi-ui.min.js",
+      "sha256": "d88c989652cbe61d7bb513a2a01573364cc2f473157e5bc3f9ab8d85c71370dd",
+      "bytes": 6258794
+    }
+  ]
+}

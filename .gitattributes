@@ -1,0 +1,2 @@
+# Preserve upstream-generated UMD bytes and embedded templates verbatim.
+bi_agent/web/static/cockpit/vendor/pro-bi-ui.min.js -whitespace
