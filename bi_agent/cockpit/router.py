@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field, ConfigDict
 from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
 from .agent import run_analysis
+from .metadata import build_bundle
+from .prototype import PrototypeSource
 
 class Context(BaseModel):
     model_config=ConfigDict(extra="forbid")
@@ -19,6 +21,8 @@ class Context(BaseModel):
     period:Literal["2025-10","2025-09"]="2025-10"
     department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部"
     stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment"]="shipment"
+
+    source:Literal["demo","prototype"]="demo"
 
 class AnalysisRequest(Context):
     refresh:bool=False
@@ -51,13 +55,16 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
             if path not in stores:
                 value=Store(Path(path));value.recover();stores[path]=value
             return stores[path]
-    def snap(context):return source.snapshot(context.period,context.department)
+    def adapter(mode):return PrototypeSource() if mode=="prototype" else source
+    def snap(context):
+        try:return adapter(context.source).snapshot(context.period,context.department)
+        except ValueError as exc:raise HTTPException(422,str(exc))
     def get_analysis(aid):
         value=store().get_analysis(aid)
         if not value:raise HTTPException(404,"分析记录不存在")
         return value
     def context_value(c,s):
-        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=s["snapshotId"],sourceMode="demo")
+        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=s["snapshotId"],sourceMode=c.source)
         return value
     def scope(c,s):return hashlib.sha256(json.dumps(context_value(c,s),sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     def worker(st,item,evidence,cancel):
@@ -82,14 +89,17 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
             stages=[dict(id=k,name=v) for k,v in NAMES.items()],sourceMode="demo",supportsLiveSource=False,
             notice="演示数据与模拟任务，不写入业务系统；分析使用主服务模型。分析员对话使用 Fuxi。")
 
+    @router.get("/metadata")
+    def metadata():return build_bundle()
+
     @router.get("/snapshot")
-    def snapshot(period:Literal["2025-10","2025-09"]="2025-10",department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部"):
-        return source.snapshot(period,department)
+    def snapshot(period:Literal["2025-10","2025-09"]="2025-10",department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
+        return snap(Context(period=period,department=department,source=source))
 
     @router.get("/evidence")
     def evidence(stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment"]="shipment",
-                 period:Literal["2025-10","2025-09"]="2025-10",department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部"):
-        return source.evidence(source.snapshot(period,department),stage)
+                 period:Literal["2025-10","2025-09"]="2025-10",department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
+        return adapter(source).evidence(snap(Context(period=period,department=department,source=source)),stage)
 
     @router.post("/analyses")
     def analyse(req:AnalysisRequest):
@@ -102,7 +112,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
             if not capacity.acquire(blocking=False):raise HTTPException(429,"分析并发已满，请稍后重试")
             try:
                 item=st.create_analysis(key,context_value(req,snapshot));cancel=threading.Event();jobs[item["id"]]=cancel
-                thread=threading.Thread(target=worker,args=(st,item,source.evidence(snapshot,req.stage),cancel),daemon=True)
+                thread=threading.Thread(target=worker,args=(st,item,adapter(req.source).evidence(snapshot,req.stage),cancel),daemon=True)
                 thread.start()
             except Exception:
                 jobs.pop(item["id"],None) if 'item' in locals() else None

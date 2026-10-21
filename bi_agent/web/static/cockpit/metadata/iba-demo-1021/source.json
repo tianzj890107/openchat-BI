@@ -3,8 +3,8 @@
   "branch": "feature/demo_1021",
   "commit": "55842efc2a788b9974da91a0e63afe1d6cd460f3",
   "importedAt": "2026-10-21",
-  "mode": "reference-only",
-  "notes": "Source configuration preserved. Not wired to production gateway or substituted for cockpit POC metadata.",
+  "mode": "active-runtime-adapter",
+  "notes": "Original JSON remains immutable. Cockpit compiles these templates with explicit V3 prototype fixtures; no production AP or demo authentication code is used.",
   "rootComponents": 2,
   "templates": 14,
   "totalComponents": 130,
@@ -50,7 +50,8 @@
       "templateId": "2112062888320483329",
       "componentId": "group-9ypz7vwt",
       "missingChildId": "share-bar-79fsomq9",
-      "description": "Upstream group references a child absent from its template; preserved for review, not enabled in cockpit."
+      "description": "Upstream child definition is absent; runtime renders a visible gap placeholder and reports it."
     }
-  ]
+  ],
+  "activatedAt": "2026-10-22"
 }

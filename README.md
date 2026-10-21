@@ -126,14 +126,15 @@ curl -fsS http://127.0.0.1:8765/healthz
 穿透式问题分析。Fuxi 可嵌入同一个入口：`/cockpit?role=president` 或
 `/cockpit?role=analyst`。角色是演示参数，不是正式鉴权；页面内不另建聊天区。
 
-当前使用隔离的演示数据；前两页直接取数，第三页由主服务实际调用模型、取证并将结构化结果
+当前三页使用交付的 `feature/demo_1021` 元数据与 V3 原型固定演示数据（仅2025-10／全产品部）；
+前两页直接取数，第三页由主服务实际调用模型、取证并将结构化结果
 填入 ProUI 分析插槽。默认使用现有 `team-configured` 模型配置，可通过 `COCKPIT_MODEL_KEY`
 选用模型注册表中的其他键。模型失败会明确显示失败，不用预写结论冒充成功。
 
 分析历史、报告和模拟任务令存储在工作目录的 `dataset/cockpit/`，不提交运行数据。
 任务令只做本地模拟，不发送通知，不修改业务单据。POC 作业执行器按单进程运行；
 真实本体／数据库映射、生产权限和 Fuxi 宿主联调尚未纳入完成声明。
-详见 [驾驶舱范围与接口](docs/specs/cockpit-v3-poc.md)。
+详见 [驾驶舱范围与接口](docs/specs/cockpit-v3-poc.md)及[原型差异与缺失](docs/specs/cockpit-v3-metadata-gaps.md)。
 
 ### Fuxi 远程 MCP
 
