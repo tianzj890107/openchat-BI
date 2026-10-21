@@ -1,0 +1,56 @@
+{
+  "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
+  "branch": "feature/demo_1021",
+  "commit": "55842efc2a788b9974da91a0e63afe1d6cd460f3",
+  "importedAt": "2026-10-21",
+  "mode": "reference-only",
+  "notes": "Source configuration preserved. Not wired to production gateway or substituted for cockpit POC metadata.",
+  "rootComponents": 2,
+  "templates": 14,
+  "totalComponents": 130,
+  "componentTypes": {
+    "composite-filter": 1,
+    "tab-container": 1,
+    "progress": 15,
+    "mini-cpgraph": 2,
+    "template": 3,
+    "group": 16,
+    "title": 3,
+    "button-group": 3,
+    "table": 18,
+    "kpiCard": 36,
+    "horizontal-bar": 15,
+    "segmented-strip": 3,
+    "share-bar": 8,
+    "funnel": 1,
+    "bar-line": 2,
+    "bar": 3
+  },
+  "dataSourceModes": {
+    "ap": 89,
+    "mock": 41
+  },
+  "insights": 3,
+  "files": [
+    {
+      "file": "components.json",
+      "sha256": "e6410d6a2fd539ec9983397b9e886ab61d2090b48e674fcbaff7d12ab3ef521f"
+    },
+    {
+      "file": "template-registry.json",
+      "sha256": "43085033a64c561477d26f7704a15cdbb87177b5a61060d75763e779ee9fe7c3"
+    },
+    {
+      "file": "insights.json",
+      "sha256": "68ce65130cc2ca416a4b99d37a6b786ff873b9015b339f216f4c88598dacdec9"
+    }
+  ],
+  "knownIssues": [
+    {
+      "templateId": "2112062888320483329",
+      "componentId": "group-9ypz7vwt",
+      "missingChildId": "share-bar-79fsomq9",
+      "description": "Upstream group references a child absent from its template; preserved for review, not enabled in cockpit."
+    }
+  ]
+}

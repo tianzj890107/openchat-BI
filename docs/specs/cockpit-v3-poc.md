@@ -98,3 +98,13 @@ ProUI 文档站与 PDT 当前发布的 BI UMD 相同，冻结SHA见 `static/cock
 离线契约测试：`python -m pytest -q tests/test_cockpit_poc.py`。
 脚本语法：`node --check bi_agent/web/static/cockpit/cockpit.js`。
 浏览器验收使用独立临时工作目录，避免接触用户会话。真实模型验证使用主服务现有配置，绝不把凭据写入前端。
+
+
+## 2026-10-21 组件资源与前端元数据交付补充
+
+按资源目录 <http://pro-ui.eimos.com/assets/> 重新获取发布的 BI UMD 和配套 `pro-ui.min.css`，
+增加内容哈希缓存参数；Vue仍为同一份3.5.25，旧工作台资源不变。
+已拉取 `shimenglan/iba-demo` 的 `feature/demo_1021`（commit `55842efc`），
+根组件、14份子模板和3个插槽声明存于 `static/cockpit/metadata/iba-demo-1021/`。
+这是原样冻结的接入参考，不是已经接通AP接口或替换当前POC页面的声明。
+页面对应、源配置缺失子组件及接入边界见该目录 README 和 source.json。

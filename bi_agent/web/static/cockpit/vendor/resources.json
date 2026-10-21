@@ -14,8 +14,16 @@
       "file": "pro-bi-ui.min.js",
       "source": "http://pro-ui.eimos.com/lib/pro-bi-ui.min.js",
       "pdtSource": "http://pdt-dev.eimos.com/pro-ui/lib/pro-bi-ui.min.js",
-      "sha256": "d88c989652cbe61d7bb513a2a01573364cc2f473157e5bc3f9ab8d85c71370dd",
-      "bytes": 6258794
+      "sha256": "981e7d98c1a709dc2bf3f92c78af4cc7e7f7cd473f310368220f01cd308e6b2f",
+      "bytes": 6259410
+    },
+    {
+      "file": "pro-ui.min.css",
+      "source": "http://pro-ui.eimos.com/lib/pro-ui.min.css",
+      "pdtSource": "http://pdt-dev.eimos.com/pro-ui/lib/pro-ui.min.css",
+      "sha256": "ba407022d6d128c12c88dd4a3e3d7443a24a720d064597f6fd5fa03a683342c5",
+      "bytes": 767221
     }
-  ]
+  ],
+  "catalog": "http://pro-ui.eimos.com/assets/"
 }

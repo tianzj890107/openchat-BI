@@ -5,3 +5,6 @@
 
 /* Vendor SVG symbols must not create document-level horizontal scrolling. */
 html,body{overflow-x:clip}.main-shell,main{min-width:0}.diagnosis{overflow-wrap:anywhere}
+
+/* Keep cockpit heading contrast when loading the upstream base stylesheet. */
+h1,.section-heading h2{color:var(--ink)}
