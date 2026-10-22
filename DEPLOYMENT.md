@@ -425,12 +425,15 @@ git diff --name-only
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
 - 当前发布：`feature/cockpit-v3-poc` commit
-  `017d65f56b19238db8f78f824d1dc3520a297213`，构建时间 `2026-10-22T03:53:44Z`；
+  `99084f021f21b85c24f3e8518ebf7a8f82318709`，构建时间 `2026-10-22T05:15:42Z`；
   目录内 `manifest.sha256` 使用相对路径保存发布文件哈希，`release.json` 记录分支、提交和构建时间。
-  运行时入口为 `cockpit.js/css?v=proui-dashboard-v4`，静态元数据为
-  `metadata/runtime.json?v=proui-dashboard-v4`；ProUI 运行包为 `c38cbf36`，CSS 为
+  运行时入口为 `cockpit.js/css?v=proui-dashboard-v5`，静态元数据为
+  `metadata/runtime.json?v=proui-dashboard-v5`；ProUI 运行包为 `c38cbf36`，CSS 为
   `b1ee836d`。页面静态资源走同源 `/static/*`，`/api/cockpit/*` 走 nginx 反向代理，
   其余 `/api/*` 仍固定返回 404。
+- 页面壳层：外层使用与 `iba-demo` 示例一致的 `#f3f5f8` 灰底和 20px 内容留白；
+  `ProBiDashboard` 使用发布态和自带标题区，不启用配置态拖入占位。`home` 标题为
+  “储能产品线整体经营分析”，其余页面使用对应看板标题。
 - 内容校验：发布目录共 9 个文件，`sha256sum -c manifest.sha256` 全部通过；运行包包含
   4 个页面、15 份模板、2 个根组件、137 个模板组件和 17 个分析插槽。页面组件保持交付
   `template-registry.json` 原样，宿主只补充演示数据绑定与 AI 插槽运行数据。
@@ -440,12 +443,16 @@ git diff --name-only
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，入口为
   `cockpit_api.py`，监听 `172.16.10.34:8877`；PID 写入 `app.pid`，日志为 `api.log`，
   运行数据独立保存到 `api-data/`，不接触历史会话和主服务 `dataset/`。当前进程由
-  `setsid nohup` 启动，没有 systemd 自动拉起。
+  `setsid nohup` 启动，没有 systemd 自动拉起。静态站升级到 `99084f0` 时后端接口未变化，
+  因此继续复用该 `api-017d65f` 服务。
+- 文件权限：发布后 `site/` 及子目录必须为 `755`、文件为 `644`；根目录若被 staging 权限
+  覆盖为 `700`，容器内 nginx worker 会返回 404。
 - 路由配置：nginx 已增加 `location = /cockpit/home`；配置备份为
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/conf-20261022-115417-pre-proxy/default.conf`。
-- 验证（2026-10-22 12:00）：四条页面路由、`release.json`、`runtime.json`、`cockpit.js`、
+- 验证（2026-10-22 13:20）：四条页面路由、`release.json`、`runtime.json`、`cockpit.js`、
   ProUI CSS／JS、Vue 均返回 200；`/api/cockpit/bootstrap` 和 `/api/cockpit/metadata` 经代理返回 200，
   `/api/healthz` 仍为 404。远程浏览器确认四个 ProUI `pro-tabs` Tab、`id=1|2` 传播和活动条定位；
+  四个页面均显示灰底、20px 内容留白和 `ProBiDashboard` 自带标题区，页面没有配置态拖入占位；
   `home` 的分析插槽显示已完成的模型结果，`overview` 渲染 3 个 canvas／6 个表格，`operations`
   渲染运营头盔、指标和投标分析插槽，`analysis` 渲染穿透图、8 个表格和全部已完成分析插槽。
   1440px 与 480px 页面均无横向溢出，窄屏活动 Tab 位于可视区；浏览器无 JS 异常，网络请求无
@@ -453,8 +460,9 @@ git diff --name-only
   `50074713092e444ab9f4918ee8c02a34` 状态为 `completed`，阶段为发货。
   同机 `http://127.0.0.1:8765/healthz` 和 `/workbench` 仍返回 200，主服务未修改或重启。
 - 回滚副本：本次同步前旧站已备份到
-  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-115417-pre-017d65f`
-  （上一版 `16b9858`）；更早的 `site-20261022-112027-pre-16b9858` 等副本保留。
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-131551-pre-99084f0`
+  （上一版 `017d65f`）；更早的 `site-20261022-115417-pre-017d65f` 等副本保留。
+  新构建暂存目录为 `site-next-99084f0`。
 - 本地预览：`/tmp/cockpit-local-preview.py` 使用当前工作区代码启动
   `127.0.0.1:8876`，路由和看板资源与上述静态发布一致；该进程只监听回环地址。
 

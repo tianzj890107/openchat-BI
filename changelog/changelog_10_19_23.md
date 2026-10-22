@@ -116,20 +116,20 @@
   移除配置态的 `mode="build"`，不再出现“拖入筛选器、标题、按钮”的编辑占位。缓存参数升至
   `proui-dashboard-v5`，测试新增发布态、标题区和灰底断言。`/cockpit` 直接返回 `overview`，
   首页保留但不是默认路由。本地浏览器验证四个路由、`id=1|2`、活动条定位和 1440px／480px 布局。
-  该视觉修订尚未部署，8876 当前仍为 `proui-dashboard-v4`。
-- 部署（2026-10-22 12:00）：`172.16.10.34:8876` 已切换到 `feature/cockpit-v3-poc` commit
-  `017d65f` 的交付原样渲染版本，发布目录共 9 个文件并通过 `manifest.sha256` 校验；`home`、
-  `overview`、`operations`、`analysis` 和四个 ProUI Tab 均正常返回，运行时缓存版本为
-  `proui-dashboard-v4`。远程浏览器验证 `id=1|2` 传播、活动下划线、首页和穿透页模型分析插槽、
-  KPI／图表／表格渲染；1440px 与 480px 无横向溢出，窄屏活动 Tab 自动滚入可视区，无 JS 异常，
-  网络请求无 4xx／5xx，ProUI 仍有非致命的 Vue 属性透传警告。
+- 部署（2026-10-22 13:15）：`172.16.10.34:8876` 已切换到 `feature/cockpit-v3-poc` commit
+  `99084f0`，发布目录共 9 个文件并通过 `manifest.sha256` 校验；`home`、`overview`、
+  `operations`、`analysis` 和四个 ProUI Tab 均正常返回，运行时缓存版本为 `proui-dashboard-v5`。
+  远程浏览器确认灰底、20px 内容留白、`ProBiDashboard` 发布态标题区和 `id=1|2` 传播；
+  首页、运营和穿透页模型分析插槽均可完成，1440px 与 480px 无横向溢出，无 JS 异常，
+  网络请求无 4xx／5xx，ProUI 仍有非致命的 Vue 属性透传警告。同步时 staging 根目录权限曾带入
+  `700` 导致 nginx 404，已统一恢复为目录 `755`、文件 `644` 并复验。
 - 代理与旁路 API（2026-10-22 12:00）：nginx 新增 `location /api/cockpit/`，转发到独立
   `172.16.10.34:8877` 的 `eimosp-cockpit-api`；服务目录为
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，PID 在 `app.pid`，
   日志在 `api.log`，数据独立写入 `api-data/`。`bootstrap`、`metadata` 经 8876 代理返回 200，
   其他 `/api/*` 仍返回 404。经代理发起的真实模型分析 `50074713092e444ab9f4918ee8c02a34`
   已完成发货环节分析，结果为 `completed`。站点备份为
-  `backups/site-20261022-115417-pre-017d65f`，nginx 配置备份为
+  `backups/site-20261022-131551-pre-99084f0`，nginx 配置备份为
   `backups/conf-20261022-115417-pre-proxy/default.conf`。未修改或重启 8765 主服务，未复制运行数据，
   未创建 tag／Release／MR，未修改用户历史数据。
 - 边界：真实业务数据源尚未映射，Fuxi 宿主尚未联调；POC 执行器按单进程运行。8877 旁路 API
