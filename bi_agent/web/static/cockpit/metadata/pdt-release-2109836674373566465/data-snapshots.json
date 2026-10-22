@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-10-22T13:39:00+08:00",
+  "fetchedAt": "2026-10-22T16:20:00+08:00",
   "source": "pdt-dev release page network capture",
   "analysis": {
     "{\"analysisConfig\":{\"vertex\":[{\"identifierCode\":\"D001\",\"valueConfig\":{\"function\":\"distinct\"}}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":500}}}": {
@@ -7693,6 +7693,1720 @@
           "pageSize": 10
         }
       }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"},{\"alias\":\"发货金额\",\"identifierCode\":\"M00013\"}]},\"commonConfig\":{\"filters\":{\"identifierCode\":\"D001\",\"operator\":{\"code\":\"BETWEEN\",\"type\":\"DATE\"},\"value\":[\"2025-01-01\",\"2025-12-31\"],\"valueType\":\"ABSOLUTE\"},\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "M0001",
+              "label": "采购金额",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M00013",
+              "label": "发货金额",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "M0001": {
+                "value": 854057481.11
+              },
+              "M00013": {
+                "value": 791239567.4
+              }
+            }
+          ]
+        },
+        "pagination": {
+          "total": 1,
+          "pageNum": 1,
+          "pageSize": 20
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"}]},\"commonConfig\":{\"filters\":{\"identifierCode\":\"D001\",\"operator\":{\"code\":\"BETWEEN\",\"type\":\"DATE\"},\"value\":[\"2025-01-01\",\"2025-12-31\"],\"valueType\":\"ABSOLUTE\"},\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "M0001",
+              "label": "采购金额",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "M0001": {
+                "value": 854057481.11
+              }
+            }
+          ]
+        },
+        "pagination": {
+          "total": 1,
+          "pageNum": 1,
+          "pageSize": 20
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"},{\"alias\":\"发货金额\",\"identifierCode\":\"M00013\"}]},\"commonConfig\":{\"filters\":{\"identifierCode\":\"D001\",\"operator\":{\"code\":\"BETWEEN\",\"type\":\"DATE\"},\"value\":[\"2026-01-01\",\"2026-12-31\"],\"valueType\":\"ABSOLUTE\"},\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "M0001",
+              "label": "采购金额",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M00013",
+              "label": "发货金额",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "M0001": {
+                "value": 1963806558.2
+              },
+              "M00013": {
+                "value": 1781897819.7
+              }
+            }
+          ]
+        },
+        "pagination": {
+          "total": 1,
+          "pageNum": 1,
+          "pageSize": 20
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"}]},\"commonConfig\":{\"filters\":{\"identifierCode\":\"D001\",\"operator\":{\"code\":\"BETWEEN\",\"type\":\"DATE\"},\"value\":[\"2026-01-01\",\"2026-12-31\"],\"valueType\":\"ABSOLUTE\"},\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "M0001",
+              "label": "采购金额",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "M0001": {
+                "value": 1963806558.2
+              }
+            }
+          ]
+        },
+        "pagination": {
+          "total": 1,
+          "pageNum": 1,
+          "pageSize": 20
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"上年同期采购金额\",\"identifierCode\":\"M0002\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "M0002",
+              "label": "上年同期采购金额",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "M0002": {
+                "value": 854057481.11
+              }
+            }
+          ]
+        },
+        "pagination": {
+          "total": 1,
+          "pageNum": 1,
+          "pageSize": 20
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"上期采购金额\",\"identifierCode\":\"M0003\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": false,
+      "code": 500,
+      "msg": "系统繁忙，请稍后再试"
+    },
+    "{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"环比采购金额增长率\",\"identifierCode\":\"M0005\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": false,
+      "code": 500,
+      "msg": "系统繁忙，请稍后再试"
+    },
+    "{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"采购数量\",\"identifierCode\":\"M0006\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "M0006",
+              "label": "采购数量",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "M0006": {
+                "value": 3547252.1
+              }
+            }
+          ]
+        },
+        "pagination": {
+          "total": 1,
+          "pageNum": 1,
+          "pageSize": 20
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[{\"alias\":\"品类维度\",\"identifierCode\":\"D005\"}],\"indicators\":[{\"alias\":\"出货量目标\",\"identifierCode\":\"M0001\"},{\"alias\":\"出货量实际\",\"identifierCode\":\"M00013\"},{\"alias\":\"出货量预测\",\"identifierCode\":\"M0011\",\"valueConfig\":{\"numericScale\":2}}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "D005",
+              "label": "品类维度",
+              "type": "DIMENSION"
+            },
+            {
+              "identifierCode": "M0001",
+              "label": "出货量目标",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M00013",
+              "label": "出货量实际",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M0011",
+              "label": "出货量预测",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "D005": {
+                "value": "硬件设备"
+              },
+              "M0001": {
+                "value": 175006675.34
+              },
+              "M00013": {
+                "value": 54843218.59
+              },
+              "M0011": {
+                "value": 175006675.34
+              }
+            },
+            {
+              "D005": {
+                "value": "新能源设备及材料"
+              },
+              "M0001": {
+                "value": 18164582.63
+              },
+              "M00013": {
+                "value": 24068038.0
+              },
+              "M0011": {
+                "value": 18164582.63
+              }
+            },
+            {
+              "D005": {
+                "value": "通讯产品"
+              },
+              "M0001": {
+                "value": 54823295.52
+              },
+              "M00013": {
+                "value": 51611664.0
+              },
+              "M0011": {
+                "value": 54823295.52
+              }
+            },
+            {
+              "D005": {
+                "value": "HAWA"
+              },
+              "M0001": {
+                "value": 135486339.15
+              },
+              "M00013": {
+                "value": 792.0
+              },
+              "M0011": {
+                "value": 135486339.15
+              }
+            },
+            {
+              "D005": {
+                "value": "服务"
+              },
+              "M0001": {
+                "value": 1163956561.83
+              },
+              "M00013": {
+                "value": 1333962336.27
+              },
+              "M0011": {
+                "value": 1163956561.83
+              }
+            },
+            {
+              "D005": {
+                "value": "能源物料"
+              },
+              "M0001": {
+                "value": 371503014.96
+              },
+              "M00013": {
+                "value": 325089465.44
+              },
+              "M0011": {
+                "value": 371503014.96
+              }
+            },
+            {
+              "D005": {
+                "value": "TDB"
+              },
+              "M0001": {
+                "value": 4841492.2
+              },
+              "M00013": {
+                "value": 3516153.34
+              },
+              "M0011": {
+                "value": 4841492.2
+              }
+            },
+            {
+              "D005": {
+                "value": "电工材料"
+              },
+              "M0001": {
+                "value": 788939874.15
+              },
+              "M00013": {
+                "value": 730398192.4
+              },
+              "M0011": {
+                "value": 788939874.15
+              }
+            },
+            {
+              "D005": {
+                "value": "消耗品"
+              },
+              "M0001": {
+                "value": 80274871.94
+              },
+              "M00013": {
+                "value": 40746521.07
+              },
+              "M0011": {
+                "value": 80274871.94
+              }
+            },
+            {
+              "D005": {
+                "value": "固定资产"
+              },
+              "M0001": {
+                "value": 1803.79
+              },
+              "M00013": {
+                "value": 946.0
+              },
+              "M0011": {
+                "value": 1803.79
+              }
+            },
+            {
+              "D005": {
+                "value": "软件"
+              },
+              "M0001": {
+                "value": 19823060.0
+              },
+              "M00013": {
+                "value": 8900000.0
+              },
+              "M0011": {
+                "value": 19823060.0
+              }
+            },
+            {
+              "D005": {
+                "value": "管理费用"
+              },
+              "M0001": {
+                "value": 5042467.8
+              },
+              "M00013": {
+                "value": 60.0
+              },
+              "M0011": {
+                "value": 5042467.8
+              }
+            },
+            {
+              "D005": {},
+              "M0001": {},
+              "M00013": {},
+              "M0011": {}
+            }
+          ]
+        },
+        "pagination": {
+          "total": 13,
+          "pageNum": 1,
+          "pageSize": 20
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[{\"alias\":\"品类维度\",\"identifierCode\":\"D005\"}],\"indicators\":[{\"alias\":\"发货金额\",\"identifierCode\":\"M00013\"},{\"alias\":\"采购数量\",\"identifierCode\":\"M0006\"},{\"alias\":\"采购金额_2\",\"identifierCode\":\"M0011\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":10}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "D005",
+              "label": "品类维度",
+              "type": "DIMENSION"
+            },
+            {
+              "identifierCode": "M00013",
+              "label": "发货金额",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M0006",
+              "label": "采购数量",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M0011",
+              "label": "采购金额_2",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "D005": {},
+              "M00013": {},
+              "M0006": {},
+              "M0011": {}
+            },
+            {
+              "D005": {
+                "value": "硬件设备"
+              },
+              "M00013": {
+                "value": 54843218.59
+              },
+              "M0006": {
+                "value": 41244.0
+              },
+              "M0011": {
+                "value": 175006675.34
+              }
+            },
+            {
+              "D005": {
+                "value": "新能源设备及材料"
+              },
+              "M00013": {
+                "value": 24068038.0
+              },
+              "M0006": {
+                "value": 65.0
+              },
+              "M0011": {
+                "value": 18164582.63
+              }
+            },
+            {
+              "D005": {
+                "value": "通讯产品"
+              },
+              "M00013": {
+                "value": 51611664.0
+              },
+              "M0006": {
+                "value": 509373.0
+              },
+              "M0011": {
+                "value": 54823295.52
+              }
+            },
+            {
+              "D005": {
+                "value": "HAWA"
+              },
+              "M00013": {
+                "value": 792.0
+              },
+              "M0006": {
+                "value": 16409.0
+              },
+              "M0011": {
+                "value": 135486339.15
+              }
+            },
+            {
+              "D005": {
+                "value": "服务"
+              },
+              "M00013": {
+                "value": 1333962336.27
+              },
+              "M0006": {
+                "value": 37683.0
+              },
+              "M0011": {
+                "value": 1163956561.83
+              }
+            },
+            {
+              "D005": {
+                "value": "能源物料"
+              },
+              "M00013": {
+                "value": 325089465.44
+              },
+              "M0006": {
+                "value": 469914.1
+              },
+              "M0011": {
+                "value": 371503014.96
+              }
+            },
+            {
+              "D005": {
+                "value": "TDB"
+              },
+              "M00013": {
+                "value": 3516153.34
+              },
+              "M0006": {
+                "value": 106261.0
+              },
+              "M0011": {
+                "value": 4841492.2
+              }
+            },
+            {
+              "D005": {
+                "value": "电工材料"
+              },
+              "M00013": {
+                "value": 730398192.4
+              },
+              "M0006": {
+                "value": 2362470.0
+              },
+              "M0011": {
+                "value": 788939874.15
+              }
+            },
+            {
+              "D005": {
+                "value": "消耗品"
+              },
+              "M00013": {
+                "value": 40746521.07
+              },
+              "M0006": {
+                "value": 1194.0
+              },
+              "M0011": {
+                "value": 80274871.94
+              }
+            }
+          ]
+        },
+        "pagination": {
+          "total": 13,
+          "pageNum": 1,
+          "pageSize": 10
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[{\"alias\":\"品类维度\",\"identifierCode\":\"D005\"}],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"},{\"alias\":\"发货金额\",\"identifierCode\":\"M00013\"},{\"alias\":\"采购金额_2\",\"identifierCode\":\"M0011\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "D005",
+              "label": "品类维度",
+              "type": "DIMENSION"
+            },
+            {
+              "identifierCode": "M0001",
+              "label": "采购金额",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M00013",
+              "label": "发货金额",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M0011",
+              "label": "采购金额_2",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "D005": {
+                "value": "硬件设备"
+              },
+              "M0001": {
+                "value": 175006675.34
+              },
+              "M00013": {
+                "value": 54843218.59
+              },
+              "M0011": {
+                "value": 175006675.34
+              }
+            },
+            {
+              "D005": {
+                "value": "新能源设备及材料"
+              },
+              "M0001": {
+                "value": 18164582.63
+              },
+              "M00013": {
+                "value": 24068038.0
+              },
+              "M0011": {
+                "value": 18164582.63
+              }
+            },
+            {
+              "D005": {
+                "value": "通讯产品"
+              },
+              "M0001": {
+                "value": 54823295.52
+              },
+              "M00013": {
+                "value": 51611664.0
+              },
+              "M0011": {
+                "value": 54823295.52
+              }
+            },
+            {
+              "D005": {
+                "value": "HAWA"
+              },
+              "M0001": {
+                "value": 135486339.15
+              },
+              "M00013": {
+                "value": 792.0
+              },
+              "M0011": {
+                "value": 135486339.15
+              }
+            },
+            {
+              "D005": {
+                "value": "服务"
+              },
+              "M0001": {
+                "value": 1163956561.83
+              },
+              "M00013": {
+                "value": 1333962336.27
+              },
+              "M0011": {
+                "value": 1163956561.83
+              }
+            },
+            {
+              "D005": {
+                "value": "能源物料"
+              },
+              "M0001": {
+                "value": 371503014.96
+              },
+              "M00013": {
+                "value": 325089465.44
+              },
+              "M0011": {
+                "value": 371503014.96
+              }
+            },
+            {
+              "D005": {
+                "value": "TDB"
+              },
+              "M0001": {
+                "value": 4841492.2
+              },
+              "M00013": {
+                "value": 3516153.34
+              },
+              "M0011": {
+                "value": 4841492.2
+              }
+            },
+            {
+              "D005": {
+                "value": "电工材料"
+              },
+              "M0001": {
+                "value": 788939874.15
+              },
+              "M00013": {
+                "value": 730398192.4
+              },
+              "M0011": {
+                "value": 788939874.15
+              }
+            },
+            {
+              "D005": {
+                "value": "消耗品"
+              },
+              "M0001": {
+                "value": 80274871.94
+              },
+              "M00013": {
+                "value": 40746521.07
+              },
+              "M0011": {
+                "value": 80274871.94
+              }
+            },
+            {
+              "D005": {
+                "value": "固定资产"
+              },
+              "M0001": {
+                "value": 1803.79
+              },
+              "M00013": {
+                "value": 946.0
+              },
+              "M0011": {
+                "value": 1803.79
+              }
+            },
+            {
+              "D005": {
+                "value": "软件"
+              },
+              "M0001": {
+                "value": 19823060.0
+              },
+              "M00013": {
+                "value": 8900000.0
+              },
+              "M0011": {
+                "value": 19823060.0
+              }
+            },
+            {
+              "D005": {
+                "value": "管理费用"
+              },
+              "M0001": {
+                "value": 5042467.8
+              },
+              "M00013": {
+                "value": 60.0
+              },
+              "M0011": {
+                "value": 5042467.8
+              }
+            },
+            {
+              "D005": {},
+              "M0001": {},
+              "M00013": {},
+              "M0011": {}
+            }
+          ]
+        },
+        "pagination": {
+          "total": 13,
+          "pageNum": 1,
+          "pageSize": 20
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"vertex\":[{\"identifierCode\":\"LE000020\",\"properties\":[{\"alias\":\"供应商名称\",\"identifierCode\":\"AT0000806\"},{\"alias\":\"供应商编码\",\"identifierCode\":\"AT0000805\"},{\"alias\":\"供应商类型\",\"identifierCode\":\"AT0000809\"},{\"alias\":\"生效日期\",\"identifierCode\":\"AT0000816\"}]}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":10}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "AT0000806",
+              "label": "供应商名称",
+              "type": "ATTRIBUTE"
+            },
+            {
+              "identifierCode": "AT0000805",
+              "label": "供应商编码",
+              "type": "ATTRIBUTE"
+            },
+            {
+              "identifierCode": "AT0000809",
+              "label": "供应商类型",
+              "type": "ATTRIBUTE"
+            },
+            {
+              "identifierCode": "AT0000816",
+              "label": "生效日期",
+              "type": "ATTRIBUTE"
+            }
+          ],
+          "rows": [
+            {
+              "AT0000806": {
+                "value": "中通快递股份有限公司"
+              },
+              "AT0000805": {
+                "value": "Z02U4L"
+              },
+              "AT0000809": {
+                "value": "NORMAL_SUPPLIER"
+              },
+              "AT0000816": {
+                "value": "2000-01-01 08:00:00"
+              }
+            },
+            {
+              "AT0000806": {
+                "value": "SK ie technology Co.,Ltd"
+              },
+              "AT0000805": {
+                "value": "412239"
+              },
+              "AT0000809": {
+                "value": "NORMAL_SUPPLIER"
+              },
+              "AT0000816": {
+                "value": "2000-01-01 08:00:00"
+              }
+            },
+            {
+              "AT0000806": {
+                "value": "崔斐10000041"
+              },
+              "AT0000805": {
+                "value": "10000041"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-11-29 00:04:12"
+              }
+            },
+            {
+              "AT0000806": {
+                "value": "某某有限公司"
+              },
+              "AT0000805": {
+                "value": "SC20251209000003"
+              },
+              "AT0000809": {
+                "value": "potential supplier"
+              },
+              "AT0000816": {
+                "value": "2025-12-09 08:00:00"
+              }
+            },
+            {
+              "AT0000806": {
+                "value": "张大力JS880"
+              },
+              "AT0000805": {
+                "value": "JS880"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:33"
+              }
+            },
+            {
+              "AT0000806": {
+                "value": "张嘎JS686"
+              },
+              "AT0000805": {
+                "value": "JS686"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:54"
+              }
+            },
+            {
+              "AT0000806": {
+                "value": "张嘎JS679"
+              },
+              "AT0000805": {
+                "value": "JS679"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:55"
+              }
+            },
+            {
+              "AT0000806": {
+                "value": "张嘎JS675"
+              },
+              "AT0000805": {
+                "value": "JS675"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:55"
+              }
+            },
+            {
+              "AT0000806": {
+                "value": "张七八JS306"
+              },
+              "AT0000805": {
+                "value": "JS306"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:37"
+              }
+            },
+            {
+              "AT0000806": {
+                "value": "李大力JS542"
+              },
+              "AT0000805": {
+                "value": "JS542"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:39"
+              }
+            }
+          ]
+        },
+        "pagination": {
+          "total": 16449,
+          "pageNum": 1,
+          "pageSize": 10
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[{\"alias\":\"品类维度\",\"identifierCode\":\"D005\"}],\"indicators\":[{\"alias\":\"发货金额\",\"identifierCode\":\"M00013\"},{\"alias\":\"采购数量\",\"identifierCode\":\"M0006\"},{\"alias\":\"采购金额_2\",\"identifierCode\":\"M0011\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":2,\"pageSize\":10}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "D005",
+              "label": "品类维度",
+              "type": "DIMENSION"
+            },
+            {
+              "identifierCode": "M00013",
+              "label": "发货金额",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M0006",
+              "label": "采购数量",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M0011",
+              "label": "采购金额_2",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "D005": {
+                "value": "固定资产"
+              },
+              "M00013": {
+                "value": 946.0
+              },
+              "M0006": {
+                "value": 532.0
+              },
+              "M0011": {
+                "value": 1803.79
+              }
+            },
+            {
+              "D005": {
+                "value": "软件"
+              },
+              "M00013": {
+                "value": 8900000.0
+              },
+              "M0006": {
+                "value": 104.0
+              },
+              "M0011": {
+                "value": 19823060.0
+              }
+            },
+            {
+              "D005": {
+                "value": "管理费用"
+              },
+              "M00013": {
+                "value": 60.0
+              },
+              "M0006": {
+                "value": 2003.0
+              },
+              "M0011": {
+                "value": 5042467.8
+              }
+            }
+          ]
+        },
+        "pagination": {
+          "total": 13,
+          "pageNum": 2,
+          "pageSize": 10
+        }
+      }
+    },
+    "{\"analysisConfig\":{\"dimensions\":[{\"alias\":\"品类维度\",\"identifierCode\":\"D005\"}],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "code": 200,
+      "data": {
+        "pagination": {
+          "pageNum": 1,
+          "pageSize": 20,
+          "total": 12
+        },
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "D005",
+              "label": "品类维度",
+              "type": "DIMENSION"
+            },
+            {
+              "identifierCode": "M0001",
+              "label": "采购金额",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "D005": {
+                "value": "硬件设备"
+              },
+              "M0001": {
+                "value": 175006675.34
+              }
+            },
+            {
+              "D005": {
+                "value": "新能源设备及材料"
+              },
+              "M0001": {
+                "value": 18164582.63
+              }
+            },
+            {
+              "D005": {
+                "value": "通讯产品"
+              },
+              "M0001": {
+                "value": 54823295.52
+              }
+            },
+            {
+              "D005": {
+                "value": "HAWA"
+              },
+              "M0001": {
+                "value": 135486339.15
+              }
+            },
+            {
+              "D005": {
+                "value": "服务"
+              },
+              "M0001": {
+                "value": 1163956561.83
+              }
+            },
+            {
+              "D005": {
+                "value": "能源物料"
+              },
+              "M0001": {
+                "value": 371503014.96
+              }
+            },
+            {
+              "D005": {
+                "value": "TDB"
+              },
+              "M0001": {
+                "value": 4841492.2
+              }
+            },
+            {
+              "D005": {
+                "value": "电工材料"
+              },
+              "M0001": {
+                "value": 788939874.15
+              }
+            },
+            {
+              "D005": {
+                "value": "消耗品"
+              },
+              "M0001": {
+                "value": 80274871.94
+              }
+            },
+            {
+              "D005": {
+                "value": "固定资产"
+              },
+              "M0001": {
+                "value": 1803.79
+              }
+            },
+            {
+              "D005": {
+                "value": "软件"
+              },
+              "M0001": {
+                "value": 19823060.0
+              }
+            },
+            {
+              "D005": {
+                "value": "管理费用"
+              },
+              "M0001": {
+                "value": 5042467.8
+              }
+            }
+          ]
+        },
+        "resultType": "TABLE"
+      },
+      "msg": "success",
+      "success": true
+    },
+    "{\"analysisConfig\":{\"dimensions\":[{\"alias\":\"供应商维度\",\"identifierCode\":\"D002\"}],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "code": 200,
+      "data": {
+        "pagination": {
+          "pageNum": 1,
+          "pageSize": 20,
+          "total": 38
+        },
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "D002",
+              "label": "供应商维度",
+              "type": "DIMENSION"
+            },
+            {
+              "identifierCode": "M0001",
+              "label": "采购金额",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "D002": {
+                "identifierNumber": "0000100383",
+                "value": "吉林森工（北京）"
+              },
+              "M0001": {
+                "value": 467169.15
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "10001",
+                "value": "某数码产品供应商"
+              },
+              "M0001": {
+                "value": 84517534.36
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "0000003035",
+                "value": "CAFS Chemicals & Pharmaceuticals"
+              },
+              "M0001": {
+                "value": 1234321.0
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "BFHC",
+                "value": "北方华创科技集团股份有限公司"
+              },
+              "M0001": {
+                "value": 358994341.48
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "BYD",
+                "value": "比亚迪科技"
+              },
+              "M0001": {
+                "value": 4000.0
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "0000003430",
+                "value": "Universal Chemical Stabilizer Co."
+              },
+              "M0001": {
+                "value": 2869327.1
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "10000",
+                "value": "某数科智能科技有限公司"
+              },
+              "M0001": {
+                "value": 29482558.97
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "SZDZ01",
+                "value": "深圳电子元器件有限公司"
+              },
+              "M0001": {
+                "value": 608843178.53
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "0000505001",
+                "value": "展辰（北京）"
+              },
+              "M0001": {
+                "value": 14172.06
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "0000001000",
+                "value": "C.E.B. BERLIN"
+              },
+              "M0001": {
+                "value": 21061.95
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "0000000726",
+                "value": "荔枝有限公司"
+              },
+              "M0001": {
+                "value": 105.0
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "1000001",
+                "value": "海冰1000001"
+              },
+              "M0001": {
+                "value": 5.25
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "VEND001",
+                "value": "盛唐微电子有限公司"
+              },
+              "M0001": {
+                "value": 204090439.95
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "test01",
+                "value": "test01"
+              },
+              "M0001": {
+                "value": 156.92
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "Z05ZAZ",
+                "value": "深圳众泰精密工业有限公司"
+              },
+              "M0001": {
+                "value": 238611315.3
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "SC20260204000001",
+                "value": "维信诺科技股份有限公司"
+              },
+              "M0001": {
+                "value": 1536223.7
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "SC20251224000033",
+                "value": "深广核集团有限公司"
+              },
+              "M0001": {
+                "value": 12752.0
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "SA101",
+                "value": "Supplier 101 LLC"
+              },
+              "M0001": {
+                "value": 0.0
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "0000003511",
+                "value": "PA Electronics"
+              },
+              "M0001": {
+                "value": 266580720.0
+              }
+            },
+            {
+              "D002": {
+                "identifierNumber": "H000059266",
+                "value": "H000059266彭羽"
+              },
+              "M0001": {
+                "value": 43439965.4
+              }
+            }
+          ]
+        },
+        "resultType": "TABLE"
+      },
+      "msg": "success",
+      "success": true
+    },
+    "{\"analysisConfig\":{\"vertex\":[{\"identifierCode\":\"LE000020\",\"properties\":[{\"alias\":\"供应商名称\",\"identifierCode\":\"AT0000806\"},{\"alias\":\"供应商编码\",\"identifierCode\":\"AT0000805\"},{\"alias\":\"供应商类型\",\"identifierCode\":\"AT0000809\"}]}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":10}}}": {
+      "code": 200,
+      "data": {
+        "pagination": {
+          "pageNum": 1,
+          "pageSize": 10,
+          "total": 16449
+        },
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "AT0000806",
+              "label": "供应商名称",
+              "type": "ATTRIBUTE"
+            },
+            {
+              "identifierCode": "AT0000805",
+              "label": "供应商编码",
+              "type": "ATTRIBUTE"
+            },
+            {
+              "identifierCode": "AT0000809",
+              "label": "供应商类型",
+              "type": "ATTRIBUTE"
+            }
+          ],
+          "rows": [
+            {
+              "AT0000805": {
+                "value": "Z02U4L"
+              },
+              "AT0000806": {
+                "value": "中通快递股份有限公司"
+              },
+              "AT0000809": {
+                "value": "NORMAL_SUPPLIER"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "412239"
+              },
+              "AT0000806": {
+                "value": "SK ie technology Co.,Ltd"
+              },
+              "AT0000809": {
+                "value": "NORMAL_SUPPLIER"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "10000041"
+              },
+              "AT0000806": {
+                "value": "崔斐10000041"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "SC20251209000003"
+              },
+              "AT0000806": {
+                "value": "某某有限公司"
+              },
+              "AT0000809": {
+                "value": "potential supplier"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS880"
+              },
+              "AT0000806": {
+                "value": "张大力JS880"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS686"
+              },
+              "AT0000806": {
+                "value": "张嘎JS686"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS679"
+              },
+              "AT0000806": {
+                "value": "张嘎JS679"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS675"
+              },
+              "AT0000806": {
+                "value": "张嘎JS675"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS306"
+              },
+              "AT0000806": {
+                "value": "张七八JS306"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS542"
+              },
+              "AT0000806": {
+                "value": "李大力JS542"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              }
+            }
+          ]
+        },
+        "resultType": "TABLE"
+      },
+      "msg": "success",
+      "success": true
+    },
+    "{\"analysisConfig\":{\"vertex\":[{\"identifierCode\":\"LE000020\",\"properties\":[{\"alias\":\"供应商名称\",\"identifierCode\":\"AT0000806\"},{\"alias\":\"供应商编码\",\"identifierCode\":\"AT0000805\"},{\"alias\":\"供应商类型\",\"identifierCode\":\"AT0000809\"},{\"alias\":\"生效日期\",\"identifierCode\":\"AT0000816\"}]}]},\"commonConfig\":{\"pagination\":{\"pageNum\":2,\"pageSize\":10}}}": {
+      "code": 200,
+      "data": {
+        "pagination": {
+          "pageNum": 2,
+          "pageSize": 10,
+          "total": 16449
+        },
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "AT0000806",
+              "label": "供应商名称",
+              "type": "ATTRIBUTE"
+            },
+            {
+              "identifierCode": "AT0000805",
+              "label": "供应商编码",
+              "type": "ATTRIBUTE"
+            },
+            {
+              "identifierCode": "AT0000809",
+              "label": "供应商类型",
+              "type": "ATTRIBUTE"
+            },
+            {
+              "identifierCode": "AT0000816",
+              "label": "生效日期",
+              "type": "ATTRIBUTE"
+            }
+          ],
+          "rows": [
+            {
+              "AT0000805": {
+                "value": "JS066"
+              },
+              "AT0000806": {
+                "value": "张四JS066"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:45"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS055"
+              },
+              "AT0000806": {
+                "value": "张四JS055"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:46"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS693"
+              },
+              "AT0000806": {
+                "value": "张嘎JS693"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:54"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS921"
+              },
+              "AT0000806": {
+                "value": "王萌萌JS921"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:54"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "CHENYANG"
+              },
+              "AT0000806": {
+                "value": "陈洋CHENYANG"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2026-07-31 22:49:38"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "V100"
+              },
+              "AT0000806": {
+                "value": "name1000"
+              },
+              "AT0000809": {
+                "value": "NORMAL_SUPPLIER"
+              },
+              "AT0000816": {
+                "value": "2025-12-03 19:31:00"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS317"
+              },
+              "AT0000806": {
+                "value": "张七八JS317"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:34"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS296"
+              },
+              "AT0000806": {
+                "value": "张七八JS296"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:39"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS544"
+              },
+              "AT0000806": {
+                "value": "李大力JS544"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:40"
+              }
+            },
+            {
+              "AT0000805": {
+                "value": "JS274"
+              },
+              "AT0000806": {
+                "value": "张六JS274"
+              },
+              "AT0000809": {
+                "value": "EMPLOYEE"
+              },
+              "AT0000816": {
+                "value": "2025-12-15 19:53:43"
+              }
+            }
+          ]
+        },
+        "resultType": "TABLE"
+      },
+      "msg": "success",
+      "success": true
     }
   },
   "batch": {

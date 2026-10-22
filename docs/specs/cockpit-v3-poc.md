@@ -37,7 +37,7 @@
 - 根配置包含 2 个组件：`composite-filter-hzjk9t5q` 和 `tab-container-zm9eyxne`。
 - 15 份模板共 137 个组件；加上根组件共 139 个。四个 Tab 引用的模板全部存在，运行时缺项检查为 0。
 - `ProBiDashboard` 直接接收根 `components` 和 `template-registry`；四个路由只激活对应 Tab。
-- `data-snapshots.json` 保存正式页网络的 21 个 AP 查询、2 个批量查询和 2 个头盔图请求响应；浏览器通过 `configureBi` 回放，不访问 PDT 或生产接口。
+- `data-snapshots.json` 保存正式页网络的 38 个 AP 查询、2 个批量查询和 2 个头盔图请求响应；包含 2025／2026 两个年度筛选变体、七个头盔节点的明细表查询和供应商明细第 2 页，浏览器通过 `configureBi` 回放，不访问 PDT 或生产接口。
 - 快照只保存业务响应体，不保存 Cookie、Token、账号或用户身份；发布目录记录文件大小和 SHA-256。
 - 当前正式配置没有 `insights` 字段，页面不挂载 AI 插槽；AP 指标与标题的口径差异保持源配置原值。
 

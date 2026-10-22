@@ -51,12 +51,14 @@
       postAnalysisDataQuery: async payload => {
         const key = canonical(payload);
         const hit = analysis.get(key);
+        if (hit && hit.success === false) throw new Error(hit.msg || hit.message || 'AP 查询失败');
         if (!hit?.data) throw new Error('未找到该 AP 查询的发布快照');
         return hit.data;
       },
       postAnalysisDataQueryBatch: async payload => {
         const key = canonical(payload);
         const hit = batch.get(key);
+        if (hit && hit.success === false) throw new Error(hit.msg || hit.message || 'AP 查询失败');
         if (!hit?.data) throw new Error('未找到该批量查询的发布快照');
         return hit.data;
       },

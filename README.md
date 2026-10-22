@@ -132,7 +132,7 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 发布包冻结了 15 份模板、139 个组件和正式页的顶部筛选器。四页的 `position`、`parentId`、容器、标题和样式
 均按发布配置原样交给 `ProBiDashboard`；宿主不增删或重排卡片。浏览器通过同目录
-`data-snapshots.json` 回放正式页抓取的 21 个 AP 查询、2 个批量查询和 2 个头盔图请求，
+`data-snapshots.json` 回放正式页抓取的 38 个 AP 查询、2 个批量查询和 2 个头盔图请求，
 快照只包含业务响应体，不包含 Cookie、Token 或用户身份。
 
 当前正式看板配置没有 `insights`／AI 插槽，因此页面不会挂载旧版分析卡。主服务已有的

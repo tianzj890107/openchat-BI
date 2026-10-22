@@ -106,9 +106,18 @@ def test_static_proui_runtime_is_reproducible_and_uses_release_data():
     assert hashlib.sha256(raw).hexdigest()==source['snapshot']['sha256']
     assert len(raw)==source['snapshot']['bytes']
     captured=json.loads(raw)
-    assert len(captured['analysis'])==source['snapshot']['analysisRequests']==21
+    assert len(captured['analysis'])==source['snapshot']['analysisRequests']==38
     assert len(captured['batch'])==source['snapshot']['batchRequests']==2
     assert len(captured['requests'])==source['snapshot']['helmetRequests']==2
+    assert source['snapshot']['filterVariants']==4
+    filter_rows={tuple(key['commonConfig']['filters']['value']) for key in map(json.loads,captured['analysis']) if (key.get('commonConfig') or {}).get('filters')}
+    assert filter_rows=={('2025-01-01','2025-12-31'),('2026-01-01','2026-12-31')}
+    for key,value in captured['analysis'].items():
+        assert json.loads(key)
+        if value.get('success'):
+            assert 'result' in value['data']
+        else:
+            assert 'data' not in value
 
     cockpit=RELEASE.parents[1]
     js=(cockpit/'cockpit.js').read_text()

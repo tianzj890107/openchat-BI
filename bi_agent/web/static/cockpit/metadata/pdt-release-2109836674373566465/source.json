@@ -180,12 +180,19 @@
   ],
   "snapshot": {
     "file": "data-snapshots.json",
-    "bytes": 244221,
-    "sha256": "98a822aff3e94166fc2528916734d28bd97aa5797174f3f906dc5c813012e0a4",
+    "bytes": 291476,
+    "sha256": "c0a54d6911d32f3735c0649b8a323e59171fb17ad9f32f35b784631db50f33e1",
     "source": "pdt-dev release page network capture",
-    "analysisRequests": 21,
+    "analysisRequests": 38,
     "batchRequests": 2,
     "helmetRequests": 2,
-    "credentialsStored": false
+    "credentialsStored": false,
+    "filterVariants": 4,
+    "updatedAt": "2026-10-22T16:20:00+08:00",
+    "notes": [
+      "Includes date-filter variants for overview and operations tabs.",
+      "Includes node-detail table variants and the supplier table page 2.",
+      "Two upstream HTTP 500 responses are stored verbatim; the page shows the upstream error."
+    ]
   }
 }
