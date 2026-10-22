@@ -6,6 +6,8 @@
   color: #262626;
   font-size: 13px;
   line-height: 22px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .opportunity-risk__card {
@@ -102,6 +104,7 @@
   gap: 12px;
   padding: 10px 0;
   border-top: 1px solid #f5f5f5;
+  flex-wrap: wrap;
 }
 
 .opportunity-risk__index {
@@ -111,18 +114,23 @@
 }
 
 .opportunity-risk__item-text {
-  flex: 1;
+  flex: 1 1 calc(100% - 28px);
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .opportunity-risk__owner {
-  flex: none;
+  flex: 1 1 auto;
+  max-width: 45%;
   color: #1677ff;
+  overflow-wrap: anywhere;
 }
 
 .opportunity-risk__time {
-  flex: none;
+  flex: 1 1 100%;
+  padding-left: 28px;
   color: #8c8c8c;
+  overflow-wrap: anywhere;
 }
 
 .opportunity-risk__close {

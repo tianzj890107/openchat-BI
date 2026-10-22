@@ -108,3 +108,22 @@ def test_three_top_tabs_and_static_proui_dashboard_are_present():
     assert ':insights="pageInsights"' in html
     assert 'v-slot:[slot_name(insight)]' in html
     assert "app.component('cockpit-insight', CockpitInsight)" in js
+
+
+def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
+    js=(ROOT/'cockpit.js').read_text()
+    assert 'insightBundleUrl' in js
+    assert 'import(insightBundleUrl)' in js
+    assert ':analysis="state.item"' in js
+    assert ':status="state.status"' in js
+    assert '@retry="reload"' in js
+    components=ROOT/'insight-components'
+    for name in ('bid-status-note','quote-summary','bid-summary','order-sign-summary',
+                 'sales-shipment-issues','opportunity-risk','opportunity-coverage-note',
+                 'order-risk-summary','shipment-risk-summary','shipment-overdue-note',
+                 'shipment-cause-breakdown','shipment-task-order'):
+        source=(components/name/'index.js').read_text()
+        assert 'props: insightProps' in source
+        assert 'useInsight(props, emit)' in source
+        assert 'insight-runtime-state' in source
+        assert '静态文案' not in source

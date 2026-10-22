@@ -1,7 +1,11 @@
 /**
  * 商机推进与覆盖缺口说明。插在商机获取节点联动展示模版该卡片底部。
+ * 状态分布由记录聚合，结论与标签由真实分析结果驱动。
  */
 import { loadInsightStyle, registerInsightComponent } from '../registry.js'
+import { insightProps, useInsight } from '../shared.js'
+
+const { computed } = window.Vue
 
 loadInsightStyle(import.meta.url)
 
@@ -9,24 +13,47 @@ registerInsightComponent(
   'opportunity-coverage-note',
   Vue.defineComponent({
     name: 'OpportunityCoverageNote',
+    props: insightProps,
+    emits: ['retry'],
+    setup(props, { emit }) {
+      const insight = useInsight(props, emit)
+      const statusCounts = computed(() => insight.records.value.reduce((counts, record) => {
+        const status = record.status || '未分类'
+        counts[status] = (counts[status] || 0) + 1
+        return counts
+      }, {}))
+      return { ...insight, statusCounts }
+    },
     template: `
-      <section class="opportunity-coverage-note">
-        <div>
-          PACK 商机 46 条中，
-          <span class="opportunity-coverage-note__em">28 条已进入投标（60.9%，28/46）</span>
-          ——其中已签单 6 条、投标中 22 条；
-          <span class="opportunity-coverage-note__em">18 条未进入投标（39.1%，18/46）</span>
-          ——其中方案引导 11 条、商机获取 7 条，且这 18 条全部属于战略客户；另有 7 家战略客户尚无商机。
+      <section class="opportunity-coverage-note" aria-live="polite">
+        <div class="insight-runtime-state">
+          <div class="insight-runtime-state__row">
+            <span>{{ stateText }}</span>
+            <button v-if="status === 'error'" type="button" class="insight-runtime-retry" @click="retry">重试</button>
+          </div>
         </div>
-        <div>
-          未投标的 18 条预计金额 39.6 亿元，占 PACK 商机预测口径 44%。其中 11 条卡在方案引导超过 14 天，7 条仍停在商机获取；若本周不能推进到投标，季度覆盖缺口还会再扩大约 12.4 亿元。建议优先跟进金额前五的战略客户，并补齐尚无商机的 7 家客户覆盖。
-        </div>
-        <div class="opportunity-coverage-note__tags">
-          <span class="opportunity-coverage-note__tag">13 家有商机未投标</span>
-          <span class="opportunity-coverage-note__tag">7 家无商机</span>
-          <span class="opportunity-coverage-note__tag">11 条超 14 天</span>
-          <span class="opportunity-coverage-note__tag">缺口约 12.4 亿元</span>
-        </div>
+        <template v-if="hasResult">
+          <div>
+            当前商机快照共 {{ records.length }} 条记录：
+            <span class="opportunity-coverage-note__em">
+              {{ Object.entries(statusCounts).map(([key, value]) => key + ' ' + value + ' 条').join('，') || '状态未提供' }}
+            </span>。
+            下列缺口与推进结论均来自 {{ contextLine }} 的真实分析。
+          </div>
+          <div>真实分析摘要：{{ summary }}</div>
+          <div v-for="cause in causes" :key="cause.id">
+            <span class="opportunity-coverage-note__em">{{ causeStatus(cause) }}</span>：
+            {{ cause.title }}。{{ cause.description }}
+          </div>
+          <div class="opportunity-coverage-note__tags">
+            <span v-for="item in facts" :key="item.id" class="opportunity-coverage-note__tag">
+              {{ item.label }} {{ metricValue(item) }}
+            </span>
+            <span v-for="cause in causes" :key="'tag-' + cause.id" class="opportunity-coverage-note__tag">
+              {{ cause.title }}
+            </span>
+          </div>
+        </template>
       </section>
     `,
   })

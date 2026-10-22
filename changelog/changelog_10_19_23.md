@@ -86,13 +86,17 @@
 - 筛选联动：顶部“采购订单创建时间维度”按交付配置只绑定当前 Tab 的一个指标卡
   （经营看板绑“促进增长｜销售额”，运营 360 绑“保障交付｜出货量”），其余卡片不声明该维度绑定。
   该行为与交付配置一致，宿主不自行扩展联动范围。
-- 智能分析插槽（2026-10-22 19:10 修订）：交付根配置没有 `insights` 字段，宿主从 `insights.json`
+- 智能分析插槽（2026-10-22 16:23 修订）：交付根配置没有 `insights` 字段，宿主从 `insights.json`
   补入 12 个插槽声明：经营看板 0 个、运营 360 4 个、穿透式问题分析 8 个。插槽位置按交付配置，
   内容改为调用主服务 `/api/cockpit/analyses` 的真实模型分析；页面加载后通过 `requestIdleCallback`
   （回退 800ms 定时）预取商机、报价、投标、订单、发货 5 个环节，每个环节只提交一次，前端最多
   3 个并发，其余排队。插槽挂载复用同一 Promise，点击头盔节点不重新分析，只有“重新分析”强制刷新。
   首次分析通常约 10–20 秒，已完成范围复用 SQLite 历史；失败时显示错误和重试。交付
-  `insight-components/` 保留原始文件，页面不再加载其静态文案。
+  `insight-components/` 恢复为页面实际挂载的插槽组件，保留交付 DOM/CSS、组件名称和插入位置；
+  组件内的原型演示数字改为消费同一份真实分析结果：阶段数字取 `evidence.facts`，记录级主因取
+  `evidence.records`，风险/原因/建议取 `result.summary`、`result.causes`、`result.recommendations`
+  和 `result.limitations`。缺失字段显示“未提供”，不再使用静态 mock 文案。新增
+  `insight-components/shared.js` 统一取值和重试，CSS 统一带版本串避免旧样式缓存。
 - 交互：头盔图点击节点切换环节模板；运营页报价、投标、订单接收节点分别挂载 `quote-summary`、
   `bid-summary`、`order-sign-summary`；穿透页订单接收、发货节点分别挂载 `order-risk-summary`
   和 4 个发货插槽。页内 Tab 切换同步 URL 并保留 `id`。
@@ -108,10 +112,12 @@
   `tests/test_cockpit_poc.py`、`tests/test_cockpit_resource_contract.py`、
   `tests/test_cockpit_metadata.py`、`docs/specs/cockpit-v3-poc.md`、
   `docs/specs/cockpit-v3-metadata-gaps.md`、`README.md`、`DEPLOYMENT.md`。
-- 验证（2026-10-22 19:10）：驾驶舱契约测试 37 项通过；`node --check` 和 `git diff --check` 通过。
+- 验证（2026-10-22 16:23）：驾驶舱契约测试 38 项通过；`node --check` 和 `git diff --check` 通过。
   浏览器验证三个路由在 `id=1|2` 下激活正确 Tab，页面只有一个 `ProBiDashboard`；
   运营页加载后后台出现尚未显示环节的分析任务，证明空闲预取生效；点击头盔节点后
-  报价、投标、订单签单、订单风险及 4 个发货插槽均直接显示已完成结果，无组件错误。
+  报价、投标、订单签单、订单风险及 4 个发货插槽均直接显示已完成结果，无组件错误；另以真实
+  已完成分析逐一挂载 12 个交付插槽组件，全部通过渲染、无横向溢出，主因拆解按记录聚合显示
+  4 类主因和逐单金额/超期天数。
 - 部署（2026-10-22 16:13）：`172.16.10.34:8876` 更新到 `feature/cockpit-v3-poc@38ad4f0`，
   HTML 版本串为 `38ad4f0`，发布目录 38 个文件且 `manifest.sha256` 全部通过。线上三条路由、
   `/cockpit/home` 改写、`id=1|2`、Tab 同步和头盔节点插槽均已验证。使用 `id=2` 冷启动运营页时，

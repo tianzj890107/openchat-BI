@@ -1,7 +1,9 @@
 /**
  * 投标状态说明。插在运营360整体分析「投标」卡片底部。
+ * 数值与结论均来自当前环节的真实分析结果和证据包。
  */
 import { loadInsightStyle, registerInsightComponent } from '../registry.js'
+import { insightProps, useInsight } from '../shared.js'
 
 loadInsightStyle(import.meta.url)
 
@@ -9,9 +11,23 @@ registerInsightComponent(
   'bid-status-note',
   Vue.defineComponent({
     name: 'BidStatusNote',
+    props: insightProps,
+    emits: ['retry'],
+    setup(props, { emit }) {
+      return useInsight(props, emit)
+    },
     template: `
-      <section class="bid-status-note">
-        中标 3.7 GWh（13.0 亿元）= 已签单 1.4 GWh（5.0 亿元）+ 已中标未签单 2.3 GWh（8.0 亿元）；丢标 4.1 GWh（14.4 亿元）。中标率 49.0%（24/49 项）按项目数计算，弃标单列。
+      <section class="bid-status-note" aria-live="polite">
+        <div class="insight-runtime-state">
+          <div class="insight-runtime-state__row">
+            <span>{{ stateText }}</span>
+            <button v-if="status === 'error'" type="button" class="insight-runtime-retry" @click="retry">重试</button>
+          </div>
+        </div>
+        <template v-if="hasResult">
+          <span>中标 {{ factText('中标') }} · 丢标 {{ factText('丢标') }} · </span>
+          {{ summary }}
+        </template>
       </section>
     `,
   })

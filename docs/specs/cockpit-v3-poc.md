@@ -46,10 +46,13 @@
 
 ## 智能分析插槽
 
-插槽内容由主服务真实模型分析生成，不再使用交付目录中的静态文案。页面加载完成后通过
-`requestIdleCallback`（不支持时回退 800ms 定时）预取 5 个环节：商机、报价、投标、订单、发货；
-每个环节只发起一次分析，前端最多 3 个并发，其余排队。插槽挂载时复用同一 Promise，
-点击头盔节点不会重新请求；只有点击“重新分析”才强制刷新。
+插槽使用交付 `insight-components/` 的原始组件名称、DOM 和 CSS，内容由主服务真实模型分析驱动。
+阶段数字读取当前分析证据包的 `facts`，记录级主因读取 `records`，风险、原因、建议和限制读取
+`result.summary`、`result.causes`、`result.recommendations`、`result.limitations`；缺失字段显示
+“未提供”，不再保留交付目录里的演示数字或静态文案。页面加载完成后通过 `requestIdleCallback`
+（不支持时回退 800ms 定时）预取 5 个环节：商机、报价、投标、订单、发货；每个环节只发起一次分析，
+前端最多 3 个并发，其余排队。插槽挂载时复用同一 Promise，点击头盔节点不会重新请求；只有组件内重试
+才强制刷新。
 
 运营页默认显示 `bid-status-note`，点击头盔节点后按对应模板挂载 `quote-summary`、`bid-summary`、
 `order-sign-summary`；穿透页默认显示 `sales-shipment-issues`、`opportunity-risk`、

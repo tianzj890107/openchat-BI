@@ -1,0 +1,147 @@
+const { computed, ref } = window.Vue
+
+export const insightProps = {
+  analysis: { type: Object, default: null },
+  status: { type: String, default: 'idle' },
+  progress: { type: String, default: '' },
+  error: { type: String, default: '' },
+  context: { type: Object, default: () => ({}) },
+  slotProps: { type: Object, default: () => ({}) },
+}
+
+function number(value) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function metricValue(metric) {
+  if (!metric) return '未提供'
+  if (metric.value === null || metric.value === undefined) return metric.label || '未提供'
+  return `${metric.value}${metric.unit ? ` ${metric.unit}` : ''}`
+}
+
+export function useInsight(props, emit) {
+  const result = computed(() => props.analysis?.result || null)
+  const bundle = computed(() => props.analysis?.evidence || {})
+  const facts = computed(() => bundle.value.facts || [])
+  const records = computed(() => bundle.value.records || [])
+  const evidence = computed(() => bundle.value.evidence || [])
+  const causes = computed(() => result.value?.causes || [])
+  const recommendations = computed(() => result.value?.recommendations || [])
+  const limitations = computed(() => result.value?.limitations || bundle.value.limitations || [])
+  const summary = computed(() => result.value?.summary || '')
+  const hasResult = computed(() => Boolean(result.value))
+  const stageName = computed(() => props.context?.stageName || props.analysis?.context?.stageName || '')
+  const period = computed(() => props.context?.period || props.analysis?.context?.period || '')
+  const department = computed(() => props.context?.department || props.analysis?.context?.department || '')
+  const contextLine = computed(() => [stageName.value, period.value, department.value].filter(Boolean).join(' · '))
+  const evidenceCount = computed(() => evidence.value.length)
+  const updatedAt = computed(() => {
+    const timestamp = Number(props.analysis?.updatedAt)
+    if (!Number.isFinite(timestamp)) return ''
+    return new Date(timestamp * 1000).toLocaleString('zh-CN', { hour12: false })
+  })
+  const stateText = computed(() => {
+    if (props.status === 'running') return props.progress || '正在读取真实证据并调用模型分析'
+    if (props.status === 'error') return props.error || '真实分析失败'
+    if (!hasResult.value) return '等待真实分析结果'
+    return `${contextLine.value || '当前环节'} · ${evidenceCount.value} 条证据${updatedAt.value ? ` · ${updatedAt.value}` : ''}`
+  })
+
+  function fact(label) {
+    const query = String(label || '').toLowerCase()
+    return facts.value.find(item => String(item.label || '').toLowerCase().includes(query)) || null
+  }
+
+  function factText(label) {
+    return metricValue(fact(label))
+  }
+
+  function sumFacts(selector, unit) {
+    return facts.value
+      .filter(item => !unit || item.unit === unit)
+      .filter(item => !selector || selector(item))
+      .reduce((total, item) => total + (number(item.value) || 0), 0)
+  }
+
+  function factSum(fragment, unit) {
+    const query = String(fragment || '').toLowerCase()
+    return sumFacts(item => String(item.label || '').toLowerCase().includes(query), unit)
+  }
+
+  function percent(part, total) {
+    const p = number(part)
+    const t = number(total)
+    return p !== null && t ? `${(p / t * 100).toFixed(1)}%` : '—'
+  }
+
+  function evidenceFor(cause) {
+    const ids = new Set(cause?.evidenceIds || [])
+    return evidence.value.filter(item => ids.has(item.id))
+  }
+
+  function recordsFor(cause) {
+    return evidenceFor(cause).map(item => item.record).filter(Boolean)
+  }
+
+  function causeStatus(cause) {
+    return cause?.status === 'supported' ? '记录支持' : '待核实'
+  }
+
+  function causeMeta(cause) {
+    const linked = evidenceFor(cause)
+    return `${causeStatus(cause)} · ${linked.length} 条证据`
+  }
+
+  function retry() {
+    emit('retry')
+  }
+
+  const dismissed = ref([])
+  const openRecommendations = computed(() => recommendations.value.filter(item => !dismissed.value.includes(item.id)))
+
+  function dismissRecommendation(id) {
+    dismissed.value = [...dismissed.value, id]
+  }
+
+  return {
+    result,
+    bundle,
+    facts,
+    records,
+    evidence,
+    causes,
+    recommendations,
+    openRecommendations,
+    limitations,
+    summary,
+    hasResult,
+    stageName,
+    period,
+    department,
+    contextLine,
+    evidenceCount,
+    updatedAt,
+    stateText,
+    fact,
+    factText,
+    sumFacts,
+    factSum,
+    percent,
+    evidenceFor,
+    recordsFor,
+    causeStatus,
+    causeMeta,
+    metricValue,
+    retry,
+    dismissRecommendation,
+  }
+}
+
+export function sumBy(items, selector) {
+  return items.reduce((total, item) => total + (number(selector(item)) || 0), 0)
+}
+
+export function round(value, digits = 1) {
+  return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '—'
+}
