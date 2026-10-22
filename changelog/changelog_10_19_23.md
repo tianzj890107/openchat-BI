@@ -112,12 +112,16 @@
   浏览器验证三个路由在 `id=1|2` 下激活正确 Tab，页面只有一个 `ProBiDashboard`；
   运营页加载后后台出现尚未显示环节的分析任务，证明空闲预取生效；点击头盔节点后
   报价、投标、订单签单、订单风险及 4 个发货插槽均直接显示已完成结果，无组件错误。
-- 部署（2026-10-22 15:53）：`172.16.10.34:8876` 更新到 `feature/cockpit-v3-poc@a438fcd`，
-  HTML 版本串为 `a438fcd`，发布目录 38 个文件且 `manifest.sha256` 全部通过。线上三条路由、
-  `/cockpit/home` 改写、`id=1|2`、Tab 同步和头盔节点插槽均已验证；三页无组件错误。
-  部署前旧站备份为
-  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-155309-pre-2b828a5`，
-  暂存目录为 `site-next-a438fcd`。未重启 8877 API、未修改 8765 主服务、`dataset/` 和用户历史数据。
+- 部署（2026-10-22 16:13）：`172.16.10.34:8876` 更新到 `feature/cockpit-v3-poc@38ad4f0`，
+  HTML 版本串为 `38ad4f0`，发布目录 38 个文件且 `manifest.sha256` 全部通过。线上三条路由、
+  `/cockpit/home` 改写、`id=1|2`、Tab 同步和头盔节点插槽均已验证。使用 `id=2` 冷启动运营页时，
+  后端在空闲阶段新建报价、订单两个环节分析任务，证明 5 个环节预取生效；点击节点后插槽直接显示
+  真实模型结果。部署前旧站备份为
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-161324-pre-a438fcd`，
+  暂存目录为 `site-next-38ad4f0`。未重启 8877 API、未修改 8765 主服务、`dataset/` 和用户历史数据。
+- 部署（2026-10-22 15:53，历史）：`172.16.10.34:8876` 曾更新到
+  `feature/cockpit-v3-poc@a438fcd`（静态插槽版本），备份为
+  `backups/site-20261022-155309-pre-2b828a5`。
 - 部署（2026-10-22 14:49，历史）：`172.16.10.34:8876` 曾更新到
   `feature/cockpit-v3-poc@2b828a5`，旧站备份为 `backups/site-20261022-144900-pre-5501d6f`。
 - 代理与旁路 API（2026-10-22 12:00，历史）：nginx 的 `location /api/cockpit/` 转发到

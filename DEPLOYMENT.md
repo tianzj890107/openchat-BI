@@ -424,11 +424,12 @@ git diff --name-only
   nginx 配置：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/conf/default.conf`。
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
-- 当前发布（2026-10-22 15:53）：`feature/cockpit-v3-poc` commit
-  `a438fcdaae0714aec6beb187b2da99f71077ff47`，构建时间 `2026-10-22T07:52:57Z`；对应交付包
+- 当前发布（2026-10-22 16:13）：`feature/cockpit-v3-poc` commit
+  `38ad4f0c7f8041c6bb84c7bf3408d4e91364a9cd`，构建时间 `2026-10-22T08:13:18Z`；对应交付包
   `iba-demo` `feature/demo_1021@37975c7a03719c037b4acca70c38b50fb68f4516`。
   目录内 `manifest.sha256` 使用相对路径保存发布文件哈希（38 个文件全部校验通过），
   `release.json` 记录分支、提交和构建时间；发布目录共 38 个文件。
+  上一发布为 `a438fcdaae0714aec6beb187b2da99f71077ff47`（静态插槽版本）。
   HTML 使用 `Cache-Control: no-store`，`cockpit.js/css`、`metadata/runtime.json` 和
   `data-snapshots.json` 使用提交短哈希作为版本查询串，避免继续使用旧缓存。
   ProUI 运行包为 `011269f8`，CSS 为 `b1ee836d`，Vue 复用 3.5.25。
@@ -453,22 +454,23 @@ git diff --name-only
   覆盖为 `700`，容器内 nginx worker 会返回 404。
 - 路由配置：nginx 保留 `location = /cockpit/home`；配置备份为
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/conf-20261022-115417-pre-proxy/default.conf`。
-- 验证（2026-10-22 15:53，线上 `172.16.10.34:8876`）：`/cockpit/overview`、
+- 验证（2026-10-22 16:13，线上 `172.16.10.34:8876`）：`/cockpit/overview`、
   `/cockpit/operations`、`/cockpit/analysis`、`/release.json`、`runtime.json`、`cockpit.js`、
-  `insight-components/index.js`、ProUI CSS／JS、Vue 均返回 200；HTML 版本串为 `a438fcd`；
-  `/cockpit/home?id=2` 加载后改写为 `/cockpit/overview?id=2`。远程浏览器确认三个 Tab、一个
-  `ProBiDashboard`、`id=1|2` 传播和 URL 同步；运营页头盔图切到报价、投标、订单接收节点时分别出现
-  `quote-summary`、`bid-summary`、`order-sign-summary`，穿透页切到订单接收、发货节点时出现
-  `order-risk-summary` 和 4 个发货插槽；插槽均为真实模型分析结果，后台可见尚未显示环节的预取任务；
-  三页均无 ProUI 组件错误、无未捕获快照。
+  ProUI CSS／JS、Vue 均返回 200；HTML 版本串为 `38ad4f0`；`/cockpit/home?id=2` 加载后改写为
+  `/cockpit/overview?id=2`。远程浏览器确认三个 Tab、一个 `ProBiDashboard`、`id=1|2` 传播和 URL 同步。
+  使用 `id=2` 冷启动运营页时，后端在页面空闲阶段新建了报价、订单两个环节的分析任务（其余环节复用
+  已完成结果），证明 5 个环节预取生效；点击报价、投标、订单接收节点后对应插槽直接显示
+  `is-done` 的真实模型结果。穿透页默认 3 个插槽、订单接收和发货节点的 5 个插槽也均为已完成结果，
+  三页无插槽错误、无未捕获快照。
 - 历史验证（2026-10-22 14:49，`2b828a5`）：四条页面路由和 `release.json` 返回新提交；HTML 版本串、
   `cockpit.js` 和 `runtime.json` 的 `v=2b828a5` 生效，线上 `cockpit.js` 包含插槽组件与轮询逻辑。
   该版本的 AI 插槽实时调用 `/api/cockpit/analyses`，商机“重新分析”13.8 秒完成。当前版本继续使用
   真实模型分析，并增加页面空闲时的 5 个环节预取。
 - 回滚副本：本轮部署前旧站已备份到
-  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-155309-pre-2b828a5`
-  （上一版 `2b828a5`）；更早备份为 `site-20261022-144900-pre-5501d6f`（`5501d6f`）。
-  新构建暂存目录为 `site-next-a438fcd`，线上目录为 `site`。
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-161324-pre-a438fcd`
+  （上一版 `a438fcd`）；更早备份为 `site-20261022-155309-pre-2b828a5`（`2b828a5`）和
+  `site-20261022-144900-pre-5501d6f`（`5501d6f`）。新构建暂存目录为 `site-next-38ad4f0`，
+  线上目录为 `site`。
 - 本地预览：`/tmp/cockpit-local-preview.py` 使用当前工作区代码启动
   `127.0.0.1:8876`，已更新到新交付包资源和 39／3／4 快照；该进程只监听回环地址。
 
