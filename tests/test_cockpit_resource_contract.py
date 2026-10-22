@@ -67,7 +67,7 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     html=(ROOT/'index.html').read_text()
     assert "params.get('id')" in js
     assert "new URLSearchParams({id: identityId, ...extra})" in js
-    assert 'proui-dashboard-v2' in html
+    assert 'proui-dashboard-v3' in html
     assert 'prototype' not in js.lower()
 
 

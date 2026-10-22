@@ -4,7 +4,7 @@
 
   const root = document.querySelector('meta[name="app-root"]').content.replace(/\/$/, '');
   const routeRoot = location.pathname.replace(/\/cockpit(?:\/(?:home|overview|operations|analysis))?\/?$/, '');
-  const runtimeUrl = `${root}/static/cockpit/metadata/runtime.json?v=proui-dashboard-v2`;
+  const runtimeUrl = `${root}/static/cockpit/metadata/runtime.json?v=proui-dashboard-v3`;
   const params = new URLSearchParams(location.search);
   const identityId = ['1', '2'].includes(params.get('id')) ? params.get('id') : '1';
   const PAGES = [
