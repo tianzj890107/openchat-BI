@@ -127,6 +127,11 @@
   旧的手写 Tab 和灰底留白不再参与正式页视觉；分析插槽只作为正式卡片内部的补充内容渲染。
 - 部署（2026-10-22）：`172.16.10.34:8876` 发布正式看板版本，四个路由和根 Tab 正常；
   发布文件、Manifest、远程浏览器和回滚目录在部署完成后补记到 `DEPLOYMENT.md`。
+- 部署（2026-10-22 14:49）：`172.16.10.34:8876` 更新到 `feature/cockpit-v3-poc@2b828a5`，
+  HTML、`cockpit.js` 和 `runtime.json` 使用 `v=2b828a5`；线上四个路由、`id=1|2` 和 AI 插槽正常。
+  穿透页 `id=1|2` 均显示 3 个插槽内容，首页 1 个、运营 360 1 个、全局经营看板 0 个；
+  线上“重新分析”实测 13.8 秒完成，后端记录 12.2 秒。旧站备份为
+  `backups/site-20261022-144900-pre-5501d6f`，8877 API、历史会话和数据目录未改动。
 - 代理与旁路 API（2026-10-22 12:00）：nginx 新增 `location /api/cockpit/`，转发到独立
   `172.16.10.34:8877` 的 `eimosp-cockpit-api`；服务目录为
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，PID 在 `app.pid`，

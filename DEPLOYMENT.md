@@ -425,10 +425,10 @@ git diff --name-only
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
 - 当前发布：`feature/cockpit-v3-poc` commit
-  `5501d6f28744aa04124f0add8f9ec808fd720562`，构建时间 `2026-10-22T08:32:00Z`；
+  `2b828a53e39abc41410fe9e4b922d8d99b15f19b`，构建时间 `2026-10-22T06:48:43Z`；
   目录内 `manifest.sha256` 使用相对路径保存发布文件哈希，`release.json` 记录分支、提交和构建时间。
-  运行时入口为 `cockpit.js/css?v=5501d6f`，静态元数据为
-  `metadata/runtime.json?v=5501d6f` 和 `data-snapshots.json?v=5501d6f`；HTML 使用
+  运行时入口为 `cockpit.js/css?v=2b828a5`，静态元数据为
+  `metadata/runtime.json?v=2b828a5` 和 `data-snapshots.json?v=2b828a5`；HTML 使用
   `Cache-Control: no-store`，每次刷新都会拿到新的版本查询串，避免继续使用上一小时缓存的旧快照。
   ProUI 运行包为 `c38cbf36`，CSS 为 `b1ee836d`。页面静态资源走同源 `/static/*`，
   `/api/cockpit/*` 走 nginx 反向代理，其余 `/api/*` 仍固定返回 404。
@@ -439,13 +439,16 @@ git diff --name-only
   4 个页面、15 份模板、2 个根组件、137 个模板组件和 17 个分析插槽。页面组件保持交付
   `template-registry.json` 原样；`data-snapshots.json` 保存 38 个 AP 查询、2 个批量查询和
   2 个头盔图请求，包含 2025／2026 年度筛选、七个头盔节点明细和供应商明细第 2 页。
+- AI 插槽：正式根配置没有 `insights`，运行时从交付目录补入 17 个声明（首页 1、全局经营看板 0、
+  运营 360 7、穿透式问题分析 9），并保留完整 Tab `embedPath`。插槽实时调用
+  `/api/cockpit/analyses`，每 1.5 秒轮询，同一范围复用已完成结果，“重新分析”强制刷新。
 - 反向代理：nginx 在 `/api/` 404 规则之前增加 `location /api/cockpit/`，转发到
   `http://172.16.10.34:8877`，读取超时 300 秒并禁用响应缓存。
 - 旁路 API：独立目录
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，入口为
   `cockpit_api.py`，监听 `172.16.10.34:8877`；PID 写入 `app.pid`，日志为 `api.log`，
   运行数据独立保存到 `api-data/`，不接触历史会话和主服务 `dataset/`。当前进程由
-  `setsid nohup` 启动，没有 systemd 自动拉起。静态站升级到 `5501d6f` 时后端接口未变化，
+  `setsid nohup` 启动，没有 systemd 自动拉起。静态站升级到 `2b828a5` 时后端接口未变化，
   因此继续复用该 `api-017d65f` 服务。
 - 文件权限：发布后 `site/` 及子目录必须为 `755`、文件为 `644`；根目录若被 staging 权限
   覆盖为 `700`，容器内 nginx worker 会返回 404。
@@ -468,12 +471,17 @@ git diff --name-only
   4xx／5xx，ProUI 仍有非致命的 Vue 属性透传警告。经 8876 代理发起的真实模型分析
   `50074713092e444ab9f4918ee8c02a34` 状态为 `completed`，阶段为发货。
   同机 `http://127.0.0.1:8765/healthz` 和 `/workbench` 仍返回 200，主服务未修改或重启。
+- 验证（2026-10-22 14:49，`2b828a5`）：四条页面路由和 `release.json` 返回新提交；HTML 版本串、
+  `cockpit.js` 和 `runtime.json` 的 `v=2b828a5` 生效，线上 `cockpit.js` 包含插槽组件与轮询逻辑。
+  `id=1|2` 穿透页各显示 3 个已完成插槽内容，首页显示 1 个、运营 360 显示 1 个、全局经营看板 0 个，
+  均无组件错误；`/api/cockpit/bootstrap`、`/api/cockpit/metadata` 经 8876 代理返回 200，
+  `/api/healthz` 仍为 404。线上点击商机“重新分析”后 13.8 秒完成，后端记录本次分析 12.2 秒。
 - 回滚副本：本次同步前旧站已备份到
-  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-163400-pre-5501d6f`
-  （上一版 `f87163f`，其回滚副本为 `site-20261022-162500-pre-f87163f`，再早为
-  `site-20261022-131551-pre-99084f0` 等）。新构建暂存目录为 `site-next-5501d6f`。
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-144900-pre-5501d6f`
+  （上一版 `5501d6f`，其回滚副本为 `site-20261022-163400-pre-5501d6f`，再早为
+  `site-20261022-162500-pre-f87163f` 等）。新构建暂存目录为 `site-next-2b828a5`。
 - 本地预览：`/tmp/cockpit-local-preview.py` 使用当前工作区代码启动
-  `127.0.0.1:8876`，当前已更新到 `5501d6f` 对应的资源和 38 个快照；该进程只监听回环地址。
+  `127.0.0.1:8876`，当前已更新到 `2b828a5` 对应的资源和 38 个快照；该进程只监听回环地址。
 
 上一运行状态（2026-09-03 部署 v0.1.2，现保留为回滚版本）：
 
