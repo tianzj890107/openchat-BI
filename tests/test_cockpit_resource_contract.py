@@ -67,7 +67,7 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     html=(ROOT/'index.html').read_text()
     assert "params.get('id')" in js
     assert "new URLSearchParams({id: identityId, ...extra})" in js
-    assert 'proui-dashboard-v4' in html
+    assert 'proui-dashboard-v5' in html
     assert "source: 'prototype'" in js
     assert 'layout/' not in js and 'views.json' not in js
 
@@ -75,11 +75,12 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
 def test_four_top_tabs_and_static_proui_dashboard_are_present():
     js=(ROOT/'cockpit.js').read_text()
     html=(ROOT/'index.html').read_text()
+    css=(ROOT/'cockpit.css').read_text()
     runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
     assert 'class="pro-tabs pro-tabs--top cockpit-tabs"' in html
     for label in ('首页','全局经营看板','运营 360 整体分析','穿透式问题分析'):
         assert label in js
-    assert "{id: 'home', title: '首页'}" in js
+    assert "{id: 'home', title: '首页', boardTitle: '储能产品线整体经营分析'}" in js
     assert "return PAGE_BY_ID[declared] ? declared : 'overview'" in js
     assert 'homePageSpec' not in js
     assert 'pro-tabs__active-bar' in html
@@ -89,7 +90,9 @@ def test_four_top_tabs_and_static_proui_dashboard_are_present():
     assert ":template-registry=\"runtime.templates\"" in html
     assert ':insights="pageInsights"' in html
     assert 'cockpit-insight' in html and 'cockpit-insight' in js
-    assert "mode=\"build\"" in html
+    assert ':title="boardTitle"' in html and 'show-header-title' in html
+    assert 'mode="build"' not in html
+    assert 'background:#f3f5f8' in css
     assert runtime['pages']['home']['id']=='home'
     assert runtime['pages']['overview']['id']=='overview'
     assert runtime['pages']['operations']['components']

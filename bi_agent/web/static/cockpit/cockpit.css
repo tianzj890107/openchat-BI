@@ -1,7 +1,7 @@
-html,body,#app{min-height:100%;margin:0;background:#fff}
-body{overflow-x:hidden}
+html,body,#app{min-height:100%;margin:0}
+body{overflow-x:hidden;background:#f3f5f8;color:#1f2329;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
 [v-cloak]{display:none}
-.cockpit-main{width:100%;max-width:1600px;min-height:100vh;margin:0 auto;background:#fff}
+.cockpit-main{width:100%;min-height:100vh;margin:0;background:transparent}
 .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 
 .cockpit-tabs{position:sticky;top:0;z-index:20;padding:0 20px;background:#fff}
@@ -11,7 +11,7 @@ body{overflow-x:hidden}
 .cockpit-tabs .pro-tabs__nav{height:100%}
 .cockpit-tabs .pro-tabs__active-bar{bottom:0}
 
-.cockpit-board{width:100%;min-width:0;padding:12px 18px 10px;box-sizing:border-box}
+.cockpit-board{width:100%;min-width:0;padding:16px 20px 32px;box-sizing:border-box}
 .cockpit-board>.pro-bi-dashboard{width:100%;min-width:0}
 .cockpit-board .pro-bi-dashboard-grid{min-width:0}
 .cockpit-insight{margin:0;padding:14px 16px 12px;border:1px solid var(--pro-border-color-light,#e5e9f0);border-radius:8px;background:#fff;color:var(--pro-text-color-primary,#1b2733);box-sizing:border-box}
@@ -53,7 +53,7 @@ body{overflow-x:hidden}
   .cockpit-tabs{padding:0 12px;overflow-x:auto}
   .cockpit-tabs .pro-tabs__nav{gap:20px}
   .cockpit-tabs .pro-tabs__item{font-size:14px}
-  .cockpit-board{padding:10px 8px 8px}
+  .cockpit-board{padding:12px 12px 24px}
   .cockpit-insight{padding:12px 12px 10px}
   .cockpit-insight__title{flex-direction:column;gap:2px}
   .cockpit-gap-report{margin:2px 12px 24px}

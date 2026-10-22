@@ -109,11 +109,14 @@
   `node --check` 通过；浏览器验证四个路由、四个 Tab、`id=1|2`、首页指标＋头盔＋风险插槽、
   运营和穿透头盔图、表格和 KPI；真实模型已完成首页 `focus-risks` 与穿透页 `sales-shipment-issues`
   分析并返回原因和证据数量；1440px 与 480px 无横向溢出。
-- 首页与顶部组件化（2026-10-22）：`/cockpit/home` 直接挂载交付新增的首页模板，
-  不再由宿主从其他两页挑组件拼装；顶部四个 Tab 改用 ProUI `pro-tabs` 结构和活动下划线，
-  窄屏自动把当前 Tab 滚入可视区，缓存参数升至 `proui-dashboard-v4`。
-  `/cockpit` 直接返回 `overview`，首页保留但不是默认路由。本地浏览器验证四个路由、
-  `id=1|2`、活动条定位和 1440px／480px 布局。
+- 首页与顶部组件化（2026-10-22 12:40 修订）：`/cockpit/home` 直接挂载交付新增的首页模板，
+  不再由宿主从其他两页挑组件拼装；顶部四个 Tab 使用 ProUI `pro-tabs` 结构和活动下划线，
+  窄屏自动把当前 Tab 滚入可视区。页面外层对齐 `iba-demo` 示例，改为 `#f3f5f8` 灰底和
+  20px 内容留白；`ProBiDashboard` 使用发布态和自带标题区，首页标题为“储能产品线整体经营分析”。
+  移除配置态的 `mode="build"`，不再出现“拖入筛选器、标题、按钮”的编辑占位。缓存参数升至
+  `proui-dashboard-v5`，测试新增发布态、标题区和灰底断言。`/cockpit` 直接返回 `overview`，
+  首页保留但不是默认路由。本地浏览器验证四个路由、`id=1|2`、活动条定位和 1440px／480px 布局。
+  该视觉修订尚未部署，8876 当前仍为 `proui-dashboard-v4`。
 - 部署（2026-10-22 12:00）：`172.16.10.34:8876` 已切换到 `feature/cockpit-v3-poc` commit
   `017d65f` 的交付原样渲染版本，发布目录共 9 个文件并通过 `manifest.sha256` 校验；`home`、
   `overview`、`operations`、`analysis` 和四个 ProUI Tab 均正常返回，运行时缓存版本为

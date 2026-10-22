@@ -7,15 +7,15 @@
 
   const root = document.querySelector('meta[name="app-root"]').content.replace(/\/$/, '');
   const routeRoot = location.pathname.replace(/\/cockpit(?:\/(?:home|overview|operations|analysis))?\/?$/, '');
-  const runtimeUrl = `${root}/static/cockpit/metadata/runtime.json?v=proui-dashboard-v4`;
+  const runtimeUrl = `${root}/static/cockpit/metadata/runtime.json?v=proui-dashboard-v5`;
   const apiBase = (document.querySelector('meta[name="cockpit-api-base"]')?.content || `${root}/api/cockpit`).replace(/\/+$/, '');
   const params = new URLSearchParams(location.search);
   const identityId = ['1', '2'].includes(params.get('id')) ? params.get('id') : '1';
   const PAGES = [
-    {id: 'home', title: '首页'},
-    {id: 'overview', title: '全局经营看板'},
-    {id: 'operations', title: '运营 360 整体分析'},
-    {id: 'analysis', title: '穿透式问题分析'},
+    {id: 'home', title: '首页', boardTitle: '储能产品线整体经营分析'},
+    {id: 'overview', title: '全局经营看板', boardTitle: '全局经营看板'},
+    {id: 'operations', title: '运营 360 整体分析', boardTitle: '运营 360 整体分析'},
+    {id: 'analysis', title: '穿透式问题分析', boardTitle: '穿透式问题分析'},
   ];
   const PAGE_BY_ID = Object.fromEntries(PAGES.map(page => [page.id, page]));
 
@@ -268,6 +268,7 @@
       const activeBarStyle = ref({width: '0px', transform: 'translateX(0px)'});
 
       const pageTitle = computed(() => PAGE_BY_ID[page.value]?.title || PAGES[0].title);
+      const boardTitle = computed(() => PAGE_BY_ID[page.value]?.boardTitle || pageTitle.value);
       const boardPage = computed(() => runtime.value?.pages?.[page.value]);
       const pageInsights = computed(() => boardPage.value?.insights || []);
       const tabs = computed(() => PAGES.map(item => ({
@@ -337,7 +338,7 @@
       onBeforeUnmount(() => window.removeEventListener('resize', updateActiveBar));
 
       return {
-        page, runtime, loading, error, pageTitle, boardPage, pageInsights, tabs, gaps, metadataSummary,
+        page, runtime, loading, error, pageTitle, boardTitle, boardPage, pageInsights, tabs, gaps, metadataSummary,
         nav, activeBarStyle,
         dashboardComponent: dashboard,
         slot_name: insight => `insight-${insight.id}`,

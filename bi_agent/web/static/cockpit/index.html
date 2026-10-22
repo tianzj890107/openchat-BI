@@ -8,7 +8,7 @@
   <meta name="cockpit-api-base" content="@@APP_ROOT_PATH@@/api/cockpit">
   <title>储小策 · 经营驾驶舱</title>
   <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-ui.min.css?v=b1ee836d">
-  <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/cockpit.css?v=proui-dashboard-v4">
+  <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/cockpit.css?v=proui-dashboard-v5">
   <script src="@@APP_ROOT_PATH@@/static/vendor/antd/lib/vue.global.js"></script>
   <script src="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-bi-ui.min.js?v=c38cbf36"></script>
 </head>
@@ -39,7 +39,8 @@
                    :components="boardPage.components"
                    :template-registry="runtime.templates"
                    :insights="pageInsights"
-                   mode="build"
+                   :title="boardTitle"
+                   show-header-title
                    :grid-cols="120" :row-height="10" :margin="[8, 8]">
           <template v-for="insight in pageInsights" :key="insight.id"
                     v-slot:[slot_name(insight)]="slotProps">
@@ -64,6 +65,6 @@
     </main>
   </div>
   <noscript>驾驶舱需要启用 JavaScript。</noscript>
-  <script src="@@APP_ROOT_PATH@@/static/cockpit/cockpit.js?v=proui-dashboard-v4"></script>
+  <script src="@@APP_ROOT_PATH@@/static/cockpit/cockpit.js?v=proui-dashboard-v5"></script>
 </body>
 </html>

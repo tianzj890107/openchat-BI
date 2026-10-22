@@ -2,8 +2,9 @@
 
 ## 已确认边界（2026-10-22）
 
-- analytics 主服务提供四个独立入口：`/cockpit/home`、`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 以 `307` 跳到 `overview`，首页不作为默认路由。现有 `/workbench`、旧驾驶舱及 MCP 不替换。
+- analytics 主服务提供四个独立入口：`/cockpit/home`、`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 与 `/` 直接返回 `overview`，首页不作为默认路由。现有 `/workbench`、旧驾驶舱及 MCP 不替换。
 - 四个页面只渲染看板本体，顶部使用 ProUI `pro-tabs` 组件样式保留驾驶舱自己的四个视图 Tab：`首页`、`全局经营看板`、`运营 360 整体分析`、`穿透式问题分析`；不包含宿主工作区、会话区、页面标题或外层筛选栏。
+  看板内部保留 `ProBiDashboard` 自带标题区，外层使用与 `iba-demo` 示例一致的灰底和 20px 内容留白。
 - `/cockpit/home` 直接挂载交付新增的第 4 个模板“储能产品线整体经营分析”（`2113106174095179778`，五项指标＋运营头盔＋重点风险插槽）；`/cockpit/overview` 仍直接作为全局经营看板，两者均可通过 Tab 到达。
 - 两个演示身份使用 Fuxi 传入的单一查询参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员。当前四页内容对两个 `id` 完全一致，两个人都可以访问和操作；`id` 只作身份标记并为将来差异化预留。页面和 API 不使用 `role`，`/cockpit` 跳转和页内跳转都保留当前 `id`。
 - 最新决定：页面直接调用 analytics 主服务执行 AI 分析并回填插槽；不依赖 Fuxi 触发／回填协议。
@@ -23,7 +24,7 @@
 | 全局经营看板 `/cockpit/overview` | 五项经营指标、年度销售目标／实绩／预测、产品结构和团队达成；点击出货量指标可切换出货量模板 |
 | 运营 360 `/cockpit/operations` | 五项指标、运营全流程头盔图、商机漏斗、七个环节 KPI／占比／异常明细；模板区按交付保持空位，点击头盔节点后加载对应环节模板和插槽 |
 | 穿透分析 `/cockpit/analysis` | 五项指标、销售额口径四节点头盔图、风险结构与原因拆解、客户与超期订单；交付 `defaultActiveKey` 生效，默认展示商机风险模板，点击节点切换 |
-| 公共 | 顶部四个 ProUI `pro-tabs` Tab 保留当前 `id`；无宿主壳；卡片标题、图例、表格工具栏和按钮使用 ProUI 组件自身样式 |
+| 公共 | 顶部四个 ProUI `pro-tabs` Tab 保留当前 `id`；无宿主壳；看板使用 `ProBiDashboard` 发布态和自带标题区；卡片标题、图例、表格工具栏和按钮使用 ProUI 组件自身样式 |
 
 入口示例：`/cockpit/home?id=1`、`/cockpit/overview?id=2`、`/cockpit/operations?id=2`、`/cockpit/analysis?id=1`。
 支持 `APP_ROOT_PATH` 下静态资源地址。纯看板页面不渲染旧的角色切换、分析历史或任务抽屉。
@@ -112,6 +113,7 @@ node --check bi_agent/web/static/cockpit/cockpit.js
 
 - 四个路由均返回 200，`/cockpit` 跳到 `overview`，首页不作为默认路由。
 - 顶部有四个 ProUI `pro-tabs` Tab，标签、活动条和当前页正确；`id=1|2` 在 Tab 和路由中保留。
+- 页面外层与 `iba-demo` 示例一致：灰底、20px 内容留白和 `ProBiDashboard` 发布态自带标题区；不使用配置态 `mode="build"`，没有标题区拖入占位。
 - `/cockpit/overview` 仍默认显示全局经营看板，点击出货量指标可切换出货量模板；`/cockpit/home` 显示指标与运营全流程组件。
 - 四页均由 ProUI 卡片渲染；桌面 1440px 和窄屏 480px 无横向溢出。
 - 年度图、头盔图、表格和 KPI 组件正常生成；AI 插槽会请求 `POST /api/cockpit/analyses` 并轮询结果，已用真实模型完成首页与穿透页插槽。
