@@ -37,7 +37,7 @@ registerInsightComponent(
                 {{ metricValue(item) }}
               </span>
             </div>
-            <div class="shipment-risk-summary__note">真实分析摘要：{{ summary }}</div>
+            <div class="shipment-risk-summary__note" :title="summary">真实分析摘要：{{ summary }}</div>
           </article>
 
           <article class="shipment-risk-summary__panel shipment-risk-summary__panel--risk">
@@ -45,7 +45,7 @@ registerInsightComponent(
               <span class="shipment-risk-summary__mark--risk">【风险】</span>
               超期订单集中在 {{ records.length }} 条证据记录
             </div>
-            <div v-for="record in records.slice(0, 5)" :key="record.id">
+            <div v-for="record in records.slice(0, 3)" :key="record.id">
               <span class="shipment-risk-summary__num--risk">{{ record.customer }} · {{ record.department }}：</span>
               {{ record.id }}，{{ record.amount }} 亿元，超期 {{ record.overdueDays }} 天。
             </div>
@@ -58,8 +58,14 @@ registerInsightComponent(
               {{ causes.filter(item => item.status !== 'supported').length }} 项
             </div>
             <div v-for="cause in causes" :key="cause.id">
-              <span class="shipment-risk-summary__num--cause">{{ causeMeta(cause) }}：</span>{{ cause.title }}。{{ cause.description }}
+              <span class="shipment-risk-summary__num--cause">{{ causeMeta(cause) }}：</span>{{ cause.title }}
             </div>
+            <details v-if="causes.length" class="shipment-risk-summary__details">
+              <summary>查看原因说明</summary>
+              <div v-for="cause in causes" :key="'detail-' + cause.id">
+                <b>{{ cause.title }}</b>：{{ cause.description }}
+              </div>
+            </details>
           </article>
 
           <article class="shipment-risk-summary__panel shipment-risk-summary__panel--suggest">
@@ -70,9 +76,13 @@ registerInsightComponent(
               </div>
               <button type="button" class="shipment-risk-summary__draft" @click="focusTasks">查看任务令</button>
             </div>
-            <div v-for="action in openRecommendations" :key="action.id">
-              <span class="shipment-risk-summary__num--suggest">{{ action.ownerRole }}：</span>
-              {{ action.action }}（验收：{{ action.acceptance }}）
+            <div v-for="action in openRecommendations" :key="action.id" class="shipment-risk-summary__recommendation">
+              <div class="shipment-risk-summary__recommendation-meta">
+                <span class="shipment-risk-summary__num--suggest">{{ action.ownerRole }}</span>
+                <span>{{ deadlineText(action) }}</span>
+              </div>
+              <div>{{ action.action }}</div>
+              <div class="shipment-risk-summary__recommendation-acceptance">验收：{{ action.acceptance }}</div>
             </div>
           </article>
         </template>

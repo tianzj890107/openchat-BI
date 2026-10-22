@@ -53,6 +53,10 @@
 
 .shipment-task-order__summary {
   margin: 10px 0 12px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .shipment-task-order__task {
@@ -68,22 +72,58 @@
 .shipment-task-order__task-title {
   flex: 1;
   min-width: 0;
+  overflow-wrap: break-word;
 }
 
-.shipment-task-order__tag {
-  flex: 1 1 45%;
-  min-width: 0;
-  max-width: 55%;
-  color: #1677ff;
-  text-align: right;
-  overflow-wrap: anywhere;
+.shipment-task-order__deadline {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 10px;
+  background: #f2f4f7;
+  color: #595959;
+  font-size: 12px;
+  line-height: 20px;
 }
 
 .shipment-task-order__meta {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 24px;
-  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 4px;
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.shipment-task-order__owner {
+  color: #1677ff;
+}
+
+.shipment-task-order__acceptance {
+  flex-basis: 100%;
+  overflow-wrap: break-word;
+}
+
+.shipment-task-order__detail-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1677ff;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.shipment-task-order__detail {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #fafafa;
+  color: #595959;
+  font-size: 12px;
+  line-height: 20px;
+  overflow-wrap: break-word;
 }
 
 .shipment-task-order__label {

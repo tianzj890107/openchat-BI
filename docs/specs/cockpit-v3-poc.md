@@ -55,6 +55,12 @@
 才强制刷新。插槽入口从自身 URL 读取版本串，再以同一版本动态加载 registry、shared 和 12 个子组件；
 CSS 查询串也使用该版本，避免部署后继续命中旧模块或旧样式缓存。
 
+分析结果使用 `compact-v1` 契约：摘要、原因、措施和验收只保留可执行短文本，责任角色为单一角色，
+期限改用 `deadlineDays` 工作日，补充背景放入可选 `detail`；缓存 scope 包含契约版本，旧结果不会被
+继续复用。前端将摘要限制为 3–4 行，原因、证据和限制默认折叠，建议按“措施 + 责任角色 + 期限 +
+验收”紧凑排列。含内嵌插槽的 ProUI 卡片为图表/KPI 区保留自适应最小高度，插槽使用剩余空间并在
+内部滚动，避免固定卡片高度把 KPI 子卡压缩为 0–8px。
+
 运营页默认显示 `bid-status-note`，点击头盔节点后按对应模板挂载 `quote-summary`、`bid-summary`、
 `order-sign-summary`；穿透页默认显示 `sales-shipment-issues`、`opportunity-risk`、
 `opportunity-coverage-note`，点击订单接收和发货节点后挂载 `order-risk-summary`、
@@ -105,7 +111,7 @@ Vue 版本为 3.5.25，哈希一致，复用原有文件。
   tests/test_cockpit_poc.py tests/test_cockpit_resource_contract.py tests/test_cockpit_metadata.py
 ```
 
-当前结果：`37 passed`。JavaScript 语法检查：
+当前结果：`40 passed`。JavaScript 语法检查：
 
 ```bash
 node --check bi_agent/web/static/cockpit/cockpit.js

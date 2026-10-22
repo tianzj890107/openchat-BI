@@ -8,7 +8,7 @@ import json
 import os
 import threading
 import time
-from typing import Literal
+from typing import Annotated, Literal
 from pydantic import BaseModel, Field, ConfigDict
 from open_claude.tools import register_tool
 from bi_agent.llm.provider import stream_message
@@ -23,23 +23,25 @@ class StrictModel(BaseModel):
 
 class Cause(StrictModel):
     id:str=Field(min_length=1,max_length=80)
-    title:str=Field(min_length=1,max_length=150)
-    description:str=Field(min_length=1,max_length=1200)
+    title:str=Field(min_length=1,max_length=80)
+    description:str=Field(min_length=1,max_length=320)
     status:Literal["supported","hypothesis"]
     evidenceIds:list[str]=Field(min_length=1,max_length=20)
 
 class Recommendation(StrictModel):
     id:str=Field(min_length=1,max_length=80)
     causeIds:list[str]=Field(min_length=1,max_length=20)
-    action:str=Field(min_length=1,max_length=1000)
-    ownerRole:str=Field(min_length=1,max_length=100)
-    acceptance:str=Field(min_length=1,max_length=600)
+    action:str=Field(min_length=1,max_length=160)
+    ownerRole:str=Field(min_length=1,max_length=40)
+    deadlineDays:int=Field(ge=1,le=365)
+    acceptance:str=Field(min_length=1,max_length=180)
+    detail:str=Field(default="",max_length=600)
 
 class Result(StrictModel):
-    summary:str=Field(min_length=1,max_length=2000)
+    summary:str=Field(min_length=1,max_length=800)
     causes:list[Cause]=Field(min_length=1,max_length=8)
     recommendations:list[Recommendation]=Field(min_length=1,max_length=8)
-    limitations:list[str]=Field(min_length=1,max_length=10)
+    limitations:list[Annotated[str,Field(min_length=1,max_length=300)]]=Field(min_length=1,max_length=10)
 
 
 def validate_result(raw, evidence, seen):
@@ -63,10 +65,11 @@ def run_analysis(evidence, context, cancel, on_progress, provider=stream_message
     prompt='''你是储能经营驾驶舱分析员。先调用 CockpitEvidenceQuery 取证，再仅返回 JSON，不要 Markdown。
 所有数据是演示数据。不要发明数据、因果、人员、外部信息或已实现收益。只分析当前环节和筛选范围。
 汇总指标不能证明根因；supported 只表示演示处理记录支持，不是实际业务验证；推断标为 hypothesis。
-数值事实由服务端卡片展示，正文尽量不要重复数字或自行预测。任务只建议责任角色和验收标准。
-输出字段严格为：summary 字符串；causes 数组 [{id,title,description,status:"supported"或"hypothesis",evidenceIds:[已查询证据ID]}]；
-recommendations 数组 [{id,causeIds:[原因ID],action,ownerRole,acceptance}]；limitations 字符串数组。
-禁止输出额外字段。每项建议引用原因。证据不足要直说并提出核实动作。'''
+数值事实由服务端卡片展示，正文不要重复数字或自行预测。
+输出必须短而可执行，建议按原型“措施 / 责任角色 / 期限 / 验收”呈现，详细背景不得塞进 action。
+输出字段严格为：summary（不超过200字）；causes 数组 [{id,title（不超过24字）,description（不超过100字）,status:"supported"或"hypothesis",evidenceIds:[已查询证据ID]}]；
+recommendations 数组 [{id,causeIds:[原因ID],action（不超过50字）,ownerRole（只写一个责任角色，不超过20字）,deadlineDays（1-365的整数，预计完成工作日）,acceptance（不超过50字）,detail（可选的补充说明，不超过200字）}]；
+limitations 字符串数组（每项不超过80字）。禁止输出额外字段。每项建议引用原因。证据不足要直说并提出核实动作。'''
     messages=[{"role":"user","content":json.dumps(dict(context=context,request="诊断当前环节风险，给出可追溯原因和具体改善建议"),ensure_ascii=False)}]
     seen=set(); started=time.monotonic();events=[]
     for iteration in range(6):

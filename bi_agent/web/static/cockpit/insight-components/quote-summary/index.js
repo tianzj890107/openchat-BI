@@ -46,7 +46,7 @@ registerInsightComponent(
             ·
             <span class="quote-summary__green">小于5天 {{ factText('小于5天') }}</span>
           </div>
-          <div class="quote-summary__note">真实分析摘要：{{ summary }}</div>
+          <div class="quote-summary__note" :title="summary">真实分析摘要：{{ summary }}</div>
         </template>
       </section>
     `,

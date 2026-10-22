@@ -7,3 +7,10 @@
   font-size: 13px;
   line-height: 22px;
 }
+
+.bid-status-note__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}

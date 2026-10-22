@@ -18,3 +18,19 @@
 .sales-shipment-issues__num {
   color: #1677ff;
 }
+
+.sales-shipment-issues__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.sales-shipment-issues__details {
+  margin-top: 4px;
+}
+
+.sales-shipment-issues__details summary {
+  color: #1677ff;
+  cursor: pointer;
+}

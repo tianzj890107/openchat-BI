@@ -98,10 +98,33 @@ export function useInsight(props, emit) {
   }
 
   const dismissed = ref([])
+  const expanded = ref([])
   const openRecommendations = computed(() => recommendations.value.filter(item => !dismissed.value.includes(item.id)))
 
   function dismissRecommendation(id) {
     dismissed.value = [...dismissed.value, id]
+  }
+
+  function deadlineText(item) {
+    const days = Number(item?.deadlineDays)
+    if (Number.isFinite(days) && days > 0) return `${days} 个工作日`
+    return item?.deadline || '期限未提供'
+  }
+
+  function recommendationDetail(item) {
+    return item?.detail || item?.acceptance || ''
+  }
+
+  function hasRecommendationDetail(item) {
+    return Boolean(item?.detail && item.detail !== item.acceptance)
+  }
+
+  function toggleRecommendationDetail(id) {
+    expanded.value = expanded.value.includes(id) ? expanded.value.filter(item => item !== id) : [...expanded.value, id]
+  }
+
+  function isRecommendationExpanded(id) {
+    return expanded.value.includes(id)
   }
 
   return {
@@ -135,6 +158,11 @@ export function useInsight(props, emit) {
     metricValue,
     retry,
     dismissRecommendation,
+    deadlineText,
+    recommendationDetail,
+    hasRecommendationDetail,
+    toggleRecommendationDetail,
+    isRecommendationExpanded,
   }
 }
 

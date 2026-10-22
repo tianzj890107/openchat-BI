@@ -42,7 +42,7 @@ registerInsightComponent(
           <div v-for="cause in causes" :key="cause.id">
             <span class="bid-summary__gray">{{ causeStatus(cause) }}：</span>{{ cause.title }}
           </div>
-          <div class="bid-summary__note">真实分析摘要：{{ summary }}</div>
+          <div class="bid-summary__note" :title="summary">真实分析摘要：{{ summary }}</div>
         </template>
       </section>
     `,

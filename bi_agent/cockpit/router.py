@@ -15,6 +15,8 @@ from .agent import run_analysis
 from .metadata import build_bundle
 from .prototype import PrototypeSource
 
+RESULT_CONTRACT_VERSION="compact-v1"
+
 class Context(BaseModel):
     model_config=ConfigDict(extra="forbid")
     id:int=Field(default=1,ge=1,le=2)
@@ -71,7 +73,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
     def context_value(c,s):
         value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=s["snapshotId"],sourceMode=c.source)
         return value
-    def scope(c,s):return hashlib.sha256(json.dumps(context_value(c,s),sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    def scope(c,s):
+        value=context_value(c,s);value["resultContract"]=RESULT_CONTRACT_VERSION
+        return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     def worker(st,item,evidence,cancel):
         try:
             st.update_analysis(item["id"],status="running",evidence=evidence,progress="读取当前快照")

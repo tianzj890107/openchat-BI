@@ -34,19 +34,26 @@ registerInsightComponent(
             <strong class="shipment-task-order__title">出货风险解决任务令</strong>
             <span class="shipment-task-order__sub">责任角色、目标和验收来自当前分析</span>
           </div>
-          <div class="shipment-task-order__summary">{{ summary }}</div>
+          <div class="shipment-task-order__summary" :title="summary">{{ summary }}</div>
           <article v-for="(item, index) in openRecommendations" :key="item.id" class="shipment-task-order__task">
             <div class="shipment-task-order__task-head">
               <span class="shipment-task-order__no">{{ index + 1 }}</span>
-              <strong class="shipment-task-order__task-title">改善建议 {{ index + 1 }}</strong>
-              <span class="shipment-task-order__tag">{{ linkedCauseTitles(item) || '关联原因待补充' }}</span>
+              <strong class="shipment-task-order__task-title">{{ item.action }}</strong>
+              <span class="shipment-task-order__deadline">{{ deadlineText(item) }}</span>
             </div>
             <div class="shipment-task-order__meta">
-              <div><span class="shipment-task-order__label">责任角色：</span>{{ item.ownerRole }}</div>
-              <div><span class="shipment-task-order__label">关联原因：</span>{{ linkedCauseTitles(item) || '未提供' }}</div>
+              <span class="shipment-task-order__owner">{{ item.ownerRole || '责任角色未提供' }}</span>
+              <span class="shipment-task-order__acceptance">验收：{{ item.acceptance }}</span>
+              <button v-if="hasRecommendationDetail(item)" type="button" class="shipment-task-order__detail-toggle"
+                      :aria-expanded="String(isRecommendationExpanded(item.id))"
+                      @click="toggleRecommendationDetail(item.id)">
+                {{ isRecommendationExpanded(item.id) ? '收起' : '查看详情' }}
+              </button>
             </div>
-            <div><span class="shipment-task-order__label">处理动作：</span>{{ item.action }}</div>
-            <div><span class="shipment-task-order__label">交付与验收：</span>{{ item.acceptance }}</div>
+            <div v-if="isRecommendationExpanded(item.id)" class="shipment-task-order__detail">
+              <div v-if="linkedCauseTitles(item)"><span class="shipment-task-order__label">关联原因：</span>{{ linkedCauseTitles(item) }}</div>
+              <div>{{ recommendationDetail(item) }}</div>
+            </div>
           </article>
           <div class="shipment-task-order__foot">
             <span class="shipment-task-order__hint">依据 {{ evidenceCount }} 条证据生成，限制：{{ limitations[0] || '未提供' }}</span>

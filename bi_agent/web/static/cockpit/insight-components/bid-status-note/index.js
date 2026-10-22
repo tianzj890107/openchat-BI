@@ -25,7 +25,7 @@ registerInsightComponent(
         </div>
         <template v-if="hasResult">
           <span>中标 {{ factText('中标') }} · 丢标 {{ factText('丢标') }} · </span>
-          {{ summary }}
+          <span class="bid-status-note__summary" :title="summary">{{ summary }}</span>
         </template>
       </section>
     `,

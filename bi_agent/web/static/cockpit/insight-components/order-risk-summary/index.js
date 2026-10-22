@@ -35,7 +35,7 @@ registerInsightComponent(
                 {{ metricValue(item) }}
               </span>
             </div>
-            <div class="order-risk-summary__note">真实分析摘要：{{ summary }}</div>
+            <div class="order-risk-summary__note" :title="summary">真实分析摘要：{{ summary }}</div>
           </article>
 
           <article class="order-risk-summary__panel order-risk-summary__panel--risk">
@@ -53,9 +53,13 @@ registerInsightComponent(
               <span class="order-risk-summary__mark--cause">【原因】</span>
               证据记录中的原因链
             </div>
-            <div v-for="cause in causes" :key="'cause-' + cause.id">
-              <span class="order-risk-summary__num--cause">{{ causeMeta(cause) }}：</span>{{ cause.description }}
-            </div>
+            <details v-if="causes.length" class="order-risk-summary__details">
+              <summary>查看 {{ causes.length }} 项原因说明</summary>
+              <div v-for="cause in causes" :key="'cause-' + cause.id">
+                <span class="order-risk-summary__num--cause">{{ causeMeta(cause) }}：</span>
+                <b>{{ cause.title }}</b>。{{ cause.description }}
+              </div>
+            </details>
           </article>
 
           <article class="order-risk-summary__panel order-risk-summary__panel--suggest">
@@ -63,8 +67,13 @@ registerInsightComponent(
               <span class="order-risk-summary__mark--suggest">【建议】</span>
               按证据链逐项关闭
             </div>
-            <div v-for="action in openRecommendations" :key="action.id">
-              {{ action.action }}（{{ action.ownerRole }}；验收：{{ action.acceptance }}）
+            <div v-for="action in openRecommendations" :key="action.id" class="order-risk-summary__recommendation">
+              <div class="order-risk-summary__recommendation-meta">
+                <span class="order-risk-summary__num--cause">{{ action.ownerRole }}</span>
+                <span>{{ deadlineText(action) }}</span>
+              </div>
+              <div>{{ action.action }}</div>
+              <div class="order-risk-summary__recommendation-acceptance">验收：{{ action.acceptance }}</div>
             </div>
           </article>
         </template>

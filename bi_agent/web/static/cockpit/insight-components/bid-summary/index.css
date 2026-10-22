@@ -29,6 +29,10 @@
 .bid-summary__note {
   margin-top: 6px;
   font-size: 12px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .bid-summary__green {

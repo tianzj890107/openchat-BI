@@ -24,6 +24,13 @@
   color: #8c8c8c;
 }
 
+.order-sign-summary__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .order-sign-summary__green {
   color: #389e0d;
 }

@@ -64,22 +64,31 @@ registerInsightComponent(
             </div>
             <div v-for="(item, index) in openRecommendations" :key="item.id" class="opportunity-risk__item">
               <span class="opportunity-risk__index">{{ index + 1 }}</span>
-              <span class="opportunity-risk__item-text">{{ item.action }}</span>
-              <span class="opportunity-risk__owner">{{ item.ownerRole }}</span>
-              <span class="opportunity-risk__time">验收：{{ item.acceptance }}</span>
+              <div class="opportunity-risk__item-main">
+                <div class="opportunity-risk__item-text">{{ item.action }}</div>
+                <div class="opportunity-risk__item-meta">
+                  <span class="opportunity-risk__owner">{{ item.ownerRole || '责任角色未提供' }}</span>
+                  <span class="opportunity-risk__deadline">{{ deadlineText(item) }}</span>
+                  <span class="opportunity-risk__acceptance">验收：{{ item.acceptance }}</span>
+                  <button v-if="hasRecommendationDetail(item)" type="button" class="opportunity-risk__detail-toggle"
+                          :aria-expanded="String(isRecommendationExpanded(item.id))"
+                          @click="toggleRecommendationDetail(item.id)">
+                    {{ isRecommendationExpanded(item.id) ? '收起' : '查看详情' }}
+                  </button>
+                </div>
+                <div v-if="isRecommendationExpanded(item.id)" class="opportunity-risk__detail">
+                  {{ recommendationDetail(item) }}
+                </div>
+              </div>
               <button type="button" class="opportunity-risk__close" aria-label="关闭这条建议" @click="dismissRecommendation(item.id)">×</button>
             </div>
-            <div class="opportunity-risk__foot">
+            <details class="opportunity-risk__foot">
+              <summary>证据范围与 {{ limitations.length }} 项限制</summary>
               <div>证据范围：{{ contextLine }}；{{ records.length }} 条记录、{{ evidenceCount }} 条证据。</div>
               <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
-            </div>
+            </details>
           </article>
 
-          <article class="opportunity-risk__card opportunity-risk__brief">
-            <div>
-              当前只展示服务端证据包与模型结果：{{ summary }}
-            </div>
-          </article>
         </template>
       </section>
     `,

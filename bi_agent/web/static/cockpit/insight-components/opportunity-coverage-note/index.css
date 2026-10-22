@@ -9,6 +9,20 @@
   margin-top: 6px;
 }
 
+.opportunity-coverage-note__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-height: 20px;
+}
+
+.opportunity-coverage-note__status {
+  color: #595959;
+  font-size: 12px;
+  line-height: 20px;
+}
+
 .opportunity-coverage-note__em {
   color: #cf1322;
   font-weight: 600;
@@ -19,6 +33,22 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;
+}
+
+.opportunity-coverage-note__causes {
+  margin-top: 6px;
+  color: #595959;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.opportunity-coverage-note__causes summary {
+  color: #1677ff;
+  cursor: pointer;
+}
+
+.opportunity-coverage-note__cause + .opportunity-coverage-note__cause {
+  margin-top: 4px;
 }
 
 .opportunity-coverage-note__tag {

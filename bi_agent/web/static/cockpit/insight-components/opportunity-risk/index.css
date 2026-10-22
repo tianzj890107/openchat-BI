@@ -58,12 +58,7 @@
 .opportunity-risk__item {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) 20px;
-  grid-template-areas:
-    'index text close'
-    '. owner .'
-    '. time .';
   column-gap: 12px;
-  row-gap: 4px;
   align-items: flex-start;
 }
 
@@ -116,34 +111,72 @@
 }
 
 .opportunity-risk__index {
-  grid-area: index;
+  grid-column: 1;
   flex: none;
   width: 16px;
   color: #8c8c8c;
 }
 
-.opportunity-risk__item-text {
-  grid-area: text;
+.opportunity-risk__item-main {
+  grid-column: 2;
   min-width: 0;
-  overflow-wrap: anywhere;
+}
+
+.opportunity-risk__item-text {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.opportunity-risk__item-meta {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 20px;
 }
 
 .opportunity-risk__owner {
-  grid-area: owner;
-  min-width: 0;
   color: #1677ff;
-  overflow-wrap: anywhere;
 }
 
-.opportunity-risk__time {
-  grid-area: time;
+.opportunity-risk__deadline {
+  padding: 0 7px;
+  border-radius: 10px;
+  background: #f2f4f7;
+  color: #595959;
+}
+
+.opportunity-risk__acceptance {
   min-width: 0;
   color: #8c8c8c;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+}
+
+.opportunity-risk__detail-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1677ff;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.opportunity-risk__detail {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #fafafa;
+  color: #595959;
+  font-size: 12px;
+  line-height: 20px;
+  overflow-wrap: break-word;
 }
 
 .opportunity-risk__close {
-  grid-area: close;
+  grid-column: 3;
   flex: none;
   padding: 0;
   border: 0;
@@ -159,4 +192,15 @@
   color: #8c8c8c;
   font-size: 12px;
   line-height: 20px;
+}
+
+.opportunity-risk__foot summary {
+  width: max-content;
+  max-width: 100%;
+  color: #1677ff;
+  cursor: pointer;
+}
+
+.opportunity-risk__foot[open] summary {
+  margin-bottom: 4px;
 }

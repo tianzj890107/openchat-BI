@@ -12,7 +12,7 @@ from bi_agent.cockpit.store import Store
 
 
 def valid_result(e):
-    return dict(summary="当前演示记录显示交付卡点，需要逐单核实。",causes=[dict(id="c1",title="处理记录未闭环",description="处理记录支持存在卡点。",status="supported",evidenceIds=[e['records'][0]['id']])],recommendations=[dict(id="r1",causeIds=["c1"],action="核实处理记录并确认完成日期",ownerRole="运营负责人",acceptance="提供逐单关闭证据")],limitations=["演示数据"])
+    return dict(summary="当前演示记录显示交付卡点，需要逐单核实。",causes=[dict(id="c1",title="处理记录未闭环",description="处理记录支持存在卡点。",status="supported",evidenceIds=[e['records'][0]['id']])],recommendations=[dict(id="r1",causeIds=["c1"],action="核实处理记录并确认完成日期",ownerRole="运营负责人",deadlineDays=5,acceptance="提供逐单关闭证据",detail="按记录逐单核实责任人与承诺日期。")],limitations=["演示数据"])
 
 @pytest.mark.parametrize('period',PERIODS)
 @pytest.mark.parametrize('department',DEPARTMENTS)
@@ -44,6 +44,16 @@ def test_aggregate_cannot_prove_cause():
     src=DemoSource();e=src.evidence(src.snapshot(),'shipment');r=valid_result(e)
     r['causes'][0]['evidenceIds']=[e['facts'][0]['id']]
     with pytest.raises(ValueError):validate_result(r,e,{e['facts'][0]['id']})
+
+
+def test_compact_result_contract_requires_short_action_and_deadline():
+    src=DemoSource();e=src.evidence(src.snapshot(),'shipment');seen={e['records'][0]['id']}
+    r=valid_result(e);r['recommendations'][0]['action']='过长建议'*41
+    with pytest.raises(ValueError):validate_result(r,e,seen)
+    r=valid_result(e);r['recommendations'][0].pop('deadlineDays')
+    with pytest.raises(ValueError):validate_result(r,e,seen)
+    r=valid_result(e);r['summary']='过长摘要'*201
+    with pytest.raises(ValueError):validate_result(r,e,seen)
 
 def test_agent_really_calls_evidence_tool_before_completion():
     src=DemoSource();e=src.evidence(src.snapshot(),'shipment');calls=[]
@@ -96,6 +106,7 @@ def test_bootstrap_uses_single_numeric_id_identity(tmp_path):
 def test_task_state_and_revision_guards_are_identity_neutral(tmp_path):
     c=client(tmp_path);a=wait(c,c.post('/api/cockpit/analyses',json={}).json()['id'])
     t=c.post('/api/cockpit/analyses/'+a['id']+'/draft').json();url='/api/cockpit/tasks/'+t['id']
+    assert t['measures'][0]['deadline']=='5 个工作日'
     assert c.post(url,json=dict(id=2,revision=1,action='close',feedback='ok')).status_code==409
     t=c.post(url,json=dict(id=2,revision=1,action='issue')).json();assert t['status']=='issued'
     assert c.post(url,json=dict(id=1,revision=1,action='issue')).status_code==409
@@ -104,6 +115,16 @@ def test_task_state_and_revision_guards_are_identity_neutral(tmp_path):
     t=c.post(url,json=dict(id=1,revision=t['revision'],action='feedback',feedback='演示证据已补充')).json()
     t=c.post(url,json=dict(id=2,revision=t['revision'],action='close',feedback='模拟验收通过')).json()
     assert t['status']=='closed' and t['simulated'] and len(t['audit'])==5
+
+
+def test_task_draft_accepts_legacy_analysis_without_deadline_days(tmp_path):
+    store=Store(tmp_path/'history.sqlite3')
+    analysis=store.create_analysis('legacy',{'stageName':'发货'})
+    analysis=store.update_analysis(analysis['id'],status='completed',result=dict(recommendations=[dict(
+        id='r1',action='核实超期订单',ownerRole='运营负责人',acceptance='完成逐单核实')]))
+    task=store.draft(analysis)
+    assert task['measures'][0]['deadline']=='10 个工作日'
+
 
 def test_cancelled_job_cannot_be_overwritten(tmp_path):
     started=threading.Event();release=threading.Event()

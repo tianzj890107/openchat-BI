@@ -32,24 +32,23 @@ registerInsightComponent(
           </div>
         </div>
         <template v-if="hasResult">
-          <div>
+          <div class="opportunity-coverage-note__summary" :title="summary">真实分析摘要：{{ summary }}</div>
+          <div class="opportunity-coverage-note__status">
             当前商机快照共 {{ records.length }} 条记录：
             <span class="opportunity-coverage-note__em">
               {{ Object.entries(statusCounts).map(([key, value]) => key + ' ' + value + ' 条').join('，') || '状态未提供' }}
             </span>。
-            下列缺口与推进结论均来自 {{ contextLine }} 的真实分析。
           </div>
-          <div>真实分析摘要：{{ summary }}</div>
-          <div v-for="cause in causes" :key="cause.id">
-            <span class="opportunity-coverage-note__em">{{ causeStatus(cause) }}</span>：
-            {{ cause.title }}。{{ cause.description }}
-          </div>
+          <details v-if="causes.length" class="opportunity-coverage-note__causes">
+            <summary>查看 {{ causes.length }} 项原因与证据</summary>
+            <div v-for="cause in causes" :key="cause.id" class="opportunity-coverage-note__cause">
+              <span class="opportunity-coverage-note__em">{{ causeStatus(cause) }}</span>：
+              <b>{{ cause.title }}</b>。{{ cause.description }}
+            </div>
+          </details>
           <div class="opportunity-coverage-note__tags">
             <span v-for="item in facts" :key="item.id" class="opportunity-coverage-note__tag">
               {{ item.label }} {{ metricValue(item) }}
-            </span>
-            <span v-for="cause in causes" :key="'tag-' + cause.id" class="opportunity-coverage-note__tag">
-              {{ cause.title }}
             </span>
           </div>
         </template>

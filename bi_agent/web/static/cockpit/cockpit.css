@@ -14,6 +14,11 @@ body{overflow-x:hidden;background:#f3f5f8;color:#1f2329;font-family:-apple-syste
 .cockpit-board{width:100%;min-width:0;padding:16px 20px 32px;box-sizing:border-box}
 .cockpit-board>.pro-bi-dashboard{width:100%;min-width:0}
 .cockpit-board .pro-bi-dashboard-grid{min-width:0}
+.cockpit-board .pro-bi-comp-wrap--in-card-contain:has(> .pro-bi-comp-wrap__body > .pro-bi-in-card-insight-zone) > .pro-bi-comp-wrap__body > .pro-bi-comp-wrap__content{flex:0 0 auto;min-height:clamp(112px,46%,260px)}
+.cockpit-board .pro-bi-comp-wrap--in-card-contain > .pro-bi-comp-wrap__body > .pro-bi-in-card-insight-zone{flex:1 1 0;min-height:0}
+.cockpit-board .pro-bi-in-card-insight-zone--contain{max-height:100%;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.cockpit-board .pro-bi-in-card-insight-zone--contain::-webkit-scrollbar{width:4px}
+.cockpit-board .pro-bi-in-card-insight-zone--contain::-webkit-scrollbar-thumb{border-radius:4px;background:#c9d1dc}
 .cockpit-insight{margin:0;padding:14px 16px 12px;border:1px solid var(--pro-border-color-light,#e5e9f0);border-radius:8px;background:#fff;color:var(--pro-text-color-primary,#1b2733);box-sizing:border-box}
 .cockpit-insight__hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .cockpit-insight__title{display:flex;align-items:baseline;gap:8px;min-width:0}

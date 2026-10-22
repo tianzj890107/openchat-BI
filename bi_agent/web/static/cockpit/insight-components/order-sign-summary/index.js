@@ -35,7 +35,7 @@ registerInsightComponent(
           <div v-for="item in facts" :key="item.id">
             {{ item.label }}：{{ metricValue(item) }}。
           </div>
-          <div class="order-sign-summary__aside">真实分析摘要：{{ summary }}</div>
+          <div class="order-sign-summary__aside order-sign-summary__summary" :title="summary">真实分析摘要：{{ summary }}</div>
         </template>
       </section>
     `,
