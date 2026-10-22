@@ -8,8 +8,9 @@
 
   const root = document.querySelector('meta[name="app-root"]').content.replace(/\/$/, '');
   const routeRoot = location.pathname.replace(/\/cockpit(?:\/(?:home|overview|operations|analysis))?\/?$/, '');
-  const runtimeUrl = `${root}/static/cockpit/metadata/runtime.json?v=pdt-release-2109836674373566465`;
-  const snapshotsUrl = `${root}/static/cockpit/metadata/pdt-release-2109836674373566465/data-snapshots.json`;
+  const assetVersion = document.querySelector('meta[name="cockpit-version"]')?.content || '1';
+  const runtimeUrl = `${root}/static/cockpit/metadata/runtime.json?v=${encodeURIComponent(assetVersion)}`;
+  const snapshotsUrl = `${root}/static/cockpit/metadata/pdt-release-2109836674373566465/data-snapshots.json?v=${encodeURIComponent(assetVersion)}`;
   const params = new URLSearchParams(location.search);
   const identityId = ['1', '2'].includes(params.get('id')) ? params.get('id') : '1';
   const PAGES = {

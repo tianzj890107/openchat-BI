@@ -124,7 +124,8 @@ def test_static_proui_runtime_is_reproducible_and_uses_release_data():
     html=(cockpit/'index.html').read_text()
     assert '__cockpitQueryDebug' not in js
     assert 'debug' not in html
-    assert 'pdt-release-2109836674373566465' in html
+    assert '@@COCKPIT_VERSION@@' in html
+    assert 'pdt-release-2109836674373566465' in js
 
 
 def test_metadata_api_and_analysis_source_isolation(tmp_path):

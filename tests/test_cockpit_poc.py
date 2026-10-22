@@ -152,6 +152,8 @@ def test_cockpit_page_uses_separate_assets_and_subpath(monkeypatch,tmp_path):
             assert '/gateway/analytics/static/cockpit/cockpit.js' in response.text
             assert '@@APP_ROOT_PATH@@' not in response.text
             assert '@@COCKPIT_PAGE@@' not in response.text
+            assert '@@COCKPIT_VERSION@@' not in response.text
+            assert '<meta name="cockpit-version" content="' in response.text
             assert 'class="rail"' not in response.text
             assert 'class="topbar"' not in response.text
             assert 'class="filterbar"' not in response.text

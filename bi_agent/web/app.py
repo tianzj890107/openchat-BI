@@ -3968,7 +3968,16 @@ COCKPIT_PAGES = frozenset({"home", "overview", "operations", "analysis"})
 
 def _cockpit_html(page: str) -> HTMLResponse:
     html = (STATIC_DIR / "cockpit" / "index.html").read_text(encoding="utf-8")
-    html = html.replace("@@APP_ROOT_PATH@@", APP_ROOT_PATH).replace("@@COCKPIT_PAGE@@", page)
+    snapshot = STATIC_DIR / "cockpit" / "metadata" / "pdt-release-2109836674373566465" / "data-snapshots.json"
+    try:
+        asset_version = str(int(snapshot.stat().st_mtime))
+    except OSError:
+        asset_version = "1"
+    html = (
+        html.replace("@@APP_ROOT_PATH@@", APP_ROOT_PATH)
+        .replace("@@COCKPIT_PAGE@@", page)
+        .replace("@@COCKPIT_VERSION@@", asset_version)
+    )
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 

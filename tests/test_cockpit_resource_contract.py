@@ -69,7 +69,8 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     assert 'new URLSearchParams({id: identityId})' in js
     assert '?${search}' in js
     assert 'role' not in js.lower()
-    assert 'pdt-release-2109836674373566465' in html
+    assert '@@COCKPIT_VERSION@@' in html
+    assert 'pdt-release-2109836674373566465' in js
     assert "source: 'prototype'" not in js
     assert 'layout/' not in js and 'views.json' not in js
 
