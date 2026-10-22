@@ -68,10 +68,12 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     assert "params.get('id')" in js
     assert 'new URLSearchParams({id: identityId})' in js
     assert '?${search}' in js
-    assert 'role' not in js.lower()
+    assert "params.get('role')" not in js
+    assert '"role"' not in js and "'role'" not in js
     assert '@@COCKPIT_VERSION@@' in html
     assert 'pdt-release-2109836674373566465' in js
-    assert "source: 'prototype'" not in js
+    assert "source: 'prototype'" in js
+    assert 'ensureAnalysis' in js and '/analyses/${encodeURIComponent(item.id)}' in js
     assert 'layout/' not in js and 'views.json' not in js
 
 
@@ -97,5 +99,8 @@ def test_four_top_tabs_and_static_proui_dashboard_are_present():
     ]
     assert runtime['pages']['operations']['components']
     assert runtime['pages']['analysis']['components']
-    assert all(page['insights']==[] for page in runtime['pages'].values())
-    assert 'cockpit-insight' not in html and 'cockpit-insight' not in js
+    assert sum(len(page['insights']) for page in runtime['pages'].values())==17
+    assert len(runtime['pages']['analysis']['insights'])==9
+    assert ':insights="pageInsights"' in html
+    assert 'v-slot:[slot_name(insight)]' in html
+    assert "app.component('cockpit-insight', CockpitInsight)" in js

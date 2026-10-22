@@ -23,6 +23,7 @@
         <component :is="dashboardComponent" :key="dashboard.id"
                    :components="dashboard.components"
                    :template-registry="runtime.templates"
+                   :insights="pageInsights"
                    :title="dashboard.name"
                    :description="dashboard.description"
                    :header-layout="dashboard.headerLayout"
@@ -31,6 +32,10 @@
                    :margin="[8, 8]"
                    show-header-title
                    mode="release">
+          <template v-for="insight in pageInsights" :key="insight.id"
+                    v-slot:[slot_name(insight)]="slotProps">
+            <cockpit-insight :insight="insight" :slot-props="slotProps"></cockpit-insight>
+          </template>
         </component>
       </div>
 

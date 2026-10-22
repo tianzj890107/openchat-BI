@@ -98,7 +98,15 @@ def test_static_proui_runtime_is_reproducible_and_uses_release_data():
     for spec in list(stored['pages'].values()) + list(stored['templates'].values()):
         for component in spec['components']:
             assert component['type'] not in prohibited
-    assert all(page['insights']==[] for page in stored['pages'].values())
+    assert {page: len(value['insights']) for page, value in stored['pages'].items()}=={
+        'home': 1, 'overview': 0, 'operations': 7, 'analysis': 9,
+    }
+    assert {slot['id'] for slot in stored['pages']['analysis']['insights']}=={
+        'sales-shipment-issues', 'opportunity-risk', 'opportunity-coverage-note',
+        'sales-bid-summary', 'order-risk-summary', 'shipment-risk-summary',
+        'shipment-overdue-note', 'shipment-cause-breakdown', 'shipment-task-order',
+    }
+    assert all('segments' in slot['embedPath'] for value in stored['pages'].values() for slot in value['insights'])
 
     source=json.loads((RELEASE/'source.json').read_text())
     snapshot=RELEASE/source['snapshot']['file']
@@ -159,4 +167,4 @@ def test_runtime_components_are_release_templates_verbatim():
         files=json.loads(record['data']['configs'])
         assert payload['pages'][page]['components']==files['components']
         assert payload['templates'][tid]['components']==files['components']
-        assert payload['pages'][page]['insights']==[]
+        assert payload['pages'][page]['insights']==release_payload()['pages'][page]['insights']

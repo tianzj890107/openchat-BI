@@ -16,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "web/static/cockpit/metadata"
 RELEASE = ROOT / "pdt-release-2109836674373566465"
+INSIGHTS = ROOT / "iba-demo-1021/insights.json"
 RELEASE_ID = "2109836674373566465"
 PAGE_IDS = {
     "home": "tab-qqzt1nj6",
@@ -76,6 +77,18 @@ def _template_record(record: dict) -> dict:
         },
         "components": _config(record).get("components", []),
     }
+
+
+def _page_insights(template_id: str) -> list[dict]:
+    """Return delivery slots owned by one page for the whole-dashboard renderer."""
+    result = []
+    for slot in json.loads(INSIGHTS.read_text(encoding="utf-8")):
+        value = deepcopy(slot)
+        segments = value.get("embedPath", {}).get("segments") or []
+        if not segments or segments[0].get("templateId") != template_id:
+            continue
+        result.append(value)
+    return result
 
 
 def _collect_gaps(root: dict, templates: dict[str, dict]) -> list[dict]:
@@ -151,7 +164,7 @@ def release_payload() -> dict:
             "templateId": template_id,
             "title": template.get("meta", {}).get("name", page),
             "components": template.get("components", []),
-            "insights": [],
+            "insights": _page_insights(template_id),
         }
 
     components = root_config.get("components", [])

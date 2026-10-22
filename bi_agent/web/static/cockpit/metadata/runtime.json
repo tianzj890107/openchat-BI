@@ -1092,7 +1092,25 @@
           }
         }
       ],
-      "insights": []
+      "insights": [
+        {
+          "id": "focus-risks",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-qqzt1nj6",
+                "templateId": "2113106174095179778"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": "group-ist8eevh"
+          }
+        }
+      ]
     },
     "overview": {
       "id": "overview",
@@ -5122,7 +5140,158 @@
           "parentId": "group-fbf8l4il"
         }
       ],
-      "insights": []
+      "insights": [
+        {
+          "id": "bid-status-note",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "in-card",
+            "anchorId": "group-4croqift",
+            "position": "bottom"
+          }
+        },
+        {
+          "id": "scheme-guide-summary",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-rjjcf4v1",
+                "templateId": "2112059168287408129"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": null
+          }
+        },
+        {
+          "id": "quote-summary",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-rjjcf4v1",
+                "templateId": "2112059463654490114"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": null
+          }
+        },
+        {
+          "id": "tech-plan-summary",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-rjjcf4v1",
+                "templateId": "2112059620722786305"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": null
+          }
+        },
+        {
+          "id": "bid-summary",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-rjjcf4v1",
+                "templateId": "2112059751740260354"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": null
+          }
+        },
+        {
+          "id": "order-sign-summary",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-rjjcf4v1",
+                "templateId": "2112060211964461057"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": null
+          }
+        },
+        {
+          "id": "shipment-summary",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-rjjcf4v1",
+                "templateId": "2112010750949113858"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": null
+          }
+        }
+      ]
     },
     "analysis": {
       "id": "analysis",
@@ -6076,7 +6245,203 @@
           "parentId": "group-dhflgwln"
         }
       ],
-      "insights": []
+      "insights": [
+        {
+          "id": "sales-shipment-issues",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": "group-dhflgwln"
+          }
+        },
+        {
+          "id": "opportunity-risk",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-ryfsat5y",
+                "templateId": "2112062888320483329"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": null
+          }
+        },
+        {
+          "id": "opportunity-coverage-note",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-ryfsat5y",
+                "templateId": "2112062888320483329"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "in-card",
+            "anchorId": "group-9ypz7vwt",
+            "position": "bottom"
+          }
+        },
+        {
+          "id": "sales-bid-summary",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-ryfsat5y",
+                "templateId": "2112059751740260354"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": null
+          }
+        },
+        {
+          "id": "order-risk-summary",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-ryfsat5y",
+                "templateId": "2112064105591390209"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": null
+          }
+        },
+        {
+          "id": "shipment-risk-summary",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-ryfsat5y",
+                "templateId": "2112064144187375617"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": null
+          }
+        },
+        {
+          "id": "shipment-overdue-note",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-ryfsat5y",
+                "templateId": "2112064144187375617"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "in-card",
+            "anchorId": "share-bar-zob5z1uu",
+            "position": "bottom"
+          }
+        },
+        {
+          "id": "shipment-cause-breakdown",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-ryfsat5y",
+                "templateId": "2112064144187375617"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": "share-bar-zob5z1uu"
+          }
+        },
+        {
+          "id": "shipment-task-order",
+          "embedPath": {
+            "segments": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "kind": "template",
+                "containerId": "template-ryfsat5y",
+                "templateId": "2112064144187375617"
+              }
+            ]
+          },
+          "placement": {
+            "mode": "insert",
+            "afterId": "table-md1iftaj"
+          }
+        }
+      ]
     }
   },
   "templates": {
