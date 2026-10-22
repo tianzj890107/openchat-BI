@@ -13,5 +13,10 @@ OUTPUT = ROOT / "bi_agent/web/static/cockpit/metadata/runtime.json"
 
 if __name__ == "__main__":
     payload = write_runtime(OUTPUT)
-    count = sum(len(items) for items in payload["mounts"].values())
-    print(f"wrote {OUTPUT.relative_to(ROOT)}: {len(payload['components'])} components, {count} mounts")
+    counts = ", ".join(
+        f"{page}={spec['total']}" for page, spec in payload["counts"].items()
+    )
+    print(
+        f"wrote {OUTPUT.relative_to(ROOT)}: "
+        f"{len(payload['templates'])} templates, {counts}"
+    )

@@ -157,8 +157,8 @@ def test_cockpit_page_uses_separate_assets_and_subpath(monkeypatch,tmp_path):
             assert 'class="filterbar"' not in response.text
             assert 'class="page-heading"' not in response.text
     assert c.get('/static/cockpit/vendor/pro-bi-ui.min.js').status_code==200
-    assert c.get('/static/cockpit/layout/views.json').status_code==200
     assert c.get('/static/cockpit/metadata/runtime.json').status_code==200
+    assert c.get('/static/cockpit/layout/views.json').status_code==404
     assert c.get('/cockpit/not-a-page').status_code==404
     assert c.get('/api/cockpit/bootstrap').json()['supportsLiveSource'] is False
 

@@ -200,29 +200,23 @@ def build_bundle():
                 deep=p['S1_STAGE_DEEP'].get('订单接收')
                 if deep:chart(c,tid,[dict(name=x[0],value=x[-1]) for x in deep['products' if '产品' in c['title'] else 'customers']]);continue
     issue('MISSING_INTERACTIONS','交付未包含红区报价专项跳转、毛利率／净利率／回款明细、年度／月度独立状态、图表下钻与客户操作列动作；只启用可核对的销售额／出货量切换及节点模板切换。其他交互仍缺对应模板、动作契约和数据')
-    issue('LAYOUT_DIFFERENCE','交付采用120列画布布局，与原型HTML的折叠块、卡片密度、分页、配色和宿主侧栏不完全相同；当前保留元数据布局，尚缺与原型一致的完整布局及主题配置；运营页还缺周期／标杆对照组件和发货第四项订单履约率卡片')
+    issue('LAYOUT_DIFFERENCE','页面使用ProUI组件的120列画布布局和组件自带样式，不再对齐原型HTML的折叠块、卡片密度、配色和宿主侧栏；运营页仍缺周期／标杆对照组件和发货第四项订单履约率卡片')
     issue('VOLUME_CONVERSION','原型部分电量展示按91／319由金额折算；当前沿用该原型规则，不视为真实电量实绩。月度达成10–12月包含预测，不能与累计实绩直接相加')
-    overview=registry[PAGE_IDS['overview']]['components']
-    bottom=max(c['position']['y']+c['position']['h'] for c in overview if not c.get('parentId'))
-    overview.append(dict(id='cockpit-prototype-risks',type='cockpit-risk-list',title='重要经营风险',position=dict(x=0,y=bottom+1,w=120,h=36),
-        risks=[dict(level=r[0],summary=r[1],metric=r[2],category=r[3],stage={'出货':'shipment','投标':'bid','订单签单':'order','订单变更':'order','技术方案':'technical'}.get(r[3]),missing=r[4]=='price') for r in p['RISKS']]))
-    overrides.append(dict(componentId='cockpit-prototype-risks',reason='交付未含首页风险列表；保留原型7条风险文案，使用宿主只读卡片补充，不调用任务令写接口'))
     # Reuse delivered shipment detail and volume annual metadata, rather than a wrong target.
     ship=deepcopy(registry['2112064144187375617']['components']);height=max(c['position']['y']+c['position']['h'] for c in ship)
     ship.append(dict(id='cockpit-shipment-annual',type='template',title='年度出货',position=dict(x=0,y=height,w=120,h=40),baseConfig=dict(defaultTemplateId='2112010750949113858')))
     registry[STAGE_TEMPLATES['shipment']]=dict(templateId=STAGE_TEMPLATES['shipment'],meta=dict(name='发货履约与年度出货（交付组件组合）'),components=ship)
-    # Fill genuinely missing source cells with a visible gap, never a guessed chart.
+    # Report genuinely missing source cells without injecting a fake renderable component.
     for tid,t in list(registry.items()):
         ids={c['id'] for c in t['components']}
         for c in list(t['components']):
             for child in c.get('children',[]):
                 if child not in ids:
-                    t['components'].append(dict(id=child,type='cockpit-gap',title='交付元数据缺失组件',parentId=c['id'],gap='缺少 '+child+' 的定义，无法按原型渲染'))
                     issue('CHILD_DEFINITION_MISSING','缺少 '+child+' 的组件定义',templateId=tid,componentId=child)
     for tid,t in registry.items():
         for c in t['components']:
             key=c.get('cockpitBindingKey',tid+'/'+c['id'])
-            if c['type'] not in CONTAINERS|{'cockpit-gap','cockpit-risk-list'} and key not in datasets:
+            if c['type'] not in CONTAINERS and key not in datasets:
                 c['cockpitBindingKey']=key;c['dataConfig']={'sourceType':'request'}
                 datasets[key]={'data':None,'error':'此组件缺少与原型一致的数据或字段配置，见差异清单'}
                 issue('DATA_BINDING_MISSING','缺少原型一致的数据／字段配置：'+c['title'],templateId=tid,componentId=c['id'])

@@ -1,9 +1,7 @@
 html,body,#app{min-height:100%;margin:0;background:#fff}
 body{overflow-x:hidden}
 [v-cloak]{display:none}
-.cockpit-main{width:100%;max-width:1480px;min-height:100vh;margin:0 auto;background:#fff}
-.cockpit-board{height:auto!important;max-height:none!important;min-height:0!important;overflow:visible!important;flex:none!important;padding:16px 20px 8px}
-.cockpit-main[data-page="overview"] .cockpit-board{padding:12px 18px 10px}
+.cockpit-main{width:100%;max-width:1600px;min-height:100vh;margin:0 auto;background:#fff}
 .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 
 .cockpit-tabs{position:sticky;top:0;z-index:20;display:flex;align-items:flex-end;gap:4px;padding:9px 20px 0;background:#fff;border-bottom:1px solid #E3E8EF}
@@ -12,28 +10,9 @@ body{overflow-x:hidden}
 .cockpit-tabs a.active{background:#F4F8FF;color:#1E6BE6;font-weight:700}
 .cockpit-tabs a.active::after{content:'';position:absolute;left:12px;right:12px;bottom:-1px;height:2px;border-radius:2px 2px 0 0;background:#1E6BE6}
 
-/* Missing delivery components keep their prototype box size but render no substitute content. */
-.prototype-gap{background:transparent!important;border-color:transparent!important;box-shadow:none!important;outline:0!important;color:transparent!important}
-.prototype-gap>*{display:none!important}
-.prototype-gap::before,.prototype-gap::after{display:none!important}
-.prototype-gap[data-action]{cursor:pointer}
-.prototype-gap[data-action]:hover{outline:1px dashed #d7deea!important;outline-offset:-1px}
-.prototype-gap[data-action]:focus-visible{outline:3px solid #90a7f4!important;outline-offset:-3px}
-.cockpit-primary-risk.prototype-gap{overflow:visible}
-.prototype-gap>.cockpit-gap-actions{display:flex!important;position:absolute;left:30px;bottom:24px;z-index:2}
-.cockpit-pro-mount{position:relative;overflow:hidden!important;padding:0!important;background:#fff!important;border-color:transparent!important;box-shadow:none!important;outline:0!important}
-.cockpit-pro-mount>.pro-bi-comp-wrap{height:100%!important;min-height:0!important;background:transparent!important;border:0!important;box-shadow:none!important}
-.cockpit-pro-mount .pro-bi-comp-wrap__body,.cockpit-pro-mount .pro-bi-comp-wrap__content{height:100%!important;min-height:0!important}
-.cockpit-pro-mount .pro-bi-comp-wrap__content{padding:0!important}
-.cockpit-pro-mount canvas{max-width:100%}
-.cockpit-gap-actions button{font:inherit;font-size:13px;font-weight:650;border-radius:8px;padding:10px 20px;cursor:pointer}
-.cockpit-gap-actions .cockpit-risk-primary{background:#0878EA;border:1px solid #0878EA;color:#fff}
-.cockpit-gap-actions .cockpit-risk-primary:hover{background:#0865D1}
-.cockpit-gap-actions .cockpit-risk-secondary{background:#EFF6FE;border:1px solid #EFF6FE;color:#4D83AF}
-.cockpit-gap-actions .cockpit-risk-secondary:hover{background:#E1EEFE}
-.cockpit-gap-focused{outline:2px dashed #b7c8f4!important;outline-offset:-2px}
-button:disabled{opacity:1!important;cursor:default}
-button[data-action],[data-action][role="button"]{cursor:pointer}
+.cockpit-board{width:100%;min-width:0;padding:12px 18px 10px;box-sizing:border-box}
+.cockpit-board>.pro-bi-dashboard{width:100%;min-width:0}
+.cockpit-board .pro-bi-dashboard-grid{min-width:0}
 
 .cockpit-state{margin:40px auto;max-width:560px;padding:24px;border:1px solid #e3e8ef;border-radius:12px;color:#5b6b7c;text-align:center;background:#fff}
 .cockpit-state.error{border-color:#f3c7c7;background:#fff7f7;color:#b33b3b}
@@ -43,21 +22,15 @@ button[data-action],[data-action][role="button"]{cursor:pointer}
 .cockpit-gap-body{padding:8px 2px 4px}
 .cockpit-gap-body p{margin:0 0 10px;line-height:1.7}
 .cockpit-gap-body ul{display:grid;gap:7px;margin:0;padding:0;list-style:none}
-.cockpit-gap-body li{display:grid;grid-template-columns:minmax(180px,220px) 66px minmax(0,1fr);gap:10px;align-items:baseline;padding:7px 10px;border:1px solid #edf0f4;border-radius:7px;background:#fafbfd}
+.cockpit-gap-body li{display:grid;grid-template-columns:minmax(180px,220px) minmax(0,1fr);gap:10px;align-items:baseline;padding:7px 10px;border:1px solid #edf0f4;border-radius:7px;background:#fafbfd}
 .cockpit-gap-body li b{color:#34445a}
-.cockpit-gap-body li span{color:#8b99a9;font-variant-numeric:tabular-nums}
 .cockpit-gap-body li small{color:#7b899b;line-height:1.6}
 .cockpit-gap-meta{color:#8b99a9;font-size:11px;margin-top:12px!important}
-
-.cockpit-toast{position:fixed;left:50%;bottom:26px;z-index:50;transform:translateX(-50%);padding:9px 16px;border-radius:8px;background:#1b2733;color:#fff;font-size:13px;box-shadow:0 8px 28px #1b273333}
 
 @media (max-width:900px){
   .cockpit-tabs{padding:7px 12px 0;overflow-x:auto}
   .cockpit-tabs a{font-size:12.5px;padding-left:11px;padding-right:11px}
-  .cockpit-board{padding:12px 12px 8px!important}
+  .cockpit-board{padding:10px 8px 8px}
   .cockpit-gap-report{margin:2px 12px 24px}
-  .cockpit-gap-body li{grid-template-columns:1fr auto}
-  .cockpit-gap-body li small{grid-column:1/-1}
-  .prototype-gap>.cockpit-gap-actions{left:16px;bottom:14px;gap:8px!important}
-  .cockpit-gap-actions button{font-size:12px;padding:7px 14px}
+  .cockpit-gap-body li{grid-template-columns:1fr}
 }

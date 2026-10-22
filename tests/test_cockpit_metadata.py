@@ -1,4 +1,4 @@
-"""Delivered metadata, prototype fidelity, and analysis evidence must agree."""
+"""Delivered metadata, native ProUI runtime, and analysis evidence must agree."""
 import json
 
 import pytest
@@ -16,18 +16,22 @@ def test_compilation_preserves_upstream_and_all_renderable_data_is_explicit():
     assert (ROOT/'template-registry.json').read_bytes()==original
     assert set(b['pages'])=={'overview','operations','analysis'}
     assert len(b['bindings'])==100
+    reported={(g.get('templateId'),g.get('componentId')) for g in b['gaps'] if g['code']=='CHILD_DEFINITION_MISSING'}
     unavailable=[]
     for tid,t in b['templates'].items():
         ids={c['id'] for c in t['components']}
         for c in t['components']:
-            assert set(c.get('children',[]))<=ids
+            for child in c.get('children',[]):
+                if child not in ids:assert (tid,child) in reported
             if c.get('dataConfig',{}).get('sourceType')=='request':
                 key=c['cockpitBindingKey']
                 assert key in b['datasets']
                 if isinstance(b['datasets'][key],dict) and b['datasets'][key].get('error'):unavailable.append(c['id'])
     assert unavailable==[]
-    missing=[c for c in b['templates']['2112062888320483329']['components'] if c['type']=='cockpit-gap']
-    assert [c['id'] for c in missing]==['share-bar-79fsomq9']
+    components=b['templates']['2112062888320483329']['components']
+    assert all(c['type'] not in {'cockpit-gap','cockpit-risk-list'} for c in components)
+    missing=next(g for g in b['gaps'] if g['code']=='CHILD_DEFINITION_MISSING')
+    assert missing['componentId']=='share-bar-79fsomq9'
 
 
 def test_node_templates_and_insight_paths_are_consistent():
@@ -70,14 +74,28 @@ def test_static_proui_runtime_is_reproducible_and_uses_bound_data():
     stored=json.loads(path.read_text())
     assert stored==runtime_payload()
     assert stored['source']['commit']=='17152091ffce520d1e05a419c4192f7762db4b26'
-    assert len(stored['components'])==7
-    assert sum(len(v) for v in stored['mounts'].values())==19
-    for entry in stored['components'].values():
-        assert entry['proComponent'] in {'ProBarChart','ProDualAxisChart','ProMiniCpGraph'}
-        assert entry['component']['showHeader'] is False
-        assert entry['data'] is not None
-    for view in ('overview-sales','overview-volume','operations-shipment','analysis-shipment'):
-        assert stored['mounts'][view]
+    assert stored['renderer']=='ProBiDashboard'
+    assert set(stored['pages'])=={'overview','operations','analysis'}
+    assert stored['counts']['overview']=={
+        'total':9,'types':{'progress':5,'template':1,'button-group':1,'title':1,'group':1},'withData':5,
+    }
+    assert stored['counts']['operations']['total']==43
+    assert stored['counts']['operations']['withData']==33
+    assert stored['counts']['analysis']=={
+        'total':10,'types':{'progress':5,'mini-cpgraph':1,'template':1,'group':1,'title':1,'button-group':1},'withData':6,
+    }
+    assert len(stored['templates'])==15
+    prohibited={'cockpit-gap','cockpit-risk-list'}
+    for spec in list(stored['pages'].values()) + list(stored['templates'].values()):
+        for component in spec['components']:
+            assert component['type'] not in prohibited
+            if component.get('cockpitBindingKey'):
+                config=component['dataConfig']
+                assert config['sourceType']=='mock'
+                assert config['mockData'] is not None
+    assert any(g['code']=='CHILD_DEFINITION_MISSING' for g in stored['gaps'])
+    assert all(g['code']!='UNSUPPORTED_COMPONENT' for g in stored['gaps'])
+    assert all(g['code']!='PROTOTYPE_LAYOUT_RETIRED' for g in stored['gaps'])
 
 
 def test_metadata_api_and_analysis_source_isolation(tmp_path):

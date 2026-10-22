@@ -44,28 +44,22 @@ def test_upstream_missing_children_are_reported_without_mutating_metadata():
     assert actual==reported
 
 
-def test_prototype_layout_manifest_is_traceable_and_shell_free():
-    fixture=json.loads((ROOT.parents[2]/'cockpit/fixtures/v3-prototype.json').read_text())
-    manifest=json.loads((ROOT/'layout/views.json').read_text())
-    assert manifest['source']=={
-        'file': fixture['_source']['file'],
-        'sha256': fixture['_source']['sha256'],
-    }
-    expected={'overview','overview-sales','overview-volume','operations','analysis-shipment'}
-    assert expected<=set(manifest['views'])
-    assert len(manifest['gaps'])==119
-    assert all(manifest['views'][name] for name in expected)
-    for name,html in manifest['views'].items():
-        assert 'onclick=' not in html
-        assert 'javascript:' not in html
-        assert '<aside' not in html
-        assert '<nav' not in html
-        assert '<iframe' not in html
-        ids=[gap['id'] for gap in manifest['gaps'] if gap['view']==name]
-        assert len(ids)==len(set(ids))
-    assert any(gap['key']=='helmet' for gap in manifest['gaps'])
-    assert any(gap['key']=='stage-tile' and gap['view']=='operations' for gap in manifest['gaps'])
-    assert any(gap['key']=='ai-card' and gap['view']=='analysis-shipment' for gap in manifest['gaps'])
+def test_prototype_layout_is_retired_and_runtime_contains_native_components():
+    assert not (ROOT/'layout').exists()
+    runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
+    assert runtime['renderer']=='ProBiDashboard'
+    assert set(runtime['pages'])=={'overview','operations','analysis'}
+    assert runtime['pages']['overview']['title']=='全局经营看板'
+    assert len(runtime['templates'])==15
+    prohibited={'cockpit-gap','cockpit-risk-list'}
+    html=(ROOT/'index.html').read_text()
+    js=(ROOT/'cockpit.js').read_text()
+    assert 'prototype.css' not in html
+    assert 'views.json' not in html and 'views.json' not in js
+    assert 'ProBiDashboard' in js
+    assert 'mockData' not in js
+    for spec in list(runtime['pages'].values()) + list(runtime['templates'].values()):
+        assert all(c['type'] not in prohibited for c in spec['components'])
 
 
 def test_fuxi_identity_and_missing_risk_actions_are_wired():
@@ -73,28 +67,22 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     html=(ROOT/'index.html').read_text()
     assert "params.get('id')" in js
     assert "new URLSearchParams({id: identityId, ...extra})" in js
-    assert 'route:analysis:shipment' in js
-    assert 'advice:shipment' in js
-    assert 'cockpit-gap-actions' in js
-    assert 'prototype-layout-v5' in html
+    assert 'proui-dashboard-v1' in html
+    assert 'prototype' not in js.lower()
 
 
-def test_four_top_tabs_and_static_proui_mounts_are_present():
+def test_three_top_tabs_and_static_proui_dashboard_are_present():
     js=(ROOT/'cockpit.js').read_text()
     html=(ROOT/'index.html').read_text()
     runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
-    manifest=json.loads((ROOT/'layout/views.json').read_text())
     assert 'class="cockpit-tabs"' in html
-    for label in ('首页','全局经营看板','运营 360 整体分析','穿透式问题分析'):
+    for label in ('全局经营看板','运营 360 整体分析','穿透式问题分析'):
         assert label in js
+    assert '首页' not in js
     assert "fetchJson(runtimeUrl)" in js
-    assert 'ProUIBi[entry.proComponent]' in js
-    assert "onNodeClick: openGraphNode" in js
-    gaps={gap['id']:gap for gap in manifest['gaps']}
-    assert sum(len(items) for items in runtime['mounts'].values())==19
-    for view,items in runtime['mounts'].items():
-        for gap_id,spec in items.items():
-            assert gap_id in gaps and gaps[gap_id]['view']==view
-            assert spec['bindingKey'] in runtime['components']
-    assert runtime['mounts']['operations-shipment']['operations-shipment:helmet:0']['graphActiveKey']=='2109848488926822402'
-    assert runtime['mounts']['analysis-shipment']['analysis-shipment:helmet:0']['graphActiveKey']=='2109840696539136002'
+    assert "window.ProUIBi?.ProBiDashboard" in js
+    assert ":components=\"runtime.pages[page].components\"" in html
+    assert ":template-registry=\"runtime.templates\"" in html
+    assert runtime['pages']['overview']['id']=='overview'
+    assert runtime['pages']['operations']['components']
+    assert runtime['pages']['analysis']['components']

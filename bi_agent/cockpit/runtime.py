@@ -1,106 +1,143 @@
 """Export the browser-safe ProUI runtime used by the static cockpit page.
 
 The deployed 8876 cockpit is served as static files, so it cannot rely on the
-FastAPI metadata endpoint. This module selects the components that have an
-exact ProUI implementation and writes their delivered metadata and bound demo
-data into one frozen runtime JSON document.
+FastAPI metadata endpoint. This module materializes the delivered page and
+template metadata with their bound demo rows as ProUI ``mockData``. The browser
+therefore renders standard ProUI cards without AP queries or prototype DOM.
 """
 from __future__ import annotations
 
 import json
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 
 from .data import NAMES
-from .metadata import OPS_NODES, PAGE_IDS, RISK_NODES, ROOT, build_bundle
+from .metadata import PAGE_IDS, ROOT, build_bundle
 
+PAGE_NAMES = {
+    "overview": "全局经营看板",
+    "operations": "运营 360 整体分析",
+    "analysis": "穿透式问题分析",
+}
 PRO_COMPONENTS = {
     "bar": "ProBarChart",
     "bar-line": "ProDualAxisChart",
     "funnel": "ProFunnelChart",
     "horizontal-bar": "ProHorizontalBarChart",
+    "kpiCard": "ProKpiCard",
     "mini-cpgraph": "ProMiniCpGraph",
+    "progress": "ProProgressCard",
     "share-bar": "ProShareBar",
+    "table": "ProDataTable",
+    "title": "ProTitle",
 }
-OUTER_LEGEND_TYPES = {"bar", "bar-line", "funnel", "horizontal-bar"}
-OPERATIONS_GRAPH = f"{PAGE_IDS['operations']}/mini-cpgraph-2dz7yyyf"
-ANALYSIS_GRAPH = f"{PAGE_IDS['analysis']}/mini-cpgraph-93j6k86p"
-ANNUAL_SALES = {
-    "monthly": "2112009587516293121/bar-line-stx32yim",
-    "products": "2112009587516293121/bar-tebs5kjx",
-    "teams": "2112009587516293121/bar-line-swk58lta",
+CONTAINER_TYPES = {
+    "group": "ProBiGroupContainer",
+    "template": "ProBiTemplateContainer",
+    "tab-container": "ProBiTabContainer",
+    "segmented-strip": "ProBiSegmentedStrip",
+    "split-container": "ProBiSplitContainer",
+    "button-group": "ProButtonGroup",
 }
-ANNUAL_VOLUME = {
-    "monthly": "2112010750949113858/bar-nfodriiq",
-    "teams": "2112010750949113858/bar-uvogx9g6",
+RENDERABLE_TYPES = set(PRO_COMPONENTS) | set(CONTAINER_TYPES)
+GAP_CODES = {
+    "AP_BINDINGS_CONFLICT",
+    "CHILD_DEFINITION_MISSING",
+    "DATA_BINDING_MISSING",
+    "MISSING_INTERACTIONS",
+    "PRICE_TEMPLATE_MISSING",
 }
 
 
-def _component_index(bundle: dict) -> dict[tuple[str, str], dict]:
-    return {
-        (template_id, component["id"]): component
-        for template_id, template in bundle["templates"].items()
-        for component in template["components"]
-    }
+def _bound_data(bundle: dict, component: dict):
+    key = component.get("cockpitBindingKey")
+    if not key:
+        return None
+    value = bundle["datasets"].get(key)
+    if isinstance(value, dict) and value.get("error"):
+        return None
+    return deepcopy(value)
 
 
-def _runtime_component(bundle: dict, index: dict, binding_key: str) -> dict:
-    binding = bundle["bindings"].get(binding_key)
-    if not binding:
-        raise KeyError(f"missing cockpit binding: {binding_key}")
-    component = deepcopy(index[(binding["templateId"], binding["componentId"])])
-    component_type = component["type"]
-    pro_component = PRO_COMPONENTS.get(component_type)
-    if not pro_component:
-        raise ValueError(f"no ProUI component for metadata type: {component_type}")
-    component["showHeader"] = False
-    if component_type in OUTER_LEGEND_TYPES:
-        visualization = component.setdefault("visualization", {})
-        visualization["legend"] = False
-    return {
-        "componentId": component["id"],
-        "title": component.get("title", ""),
-        "type": component_type,
-        "proComponent": pro_component,
-        "component": component,
-        "data": deepcopy(bundle["datasets"][binding_key]),
-    }
+def _strip_unknown_children(components: list[dict], known_ids: set[str]) -> None:
+    for component in components:
+        if component.get("children"):
+            component["children"] = [
+                child for child in component["children"] if child in known_ids
+            ]
+
+
+def _materialize_template(bundle: dict, template_id: str) -> tuple[dict, list[dict]]:
+    template = deepcopy(bundle["templates"][template_id])
+    original = template["components"]
+    components = []
+    unrendered = []
+    for component in original:
+        component_type = component["type"]
+        if component_type not in RENDERABLE_TYPES:
+            unrendered.append(
+                {
+                    "code": "UNSUPPORTED_COMPONENT",
+                    "description": (
+                        f"未渲染 {component.get('title') or component['id']}："
+                        f"交付组件类型 {component_type} 没有对应的 ProUI 实现。"
+                    ),
+                    "templateId": template_id,
+                    "componentId": component["id"],
+                    "componentType": component_type,
+                }
+            )
+            continue
+        data = _bound_data(bundle, component)
+        if component.get("cockpitBindingKey"):
+            config = component.setdefault("dataConfig", {})
+            config["sourceType"] = "mock"
+            if component_type == "mini-cpgraph":
+                graph_data = component.get("cockpitGraphData")
+                config["mockData"] = deepcopy(graph_data) if graph_data else data
+            else:
+                config["mockData"] = data
+        components.append(component)
+    known_ids = {component["id"] for component in components}
+    _strip_unknown_children(components, known_ids)
+    return (
+        {
+            "templateId": template_id,
+            "meta": deepcopy(template.get("meta", {})),
+            "components": components,
+        },
+        unrendered,
+    )
 
 
 def runtime_payload(bundle: dict | None = None) -> dict:
     bundle = bundle or build_bundle()
-    index = _component_index(bundle)
-    selected = set(ANNUAL_SALES.values()) | set(ANNUAL_VOLUME.values())
-    selected |= {OPERATIONS_GRAPH, ANALYSIS_GRAPH}
-    components = {
-        binding_key: _runtime_component(bundle, index, binding_key)
-        for binding_key in sorted(selected)
-    }
-    mounts: dict[str, dict[str, dict]] = {}
-
-    def mount(view: str, gap_id: str, binding_key: str, *, active_key: str | None = None) -> None:
-        item = {"bindingKey": binding_key}
-        if active_key:
-            item["graphActiveKey"] = active_key
-        mounts.setdefault(view, {})[gap_id] = item
-
-    mount("overview-sales", "overview-sales:annual-chart:0", ANNUAL_SALES["monthly"])
-    mount("overview-sales", "overview-sales:annual-chart:1", ANNUAL_SALES["products"])
-    mount("overview-sales", "overview-sales:annual-chart:2", ANNUAL_SALES["teams"])
-    mount("overview-volume", "overview-volume:annual-chart:0", ANNUAL_VOLUME["monthly"])
-    mount("overview-volume", "overview-volume:annual-chart:1", ANNUAL_VOLUME["teams"])
-
-    operations_views = {"operations": "opportunity"}
-    operations_views.update({f"operations-{stage}": stage for stage in OPS_NODES})
-    for view, stage in operations_views.items():
-        mount(view, f"{view}:helmet:0", OPERATIONS_GRAPH, active_key=OPS_NODES[stage])
-
-    for stage in RISK_NODES:
-        view = f"analysis-{stage}"
-        mount(view, f"{view}:helmet:0", ANALYSIS_GRAPH, active_key=RISK_NODES[stage])
-
-    mount("operations-shipment", "operations-shipment:annual-chart:0", ANNUAL_VOLUME["teams"])
-    mount("operations-shipment", "operations-shipment:annual-chart:1", ANNUAL_VOLUME["monthly"])
+    templates = {}
+    render_gaps = [gap for gap in bundle["gaps"] if gap["code"] in GAP_CODES]
+    for template_id in bundle["templates"]:
+        template, unrendered = _materialize_template(bundle, template_id)
+        templates[template_id] = template
+        render_gaps.extend(unrendered)
+    pages = {}
+    counts = {}
+    for page, template_id in bundle["pages"].items():
+        materialized = deepcopy(templates[template_id])
+        components = materialized["components"]
+        counts[page] = {
+            "total": len(components),
+            "types": dict(Counter(component["type"] for component in components)),
+            "withData": sum(
+                1 for component in components if component.get("cockpitBindingKey")
+            ),
+        }
+        pages[page] = {
+            "id": page,
+            "title": PAGE_NAMES[page],
+            "templateId": template_id,
+            "name": materialized.get("meta", {}).get("name", PAGE_NAMES[page]),
+            "components": components,
+        }
 
     source = json.loads((ROOT / "source.json").read_text())
     return {
@@ -109,10 +146,13 @@ def runtime_payload(bundle: dict | None = None) -> dict:
             "commit": source["commit"],
             "fixture": bundle["source"],
         },
-        "components": components,
-        "mounts": mounts,
+        "pages": pages,
+        "templates": templates,
+        "counts": counts,
+        "gaps": render_gaps,
         "nodeStages": bundle["nodeStages"],
         "stageNames": NAMES,
+        "renderer": "ProBiDashboard",
     }
 
 
