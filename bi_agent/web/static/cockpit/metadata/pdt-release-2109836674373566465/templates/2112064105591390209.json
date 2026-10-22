@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "id": "2112064105591390209",
+    "name": "销售额口径头盔图-订单接收",
+    "url": "/dashboard/release/2112064105591390209",
+    "description": "",
+    "configs": "{\"components\":[{\"dataConfig\":{\"mockAxis\":{\"tableFields\":[{\"fieldType\":\"Dimension\",\"identifierCode\":\"类别\",\"label\":\"类别\"},{\"fieldType\":\"Indicator\",\"identifierCode\":\"数量\",\"label\":\"数量\"},{\"fieldType\":\"Indicator\",\"identifierCode\":\"金额\",\"label\":\"金额\"}]},\"mockData\":{\"rows\":[{\"数量\":320,\"类别\":\"电子产品\",\"金额\":128000},{\"数量\":280,\"类别\":\"服装\",\"金额\":86000},{\"数量\":450,\"类别\":\"食品\",\"金额\":54000}]},\"mockPreset\":\"table\",\"sourceType\":\"ap\",\"tableFields\":[{\"fieldType\":\"Indicator\",\"identifierCode\":\"M00013\",\"isTree\":false,\"label\":\"发货金额\",\"name\":\"Shipment_Amount\",\"valueType\":\"NUMBER\"},{\"fieldType\":\"Dimension\",\"identifierCode\":\"D007\",\"isTree\":false,\"label\":\"发货完成状态维度\",\"valueType\":\"STRING\"},{\"fieldType\":\"Dimension\",\"identifierCode\":\"D008\",\"isTree\":true,\"label\":\"发货审批时间维度\",\"valueType\":\"DATE\"}],\"pageSize\":10},\"id\":\"table-x6qt15if\",\"position\":{\"h\":19,\"w\":120,\"x\":0,\"y\":0},\"showHeader\":true,\"showTitle\":true,\"title\":\"受影响订单清单\",\"type\":\"table\",\"visualization\":{},\"tableColumnConfig\":[{\"code\":\"M00013\",\"fieldType\":\"Indicator\",\"id\":\"M00013\",\"isTree\":false,\"label\":\"发货金额\",\"showSearch\":true,\"showSource\":true,\"valueType\":\"NUMBER\"},{\"code\":\"D007\",\"fieldType\":\"Dimension\",\"id\":\"D007\",\"isTree\":false,\"label\":\"发货完成状态维度\",\"showSearch\":true,\"showSource\":true,\"valueType\":\"STRING\"},{\"code\":\"D008\",\"fieldType\":\"Dimension\",\"id\":\"D008\",\"isTree\":true,\"label\":\"发货审批时间维度\",\"showSearch\":true,\"showSource\":true,\"valueType\":\"DATE\"}]}],\"gridCols\":120,\"rowHeight\":10,\"theme\":\"light\"}",
+    "version": "1.0.0",
+    "status": "01",
+    "createdBy": "94",
+    "createdTime": "2026-10-19 14:11:37",
+    "lastUpdatedBy": "94",
+    "lastUpdatedTime": "2026-10-22 09:52:19"
+  }
+}

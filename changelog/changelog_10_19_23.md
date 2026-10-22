@@ -64,65 +64,53 @@
   不部署，也不拉 `release/ontology-v0.1.3` 分支。
 
 
-### 2026-10-21 · V3 经营驾驶舱 POC 与主服务分析插槽
+### 2026-10-22 · V3 经营驾驶舱正式发布看板
 
 - 页面（2026-10-22 修订）：四个独立入口 `/cockpit/home`、`/cockpit/overview`、
   `/cockpit/operations`、`/cockpit/analysis`，`/cockpit` 与 `/` 直接返回总览页，首页保留但不默认打开。
-  四页只渲染看板本体，顶部使用 ProUI `pro-tabs` 组件样式保留“首页”“全局经营看板”
-  “运营 360 整体分析”“穿透式问题分析”四个视图 Tab；移除左侧工作区、会话区、宿主页面标题
-  和外层筛选栏。`/cockpit/overview` 仍直接显示全局经营看板。
+  四页只挂载一个正式发布 `ProBiDashboard`，顶部根筛选器和四个 Tab 均来自交付配置，
+  不再由宿主手写。路由只激活对应 Tab，并保留 Fuxi 的 `id=1|2`；不渲染工作区、会话区或第二套导航。
 - 原生组件渲染（2026-10-22 修订）：撤回原型 DOM/CSS 快照方案，删除 `static/cockpit/layout/`
   和 `scripts/extract_cockpit_layout.mjs`。页面读取 `static/cockpit/metadata/runtime.json`，
   通过 `ProBiDashboard` 渲染原生 ProUI 卡片、图表、表格、分组、按钮组和模板容器；
   卡片标题、图例、工具栏、按钮和间距使用组件自身样式，不再追求与原型逐像素一致。
-- 交付原样渲染（2026-10-22 修订）：同步 `iba-demo/feature/demo_1021` commit `7e45062`，
-  新增交付 Tab“储能产品线整体经营分析”（模板 `2113106174095179778`），子模板 15 份、组件 139 个、
-  分析插槽 17 个。`runtime.py` 直接输出交付模板，`position`／`parentId`／`children`／标题／样式不再改写，
-  宿主只替换 `dataConfig` 和附加 `cockpitBindingKey`；四页组件与交付逐字段一致，106 个组件绑定演示数据。
-- 缺失披露：不再过滤组件类型、不再合成模板或追加卡片；商机模板引用的
-  `share-bar-79fsomq9` 缺少定义，分组内该位置保持空位。红区报价专项、
-  毛利／净利／回款详情、图表下钻、客户操作列、运营周期对标和履约率第四卡仍缺组件或动作配置。
-  运营页交付头盔的 `defaultActiveKey` 与节点 ID 不匹配，首屏模板区按交付留空，点击节点后再加载；
-  页面底部列出运行包中的缺项，不用近似卡片冒充交付组件。
+- 正式发布原样渲染（2026-10-22 修订）：切换到 PDT 正式发布看板
+  `2109836674373566465`“运营360 整体分析”，保存 15 份模板和 139 个组件。
+  根配置为 `composite-filter-hzjk9t5q`＋`tab-container-zm9eyxne`，四个 Tab 分别指向
+  `2113106174095179778`、`2112001069107167233`、`2112434004503347202`、
+  `2112061604959928321`。页面组件与正式模板逐字段一致，宿主不改位置、标题或样式。
+- 数据回放：冻结 21 个 AP 查询、2 个批量查询和 2 个头盔图请求的响应体到
+  `data-snapshots.json`，浏览器通过 `ProUIBi.configureBi` 按请求键回放，不访问 AP、PDT 或生产接口。
+  快照不包含 Cookie、Token、账号或用户身份；文件大小和 SHA-256 记录在 `source.json`。
+- 缺失披露：当前运行包检查为 0 个缺失组件、0 个缺失模板。正式配置没有 `insights` 字段，
+  因此不再挂载旧版 AI 插槽；五个进度卡同值、销售标题绑定采购指标等现象来自正式 AP 配置本身，
+  页面保留原值，不在宿主层修正。
 - 交互：经营指标卡可切换销售额／出货量模板；运营头盔图点击节点切换七个环节模板；
   穿透头盔图点击节点切换四类风险模板。页面之间仅保留这四个 Tab 和看板内可确认的组件交互。
 - 身份：Fuxi 统一使用 `id` 查询参数，`1=总裁`、`2=分析员`；当前四页内容和功能对两个 `id`
   完全一致，两个人都可访问，`id` 仅作为将来差异化的预留标识。页面和 API 均不使用 `role`，
   所有 Tab 和页内跳转保留当前 `id`。
-- 分析与任务：17 个交付 `insights` 按页面和 `embedPath` 传入 `ProBiDashboard`，由 `#insight-*`
-  具名插槽调用 `POST /api/cockpit/analyses` 执行真实模型分析并轮询回填；同一环节的多个插槽复用一次结果，
-  客户端限 3 并发并对 429 重试。模型失败或没有内容时显示空位／错误，不回退为预写结论。
-  后端证据、报告和模拟任务接口保留，旧的分析、历史和任务抽屉不再渲染。
+- 分析与任务：正式发布配置没有 AI 插槽，页面不发起分析；主服务的证据、分析、报告和模拟任务接口保留，
+  供后续看板插槽或 Fuxi 集成使用。旧的分析、历史和任务抽屉不再渲染。
 - 闭环：模拟任务令支持草稿编辑、下发、接收、反馈和验收关闭，当前只校验状态与 revision，
   不按 `id` 分配操作权限；幂等生成和 revision 防止重复创建及覆盖更新。SQLite 单独保存在
   gitignore 的 `dataset/cockpit/`，不删除原会话。
 - 预测：展示演示业务已有预测；发货页提供明确假设下的金额化解测算，不声称已实现统计预测。
-- 组件资源：`pro-bi-ui.min.js`（`c38cbf36`）与 `pro-ui.min.css`（`b1ee836d`）与本次交付 commit
-  哈希一致，无需重复下载；Vue 仍复用 3.5.25。冻结 `components.json`、`template-registry.json`、
-  `insights.js` 并派生 `insights.json`，源 JSON 不改写。
+- 组件资源：`pro-bi-ui.min.js`（`c38cbf36`）、`pro-ui.min.css`（`b1ee836d`）和 Vue 3.5.25
+  与正式页一致。正式目录保存 `dashboard.json`、15 份模板和原始 hash，源 JSON 不改写。
 - 主要文件：`bi_agent/cockpit/runtime.py`、`bi_agent/web/static/cockpit/{cockpit.js,cockpit.css,index.html}`、
   `bi_agent/web/static/cockpit/metadata/runtime.json`、`scripts/export_cockpit_runtime.py`、
   `tests/test_cockpit_poc.py`、`tests/test_cockpit_resource_contract.py`、
   `tests/test_cockpit_metadata.py`、`docs/specs/cockpit-v3-poc.md`、
   `docs/specs/cockpit-v3-metadata-gaps.md`、`README.md`、`DEPLOYMENT.md`。
-- 验证（2026-10-22）：驾驶舱契约测试 37 项通过，其中新增“页面组件与交付模板逐字段一致”断言；
-  `node --check` 通过；浏览器验证四个路由、四个 Tab、`id=1|2`、首页指标＋头盔＋风险插槽、
-  运营和穿透头盔图、表格和 KPI；真实模型已完成首页 `focus-risks` 与穿透页 `sales-shipment-issues`
-  分析并返回原因和证据数量；1440px 与 480px 无横向溢出。
-- 首页与顶部组件化（2026-10-22 12:40 修订）：`/cockpit/home` 直接挂载交付新增的首页模板，
-  不再由宿主从其他两页挑组件拼装；顶部四个 Tab 使用 ProUI `pro-tabs` 结构和活动下划线，
-  窄屏自动把当前 Tab 滚入可视区。页面外层对齐 `iba-demo` 示例，改为 `#f3f5f8` 灰底和
-  20px 内容留白；`ProBiDashboard` 使用发布态和自带标题区，首页标题为“储能产品线整体经营分析”。
-  移除配置态的 `mode="build"`，不再出现“拖入筛选器、标题、按钮”的编辑占位。缓存参数升至
-  `proui-dashboard-v5`，测试新增发布态、标题区和灰底断言。`/cockpit` 直接返回 `overview`，
-  首页保留但不是默认路由。本地浏览器验证四个路由、`id=1|2`、活动条定位和 1440px／480px 布局。
-- 部署（2026-10-22 13:15）：`172.16.10.34:8876` 已切换到 `feature/cockpit-v3-poc` commit
-  `99084f0`，发布目录共 9 个文件并通过 `manifest.sha256` 校验；`home`、`overview`、
-  `operations`、`analysis` 和四个 ProUI Tab 均正常返回，运行时缓存版本为 `proui-dashboard-v5`。
-  远程浏览器确认灰底、20px 内容留白、`ProBiDashboard` 发布态标题区和 `id=1|2` 传播；
-  首页、运营和穿透页模型分析插槽均可完成，1440px 与 480px 无横向溢出，无 JS 异常，
-  网络请求无 4xx／5xx，ProUI 仍有非致命的 Vue 属性透传警告。同步时 staging 根目录权限曾带入
-  `700` 导致 nginx 404，已统一恢复为目录 `755`、文件 `644` 并复验。
+- 验证（2026-10-22）：驾驶舱契约测试 37 项通过；`node --check` 和 `git diff --check` 通过。
+  浏览器验证四个路由在 `id=1|2` 下激活正确 Tab，页面只有一个 `ProBiDashboard`；
+  运营页生成头盔图和漏斗，穿透页生成 2 个画布和 16 个表格，四页均无组件错误。
+- 页面壳层：`ProBiDashboard` 使用发布态和自带标题区，缓存版本统一为
+  `pdt-release-2109836674373566465`；`/cockpit` 直接返回 `overview`，首页保留但不是默认路由。
+  旧的手写 Tab、灰底 20px 留白和分析插槽样式不再参与正式页视觉。
+- 部署（2026-10-22）：`172.16.10.34:8876` 发布正式看板版本，四个路由和根 Tab 正常；
+  发布文件、Manifest、远程浏览器和回滚目录在部署完成后补记到 `DEPLOYMENT.md`。
 - 代理与旁路 API（2026-10-22 12:00）：nginx 新增 `location /api/cockpit/`，转发到独立
   `172.16.10.34:8877` 的 `eimosp-cockpit-api`；服务目录为
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，PID 在 `app.pid`，

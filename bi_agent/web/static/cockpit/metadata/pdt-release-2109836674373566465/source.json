@@ -1,0 +1,191 @@
+{
+  "kind": "pdt-release-dashboard",
+  "dashboardId": "2109836674373566465",
+  "name": "运营360 整体分析",
+  "releaseUrl": "http://pdt-dev.eimos.com/dashboard/release/2109836674373566465",
+  "buildTime": "2026-10-22 11:07:18",
+  "fetchedAt": "2026-10-22T13:36:35+08:00",
+  "api": "http://pdt-dev.eimos.com/api/gateway2/x360/v1/dashboard-configs/detail?id=",
+  "dashboardVersion": "1.0.0",
+  "dashboardStatus": "01",
+  "templates": 15,
+  "files": [
+    {
+      "id": "2109836674373566465",
+      "name": "运营360 整体分析",
+      "url": "/dashboard/release/2109836674373566465",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "dashboard.json",
+      "bytes": 3765,
+      "sha256": "62cb043c8df7d41693abdab03b2980b9bffe6c6961a8d7b85b8ff224a23b7364"
+    },
+    {
+      "id": "2112001069107167233",
+      "name": "全局经营看版",
+      "url": "/dashboard/release/2112001069107167233",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112001069107167233.json",
+      "bytes": 9352,
+      "sha256": "e6789094f6ff1495c837d4ec4ca934cfd7ad65a239f7d72ee3c4c7a93850f0b3"
+    },
+    {
+      "id": "2112009587516293121",
+      "name": "全局经营看版-销售额",
+      "url": "/dashboard/release/2112009587516293121",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112009587516293121.json",
+      "bytes": 16216,
+      "sha256": "b94e1f4aa88d3709aae4cdacbeb7c868ac28c99745ee057e62debf8c2c4842ea"
+    },
+    {
+      "id": "2112010750949113858",
+      "name": "全局经营看版-出货量",
+      "url": "/dashboard/release/2112010750949113858",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112010750949113858.json",
+      "bytes": 16848,
+      "sha256": "952c68c6893fd0f1f535c4ca1274f2ab9121fdab0a4a90b9b9b3f5ceaa5bbbaa"
+    },
+    {
+      "id": "2112026770145329154",
+      "name": "运营360 整体分析-商机获取",
+      "url": "/dashboard/release/2112026770145329154",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112026770145329154.json",
+      "bytes": 5604,
+      "sha256": "d71ffe3012b6de053b6bd343bbed23fe59245f8d78481e656c78549b7cb77532"
+    },
+    {
+      "id": "2112059168287408129",
+      "name": "运营360 整体分析-方案引导",
+      "url": "/dashboard/release/2112059168287408129",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112059168287408129.json",
+      "bytes": 5629,
+      "sha256": "adc2b3108d1a7e99bad132e36e686e4a4b44f208ab6e8a38ba3e3853a402aed4"
+    },
+    {
+      "id": "2112059463654490114",
+      "name": "运营360 整体分析-报价",
+      "url": "/dashboard/release/2112059463654490114",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112059463654490114.json",
+      "bytes": 5617,
+      "sha256": "91c8737b876aed1d2ebfa7610324d1bc1ecaaac2ff0974fabc004f085bdd822f"
+    },
+    {
+      "id": "2112059620722786305",
+      "name": "运营360 整体分析-技术方案",
+      "url": "/dashboard/release/2112059620722786305",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112059620722786305.json",
+      "bytes": 5629,
+      "sha256": "03103ad6ea53903fe209f87ae3681b6eb10c7b64d1985985f37014376d70ec9d"
+    },
+    {
+      "id": "2112059751740260354",
+      "name": "运营360 整体分析-投标",
+      "url": "/dashboard/release/2112059751740260354",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112059751740260354.json",
+      "bytes": 10028,
+      "sha256": "bcee2fdc4fe80773514448c0a4adf660803ae71486245083d21544001e54cc3a"
+    },
+    {
+      "id": "2112060211964461057",
+      "name": "运营360 整体分析-订单接收",
+      "url": "/dashboard/release/2112060211964461057",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112060211964461057.json",
+      "bytes": 5637,
+      "sha256": "374cc924b23d777aea130cedaa0b6a55ca63829aaebb6985dec68296f1dd927f"
+    },
+    {
+      "id": "2112061604959928321",
+      "name": "穿透式问题分析",
+      "url": "/dashboard/release/2112061604959928321",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112061604959928321.json",
+      "bytes": 15017,
+      "sha256": "dca631da1ce4a8080bb00d8240a416221e41a2d6e53d3c73279fd4271280bf65"
+    },
+    {
+      "id": "2112062888320483329",
+      "name": "销售额口径头盔图-商机获取",
+      "url": "/dashboard/release/2112062888320483329",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112062888320483329.json",
+      "bytes": 12675,
+      "sha256": "a0128b8d669c033e24c836bfc7703abb133165d37c7268b757d23a931add7f44"
+    },
+    {
+      "id": "2112064105591390209",
+      "name": "销售额口径头盔图-订单接收",
+      "url": "/dashboard/release/2112064105591390209",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112064105591390209.json",
+      "bytes": 2286,
+      "sha256": "24ee8fb19b3748d485d754e285cc0fdc9d0309e263289db5dbe0023bbf81097a"
+    },
+    {
+      "id": "2112064144187375617",
+      "name": "销售额口径头盔图-发货",
+      "url": "/dashboard/release/2112064144187375617",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112064144187375617.json",
+      "bytes": 3866,
+      "sha256": "785a39c78de044ea92a4b30d6cba6db0b78b2ed6d0ccc48661dc0189186566ce"
+    },
+    {
+      "id": "2112434004503347202",
+      "name": "运营360 整体分析-第二tab",
+      "url": "/dashboard/release/2112434004503347202",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2112434004503347202.json",
+      "bytes": 50178,
+      "sha256": "f2144d0df905de5f2e07be8a47f74a17053282abe780f90057f141436c7a20ad"
+    },
+    {
+      "id": "2113106174095179778",
+      "name": "储能产品线整体经营分析",
+      "url": "/dashboard/release/2113106174095179778",
+      "version": "1.0.0",
+      "status": "01",
+      "file": "templates/2113106174095179778.json",
+      "bytes": 13477,
+      "sha256": "b17e020619a84f364a58457aa8062e443a273037744f2e5331710338c74022ef"
+    }
+  ],
+  "credentialsStored": false,
+  "notes": [
+    "Original dashboard detail responses; configs remains the API JSON string.",
+    "The root tab-container defines the four delivered tabs.",
+    "All template ids referenced recursively by templateId are included.",
+    "data-snapshots.json contains browser-visible AP response bodies for deterministic rendering; it contains no cookies, tokens or user identities."
+  ],
+  "snapshot": {
+    "file": "data-snapshots.json",
+    "bytes": 244221,
+    "sha256": "98a822aff3e94166fc2528916734d28bd97aa5797174f3f906dc5c813012e0a4",
+    "source": "pdt-dev release page network capture",
+    "analysisRequests": 21,
+    "batchRequests": 2,
+    "helmetRequests": 2,
+    "credentialsStored": false
+  }
+}

@@ -126,24 +126,19 @@ curl -fsS http://127.0.0.1:8765/healthz
 `/cockpit/home`、`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 仍只跳到全局经营看板。
 四个入口共用同一路径和 Fuxi 身份参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员；当前四页内容与功能对两个 `id` 完全一致，
 两个人都可访问，`id` 仅作为将来差异化的预留标识。不使用 `role` 或两套身份地址，总入口和页内跳转均保留当前 `id`。
-四页只渲染看板本体，顶部使用 ProUI `pro-tabs` 组件样式保留首页、全局经营看板、运营 360 整体分析、穿透式问题分析四个视图 Tab；
-不再带工作区、会话区、宿主页面标题和外层筛选栏；看板内部保留 `ProBiDashboard` 自带的标题区，外层背景和留白与
-`iba-demo` 交付示例一致，使用灰底和 20px 内容留白。
+页面直接使用正式发布看板 `2109836674373566465` 的根配置：一个 `ProBiDashboard` 同时渲染
+`composite-filter`、根 `tab-container` 和四个 Tab 模板。顶部 Tab 由交付配置生成，不再由宿主手写；
+四个路由只负责激活对应 Tab，并把当前 `id` 保留在地址中。页面不渲染工作区、会话区、宿主标题或第二套导航。
 
-`/cockpit/home` 直接挂载交付元数据新增的“储能产品线整体经营分析”模板（五项经营指标、运营全流程头盔和重点风险卡），
-但不作为默认入口；`/cockpit/overview` 仍直接显示全局经营看板。四页都把 `feature/demo_1021` 的页面模板原样交给
-`ProBiDashboard`：宿主不增删、不重排卡片，`position`、`parentId`、`children`、容器和样式均以交付为准。
-交付的 17 个分析插槽按 `insights` 传入，由 `#insight-*` 具名插槽调用主服务 `/api/cockpit/analyses` 执行真实模型分析后回填；
-没有数据或没有组件的位置保持空位，并在页面底部列出缺项。演示数据仍固定为 2025-10／全产品部。
+发布包冻结了 15 份模板、139 个组件和正式页的顶部筛选器。四页的 `position`、`parentId`、容器、标题和样式
+均按发布配置原样交给 `ProBiDashboard`；宿主不增删或重排卡片。浏览器通过同目录
+`data-snapshots.json` 回放正式页抓取的 21 个 AP 查询、2 个批量查询和 2 个头盔图请求，
+快照只包含业务响应体，不包含 Cookie、Token 或用户身份。
 
-分析插槽需要同源 `/api/cockpit`：主服务可直接提供；独立静态 8876 站点需由 nginx 把 `/api/cockpit` 反向代理到
-提供 cockpit router 的 API（当前部署为 8877），否则只看板正常、AI 卡会显示接口不可用。
-默认模型键为 `team-configured`，可通过 `COCKPIT_MODEL_KEY` 选用其他注册模型；
-模型失败不会用预写结论代替。旧的分析、历史和任务抽屉不再渲染。
-
-分析历史、报告和模拟任务令存储在工作目录的 `dataset/cockpit/`，不提交运行数据。
-任务令只做本地模拟，不发送通知，不修改业务单据。POC 作业执行器按单进程运行；
-真实本体／数据库映射、生产权限和 Fuxi 宿主联调尚未纳入完成声明。
+当前正式看板配置没有 `insights`／AI 插槽，因此页面不会挂载旧版分析卡。主服务已有的
+`/api/cockpit` 分析、历史和任务令接口继续保留，供后续主服务或 Fuxi 集成使用；独立静态 8876
+站点不依赖这些接口即可完整渲染看板。发布配置中 AP 指标的业务口径与卡片标题存在差异时，
+页面保持正式配置原值，不在宿主层改写。
 详见 [驾驶舱范围与接口](docs/specs/cockpit-v3-poc.md)及[组件覆盖与缺失](docs/specs/cockpit-v3-metadata-gaps.md)。
 
 ### Fuxi 远程 MCP

@@ -3,55 +3,47 @@
 ## 已确认边界（2026-10-22）
 
 - analytics 主服务提供四个独立入口：`/cockpit/home`、`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 与 `/` 直接返回 `overview`，首页不作为默认路由。现有 `/workbench`、旧驾驶舱及 MCP 不替换。
-- 四个页面只渲染看板本体，顶部使用 ProUI `pro-tabs` 组件样式保留驾驶舱自己的四个视图 Tab：`首页`、`全局经营看板`、`运营 360 整体分析`、`穿透式问题分析`；不包含宿主工作区、会话区、页面标题或外层筛选栏。
-  看板内部保留 `ProBiDashboard` 自带标题区，外层使用与 `iba-demo` 示例一致的灰底和 20px 内容留白。
-- `/cockpit/home` 直接挂载交付新增的第 4 个模板“储能产品线整体经营分析”（`2113106174095179778`，五项指标＋运营头盔＋重点风险插槽）；`/cockpit/overview` 仍直接作为全局经营看板，两者均可通过 Tab 到达。
+- 四个页面只渲染看板本体，页面挂载正式发布看板 `2109836674373566465` 的一个完整 `ProBiDashboard`；顶部筛选器和四个 Tab 均来自交付根配置，不再由宿主手写。
+- 四个 Tab 分别为“储能产品线整体经营分析”“全局经营看板”“运营360整体分析”“穿透式问题分析”；页面不包含宿主工作区、会话区、页面标题或第二套导航。
+- `/cockpit/home`、`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis` 只负责激活对应 Tab，并保留当前 `id`。
 - 两个演示身份使用 Fuxi 传入的单一查询参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员。当前四页内容对两个 `id` 完全一致，两个人都可以访问和操作；`id` 只作身份标记并为将来差异化预留。页面和 API 不使用 `role`，`/cockpit` 跳转和页内跳转都保留当前 `id`。
-- 最新决定：页面直接调用 analytics 主服务执行 AI 分析并回填插槽；不依赖 Fuxi 触发／回填协议。
-- 首页和其余看板读取同一份静态运行包；分析页按快照、`id` 和环节复用完成结果，可重新分析。
-- 先交付独立演示数据与实际模型执行；本体＋数据库真实连接需要后续映射，不声称已接通。
+- 当前正式发布配置没有 `insights`／AI 插槽，页面只渲染交付看板；主服务的 `/api/cockpit` 分析、历史和任务令能力保留，供后续集成使用。
+- 四页读取同一份静态发布包和 AP 响应快照；快照不包含 Cookie、Token 或用户身份。
+- 正式配置中的 AP 指标口径与卡片标题不一致时保持原值，不在宿主层修正；真实本体＋数据库映射需要后续业务确认。
 - 模拟任务令：草稿→模拟下发→接收→反馈→验收关闭。仅本地持久化，不调用任务、通知或业务单据写接口；当前只校验状态和 revision，不按 `id` 分配操作权限。
 - 已有业务预测展示＋显式假设的情景测算；不建设统计预测模型。
 - 四页静态看板资源与旧工作台隔离；是否部署以当前任务中出现的明确部署授权为准。
 
 ## 页面与组件
 
-四页静态资源位于 `bi_agent/web/static/cockpit/`。页面使用交付元数据中的组件配置和模板注册表，通过 `ProBiDashboard` 渲染原生 ProUI 卡片；不再使用原型 DOM、原型内联样式或原型尺寸占位。
+四页静态资源位于 `bi_agent/web/static/cockpit/`。页面直接使用正式发布包的根配置、15 份模板和组件注册表，通过 `ProBiDashboard` 渲染原生 ProUI 卡片；不再使用原型 DOM、宿主布局占位或手写 Tab。
 
 | 页面 | 默认内容 |
 | --- | --- |
-| 首页 `/cockpit/home` | 交付模板 `2113106174095179778`：五项经营指标、运营全流程头盔、重点风险分析插槽；不作为默认入口 |
-| 全局经营看板 `/cockpit/overview` | 五项经营指标、年度销售目标／实绩／预测、产品结构和团队达成；点击出货量指标可切换出货量模板 |
-| 运营 360 `/cockpit/operations` | 五项指标、运营全流程头盔图、商机漏斗、七个环节 KPI／占比／异常明细；模板区按交付保持空位，点击头盔节点后加载对应环节模板和插槽 |
-| 穿透分析 `/cockpit/analysis` | 五项指标、销售额口径四节点头盔图、风险结构与原因拆解、客户与超期订单；交付 `defaultActiveKey` 生效，默认展示商机风险模板，点击节点切换 |
-| 公共 | 顶部四个 ProUI `pro-tabs` Tab 保留当前 `id`；无宿主壳；看板使用 `ProBiDashboard` 发布态和自带标题区；卡片标题、图例、表格工具栏和按钮使用 ProUI 组件自身样式 |
+| 首页 `/cockpit/home` | 正式模板 `2113106174095179778`“储能产品线整体经营分析”；不作为默认入口 |
+| 全局经营看板 `/cockpit/overview` | 正式模板 `2112001069107167233`；`/cockpit` 的默认落点 |
+| 运营 360 `/cockpit/operations` | 正式模板 `2112434004503347202`；包含指标、运营头盔、漏斗和环节卡片 |
+| 穿透分析 `/cockpit/analysis` | 正式模板 `2112061604959928321`；包含穿透图、风险结构和明细表 |
+| 公共 | 根 `composite-filter` 和根 `tab-container` 由 `ProBiDashboard` 直接渲染；四个路由同步当前 Tab 并保留 `id` |
 
 入口示例：`/cockpit/home?id=1`、`/cockpit/overview?id=2`、`/cockpit/operations?id=2`、`/cockpit/analysis?id=1`。
 支持 `APP_ROOT_PATH` 下静态资源地址。纯看板页面不渲染旧的角色切换、分析历史或任务抽屉。
 
 ## 数据契约和口径
 
-当前页面使用 `PrototypeSource`，静态事实来自 `fixtures/v3-prototype.json`，原型 HTML 文件名与 SHA 记录于 `_source`。`metadata.py` 编译 `iba-demo/feature/demo_1021` 的组件、模板、绑定和插槽，源 JSON 保持冻结。
+正式发布目录 `static/cockpit/metadata/pdt-release-2109836674373566465/` 保存
+`dashboard.json`、15 份模板和原始 hash；`runtime.py` 只做浏览器安全导出，不改组件、位置或样式。
 
-`runtime.py` 从同一编译结果生成 `static/cockpit/metadata/runtime.json`：
-
-- 输出四个页面和 15 份模板内容，共 139 个交付组件（2 个根组件＋137 个模板组件）；页面组件与交付 `template-registry.json` 逐字段一致，宿主只替换 `dataConfig` 并附加 `cockpitBindingKey`。
-- 106 个绑定组件写入冻结的演示行数据 `dataConfig.mockData`；其余保持交付 `sourceType`，浏览器不配置 AP 适配器时不会发查询。
-- `group`、`template`、`segmented-strip`、`button-group` 等容器使用 ProUI 对应组件，模板切换由 `ProBiDashboard` 的 `templateRegistry` 完成。
-- 不再过滤组件类型、不再合成模板或重排位置；未知类型交给 ProUI 占位，缺失引用子组件的位置保持空位。
-- 17 个 `insights` 按页面过滤后传给 `ProBiDashboard`，宿主用 `#insight-*` 插槽调用 `/api/cockpit/analyses` 执行真实模型分析并回填；没有内容时显示空位或错误，不写固定结论。
-- 头盔图移除交付里的远程 `processCode`（宿主无该拓扑网关），改用交付 `graphConfig` 和原型节点数据；这是唯一的数据源适配改写。
-- 静态 8876 页面只读取 `runtime.json`，不依赖 `/api/cockpit/metadata`；AI 插槽需要同源 `/api/cockpit` 或 nginx 代理。
-
-图表、表格与后端分析证据绑定同一原型源。原型客户姓名等均为既有演示内容。
-
-- 原型固定期间 2025-10、全产品部；没有其他完整快照，不开放虚构筛选。
-- 超期未发 10 条原型订单合计 24.3 亿元；S1 客户设备批次质量异常记录为 4.8 亿元。
-- 商机、投标、订单变更、方案与技术记录独立提取，不复用旧 DemoSource 台账。
-- 出货表按原型 `shipmentAnnualBlock` 保留 91／319 折算、预测及产品部月度比例分配；它们是原型演示规则，不是真实业务统计。
-- 看板显示“示例数据”，不声称连接采购、销售或交付生产系统。
+- 根配置包含 2 个组件：`composite-filter-hzjk9t5q` 和 `tab-container-zm9eyxne`。
+- 15 份模板共 137 个组件；加上根组件共 139 个。四个 Tab 引用的模板全部存在，运行时缺项检查为 0。
+- `ProBiDashboard` 直接接收根 `components` 和 `template-registry`；四个路由只激活对应 Tab。
+- `data-snapshots.json` 保存正式页网络的 21 个 AP 查询、2 个批量查询和 2 个头盔图请求响应；浏览器通过 `configureBi` 回放，不访问 PDT 或生产接口。
+- 快照只保存业务响应体，不保存 Cookie、Token、账号或用户身份；发布目录记录文件大小和 SHA-256。
+- 当前正式配置没有 `insights` 字段，页面不挂载 AI 插槽；AP 指标与标题的口径差异保持源配置原值。
 
 ## AI 分析与任务令
+
+当前正式发布看板没有 AI 插槽，因此静态 8876 页面不发起分析。以下 `/api/cockpit` 能力保留在主服务，供后续看板插槽或 Fuxi 集成使用。
 
 主服务复用现有模型调用链执行分析。每次分析使用当前 `id`、期间、部门和环节对应的只读证据快照；模型失败、证据不足或输出校验失败时不回退为预写成功结论。
 
@@ -112,9 +104,8 @@ node --check bi_agent/web/static/cockpit/cockpit.js
 浏览器验收使用独立临时工作目录，避免接触用户会话。已检查：
 
 - 四个路由均返回 200，`/cockpit` 跳到 `overview`，首页不作为默认路由。
-- 顶部有四个 ProUI `pro-tabs` Tab，标签、活动条和当前页正确；`id=1|2` 在 Tab 和路由中保留。
-- 页面外层与 `iba-demo` 示例一致：灰底、20px 内容留白和 `ProBiDashboard` 发布态自带标题区；不使用配置态 `mode="build"`，没有标题区拖入占位。
-- `/cockpit/overview` 仍默认显示全局经营看板，点击出货量指标可切换出货量模板；`/cockpit/home` 显示指标与运营全流程组件。
-- 四页均由 ProUI 卡片渲染；桌面 1440px 和窄屏 480px 无横向溢出。
-- 年度图、头盔图、表格和 KPI 组件正常生成；AI 插槽会请求 `POST /api/cockpit/analyses` 并轮询结果，已用真实模型完成首页与穿透页插槽。
-- 交付 `insights` 共 17 个：首页 1、运营 7、穿透 9；嵌套在环节模板里的插槽随节点模板加载出现。
+- 页面只有一个 `ProBiDashboard`，顶部根筛选器和四个 Tab 由交付配置生成；点击 Tab 后 URL 正确切换并保留 `id=1|2`。
+- 四个路由分别激活“储能产品线整体经营分析”“全局经营看板”“运营360整体分析”“穿透式问题分析”。
+- 首页、全局、运营、穿透页均无组件错误；运营页生成头盔图和漏斗，穿透页生成图表和 16 个表格。
+- 页面只回放本地 `/static/cockpit/metadata/pdt-release-2109836674373566465/data-snapshots.json` 中的请求，不访问 AP。
+- 当前发布配置没有 `insights` 字段，页面不出现旧版 AI 插槽。

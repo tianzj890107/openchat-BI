@@ -49,7 +49,7 @@ def test_prototype_layout_is_retired_and_runtime_contains_native_components():
     runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
     assert runtime['renderer']=='ProBiDashboard'
     assert set(runtime['pages'])=={'home','overview','operations','analysis'}
-    assert runtime['pages']['overview']['title']=='全局经营看板'
+    assert runtime['pages']['overview']['title']=='全局经营看版'
     assert len(runtime['templates'])==15
     prohibited={'cockpit-gap','cockpit-risk-list'}
     html=(ROOT/'index.html').read_text()
@@ -57,7 +57,7 @@ def test_prototype_layout_is_retired_and_runtime_contains_native_components():
     assert 'prototype.css' not in html
     assert 'views.json' not in html and 'views.json' not in js
     assert 'ProBiDashboard' in js
-    assert 'mockData' not in js
+    assert 'installSnapshots' in js and 'data-snapshots.json' in js
     for spec in list(runtime['pages'].values()) + list(runtime['templates'].values()):
         assert all(c['type'] not in prohibited for c in spec['components'])
 
@@ -66,37 +66,35 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     js=(ROOT/'cockpit.js').read_text()
     html=(ROOT/'index.html').read_text()
     assert "params.get('id')" in js
-    assert "new URLSearchParams({id: identityId, ...extra})" in js
-    assert 'proui-dashboard-v5' in html
-    assert "source: 'prototype'" in js
+    assert 'new URLSearchParams({id: identityId})' in js
+    assert '?${search}' in js
+    assert 'role' not in js.lower()
+    assert 'pdt-release-2109836674373566465' in html
+    assert "source: 'prototype'" not in js
     assert 'layout/' not in js and 'views.json' not in js
 
 
 def test_four_top_tabs_and_static_proui_dashboard_are_present():
     js=(ROOT/'cockpit.js').read_text()
     html=(ROOT/'index.html').read_text()
-    css=(ROOT/'cockpit.css').read_text()
     runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
-    assert 'class="pro-tabs pro-tabs--top cockpit-tabs"' in html
+    assert 'class="pro-tabs pro-tabs--top cockpit-tabs"' not in html
+    assert ':is="dashboardComponent"' in html
     for label in ('首页','全局经营看板','运营 360 整体分析','穿透式问题分析'):
         assert label in js
-    assert "{id: 'home', title: '首页', boardTitle: '储能产品线整体经营分析'}" in js
-    assert "return PAGE_BY_ID[declared] ? declared : 'overview'" in js
-    assert 'homePageSpec' not in js
-    assert 'pro-tabs__active-bar' in html
-    assert "fetchJson(runtimeUrl)" in js
-    assert "window.ProUIBi?.ProBiDashboard" in js
-    assert ':components="boardPage.components"' in html
+    assert "return PAGES[declared] ? declared : 'overview'" in js
+    assert "fetch(url" in js
+    assert "ProUIBi?.ProBiDashboard" in js
+    assert ':components="dashboard.components"' in html
     assert ":template-registry=\"runtime.templates\"" in html
-    assert ':insights="pageInsights"' in html
-    assert 'cockpit-insight' in html and 'cockpit-insight' in js
-    assert ':title="boardTitle"' in html and 'show-header-title' in html
+    assert ':title="dashboard.name"' in html and 'show-header-title' in html
     assert 'mode="build"' not in html
-    assert 'background:#f3f5f8' in css
-    assert runtime['pages']['home']['id']=='home'
-    assert runtime['pages']['overview']['id']=='overview'
+    assert 'mode="release"' in html
+    assert runtime['dashboard']['components'][1]['type']=='tab-container'
+    assert [t['label'] for t in runtime['dashboard']['components'][1]['baseConfig']['tabs']]==[
+        '储能产品线整体经营分析','全局经营看板','运营360整体分析','穿透式问题分析',
+    ]
     assert runtime['pages']['operations']['components']
     assert runtime['pages']['analysis']['components']
-    assert [s['id'] for s in runtime['pages']['home']['insights']]==['focus-risks']
-    assert len(runtime['pages']['operations']['insights'])==7
-    assert len(runtime['pages']['analysis']['insights'])==9
+    assert all(page['insights']==[] for page in runtime['pages'].values())
+    assert 'cockpit-insight' not in html and 'cockpit-insight' not in js

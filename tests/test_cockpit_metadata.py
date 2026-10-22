@@ -1,4 +1,5 @@
 """Delivered metadata, native ProUI runtime, and analysis evidence must agree."""
+import hashlib
 import json
 
 import pytest
@@ -7,7 +8,7 @@ from fastapi.testclient import TestClient
 from bi_agent.cockpit.metadata import build_bundle, ROOT, PAGE_IDS, OPS_NODES, RISK_NODES
 from bi_agent.cockpit.prototype import PrototypeSource
 from bi_agent.cockpit.router import build_cockpit_router
-from bi_agent.cockpit.runtime import runtime_payload
+from bi_agent.cockpit.runtime import PAGE_TEMPLATES, RELEASE, release_payload, runtime_payload
 
 
 def test_compilation_preserves_upstream_and_all_renderable_data_is_explicit():
@@ -68,18 +69,23 @@ def test_prototype_rows_reconcile_with_the_rendered_shipping_table():
     with pytest.raises(ValueError):source.snapshot(department='AIDC产品部')
 
 
-def test_static_proui_runtime_is_reproducible_and_uses_bound_data():
+def test_static_proui_runtime_is_reproducible_and_uses_release_data():
     path=ROOT.parent/'runtime.json'
     stored=json.loads(path.read_text())
     assert stored==runtime_payload()
-    assert stored['source']['commit']=='7e45062deaebde11bb267539ff9a32f324bac4c6'
+    assert stored==release_payload()
     assert stored['renderer']=='ProBiDashboard'
+    assert stored['mode']=='release'
+    assert stored['source']['dashboardId']=='2109836674373566465'
+    assert stored['source']['version']=='1.0.0'
+    assert stored['source']['templateCount']==15
+    assert stored['source']['totalComponents']==139
     assert set(stored['pages'])=={'home','overview','operations','analysis'}
     assert stored['counts']['home']=={
         'total':9,'types':{'group':1,'title':1,'button-group':1,'progress':5,'mini-cpgraph':1},'withData':6,
     }
     assert stored['counts']['overview']=={
-        'total':9,'types':{'progress':5,'template':1,'button-group':1,'title':1,'group':1},'withData':5,
+        'total':9,'types':{'progress':5,'template':1,'button-group':1,'title':1,'group':1},'withData':6,
     }
     assert stored['counts']['operations']['total']==43
     assert stored['counts']['operations']['withData']==33
@@ -87,17 +93,29 @@ def test_static_proui_runtime_is_reproducible_and_uses_bound_data():
         'total':10,'types':{'progress':5,'mini-cpgraph':1,'template':1,'group':1,'title':1,'button-group':1},'withData':6,
     }
     assert len(stored['templates'])==15
+    assert stored['gaps']==[]
     prohibited={'cockpit-gap','cockpit-risk-list'}
     for spec in list(stored['pages'].values()) + list(stored['templates'].values()):
         for component in spec['components']:
             assert component['type'] not in prohibited
-            if component.get('cockpitBindingKey'):
-                config=component['dataConfig']
-                assert config['sourceType']=='mock'
-                assert config['mockData'] is not None
-    assert any(g['code']=='CHILD_DEFINITION_MISSING' for g in stored['gaps'])
-    assert all(g['code']!='UNSUPPORTED_COMPONENT' for g in stored['gaps'])
-    assert all(g['code']!='PROTOTYPE_LAYOUT_RETIRED' for g in stored['gaps'])
+    assert all(page['insights']==[] for page in stored['pages'].values())
+
+    source=json.loads((RELEASE/'source.json').read_text())
+    snapshot=RELEASE/source['snapshot']['file']
+    raw=snapshot.read_bytes()
+    assert hashlib.sha256(raw).hexdigest()==source['snapshot']['sha256']
+    assert len(raw)==source['snapshot']['bytes']
+    captured=json.loads(raw)
+    assert len(captured['analysis'])==source['snapshot']['analysisRequests']==21
+    assert len(captured['batch'])==source['snapshot']['batchRequests']==2
+    assert len(captured['requests'])==source['snapshot']['helmetRequests']==2
+
+    cockpit=RELEASE.parents[1]
+    js=(cockpit/'cockpit.js').read_text()
+    html=(cockpit/'index.html').read_text()
+    assert '__cockpitQueryDebug' not in js
+    assert 'debug' not in html
+    assert 'pdt-release-2109836674373566465' in html
 
 
 def test_metadata_api_and_analysis_source_isolation(tmp_path):
@@ -113,19 +131,22 @@ def test_metadata_api_and_analysis_source_isolation(tmp_path):
     assert e['records'][0]['id']=='SO-2026-0318'
 
 
-def test_runtime_components_are_delivered_templates_verbatim_except_data():
-    delivered=json.loads((ROOT/'template-registry.json').read_text())
+def test_runtime_components_are_release_templates_verbatim():
     payload=runtime_payload()
-    allowed={'dataConfig','tableColumnConfig','cockpitBindingKey','cockpitGraphData'}
-    for page,tid in PAGE_IDS.items():
-        got={c['id']:c for c in payload['pages'][page]['components']}
-        want={c['id']:c for c in delivered[tid]['components']}
-        assert set(got)==set(want), page
-        for cid,delivered_component in want.items():
-            rendered={k:v for k,v in got[cid].items() if k not in allowed}
-            original={k:v for k,v in delivered_component.items() if k not in allowed}
-            if 'graphConfig' in original:
-                original['graphConfig']=dict(original['graphConfig']);original['graphConfig'].pop('processCode',None)
-            assert rendered==original, (page,cid,{k for k in set(rendered)|set(original) if rendered.get(k)!=original.get(k)})
-        slots=[s for s in payload['pages'][page]['insights']]
-        assert all(not any(seg.get('kind')=='tab' for seg in slot['embedPath']['segments']) for slot in slots)
+    root=json.loads(json.loads((RELEASE/'dashboard.json').read_text())['data']['configs'])
+    assert payload['dashboard']['components']==root['components']
+    assert [(c['id'],c['type']) for c in payload['dashboard']['components']]==[
+        ('composite-filter-hzjk9t5q','composite-filter'),
+        ('tab-container-zm9eyxne','tab-container'),
+    ]
+
+    tabs=next(c for c in root['components'] if c['type']=='tab-container')['baseConfig']['tabs']
+    assert [t['id'] for t in tabs]==list(payload['pages'][page]['tabId'] for page in ('home','overview','operations','analysis'))
+    assert [t['templateId'] for t in tabs]==list(PAGE_TEMPLATES.values())
+
+    for page,tid in PAGE_TEMPLATES.items():
+        record=json.loads((RELEASE/'templates'/f'{tid}.json').read_text())
+        files=json.loads(record['data']['configs'])
+        assert payload['pages'][page]['components']==files['components']
+        assert payload['templates'][tid]['components']==files['components']
+        assert payload['pages'][page]['insights']==[]
