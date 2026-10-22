@@ -425,46 +425,55 @@ git diff --name-only
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
 - 当前发布：`feature/cockpit-v3-poc` commit
-  `99084f021f21b85c24f3e8518ebf7a8f82318709`，构建时间 `2026-10-22T05:15:42Z`；
+  `5501d6f28744aa04124f0add8f9ec808fd720562`，构建时间 `2026-10-22T08:32:00Z`；
   目录内 `manifest.sha256` 使用相对路径保存发布文件哈希，`release.json` 记录分支、提交和构建时间。
-  运行时入口为 `cockpit.js/css?v=proui-dashboard-v5`，静态元数据为
-  `metadata/runtime.json?v=proui-dashboard-v5`；ProUI 运行包为 `c38cbf36`，CSS 为
-  `b1ee836d`。页面静态资源走同源 `/static/*`，`/api/cockpit/*` 走 nginx 反向代理，
-  其余 `/api/*` 仍固定返回 404。
+  运行时入口为 `cockpit.js/css?v=5501d6f`，静态元数据为
+  `metadata/runtime.json?v=5501d6f` 和 `data-snapshots.json?v=5501d6f`；HTML 使用
+  `Cache-Control: no-store`，每次刷新都会拿到新的版本查询串，避免继续使用上一小时缓存的旧快照。
+  ProUI 运行包为 `c38cbf36`，CSS 为 `b1ee836d`。页面静态资源走同源 `/static/*`，
+  `/api/cockpit/*` 走 nginx 反向代理，其余 `/api/*` 仍固定返回 404。
 - 页面壳层：外层使用与 `iba-demo` 示例一致的 `#f3f5f8` 灰底和 20px 内容留白；
   `ProBiDashboard` 使用发布态和自带标题区，不启用配置态拖入占位。`home` 标题为
   “储能产品线整体经营分析”，其余页面使用对应看板标题。
-- 内容校验：发布目录共 9 个文件，`sha256sum -c manifest.sha256` 全部通过；运行包包含
+- 内容校验：发布目录共 27 个文件，`sha256sum -c manifest.sha256` 全部通过；运行包包含
   4 个页面、15 份模板、2 个根组件、137 个模板组件和 17 个分析插槽。页面组件保持交付
-  `template-registry.json` 原样，宿主只补充演示数据绑定与 AI 插槽运行数据。
+  `template-registry.json` 原样；`data-snapshots.json` 保存 38 个 AP 查询、2 个批量查询和
+  2 个头盔图请求，包含 2025／2026 年度筛选、七个头盔节点明细和供应商明细第 2 页。
 - 反向代理：nginx 在 `/api/` 404 规则之前增加 `location /api/cockpit/`，转发到
   `http://172.16.10.34:8877`，读取超时 300 秒并禁用响应缓存。
 - 旁路 API：独立目录
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，入口为
   `cockpit_api.py`，监听 `172.16.10.34:8877`；PID 写入 `app.pid`，日志为 `api.log`，
   运行数据独立保存到 `api-data/`，不接触历史会话和主服务 `dataset/`。当前进程由
-  `setsid nohup` 启动，没有 systemd 自动拉起。静态站升级到 `99084f0` 时后端接口未变化，
+  `setsid nohup` 启动，没有 systemd 自动拉起。静态站升级到 `5501d6f` 时后端接口未变化，
   因此继续复用该 `api-017d65f` 服务。
 - 文件权限：发布后 `site/` 及子目录必须为 `755`、文件为 `644`；根目录若被 staging 权限
   覆盖为 `700`，容器内 nginx worker 会返回 404。
 - 路由配置：nginx 已增加 `location = /cockpit/home`；配置备份为
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/conf-20261022-115417-pre-proxy/default.conf`。
-- 验证（2026-10-22 13:20）：四条页面路由、`release.json`、`runtime.json`、`cockpit.js`、
+- 验证（2026-10-22 16:34）：四条页面路由、`release.json`、`runtime.json`、`cockpit.js`、
   ProUI CSS／JS、Vue 均返回 200；`/api/cockpit/bootstrap` 和 `/api/cockpit/metadata` 经代理返回 200，
   `/api/healthz` 仍为 404。远程浏览器确认四个 ProUI `pro-tabs` Tab、`id=1|2` 传播和活动条定位；
   四个页面均显示灰底、20px 内容留白和 `ProBiDashboard` 自带标题区，页面没有配置态拖入占位；
   `home` 的分析插槽显示已完成的模型结果，`overview` 渲染 3 个 canvas／6 个表格，`operations`
   渲染运营头盔、指标和投标分析插槽，`analysis` 渲染穿透图、8 个表格和全部已完成分析插槽。
+  本轮额外验证：`overview` 年度筛选切到 2026 后首卡从 `2,817,864,039.31` 变为
+  `1,963,806,558.2`，重置后恢复；`operations` 七个头盔节点和三个明细分页均可点击，无
+  “未找到该 AP 查询的发布快照”；`analysis`、`home` 在 `id=1|2` 下均正常；经营指标切到出货量
+  模板后只出现上游自身 HTTP 500 对应的“系统繁忙”，不再误报快照缺失。
+  顶部“采购订单创建时间维度”按交付配置只联动当前 Tab 的一个指标卡（全局经营看板联动
+  “促进增长｜销售额”，运营 360 联动“保障交付｜出货量”），与 PDT 正式页一致；其余卡片
+  需要全卡联动时应由交付配置补充绑定并重新抓取快照。
   1440px 与 480px 页面均无横向溢出，窄屏活动 Tab 位于可视区；浏览器无 JS 异常，网络请求无
   4xx／5xx，ProUI 仍有非致命的 Vue 属性透传警告。经 8876 代理发起的真实模型分析
   `50074713092e444ab9f4918ee8c02a34` 状态为 `completed`，阶段为发货。
   同机 `http://127.0.0.1:8765/healthz` 和 `/workbench` 仍返回 200，主服务未修改或重启。
 - 回滚副本：本次同步前旧站已备份到
-  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-131551-pre-99084f0`
-  （上一版 `017d65f`）；更早的 `site-20261022-115417-pre-017d65f` 等副本保留。
-  新构建暂存目录为 `site-next-99084f0`。
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-163400-pre-5501d6f`
+  （上一版 `f87163f`，其回滚副本为 `site-20261022-162500-pre-f87163f`，再早为
+  `site-20261022-131551-pre-99084f0` 等）。新构建暂存目录为 `site-next-5501d6f`。
 - 本地预览：`/tmp/cockpit-local-preview.py` 使用当前工作区代码启动
-  `127.0.0.1:8876`，路由和看板资源与上述静态发布一致；该进程只监听回环地址。
+  `127.0.0.1:8876`，当前已更新到 `5501d6f` 对应的资源和 38 个快照；该进程只监听回环地址。
 
 上一运行状态（2026-09-03 部署 v0.1.2，现保留为回滚版本）：
 
