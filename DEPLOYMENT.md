@@ -421,8 +421,9 @@ git diff --name-only
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
 - 内容来源：`feature/cockpit-v3-poc` commit
-  `c37b4fd6899eee7f14da57f787b091c803ddf5d9`；目录内 `manifest.sha256`
-  保存发布文件哈希。页面仅请求同源 `/static/*`，`/api/*` 固定返回 404。
+  `cc00320f9cc98aa4a84cdeefbecc7385a826442c`；目录内 `manifest.sha256`
+  保存发布文件哈希，运行时入口为 `cockpit.js/css?v=prototype-layout-v4`。页面仅请求
+  同源 `/static/*`，`/api/*` 固定返回 404。
 - 验证：三条页面路由及 `cockpit.js`、`views.json`、Vue／ProUI 资源均返回 200；
   浏览器在 1440px 和 390px 下确认三页无运行时错误、无横向溢出，`/`、`/cockpit`
   返回总览，页面内“进入运营分析”跳转到 `/cockpit/operations`；同机
