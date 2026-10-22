@@ -404,6 +404,30 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
+### Cockpit 三页静态看板（8876，2026-10-22）
+
+- 范围：只发布 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`
+  三个看板 HTML 及其 CSS／JS／布局快照，不启动第二套 `bi_agent.web`，不占用或重启
+  `8765` 主服务，不复制 `dataset/`，不读取生产接口。
+- 访问地址：
+  - `http://172.16.10.34:8876/cockpit/overview`
+  - `http://172.16.10.34:8876/cockpit/operations`
+  - `http://172.16.10.34:8876/cockpit/analysis`
+  - `/` 与 `/cockpit` 直接返回总览页，不重定向。
+- 服务器目录：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/site`；
+  nginx 配置：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/conf/default.conf`。
+- 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
+  静态站点和配置均为只读挂载，`--restart unless-stopped`。
+- 内容来源：`feature/cockpit-v3-poc` commit
+  `c37b4fd6899eee7f14da57f787b091c803ddf5d9`；目录内 `manifest.sha256`
+  保存发布文件哈希。页面仅请求同源 `/static/*`，`/api/*` 固定返回 404。
+- 验证：三条页面路由及 `cockpit.js`、`views.json`、Vue／ProUI 资源均返回 200；
+  浏览器在 1440px 和 390px 下确认三页无运行时错误、无横向溢出，`/`、`/cockpit`
+  返回总览，页面内“进入运营分析”跳转到 `/cockpit/operations`；同机
+  `http://127.0.0.1:8765/workbench` 仍返回 200。
+- 本地预览：`/tmp/cockpit-local-preview.py` 使用当前工作区代码启动
+  `127.0.0.1:8876`，路由和看板资源与上述静态发布一致；该进程只监听回环地址。
+
 上一运行状态（2026-09-03 部署 v0.1.2，现保留为回滚版本）：
 
 - 运行目录 `~/eimosp-ontology-agentic-analytics-releases/v0.1.2`，

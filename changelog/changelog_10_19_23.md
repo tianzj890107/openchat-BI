@@ -90,9 +90,14 @@
   `scripts/extract_cockpit_layout.mjs`、`bi_agent/web/app.py`、`tests/test_cockpit_poc.py`、
   `tests/test_cockpit_resource_contract.py`、`tests/test_cockpit_metadata.py`、
   `docs/specs/cockpit-v3-poc.md`、`docs/specs/cockpit-v3-metadata-gaps.md`、`README.md`、
-  `.env.example`、`.gitignore`、`.gitattributes`。
+  `DEPLOYMENT.md`、`.env.example`、`.gitignore`、`.gitattributes`。
 - 验证（2026-10-22）：驾驶舱契约测试32项通过；JavaScript及提取脚本语法通过，`git diff --check`通过。
   浏览器在1440px和390px验证三页、销售／出货视图、七个运营环节和四个穿透环节，无运行时异常、
   无横向溢出；销售额指标、首页方案节点及运营标题的跳转通过；关键缺失区尺寸与原型捕获值一致。
+- 部署（2026-10-22）：三个看板页已作为纯静态站发布到
+  `http://172.16.10.34:8876/cockpit/{overview,operations,analysis}`，由独立
+  `eimosp-cockpit-8876` nginx 容器承载；未部署第二套后端、未修改或重启 `8765`
+  主服务、未复制运行数据。本机 `127.0.0.1:8876` 也已用同一工作区代码拉起。
+  远程与本机在 1440px／390px 下均验证无运行时错误和横向溢出。
 - 边界：真实业务数据源尚未映射，Fuxi 宿主尚未联调；POC 执行器按单进程运行。
-  本轮仅本地实现与 GitLab 分支交付，未部署、未创建 tag／Release／MR，未修改用户历史数据。
+  未创建 tag／Release／MR，未修改用户历史数据。
