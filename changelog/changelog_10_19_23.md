@@ -71,7 +71,7 @@
   静态站客户端改写为 `overview`）。三页只挂载一个 `ProBiDashboard`，顶部筛选器和三个 Tab 均来自交付配置；路由只激活
   对应 Tab，并保留 Fuxi 的 `id=1|2`。不渲染工作区、会话区或第二套导航。
 - 交付包（2026-10-22 18:30）：拉取 `iba-demo` 分支 `feature/demo_1021@37975c7`，导入 13 份模板、
-  122 个组件、12 个静态插槽组件和 `insight-components/`；更新 `pro-bi-ui.min.js` 到
+  122 个组件、12 个插槽声明和 `insight-components/`；更新 `pro-bi-ui.min.js` 到
   `011269f8`，CSS 未变化，继续复用 `b1ee836d` 和 Vue 3.5.25。源 JSON 和 `insights.js` 保持原样，
   哈希、类型统计和缺项记录在 `source.json`。
 - 原生组件渲染（2026-10-22 18:30）：撤回原型 DOM/CSS 快照方案，删除 `static/cockpit/layout/`
@@ -86,10 +86,13 @@
 - 筛选联动：顶部“采购订单创建时间维度”按交付配置只绑定当前 Tab 的一个指标卡
   （经营看板绑“促进增长｜销售额”，运营 360 绑“保障交付｜出货量”），其余卡片不声明该维度绑定。
   该行为与交付配置一致，宿主不自行扩展联动范围。
-- 智能分析插槽（2026-10-22 18:30）：交付根配置没有 `insights` 字段，宿主从 `insights.json`
-  补入 12 个插槽声明：经营看板 0 个、运营 360 4 个、穿透式问题分析 8 个。插槽内容直接使用交付
-  `insight-components/` 的静态组件，本轮不预加载、不轮询、不调用模型；主服务
-  `/api/cockpit/analyses`、历史、报告和模拟任务令接口继续保留，后续需要实时 AI 时再接入页面。
+- 智能分析插槽（2026-10-22 19:10 修订）：交付根配置没有 `insights` 字段，宿主从 `insights.json`
+  补入 12 个插槽声明：经营看板 0 个、运营 360 4 个、穿透式问题分析 8 个。插槽位置按交付配置，
+  内容改为调用主服务 `/api/cockpit/analyses` 的真实模型分析；页面加载后通过 `requestIdleCallback`
+  （回退 800ms 定时）预取商机、报价、投标、订单、发货 5 个环节，每个环节只提交一次，前端最多
+  3 个并发，其余排队。插槽挂载复用同一 Promise，点击头盔节点不重新分析，只有“重新分析”强制刷新。
+  首次分析通常约 10–20 秒，已完成范围复用 SQLite 历史；失败时显示错误和重试。交付
+  `insight-components/` 保留原始文件，页面不再加载其静态文案。
 - 交互：头盔图点击节点切换环节模板；运营页报价、投标、订单接收节点分别挂载 `quote-summary`、
   `bid-summary`、`order-sign-summary`；穿透页订单接收、发货节点分别挂载 `order-risk-summary`
   和 4 个发货插槽。页内 Tab 切换同步 URL 并保留 `id`。
@@ -105,9 +108,10 @@
   `tests/test_cockpit_poc.py`、`tests/test_cockpit_resource_contract.py`、
   `tests/test_cockpit_metadata.py`、`docs/specs/cockpit-v3-poc.md`、
   `docs/specs/cockpit-v3-metadata-gaps.md`、`README.md`、`DEPLOYMENT.md`。
-- 验证（2026-10-22 18:30）：驾驶舱契约测试 37 项通过；`node --check` 和 `git diff --check` 通过。
+- 验证（2026-10-22 19:10）：驾驶舱契约测试 37 项通过；`node --check` 和 `git diff --check` 通过。
   浏览器验证三个路由在 `id=1|2` 下激活正确 Tab，页面只有一个 `ProBiDashboard`；
-  头盔节点联动、12 个静态插槽和顶部时间筛选均无组件错误。
+  运营页加载后后台出现尚未显示环节的分析任务，证明空闲预取生效；点击头盔节点后
+  报价、投标、订单签单、订单风险及 4 个发货插槽均直接显示已完成结果，无组件错误。
 - 部署（2026-10-22 15:53）：`172.16.10.34:8876` 更新到 `feature/cockpit-v3-poc@a438fcd`，
   HTML 版本串为 `a438fcd`，发布目录 38 个文件且 `manifest.sha256` 全部通过。线上三条路由、
   `/cockpit/home` 改写、`id=1|2`、Tab 同步和头盔节点插槽均已验证；三页无组件错误。

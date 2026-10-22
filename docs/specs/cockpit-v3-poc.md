@@ -7,7 +7,7 @@
 - 三个 Tab 分别为“经营看板”“运营360整体分析”“穿透式问题分析”；页面不包含宿主工作区、会话区、页面标题或第二套导航。
 - `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis` 只负责激活对应 Tab，并保留当前 `id`；页内 Tab 切换同步地址。
 - 两个演示身份使用 Fuxi 传入的单一查询参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员。当前三个页面内容对两个 `id` 完全一致，两个人都可以访问和操作；`id` 只作身份标记并为将来差异化预留。页面和 API 不使用 `role`，`/cockpit` 跳转和页内跳转都保留当前 `id`。
-- 交付根配置本身没有 `insights` 字段，宿主从 `iba-demo-1021/insights.json` 补入 12 个插槽声明，并保留完整 Tab `embedPath`。插槽内容直接使用交付 `insight-components/` 的 12 个静态组件，本轮不预加载、不调用模型；实时 AI 分析能力仍在 `/api/cockpit` 侧保留，尚未接入页面。
+- 交付根配置本身没有 `insights` 字段，宿主从 `iba-demo-1021/insights.json` 补入 12 个插槽声明，并保留完整 Tab `embedPath`。插槽位置按交付配置挂载，内容改为调用 `/api/cockpit/analyses` 的真实模型分析；页面加载后利用空闲时间预取商机、报价、投标、订单、发货 5 个环节，不等到点击才开始。
 - 三个页面读取同一份静态发布包和 AP 响应快照；快照不包含 Cookie、Token 或用户身份。
 - 正式配置中的 AP 指标口径与卡片标题不一致时保持原值，不在宿主层修正；真实本体＋数据库映射需要后续业务确认。
 - 模拟任务令、分析历史和任务接口仍在主服务侧保留，但当前交付看板页面不渲染旧任务抽屉。
@@ -46,14 +46,16 @@
 
 ## 智能分析插槽
 
-本轮按交付的 `insight-components/` 静态组件渲染，不调用模型、不轮询分析任务：
+插槽内容由主服务真实模型分析生成，不再使用交付目录中的静态文案。页面加载完成后通过
+`requestIdleCallback`（不支持时回退 800ms 定时）预取 5 个环节：商机、报价、投标、订单、发货；
+每个环节只发起一次分析，前端最多 3 个并发，其余排队。插槽挂载时复用同一 Promise，
+点击头盔节点不会重新请求；只有点击“重新分析”才强制刷新。
+
 运营页默认显示 `bid-status-note`，点击头盔节点后按对应模板挂载 `quote-summary`、`bid-summary`、
 `order-sign-summary`；穿透页默认显示 `sales-shipment-issues`、`opportunity-risk`、
 `opportunity-coverage-note`，点击订单接收和发货节点后挂载 `order-risk-summary`、
 `shipment-risk-summary`、`shipment-overdue-note`、`shipment-cause-breakdown`、`shipment-task-order`。
-
-主服务仍保留 `POST /api/cockpit/analyses`、历史、报告和模拟任务令接口，供后续接入实时 AI 时使用；
-当前页面不请求这些接口，也不预加载分析结果。
+首次分析通常约 10–20 秒，已完成范围复用 SQLite 中的结果；失败时显示错误和重试。
 
 ## API
 
@@ -110,7 +112,8 @@ node --check bi_agent/web/static/cockpit/cockpit.js
 - 三条路由均返回 200，`/cockpit` 跳到 `overview`，`/cockpit/home` 在静态站加载后改写为 `overview`（FastAPI 直接 307）。
 - 页面只有一个 `ProBiDashboard`，顶部根筛选器和三个 Tab 由交付配置生成；页内 Tab 切换同步 URL 并保留 `id=1|2`。
 - 三条路由分别激活“经营看板”“运营360整体分析”“穿透式问题分析”；`id=1` 与 `id=2` 内容一致。
+- 运营页加载后后台出现报价、订单等尚未显示环节的分析任务，证明空闲预取生效；点击节点后插槽直接显示已完成结果。
 - 三个页面均无组件错误；运营页头盔图切到报价、投标、订单接收节点时分别挂载 `quote-summary`、`bid-summary`、`order-sign-summary`，穿透页切到订单接收和发货节点时挂载 `order-risk-summary` 与 4 个发货插槽。
-- 穿透页默认显示 3 个插槽；12 个交付插槽全部为静态组件，不发起模型请求。
+- 穿透页默认显示 3 个插槽；12 个交付插槽位置均挂载真实模型分析，页面空闲时预取 5 个环节。
 - 页面只回放本地 `/static/cockpit/metadata/pdt-release-2109836674373566465/data-snapshots.json` 中的请求，不访问 AP。
 - 时间筛选切换到 `2026-08-13 19:06:09` 后无组件错误、无未捕获快照，销售额卡按交付绑定更新，其余卡保持不变（与交付筛选绑定范围一致）。

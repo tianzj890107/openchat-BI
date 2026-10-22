@@ -28,8 +28,9 @@
   `order-risk-summary`、`shipment-risk-summary`、`shipment-overdue-note`、
   `shipment-cause-breakdown`、`shipment-task-order`。
 
-插槽内容直接使用 `insight-components/` 的 12 个静态组件，本轮不调用模型、不预加载。
-主服务 `/api/cockpit` 的实时分析、历史和任务令接口仍保留，后续需要实时 AI 时再接入。
+插槽位置按交付配置挂载，内容调用主服务 `/api/cockpit/analyses` 的真实模型分析。
+页面加载后利用空闲时间预取商机、报价、投标、订单、发货 5 个环节，点击节点时直接展示预热结果。
+`insight-components/` 保留为交付原始文件，当前页面不再加载其静态文案。
 
 ## 接入边界
 

@@ -409,8 +409,8 @@ git diff --name-only
 - 范围：发布 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis` 三个看板 HTML 及其
   CSS／JS、静态 ProUI 运行包和顶部三个视图 Tab，使用 `ProBiDashboard` 渲染原生 ProUI 组件；
   `/cockpit/home` 保留为兼容入口并 307 到 `overview`。不启动第二套 `bi_agent.web`，不占用或重启
-  `8765` 主服务，不复制 `dataset/`，不读取生产接口。看板内的交付插槽是静态组件，不访问
-  `/api/cockpit/*`；旁路 API 仍保留供后续接入实时 AI。
+  `8765` 主服务，不复制 `dataset/`，不读取生产接口。看板内的交付插槽通过同源
+  `/api/cockpit/*` 调用 8877 旁路 API 的真实模型分析。
 - 访问地址：
   - `http://172.16.10.34:8876/cockpit/overview?id=1` 或 `?id=2`
   - `http://172.16.10.34:8876/cockpit/operations?id=1` 或 `?id=2`
@@ -435,11 +435,13 @@ git diff --name-only
   页面静态资源走同源 `/static/*`；`/api/cockpit/*` 仍走 nginx 反向代理，其余 `/api/*` 固定返回 404。
 - 页面壳层：外层使用与 `iba-demo` 示例一致的 `#f3f5f8` 灰底和 20px 内容留白；
   `ProBiDashboard` 使用发布态和自带标题区，不启用配置态拖入占位。
-- 内容校验：交付包包含 3 个 Tab、13 份模板、2 个根组件、122 个组件配置和 12 个静态插槽组件。
+- 内容校验：交付包包含 3 个 Tab、13 份模板、2 个根组件、122 个组件配置和 12 个插槽声明。
   `data-snapshots.json` 保存 39 个 AP 查询、3 个批量查询和 4 个头盔图请求；未捕获查询在原卡片
   显示组件自带的“未找到该 AP 查询的发布快照”，宿主不补造数据。
 - 插槽：交付根配置没有 `insights`，运行时从交付目录补入 12 个声明（经营看板 0、运营 360 4、
-  穿透式问题分析 8）。内容直接使用交付 `insight-components/`，本轮不预加载、不轮询、不调用模型。
+  穿透式问题分析 8）。插槽位置按交付配置，内容调用 `/api/cockpit/analyses` 的真实模型分析；
+  页面加载后利用空闲时间预取商机、报价、投标、订单、发货 5 个环节，每个环节只提交一次，
+  前端最多 3 个并发，其余排队。点击节点复用预热结果，只有“重新分析”强制刷新。
 - 反向代理：nginx 在 `/api/` 404 规则之前增加 `location /api/cockpit/`，转发到
   `http://172.16.10.34:8877`，读取超时 300 秒并禁用响应缓存。
 - 旁路 API：独立目录
@@ -457,11 +459,12 @@ git diff --name-only
   `/cockpit/home?id=2` 加载后改写为 `/cockpit/overview?id=2`。远程浏览器确认三个 Tab、一个
   `ProBiDashboard`、`id=1|2` 传播和 URL 同步；运营页头盔图切到报价、投标、订单接收节点时分别出现
   `quote-summary`、`bid-summary`、`order-sign-summary`，穿透页切到订单接收、发货节点时出现
-  `order-risk-summary` 和 4 个发货插槽；三页均无 ProUI 组件错误、无未捕获快照。
+  `order-risk-summary` 和 4 个发货插槽；插槽均为真实模型分析结果，后台可见尚未显示环节的预取任务；
+  三页均无 ProUI 组件错误、无未捕获快照。
 - 历史验证（2026-10-22 14:49，`2b828a5`）：四条页面路由和 `release.json` 返回新提交；HTML 版本串、
   `cockpit.js` 和 `runtime.json` 的 `v=2b828a5` 生效，线上 `cockpit.js` 包含插槽组件与轮询逻辑。
-  该版本的 AI 插槽实时调用 `/api/cockpit/analyses`，商机“重新分析”13.8 秒完成；本轮已改用交付
-  静态插槽，不再发起模型请求。
+  该版本的 AI 插槽实时调用 `/api/cockpit/analyses`，商机“重新分析”13.8 秒完成。当前版本继续使用
+  真实模型分析，并增加页面空闲时的 5 个环节预取。
 - 回滚副本：本轮部署前旧站已备份到
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-155309-pre-2b828a5`
   （上一版 `2b828a5`）；更早备份为 `site-20261022-144900-pre-5501d6f`（`5501d6f`）。

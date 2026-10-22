@@ -72,8 +72,10 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     assert '"role"' not in js and "'role'" not in js
     assert '@@COCKPIT_VERSION@@' in html
     assert 'pdt-release-2109836674373566465' in js
-    assert 'insight-components/index.js' in js
-    assert 'window.InsightComponents' in js
+    assert '`${apiBase}/analyses`' in js
+    assert "source: 'prototype'" in js
+    assert 'ensureAnalysis' in js and 'requestIdleCallback' in js
+    assert 'PREFETCH_STAGES' in js
     assert ':bi-adapters="biAdapters"' in html
     assert 'layout/' not in js and 'views.json' not in js
 
@@ -105,4 +107,4 @@ def test_three_top_tabs_and_static_proui_dashboard_are_present():
     assert len(runtime['pages']['analysis']['insights'])==8
     assert ':insights="pageInsights"' in html
     assert 'v-slot:[slot_name(insight)]' in html
-    assert "app.component('cockpit-insight', DeliveredInsight)" in js
+    assert "app.component('cockpit-insight', CockpitInsight)" in js

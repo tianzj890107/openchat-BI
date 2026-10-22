@@ -8,7 +8,7 @@
 - 根组件：`composite-filter-hzjk9t5q`、`tab-container-zm9eyxne`。
 - 三个 Tab：经营看板、运营360整体分析、穿透式问题分析。
 - 组件规模：13 份模板、122 个组件配置（含 2 个根组件）。
-- 插槽组件：交付 `insight-components/` 共 12 个静态组件，`insights.json` 声明 12 个插入位置。
+- 插槽：交付 `insights.json` 声明 12 个插入位置；宿主按位置挂载真实模型分析卡片。
 - 本运行包模板和组件类型检查：通过；三个页面均无 ProUI 组件错误。
 
 ## 页面映射
@@ -45,9 +45,11 @@
   `order-risk-summary`、`shipment-risk-summary`、`shipment-overdue-note`、
   `shipment-cause-breakdown`、`shipment-task-order`。
 
-本轮插槽内容直接使用交付 `insight-components/` 的静态组件，不预加载、不轮询、不调用模型。
-穿透页默认显示 3 个插槽；点击头盔图订单接收和发货节点后，其余插槽按所切换的模板挂载。
-主服务 `/api/cockpit` 的实时分析、历史和任务令接口继续保留，后续需要实时 AI 时再接入页面。
+插槽内容调用主服务 `/api/cockpit/analyses` 的真实模型分析。页面加载后利用浏览器空闲时间预取
+商机、报价、投标、订单、发货 5 个环节，每个环节只提交一次；前端最多 3 个并发，其余排队。
+插槽挂载时复用同一分析 Promise，点击头盔节点不重新请求，只有“重新分析”才强制刷新。
+穿透页默认显示 3 个插槽；点击订单接收和发货节点后，其余插槽按所切换的模板挂载。
+首次分析通常约 10–20 秒，已完成范围复用历史结果；失败时在插槽内显示错误和重试。
 
 ## 已知差异
 
@@ -64,7 +66,7 @@
 
 ## 验证
 
-- 驾驶舱契约测试 `37 passed`。
+- 驾驶舱契约测试 `37 passed`（含真实分析调用与空闲预取契约）。
 - `node --check bi_agent/web/static/cockpit/cockpit.js` 通过。
 - 浏览器检查 `overview`、`operations`、`analysis` 在 `id=1|2` 下均能激活正确 Tab，只有一个
   `ProBiDashboard`，无组件错误。
