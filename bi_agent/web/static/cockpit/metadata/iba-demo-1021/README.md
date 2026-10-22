@@ -1,8 +1,8 @@
 # 前端交付元数据：feature/demo_1021
 
 来源：[iba-demo](http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021)，
-固定 commit `55842efc2a788b9974da91a0e63afe1d6cd460f3`。
-`components.json` 和 `template-registry.json` 原样复制；`insights.json` 由声明式 `insights.js` 转为 JSON。
+固定 commit `17152091ffce520d1e05a419c4192f7762db4b26`。
+`components.json`、`template-registry.json` 和 `insights.js` 原样复制；`insights.json` 由声明式 `insights.js` 转为 JSON。
 哈希、类型统计和已知问题见 `source.json`。
 
 ## 页面对应
@@ -13,21 +13,25 @@
 | 运营 360 整体分析 | tab-211tc4o0 | 2112434004503347202 |
 | 穿透式问题分析 | tab-1suxx5hd | 2112061604959928321 |
 
-根组件2个，子模板14份，共130个组件配置。89项使用AP源，其余41项为mock配置。
+根组件2个，子模板14份，共130个组件配置。100项使用AP源，其余30项为mock配置。
 范围包含销售／出货目标、五类经营进度、运营头盔与节点明细、商机／订单／发货穿透等。
 新版运行包已验证支持配置里的 `bar-line`、`progress`、`share-bar`、`tab-container` 等类型。
 
 ## 分析插槽
 
-- `scheme-guide-summary`：第二页方案引导子模板顶部。
-- `sales-shipment-issues`：第三页 `group-dhflgwln` 后方。
-- `opportunity-risk`：第三页商机子模板顶部。
+`insights.js` 现提供16个声明式插槽，覆盖运营页各环节概况与穿透页风险、原因、任务建议：
 
-源配置在第二页也预留了插槽；本轮保留交付原貌，不改变已确认的“前两页直接取数，第三页AI分析”行为。
+- 运营页：`bid-status-note`、`scheme-guide-summary`、`quote-summary`、`tech-plan-summary`、
+  `bid-summary`、`order-sign-summary`、`shipment-summary`。
+- 穿透页：`sales-shipment-issues`、`opportunity-risk`、`opportunity-coverage-note`、
+  `sales-bid-summary`、`order-risk-summary`、`shipment-risk-summary`、
+  `shipment-overdue-note`、`shipment-cause-breakdown`、`shipment-task-order`。
+
+本轮只同步插槽声明，不复制示例网关鉴权、固定AI结论或 `insight-components/` 的业务组件。
 
 ## 接入边界
 
-本目录三份源配置保持冻结，现已由 `bi_agent/cockpit/metadata.py` 编译为当前 cockpit 的页面配置。
+本目录源 JSON 和 `insights.js` 保持冻结，现已由 `bi_agent/cockpit/metadata.py` 编译为当前 cockpit 的页面配置。
 `GET /api/cockpit/metadata` 返回编译后的模板、显式数据绑定、插槽路径、适配记录与差异。
 根 Tab 对应宿主三页导航；子模板继续使用交付ID。运行时只移除插槽路径最外层Tab段。
 

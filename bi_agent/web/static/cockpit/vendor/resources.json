@@ -1,6 +1,8 @@
 {
-  "checkedAt": "2026-10-21",
-  "notes": "Official static UMD distribution; original embedded license notices preserved. Isolated from legacy workbench assets.",
+  "checkedAt": "2026-10-22",
+  "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
+  "sourceCommit": "17152091ffce520d1e05a419c4192f7762db4b26",
+  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021; original embedded license notices preserved. Isolated from legacy workbench assets.",
   "resources": [
     {
       "file": "../../vendor/antd/lib/vue.global.js",
@@ -12,17 +14,17 @@
     },
     {
       "file": "pro-bi-ui.min.js",
-      "source": "http://pro-ui.eimos.com/lib/pro-bi-ui.min.js",
-      "pdtSource": "http://pdt-dev.eimos.com/pro-ui/lib/pro-bi-ui.min.js",
-      "sha256": "981e7d98c1a709dc2bf3f92c78af4cc7e7f7cd473f310368220f01cd308e6b2f",
-      "bytes": 6259410
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/17152091ffce520d1e05a419c4192f7762db4b26/lib/pro-bi-ui.min.js",
+      "sourcePath": "lib/pro-bi-ui.min.js",
+      "sha256": "c38cbf36974cd859eeeac89b57387f9bcb6f22526e118d66e48ac9c2c0fef1c3",
+      "bytes": 6259356
     },
     {
       "file": "pro-ui.min.css",
-      "source": "http://pro-ui.eimos.com/lib/pro-ui.min.css",
-      "pdtSource": "http://pdt-dev.eimos.com/pro-ui/lib/pro-ui.min.css",
-      "sha256": "ba407022d6d128c12c88dd4a3e3d7443a24a720d064597f6fd5fa03a683342c5",
-      "bytes": 767221
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/17152091ffce520d1e05a419c4192f7762db4b26/lib/pro-ui.min.css",
+      "sourcePath": "lib/pro-ui.min.css",
+      "sha256": "b1ee836dbe11d3b5df80f9a1718a8a7623aaa89e9419bae1d6450a9063744d25",
+      "bytes": 720594
     }
   ],
   "catalog": "http://pro-ui.eimos.com/assets/"

@@ -689,7 +689,27 @@
             ]
           },
           "mockPreset": "kpiCard",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "subMeasure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
         },
         "id": "kpiCard-xewwlgmz",
         "position": {
@@ -731,7 +751,27 @@
             ]
           },
           "mockPreset": "kpiCard",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "subMeasure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
         },
         "id": "kpiCard-qeic86rz",
         "position": {
@@ -773,7 +813,27 @@
             ]
           },
           "mockPreset": "kpiCard",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "subMeasure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
         },
         "id": "kpiCard-r3h38ebc",
         "position": {
@@ -818,7 +878,32 @@
             ]
           },
           "mockPreset": "table",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "tableFields": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D007",
+              "isTree": false,
+              "label": "发货完成状态维度",
+              "valueType": "STRING"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D008",
+              "isTree": true,
+              "label": "发货审批时间维度",
+              "valueType": "DATE"
+            }
+          ],
+          "pageSize": 10
         },
         "id": "table-ilzta6h7",
         "position": {
@@ -831,7 +916,39 @@
         "showTitle": true,
         "title": "计划突破哪些客户？差距在哪里？",
         "type": "table",
-        "visualization": {}
+        "visualization": {},
+        "tableColumnConfig": [
+          {
+            "code": "M00013",
+            "fieldType": "Indicator",
+            "id": "M00013",
+            "isTree": false,
+            "label": "发货金额",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "NUMBER"
+          },
+          {
+            "code": "D007",
+            "fieldType": "Dimension",
+            "id": "D007",
+            "isTree": false,
+            "label": "发货完成状态维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "STRING"
+          },
+          {
+            "code": "D008",
+            "fieldType": "Dimension",
+            "id": "D008",
+            "isTree": true,
+            "label": "发货审批时间维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "DATE"
+          }
+        ]
       },
       {
         "dataConfig": {
@@ -939,7 +1056,32 @@
             ]
           },
           "mockPreset": "table",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "tableFields": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D007",
+              "isTree": false,
+              "label": "发货完成状态维度",
+              "valueType": "STRING"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D008",
+              "isTree": true,
+              "label": "发货审批时间维度",
+              "valueType": "DATE"
+            }
+          ],
+          "pageSize": 10
         },
         "id": "table-qx1k3riz",
         "position": {
@@ -952,7 +1094,39 @@
         "showTitle": true,
         "title": "数据表格",
         "type": "table",
-        "visualization": {}
+        "visualization": {},
+        "tableColumnConfig": [
+          {
+            "code": "M00013",
+            "fieldType": "Indicator",
+            "id": "M00013",
+            "isTree": false,
+            "label": "发货金额",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "NUMBER"
+          },
+          {
+            "code": "D007",
+            "fieldType": "Dimension",
+            "id": "D007",
+            "isTree": false,
+            "label": "发货完成状态维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "STRING"
+          },
+          {
+            "code": "D008",
+            "fieldType": "Dimension",
+            "id": "D008",
+            "isTree": true,
+            "label": "发货审批时间维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "DATE"
+          }
+        ]
       },
       {
         "dataConfig": {
@@ -976,7 +1150,32 @@
             ]
           },
           "mockPreset": "table",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "tableFields": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D007",
+              "isTree": false,
+              "label": "发货完成状态维度",
+              "valueType": "STRING"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D008",
+              "isTree": true,
+              "label": "发货审批时间维度",
+              "valueType": "DATE"
+            }
+          ],
+          "pageSize": 10
         },
         "id": "table-8uc5pvas",
         "position": {
@@ -989,7 +1188,39 @@
         "showTitle": true,
         "title": "客户 · 项目与商机清单",
         "type": "table",
-        "visualization": {}
+        "visualization": {},
+        "tableColumnConfig": [
+          {
+            "code": "M00013",
+            "fieldType": "Indicator",
+            "id": "M00013",
+            "isTree": false,
+            "label": "发货金额",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "NUMBER"
+          },
+          {
+            "code": "D007",
+            "fieldType": "Dimension",
+            "id": "D007",
+            "isTree": false,
+            "label": "发货完成状态维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "STRING"
+          },
+          {
+            "code": "D008",
+            "fieldType": "Dimension",
+            "id": "D008",
+            "isTree": true,
+            "label": "发货审批时间维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "DATE"
+          }
+        ]
       }
     ]
   },
@@ -1456,7 +1687,26 @@
             ]
           },
           "mockPreset": "share-bar",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "valueAxis": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "categoryAxis": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D007",
+              "isTree": false,
+              "label": "发货完成状态维度",
+              "valueType": "STRING"
+            }
+          ]
         },
         "id": "share-bar-7lis13iu",
         "position": {
@@ -3348,7 +3598,7 @@
               ]
             ],
             "rowHeights": [
-              "33%",
+              "50%",
               null
             ]
           }
@@ -3375,7 +3625,7 @@
             ]
           ],
           "rowHeights": [
-            "33%",
+            "50%",
             null
           ]
         }
@@ -4059,7 +4309,26 @@
             ]
           },
           "mockPreset": "horizontal-bar",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "valueAxis": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "categoryAxis": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D001",
+              "isTree": true,
+              "label": "采购订单创建时间维度",
+              "valueType": "DATE"
+            }
+          ]
         },
         "id": "horizontal-bar-cuksxfkt",
         "position": {
@@ -4096,7 +4365,26 @@
             ]
           },
           "mockPreset": "horizontal-bar",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "valueAxis": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "categoryAxis": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D007",
+              "isTree": false,
+              "label": "发货完成状态维度",
+              "valueType": "STRING"
+            }
+          ]
         },
         "id": "horizontal-bar-izawt6gf",
         "position": {
@@ -6298,7 +6586,7 @@
         },
         "id": "share-bar-zob5z1uu",
         "position": {
-          "h": 8,
+          "h": 11,
           "w": 120,
           "x": 0,
           "y": 0
@@ -6331,20 +6619,77 @@
             ]
           },
           "mockPreset": "table",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "tableFields": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D007",
+              "isTree": false,
+              "label": "发货完成状态维度",
+              "valueType": "STRING"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D008",
+              "isTree": true,
+              "label": "发货审批时间维度",
+              "valueType": "DATE"
+            }
+          ],
+          "pageSize": 10
         },
         "id": "table-md1iftaj",
         "position": {
           "h": 19,
           "w": 120,
           "x": 0,
-          "y": 8
+          "y": 11
         },
         "showHeader": true,
         "showTitle": true,
         "title": "客户与超期订单",
         "type": "table",
-        "visualization": {}
+        "visualization": {},
+        "tableColumnConfig": [
+          {
+            "code": "M00013",
+            "fieldType": "Indicator",
+            "id": "M00013",
+            "isTree": false,
+            "label": "发货金额",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "NUMBER"
+          },
+          {
+            "code": "D007",
+            "fieldType": "Dimension",
+            "id": "D007",
+            "isTree": false,
+            "label": "发货完成状态维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "STRING"
+          },
+          {
+            "code": "D008",
+            "fieldType": "Dimension",
+            "id": "D008",
+            "isTree": true,
+            "label": "发货审批时间维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "DATE"
+          }
+        ]
       }
     ]
   },
@@ -6376,7 +6721,32 @@
             ]
           },
           "mockPreset": "table",
-          "sourceType": "mock"
+          "sourceType": "ap",
+          "tableFields": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D007",
+              "isTree": false,
+              "label": "发货完成状态维度",
+              "valueType": "STRING"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D008",
+              "isTree": true,
+              "label": "发货审批时间维度",
+              "valueType": "DATE"
+            }
+          ],
+          "pageSize": 10
         },
         "id": "table-x6qt15if",
         "position": {
@@ -6389,7 +6759,39 @@
         "showTitle": true,
         "title": "受影响订单清单",
         "type": "table",
-        "visualization": {}
+        "visualization": {},
+        "tableColumnConfig": [
+          {
+            "code": "M00013",
+            "fieldType": "Indicator",
+            "id": "M00013",
+            "isTree": false,
+            "label": "发货金额",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "NUMBER"
+          },
+          {
+            "code": "D007",
+            "fieldType": "Dimension",
+            "id": "D007",
+            "isTree": false,
+            "label": "发货完成状态维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "STRING"
+          },
+          {
+            "code": "D008",
+            "fieldType": "Dimension",
+            "id": "D008",
+            "isTree": true,
+            "label": "发货审批时间维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "DATE"
+          }
+        ]
       }
     ]
   },

@@ -105,11 +105,14 @@ Vue版本均为3.5.25，哈希一致，直接复用原有Vue文件。
 浏览器验收使用独立临时工作目录，避免接触用户会话。三页及参数化视图在1440px和390px视口检查，点击跳转与缺项尺寸通过。真实模型验证使用主服务现有配置时，绝不把凭据写入前端。
 
 
-## 2026-10-21 组件资源与前端元数据交付补充
+## 2026-10-22 组件资源与前端元数据交付补充
 
-按资源目录 <http://pro-ui.eimos.com/assets/> 重新获取发布的 BI UMD 和配套 `pro-ui.min.css`，
-增加内容哈希缓存参数；Vue仍为同一份3.5.25，旧工作台资源不变。
-已拉取 `shimenglan/iba-demo` 的 `feature/demo_1021`（commit `55842efc`），
-根组件、14份子模板和3个插槽声明存于 `static/cockpit/metadata/iba-demo-1021/`。
+同步 `shimenglan/iba-demo` 的 `feature/demo_1021`（commit `17152091`）交付包：
+`pro-bi-ui.min.js` SHA-256 `c38cbf36…`、`pro-ui.min.css` SHA-256 `b1ee836d…`，
+页面缓存参数同步更新；Vue仍为同一份3.5.25，旧工作台资源不变。
+根组件、14份子模板、130个组件配置和16个声明式插槽存于
+`static/cockpit/metadata/iba-demo-1021/`；其中AP源100项、mock源30项。
+`insights.js` 原样冻结，`insights.json` 由它生成后在运行时读取。
 2026-10-22起三页改为独立路由和纯看板；原型DOM/CSS快照负责逐项布局，交付元数据用于覆盖判断和差异披露。
-源JSON保持冻结，不连接AP。页面对应、源配置缺失子组件及接入边界见该目录 README 和 source.json。
+源JSON和插槽声明保持冻结，不连接AP；组件包更新不会自动改为ProBI动态渲染。
+页面对应、源配置缺失子组件及接入边界见该目录 README 和 source.json。

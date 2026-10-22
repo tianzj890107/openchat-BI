@@ -11,8 +11,8 @@
 ## 对照基线
 
 - 原型：`V3-总裁驾驶舱.html`，SHA-256 `8faad500847468d61c279bcab1f6212ce3e521d25bb0743f307621da39303329`。
-- 交付元数据：`iba-demo/feature/demo_1021` commit `55842efc2a788b9974da91a0e63afe1d6cd460f3`；2 个根组件、14 个子模板、130 项组件配置、3 个插槽。
-- 源 JSON 冻结于 `static/cockpit/metadata/iba-demo-1021/`；运行适配与差异记录在 `bi_agent/cockpit/metadata.py`，可由 `GET /api/cockpit/metadata` 查看。
+- 交付元数据：`iba-demo/feature/demo_1021` commit `17152091ffce520d1e05a419c4192f7762db4b26`；2 个根组件、14 个子模板、130 项组件配置、16 个声明式插槽。
+- 源 JSON 与 `insights.js` 冻结于 `static/cockpit/metadata/iba-demo-1021/`；运行适配与差异记录在 `bi_agent/cockpit/metadata.py`，可由 `GET /api/cockpit/metadata` 查看。
 - 原型数据基线：`bi_agent/cockpit/fixtures/v3-prototype.json` 与 `PrototypeSource`。
 
 ## 布局对齐方式

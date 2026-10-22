@@ -38,7 +38,8 @@ def test_node_templates_and_insight_paths_are_consistent():
         assert {r['nodeId'] for r in rules}==set(nodes.values())
         assert all(r['templateId'] in b['templates'] for r in rules)
     assert all(not any(s['kind']=='tab' for s in i['embedPath']['segments']) for i in b['insights'])
-    assert len(b['insights'])==3
+    assert len(b['insights'])==16
+    assert {i['id'] for i in b['insights']} >= {'scheme-guide-summary','shipment-risk-summary','shipment-task-order'}
     detail=b['datasets']['2112010750949113858/table-nu6hm1ge']
     assert len(detail)==15
     assert detail[0]['f0']=='构网型产品部 · 目标'

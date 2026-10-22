@@ -1,10 +1,10 @@
 {
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
-  "commit": "55842efc2a788b9974da91a0e63afe1d6cd460f3",
-  "importedAt": "2026-10-21",
+  "commit": "17152091ffce520d1e05a419c4192f7762db4b26",
+  "importedAt": "2026-10-22",
   "mode": "active-runtime-adapter",
-  "notes": "Original JSON remains immutable. Cockpit compiles these templates with explicit V3 prototype fixtures; no production AP or demo authentication code is used.",
+  "notes": "Source JSON and insights.js remain immutable. Cockpit compiles these templates with explicit V3 prototype fixtures; insights.json is derived from insights.js. No production AP or demo authentication code is used.",
   "rootComponents": 2,
   "templates": 14,
   "totalComponents": 130,
@@ -27,10 +27,10 @@
     "bar": 3
   },
   "dataSourceModes": {
-    "ap": 89,
-    "mock": 41
+    "ap": 100,
+    "mock": 30
   },
-  "insights": 3,
+  "insights": 16,
   "files": [
     {
       "file": "components.json",
@@ -38,11 +38,15 @@
     },
     {
       "file": "template-registry.json",
-      "sha256": "43085033a64c561477d26f7704a15cdbb87177b5a61060d75763e779ee9fe7c3"
+      "sha256": "1dabb5b5a4222f966701a39e0a15e827ffc01e6462f0afcc8dbb3798a6801efb"
+    },
+    {
+      "file": "insights.js",
+      "sha256": "df2e4d1eebf256e4ced75bebc3ee6a890c7a117c140ebce81eed1bd928e5a317"
     },
     {
       "file": "insights.json",
-      "sha256": "68ce65130cc2ca416a4b99d37a6b786ff873b9015b339f216f4c88598dacdec9"
+      "sha256": "4b7d476609fb7777f39fd8dc921738a538fd65e5347699e482ff153b02dc3d81"
     }
   ],
   "knownIssues": [

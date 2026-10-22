@@ -13,13 +13,14 @@ def test_vendor_manifest_matches_local_artifacts():
         assert hashlib.sha256(data).hexdigest()==r['sha256']
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
-    assert 'pro-ui.min.css?v=ba407022' in html
-    assert 'pro-bi-ui.min.js?v=981e7d98' in html
+    assert 'pro-ui.min.css?v=b1ee836d' in html
+    assert 'pro-bi-ui.min.js?v=c38cbf36' in html
 
 def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
+    assert source['commit']=='17152091ffce520d1e05a419c4192f7762db4b26'
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
     roots=json.loads((folder/'components.json').read_text())
