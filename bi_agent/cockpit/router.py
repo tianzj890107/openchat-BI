@@ -92,7 +92,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
     def bootstrap():
         return dict(roles=[dict(id=1,name="总裁"),dict(id=2,name="分析员")],identityParameter="id",periods=PERIODS,departments=DEPARTMENTS,
             stages=[dict(id=k,name=v) for k,v in NAMES.items()],sourceMode="demo",supportsLiveSource=False,
-            notice="演示数据与模拟任务，不写入业务系统；分析使用主服务模型。分析员对话使用 Fuxi。")
+            notice="演示数据与模拟任务，不写入业务系统；分析使用主服务模型。两个 id 当前使用相同看板与功能，仅为将来差异化预留。")
 
     @router.get("/metadata")
     def metadata():return build_bundle()
@@ -173,8 +173,6 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
 
     @router.post("/tasks/{tid}")
     def change(tid:str,req:TaskChange):
-        if req.action in {"issue","close"} and req.id!=1:raise HTTPException(403,"请使用总裁身份确认")
-        if req.action in {"accept","feedback"} and req.id!=2:raise HTTPException(403,"请使用分析员身份处理")
         payload={"feedback":req.feedback}
         if req.action=="save":
             if not req.title.strip() or not req.goal.strip() or not req.measures:raise HTTPException(422,"请补齐标题、目标及措施")

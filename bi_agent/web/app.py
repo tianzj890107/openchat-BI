@@ -3974,8 +3974,9 @@ def _cockpit_html(page: str) -> HTMLResponse:
 
 @app.get("/cockpit", response_class=HTMLResponse)
 @app.get("/cockpit/", response_class=HTMLResponse)
-def cockpit_index() -> RedirectResponse:
-    return RedirectResponse(url=f"{APP_ROOT_PATH}/cockpit/overview", status_code=307)
+def cockpit_index(request: Request) -> RedirectResponse:
+    query = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"{APP_ROOT_PATH}/cockpit/overview{query}", status_code=307)
 
 
 @app.get("/cockpit/{page}", response_class=HTMLResponse)

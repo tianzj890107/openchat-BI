@@ -414,8 +414,9 @@ git diff --name-only
   - `http://172.16.10.34:8876/cockpit/operations?id=1` 或 `?id=2`
   - `http://172.16.10.34:8876/cockpit/analysis?id=1` 或 `?id=2`
   - `/` 与 `/cockpit` 直接返回总览页，不重定向。
-- 身份参数：Fuxi 统一传 `id`，`1=总裁`、`2=分析员`；三个页面共用同一路径，不使用 `role`
-  或为两个身份维护两套地址。页内指标切换、节点跳转、三级穿透和 AI 改善建议都保留当前 `id`。
+- 身份参数：Fuxi 统一传 `id`，`1=总裁`、`2=分析员`；当前三页内容和功能对两个 `id` 完全一致，
+  两个人都可访问，`id` 仅作将来差异化的预留标识。三个页面共用同一路径，不使用 `role` 或维护两套地址；
+  总入口、页内指标切换、节点跳转、三级穿透和 AI 改善建议都保留当前 `id`。
 - 服务器目录：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/site`；
   nginx 配置：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/conf/default.conf`。
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，

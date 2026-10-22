@@ -93,17 +93,16 @@ def test_bootstrap_uses_single_numeric_id_identity(tmp_path):
     assert [role['id'] for role in boot['roles']]==[1,2]
     assert [role['name'] for role in boot['roles']]==['总裁','分析员']
 
-def test_task_role_state_and_revision_guards(tmp_path):
+def test_task_state_and_revision_guards_are_identity_neutral(tmp_path):
     c=client(tmp_path);a=wait(c,c.post('/api/cockpit/analyses',json={}).json()['id'])
     t=c.post('/api/cockpit/analyses/'+a['id']+'/draft').json();url='/api/cockpit/tasks/'+t['id']
-    assert c.post(url,json=dict(id=2,revision=1,action='issue')).status_code==403
-    assert c.post(url,json=dict(id=1,revision=1,action='close',feedback='ok')).status_code==409
-    t=c.post(url,json=dict(id=1,revision=1,action='issue')).json();assert t['status']=='issued'
+    assert c.post(url,json=dict(id=2,revision=1,action='close',feedback='ok')).status_code==409
+    t=c.post(url,json=dict(id=2,revision=1,action='issue')).json();assert t['status']=='issued'
     assert c.post(url,json=dict(id=1,revision=1,action='issue')).status_code==409
-    t=c.post(url,json=dict(id=2,revision=t['revision'],action='accept')).json()
-    assert c.post(url,json=dict(id=2,revision=t['revision'],action='feedback')).status_code==409
-    t=c.post(url,json=dict(id=2,revision=t['revision'],action='feedback',feedback='演示证据已补充')).json()
-    t=c.post(url,json=dict(id=1,revision=t['revision'],action='close',feedback='模拟验收通过')).json()
+    t=c.post(url,json=dict(id=1,revision=t['revision'],action='accept')).json()
+    assert c.post(url,json=dict(id=1,revision=t['revision'],action='feedback')).status_code==409
+    t=c.post(url,json=dict(id=1,revision=t['revision'],action='feedback',feedback='演示证据已补充')).json()
+    t=c.post(url,json=dict(id=2,revision=t['revision'],action='close',feedback='模拟验收通过')).json()
     assert t['status']=='closed' and t['simulated'] and len(t['audit'])==5
 
 def test_cancelled_job_cannot_be_overwritten(tmp_path):
@@ -141,20 +140,22 @@ def test_cockpit_page_uses_separate_assets_and_subpath(monkeypatch,tmp_path):
     monkeypatch.setattr(module,'APP_ROOT_PATH','/gateway/analytics')
     monkeypatch.setattr(module.STATE,'cwd',str(tmp_path))
     c=TestClient(module.app)
-    redirect=c.get('/cockpit',follow_redirects=False)
+    redirect=c.get('/cockpit?id=2&metric=sales',follow_redirects=False)
     assert redirect.status_code==307
-    assert redirect.headers['location']=='/gateway/analytics/cockpit/overview'
+    assert redirect.headers['location']=='/gateway/analytics/cockpit/overview?id=2&metric=sales'
     for page in ['overview','operations','analysis']:
-        response=c.get('/cockpit/'+page)
-        assert response.status_code==200
-        assert f'<meta name="cockpit-page" content="{page}">' in response.text
-        assert '/gateway/analytics/static/cockpit/cockpit.js' in response.text
-        assert '@@APP_ROOT_PATH@@' not in response.text
-        assert '@@COCKPIT_PAGE@@' not in response.text
-        assert 'class="rail"' not in response.text
-        assert 'class="topbar"' not in response.text
-        assert 'class="filterbar"' not in response.text
-        assert 'class="page-heading"' not in response.text
+        pages=[c.get(f'/cockpit/{page}?id={identity}') for identity in (1,2)]
+        assert all(response.status_code==200 for response in pages)
+        assert pages[0].text==pages[1].text
+        for response in pages:
+            assert f'<meta name="cockpit-page" content="{page}">' in response.text
+            assert '/gateway/analytics/static/cockpit/cockpit.js' in response.text
+            assert '@@APP_ROOT_PATH@@' not in response.text
+            assert '@@COCKPIT_PAGE@@' not in response.text
+            assert 'class="rail"' not in response.text
+            assert 'class="topbar"' not in response.text
+            assert 'class="filterbar"' not in response.text
+            assert 'class="page-heading"' not in response.text
     assert c.get('/static/cockpit/vendor/pro-bi-ui.min.js').status_code==200
     assert c.get('/static/cockpit/layout/views.json').status_code==200
     assert c.get('/cockpit/not-a-page').status_code==404
