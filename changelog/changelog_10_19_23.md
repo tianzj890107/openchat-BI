@@ -75,39 +75,43 @@
   和 `scripts/extract_cockpit_layout.mjs`。页面读取 `static/cockpit/metadata/runtime.json`，
   通过 `ProBiDashboard` 渲染原生 ProUI 卡片、图表、表格、分组、按钮组和模板容器；
   卡片标题、图例、工具栏、按钮和间距使用组件自身样式，不再追求与原型逐像素一致。
-- 静态运行包（2026-10-22 修订）：`bi_agent/cockpit/runtime.py` 从 `iba-demo/feature/demo_1021`
-  commit `17152091` 的编译结果生成 15 份模板、131 个可渲染组件和 102 个 `mockData` 绑定；
-  三个页面根组件分别为 9／43／10 项。`ProBiDashboard` 通过 `templateRegistry` 切换运营环节、
-  穿透风险、销售额／出货量模板，8876 静态页不依赖 `/api/cockpit/metadata`。
-- 缺失披露：运行包不再注入自定义风险列表或占位组件；商机模板引用的
+- 交付原样渲染（2026-10-22 修订）：同步 `iba-demo/feature/demo_1021` commit `7e45062`，
+  新增交付 Tab“储能产品线整体经营分析”（模板 `2113106174095179778`），子模板 15 份、组件 139 个、
+  分析插槽 17 个。`runtime.py` 直接输出交付模板，`position`／`parentId`／`children`／标题／样式不再改写，
+  宿主只替换 `dataConfig` 和附加 `cockpitBindingKey`；四页组件与交付逐字段一致，106 个组件绑定演示数据。
+- 缺失披露：不再过滤组件类型、不再合成模板或追加卡片；商机模板引用的
   `share-bar-79fsomq9` 缺少定义，分组内该位置保持空位。红区报价专项、
   毛利／净利／回款详情、图表下钻、客户操作列、运营周期对标和履约率第四卡仍缺组件或动作配置。
+  运营页交付头盔的 `defaultActiveKey` 与节点 ID 不匹配，首屏模板区按交付留空，点击节点后再加载；
   页面底部列出运行包中的缺项，不用近似卡片冒充交付组件。
 - 交互：经营指标卡可切换销售额／出货量模板；运营头盔图点击节点切换七个环节模板；
   穿透头盔图点击节点切换四类风险模板。页面之间仅保留这四个 Tab 和看板内可确认的组件交互。
 - 身份：Fuxi 统一使用 `id` 查询参数，`1=总裁`、`2=分析员`；当前四页内容和功能对两个 `id`
   完全一致，两个人都可访问，`id` 仅作为将来差异化的预留标识。页面和 API 均不使用 `role`，
   所有 Tab 和页内跳转保留当前 `id`。
-- 分析与任务：后端证据、受控模型分析、报告和模拟任务接口保留；模型失败不回退为预写结论。
-  纯看板页面不自动发起模型分析，也不渲染旧的分析、历史和任务抽屉。
+- 分析与任务：17 个交付 `insights` 按页面和 `embedPath` 传入 `ProBiDashboard`，由 `#insight-*`
+  具名插槽调用 `POST /api/cockpit/analyses` 执行真实模型分析并轮询回填；同一环节的多个插槽复用一次结果，
+  客户端限 3 并发并对 429 重试。模型失败或没有内容时显示空位／错误，不回退为预写结论。
+  后端证据、报告和模拟任务接口保留，旧的分析、历史和任务抽屉不再渲染。
 - 闭环：模拟任务令支持草稿编辑、下发、接收、反馈和验收关闭，当前只校验状态与 revision，
   不按 `id` 分配操作权限；幂等生成和 revision 防止重复创建及覆盖更新。SQLite 单独保存在
   gitignore 的 `dataset/cockpit/`，不删除原会话。
 - 预测：展示演示业务已有预测；发货页提供明确假设下的金额化解测算，不声称已实现统计预测。
-- 组件资源：从同一 `iba-demo` commit 同步新版 `pro-bi-ui.min.js` 与 `pro-ui.min.css`，
-  更新内容哈希缓存参数并保留原许可声明；Vue 仍复用 3.5.25。`insights.js` 原样冻结，
-  源 JSON 不改写。
+- 组件资源：`pro-bi-ui.min.js`（`c38cbf36`）与 `pro-ui.min.css`（`b1ee836d`）与本次交付 commit
+  哈希一致，无需重复下载；Vue 仍复用 3.5.25。冻结 `components.json`、`template-registry.json`、
+  `insights.js` 并派生 `insights.json`，源 JSON 不改写。
 - 主要文件：`bi_agent/cockpit/runtime.py`、`bi_agent/web/static/cockpit/{cockpit.js,cockpit.css,index.html}`、
   `bi_agent/web/static/cockpit/metadata/runtime.json`、`scripts/export_cockpit_runtime.py`、
   `tests/test_cockpit_poc.py`、`tests/test_cockpit_resource_contract.py`、
   `tests/test_cockpit_metadata.py`、`docs/specs/cockpit-v3-poc.md`、
   `docs/specs/cockpit-v3-metadata-gaps.md`、`README.md`、`DEPLOYMENT.md`。
-- 验证（2026-10-22）：驾驶舱契约测试 36 项通过；`node --check` 通过；浏览器验证四个路由、
-  四个 Tab、`id=1|2`、全局经营看板默认页、出货量模板切换、运营和穿透头盔图、表格和 KPI；
-  1440px 与 480px 无横向溢出，页面没有 `/api/cockpit/*` 请求。
-- 首页与顶部组件化（2026-10-22）：新增 `/cockpit/home`，用五项经营指标和运营全流程组件组成首页；
-  顶部四个 Tab 改用 ProUI `pro-tabs` 结构和活动下划线，窄屏自动把当前 Tab 滚入可视区，
-  缓存参数升至 `proui-dashboard-v3`。
+- 验证（2026-10-22）：驾驶舱契约测试 37 项通过，其中新增“页面组件与交付模板逐字段一致”断言；
+  `node --check` 通过；浏览器验证四个路由、四个 Tab、`id=1|2`、首页指标＋头盔＋风险插槽、
+  运营和穿透头盔图、表格和 KPI；真实模型已完成首页 `focus-risks` 与穿透页 `sales-shipment-issues`
+  分析并返回原因和证据数量；1440px 与 480px 无横向溢出。
+- 首页与顶部组件化（2026-10-22）：`/cockpit/home` 直接挂载交付新增的首页模板，
+  不再由宿主从其他两页挑组件拼装；顶部四个 Tab 改用 ProUI `pro-tabs` 结构和活动下划线，
+  窄屏自动把当前 Tab 滚入可视区，缓存参数升至 `proui-dashboard-v4`。
   `/cockpit` 仍以 307 跳到 `overview`，首页保留但不是默认路由。本地浏览器验证四个路由、
   `id=1|2`、活动条定位和 1440px／480px 布局。
 - 部署（2026-10-22 11:20）：`172.16.10.34:8876` 已切换到
@@ -118,5 +122,5 @@
   `/api/cockpit/*` 请求。站点备份为
   `backups/site-20261022-112027-pre-16b9858`，nginx 配置备份为
   `backups/conf-20261022-111907-pre-b3c1948/default.conf`。未修改或重启 8765 主服务，未复制运行数据，
-  未创建 tag／Release／MR，未修改用户历史数据。
+  未创建 tag／Release／MR，未修改用户历史数据。该部署版本为改造前构建；交付原样渲染与 AI 插槽改造尚未部署。
 - 边界：真实业务数据源尚未映射，Fuxi 宿主尚未联调；POC 执行器按单进程运行。

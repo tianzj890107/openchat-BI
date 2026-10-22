@@ -4,7 +4,7 @@
 
 - analytics 主服务提供四个独立入口：`/cockpit/home`、`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 以 `307` 跳到 `overview`，首页不作为默认路由。现有 `/workbench`、旧驾驶舱及 MCP 不替换。
 - 四个页面只渲染看板本体，顶部使用 ProUI `pro-tabs` 组件样式保留驾驶舱自己的四个视图 Tab：`首页`、`全局经营看板`、`运营 360 整体分析`、`穿透式问题分析`；不包含宿主工作区、会话区、页面标题或外层筛选栏。
-- `/cockpit/home` 保留首页入口，用交付元数据中的五项经营指标和运营全流程组件组成；`/cockpit/overview` 仍直接作为全局经营看板，两者均可通过 Tab 到达。
+- `/cockpit/home` 直接挂载交付新增的第 4 个模板“储能产品线整体经营分析”（`2113106174095179778`，五项指标＋运营头盔＋重点风险插槽）；`/cockpit/overview` 仍直接作为全局经营看板，两者均可通过 Tab 到达。
 - 两个演示身份使用 Fuxi 传入的单一查询参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员。当前四页内容对两个 `id` 完全一致，两个人都可以访问和操作；`id` 只作身份标记并为将来差异化预留。页面和 API 不使用 `role`，`/cockpit` 跳转和页内跳转都保留当前 `id`。
 - 最新决定：页面直接调用 analytics 主服务执行 AI 分析并回填插槽；不依赖 Fuxi 触发／回填协议。
 - 首页和其余看板读取同一份静态运行包；分析页按快照、`id` 和环节复用完成结果，可重新分析。
@@ -19,10 +19,10 @@
 
 | 页面 | 默认内容 |
 | --- | --- |
-| 首页 `/cockpit/home` | 五项经营指标和运营全流程组件；不作为默认入口 |
+| 首页 `/cockpit/home` | 交付模板 `2113106174095179778`：五项经营指标、运营全流程头盔、重点风险分析插槽；不作为默认入口 |
 | 全局经营看板 `/cockpit/overview` | 五项经营指标、年度销售目标／实绩／预测、产品结构和团队达成；点击出货量指标可切换出货量模板 |
-| 运营 360 `/cockpit/operations` | 五项指标、运营全流程头盔图、商机漏斗、七个环节 KPI／占比／异常明细；默认商机获取模板，点击头盔节点切换环节模板 |
-| 穿透分析 `/cockpit/analysis` | 五项指标、销售额口径四节点头盔图、风险结构与原因拆解、客户与超期订单；默认发货风险模板，点击节点切换风险模板 |
+| 运营 360 `/cockpit/operations` | 五项指标、运营全流程头盔图、商机漏斗、七个环节 KPI／占比／异常明细；模板区按交付保持空位，点击头盔节点后加载对应环节模板和插槽 |
+| 穿透分析 `/cockpit/analysis` | 五项指标、销售额口径四节点头盔图、风险结构与原因拆解、客户与超期订单；交付 `defaultActiveKey` 生效，默认展示商机风险模板，点击节点切换 |
 | 公共 | 顶部四个 ProUI `pro-tabs` Tab 保留当前 `id`；无宿主壳；卡片标题、图例、表格工具栏和按钮使用 ProUI 组件自身样式 |
 
 入口示例：`/cockpit/home?id=1`、`/cockpit/overview?id=2`、`/cockpit/operations?id=2`、`/cockpit/analysis?id=1`。
@@ -34,11 +34,13 @@
 
 `runtime.py` 从同一编译结果生成 `static/cockpit/metadata/runtime.json`：
 
-- 输出三个页面根组件和 15 份模板内容，共 131 个可渲染组件。
-- 102 个绑定组件写入冻结的演示行数据 `dataConfig.mockData`；浏览器不调用 AP、本体或生产数据库。
+- 输出四个页面和 15 份模板内容，共 139 个交付组件（2 个根组件＋137 个模板组件）；页面组件与交付 `template-registry.json` 逐字段一致，宿主只替换 `dataConfig` 并附加 `cockpitBindingKey`。
+- 106 个绑定组件写入冻结的演示行数据 `dataConfig.mockData`；其余保持交付 `sourceType`，浏览器不配置 AP 适配器时不会发查询。
 - `group`、`template`、`segmented-strip`、`button-group` 等容器使用 ProUI 对应组件，模板切换由 `ProBiDashboard` 的 `templateRegistry` 完成。
-- 没有 ProUI 实现的自定义组件不会进入渲染列表，原因记录在 `gaps`；缺失引用子组件的位置保持空位，不补近似图表。
-- 静态 8876 页面只读取上述 JSON，不依赖 `/api/cockpit/metadata`。
+- 不再过滤组件类型、不再合成模板或重排位置；未知类型交给 ProUI 占位，缺失引用子组件的位置保持空位。
+- 17 个 `insights` 按页面过滤后传给 `ProBiDashboard`，宿主用 `#insight-*` 插槽调用 `/api/cockpit/analyses` 执行真实模型分析并回填；没有内容时显示空位或错误，不写固定结论。
+- 头盔图移除交付里的远程 `processCode`（宿主无该拓扑网关），改用交付 `graphConfig` 和原型节点数据；这是唯一的数据源适配改写。
+- 静态 8876 页面只读取 `runtime.json`，不依赖 `/api/cockpit/metadata`；AI 插槽需要同源 `/api/cockpit` 或 nginx 代理。
 
 图表、表格与后端分析证据绑定同一原型源。原型客户姓名等均为既有演示内容。
 
@@ -100,7 +102,7 @@ Vue 版本为 3.5.25，哈希一致，复用原有文件。
   tests/test_cockpit_poc.py tests/test_cockpit_resource_contract.py tests/test_cockpit_metadata.py
 ```
 
-当前结果：`36 passed`。JavaScript 语法检查：
+当前结果：`37 passed`。JavaScript 语法检查：
 
 ```bash
 node --check bi_agent/web/static/cockpit/cockpit.js
@@ -112,4 +114,5 @@ node --check bi_agent/web/static/cockpit/cockpit.js
 - 顶部有四个 ProUI `pro-tabs` Tab，标签、活动条和当前页正确；`id=1|2` 在 Tab 和路由中保留。
 - `/cockpit/overview` 仍默认显示全局经营看板，点击出货量指标可切换出货量模板；`/cockpit/home` 显示指标与运营全流程组件。
 - 四页均由 ProUI 卡片渲染；桌面 1440px 和窄屏 480px 无横向溢出。
-- 年度图、头盔图、表格和 KPI 组件正常生成；页面不请求 `/api/cockpit/*`。
+- 年度图、头盔图、表格和 KPI 组件正常生成；AI 插槽会请求 `POST /api/cockpit/analyses` 并轮询结果，已用真实模型完成首页与穿透页插槽。
+- 交付 `insights` 共 17 个：首页 1、运营 7、穿透 9；嵌套在环节模板里的插槽随节点模板加载出现。

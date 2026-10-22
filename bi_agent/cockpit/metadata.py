@@ -12,7 +12,7 @@ from .data import NAMES
 
 ROOT=Path(__file__).resolve().parents[1]/'web/static/cockpit/metadata/iba-demo-1021'
 FIXTURE=Path(__file__).parent/'fixtures/v3-prototype.json'
-PAGE_IDS={'overview':'2112001069107167233','operations':'2112434004503347202','analysis':'2112061604959928321'}
+PAGE_IDS={'home':'2113106174095179778','overview':'2112001069107167233','operations':'2112434004503347202','analysis':'2112061604959928321'}
 OPS_NODES=dict(zip(NAMES,['2109848488855519233','2109848488910045186','2112022555167604737','2109848488914239490','2109848488918433794','2109848488926822401','2109848488926822402']))
 RISK_NODES=dict(zip(['opportunity','bid','order','shipment'],['2109840325158682625','2109840573985767425','2109840573998350338','2109840696539136002']))
 STAGE_TEMPLATES={'opportunity':'2112026770145329154','guidance':'2112059168287408129','quotation':'2112059463654490114','technical':'2112059620722786305','bid':'2112059751740260354','order':'2112060211964461057','shipment':'cockpit-shipment-operations'}
@@ -51,22 +51,18 @@ def build_bundle():
     def issue(code,description,**kw):gaps.append(dict(code=code,description=description,**kw))
     def bind(c,tid,data,config=None,title=None,columns=None):
         key=tid+'/'+c['id'];c['cockpitBindingKey']=key
-        c['dataConfig']={'sourceType':'request',**(config or {})}
-        if title is not None:c['title']=title
+        c['dataConfig']={**(c.get('dataConfig') or {}),'sourceType':'request',**(config or {})}
         if columns is not None:c['tableColumnConfig']=columns
         datasets[key]=data;bindings[key]=dict(templateId=tid,componentId=c['id'],title=c['title'],type=c['type'],fixture=p['_source']['sha256'])
     def kpi(c,tid,title,value,unit=''):
-        bind(c,tid,[dict(value=value)],dict(measure=[field('value',title)]),title)
-        c.setdefault('styleConfig',{})['kpiValueSuffix']=' '+unit
+        bind(c,tid,[dict(value=value)],dict(measure=[field('value',title,unit)]))
     def table(c,tid,headers,rows,title=None):
         columns=[dict(code=f'f{i}',label=text(label),valueType='STRING',fieldType='BusinessAttribute',showSource=True) for i,label in enumerate(headers)]
-        bind(c,tid,rows_table(headers,rows),dict(tableFields=[dim(x['code'],x['label']) for x in columns]),title,columns)
-        c.setdefault('styleConfig',{})['autoHeight']=True
+        bind(c,tid,rows_table(headers,rows),dict(tableFields=[dim(x['code'],x['label']) for x in columns]),None,columns)
     def chart(c,tid,data,labels=('name','value'),series=None):
         config=dict(categoryAxis=[dim(labels[0],labels[0])],valueAxis=[field(labels[1],labels[1])])
         if series:config['valueAxis']=[field(k,l) for k,l in series]
         bind(c,tid,data,config)
-        c.setdefault('visualization',{})['displayLimit']=0
     def array_table(c,tid,array,title=None):table(c,tid,array[0],array[1:],title)
 
     sales_ids=['kpiCard-4ixysjkn','kpiCard-lhq115j7','kpiCard-ya7bp5lj','kpiCard-cc868izo','kpiCard-xof3pdoj']
@@ -89,21 +85,16 @@ def build_bundle():
             cid=c['id'];kind=c['type']
             if cid in kpimap:kpi(c,tid,*kpimap[cid]);continue
             if kind=='progress':
-                if tid==PAGE_IDS['analysis'] and cid=='progress-zkznh2kf':c['title']='提升盈利 ｜ 净利率'
                 name=next((x for x in p['BIZ_KPI'] if x[0] in c['title']),None)
                 if not name and '应收周转' in c['title']:name=p['BIZ_KPI'][-1]
                 if name:
-                    bind(c,tid,[dict(current=name[1],target=name[3])],dict(measure=[field('current','实绩')],target=[field('target','目标')]),c['title'])
-                    if name[4]=='down':c.setdefault('styleConfig',{}).update(surplusLabel='超目标（越低越好）',surplusBarColor='#ef4444',surplusTextColor='#ef4444')
+                    bind(c,tid,[dict(current=name[1],target=name[3])],dict(measure=[field('current','实绩')],target=[field('target','目标')]))
                     continue
             if kind=='mini-cpgraph':
                 risk=tid==PAGE_IDS['analysis'];bind(c,tid,graph(p,risk));c['cockpitGraphData']=datasets[tid+'/'+cid]
-                c['graphConfig']['defaultActiveKey']=(RISK_NODES if risk else OPS_NODES)['shipment' if risk else 'opportunity']
-                c['graphConfig'].pop('processCode',None)
-                for rule in c['graphConfig'].get('graphTemplateSwitchRules',[]):
-                    sid=next((s for s,n in (RISK_NODES if risk else OPS_NODES).items() if n==rule['nodeId']),None)
-                    if sid:rule['templateId']=(RISK_TEMPLATES if risk else STAGE_TEMPLATES)[sid]
-                overrides.append(dict(componentId=cid,reason='使用原型业务状态图；修正无效默认节点和发货目标模板；不调用未配置的远程拓扑接口'))
+                # processCode 会优先于 mockData 触发远程拓扑查询；宿主无该网关，移除后走交付 mock 图。
+                if c.get('graphConfig',{}).pop('processCode',None) is not None:
+                    overrides.append(dict(componentId=cid,reason='移除无法访问的远程拓扑 processCode，使用交付元数据中的图配置；节点与数值来自原型业务快照'))
                 continue
             if cid in annual_charts:
                 raw,volume=annual_charts[cid];data=deepcopy(raw)
@@ -147,8 +138,6 @@ def build_bundle():
                     items.extend([[team['name']+' · 目标']+[f'{v:.2f}' for v in targets]+[f"{team['target']:.2f}"],[team['name']+' · 实绩']+[f'{v:.2f}' for v in actuals]+[f"{team['actual']:.2f}"],[team['name']+' · 达成率']+[f'{a/t*100:.1f}%' for a,t in zip(actuals,targets)]+[f"{team['actual']/team['target']*100:.1f}%"]])
                 table(c,tid,['团队／指标']+annual['months']+['合计'],items)
                 continue
-            if cid=='template-rjjcf4v1':c['baseConfig']={'defaultTemplateId':STAGE_TEMPLATES['opportunity']}
-            if cid=='template-ryfsat5y':c['baseConfig']={'defaultTemplateId':RISK_TEMPLATES['shipment']}
             if cid=='funnel-qexcz5h3':
                 chart(c,tid,[dict(name=n['n'],value=n['tot']) for n in p['S1_NODES_A']]);continue
             # Operations summary cards inherit the parent group, not arbitrary IDs.
@@ -202,10 +191,6 @@ def build_bundle():
     issue('MISSING_INTERACTIONS','交付未包含红区报价专项跳转、毛利率／净利率／回款明细、年度／月度独立状态、图表下钻与客户操作列动作；只启用可核对的销售额／出货量切换及节点模板切换。其他交互仍缺对应模板、动作契约和数据')
     issue('LAYOUT_DIFFERENCE','页面使用ProUI组件的120列画布布局和组件自带样式，不再对齐原型HTML的折叠块、卡片密度、配色和宿主侧栏；运营页仍缺周期／标杆对照组件和发货第四项订单履约率卡片')
     issue('VOLUME_CONVERSION','原型部分电量展示按91／319由金额折算；当前沿用该原型规则，不视为真实电量实绩。月度达成10–12月包含预测，不能与累计实绩直接相加')
-    # Reuse delivered shipment detail and volume annual metadata, rather than a wrong target.
-    ship=deepcopy(registry['2112064144187375617']['components']);height=max(c['position']['y']+c['position']['h'] for c in ship)
-    ship.append(dict(id='cockpit-shipment-annual',type='template',title='年度出货',position=dict(x=0,y=height,w=120,h=40),baseConfig=dict(defaultTemplateId='2112010750949113858')))
-    registry[STAGE_TEMPLATES['shipment']]=dict(templateId=STAGE_TEMPLATES['shipment'],meta=dict(name='发货履约与年度出货（交付组件组合）'),components=ship)
     # Report genuinely missing source cells without injecting a fake renderable component.
     for tid,t in list(registry.items()):
         ids={c['id'] for c in t['components']}
@@ -217,17 +202,14 @@ def build_bundle():
         for c in t['components']:
             key=c.get('cockpitBindingKey',tid+'/'+c['id'])
             if c['type'] not in CONTAINERS and key not in datasets:
-                c['cockpitBindingKey']=key;c['dataConfig']={'sourceType':'request'}
-                datasets[key]={'data':None,'error':'此组件缺少与原型一致的数据或字段配置，见差异清单'}
                 issue('DATA_BINDING_MISSING','缺少原型一致的数据／字段配置：'+c['title'],templateId=tid,componentId=c['id'])
     issue('PROTOTYPE_CONFLICT','原型同时存在订未发44.6／39.6／45.0亿元及2025／2026时点；当前保留各页面原文口径，尚缺统一业务快照')
     issue('AP_BINDINGS_CONFLICT','交付AP中采购金额、采购时间维度与经营标题不符；当前显式绑定原型演示数据，真实指标编码与数据源尚缺')
     issue('GRAPH_RENDER_DIFFERENCE','交付缺少静态头盔拓扑；以原型分类值和源节点ID重建业务环图。ProUI图形几何、内外环与原型手绘头盔不能逐像素一致')
     issue('PRICE_TEMPLATE_MISSING','交付缺少红区报价专项模板、原因与改善专题布局；当前只保留报价环节明细和分析／任务抽屉，不能直接还原红区报价专项页面')
     issue('PLATFORM_SHELL_EXCLUDED','原型外围Fuxi聊天／联系人／专家界面由宿主负责；cockpit保持无独立聊天区')
-    # Source slot embed paths contain the original outer Tab; page roots are mounted directly.
+    # Keep delivered embed paths; the runtime drops the host tab segment per page.
     slots=json.loads((ROOT/'insights.json').read_text())
-    for slot in slots:slot['embedPath']['segments']=slot['embedPath']['segments'][1:]
     return dict(pages=PAGE_IDS,roots=roots,templates=registry,datasets=datasets,bindings=bindings,insights=slots,
         nodeStages={v:k for k,v in (OPS_NODES|{}).items()}|{v:k for k,v in RISK_NODES.items()},
         gaps=gaps,overrides=overrides,sourceMode='prototype',source=p['_source'])

@@ -1,52 +1,51 @@
 {
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
-  "commit": "17152091ffce520d1e05a419c4192f7762db4b26",
+  "commit": "7e45062deaebde11bb267539ff9a32f324bac4c6",
   "importedAt": "2026-10-22",
   "mode": "active-runtime-adapter",
   "notes": "Source JSON and insights.js remain immutable. Cockpit compiles these templates with explicit V3 prototype fixtures; insights.json is derived from insights.js. No production AP or demo authentication code is used.",
   "rootComponents": 2,
-  "templates": 14,
-  "totalComponents": 130,
+  "templates": 15,
+  "totalComponents": 139,
   "componentTypes": {
+    "bar": 3,
+    "bar-line": 2,
+    "button-group": 4,
     "composite-filter": 1,
-    "tab-container": 1,
-    "progress": 15,
-    "mini-cpgraph": 2,
-    "template": 3,
-    "group": 16,
-    "title": 3,
-    "button-group": 3,
-    "table": 18,
-    "kpiCard": 36,
+    "funnel": 1,
+    "group": 17,
     "horizontal-bar": 15,
+    "kpiCard": 36,
+    "mini-cpgraph": 3,
+    "progress": 20,
     "segmented-strip": 3,
     "share-bar": 8,
-    "funnel": 1,
-    "bar-line": 2,
-    "bar": 3
+    "tab-container": 1,
+    "table": 18,
+    "template": 3,
+    "title": 4
   },
   "dataSourceModes": {
-    "ap": 100,
-    "mock": 30
+    "ap": 104
   },
-  "insights": 16,
+  "insights": 17,
   "files": [
     {
       "file": "components.json",
-      "sha256": "e6410d6a2fd539ec9983397b9e886ab61d2090b48e674fcbaff7d12ab3ef521f"
+      "sha256": "49ecdff207e5194c3e124d047e2d36e66ba4fd3f511c1c49081369d3a75ad31d"
     },
     {
       "file": "template-registry.json",
-      "sha256": "1dabb5b5a4222f966701a39e0a15e827ffc01e6462f0afcc8dbb3798a6801efb"
+      "sha256": "bb90faed6178820f1bf40eff1c6e59a1b9b1ff2125c109864cd760b53ed63b3a"
     },
     {
       "file": "insights.js",
-      "sha256": "df2e4d1eebf256e4ced75bebc3ee6a890c7a117c140ebce81eed1bd928e5a317"
+      "sha256": "c9675e6c9ae0b18bff101a032eaee54a351de661700a0c5b2ce262b2c41ba650"
     },
     {
       "file": "insights.json",
-      "sha256": "4b7d476609fb7777f39fd8dc921738a538fd65e5347699e482ff153b02dc3d81"
+      "sha256": "2d07d2309ffd17a6ad1c58e4fad4257176ea5caf2bc02a5fd1ce270cd75e89b0"
     }
   ],
   "knownIssues": [

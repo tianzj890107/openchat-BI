@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="app-root" content="@@APP_ROOT_PATH@@">
   <meta name="cockpit-page" content="@@COCKPIT_PAGE@@">
+  <meta name="cockpit-api-base" content="@@APP_ROOT_PATH@@/api/cockpit">
   <title>储小策 · 经营驾驶舱</title>
   <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-ui.min.css?v=b1ee836d">
-  <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/cockpit.css?v=proui-dashboard-v3">
+  <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/cockpit.css?v=proui-dashboard-v4">
   <script src="@@APP_ROOT_PATH@@/static/vendor/antd/lib/vue.global.js"></script>
   <script src="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-bi-ui.min.js?v=c38cbf36"></script>
 </head>
@@ -33,21 +34,24 @@
       <h1 class="visually-hidden">{{pageTitle}}</h1>
       <div v-if="error" class="cockpit-state error" role="alert">{{error}}</div>
       <div v-else-if="loading" class="cockpit-state">正在加载看板元数据…</div>
-      <div v-else class="cockpit-board" :class="{'is-home': page === 'home'}">
-        <section v-if="page === 'home'" class="cockpit-home-hero" aria-labelledby="cockpit-home-title">
-          <h2 id="cockpit-home-title">储能产品线整体经营情况如下</h2>
-          <p>5 项核心指标中，3 项重点关注，2 项持续跟进。完整年度图表与指标切换请进入“全局经营看板”。</p>
-        </section>
+      <div v-else class="cockpit-board">
         <component :is="dashboardComponent" :key="page"
                    :components="boardPage.components"
                    :template-registry="runtime.templates"
-                   :grid-cols="120" :row-height="10" :margin="[8, 8]"></component>
+                   :insights="pageInsights"
+                   mode="build"
+                   :grid-cols="120" :row-height="10" :margin="[8, 8]">
+          <template v-for="insight in pageInsights" :key="insight.id"
+                    v-slot:[slot_name(insight)]="slotProps">
+            <cockpit-insight :insight="insight" :slot-props="slotProps"></cockpit-insight>
+          </template>
+        </component>
       </div>
 
       <details v-if="gaps.length" class="cockpit-gap-report">
         <summary>元数据缺失与渲染限制 · {{gaps.length}} 项</summary>
         <div class="cockpit-gap-body">
-          <p>页面只渲染交付元数据中存在且 ProUI 支持的组件。缺失组件、缺失数据或没有对应组件的类型不补近似卡片，保持空位并在下方列明。</p>
+          <p>页面只渲染交付元数据原样结构，宿主不增删、不重排卡片。缺失组件、缺失数据或没有对应组件的位置保留空位并在下方列明。</p>
           <ul>
             <li v-for="gap in gaps" :key="gap.code + (gap.componentId || gap.description)">
               <b>{{gap.code}}</b><small>{{gap.description}}</small>
@@ -57,10 +61,9 @@
         </div>
       </details>
 
-      <div v-if="toast" class="cockpit-toast" role="status">{{toast}}</div>
     </main>
   </div>
   <noscript>驾驶舱需要启用 JavaScript。</noscript>
-  <script src="@@APP_ROOT_PATH@@/static/cockpit/cockpit.js?v=proui-dashboard-v3"></script>
+  <script src="@@APP_ROOT_PATH@@/static/cockpit/cockpit.js?v=proui-dashboard-v4"></script>
 </body>
 </html>

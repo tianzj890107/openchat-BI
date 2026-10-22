@@ -1,5 +1,22 @@
 [
   {
+    "id": "focus-risks",
+    "embedPath": {
+      "segments": [
+        {
+          "kind": "tab",
+          "containerId": "tab-container-zm9eyxne",
+          "tabId": "tab-qqzt1nj6",
+          "templateId": "2113106174095179778"
+        }
+      ]
+    },
+    "placement": {
+      "mode": "insert",
+      "afterId": "group-ist8eevh"
+    }
+  },
+  {
     "id": "bid-status-note",
     "embedPath": {
       "segments": [

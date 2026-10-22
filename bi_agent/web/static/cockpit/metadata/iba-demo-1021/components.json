@@ -153,6 +153,11 @@
     "baseConfig": {
       "tabs": [
         {
+          "id": "tab-qqzt1nj6",
+          "label": "储能产品线整体经营分析",
+          "templateId": "2113106174095179778"
+        },
+        {
           "id": "tab-bc6wp3k2",
           "label": "全局经营看板",
           "templateId": "2112001069107167233"

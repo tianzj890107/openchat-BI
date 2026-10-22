@@ -8193,5 +8193,467 @@
         ]
       }
     ]
+  },
+  "2113106174095179778": {
+    "templateId": "2113106174095179778",
+    "meta": {
+      "name": "储能产品线整体经营分析"
+    },
+    "components": [
+      {
+        "dataConfig": {
+          "sourceType": "mock"
+        },
+        "id": "group-ist8eevh",
+        "position": {
+          "h": 11,
+          "w": 120,
+          "x": 0,
+          "y": 0
+        },
+        "showHeader": false,
+        "showTitle": true,
+        "title": "分组容器",
+        "type": "group",
+        "visualization": {},
+        "baseConfig": {
+          "groupLayout": {
+            "gap": 8,
+            "justify": "space-between",
+            "rowGap": 8,
+            "rows": [
+              [
+                "title-byli4gst",
+                "button-group-d1fsqdq4"
+              ],
+              [
+                "progress-5b3pml0v",
+                "progress-wbycryt8",
+                "progress-gfgcnfto",
+                "progress-vbw2ers4",
+                "progress-0sc1p0gb"
+              ]
+            ],
+            "rowHeights": [
+              "24%",
+              null
+            ]
+          }
+        },
+        "styleConfig": {},
+        "children": [
+          "title-byli4gst",
+          "button-group-d1fsqdq4",
+          "progress-5b3pml0v",
+          "progress-wbycryt8",
+          "progress-gfgcnfto",
+          "progress-vbw2ers4",
+          "progress-0sc1p0gb"
+        ],
+        "groupLayout": {
+          "gap": 8,
+          "justify": "space-between",
+          "rowGap": 8,
+          "rows": [
+            [
+              "title-byli4gst",
+              "button-group-d1fsqdq4"
+            ],
+            [
+              "progress-5b3pml0v",
+              "progress-wbycryt8",
+              "progress-gfgcnfto",
+              "progress-vbw2ers4",
+              "progress-0sc1p0gb"
+            ]
+          ],
+          "rowHeights": [
+            "24%",
+            null
+          ]
+        }
+      },
+      {
+        "dataConfig": {
+          "sourceType": "mock"
+        },
+        "id": "title-byli4gst",
+        "position": {
+          "h": 3,
+          "w": 120,
+          "x": 0,
+          "y": 8
+        },
+        "showHeader": false,
+        "showTitle": false,
+        "title": "标题",
+        "type": "title",
+        "visualization": {},
+        "baseConfig": {
+          "subtitle": "",
+          "text": "经营指标"
+        },
+        "styleConfig": {
+          "fontSize": 18,
+          "subtitleFontSize": 12,
+          "subtitlePosition": "bottom"
+        },
+        "parentId": "group-ist8eevh"
+      },
+      {
+        "dataConfig": {
+          "sourceType": "mock"
+        },
+        "id": "button-group-d1fsqdq4",
+        "position": {
+          "h": 5,
+          "w": 60,
+          "x": 0,
+          "y": 8
+        },
+        "showHeader": false,
+        "showTitle": false,
+        "title": "按钮组",
+        "type": "button-group",
+        "visualization": {},
+        "styleConfig": {
+          "buttonGroupSize": "middle"
+        },
+        "buttonGroupConfig": {
+          "items": [
+            {
+              "default": true,
+              "id": "option-1",
+              "label": "年度",
+              "templateSwitchTargets": [],
+              "grain": "YEAR"
+            },
+            {
+              "id": "option-2",
+              "label": "月度",
+              "templateSwitchTargets": [],
+              "grain": "MONTH"
+            }
+          ]
+        },
+        "parentId": "group-ist8eevh"
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "measure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "current",
+                "label": "当前"
+              }
+            ],
+            "target": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "target",
+                "label": "目标"
+              }
+            ]
+          },
+          "mockPreset": "progress",
+          "sourceType": "ap",
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "target": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
+        },
+        "id": "progress-5b3pml0v",
+        "position": {
+          "h": 8,
+          "w": 40,
+          "x": 0,
+          "y": 8
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "促进增长 ｜ 销售额",
+        "type": "progress",
+        "visualization": {
+          "colorScheme": [
+            "#3b7cff"
+          ]
+        },
+        "parentId": "group-ist8eevh"
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "measure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "current",
+                "label": "当前"
+              }
+            ],
+            "target": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "target",
+                "label": "目标"
+              }
+            ]
+          },
+          "mockPreset": "progress",
+          "sourceType": "ap",
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "target": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
+        },
+        "id": "progress-wbycryt8",
+        "position": {
+          "h": 8,
+          "w": 40,
+          "x": 0,
+          "y": 8
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "保障交付 ｜ 出货量",
+        "type": "progress",
+        "visualization": {
+          "colorScheme": [
+            "#3b7cff"
+          ]
+        },
+        "parentId": "group-ist8eevh"
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "measure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "current",
+                "label": "当前"
+              }
+            ],
+            "target": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "target",
+                "label": "目标"
+              }
+            ]
+          },
+          "mockPreset": "progress",
+          "sourceType": "ap",
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "target": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
+        },
+        "id": "progress-gfgcnfto",
+        "position": {
+          "h": 8,
+          "w": 40,
+          "x": 0,
+          "y": 8
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "守住利润 ｜ 毛利率",
+        "type": "progress",
+        "visualization": {
+          "colorScheme": [
+            "#3b7cff"
+          ]
+        },
+        "parentId": "group-ist8eevh"
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "measure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "current",
+                "label": "当前"
+              }
+            ],
+            "target": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "target",
+                "label": "目标"
+              }
+            ]
+          },
+          "mockPreset": "progress",
+          "sourceType": "ap",
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "target": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
+        },
+        "id": "progress-vbw2ers4",
+        "position": {
+          "h": 8,
+          "w": 40,
+          "x": 0,
+          "y": 8
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "提升盈利 ｜ 净利率",
+        "type": "progress",
+        "visualization": {
+          "colorScheme": [
+            "#3b7cff"
+          ]
+        },
+        "parentId": "group-ist8eevh"
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "measure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "current",
+                "label": "当前"
+              }
+            ],
+            "target": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "target",
+                "label": "目标"
+              }
+            ]
+          },
+          "mockPreset": "progress",
+          "sourceType": "ap",
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "target": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
+        },
+        "id": "progress-0sc1p0gb",
+        "position": {
+          "h": 8,
+          "w": 40,
+          "x": 0,
+          "y": 8
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "加速回款 ｜ 应收周转",
+        "type": "progress",
+        "visualization": {
+          "colorScheme": [
+            "#3b7cff"
+          ]
+        },
+        "parentId": "group-ist8eevh"
+      },
+      {
+        "dataConfig": {
+          "sourceType": "mock"
+        },
+        "id": "mini-cpgraph-ia1c1ao5",
+        "position": {
+          "h": 20,
+          "w": 120,
+          "x": 0,
+          "y": 11
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "运营360整体分析",
+        "type": "mini-cpgraph",
+        "visualization": {},
+        "graphConfig": {
+          "defaultActiveKey": "n1",
+          "processCode": "FULL_PROCESS_OPERATIONS_MANAGEMENT"
+        }
+      }
+    ]
   }
 }

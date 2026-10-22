@@ -2,6 +2,22 @@
  * 看板插入位置。内容在 insight-components/，这里只描述插在哪一层、哪条缝。
  */
 window.DashboardInsights = [
+  // 储能产品线整体经营分析 → 经营指标分组下方、头盔图上方
+  // 组件 insight-components/focus-risks
+  {
+    id: 'focus-risks',
+    embedPath: {
+      segments: [
+        {
+          kind: 'tab',
+          containerId: 'tab-container-zm9eyxne',
+          tabId: 'tab-qqzt1nj6',
+          templateId: '2113106174095179778',
+        },
+      ],
+    },
+    placement: { mode: 'insert', afterId: 'group-ist8eevh' },
+  },
   // 运营360整体分析 → 投标卡片底部（投标状态分布下方）
   // 组件 insight-components/bid-status-note
   {

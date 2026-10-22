@@ -16,6 +16,7 @@ from .data import NAMES
 from .metadata import PAGE_IDS, ROOT, build_bundle
 
 PAGE_NAMES = {
+    "home": "首页",
     "overview": "全局经营看板",
     "operations": "运营 360 整体分析",
     "analysis": "穿透式问题分析",
@@ -75,20 +76,6 @@ def _materialize_template(bundle: dict, template_id: str) -> tuple[dict, list[di
     unrendered = []
     for component in original:
         component_type = component["type"]
-        if component_type not in RENDERABLE_TYPES:
-            unrendered.append(
-                {
-                    "code": "UNSUPPORTED_COMPONENT",
-                    "description": (
-                        f"未渲染 {component.get('title') or component['id']}："
-                        f"交付组件类型 {component_type} 没有对应的 ProUI 实现。"
-                    ),
-                    "templateId": template_id,
-                    "componentId": component["id"],
-                    "componentType": component_type,
-                }
-            )
-            continue
         data = _bound_data(bundle, component)
         if component.get("cockpitBindingKey"):
             config = component.setdefault("dataConfig", {})
@@ -99,8 +86,6 @@ def _materialize_template(bundle: dict, template_id: str) -> tuple[dict, list[di
             else:
                 config["mockData"] = data
         components.append(component)
-    known_ids = {component["id"] for component in components}
-    _strip_unknown_children(components, known_ids)
     return (
         {
             "templateId": template_id,
@@ -109,6 +94,19 @@ def _materialize_template(bundle: dict, template_id: str) -> tuple[dict, list[di
         },
         unrendered,
     )
+
+
+def page_insights(slots: list[dict], template_id: str) -> list[dict]:
+    """Keep slot declarations for one page; the host tab segment is dropped."""
+    result = []
+    for slot in slots:
+        value = deepcopy(slot)
+        segments = value.get("embedPath", {}).get("segments") or []
+        if not segments or segments[0].get("templateId") != template_id:
+            continue
+        value["embedPath"]["segments"] = segments[1:]
+        result.append(value)
+    return result
 
 
 def runtime_payload(bundle: dict | None = None) -> dict:
@@ -137,6 +135,7 @@ def runtime_payload(bundle: dict | None = None) -> dict:
             "templateId": template_id,
             "name": materialized.get("meta", {}).get("name", PAGE_NAMES[page]),
             "components": components,
+            "insights": page_insights(bundle["insights"], template_id),
         }
 
     source = json.loads((ROOT / "source.json").read_text())
@@ -147,6 +146,7 @@ def runtime_payload(bundle: dict | None = None) -> dict:
             "fixture": bundle["source"],
         },
         "pages": pages,
+        "roots": bundle["roots"],
         "templates": templates,
         "counts": counts,
         "gaps": render_gaps,

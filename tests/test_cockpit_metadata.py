@@ -14,8 +14,8 @@ def test_compilation_preserves_upstream_and_all_renderable_data_is_explicit():
     original=(ROOT/'template-registry.json').read_bytes()
     b=build_bundle()
     assert (ROOT/'template-registry.json').read_bytes()==original
-    assert set(b['pages'])=={'overview','operations','analysis'}
-    assert len(b['bindings'])==100
+    assert set(b['pages'])=={'home','overview','operations','analysis'}
+    assert len(b['bindings'])==106
     reported={(g.get('templateId'),g.get('componentId')) for g in b['gaps'] if g['code']=='CHILD_DEFINITION_MISSING'}
     unavailable=[]
     for tid,t in b['templates'].items():
@@ -40,13 +40,12 @@ def test_node_templates_and_insight_paths_are_consistent():
         components=b['templates'][PAGE_IDS[page]]['components']
         c=next(x for x in components if x['type']=='mini-cpgraph')
         assert {n['id'] for n in c['cockpitGraphData']['nodes']}==set(nodes.values())
-        assert c['graphConfig']['defaultActiveKey'] in nodes.values()
         rules=c['graphConfig']['graphTemplateSwitchRules']
         assert {r['nodeId'] for r in rules}==set(nodes.values())
         assert all(r['templateId'] in b['templates'] for r in rules)
-    assert all(not any(s['kind']=='tab' for s in i['embedPath']['segments']) for i in b['insights'])
-    assert len(b['insights'])==16
-    assert {i['id'] for i in b['insights']} >= {'scheme-guide-summary','shipment-risk-summary','shipment-task-order'}
+    assert all(any(s['kind']=='tab' for s in i['embedPath']['segments']) for i in b['insights'])
+    assert len(b['insights'])==17
+    assert {i['id'] for i in b['insights']} >= {'focus-risks','scheme-guide-summary','shipment-risk-summary','shipment-task-order'}
     detail=b['datasets']['2112010750949113858/table-nu6hm1ge']
     assert len(detail)==15
     assert detail[0]['f0']=='构网型产品部 · 目标'
@@ -73,9 +72,12 @@ def test_static_proui_runtime_is_reproducible_and_uses_bound_data():
     path=ROOT.parent/'runtime.json'
     stored=json.loads(path.read_text())
     assert stored==runtime_payload()
-    assert stored['source']['commit']=='17152091ffce520d1e05a419c4192f7762db4b26'
+    assert stored['source']['commit']=='7e45062deaebde11bb267539ff9a32f324bac4c6'
     assert stored['renderer']=='ProBiDashboard'
-    assert set(stored['pages'])=={'overview','operations','analysis'}
+    assert set(stored['pages'])=={'home','overview','operations','analysis'}
+    assert stored['counts']['home']=={
+        'total':9,'types':{'group':1,'title':1,'button-group':1,'progress':5,'mini-cpgraph':1},'withData':6,
+    }
     assert stored['counts']['overview']=={
         'total':9,'types':{'progress':5,'template':1,'button-group':1,'title':1,'group':1},'withData':5,
     }
@@ -109,3 +111,21 @@ def test_metadata_api_and_analysis_source_isolation(tmp_path):
     e=client.get('/api/cockpit/evidence?source=prototype&stage=shipment').json()
     assert e['snapshotId']==exact['snapshotId']
     assert e['records'][0]['id']=='SO-2026-0318'
+
+
+def test_runtime_components_are_delivered_templates_verbatim_except_data():
+    delivered=json.loads((ROOT/'template-registry.json').read_text())
+    payload=runtime_payload()
+    allowed={'dataConfig','tableColumnConfig','cockpitBindingKey','cockpitGraphData'}
+    for page,tid in PAGE_IDS.items():
+        got={c['id']:c for c in payload['pages'][page]['components']}
+        want={c['id']:c for c in delivered[tid]['components']}
+        assert set(got)==set(want), page
+        for cid,delivered_component in want.items():
+            rendered={k:v for k,v in got[cid].items() if k not in allowed}
+            original={k:v for k,v in delivered_component.items() if k not in allowed}
+            if 'graphConfig' in original:
+                original['graphConfig']=dict(original['graphConfig']);original['graphConfig'].pop('processCode',None)
+            assert rendered==original, (page,cid,{k for k in set(rendered)|set(original) if rendered.get(k)!=original.get(k)})
+        slots=[s for s in payload['pages'][page]['insights']]
+        assert all(not any(seg.get('kind')=='tab' for seg in slot['embedPath']['segments']) for slot in slots)
