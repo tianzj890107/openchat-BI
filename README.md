@@ -124,6 +124,7 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 主服务提供三个独立入口（支持 `APP_ROOT_PATH` 子路径）：
 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 只跳到总览。
+三个入口共用同一路径和 Fuxi 身份参数 `id`：`id=1` 为总裁，`id=2` 为分析员，不使用 `role` 或两套身份地址。
 三页只渲染看板本体，不再带工作区、会话区、顶部标题、页签和外层筛选栏。
 
 页面以 V3 原型 DOM/CSS 快照逐项对齐卡片和按钮排列，交付的 `feature/demo_1021` 元数据用于判断

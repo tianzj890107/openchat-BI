@@ -17,7 +17,7 @@ from .prototype import PrototypeSource
 
 class Context(BaseModel):
     model_config=ConfigDict(extra="forbid")
-    role:Literal["president","analyst"]="president"
+    id:int=Field(default=1,ge=1,le=2)
     period:Literal["2025-10","2025-09"]="2025-10"
     department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部"
     stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment"]="shipment"
@@ -37,7 +37,7 @@ class Measure(BaseModel):
 
 class TaskChange(BaseModel):
     model_config=ConfigDict(extra="forbid")
-    role:Literal["president","analyst"]
+    id:int=Field(ge=1,le=2)
     revision:int=Field(ge=1)
     action:Literal["save","issue","accept","feedback","close"]
     title:str=Field(default="",max_length=180)
@@ -56,6 +56,11 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
                 value=Store(Path(path));value.recover();stores[path]=value
             return stores[path]
     def adapter(mode):return PrototypeSource() if mode=="prototype" else source
+    def context_id(context):
+        value=context.get("id")
+        if value in (1,2):return int(value)
+        # Preserve POC history created before external identity switched to id.
+        return 1 if context.get("role")=="president" else 2
     def snap(context):
         try:return adapter(context.source).snapshot(context.period,context.department)
         except ValueError as exc:raise HTTPException(422,str(exc))
@@ -85,7 +90,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
 
     @router.get("/bootstrap")
     def bootstrap():
-        return dict(roles=[dict(id="president",name="总裁"),dict(id="analyst",name="分析员")],periods=PERIODS,departments=DEPARTMENTS,
+        return dict(roles=[dict(id=1,name="总裁"),dict(id=2,name="分析员")],identityParameter="id",periods=PERIODS,departments=DEPARTMENTS,
             stages=[dict(id=k,name=v) for k,v in NAMES.items()],sourceMode="demo",supportsLiveSource=False,
             notice="演示数据与模拟任务，不写入业务系统；分析使用主服务模型。分析员对话使用 Fuxi。")
 
@@ -120,9 +125,10 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
         return item
 
     @router.get("/analyses")
-    def history(role:Literal["president","analyst"]="president",period:str|None=None,department:str|None=None):
-        # POC roles are presentation context, not authenticated identities.
-        return [x for x in store().list_analyses() if x["context"]["role"]==role
+    def history(id:int=1,period:str|None=None,department:str|None=None):
+        # id is the single Fuxi-facing identity parameter: 1=总裁, 2=分析员.
+        if id not in (1,2):raise HTTPException(422,"id 只能是 1 或 2")
+        return [x for x in store().list_analyses() if context_id(x["context"])==id
             and (period is None or x["context"]["period"]==period) and (department is None or x["context"]["department"]==department)]
 
     @router.get("/analyses/{aid}")
@@ -167,8 +173,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
 
     @router.post("/tasks/{tid}")
     def change(tid:str,req:TaskChange):
-        if req.action in {"issue","close"} and req.role!="president":raise HTTPException(403,"请切换总裁视角确认")
-        if req.action in {"accept","feedback"} and req.role!="analyst":raise HTTPException(403,"请切换分析员视角处理")
+        if req.action in {"issue","close"} and req.id!=1:raise HTTPException(403,"请使用总裁身份确认")
+        if req.action in {"accept","feedback"} and req.id!=2:raise HTTPException(403,"请使用分析员身份处理")
         payload={"feedback":req.feedback}
         if req.action=="save":
             if not req.title.strip() or not req.goal.strip() or not req.measures:raise HTTPException(422,"请补齐标题、目标及措施")

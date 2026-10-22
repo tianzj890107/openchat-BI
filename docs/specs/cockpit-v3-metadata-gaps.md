@@ -2,9 +2,9 @@
 
 ## 当前页面边界
 
-- `/cockpit/overview`：全局经营看板，支持 `?metric=sales|volume` 查看原型年度图表视图。
-- `/cockpit/operations`：运营 360 整体分析，支持 `?stage=opportunity|guidance|quotation|technical|bid|order|shipment`。
-- `/cockpit/analysis`：穿透式问题分析，支持 `?stage=opportunity|bid|order|shipment`。
+- `/cockpit/overview`：全局经营看板，支持 `?id=1|2&metric=sales|volume` 查看原型年度图表视图。
+- `/cockpit/operations`：运营 360 整体分析，支持 `?id=1|2&stage=opportunity|guidance|quotation|technical|bid|order|shipment`。
+- `/cockpit/analysis`：穿透式问题分析，支持 `?id=1|2&stage=opportunity|bid|order|shipment`。
 - `/cockpit` 以 `307` 跳到 `/cockpit/overview`。
 - 三页只加载看板本体，不渲染左侧工作区、会话区、顶部标题、页签或外层筛选栏。页面之间的业务入口仍保留在看板内部。
 
@@ -35,6 +35,7 @@
 | 卡片与按钮几何 | 使用原型 DOM；在 1440px 视口下关键区域与提取时尺寸一致 |
 | 缺失区 | 清空内容并保留原型宽高；悬停提示原因，不显示固定 AI 结论或替代图表 |
 | 业务跳转 | 经营指标切换年度销售／出货视图；首页八节点进入运营环节；运营标题进入运营页；月度与回款明确提示缺少配置 |
+| 缺失卡动作 | 首页重点风险卡组件缺失时仍显示“查看三级穿透”“AI 改善建议”，分别进入发货分析和带 `focus=advice` 的分析页，并保留当前 `id` |
 | 数据与文案 | 看板主体沿用原型冻结数据和原始示例文案，未接 AP 或生产库 |
 | 分析能力 | 后端证据、分析、报告与模拟任务接口保留；三个纯看板页面不渲染旧抽屉或固定 AI 卡片 |
 

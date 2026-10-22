@@ -7,6 +7,7 @@
   const base = `${root}/api/cockpit`;
   const layoutUrl = `${root}/static/cockpit/layout/views.json?v=prototype-layout-v2`;
   const params = new URLSearchParams(location.search);
+  const identityId = ['1', '2'].includes(params.get('id')) ? params.get('id') : '1';
   const PAGES = {
     overview: {title: '全局经营看板'},
     operations: {title: '运营 360 整体分析'},
@@ -91,7 +92,7 @@
       }
 
       function hrefFor(targetPage, extra = {}) {
-        const search = new URLSearchParams(extra);
+        const search = new URLSearchParams({id: identityId, ...extra});
         const query = search.toString();
         const suffix = query ? `?${query}` : '';
         return `${routeRoot}/cockpit/${targetPage}${suffix}`;
@@ -108,6 +109,10 @@
         if (action.startsWith('route:analysis:')) {
           const target = action.slice('route:analysis:'.length);
           return go('analysis', {stage: ANALYSIS_STAGES.includes(target) ? target : 'shipment'});
+        }
+        if (action.startsWith('advice:')) {
+          const target = action.slice('advice:'.length);
+          return go('analysis', {stage: ANALYSIS_STAGES.includes(target) ? target : 'shipment', focus: 'advice'});
         }
         if (action.startsWith('metric:')) {
           const target = action.slice('metric:'.length);
@@ -143,6 +148,13 @@
       function decorateBoard() {
         const board = document.querySelector('.cockpit-board');
         if (!board) return;
+        const primaryRisk = board.querySelector('[data-gap="overview:landing-risk-card:0"]');
+        if (primaryRisk && !primaryRisk.querySelector('.cockpit-gap-actions')) {
+          const actions = document.createElement('div');
+          actions.className = 'cockpit-risk-actions cockpit-gap-actions';
+          actions.innerHTML = '<button type="button" class="cockpit-risk-primary" data-action="route:analysis:shipment">查看三级穿透</button><button type="button" class="cockpit-risk-secondary" data-action="advice:shipment">AI 改善建议</button>';
+          primaryRisk.append(actions);
+        }
         board.querySelectorAll('[data-gap]').forEach(element => {
           element.title = element.getAttribute('aria-label') || '交付元数据缺少该位置，按原型尺寸留空';
           if (element.dataset.action) {
@@ -154,6 +166,14 @@
           if (!element.getAttribute('role')) element.setAttribute('role', 'button');
           if (!element.hasAttribute('tabindex')) element.tabIndex = 0;
         });
+        if (params.get('focus') === 'advice') {
+          const advice = board.querySelector('[data-gap^="analysis-shipment:ai-card"]');
+          if (advice) {
+            advice.classList.add('cockpit-gap-focused');
+            advice.setAttribute('aria-label', 'AI 改善建议：等待对应分析卡片组件和模型结果回填');
+            requestAnimationFrame(() => advice.scrollIntoView({block: 'center', behavior: 'smooth'}));
+          }
+        }
       }
 
       onMounted(async () => {
@@ -169,13 +189,13 @@
             const count = metadata.templates?.[templateId]?.components?.length || 0;
             metadataSummary.value = `交付页面根模板 ${templateId || '未映射'}，${count} 个根组件；源配置差异 ${metadata.gaps?.length || 0} 项。`;
           }
-          await nextTick();
-          decorateBoard();
         } catch (cause) {
           error.value = `原型布局加载失败：${cause.message}`;
         } finally {
           loading.value = false;
         }
+        await nextTick();
+        decorateBoard();
       });
 
       onBeforeUnmount(() => clearTimeout(toastTimer));

@@ -4,13 +4,15 @@
 
 - analytics 主服务提供三个独立入口：`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 只做跳转。现有 `/workbench`、旧驾驶舱及 MCP 不替换。
 - 三个页面只渲染看板本体，不包含宿主工作区、会话区、顶部标题、页签或外层筛选栏；页内业务按钮和卡片保留。
-- 两个演示角色：总裁（按钮驱动，无对话）、分析员（Fuxi 对话，不在 cockpit 重建聊天）。数据范围相同，操作不同。
+- 两个演示身份使用 Fuxi 传入的单一查询参数 `id`：`id=1` 为总裁（按钮驱动，无对话），
+  `id=2` 为分析员（Fuxi 对话，不在 cockpit 重建聊天）。页面和 API 不再使用 `role` 作为身份参数，
+  也不为两个身份建立两套路由；页内跳转必须保留当前 `id`。
 - 最新决定：页面直接调用 analytics 主服务执行 AI 分析并回填插槽；不依赖 Fuxi 触发／回填协议。
-- 前两页直接查询数据；第三页首次进入启动分析，同快照同角色同环节复用完成结果，可重新分析。
+- 前两页直接查询数据；第三页首次进入启动分析，同快照同 `id` 同环节复用完成结果，可重新分析。
 - 先交付独立演示数据与实际模型执行；本体＋数据库真实连接需要后续映射，不声称已接通。
 - 模拟任务令：草稿→模拟下发→接收→反馈→验收关闭。仅本地持久化，不调用任务、通知或业务单据写接口。
 - 已有业务预测展示＋显式假设的情景测算；不建设统计预测模型。
-- 不部署、不改正式版本，不移动或删除现有历史会话。
+- 三页静态看板已按用户授权部署到 `172.16.10.34:8876`；不改正式版本，不移动或删除现有历史会话。
 
 ## 页面与组件
 
@@ -23,8 +25,12 @@
 | 穿透分析 | 商机／投标／订单／发货四类穿透视图、原型事实与明细；头盔图及缺失的 AI 卡片保持空白 |
 | 公共 | 固定原型期间／全产品部；无宿主壳；只保留看板内可确定的业务跳转和当前页缺项报告 |
 
-入口示例：`/cockpit/overview`、`/cockpit/operations?stage=shipment`、`/cockpit/analysis?stage=bid`、`/cockpit/overview?metric=sales`。
-支持 `APP_ROOT_PATH` 下静态资源及 API 地址。角色参数仍保留在分析 API 中，但纯看板页面不再渲染旧的角色切换、历史或任务抽屉。
+入口示例：`/cockpit/overview?id=1`、`/cockpit/operations?id=2&stage=shipment`、
+`/cockpit/analysis?id=1&stage=bid`、`/cockpit/overview?id=2&metric=sales`。
+支持 `APP_ROOT_PATH` 下静态资源及 API 地址。页面和 API 统一使用 `id=1|2`；纯看板页面不渲染旧的身份切换、历史或任务抽屉。
+
+首页重点风险卡缺少交付组件时，仍保留“查看三级穿透”和“AI 改善建议”两个可操作入口：
+前者进入 `/cockpit/analysis?stage=shipment`，后者进入同一分析页并带 `focus=advice`；两者都保留当前 `id`。
 
 ## 数据契约和口径
 
@@ -63,8 +69,8 @@ Pydantic校验长度、字段；引用必须来自本轮查询；已支持原因
 | GET `/metadata` | 当前页面模板、显式绑定、插槽、差异及适配记录 |
 | GET `/snapshot?period=&department=&source=prototype` | 原型固定快照（不传source保留旧demo契约） |
 | GET `/evidence?period=&department=&stage=&source=prototype` | 当前环节事实、明细、证据 |
-| POST `/analyses` | role、period、department、stage、source、refresh；返回分析任务 |
-| GET `/analyses?role=` | 角色历史，可按期间和部门筛选 |
+| POST `/analyses` | id、period、department、stage、source、refresh；返回分析任务 |
+| GET `/analyses?id=` | 当前身份历史，可按期间和部门筛选 |
 | GET `/analyses/{id}` | 状态、进度、工具取证记录、结果 |
 | POST `/analyses/{id}/cancel` | 停止；不删除记录 |
 | GET `/analyses/{id}/report` | 完成后的转义HTML报告 |
@@ -72,8 +78,8 @@ Pydantic校验长度、字段；引用必须来自本轮查询；已支持原因
 | GET `/tasks`、`/tasks/{id}` | 模拟任务及状态 |
 | POST `/tasks/{id}` | 带 revision 的保存／下发／接收／反馈／关闭 |
 
-错误：422无效范围／字段、404未知记录、409状态或版本冲突、403演示角色不符、429分析并发已满。
-角色为可切换演示参数，403仅用于演示操作规则，不能作为生产安全机制。
+错误：422无效范围／字段、404未知记录、409状态或版本冲突、403演示身份不符、429分析并发已满。
+`id=1|2` 是 Fuxi 传入的唯一身份参数，403仅用于演示操作规则，不能作为生产安全机制。
 
 ## 持久化与恢复
 

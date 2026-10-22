@@ -76,7 +76,7 @@ def wait(c,aid):
     raise AssertionError('analysis did not finish')
 
 def test_analysis_cache_is_scoped_and_tasks_are_idempotent(tmp_path):
-    c=client(tmp_path);ctx={'stage':'shipment','role':'president'}
+    c=client(tmp_path);ctx={'stage':'shipment','id':1}
     a=wait(c,c.post('/api/cockpit/analyses',json=ctx).json()['id'])
     assert a['status']=='completed'
     assert c.post('/api/cockpit/analyses',json=ctx).json()['id']==a['id']
@@ -86,17 +86,24 @@ def test_analysis_cache_is_scoped_and_tasks_are_idempotent(tmp_path):
     assert c.post('/api/cockpit/analyses/'+a['id']+'/draft').json()['id']==tid
     assert c.get('/api/cockpit/analyses/'+a['id']+'/report').status_code==200
 
+
+def test_bootstrap_uses_single_numeric_id_identity(tmp_path):
+    c=client(tmp_path);boot=c.get('/api/cockpit/bootstrap').json()
+    assert boot['identityParameter']=='id'
+    assert [role['id'] for role in boot['roles']]==[1,2]
+    assert [role['name'] for role in boot['roles']]==['总裁','分析员']
+
 def test_task_role_state_and_revision_guards(tmp_path):
     c=client(tmp_path);a=wait(c,c.post('/api/cockpit/analyses',json={}).json()['id'])
     t=c.post('/api/cockpit/analyses/'+a['id']+'/draft').json();url='/api/cockpit/tasks/'+t['id']
-    assert c.post(url,json=dict(role='analyst',revision=1,action='issue')).status_code==403
-    assert c.post(url,json=dict(role='president',revision=1,action='close',feedback='ok')).status_code==409
-    t=c.post(url,json=dict(role='president',revision=1,action='issue')).json();assert t['status']=='issued'
-    assert c.post(url,json=dict(role='president',revision=1,action='issue')).status_code==409
-    t=c.post(url,json=dict(role='analyst',revision=t['revision'],action='accept')).json()
-    assert c.post(url,json=dict(role='analyst',revision=t['revision'],action='feedback')).status_code==409
-    t=c.post(url,json=dict(role='analyst',revision=t['revision'],action='feedback',feedback='演示证据已补充')).json()
-    t=c.post(url,json=dict(role='president',revision=t['revision'],action='close',feedback='模拟验收通过')).json()
+    assert c.post(url,json=dict(id=2,revision=1,action='issue')).status_code==403
+    assert c.post(url,json=dict(id=1,revision=1,action='close',feedback='ok')).status_code==409
+    t=c.post(url,json=dict(id=1,revision=1,action='issue')).json();assert t['status']=='issued'
+    assert c.post(url,json=dict(id=1,revision=1,action='issue')).status_code==409
+    t=c.post(url,json=dict(id=2,revision=t['revision'],action='accept')).json()
+    assert c.post(url,json=dict(id=2,revision=t['revision'],action='feedback')).status_code==409
+    t=c.post(url,json=dict(id=2,revision=t['revision'],action='feedback',feedback='演示证据已补充')).json()
+    t=c.post(url,json=dict(id=1,revision=t['revision'],action='close',feedback='模拟验收通过')).json()
     assert t['status']=='closed' and t['simulated'] and len(t['audit'])==5
 
 def test_cancelled_job_cannot_be_overwritten(tmp_path):
@@ -182,8 +189,9 @@ def test_tool_window_is_bounded_and_covers_entire_quotation_list():
 
 
 def test_scoped_history_survives_new_router_instance(tmp_path):
-    c=client(tmp_path);a=wait(c,c.post('/api/cockpit/analyses',json={'role':'analyst'}).json()['id'])
+    c=client(tmp_path);a=wait(c,c.post('/api/cockpit/analyses',json={'id':2}).json()['id'])
     c2=client(tmp_path)
     assert c2.get('/api/cockpit/analyses/'+a['id']).json()['status']=='completed'
-    assert c2.get('/api/cockpit/analyses?role=president').json()==[]
-    assert c2.get('/api/cockpit/analyses?role=analyst').json()[0]['id']==a['id']
+    assert c2.get('/api/cockpit/analyses?id=1').json()==[]
+    assert c2.get('/api/cockpit/analyses?id=2').json()[0]['id']==a['id']
+    assert c2.post('/api/cockpit/analyses',json={'role':'president'}).status_code==422

@@ -13,6 +13,14 @@ body{overflow-x:hidden}
 .prototype-gap[data-action]{cursor:pointer}
 .prototype-gap[data-action]:hover{outline:1px dashed #d7deea!important;outline-offset:-1px}
 .prototype-gap[data-action]:focus-visible{outline:3px solid #90a7f4!important;outline-offset:-3px}
+.cockpit-primary-risk.prototype-gap{overflow:visible}
+.prototype-gap>.cockpit-gap-actions{display:flex!important;position:absolute;left:30px;bottom:24px;z-index:2}
+.cockpit-gap-actions button{font:inherit;font-size:13px;font-weight:650;border-radius:8px;padding:10px 20px;cursor:pointer}
+.cockpit-gap-actions .cockpit-risk-primary{background:#0878EA;border:1px solid #0878EA;color:#fff}
+.cockpit-gap-actions .cockpit-risk-primary:hover{background:#0865D1}
+.cockpit-gap-actions .cockpit-risk-secondary{background:#EFF6FE;border:1px solid #EFF6FE;color:#4D83AF}
+.cockpit-gap-actions .cockpit-risk-secondary:hover{background:#E1EEFE}
+.cockpit-gap-focused{outline:2px dashed #b7c8f4!important;outline-offset:-2px}
 button:disabled{opacity:1!important;cursor:default}
 button[data-action],[data-action][role="button"]{cursor:pointer}
 
@@ -37,4 +45,6 @@ button[data-action],[data-action][role="button"]{cursor:pointer}
   .cockpit-gap-report{margin:2px 12px 24px}
   .cockpit-gap-body li{grid-template-columns:1fr auto}
   .cockpit-gap-body li small{grid-column:1/-1}
+  .prototype-gap>.cockpit-gap-actions{left:16px;bottom:14px;gap:8px!important}
+  .cockpit-gap-actions button{font-size:12px;padding:7px 14px}
 }

@@ -65,3 +65,14 @@ def test_prototype_layout_manifest_is_traceable_and_shell_free():
     assert any(gap['key']=='helmet' for gap in manifest['gaps'])
     assert any(gap['key']=='stage-tile' and gap['view']=='operations' for gap in manifest['gaps'])
     assert any(gap['key']=='ai-card' and gap['view']=='analysis-shipment' for gap in manifest['gaps'])
+
+
+def test_fuxi_identity_and_missing_risk_actions_are_wired():
+    js=(ROOT/'cockpit.js').read_text()
+    html=(ROOT/'index.html').read_text()
+    assert "params.get('id')" in js
+    assert "new URLSearchParams({id: identityId, ...extra})" in js
+    assert 'route:analysis:shipment' in js
+    assert 'advice:shipment' in js
+    assert 'cockpit-gap-actions' in js
+    assert 'prototype-layout-v4' in html
