@@ -41,3 +41,27 @@ def test_upstream_missing_children_are_reported_without_mutating_metadata():
                 if child not in ids:actual.add((tid,c['id'],child))
     reported={(i['templateId'],i['componentId'],i['missingChildId']) for i in source['knownIssues']}
     assert actual==reported
+
+
+def test_prototype_layout_manifest_is_traceable_and_shell_free():
+    fixture=json.loads((ROOT.parents[2]/'cockpit/fixtures/v3-prototype.json').read_text())
+    manifest=json.loads((ROOT/'layout/views.json').read_text())
+    assert manifest['source']=={
+        'file': fixture['_source']['file'],
+        'sha256': fixture['_source']['sha256'],
+    }
+    expected={'overview','overview-sales','overview-volume','operations','analysis-shipment'}
+    assert expected<=set(manifest['views'])
+    assert len(manifest['gaps'])==119
+    assert all(manifest['views'][name] for name in expected)
+    for name,html in manifest['views'].items():
+        assert 'onclick=' not in html
+        assert 'javascript:' not in html
+        assert '<aside' not in html
+        assert '<nav' not in html
+        assert '<iframe' not in html
+        ids=[gap['id'] for gap in manifest['gaps'] if gap['view']==name]
+        assert len(ids)==len(set(ids))
+    assert any(gap['key']=='helmet' for gap in manifest['gaps'])
+    assert any(gap['key']=='stage-tile' and gap['view']=='operations' for gap in manifest['gaps'])
+    assert any(gap['key']=='ai-card' and gap['view']=='analysis-shipment' for gap in manifest['gaps'])

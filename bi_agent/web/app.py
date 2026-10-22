@@ -19,7 +19,7 @@ from types import SimpleNamespace
 from typing import Any, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.gzip import GZipMiddleware
@@ -3963,9 +3963,23 @@ from ..cockpit.router import build_cockpit_router  # noqa: E402
 
 app.include_router(build_cockpit_router(get_cwd=lambda: STATE.cwd or os.getcwd()))
 
+COCKPIT_PAGES = frozenset({"overview", "operations", "analysis"})
+
+
+def _cockpit_html(page: str) -> HTMLResponse:
+    html = (STATIC_DIR / "cockpit" / "index.html").read_text(encoding="utf-8")
+    html = html.replace("@@APP_ROOT_PATH@@", APP_ROOT_PATH).replace("@@COCKPIT_PAGE@@", page)
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/cockpit", response_class=HTMLResponse)
 @app.get("/cockpit/", response_class=HTMLResponse)
-def cockpit_page() -> HTMLResponse:
-    html = (STATIC_DIR / "cockpit" / "index.html").read_text(encoding="utf-8")
-    return HTMLResponse(html.replace("@@APP_ROOT_PATH@@", APP_ROOT_PATH),
-                        headers={"Cache-Control": "no-store"})
+def cockpit_index() -> RedirectResponse:
+    return RedirectResponse(url=f"{APP_ROOT_PATH}/cockpit/overview", status_code=307)
+
+
+@app.get("/cockpit/{page}", response_class=HTMLResponse)
+def cockpit_page(page: str) -> HTMLResponse:
+    if page not in COCKPIT_PAGES:
+        raise HTTPException(404, "驾驶舱页面不存在")
+    return _cockpit_html(page)

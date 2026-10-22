@@ -1,9 +1,9 @@
 # V3 经营驾驶舱 POC
 
-## 已确认边界（2026-10-21）
+## 已确认边界（2026-10-22）
 
-- analytics 主服务提供 `/cockpit`；Fuxi 嵌入固定入口。现有 `/workbench`、旧驾驶舱及 MCP 不替换。
-- 三个主页面：全局经营看板、运营 360 整体分析、穿透式问题分析。专项与任务令为页面内状态。
+- analytics 主服务提供三个独立入口：`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 只做跳转。现有 `/workbench`、旧驾驶舱及 MCP 不替换。
+- 三个页面只渲染看板本体，不包含宿主工作区、会话区、顶部标题、页签或外层筛选栏；页内业务按钮和卡片保留。
 - 两个演示角色：总裁（按钮驱动，无对话）、分析员（Fuxi 对话，不在 cockpit 重建聊天）。数据范围相同，操作不同。
 - 最新决定：页面直接调用 analytics 主服务执行 AI 分析并回填插槽；不依赖 Fuxi 触发／回填协议。
 - 前两页直接查询数据；第三页首次进入启动分析，同快照同角色同环节复用完成结果，可重新分析。
@@ -14,26 +14,23 @@
 
 ## 页面与组件
 
-新增 Vue 3 页面入口，静态资源位于 `bi_agent/web/static/cockpit/`，与旧 React 工作台资源隔离。
-使用 ProUI `ProBiDashboard`、`ProKpiCard`、柱图／条形图、`ProMiniCpGraph`、`ProDataTableAtomic`。
-分析内容通过 Dashboard `insights` 和 `#insight-sales-shipment-issues` 插槽嵌入。
+三页静态资源位于 `bi_agent/web/static/cockpit/`，与旧 React 工作台资源隔离。交付元数据缺少与原型一致的布局和部分组件，因此页面使用原型 DOM/CSS 快照作为逐项布局基线；`iba-demo/feature/demo_1021` 元数据用于覆盖范围判断和缺项报告。无法由交付配置还原的区域清空内容但保留原型尺寸，不用近似图表冒充。
 
 | 页面 | 行为 |
 | --- | --- |
-| 全局经营看板 | 交付五项进度卡、销售额／出货量嵌套模板、年度图表与表格；保留原型7条风险文案 |
-| 运营 360 | 交付七节点头盔、节点明细模板、阶段概览及出货年度组合；方案摘要只显示事实 |
-| 穿透分析 | 四节点头盔、商机／订单变更／发货模板、AI风险／原因／建议、证据、模拟任务及情景测算 |
-| 公共 | 固定原型期间／全产品部、两角色、URL导航、口径、历史与任务抽屉、可展开差异清单 |
+| 全局经营看板 | 五项经营指标、首页重点风险区尺寸、八节点风险链、销售额／出货量年度视图；缺失卡片和图表保持空白 |
+| 运营 360 | 七环节运营看板、环节明细、阶段概览和发货年度视图；头盔图、节点入口卡、周期对标和第四项履约卡保持空白 |
+| 穿透分析 | 商机／投标／订单／发货四类穿透视图、原型事实与明细；头盔图及缺失的 AI 卡片保持空白 |
+| 公共 | 固定原型期间／全产品部；无宿主壳；只保留看板内可确定的业务跳转和当前页缺项报告 |
 
-嵌入路径示例：`/cockpit?role=president#overview`、`/cockpit?role=analyst#analysis`。
-支持 `APP_ROOT_PATH` 下静态资源及 API 地址。角色参数仅为 POC 演示，不是正式身份认证。
-分析员“复制上下文到 Fuxi”仅复制文本，不自动发送，不同步外层会话，也不声称已完成宿主联调。
+入口示例：`/cockpit/overview`、`/cockpit/operations?stage=shipment`、`/cockpit/analysis?stage=bid`、`/cockpit/overview?metric=sales`。
+支持 `APP_ROOT_PATH` 下静态资源及 API 地址。角色参数仍保留在分析 API 中，但纯看板页面不再渲染旧的角色切换、历史或任务抽屉。
 
 ## 数据契约和口径
 
 当前页面使用 `PrototypeSource`，静态事实来自 `fixtures/v3-prototype.json`，原型HTML文件名与SHA记录于 `_source`。
-交付元数据由 `metadata.py` 编译，三页全部使用 `ProBiDashboard` 与同一份模板注册表；不再使用手写页面图表数组。
-图表、表格与AI证据均绑定这一原型源。原型客户姓名等均为其既有演示内容。
+交付元数据由 `metadata.py` 编译，保留模板注册表、显式绑定和缺项；页面布局使用 `static/cockpit/layout/views.json` 中的原型 DOM 快照，避免把近似画布声称为逐像素一致。
+图表、表格与后端分析证据仍绑定同一原型源。原型客户姓名等均为其既有演示内容。
 
 - 原型固定期间2025-10、全产品部；没有其他完整快照，不开放虚构筛选。
 - 超期未发10条原型订单合计24.3亿元；S1客户设备批次质量异常记录为4.8亿元。
@@ -89,14 +86,15 @@ Pydantic校验长度、字段；引用必须来自本轮查询；已支持原因
 ## 资源
 
 ProUI 文档站与 PDT 当前发布的 BI UMD 相同，冻结SHA见 `static/cockpit/vendor/resources.json`。
-保留旧工作台BI包不变；新包只由cockpit加载。Vue版本均为3.5.25，哈希一致，直接复用原有Vue文件。
+保留旧工作台BI包不变；新包继续随cockpit加载，但当前三页的布局基线是 `static/cockpit/layout/` 中的原型DOM/CSS快照。
+Vue版本均为3.5.25，哈希一致，直接复用原有Vue文件。
 资源文档：<http://pro-ui.eimos.com/bi-components/setup/>、<http://pro-ui.eimos.com/bi-components/dashboard/>。
 
 ## 验证
 
 离线契约测试：`python -m pytest -q tests/test_cockpit_poc.py tests/test_cockpit_resource_contract.py tests/test_cockpit_metadata.py`。
-脚本语法：`node --check bi_agent/web/static/cockpit/cockpit.js`。
-浏览器验收使用独立临时工作目录，避免接触用户会话。真实模型验证使用主服务现有配置，绝不把凭据写入前端。
+脚本语法：`node --check bi_agent/web/static/cockpit/cockpit.js && node --check scripts/extract_cockpit_layout.mjs`。
+浏览器验收使用独立临时工作目录，避免接触用户会话。三页及参数化视图在1440px和390px视口检查，点击跳转与缺项尺寸通过。真实模型验证使用主服务现有配置时，绝不把凭据写入前端。
 
 
 ## 2026-10-21 组件资源与前端元数据交付补充
@@ -105,5 +103,5 @@ ProUI 文档站与 PDT 当前发布的 BI UMD 相同，冻结SHA见 `static/cock
 增加内容哈希缓存参数；Vue仍为同一份3.5.25，旧工作台资源不变。
 已拉取 `shimenglan/iba-demo` 的 `feature/demo_1021`（commit `55842efc`），
 根组件、14份子模板和3个插槽声明存于 `static/cockpit/metadata/iba-demo-1021/`。
-2026-10-22起已由运行适配层替换当前三页配置；源JSON保持冻结，不连接AP。
-页面对应、源配置缺失子组件及接入边界见该目录 README 和 source.json。
+2026-10-22起三页改为独立路由和纯看板；原型DOM/CSS快照负责逐项布局，交付元数据用于覆盖判断和差异披露。
+源JSON保持冻结，不连接AP。页面对应、源配置缺失子组件及接入边界见该目录 README 和 source.json。
