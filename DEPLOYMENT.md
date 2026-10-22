@@ -407,8 +407,9 @@ git diff --name-only
 ### Cockpit 三页静态看板（8876，2026-10-22）
 
 - 范围：只发布 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`
-  三个看板 HTML 及其 CSS／JS／布局快照、静态 ProUI 运行包和四个顶部视图 Tab，不启动第二套
-  `bi_agent.web`，不占用或重启 `8765` 主服务，不复制 `dataset/`，不读取生产接口。
+  三个看板 HTML 及其 CSS／JS、静态 ProUI 运行包和三个顶部视图 Tab，使用
+  `ProBiDashboard` 渲染原生 ProUI 组件；不启动第二套 `bi_agent.web`，不占用或重启
+  `8765` 主服务，不复制 `dataset/`，不读取生产接口。
 - 访问地址：
   - `http://172.16.10.34:8876/cockpit/overview?id=1` 或 `?id=2`
   - `http://172.16.10.34:8876/cockpit/operations?id=1` 或 `?id=2`
@@ -421,25 +422,25 @@ git diff --name-only
   nginx 配置：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/conf/default.conf`。
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
-- 历史内容来源：`feature/cockpit-v3-poc` commit
-  `4583b43b83e21e3a3e831477baf470914e7f5842`；目录内 `manifest.sha256` 使用相对路径保存
-  发布文件哈希，`release.json` 记录分支、提交和构建时间。运行时入口为
-  `cockpit.js/css?v=prototype-layout-v5`，静态元数据为
-  `metadata/runtime.json?v=prototype-runtime-v1`；ProUI 运行包为 `c38cbf36`，
-  CSS 为 `b1ee836d`。页面仅请求同源 `/static/*`，`/api/*` 固定返回 404。
-- 内容校验：发布目录共 11 个文件，`sha256sum -c manifest.sha256` 全部通过；该历史版本包含四个 Tab。
-- 验证：三条页面路由及 `cockpit.js`、`views.json`、`runtime.json`、Vue／ProUI 资源均返回 200；
-  1440px 下确认年度图生成 canvas、运营和穿透头盔图生成 canvas/SVG，页面无运行时错误或横向溢出；
-  静态 `/api/cockpit/metadata` 返回 404 时页面仍能通过 `runtime.json` 挂载组件；同机
-  `http://127.0.0.1:8765/healthz` 和 `/workbench` 仍返回 200。
+- 当前发布：`feature/cockpit-v3-poc` commit
+  `ba8089042a7ce41c7b03c21b169754d3cba7b758`，构建时间 `2026-10-22T03:10:26Z`；
+  目录内 `manifest.sha256` 使用相对路径保存发布文件哈希，`release.json` 记录分支、提交和构建时间。
+  运行时入口为 `cockpit.js/css?v=proui-dashboard-v1`，静态元数据为
+  `metadata/runtime.json?v=proui-dashboard-v1`；ProUI 运行包为 `c38cbf36`，CSS 为
+  `b1ee836d`。页面仅请求同源 `/static/*`，`/api/*` 固定返回 404。
+- 内容校验：发布目录共 9 个文件，`sha256sum -c manifest.sha256` 全部通过；运行包包含 15 份模板、
+  131 个可渲染组件和 102 个 `mockData` 绑定。
+- 验证（2026-10-22 11:11）：三条页面路由、`release.json`、`runtime.json`、`cockpit.js`、
+  ProUI CSS／JS、Vue 均返回 200；远程浏览器确认三个 Tab、`id=1|2` 传播和 ProUI 组件正常渲染，
+  `overview` 生成 3 个 canvas／6 个表格，`operations` 生成 6 个 canvas／2 个表格，
+  `analysis` 生成 1 个 canvas／2 个表格；1440px 与 480px 均无横向溢出，页面无错误状态，
+  且没有 `/api/cockpit/*` 请求。静态 `/api/cockpit/metadata` 返回 404；同机
+  `http://127.0.0.1:8765/healthz` 和 `/workbench` 仍返回 200，主服务未修改或重启。
 - 回滚副本：本次同步前旧站已备份到
-  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-105409`。
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-pre-ba80890`
+  （历史版本 `4583b43`）；更早的 `site-20261022-105409` 保留。
 - 本地预览：`/tmp/cockpit-local-preview.py` 使用当前工作区代码启动
   `127.0.0.1:8876`，路由和看板资源与上述静态发布一致；该进程只监听回环地址。
-
-> 2026-10-22 后续工作区已改为 `ProBiDashboard` 原生组件渲染，并移除首页 Tab 和原型布局文件；
-> 该变更尚未发布到 `172.16.10.34:8876`。服务器仍保留上一段记录的 `4583b43` 静态版本，
-> 需要新的明确部署授权后再同步。
 
 上一运行状态（2026-09-03 部署 v0.1.2，现保留为回滚版本）：
 
