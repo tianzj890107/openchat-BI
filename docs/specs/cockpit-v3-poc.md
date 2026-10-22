@@ -33,12 +33,15 @@
 
 交付目录 `static/cockpit/metadata/iba-demo-1021/` 保存 `components.json`、`template-registry.json`、
 `insights.js`、`insights.json`、`insight-components/` 和原始 hash；`runtime.py` 只做浏览器安全导出，
-不改组件、位置或样式。浏览器只读取合并后的 `metadata/runtime.json` 和本地 AP 快照。
+不修改源文件、组件位置或布局；仅对分析页三节点头盔图做已确认的标题和模板规则裁剪。浏览器只读取
+合并后的 `metadata/runtime.json` 和本地 AP 快照。
 
 - 根配置包含 2 个组件：`composite-filter-hzjk9t5q` 和 `tab-container-zm9eyxne`。
 - 交付包共 13 份模板、122 个组件配置（含根组件）；三个 Tab 引用的模板全部存在。
 - `ProBiDashboard` 直接接收根 `components` 和 `template-registry`；三个路由只激活对应 Tab。
 - `data-snapshots.json` 保存 pdt 正式页网络中的 39 个 AP 查询、3 个批量查询和 4 个头盔图请求响应；浏览器通过 `configureBi` 回放，不访问 PDT 或生产接口。
+- 分析页 `SALES_CALIBER` 快照同时包含四节点和网关三节点两份响应；运行时优先使用
+  `/api/gateway2` 的三节点响应，显示“商机获取 → 订单接收 → 发货”，源快照文件保持原样。
 - 快照只保存业务响应体，不保存 Cookie、Token、账号或用户身份；发布目录记录文件大小和 SHA-256。
 - 未捕获的查询在原卡片显示交付组件自带的“未找到该 AP 查询的发布快照”，宿主不补造数据。
 - 交付配置没有 `insights` 字段；页面使用交付目录的 12 个插槽声明：运营 360 4 个、穿透式问题分析 8 个、经营看板 0 个。AP 指标与标题的口径差异保持源配置原值。
@@ -62,10 +65,12 @@ CSS 查询串也使用该版本，避免部署后继续命中旧模块或旧样�
 内部滚动，避免固定卡片高度把 KPI 子卡压缩为 0–8px。
 
 运营页默认显示 `bid-status-note`，点击头盔节点后按对应模板挂载 `quote-summary`、`bid-summary`、
-`order-sign-summary`；穿透页默认显示 `sales-shipment-issues`、`opportunity-risk`、
-`opportunity-coverage-note`，点击订单接收和发货节点后挂载 `order-risk-summary`、
-`shipment-risk-summary`、`shipment-overdue-note`、`shipment-cause-breakdown`、`shipment-task-order`。
-首次分析通常约 10–20 秒，已完成范围复用 SQLite 中的结果；失败时显示错误和重试。
+`order-sign-summary`；穿透页头盔图为“商机获取 → 订单接收 → 发货”三节点，默认显示
+`sales-shipment-issues`、`opportunity-risk`、`opportunity-coverage-note`，点击订单接收和发货节点后
+挂载 `order-risk-summary`、`shipment-risk-summary`、`shipment-overdue-note`、
+`shipment-cause-breakdown`、`shipment-task-order`。商机获取、订单接收、发货三个风险插槽共用
+`createStageRiskComponent`，保证风险、原因、建议三张卡片的结构和间距一致。首次分析通常约
+10–20 秒，已完成范围复用 SQLite 中的结果；失败时显示错误和重试。
 
 ## API
 
@@ -124,6 +129,8 @@ node --check bi_agent/web/static/cockpit/cockpit.js
 - 三条路由分别激活“经营看板”“运营360整体分析”“穿透式问题分析”；`id=1` 与 `id=2` 内容一致。
 - 运营页加载后后台出现报价、订单等尚未显示环节的分析任务，证明空闲预取生效；点击节点后插槽直接显示已完成结果。
 - 三个页面均无组件错误；运营页头盔图切到报价、投标、订单接收节点时分别挂载 `quote-summary`、`bid-summary`、`order-sign-summary`，穿透页切到订单接收和发货节点时挂载 `order-risk-summary` 与 4 个发货插槽。
+- 穿透页头盔图实际渲染为商机获取、订单接收、发货三个节点；三个节点均挂载同一套
+  `stage-risk-analysis` 风险／原因／建议卡片。
 - 穿透页默认显示 3 个插槽；12 个交付插槽位置均挂载真实模型分析，页面空闲时预取 5 个环节。
 - 页面只回放本地 `/static/cockpit/metadata/pdt-release-2109836674373566465/data-snapshots.json` 中的请求，不访问 AP。
 - 时间筛选切换到 `2026-08-13 19:06:09` 后无组件错误、无未捕获快照，销售额卡按交付绑定更新，其余卡保持不变（与交付筛选绑定范围一致）。

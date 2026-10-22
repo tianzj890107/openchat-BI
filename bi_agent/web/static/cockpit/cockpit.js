@@ -222,16 +222,22 @@
     const utils = {
       request: async request => {
         const url = new URL(request.url, location.origin);
+        const params = request.params || Object.fromEntries(url.searchParams);
         const key = canonical({
           method: (request.method || 'get').toLowerCase(),
           path: url.pathname,
-          params: request.params || Object.fromEntries(url.searchParams),
+          params,
         });
-        const hit = requests.get(key) || requests.get(canonical({
+        const gatewayKey = canonical({
           method: (request.method || 'get').toLowerCase(),
           path: `/api/gateway2${url.pathname}`,
-          params: request.params || Object.fromEntries(url.searchParams),
-        }));
+          params,
+        });
+        // The sales-caliper capture has both a four-node and a three-node response.
+        // Use the delivered three-node version for the analysis flow.
+        const hit = params.flowCode === 'SALES_CALIBER'
+          ? requests.get(gatewayKey) || requests.get(key)
+          : requests.get(key) || requests.get(gatewayKey);
         if (!hit) return [new Error('未找到该接口的发布快照'), null];
         return [null, {data: hit.response.data, success: true}];
       },

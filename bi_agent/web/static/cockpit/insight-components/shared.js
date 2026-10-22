@@ -166,6 +166,99 @@ export function useInsight(props, emit) {
   }
 }
 
+export function createStageRiskComponent(options = {}) {
+  return Vue.defineComponent({
+    name: options.name || 'StageRiskAnalysis',
+    props: insightProps,
+    emits: ['retry'],
+    setup(props, { emit }) {
+      const insight = useInsight(props, emit)
+      const displayStage = computed(() => insight.stageName.value || options.fallbackStage || '当前环节')
+      return { ...insight, displayStage }
+    },
+    template: `
+      <section class="stage-risk-analysis" aria-live="polite">
+        <div class="insight-runtime-state">
+          <div class="insight-runtime-state__row">
+            <span>{{ stateText }}</span>
+            <button v-if="status === 'error'" type="button" class="insight-runtime-retry" @click="retry">重试</button>
+          </div>
+        </div>
+        <template v-if="hasResult">
+          <article class="stage-risk-analysis__card stage-risk-analysis__card--risk">
+            <div class="stage-risk-analysis__head">
+              <div class="stage-risk-analysis__title">
+                <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【风险】</span>
+                {{ displayStage }}风险概况
+              </div>
+              <span class="stage-risk-analysis__aside">{{ contextLine }}</span>
+            </div>
+            <div class="stage-risk-analysis__summary" :title="summary">{{ summary }}</div>
+            <div v-if="facts.length" class="stage-risk-analysis__facts">
+              <div v-for="item in facts" :key="item.id" class="stage-risk-analysis__fact" :title="item.definition || item.label">
+                <span>{{ item.label }}</span>
+                <b>{{ metricValue(item) }}</b>
+              </div>
+            </div>
+          </article>
+
+          <article class="stage-risk-analysis__card stage-risk-analysis__card--cause">
+            <div class="stage-risk-analysis__head">
+              <div class="stage-risk-analysis__title">
+                <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【原因】</span>
+                模型基于当前证据识别 {{ causes.length }} 项原因
+              </div>
+            </div>
+            <div v-for="(cause, index) in causes" :key="cause.id" class="stage-risk-analysis__cause">
+              <div class="stage-risk-analysis__cause-head">
+                <span class="stage-risk-analysis__index">{{ index + 1 }}</span>
+                <b>{{ cause.title }}</b>
+                <span class="stage-risk-analysis__tag">{{ causeMeta(cause) }}</span>
+              </div>
+              <div class="stage-risk-analysis__cause-text" :title="cause.description">{{ cause.description }}</div>
+            </div>
+          </article>
+
+          <article class="stage-risk-analysis__card stage-risk-analysis__card--suggest">
+            <div class="stage-risk-analysis__head">
+              <div class="stage-risk-analysis__title">
+                <span class="stage-risk-analysis__mark stage-risk-analysis__mark--suggest">【建议】</span>
+                按证据链形成可验收动作
+              </div>
+              <span class="stage-risk-analysis__aside">{{ openRecommendations.length }} 项</span>
+            </div>
+            <div v-for="(item, index) in openRecommendations" :key="item.id" class="stage-risk-analysis__action">
+              <span class="stage-risk-analysis__index">{{ index + 1 }}</span>
+              <div class="stage-risk-analysis__action-main">
+                <div class="stage-risk-analysis__action-text">{{ item.action }}</div>
+                <div class="stage-risk-analysis__action-meta">
+                  <span class="stage-risk-analysis__owner"><em>责任</em>{{ item.ownerRole || '未提供' }}</span>
+                  <span class="stage-risk-analysis__deadline"><em>期限</em>{{ deadlineText(item) }}</span>
+                  <span class="stage-risk-analysis__acceptance"><em>验收</em>{{ item.acceptance }}</span>
+                  <button v-if="hasRecommendationDetail(item)" type="button" class="stage-risk-analysis__detail-toggle"
+                          :aria-expanded="String(isRecommendationExpanded(item.id))"
+                          @click="toggleRecommendationDetail(item.id)">
+                    {{ isRecommendationExpanded(item.id) ? '收起' : '查看详情' }}
+                  </button>
+                </div>
+                <div v-if="isRecommendationExpanded(item.id)" class="stage-risk-analysis__detail">
+                  {{ recommendationDetail(item) }}
+                </div>
+              </div>
+              <button type="button" class="stage-risk-analysis__close" aria-label="关闭这条建议" @click="dismissRecommendation(item.id)">×</button>
+            </div>
+            <details class="stage-risk-analysis__foot">
+              <summary>证据范围与 {{ limitations.length }} 项限制</summary>
+              <div>证据范围：{{ contextLine }}；{{ records.length }} 条记录、{{ evidenceCount }} 条证据。</div>
+              <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
+            </details>
+          </article>
+        </template>
+      </section>
+    `,
+  })
+}
+
 export function sumBy(items, selector) {
   return items.reduce((total, item) => total + (number(selector(item)) || 0), 0)
 }

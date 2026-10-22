@@ -19,6 +19,44 @@ body{overflow-x:hidden;background:#f3f5f8;color:#1f2329;font-family:-apple-syste
 .cockpit-board .pro-bi-in-card-insight-zone--contain{max-height:100%;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .cockpit-board .pro-bi-in-card-insight-zone--contain::-webkit-scrollbar{width:4px}
 .cockpit-board .pro-bi-in-card-insight-zone--contain::-webkit-scrollbar-thumb{border-radius:4px;background:#c9d1dc}
+
+.stage-risk-analysis{display:flex;flex-direction:column;gap:8px;min-width:0;margin:0;color:#262626;font-size:13px;line-height:22px;overflow-wrap:anywhere}
+.stage-risk-analysis__card{min-width:0;padding:14px 16px 12px;border:1px solid #f0f0f0;border-left:3px solid #d9d9d9;border-radius:8px;background:#fff}
+.stage-risk-analysis__card--risk{border-left-color:#cf1322}
+.stage-risk-analysis__card--cause{border-left-color:#d46b08}
+.stage-risk-analysis__card--suggest{border-left-color:#1677ff}
+.stage-risk-analysis__head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.stage-risk-analysis__title{min-width:0;font-size:14px;font-weight:600}
+.stage-risk-analysis__mark--risk{color:#cf1322}
+.stage-risk-analysis__mark--cause{color:#d46b08}
+.stage-risk-analysis__mark--suggest{color:#1677ff}
+.stage-risk-analysis__aside{flex:none;color:#8c8c8c;font-size:12px;font-weight:400}
+.stage-risk-analysis__summary{display:-webkit-box;margin-top:8px;overflow:hidden;color:#595959;font-size:12px;line-height:20px;-webkit-box-orient:vertical;-webkit-line-clamp:3}
+.stage-risk-analysis__facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.stage-risk-analysis__fact{display:flex;flex:1 1 180px;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:6px 9px;border-radius:6px;background:#fafafa;font-size:12px;line-height:20px}
+.stage-risk-analysis__fact span{min-width:0;overflow:hidden;color:#8c8c8c;text-overflow:ellipsis;white-space:nowrap}
+.stage-risk-analysis__fact b{flex:none;color:#262626;font-weight:600}
+.stage-risk-analysis__cause{padding-top:10px;margin-top:10px;border-top:1px solid #f5f5f5}
+.stage-risk-analysis__cause-head{display:flex;align-items:baseline;gap:8px;min-width:0}
+.stage-risk-analysis__cause-head b{min-width:0;flex:1;font-size:13px;font-weight:600}
+.stage-risk-analysis__index{display:inline-flex;flex:none;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#f2f4f7;color:#8c8c8c;font-size:11px;line-height:18px}
+.stage-risk-analysis__tag{flex:none;padding:0 6px;border-radius:9px;background:#f2f4f7;color:#595959;font-size:11px;line-height:18px}
+.stage-risk-analysis__cause-text{display:-webkit-box;margin:2px 0 0 26px;overflow:hidden;color:#595959;font-size:12px;line-height:20px;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.stage-risk-analysis__action{display:grid;grid-template-columns:18px minmax(0,1fr) 20px;column-gap:12px;align-items:flex-start;padding-top:10px;margin-top:10px;border-top:1px solid #f5f5f5}
+.stage-risk-analysis__action-main{min-width:0}
+.stage-risk-analysis__action-text{min-width:0;font-weight:500;overflow-wrap:break-word}
+.stage-risk-analysis__action-meta{display:grid;grid-template-columns:max-content max-content minmax(0,1fr) max-content;align-items:center;gap:4px 12px;margin-top:2px;font-size:12px;line-height:20px}
+.stage-risk-analysis__action-meta em{margin-right:4px;color:#bfbfbf;font-style:normal}
+.stage-risk-analysis__owner{color:#1677ff}
+.stage-risk-analysis__deadline{padding:0 7px;border-radius:10px;background:#f2f4f7;color:#595959}
+.stage-risk-analysis__acceptance{min-width:0;color:#8c8c8c;overflow-wrap:break-word}
+.stage-risk-analysis__detail-toggle{padding:0;border:0;background:transparent;color:#1677ff;font-size:12px;line-height:20px;cursor:pointer}
+.stage-risk-analysis__detail{margin-top:4px;padding:6px 8px;border-radius:4px;background:#fafafa;color:#595959;font-size:12px;line-height:20px;overflow-wrap:break-word}
+.stage-risk-analysis__close{grid-column:3;padding:0;border:0;background:transparent;color:#bfbfbf;font-size:16px;line-height:22px;cursor:pointer}
+.stage-risk-analysis__foot{margin-top:8px;color:#8c8c8c;font-size:12px;line-height:20px}
+.stage-risk-analysis__foot summary{width:max-content;max-width:100%;color:#1677ff;cursor:pointer}
+.stage-risk-analysis__foot[open] summary{margin-bottom:4px}
+
 .cockpit-insight{margin:0;padding:14px 16px 12px;border:1px solid var(--pro-border-color-light,#e5e9f0);border-radius:8px;background:#fff;color:var(--pro-text-color-primary,#1b2733);box-sizing:border-box}
 .cockpit-insight__hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .cockpit-insight__title{display:flex;align-items:baseline;gap:8px;min-width:0}

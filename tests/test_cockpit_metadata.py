@@ -146,7 +146,7 @@ def test_metadata_api_and_analysis_source_isolation(tmp_path):
     assert e['records'][0]['id']=='SO-2026-0318'
 
 
-def test_runtime_components_are_release_templates_verbatim():
+def test_runtime_components_preserve_templates_with_analysis_graph_override():
     payload=runtime_payload()
     root=json.loads((METADATA/'components.json').read_text())
     assert payload['dashboard']['components']==root
@@ -161,6 +161,18 @@ def test_runtime_components_are_release_templates_verbatim():
 
     for page,tid in PAGE_TEMPLATES.items():
         files=json.loads((METADATA/'template-registry.json').read_text())[tid]
-        assert payload['pages'][page]['components']==files['components']
-        assert payload['templates'][tid]['components']==files['components']
+        expected=json.loads(json.dumps(files['components']))
+        if page=='analysis':
+            graph=next(c for c in expected if c['id']=='mini-cpgraph-93j6k86p')
+            graph['title']='销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）'
+            graph['graphConfig']['graphTemplateSwitchRules']=[
+                rule for rule in graph['graphConfig']['graphTemplateSwitchRules']
+                if rule['nodeId']!='2109840573985767425'
+            ]
+        assert payload['pages'][page]['components']==expected
+        assert payload['templates'][tid]['components']==expected
         assert payload['pages'][page]['insights']==release_payload()['pages'][page]['insights']
+    source_registry=json.loads((METADATA/'template-registry.json').read_text())
+    source_graph=next(c for c in source_registry[PAGE_TEMPLATES['analysis']]['components']
+                      if c['id']=='mini-cpgraph-93j6k86p')
+    assert source_graph['title']=='销售额口径 · 四节点头盔图（商机获取 → 投标 → 订单接收 → 发货）'

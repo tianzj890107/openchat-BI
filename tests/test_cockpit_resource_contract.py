@@ -121,14 +121,47 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
     bundle=(components/'index.js').read_text()
     assert 'new URL(import.meta.url).search' in bundle
     assert 'window.InsightRuntime' in bundle
+    shared=(components/'shared.js').read_text()
+    assert 'export function createStageRiskComponent' in shared
+    stage_risk={'opportunity-risk':'商机获取','order-risk-summary':'订单接收','shipment-risk-summary':'发货'}
     for name in ('bid-status-note','quote-summary','bid-summary','order-sign-summary',
                  'sales-shipment-issues','opportunity-risk','opportunity-coverage-note',
                  'order-risk-summary','shipment-risk-summary','shipment-overdue-note',
                  'shipment-cause-breakdown','shipment-task-order'):
         source=(components/name/'index.js').read_text()
-        assert 'props: insightProps' in source
-        assert 'useInsight(props, emit)' in source
-        assert 'insight-runtime-state' in source
         assert 'window.InsightRuntime' in source
         assert "from '../" not in source
         assert '静态文案' not in source
+        if name in stage_risk:
+            assert 'createStageRiskComponent' in source
+            assert f"fallbackStage: '{stage_risk[name]}'" in source
+        else:
+            assert 'insight-runtime-state' in source
+            assert 'props: insightProps' in source
+            assert 'useInsight(props, emit)' in source
+
+
+def test_analysis_flow_uses_three_delivered_nodes_and_shared_risk_markup():
+    runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
+    graph=next(component for component in runtime['pages']['analysis']['components']
+               if component['id']=='mini-cpgraph-93j6k86p')
+    assert graph['title']=='销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）'
+    assert '投标' not in graph['title']
+    assert {rule['nodeId'] for rule in graph['graphConfig']['graphTemplateSwitchRules']}=={
+        '2109840325158682625','2109840573998350338','2109840696539136002',
+    }
+
+    captured=json.loads((ROOT/'metadata/pdt-release-2109836674373566465/data-snapshots.json').read_text())
+    sales=[value for key,value in captured['requests'].items()
+           if 'SALES_CALIBER' in key and '/api/gateway2/x360/v1/graphs/helmet-view' in key]
+    assert len(sales)==1
+    assert [node['name'] for node in sales[0]['response']['data']['nodes']]==[
+        '商机获取','订单接收','发货',
+    ]
+
+    js=(ROOT/'cockpit.js').read_text()
+    assert "params.flowCode === 'SALES_CALIBER'" in js
+    css=(ROOT/'cockpit.css').read_text()
+    for selector in ('stage-risk-analysis__card--risk','stage-risk-analysis__card--cause',
+                     'stage-risk-analysis__card--suggest','stage-risk-analysis__action'):
+        assert selector in css

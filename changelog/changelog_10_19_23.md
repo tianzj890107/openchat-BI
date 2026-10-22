@@ -101,6 +101,12 @@
 - 交互：头盔图点击节点切换环节模板；运营页报价、投标、订单接收节点分别挂载 `quote-summary`、
   `bid-summary`、`order-sign-summary`；穿透页订单接收、发货节点分别挂载 `order-risk-summary`
   和 4 个发货插槽。页内 Tab 切换同步 URL 并保留 `id`。
+- 流程与风险卡片（2026-10-22 17:15）：穿透式问题分析的销售额口径头盔图移除“投标”，
+  使用交付快照内已有的三节点响应（商机获取 → 订单接收 → 发货），标题同步；运营 360 的
+  全流程仍保留投标。商机获取、订单接收、发货三类分析插槽统一使用共享
+  `createStageRiskComponent`，风险、原因、建议三张卡片的 DOM 结构、间距和高度约束一致。
+  源 `template-registry.json`、`data-snapshots.json` 不改写，运行时仅对 `SALES_CALIBER`
+  优先读取已捕获的三节点网关响应并裁剪分析模板规则。
 - 布局修复（2026-10-22 16:37）：商机建议行从随内容回绕的 flex 布局改为三列网格，序号固定在左侧，
   建议正文、责任角色和验收标准统一对齐正文列，关闭按钮固定在最右侧；不再出现责任角色被挤到行首、
   关闭按钮单独落到下一行的问题。
@@ -127,12 +133,15 @@
   `tests/test_cockpit_poc.py`、`tests/test_cockpit_resource_contract.py`、
   `tests/test_cockpit_metadata.py`、`docs/specs/cockpit-v3-poc.md`、
   `docs/specs/cockpit-v3-metadata-gaps.md`、`README.md`、`DEPLOYMENT.md`。
-- 验证（2026-10-22 16:59）：驾驶舱契约测试 40 项通过；`node --check` 和 `git diff --check` 通过。
+- 验证（2026-10-22 17:15）：驾驶舱契约测试 41 项通过；`node --check` 和 `git diff --check` 通过。
   浏览器验证三个路由在 `id=1|2` 下激活正确 Tab，页面只有一个 `ProBiDashboard`；
   运营页加载后后台出现尚未显示环节的分析任务，证明空闲预取生效；点击头盔节点后
   报价、投标、订单签单、订单风险及 4 个发货插槽均直接显示已完成结果，无组件错误；另以真实
   已完成分析逐一挂载 12 个交付插槽组件，全部通过渲染、无横向溢出，主因拆解按记录聚合显示
   4 类主因和逐单金额/超期天数。
+- 浏览器补充（2026-10-22 17:15）：穿透页头盔图实际节点为商机获取、订单接收、发货三个；
+  依次点击三个节点后均挂载 `.stage-risk-analysis`，旧 `.opportunity-risk` /
+  `.order-risk-summary` / `.shipment-risk-summary` 独立结构数量为 0。
 - 部署（2026-10-22 16:27）：`172.16.10.34:8876` 更新到 `feature/cockpit-v3-poc@b6eaaca`，
   发布包 38 个文件且 `manifest.sha256` 全部通过。本版让插槽入口按同一 `cockpit-version` 动态加载
   registry、shared 和 12 个子组件，线上模块请求均为 `?v=b6eaaca`，修复 HTML 已更新但子组件仍命中旧

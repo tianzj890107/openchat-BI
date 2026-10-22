@@ -34,6 +34,9 @@ PAGE_LABELS = {
     "operations": "运营360整体分析",
     "analysis": "穿透式问题分析",
 }
+ANALYSIS_GRAPH_ID = "mini-cpgraph-93j6k86p"
+ANALYSIS_GRAPH_TITLE = "销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）"
+ANALYSIS_BID_NODE_ID = "2109840573985767425"
 CONTAINERS = {
     "group", "template", "tab-container", "segmented-strip", "split-container",
     "button-group", "composite-filter", "title",
@@ -58,6 +61,22 @@ def _component_counts(components: list[dict]) -> dict:
             if (component.get("dataConfig") or {}).get("sourceType") in {"ap", "request"}
         ),
     }
+
+
+def _apply_analysis_flow_override(components: list[dict]) -> None:
+    graph = next(
+        (component for component in components if component.get("id") == ANALYSIS_GRAPH_ID),
+        None,
+    )
+    if not graph:
+        return
+    graph["title"] = ANALYSIS_GRAPH_TITLE
+    graph_config = graph.setdefault("graphConfig", {})
+    graph_config["graphTemplateSwitchRules"] = [
+        rule
+        for rule in graph_config.get("graphTemplateSwitchRules", [])
+        if rule.get("nodeId") != ANALYSIS_BID_NODE_ID
+    ]
 
 
 def _template_refs(value):
@@ -161,13 +180,16 @@ def release_payload() -> dict:
             "tabId": tab_id,
             "templateId": template_id,
             "title": PAGE_LABELS[page],
-            "components": template.get("components", []),
+            "components": deepcopy(template.get("components", [])),
             "insights": [
                 deepcopy(slot)
                 for slot in insights
                 if ((slot.get("embedPath") or {}).get("segments") or [{}])[0].get("tabId") == tab_id
             ],
         }
+
+    _apply_analysis_flow_override(pages["analysis"]["components"])
+    _apply_analysis_flow_override(templates[PAGE_TEMPLATES["analysis"]]["components"])
 
     dashboard = {
         "id": "iba-demo-1021",

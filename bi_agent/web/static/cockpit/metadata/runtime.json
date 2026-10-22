@@ -3480,7 +3480,7 @@
           },
           "showHeader": true,
           "showTitle": true,
-          "title": "销售额口径 · 四节点头盔图（商机获取 → 投标 → 订单接收 → 发货）",
+          "title": "销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）",
           "type": "mini-cpgraph",
           "visualization": {},
           "graphConfig": {
@@ -4183,7 +4183,7 @@
           },
           "showHeader": true,
           "showTitle": true,
-          "title": "销售额口径 · 四节点头盔图（商机获取 → 投标 → 订单接收 → 发货）",
+          "title": "销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）",
           "type": "mini-cpgraph",
           "visualization": {},
           "graphConfig": {
