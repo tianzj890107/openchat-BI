@@ -404,41 +404,45 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
-### Cockpit 三页静态看板（8876，2026-10-22）
+### Cockpit 四页静态看板（8876，2026-10-22）
 
-- 范围：只发布 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`
-  三个看板 HTML 及其 CSS／JS、静态 ProUI 运行包和三个顶部视图 Tab，使用
+- 范围：发布 `/cockpit/home`、`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`
+  四个看板 HTML 及其 CSS／JS、静态 ProUI 运行包和四个顶部视图 Tab，使用
   `ProBiDashboard` 渲染原生 ProUI 组件；不启动第二套 `bi_agent.web`，不占用或重启
   `8765` 主服务，不复制 `dataset/`，不读取生产接口。
 - 访问地址：
+  - `http://172.16.10.34:8876/cockpit/home?id=1` 或 `?id=2`
   - `http://172.16.10.34:8876/cockpit/overview?id=1` 或 `?id=2`
   - `http://172.16.10.34:8876/cockpit/operations?id=1` 或 `?id=2`
   - `http://172.16.10.34:8876/cockpit/analysis?id=1` 或 `?id=2`
-  - `/` 与 `/cockpit` 直接返回总览页，不重定向。
-- 身份参数：Fuxi 统一传 `id`，`1=总裁`、`2=分析员`；当前三页内容和功能对两个 `id` 完全一致，
-  两个人都可访问，`id` 仅作将来差异化的预留标识。三个页面共用同一路径，不使用 `role` 或维护两套地址；
+  - `/` 与 `/cockpit` 直接返回全局经营看板，不重定向；首页不作为默认入口。
+- 身份参数：Fuxi 统一传 `id`，`1=总裁`、`2=分析员`；当前四页内容和功能对两个 `id` 完全一致，
+  两个人都可访问，`id` 仅作将来差异化的预留标识。四个页面共用同一路径，不使用 `role` 或维护两套地址；
   总入口、页内指标切换、节点跳转、三级穿透和 AI 改善建议都保留当前 `id`。
 - 服务器目录：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/site`；
   nginx 配置：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/conf/default.conf`。
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
 - 当前发布：`feature/cockpit-v3-poc` commit
-  `ba8089042a7ce41c7b03c21b169754d3cba7b758`，构建时间 `2026-10-22T03:10:26Z`；
+  `16b9858da9e3bbd60406d67e803238c1d5bbb6f2`，构建时间 `2026-10-22T03:20:25Z`；
   目录内 `manifest.sha256` 使用相对路径保存发布文件哈希，`release.json` 记录分支、提交和构建时间。
-  运行时入口为 `cockpit.js/css?v=proui-dashboard-v1`，静态元数据为
-  `metadata/runtime.json?v=proui-dashboard-v1`；ProUI 运行包为 `c38cbf36`，CSS 为
+  运行时入口为 `cockpit.js/css?v=proui-dashboard-v3`，静态元数据为
+  `metadata/runtime.json?v=proui-dashboard-v3`；ProUI 运行包为 `c38cbf36`，CSS 为
   `b1ee836d`。页面仅请求同源 `/static/*`，`/api/*` 固定返回 404。
 - 内容校验：发布目录共 9 个文件，`sha256sum -c manifest.sha256` 全部通过；运行包包含 15 份模板、
   131 个可渲染组件和 102 个 `mockData` 绑定。
-- 验证（2026-10-22 11:11）：三条页面路由、`release.json`、`runtime.json`、`cockpit.js`、
-  ProUI CSS／JS、Vue 均返回 200；远程浏览器确认三个 Tab、`id=1|2` 传播和 ProUI 组件正常渲染，
-  `overview` 生成 3 个 canvas／6 个表格，`operations` 生成 6 个 canvas／2 个表格，
-  `analysis` 生成 1 个 canvas／2 个表格；1440px 与 480px 均无横向溢出，页面无错误状态，
+- 路由配置：nginx 已增加 `location = /cockpit/home`；配置备份为
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/conf-20261022-111907-pre-b3c1948/default.conf`。
+- 验证（2026-10-22 11:20）：四条页面路由、`release.json`、`runtime.json`、`cockpit.js`、
+  ProUI CSS／JS、Vue 均返回 200；远程浏览器确认四个 ProUI `pro-tabs` Tab、`id=1|2` 传播、
+  活动条定位和 ProUI 组件正常渲染，`home` 生成 1 个 canvas，`overview` 生成 3 个 canvas／6 个表格，
+  `operations` 生成 6 个 canvas／2 个表格，`analysis` 生成 1 个 canvas／2 个表格；1440px 与
+  480px 均无横向溢出，窄屏活动 Tab 自动滚入可视区，页面无错误状态，
   且没有 `/api/cockpit/*` 请求。静态 `/api/cockpit/metadata` 返回 404；同机
   `http://127.0.0.1:8765/healthz` 和 `/workbench` 仍返回 200，主服务未修改或重启。
 - 回滚副本：本次同步前旧站已备份到
-  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-pre-ba80890`
-  （历史版本 `4583b43`）；更早的 `site-20261022-105409` 保留。
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-112027-pre-16b9858`
+  （上一版 `4f72207`）；更早的 `site-20261022-pre-ba80890` 和 `site-20261022-105409` 保留。
 - 本地预览：`/tmp/cockpit-local-preview.py` 使用当前工作区代码启动
   `127.0.0.1:8876`，路由和看板资源与上述静态发布一致；该进程只监听回环地址。
 
