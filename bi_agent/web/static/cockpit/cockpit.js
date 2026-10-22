@@ -110,6 +110,15 @@
           activeBarStyle.value = {width: '0px', transform: 'translateX(0px)'};
           return;
         }
+        const scroll = navElement.closest('.pro-tabs__nav-scroll');
+        if (scroll) {
+          const left = active.offsetLeft;
+          const right = left + active.offsetWidth;
+          if (left < scroll.scrollLeft) scroll.scrollLeft = left;
+          else if (right > scroll.scrollLeft + scroll.clientWidth) {
+            scroll.scrollLeft = right - scroll.clientWidth;
+          }
+        }
         const navRect = navElement.getBoundingClientRect();
         const activeRect = active.getBoundingClientRect();
         activeBarStyle.value = {
