@@ -2,8 +2,7 @@
  * 投标状态说明。插在运营360整体分析「投标」卡片底部。
  * 数值与结论均来自当前环节的真实分析结果和证据包。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 loadInsightStyle(import.meta.url)
 

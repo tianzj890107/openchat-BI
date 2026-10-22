@@ -2,8 +2,7 @@
  * 商机获取的风险、原因、建议。插在商机获取节点联动展示模版顶部。
  * 三块内容分别消费真实分析的摘要、原因和建议，不再保留原型静态数字。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 loadInsightStyle(import.meta.url)
 

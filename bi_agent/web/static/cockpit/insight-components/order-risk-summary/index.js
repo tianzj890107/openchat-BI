@@ -2,8 +2,7 @@
  * 订货风险概况。插在订单接收节点联动展示模版顶部。
  * 概览数字来自订单环节证据事实，风险、原因和建议来自真实分析结果。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 loadInsightStyle(import.meta.url)
 

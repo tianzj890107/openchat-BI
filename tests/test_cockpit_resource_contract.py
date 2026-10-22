@@ -118,6 +118,9 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
     assert ':status="state.status"' in js
     assert '@retry="reload"' in js
     components=ROOT/'insight-components'
+    bundle=(components/'index.js').read_text()
+    assert 'new URL(import.meta.url).search' in bundle
+    assert 'window.InsightRuntime' in bundle
     for name in ('bid-status-note','quote-summary','bid-summary','order-sign-summary',
                  'sales-shipment-issues','opportunity-risk','opportunity-coverage-note',
                  'order-risk-summary','shipment-risk-summary','shipment-overdue-note',
@@ -126,4 +129,6 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
         assert 'props: insightProps' in source
         assert 'useInsight(props, emit)' in source
         assert 'insight-runtime-state' in source
+        assert 'window.InsightRuntime' in source
+        assert "from '../" not in source
         assert '静态文案' not in source

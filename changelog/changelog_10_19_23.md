@@ -96,7 +96,8 @@
   组件内的原型演示数字改为消费同一份真实分析结果：阶段数字取 `evidence.facts`，记录级主因取
   `evidence.records`，风险/原因/建议取 `result.summary`、`result.causes`、`result.recommendations`
   和 `result.limitations`。缺失字段显示“未提供”，不再使用静态 mock 文案。新增
-  `insight-components/shared.js` 统一取值和重试，CSS 统一带版本串避免旧样式缓存。
+  `insight-components/shared.js` 统一取值和重试；插槽入口、内部 registry/shared、子组件和 CSS
+  全部沿用同一 `cockpit-version` 查询串，避免部署后 HTML 已更新但仍命中旧子组件模块缓存。
 - 交互：头盔图点击节点切换环节模板；运营页报价、投标、订单接收节点分别挂载 `quote-summary`、
   `bid-summary`、`order-sign-summary`；穿透页订单接收、发货节点分别挂载 `order-risk-summary`
   和 4 个发货插槽。页内 Tab 切换同步 URL 并保留 `id`。

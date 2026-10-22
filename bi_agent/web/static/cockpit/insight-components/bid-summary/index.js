@@ -2,8 +2,7 @@
  * 投标概况。插在投标节点联动展示模版顶部。
  * 只展示当前投标环节证据包中的真实事实与模型分析结论。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 loadInsightStyle(import.meta.url)
 

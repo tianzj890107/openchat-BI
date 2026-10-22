@@ -2,8 +2,7 @@
  * 订单签单概况。插在订单接收节点联动展示模版顶部。
  * 电量取自订单环节证据事实，摘要取自当前订单环节的真实分析结果。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 loadInsightStyle(import.meta.url)
 

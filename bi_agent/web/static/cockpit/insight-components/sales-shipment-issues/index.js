@@ -2,8 +2,7 @@
  * 销售额 / 出货量共同问题分析。插在穿透式问题分析的经营指标分组下方。
  * 内容由当前发货环节的真实分析结果、证据事实和记录驱动。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 loadInsightStyle(import.meta.url)
 

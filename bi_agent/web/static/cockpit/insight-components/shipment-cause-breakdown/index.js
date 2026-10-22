@@ -2,8 +2,7 @@
  * 主因与细分根因。插在发货节点「风险结构与原因拆解」卡片下方。
  * 主因按证据记录中的 cause 聚合，金额和超期天数来自同一条记录。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, sumBy, round, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, sumBy, round, useInsight } = window.InsightRuntime
 
 const { computed } = window.Vue
 

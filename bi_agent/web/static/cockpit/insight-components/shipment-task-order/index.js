@@ -2,8 +2,7 @@
  * 发货风险解决任务令。插在发货节点「客户与超期订单」卡片下方。
  * 任务令由真实分析返回的建议、责任角色和验收标准生成。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 loadInsightStyle(import.meta.url)
 

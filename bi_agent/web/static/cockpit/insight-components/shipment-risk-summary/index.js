@@ -2,8 +2,7 @@
  * 发货风险概况。插在发货节点联动展示模版顶部。
  * 发货事实来自证据包，风险、原因和建议来自真实分析结果。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 loadInsightStyle(import.meta.url)
 

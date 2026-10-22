@@ -2,8 +2,7 @@
  * 超期未发口径说明。插在发货节点「风险结构」卡片底部。
  * 数量与金额来自发货环节真实证据事实，判断来自同一份真实分析结果。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 loadInsightStyle(import.meta.url)
 

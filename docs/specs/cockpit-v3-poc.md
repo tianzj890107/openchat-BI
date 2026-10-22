@@ -52,7 +52,8 @@
 “未提供”，不再保留交付目录里的演示数字或静态文案。页面加载完成后通过 `requestIdleCallback`
 （不支持时回退 800ms 定时）预取 5 个环节：商机、报价、投标、订单、发货；每个环节只发起一次分析，
 前端最多 3 个并发，其余排队。插槽挂载时复用同一 Promise，点击头盔节点不会重新请求；只有组件内重试
-才强制刷新。
+才强制刷新。插槽入口从自身 URL 读取版本串，再以同一版本动态加载 registry、shared 和 12 个子组件；
+CSS 查询串也使用该版本，避免部署后继续命中旧模块或旧样式缓存。
 
 运营页默认显示 `bid-status-note`，点击头盔节点后按对应模板挂载 `quote-summary`、`bid-summary`、
 `order-sign-summary`；穿透页默认显示 `sales-shipment-issues`、`opportunity-risk`、

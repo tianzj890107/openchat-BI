@@ -2,8 +2,7 @@
  * 报价概况。插在报价节点联动展示模版顶部。
  * 阶段数值来自服务端证据事实，分析结论来自当前报价环节的模型结果。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 loadInsightStyle(import.meta.url)
 

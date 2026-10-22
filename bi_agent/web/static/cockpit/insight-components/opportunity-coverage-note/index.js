@@ -2,8 +2,7 @@
  * 商机推进与覆盖缺口说明。插在商机获取节点联动展示模版该卡片底部。
  * 状态分布由记录聚合，结论与标签由真实分析结果驱动。
  */
-import { loadInsightStyle, registerInsightComponent } from '../registry.js'
-import { insightProps, useInsight } from '../shared.js'
+const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
 const { computed } = window.Vue
 
