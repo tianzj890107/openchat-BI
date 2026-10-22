@@ -76,4 +76,25 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     assert 'route:analysis:shipment' in js
     assert 'advice:shipment' in js
     assert 'cockpit-gap-actions' in js
-    assert 'prototype-layout-v4' in html
+    assert 'prototype-layout-v5' in html
+
+
+def test_four_top_tabs_and_static_proui_mounts_are_present():
+    js=(ROOT/'cockpit.js').read_text()
+    html=(ROOT/'index.html').read_text()
+    runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
+    manifest=json.loads((ROOT/'layout/views.json').read_text())
+    assert 'class="cockpit-tabs"' in html
+    for label in ('首页','全局经营看板','运营 360 整体分析','穿透式问题分析'):
+        assert label in js
+    assert "fetchJson(runtimeUrl)" in js
+    assert 'ProUIBi[entry.proComponent]' in js
+    assert "onNodeClick: openGraphNode" in js
+    gaps={gap['id']:gap for gap in manifest['gaps']}
+    assert sum(len(items) for items in runtime['mounts'].values())==19
+    for view,items in runtime['mounts'].items():
+        for gap_id,spec in items.items():
+            assert gap_id in gaps and gaps[gap_id]['view']==view
+            assert spec['bindingKey'] in runtime['components']
+    assert runtime['mounts']['operations-shipment']['operations-shipment:helmet:0']['graphActiveKey']=='2109848488926822402'
+    assert runtime['mounts']['analysis-shipment']['analysis-shipment:helmet:0']['graphActiveKey']=='2109840696539136002'

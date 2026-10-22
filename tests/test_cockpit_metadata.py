@@ -1,10 +1,13 @@
 """Delivered metadata, prototype fidelity, and analysis evidence must agree."""
+import json
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from bi_agent.cockpit.metadata import build_bundle, ROOT, PAGE_IDS, OPS_NODES, RISK_NODES
 from bi_agent.cockpit.prototype import PrototypeSource
 from bi_agent.cockpit.router import build_cockpit_router
+from bi_agent.cockpit.runtime import runtime_payload
 
 
 def test_compilation_preserves_upstream_and_all_renderable_data_is_explicit():
@@ -60,6 +63,21 @@ def test_prototype_rows_reconcile_with_the_rendered_shipping_table():
     assert source.evidence(snapshot,'bid')['records'][0]['id']=='P01'
     with pytest.raises(ValueError):source.snapshot('2025-09')
     with pytest.raises(ValueError):source.snapshot(department='AIDC产品部')
+
+
+def test_static_proui_runtime_is_reproducible_and_uses_bound_data():
+    path=ROOT.parent/'runtime.json'
+    stored=json.loads(path.read_text())
+    assert stored==runtime_payload()
+    assert stored['source']['commit']=='17152091ffce520d1e05a419c4192f7762db4b26'
+    assert len(stored['components'])==7
+    assert sum(len(v) for v in stored['mounts'].values())==19
+    for entry in stored['components'].values():
+        assert entry['proComponent'] in {'ProBarChart','ProDualAxisChart','ProMiniCpGraph'}
+        assert entry['component']['showHeader'] is False
+        assert entry['data'] is not None
+    for view in ('overview-sales','overview-volume','operations-shipment','analysis-shipment'):
+        assert stored['mounts'][view]
 
 
 def test_metadata_api_and_analysis_source_isolation(tmp_path):

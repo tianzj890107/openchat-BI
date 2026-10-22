@@ -6,6 +6,12 @@ body{overflow-x:hidden}
 .cockpit-main[data-page="overview"] .cockpit-board{padding:12px 18px 10px}
 .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 
+.cockpit-tabs{position:sticky;top:0;z-index:20;display:flex;align-items:flex-end;gap:4px;padding:9px 20px 0;background:#fff;border-bottom:1px solid #E3E8EF}
+.cockpit-tabs a{position:relative;display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:7px 15px 9px;border-radius:8px 8px 0 0;color:#5B6B7C;text-decoration:none;font-size:13.5px;font-weight:550;white-space:nowrap;transition:color .15s,background .15s}
+.cockpit-tabs a:hover{background:#F4F8FF;color:#1E6BE6}
+.cockpit-tabs a.active{background:#F4F8FF;color:#1E6BE6;font-weight:700}
+.cockpit-tabs a.active::after{content:'';position:absolute;left:12px;right:12px;bottom:-1px;height:2px;border-radius:2px 2px 0 0;background:#1E6BE6}
+
 /* Missing delivery components keep their prototype box size but render no substitute content. */
 .prototype-gap{background:transparent!important;border-color:transparent!important;box-shadow:none!important;outline:0!important;color:transparent!important}
 .prototype-gap>*{display:none!important}
@@ -15,6 +21,11 @@ body{overflow-x:hidden}
 .prototype-gap[data-action]:focus-visible{outline:3px solid #90a7f4!important;outline-offset:-3px}
 .cockpit-primary-risk.prototype-gap{overflow:visible}
 .prototype-gap>.cockpit-gap-actions{display:flex!important;position:absolute;left:30px;bottom:24px;z-index:2}
+.cockpit-pro-mount{position:relative;overflow:hidden!important;padding:0!important;background:#fff!important;border-color:transparent!important;box-shadow:none!important;outline:0!important}
+.cockpit-pro-mount>.pro-bi-comp-wrap{height:100%!important;min-height:0!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.cockpit-pro-mount .pro-bi-comp-wrap__body,.cockpit-pro-mount .pro-bi-comp-wrap__content{height:100%!important;min-height:0!important}
+.cockpit-pro-mount .pro-bi-comp-wrap__content{padding:0!important}
+.cockpit-pro-mount canvas{max-width:100%}
 .cockpit-gap-actions button{font:inherit;font-size:13px;font-weight:650;border-radius:8px;padding:10px 20px;cursor:pointer}
 .cockpit-gap-actions .cockpit-risk-primary{background:#0878EA;border:1px solid #0878EA;color:#fff}
 .cockpit-gap-actions .cockpit-risk-primary:hover{background:#0865D1}
@@ -41,6 +52,8 @@ button[data-action],[data-action][role="button"]{cursor:pointer}
 .cockpit-toast{position:fixed;left:50%;bottom:26px;z-index:50;transform:translateX(-50%);padding:9px 16px;border-radius:8px;background:#1b2733;color:#fff;font-size:13px;box-shadow:0 8px 28px #1b273333}
 
 @media (max-width:900px){
+  .cockpit-tabs{padding:7px 12px 0;overflow-x:auto}
+  .cockpit-tabs a{font-size:12.5px;padding-left:11px;padding-right:11px}
   .cockpit-board{padding:12px 12px 8px!important}
   .cockpit-gap-report{margin:2px 12px 24px}
   .cockpit-gap-body li{grid-template-columns:1fr auto}

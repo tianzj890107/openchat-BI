@@ -1,0 +1,2391 @@
+{
+  "source": {
+    "branch": "feature/demo_1021",
+    "commit": "17152091ffce520d1e05a419c4192f7762db4b26",
+    "fixture": {
+      "file": "V3-总裁驾驶舱.html",
+      "sha256": "8faad500847468d61c279bcab1f6212ce3e521d25bb0743f307621da39303329",
+      "mode": "prototype-demo",
+      "notes": "原型中内嵌的展示样例，非真实业务数据；不执行原型脚本。"
+    }
+  },
+  "components": {
+    "2112009587516293121/bar-line-stx32yim": {
+      "componentId": "bar-line-stx32yim",
+      "title": "目标管理-年度销售目标月度达成",
+      "type": "bar-line",
+      "proComponent": "ProDualAxisChart",
+      "component": {
+        "dataConfig": {
+          "sourceType": "request",
+          "categoryAxis": [
+            {
+              "identifierCode": "name",
+              "label": "月份",
+              "fieldType": "Dimension"
+            }
+          ],
+          "leftAxis": [
+            {
+              "identifierCode": "target",
+              "label": "目标",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            },
+            {
+              "identifierCode": "actual",
+              "label": "实绩／预测",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            }
+          ],
+          "rightAxis": [
+            {
+              "identifierCode": "rate",
+              "label": "达成率",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": "",
+              "seriesType": "line"
+            }
+          ]
+        },
+        "id": "bar-line-stx32yim",
+        "position": {
+          "h": 19,
+          "w": 120,
+          "x": 0,
+          "y": 6
+        },
+        "showHeader": false,
+        "showTitle": true,
+        "title": "目标管理-年度销售目标月度达成",
+        "type": "bar-line",
+        "visualization": {
+          "legend": false,
+          "smooth": false
+        },
+        "cockpitBindingKey": "2112009587516293121/bar-line-stx32yim"
+      },
+      "data": [
+        {
+          "name": "1月",
+          "target": 15,
+          "actual": 15.5,
+          "rate": 103.3
+        },
+        {
+          "name": "2月",
+          "target": 14,
+          "actual": 12.6,
+          "rate": 90.0
+        },
+        {
+          "name": "3月",
+          "target": 18.5,
+          "actual": 20.3,
+          "rate": 109.7
+        },
+        {
+          "name": "4月",
+          "target": 23.5,
+          "actual": 21.3,
+          "rate": 90.6
+        },
+        {
+          "name": "5月",
+          "target": 26,
+          "actual": 20.3,
+          "rate": 78.1
+        },
+        {
+          "name": "6月",
+          "target": 28.5,
+          "actual": 24.3,
+          "rate": 85.3
+        },
+        {
+          "name": "7月",
+          "target": 32.5,
+          "actual": 19.8,
+          "rate": 60.9
+        },
+        {
+          "name": "8月",
+          "target": 31,
+          "actual": 26.5,
+          "rate": 85.5
+        },
+        {
+          "name": "9月",
+          "target": 29.5,
+          "actual": 25.8,
+          "rate": 87.5
+        },
+        {
+          "name": "10月",
+          "target": 32.5,
+          "actual": 24.3,
+          "rate": 74.8
+        },
+        {
+          "name": "11月",
+          "target": 33.5,
+          "actual": 33.8,
+          "rate": 100.9
+        },
+        {
+          "name": "12月",
+          "target": 34.5,
+          "actual": 35.5,
+          "rate": 102.9
+        }
+      ]
+    },
+    "2112009587516293121/bar-line-swk58lta": {
+      "componentId": "bar-line-swk58lta",
+      "title": "目标管理-团队年度销售目标达成",
+      "type": "bar-line",
+      "proComponent": "ProDualAxisChart",
+      "component": {
+        "dataConfig": {
+          "sourceType": "request",
+          "categoryAxis": [
+            {
+              "identifierCode": "name",
+              "label": "产品部",
+              "fieldType": "Dimension"
+            }
+          ],
+          "leftAxis": [
+            {
+              "identifierCode": "target",
+              "label": "目标",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            },
+            {
+              "identifierCode": "actual",
+              "label": "实绩／预测",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            }
+          ],
+          "rightAxis": [
+            {
+              "identifierCode": "rate",
+              "label": "达成率",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": "",
+              "seriesType": "line"
+            }
+          ]
+        },
+        "id": "bar-line-swk58lta",
+        "position": {
+          "h": 19,
+          "w": 120,
+          "x": 0,
+          "y": 66
+        },
+        "showHeader": false,
+        "showTitle": true,
+        "title": "目标管理-团队年度销售目标达成",
+        "type": "bar-line",
+        "visualization": {
+          "legend": false,
+          "smooth": false
+        },
+        "cockpitBindingKey": "2112009587516293121/bar-line-swk58lta"
+      },
+      "data": [
+        {
+          "name": "构网型产品部",
+          "target": 65,
+          "actual": 59,
+          "rate": 90.8
+        },
+        {
+          "name": "国内电力产品部",
+          "target": 90,
+          "actual": 47,
+          "rate": 52.2
+        },
+        {
+          "name": "非构网型产品部",
+          "target": 53,
+          "actual": 44,
+          "rate": 83.0
+        },
+        {
+          "name": "国际电力产品部",
+          "target": 73,
+          "actual": 39,
+          "rate": 53.4
+        },
+        {
+          "name": "AIDC产品部",
+          "target": 38,
+          "actual": 2.4,
+          "rate": 6.3
+        }
+      ]
+    },
+    "2112009587516293121/bar-tebs5kjx": {
+      "componentId": "bar-tebs5kjx",
+      "title": "目标管理-年度产品类型出货情况",
+      "type": "bar",
+      "proComponent": "ProBarChart",
+      "component": {
+        "dataConfig": {
+          "sourceType": "request",
+          "categoryAxis": [
+            {
+              "identifierCode": "name",
+              "label": "name",
+              "fieldType": "Dimension"
+            }
+          ],
+          "valueAxis": [
+            {
+              "identifierCode": "cell",
+              "label": "电芯",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            },
+            {
+              "identifierCode": "pack",
+              "label": "PACK",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            },
+            {
+              "identifierCode": "other",
+              "label": "其他",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            }
+          ]
+        },
+        "id": "bar-tebs5kjx",
+        "position": {
+          "h": 19,
+          "w": 120,
+          "x": 0,
+          "y": 35
+        },
+        "showHeader": false,
+        "showTitle": true,
+        "title": "目标管理-年度产品类型出货情况",
+        "type": "bar",
+        "visualization": {
+          "legend": false,
+          "displayLimit": 0
+        },
+        "cockpitBindingKey": "2112009587516293121/bar-tebs5kjx"
+      },
+      "data": [
+        {
+          "name": "1月",
+          "cell": 14.2,
+          "pack": 1.1,
+          "other": 0.2
+        },
+        {
+          "name": "2月",
+          "cell": 11.8,
+          "pack": 0.7,
+          "other": 0.1
+        },
+        {
+          "name": "3月",
+          "cell": 17.4,
+          "pack": 2.7,
+          "other": 0.2
+        },
+        {
+          "name": "4月",
+          "cell": 17.5,
+          "pack": 3.4,
+          "other": 0.4
+        },
+        {
+          "name": "5月",
+          "cell": 16.8,
+          "pack": 3.3,
+          "other": 0.2
+        },
+        {
+          "name": "6月",
+          "cell": 19.3,
+          "pack": 4.5,
+          "other": 0.5
+        },
+        {
+          "name": "7月",
+          "cell": 14.5,
+          "pack": 5,
+          "other": 0.3
+        },
+        {
+          "name": "8月",
+          "cell": 21.4,
+          "pack": 4.8,
+          "other": 0.3
+        },
+        {
+          "name": "9月",
+          "cell": 19.5,
+          "pack": 6,
+          "other": 0.3
+        },
+        {
+          "name": "10月",
+          "cell": 4.3,
+          "pack": 0.6,
+          "other": 0.1
+        }
+      ]
+    },
+    "2112010750949113858/bar-nfodriiq": {
+      "componentId": "bar-nfodriiq",
+      "title": "年度出货目标月度达成",
+      "type": "bar",
+      "proComponent": "ProBarChart",
+      "component": {
+        "dataConfig": {
+          "sourceType": "request",
+          "categoryAxis": [
+            {
+              "identifierCode": "name",
+              "label": "name",
+              "fieldType": "Dimension"
+            }
+          ],
+          "valueAxis": [
+            {
+              "identifierCode": "target",
+              "label": "目标",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            },
+            {
+              "identifierCode": "actual",
+              "label": "实绩",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            },
+            {
+              "identifierCode": "forecast",
+              "label": "业务预测",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            }
+          ]
+        },
+        "id": "bar-nfodriiq",
+        "position": {
+          "h": 19,
+          "w": 120,
+          "x": 0,
+          "y": 45
+        },
+        "showHeader": false,
+        "showTitle": true,
+        "title": "年度出货目标月度达成",
+        "type": "bar",
+        "visualization": {
+          "legend": false,
+          "displayLimit": 0
+        },
+        "cockpitBindingKey": "2112010750949113858/bar-nfodriiq"
+      },
+      "data": [
+        {
+          "name": "1月",
+          "target": 4.278996865203761,
+          "actual": 4.421630094043887,
+          "forecast": 0
+        },
+        {
+          "name": "2月",
+          "target": 3.9937304075235107,
+          "actual": 3.5943573667711597,
+          "forecast": 0
+        },
+        {
+          "name": "3月",
+          "target": 5.277429467084639,
+          "actual": 5.790909090909091,
+          "forecast": 0
+        },
+        {
+          "name": "4月",
+          "target": 6.7037617554858935,
+          "actual": 6.076175548589342,
+          "forecast": 0
+        },
+        {
+          "name": "5月",
+          "target": 7.41692789968652,
+          "actual": 5.790909090909091,
+          "forecast": 0
+        },
+        {
+          "name": "6月",
+          "target": 8.130094043887148,
+          "actual": 6.931974921630094,
+          "forecast": 0
+        },
+        {
+          "name": "7月",
+          "target": 9.27115987460815,
+          "actual": 5.6482758620689655,
+          "forecast": 0
+        },
+        {
+          "name": "8月",
+          "target": 8.843260188087774,
+          "actual": 7.559561128526646,
+          "forecast": 0
+        },
+        {
+          "name": "9月",
+          "target": 8.415360501567397,
+          "actual": 7.35987460815047,
+          "forecast": 0
+        },
+        {
+          "name": "10月",
+          "target": 9.27115987460815,
+          "actual": 1.426332288401254,
+          "forecast": 6.931974921630094
+        },
+        {
+          "name": "11月",
+          "target": 9.556426332288401,
+          "actual": 0.0,
+          "forecast": 9.642006269592475
+        },
+        {
+          "name": "12月",
+          "target": 9.841692789968652,
+          "actual": 0.0,
+          "forecast": 10.126959247648902
+        }
+      ]
+    },
+    "2112010750949113858/bar-uvogx9g6": {
+      "componentId": "bar-uvogx9g6",
+      "title": "团队年度出货目标达成",
+      "type": "bar",
+      "proComponent": "ProBarChart",
+      "component": {
+        "dataConfig": {
+          "sourceType": "request",
+          "categoryAxis": [
+            {
+              "identifierCode": "name",
+              "label": "name",
+              "fieldType": "Dimension"
+            }
+          ],
+          "valueAxis": [
+            {
+              "identifierCode": "target",
+              "label": "目标",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            },
+            {
+              "identifierCode": "actual",
+              "label": "实绩",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            },
+            {
+              "identifierCode": "forecast",
+              "label": "业务预测",
+              "fieldType": "Indicator",
+              "valueConfig": {
+                "numericScale": 1,
+                "isThousand": true
+              },
+              "unit": ""
+            }
+          ]
+        },
+        "id": "bar-uvogx9g6",
+        "position": {
+          "h": 19,
+          "w": 120,
+          "x": 0,
+          "y": 7
+        },
+        "showHeader": false,
+        "showTitle": true,
+        "title": "团队年度出货目标达成",
+        "type": "bar",
+        "visualization": {
+          "legend": false,
+          "colorScheme": [
+            "#1f77b4",
+            "#ff7f0e",
+            "#31bcb6",
+            "#2ca02c",
+            "#d62728",
+            "#9467bd",
+            "#8c564b",
+            "#e377c2",
+            "#7f7f7f",
+            "#bcbd22"
+          ],
+          "displayLimit": 0
+        },
+        "cockpitBindingKey": "2112010750949113858/bar-uvogx9g6"
+      },
+      "data": [
+        {
+          "name": "构网型产品部",
+          "target": 18.5423197492163,
+          "actual": 16.830721003134794,
+          "forecast": 23.677115987460816
+        },
+        {
+          "name": "国内电力产品部",
+          "target": 25.67398119122257,
+          "actual": 13.407523510971787,
+          "forecast": 19.398119122257054
+        },
+        {
+          "name": "非构网型产品部",
+          "target": 15.119122257053291,
+          "actual": 12.551724137931034,
+          "forecast": 18.25705329153605
+        },
+        {
+          "name": "国际电力产品部",
+          "target": 20.824451410658305,
+          "actual": 11.12539184952978,
+          "forecast": 17.686520376175547
+        },
+        {
+          "name": "AIDC产品部",
+          "target": 10.84012539184953,
+          "actual": 0.6846394984326019,
+          "forecast": 0.8557993730407523
+        }
+      ]
+    },
+    "2112061604959928321/mini-cpgraph-93j6k86p": {
+      "componentId": "mini-cpgraph-93j6k86p",
+      "title": "销售额口径 · 四节点头盔图（商机获取 → 投标 → 订单接收 → 发货）",
+      "type": "mini-cpgraph",
+      "proComponent": "ProMiniCpGraph",
+      "component": {
+        "dataConfig": {
+          "sourceType": "request"
+        },
+        "id": "mini-cpgraph-93j6k86p",
+        "position": {
+          "h": 20,
+          "w": 120,
+          "x": 0,
+          "y": 11
+        },
+        "showHeader": false,
+        "showTitle": true,
+        "title": "销售额口径 · 四节点头盔图（商机获取 → 投标 → 订单接收 → 发货）",
+        "type": "mini-cpgraph",
+        "visualization": {},
+        "graphConfig": {
+          "defaultActiveKey": "2109840696539136002",
+          "graphTemplateSwitchRules": [
+            {
+              "nodeId": "2109840325158682625",
+              "tabTemplates": [],
+              "targetComponentId": "template-ryfsat5y",
+              "templateId": "2112062888320483329",
+              "templateDashboardId": "2112062888320483329"
+            },
+            {
+              "nodeId": "2109840573985767425",
+              "tabTemplates": [],
+              "targetComponentId": "template-ryfsat5y",
+              "templateId": "2112059751740260354",
+              "templateDashboardId": "2112059751740260354"
+            },
+            {
+              "nodeId": "2109840573998350338",
+              "tabTemplates": [],
+              "targetComponentId": "template-ryfsat5y",
+              "templateId": "2112064105591390209",
+              "templateDashboardId": "2112064105591390209"
+            },
+            {
+              "nodeId": "2109840696539136002",
+              "tabTemplates": [],
+              "targetComponentId": "template-ryfsat5y",
+              "templateId": "2112064144187375617",
+              "templateDashboardId": "2112064144187375617"
+            }
+          ],
+          "graphFilterLinkConfig": [
+            {
+              "id": "graph-filter-dmbrl9x2",
+              "nodeId": "2109840325158682625",
+              "sourceDimension": {
+                "fieldType": "Dimension",
+                "identifierCode": "D007",
+                "label": "发货完成状态维度",
+                "valueType": "STRING"
+              },
+              "targetComponentIds": [],
+              "templateTargets": [
+                {
+                  "embedPath": [
+                    {
+                      "containerId": "template-ryfsat5y",
+                      "kind": "template",
+                      "templateId": "2112062888320483329"
+                    }
+                  ],
+                  "targetId": "table-jmrpjwsj",
+                  "templateComponentId": "template-ryfsat5y",
+                  "templateId": "2112062888320483329"
+                }
+              ]
+            }
+          ]
+        },
+        "cockpitBindingKey": "2112061604959928321/mini-cpgraph-93j6k86p",
+        "cockpitGraphData": {
+          "nodes": [
+            {
+              "id": "2109840325158682625",
+              "name": "商机获取",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "金额",
+                  "unit": "亿元"
+                },
+                "data": [
+                  {
+                    "label": "电芯类 · 已签单",
+                    "value": 180,
+                    "formatterValue": "180",
+                    "formatConfig": {
+                      "unit": "亿元",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "电芯类 · 已签单"
+                    }
+                  },
+                  {
+                    "label": "电芯类 · 未签单",
+                    "value": 50,
+                    "formatterValue": "50",
+                    "formatConfig": {
+                      "unit": "亿元",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "电芯类 · 未签单"
+                    }
+                  },
+                  {
+                    "label": "PACK · 已签单",
+                    "value": 30,
+                    "formatterValue": "30",
+                    "formatConfig": {
+                      "unit": "亿元",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "PACK · 已签单"
+                    }
+                  },
+                  {
+                    "label": "PACK · 未签单",
+                    "value": 20,
+                    "formatterValue": "20",
+                    "formatConfig": {
+                      "unit": "亿元",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "PACK · 未签单"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2109840573985767425",
+              "name": "投标",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "金额",
+                  "unit": "亿元"
+                },
+                "data": [
+                  {
+                    "label": "中标",
+                    "value": 13,
+                    "formatterValue": "13",
+                    "formatConfig": {
+                      "unit": "亿元",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "中标"
+                    }
+                  },
+                  {
+                    "label": "丢标",
+                    "value": 14.4,
+                    "formatterValue": "14.4",
+                    "formatConfig": {
+                      "unit": "亿元",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "丢标"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2109840573998350338",
+              "name": "订单接收",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "电量",
+                  "unit": "GWh"
+                },
+                "data": [
+                  {
+                    "label": "已签单 · 有效订单",
+                    "value": 67.3,
+                    "formatterValue": "67.3",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已签单 · 有效订单"
+                    }
+                  },
+                  {
+                    "label": "已签单 · 订单取消",
+                    "value": 1.2,
+                    "formatterValue": "1.2",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已签单 · 订单取消"
+                    }
+                  },
+                  {
+                    "label": "已签单 · 变更减少",
+                    "value": 0.8,
+                    "formatterValue": "0.8",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已签单 · 变更减少"
+                    }
+                  },
+                  {
+                    "label": "已中标未签单",
+                    "value": 2.3,
+                    "formatterValue": "2.3",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已中标未签单"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2109840696539136002",
+              "name": "发货",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "电量",
+                  "unit": "GWh"
+                },
+                "data": [
+                  {
+                    "label": "正常订未发",
+                    "value": 4.4,
+                    "formatterValue": "4.4",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "正常订未发"
+                    }
+                  },
+                  {
+                    "label": "超期订未发",
+                    "value": 6.9,
+                    "formatterValue": "6.9",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "超期订未发"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "v3-0",
+              "source": "2109840325158682625",
+              "target": "2109840573985767425",
+              "type": "funnel-edge",
+              "name": "",
+              "value": 0.6
+            },
+            {
+              "id": "v3-1",
+              "source": "2109840573985767425",
+              "target": "2109840573998350338",
+              "type": "funnel-edge",
+              "name": "",
+              "value": 0.6
+            },
+            {
+              "id": "v3-2",
+              "source": "2109840573998350338",
+              "target": "2109840696539136002",
+              "type": "funnel-edge",
+              "name": "",
+              "value": 0.6
+            }
+          ]
+        }
+      },
+      "data": {
+        "nodes": [
+          {
+            "id": "2109840325158682625",
+            "name": "商机获取",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "金额",
+                "unit": "亿元"
+              },
+              "data": [
+                {
+                  "label": "电芯类 · 已签单",
+                  "value": 180,
+                  "formatterValue": "180",
+                  "formatConfig": {
+                    "unit": "亿元",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "电芯类 · 已签单"
+                  }
+                },
+                {
+                  "label": "电芯类 · 未签单",
+                  "value": 50,
+                  "formatterValue": "50",
+                  "formatConfig": {
+                    "unit": "亿元",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "电芯类 · 未签单"
+                  }
+                },
+                {
+                  "label": "PACK · 已签单",
+                  "value": 30,
+                  "formatterValue": "30",
+                  "formatConfig": {
+                    "unit": "亿元",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "PACK · 已签单"
+                  }
+                },
+                {
+                  "label": "PACK · 未签单",
+                  "value": 20,
+                  "formatterValue": "20",
+                  "formatConfig": {
+                    "unit": "亿元",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "PACK · 未签单"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "2109840573985767425",
+            "name": "投标",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "金额",
+                "unit": "亿元"
+              },
+              "data": [
+                {
+                  "label": "中标",
+                  "value": 13,
+                  "formatterValue": "13",
+                  "formatConfig": {
+                    "unit": "亿元",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "中标"
+                  }
+                },
+                {
+                  "label": "丢标",
+                  "value": 14.4,
+                  "formatterValue": "14.4",
+                  "formatConfig": {
+                    "unit": "亿元",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "丢标"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "2109840573998350338",
+            "name": "订单接收",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "电量",
+                "unit": "GWh"
+              },
+              "data": [
+                {
+                  "label": "已签单 · 有效订单",
+                  "value": 67.3,
+                  "formatterValue": "67.3",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已签单 · 有效订单"
+                  }
+                },
+                {
+                  "label": "已签单 · 订单取消",
+                  "value": 1.2,
+                  "formatterValue": "1.2",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已签单 · 订单取消"
+                  }
+                },
+                {
+                  "label": "已签单 · 变更减少",
+                  "value": 0.8,
+                  "formatterValue": "0.8",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已签单 · 变更减少"
+                  }
+                },
+                {
+                  "label": "已中标未签单",
+                  "value": 2.3,
+                  "formatterValue": "2.3",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已中标未签单"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "2109840696539136002",
+            "name": "发货",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "电量",
+                "unit": "GWh"
+              },
+              "data": [
+                {
+                  "label": "正常订未发",
+                  "value": 4.4,
+                  "formatterValue": "4.4",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "正常订未发"
+                  }
+                },
+                {
+                  "label": "超期订未发",
+                  "value": 6.9,
+                  "formatterValue": "6.9",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "超期订未发"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "v3-0",
+            "source": "2109840325158682625",
+            "target": "2109840573985767425",
+            "type": "funnel-edge",
+            "name": "",
+            "value": 0.6
+          },
+          {
+            "id": "v3-1",
+            "source": "2109840573985767425",
+            "target": "2109840573998350338",
+            "type": "funnel-edge",
+            "name": "",
+            "value": 0.6
+          },
+          {
+            "id": "v3-2",
+            "source": "2109840573998350338",
+            "target": "2109840696539136002",
+            "type": "funnel-edge",
+            "name": "",
+            "value": 0.6
+          }
+        ]
+      }
+    },
+    "2112434004503347202/mini-cpgraph-2dz7yyyf": {
+      "componentId": "mini-cpgraph-2dz7yyyf",
+      "title": "运营全流程头盔图",
+      "type": "mini-cpgraph",
+      "proComponent": "ProMiniCpGraph",
+      "component": {
+        "dataConfig": {
+          "sourceType": "request"
+        },
+        "id": "mini-cpgraph-2dz7yyyf",
+        "position": {
+          "h": 19,
+          "w": 120,
+          "x": 0,
+          "y": 11
+        },
+        "showHeader": false,
+        "showTitle": true,
+        "title": "运营全流程头盔图",
+        "type": "mini-cpgraph",
+        "visualization": {},
+        "graphConfig": {
+          "defaultActiveKey": "2109848488855519233",
+          "graphTemplateSwitchRules": [
+            {
+              "nodeId": "2109848488855519233",
+              "tabTemplates": [],
+              "targetComponentId": "template-rjjcf4v1",
+              "templateId": "2112026770145329154",
+              "templateDashboardId": "2112026770145329154"
+            },
+            {
+              "nodeId": "2109848488910045186",
+              "tabTemplates": [],
+              "targetComponentId": "template-rjjcf4v1",
+              "templateId": "2112059168287408129",
+              "templateDashboardId": "2112059168287408129"
+            },
+            {
+              "nodeId": "2112022555167604737",
+              "tabTemplates": [],
+              "targetComponentId": "template-rjjcf4v1",
+              "templateId": "2112059463654490114",
+              "templateDashboardId": "2112059463654490114"
+            },
+            {
+              "nodeId": "2109848488914239490",
+              "tabTemplates": [],
+              "targetComponentId": "template-rjjcf4v1",
+              "templateId": "2112059620722786305",
+              "templateDashboardId": "2112059620722786305"
+            },
+            {
+              "nodeId": "2109848488918433794",
+              "tabTemplates": [],
+              "targetComponentId": "template-rjjcf4v1",
+              "templateId": "2112059751740260354",
+              "templateDashboardId": "2112059751740260354"
+            },
+            {
+              "nodeId": "2109848488926822401",
+              "tabTemplates": [],
+              "targetComponentId": "template-rjjcf4v1",
+              "templateId": "2112060211964461057",
+              "templateDashboardId": "2112060211964461057"
+            },
+            {
+              "nodeId": "2109848488926822402",
+              "tabTemplates": [],
+              "targetComponentId": "template-rjjcf4v1",
+              "templateId": "cockpit-shipment-operations",
+              "templateDashboardId": "2112010750949113858"
+            }
+          ]
+        },
+        "cockpitBindingKey": "2112434004503347202/mini-cpgraph-2dz7yyyf",
+        "cockpitGraphData": {
+          "nodes": [
+            {
+              "id": "2109848488855519233",
+              "name": "商机获取",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "电量",
+                  "unit": "GWh"
+                },
+                "data": [
+                  {
+                    "label": "已签单",
+                    "value": 59.9,
+                    "formatterValue": "59.9",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已签单"
+                    }
+                  },
+                  {
+                    "label": "未签单",
+                    "value": 20,
+                    "formatterValue": "20",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "未签单"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2109848488910045186",
+              "name": "方案引导",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "电量",
+                  "unit": "GWh"
+                },
+                "data": [
+                  {
+                    "label": "已完成",
+                    "value": 32.6,
+                    "formatterValue": "32.6",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已完成"
+                    }
+                  },
+                  {
+                    "label": "进行中 · 超14天",
+                    "value": 6.5,
+                    "formatterValue": "6.5",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "进行中 · 超14天"
+                    }
+                  },
+                  {
+                    "label": "进行中 · 7–14天",
+                    "value": 8.7,
+                    "formatterValue": "8.7",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "进行中 · 7–14天"
+                    }
+                  },
+                  {
+                    "label": "进行中 · 小于7天",
+                    "value": 6.5,
+                    "formatterValue": "6.5",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "进行中 · 小于7天"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2112022555167604737",
+              "name": "报价",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "电量",
+                  "unit": "GWh"
+                },
+                "data": [
+                  {
+                    "label": "已完成",
+                    "value": 27.6,
+                    "formatterValue": "27.6",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已完成"
+                    }
+                  },
+                  {
+                    "label": "进行中 · 超7天",
+                    "value": 4.7,
+                    "formatterValue": "4.7",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "进行中 · 超7天"
+                    }
+                  },
+                  {
+                    "label": "进行中 · 5–7天",
+                    "value": 5.4,
+                    "formatterValue": "5.4",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "进行中 · 5–7天"
+                    }
+                  },
+                  {
+                    "label": "进行中 · 小于5天",
+                    "value": 5.4,
+                    "formatterValue": "5.4",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "进行中 · 小于5天"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2109848488914239490",
+              "name": "技术方案",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "电量",
+                  "unit": "GWh"
+                },
+                "data": [
+                  {
+                    "label": "已完成",
+                    "value": 36.4,
+                    "formatterValue": "36.4",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已完成"
+                    }
+                  },
+                  {
+                    "label": "进行中 · 超7天",
+                    "value": 7.3,
+                    "formatterValue": "7.3",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "进行中 · 超7天"
+                    }
+                  },
+                  {
+                    "label": "进行中 · 5–7天",
+                    "value": 9.1,
+                    "formatterValue": "9.1",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "进行中 · 5–7天"
+                    }
+                  },
+                  {
+                    "label": "进行中 · 小于5天",
+                    "value": 7.9,
+                    "formatterValue": "7.9",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "进行中 · 小于5天"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2109848488918433794",
+              "name": "投标",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "电量",
+                  "unit": "GWh"
+                },
+                "data": [
+                  {
+                    "label": "已完成 · 中标",
+                    "value": 3.7,
+                    "formatterValue": "3.7",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已完成 · 中标"
+                    }
+                  },
+                  {
+                    "label": "已完成 · 丢标",
+                    "value": 4.1,
+                    "formatterValue": "4.1",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已完成 · 丢标"
+                    }
+                  },
+                  {
+                    "label": "已完成 · 弃标",
+                    "value": 1.1,
+                    "formatterValue": "1.1",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已完成 · 弃标"
+                    }
+                  },
+                  {
+                    "label": "进行中",
+                    "value": 28.7,
+                    "formatterValue": "28.7",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "进行中"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2109848488926822401",
+              "name": "订单接收",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "电量",
+                  "unit": "GWh"
+                },
+                "data": [
+                  {
+                    "label": "已签单",
+                    "value": 67.3,
+                    "formatterValue": "67.3",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已签单"
+                    }
+                  },
+                  {
+                    "label": "已中标未签单",
+                    "value": 2.3,
+                    "formatterValue": "2.3",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已中标未签单"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "id": "2109848488926822402",
+              "name": "发货",
+              "type": "pie-mini-node",
+              "dims": [
+                {
+                  "identifierCode": "status",
+                  "label": "原型业务状态",
+                  "fieldType": "Dimension"
+                }
+              ],
+              "meta": {
+                "basicInfo": {
+                  "title": "电量",
+                  "unit": "GWh"
+                },
+                "data": [
+                  {
+                    "label": "已发货",
+                    "value": 54.6,
+                    "formatterValue": "54.6",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "已发货"
+                    }
+                  },
+                  {
+                    "label": "未发货 · 正常订未发",
+                    "value": 4.4,
+                    "formatterValue": "4.4",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "未发货 · 正常订未发"
+                    }
+                  },
+                  {
+                    "label": "未发货 · 计划外发货",
+                    "value": 1.4,
+                    "formatterValue": "1.4",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "未发货 · 计划外发货"
+                    }
+                  },
+                  {
+                    "label": "未发货 · 超期订未发",
+                    "value": 6.9,
+                    "formatterValue": "6.9",
+                    "formatConfig": {
+                      "unit": "GWh",
+                      "numericScale": 1
+                    },
+                    "indConfig": {
+                      "dimensionValue": "未发货 · 超期订未发"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "edges": [
+            {
+              "id": "v3-0",
+              "source": "2109848488855519233",
+              "target": "2109848488910045186",
+              "type": "funnel-edge",
+              "name": "",
+              "value": 0.6
+            },
+            {
+              "id": "v3-1",
+              "source": "2109848488910045186",
+              "target": "2112022555167604737",
+              "type": "funnel-edge",
+              "name": "",
+              "value": 0.6
+            },
+            {
+              "id": "v3-2",
+              "source": "2112022555167604737",
+              "target": "2109848488914239490",
+              "type": "funnel-edge",
+              "name": "",
+              "value": 0.6
+            },
+            {
+              "id": "v3-3",
+              "source": "2109848488914239490",
+              "target": "2109848488918433794",
+              "type": "funnel-edge",
+              "name": "",
+              "value": 0.6
+            },
+            {
+              "id": "v3-4",
+              "source": "2109848488918433794",
+              "target": "2109848488926822401",
+              "type": "funnel-edge",
+              "name": "",
+              "value": 0.6
+            },
+            {
+              "id": "v3-5",
+              "source": "2109848488926822401",
+              "target": "2109848488926822402",
+              "type": "funnel-edge",
+              "name": "",
+              "value": 0.6
+            }
+          ]
+        }
+      },
+      "data": {
+        "nodes": [
+          {
+            "id": "2109848488855519233",
+            "name": "商机获取",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "电量",
+                "unit": "GWh"
+              },
+              "data": [
+                {
+                  "label": "已签单",
+                  "value": 59.9,
+                  "formatterValue": "59.9",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已签单"
+                  }
+                },
+                {
+                  "label": "未签单",
+                  "value": 20,
+                  "formatterValue": "20",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "未签单"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "2109848488910045186",
+            "name": "方案引导",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "电量",
+                "unit": "GWh"
+              },
+              "data": [
+                {
+                  "label": "已完成",
+                  "value": 32.6,
+                  "formatterValue": "32.6",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已完成"
+                  }
+                },
+                {
+                  "label": "进行中 · 超14天",
+                  "value": 6.5,
+                  "formatterValue": "6.5",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "进行中 · 超14天"
+                  }
+                },
+                {
+                  "label": "进行中 · 7–14天",
+                  "value": 8.7,
+                  "formatterValue": "8.7",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "进行中 · 7–14天"
+                  }
+                },
+                {
+                  "label": "进行中 · 小于7天",
+                  "value": 6.5,
+                  "formatterValue": "6.5",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "进行中 · 小于7天"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "2112022555167604737",
+            "name": "报价",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "电量",
+                "unit": "GWh"
+              },
+              "data": [
+                {
+                  "label": "已完成",
+                  "value": 27.6,
+                  "formatterValue": "27.6",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已完成"
+                  }
+                },
+                {
+                  "label": "进行中 · 超7天",
+                  "value": 4.7,
+                  "formatterValue": "4.7",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "进行中 · 超7天"
+                  }
+                },
+                {
+                  "label": "进行中 · 5–7天",
+                  "value": 5.4,
+                  "formatterValue": "5.4",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "进行中 · 5–7天"
+                  }
+                },
+                {
+                  "label": "进行中 · 小于5天",
+                  "value": 5.4,
+                  "formatterValue": "5.4",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "进行中 · 小于5天"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "2109848488914239490",
+            "name": "技术方案",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "电量",
+                "unit": "GWh"
+              },
+              "data": [
+                {
+                  "label": "已完成",
+                  "value": 36.4,
+                  "formatterValue": "36.4",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已完成"
+                  }
+                },
+                {
+                  "label": "进行中 · 超7天",
+                  "value": 7.3,
+                  "formatterValue": "7.3",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "进行中 · 超7天"
+                  }
+                },
+                {
+                  "label": "进行中 · 5–7天",
+                  "value": 9.1,
+                  "formatterValue": "9.1",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "进行中 · 5–7天"
+                  }
+                },
+                {
+                  "label": "进行中 · 小于5天",
+                  "value": 7.9,
+                  "formatterValue": "7.9",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "进行中 · 小于5天"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "2109848488918433794",
+            "name": "投标",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "电量",
+                "unit": "GWh"
+              },
+              "data": [
+                {
+                  "label": "已完成 · 中标",
+                  "value": 3.7,
+                  "formatterValue": "3.7",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已完成 · 中标"
+                  }
+                },
+                {
+                  "label": "已完成 · 丢标",
+                  "value": 4.1,
+                  "formatterValue": "4.1",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已完成 · 丢标"
+                  }
+                },
+                {
+                  "label": "已完成 · 弃标",
+                  "value": 1.1,
+                  "formatterValue": "1.1",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已完成 · 弃标"
+                  }
+                },
+                {
+                  "label": "进行中",
+                  "value": 28.7,
+                  "formatterValue": "28.7",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "进行中"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "2109848488926822401",
+            "name": "订单接收",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "电量",
+                "unit": "GWh"
+              },
+              "data": [
+                {
+                  "label": "已签单",
+                  "value": 67.3,
+                  "formatterValue": "67.3",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已签单"
+                  }
+                },
+                {
+                  "label": "已中标未签单",
+                  "value": 2.3,
+                  "formatterValue": "2.3",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已中标未签单"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "2109848488926822402",
+            "name": "发货",
+            "type": "pie-mini-node",
+            "dims": [
+              {
+                "identifierCode": "status",
+                "label": "原型业务状态",
+                "fieldType": "Dimension"
+              }
+            ],
+            "meta": {
+              "basicInfo": {
+                "title": "电量",
+                "unit": "GWh"
+              },
+              "data": [
+                {
+                  "label": "已发货",
+                  "value": 54.6,
+                  "formatterValue": "54.6",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "已发货"
+                  }
+                },
+                {
+                  "label": "未发货 · 正常订未发",
+                  "value": 4.4,
+                  "formatterValue": "4.4",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "未发货 · 正常订未发"
+                  }
+                },
+                {
+                  "label": "未发货 · 计划外发货",
+                  "value": 1.4,
+                  "formatterValue": "1.4",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "未发货 · 计划外发货"
+                  }
+                },
+                {
+                  "label": "未发货 · 超期订未发",
+                  "value": 6.9,
+                  "formatterValue": "6.9",
+                  "formatConfig": {
+                    "unit": "GWh",
+                    "numericScale": 1
+                  },
+                  "indConfig": {
+                    "dimensionValue": "未发货 · 超期订未发"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "v3-0",
+            "source": "2109848488855519233",
+            "target": "2109848488910045186",
+            "type": "funnel-edge",
+            "name": "",
+            "value": 0.6
+          },
+          {
+            "id": "v3-1",
+            "source": "2109848488910045186",
+            "target": "2112022555167604737",
+            "type": "funnel-edge",
+            "name": "",
+            "value": 0.6
+          },
+          {
+            "id": "v3-2",
+            "source": "2112022555167604737",
+            "target": "2109848488914239490",
+            "type": "funnel-edge",
+            "name": "",
+            "value": 0.6
+          },
+          {
+            "id": "v3-3",
+            "source": "2109848488914239490",
+            "target": "2109848488918433794",
+            "type": "funnel-edge",
+            "name": "",
+            "value": 0.6
+          },
+          {
+            "id": "v3-4",
+            "source": "2109848488918433794",
+            "target": "2109848488926822401",
+            "type": "funnel-edge",
+            "name": "",
+            "value": 0.6
+          },
+          {
+            "id": "v3-5",
+            "source": "2109848488926822401",
+            "target": "2109848488926822402",
+            "type": "funnel-edge",
+            "name": "",
+            "value": 0.6
+          }
+        ]
+      }
+    }
+  },
+  "mounts": {
+    "overview-sales": {
+      "overview-sales:annual-chart:0": {
+        "bindingKey": "2112009587516293121/bar-line-stx32yim"
+      },
+      "overview-sales:annual-chart:1": {
+        "bindingKey": "2112009587516293121/bar-tebs5kjx"
+      },
+      "overview-sales:annual-chart:2": {
+        "bindingKey": "2112009587516293121/bar-line-swk58lta"
+      }
+    },
+    "overview-volume": {
+      "overview-volume:annual-chart:0": {
+        "bindingKey": "2112010750949113858/bar-nfodriiq"
+      },
+      "overview-volume:annual-chart:1": {
+        "bindingKey": "2112010750949113858/bar-uvogx9g6"
+      }
+    },
+    "operations": {
+      "operations:helmet:0": {
+        "bindingKey": "2112434004503347202/mini-cpgraph-2dz7yyyf",
+        "graphActiveKey": "2109848488855519233"
+      }
+    },
+    "operations-opportunity": {
+      "operations-opportunity:helmet:0": {
+        "bindingKey": "2112434004503347202/mini-cpgraph-2dz7yyyf",
+        "graphActiveKey": "2109848488855519233"
+      }
+    },
+    "operations-guidance": {
+      "operations-guidance:helmet:0": {
+        "bindingKey": "2112434004503347202/mini-cpgraph-2dz7yyyf",
+        "graphActiveKey": "2109848488910045186"
+      }
+    },
+    "operations-quotation": {
+      "operations-quotation:helmet:0": {
+        "bindingKey": "2112434004503347202/mini-cpgraph-2dz7yyyf",
+        "graphActiveKey": "2112022555167604737"
+      }
+    },
+    "operations-technical": {
+      "operations-technical:helmet:0": {
+        "bindingKey": "2112434004503347202/mini-cpgraph-2dz7yyyf",
+        "graphActiveKey": "2109848488914239490"
+      }
+    },
+    "operations-bid": {
+      "operations-bid:helmet:0": {
+        "bindingKey": "2112434004503347202/mini-cpgraph-2dz7yyyf",
+        "graphActiveKey": "2109848488918433794"
+      }
+    },
+    "operations-order": {
+      "operations-order:helmet:0": {
+        "bindingKey": "2112434004503347202/mini-cpgraph-2dz7yyyf",
+        "graphActiveKey": "2109848488926822401"
+      }
+    },
+    "operations-shipment": {
+      "operations-shipment:helmet:0": {
+        "bindingKey": "2112434004503347202/mini-cpgraph-2dz7yyyf",
+        "graphActiveKey": "2109848488926822402"
+      },
+      "operations-shipment:annual-chart:0": {
+        "bindingKey": "2112010750949113858/bar-uvogx9g6"
+      },
+      "operations-shipment:annual-chart:1": {
+        "bindingKey": "2112010750949113858/bar-nfodriiq"
+      }
+    },
+    "analysis-opportunity": {
+      "analysis-opportunity:helmet:0": {
+        "bindingKey": "2112061604959928321/mini-cpgraph-93j6k86p",
+        "graphActiveKey": "2109840325158682625"
+      }
+    },
+    "analysis-bid": {
+      "analysis-bid:helmet:0": {
+        "bindingKey": "2112061604959928321/mini-cpgraph-93j6k86p",
+        "graphActiveKey": "2109840573985767425"
+      }
+    },
+    "analysis-order": {
+      "analysis-order:helmet:0": {
+        "bindingKey": "2112061604959928321/mini-cpgraph-93j6k86p",
+        "graphActiveKey": "2109840573998350338"
+      }
+    },
+    "analysis-shipment": {
+      "analysis-shipment:helmet:0": {
+        "bindingKey": "2112061604959928321/mini-cpgraph-93j6k86p",
+        "graphActiveKey": "2109840696539136002"
+      }
+    }
+  },
+  "nodeStages": {
+    "2109848488855519233": "opportunity",
+    "2109848488910045186": "guidance",
+    "2112022555167604737": "quotation",
+    "2109848488914239490": "technical",
+    "2109848488918433794": "bid",
+    "2109848488926822401": "order",
+    "2109848488926822402": "shipment",
+    "2109840325158682625": "opportunity",
+    "2109840573985767425": "bid",
+    "2109840573998350338": "order",
+    "2109840696539136002": "shipment"
+  },
+  "stageNames": {
+    "opportunity": "商机获取",
+    "guidance": "方案引导",
+    "quotation": "报价",
+    "technical": "技术方案",
+    "bid": "投标",
+    "order": "订单接收",
+    "shipment": "发货"
+  }
+}

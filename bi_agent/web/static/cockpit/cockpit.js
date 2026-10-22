@@ -6,6 +6,7 @@
   const routeRoot = location.pathname.replace(/\/cockpit(?:\/(?:overview|operations|analysis))?\/?$/, '');
   const base = `${root}/api/cockpit`;
   const layoutUrl = `${root}/static/cockpit/layout/views.json?v=prototype-layout-v2`;
+  const runtimeUrl = `${root}/static/cockpit/metadata/runtime.json?v=prototype-runtime-v1`;
   const params = new URLSearchParams(location.search);
   const identityId = ['1', '2'].includes(params.get('id')) ? params.get('id') : '1';
   const PAGES = {
@@ -33,7 +34,7 @@
     document.getElementById('app').textContent = 'Vue 资源加载失败，请刷新页面。';
     return;
   }
-  const {createApp, ref, computed, onMounted, onBeforeUnmount, nextTick} = window.Vue;
+  const {createApp, ref, computed, onMounted, onBeforeUnmount, nextTick, h} = window.Vue;
 
   function pageFromLocation() {
     const match = location.pathname.match(/\/cockpit\/(overview|operations|analysis)\/?$/);
@@ -54,17 +55,30 @@
       const error = ref('');
       const toast = ref('');
       const layout = ref(null);
+      const runtime = ref(null);
+      const mountedGapIds = ref(new Set());
       const metadataSummary = ref('');
       let toastTimer = null;
+      let boardApps = [];
 
       const viewKey = computed(() => {
         if (page.value === 'overview') return metric.value ? `overview-${metric.value}` : 'overview';
         if (page.value === 'operations') return stage.value ? `operations-${stage.value}` : 'operations';
         return `analysis-${stage.value || 'shipment'}`;
       });
-      const pageTitle = computed(() => PAGES[page.value].title);
+      const activeTab = computed(() => page.value === 'overview' ? (metric.value ? 'board' : 'home') : page.value);
+      const pageTitle = computed(() => activeTab.value === 'home' ? '首页' : PAGES[page.value].title);
       const viewHtml = computed(() => layout.value?.views?.[viewKey.value] || layout.value?.views?.[page.value] || '');
-      const gaps = computed(() => (layout.value?.gaps || []).filter(gap => gap.view === viewKey.value));
+      const gaps = computed(() => (layout.value?.gaps || []).filter(gap => gap.view === viewKey.value && !mountedGapIds.value.has(gap.id)));
+      const tabs = computed(() => {
+        const items = [
+          {key: 'home', label: '首页', href: hrefFor('overview')},
+          {key: 'board', label: '全局经营看板', href: hrefFor('overview', {metric: 'sales'})},
+          {key: 'operations', label: '运营 360 整体分析', href: hrefFor('operations')},
+          {key: 'analysis', label: '穿透式问题分析', href: hrefFor('analysis', {stage: 'shipment'})},
+        ];
+        return items.map(item => ({...item, active: item.key === activeTab.value}));
+      });
       const groupedGaps = computed(() => {
         const groups = new Map();
         for (const gap of gaps.value) {
@@ -100,6 +114,18 @@
 
       function go(targetPage, extra = {}) {
         location.assign(hrefFor(targetPage, extra));
+      }
+
+      function graphNodeId(payload) {
+        const value = payload?.id || payload?.nodeId || payload?.node?.id || payload?.data?.id;
+        return typeof value === 'string' ? value : '';
+      }
+
+      function openGraphNode(payload) {
+        const stage = runtime.value?.nodeStages?.[graphNodeId(payload)];
+        if (!stage) return;
+        if (page.value === 'analysis') return go('analysis', {stage});
+        return go('operations', {stage});
       }
 
       function handleAction(action) {
@@ -176,14 +202,70 @@
         }
       }
 
+      function destroyBoardComponents() {
+        for (const item of boardApps) {
+          try { item.app.unmount(); } catch (cause) { console.warn('cockpit component unmount failed', cause); }
+          item.element.replaceChildren();
+        }
+        boardApps = [];
+        mountedGapIds.value = new Set();
+      }
+
+      function mountBoardComponents() {
+        const board = document.querySelector('.cockpit-board');
+        const configured = runtime.value?.mounts?.[viewKey.value] || {};
+        const mounted = new Set();
+        if (!board || !window.ProUIBi) return;
+        for (const [gapId, spec] of Object.entries(configured)) {
+          const entry = runtime.value.components?.[spec.bindingKey];
+          const element = [...board.querySelectorAll('[data-gap]')].find(node => node.dataset.gap === gapId);
+          if (!entry || !element) continue;
+          const component = window.ProUIBi[entry.proComponent];
+          if (!component) continue;
+          const rect = element.getBoundingClientRect();
+          const height = Math.max(180, Math.round(rect.height || 280));
+          const metadata = JSON.parse(JSON.stringify(entry.component));
+          metadata.showHeader = false;
+          if (spec.graphActiveKey && metadata.graphConfig) {
+            metadata.graphConfig.defaultActiveKey = spec.graphActiveKey;
+          }
+          element.classList.remove('prototype-gap');
+          element.classList.add('cockpit-pro-mount');
+          element.removeAttribute('data-gap');
+          element.removeAttribute('role');
+          element.setAttribute('data-pro-component', entry.proComponent);
+          element.setAttribute('aria-label', entry.title || entry.proComponent);
+          element.style.height = `${height}px`;
+          element.style.minHeight = `${height}px`;
+          element.replaceChildren();
+          const componentApp = createApp({
+            render: () => h(component, {
+              component: metadata,
+              data: entry.data,
+              height: '100%',
+              minHeight: height,
+              onNodeClick: openGraphNode,
+              onSectorClick: openGraphNode,
+            }),
+          });
+          componentApp.config.errorHandler = cause => console.error(`cockpit ProUI error: ${entry.proComponent}`, cause);
+          componentApp.mount(element);
+          boardApps.push({app: componentApp, element});
+          mounted.add(gapId);
+        }
+        mountedGapIds.value = mounted;
+      }
+
       onMounted(async () => {
         document.title = `${pageTitle.value} · 储小策`;
         try {
-          const [layoutData, metadata] = await Promise.all([
+          const [layoutData, runtimeData, metadata] = await Promise.all([
             fetchJson(layoutUrl),
+            fetchJson(runtimeUrl),
             fetchJson(`${base}/metadata`).catch(() => null),
           ]);
           layout.value = layoutData;
+          runtime.value = runtimeData;
           if (metadata) {
             const templateId = metadata.pages?.[page.value];
             const count = metadata.templates?.[templateId]?.components?.length || 0;
@@ -196,13 +278,21 @@
         }
         await nextTick();
         decorateBoard();
+        mountBoardComponents();
+        const staticCount = Object.keys(runtime.value?.components || {}).length;
+        const viewCount = mountedGapIds.value.size;
+        const source = runtime.value?.source;
+        metadataSummary.value = `${metadataSummary.value}${metadataSummary.value ? ' ' : ''}静态 ProUI 运行包 ${source?.branch || 'iba-demo'}@${(source?.commit || '').slice(0, 8) || 'unknown'}：${staticCount} 个组件，本页挂载 ${viewCount} 个。`;
       });
 
-      onBeforeUnmount(() => clearTimeout(toastTimer));
+      onBeforeUnmount(() => {
+        clearTimeout(toastTimer);
+        destroyBoardComponents();
+      });
 
       return {
         page, stage, metric, loading, error, toast, pageTitle, viewHtml,
-        gaps, groupedGaps, metadataSummary, boardClick, boardKeydown,
+        gaps, groupedGaps, metadataSummary, tabs, boardClick, boardKeydown,
       };
     },
   });

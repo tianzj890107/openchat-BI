@@ -33,6 +33,8 @@
 
 本目录源 JSON 和 `insights.js` 保持冻结，现已由 `bi_agent/cockpit/metadata.py` 编译为当前 cockpit 的页面配置。
 `GET /api/cockpit/metadata` 返回编译后的模板、显式数据绑定、插槽路径、适配记录与差异。
+静态 8876 页面同时读取 `../runtime.json`：该文件由 `scripts/export_cockpit_runtime.py` 从同一编译结果导出，
+包含年度图、运营头盔图和穿透头盔图的 ProUI 组件、绑定数据及视图挂载点，不依赖后端 API。
 根 Tab 对应宿主三页导航；子模板继续使用交付ID。运行时只移除插槽路径最外层Tab段。
 
 AP中的采购指标与销售标题不一致，所有可取数组件均显式绑定 `fixtures/v3-prototype.json`；
@@ -44,4 +46,6 @@ AP中的采购指标与销售标题不一致，所有可取数组件均显式绑
 商机模板 `2112062888320483329` 的 `group-9ypz7vwt` 引用 `share-bar-79fsomq9`，
 但交付中没有子组件定义。运行时显示缺项提示，不猜测图形配置。
 首页风险列表、发货运营组合模板、头盔显式数据桥为宿主适配，源JSON不改写。
+当前年度图使用 `ProBarChart`／`ProDualAxisChart`，头盔图使用 `ProMiniCpGraph`；节点入口卡、AI 卡片、
+周期对标和专项分析等没有对应交付配置的位置继续留空。
 完整差异及需补交内容见仓库 `docs/specs/cockpit-v3-metadata-gaps.md`。

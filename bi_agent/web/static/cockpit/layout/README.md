@@ -15,7 +15,10 @@
 | `/cockpit/operations` | `operations` | `stage=opportunity|guidance|quotation|technical|bid|order|shipment` |
 | `/cockpit/analysis` | `analysis-shipment` | `stage=opportunity|bid|order|shipment` |
 
-三个页面只渲染看板，不再包含原型宿主的工作区、会话区、顶部标题、页签或筛选栏。`/cockpit` 仅以 `307` 跳转到 `/cockpit/overview`。
+三个页面只渲染看板，顶部保留首页、全局经营看板、运营 360 整体分析、穿透式问题分析四个驾驶舱 Tab；
+不再包含原型宿主的工作区、会话区、页面标题或筛选栏。`/cockpit` 仅以 `307` 跳转到 `/cockpit/overview`。
+
+可确认的年度图和头盔图空位由 `metadata/runtime.json` 挂载 ProUI 组件；其余缺项保留本目录记录的原始宽高。
 
 ## 生成方式
 
