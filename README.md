@@ -124,7 +124,7 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 主服务提供三个独立看板入口（支持 `APP_ROOT_PATH` 子路径）：
 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 仍只跳到经营看板。
-`/cockpit/home` 保留为兼容地址并 307 到 `overview`，不再单独渲染第四个页面。
+`/cockpit/home` 保留为兼容地址（FastAPI 307、静态站客户端改写为 `overview`），不再单独渲染第四个页面。
 三个入口共用同一路径和 Fuxi 身份参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员；当前三页内容与功能对两个 `id` 完全一致，
 两个人都可访问，`id` 仅作为将来差异化的预留标识。不使用 `role` 或两套身份地址，总入口和页内跳转均保留当前 `id`。
 页面直接使用 `iba-demo` 交付看板 `feature/demo_1021@37975c7` 的根配置：一个 `ProBiDashboard` 同时渲染

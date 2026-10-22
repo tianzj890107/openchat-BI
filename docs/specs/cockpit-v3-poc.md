@@ -2,7 +2,7 @@
 
 ## 已确认边界（2026-10-22）
 
-- analytics 主服务提供三个独立看板入口：`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 与 `/` 直接返回 `overview`。`/cockpit/home` 保留为兼容地址，307 到 `overview`，不再单独渲染第四个页面。现有 `/workbench`、旧驾驶舱及 MCP 不替换。
+- analytics 主服务提供三个独立看板入口：`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 与 `/` 直接返回 `overview`。`/cockpit/home` 保留为兼容地址（FastAPI 307、静态站客户端改写为 `overview`），不再单独渲染第四个页面。现有 `/workbench`、旧驾驶舱及 MCP 不替换。
 - 三个页面只渲染看板本体，页面挂载 `iba-demo` 交付看板 `feature/demo_1021@37975c7` 的一个完整 `ProBiDashboard`；顶部筛选器和三个 Tab 均来自交付根配置，不再由宿主手写。
 - 三个 Tab 分别为“经营看板”“运营360整体分析”“穿透式问题分析”；页面不包含宿主工作区、会话区、页面标题或第二套导航。
 - `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis` 只负责激活对应 Tab，并保留当前 `id`；页内 Tab 切换同步地址。
@@ -23,7 +23,7 @@
 | 经营看板 `/cockpit/overview` | 交付模板 `2112001069107167233`；`/cockpit` 的默认落点 |
 | 运营 360 `/cockpit/operations` | 交付模板 `2112434004503347202`；包含指标、运营头盔、漏斗和环节卡片 |
 | 穿透分析 `/cockpit/analysis` | 交付模板 `2112061604959928321`；包含穿透图、风险结构、明细表和风险插槽 |
-| 兼容入口 `/cockpit/home` | 307 到 `/cockpit/overview`；不单独渲染页面 |
+| 兼容入口 `/cockpit/home` | FastAPI 307／静态站客户端改写为 `/cockpit/overview`；不单独渲染页面 |
 | 公共 | 根 `composite-filter` 和根 `tab-container` 由 `ProBiDashboard` 直接渲染；三个路由同步当前 Tab 并保留 `id` |
 
 入口示例：`/cockpit/overview?id=2`、`/cockpit/operations?id=2`、`/cockpit/analysis?id=1`。
@@ -107,7 +107,7 @@ node --check bi_agent/web/static/cockpit/cockpit.js
 
 浏览器验收使用独立临时工作目录，避免接触用户会话。已检查：
 
-- 三条路由均返回 200，`/cockpit` 跳到 `overview`，`/cockpit/home` 307 到 `overview`。
+- 三条路由均返回 200，`/cockpit` 跳到 `overview`，`/cockpit/home` 在静态站加载后改写为 `overview`（FastAPI 直接 307）。
 - 页面只有一个 `ProBiDashboard`，顶部根筛选器和三个 Tab 由交付配置生成；页内 Tab 切换同步 URL 并保留 `id=1|2`。
 - 三条路由分别激活“经营看板”“运营360整体分析”“穿透式问题分析”；`id=1` 与 `id=2` 内容一致。
 - 三个页面均无组件错误；运营页头盔图切到报价、投标、订单接收节点时分别挂载 `quote-summary`、`bid-summary`、`order-sign-summary`，穿透页切到订单接收和发货节点时挂载 `order-risk-summary` 与 4 个发货插槽。

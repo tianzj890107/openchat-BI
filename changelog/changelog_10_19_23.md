@@ -67,8 +67,8 @@
 ### 2026-10-22 · V3 经营驾驶舱交付看板（iba-demo demo_1021）
 
 - 页面与路由（2026-10-22 18:30 修订）：三个独立入口 `/cockpit/overview`、`/cockpit/operations`、
-  `/cockpit/analysis`；`/cockpit` 与 `/` 直接返回经营看板，`/cockpit/home` 保留为兼容地址并 307 到
-  `overview`。三页只挂载一个 `ProBiDashboard`，顶部筛选器和三个 Tab 均来自交付配置；路由只激活
+  `/cockpit/analysis`；`/cockpit` 与 `/` 直接返回经营看板，`/cockpit/home` 保留为兼容地址（FastAPI 307、
+  静态站客户端改写为 `overview`）。三页只挂载一个 `ProBiDashboard`，顶部筛选器和三个 Tab 均来自交付配置；路由只激活
   对应 Tab，并保留 Fuxi 的 `id=1|2`。不渲染工作区、会话区或第二套导航。
 - 交付包（2026-10-22 18:30）：拉取 `iba-demo` 分支 `feature/demo_1021@37975c7`，导入 13 份模板、
   122 个组件、12 个静态插槽组件和 `insight-components/`；更新 `pro-bi-ui.min.js` 到
@@ -108,9 +108,14 @@
 - 验证（2026-10-22 18:30）：驾驶舱契约测试 37 项通过；`node --check` 和 `git diff --check` 通过。
   浏览器验证三个路由在 `id=1|2` 下激活正确 Tab，页面只有一个 `ProBiDashboard`；
   头盔节点联动、12 个静态插槽和顶部时间筛选均无组件错误。
+- 部署（2026-10-22 15:53）：`172.16.10.34:8876` 更新到 `feature/cockpit-v3-poc@a438fcd`，
+  HTML 版本串为 `a438fcd`，发布目录 38 个文件且 `manifest.sha256` 全部通过。线上三条路由、
+  `/cockpit/home` 改写、`id=1|2`、Tab 同步和头盔节点插槽均已验证；三页无组件错误。
+  部署前旧站备份为
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-155309-pre-2b828a5`，
+  暂存目录为 `site-next-a438fcd`。未重启 8877 API、未修改 8765 主服务、`dataset/` 和用户历史数据。
 - 部署（2026-10-22 14:49，历史）：`172.16.10.34:8876` 曾更新到
-  `feature/cockpit-v3-poc@2b828a5`，旧站备份为
-  `backups/site-20261022-144900-pre-5501d6f`；本轮 `37975c7` 交付包的部署记录在部署完成后补记。
+  `feature/cockpit-v3-poc@2b828a5`，旧站备份为 `backups/site-20261022-144900-pre-5501d6f`。
 - 代理与旁路 API（2026-10-22 12:00，历史）：nginx 的 `location /api/cockpit/` 转发到
   `172.16.10.34:8877` 的 `eimosp-cockpit-api`；服务目录为
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，数据独立写入

@@ -18,7 +18,7 @@
 | `/cockpit/overview` | 经营看板 | `2112001069107167233` |
 | `/cockpit/operations` | 运营360整体分析 | `2112434004503347202` |
 | `/cockpit/analysis` | 穿透式问题分析 | `2112061604959928321` |
-| `/cockpit/home` | 兼容入口，307 到 `overview` | 不单独渲染 |
+| `/cockpit/home` | 兼容入口（FastAPI 307／静态站客户端改写） | 不单独渲染 |
 
 三个路由只激活对应 Tab，并保留 Fuxi 传入的 `id=1|2`。两个 `id` 当前看到完全相同的看板和功能。
 
