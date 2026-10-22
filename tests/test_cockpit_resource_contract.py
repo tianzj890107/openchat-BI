@@ -123,6 +123,9 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
     assert 'window.InsightRuntime' in bundle
     shared=(components/'shared.js').read_text()
     assert 'export function createStageRiskComponent' in shared
+    for marker in ('stage-risk-analysis__overview','stage-risk-analysis__tag--cause',
+                   'stage-risk-analysis__owner','stage-risk-analysis__time'):
+        assert marker in shared
     stage_risk={'opportunity-risk':'商机获取','order-risk-summary':'订单接收','shipment-risk-summary':'发货'}
     for name in ('bid-status-note','quote-summary','bid-summary','order-sign-summary',
                  'sales-shipment-issues','opportunity-risk','opportunity-coverage-note',
@@ -163,5 +166,8 @@ def test_analysis_flow_uses_three_delivered_nodes_and_shared_risk_markup():
     assert "params.flowCode === 'SALES_CALIBER'" in js
     css=(ROOT/'cockpit.css').read_text()
     for selector in ('stage-risk-analysis__card--risk','stage-risk-analysis__card--cause',
-                     'stage-risk-analysis__card--suggest','stage-risk-analysis__action'):
+                     'stage-risk-analysis__card--suggest','stage-risk-analysis__action',
+                     'stage-risk-analysis__overview','stage-risk-analysis__tag--cause'):
         assert selector in css
+    assert 'padding:14px 16px 12px' in css
+    assert 'border-left:3px solid #cf1322' in css

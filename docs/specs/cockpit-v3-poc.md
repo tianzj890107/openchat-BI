@@ -49,7 +49,8 @@
 
 ## 智能分析插槽
 
-插槽使用交付 `insight-components/` 的原始组件名称、DOM 和 CSS，内容由主服务真实模型分析驱动。
+插槽保留交付 `insight-components/` 的组件名称和插入位置，内容由主服务真实模型分析驱动；
+商机获取、订单接收、发货三个风险插槽共用一套按早期 mock 配置复原的紧凑布局。
 阶段数字读取当前分析证据包的 `facts`，记录级主因读取 `records`，风险、原因、建议和限制读取
 `result.summary`、`result.causes`、`result.recommendations`、`result.limitations`；缺失字段显示
 “未提供”，不再保留交付目录里的演示数字或静态文案。页面加载完成后通过 `requestIdleCallback`
@@ -60,8 +61,10 @@ CSS 查询串也使用该版本，避免部署后继续命中旧模块或旧样�
 
 分析结果使用 `compact-v1` 契约：摘要、原因、措施和验收只保留可执行短文本，责任角色为单一角色，
 期限改用 `deadlineDays` 工作日，补充背景放入可选 `detail`；缓存 scope 包含契约版本，旧结果不会被
-继续复用。前端将摘要限制为 3–4 行，原因、证据和限制默认折叠，建议按“措施 + 责任角色 + 期限 +
-验收”紧凑排列。含内嵌插槽的 ProUI 卡片为图表/KPI 区保留自适应最小高度，插槽使用剩余空间并在
+继续复用。三阶段卡片使用与初期 mock 相同的 13px／22px 字号行高、8px 卡片间距、
+`14px 16px 12px` 内边距和风险红／原因橙／建议蓝左边框；概况数字改为普通文本行，原因使用
+“原因N”浅色标签，建议按“正文 + 责任角色 + 期限 + 关闭”紧凑排列，验收、补充说明、证据和限制
+收进折叠区。含内嵌插槽的 ProUI 卡片为图表/KPI 区保留自适应最小高度，插槽使用剩余空间并在
 内部滚动，避免固定卡片高度把 KPI 子卡压缩为 0–8px。
 
 运营页默认显示 `bid-status-note`，点击头盔节点后按对应模板挂载 `quote-summary`、`bid-summary`、
@@ -69,7 +72,7 @@ CSS 查询串也使用该版本，避免部署后继续命中旧模块或旧样�
 `sales-shipment-issues`、`opportunity-risk`、`opportunity-coverage-note`，点击订单接收和发货节点后
 挂载 `order-risk-summary`、`shipment-risk-summary`、`shipment-overdue-note`、
 `shipment-cause-breakdown`、`shipment-task-order`。商机获取、订单接收、发货三个风险插槽共用
-`createStageRiskComponent`，保证风险、原因、建议三张卡片的结构和间距一致。首次分析通常约
+`createStageRiskComponent`，保证概况、风险、原因、建议四段卡片的结构和间距一致。首次分析通常约
 10–20 秒，已完成范围复用 SQLite 中的结果；失败时显示错误和重试。
 
 ## API
@@ -130,7 +133,8 @@ node --check bi_agent/web/static/cockpit/cockpit.js
 - 运营页加载后后台出现报价、订单等尚未显示环节的分析任务，证明空闲预取生效；点击节点后插槽直接显示已完成结果。
 - 三个页面均无组件错误；运营页头盔图切到报价、投标、订单接收节点时分别挂载 `quote-summary`、`bid-summary`、`order-sign-summary`，穿透页切到订单接收和发货节点时挂载 `order-risk-summary` 与 4 个发货插槽。
 - 穿透页头盔图实际渲染为商机获取、订单接收、发货三个节点；三个节点均挂载同一套
-  `stage-risk-analysis` 风险／原因／建议卡片。
+  `stage-risk-analysis` 概况／风险／原因／建议卡片，计算样式为 13px／22px、8px 间距、
+  `14px 16px 12px` 内边距，且 1440px 和 390px 视口下卡片内部均无横向溢出。
 - 穿透页默认显示 3 个插槽；12 个交付插槽位置均挂载真实模型分析，页面空闲时预取 5 个环节。
 - 页面只回放本地 `/static/cockpit/metadata/pdt-release-2109836674373566465/data-snapshots.json` 中的请求，不访问 AP。
 - 时间筛选切换到 `2026-08-13 19:06:09` 后无组件错误、无未捕获快照，销售额卡按交付绑定更新，其余卡保持不变（与交付筛选绑定范围一致）。
