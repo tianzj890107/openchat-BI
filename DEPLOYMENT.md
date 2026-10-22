@@ -407,8 +407,8 @@ git diff --name-only
 ### Cockpit 三页静态看板（8876，2026-10-22）
 
 - 范围：只发布 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`
-  三个看板 HTML 及其 CSS／JS／布局快照，不启动第二套 `bi_agent.web`，不占用或重启
-  `8765` 主服务，不复制 `dataset/`，不读取生产接口。
+  三个看板 HTML 及其 CSS／JS／布局快照、静态 ProUI 运行包和四个顶部视图 Tab，不启动第二套
+  `bi_agent.web`，不占用或重启 `8765` 主服务，不复制 `dataset/`，不读取生产接口。
 - 访问地址：
   - `http://172.16.10.34:8876/cockpit/overview?id=1` 或 `?id=2`
   - `http://172.16.10.34:8876/cockpit/operations?id=1` 或 `?id=2`
@@ -422,13 +422,19 @@ git diff --name-only
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
 - 内容来源：`feature/cockpit-v3-poc` commit
-  `cc00320f9cc98aa4a84cdeefbecc7385a826442c`；目录内 `manifest.sha256`
-  保存发布文件哈希，运行时入口为 `cockpit.js/css?v=prototype-layout-v4`。页面仅请求
-  同源 `/static/*`，`/api/*` 固定返回 404。
-- 验证：三条页面路由及 `cockpit.js`、`views.json`、Vue／ProUI 资源均返回 200；
-  浏览器在 1440px 和 390px 下确认三页无运行时错误、无横向溢出，`/`、`/cockpit`
-  返回总览，页面内“进入运营分析”跳转到 `/cockpit/operations`；同机
-  `http://127.0.0.1:8765/workbench` 仍返回 200。
+  `4583b43b83e21e3a3e831477baf470914e7f5842`；目录内 `manifest.sha256` 使用相对路径保存
+  发布文件哈希，`release.json` 记录分支、提交和构建时间。运行时入口为
+  `cockpit.js/css?v=prototype-layout-v5`，静态元数据为
+  `metadata/runtime.json?v=prototype-runtime-v1`；ProUI 运行包为 `c38cbf36`，
+  CSS 为 `b1ee836d`。页面仅请求同源 `/static/*`，`/api/*` 固定返回 404。
+- 内容校验：发布目录共 11 个文件，`sha256sum -c manifest.sha256` 全部通过；三个页面均包含
+  “首页”“全局经营看板”“运营 360 整体分析”“穿透式问题分析”四个 Tab，所有 Tab 和页内跳转保留 `id`。
+- 验证：三条页面路由及 `cockpit.js`、`views.json`、`runtime.json`、Vue／ProUI 资源均返回 200；
+  1440px 下确认年度图生成 canvas、运营和穿透头盔图生成 canvas/SVG，页面无运行时错误或横向溢出；
+  静态 `/api/cockpit/metadata` 返回 404 时页面仍能通过 `runtime.json` 挂载组件；同机
+  `http://127.0.0.1:8765/healthz` 和 `/workbench` 仍返回 200。
+- 回滚副本：本次同步前旧站已备份到
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-20261022-105409`。
 - 本地预览：`/tmp/cockpit-local-preview.py` 使用当前工作区代码启动
   `127.0.0.1:8876`，路由和看板资源与上述静态发布一致；该进程只监听回环地址。
 
