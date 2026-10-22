@@ -66,10 +66,11 @@
 
 ### 2026-10-21 · V3 经营驾驶舱 POC 与主服务分析插槽
 
-- 页面（2026-10-22 修订）：三个独立入口 `/cockpit/overview`、`/cockpit/operations`、
-  `/cockpit/analysis`，`/cockpit` 以 307 跳转总览。三页只渲染看板本体，顶部仅保留
-  “全局经营看板”“运营 360 整体分析”“穿透式问题分析”三个视图 Tab；移除首页 Tab、
-  左侧工作区、会话区、宿主页面标题和外层筛选栏。`/cockpit/overview` 临时直接显示全局经营看板。
+- 页面（2026-10-22 修订）：四个独立入口 `/cockpit/home`、`/cockpit/overview`、
+  `/cockpit/operations`、`/cockpit/analysis`，`/cockpit` 以 307 跳转总览，首页不默认打开。
+  四页只渲染看板本体，顶部使用 ProUI `pro-tabs` 组件样式保留“首页”“全局经营看板”
+  “运营 360 整体分析”“穿透式问题分析”四个视图 Tab；移除左侧工作区、会话区、宿主页面标题
+  和外层筛选栏。`/cockpit/overview` 仍直接显示全局经营看板。
 - 原生组件渲染（2026-10-22 修订）：撤回原型 DOM/CSS 快照方案，删除 `static/cockpit/layout/`
   和 `scripts/extract_cockpit_layout.mjs`。页面读取 `static/cockpit/metadata/runtime.json`，
   通过 `ProBiDashboard` 渲染原生 ProUI 卡片、图表、表格、分组、按钮组和模板容器；
@@ -83,8 +84,8 @@
   毛利／净利／回款详情、图表下钻、客户操作列、运营周期对标和履约率第四卡仍缺组件或动作配置。
   页面底部列出运行包中的缺项，不用近似卡片冒充交付组件。
 - 交互：经营指标卡可切换销售额／出货量模板；运营头盔图点击节点切换七个环节模板；
-  穿透头盔图点击节点切换四类风险模板。页面之间仅保留这三个 Tab 和看板内可确认的组件交互。
-- 身份：Fuxi 统一使用 `id` 查询参数，`1=总裁`、`2=分析员`；当前三页内容和功能对两个 `id`
+  穿透头盔图点击节点切换四类风险模板。页面之间仅保留这四个 Tab 和看板内可确认的组件交互。
+- 身份：Fuxi 统一使用 `id` 查询参数，`1=总裁`、`2=分析员`；当前四页内容和功能对两个 `id`
   完全一致，两个人都可访问，`id` 仅作为将来差异化的预留标识。页面和 API 均不使用 `role`，
   所有 Tab 和页内跳转保留当前 `id`。
 - 分析与任务：后端证据、受控模型分析、报告和模拟任务接口保留；模型失败不回退为预写结论。
@@ -101,9 +102,13 @@
   `tests/test_cockpit_poc.py`、`tests/test_cockpit_resource_contract.py`、
   `tests/test_cockpit_metadata.py`、`docs/specs/cockpit-v3-poc.md`、
   `docs/specs/cockpit-v3-metadata-gaps.md`、`README.md`、`DEPLOYMENT.md`。
-- 验证（2026-10-22）：驾驶舱契约测试 36 项通过；`node --check` 通过；浏览器验证三个路由、
-  三个 Tab、`id=1|2`、全局经营看板默认页、出货量模板切换、运营和穿透头盔图、表格和 KPI；
+- 验证（2026-10-22）：驾驶舱契约测试 36 项通过；`node --check` 通过；浏览器验证四个路由、
+  四个 Tab、`id=1|2`、全局经营看板默认页、出货量模板切换、运营和穿透头盔图、表格和 KPI；
   1440px 与 480px 无横向溢出，页面没有 `/api/cockpit/*` 请求。
+- 首页与顶部组件化（2026-10-22）：新增 `/cockpit/home`，用五项经营指标和运营全流程组件组成首页；
+  顶部四个 Tab 改用 ProUI `pro-tabs` 结构和活动下划线，缓存参数升至 `proui-dashboard-v2`。
+  `/cockpit` 仍以 307 跳到 `overview`，首页保留但不是默认路由。本地浏览器验证四个路由、
+  `id=1|2`、活动条定位和 1440px／480px 布局；本轮尚未同步到 `172.16.10.34:8876`。
 - 部署（2026-10-22 11:11）：`172.16.10.34:8876` 已切换到
   `feature/cockpit-v3-poc` commit `ba80890` 的原生 ProUI 看板，发布目录共 9 个文件并通过
   `manifest.sha256` 校验；三页路由和静态资源均返回 200，`/api/*` 保持 404。远程浏览器验证

@@ -122,14 +122,14 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 ### V3 经营驾驶舱 POC
 
-主服务提供三个独立入口（支持 `APP_ROOT_PATH` 子路径）：
-`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 只跳到总览。
-三个入口共用同一路径和 Fuxi 身份参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员；当前原型三页内容与功能对两个 `id` 完全一致，
+主服务提供四个独立入口（支持 `APP_ROOT_PATH` 子路径）：
+`/cockpit/home`、`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 仍只跳到全局经营看板。
+四个入口共用同一路径和 Fuxi 身份参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员；当前四页内容与功能对两个 `id` 完全一致，
 两个人都可访问，`id` 仅作为将来差异化的预留标识。不使用 `role` 或两套身份地址，总入口和页内跳转均保留当前 `id`。
-三页只渲染看板本体，顶部保留全局经营看板、运营 360 整体分析、穿透式问题分析三个视图 Tab；
+四页只渲染看板本体，顶部使用 ProUI `pro-tabs` 组件样式保留首页、全局经营看板、运营 360 整体分析、穿透式问题分析四个视图 Tab；
 不再带工作区、会话区、宿主页面标题和外层筛选栏。
 
-`/cockpit/overview` 临时直接显示全局经营看板，不再渲染原型首页。三页均读取静态运行包中的
+`/cockpit/home` 用交付元数据中的五项经营指标和运营全流程组件组成首页，但不作为默认入口；`/cockpit/overview` 仍直接显示全局经营看板。四页均读取静态运行包中的
 `feature/demo_1021` 组件与模板，通过 `ProBiDashboard` 渲染原生 ProUI 卡片；卡片标题、图例、按钮和
 表格工具栏使用组件自身样式，不再依赖原型 DOM/CSS 快照。没有 ProUI 实现或缺少引用的组件不渲染，
 并在页面底部列出缺项。演示数据仍固定为 2025-10／全产品部。

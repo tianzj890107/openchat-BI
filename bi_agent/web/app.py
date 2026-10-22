@@ -3963,7 +3963,7 @@ from ..cockpit.router import build_cockpit_router  # noqa: E402
 
 app.include_router(build_cockpit_router(get_cwd=lambda: STATE.cwd or os.getcwd()))
 
-COCKPIT_PAGES = frozenset({"overview", "operations", "analysis"})
+COCKPIT_PAGES = frozenset({"home", "overview", "operations", "analysis"})
 
 
 def _cockpit_html(page: str) -> HTMLResponse:

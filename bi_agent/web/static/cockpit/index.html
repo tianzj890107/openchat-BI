@@ -7,23 +7,39 @@
   <meta name="cockpit-page" content="@@COCKPIT_PAGE@@">
   <title>储小策 · 经营驾驶舱</title>
   <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-ui.min.css?v=b1ee836d">
-  <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/cockpit.css?v=proui-dashboard-v1">
+  <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/cockpit.css?v=proui-dashboard-v2">
   <script src="@@APP_ROOT_PATH@@/static/vendor/antd/lib/vue.global.js"></script>
   <script src="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-bi-ui.min.js?v=c38cbf36"></script>
 </head>
 <body>
   <div id="app" v-cloak>
     <main class="cockpit-main" :data-page="page" :aria-label="pageTitle">
-      <nav class="cockpit-tabs" aria-label="驾驶舱视图">
-        <a v-for="tab in tabs" :key="tab.key" :href="tab.href" :class="{active: tab.active}"
-           :aria-current="tab.active ? 'page' : null">{{tab.label}}</a>
+      <nav class="pro-tabs pro-tabs--top cockpit-tabs" aria-label="驾驶舱视图">
+        <div class="pro-tabs__header">
+          <div class="pro-tabs__nav-wrap">
+            <div class="pro-tabs__nav-scroll">
+              <div ref="nav" class="pro-tabs__nav" role="tablist">
+                <span class="pro-tabs__active-bar is-top" :style="activeBarStyle" aria-hidden="true"></span>
+                <a v-for="tab in tabs" :key="tab.id" :href="tab.href"
+                   class="pro-tabs__item is-top" :class="{'is-active': tab.active}"
+                   role="tab" :aria-selected="tab.active ? 'true' : 'false'"
+                   :tabindex="tab.active ? 0 : -1"
+                   :aria-current="tab.active ? 'page' : null">{{tab.label}}</a>
+              </div>
+            </div>
+          </div>
+        </div>
       </nav>
       <h1 class="visually-hidden">{{pageTitle}}</h1>
       <div v-if="error" class="cockpit-state error" role="alert">{{error}}</div>
       <div v-else-if="loading" class="cockpit-state">正在加载看板元数据…</div>
-      <div v-else class="cockpit-board">
+      <div v-else class="cockpit-board" :class="{'is-home': page === 'home'}">
+        <section v-if="page === 'home'" class="cockpit-home-hero" aria-labelledby="cockpit-home-title">
+          <h2 id="cockpit-home-title">储能产品线整体经营情况如下</h2>
+          <p>5 项核心指标中，3 项重点关注，2 项持续跟进。完整年度图表与指标切换请进入“全局经营看板”。</p>
+        </section>
         <component :is="dashboardComponent" :key="page"
-                   :components="runtime.pages[page].components"
+                   :components="boardPage.components"
                    :template-registry="runtime.templates"
                    :grid-cols="120" :row-height="10" :margin="[8, 8]"></component>
       </div>
@@ -45,6 +61,6 @@
     </main>
   </div>
   <noscript>驾驶舱需要启用 JavaScript。</noscript>
-  <script src="@@APP_ROOT_PATH@@/static/cockpit/cockpit.js?v=proui-dashboard-v1"></script>
+  <script src="@@APP_ROOT_PATH@@/static/cockpit/cockpit.js?v=proui-dashboard-v2"></script>
 </body>
 </html>

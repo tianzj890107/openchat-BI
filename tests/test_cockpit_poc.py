@@ -143,7 +143,7 @@ def test_cockpit_page_uses_separate_assets_and_subpath(monkeypatch,tmp_path):
     redirect=c.get('/cockpit?id=2&metric=sales',follow_redirects=False)
     assert redirect.status_code==307
     assert redirect.headers['location']=='/gateway/analytics/cockpit/overview?id=2&metric=sales'
-    for page in ['overview','operations','analysis']:
+    for page in ['home','overview','operations','analysis']:
         pages=[c.get(f'/cockpit/{page}?id={identity}') for identity in (1,2)]
         assert all(response.status_code==200 for response in pages)
         assert pages[0].text==pages[1].text

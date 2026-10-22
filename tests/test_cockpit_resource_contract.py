@@ -67,21 +67,24 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     html=(ROOT/'index.html').read_text()
     assert "params.get('id')" in js
     assert "new URLSearchParams({id: identityId, ...extra})" in js
-    assert 'proui-dashboard-v1' in html
+    assert 'proui-dashboard-v2' in html
     assert 'prototype' not in js.lower()
 
 
-def test_three_top_tabs_and_static_proui_dashboard_are_present():
+def test_four_top_tabs_and_static_proui_dashboard_are_present():
     js=(ROOT/'cockpit.js').read_text()
     html=(ROOT/'index.html').read_text()
     runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
-    assert 'class="cockpit-tabs"' in html
-    for label in ('全局经营看板','运营 360 整体分析','穿透式问题分析'):
+    assert 'class="pro-tabs pro-tabs--top cockpit-tabs"' in html
+    for label in ('首页','全局经营看板','运营 360 整体分析','穿透式问题分析'):
         assert label in js
-    assert '首页' not in js
+    assert "{id: 'home', title: '首页'}" in js
+    assert "return PAGE_BY_ID[declared] ? declared : 'overview'" in js
+    assert 'homePageSpec' in js
+    assert 'pro-tabs__active-bar' in html
     assert "fetchJson(runtimeUrl)" in js
     assert "window.ProUIBi?.ProBiDashboard" in js
-    assert ":components=\"runtime.pages[page].components\"" in html
+    assert ':components="boardPage.components"' in html
     assert ":template-registry=\"runtime.templates\"" in html
     assert runtime['pages']['overview']['id']=='overview'
     assert runtime['pages']['operations']['components']
