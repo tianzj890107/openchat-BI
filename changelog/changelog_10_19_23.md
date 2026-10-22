@@ -67,7 +67,7 @@
 ### 2026-10-21 · V3 经营驾驶舱 POC 与主服务分析插槽
 
 - 页面（2026-10-22 修订）：四个独立入口 `/cockpit/home`、`/cockpit/overview`、
-  `/cockpit/operations`、`/cockpit/analysis`，`/cockpit` 以 307 跳转总览，首页不默认打开。
+  `/cockpit/operations`、`/cockpit/analysis`，`/cockpit` 与 `/` 直接返回总览页，首页保留但不默认打开。
   四页只渲染看板本体，顶部使用 ProUI `pro-tabs` 组件样式保留“首页”“全局经营看板”
   “运营 360 整体分析”“穿透式问题分析”四个视图 Tab；移除左侧工作区、会话区、宿主页面标题
   和外层筛选栏。`/cockpit/overview` 仍直接显示全局经营看板。
@@ -112,15 +112,22 @@
 - 首页与顶部组件化（2026-10-22）：`/cockpit/home` 直接挂载交付新增的首页模板，
   不再由宿主从其他两页挑组件拼装；顶部四个 Tab 改用 ProUI `pro-tabs` 结构和活动下划线，
   窄屏自动把当前 Tab 滚入可视区，缓存参数升至 `proui-dashboard-v4`。
-  `/cockpit` 仍以 307 跳到 `overview`，首页保留但不是默认路由。本地浏览器验证四个路由、
+  `/cockpit` 直接返回 `overview`，首页保留但不是默认路由。本地浏览器验证四个路由、
   `id=1|2`、活动条定位和 1440px／480px 布局。
-- 部署（2026-10-22 11:20）：`172.16.10.34:8876` 已切换到
-  `feature/cockpit-v3-poc` commit `16b9858` 的四页原生 ProUI 看板，发布目录共 9 个文件并通过
-  `manifest.sha256` 校验；`home`、`overview`、`operations`、`analysis` 和四个 Tab 均正常返回，
-  `/api/*` 保持 404。远程浏览器验证 `id=1|2` 传播、活动下划线、首页指标／运营全流程、KPI／图表／
-  表格渲染；1440px 与 480px 无横向溢出，窄屏活动 Tab 自动滚入可视区，页面没有
-  `/api/cockpit/*` 请求。站点备份为
-  `backups/site-20261022-112027-pre-16b9858`，nginx 配置备份为
-  `backups/conf-20261022-111907-pre-b3c1948/default.conf`。未修改或重启 8765 主服务，未复制运行数据，
-  未创建 tag／Release／MR，未修改用户历史数据。该部署版本为改造前构建；交付原样渲染与 AI 插槽改造尚未部署。
-- 边界：真实业务数据源尚未映射，Fuxi 宿主尚未联调；POC 执行器按单进程运行。
+- 部署（2026-10-22 12:00）：`172.16.10.34:8876` 已切换到 `feature/cockpit-v3-poc` commit
+  `017d65f` 的交付原样渲染版本，发布目录共 9 个文件并通过 `manifest.sha256` 校验；`home`、
+  `overview`、`operations`、`analysis` 和四个 ProUI Tab 均正常返回，运行时缓存版本为
+  `proui-dashboard-v4`。远程浏览器验证 `id=1|2` 传播、活动下划线、首页和穿透页模型分析插槽、
+  KPI／图表／表格渲染；1440px 与 480px 无横向溢出，窄屏活动 Tab 自动滚入可视区，无 JS 异常，
+  网络请求无 4xx／5xx，ProUI 仍有非致命的 Vue 属性透传警告。
+- 代理与旁路 API（2026-10-22 12:00）：nginx 新增 `location /api/cockpit/`，转发到独立
+  `172.16.10.34:8877` 的 `eimosp-cockpit-api`；服务目录为
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，PID 在 `app.pid`，
+  日志在 `api.log`，数据独立写入 `api-data/`。`bootstrap`、`metadata` 经 8876 代理返回 200，
+  其他 `/api/*` 仍返回 404。经代理发起的真实模型分析 `50074713092e444ab9f4918ee8c02a34`
+  已完成发货环节分析，结果为 `completed`。站点备份为
+  `backups/site-20261022-115417-pre-017d65f`，nginx 配置备份为
+  `backups/conf-20261022-115417-pre-proxy/default.conf`。未修改或重启 8765 主服务，未复制运行数据，
+  未创建 tag／Release／MR，未修改用户历史数据。
+- 边界：真实业务数据源尚未映射，Fuxi 宿主尚未联调；POC 执行器按单进程运行。8877 旁路 API
+  当前由 `setsid nohup` 启动，没有 systemd 自动拉起，服务器重启后需要重新启动。
