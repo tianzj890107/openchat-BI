@@ -12,11 +12,11 @@ from .data import NAMES
 
 ROOT=Path(__file__).resolve().parents[1]/'web/static/cockpit/metadata/iba-demo-1021'
 FIXTURE=Path(__file__).parent/'fixtures/v3-prototype.json'
-PAGE_IDS={'home':'2113106174095179778','overview':'2112001069107167233','operations':'2112434004503347202','analysis':'2112061604959928321'}
-OPS_NODES=dict(zip(NAMES,['2109848488855519233','2109848488910045186','2112022555167604737','2109848488914239490','2109848488918433794','2109848488926822401','2109848488926822402']))
-RISK_NODES=dict(zip(['opportunity','bid','order','shipment'],['2109840325158682625','2109840573985767425','2109840573998350338','2109840696539136002']))
-STAGE_TEMPLATES={'opportunity':'2112026770145329154','guidance':'2112059168287408129','quotation':'2112059463654490114','technical':'2112059620722786305','bid':'2112059751740260354','order':'2112060211964461057','shipment':'cockpit-shipment-operations'}
-RISK_TEMPLATES={'opportunity':'2112062888320483329','bid':'2112059751740260354','order':'2112064105591390209','shipment':'2112064144187375617'}
+PAGE_IDS={'overview':'2112001069107167233','operations':'2112434004503347202','analysis':'2112061604959928321'}
+OPS_NODES={'opportunity':'2109848488855519233','quotation':'2112022555167604737','bid':'2109848488918433794','order':'2109848488926822401','shipment':'2109848488926822402'}
+RISK_NODES={'opportunity':'2109840325158682625','order':'2109840573998350338','shipment':'2109840696539136002'}
+STAGE_TEMPLATES={'opportunity':'2112026770145329154','quotation':'2112059463654490114','bid':'2112059751740260354','order':'2112060211964461057','shipment':'2113151813453660161'}
+RISK_TEMPLATES={'opportunity':'2112062888320483329','order':'2112064105591390209','shipment':'2112064144187375617'}
 CONTAINERS={'template','tab-container','group','segmented-strip','title','button-group','composite-filter'}
 
 def prototype():return json.loads(FIXTURE.read_text())
@@ -141,7 +141,7 @@ def build_bundle():
             if cid=='funnel-qexcz5h3':
                 chart(c,tid,[dict(name=n['n'],value=n['tot']) for n in p['S1_NODES_A']]);continue
             # Operations summary cards inherit the parent group, not arbitrary IDs.
-            parent=c.get('parentId');stage_by_group={'group-tpr32caj':'guidance','group-ftrsjcmy':'quotation','group-wraxt9z6':'technical','group-4croqift':'bid','group-fbf8l4il':'order','group-f70etg8b':'shipment'}
+            parent=c.get('parentId');stage_by_group={'group-ftrsjcmy':'quotation','group-4croqift':'bid','group-fbf8l4il':'order','group-f70etg8b':'shipment','group-rnfank2i':'shipment'}
             sid=stage_by_group.get(parent)
             if sid and kind in {'kpiCard','share-bar'}:
                 ring=ring_for(p,sid);values=ring_rows(ring);unit='GWh'

@@ -3963,14 +3963,20 @@ from ..cockpit.router import build_cockpit_router  # noqa: E402
 
 app.include_router(build_cockpit_router(get_cwd=lambda: STATE.cwd or os.getcwd()))
 
-COCKPIT_PAGES = frozenset({"home", "overview", "operations", "analysis"})
+COCKPIT_PAGES = frozenset({"overview", "operations", "analysis"})
 
 
 def _cockpit_html(page: str) -> HTMLResponse:
     html = (STATIC_DIR / "cockpit" / "index.html").read_text(encoding="utf-8")
-    snapshot = STATIC_DIR / "cockpit" / "metadata" / "pdt-release-2109836674373566465" / "data-snapshots.json"
+    cockpit = STATIC_DIR / "cockpit"
+    version_sources = [
+        cockpit / "metadata" / "runtime.json",
+        cockpit / "cockpit.js",
+        cockpit / "insight-components" / "index.js",
+        cockpit / "metadata" / "pdt-release-2109836674373566465" / "data-snapshots.json",
+    ]
     try:
-        asset_version = str(int(snapshot.stat().st_mtime))
+        asset_version = str(int(max(path.stat().st_mtime for path in version_sources)))
     except OSError:
         asset_version = "1"
     html = (
@@ -3984,6 +3990,12 @@ def _cockpit_html(page: str) -> HTMLResponse:
 @app.get("/cockpit", response_class=HTMLResponse)
 @app.get("/cockpit/", response_class=HTMLResponse)
 def cockpit_index(request: Request) -> RedirectResponse:
+    query = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"{APP_ROOT_PATH}/cockpit/overview{query}", status_code=307)
+
+
+@app.get("/cockpit/home", response_class=HTMLResponse)
+def cockpit_home(request: Request) -> RedirectResponse:
     query = f"?{request.url.query}" if request.url.query else ""
     return RedirectResponse(url=f"{APP_ROOT_PATH}/cockpit/overview{query}", status_code=307)
 

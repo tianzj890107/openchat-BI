@@ -1,22 +1,5 @@
 [
   {
-    "id": "focus-risks",
-    "embedPath": {
-      "segments": [
-        {
-          "kind": "tab",
-          "containerId": "tab-container-zm9eyxne",
-          "tabId": "tab-qqzt1nj6",
-          "templateId": "2113106174095179778"
-        }
-      ]
-    },
-    "placement": {
-      "mode": "insert",
-      "afterId": "group-ist8eevh"
-    }
-  },
-  {
     "id": "bid-status-note",
     "embedPath": {
       "segments": [
@@ -35,28 +18,6 @@
     }
   },
   {
-    "id": "scheme-guide-summary",
-    "embedPath": {
-      "segments": [
-        {
-          "kind": "tab",
-          "containerId": "tab-container-zm9eyxne",
-          "tabId": "tab-211tc4o0",
-          "templateId": "2112434004503347202"
-        },
-        {
-          "kind": "template",
-          "containerId": "template-rjjcf4v1",
-          "templateId": "2112059168287408129"
-        }
-      ]
-    },
-    "placement": {
-      "mode": "insert",
-      "afterId": null
-    }
-  },
-  {
     "id": "quote-summary",
     "embedPath": {
       "segments": [
@@ -70,28 +31,6 @@
           "kind": "template",
           "containerId": "template-rjjcf4v1",
           "templateId": "2112059463654490114"
-        }
-      ]
-    },
-    "placement": {
-      "mode": "insert",
-      "afterId": null
-    }
-  },
-  {
-    "id": "tech-plan-summary",
-    "embedPath": {
-      "segments": [
-        {
-          "kind": "tab",
-          "containerId": "tab-container-zm9eyxne",
-          "tabId": "tab-211tc4o0",
-          "templateId": "2112434004503347202"
-        },
-        {
-          "kind": "template",
-          "containerId": "template-rjjcf4v1",
-          "templateId": "2112059620722786305"
         }
       ]
     },
@@ -136,28 +75,6 @@
           "kind": "template",
           "containerId": "template-rjjcf4v1",
           "templateId": "2112060211964461057"
-        }
-      ]
-    },
-    "placement": {
-      "mode": "insert",
-      "afterId": null
-    }
-  },
-  {
-    "id": "shipment-summary",
-    "embedPath": {
-      "segments": [
-        {
-          "kind": "tab",
-          "containerId": "tab-container-zm9eyxne",
-          "tabId": "tab-211tc4o0",
-          "templateId": "2112434004503347202"
-        },
-        {
-          "kind": "template",
-          "containerId": "template-rjjcf4v1",
-          "templateId": "2112010750949113858"
         }
       ]
     },
@@ -226,28 +143,6 @@
       "mode": "in-card",
       "anchorId": "group-9ypz7vwt",
       "position": "bottom"
-    }
-  },
-  {
-    "id": "sales-bid-summary",
-    "embedPath": {
-      "segments": [
-        {
-          "kind": "tab",
-          "containerId": "tab-container-zm9eyxne",
-          "tabId": "tab-1suxx5hd",
-          "templateId": "2112061604959928321"
-        },
-        {
-          "kind": "template",
-          "containerId": "template-ryfsat5y",
-          "templateId": "2112059751740260354"
-        }
-      ]
-    },
-    "placement": {
-      "mode": "insert",
-      "afterId": null
     }
   },
   {

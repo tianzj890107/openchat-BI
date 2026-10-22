@@ -180,18 +180,18 @@
   ],
   "snapshot": {
     "file": "data-snapshots.json",
-    "bytes": 291476,
-    "sha256": "c0a54d6911d32f3735c0649b8a323e59171fb17ad9f32f35b784631db50f33e1",
+    "bytes": 309388,
+    "sha256": "b5e3430d05dfede44381965adb087d58607fb7ef1ba0d7266b8f969bd686faa9",
     "source": "pdt-dev release page network capture",
-    "analysisRequests": 38,
-    "batchRequests": 2,
-    "helmetRequests": 2,
+    "analysisRequests": 39,
+    "batchRequests": 3,
+    "helmetRequests": 4,
     "credentialsStored": false,
     "filterVariants": 4,
-    "updatedAt": "2026-10-22T16:20:00+08:00",
+    "updatedAt": "2026-10-22T16:45:00+08:00",
     "notes": [
       "Includes date-filter variants for overview and operations tabs.",
-      "Includes node-detail table variants and the supplier table page 2.",
+      "Includes node-detail table variants, the supplier table page 2 and the new process-arc six-stage batch query.",
       "Two upstream HTTP 500 responses are stored verbatim; the page shows the upstream error."
     ]
   }

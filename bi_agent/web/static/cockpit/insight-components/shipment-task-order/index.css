@@ -1,0 +1,103 @@
+.shipment-task-order {
+  margin: 0;
+  padding: 14px 16px 12px;
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
+  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  border-radius: 8px;
+  color: #262626;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.shipment-task-order__head,
+.shipment-task-order__task-head,
+.shipment-task-order__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shipment-task-order__step,
+.shipment-task-order__no {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.shipment-task-order__step {
+  background: #1677ff;
+  color: #fff;
+}
+
+.shipment-task-order__no {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.shipment-task-order__title {
+  font-size: 16px;
+}
+
+.shipment-task-order__sub,
+.shipment-task-order__hint {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.shipment-task-order__summary {
+  margin: 10px 0 12px;
+}
+
+.shipment-task-order__task {
+  padding: 12px 14px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.shipment-task-order__task + .shipment-task-order__task {
+  margin-top: 12px;
+}
+
+.shipment-task-order__task-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.shipment-task-order__tag {
+  flex: none;
+  color: #1677ff;
+}
+
+.shipment-task-order__meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+  margin-top: 8px;
+}
+
+.shipment-task-order__label {
+  font-weight: 600;
+}
+
+.shipment-task-order__foot {
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
+.shipment-task-order__dispatch {
+  padding: 4px 14px;
+  border: 0;
+  border-radius: 16px;
+  background: #1677ff;
+  color: #fff;
+  font-size: 13px;
+  line-height: 22px;
+  cursor: pointer;
+}

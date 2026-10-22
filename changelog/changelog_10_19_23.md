@@ -64,82 +64,56 @@
   不部署，也不拉 `release/ontology-v0.1.3` 分支。
 
 
-### 2026-10-22 · V3 经营驾驶舱正式发布看板
+### 2026-10-22 · V3 经营驾驶舱交付看板（iba-demo demo_1021）
 
-- 页面（2026-10-22 修订）：四个独立入口 `/cockpit/home`、`/cockpit/overview`、
-  `/cockpit/operations`、`/cockpit/analysis`，`/cockpit` 与 `/` 直接返回总览页，首页保留但不默认打开。
-  四页只挂载一个正式发布 `ProBiDashboard`，顶部根筛选器和四个 Tab 均来自交付配置，
-  不再由宿主手写。路由只激活对应 Tab，并保留 Fuxi 的 `id=1|2`；不渲染工作区、会话区或第二套导航。
-- 原生组件渲染（2026-10-22 修订）：撤回原型 DOM/CSS 快照方案，删除 `static/cockpit/layout/`
+- 页面与路由（2026-10-22 18:30 修订）：三个独立入口 `/cockpit/overview`、`/cockpit/operations`、
+  `/cockpit/analysis`；`/cockpit` 与 `/` 直接返回经营看板，`/cockpit/home` 保留为兼容地址并 307 到
+  `overview`。三页只挂载一个 `ProBiDashboard`，顶部筛选器和三个 Tab 均来自交付配置；路由只激活
+  对应 Tab，并保留 Fuxi 的 `id=1|2`。不渲染工作区、会话区或第二套导航。
+- 交付包（2026-10-22 18:30）：拉取 `iba-demo` 分支 `feature/demo_1021@37975c7`，导入 13 份模板、
+  122 个组件、12 个静态插槽组件和 `insight-components/`；更新 `pro-bi-ui.min.js` 到
+  `011269f8`，CSS 未变化，继续复用 `b1ee836d` 和 Vue 3.5.25。源 JSON 和 `insights.js` 保持原样，
+  哈希、类型统计和缺项记录在 `source.json`。
+- 原生组件渲染（2026-10-22 18:30）：撤回原型 DOM/CSS 快照方案，删除 `static/cockpit/layout/`
   和 `scripts/extract_cockpit_layout.mjs`。页面读取 `static/cockpit/metadata/runtime.json`，
-  通过 `ProBiDashboard` 渲染原生 ProUI 卡片、图表、表格、分组、按钮组和模板容器；
-  卡片标题、图例、工具栏、按钮和间距使用组件自身样式，不再追求与原型逐像素一致。
-- 正式发布原样渲染（2026-10-22 修订）：切换到 PDT 正式发布看板
-  `2109836674373566465`“运营360 整体分析”，保存 15 份模板和 139 个组件。
-  根配置为 `composite-filter-hzjk9t5q`＋`tab-container-zm9eyxne`，四个 Tab 分别指向
-  `2113106174095179778`、`2112001069107167233`、`2112434004503347202`、
-  `2112061604959928321`。页面组件与正式模板逐字段一致，宿主不改位置、标题或样式。
-- 数据回放：冻结 38 个 AP 查询、2 个批量查询和 2 个头盔图请求的响应体到
+  通过 `ProBiDashboard` 渲染原生 ProUI 卡片、图表、表格、分组、按钮组、流程弧形图和模板容器；
+  卡片标题、图例、工具栏、按钮和间距使用组件自身样式。
+- 数据回放（2026-10-22 18:30）：冻结 pdt 正式页的 39 个 AP 查询、3 个批量查询和 4 个头盔图请求到
   `data-snapshots.json`，浏览器通过 `ProUIBi.configureBi` 按请求键回放，不访问 AP、PDT 或生产接口。
-  快照不包含 Cookie、Token、账号或用户身份；文件大小和 SHA-256 记录在 `source.json`。
-  2026-10-22 补充年度筛选（2025／2026）、七个头盔节点明细和供应商明细第 2 页的响应，
-  修复切换筛选、点击节点或翻页后出现“未找到该 AP 查询的发布快照”；上游本身返回 HTTP 500
-  的“上期采购金额”“环比采购金额增长率”现在显示正式页同样的“系统繁忙”，不再误报快照缺失。
-  同一修订给 `cockpit.js`、`cockpit.css`、`runtime.json` 和 `data-snapshots.json` 加上随版本变化的
-  查询串；HTML 使用 `no-store`，刷新后会拉取新资源，避免浏览器继续使用上一小时缓存的旧快照。
+  快照不包含 Cookie、Token、账号或用户身份；未捕获的查询在原卡片显示组件自带的
+  “未找到该 AP 查询的发布快照”，宿主不补造数据。时间筛选切到 `2026-08-13 19:06:09`
+  后无组件错误，销售额卡按交付绑定更新。
 - 筛选联动：顶部“采购订单创建时间维度”按交付配置只绑定当前 Tab 的一个指标卡
-  （全局经营看板绑“促进增长｜销售额”，运营 360 绑“保障交付｜出货量”），其余四张卡和
-  穿透表不声明该维度绑定。该行为与 PDT 正式页一致，宿主不自行扩展联动范围；
-  需要全卡联动时应由交付配置补充 `linkConfig`／`grainBindings` 后重新抓取快照。
-- 智能分析插槽（2026-10-22 修订）：正式根配置没有 `insights` 字段，宿主从
-  `iba-demo-1021/insights.json` 补入 17 个交付插槽声明，并保留完整 Tab `embedPath` 以适配整张
-  正式看板渲染。首页 1 个、全局经营看板 0 个、运营 360 7 个、穿透式问题分析 9 个；
-  穿透页默认的 3 个插槽内容只触发商机获取和发货 2 个分析任务，同一环节共享结果。
-  插槽挂载时实时异步调用 `POST /api/cockpit/analyses`，每 1.5 秒轮询；已完成范围直接复用，
-  “重新分析”才强制刷新。首次分析实测通常约 10–20 秒（最近一次点击到完成约 19.9 秒），
-  复用结果通常小于 1.5 秒显示。五个进度卡同值、销售标题绑定采购指标等现象来自正式 AP 配置本身，
-  页面保留原值，不在宿主层修正。
-- 交互：经营指标卡可切换销售额／出货量模板；运营头盔图点击节点切换七个环节模板；
-  穿透头盔图点击节点切换四类风险模板。页面之间仅保留这四个 Tab 和看板内可确认的组件交互。
-- 身份：Fuxi 统一使用 `id` 查询参数，`1=总裁`、`2=分析员`；当前四页内容和功能对两个 `id`
-  完全一致，两个人都可访问，`id` 仅作为将来差异化的预留标识。页面和 API 均不使用 `role`，
-  所有 Tab 和页内跳转保留当前 `id`。
-- 分析与任务：穿透页的 AI 插槽已接入主服务真实模型和证据接口；插槽内容显示分析摘要、原因、
-  改善建议与证据数量，失败时显示错误和重试。正式卡片、图表和表格仍使用冻结的发布快照，
-  不访问 AP、PDT 或生产接口。旧的分析、历史和任务抽屉不再渲染。
-- 闭环：模拟任务令支持草稿编辑、下发、接收、反馈和验收关闭，当前只校验状态与 revision，
-  不按 `id` 分配操作权限；幂等生成和 revision 防止重复创建及覆盖更新。SQLite 单独保存在
-  gitignore 的 `dataset/cockpit/`，不删除原会话。
-- 预测：展示演示业务已有预测；发货页提供明确假设下的金额化解测算，不声称已实现统计预测。
-- 组件资源：`pro-bi-ui.min.js`（`c38cbf36`）、`pro-ui.min.css`（`b1ee836d`）和 Vue 3.5.25
-  与正式页一致。正式目录保存 `dashboard.json`、15 份模板和原始 hash，源 JSON 不改写。
-- 主要文件：`bi_agent/cockpit/runtime.py`、`bi_agent/web/static/cockpit/{cockpit.js,cockpit.css,index.html}`、
-  `bi_agent/web/static/cockpit/metadata/runtime.json`、`scripts/export_cockpit_runtime.py`、
+  （经营看板绑“促进增长｜销售额”，运营 360 绑“保障交付｜出货量”），其余卡片不声明该维度绑定。
+  该行为与交付配置一致，宿主不自行扩展联动范围。
+- 智能分析插槽（2026-10-22 18:30）：交付根配置没有 `insights` 字段，宿主从 `insights.json`
+  补入 12 个插槽声明：经营看板 0 个、运营 360 4 个、穿透式问题分析 8 个。插槽内容直接使用交付
+  `insight-components/` 的静态组件，本轮不预加载、不轮询、不调用模型；主服务
+  `/api/cockpit/analyses`、历史、报告和模拟任务令接口继续保留，后续需要实时 AI 时再接入页面。
+- 交互：头盔图点击节点切换环节模板；运营页报价、投标、订单接收节点分别挂载 `quote-summary`、
+  `bid-summary`、`order-sign-summary`；穿透页订单接收、发货节点分别挂载 `order-risk-summary`
+  和 4 个发货插槽。页内 Tab 切换同步 URL 并保留 `id`。
+- 身份：Fuxi 统一使用 `id` 查询参数，`1=总裁`、`2=分析员`；当前三页内容和功能对两个 `id`
+  完全一致，两个人都可访问，`id` 仅作为将来差异化的预留标识。页面和 API 均不使用 `role`。
+- 已知差异：商机模板 `2112062888320483329` 的 `group-9ypz7vwt` 引用 `share-bar-79fsomq9`，
+  交付缺少该子组件定义，运行包保留空位；五个进度卡同值、销售标题绑定采购指标等现象来自交付
+  AP 配置本身，页面保留原值。详细清单见 `docs/specs/cockpit-v3-metadata-gaps.md`。
+- 主要文件：`bi_agent/cockpit/metadata.py`、`bi_agent/cockpit/runtime.py`、`bi_agent/web/app.py`、
+  `bi_agent/web/static/cockpit/{cockpit.js,cockpit.css,index.html}`、
+  `bi_agent/web/static/cockpit/insight-components/`、
+  `bi_agent/web/static/cockpit/metadata/{runtime.json,iba-demo-1021/}`、
   `tests/test_cockpit_poc.py`、`tests/test_cockpit_resource_contract.py`、
   `tests/test_cockpit_metadata.py`、`docs/specs/cockpit-v3-poc.md`、
   `docs/specs/cockpit-v3-metadata-gaps.md`、`README.md`、`DEPLOYMENT.md`。
-- 验证（2026-10-22）：驾驶舱契约测试 37 项通过；`node --check` 和 `git diff --check` 通过。
-  浏览器验证四个路由在 `id=1|2` 下激活正确 Tab，页面只有一个 `ProBiDashboard`；
-  运营页生成头盔图和漏斗，穿透页生成 2 个画布和 16 个表格；穿透页在 `id=1|2` 下均挂载
-  3 个 AI 插槽内容，商机环节实时重跑并正常返回，四页均无组件错误。
-- 页面壳层：`ProBiDashboard` 使用发布态和自带标题区，缓存版本统一为
-  `pdt-release-2109836674373566465`；`/cockpit` 直接返回 `overview`，首页保留但不是默认路由。
-  旧的手写 Tab 和灰底留白不再参与正式页视觉；分析插槽只作为正式卡片内部的补充内容渲染。
-- 部署（2026-10-22）：`172.16.10.34:8876` 发布正式看板版本，四个路由和根 Tab 正常；
-  发布文件、Manifest、远程浏览器和回滚目录在部署完成后补记到 `DEPLOYMENT.md`。
-- 部署（2026-10-22 14:49）：`172.16.10.34:8876` 更新到 `feature/cockpit-v3-poc@2b828a5`，
-  HTML、`cockpit.js` 和 `runtime.json` 使用 `v=2b828a5`；线上四个路由、`id=1|2` 和 AI 插槽正常。
-  穿透页 `id=1|2` 均显示 3 个插槽内容，首页 1 个、运营 360 1 个、全局经营看板 0 个；
-  线上“重新分析”实测 13.8 秒完成，后端记录 12.2 秒。旧站备份为
-  `backups/site-20261022-144900-pre-5501d6f`，8877 API、历史会话和数据目录未改动。
-- 代理与旁路 API（2026-10-22 12:00）：nginx 新增 `location /api/cockpit/`，转发到独立
+- 验证（2026-10-22 18:30）：驾驶舱契约测试 37 项通过；`node --check` 和 `git diff --check` 通过。
+  浏览器验证三个路由在 `id=1|2` 下激活正确 Tab，页面只有一个 `ProBiDashboard`；
+  头盔节点联动、12 个静态插槽和顶部时间筛选均无组件错误。
+- 部署（2026-10-22 14:49，历史）：`172.16.10.34:8876` 曾更新到
+  `feature/cockpit-v3-poc@2b828a5`，旧站备份为
+  `backups/site-20261022-144900-pre-5501d6f`；本轮 `37975c7` 交付包的部署记录在部署完成后补记。
+- 代理与旁路 API（2026-10-22 12:00，历史）：nginx 的 `location /api/cockpit/` 转发到
   `172.16.10.34:8877` 的 `eimosp-cockpit-api`；服务目录为
-  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，PID 在 `app.pid`，
-  日志在 `api.log`，数据独立写入 `api-data/`。`bootstrap`、`metadata` 经 8876 代理返回 200，
-  其他 `/api/*` 仍返回 404。经代理发起的真实模型分析 `50074713092e444ab9f4918ee8c02a34`
-  已完成发货环节分析，结果为 `completed`。站点备份为
-  `backups/site-20261022-131551-pre-99084f0`，nginx 配置备份为
-  `backups/conf-20261022-115417-pre-proxy/default.conf`。未修改或重启 8765 主服务，未复制运行数据，
-  未创建 tag／Release／MR，未修改用户历史数据。
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，数据独立写入
+  `api-data/`。本轮不重启 API、不修改 8765 主服务和用户历史数据。
 - 边界：真实业务数据源尚未映射，Fuxi 宿主尚未联调；POC 执行器按单进程运行。8877 旁路 API
   当前由 `setsid nohup` 启动，没有 systemd 自动拉起，服务器重启后需要重新启动。

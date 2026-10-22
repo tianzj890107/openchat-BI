@@ -1,0 +1,31 @@
+.opportunity-coverage-note {
+  margin: 0;
+  color: #434343;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.opportunity-coverage-note > div + div:not(.opportunity-coverage-note__tags) {
+  margin-top: 6px;
+}
+
+.opportunity-coverage-note__em {
+  color: #cf1322;
+  font-weight: 600;
+}
+
+.opportunity-coverage-note__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.opportunity-coverage-note__tag {
+  padding: 0 8px;
+  border-radius: 11px;
+  background: #fff1f0;
+  color: #cf1322;
+  font-size: 12px;
+  line-height: 22px;
+}

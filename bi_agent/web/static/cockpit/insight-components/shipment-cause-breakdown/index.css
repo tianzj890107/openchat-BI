@@ -1,0 +1,56 @@
+.shipment-cause-breakdown {
+  margin: 0;
+  padding: 14px 16px 12px;
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
+  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  border-radius: 8px;
+  color: #262626;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.shipment-cause-breakdown__title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.shipment-cause-breakdown__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.shipment-cause-breakdown__item {
+  padding: 12px 14px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.shipment-cause-breakdown__item-title {
+  font-weight: 600;
+}
+
+.shipment-cause-breakdown__metric {
+  color: #1677ff;
+  font-weight: 600;
+}
+
+.shipment-cause-breakdown__list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.shipment-cause-breakdown__list li + li {
+  margin-top: 4px;
+}
+
+.shipment-cause-breakdown__foot {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f4f6f8;
+  border-radius: 8px;
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 20px;
+}

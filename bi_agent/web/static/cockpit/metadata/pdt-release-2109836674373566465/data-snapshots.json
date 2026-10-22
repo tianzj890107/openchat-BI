@@ -9407,6 +9407,177 @@
       },
       "msg": "success",
       "success": true
+    },
+    "{\"analysisConfig\":{\"dimensions\":[{\"alias\":\"品类维度\",\"identifierCode\":\"D005\"}],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"},{\"alias\":\"发货金额\",\"identifierCode\":\"M00013\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}": {
+      "success": true,
+      "code": 200,
+      "msg": "success",
+      "data": {
+        "resultType": "TABLE",
+        "result": {
+          "columns": [
+            {
+              "identifierCode": "D005",
+              "label": "品类维度",
+              "type": "DIMENSION"
+            },
+            {
+              "identifierCode": "M0001",
+              "label": "采购金额",
+              "type": "METRIC"
+            },
+            {
+              "identifierCode": "M00013",
+              "label": "发货金额",
+              "type": "METRIC"
+            }
+          ],
+          "rows": [
+            {
+              "D005": {
+                "value": "硬件设备"
+              },
+              "M0001": {
+                "value": 175006675.34
+              },
+              "M00013": {
+                "value": 54843218.59
+              }
+            },
+            {
+              "D005": {
+                "value": "新能源设备及材料"
+              },
+              "M0001": {
+                "value": 18164582.63
+              },
+              "M00013": {
+                "value": 24068038.0
+              }
+            },
+            {
+              "D005": {
+                "value": "通讯产品"
+              },
+              "M0001": {
+                "value": 54823295.52
+              },
+              "M00013": {
+                "value": 51611664.0
+              }
+            },
+            {
+              "D005": {
+                "value": "HAWA"
+              },
+              "M0001": {
+                "value": 135486339.15
+              },
+              "M00013": {
+                "value": 792.0
+              }
+            },
+            {
+              "D005": {
+                "value": "服务"
+              },
+              "M0001": {
+                "value": 1163956561.83
+              },
+              "M00013": {
+                "value": 1333962336.27
+              }
+            },
+            {
+              "D005": {
+                "value": "能源物料"
+              },
+              "M0001": {
+                "value": 371503014.96
+              },
+              "M00013": {
+                "value": 325089465.44
+              }
+            },
+            {
+              "D005": {
+                "value": "TDB"
+              },
+              "M0001": {
+                "value": 4841492.2
+              },
+              "M00013": {
+                "value": 3516153.34
+              }
+            },
+            {
+              "D005": {
+                "value": "电工材料"
+              },
+              "M0001": {
+                "value": 788939874.15
+              },
+              "M00013": {
+                "value": 730398192.4
+              }
+            },
+            {
+              "D005": {
+                "value": "消耗品"
+              },
+              "M0001": {
+                "value": 80274871.94
+              },
+              "M00013": {
+                "value": 40746521.07
+              }
+            },
+            {
+              "D005": {
+                "value": "固定资产"
+              },
+              "M0001": {
+                "value": 1803.79
+              },
+              "M00013": {
+                "value": 946.0
+              }
+            },
+            {
+              "D005": {
+                "value": "软件"
+              },
+              "M0001": {
+                "value": 19823060.0
+              },
+              "M00013": {
+                "value": 8900000.0
+              }
+            },
+            {
+              "D005": {
+                "value": "管理费用"
+              },
+              "M0001": {
+                "value": 5042467.8
+              },
+              "M00013": {
+                "value": 60.0
+              }
+            },
+            {
+              "D005": {},
+              "M0001": {},
+              "M00013": {}
+            }
+          ]
+        },
+        "pagination": {
+          "total": 13,
+          "pageNum": 1,
+          "pageSize": 20
+        }
+      }
     }
   },
   "batch": {
@@ -9495,6 +9666,198 @@
               "pageNum": 1,
               "pageSize": 20,
               "total": 2
+            }
+          }
+        }
+      ]
+    },
+    "[{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"预测缺口\",\"identifierCode\":\"M0001\"},{\"alias\":\"战略客户突破\",\"identifierCode\":\"M00013\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}},{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"},{\"alias\":\"发货金额\",\"identifierCode\":\"M00013\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}},{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"},{\"alias\":\"发货金额\",\"identifierCode\":\"M00013\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}},{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"},{\"alias\":\"采购数量\",\"identifierCode\":\"M0006\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}},{\"analysisConfig\":{\"dimensions\":[],\"indicators\":[{\"alias\":\"采购金额\",\"identifierCode\":\"M0001\"},{\"alias\":\"采购数量\",\"identifierCode\":\"M0006\"}]},\"commonConfig\":{\"pagination\":{\"pageNum\":1,\"pageSize\":20}}}]": {
+      "success": true,
+      "code": 200,
+      "message": "操作成功",
+      "data": [
+        {
+          "code": 200,
+          "msg": "success",
+          "success": true,
+          "data": {
+            "resultType": "TABLE",
+            "result": {
+              "columns": [
+                {
+                  "identifierCode": "M0001",
+                  "label": "预测缺口",
+                  "type": "METRIC"
+                },
+                {
+                  "identifierCode": "M00013",
+                  "label": "战略客户突破",
+                  "type": "METRIC"
+                }
+              ],
+              "rows": [
+                {
+                  "M0001": {
+                    "value": 2817864039.31
+                  },
+                  "M00013": {
+                    "value": 2573137387.1
+                  }
+                }
+              ]
+            },
+            "pagination": {
+              "pageNum": 1,
+              "pageSize": 20,
+              "total": 1
+            }
+          }
+        },
+        {
+          "code": 200,
+          "msg": "success",
+          "success": true,
+          "data": {
+            "resultType": "TABLE",
+            "result": {
+              "columns": [
+                {
+                  "identifierCode": "M0001",
+                  "label": "采购金额",
+                  "type": "METRIC"
+                },
+                {
+                  "identifierCode": "M00013",
+                  "label": "发货金额",
+                  "type": "METRIC"
+                }
+              ],
+              "rows": [
+                {
+                  "M0001": {
+                    "value": 2817864039.31
+                  },
+                  "M00013": {
+                    "value": 2573137387.1
+                  }
+                }
+              ]
+            },
+            "pagination": {
+              "pageNum": 1,
+              "pageSize": 20,
+              "total": 1
+            }
+          }
+        },
+        {
+          "code": 200,
+          "msg": "success",
+          "success": true,
+          "data": {
+            "resultType": "TABLE",
+            "result": {
+              "columns": [
+                {
+                  "identifierCode": "M0001",
+                  "label": "采购金额",
+                  "type": "METRIC"
+                },
+                {
+                  "identifierCode": "M00013",
+                  "label": "发货金额",
+                  "type": "METRIC"
+                }
+              ],
+              "rows": [
+                {
+                  "M0001": {
+                    "value": 2817864039.31
+                  },
+                  "M00013": {
+                    "value": 2573137387.1
+                  }
+                }
+              ]
+            },
+            "pagination": {
+              "pageNum": 1,
+              "pageSize": 20,
+              "total": 1
+            }
+          }
+        },
+        {
+          "code": 200,
+          "msg": "success",
+          "success": true,
+          "data": {
+            "resultType": "TABLE",
+            "result": {
+              "columns": [
+                {
+                  "identifierCode": "M0001",
+                  "label": "采购金额",
+                  "type": "METRIC"
+                },
+                {
+                  "identifierCode": "M0006",
+                  "label": "采购数量",
+                  "type": "METRIC"
+                }
+              ],
+              "rows": [
+                {
+                  "M0001": {
+                    "value": 2817864039.31
+                  },
+                  "M0006": {
+                    "value": 3547252.1
+                  }
+                }
+              ]
+            },
+            "pagination": {
+              "pageNum": 1,
+              "pageSize": 20,
+              "total": 1
+            }
+          }
+        },
+        {
+          "code": 200,
+          "msg": "success",
+          "success": true,
+          "data": {
+            "resultType": "TABLE",
+            "result": {
+              "columns": [
+                {
+                  "identifierCode": "M0001",
+                  "label": "采购金额",
+                  "type": "METRIC"
+                },
+                {
+                  "identifierCode": "M0006",
+                  "label": "采购数量",
+                  "type": "METRIC"
+                }
+              ],
+              "rows": [
+                {
+                  "M0001": {
+                    "value": 2817864039.31
+                  },
+                  "M0006": {
+                    "value": 3547252.1
+                  }
+                }
+              ]
+            },
+            "pagination": {
+              "pageNum": 1,
+              "pageSize": 20,
+              "total": 1
             }
           }
         }
@@ -9764,6 +10127,216 @@
               "type": "ACTIVITY_ACTIVITY",
               "source": "2109840573998350338",
               "target": "2109840696539136002",
+              "meta": {}
+            }
+          ]
+        }
+      }
+    },
+    "{\"method\":\"get\",\"params\":{\"flowCode\":\"FULL_PROCESS_OPERATIONS_MANAGEMENT\"},\"path\":\"/api/gateway2/x360/v1/graphs/helmet-view\"}": {
+      "response": {
+        "success": true,
+        "code": 200,
+        "message": "操作成功",
+        "data": {
+          "helmetGlobalConfig": null,
+          "nodes": [
+            {
+              "id": "2109848488855519233",
+              "code": "BUSINESS_OPPORTUNITY_ACQUISITION",
+              "name": "商机获取",
+              "type": "ACTIVITY",
+              "meta": {
+                "helmetConfig": {
+                  "dataConfig": "{\"dimension\":[{\"fieldType\":\"dimension\",\"identifierCode\":\"D007\",\"isTree\":false,\"label\":\"发货完成状态维度\",\"valueType\":\"STRING\"}],\"measure\":[{\"fieldType\":\"measure\",\"identifierCode\":\"M00013\",\"isTree\":false,\"label\":\"发货金额\",\"name\":\"Shipment_Amount\",\"valueConfig\":{\"isThousand\":true,\"numericScale\":2},\"valueType\":\"NUMBER\"}]}",
+                  "statusMappings": [
+                    {
+                      "statusCode": "normal-error",
+                      "dimensionValue": "overdue_uncompleted"
+                    },
+                    {
+                      "statusCode": "normal-warning",
+                      "dimensionValue": "imminent_uncompleted"
+                    },
+                    {
+                      "statusCode": "normal-success",
+                      "dimensionValue": "normal_uncompleted"
+                    },
+                    {
+                      "statusCode": "error-normal",
+                      "dimensionValue": "overdue_completed"
+                    },
+                    {
+                      "statusCode": "success-normal",
+                      "dimensionValue": "normal_completed"
+                    }
+                  ]
+                }
+              },
+              "labels": [],
+              "action": null
+            },
+            {
+              "id": "2112022555167604737",
+              "code": "QUOTATION",
+              "name": "报价",
+              "type": "ACTIVITY",
+              "meta": {},
+              "labels": [],
+              "action": null
+            },
+            {
+              "id": "2109848488918433794",
+              "code": "BIDDING",
+              "name": "投标",
+              "type": "ACTIVITY",
+              "meta": {},
+              "labels": [],
+              "action": null
+            },
+            {
+              "id": "2109848488926822401",
+              "code": "ORDER_ACCEPTANCE",
+              "name": "订单接收",
+              "type": "ACTIVITY",
+              "meta": {},
+              "labels": [],
+              "action": null
+            },
+            {
+              "id": "2109848488926822402",
+              "code": "SHIPPING",
+              "name": "发货",
+              "type": "ACTIVITY",
+              "meta": {},
+              "labels": [],
+              "action": null
+            },
+            {
+              "id": "2113167086579662850",
+              "code": "RECEIVED_PAYMENT",
+              "name": "回款",
+              "type": "ACTIVITY",
+              "meta": {},
+              "labels": [],
+              "action": null
+            }
+          ],
+          "edges": [
+            {
+              "id": "2109848488943599620",
+              "type": "ACTIVITY_ACTIVITY",
+              "source": "2109848488926822401",
+              "target": "2109848488926822402",
+              "meta": {}
+            },
+            {
+              "id": "2112022555217936386",
+              "type": "ACTIVITY_ACTIVITY",
+              "source": "2109848488918433794",
+              "target": "2109848488926822401",
+              "meta": {}
+            },
+            {
+              "id": "2113150798612447233",
+              "type": "ACTIVITY_ACTIVITY",
+              "source": "2112022555167604737",
+              "target": "2109848488918433794",
+              "meta": {}
+            },
+            {
+              "id": "2113150798620835841",
+              "type": "ACTIVITY_ACTIVITY",
+              "source": "2109848488855519233",
+              "target": "2112022555167604737",
+              "meta": {}
+            },
+            {
+              "id": "2113167086629994497",
+              "type": "ACTIVITY_ACTIVITY",
+              "source": "2109848488926822402",
+              "target": "2113167086579662850",
+              "meta": {}
+            }
+          ]
+        }
+      }
+    },
+    "{\"method\":\"get\",\"params\":{\"flowCode\":\"SALES_CALIBER\"},\"path\":\"/api/gateway2/x360/v1/graphs/helmet-view\"}": {
+      "response": {
+        "success": true,
+        "code": 200,
+        "message": "操作成功",
+        "data": {
+          "helmetGlobalConfig": null,
+          "nodes": [
+            {
+              "id": "2109840325158682625",
+              "code": "BUSINESS_OPPORTUNITY_ACQUISITION",
+              "name": "商机获取",
+              "type": "ACTIVITY",
+              "meta": {
+                "helmetConfig": {
+                  "dataConfig": "{\"dimension\":[{\"fieldType\":\"dimension\",\"identifierCode\":\"D007\",\"isTree\":false,\"label\":\"发货完成状态维度\",\"valueType\":\"STRING\"}],\"measure\":[{\"fieldType\":\"measure\",\"identifierCode\":\"M00013\",\"isTree\":false,\"label\":\"发货金额\",\"name\":\"Shipment_Amount\",\"valueConfig\":{\"isThousand\":true,\"numericScale\":2},\"valueType\":\"NUMBER\"}]}",
+                  "statusMappings": [
+                    {
+                      "statusCode": "normal-error",
+                      "dimensionValue": "overdue_uncompleted"
+                    },
+                    {
+                      "statusCode": "normal-warning",
+                      "dimensionValue": "imminent_uncompleted"
+                    },
+                    {
+                      "statusCode": "normal-success",
+                      "dimensionValue": "normal_uncompleted"
+                    },
+                    {
+                      "statusCode": "error-normal",
+                      "dimensionValue": "overdue_completed"
+                    },
+                    {
+                      "statusCode": "success-normal",
+                      "dimensionValue": "normal_completed"
+                    }
+                  ]
+                }
+              },
+              "labels": [],
+              "action": null
+            },
+            {
+              "id": "2109840573998350338",
+              "code": "ORDER_RECEIPT",
+              "name": "订单接收",
+              "type": "ACTIVITY",
+              "meta": {},
+              "labels": [],
+              "action": null
+            },
+            {
+              "id": "2109840696539136002",
+              "code": "DISPATCH",
+              "name": "发货",
+              "type": "ACTIVITY",
+              "meta": {},
+              "labels": [],
+              "action": null
+            }
+          ],
+          "edges": [
+            {
+              "id": "2109840696543330305",
+              "type": "ACTIVITY_ACTIVITY",
+              "source": "2109840573998350338",
+              "target": "2109840696539136002",
+              "meta": {}
+            },
+            {
+              "id": "2113153399001235458",
+              "type": "ACTIVITY_ACTIVITY",
+              "source": "2109840325158682625",
+              "target": "2109840573998350338",
               "meta": {}
             }
           ]

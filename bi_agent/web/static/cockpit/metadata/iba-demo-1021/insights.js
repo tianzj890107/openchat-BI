@@ -2,22 +2,6 @@
  * 看板插入位置。内容在 insight-components/，这里只描述插在哪一层、哪条缝。
  */
 window.DashboardInsights = [
-  // 储能产品线整体经营分析 → 经营指标分组下方、头盔图上方
-  // 组件 insight-components/focus-risks
-  {
-    id: 'focus-risks',
-    embedPath: {
-      segments: [
-        {
-          kind: 'tab',
-          containerId: 'tab-container-zm9eyxne',
-          tabId: 'tab-qqzt1nj6',
-          templateId: '2113106174095179778',
-        },
-      ],
-    },
-    placement: { mode: 'insert', afterId: 'group-ist8eevh' },
-  },
   // 运营360整体分析 → 投标卡片底部（投标状态分布下方）
   // 组件 insight-components/bid-status-note
   {
@@ -33,27 +17,6 @@ window.DashboardInsights = [
       ],
     },
     placement: { mode: 'in-card', anchorId: 'group-4croqift', position: 'bottom' },
-  },
-  // 运营360整体分析 → 方案引导节点联动展示模版顶部（头盔图下方、异常项目分析上方）
-  // 组件 insight-components/scheme-guide-summary
-  {
-    id: 'scheme-guide-summary',
-    embedPath: {
-      segments: [
-        {
-          kind: 'tab',
-          containerId: 'tab-container-zm9eyxne',
-          tabId: 'tab-211tc4o0',
-          templateId: '2112434004503347202',
-        },
-        {
-          kind: 'template',
-          containerId: 'template-rjjcf4v1',
-          templateId: '2112059168287408129',
-        },
-      ],
-    },
-    placement: { mode: 'insert', afterId: null },
   },
   // 运营360整体分析 → 报价节点联动展示模版顶部（头盔图下方、报价-异常项目分析上方）
   // 组件 insight-components/quote-summary
@@ -71,27 +34,6 @@ window.DashboardInsights = [
           kind: 'template',
           containerId: 'template-rjjcf4v1',
           templateId: '2112059463654490114',
-        },
-      ],
-    },
-    placement: { mode: 'insert', afterId: null },
-  },
-  // 运营360整体分析 → 技术方案节点联动展示模版顶部（头盔图下方、技术方案-异常项目分析上方）
-  // 组件 insight-components/tech-plan-summary
-  {
-    id: 'tech-plan-summary',
-    embedPath: {
-      segments: [
-        {
-          kind: 'tab',
-          containerId: 'tab-container-zm9eyxne',
-          tabId: 'tab-211tc4o0',
-          templateId: '2112434004503347202',
-        },
-        {
-          kind: 'template',
-          containerId: 'template-rjjcf4v1',
-          templateId: '2112059620722786305',
         },
       ],
     },
@@ -134,27 +76,6 @@ window.DashboardInsights = [
           kind: 'template',
           containerId: 'template-rjjcf4v1',
           templateId: '2112060211964461057',
-        },
-      ],
-    },
-    placement: { mode: 'insert', afterId: null },
-  },
-  // 运营360整体分析 → 发货节点联动展示模版顶部（头盔图下方、出货指标上方）
-  // 组件 insight-components/shipment-summary
-  {
-    id: 'shipment-summary',
-    embedPath: {
-      segments: [
-        {
-          kind: 'tab',
-          containerId: 'tab-container-zm9eyxne',
-          tabId: 'tab-211tc4o0',
-          templateId: '2112434004503347202',
-        },
-        {
-          kind: 'template',
-          containerId: 'template-rjjcf4v1',
-          templateId: '2112010750949113858',
         },
       ],
     },
@@ -217,27 +138,6 @@ window.DashboardInsights = [
       ],
     },
     placement: { mode: 'in-card', anchorId: 'group-9ypz7vwt', position: 'bottom' },
-  },
-  // 穿透式问题分析 → 投标节点联动展示模版顶部（销售额口径明细上方）
-  // 组件 insight-components/sales-bid-summary
-  {
-    id: 'sales-bid-summary',
-    embedPath: {
-      segments: [
-        {
-          kind: 'tab',
-          containerId: 'tab-container-zm9eyxne',
-          tabId: 'tab-1suxx5hd',
-          templateId: '2112061604959928321',
-        },
-        {
-          kind: 'template',
-          containerId: 'template-ryfsat5y',
-          templateId: '2112059751740260354',
-        },
-      ],
-    },
-    placement: { mode: 'insert', afterId: null },
   },
   // 穿透式问题分析 → 订单接收节点联动展示模版顶部（受影响订单清单上方）
   // 组件 insight-components/order-risk-summary

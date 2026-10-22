@@ -8,15 +8,15 @@ from fastapi.testclient import TestClient
 from bi_agent.cockpit.metadata import build_bundle, ROOT, PAGE_IDS, OPS_NODES, RISK_NODES
 from bi_agent.cockpit.prototype import PrototypeSource
 from bi_agent.cockpit.router import build_cockpit_router
-from bi_agent.cockpit.runtime import PAGE_TEMPLATES, RELEASE, release_payload, runtime_payload
+from bi_agent.cockpit.runtime import METADATA, PAGE_TEMPLATES, RELEASE, release_payload, runtime_payload
 
 
 def test_compilation_preserves_upstream_and_all_renderable_data_is_explicit():
     original=(ROOT/'template-registry.json').read_bytes()
     b=build_bundle()
     assert (ROOT/'template-registry.json').read_bytes()==original
-    assert set(b['pages'])=={'home','overview','operations','analysis'}
-    assert len(b['bindings'])==106
+    assert set(b['pages'])=={'overview','operations','analysis'}
+    assert len(b['bindings'])==86
     reported={(g.get('templateId'),g.get('componentId')) for g in b['gaps'] if g['code']=='CHILD_DEFINITION_MISSING'}
     unavailable=[]
     for tid,t in b['templates'].items():
@@ -45,8 +45,8 @@ def test_node_templates_and_insight_paths_are_consistent():
         assert {r['nodeId'] for r in rules}==set(nodes.values())
         assert all(r['templateId'] in b['templates'] for r in rules)
     assert all(any(s['kind']=='tab' for s in i['embedPath']['segments']) for i in b['insights'])
-    assert len(b['insights'])==17
-    assert {i['id'] for i in b['insights']} >= {'focus-risks','scheme-guide-summary','shipment-risk-summary','shipment-task-order'}
+    assert len(b['insights'])==12
+    assert {i['id'] for i in b['insights']} >= {'bid-status-note','quote-summary','shipment-risk-summary','shipment-task-order'}
     detail=b['datasets']['2112010750949113858/table-nu6hm1ge']
     assert len(detail)==15
     assert detail[0]['f0']=='构网型产品部 · 目标'
@@ -76,34 +76,31 @@ def test_static_proui_runtime_is_reproducible_and_uses_release_data():
     assert stored==release_payload()
     assert stored['renderer']=='ProBiDashboard'
     assert stored['mode']=='release'
-    assert stored['source']['dashboardId']=='2109836674373566465'
-    assert stored['source']['version']=='1.0.0'
-    assert stored['source']['templateCount']==15
-    assert stored['source']['totalComponents']==139
-    assert set(stored['pages'])=={'home','overview','operations','analysis'}
-    assert stored['counts']['home']=={
-        'total':9,'types':{'group':1,'title':1,'button-group':1,'progress':5,'mini-cpgraph':1},'withData':6,
-    }
+    assert stored['source']['dashboardId']=='iba-demo-1021'
+    assert stored['source']['version']=='37975c7'
+    assert stored['source']['templateCount']==13
+    assert stored['source']['totalComponents']==122
+    assert set(stored['pages'])=={'overview','operations','analysis'}
     assert stored['counts']['overview']=={
-        'total':9,'types':{'progress':5,'template':1,'button-group':1,'title':1,'group':1},'withData':6,
+        'total':10,'types':{'progress':5,'template':1,'button-group':1,'title':1,'group':1,'process-arc':1},'withData':7,
     }
-    assert stored['counts']['operations']['total']==43
-    assert stored['counts']['operations']['withData']==33
+    assert stored['counts']['operations']['total']==38
+    assert stored['counts']['operations']['withData']==28
     assert stored['counts']['analysis']=={
-        'total':10,'types':{'progress':5,'mini-cpgraph':1,'template':1,'group':1,'title':1,'button-group':1},'withData':6,
+        'total':10,'types':{'progress':5,'mini-cpgraph':1,'template':1,'group':1,'title':1,'button-group':1},'withData':5,
     }
-    assert len(stored['templates'])==15
-    assert stored['gaps']==[]
+    assert len(stored['templates'])==13
+    assert {gap['code'] for gap in stored['gaps']} >= {'CHILD_DEFINITION_MISSING','AP_SNAPSHOT_BASIS'}
     prohibited={'cockpit-gap','cockpit-risk-list'}
     for spec in list(stored['pages'].values()) + list(stored['templates'].values()):
         for component in spec['components']:
             assert component['type'] not in prohibited
     assert {page: len(value['insights']) for page, value in stored['pages'].items()}=={
-        'home': 1, 'overview': 0, 'operations': 7, 'analysis': 9,
+        'overview': 0, 'operations': 4, 'analysis': 8,
     }
     assert {slot['id'] for slot in stored['pages']['analysis']['insights']}=={
         'sales-shipment-issues', 'opportunity-risk', 'opportunity-coverage-note',
-        'sales-bid-summary', 'order-risk-summary', 'shipment-risk-summary',
+        'order-risk-summary', 'shipment-risk-summary',
         'shipment-overdue-note', 'shipment-cause-breakdown', 'shipment-task-order',
     }
     assert all('segments' in slot['embedPath'] for value in stored['pages'].values() for slot in value['insights'])
@@ -114,9 +111,9 @@ def test_static_proui_runtime_is_reproducible_and_uses_release_data():
     assert hashlib.sha256(raw).hexdigest()==source['snapshot']['sha256']
     assert len(raw)==source['snapshot']['bytes']
     captured=json.loads(raw)
-    assert len(captured['analysis'])==source['snapshot']['analysisRequests']==38
-    assert len(captured['batch'])==source['snapshot']['batchRequests']==2
-    assert len(captured['requests'])==source['snapshot']['helmetRequests']==2
+    assert len(captured['analysis'])==source['snapshot']['analysisRequests']==39
+    assert len(captured['batch'])==source['snapshot']['batchRequests']==3
+    assert len(captured['requests'])==source['snapshot']['helmetRequests']==4
     assert source['snapshot']['filterVariants']==4
     filter_rows={tuple(key['commonConfig']['filters']['value']) for key in map(json.loads,captured['analysis']) if (key.get('commonConfig') or {}).get('filters')}
     assert filter_rows=={('2025-01-01','2025-12-31'),('2026-01-01','2026-12-31')}
@@ -151,20 +148,19 @@ def test_metadata_api_and_analysis_source_isolation(tmp_path):
 
 def test_runtime_components_are_release_templates_verbatim():
     payload=runtime_payload()
-    root=json.loads(json.loads((RELEASE/'dashboard.json').read_text())['data']['configs'])
-    assert payload['dashboard']['components']==root['components']
+    root=json.loads((METADATA/'components.json').read_text())
+    assert payload['dashboard']['components']==root
     assert [(c['id'],c['type']) for c in payload['dashboard']['components']]==[
         ('composite-filter-hzjk9t5q','composite-filter'),
         ('tab-container-zm9eyxne','tab-container'),
     ]
 
-    tabs=next(c for c in root['components'] if c['type']=='tab-container')['baseConfig']['tabs']
-    assert [t['id'] for t in tabs]==list(payload['pages'][page]['tabId'] for page in ('home','overview','operations','analysis'))
+    tabs=next(c for c in root if c['type']=='tab-container')['baseConfig']['tabs']
+    assert [t['id'] for t in tabs]==list(payload['pages'][page]['tabId'] for page in ('overview','operations','analysis'))
     assert [t['templateId'] for t in tabs]==list(PAGE_TEMPLATES.values())
 
     for page,tid in PAGE_TEMPLATES.items():
-        record=json.loads((RELEASE/'templates'/f'{tid}.json').read_text())
-        files=json.loads(record['data']['configs'])
+        files=json.loads((METADATA/'template-registry.json').read_text())[tid]
         assert payload['pages'][page]['components']==files['components']
         assert payload['templates'][tid]['components']==files['components']
         assert payload['pages'][page]['insights']==release_payload()['pages'][page]['insights']

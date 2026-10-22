@@ -69,6 +69,24 @@
                 "kind": "tab",
                 "tabId": "tab-bc6wp3k2",
                 "templateId": "2112001069107167233"
+              },
+              {
+                "containerId": "template-py27ctvu",
+                "kind": "template",
+                "templateId": "2112009587516293121"
+              }
+            ],
+            "targetId": "kpiCard-lhq115j7",
+            "templateComponentId": "tab-container-zm9eyxne",
+            "templateId": "2112009587516293121"
+          },
+          {
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
               }
             ],
             "targetId": "progress-y5dumxio",
@@ -82,16 +100,11 @@
                 "kind": "tab",
                 "tabId": "tab-bc6wp3k2",
                 "templateId": "2112001069107167233"
-              },
-              {
-                "containerId": "template-py27ctvu",
-                "kind": "template",
-                "templateId": "2112009587516293121"
               }
             ],
-            "targetId": "kpiCard-lhq115j7",
+            "targetId": "process-arc-647v3hoc",
             "templateComponentId": "tab-container-zm9eyxne",
-            "templateId": "2112009587516293121"
+            "templateId": "2112001069107167233"
           }
         ]
       },
@@ -153,13 +166,8 @@
     "baseConfig": {
       "tabs": [
         {
-          "id": "tab-qqzt1nj6",
-          "label": "储能产品线整体经营分析",
-          "templateId": "2113106174095179778"
-        },
-        {
           "id": "tab-bc6wp3k2",
-          "label": "全局经营看板",
+          "label": "经营看板",
           "templateId": "2112001069107167233"
         },
         {

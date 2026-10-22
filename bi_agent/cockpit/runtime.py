@@ -1,10 +1,11 @@
-"""Materialize the published pdt dashboard for the isolated cockpit page.
+"""Materialize the delivered iba-demo dashboard for the isolated cockpit page.
 
-The release page at ``/dashboard/release/2109836674373566465`` is itself one
-ProUI ``ProBiDashboard``: a header composite filter plus a tab container whose
-four tabs resolve to frozen template configs.  The page keeps the original
-dashboard/template responses on disk and replays the captured AP read responses
-from ``data-snapshots.json``.  No SSO cookie or user token is stored here.
+The source of truth is the handed-off ``feature/demo_1021`` metadata:
+two root components, 13 template configs, 12 insight placements and the
+matching static insight components.  The host does not rewrite component
+positions or synthesise missing cards.  AP reads are replayed from the frozen
+pdt-release snapshot bundle; any uncaptured query surfaces the native
+"missing release snapshot" error at its original card position.
 """
 from __future__ import annotations
 
@@ -15,20 +16,23 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1] / "web/static/cockpit/metadata"
+METADATA = ROOT / "iba-demo-1021"
 RELEASE = ROOT / "pdt-release-2109836674373566465"
-INSIGHTS = ROOT / "iba-demo-1021/insights.json"
-RELEASE_ID = "2109836674373566465"
+SNAPSHOTS = RELEASE / "data-snapshots.json"
 PAGE_IDS = {
-    "home": "tab-qqzt1nj6",
     "overview": "tab-bc6wp3k2",
     "operations": "tab-211tc4o0",
     "analysis": "tab-1suxx5hd",
 }
 PAGE_TEMPLATES = {
-    "home": "2113106174095179778",
     "overview": "2112001069107167233",
     "operations": "2112434004503347202",
     "analysis": "2112061604959928321",
+}
+PAGE_LABELS = {
+    "overview": "经营看板",
+    "operations": "运营360整体分析",
+    "analysis": "穿透式问题分析",
 }
 CONTAINERS = {
     "group", "template", "tab-container", "segmented-strip", "split-container",
@@ -36,20 +40,12 @@ CONTAINERS = {
 }
 SUPPORTED_TYPES = CONTAINERS | {
     "bar", "bar-line", "funnel", "horizontal-bar", "kpiCard", "mini-cpgraph",
-    "progress", "share-bar", "table",
+    "process-arc", "progress", "share-bar", "table",
 }
 
 
-def _record(path: Path) -> dict:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    value = payload.get("data")
-    if not isinstance(value, dict) or not isinstance(value.get("configs"), str):
-        raise ValueError(f"invalid dashboard record: {path}")
-    return deepcopy(value)
-
-
-def _config(record: dict) -> dict:
-    return json.loads(record["configs"])
+def _json(path: Path):
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _component_counts(components: list[dict]) -> dict:
@@ -59,100 +55,102 @@ def _component_counts(components: list[dict]) -> dict:
         "withData": sum(
             1
             for component in components
-            if (component.get("dataConfig") or {}).get("mockData") is not None
-            or (component.get("dataConfig") or {}).get("sourceType") in {"ap", "request"}
+            if (component.get("dataConfig") or {}).get("sourceType") in {"ap", "request"}
         ),
     }
 
 
-def _template_record(record: dict) -> dict:
-    return {
-        "templateId": record["id"],
-        "meta": {
-            "name": record.get("name", ""),
-            "description": record.get("description", ""),
-            "version": record.get("version", ""),
-            "status": record.get("status", ""),
-            "url": record.get("url", ""),
-        },
-        "components": _config(record).get("components", []),
-    }
+def _template_refs(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == "templateId" and isinstance(child, str):
+                yield child
+            elif key == "templateSwitchTargets" and isinstance(child, list):
+                yield from (item for item in child if isinstance(item, str))
+            else:
+                yield from _template_refs(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _template_refs(child)
 
 
-def _page_insights(template_id: str) -> list[dict]:
-    """Return delivery slots owned by one page for the whole-dashboard renderer."""
-    result = []
-    for slot in json.loads(INSIGHTS.read_text(encoding="utf-8")):
-        value = deepcopy(slot)
-        segments = value.get("embedPath", {}).get("segments") or []
-        if not segments or segments[0].get("templateId") != template_id:
-            continue
-        result.append(value)
-    return result
+def _component_ids(components: list[dict]) -> set[str]:
+    return {component["id"] for component in components if component.get("id")}
 
 
-def _collect_gaps(root: dict, templates: dict[str, dict]) -> list[dict]:
+def _target_components(slot: dict, root: list[dict], templates: dict[str, dict]) -> list[dict]:
+    segments = (slot.get("embedPath") or {}).get("segments") or []
+    template_id = segments[-1].get("templateId") if segments else None
+    if template_id in templates:
+        return templates[template_id].get("components", [])
+    return root
+
+
+def _collect_gaps(root: list[dict], templates: dict[str, dict]) -> list[dict]:
     gaps: list[dict] = []
 
-    def template_refs(value):
-        if isinstance(value, dict):
-            for key, child in value.items():
-                if key == "templateId" and isinstance(child, str):
-                    yield child
-                elif key == "templateSwitchTargets" and isinstance(child, list):
-                    yield from (item for item in child if isinstance(item, str))
-                else:
-                    yield from template_refs(child)
-        elif isinstance(value, list):
-            for child in value:
-                yield from template_refs(child)
-
-    for component in root.get("components", []):
+    def inspect(component: dict, template_id: str | None = None) -> None:
         component_type = component.get("type")
+        location = {"componentId": component.get("id")}
+        if template_id:
+            location["templateId"] = template_id
         if component_type not in SUPPORTED_TYPES:
             gaps.append({
                 "code": "UNSUPPORTED_COMPONENT",
-                "componentId": component.get("id"),
                 "description": f"未找到类型 {component_type} 对应的 ProUI 组件",
+                **location,
             })
-        for template_id in sorted(set(template_refs(component))):
-            if template_id not in templates:
+        own_ids = _component_ids((templates.get(template_id) or {}).get("components", [])) if template_id else _component_ids(root)
+        for child in component.get("children", []) or []:
+            if child not in own_ids:
+                gaps.append({
+                    "code": "CHILD_DEFINITION_MISSING",
+                    "description": f"父组件引用的子组件 {child} 未包含在同级配置中，原位置保留空位",
+                    "missingChildId": child,
+                    **location,
+                })
+        for nested in sorted(set(_template_refs(component))):
+            if nested not in templates:
                 gaps.append({
                     "code": "TEMPLATE_MISSING",
-                    "componentId": component.get("id"),
-                    "templateId": template_id,
-                    "description": f"组件引用的模板 {template_id} 未包含在发布配置中",
+                    "description": f"组件引用的模板 {nested} 未包含在交付配置中",
+                    "referencedTemplateId": nested,
+                    **location,
                 })
 
+    for component in root:
+        inspect(component)
     for template_id, template in templates.items():
         for component in template.get("components", []):
-            component_type = component.get("type")
-            if component_type not in SUPPORTED_TYPES:
+            inspect(component, template_id)
+
+    for slot in _json(METADATA / "insights.json"):
+        placement = slot.get("placement") or {}
+        target_ids = _component_ids(_target_components(slot, root, templates))
+        for key in ("anchorId", "afterId"):
+            referenced = placement.get(key)
+            if referenced and referenced not in target_ids:
                 gaps.append({
-                    "code": "UNSUPPORTED_COMPONENT",
-                    "componentId": component.get("id"),
-                    "templateId": template_id,
-                    "description": f"未找到类型 {component_type} 对应的 ProUI 组件",
+                    "code": "INSIGHT_ANCHOR_MISSING",
+                    "description": f"分析插槽 {slot['id']} 的落点组件 {referenced} 未包含在交付配置中",
+                    "insightId": slot["id"],
+                    "componentId": referenced,
                 })
-            for nested in sorted(set(template_refs(component))):
-                if nested not in templates:
-                    gaps.append({
-                        "code": "TEMPLATE_MISSING",
-                        "componentId": component.get("id"),
-                        "templateId": template_id,
-                        "description": f"组件引用的模板 {nested} 未包含在发布配置中",
-                    })
+
+    gaps.append({
+        "code": "AP_SNAPSHOT_BASIS",
+        "description": "AP 查询沿用 pdt release 2109836674373566465 的冻结快照；本次新增且未捕获的查询会在原卡片显示“未找到该 AP 查询的发布快照”，宿主不补造数据。",
+    })
     return gaps
 
 
 def release_payload() -> dict:
-    source = json.loads((RELEASE / "source.json").read_text(encoding="utf-8"))
-    root = _record(RELEASE / "dashboard.json")
-    root_config = _config(root)
-    templates = {}
-    for path in sorted((RELEASE / "templates").glob("*.json"), key=lambda value: value.stem):
-        record = _record(path)
-        templates[record["id"]] = _template_record(record)
+    source = _json(METADATA / "source.json")
+    root = deepcopy(_json(METADATA / "components.json"))
+    templates = deepcopy(_json(METADATA / "template-registry.json"))
+    insights = _json(METADATA / "insights.json")
+    snapshot_source = _json(RELEASE / "source.json")
+    snapshots = _json(SNAPSHOTS)
 
     pages = {}
     for page, tab_id in PAGE_IDS.items():
@@ -162,53 +160,67 @@ def release_payload() -> dict:
             "id": page,
             "tabId": tab_id,
             "templateId": template_id,
-            "title": template.get("meta", {}).get("name", page),
+            "title": PAGE_LABELS[page],
             "components": template.get("components", []),
-            "insights": _page_insights(template_id),
+            "insights": [
+                deepcopy(slot)
+                for slot in insights
+                if ((slot.get("embedPath") or {}).get("segments") or [{}])[0].get("tabId") == tab_id
+            ],
         }
 
-    components = root_config.get("components", [])
     dashboard = {
-        "id": root["id"],
-        "name": root.get("name", ""),
-        "description": root.get("description", ""),
-        "version": root.get("version", ""),
-        "status": root.get("status", ""),
-        "url": root.get("url", ""),
-        "components": components,
-        "gridCols": root_config.get("gridCols", 120),
-        "rowHeight": root_config.get("rowHeight", 10),
-        "theme": root_config.get("theme", "light"),
-        "headerLayout": root_config.get("headerLayout") or {},
-        "showHeaderTitle": bool(root_config.get("showHeaderTitle")),
+        "id": "iba-demo-1021",
+        "name": "运营360 整体分析",
+        "description": "iba-demo feature/demo_1021 交付看板",
+        "version": source["commit"][:7],
+        "status": "active",
+        "url": f"{source['repository']}/-/tree/{source['branch']}",
+        "components": root,
+        "gridCols": 120,
+        "rowHeight": 10,
+        "theme": "light",
+        "headerLayout": {"componentIds": ["composite-filter-hzjk9t5q"]},
+        "showHeaderTitle": True,
     }
     return {
         "source": {
-            "kind": source["kind"],
-            "dashboardId": source["dashboardId"],
-            "name": source["name"],
-            "releaseUrl": source["releaseUrl"],
-            "buildTime": source["buildTime"],
-            "fetchedAt": source["fetchedAt"],
-            "version": source["dashboardVersion"],
-            "status": source["dashboardStatus"],
-            "templateCount": source["templates"],
-            "totalComponents": len(components) + sum(
+            "kind": "iba-demo-metadata",
+            "dashboardId": "iba-demo-1021",
+            "name": "运营360 整体分析",
+            "releaseUrl": dashboard["url"],
+            "buildTime": source["importedAt"],
+            "fetchedAt": source["importedAt"],
+            "version": source["commit"][:7],
+            "status": "active",
+            "branch": source["branch"],
+            "commit": source["commit"],
+            "templateCount": len(templates),
+            "totalComponents": len(root) + sum(
                 len(template.get("components", [])) for template in templates.values()
             ),
+            "insightComponents": source["insightComponents"],
             "credentialsStored": False,
+            "snapshot": {
+                "kind": snapshot_source["kind"],
+                "dashboardId": snapshot_source["dashboardId"],
+                "analysisRequests": len(snapshots.get("analysis", {})),
+                "batchRequests": len(snapshots.get("batch", {})),
+                "helmetRequests": len(snapshots.get("requests", {})),
+                "credentialsStored": False,
+            },
         },
         "dashboard": dashboard,
         "pages": pages,
         "templates": templates,
         "counts": {
-            "root": _component_counts(components),
+            "root": _component_counts(root),
             **{
-                page: _component_counts(template.get("components", []))
-                for page, template in ((page, templates[PAGE_TEMPLATES[page]]) for page in PAGE_IDS)
+                page: _component_counts(templates.get(PAGE_TEMPLATES[page], {}).get("components", []))
+                for page in PAGE_IDS
             },
         },
-        "gaps": _collect_gaps(root_config, templates),
+        "gaps": _collect_gaps(root, templates),
         "renderer": "ProBiDashboard",
         "mode": "release",
     }

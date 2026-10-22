@@ -328,13 +328,6 @@
               "templateDashboardId": "2112062888320483329"
             },
             {
-              "nodeId": "2109840573985767425",
-              "tabTemplates": [],
-              "targetComponentId": "template-ryfsat5y",
-              "templateId": "2112059751740260354",
-              "templateDashboardId": "2112059751740260354"
-            },
-            {
               "nodeId": "2109840573998350338",
               "tabTemplates": [],
               "targetComponentId": "template-ryfsat5y",
@@ -2200,25 +2193,11 @@
               "templateDashboardId": "2112026770145329154"
             },
             {
-              "nodeId": "2109848488910045186",
-              "tabTemplates": [],
-              "targetComponentId": "template-rjjcf4v1",
-              "templateId": "2112059168287408129",
-              "templateDashboardId": "2112059168287408129"
-            },
-            {
               "nodeId": "2112022555167604737",
               "tabTemplates": [],
               "targetComponentId": "template-rjjcf4v1",
               "templateId": "2112059463654490114",
               "templateDashboardId": "2112059463654490114"
-            },
-            {
-              "nodeId": "2109848488914239490",
-              "tabTemplates": [],
-              "targetComponentId": "template-rjjcf4v1",
-              "templateId": "2112059620722786305",
-              "templateDashboardId": "2112059620722786305"
             },
             {
               "nodeId": "2109848488918433794",
@@ -2238,8 +2217,8 @@
               "nodeId": "2109848488926822402",
               "tabTemplates": [],
               "targetComponentId": "template-rjjcf4v1",
-              "templateId": "2112010750949113858",
-              "templateDashboardId": "2112010750949113858"
+              "templateId": "2113151813453660161",
+              "templateDashboardId": "2113151813453660161"
             }
           ]
         }
@@ -2294,10 +2273,10 @@
         },
         "id": "funnel-qexcz5h3",
         "position": {
-          "h": 19,
+          "h": 26,
           "w": 60,
           "x": 0,
-          "y": 40
+          "y": 47
         },
         "showHeader": true,
         "showTitle": true,
@@ -2313,335 +2292,6 @@
           },
           "legend": true
         }
-      },
-      {
-        "dataConfig": {
-          "sourceType": "mock"
-        },
-        "id": "group-tpr32caj",
-        "position": {
-          "h": 19,
-          "w": 60,
-          "x": 60,
-          "y": 40
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "方案引导",
-        "type": "group",
-        "visualization": {},
-        "baseConfig": {
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8,
-            "rows": [
-              [
-                "kpiCard-1wl6ftm8",
-                "kpiCard-u827ixvw",
-                "kpiCard-b7fdn8iy"
-              ],
-              [
-                "share-bar-zyd7cb7y"
-              ]
-            ],
-            "rowHeights": [
-              "50%",
-              null
-            ]
-          }
-        },
-        "styleConfig": {},
-        "children": [
-          "kpiCard-1wl6ftm8",
-          "kpiCard-u827ixvw",
-          "kpiCard-b7fdn8iy",
-          "share-bar-zyd7cb7y"
-        ],
-        "groupLayout": {
-          "gap": 8,
-          "justify": "space-between",
-          "rowGap": 8,
-          "rows": [
-            [
-              "kpiCard-1wl6ftm8",
-              "kpiCard-u827ixvw",
-              "kpiCard-b7fdn8iy"
-            ],
-            [
-              "share-bar-zyd7cb7y"
-            ]
-          ],
-          "rowHeights": [
-            "50%",
-            null
-          ]
-        }
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "value",
-                "label": "销售额"
-              }
-            ],
-            "subMeasure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "subValue",
-                "label": "较上月"
-              }
-            ]
-          },
-          "mockPreset": "kpiCard",
-          "sourceType": "ap",
-          "measure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "subMeasure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0006",
-              "isTree": false,
-              "label": "采购数量",
-              "name": "Purchase_Quantity",
-              "valueType": "NUMBER"
-            }
-          ]
-        },
-        "id": "kpiCard-1wl6ftm8",
-        "position": {
-          "h": 7,
-          "w": 30,
-          "x": 0,
-          "y": 59
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "KPI卡片",
-        "type": "kpiCard",
-        "visualization": {
-          "colorScheme": [
-            "#1890ff"
-          ]
-        },
-        "parentId": "group-tpr32caj",
-        "styleConfig": {
-          "backgroundColor": "#bcc6de"
-        }
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "value",
-                "label": "销售额"
-              }
-            ],
-            "subMeasure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "subValue",
-                "label": "较上月"
-              }
-            ]
-          },
-          "mockPreset": "kpiCard",
-          "sourceType": "ap",
-          "measure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "subMeasure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0006",
-              "isTree": false,
-              "label": "采购数量",
-              "name": "Purchase_Quantity",
-              "valueType": "NUMBER"
-            }
-          ]
-        },
-        "id": "kpiCard-u827ixvw",
-        "position": {
-          "h": 7,
-          "w": 30,
-          "x": 0,
-          "y": 59
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "KPI卡片",
-        "type": "kpiCard",
-        "visualization": {
-          "colorScheme": [
-            "#1890ff"
-          ]
-        },
-        "parentId": "group-tpr32caj",
-        "styleConfig": {
-          "backgroundColor": "#bcc6de"
-        }
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "value",
-                "label": "销售额"
-              }
-            ],
-            "subMeasure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "subValue",
-                "label": "较上月"
-              }
-            ]
-          },
-          "mockPreset": "kpiCard",
-          "sourceType": "ap",
-          "measure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "subMeasure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0006",
-              "isTree": false,
-              "label": "采购数量",
-              "name": "Purchase_Quantity",
-              "valueType": "NUMBER"
-            }
-          ]
-        },
-        "id": "kpiCard-b7fdn8iy",
-        "position": {
-          "h": 7,
-          "w": 30,
-          "x": 0,
-          "y": 59
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "KPI卡片",
-        "type": "kpiCard",
-        "visualization": {
-          "colorScheme": [
-            "#1890ff"
-          ]
-        },
-        "parentId": "group-tpr32caj",
-        "styleConfig": {
-          "backgroundColor": "#bcc6de"
-        }
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "categoryAxis": [
-              {
-                "fieldType": "Dimension",
-                "identifierCode": "状态",
-                "label": "状态"
-              }
-            ],
-            "valueAxis": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "数量",
-                "label": "数量"
-              }
-            ]
-          },
-          "mockPreset": "share-bar",
-          "sourceType": "ap",
-          "categoryAxis": [
-            {
-              "fieldType": "Dimension",
-              "identifierCode": "D005",
-              "isTree": true,
-              "label": "品类维度",
-              "valueType": "STRING"
-            }
-          ],
-          "valueAxis": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "sort": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER",
-              "order": "DESC"
-            }
-          ],
-          "pageSize": 4
-        },
-        "id": "share-bar-zyd7cb7y",
-        "position": {
-          "h": 10,
-          "w": 60,
-          "x": 0,
-          "y": 59
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "进行中用时拆分",
-        "type": "share-bar",
-        "visualization": {
-          "colorScheme": [
-            "#4096FF",
-            "#73D13D",
-            "#FFC53D",
-            "#FF7875",
-            "#B37FEB",
-            "#36CFC9",
-            "#FF85C0",
-            "#FFA940",
-            "#597EF7",
-            "#95DE64"
-          ]
-        },
-        "parentId": "group-tpr32caj"
       },
       {
         "dataConfig": {
@@ -2914,10 +2564,10 @@
         },
         "id": "group-ftrsjcmy",
         "position": {
-          "h": 19,
+          "h": 21,
           "w": 60,
           "x": 0,
-          "y": 59
+          "y": 91
         },
         "showHeader": true,
         "showTitle": true,
@@ -2964,335 +2614,6 @@
             ],
             [
               "share-bar-dz4jqu8b"
-            ]
-          ],
-          "rowHeights": [
-            "50%",
-            null
-          ]
-        }
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "value",
-                "label": "销售额"
-              }
-            ],
-            "subMeasure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "subValue",
-                "label": "较上月"
-              }
-            ]
-          },
-          "mockPreset": "kpiCard",
-          "sourceType": "ap",
-          "measure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "subMeasure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0006",
-              "isTree": false,
-              "label": "采购数量",
-              "name": "Purchase_Quantity",
-              "valueType": "NUMBER"
-            }
-          ]
-        },
-        "id": "kpiCard-25qx19gu",
-        "position": {
-          "h": 7,
-          "w": 30,
-          "x": 0,
-          "y": 59
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "KPI卡片",
-        "type": "kpiCard",
-        "visualization": {
-          "colorScheme": [
-            "#1890ff"
-          ]
-        },
-        "parentId": "group-wraxt9z6",
-        "styleConfig": {
-          "backgroundColor": "#bcc6de"
-        }
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "value",
-                "label": "销售额"
-              }
-            ],
-            "subMeasure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "subValue",
-                "label": "较上月"
-              }
-            ]
-          },
-          "mockPreset": "kpiCard",
-          "sourceType": "ap",
-          "measure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "subMeasure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0006",
-              "isTree": false,
-              "label": "采购数量",
-              "name": "Purchase_Quantity",
-              "valueType": "NUMBER"
-            }
-          ]
-        },
-        "id": "kpiCard-tpxdlb8r",
-        "position": {
-          "h": 7,
-          "w": 30,
-          "x": 0,
-          "y": 59
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "KPI卡片",
-        "type": "kpiCard",
-        "visualization": {
-          "colorScheme": [
-            "#1890ff"
-          ]
-        },
-        "parentId": "group-wraxt9z6",
-        "styleConfig": {
-          "backgroundColor": "#bcc6de"
-        }
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "value",
-                "label": "销售额"
-              }
-            ],
-            "subMeasure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "subValue",
-                "label": "较上月"
-              }
-            ]
-          },
-          "mockPreset": "kpiCard",
-          "sourceType": "ap",
-          "measure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "subMeasure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0006",
-              "isTree": false,
-              "label": "采购数量",
-              "name": "Purchase_Quantity",
-              "valueType": "NUMBER"
-            }
-          ]
-        },
-        "id": "kpiCard-xwzd61up",
-        "position": {
-          "h": 7,
-          "w": 30,
-          "x": 0,
-          "y": 59
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "KPI卡片",
-        "type": "kpiCard",
-        "visualization": {
-          "colorScheme": [
-            "#1890ff"
-          ]
-        },
-        "parentId": "group-wraxt9z6",
-        "styleConfig": {
-          "backgroundColor": "#bcc6de"
-        }
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "categoryAxis": [
-              {
-                "fieldType": "Dimension",
-                "identifierCode": "状态",
-                "label": "状态"
-              }
-            ],
-            "valueAxis": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "数量",
-                "label": "数量"
-              }
-            ]
-          },
-          "mockPreset": "share-bar",
-          "sourceType": "ap",
-          "categoryAxis": [
-            {
-              "fieldType": "Dimension",
-              "identifierCode": "D005",
-              "isTree": true,
-              "label": "品类维度",
-              "valueType": "STRING"
-            }
-          ],
-          "valueAxis": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "sort": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER",
-              "order": "DESC"
-            }
-          ],
-          "pageSize": 4
-        },
-        "id": "share-bar-gb37tfrr",
-        "position": {
-          "h": 10,
-          "w": 60,
-          "x": 0,
-          "y": 59
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "进行中用时拆分",
-        "type": "share-bar",
-        "visualization": {
-          "colorScheme": [
-            "#4096FF",
-            "#73D13D",
-            "#FFC53D",
-            "#FF7875",
-            "#B37FEB",
-            "#36CFC9",
-            "#FF85C0",
-            "#FFA940",
-            "#597EF7",
-            "#95DE64"
-          ]
-        },
-        "parentId": "group-wraxt9z6"
-      },
-      {
-        "dataConfig": {
-          "sourceType": "mock"
-        },
-        "id": "group-wraxt9z6",
-        "position": {
-          "h": 19,
-          "w": 60,
-          "x": 60,
-          "y": 59
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "技术方案",
-        "type": "group",
-        "visualization": {},
-        "baseConfig": {
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8,
-            "rows": [
-              [
-                "kpiCard-25qx19gu",
-                "kpiCard-tpxdlb8r",
-                "kpiCard-xwzd61up"
-              ],
-              [
-                "share-bar-gb37tfrr"
-              ]
-            ],
-            "rowHeights": [
-              "50%",
-              null
-            ]
-          }
-        },
-        "styleConfig": {},
-        "children": [
-          "kpiCard-25qx19gu",
-          "kpiCard-tpxdlb8r",
-          "kpiCard-xwzd61up",
-          "share-bar-gb37tfrr"
-        ],
-        "groupLayout": {
-          "gap": 8,
-          "justify": "space-between",
-          "rowGap": 8,
-          "rows": [
-            [
-              "kpiCard-25qx19gu",
-              "kpiCard-tpxdlb8r",
-              "kpiCard-xwzd61up"
-            ],
-            [
-              "share-bar-gb37tfrr"
             ]
           ],
           "rowHeights": [
@@ -3572,10 +2893,10 @@
         },
         "id": "group-4croqift",
         "position": {
-          "h": 26,
+          "h": 21,
           "w": 60,
-          "x": 0,
-          "y": 78
+          "x": 60,
+          "y": 91
         },
         "showHeader": true,
         "showTitle": true,
@@ -3904,7 +3225,7 @@
           "h": 26,
           "w": 60,
           "x": 60,
-          "y": 78
+          "y": 47
         },
         "showHeader": true,
         "showTitle": true,
@@ -4235,7 +3556,7 @@
           "h": 18,
           "w": 120,
           "x": 0,
-          "y": 104
+          "y": 73
         },
         "showHeader": true,
         "showTitle": true,
@@ -4401,6 +3722,270 @@
           "legend": true
         },
         "parentId": "group-fbf8l4il"
+      },
+      {
+        "dataConfig": {
+          "sourceType": "mock"
+        },
+        "id": "segmented-strip-mp3j0fdk",
+        "position": {
+          "h": 7,
+          "w": 120,
+          "x": 0,
+          "y": 40
+        },
+        "showHeader": false,
+        "showTitle": false,
+        "title": "分段条",
+        "type": "segmented-strip",
+        "visualization": {},
+        "styleConfig": {},
+        "children": [
+          "kpiCard-rxeparen",
+          "kpiCard-hfmcdthn",
+          "kpiCard-shon2bht"
+        ],
+        "baseConfig": {}
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "measure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "value",
+                "label": "销售额"
+              }
+            ],
+            "subMeasure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "subValue",
+                "label": "较上月"
+              }
+            ]
+          },
+          "mockPreset": "kpiCard",
+          "sourceType": "ap",
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "subMeasure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
+        },
+        "id": "kpiCard-rxeparen",
+        "position": {
+          "h": 7,
+          "w": 30,
+          "x": 0,
+          "y": 132
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "KPI卡片",
+        "type": "kpiCard",
+        "visualization": {
+          "colorScheme": [
+            "#1890ff"
+          ]
+        },
+        "parentId": "segmented-strip-mp3j0fdk"
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "measure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "value",
+                "label": "销售额"
+              }
+            ],
+            "subMeasure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "subValue",
+                "label": "较上月"
+              }
+            ]
+          },
+          "mockPreset": "kpiCard",
+          "sourceType": "ap",
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "subMeasure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
+        },
+        "id": "kpiCard-hfmcdthn",
+        "position": {
+          "h": 7,
+          "w": 30,
+          "x": 0,
+          "y": 132
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "KPI卡片",
+        "type": "kpiCard",
+        "visualization": {
+          "colorScheme": [
+            "#1890ff"
+          ]
+        },
+        "parentId": "segmented-strip-mp3j0fdk"
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "measure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "value",
+                "label": "销售额"
+              }
+            ],
+            "subMeasure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "subValue",
+                "label": "较上月"
+              }
+            ]
+          },
+          "mockPreset": "kpiCard",
+          "sourceType": "ap",
+          "measure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "subMeasure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ]
+        },
+        "id": "kpiCard-shon2bht",
+        "position": {
+          "h": 7,
+          "w": 30,
+          "x": 0,
+          "y": 132
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "KPI卡片",
+        "type": "kpiCard",
+        "visualization": {
+          "colorScheme": [
+            "#1890ff"
+          ]
+        },
+        "parentId": "segmented-strip-mp3j0fdk"
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "categoryAxis": [
+              {
+                "fieldType": "Dimension",
+                "identifierCode": "类别",
+                "label": "类别"
+              }
+            ],
+            "valueAxis": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "数量",
+                "label": "数量"
+              }
+            ]
+          },
+          "mockPreset": "horizontal-bar",
+          "sourceType": "ap",
+          "valueAxis": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "categoryAxis": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D005",
+              "isTree": true,
+              "label": "品类维度",
+              "valueType": "STRING"
+            }
+          ]
+        },
+        "id": "horizontal-bar-klrmt8n1",
+        "position": {
+          "h": 19,
+          "w": 120,
+          "x": 0,
+          "y": 112
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "各节点平均周期与标杆对比",
+        "type": "horizontal-bar",
+        "visualization": {
+          "legend": true
+        }
       }
     ]
   },
@@ -5265,261 +4850,6 @@
       }
     ]
   },
-  "2112059168287408129": {
-    "templateId": "2112059168287408129",
-    "meta": {
-      "name": "运营360 整体分析-方案引导"
-    },
-    "components": [
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "categoryAxis": [
-              {
-                "fieldType": "Dimension",
-                "identifierCode": "类别",
-                "label": "类别"
-              }
-            ],
-            "valueAxis": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "数量",
-                "label": "数量"
-              }
-            ]
-          },
-          "mockPreset": "horizontal-bar",
-          "sourceType": "ap",
-          "valueAxis": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "categoryAxis": [
-            {
-              "fieldType": "Dimension",
-              "identifierCode": "D005",
-              "isTree": true,
-              "label": "品类维度",
-              "valueType": "STRING"
-            }
-          ]
-        },
-        "id": "horizontal-bar-gwwqwvxt",
-        "position": {
-          "h": 19,
-          "w": 60,
-          "x": 0,
-          "y": 8
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "分产品看异常",
-        "type": "horizontal-bar",
-        "visualization": {
-          "legend": true,
-          "labelPosition": "right"
-        },
-        "parentId": "group-wyx7bpog"
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "categoryAxis": [
-              {
-                "fieldType": "Dimension",
-                "identifierCode": "类别",
-                "label": "类别"
-              }
-            ],
-            "valueAxis": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "数量",
-                "label": "数量"
-              }
-            ]
-          },
-          "mockPreset": "horizontal-bar",
-          "sourceType": "ap",
-          "valueAxis": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "categoryAxis": [
-            {
-              "fieldType": "Dimension",
-              "identifierCode": "D002",
-              "isTree": false,
-              "label": "供应商维度",
-              "valueType": "STRING"
-            }
-          ]
-        },
-        "id": "horizontal-bar-3q9rlp4s",
-        "position": {
-          "h": 19,
-          "w": 60,
-          "x": 60,
-          "y": 8
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "分客户看异常",
-        "type": "horizontal-bar",
-        "visualization": {
-          "legend": true,
-          "labelPosition": "right"
-        },
-        "parentId": "group-wyx7bpog"
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "tableFields": [
-              {
-                "fieldType": "Dimension",
-                "identifierCode": "类别",
-                "label": "类别"
-              },
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "数量",
-                "label": "数量"
-              },
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "金额",
-                "label": "金额"
-              }
-            ]
-          },
-          "mockPreset": "table",
-          "sourceType": "ap",
-          "tableFields": [
-            {
-              "fieldType": "BusinessAttribute",
-              "identifierCode": "AT0000806",
-              "label": "供应商名称",
-              "logicalEntityCode": "LE000020",
-              "logicalEntityLabel": "供应商基础信息",
-              "name": "supplierName",
-              "valueType": "STRING"
-            },
-            {
-              "fieldType": "BusinessAttribute",
-              "identifierCode": "AT0000805",
-              "label": "供应商编码",
-              "logicalEntityCode": "LE000020",
-              "logicalEntityLabel": "供应商基础信息",
-              "name": "supplierCode",
-              "valueType": "STRING"
-            },
-            {
-              "fieldType": "BusinessAttribute",
-              "identifierCode": "AT0000809",
-              "label": "供应商类型",
-              "logicalEntityCode": "LE000020",
-              "logicalEntityLabel": "供应商基础信息",
-              "name": "supplierType",
-              "valueType": "STRING"
-            }
-          ],
-          "pageSize": 10
-        },
-        "id": "table-biauwdwh",
-        "position": {
-          "h": 19,
-          "w": 120,
-          "x": 0,
-          "y": 21
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "重点异常项目清单",
-        "type": "table",
-        "visualization": {},
-        "tableColumnConfig": [
-          {
-            "code": "AT0000806",
-            "fieldType": "BusinessAttribute",
-            "id": "AT0000806",
-            "label": "供应商名称",
-            "logicalEntityCode": "LE000020",
-            "showSearch": false,
-            "showSource": true,
-            "valueType": "STRING"
-          },
-          {
-            "code": "AT0000805",
-            "fieldType": "BusinessAttribute",
-            "id": "AT0000805",
-            "label": "供应商编码",
-            "logicalEntityCode": "LE000020",
-            "showSearch": false,
-            "showSource": true,
-            "valueType": "STRING"
-          },
-          {
-            "code": "AT0000809",
-            "fieldType": "BusinessAttribute",
-            "id": "AT0000809",
-            "label": "供应商类型",
-            "logicalEntityCode": "LE000020",
-            "showSearch": true,
-            "showSource": true,
-            "valueType": "STRING"
-          }
-        ]
-      },
-      {
-        "dataConfig": {
-          "sourceType": "mock"
-        },
-        "id": "group-wyx7bpog",
-        "position": {
-          "h": 21,
-          "w": 120,
-          "x": 0,
-          "y": 0
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "方案引导-异常项目分析",
-        "type": "group",
-        "visualization": {},
-        "baseConfig": {
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8
-          }
-        },
-        "styleConfig": {},
-        "children": [
-          "horizontal-bar-gwwqwvxt",
-          "horizontal-bar-3q9rlp4s"
-        ],
-        "groupLayout": {
-          "gap": 8,
-          "justify": "space-between",
-          "rowGap": 8
-        }
-      }
-    ]
-  },
   "2112026770145329154": {
     "templateId": "2112026770145329154",
     "meta": {
@@ -6102,7 +5432,7 @@
             "templateDashboardId": "2112009587516293121"
           }
         ],
-        "selectionGroupDefault": true,
+        "selectionGroupDefault": false,
         "parentId": "group-gxbzcsma"
       },
       {
@@ -6359,7 +5689,7 @@
         },
         "id": "template-py27ctvu",
         "position": {
-          "h": 33,
+          "h": 8,
           "w": 120,
           "x": 0,
           "y": 11
@@ -6370,7 +5700,7 @@
         "type": "template",
         "visualization": {},
         "baseConfig": {
-          "defaultTemplateId": "2112009587516293121"
+          "defaultTemplateId": ""
         }
       },
       {
@@ -6509,6 +5839,116 @@
             null
           ]
         }
+      },
+      {
+        "dataConfig": {
+          "sourceType": "ap",
+          "opportunityMeasure": [
+            {
+              "alias": "预测缺口",
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "alias": "战略客户突破",
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "quoteMeasure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "bidMeasure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "orderMeasure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0006",
+              "isTree": false,
+              "label": "采购数量",
+              "name": "Purchase_Quantity",
+              "valueType": "NUMBER"
+            }
+          ],
+          "shipMeasure": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            },
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0006",
+              "isTree": false,
+              "label": "采购数量",
+              "name": "Purchase_Quantity",
+              "valueType": "NUMBER"
+            }
+          ],
+          "paymentMeasure": []
+        },
+        "id": "process-arc-647v3hoc",
+        "position": {
+          "h": 20,
+          "w": 120,
+          "x": 0,
+          "y": 19
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "运营360整体分析",
+        "type": "process-arc",
+        "visualization": {}
       }
     ]
   },
@@ -6792,261 +6232,6 @@
             "valueType": "DATE"
           }
         ]
-      }
-    ]
-  },
-  "2112059620722786305": {
-    "templateId": "2112059620722786305",
-    "meta": {
-      "name": "运营360 整体分析-技术方案"
-    },
-    "components": [
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "categoryAxis": [
-              {
-                "fieldType": "Dimension",
-                "identifierCode": "类别",
-                "label": "类别"
-              }
-            ],
-            "valueAxis": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "数量",
-                "label": "数量"
-              }
-            ]
-          },
-          "mockPreset": "horizontal-bar",
-          "sourceType": "ap",
-          "valueAxis": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "categoryAxis": [
-            {
-              "fieldType": "Dimension",
-              "identifierCode": "D005",
-              "isTree": true,
-              "label": "品类维度",
-              "valueType": "STRING"
-            }
-          ]
-        },
-        "id": "horizontal-bar-gwwqwvxt",
-        "position": {
-          "h": 19,
-          "w": 60,
-          "x": 0,
-          "y": 8
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "分产品看异常",
-        "type": "horizontal-bar",
-        "visualization": {
-          "legend": true,
-          "labelPosition": "right"
-        },
-        "parentId": "group-wyx7bpog"
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "categoryAxis": [
-              {
-                "fieldType": "Dimension",
-                "identifierCode": "类别",
-                "label": "类别"
-              }
-            ],
-            "valueAxis": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "数量",
-                "label": "数量"
-              }
-            ]
-          },
-          "mockPreset": "horizontal-bar",
-          "sourceType": "ap",
-          "valueAxis": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "categoryAxis": [
-            {
-              "fieldType": "Dimension",
-              "identifierCode": "D002",
-              "isTree": false,
-              "label": "供应商维度",
-              "valueType": "STRING"
-            }
-          ]
-        },
-        "id": "horizontal-bar-3q9rlp4s",
-        "position": {
-          "h": 19,
-          "w": 60,
-          "x": 60,
-          "y": 8
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "分客户看异常",
-        "type": "horizontal-bar",
-        "visualization": {
-          "legend": true,
-          "labelPosition": "right"
-        },
-        "parentId": "group-wyx7bpog"
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "tableFields": [
-              {
-                "fieldType": "Dimension",
-                "identifierCode": "类别",
-                "label": "类别"
-              },
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "数量",
-                "label": "数量"
-              },
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "金额",
-                "label": "金额"
-              }
-            ]
-          },
-          "mockPreset": "table",
-          "sourceType": "ap",
-          "tableFields": [
-            {
-              "fieldType": "BusinessAttribute",
-              "identifierCode": "AT0000806",
-              "label": "供应商名称",
-              "logicalEntityCode": "LE000020",
-              "logicalEntityLabel": "供应商基础信息",
-              "name": "supplierName",
-              "valueType": "STRING"
-            },
-            {
-              "fieldType": "BusinessAttribute",
-              "identifierCode": "AT0000805",
-              "label": "供应商编码",
-              "logicalEntityCode": "LE000020",
-              "logicalEntityLabel": "供应商基础信息",
-              "name": "supplierCode",
-              "valueType": "STRING"
-            },
-            {
-              "fieldType": "BusinessAttribute",
-              "identifierCode": "AT0000809",
-              "label": "供应商类型",
-              "logicalEntityCode": "LE000020",
-              "logicalEntityLabel": "供应商基础信息",
-              "name": "supplierType",
-              "valueType": "STRING"
-            }
-          ],
-          "pageSize": 10
-        },
-        "id": "table-biauwdwh",
-        "position": {
-          "h": 19,
-          "w": 120,
-          "x": 0,
-          "y": 21
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "重点异常项目清单",
-        "type": "table",
-        "visualization": {},
-        "tableColumnConfig": [
-          {
-            "code": "AT0000806",
-            "fieldType": "BusinessAttribute",
-            "id": "AT0000806",
-            "label": "供应商名称",
-            "logicalEntityCode": "LE000020",
-            "showSearch": false,
-            "showSource": true,
-            "valueType": "STRING"
-          },
-          {
-            "code": "AT0000805",
-            "fieldType": "BusinessAttribute",
-            "id": "AT0000805",
-            "label": "供应商编码",
-            "logicalEntityCode": "LE000020",
-            "showSearch": false,
-            "showSource": true,
-            "valueType": "STRING"
-          },
-          {
-            "code": "AT0000809",
-            "fieldType": "BusinessAttribute",
-            "id": "AT0000809",
-            "label": "供应商类型",
-            "logicalEntityCode": "LE000020",
-            "showSearch": true,
-            "showSource": true,
-            "valueType": "STRING"
-          }
-        ]
-      },
-      {
-        "dataConfig": {
-          "sourceType": "mock"
-        },
-        "id": "group-wyx7bpog",
-        "position": {
-          "h": 21,
-          "w": 120,
-          "x": 0,
-          "y": 0
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "技术方案-异常项目分析",
-        "type": "group",
-        "visualization": {},
-        "baseConfig": {
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8
-          }
-        },
-        "styleConfig": {},
-        "children": [
-          "horizontal-bar-gwwqwvxt",
-          "horizontal-bar-3q9rlp4s"
-        ],
-        "groupLayout": {
-          "gap": 8,
-          "justify": "space-between",
-          "rowGap": 8
-        }
       }
     ]
   },
@@ -7509,10 +6694,10 @@
           "measure": [
             {
               "fieldType": "Indicator",
-              "identifierCode": "M0003",
+              "identifierCode": "M0001",
               "isTree": false,
-              "label": "上期采购金额",
-              "name": "MoM_Purchase_Amount",
+              "label": "采购金额",
+              "name": "Purchase_Amount",
               "valueType": "NUMBER"
             }
           ]
@@ -7607,10 +6792,10 @@
           "measure": [
             {
               "fieldType": "Indicator",
-              "identifierCode": "M0005",
+              "identifierCode": "M00013",
               "isTree": false,
-              "label": "环比采购金额增长率",
-              "name": "MoM_Purchase_Amount_Growth Rate",
+              "label": "发货金额",
+              "name": "Shipment_Amount",
               "valueType": "NUMBER"
             }
           ]
@@ -8194,465 +7379,251 @@
       }
     ]
   },
-  "2113106174095179778": {
-    "templateId": "2113106174095179778",
+  "2113151813453660161": {
+    "templateId": "2113151813453660161",
     "meta": {
-      "name": "储能产品线整体经营分析"
+      "name": "运营360 整体分析-发货"
     },
     "components": [
       {
         "dataConfig": {
           "sourceType": "mock"
         },
-        "id": "group-ist8eevh",
+        "id": "group-rnfank2i",
         "position": {
-          "h": 11,
+          "h": 18,
           "w": 120,
           "x": 0,
           "y": 0
         },
-        "showHeader": false,
+        "showHeader": true,
         "showTitle": true,
-        "title": "分组容器",
+        "title": "发货 · 异常项目分析",
         "type": "group",
         "visualization": {},
         "baseConfig": {
           "groupLayout": {
             "gap": 8,
             "justify": "space-between",
-            "rowGap": 8,
-            "rows": [
-              [
-                "title-byli4gst",
-                "button-group-d1fsqdq4"
-              ],
-              [
-                "progress-5b3pml0v",
-                "progress-wbycryt8",
-                "progress-gfgcnfto",
-                "progress-vbw2ers4",
-                "progress-0sc1p0gb"
-              ]
-            ],
-            "rowHeights": [
-              "24%",
-              null
-            ]
+            "rowGap": 8
           }
         },
         "styleConfig": {},
         "children": [
-          "title-byli4gst",
-          "button-group-d1fsqdq4",
-          "progress-5b3pml0v",
-          "progress-wbycryt8",
-          "progress-gfgcnfto",
-          "progress-vbw2ers4",
-          "progress-0sc1p0gb"
+          "horizontal-bar-u3qr24p6",
+          "horizontal-bar-v5gvsjom"
         ],
         "groupLayout": {
           "gap": 8,
           "justify": "space-between",
-          "rowGap": 8,
-          "rows": [
-            [
-              "title-byli4gst",
-              "button-group-d1fsqdq4"
-            ],
-            [
-              "progress-5b3pml0v",
-              "progress-wbycryt8",
-              "progress-gfgcnfto",
-              "progress-vbw2ers4",
-              "progress-0sc1p0gb"
-            ]
-          ],
-          "rowHeights": [
-            "24%",
-            null
-          ]
+          "rowGap": 8
         }
       },
       {
         "dataConfig": {
-          "sourceType": "mock"
+          "mockAxis": {
+            "categoryAxis": [
+              {
+                "fieldType": "Dimension",
+                "identifierCode": "类别",
+                "label": "类别"
+              }
+            ],
+            "valueAxis": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "数量",
+                "label": "数量"
+              }
+            ]
+          },
+          "mockPreset": "horizontal-bar",
+          "sourceType": "ap",
+          "valueAxis": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M0001",
+              "isTree": false,
+              "label": "采购金额",
+              "name": "Purchase_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "categoryAxis": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D005",
+              "isTree": true,
+              "label": "品类维度",
+              "valueType": "STRING"
+            }
+          ]
         },
-        "id": "title-byli4gst",
+        "id": "horizontal-bar-u3qr24p6",
         "position": {
-          "h": 3,
-          "w": 120,
-          "x": 0,
-          "y": 8
-        },
-        "showHeader": false,
-        "showTitle": false,
-        "title": "标题",
-        "type": "title",
-        "visualization": {},
-        "baseConfig": {
-          "subtitle": "",
-          "text": "经营指标"
-        },
-        "styleConfig": {
-          "fontSize": 18,
-          "subtitleFontSize": 12,
-          "subtitlePosition": "bottom"
-        },
-        "parentId": "group-ist8eevh"
-      },
-      {
-        "dataConfig": {
-          "sourceType": "mock"
-        },
-        "id": "button-group-d1fsqdq4",
-        "position": {
-          "h": 5,
+          "h": 19,
           "w": 60,
           "x": 0,
-          "y": 8
+          "y": 15
         },
-        "showHeader": false,
-        "showTitle": false,
-        "title": "按钮组",
-        "type": "button-group",
-        "visualization": {},
-        "styleConfig": {
-          "buttonGroupSize": "middle"
+        "showHeader": true,
+        "showTitle": true,
+        "title": "分产品部看异常",
+        "type": "horizontal-bar",
+        "visualization": {
+          "legend": true
         },
-        "buttonGroupConfig": {
-          "items": [
+        "parentId": "group-rnfank2i"
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "categoryAxis": [
+              {
+                "fieldType": "Dimension",
+                "identifierCode": "类别",
+                "label": "类别"
+              }
+            ],
+            "valueAxis": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "数量",
+                "label": "数量"
+              }
+            ]
+          },
+          "mockPreset": "horizontal-bar",
+          "sourceType": "ap",
+          "valueAxis": [
             {
-              "default": true,
-              "id": "option-1",
-              "label": "年度",
-              "templateSwitchTargets": [],
-              "grain": "YEAR"
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
+            }
+          ],
+          "categoryAxis": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "D008",
+              "isTree": true,
+              "label": "发货审批时间维度",
+              "valueType": "DATE"
+            }
+          ]
+        },
+        "id": "horizontal-bar-v5gvsjom",
+        "position": {
+          "h": 19,
+          "w": 60,
+          "x": 0,
+          "y": 15
+        },
+        "showHeader": true,
+        "showTitle": true,
+        "title": "分客户看异常",
+        "type": "horizontal-bar",
+        "visualization": {
+          "legend": true
+        },
+        "parentId": "group-rnfank2i"
+      },
+      {
+        "dataConfig": {
+          "mockAxis": {
+            "tableFields": [
+              {
+                "fieldType": "Dimension",
+                "identifierCode": "类别",
+                "label": "类别"
+              },
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "数量",
+                "label": "数量"
+              },
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "金额",
+                "label": "金额"
+              }
+            ]
+          },
+          "mockPreset": "table",
+          "sourceType": "ap",
+          "tableFields": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "M00013",
+              "isTree": false,
+              "label": "发货金额",
+              "name": "Shipment_Amount",
+              "valueType": "NUMBER"
             },
             {
-              "id": "option-2",
-              "label": "月度",
-              "templateSwitchTargets": [],
-              "grain": "MONTH"
-            }
-          ]
-        },
-        "parentId": "group-ist8eevh"
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "current",
-                "label": "当前"
-              }
-            ],
-            "target": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "target",
-                "label": "目标"
-              }
-            ]
-          },
-          "mockPreset": "progress",
-          "sourceType": "ap",
-          "measure": [
+              "fieldType": "Dimension",
+              "identifierCode": "D008",
+              "isTree": true,
+              "label": "发货审批时间维度",
+              "valueType": "DATE"
+            },
             {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
+              "fieldType": "Dimension",
+              "identifierCode": "D007",
               "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
+              "label": "发货完成状态维度",
+              "valueType": "STRING"
             }
           ],
-          "target": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M00013",
-              "isTree": false,
-              "label": "发货金额",
-              "name": "Shipment_Amount",
-              "valueType": "NUMBER"
-            }
-          ]
+          "pageSize": 10
         },
-        "id": "progress-5b3pml0v",
+        "id": "table-83ioaora",
         "position": {
-          "h": 8,
-          "w": 40,
-          "x": 0,
-          "y": 8
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "促进增长 ｜ 销售额",
-        "type": "progress",
-        "visualization": {
-          "colorScheme": [
-            "#3b7cff"
-          ]
-        },
-        "parentId": "group-ist8eevh"
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "current",
-                "label": "当前"
-              }
-            ],
-            "target": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "target",
-                "label": "目标"
-              }
-            ]
-          },
-          "mockPreset": "progress",
-          "sourceType": "ap",
-          "measure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "target": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M00013",
-              "isTree": false,
-              "label": "发货金额",
-              "name": "Shipment_Amount",
-              "valueType": "NUMBER"
-            }
-          ]
-        },
-        "id": "progress-wbycryt8",
-        "position": {
-          "h": 8,
-          "w": 40,
-          "x": 0,
-          "y": 8
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "保障交付 ｜ 出货量",
-        "type": "progress",
-        "visualization": {
-          "colorScheme": [
-            "#3b7cff"
-          ]
-        },
-        "parentId": "group-ist8eevh"
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "current",
-                "label": "当前"
-              }
-            ],
-            "target": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "target",
-                "label": "目标"
-              }
-            ]
-          },
-          "mockPreset": "progress",
-          "sourceType": "ap",
-          "measure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "target": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M00013",
-              "isTree": false,
-              "label": "发货金额",
-              "name": "Shipment_Amount",
-              "valueType": "NUMBER"
-            }
-          ]
-        },
-        "id": "progress-gfgcnfto",
-        "position": {
-          "h": 8,
-          "w": 40,
-          "x": 0,
-          "y": 8
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "守住利润 ｜ 毛利率",
-        "type": "progress",
-        "visualization": {
-          "colorScheme": [
-            "#3b7cff"
-          ]
-        },
-        "parentId": "group-ist8eevh"
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "current",
-                "label": "当前"
-              }
-            ],
-            "target": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "target",
-                "label": "目标"
-              }
-            ]
-          },
-          "mockPreset": "progress",
-          "sourceType": "ap",
-          "measure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "target": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M00013",
-              "isTree": false,
-              "label": "发货金额",
-              "name": "Shipment_Amount",
-              "valueType": "NUMBER"
-            }
-          ]
-        },
-        "id": "progress-vbw2ers4",
-        "position": {
-          "h": 8,
-          "w": 40,
-          "x": 0,
-          "y": 8
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "提升盈利 ｜ 净利率",
-        "type": "progress",
-        "visualization": {
-          "colorScheme": [
-            "#3b7cff"
-          ]
-        },
-        "parentId": "group-ist8eevh"
-      },
-      {
-        "dataConfig": {
-          "mockAxis": {
-            "measure": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "current",
-                "label": "当前"
-              }
-            ],
-            "target": [
-              {
-                "fieldType": "Indicator",
-                "identifierCode": "target",
-                "label": "目标"
-              }
-            ]
-          },
-          "mockPreset": "progress",
-          "sourceType": "ap",
-          "measure": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M0001",
-              "isTree": false,
-              "label": "采购金额",
-              "name": "Purchase_Amount",
-              "valueType": "NUMBER"
-            }
-          ],
-          "target": [
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "M00013",
-              "isTree": false,
-              "label": "发货金额",
-              "name": "Shipment_Amount",
-              "valueType": "NUMBER"
-            }
-          ]
-        },
-        "id": "progress-0sc1p0gb",
-        "position": {
-          "h": 8,
-          "w": 40,
-          "x": 0,
-          "y": 8
-        },
-        "showHeader": true,
-        "showTitle": true,
-        "title": "加速回款 ｜ 应收周转",
-        "type": "progress",
-        "visualization": {
-          "colorScheme": [
-            "#3b7cff"
-          ]
-        },
-        "parentId": "group-ist8eevh"
-      },
-      {
-        "dataConfig": {
-          "sourceType": "mock"
-        },
-        "id": "mini-cpgraph-ia1c1ao5",
-        "position": {
-          "h": 20,
+          "h": 19,
           "w": 120,
           "x": 0,
-          "y": 11
+          "y": 18
         },
         "showHeader": true,
         "showTitle": true,
-        "title": "运营360整体分析",
-        "type": "mini-cpgraph",
+        "title": "重点异常项目清单",
+        "type": "table",
         "visualization": {},
-        "graphConfig": {
-          "defaultActiveKey": "n1",
-          "processCode": "FULL_PROCESS_OPERATIONS_MANAGEMENT"
-        }
+        "tableColumnConfig": [
+          {
+            "code": "M00013",
+            "fieldType": "Indicator",
+            "id": "M00013",
+            "isTree": false,
+            "label": "发货金额",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "NUMBER"
+          },
+          {
+            "code": "D008",
+            "fieldType": "Dimension",
+            "id": "D008",
+            "isTree": true,
+            "label": "发货审批时间维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "DATE"
+          },
+          {
+            "code": "D007",
+            "fieldType": "Dimension",
+            "id": "D007",
+            "isTree": false,
+            "label": "发货完成状态维度",
+            "showSearch": true,
+            "showSource": true,
+            "valueType": "STRING"
+          }
+        ]
       }
     ]
   }

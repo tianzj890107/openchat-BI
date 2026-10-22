@@ -143,7 +143,10 @@ def test_cockpit_page_uses_separate_assets_and_subpath(monkeypatch,tmp_path):
     redirect=c.get('/cockpit?id=2&metric=sales',follow_redirects=False)
     assert redirect.status_code==307
     assert redirect.headers['location']=='/gateway/analytics/cockpit/overview?id=2&metric=sales'
-    for page in ['home','overview','operations','analysis']:
+    home=c.get('/cockpit/home?id=2',follow_redirects=False)
+    assert home.status_code==307
+    assert home.headers['location']=='/gateway/analytics/cockpit/overview?id=2'
+    for page in ['overview','operations','analysis']:
         pages=[c.get(f'/cockpit/{page}?id={identity}') for identity in (1,2)]
         assert all(response.status_code==200 for response in pages)
         assert pages[0].text==pages[1].text
@@ -161,6 +164,7 @@ def test_cockpit_page_uses_separate_assets_and_subpath(monkeypatch,tmp_path):
     assert c.get('/static/cockpit/vendor/pro-bi-ui.min.js').status_code==200
     assert c.get('/static/cockpit/metadata/runtime.json').status_code==200
     assert c.get('/static/cockpit/layout/views.json').status_code==404
+    assert c.get('/static/cockpit/insight-components/index.js').status_code==200
     assert c.get('/cockpit/not-a-page').status_code==404
     assert c.get('/api/cockpit/bootstrap').json()['supportsLiveSource'] is False
 

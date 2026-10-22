@@ -122,23 +122,24 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 ### V3 经营驾驶舱 POC
 
-主服务提供四个独立入口（支持 `APP_ROOT_PATH` 子路径）：
-`/cockpit/home`、`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 仍只跳到全局经营看板。
-四个入口共用同一路径和 Fuxi 身份参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员；当前四页内容与功能对两个 `id` 完全一致，
+主服务提供三个独立看板入口（支持 `APP_ROOT_PATH` 子路径）：
+`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 仍只跳到经营看板。
+`/cockpit/home` 保留为兼容地址并 307 到 `overview`，不再单独渲染第四个页面。
+三个入口共用同一路径和 Fuxi 身份参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员；当前三页内容与功能对两个 `id` 完全一致，
 两个人都可访问，`id` 仅作为将来差异化的预留标识。不使用 `role` 或两套身份地址，总入口和页内跳转均保留当前 `id`。
-页面直接使用正式发布看板 `2109836674373566465` 的根配置：一个 `ProBiDashboard` 同时渲染
-`composite-filter`、根 `tab-container` 和四个 Tab 模板。顶部 Tab 由交付配置生成，不再由宿主手写；
-四个路由只负责激活对应 Tab，并把当前 `id` 保留在地址中。页面不渲染工作区、会话区、宿主标题或第二套导航。
+页面直接使用 `iba-demo` 交付看板 `feature/demo_1021@37975c7` 的根配置：一个 `ProBiDashboard` 同时渲染
+`composite-filter`、根 `tab-container` 和三个 Tab 模板。顶部 Tab 由交付配置生成，不再由宿主手写；
+三个路由只负责激活对应 Tab，并把当前 `id` 保留在地址中。页面不渲染工作区、会话区、宿主标题或第二套导航。
 
-发布包冻结了 15 份模板、139 个组件和正式页的顶部筛选器。四页的 `position`、`parentId`、容器、标题和样式
-均按发布配置原样交给 `ProBiDashboard`；宿主不增删或重排卡片。浏览器通过同目录
-`data-snapshots.json` 回放正式页抓取的 38 个 AP 查询、2 个批量查询和 2 个头盔图请求，
-快照只包含业务响应体，不包含 Cookie、Token 或用户身份。
+发布包包含 13 份模板、122 个组件和交付的顶部筛选器。三页的 `position`、`parentId`、容器、标题和样式
+均按交付配置原样交给 `ProBiDashboard`；宿主不增删或重排卡片。浏览器通过同目录
+`data-snapshots.json` 回放 pdt 正式页抓取的 39 个 AP 查询、3 个批量查询和 4 个头盔图请求，
+快照只包含业务响应体，不包含 Cookie、Token 或用户身份；未捕获查询在原卡片显示快照缺失提示。
 
-正式根配置没有 `insights` 字段，宿主从交付目录补入 17 个插槽声明：首页 1 个、全局经营看板
-0 个、运营 360 7 个、穿透式问题分析 9 个。插槽挂载后实时异步调用主服务 `/api/cockpit`，
-首次分析通常约 10–20 秒，已完成范围直接复用；看板卡片、图表和表格仍只回放本地发布快照。
-发布配置中 AP 指标的业务口径与卡片标题存在差异时，页面保持正式配置原值，不在宿主层改写。
+交付根配置没有 `insights` 字段，宿主从交付目录补入 12 个插槽声明：经营看板 0 个、运营 360 4 个、
+穿透式问题分析 8 个。插槽内容直接使用交付 `insight-components/` 的静态组件，本轮不调用模型；
+主服务 `/api/cockpit` 的实时分析、历史和任务令接口仍保留，后续需要实时 AI 时再接入。
+交付配置中 AP 指标的业务口径与卡片标题存在差异时，页面保持原值，不在宿主层改写。
 详见 [驾驶舱范围与接口](docs/specs/cockpit-v3-poc.md)及[组件覆盖与缺失](docs/specs/cockpit-v3-metadata-gaps.md)。
 
 ### Fuxi 远程 MCP
