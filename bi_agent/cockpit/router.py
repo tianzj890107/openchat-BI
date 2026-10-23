@@ -3,6 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import time
+import os
+from copy import deepcopy
 from html import escape
 from pathlib import Path
 from typing import Literal
@@ -24,7 +27,13 @@ class Context(BaseModel):
     department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部"
     stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment"]="shipment"
 
-    source:Literal["demo","prototype"]="demo"
+    source:Literal["demo","prototype","service"]="demo"
+    engine:Literal["standalone","main"]="standalone"
+    repositoryId:str=Field(default="",max_length=128)
+    chartSnapshotId:str=Field(default="",max_length=160)
+    filters:dict[str,str|list[str]]=Field(default_factory=dict,max_length=20)
+    baselineAnalysisId:str=Field(default="",pattern=r"^(|[a-f0-9]{32})$")
+    clarifications:dict[str,str]=Field(default_factory=dict,max_length=10)
 
 class AnalysisRequest(Context):
     refresh:bool=False
@@ -48,7 +57,7 @@ class TaskChange(BaseModel):
     measures:list[Measure]=Field(default_factory=list,max_length=8)
 
 
-def build_cockpit_router(get_cwd, runner=run_analysis):
+def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main_context=None):
     router=APIRouter(prefix="/api/cockpit",tags=["cockpit"])
     source=DemoSource();stores={};lock=threading.RLock();jobs={};capacity=threading.BoundedSemaphore(3)
     def store():
@@ -64,6 +73,25 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
         # Preserve POC history created before external identity switched to id.
         return 1 if context.get("role")=="president" else 2
     def snap(context):
+        if context.engine=='main':
+            if context.baselineAnalysisId:raise HTTPException(422,'主服务路线独立取证，baselineAnalysisId仅用于独立材料对照')
+            if main_runner is None or main_context is None:raise HTTPException(503,'此服务未接入主服务执行链，请访问主服务的同名Cockpit入口；不会自动降级')
+            if context.source!='service':raise HTTPException(422,'主服务路线必须使用service数据源')
+            return main_context(context)
+        if context.source=='service':
+            if not context.baselineAnalysisId:raise HTTPException(422,'独立实时对照必须指定主服务已完成任务的baselineAnalysisId，不能自行构造证据')
+            baseline=get_analysis(context.baselineAnalysisId);bound=baseline['context']
+            if bound.get('engine')!='main' or baseline['status'] not in {'completed','limited'}:raise HTTPException(409,'基线必须是主服务已交付任务')
+            fields=('id','stage','period','department','filters')
+            requested=context.model_dump()
+            if any(requested.get(k)!=bound.get(k,{} if k=='filters' else None) for k in fields):raise HTTPException(422,'基线与当前身份、环节或筛选范围不一致')
+            if context.repositoryId and context.repositoryId!=bound.get('repositoryId'):raise HTTPException(422,'基线本体库不一致')
+            frozen=deepcopy(baseline.get('evidence') or {})
+            if not frozen.get('facts') and not frozen.get('records'):raise HTTPException(409,'主服务基线没有业务证据，不允许仅凭受限说明生成独立根因')
+            snapshot_id='frozen-'+hashlib.sha256(json.dumps(frozen,ensure_ascii=False,sort_keys=True).encode()).hexdigest()[:20]
+            frozen['snapshotId']=snapshot_id
+            return dict(snapshotId=snapshot_id,repositoryId=bound.get('repositoryId',''),dataBasis='主服务任务'+baseline['id']+'的冻结证据；只对比同批材料的归纳，不代表两套取数流程公平竞速',_evidence=frozen)
+        if context.repositoryId or context.filters:raise HTTPException(422,'演示源不支持本体库和自定义筛选，不能忽略分析范围')
         try:return adapter(context.source).snapshot(context.period,context.department)
         except ValueError as exc:raise HTTPException(422,str(exc))
     def get_analysis(aid):
@@ -71,23 +99,25 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
         if not value:raise HTTPException(404,"分析记录不存在")
         return value
     def context_value(c,s):
-        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=s["snapshotId"],sourceMode=c.source)
+        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=s["snapshotId"],sourceMode=c.source,engine=c.engine,repositoryId=s.get("repositoryId",c.repositoryId),dataBasis=s.get("dataBasis","原型或演示证据，不是当前看板AP快照"))
         return value
     def scope(c,s):
         value=context_value(c,s);value["resultContract"]=RESULT_CONTRACT_VERSION
         return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
-    def worker(st,item,evidence,cancel):
+    def worker(st,item,evidence,cancel,execute):
         try:
             st.update_analysis(item["id"],status="running",evidence=evidence,progress="读取当前快照")
             def progress(message,events):st.update_analysis(item["id"],progress=message,events=list(events))
-            result,events=runner(evidence,item["context"],cancel,progress)
+            result,events=execute(evidence,item["context"],cancel,progress)
             if cancel.is_set():raise InterruptedError()
-            st.update_analysis(item["id"],status="completed",progress="分析完成",result=result,events=events)
+            status=result.pop('_status','completed');actual_evidence=result.pop('_evidence',evidence);execution=result.pop('_execution',dict(engine=item['context']['engine']))
+            execution.setdefault('durationSeconds',round(time.time()-item['createdAt'],3))
+            st.update_analysis(item["id"],status=status,progress='待补充口径' if status=='needs_input' else '证据不足／受限交付' if status=='limited' else '分析完成',result=result,events=events,evidence=actual_evidence,execution=execution)
         except InterruptedError:
-            st.update_analysis(item["id"],status="cancelled",progress="已停止，可重新分析")
+            st.update_analysis(item["id"],status="cancelled",progress="已停止，可重新分析",execution=dict(engine=item["context"]["engine"],durationSeconds=round(time.time()-item["createdAt"],3)))
         except Exception as exc:
             message=str(exc) if isinstance(exc,(RuntimeError,TimeoutError)) else "分析执行失败，请重试"
-            st.update_analysis(item["id"],status="failed",progress="分析未完成",error=message[:600])
+            st.update_analysis(item["id"],status="failed",progress="分析未完成",error=message[:600],execution=dict(engine=item["context"]["engine"],durationSeconds=round(time.time()-item["createdAt"],3)))
         finally:
             with lock:jobs.pop(item["id"],None)
             capacity.release()
@@ -97,6 +127,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
         return dict(roles=[dict(id=1,name="总裁"),dict(id=2,name="分析员")],identityParameter="id",periods=PERIODS,departments=DEPARTMENTS,
             stages=[dict(id=k,name=v) for k,v in NAMES.items()],sourceMode="demo",supportsLiveSource=False,
             notice="演示数据与模拟任务，不写入业务系统；分析使用主服务模型。两个 id 当前使用相同看板与功能，仅为将来差异化预留。")
+
+    @router.get('/engines')
+    def engines():return dict(default=os.environ.get('COCKPIT_ANALYSIS_ENGINE','main'),comparisonOnly=os.environ.get('COCKPIT_COMPARISON_ENABLED','true').lower() in {'true','1'},productionPolicy='统一选择一个引擎承载全部AI插槽，禁止按插槽混用或静默降级',engines=[dict(id='main',available=main_runner is not None),dict(id='standalone',available=True)])
 
     @router.get("/metadata")
     def metadata():return build_bundle()
@@ -112,16 +145,22 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
 
     @router.post("/analyses")
     def analyse(req:AnalysisRequest):
+        configured=os.environ.get('COCKPIT_ANALYSIS_ENGINE','main')
+        comparison=os.environ.get('COCKPIT_COMPARISON_ENABLED','true').lower() in {'true','1'}
+        if configured not in {'main','standalone'}:raise HTTPException(503,'无效的全局分析引擎配置')
+        if not comparison and req.engine!=configured:raise HTTPException(422,'已固定全站统一分析引擎，禁止按插槽选择其他路线')
         snapshot=snap(req);key=scope(req,snapshot);st=store()
         with lock:
             previous=st.list_analyses(key)
             for item in previous:
                 if item["status"] in {"queued","running"} and item["id"] in jobs:return item
-                if not req.refresh and item["status"]=="completed":return item
+                if req.engine=="standalone" and not req.refresh and item["status"]=="completed":return item
             if not capacity.acquire(blocking=False):raise HTTPException(429,"分析并发已满，请稍后重试")
             try:
                 item=st.create_analysis(key,context_value(req,snapshot));cancel=threading.Event();jobs[item["id"]]=cancel
-                thread=threading.Thread(target=worker,args=(st,item,adapter(req.source).evidence(snapshot,req.stage),cancel),daemon=True)
+                evidence=(snapshot['_evidence'] if '_evidence' in snapshot else adapter(req.source).evidence(snapshot,req.stage)) if req.engine=='standalone' else {}
+                execute=runner if req.engine=='standalone' else lambda e,c,stop,p:main_runner(c,stop,p)
+                thread=threading.Thread(target=worker,args=(st,item,evidence,cancel,execute),daemon=True)
                 thread.start()
             except Exception:
                 jobs.pop(item["id"],None) if 'item' in locals() else None
@@ -129,10 +168,11 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
         return item
 
     @router.get("/analyses")
-    def history(id:int=1,period:str|None=None,department:str|None=None):
+    def history(id:int=1,period:str|None=None,department:str|None=None,engine:Literal["main","standalone"]|None=None):
         # id is the single Fuxi-facing identity parameter: 1=总裁, 2=分析员.
         if id not in (1,2):raise HTTPException(422,"id 只能是 1 或 2")
         return [x for x in store().list_analyses() if context_id(x["context"])==id
+            and (engine is None or x["context"].get("engine","standalone")==engine)
             and (period is None or x["context"]["period"]==period) and (department is None or x["context"]["department"]==department)]
 
     @router.get("/analyses/{aid}")
@@ -149,9 +189,12 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
     @router.get("/analyses/{aid}/report",response_class=HTMLResponse)
     def report(aid:str):
         item=get_analysis(aid)
-        if item["status"]!="completed":raise HTTPException(409,"分析尚未完成")
+        if item["status"] not in {"completed","limited","needs_input"}:raise HTTPException(409,"分析尚未完成")
         result=item["result"];ctx=item["context"]
-        content=f'<h1>{escape(ctx["stageName"])}分析报告</h1><p>演示数据 · {escape(ctx["period"])} · {escape(ctx["department"])}</p><p>{escape(result["summary"])}</p><h2>原因与证据</h2>'
+        label=('主服务冻结证据（独立对照）' if ctx.get('engine')=='standalone' else '主服务配置数据源') if ctx.get('sourceMode')=='service' else '演示数据'
+        summary='' if result.get('narrative') else escape(result['summary'])
+        content=f'<h1>{escape(ctx["stageName"])}分析报告</h1><p>{label} · {escape(ctx["period"])} · {escape(ctx["department"])} · {escape(item["status"])}</p><p>{summary}</p>'
+        if result.get('narrative'):content+='<pre style="white-space:pre-wrap">'+escape(result['narrative'])+'</pre>'
         for c in result["causes"]:content+=f'<h3>{escape(c["title"])}</h3><p>{escape(c["description"])}</p><p>证据：{escape(", ".join(c["evidenceIds"]))}</p>'
         content+='<h2>改善建议</h2>'
         for r in result["recommendations"]:content+=f'<p>{escape(r["action"])}｜建议责任角色：{escape(r["ownerRole"])}｜验收：{escape(r["acceptance"])}</p>'
@@ -164,6 +207,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis):
     def draft(aid:str):
         item=get_analysis(aid)
         if item["status"]!="completed":raise HTTPException(409,"只能基于已完成分析生成任务令草稿")
+        if not item["result"].get("recommendations"):raise HTTPException(409,"当前主服务交付尚无结构化任务措施，请由分析员确认；不从正文猜测责任和期限")
         return store().draft(item)
 
     @router.get("/tasks")

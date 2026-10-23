@@ -56,7 +56,7 @@ class Store:
             if not row: raise KeyError(aid)
             item=json.loads(row[0])
             # A late model response can never overwrite cancellation or a terminal result.
-            if item["status"] in {"completed","cancelled","failed","interrupted"}: return item
+            if item["status"] in {"completed","limited","needs_input","cancelled","failed","interrupted"}: return item
             item.update(changes,updatedAt=time.time())
             db.execute("UPDATE analyses SET body=?,status=?,updated=? WHERE id=?",(json.dumps(item,ensure_ascii=False),item["status"],item["updatedAt"],aid))
         return item

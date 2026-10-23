@@ -1587,6 +1587,8 @@ def _next_turn_id() -> str:
 def _begin_turn(
     mode: str,
     session_id: Optional[str],
+    *, cancel_event: Optional[threading.Event] = None,
+    principal_session_id: Optional[str] = None,
 ) -> tuple[SessionSlot, TurnLease, str, Any, threading.Event]:
     """Acquire the per-session turn slot + the global admission ticket.
 
@@ -1605,7 +1607,7 @@ def _begin_turn(
     """
     key = _session_key(session_id)
     slot = STATE.session_slots.ensure(_slot_key(mode, key))
-    cancel = threading.Event()
+    cancel = cancel_event if cancel_event is not None else threading.Event()
     lease = slot.try_acquire(
         cancel_event=cancel,
         lease_ttl_seconds=STATE.coordination_lease_ttl_seconds,
@@ -1613,7 +1615,7 @@ def _begin_turn(
     if lease is None:
         resp = _busy_response(str(session_id or ""))
         raise HTTPException(status_code=409, detail=json.loads(resp.body))
-    principal = _principal_for(session_id)
+    principal = _principal_for(principal_session_id or session_id)
     try:
         ticket = STATE.admission.acquire(principal, cancel_event=cancel)
     except AdmissionRejected as exc:
@@ -1671,71 +1673,58 @@ def _annotate_events(
         yield evt
 
 
-def _run_turn_stream(
-    session: WebSession,
-    events: Any,
-    slot: SessionSlot,
-    lease: TurnLease,
-    turn_id: str,
-    ticket: Any,
-    cancel: Optional[threading.Event] = None,
-) -> StreamingResponse:
-    """Stream one turn with cancellation + guaranteed slot/admission release.
+from contextlib import contextmanager
 
-    - attaches the lease / cancel event to the session so the turn loop can
-      detect reset/restore/activate/source-switch and refuse to commit once
-      superseded (``session._turn_ctx`` — captured once per turn);
-    - cancels the turn on client disconnect (GeneratorExit), on a superseding
-      reset, or when a cooperative resource wait observes the cancel event;
-    - releases the admission ticket and session slot exactly once in the
-      ``finally`` block.  ``slot.release_turn(lease)`` is owner-validated, so
-      a stale turn's finally can never release a newer turn's slot state.
+
+@contextmanager
+def _turn_execution_scope(
+    session: WebSession, slot: SessionSlot, lease: TurnLease,
+    turn_id: str, ticket: Any, cancel: threading.Event,
+):
+    """Share chat/Cockpit ownership, heartbeat and cooperative cancellation.
+
+    Runs on the consuming worker thread so source tools see the same cancel
+    event. The owner releases the admission ticket and turn lease once.
     """
-    cancel = cancel if cancel is not None else threading.Event()
-    slot.attach_cancel(lease, cancel)
-    session._turn_ctx = TurnContext(slot, lease, cancel)
-
-    def event_stream():
-        # The SSE generator runs on a worker thread; stamp the turn's cancel
-        # event there so gated tool executors observe it on the same thread.
+    heartbeat_guard = None
+    try:
+        slot.attach_cancel(lease, cancel)
+        session._turn_ctx = TurnContext(slot, lease, cancel)
         set_current_cancel(cancel)
-        # Shared leases are renewed for the whole turn lifetime.  If the lease
-        # is lost (TTL expiry, takeover, owner mismatch, Redis failure) the
-        # heartbeat sets the SAME cancel event, so Tool Runtime / Recovery /
-        # TurnLease commit gates refuse to commit anything afterwards.  Plain
-        # local leases get a no-op guard (no thread).
         heartbeat_guard = STATE.start_turn_heartbeat(slot, lease, cancel)
+        yield
+    finally:
         try:
-            for evt in _annotate_events(events, turn_id=turn_id, generation=lease.generation):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-        except GeneratorExit:
-            cancel.set()
-            raise
-        except Exception as e:
-            if cancel.is_set():
-                evt = {"type": "session_superseded", "turn_id": turn_id}
-            else:
-                evt = {"type": "error", "message": f"{type(e).__name__}: {e}", "turn_id": turn_id}
-            yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+            if heartbeat_guard is not None:
+                heartbeat_guard.stop()
+                heartbeat_guard.join(timeout=1.0)
         finally:
-            # Order matters: stop the heartbeat, give it a moment to exit,
-            # clear the per-thread cancel stamp, then release the slot and the
-            # admission ticket exactly once (all owner-validated).
-            heartbeat_guard.stop()
-            heartbeat_guard.join(timeout=1.0)
             clear_current_cancel()
-            slot.release_turn(lease)
-            ticket.controller.release(ticket)
+            try:
+                slot.release_turn(lease)
+            finally:
+                ticket.controller.release(ticket)
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
+
+def _run_turn_stream(
+    session: WebSession, events: Any, slot: SessionSlot, lease: TurnLease,
+    turn_id: str, ticket: Any, cancel: Optional[threading.Event] = None,
+) -> StreamingResponse:
+    """Deliver SSE with the same lifecycle used by headless Cockpit tasks."""
+    cancel=cancel if cancel is not None else threading.Event()
+    slot.attach_cancel(lease,cancel)
+    session._turn_ctx=TurnContext(slot,lease,cancel)
+    def event_stream():
+        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel):
+            try:
+                for evt in _annotate_events(events,turn_id=turn_id,generation=lease.generation):
+                    yield f"data: {json.dumps(evt,ensure_ascii=False)}\n\n"
+            except GeneratorExit:
+                cancel.set();raise
+            except Exception as e:
+                evt={"type":"session_superseded","turn_id":turn_id} if cancel.is_set() else {"type":"error","message":f"{type(e).__name__}: {e}","turn_id":turn_id}
+                yield f"data: {json.dumps(evt,ensure_ascii=False)}\n\n"
+    return StreamingResponse(event_stream(),media_type="text/event-stream",headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
 
 
 def _supersede_session(mode: str, key: str) -> None:
@@ -3961,7 +3950,51 @@ app.include_router(build_mcp_router(
 # V3 cockpit has an isolated source adapter and append-preserving POC history.
 from ..cockpit.router import build_cockpit_router  # noqa: E402
 
-app.include_router(build_cockpit_router(get_cwd=lambda: STATE.cwd or os.getcwd()))
+def _cockpit_main_context(req):
+    """Resolve source identity on the server; client ids cannot redirect queries."""
+    import hashlib
+    source=_source_for_session(None)
+    if source.ontology_store is None or STATE.agent_def is None:
+        raise HTTPException(503,'主服务未配置本体／数据源，不能启动完整分析')
+    repository_id=str(source.remote_ontology.repository_id) if source.remote_ontology else ''
+    if req.repositoryId and req.repositoryId!=repository_id:
+        raise HTTPException(422,'请求的本体库与主服务当前绑定不一致，请先确认数据源')
+    fingerprint=hashlib.sha256(repr(_source_binding_signature(source)).encode()).hexdigest()[:20]
+    return dict(snapshotId='service-source-'+fingerprint,repositoryId=repository_id,
+        dataBasis='主服务当前绑定数据源实时取证；此标识只标识数据源，不代表数据库快照，暂不复用已完成结果')
+
+
+@contextmanager
+def _cockpit_main_turn(context,cancel):
+    import uuid
+    from ..cockpit.main_service import analysis_question
+    key='cockpit-main-'+uuid.uuid4().hex
+    session=None
+    slot=lease=ticket=None
+    try:
+        session=_ensure_session(key)
+        import hashlib
+        bound=_source_for_session(key)
+        fingerprint=hashlib.sha256(repr(_source_binding_signature(bound)).encode()).hexdigest()[:20]
+        if context['snapshotId']!='service-source-'+fingerprint:raise RuntimeError('主服务数据源已变化，请重新提交分析任务')
+        slot,lease,turn_id,ticket,_=_begin_turn('data',key,cancel_event=cancel,principal_session_id=f"cockpit-id-{context['id']}")
+        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel):
+            yield session,session.generate_turn(analysis_question(context))
+    finally:
+        # Release ephemeral in-memory objects only. Never reset/delete chat history.
+        with STATE.registry_lock:
+            if STATE.sessions.get(key) is session:STATE.sessions.pop(key,None)
+            STATE.source_contexts.pop(key,None)
+
+
+def _cockpit_main_runner(context,cancel,progress):
+    from ..cockpit.main_service import run_main_analysis
+    return run_main_analysis(context,cancel,progress,_cockpit_main_turn)
+
+
+app.include_router(build_cockpit_router(get_cwd=lambda: STATE.cwd or os.getcwd(),
+    main_runner=_cockpit_main_runner,main_context=_cockpit_main_context))
+
 
 COCKPIT_PAGES = frozenset({"overview", "operations", "analysis"})
 

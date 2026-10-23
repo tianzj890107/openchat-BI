@@ -16,7 +16,7 @@ function number(value) {
 
 function metricValue(metric) {
   if (!metric) return '未提供'
-  if (metric.value === null || metric.value === undefined) return metric.label || '未提供'
+  if (metric.value === null || metric.value === undefined) return metric.claim ? '' : metric.label || '未提供'
   return `${metric.value}${metric.unit ? ` ${metric.unit}` : ''}`
 }
 

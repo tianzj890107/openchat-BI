@@ -66,14 +66,14 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     js=(ROOT/'cockpit.js').read_text()
     html=(ROOT/'index.html').read_text()
     assert "params.get('id')" in js
-    assert 'new URLSearchParams({id: identityId})' in js
+    assert 'new URLSearchParams({id: identityId, engine: analysisEngine})' in js
     assert '?${search}' in js
     assert "params.get('role')" not in js
     assert '"role"' not in js and "'role'" not in js
     assert '@@COCKPIT_VERSION@@' in html
     assert 'pdt-release-2109836674373566465' in js
     assert '`${apiBase}/analyses`' in js
-    assert "source: 'prototype'" in js
+    assert "source: analysisEngine === 'main' || baselineId ? 'service' : 'prototype'" in js
     assert 'ensureAnalysis' in js and 'requestIdleCallback' in js
     assert 'PREFETCH_STAGES' in js
     assert ':bi-adapters="biAdapters"' in html

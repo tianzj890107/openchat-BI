@@ -52,7 +52,7 @@ def validate_result(raw, evidence, seen):
     if len({x["id"] for x in value["recommendations"]})!=len(value["recommendations"]):raise ValueError("建议 ID 重复")
     for cause in value["causes"]:
         if not set(cause["evidenceIds"]) <= available & seen:raise ValueError("原因引用未查询或不存在的证据")
-        if cause["status"]=="supported" and not any(x in {r["id"] for r in evidence["records"]} for x in cause["evidenceIds"]):
+        if cause["status"]=="supported" and not any(x in {r["id"] for r in evidence["records"] if r.get("causeSupport",True)} for x in cause["evidenceIds"]):
             raise ValueError("已支持原因必须引用具体处理记录，汇总指标不能证明原因")
     for action in value["recommendations"]:
         if not set(action["causeIds"]) <= causes:raise ValueError("建议引用未知原因")
@@ -70,6 +70,8 @@ def run_analysis(evidence, context, cancel, on_progress, provider=stream_message
 输出字段严格为：summary（不超过200字）；causes 数组 [{id,title（不超过24字）,description（不超过100字）,status:"supported"或"hypothesis",evidenceIds:[已查询证据ID]}]；
 recommendations 数组 [{id,causeIds:[原因ID],action（不超过50字）,ownerRole（只写一个责任角色，不超过20字）,deadlineDays（1-365的整数，预计完成工作日）,acceptance（不超过50字）,detail（可选的补充说明，不超过200字）}]；
 limitations 字符串数组（每项不超过80字）。禁止输出额外字段。每项建议引用原因。证据不足要直说并提出核实动作。'''
+    if evidence.get('sourceMode')=='service':
+        prompt=prompt.replace('所有数据是演示数据。','证据来自主服务本轮真实查询的冻结材料，不得冒充新查询；causeSupport=false的原始行不能证明因果关系，只能形成待验证假设。')
     messages=[{"role":"user","content":json.dumps(dict(context=context,request="诊断当前环节风险，给出可追溯原因和具体改善建议"),ensure_ascii=False)}]
     seen=set(); started=time.monotonic();events=[]
     for iteration in range(6):

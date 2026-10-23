@@ -16,6 +16,9 @@
   const PERIOD = '2025-10';
   const DEPARTMENT = '全部产品部';
   const params = new URLSearchParams(location.search);
+  let analysisEngine = params.get('engine') === 'standalone' ? 'standalone' : 'main';
+  const baselineId = params.get('baseline') || '';
+  let baselineItem = null;
   const identityId = ['1', '2'].includes(params.get('id')) ? params.get('id') : '1';
   const PAGES = {
     overview: {title: '经营看板', tab: '经营看板'},
@@ -74,12 +77,13 @@
   const PREFETCH_STAGES = [...new Set(Object.values(SLOT_STAGE))];
   const insightState = reactive({});
   const analysisPromises = new Map();
+  const clarificationAnswers = new Map();
   const MAX_CONCURRENT = 3;
   const analysisQueue = [];
   let runningAnalyses = 0;
 
   function pumpAnalysisQueue() {
-    while (runningAnalyses < MAX_CONCURRENT && analysisQueue.length) {
+    while (runningAnalyses < (analysisEngine === 'main' ? 1 : MAX_CONCURRENT) && analysisQueue.length) {
       const job = analysisQueue.shift();
       runningAnalyses += 1;
       job.run().then(job.resolve, job.reject).finally(() => {
@@ -109,17 +113,35 @@
     return `${response.status} ${response.statusText}`;
   }
 
+  function checkedAnalysis(item, stage) {
+    const context=item.context || {};
+    if(context.engine!==analysisEngine || context.id!==Number(identityId) || context.stage!==stage ||
+       context.period!==(baselineItem?.context.period||PERIOD) || context.department!==(baselineItem?.context.department||DEPARTMENT) ||
+       canonical(context.filters||{})!==canonical(baselineItem?.context.filters||{})) {
+      throw new Error('分析结果与当前引擎或范围不一致，拒绝回填');
+    }
+    return item;
+  }
+
   async function startAnalysis(stage, refresh) {
     const state = stateFor(stage);
+    if(baselineItem && baselineItem.context.stage!==stage)throw new Error('当前对照基线属于'+STAGE_NAMES[baselineItem.context.stage]+'，请切换至该节点');
     state.status = 'running';
+    state.item = null;
     state.progress = '提交模型分析';
     state.error = '';
     const body = JSON.stringify({
       id: Number(identityId),
-      period: PERIOD,
-      department: DEPARTMENT,
+      engine: analysisEngine,
+      clarifications: clarificationAnswers.get(stage) || {},
+      chartSnapshotId: 'pdt-release-2109836674373566465',
+      period: baselineItem?.context.period || PERIOD,
+      department: baselineItem?.context.department || DEPARTMENT,
+      filters: baselineItem?.context.filters || {},
+      repositoryId: baselineItem?.context.repositoryId || '',
+      baselineAnalysisId: baselineId,
       stage,
-      source: 'prototype',
+      source: analysisEngine === 'main' || baselineId ? 'service' : 'prototype',
       refresh: Boolean(refresh),
     });
     let response;
@@ -134,7 +156,8 @@
       await new Promise(resolve => setTimeout(resolve, 3000));
     }
     if (!response?.ok) throw new Error(response ? await responseError(response) : '分析请求失败');
-    let item = await response.json();
+    let item = checkedAnalysis(await response.json(), stage);
+    state.item = item;
     state.progress = item.progress || '读取当前快照';
     const deadline = Date.now() + 240000;
     while (item.status === 'queued' || item.status === 'running') {
@@ -142,10 +165,11 @@
       await new Promise(resolve => setTimeout(resolve, 1500));
       const poll = await fetch(`${apiBase}/analyses/${encodeURIComponent(item.id)}`, {headers: {'Accept': 'application/json'}});
       if (!poll.ok) throw new Error(await responseError(poll));
-      item = await poll.json();
+      item = checkedAnalysis(await poll.json(), stage);
+      state.item = item;
       state.progress = item.progress || '模型分析中';
     }
-    if (item.status !== 'completed') throw new Error(item.progress || '分析未完成');
+    if (!['completed', 'limited', 'needs_input'].includes(item.status)) throw new Error(item.progress || '分析未完成');
     state.status = 'done';
     state.item = item;
     state.progress = '';
@@ -172,6 +196,7 @@
   }
 
   function schedulePrefetch() {
+    if (analysisEngine === 'main' || baselineId) return; // Compare on demand; do not warm five full main-service tasks.
     if (typeof window.requestIdleCallback === 'function') {
       window.requestIdleCallback(prefetchAnalyses, {timeout: 1500});
     } else {
@@ -189,15 +214,40 @@
         id: Number(identityId),
         stage: stage.value,
         stageName: STAGE_NAMES[stage.value] || stage.value,
-        period: PERIOD,
-        department: DEPARTMENT,
+        period: baselineItem?.context.period || PERIOD,
+        department: baselineItem?.context.department || DEPARTMENT,
       }));
+      const compareLink = computed(()=>{if(!state.value.item)return '';const url=new URL(location.href);url.searchParams.set('engine','standalone');url.searchParams.set('baseline',state.value.item.id);return url.pathname+url.search;});
+      const clarification = ref('');
+      const confirmScope = () => {if(!clarification.value.trim())return;clarificationAnswers.set(stage.value, {answer:clarification.value.trim()});ensureAnalysis(stage.value,true).catch(()=>{});};
+      const stop = async () => {if(state.value.item?.id)await fetch(`${apiBase}/analyses/${state.value.item.id}/cancel`,{method:'POST'});};
       const reload = () => ensureAnalysis(stage.value, true).catch(() => {});
       onMounted(() => ensureAnalysis(stage.value).catch(() => {}));
-      return {delivered, state, analysisContext, reload, insightLoadError};
+      return {delivered, state, analysisContext, reload, insightLoadError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
     },
     template: `
-      <component v-if="delivered" :is="delivered"
+      <section v-if="analysisEngine==='main'" class="main-service-insight" aria-live="polite">
+        <div class="main-service-insight__meta">主服务分析 · {{analysisContext.period}} · {{analysisContext.department}} · 图表快照及筛选尚未与分析范围自动对齐</div>
+        <div v-if="state.status==='running'">{{state.progress}} <button @click="stop">停止分析</button></div>
+        <div v-else-if="state.status==='error'" role="alert">{{state.error}} <button @click="reload">重试</button></div>
+        <template v-if="state.item?.result">
+          <b>{{state.item.context.stageName}} · {{state.item.status==='needs_input'?'待确认口径':state.item.status==='limited'?'受限交付':'主服务交付'}}</b>
+          <div class="main-service-insight__section">{{state.item.result.narrative}}</div>
+          <div v-if="state.item.status==='needs_input'">
+            <p>{{state.item.result.clarification?.question}}</p>
+            <input v-model="clarification" aria-label="补充分析口径" placeholder="补充口径后重新分析"><button @click="confirmScope">确认并重新分析</button>
+          </div>
+          <a v-if="state.item.evidence?.facts?.length || state.item.evidence?.records?.length" :href="compareLink">用同一冻结证据对照独立路线</a>
+          <details><summary>执行来源与证据（{{state.item.evidence?.facts?.length||0}}）</summary>
+            <div v-for="fact in state.item.evidence?.facts||[]">{{fact.label}}</div>
+            <div>耗时 {{state.item.execution?.durationSeconds}} 秒 · {{state.item.execution?.toolCalls}} 次工具调用</div>
+            <div v-for="event in state.item.events||[]">{{event.tool}}</div>
+            <div v-for="limit in state.item.result.limitations">{{limit}}</div>
+          </details>
+        </template>
+      </section>
+      <div v-if="analysisEngine==='standalone'" class="main-service-insight__meta">独立路线对照 · {{baselineId?'使用主服务冻结证据，只比较材料归纳':'原型演示证据，与交付图表快照尚未对齐'}}</div>
+      <component v-if="analysisEngine==='standalone' && delivered" :is="delivered"
                  :analysis="state.item" :status="state.status" :progress="state.progress"
                  :error="state.error" :context="analysisContext" :slot-props="slotProps"
                  @retry="reload"></component>
@@ -272,7 +322,8 @@
   }
 
   function routeFor(page) {
-    const search = new URLSearchParams({id: identityId});
+    const search = new URLSearchParams({id: identityId, engine: analysisEngine});
+    if(baselineId)search.set('baseline',baselineId);
     return `${routeRoot}/cockpit/${page}?${search}`;
   }
 
@@ -323,7 +374,24 @@
       }
 
       async function loadRuntime() {
+        const capabilities=await loadJson(`${apiBase}/engines`);
+        if(!capabilities.comparisonOnly || !params.has('engine'))analysisEngine=capabilities.default;
+        if(baselineId){
+          if(!capabilities.comparisonOnly || analysisEngine!=='standalone')throw new Error('当前不允许独立证据对照');
+          baselineItem=await loadJson(`${apiBase}/analyses/${encodeURIComponent(baselineId)}`);
+          if(baselineItem.context.engine!=='main')throw new Error('基线必须来自主服务');
+        }
         const [payload, snapshots] = await Promise.all([loadJson(runtimeUrl), loadJson(snapshotsUrl)]);
+        if(baselineItem){
+          const nodes={opportunity:['2109848488855519233','2109840325158682625'],guidance:['2109848488910045186'],quotation:['2112022555167604737'],technical:['2109848488914239490'],bid:['2109848488918433794'],order:['2109848488926822401','2109840573998350338'],shipment:['2109848488926822402','2109840696539136002']};
+          const selected=nodes[baselineItem.context.stage]||[];
+          for(const spec of [...Object.values(payload.pages),...Object.values(payload.templates)]){
+            for(const c of spec.components||[]){if(c.type==='mini-cpgraph'){
+              const rule=c.graphConfig?.graphTemplateSwitchRules?.find(r=>selected.includes(r.nodeId));
+              if(rule)c.graphConfig.defaultActiveKey=rule.nodeId;
+            }}
+          }
+        }
         const installed = installSnapshots(snapshots);
         biAdapters.value = installed.biAdapters;
         hostUtils.value = installed.utils;
