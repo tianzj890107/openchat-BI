@@ -169,3 +169,22 @@
   `api-data/`。本轮不重启 API、不修改 8765 主服务和用户历史数据。
 - 边界：真实业务数据源尚未映射，Fuxi 宿主尚未联调；POC 执行器按单进程运行。8877 旁路 API
   当前由 `setsid nohup` 启动，没有 systemd 自动拉起，服务器重启后需要重新启动。
+
+### 2026-10-23 11:55 · 预收口 ontology-v0.1.4（PATCH）
+
+- 变化：按用户明确指定，把 `feature/cockpit-v3-poc` 上的 V3 经营驾驶舱交付预收口为
+  `ontology-v0.1.4`，版本位次为 PATCH；本版本范围仅包含该分支的驾驶舱能力，不包含同期
+  工作区中的其它并行修改。
+- 产品能力：三个独立看板路由、交付 ProUI 元数据与模板、三节点穿透式分析头盔图、空闲预取
+  的真实模型分析插槽、交付快照回放，以及按早期 mock 结构收口的阶段风险卡片。
+- 版本统一：`pyproject.toml`、`frontend/package.json`、`frontend/package-lock.json` 更新为
+  `0.1.4`；Python 包、FastAPI、前端 `PRODUCT_VERSION`、首屏版本标签统一为
+  `ontology-v0.1.4`；前端构建产物 `bi_agent/web/static/vendor/antd/workbench.js` 同步重建。
+- 文档与测试：新增 `docs/versions/ontology-v0.1.4.md`，同步版本索引、版本规范、根 README、
+  `AGENTS.md`、部署示例和版本契约测试；现行索引同时修正为 `ontology-v0.1.3` 已于 2026-10-20
+  发布、tag 指向 `a805a66` 的事实，已发布的 `ontology-v0.1.3.md` 保持历史原貌。
+- 验证：版本契约、驾驶舱元数据、资源契约和 POC 测试在提交前执行；前端 `npm run build` 成功；
+  `git diff --check` 通过。
+- 边界：只准备并推送临时分支、创建到 `master` 的 Merge Request；不自动合并、不创建 tag、
+  不创建 GitLab Release、不部署，也不拉 `release/ontology-v0.1.4` 分支。tag 与 Release 等
+  用户确认 MR 合入后另行授权。

@@ -4,12 +4,13 @@
 [changelog](../../changelog/) 下的当前周文件（如 `changelog_9_7_11.md`），
 不再创建日报。
 
-- 当前版本：`ontology-v0.1.3`
-- 当前 tag 与 Release：`ontology-v0.1.2`（指向定版 commit `3c4de1e`）、`ontology-v0.1.1`
+- 当前版本：`ontology-v0.1.4`
+- 当前 tag 与 Release：`ontology-v0.1.3`（指向定版 commit `a805a66`）、`ontology-v0.1.2`
+  （指向定版 commit `3c4de1e`）、`ontology-v0.1.1`
   （指向定版 commit `c82221f`，2026-10-15 事后补建）、`ontology-v0.1.0`（指向定版 commit
   `74fca80`）与 `ontology-v0.0.1`–`ontology-v0.0.10`（共 13 个，均已创建 release，见根
   [README 发布清单](../../README.md)）
-- `ontology-v0.1.3` 的 tag 与 GitLab Release 尚未创建；按版本规范需要用户在 Merge Request
+- `ontology-v0.1.4` 的 tag 与 GitLab Release 尚未创建；按版本规范需要用户在 Merge Request
   合入 `master` 后单独授权，不能由版本号、commit、push 或 MR 自动触发。
 - 版本规则：[语义化版本与正式发布规范](./versioning-policy.md)
 - 分支模型与 PR 合并流程：[Git 分支与合并工作流规范](../git-branch-workflow.md)
@@ -22,7 +23,8 @@
 
 | 版本 | 日期 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| [./ontology-v0.1.3.md](./ontology-v0.1.3.md) | 2026-10-20 | 正式版 / 当前版本 | 主服务内置远程 MCP、Fuxi 零本地凭据接入、16 个受控分析工具、`CanvasGenerate` Artifact URL 交付、demo2 代理与语义检索快路径修复，`ontology-v0.1.2` → `ontology-v0.1.3` PATCH 收口 |
+| [./ontology-v0.1.4.md](./ontology-v0.1.4.md) | 2026-10-23 | 正式版 / 当前版本 | V3 经营驾驶舱 POC：三个独立看板路由、交付 ProUI 元数据、三节点穿透式分析、真实模型分析插槽、交付快照回放与 mock 对齐的风险卡片，`ontology-v0.1.3` → `ontology-v0.1.4` PATCH 收口 |
+| [./ontology-v0.1.3.md](./ontology-v0.1.3.md) | 2026-10-20 | 正式版（历史版本） | 主服务内置远程 MCP、Fuxi 零本地凭据接入、16 个受控分析工具、`CanvasGenerate` Artifact URL 交付、demo2 代理与语义检索快路径修复，`ontology-v0.1.2` → `ontology-v0.1.3` PATCH 收口 |
 | [./ontology-v0.1.2.md](./ontology-v0.1.2.md) | 2026-10-15 | 正式版（历史版本） | 分析逻辑剥离包 `ontology-analytics-skill` 收尾（真实工具运行时、CanvasGenerate 整页交付）、多步分析中文过程播报、取数证据与双环境对比归档、`20260727` 归档改为临时分支 → `master`，`ontology-v0.1.0` → `ontology-v0.1.2` PATCH 收口 |
 | [./ontology-v0.1.1.md](./ontology-v0.1.1.md) | 2026-10-08 | 正式版（历史版本） | 分析逻辑剥离包 `ontology-analytics-skill`：路由 → L1–L5 SOP → 五道闸门、真实工具运行时 `tools/`（17 个真实工具、凭据外置），`ontology-v0.1.0` → `ontology-v0.1.1` PATCH（2026-10-15 补建 tag 与 Release） |
 | [./ontology-v0.1.0.md](./ontology-v0.1.0.md) | 2026-09-29 | 正式版（历史版本） | PDT 数据湖切换 PG 引擎端到端修复、本体/MAL 与元数据契约迁移、会话回收站与匿名读取面收敛、X360 流程定义集成，`ontology-v0.0.x` → `ontology-v0.1.0` MINOR 收口 |

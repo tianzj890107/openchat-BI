@@ -24,7 +24,7 @@ const { Sider } = Layout;
 // brand keeps the short legacy label 「智能分析」 (the longer marketing name
 // stays on the page title / hero), per the 2026-09-30 brand request.
 const PRODUCT_NAME = "智能分析";
-const PRODUCT_VERSION = "ontology-v0.1.3";
+const PRODUCT_VERSION = "ontology-v0.1.4";
 
 const DECORATIVE_EMOJI_TOKEN = "(?:📌|📊|📎|🧭|📈|📉|📄|🧩|🧠|✅|⚠️|🔍|💡)";
 function stripDecorativeAssistantMarkup(value) {
@@ -1304,7 +1304,7 @@ const shellMarkup = (shellDocument.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] 
   .trim();
 
 /* The version chip moved out of the sidebar brand row and now trails the
- * workbench hero title (「硕磐智能分析 Agent」 ontology-v0.1.3), so the blue
+ * workbench hero title (「硕磐智能分析 Agent」 ontology-v0.1.4), so the blue
  * Ant Design tag look is rendered here from the single version constant. */
 function ProductVersionTag() {
   return <Tag className="antd-product-version" bordered={false} color="blue">{PRODUCT_VERSION}</Tag>;
