@@ -878,6 +878,7 @@ def build_cognitive_policy_decision(
     normalized = _normalize_question(question)
     compact = re.sub(r"\s+", "", normalized).strip(_OUTER_PUNCT)
 
+    has_dashboard = "Cockpit-DashboardQuery" in allowed
     has_metric = _TOOL_METRIC_QUERY in allowed
     has_fact = _TOOL_FACT_QUERY in allowed
     has_semantic = _TOOL_SEMANTIC_QUERY in allowed
@@ -903,6 +904,8 @@ def build_cognitive_policy_decision(
             return [_TOOL_METRIC_QUERY]
         if has_fact:
             return [_TOOL_FACT_QUERY]
+        if has_dashboard:
+            return ["Cockpit-DashboardQuery"]
         return []
 
     def limitation() -> dict[str, Any]:
@@ -995,7 +998,7 @@ def build_cognitive_policy_decision(
         return decide(
             mode=MODE_DIAGNOSTIC_ANALYSIS,
             reason_code="DIAGNOSTIC_REQUEST",
-            next_step=NEXT_QUERY_DORIS,
+            next_step="QUERY_DASHBOARD" if required == ["Cockpit-DashboardQuery"] else NEXT_QUERY_DORIS,
             required_tools=required,
             evidence_required=True,
             needs_human=False,
@@ -1022,7 +1025,7 @@ def build_cognitive_policy_decision(
         return decide(
             mode=MODE_FACT_QUERY,
             reason_code="FACT_REQUEST_RESOLVED",
-            next_step=NEXT_QUERY_DORIS,
+            next_step="QUERY_DASHBOARD" if required == ["Cockpit-DashboardQuery"] else NEXT_QUERY_DORIS,
             required_tools=required,
             evidence_required=True,
             needs_human=False,

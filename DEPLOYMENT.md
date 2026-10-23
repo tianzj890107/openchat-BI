@@ -713,10 +713,11 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 主服务新增无对话分析任务适配器，`/api/cockpit/analyses` 的 `engine=main` 直接执行现有
   WebSession及源绑定工具，不需要另外启动8877。独立router没有主服务执行器时返回503，不降级。
 - 联调配置：`COCKPIT_ANALYSIS_ENGINE=main`、`COCKPIT_COMPARISON_ENABLED=true`；页面使用
-  `/cockpit/analysis?id=1&engine=main`。同源API须指向已配置本体和数据源的主服务，沿用APP_ROOT_PATH规则。
+  `/cockpit/analysis?id=1&engine=main`。同源API须指向已配置分析Agent的主服务，沿用APP_ROOT_PATH规则。
 - 选型后设置 `COCKPIT_COMPARISON_ENABLED=false`，固定唯一全站引擎，所有插槽统一执行。
   若选择main，后续部署将静态站API代理指向主服务，不再保留8877分析进程；代理切换和停服需要新的明确授权。
 - 原8877历史库原地保留，不自动复制、迁移或清空；主服务任务存储位于其工作目录的
   `dataset/cockpit/history.sqlite3`。禁止用旧目录覆盖主服务dataset。
-- 本体库不一致会拒绝。图表仍为交付快照，尚未完成同源对账，不能当作真实数据联调已验收。
+- 看板任务只读与网页相同的AP交付快照，要求chartSnapshotId和chartQueries；服务端核对查询并绑定内容哈希。
+  不读取主服务默认本体／数据库，未知快照或额外数据源绑定会被拒绝。快照不是实时数据，缺少同源根因明细。
 - 冻结证据对照与其他限制见 `docs/specs/cockpit-analysis-engines.md`。

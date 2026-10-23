@@ -3951,17 +3951,19 @@ app.include_router(build_mcp_router(
 from ..cockpit.router import build_cockpit_router  # noqa: E402
 
 def _cockpit_main_context(req):
-    """Resolve source identity on the server; client ids cannot redirect queries."""
-    import hashlib
-    source=_source_for_session(None)
-    if source.ontology_store is None or STATE.agent_def is None:
-        raise HTTPException(503,'主服务未配置本体／数据源，不能启动完整分析')
-    repository_id=str(source.remote_ontology.repository_id) if source.remote_ontology else ''
-    if req.repositoryId and req.repositoryId!=repository_id:
-        raise HTTPException(422,'请求的本体库与主服务当前绑定不一致，请先确认数据源')
-    fingerprint=hashlib.sha256(repr(_source_binding_signature(source)).encode()).hexdigest()[:20]
-    return dict(snapshotId='service-source-'+fingerprint,repositoryId=repository_id,
-        dataBasis='主服务当前绑定数据源实时取证；此标识只标识数据源，不代表数据库快照，暂不复用已完成结果')
+    from ..cockpit.dashboard_source import material
+    if STATE.agent_def is None:
+        raise HTTPException(503,'主服务未配置分析Agent')
+    if req.repositoryId:
+        raise HTTPException(422,'看板快照分析不接受其他本体库绑定')
+    if req.filters:
+        raise HTTPException(422,'筛选必须体现在已展示的AP请求中，不能声明未应用的自定义筛选')
+    try:
+        fingerprint,_=material(req.model_dump())
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(422,str(exc)) from exc
+    return dict(snapshotId='dashboard-'+fingerprint,repositoryId='',
+        dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库')
 
 
 @contextmanager
@@ -3972,11 +3974,21 @@ def _cockpit_main_turn(context,cancel):
     session=None
     slot=lease=ticket=None
     try:
-        session=_ensure_session(key)
-        import hashlib
-        bound=_source_for_session(key)
-        fingerprint=hashlib.sha256(repr(_source_binding_signature(bound)).encode()).hexdigest()[:20]
-        if context['snapshotId']!='service-source-'+fingerprint:raise RuntimeError('主服务数据源已变化，请重新提交分析任务')
+        from ..cockpit.dashboard_source import material, executor, TOOL, SCHEMA
+        from open_claude.tools import register_tool
+        fingerprint,selected=material(context)
+        if context['snapshotId']!='dashboard-'+fingerprint:
+            raise RuntimeError('看板快照已变化，请重新提交分析任务')
+        # Registration supplies the schema only. Every task binds its own executor.
+        def unbound(params,cwd):
+            raise RuntimeError('看板查询只能在绑定快照的任务内执行')
+        register_tool(SCHEMA,unbound)
+        session=WebSession(cwd=STATE.cwd,agent_def=STATE.agent_def,
+            ontology_store=None,tools_override=[TOOL,'AskUser'],
+            context_header='本轮数据来源：看板交付AP快照。只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。',
+            tool_executors={TOOL:executor(selected)})
+        with STATE.registry_lock:
+            STATE.sessions[key]=session
         slot,lease,turn_id,ticket,_=_begin_turn('data',key,cancel_event=cancel,principal_session_id=f"cockpit-id-{context['id']}")
         with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel):
             yield session,session.generate_turn(analysis_question(context))

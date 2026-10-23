@@ -113,7 +113,10 @@ def test_real_main_api_uses_shared_admission_and_preserves_user_sessions(tmp_pat
         yield dict(type='message_end',stop_reason='tool_use',usage={})
     with patch('bi_agent.web.session.stream_message',side_effect=provider):
         client=TestClient(web.app)
-        item=client.post('/api/cockpit/analyses',json=dict(engine='main',source='service')).json()
+        from bi_agent.cockpit.dashboard_source import RELEASE, SNAPSHOT
+        import json
+        query=next(iter(json.loads(SNAPSHOT.read_text())['analysis']))
+        item=client.post('/api/cockpit/analyses',json=dict(engine='main',source='service',chartSnapshotId=RELEASE,chartQueries=[query])).json()
         assert 'id' in item,item
         done=wait(client,item['id'])
     assert done['status']=='needs_input',done

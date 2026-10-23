@@ -115,6 +115,9 @@
 
   function checkedAnalysis(item, stage) {
     const context=item.context || {};
+    if (analysisEngine === 'main' && (dashboardQueryError || canonical(context.chartQueries||[])!==canonical([...displayedQueries].sort()))) {
+      throw new Error(dashboardQueryError || '看板查询范围已变化，请重新分析');
+    }
     if(context.engine!==analysisEngine || context.id!==Number(identityId) || context.stage!==stage ||
        context.period!==(baselineItem?.context.period||PERIOD) || context.department!==(baselineItem?.context.department||DEPARTMENT) ||
        canonical(context.filters||{})!==canonical(baselineItem?.context.filters||{})) {
@@ -129,12 +132,23 @@
     state.status = 'running';
     state.item = null;
     state.progress = '提交模型分析';
+    if (analysisEngine === 'main') {
+      let previous = -1, stable = 0;
+      for (let attempt = 0; attempt < 20 && stable < 3; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        stable = displayedQueries.size && previous === displayedQueries.size ? stable + 1 : 0;
+        previous = displayedQueries.size;
+      }
+      if (dashboardQueryError) throw new Error(dashboardQueryError);
+      if (!displayedQueries.size) throw new Error('当前看板尚无成功展示的 AP 查询，不能开始分析');
+    }
     state.error = '';
     const body = JSON.stringify({
       id: Number(identityId),
       engine: analysisEngine,
       clarifications: clarificationAnswers.get(stage) || {},
       chartSnapshotId: 'pdt-release-2109836674373566465',
+      chartQueries: analysisEngine === 'main' ? [...displayedQueries].sort() : [],
       period: baselineItem?.context.period || PERIOD,
       department: baselineItem?.context.department || DEPARTMENT,
       filters: baselineItem?.context.filters || {},
@@ -178,7 +192,9 @@
 
   function ensureAnalysis(stage, refresh = false) {
     const state = stateFor(stage);
-    if (!refresh && state.status === 'done' && state.item) return Promise.resolve(state.item);
+    if (!refresh && state.status === 'done' && state.item) {
+      try { return Promise.resolve(checkedAnalysis(state.item, stage)); } catch (_) { analysisPromises.delete(stage); }
+    }
     if (!refresh && analysisPromises.has(stage)) return analysisPromises.get(stage);
     const promise = withAnalysisSlot(() => startAnalysis(stage, refresh)).catch(cause => {
       state.status = 'error';
@@ -227,7 +243,7 @@
     },
     template: `
       <section v-if="analysisEngine==='main'" class="main-service-insight" aria-live="polite">
-        <div class="main-service-insight__meta">主服务分析 · {{analysisContext.period}} · {{analysisContext.department}} · 图表快照及筛选尚未与分析范围自动对齐</div>
+        <div class="main-service-insight__meta">主服务分析 · 分析已展示AP快照 · 实际时间和部门以原始AP请求为准</div>
         <div v-if="state.status==='running'">{{state.progress}} <button @click="stop">停止分析</button></div>
         <div v-else-if="state.status==='error'" role="alert">{{state.error}} <button @click="reload">重试</button></div>
         <template v-if="state.item?.result">
@@ -265,6 +281,14 @@
     return JSON.stringify(value);
   }
 
+  const displayedQueries = new Set();
+  let dashboardQueryError = '';
+  function failDashboardQuery(message) {
+    dashboardQueryError = message + '；请恢复看板数据后刷新页面';
+    if (analysisEngine === 'main') Object.values(insightState).forEach(state => { state.item = null; state.status = 'error'; state.error = dashboardQueryError; });
+    throw new Error(message);
+  }
+
   function installSnapshots(snapshots) {
     const analysis = new Map(Object.entries(snapshots.analysis || {}));
     const batch = new Map(Object.entries(snapshots.batch || {}));
@@ -295,14 +319,16 @@
     const biAdapters = {
       postAnalysisDataQuery: async payload => {
         const hit = analysis.get(canonical(payload));
-        if (hit && hit.success === false) throw new Error(hit.msg || hit.message || 'AP 查询失败');
-        if (!hit?.data) throw new Error('未找到该 AP 查询的发布快照');
+        if (hit && hit.success === false) failDashboardQuery(hit.msg || hit.message || 'AP 查询失败');
+        if (!hit?.data) failDashboardQuery('未找到该 AP 查询的发布快照');
+        displayedQueries.add(canonical(payload));
         return hit.data;
       },
       postAnalysisDataQueryBatch: async payload => {
         const hit = batch.get(canonical(payload));
-        if (hit && hit.success === false) throw new Error(hit.msg || hit.message || 'AP 查询失败');
-        if (!hit?.data) throw new Error('未找到该批量查询的发布快照');
+        if (hit && hit.success === false) failDashboardQuery(hit.msg || hit.message || 'AP 查询失败');
+        if (!hit?.data) failDashboardQuery('未找到该批量查询的发布快照');
+        displayedQueries.add(canonical(payload));
         return hit.data;
       },
     };
