@@ -1,7 +1,7 @@
 # 前端交付元数据：feature/demo_1021
 
 来源：[iba-demo](http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021)，
-固定 commit `37975c7a03719c037b4acca70c38b50fb68f4516`。
+固定 commit `5791b362cac875ca041884079c3d0d45a58aeb89`。
 `components.json`、`template-registry.json`、`insights.js` 和 `insight-components/` 原样复制；
 `insights.json` 由声明式 `insights.js` 转为 JSON。哈希、类型统计和已知问题见 `source.json`。
 
@@ -13,7 +13,7 @@
 | 运营 360 整体分析 | tab-211tc4o0 | 2112434004503347202 |
 | 穿透式问题分析 | tab-1suxx5hd | 2112061604959928321 |
 
-根组件 2 个，子模板 13 份，共 122 个组件配置。
+根组件 2 个，子模板 13 份，共 135 个组件配置。
 范围包含五类经营进度、运营头盔与节点明细、商机／订单／发货穿透、流程弧形图等。
 运行包已验证支持配置里的 `process-arc`、`mini-cpgraph`、`bar-line`、`progress`、
 `share-bar`、`funnel`、`segmented-strip` 和 `tab-container` 等类型。
@@ -29,7 +29,7 @@
   `shipment-cause-breakdown`、`shipment-task-order`。
 
 插槽位置按交付配置挂载，内容调用主服务 `/api/cockpit/analyses` 的真实模型分析。
-页面加载后利用空闲时间预取商机、报价、投标、订单、发货 5 个环节，点击节点时直接展示预热结果。
+主路线按可见插槽和当前节点串行调度，不再空闲预取五个环节；只有“重新分析”强制刷新。
 `insight-components/` 保留为交付原始文件，当前页面不再加载其静态文案。
 
 ## 接入边界

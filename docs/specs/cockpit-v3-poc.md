@@ -3,11 +3,11 @@
 ## 已确认边界（2026-10-22）
 
 - analytics 主服务提供三个独立看板入口：`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 与 `/` 直接返回 `overview`。`/cockpit/home` 保留为兼容地址（FastAPI 307、静态站客户端改写为 `overview`），不再单独渲染第四个页面。现有 `/workbench`、旧驾驶舱及 MCP 不替换。
-- 三个页面只渲染看板本体，页面挂载 `iba-demo` 交付看板 `feature/demo_1021@37975c7` 的一个完整 `ProBiDashboard`；顶部筛选器和三个 Tab 均来自交付根配置，不再由宿主手写。
+- 三个页面只渲染看板本体，页面挂载 `iba-demo` 交付看板 `feature/demo_1021@5791b36` 的一个完整 `ProBiDashboard`；顶部筛选器和三个 Tab 均来自交付根配置，不再由宿主手写。
 - 三个 Tab 分别为“经营看板”“运营360整体分析”“穿透式问题分析”；页面不包含宿主工作区、会话区、页面标题或第二套导航。
 - `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis` 只负责激活对应 Tab，并保留当前 `id`；页内 Tab 切换同步地址。
 - 两个演示身份使用 Fuxi 传入的单一查询参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员。当前三个页面内容对两个 `id` 完全一致，两个人都可以访问和操作；`id` 只作身份标记并为将来差异化预留。页面和 API 不使用 `role`，`/cockpit` 跳转和页内跳转都保留当前 `id`。
-- 交付根配置本身没有 `insights` 字段，宿主从 `iba-demo-1021/insights.json` 补入 12 个插槽声明，并保留完整 Tab `embedPath`。插槽位置按交付配置挂载，内容改为调用 `/api/cockpit/analyses` 的真实模型分析；页面加载后利用空闲时间预取商机、报价、投标、订单、发货 5 个环节，不等到点击才开始。
+- 交付根配置本身没有 `insights` 字段，宿主从 `iba-demo-1021/insights.json` 补入 12 个插槽声明，并保留完整 Tab `embedPath`。插槽位置按交付配置挂载，内容改为调用 `/api/cockpit/analyses` 的真实模型分析；主路线按需串行执行，不再空闲预取五个环节。
 - 三个页面读取同一份静态发布包和 AP 响应快照；快照不包含 Cookie、Token 或用户身份。
 - 正式配置中的 AP 指标口径与卡片标题不一致时保持原值，不在宿主层修正；真实本体＋数据库映射需要后续业务确认。
 - 模拟任务令、分析历史和任务接口仍在主服务侧保留，但当前交付看板页面不渲染旧任务抽屉。
@@ -37,7 +37,7 @@
 合并后的 `metadata/runtime.json` 和本地 AP 快照。
 
 - 根配置包含 2 个组件：`composite-filter-hzjk9t5q` 和 `tab-container-zm9eyxne`。
-- 交付包共 13 份模板、122 个组件配置（含根组件）；三个 Tab 引用的模板全部存在。
+- 交付包共 13 份模板、135 个组件配置（含根组件）；三个 Tab 引用的模板全部存在。
 - `ProBiDashboard` 直接接收根 `components` 和 `template-registry`；三个路由只激活对应 Tab。
 - `data-snapshots.json` 保存 pdt 正式页网络中的 39 个 AP 查询、3 个批量查询和 4 个头盔图请求响应；浏览器通过 `configureBi` 回放，不访问 PDT 或生产接口。
 - 分析页 `SALES_CALIBER` 快照同时包含四节点和网关三节点两份响应；运行时优先使用
@@ -53,9 +53,8 @@
 商机获取、订单接收、发货三个风险插槽共用一套按早期 mock 配置复原的紧凑布局。
 阶段数字读取当前分析证据包的 `facts`，记录级主因读取 `records`，风险、原因、建议和限制读取
 `result.summary`、`result.causes`、`result.recommendations`、`result.limitations`；缺失字段显示
-“未提供”，不再保留交付目录里的演示数字或静态文案。页面加载完成后通过 `requestIdleCallback`
-（不支持时回退 800ms 定时）预取 5 个环节：商机、报价、投标、订单、发货；每个环节只发起一次分析，
-前端最多 3 个并发，其余排队。插槽挂载时复用同一 Promise，点击头盔节点不会重新请求；只有组件内重试
+“未提供”，不再保留交付目录里的演示数字或静态文案。主路线按可见插槽和当前节点串行调度，
+不再空闲预取五个环节；插槽挂载时复用同一 Promise，点击头盔节点不会重新请求，只有组件内重试
 才强制刷新。插槽入口从自身 URL 读取版本串，再以同一版本动态加载 registry、shared 和 12 个子组件；
 CSS 查询串也使用该版本，避免部署后继续命中旧模块或旧样式缓存。
 
@@ -104,8 +103,8 @@ CSS 查询串也使用该版本，避免部署后继续命中旧模块或旧样�
 
 ## 资源
 
-ProUI 资源随 `iba-demo@37975c7` 更新，冻结 SHA 见 `static/cockpit/vendor/resources.json`。
-旧工作台 BI 包保持不变；cockpit 使用新版 `pro-bi-ui.min.js`（`011269f8`）与 `pro-ui.min.css`（`b1ee836d`）。
+ProUI 资源随 `iba-demo@5791b36` 更新，冻结 SHA 见 `static/cockpit/vendor/resources.json`。
+旧工作台 BI 包保持不变；cockpit 使用新版 `pro-bi-ui.min.js`（`2eb9912a`）与 `pro-ui.min.css`（`b1ee836d`）。
 页面渲染入口是 `ProBiDashboard`，组件类型映射包括 `ProKpiCard`、`ProProgressCard`、`ProDataTable`、`ProBarChart`、`ProDualAxisChart`、`ProHorizontalBarChart`、`ProFunnelChart`、`ProShareBar`、`ProMiniCpGraph`、`ProTitle`、`ProButtonGroup` 及分组／模版容器。
 Vue 版本为 3.5.25，哈希一致，复用原有文件。
 资源文档：<http://pro-ui.eimos.com/bi-components/setup/>、<http://pro-ui.eimos.com/bi-components/dashboard/>。
@@ -130,12 +129,12 @@ node --check bi_agent/web/static/cockpit/cockpit.js
 - 三条路由均返回 200，`/cockpit` 跳到 `overview`，`/cockpit/home` 在静态站加载后改写为 `overview`（FastAPI 直接 307）。
 - 页面只有一个 `ProBiDashboard`，顶部根筛选器和三个 Tab 由交付配置生成；页内 Tab 切换同步 URL 并保留 `id=1|2`。
 - 三条路由分别激活“经营看板”“运营360整体分析”“穿透式问题分析”；`id=1` 与 `id=2` 内容一致。
-- 运营页加载后后台出现报价、订单等尚未显示环节的分析任务，证明空闲预取生效；点击节点后插槽直接显示已完成结果。
+- 运营页按可见插槽和当前节点按需发起分析；点击节点后插槽显示对应分析结果。
 - 三个页面均无组件错误；运营页头盔图切到报价、投标、订单接收节点时分别挂载 `quote-summary`、`bid-summary`、`order-sign-summary`，穿透页切到订单接收和发货节点时挂载 `order-risk-summary` 与 4 个发货插槽。
 - 穿透页头盔图实际渲染为商机获取、订单接收、发货三个节点；三个节点均挂载同一套
   `stage-risk-analysis` 概况／风险／原因／建议卡片，计算样式为 13px／22px、8px 间距、
   `14px 16px 12px` 内边距，且 1440px 和 390px 视口下卡片内部均无横向溢出。
-- 穿透页默认显示 3 个插槽；12 个交付插槽位置均挂载真实模型分析，页面空闲时预取 5 个环节。
+- 穿透页默认显示 3 个插槽；12 个交付插槽位置均挂载真实模型分析，主路线按需串行执行。
 - 页面只回放本地 `/static/cockpit/metadata/pdt-release-2109836674373566465/data-snapshots.json` 中的请求，不访问 AP。
 - 时间筛选切换到 `2026-08-13 19:06:09` 后无组件错误、无未捕获快照，销售额卡按交付绑定更新，其余卡保持不变（与交付筛选绑定范围一致）。
 

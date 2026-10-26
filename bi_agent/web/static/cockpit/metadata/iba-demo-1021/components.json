@@ -154,7 +154,7 @@
     "id": "tab-container-zm9eyxne",
     "position": {
       "h": 119,
-      "w": 119,
+      "w": 120,
       "x": 0,
       "y": 0
     },
@@ -179,6 +179,194 @@
           "id": "tab-1suxx5hd",
           "label": "穿透式问题分析",
           "templateId": "2112061604959928321"
+        }
+      ],
+      "activateRules": [
+        {
+          "id": "activate-08ky1886",
+          "source": {
+            "componentId": "process-arc-647v3hoc",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              }
+            ],
+            "surface": "cardTitle"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-211tc4o0"
+          }
+        },
+        {
+          "id": "activate-qtmkhp3o",
+          "source": {
+            "componentId": "progress-y5dumxio",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              }
+            ],
+            "surface": "progressFooter"
+          },
+          "helmet": {
+            "componentId": "mini-cpgraph-93j6k86p",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ],
+            "nodeId": "2109840325158682625",
+            "nodeName": "商机获取"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-1suxx5hd"
+          }
+        },
+        {
+          "id": "activate-pimzhg21",
+          "source": {
+            "componentId": "progress-91j3rt9a",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              }
+            ],
+            "surface": "progressFooter"
+          },
+          "helmet": {
+            "componentId": "mini-cpgraph-93j6k86p",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ],
+            "nodeId": "2109840696539136002",
+            "nodeName": "发货"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-1suxx5hd"
+          }
+        },
+        {
+          "id": "activate-fjgecu3g",
+          "source": {
+            "componentId": "progress-ynh9zsng",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              }
+            ],
+            "surface": "progressFooter"
+          },
+          "helmet": {
+            "componentId": "mini-cpgraph-93j6k86p",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ],
+            "nodeId": "2109840325158682625",
+            "nodeName": "商机获取"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-1suxx5hd"
+          }
+        },
+        {
+          "id": "activate-ro8pacg2",
+          "source": {
+            "componentId": "progress-zl0egumz",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              }
+            ],
+            "surface": "progressFooter"
+          },
+          "helmet": {
+            "componentId": "mini-cpgraph-93j6k86p",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ],
+            "nodeId": "2109840696539136002",
+            "nodeName": "发货"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-1suxx5hd"
+          }
+        },
+        {
+          "id": "activate-jx3xn2af",
+          "source": {
+            "componentId": "kpiCard-q9oq9mxq",
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              }
+            ],
+            "surface": "headerAction",
+            "actionKey": "1792720055376"
+          },
+          "helmet": {
+            "componentId": "mini-cpgraph-93j6k86p",
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ],
+            "nodeId": "2109840696539136002",
+            "nodeName": "发货"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-1suxx5hd"
+          }
         }
       ]
     }

@@ -175,8 +175,8 @@
 - 变化：按用户明确指定，把 `feature/cockpit-v3-poc` 上的 V3 经营驾驶舱交付预收口为
   `ontology-v0.1.4`，版本位次为 PATCH；本版本范围仅包含该分支的驾驶舱能力，不包含同期
   工作区中的其它并行修改。
-- 产品能力：三个独立看板路由、交付 ProUI 元数据与模板、三节点穿透式分析头盔图、空闲预取
-  的真实模型分析插槽、交付快照回放，以及按早期 mock 结构收口的阶段风险卡片。
+- 产品能力：三个独立看板路由、交付 ProUI 元数据与模板、三节点穿透式分析头盔图、按需串行的
+  真实模型分析插槽、交付快照回放，以及按早期 mock 结构收口的阶段风险卡片。
 - 版本统一：`pyproject.toml`、`frontend/package.json`、`frontend/package-lock.json` 更新为
   `0.1.4`；Python 包、FastAPI、前端 `PRODUCT_VERSION`、首屏版本标签统一为
   `ontology-v0.1.4`；前端构建产物 `bi_agent/web/static/vendor/antd/workbench.js` 同步重建。
@@ -209,3 +209,19 @@
   主服务继续统一编排和校验，但禁止本轮调用默认本体、SQL或其他数据网关。实际期间／部门以AP原始请求为准，
   未知快照、任意本体库和未应用的自定义筛选被拒绝；采购字段不替代销售指标，缺少同源明细不认定根因。
 - 本轮仅本地实现与分支交付，不部署、不修改8765／8877服务器或用户历史会话。
+
+### 2026-10-23 18:10 · Cockpit 刷新 iba-demo 样式与交付元数据
+
+- 来源同步：`iba-demo` `feature/demo_1021` 从 `37975c7` 更新到 `5791b36`；重新导入
+  `components.json`、`template-registry.json`、`insights.js`、`insights.json` 和
+  `lib/pro-bi-ui.min.js`，CSS 未变化，继续使用 `b1ee836d`。
+- 组件变化：交付组件从 122 个增加到 135 个；经营看板新增 4 个 KPI、分段条和标题组件，
+  运营页及穿透页的标题、分组和卡片位置按新布局重排；穿透页 `sales-shipment-issues`
+  插槽落点从 `group-dhflgwln` 调整为 `progress-2hrezkzc`。
+- 样式变化：驾驶舱切换到交付的白色画布主题，宿主设置 `data-dashboard-theme="white"`、
+  画布和组件背景变量；`pro-bi-ui.min.js` 缓存版本更新为 `2eb9912a`。上游
+  `bid-status-note` 样式同步为固定 136px 高度，其余宿主插槽适配代码保留。
+- 资源记录：`source.json`、`vendor/resources.json`、`metadata/runtime.json`、索引缓存版本、
+  资源契约测试和相关文档同步到新提交及 SHA；旧工作台资源保持独立。
+- 验证：驾驶舱资源、元数据、POC 和主服务测试 51 项通过；本地浏览器检查三个路由均为白色画布、
+  无横向溢出，交付组件正常渲染；未部署，未修改 8765／8877 和用户历史会话。

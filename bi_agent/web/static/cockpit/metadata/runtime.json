@@ -4,14 +4,14 @@
     "dashboardId": "iba-demo-1021",
     "name": "运营360 整体分析",
     "releaseUrl": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021",
-    "buildTime": "2026-10-22",
-    "fetchedAt": "2026-10-22",
-    "version": "37975c7",
+    "buildTime": "2026-10-23",
+    "fetchedAt": "2026-10-23",
+    "version": "5791b36",
     "status": "active",
     "branch": "feature/demo_1021",
-    "commit": "37975c7a03719c037b4acca70c38b50fb68f4516",
+    "commit": "5791b362cac875ca041884079c3d0d45a58aeb89",
     "templateCount": 13,
-    "totalComponents": 122,
+    "totalComponents": 135,
     "insightComponents": 12,
     "credentialsStored": false,
     "snapshot": {
@@ -27,7 +27,7 @@
     "id": "iba-demo-1021",
     "name": "运营360 整体分析",
     "description": "iba-demo feature/demo_1021 交付看板",
-    "version": "37975c7",
+    "version": "5791b36",
     "status": "active",
     "url": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021",
     "components": [
@@ -186,7 +186,7 @@
         "id": "tab-container-zm9eyxne",
         "position": {
           "h": 119,
-          "w": 119,
+          "w": 120,
           "x": 0,
           "y": 0
         },
@@ -211,6 +211,194 @@
               "id": "tab-1suxx5hd",
               "label": "穿透式问题分析",
               "templateId": "2112061604959928321"
+            }
+          ],
+          "activateRules": [
+            {
+              "id": "activate-08ky1886",
+              "source": {
+                "componentId": "process-arc-647v3hoc",
+                "embedPath": [
+                  {
+                    "kind": "tab",
+                    "containerId": "tab-container-zm9eyxne",
+                    "tabId": "tab-bc6wp3k2",
+                    "templateId": "2112001069107167233"
+                  }
+                ],
+                "surface": "cardTitle"
+              },
+              "tab": {
+                "containerId": "tab-container-zm9eyxne",
+                "embedPath": [],
+                "tabId": "tab-211tc4o0"
+              }
+            },
+            {
+              "id": "activate-qtmkhp3o",
+              "source": {
+                "componentId": "progress-y5dumxio",
+                "embedPath": [
+                  {
+                    "kind": "tab",
+                    "containerId": "tab-container-zm9eyxne",
+                    "tabId": "tab-bc6wp3k2",
+                    "templateId": "2112001069107167233"
+                  }
+                ],
+                "surface": "progressFooter"
+              },
+              "helmet": {
+                "componentId": "mini-cpgraph-93j6k86p",
+                "embedPath": [
+                  {
+                    "kind": "tab",
+                    "containerId": "tab-container-zm9eyxne",
+                    "tabId": "tab-1suxx5hd",
+                    "templateId": "2112061604959928321"
+                  }
+                ],
+                "nodeId": "2109840325158682625",
+                "nodeName": "商机获取"
+              },
+              "tab": {
+                "containerId": "tab-container-zm9eyxne",
+                "embedPath": [],
+                "tabId": "tab-1suxx5hd"
+              }
+            },
+            {
+              "id": "activate-pimzhg21",
+              "source": {
+                "componentId": "progress-91j3rt9a",
+                "embedPath": [
+                  {
+                    "kind": "tab",
+                    "containerId": "tab-container-zm9eyxne",
+                    "tabId": "tab-bc6wp3k2",
+                    "templateId": "2112001069107167233"
+                  }
+                ],
+                "surface": "progressFooter"
+              },
+              "helmet": {
+                "componentId": "mini-cpgraph-93j6k86p",
+                "embedPath": [
+                  {
+                    "kind": "tab",
+                    "containerId": "tab-container-zm9eyxne",
+                    "tabId": "tab-1suxx5hd",
+                    "templateId": "2112061604959928321"
+                  }
+                ],
+                "nodeId": "2109840696539136002",
+                "nodeName": "发货"
+              },
+              "tab": {
+                "containerId": "tab-container-zm9eyxne",
+                "embedPath": [],
+                "tabId": "tab-1suxx5hd"
+              }
+            },
+            {
+              "id": "activate-fjgecu3g",
+              "source": {
+                "componentId": "progress-ynh9zsng",
+                "embedPath": [
+                  {
+                    "kind": "tab",
+                    "containerId": "tab-container-zm9eyxne",
+                    "tabId": "tab-211tc4o0",
+                    "templateId": "2112434004503347202"
+                  }
+                ],
+                "surface": "progressFooter"
+              },
+              "helmet": {
+                "componentId": "mini-cpgraph-93j6k86p",
+                "embedPath": [
+                  {
+                    "kind": "tab",
+                    "containerId": "tab-container-zm9eyxne",
+                    "tabId": "tab-1suxx5hd",
+                    "templateId": "2112061604959928321"
+                  }
+                ],
+                "nodeId": "2109840325158682625",
+                "nodeName": "商机获取"
+              },
+              "tab": {
+                "containerId": "tab-container-zm9eyxne",
+                "embedPath": [],
+                "tabId": "tab-1suxx5hd"
+              }
+            },
+            {
+              "id": "activate-ro8pacg2",
+              "source": {
+                "componentId": "progress-zl0egumz",
+                "embedPath": [
+                  {
+                    "kind": "tab",
+                    "containerId": "tab-container-zm9eyxne",
+                    "tabId": "tab-211tc4o0",
+                    "templateId": "2112434004503347202"
+                  }
+                ],
+                "surface": "progressFooter"
+              },
+              "helmet": {
+                "componentId": "mini-cpgraph-93j6k86p",
+                "embedPath": [
+                  {
+                    "kind": "tab",
+                    "containerId": "tab-container-zm9eyxne",
+                    "tabId": "tab-1suxx5hd",
+                    "templateId": "2112061604959928321"
+                  }
+                ],
+                "nodeId": "2109840696539136002",
+                "nodeName": "发货"
+              },
+              "tab": {
+                "containerId": "tab-container-zm9eyxne",
+                "embedPath": [],
+                "tabId": "tab-1suxx5hd"
+              }
+            },
+            {
+              "id": "activate-jx3xn2af",
+              "source": {
+                "componentId": "kpiCard-q9oq9mxq",
+                "embedPath": [
+                  {
+                    "containerId": "tab-container-zm9eyxne",
+                    "kind": "tab",
+                    "tabId": "tab-bc6wp3k2",
+                    "templateId": "2112001069107167233"
+                  }
+                ],
+                "surface": "headerAction",
+                "actionKey": "1792720055376"
+              },
+              "helmet": {
+                "componentId": "mini-cpgraph-93j6k86p",
+                "embedPath": [
+                  {
+                    "containerId": "tab-container-zm9eyxne",
+                    "kind": "tab",
+                    "tabId": "tab-1suxx5hd",
+                    "templateId": "2112061604959928321"
+                  }
+                ],
+                "nodeId": "2109840696539136002",
+                "nodeName": "发货"
+              },
+              "tab": {
+                "containerId": "tab-container-zm9eyxne",
+                "embedPath": [],
+                "tabId": "tab-1suxx5hd"
+              }
             }
           ]
         }
@@ -279,7 +467,7 @@
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 44
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -300,7 +488,10 @@
             }
           ],
           "selectionGroupDefault": false,
-          "parentId": "group-gxbzcsma"
+          "styleConfig": {
+            "footerLinkLabel": "查看销售额风险 ->"
+          },
+          "headerActions": []
         },
         {
           "dataConfig": {
@@ -347,8 +538,8 @@
           "position": {
             "h": 8,
             "w": 24,
-            "x": 0,
-            "y": 44
+            "x": 24,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -368,7 +559,9 @@
               "templateDashboardId": "2112010750949113858"
             }
           ],
-          "parentId": "group-gxbzcsma"
+          "styleConfig": {
+            "footerLinkLabel": "查看出货风险 ->"
+          }
         },
         {
           "dataConfig": {
@@ -415,8 +608,8 @@
           "position": {
             "h": 8,
             "w": 24,
-            "x": 0,
-            "y": 44
+            "x": 48,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -427,8 +620,7 @@
               "#3b7cff"
             ]
           },
-          "selectionGroupId": "",
-          "parentId": "group-gxbzcsma"
+          "selectionGroupId": ""
         },
         {
           "dataConfig": {
@@ -475,8 +667,8 @@
           "position": {
             "h": 8,
             "w": 24,
-            "x": 0,
-            "y": 44
+            "x": 72,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -487,8 +679,7 @@
               "#3b7cff"
             ]
           },
-          "selectionGroupId": "",
-          "parentId": "group-gxbzcsma"
+          "selectionGroupId": ""
         },
         {
           "dataConfig": {
@@ -535,8 +726,8 @@
           "position": {
             "h": 8,
             "w": 24,
-            "x": 0,
-            "y": 44
+            "x": 96,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -547,8 +738,7 @@
               "#3b7cff"
             ]
           },
-          "selectionGroupId": "",
-          "parentId": "group-gxbzcsma"
+          "selectionGroupId": ""
         },
         {
           "dataConfig": {
@@ -559,7 +749,7 @@
             "h": 8,
             "w": 120,
             "x": 0,
-            "y": 11
+            "y": 10
           },
           "showHeader": false,
           "showTitle": false,
@@ -576,10 +766,10 @@
           },
           "id": "button-group-5pje4sn1",
           "position": {
-            "h": 5,
+            "h": 2,
             "w": 60,
-            "x": 0,
-            "y": 44
+            "x": 60,
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -607,8 +797,7 @@
               }
             ]
           },
-          "linkConfig": [],
-          "parentId": "group-gxbzcsma"
+          "linkConfig": []
         },
         {
           "dataConfig": {
@@ -616,10 +805,10 @@
           },
           "id": "title-4xrmez6w",
           "position": {
-            "h": 3,
-            "w": 120,
+            "h": 2,
+            "w": 60,
             "x": 0,
-            "y": 44
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -631,80 +820,6 @@
           },
           "styleConfig": {
             "fontSize": "16"
-          },
-          "parentId": "group-gxbzcsma"
-        },
-        {
-          "dataConfig": {
-            "sourceType": "mock"
-          },
-          "id": "group-gxbzcsma",
-          "position": {
-            "h": 11,
-            "w": 120,
-            "x": 0,
-            "y": 0
-          },
-          "showHeader": false,
-          "showTitle": true,
-          "title": "分组容器",
-          "type": "group",
-          "visualization": {},
-          "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8,
-              "rows": [
-                [
-                  "title-4xrmez6w",
-                  "button-group-5pje4sn1"
-                ],
-                [
-                  "progress-y5dumxio",
-                  "progress-91j3rt9a",
-                  "progress-djttwi50",
-                  "progress-ffgtjvs8",
-                  "progress-rna6k8bw"
-                ]
-              ],
-              "rowHeights": [
-                "24%",
-                null
-              ]
-            }
-          },
-          "styleConfig": {},
-          "children": [
-            "title-4xrmez6w",
-            "button-group-5pje4sn1",
-            "progress-y5dumxio",
-            "progress-91j3rt9a",
-            "progress-djttwi50",
-            "progress-ffgtjvs8",
-            "progress-rna6k8bw"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8,
-            "rows": [
-              [
-                "title-4xrmez6w",
-                "button-group-5pje4sn1"
-              ],
-              [
-                "progress-y5dumxio",
-                "progress-91j3rt9a",
-                "progress-djttwi50",
-                "progress-ffgtjvs8",
-                "progress-rna6k8bw"
-              ]
-            ],
-            "rowHeights": [
-              "24%",
-              null
-            ]
           }
         },
         {
@@ -809,13 +924,361 @@
             "h": 20,
             "w": 120,
             "x": 0,
-            "y": 19
+            "y": 34
           },
-          "showHeader": true,
+          "showHeader": false,
           "showTitle": true,
           "title": "运营360整体分析",
           "type": "process-arc",
           "visualization": {}
+        },
+        {
+          "dataConfig": {
+            "mockAxis": {
+              "measure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "value",
+                  "label": "销售额"
+                }
+              ],
+              "subMeasure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "subValue",
+                  "label": "较上月"
+                }
+              ]
+            },
+            "mockPreset": "kpiCard",
+            "sourceType": "ap",
+            "measure": [
+              {
+                "alias": "重要风险｜订单超期未发金额",
+                "fieldType": "Indicator",
+                "identifierCode": "M0001",
+                "isTree": false,
+                "label": "采购金额",
+                "name": "Purchase_Amount",
+                "valueType": "NUMBER"
+              }
+            ]
+          },
+          "id": "kpiCard-q9oq9mxq",
+          "position": {
+            "h": 7,
+            "w": 30,
+            "x": 0,
+            "y": 67
+          },
+          "showHeader": true,
+          "showTitle": true,
+          "title": "KPI卡片",
+          "type": "kpiCard",
+          "visualization": {
+            "colorScheme": [
+              "#1890ff"
+            ]
+          },
+          "headerActions": [
+            {
+              "actionType": "switchTab",
+              "key": "1792720055376",
+              "label": "查看三级穿透"
+            }
+          ],
+          "styleConfig": {
+            "kpiSubSuffix": "涉及战略及重点客户交付，影响年度销售额与出货目标达成",
+            "kpiValueSuffix": "",
+            "kpiValueColor": "#e64980",
+            "kpiIcon": "🔴",
+            "kpiSubFixedText": "涉及战略及重点客户交付，影响年度销售额与出货目标达成"
+          },
+          "parentId": "segmented-strip-qb20txb6"
+        },
+        {
+          "dataConfig": {
+            "mockAxis": {
+              "measure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "value",
+                  "label": "销售额"
+                }
+              ],
+              "subMeasure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "subValue",
+                  "label": "较上月"
+                }
+              ]
+            },
+            "mockPreset": "kpiCard",
+            "sourceType": "ap",
+            "measure": [
+              {
+                "alias": "累计经营影响",
+                "fieldType": "Indicator",
+                "identifierCode": "M0001",
+                "isTree": false,
+                "label": "采购金额",
+                "name": "Purchase_Amount",
+                "valueType": "NUMBER"
+              }
+            ],
+            "subMeasure": [
+              {
+                "alias": "占年度销售目标",
+                "fieldType": "Indicator",
+                "identifierCode": "M0004",
+                "isTree": false,
+                "label": "同比采购金额增长率",
+                "name": "YoY_Purchase_Amount_Growth Rate",
+                "valueType": "NUMBER"
+              }
+            ]
+          },
+          "id": "kpiCard-w6s7e6ca",
+          "position": {
+            "h": 7,
+            "w": 30,
+            "x": 0,
+            "y": 67
+          },
+          "showHeader": true,
+          "showTitle": true,
+          "title": "KPI卡片",
+          "type": "kpiCard",
+          "visualization": {
+            "colorScheme": [
+              "#1890ff"
+            ]
+          },
+          "styleConfig": {
+            "kpiValueColor": "#fa5252"
+          },
+          "parentId": "segmented-strip-qb20txb6"
+        },
+        {
+          "dataConfig": {
+            "mockAxis": {
+              "measure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "value",
+                  "label": "销售额"
+                }
+              ],
+              "subMeasure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "subValue",
+                  "label": "较上月"
+                }
+              ]
+            },
+            "mockPreset": "kpiCard",
+            "sourceType": "ap",
+            "measure": [
+              {
+                "alias": "红区报价集中，存在增量不理风险",
+                "fieldType": "Indicator",
+                "identifierCode": "M0001",
+                "isTree": false,
+                "label": "采购金额",
+                "name": "Purchase_Amount",
+                "valueType": "NUMBER"
+              }
+            ],
+            "subMeasure": [
+              {
+                "alias": "集中于LF280K、MB3两款电芯的占比",
+                "fieldType": "Indicator",
+                "identifierCode": "M0004",
+                "isTree": false,
+                "label": "同比采购金额增长率",
+                "name": "YoY_Purchase_Amount_Growth Rate",
+                "valueType": "NUMBER"
+              }
+            ]
+          },
+          "id": "kpiCard-bat771ma",
+          "position": {
+            "h": 6,
+            "w": 60,
+            "x": 0,
+            "y": 26
+          },
+          "showHeader": true,
+          "showTitle": true,
+          "title": "KPI卡片",
+          "type": "kpiCard",
+          "visualization": {
+            "colorScheme": [
+              "#1890ff"
+            ]
+          },
+          "styleConfig": {
+            "kpiValueColor": "#fab005",
+            "kpiIcon": "🟡",
+            "kpiValueSuffix": "单"
+          }
+        },
+        {
+          "dataConfig": {
+            "mockAxis": {
+              "measure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "value",
+                  "label": "销售额"
+                }
+              ],
+              "subMeasure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "subValue",
+                  "label": "较上月"
+                }
+              ]
+            },
+            "mockPreset": "kpiCard",
+            "sourceType": "ap",
+            "measure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "M0001",
+                "isTree": false,
+                "label": "采购金额",
+                "name": "Purchase_Amount",
+                "valueType": "NUMBER",
+                "alias": "投标丢标与弃标需重点复盘"
+              }
+            ],
+            "subMeasure": [
+              {
+                "alias": "丢标",
+                "fieldType": "Indicator",
+                "identifierCode": "M0006",
+                "isTree": false,
+                "label": "采购数量",
+                "name": "Purchase_Quantity",
+                "valueType": "NUMBER"
+              },
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "M0004",
+                "isTree": false,
+                "label": "同比采购金额增长率",
+                "name": "YoY_Purchase_Amount_Growth Rate",
+                "valueType": "NUMBER",
+                "alias": "中标率"
+              }
+            ]
+          },
+          "id": "kpiCard-h85uyf4g",
+          "position": {
+            "h": 6,
+            "w": 60,
+            "x": 60,
+            "y": 26
+          },
+          "showHeader": true,
+          "showTitle": true,
+          "title": "KPI卡片",
+          "type": "kpiCard",
+          "visualization": {
+            "colorScheme": [
+              "#1890ff"
+            ]
+          },
+          "styleConfig": {
+            "kpiValueColor": "#fab005",
+            "kpiIcon": "🟡",
+            "kpiValueSuffix": ""
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "segmented-strip-qb20txb6",
+          "position": {
+            "h": 6,
+            "w": 120,
+            "x": 0,
+            "y": 20
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "分段条",
+          "type": "segmented-strip",
+          "visualization": {},
+          "styleConfig": {},
+          "children": [
+            "kpiCard-q9oq9mxq",
+            "kpiCard-w6s7e6ca"
+          ],
+          "baseConfig": {
+            "segmentWidths": {
+              "kpiCard-q9oq9mxq": 70
+            }
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-it8014ti",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 18
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "基于经营偏差，今天重点关注 3 项风险"
+          },
+          "styleConfig": {
+            "fontSize": "16",
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom",
+            "textAlign": "left",
+            "showStyleLine": false
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-d15r7zbi",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 32
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "运营360整体分析"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
         }
       ],
       "insights": []
@@ -828,87 +1291,15 @@
       "components": [
         {
           "dataConfig": {
-            "sourceType": "mock"
-          },
-          "id": "group-jstbnrik",
-          "position": {
-            "h": 11,
-            "w": 120,
-            "x": 0,
-            "y": 0
-          },
-          "showHeader": false,
-          "showTitle": true,
-          "title": "分组容器",
-          "type": "group",
-          "visualization": {},
-          "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8,
-              "rows": [
-                [
-                  "title-di9rhxgr",
-                  "button-group-27vq4j6d"
-                ],
-                [
-                  "progress-ynh9zsng",
-                  "progress-zl0egumz",
-                  "progress-g4pu28fs",
-                  "progress-gtd2btwp",
-                  "progress-eoddh873"
-                ]
-              ],
-              "rowHeights": [
-                "24%",
-                null
-              ]
-            }
-          },
-          "styleConfig": {},
-          "children": [
-            "title-di9rhxgr",
-            "button-group-27vq4j6d",
-            "progress-ynh9zsng",
-            "progress-zl0egumz",
-            "progress-g4pu28fs",
-            "progress-gtd2btwp",
-            "progress-eoddh873"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8,
-            "rows": [
-              [
-                "title-di9rhxgr",
-                "button-group-27vq4j6d"
-              ],
-              [
-                "progress-ynh9zsng",
-                "progress-zl0egumz",
-                "progress-g4pu28fs",
-                "progress-gtd2btwp",
-                "progress-eoddh873"
-              ]
-            ],
-            "rowHeights": [
-              "24%",
-              null
-            ]
-          }
-        },
-        {
-          "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "title-di9rhxgr",
           "position": {
-            "h": 3,
-            "w": 120,
+            "h": 2,
+            "w": 60,
             "x": 0,
-            "y": 8
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -920,19 +1311,19 @@
           },
           "styleConfig": {
             "fontSize": "16"
-          },
-          "parentId": "group-jstbnrik"
+          }
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "button-group-27vq4j6d",
           "position": {
-            "h": 5,
+            "h": 2,
             "w": 60,
-            "x": 0,
-            "y": 8
+            "x": 60,
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -958,8 +1349,7 @@
                 "grain": "month"
               }
             ]
-          },
-          "parentId": "group-jstbnrik"
+          }
         },
         {
           "dataConfig": {
@@ -978,6 +1368,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -1005,9 +1415,9 @@
           "id": "progress-ynh9zsng",
           "position": {
             "h": 8,
-            "w": 40,
+            "w": 24,
             "x": 0,
-            "y": 8
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -1018,7 +1428,9 @@
               "#3b7cff"
             ]
           },
-          "parentId": "group-jstbnrik"
+          "styleConfig": {
+            "footerLinkLabel": "查看销售额风险 ->"
+          }
         },
         {
           "dataConfig": {
@@ -1037,6 +1449,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -1064,9 +1496,9 @@
           "id": "progress-zl0egumz",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 8
+            "w": 24,
+            "x": 24,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -1077,7 +1509,9 @@
               "#3b7cff"
             ]
           },
-          "parentId": "group-jstbnrik"
+          "styleConfig": {
+            "footerLinkLabel": "查看出货风险 ->"
+          }
         },
         {
           "dataConfig": {
@@ -1096,6 +1530,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -1123,9 +1577,9 @@
           "id": "progress-g4pu28fs",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 8
+            "w": 24,
+            "x": 48,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -1135,8 +1589,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-jstbnrik"
+          }
         },
         {
           "dataConfig": {
@@ -1155,6 +1608,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -1182,9 +1655,9 @@
           "id": "progress-gtd2btwp",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 8
+            "w": 24,
+            "x": 72,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -1194,8 +1667,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-jstbnrik"
+          }
         },
         {
           "dataConfig": {
@@ -1214,6 +1686,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -1241,9 +1733,9 @@
           "id": "progress-eoddh873",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 8
+            "w": 24,
+            "x": 96,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -1253,11 +1745,326 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-jstbnrik"
+          }
         },
         {
           "dataConfig": {
+            "mockData": {
+              "edges": [
+                {
+                  "id": "e1",
+                  "name": "66.7%",
+                  "source": "n1",
+                  "subLabels": [
+                    {
+                      "code": "实际值",
+                      "unit": "天",
+                      "value": 8.5
+                    },
+                    {
+                      "code": "基准值",
+                      "unit": "天",
+                      "value": 12
+                    }
+                  ],
+                  "target": "n2",
+                  "type": "funnel-edge",
+                  "value": 0.667
+                },
+                {
+                  "id": "e2",
+                  "name": "71.7%",
+                  "source": "n2",
+                  "subLabels": [
+                    {
+                      "code": "实际值",
+                      "unit": "天",
+                      "value": 10.6
+                    },
+                    {
+                      "code": "基准值",
+                      "unit": "天",
+                      "value": 13
+                    }
+                  ],
+                  "target": "n3",
+                  "type": "funnel-edge",
+                  "value": 0.717
+                }
+              ],
+              "nodes": [
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n1",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,160",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 2160
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,240",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 3240
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,960",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 3960
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "5,940",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 5940
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,700",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 2700
+                      }
+                    ]
+                  },
+                  "name": "商机",
+                  "type": "stacked-bar-mini-node"
+                },
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n2",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,447",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 1447
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,171",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 2171
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,653",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 2653
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,980",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 3980
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,809",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 1809
+                      }
+                    ]
+                  },
+                  "name": "立项",
+                  "type": "stacked-bar-mini-node"
+                },
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n3",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,037",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 1037
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,555",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 1555
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,901",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 1901
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,851",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 2851
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,296",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 1296
+                      }
+                    ]
+                  },
+                  "name": "签约",
+                  "type": "stacked-bar-mini-node"
+                }
+              ]
+            },
             "sourceType": "mock"
           },
           "id": "mini-cpgraph-2dz7yyyf",
@@ -1265,7 +2072,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 11
+            "y": 12
           },
           "showHeader": true,
           "showTitle": true,
@@ -1312,10 +2119,14 @@
                 "templateDashboardId": "2113151813453660161"
               }
             ]
+          },
+          "styleConfig": {
+            "contentPadding": "0"
           }
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "template-rjjcf4v1",
@@ -1323,7 +2134,7 @@
             "h": 10,
             "w": 120,
             "x": 0,
-            "y": 30
+            "y": 31
           },
           "showHeader": false,
           "showTitle": false,
@@ -1367,7 +2178,7 @@
             "h": 26,
             "w": 60,
             "x": 0,
-            "y": 47
+            "y": 49
           },
           "showHeader": true,
           "showTitle": true,
@@ -1401,6 +2212,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -1464,6 +2281,12 @@
                 }
               ]
             },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
+            },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
             "measure": [
@@ -1525,6 +2348,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -1588,6 +2417,38 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 3.7
+                  },
+                  "状态": "中标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 4.1
+                  },
+                  "状态": "丢标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 1.1
+                  },
+                  "状态": "弃标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 28.7
+                  },
+                  "状态": "进行中"
+                }
+              ]
+            },
             "mockPreset": "share-bar",
             "sourceType": "ap",
             "categoryAxis": [
@@ -1645,17 +2506,19 @@
               "#FFA940",
               "#597EF7",
               "#95DE64"
-            ]
+            ],
+            "labelContent": []
           },
           "parentId": "group-ftrsjcmy"
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "group-ftrsjcmy",
           "position": {
-            "h": 21,
+            "h": 24,
             "w": 60,
             "x": 0,
             "y": 91
@@ -1681,7 +2544,7 @@
                 ]
               ],
               "rowHeights": [
-                "50%",
+                "30%",
                 null
               ]
             }
@@ -1708,7 +2571,7 @@
               ]
             ],
             "rowHeights": [
-              "50%",
+              "30%",
               null
             ]
           }
@@ -1730,6 +2593,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -1793,6 +2662,12 @@
                 }
               ]
             },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
+            },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
             "measure": [
@@ -1854,6 +2729,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -1917,6 +2798,38 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 3.7
+                  },
+                  "状态": "中标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 4.1
+                  },
+                  "状态": "丢标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 1.1
+                  },
+                  "状态": "弃标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 28.7
+                  },
+                  "状态": "进行中"
+                }
+              ]
+            },
             "mockPreset": "share-bar",
             "sourceType": "ap",
             "categoryAxis": [
@@ -1974,17 +2887,19 @@
               "#FFA940",
               "#597EF7",
               "#95DE64"
-            ]
+            ],
+            "labelContent": []
           },
           "parentId": "group-4croqift"
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "group-4croqift",
           "position": {
-            "h": 21,
+            "h": 24,
             "w": 60,
             "x": 60,
             "y": 91
@@ -2010,7 +2925,7 @@
                 ]
               ],
               "rowHeights": [
-                "50%",
+                "44%",
                 null
               ]
             }
@@ -2037,7 +2952,7 @@
               ]
             ],
             "rowHeights": [
-              "50%",
+              "44%",
               null
             ]
           }
@@ -2059,6 +2974,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -2122,6 +3043,12 @@
                 }
               ]
             },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
+            },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
             "measure": [
@@ -2183,6 +3110,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -2246,6 +3179,38 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 3.7
+                  },
+                  "状态": "中标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 4.1
+                  },
+                  "状态": "丢标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 1.1
+                  },
+                  "状态": "弃标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 28.7
+                  },
+                  "状态": "进行中"
+                }
+              ]
+            },
             "mockPreset": "share-bar",
             "sourceType": "ap",
             "categoryAxis": [
@@ -2303,12 +3268,14 @@
               "#FFA940",
               "#597EF7",
               "#95DE64"
-            ]
+            ],
+            "labelContent": []
           },
           "parentId": "group-fbf8l4il"
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "group-fbf8l4il",
@@ -2316,7 +3283,7 @@
             "h": 26,
             "w": 60,
             "x": 60,
-            "y": 47
+            "y": 49
           },
           "showHeader": true,
           "showTitle": true,
@@ -2341,6 +3308,11 @@
                 [
                   "share-bar-s0koeov8"
                 ]
+              ],
+              "rowHeights": [
+                "28%",
+                null,
+                null
               ]
             }
           },
@@ -2370,6 +3342,11 @@
               [
                 "share-bar-s0koeov8"
               ]
+            ],
+            "rowHeights": [
+              "28%",
+              null,
+              null
             ]
           }
         },
@@ -2390,6 +3367,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -2453,6 +3436,12 @@
                 }
               ]
             },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
+            },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
             "measure": [
@@ -2514,6 +3503,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -2577,6 +3572,38 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 3.7
+                  },
+                  "状态": "中标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 4.1
+                  },
+                  "状态": "丢标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 1.1
+                  },
+                  "状态": "弃标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 28.7
+                  },
+                  "状态": "进行中"
+                }
+              ]
+            },
             "mockPreset": "share-bar",
             "sourceType": "ap",
             "categoryAxis": [
@@ -2634,20 +3661,22 @@
               "#FFA940",
               "#597EF7",
               "#95DE64"
-            ]
+            ],
+            "labelContent": []
           },
           "parentId": "group-f70etg8b"
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "group-f70etg8b",
           "position": {
-            "h": 18,
+            "h": 16,
             "w": 120,
             "x": 0,
-            "y": 73
+            "y": 75
           },
           "showHeader": true,
           "showTitle": true,
@@ -2670,7 +3699,7 @@
                 ]
               ],
               "rowHeights": [
-                "50%",
+                "44%",
                 null
               ]
             }
@@ -2697,7 +3726,7 @@
               ]
             ],
             "rowHeights": [
-              "50%",
+              "44%",
               null
             ]
           }
@@ -2717,6 +3746,30 @@
                   "fieldType": "Indicator",
                   "identifierCode": "数量",
                   "label": "数量"
+                }
+              ]
+            },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": 320,
+                  "类别": "电子产品"
+                },
+                {
+                  "数量": 280,
+                  "类别": "服装"
+                },
+                {
+                  "数量": 450,
+                  "类别": "食品"
+                },
+                {
+                  "数量": 180,
+                  "类别": "家居"
+                },
+                {
+                  "数量": 220,
+                  "类别": "图书"
                 }
               ]
             },
@@ -2776,6 +3829,30 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": 320,
+                  "类别": "电子产品"
+                },
+                {
+                  "数量": 280,
+                  "类别": "服装"
+                },
+                {
+                  "数量": 450,
+                  "类别": "食品"
+                },
+                {
+                  "数量": 180,
+                  "类别": "家居"
+                },
+                {
+                  "数量": 220,
+                  "类别": "图书"
+                }
+              ]
+            },
             "mockPreset": "horizontal-bar",
             "sourceType": "ap",
             "valueAxis": [
@@ -2816,14 +3893,15 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "segmented-strip-mp3j0fdk",
           "position": {
-            "h": 7,
+            "h": 6,
             "w": 120,
             "x": 0,
-            "y": 40
+            "y": 43
           },
           "showHeader": false,
           "showTitle": false,
@@ -2855,6 +3933,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -2915,6 +3999,12 @@
                 }
               ]
             },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
+            },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
             "measure": [
@@ -2973,6 +4063,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -3033,6 +4129,30 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": 320,
+                  "类别": "电子产品"
+                },
+                {
+                  "数量": 280,
+                  "类别": "服装"
+                },
+                {
+                  "数量": 450,
+                  "类别": "食品"
+                },
+                {
+                  "数量": 180,
+                  "类别": "家居"
+                },
+                {
+                  "数量": 220,
+                  "类别": "图书"
+                }
+              ]
+            },
             "mockPreset": "horizontal-bar",
             "sourceType": "ap",
             "valueAxis": [
@@ -3068,7 +4188,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 112
+            "y": 115
           },
           "showHeader": true,
           "showTitle": true,
@@ -3076,6 +4196,60 @@
           "type": "horizontal-bar",
           "visualization": {
             "legend": true
+          }
+        },
+        {
+          "dataConfig": {
+            "mockData": null,
+            "sourceType": "mock"
+          },
+          "id": "title-gzqxrgvz",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 10
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "运营端到端环节达成与状态"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
+        },
+        {
+          "dataConfig": {
+            "mockData": null,
+            "sourceType": "mock"
+          },
+          "id": "title-504mxo3p",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 41
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "运营指标看板"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
           }
         }
       ],
@@ -3216,9 +4390,9 @@
           "id": "progress-2hrezkzc",
           "position": {
             "h": 8,
-            "w": 40,
+            "w": 24,
             "x": 0,
-            "y": 38
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -3228,8 +4402,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -3275,9 +4448,9 @@
           "id": "progress-g9ynivnz",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 38
+            "w": 24,
+            "x": 24,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -3287,8 +4460,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -3334,9 +4506,9 @@
           "id": "progress-7xn9iy3k",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 38
+            "w": 24,
+            "x": 48,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -3346,8 +4518,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -3393,9 +4564,9 @@
           "id": "progress-zkznh2kf",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 38
+            "w": 24,
+            "x": 72,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -3405,8 +4576,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -3452,9 +4622,9 @@
           "id": "progress-8l4n7s92",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 38
+            "w": 24,
+            "x": 96,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -3464,8 +4634,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -3476,7 +4645,7 @@
             "h": 20,
             "w": 120,
             "x": 0,
-            "y": 11
+            "y": 12
           },
           "showHeader": true,
           "showTitle": true,
@@ -3536,6 +4705,9 @@
                 ]
               }
             ]
+          },
+          "styleConfig": {
+            "contentPadding": "0"
           }
         },
         {
@@ -3547,7 +4719,7 @@
             "h": 10,
             "w": 120,
             "x": 0,
-            "y": 31
+            "y": 32
           },
           "showHeader": false,
           "showTitle": false,
@@ -3559,85 +4731,12 @@
           "dataConfig": {
             "sourceType": "mock"
           },
-          "id": "group-dhflgwln",
-          "position": {
-            "h": 11,
-            "w": 120,
-            "x": 0,
-            "y": 0
-          },
-          "showHeader": false,
-          "showTitle": true,
-          "title": "分组容器",
-          "type": "group",
-          "visualization": {},
-          "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8,
-              "rows": [
-                [
-                  "title-6ixfyz4r",
-                  "button-group-j7f98k1c"
-                ],
-                [
-                  "progress-2hrezkzc",
-                  "progress-g9ynivnz",
-                  "progress-7xn9iy3k",
-                  "progress-zkznh2kf",
-                  "progress-8l4n7s92"
-                ]
-              ],
-              "rowHeights": [
-                "24%",
-                null
-              ]
-            }
-          },
-          "styleConfig": {},
-          "children": [
-            "title-6ixfyz4r",
-            "button-group-j7f98k1c",
-            "progress-2hrezkzc",
-            "progress-g9ynivnz",
-            "progress-7xn9iy3k",
-            "progress-zkznh2kf",
-            "progress-8l4n7s92"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8,
-            "rows": [
-              [
-                "title-6ixfyz4r",
-                "button-group-j7f98k1c"
-              ],
-              [
-                "progress-2hrezkzc",
-                "progress-g9ynivnz",
-                "progress-7xn9iy3k",
-                "progress-zkznh2kf",
-                "progress-8l4n7s92"
-              ]
-            ],
-            "rowHeights": [
-              "24%",
-              null
-            ]
-          }
-        },
-        {
-          "dataConfig": {
-            "sourceType": "mock"
-          },
           "id": "title-6ixfyz4r",
           "position": {
-            "h": 3,
-            "w": 120,
+            "h": 2,
+            "w": 60,
             "x": 0,
-            "y": 78
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -3649,8 +4748,7 @@
           },
           "styleConfig": {
             "fontSize": "16"
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -3658,10 +4756,10 @@
           },
           "id": "button-group-j7f98k1c",
           "position": {
-            "h": 5,
+            "h": 2,
             "w": 60,
-            "x": 40,
-            "y": 38
+            "x": 60,
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -3687,8 +4785,33 @@
                 "grain": "month"
               }
             ]
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
           },
-          "parentId": "group-dhflgwln"
+          "id": "title-c6z4o2in",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 10
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "运营端到端环节达成与状态"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
         }
       ],
       "insights": [
@@ -3706,7 +4829,7 @@
           },
           "placement": {
             "mode": "insert",
-            "afterId": "group-dhflgwln"
+            "afterId": "progress-2hrezkzc"
           }
         },
         {
@@ -3919,9 +5042,9 @@
           "id": "progress-2hrezkzc",
           "position": {
             "h": 8,
-            "w": 40,
+            "w": 24,
             "x": 0,
-            "y": 38
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -3931,8 +5054,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -3978,9 +5100,9 @@
           "id": "progress-g9ynivnz",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 38
+            "w": 24,
+            "x": 24,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -3990,8 +5112,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -4037,9 +5158,9 @@
           "id": "progress-7xn9iy3k",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 38
+            "w": 24,
+            "x": 48,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -4049,8 +5170,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -4096,9 +5216,9 @@
           "id": "progress-zkznh2kf",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 38
+            "w": 24,
+            "x": 72,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -4108,8 +5228,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -4155,9 +5274,9 @@
           "id": "progress-8l4n7s92",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 38
+            "w": 24,
+            "x": 96,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -4167,8 +5286,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -4179,7 +5297,7 @@
             "h": 20,
             "w": 120,
             "x": 0,
-            "y": 11
+            "y": 12
           },
           "showHeader": true,
           "showTitle": true,
@@ -4239,6 +5357,9 @@
                 ]
               }
             ]
+          },
+          "styleConfig": {
+            "contentPadding": "0"
           }
         },
         {
@@ -4250,7 +5371,7 @@
             "h": 10,
             "w": 120,
             "x": 0,
-            "y": 31
+            "y": 32
           },
           "showHeader": false,
           "showTitle": false,
@@ -4262,85 +5383,12 @@
           "dataConfig": {
             "sourceType": "mock"
           },
-          "id": "group-dhflgwln",
-          "position": {
-            "h": 11,
-            "w": 120,
-            "x": 0,
-            "y": 0
-          },
-          "showHeader": false,
-          "showTitle": true,
-          "title": "分组容器",
-          "type": "group",
-          "visualization": {},
-          "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8,
-              "rows": [
-                [
-                  "title-6ixfyz4r",
-                  "button-group-j7f98k1c"
-                ],
-                [
-                  "progress-2hrezkzc",
-                  "progress-g9ynivnz",
-                  "progress-7xn9iy3k",
-                  "progress-zkznh2kf",
-                  "progress-8l4n7s92"
-                ]
-              ],
-              "rowHeights": [
-                "24%",
-                null
-              ]
-            }
-          },
-          "styleConfig": {},
-          "children": [
-            "title-6ixfyz4r",
-            "button-group-j7f98k1c",
-            "progress-2hrezkzc",
-            "progress-g9ynivnz",
-            "progress-7xn9iy3k",
-            "progress-zkznh2kf",
-            "progress-8l4n7s92"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8,
-            "rows": [
-              [
-                "title-6ixfyz4r",
-                "button-group-j7f98k1c"
-              ],
-              [
-                "progress-2hrezkzc",
-                "progress-g9ynivnz",
-                "progress-7xn9iy3k",
-                "progress-zkznh2kf",
-                "progress-8l4n7s92"
-              ]
-            ],
-            "rowHeights": [
-              "24%",
-              null
-            ]
-          }
-        },
-        {
-          "dataConfig": {
-            "sourceType": "mock"
-          },
           "id": "title-6ixfyz4r",
           "position": {
-            "h": 3,
-            "w": 120,
+            "h": 2,
+            "w": 60,
             "x": 0,
-            "y": 78
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -4352,8 +5400,7 @@
           },
           "styleConfig": {
             "fontSize": "16"
-          },
-          "parentId": "group-dhflgwln"
+          }
         },
         {
           "dataConfig": {
@@ -4361,10 +5408,10 @@
           },
           "id": "button-group-j7f98k1c",
           "position": {
-            "h": 5,
+            "h": 2,
             "w": 60,
-            "x": 40,
-            "y": 38
+            "x": 60,
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -4390,8 +5437,33 @@
                 "grain": "month"
               }
             ]
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
           },
-          "parentId": "group-dhflgwln"
+          "id": "title-c6z4o2in",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 10
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "运营端到端环节达成与状态"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
         }
       ]
     },
@@ -4448,7 +5520,7 @@
             "h": 19,
             "w": 60,
             "x": 0,
-            "y": 0
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -4490,7 +5562,7 @@
             "h": 19,
             "w": 60,
             "x": 60,
-            "y": 0
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -4773,7 +5845,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 19
+            "y": 21
           },
           "showHeader": true,
           "showTitle": true,
@@ -4875,7 +5947,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 38
+            "y": 40
           },
           "showHeader": true,
           "showTitle": true,
@@ -4951,7 +6023,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 57
+            "y": 59
           },
           "showHeader": false,
           "showTitle": true,
@@ -5045,7 +6117,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 76
+            "y": 78
           },
           "showHeader": true,
           "showTitle": true,
@@ -5084,6 +6156,32 @@
               "valueType": "DATE"
             }
           ]
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-ts9hp7hh",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 0
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "详细分析 · 数据与图表"
+          },
+          "styleConfig": {
+            "fontSize": "16",
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
         }
       ]
     },
@@ -5138,7 +6236,7 @@
             "h": 19,
             "w": 60,
             "x": 0,
-            "y": 8
+            "y": 18
           },
           "showHeader": true,
           "showTitle": true,
@@ -5147,8 +6245,7 @@
           "visualization": {
             "legend": true,
             "labelPosition": "right"
-          },
-          "parentId": "group-wyx7bpog"
+          }
         },
         {
           "dataConfig": {
@@ -5195,7 +6292,7 @@
             "h": 19,
             "w": 60,
             "x": 60,
-            "y": 8
+            "y": 18
           },
           "showHeader": true,
           "showTitle": true,
@@ -5204,8 +6301,7 @@
           "visualization": {
             "legend": true,
             "labelPosition": "right"
-          },
-          "parentId": "group-wyx7bpog"
+          }
         },
         {
           "dataConfig": {
@@ -5310,46 +6406,12 @@
           "dataConfig": {
             "sourceType": "mock"
           },
-          "id": "group-wyx7bpog",
-          "position": {
-            "h": 21,
-            "w": 120,
-            "x": 0,
-            "y": 16
-          },
-          "showHeader": true,
-          "showTitle": true,
-          "title": "投标-异常项目分析",
-          "type": "group",
-          "visualization": {},
-          "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8
-            }
-          },
-          "styleConfig": {},
-          "children": [
-            "horizontal-bar-gwwqwvxt",
-            "horizontal-bar-3q9rlp4s"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8
-          }
-        },
-        {
-          "dataConfig": {
-            "sourceType": "mock"
-          },
           "id": "segmented-strip-yvhlsyv3",
           "position": {
-            "h": 8,
+            "h": 6,
             "w": 120,
             "x": 0,
-            "y": 0
+            "y": 2
           },
           "showHeader": false,
           "showTitle": false,
@@ -5594,7 +6656,60 @@
               "#FFA940",
               "#597EF7",
               "#95DE64"
-            ]
+            ],
+            "labelContent": []
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-d5nnq62x",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 0
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "投标概况"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-es37nsnb",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 16
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "投标-异常项目分析"
+          },
+          "styleConfig": {
+            "fontSize": "16",
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
           }
         }
       ]
@@ -5607,87 +6722,15 @@
       "components": [
         {
           "dataConfig": {
-            "sourceType": "mock"
-          },
-          "id": "group-jstbnrik",
-          "position": {
-            "h": 11,
-            "w": 120,
-            "x": 0,
-            "y": 0
-          },
-          "showHeader": false,
-          "showTitle": true,
-          "title": "分组容器",
-          "type": "group",
-          "visualization": {},
-          "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8,
-              "rows": [
-                [
-                  "title-di9rhxgr",
-                  "button-group-27vq4j6d"
-                ],
-                [
-                  "progress-ynh9zsng",
-                  "progress-zl0egumz",
-                  "progress-g4pu28fs",
-                  "progress-gtd2btwp",
-                  "progress-eoddh873"
-                ]
-              ],
-              "rowHeights": [
-                "24%",
-                null
-              ]
-            }
-          },
-          "styleConfig": {},
-          "children": [
-            "title-di9rhxgr",
-            "button-group-27vq4j6d",
-            "progress-ynh9zsng",
-            "progress-zl0egumz",
-            "progress-g4pu28fs",
-            "progress-gtd2btwp",
-            "progress-eoddh873"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8,
-            "rows": [
-              [
-                "title-di9rhxgr",
-                "button-group-27vq4j6d"
-              ],
-              [
-                "progress-ynh9zsng",
-                "progress-zl0egumz",
-                "progress-g4pu28fs",
-                "progress-gtd2btwp",
-                "progress-eoddh873"
-              ]
-            ],
-            "rowHeights": [
-              "24%",
-              null
-            ]
-          }
-        },
-        {
-          "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "title-di9rhxgr",
           "position": {
-            "h": 3,
-            "w": 120,
+            "h": 2,
+            "w": 60,
             "x": 0,
-            "y": 8
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -5699,19 +6742,19 @@
           },
           "styleConfig": {
             "fontSize": "16"
-          },
-          "parentId": "group-jstbnrik"
+          }
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "button-group-27vq4j6d",
           "position": {
-            "h": 5,
+            "h": 2,
             "w": 60,
-            "x": 0,
-            "y": 8
+            "x": 60,
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -5737,8 +6780,7 @@
                 "grain": "month"
               }
             ]
-          },
-          "parentId": "group-jstbnrik"
+          }
         },
         {
           "dataConfig": {
@@ -5757,6 +6799,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -5784,9 +6846,9 @@
           "id": "progress-ynh9zsng",
           "position": {
             "h": 8,
-            "w": 40,
+            "w": 24,
             "x": 0,
-            "y": 8
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -5797,7 +6859,9 @@
               "#3b7cff"
             ]
           },
-          "parentId": "group-jstbnrik"
+          "styleConfig": {
+            "footerLinkLabel": "查看销售额风险 ->"
+          }
         },
         {
           "dataConfig": {
@@ -5816,6 +6880,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -5843,9 +6927,9 @@
           "id": "progress-zl0egumz",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 8
+            "w": 24,
+            "x": 24,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -5856,7 +6940,9 @@
               "#3b7cff"
             ]
           },
-          "parentId": "group-jstbnrik"
+          "styleConfig": {
+            "footerLinkLabel": "查看出货风险 ->"
+          }
         },
         {
           "dataConfig": {
@@ -5875,6 +6961,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -5902,9 +7008,9 @@
           "id": "progress-g4pu28fs",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 8
+            "w": 24,
+            "x": 48,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -5914,8 +7020,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-jstbnrik"
+          }
         },
         {
           "dataConfig": {
@@ -5934,6 +7039,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -5961,9 +7086,9 @@
           "id": "progress-gtd2btwp",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 8
+            "w": 24,
+            "x": 72,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -5973,8 +7098,7 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-jstbnrik"
+          }
         },
         {
           "dataConfig": {
@@ -5993,6 +7117,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -6020,9 +7164,9 @@
           "id": "progress-eoddh873",
           "position": {
             "h": 8,
-            "w": 40,
-            "x": 0,
-            "y": 8
+            "w": 24,
+            "x": 96,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -6032,11 +7176,326 @@
             "colorScheme": [
               "#3b7cff"
             ]
-          },
-          "parentId": "group-jstbnrik"
+          }
         },
         {
           "dataConfig": {
+            "mockData": {
+              "edges": [
+                {
+                  "id": "e1",
+                  "name": "66.7%",
+                  "source": "n1",
+                  "subLabels": [
+                    {
+                      "code": "实际值",
+                      "unit": "天",
+                      "value": 8.5
+                    },
+                    {
+                      "code": "基准值",
+                      "unit": "天",
+                      "value": 12
+                    }
+                  ],
+                  "target": "n2",
+                  "type": "funnel-edge",
+                  "value": 0.667
+                },
+                {
+                  "id": "e2",
+                  "name": "71.7%",
+                  "source": "n2",
+                  "subLabels": [
+                    {
+                      "code": "实际值",
+                      "unit": "天",
+                      "value": 10.6
+                    },
+                    {
+                      "code": "基准值",
+                      "unit": "天",
+                      "value": 13
+                    }
+                  ],
+                  "target": "n3",
+                  "type": "funnel-edge",
+                  "value": 0.717
+                }
+              ],
+              "nodes": [
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n1",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,160",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 2160
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,240",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 3240
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,960",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 3960
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "5,940",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 5940
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,700",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 2700
+                      }
+                    ]
+                  },
+                  "name": "商机",
+                  "type": "stacked-bar-mini-node"
+                },
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n2",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,447",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 1447
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,171",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 2171
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,653",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 2653
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,980",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 3980
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,809",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 1809
+                      }
+                    ]
+                  },
+                  "name": "立项",
+                  "type": "stacked-bar-mini-node"
+                },
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n3",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,037",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 1037
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,555",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 1555
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,901",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 1901
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,851",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 2851
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,296",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 1296
+                      }
+                    ]
+                  },
+                  "name": "签约",
+                  "type": "stacked-bar-mini-node"
+                }
+              ]
+            },
             "sourceType": "mock"
           },
           "id": "mini-cpgraph-2dz7yyyf",
@@ -6044,7 +7503,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 11
+            "y": 12
           },
           "showHeader": true,
           "showTitle": true,
@@ -6091,10 +7550,14 @@
                 "templateDashboardId": "2113151813453660161"
               }
             ]
+          },
+          "styleConfig": {
+            "contentPadding": "0"
           }
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "template-rjjcf4v1",
@@ -6102,7 +7565,7 @@
             "h": 10,
             "w": 120,
             "x": 0,
-            "y": 30
+            "y": 31
           },
           "showHeader": false,
           "showTitle": false,
@@ -6146,7 +7609,7 @@
             "h": 26,
             "w": 60,
             "x": 0,
-            "y": 47
+            "y": 49
           },
           "showHeader": true,
           "showTitle": true,
@@ -6180,6 +7643,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -6243,6 +7712,12 @@
                 }
               ]
             },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
+            },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
             "measure": [
@@ -6304,6 +7779,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -6367,6 +7848,38 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 3.7
+                  },
+                  "状态": "中标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 4.1
+                  },
+                  "状态": "丢标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 1.1
+                  },
+                  "状态": "弃标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 28.7
+                  },
+                  "状态": "进行中"
+                }
+              ]
+            },
             "mockPreset": "share-bar",
             "sourceType": "ap",
             "categoryAxis": [
@@ -6424,17 +7937,19 @@
               "#FFA940",
               "#597EF7",
               "#95DE64"
-            ]
+            ],
+            "labelContent": []
           },
           "parentId": "group-ftrsjcmy"
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "group-ftrsjcmy",
           "position": {
-            "h": 21,
+            "h": 24,
             "w": 60,
             "x": 0,
             "y": 91
@@ -6460,7 +7975,7 @@
                 ]
               ],
               "rowHeights": [
-                "50%",
+                "30%",
                 null
               ]
             }
@@ -6487,7 +8002,7 @@
               ]
             ],
             "rowHeights": [
-              "50%",
+              "30%",
               null
             ]
           }
@@ -6509,6 +8024,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -6572,6 +8093,12 @@
                 }
               ]
             },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
+            },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
             "measure": [
@@ -6633,6 +8160,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -6696,6 +8229,38 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 3.7
+                  },
+                  "状态": "中标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 4.1
+                  },
+                  "状态": "丢标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 1.1
+                  },
+                  "状态": "弃标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 28.7
+                  },
+                  "状态": "进行中"
+                }
+              ]
+            },
             "mockPreset": "share-bar",
             "sourceType": "ap",
             "categoryAxis": [
@@ -6753,17 +8318,19 @@
               "#FFA940",
               "#597EF7",
               "#95DE64"
-            ]
+            ],
+            "labelContent": []
           },
           "parentId": "group-4croqift"
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "group-4croqift",
           "position": {
-            "h": 21,
+            "h": 24,
             "w": 60,
             "x": 60,
             "y": 91
@@ -6789,7 +8356,7 @@
                 ]
               ],
               "rowHeights": [
-                "50%",
+                "44%",
                 null
               ]
             }
@@ -6816,7 +8383,7 @@
               ]
             ],
             "rowHeights": [
-              "50%",
+              "44%",
               null
             ]
           }
@@ -6838,6 +8405,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -6901,6 +8474,12 @@
                 }
               ]
             },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
+            },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
             "measure": [
@@ -6962,6 +8541,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -7025,6 +8610,38 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 3.7
+                  },
+                  "状态": "中标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 4.1
+                  },
+                  "状态": "丢标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 1.1
+                  },
+                  "状态": "弃标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 28.7
+                  },
+                  "状态": "进行中"
+                }
+              ]
+            },
             "mockPreset": "share-bar",
             "sourceType": "ap",
             "categoryAxis": [
@@ -7082,12 +8699,14 @@
               "#FFA940",
               "#597EF7",
               "#95DE64"
-            ]
+            ],
+            "labelContent": []
           },
           "parentId": "group-fbf8l4il"
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "group-fbf8l4il",
@@ -7095,7 +8714,7 @@
             "h": 26,
             "w": 60,
             "x": 60,
-            "y": 47
+            "y": 49
           },
           "showHeader": true,
           "showTitle": true,
@@ -7120,6 +8739,11 @@
                 [
                   "share-bar-s0koeov8"
                 ]
+              ],
+              "rowHeights": [
+                "28%",
+                null,
+                null
               ]
             }
           },
@@ -7149,6 +8773,11 @@
               [
                 "share-bar-s0koeov8"
               ]
+            ],
+            "rowHeights": [
+              "28%",
+              null,
+              null
             ]
           }
         },
@@ -7169,6 +8798,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -7232,6 +8867,12 @@
                 }
               ]
             },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
+            },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
             "measure": [
@@ -7293,6 +8934,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -7356,6 +9003,38 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 3.7
+                  },
+                  "状态": "中标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 4.1
+                  },
+                  "状态": "丢标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 1.1
+                  },
+                  "状态": "弃标"
+                },
+                {
+                  "数量": {
+                    "unit": "GWh",
+                    "value": 28.7
+                  },
+                  "状态": "进行中"
+                }
+              ]
+            },
             "mockPreset": "share-bar",
             "sourceType": "ap",
             "categoryAxis": [
@@ -7413,20 +9092,22 @@
               "#FFA940",
               "#597EF7",
               "#95DE64"
-            ]
+            ],
+            "labelContent": []
           },
           "parentId": "group-f70etg8b"
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "group-f70etg8b",
           "position": {
-            "h": 18,
+            "h": 16,
             "w": 120,
             "x": 0,
-            "y": 73
+            "y": 75
           },
           "showHeader": true,
           "showTitle": true,
@@ -7449,7 +9130,7 @@
                 ]
               ],
               "rowHeights": [
-                "50%",
+                "44%",
                 null
               ]
             }
@@ -7476,7 +9157,7 @@
               ]
             ],
             "rowHeights": [
-              "50%",
+              "44%",
               null
             ]
           }
@@ -7496,6 +9177,30 @@
                   "fieldType": "Indicator",
                   "identifierCode": "数量",
                   "label": "数量"
+                }
+              ]
+            },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": 320,
+                  "类别": "电子产品"
+                },
+                {
+                  "数量": 280,
+                  "类别": "服装"
+                },
+                {
+                  "数量": 450,
+                  "类别": "食品"
+                },
+                {
+                  "数量": 180,
+                  "类别": "家居"
+                },
+                {
+                  "数量": 220,
+                  "类别": "图书"
                 }
               ]
             },
@@ -7555,6 +9260,30 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": 320,
+                  "类别": "电子产品"
+                },
+                {
+                  "数量": 280,
+                  "类别": "服装"
+                },
+                {
+                  "数量": 450,
+                  "类别": "食品"
+                },
+                {
+                  "数量": 180,
+                  "类别": "家居"
+                },
+                {
+                  "数量": 220,
+                  "类别": "图书"
+                }
+              ]
+            },
             "mockPreset": "horizontal-bar",
             "sourceType": "ap",
             "valueAxis": [
@@ -7595,14 +9324,15 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "segmented-strip-mp3j0fdk",
           "position": {
-            "h": 7,
+            "h": 6,
             "w": 120,
             "x": 0,
-            "y": 40
+            "y": 43
           },
           "showHeader": false,
           "showTitle": false,
@@ -7634,6 +9364,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -7694,6 +9430,12 @@
                 }
               ]
             },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
+            },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
             "measure": [
@@ -7752,6 +9494,12 @@
                   "label": "较上月"
                 }
               ]
+            },
+            "mockData": {
+              "mainLabel": "销售额",
+              "subLabel": "较上月",
+              "subValue": 12.5,
+              "value": 128560
             },
             "mockPreset": "kpiCard",
             "sourceType": "ap",
@@ -7812,6 +9560,30 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": 320,
+                  "类别": "电子产品"
+                },
+                {
+                  "数量": 280,
+                  "类别": "服装"
+                },
+                {
+                  "数量": 450,
+                  "类别": "食品"
+                },
+                {
+                  "数量": 180,
+                  "类别": "家居"
+                },
+                {
+                  "数量": 220,
+                  "类别": "图书"
+                }
+              ]
+            },
             "mockPreset": "horizontal-bar",
             "sourceType": "ap",
             "valueAxis": [
@@ -7847,7 +9619,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 112
+            "y": 115
           },
           "showHeader": true,
           "showTitle": true,
@@ -7856,8 +9628,65 @@
           "visualization": {
             "legend": true
           }
+        },
+        {
+          "dataConfig": {
+            "mockData": null,
+            "sourceType": "mock"
+          },
+          "id": "title-gzqxrgvz",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 10
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "运营端到端环节达成与状态"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
+        },
+        {
+          "dataConfig": {
+            "mockData": null,
+            "sourceType": "mock"
+          },
+          "id": "title-504mxo3p",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 41
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "运营指标看板"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
         }
-      ]
+      ],
+      "gridCols": 120,
+      "rowHeight": 10,
+      "theme": "light"
     },
     "2112009587516293121": {
       "templateId": "2112009587516293121",
@@ -7871,10 +9700,10 @@
           },
           "id": "segmented-strip-i7yd7i8b",
           "position": {
-            "h": 6,
+            "h": 5,
             "w": 120,
             "x": 0,
-            "y": 0
+            "y": 2
           },
           "showHeader": false,
           "showTitle": false,
@@ -8211,7 +10040,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 6
+            "y": 7
           },
           "showHeader": true,
           "showTitle": true,
@@ -8285,7 +10114,7 @@
             "h": 10,
             "w": 120,
             "x": 0,
-            "y": 25
+            "y": 26
           },
           "showHeader": false,
           "showTitle": true,
@@ -8396,7 +10225,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 35
+            "y": 36
           },
           "showHeader": true,
           "showTitle": true,
@@ -8469,7 +10298,7 @@
             "h": 12,
             "w": 120,
             "x": 0,
-            "y": 54
+            "y": 55
           },
           "showHeader": false,
           "showTitle": true,
@@ -8582,7 +10411,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 85
+            "y": 86
           },
           "showHeader": false,
           "showTitle": true,
@@ -8707,7 +10536,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 66
+            "y": 67
           },
           "showHeader": true,
           "showTitle": true,
@@ -8716,6 +10545,32 @@
           "visualization": {
             "legend": true,
             "smooth": false
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-p7f5q3md",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 0
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "销售额经营看板"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
           }
         }
       ]
@@ -8771,7 +10626,7 @@
             "h": 19,
             "w": 60,
             "x": 0,
-            "y": 8
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -8780,8 +10635,7 @@
           "visualization": {
             "legend": true,
             "labelPosition": "right"
-          },
-          "parentId": "group-wyx7bpog"
+          }
         },
         {
           "dataConfig": {
@@ -8828,7 +10682,7 @@
             "h": 19,
             "w": 60,
             "x": 60,
-            "y": 8
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -8837,8 +10691,7 @@
           "visualization": {
             "legend": true,
             "labelPosition": "right"
-          },
-          "parentId": "group-wyx7bpog"
+          }
         },
         {
           "dataConfig": {
@@ -8943,34 +10796,26 @@
           "dataConfig": {
             "sourceType": "mock"
           },
-          "id": "group-wyx7bpog",
+          "id": "title-z4p9bv5g",
           "position": {
-            "h": 21,
+            "h": 2,
             "w": 120,
             "x": 0,
             "y": 0
           },
-          "showHeader": true,
-          "showTitle": true,
-          "title": "商机获取概况",
-          "type": "group",
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
           "visualization": {},
           "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8
-            }
+            "subtitle": "",
+            "text": "商机获取概况"
           },
-          "styleConfig": {},
-          "children": [
-            "horizontal-bar-gwwqwvxt",
-            "horizontal-bar-3q9rlp4s"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
           }
         }
       ]
@@ -9026,7 +10871,7 @@
             "h": 19,
             "w": 60,
             "x": 0,
-            "y": 8
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -9035,8 +10880,7 @@
           "visualization": {
             "legend": true,
             "labelPosition": "right"
-          },
-          "parentId": "group-wyx7bpog"
+          }
         },
         {
           "dataConfig": {
@@ -9083,7 +10927,7 @@
             "h": 19,
             "w": 60,
             "x": 60,
-            "y": 8
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -9092,8 +10936,7 @@
           "visualization": {
             "legend": true,
             "labelPosition": "right"
-          },
-          "parentId": "group-wyx7bpog"
+          }
         },
         {
           "dataConfig": {
@@ -9198,34 +11041,26 @@
           "dataConfig": {
             "sourceType": "mock"
           },
-          "id": "group-wyx7bpog",
+          "id": "title-58ripk3a",
           "position": {
-            "h": 21,
+            "h": 2,
             "w": 120,
             "x": 0,
             "y": 0
           },
-          "showHeader": true,
-          "showTitle": true,
-          "title": "报价-异常项目分析",
-          "type": "group",
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
           "visualization": {},
           "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8
-            }
+            "subtitle": "",
+            "text": "报价-异常项目分析"
           },
-          "styleConfig": {},
-          "children": [
-            "horizontal-bar-gwwqwvxt",
-            "horizontal-bar-3q9rlp4s"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
           }
         }
       ]
@@ -9282,7 +11117,7 @@
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 44
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -9303,7 +11138,10 @@
             }
           ],
           "selectionGroupDefault": false,
-          "parentId": "group-gxbzcsma"
+          "styleConfig": {
+            "footerLinkLabel": "查看销售额风险 ->"
+          },
+          "headerActions": []
         },
         {
           "dataConfig": {
@@ -9350,8 +11188,8 @@
           "position": {
             "h": 8,
             "w": 24,
-            "x": 0,
-            "y": 44
+            "x": 24,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -9371,7 +11209,9 @@
               "templateDashboardId": "2112010750949113858"
             }
           ],
-          "parentId": "group-gxbzcsma"
+          "styleConfig": {
+            "footerLinkLabel": "查看出货风险 ->"
+          }
         },
         {
           "dataConfig": {
@@ -9418,8 +11258,8 @@
           "position": {
             "h": 8,
             "w": 24,
-            "x": 0,
-            "y": 44
+            "x": 48,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -9430,8 +11270,7 @@
               "#3b7cff"
             ]
           },
-          "selectionGroupId": "",
-          "parentId": "group-gxbzcsma"
+          "selectionGroupId": ""
         },
         {
           "dataConfig": {
@@ -9478,8 +11317,8 @@
           "position": {
             "h": 8,
             "w": 24,
-            "x": 0,
-            "y": 44
+            "x": 72,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -9490,8 +11329,7 @@
               "#3b7cff"
             ]
           },
-          "selectionGroupId": "",
-          "parentId": "group-gxbzcsma"
+          "selectionGroupId": ""
         },
         {
           "dataConfig": {
@@ -9538,8 +11376,8 @@
           "position": {
             "h": 8,
             "w": 24,
-            "x": 0,
-            "y": 44
+            "x": 96,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -9550,8 +11388,7 @@
               "#3b7cff"
             ]
           },
-          "selectionGroupId": "",
-          "parentId": "group-gxbzcsma"
+          "selectionGroupId": ""
         },
         {
           "dataConfig": {
@@ -9562,7 +11399,7 @@
             "h": 8,
             "w": 120,
             "x": 0,
-            "y": 11
+            "y": 10
           },
           "showHeader": false,
           "showTitle": false,
@@ -9579,10 +11416,10 @@
           },
           "id": "button-group-5pje4sn1",
           "position": {
-            "h": 5,
+            "h": 2,
             "w": 60,
-            "x": 0,
-            "y": 44
+            "x": 60,
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -9610,8 +11447,7 @@
               }
             ]
           },
-          "linkConfig": [],
-          "parentId": "group-gxbzcsma"
+          "linkConfig": []
         },
         {
           "dataConfig": {
@@ -9619,10 +11455,10 @@
           },
           "id": "title-4xrmez6w",
           "position": {
-            "h": 3,
-            "w": 120,
+            "h": 2,
+            "w": 60,
             "x": 0,
-            "y": 44
+            "y": 0
           },
           "showHeader": false,
           "showTitle": false,
@@ -9634,80 +11470,6 @@
           },
           "styleConfig": {
             "fontSize": "16"
-          },
-          "parentId": "group-gxbzcsma"
-        },
-        {
-          "dataConfig": {
-            "sourceType": "mock"
-          },
-          "id": "group-gxbzcsma",
-          "position": {
-            "h": 11,
-            "w": 120,
-            "x": 0,
-            "y": 0
-          },
-          "showHeader": false,
-          "showTitle": true,
-          "title": "分组容器",
-          "type": "group",
-          "visualization": {},
-          "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8,
-              "rows": [
-                [
-                  "title-4xrmez6w",
-                  "button-group-5pje4sn1"
-                ],
-                [
-                  "progress-y5dumxio",
-                  "progress-91j3rt9a",
-                  "progress-djttwi50",
-                  "progress-ffgtjvs8",
-                  "progress-rna6k8bw"
-                ]
-              ],
-              "rowHeights": [
-                "24%",
-                null
-              ]
-            }
-          },
-          "styleConfig": {},
-          "children": [
-            "title-4xrmez6w",
-            "button-group-5pje4sn1",
-            "progress-y5dumxio",
-            "progress-91j3rt9a",
-            "progress-djttwi50",
-            "progress-ffgtjvs8",
-            "progress-rna6k8bw"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8,
-            "rows": [
-              [
-                "title-4xrmez6w",
-                "button-group-5pje4sn1"
-              ],
-              [
-                "progress-y5dumxio",
-                "progress-91j3rt9a",
-                "progress-djttwi50",
-                "progress-ffgtjvs8",
-                "progress-rna6k8bw"
-              ]
-            ],
-            "rowHeights": [
-              "24%",
-              null
-            ]
           }
         },
         {
@@ -9812,13 +11574,361 @@
             "h": 20,
             "w": 120,
             "x": 0,
-            "y": 19
+            "y": 34
           },
-          "showHeader": true,
+          "showHeader": false,
           "showTitle": true,
           "title": "运营360整体分析",
           "type": "process-arc",
           "visualization": {}
+        },
+        {
+          "dataConfig": {
+            "mockAxis": {
+              "measure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "value",
+                  "label": "销售额"
+                }
+              ],
+              "subMeasure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "subValue",
+                  "label": "较上月"
+                }
+              ]
+            },
+            "mockPreset": "kpiCard",
+            "sourceType": "ap",
+            "measure": [
+              {
+                "alias": "重要风险｜订单超期未发金额",
+                "fieldType": "Indicator",
+                "identifierCode": "M0001",
+                "isTree": false,
+                "label": "采购金额",
+                "name": "Purchase_Amount",
+                "valueType": "NUMBER"
+              }
+            ]
+          },
+          "id": "kpiCard-q9oq9mxq",
+          "position": {
+            "h": 7,
+            "w": 30,
+            "x": 0,
+            "y": 67
+          },
+          "showHeader": true,
+          "showTitle": true,
+          "title": "KPI卡片",
+          "type": "kpiCard",
+          "visualization": {
+            "colorScheme": [
+              "#1890ff"
+            ]
+          },
+          "headerActions": [
+            {
+              "actionType": "switchTab",
+              "key": "1792720055376",
+              "label": "查看三级穿透"
+            }
+          ],
+          "styleConfig": {
+            "kpiSubSuffix": "涉及战略及重点客户交付，影响年度销售额与出货目标达成",
+            "kpiValueSuffix": "",
+            "kpiValueColor": "#e64980",
+            "kpiIcon": "🔴",
+            "kpiSubFixedText": "涉及战略及重点客户交付，影响年度销售额与出货目标达成"
+          },
+          "parentId": "segmented-strip-qb20txb6"
+        },
+        {
+          "dataConfig": {
+            "mockAxis": {
+              "measure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "value",
+                  "label": "销售额"
+                }
+              ],
+              "subMeasure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "subValue",
+                  "label": "较上月"
+                }
+              ]
+            },
+            "mockPreset": "kpiCard",
+            "sourceType": "ap",
+            "measure": [
+              {
+                "alias": "累计经营影响",
+                "fieldType": "Indicator",
+                "identifierCode": "M0001",
+                "isTree": false,
+                "label": "采购金额",
+                "name": "Purchase_Amount",
+                "valueType": "NUMBER"
+              }
+            ],
+            "subMeasure": [
+              {
+                "alias": "占年度销售目标",
+                "fieldType": "Indicator",
+                "identifierCode": "M0004",
+                "isTree": false,
+                "label": "同比采购金额增长率",
+                "name": "YoY_Purchase_Amount_Growth Rate",
+                "valueType": "NUMBER"
+              }
+            ]
+          },
+          "id": "kpiCard-w6s7e6ca",
+          "position": {
+            "h": 7,
+            "w": 30,
+            "x": 0,
+            "y": 67
+          },
+          "showHeader": true,
+          "showTitle": true,
+          "title": "KPI卡片",
+          "type": "kpiCard",
+          "visualization": {
+            "colorScheme": [
+              "#1890ff"
+            ]
+          },
+          "styleConfig": {
+            "kpiValueColor": "#fa5252"
+          },
+          "parentId": "segmented-strip-qb20txb6"
+        },
+        {
+          "dataConfig": {
+            "mockAxis": {
+              "measure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "value",
+                  "label": "销售额"
+                }
+              ],
+              "subMeasure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "subValue",
+                  "label": "较上月"
+                }
+              ]
+            },
+            "mockPreset": "kpiCard",
+            "sourceType": "ap",
+            "measure": [
+              {
+                "alias": "红区报价集中，存在增量不理风险",
+                "fieldType": "Indicator",
+                "identifierCode": "M0001",
+                "isTree": false,
+                "label": "采购金额",
+                "name": "Purchase_Amount",
+                "valueType": "NUMBER"
+              }
+            ],
+            "subMeasure": [
+              {
+                "alias": "集中于LF280K、MB3两款电芯的占比",
+                "fieldType": "Indicator",
+                "identifierCode": "M0004",
+                "isTree": false,
+                "label": "同比采购金额增长率",
+                "name": "YoY_Purchase_Amount_Growth Rate",
+                "valueType": "NUMBER"
+              }
+            ]
+          },
+          "id": "kpiCard-bat771ma",
+          "position": {
+            "h": 6,
+            "w": 60,
+            "x": 0,
+            "y": 26
+          },
+          "showHeader": true,
+          "showTitle": true,
+          "title": "KPI卡片",
+          "type": "kpiCard",
+          "visualization": {
+            "colorScheme": [
+              "#1890ff"
+            ]
+          },
+          "styleConfig": {
+            "kpiValueColor": "#fab005",
+            "kpiIcon": "🟡",
+            "kpiValueSuffix": "单"
+          }
+        },
+        {
+          "dataConfig": {
+            "mockAxis": {
+              "measure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "value",
+                  "label": "销售额"
+                }
+              ],
+              "subMeasure": [
+                {
+                  "fieldType": "Indicator",
+                  "identifierCode": "subValue",
+                  "label": "较上月"
+                }
+              ]
+            },
+            "mockPreset": "kpiCard",
+            "sourceType": "ap",
+            "measure": [
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "M0001",
+                "isTree": false,
+                "label": "采购金额",
+                "name": "Purchase_Amount",
+                "valueType": "NUMBER",
+                "alias": "投标丢标与弃标需重点复盘"
+              }
+            ],
+            "subMeasure": [
+              {
+                "alias": "丢标",
+                "fieldType": "Indicator",
+                "identifierCode": "M0006",
+                "isTree": false,
+                "label": "采购数量",
+                "name": "Purchase_Quantity",
+                "valueType": "NUMBER"
+              },
+              {
+                "fieldType": "Indicator",
+                "identifierCode": "M0004",
+                "isTree": false,
+                "label": "同比采购金额增长率",
+                "name": "YoY_Purchase_Amount_Growth Rate",
+                "valueType": "NUMBER",
+                "alias": "中标率"
+              }
+            ]
+          },
+          "id": "kpiCard-h85uyf4g",
+          "position": {
+            "h": 6,
+            "w": 60,
+            "x": 60,
+            "y": 26
+          },
+          "showHeader": true,
+          "showTitle": true,
+          "title": "KPI卡片",
+          "type": "kpiCard",
+          "visualization": {
+            "colorScheme": [
+              "#1890ff"
+            ]
+          },
+          "styleConfig": {
+            "kpiValueColor": "#fab005",
+            "kpiIcon": "🟡",
+            "kpiValueSuffix": ""
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "segmented-strip-qb20txb6",
+          "position": {
+            "h": 6,
+            "w": 120,
+            "x": 0,
+            "y": 20
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "分段条",
+          "type": "segmented-strip",
+          "visualization": {},
+          "styleConfig": {},
+          "children": [
+            "kpiCard-q9oq9mxq",
+            "kpiCard-w6s7e6ca"
+          ],
+          "baseConfig": {
+            "segmentWidths": {
+              "kpiCard-q9oq9mxq": 70
+            }
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-it8014ti",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 18
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "基于经营偏差，今天重点关注 3 项风险"
+          },
+          "styleConfig": {
+            "fontSize": "16",
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom",
+            "textAlign": "left",
+            "showStyleLine": false
+          }
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-d15r7zbi",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 32
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "运营360整体分析"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
         }
       ]
     },
@@ -9899,7 +12009,7 @@
             "h": 11,
             "w": 120,
             "x": 0,
-            "y": 0
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -9961,7 +12071,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 11
+            "y": 13
           },
           "showHeader": true,
           "showTitle": true,
@@ -10000,6 +12110,32 @@
               "valueType": "DATE"
             }
           ]
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-d3oajetx",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 0
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "详情分析"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
         }
       ]
     },
@@ -10063,9 +12199,9 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 0
+            "y": 2
           },
-          "showHeader": true,
+          "showHeader": false,
           "showTitle": true,
           "title": "受影响订单清单",
           "type": "table",
@@ -10102,6 +12238,32 @@
               "valueType": "DATE"
             }
           ]
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-0iqvjnog",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 0
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "受影响订单清单"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
         }
       ]
     },
@@ -10156,7 +12318,7 @@
             "h": 19,
             "w": 60,
             "x": 0,
-            "y": 8
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -10165,8 +12327,7 @@
           "visualization": {
             "legend": true,
             "labelPosition": "right"
-          },
-          "parentId": "group-wyx7bpog"
+          }
         },
         {
           "dataConfig": {
@@ -10213,7 +12374,7 @@
             "h": 19,
             "w": 60,
             "x": 60,
-            "y": 8
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -10222,8 +12383,7 @@
           "visualization": {
             "legend": true,
             "labelPosition": "right"
-          },
-          "parentId": "group-wyx7bpog"
+          }
         },
         {
           "dataConfig": {
@@ -10328,34 +12488,26 @@
           "dataConfig": {
             "sourceType": "mock"
           },
-          "id": "group-wyx7bpog",
+          "id": "title-gm1yoh8j",
           "position": {
-            "h": 21,
+            "h": 2,
             "w": 120,
             "x": 0,
             "y": 0
           },
-          "showHeader": true,
-          "showTitle": true,
-          "title": "已签单订单结构",
-          "type": "group",
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
           "visualization": {},
           "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8
-            }
+            "subtitle": "",
+            "text": "已签单订单结构"
           },
-          "styleConfig": {},
-          "children": [
-            "horizontal-bar-gwwqwvxt",
-            "horizontal-bar-3q9rlp4s"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
           }
         }
       ]
@@ -10372,10 +12524,10 @@
           },
           "id": "segmented-strip-yjzosk62",
           "position": {
-            "h": 7,
+            "h": 5,
             "w": 120,
             "x": 0,
-            "y": 0
+            "y": 2
           },
           "showHeader": false,
           "showTitle": false,
@@ -11246,6 +13398,32 @@
               "valueType": "DATE"
             }
           ]
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-mdk899iv",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 0
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "出货量经营看板"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
         }
       ]
     },
@@ -11255,40 +13433,6 @@
         "name": "运营360 整体分析-发货"
       },
       "components": [
-        {
-          "dataConfig": {
-            "sourceType": "mock"
-          },
-          "id": "group-rnfank2i",
-          "position": {
-            "h": 18,
-            "w": 120,
-            "x": 0,
-            "y": 0
-          },
-          "showHeader": true,
-          "showTitle": true,
-          "title": "发货 · 异常项目分析",
-          "type": "group",
-          "visualization": {},
-          "baseConfig": {
-            "groupLayout": {
-              "gap": 8,
-              "justify": "space-between",
-              "rowGap": 8
-            }
-          },
-          "styleConfig": {},
-          "children": [
-            "horizontal-bar-u3qr24p6",
-            "horizontal-bar-v5gvsjom"
-          ],
-          "groupLayout": {
-            "gap": 8,
-            "justify": "space-between",
-            "rowGap": 8
-          }
-        },
         {
           "dataConfig": {
             "mockAxis": {
@@ -11334,7 +13478,7 @@
             "h": 19,
             "w": 60,
             "x": 0,
-            "y": 15
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -11342,8 +13486,7 @@
           "type": "horizontal-bar",
           "visualization": {
             "legend": true
-          },
-          "parentId": "group-rnfank2i"
+          }
         },
         {
           "dataConfig": {
@@ -11389,8 +13532,8 @@
           "position": {
             "h": 19,
             "w": 60,
-            "x": 0,
-            "y": 15
+            "x": 60,
+            "y": 2
           },
           "showHeader": true,
           "showTitle": true,
@@ -11398,8 +13541,7 @@
           "type": "horizontal-bar",
           "visualization": {
             "legend": true
-          },
-          "parentId": "group-rnfank2i"
+          }
         },
         {
           "dataConfig": {
@@ -11455,7 +13597,7 @@
             "h": 19,
             "w": 120,
             "x": 0,
-            "y": 18
+            "y": 21
           },
           "showHeader": true,
           "showTitle": true,
@@ -11494,6 +13636,32 @@
               "valueType": "STRING"
             }
           ]
+        },
+        {
+          "dataConfig": {
+            "sourceType": "mock"
+          },
+          "id": "title-7zjcnvnb",
+          "position": {
+            "h": 2,
+            "w": 120,
+            "x": 0,
+            "y": 0
+          },
+          "showHeader": false,
+          "showTitle": false,
+          "title": "标题",
+          "type": "title",
+          "visualization": {},
+          "baseConfig": {
+            "subtitle": "",
+            "text": "发货 · 异常项目分析"
+          },
+          "styleConfig": {
+            "fontSize": 16,
+            "subtitleFontSize": 12,
+            "subtitlePosition": "bottom"
+          }
         }
       ]
     }
@@ -11508,22 +13676,22 @@
       "withData": 1
     },
     "overview": {
-      "total": 10,
+      "total": 16,
       "types": {
         "progress": 5,
         "template": 1,
         "button-group": 1,
-        "title": 1,
-        "group": 1,
-        "process-arc": 1
+        "title": 3,
+        "process-arc": 1,
+        "kpiCard": 4,
+        "segmented-strip": 1
       },
-      "withData": 7
+      "withData": 11
     },
     "operations": {
-      "total": 38,
+      "total": 39,
       "types": {
-        "group": 5,
-        "title": 1,
+        "title": 3,
         "button-group": 1,
         "progress": 5,
         "mini-cpgraph": 1,
@@ -11531,6 +13699,7 @@
         "funnel": 1,
         "kpiCard": 15,
         "share-bar": 4,
+        "group": 4,
         "horizontal-bar": 3,
         "segmented-strip": 1
       },
@@ -11542,8 +13711,7 @@
         "progress": 5,
         "mini-cpgraph": 1,
         "template": 1,
-        "group": 1,
-        "title": 1,
+        "title": 2,
         "button-group": 1
       },
       "withData": 5

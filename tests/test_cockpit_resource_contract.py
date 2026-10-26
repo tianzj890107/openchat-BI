@@ -14,13 +14,17 @@ def test_vendor_manifest_matches_local_artifacts():
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=011269f8' in html
+    assert 'pro-bi-ui.min.js?v=2eb9912a' in html
+    assert 'data-dashboard-theme="white"' in html
+    css=(ROOT/'cockpit.css').read_text()
+    assert '--dashboard-canvas-bg:#fff' in css
+    assert '--dashboard-component-bg:#fff' in css
 
 def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='37975c7a03719c037b4acca70c38b50fb68f4516'
+    assert source['commit']=='5791b362cac875ca041884079c3d0d45a58aeb89'
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
     roots=json.loads((folder/'components.json').read_text())

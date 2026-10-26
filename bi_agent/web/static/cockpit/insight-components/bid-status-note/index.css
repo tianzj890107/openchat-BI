@@ -1,4 +1,6 @@
 .bid-status-note {
+  box-sizing: border-box;
+  height: 136px;
   margin: 0;
   padding: 10px 12px;
   background: #f4f6f8;

@@ -1,7 +1,7 @@
 {
-  "checkedAt": "2026-10-22T15:35:00+08:00",
+  "checkedAt": "2026-10-23T18:10:04+08:00",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
-  "sourceCommit": "37975c7a03719c037b4acca70c38b50fb68f4516",
+  "sourceCommit": "5791b362cac875ca041884079c3d0d45a58aeb89",
   "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021; original embedded license notices preserved. Isolated from legacy workbench assets.",
   "resources": [
     {
@@ -14,14 +14,14 @@
     },
     {
       "file": "pro-bi-ui.min.js",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/37975c7a03719c037b4acca70c38b50fb68f4516/lib/pro-bi-ui.min.js",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/5791b362cac875ca041884079c3d0d45a58aeb89/lib/pro-bi-ui.min.js",
       "sourcePath": "lib/pro-bi-ui.min.js",
-      "sha256": "011269f82f00aa4374ea8fd6162b6195e9148cde03552837128c8c5f88939bce",
-      "bytes": 6270888
+      "sha256": "2eb9912ab86f7e5b44d92a9cc836b3daa693cee1cc4b55d5482a1d02510f5cba",
+      "bytes": 6303673
     },
     {
       "file": "pro-ui.min.css",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/37975c7a03719c037b4acca70c38b50fb68f4516/lib/pro-ui.min.css",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/5791b362cac875ca041884079c3d0d45a58aeb89/lib/pro-ui.min.css",
       "sourcePath": "lib/pro-ui.min.css",
       "sha256": "b1ee836dbe11d3b5df80f9a1718a8a7623aaa89e9419bae1d6450a9063744d25",
       "bytes": 720594

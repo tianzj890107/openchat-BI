@@ -16,7 +16,7 @@ def test_compilation_preserves_upstream_and_all_renderable_data_is_explicit():
     b=build_bundle()
     assert (ROOT/'template-registry.json').read_bytes()==original
     assert set(b['pages'])=={'overview','operations','analysis'}
-    assert len(b['bindings'])==86
+    assert len(b['bindings'])==87
     reported={(g.get('templateId'),g.get('componentId')) for g in b['gaps'] if g['code']=='CHILD_DEFINITION_MISSING'}
     unavailable=[]
     for tid,t in b['templates'].items():
@@ -77,17 +77,17 @@ def test_static_proui_runtime_is_reproducible_and_uses_release_data():
     assert stored['renderer']=='ProBiDashboard'
     assert stored['mode']=='release'
     assert stored['source']['dashboardId']=='iba-demo-1021'
-    assert stored['source']['version']=='37975c7'
+    assert stored['source']['version']=='5791b36'
     assert stored['source']['templateCount']==13
-    assert stored['source']['totalComponents']==122
+    assert stored['source']['totalComponents']==135
     assert set(stored['pages'])=={'overview','operations','analysis'}
     assert stored['counts']['overview']=={
-        'total':10,'types':{'progress':5,'template':1,'button-group':1,'title':1,'group':1,'process-arc':1},'withData':7,
+        'total':16,'types':{'progress':5,'template':1,'button-group':1,'title':3,'kpiCard':4,'segmented-strip':1,'process-arc':1},'withData':11,
     }
-    assert stored['counts']['operations']['total']==38
+    assert stored['counts']['operations']['total']==39
     assert stored['counts']['operations']['withData']==28
     assert stored['counts']['analysis']=={
-        'total':10,'types':{'progress':5,'mini-cpgraph':1,'template':1,'group':1,'title':1,'button-group':1},'withData':5,
+        'total':10,'types':{'progress':5,'mini-cpgraph':1,'template':1,'title':2,'button-group':1},'withData':5,
     }
     assert len(stored['templates'])==13
     assert {gap['code'] for gap in stored['gaps']} >= {'CHILD_DEFINITION_MISSING','AP_SNAPSHOT_BASIS'}

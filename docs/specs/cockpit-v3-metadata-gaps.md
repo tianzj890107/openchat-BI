@@ -3,11 +3,11 @@
 ## 当前交付
 
 - 来源：`http://gitlab.boulderaitech.com/shimenglan/iba-demo`，分支 `feature/demo_1021`，
-  commit `37975c7a03719c037b4acca70c38b50fb68f4516`。
+  commit `5791b362cac875ca041884079c3d0d45a58aeb89`。
 - 渲染入口：一个 `ProBiDashboard`，直接接收交付根配置和 13 份模板注册表。
 - 根组件：`composite-filter-hzjk9t5q`、`tab-container-zm9eyxne`。
 - 三个 Tab：经营看板、运营360整体分析、穿透式问题分析。
-- 组件规模：13 份模板、122 个组件配置（含 2 个根组件）。
+- 组件规模：13 份模板、135 个组件配置（含 2 个根组件）。
 - 插槽：交付 `insights.json` 声明 12 个插入位置；宿主按位置挂载真实模型分析卡片。
 - 本运行包模板和组件类型检查：通过；三个页面均无 ProUI 组件错误。
 
@@ -45,9 +45,8 @@
   `order-risk-summary`、`shipment-risk-summary`、`shipment-overdue-note`、
   `shipment-cause-breakdown`、`shipment-task-order`。
 
-插槽内容调用主服务 `/api/cockpit/analyses` 的真实模型分析。页面加载后利用浏览器空闲时间预取
-商机、报价、投标、订单、发货 5 个环节，每个环节只提交一次；前端最多 3 个并发，其余排队。
-插槽挂载时复用同一分析 Promise，点击头盔节点不重新请求，只有“重新分析”才强制刷新。
+插槽内容调用主服务 `/api/cockpit/analyses` 的真实模型分析。主路线按可见插槽和当前节点串行调度，
+不再空闲预取五个环节；插槽挂载时复用同一分析 Promise，点击头盔节点不重新请求，只有“重新分析”才强制刷新。
 穿透页默认显示 3 个插槽；点击订单接收和发货节点后，其余插槽按所切换的模板挂载。
 首次分析通常约 10–20 秒，已完成范围复用历史结果；失败时在插槽内显示错误和重试。
 
@@ -74,7 +73,7 @@ mock 的轻量配置复原：13px／22px 字号行高、8px 间距、`14px 16px 
 
 ## 验证
 
-- 驾驶舱契约测试 `41 passed`（含真实分析调用、空闲预取和共用风险卡片契约）。
+- 驾驶舱契约测试 `41 passed`（含真实分析调用和共用风险卡片契约）。
 - `node --check bi_agent/web/static/cockpit/cockpit.js` 通过。
 - 浏览器检查 `overview`、`operations`、`analysis` 在 `id=1|2` 下均能激活正确 Tab，只有一个
   `ProBiDashboard`，无组件错误。

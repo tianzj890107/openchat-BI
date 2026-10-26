@@ -128,11 +128,11 @@ curl -fsS http://127.0.0.1:8765/healthz
 `/cockpit/home` 保留为兼容地址（FastAPI 307、静态站客户端改写为 `overview`），不再单独渲染第四个页面。
 三个入口共用同一路径和 Fuxi 身份参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员；当前三页内容与功能对两个 `id` 完全一致，
 两个人都可访问，`id` 仅作为将来差异化的预留标识。不使用 `role` 或两套身份地址，总入口和页内跳转均保留当前 `id`。
-页面直接使用 `iba-demo` 交付看板 `feature/demo_1021@37975c7` 的根配置：一个 `ProBiDashboard` 同时渲染
+页面直接使用 `iba-demo` 交付看板 `feature/demo_1021@5791b36` 的根配置：一个 `ProBiDashboard` 同时渲染
 `composite-filter`、根 `tab-container` 和三个 Tab 模板。顶部 Tab 由交付配置生成，不再由宿主手写；
 三个路由只负责激活对应 Tab，并把当前 `id` 保留在地址中。页面不渲染工作区、会话区、宿主标题或第二套导航。
 
-发布包包含 13 份模板、122 个组件和交付的顶部筛选器。三页的 `position`、`parentId`、容器、标题和样式
+发布包包含 13 份模板、135 个组件和交付的顶部筛选器。三页的 `position`、`parentId`、容器、标题和样式
 均按交付配置原样交给 `ProBiDashboard`；宿主不增删或重排卡片。浏览器通过同目录
 `data-snapshots.json` 回放 pdt 正式页抓取的 39 个 AP 查询、3 个批量查询和 4 个头盔图请求，
 快照只包含业务响应体，不包含 Cookie、Token 或用户身份；未捕获查询在原卡片显示快照缺失提示。

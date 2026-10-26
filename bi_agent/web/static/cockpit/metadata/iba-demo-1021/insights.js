@@ -81,7 +81,7 @@ window.DashboardInsights = [
     },
     placement: { mode: 'insert', afterId: null },
   },
-  // 穿透式问题分析 → 经营指标分组下方、头盔图上方
+  // 穿透式问题分析 → 经营指标下方、运营端到端标题上方
   // 组件 insight-components/sales-shipment-issues
   {
     id: 'sales-shipment-issues',
@@ -95,7 +95,7 @@ window.DashboardInsights = [
         },
       ],
     },
-    placement: { mode: 'insert', afterId: 'group-dhflgwln' },
+    placement: { mode: 'insert', afterId: 'progress-2hrezkzc' },
   },
   // 穿透式问题分析 → 商机获取节点联动展示模版顶部（销售额口径明细上方）
   // 组件 insight-components/opportunity-risk

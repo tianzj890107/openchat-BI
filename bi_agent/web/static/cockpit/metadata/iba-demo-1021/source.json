@@ -1,54 +1,54 @@
 {
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
-  "commit": "37975c7a03719c037b4acca70c38b50fb68f4516",
-  "importedAt": "2026-10-22",
+  "commit": "5791b362cac875ca041884079c3d0d45a58aeb89",
+  "importedAt": "2026-10-23",
   "mode": "active-runtime-adapter",
   "notes": "Source JSON and insights.js remain immutable. The cockpit renders the delivered root components and 13 templates, anchors the 12 delivered insight placements and fills them with live cockpit analyses. Static AP snapshots remain sourced from the frozen pdt release; uncaptured queries show the native missing-snapshot error instead of fabricated data.",
   "rootComponents": 2,
   "templates": 13,
-  "totalComponents": 122,
+  "totalComponents": 135,
   "componentTypes": {
     "bar": 3,
     "bar-line": 2,
     "button-group": 3,
     "composite-filter": 1,
     "funnel": 1,
-    "group": 13,
+    "group": 5,
     "horizontal-bar": 14,
-    "kpiCard": 33,
+    "kpiCard": 37,
     "mini-cpgraph": 2,
     "process-arc": 1,
     "progress": 15,
-    "segmented-strip": 4,
+    "segmented-strip": 5,
     "share-bar": 6,
     "tab-container": 1,
     "table": 17,
     "template": 3,
-    "title": 3
+    "title": 19
   },
   "dataSourceModes": {
-    "ap": 94,
-    "mock": 28
+    "ap": 98,
+    "mock": 37
   },
   "insights": 12,
   "insightComponents": 12,
   "files": [
     {
       "file": "components.json",
-      "sha256": "0b61e64827184c35c0812b53bf91b88bb08d3fe6c73e5f33b4634adf3beb3f64"
+      "sha256": "a7f8065f47d25cfdc412a4c77e19ad3c0b230633e52b709ce6de7876efaf47a6"
     },
     {
       "file": "template-registry.json",
-      "sha256": "7ec45b3f73e7ed1b728c35c5a245c20497a28c273199b9d2bba5e56dcd76ea21"
+      "sha256": "201c61e78bd4956510a55f5c17a4dc4faa2b9657dfdec34215eb443572b67424"
     },
     {
       "file": "insights.js",
-      "sha256": "0e25597748fd4824afb8b62512156e15d24bc216d5e37d2080e817fb3e30935c"
+      "sha256": "fc243eb7211ba836c4fc830bb31378eade8c01b53ee140b4291893f9b8d995cf"
     },
     {
       "file": "insights.json",
-      "sha256": "630bb4f2d3be6db407caf246956b7ae693ed9dbadcf5b16143b2b14521906f51"
+      "sha256": "c0d1d0e3cb9b523931d7e18163be8082e053d1c1aa78e84bbb4b222bb809bfd0"
     }
   ],
   "knownIssues": [
@@ -59,5 +59,5 @@
       "description": "Upstream child definition is absent; runtime renders a visible gap placeholder and reports it."
     }
   ],
-  "activatedAt": "2026-10-22"
+  "activatedAt": "2026-10-23"
 }
