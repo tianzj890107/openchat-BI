@@ -404,9 +404,9 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
-### Cockpit 三页静态看板（8876，2026-10-22）
+### Cockpit 三页看板（8876，2026-10-26已切实时AP／主服务）
 
-- 范围：发布 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis` 三个看板 HTML 及其
+- 初始范围（2026-10-22历史）：发布 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis` 三个看板 HTML 及其
   CSS／JS、静态 ProUI 运行包和顶部三个视图 Tab，使用 `ProBiDashboard` 渲染原生 ProUI 组件；
   `/cockpit/home` 保留为兼容入口并 307 到 `overview`。不启动第二套 `bi_agent.web`，不占用或重启
   `8765` 主服务，不复制 `dataset/`，不读取生产接口。看板内的交付插槽通过同源
@@ -424,7 +424,37 @@ git diff --name-only
   nginx 配置：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/conf/default.conf`。
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
-- 当前发布（2026-10-26 10:07）：代码提交
+- 当前运行（2026-10-26 10:16切换，10:18复核）：用户明确要求服务器启用实时AP和主服务路线，
+  代码仍为 `f783102f701253d32e031178845eaea7a5c0e336`，静态包保持原样。
+  nginx的 `/api/cockpit/*` 已由8877改为代理 `http://172.16.10.34:8765`；
+  `data/config` 返回 `mode=ap, available=true`，`engines` 返回默认 `main`、`comparisonOnly=true`。
+  联调仍允许显式独立引擎对照，默认全部插槽走main，没有失败后自动换源。
+- 主服务已更新到 `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/cockpit-main-f783102-20261026-101212`，
+  PID `1804504`，原8765进程已优雅停止。新release的 `dataset`、`.env`、`.venv` 链接原
+  `mcp-11dc92c-20261020` 目录，未覆盖用户数据或改写原认证。新旧 `/api/sources` 完全一致，
+  原 `ONTOLOGY_*`、`DORIS_*` 环境值保持一致；328个会话、上传报告、图表文件哈希未变。
+- Cockpit独立认证文件为静态站根目录之外的
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/private/ap-headers-poc.json`，目录700、文件600，
+  不能输出或提交。此次是POC，使用已验证的PDT登录授权；它不是长期服务账号，无法保证长期有效。
+  失效时应更新这个独立文件，不改默认本体／Doris认证，不静默回退快照。
+- 独立配置：`COCKPIT_AP_BASE_URL=http://pdt-dev.eimos.com/api/gateway2`、
+  `COCKPIT_DATA_MODE=ap`、`COCKPIT_ANALYSIS_ENGINE=main`、`COCKPIT_COMPARISON_ENABLED=true`，
+  AP网络并发2、超时10秒、结果凭据1800秒，主服务Cockpit分析并发1。
+  完整进程环境持久化在新release的 `runtime-env.json`（600），`start-main.py` 从中恢复；
+  如需重启，必须另获当次授权后，在该release运行 `nohup python3 start-main.py >> <受保护日志路径> 2>&1 &`。
+- 旧8877独立服务已在无进行中任务时停止，原PID `1771143`；`api-f783102` 和 `api-data` 及所有历史分析保留原地，
+  未迁移到主服务。现在8876展示主服务的新分析历史，不等于删除8877原历史库。
+- 本次备份：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/main-ap-20261026-101212`，
+  保留旧环境、nginx配置、SQLite一致备份、切换后用户数据哈希清单、预检与正式日志；环境文件600，目录700。
+  `main-ap-deployment-state.json` 记录发布路径、PID及验证任务。回滚必须另获明确授权，使用保留的原代码与环境，
+  不能覆盖或清空共享dataset。
+- 验证：先用回环18765预检健康及六组AP查询（四组缺失指标、批量、头盔图），再切正式入口。
+  真模型任务 `10c657bf6d414c17bba590c972c95548` 约20.619秒，3轮、2次看板工具调用、1项事实，
+  路由为 `DIAGNOSTIC_ANALYSIS / QUERY_DASHBOARD`，没有默认本体或SQL取数；结果为 `limited`，
+  正常披露没有同源根因明细，不能将其解读为根因已验证。此任务在同一release的临时端口运行后可从8876回看。
+  正式8876三个页面浏览器验收共7／15／14次AP请求全部200，无快照缺失或运行异常；页面验收拦截自动模型请求，
+  避免重复费用。id=2三个路由与8765原工作台均200；临时18765进程已停止。
+- 上一发布（2026-10-26 10:07，已由上面实时AP／主服务运行状态取代）：代码提交
   `f783102f701253d32e031178845eaea7a5c0e336`（`feature/cockpit-v3-poc`），交付包
   `iba-demo` `feature/demo_1021@5791b362cac875ca041884079c3d0d45a58aeb89`。8876 静态站从该提交
   构建，HTML、CSS和插槽模块统一使用 `?v=f783102`；发布包62个文件，manifest 全部通过。
@@ -476,16 +506,16 @@ git diff --name-only
 - 页面壳层：外层使用与 `iba-demo` 示例一致的白色画布和 20px 内容留白；
   `ProBiDashboard` 使用发布态和自带标题区，不启用配置态拖入占位。
 - 内容校验：交付包包含 3 个 Tab、13 份模板、2 个根组件、135 个组件配置和 12 个插槽声明。
-  `data-snapshots.json` 保存 39 个 AP 查询、3 个批量查询和 4 个头盔图请求；未捕获查询在原卡片
-  显示组件自带的“未找到该 AP 查询的发布快照”，宿主不补造数据。
+  离线回放用的 `data-snapshots.json` 保存39个AP查询、3个批量查询和4个头盔图请求；只有显式snapshot模式
+  才依赖它。当前AP模式直接读同一套上游接口，不再因旧快照缺少这四组查询而报错。
 - 插槽：交付根配置没有 `insights`，运行时从交付目录补入 12 个声明（经营看板 0、运营 360 4、
   穿透式问题分析 8）。插槽位置按交付配置，内容调用 `/api/cockpit/analyses` 的真实模型分析；
   主路线按可见插槽和当前节点串行调度，不再空闲预取五个环节；只有“重新分析”强制刷新。
 - 反向代理：nginx 在 `/api/` 404 规则之前增加 `location /api/cockpit/`，转发到
-  `http://172.16.10.34:8877`，读取超时 300 秒并禁用响应缓存。
-- 旁路 API：独立目录
+  `http://172.16.10.34:8765`（2026-10-26切换，之前为8877），读取超时300秒并禁用响应缓存。
+- 已停止的历史旁路 API：独立目录
   `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-f783102`，入口为
-  `cockpit_api.py`，监听 `172.16.10.34:8877`；PID 写入 `app.pid`，日志为 `api.log`，
+  `cockpit_api.py`，原监听 `172.16.10.34:8877`，现已停服；原PID记录在 `app.pid`，日志为 `api.log`，
   运行数据独立保存到 `api-data/`，不接触历史会话和主服务 `dataset/`。当前进程由
   `setsid nohup` 启动，没有 systemd 自动拉起；数据软链继续指向 `api-017d65f/api-data`。
 - 文件权限：发布后 `site/` 及子目录必须为 `755`、文件为 `644`；根目录若被 staging 权限
@@ -726,9 +756,9 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - CI 全绿只代表验证通过，不构成部署授权；部署仍按本文档由人工执行，且需要当前
   任务中的明确部署指令。
 
-## Cockpit 主服务路线联调配置（2026-10-23，尚未部署）
+## Cockpit 主服务路线联调配置（2026-10-26，已部署至8765）
 
-本节只说明新增能力，不构成部署、代理修改或停服授权。当前线上仍以此前发布记录为准。
+本节说明配置与实现。2026-10-26已按用户当次明确授权切换实时AP／主服务；具体运行状态见上面的当前运行记录。后续部署、重启或停服仍须新的明确授权。
 
 - 主服务新增无对话分析任务适配器，`/api/cockpit/analyses` 的 `engine=main` 直接执行现有
   WebSession及源绑定工具，不需要另外启动8877。独立router没有主服务执行器时返回503，不降级。
@@ -751,7 +781,6 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   `COCKPIT_AP_TIMEOUT_SECONDS`、`COCKPIT_AP_RECEIPT_TTL_SECONDS` 可按需配置。
   AP失败不回退默认本体、数据库或旧快照；缺少同源根因明细时仍受限交付。
 - 如需离线回放，显式设置 `COCKPIT_DATA_MODE=snapshot`；未捕获的查询仍可能缺失。新代码不再默认依赖旧快照。
-- 后续获部署授权时，需把静态站 `/api/cockpit/*` 代理指向主服务，验证上述三类AP接口和认证有效，
-  再验证同次结果分析。仅同步静态文件或升级独立8877，不能启用完整AP／main能力。
-  本轮只做本地实现和读取AP验收，未更新线上代理、8765、8877或任何部署配置。
+- 已在2026-10-26获当次授权后完成代理切换、8765更新与独立8877停服，并验证三类AP和同次结果分析。
+  只同步静态文件或升级独立8877不能启用该完整能力；此说明不授权未来的部署、重启或停服。
 - 冻结证据对照与其他限制见 `docs/specs/cockpit-analysis-engines.md`。

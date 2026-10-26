@@ -136,7 +136,7 @@ curl -fsS http://127.0.0.1:8765/healthz
 均按交付配置原样交给 `ProBiDashboard`；宿主不增删或重排卡片。默认由主服务独立 AP 代理读取与 PDT 同一套接口，
 页面使用返回数据，AI 消费同次响应的服务端凭据，不重复取数。配置 `COCKPIT_AP_BASE_URL` 和仓库外的
 `COCKPIT_AP_HEADERS_FILE`，不修改原有本体／数据库连接。`COCKPIT_DATA_MODE=snapshot` 保留显式离线回放，
-AP 失败不会静默退回旧快照。此能力尚未部署，当前线上状态以 DEPLOYMENT.md 发布记录为准。
+AP 失败不会静默退回旧快照。2026-10-26已在服务器启用，当前线上状态和POC认证有效性说明以 DEPLOYMENT.md 发布记录为准。
 
 交付根配置没有 `insights` 字段，宿主从交付目录补入 12 个插槽声明：经营看板 0 个、运营 360 4 个、
 穿透式问题分析 8 个。插槽位置由交付配置决定，内容调用主服务 `/api/cockpit/analyses` 的真实模型分析；
