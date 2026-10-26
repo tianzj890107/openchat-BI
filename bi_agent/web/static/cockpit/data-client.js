@@ -17,8 +17,9 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
   }
   const limit = run => new Promise((resolve, reject) => { queue.push({run, resolve, reject}); pump(); });
   function shape(kind, payload) {
-    // A filter/page change replaces the previous response for the same query definition.
-    return kind + ':' + canonical(Array.isArray(payload) ? payload.map(p => p.analysisConfig) : payload.analysisConfig || payload);
+    // Different widgets may share measures but use different status filters.
+    // Keep each full query; committed SDK filter changes clear the whole scope.
+    return kind + ':' + canonical(payload);
   }
   async function proxy(kind, payload) {
     const controller = new AbortController();

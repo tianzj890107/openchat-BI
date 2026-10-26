@@ -19,6 +19,7 @@ test('filter change replaces old scope and rejects the late old response', async
   const resolves=[];
   const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:()=>new Promise(resolve=>resolves.push(resolve))});
   const old=client.biAdapters.postAnalysisDataQuery(query);
+  client.clearScope(); // A committed SDK filter change invalidates the whole previous view.
   const changed=structuredClone(query);changed.commonConfig.filters.month='2026-09';
   const current=client.biAdapters.postAnalysisDataQuery(changed);
   assert.throws(()=>client.scope(),/加载/);
@@ -70,3 +71,18 @@ test('SDK filter change drops all previous-scope receipts before new requests',a
  assert.equal(changes,1);assert.throws(()=>client.scope(),/加载/);
  runtime.setFilterConditions('filter',[{department:'B'}]);assert.equal(changes,1);
 });
+
+ test('simultaneous graph widgets retain distinct status filters regardless of response order', async()=>{
+  for(const reverse of [false,true]) {
+   const resolves=[];
+   const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:()=>new Promise(resolve=>resolves.push(resolve))});
+   const first=structuredClone(query),second=structuredClone(query);
+   first.commonConfig.filters={status:['overdue']};second.commonConfig.filters={status:['overdue','normal']};
+   const a=client.biAdapters.postAnalysisDataQueryBatch([first]);
+   const b=client.biAdapters.postAnalysisDataQueryBatch([second]);
+   for(const i of reverse?[1,0]:[0,1]) resolves[i](ok('status-'+i));
+   await Promise.all([a,b]);
+   assert.deepEqual(client.scope().apReceiptIds,['status-0','status-1']);
+   assert.equal(client.scope().chartQueries.length,2);
+  }
+ });
