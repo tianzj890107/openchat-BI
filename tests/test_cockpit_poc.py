@@ -187,7 +187,7 @@ def test_cockpit_page_uses_separate_assets_and_subpath(monkeypatch,tmp_path):
     assert c.get('/static/cockpit/layout/views.json').status_code==404
     assert c.get('/static/cockpit/insight-components/index.js').status_code==200
     assert c.get('/cockpit/not-a-page').status_code==404
-    assert c.get('/api/cockpit/bootstrap').json()['supportsLiveSource'] is False
+    assert c.get('/api/cockpit/bootstrap').json()['supportsLiveSource'] is True
 
 
 def test_failed_analysis_cannot_create_task_or_report(tmp_path):

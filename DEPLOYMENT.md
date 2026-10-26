@@ -722,11 +722,23 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 主服务新增无对话分析任务适配器，`/api/cockpit/analyses` 的 `engine=main` 直接执行现有
   WebSession及源绑定工具，不需要另外启动8877。独立router没有主服务执行器时返回503，不降级。
 - 联调配置：`COCKPIT_ANALYSIS_ENGINE=main`、`COCKPIT_COMPARISON_ENABLED=true`；页面使用
-  `/cockpit/analysis?id=1&engine=main`。同源API须指向已配置分析Agent的主服务，沿用APP_ROOT_PATH规则。
+  `/cockpit/analysis?id=1&engine=main`。同源API须指向已配置分析Agent和独立AP连接的主服务，沿用APP_ROOT_PATH规则。
 - 选型后设置 `COCKPIT_COMPARISON_ENABLED=false`，固定唯一全站引擎，所有插槽统一执行。
   若选择main，后续部署将静态站API代理指向主服务，不再保留8877分析进程；代理切换和停服需要新的明确授权。
 - 原8877历史库原地保留，不自动复制、迁移或清空；主服务任务存储位于其工作目录的
   `dataset/cockpit/history.sqlite3`。禁止用旧目录覆盖主服务dataset。
-- 看板任务只读与网页相同的AP交付快照，要求chartSnapshotId和chartQueries；服务端核对查询并绑定内容哈希。
-  不读取主服务默认本体／数据库，未知快照或额外数据源绑定会被拒绝。快照不是实时数据，缺少同源根因明细。
+- 2026-10-26实现更新（尚未部署）：默认 `COCKPIT_DATA_MODE=ap`，主服务只读代理单条指标、批量指标和头盔图。
+  独立配置 `COCKPIT_AP_BASE_URL=http://pdt-dev.eimos.com/api/gateway2` 与仓库外权限600的
+  `COCKPIT_AP_HEADERS_FILE`（JSON请求头，按AP实际要求配置应用、本体库及认证，必要时包括Cookie）。
+  不读取或修改主服务默认本体／Doris连接，不复用其认证；不跟随认证重定向。不得将本地临时登录态作为正式部署凭据。
+- 新接口 `/api/cockpit/data/config`、`/api/cockpit/data/query` 仅完整主服务提供AP能力；
+  页面取数成功返回receiptId，分析携带同批apReceiptIds与chartQueries，主服务只读保存的AP响应，不二次取数。
+  `ap_results` 表自动追加到Cockpit历史库，保留旧分析与任务。凭据默认1800秒有效；过期要求重新取数，不删除旧材料。
+- 默认AP网络并发2、网络超时10秒，Cockpit主服务分析并发1；`COCKPIT_AP_CONCURRENCY`、
+  `COCKPIT_AP_TIMEOUT_SECONDS`、`COCKPIT_AP_RECEIPT_TTL_SECONDS` 可按需配置。
+  AP失败不回退默认本体、数据库或旧快照；缺少同源根因明细时仍受限交付。
+- 如需离线回放，显式设置 `COCKPIT_DATA_MODE=snapshot`；未捕获的查询仍可能缺失。新代码不再默认依赖旧快照。
+- 后续获部署授权时，需把静态站 `/api/cockpit/*` 代理指向主服务，验证上述三类AP接口和认证有效，
+  再验证同次结果分析。仅同步静态文件或升级独立8877，不能启用完整AP／main能力。
+  本轮只做本地实现和读取AP验收，未更新线上代理、8765、8877或任何部署配置。
 - 冻结证据对照与其他限制见 `docs/specs/cockpit-analysis-engines.md`。

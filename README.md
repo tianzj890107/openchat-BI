@@ -133,9 +133,10 @@ curl -fsS http://127.0.0.1:8765/healthz
 三个路由只负责激活对应 Tab，并把当前 `id` 保留在地址中。页面不渲染工作区、会话区、宿主标题或第二套导航。
 
 发布包包含 13 份模板、135 个组件和交付的顶部筛选器。三页的 `position`、`parentId`、容器、标题和样式
-均按交付配置原样交给 `ProBiDashboard`；宿主不增删或重排卡片。浏览器通过同目录
-`data-snapshots.json` 回放 pdt 正式页抓取的 39 个 AP 查询、3 个批量查询和 4 个头盔图请求，
-快照只包含业务响应体，不包含 Cookie、Token 或用户身份；未捕获查询在原卡片显示快照缺失提示。
+均按交付配置原样交给 `ProBiDashboard`；宿主不增删或重排卡片。默认由主服务独立 AP 代理读取与 PDT 同一套接口，
+页面使用返回数据，AI 消费同次响应的服务端凭据，不重复取数。配置 `COCKPIT_AP_BASE_URL` 和仓库外的
+`COCKPIT_AP_HEADERS_FILE`，不修改原有本体／数据库连接。`COCKPIT_DATA_MODE=snapshot` 保留显式离线回放，
+AP 失败不会静默退回旧快照。此能力尚未部署，当前线上状态以 DEPLOYMENT.md 发布记录为准。
 
 交付根配置没有 `insights` 字段，宿主从交付目录补入 12 个插槽声明：经营看板 0 个、运营 360 4 个、
 穿透式问题分析 8 个。插槽位置由交付配置决定，内容调用主服务 `/api/cockpit/analyses` 的真实模型分析；

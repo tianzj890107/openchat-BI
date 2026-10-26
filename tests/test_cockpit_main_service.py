@@ -97,6 +97,7 @@ def test_real_websession_policy_runs_before_any_model(tmp_path):
 
 
 def test_real_main_api_uses_shared_admission_and_preserves_user_sessions(tmp_path,monkeypatch):
+    monkeypatch.setenv('COCKPIT_DATA_MODE','snapshot')
     import sqlite3
     import bi_agent.web.app as web
     from bi_agent.ontology.store import OntologyStore

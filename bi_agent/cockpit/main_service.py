@@ -13,10 +13,12 @@ from .data import NAMES
 
 def analysis_question(context):
     scope={k:context.get(k) for k in ('period','department','filters','repositoryId','chartSnapshotId','clarifications')}
+    if context.get('apReceiptIds'):
+        for key in ('period','department','filters'):scope.pop(key,None)
     return (
         f"请分析{NAMES[context['stage']]}环节的经营异常，调查有证据支持的原因，并给出基于证据的改善建议。"
         "请沿用主服务正常意图路由、只读看板工具取数与交付校验。"
-        "先调用Cockpit-DashboardQuery读取目录，再读取相关queryId。工具读取的是与网页一致的交付AP快照，不是实时数据库。范围JSON的时间和部门只是页面历史参数，实际分析范围以AP原始请求为准，不可假定已应用筛选。"
+        "先调用Cockpit-DashboardQuery读取目录，再读取相关queryId。工具读取的是与网页同一次取数的冻结结果；是否为实时AP取数以工具返回live标记为准。范围JSON的时间和部门只是页面历史参数，实际分析范围以AP原始请求为准，不可假定已应用筛选。"
         "缺少指标映射或实体关系时明确说明，存在歧义时正常请求确认，不得自动选采购指标代替销售指标。"
         "请保持正常中文章节输出，不必生成HTML或重新绘制看板图表；不要为了填满卡片编造根因、责任角色或期限。"
         "\n范围："+json.dumps(scope,ensure_ascii=False,sort_keys=True)
@@ -87,8 +89,8 @@ def run_main_analysis(context, cancel, progress, turn_factory):
                         if narrative:break
         if not narrative:raise RuntimeError('主服务没有可交付的分析内容')
         status='needs_input' if needs_input else 'limited' if done in {'answer_blocked','delivery_incomplete','max_iterations'} or not facts else 'completed'
-        if context.get('snapshotId','').startswith('dashboard-') and status=='completed':status='limited'
-        limitations=['主服务读取当前看板同一份交付AP快照，非实时数据库；时间、部门以AP原始请求为准。没有同源明细补查接口，不能据此确认根因。',
+        if context.get('snapshotId','').startswith(('dashboard-','ap-')) and status=='completed':status='limited'
+        limitations=[('主服务读取页面本次实时AP响应的冻结结果，未重新取数；' if context.get('snapshotId','').startswith('ap-') else '主服务读取当前看板同一份交付AP快照，非实时数据库；')+'时间、部门以AP原始请求为准。没有同源明细补查接口，不能据此确认根因。',
             '展示层直接摘取主服务已交付章节，没有额外调用模型生成原因或建议。']
         records=[]
         for index,query in enumerate(getattr(session,'query_results',[])):
@@ -105,12 +107,12 @@ def run_main_analysis(context, cancel, progress, turn_factory):
                 if len(encoded)>8000:continue
                 row=json.loads(encoded)
                 records.append(dict(id=f'query-{index}:row-{row_index}',customer=f'主服务查询{index+1}记录{row_index+1}',
-                    amount=None,cause='原始查询行，未独立验证因果关系',causeSupport=False,evidence='主服务本轮查询结果',data=row))
+                    amount=None,cause='原始查询行，未独立验证因果关系',causeSupport=False,evidence='主服务本轮查询结果',data=row,scope=getattr(query,'scope',{})))
             if len(records)>=24:break
         records=records[:24]
         row_evidence=[dict(id=r['id'],label=r['customer'],value=None,unit='',definition=r['cause'],record=r) for r in records]
         evidence=dict(sourceMode='service',snapshotId=context['snapshotId'],stage=context['stage'],stageName=NAMES[context['stage']],
-            period=context['period'],department=context['department'],facts=facts,records=records,causes=[],evidence=facts+row_evidence,limitations=limitations+['冻结查询行最多24条，超过8000字符的行不进入材料包；样本分布不能外推总体比例'])
+            period='以AP原始请求为准' if context.get('snapshotId','').startswith('ap-') else context['period'],department='以AP原始请求为准' if context.get('snapshotId','').startswith('ap-') else context['department'],facts=facts,records=records,causes=[],evidence=facts+row_evidence,limitations=limitations+['冻结查询行最多24条，超过8000字符的行不进入材料包；样本分布不能外推总体比例'])
         return dict(summary=split_sections(narrative)['summary'] or narrative,causes=[],recommendations=[],limitations=limitations,
             narrative=narrative,sections=split_sections(narrative),engine='main',policy=policy,clarification=getattr(session,'pending_choice_spec',None),
             _status=status,_evidence=evidence,_execution=dict(engine='main',durationSeconds=round(time.monotonic()-started,3),

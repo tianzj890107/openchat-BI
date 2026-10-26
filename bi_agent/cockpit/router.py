@@ -9,7 +9,8 @@ from copy import deepcopy
 from html import escape
 from pathlib import Path
 from typing import Literal
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, ConfigDict
 from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
@@ -17,6 +18,7 @@ from .store import Store
 from .agent import run_analysis
 from .metadata import build_bundle
 from .prototype import PrototypeSource
+from .ap_gateway import APQuery, data_mode, get_gateway
 
 RESULT_CONTRACT_VERSION="compact-v1"
 
@@ -31,6 +33,7 @@ class Context(BaseModel):
     engine:Literal["standalone","main"]="standalone"
     repositoryId:str=Field(default="",max_length=128)
     chartSnapshotId:str=Field(default="",max_length=160)
+    apReceiptIds:list[str]=Field(default_factory=list,max_length=80)
     chartQueries:list[str]=Field(default_factory=list,max_length=80)
     filters:dict[str,str|list[str]]=Field(default_factory=dict,max_length=20)
     baselineAnalysisId:str=Field(default="",pattern=r"^(|[a-f0-9]{32})$")
@@ -67,6 +70,23 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             if path not in stores:
                 value=Store(Path(path));value.recover();stores[path]=value
             return stores[path]
+    @router.get('/data/config')
+    def data_config():
+        mode=data_mode()
+        return dict(mode=mode,available=main_context is not None,
+            analysisConcurrency=1,source='Cockpit独立AP连接' if mode=='ap' else '交付快照回放')
+
+    @router.post('/data/query')
+    async def data_query(req:APQuery, request:Request):
+        if main_context is None:raise HTTPException(503,'AP代理仅由主服务提供，请连接主服务Cockpit入口')
+        if data_mode()!='ap':raise HTTPException(409,'当前为显式快照模式，不允许混用实时AP查询')
+        gateway=get_gateway()
+        if await request.is_disconnected():raise HTTPException(499,'看板请求已取消')
+        result=await run_in_threadpool(gateway.query,req.kind,req.payload)
+        if await request.is_disconnected():raise HTTPException(499,'看板请求已取消，未保存分析凭据')
+        receipt=await run_in_threadpool(store().save_ap_result,req.id,req.kind,req.payload,result,gateway.config.receipt_ttl)
+        return dict(data=result,receiptId=receipt['id'],receivedAt=receipt['createdAt'],expiresAt=receipt['expiresAt'])
+
     def adapter(mode):return PrototypeSource() if mode=="prototype" else source
     def context_id(context):
         value=context.get("id")
@@ -126,8 +146,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     @router.get("/bootstrap")
     def bootstrap():
         return dict(roles=[dict(id=1,name="总裁"),dict(id=2,name="分析员")],identityParameter="id",periods=PERIODS,departments=DEPARTMENTS,
-            stages=[dict(id=k,name=v) for k,v in NAMES.items()],sourceMode="demo",supportsLiveSource=False,
-            notice="演示数据与模拟任务，不写入业务系统；分析使用主服务模型。两个 id 当前使用相同看板与功能，仅为将来差异化预留。")
+            stages=[dict(id=k,name=v) for k,v in NAMES.items()],sourceMode=("ap" if main_context is not None and data_mode()=="ap" else "demo"),supportsLiveSource=main_context is not None and data_mode()=="ap",
+            notice="看板数据来源以data/config为准；任务流转仍为模拟，不写入业务系统。两个 id 当前使用相同看板与功能，仅为将来差异化预留。")
 
     @router.get('/engines')
     def engines():return dict(default=os.environ.get('COCKPIT_ANALYSIS_ENGINE','main'),comparisonOnly=os.environ.get('COCKPIT_COMPARISON_ENABLED','true').lower() in {'true','1'},productionPolicy='统一选择一个引擎承载全部AI插槽，禁止按插槽混用或静默降级',engines=[dict(id='main',available=main_runner is not None),dict(id='standalone',available=True)])
@@ -192,9 +212,10 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         item=get_analysis(aid)
         if item["status"] not in {"completed","limited","needs_input"}:raise HTTPException(409,"分析尚未完成")
         result=item["result"];ctx=item["context"]
-        label=('主服务冻结证据（独立对照）' if ctx.get('engine')=='standalone' else '主服务配置数据源') if ctx.get('sourceMode')=='service' else '演示数据'
+        label=('主服务冻结证据（独立对照）' if ctx.get('engine')=='standalone' else ('页面本次AP结果' if ctx.get('snapshotId','').startswith('ap-') else '交付AP快照')) if ctx.get('sourceMode')=='service' else '演示数据'
         summary='' if result.get('narrative') else escape(result['summary'])
-        content=f'<h1>{escape(ctx["stageName"])}分析报告</h1><p>{label} · {escape(ctx["period"])} · {escape(ctx["department"])} · {escape(item["status"])}</p><p>{summary}</p>'
+        display_scope='实际期间和部门以本次AP原始请求为准' if ctx.get('snapshotId','').startswith('ap-') else escape(ctx['period'])+' · '+escape(ctx['department'])
+        content=f'<h1>{escape(ctx["stageName"])}分析报告</h1><p>{label} · {display_scope} · {escape(item["status"])}</p><p>{summary}</p>'
         if result.get('narrative'):content+='<pre style="white-space:pre-wrap">'+escape(result['narrative'])+'</pre>'
         for c in result["causes"]:content+=f'<h3>{escape(c["title"])}</h3><p>{escape(c["description"])}</p><p>证据：{escape(", ".join(c["evidenceIds"]))}</p>'
         content+='<h2>改善建议</h2>'

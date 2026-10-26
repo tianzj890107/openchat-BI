@@ -18,6 +18,9 @@ class Store:
               id TEXT PRIMARY KEY, scope TEXT NOT NULL, body TEXT NOT NULL,
               status TEXT NOT NULL, updated REAL NOT NULL);
             CREATE INDEX IF NOT EXISTS analysis_scope ON analyses(scope,updated);
+            CREATE TABLE IF NOT EXISTS ap_results (
+              id TEXT PRIMARY KEY, identity INTEGER NOT NULL, body TEXT NOT NULL,
+              created REAL NOT NULL, expires REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS tasks (
               id TEXT PRIMARY KEY, analysis_id TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL,
               body TEXT NOT NULL, updated REAL NOT NULL);
@@ -35,6 +38,23 @@ class Store:
             raise
         finally:
             db.close()
+
+    def save_ap_result(self, identity, kind, request, response, ttl):
+        now = time.time()
+        item = dict(id=uuid.uuid4().hex, identity=identity, kind=kind, request=request,
+            response=response, createdAt=now, expiresAt=now+ttl)
+        with self.db() as db:
+            db.execute("INSERT INTO ap_results VALUES(?,?,?,?,?)", (item['id'],identity,
+                json.dumps(item,ensure_ascii=False),now,now+ttl))
+        return item
+
+    def get_ap_result(self, receipt_id, identity, *, allow_expired=False):
+        with self.db() as db:
+            row = db.execute("SELECT body,expires FROM ap_results WHERE id=? AND identity=?",
+                (receipt_id,identity)).fetchone()
+        if not row or (not allow_expired and row['expires'] < time.time()):
+            return None
+        return json.loads(row['body'])
 
     def create_analysis(self, scope, context):
         now=time.time()

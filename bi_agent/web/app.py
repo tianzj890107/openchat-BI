@@ -3951,7 +3951,9 @@ app.include_router(build_mcp_router(
 from ..cockpit.router import build_cockpit_router  # noqa: E402
 
 def _cockpit_main_context(req):
-    from ..cockpit.dashboard_source import material
+    from ..cockpit.dashboard_source import material, receipt_material
+    from ..cockpit.ap_gateway import data_mode
+    from ..cockpit.store import Store
     if STATE.agent_def is None:
         raise HTTPException(503,'主服务未配置分析Agent')
     if req.repositoryId:
@@ -3959,6 +3961,10 @@ def _cockpit_main_context(req):
     if req.filters:
         raise HTTPException(422,'筛选必须体现在已展示的AP请求中，不能声明未应用的自定义筛选')
     try:
+        if data_mode()=='ap':
+            fingerprint,_=receipt_material(req.model_dump(),Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'))
+            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数')
+        if req.apReceiptIds:raise ValueError('快照模式不能消费实时AP凭据')
         fingerprint,_=material(req.model_dump())
     except (ValueError, TypeError) as exc:
         raise HTTPException(422,str(exc)) from exc
@@ -3974,10 +3980,13 @@ def _cockpit_main_turn(context,cancel):
     session=None
     slot=lease=ticket=None
     try:
-        from ..cockpit.dashboard_source import material, executor, TOOL, SCHEMA
+        from ..cockpit.dashboard_source import material, receipt_material, executor, TOOL, SCHEMA
+        from ..cockpit.store import Store
         from open_claude.tools import register_tool
-        fingerprint,selected=material(context)
-        if context['snapshotId']!='dashboard-'+fingerprint:
+        live=context['snapshotId'].startswith('ap-')
+        fingerprint,selected=(receipt_material(context,Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'),allow_expired=True)
+            if live else material(context))
+        if context['snapshotId']!=('ap-' if live else 'dashboard-')+fingerprint:
             raise RuntimeError('看板快照已变化，请重新提交分析任务')
         # Registration supplies the schema only. Every task binds its own executor.
         def unbound(params,cwd):
@@ -3985,7 +3994,7 @@ def _cockpit_main_turn(context,cancel):
         register_tool(SCHEMA,unbound)
         session=WebSession(cwd=STATE.cwd,agent_def=STATE.agent_def,
             ontology_store=None,tools_override=[TOOL,'AskUser'],
-            context_header='本轮数据来源：看板交付AP快照。只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。',
+            context_header=('本轮数据来源：页面本次实时AP响应的冻结结果。' if live else '本轮数据来源：看板交付AP快照。')+'只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。',
             tool_executors={TOOL:executor(selected)})
         with STATE.registry_lock:
             STATE.sessions[key]=session
@@ -3999,9 +4008,18 @@ def _cockpit_main_turn(context,cancel):
             STATE.source_contexts.pop(key,None)
 
 
+_cockpit_analysis_capacity=threading.BoundedSemaphore(1)
+
 def _cockpit_main_runner(context,cancel,progress):
     from ..cockpit.main_service import run_main_analysis
-    return run_main_analysis(context,cancel,progress,_cockpit_main_turn)
+    progress('等待Cockpit独立分析配额',[])
+    while not _cockpit_analysis_capacity.acquire(timeout=0.2):
+        if cancel.is_set():raise InterruptedError('分析已停止')
+    try:
+        if cancel.is_set():raise InterruptedError('分析已停止')
+        return run_main_analysis(context,cancel,progress,_cockpit_main_turn)
+    finally:
+        _cockpit_analysis_capacity.release()
 
 
 app.include_router(build_cockpit_router(get_cwd=lambda: STATE.cwd or os.getcwd(),
@@ -4017,6 +4035,7 @@ def _cockpit_html(page: str) -> HTMLResponse:
     version_sources = [
         cockpit / "metadata" / "runtime.json",
         cockpit / "cockpit.js",
+        cockpit / "data-client.js",
         cockpit / "insight-components" / "index.js",
         cockpit / "metadata" / "pdt-release-2109836674373566465" / "data-snapshots.json",
     ]

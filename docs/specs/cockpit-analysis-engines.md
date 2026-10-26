@@ -1,96 +1,115 @@
-# Cockpit 分析路线联调与统一上线
+# Cockpit 数据接入、分析路线与统一上线
 
-2026-10-23。用户确定：两种路线仅在联调阶段保留；比对后所有AI插槽统一使用一个技术路线。
-本轮优先实现主服务效果验证，不新增常驻服务，也不部署。
+2026-10-26 修订。看板通过主服务代理同一套 AP 接口，AI 消费页面同次查询的服务端结果。
+原有对话与 MCP 的本体库、数据库连接不变。实现尚未部署，不构成部署、代理切换或停服授权。
 
-## 执行边界
+## 数据路径与隔离
 
-| 路线 | 执行器 | 数据 | 输出 |
-| --- | --- | --- | --- |
-| main（默认） | 主服务既有WebSession.generate_turn | 服务端与网页相同的AP交付快照，只读Cockpit-DashboardQuery | 主服务已提交正文、结构化claims、路由与工具轨迹；展示层不再调用模型改写 |
-| standalone（联调） | 既有有限轮次工具循环 | 原型／演示数据，或指定main任务的服务端冻结证据 | compact-v1结构化风险、原因、建议；不自动切换到main |
-
-前端12个插槽共用一个全局engine选择，不允许每个插槽自行选择路线。
-当前主服务展示适配直接展示原始交付，目的是评估主服务实际质量；暂不从正文猜测责任人、期限、根因ID。
-缺少结构化措施时不允许自动创建任务令草稿。
-
-## 接口与入口
-
-- 原接口保留：`POST /api/cockpit/analyses`，增加 `engine=main|standalone`。旧调用不传engine时保留standalone兼容，仅供联调；上线锁定main后该类旧请求会被拒绝。
-- 主服务请求：`engine=main, source=service`；要求chartSnapshotId和chartQueries（当前页面成功展示的AP请求键）；支持clarifications。
-- 实际时间、部门及筛选以AP原始请求为准；旧period/department字段仅保留协议兼容，不作为已应用条件。拒绝未体现在AP请求内的自定义filters。
-- 服务端核对发布标识和每个查询键，只读取仓库中同一份成功AP响应；拒绝其他repositoryId、未知查询和缺失快照。浏览器不能传端点或事实正文。
-- 主服务创建独立临时会话，复用原有准入、会话租约、心跳、取消、恢复、工具运行时和交付校验。
-  临时会话与用户聊天隔离，完成后只回收内存对象；不重置或删除会话／用户数据。
-- 原聊天SSE与Cockpit共用 `_turn_execution_scope`。后台执行仍经过主服务原有资源控制。
-- 8877如果仅安装独立router，main请求返回503，不伪装成主服务执行，也不静默降级。
-- `GET /api/cockpit/engines` 返回全局默认路线、是否开放对照及执行器接入情况。
-- 历史支持 `GET /api/cockpit/analyses?engine=main|standalone`；引擎、上下文、契约版本参与scope。
-- main使用所选查询请求及响应的内容哈希绑定快照；当前仍不复用已完成任务。同一进行中任务和当前页面内请求仍去重。
-- main增加 `limited`、`needs_input`终态。待确认问题保留主服务AskUser内容，补充口径后新建任务，
-  不伪装成已完成根因验证。失败不展示中间模型草稿。
-- 执行信息记录durationSeconds、modelRounds、工具调用、provider返回的usage和路由；不把usage当作实际账单。
-
-在已正确配置的主服务入口访问：
-
-- `/cockpit/analysis?id=1&engine=main`：优先查看主服务效果。
-- `/cockpit/analysis?id=1&engine=standalone`：原型演示对照，不能与真实数据直接比较业务数字。
-- 页内Tab跳转保留全局engine；main按可见插槽按需执行、前端串行排队，不预取全部五个环节。
-
-## 同批材料对照
-
-先完成main任务，再由独立路线读取该任务的冻结证据：
-
-```json
-{
-  "id": 1,
-  "engine": "standalone",
-  "source": "service",
-  "stage": "shipment",
-  "period": "2025-10",
-  "department": "全部产品部",
-  "baselineAnalysisId": "主服务已交付任务的32位ID"
-}
+```text
+ProUI 查询配置（包含实际筛选）
+  → POST /api/cockpit/data/query
+  → 独立 AP 连接（固定只读接口、独立认证、独立并发）
+  → 返回 AP 原始 data + receiptId
+  → 页面展示 data
+  → /api/cockpit/analyses 携带同批 receiptId
+  → 主服务 WebSession → Cockpit-DashboardQuery 读取已保存结果 → 交付校验 → 插槽
 ```
 
-服务端验证基线引擎、状态、身份标识、环节、期间、部门、筛选条件和本体库；没有业务证据的受限基线返回409。
-从存储读取并复制证据后生成内容哈希，不能由前端伪造或覆盖原始任务。
-查询行最多24条，每行超过8000字符则不进入材料包，必须披露抽样限制；原始行标为causeSupport=false，
-独立模型只能据此形成待验证假设，不能仅凭引用存在就声称已验证根因。
-主服务有证据时，插槽提供“用同一冻结证据对照独立路线”入口并定位基线环节。
+AP 地址及认证只从 `COCKPIT_AP_*` 配置读取，不使用 `ONTOLOGY_*`、Doris 参数、默认 source 或用户会话的源绑定。
+页面不能指定代理 URL、请求头或证据正文。服务端只允许以下三个接口：
 
-此方式比较同批材料的归纳质量与成本，不代表两套完整取数／规划流程的公平竞速；当前没有同源明细接口，不能自动开展额外调查。
-当前main与图表读取同一份交付AP快照，不再默认查询主服务配置的本体或数据库。快照不是实时数据，部分销售卡片底层仍为采购字段，必须按原始字段解释。没有同源明细补查接口，快照任务标为limited，不承诺已验证根因。
-真实销售／发货指标映射和图表查询适配仍需真实数据联调确认，不会用采购指标替代销售指标。
+| kind | 方法 | `COCKPIT_AP_BASE_URL` 下的固定路径 |
+| --- | --- | --- |
+| analysis | POST | `/ontology/api/v1/analysis/data/query` |
+| batch | POST | `/x360/v1/ontology/data/multidimensional/batch` |
+| helmet | GET | `/x360/v1/graphs/helmet-view` |
 
-## 上线收口（必须）
+原有对话、MCP、报表的连接和工具不变。Cockpit 的临时 WebSession 仅允许 `Cockpit-DashboardQuery` 和 `AskUser`，
+执行边界拒绝模型请求的其他工具。确定性路由记录 `QUERY_DASHBOARD`，不把 AP 查询误记为 Doris 取数。
 
-联调：`COCKPIT_COMPARISON_ENABLED=true`；默认 `COCKPIT_ANALYSIS_ENGINE=main`。
-选型后：设置 `COCKPIT_COMPARISON_ENABLED=false`，全站仅允许配置的一个engine，后端拒绝其他路线请求。
-前端忽略试图切换引擎的URL参数；无按插槽混用、无失败后隐式切换。
+AP HTTP 并发默认 2，可配置为 1–8；浏览器请求队列上限 2，重复的进行中查询共用一次响应。
+AP 使用独立的网络超时（默认 10 秒），不继承本体服务的超时、代理或认证；不跟随登录重定向。
+凭据文件每次请求重新读取，可由运维安全更新；认证、网络、业务失败均返回明确错误，不回退快照或其他数据源。
+浏览器可以取消／超时终止等待，服务端断连后不继续交付凭据；已开始的网络读取仍由独立超时和并发限制收敛。
 
-若主服务效果满足要求，全部AI插槽直接使用主服务入口，静态站代理指向该服务，不再运行8877独立分析服务。
-本次没有实施上述代理切换或停服；部署和停服必须获得新的明确授权。
+Cockpit 主服务分析最多并行 1 个，排队可取消；执行仍复用主服务原有准入、租约、心跳、恢复、工具运行时及交付校验。
+这限制了额外负载，不意味着共享进程的模型、CPU 等资源完全没有竞争。
 
-## 验证
+## 配置
 
-- 自动化覆盖真实WebSession路由与AskUser、真实主服务API准入和用户会话隔离、候选草稿拒绝交付、
-  缓存隔离、全站引擎锁定、冻结基线权限／范围、原始行禁止升级为已验证根因。
-- 本地真实发货任务约32.8秒、9轮模型响应、10次工具调用，经过DIAGNOSTIC_ANALYSIS路由和
-  Ontology-SemanticQuery、ListBusinessObjects、数据工具及最终交付。
-- 本机无法解析demo2.eimos.com，本体／分析网关未返回业务数据；最终为limited，无根因或建议伪造。
-  这验证执行链和限制行为，不能据此宣称真实业务分析正确率或正常网络下的耗时。
-- 浏览器回看上述真实受限任务，主服务插槽显示原始受限正文与同源差异标注，没有组件错误；回看未触发额外模型请求。
-- 后续应评估失败时重复探测、上下文成本和原始正文长度；本轮没有复制提示词绕过主服务流程以追求短输出。
+```dotenv
+COCKPIT_DATA_MODE=ap
+COCKPIT_AP_BASE_URL=http://pdt-dev.eimos.com/api/gateway2
+COCKPIT_AP_HEADERS_FILE=/absolute/private/path/cockpit-ap-headers.json
+COCKPIT_AP_TIMEOUT_SECONDS=10
+COCKPIT_AP_CONCURRENCY=2
+COCKPIT_AP_RECEIPT_TTL_SECONDS=1800
+COCKPIT_ANALYSIS_ENGINE=main
+COCKPIT_COMPARISON_ENABLED=true
+```
 
-## 看板数据入口修正（2026-10-23）
+请求头文件是 JSON 对象，应包含上游实际要求的 `X-App-Id`、`X-Ontology-Repository-Id`、认证请求头及必要的 Cookie。
+文件必须位于仓库外，POSIX 权限为 600；不得提交真实内容，也不得把它返回前端。批量与头盔图同样需要有效认证，
+不能只验证单条指标接口。认证过期时更新独立文件，不修改原主服务认证。不要将浏览器临时登录态当作永久有效的部署凭据。
 
-前端记录成功展示的单条和批量AP请求，任务携带请求键，服务端按规范化请求匹配同一JSON快照。
-工具先返回查询目录与字段，再按queryId返回原始AP请求、响应及供主服务证据闸门使用的数值单元格。
-字段保留原始标签和identifierCode；范围和溯源保留原始AP请求，不把历史页面参数当作实际查询筛选。
-本轮任务仅允许Cockpit-DashboardQuery和AskUser，执行边界拒绝其他工具，即使模型尝试调用也不连接默认数据源。
-路由识别看板查询能力，required_tools记录看板工具、next_step为QUERY_DASHBOARD，不把它误报为Doris取数。
-前端等待查询集合短暂稳定后提交；回填时再次比较请求集合，范围变化拒绝旧结果，AP加载失败阻止继续分析。
-缺少AP查询时拒绝启动；批量响应按原请求拆成可追溯子查询。当前页面加载期间累计的成功查询共同组成材料，不虚构插槽到指标的映射。
-后续真实联调应替换这个服务端看板数据适配器，接同源实时响应与明确的指标／插槽映射，而不是恢复默认网关取数。
-上文32.8秒实验是修正前的历史执行链验证；本次回归使用受控模型响应，不代表当前线上效果或新路线实测耗时。
+`GET /api/cockpit/data/config` 返回 `mode`、主服务代理能力 `available` 和数据来源说明，不暴露连接认证。
+独立 8877 router 不提供 AP 代理或 main 执行；返回 503，不能冒充完整主服务。
+
+`COCKPIT_DATA_MODE=snapshot` 是显式离线回放：使用旧交付包 39 个单条、3 个批量、4 个头盔图快照。
+未捕获的配置仍会报快照缺失；AP 失败不会自动进入该模式。新代码默认 AP，部署必须配置并验证独立连接。
+
+## 同次结果凭据
+
+`POST /api/cockpit/data/query` 请求包含 `id=1|2`、`kind`、`payload`，返回：
+
+```json
+{"data": "原始AP data，实际为对象或数组", "receiptId": "32位结果凭据", "receivedAt": 0, "expiresAt": 0}
+```
+
+真实 AP data 不修改数值、字段、别名、分页或实际筛选。单条和批量成功响应保存到
+`dataset/cockpit/history.sqlite3` 的独立 `ap_results` 表。头盔图仅用于展示，不作为业务事实。
+失败、部分失败的批量和认证重定向不生成可分析凭据。
+
+分析请求必须携带 `engine=main, source=service`、`chartSnapshotId`、`chartQueries` 及 `apReceiptIds`。
+服务端验证身份标记、有效期、凭据对应的原始请求，并按请求和响应内容哈希绑定任务。
+浏览器不能伪造事实、混入其他身份凭据或声明未应用的筛选。现有 id 仍是两种固定 POC 身份标记，不是新增的登录体系。
+请求接受时校验有效期；已接受任务读取冻结材料，凭据随后过期不会让任务重新请求 AP。
+有效期默认 30 分钟，过期需刷新页面取数，不自动删除历史结果或分析记录。
+
+前端记录每个查询定义的当前结果；相同定义的筛选／分页变化替换旧凭据，迟到的旧响应不回填。
+等待 AP 查询稳定后才提交分析，提交和回填都核对当前查询与凭据集合。任一业务查询失败或仍在加载时不提交完整分析。
+既有 `period`／`department` 字段只保留协议兼容，实际范围以原始 AP 请求为准，不把历史 `2025-10` 标签当作查询条件。
+分析材料是当前已加载图表查询的集合，尚无交付方明确的“每个插槽 → 具体指标”映射，不自行推断该映射。
+
+工具保留原始请求／响应，并将数值单元格按“字段原始标签 + identifierCode”登记到主服务证据闸门。
+AP 成功仅代表接口返回数据，不证明销售标题与底层指标语义一致。没有同源因果明细，当前交付保持 `limited` 或 `needs_input`，
+不制造已验证根因、责任人、期限，也不从正文猜测措施后自动创建任务令。
+
+## 分析路线与上线收口
+
+| 路线 | 执行 | 证据 |
+| --- | --- | --- |
+| main（默认） | 现有 WebSession.generate_turn，直接呈现已提交正文、claims 与轨迹 | 页面同批 AP 结果；显式离线模式用交付快照 |
+| standalone（仅联调） | 既有有限轮次工具循环 | 原型演示，或指定 main 任务的服务端冻结证据 |
+
+三页仍为 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`。联调可全局使用 `?engine=main|standalone`，
+同页所有插槽使用同一引擎，不按插槽混用，不因失败静默降级。主服务正文不再调用模型改写。
+`limited`、`needs_input` 保留证据不足或待确认状态；AskUser 补充后新建任务，失败不显示候选草稿。
+
+main 有证据时可通过 `baselineAnalysisId` 让独立路线读取同身份、同范围的冻结证据。
+冻结查询行最多 24 条，超过 8000 字符的行不进入材料；原始行标记 `causeSupport=false`，不能仅凭引用就认定根因。
+这是材料归纳对照，不是两套完整取数流程的公平竞速。分析历史和冻结材料不会被新查询覆盖或清空。
+
+选型后设置 `COCKPIT_COMPARISON_ENABLED=false`，全站只允许 `COCKPIT_ANALYSIS_ENGINE` 指定的一条路线。
+若选择 main，静态站 `/api/cockpit/*` 应代理到主服务；旧 8877 不继续承载 AP 或 AI 槽位分析。
+本次没有实施代理切换、部署或停服；历史 8877 数据也不复制、迁移、覆盖或删除。
+
+## 验证与已知边界
+
+- 自动化覆盖独立连接、固定路径、并发、认证／超时错误、不换源、批量完整性、凭据范围与过期、真实主服务 API 的同次结果消费、原会话源不被访问。
+- 前端测试覆盖并发去重、队列上限、筛选变化替换凭据、迟到响应、错误与过期阻止分析。
+- 2026-10-26 本地新代理实际读通此前缺失的四组指标；浏览器三个路由的单条／批量／头盔图请求均成功，无快照缺失和运行异常。
+  使用独立临时认证与临时数据目录，未修改线上服务器；验收阻止模型调用，不能据此报告新路线的模型耗时或真实分析质量。
+- 2026-10-23 约 32.8 秒的历史实验走的是修正前本体／数据网关路线，且域名解析失败；不能拿它作为当前 AP 路线性能结论。
+
+本轮回归：141 项 Python 测试通过、1 项环境条件跳过、34 个子测试通过；`node --test tests/cockpit_data_client.test.mjs` 的 5 项通过。JS语法和 `git diff --check` 通过。

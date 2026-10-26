@@ -1,7 +1,7 @@
 /* The cockpit renders one delivered ProBiDashboard from iba-demo demo_1021.
  * Three tabs, their templates, component positions and insight placements are
  * used verbatim. The host only supplies the Fuxi identity (id=1|2), rewrites
- * the selected tab into the route path and replays frozen AP responses.
+ * the selected tab into the route path and consumes main-service AP results.
  */
 (() => {
   'use strict';
@@ -41,6 +41,8 @@
 
   const {createApp, ref, computed, reactive, onMounted, onBeforeUnmount, nextTick} = window.Vue;
 
+  const dashboardDataMode = ref('ap');
+  let liveDataClient = null;
   const insightLoadError = ref('');
   const insightReady = ref(false);
   const insightBundleReady = import(insightBundleUrl).then(() => {
@@ -115,8 +117,9 @@
 
   function checkedAnalysis(item, stage) {
     const context=item.context || {};
-    if (analysisEngine === 'main' && (dashboardQueryError || canonical(context.chartQueries||[])!==canonical([...displayedQueries].sort()))) {
-      throw new Error(dashboardQueryError || '看板查询范围已变化，请重新分析');
+    if (analysisEngine === 'main') {
+      const current = liveDataClient ? liveDataClient.scope() : {chartQueries: [...displayedQueries].sort(), apReceiptIds: []};
+      if (dashboardQueryError || canonical(context.chartQueries||[])!==canonical(current.chartQueries) || canonical(context.apReceiptIds||[])!==canonical(current.apReceiptIds)) throw new Error(dashboardQueryError || '看板查询范围已变化，请重新分析');
     }
     if(context.engine!==analysisEngine || context.id!==Number(identityId) || context.stage!==stage ||
        context.period!==(baselineItem?.context.period||PERIOD) || context.department!==(baselineItem?.context.department||DEPARTMENT) ||
@@ -132,7 +135,10 @@
     state.status = 'running';
     state.item = null;
     state.progress = '提交模型分析';
-    if (analysisEngine === 'main') {
+    let dataScope = {chartQueries: [], apReceiptIds: []};
+    if (analysisEngine === 'main' && liveDataClient) {
+      dataScope = await liveDataClient.ready();
+    } else if (analysisEngine === 'main') {
       let previous = -1, stable = 0;
       for (let attempt = 0; attempt < 20 && stable < 3; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -141,6 +147,7 @@
       }
       if (dashboardQueryError) throw new Error(dashboardQueryError);
       if (!displayedQueries.size) throw new Error('当前看板尚无成功展示的 AP 查询，不能开始分析');
+      dataScope.chartQueries = [...displayedQueries].sort();
     }
     state.error = '';
     const body = JSON.stringify({
@@ -148,7 +155,8 @@
       engine: analysisEngine,
       clarifications: clarificationAnswers.get(stage) || {},
       chartSnapshotId: 'pdt-release-2109836674373566465',
-      chartQueries: analysisEngine === 'main' ? [...displayedQueries].sort() : [],
+      chartQueries: dataScope.chartQueries,
+      apReceiptIds: dataScope.apReceiptIds,
       period: baselineItem?.context.period || PERIOD,
       department: baselineItem?.context.department || DEPARTMENT,
       filters: baselineItem?.context.filters || {},
@@ -239,11 +247,11 @@
       const stop = async () => {if(state.value.item?.id)await fetch(`${apiBase}/analyses/${state.value.item.id}/cancel`,{method:'POST'});};
       const reload = () => ensureAnalysis(stage.value, true).catch(() => {});
       onMounted(() => ensureAnalysis(stage.value).catch(() => {}));
-      return {delivered, state, analysisContext, reload, insightLoadError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
+      return {dashboardDataMode, delivered, state, analysisContext, reload, insightLoadError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
     },
     template: `
       <section v-if="analysisEngine==='main'" class="main-service-insight" aria-live="polite">
-        <div class="main-service-insight__meta">主服务分析 · 分析已展示AP快照 · 实际时间和部门以原始AP请求为准</div>
+        <div class="main-service-insight__meta">主服务分析 · {{dashboardDataMode==='ap'?'使用页面本次AP结果':'交付快照回放'}} · 实际时间和部门以原始AP请求为准</div>
         <div v-if="state.status==='running'">{{state.progress}} <button @click="stop">停止分析</button></div>
         <div v-else-if="state.status==='error'" role="alert">{{state.error}} <button @click="reload">重试</button></div>
         <template v-if="state.item?.result">
@@ -407,7 +415,9 @@
           baselineItem=await loadJson(`${apiBase}/analyses/${encodeURIComponent(baselineId)}`);
           if(baselineItem.context.engine!=='main')throw new Error('基线必须来自主服务');
         }
-        const [payload, snapshots] = await Promise.all([loadJson(runtimeUrl), loadJson(snapshotsUrl)]);
+        const [payload, dataConfig] = await Promise.all([loadJson(runtimeUrl), loadJson(`${apiBase}/data/config`)]);
+        dashboardDataMode.value = dataConfig.mode;
+        if (dataConfig.mode === 'ap' && !dataConfig.available) throw new Error('实时AP代理需要连接主服务，当前独立服务不提供此能力');
         if(baselineItem){
           const nodes={opportunity:['2109848488855519233','2109840325158682625'],guidance:['2109848488910045186'],quotation:['2112022555167604737'],technical:['2109848488914239490'],bid:['2109848488918433794'],order:['2109848488926822401','2109840573998350338'],shipment:['2109848488926822402','2109840696539136002']};
           const selected=nodes[baselineItem.context.stage]||[];
@@ -418,7 +428,21 @@
             }}
           }
         }
-        const installed = installSnapshots(snapshots);
+        let installed;
+        if (dataConfig.mode === 'ap') {
+          const {createAPDataClient} = await import(`${root}/static/cockpit/data-client.js?v=${encodeURIComponent(assetVersion)}`);
+          liveDataClient = createAPDataClient({apiBase, id: identityId, onInvalidate: () => {
+            if (analysisEngine !== 'main') return;
+            Object.entries(insightState).forEach(([stage,state]) => {
+              state.item = null;
+              if (state.status === 'done') { state.status = 'error'; state.error = '看板取数已更新，请重新分析'; analysisPromises.delete(stage); }
+            });
+          }});
+          installed = liveDataClient;
+          ProUIBi.configureBi({...installed.biAdapters, utils: installed.utils});
+        } else if (dataConfig.mode === 'snapshot') {
+          installed = installSnapshots(await loadJson(snapshotsUrl));
+        } else { throw new Error('未识别的看板取数模式'); }
         biAdapters.value = installed.biAdapters;
         hostUtils.value = installed.utils;
         runtime.value = payload;
