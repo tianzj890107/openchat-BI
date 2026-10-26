@@ -424,22 +424,32 @@ git diff --name-only
   nginx 配置：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/conf/default.conf`。
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
-- 当前发布（2026-10-22 17:38）：代码提交 `74d642db92bd65caf7f4c2ceaef07a66da60ffb0`
-  （`feature/cockpit-v3-poc`）。8876 静态站从该提交构建，HTML、CSS和插槽模块统一使用
-  `?v=74d642d`；发布包62个文件（含manifest），manifest列出的61个文件哈希全部通过。
-  既有nginx容器和挂载目录保持，保留旧站备份后覆盖静态文件，没有重启8765。
-- 8877同步更新：独立代码目录 `api-74d642d`，PID `2011023`，健康检查返回该代码提交。
-  本次同步 `compact-v1` 输出契约、短原因／短措施、`deadlineDays`及带契约版本的缓存scope；
-  模型适配器和部署环境配置沿用旧旁路服务。`api-data` 软链沿用 `api-017d65f/api-data`，
-  16条原有已完成分析记录保留，切换前确认没有进行中的任务，并使用SQLite backup生成一致备份。
-  原旁路代码和启动环境均保留以便回滚；环境备份权限600，严禁输出或提交。
-- 回滚备份：`backups/deploy-20261022-173750-pre-74d642d/` 包含旧站、数据库备份与旧进程信息；
-  静态暂存目录 `site-next-74d642d`。nginx配置、8765进程PID `1585094`及主服务数据未修改。
-- 验证（2026-10-22 17:38）：驾驶舱相关41项测试通过；线上三个路由、`release.json`、
-  CSS／JS及版本化插槽模块、bootstrap返回200，8877健康检查正常；浏览器确认新模块版本与
-  三节点穿透图生效。**真实模型输出验证受阻**：团队模型网关返回HTTP 400 `budget_exceeded`，
-  当前费用约30.52、预算上限30.00；新分析明确显示失败，未用固定文案代替。需网关管理方调整额度后重试，
-  本次没有更换凭据、模型账号或修改额度。此前的成功分析记录没有删除。
+- 当前发布（2026-10-26 08:57）：代码提交
+  `b5c797e7069a3f0d9da4ec9c2d38ab1994c79b95`（`feature/cockpit-v3-poc`），交付包
+  `iba-demo` `feature/demo_1021@5791b362cac875ca041884079c3d0d45a58aeb89`。8876 静态站从该提交
+  构建，HTML、CSS和插槽模块统一使用 `?v=b5c797e`；发布包61个文件，manifest 全部通过。
+  页面画布切换为交付包新增的白色主题（`data-dashboard-theme="white"`），ProUI JS 为
+  `2eb9912a`，CSS 仍为 `b1ee836d`，Vue 复用 3.5.25。保留旧站备份后覆盖静态文件，没有重启8765。
+- 8877同步更新：新代码目录 `api-b5c797e`，PID `1495655`，健康检查返回本次提交；
+  `api-data` 软链继续指向 `api-017d65f/api-data`，切换前确认没有进行中任务，21条已完成和
+  26条失败的历史分析记录保留，并生成 SQLite 一致备份。模型适配器、部署环境配置和启动方式沿用原
+  旁路服务；原 `api-74d642d` 代码和启动环境保留以便回滚；环境备份权限600，严禁输出或提交。
+- 回滚备份：`backups/deploy-20261026-085731-pre-b5c797e/` 包含旧站、SQLite备份、旧进程信息与
+  环境备份；静态暂存目录 `site-next-b5c797e-20261026-0900`。nginx配置、8765进程及主服务数据未修改。
+- 验证（2026-10-26 08:57）：驾驶舱相关51项测试通过；线上三个路由、`release.json`、
+  `cockpit.css`、`cockpit.js`、ProUI JS、`runtime.json` 和 `/api/cockpit/bootstrap?id=1|2`
+  均返回200；8877 `/healthz` 返回 `commit=b5c797e7069a3f0d9da4ec9c2d38ab1994c79b95`。
+  远程浏览器确认三页 `data-dashboard-theme=white`、背景为 `rgb(255,255,255)`、各只有一个
+  `ProBiDashboard` 且无横向溢出；三个页面由交付元数据渲染，未捕获查询仍在原卡片显示组件的
+  “未找到该 AP 查询的发布快照”，宿主不补造数据。
+- 上一发布（2026-10-22 17:38，历史）：代码提交
+  `74d642db92bd65caf7f4c2ceaef07a66da60ffb0`（`feature/cockpit-v3-poc`）。8876 静态站从该提交
+  构建，HTML、CSS和插槽模块统一使用 `?v=74d642d`；发布包62个文件（含manifest），manifest列出的
+  61个文件哈希全部通过。既有nginx容器和挂载目录保持，保留旧站备份后覆盖静态文件，没有重启8765。
+  8877 当时同步到 `api-74d642d`，PID `2011023`，`compact-v1` 输出契约、短原因／短措施、
+  `deadlineDays`及带契约版本的缓存scope生效。回滚备份为
+  `backups/deploy-20261022-173750-pre-74d642d/`。真实模型输出验证曾受团队模型网关 HTTP 400
+  `budget_exceeded` 阻塞，新分析明确显示失败，未用固定文案代替，也没有更换凭据或修改额度。
 - 上一发布（2026-10-22 16:27，历史）：`feature/cockpit-v3-poc` commit
   `b6eaaca58ec8976bf29d5e04e972709bec476c84`，构建时间 `2026-10-22T08:26:27Z`；对应交付包
   `iba-demo` `feature/demo_1021@5791b362cac875ca041884079c3d0d45a58aeb89`。
@@ -463,10 +473,10 @@ git diff --name-only
 - 反向代理：nginx 在 `/api/` 404 规则之前增加 `location /api/cockpit/`，转发到
   `http://172.16.10.34:8877`，读取超时 300 秒并禁用响应缓存。
 - 旁路 API：独立目录
-  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-017d65f`，入口为
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-b5c797e`，入口为
   `cockpit_api.py`，监听 `172.16.10.34:8877`；PID 写入 `app.pid`，日志为 `api.log`，
   运行数据独立保存到 `api-data/`，不接触历史会话和主服务 `dataset/`。当前进程由
-  `setsid nohup` 启动，没有 systemd 自动拉起。2026-10-22 17:38前复用该服务；当前代码目录已切到 `api-74d642d`，数据仍沿用原目录。
+  `setsid nohup` 启动，没有 systemd 自动拉起；数据软链继续指向 `api-017d65f/api-data`。
 - 文件权限：发布后 `site/` 及子目录必须为 `755`、文件为 `644`；根目录若被 staging 权限
   覆盖为 `700`，容器内 nginx worker 会返回 404。
 - 路由配置：nginx 保留 `location = /cockpit/home`；配置备份为
