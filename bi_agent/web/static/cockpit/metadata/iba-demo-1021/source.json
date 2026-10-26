@@ -1,10 +1,10 @@
 {
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
-  "commit": "5791b362cac875ca041884079c3d0d45a58aeb89",
-  "importedAt": "2026-10-23",
+  "commit": "558f2ae27cdc5a9569c5d91a1db45f97d31a4321",
+  "importedAt": "2026-10-26",
   "mode": "active-runtime-adapter",
-  "notes": "Source JSON and insights.js remain immutable. The cockpit renders the delivered root components and 13 templates, anchors the 12 delivered insight placements and fills them with live cockpit analyses. Static AP snapshots remain sourced from the frozen pdt release; uncaptured queries show the native missing-snapshot error instead of fabricated data.",
+  "notes": "Imported upstream metadata unchanged; runtime uses live AP via the main service. Frozen snapshots are retained only for explicit replay mode.",
   "rootComponents": 2,
   "templates": 13,
   "totalComponents": 135,
@@ -40,7 +40,7 @@
     },
     {
       "file": "template-registry.json",
-      "sha256": "201c61e78bd4956510a55f5c17a4dc4faa2b9657dfdec34215eb443572b67424"
+      "sha256": "d19f5922b1b249cfe71d6abf53b19d4adb25680251867ac65d40d55d605f9a66"
     },
     {
       "file": "insights.js",
@@ -56,7 +56,7 @@
       "templateId": "2112062888320483329",
       "componentId": "group-9ypz7vwt",
       "missingChildId": "share-bar-79fsomq9",
-      "description": "Upstream child definition is absent; runtime renders a visible gap placeholder and reports it."
+      "description": "Upstream child definition is absent; runtime reports the gap."
     }
   ],
   "activatedAt": "2026-10-23"

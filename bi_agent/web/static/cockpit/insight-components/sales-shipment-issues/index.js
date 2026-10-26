@@ -27,20 +27,11 @@ registerInsightComponent(
         </div>
         <template v-if="hasResult">
           <div class="sales-shipment-issues__title">销售额 / 出货量共同问题分析：</div>
-          <div>
-            当前证据范围：{{ contextLine }}；共 {{ facts.length }} 项阶段事实、{{ records.length }} 条记录、
-            {{ evidenceCount }} 条证据。
-          </div>
-          <div class="sales-shipment-issues__line sales-shipment-issues__summary" :title="summary">真实分析摘要：{{ summary }}</div>
-          <div v-for="(item, index) in facts" :key="item.id" class="sales-shipment-issues__line">
-            {{ index + 1 }}）【{{ item.label }}】
-            <span class="sales-shipment-issues__num">{{ metricValue(item) }}</span>
-            ——{{ item.definition }}
-          </div>
-          <details v-if="causes.length" class="sales-shipment-issues__details">
-            <summary>查看 {{ causes.length }} 项原因与证据</summary>
+          <div class="sales-shipment-issues__line sales-shipment-issues__summary" :title="summary">分析摘要：{{ summary }}</div>
+          <details open v-if="causes.length" class="sales-shipment-issues__details">
+            <summary>风险与待核实原因 · {{ causes.length }} 项</summary>
             <div v-for="(cause, index) in causes" :key="cause.id" class="sales-shipment-issues__line">
-              {{ facts.length + index + 1 }}）【{{ causeStatus(cause) }}】
+              {{ index + 1 }}）【{{ causeStatus(cause) }}】
               <span class="sales-shipment-issues__num">{{ cause.title }}</span>——{{ cause.description }}
             </div>
           </details>

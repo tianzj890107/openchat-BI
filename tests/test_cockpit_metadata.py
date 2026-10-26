@@ -77,7 +77,7 @@ def test_static_proui_runtime_is_reproducible_and_uses_release_data():
     assert stored['renderer']=='ProBiDashboard'
     assert stored['mode']=='release'
     assert stored['source']['dashboardId']=='iba-demo-1021'
-    assert stored['source']['version']=='5791b36'
+    assert stored['source']['version']=='558f2ae'
     assert stored['source']['templateCount']==13
     assert stored['source']['totalComponents']==135
     assert set(stored['pages'])=={'overview','operations','analysis'}

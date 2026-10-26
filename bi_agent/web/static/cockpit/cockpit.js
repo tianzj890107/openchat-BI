@@ -392,7 +392,7 @@
         const entry = Object.entries(PAGES).find(([, value]) => value.tab === label);
         if (!entry) return;
         page.value = entry[0];
-        document.title = `${entry[1].title} · 储小策`;
+        document.title = `储能经营风险驾驶舱 · ${entry[1].title}`;
         history.replaceState(null, '', routeFor(entry[0]));
       }
 
@@ -457,7 +457,7 @@
       }
 
       onMounted(async () => {
-        document.title = `${pageTitle.value} · 储小策`;
+        document.title = `储能经营风险驾驶舱 · ${pageTitle.value}`;
         document.addEventListener('click', onTabClick, true);
         if (location.pathname.endsWith('/cockpit/home')) {
           history.replaceState(null, '', routeFor('overview'));

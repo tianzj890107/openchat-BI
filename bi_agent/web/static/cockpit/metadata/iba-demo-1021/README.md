@@ -1,7 +1,7 @@
 # 前端交付元数据：feature/demo_1021
 
 来源：[iba-demo](http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021)，
-固定 commit `5791b362cac875ca041884079c3d0d45a58aeb89`。
+固定 commit `558f2ae27cdc5a9569c5d91a1db45f97d31a4321`。
 `components.json`、`template-registry.json`、`insights.js` 和 `insight-components/` 原样复制；
 `insights.json` 由声明式 `insights.js` 转为 JSON。哈希、类型统计和已知问题见 `source.json`。
 

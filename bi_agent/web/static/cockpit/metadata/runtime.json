@@ -2,14 +2,14 @@
   "source": {
     "kind": "iba-demo-metadata",
     "dashboardId": "iba-demo-1021",
-    "name": "运营360 整体分析",
+    "name": "储能经营风险驾驶舱",
     "releaseUrl": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021",
-    "buildTime": "2026-10-23",
-    "fetchedAt": "2026-10-23",
-    "version": "5791b36",
+    "buildTime": "2026-10-26",
+    "fetchedAt": "2026-10-26",
+    "version": "558f2ae",
     "status": "active",
     "branch": "feature/demo_1021",
-    "commit": "5791b362cac875ca041884079c3d0d45a58aeb89",
+    "commit": "558f2ae27cdc5a9569c5d91a1db45f97d31a4321",
     "templateCount": 13,
     "totalComponents": 135,
     "insightComponents": 12,
@@ -25,9 +25,9 @@
   },
   "dashboard": {
     "id": "iba-demo-1021",
-    "name": "运营360 整体分析",
-    "description": "iba-demo feature/demo_1021 交付看板",
-    "version": "5791b36",
+    "name": "储能经营风险驾驶舱",
+    "description": "",
+    "version": "558f2ae",
     "status": "active",
     "url": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021",
     "components": [
@@ -4364,6 +4364,26 @@
                 }
               ]
             },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
+            },
             "mockPreset": "progress",
             "sourceType": "ap",
             "measure": [
@@ -4421,6 +4441,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -4480,6 +4520,26 @@
                 }
               ]
             },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
+            },
             "mockPreset": "progress",
             "sourceType": "ap",
             "measure": [
@@ -4537,6 +4597,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -4596,6 +4676,26 @@
                 }
               ]
             },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
+            },
             "mockPreset": "progress",
             "sourceType": "ap",
             "measure": [
@@ -4638,6 +4738,322 @@
         },
         {
           "dataConfig": {
+            "mockData": {
+              "edges": [
+                {
+                  "id": "e1",
+                  "name": "66.7%",
+                  "source": "n1",
+                  "subLabels": [
+                    {
+                      "code": "实际值",
+                      "unit": "天",
+                      "value": 8.5
+                    },
+                    {
+                      "code": "基准值",
+                      "unit": "天",
+                      "value": 12
+                    }
+                  ],
+                  "target": "n2",
+                  "type": "funnel-edge",
+                  "value": 0.667
+                },
+                {
+                  "id": "e2",
+                  "name": "71.7%",
+                  "source": "n2",
+                  "subLabels": [
+                    {
+                      "code": "实际值",
+                      "unit": "天",
+                      "value": 10.6
+                    },
+                    {
+                      "code": "基准值",
+                      "unit": "天",
+                      "value": 13
+                    }
+                  ],
+                  "target": "n3",
+                  "type": "funnel-edge",
+                  "value": 0.717
+                }
+              ],
+              "nodes": [
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n1",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,160",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 2160
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,240",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 3240
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,960",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 3960
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "5,940",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 5940
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,700",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 2700
+                      }
+                    ]
+                  },
+                  "name": "商机",
+                  "type": "stacked-bar-mini-node"
+                },
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n2",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,447",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 1447
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,171",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 2171
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,653",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 2653
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,980",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 3980
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,809",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 1809
+                      }
+                    ]
+                  },
+                  "name": "立项",
+                  "type": "stacked-bar-mini-node"
+                },
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n3",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,037",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 1037
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,555",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 1555
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,901",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 1901
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,851",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 2851
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,296",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 1296
+                      }
+                    ]
+                  },
+                  "name": "签约",
+                  "type": "stacked-bar-mini-node"
+                }
+              ]
+            },
             "sourceType": "mock"
           },
           "id": "mini-cpgraph-93j6k86p",
@@ -4651,7 +5067,9 @@
           "showTitle": true,
           "title": "销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）",
           "type": "mini-cpgraph",
-          "visualization": {},
+          "visualization": {
+            "legend": false
+          },
           "graphConfig": {
             "defaultActiveKey": "2109840325158682625",
             "processCode": "SALES_CALIBER",
@@ -4712,6 +5130,7 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "template-ryfsat5y",
@@ -4729,6 +5148,7 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "title-6ixfyz4r",
@@ -4752,6 +5172,7 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "button-group-j7f98k1c",
@@ -4789,6 +5210,7 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "title-c6z4o2in",
@@ -5016,6 +5438,26 @@
                 }
               ]
             },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
+            },
             "mockPreset": "progress",
             "sourceType": "ap",
             "measure": [
@@ -5073,6 +5515,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -5132,6 +5594,26 @@
                 }
               ]
             },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
+            },
             "mockPreset": "progress",
             "sourceType": "ap",
             "measure": [
@@ -5189,6 +5671,26 @@
                   "label": "目标"
                 }
               ]
+            },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
             },
             "mockPreset": "progress",
             "sourceType": "ap",
@@ -5248,6 +5750,26 @@
                 }
               ]
             },
+            "mockData": {
+              "current": {
+                "formatValue": "26,000万",
+                "id": "current",
+                "name": "当前",
+                "value": 260000000
+              },
+              "gap": {
+                "formatValue": "6,500万",
+                "id": "gap",
+                "name": "缺口",
+                "value": 65000000
+              },
+              "target": {
+                "formatValue": "32,500万",
+                "id": "target",
+                "name": "目标",
+                "value": 325000000
+              }
+            },
             "mockPreset": "progress",
             "sourceType": "ap",
             "measure": [
@@ -5290,6 +5812,322 @@
         },
         {
           "dataConfig": {
+            "mockData": {
+              "edges": [
+                {
+                  "id": "e1",
+                  "name": "66.7%",
+                  "source": "n1",
+                  "subLabels": [
+                    {
+                      "code": "实际值",
+                      "unit": "天",
+                      "value": 8.5
+                    },
+                    {
+                      "code": "基准值",
+                      "unit": "天",
+                      "value": 12
+                    }
+                  ],
+                  "target": "n2",
+                  "type": "funnel-edge",
+                  "value": 0.667
+                },
+                {
+                  "id": "e2",
+                  "name": "71.7%",
+                  "source": "n2",
+                  "subLabels": [
+                    {
+                      "code": "实际值",
+                      "unit": "天",
+                      "value": 10.6
+                    },
+                    {
+                      "code": "基准值",
+                      "unit": "天",
+                      "value": 13
+                    }
+                  ],
+                  "target": "n3",
+                  "type": "funnel-edge",
+                  "value": 0.717
+                }
+              ],
+              "nodes": [
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n1",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,160",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 2160
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,240",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 3240
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,960",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 3960
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "5,940",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 5940
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,700",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 2700
+                      }
+                    ]
+                  },
+                  "name": "商机",
+                  "type": "stacked-bar-mini-node"
+                },
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n2",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,447",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 1447
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,171",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 2171
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,653",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 2653
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "3,980",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 3980
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,809",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 1809
+                      }
+                    ]
+                  },
+                  "name": "立项",
+                  "type": "stacked-bar-mini-node"
+                },
+                {
+                  "dims": [
+                    {
+                      "fieldType": "Dimension",
+                      "identifierCode": "contract_status",
+                      "label": "合同状态"
+                    }
+                  ],
+                  "id": "n3",
+                  "meta": {
+                    "basicInfo": {
+                      "title": "金额",
+                      "unit": "元"
+                    },
+                    "data": [
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,037",
+                        "indConfig": {
+                          "dimensionValue": "逾期未完成"
+                        },
+                        "label": "逾期未完成",
+                        "status": "error",
+                        "type": "normal",
+                        "value": 1037
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,555",
+                        "indConfig": {
+                          "dimensionValue": "临期未完成"
+                        },
+                        "label": "临期未完成",
+                        "status": "warning",
+                        "type": "normal",
+                        "value": 1555
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,901",
+                        "indConfig": {
+                          "dimensionValue": "正常未完成"
+                        },
+                        "label": "正常未完成",
+                        "status": "success",
+                        "type": "normal",
+                        "value": 1901
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "2,851",
+                        "indConfig": {
+                          "dimensionValue": "正常完成"
+                        },
+                        "label": "正常完成",
+                        "status": "normal",
+                        "type": "success",
+                        "value": 2851
+                      },
+                      {
+                        "formatConfig": {
+                          "isThousand": true,
+                          "unit": "万"
+                        },
+                        "formatterValue": "1,296",
+                        "indConfig": {
+                          "dimensionValue": "逾期完成"
+                        },
+                        "label": "逾期完成",
+                        "status": "normal",
+                        "type": "error",
+                        "value": 1296
+                      }
+                    ]
+                  },
+                  "name": "签约",
+                  "type": "stacked-bar-mini-node"
+                }
+              ]
+            },
             "sourceType": "mock"
           },
           "id": "mini-cpgraph-93j6k86p",
@@ -5303,7 +6141,9 @@
           "showTitle": true,
           "title": "销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）",
           "type": "mini-cpgraph",
-          "visualization": {},
+          "visualization": {
+            "legend": false
+          },
           "graphConfig": {
             "defaultActiveKey": "2109840325158682625",
             "processCode": "SALES_CALIBER",
@@ -5364,6 +6204,7 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "template-ryfsat5y",
@@ -5381,6 +6222,7 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "title-6ixfyz4r",
@@ -5404,6 +6246,7 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "button-group-j7f98k1c",
@@ -5441,6 +6284,7 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "title-c6z4o2in",
@@ -5465,7 +6309,10 @@
             "subtitlePosition": "bottom"
           }
         }
-      ]
+      ],
+      "gridCols": 120,
+      "rowHeight": 10,
+      "theme": "light"
     },
     "2112062888320483329": {
       "templateId": "2112062888320483329",
@@ -12166,6 +13013,25 @@
                 }
               ]
             },
+            "mockData": {
+              "rows": [
+                {
+                  "数量": 320,
+                  "类别": "电子产品",
+                  "金额": 128000
+                },
+                {
+                  "数量": 280,
+                  "类别": "服装",
+                  "金额": 86000
+                },
+                {
+                  "数量": 450,
+                  "类别": "食品",
+                  "金额": 54000
+                }
+              ]
+            },
             "mockPreset": "table",
             "sourceType": "ap",
             "tableFields": [
@@ -12225,7 +13091,10 @@
               "label": "发货完成状态维度",
               "showSearch": true,
               "showSource": true,
-              "valueType": "STRING"
+              "valueType": "STRING",
+              "searchConfig": {
+                "control": "dropdown"
+              }
             },
             {
               "code": "D008",
@@ -12241,6 +13110,7 @@
         },
         {
           "dataConfig": {
+            "mockData": null,
             "sourceType": "mock"
           },
           "id": "title-0iqvjnog",
@@ -12265,7 +13135,10 @@
             "subtitlePosition": "bottom"
           }
         }
-      ]
+      ],
+      "gridCols": 120,
+      "rowHeight": 10,
+      "theme": "light"
     },
     "2112060211964461057": {
       "templateId": "2112060211964461057",

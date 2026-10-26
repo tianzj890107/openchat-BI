@@ -193,8 +193,8 @@ def release_payload() -> dict:
 
     dashboard = {
         "id": "iba-demo-1021",
-        "name": "运营360 整体分析",
-        "description": "iba-demo feature/demo_1021 交付看板",
+        "name": "储能经营风险驾驶舱",
+        "description": "",
         "version": source["commit"][:7],
         "status": "active",
         "url": f"{source['repository']}/-/tree/{source['branch']}",
@@ -209,7 +209,7 @@ def release_payload() -> dict:
         "source": {
             "kind": "iba-demo-metadata",
             "dashboardId": "iba-demo-1021",
-            "name": "运营360 整体分析",
+            "name": "储能经营风险驾驶舱",
             "releaseUrl": dashboard["url"],
             "buildTime": source["importedAt"],
             "fetchedAt": source["importedAt"],
