@@ -1,7 +1,7 @@
 """Validated card delivery inside the main WebSession, with no extra LLM pass."""
 from __future__ import annotations
 import json
-from pydantic import Field
+from pydantic import Field, ValidationError
 from .agent import Result, Cause, Recommendation, validate_result
 
 CONTRACT='cockpit-cards-v1'
@@ -25,9 +25,18 @@ SCHEMA=dict(name=TOOL,description='提交现有AI插槽的短摘要、原因、�
 def install_delivery(session,context):
     from .main_service import session_evidence
     def deliver(params,cwd):
-        if not session.query_results:raise ValueError('请先读取本轮看板数据')
         evidence=session_evidence(session,context)
-        value=validate_result(params,evidence,{e['id'] for e in evidence['evidence']},result_model=Cards)
+        try:
+            if not session.query_results:raise ValueError('请先读取本轮看板数据')
+            value=validate_result(params,evidence,{e['id'] for e in evidence['evidence']},result_model=Cards)
+        except ValueError as exc:
+            # Invalid model arguments are repairable business feedback, not a
+            # transport failure that terminates the main Tool Runtime.
+            session.cockpit_card_delivery=None
+            issues=([dict(loc=list(e['loc']),message=e['msg']) for e in exc.errors(include_input=False,include_url=False)]
+                if isinstance(exc,ValidationError) else [dict(message=str(exc)[:400])])
+            return json.dumps(dict(accepted=False,issues=issues,evidenceIds=[e['id'] for e in evidence['evidence']][:100],
+                instruction='请按上述校验问题修正后再次调用本工具；不需要重复取数，不能编造缺失事实。'),ensure_ascii=False)
         session.cockpit_card_delivery=(len(session.query_results),value)
         return json.dumps(dict(accepted=True,contract=CONTRACT,summary=value['summary']),ensure_ascii=False)
     session._tool_executors[TOOL]=deliver

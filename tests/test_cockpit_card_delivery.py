@@ -21,13 +21,15 @@ def test_delivery_tool_rejects_missing_or_fabricated_causal_evidence():
     session=SimpleNamespace(query_results=[query],claims=[dict(id='f1',statement='amount=42.5')],_tool_executors={})
     install_delivery(session,context)
     for value in [candidate(ref='foreign'),candidate(status='supported',ref='f1')]:
-        with pytest.raises(ValueError):session._tool_executors[TOOL](value,'')
-    assert not hasattr(session,'cockpit_card_delivery')
+        rejected=json.loads(session._tool_executors[TOOL](value,''))
+        assert rejected['accepted'] is False and rejected['issues']
+    assert session.cockpit_card_delivery is None
     session._tool_executors[TOOL](candidate(ref='f1'),'')
     assert session.cockpit_card_delivery[1]['causes'][0]['status']=='hypothesis'
 
 
-def test_real_main_delivers_existing_card_contract_then_publishes_without_second_model(tmp_path,monkeypatch):
+@pytest.mark.parametrize('repair_first',[False,True])
+def test_real_main_delivers_existing_card_contract_then_publishes_without_second_model(tmp_path,monkeypatch,repair_first):
     import bi_agent.web.app as web
     import bi_agent.cockpit.router as router
     from open_claude.agent_def import AgentDef
@@ -43,10 +45,11 @@ def test_real_main_delivers_existing_card_contract_then_publishes_without_second
     def provider(*args,**kwargs):
         count.append(1)
         if len(count)==1:yield dict(type='tool_use_end',id='q1',name='Cockpit-DashboardQuery',input={'queryId':receipt['receiptId']+':0'})
-        elif len(count)==2:yield dict(type='tool_use_end',id='cards',name=TOOL,input=candidate())
+        elif len(count)==2 and repair_first:yield dict(type='tool_use_end',id='invalid-cards',name=TOOL,input=candidate(ref='unknown-evidence'))
+        elif len(count)==(3 if repair_first else 2):yield dict(type='tool_use_end',id='cards',name=TOOL,input=candidate())
         else:
             yield dict(type='text_delta',text='结论\n当前指标有返回，缺少目标及对比口径，不能认定异常。\n根因分析\n【推断】流程卡点是待核实假设，缺少排程和质检明细，不能确认根因。\n行动建议\n建议由业务分析员在三个工作日内核对排程和质检记录，以取得同订单流程记录作为验收。')
-        yield dict(type='message_end',stop_reason='tool_use' if len(count)<3 else 'end_turn',usage={})
+        yield dict(type='message_end',stop_reason='tool_use' if len(count)<(4 if repair_first else 3) else 'end_turn',usage={})
     request=dict(id=1,engine='main',source='service',stage='shipment',page='analysis',defaultView=True,chartSnapshotId=RELEASE,
         chartQueries=[json.dumps(QUERY)],apReceiptIds=[receipt['receiptId']])
     with patch('bi_agent.web.session.stream_message',side_effect=provider),patch.object(web,'_source_for_session',side_effect=AssertionError('No original source')):
@@ -69,4 +72,4 @@ def test_real_main_delivers_existing_card_contract_then_publishes_without_second
         request['apReceiptIds']=[again['receiptId']]
         reopened=client.post('/api/cockpit/analyses/refresh',json=request).json()
         assert reopened['cached']['id']==aid and reopened['analysis'] is None
-        assert len(count)==3 # One main-service tool loop, no presentation model call.
+        assert len(count)==(4 if repair_first else 3) # Rejection repairs inside the same main tool loop.
