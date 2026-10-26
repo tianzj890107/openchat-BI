@@ -24,7 +24,7 @@ AP 地址及认证只从 `COCKPIT_AP_*` 配置读取，不使用 `ONTOLOGY_*`、
 | batch | POST | `/x360/v1/ontology/data/multidimensional/batch` |
 | helmet | GET | `/x360/v1/graphs/helmet-view` |
 
-原有对话、MCP、报表的连接和工具不变。Cockpit 的临时 WebSession 仅允许 `Cockpit-DashboardQuery`、`CockpitDeliverCards` 和 `AskUser`（卡片工具为本轮未部署更新），
+原有对话、MCP、报表的连接和工具不变。Cockpit 的临时 WebSession 仅允许 `Cockpit-DashboardQuery`、`CockpitDeliverCards` 和 `AskUser`（2026-10-26已上线），
 执行边界拒绝模型请求的其他工具。确定性路由记录 `QUERY_DASHBOARD`，不把 AP 查询误记为 Doris 取数。
 
 AP HTTP 并发默认 2，可配置为 1–8；浏览器请求队列上限 2，重复的进行中查询共用一次响应。
@@ -122,9 +122,11 @@ main 有证据时可通过 `baselineAnalysisId` 让独立路线读取同身份�
 按预期受限交付，没有改用默认本体／数据库。原 `/api/sources` 配置完全一致，328个受保护数据文件哈希未变。
 独立凭据当前使用POC的PDT登录授权，失效需更新独立文件；不能将其当作长期服务凭据。详细路径与回滚备份见DEPLOYMENT.md。
 
-## AI插槽样式与上次成功内容（本轮实现，未部署）
+## AI插槽样式与上次成功内容（2026-10-26已预热上线）
 
 主服务不再用长正文块替代交付组件，通过同一模型循环中的CockpitDeliverCards提交结构化字段。
 服务端持久保存同范围上次成功卡片，首屏读取缓存，后台分析成功后自动替换；换筛选无缓存时使用AI卡片加载态。
 失败、取消及迟到的旧任务不清空或覆盖上次成功版本，重复打开不因新的AP凭据而重新分析。
 接口、范围、首次预热和测试边界见 [卡片交付与持久缓存](cockpit-card-publications.md)。
+
+2026-10-26正式更新到ca3d29b：两个身份默认页面的6组环节卡片已用真实AP和模型预热，重启后缓存保留；8876加载原设计组件，8765统一执行分析，8877继续停止。
