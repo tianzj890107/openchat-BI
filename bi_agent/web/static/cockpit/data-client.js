@@ -49,13 +49,13 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     if (inflight.has(key)) return inflight.get(key);
     const slot = shape(kind, payload);
     const state = {key: canonical(payload), pending: true, error: '', receiptId: '', expiresAt: 0};
-    if (kind !== 'helmet') { active.set(slot, state); onInvalidate(); }
+    if (kind !== 'helmet') { const previous=active.get(slot); active.set(slot, state); onInvalidate({replacement:Boolean(previous && previous.key!==state.key)}); }
     const promise = limit(() => proxy(kind, payload)).then(body => {
       if (kind !== 'helmet' && active.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
       Object.assign(state, {pending: false, receiptId: body.receiptId, expiresAt: body.expiresAt});
       return body.data;
     }).catch(error => { state.pending = false; state.error = error.message || 'AP查询失败'; throw error; })
-      .finally(() => { inflight.delete(key); });
+      .finally(() => { if(inflight.get(key)===promise) inflight.delete(key); });
     inflight.set(key, promise);
     return promise;
   }
@@ -78,7 +78,8 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     }
     return scope();
   }
-  return {scope, ready, biAdapters: {
+  function clearScope() { active.clear(); inflight.clear(); onInvalidate({replacement:true}); }
+  return {scope, ready, clearScope, biAdapters: {
     postAnalysisDataQuery: payload => query('analysis', payload),
     postAnalysisDataQueryBatch: payload => query('batch', payload),
   }, utils: {request: async req => {
@@ -89,4 +90,21 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
       return [null, {data, success: true}];
     } catch (error) { return [error, null]; }
   }}};
+}
+
+// Observe committed SDK filter changes, not clicks that merely open a filter editor.
+export function observeRuntimeFilters(runtime,onChange,isReady=()=>true) {
+  const seen=new Map();
+  for(const method of ['setFilterConditions','setButtonGrainSelection']) {
+    const original=runtime[method];
+    if(typeof original!=='function')continue;
+    runtime[method]=function(...args) {
+      const key=method+':'+args[0]+':'+canonical(args[2]||null),value=canonical(args[1]);
+      const changed=seen.has(key)?seen.get(key)!==value:isReady();
+      seen.set(key,value);
+      if(changed)onChange();
+      return original.apply(this,args);
+    };
+  }
+  return runtime;
 }

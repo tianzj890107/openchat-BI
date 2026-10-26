@@ -58,3 +58,15 @@ test('host utilities accept only the fixed read-only graph interface', async () 
   assert.equal(error,null);assert.deepEqual(result.data,{nodes:[]});
   assert.throws(()=>client.scope(),/加载/); // Graph metadata is not business evidence.
 });
+
+test('SDK filter change drops all previous-scope receipts before new requests',async()=>{
+ const {observeRuntimeFilters}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ let ready=false,changes=0;
+ const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>ok('receipt-scope')});
+ const runtime=observeRuntimeFilters({setFilterConditions(){},setButtonGrainSelection(){}},()=>{changes++;client.clearScope();},()=>ready);
+ runtime.setFilterConditions('filter',[]);assert.equal(changes,0);
+ await client.biAdapters.postAnalysisDataQuery(query);assert.equal(client.scope().apReceiptIds.length,1);
+ ready=true;runtime.setFilterConditions('filter',[{department:'B'}]);
+ assert.equal(changes,1);assert.throws(()=>client.scope(),/加载/);
+ runtime.setFilterConditions('filter',[{department:'B'}]);assert.equal(changes,1);
+});

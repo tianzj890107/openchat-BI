@@ -104,9 +104,3 @@ body{overflow-x:hidden;background:var(--dashboard-canvas-bg,#fff);color:#1f2329;
   .cockpit-gap-report{margin:2px 12px 24px}
   .cockpit-gap-body li{grid-template-columns:1fr}
 }
-
-/* Main-service result adapter: no extra model rewrite, preserve committed sections. */
-.main-service-insight{padding:14px 16px;font-size:13px;line-height:22px;background:#fff;color:#263445}
-.main-service-insight__meta{font-size:12px;color:#6b7788;margin-bottom:8px}
-.main-service-insight__section{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}
-.main-service-insight details{margin-top:10px;color:#657184}

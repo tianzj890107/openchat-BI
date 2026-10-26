@@ -44,8 +44,8 @@ class Result(StrictModel):
     limitations:list[Annotated[str,Field(min_length=1,max_length=300)]]=Field(min_length=1,max_length=10)
 
 
-def validate_result(raw, evidence, seen):
-    value=Result.model_validate(raw).model_dump()
+def validate_result(raw, evidence, seen, *, result_model=Result):
+    value=result_model.model_validate(raw).model_dump()
     available={x["id"] for x in evidence["evidence"]}
     causes={x["id"] for x in value["causes"]}
     if len(causes)!=len(value["causes"]):raise ValueError("原因 ID 重复")

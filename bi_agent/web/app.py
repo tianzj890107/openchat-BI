@@ -3962,13 +3962,16 @@ def _cockpit_main_context(req):
         raise HTTPException(422,'筛选必须体现在已展示的AP请求中，不能声明未应用的自定义筛选')
     try:
         if data_mode()=='ap':
-            fingerprint,_=receipt_material(req.model_dump(),Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'))
-            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数')
+            fingerprint,selected=receipt_material(req.model_dump(),Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'))
+            from ..cockpit.publications import digest
+            identities={v.get("connectionId","") for v in selected.values()}
+            if len(identities)!=1:raise ValueError("AP材料来自不同连接，不能合并分析")
+            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataIdentity=next(iter(identities)),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))),dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数')
         if req.apReceiptIds:raise ValueError('快照模式不能消费实时AP凭据')
         fingerprint,_=material(req.model_dump())
     except (ValueError, TypeError) as exc:
         raise HTTPException(422,str(exc)) from exc
-    return dict(snapshotId='dashboard-'+fingerprint,repositoryId='',
+    return dict(snapshotId='dashboard-'+fingerprint,repositoryId='',dataIdentity='pdt-release-2109836674373566465',dataFingerprint=fingerprint,
         dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库')
 
 
@@ -3982,6 +3985,7 @@ def _cockpit_main_turn(context,cancel):
     try:
         from ..cockpit.dashboard_source import material, receipt_material, executor, TOOL, SCHEMA
         from ..cockpit.store import Store
+        from ..cockpit.cards import TOOL as DELIVERY_TOOL, SCHEMA as DELIVERY_SCHEMA, install_delivery
         from open_claude.tools import register_tool
         live=context['snapshotId'].startswith('ap-')
         fingerprint,selected=(receipt_material(context,Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'),allow_expired=True)
@@ -3992,10 +3996,21 @@ def _cockpit_main_turn(context,cancel):
         def unbound(params,cwd):
             raise RuntimeError('看板查询只能在绑定快照的任务内执行')
         register_tool(SCHEMA,unbound)
+        register_tool(DELIVERY_SCHEMA,unbound)
         session=WebSession(cwd=STATE.cwd,agent_def=STATE.agent_def,
-            ontology_store=None,tools_override=[TOOL,'AskUser'],
+            ontology_store=None,tools_override=[TOOL,DELIVERY_TOOL,'AskUser'],
             context_header=('本轮数据来源：页面本次实时AP响应的冻结结果。' if live else '本轮数据来源：看板交付AP快照。')+'只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。',
             tool_executors={TOOL:executor(selected)})
+        raw_read=session._tool_executors[TOOL]
+        def read_with_refs(params,cwd):
+            from ..reliability import QueryResult, claims_from_query_result
+            output=raw_read(params,cwd)
+            data=json.loads(output)
+            claims=claims_from_query_result(QueryResult(data=output),f'{TOOL}-{len(session.query_results)+1}')
+            data['evidenceIds']=[claim.id for claim in claims]
+            return json.dumps(data,ensure_ascii=False)
+        session._tool_executors[TOOL]=read_with_refs
+        install_delivery(session,context)
         with STATE.registry_lock:
             STATE.sessions[key]=session
         slot,lease,turn_id,ticket,_=_begin_turn('data',key,cancel_event=cancel,principal_session_id=f"cockpit-id-{context['id']}")
@@ -4036,6 +4051,7 @@ def _cockpit_html(page: str) -> HTMLResponse:
         cockpit / "metadata" / "runtime.json",
         cockpit / "cockpit.js",
         cockpit / "data-client.js",
+        cockpit / "publication-client.js",
         cockpit / "insight-components" / "index.js",
         cockpit / "metadata" / "pdt-release-2109836674373566465" / "data-snapshots.json",
     ]

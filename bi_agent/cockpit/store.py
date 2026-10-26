@@ -18,6 +18,11 @@ class Store:
               id TEXT PRIMARY KEY, scope TEXT NOT NULL, body TEXT NOT NULL,
               status TEXT NOT NULL, updated REAL NOT NULL);
             CREATE INDEX IF NOT EXISTS analysis_scope ON analyses(scope,updated);
+            CREATE TABLE IF NOT EXISTS publications (
+              scope TEXT PRIMARY KEY, analysis_id TEXT NOT NULL, created REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS publication_views (
+              view_key TEXT NOT NULL, stage TEXT NOT NULL, scope TEXT NOT NULL,
+              PRIMARY KEY(view_key,stage));
             CREATE TABLE IF NOT EXISTS ap_results (
               id TEXT PRIMARY KEY, identity INTEGER NOT NULL, body TEXT NOT NULL,
               created REAL NOT NULL, expires REAL NOT NULL);
@@ -39,10 +44,10 @@ class Store:
         finally:
             db.close()
 
-    def save_ap_result(self, identity, kind, request, response, ttl):
+    def save_ap_result(self, identity, kind, request, response, ttl, connection_id=""):
         now = time.time()
         item = dict(id=uuid.uuid4().hex, identity=identity, kind=kind, request=request,
-            response=response, createdAt=now, expiresAt=now+ttl)
+            response=response, createdAt=now, expiresAt=now+ttl, connectionId=connection_id)
         with self.db() as db:
             db.execute("INSERT INTO ap_results VALUES(?,?,?,?,?)", (item['id'],identity,
                 json.dumps(item,ensure_ascii=False),now,now+ttl))
@@ -85,6 +90,37 @@ class Store:
         with self.db() as db:
             rows=db.execute("SELECT body FROM analyses "+("WHERE scope=? " if scope else "")+"ORDER BY updated DESC LIMIT ?",(scope,limit) if scope else (limit,)).fetchall()
         return [json.loads(r[0]) for r in rows]
+
+    def publish(self, aid):
+        from .cards import CONTRACT
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT body FROM analyses WHERE id=?',(aid,)).fetchone()
+            if not row:return False
+            item=json.loads(row[0])
+            if item['status'] not in {'completed','limited'} or (item.get('result') or {}).get('cardContract')!=CONTRACT:return False
+            db.execute('INSERT INTO publications VALUES(?,?,?) ON CONFLICT(scope) DO UPDATE SET analysis_id=excluded.analysis_id,created=excluded.created WHERE excluded.created>=publications.created',
+                (item['scope'],aid,item['createdAt']))
+            return True
+
+    def published(self, scope):
+        with self.db() as db:
+            row=db.execute('SELECT a.body FROM publications p JOIN analyses a ON a.id=p.analysis_id WHERE p.scope=?',(scope,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def bind_view(self, view_key, stage, scope):
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            current=db.execute('SELECT created FROM publications WHERE scope=?',(scope,)).fetchone()
+            previous=db.execute('SELECT p.created FROM publication_views v JOIN publications p ON p.scope=v.scope WHERE v.view_key=? AND v.stage=?',(view_key,stage)).fetchone()
+            if not current or (previous and previous[0]>current[0]):return False
+            db.execute('INSERT INTO publication_views VALUES(?,?,?) ON CONFLICT(view_key,stage) DO UPDATE SET scope=excluded.scope',(view_key,stage,scope))
+            return True
+
+    def published_view(self, view_key):
+        with self.db() as db:
+            rows=db.execute('SELECT v.stage,a.body FROM publication_views v JOIN publications p ON p.scope=v.scope JOIN analyses a ON a.id=p.analysis_id WHERE v.view_key=?',(view_key,)).fetchall()
+        return {r[0]:json.loads(r[1]) for r in rows}
 
     def recover(self):
         # Called once when this process opens a store. Preserve records; never delete history.

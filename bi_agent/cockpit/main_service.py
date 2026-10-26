@@ -1,7 +1,8 @@
 """Presentation adapter for the existing main-service WebSession execution.
 
 No model call, independent tool loop, or second analysis prompt lives here.
-Only committed main-service output is delivered; no JSON-repair model pass.
+Validated card fields are delivered through the same main-service tool loop.
+No additional model pass rewrites the result.
 """
 from __future__ import annotations
 import re
@@ -17,10 +18,10 @@ def analysis_question(context):
         for key in ('period','department','filters'):scope.pop(key,None)
     return (
         f"请分析{NAMES[context['stage']]}环节的经营异常，调查有证据支持的原因，并给出基于证据的改善建议。"
-        "请沿用主服务正常意图路由、只读看板工具取数与交付校验。"
+        "请沿用主服务正常意图路由、只读看板工具取数与交付校验。本任务为无对话自动卡片交付，遇到口径歧义请交付受限卡片说明缺失，不要等待交互。"
         "先调用Cockpit-DashboardQuery读取目录，再读取相关queryId。工具读取的是与网页同一次取数的冻结结果；是否为实时AP取数以工具返回live标记为准。范围JSON的时间和部门只是页面历史参数，实际分析范围以AP原始请求为准，不可假定已应用筛选。"
         "缺少指标映射或实体关系时明确说明，存在歧义时正常请求确认，不得自动选采购指标代替销售指标。"
-        "请保持正常中文章节输出，不必生成HTML或重新绘制看板图表；不要为了填满卡片编造根因、责任角色或期限。"
+        "请读取工具返回的evidenceIds，最终调用CockpitDeliverCards提交短摘要、原因、建议、限制供既有AI插槽展示；业务数值由事实字段展示，短摘要不重复业务数字，不新造比例；没有原因证据时causes和recommendations留空并说明缺口。不要生成HTML或重新绘制图表，不得编造根因、责任角色或期限。提交后用正常中文章节确认交付，不另开模型改写。"
         "\n范围："+json.dumps(scope,ensure_ascii=False,sort_keys=True)
     )
 
@@ -63,12 +64,8 @@ def run_main_analysis(context, cancel, progress, turn_factory):
                 pass
             if kind in {'cognitive_policy','tool_start','sop_progress','recovery_state','awaiting_user_choice','done'}:
                 progress('主服务：'+('等待补充分析口径' if needs_input else '路由、取证与交付校验中'),list(trace))
-        claims=getattr(session,'claims',[])
-        facts=[]
-        for claim in claims:
-            value=asdict(claim) if is_dataclass(claim) else dict(claim)
-            value=json.loads(json.dumps(value,ensure_ascii=False,default=str))
-            facts.append(dict(id=value['id'],label=value['statement'],value=None,unit='',definition='主服务结构化事实／结论',claim=value))
+        evidence=session_evidence(session,context)
+        facts=evidence['facts']
         committed=[]
         for message in getattr(session,'messages',[]):
             blocks=message.get('content',[])
@@ -90,30 +87,47 @@ def run_main_analysis(context, cancel, progress, turn_factory):
         if not narrative:raise RuntimeError('主服务没有可交付的分析内容')
         status='needs_input' if needs_input else 'limited' if done in {'answer_blocked','delivery_incomplete','max_iterations'} or not facts else 'completed'
         if context.get('snapshotId','').startswith(('dashboard-','ap-')) and status=='completed':status='limited'
-        limitations=[('主服务读取页面本次实时AP响应的冻结结果，未重新取数；' if context.get('snapshotId','').startswith('ap-') else '主服务读取当前看板同一份交付AP快照，非实时数据库；')+'时间、部门以AP原始请求为准。没有同源明细补查接口，不能据此确认根因。',
-            '展示层直接摘取主服务已交付章节，没有额外调用模型生成原因或建议。']
-        records=[]
-        for index,query in enumerate(getattr(session,'query_results',[])):
-            data=getattr(query,'data',None)
-            if isinstance(data,str):
-                try:data=json.loads(data)
-                except ValueError:continue
-            if isinstance(data,dict):data=data.get('data',data)
-            if isinstance(data,dict):data=data.get('rows',[])
-            if not isinstance(data,list):continue
-            for row_index,row in enumerate(data[:24]):
-                if not isinstance(row,(dict,list)):continue
-                encoded=json.dumps(row,ensure_ascii=False,default=str)
-                if len(encoded)>8000:continue
-                row=json.loads(encoded)
-                records.append(dict(id=f'query-{index}:row-{row_index}',customer=f'主服务查询{index+1}记录{row_index+1}',
-                    amount=None,cause='原始查询行，未独立验证因果关系',causeSupport=False,evidence='主服务本轮查询结果',data=row,scope=getattr(query,'scope',{})))
-            if len(records)>=24:break
-        records=records[:24]
-        row_evidence=[dict(id=r['id'],label=r['customer'],value=None,unit='',definition=r['cause'],record=r) for r in records]
-        evidence=dict(sourceMode='service',snapshotId=context['snapshotId'],stage=context['stage'],stageName=NAMES[context['stage']],
-            period='以AP原始请求为准' if context.get('snapshotId','').startswith('ap-') else context['period'],department='以AP原始请求为准' if context.get('snapshotId','').startswith('ap-') else context['department'],facts=facts,records=records,causes=[],evidence=facts+row_evidence,limitations=limitations+['冻结查询行最多24条，超过8000字符的行不进入材料包；样本分布不能外推总体比例'])
-        return dict(summary=split_sections(narrative)['summary'] or narrative,causes=[],recommendations=[],limitations=limitations,
+        limitations=evidence['limitations']
+        from .cards import CONTRACT
+        delivery=getattr(session,'cockpit_card_delivery',None)
+        card_value=delivery[1] if delivery and delivery[0]==len(getattr(session,'query_results',[])) and not needs_input and done not in {'answer_blocked','delivery_incomplete','max_iterations'} else None
+        return dict(summary=(card_value['summary'] if card_value else (split_sections(narrative)['summary'] or narrative)[:600]),
+            causes=card_value['causes'] if card_value else [],recommendations=card_value['recommendations'] if card_value else [],
+            limitations=list(dict.fromkeys(limitations+(card_value['limitations'] if card_value else []))),cardContract=CONTRACT if card_value else None,
             narrative=narrative,sections=split_sections(narrative),engine='main',policy=policy,clarification=getattr(session,'pending_choice_spec',None),
             _status=status,_evidence=evidence,_execution=dict(engine='main',durationSeconds=round(time.monotonic()-started,3),
                 modelRounds=rounds,usage=usage,toolCalls=sum(t['tool']!='MainServiceRoute' for t in trace),route=policy,stopReason=done,claims=len(facts))),trace
+
+def session_evidence(session,context):
+    facts=[]
+    for claim in getattr(session,'claims',[]):
+        value=asdict(claim) if is_dataclass(claim) else dict(claim)
+        value=json.loads(json.dumps(value,ensure_ascii=False,default=str))
+        statement=value['statement'];label=statement;number=None
+        match=re.fullmatch(r'(.+)=(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)',statement)
+        if match:label=re.sub(r'\[[^\]]+\]$','',match[1]);number=float(match[2])
+        facts.append(dict(id=value['id'],label=label,value=number,unit='',definition=statement,claim=value))
+    limitations=[('主服务读取页面本次实时AP响应的冻结结果，未重新取数；' if context.get('snapshotId','').startswith('ap-') else '主服务读取当前看板同一份交付AP快照，非实时数据库；')+'时间、部门以AP原始请求为准。没有同源明细补查接口，不能据此确认根因。',
+        '展示层直接摘取主服务已交付章节，没有额外调用模型生成原因或建议。']
+    records=[]
+    for index,query in enumerate(getattr(session,'query_results',[])):
+        data=getattr(query,'data',None)
+        if isinstance(data,str):
+            try:data=json.loads(data)
+            except ValueError:continue
+        if isinstance(data,dict):data=data.get('data',data)
+        if isinstance(data,dict):data=data.get('rows',[])
+        if not isinstance(data,list):continue
+        for row_index,row in enumerate(data[:24]):
+            if not isinstance(row,(dict,list)):continue
+            encoded=json.dumps(row,ensure_ascii=False,default=str)
+            if len(encoded)>8000:continue
+            row=json.loads(encoded)
+            records.append(dict(id=f'query-{index}:row-{row_index}',customer=f'主服务查询{index+1}记录{row_index+1}',
+                amount=None,cause='原始查询行，未独立验证因果关系',causeSupport=False,evidence='主服务本轮查询结果',data=row,scope=getattr(query,'scope',{})))
+        if len(records)>=24:break
+    records=records[:24]
+    row_evidence=[dict(id=r['id'],label=r['customer'],value=None,unit='',definition=r['cause'],record=r) for r in records]
+    evidence=dict(sourceMode='service',snapshotId=context['snapshotId'],stage=context['stage'],stageName=NAMES[context['stage']],
+        period='以AP原始请求为准' if context.get('snapshotId','').startswith('ap-') else context['period'],department='以AP原始请求为准' if context.get('snapshotId','').startswith('ap-') else context['department'],facts=facts,records=records,causes=[],evidence=facts+row_evidence,limitations=limitations+['冻结查询行最多24条，超过8000字符的行不进入材料包；样本分布不能外推总体比例'])
+    return evidence

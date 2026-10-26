@@ -19,6 +19,7 @@ from .agent import run_analysis
 from .metadata import build_bundle
 from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
+from .publications import publication_scope, view_scope
 
 RESULT_CONTRACT_VERSION="compact-v1"
 
@@ -29,6 +30,8 @@ class Context(BaseModel):
     department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部"
     stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment"]="shipment"
 
+    page:Literal["overview","operations","analysis"]="analysis"
+    defaultView:bool=False
     source:Literal["demo","prototype","service"]="demo"
     engine:Literal["standalone","main"]="standalone"
     repositoryId:str=Field(default="",max_length=128)
@@ -84,7 +87,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if await request.is_disconnected():raise HTTPException(499,'看板请求已取消')
         result=await run_in_threadpool(gateway.query,req.kind,req.payload)
         if await request.is_disconnected():raise HTTPException(499,'看板请求已取消，未保存分析凭据')
-        receipt=await run_in_threadpool(store().save_ap_result,req.id,req.kind,req.payload,result,gateway.config.receipt_ttl)
+        receipt=await run_in_threadpool(store().save_ap_result,req.id,req.kind,req.payload,result,gateway.config.receipt_ttl,gateway.config.identity())
         return dict(data=result,receiptId=receipt['id'],receivedAt=receipt['createdAt'],expiresAt=receipt['expiresAt'])
 
     def adapter(mode):return PrototypeSource() if mode=="prototype" else source
@@ -120,9 +123,10 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if not value:raise HTTPException(404,"分析记录不存在")
         return value
     def context_value(c,s):
-        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=s["snapshotId"],sourceMode=c.source,engine=c.engine,repositoryId=s.get("repositoryId",c.repositoryId),dataBasis=s.get("dataBasis","原型或演示证据，不是当前看板AP快照"))
+        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=s["snapshotId"],sourceMode=c.source,engine=c.engine,repositoryId=s.get("repositoryId",c.repositoryId),dataBasis=s.get("dataBasis","原型或演示证据，不是当前看板AP快照"),dataIdentity=s.get("dataIdentity",""),dataFingerprint=s.get("dataFingerprint",""))
         return value
     def scope(c,s):
+        if c.engine=="main":return publication_scope(context_value(c,s))
         value=context_value(c,s);value["resultContract"]=RESULT_CONTRACT_VERSION
         return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     def worker(st,item,evidence,cancel,execute):
@@ -133,7 +137,10 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             if cancel.is_set():raise InterruptedError()
             status=result.pop('_status','completed');actual_evidence=result.pop('_evidence',evidence);execution=result.pop('_execution',dict(engine=item['context']['engine']))
             execution.setdefault('durationSeconds',round(time.time()-item['createdAt'],3))
-            st.update_analysis(item["id"],status=status,progress='待补充口径' if status=='needs_input' else '证据不足／受限交付' if status=='limited' else '分析完成',result=result,events=events,evidence=actual_evidence,execution=execution)
+            with lock:
+                st.update_analysis(item["id"],status=status,progress='待补充口径' if status=='needs_input' else '证据不足／受限交付' if status=='limited' else '分析完成',result=result,events=events,evidence=actual_evidence,execution=execution)
+                if st.publish(item["id"]) and item["context"].get("defaultView"):
+                    st.bind_view(view_scope(item["context"]),item["context"]["stage"],item["scope"])
         except InterruptedError:
             st.update_analysis(item["id"],status="cancelled",progress="已停止，可重新分析",execution=dict(engine=item["context"]["engine"],durationSeconds=round(time.time()-item["createdAt"],3)))
         except Exception as exc:
@@ -164,13 +171,19 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                  period:Literal["2025-10","2025-09"]="2025-10",department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
         return adapter(source).evidence(snap(Context(period=period,department=department,source=source)),stage)
 
-    @router.post("/analyses")
-    def analyse(req:AnalysisRequest):
+    def check_engine(engine):
         configured=os.environ.get('COCKPIT_ANALYSIS_ENGINE','main')
         comparison=os.environ.get('COCKPIT_COMPARISON_ENABLED','true').lower() in {'true','1'}
         if configured not in {'main','standalone'}:raise HTTPException(503,'无效的全局分析引擎配置')
-        if not comparison and req.engine!=configured:raise HTTPException(422,'已固定全站统一分析引擎，禁止按插槽选择其他路线')
-        snapshot=snap(req);key=scope(req,snapshot);st=store()
+        if not comparison and engine!=configured:raise HTTPException(422,'已固定全站统一分析引擎，禁止按插槽选择其他路线')
+
+    @router.post("/analyses")
+    def analyse(req:AnalysisRequest):
+        return start_analysis(req)
+
+    def start_analysis(req, resolved=None):
+        check_engine(req.engine)
+        snapshot=resolved if resolved is not None else snap(req);key=scope(req,snapshot);st=store()
         with lock:
             previous=st.list_analyses(key)
             for item in previous:
@@ -187,6 +200,29 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 jobs.pop(item["id"],None) if 'item' in locals() else None
                 capacity.release();raise
         return item
+
+    @router.get('/analyses/published')
+    def published_default(id:int=1,engine:Literal['main','standalone']='main',page:Literal['overview','operations','analysis']='analysis'):
+        if id not in (1,2):raise HTTPException(422,'无效身份')
+        check_engine(engine)
+        from .dashboard_source import RELEASE
+        from .cards import CONTRACT
+        identity=get_gateway().config.identity() if data_mode()=='ap' else RELEASE
+        context=dict(id=id,engine=engine,page=page,chartSnapshotId=RELEASE,dataIdentity=identity)
+        return dict(items=store().published_view(view_scope(context)),cardContract=CONTRACT)
+
+    @router.post('/analyses/refresh')
+    def refresh_analysis(req:AnalysisRequest):
+        check_engine(req.engine)
+        if req.engine!='main':raise HTTPException(422,'持久卡片刷新仅适用于main路线')
+        snapshot=snap(req);context=context_value(req,snapshot);key=scope(req,snapshot);st=store()
+        with lock:
+            cached=st.published(key)
+            if req.defaultView and cached:st.bind_view(view_scope(context),req.stage,key)
+            # Re-opening a page with unchanged AP values must not spend another model call.
+            fresh=cached and time.time()-cached['updatedAt']<300 and cached['context'].get('dataFingerprint')==context.get('dataFingerprint')
+            job=None if fresh and not req.refresh else start_analysis(req,snapshot)
+            return dict(cached=cached,analysis=job,scope=key,dataFingerprint=context.get("dataFingerprint"),refreshing=bool(job and job['status'] in {'queued','running'}))
 
     @router.get("/analyses")
     def history(id:int=1,period:str|None=None,department:str|None=None,engine:Literal["main","standalone"]|None=None):

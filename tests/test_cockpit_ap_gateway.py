@@ -143,7 +143,7 @@ def test_real_main_api_uses_same_result_and_leaves_existing_sources_untouched(tm
         assert 'id' in task,task
         done=wait(client,task['id'])
     assert done['status']=='needs_input',done
-    assert done['evidence']['facts'] and '42.5' in done['evidence']['facts'][0]['label']
+    assert done['evidence']['facts'] and done['evidence']['facts'][0]['value']==42.5
     assert done['evidence']['records'][0]['data']=={'订单超期未发金额[M0001]':42.5}
     assert '页面本次实时AP响应' in done['result']['limitations'][0]
     assert len(gateway._opener.calls)==1

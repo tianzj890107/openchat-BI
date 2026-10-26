@@ -58,6 +58,12 @@ class APConfig:
             raise HTTPException(503, '请配置独立的COCKPIT_AP_BASE_URL')
         return config
 
+    def identity(self):
+        import hashlib
+        headers=self.headers()
+        scope={'base':self.base_url,**{k.lower():v for k,v in headers.items() if k.lower() in {'x-app-id','x-ontology-repository-id'}}}
+        return hashlib.sha256(json.dumps(scope,sort_keys=True).encode()).hexdigest()[:20]
+
     def headers(self):
         try:
             if self.headers_file and os.name=='posix' and Path(self.headers_file).stat().st_mode & 0o077:

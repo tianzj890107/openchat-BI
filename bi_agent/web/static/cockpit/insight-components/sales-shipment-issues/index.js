@@ -11,13 +11,15 @@ registerInsightComponent(
   Vue.defineComponent({
     name: 'SalesShipmentIssues',
     props: insightProps,
+    components: {InsightLoading: window.InsightRuntime.InsightLoading},
     emits: ['retry'],
     setup(props, { emit }) {
       return useInsight(props, emit)
     },
     template: `
       <section class="sales-shipment-issues" aria-live="polite">
-        <div class="insight-runtime-state">
+        <insight-loading v-if="!hasResult && status !== 'error'" kind="summary" :progress="progress" />
+        <div v-if="hasResult || status === 'error'" class="insight-runtime-state">
           <div class="insight-runtime-state__row">
             <span>{{ stateText }}</span>
             <button v-if="status === 'error'" type="button" class="insight-runtime-retry" @click="retry">重试</button>

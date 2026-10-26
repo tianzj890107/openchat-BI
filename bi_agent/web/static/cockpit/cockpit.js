@@ -43,6 +43,10 @@
 
   const dashboardDataMode = ref('ap');
   let liveDataClient = null;
+  let publications = null;
+  let defaultView = true;
+  let refreshDebounce = null;
+  let filtersReady = false;
   const insightLoadError = ref('');
   const insightReady = ref(false);
   const insightBundleReady = import(insightBundleUrl).then(() => {
@@ -199,6 +203,7 @@
   }
 
   function ensureAnalysis(stage, refresh = false) {
+    if (analysisEngine === 'main' && publications) return publications.refresh(stage, refresh);
     const state = stateFor(stage);
     if (!refresh && state.status === 'done' && state.item) {
       try { return Promise.resolve(checkedAnalysis(state.item, stage)); } catch (_) { analysisPromises.delete(stage); }
@@ -228,6 +233,15 @@
     }
   }
 
+  async function mainBody(stage,refresh) {
+    let dataScope;
+    if(liveDataClient) dataScope=await liveDataClient.ready();
+    else {for(let n=0;n<20 && !displayedQueries.size;n++) await new Promise(r=>setTimeout(r,100));if(dashboardQueryError)throw new Error(dashboardQueryError);dataScope={chartQueries:[...displayedQueries].sort(),apReceiptIds:[]};}
+    return {id:Number(identityId),engine:'main',source:'service',page:pageFromLocation(),defaultView:defaultView && !clarificationAnswers.has(stage),
+      stage,period:PERIOD,department:DEPARTMENT,filters:{},repositoryId:'',chartSnapshotId:'pdt-release-2109836674373566465',
+      clarifications:clarificationAnswers.get(stage)||{},refresh:Boolean(refresh),...dataScope};
+  }
+
   const CockpitInsight = {
     props: {insight: {type: Object, required: true}, slotProps: {type: Object, default: () => ({})}},
     setup(props) {
@@ -238,8 +252,8 @@
         id: Number(identityId),
         stage: stage.value,
         stageName: STAGE_NAMES[stage.value] || stage.value,
-        period: baselineItem?.context.period || PERIOD,
-        department: baselineItem?.context.department || DEPARTMENT,
+        period: analysisEngine === 'main' ? '' : baselineItem?.context.period || PERIOD,
+        department: analysisEngine === 'main' ? '' : baselineItem?.context.department || DEPARTMENT,
       }));
       const compareLink = computed(()=>{if(!state.value.item)return '';const url=new URL(location.href);url.searchParams.set('engine','standalone');url.searchParams.set('baseline',state.value.item.id);return url.pathname+url.search;});
       const clarification = ref('');
@@ -250,29 +264,9 @@
       return {dashboardDataMode, delivered, state, analysisContext, reload, insightLoadError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
     },
     template: `
-      <section v-if="analysisEngine==='main'" class="main-service-insight" aria-live="polite">
-        <div class="main-service-insight__meta">主服务分析 · {{dashboardDataMode==='ap'?'使用页面本次AP结果':'交付快照回放'}} · 实际时间和部门以原始AP请求为准</div>
-        <div v-if="state.status==='running'">{{state.progress}} <button @click="stop">停止分析</button></div>
-        <div v-else-if="state.status==='error'" role="alert">{{state.error}} <button @click="reload">重试</button></div>
-        <template v-if="state.item?.result">
-          <b>{{state.item.context.stageName}} · {{state.item.status==='needs_input'?'待确认口径':state.item.status==='limited'?'受限交付':'主服务交付'}}</b>
-          <div class="main-service-insight__section">{{state.item.result.narrative}}</div>
-          <div v-if="state.item.status==='needs_input'">
-            <p>{{state.item.result.clarification?.question}}</p>
-            <input v-model="clarification" aria-label="补充分析口径" placeholder="补充口径后重新分析"><button @click="confirmScope">确认并重新分析</button>
-          </div>
-          <a v-if="state.item.evidence?.facts?.length || state.item.evidence?.records?.length" :href="compareLink">用同一冻结证据对照独立路线</a>
-          <details><summary>执行来源与证据（{{state.item.evidence?.facts?.length||0}}）</summary>
-            <div v-for="fact in state.item.evidence?.facts||[]">{{fact.label}}</div>
-            <div>耗时 {{state.item.execution?.durationSeconds}} 秒 · {{state.item.execution?.toolCalls}} 次工具调用</div>
-            <div v-for="event in state.item.events||[]">{{event.tool}}</div>
-            <div v-for="limit in state.item.result.limitations">{{limit}}</div>
-          </details>
-        </template>
-      </section>
-      <div v-if="analysisEngine==='standalone'" class="main-service-insight__meta">独立路线对照 · {{baselineId?'使用主服务冻结证据，只比较材料归纳':'原型演示证据，与交付图表快照尚未对齐'}}</div>
-      <component v-if="analysisEngine==='standalone' && delivered" :is="delivered"
+      <component v-if="delivered" :is="delivered"
                  :analysis="state.item" :status="state.status" :progress="state.progress"
+                 :cached="state.cached" :refreshing="state.refreshing"
                  :error="state.error" :context="analysisContext" :slot-props="slotProps"
                  @retry="reload"></component>
       <div v-else-if="insightLoadError" class="insight-runtime-empty" role="status">{{ insightLoadError }}</div>
@@ -368,6 +362,7 @@
       const loading = ref(true);
       const error = ref('');
       const biAdapters = ref(null);
+      const biRuntime = ref(null);
       const hostUtils = ref(null);
       const pageTitle = computed(() => PAGES[page.value]?.title || PAGES.overview.title);
       const release = computed(() => runtime.value?.dashboard || null);
@@ -428,17 +423,29 @@
             }}
           }
         }
+        if(analysisEngine==='main') {
+          const {createPublicationClient}=await import(`${root}/static/cockpit/publication-client.js?v=${encodeURIComponent(assetVersion)}`);
+          publications=createPublicationClient({apiBase,stateFor,bodyFor:mainBody,queue:withAnalysisSlot});
+          try {
+            const saved=await loadJson(`${apiBase}/analyses/published?id=${identityId}&engine=main&page=${page.value}`);
+            publications.preload(saved.items);
+          } catch (_) { /* A first visit can have no publication; show the delivered loading state. */ }
+        }
         let installed;
         if (dataConfig.mode === 'ap') {
-          const {createAPDataClient} = await import(`${root}/static/cockpit/data-client.js?v=${encodeURIComponent(assetVersion)}`);
-          liveDataClient = createAPDataClient({apiBase, id: identityId, onInvalidate: () => {
-            if (analysisEngine !== 'main') return;
-            Object.entries(insightState).forEach(([stage,state]) => {
-              state.item = null;
-              if (state.status === 'done') { state.status = 'error'; state.error = '看板取数已更新，请重新分析'; analysisPromises.delete(stage); }
-            });
+          const {createAPDataClient,observeRuntimeFilters} = await import(`${root}/static/cockpit/data-client.js?v=${encodeURIComponent(assetVersion)}`);
+          biRuntime.value=observeRuntimeFilters(ProUIBi.createBiRuntime(),()=>{
+            defaultView=false;
+            liveDataClient?.clearScope();
+          },()=>filtersReady);
+          liveDataClient = createAPDataClient({apiBase, id: identityId, onInvalidate: ({replacement}) => {
+            if (analysisEngine !== 'main' || !publications) return;
+            if(replacement) {defaultView=false;publications.invalidate();}
+            clearTimeout(refreshDebounce);
+            refreshDebounce=setTimeout(()=>{for(const stage of publications.stages) ensureAnalysis(stage);},400);
           }});
           installed = liveDataClient;
+          liveDataClient.ready().then(()=>{filtersReady=true;}).catch(()=>{});
           ProUIBi.configureBi({...installed.biAdapters, utils: installed.utils});
         } else if (dataConfig.mode === 'snapshot') {
           installed = installSnapshots(await loadJson(snapshotsUrl));
@@ -466,11 +473,11 @@
           loading.value = false;
         }
       });
-      onBeforeUnmount(() => document.removeEventListener('click', onTabClick, true));
+      onBeforeUnmount(() => {document.removeEventListener('click', onTabClick, true);clearTimeout(refreshDebounce);});
 
       return {
         page, runtime, loading, error, pageTitle, dashboard: release, release, gaps, metadataSummary,
-        pageInsights, dashboardComponent: dashboard, biAdapters, hostUtils,
+        pageInsights, dashboardComponent: dashboard, biAdapters, biRuntime, hostUtils,
         slot_name: insight => `insight-${insight.id}`,
       };
     },

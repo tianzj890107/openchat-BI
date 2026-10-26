@@ -13,6 +13,7 @@ registerInsightComponent(
   Vue.defineComponent({
     name: 'OpportunityCoverageNote',
     props: insightProps,
+    components: {InsightLoading: window.InsightRuntime.InsightLoading},
     emits: ['retry'],
     setup(props, { emit }) {
       const insight = useInsight(props, emit)
@@ -25,7 +26,8 @@ registerInsightComponent(
     },
     template: `
       <section class="opportunity-coverage-note" aria-live="polite">
-        <div class="insight-runtime-state">
+        <insight-loading v-if="!hasResult && status !== 'error'" kind="summary" :progress="progress" />
+        <div v-if="hasResult || status === 'error'" class="insight-runtime-state">
           <div class="insight-runtime-state__row">
             <span>{{ stateText }}</span>
             <button v-if="status === 'error'" type="button" class="insight-runtime-retry" @click="retry">重试</button>

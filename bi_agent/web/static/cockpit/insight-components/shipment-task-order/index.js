@@ -11,6 +11,7 @@ registerInsightComponent(
   Vue.defineComponent({
     name: 'ShipmentTaskOrder',
     props: insightProps,
+    components: {InsightLoading: window.InsightRuntime.InsightLoading},
     emits: ['retry'],
     setup(props, { emit }) {
       const insight = useInsight(props, emit)
@@ -22,7 +23,8 @@ registerInsightComponent(
     },
     template: `
       <section class="shipment-task-order" aria-live="polite">
-        <div class="insight-runtime-state">
+        <insight-loading v-if="!hasResult && status !== 'error'" kind="task" :progress="progress" />
+        <div v-if="hasResult || status === 'error'" class="insight-runtime-state">
           <div class="insight-runtime-state__row">
             <span>{{ stateText }}</span>
             <button v-if="status === 'error'" type="button" class="insight-runtime-retry" @click="retry">重试</button>
@@ -35,6 +37,7 @@ registerInsightComponent(
             <span class="shipment-task-order__sub">责任角色、目标和验收来自当前分析</span>
           </div>
           <div class="shipment-task-order__summary" :title="summary">{{ summary }}</div>
+          <div v-if="!openRecommendations.length" class="insight-runtime-empty">尚无经过证据校验的措施，需先核实原因与责任口径。</div>
           <article v-for="(item, index) in openRecommendations" :key="item.id" class="shipment-task-order__task">
             <div class="shipment-task-order__task-head">
               <span class="shipment-task-order__no">{{ index + 1 }}</span>

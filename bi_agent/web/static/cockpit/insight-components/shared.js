@@ -1,15 +1,28 @@
 const { computed, ref } = window.Vue
 
+export const InsightLoading = Vue.defineComponent({
+  name: 'InsightLoading',
+  props: {kind: {type:String,default:'summary'},progress: {type:String,default:''}},
+  template: `<div class="insight-loading" :class="'insight-loading--'+kind" role="status" aria-busy="true" aria-label="AI正在分析当前筛选范围">
+    <div class="insight-loading__head"><span class="insight-loading__spark">✦</span><strong>AI 正在分析</strong><span class="insight-loading__dots">···</span></div>
+    <div class="insight-loading__line"></div><div class="insight-loading__line insight-loading__line--short"></div>
+    <template v-if="kind==='risk' || kind==='task'"><div class="insight-loading__panel"><div class="insight-loading__line"></div><div class="insight-loading__line insight-loading__line--short"></div></div><div class="insight-loading__line"></div></template>
+  </div>`,
+})
+
 export const insightProps = {
   analysis: { type: Object, default: null },
   status: { type: String, default: 'idle' },
   progress: { type: String, default: '' },
+  refreshing: { type: Boolean, default: false },
+  cached: { type: Boolean, default: false },
   error: { type: String, default: '' },
   context: { type: Object, default: () => ({}) },
   slotProps: { type: Object, default: () => ({}) },
 }
 
 function number(value) {
+  if (value === null || value === undefined || value === '') return null
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
 }
@@ -32,8 +45,8 @@ export function useInsight(props, emit) {
   const summary = computed(() => result.value?.summary || '')
   const hasResult = computed(() => Boolean(result.value))
   const stageName = computed(() => props.context?.stageName || props.analysis?.context?.stageName || '')
-  const period = computed(() => props.context?.period || props.analysis?.context?.period || '')
-  const department = computed(() => props.context?.department || props.analysis?.context?.department || '')
+  const period = computed(() => props.analysis?.context?.engine==='main' ? '' : props.context?.period || props.analysis?.context?.period || '')
+  const department = computed(() => props.analysis?.context?.engine==='main' ? '当前筛选范围' : props.context?.department || props.analysis?.context?.department || '')
   const contextLine = computed(() => [stageName.value, period.value, department.value].filter(Boolean).join(' · '))
   const evidenceCount = computed(() => evidence.value.length)
   const updatedAt = computed(() => {
@@ -45,7 +58,7 @@ export function useInsight(props, emit) {
     if (props.status === 'running') return props.progress || '正在读取真实证据并调用模型分析'
     if (props.status === 'error') return props.error || '真实分析失败'
     if (!hasResult.value) return '等待真实分析结果'
-    return `${contextLine.value || '当前环节'} · ${evidenceCount.value} 条证据${updatedAt.value ? ` · ${updatedAt.value}` : ''}`
+    return `${props.cached || props.refreshing ? '上次分析 · ' : ''}${contextLine.value || '当前环节'} · ${evidenceCount.value} 条证据${updatedAt.value ? ` · ${updatedAt.value}` : ''}`
   })
 
   function fact(label) {
@@ -58,10 +71,11 @@ export function useInsight(props, emit) {
   }
 
   function sumFacts(selector, unit) {
-    return facts.value
+    const values = facts.value
       .filter(item => !unit || item.unit === unit)
       .filter(item => !selector || selector(item))
-      .reduce((total, item) => total + (number(item.value) || 0), 0)
+      .map(item => number(item.value)).filter(value => value !== null)
+    return values.length ? Number(values.reduce((a,b) => a+b,0).toFixed(10)) : '—'
   }
 
   function factSum(fragment, unit) {
@@ -170,6 +184,7 @@ export function createStageRiskComponent(options = {}) {
   return Vue.defineComponent({
     name: options.name || 'StageRiskAnalysis',
     props: insightProps,
+    components: {InsightLoading},
     emits: ['retry'],
     setup(props, { emit }) {
       const insight = useInsight(props, emit)
@@ -178,7 +193,8 @@ export function createStageRiskComponent(options = {}) {
     },
     template: `
       <section class="stage-risk-analysis" aria-live="polite">
-        <div v-if="!hasResult || status === 'running' || status === 'error'" class="insight-runtime-state">
+        <insight-loading v-if="!hasResult && status !== 'error'" kind="risk" :progress="progress" />
+        <div v-if="hasResult || status === 'error'" class="insight-runtime-state">
           <div class="insight-runtime-state__row">
             <span>{{ stateText }}</span>
             <button v-if="status === 'error'" type="button" class="insight-runtime-retry" @click="retry">重试</button>
@@ -214,6 +230,7 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【原因】</span>
               模型基于当前证据识别 {{ causes.length }} 项原因
             </div>
+            <div v-if="!causes.length" class="insight-runtime-empty">当前证据不足以确认原因，需补充同源明细。</div>
             <div v-for="(cause, index) in causes" :key="cause.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index + 1 }}</span>
               <span class="stage-risk-analysis__cause-text">
@@ -231,6 +248,7 @@ export function createStageRiskComponent(options = {}) {
               </div>
               <span class="stage-risk-analysis__aside">{{ openRecommendations.length }} 项</span>
             </div>
+            <div v-if="!openRecommendations.length" class="insight-runtime-empty">尚无可交付措施，待原因与责任口径核实。</div>
             <div v-for="(item, index) in openRecommendations" :key="item.id" class="stage-risk-analysis__action">
               <span class="stage-risk-analysis__index">{{ index + 1 }}</span>
               <span class="stage-risk-analysis__action-text">{{ item.action }}</span>
@@ -240,7 +258,8 @@ export function createStageRiskComponent(options = {}) {
             </div>
             <details class="stage-risk-analysis__foot">
               <summary>查看验收、证据范围与 {{ limitations.length }} 项限制</summary>
-              <div v-for="(item, index) in openRecommendations" :key="'accept-' + item.id" class="stage-risk-analysis__acceptance">
+              <div v-if="!openRecommendations.length" class="insight-runtime-empty">尚无可交付措施，待原因与责任口径核实。</div>
+            <div v-for="(item, index) in openRecommendations" :key="'accept-' + item.id" class="stage-risk-analysis__acceptance">
                 建议 {{ index + 1 }} 验收：{{ item.acceptance }}<template v-if="hasRecommendationDetail(item)">；补充：{{ recommendationDetail(item) }}</template>
               </div>
               <div class="stage-risk-analysis__evidence">证据范围：{{ contextLine }}；{{ records.length }} 条记录、{{ evidenceCount }} 条证据。</div>
