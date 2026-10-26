@@ -424,24 +424,35 @@ git diff --name-only
   nginx 配置：`/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/conf/default.conf`。
 - 容器：`eimosp-cockpit-8876`，镜像 `nginx:latest`，端口映射 `8876:80`，
   静态站点和配置均为只读挂载，`--restart unless-stopped`。
-- 当前发布（2026-10-26 08:57）：代码提交
-  `b5c797e7069a3f0d9da4ec9c2d38ab1994c79b95`（`feature/cockpit-v3-poc`），交付包
+- 当前发布（2026-10-26 10:07）：代码提交
+  `f783102f701253d32e031178845eaea7a5c0e336`（`feature/cockpit-v3-poc`），交付包
   `iba-demo` `feature/demo_1021@5791b362cac875ca041884079c3d0d45a58aeb89`。8876 静态站从该提交
-  构建，HTML、CSS和插槽模块统一使用 `?v=b5c797e`；发布包61个文件，manifest 全部通过。
-  页面画布切换为交付包新增的白色主题（`data-dashboard-theme="white"`），ProUI JS 为
-  `2eb9912a`，CSS 仍为 `b1ee836d`，Vue 复用 3.5.25。保留旧站备份后覆盖静态文件，没有重启8765。
-- 8877同步更新：新代码目录 `api-b5c797e`，PID `1495655`，健康检查返回本次提交；
+  构建，HTML、CSS和插槽模块统一使用 `?v=f783102`；发布包62个文件，manifest 全部通过。
+  页面保持交付包的白色主题（`data-dashboard-theme="white"`），ProUI JS 为 `2eb9912a`，
+  CSS 仍为 `b1ee836d`，Vue 复用 3.5.25；新增 `data-client.js`，用于启用实时 AP 时按页面查询
+  保存结果凭据。保留旧站备份后覆盖静态文件，没有重启8765。
+- 8877同步更新：新代码目录 `api-f783102`，PID `1771143`，健康检查返回本次提交；
   `api-data` 软链继续指向 `api-017d65f/api-data`，切换前确认没有进行中任务，21条已完成和
-  26条失败的历史分析记录保留，并生成 SQLite 一致备份。模型适配器、部署环境配置和启动方式沿用原
-  旁路服务；原 `api-74d642d` 代码和启动环境保留以便回滚；环境备份权限600，严禁输出或提交。
-- 回滚备份：`backups/deploy-20261026-085731-pre-b5c797e/` 包含旧站、SQLite备份、旧进程信息与
-  环境备份；静态暂存目录 `site-next-b5c797e-20261026-0900`。nginx配置、8765进程及主服务数据未修改。
-- 验证（2026-10-26 08:57）：驾驶舱相关51项测试通过；线上三个路由、`release.json`、
-  `cockpit.css`、`cockpit.js`、ProUI JS、`runtime.json` 和 `/api/cockpit/bootstrap?id=1|2`
-  均返回200；8877 `/healthz` 返回 `commit=b5c797e7069a3f0d9da4ec9c2d38ab1994c79b95`。
+  26条失败的历史分析记录保留，并生成 SQLite 一致备份。服务器没有独立的
+  `COCKPIT_AP_HEADERS_FILE`，也没有接入主服务Cockpit入口，因此本次显式配置
+  `COCKPIT_DATA_MODE=snapshot`、`COCKPIT_ANALYSIS_ENGINE=standalone`、
+  `COCKPIT_COMPARISON_ENABLED=false`：看板继续使用交付快照，AI插槽使用真实模型的独立路线，
+  不启用实时AP、不伪造AP凭据、不回退到默认本体或Doris。原 `api-b5c797e` 代码、数据和启动环境
+  保留以便回滚；环境备份权限600，严禁输出或提交。
+- 回滚备份：`backups/deploy-20261026-100720-pre-f783102/` 包含旧站、SQLite备份、旧进程信息与
+  环境备份；静态暂存目录 `site-next-f783102-20261026-1007`。nginx配置、8765进程及主服务数据未修改。
+- 验证（2026-10-26 10:07）：驾驶舱相关64项Python测试和5项前端数据客户端测试通过；线上三个路由、
+  `release.json`、`cockpit.css`、`cockpit.js`、`data-client.js`、`runtime.json`、
+  `/api/cockpit/data/config`、`/api/cockpit/engines` 和 `/api/cockpit/bootstrap?id=1|2`
+  均返回200；8877 `/healthz` 返回 `commit=f783102f701253d32e031178845eaea7a5c0e336`，
+  `/api/cockpit/data/config` 明确返回 `mode=snapshot`，`/api/cockpit/engines` 返回 `default=standalone`。
   远程浏览器确认三页 `data-dashboard-theme=white`、背景为 `rgb(255,255,255)`、各只有一个
-  `ProBiDashboard` 且无横向溢出；三个页面由交付元数据渲染，未捕获查询仍在原卡片显示组件的
-  “未找到该 AP 查询的发布快照”，宿主不补造数据。
+  `ProBiDashboard` 且无横向溢出；验收时拦截了自动分析请求，插槽因此显示预期的网络失败，未产生
+  额外模型费用。经营看板的4处“未找到该AP查询的发布快照”仍是既有快照缺口，宿主不补造数据。
+- 上一发布（2026-10-26 08:57，历史）：代码提交
+  `b5c797e7069a3f0d9da4ec9c2d38ab1994c79b95`。8876 使用白色主题和 `?v=b5c797e`，
+  发布包61个文件；8877 使用 `api-b5c797e`、PID `1495655`。回滚备份为
+  `backups/deploy-20261026-085731-pre-b5c797e/`。未配置独立AP请求头，AP实时取数未启用。
 - 上一发布（2026-10-22 17:38，历史）：代码提交
   `74d642db92bd65caf7f4c2ceaef07a66da60ffb0`（`feature/cockpit-v3-poc`）。8876 静态站从该提交
   构建，HTML、CSS和插槽模块统一使用 `?v=74d642d`；发布包62个文件（含manifest），manifest列出的
@@ -473,7 +484,7 @@ git diff --name-only
 - 反向代理：nginx 在 `/api/` 404 规则之前增加 `location /api/cockpit/`，转发到
   `http://172.16.10.34:8877`，读取超时 300 秒并禁用响应缓存。
 - 旁路 API：独立目录
-  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-b5c797e`，入口为
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/api-f783102`，入口为
   `cockpit_api.py`，监听 `172.16.10.34:8877`；PID 写入 `app.pid`，日志为 `api.log`，
   运行数据独立保存到 `api-data/`，不接触历史会话和主服务 `dataset/`。当前进程由
   `setsid nohup` 启动，没有 systemd 自动拉起；数据软链继续指向 `api-017d65f/api-data`。
@@ -727,7 +738,9 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   若选择main，后续部署将静态站API代理指向主服务，不再保留8877分析进程；代理切换和停服需要新的明确授权。
 - 原8877历史库原地保留，不自动复制、迁移或清空；主服务任务存储位于其工作目录的
   `dataset/cockpit/history.sqlite3`。禁止用旧目录覆盖主服务dataset。
-- 2026-10-26实现更新（尚未部署）：默认 `COCKPIT_DATA_MODE=ap`，主服务只读代理单条指标、批量指标和头盔图。
+- 2026-10-26实现更新：默认 `COCKPIT_DATA_MODE=ap`，主服务只读代理单条指标、批量指标和头盔图。
+  当前 8877 因缺少独立 AP 请求头且未接入主服务 Cockpit 入口，部署时显式使用 `snapshot` 模式和
+  `standalone` 分析引擎；实时 AP 能力尚未启用。
   独立配置 `COCKPIT_AP_BASE_URL=http://pdt-dev.eimos.com/api/gateway2` 与仓库外权限600的
   `COCKPIT_AP_HEADERS_FILE`（JSON请求头，按AP实际要求配置应用、本体库及认证，必要时包括Cookie）。
   不读取或修改主服务默认本体／Doris连接，不复用其认证；不跟随认证重定向。不得将本地临时登录态作为正式部署凭据。
