@@ -190,6 +190,9 @@ ONTOLOGY_BACKEND=local
 
 本地 SQLite 模式可显式传入 `--db dataset/databases/HyperFusion.db`；生产默认 `--db doris`，即通过 Doris 查询。
 
+客户无法部署远程本体平台时，完整的本地 Excel 本体 + SQLite 回退步骤、启动参数、验收项和
+能力边界见 [本地 Excel 本体回退部署说明](docs/local-excel-ontology-fallback.md)。
+
 ## 3.1 ChatBI 并发治理（第一阶段）
 
 第一阶段并发保护全部在进程内生效，**当前只支持单 Uvicorn worker**，不要用

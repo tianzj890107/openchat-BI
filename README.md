@@ -22,6 +22,7 @@ eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Age
 - [版本历史](docs/versions/README.md)
 - [版本管理规范](docs/versions/versioning-policy.md)
 - [部署说明](DEPLOYMENT.md)
+- [本地 Excel 本体回退部署说明](docs/local-excel-ontology-fallback.md)
 - [GitLab 统一推送工作流](docs/gitlab-push-workflow.md)
 - [Open Claude Runtime 说明](open_claude/README.md)
 
@@ -260,6 +261,7 @@ Node 子进程执行。
 ## 相关文档
 
 - [部署与运行](DEPLOYMENT.md)
+- [本地 Excel 本体回退部署说明](docs/local-excel-ontology-fallback.md)
 - [系统接口调用与代码统计](API/系统接口调用与代码统计.md)
 - [智能分析 Agent 前端 API 接口文档](API/智能分析Agent前端API.md)
 - [Skills 说明](docs/skills/README.md)
