@@ -541,6 +541,46 @@ git diff --name-only
 - 本地预览：`/tmp/cockpit-local-preview.py` 使用当前工作区代码启动
   `127.0.0.1:8876`，已更新到新交付包资源和 39／3／4 快照；该进程只监听回环地址。
 
+#### 2026-10-27 发布：master@032bad3（看板 v0.1.5 加载优化）
+
+- 范围：只更新 34 上的 Cockpit 静态站与 8765 主服务，不改 8876 入口拓扑、不复制或清空
+  `dataset/` 用户历史、不动 8878 等其他容器。
+- 代码与提交：`032bad38f99c47b3b4e121ca1708a361a325ece9`（`master`，含
+  `feature/cockpit-v3-poc` 合并与 `ontology-v0.1.5` 加载优化），静态站
+  `assetVersion=31f5d6cf3c49bbdf2574`。
+- 后端 release：`/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/cockpit-main-032bad3-20261027-1825`，
+  PID 记录在 `APP.pid`（本次切换后为 `1931070`），监听 `8765`；`.env`、`.venv`、`dataset`
+  均软链到 `mcp-11dc92c-20261020`，历史分析库继续共用
+  `dataset/cockpit/history.sqlite3`（47 条分析记录）。
+- 切换方式：先在同 release 的 `18765` 预检 `/healthz`、`/api/cockpit/data/config`、
+  `/api/cockpit/startup` 和 `page/lookup`，再 SIGTERM 旧 `ca3d29b` 进程（原 PID `2250486`）
+  并在 `8765` 启动新进程；旧 release 目录完整保留可回滚。
+- 发布过程修正：首次解包时 `dataset/` 是仓库内真实目录，`ln -s` 被建到了
+  `dataset/dataset`。已于 21:53 保留该次新产生的数据到 `dataset.local-20261027-2155`，
+  再把 `dataset` 指回共享目录并重启；没有删除或覆盖任何历史会话、上传或分析记录。
+- 静态站：新增内容寻址资源目录
+  `/static/cockpit/releases/31f5d6cf3c49bbdf2574/`（127 个文件），并替换
+  `site/index.html`、`site/release.json`、`site/manifest.sha256`；旧扁平资源仍在原地。
+  发布前入口备份：`backups/site-20261027-182452-pre-032bad3/`；staging：
+  `site-next-31f5d6c-20261027-182452/`。
+- 加载优化：nginx 对 `/static/cockpit/releases/` 开启 `gzip_static` 和一年
+  `immutable` 缓存；实测 `pro-bi-ui.min.js` 从 6.33 MB 降到 2.24 MB 传输，
+  `runtime.json` 从 425 KB 降到 25 KB。配置备份
+  `conf/default.conf.bak-20261027-215058`，`nginx -t` 通过后热加载。
+- 验证：`/cockpit/overview|operations|analysis`、`/release.json`、新资源、
+  Vue 生产包、`/api/cockpit/startup`、`page/lookup` 均 200；远程浏览器三页均渲染
+  `ProBiDashboard`（图表 3／9／54），无 JS 异常；经营看板整页快照已发布并显示
+  “完整看板 · 数据时间”；AI 插槽继续走 `8765` 真实模型分析。共享分析库的 47 条历史
+  记录保留，但发布视图和整页快照会按新页面范围重新生成，不跨版本复用旧绑定。
+- 已知上游缺口（不启用本地兜底）：AP 返回的活动/头盔配置引用
+  `D020/M0023`、`D021/M0031`，对这两组字段调用 AP 数据查询接口返回 HTTP 500
+  `系统繁忙，请稍后再试`；同一凭据下 `M0001`、`M0001+D001/D002` 正常，说明代理、
+  认证与网络可用。页面按设计显示“AP请求失败；未切换到本体、数据库或旧快照”，
+  不使用快照或补 0 冒充结果；需 AP 侧修复该发布配置或字段映射后再复验。
+- 回滚：停当前 PID 后用旧 release `cockpit-cards-ca3d29b-20261026-120629/start-main.py`
+  重启；静态站恢复上述备份的 `index.html`／`release.json`／`manifest.sha256` 即可，
+  旧资源和旧分析数据都未删除。整页快照是可重建缓存，不属于用户历史。
+
 上一运行状态（2026-09-03 部署 v0.1.2，现保留为回滚版本）：
 
 - 运行目录 `~/eimosp-ontology-agentic-analytics-releases/v0.1.2`，
