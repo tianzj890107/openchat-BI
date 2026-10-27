@@ -4,7 +4,7 @@
 
 - 版本：`ontology-v0.1.4`
 - 日期：`2026-10-23`（版本收口）；`2026-10-27`（tag 与 Release 补发）
-- 状态：正式版 / 当前版本（tag 与 GitLab Release 已创建）
+- 状态：正式版（历史版本；tag 与 GitLab Release 已创建）
 - 版本位次：**PATCH**（`ontology-v0.1.3` → `ontology-v0.1.4`），版本号由用户在当前任务中明确指定
 - 版本关系：在 `ontology-v0.1.3` 的远程 MCP 与通用 Agent 接入能力之上，新增 V3 经营驾驶舱 POC，
   以 `iba-demo feature/demo_1021` 交付元数据和 ProUI 组件为唯一看板来源。

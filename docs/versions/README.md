@@ -4,14 +4,15 @@
 [changelog](../../changelog/) 下的当前周文件（如 `changelog_9_7_11.md`），
 不再创建日报。
 
-- 当前版本：`ontology-v0.1.4`
-- 当前 tag 与 Release：`ontology-v0.1.4`（指向 `3287c91`，2026-10-27 补发）、
+- 当前版本：`ontology-v0.1.5`
+- 当前 tag 与 Release：`ontology-v0.1.5`（v0.1.5 收口提交，2026-10-27）、
+  `ontology-v0.1.4`（指向 `3287c91`，2026-10-27 补发）、
   `ontology-v0.1.3`（指向定版 commit `a805a66`）、`ontology-v0.1.2`（指向定版 commit `3c4de1e`）、`ontology-v0.1.1`
   （指向定版 commit `c82221f`，2026-10-15 事后补建）、`ontology-v0.1.0`（指向定版 commit
-  `74fca80`）与 `ontology-v0.0.1`–`ontology-v0.0.10`（共 15 个，均已创建 release，见根
+  `74fca80`）与 `ontology-v0.0.1`–`ontology-v0.0.10`（共 16 个，均已创建 release，见根
   [README 发布清单](../../README.md)）
-- `ontology-v0.1.4` 已于 2026-10-27 按用户授权补发 tag 与 GitLab Release，tag 指向加载优化前
-  的定版 commit `3287c91`；本次补发不触发部署。
+- `ontology-v0.1.5` 已于 2026-10-27 创建 tag 与 GitLab Release，承载驾驶舱整页缓存、首屏
+  资源与 AP 拆批优化；`ontology-v0.1.4` 指向加载优化前定版 commit `3287c91`。
 - 版本规则：[语义化版本与正式发布规范](./versioning-policy.md)
 - 分支模型与 PR 合并流程：[Git 分支与合并工作流规范](../git-branch-workflow.md)
 - 版本号由变更性质决定，不按日期机械递增；commit、push、部署不自动触发版本升级。
@@ -23,7 +24,8 @@
 
 | 版本 | 日期 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| [./ontology-v0.1.4.md](./ontology-v0.1.4.md) | 2026-10-23（2026-10-27 补发 tag/Release） | 正式版 / 当前版本 | V3 经营驾驶舱 POC：三个独立看板路由、交付 ProUI 元数据、三节点穿透式分析、真实模型分析插槽与 mock 对齐的风险卡片，`ontology-v0.1.3` → `ontology-v0.1.4` PATCH 收口 |
+| [./ontology-v0.1.5.md](./ontology-v0.1.5.md) | 2026-10-27 | 正式版 / 当前版本 | Cockpit 加载性能 PATCH：整页缓存与后台更新、AP 短时复用与 individual 拆批、生产版 Vue、gzip/内容哈希静态资源、AI 插槽按页加载与初始化并行化 |
+| [./ontology-v0.1.4.md](./ontology-v0.1.4.md) | 2026-10-23（2026-10-27 补发 tag/Release） | 正式版（历史版本） | V3 经营驾驶舱 POC：三个独立看板路由、交付 ProUI 元数据、三节点穿透式分析、真实模型分析插槽与 mock 对齐的风险卡片，`ontology-v0.1.3` → `ontology-v0.1.4` PATCH 收口 |
 | [./ontology-v0.1.3.md](./ontology-v0.1.3.md) | 2026-10-20 | 正式版（历史版本） | 主服务内置远程 MCP、Fuxi 零本地凭据接入、16 个受控分析工具、`CanvasGenerate` Artifact URL 交付、demo2 代理与语义检索快路径修复，`ontology-v0.1.2` → `ontology-v0.1.3` PATCH 收口 |
 | [./ontology-v0.1.2.md](./ontology-v0.1.2.md) | 2026-10-15 | 正式版（历史版本） | 分析逻辑剥离包 `ontology-analytics-skill` 收尾（真实工具运行时、CanvasGenerate 整页交付）、多步分析中文过程播报、取数证据与双环境对比归档、`20260727` 归档改为临时分支 → `master`，`ontology-v0.1.0` → `ontology-v0.1.2` PATCH 收口 |
 | [./ontology-v0.1.1.md](./ontology-v0.1.1.md) | 2026-10-08 | 正式版（历史版本） | 分析逻辑剥离包 `ontology-analytics-skill`：路由 → L1–L5 SOP → 五道闸门、真实工具运行时 `tools/`（17 个真实工具、凭据外置），`ontology-v0.1.0` → `ontology-v0.1.1` PATCH（2026-10-15 补建 tag 与 Release） |
