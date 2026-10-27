@@ -63,7 +63,7 @@ CANVAS_SPEC_CLOSE = "</CANVAS_SPEC>"
 ECHARTS_ASSET = HERE / "assets" / "echarts.min.js"
 ECHARTS_CDN = "https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"
 
-BLOCK_KINDS = ("text", "chart", "chart_multi", "table")
+BLOCK_KINDS = ("text", "chart", "chart_multi", "table", "actions")
 MAX_BLOCKS = 20
 
 
@@ -77,6 +77,7 @@ CANVAS_GENERATE_SCHEMA = {
         "口径说明按顺序放进同一个页面。`blocks[].params` 与 "
         "`ChartGenerate` / `ChartGenerateMultiDim` / `TableGenerate` 完全一致，"
         "不要在正文里手写 Markdown 表格，也不要把编码当展示名。"
+        "行动建议使用 kind=actions，每条带稳定 id，供 Fuxi 宿主在用户点击后创建任务令。"
     ),
     "input_schema": {
         "type": "object",
@@ -145,7 +146,8 @@ CANVAS_GENERATE_SCHEMA = {
                         "params": {
                             "type": "object",
                             "description": (
-                                "kind=chart/chart_multi/table 时，与对应工具完全相同的参数。"
+                                "kind=chart/chart_multi/table 时，与对应工具完全相同的参数；"
+                                "kind=actions 时传入 items 数组。"
                             ),
                         },
                     },
@@ -323,9 +325,138 @@ def _validate_canvas(params: dict) -> str | None:
             return f"blocks[{index}].kind must be one of {list(BLOCK_KINDS)}"
         if kind == "text" and not (block.get("markdown") or block.get("heading")):
             return f"blocks[{index}] (text) needs markdown or heading"
-        if kind in ("chart", "chart_multi", "table") and not isinstance(block.get("params"), dict):
+        if kind in ("chart", "chart_multi", "table", "actions") and not isinstance(block.get("params"), dict):
             return f"blocks[{index}] ({kind}) needs params"
+        if kind == "actions":
+            try:
+                _normalize_actions(block["params"])
+            except ValueError as exc:
+                return f"blocks[{index}] (actions): {exc}"
     return None
+
+
+def _normalize_actions(params: dict) -> list[dict[str, Any]]:
+    items = params.get("items") if isinstance(params, dict) else None
+    if not isinstance(items, list) or not items:
+        raise ValueError("items must be a non-empty list")
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"items[{index}] must be an object")
+        title = str(item.get("title") or "").strip()
+        content = str(item.get("content") or item.get("markdown") or "").strip()
+        if not title:
+            raise ValueError(f"items[{index}].title is required")
+        if not content:
+            raise ValueError(f"items[{index}].content is required")
+        action_id = str(
+            item.get("id") or item.get("action_id") or f"action-{index + 1}"
+        ).strip()
+        if not action_id or action_id in seen:
+            raise ValueError(f"items[{index}].id must be unique and non-empty")
+        seen.add(action_id)
+        normalized.append({
+            "id": action_id,
+            "title": title,
+            "content": content,
+            "evidence": str(item.get("evidence") or "").strip(),
+            "severity": str(item.get("severity") or "").strip().upper(),
+            "due_at": str(item.get("due_at") or "").strip(),
+            "owner_ref": str(item.get("owner_ref") or "").strip(),
+            "owner_name": str(item.get("owner_name") or "").strip(),
+        })
+    return normalized
+
+
+def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
+    items = _normalize_actions(params)
+    cards: list[str] = []
+    for item in items:
+        evidence = (
+            f'<p class="action-evidence">依据：{_inline_markdown(item["evidence"])}</p>'
+            if item["evidence"] else ""
+        )
+        chips = []
+        if item["severity"]:
+            chips.append(f'<span class="action-chip severity">{escape(item["severity"])}</span>')
+        if item["due_at"]:
+            chips.append(f'<span class="action-chip">截止 {escape(item["due_at"])}</span>')
+        if item["owner_name"] or item["owner_ref"]:
+            chips.append(
+                f'<span class="action-chip">责任人 {escape(item["owner_name"] or item["owner_ref"])}</span>'
+            )
+        card = (
+            '<article class="action-item">'
+            f'<div class="action-head"><h4>{_inline_markdown(item["title"])}</h4>'
+            f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}">'
+            '发送任务令</button></div>'
+            f'<div class="action-content">{_render_markdown(item["content"])}</div>'
+            f'{evidence}'
+            f'<div class="action-meta">{"".join(chips)}</div>'
+            '</article>'
+        )
+        cards.append(card)
+    return f'<div class="action-list">{"".join(cards)}</div>', items
+
+
+def _actions_runtime(actions: list[dict[str, Any]]) -> str:
+    if not actions:
+        return ""
+    payload = {item["id"]: item for item in actions}
+    return f"""
+<script>
+  const FUXI_ACTIONS = {_json_for_script(payload)};
+  function setActionState(button, text, failed) {{
+    const item = button.closest('.action-item');
+    let note = item && item.querySelector(':scope > .action-feedback');
+    if (!note) {{
+      note = document.createElement('p');
+      note.className = 'action-feedback';
+      if (item) item.appendChild(note);
+    }}
+    if (note) {{ note.textContent = text; note.style.color = failed ? '#B42318' : '#087443'; }}
+  }}
+  document.addEventListener('click', (event) => {{
+    const button = event.target.closest('[data-fuxi-task-order]');
+    if (!button || button.disabled) return;
+    const action = FUXI_ACTIONS[button.getAttribute('data-fuxi-task-order')];
+    if (!action) return;
+    const callback = window.fuxiCreateTaskOrder
+      || (window.Fuxi && window.Fuxi.createTaskOrder);
+    if (typeof callback === 'function') {{
+      button.disabled = true;
+      setActionState(button, '正在提交任务令…', false);
+      try {{
+        const result = callback(action);
+        if (result && typeof result.then === 'function') {{
+          result.then((response) => {{
+            const ok = !response || response.ok !== false;
+            setActionState(button, ok ? '任务令已提交到 Fuxi' : '任务令提交失败，可重试', !ok);
+            if (!ok) button.disabled = false;
+          }}).catch((error) => {{
+            setActionState(button, '任务令提交失败：' + String((error && error.message) || error), true);
+            button.disabled = false;
+          }});
+        }} else {{
+          setActionState(button, '任务令已提交到 Fuxi', false);
+        }}
+      }} catch (error) {{
+        setActionState(button, '任务令提交失败：' + String(error), true);
+        button.disabled = false;
+      }}
+      return;
+    }}
+    if (window.parent && window.parent !== window) {{
+      const targetOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) || '*';
+      window.parent.postMessage({{ type: 'fuxi:task-order-create', action }}, targetOrigin);
+      button.disabled = true;
+      setActionState(button, '已提交到 Fuxi 会话，等待创建任务令', false);
+      return;
+    }}
+    setActionState(button, '请在 Fuxi 客户端中打开本页后发送任务令', true);
+  }});
+</script>"""
 
 
 PAGE_STYLE = """
@@ -358,6 +489,24 @@ PAGE_STYLE = """
   td.num { font-variant-numeric: tabular-nums; }
   tr.highlight td { background: #FFF7E6; }
   code { background: #F3F4F6; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+  .action-list { display: grid; gap: 10px; }
+  .action-item { border: 1px solid #E4E7EC; border-radius: 10px; padding: 12px 14px;
+    background: #FCFCFD; }
+  .action-head { display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; }
+  .action-head h4 { margin: 0; font-size: 14px; line-height: 1.5; }
+  .action-content { margin-top: 6px; color: #344054; font-size: 13px; }
+  .action-content p { margin: 4px 0; }
+  .action-evidence { margin: 6px 0 0; color: #667085; font-size: 12px; }
+  .action-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .action-chip { border-radius: 999px; padding: 2px 8px; background: #F2F4F7;
+    color: #475467; font-size: 11px; }
+  .action-chip.severity { background: #FEF3F2; color: #B42318; }
+  .action-send { flex: none; border: 1px solid #1570EF; border-radius: 8px;
+    background: #1570EF; color: #FFFFFF; padding: 6px 11px; font-size: 12px;
+    font-family: inherit; cursor: pointer; }
+  .action-send:disabled { background: #98A2B3; border-color: #98A2B3; cursor: default; }
+  .action-feedback { margin: 8px 0 0; font-size: 12px; }
   .page-foot { margin-top: 8px; color: #9AA0A6; font-size: 12px; }
   @media (prefers-color-scheme: dark) {
     html, body { background: #14161A; color: #E8EAED; }
@@ -366,6 +515,9 @@ PAGE_STYLE = """
     th { background: #20242B; color: #C6CBD1; }
     th, td { border-bottom-color: #2A2E35; }
     code { background: #242830; }
+    .action-item { background: #171A1F; border-color: #2A2E35; }
+    .action-content { color: #D0D5DD; }
+    .action-chip { background: #242830; color: #C6CBD1; }
   }
 """
 
@@ -376,6 +528,7 @@ def _build_page(
     charts: list[tuple[str, dict]],
     multis: list[dict],
     echarts_script: str,
+    actions_runtime: str = "",
 ) -> str:
     title = escape(str(params.get("title") or "分析交付"), quote=False)
     subtitle = str(params.get("subtitle") or "").strip()
@@ -443,7 +596,7 @@ def _build_page(
 {conclusion_html}
 {chr(10).join(body_blocks)}
 {foot}
-</main>{runtime}
+</main>{runtime}{actions_runtime}
 </body>
 </html>"""
 
@@ -461,7 +614,8 @@ def _make_canvas_generate(
         charts: list[tuple[str, dict]] = []
         multis: list[dict] = []
         body_blocks: list[str] = []
-        counts = {"text": 0, "chart": 0, "chart_multi": 0, "table": 0}
+        counts = {"text": 0, "chart": 0, "chart_multi": 0, "table": 0, "actions": 0}
+        actions: list[dict[str, Any]] = []
 
         try:
             for index, block in enumerate(params["blocks"]):
@@ -475,6 +629,9 @@ def _make_canvas_generate(
                     inner = _render_chart(block["params"], f"chart-{index}", charts)
                 elif kind == "chart_multi":
                     inner = _render_chart_multi(block["params"], f"chart-{index}", multis)
+                elif kind == "actions":
+                    inner, block_actions = _render_actions(block["params"])
+                    actions.extend(block_actions)
                 else:
                     inner = _render_table(block["params"])
                 body_blocks.append(f'<section class="card">{heading_html}{inner}</section>')
@@ -520,7 +677,9 @@ def _make_canvas_generate(
             out_path = out_dir / f"{stem}-{suffix}.html"
             suffix += 1
 
-        page = _build_page(params, body_blocks, charts, multis, echarts_script)
+        page = _build_page(
+            params, body_blocks, charts, multis, echarts_script, _actions_runtime(actions)
+        )
         try:
             out_path.write_text(page, encoding="utf-8")
             saved_at = (
@@ -547,6 +706,7 @@ def _make_canvas_generate(
             "saved_path": saved_at,
             "inline_echarts": bool(inline),
             "blocks": [block["kind"] for block in params["blocks"]],
+            "actions": actions,
         }
         return (
             f"{header}\n\n{CANVAS_SPEC_OPEN}"

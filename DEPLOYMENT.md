@@ -240,7 +240,7 @@ Fuxi 连接器配置为 `transport: http`、`url: http://<host>:8080/api/mcp`、
 ```dotenv
 ONTOLOGY_MCP_AUTH_TOKEN=            # 留空表示依赖内网/网关白名单；设置后要求 Bearer
 MCP_PUBLIC_BASE_URL=                # 反向代理后的外部基址，用于拼 Artifact URL
-ONTOLOGY_MCP_EXPOSED_TOOLS=         # 逗号分隔的工具白名单；默认 16 个真实分析工具
+ONTOLOGY_MCP_EXPOSED_TOOLS=         # 逗号分隔的工具白名单；默认 17 个真实分析工具
 ```
 
 工具白名单永远不能重新启用 `AnalysisRun`、`AskUser`、`TodoWrite`、`Ontology-FactQuery`、
@@ -249,6 +249,26 @@ ONTOLOGY_MCP_EXPOSED_TOOLS=         # 逗号分隔的工具白名单；默认 16
 
 本体客户端默认绕过开发机的 `HTTP_PROXY` / `HTTPS_PROXY`，直接访问内网本体和 Doris
 网关；否则 urllib 可能把 demo2 流量送到本地代理，出现 502 或 30 秒超时。
+
+### Fuxi 风险待办（任务令）
+
+Canvas 的 `actions` 块只展示行动建议和“发送任务令”按钮；用户点击后由 Fuxi 宿主
+携带当前用户手机号调用 MCP `TaskOrderCreate`。服务端再按
+`POST /source/todo-batches` 写入 Fuxi 风险待办，不调用 X360，也不发送 Fuxi IM。
+
+```dotenv
+FUXI_TODO_ENABLED=true
+FUXI_CONTROL_BASE_URL=http://172.16.5.69:8080
+FUXI_SOURCE_CODE=boulderai-anaylize-todo   # Fuxi 管理台注册并启用的来源编码
+FUXI_TODO_CATEGORY=智能分析任务令
+FUXI_TODO_TIMEOUT_SECONDS=10
+```
+
+- `recipients_raw` 必须是真实手机号；服务端会剥除 `+86`、空格和横线。
+- 空接收人会被拒绝；Fuxi 契约中空数组表示全员广播。
+- 标题、严重程度、截止时间、责任人、证据和追溯信息会写入待办条目；详细字段以
+  `API/risk-todo-source-api.md` 为准。
+
 - 客户端断开或 reset 会取消该 turn；被取消 turn 不保存部分回复。
 - TTL/LRU 只回收内存 session 与 source context，不删除历史 JSON、上传、图表或日志。
 
@@ -399,7 +419,7 @@ git diff --name-only
   `http://172.16.10.34:8765/api/ontology-agentic-analytics/api/mcp`。
 - 验证：`/healthz` 返回 200，`/api/mcp/health` 返回
   `server=ontology-analytics-mcp`、`version=0.2.0`、`protocol=2025-03-26`；
-  MCP `tools/list` 返回 16 个工具且不包含 `AnalysisRun/AskUser/TodoWrite`；
+  MCP `tools/list` 返回 17 个工具且不包含 `AnalysisRun/AskUser/TodoWrite`；
   `MetricFactQuery` 实测 2025 年采购金额合计 `854,057,481.11`；
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
