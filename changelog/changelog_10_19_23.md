@@ -60,5 +60,6 @@
   `docs/versions/versioning-policy.md`、根 `README.md`、`AGENTS.md` 与历史版本状态。
 - 验证：MCP 红测与本体契约测试共 106 项通过；前端 76 项 Node 测试通过；技能自检
   160/160；`npm run build` 成功；构建产物只包含 `ontology-v0.1.3`；`git diff --check` 通过。
-- 边界：版本收口只准备 Merge Request；不自动合并、不创建 tag、不创建 GitLab Release、
-  不部署，也不拉 `release/ontology-v0.1.3` 分支。
+- 发布：Merge Request `!24` 合入 `master`，定版 commit `a805a66`；annotated tag
+  `ontology-v0.1.3` 已创建并推送，GitLab Release 已基于同名 tag 创建，均指向 `a805a66`。
+- 边界：tag 与 Release 创建不触发部署；不部署，也不拉 `release/ontology-v0.1.3` 分支。
