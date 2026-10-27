@@ -92,6 +92,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         result_store=store()
         def read():
             result = gateway.query(req.kind, req.payload)
+            if req.kind == 'helmet':
+                from .helmet_compat import normalize_helmet
+                result = normalize_helmet(result)
             if transport_identity(gateway.config)!=auth_scope:raise HTTPException(409,'AP认证配置已变化，请重新取数')
             return result_store.save_ap_result(req.id, req.kind, req.payload, result,
                                           gateway.config.receipt_ttl, gateway.config.identity(), auth_scope,
