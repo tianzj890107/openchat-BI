@@ -30,6 +30,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
+from ..integrations.fuxi_todo import FuxiTodoClient, FuxiTodoError
 from ..paths import DATASET_DIR, project_path
 from ..tools import (
     ask_user,
@@ -144,6 +145,52 @@ OUTPUT_GATE_SCHEMA: dict[str, Any] = {
     },
 }
 
+TASK_ORDER_CREATE_SCHEMA: dict[str, Any] = {
+    "name": "TaskOrderCreate",
+    "description": (
+        "把用户确认的一条行动建议推送到 Fuxi 风险待办。只在用户点击"
+        "“发送任务令/转督办”后调用，不要在分析生成阶段自动调用。"
+        "recipients_raw 必须是当前用户或责任人的真实手机号；空数组会变成"
+        "Fuxi 全员广播，因此本工具拒绝空接收人。调用方不应把手机号写进 HTML 或日志。"
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "action_id": {"type": "string", "description": "行动在 Canvas/会话中的稳定 ID"},
+            "title": {"type": "string", "description": "任务令标题，1–200 字符"},
+            "content": {"type": "string", "description": "任务令正文"},
+            "recipients_raw": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string"},
+                "description": "接收人手机号；由 Fuxi 宿主提供，禁止模型猜测",
+            },
+            "severity": {
+                "type": "string",
+                "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+                "description": "严重程度；缺省按 MEDIUM",
+            },
+            "due_at": {"type": "string", "description": "ISO 8601 UTC 截止时间，可选"},
+            "owner_ref": {"type": "string", "description": "责任人账号，可选"},
+            "owner_name": {"type": "string", "description": "责任人姓名，可选"},
+            "source_todo_id": {"type": "string", "description": "稳定来源 ID；缺省由 action_id/canvas_id 生成"},
+            "canvas_id": {"type": "string", "description": "Canvas 产物 ID，用于幂等"},
+            "category": {"type": "string", "description": "Fuxi 分类，缺省为智能分析任务令"},
+            "impact_text": {"type": "string", "description": "影响说明，可选"},
+            "evidence": {
+                "type": "array",
+                "items": {"type": "object"},
+                "description": "证据材料，原样写入 Fuxi evidence",
+            },
+            "caliber_meta": {
+                "type": "object",
+                "description": "分析来源、指标编码、Artifact URL 等追溯信息",
+            },
+        },
+        "required": ["action_id", "title", "content", "recipients_raw"],
+    },
+}
+
 #: Tools shown to Fuxi.  Deliberately excludes AnalysisRun (the old one-call
 #: wrapper), TodoWrite, AskUser and every raw-SQL/schema tool.
 DEFAULT_EXPOSED_TOOLS: tuple[str, ...] = (
@@ -162,8 +209,11 @@ DEFAULT_EXPOSED_TOOLS: tuple[str, ...] = (
     "ChartGenerateMultiDim",
     "TableGenerate",
     "CanvasGenerate",
+    "TaskOrderCreate",
     "OutputGateCheck",
 )
+
+WRITE_TOOLS = frozenset({"TaskOrderCreate"})
 
 #: Even an environment override may not expose these.
 MCP_DENIED_TOOLS: frozenset[str] = frozenset({
@@ -246,16 +296,19 @@ def _tool_schemas(source: Any) -> dict[str, dict[str, Any]]:
     schemas[str(canvas_schema["name"])] = canvas_schema
     schemas["AnalysisRoute"] = ANALYSIS_ROUTE_SCHEMA
     schemas["OutputGateCheck"] = OUTPUT_GATE_SCHEMA
+    schemas["TaskOrderCreate"] = TASK_ORDER_CREATE_SCHEMA
     return schemas
 
 
 def _mcp_tool(schema: dict[str, Any]) -> dict[str, Any]:
+    name = schema["name"]
+    read_only = name not in WRITE_TOOLS
     return {
-        "name": schema["name"],
+        "name": name,
         "description": (schema.get("description") or "").strip(),
         "inputSchema": schema.get("input_schema") or {"type": "object"},
         "annotations": {
-            "readOnlyHint": True,
+            "readOnlyHint": read_only,
             "destructiveHint": False,
             "idempotentHint": True,
             "openWorldHint": True,
@@ -285,6 +338,41 @@ def _gate_executor() -> Executor:
     return run
 
 
+def _task_order_executor() -> Executor:
+    def run(params: dict[str, Any], cwd: str) -> str:
+        del cwd
+        client = FuxiTodoClient()
+        try:
+            result = client.create_todo(
+                title=str(params.get("title") or ""),
+                content=str(params.get("content") or ""),
+                recipients_raw=params.get("recipients_raw") or [],
+                action_id=str(params.get("action_id") or ""),
+                source_todo_id=str(params.get("source_todo_id") or "").strip() or None,
+                canvas_id=str(params.get("canvas_id") or ""),
+                severity=params.get("severity"),
+                category=params.get("category"),
+                due_at=params.get("due_at"),
+                owner_ref=params.get("owner_ref"),
+                owner_name=params.get("owner_name"),
+                impact_text=params.get("impact_text"),
+                evidence=params.get("evidence"),
+                caliber_meta=params.get("caliber_meta"),
+            )
+        except FuxiTodoError:
+            raise
+        except (TypeError, ValueError) as exc:
+            raise ValueError(str(exc)) from exc
+        if not result.get("ok"):
+            raise FuxiTodoError(
+                "Fuxi rejected the task order: "
+                + json.dumps(result.get("errors") or [], ensure_ascii=False),
+                payload=result,
+            )
+        return json.dumps(result, ensure_ascii=False, indent=2)
+    return run
+
+
 def _build_executors(source: Any, build_doris: Callable[..., Any]) -> dict[str, Executor]:
     doris = (
         build_doris(source.doris_api_url, source.doris_database, source.remote_ontology)
@@ -306,6 +394,7 @@ def _build_executors(source: Any, build_doris: Callable[..., Any]) -> dict[str, 
     executors["CanvasGenerate"] = canvas_factory()
     executors["AnalysisRoute"] = _route_executor()
     executors["OutputGateCheck"] = _gate_executor()
+    executors["TaskOrderCreate"] = _task_order_executor()
     return executors
 
 
@@ -329,6 +418,7 @@ class McpRuntime:
         self._source_free: dict[str, Executor] = {
             "AnalysisRoute": _route_executor(),
             "OutputGateCheck": _gate_executor(),
+            "TaskOrderCreate": _task_order_executor(),
         }
 
     # -- session lifecycle -------------------------------------------------

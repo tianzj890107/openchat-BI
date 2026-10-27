@@ -140,8 +140,9 @@ Fuxi 连接器配置：
 }
 ```
 
-连接后可以看到 16 个真实分析工具（`AnalysisRoute`、`MetricFactQuery`、
-`ChartGenerate`、`TableGenerate`、`CanvasGenerate`、`OutputGateCheck` 等），
+连接后可以看到 17 个真实分析工具（`AnalysisRoute`、`MetricFactQuery`、
+`ChartGenerate`、`TableGenerate`、`CanvasGenerate`、`TaskOrderCreate`、
+`OutputGateCheck` 等），
 不会出现 `AnalysisRun`、`AskUser`、`TodoWrite` 或原始 SQL 工具。客户端不需要
 `.env`、App ID 或 Token；demo2 本体和 Doris 配置由主服务持有。若在网关后使用，
 用 `MCP_PUBLIC_BASE_URL` 指定外部可访问基址，使 `CanvasGenerate` 返回的

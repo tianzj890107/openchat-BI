@@ -15,7 +15,7 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 客户端不读取 `.env`、不需要 App ID 或 Token。若部署方显式设置
 `ONTOLOGY_MCP_AUTH_TOKEN`，Bearer 头由管理员在连接器统一配置。
 
-## 暴露给 Fuxi 的 16 个工具
+## 暴露给 Fuxi 的 17 个工具
 
 | 工具 | 用途 | 主要参数 |
 | --- | --- | --- |
@@ -34,6 +34,7 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 | `ChartGenerateMultiDim` | 多维可切换图表 | 与 Web 多维图表参数一致 |
 | `TableGenerate` | 结构化表格 | 与 Web 表格参数一致 |
 | `CanvasGenerate` | 整页自包含 HTML，返回 `Artifact URL` | `title`、`conclusion`、`source_note`、`blocks` |
+| `TaskOrderCreate` | 用户点击后把一条行动建议推送到 Fuxi 风险待办 | `action_id`、`title`、`content`、`recipients_raw` |
 | `OutputGateCheck` | 五道交付闸门 | `answer`、`question`、`sql`、`chart`、`reconcile`、`claims` |
 
 ### 不暴露的工具
@@ -56,9 +57,11 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 5. 多维下钻或根因：`MetricFactQuery` 一次传多个维度和 `breakdown_period`；
    证据不足时再加一次必要的下钻或关系查询。
 6. 结果交付：`TableGenerate` / `ChartGenerate` / `ChartGenerateMultiDim`；
-   最后 `CanvasGenerate`。
+   最后 `CanvasGenerate`。L3 以上的行动建议放进 `kind=actions` 块。
 7. 交付闸门：`OutputGateCheck` 返回 `pass` 才能交付；`warn` 要披露，
    `reject` 要修正或拒答。
+8. 任务令：只有用户点击行动卡后才调用 `TaskOrderCreate`。手机号由 Fuxi 宿主
+   传入，技能和模型不得猜测；空接收人会被拒绝。
 
 ## 数据源与安全边界
 

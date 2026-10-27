@@ -49,6 +49,7 @@ headers: {}
 | `ChartGenerateMultiDim` | 多维可切换图表 |
 | `TableGenerate` | 结构化表格 |
 | `CanvasGenerate` | 把结论、图表、表格和口径拼成整页自包含 HTML，返回 `Artifact URL` |
+| `TaskOrderCreate` | 把用户确认的一条行动建议推送到 Fuxi 风险待办；只在用户点击后调用 |
 | `OutputGateCheck` | 交付前检查证据、预测披露、图表、只读 SQL 和对账 |
 
 ## 默认交付契约
@@ -70,6 +71,9 @@ headers: {}
    图表参数和总额/分月对账；`verdict=reject` 时不得交付。
 7. **回答附执行摘要**：路由模式、取数工具、对账结果、闸门 verdict、`Artifact URL`
    各一行。
+
+任务令不是分析生成步骤。只有用户点击某条行动建议的“发送任务令/转督办”后，
+宿方才调用 `TaskOrderCreate`；模型不得在生成结论时自动发送，也不得猜测手机号。
 
 只有用户明确说“只要一句话 / 不要文件 / 不要图表”时，才可以省略 HTML 或图表；
 路由、取数和对账仍然必须执行。
@@ -106,6 +110,17 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
 责任视角、时间节点、完成标准、监控指标和复盘机制。证据不足时先补取数或明确说明
 限制，不要编造根因、预测数字或执行结果。
 
+### 行动建议与任务令
+
+- L3 及以上的行动建议除正文外，必须在 `CanvasGenerate` 的 `kind=actions` 块中
+  提供结构化条目；每条至少包含稳定 `id`、`title`、`content` 和 `evidence`。
+- 可选字段：`severity`（`CRITICAL/HIGH/MEDIUM/LOW`）、`due_at`（UTC `Z` 结尾）、
+  `owner_ref`、`owner_name`。严重程度缺省 `MEDIUM`。
+- 手机号属于宿主会话信息，不写进 HTML、不展示给模型。用户点击后由 Fuxi 宿主携带
+  当前用户/责任人的 `recipients_raw` 调用 `TaskOrderCreate`。
+- `TaskOrderCreate` 只写 Fuxi 风险待办，不负责 IM；接收人为空会被工具拒绝，
+  因为 Fuxi 契约中空数组表示全员广播。
+
 ## 术语、消歧与澄清
 
 - 编码已给出时，跳过名称消歧，直接 `MetricFactQuery`。
@@ -129,12 +144,15 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
 
 `CanvasGenerate` 生成的是可以直接打开、保存和转发的单文件 HTML：
 
-- `blocks` 按顺序放 `text`、`chart`、`chart_multi`、`table`；
+- `blocks` 按顺序放 `text`、`chart`、`chart_multi`、`table`、`actions`；
 - `blocks[].params` 与 `ChartGenerate` / `ChartGenerateMultiDim` / `TableGenerate`
-  一致；
+  一致；`actions` 块使用 `params.items`，每项至少含 `id`、`title`、`content`、
+  `evidence`；
 - 默认内联 ECharts，离线可开；页面偏大时可传 `inline_echarts: false`；
 - 返回文本包含 `<CANVAS_SPEC>` 和 `Artifact URL`，最终回答只展示业务结论和
   `Artifact URL`，不要展示服务端内部暂存路径；
+- `<CANVAS_SPEC>.actions` 是给 Fuxi 宿主的行动卡数据源；HTML 中的按钮只负责
+  触发宿主回调/同源代理，不能直接持有手机号或任务服务凭据；
 - 如果 URL 是相对/内网地址，按宿主实际入口补全，不要手工重建 HTML 文件。
 
 ## 纯规则脚本（可选，离线校验）
