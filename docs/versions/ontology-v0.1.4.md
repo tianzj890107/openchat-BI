@@ -3,15 +3,15 @@
 ## 基本信息
 
 - 版本：`ontology-v0.1.4`
-- 日期：`2026-10-23`
-- 状态：正式版 / 当前版本（预发布收口；tag 与 Release 待 MR merge 后授权）
+- 日期：`2026-10-23`（版本收口）；`2026-10-27`（tag 与 Release 补发）
+- 状态：正式版 / 当前版本（tag 与 GitLab Release 已创建）
 - 版本位次：**PATCH**（`ontology-v0.1.3` → `ontology-v0.1.4`），版本号由用户在当前任务中明确指定
 - 版本关系：在 `ontology-v0.1.3` 的远程 MCP 与通用 Agent 接入能力之上，新增 V3 经营驾驶舱 POC，
   以 `iba-demo feature/demo_1021` 交付元数据和 ProUI 组件为唯一看板来源。
 - Release 分支：不单独拉出；通过 `feature/cockpit-v3-poc` → `master` 的 Merge Request 评审合并
-- 定版 commit：本 Merge Request 合入 `master` 后的 merge commit
-- Git Tag：`ontology-v0.1.4` 尚未创建；按用户要求，在 MR 合入后另行创建
-- GitLab Release：基于同名 tag 创建；未创建 tag 前不创建 Release
+- 定版 commit：`3287c91145fb857911becdea02a26085062fcc7d`（加载性能优化前的 v0.1.4 分支提交）
+- Git Tag：`ontology-v0.1.4`（annotated，2026-10-27 已创建并推送）
+- GitLab Release：[智能分析 ontology-v0.1.4](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.4)（2026-10-27 已创建）
 
 ## 版本概述
 
@@ -20,9 +20,9 @@ ProUI 看板本体，不包含工作区、会话区、页面标题或第二套�
 来自 `iba-demo feature/demo_1021` 的交付元数据；原型的业务结论由真实模型分析插槽提供，
 不再使用静态 mock 文案。
 
-本版本范围仅包含 `feature/cockpit-v3-poc` 分支上的驾驶舱交付。同期存在的其它并行修改不纳入
-本版本，也不写入本版本说明。tag、GitLab Release 与部署保持独立授权；当前 MR 不创建 tag 或
-Release。
+本版本范围仅包含 `feature/cockpit-v3-poc` 分支上的驾驶舱交付，定版于加载性能优化之前。
+同期存在的其它并行修改不纳入本版本，也不写入本版本说明。tag、GitLab Release 与部署保持
+独立授权；本次已按用户明确授权补发 tag 与 Release，不触发部署。
 
 ## 交付主题
 
@@ -85,6 +85,7 @@ Release。
 - 部分 AP 请求未包含在交付快照中，对应卡片显示组件自带的缺少快照提示；
 - 交付 AP 指标口径、数据时点和部分卡片标题存在源配置差异，本版本保持原值并列入差异清单；
 - 不拉 `release/ontology-v0.1.4` 分支；不删除、迁移或覆盖任何历史会话和用户数据。
+- 整页缓存、生产版 Vue、按页加载和 AP 拆批等加载优化归入后续 `ontology-v0.1.5`，不在本 tag 中。
 
 ## 相关记录
 

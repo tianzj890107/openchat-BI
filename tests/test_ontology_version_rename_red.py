@@ -7,7 +7,7 @@ rebuilt.  The current product version then advanced to the MINOR
 ``ontology-v0.1.0`` on 2026-09-29 (tag/Release created), to the PATCH
 ``ontology-v0.1.1`` on 2026-10-08 (tag/Release backfilled on 2026-10-15), to
 ``ontology-v0.1.2`` on 2026-10-15, to ``ontology-v0.1.3`` on 2026-10-20, and
-to ``ontology-v0.1.4`` on 2026-10-23 (tag/Release pending merge), so
+to ``ontology-v0.1.4`` on 2026-10-23 (tag/Release backfilled on 2026-10-27), so
 ``CURRENT`` tracks the product name while ``LATEST_RELEASED_TAG`` tracks the
 newest tag that actually exists and ``NEW_TAGS`` stays the historical rename
 map.  These tests never write to Git, GitLab or user data.
@@ -35,6 +35,7 @@ LATEST_RELEASED_TAG = "ontology-v0.1.0"
 SKILL_PATCH_TAG = "ontology-v0.1.1"
 PROGRESS_PATCH_TAG = "ontology-v0.1.2"
 RELEASED_MCP_TAG = "ontology-v0.1.3"
+RELEASED_COCKPIT_TAG = "ontology-v0.1.4"
 
 # (old tag, unchanged commit, new tag)
 MAPPING = (
@@ -166,9 +167,8 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
         2026-09-29 and created on ``master`` (定版 commit ``74fca80``) right
         after the version-cut Merge Request merged.  The two PATCH tags
         ``ontology-v0.1.1`` and ``ontology-v0.1.2`` were authorized on
-        2026-10-15, and ``ontology-v0.1.3`` was released on 2026-10-20.
-        ``CURRENT`` (``ontology-v0.1.4``) is not a tag yet; it needs a separate
-        authorization after its MR merges.
+        2026-10-15, ``ontology-v0.1.3`` was released on 2026-10-20, and
+        ``CURRENT`` (``ontology-v0.1.4``) was backfilled on 2026-10-27.
         """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
@@ -179,7 +179,7 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
             tags,
             set(NEW_TAGS)
             | {LATEST_RELEASED_TAG, SKILL_PATCH_TAG, PROGRESS_PATCH_TAG,
-               RELEASED_MCP_TAG},
+               RELEASED_MCP_TAG, RELEASED_COCKPIT_TAG},
         )
 
 

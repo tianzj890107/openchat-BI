@@ -101,10 +101,11 @@ X360 流程定义集成、本体/MAL 与元数据契约迁移等用户可感知�
   `/api/mcp` 暴露 16 个受控真实工具，连接方不再携带本体平台凭据、Doris 凭据或输出目录配置；
 - 同步完成 `CanvasGenerate` Artifact URL 交付、demo2 代理绕过与本体语义检索快路径修复，并把
   前端、Python 包、FastAPI、README、版本文档与契约测试统一到 `ontology-v0.1.3`；
-- 交付方式为 `feature/mcp-server-policy` → `master` 的 Merge Request（reviewer `tianzijing`）；
-  MR 只负责评审与合并，不自动创建 tag 或 GitLab Release；
-- tag、GitLab Release 与部署继续保持独立授权；本次版本收口不自动部署，也不拉
-  `release/ontology-v0.1.3` 分支。
+- 交付方式为 `feature/mcp-server-policy` → `master` 的 Merge Request `!24`（reviewer
+  `tianzijing`），合入后的 `master` merge commit `a805a66` 为定版 commit；
+- 用户随后单独授权创建 tag 与 GitLab Release，已执行：annotated tag `ontology-v0.1.3` 指向
+  `a805a66` 并推送 GitLab，同 tag 的 GitLab Release 已创建（只新建，未覆盖任何已有 Release）；
+- 部署继续保持独立授权；本次版本收口不自动部署，也不拉 `release/ontology-v0.1.3` 分支。
 
 ### 版本推进记录（ontology-v0.1.3 → ontology-v0.1.4）
 
@@ -116,8 +117,9 @@ X360 流程定义集成、本体/MAL 与元数据契约迁移等用户可感知�
   也不写入版本说明或 MR 描述；
 - 交付方式为 `feature/cockpit-v3-poc` → `master` 的 Merge Request（reviewer `tianzijing`）；
   MR 只负责评审与合并，不自动创建 tag 或 GitLab Release；
-- 用户要求在 MR 合入后再创建 tag 与 GitLab Release；本次版本收口不创建 tag、不创建 Release，
-  也不拉 `release/ontology-v0.1.4` 分支。
+- 2026-10-27 用户明确授权补发 tag 与 GitLab Release；annotated tag `ontology-v0.1.4` 指向
+  加载性能优化前的定版 commit `3287c91` 并推送 GitLab，同名 GitLab Release 已创建；
+- 本次补发不部署，也不拉 `release/ontology-v0.1.4` 分支；加载优化另行收口为 `ontology-v0.1.5`。
 
 ## PATCH / MINOR / MAJOR 判定
 
