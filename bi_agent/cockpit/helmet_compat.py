@@ -1,13 +1,14 @@
 """Compatibility for X360 helmet flow configs that reference unpublished AP fields.
 
-The 2026-10-22 validated ``FULL_PROCESS_OPERATIONS_MANAGEMENT`` response used
-``D007/M00013`` for the 商机获取 node and no data config for 报价.  The upstream flow
-config later switched to ``D020/M0023`` and ``D021/M0031``; the current AP analysis
-model does not publish those codes and rejects every query for them with HTTP 500.
+The 2026-10-22 validated helmet responses used ``D007/M00013`` for 商机获取 and no
+data config for 报价/订单接收/发货.  The upstream flow config later switched to
+``D020/M0023``, ``D021/M0031``, ``D016/M0033`` and ``D024/M0036``; the current AP
+analysis model does not publish those codes and rejects every query for them with
+HTTP 500.
 
-Only the two known legacy node/config pairs are rewritten.  A corrected upstream
-config (or any other node/flow) is returned untouched, so this shim can be removed
-once X360 publishes valid codes.
+Only the known legacy node/config pairs are rewritten.  A corrected upstream config
+(or any other node/flow) is returned untouched, so this shim can be removed once
+X360 publishes valid codes.
 """
 from __future__ import annotations
 
@@ -19,6 +20,26 @@ _REFERENCE_OPPORTUNITY_CONFIG = (
     '"identifierCode":"M00013","isTree":false,"label":"发货金额","name":"Shipment_Amount",'
     '"valueConfig":{"isThousand":true,"numericScale":2},"valueType":"NUMBER"}]}'
 )
+_REFERENCE_STATUS_MAPPINGS = [
+    {"statusCode": "normal-error", "dimensionValue": "overdue_uncompleted"},
+    {"statusCode": "normal-warning", "dimensionValue": "imminent_uncompleted"},
+    {"statusCode": "normal-success", "dimensionValue": "normal_uncompleted"},
+    {"statusCode": "error-normal", "dimensionValue": "overdue_completed"},
+    {"statusCode": "success-normal", "dimensionValue": "normal_completed"},
+]
+_LEGACY_REMOVE = {
+    "QUOTATION": ("D021", "M0031"),
+    "ORDER_RECEIPT": ("D016", "M0033"),
+    "DISPATCH": ("D024", "M0036"),
+}
+
+
+def _restore_opportunity(config):
+    config["dataConfig"] = _REFERENCE_OPPORTUNITY_CONFIG
+    config["statusMappings"] = copy.deepcopy(_REFERENCE_STATUS_MAPPINGS)
+    if "pieSliceMappings" in config or config.get("nodeStyle") == "pie":
+        config.pop("pieSliceMappings", None)
+        config.pop("nodeStyle", None)
 
 
 def normalize_helmet(data):
@@ -43,12 +64,20 @@ def normalize_helmet(data):
         text = config.get("dataConfig")
         if not isinstance(text, str):
             continue
-        if node.get("code") == "BUSINESS_OPPORTUNITY_ACQUISITION" and (
-            "D020" in text or "M0023" in text
-        ):
-            config["dataConfig"] = _REFERENCE_OPPORTUNITY_CONFIG
-            changed = True
-        elif node.get("code") == "QUOTATION" and ("D021" in text or "M0031" in text):
+        code = node.get("code")
+        if code == "BUSINESS_OPPORTUNITY_ACQUISITION":
+            pie = config.get("pieSliceMappings") or []
+            legacy_pie = any(
+                isinstance(item, dict)
+                and item.get("dimensionValue") in {"signed_opportunity", "unsigned_opportunity"}
+                for item in pie
+            )
+            if "D020" in text or "M0023" in text or legacy_pie:
+                _restore_opportunity(config)
+                changed = True
+            continue
+        legacy = _LEGACY_REMOVE.get(code)
+        if legacy and legacy[0] in text and legacy[1] in text:
             meta.pop("helmetConfig", None)
             changed = True
     return rewritten if changed else data
