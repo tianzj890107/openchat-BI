@@ -4052,6 +4052,7 @@ def _cockpit_html(page: str) -> HTMLResponse:
         cockpit / "cockpit.js",
         cockpit / "data-client.js",
         cockpit / "publication-client.js",
+        cockpit / "page-client.js",
         cockpit / "insight-components" / "index.js",
         cockpit / "metadata" / "pdt-release-2109836674373566465" / "data-snapshots.json",
     ]

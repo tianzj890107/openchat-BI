@@ -5,8 +5,11 @@ export function canonical(value) {
   return JSON.stringify(value);
 }
 
-export function createAPDataClient({apiBase, id, request = fetch, onInvalidate = () => {}}) {
-  const active = new Map(), inflight = new Map(), queue = [];
+export function createAPDataClient({apiBase, id, request = fetch, onInvalidate = () => {}, snapshot = null, onSnapshotMiss = () => {}}) {
+  const active = new Map(), all = new Map(), completed = new Map(), inflight = new Map(), queue = [];
+  const replay = new Map((snapshot?.entries || []).map(e => [e.kind + ':' + canonical(e.payload), e]));
+  let replaying = Boolean(snapshot), missed = false;
+  let blocked = '';
   let running = 0;
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   function pump() {
@@ -48,39 +51,60 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     payload = JSON.parse(JSON.stringify(payload));
     const key = kind + ':' + canonical(payload);
     if (inflight.has(key)) return inflight.get(key);
+    if (replaying && !replay.has(key)) {
+      if (!missed) {missed = true; queueMicrotask(onSnapshotMiss);}
+      return Promise.reject(new Error('当前范围没有完整缓存，正在重新取数'));
+    }
     const slot = shape(kind, payload);
     const state = {key: canonical(payload), pending: true, error: '', receiptId: '', expiresAt: 0};
+    all.set(slot, state);
     if (kind !== 'helmet') { const previous=active.get(slot); active.set(slot, state); onInvalidate({replacement:Boolean(previous && previous.key!==state.key)}); }
-    const promise = limit(() => proxy(kind, payload)).then(body => {
+    const reused = completed.get(key);
+    const entry = replay.get(key);
+    const work = replaying ? Promise.resolve({data:entry.data,receiptId:entry.receiptId,receivedAt:entry.receivedAt,expiresAt:entry.expiresAt}) :
+      reused && Math.min(reused.expiresAt * 1000, reused.receivedAt * 1000 + 15000) > Date.now() ? Promise.resolve(reused) : limit(() => proxy(kind, payload));
+    const promise = work.then(body => {
       if (kind !== 'helmet' && active.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
-      Object.assign(state, {pending: false, receiptId: body.receiptId, expiresAt: body.expiresAt});
+      if (all.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
+      completed.set(key, body);
+      Object.assign(state, {pending: false, receiptId: body.receiptId, expiresAt: body.expiresAt,
+        entry:{kind,payload,data:body.data,receiptId:body.receiptId,receivedAt:body.receivedAt,expiresAt:body.expiresAt}});
       return body.data;
     }).catch(error => { state.pending = false; state.error = error.message || 'AP查询失败'; throw error; })
       .finally(() => { if(inflight.get(key)===promise) inflight.delete(key); });
     inflight.set(key, promise);
     return promise;
   }
-  function scope() {
+  function scope(allowExpired=false) {
+    if(blocked)throw new Error(blocked);
     const states = [...active.values()];
     if (!states.length || states.some(s => s.pending)) throw new Error('看板AP查询仍在加载，请稍后分析');
     const error = states.find(s => s.error);
     if (error) throw new Error(error.error);
-    if (states.some(s => s.expiresAt * 1000 <= Date.now())) throw new Error('看板数据凭据已过期，请刷新页面重新取数');
+    if (!allowExpired && states.some(s => s.expiresAt * 1000 <= Date.now())) throw new Error('看板数据凭据已过期，请刷新页面重新取数');
     return {chartQueries: [...new Set(states.map(s => s.key))].sort(), apReceiptIds: states.map(s => s.receiptId).sort()};
   }
-  async function ready() {
+  async function ready({allowExpired=false}={}) {
     let stable = 0, previous = '';
     for (let attempt = 0; attempt < 450; attempt++) {
       await pause(100);
-      const signature = [...active.values()].map(s => `${s.key}:${s.receiptId}:${s.pending}`).join('|');
+      const signature = [...all.values()].map(s => `${s.key}:${s.receiptId}:${s.pending}`).join('|');
       stable = signature && signature === previous ? stable + 1 : 0;
       previous = signature;
-      if (stable >= 3 && ![...active.values()].some(s => s.pending)) return scope();
+      if (stable >= 3 && ![...all.values()].some(s => s.pending)) {
+        const failed=[...all.values()].find(s=>s.error);
+        if(failed)throw new Error(failed.error);
+        return scope(allowExpired);
+      }
     }
-    return scope();
+    return scope(allowExpired);
   }
-  function clearScope() { active.clear(); inflight.clear(); onInvalidate({replacement:true}); }
-  return {scope, ready, clearScope, biAdapters: {
+  function clearScope() { active.clear(); all.clear(); completed.clear(); inflight.clear(); replay.clear(); replaying=false; onInvalidate({replacement:true}); }
+  function entries() {
+    if(!all.size || [...all.values()].some(s=>s.pending||s.error||!s.entry))throw new Error('看板数据未完整加载');
+    return JSON.parse(JSON.stringify([...all.values()].map(s=>s.entry)));
+  }
+  return {scope, ready, clearScope, entries, read:query, block:message=>{blocked=message;}, biAdapters: {
     postAnalysisDataQuery: payload => query('analysis', payload),
     postAnalysisDataQueryBatch: payload => query('batch', payload),
   }, utils: {request: async req => {
@@ -94,18 +118,32 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
 }
 
 // Observe committed SDK filter changes, not clicks that merely open a filter editor.
-export function observeRuntimeFilters(runtime,onChange,isReady=()=>true) {
-  const seen=new Map();
-  for(const method of ['setFilterConditions','setButtonGrainSelection']) {
+export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored=null) {
+  const seen=new Map(restored?.seen||[]),calls=new Map(restored?.calls||[]);
+  let baseline=restored?.baseline??null;
+  const observed=new Set(['setFilterConditions','setButtonGrainSelection','setHelmetGraphSelection','setContainerActiveNode']);
+  for(const method of [...observed,'setFilterUiSelection','setTemplateState','setTabTemplateOverrides','setActiveTab','setSelectionGroupActive','clearHelmetGraphSelection','clearContainerActiveNode']) {
     const original=runtime[method];
     if(typeof original!=='function')continue;
     runtime[method]=function(...args) {
-      const key=method+':'+args[0]+':'+canonical(args[2]||null),value=canonical(args[1]);
+      const key=method+':'+args[0]+':'+canonical(method==='setFilterUiSelection'?[args[1],args[3]||null]:args[2]||null);
+      calls.delete(key);calls.set(key,[method,JSON.parse(JSON.stringify(args))]);
+      if(!observed.has(method))return original.apply(this,args);
+      const selection=method==='setContainerActiveNode'?{nodeId:args[1]?.nodeId}:args[1];
+      const value=canonical(selection);
       const changed=seen.has(key)?seen.get(key)!==value:isReady();
+      if(changed&&isReady()&&baseline===null)baseline=canonical([...seen].sort());
       seen.set(key,value);
-      if(changed)onChange();
+      if(changed&&isReady()) {
+        const scope=canonical([...seen].sort());
+        onChange(scope===baseline?'default':scope);
+      }
       return original.apply(this,args);
     };
   }
+  runtime.replayView=target=>{
+    for(const [method,args] of calls.values())if(typeof target[method]==='function')target[method](...args);
+    return {seen:[...seen],baseline,calls:[...calls]};
+  };
   return runtime;
 }

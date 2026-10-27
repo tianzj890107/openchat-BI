@@ -29,6 +29,10 @@ class Store:
             CREATE TABLE IF NOT EXISTS tasks (
               id TEXT PRIMARY KEY, analysis_id TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL,
               body TEXT NOT NULL, updated REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS page_snapshots (
+              id TEXT PRIMARY KEY, scope TEXT NOT NULL, body TEXT NOT NULL, source_time REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS page_snapshot_views (
+              scope TEXT PRIMARY KEY, snapshot_id TEXT NOT NULL);
             ''')
 
     @contextmanager
@@ -44,10 +48,10 @@ class Store:
         finally:
             db.close()
 
-    def save_ap_result(self, identity, kind, request, response, ttl, connection_id=""):
+    def save_ap_result(self, identity, kind, request, response, ttl, connection_id="", auth_scope="", transport=""):
         now = time.time()
         item = dict(id=uuid.uuid4().hex, identity=identity, kind=kind, request=request,
-            response=response, createdAt=now, expiresAt=now+ttl, connectionId=connection_id)
+            response=response, createdAt=now, expiresAt=now+ttl, connectionId=connection_id, authScope=auth_scope, transport=transport)
         with self.db() as db:
             db.execute("INSERT INTO ap_results VALUES(?,?,?,?,?)", (item['id'],identity,
                 json.dumps(item,ensure_ascii=False),now,now+ttl))
@@ -60,6 +64,27 @@ class Store:
         if not row or (not allow_expired and row['expires'] < time.time()):
             return None
         return json.loads(row['body'])
+
+    def publish_page(self, scope, page):
+        """Append a complete version and atomically move its pointer; never erase history."""
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            current = db.execute('SELECT p.source_time FROM page_snapshot_views v JOIN page_snapshots p '
+                                 'ON p.id=v.snapshot_id WHERE v.scope=?', (scope,)).fetchone()
+            if current and current[0] > page['dataAsOf']:
+                return False
+            sid = uuid.uuid4().hex
+            db.execute('INSERT INTO page_snapshots VALUES(?,?,?,?)',
+                       (sid, scope, json.dumps(page, ensure_ascii=False), page['dataAsOf']))
+            db.execute('INSERT INTO page_snapshot_views VALUES(?,?) ON CONFLICT(scope) '
+                       'DO UPDATE SET snapshot_id=excluded.snapshot_id', (scope, sid))
+        return True
+
+    def published_page(self, scope):
+        with self.db() as db:
+            row = db.execute('SELECT p.body FROM page_snapshot_views v JOIN page_snapshots p '
+                             'ON p.id=v.snapshot_id WHERE v.scope=?', (scope,)).fetchone()
+        return json.loads(row[0]) if row else None
 
     def create_analysis(self, scope, context):
         now=time.time()

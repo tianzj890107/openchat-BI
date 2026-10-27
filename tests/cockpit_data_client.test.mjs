@@ -86,3 +86,34 @@ test('SDK filter change drops all previous-scope receipts before new requests',a
    assert.equal(client.scope().chartQueries.length,2);
   }
  });
+
+test('completed duplicate reads reuse the same receipt until short TTL or scope change',async()=>{
+ let calls=0;
+ const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>({...ok('r'+(++calls)),json:async()=>({receiptId:'r'+calls,data:{value:calls},receivedAt:Date.now()/1000,expiresAt:Date.now()/1000+60})})});
+ await client.biAdapters.postAnalysisDataQuery(query);await client.biAdapters.postAnalysisDataQuery(query);
+ assert.equal(calls,1);assert.equal(client.entries().length,1);
+ client.clearScope();await client.biAdapters.postAnalysisDataQuery(query);assert.equal(calls,2);
+});
+
+test('full-page replay renders expired display data without inventing fresh analysis receipts',async()=>{
+ let calls=0,misses=0;
+ const snapshot={entries:[{kind:'analysis',payload:query,data:{value:42},receiptId:'old',receivedAt:1,expiresAt:2}]};
+ const client=createAPDataClient({apiBase:'/api/cockpit',id:1,snapshot,request:async()=>{calls++;return ok('new');},onSnapshotMiss:()=>misses++});
+ assert.deepEqual(await client.biAdapters.postAnalysisDataQuery(query),{value:42});assert.equal(calls,0);
+ assert.throws(()=>client.scope(),/过期/);
+ await assert.rejects(client.biAdapters.postAnalysisDataQuery({...query,commonConfig:{filters:{month:'other'}}}),/没有完整缓存/);
+ await new Promise(r=>setImmediate(r));assert.equal(misses,1);assert.equal(calls,0);
+});
+
+test('a remounted SDK restores UI selections and preserves the original default scope',()=>{
+ const values=new Map();let ready=false;const scopes=[];
+ const raw=()=>({setButtonGrainSelection(id,v){values.set(id,v);},setActiveTab(){}});
+ const first=observeRuntimeFiltersForTest(raw(),s=>scopes.push(s),()=>ready);
+ first.setButtonGrainSelection('grain','YEAR');ready=true;first.setButtonGrainSelection('grain','MONTH');
+ const monthly=scopes.at(-1);assert.notEqual(monthly,'default');
+ const nextRaw=raw(),view=first.replayView(nextRaw);assert.equal(values.get('grain'),'MONTH');
+ ready=false;const second=observeRuntimeFiltersForTest(nextRaw,s=>scopes.push(s),()=>ready,view);
+ second.setButtonGrainSelection('grain','MONTH');ready=true;second.setButtonGrainSelection('grain','YEAR');
+ assert.equal(scopes.at(-1),'default');second.setButtonGrainSelection('grain','MONTH');assert.equal(scopes.at(-1),monthly);
+});
+const {observeRuntimeFilters:observeRuntimeFiltersForTest}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));

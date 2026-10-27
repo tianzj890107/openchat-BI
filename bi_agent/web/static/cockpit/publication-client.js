@@ -41,11 +41,12 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
       for(let pass=0;pass<2;pass++) {
         let envelope;
         for(let attempt=0;attempt<4;attempt++) {
-          try { envelope=await json(`${apiBase}/analyses/refresh`,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body)});break; }
+          try { envelope=await json(`${apiBase}/analyses/refresh?compact=true`,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body)});break; }
           catch(error) { if(!/并发/.test(error.message)||attempt===3)throw error;await pause(1000);if(!current())return null; }
         }
         if(!current())return null;
-        if(envelope.cached && compatible(envelope.cached,body)) Object.assign(state,{item:envelope.cached,status:'done',cached:true});
+        if(envelope.cached && compatible(envelope.cached,body) && (!envelope.dataFingerprint || envelope.cached.context.dataFingerprint===envelope.dataFingerprint)) Object.assign(state,{item:envelope.cached,status:'done',cached:true});
+        else if(envelope.dataFingerprint && state.item?.context.dataFingerprint!==envelope.dataFingerprint) Object.assign(state,{item:null,status:'running',cached:false});
         let item=envelope.analysis;
         if(!item)return state.item;
         if(!compatible(item,body)) throw new Error('分析范围不一致，拒绝回填');
@@ -56,7 +57,7 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
           if(Date.now()>deadline)throw new Error('分析更新超时');
           state.progress=item.progress||'正在分析当前筛选范围';
           await pause(pollMs);if(!current())return null;
-          item=await json(`${apiBase}/analyses/${encodeURIComponent(item.id)}`,{headers:{'Accept':'application/json'}});
+          item=await json(`${apiBase}/analyses/${encodeURIComponent(item.id)}?compact=true`,{headers:{'Accept':'application/json'}});
           if(!compatible(item,body))throw new Error('分析范围已变化，拒绝旧结果');
         }
         if(!current())return null;

@@ -25,6 +25,14 @@
       "sourcePath": "lib/pro-ui.min.css",
       "sha256": "b1ee836dbe11d3b5df80f9a1718a8a7623aaa89e9419bae1d6450a9063744d25",
       "bytes": 720594
+    },
+    {
+      "file": "vue.global.prod.js",
+      "source": "https://registry.npmjs.org/vue/-/vue-3.5.25.tgz",
+      "sourcePath": "package/dist/vue.global.prod.js",
+      "sha256": "78133fb37d7da6ab9fb0ede6c8ed446f38773595d1faf52a3c1b77d539b06b61",
+      "bytes": 161210,
+      "notes": "Official Vue 3.5.25 production global build with template compiler; npm tarball SHA512 verified. Cockpit only."
     }
   ],
   "catalog": "http://pro-ui.eimos.com/assets/"

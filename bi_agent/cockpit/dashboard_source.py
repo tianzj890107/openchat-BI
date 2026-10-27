@@ -53,7 +53,7 @@ def receipt_material(context, store, *, allow_expired=False):
         entries=list(zip(item['request'],item['response'])) if item['kind']=='batch' else [(item['request'],{'data':item['response']})]
         for index,(request,response) in enumerate(entries):
             key=receipt_id+':'+str(index)
-            selected[key]={'request':request,'response':response['data'],'receivedAt':item['createdAt'],'source':'ap','receiptId':receipt_id,'connectionId':item.get('connectionId','')}
+            selected[key]={'request':request,'response':response['data'],'receivedAt':item['createdAt'],'source':'ap','receiptId':receipt_id,'connectionId':item.get('connectionId',''),'transport':item.get('transport','')}
     canonical=lambda v:json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':'))
     if sorted(canonical(v) for v in requests)!=sorted(set(canonical(json.loads(v)) for v in context.get('chartQueries',[]))):
         raise ValueError('AP结果凭据与页面查询范围不一致，拒绝回填')

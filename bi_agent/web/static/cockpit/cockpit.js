@@ -9,9 +9,10 @@
   const root = document.querySelector('meta[name="app-root"]').content.replace(/\/$/, '');
   const routeRoot = location.pathname.replace(/\/cockpit(?:\/(?:home|overview|operations|analysis))?\/?$/, '');
   const assetVersion = document.querySelector('meta[name="cockpit-version"]')?.content || '1';
-  const runtimeUrl = `${root}/static/cockpit/metadata/runtime.json?v=${encodeURIComponent(assetVersion)}`;
-  const snapshotsUrl = `${root}/static/cockpit/metadata/pdt-release-2109836674373566465/data-snapshots.json?v=${encodeURIComponent(assetVersion)}`;
-  const insightBundleUrl = `${root}/static/cockpit/insight-components/index.js?v=${encodeURIComponent(assetVersion)}`;
+  const assetBase = document.querySelector('meta[name="cockpit-assets"]')?.content || `${root}/static/cockpit`;
+  const runtimeUrl = `${assetBase}/metadata/runtime.json?v=${encodeURIComponent(assetVersion)}`;
+  const snapshotsUrl = `${assetBase}/metadata/pdt-release-2109836674373566465/data-snapshots.json?v=${encodeURIComponent(assetVersion)}`;
+  const insightBundleUrl = `${assetBase}/insight-components/index.js?v=${encodeURIComponent(assetVersion)}`;
   const apiBase = (document.querySelector('meta[name="cockpit-api-base"]')?.content || `${root}/api/cockpit`).replace(/\/$/, '');
   const PERIOD = '2025-10';
   const DEPARTMENT = '全部产品部';
@@ -39,7 +40,7 @@
     return;
   }
 
-  const {createApp, ref, computed, reactive, onMounted, onBeforeUnmount, nextTick} = window.Vue;
+  const {createApp, ref, computed, reactive, onMounted, onBeforeUnmount, nextTick, shallowRef, markRaw} = window.Vue;
 
   const dashboardDataMode = ref('ap');
   let liveDataClient = null;
@@ -48,13 +49,11 @@
   let refreshDebounce = null;
   let filtersReady = false;
   const insightLoadError = ref('');
-  const insightReady = ref(false);
-  const insightBundleReady = import(insightBundleUrl).then(() => {
-    insightReady.value = true;
-  }).catch(cause => {
-    insightLoadError.value = `交付插槽组件加载失败：${cause.message || cause}`;
-    console.error('cockpit insight bundle error', cause);
-  });
+  let insightBundleReady;
+  let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
+  const pageState = reactive({cached:false,dataAsOf:0,refreshing:false,error:''});
+  const visibleStages = new Map();
+  let onPageActivity = () => {};
 
   /* Delivered slot positions, backed by live cockpit analyses instead of static copy. */
   const SLOT_STAGE = {
@@ -203,7 +202,11 @@
   }
 
   function ensureAnalysis(stage, refresh = false) {
-    if (analysisEngine === 'main' && publications) return publications.refresh(stage, refresh);
+    if (analysisEngine === 'main' && fullSnapshot) {
+      if (refresh) return pageCache.refresh(fullSnapshot,true);
+      return Promise.resolve(stateFor(stage).item);
+    }
+    if (analysisEngine === 'main' && publications) return publications.refresh(stage, refresh).finally(onPageActivity);
     const state = stateFor(stage);
     if (!refresh && state.status === 'done' && state.item) {
       try { return Promise.resolve(checkedAnalysis(state.item, stage)); } catch (_) { analysisPromises.delete(stage); }
@@ -233,13 +236,16 @@
     }
   }
 
+  function baseMainBody(stage,refresh) {
+    return {id:Number(identityId),engine:'main',source:'service',page:pageFromLocation(),defaultView:currentUiScope==='default' && !clarificationAnswers.has(stage),
+      stage,period:PERIOD,department:DEPARTMENT,filters:{},repositoryId:'',chartSnapshotId:'pdt-release-2109836674373566465',
+      clarifications:clarificationAnswers.get(stage)||{},refresh:Boolean(refresh)};
+  }
   async function mainBody(stage,refresh) {
     let dataScope;
     if(liveDataClient) dataScope=await liveDataClient.ready();
     else {for(let n=0;n<20 && !displayedQueries.size;n++) await new Promise(r=>setTimeout(r,100));if(dashboardQueryError)throw new Error(dashboardQueryError);dataScope={chartQueries:[...displayedQueries].sort(),apReceiptIds:[]};}
-    return {id:Number(identityId),engine:'main',source:'service',page:pageFromLocation(),defaultView:defaultView && !clarificationAnswers.has(stage),
-      stage,period:PERIOD,department:DEPARTMENT,filters:{},repositoryId:'',chartSnapshotId:'pdt-release-2109836674373566465',
-      clarifications:clarificationAnswers.get(stage)||{},refresh:Boolean(refresh),...dataScope};
+    return {...baseMainBody(stage,refresh),...dataScope};
   }
 
   const CockpitInsight = {
@@ -247,7 +253,7 @@
     setup(props) {
       const stage = computed(() => SLOT_STAGE[props.insight.id] || 'shipment');
       const state = computed(() => stateFor(stage.value));
-      const delivered = computed(() => insightReady.value ? window.InsightComponents?.[props.insight.id] || null : null);
+      const delivered = shallowRef(null);
       const analysisContext = computed(() => ({
         id: Number(identityId),
         stage: stage.value,
@@ -260,7 +266,19 @@
       const confirmScope = () => {if(!clarification.value.trim())return;clarificationAnswers.set(stage.value, {answer:clarification.value.trim()});ensureAnalysis(stage.value,true).catch(()=>{});};
       const stop = async () => {if(state.value.item?.id)await fetch(`${apiBase}/analyses/${state.value.item.id}/cancel`,{method:'POST'});};
       const reload = () => ensureAnalysis(stage.value, true).catch(() => {});
-      onMounted(() => ensureAnalysis(stage.value).catch(() => {}));
+      let alive=true;
+      const registeredStage=stage.value;
+      visibleStages.set(registeredStage,(visibleStages.get(registeredStage)||0)+1);
+      onBeforeUnmount(()=>{alive=false;const count=(visibleStages.get(registeredStage)||1)-1;if(count)visibleStages.set(registeredStage,count);else visibleStages.delete(registeredStage);});
+      onMounted(async()=>{
+        try {
+          const bundle=await (insightBundleReady ||= import(insightBundleUrl));
+          const component=await bundle.loadInsight(props.insight.id);
+          if(!alive)return;
+          delivered.value=markRaw(component);
+          await ensureAnalysis(stage.value);onPageActivity();
+        } catch(cause) {if(alive)insightLoadError.value=`插槽加载失败：${cause.message||cause}`;}
+      });
       return {dashboardDataMode, delivered, state, analysisContext, reload, insightLoadError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
     },
     template: `
@@ -361,6 +379,8 @@
       const runtime = ref(null);
       const loading = ref(true);
       const error = ref('');
+      const boardRevision=ref(0);
+      let publishTimer=null, refreshTimer=null, pageEpoch=0, publishing=false;
       const biAdapters = ref(null);
       const biRuntime = ref(null);
       const hostUtils = ref(null);
@@ -380,20 +400,13 @@
           .find(element => element.textContent.trim() === label);
       }
 
-      function applyRouteTab() {
-        const button = findTab(PAGES[page.value]?.tab);
-        if (button && !button.classList.contains('is-active')) button.click();
-      }
-
       function onTabClick(event) {
-        const button = event.target.closest?.('.pro-bi-tab-container__tab');
-        if (!button) return;
-        const label = button.textContent.trim();
-        const entry = Object.entries(PAGES).find(([, value]) => value.tab === label);
-        if (!entry) return;
-        page.value = entry[0];
-        document.title = `储能经营风险驾驶舱 · ${entry[1].title}`;
-        history.replaceState(null, '', routeFor(entry[0]));
+        const button=event.target.closest?.('.pro-bi-tab-container__tab');
+        if(!button)return;
+        const entry=Object.entries(PAGES).find(([,value])=>value.tab===button.textContent.trim());
+        if(!entry||entry[0]===page.value)return;
+        event.preventDefault();event.stopPropagation();
+        location.assign(routeFor(entry[0]));
       }
 
       async function loadJson(url) {
@@ -403,14 +416,14 @@
       }
 
       async function loadRuntime() {
-        const capabilities=await loadJson(`${apiBase}/engines`);
+        const [payload,startup] = await Promise.all([loadJson(runtimeUrl),loadJson(`${apiBase}/startup?id=${identityId}&page=${page.value}`)]);
+        const capabilities=startup.engines,dataConfig=startup.dataConfig;
         if(!capabilities.comparisonOnly || !params.has('engine'))analysisEngine=capabilities.default;
         if(baselineId){
           if(!capabilities.comparisonOnly || analysisEngine!=='standalone')throw new Error('当前不允许独立证据对照');
           baselineItem=await loadJson(`${apiBase}/analyses/${encodeURIComponent(baselineId)}`);
           if(baselineItem.context.engine!=='main')throw new Error('基线必须来自主服务');
         }
-        const [payload, dataConfig] = await Promise.all([loadJson(runtimeUrl), loadJson(`${apiBase}/data/config`)]);
         dashboardDataMode.value = dataConfig.mode;
         if (dataConfig.mode === 'ap' && !dataConfig.available) throw new Error('实时AP代理需要连接主服务，当前独立服务不提供此能力');
         if(baselineItem){
@@ -424,34 +437,121 @@
           }
         }
         if(analysisEngine==='main') {
-          const {createPublicationClient}=await import(`${root}/static/cockpit/publication-client.js?v=${encodeURIComponent(assetVersion)}`);
+          const {createPublicationClient}=await import(`${assetBase}/publication-client.js?v=${encodeURIComponent(assetVersion)}`);
           publications=createPublicationClient({apiBase,stateFor,bodyFor:mainBody,queue:withAnalysisSlot});
-          try {
-            const saved=await loadJson(`${apiBase}/analyses/published?id=${identityId}&engine=main&page=${page.value}`);
-            publications.preload(saved.items);
-          } catch (_) { /* A first visit can have no publication; show the delivered loading state. */ }
+          publications.preload(startup.cards||{});
         }
         let installed;
         if (dataConfig.mode === 'ap') {
-          const {createAPDataClient,observeRuntimeFilters} = await import(`${root}/static/cockpit/data-client.js?v=${encodeURIComponent(assetVersion)}`);
-          biRuntime.value=observeRuntimeFilters(ProUIBi.createBiRuntime(),()=>{
-            defaultView=false;
-            liveDataClient?.clearScope();
-          },()=>filtersReady);
-          liveDataClient = createAPDataClient({apiBase, id: identityId, onInvalidate: ({replacement}) => {
-            if (analysisEngine !== 'main' || !publications) return;
-            if(replacement) {defaultView=false;publications.invalidate();}
-            clearTimeout(refreshDebounce);
-            refreshDebounce=setTimeout(()=>{for(const stage of publications.stages) ensureAnalysis(stage);},400);
-          }});
-          installed = liveDataClient;
-          liveDataClient.ready().then(()=>{filtersReady=true;}).catch(()=>{});
-          ProUIBi.configureBi({...installed.biAdapters, utils: installed.utils});
+          const [{createAPDataClient,observeRuntimeFilters},{createPageCache}] = await Promise.all([
+            import(`${assetBase}/data-client.js?v=${encodeURIComponent(assetVersion)}`),
+            import(`${assetBase}/page-client.js?v=${encodeURIComponent(assetVersion)}`),
+          ]);
+          let rawRuntime=ProUIBi.createBiRuntime();
+          const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
+          if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
+          const makeClient=(snapshot=null)=>createAPDataClient({apiBase,id:identityId,snapshot,
+            onSnapshotMiss:()=>changeScope(currentUiScope,true),
+            onInvalidate:()=>{
+              if(analysisEngine!=='main'||fullSnapshot)return;
+              clearTimeout(refreshDebounce);
+              refreshDebounce=setTimeout(()=>{for(const stage of visibleStages.keys())ensureAnalysis(stage).catch(()=>{});onPageActivity();},400);
+            }});
+          function install(snapshot,remount=false,metadata=[]) {
+            if(remount){
+              filtersReady=false;
+              const nextRuntime=ProUIBi.createBiRuntime();
+              const restored=biRuntime.value?.replayView?.(nextRuntime);
+              rawRuntime=nextRuntime;
+              if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
+              biRuntime.value=observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady,restored);
+              const path={segments:[{kind:'tab',containerId:tabs.id,tabId:payload.pages[page.value].tabId,templateId:payload.pages[page.value].templateId}]};
+              for(const component of payload.templates[payload.pages[page.value].templateId]?.components||[]){
+                if(component.type!=='button-group')continue;
+                const grain=rawRuntime.getButtonGrainSelection(component.id,path);
+                if(grain)for(const item of component.buttonGroupConfig?.items||[])item.default=String(item.grain||'').toUpperCase()===grain;
+              }
+            }
+            fullSnapshot=snapshot;
+            liveDataClient=makeClient(snapshot);
+            const installedClient=liveDataClient;
+            for(const entry of metadata)installedClient.read('helmet',entry.payload).then(data=>{
+              if(canonical(data)!==canonical(entry.data)){
+                const message='流程配置已变化，请刷新页面加载新版本';installedClient.block(message);
+                if(installedClient===liveDataClient)pageState.error=message;
+              }
+            }).catch(()=>{});
+            biAdapters.value=liveDataClient.biAdapters;hostUtils.value=liveDataClient.utils;
+            ProUIBi.configureBi({...liveDataClient.biAdapters,utils:liveDataClient.utils});
+            if(snapshot){publications?.preload(snapshot.items);Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,error:''});}
+            if(remount){
+              filtersReady=false;const top=window.scrollY;boardRevision.value++;
+              nextTick(()=>requestAnimationFrame(()=>window.scrollTo({top,behavior:'instant'})));
+            }
+            const client=liveDataClient;
+            client.ready({allowExpired:Boolean(snapshot)}).then(()=>{if(client===liveDataClient){filtersReady=true;onPageActivity();}}).catch(()=>{});
+          }
+          function schedulePageRefresh(delay=120000) {
+            clearTimeout(refreshTimer);
+            refreshTimer=setTimeout(async()=>{
+              if(!fullSnapshot||!pageCache)return;
+              if(document.hidden){schedulePageRefresh(30000);return;}
+              const token=pageEpoch;
+              await pageCache.refresh(fullSnapshot);
+              if(token===pageEpoch&&fullSnapshot)schedulePageRefresh(pageState.error?60000:120000);
+            },delay);
+          }
+          async function changeScope(uiScope,miss=false) {
+            let metadata=fullSnapshot?.entries?.filter(e=>e.kind==='helmet')||[];
+            if(!metadata.length)try{metadata=liveDataClient.entries().filter(e=>e.kind==='helmet');}catch{}
+            const token=++pageEpoch;pageCache?.invalidate();
+            currentUiScope=uiScope;defaultView=uiScope==='default';fullSnapshot=null;
+            clearTimeout(refreshTimer);publications?.invalidate();liveDataClient?.clearScope();
+            Object.assign(pageState,{cached:false,dataAsOf:0,error:'',refreshing:false});
+            filtersReady=false;await Promise.resolve();if(token!==pageEpoch)return;
+            install(null,true,metadata);
+            if(!miss&&analysisEngine==='main') {
+              try {const snapshot=await pageCache.load(uiScope);if(snapshot&&token===pageEpoch){install(snapshot,true);schedulePageRefresh(800);}}catch{}
+            }
+          }
+          biRuntime.value=observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady);
+          if(analysisEngine==='main') {
+            pageCache=createPageCache({apiBase,id:identityId,page:page.value,makeClient,bodyFor:baseMainBody,
+              onState:value=>Object.assign(pageState,value),
+              onSnapshot:snapshot=>{
+                const changed=fullSnapshot?.version!==snapshot.version;
+                if(changed)install(snapshot,true);
+                else{fullSnapshot=snapshot;pageState.dataAsOf=snapshot.dataAsOf;pageState.error='';}
+              }});
+          }
+          install(analysisEngine==='main'?startup.snapshot:null);
+          if(fullSnapshot)schedulePageRefresh(1000);
+          onPageActivity=()=>{
+            clearTimeout(publishTimer);
+            if(analysisEngine!=='main'||fullSnapshot||publishing)return;
+            publishTimer=setTimeout(async()=>{
+              const token=pageEpoch,client=liveDataClient,uiScope=currentUiScope;
+              const items=Object.fromEntries([...visibleStages.keys()].map(stage=>[stage,stateFor(stage).item]));
+              if(Object.values(items).some(item=>item?.result?.cardContract!=='cockpit-cards-v1'))return;
+              if(page.value!=='overview'&&!Object.keys(items).length)return;
+              publishing=true;
+              try {
+                await client.ready();await new Promise(r=>setTimeout(r,500));
+                if(token!==pageEpoch||client!==liveDataClient)return;
+                const snapshot=await pageCache.publish(client,items,uiScope);
+                if(snapshot&&token===pageEpoch){fullSnapshot=snapshot;Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,error:''});schedulePageRefresh();}
+              }catch(cause){if(token===pageEpoch)pageState.error=cause.message||'未形成完整看板';}
+              finally{publishing=false;}
+            },600);
+          };
+          installed=liveDataClient;
         } else if (dataConfig.mode === 'snapshot') {
           installed = installSnapshots(await loadJson(snapshotsUrl));
+          biRuntime.value=ProUIBi.createBiRuntime();
+          const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
+          if(tabs)biRuntime.value.setActiveTab(tabs.id,payload.pages[page.value].tabId);
+          biAdapters.value=installed.biAdapters;hostUtils.value=installed.utils;
         } else { throw new Error('未识别的看板取数模式'); }
-        biAdapters.value = installed.biAdapters;
-        hostUtils.value = installed.utils;
         runtime.value = payload;
         if (!runtime.value?.dashboard) throw new Error('交付看板配置为空');
       }
@@ -463,20 +563,21 @@
           history.replaceState(null, '', routeFor('overview'));
         }
         try {
-          await Promise.all([loadRuntime(), insightBundleReady]);
+          await loadRuntime();
           await nextTick();
-          setTimeout(applyRouteTab, 0);
+          onPageActivity();
           schedulePrefetch();
         } catch (cause) {
           error.value = `正式看板配置加载失败：${cause.message}`;
         } finally {
           loading.value = false;
+          document.getElementById('cockpit-boot')?.remove();
         }
       });
-      onBeforeUnmount(() => {document.removeEventListener('click', onTabClick, true);clearTimeout(refreshDebounce);});
+      onBeforeUnmount(() => {document.removeEventListener('click', onTabClick, true);clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
-        page, runtime, loading, error, pageTitle, dashboard: release, release, gaps, metadataSummary,
+        page, runtime, loading, error, pageTitle, pageState, boardRevision, dashboard: release, release, gaps, metadataSummary,
         pageInsights, dashboardComponent: dashboard, biAdapters, biRuntime, hostUtils,
         slot_name: insight => `insight-${insight.id}`,
       };

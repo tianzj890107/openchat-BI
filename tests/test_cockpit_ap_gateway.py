@@ -29,7 +29,7 @@ def config(tmp_path, **changes):
     headers=tmp_path/'ap-headers.json'
     headers.touch(mode=0o600,exist_ok=True)
     headers.write_text(json.dumps({'X-App-Id':'cockpit-app','X-Ontology-Repository-Id':'ap-repo','apifoxToken':'private-ap-test'}))
-    return APConfig(**dict(base_url='http://ap.example/api/gateway2',headers_file=str(headers),timeout=2,concurrency=1,receipt_ttl=60,**changes))
+    return APConfig(**dict(base_url='http://ap.example/api/gateway2',headers_file=str(headers),timeout=2,concurrency=1,receipt_ttl=60,batch_mode='native',**changes))
 
 
 def test_transport_has_its_own_headers_paths_and_capacity(tmp_path,monkeypatch):
@@ -170,3 +170,54 @@ def test_waiting_cockpit_analysis_can_cancel_without_acquiring_main_admission(mo
     with patch.object(web,'_begin_turn',side_effect=AssertionError('no main slot for queued cancelled job')):
         with pytest.raises(InterruptedError):web._cockpit_main_runner({},cancel,lambda *a:None)
     semaphore.release()
+
+
+def test_individual_batch_uses_exact_single_ap_queries_in_order_and_never_calls_native(tmp_path):
+    from dataclasses import replace
+    opener=Opener({'success':True,'data':DATA})
+    cfg=replace(config(tmp_path),batch_mode='individual')
+    gateway=APGateway(cfg,opener)
+    second={**QUERY,'commonConfig':{'filters':{'department':'B'}}}
+    result=gateway.query('batch',[QUERY,second])
+    assert result==[{'success':True,'data':DATA},{'success':True,'data':DATA}]
+    assert [json.loads(r.data) for r,_ in opener.calls]==[QUERY,second]
+    assert all(r.full_url.endswith('/ontology/api/v1/analysis/data/query') for r,_ in opener.calls)
+    assert all(timeout<=cfg.timeout for _,timeout in opener.calls)
+
+
+def test_individual_batch_refuses_partial_results_when_any_child_fails(tmp_path):
+    from dataclasses import replace
+    class FailSecond(Opener):
+        def open(self,request,timeout):
+            if self.calls:raise HTTPError('http://ap.example',500,'private-failure',{},None)
+            return super().open(request,timeout)
+    gateway=APGateway(replace(config(tmp_path),batch_mode='individual'),FailSecond({'success':True,'data':DATA}))
+    with pytest.raises(HTTPException) as error:gateway.query('batch',[QUERY,{**QUERY,'commonConfig':{'pagination':{'pageNum':2}}}])
+    assert error.value.status_code==502 and 'private-failure' not in error.value.detail
+    assert gateway._capacity.acquire(blocking=False)
+    gateway._capacity.release()
+
+
+def test_individual_batch_has_one_overall_deadline(tmp_path):
+    from dataclasses import replace
+    gateway=APGateway(replace(config(tmp_path),timeout=1,batch_mode='individual'),Opener({'success':True,'data':DATA}))
+    with patch('bi_agent.cockpit.ap_gateway.time.monotonic',side_effect=[0,0,0,2]):
+        with pytest.raises(HTTPException) as error:gateway.query('batch',[QUERY,QUERY])
+    assert error.value.status_code==504 and len(gateway._opener.calls)==1
+
+
+def test_invalid_batch_mode_is_a_configuration_error(monkeypatch):
+    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2')
+    monkeypatch.setenv('COCKPIT_AP_BATCH_MODE','invented')
+    with pytest.raises(HTTPException) as error:APConfig.load()
+    assert error.value.status_code==503
+
+
+def test_individual_batch_deduplicates_equal_children_without_losing_positions(tmp_path):
+    from dataclasses import replace
+    opener=Opener({'success':True,'data':DATA})
+    gateway=APGateway(replace(config(tmp_path),batch_mode='individual'),opener)
+    result=gateway.query('batch',[QUERY,QUERY,QUERY])
+    assert len(result)==3 and len(opener.calls)==1
+    result[0]['data']['result']['rows'].clear()
+    assert result[1]['data']['result']['rows']

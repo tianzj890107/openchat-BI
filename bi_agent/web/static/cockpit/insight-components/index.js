@@ -5,24 +5,16 @@
 const version = new URL(import.meta.url).search
 const load = path => import(new URL(`${path}${version}`, import.meta.url).href)
 
-const [registry, shared] = await Promise.all([
-  load('./registry.js'),
-  load('./shared.js'),
-])
-
-window.InsightRuntime = { ...registry, ...shared }
-
-await Promise.all([
-  load('./bid-status-note/index.js'),
-  load('./quote-summary/index.js'),
-  load('./bid-summary/index.js'),
-  load('./order-sign-summary/index.js'),
-  load('./sales-shipment-issues/index.js'),
-  load('./opportunity-risk/index.js'),
-  load('./opportunity-coverage-note/index.js'),
-  load('./order-risk-summary/index.js'),
-  load('./shipment-risk-summary/index.js'),
-  load('./shipment-overdue-note/index.js'),
-  load('./shipment-cause-breakdown/index.js'),
-  load('./shipment-task-order/index.js'),
-])
+const ids = new Set(['bid-status-note','quote-summary','bid-summary','order-sign-summary',
+  'sales-shipment-issues','opportunity-risk','opportunity-coverage-note','order-risk-summary',
+  'shipment-risk-summary','shipment-overdue-note','shipment-cause-breakdown','shipment-task-order'])
+let runtime
+const pending = new Map()
+export function loadInsight(id) {
+  if (!ids.has(id)) return Promise.reject(new Error('未知的AI插槽组件'))
+  if (!runtime) runtime = Promise.all([load('./registry.js'),load('./shared.js')]).then(([registry,shared])=>{
+    window.InsightRuntime = {...registry,...shared}
+  })
+  if (!pending.has(id)) pending.set(id,runtime.then(()=>load(`./${id}/index.js`)).then(()=>window.InsightComponents[id]))
+  return pending.get(id)
+}

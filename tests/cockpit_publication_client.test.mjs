@@ -9,7 +9,7 @@ const setup=options=>{const states={};const stateFor=stage=>states[stage]||(stat
 
 test('first paint uses persistent cards; silent refresh atomically replaces after delivery',async()=>{
  let resolve;const poll=new Promise(r=>resolve=r);
- const {client,states}=setup({request:async url=>url.endsWith('/refresh')?ok({cached:item('old','上次结果'),analysis:{...item('job'),status:'running'},dataFingerprint:'A'}):poll});
+ const {client,states}=setup({request:async url=>url.split('?')[0].endsWith('/refresh')?ok({cached:item('old','上次结果'),analysis:{...item('job'),status:'running'},dataFingerprint:'A'}):poll});
  client.preload({shipment:item('old','上次结果')});
  assert.equal(states.shipment.item.result.summary,'上次结果');
  const run=client.refresh('shipment');await new Promise(r=>setImmediate(r));
@@ -26,7 +26,7 @@ test('background failure keeps the last successful full cards',async()=>{
 
 test('new filter clears old cards immediately and late completion cannot paint it',async()=>{
  let resolve;const poll=new Promise(r=>resolve=r);
- const {client,states}=setup({request:async url=>url.endsWith('/refresh')?ok({cached:item('old'),analysis:{...item('old-job'),status:'running'}}):poll});
+ const {client,states}=setup({request:async url=>url.split('?')[0].endsWith('/refresh')?ok({cached:item('old'),analysis:{...item('old-job'),status:'running'}}):poll});
  client.preload({shipment:item('old')});const run=client.refresh('shipment');await new Promise(r=>setImmediate(r));
  client.invalidate();assert.equal(states.shipment.item,null);assert.equal(states.shipment.status,'running');
  resolve(ok(item('old-job','不能显示的旧范围结果')));await run;
