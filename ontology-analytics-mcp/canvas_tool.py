@@ -356,6 +356,7 @@ def _normalize_actions(params: dict) -> list[dict[str, Any]]:
         if not action_id or action_id in seen:
             raise ValueError(f"items[{index}].id must be unique and non-empty")
         seen.add(action_id)
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         normalized.append({
             "id": action_id,
             "title": title,
@@ -365,6 +366,11 @@ def _normalize_actions(params: dict) -> list[dict[str, Any]]:
             "due_at": str(item.get("due_at") or "").strip(),
             "owner_ref": str(item.get("owner_ref") or "").strip(),
             "owner_name": str(item.get("owner_name") or "").strip(),
+            "source": str(item.get("source") or "").strip(),
+            "scenario": str(item.get("scenario") or "").strip(),
+            "task_template": str(item.get("task_template") or "").strip(),
+            "category": str(item.get("category") or "").strip(),
+            "metadata": metadata,
         })
     return normalized
 

@@ -49,3 +49,39 @@
 - 同步更新 README、版本索引、新增 `docs/versions/ontology-v0.1.5.md`、版本规范、版本契约测试
   和前端/包管理清单版本号。
 - 边界：不部署、不修改服务器或用户历史会话；tag、Release 与 MR 合并按独立授权执行。
+
+### 2026-10-27 · Process360 五场景本体闭环：catalog、只读取数、候选分析、Fuxi 待办与复验
+
+- 用户可见变化：分析 Agent 新增 Process360 闭环能力，覆盖 SC01 发货超期、SC02 红区报价、
+  SC03 战略客户突破、SC04 中标未签、SC05 计划外发货偏差。问题先经 P01-P18/SC01-SC05
+  确定性路由，再按 S02 场景上下文 → S03 受控只读取数 → S04 异常/影响/候选原因 →
+  S05 方案与任务令草稿 → S06 Fuxi 待办 → S07 复验执行；每个阶段返回统一 envelope 和
+  `ok/partial/blocked/needs_clarification/not_applicable` 状态。
+- 语义层：新增 `bi_agent/process360/catalog.py`、`scripts/build_process360_catalog.py` 和
+  生成文件 `dataset/process360/ywln-v3.1/catalog.json`（206 指标、84 业务规则、5 场景、
+  7 流程、26 活动、16 Action、8 任务模板、8 方案、14 证据模板、5 复验、18 SOP）。
+  中文工作表映射为稳定英文 key；场景 bundle 只纳入本场景问题/方案/任务，修复了
+  SC01 误带 SC05 `SL08` 的串场景问题；原始 `.xlsx/.docx` 不入仓，仅记录来源 SHA。
+- 取数层：新增 `bi_agent/process360/db.py`/`queries.py`，只允许固定参数化 SELECT/CTE，
+  read-only transaction + statement timeout；调用方不能传 SQL/DSN。SC01 当前快照返回
+  13.26 亿元 / 3.33 GWh 超期未发（2026-10-27 实测），SC03 返回 12 户待突破战略客户，
+  SC04 返回 39 个中标未签项目 / 11.45 亿元 / 平均等待 124 天；SC02 红区单数因缺价格区间
+  映射 blocked，SC05 因同一订单行/产品/日期存在多计划版本而 blocked，均不补 0。
+- 分析与执行：新增 `analysis.py`/`plans.py`/`execute.py`/`verify.py`/`service.py`；候选原因
+  必须带证据模板且不得表述为已确认根因；任务草稿不含手机号，`canvasActions` 可直接作为
+  `CanvasGenerate` 的 actions；S06 唯一出口为 Fuxi 待办（来源 `boulderai-anaylize-todo`），
+  不调用 X360、不发送 IM、不伪造业务写操作；S07 缺冻结基准或批准 RF 目标时 `canClose=false`。
+- 接入层：MCP 新增 `Process360Route`/`Process360Search`/`Process360Context`/`Process360Query`/
+  `Process360Analyze`/`Process360Draft`/`Process360Verify` 七个只读工具；
+  `TaskOrderCreate` 仍是唯一写工具。`CanvasGenerate` 的 actions 增加
+  `source/scenario/task_template/category/metadata` 透传，供 Fuxi 宿主点击时创建待办。
+  `ontology-analytics-skill/SKILL.md` 增加 Process360 场景闭环章节和 HTML actions 契约。
+- 配置与文档：`pyproject.toml` 的 `web` extras 和 `open_claude/requirements.txt`
+  增加 `psycopg[binary]>=3.1`；`.env.example` 增加 `PROCESS360_PG_*` 只读配置及
+  `PROCESS360_CATALOG_PATH` 占位；README 增加 Process360 入口说明；新增
+  `docs/specs/process360-closed-loop.md`，记录分层、五场景已实现/缺口、状态契约、
+  执行边界和数据库/catalog 边界。
+- 验证：`pytest -q tests/test_process360_catalog.py tests/test_process360_engine.py`
+  17 passed；真实库只读校验五场景 SQL 均可执行（SC01/SC03/SC04 有数，SC02/SC05 按缺口
+  blocked/partial）；`tests/test_fuxi_todo_actions.py`、`tests/test_mcp_endpoint_red.py`
+  回归通过。未部署、未创建 MR/tag/Release；历史会话与用户数据未改动。

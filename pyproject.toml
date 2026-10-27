@@ -31,6 +31,9 @@ web = [
     # Multi-instance shared coordination (lazy-imported; local mode never
     # requires the redis client).
     "redis>=5.0.0",
+    # Process360 read-only business facts. Lazy-imported; only required when
+    # PROCESS360_PG_* is configured.
+    "psycopg[binary]>=3.1",
 ]
 
 [tool.setuptools.packages.find]

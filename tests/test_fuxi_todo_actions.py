@@ -164,3 +164,31 @@ def test_canvas_actions_block_renders_task_order_control(tmp_path: Path) -> None
     assert 'data-fuxi-task-order="action-1"' in page
     assert "fuxi:task-order-create" in page
     assert '"actions"' in output
+
+
+def test_canvas_actions_preserve_process360_dispatch_metadata(tmp_path: Path) -> None:
+    canvas = mcp_endpoint._canvas_tools()
+    execute = canvas._make_canvas_generate()
+    output = execute({
+        "title": "Process360 行动",
+        "conclusion": "结论：先发送核查任务令。",
+        "blocks": [{
+            "kind": "actions",
+            "params": {"items": [{
+                "id": "SC01-TK01",
+                "title": "锁定排产与产能任务令",
+                "content": "核查排产证据。",
+                "evidence": "候选原因，未确认",
+                "severity": "HIGH",
+                "source": "boulderai-anaylize-todo",
+                "scenario": "SC01",
+                "task_template": "TK01",
+                "category": "智能分析任务令",
+                "metadata": {"dispatchTool": "TaskOrderCreate"},
+            }]},
+        }],
+    }, str(tmp_path))
+    assert '"source": "boulderai-anaylize-todo"' in output
+    assert '"scenario": "SC01"' in output
+    assert '"task_template": "TK01"' in output
+    assert '"metadata"' in output

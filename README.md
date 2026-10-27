@@ -170,13 +170,22 @@ Fuxi 连接器配置：
 }
 ```
 
-连接后可以看到 17 个真实分析工具（`AnalysisRoute`、`MetricFactQuery`、
-`ChartGenerate`、`TableGenerate`、`CanvasGenerate`、`TaskOrderCreate`、
-`OutputGateCheck` 等），
+连接后可以看到 `AnalysisRoute`、`MetricFactQuery`、`ChartGenerate`、
+`TableGenerate`、`CanvasGenerate`、`TaskOrderCreate`、`OutputGateCheck` 以及
+`Process360Route/Search/Context/Query/Analyze/Draft/Verify` 等真实分析工具，
 不会出现 `AnalysisRun`、`AskUser`、`TodoWrite` 或原始 SQL 工具。客户端不需要
 `.env`、App ID 或 Token；demo2 本体和 Doris 配置由主服务持有。若在网关后使用，
 用 `MCP_PUBLIC_BASE_URL` 指定外部可访问基址，使 `CanvasGenerate` 返回的
 `Artifact URL` 不指向容器内地址。
+
+### Process360 五场景闭环
+
+主服务内置 SC01 发货超期、SC02 红区报价、SC03 战略客户、SC04 中标未签、
+SC05 计划外发货的确定性闭环：本地 catalog 提供流程/指标/规则/证据语义，业务事实通过
+只读 PostgreSQL 受控取数，候选原因必须补证据，任务令只发 Fuxi 待办
+（`boulderai-anaylize-todo`），复验缺少冻结基准或批准目标时不能关闭。
+数据库只读配置使用 `PROCESS360_PG_*`（见 `.env.example`）；未配置时取数明确返回
+`blocked`，不回退 mock。详见 [Process360 闭环实现](docs/specs/process360-closed-loop.md)。
 
 ## 反向代理子路径部署（`APP_ROOT_PATH`）
 

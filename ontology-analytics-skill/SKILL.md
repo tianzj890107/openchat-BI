@@ -23,7 +23,7 @@ headers: {}
 
 - URL 由部署主服务的团队提供；用户不需要填写 `.env`、App ID、Token 或目录。
 - 主服务内部使用 demo2 的本体与 Doris 配置；`X-App-Id` 和仓库 ID 不暴露给前端。
-- Fuxi 的 `tools` 面板应能看到下面 16 个真实工具；`AnalysisRun`、`AskUser`、
+- Fuxi 的 `tools` 面板应能看到下面列出的真实工具；`AnalysisRun`、`AskUser`、
   `TodoWrite` 和任何原始 SQL / 表结构工具都不会出现。
 - 工具调用和模型调用都在主服务完成；Fuxi 只负责对话、展示工具卡片和打开最终
   `Artifact URL`。
@@ -51,13 +51,22 @@ headers: {}
 | `CanvasGenerate` | 把结论、图表、表格和口径拼成整页自包含 HTML，返回 `Artifact URL` |
 | `TaskOrderCreate` | 把用户确认的一条行动建议推送到 Fuxi 风险待办；只在用户点击后调用 |
 | `OutputGateCheck` | 交付前检查证据、预测披露、图表、只读 SQL 和对账 |
+| `Process360Route` | Process360 S00：P01-P18 SOP 与 SC01-SC05 场景确定性路由 |
+| `Process360Search` | Process360 S01：指标/业务对象双入口检索与场景归属 |
+| `Process360Context` | Process360 S02：装配流程、活动、角色、规则、证据和缺口 |
+| `Process360Query` | Process360 S03：五场景受控只读 PostgreSQL 取数；不接受 SQL |
+| `Process360Analyze` | Process360 S04：异常、影响、候选原因和证据缺口 |
+| `Process360Draft` | Process360 S05：方案与任务令草稿（不含手机号） |
+| `Process360Verify` | Process360 S07：交付验收与效果复验计划 |
 
 ## 默认交付契约
 
 用户提出企业财务/经营数据问题时，自动完成以下动作，不需要用户点名工具、脚本、路径
 或输出目录：
 
-1. **先路由**：调用 MCP `AnalysisRoute`，把用户原话放进 `question`。
+1. **先路由**：如果问题属于发货超期、红区报价、战略客户、中标未签或计划外发货，
+   调用 `Process360Route`；其他经营/财务问题调用 `AnalysisRoute`。把用户原话放进
+   `question`。
 2. **再取数**：事实问题优先调用 `MetricFactQuery`；已经给出 `M...` 指标编码时，
    第一笔业务调用就是 `MetricFactQuery`，不要先堆叠 `Ontology-SemanticQuery`、
    `MetricCalculation` 和多次 `Ontology-MetricQuery`。
@@ -77,6 +86,49 @@ headers: {}
 
 只有用户明确说“只要一句话 / 不要文件 / 不要图表”时，才可以省略 HTML 或图表；
 路由、取数和对账仍然必须执行。
+
+## Process360 场景闭环（SC01-SC05）
+
+以下问题必须走 Process360，而不是临时拼 SQL 或只做一次指标查询：
+
+| 场景 | 典型问题 |
+| --- | --- |
+| `SC01` 发货超期治理 | 哪些订单超期未发、为什么、怎么处置、能否复验 |
+| `SC02` 红区报价治理 | 红区报价集中在哪里、占比多少、审批是否异常 |
+| `SC03` 战略客户突破 | 哪些战略客户没有有效商机、覆盖率缺口在哪里 |
+| `SC04` 中标未签治理 | 哪些项目中标未签、等待多久、卡在什么条款 |
+| `SC05` 计划外发货偏差 | 哪些发货偏离日计划、如何核查、后续是否改善 |
+
+标准顺序：
+
+```text
+Process360Route
+  → Process360Search（名称/编码不明确时）
+  → Process360Context（需要解释流程/角色/规则时）
+  → Process360Query
+  → Process360Analyze
+  → Process360Draft
+  → CanvasGenerate（kind=actions，使用 draft.tasks）
+  → OutputGateCheck
+```
+
+纪律：
+
+- `Process360Query`/`Process360Analyze`/`Process360Draft` 返回
+  `status=ok|partial|blocked|needs_clarification`。`blocked` 或 `partial` 必须原样
+  披露，禁止补 0、禁止把“不可评估”改写成“没有风险”。
+- `Process360Analyze.candidateCauses` 是候选原因，不是已确认根因。缺少证据模板
+  要求的证据时，只能提出核查任务。
+- `Process360Draft.canvasActions[]` 已是 `CanvasGenerate` 的 `kind=actions`
+  `params.items` 形态，可直接原样传入；`tasks[]` 是带审批/证据要求的完整草稿。
+  两者都不含手机号。
+- S06 唯一出口是 Fuxi 待办：用户点击后由宿主携带 `recipients_raw` 调用
+  `TaskOrderCreate`，来源固定 `boulderai-anaylize-todo`。不调用 X360、不发送 Fuxi IM、
+  不伪造发运/签单/排产等业务执行结果；这些动作由 Fuxi 待办侧承接。
+- S07 使用 `Process360Verify`。没有冻结基准、批准 RF 目标或复验窗口时，
+  `canClose=false`；任务状态完成不等于效果达标。
+- 本地 catalog 是语义来源；数据库只提供业务事实。不要把 `ywln_crm.meta_*` 当作
+  运行时本体覆盖 catalog，也不要把数据库连接串或 SQL 暴露给 Fuxi/HTML。
 
 ## 一轮的标准顺序
 
