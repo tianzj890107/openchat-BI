@@ -1,0 +1,48 @@
+.bid-summary {
+  margin: 0;
+  padding: 14px 16px 12px;
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
+  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  border-radius: 8px;
+  color: #262626;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.bid-summary__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.bid-summary__title {
+  font-size: 14px;
+}
+
+.bid-summary__aside,
+.bid-summary__note,
+.bid-summary__gray {
+  color: #8c8c8c;
+}
+
+.bid-summary__note {
+  margin-top: 6px;
+  font-size: 12px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.bid-summary__green {
+  color: #389e0d;
+}
+
+.bid-summary__orange {
+  color: #d46b08;
+}
+
+.bid-summary__red {
+  color: #cf1322;
+}

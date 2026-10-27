@@ -1,0 +1,63 @@
+{
+  "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
+  "branch": "feature/demo_1021",
+  "commit": "558f2ae27cdc5a9569c5d91a1db45f97d31a4321",
+  "importedAt": "2026-10-26",
+  "mode": "active-runtime-adapter",
+  "notes": "Imported upstream metadata unchanged; runtime uses live AP via the main service. Frozen snapshots are retained only for explicit replay mode.",
+  "rootComponents": 2,
+  "templates": 13,
+  "totalComponents": 135,
+  "componentTypes": {
+    "bar": 3,
+    "bar-line": 2,
+    "button-group": 3,
+    "composite-filter": 1,
+    "funnel": 1,
+    "group": 5,
+    "horizontal-bar": 14,
+    "kpiCard": 37,
+    "mini-cpgraph": 2,
+    "process-arc": 1,
+    "progress": 15,
+    "segmented-strip": 5,
+    "share-bar": 6,
+    "tab-container": 1,
+    "table": 17,
+    "template": 3,
+    "title": 19
+  },
+  "dataSourceModes": {
+    "ap": 98,
+    "mock": 37
+  },
+  "insights": 12,
+  "insightComponents": 12,
+  "files": [
+    {
+      "file": "components.json",
+      "sha256": "a7f8065f47d25cfdc412a4c77e19ad3c0b230633e52b709ce6de7876efaf47a6"
+    },
+    {
+      "file": "template-registry.json",
+      "sha256": "d19f5922b1b249cfe71d6abf53b19d4adb25680251867ac65d40d55d605f9a66"
+    },
+    {
+      "file": "insights.js",
+      "sha256": "fc243eb7211ba836c4fc830bb31378eade8c01b53ee140b4291893f9b8d995cf"
+    },
+    {
+      "file": "insights.json",
+      "sha256": "c0d1d0e3cb9b523931d7e18163be8082e053d1c1aa78e84bbb4b222bb809bfd0"
+    }
+  ],
+  "knownIssues": [
+    {
+      "templateId": "2112062888320483329",
+      "componentId": "group-9ypz7vwt",
+      "missingChildId": "share-bar-79fsomq9",
+      "description": "Upstream child definition is absent; runtime reports the gap."
+    }
+  ],
+  "activatedAt": "2026-10-23"
+}

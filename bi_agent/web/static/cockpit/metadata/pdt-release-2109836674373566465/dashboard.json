@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "id": "2109836674373566465",
+    "name": "运营360 整体分析",
+    "url": "/dashboard/release/2109836674373566465",
+    "description": "",
+    "configs": "{\"components\":[{\"dataConfig\":{\"mockData\":{\"filters\":[]},\"sourceType\":\"ap\",\"dimensions\":[{\"fieldType\":\"Dimension\",\"identifierCode\":\"D001\",\"isTree\":true,\"label\":\"采购订单创建时间维度\",\"valueType\":\"DATE\"}]},\"id\":\"composite-filter-hzjk9t5q\",\"position\":{\"h\":5,\"w\":120,\"x\":0,\"y\":13},\"showHeader\":false,\"showTitle\":false,\"title\":\"复合查询器\",\"type\":\"composite-filter\",\"visualization\":{},\"placement\":\"header\",\"linkConfig\":[],\"styleConfig\":{\"compactMode\":true,\"autoHeight\":true},\"baseConfig\":{\"showResetButton\":true,\"overrideRenderType\":{\"D001\":\"dropdown\"},\"defaultValue\":{\"values\":{}}},\"grainBindings\":[{\"id\":\"grain-ohefj9e8\",\"source\":{\"componentId\":\"button-group-5pje4sn1\",\"embedPath\":[{\"containerId\":\"tab-container-zm9eyxne\",\"kind\":\"tab\",\"tabId\":\"tab-bc6wp3k2\",\"templateId\":\"2112001069107167233\"}]},\"targetComponentIds\":[],\"sourceDimension\":{\"fieldType\":\"Dimension\",\"identifierCode\":\"D001\",\"isTree\":true,\"label\":\"采购订单创建时间维度\",\"valueType\":\"DATE\"},\"templateTargets\":[{\"embedPath\":[{\"containerId\":\"tab-container-zm9eyxne\",\"kind\":\"tab\",\"tabId\":\"tab-bc6wp3k2\",\"templateId\":\"2112001069107167233\"}],\"targetId\":\"progress-y5dumxio\",\"templateComponentId\":\"tab-container-zm9eyxne\",\"templateId\":\"2112001069107167233\"},{\"embedPath\":[{\"containerId\":\"tab-container-zm9eyxne\",\"kind\":\"tab\",\"tabId\":\"tab-bc6wp3k2\",\"templateId\":\"2112001069107167233\"},{\"containerId\":\"template-py27ctvu\",\"kind\":\"template\",\"templateId\":\"2112009587516293121\"}],\"targetId\":\"kpiCard-lhq115j7\",\"templateComponentId\":\"tab-container-zm9eyxne\",\"templateId\":\"2112009587516293121\"}]},{\"id\":\"grain-3fy42irv\",\"source\":{\"componentId\":\"button-group-27vq4j6d\",\"embedPath\":[{\"containerId\":\"tab-container-zm9eyxne\",\"kind\":\"tab\",\"tabId\":\"tab-211tc4o0\",\"templateId\":\"2112434004503347202\"}]},\"targetComponentIds\":[],\"sourceDimension\":{\"fieldType\":\"Dimension\",\"identifierCode\":\"D001\",\"isTree\":true,\"label\":\"采购订单创建时间维度\",\"valueType\":\"DATE\"},\"templateTargets\":[{\"embedPath\":[{\"containerId\":\"tab-container-zm9eyxne\",\"kind\":\"tab\",\"tabId\":\"tab-211tc4o0\",\"templateId\":\"2112434004503347202\"}],\"targetId\":\"progress-zl0egumz\",\"templateComponentId\":\"tab-container-zm9eyxne\",\"templateId\":\"2112434004503347202\"}]}]},{\"dataConfig\":{\"mockData\":null,\"sourceType\":\"mock\"},\"id\":\"tab-container-zm9eyxne\",\"position\":{\"h\":119,\"w\":119,\"x\":0,\"y\":0},\"showHeader\":false,\"showTitle\":false,\"title\":\"Tab容器\",\"type\":\"tab-container\",\"visualization\":{},\"baseConfig\":{\"tabs\":[{\"id\":\"tab-qqzt1nj6\",\"label\":\"储能产品线整体经营分析\",\"templateId\":\"2113106174095179778\"},{\"id\":\"tab-bc6wp3k2\",\"label\":\"全局经营看板\",\"templateId\":\"2112001069107167233\"},{\"id\":\"tab-211tc4o0\",\"label\":\"运营360整体分析\",\"templateId\":\"2112434004503347202\"},{\"id\":\"tab-1suxx5hd\",\"label\":\"穿透式问题分析\",\"templateId\":\"2112061604959928321\"}]}}],\"gridCols\":120,\"rowHeight\":10,\"theme\":\"light\",\"headerLayout\":{\"componentIds\":[\"composite-filter-hzjk9t5q\"]},\"showHeaderTitle\":true}",
+    "version": "1.0.0",
+    "status": "01",
+    "createdBy": "94",
+    "createdTime": "2026-10-13 10:40:36",
+    "lastUpdatedBy": "94",
+    "lastUpdatedTime": "2026-10-22 11:27:43"
+  }
+}

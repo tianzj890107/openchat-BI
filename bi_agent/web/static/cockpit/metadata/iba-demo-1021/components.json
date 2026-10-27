@@ -1,0 +1,374 @@
+[
+  {
+    "dataConfig": {
+      "sourceType": "ap",
+      "dimensions": [
+        {
+          "fieldType": "Dimension",
+          "identifierCode": "D001",
+          "isTree": true,
+          "label": "采购订单创建时间维度",
+          "valueType": "DATE"
+        }
+      ]
+    },
+    "id": "composite-filter-hzjk9t5q",
+    "position": {
+      "h": 5,
+      "w": 120,
+      "x": 0,
+      "y": 13
+    },
+    "showHeader": false,
+    "showTitle": false,
+    "title": "复合查询器",
+    "type": "composite-filter",
+    "visualization": {},
+    "placement": "header",
+    "linkConfig": [],
+    "styleConfig": {
+      "compactMode": true,
+      "autoHeight": true
+    },
+    "baseConfig": {
+      "showResetButton": true,
+      "overrideRenderType": {
+        "D001": "dropdown"
+      },
+      "defaultValue": {
+        "values": {}
+      }
+    },
+    "grainBindings": [
+      {
+        "id": "grain-ohefj9e8",
+        "source": {
+          "componentId": "button-group-5pje4sn1",
+          "embedPath": [
+            {
+              "containerId": "tab-container-zm9eyxne",
+              "kind": "tab",
+              "tabId": "tab-bc6wp3k2",
+              "templateId": "2112001069107167233"
+            }
+          ]
+        },
+        "targetComponentIds": [],
+        "sourceDimension": {
+          "fieldType": "Dimension",
+          "identifierCode": "D001",
+          "isTree": true,
+          "label": "采购订单创建时间维度",
+          "valueType": "DATE"
+        },
+        "templateTargets": [
+          {
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              },
+              {
+                "containerId": "template-py27ctvu",
+                "kind": "template",
+                "templateId": "2112009587516293121"
+              }
+            ],
+            "targetId": "kpiCard-lhq115j7",
+            "templateComponentId": "tab-container-zm9eyxne",
+            "templateId": "2112009587516293121"
+          },
+          {
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              }
+            ],
+            "targetId": "progress-y5dumxio",
+            "templateComponentId": "tab-container-zm9eyxne",
+            "templateId": "2112001069107167233"
+          },
+          {
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              }
+            ],
+            "targetId": "process-arc-647v3hoc",
+            "templateComponentId": "tab-container-zm9eyxne",
+            "templateId": "2112001069107167233"
+          }
+        ]
+      },
+      {
+        "id": "grain-3fy42irv",
+        "source": {
+          "componentId": "button-group-27vq4j6d",
+          "embedPath": [
+            {
+              "containerId": "tab-container-zm9eyxne",
+              "kind": "tab",
+              "tabId": "tab-211tc4o0",
+              "templateId": "2112434004503347202"
+            }
+          ]
+        },
+        "targetComponentIds": [],
+        "sourceDimension": {
+          "fieldType": "Dimension",
+          "identifierCode": "D001",
+          "isTree": true,
+          "label": "采购订单创建时间维度",
+          "valueType": "DATE"
+        },
+        "templateTargets": [
+          {
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              }
+            ],
+            "targetId": "progress-zl0egumz",
+            "templateComponentId": "tab-container-zm9eyxne",
+            "templateId": "2112434004503347202"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "dataConfig": {
+      "sourceType": "mock"
+    },
+    "id": "tab-container-zm9eyxne",
+    "position": {
+      "h": 119,
+      "w": 120,
+      "x": 0,
+      "y": 0
+    },
+    "showHeader": false,
+    "showTitle": false,
+    "title": "Tab容器",
+    "type": "tab-container",
+    "visualization": {},
+    "baseConfig": {
+      "tabs": [
+        {
+          "id": "tab-bc6wp3k2",
+          "label": "经营看板",
+          "templateId": "2112001069107167233"
+        },
+        {
+          "id": "tab-211tc4o0",
+          "label": "运营360整体分析",
+          "templateId": "2112434004503347202"
+        },
+        {
+          "id": "tab-1suxx5hd",
+          "label": "穿透式问题分析",
+          "templateId": "2112061604959928321"
+        }
+      ],
+      "activateRules": [
+        {
+          "id": "activate-08ky1886",
+          "source": {
+            "componentId": "process-arc-647v3hoc",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              }
+            ],
+            "surface": "cardTitle"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-211tc4o0"
+          }
+        },
+        {
+          "id": "activate-qtmkhp3o",
+          "source": {
+            "componentId": "progress-y5dumxio",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              }
+            ],
+            "surface": "progressFooter"
+          },
+          "helmet": {
+            "componentId": "mini-cpgraph-93j6k86p",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ],
+            "nodeId": "2109840325158682625",
+            "nodeName": "商机获取"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-1suxx5hd"
+          }
+        },
+        {
+          "id": "activate-pimzhg21",
+          "source": {
+            "componentId": "progress-91j3rt9a",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              }
+            ],
+            "surface": "progressFooter"
+          },
+          "helmet": {
+            "componentId": "mini-cpgraph-93j6k86p",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ],
+            "nodeId": "2109840696539136002",
+            "nodeName": "发货"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-1suxx5hd"
+          }
+        },
+        {
+          "id": "activate-fjgecu3g",
+          "source": {
+            "componentId": "progress-ynh9zsng",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              }
+            ],
+            "surface": "progressFooter"
+          },
+          "helmet": {
+            "componentId": "mini-cpgraph-93j6k86p",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ],
+            "nodeId": "2109840325158682625",
+            "nodeName": "商机获取"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-1suxx5hd"
+          }
+        },
+        {
+          "id": "activate-ro8pacg2",
+          "source": {
+            "componentId": "progress-zl0egumz",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              }
+            ],
+            "surface": "progressFooter"
+          },
+          "helmet": {
+            "componentId": "mini-cpgraph-93j6k86p",
+            "embedPath": [
+              {
+                "kind": "tab",
+                "containerId": "tab-container-zm9eyxne",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ],
+            "nodeId": "2109840696539136002",
+            "nodeName": "发货"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-1suxx5hd"
+          }
+        },
+        {
+          "id": "activate-jx3xn2af",
+          "source": {
+            "componentId": "kpiCard-q9oq9mxq",
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-bc6wp3k2",
+                "templateId": "2112001069107167233"
+              }
+            ],
+            "surface": "headerAction",
+            "actionKey": "1792720055376"
+          },
+          "helmet": {
+            "componentId": "mini-cpgraph-93j6k86p",
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              }
+            ],
+            "nodeId": "2109840696539136002",
+            "nodeName": "发货"
+          },
+          "tab": {
+            "containerId": "tab-container-zm9eyxne",
+            "embedPath": [],
+            "tabId": "tab-1suxx5hd"
+          }
+        }
+      ]
+    }
+  }
+]

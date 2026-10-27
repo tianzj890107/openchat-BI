@@ -23,7 +23,7 @@ ontology-vMAJOR.MINOR.PATCH
 - 目前处于 `ontology-v0.x` 快速迭代阶段，当前正式版本保持为：
 
 ```text
-ontology-v0.1.3
+ontology-v0.1.5
 ```
 
 ### 与包管理清单的关系（两处强制例外）
@@ -32,8 +32,8 @@ ontology-v0.1.3
 
 | 清单 | 约束 | 实际写入 |
 | --- | --- | --- |
-| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.3` |
-| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.3` |
+| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.5` |
+| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.5` |
 
 `scripts/run_analytics_eval.py` 的 `product_version()` 读取 `pyproject.toml` 后补
 `ontology-v` 前缀，对外统一返回显示名；同文件 `_version_reached()` 会剥离
@@ -106,6 +106,30 @@ X360 流程定义集成、本体/MAL 与元数据契约迁移等用户可感知�
 - 用户随后单独授权创建 tag 与 GitLab Release，已执行：annotated tag `ontology-v0.1.3` 指向
   `a805a66` 并推送 GitLab，同 tag 的 GitLab Release 已创建（只新建，未覆盖任何已有 Release）；
 - 部署继续保持独立授权；本次版本收口不自动部署，也不拉 `release/ontology-v0.1.3` 分支。
+
+### 版本推进记录（ontology-v0.1.3 → ontology-v0.1.4）
+
+2026-10-23 用户明确指定把当前交付预收口为 **PATCH** `ontology-v0.1.4`：
+
+- 本版本把 V3 经营驾驶舱从原型验证推进到独立的交付看板 POC：三个页面路由、交付 ProUI
+  元数据、三节点穿透式分析、真实模型分析插槽、交付快照回放和对齐 mock 结构的风险卡片；
+- 收口范围限定为 `feature/cockpit-v3-poc` 分支上的驾驶舱交付；同期其它并行修改不纳入本版本，
+  也不写入版本说明或 MR 描述；
+- 交付方式为 `feature/cockpit-v3-poc` → `master` 的 Merge Request（reviewer `tianzijing`）；
+  MR 只负责评审与合并，不自动创建 tag 或 GitLab Release；
+- 2026-10-27 用户明确授权补发 tag 与 GitLab Release；annotated tag `ontology-v0.1.4` 指向
+  加载性能优化前的定版 commit `3287c91` 并推送 GitLab，同名 GitLab Release 已创建；
+- 本次补发不部署，也不拉 `release/ontology-v0.1.4` 分支；加载优化另行收口为 `ontology-v0.1.5`。
+
+### 版本推进记录（ontology-v0.1.4 → ontology-v0.1.5）
+
+2026-10-27 用户明确指定把本次驾驶舱加载优化收口为 **PATCH** `ontology-v0.1.5`：
+
+- 本版本在 `ontology-v0.1.4` 驾驶舱能力之上，新增整页完整版本缓存与后台更新、AP 短时复用与
+  `individual` 拆批、生产版 Vue、gzip 与内容哈希静态发布、AI 插槽按页加载和初始化并行化；
+- `ontology-v0.1.4` 保持为加载优化前的定版，annotated tag 指向 `3287c91`；`ontology-v0.1.5`
+  的 tag 与 GitLab Release 在版本收口提交上创建；
+- 本次不部署，也不拉 `release/ontology-v0.1.5` 分支。
 
 ## PATCH / MINOR / MAJOR 判定
 

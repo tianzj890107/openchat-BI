@@ -1,0 +1,40 @@
+.order-sign-summary {
+  margin: 0;
+  padding: 14px 16px 12px;
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
+  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  border-radius: 8px;
+  color: #262626;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.order-sign-summary__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.order-sign-summary__title {
+  font-size: 14px;
+}
+
+.order-sign-summary__aside {
+  color: #8c8c8c;
+}
+
+.order-sign-summary__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.order-sign-summary__green {
+  color: #389e0d;
+}
+
+.order-sign-summary__orange {
+  color: #d46b08;
+}

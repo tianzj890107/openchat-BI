@@ -1,0 +1,36 @@
+.sales-shipment-issues {
+  margin: 4px 12px 8px;
+  color: #262626;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.sales-shipment-issues__title {
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sales-shipment-issues__line {
+  margin-top: 4px;
+}
+
+.sales-shipment-issues__num {
+  color: #1677ff;
+}
+
+.sales-shipment-issues__summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.sales-shipment-issues__details {
+  margin-top: 4px;
+}
+
+.sales-shipment-issues__details summary {
+  color: #1677ff;
+  cursor: pointer;
+}

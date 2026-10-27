@@ -6,8 +6,9 @@ The whole family ``v0.1.0``-``v0.1.9`` is mapped to ``ontology-v0.0.1``-
 rebuilt.  The current product version then advanced to the MINOR
 ``ontology-v0.1.0`` on 2026-09-29 (tag/Release created), to the PATCH
 ``ontology-v0.1.1`` on 2026-10-08 (tag/Release backfilled on 2026-10-15), to
-``ontology-v0.1.2`` on 2026-10-15, and to ``ontology-v0.1.3`` on 2026-10-20
-(tag/Release created), so
+``ontology-v0.1.2`` on 2026-10-15, to ``ontology-v0.1.3`` on 2026-10-20, and
+to ``ontology-v0.1.4`` on 2026-10-23 (tag/Release backfilled on 2026-10-27), and
+to ``ontology-v0.1.5`` on 2026-10-27 (loading-performance PATCH), so
 ``CURRENT`` tracks the product name while ``LATEST_RELEASED_TAG`` tracks the
 newest tag that actually exists and ``NEW_TAGS`` stays the historical rename
 map.  These tests never write to Git, GitLab or user data.
@@ -26,14 +27,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = "docs/specs/ontology-version-rename-and-rebuild.md"
-CURRENT = "ontology-v0.1.3"
-PACKAGING_VERSION = "0.1.3"
+CURRENT = "ontology-v0.1.5"
+PACKAGING_VERSION = "0.1.5"
 # The tag released before ``CURRENT``; kept to document the existing tag family.
 LATEST_RELEASED_TAG = "ontology-v0.1.0"
 # ``ontology-v0.1.1`` (skill-extraction PATCH) was backfilled onto its original
 # 2026-10-08 master commit ``c82221f`` on 2026-10-15.
 SKILL_PATCH_TAG = "ontology-v0.1.1"
 PROGRESS_PATCH_TAG = "ontology-v0.1.2"
+RELEASED_MCP_TAG = "ontology-v0.1.3"
+RELEASED_COCKPIT_TAG = "ontology-v0.1.4"
+LOADING_PERFORMANCE_TAG = "ontology-v0.1.5"
 
 # (old tag, unchanged commit, new tag)
 MAPPING = (
@@ -138,7 +142,8 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
         # history next to the current version document.
         expected = {"README.md", "versioning-policy.md",
                     f"{LATEST_RELEASED_TAG}.md", f"{SKILL_PATCH_TAG}.md",
-                    f"{PROGRESS_PATCH_TAG}.md", f"{CURRENT}.md"} | {
+                    f"{PROGRESS_PATCH_TAG}.md", f"{RELEASED_MCP_TAG}.md",
+                    f"{RELEASED_COCKPIT_TAG}.md", f"{CURRENT}.md"} | {
             f"{tag}.md" for tag in NEW_TAGS
         }
         self.assertEqual(names, expected)
@@ -164,8 +169,9 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
         2026-09-29 and created on ``master`` (定版 commit ``74fca80``) right
         after the version-cut Merge Request merged.  The two PATCH tags
         ``ontology-v0.1.1`` and ``ontology-v0.1.2`` were authorized on
-        2026-10-15.  ``CURRENT`` (``ontology-v0.1.3``) was created on the
-        ``a805a66`` master merge commit after MR !24.
+        2026-10-15, ``ontology-v0.1.3`` was released on 2026-10-20, and
+        ``ontology-v0.1.4`` was backfilled on 2026-10-27, and ``CURRENT``
+        (``ontology-v0.1.5``) is the loading-performance PATCH.
         """
         proc = subprocess.run(
             ["git", "-C", str(ROOT), "tag", "--list"],
@@ -175,7 +181,8 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
         self.assertEqual(
             tags,
             set(NEW_TAGS)
-            | {LATEST_RELEASED_TAG, SKILL_PATCH_TAG, PROGRESS_PATCH_TAG, CURRENT},
+            | {LATEST_RELEASED_TAG, SKILL_PATCH_TAG, PROGRESS_PATCH_TAG,
+               RELEASED_MCP_TAG, RELEASED_COCKPIT_TAG, LOADING_PERFORMANCE_TAG},
         )
 
 

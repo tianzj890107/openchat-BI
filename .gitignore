@@ -44,3 +44,6 @@ credentials.json
 
 # Archify visual-check review artifacts (regenerate locally with `archify visual-check`)
 docs/diagrams/archify/*.visual-check*
+
+# Isolated cockpit POC history (never ship runtime/user records)
+dataset/cockpit/

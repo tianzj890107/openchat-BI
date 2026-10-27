@@ -1,10 +1,12 @@
 # eimosp-ontology-agentic-analytics · 智能分析
 
-eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`ontology-v0.1.3`。
+eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`ontology-v0.1.5`。
 
 系统以 Open Claude Agent Runtime 为执行底座，将业务本体、指标口径、事实数据查询、
 表格与图表生成、根因分析和决策行动组织为可追踪的分析流程，并通过 Web 工作台交付结果。
 
+- [ontology-v0.1.5 正式版本说明](docs/versions/ontology-v0.1.5.md)
+- [ontology-v0.1.4 正式版本说明](docs/versions/ontology-v0.1.4.md)
 - [ontology-v0.1.3 正式版本说明](docs/versions/ontology-v0.1.3.md)
 - [ontology-v0.1.2 正式版本说明](docs/versions/ontology-v0.1.2.md)
 - [ontology-v0.1.1 正式版本说明](docs/versions/ontology-v0.1.1.md)
@@ -119,6 +121,34 @@ curl -fsS http://127.0.0.1:8765/healthz
 ```
 
 本地本体与 SQLite 参数通过 `python -m bi_agent.web --help` 查看。
+
+### V3 经营驾驶舱 POC
+
+主服务提供三个独立看板入口（支持 `APP_ROOT_PATH` 子路径）：
+`/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis`；`/cockpit` 仍只跳到经营看板。
+`/cockpit/home` 保留为兼容地址（FastAPI 307、静态站客户端改写为 `overview`），不再单独渲染第四个页面。
+三个入口共用同一路径和 Fuxi 身份参数 `id`：`id=1` 对应总裁，`id=2` 对应分析员；当前三页内容与功能对两个 `id` 完全一致，
+两个人都可访问，`id` 仅作为将来差异化的预留标识。不使用 `role` 或两套身份地址，总入口和页内跳转均保留当前 `id`。
+页面直接使用 `iba-demo` 交付看板 `feature/demo_1021@5791b36` 的根配置：一个 `ProBiDashboard` 同时渲染
+`composite-filter`、根 `tab-container` 和三个 Tab 模板。顶部 Tab 由交付配置生成，不再由宿主手写；
+三个路由只负责激活对应 Tab，并把当前 `id` 保留在地址中。页面不渲染工作区、会话区、宿主标题或第二套导航。
+
+发布包包含 13 份模板、135 个组件和交付的顶部筛选器。三页的 `position`、`parentId`、容器、标题和样式
+均按交付配置原样交给 `ProBiDashboard`；宿主不增删或重排卡片。默认由主服务独立 AP 代理读取与 PDT 同一套接口，
+页面使用返回数据，AI 消费同次响应的服务端凭据，不重复取数。配置 `COCKPIT_AP_BASE_URL` 和仓库外的
+`COCKPIT_AP_HEADERS_FILE`，不修改原有本体／数据库连接。`COCKPIT_DATA_MODE=snapshot` 保留显式离线回放，
+AP 失败不会静默退回旧快照。2026-10-26已在服务器启用，当前线上状态和POC认证有效性说明以 DEPLOYMENT.md 发布记录为准。
+
+交付根配置没有 `insights` 字段，宿主从交付目录补入 12 个插槽声明：经营看板 0 个、运营 360 4 个、
+穿透式问题分析 8 个。插槽位置由交付配置决定，内容调用主服务 `/api/cockpit/analyses` 的真实模型分析；
+联调默认 `engine=main`，使用主服务现有WebSession、路由、数据源工具和交付校验，按需串行执行，
+不再预取全部五个环节；`?engine=standalone` 保留独立对照，主服务有证据时也可复用同批冻结材料。
+两种路线仅用于联调选型，正式上线前必须通过全站配置锁定一个引擎，所有AI插槽统一采用该路线。
+主服务通过结构化交付工具直接提供原有12个AI插槽的内容；已在服务器启用服务端上次成功卡片、静默更新和筛选加载态，
+默认范围已完成真实预热。证据不足仍明确说明，界面不额外调用模型改写根因。详见 [卡片交付与持久缓存](docs/specs/cockpit-card-publications.md)及
+[分析路线与上线收口](docs/specs/cockpit-analysis-engines.md)。
+交付配置中 AP 指标的业务口径与卡片标题存在差异时，页面保持原值，不在宿主层改写。
+详见 [驾驶舱范围与接口](docs/specs/cockpit-v3-poc.md)及[组件覆盖与缺失](docs/specs/cockpit-v3-metadata-gaps.md)。
 
 ### Fuxi 远程 MCP
 
@@ -254,7 +284,8 @@ Node 子进程执行。
   [语义化版本与正式发布规范](docs/versions/versioning-policy.md)；
 - push 不等于部署，部署必须由用户在当前任务中明确授权；
 - GitLab Release 授权后在 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 上基于同名 tag 创建（只补缺失项，不覆盖已有 Release）；
-- 已发布 Release：[智能分析 ontology-v0.1.3](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.3)、对应 tag 指向定版 commit `a805a66`；[智能分析 ontology-v0.1.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.2)、对应 tag 指向定版 commit `3c4de1e`；[智能分析 ontology-v0.1.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.1)、对应 tag 指向定版 commit `c82221f`（2026-10-15 补建）；上一版本：[智能分析 ontology-v0.1.0](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.0)、对应 tag 指向定版 commit `74fca80`；此前版本：[智能分析 ontology-v0.0.10](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.10)、[智能分析 ontology-v0.0.9](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.9)、[智能分析 ontology-v0.0.8](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.8)、[智能分析 ontology-v0.0.7](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.7)、[智能分析 ontology-v0.0.6](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.6)、[智能分析 ontology-v0.0.5](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.5)、[智能分析 ontology-v0.0.4](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.4)、[智能分析 ontology-v0.0.3](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.3)、[智能分析 ontology-v0.0.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.2)、[智能分析 ontology-v0.0.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.1)
+- 当前版本 `ontology-v0.1.5` 承载驾驶舱加载性能优化，已于 2026-10-27 创建 annotated tag 与 GitLab Release；
+- 已发布 Release：[智能分析 ontology-v0.1.5](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.5)、对应 tag 指向 v0.1.5 收口提交；[智能分析 ontology-v0.1.4](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.4)、对应 tag 指向 `3287c91`；[智能分析 ontology-v0.1.3](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.3)、对应 tag 指向定版 commit `a805a66`；[智能分析 ontology-v0.1.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.2)、对应 tag 指向定版 commit `3c4de1e`；[智能分析 ontology-v0.1.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.1)、对应 tag 指向定版 commit `c82221f`（2026-10-15 补建）；上一版本：[智能分析 ontology-v0.1.0](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.0)、对应 tag 指向定版 commit `74fca80`；此前版本：[智能分析 ontology-v0.0.10](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.10)、[智能分析 ontology-v0.0.9](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.9)、[智能分析 ontology-v0.0.8](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.8)、[智能分析 ontology-v0.0.7](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.7)、[智能分析 ontology-v0.0.6](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.6)、[智能分析 ontology-v0.0.5](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.5)、[智能分析 ontology-v0.0.4](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.4)、[智能分析 ontology-v0.0.3](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.3)、[智能分析 ontology-v0.0.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.2)、[智能分析 ontology-v0.0.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.1)
 
 ## 相关文档
 

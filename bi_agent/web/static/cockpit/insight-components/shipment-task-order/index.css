@@ -1,0 +1,147 @@
+.shipment-task-order {
+  margin: 0;
+  padding: 14px 16px 12px;
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
+  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  border-radius: 8px;
+  color: #262626;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.shipment-task-order__head,
+.shipment-task-order__task-head,
+.shipment-task-order__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shipment-task-order__step,
+.shipment-task-order__no {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.shipment-task-order__step {
+  background: #1677ff;
+  color: #fff;
+}
+
+.shipment-task-order__no {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.shipment-task-order__title {
+  font-size: 16px;
+}
+
+.shipment-task-order__sub,
+.shipment-task-order__hint {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.shipment-task-order__summary {
+  margin: 10px 0 12px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.shipment-task-order__task {
+  padding: 12px 14px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.shipment-task-order__task + .shipment-task-order__task {
+  margin-top: 12px;
+}
+
+.shipment-task-order__task-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.shipment-task-order__deadline {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 10px;
+  background: #f2f4f7;
+  color: #595959;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.shipment-task-order__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 4px;
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.shipment-task-order__owner {
+  color: #1677ff;
+}
+
+.shipment-task-order__acceptance {
+  flex-basis: 100%;
+  overflow-wrap: break-word;
+}
+
+.shipment-task-order__detail-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1677ff;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.shipment-task-order__detail {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #fafafa;
+  color: #595959;
+  font-size: 12px;
+  line-height: 20px;
+  overflow-wrap: break-word;
+}
+
+.shipment-task-order__label {
+  font-weight: 600;
+}
+
+.shipment-task-order__foot {
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
+.shipment-task-order__dispatch {
+  padding: 4px 14px;
+  border: 0;
+  border-radius: 16px;
+  background: #1677ff;
+  color: #fff;
+  font-size: 13px;
+  line-height: 22px;
+  cursor: pointer;
+}

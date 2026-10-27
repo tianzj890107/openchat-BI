@@ -1,0 +1,39 @@
+{
+  "checkedAt": "2026-10-26T17:27:55+08:00",
+  "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
+  "sourceCommit": "558f2ae27cdc5a9569c5d91a1db45f97d31a4321",
+  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021; original embedded license notices preserved. Isolated from legacy workbench assets.",
+  "resources": [
+    {
+      "file": "../../vendor/antd/lib/vue.global.js",
+      "source": "http://pro-ui.eimos.com/lib/vue.global.js",
+      "pdtSource": "http://pdt-dev.eimos.com/pro-ui/lib/vue.global.js",
+      "sha256": "6f9eae7631fa9c48f474adf6cd232bd1c95322ec8c5a978acd5e0f87cfb61e7c",
+      "bytes": 571813,
+      "notes": "Reuse byte-identical existing Vue 3.5.25 runtime; no duplicate download in repository."
+    },
+    {
+      "file": "pro-bi-ui.min.js",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/558f2ae27cdc5a9569c5d91a1db45f97d31a4321/lib/pro-bi-ui.min.js",
+      "sourcePath": "lib/pro-bi-ui.min.js",
+      "sha256": "608062c7402ff7216c57ef3a0309e18fade45eb8bc6a86926ef17c028fd358e7",
+      "bytes": 6328316
+    },
+    {
+      "file": "pro-ui.min.css",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/558f2ae27cdc5a9569c5d91a1db45f97d31a4321/lib/pro-ui.min.css",
+      "sourcePath": "lib/pro-ui.min.css",
+      "sha256": "b1ee836dbe11d3b5df80f9a1718a8a7623aaa89e9419bae1d6450a9063744d25",
+      "bytes": 720594
+    },
+    {
+      "file": "vue.global.prod.js",
+      "source": "https://registry.npmjs.org/vue/-/vue-3.5.25.tgz",
+      "sourcePath": "package/dist/vue.global.prod.js",
+      "sha256": "78133fb37d7da6ab9fb0ede6c8ed446f38773595d1faf52a3c1b77d539b06b61",
+      "bytes": 161210,
+      "notes": "Official Vue 3.5.25 production global build with template compiler; npm tarball SHA512 verified. Cockpit only."
+    }
+  ],
+  "catalog": "http://pro-ui.eimos.com/assets/"
+}

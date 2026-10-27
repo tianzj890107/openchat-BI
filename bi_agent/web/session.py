@@ -167,7 +167,7 @@ from ..reliability import (
 # Only real data queries may become later data sources, reconciliation
 # candidates or claim inputs.  Display/metadata/utility tools are consumed by
 # the UI or the LLM but must never feed back into the analysis state.
-DATA_QUERY_TOOLS = frozenset({"Ontology-FactQuery", "Ontology-MetricQuery"})
+DATA_QUERY_TOOLS = frozenset({"Cockpit-DashboardQuery", "Ontology-FactQuery", "Ontology-MetricQuery"})
 # Relation/context tools contribute an Association claim only when their
 # output carries explicit edge/path evidence.
 RELATION_TOOLS = frozenset({"Ontology-RelationQuery", "Ontology-GraphContext", "Ontology-GraphExpand"})
@@ -1873,6 +1873,8 @@ class WebSession:
         the per-tool timeout and always returns a structured outcome.
         """
         def invoke() -> str:
+            if "Cockpit-DashboardQuery" in self._tool_executors and name not in (self.allowed_tools or []):
+                raise PermissionError("看板分析禁止调用未绑定的工具或其他数据源")
             executor = self._tool_executors.get(name)
             if executor is not None:
                 return executor(params, self.cwd)

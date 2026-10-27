@@ -19,7 +19,7 @@ from types import SimpleNamespace
 from typing import Any, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.gzip import GZipMiddleware
@@ -658,7 +658,7 @@ def configure(
 # ---------------------------------------------------------------------------
 APP_NAME = "eimosp-ontology-agentic-analytics"              # 应用名（容器/服务/配置中心统一使用）
 APP_DISPLAY_NAME = "eimosp-ontology-agentic-analytics 智能分析"  # 产品名
-APP_VERSION = "ontology-v0.1.3"                 # 与 pyproject.toml / docs/versions 保持同步
+APP_VERSION = "ontology-v0.1.5"                 # 与 pyproject.toml / docs/versions 保持同步
 def _default_app_port() -> int:
     """实际监听端口来源：优先 APP_PORT 环境变量（容器内 Dockerfile 显式注入 8080），
     缺省回退非容器本地默认端口 8765。"""
@@ -1587,6 +1587,8 @@ def _next_turn_id() -> str:
 def _begin_turn(
     mode: str,
     session_id: Optional[str],
+    *, cancel_event: Optional[threading.Event] = None,
+    principal_session_id: Optional[str] = None,
 ) -> tuple[SessionSlot, TurnLease, str, Any, threading.Event]:
     """Acquire the per-session turn slot + the global admission ticket.
 
@@ -1605,7 +1607,7 @@ def _begin_turn(
     """
     key = _session_key(session_id)
     slot = STATE.session_slots.ensure(_slot_key(mode, key))
-    cancel = threading.Event()
+    cancel = cancel_event if cancel_event is not None else threading.Event()
     lease = slot.try_acquire(
         cancel_event=cancel,
         lease_ttl_seconds=STATE.coordination_lease_ttl_seconds,
@@ -1613,7 +1615,7 @@ def _begin_turn(
     if lease is None:
         resp = _busy_response(str(session_id or ""))
         raise HTTPException(status_code=409, detail=json.loads(resp.body))
-    principal = _principal_for(session_id)
+    principal = _principal_for(principal_session_id or session_id)
     try:
         ticket = STATE.admission.acquire(principal, cancel_event=cancel)
     except AdmissionRejected as exc:
@@ -1671,71 +1673,58 @@ def _annotate_events(
         yield evt
 
 
-def _run_turn_stream(
-    session: WebSession,
-    events: Any,
-    slot: SessionSlot,
-    lease: TurnLease,
-    turn_id: str,
-    ticket: Any,
-    cancel: Optional[threading.Event] = None,
-) -> StreamingResponse:
-    """Stream one turn with cancellation + guaranteed slot/admission release.
+from contextlib import contextmanager
 
-    - attaches the lease / cancel event to the session so the turn loop can
-      detect reset/restore/activate/source-switch and refuse to commit once
-      superseded (``session._turn_ctx`` — captured once per turn);
-    - cancels the turn on client disconnect (GeneratorExit), on a superseding
-      reset, or when a cooperative resource wait observes the cancel event;
-    - releases the admission ticket and session slot exactly once in the
-      ``finally`` block.  ``slot.release_turn(lease)`` is owner-validated, so
-      a stale turn's finally can never release a newer turn's slot state.
+
+@contextmanager
+def _turn_execution_scope(
+    session: WebSession, slot: SessionSlot, lease: TurnLease,
+    turn_id: str, ticket: Any, cancel: threading.Event,
+):
+    """Share chat/Cockpit ownership, heartbeat and cooperative cancellation.
+
+    Runs on the consuming worker thread so source tools see the same cancel
+    event. The owner releases the admission ticket and turn lease once.
     """
-    cancel = cancel if cancel is not None else threading.Event()
-    slot.attach_cancel(lease, cancel)
-    session._turn_ctx = TurnContext(slot, lease, cancel)
-
-    def event_stream():
-        # The SSE generator runs on a worker thread; stamp the turn's cancel
-        # event there so gated tool executors observe it on the same thread.
+    heartbeat_guard = None
+    try:
+        slot.attach_cancel(lease, cancel)
+        session._turn_ctx = TurnContext(slot, lease, cancel)
         set_current_cancel(cancel)
-        # Shared leases are renewed for the whole turn lifetime.  If the lease
-        # is lost (TTL expiry, takeover, owner mismatch, Redis failure) the
-        # heartbeat sets the SAME cancel event, so Tool Runtime / Recovery /
-        # TurnLease commit gates refuse to commit anything afterwards.  Plain
-        # local leases get a no-op guard (no thread).
         heartbeat_guard = STATE.start_turn_heartbeat(slot, lease, cancel)
+        yield
+    finally:
         try:
-            for evt in _annotate_events(events, turn_id=turn_id, generation=lease.generation):
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-        except GeneratorExit:
-            cancel.set()
-            raise
-        except Exception as e:
-            if cancel.is_set():
-                evt = {"type": "session_superseded", "turn_id": turn_id}
-            else:
-                evt = {"type": "error", "message": f"{type(e).__name__}: {e}", "turn_id": turn_id}
-            yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+            if heartbeat_guard is not None:
+                heartbeat_guard.stop()
+                heartbeat_guard.join(timeout=1.0)
         finally:
-            # Order matters: stop the heartbeat, give it a moment to exit,
-            # clear the per-thread cancel stamp, then release the slot and the
-            # admission ticket exactly once (all owner-validated).
-            heartbeat_guard.stop()
-            heartbeat_guard.join(timeout=1.0)
             clear_current_cancel()
-            slot.release_turn(lease)
-            ticket.controller.release(ticket)
+            try:
+                slot.release_turn(lease)
+            finally:
+                ticket.controller.release(ticket)
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
+
+def _run_turn_stream(
+    session: WebSession, events: Any, slot: SessionSlot, lease: TurnLease,
+    turn_id: str, ticket: Any, cancel: Optional[threading.Event] = None,
+) -> StreamingResponse:
+    """Deliver SSE with the same lifecycle used by headless Cockpit tasks."""
+    cancel=cancel if cancel is not None else threading.Event()
+    slot.attach_cancel(lease,cancel)
+    session._turn_ctx=TurnContext(slot,lease,cancel)
+    def event_stream():
+        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel):
+            try:
+                for evt in _annotate_events(events,turn_id=turn_id,generation=lease.generation):
+                    yield f"data: {json.dumps(evt,ensure_ascii=False)}\n\n"
+            except GeneratorExit:
+                cancel.set();raise
+            except Exception as e:
+                evt={"type":"session_superseded","turn_id":turn_id} if cancel.is_set() else {"type":"error","message":f"{type(e).__name__}: {e}","turn_id":turn_id}
+                yield f"data: {json.dumps(evt,ensure_ascii=False)}\n\n"
+    return StreamingResponse(event_stream(),media_type="text/event-stream",headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
 
 
 def _supersede_session(mode: str, key: str) -> None:
@@ -3956,3 +3945,144 @@ app.include_router(build_mcp_router(
     build_doris=_doris_http_conn,
     get_cwd=lambda: STATE.cwd or os.getcwd(),
 ))
+
+
+# V3 cockpit has an isolated source adapter and append-preserving POC history.
+from ..cockpit.router import build_cockpit_router  # noqa: E402
+
+def _cockpit_main_context(req):
+    from ..cockpit.dashboard_source import material, receipt_material
+    from ..cockpit.ap_gateway import data_mode
+    from ..cockpit.store import Store
+    if STATE.agent_def is None:
+        raise HTTPException(503,'主服务未配置分析Agent')
+    if req.repositoryId:
+        raise HTTPException(422,'看板快照分析不接受其他本体库绑定')
+    if req.filters:
+        raise HTTPException(422,'筛选必须体现在已展示的AP请求中，不能声明未应用的自定义筛选')
+    try:
+        if data_mode()=='ap':
+            fingerprint,selected=receipt_material(req.model_dump(),Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'))
+            from ..cockpit.publications import digest
+            identities={v.get("connectionId","") for v in selected.values()}
+            if len(identities)!=1:raise ValueError("AP材料来自不同连接，不能合并分析")
+            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataIdentity=next(iter(identities)),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))),dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数')
+        if req.apReceiptIds:raise ValueError('快照模式不能消费实时AP凭据')
+        fingerprint,_=material(req.model_dump())
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(422,str(exc)) from exc
+    return dict(snapshotId='dashboard-'+fingerprint,repositoryId='',dataIdentity='pdt-release-2109836674373566465',dataFingerprint=fingerprint,
+        dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库')
+
+
+@contextmanager
+def _cockpit_main_turn(context,cancel):
+    import uuid
+    from ..cockpit.main_service import analysis_question
+    key='cockpit-main-'+uuid.uuid4().hex
+    session=None
+    slot=lease=ticket=None
+    try:
+        from ..cockpit.dashboard_source import material, receipt_material, executor, TOOL, SCHEMA
+        from ..cockpit.store import Store
+        from ..cockpit.cards import TOOL as DELIVERY_TOOL, SCHEMA as DELIVERY_SCHEMA, install_delivery
+        from open_claude.tools import register_tool
+        live=context['snapshotId'].startswith('ap-')
+        fingerprint,selected=(receipt_material(context,Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'),allow_expired=True)
+            if live else material(context))
+        if context['snapshotId']!=('ap-' if live else 'dashboard-')+fingerprint:
+            raise RuntimeError('看板快照已变化，请重新提交分析任务')
+        # Registration supplies the schema only. Every task binds its own executor.
+        def unbound(params,cwd):
+            raise RuntimeError('看板查询只能在绑定快照的任务内执行')
+        register_tool(SCHEMA,unbound)
+        register_tool(DELIVERY_SCHEMA,unbound)
+        session=WebSession(cwd=STATE.cwd,agent_def=STATE.agent_def,
+            ontology_store=None,tools_override=[TOOL,DELIVERY_TOOL,'AskUser'],
+            context_header=('本轮数据来源：页面本次实时AP响应的冻结结果。' if live else '本轮数据来源：看板交付AP快照。')+'只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。',
+            tool_executors={TOOL:executor(selected)})
+        raw_read=session._tool_executors[TOOL]
+        def read_with_refs(params,cwd):
+            from ..reliability import QueryResult, claims_from_query_result
+            output=raw_read(params,cwd)
+            data=json.loads(output)
+            claims=claims_from_query_result(QueryResult(data=output),f'{TOOL}-{len(session.query_results)+1}')
+            data['evidenceIds']=[claim.id for claim in claims]
+            return json.dumps(data,ensure_ascii=False)
+        session._tool_executors[TOOL]=read_with_refs
+        install_delivery(session,context)
+        with STATE.registry_lock:
+            STATE.sessions[key]=session
+        slot,lease,turn_id,ticket,_=_begin_turn('data',key,cancel_event=cancel,principal_session_id=f"cockpit-id-{context['id']}")
+        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel):
+            yield session,session.generate_turn(analysis_question(context))
+    finally:
+        # Release ephemeral in-memory objects only. Never reset/delete chat history.
+        with STATE.registry_lock:
+            if STATE.sessions.get(key) is session:STATE.sessions.pop(key,None)
+            STATE.source_contexts.pop(key,None)
+
+
+_cockpit_analysis_capacity=threading.BoundedSemaphore(1)
+
+def _cockpit_main_runner(context,cancel,progress):
+    from ..cockpit.main_service import run_main_analysis
+    progress('等待Cockpit独立分析配额',[])
+    while not _cockpit_analysis_capacity.acquire(timeout=0.2):
+        if cancel.is_set():raise InterruptedError('分析已停止')
+    try:
+        if cancel.is_set():raise InterruptedError('分析已停止')
+        return run_main_analysis(context,cancel,progress,_cockpit_main_turn)
+    finally:
+        _cockpit_analysis_capacity.release()
+
+
+app.include_router(build_cockpit_router(get_cwd=lambda: STATE.cwd or os.getcwd(),
+    main_runner=_cockpit_main_runner,main_context=_cockpit_main_context))
+
+
+COCKPIT_PAGES = frozenset({"overview", "operations", "analysis"})
+
+
+def _cockpit_html(page: str) -> HTMLResponse:
+    html = (STATIC_DIR / "cockpit" / "index.html").read_text(encoding="utf-8")
+    cockpit = STATIC_DIR / "cockpit"
+    version_sources = [
+        cockpit / "metadata" / "runtime.json",
+        cockpit / "cockpit.js",
+        cockpit / "data-client.js",
+        cockpit / "publication-client.js",
+        cockpit / "page-client.js",
+        cockpit / "insight-components" / "index.js",
+        cockpit / "metadata" / "pdt-release-2109836674373566465" / "data-snapshots.json",
+    ]
+    try:
+        asset_version = str(int(max(path.stat().st_mtime for path in version_sources)))
+    except OSError:
+        asset_version = "1"
+    html = (
+        html.replace("@@APP_ROOT_PATH@@", APP_ROOT_PATH)
+        .replace("@@COCKPIT_PAGE@@", page)
+        .replace("@@COCKPIT_VERSION@@", asset_version)
+    )
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/cockpit", response_class=HTMLResponse)
+@app.get("/cockpit/", response_class=HTMLResponse)
+def cockpit_index(request: Request) -> RedirectResponse:
+    query = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"{APP_ROOT_PATH}/cockpit/overview{query}", status_code=307)
+
+
+@app.get("/cockpit/home", response_class=HTMLResponse)
+def cockpit_home(request: Request) -> RedirectResponse:
+    query = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(url=f"{APP_ROOT_PATH}/cockpit/overview{query}", status_code=307)
+
+
+@app.get("/cockpit/{page}", response_class=HTMLResponse)
+def cockpit_page(page: str) -> HTMLResponse:
+    if page not in COCKPIT_PAGES:
+        raise HTTPException(404, "驾驶舱页面不存在")
+    return _cockpit_html(page)

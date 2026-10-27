@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "id": "2112064144187375617",
+    "name": "销售额口径头盔图-发货",
+    "url": "/dashboard/release/2112064144187375617",
+    "description": "",
+    "configs": "{\"components\":[{\"dataConfig\":{\"mockAxis\":{\"categoryAxis\":[{\"fieldType\":\"Dimension\",\"identifierCode\":\"状态\",\"label\":\"状态\"}],\"valueAxis\":[{\"fieldType\":\"Indicator\",\"identifierCode\":\"数量\",\"label\":\"数量\"}]},\"mockData\":{\"rows\":[{\"数量\":{\"unit\":\"GWh\",\"value\":3.7},\"状态\":\"中标\"},{\"数量\":{\"unit\":\"GWh\",\"value\":4.1},\"状态\":\"丢标\"},{\"数量\":{\"unit\":\"GWh\",\"value\":1.1},\"状态\":\"弃标\"},{\"数量\":{\"unit\":\"GWh\",\"value\":28.7},\"状态\":\"进行中\"}]},\"mockPreset\":\"share-bar\",\"sourceType\":\"ap\",\"categoryAxis\":[{\"fieldType\":\"Dimension\",\"identifierCode\":\"D007\",\"isTree\":false,\"label\":\"发货完成状态维度\",\"valueType\":\"STRING\"}],\"valueAxis\":[{\"fieldType\":\"Indicator\",\"identifierCode\":\"M00013\",\"isTree\":false,\"label\":\"发货金额\",\"name\":\"Shipment_Amount\",\"valueType\":\"NUMBER\"}],\"filter\":[{\"fieldType\":\"Dimension\",\"identifierCode\":\"D007\",\"isTree\":false,\"label\":\"发货完成状态维度\",\"valueType\":\"STRING\",\"conditions\":{\"alias\":\"发货完成状态维度\",\"identifierCode\":\"D007\",\"operator\":{\"code\":\"IN\",\"type\":\"STRING\"},\"type\":\"Dimension\",\"value\":[\"normal_completed\",\"normal_uncompleted\",\"imminent_uncompleted\",\"overdue_completed\",\"overdue_uncompleted\"],\"valueType\":\"ABSOLUTE\"}}]},\"id\":\"share-bar-zob5z1uu\",\"position\":{\"h\":11,\"w\":120,\"x\":0,\"y\":0},\"showHeader\":true,\"showTitle\":true,\"title\":\"风险结构与原因拆解\",\"type\":\"share-bar\",\"visualization\":{}},{\"dataConfig\":{\"mockAxis\":{\"tableFields\":[{\"fieldType\":\"Dimension\",\"identifierCode\":\"类别\",\"label\":\"类别\"},{\"fieldType\":\"Indicator\",\"identifierCode\":\"数量\",\"label\":\"数量\"},{\"fieldType\":\"Indicator\",\"identifierCode\":\"金额\",\"label\":\"金额\"}]},\"mockData\":{\"rows\":[{\"数量\":320,\"类别\":\"电子产品\",\"金额\":128000},{\"数量\":280,\"类别\":\"服装\",\"金额\":86000},{\"数量\":450,\"类别\":\"食品\",\"金额\":54000}]},\"mockPreset\":\"table\",\"sourceType\":\"ap\",\"tableFields\":[{\"fieldType\":\"Indicator\",\"identifierCode\":\"M00013\",\"isTree\":false,\"label\":\"发货金额\",\"name\":\"Shipment_Amount\",\"valueType\":\"NUMBER\"},{\"fieldType\":\"Dimension\",\"identifierCode\":\"D007\",\"isTree\":false,\"label\":\"发货完成状态维度\",\"valueType\":\"STRING\"},{\"fieldType\":\"Dimension\",\"identifierCode\":\"D008\",\"isTree\":true,\"label\":\"发货审批时间维度\",\"valueType\":\"DATE\"}],\"pageSize\":10},\"id\":\"table-md1iftaj\",\"position\":{\"h\":19,\"w\":120,\"x\":0,\"y\":11},\"showHeader\":true,\"showTitle\":true,\"title\":\"客户与超期订单\",\"type\":\"table\",\"visualization\":{},\"tableColumnConfig\":[{\"code\":\"M00013\",\"fieldType\":\"Indicator\",\"id\":\"M00013\",\"isTree\":false,\"label\":\"发货金额\",\"showSearch\":true,\"showSource\":true,\"valueType\":\"NUMBER\"},{\"code\":\"D007\",\"fieldType\":\"Dimension\",\"id\":\"D007\",\"isTree\":false,\"label\":\"发货完成状态维度\",\"showSearch\":true,\"showSource\":true,\"valueType\":\"STRING\"},{\"code\":\"D008\",\"fieldType\":\"Dimension\",\"id\":\"D008\",\"isTree\":true,\"label\":\"发货审批时间维度\",\"showSearch\":true,\"showSource\":true,\"valueType\":\"DATE\"}]}],\"gridCols\":120,\"rowHeight\":10,\"theme\":\"light\"}",
+    "version": "1.0.0",
+    "status": "01",
+    "createdBy": "94",
+    "createdTime": "2026-10-19 14:11:46",
+    "lastUpdatedBy": "94",
+    "lastUpdatedTime": "2026-10-22 10:24:49"
+  }
+}

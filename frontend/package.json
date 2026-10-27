@@ -1,7 +1,7 @@
 {
   "name": "eimosp-ontology-agentic-analytics-workbench",
   "private": true,
-  "version": "0.1.3",
+  "version": "0.1.5",
   "type": "module",
   "scripts": {
     "build": "vite build"

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="app-root" content="@@APP_ROOT_PATH@@">
+  <meta name="cockpit-page" content="@@COCKPIT_PAGE@@">
+  <meta name="cockpit-version" content="@@COCKPIT_VERSION@@">
+  <meta name="cockpit-assets" content="@@APP_ROOT_PATH@@/static/cockpit">
+  <meta name="cockpit-api-base" content="@@APP_ROOT_PATH@@/api/cockpit">
+  <title>储能经营风险驾驶舱</title>
+  <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-ui.min.css?v=b1ee836d">
+  <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/cockpit.css?v=@@COCKPIT_VERSION@@">
+  <link rel="modulepreload" href="@@APP_ROOT_PATH@@/static/cockpit/data-client.js?v=@@COCKPIT_VERSION@@">
+  <link rel="modulepreload" href="@@APP_ROOT_PATH@@/static/cockpit/page-client.js?v=@@COCKPIT_VERSION@@">
+  <link rel="modulepreload" href="@@APP_ROOT_PATH@@/static/cockpit/publication-client.js?v=@@COCKPIT_VERSION@@">
+  <script defer src="@@APP_ROOT_PATH@@/static/cockpit/vendor/vue.global.prod.js?v=3.5.25"></script>
+  <script defer src="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-bi-ui.min.js?v=608062c7"></script>
+</head>
+<body data-dashboard-theme="white">
+  <div id="cockpit-boot" role="status" style="padding:24px;color:#737b8c;font:14px sans-serif">正在加载经营看板…</div>
+  <div id="app" v-cloak>
+    <main class="cockpit-main" :data-page="page" :aria-label="pageTitle">
+      <h1 class="visually-hidden">{{pageTitle}}</h1>
+      <div v-if="error" class="cockpit-state error" role="alert">{{error}}</div>
+      <div v-else-if="loading" class="cockpit-state">正在加载正式看板配置…</div>
+      <div v-else class="cockpit-board">
+        <div v-if="pageState.cached || pageState.error" class="cockpit-publication-state" role="status">
+          <span v-if="pageState.cached">完整看板 · 数据时间 {{new Date(pageState.dataAsOf * 1000).toLocaleString('zh-CN', {hour12:false})}}</span>
+          <span v-if="pageState.refreshing"> · 正在后台更新</span>
+          <span v-if="pageState.error"> · {{pageState.error}}<template v-if="pageState.cached">，继续展示上次完整内容</template></span>
+        </div>
+        <component :is="dashboardComponent" :key="dashboard.id + ':' + boardRevision"
+                   :components="dashboard.components"
+                   :template-registry="runtime.templates"
+                   :insights="pageInsights"
+                   :bi-adapters="biAdapters"
+                   :bi-runtime="biRuntime"
+                   :utils="hostUtils"
+                   :title="dashboard.name"
+                   :description="dashboard.description"
+                   :header-layout="dashboard.headerLayout"
+                   :grid-cols="dashboard.gridCols"
+                   :row-height="dashboard.rowHeight"
+                   :margin="[8, 8]"
+                   show-header-title
+                   mode="release">
+          <template v-for="insight in pageInsights" :key="insight.id"
+                    v-slot:[slot_name(insight)]="slotProps">
+            <cockpit-insight :insight="insight" :slot-props="slotProps"></cockpit-insight>
+          </template>
+        </component>
+      </div>
+
+      <details v-if="gaps.length" class="cockpit-gap-report">
+        <summary>元数据缺失与渲染限制 · {{gaps.length}} 项</summary>
+        <div class="cockpit-gap-body">
+          <p>页面只渲染交付元数据原样结构，宿主不增删、不重排卡片。缺失组件、缺失数据或没有对应组件的位置保留空位并在下方列明；静态快照未覆盖的 AP 查询仍显示原卡片错误。</p>
+          <ul>
+            <li v-for="gap in gaps" :key="gap.code + (gap.componentId || gap.description)">
+              <b>{{gap.code}}</b><small>{{gap.description}}</small>
+            </li>
+          </ul>
+          <p v-if="metadataSummary" class="cockpit-gap-meta">{{metadataSummary}}</p>
+        </div>
+      </details>
+
+    </main>
+  </div>
+  <noscript>驾驶舱需要启用 JavaScript。</noscript>
+  <script defer src="@@APP_ROOT_PATH@@/static/cockpit/cockpit.js?v=@@COCKPIT_VERSION@@"></script>
+</body>
+</html>
