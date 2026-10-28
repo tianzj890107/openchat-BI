@@ -179,19 +179,25 @@ def _json(value: dict[str, Any]) -> str:
 
 
 def _route(params: dict[str, Any], cwd: str) -> str:
-    return _json(_service(cwd).route(str(params.get("question") or ""), scenario=params.get("scenario")))
+    return _json(
+        _service(cwd).route(str(params.get("question") or ""), scenario=params.get("scenario"))
+    )
 
 
 def _search(params: dict[str, Any], cwd: str) -> str:
-    return _json(_service(cwd).search(
-        str(params.get("query") or ""),
-        scenario=params.get("scenario"),
-        limit=int(params.get("limit") or 20),
-    ))
+    return _json(
+        _service(cwd).search(
+            str(params.get("query") or ""),
+            scenario=params.get("scenario"),
+            limit=int(params.get("limit") or 20),
+        )
+    )
 
 
 def _context(params: dict[str, Any], cwd: str) -> str:
-    return _json(_service(cwd).context(str(params.get("scenario") or ""), question=params.get("question")))
+    return _json(
+        _service(cwd).context(str(params.get("scenario") or ""), question=params.get("question"))
+    )
 
 
 def _query(params: dict[str, Any], cwd: str) -> str:
@@ -199,33 +205,39 @@ def _query(params: dict[str, Any], cwd: str) -> str:
 
 
 def _analyze(params: dict[str, Any], cwd: str) -> str:
-    return _json(_service(cwd).analyze(
-        question=str(params.get("question") or ""),
-        scenario=params.get("scenario"),
-        scope=params.get("scope"),
-    ))
+    return _json(
+        _service(cwd).analyze(
+            question=str(params.get("question") or ""),
+            scenario=params.get("scenario"),
+            scope=params.get("scope"),
+        )
+    )
 
 
 def _draft(params: dict[str, Any], cwd: str) -> str:
-    return _json(_service(cwd).draft(
-        question=str(params.get("question") or ""),
-        scenario=params.get("scenario"),
-        scope=params.get("scope"),
-        owner_ref=str(params.get("ownerRef") or ""),
-        owner_name=str(params.get("ownerName") or ""),
-        due_at=str(params.get("dueAt") or ""),
-        severity=params.get("severity"),
-        solutions=params.get("solutions"),
-    ))
+    return _json(
+        _service(cwd).draft(
+            question=str(params.get("question") or ""),
+            scenario=params.get("scenario"),
+            scope=params.get("scope"),
+            owner_ref=str(params.get("ownerRef") or ""),
+            owner_name=str(params.get("ownerName") or ""),
+            due_at=str(params.get("dueAt") or ""),
+            severity=params.get("severity"),
+            solutions=params.get("solutions"),
+        )
+    )
 
 
 def _verify(params: dict[str, Any], cwd: str) -> str:
-    return _json(_service(cwd).verify(
-        scenario=str(params.get("scenario") or ""),
-        scope=params.get("scope"),
-        baseline=params.get("baseline"),
-        delivery_evidence=params.get("deliveryEvidence"),
-    ))
+    return _json(
+        _service(cwd).verify(
+            scenario=str(params.get("scenario") or ""),
+            scope=params.get("scope"),
+            baseline=params.get("baseline"),
+            delivery_evidence=params.get("deliveryEvidence"),
+        )
+    )
 
 
 EXECUTORS: dict[str, Executor] = {
@@ -237,3 +249,50 @@ EXECUTORS: dict[str, Executor] = {
     "Process360Draft": _draft,
     "Process360Verify": _verify,
 }
+
+
+def _validated_executor(spec: dict[str, Any], executor: Executor) -> Executor:
+    """Enforce the public contract even when an MCP host skips JSON-schema validation."""
+    schema = spec["input_schema"]
+
+    def validate(value: Any, rule: dict[str, Any]) -> None:
+        kind = rule.get("type")
+        valid = {
+            "object": isinstance(value, dict),
+            "array": isinstance(value, list),
+            "string": isinstance(value, str),
+            "integer": type(value) is int,
+            "boolean": type(value) is bool,
+        }.get(kind, True)
+        if not valid:
+            raise ValueError("Process360 argument has an invalid type")
+        if "enum" in rule and value not in rule["enum"]:
+            raise ValueError("Process360 argument is outside allowed values")
+        if kind == "object":
+            properties = rule.get("properties", {})
+            if rule.get("additionalProperties") is False and set(value) - set(properties):
+                raise ValueError("Process360 contains unsupported arguments")
+            if any(key not in value for key in rule.get("required", [])):
+                raise ValueError("Process360 required argument is missing")
+            if rule.get("anyOf") and not any(
+                all(key in value for key in branch.get("required", [])) for branch in rule["anyOf"]
+            ):
+                raise ValueError("Process360 requires question or scenario")
+            for key in value.keys() & properties.keys():
+                validate(value[key], properties[key])
+        elif kind == "array":
+            for item in value:
+                validate(item, rule.get("items", {}))
+        elif kind == "integer" and not rule.get("minimum", value) <= value <= rule.get(
+            "maximum", value
+        ):
+            raise ValueError("Process360 argument is outside allowed bounds")
+
+    def run(params: dict[str, Any], cwd: str) -> str:
+        validate(params, schema)
+        return executor(params, cwd)
+
+    return run
+
+
+EXECUTORS = {spec["name"]: _validated_executor(spec, EXECUTORS[spec["name"]]) for spec in SPECS}

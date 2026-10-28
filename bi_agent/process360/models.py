@@ -31,7 +31,7 @@ def iso_date(value: date | datetime | str | None) -> str | None:
     if not text:
         return None
     try:
-        return date.fromisoformat(text[:10]).isoformat()
+        return date.fromisoformat(text).isoformat()
     except ValueError as exc:
         raise ValueError(f"invalid date: {value!r}") from exc
 
@@ -65,12 +65,42 @@ class Scope:
     include_current_snapshot: bool = False
 
     @classmethod
-    def from_payload(cls, payload: Mapping[str, Any] | None, *, today: date | None = None) -> "Scope":
+    def from_payload(
+        cls, payload: Mapping[str, Any] | None, *, today: date | None = None
+    ) -> "Scope":
+        if payload is not None and not isinstance(payload, Mapping):
+            raise ValueError("scope must be an object")
         raw = dict(payload or {})
+        aliases = {
+            "asOf": "as_of",
+            "periodStart": "period_start",
+            "periodEnd": "period_end",
+            "customerIds": "customer_ids",
+            "ownerIds": "owner_ids",
+            "productIds": "product_ids",
+            "includeCurrentSnapshot": "include_current_snapshot",
+        }
+        unknown = set(raw) - set(aliases) - set(aliases.values()) - {"limit"}
+        if unknown:
+            raise ValueError("scope contains unsupported fields")
+        for key, alias in aliases.items():
+            if key in raw and alias in raw and raw[key] != raw[alias]:
+                raise ValueError(f"conflicting scope fields: {key}")
+        for key in ["customerIds", "ownerIds", "productIds"]:
+            value = raw.get(key, raw.get(aliases[key], []))
+            if (
+                not isinstance(value, (list, tuple))
+                or len(value) > 500
+                or any(not isinstance(v, str) or not v.strip() for v in value)
+            ):
+                raise ValueError(f"{key} must contain non-empty string IDs (maximum 500)")
         today = today or date.today()
         explicit_as_of = as_date(raw.get("asOf") or raw.get("as_of"))
         start = as_date(raw.get("periodStart") or raw.get("period_start"))
-        end = as_date(raw.get("periodEnd") or raw.get("period_end")) or explicit_as_of or today
+        explicit_end = as_date(raw.get("periodEnd") or raw.get("period_end"))
+        if explicit_as_of and explicit_end and explicit_as_of != explicit_end:
+            raise ValueError("asOf must match periodEnd when both are supplied")
+        end = explicit_end or explicit_as_of or today
         if end > today:
             end = today
         as_of = explicit_as_of or end
@@ -80,12 +110,14 @@ class Scope:
             start = date(end.year, end.month, 1)
         if start > end:
             raise ValueError("periodStart must not be later than periodEnd")
-        try:
-            limit = int(raw.get("limit") or 100)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("limit must be an integer") from exc
-        limit = max(1, min(limit, 500))
-        include_current = bool(raw.get("includeCurrentSnapshot") or raw.get("include_current_snapshot"))
+        limit = raw.get("limit", 100)
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ValueError("limit must be an integer between 1 and 500")
+        include_current = raw.get(
+            "includeCurrentSnapshot", raw.get("include_current_snapshot", False)
+        )
+        if not isinstance(include_current, bool):
+            raise ValueError("includeCurrentSnapshot must be a boolean")
         return cls(
             as_of=as_of,
             period_start=start,
@@ -114,8 +146,15 @@ class Scope:
         return min(self.as_of or today, today)
 
 
-def gap(code: str, title: str, *, needed: str = "", impact: str = "",
-        severity: str = "blocking", source: str = "catalog") -> dict[str, Any]:
+def gap(
+    code: str,
+    title: str,
+    *,
+    needed: str = "",
+    impact: str = "",
+    severity: str = "blocking",
+    source: str = "catalog",
+) -> dict[str, Any]:
     return {
         "code": str(code),
         "title": str(title),
@@ -126,9 +165,15 @@ def gap(code: str, title: str, *, needed: str = "", impact: str = "",
     }
 
 
-def evidence(code: str, name: str, *, source: str = "", observed_at: str | None = None,
-             records: Iterable[Mapping[str, Any]] | None = None,
-             limitations: Iterable[str] | None = None) -> dict[str, Any]:
+def evidence(
+    code: str,
+    name: str,
+    *,
+    source: str = "",
+    observed_at: str | None = None,
+    records: Iterable[Mapping[str, Any]] | None = None,
+    limitations: Iterable[str] | None = None,
+) -> dict[str, Any]:
     return {
         "code": str(code),
         "name": str(name),
@@ -139,9 +184,19 @@ def evidence(code: str, name: str, *, source: str = "", observed_at: str | None 
     }
 
 
-def metric(code: str, name: str, value: float | int | None, unit: str = "",
-           *, status: str = "ok", formula: str = "", reference: Any = None,
-           note: str = "", evidence: str = "", caliber: str = "") -> dict[str, Any]:
+def metric(
+    code: str,
+    name: str,
+    value: float | int | None,
+    unit: str = "",
+    *,
+    status: str = "ok",
+    formula: str = "",
+    reference: Any = None,
+    note: str = "",
+    evidence: str = "",
+    caliber: str = "",
+) -> dict[str, Any]:
     if status not in STATUS_VALUES:
         raise ValueError(f"invalid metric status: {status}")
     return {
@@ -158,16 +213,23 @@ def metric(code: str, name: str, value: float | int | None, unit: str = "",
     }
 
 
-def envelope(stage: str, status: str, *, catalog_id: str = "", catalog_version: str = "",
-             scenario: str | None = None, question: str | None = None,
-             scope: Scope | Mapping[str, Any] | None = None,
-             metrics: Iterable[Mapping[str, Any]] | None = None,
-             records: Iterable[Mapping[str, Any]] | None = None,
-             evidence_items: Iterable[Mapping[str, Any]] | None = None,
-             gaps: Iterable[Mapping[str, Any]] | None = None,
-             limitations: Iterable[str] | None = None,
-             next_steps: Iterable[str] | None = None,
-             **extra: Any) -> dict[str, Any]:
+def envelope(
+    stage: str,
+    status: str,
+    *,
+    catalog_id: str = "",
+    catalog_version: str = "",
+    scenario: str | None = None,
+    question: str | None = None,
+    scope: Scope | Mapping[str, Any] | None = None,
+    metrics: Iterable[Mapping[str, Any]] | None = None,
+    records: Iterable[Mapping[str, Any]] | None = None,
+    evidence_items: Iterable[Mapping[str, Any]] | None = None,
+    gaps: Iterable[Mapping[str, Any]] | None = None,
+    limitations: Iterable[str] | None = None,
+    next_steps: Iterable[str] | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
     if status not in STATUS_VALUES:
         raise ValueError(f"invalid result status: {status}")
     if isinstance(scope, Scope):

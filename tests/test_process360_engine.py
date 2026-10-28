@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -43,7 +44,7 @@ class FakeDB:
             rows = [{"approved_count": 7, "in_progress_count": 2, "rejected_count": 1,
                      "approved_without_time": 0, "submitted_without_time": 0}]
         elif "AS pending_customers" in sql:
-            rows = []
+            rows = [{"strategic_customers": 2, "pending_customers": 1}]
         elif "AS awarded_unsigned_rows" in sql:
             rows = [{"awarded_unsigned_rows": 1, "amount_100m": 2.25, "power_gwh": 0.4,
                      "avg_wait_days": 90, "max_wait_days": 90,
@@ -51,8 +52,8 @@ class FakeDB:
         elif "AS actual_rows" in sql:
             rows = [{"actual_rows": 10, "actual_qty": 100, "actual_power_gwh": 5.0,
                      "actual_amount_100m": 4.0, "ambiguous_rows": 0, "unmatched_rows": 2,
-                     "unmatched_qty": 20, "unmatched_power_gwh": 0.25,
-                     "unmatched_amount_100m": 0.2, "zero_power_rows": 0}]
+                     "unmatched_qty": 20, "outside_power_gwh": 0.25, "unknown_rows": 0, "invalid_qty_rows": 0,
+                     "outside_amount_100m": 0.2, "missing_amount_rows": 0, "zero_power_rows": 0}]
         elif '"AT9200384" AS customer_id' in sql:
             rows = [
                 {"customer_id": "c1", "customer_name": "战略一", "account_level": 1,
@@ -106,7 +107,13 @@ def test_scope_validates_and_blocks_historical_overdue() -> None:
     assert "G16" in {gap["code"] for gap in result["gaps"]}
 
 
-def test_sc01_analysis_and_draft_are_closed_loop_but_not_executed() -> None:
+def test_sc01_analysis_and_draft_are_closed_loop_but_not_executed(monkeypatch) -> None:
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 10, 27)
+    monkeypatch.setattr("bi_agent.process360.models.date", FixedDate)
+    monkeypatch.setattr("bi_agent.process360.queries.date", FixedDate)
     service = _service()
     analysis = service.analyze(question="超期未发为什么增加？", scope={"periodEnd": "2026-10-27"})
     assert analysis["status"] == "partial"

@@ -7,6 +7,7 @@ single translation layer from an accepted analysis action to the API contract in
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -101,7 +102,7 @@ def normalize_recipient(value: str) -> str:
     elif text.startswith("86") and len(text) > 11:
         text = text[2:]
     if not re.fullmatch(r"\d{5,20}", text):
-        raise ValueError(f"invalid recipient phone: {value!r}")
+        raise ValueError("invalid recipient phone")
     return text
 
 
@@ -135,7 +136,10 @@ def make_source_todo_id(action_id: str, canvas_id: str = "") -> str:
     canvas = str(canvas_id or "").strip() or "analysis"
     raw = f"analytics-{canvas}-{action}"
     stable = re.sub(r"[^A-Za-z0-9_.:-]+", "-", raw).strip("-")
-    return (stable or f"analytics-{uuid.uuid4().hex}")[:200]
+    if stable != raw or len(stable) > 200:
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
+        return stable[:179] + "-" + digest
+    return stable
 
 
 def _evidence(value: Any) -> list[Any]:
@@ -146,6 +150,20 @@ def _evidence(value: Any) -> list[Any]:
     if isinstance(value, dict):
         return [value]
     return [{"type": "text", "text": str(value)}]
+
+
+_PHONE_LIKE = re.compile(r"(?<!\d)(?:\+?86[- ]?)?1[3-9]\d{9}(?!\d)")
+
+
+def _public_error(value: Any) -> Any:
+    if isinstance(value, str):
+        return _PHONE_LIKE.sub("[redacted]", value)
+    if isinstance(value, list):
+        return [_public_error(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): ("[redacted]" if str(key).lower() in {"recipientsraw", "phone", "mobile"}
+                           else _public_error(item)) for key, item in value.items()}
+    return value
 
 
 class FuxiTodoClient:
@@ -259,13 +277,13 @@ class FuxiTodoClient:
         })
         errors = result.get("errors") if isinstance(result.get("errors"), list) else []
         return {
-            "ok": not errors,
+            "ok": not errors and (int(result.get("applied") or 0) + int(result.get("skipped") or 0) > 0),
             "source": "fuxi",
             "sourceTodoId": todo_id,
             "batchRef": batch_ref,
             "applied": int(result.get("applied") or 0),
             "skipped": int(result.get("skipped") or 0),
-            "errors": errors,
+            "errors": _public_error(errors),
         }
 
     def update_status(
@@ -296,10 +314,10 @@ class FuxiTodoClient:
         })
         errors = result.get("errors") if isinstance(result.get("errors"), list) else []
         return {
-            "ok": not errors,
+            "ok": not errors and (int(result.get("applied") or 0) + int(result.get("skipped") or 0) > 0),
             "source": "fuxi",
             "sourceTodoId": todo_id,
             "applied": int(result.get("applied") or 0),
             "skipped": int(result.get("skipped") or 0),
-            "errors": errors,
+            "errors": _public_error(errors),
         }

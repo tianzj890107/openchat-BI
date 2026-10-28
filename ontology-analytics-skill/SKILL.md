@@ -67,8 +67,9 @@ headers: {}
 1. **先路由**：如果问题属于发货超期、红区报价、战略客户、中标未签或计划外发货，
    调用 `Process360Route`；其他经营/财务问题调用 `AnalysisRoute`。把用户原话放进
    `question`。
-2. **再取数**：事实问题优先调用 `MetricFactQuery`；已经给出 `M...` 指标编码时，
-   第一笔业务调用就是 `MetricFactQuery`，不要先堆叠 `Ontology-SemanticQuery`、
+2. **再取数**：Process360 问题按下方 SOP 停止点调用 `Process360Query`；其他事实问题优先调用
+   `MetricFactQuery`。非 Process360 问题已经给出 `M...` 指标编码时，第一笔业务调用就是
+   `MetricFactQuery`，不要先堆叠 `Ontology-SemanticQuery`、
    `MetricCalculation` 和多次 `Ontology-MetricQuery`。
 3. **必对账**：总额、分月、维度下钻之间核对；差额超过容差必须披露。
 4. **再出图/表**：分析型结果用同一份数据生成 `TableGenerate` 和合适的
@@ -99,23 +100,27 @@ headers: {}
 | `SC04` 中标未签治理 | 哪些项目中标未签、等待多久、卡在什么条款 |
 | `SC05` 计划外发货偏差 | 哪些发货偏离日计划、如何核查、后续是否改善 |
 
-标准顺序：
+先调用 `Process360Route`，按用户目标选择步骤并到达停止点后交付：
 
-```text
-Process360Route
-  → Process360Search（名称/编码不明确时）
-  → Process360Context（需要解释流程/角色/规则时）
-  → Process360Query
-  → Process360Analyze
-  → Process360Draft
-  → CanvasGenerate（kind=actions，使用 draft.tasks）
-  → OutputGateCheck
-```
+| 用户目标 | 调用与停止点 |
+| --- | --- |
+| P01 定义、P02 流程规则 | `Process360Search` / `Process360Context`，无需取数 |
+| P03 当前事实与明细 | `Process360Query`，查询完成即停止，不自动诊断或生成任务 |
+| P06 异常、P08 影响、P09 候选原因 | `Process360Analyze`；根因仍须证据，只有明确要求才继续草稿 |
+| P10 对策 | 依据上下文中的候选方案说明核查建议与适用约束；当前未实现效果/成本排序 |
+| P11 任务草稿 | `Process360Draft`；`CanvasGenerate` 的 actions 使用 `draft.canvasActions` |
+| P12 下发 | 仅在用户点击后由 Fuxi 宿主调用 `TaskOrderCreate` |
+| P15 复验 | `Process360Verify`；当前只生成受阻断的复验计划，不宣称实际达标 |
+| P04 多期、P05 结构排名、P07 转化、P14 进度、P17 预测、P18 综合 | 路由已经具备，专用执行尚未完成；按工具缺口交付，不以单次当前查询冒充完成 |
+| P13 业务写入 | 本服务不执行发运/签单/调价；不能把创建待办表述为业务操作成功 |
+
+`Process360Analyze` 已含受控查询，不必为了流程形式先重复调用 `Process360Query`。
+所有分支交付前仍调用 `OutputGateCheck`；工具返回 `not_applicable` 时报告对应能力缺口。
 
 纪律：
 
 - `Process360Query`/`Process360Analyze`/`Process360Draft` 返回
-  `status=ok|partial|blocked|needs_clarification`。`blocked` 或 `partial` 必须原样
+  `status=ok|partial|blocked|needs_clarification|not_applicable`。`blocked` 或 `partial` 必须原样
   披露，禁止补 0、禁止把“不可评估”改写成“没有风险”。
 - `Process360Analyze.candidateCauses` 是候选原因，不是已确认根因。缺少证据模板
   要求的证据时，只能提出核查任务。

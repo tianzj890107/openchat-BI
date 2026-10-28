@@ -8,6 +8,7 @@ statement timeout.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import os
 import re
 import time
@@ -57,7 +58,9 @@ class DatabaseConfig:
             schema=(os.environ.get("PROCESS360_PG_SCHEMA") or "ywln_crm").strip() or "ywln_crm",
             dsn=(os.environ.get("PROCESS360_PG_DSN") or "").strip(),
             connect_timeout=max(1, min(integer("PROCESS360_PG_CONNECT_TIMEOUT", 5), 30)),
-            statement_timeout_ms=max(1000, min(integer("PROCESS360_PG_STATEMENT_TIMEOUT_MS", 15000), 120000)),
+            statement_timeout_ms=max(
+                1000, min(integer("PROCESS360_PG_STATEMENT_TIMEOUT_MS", 15000), 120000)
+            ),
             enabled=enabled_raw not in {"0", "false", "no", "off"},
         )
 
@@ -67,11 +70,13 @@ class DatabaseConfig:
         if self.dsn:
             return True, ""
         missing = [
-            name for name, value in (
+            name
+            for name, value in (
                 ("PROCESS360_PG_HOST", self.host),
                 ("PROCESS360_PG_DATABASE", self.database),
                 ("PROCESS360_PG_USER", self.user),
-            ) if not value
+            )
+            if not value
         ]
         if missing:
             return False, "缺少只读数据库配置：" + "、".join(missing)
@@ -137,7 +142,7 @@ def _json_safe(value: Any) -> Any:
 
 
 class PostgresDatabase:
-    """One short-lived, read-only connection per controlled query."""
+    """Short-lived read-only, repeatable-read snapshot per scenario."""
 
     def __init__(self, config: DatabaseConfig | None = None, *, max_rows: int = 5000) -> None:
         self.config = config or DatabaseConfig.from_env()
@@ -181,16 +186,52 @@ class PostgresDatabase:
         except Exception as exc:  # noqa: BLE001 - safe, credential-free message
             raise DatabaseUnavailable(f"只读数据库连接失败：{type(exc).__name__}") from exc
         connection.read_only = True
+        connection.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
         return connection
 
-    def run(self, sql: str, params: Sequence[Any] | Mapping[str, Any] | None = None,
-            *, timeout_ms: int | None = None, max_rows: int | None = None) -> QueryResult:
+    @contextmanager
+    def snapshot(self):
+        connection = self._connect()
+        try:
+            yield _SnapshotReader(self, connection)
+        finally:
+            try:
+                connection.rollback()
+            finally:
+                connection.close()
+
+    def run(
+        self,
+        sql: str,
+        params: Sequence[Any] | Mapping[str, Any] | None = None,
+        *,
+        timeout_ms: int | None = None,
+        max_rows: int | None = None,
+    ) -> QueryResult:
+        ensure_read_only(sql)
+        with self.snapshot() as reader:
+            return reader.run(sql, params, timeout_ms=timeout_ms, max_rows=max_rows)
+
+
+class _SnapshotReader:
+    def __init__(self, database: PostgresDatabase, connection: Any):
+        self.database = database
+        self.connection = connection
+        self.config = database.config
+
+    def run(
+        self,
+        sql: str,
+        params: Sequence[Any] | Mapping[str, Any] | None = None,
+        *,
+        timeout_ms: int | None = None,
+        max_rows: int | None = None,
+    ) -> QueryResult:
         ensure_read_only(sql)
         started = time.monotonic()
-        connection = self._connect()
-        limit = max(1, min(int(max_rows or self.max_rows), self.max_rows))
+        limit = max(1, min(int(max_rows or self.database.max_rows), self.database.max_rows))
         try:
-            with connection.cursor() as cursor:
+            with self.connection.cursor() as cursor:
                 cursor.execute(
                     "select set_config('statement_timeout', %s, true)",
                     (str(int(timeout_ms or self.config.statement_timeout_ms)),),
@@ -200,20 +241,9 @@ class PostgresDatabase:
                 rows = cursor.fetchmany(limit + 1)
                 truncated = len(rows) > limit
                 rows = rows[:limit]
-            connection.rollback()
-        except (DatabaseUnavailable, DatabaseQueryError):
-            raise
-        except Exception as exc:  # noqa: BLE001 - no DSN/password in message
-            try:
-                connection.rollback()
-            except Exception:
-                pass
-            raise DatabaseQueryError(f"只读查询失败：{type(exc).__name__}: {str(exc)[:300]}") from exc
-        finally:
-            try:
-                connection.close()
-            except Exception:
-                pass
+        except Exception as exc:
+            # Driver messages can contain data values. Only return the exception type.
+            raise DatabaseQueryError(f"只读查询失败：{type(exc).__name__}") from exc
         duration = int((time.monotonic() - started) * 1000)
         return QueryResult(columns, [_json_safe(dict(row)) for row in rows], duration, truncated)
 

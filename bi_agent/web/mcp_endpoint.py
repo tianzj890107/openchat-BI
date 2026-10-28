@@ -32,6 +32,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from ..integrations.fuxi_todo import FuxiTodoClient, FuxiTodoError
 from ..process360 import tools as process360_tools
+from ..process360.execute import _assert_no_phone
 from ..paths import DATASET_DIR, project_path
 from ..tools import (
     ask_user,
@@ -351,6 +352,8 @@ def _gate_executor() -> Executor:
 def _task_order_executor() -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
         del cwd
+        _assert_no_phone(json.dumps({key: value for key, value in params.items()
+                                     if key != "recipients_raw"}, ensure_ascii=False))
         client = FuxiTodoClient()
         try:
             result = client.create_todo(
@@ -518,8 +521,8 @@ class McpRuntime:
                     "AnalysisRoute，再按可见工具执行：Ontology-SemanticQuery 确认指标，"
                     "MetricFactQuery 取数与对账，ChartGenerate/TableGenerate 出图/表，"
                     "CanvasGenerate 生成整页 HTML，OutputGateCheck 做交付校验。"
-                    "Process360 问题先调用 Process360Route，再按 Process360Context→"
-                    "Process360Query→Process360Analyze→Process360Draft 执行；复验用 "
+                    "Process360 问题先调用 Process360Route，按 SOP 选择步骤：问数用 Process360Query 后停止，"
+                    "诊断用 Process360Analyze，仅明确要求草稿时用 Process360Draft；复验用 "
                     "Process360Verify。任务令只用 TaskOrderCreate，接收手机号由 Fuxi 宿主提供。"
                     "不要调用 AnalysisRun、原始 SQL、TodoWrite 或 AskUser；"
                     "歧义时直接把选项问用户。CanvasGenerate 返回的 Artifact URL 是最终交付链接。"

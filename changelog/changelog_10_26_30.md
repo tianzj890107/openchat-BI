@@ -50,12 +50,12 @@
   和前端/包管理清单版本号。
 - 边界：不部署、不修改服务器或用户历史会话；tag、Release 与 MR 合并按独立授权执行。
 
-### 2026-10-27 · Process360 五场景本体闭环：catalog、只读取数、候选分析、Fuxi 待办与复验
+### 2026-10-27（2026-10-28 验收修订）· Process360 五场景本体与受控分析：catalog、只读取数、候选草稿与复验计划
 
 - 用户可见变化：分析 Agent 新增 Process360 闭环能力，覆盖 SC01 发货超期、SC02 红区报价、
   SC03 战略客户突破、SC04 中标未签、SC05 计划外发货偏差。问题先经 P01-P18/SC01-SC05
-  确定性路由，再按 S02 场景上下文 → S03 受控只读取数 → S04 异常/影响/候选原因 →
-  S05 方案与任务令草稿 → S06 Fuxi 待办 → S07 复验执行；每个阶段返回统一 envelope 和
+  确定性路由，再按用户目标选择阶段与停止点：问数在 S03 结束，分析在 S04 结束，明确要求才生成
+  S05 草稿；S06 只接 Fuxi 待办，S07 目前仅复验计划。尚未完成 V1.2 全闭环；每个阶段返回统一 envelope 和
   `ok/partial/blocked/needs_clarification/not_applicable` 状态。
 - 语义层：新增 `bi_agent/process360/catalog.py`、`scripts/build_process360_catalog.py` 和
   生成文件 `dataset/process360/ywln-v3.1/catalog.json`（206 指标、84 业务规则、5 场景、
@@ -85,3 +85,23 @@
   17 passed；真实库只读校验五场景 SQL 均可执行（SC01/SC03/SC04 有数，SC02/SC05 按缺口
   blocked/partial）；`tests/test_fuxi_todo_actions.py`、`tests/test_mcp_endpoint_red.py`
   回归通过。未部署、未创建 MR/tag/Release；历史会话与用户数据未改动。
+
+- 2026-10-28 验收修订：用指定 V3.1 Excel/V1.2 Word 在临时目录重建，catalog 除生成时间外完全一致；
+  已逐项登记未实现的多目标计划、趋势/转化/排名/进度/预测、证据验证、S08 预算与恢复、问题持久化、
+  批准目标和实际效果复验、用户权限及 Fuxi 端到端联调，不能以 18 类路由宣称完整实现。
+- 范围与一致性：严格校验 Scope/MCP 参数，已支持维度全部落入汇总/明细 SQL；未映射维度先阻断；
+  SC03 改全量聚合、所有明细披露截断，同场景共享只读 REPEATABLE READ 事务；当前存量不伪装历史，
+  显式当前快照保留原请求，SC05 历史对账缺快照直接阻断。
+- 指标与分析：保留未知金额/电量，移除价格单位默认 1 并安全处理非法值；SC05 先聚合实际发货，再按
+  明确无计划或已对齐计划计算超发量、按数量比例分摊免税金额，未知分类不发布正式指标；blocked 数据
+  不触发风险，不生成可下发草稿；SC01/SC04 未完成业务映射验收时保持 partial。
+- 草稿与执行：校验场景/版本/方案归属，不借无关模板；补齐 P07/P13/P14 与设计例句路由并明确未实现
+  SOP 停止点；草稿、MCP 下发与错误回执防手机号泄露，收件人迭代器只消费一次，有损幂等 ID 加摘要，
+  空 Fuxi 回执不报成功；本地 RF 示例不作为已批准目标，复验顶层传播取数失败，始终不自动关闭。
+- 主要文件：`bi_agent/process360/`、`bi_agent/integrations/fuxi_todo.py`、`bi_agent/web/mcp_endpoint.py`、
+  `ontology-analytics-skill/SKILL.md`、`tests/test_process360_acceptance_red.py`、
+  `tests/test_process360_sql_contract.py`、`tests/test_process360_engine.py`；详细优化 23 项与未完成 16 项见
+  `docs/specs/process360-acceptance-2026-10-28.md`，实现 spec 同步修订。原始输入、凭据和业务输出不入仓。
+- 最终验证（2026-10-28）：新增 71 项验收回归与 9 项显式 PostgreSQL 只读 SQL 合约用例；组合回归
+  142 passed。真实库五场景、9 组维度过滤、明细上限不影响指标与 SC05 阻断传递全部通过；catalog
+  引用校验、F 类静态检查、`git diff --check` 通过。未部署、未发送真实任务、未修改用户历史数据。

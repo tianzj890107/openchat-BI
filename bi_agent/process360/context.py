@@ -7,7 +7,6 @@ are allowed to use.  It does not call the database or a model.
 
 from __future__ import annotations
 
-import re
 from typing import Any, Iterable, Mapping
 
 from .catalog import Process360Catalog, _codes
@@ -25,10 +24,11 @@ def _scenarios_for(catalog: Process360Catalog, sheet: str, code: str) -> list[st
     return [item for item in result if item]
 
 
-def search(catalog: Process360Catalog, query: str, *, limit: int = 20,
-           scenario: str | None = None) -> dict[str, Any]:
+def search(
+    catalog: Process360Catalog, query: str, *, limit: int = 20, scenario: str | None = None
+) -> dict[str, Any]:
     """Dual-entry lookup: metric and business-object names/codes only."""
-    items = catalog.search(query, limit=limit)
+    items = catalog.search(query, limit=limit, scenario=scenario)
     explicit = str(scenario or "").strip().upper() or None
     results: list[dict[str, Any]] = []
     for item in items:
@@ -40,15 +40,17 @@ def search(catalog: Process360Catalog, query: str, *, limit: int = 20,
             if not scenarios:
                 continue
         record = dict(item.get("record") or {})
-        results.append({
-            "entryType": item.get("entryType"),
-            "sheet": sheet,
-            "code": code,
-            "name": item.get("name"),
-            "score": item.get("score"),
-            "scenarios": scenarios,
-            "record": record,
-        })
+        results.append(
+            {
+                "entryType": item.get("entryType"),
+                "sheet": sheet,
+                "code": code,
+                "name": item.get("name"),
+                "score": item.get("score"),
+                "scenarios": scenarios,
+                "record": record,
+            }
+        )
     return envelope(
         "S01",
         "ok" if results else "partial",
@@ -56,10 +58,11 @@ def search(catalog: Process360Catalog, query: str, *, limit: int = 20,
         catalog_version=catalog.version,
         scenario=explicit,
         question=query,
-        records=results,
+        records=results[: max(0, min(limit, 100))],
         next_steps=(
             ["S02 装配场景上下文并确认版本/口径"]
-            if results else ["未命中指标或业务对象；请改用指标编码/业务对象名称，或先澄清问题范围"]
+            if results
+            else ["未命中指标或业务对象；请改用指标编码/业务对象名称，或先澄清问题范围"]
         ),
         query=query,
         entryTypes=["metric", "businessObject"],
@@ -75,7 +78,9 @@ def _rows(catalog: Process360Catalog, sheet: str, codes: Iterable[str]) -> list[
     return result
 
 
-def _linked(catalog: Process360Catalog, sheet: str, field: str, values: set[str]) -> list[dict[str, Any]]:
+def _linked(
+    catalog: Process360Catalog, sheet: str, field: str, values: set[str]
+) -> list[dict[str, Any]]:
     return [dict(row) for row in catalog.records(sheet) if set(_codes(row.get(field))) & values]
 
 
@@ -83,23 +88,24 @@ def _compact(row: Mapping[str, Any], keys: Iterable[str]) -> dict[str, Any]:
     return {key: row.get(key) for key in keys if row.get(key) not in (None, "", [], {})}
 
 
-def build_context(catalog: Process360Catalog, scenario: str, *, question: str | None = None) -> dict[str, Any]:
+def build_context(
+    catalog: Process360Catalog, scenario: str, *, question: str | None = None
+) -> dict[str, Any]:
     code = str(scenario or "").strip().upper()
     bundle = catalog.scenario_bundle(code)
     record = bundle["scenario"]
     entities = bundle["entities"]
-    activity_codes = {str(row.get("code")) for row in entities.get("activities", [])}
-    object_codes = {str(row.get("code")) for row in entities.get("business_objects", [])}
-    metric_codes = {str(row.get("code")) for row in entities.get("metrics", [])}
-    role_codes = {str(row.get("code")) for row in entities.get("roles", [])}
 
     rule_codes: set[str] = set()
     for row in bundle.get("anomalies", []):
         rule_codes.update(_codes(row.get("识别规则编码")))
     for row in bundle.get("verifications", []):
         rule_codes.update(_codes(row.get("规则编码")))
-    for row in [*bundle.get("evidence_templates", []), *bundle.get("task_templates", []),
-                *bundle.get("actions", [])]:
+    for row in [
+        *bundle.get("evidence_templates", []),
+        *bundle.get("task_templates", []),
+        *bundle.get("actions", []),
+    ]:
         rule_codes.update(_codes(row.get("使用规则编码集合")))
         rule_codes.update(_codes(row.get("校验规则编码集合")))
     rules = _rows(catalog, "business_rules", rule_codes)
@@ -110,7 +116,9 @@ def build_context(catalog: Process360Catalog, scenario: str, *, question: str | 
             str(row.get("name") or row.get("事项") or ""),
             needed=str(row.get("必须补充") or ""),
             impact=str(row.get("影响范围") or ""),
-            severity="blocking" if row.get("code") in {"G02", "G03", "G12", "G13", "G16"} else "degrading",
+            severity="blocking"
+            if row.get("code") in {"G02", "G03", "G12", "G13", "G16"}
+            else "degrading",
         )
         for row in bundle.get("gaps", [])
     ]
@@ -193,8 +201,7 @@ def requirements(catalog: Process360Catalog, scenario: str) -> dict[str, Any]:
     return {
         "scenario": str(scenario).upper(),
         "requiredInputs": [
-            str(row.get("使用规则编码集合") or "")
-            for row in bundle.get("evidence_templates", [])
+            str(row.get("使用规则编码集合") or "") for row in bundle.get("evidence_templates", [])
         ],
         "evidenceTemplates": evidence_codes,
         "blockingGaps": blocking,

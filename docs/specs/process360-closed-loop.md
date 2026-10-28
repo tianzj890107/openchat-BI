@@ -1,6 +1,7 @@
 # Process360 五场景闭环实现
 
-> 状态：v0.1.6 功能分支实现说明（2026-10-27）
+> 状态：功能分支部分实现；2026-10-28 验收修订，尚未通过 V1.2 完整闭环验收。
+> 详细优化、RED/GREEN 和未完成问题见 [验收报告](process360-acceptance-2026-10-28.md)。
 > 范围：SC01-SC05；S00-S07；本地 catalog + 只读业务库 + Fuxi 待办唯一执行出口
 
 ## 1. 分层
@@ -9,10 +10,10 @@
 | --- | --- | --- |
 | 本地语义 catalog | `dataset/process360/ywln-v3.1/catalog.json` | 由 V3.1 Excel + V1.2 设计文档生成；运行时唯一语义来源 |
 | 生成与校验 | `scripts/build_process360_catalog.py`、`bi_agent/process360/catalog.py` | 中文表名到稳定 key、SOP/场景装配、引用与重复编码校验 |
-| 编排 | `bi_agent/process360/service.py` | S00 → S04 → S05 → S07；不允许调用方传 SQL |
+| 编排 | `bi_agent/process360/service.py` | 按 SOP 选择停止点；查询不自动升级诊断/任务；不允许调用方传 SQL |
 | 确定性路由 | `bi_agent/process360/router.py` | P01-P18、SC01-SC05、所需输入、澄清项 |
 | 上下文 | `bi_agent/process360/context.py` | 流程/活动/角色/规则/证据/缺口装配 |
-| 只读数据库 | `bi_agent/process360/db.py` | 固定 SELECT/CTE、参数化、read-only transaction、statement timeout |
+| 只读数据库 | `bi_agent/process360/db.py` | 固定 SELECT/CTE、参数化、read-only REPEATABLE READ transaction、statement timeout |
 | 受控取数 | `bi_agent/process360/queries.py` | 五场景固定语句；缺口返回 blocked/partial，不补 0 |
 | 分析 | `bi_agent/process360/analysis.py` | 异常、影响、候选原因、证据缺口；候选原因不等于根因 |
 | 方案/任务草稿 | `bi_agent/process360/plans.py` | 方案、任务模板、验收要求；不含手机号 |
@@ -28,13 +29,13 @@
 | SC02 红区报价治理 | M36001/M0137/M36002 | 已批准报价申请数、状态分布、台账 | 报价头缺红区价格区间映射，M0137/M36002 blocked |
 | SC03 战略客户突破 | M0257/M36003/M0140/M0180 | 战略客户清单、无有效商机客户数 | 缺批准计划客户全集 G03，覆盖率不可计算 |
 | SC04 中标未签治理 | M0179/M0142/M36004 | 中标未签项目、金额、电量、等待天数 | G04 关联/周期仍需业务验收 |
-| SC05 计划外发货偏差 | M0334/M0335/M36006 | 实际发货、计划匹配、未匹配候选、占比 | 计划无历史快照；同一键多计划版本时 blocked；RF09 目标为空 |
+| SC05 计划外发货偏差 | M0334/M0335/M36006 | 按订单/行/产品/日期聚合实际发货，计算明确无计划或已对齐计划的超发量与免税金额分摊 | 计划无历史快照；同一键多计划版本时 blocked；RF09 目标为空 |
 
 关键口径：
 
 - 超期：`DATE(requestdeliveryby) < LEAST(as_of, CURRENT_DATE)`；到期当天不算超期，空值不归正常/超期。
 - 计划记录按订单 + 行号 + 产品 + 计划日期 + 月度计划键去重，取当前最新版本。
-- SC05 未匹配记录只称“待核查候选”，不认定计划外违规；匹配歧义时整场景 blocked。
+- SC05 未匹配、未知标记/对齐状态、无可靠行映射不分类，不作为计划外分子；分类不完整或多计划歧义时 blocked，正式指标为 null。
 - SC02 报价状态 `3` 为审核通过；红区必须依赖价格区间映射，当前不可用。
 - SC04 取每个项目最新投标版本，排除弃标、未公布结果和已有有效正式订单的记录。
 
@@ -64,7 +65,8 @@ S05 Process360Draft.tasks[]
 
 - 手机号不进入 HTML、日志、catalog 或模型提示；由宿主点击时提供。
 - 不调用 X360 任务令，不发送 Fuxi IM，不伪造发运/签单/排产写操作。
-- `TaskOrderCreate` 使用 `sourceTodoId` 保证重复点击幂等。
+- `TaskOrderCreate` 使用 `sourceTodoId` 保证同键重复点击幂等；跨画布同一问题的持久化去重与审批来源验证尚未实现。
+- S07 当前只能交付复验计划：本地 RF 数值不是批准凭据，没有实际效果计算或自动关闭路径。
 
 ## 5. 配置
 
@@ -92,10 +94,28 @@ PROCESS360_CATALOG_PATH=
 - catalog 冻结来源 SHA 记录在 `dataset/process360/ywln-v3.1/catalog.json` 的
   `source` 字段；原始 `.xlsx/.docx` 不入仓。
 
-## 7. 测试
+## 7. 已支持筛选与停止点
+
+| 场景 | 已落 SQL 的维度 |
+| --- | --- |
+| SC01 | 客户、负责人、产品 |
+| SC02 | 客户、负责人 |
+| SC03 | 客户 |
+| SC04 | 客户 |
+| SC05 | 客户、产品 |
+
+未支持的筛选在访问数据库前返回 `needs_clarification`，不静默扩大范围。
+SC01/03/04 当前存量不回填历史；显式当前快照调整实际观察日并保留请求范围。
+SC05 历史对账缺计划快照返回 blocked。当期分类仍需业务验收。
+
+P03 问数到 S03 停止；P06/P08/P09 分析到 S04 停止；明确要求 P11 才生成草稿。
+P01/P02 使用检索/上下文，P12 使用宿主点击下发，P15 使用专用复验工具。
+P04/P05/P07/P14/P17/P18 的专用执行未完成；路由识别不能代替执行验收。
+
+## 8. 测试
 
 ```bash
-pytest -q tests/test_process360_catalog.py tests/test_process360_engine.py
+pytest -q tests/test_process360_catalog.py tests/test_process360_engine.py tests/test_process360_acceptance_red.py
 pytest -q tests/test_fuxi_todo_actions.py tests/test_mcp_endpoint_red.py
 ```
 

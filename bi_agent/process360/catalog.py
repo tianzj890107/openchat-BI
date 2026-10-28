@@ -9,9 +9,10 @@ replacement for this catalog.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 import re
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -200,21 +201,24 @@ class Process360Catalog:
     def __init__(self, payload: Mapping[str, Any]) -> None:
         if payload.get("schema") != CATALOG_SCHEMA:
             raise ValueError(f"unsupported Process360 catalog schema: {payload.get('schema')!r}")
-        self.payload = dict(payload)
-        self.catalog_id = _text(payload.get("catalogId")) or _text(payload.get("catalog_id")) or "process360"
+        payload = deepcopy(dict(payload))
+        self._payload = payload
+        self.catalog_id = (
+            _text(payload.get("catalogId")) or _text(payload.get("catalog_id")) or "process360"
+        )
         self.version = _text(payload.get("version")) or "unknown"
-        self.sops: list[dict[str, Any]] = [
+        self._sops: list[dict[str, Any]] = [
             dict(item) for item in payload.get("sops", []) if isinstance(item, Mapping)
         ]
         raw_sheets = payload.get("sheets")
         if not isinstance(raw_sheets, Mapping):
             raise ValueError("Process360 catalog is missing sheets")
-        self.sheets: dict[str, list[dict[str, Any]]] = {
+        self._sheets: dict[str, list[dict[str, Any]]] = {
             str(key): [dict(row) for row in rows if isinstance(row, Mapping)]
             for key, rows in raw_sheets.items()
         }
         self._index: dict[str, dict[str, dict[str, Any]]] = {}
-        self._sop_index: dict[str, dict[str, Any]] = {str(s.get("id")): s for s in self.sops}
+        self._sop_index: dict[str, dict[str, Any]] = {str(s.get("id")): s for s in self._sops}
         self._build_index()
 
     @classmethod
@@ -230,6 +234,11 @@ class Process360Catalog:
         if not isinstance(payload, Mapping):
             raise ValueError("Process360 catalog must be a JSON object")
         catalog = cls(payload)
+        errors = [i for i in catalog.validate() if i.severity == "error"]
+        if errors:
+            raise ValueError(
+                "Process360 catalog validation failed: " + ", ".join(i.code for i in errors[:5])
+            )
         with _CATALOG_LOCK:
             # Keep only the current version for this path to bound memory.
             for stale in [item for item in _CATALOG_CACHE if item[0] == key[0] and item != key]:
@@ -238,12 +247,16 @@ class Process360Catalog:
         return catalog
 
     @classmethod
-    def from_project(cls, cwd: str | Path = ".", path: str | Path | None = None) -> "Process360Catalog":
-        target = Path(path) if path else Path(cwd).resolve() / DATASET_DIR / DEFAULT_CATALOG_REL
+    def from_project(
+        cls, cwd: str | Path = ".", path: str | Path | None = None
+    ) -> "Process360Catalog":
+        target = Path(path) if path else Path(DATASET_DIR) / DEFAULT_CATALOG_REL
+        if not target.is_absolute():
+            target = Path(cwd).resolve() / target
         return cls.from_file(target)
 
     def _build_index(self) -> None:
-        for sheet, rows in self.sheets.items():
+        for sheet, rows in self._sheets.items():
             index: dict[str, dict[str, Any]] = {}
             for row in rows:
                 if not row.get("code"):
@@ -255,16 +268,28 @@ class Process360Catalog:
                     index[code] = row
             self._index[sheet] = index
 
+    @property
+    def payload(self):
+        return deepcopy(self._payload)
+
+    @property
+    def sheets(self):
+        return deepcopy(self._sheets)
+
+    @property
+    def sops(self):
+        return deepcopy(self._sops)
+
     # -- basic access -----------------------------------------------------
 
     def records(self, sheet: str) -> list[dict[str, Any]]:
-        return list(self.sheets.get(sheet, []))
+        return deepcopy(self._sheets.get(sheet, []))
 
     def get(self, sheet: str, code: str) -> dict[str, Any] | None:
-        return self._index.get(sheet, {}).get(_text(code))
+        return deepcopy(self._index.get(sheet, {}).get(_text(code)))
 
     def sop(self, sop_id: str) -> dict[str, Any] | None:
-        return self._sop_index.get(_text(sop_id).upper())
+        return deepcopy(self._sop_index.get(_text(sop_id).upper()))
 
     def find(self, code: str) -> list[dict[str, Any]]:
         wanted = _text(code)
@@ -272,7 +297,7 @@ class Process360Catalog:
         for sheet, index in self._index.items():
             if wanted in index:
                 found.append({"sheet": sheet, **index[wanted]})
-        return found
+        return deepcopy(found)
 
     def metric(self, code: str) -> dict[str, Any] | None:
         return self.get("metrics", code)
@@ -289,7 +314,9 @@ class Process360Catalog:
             ("指标编码集合", "metrics"),
             ("使用角色编码集合", "roles"),
         ):
-            result[sheet] = [self.get(sheet, item) or {"code": item} for item in _codes(scenario.get(field))]
+            result[sheet] = [
+                self.get(sheet, item) or {"code": item} for item in _codes(scenario.get(field))
+            ]
         process = self.get("processes", _text(scenario.get("流程编码")))
         result["processes"] = [process] if process else []
         return result
@@ -298,14 +325,19 @@ class Process360Catalog:
         scenario = self.scenario(code)
         if not scenario:
             raise KeyError(f"unknown scenario {code}")
-        bundle: dict[str, Any] = {"scenario": scenario, "entities": self.entities_for_scenario(code)}
+        bundle: dict[str, Any] = {
+            "scenario": scenario,
+            "entities": self.entities_for_scenario(code),
+        }
         for sheet, field in (
             ("anomalies", "场景编码"),
             ("problems", "场景编码"),
         ):
-            bundle[sheet] = [row for row in self.sheets.get(sheet, []) if _text(row.get(field)) == code]
+            bundle[sheet] = [
+                row for row in self._sheets.get(sheet, []) if _text(row.get(field)) == code
+            ]
         overview = next(
-            (row for row in self.sheets.get("closure_overview", []) if row.get("code") == code),
+            (row for row in self._sheets.get("closure_overview", []) if row.get("code") == code),
             {},
         )
         bundle["gaps"] = [
@@ -313,57 +345,90 @@ class Process360Catalog:
             for gap_code in _codes(overview.get("接入缺口"))
         ]
         problem_codes = {row.get("code") for row in bundle["problems"]}
-        bundle["risks"] = [row for row in self.sheets.get("risks", []) if row.get("问题编码") in problem_codes]
+        bundle["risks"] = [
+            row for row in self._sheets.get("risks", []) if row.get("问题编码") in problem_codes
+        ]
         problem_code_list = [code for code in problem_codes if code]
         # Causes do not carry a problem key in V3.1; expose all causes for the
         # scenario's activities so S04 can still validate candidate paths.
         activity_codes = {row.get("code") for row in bundle["entities"].get("activities", [])}
         bundle["solutions"] = [
-            row for row in self.sheets.get("solutions", [])
+            row
+            for row in self._sheets.get("solutions", [])
             if row.get("问题编码") in problem_code_list
         ]
         solution_codes = {row.get("code") for row in bundle["solutions"]}
         bundle["causes"] = [
-            row for row in self.sheets.get("causes", [])
+            row
+            for row in self._sheets.get("causes", [])
             if _shares(row.get("候选方案编码"), solution_codes)
-            or (not _codes(row.get("候选方案编码")) and _shares(row.get("作用活动编码"), activity_codes))
+            or (
+                not _codes(row.get("候选方案编码"))
+                and _shares(row.get("作用活动编码"), activity_codes)
+            )
         ]
         bundle["task_templates"] = [
-            row for row in self.sheets.get("task_templates", [])
+            row
+            for row in self._sheets.get("task_templates", [])
             if row.get("方案编码") in solution_codes or row.get("问题编码") in problem_code_list
         ]
         action_codes: set[str] = set()
         for row in [*bundle["solutions"], *bundle["task_templates"]]:
             for field in ("核心Action编码集合", "下发Action编码"):
                 action_codes.update(_codes(row.get(field)))
-        bundle["actions"] = [row for row in self.sheets.get("actions", []) if row.get("code") in action_codes]
+        bundle["actions"] = [
+            row for row in self._sheets.get("actions", []) if row.get("code") in action_codes
+        ]
         evidence_codes: set[str] = set(_all_codes(bundle["causes"], "证据模板编码"))
         verification_codes: set[str] = set()
         for row in [*bundle["solutions"], *bundle["task_templates"]]:
             verification_codes.update(_codes(row.get("复验模板编码")))
-        for row in self.sheets.get("verifications", []):
+        for row in self._sheets.get("verifications", []):
             if row.get("code") in verification_codes:
                 evidence_codes.update(_codes(row.get("证据模板编码集合")))
         bundle["evidence_templates"] = [
-            row for row in self.sheets.get("evidence_templates", []) if row.get("code") in evidence_codes
+            row
+            for row in self._sheets.get("evidence_templates", [])
+            if row.get("code") in evidence_codes
         ]
-        bundle["verifications"] = [row for row in self.sheets.get("verifications", []) if row.get("code") in verification_codes]
-        return bundle
+        bundle["verifications"] = [
+            row
+            for row in self._sheets.get("verifications", [])
+            if row.get("code") in verification_codes
+        ]
+        return deepcopy(bundle)
 
     # -- search and validation --------------------------------------------
 
-    def search(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
+    def search(
+        self, query: str, *, limit: int = 20, scenario: str | None = None
+    ) -> list[dict[str, Any]]:
         """Dual-entry search: metrics and business objects only."""
         text = _text(query).lower()
         if not text:
             return []
         tokens = [token for token in re.split(r"\s+", text) if token]
         results: list[dict[str, Any]] = []
+        allowed = self.entities_for_scenario(str(scenario).upper()) if scenario else None
         for sheet in ("metrics", "business_objects"):
-            for row in self.sheets.get(sheet, []):
+            for row in self._sheets.get(sheet, []):
+                if allowed is not None and row.get("code") not in {
+                    r.get("code") for r in allowed.get(sheet, [])
+                }:
+                    continue
                 haystack = " ".join(
                     _text(row.get(key)).lower()
-                    for key in ("code", "name", "指标名称", "指标别名", "指标英文名", "业务对象名称", "业务对象英文名", "定义", "业务对象定义")
+                    for key in (
+                        "code",
+                        "name",
+                        "指标名称",
+                        "指标别名",
+                        "指标英文名",
+                        "业务对象名称",
+                        "业务对象英文名",
+                        "定义",
+                        "业务对象定义",
+                    )
                 )
                 score = sum(1 for token in tokens if token in haystack)
                 if text in haystack:
@@ -371,20 +436,22 @@ class Process360Catalog:
                 if row.get("code", "").lower() == text:
                     score += 10
                 if score:
-                    results.append({
-                        "entryType": "metric" if sheet == "metrics" else "businessObject",
-                        "sheet": sheet,
-                        "code": row.get("code", ""),
-                        "name": row.get("name", ""),
-                        "score": score,
-                        "record": row,
-                    })
+                    results.append(
+                        {
+                            "entryType": "metric" if sheet == "metrics" else "businessObject",
+                            "sheet": sheet,
+                            "code": row.get("code", ""),
+                            "name": row.get("name", ""),
+                            "score": score,
+                            "record": row,
+                        }
+                    )
         results.sort(key=lambda item: (-item["score"], item["code"]))
-        return results[: max(0, min(limit, 100))]
+        return deepcopy(results[: max(0, min(limit, 100))])
 
     def validate(self) -> list[CatalogValidationIssue]:
         issues: list[CatalogValidationIssue] = []
-        for sheet, rows in self.sheets.items():
+        for sheet, rows in self._sheets.items():
             keyed = bool(CODE_FIELDS.get(sheet))
             if not keyed and sheet not in {"usage", "element_catalog", "source_validation"}:
                 continue
@@ -392,19 +459,33 @@ class Process360Catalog:
             for row in rows:
                 code = _text(row.get("code")) or _canonical_code(sheet, row)
                 if keyed and not code:
-                    issues.append(CatalogValidationIssue("warning", "MISSING_CODE", "record has no code", sheet))
+                    issues.append(
+                        CatalogValidationIssue(
+                            "warning", "MISSING_CODE", "record has no code", sheet
+                        )
+                    )
                     continue
                 if code and code in seen:
-                    issues.append(CatalogValidationIssue("error", "DUPLICATE_CODE", f"duplicate code {code}", sheet, code))
+                    issues.append(
+                        CatalogValidationIssue(
+                            "error", "DUPLICATE_CODE", f"duplicate code {code}", sheet, code
+                        )
+                    )
                 seen.add(code)
 
         def require(sheet: str, code: str, field_label: str, record_id: str) -> None:
             if code and not self.get(sheet, code):
-                issues.append(CatalogValidationIssue(
-                    "warning", "MISSING_REFERENCE", f"{field_label} references missing {sheet} {code}", sheet, record_id
-                ))
+                issues.append(
+                    CatalogValidationIssue(
+                        "error",
+                        "MISSING_REFERENCE",
+                        f"{field_label} references missing {sheet} {code}",
+                        sheet,
+                        record_id,
+                    )
+                )
 
-        for scenario in self.sheets.get("scenarios", []):
+        for scenario in self._sheets.get("scenarios", []):
             code = _text(scenario.get("code"))
             require("processes", _text(scenario.get("流程编码")), "流程编码", code)
             for item in _codes(scenario.get("活动编码集合")):
@@ -415,18 +496,18 @@ class Process360Catalog:
                 require("metrics", item, "指标编码集合", code)
             for item in _codes(scenario.get("使用角色编码集合")):
                 require("roles", item, "使用角色编码集合", code)
-        for anomaly in self.sheets.get("anomalies", []):
+        for anomaly in self._sheets.get("anomalies", []):
             code = _text(anomaly.get("code"))
             for item in _codes(anomaly.get("指标编码集合")):
                 require("metrics", item, "指标编码集合", code)
             for item in _codes(anomaly.get("识别规则编码")):
                 require("business_rules", item, "识别规则编码", code)
             require("scenarios", _text(anomaly.get("场景编码")), "场景编码", code)
-        for problem in self.sheets.get("problems", []):
+        for problem in self._sheets.get("problems", []):
             code = _text(problem.get("code"))
             for item in _codes(problem.get("异常编码集合")):
                 require("anomalies", item, "异常编码集合", code)
-        for solution in self.sheets.get("solutions", []):
+        for solution in self._sheets.get("solutions", []):
             code = _text(solution.get("code"))
             require("problems", _text(solution.get("问题编码")), "问题编码", code)
             for item in _codes(solution.get("核心Action编码集合")):
@@ -435,7 +516,7 @@ class Process360Catalog:
                 require("task_templates", item, "任务模板编码", code)
             for item in _codes(solution.get("复验模板编码")):
                 require("verifications", item, "复验模板编码", code)
-        for task in self.sheets.get("task_templates", []):
+        for task in self._sheets.get("task_templates", []):
             code = _text(task.get("code"))
             for item in _codes(task.get("下发Action编码")):
                 require("actions", item, "下发Action编码", code)
@@ -443,17 +524,24 @@ class Process360Catalog:
                 require("actions", item, "核心Action编码集合", code)
             for item in _codes(task.get("复验模板编码")):
                 require("verifications", item, "复验模板编码", code)
-        for sop in self.sops:
+        for sop in self._sops:
             for skill in _codes(sop.get("skills")):
                 if not re.fullmatch(r"S0[0-8]", skill):
-                    issues.append(CatalogValidationIssue(
-                        "warning", "UNKNOWN_SKILL", f"SOP {sop.get('id')} references unknown skill {skill}",
-                        "sops", str(sop.get("id")),
-                    ))
+                    issues.append(
+                        CatalogValidationIssue(
+                            "warning",
+                            "UNKNOWN_SKILL",
+                            f"SOP {sop.get('id')} references unknown skill {skill}",
+                            "sops",
+                            str(sop.get("id")),
+                        )
+                    )
         return issues
 
     def summary(self) -> dict[str, int]:
-        return {sheet: len(rows) for sheet, rows in sorted(self.sheets.items())} | {"sops": len(self.sops)}
+        return {sheet: len(rows) for sheet, rows in sorted(self._sheets.items())} | {
+            "sops": len(self._sops)
+        }
 
 
 def _shares(value: Any, wanted: Iterable[str]) -> bool:

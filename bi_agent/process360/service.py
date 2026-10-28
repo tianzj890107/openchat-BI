@@ -16,7 +16,7 @@ from .catalog import Process360Catalog
 from .context import build_context, search as search_stage
 from .db import DatabaseQueryError, DatabaseUnavailable, PostgresDatabase
 from .execute import send_task_order
-from .models import Scope, envelope, gap
+from .models import Scope, envelope, gap, dedupe_gaps
 from .plans import build_draft
 from .queries import run_scenario
 from .router import route as route_stage
@@ -24,8 +24,13 @@ from .verify import build_verification
 
 
 class Process360Service:
-    def __init__(self, *, catalog: Process360Catalog | None = None,
-                 db: Any | None = None, cwd: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        catalog: Process360Catalog | None = None,
+        db: Any | None = None,
+        cwd: str | Path | None = None,
+    ) -> None:
         catalog_path = (os.environ.get("PROCESS360_CATALOG_PATH") or "").strip()
         self.catalog = catalog or Process360Catalog.from_project(
             cwd or Path.cwd(), path=catalog_path or None
@@ -59,9 +64,15 @@ class Process360Service:
         decision = route_stage(question, self.catalog, scenario=scenario)
         status = "needs_clarification" if decision.clarification and not decision.scenario else "ok"
         return envelope(
-            "S00", status, catalog_id=self.catalog_id, catalog_version=self.catalog_version,
-            scenario=decision.scenario, question=question,
-            next_steps=["S01/S02 检索并装配场景上下文"] if status == "ok" else list(decision.clarification),
+            "S00",
+            status,
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=decision.scenario,
+            question=question,
+            next_steps=["S01/S02 检索并装配场景上下文"]
+            if status == "ok"
+            else list(decision.clarification),
             route=decision.to_dict(),
         )
 
@@ -72,12 +83,26 @@ class Process360Service:
         return build_context(self.catalog, scenario, question=question)
 
     # -- S03 --------------------------------------------------------------
-    def _blocked_query(self, scenario: str, scope: Scope, message: str, code: str = "DATABASE_UNAVAILABLE") -> dict[str, Any]:
+    def _blocked_query(
+        self, scenario: str, scope: Scope, message: str, code: str = "DATABASE_UNAVAILABLE"
+    ) -> dict[str, Any]:
         return envelope(
-            "S03", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
-            scenario=scenario, scope=scope,
-            gaps=[gap(code, "业务事实库不可用", needed="配置只读 PostgreSQL 连接并确认表结构",
-                      impact="本场景指标无法取数；不补 0", severity="blocking", source="runtime")],
+            "S03",
+            "blocked",
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=scenario,
+            scope=scope,
+            gaps=[
+                gap(
+                    code,
+                    "业务事实库不可用",
+                    needed="配置只读 PostgreSQL 连接并确认表结构",
+                    impact="本场景指标无法取数；不补 0",
+                    severity="blocking",
+                    source="runtime",
+                )
+            ],
             limitations=[message],
             next_steps=["配置 PROCESS360_PG_* 只读连接", "确认 LE000011/13/14/31 等视图可读"],
         )
@@ -99,8 +124,11 @@ class Process360Service:
             resolved = Scope.from_payload(scope)
         except ValueError as exc:
             return envelope(
-                "S03", "needs_clarification", catalog_id=self.catalog_id,
-                catalog_version=self.catalog_version, scenario=code or None,
+                "S03",
+                "needs_clarification",
+                catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version,
+                scenario=code or None,
                 next_steps=[str(exc)],
                 limitations=["范围参数不合法，未执行数据库查询。"],
             )
@@ -109,75 +137,184 @@ class Process360Service:
             return self._blocked_query(code, resolved, reason)
         try:
             return run_scenario(self.catalog, code, resolved, self.db)
-        except (DatabaseUnavailable, DatabaseQueryError) as exc:
+        except DatabaseUnavailable as exc:
             return self._blocked_query(code, resolved, str(exc))
+        except DatabaseQueryError as exc:
+            return self._blocked_query(code, resolved, str(exc), code="DATABASE_QUERY_FAILED")
         except ValueError as exc:
             return envelope(
-                "S03", "not_applicable", catalog_id=self.catalog_id,
-                catalog_version=self.catalog_version, scenario=code or None,
+                "S03",
+                "not_applicable",
+                catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version,
+                scenario=code or None,
                 limitations=[str(exc)],
             )
 
     # -- S04 --------------------------------------------------------------
-    def analyze(self, *, question: str = "", scenario: str | None = None,
-                scope: Mapping[str, Any] | None = None,
-                context: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def _unsupported_analysis(self, decision, question: str):
+        unsupported = {"P01", "P02", "P04", "P05", "P07", "P12", "P13", "P14", "P15", "P17", "P18"}
+        if decision.sop_id not in unsupported:
+            return None
+        return envelope(
+            "S04",
+            "not_applicable",
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=decision.scenario,
+            question=question,
+            route=decision.to_dict(),
+            gaps=[
+                gap(
+                    "SOP_EXECUTION_NOT_SUPPORTED",
+                    "此 SOP 不能由单场景分析链完成",
+                    needed="按路由调用对应专用工具；多期比较、流程转化、进度、预测和综合编排尚未实现",
+                    impact="未取数、未生成风险或任务草稿",
+                    source="runtime",
+                )
+            ],
+            next_steps=[
+                "P01/P02 使用检索与上下文；P12 经用户点击调用 TaskOrderCreate；P15 使用 Process360Verify",
+                "P13 业务写入不在本服务执行范围；其余能力见验收未完成清单",
+            ],
+        )
+
+    def analyze(
+        self,
+        *,
+        question: str = "",
+        scenario: str | None = None,
+        scope: Mapping[str, Any] | None = None,
+        context: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         decision = route_stage(question or "分析当前场景", self.catalog, scenario=scenario)
+        unsupported = self._unsupported_analysis(decision, question)
+        if unsupported is not None:
+            return unsupported
         if not decision.scenario:
             return envelope(
-                "S04", "needs_clarification", catalog_id=self.catalog_id,
-                catalog_version=self.catalog_version, question=question or None,
+                "S04",
+                "needs_clarification",
+                catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version,
+                question=question or None,
                 next_steps=list(decision.clarification),
                 route=decision.to_dict(),
             )
-        ctx = dict(context) if context and context.get("scenario") == decision.scenario else build_context(
-            self.catalog, decision.scenario, question=question or None
+        ctx = (
+            dict(context)
+            if (
+                context
+                and context.get("scenario") == decision.scenario
+                and context.get("catalogId") == self.catalog_id
+                and context.get("catalogVersion") == self.catalog_version
+            )
+            else build_context(self.catalog, decision.scenario, question=question or None)
         )
         query = self.query(decision.scenario, scope=scope)
-        result = analyze_stage(self.catalog, decision.scenario, ctx, query, question=question or None)
+        result = analyze_stage(
+            self.catalog, decision.scenario, ctx, query, question=question or None
+        )
         result["route"] = decision.to_dict()
         result["contextSummary"] = ctx.get("counts")
         result["metricCatalog"] = ctx.get("metrics")
         return result
 
     # -- S05 --------------------------------------------------------------
-    def draft(self, *, question: str = "", scenario: str | None = None,
-              scope: Mapping[str, Any] | None = None,
-              analysis: Mapping[str, Any] | None = None,
-              owner_ref: str = "", owner_name: str = "",
-              due_at: str = "", severity: str | None = None,
-              solutions: Iterable[str] | None = None) -> dict[str, Any]:
-        result = dict(analysis) if analysis and analysis.get("scenario") else self.analyze(
-            question=question, scenario=scenario, scope=scope
+    def draft(
+        self,
+        *,
+        question: str = "",
+        scenario: str | None = None,
+        scope: Mapping[str, Any] | None = None,
+        analysis: Mapping[str, Any] | None = None,
+        owner_ref: str = "",
+        owner_name: str = "",
+        due_at: str = "",
+        severity: str | None = None,
+        solutions: Iterable[str] | None = None,
+    ) -> dict[str, Any]:
+        if analysis and (
+            scenario
+            and analysis.get("scenario") != str(scenario).upper()
+            or analysis.get("catalogId") != self.catalog_id
+            or analysis.get("catalogVersion") != self.catalog_version
+        ):
+            return envelope(
+                "S05",
+                "needs_clarification",
+                catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version,
+                scenario=scenario,
+                gaps=[
+                    gap(
+                        "ANALYSIS_CONTEXT_MISMATCH",
+                        "分析场景或本体版本不一致",
+                        needed="使用当前场景与版本重新分析",
+                        impact="未生成任务令",
+                    )
+                ],
+                tasks=[],
+                canvasActions=[],
+            )
+        result = (
+            dict(analysis)
+            if analysis and analysis.get("scenario")
+            else self.analyze(question=question, scenario=scenario, scope=scope)
         )
         code = str(result.get("scenario") or scenario or "").strip().upper()
         if not code:
             return envelope(
-                "S05", "needs_clarification", catalog_id=self.catalog_id,
-                catalog_version=self.catalog_version, question=question or None,
+                "S05",
+                "needs_clarification",
+                catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version,
+                question=question or None,
                 next_steps=["先确认场景，再生成任务令草稿"],
             )
-        if result.get("status") == "needs_clarification":
-            return result
         ctx = build_context(self.catalog, code, question=question or None)
         return build_draft(
-            self.catalog, code, ctx, result, owner_ref=owner_ref, owner_name=owner_name,
-            due_at=due_at, severity=severity, selected_solutions=list(solutions or []),
+            self.catalog,
+            code,
+            ctx,
+            result,
+            owner_ref=owner_ref,
+            owner_name=owner_name,
+            due_at=due_at,
+            severity=severity,
+            selected_solutions=list(solutions or []),
         )
 
     # -- S06 --------------------------------------------------------------
-    def execute(self, *, task: Mapping[str, Any], recipients: Iterable[str] | str,
-                action_id: str = "", canvas_id: str = "",
-                source_todo_id: str | None = None, client: Any = None) -> dict[str, Any]:
+    def execute(
+        self,
+        *,
+        task: Mapping[str, Any],
+        recipients: Iterable[str] | str,
+        action_id: str = "",
+        canvas_id: str = "",
+        source_todo_id: str | None = None,
+        client: Any = None,
+    ) -> dict[str, Any]:
         return send_task_order(
-            self.catalog, task, recipients, action_id=action_id, canvas_id=canvas_id,
-            source_todo_id=source_todo_id, client=client,
+            self.catalog,
+            task,
+            recipients,
+            action_id=action_id,
+            canvas_id=canvas_id,
+            source_todo_id=source_todo_id,
+            client=client,
         )
 
     # -- S07 --------------------------------------------------------------
-    def verify(self, *, scenario: str, scope: Mapping[str, Any] | None = None,
-               baseline: Mapping[str, Any] | None = None,
-               delivery_evidence: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def verify(
+        self,
+        *,
+        scenario: str,
+        scope: Mapping[str, Any] | None = None,
+        baseline: Mapping[str, Any] | None = None,
+        delivery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         code = str(scenario or "").strip().upper()
         query = self.query(code, scope=scope)
         current = {
@@ -186,9 +323,17 @@ class Process360Service:
             if item.get("value") is not None and item.get("status") != "blocked"
         }
         result = build_verification(
-            self.catalog, code, baseline=baseline, current=current,
+            self.catalog,
+            code,
+            baseline=baseline,
+            current=current,
             delivery_evidence=delivery_evidence,
         )
+        result["gaps"] = dedupe_gaps([*result["gaps"], *query.get("gaps", [])])
+        if query.get("status") in {"blocked", "needs_clarification", "not_applicable"}:
+            result["status"] = query["status"]
+            result["verification"]["effect"]["status"] = "blocked"
+            result["closure"] = {"status": "blocked", "canClose": False}
         result["currentQuery"] = {
             "status": query.get("status"),
             "scope": query.get("scope"),
@@ -199,10 +344,16 @@ class Process360Service:
         return result
 
     # -- convenience ------------------------------------------------------
-    def closed_loop(self, *, question: str, scenario: str | None = None,
-                    scope: Mapping[str, Any] | None = None,
-                    owner_ref: str = "", owner_name: str = "",
-                    due_at: str = "") -> dict[str, Any]:
+    def closed_loop(
+        self,
+        *,
+        question: str,
+        scenario: str | None = None,
+        scope: Mapping[str, Any] | None = None,
+        owner_ref: str = "",
+        owner_name: str = "",
+        due_at: str = "",
+    ) -> dict[str, Any]:
         decision = self.route(question, scenario=scenario)
         route_payload = decision.get("route") or {}
         code = route_payload.get("scenario")
@@ -212,12 +363,45 @@ class Process360Service:
                 "stages": {"S00": decision},
                 "status": "needs_clarification",
             }
+        unsupported = self._unsupported_analysis(
+            route_stage(question, self.catalog, scenario=code), question
+        )
+        if unsupported is not None:
+            return {**unsupported, "stages": {"S00": decision, "S04": unsupported}}
         ctx = self.context(code, question=question)
         query = self.query(code, scope=scope)
+        if route_payload.get("sop") == "P03":
+            return {
+                "schema": "process360.closed_loop.v1",
+                "status": query["status"],
+                "scenario": code,
+                "catalogId": self.catalog_id,
+                "catalogVersion": self.catalog_version,
+                "stages": {"S00": decision, "S02": ctx, "S03": query},
+                "next": "事实查询到此结束；只有明确要求才进入诊断或任务草稿。",
+            }
         analysis = analyze_stage(self.catalog, code, ctx, query, question=question)
         analysis["route"] = route_payload
-        draft = self.draft(question=question, scenario=code, scope=scope, analysis=analysis,
-                           owner_ref=owner_ref, owner_name=owner_name, due_at=due_at)
+        if route_payload.get("sop") != "P11":
+            return {
+                "schema": "process360.closed_loop.v1",
+                "status": analysis["status"],
+                "scenario": code,
+                "catalogId": self.catalog_id,
+                "catalogVersion": self.catalog_version,
+                "stages": {"S00": decision, "S02": ctx, "S03": query, "S04": analysis},
+                "analysis": analysis,
+                "next": "分析结束；明确要求任务草稿后调用 Process360Draft。",
+            }
+        draft = self.draft(
+            question=question,
+            scenario=code,
+            scope=scope,
+            analysis=analysis,
+            owner_ref=owner_ref,
+            owner_name=owner_name,
+            due_at=due_at,
+        )
         return {
             "schema": "process360.closed_loop.v1",
             "status": analysis.get("status"),
