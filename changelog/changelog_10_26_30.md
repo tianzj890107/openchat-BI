@@ -408,4 +408,14 @@
   Process360/Canvas/MCP 聚焦测试 151 项通过；全量 Python `1620 passed / 37 skipped`，
   仅保留 worktree 缺少前端
   `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的既有环境失败。
-- 边界：旧 HTML 不会自动补按钮，需要重新生成；本轮未部署、未创建 MR/tag/Release。
+- 部署与线上验证（18:14）：新增 8765 release
+  `process360-a5342cd-20261028-180448`（提交 `a5342cd`，PID 2561043），旧 release
+  和 PID 2321809 完整保留；先经 18765 同提交预检后切换。健康检查、MCP 健康
+  （`missingExecutors=[]`）、Cockpit 配置/引擎/已发布分析均 200；线上生成的 Canvas
+  行动卡 `temporaryDispatch=true`，HTML 含“临时直发”“发送任务令”，页面不传手机号。
+  真实 SC01 只读查询仍为 `partial`、来源 `process360-postgres`、18.3961 亿元 /
+  4.6066 GWh，并披露 G01/G12/G16；8765 日志无 Traceback 与 5xx。8876 未改动。
+- Skill：交付包重建为 24 文件并逐项校验，SHA256 为
+  `297911caba6a992560b6c0aee66be5bb38a59cf02522a2c65fd2a83247cb3d84`。
+- 边界：旧 HTML 不会自动补按钮，需要重新生成；本轮未创建真实 Fuxi 待办，真实点击回执
+  和业务效果需在伏羲人工验收；未创建 MR/tag/Release，未升级正式版本。

@@ -1022,3 +1022,37 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   8876 到 8765 的代理与三页 HTML 均 200；Cockpit 看板的 AP 业务数据尚未接通，属已知状态。
 - 回退：停止本 release 进程，恢复 `process360-a23ba77-20261028-160256` 的 `start-main.py`
   启动方式；共享 `.env` 备份为 `mcp-11dc92c-20261020/.env.bak-20261028-170622`。
+
+### Process360 Canvas 临时直发上线（2026-10-28 18:14）
+
+- 代码提交：`a5342cdea459d01438384d177a96eee832f9d1e4`（分支
+  `feature/process360-cockpit34-integration`）。仅新增并切换 8765 主服务 release，
+  未修改或替换 8876 静态站、nginx、历史会话、上传、图表和分析缓存。
+- release：`/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-a5342cd-20261028-180448`，
+  PID `2561043`，监听 8765；旧 PID `2321809` 已正常退出，旧 release
+  `process360-a6239d4-20261028-170622` 完整保留可回滚。`.env`、`.venv` 软链到
+  `mcp-11dc92c-20261020`，运行 `dataset` 软链到共享数据目录；git archive 自带数据目录
+  保留为 `dataset.tracked-a5342cd-20261028-180448`，未覆盖运行数据。
+- 运行配置：`runtime-env.json` 权限 600，`RELEASE_COMMIT`、`PYTHONPATH`、
+  `PROCESS360_CATALOG_PATH` 指向新 release；`PROCESS360_PG_*` 仍为
+  `172.16.5.181:32444/ywln#ywln_crm`，`COCKPIT_DATA_MODE=ap`。临时 POC 设置
+  `PROCESS360_CANVAS_DISPATCH_MODE=all`，并使用服务端单一接收人配置；接收人、手机号和
+  身份字段不进入 HTML，页面提交这些字段会被拒绝。
+- Skill：本地分发包 `ontology-analytics-skill.zip` 已按当前源码重建，24 个文件逐项一致，
+  ZIP 完整性校验通过，SHA256 为
+  `297911caba6a992560b6c0aee66be5bb38a59cf02522a2c65fd2a83247cb3d84`；分发包不入库。
+- 切换方式：先在 `127.0.0.1:18765` 启动同提交预检实例，验证 `/healthz`、MCP 健康、
+  Cockpit 配置/引擎/已发布分析、Canvas 行动卡和真实 PG 查询后停止预检进程；再 SIGTERM
+  旧 8765 进程并由新 release `start-main.py` 启动。预检进程与 18765 端口已关闭。
+- 验证：18765 与 8765 的 `/healthz`、`/api/mcp/health`（`missingExecutors=[]`）、
+  `/api/cockpit/data/config`、`/api/cockpit/engines`、
+  `/api/cockpit/analyses/published?id=1&page=analysis` 均 200；线上 Canvas 生成的测试卡
+  `temporaryDispatch=true`，HTML 含“临时直发”“发送任务令”和服务端下发端点，且不含手机号。
+  `Process360Plan + Process360Query`（SC01）返回 `partial`、来源
+  `process360-postgres`、18.3961 亿元 / 4.6066 GWh，并披露 G01/G12/G16。
+  `172.16.10.34:8765/healthz` 与 8876 根页面均 200，8765 日志无 Traceback 与 5xx。
+- 边界：本轮未点击发送按钮、未创建真实 Fuxi 待办；真实点击回执和业务效果需在伏羲中人工
+  验证。SC01 仍为 partial，SC02—SC05 不能据此判为完成；未创建 MR/tag/Release，未升级版本。
+- 回退：停止本 release PID，使用旧 release
+  `process360-a6239d4-20261028-170622/start-main.py` 启动；旧 release、共享环境和历史数据
+  均保留。
