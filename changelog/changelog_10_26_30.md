@@ -289,3 +289,17 @@
   `id=1|2` 三个页面共6个路由浏览器验收全部AP 200，无错误文案、无JavaScript异常。
 - 部署：后端 `cockpit-main-15d31e0-20261028-0817`（PID 158559，8765），
   静态站 `assetVersion=4da3f092598bd18dde3b`；旧release和旧静态资源保留可回滚。
+
+### 2026-10-28 · Cockpit 历史缓存来源域兼容
+
+- 用户可见变化：升级到带 `dataSource` 来源域的版本后，已有经营看板、运营360和穿透分析
+  不再因缓存 key 变化而丢失上次成功卡片或整页快照；旧历史内容在首次打开时继续可回放。
+- 修复：新写入仍使用包含数据来源的新 scope；仅在实时 AP 模式且同一身份、页面、筛选范围、
+  AP 连接与配置版本一致时，新 scope 未命中后只读回退旧 scope。PostgreSQL、演示和交付快照
+  结果不会命中 AP 旧 key，历史 SQLite 不做搬迁、覆盖或重新生成。
+- 涉及文件：`bi_agent/cockpit/publications.py`、`bi_agent/cockpit/page_cache.py`、
+  `bi_agent/cockpit/router.py`、`tests/test_cockpit_publications.py`。
+- 验证：Cockpit Python 聚焦测试 30 项通过，前端 Node 测试 22 项通过；全量 Python 为
+  1597 passed / 37 skipped / 1 failed，唯一失败仍是 worktree 缺少
+  `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题；
+  `git diff --check` 通过。

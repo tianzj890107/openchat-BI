@@ -38,6 +38,12 @@ def page_scope(config, identity, page, ui_scope, data_source='ap'):
                        config=config_version(), contract=CONTRACT))
 
 
+def legacy_page_scope(config, identity, page, ui_scope):
+    """Read-only key for AP pages published before dataSource entered the scope."""
+    return digest(dict(connection=transport_identity(config), id=identity, page=page,
+                       uiScope=ui_scope, config=config_version(), contract=CONTRACT))
+
+
 def compact_analysis(item):
     if not item:
         return None

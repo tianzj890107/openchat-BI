@@ -18,9 +18,22 @@ def view_scope(context):
     return digest({k:context.get(k) for k in ('id','engine','page','chartSnapshotId','dataSource','dataIdentity')} | {'config':config_version(),'contract':CONTRACT})
 
 
+def legacy_view_scope(context):
+    """Read-only key for AP cards written before dataSource entered the scope."""
+    return digest({k:context.get(k) for k in ('id','engine','page','chartSnapshotId','dataIdentity')} | {'config':config_version(),'contract':CONTRACT})
+
+
 def publication_scope(context):
     # Receipt IDs and response values change on every fetch. Neither is a filter.
     value={k:context.get(k) for k in ('id','engine','page','stage','source','period','department','filters','repositoryId','chartSnapshotId','dataSource','dataIdentity','clarifications','baselineAnalysisId')}
+    value['chartQueries']=sorted({json.dumps(json.loads(q),sort_keys=True,ensure_ascii=False,separators=(',',':')) for q in context.get('chartQueries',[])})
+    value.update(config=config_version(),contract=CONTRACT)
+    return digest(value)
+
+
+def legacy_publication_scope(context):
+    """Read-only AP publication key used before dataSource entered the scope."""
+    value={k:context.get(k) for k in ('id','engine','page','stage','source','period','department','filters','repositoryId','chartSnapshotId','dataIdentity','clarifications','baselineAnalysisId')}
     value['chartQueries']=sorted({json.dumps(json.loads(q),sort_keys=True,ensure_ascii=False,separators=(',',':')) for q in context.get('chartQueries',[])})
     value.update(config=config_version(),contract=CONTRACT)
     return digest(value)

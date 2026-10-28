@@ -2,11 +2,13 @@
 import json
 import threading
 import time
+from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from bi_agent.cockpit.cards import CONTRACT
 from bi_agent.cockpit.router import build_cockpit_router
-from bi_agent.cockpit.publications import publication_scope
+from bi_agent.cockpit.page_cache import legacy_page_scope, page_scope
+from bi_agent.cockpit.publications import legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
 from bi_agent.cockpit.dashboard_source import RELEASE
 from bi_agent.cockpit.store import Store
 
@@ -68,6 +70,46 @@ def test_scope_ignores_transport_receipts_but_keeps_source_and_actual_filters():
     assert publication_scope(dict(c,id=2))!=key
     assert publication_scope(dict(c,clarifications={'answer':'已确认'}))!=key
     assert publication_scope(dict(c,chartQueries=['{"otherFilter":"B"}']))!=key
+
+
+def test_legacy_ap_cache_is_read_only_and_isolated_to_the_same_identity_page_and_filters(tmp_path,monkeypatch):
+    import bi_agent.cockpit.router as router
+    class Config:
+        base_url='http://ap.example/api/gateway2'
+        batch_mode='individual'
+        def headers(self):return {'X-App-Id':'cockpit-app'}
+        def identity(self):return 'source-A'
+    config=Config();gateway=SimpleNamespace(config=config)
+    monkeypatch.setenv('COCKPIT_DATA_MODE','ap')
+    monkeypatch.setattr(router,'get_gateway',lambda:gateway)
+    store=Store(tmp_path/'dataset/cockpit/history.sqlite3')
+    context=dict(id=1,engine='main',page='analysis',stage='shipment',source='service',period='2025-10',
+        department='全部产品部',filters={},repositoryId='',chartSnapshotId=RELEASE,dataIdentity='source-A',
+        clarifications={},baselineAnalysisId='',chartQueries=[])
+    scope=legacy_publication_scope(context)
+    item=store.create_analysis(scope,context)
+    store.update_analysis(item['id'],status='limited',result=dict(summary='legacy card',cardContract=CONTRACT))
+    assert store.publish(item['id'])
+    assert store.bind_view(legacy_view_scope(context),'shipment',scope)
+    legacy_page=dict(id=1,page='analysis',uiScope='default',entries=[],items={'shipment':item},dataAsOf=1,
+        version='legacy-page',dataSource='ap',dataIdentity='source-A',dataFingerprint='old')
+    assert store.publish_page(legacy_page_scope(config,1,'analysis','default'),legacy_page)
+
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:tmp_path,main_context=lambda c:{}))
+    client=TestClient(app)
+    cards=client.get('/api/cockpit/analyses/published?id=1&engine=main&page=analysis').json()['items']
+    assert cards['shipment']['result']['summary']=='legacy card'
+    assert client.get('/api/cockpit/analyses/published?id=2&engine=main&page=analysis').json()['items']=={}
+    assert client.get('/api/cockpit/analyses/published?id=1&engine=main&page=operations').json()['items']=={}
+    page=client.get('/api/cockpit/page?id=1&page=analysis&uiScope=default').json()['snapshot']
+    assert page['version']=='legacy-page'
+    startup=client.get('/api/cockpit/startup?id=1&page=analysis').json()
+    assert startup['snapshot']['version']=='legacy-page'
+    assert client.get('/api/cockpit/page?id=1&page=analysis&uiScope=department%3DB').json()['snapshot'] is None
+    assert client.get('/api/cockpit/page?id=2&page=analysis&uiScope=default').json()['snapshot'] is None
+    assert page_scope(config,1,'analysis','default')!=legacy_page_scope(config,1,'analysis','default')
+    assert publication_scope(dict(context,dataSource='ap'))!=legacy_publication_scope(context)
+    assert view_scope(dict(context,dataSource='ap'))!=legacy_view_scope(context)
 
 
 def test_incomplete_or_older_task_cannot_replace_last_success(tmp_path):

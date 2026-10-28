@@ -19,8 +19,8 @@ from .agent import run_analysis
 from .metadata import build_bundle
 from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
-from .publications import publication_scope, view_scope
-from .page_cache import APReuse, PageLookup, PageRequest, build_page, page_scope, transport_identity, compact_analysis
+from .publications import legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
+from .page_cache import APReuse, PageLookup, PageRequest, build_page, legacy_page_scope, page_scope, transport_identity, compact_analysis
 
 RESULT_CONTRACT_VERSION="compact-v1"
 
@@ -228,14 +228,19 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         identity=get_gateway().config.identity() if data_mode()=='ap' else RELEASE
         context=dict(id=id,engine=engine,page=page,chartSnapshotId=RELEASE,dataSource='ap' if data_mode()=='ap' else 'snapshot',dataIdentity=identity)
         items=store().published_view(view_scope(context))
+        if not items and data_mode()=='ap' and context['dataSource']=='ap':
+            items=store().published_view(legacy_view_scope(context))
         return dict(items={k:compact_analysis(v) for k,v in items.items()} if compact else items,cardContract=CONTRACT)
 
     @router.get('/page')
     def published_page(id:int=1,page:Literal['overview','operations','analysis']='overview',uiScope:str='default'):
         if id not in (1,2) or not 0<len(uiScope)<=16000:raise HTTPException(422,'无效页面范围')
         if main_context is None or data_mode()!='ap':return dict(snapshot=None)
-        key=page_scope(get_gateway().config,id,page,uiScope)
-        return dict(snapshot=store().published_page(key))
+        config=get_gateway().config
+        key=page_scope(config,id,page,uiScope)
+        snapshot=store().published_page(key)
+        if snapshot is None:snapshot=store().published_page(legacy_page_scope(config,id,page,uiScope))
+        return dict(snapshot=snapshot)
 
     @router.post('/page')
     def publish_page(req:PageRequest):
@@ -265,6 +270,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         snapshot=snap(req);context=context_value(req,snapshot);key=scope(req,snapshot);st=store()
         with lock:
             cached=st.published(key)
+            if cached is None and data_mode()=='ap' and context.get('dataSource')=='ap':
+                cached=st.published(legacy_publication_scope(context))
             if req.defaultView and cached:st.bind_view(view_scope(context),req.stage,key)
             # Re-opening a page with unchanged AP values must not spend another model call.
             fresh=cached and cached['context'].get('dataFingerprint')==context.get('dataFingerprint')
