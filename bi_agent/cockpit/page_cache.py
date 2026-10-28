@@ -44,6 +44,17 @@ def legacy_page_scope(config, identity, page, ui_scope):
                        uiScope=ui_scope, config=config_version(), contract=CONTRACT))
 
 
+def analysis_source_matches(context, data_source):
+    if context.get('dataSource') == data_source:
+        return True
+    # AP analyses stored before dataSource was introduced retain an AP snapshot
+    # and the main-service source mode. They may rejoin another AP publication,
+    # never a PostgreSQL or demo page.
+    return (data_source == 'ap' and not context.get('dataSource')
+            and context.get('sourceMode') == 'service'
+            and str(context.get('snapshotId') or '').startswith('ap-'))
+
+
 def compact_analysis(item):
     if not item:
         return None
@@ -108,10 +119,11 @@ def build_page(req, store, config, *, data_source='ap'):
         c = (item or {}).get('context', {})
         if (not item or item['status'] not in {'completed', 'limited'}
                 or (item.get('result') or {}).get('cardContract') != CONTRACT
+                    or not analysis_source_matches(c, data_source)
                 or any(c.get(k) != v for k, v in dict(id=req.id, page=req.page, stage=stage,
                                                      engine='main', dataIdentity=connection,
                                                      dataFingerprint=fingerprint,
-                                                     dataSource=data_source).items())
+                                                         ).items())
                 or sorted({canonical(json.loads(q)) for q in c.get('chartQueries', [])}) != queries):
             raise HTTPException(422, '图表与AI的数据版本不一致，保留上次完整版本')
         items[stage] = compact_analysis(item)

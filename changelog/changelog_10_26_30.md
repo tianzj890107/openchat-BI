@@ -296,10 +296,12 @@
   不再因缓存 key 变化而丢失上次成功卡片或整页快照；旧历史内容在首次打开时继续可回放。
 - 修复：新写入仍使用包含数据来源的新 scope；仅在实时 AP 模式且同一身份、页面、筛选范围、
   AP 连接与配置版本一致时，新 scope 未命中后只读回退旧 scope。PostgreSQL、演示和交付快照
-  结果不会命中 AP 旧 key，历史 SQLite 不做搬迁、覆盖或重新生成。
+  结果不会命中 AP 旧 key，历史 SQLite 不做搬迁、覆盖或重新生成。旧 AP 卡片与最新 AP
+  查询重新组成整页时，只有同时保留 `snapshotId=ap-*` 和主服务 AP 会话来源的记录可以复用；
+  缺少来源标记或来自 PostgreSQL／演示的历史卡片仍严格阻断。
 - 涉及文件：`bi_agent/cockpit/publications.py`、`bi_agent/cockpit/page_cache.py`、
   `bi_agent/cockpit/router.py`、`tests/test_cockpit_publications.py`。
-- 验证：Cockpit Python 聚焦测试 30 项通过，前端 Node 测试 22 项通过；全量 Python 为
+- 验证：Cockpit Python 聚焦测试 31 项通过，前端 Node 测试 22 项通过；全量 Python 为
   1597 passed / 37 skipped / 1 failed，唯一失败仍是 worktree 缺少
   `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题；
   `git diff --check` 通过。

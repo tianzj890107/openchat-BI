@@ -77,6 +77,27 @@ def test_full_page_rejects_ai_results_from_a_different_data_source(tmp_path):
         build_page(PageRequest(**values),store,cfg)
 
 
+def test_legacy_ap_cards_republish_only_with_explicit_ap_provenance(tmp_path):
+    store,cfg,req,_=fixture(tmp_path)
+    ids={}
+    for stage,aid in req.analysisIds.items():
+        item=store.get_analysis(aid);context=deepcopy(item['context']);context.pop('dataSource')
+        context.update(snapshotId='ap-legacy-'+stage,sourceMode='service')
+        legacy=store.create_analysis('legacy-'+stage,context)
+        store.update_analysis(legacy['id'],status='limited',result=item['result'],evidence=item['evidence'])
+        ids[stage]=legacy['id']
+    values=req.model_dump();values['analysisIds']=ids
+    page=build_page(PageRequest(**values),store,cfg)
+    assert {item['context'].get('snapshotId') for item in page['items'].values()}=={'ap-legacy-opportunity','ap-legacy-shipment'}
+
+    item=store.get_analysis(ids['shipment']);context=deepcopy(item['context']);context['snapshotId']='dashboard-legacy'
+    ambiguous=store.create_analysis('ambiguous-shipment',context)
+    store.update_analysis(ambiguous['id'],status='limited',result=item['result'],evidence=item['evidence'])
+    values['analysisIds']['shipment']=ambiguous['id']
+    with pytest.raises(HTTPException):
+        build_page(PageRequest(**values),store,cfg)
+
+
 @pytest.mark.parametrize('bad',['missing-slot','wrong-data','wrong-role','missing-graph','duplicate-receipt','incomplete-card','failed-card'])
 def test_incomplete_or_mixed_pages_cannot_replace_the_last_good_version(tmp_path,bad):
     store,cfg,req,_=fixture(tmp_path);good=build_page(req,store,cfg);key=page_scope(cfg,1,'analysis','default');store.publish_page(key,good)
