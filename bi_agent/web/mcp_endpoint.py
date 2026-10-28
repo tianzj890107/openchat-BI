@@ -150,8 +150,10 @@ OUTPUT_GATE_SCHEMA: dict[str, Any] = {
 TASK_ORDER_CREATE_SCHEMA: dict[str, Any] = {
     "name": "TaskOrderCreate",
     "description": (
-        "把用户确认的一条行动建议推送到 Fuxi 风险待办。只在用户点击"
+        "把用户确认的一条行动建议直接推送到 Fuxi 风险待办。只在用户点击"
         "“发送任务令/转督办”后调用，不要在分析生成阶段自动调用。"
+        "Process360 建议卡必须传 draft_id、draft_hash、action_id 和宿主 principal；"
+        "标题、正文和场景从服务端可信草稿回读，不采用调用方改写。"
         "recipients_raw 必须是当前用户或责任人的真实手机号；空数组会变成"
         "Fuxi 全员广播，因此本工具拒绝空接收人。调用方不应把手机号写进 HTML 或日志。"
     ),
@@ -159,8 +161,12 @@ TASK_ORDER_CREATE_SCHEMA: dict[str, Any] = {
         "type": "object",
         "properties": {
             "action_id": {"type": "string", "description": "行动在 Canvas/会话中的稳定 ID"},
-            "title": {"type": "string", "description": "任务令标题，1–200 字符"},
-            "content": {"type": "string", "description": "任务令正文"},
+            "draft_id": {"type": "string", "description": "Process360Draft 返回的可信草稿 ID"},
+            "draft_hash": {"type": "string", "description": "Process360Draft 返回的草稿签名"},
+            "idempotency_key": {"type": "string", "description": "可选持久化幂等键；缺省由 draftId + actionId 生成"},
+            "retry": {"type": "boolean", "description": "仅对上次 Fuxi 网络/拒绝失败使用同一幂等键重试"},
+            "title": {"type": "string", "description": "旧版通用任务标题；Process360 草稿模式忽略"},
+            "content": {"type": "string", "description": "旧版通用任务正文；Process360 草稿模式忽略"},
             "recipients_raw": {
                 "type": "array",
                 "minItems": 1,
@@ -188,8 +194,21 @@ TASK_ORDER_CREATE_SCHEMA: dict[str, Any] = {
                 "type": "object",
                 "description": "分析来源、指标编码、Artifact URL 等追溯信息",
             },
+            "principal": {
+                "type": "object",
+                "description": "Fuxi 宿主注入的可信用户、租户和下发权限",
+                "properties": {
+                    "tenantId": {"type": "string"},
+                    "userId": {"type": "string"},
+                    "orgIds": {"type": "array", "items": {"type": "string"}},
+                    "roles": {"type": "array", "items": {"type": "string"}},
+                    "canDispatch": {"type": "boolean"},
+                    "source": {"type": "string"},
+                },
+                "required": ["tenantId", "userId"],
+            },
         },
-        "required": ["action_id", "title", "content", "recipients_raw"],
+        "required": ["action_id", "recipients_raw"],
     },
 }
 
@@ -220,6 +239,14 @@ DEFAULT_EXPOSED_TOOLS: tuple[str, ...] = (
     "Process360Analyze",
     "Process360Draft",
     "Process360Verify",
+    "Process360Plan",
+    "Process360Explore",
+    "Process360Compare",
+    "Process360Structure",
+    "Process360ProcessFlow",
+    "Process360Progress",
+    "Process360Forecast",
+    "Process360Solutions",
 )
 
 WRITE_TOOLS = frozenset({"TaskOrderCreate"})
@@ -351,10 +378,36 @@ def _gate_executor() -> Executor:
 
 def _task_order_executor() -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
-        del cwd
-        _assert_no_phone(json.dumps({key: value for key, value in params.items()
-                                     if key != "recipients_raw"}, ensure_ascii=False))
         client = FuxiTodoClient()
+        draft_id = str(params.get("draft_id") or "").strip()
+        if draft_id:
+            if not params.get("principal"):
+                raise ValueError("principal is required for a Process360 draft dispatch")
+            service = process360_tools.Process360Service(cwd=cwd)
+            result = service.execute_draft(
+                draft_id=draft_id,
+                draft_hash=str(params.get("draft_hash") or ""),
+                action_id=str(params.get("action_id") or ""),
+                recipients=params.get("recipients_raw") or [],
+                principal=params.get("principal"),
+                idempotency_key=str(params.get("idempotency_key") or ""),
+                retry=bool(params.get("retry")),
+                client=client,
+            )
+            return json.dumps(result, ensure_ascii=False, indent=2)
+        meta = params.get("caliber_meta") if isinstance(params.get("caliber_meta"), dict) else {}
+        if (
+            str(params.get("source") or "") == "boulderai-anaylize-todo"
+            or meta.get("dispatchTool") == "TaskOrderCreate"
+            or meta.get("scenario")
+            or params.get("task_template")
+        ):
+            raise ValueError("Process360 action requires draft_id, draft_hash, action_id and principal")
+        _assert_no_phone(json.dumps({
+            key: params.get(key)
+            for key in ("title", "content", "impact_text", "owner_name", "owner_ref",
+                        "evidence", "caliber_meta")
+        }, ensure_ascii=False))
         try:
             result = client.create_todo(
                 title=str(params.get("title") or ""),

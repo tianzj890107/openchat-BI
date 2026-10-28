@@ -1,8 +1,8 @@
 # Process360 五场景闭环实现
 
-> 状态：功能分支部分实现；2026-10-28 验收修订，尚未通过 V1.2 完整闭环验收。
+> 状态：V1.2 范围内代码侧已补齐；真实业务批准、宿主权限注入和 Fuxi 端到端联调仍未完成。
 > 详细优化、RED/GREEN 和未完成问题见 [验收报告](process360-acceptance-2026-10-28.md)。
-> 范围：SC01-SC05；S00-S07；本地 catalog + 只读业务库 + Fuxi 待办唯一执行出口
+> 范围：SC01-SC05；S00-S08；本地 catalog + 只读业务库 + Fuxi 待办唯一执行出口
 
 ## 1. 分层
 
@@ -18,8 +18,14 @@
 | 分析 | `bi_agent/process360/analysis.py` | 异常、影响、候选原因、证据缺口；候选原因不等于根因 |
 | 方案/任务草稿 | `bi_agent/process360/plans.py` | 方案、任务模板、验收要求；不含手机号 |
 | 执行 | `bi_agent/process360/execute.py` + `bi_agent/integrations/fuxi_todo.py` | 只发 Fuxi 待办，来源 `boulderai-anaylize-todo` |
-| 复验 | `bi_agent/process360/verify.py` | 交付验收与效果验收分开；缺基准/RF 目标时不可关闭 |
-| MCP / Skill | `bi_agent/process360/tools.py`、`bi_agent/web/mcp_endpoint.py`、`ontology-analytics-skill/SKILL.md` | 七个只读工具；`TaskOrderCreate` 仍是唯一写工具 |
+| 复验 | `bi_agent/process360/verify.py` | 交付验收与效果验收分开；缺冻结基准/批准目标时不可关闭 |
+| 身份与权限 | `bi_agent/process360/identity.py` | 宿主注入 tenant/user；权限范围与业务筛选取交集；交集为空拒绝取数 |
+| 运行记录 | `bi_agent/process360/store.py` | SQLite 记录 runs/drafts/actions/executions/receipts，支持导出；不写客户 PG |
+| 证据验证 | `bi_agent/process360/evidence.py` | 来源、哈希、对象、期间、规则、必需内容和反证分别校验 |
+| 闭合计算 | `bi_agent/process360/closure.py` | 只使用冻结 baseline、批准目标和交付证据；样例数字不生效 |
+| 多期/结构/流程/进度/预测/综合 | `bi_agent/process360/advanced.py` | P04/P05/P07/P14/P17/P18；缺数据时明确 blocked |
+| 多目标与探索 | `bi_agent/process360/planner.py` | 多目标 DAG、依赖、计划版本、共享预算、探索工具白名单 |
+| MCP / Skill | `bi_agent/process360/tools.py`、`bi_agent/web/mcp_endpoint.py`、`ontology-analytics-skill/SKILL.md` | Process360 工具族；`TaskOrderCreate` 仍是唯一写工具 |
 
 ## 2. 场景与取数
 
@@ -56,17 +62,29 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
 ## 4. 执行边界
 
 ```text
-S05 Process360Draft.tasks[]
+S05 Process360Draft.canvasActions[]
+  → CanvasGenerate kind=actions（只带草稿引用和展示字段）
   → 用户在 Fuxi HTML 点击“发送任务令”
-  → Fuxi 宿主携带 recipients_raw（当前用户/责任人手机号）
-  → TaskOrderCreate（source=boulderai-anaylize-todo）
+  → Fuxi 宿主补 principal + recipients_raw（当前用户/责任人手机号）
+  → TaskOrderCreate
+  → 服务端回读草稿、校验租户/用户/hash/审批/canDispatch
+  → 单个 actionId 一次性消费，persistent idempotency key
+  → Fuxi POST /source/todo-batches（source=boulderai-anaylize-todo）
   → Fuxi 待办侧承接业务处理
 ```
 
-- 手机号不进入 HTML、日志、catalog 或模型提示；由宿主点击时提供。
+- 建议卡只携带 `draftId/draftHash/runId/actionId/scenario/approvalStatus/expiresAt/
+  dispatchTool`。`CanvasGenerate` 拒绝行动条目中出现手机号字段或 11 位手机号文本。
+- `approvalStatus` 不是 `approved` / `host_click_authorized` 时按钮显示“待审批”并禁用；
+  过期草稿点击时要求重新生成。服务端仍会二次校验，前端不能绕过。
+- 标题、正文、场景、严重程度、期限、责任人从服务端草稿回读，调用方不能改写。
+- Fuxi 契约只有批量推送和状态事件，没有单条查询或执行进度接口。字段名固定为
+  `sourceTodoId/title/severity/itemType/category/sourceStatus/sourceUpdatedAt/
+  recipientsRaw/dueAt/description/impactText/ownerRef/ownerName/evidence/activity/
+  caliberMeta`，不改名、不补造。
+- 网络失败可用同一 `idempotency_key` 和 `retry=true` 重试；已成功回执重放不重复创建。
 - 不调用 X360 任务令，不发送 Fuxi IM，不伪造发运/签单/排产写操作。
-- `TaskOrderCreate` 使用 `sourceTodoId` 保证同键重复点击幂等；跨画布同一问题的持久化去重与审批来源验证尚未实现。
-- S07 当前只能交付复验计划：本地 RF 数值不是批准凭据，没有实际效果计算或自动关闭路径。
+- S07 只能使用冻结 run、批准目标和交付证据；上游口头完成或本地 RF 样例不能关闭。
 
 ## 5. 配置
 
@@ -110,15 +128,26 @@ SC05 历史对账缺计划快照返回 blocked。当期分类仍需业务验收�
 
 P03 问数到 S03 停止；P06/P08/P09 分析到 S04 停止；明确要求 P11 才生成草稿。
 P01/P02 使用检索/上下文，P12 使用宿主点击下发，P15 使用专用复验工具。
-P04/P05/P07/P14/P17/P18 的专用执行未完成；路由识别不能代替执行验收。
+
+| 能力 | 工具 | 已实现 | 停止条件 |
+| --- | --- | --- | --- |
+| P04 多期比较 | `Process360Compare` | 同一场景、范围、对象集合的 2-12 期比较 | 期间交集/口径不一致时 blocked |
+| P05 结构排名 | `Process360Structure` | 已映射维度汇总、排名、占比、未知维度单列 | 维度未映射时 needs_clarification |
+| P07 流程转化 | `Process360ProcessFlow` | 按 objectKey/batchKey 计算节点转化和停留 | 缺阶段轨迹时 blocked，不用节点总数相除 |
+| P14 任务进度 | `Process360Progress` | 本服务 execution + Fuxi 推送回执 | Fuxi 未回传处理状态时只报告“已推送” |
+| P17 条件预测 | `Process360Forecast` | 显式假设下的规则推算、区间和敏感性 | 无实际值/目标/进度/假设时 blocked |
+| P18 综合编排 | `Process360Solutions` | 多子目标独立验收、汇总缺口 | 任一子目标 blocked 时整体不得称完成 |
+| S08 自主探索 | `Process360Explore` | 服务端工具白名单、调用哈希去重、共享预算 | 越权工具/预算耗尽/无效 path 时停止并回原步骤 |
+| 方案比较 | `Process360Solutions` | 结构、约束、适用条件校验 | 缺成本/周期/效果依据时不做量化评分 |
 
 ## 8. 测试
 
 ```bash
-pytest -q tests/test_process360_catalog.py tests/test_process360_engine.py tests/test_process360_acceptance_red.py
-pytest -q tests/test_fuxi_todo_actions.py tests/test_mcp_endpoint_red.py
+pytest -q tests/test_process360_*.py tests/test_fuxi_todo_actions.py tests/test_mcp_endpoint_red.py
 ```
 
 已覆盖：catalog 生成结果/引用/重复编码、五场景 bundle、P01-P18、双入口检索、
 路由、范围校验、历史快照阻断、五场景取数、候选原因、任务草稿、手机号保护、
-只读 SQL 校验、MCP 工具暴露、复验阻断。
+只读 SQL 校验、MCP 工具暴露、身份交集、证据验证、冻结基准、单条行动消费、
+持久化幂等、回执、P04/P05/P07/P14/P17/P18、多目标 DAG、探索白名单。
+9 项 PostgreSQL 合约测试需显式设置 `PROCESS360_ACCEPTANCE_DSN`，不同步执行。

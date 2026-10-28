@@ -29,6 +29,24 @@ SCOPE_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+PRINCIPAL_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": "Fuxi 宿主注入的可信身份和授权范围；服务端与查询筛选取交集，缺失时拒绝业务取数。",
+    "properties": {
+        "tenantId": {"type": "string", "description": "租户/公司 ID"},
+        "userId": {"type": "string", "description": "当前用户 ID"},
+        "orgIds": {"type": "array", "items": {"type": "string"}},
+        "roles": {"type": "array", "items": {"type": "string"}},
+        "customerIds": {"type": "array", "items": {"type": "string"}},
+        "ownerIds": {"type": "array", "items": {"type": "string"}},
+        "productIds": {"type": "array", "items": {"type": "string"}},
+        "canDispatch": {"type": "boolean", "description": "是否允许点击发送任务令"},
+        "source": {"type": "string", "description": "身份来源；默认 host"},
+    },
+    "required": ["tenantId", "userId"],
+    "additionalProperties": False,
+}
+
 
 PROCESS360_ROUTE_SCHEMA: dict[str, Any] = {
     "name": "Process360Route",
@@ -93,8 +111,9 @@ PROCESS360_QUERY_SCHEMA: dict[str, Any] = {
         "properties": {
             "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
             "scope": SCOPE_SCHEMA,
+            "principal": PRINCIPAL_SCHEMA,
         },
-        "required": ["scenario"],
+        "required": ["scenario", "principal"],
         "additionalProperties": False,
     },
 }
@@ -111,7 +130,18 @@ PROCESS360_ANALYZE_SCHEMA: dict[str, Any] = {
             "question": {"type": "string"},
             "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
             "scope": SCOPE_SCHEMA,
+            "principal": PRINCIPAL_SCHEMA,
+            "evidence": {
+                "type": "array",
+                "items": {"type": "object"},
+                "description": "候选原因的证据；来源、对象/期间、规则、哈希与反证必须齐备才能 verified",
+            },
+            "forecastInputs": {
+                "type": "object",
+                "description": "P17 条件推算输入；缺实际值/目标/期间/假设时返回 blocked",
+            },
         },
+        "required": ["principal"],
         "anyOf": [{"required": ["question"]}, {"required": ["scenario"]}],
         "additionalProperties": False,
     },
@@ -129,12 +159,15 @@ PROCESS360_DRAFT_SCHEMA: dict[str, Any] = {
             "question": {"type": "string"},
             "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
             "scope": SCOPE_SCHEMA,
+            "runId": {"type": "string", "description": "服务端分析运行 ID；有值时以其冻结分析为准"},
+            "principal": PRINCIPAL_SCHEMA,
             "ownerRef": {"type": "string", "description": "唯一牵头人 ID（可空）"},
             "ownerName": {"type": "string"},
             "dueAt": {"type": "string", "description": "ISO 8601；不填不虚构期限"},
             "severity": {"type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]},
             "solutions": {"type": "array", "items": {"type": "string"}},
         },
+        "required": ["principal"],
         "anyOf": [{"required": ["question"]}, {"required": ["scenario"]}],
         "additionalProperties": False,
     },
@@ -151,10 +184,173 @@ PROCESS360_VERIFY_SCHEMA: dict[str, Any] = {
         "properties": {
             "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
             "scope": SCOPE_SCHEMA,
-            "baseline": {"type": "object", "description": "原问题集合的冻结基准"},
+            "principal": PRINCIPAL_SCHEMA,
+            "runId": {"type": "string", "description": "Process360Analyze 返回的服务端冻结运行"},
+            "approvalRef": {"type": "string", "description": "业务批准记录编号"},
+            "approvedTarget": {"type": "number", "description": "批准目标比例"},
+            "approvedDirection": {"type": "string", "enum": [">=", "<="]},
+            "approvedMinimumDenominator": {"type": "integer", "minimum": 1},
+            "excludedObjectKeys": {"type": "array", "items": {"type": "string"}},
+            "exclusionEvidence": {"type": "object", "description": "逐对象取消/移出批准证据"},
             "deliveryEvidence": {"type": "object", "description": "交付验收凭据"},
         },
-        "required": ["scenario"],
+        "required": ["scenario", "principal", "runId"],
+        "additionalProperties": False,
+    },
+}
+
+PROCESS360_PLAN_SCHEMA: dict[str, Any] = {
+    "name": "Process360Plan",
+    "description": (
+        "S00 多目标 DAG：把复合问题拆成相互依赖的只读子目标，保存计划版本、恢复点、"
+        "共享调用/耗时/行数预算。总览不自动下发任务，也不调用业务写接口。"
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "question": {"type": "string"},
+            "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
+            "scope": SCOPE_SCHEMA,
+            "principal": PRINCIPAL_SCHEMA,
+            "budget": {
+                "type": "object",
+                "properties": {
+                    "calls": {"type": "integer", "minimum": 1, "maximum": 50},
+                    "elapsedMs": {"type": "integer", "minimum": 500, "maximum": 600000},
+                    "rows": {"type": "integer", "minimum": 1, "maximum": 100000},
+                },
+            },
+        },
+        "required": ["question", "principal"],
+        "additionalProperties": False,
+    },
+}
+
+PROCESS360_EXPLORE_SCHEMA: dict[str, Any] = {
+    "name": "Process360Explore",
+    "description": (
+        "S08 受控自主探索：仅执行计划白名单内的只读 Process360 工具，按计划共享预算、"
+        "请求哈希去重和 path_gap 返回原步骤。不能下发任务或执行 SQL。"
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "planId": {"type": "string"},
+            "stepId": {"type": "string"},
+            "tool": {
+                "type": "string",
+                "enum": [
+                    "Process360Search", "Process360Context", "Process360Query", "Process360Analyze",
+                    "Process360Compare", "Process360Structure", "Process360ProcessFlow",
+                    "Process360Progress", "Process360Forecast",
+                ],
+            },
+            "parameters": {"type": "object"},
+            "principal": PRINCIPAL_SCHEMA,
+        },
+        "required": ["planId", "stepId", "tool", "principal"],
+        "additionalProperties": False,
+    },
+}
+
+PROCESS360_COMPARE_SCHEMA: dict[str, Any] = {
+    "name": "Process360Compare",
+    "description": "P04 多期对比：当前期与上一同长度期间分别取数，零基期不计算增长率，阻断指标不补零。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
+            "scope": SCOPE_SCHEMA,
+            "principal": PRINCIPAL_SCHEMA,
+            "periods": {"type": "integer", "minimum": 2, "maximum": 12, "default": 2},
+        },
+        "required": ["scenario", "principal"],
+        "additionalProperties": False,
+    },
+}
+
+PROCESS360_STRUCTURE_SCHEMA: dict[str, Any] = {
+    "name": "Process360Structure",
+    "description": "P05 结构排名：从本次受控明细按已映射维度汇总、排名、占比；未知维度单列，统计贡献不当作原因。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
+            "scope": SCOPE_SCHEMA,
+            "principal": PRINCIPAL_SCHEMA,
+            "dimension": {"type": "string"},
+            "valueField": {"type": "string"},
+            "topN": {"type": "integer", "minimum": 1, "maximum": 100},
+        },
+        "required": ["scenario", "principal"],
+        "additionalProperties": False,
+    },
+}
+
+PROCESS360_PROCESS_FLOW_SCHEMA: dict[str, Any] = {
+    "name": "Process360ProcessFlow",
+    "description": "P07 流程堵点：按同一对象键与批次计算节点转化、在办量和停留；缺阶段轨迹时阻断，不用两节点总数相除。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
+            "stages": {"type": "array", "items": {"type": "object"}},
+            "objectKey": {"type": "string", "default": "objectId"},
+            "batchKey": {"type": "string", "default": "batchId"},
+            "principal": PRINCIPAL_SCHEMA,
+        },
+        "required": ["scenario", "principal"],
+        "additionalProperties": False,
+    },
+}
+
+PROCESS360_PROGRESS_SCHEMA: dict[str, Any] = {
+    "name": "Process360Progress",
+    "description": "P14 任务进度：按权限读取本服务可恢复的执行记录与 Fuxi 推送回执；口头完成不等于业务回执。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
+            "draftId": {"type": "string"},
+            "principal": PRINCIPAL_SCHEMA,
+        },
+        "required": ["principal"],
+        "additionalProperties": False,
+    },
+}
+
+PROCESS360_FORECAST_SCHEMA: dict[str, Any] = {
+    "name": "Process360Forecast",
+    "description": "P17 条件预测：只有提供实际值、目标、期间进度与显式假设时才做规则推算；不伪装为正式模型或承诺。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
+            "actualToDate": {"type": "number"},
+            "target": {"type": "number"},
+            "elapsedDays": {"type": "integer", "minimum": 1},
+            "totalDays": {"type": "integer", "minimum": 1},
+            "assumption": {"type": "string"},
+            "principal": PRINCIPAL_SCHEMA,
+        },
+        "required": ["principal", "assumption"],
+        "additionalProperties": False,
+    },
+}
+
+PROCESS360_SOLUTIONS_SCHEMA: dict[str, Any] = {
+    "name": "Process360Solutions",
+    "description": "S05 方案结构和约束校验：唯一牵头人、协同、期限、验收、审批前置；无批准效果/成本/周期依据时不生成综合评分或推荐。",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
+            "tasks": {"type": "array", "items": {"type": "object"}},
+            "options": {"type": "array", "items": {"type": "object"}},
+            "dueAt": {"type": "string"},
+            "principal": PRINCIPAL_SCHEMA,
+        },
+        "required": ["principal"],
         "additionalProperties": False,
     },
 }
@@ -167,6 +363,14 @@ SPECS = (
     PROCESS360_ANALYZE_SCHEMA,
     PROCESS360_DRAFT_SCHEMA,
     PROCESS360_VERIFY_SCHEMA,
+    PROCESS360_PLAN_SCHEMA,
+    PROCESS360_EXPLORE_SCHEMA,
+    PROCESS360_COMPARE_SCHEMA,
+    PROCESS360_STRUCTURE_SCHEMA,
+    PROCESS360_PROCESS_FLOW_SCHEMA,
+    PROCESS360_PROGRESS_SCHEMA,
+    PROCESS360_FORECAST_SCHEMA,
+    PROCESS360_SOLUTIONS_SCHEMA,
 )
 
 
@@ -201,7 +405,13 @@ def _context(params: dict[str, Any], cwd: str) -> str:
 
 
 def _query(params: dict[str, Any], cwd: str) -> str:
-    return _json(_service(cwd).query(str(params.get("scenario") or ""), scope=params.get("scope")))
+    return _json(
+        _service(cwd).query(
+            str(params.get("scenario") or ""),
+            scope=params.get("scope"),
+            principal=params.get("principal"),
+        )
+    )
 
 
 def _analyze(params: dict[str, Any], cwd: str) -> str:
@@ -210,6 +420,9 @@ def _analyze(params: dict[str, Any], cwd: str) -> str:
             question=str(params.get("question") or ""),
             scenario=params.get("scenario"),
             scope=params.get("scope"),
+            principal=params.get("principal"),
+            evidence=params.get("evidence"),
+            forecast_inputs=params.get("forecastInputs"),
         )
     )
 
@@ -220,6 +433,8 @@ def _draft(params: dict[str, Any], cwd: str) -> str:
             question=str(params.get("question") or ""),
             scenario=params.get("scenario"),
             scope=params.get("scope"),
+            run_id=str(params.get("runId") or ""),
+            principal=params.get("principal"),
             owner_ref=str(params.get("ownerRef") or ""),
             owner_name=str(params.get("ownerName") or ""),
             due_at=str(params.get("dueAt") or ""),
@@ -234,8 +449,111 @@ def _verify(params: dict[str, Any], cwd: str) -> str:
         _service(cwd).verify(
             scenario=str(params.get("scenario") or ""),
             scope=params.get("scope"),
-            baseline=params.get("baseline"),
+            run_id=str(params.get("runId") or ""),
+            principal=params.get("principal"),
+            approval_ref=str(params.get("approvalRef") or ""),
+            approved_target=params.get("approvedTarget"),
+            approved_direction=str(params.get("approvedDirection") or ""),
+            approved_minimum_denominator=params.get("approvedMinimumDenominator"),
+            excluded_object_keys=params.get("excludedObjectKeys"),
+            exclusion_evidence=params.get("exclusionEvidence"),
             delivery_evidence=params.get("deliveryEvidence"),
+        )
+    )
+
+
+def _plan(params: dict[str, Any], cwd: str) -> str:
+    return _json(
+        _service(cwd).plan(
+            question=str(params.get("question") or ""),
+            scenario=params.get("scenario"),
+            scope=params.get("scope"),
+            principal=params.get("principal"),
+            budget=params.get("budget"),
+        )
+    )
+
+
+def _explore(params: dict[str, Any], cwd: str) -> str:
+    return _json(
+        _service(cwd).explore(
+            plan_id=str(params.get("planId") or ""),
+            step_id=str(params.get("stepId") or ""),
+            tool=str(params.get("tool") or ""),
+            parameters=params.get("parameters"),
+            principal=params.get("principal"),
+        )
+    )
+
+
+def _compare(params: dict[str, Any], cwd: str) -> str:
+    return _json(
+        _service(cwd).compare_periods(
+            str(params.get("scenario") or ""),
+            scope=params.get("scope"),
+            principal=params.get("principal"),
+            periods=int(params.get("periods") or 2),
+        )
+    )
+
+
+def _structure(params: dict[str, Any], cwd: str) -> str:
+    return _json(
+        _service(cwd).structure(
+            str(params.get("scenario") or ""),
+            scope=params.get("scope"),
+            principal=params.get("principal"),
+            dimension=str(params.get("dimension") or ""),
+            value_field=str(params.get("valueField") or ""),
+            top_n=int(params.get("topN") or 10),
+        )
+    )
+
+
+def _process_flow(params: dict[str, Any], cwd: str) -> str:
+    return _json(
+        _service(cwd).process_flow(
+            str(params.get("scenario") or ""),
+            stages=params.get("stages"),
+            object_key=str(params.get("objectKey") or "objectId"),
+            batch_key=str(params.get("batchKey") or "batchId"),
+            principal=params.get("principal"),
+        )
+    )
+
+
+def _progress(params: dict[str, Any], cwd: str) -> str:
+    return _json(
+        _service(cwd).progress(
+            scenario=params.get("scenario"),
+            draft_id=str(params.get("draftId") or ""),
+            principal=params.get("principal"),
+        )
+    )
+
+
+def _forecast(params: dict[str, Any], cwd: str) -> str:
+    return _json(
+        _service(cwd).forecast(
+            actual_to_date=params.get("actualToDate"),
+            target=params.get("target"),
+            elapsed_days=params.get("elapsedDays"),
+            total_days=params.get("totalDays"),
+            assumption=str(params.get("assumption") or ""),
+            scenario=params.get("scenario"),
+            principal=params.get("principal"),
+        )
+    )
+
+
+def _solutions(params: dict[str, Any], cwd: str) -> str:
+    return _json(
+        _service(cwd).review_solutions(
+            tasks=params.get("tasks"),
+            options=params.get("options"),
+            due_at=str(params.get("dueAt") or ""),
+            scenario=params.get("scenario"),
+            principal=params.get("principal"),
         )
     )
 
@@ -248,6 +566,14 @@ EXECUTORS: dict[str, Executor] = {
     "Process360Analyze": _analyze,
     "Process360Draft": _draft,
     "Process360Verify": _verify,
+    "Process360Plan": _plan,
+    "Process360Explore": _explore,
+    "Process360Compare": _compare,
+    "Process360Structure": _structure,
+    "Process360ProcessFlow": _process_flow,
+    "Process360Progress": _progress,
+    "Process360Forecast": _forecast,
+    "Process360Solutions": _solutions,
 }
 
 

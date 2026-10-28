@@ -262,22 +262,30 @@ def test_design_document_sop_examples_route_to_their_own_family(question, sop):
     assert route(question, catalog()).sop_id == sop
 
 
-@pytest.mark.parametrize(
-    "question",
-    [
-        "超期未发近六个月趋势",
-        "订单在哪个节点卡住？",
-        "把这些订单安排发货",
-        "超期未发任务进度",
-        "预计超期未发能完成多少",
-        "经营情况怎么样",
-    ],
-)
-def test_unimplemented_sop_cannot_be_presented_as_completed_analysis(question):
+@pytest.mark.parametrize("question", ["把这些订单安排发货", "超期未发任务进度"])
+def test_write_or_empty_progress_sop_cannot_be_presented_as_completed_analysis(question):
     db = FakeDB()
     result = service(db).closed_loop(question=question, scenario="SC01")
     assert result["status"] == "not_applicable"
     assert not db.calls
+
+
+@pytest.mark.parametrize(
+    "question,key",
+    [
+        ("超期未发近六个月趋势", "comparison"),
+        ("订单在哪个节点卡住？", "processConversion"),
+        ("预计超期未发能完成多少", "forecast"),
+        ("经营情况怎么样", "subgoals"),
+    ],
+)
+def test_implemented_special_sops_return_structured_results_or_explicit_gaps(question, key):
+    db = FakeDB()
+    result = service(db).closed_loop(question=question, scenario="SC01")
+    assert result["status"] in {"ok", "partial", "blocked"}
+    analysis = result["analysis"]
+    assert key in analysis
+    assert "S05" not in result["stages"]
 
 
 def test_mcp_rejects_unknown_arguments_before_service_or_database(monkeypatch):

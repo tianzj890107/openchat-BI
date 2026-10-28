@@ -105,3 +105,45 @@
 - 最终验证（2026-10-28）：新增 71 项验收回归与 9 项显式 PostgreSQL 只读 SQL 合约用例；组合回归
   142 passed。真实库五场景、9 组维度过滤、明细上限不影响指标与 SC05 阻断传递全部通过；catalog
   引用校验、F 类静态检查、`git diff --check` 通过。未部署、未发送真实任务、未修改用户历史数据。
+
+### 2026-10-28 · Process360 V1.2 第二批补齐：可信草稿、直接发待办、权限与高级 SOP
+
+- 用户可见变化：Process360 建议卡现在可以“点击即发”Fuxi 待办。卡片只携带
+  `draftId/draftHash/runId/actionId/scenario/approvalStatus/expiresAt/dispatchTool`；
+  Fuxi 宿主补 `principal` 和当前用户/责任人手机号后调用 `TaskOrderCreate`，服务端从草稿
+  回读标题、正文和场景，不采用调用方改写。待审批卡片显示“待审批”并禁用，过期草稿点击
+  时要求重新生成。HTML 和行动条目不含手机号、连接串或凭据。
+- 执行与幂等：新增 `bi_agent/process360/store.py`，持久化 runs/drafts/actions/
+  action_consumptions/executions/receipts/plans/exploration_calls/evidence/approvals；
+  单个建议按钮一次性消费，网络失败可用同一 `idempotency_key` 和 `retry=true` 重试，
+  成功回执重放不重复创建。Fuxi 只使用 `POST /source/todo-batches` 和
+  `POST /source/todo-status-events`，字段名严格按 `API/risk-todo-source-api.md`，
+  没有进度查询接口；P14 只能读取本服务执行记录和 Fuxi 推送回执。
+- 权限与证据：新增 `identity.py`，强制宿主注入 tenant/user，权限范围与查询筛选取交集，
+  交集为空拒绝业务取数；新增 `evidence.py`，来源、哈希、对象、期间、规则、必需内容和
+  反证分别校验，哈希正确不等于根因已验证；新增 `closure.py`，只使用冻结 baseline、
+  批准目标和交付证据，样例数字不生效，SC05 无批准关闭公式时 blocked。
+- 高级 SOP：新增 `advanced.py` 与对应 MCP 工具 `Process360Compare`（P04）、
+  `Process360Structure`（P05）、`Process360ProcessFlow`（P07）、`Process360Progress`
+  （P14）、`Process360Forecast`（P17）、`Process360Solutions`（P18）。P07 缺阶段轨迹
+  时 blocked，不用节点总数相除；P17 无目标/假设时 blocked，有显式假设才输出“规则推算”；
+  P18 局部 blocked 不伪装整体完成。
+- 多目标与探索：新增 `planner.py` 和 `Process360Plan`/`Process360Explore`，实现多目标
+  DAG、依赖、计划版本、共享预算、探索工具白名单、请求哈希去重和 path_gap 回原步骤。
+- 接入层：`Process360Query/Analyze/Draft/Verify` 等业务工具统一要求 `principal`；
+  `TaskOrderCreate` 新增 `draft_id/draft_hash/idempotency_key/retry/principal`；
+  `CanvasGenerate` 的 actions 透传草稿引用并拒绝手机号。Skill 文档同步更新工具表、
+  点击下发、幂等重试、Fuxi 字段和停止条件。
+- 涉及文件：`bi_agent/process360/{store,identity,evidence,closure,advanced,planner,service,tools}.py`、
+  `bi_agent/web/mcp_endpoint.py`、`ontology-analytics-mcp/canvas_tool.py`、
+  `ontology-analytics-skill/SKILL.md`、`ontology-analytics-skill/README.md`、
+  `ontology-analytics-skill/references/08-tools-and-sources.md`、
+  `docs/specs/process360-closed-loop.md`、`docs/specs/process360-acceptance-2026-10-28.md`
+  及新增测试。
+- 验证：`pytest -q tests/test_process360_*.py tests/test_fuxi_todo_actions.py
+  tests/test_mcp_endpoint_red.py` 为 136 passed / 9 skipped；9 项 PostgreSQL 合约测试
+  需显式设置 `PROCESS360_ACCEPTANCE_DSN`。全量 `pytest -q tests` 为 1514 passed / 37 skipped /
+  1 failed，唯一失败是 worktree 缺少 `frontend/node_modules/@boulderaitech/ontology-graph/
+  src/layout.js` 的环境问题，与本轮 Process360 改动无关。
+- 边界：本轮未部署、未发送真实 Fuxi 任务、未创建 MR/tag/Release；业务批准口径、真实
+  证据、宿主权限注入、真实点击与回执、主服务对话入口仍需联调。

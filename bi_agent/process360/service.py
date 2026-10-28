@@ -8,19 +8,55 @@ and never executes a business write from analysis; S06 is a separate call.
 from __future__ import annotations
 
 import os
+import json
+import re
+import uuid
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from .analysis import analyze as analyze_stage
+from .advanced import (
+    compare_metrics,
+    compare_solution_options,
+    normalize_dimension,
+    previous_period,
+    process_conversion,
+    progress_from_receipts,
+    rule_forecast,
+    structure_from_records,
+    validate_solution_structure,
+)
 from .catalog import Process360Catalog
+from .closure import build_baseline, build_closure
 from .context import build_context, search as search_stage
 from .db import DatabaseQueryError, DatabaseUnavailable, PostgresDatabase
-from .execute import send_task_order
-from .models import Scope, envelope, gap, dedupe_gaps
+from .evidence import apply_evidence
+from .execute import send_task_order, _assert_task_no_phone
+from .identity import PrincipalScope
+from .models import Scope, combine_status, envelope, gap, dedupe_gaps
 from .plans import build_draft
+from .planner import PlanExecutionError, build_plan, run_exploration_step
 from .queries import run_scenario
 from .router import route as route_stage
+from .store import Process360Store, digest
 from .verify import build_verification
+
+
+DRAFT_TTL_SECONDS = 7 * 86400
+TRUSTED_APPROVAL_STATES = {"approved", "host_click_authorized"}
+
+
+def _period_count(question: str) -> int:
+    match = re.search(r"近\s*([0-9一二三四五六七八九十两]+)\s*个?月", str(question or ""))
+    if not match:
+        return 2
+    raw = match.group(1)
+    mapping = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+    try:
+        value = int(raw)
+    except ValueError:
+        value = mapping.get(raw, 2)
+    return max(2, min(value, 12))
 
 
 class Process360Service:
@@ -30,12 +66,41 @@ class Process360Service:
         catalog: Process360Catalog | None = None,
         db: Any | None = None,
         cwd: str | Path | None = None,
+        store: Process360Store | None = None,
     ) -> None:
+        self._cwd = Path(cwd or Path.cwd())
         catalog_path = (os.environ.get("PROCESS360_CATALOG_PATH") or "").strip()
         self.catalog = catalog or Process360Catalog.from_project(
-            cwd or Path.cwd(), path=catalog_path or None
+            self._cwd, path=catalog_path or None
         )
         self.db = db if db is not None else PostgresDatabase()
+        self._store = store
+
+    @property
+    def store(self) -> Process360Store:
+        if self._store is None:
+            configured = (os.environ.get("PROCESS360_STORE_PATH") or "").strip()
+            self._store = Process360Store(
+                configured or self._cwd / "dataset" / "process360" / "runtime.sqlite3"
+            )
+        return self._store
+
+    @staticmethod
+    def _principal(payload: Mapping[str, Any] | None) -> PrincipalScope:
+        # Direct Python callers keep a local compatibility principal.  The MCP
+        # schema requires a host-injected principal for every data operation.
+        return PrincipalScope.from_payload(payload, required=payload is not None)
+
+    @staticmethod
+    def _principal_gap(message: str) -> dict[str, Any]:
+        return gap(
+            "PRINCIPAL_SCOPE_INVALID",
+            "身份或授权范围无效",
+            needed="由宿主注入可信 tenantId/userId 及允许的数据范围",
+            impact=message or "拒绝业务取数",
+            severity="blocking",
+            source="host",
+        )
 
     # -- catalog ----------------------------------------------------------
     @property
@@ -118,10 +183,17 @@ class Process360Service:
             return False, str(reason)
         return True, ""
 
-    def query(self, scenario: str, *, scope: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def query(
+        self,
+        scenario: str,
+        *,
+        scope: Mapping[str, Any] | None = None,
+        principal: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         code = str(scenario or "").strip().upper()
         try:
-            resolved = Scope.from_payload(scope)
+            identity = self._principal(principal)
+            resolved = identity.merge_scope(Scope.from_payload(scope))
         except ValueError as exc:
             return envelope(
                 "S03",
@@ -131,16 +203,25 @@ class Process360Service:
                 scenario=code or None,
                 next_steps=[str(exc)],
                 limitations=["范围参数不合法，未执行数据库查询。"],
+                gaps=[self._principal_gap(str(exc))] if principal is not None else [],
+                principalScope=identity.fingerprint() if "identity" in locals() else None,
             )
         ready, reason = self._db_ready()
         if not ready:
             return self._blocked_query(code, resolved, reason)
         try:
-            return run_scenario(self.catalog, code, resolved, self.db)
+            result = run_scenario(self.catalog, code, resolved, self.db)
+            result["principalScope"] = identity.fingerprint()
+            result["requestedScope"] = dict(scope or {})
+            return result
         except DatabaseUnavailable as exc:
-            return self._blocked_query(code, resolved, str(exc))
+            result = self._blocked_query(code, resolved, str(exc))
+            result["principalScope"] = identity.fingerprint()
+            return result
         except DatabaseQueryError as exc:
-            return self._blocked_query(code, resolved, str(exc), code="DATABASE_QUERY_FAILED")
+            result = self._blocked_query(code, resolved, str(exc), code="DATABASE_QUERY_FAILED")
+            result["principalScope"] = identity.fingerprint()
+            return result
         except ValueError as exc:
             return envelope(
                 "S03",
@@ -153,7 +234,7 @@ class Process360Service:
 
     # -- S04 --------------------------------------------------------------
     def _unsupported_analysis(self, decision, question: str):
-        unsupported = {"P01", "P02", "P04", "P05", "P07", "P12", "P13", "P14", "P15", "P17", "P18"}
+        unsupported = {"P01", "P02", "P12", "P13", "P15"}
         if decision.sop_id not in unsupported:
             return None
         return envelope(
@@ -179,6 +260,438 @@ class Process360Service:
             ],
         )
 
+    def plan(
+        self,
+        *,
+        question: str,
+        scenario: str | None = None,
+        scope: Mapping[str, Any] | None = None,
+        principal: Mapping[str, Any] | None = None,
+        budget: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            identity = self._principal(principal)
+            resolved = identity.merge_scope(Scope.from_payload(scope))
+        except ValueError as exc:
+            return envelope(
+                "S00", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                gaps=[self._principal_gap(str(exc))],
+            )
+        result = build_plan(
+            self.catalog,
+            question=question,
+            scenario=scenario,
+            scope=resolved,
+            principal=identity.fingerprint(),
+            budget=budget,
+        )
+        saved = self.store.save_plan(result, status=str(result.get("status") or "planned"))
+        result["id"] = saved["id"]
+        result["planId"] = saved["id"]
+        result["principalScope"] = identity.fingerprint()
+        return result
+
+    def compare_periods(
+        self,
+        scenario: str,
+        *,
+        scope: Mapping[str, Any] | None = None,
+        principal: Mapping[str, Any] | None = None,
+        periods: int = 2,
+    ) -> dict[str, Any]:
+        try:
+            identity = self._principal(principal)
+            current_scope = identity.merge_scope(Scope.from_payload(scope))
+            previous_scope, previous_window = previous_period(current_scope)
+        except ValueError as exc:
+            return envelope(
+                "S03", "needs_clarification", catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version, scenario=str(scenario or "").upper() or None,
+                gaps=[self._principal_gap(str(exc))],
+            )
+        count = max(2, min(int(periods or 2), 12))
+        windows = [current_scope]
+        cursor = current_scope
+        for _ in range(count - 1):
+            cursor, _meta = previous_period(cursor)
+            windows.append(cursor)
+        queries = [
+            self.query(scenario, scope=window.to_dict(), principal=principal)
+            for window in windows
+        ]
+        current_query, previous_query = queries[0], queries[1]
+        comparison = compare_metrics(current_query, previous_query)
+        series = []
+        for window, query in reversed(list(zip(windows, queries))):
+            metrics = {
+                str(item.get("code")): item.get("value")
+                for item in query.get("metrics", [])
+                if item.get("status") != "blocked"
+            }
+            series.append(
+                {
+                    "periodStart": window.period_start.isoformat() if window.period_start else None,
+                    "periodEnd": window.observation_cutoff().isoformat(),
+                    "status": query.get("status"),
+                    "metrics": metrics,
+                }
+            )
+        status = combine_status(
+            [*(str(query.get("status")) for query in queries), comparison["status"]]
+        )
+        gaps = dedupe_gaps([gap_item for query in queries for gap_item in query.get("gaps", [])])
+        return envelope(
+            "S03",
+            status,
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=str(scenario or "").upper(),
+            scope=current_scope,
+            metrics=current_query.get("metrics", []),
+            gaps=gaps,
+            limitations=[
+                "当前期与上一同长度期间分别取数；未结束期间不是完整同比/环比。",
+                "零基期不计算增长率；阻断指标不补零。",
+            ],
+            comparison=comparison["rows"],
+            series=series,
+            periods=count,
+            previousScope=previous_scope.to_dict(),
+            previousWindow=previous_window,
+            previousQuery={
+                "status": previous_query.get("status"),
+                "metrics": previous_query.get("metrics", []),
+                "gaps": previous_query.get("gaps", []),
+            },
+            principalScope=identity.fingerprint(),
+        )
+
+    def structure(
+        self,
+        scenario: str,
+        *,
+        scope: Mapping[str, Any] | None = None,
+        principal: Mapping[str, Any] | None = None,
+        dimension: str = "",
+        value_field: str = "",
+        top_n: int = 10,
+    ) -> dict[str, Any]:
+        query = self.query(scenario, scope=scope, principal=principal)
+        structure = structure_from_records(
+            query.get("records", []),
+            dimension=normalize_dimension(dimension),
+            value_field=value_field,
+            top_n=top_n,
+            truncated=bool(query.get("truncated") or (query.get("queryInfo") or {}).get("truncated")),
+        )
+        status = combine_status([str(query.get("status")), str(structure.get("status"))])
+        return envelope(
+            "S03",
+            status,
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=str(scenario or "").upper(),
+            scope=query.get("scope"),
+            metrics=query.get("metrics", []),
+            gaps=dedupe_gaps([*query.get("gaps", []), *structure.get("gaps", [])]),
+            limitations=[*query.get("limitations", []), *structure.get("limitations", [])],
+            structure=structure,
+            principalScope=query.get("principalScope"),
+        )
+
+    def process_flow(
+        self,
+        scenario: str,
+        *,
+        stages: Iterable[Mapping[str, Any]] | None = None,
+        object_key: str = "objectId",
+        batch_key: str = "batchId",
+        principal: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            identity = self._principal(principal)
+        except ValueError as exc:
+            return envelope(
+                "S03", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=str(scenario or "").upper() or None, gaps=[self._principal_gap(str(exc))],
+            )
+        result = process_conversion(stages, object_key=object_key, batch_key=batch_key)
+        return envelope(
+            "S03",
+            str(result.get("status") or "blocked"),
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=str(scenario or "").upper() or None,
+            gaps=result.get("gaps", []),
+            limitations=result.get("limitations", []),
+            processConversion=result,
+            principalScope=identity.fingerprint(),
+        )
+
+    def progress(
+        self,
+        *,
+        scenario: str | None = None,
+        principal: Mapping[str, Any] | None = None,
+        draft_id: str = "",
+    ) -> dict[str, Any]:
+        try:
+            identity = self._principal(principal)
+        except ValueError as exc:
+            return envelope(
+                "S03", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=str(scenario or "").upper() or None, gaps=[self._principal_gap(str(exc))],
+            )
+        executions = []
+        for item in self.store.list_executions(draft_id=draft_id):
+            draft = self.store.get_draft(str(item.get("draft_id") or ""))
+            if draft and draft.get("tenant") == identity.tenant_id and draft.get("principal") == identity.user_id:
+                executions.append(item)
+        receipts = [
+            receipt
+            for item in executions
+            if (receipt := self.store.get_receipt(str(item.get("source_todo_id") or "")))
+        ]
+        result = progress_from_receipts(executions, receipts)
+        return envelope(
+            "S03",
+            str(result.get("status") or "partial"),
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=str(scenario or "").upper() or None,
+            limitations=result.get("limitations", []),
+            tasks=result.get("tasks", []),
+            receipts=result.get("receipts", []),
+            principalScope=identity.fingerprint(),
+        )
+
+    def forecast(
+        self,
+        *,
+        actual_to_date: float | None = None,
+        target: float | None = None,
+        elapsed_days: int | None = None,
+        total_days: int | None = None,
+        assumption: str = "",
+        principal: Mapping[str, Any] | None = None,
+        scenario: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            identity = self._principal(principal)
+            result = rule_forecast(
+                actual_to_date=actual_to_date,
+                target=target,
+                elapsed_days=elapsed_days,
+                total_days=total_days,
+                assumption=assumption,
+            )
+        except ValueError as exc:
+            return envelope(
+                "S04", "needs_clarification", catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version, scenario=str(scenario or "").upper() or None,
+                gaps=[gap("FORECAST_INPUT_INVALID", "预测输入不合法", needed=str(exc), impact="未推算", source="runtime")],
+            )
+        return envelope(
+            "S04",
+            str(result.get("status") or "blocked"),
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=str(scenario or "").upper() or None,
+            gaps=result.get("gaps", []),
+            limitations=result.get("limitations", []),
+            forecast=result,
+            principalScope=identity.fingerprint(),
+        )
+
+    def review_solutions(
+        self,
+        *,
+        tasks: Iterable[Mapping[str, Any]] | None = None,
+        options: Iterable[Mapping[str, Any]] | None = None,
+        due_at: str = "",
+        principal: Mapping[str, Any] | None = None,
+        scenario: str | None = None,
+    ) -> dict[str, Any]:
+        try:
+            identity = self._principal(principal)
+        except ValueError as exc:
+            return envelope(
+                "S05", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=str(scenario or "").upper() or None, gaps=[self._principal_gap(str(exc))],
+            )
+        structure = validate_solution_structure(tasks or [], due_at=due_at)
+        comparison = compare_solution_options(options) if options else None
+        gaps = [*structure.get("findings", []), *((comparison or {}).get("gaps") or [])]
+        status = combine_status(
+            [str(structure.get("status")), str((comparison or {}).get("status") or "ok")]
+        )
+        return envelope(
+            "S05",
+            status,
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=str(scenario or "").upper() or None,
+            gaps=gaps,
+            solutionValidation=structure,
+            solutionComparison=comparison,
+            principalScope=identity.fingerprint(),
+        )
+
+    def explore(
+        self,
+        *,
+        plan_id: str,
+        step_id: str,
+        tool: str,
+        parameters: Mapping[str, Any] | None = None,
+        principal: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            identity = self._principal(principal)
+        except ValueError as exc:
+            return envelope(
+                "S08", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                gaps=[self._principal_gap(str(exc))],
+            )
+        saved = self.store.get_plan(plan_id)
+        if not saved:
+            return envelope(
+                "S08", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                gaps=[gap("PLAN_NOT_FOUND", "探索计划不存在", needed="先调用 Process360Plan", impact="未执行探索", severity="blocking", source="runtime")],
+            )
+        plan = dict(saved.get("payload") or {})
+        plan["id"] = plan_id
+        params = dict(parameters or {})
+        params["principal"] = identity.to_dict()
+
+        def execute_tool() -> dict[str, Any]:
+            if tool == "Process360Query":
+                return self.query(str(params.get("scenario") or ""), scope=params.get("scope"), principal=identity.to_dict())
+            if tool == "Process360Analyze":
+                return self.analyze(
+                    question=str(params.get("question") or ""),
+                    scenario=params.get("scenario"),
+                    scope=params.get("scope"),
+                    principal=identity.to_dict(),
+                    evidence=params.get("evidence"),
+                )
+            if tool == "Process360Context":
+                return self.context(str(params.get("scenario") or ""), question=params.get("question"))
+            if tool == "Process360Search":
+                return self.search(str(params.get("query") or ""), scenario=params.get("scenario"), limit=int(params.get("limit") or 20))
+            if tool == "Process360Compare":
+                return self.compare_periods(
+                    str(params.get("scenario") or plan.get("scenario") or ""),
+                    scope=params.get("scope"),
+                    principal=identity.to_dict(),
+                )
+            if tool == "Process360Structure":
+                return self.structure(
+                    str(params.get("scenario") or plan.get("scenario") or ""),
+                    scope=params.get("scope"),
+                    principal=identity.to_dict(),
+                    dimension=str(params.get("dimension") or ""),
+                    value_field=str(params.get("valueField") or ""),
+                    top_n=int(params.get("topN") or 10),
+                )
+            if tool == "Process360ProcessFlow":
+                return self.process_flow(
+                    str(params.get("scenario") or plan.get("scenario") or ""),
+                    stages=params.get("stages"),
+                    principal=identity.to_dict(),
+                )
+            if tool == "Process360Progress":
+                return self.progress(
+                    scenario=params.get("scenario") or plan.get("scenario"),
+                    draft_id=str(params.get("draftId") or ""),
+                    principal=identity.to_dict(),
+                )
+            if tool == "Process360Forecast":
+                return self.forecast(
+                    actual_to_date=params.get("actualToDate"),
+                    target=params.get("target"),
+                    elapsed_days=params.get("elapsedDays"),
+                    total_days=params.get("totalDays"),
+                    assumption=str(params.get("assumption") or ""),
+                    scenario=params.get("scenario") or plan.get("scenario"),
+                    principal=identity.to_dict(),
+                )
+            raise PlanExecutionError("unsupported exploration tool")
+
+        try:
+            outcome = run_exploration_step(
+                plan=plan,
+                step_id=step_id,
+                tool=tool,
+                request_hash=digest(params),
+                executor=execute_tool,
+                store=self.store,
+                principal=identity.fingerprint(),
+            )
+        except (PlanExecutionError, ValueError) as exc:
+            return envelope(
+                "S08", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                gaps=[gap("EXPLORATION_REJECTED", "探索调用被服务端拒绝", needed=str(exc), impact="未执行或未交付结果", severity="blocking", source="runtime")],
+                planId=plan_id,
+                stepId=step_id,
+            )
+        result = dict(outcome.get("result") or {})
+        result.update(
+            planId=plan_id,
+            stepId=step_id,
+            exploration=outcome,
+            principalScope=identity.fingerprint(),
+        )
+        return result
+
+    def comprehensive(
+        self,
+        *,
+        question: str,
+        scenario: str | None = None,
+        scope: Mapping[str, Any] | None = None,
+        principal: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        planned = self.plan(question=question, scenario=scenario, scope=scope, principal=principal)
+        if planned.get("status") == "blocked" or not planned.get("scenario"):
+            return planned
+        code = str(planned["scenario"])
+        branches: dict[str, Any] = {}
+        for step in planned.get("steps", []):
+            sop = step.get("sop")
+            if sop == "P03":
+                branches["fact"] = self.query(code, scope=scope, principal=principal)
+            elif sop == "P04":
+                branches["trend"] = self.compare_periods(code, scope=scope, principal=principal)
+            elif sop == "P05":
+                branches["structure"] = self.structure(code, scope=scope, principal=principal)
+            elif sop == "P06":
+                query = self.query(code, scope=scope, principal=principal)
+                context = build_context(self.catalog, code, question=question)
+                branches["anomaly"] = analyze_stage(
+                    self.catalog, code, context, query, question=question
+                )
+        status = combine_status([str(item.get("status")) for item in branches.values()])
+        gaps = dedupe_gaps([gap_item for item in branches.values() for gap_item in item.get("gaps", [])])
+        return envelope(
+            "S04",
+            status,
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=code,
+            question=question,
+            scope=scope,
+            gaps=gaps,
+            planId=planned.get("planId"),
+            plan=planned,
+            subgoals=branches,
+            limitations=[
+                "综合总览只执行只读子目标，不自动创建任务或业务写操作。",
+                "每个子目标独立验收；局部 blocked 不伪装为整体完成。",
+            ],
+            principalScope=planned.get("principalScope"),
+        )
+
     def analyze(
         self,
         *,
@@ -186,11 +699,57 @@ class Process360Service:
         scenario: str | None = None,
         scope: Mapping[str, Any] | None = None,
         context: Mapping[str, Any] | None = None,
+        principal: Mapping[str, Any] | None = None,
+        evidence: Iterable[Mapping[str, Any]] | None = None,
+        forecast_inputs: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        try:
+            identity = self._principal(principal)
+        except ValueError as exc:
+            return envelope(
+                "S04",
+                "blocked",
+                catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version,
+                scenario=str(scenario or "").upper() or None,
+                gaps=[self._principal_gap(str(exc))],
+                limitations=["缺少可信宿主身份，未取数、未分析。"],
+            )
         decision = route_stage(question or "分析当前场景", self.catalog, scenario=scenario)
         unsupported = self._unsupported_analysis(decision, question)
         if unsupported is not None:
             return unsupported
+        if decision.sop_id == "P18":
+            return self.comprehensive(
+                question=question or "经营情况怎么样，主要风险是什么",
+                scenario=decision.scenario,
+                scope=scope,
+                principal=principal,
+            )
+        if decision.sop_id == "P04" and decision.scenario:
+            return self.compare_periods(
+                decision.scenario,
+                scope=scope,
+                principal=principal,
+                periods=_period_count(question),
+            )
+        if decision.sop_id == "P05" and decision.scenario:
+            return self.structure(decision.scenario, scope=scope, principal=principal)
+        if decision.sop_id == "P07" and decision.scenario:
+            return self.process_flow(decision.scenario, principal=principal)
+        if decision.sop_id == "P14":
+            return self.progress(scenario=decision.scenario, principal=principal)
+        if decision.sop_id == "P17":
+            values = dict(forecast_inputs or {})
+            return self.forecast(
+                actual_to_date=values.get("actualToDate"),
+                target=values.get("target"),
+                elapsed_days=values.get("elapsedDays"),
+                total_days=values.get("totalDays"),
+                assumption=str(values.get("assumption") or ""),
+                principal=principal,
+                scenario=decision.scenario,
+            )
         if not decision.scenario:
             return envelope(
                 "S04",
@@ -211,13 +770,82 @@ class Process360Service:
             )
             else build_context(self.catalog, decision.scenario, question=question or None)
         )
-        query = self.query(decision.scenario, scope=scope)
+        query = self.query(decision.scenario, scope=scope, principal=principal)
+        if query.get("status") == "needs_clarification" and any(
+            item.get("code") == "PRINCIPAL_SCOPE_INVALID" for item in query.get("gaps", [])
+        ):
+            return query
+        if query.get("status") == "needs_clarification":
+            return {
+                **query,
+                "stage": "S04",
+                "route": decision.to_dict(),
+                "limitations": [
+                    *query.get("limitations", []),
+                    "范围或过滤条件未通过校验，未生成分析或任务草稿。",
+                ],
+            }
+        resolved = Scope.from_payload(query.get("scope") or scope)
         result = analyze_stage(
             self.catalog, decision.scenario, ctx, query, question=question or None
+        )
+        baseline = build_baseline(
+            self.catalog,
+            decision.scenario,
+            resolved,
+            query,
+            principal=identity.fingerprint(),
+        )
+        run_id = uuid.uuid4().hex
+        result = apply_evidence(
+            self.catalog,
+            result,
+            list(evidence or []),
+            run={"id": run_id, "payload": baseline},
         )
         result["route"] = decision.to_dict()
         result["contextSummary"] = ctx.get("counts")
         result["metricCatalog"] = ctx.get("metrics")
+        result["runId"] = run_id
+        result["dataSnapshot"] = {
+            "catalogId": self.catalog_id,
+            "catalogVersion": self.catalog_version,
+            "queryHash": baseline["queryHash"],
+            "baselineHash": baseline["baselineHash"],
+            "observationWindow": baseline["observationWindow"],
+            "objectCount": baseline["objectCount"],
+        }
+        result["principalScope"] = identity.fingerprint()
+        result["evidenceStatus"] = result.get("evidenceValidation", {}).get("status")
+        result["stopReason"] = (
+            "fact_or_evidence_gap"
+            if result.get("status") in {"blocked", "needs_clarification", "not_applicable"}
+            else "analysis_complete"
+        )
+        self.store.save_run(
+            run_id=run_id,
+            scenario=decision.scenario,
+            payload={
+                "baseline": baseline,
+                "analysis": result,
+                "query": {
+                    "status": query.get("status"),
+                    "scope": query.get("scope"),
+                    "metrics": query.get("metrics", []),
+                    "records": query.get("records", []),
+                    "gaps": query.get("gaps", []),
+                },
+            },
+            tenant=identity.tenant_id,
+            principal=identity.user_id,
+        )
+        for item in result.get("evidenceValidation", {}).get("items", []):
+            self.store.save_evidence(
+                run_id=run_id,
+                template_code=str(item.get("requiredTemplates", [""])[0] if item.get("requiredTemplates") else item.get("code") or ""),
+                payload={"cause": item.get("code"), "checks": item.get("checks", [])},
+                status=str(item.get("status") or "unverified"),
+            )
         return result
 
     # -- S05 --------------------------------------------------------------
@@ -228,12 +856,28 @@ class Process360Service:
         scenario: str | None = None,
         scope: Mapping[str, Any] | None = None,
         analysis: Mapping[str, Any] | None = None,
+        run_id: str = "",
+        principal: Mapping[str, Any] | None = None,
         owner_ref: str = "",
         owner_name: str = "",
         due_at: str = "",
         severity: str | None = None,
         solutions: Iterable[str] | None = None,
     ) -> dict[str, Any]:
+        try:
+            identity = self._principal(principal)
+        except ValueError as exc:
+            return envelope(
+                "S05",
+                "blocked",
+                catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version,
+                scenario=str(scenario or "").upper() or None,
+                gaps=[self._principal_gap(str(exc))],
+                tasks=[],
+                canvasActions=[],
+                limitations=["缺少可信宿主身份，未生成草稿。"],
+            )
         if analysis and (
             scenario
             and analysis.get("scenario") != str(scenario).upper()
@@ -257,11 +901,59 @@ class Process360Service:
                 tasks=[],
                 canvasActions=[],
             )
-        result = (
-            dict(analysis)
-            if analysis and analysis.get("scenario")
-            else self.analyze(question=question, scenario=scenario, scope=scope)
-        )
+        supplied_run_id = str(run_id or (analysis or {}).get("runId") or "").strip()
+        if supplied_run_id:
+            run = self.store.get_run(supplied_run_id)
+            if not run or run.get("tenant") != identity.tenant_id or run.get("principal") != identity.user_id:
+                return envelope(
+                    "S05",
+                    "blocked",
+                    catalog_id=self.catalog_id,
+                    catalog_version=self.catalog_version,
+                    scenario=scenario,
+                    gaps=[self._principal_gap("runId 不存在或不属于当前用户")],
+                    tasks=[],
+                    canvasActions=[],
+                )
+            result = dict((run.get("payload") or {}).get("analysis") or {})
+            if not result.get("runId"):
+                result["runId"] = supplied_run_id
+            if scenario and result.get("scenario") != str(scenario).upper():
+                return envelope(
+                    "S05",
+                    "needs_clarification",
+                    catalog_id=self.catalog_id,
+                    catalog_version=self.catalog_version,
+                    scenario=scenario,
+                    gaps=[gap("ANALYSIS_CONTEXT_MISMATCH", "分析运行与场景不一致", needed="使用当前场景重新分析", impact="未生成任务令")],
+                    tasks=[],
+                    canvasActions=[],
+                )
+        elif analysis and analysis.get("scenario"):
+            return envelope(
+                "S05",
+                "needs_clarification",
+                catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version,
+                scenario=scenario,
+                gaps=[
+                    gap(
+                        "ANALYSIS_RUN_REQUIRED",
+                        "任务草稿必须绑定服务端分析运行",
+                        needed="先调用 Process360Analyze 并使用返回的 runId",
+                        impact="不能使用模型或调用方自行拼装的分析结果生成任务令",
+                    )
+                ],
+                tasks=[],
+                canvasActions=[],
+            )
+        else:
+            result = self.analyze(
+                question=question,
+                scenario=scenario,
+                scope=scope,
+                principal=principal,
+            )
         code = str(result.get("scenario") or scenario or "").strip().upper()
         if not code:
             return envelope(
@@ -273,7 +965,7 @@ class Process360Service:
                 next_steps=["先确认场景，再生成任务令草稿"],
             )
         ctx = build_context(self.catalog, code, question=question or None)
-        return build_draft(
+        output = build_draft(
             self.catalog,
             code,
             ctx,
@@ -284,6 +976,58 @@ class Process360Service:
             severity=severity,
             selected_solutions=list(solutions or []),
         )
+        if output.get("status") != "ok" or not output.get("canvasActions"):
+            output["runId"] = result.get("runId")
+            output["principalScope"] = identity.fingerprint()
+            output["approvalStatus"] = "not_available"
+            return output
+        draft_id = uuid.uuid4().hex
+        approval_status = "host_click_authorized" if identity.can_dispatch else "pending"
+        saved = self.store.save_draft(
+            draft_id=draft_id,
+            scenario=code,
+            run_id=str(result.get("runId") or ""),
+            tenant=identity.tenant_id,
+            principal=identity.user_id,
+            payload={
+                "runId": result.get("runId"),
+                "scenario": code,
+                "tasks": output.get("tasks", []),
+                "canvasActions": output.get("canvasActions", []),
+            },
+            approval_status=approval_status,
+            ttl_seconds=DRAFT_TTL_SECONDS,
+        )
+        draft_hash = saved["hash"]
+        # The host stores only these opaque references in the action card.  The
+        # clicked tool reloads the trusted content from the server.
+        refs = {
+            "draftId": saved["id"],
+            "draftHash": draft_hash,
+            "runId": result.get("runId"),
+            "actionId": "",
+            "scenario": code,
+            "approvalStatus": approval_status,
+            "expiresAt": saved["expiresAt"],
+            "dispatchTool": "TaskOrderCreate",
+        }
+        for action in output.get("canvasActions", []):
+            action.update({**refs, "actionId": str(action.get("id") or "")})
+        for task in output.get("tasks", []):
+            task.update({**refs, "actionId": str(task.get("id") or "")})
+        output.update(
+            draftId=saved["id"],
+            draftHash=draft_hash,
+            runId=result.get("runId"),
+            expiresAt=saved["expiresAt"],
+            approvalStatus=approval_status,
+            principalScope=identity.fingerprint(),
+            limitations=[
+                *output.get("limitations", []),
+                "点击任一建议时由 Fuxi 宿主携带 principal、draftId、draftHash、actionId 和手机号调用 TaskOrderCreate；任务内容以服务端草稿为准。",
+            ],
+        )
+        return output
 
     # -- S06 --------------------------------------------------------------
     def execute(
@@ -306,6 +1050,211 @@ class Process360Service:
             client=client,
         )
 
+    def execute_draft(
+        self,
+        *,
+        draft_id: str,
+        draft_hash: str,
+        action_id: str,
+        recipients: Iterable[str] | str,
+        principal: Mapping[str, Any] | None = None,
+        idempotency_key: str = "",
+        retry: bool = False,
+        client: Any = None,
+    ) -> dict[str, Any]:
+        """Create one Fuxi todo from a server-trusted suggestion-card draft."""
+        try:
+            identity = self._principal(principal)
+        except ValueError as exc:
+            return envelope(
+                "S06",
+                "blocked",
+                catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version,
+                gaps=[self._principal_gap(str(exc))],
+                receipt=None,
+            )
+        draft = self.store.get_draft(draft_id)
+        if not draft:
+            return envelope(
+                "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                gaps=[gap("DRAFT_NOT_FOUND", "任务草稿不存在", needed="重新生成并保存草稿", impact="未创建待办", severity="blocking", source="runtime")],
+            )
+        if draft.get("expired"):
+            return envelope(
+                "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=draft.get("scenario"),
+                gaps=[gap("DRAFT_EXPIRED", "任务草稿已过期", needed="重新分析并生成草稿", impact="未创建待办", severity="blocking", source="runtime")],
+            )
+        if draft.get("tenant") != identity.tenant_id or draft.get("principal") != identity.user_id:
+            return envelope(
+                "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=draft.get("scenario"),
+                gaps=[self._principal_gap("草稿不属于当前用户或租户")],
+            )
+        if not draft_hash or str(draft_hash) != str(draft.get("payload_hash") or ""):
+            return envelope(
+                "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=draft.get("scenario"),
+                gaps=[gap("DRAFT_HASH_MISMATCH", "草稿签名不一致", needed="重新生成建议卡并使用最新 draftHash", impact="未创建待办", severity="blocking", source="runtime")],
+            )
+        action = (draft.get("actions") or {}).get(str(action_id or ""))
+        if not action:
+            return envelope(
+                "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=draft.get("scenario"),
+                gaps=[gap("DRAFT_ACTION_NOT_FOUND", "建议不属于该草稿", needed="从当前建议卡选择 actionId", impact="未创建待办", severity="blocking", source="runtime")],
+            )
+        if not identity.can_dispatch:
+            return envelope(
+                "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=draft.get("scenario"),
+                gaps=[gap("DISPATCH_NOT_AUTHORIZED", "当前用户无任务下发权限", needed="宿主授予 canDispatch 或交由有权限人员点击", impact="未创建待办", severity="blocking", source="host")],
+            )
+        approval = str(draft.get("approval_status") or "").upper()
+        if approval.lower() not in TRUSTED_APPROVAL_STATES:
+            return envelope(
+                "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=draft.get("scenario"),
+                gaps=[gap("DISPATCH_APPROVAL_REQUIRED", "草稿未获点击授权", needed="由可信宿主完成审批或点击授权", impact="未创建待办", severity="blocking", source="runtime")],
+            )
+        task = {
+            "id": action.get("id") or action_id,
+            "title": action.get("title"),
+            "content": action.get("content"),
+            "evidence": action.get("evidence"),
+            "severity": action.get("severity"),
+            "dueAt": action.get("due_at") or action.get("dueAt"),
+            "ownerRef": action.get("owner_ref") or action.get("ownerRef"),
+            "ownerName": action.get("owner_name") or action.get("ownerName"),
+            "scenario": action.get("scenario") or draft.get("scenario"),
+            "solution": (action.get("metadata") or {}).get("solution"),
+            "taskTemplate": action.get("task_template") or (action.get("metadata") or {}).get("taskTemplate"),
+            "verification": (action.get("metadata") or {}).get("verification"),
+            "severityBasis": action.get("severityBasis"),
+            "dispatch": {"source": action.get("source") or "boulderai-anaylize-todo"},
+        }
+        try:
+            _assert_task_no_phone(task)
+        except ValueError as exc:
+            return envelope(
+                "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=draft.get("scenario"),
+                gaps=[gap("PRIVATE_DATA_IN_TASK", "任务内容包含手机号", needed="任务正文不得包含手机号", impact="未创建待办", severity="blocking", source="runtime")],
+                limitations=[str(exc)],
+            )
+        key = str(idempotency_key or "").strip() or digest({"draftId": draft_id, "actionId": action_id})
+        source_todo_id = f"analytics-{draft_id[:24]}-{action_id}"
+        existing = self.store.get_execution(key)
+        if existing and existing.get("response"):
+            previous = dict(existing["response"])
+            retryable = any(
+                item.get("code") in {"FUXI_TODO_FAILED", "FUXI_TODO_REJECTED"}
+                for item in previous.get("gaps", [])
+            )
+            if not (retry and retryable):
+                previous["idempotentReplay"] = True
+                return previous
+            existing["response"] = None
+            existing["status"] = "in_progress"
+        if existing and not existing.get("response"):
+            if not retry:
+                return envelope(
+                    "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                    scenario=draft.get("scenario"),
+                    gaps=[gap("DISPATCH_IN_PROGRESS", "该建议正在下发", needed="等待当前请求完成；如确认失败，再用同一 idempotency_key 和 retry=true 重试", impact="未重复创建待办", severity="blocking", source="runtime")],
+                    draftId=draft_id,
+                    actionId=action_id,
+                )
+            consumption = self.store.get_action_consumption(draft_id, action_id)
+            if consumption is None and not self.store.consume_action(
+                draft_id, action_id, consumed_by=identity.key
+            ):
+                return envelope(
+                    "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                    scenario=draft.get("scenario"),
+                    gaps=[gap("DRAFT_ACTION_ALREADY_CONSUMED", "该建议已执行", needed="使用原回执；不要用新的幂等键重复下发", impact="未重复创建待办", severity="blocking", source="runtime")],
+                    draftId=draft_id,
+                    actionId=action_id,
+                )
+            if consumption is not None and str(consumption.get("consumed_by") or "") != identity.key:
+                return envelope(
+                    "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                    scenario=draft.get("scenario"),
+                    gaps=[gap("DRAFT_ACTION_ALREADY_CONSUMED", "该建议已由其他操作消费", needed="使用原发起人的回执重试", impact="未重复创建待办", severity="blocking", source="runtime")],
+                    draftId=draft_id,
+                    actionId=action_id,
+                )
+            existing["status"] = "in_progress"
+        if existing:
+            execution = existing
+        else:
+            created, execution = self.store.begin_execution(
+                draft_id=draft_id,
+                action_id=action_id,
+                idempotency_key=key,
+                source_todo_id=source_todo_id,
+                request={
+                    "draftId": draft_id,
+                    "draftHash": draft_hash,
+                    "actionId": action_id,
+                    "scenario": draft.get("scenario"),
+                    "principal": identity.fingerprint(),
+                },
+            )
+            if not created and execution.get("response"):
+                replay = dict(execution["response"])
+                replay["idempotentReplay"] = True
+                return replay
+            if created and not self.store.consume_action(
+                draft_id, action_id, consumed_by=identity.key
+            ):
+                blocked = envelope(
+                    "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                    scenario=draft.get("scenario"),
+                    gaps=[gap("DRAFT_ACTION_ALREADY_CONSUMED", "该建议已执行", needed="使用原回执；如失败请用同一幂等键重试", impact="未重复创建待办", severity="blocking", source="runtime")],
+                    draftId=draft_id,
+                    actionId=action_id,
+                )
+                self.store.finish_execution(execution["id"], status="blocked", response=blocked)
+                return blocked
+        result = send_task_order(
+            self.catalog,
+            task,
+            recipients,
+            action_id=action_id,
+            canvas_id=draft_id,
+            source_todo_id=source_todo_id,
+            client=client,
+        )
+        result.update(
+            draftId=draft_id,
+            draftHash=draft_hash,
+            actionId=action_id,
+            runId=(draft.get("payload") or {}).get("runId"),
+            executionId=execution.get("id"),
+            idempotentReplay=False,
+        )
+        self.store.finish_execution(
+            execution["id"],
+            status=str(result.get("status") or "blocked"),
+            response=result,
+        )
+        receipt = result.get("receipt") if isinstance(result.get("receipt"), dict) else {}
+        self.store.save_receipt(
+            source_todo_id,
+            status=str(result.get("status") or "blocked"),
+            payload={
+                "sourceTodoId": receipt.get("sourceTodoId") or source_todo_id,
+                "batchRef": receipt.get("batchRef"),
+                "applied": receipt.get("applied", 0),
+                "skipped": receipt.get("skipped", 0),
+                "errors": receipt.get("errors", []),
+                "status": result.get("status"),
+            },
+        )
+        return result
+
     # -- S07 --------------------------------------------------------------
     def verify(
         self,
@@ -313,26 +1262,91 @@ class Process360Service:
         scenario: str,
         scope: Mapping[str, Any] | None = None,
         baseline: Mapping[str, Any] | None = None,
+        run_id: str = "",
+        principal: Mapping[str, Any] | None = None,
+        approval_ref: str = "",
+        approved_target: float | None = None,
+        approved_direction: str = "",
+        approved_minimum_denominator: int | None = None,
+        excluded_object_keys: Iterable[str] | None = None,
+        exclusion_evidence: Mapping[str, Any] | None = None,
         delivery_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         code = str(scenario or "").strip().upper()
-        query = self.query(code, scope=scope)
+        try:
+            identity = self._principal(principal)
+        except ValueError as exc:
+            return envelope(
+                "S07", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=code, gaps=[self._principal_gap(str(exc))],
+                closure={"status": "blocked", "canClose": False},
+            )
+        query = self.query(code, scope=scope, principal=principal)
         current = {
             str(item.get("code")): item.get("value")
             for item in query.get("metrics", [])
             if item.get("value") is not None and item.get("status") != "blocked"
         }
-        result = build_verification(
+        legacy = build_verification(
             self.catalog,
             code,
-            baseline=baseline,
+            baseline={} if not run_id else baseline,
             current=current,
             delivery_evidence=delivery_evidence,
         )
-        result["gaps"] = dedupe_gaps([*result["gaps"], *query.get("gaps", [])])
+        trusted_baseline = None
+        extra_gaps: list[dict[str, Any]] = []
+        if run_id:
+            run = self.store.get_run(run_id)
+            if not run or run.get("tenant") != identity.tenant_id or run.get("principal") != identity.user_id:
+                extra_gaps.append(
+                    gap("VERIFICATION_RUN_NOT_FOUND", "冻结分析运行不存在或不属于当前用户", needed="使用本次分析返回的 runId", impact="不能判定效果", severity="blocking", source="runtime")
+                )
+            else:
+                trusted_baseline = (run.get("payload") or {}).get("baseline")
+                if not trusted_baseline or str(trusted_baseline.get("scenario") or "").upper() != code:
+                    extra_gaps.append(
+                        gap("VERIFICATION_BASELINE_MISMATCH", "冻结基准与复验场景不一致", needed="用同一场景重新分析以冻结基准", impact="不能跨场景复用基准", severity="blocking", source="runtime")
+                    )
+                    trusted_baseline = None
+        else:
+            extra_gaps.append(
+                gap("VERIFICATION_BASELINE_MISSING", "缺少服务端冻结的原对象集合", needed="使用 Process360Analyze 返回的 runId", impact="调用方自填 baseline 不能作为可信基准", severity="blocking", source="runtime")
+            )
+            if baseline:
+                extra_gaps.append(
+                    gap("UNTRUSTED_BASELINE_REJECTED", "拒绝调用方自填基准", needed="改传 runId", impact="避免篡改原对象集合或分母", severity="blocking", source="security")
+                )
+        result = build_closure(
+            self.catalog,
+            code,
+            baseline=trusted_baseline,
+            current=query,
+            approval_ref=approval_ref,
+            approved_target=approved_target,
+            approved_direction=approved_direction,
+            approved_minimum_denominator=approved_minimum_denominator,
+            excluded_keys=list(excluded_object_keys or []),
+            exclusion_evidence=exclusion_evidence,
+            delivery_evidence=delivery_evidence,
+        )
+        if approved_target is None:
+            extra_gaps.append(
+                gap("VERIFICATION_TARGET_MISSING", "复验目标尚未批准", needed="提供批准记录和批准目标值", impact="catalog 样例目标不启用", severity="blocking", source="runtime")
+            )
+        result["gaps"] = dedupe_gaps([*result["gaps"], *extra_gaps, *query.get("gaps", [])])
+        result["verification"] = legacy.get("verification")
+        result["runId"] = run_id or None
+        result["principalScope"] = identity.fingerprint()
+        result["dataSnapshot"] = {
+            "queryHash": (trusted_baseline or {}).get("queryHash"),
+            "baselineHash": (trusted_baseline or {}).get("baselineHash"),
+            "catalogVersion": self.catalog_version,
+        }
         if query.get("status") in {"blocked", "needs_clarification", "not_applicable"}:
             result["status"] = query["status"]
-            result["verification"]["effect"]["status"] = "blocked"
+            if result.get("verification"):
+                result["verification"]["effect"]["status"] = "blocked"
             result["closure"] = {"status": "blocked", "canClose": False}
         result["currentQuery"] = {
             "status": query.get("status"),
@@ -350,6 +1364,7 @@ class Process360Service:
         question: str,
         scenario: str | None = None,
         scope: Mapping[str, Any] | None = None,
+        principal: Mapping[str, Any] | None = None,
         owner_ref: str = "",
         owner_name: str = "",
         due_at: str = "",
@@ -368,8 +1383,22 @@ class Process360Service:
         )
         if unsupported is not None:
             return {**unsupported, "stages": {"S00": decision, "S04": unsupported}}
+        if route_payload.get("sop") in {"P04", "P05", "P07", "P14", "P17", "P18"}:
+            analysis = self.analyze(
+                question=question, scenario=code, scope=scope, principal=principal
+            )
+            return {
+                "schema": "process360.closed_loop.v1",
+                "status": analysis.get("status"),
+                "scenario": code,
+                "catalogId": self.catalog_id,
+                "catalogVersion": self.catalog_version,
+                "stages": {"S00": decision, "S04": analysis},
+                "analysis": analysis,
+                "next": "按返回的子目标或缺口继续；不能把局部结果表述为全部完成。",
+            }
         ctx = self.context(code, question=question)
-        query = self.query(code, scope=scope)
+        query = self.query(code, scope=scope, principal=principal)
         if route_payload.get("sop") == "P03":
             return {
                 "schema": "process360.closed_loop.v1",
@@ -380,8 +1409,9 @@ class Process360Service:
                 "stages": {"S00": decision, "S02": ctx, "S03": query},
                 "next": "事实查询到此结束；只有明确要求才进入诊断或任务草稿。",
             }
-        analysis = analyze_stage(self.catalog, code, ctx, query, question=question)
-        analysis["route"] = route_payload
+        analysis = self.analyze(
+            question=question, scenario=code, scope=scope, context=ctx, principal=principal
+        )
         if route_payload.get("sop") != "P11":
             return {
                 "schema": "process360.closed_loop.v1",
@@ -398,6 +1428,7 @@ class Process360Service:
             scenario=code,
             scope=scope,
             analysis=analysis,
+            principal=principal,
             owner_ref=owner_ref,
             owner_name=owner_name,
             due_at=due_at,

@@ -47,3 +47,6 @@ docs/diagrams/archify/*.visual-check*
 
 # Isolated cockpit POC history (never ship runtime/user records)
 dataset/cockpit/
+dataset/process360/*.sqlite3
+dataset/process360/*.sqlite3-wal
+dataset/process360/*.sqlite3-shm

@@ -26,9 +26,21 @@ from .models import envelope, gap
 _PHONE_LIKE = re.compile(r"(?<!\d)(?:\+?86[- ]?)?1[3-9]\d{9}(?!\d)")
 
 
+_TASK_TEXT_FIELDS = (
+    "title", "content", "evidence", "ownerRef", "ownerName", "solution",
+    "taskTemplate", "verification", "severityBasis", "scenario",
+)
+
+
 def _assert_no_phone(text: str) -> None:
     if _PHONE_LIKE.search(text or ""):
         raise ValueError("任务令内容不得包含手机号；接收人由 Fuxi 宿主在点击时提供")
+
+
+def _assert_task_no_phone(task: Mapping[str, Any]) -> None:
+    _assert_no_phone(json.dumps(
+        {key: task.get(key) for key in _TASK_TEXT_FIELDS}, ensure_ascii=False
+    ))
 
 
 def send_task_order(
@@ -50,7 +62,7 @@ def send_task_order(
     content = str(task.get("content") or "").strip()
     if not title or not content:
         raise ValueError("task title/content are required")
-    _assert_no_phone(json.dumps(task, ensure_ascii=False))
+    _assert_task_no_phone(task)
     action = str(action_id or task.get("id") or "").strip()
     if not action:
         raise ValueError("action_id is required")

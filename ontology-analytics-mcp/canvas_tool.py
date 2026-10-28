@@ -335,6 +335,56 @@ def _validate_canvas(params: dict) -> str | None:
     return None
 
 
+_ACTION_REF_FIELDS = {
+    "draftId": ("draftId", "draft_id"),
+    "draftHash": ("draftHash", "draft_hash"),
+    "runId": ("runId", "run_id"),
+    "approvalStatus": ("approvalStatus", "approval_status"),
+    "expiresAt": ("expiresAt", "expires_at"),
+    "dispatchTool": ("dispatchTool", "dispatch_tool"),
+}
+_ACTION_ID_FIELDS = ("actionId", "action_id")
+_PHONE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+_NESTED_PHONE_KEYS = {"recipientsraw", "recipients_raw", "phone", "mobile", "recipient", "recipients"}
+
+
+_ACTION_TEXT_FIELDS = (
+    "title", "content", "evidence", "owner_ref", "owner_name", "source",
+    "scenario", "task_template", "category", "due_at", "severity",
+)
+
+
+def _reject_private_action(item: dict[str, Any], index: int) -> None:
+    for key in item:
+        if str(key).lower() in _NESTED_PHONE_KEYS:
+            raise ValueError(f"items[{index}].{key} must not contain recipient data")
+    for key in _ACTION_TEXT_FIELDS:
+        value = item.get(key)
+        if isinstance(value, str) and _PHONE_RE.search(value):
+            raise ValueError(f"items[{index}].{key} must not contain a phone number")
+    stack: list[tuple[str, Any]] = [("metadata.", item.get("metadata"))]
+    while stack:
+        path, value = stack.pop()
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if str(key).lower() in _NESTED_PHONE_KEYS:
+                    raise ValueError(f"items[{index}].{path}{key} must not contain recipient data")
+                stack.append((f"{path}{key}.", child))
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                stack.append((path, child))
+        elif isinstance(value, str) and _PHONE_RE.search(value):
+            raise ValueError(f"items[{index}].{path.rstrip('.')} must not contain a phone number")
+
+
+def _first_text(item: dict[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = item.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
 def _normalize_actions(params: dict) -> list[dict[str, Any]]:
     items = params.get("items") if isinstance(params, dict) else None
     if not isinstance(items, list) or not items:
@@ -344,6 +394,7 @@ def _normalize_actions(params: dict) -> list[dict[str, Any]]:
     for index, item in enumerate(items):
         if not isinstance(item, dict):
             raise ValueError(f"items[{index}] must be an object")
+        _reject_private_action(item, index)
         title = str(item.get("title") or "").strip()
         content = str(item.get("content") or item.get("markdown") or "").strip()
         if not title:
@@ -357,20 +408,28 @@ def _normalize_actions(params: dict) -> list[dict[str, Any]]:
             raise ValueError(f"items[{index}].id must be unique and non-empty")
         seen.add(action_id)
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        refs = {name: _first_text(item, keys) for name, keys in _ACTION_REF_FIELDS.items()}
+        refs["actionId"] = _first_text(item, _ACTION_ID_FIELDS) or action_id
+        if not refs["dispatchTool"] and (
+            str(item.get("source") or "").strip() == "boulderai-anaylize-todo"
+            or str(item.get("scenario") or "").strip()
+        ):
+            refs["dispatchTool"] = "TaskOrderCreate"
         normalized.append({
             "id": action_id,
             "title": title,
             "content": content,
             "evidence": str(item.get("evidence") or "").strip(),
             "severity": str(item.get("severity") or "").strip().upper(),
-            "due_at": str(item.get("due_at") or "").strip(),
-            "owner_ref": str(item.get("owner_ref") or "").strip(),
-            "owner_name": str(item.get("owner_name") or "").strip(),
+            "due_at": str(item.get("due_at") or item.get("dueAt") or "").strip(),
+            "owner_ref": str(item.get("owner_ref") or item.get("ownerRef") or "").strip(),
+            "owner_name": str(item.get("owner_name") or item.get("ownerName") or "").strip(),
             "source": str(item.get("source") or "").strip(),
             "scenario": str(item.get("scenario") or "").strip(),
-            "task_template": str(item.get("task_template") or "").strip(),
+            "task_template": str(item.get("task_template") or item.get("taskTemplate") or "").strip(),
             "category": str(item.get("category") or "").strip(),
             "metadata": metadata,
+            **refs,
         })
     return normalized
 
@@ -392,11 +451,16 @@ def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
             chips.append(
                 f'<span class="action-chip">责任人 {escape(item["owner_name"] or item["owner_ref"])}</span>'
             )
+        approval = str(item.get("approvalStatus") or "").strip().lower()
+        can_send = not approval or approval in {"approved", "host_click_authorized"}
+        label = "发送任务令" if can_send else "待审批"
+        disabled = "" if can_send else " disabled"
+        title_attr = "" if can_send else ' title="该建议尚未获得下发授权"'
         card = (
             '<article class="action-item">'
             f'<div class="action-head"><h4>{_inline_markdown(item["title"])}</h4>'
-            f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}">'
-            '发送任务令</button></div>'
+            f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}"'
+            f'{disabled}{title_attr}>{label}</button></div>'
             f'<div class="action-content">{_render_markdown(item["content"])}</div>'
             f'{evidence}'
             f'<div class="action-meta">{"".join(chips)}</div>'
@@ -428,13 +492,50 @@ def _actions_runtime(actions: list[dict[str, Any]]) -> str:
     if (!button || button.disabled) return;
     const action = FUXI_ACTIONS[button.getAttribute('data-fuxi-task-order')];
     if (!action) return;
+    const approval = String(action.approvalStatus || '').toLowerCase();
+    if (approval && approval !== 'approved' && approval !== 'host_click_authorized') {{
+      setActionState(button, '该建议尚未获得下发授权，请先完成审批', true);
+      return;
+    }}
+    const expiry = typeof action.expiresAt === 'number'
+      ? action.expiresAt * 1000
+      : Date.parse(String(action.expiresAt || ''));
+    if (Number.isFinite(expiry) && expiry <= Date.now()) {{
+      setActionState(button, '任务草稿已过期，请重新生成建议', true);
+      return;
+    }}
+    const taskOrder = {{
+      action_id: action.actionId || action.id,
+      draft_id: action.draftId || undefined,
+      draft_hash: action.draftHash || undefined,
+      run_id: action.runId || undefined,
+      source_todo_id: action.sourceTodoId || undefined,
+      canvas_id: action.canvasId || undefined,
+      title: action.title,
+      content: action.content,
+      severity: action.severity || undefined,
+      due_at: action.due_at || undefined,
+      owner_ref: action.owner_ref || undefined,
+      owner_name: action.owner_name || undefined,
+      evidence: action.evidence || undefined,
+      scenario: action.scenario || undefined,
+      task_template: action.task_template || undefined,
+      category: action.category || undefined,
+      dispatch_tool: action.dispatchTool || undefined,
+      caliber_meta: {{
+        actionId: action.actionId || action.id,
+        draftId: action.draftId || undefined,
+        runId: action.runId || undefined,
+        scenario: action.scenario || undefined,
+      }},
+    }};
     const callback = window.fuxiCreateTaskOrder
       || (window.Fuxi && window.Fuxi.createTaskOrder);
     if (typeof callback === 'function') {{
       button.disabled = true;
       setActionState(button, '正在提交任务令…', false);
       try {{
-        const result = callback(action);
+        const result = callback(action, taskOrder);
         if (result && typeof result.then === 'function') {{
           result.then((response) => {{
             const ok = !response || response.ok !== false;
@@ -455,7 +556,7 @@ def _actions_runtime(actions: list[dict[str, Any]]) -> str:
     }}
     if (window.parent && window.parent !== window) {{
       const targetOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) || '*';
-      window.parent.postMessage({{ type: 'fuxi:task-order-create', action }}, targetOrigin);
+      window.parent.postMessage({{ type: 'fuxi:task-order-create', action, taskOrder }}, targetOrigin);
       button.disabled = true;
       setActionState(button, '已提交到 Fuxi 会话，等待创建任务令', false);
       return;

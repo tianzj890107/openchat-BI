@@ -56,8 +56,20 @@ headers: {}
 | `Process360Context` | Process360 S02：装配流程、活动、角色、规则、证据和缺口 |
 | `Process360Query` | Process360 S03：五场景受控只读 PostgreSQL 取数；不接受 SQL |
 | `Process360Analyze` | Process360 S04：异常、影响、候选原因和证据缺口 |
-| `Process360Draft` | Process360 S05：方案与任务令草稿（不含手机号） |
+| `Process360Draft` | Process360 S05：服务端可信方案与任务令草稿（不含手机号） |
 | `Process360Verify` | Process360 S07：交付验收与效果复验计划 |
+| `Process360Plan` | S00 多目标拆分：DAG、依赖、步骤版本和共享预算 |
+| `Process360Explore` | S08 受控自主探索：服务端工具白名单、调用去重与 path_gap |
+| `Process360Compare` | P04 多期同口径比较 |
+| `Process360Structure` | P05 结构贡献、排名与占比 |
+| `Process360ProcessFlow` | P07 按对象键/批次的节点转化与停留 |
+| `Process360Progress` | P14 本服务执行记录与 Fuxi 推送回执 |
+| `Process360Forecast` | P17 显式假设下的条件推算，不冒充正式模型 |
+| `Process360Solutions` | P18 多子目标综合；局部 blocked 不伪装整体完成 |
+
+所有 Process360 业务工具都需要宿主注入 `principal`（至少 `tenantId`、`userId`）；
+`TaskOrderCreate` 的 Process360 草稿模式还需要 `draft_id`、`draft_hash`、`action_id` 和
+宿主提供的 `recipients_raw`。缺少身份时只允许公开本体定义检索，业务取数停止。
 
 ## 默认交付契约
 
@@ -108,10 +120,16 @@ headers: {}
 | P03 当前事实与明细 | `Process360Query`，查询完成即停止，不自动诊断或生成任务 |
 | P06 异常、P08 影响、P09 候选原因 | `Process360Analyze`；根因仍须证据，只有明确要求才继续草稿 |
 | P10 对策 | 依据上下文中的候选方案说明核查建议与适用约束；当前未实现效果/成本排序 |
-| P11 任务草稿 | `Process360Draft`；`CanvasGenerate` 的 actions 使用 `draft.canvasActions` |
-| P12 下发 | 仅在用户点击后由 Fuxi 宿主调用 `TaskOrderCreate` |
-| P15 复验 | `Process360Verify`；当前只生成受阻断的复验计划，不宣称实际达标 |
-| P04 多期、P05 结构排名、P07 转化、P14 进度、P17 预测、P18 综合 | 路由已经具备，专用执行尚未完成；按工具缺口交付，不以单次当前查询冒充完成 |
+| P11 任务草稿 | `Process360Draft`；`CanvasGenerate` 的 actions 原样使用 `draft.canvasActions` |
+| P12 下发 | 仅在用户点击建议卡后由 Fuxi 宿主调用 `TaskOrderCreate`；服务端回读草稿，单条消费、幂等重试 |
+| P15 复验 | `Process360Verify`；缺冻结基准、批准目标或交付证据时 `canClose=false` |
+| P04 多期比较 | `Process360Compare`；同口径窗口、对象集合和期间必须一致 |
+| P05 结构排名 | `Process360Structure`；未知维度单列，贡献不等于原因 |
+| P07 流程转化 | `Process360ProcessFlow`；必须有对象键/批次轨迹，缺轨迹时 blocked，不用节点总数相除 |
+| P14 任务进度 | `Process360Progress`；只读本服务执行记录和 Fuxi 推送回执；Fuxi 没有进度查询接口 |
+| P17 条件预测 | `Process360Forecast`；必须提供实际值、目标、期间进度和显式假设；无模型时只能称规则推算 |
+| P18 综合编排 | `Process360Solutions`；多子目标独立验收，局部 blocked 时保留缺口 |
+| S08 自主探索 | `Process360Explore`；只能调用服务端白名单工具，受共享预算约束 |
 | P13 业务写入 | 本服务不执行发运/签单/调价；不能把创建待办表述为业务操作成功 |
 
 `Process360Analyze` 已含受控查询，不必为了流程形式先重复调用 `Process360Query`。
@@ -119,19 +137,32 @@ headers: {}
 
 纪律：
 
+- 所有 Process360 业务工具都需要宿主注入 `principal`：`tenantId`、`userId` 必填，
+  可选 `orgIds`、`roles`、`canDispatch`、`source`。权限范围与查询筛选取交集；交集为空时
+  拒绝取数，不能静默放宽成全量。缺失身份时公开本体定义检索可继续，业务取数必须停止。
 - `Process360Query`/`Process360Analyze`/`Process360Draft` 返回
   `status=ok|partial|blocked|needs_clarification|not_applicable`。`blocked` 或 `partial` 必须原样
   披露，禁止补 0、禁止把“不可评估”改写成“没有风险”。
-- `Process360Analyze.candidateCauses` 是候选原因，不是已确认根因。缺少证据模板
-  要求的证据时，只能提出核查任务。
+- `Process360Analyze` 会冻结本次 baseline、数据快照和权限范围到运行记录。后续
+  `Process360Verify` 必须传 `runId` 和批准目标，不能由调用方另填 baseline。
+- `Process360Analyze.candidateCauses` 是候选原因，不是已确认根因。证据哈希只能证明
+  内容未变化；还要同时满足来源可信、对象/期间匹配、验证规则和反证检查，才可升级为
+  已验证原因。缺少证据时只能提出核查任务。
 - `Process360Draft.canvasActions[]` 已是 `CanvasGenerate` 的 `kind=actions`
-  `params.items` 形态，可直接原样传入；`tasks[]` 是带审批/证据要求的完整草稿。
-  两者都不含手机号。
-- S06 唯一出口是 Fuxi 待办：用户点击后由宿主携带 `recipients_raw` 调用
-  `TaskOrderCreate`，来源固定 `boulderai-anaylize-todo`。不调用 X360、不发送 Fuxi IM、
-  不伪造发运/签单/排产等业务执行结果；这些动作由 Fuxi 待办侧承接。
-- S07 使用 `Process360Verify`。没有冻结基准、批准 RF 目标或复验窗口时，
-  `canClose=false`；任务状态完成不等于效果达标。
+  `params.items` 形态，可直接原样传入；每条带 `draftId`、`draftHash`、`runId`、
+  `actionId`、`scenario`、`approvalStatus`、`expiresAt`、`dispatchTool`。
+  `tasks[]` 是带审批/证据要求的完整草稿。两者都不含手机号。
+- S06 唯一出口是 Fuxi 待办：用户点击后由宿主携带 `principal`、`draftId`、
+  `draftHash`、`actionId` 和 `recipients_raw` 调用 `TaskOrderCreate`，来源固定
+  `boulderai-anaylize-todo`。服务端从草稿回读标题/正文，不采用调用方改写；一个
+  `actionId` 只消费一次，网络失败用同一 `idempotency_key` 和 `retry=true` 重试。
+  不调用 X360、不发送 Fuxi IM、不伪造发运/签单/排产等业务执行结果。
+- Fuxi 契约只有 `POST /source/todo-batches` 和 `POST /source/todo-status-events`，没有
+  单条待办或执行进度查询接口。字段名固定为 `sourceTodoId/title/severity/itemType/
+  category/sourceStatus/sourceUpdatedAt/recipientsRaw/dueAt/description/impactText/
+  ownerRef/ownerName/evidence/activity/caliberMeta`，不得改名或自行补造。
+- S07 使用 `Process360Verify`。没有冻结基准、批准 RF 目标、交付证据或复验窗口时，
+  `canClose=false`；任务状态完成不等于效果达标。SC05 无批准关闭公式时保持 blocked。
 - 本地 catalog 是语义来源；数据库只提供业务事实。不要把 `ywln_crm.meta_*` 当作
   运行时本体覆盖 catalog，也不要把数据库连接串或 SQL 暴露给 Fuxi/HTML。
 
@@ -172,11 +203,21 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
 - L3 及以上的行动建议除正文外，必须在 `CanvasGenerate` 的 `kind=actions` 块中
   提供结构化条目；每条至少包含稳定 `id`、`title`、`content` 和 `evidence`。
 - 可选字段：`severity`（`CRITICAL/HIGH/MEDIUM/LOW`）、`due_at`（UTC `Z` 结尾）、
-  `owner_ref`、`owner_name`。严重程度缺省 `MEDIUM`。
-- 手机号属于宿主会话信息，不写进 HTML、不展示给模型。用户点击后由 Fuxi 宿主携带
-  当前用户/责任人的 `recipients_raw` 调用 `TaskOrderCreate`。
+  `owner_ref`、`owner_name`、`category`。严重程度缺省 `MEDIUM`。
+- Process360 草稿生成的行动卡必须原样带上 `draftId`、`draftHash`、`runId`、
+  `actionId`、`scenario`、`approvalStatus`、`expiresAt`、`dispatchTool`。按钮只携带
+  这些不透明引用和展示字段，不携带任务正文替代品、手机号或凭据。
+- 点击“发送任务令”时，Fuxi 宿主优先调用 `window.fuxiCreateTaskOrder(action,
+  taskOrder)`；没有注入函数时页面向父窗口发送
+  `{type:'fuxi:task-order-create', action, taskOrder}`。两种方式都由宿主补
+  `principal` 和 `recipients_raw` 后调用 `TaskOrderCreate`，不增加二次确认页面。
+- `approvalStatus` 不是 `approved` 或 `host_click_authorized` 时按钮显示“待审批”并
+  禁用；`expiresAt` 已过时点击会提示重新生成。服务端还会再次校验，不能靠前端绕过。
+- 手机号属于宿主会话信息，不写进 HTML、不展示给模型；Canvas 生成阶段会拒绝包含
+  手机号字段或 11 位手机号文本的行动条目。
 - `TaskOrderCreate` 只写 Fuxi 风险待办，不负责 IM；接收人为空会被工具拒绝，
-  因为 Fuxi 契约中空数组表示全员广播。
+  因为 Fuxi 契约中空数组表示全员广播。Fuxi 返回的 `applied/skipped/errors` 原样保存
+  为回执；没有进度查询接口，不能把本地执行记录称为 Fuxi 已处理完成。
 
 ## 术语、消歧与澄清
 

@@ -1,16 +1,20 @@
 # Process360 V3.1 / V1.2 验收与未完成清单
 
-验收日期：2026-10-28。基线：`feature/process360-ontology-closed-loop` 的 `a23f9c7`。
-修复分支：`bugfix/process360-acceptance-hardening`。本轮没有部署、正式版本升级、真实任务下发或业务库写入。
+验收日期：2026-10-28。首次验收基线：`feature/process360-ontology-closed-loop` 的 `a23f9c7`，
+首次修复分支 `bugfix/process360-acceptance-hardening`。第二批补齐分支：
+`feature/process360-v12-closed-loop`（基线 `f68b0b7`）。
+两轮均没有部署、正式版本升级、真实任务下发或业务库写入。
+
+> 阅读顺序：第 1-5 节保留首次验收记录；第 6 节是第二批补齐后的最终代码状态和剩余阻塞。
 
 ## 1. 验收结论
 
-**部分实现，不能认定为 V1.2 完整闭环通过。**
+**首次验收为部分实现；第二批代码侧已补齐，但仍不能认定为真实 V1.2 端到端闭环通过。**
 
 - 本地 V3.1 本体与 V1.2 SOP 来源正确；在临时目录从指定 Excel/Word 重建，除 `generatedAt` 外与已提交 catalog 完全一致。
-- 已具备五场景的受控查询、静态语义上下文、候选原因、模板草稿、Fuxi 待办接口和受阻断复验计划。
-- “18 类 SOP 可路由”与“18 类 SOP 已执行验收通过”必须分开。当前不是通用步骤计划引擎，也没有实现证据验证、S08 探索、持久化问题闭环和真实效果复验。
-- 本轮修复可由代码确定的范围、公式、状态传播、停止点和任务边界问题；业务映射、批准目标、快照及平台能力仍按缺口交付。
+- 已具备五场景的受控查询、静态语义上下文、候选原因、可信草稿、Fuxi 待办接口和受阻断复验计划。
+- 第二批已实现身份交集、证据验证、冻结基准、单条行动消费、持久化幂等、多目标 DAG、S08 白名单探索，以及 P04/P05/P07/P14/P17/P18 的代码路径。
+- 仍不能宣称真实闭环：业务批准口径、真实证据、Fuxi 宿主权限注入与人员解析、真实任务回执/处理进度、主服务对话入口和端到端页面点击均未完成联调。
 - 不提交数据库凭据、业务明细、查询输出或用户提供的原始文件。本报告记录验证结论，不归档真实业务数据。
 
 ## 2. 来源及运行验证
@@ -71,14 +75,14 @@ P0 表示对正式经营结论/执行安全有影响，P1 表示 V1.2 核心能�
 | U06 / P0 | G06 原因证据未接入验证器、反证及证据版本 | CF/EV 目前为静态模板；接生产/质量/物流等证据后才能把候选原因升级为已验证原因 |
 | U07 / P0 | G07 运行记录与实际效果复验未实现 | 持久化原问题/对象集合/价格与数量基准/执行回执；实现 M36005 净履约化解，剔除取消/移出等伪改善；接批准 RF/窗口/人工验收，才能判定允许关闭范围 |
 | U08 / P0 | 用户/组织数据权限与审批不是由本模块完整执行 | 当前 Scope 是筛选，不能代替身份授权；需平台注入可信用户范围并在取数前强制过滤；Fuxi 点击授权、人员解析、审批/回执需端到端联调；本轮未用 postgres 账号验证用户级隔离 |
-| U09 / P1 | S00 只有单 SOP/单场景选择，没有多目标 DAG、步骤/计划版本与恢复 | 实现复合请求拆分、依赖校验、独立子任务部分完成、跨步骤结果有效性复核；不能用一次当前查询解释“为什么增加” |
-| U10 / P1 | P04 多期比较、P05 结构贡献/排名、P07 流程转化、P14 进度、P17 预测、P18 综合编排未实现 | 分别补同口径多窗口、节点批次/关联、进度回执、模型假设与综合子目标验收；当前工具明确 not_applicable |
-| U11 / P1 | S01 关键词召回、S02 一次场景 bundle 与设计的受预算逐步骤装配仍有差距 | 实现多指标意图覆盖、粒度/时间/范围消歧、当前步骤按需装配、数据来源版本指纹；目前 catalogVersion 是语义版本，并非业务快照版本 |
-| U12 / P1 | S08 自主探索与共享预算账本、去重恢复未实现 | 受控允许工具、task_id/plan_ref/step_id、跨重试共享调用/耗时/行数预算、path_gap 回原步骤；不得靠提示词冒充服务端控制 |
-| U13 / P1 | S05 方案比较/约束验证未完成，草稿主要是模板映射 | 补对象与证据支持的适用性、效果/成本/周期比较、唯一牵头人/协同/验收人、期限及审批前置；不得把第一条模板称为已优化方案 |
-| U14 / P1 | MCP `TaskOrderCreate` 与 Process360 执行辅助函数仍为不同入口 | 真实 MCP 复用公共 Fuxi client，已加强隐私/回执；但辅助函数的场景校验、幂等上下文要求不等于 MCP 已做完整草稿来源/审批校验；需统一可信草稿 ID、执行授权及同一问题稳定键的持久化去重 |
-| U15 / P2 | 原生主服务对话入口未完成专属工具注册/引导验收 | 当前 feature 主要接远程 MCP/Skill；不能推定原有主服务对话已自动切换到本地 V3.1 路线，需单独验收路由、上下文、工具和展示链 |
-| U16 / P2 | 浏览器/Fuxi 宿主真实点击、人员解析、进度回执、页面闭环尚未人工端到端验收 | 本轮只读数据库与工具层验收，不创建真实任务；后续使用明确测试任务与人员范围验收，保护历史用户数据 |
+| U09 / P1 | S00 只有单 SOP/单场景选择，没有多目标 DAG、步骤/计划版本与恢复 | 已修复代码侧：`planner.py` 实现复合目标拆分、依赖校验、计划版本、共享预算和局部完成；真实复合问题仍需模型路由联调。 |
+| U10 / P1 | P04 多期比较、P05 结构贡献/排名、P07 流程转化、P14 进度、P17 预测、P18 综合编排未实现 | 已修复代码侧：`advanced.py` 提供六个工具；P07 缺轨迹、P17 缺假设/目标时明确 blocked，P14 只读本服务回执。 |
+| U11 / P1 | S01 关键词召回、S02 一次场景 bundle 与设计的受预算逐步骤装配仍有差距 | 部分修复：权限绑定、数据快照指纹和上下文过滤已实现；多指标意图拆分与逐步骤按需装配仍需继续。 |
+| U12 / P1 | S08 自主探索与共享预算账本、去重恢复未实现 | 已修复代码侧：服务端工具白名单、task/plan/step 绑定、请求哈希去重、共享预算和 path_gap 回原步骤。 |
+| U13 / P1 | S05 方案比较/约束验证未完成，草稿主要是模板映射 | 代码侧已补结构/约束校验和可信草稿；缺批准成本/周期/效果依据时不做量化评分。 |
+| U14 / P1 | MCP `TaskOrderCreate` 与 Process360 执行辅助函数仍为不同入口 | 已修复：MCP 草稿模式回读服务端草稿，校验租户/用户/hash/action/审批/canDispatch；单条消费、持久化幂等和回执落库；旧通用入口保留兼容但禁止冒充 Process360 草稿。 |
+| U15 / P2 | 原生主服务对话入口未完成专属工具注册/引导验收 | 仍未完成：本分支验证 MCP/Skill；主服务对话的真实工具注册、引导和展示链需另行联调。 |
+| U16 / P2 | 浏览器/Fuxi 宿主真实点击、人员解析、进度回执、页面闭环尚未人工端到端验收 | 仍未完成：只做了 fake/模拟宿主契约测试；真实 Fuxi 测试任务、账号、人员范围和回执需用户授权后执行。 |
 
 P13 发运/签单/调价业务写操作被当前产品边界有意排除，不作为默认待补接口；需要另行确定产品范围和授权。
 
@@ -100,3 +104,62 @@ python -m pytest -q tests/test_process360_catalog.py tests/test_process360_engin
   tests/test_ontology_metadata_query_consumption_red.py tests/test_remote_ontology_fast_path_red.py
 # 无显式数据库配置时，9 项 PostgreSQL 合约用例按设计跳过；单独配置后执行全部 9 项。
 ```
+
+
+## 6. 第二批补齐（2026-10-28，`feature/process360-v12-closed-loop`）
+
+### 6.1 代码侧已完成
+
+| 能力 | 实现 | 验证 |
+| --- | --- | --- |
+| 运行记录 | `store.py` SQLite：runs/drafts/actions/action_consumptions/executions/receipts/plans/exploration_calls/evidence/approvals；支持导出 | `test_process360_store.py` |
+| 身份权限 | `identity.py`：tenant/user 必填；org/role 范围与查询筛选取交集，交集为空拒绝 | `test_process360_identity.py` |
+| 证据验证 | `evidence.py`：来源、哈希、对象、期间、规则、必需内容、反证分别校验；哈希正确不等同根因成立 | `test_process360_evidence.py` |
+| 冻结闭合 | `closure.py`：只使用服务端冻结 baseline、批准目标和交付证据；取消/移出对象不自动算改善；SC05 无批准公式时 blocked | `test_process360_closure.py` |
+| 可信草稿与下发 | `service.py`：草稿落库；`TaskOrderCreate` 回读；租户/用户/hash/action/审批/canDispatch 校验；单条行动一次性消费；持久化幂等；Fuxi 回执落库 | `test_process360_execution.py`、`test_process360_mcp_contract.py` |
+| 建议卡 | `CanvasGenerate` 透传 `draftId/draftHash/runId/actionId/approvalStatus/expiresAt/dispatchTool`；待审批/过期阻止；拒绝行动条目中的手机号 | `test_fuxi_todo_actions.py` |
+| P04/P05 | 多期同口径比较、结构汇总/排名/占比 | `test_process360_advanced.py` |
+| P07 | 按 objectKey/batchKey 计算节点转化和停留；缺轨迹 blocked，不用节点总数相除 | `test_process360_advanced.py` |
+| P14 | 只读当前用户在本服务的执行记录和 Fuxi 推送回执 | `test_process360_advanced.py`、`test_process360_execution.py` |
+| P17/P18 | 显式假设下的规则推算；多子目标综合，局部 blocked 不伪装完成 | `test_process360_advanced.py` |
+| 多目标与探索 | 多目标 DAG、依赖、计划版本、共享预算；探索工具白名单、请求哈希去重、path_gap | `test_process360_plan.py` |
+
+### 6.2 建议卡到 Fuxi 待办
+
+```text
+Process360Draft
+  → CanvasGenerate kind=actions
+  → 用户点击“发送任务令”
+  → Fuxi 宿主补 principal + recipients_raw
+  → TaskOrderCreate(draft_id, draft_hash, action_id)
+  → 服务端回读可信草稿
+  → 单条 action 消费 + persistent idempotency
+  → POST /source/todo-batches (boulderai-anaylize-todo)
+  → 保存 applied/skipped/errors 回执
+```
+
+- 按钮 payload 只含不透明草稿引用和展示字段，不含手机号、连接串、SQL 或凭据。
+- 旧通用 `TaskOrderCreate` 仍可用于非 Process360 场景；一旦带 Process360 标记但没有
+  草稿，直接拒绝，不能绕过草稿/审批校验。
+- Fuxi 只有 `POST /source/todo-batches` 和 `POST /source/todo-status-events`，
+  没有单条查询或执行进度接口；P14 的“已处理完成”必须等 Fuxi 回传状态事件，
+  当前只能证明“已推送并收到回执”。
+
+### 6.3 仍然阻塞
+
+- 真实业务负责人尚未批准成本/周期/效果依据，方案量化比较和 SC05 关闭公式保持 blocked。
+- 真实证据（生产/质量/物流等）未接入，候选原因不能升级为已验证根因。
+- Fuxi 宿主尚未提供真实测试账号、人员和任务范围；真实点击、人员解析、进度回执未联调。
+- 原生主服务对话入口的工具注册/引导/展示链未验收。
+- 本轮未部署、未发送真实任务、未创建 MR/tag/Release。
+
+### 6.4 回归结果
+
+```bash
+pytest -q tests/test_process360_*.py tests/test_fuxi_todo_actions.py tests/test_mcp_endpoint_red.py
+# 136 passed, 9 skipped（9 项 PostgreSQL 合约需 PROCESS360_ACCEPTANCE_DSN）
+```
+
+全量 `pytest -q tests`：1514 passed、37 skipped、1 failed。唯一失败是 worktree 缺少
+`frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题，与本轮
+Process360 改动无关，未修改该前端依赖或断言。
