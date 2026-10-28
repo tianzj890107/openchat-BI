@@ -942,3 +942,34 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   无“并发已满”“未切换”“查询失败”等错误文案，无JavaScript异常和console error。
 - 边界：本轮只修复Cockpit 8765／8876的AP排队与前端重试，不修改AP上游、不切换数据源、
   不改变X360字段兼容映射，也不覆盖任何历史会话或运行数据。
+
+### Process360 与 Cockpit 34 集成发布（2026-10-28）
+
+- 代码提交：`a23ba77`（集成分支 `feature/process360-cockpit34-integration`），包含
+  `eb0b119` 的 Cockpit 历史 AP 缓存来源域兼容，以及 `a23ba77` 对带明确
+  `snapshotId=ap-*`、`sourceMode=service` 历史卡片的整页重发支持。PostgreSQL、演示结果
+  仍不能命中 AP 旧 scope；历史 SQLite 未搬迁、覆盖或重生成。
+- 后端 release：
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-a23ba77-20261028-160256`，
+  PID `1999223`，监听8765。上一发布候选
+  `process360-eb0b119-20261028-155839`、更早 `process360-c47237c-20261028-154904`
+  与线上原 `cockpit-main-15d31e0-20261028-0817` 均完整保留可回滚。
+- 运行配置：`.env`、`.venv`、`dataset` 继续软链到 `mcp-11dc92c-20261020`；新release的
+  `PWD/PYTHONPATH/PROCESS360_CATALOG_PATH` 指向自身目录，`COCKPIT_DATA_MODE=ap`、
+  `COCKPIT_AP_BATCH_MODE=individual`，Process360 PG 为
+  `172.16.5.181:32444/ywln#ywln_crm`。Fuxi 地址已配置，但
+  `PROCESS360_POC_DISPATCH=0`、接收人映射为空，本轮未发送真实待办。
+- 切换方式：新release先在 `127.0.0.1:18765` 预检，真实重放 analysis 页的8条AP凭据后
+  整页发布返回200；随后SIGTERM旧release PID `1988300`，启动新release。预检进程已停止，
+  18765不再监听。8876静态站与nginx未改动，继续代理8765。
+- 验证：当前提交全量Python `1598 passed / 37 skipped / 1 failed`，唯一失败仍是worktree
+  缺少 `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题；
+  Cockpit聚焦Python 31项、前端Node 22项通过。34线上 `id=1|2` 三页HTML均200，
+  `startup`历史快照为 overview 0项、operations 1项、analysis 2项；analysis页真实AP重放
+  8条凭据、operations页10条、overview页7条，整页发布全部200且无AP失败。
+- 线上校验：`/api/mcp/health` 的 `missingExecutors=[]`，MCP暴露32个工具并包含
+  `Process360Plan/TaskOrderCreate`；真实 `Process360Plan + Process360Query` 返回 SC01
+  `partial`、`dataSource=process360-postgres`、查询结果4项，仍披露 G01/G12/G16。
+  8765日志无4xx/5xx、Traceback或429。
+- 边界：SC01仍为partial，SC02—SC05业务闭环、真实任务下发和业务效果复验不能据此判为完成；
+  未创建MR/tag/Release，未升级正式版本。

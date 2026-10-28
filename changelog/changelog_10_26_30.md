@@ -302,6 +302,12 @@
 - 涉及文件：`bi_agent/cockpit/publications.py`、`bi_agent/cockpit/page_cache.py`、
   `bi_agent/cockpit/router.py`、`tests/test_cockpit_publications.py`。
 - 验证：Cockpit Python 聚焦测试 31 项通过，前端 Node 测试 22 项通过；全量 Python 为
-  1597 passed / 37 skipped / 1 failed，唯一失败仍是 worktree 缺少
+  1598 passed / 37 skipped / 1 failed，唯一失败仍是 worktree 缺少
   `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题；
   `git diff --check` 通过。
+- 部署：后端 release `process360-a23ba77-20261028-160256`（PID 1999223，8765）；
+  旧 `process360-eb0b119-20261028-155839` 与 `cockpit-main-15d31e0-20261028-0817`
+  完整保留回滚。8765真实重放 `overview/operations/analysis` 的 AP 取数和整页发布均为
+  200，历史快照与卡片保持可读；Process360 真实只读查询为 SC01 partial，来源仍为
+  172.16.5.181:32444/ywln#ywln_crm。8876静态站与 nginx 不改，18765已关闭，未发送真实
+  Fuxi 待办。
