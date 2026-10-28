@@ -385,6 +385,12 @@ def _first_text(item: dict[str, Any], keys: tuple[str, ...]) -> str:
     return ""
 
 
+def _sha256_text(value: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def _normalize_actions(params: dict) -> list[dict[str, Any]]:
     items = params.get("items") if isinstance(params, dict) else None
     if not isinstance(items, list) or not items:
@@ -923,6 +929,8 @@ def _make_canvas_generate(
             "conclusion": params.get("conclusion") or "",
             "source_note": params.get("source_note") or "",
             "saved_path": saved_at,
+            "canvasId": out_path.stem,
+            "artifactHash": _sha256_text(page),
             "inline_echarts": bool(inline),
             "blocks": [block["kind"] for block in params["blocks"]],
             "actions": actions,

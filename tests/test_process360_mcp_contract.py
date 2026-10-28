@@ -131,3 +131,45 @@ def test_render_tools_are_registered_and_invocable() -> None:
         },
     )
     assert "CHART_SPEC" in chart
+
+
+def test_gate_binds_the_canvas_artifact_hash(tmp_path) -> None:
+    canvas = mcp_endpoint._canvas_tools()
+    execute = canvas._make_canvas_generate()
+    output = execute(
+        {
+            "title": "闸门绑定",
+            "conclusion": "结论：先复核超期订单。",
+            "blocks": [{"kind": "table", "params": {"title": "t", "columns": [{"key": "a", "label": "A"}], "rows": [{"a": 1}]}}],
+        },
+        str(tmp_path),
+    )
+    spec = json.loads(output.split(canvas.CANVAS_SPEC_OPEN)[1].split(canvas.CANVAS_SPEC_CLOSE)[0])
+    gate = mcp_endpoint._gate_executor()
+
+    passing = json.loads(
+        gate(
+            {
+                "answer": "结论：先复核超期订单。",
+                "canvasId": spec["canvasId"],
+                "artifactHash": spec["artifactHash"],
+            },
+            str(tmp_path),
+        )
+    )
+    assert passing["artifact"]["actualHash"] == spec["artifactHash"]
+    assert "artifact_hash_mismatch" not in passing["hard_issues"]
+
+    tampered = json.loads(
+        gate(
+            {"answer": "结论：先复核超期订单。", "canvasId": spec["canvasId"], "artifactHash": "deadbeef"},
+            str(tmp_path),
+        )
+    )
+    assert tampered["verdict"] == "reject"
+    assert "artifact_hash_mismatch" in tampered["hard_issues"]
+
+    missing = json.loads(
+        gate({"answer": "结论：先复核超期订单。", "canvasId": "not-there", "artifactHash": "x"}, str(tmp_path))
+    )
+    assert "artifact_missing" in missing["hard_issues"]

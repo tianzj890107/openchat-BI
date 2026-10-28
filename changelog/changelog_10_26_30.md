@@ -181,3 +181,20 @@
   用 32444 只读库实测：`limit=5` 的 SC01 查询返回 5 条样本但冻结基准为 2102/2102、
   `complete=true`；`queryId` 复用的 Analyze 约 2.1 秒，返回 5 条样本与 4 条指标定义。
 - 边界：未部署、未发送真实 Fuxi 任务；接收人映射与页面下发地址需按环境配置后才可点击下发。
+
+### 2026-10-28 Process360 计划校验、执行轨迹与闸门绑定
+
+- 路由计划：`Process360Route` 落库并返回 `planId`/`revision`，`Query/Analyze` 传 `planId`
+  时校验存在性、归属和场景一致；不一致返回 `PLAN_SCENARIO_MISMATCH`。改判走
+  `Route(planId, reviseReason)` 生成修订记录，原计划保留，避免无记录绕过路由。
+- 执行轨迹：新增 `requests`/`steps` 表与 `bi_agent/process360/audit.py`，每个 Process360
+  工具调用（含只问数的 Query）记录工具、状态、入参哈希、耗时、行数与
+  `queryId/runId/planId/draftId` 引用；`GET /api/process360/requests/{id}` 可读。
+- 闸门绑定：`CanvasGenerate` spec 输出 `canvasId`/`artifactHash`（页面 SHA-256），
+  `OutputGateCheck` 校验文件存在与哈希一致，并可用 `runId` 绑定冻结基准；
+  缺失/不符/基准不完整均判 reject。
+- 未实现（需业务口径）：按指标父子结构自动生成对账数据。父项与子项集合属于场景口径，
+  仓库里没有批准定义，继续由 `CLOSURE_FORMULA_MISSING` 显式阻断，不臆造层级。
+- 验证：`pytest -q tests` 为 1534 passed / 37 skipped，唯一失败仍是 worktree 缺
+  `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js`。
+- 边界：未部署、未发送真实 Fuxi 任务、未创建 MR。

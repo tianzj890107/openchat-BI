@@ -82,7 +82,31 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
   结果按 tenant/principal/catalogVersion/scenario 隔离，跨用户或跨场景复用一律不命中。
 - `Process360Analyze` 的 `metricCatalog` 只包含本轮相关指标，完整目录留在 catalog。
 
-### 3.3 全量冻结基准
+### 3.3 计划校验与修订
+
+- `Process360Route` 现在落库并返回 `planId` + `revision`。把 `planId` 传给
+  `Process360Query/Analyze` 时，服务端校验计划存在、属于当前用户、场景一致。
+- 场景不一致时返回 `needs_clarification` + `PLAN_SCENARIO_MISMATCH`，不会静默换场景。
+- 需要改判时用 `Process360Route(planId, reviseReason)` 生成新修订：新计划记录
+  `revisedFrom/reviseReason/revision`，原计划保持不变，形成可追溯链。
+
+### 3.4 请求级执行轨迹
+
+- 每个 Process360 工具调用（包括只问数的 `Process360Query`）都写一条 `steps`：
+  `tool/status/input_hash/duration_ms/rows_returned/refs`，`refs` 含
+  `queryId/runId/planId/draftId` 和基准完整性。
+- 轨迹按 Fuxi 会话聚合为 `requests`，可用 `GET /api/process360/requests/{id}` 读取。
+- 不再用“是否调用过 Analyze”判断可审计性；事实查询停在 S03 也有完整记录。
+
+### 3.5 闸门绑定产物版本
+
+- `CanvasGenerate` 的 spec 增加 `canvasId` 和 `artifactHash`（页面内容 SHA-256）。
+- `OutputGateCheck` 接受 `canvasId/artifactHash`：文件不存在记 `artifact_missing`，
+  哈希不符记 `artifact_hash_mismatch`，缺失哈希记 `artifact_hash_required`，均判 reject。
+- `OutputGateCheck` 接受 `runId` 时绑定该冻结运行；`complete=false` 记
+  `frozen_baseline_incomplete` 并 reject。
+
+### 3.6 全量冻结基准
 
 - `Process360Analyze` 在服务端按 `queryInfo.totalRows` 独立重取完整对象集后冻结，
   记录 `fullObjectCount/frozenObjectCount/complete/objectSetHash`。

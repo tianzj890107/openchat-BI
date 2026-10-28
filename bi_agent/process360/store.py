@@ -57,6 +57,26 @@ class Process360Store:
       payload_hash TEXT NOT NULL,
       created_at REAL NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS requests (
+      id TEXT PRIMARY KEY,
+      surface TEXT NOT NULL DEFAULT '',
+      tenant TEXT NOT NULL DEFAULT '',
+      principal TEXT NOT NULL DEFAULT '',
+      created_at REAL NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS steps (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL,
+      scenario TEXT NOT NULL DEFAULT '',
+      tool TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT '',
+      input_hash TEXT NOT NULL DEFAULT '',
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      rows_returned INTEGER NOT NULL DEFAULT 0,
+      refs TEXT NOT NULL DEFAULT '{}',
+      created_at REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS steps_request ON steps(request_id, created_at);
     CREATE TABLE IF NOT EXISTS queries (
       id TEXT PRIMARY KEY,
       scenario TEXT NOT NULL,
@@ -206,6 +226,56 @@ class Process360Store:
             return None
         result = dict(row)
         result["payload"] = _load(result.get("payload"))
+        return result
+
+    # -- request trail ----------------------------------------------------
+    def ensure_request(
+        self, request_id: str, *, surface: str = "", tenant: str = "", principal: str = ""
+    ) -> str:
+        record_id = str(request_id or uuid.uuid4().hex)
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO requests(id,surface,tenant,principal,created_at) VALUES(?,?,?,?,?)",
+                (record_id, str(surface), str(tenant), str(principal), _now()),
+            )
+        return record_id
+
+    def save_step(
+        self,
+        *,
+        request_id: str,
+        tool: str,
+        status: str = "",
+        scenario: str = "",
+        input_hash: str = "",
+        duration_ms: int = 0,
+        rows_returned: int = 0,
+        refs: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        record_id = uuid.uuid4().hex
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO steps(id,request_id,scenario,tool,status,input_hash,duration_ms,rows_returned,refs,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (
+                    record_id, str(request_id), str(scenario).upper(), str(tool), str(status),
+                    str(input_hash), int(duration_ms), int(rows_returned), _json(dict(refs or {})), _now(),
+                ),
+            )
+        return {"id": record_id, "requestId": str(request_id)}
+
+    def get_request(self, request_id: str) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM requests WHERE id=?", (str(request_id or ""),)).fetchone()
+            if not row:
+                return None
+            steps = db.execute(
+                "SELECT * FROM steps WHERE request_id=? ORDER BY created_at", (str(request_id),)
+            ).fetchall()
+        result = dict(row)
+        result["steps"] = [
+            {**dict(item), "refs": _load(dict(item).get("refs"))} for item in steps
+        ]
         return result
 
     # -- queries ----------------------------------------------------------

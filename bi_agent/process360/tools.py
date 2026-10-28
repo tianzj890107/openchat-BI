@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
+from .audit import record_step
 from .identity import active_principal_payload
 from .service import Process360Service
 
@@ -60,6 +61,8 @@ PROCESS360_ROUTE_SCHEMA: dict[str, Any] = {
         "properties": {
             "question": {"type": "string", "description": "用户原话"},
             "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
+            "planId": {"type": "string", "description": "修订已有计划时传入；服务端会记录修订理由"},
+            "reviseReason": {"type": "string", "description": "计划修订原因；与原路由不同场景时必须提供"},
         },
         "required": ["question"],
         "additionalProperties": False,
@@ -117,6 +120,7 @@ PROCESS360_QUERY_SCHEMA: dict[str, Any] = {
                 "type": "string",
                 "description": "复用上一轮 Process360Query 返回的服务端结果引用；提供时不再重新查库",
             },
+            "planId": {"type": "string", "description": "本轮 Process360Route 返回的计划；服务端校验场景一致"},
             "sample": {"type": "integer", "minimum": 0, "maximum": 50, "default": 5},
         },
         "required": ["scenario", "principal"],
@@ -138,6 +142,7 @@ PROCESS360_ANALYZE_SCHEMA: dict[str, Any] = {
             "scope": SCOPE_SCHEMA,
             "principal": PRINCIPAL_SCHEMA,
             "queryId": {"type": "string", "description": "复用服务端查询结果；与 scope 同时提供时以该结果为口径"},
+            "planId": {"type": "string", "description": "本轮 Process360Route 返回的计划；服务端校验场景一致"},
             "evidence": {
                 "type": "array",
                 "items": {"type": "object"},
@@ -431,7 +436,13 @@ def _principal(params: dict[str, Any]) -> dict[str, Any] | None:
 
 def _route(params: dict[str, Any], cwd: str) -> str:
     return _json(
-        _service(cwd).route(str(params.get("question") or ""), scenario=params.get("scenario"))
+        _service(cwd).route(
+            str(params.get("question") or ""),
+            scenario=params.get("scenario"),
+            plan_id=str(params.get("planId") or ""),
+            revise_reason=str(params.get("reviseReason") or ""),
+            principal=_principal(params),
+        )
     )
 
 
@@ -459,6 +470,7 @@ def _query(params: dict[str, Any], cwd: str) -> str:
             principal=_principal(params),
             query_id=str(params.get("queryId") or ""),
             sample=int(params.get("sample") if params.get("sample") is not None else 5),
+            plan_id=str(params.get("planId") or ""),
         )
     )
 
@@ -471,6 +483,7 @@ def _analyze(params: dict[str, Any], cwd: str) -> str:
             scope=params.get("scope"),
             principal=_principal(params),
             query_id=str(params.get("queryId") or ""),
+            plan_id=str(params.get("planId") or ""),
             evidence=params.get("evidence"),
             forecast_inputs=params.get("forecastInputs"),
         )
@@ -632,6 +645,7 @@ EXECUTORS: dict[str, Executor] = {
 def _validated_executor(spec: dict[str, Any], executor: Executor) -> Executor:
     """Enforce the public contract even when an MCP host skips JSON-schema validation."""
     schema = spec["input_schema"]
+    tool_name = str(spec.get("name") or "")
 
     def validate(value: Any, rule: dict[str, Any]) -> None:
         kind = rule.get("type")
@@ -667,8 +681,18 @@ def _validated_executor(spec: dict[str, Any], executor: Executor) -> Executor:
             raise ValueError("Process360 argument is outside allowed bounds")
 
     def run(params: dict[str, Any], cwd: str) -> str:
+        import time as _time
+
         validate(params, schema)
-        return executor(params, cwd)
+        started = _time.monotonic()
+        result = executor(params, cwd)
+        record_step(
+            tool_name,
+            params,
+            result,
+            duration_ms=int((_time.monotonic() - started) * 1000),
+        )
+        return result
 
     return run
 

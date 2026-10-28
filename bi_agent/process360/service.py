@@ -132,9 +132,70 @@ class Process360Service:
             info["database"] = {"configured": True, "readOnly": True}
         return info
 
-    def route(self, question: str, *, scenario: str | None = None) -> dict[str, Any]:
+    def route(
+        self,
+        question: str,
+        *,
+        scenario: str | None = None,
+        plan_id: str = "",
+        revise_reason: str = "",
+        principal: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """S00 routing that yields a stored, verifiable execution plan.
+
+        A caller may revise an existing plan, but the revision is recorded with
+        its reason instead of silently re-routing.
+        """
+        try:
+            identity = self._principal(principal)
+        except ValueError as exc:
+            return envelope(
+                "S00", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                gaps=[self._principal_gap(str(exc))],
+            )
         decision = route_stage(question, self.catalog, scenario=scenario)
         status = "needs_clarification" if decision.clarification and not decision.scenario else "ok"
+        payload = {
+            "question": question,
+            "scenario": decision.scenario,
+            "sopId": decision.sop_id,
+            "route": decision.to_dict(),
+            "tenant": identity.tenant_id,
+            "principalKey": identity.key,
+            "revision": 1,
+            "revisedFrom": None,
+            "reviseReason": "",
+        }
+        if plan_id:
+            previous = self.store.get_plan(str(plan_id))
+            if not previous:
+                return envelope(
+                    "S00", "needs_clarification",
+                    catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                    scenario=decision.scenario,
+                    gaps=[gap(
+                        "PLAN_NOT_FOUND", "计划引用不存在",
+                        needed="重新调用 Process360Route 生成计划",
+                        impact="未执行，避免无记录地绕过原路由",
+                        severity="blocking", source="runtime",
+                    )],
+                )
+            prior = dict(previous.get("payload") or {})
+            if str(prior.get("principalKey") or "") not in {"", identity.key}:
+                return envelope(
+                    "S00", "needs_clarification",
+                    catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                    scenario=decision.scenario,
+                    gaps=[self._principal_gap("计划不属于当前用户")],
+                )
+            payload.update(
+                revision=int(prior.get("revision") or 1) + 1,
+                revisedFrom=str(plan_id),
+                reviseReason=str(revise_reason or "").strip(),
+                originalScenario=prior.get("scenario"),
+                originalSopId=prior.get("sopId"),
+            )
+        saved = self.store.save_plan(payload, status=status)
         return envelope(
             "S00",
             status,
@@ -146,7 +207,36 @@ class Process360Service:
             if status == "ok"
             else list(decision.clarification),
             route=decision.to_dict(),
+            planId=saved["id"],
+            revision=payload["revision"],
+            revisedFrom=payload["revisedFrom"],
+            principalScope=identity.fingerprint(),
         )
+
+    def validate_plan(
+        self, plan_id: str, scenario: str, identity: PrincipalScope
+    ) -> dict[str, Any] | None:
+        """Return a blocking gap when a step does not follow its stored plan."""
+        if not plan_id:
+            return None
+        record = self.store.get_plan(str(plan_id))
+        if not record:
+            return gap(
+                "PLAN_NOT_FOUND", "计划引用不存在",
+                needed="重新调用 Process360Route",
+                impact="该步骤未执行", severity="blocking", source="runtime",
+            )
+        payload = dict(record.get("payload") or {})
+        if str(payload.get("principalKey") or "") not in {"", identity.key}:
+            return self._principal_gap("计划不属于当前用户")
+        planned = str(payload.get("scenario") or "").upper()
+        if planned and str(scenario or "").upper() and planned != str(scenario).upper():
+            return gap(
+                "PLAN_SCENARIO_MISMATCH", "步骤与计划场景不一致",
+                needed=f"按计划场景 {planned} 执行，或用 Process360Route 记录修订理由",
+                impact="该步骤未执行", severity="blocking", source="runtime",
+            )
+        return None
 
     def search(self, query: str, *, scenario: str | None = None, limit: int = 20) -> dict[str, Any]:
         return search_stage(self.catalog, query, scenario=scenario, limit=limit)
@@ -196,6 +286,7 @@ class Process360Service:
         *,
         scope: Mapping[str, Any] | None = None,
         principal: Mapping[str, Any] | None = None,
+        plan_id: str = "",
     ) -> dict[str, Any]:
         """Execute (or reuse) one controlled query and keep the full rows."""
         code = str(scenario or "").strip().upper()
@@ -213,6 +304,14 @@ class Process360Service:
                 limitations=["范围参数不合法，未执行数据库查询。"],
                 gaps=[self._principal_gap(str(exc))] if principal is not None else [],
                 principalScope=identity.fingerprint() if "identity" in locals() else None,
+            )
+        plan_gap = self.validate_plan(plan_id, code, identity)
+        if plan_gap:
+            return envelope(
+                "S03", "needs_clarification", catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version, scenario=code or None,
+                scope=resolved, gaps=[plan_gap],
+                limitations=["计划校验未通过，未执行数据库查询。"],
             )
         ready, reason = self._db_ready()
         if not ready:
@@ -284,6 +383,7 @@ class Process360Service:
         scope: Mapping[str, Any] | None = None,
         principal: Mapping[str, Any] | None = None,
         query_id: str = "",
+        plan_id: str = "",
     ) -> dict[str, Any]:
         """Reuse a stored query when allowed, otherwise query once."""
         code = str(scenario or "").strip().upper()
@@ -356,6 +456,7 @@ class Process360Service:
         principal: Mapping[str, Any] | None = None,
         query_id: str = "",
         sample: int = 5,
+        plan_id: str = "",
     ) -> dict[str, Any]:
         """S03 tool entry: reuse a stored query or run one, then return a summary."""
         code = str(scenario or "").strip().upper()
@@ -371,7 +472,7 @@ class Process360Service:
             reused = self._reuse_query(str(query_id), code, identity)
             if reused is not None:
                 return self.compact_query(reused, sample=sample)
-        full = self._query_full(code, scope=scope, principal=principal)
+        full = self._query_full(code, scope=scope, principal=principal, plan_id=plan_id)
         return self.compact_query(full, sample=sample)
 
     # -- S04 --------------------------------------------------------------
@@ -848,6 +949,7 @@ class Process360Service:
         evidence: Iterable[Mapping[str, Any]] | None = None,
         forecast_inputs: Mapping[str, Any] | None = None,
         query_id: str = "",
+        plan_id: str = "",
     ) -> dict[str, Any]:
         try:
             identity = self._principal(principal)
@@ -862,6 +964,14 @@ class Process360Service:
                 limitations=["缺少可信宿主身份，未取数、未分析。"],
             )
         decision = route_stage(question or "分析当前场景", self.catalog, scenario=scenario)
+        plan_gap = self.validate_plan(plan_id, decision.scenario or str(scenario or ""), identity)
+        if plan_gap:
+            return envelope(
+                "S04", "needs_clarification", catalog_id=self.catalog_id,
+                catalog_version=self.catalog_version, scenario=decision.scenario,
+                gaps=[plan_gap],
+                limitations=["计划校验未通过，未取数、未分析。"],
+            )
         unsupported = self._unsupported_analysis(decision, question)
         if unsupported is not None:
             return unsupported
@@ -917,7 +1027,7 @@ class Process360Service:
             else build_context(self.catalog, decision.scenario, question=question or None)
         )
         query = self._query_full_for(
-            decision.scenario, scope=scope, principal=principal, query_id=query_id
+            decision.scenario, scope=scope, principal=principal, query_id=query_id, plan_id=plan_id
         )
         if query.get("status") == "needs_clarification" and any(
             item.get("code") == "PRINCIPAL_SCOPE_INVALID" for item in query.get("gaps", [])

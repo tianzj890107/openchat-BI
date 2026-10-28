@@ -145,6 +145,12 @@ headers: {}
 - `Process360Query`/`Process360Analyze`/`Process360Draft` 返回
   `status=ok|partial|blocked|needs_clarification|not_applicable`。`blocked` 或 `partial` 必须原样
   披露，禁止补 0、禁止把“不可评估”改写成“没有风险”。
+- `Process360Route` 返回 `planId`/`revision`；把 `planId` 传给 Query/Analyze 时服务端校验
+  场景一致。要改判时用 `Process360Route(planId, reviseReason)` 生成修订，不要直接换场景。
+- 每个 Process360 工具调用都会写执行轨迹（含只问数的 Query），可用
+  `GET /api/process360/requests/{requestId}` 查看；不要求为审计强行调用 Analyze。
+- CanvasGenerate 返回 `canvasId` 和 `artifactHash`；交付前 `OutputGateCheck` 传这两项
+  （可加 `runId`）即可校验产物版本与冻结数据一致。
 - `Process360Query` 返回 `queryId` 和 `recordsRef`（`rowCount`/`totalRows`/样本 5 条），
   不再回传完整明细；把 `queryId` 传给 `Analyze/Structure/Verify` 即复用同一份结果，避免
   每步重复查库。缓存按身份、范围和 catalog 版本隔离。

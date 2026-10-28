@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import hashlib
 import json
 import logging
 import os
@@ -34,6 +35,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from ..integrations.fuxi_todo import FuxiTodoClient, FuxiTodoError
 from ..process360 import tools as process360_tools
 from ..process360.execute import _assert_no_phone
+from ..process360 import audit as process360_audit
 from ..process360.dispatch import dispatch_draft
 from ..process360.identity import (
     PrincipalScope,
@@ -144,6 +146,12 @@ OUTPUT_GATE_SCHEMA: dict[str, Any] = {
             "forecast_kind": {"type": "string", "enum": ["predictive", "scenario", "stored"]},
             "forecast_assumption": {"type": "string"},
             "sql": {"type": "string", "description": "本轮实际执行的 SQL（如有）"},
+            "runId": {"type": "string", "description": "Process360Analyze 的冻结运行；提供时闸门绑定该数据版本"},
+            "canvasId": {"type": "string", "description": "CanvasGenerate 返回的 canvasId"},
+            "artifactHash": {
+                "type": "string",
+                "description": "CanvasGenerate 返回的 artifactHash；提供 canvasId 时必填",
+            },
             "chart": {"type": "object", "description": "图表工具名和参数"},
             "reconcile": {
                 "type": "object",
@@ -371,8 +379,46 @@ def _route_executor() -> Executor:
 
 def _gate_executor() -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
-        del cwd
-        report = _gate_rules().check(dict(params or {}))
+        payload = dict(params or {})
+        canvas_id = str(payload.pop("canvasId", "") or "").strip()
+        expected = str(payload.pop("artifactHash", "") or "").strip()
+        run_id = str(payload.pop("runId", "") or "").strip()
+        report = _gate_rules().check(payload)
+        hard = list(report.get("hard_issues") or [])
+        if canvas_id or expected:
+            artifact = {"canvasId": canvas_id, "artifactHash": expected}
+            target = None
+            if canvas_id:
+                candidate = (project_path(cwd or os.getcwd(), _CANVAS_DIR) / f"{canvas_id}.html").resolve()
+                canvas_dir = project_path(cwd or os.getcwd(), _CANVAS_DIR).resolve()
+                if candidate.parent == canvas_dir and candidate.is_file():
+                    target = candidate
+            if target is None:
+                hard.append("artifact_missing")
+            else:
+                actual = hashlib.sha256(target.read_bytes()).hexdigest()
+                artifact["actualHash"] = actual
+                if not expected:
+                    hard.append("artifact_hash_required")
+                elif actual != expected:
+                    hard.append("artifact_hash_mismatch")
+            report["artifact"] = artifact
+        if run_id:
+            record = process360_audit.store().get_run(run_id)
+            baseline = ((record or {}).get("payload") or {}).get("baseline") or {}
+            if not record:
+                hard.append("analysis_run_not_found")
+            else:
+                report["runId"] = run_id
+                report["dataSnapshot"] = {
+                    key: baseline.get(key)
+                    for key in ("baselineHash", "objectSetHash", "complete", "fullObjectCount")
+                }
+                if baseline and baseline.get("complete") is False:
+                    hard.append("frozen_baseline_incomplete")
+        if hard:
+            report["hard_issues"] = sorted(dict.fromkeys(hard))
+            report["verdict"] = "reject"
         return json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
     return run
 
@@ -599,6 +645,7 @@ class McpRuntime:
                         f"tool arguments must not contain {forbidden}"
                     )
             token = set_active_principal(self.principal_payload())
+            process360_audit.ensure_request()
         try:
             result = executor(params, cwd)
         finally:
@@ -656,10 +703,16 @@ class McpRuntime:
                 arguments = params.get("params") or {}
             if not isinstance(arguments, dict):
                 return session_id, _error(request_id, -32602, "tool arguments must be an object")
+            token = None
+            if name in PROCESS360_TOOL_NAMES:
+                token = process360_audit.set_request_id(session_id or "")
             try:
                 text = self.call_tool(name, arguments, base_url)
             except Exception as exc:  # noqa: BLE001
                 return session_id, _tool_error(request_id, f"{type(exc).__name__}: {exc}"[:800])
+            finally:
+                if token is not None:
+                    process360_audit.reset_request_id(token)
             return session_id, _response(request_id, {
                 "content": [{"type": "text", "text": text}],
                 "isError": False,
@@ -783,6 +836,19 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
             request_id=request_id,
         )
         return JSONResponse(result)
+
+    @router.get("/api/process360/requests/{request_id}")
+    def process360_request_trail(request_id: str) -> dict[str, Any]:
+        """Read the recorded step trail for one Fuxi conversation."""
+        record = process360_audit.store().get_request(request_id)
+        if not record:
+            raise HTTPException(404, "request not found")
+        return {
+            "requestId": record.get("id"),
+            "surface": record.get("surface"),
+            "createdAt": record.get("created_at"),
+            "steps": record.get("steps") or [],
+        }
 
     @router.get("/api/process360/task-orders")
     def process360_task_order_status(request: Request) -> dict[str, Any]:
