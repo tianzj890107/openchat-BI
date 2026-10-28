@@ -973,3 +973,19 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   8765日志无4xx/5xx、Traceback或429。
 - 边界：SC01仍为partial，SC02—SC05业务闭环、真实任务下发和业务效果复验不能据此判为完成；
   未创建MR/tag/Release，未升级正式版本。
+
+### Process360 下发联调启用与 Skill 交付（2026-10-28 16:47）
+
+- 按本轮授权，仅调整 34 的现有 Process360 主服务运行配置并重启 8765，未替换代码、
+  未更新 8876。release 仍为 `process360-a23ba77-20261028-160256`，新 PID 为 `2184357`。
+- 开启 `PROCESS360_POC_DISPATCH=1`、`PROCESS360_PAGE_DISPATCH=1`、`FUXI_TODO_ENABLED=1`。
+  接收人映射仅包含 `shenkang`、`沈康`，无张真、无 `__default__`；手机号仅保存在服务器
+  私有环境配置，生成草稿时使用 `owner_ref=shenkang`、`owner_name=沈康`。未知责任人阻断下发。
+- 共享环境文件先保存权限 600 的 `.env.backup-dispatch-20261028-164644`，保持既有环境、
+  release 和历史数据目录。回退时恢复该备份并按既有启动方式重启服务。
+- 最新 Skill 源码重新打为本地 `ontology-analytics-skill.zip`（24 文件），逐文件比对、ZIP
+  完整性验证通过；SHA256 为 `7034d0ceea77a7bec7f08efd6c6489c0db89390f494464943dd9cb2c633c5025`。
+  分发包不入库；对外 MCP 地址仍为
+  `http://172.16.10.34:8765/api/ontology-agentic-analytics/api/mcp`。
+- 验证：线上 MCP 健康检查通过、`missingExecutors=[]`；任务令状态接口正常，运行进程权限
+  与接收人映射解析通过；张真及未知责任人无默认回退。本轮未创建新待办，未验收完整 HTML 点击链路。
