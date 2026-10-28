@@ -364,3 +364,18 @@
 - 记录仍未关闭的问题：P02/P12 计划步骤不是可执行工具、多目标计划碎片化、SC05 否定语义
   误路由、大结果截断导致 queryId 丢失、4/5 闸门未绑定 runId、SC05 blocked 查询未落库。
 - 完整核对见 `docs/specs/process360-fuxi-sop-execution-rerun-2026-10-28.md`。
+
+### 2026-10-28 17:06 · 34 线上 Process360 接入真实 PostgreSQL
+
+- 用户可见变化：34 线上 MCP 的 Process360 受控取数恢复为真实 PostgreSQL 来源
+  `172.16.5.181:32444/ywln#ywln_crm`，不再返回 `DATABASE_UNAVAILABLE`；经营看板等
+  Cockpit 页面恢复可访问，但 AP 业务数据接通仍属已知未完成项。
+- 部署：新 release `process360-a6239d4-20261028-170622`（提交 `a6239d4`，PID 2321809，
+  8765），通过 release 内 `runtime-env.json` 显式注入 PG、Catalog 与 Cockpit 变量；
+  旧 release、历史数据目录和共享环境备份均保留。回退方式见 `DEPLOYMENT.md`。
+- 验证：健康检查、MCP 健康（32 工具、`missingExecutors=[]`）、Cockpit 配置/引擎/整页发布
+  接口均 200；`Process360Query`（SC01）返回 `partial`、来源
+  `process360-postgres`、18.3961 亿元 / 4.6066 GWh，并披露 G01/G12/G16；日志无
+  Traceback 与 5xx。
+- 边界：本轮只补充真实数据库连接与部署，未改变五场景口径，SC02–SC05 业务闭环和效果
+  复验仍不能据此判为完成；未创建 MR、tag 或 Release。

@@ -989,3 +989,27 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   `http://172.16.10.34:8765/api/ontology-agentic-analytics/api/mcp`。
 - 验证：线上 MCP 健康检查通过、`missingExecutors=[]`；任务令状态接口正常，运行进程权限
   与接收人映射解析通过；张真及未知责任人无默认回退。本轮未创建新待办，未验收完整 HTML 点击链路。
+
+### 34 线上 Process360 接入真实 PostgreSQL（2026-10-28 17:06）
+
+- 代码提交：`a6239d4e287bcb7eba27045e870bcbee873687a7`（分支
+  `feature/process360-cockpit34-integration`）。仅部署新 release，未修改 8876 静态站、
+  未覆盖历史会话或分析缓存。
+- release：`/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-a6239d4-20261028-170622`，
+  PID `2321809`，监听 8765；`.env`、`.venv` 软链到 `mcp-11dc92c-20261020`，`dataset`
+  软链到 `cockpit-main-15d31e0-20261028-0817/dataset`。旧目录
+  `process360-a23ba77-20261028-160256` 及 `dataset.tracked-a6239d4-20261028-170622` 完整保留。
+- 运行环境：本 release 通过 `runtime-env.json`（权限 600，不入库）显式注入 95 个变量，
+  由同目录 `start-main.py` 启动。`PROCESS360_PG_*` 指向
+  `172.16.5.181:32444/ywln#ywln_crm`，`PROCESS360_CATALOG_PATH`、`PYTHONPATH`、
+  `RELEASE_COMMIT` 指向本 release；Cockpit 继续 `COCKPIT_DATA_MODE=ap`，下发配置沿用
+  仅沈康的责任人映射。此前直接读共享 `.env` 启动会漏掉 Cockpit 变量并使
+  `analyses/published` 返回 503，本次已按旧 release 的启动方式恢复。
+- 验证：`/healthz`、`/api/mcp/health`（`missingExecutors=[]`）、
+  `/api/cockpit/data/config`、`/api/cockpit/engines`、
+  `/api/cockpit/analyses/published?id=1&page=analysis` 均 200；`Process360Route` 后执行
+  `Process360Query`（SC01）返回 `partial`、`dataSource=process360-postgres`、
+  `18.3961 亿元 / 4.6066 GWh`，并披露 G01/G12/G16；8765 日志无 Traceback 与 5xx。
+  8876 到 8765 的代理与三页 HTML 均 200；Cockpit 看板的 AP 业务数据尚未接通，属已知状态。
+- 回退：停止本 release 进程，恢复 `process360-a23ba77-20261028-160256` 的 `start-main.py`
+  启动方式；共享 `.env` 备份为 `mcp-11dc92c-20261020/.env.bak-20261028-170622`。
