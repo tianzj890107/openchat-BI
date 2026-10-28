@@ -191,6 +191,8 @@ def release_payload() -> dict:
     _apply_analysis_flow_override(pages["analysis"]["components"])
     _apply_analysis_flow_override(templates[PAGE_TEMPLATES["analysis"]]["components"])
 
+    layout = source.get("dashboard") or {}
+    published = source.get("published") or {}
     dashboard = {
         "id": "iba-demo-1021",
         "name": "储能经营风险驾驶舱",
@@ -199,11 +201,12 @@ def release_payload() -> dict:
         "status": "active",
         "url": f"{source['repository']}/-/tree/{source['branch']}",
         "components": root,
-        "gridCols": 120,
-        "rowHeight": 10,
-        "theme": "light",
-        "headerLayout": {"componentIds": ["composite-filter-hzjk9t5q"]},
-        "showHeaderTitle": True,
+        "gridCols": layout.get("gridCols") or 120,
+        "rowHeight": layout.get("rowHeight") or 10,
+        "theme": layout.get("theme") or "light",
+        "headerLayout": layout.get("headerLayout")
+        or {"componentIds": ["composite-filter-hzjk9t5q"]},
+        "showHeaderTitle": layout.get("showHeaderTitle", True),
     }
     return {
         "source": {
@@ -211,12 +214,18 @@ def release_payload() -> dict:
             "dashboardId": "iba-demo-1021",
             "name": "储能经营风险驾驶舱",
             "releaseUrl": dashboard["url"],
-            "buildTime": source["importedAt"],
-            "fetchedAt": source["importedAt"],
+            "buildTime": source.get("publishedAt") or source["importedAt"],
+            "fetchedAt": source.get("publishedAt") or source["importedAt"],
             "version": source["commit"][:7],
             "status": "active",
             "branch": source["branch"],
             "commit": source["commit"],
+            "published": {
+                "dashboardId": published.get("dashboardId"),
+                "name": published.get("name"),
+                "lastUpdatedTime": published.get("lastUpdatedTime"),
+                "importedAt": source.get("publishedAt") or source["importedAt"],
+            },
             "templateCount": len(templates),
             "totalComponents": len(root) + sum(
                 len(template.get("components", [])) for template in templates.values()

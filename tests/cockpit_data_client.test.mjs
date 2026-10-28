@@ -2,7 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const source = fs.readFileSync(new URL('../bi_agent/web/static/cockpit/data-client.js', import.meta.url), 'utf8');
-const {createAPDataClient} = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+const clientModule = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+const {createAPDataClient, observeRuntimeFilters} = clientModule;
 const query = {analysisConfig: {indicators: [{identifierCode:'M0001'}]}, commonConfig: {filters: {month:'2026-10'}}};
 const ok = (receiptId, data = {rows:[{amount:42}]}) => ({ok:true, status:200, json:async()=>({receiptId,data,expiresAt:Date.now()/1000+60})});
 
@@ -124,3 +125,27 @@ test('a remounted SDK restores UI selections and preserves the original default 
  assert.equal(scopes.at(-1),'default');second.setButtonGrainSelection('grain','MONTH');assert.equal(scopes.at(-1),monthly);
 });
 const {observeRuntimeFilters:observeRuntimeFiltersForTest}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+
+test('delivered activate rules reach the host route and survive a remount replay', () => {
+  const calls=[];
+  const runtime={
+    setActiveTab:(container,tab)=>calls.push(['tab',container,tab]),
+    setHelmetGraphSelection:(component,selection)=>calls.push(['helmet',component,selection.nodeId]),
+  };
+  const tabs=[],helmets=[];
+  const wrapped=observeRuntimeFilters(runtime,()=>{},()=>true,null,{
+    onTabChange:tab=>tabs.push(tab),
+    onHelmetSelect:(component,selection)=>helmets.push([component,selection.nodeId]),
+  });
+  wrapped.setHelmetGraphSelection('mini-cpgraph-93j6k86p',{nodeId:'2109840696539136002'});
+  wrapped.setActiveTab('tab-container-zm9eyxne','tab-1suxx5hd');
+  assert.deepEqual(helmets,[['mini-cpgraph-93j6k86p','2109840696539136002']]);
+  assert.deepEqual(tabs,['tab-1suxx5hd']);
+  assert.deepEqual(calls,[['helmet','mini-cpgraph-93j6k86p','2109840696539136002'],['tab','tab-container-zm9eyxne','tab-1suxx5hd']]);
+  const replay=[];
+  wrapped.replayView({
+    setActiveTab:(container,tab)=>replay.push(['tab',container,tab]),
+    setHelmetGraphSelection:(component,selection)=>replay.push(['helmet',component,selection.nodeId]),
+  });
+  assert.deepEqual(replay,[['helmet','mini-cpgraph-93j6k86p','2109840696539136002'],['tab','tab-container-zm9eyxne','tab-1suxx5hd']]);
+});

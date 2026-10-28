@@ -311,3 +311,32 @@
   200，历史快照与卡片保持可读；Process360 真实只读查询为 SC01 partial，来源仍为
   172.16.5.181:32444/ywln#ywln_crm。8876静态站与 nginx 不改，18765已关闭，未发送真实
   Fuxi 待办。
+
+### 2026-10-28 · 同步 pdt 最新发布看板
+
+- 用户可见变化：经营看板、运营360和穿透分析改为渲染 `pdt-dev` 看板
+  `2109836674373566465`（根配置 2026-10-28 14:07:56）的最新发布配置；经营看板指标从采购口径
+  切换为 `YWLN_*` 销售口径，卡片右上新增“查看销售额风险／查看出货风险”入口；运营页新增
+  “订单履约率”KPI、五环节分段条（商机获取／报价／投标／订单接收／发货）及对应进度卡。
+- 数据规模：13 份模板、142 个组件配置（此前 135 个），其中 AP 103 个、mock 39 个；
+  12 个分析插槽锚点全部仍有效，商机模板 `share-bar-79fsomq9` 子组件缺失保持不变并在缺项报告中列明。
+- 导入方式：新增 `scripts/import_cockpit_publish.py`，把拉取到的 `dashboard.json` 与
+  `templates/*.json` 转换为 `components.json`、`template-registry.json`，并重写
+  `source.json` 的发布信息、哈希、类型统计、锚点与适配记录；不再手工拷贝文件。
+- 宿主适配：发布配置把 `activateRules` 放在仪表盘根级，导入时回填到
+  `tab-container-zm9eyxne`；新规则的 `actions` 数组改写为 ProUI 的 `tab`/`helmet` 结构，
+  1 条 `titleText` 表面规则无法表达，记入 `source.json.unsupportedRules`。
+- 交互修复：卡片 `headerActions` 触发的切换 Tab／选中头盔节点此前只改 SDK 内部状态，页面
+  路由和数据不跟随；`data-client.js` 的 `observeRuntimeFilters` 增加 `onTabChange`／
+  `onHelmetSelect` 钩子，`cockpit.js` 据此跳转到目标页面并保留 `id` 与 `node` 参数，
+  跳转后按 `node` 恢复头盔图选中节点。
+- 涉及文件：`scripts/import_cockpit_publish.py`、`bi_agent/cockpit/runtime.py`、
+  `bi_agent/web/static/cockpit/{cockpit.js,data-client.js}`、
+  `bi_agent/web/static/cockpit/metadata/iba-demo-1021/{components.json,template-registry.json,source.json,README.md}`、
+  `bi_agent/web/static/cockpit/metadata/runtime.json`、`tests/test_cockpit_metadata.py`、
+  `tests/cockpit_data_client.test.mjs`。
+- 验证：Cockpit Python 聚焦测试 106 项通过（含 `test_cockpit_metadata.py`、
+  `test_cockpit_resource_contract.py`），前端 Node 测试 23 项通过；本地隔离浏览器验收
+  8 项通过（首屏、AP 失败保留、筛选切换、整页发布、overview/operations 全页）；
+  点击“查看销售额风险／查看出货风险”跳转到穿透页并带 `node`，头盔图选中对应节点；无 JavaScript 异常。
+- 部署：本轮未部署。旧 release 与 `pdt-release-2109836674373566465` 冻结快照保持不变。

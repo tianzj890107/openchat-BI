@@ -119,7 +119,7 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
 }
 
 // Observe committed SDK filter changes, not clicks that merely open a filter editor.
-export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored=null) {
+export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored=null,hooks={}) {
   const seen=new Map(restored?.seen||[]),calls=new Map(restored?.calls||[]);
   let baseline=restored?.baseline??null;
   const observed=new Set(['setFilterConditions','setButtonGrainSelection','setHelmetGraphSelection','setContainerActiveNode']);
@@ -129,7 +129,15 @@ export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored
     runtime[method]=function(...args) {
       const key=method+':'+args[0]+':'+canonical(method==='setFilterUiSelection'?[args[1],args[3]||null]:args[2]||null);
       calls.delete(key);calls.set(key,[method,JSON.parse(JSON.stringify(args))]);
-      if(!observed.has(method))return original.apply(this,args);
+      if(!observed.has(method)){
+        const made=original.apply(this,args);
+        // Delivered activate rules drive tabs and helmet nodes through the runtime;
+        // the host mirrors them so the route, its data scope and its cards stay aligned.
+        if(method==='setActiveTab')hooks.onTabChange?.(args[1]);
+        else if(method==='setHelmetGraphSelection')hooks.onHelmetSelect?.(args[0],args[1]);
+        return made;
+      }
+      if(method==='setHelmetGraphSelection')hooks.onHelmetSelect?.(args[0],args[1]);
       const selection=method==='setContainerActiveNode'?{nodeId:args[1]?.nodeId}:args[1];
       const value=canonical(selection);
       const changed=seen.has(key)?seen.get(key)!==value:isReady();

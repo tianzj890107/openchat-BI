@@ -79,13 +79,13 @@ def test_static_proui_runtime_is_reproducible_and_uses_release_data():
     assert stored['source']['dashboardId']=='iba-demo-1021'
     assert stored['source']['version']=='558f2ae'
     assert stored['source']['templateCount']==13
-    assert stored['source']['totalComponents']==135
+    assert stored['source']['totalComponents']==142
     assert set(stored['pages'])=={'overview','operations','analysis'}
     assert stored['counts']['overview']=={
         'total':16,'types':{'progress':5,'template':1,'button-group':1,'title':3,'kpiCard':4,'segmented-strip':1,'process-arc':1},'withData':11,
     }
-    assert stored['counts']['operations']['total']==39
-    assert stored['counts']['operations']['withData']==28
+    assert stored['counts']['operations']['total']==46
+    assert stored['counts']['operations']['withData']==33
     assert stored['counts']['analysis']=={
         'total':10,'types':{'progress':5,'mini-cpgraph':1,'template':1,'title':2,'button-group':1},'withData':5,
     }

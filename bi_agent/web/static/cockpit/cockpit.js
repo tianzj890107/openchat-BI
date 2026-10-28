@@ -367,9 +367,10 @@
     return PAGES[page] ? page : 'overview';
   }
 
-  function routeFor(page) {
+  function routeFor(page, nodeId) {
     const search = new URLSearchParams({id: identityId, engine: analysisEngine});
     if(baselineId)search.set('baseline',baselineId);
+    if(nodeId)search.set('node',nodeId);
     return `${routeRoot}/cockpit/${page}?${search}`;
   }
 
@@ -450,6 +451,24 @@
           let rawRuntime=ProUIBi.createBiRuntime();
           const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
           if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
+          // Delivered activate rules switch tabs and helmet nodes inside the SDK; mirror
+          // them onto the host route so each page keeps its own data scope and cards.
+          const tabToPage=Object.fromEntries(Object.entries(payload.pages).map(([name,spec])=>[spec.tabId,name]));
+          const analysisGraphId=(payload.pages.analysis?.components||[]).find(c=>c.type==='mini-cpgraph')?.id;
+          const requestedNode=params.get('node');
+          let pendingHelmet=requestedNode?{componentId:analysisGraphId,nodeId:requestedNode}:null;
+          const runtimeHooks={
+            onTabChange:tabId=>{
+              const target=tabToPage[tabId];
+              if(!target||target===page.value)return;
+              location.assign(routeFor(target,pendingHelmet?.nodeId));
+            },
+            onHelmetSelect:(componentId,selection)=>{if(selection?.nodeId)pendingHelmet={componentId,nodeId:selection.nodeId};},
+          };
+          function applyRequestedNode(){
+            if(page.value!=='analysis'||!requestedNode||!analysisGraphId||!tabs)return;
+            rawRuntime.setHelmetGraphSelection?.(analysisGraphId,{nodeId:requestedNode},{segments:[{kind:'tab',containerId:tabs.id,tabId:payload.pages.analysis.tabId,templateId:payload.pages.analysis.templateId}]});
+          }
           const makeClient=(snapshot=null)=>createAPDataClient({apiBase,id:identityId,snapshot,
             onSnapshotMiss:()=>changeScope(currentUiScope,true),
             onInvalidate:()=>{
@@ -464,7 +483,7 @@
               const restored=biRuntime.value?.replayView?.(nextRuntime);
               rawRuntime=nextRuntime;
               if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
-              biRuntime.value=observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady,restored);
+              biRuntime.value=observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady,restored,runtimeHooks);
               const path={segments:[{kind:'tab',containerId:tabs.id,tabId:payload.pages[page.value].tabId,templateId:payload.pages[page.value].templateId}]};
               for(const component of payload.templates[payload.pages[page.value].templateId]?.components||[]){
                 if(component.type!=='button-group')continue;
@@ -514,7 +533,8 @@
               try {const snapshot=await pageCache.load(uiScope);if(snapshot&&token===pageEpoch){install(snapshot,true);schedulePageRefresh(800);}}catch{}
             }
           }
-          biRuntime.value=observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady);
+          biRuntime.value=observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady,null,runtimeHooks);
+          applyRequestedNode();
           if(analysisEngine==='main') {
             pageCache=createPageCache({apiBase,id:identityId,page:page.value,makeClient,bodyFor:baseMainBody,
               onState:value=>Object.assign(pageState,value),

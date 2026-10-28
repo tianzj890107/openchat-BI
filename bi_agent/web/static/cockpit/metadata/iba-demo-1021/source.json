@@ -1,13 +1,15 @@
 {
-  "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
+  "activatedAt": "2026-10-23",
+  "adaptations": [
+    "PDT 把 activateRules 发布在仪表盘根级；导入时回填到 tab-container.baseConfig.activateRules（ProUI 只从组件注册）。",
+    "activate-luv1ff6x: actions→helmet/tab",
+    "activate-izvixcym: actions→helmet/tab",
+    "activate-vo0qtecg: actions→helmet/tab",
+    "activate-tn84800h: actions→helmet/tab",
+    "activate-peijvkm0: actions→helmet/tab"
+  ],
   "branch": "feature/demo_1021",
   "commit": "558f2ae27cdc5a9569c5d91a1db45f97d31a4321",
-  "importedAt": "2026-10-26",
-  "mode": "active-runtime-adapter",
-  "notes": "Imported upstream metadata unchanged; runtime uses live AP via the main service. Frozen snapshots are retained only for explicit replay mode.",
-  "rootComponents": 2,
-  "templates": 13,
-  "totalComponents": 135,
   "componentTypes": {
     "bar": 3,
     "bar-line": 2,
@@ -15,32 +17,37 @@
     "composite-filter": 1,
     "funnel": 1,
     "group": 5,
-    "horizontal-bar": 14,
-    "kpiCard": 37,
+    "horizontal-bar": 13,
+    "kpiCard": 38,
     "mini-cpgraph": 2,
     "process-arc": 1,
-    "progress": 15,
-    "segmented-strip": 5,
+    "progress": 20,
+    "segmented-strip": 6,
     "share-bar": 6,
     "tab-container": 1,
     "table": 17,
     "template": 3,
-    "title": 19
+    "title": 20
+  },
+  "dashboard": {
+    "gridCols": 120,
+    "headerLayout": {
+      "componentIds": [
+        "composite-filter-hzjk9t5q"
+      ]
+    },
+    "rowHeight": 10,
+    "showHeaderTitle": true,
+    "theme": "white"
   },
   "dataSourceModes": {
-    "ap": 98,
-    "mock": 37
+    "ap": 103,
+    "mock": 39
   },
-  "insights": 12,
-  "insightComponents": 12,
   "files": [
     {
       "file": "components.json",
-      "sha256": "a7f8065f47d25cfdc412a4c77e19ad3c0b230633e52b709ce6de7876efaf47a6"
-    },
-    {
-      "file": "template-registry.json",
-      "sha256": "d19f5922b1b249cfe71d6abf53b19d4adb25680251867ac65d40d55d605f9a66"
+      "sha256": "d710b2a9f20088722cc93a6b9a62cf884fa74dac7bbe00aaa566f3aa1a96e836"
     },
     {
       "file": "insights.js",
@@ -49,15 +56,110 @@
     {
       "file": "insights.json",
       "sha256": "c0d1d0e3cb9b523931d7e18163be8082e053d1c1aa78e84bbb4b222bb809bfd0"
+    },
+    {
+      "file": "template-registry.json",
+      "sha256": "fe8eb49b49212098c756dfc94eef036d6b4b6c22a11a8dff2c5e5fb516fdcde1"
     }
   ],
+  "importedAt": "2026-10-26",
+  "insightComponents": 12,
+  "insights": 12,
   "knownIssues": [
     {
-      "templateId": "2112062888320483329",
       "componentId": "group-9ypz7vwt",
       "missingChildId": "share-bar-79fsomq9",
-      "description": "Upstream child definition is absent; runtime reports the gap."
+      "templateId": "2112062888320483329"
     }
   ],
-  "activatedAt": "2026-10-23"
+  "mode": "active-runtime-adapter",
+  "notes": "组件结构、指标编码与插槽位置按发布配置原样导入；运行时通过主服务实时取数，冻结快照仅用于显式回放模式。",
+  "published": {
+    "dashboardId": "2109836674373566465",
+    "lastUpdatedTime": "2026-10-28 14:07:56",
+    "name": "储能经营风险驾驶舱",
+    "platform": "pdt-dev.eimos.com",
+    "templates": {
+      "2112001069107167233": {
+        "lastUpdatedTime": "2026-10-28 13:10:39",
+        "name": "全局经营看版",
+        "version": "1.0.0"
+      },
+      "2112009587516293121": {
+        "lastUpdatedTime": "2026-10-28 13:37:52",
+        "name": "全局经营看版-销售额",
+        "version": "1.0.0"
+      },
+      "2112010750949113858": {
+        "lastUpdatedTime": "2026-10-28 14:01:07",
+        "name": "全局经营看版-出货量",
+        "version": "1.0.0"
+      },
+      "2112026770145329154": {
+        "lastUpdatedTime": "2026-10-28 15:39:58",
+        "name": "运营360 整体分析-商机获取",
+        "version": "1.0.0"
+      },
+      "2112059463654490114": {
+        "lastUpdatedTime": "2026-10-28 15:49:02",
+        "name": "运营360 整体分析-报价",
+        "version": "1.0.0"
+      },
+      "2112059751740260354": {
+        "lastUpdatedTime": "2026-10-28 16:02:03",
+        "name": "运营360 整体分析-投标",
+        "version": "1.0.0"
+      },
+      "2112060211964461057": {
+        "lastUpdatedTime": "2026-10-23 16:53:36",
+        "name": "运营360 整体分析-订单接收",
+        "version": "1.0.0"
+      },
+      "2112061604959928321": {
+        "lastUpdatedTime": "2026-10-28 15:29:43",
+        "name": "穿透式问题分析",
+        "version": "1.0.0"
+      },
+      "2112062888320483329": {
+        "lastUpdatedTime": "2026-10-23 17:08:20",
+        "name": "销售额口径头盔图-商机获取",
+        "version": "1.0.0"
+      },
+      "2112064105591390209": {
+        "lastUpdatedTime": "2026-10-26 14:00:41",
+        "name": "销售额口径头盔图-订单接收",
+        "version": "1.0.0"
+      },
+      "2112064144187375617": {
+        "lastUpdatedTime": "2026-10-23 17:09:36",
+        "name": "销售额口径头盔图-发货",
+        "version": "1.0.0"
+      },
+      "2112434004503347202": {
+        "lastUpdatedTime": "2026-10-28 15:24:45",
+        "name": "运营360 整体分析-第二tab",
+        "version": "1.0.0"
+      },
+      "2113151813453660161": {
+        "lastUpdatedTime": "2026-10-23 16:54:16",
+        "name": "运营360 整体分析-发货",
+        "version": "1.0.0"
+      }
+    },
+    "url": "/dashboard/release/2109836674373566465",
+    "version": "1.0.0"
+  },
+  "publishedAt": "2026-10-28",
+  "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
+  "rootComponents": 2,
+  "templates": 13,
+  "totalComponents": 142,
+  "unsupportedRules": [
+    {
+      "componentId": "title-d15r7zbi",
+      "id": "activate-yq6t9cfm",
+      "reason": "ProUI 只从组件 baseConfig.activateRules 注册 button/cardTitle/headerAction/insight/progressFooter",
+      "surface": "titleText"
+    }
+  ]
 }
