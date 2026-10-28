@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any, Mapping
 
 from ..integrations.fuxi_todo import (
@@ -27,6 +28,7 @@ from ..integrations.fuxi_todo import (
     make_source_todo_id,
     normalize_recipients,
 )
+from .execute import _assert_no_phone
 from .identity import PrincipalScope
 from .request_context import active_request_context
 from .store import digest
@@ -36,11 +38,27 @@ RECEIPT_SCHEMA = "process360.dispatch.v1"
 _RECIPIENT_ENV = "PROCESS360_RECIPIENT_MAP"
 _ENABLED_ENV = "PROCESS360_PAGE_DISPATCH"
 _RECIPIENT_VERSION_ENV = "PROCESS360_RECIPIENT_MAP_VERSION"
+_CANVAS_MODE_ENV = "PROCESS360_CANVAS_DISPATCH_MODE"
+_CANVAS_RECIPIENT_ENV = "PROCESS360_CANVAS_RECIPIENT"
+_TRUSTED_APPROVAL_STATES = {"approved", "host_click_authorized"}
 
 
 def page_dispatch_enabled() -> bool:
     raw = (os.environ.get(_ENABLED_ENV) or "1").strip().lower()
     return raw not in {"0", "false", "no", "off"}
+
+
+def all_canvas_actions_dispatchable() -> bool:
+    """Temporary POC mode: render every recommendation card as sendable.
+
+    ``trusted`` restores the strict draft-backed behaviour.  The default is
+    ``all`` only while the current POC is demonstrating card dispatch; the
+    server still creates a draft and validates identity, content and recipient
+    before calling Fuxi.
+    """
+
+    raw = (os.environ.get(_CANVAS_MODE_ENV) or "all").strip().lower()
+    return raw not in {"trusted", "draft", "0", "false", "no", "off"}
 
 
 def recipient_map() -> dict[str, Any]:
@@ -57,6 +75,34 @@ def recipient_map() -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise ValueError("PROCESS360_RECIPIENT_MAP 必须是 JSON 对象")
     return parsed
+
+
+def resolve_canvas_recipients() -> list[str]:
+    """Resolve the single configured POC recipient without page input."""
+
+    mapping = recipient_map()
+    key = (os.environ.get(_CANVAS_RECIPIENT_ENV) or "").strip()
+    candidates = [key, "__default__"] if key else ["__default__"]
+    for candidate in candidates:
+        if candidate and candidate in mapping:
+            return normalize_recipients(mapping[candidate])
+    unique: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    for value in mapping.values():
+        try:
+            normalized = list(normalize_recipients(value))
+        except (TypeError, ValueError):
+            continue
+        fingerprint = tuple(sorted(normalized))
+        if fingerprint and fingerprint not in seen:
+            seen.add(fingerprint)
+            unique.append(normalized)
+    if len(unique) == 1:
+        return unique[0]
+    raise ValueError(
+        "临时直发需要唯一的服务端接收人映射；请配置 "
+        "PROCESS360_CANVAS_RECIPIENT 指向 PROCESS360_RECIPIENT_MAP 中的键"
+    )
 
 
 def resolve_recipients(draft: Mapping[str, Any], action: Mapping[str, Any]) -> list[str]:
@@ -77,6 +123,74 @@ def resolve_recipients(draft: Mapping[str, Any], action: Mapping[str, Any]) -> l
         "未配置接收人映射（PROCESS360_RECIPIENT_MAP）；任务令未发送，"
         "手机号只能由服务端配置提供"
     )
+
+
+def _canvas_action(action: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the display-only action sent by a Canvas page."""
+
+    if not isinstance(action, Mapping):
+        raise ValueError("action must be an object")
+    forbidden = set(action) & {
+        "recipients", "recipientsRaw", "recipients_raw", "phone", "mobile",
+        "principal", "tenantId", "userId", "grantKind", "canDispatch",
+    }
+    if forbidden:
+        raise ValueError(
+            "action must not contain recipient, identity or permission fields: "
+            + ", ".join(sorted(forbidden))
+        )
+    action_id = str(action.get("id") or action.get("actionId") or "").strip()
+    title = str(action.get("title") or "").strip()
+    content = str(action.get("content") or action.get("markdown") or "").strip()
+    if not action_id or len(action_id) > 160:
+        raise ValueError("action.id is required and must be at most 160 characters")
+    if not title or len(title) > 200:
+        raise ValueError("action.title is required and must be at most 200 characters")
+    if not content or len(content) > 12000:
+        raise ValueError("action.content is required and must be at most 12000 characters")
+    evidence = str(action.get("evidence") or "").strip()
+    if len(evidence) > 4000:
+        raise ValueError("action.evidence must be at most 4000 characters")
+    owner_ref = str(action.get("ownerRef") or action.get("owner_ref") or "").strip()
+    owner_name = str(action.get("ownerName") or action.get("owner_name") or "").strip()[:200]
+    scenario = str(action.get("scenario") or "CANVAS").strip().upper()[:40] or "CANVAS"
+    severity = str(action.get("severity") or "MEDIUM").strip().upper()
+    if severity not in {"CRITICAL", "HIGH", "MEDIUM", "LOW"}:
+        severity = "MEDIUM"
+    due_at = str(action.get("dueAt") or action.get("due_at") or "").strip()[:64]
+    _assert_no_phone(
+        json.dumps(
+            [action_id, title, content, evidence, owner_ref, owner_name, scenario, due_at],
+            ensure_ascii=False,
+        )
+    )
+    return {
+        "id": action_id,
+        "title": title,
+        "content": content,
+        "evidence": evidence,
+        "severity": severity,
+        "due_at": due_at,
+        "owner_ref": owner_ref,
+        "owner_name": owner_name,
+        "scenario": scenario,
+        "source": "boulderai-anaylize-todo",
+        "category": str(action.get("category") or "智能分析任务令").strip()[:80],
+        "task_template": str(action.get("taskTemplate") or action.get("task_template") or "").strip()[:80],
+        "metadata": {"temporaryCanvasDispatch": True},
+    }
+
+
+def _temporary_draft_id(identity: PrincipalScope, action: Mapping[str, Any]) -> str:
+    material = {
+        "tenant": identity.tenant_id,
+        "principal": identity.user_id,
+        "action": {
+            key: action.get(key)
+            for key in ("id", "title", "content", "evidence", "scenario", "owner_ref", "due_at")
+        },
+    }
+    return "canvas-" + digest(material)[:32]
 
 
 def execution_key(tenant_id: str, draft_id: str, action_id: str) -> str:
@@ -304,3 +418,147 @@ def dispatch_action(
         or make_source_todo_id(action_id, draft_id)
     )
     return response
+
+
+def dispatch_canvas_action(
+    service: Any,
+    *,
+    action: Mapping[str, Any],
+    draft_id: str = "",
+    draft_hash: str = "",
+    action_id: str = "",
+    request_id: str = "",
+    retry: bool = False,
+    client: FuxiTodoClient | None = None,
+) -> dict[str, Any]:
+    """Temporary POC path for every Canvas action card.
+
+    A full, unexpired trusted draft is used as-is.  Cards without one are
+    converted server-side into a small draft and are sent through the exact
+    same idempotent execution path.  The page never supplies a recipient, and
+    the configured single POC recipient is used for every card.
+    """
+
+    if not page_dispatch_enabled():
+        return envelope(
+            "blocked",
+            message="本服务未启用在页面直接下发任务令（PROCESS360_PAGE_DISPATCH=0）",
+            accepted=False,
+            draft_id=draft_id,
+            action_id=action_id,
+            request_id=request_id,
+        )
+    if not all_canvas_actions_dispatchable():
+        return envelope(
+            "blocked",
+            message="当前为可信草稿模式；该建议需要重新生成任务草稿",
+            accepted=False,
+            draft_id=draft_id,
+            action_id=action_id,
+            request_id=request_id,
+        )
+    try:
+        normalized = _canvas_action(action)
+    except ValueError as exc:
+        return envelope(
+            "blocked",
+            message=str(exc),
+            accepted=False,
+            draft_id=draft_id,
+            action_id=action_id,
+            request_id=request_id,
+        )
+
+    context = active_request_context()
+    identity = context.principal if context is not None else None
+    if identity is None:
+        resolver = getattr(service, "_principal", None)
+        identity = resolver(None) if callable(resolver) else PrincipalScope.local()
+    if not identity.can_dispatch:
+        return envelope(
+            "blocked",
+            message="当前用户无任务下发权限",
+            accepted=False,
+            draft_id=draft_id,
+            action_id=action_id,
+            request_id=request_id,
+            gaps=[{
+                "code": "DISPATCH_NOT_AUTHORIZED",
+                "name": "当前用户无任务下发权限",
+                "needed": "宿主授予 canDispatch 或交由有权限人员点击",
+                "impact": "未创建待办",
+                "severity": "blocking",
+                "source": "host",
+            }],
+        )
+    try:
+        recipients = resolve_canvas_recipients()
+    except ValueError as exc:
+        return envelope(
+            "blocked",
+            message=str(exc),
+            accepted=False,
+            draft_id=draft_id,
+            action_id=action_id,
+            request_id=request_id,
+        )
+
+    requested_action_id = str(action_id or normalized["id"]).strip()
+    existing = service.store.get_draft(str(draft_id or "")) if draft_id else None
+    existing_action = bool(existing and requested_action_id in (existing.get("actions") or {}))
+    existing_ready = bool(
+        existing
+        and existing_action
+        and not existing.get("expired")
+        and str(existing.get("approval_status") or "").lower() in _TRUSTED_APPROVAL_STATES
+        and str(existing.get("payload_hash") or "") == str(draft_hash or "")
+    )
+    if existing_ready:
+        return dispatch_action(
+            service,
+            draft_id=draft_id,
+            draft_hash=draft_hash,
+            action_id=requested_action_id,
+            request_id=request_id,
+            recipients=recipients,
+            retry=retry,
+            client=client,
+        )
+
+    temporary_id = _temporary_draft_id(identity, normalized)
+    temporary_action_id = str(normalized["id"])
+    temporary = service.store.get_draft(temporary_id)
+    if temporary and (
+        temporary.get("expired")
+        or temporary_action_id not in (temporary.get("actions") or {})
+    ):
+        temporary_id = f"{temporary_id}-{int(time.time() // 3600)}"
+        temporary = service.store.get_draft(temporary_id)
+    temporary_hash = str((temporary or {}).get("payload_hash") or "")
+    if not temporary or temporary_action_id not in (temporary.get("actions") or {}):
+        payload = {
+            "status": "ok",
+            "temporaryCanvasDispatch": True,
+            "canvasActions": [normalized],
+        }
+        saved = service.store.save_draft(
+            payload=payload,
+            scenario=str(normalized.get("scenario") or "CANVAS"),
+            tenant=identity.tenant_id,
+            principal=identity.user_id,
+            approval_status="host_click_authorized",
+            draft_id=temporary_id,
+        )
+        temporary_hash = str(saved.get("hash") or "")
+    result = dispatch_action(
+        service,
+        draft_id=temporary_id,
+        draft_hash=temporary_hash,
+        action_id=temporary_action_id,
+        request_id=request_id,
+        recipients=recipients,
+        retry=retry,
+        client=client,
+    )
+    result["temporaryDraft"] = True
+    return result

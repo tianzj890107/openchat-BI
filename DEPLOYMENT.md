@@ -252,8 +252,9 @@ ONTOLOGY_MCP_EXPOSED_TOOLS=         # 逗号分隔的工具白名单；默认 17
 
 ### Fuxi 风险待办（任务令）
 
-Canvas 的 `actions` 块只展示行动建议和“发送任务令”按钮；用户点击后由 Fuxi 宿主
-携带当前用户手机号调用 MCP `TaskOrderCreate`。服务端再按
+Canvas 的 `actions` 块展示行动建议和“发送任务令”按钮；默认由页面直连主服务
+`POST /api/process360/task-orders`，Fuxi 宿主桥接仅在显式启用时使用。页面不提交手机号，
+接收人由服务端 `PROCESS360_RECIPIENT_MAP` 解析。服务端再按
 `POST /source/todo-batches` 写入 Fuxi 风险待办，不调用 X360，也不发送 Fuxi IM。
 
 ```dotenv
@@ -262,6 +263,14 @@ FUXI_CONTROL_BASE_URL=http://172.16.5.69:8080
 FUXI_SOURCE_CODE=boulderai-anaylize-todo   # Fuxi 管理台注册并启用的来源编码
 FUXI_TODO_CATEGORY=智能分析任务令
 FUXI_TODO_TIMEOUT_SECONDS=10
+```
+
+```dotenv
+# 临时 POC：所有有正文的 Canvas 行动卡都可点击；无草稿时服务端即时补建一次性草稿。
+# 设为 trusted 恢复仅可信草稿可发送。
+PROCESS360_CANVAS_DISPATCH_MODE=all
+# 可选：指定 PROCESS360_RECIPIENT_MAP 中的键；为空时使用 __default__ 或唯一接收人。
+PROCESS360_CANVAS_RECIPIENT=
 ```
 
 - `recipients_raw` 必须是真实手机号；服务端会剥除 `+86`、空格和横线。

@@ -158,7 +158,7 @@ def test_task_order_executor_uses_fuxi_client(monkeypatch: pytest.MonkeyPatch) -
     assert client.calls[0][0] == "/source/todo-batches"
 
 
-def test_canvas_actions_block_marks_plain_suggestions_as_non_dispatchable(
+def test_canvas_actions_block_marks_plain_suggestions_as_temporary_dispatchable(
     tmp_path: Path,
 ) -> None:
     canvas = mcp_endpoint._canvas_tools()
@@ -182,15 +182,39 @@ def test_canvas_actions_block_marks_plain_suggestions_as_non_dispatchable(
     html = (tmp_path / "dataset" / "canvas").glob("*.html")
     page = next(html).read_text(encoding="utf-8")
     assert "分析建议" in page
-    assert "尚未生成任务草稿，仅供分析参考" in page
+    assert "临时直发" in page
+    assert "点击后将按当前卡片内容生成待办" in page
     assert 'title="缺少草稿字段' not in page
-    assert "<button" not in page
-    assert 'data-fuxi-task-order="action-1"' not in page
+    assert 'data-fuxi-task-order="action-1"' in page
+    assert "PROCESS360_ALLOW_ALL_ACTIONS = true" in page
+    assert "PROCESS360_ALLOW_ALL_ACTIONS ? '' : draftIssue(action)" in page
+    assert "action: taskAction(action)" in page
     assert 'name="canvas-actions"' in page
     assert '&quot;status&quot;:&quot;recommendations&quot;' in page
     assert "fuxi:task-order-result" in page
     assert "/api/process360/task-orders" in page
     assert '"actions"' in output
+
+
+def test_canvas_actions_trusted_mode_keeps_plain_suggestions_non_dispatchable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PROCESS360_CANVAS_DISPATCH_MODE", "trusted")
+    canvas = mcp_endpoint._canvas_tools()
+    execute = canvas._make_canvas_generate()
+    output = execute({
+        "title": "分析建议",
+        "conclusion": "结论：先核实。",
+        "blocks": [{"kind": "actions", "params": {"items": [{
+            "id": "action-1", "title": "跟进回款", "content": "由责任人逐户复核。",
+        }]}}],
+    }, str(tmp_path))
+    assert "Canvas generated" in output
+    page = next((tmp_path / "dataset" / "canvas").glob("*.html")).read_text(encoding="utf-8")
+    assert "分析建议" in page
+    assert "尚未生成任务草稿，仅供分析参考" in page
+    assert 'data-fuxi-task-order="action-1"' not in page
+    assert "PROCESS360_ALLOW_ALL_ACTIONS = false" in page
 
 
 def test_canvas_actions_preserve_process360_dispatch_metadata(tmp_path: Path) -> None:
@@ -236,7 +260,10 @@ def test_canvas_actions_preserve_process360_dispatch_metadata(tmp_path: Path) ->
     assert 'title="该建议待审批' not in page
 
 
-def test_canvas_actions_reject_phone_and_pending_approval(tmp_path: Path) -> None:
+def test_canvas_actions_reject_phone_and_pending_approval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PROCESS360_CANVAS_DISPATCH_MODE", "trusted")
     canvas = mcp_endpoint._canvas_tools()
     execute = canvas._make_canvas_generate()
     rejected = execute({

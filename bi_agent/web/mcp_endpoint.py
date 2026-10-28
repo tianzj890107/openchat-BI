@@ -38,7 +38,14 @@ from ..integrations.fuxi_todo import FuxiTodoClient, FuxiTodoError
 from ..process360 import tools as process360_tools
 from ..process360.execute import _assert_no_phone
 from ..process360 import audit as process360_audit
-from ..process360.dispatch import dispatch_action, dispatch_draft, envelope, execution_key
+from ..process360.dispatch import (
+    all_canvas_actions_dispatchable,
+    dispatch_action,
+    dispatch_canvas_action,
+    dispatch_draft,
+    envelope,
+    execution_key,
+)
 from ..process360.identity import (
     PrincipalScope,
     active_principal_payload,
@@ -1285,12 +1292,34 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
                 "会话与执行上下文由服务端解析；页面不得提交 "
                 + ", ".join(sorted(forbidden_context)),
             )
+        action_payload = body.get("action")
+        if action_payload is not None and not isinstance(action_payload, dict):
+            raise HTTPException(400, "action must be an object")
+        if isinstance(action_payload, dict):
+            forbidden_action = set(action_payload) & {
+                "recipients", "recipientsRaw", "recipients_raw", "phone", "mobile",
+                "principal", "tenantId", "userId", "grantKind", "canDispatch",
+            }
+            if forbidden_action:
+                raise HTTPException(
+                    400,
+                    "接收人、身份与权限由服务端解析；action 不得提交 "
+                    + ", ".join(sorted(forbidden_action)),
+                )
         draft_id = str(body.get("draftId") or "").strip()
         draft_hash = str(body.get("draftHash") or "").strip()
-        action_id = str(body.get("actionId") or "").strip()
+        action_id = str(
+            body.get("actionId")
+            or (action_payload or {}).get("actionId")
+            or (action_payload or {}).get("id")
+            or ""
+        ).strip()
         request_id = str(body.get("requestId") or uuid.uuid4().hex)
         retry = body.get("retry") is True
-        if not draft_id or not draft_hash or not action_id:
+        temporary_canvas_dispatch = bool(
+            isinstance(action_payload, dict) and all_canvas_actions_dispatchable()
+        )
+        if (not draft_id or not draft_hash or not action_id) and not temporary_canvas_dispatch:
             return JSONResponse(
                 {
                     "schema": "process360.dispatch.v1",
@@ -1309,15 +1338,27 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
         token = set_request_context(context)
         process360_audit.ensure_request("canvas")
         try:
-            result = await asyncio.to_thread(
-                dispatch_draft,
-                service,
-                draft_id=draft_id,
-                draft_hash=draft_hash,
-                action_id=action_id,
-                request_id=request_id,
-                retry=retry,
-            )
+            if temporary_canvas_dispatch:
+                result = await asyncio.to_thread(
+                    dispatch_canvas_action,
+                    service,
+                    action=action_payload,
+                    draft_id=draft_id,
+                    draft_hash=draft_hash,
+                    action_id=action_id,
+                    request_id=request_id,
+                    retry=retry,
+                )
+            else:
+                result = await asyncio.to_thread(
+                    dispatch_draft,
+                    service,
+                    draft_id=draft_id,
+                    draft_hash=draft_hash,
+                    action_id=action_id,
+                    request_id=request_id,
+                    retry=retry,
+                )
         finally:
             reset_request_context(token)
         return JSONResponse(result)

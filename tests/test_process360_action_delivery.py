@@ -197,9 +197,10 @@ def test_gate_keeps_plain_suggestions_for_a_non_action_analysis(
         ],
     )
     assert "分析建议" in page
-    assert "尚未生成任务草稿" in page
+    assert "临时直发" in page
+    assert "点击后将按当前卡片内容生成待办" in page
     assert 'title="缺少草稿字段' not in page
-    assert "<button" not in page
+    assert "data-fuxi-task-order" in page
     report = _gate(
         tmp_path,
         {

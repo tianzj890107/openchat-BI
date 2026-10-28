@@ -130,7 +130,9 @@ Process360Plan → Query/Analyze → Process360Draft → CanvasGenerate → Outp
 `OutputGateCheck` 会读取计划中的行动交付要求：要求行动卡却没有卡片、卡片引用缺失或与
 服务端草稿不一致时 reject；草稿确实 blocked 且 HTML 明确披露原因时允许交付分析结论。
 纯查询、纯分析报告不受此限制。非行动交付的普通建议若放入 actions 块但未填写任何草稿
-引用，页面会标为“分析建议”且不出现发送按钮；P10/P11/P12 不能用这种卡片绕过 Draft。
+引用，严格模式下页面会标为“分析建议”且不出现发送按钮。临时 POC 直发模式
+（`PROCESS360_CANVAS_DISPATCH_MODE=all`，当前默认）会把这些卡片显示为可发送，并由
+服务端即时补建一次性草稿；这不改变 SOP，P10/P11/P12 仍必须先调用 Draft。
 
 只有用户明确说“只要一句话 / 不要文件 / 不要图表”时，才可以省略 HTML 或图表；
 路由、取数和对账仍然必须执行。
@@ -259,16 +261,18 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
 - Process360 草稿生成的行动卡必须原样带上 `draftId`、`draftHash`、`runId`、
   `actionId`、`scenario`、`approvalStatus`、`expiresAt`、`dispatchTool`。按钮只携带
   这些不透明引用和展示字段，不携带任务正文替代品、手机号或凭据。
-- 未携带任何服务端草稿引用的 actions 条目是普通“分析建议”：可展示，但不出现发送按钮，
-  并明确提示“尚未生成任务草稿”。带任一草稿引用但六项字段
+- 未携带任何服务端草稿引用的 actions 条目是普通“分析建议”：严格模式不出现发送按钮并
+  提示“尚未生成任务草稿”；临时 POC 直发模式显示“临时直发”，点击后由服务端按当前卡片
+  内容生成一次性草稿。带任一草稿引用但六项字段
   （`draftId/draftHash/actionId/approvalStatus/expiresAt/dispatchTool`）不完整的旧版卡片
-  仍按钮禁用并显示“缺少草稿字段，请重新生成任务草稿”，不能手工补字段。
+  在严格模式仍按钮禁用并显示“缺少草稿字段，请重新生成任务草稿”，不能手工补字段。
 - 交付闸门会检查计划 `actionDeliveryRequired`：要求行动卡但 HTML 没有卡片、行动卡引用的
   草稿不存在/哈希不符/不属于该草稿时 reject；草稿 blocked 时必须由计划记录一次 Draft
   尝试，并在 HTML 中用空的 actions 块写明原因，才允许交付分析结论。要求行动交付时，
   普通“分析建议”不能替代可信行动卡。
-- 点击“发送任务令”时，页面只把草稿引用 POST 到主服务
-  `/api/process360/task-orders`；服务端解析身份、映射接收人、回读草稿并调用统一执行服务。
+- 点击“发送任务令”时，页面只把草稿引用和当前卡片展示字段 POST 到主服务
+  `/api/process360/task-orders`；服务端解析身份、映射接收人、回读或按需补建草稿并调用
+  统一执行服务。临时模式的接收人取服务端唯一配置，页面仍不得提交手机号。
   只有显式设置 `window.PROCESS360_TASK_ORDER_TRANSPORT='host'` 时才走 Fuxi 宿主桥接，
   HTTP 异常不会自动切换传输方式，避免服务端已执行后重复发送。
 - 统一回执：仅当服务端状态明确成功、`accepted=true`、回执 `ok=true` 且 `applied+skipped>0`

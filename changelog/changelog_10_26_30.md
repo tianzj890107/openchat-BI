@@ -396,11 +396,16 @@
   有 Draft 尝试记录和明确原因。
 - Canvas：actions 块支持空的阻断占位（`items=[]` + `reason/gaps`），输出机器可读
   `canvas-actions` 元数据；有效卡片继续复用原有按钮、审批/过期禁用和统一下发状态机。
-- Canvas 状态修正：未携带任何服务端草稿引用的建议卡标记为“分析建议”，不再误显示
-  “缺少草稿字段”，也不出现发送按钮；只有携带部分草稿字段的旧版卡才显示缺字段错误，
-  六项字段完整且审批有效时才显示“发送任务令”。交付闸门对非行动分析允许普通建议，
-  但要求行动交付的计划仍拒绝用普通建议冒充可信行动卡。
-- 验证：新增行动交付与建议卡状态测试 15 项通过；Process360/Canvas/MCP 聚焦测试 120 项
-  通过；全量 Python `1613 passed / 37 skipped`，仅保留 worktree 缺少前端
+- Canvas 状态修正：未携带任何服务端草稿引用的建议卡不再误显示“缺少草稿字段”。严格模式
+  （`PROCESS360_CANVAS_DISPATCH_MODE=trusted`）下它们显示“分析建议”且不出现发送按钮；
+  当前临时 POC 模式（默认 `all`）下所有有正文的行动卡显示“发送任务令”和“临时直发”，
+  点击后由主服务按卡片内容即时创建一次性草稿，再复用身份、手机号检查、幂等和 Fuxi 回执
+  链路。部分草稿字段、待审批或过期状态不改写为可信卡；临时模式只负责补建本次草稿。
+- 接收人：临时直发由服务端从 `PROCESS360_RECIPIENT_MAP` 选取唯一接收人（可用
+  `PROCESS360_CANVAS_RECIPIENT` 指定键），当前环境统一落到沈康；页面和 HTML 不包含
+  手机号，也不能提交接收人或身份字段。切回 `trusted` 即恢复严格草稿按钮规则。
+- 验证：行动交付、临时直发、接收人和 HTTP 安全边界相关测试 57 项通过；
+  Process360/Canvas/MCP 聚焦测试 151 项通过；全量 Python `1620 passed / 37 skipped`，
+  仅保留 worktree 缺少前端
   `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的既有环境失败。
 - 边界：旧 HTML 不会自动补按钮，需要重新生成；本轮未部署、未创建 MR/tag/Release。

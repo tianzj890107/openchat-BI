@@ -82,7 +82,10 @@ def test_success_requires_a_receipt_that_proves_an_item_was_applied() -> None:
     assert zero_rows["state"] == "unconfirmed"
 
 
-def test_canvas_distinguishes_missing_fields_pending_approval_and_expiry(tmp_path: Path) -> None:
+def test_canvas_distinguishes_missing_fields_pending_approval_and_expiry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PROCESS360_CANVAS_DISPATCH_MODE", "trusted")
     base = {
         "id": "a1",
         "title": "核查",

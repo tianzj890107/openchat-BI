@@ -499,6 +499,12 @@ def _validate_action_block(params: dict) -> list[dict[str, Any]]:
 
 REQUIRED_DRAFT_FIELDS = ("draftId", "draftHash", "actionId", "approvalStatus", "expiresAt", "dispatchTool")
 DRAFT_REF_FIELDS = ("draftId", "draftHash", "approvalStatus", "expiresAt", "dispatchTool")
+_CANVAS_DISPATCH_MODE_ENV = "PROCESS360_CANVAS_DISPATCH_MODE"
+
+
+def _all_canvas_actions_dispatchable() -> bool:
+    raw = (os.environ.get(_CANVAS_DISPATCH_MODE_ENV) or "all").strip().lower()
+    return raw not in {"trusted", "draft", "0", "false", "no", "off"}
 
 
 def _draft_ready(item: dict[str, Any]) -> bool:
@@ -576,7 +582,22 @@ def _render_actions(
             )
         issue = item["draftIssue"]
         recommendation = not item["draftReady"] and not item["hasDraftRefs"]
-        if recommendation:
+        temporary_dispatch = _all_canvas_actions_dispatchable() and (
+            recommendation or bool(issue)
+        )
+        if temporary_dispatch:
+            if recommendation:
+                chips.append('<span class="action-chip">分析建议</span>')
+            chips.append('<span class="action-chip temporary">临时直发</span>')
+            action_control = (
+                f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}">'
+                "发送任务令</button>"
+            )
+            issue_note = (
+                '<p class="action-recommendation-note">临时演示：该卡尚未生成可信草稿，'
+                "点击后将按当前卡片内容生成待办，并发送给服务端配置的接收人。</p>"
+            )
+        elif recommendation:
             chips.append('<span class="action-chip">分析建议</span>')
             action_control = ""
             issue_note = (
@@ -655,7 +676,14 @@ def _render_actions(
     return (
         f'<div class="action-list">{"".join(cards)}</div>',
         items,
-        {"status": state, "count": len(items), "items": meta_items, "reason": "", "gaps": []},
+        {
+            "status": state,
+            "count": len(items),
+            "items": meta_items,
+            "reason": "",
+            "gaps": [],
+            "temporaryDispatch": _all_canvas_actions_dispatchable(),
+        },
     )
 
 
@@ -664,6 +692,7 @@ ACTION_RUNTIME = r"""
   const PROCESS360_ACTIONS = __ACTIONS__;
   const PROCESS360_DISPATCH = { url: __DISPATCH_URL__, timeoutMs: 25000 };
   const PROCESS360_HOST_ORIGIN = __HOST_ORIGIN__;
+  const PROCESS360_ALLOW_ALL_ACTIONS = __ALLOW_ALL_ACTIONS__;
   const PENDING = new Map();
   const DRAFT_STATE_MESSAGES = {
     missing: '缺少草稿字段，请重新生成任务草稿',
@@ -814,6 +843,39 @@ ACTION_RUNTIME = r"""
     }
   }
 
+  function taskAction(action) {
+    return {
+      id: action.id,
+      actionId: action.actionId || action.id,
+      title: action.title,
+      content: action.content,
+      evidence: action.evidence || '',
+      severity: action.severity || 'MEDIUM',
+      dueAt: action.dueAt || action.due_at || '',
+      ownerRef: action.ownerRef || action.owner_ref || '',
+      ownerName: action.ownerName || action.owner_name || '',
+      scenario: action.scenario || 'CANVAS',
+      category: action.category || '智能分析任务令',
+      taskTemplate: action.taskTemplate || action.task_template || '',
+    };
+  }
+
+  function adoptServerIdentity(action, payload) {
+    if (!action || !payload || typeof payload !== 'object') return;
+    const draftId = String(payload.draftId || '').trim();
+    const actionId = String(payload.actionId || action.actionId || action.id || '').trim();
+    const previous = {
+      draftId: action.draftId || '',
+      actionId: action.actionId || action.id || '',
+    };
+    if (draftId) action.draftId = draftId;
+    if (actionId) action.actionId = actionId;
+    if (draftId) {
+      forgetPending(previous);
+      rememberPending(action);
+    }
+  }
+
   async function postDirect(action, button) {
     const { response, payload } = await fetchPayload(PROCESS360_DISPATCH.url, {
       method: 'POST',
@@ -824,6 +886,7 @@ ACTION_RUNTIME = r"""
         actionId: action.actionId || action.id,
         requestId: action.__requestId,
         retry: button.dataset.retry === 'true',
+        action: taskAction(action),
       }),
     });
     if (!response.ok) {
@@ -929,7 +992,7 @@ ACTION_RUNTIME = r"""
     if (!button || button.disabled) return;
     const action = PROCESS360_ACTIONS[button.getAttribute('data-fuxi-task-order')];
     if (!action) return;
-    const issue = draftIssue(action);
+    const issue = PROCESS360_ALLOW_ALL_ACTIONS ? '' : draftIssue(action);
     if (issue) {
       setActionState(button, DRAFT_STATE_MESSAGES[issue], 'error');
       return;
@@ -943,6 +1006,7 @@ ACTION_RUNTIME = r"""
       draft_hash: action.draftHash,
       run_id: action.runId || undefined,
       dispatch_tool: action.dispatchTool,
+      action: taskAction(action),
       retry: button.dataset.retry === 'true',
     };
     rememberPending(action);
@@ -964,6 +1028,7 @@ ACTION_RUNTIME = r"""
       setActionState(button, '本页未连接任务服务，也未检测到 Fuxi 宿主桥接', 'error');
       return;
     }
+    adoptServerIdentity(action, payload);
     const result = applyReceipt(button, payload, action);
     if (result.state === 'unconfirmed') monitorStatus(button, action, 0);
   });
@@ -988,6 +1053,10 @@ def _actions_runtime(actions: list[dict[str, Any]]) -> str:
         .replace("__ACTIONS__", _json_for_script(payload))
         .replace("__DISPATCH_URL__", json.dumps(url))
         .replace("__HOST_ORIGIN__", json.dumps(host_origin))
+        .replace(
+            "__ALLOW_ALL_ACTIONS__",
+            "true" if _all_canvas_actions_dispatchable() else "false",
+        )
     )
 
 
@@ -1039,6 +1108,7 @@ PAGE_STYLE = """
   .action-chip { border-radius: 999px; padding: 2px 8px; background: #F2F4F7;
     color: #475467; font-size: 11px; }
   .action-chip.severity { background: #FEF3F2; color: #B42318; }
+  .action-chip.temporary { background: #EAF3FF; color: #0B4FA8; }
   .action-send { flex: none; border: 1px solid #1570EF; border-radius: 8px;
     background: #1570EF; color: #FFFFFF; padding: 6px 11px; font-size: 12px;
     font-family: inherit; cursor: pointer; }
@@ -1222,6 +1292,7 @@ def _make_canvas_generate(
                 ],
                 "reason": "",
                 "gaps": [],
+                "temporaryDispatch": _all_canvas_actions_dispatchable(),
             }
         elif blocked_action_state is not None:
             action_meta = blocked_action_state

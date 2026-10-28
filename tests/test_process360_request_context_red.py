@@ -200,6 +200,90 @@ def test_http_dispatch_passes_an_explicit_safe_retry(monkeypatch) -> None:
     assert captured["retry"] is True
 
 
+def test_http_dispatch_accepts_a_temporary_canvas_action_without_draft_fields(
+    monkeypatch,
+) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from bi_agent.web import mcp_endpoint
+
+    monkeypatch.setenv("PROCESS360_CANVAS_DISPATCH_MODE", "all")
+    captured = {}
+
+    def fake_dispatch(service, **kwargs):
+        captured.update(kwargs)
+        return {
+            "schema": "process360.dispatch.v1",
+            "status": "blocked",
+            "accepted": False,
+            "message": "captured",
+            "receipt": None,
+            "draftId": "canvas-temp",
+            "actionId": kwargs["action_id"],
+            "requestId": kwargs["request_id"],
+        }
+
+    monkeypatch.setattr(mcp_endpoint, "dispatch_canvas_action", fake_dispatch)
+    app = FastAPI()
+    app.include_router(
+        mcp_endpoint.build_mcp_router(
+            get_source=lambda: None,
+            build_doris=lambda *args, **kwargs: None,
+            get_cwd=lambda: ".",
+            executor_factory=lambda source: {},
+            request_principal=lambda request: PRINCIPAL,
+        )
+    )
+    response = TestClient(app).post(
+        "/api/process360/task-orders",
+        json={
+            "action": {
+                "id": "action-1",
+                "title": "核实回款",
+                "content": "由财务复核逾期账户。",
+            },
+            "actionId": "action-1",
+            "requestId": "click-temp",
+        },
+    )
+    assert response.status_code == 200
+    assert captured["action"]["title"] == "核实回款"
+    assert captured["request_id"] == "click-temp"
+
+
+def test_http_dispatch_rejects_recipient_fields_inside_action() -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from bi_agent.web import mcp_endpoint
+
+    app = FastAPI()
+    app.include_router(
+        mcp_endpoint.build_mcp_router(
+            get_source=lambda: None,
+            build_doris=lambda *args, **kwargs: None,
+            get_cwd=lambda: ".",
+            executor_factory=lambda source: {},
+            request_principal=lambda request: PRINCIPAL,
+        )
+    )
+    response = TestClient(app).post(
+        "/api/process360/task-orders",
+        json={
+            "action": {
+                "id": "action-1",
+                "title": "核实回款",
+                "content": "由财务复核逾期账户。",
+                "recipients": ["18800000001"],
+            },
+            "actionId": "action-1",
+            "requestId": "click-temp",
+        },
+    )
+    assert response.status_code == 400
+
+
 def test_http_status_marks_an_unknown_receipt_retryable(monkeypatch) -> None:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

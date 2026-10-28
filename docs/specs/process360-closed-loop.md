@@ -164,9 +164,15 @@ S05 Process360Draft.canvasActionBlock（内部 items=draft.canvasActions[]）
 ```
 
 - 建议卡必须携带 `draftId/draftHash/runId/actionId/scenario/approvalStatus/expiresAt/
-  dispatchTool` 六项关键字段。未携带任何服务端草稿引用的普通建议卡显示“分析建议”，
-  不出现发送按钮，并明确说明“尚未生成任务草稿”；带任一草稿引用但六项字段不完整的旧版卡
-  仍按钮禁用并显示“缺少草稿字段，请重新生成任务草稿”，服务端也不接受手工补字段。
+  dispatchTool` 六项关键字段。可信模式下，未携带任何服务端草稿引用的普通建议卡显示
+  “分析建议”且不出现发送按钮；带任一草稿引用但六项字段不完整的旧版卡按钮禁用并显示
+  “缺少草稿字段，请重新生成任务草稿”，服务端也不接受手工补字段。
+- 临时 POC 直发模式 `PROCESS360_CANVAS_DISPATCH_MODE=all`（当前默认）下，所有有正文的
+  actions 卡片显示“发送任务令”。没有可信草稿的卡片由服务端按当前卡片内容即时创建一次性
+  草稿，再走同一套身份、手机号检查、幂等和回执链路；部分字段、待审批或过期卡片不再伪装成
+  可直接使用的可信草稿。接收人统一取服务端映射中的唯一配置（或
+  `PROCESS360_CANVAS_RECIPIENT` 指定键），页面不能传手机号。切回 `trusted` 即恢复
+  严格草稿按钮规则。
 - 服务端计划标记 `actionDeliveryRequired=true` 时（P10 对策、P11 任务草稿、P12 下发），
   计划必须包含 `Process360Analyze` 与 `Process360Draft` 步骤。`Process360Draft` 返回的
   `canvasActionBlock` 必须原样进入 HTML；只写文字建议视为漏交付。
