@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
+from .identity import active_principal_payload
 from .service import Process360Service
 
 Executor = Callable[[dict[str, Any], str], str]
@@ -112,6 +113,11 @@ PROCESS360_QUERY_SCHEMA: dict[str, Any] = {
             "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
             "scope": SCOPE_SCHEMA,
             "principal": PRINCIPAL_SCHEMA,
+            "queryId": {
+                "type": "string",
+                "description": "复用上一轮 Process360Query 返回的服务端结果引用；提供时不再重新查库",
+            },
+            "sample": {"type": "integer", "minimum": 0, "maximum": 50, "default": 5},
         },
         "required": ["scenario", "principal"],
         "additionalProperties": False,
@@ -131,6 +137,7 @@ PROCESS360_ANALYZE_SCHEMA: dict[str, Any] = {
             "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
             "scope": SCOPE_SCHEMA,
             "principal": PRINCIPAL_SCHEMA,
+            "queryId": {"type": "string", "description": "复用服务端查询结果；与 scope 同时提供时以该结果为口径"},
             "evidence": {
                 "type": "array",
                 "items": {"type": "object"},
@@ -160,6 +167,7 @@ PROCESS360_DRAFT_SCHEMA: dict[str, Any] = {
             "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
             "scope": SCOPE_SCHEMA,
             "runId": {"type": "string", "description": "服务端分析运行 ID；有值时以其冻结分析为准"},
+            "queryId": {"type": "string", "description": "复用服务端查询结果引用"},
             "principal": PRINCIPAL_SCHEMA,
             "ownerRef": {"type": "string", "description": "唯一牵头人 ID（可空）"},
             "ownerName": {"type": "string"},
@@ -186,6 +194,7 @@ PROCESS360_VERIFY_SCHEMA: dict[str, Any] = {
             "scope": SCOPE_SCHEMA,
             "principal": PRINCIPAL_SCHEMA,
             "runId": {"type": "string", "description": "Process360Analyze 返回的服务端冻结运行"},
+            "queryId": {"type": "string", "description": "复用服务端查询结果引用"},
             "approvalRef": {"type": "string", "description": "业务批准记录编号"},
             "approvedTarget": {"type": "number", "description": "批准目标比例"},
             "approvedDirection": {"type": "string", "enum": [">=", "<="]},
@@ -278,6 +287,7 @@ PROCESS360_STRUCTURE_SCHEMA: dict[str, Any] = {
             "scenario": {"type": "string", "enum": ["SC01", "SC02", "SC03", "SC04", "SC05"]},
             "scope": SCOPE_SCHEMA,
             "principal": PRINCIPAL_SCHEMA,
+            "queryId": {"type": "string", "description": "复用服务端查询结果引用"},
             "dimension": {"type": "string"},
             "valueField": {"type": "string"},
             "topN": {"type": "integer", "minimum": 1, "maximum": 100},
@@ -355,7 +365,31 @@ PROCESS360_SOLUTIONS_SCHEMA: dict[str, Any] = {
     },
 }
 
-SPECS = (
+
+def _without_principal(spec: dict[str, Any]) -> dict[str, Any]:
+    """Public schemas never expose the identity field.
+
+    The principal is injected by the server for each tool call.  Removing it
+    here (rather than trusting every caller) also means the strict
+    ``additionalProperties: False`` validator rejects a model that tries to
+    supply one.
+    """
+    schema = dict(spec)
+    input_schema = dict(schema.get("input_schema") or {})
+    properties = dict(input_schema.get("properties") or {})
+    properties.pop("principal", None)
+    input_schema["properties"] = properties
+    if "required" in input_schema:
+        required = [item for item in input_schema["required"] if item != "principal"]
+        if required:
+            input_schema["required"] = required
+        else:
+            input_schema.pop("required")
+    schema["input_schema"] = input_schema
+    return schema
+
+
+SPECS = tuple(_without_principal(spec) for spec in (
     PROCESS360_ROUTE_SCHEMA,
     PROCESS360_SEARCH_SCHEMA,
     PROCESS360_CONTEXT_SCHEMA,
@@ -371,7 +405,7 @@ SPECS = (
     PROCESS360_PROGRESS_SCHEMA,
     PROCESS360_FORECAST_SCHEMA,
     PROCESS360_SOLUTIONS_SCHEMA,
-)
+))
 
 
 def _service(cwd: str) -> Process360Service:
@@ -380,6 +414,19 @@ def _service(cwd: str) -> Process360Service:
 
 def _json(value: dict[str, Any]) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def _principal(params: dict[str, Any]) -> dict[str, Any] | None:
+    """Trusted identity for this call.
+
+    The MCP runtime injects the server-resolved principal through a context
+    variable.  ``params["principal"]`` only exists for direct in-process
+    callers (tests, the web dispatch route) and is never model-visible.
+    """
+    injected = active_principal_payload()
+    if injected:
+        return dict(injected)
+    return params.get("principal")
 
 
 def _route(params: dict[str, Any], cwd: str) -> str:
@@ -409,7 +456,9 @@ def _query(params: dict[str, Any], cwd: str) -> str:
         _service(cwd).query(
             str(params.get("scenario") or ""),
             scope=params.get("scope"),
-            principal=params.get("principal"),
+            principal=_principal(params),
+            query_id=str(params.get("queryId") or ""),
+            sample=int(params.get("sample") if params.get("sample") is not None else 5),
         )
     )
 
@@ -420,7 +469,8 @@ def _analyze(params: dict[str, Any], cwd: str) -> str:
             question=str(params.get("question") or ""),
             scenario=params.get("scenario"),
             scope=params.get("scope"),
-            principal=params.get("principal"),
+            principal=_principal(params),
+            query_id=str(params.get("queryId") or ""),
             evidence=params.get("evidence"),
             forecast_inputs=params.get("forecastInputs"),
         )
@@ -434,7 +484,7 @@ def _draft(params: dict[str, Any], cwd: str) -> str:
             scenario=params.get("scenario"),
             scope=params.get("scope"),
             run_id=str(params.get("runId") or ""),
-            principal=params.get("principal"),
+            principal=_principal(params),
             owner_ref=str(params.get("ownerRef") or ""),
             owner_name=str(params.get("ownerName") or ""),
             due_at=str(params.get("dueAt") or ""),
@@ -450,7 +500,8 @@ def _verify(params: dict[str, Any], cwd: str) -> str:
             scenario=str(params.get("scenario") or ""),
             scope=params.get("scope"),
             run_id=str(params.get("runId") or ""),
-            principal=params.get("principal"),
+            principal=_principal(params),
+            query_id=str(params.get("queryId") or ""),
             approval_ref=str(params.get("approvalRef") or ""),
             approved_target=params.get("approvedTarget"),
             approved_direction=str(params.get("approvedDirection") or ""),
@@ -468,7 +519,7 @@ def _plan(params: dict[str, Any], cwd: str) -> str:
             question=str(params.get("question") or ""),
             scenario=params.get("scenario"),
             scope=params.get("scope"),
-            principal=params.get("principal"),
+            principal=_principal(params),
             budget=params.get("budget"),
         )
     )
@@ -481,7 +532,7 @@ def _explore(params: dict[str, Any], cwd: str) -> str:
             step_id=str(params.get("stepId") or ""),
             tool=str(params.get("tool") or ""),
             parameters=params.get("parameters"),
-            principal=params.get("principal"),
+            principal=_principal(params),
         )
     )
 
@@ -491,7 +542,7 @@ def _compare(params: dict[str, Any], cwd: str) -> str:
         _service(cwd).compare_periods(
             str(params.get("scenario") or ""),
             scope=params.get("scope"),
-            principal=params.get("principal"),
+            principal=_principal(params),
             periods=int(params.get("periods") or 2),
         )
     )
@@ -502,10 +553,11 @@ def _structure(params: dict[str, Any], cwd: str) -> str:
         _service(cwd).structure(
             str(params.get("scenario") or ""),
             scope=params.get("scope"),
-            principal=params.get("principal"),
+            principal=_principal(params),
             dimension=str(params.get("dimension") or ""),
             value_field=str(params.get("valueField") or ""),
             top_n=int(params.get("topN") or 10),
+            query_id=str(params.get("queryId") or ""),
         )
     )
 
@@ -517,7 +569,7 @@ def _process_flow(params: dict[str, Any], cwd: str) -> str:
             stages=params.get("stages"),
             object_key=str(params.get("objectKey") or "objectId"),
             batch_key=str(params.get("batchKey") or "batchId"),
-            principal=params.get("principal"),
+            principal=_principal(params),
         )
     )
 
@@ -527,7 +579,7 @@ def _progress(params: dict[str, Any], cwd: str) -> str:
         _service(cwd).progress(
             scenario=params.get("scenario"),
             draft_id=str(params.get("draftId") or ""),
-            principal=params.get("principal"),
+            principal=_principal(params),
         )
     )
 
@@ -541,7 +593,7 @@ def _forecast(params: dict[str, Any], cwd: str) -> str:
             total_days=params.get("totalDays"),
             assumption=str(params.get("assumption") or ""),
             scenario=params.get("scenario"),
-            principal=params.get("principal"),
+            principal=_principal(params),
         )
     )
 
@@ -553,7 +605,7 @@ def _solutions(params: dict[str, Any], cwd: str) -> str:
             options=params.get("options"),
             due_at=str(params.get("dueAt") or ""),
             scenario=params.get("scenario"),
-            principal=params.get("principal"),
+            principal=_principal(params),
         )
     )
 

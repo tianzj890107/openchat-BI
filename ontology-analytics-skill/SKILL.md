@@ -67,9 +67,11 @@ headers: {}
 | `Process360Forecast` | P17 显式假设下的条件推算，不冒充正式模型 |
 | `Process360Solutions` | P18 多子目标综合；局部 blocked 不伪装整体完成 |
 
-所有 Process360 业务工具都需要宿主注入 `principal`（至少 `tenantId`、`userId`）；
-`TaskOrderCreate` 的 Process360 草稿模式还需要 `draft_id`、`draft_hash`、`action_id` 和
-宿主提供的 `recipients_raw`。缺少身份时只允许公开本体定义检索，业务取数停止。
+身份由服务端解析，不是工具参数：MCP 网关为每次调用注入可信 `principal`
+（POC 使用服务端配置的只读身份，可用 `PROCESS360_POC_PRINCIPAL` 覆盖）。工具入参中出现
+`principal` 会直接报错，模型既不能填写也不能覆盖身份。`TaskOrderCreate` 的 Process360
+草稿模式还需要 `draft_id`、`draft_hash`、`action_id`，接收人由服务端映射解析，不从模型或
+页面读取。
 
 ## 默认交付契约
 
@@ -137,14 +139,19 @@ headers: {}
 
 纪律：
 
-- 所有 Process360 业务工具都需要宿主注入 `principal`：`tenantId`、`userId` 必填，
-  可选 `orgIds`、`roles`、`canDispatch`、`source`。权限范围与查询筛选取交集；交集为空时
-  拒绝取数，不能静默放宽成全量。缺失身份时公开本体定义检索可继续，业务取数必须停止。
+- 身份由服务端解析并在调用期间注入，模型不可见也不可覆盖。授权用 `grantKind` 显式区分：
+  `none` 拒绝取数、`restricted` 与查询筛选取交集（必须至少指定一个客户/负责人/产品维度）、
+  `all` 才允许全量只读。空授权列表不再等于“不限制”。
 - `Process360Query`/`Process360Analyze`/`Process360Draft` 返回
   `status=ok|partial|blocked|needs_clarification|not_applicable`。`blocked` 或 `partial` 必须原样
   披露，禁止补 0、禁止把“不可评估”改写成“没有风险”。
-- `Process360Analyze` 会冻结本次 baseline、数据快照和权限范围到运行记录。后续
-  `Process360Verify` 必须传 `runId` 和批准目标，不能由调用方另填 baseline。
+- `Process360Query` 返回 `queryId` 和 `recordsRef`（`rowCount`/`totalRows`/样本 5 条），
+  不再回传完整明细；把 `queryId` 传给 `Analyze/Structure/Verify` 即复用同一份结果，避免
+  每步重复查库。缓存按身份、范围和 catalog 版本隔离。
+- `Process360Analyze` 由服务端独立重取**完整对象集**再冻结 baseline，返回
+  `fullObjectCount/frozenObjectCount/complete/objectSetHash`；展示 `limit` 不再影响基准。
+  `complete=false` 时 `Process360Verify` 直接 blocked，不能用“以后重跑”代替。
+- 后续 `Process360Verify` 必须传 `runId` 和批准目标，不能由调用方另填 baseline。
 - `Process360Analyze.candidateCauses` 是候选原因，不是已确认根因。证据哈希只能证明
   内容未变化；还要同时满足来源可信、对象/期间匹配、验证规则和反证检查，才可升级为
   已验证原因。缺少证据时只能提出核查任务。
@@ -152,8 +159,8 @@ headers: {}
   `params.items` 形态，可直接原样传入；每条带 `draftId`、`draftHash`、`runId`、
   `actionId`、`scenario`、`approvalStatus`、`expiresAt`、`dispatchTool`。
   `tasks[]` 是带审批/证据要求的完整草稿。两者都不含手机号。
-- S06 唯一出口是 Fuxi 待办：用户点击后由宿主携带 `principal`、`draftId`、
-  `draftHash`、`actionId` 和 `recipients_raw` 调用 `TaskOrderCreate`，来源固定
+- S06 唯一出口是 Fuxi 待办：用户点击后由服务端以可信身份携带 `draftId`、
+  `draftHash`、`actionId` 调用 `TaskOrderCreate`（接收人来自服务端映射），来源固定
   `boulderai-anaylize-todo`。服务端从草稿回读标题/正文，不采用调用方改写；一个
   `actionId` 只消费一次，网络失败用同一 `idempotency_key` 和 `retry=true` 重试。
   不调用 X360、不发送 Fuxi IM、不伪造发运/签单/排产等业务执行结果。
@@ -207,14 +214,19 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
 - Process360 草稿生成的行动卡必须原样带上 `draftId`、`draftHash`、`runId`、
   `actionId`、`scenario`、`approvalStatus`、`expiresAt`、`dispatchTool`。按钮只携带
   这些不透明引用和展示字段，不携带任务正文替代品、手机号或凭据。
-- 点击“发送任务令”时，Fuxi 宿主优先调用 `window.fuxiCreateTaskOrder(action,
-  taskOrder)`；没有注入函数时页面向父窗口发送
-  `{type:'fuxi:task-order-create', action, taskOrder}`。两种方式都由宿主补
-  `principal` 和 `recipients_raw` 后调用 `TaskOrderCreate`，不增加二次确认页面。
+- 六项草稿字段（`draftId/draftHash/actionId/approvalStatus/expiresAt/dispatchTool`）任一
+  缺失即为旧版卡片：按钮禁用并显示“旧版建议，请重新生成任务草稿”，不能手工补字段。
+- 点击“发送任务令”时，页面只把草稿引用 POST 到主服务
+  `/api/process360/task-orders`；服务端解析身份、映射接收人、回读草稿并调用
+  `TaskOrderCreate`。没有该端点时才回退宿主桥接 `window.fuxiCreateTaskOrder`，并向父窗口
+  发送带 `requestId` 的消息等待回执。
+- 统一回执：仅当 `status=ok` 且 Fuxi 回执证明 `applied+skipped>0` 时显示成功；`blocked`
+  显示拒绝原因，空回执/超时显示“结果待确认”，不会因为 HTTP 200 就当作成功。
 - `approvalStatus` 不是 `approved` 或 `host_click_authorized` 时按钮显示“待审批”并
   禁用；`expiresAt` 已过时点击会提示重新生成。服务端还会再次校验，不能靠前端绕过。
-- 手机号属于宿主会话信息，不写进 HTML、不展示给模型；Canvas 生成阶段会拒绝包含
-  手机号字段或 11 位手机号文本的行动条目。
+- 手机号属于服务端配置：页面不提交、HTML 不包含、模型不展示；主服务用
+  `PROCESS360_RECIPIENT_MAP` 解析接收人，未配置时明确 blocked。Canvas 生成阶段会拒绝
+  包含手机号字段或 11 位手机号文本的行动条目。
 - `TaskOrderCreate` 只写 Fuxi 风险待办，不负责 IM；接收人为空会被工具拒绝，
   因为 Fuxi 契约中空数组表示全员广播。Fuxi 返回的 `applied/skipped/errors` 原样保存
   为回执；没有进度查询接口，不能把本地执行记录称为 Fuxi 已处理完成。

@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import logging
 import os
 import sys
 import threading
@@ -33,6 +34,13 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from ..integrations.fuxi_todo import FuxiTodoClient, FuxiTodoError
 from ..process360 import tools as process360_tools
 from ..process360.execute import _assert_no_phone
+from ..process360.dispatch import dispatch_draft
+from ..process360.identity import (
+    PrincipalScope,
+    active_principal_payload,
+    reset_active_principal,
+    set_active_principal,
+)
 from ..paths import DATASET_DIR, project_path
 from ..tools import (
     ask_user,
@@ -47,7 +55,13 @@ from ..tools import (
 )
 from ..tools import remote_ontology_tools
 
+LOGGER = logging.getLogger(__name__)
+
 Executor = Callable[[dict[str, Any], str], str]
+
+#: Business tools whose identity is always resolved by the server.
+PROCESS360_TOOL_NAMES: frozenset[str] = frozenset(process360_tools.EXECUTORS)
+SERVER_PRINCIPAL_TOOLS: frozenset[str] = PROCESS360_TOOL_NAMES | {"TaskOrderCreate"}
 
 MCP_PROTOCOL_VERSION = "2025-03-26"
 SERVER_NAME = "ontology-analytics-mcp"
@@ -193,19 +207,6 @@ TASK_ORDER_CREATE_SCHEMA: dict[str, Any] = {
             "caliber_meta": {
                 "type": "object",
                 "description": "分析来源、指标编码、Artifact URL 等追溯信息",
-            },
-            "principal": {
-                "type": "object",
-                "description": "Fuxi 宿主注入的可信用户、租户和下发权限",
-                "properties": {
-                    "tenantId": {"type": "string"},
-                    "userId": {"type": "string"},
-                    "orgIds": {"type": "array", "items": {"type": "string"}},
-                    "roles": {"type": "array", "items": {"type": "string"}},
-                    "canDispatch": {"type": "boolean"},
-                    "source": {"type": "string"},
-                },
-                "required": ["tenantId", "userId"],
             },
         },
         "required": ["action_id", "recipients_raw"],
@@ -381,15 +382,16 @@ def _task_order_executor() -> Executor:
         client = FuxiTodoClient()
         draft_id = str(params.get("draft_id") or "").strip()
         if draft_id:
-            if not params.get("principal"):
-                raise ValueError("principal is required for a Process360 draft dispatch")
+            principal = active_principal_payload() or params.get("principal")
+            if not principal:
+                raise ValueError("principal is resolved by the server and is required for dispatch")
             service = process360_tools.Process360Service(cwd=cwd)
             result = service.execute_draft(
                 draft_id=draft_id,
                 draft_hash=str(params.get("draft_hash") or ""),
                 action_id=str(params.get("action_id") or ""),
                 recipients=params.get("recipients_raw") or [],
-                principal=params.get("principal"),
+                principal=principal,
                 idempotency_key=str(params.get("idempotency_key") or ""),
                 retry=bool(params.get("retry")),
                 client=client,
@@ -439,6 +441,15 @@ def _task_order_executor() -> Executor:
     return run
 
 
+def _render_executors() -> dict[str, Executor]:
+    """Pure render tools: no source, no data binding, always available."""
+    executors: dict[str, Executor] = {}
+    for module in (chart_tools, chart_multidim_tools, table_tools):
+        for schema, factory in module.SPECS:
+            executors[str(schema["name"])] = factory()
+    return executors
+
+
 def _build_executors(source: Any, build_doris: Callable[..., Any]) -> dict[str, Executor]:
     doris = (
         build_doris(source.doris_api_url, source.doris_database, source.remote_ontology)
@@ -455,6 +466,7 @@ def _build_executors(source: Any, build_doris: Callable[..., Any]) -> dict[str, 
         executors["MetricFactQuery"] = _fast_tools().make_executor(
             metric, executors.get("Ontology-SemanticQuery")
         )
+    executors.update(_render_executors())
     canvas_schema, canvas_factory = _canvas_tools().SPECS[0]
     del canvas_schema
     executors["CanvasGenerate"] = canvas_factory()
@@ -469,11 +481,13 @@ class McpRuntime:
 
     def __init__(self, *, get_source: Callable[[], Any], build_doris: Callable[..., Any],
                  get_cwd: Callable[[], str], executor_factory: Callable[[Any], dict[str, Executor]] | None = None,
-                 exposed_tools: tuple[str, ...] | None = None) -> None:
+                 exposed_tools: tuple[str, ...] | None = None,
+                 principal_provider: Callable[[], dict[str, Any]] | None = None) -> None:
         self.get_source = get_source
         self.build_doris = build_doris
         self.get_cwd = get_cwd
         self.executor_factory = executor_factory
+        self.principal_provider = principal_provider
         requested = tuple(exposed_tools or _configured_tools())
         self.exposed = tuple(name for name in requested if name not in MCP_DENIED_TOOLS)
         self._sessions: dict[str, float] = {}
@@ -481,12 +495,37 @@ class McpRuntime:
         self._cache_signature: tuple[Any, ...] | None = None
         self._cache_executors: dict[str, Executor] = {}
         self._cache_schemas: dict[str, dict[str, Any]] = {}
-        self._source_free: dict[str, Executor] = {
+        source_free: dict[str, Executor] = {
             "AnalysisRoute": _route_executor(),
             "OutputGateCheck": _gate_executor(),
             "TaskOrderCreate": _task_order_executor(),
+            **_render_executors(),
             **process360_tools.EXECUTORS,
         }
+        if executor_factory is None:
+            # The real source path builds CanvasGenerate itself; an injected
+            # factory stays authoritative for tests and embedders.
+            source_free["CanvasGenerate"] = _canvas_tools().SPECS[0][1]()
+        self._source_free: dict[str, Executor] = source_free
+
+    def principal_payload(self) -> dict[str, Any]:
+        """Server-resolved identity for Process360 business tools."""
+        if self.principal_provider is not None:
+            resolved = self.principal_provider()
+            return dict(resolved) if resolved else {}
+        return PrincipalScope.poc().to_dict()
+
+    def missing_executors(self) -> tuple[str, ...]:
+        """Declared-but-unroutable tools.  Empty means the registry is sound."""
+        try:
+            schemas, executors = self._runtime()
+        except Exception:  # noqa: BLE001 - source may not be configured yet
+            schemas, executors = {}, dict(self._source_free)
+        known = set(executors) | set(self._source_free)
+        return tuple(
+            name for name in self.exposed
+            if name in schemas and name not in known
+        )
 
     # -- session lifecycle -------------------------------------------------
     def _prune(self) -> None:
@@ -550,7 +589,21 @@ class McpRuntime:
         if executor is None:
             raise LookupError(f"tool_not_available: {name}")
         cwd = self.get_cwd() or os.getcwd()
-        result = executor(dict(arguments or {}), cwd)
+        params = dict(arguments or {})
+        token = None
+        if name in SERVER_PRINCIPAL_TOOLS:
+            for forbidden in ("principal", "principalScope", "__principal"):
+                if forbidden in params:
+                    raise ValueError(
+                        "principal is resolved by the server; "
+                        f"tool arguments must not contain {forbidden}"
+                    )
+            token = set_active_principal(self.principal_payload())
+        try:
+            result = executor(params, cwd)
+        finally:
+            if token is not None:
+                reset_active_principal(token)
         text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
         if name == "CanvasGenerate":
             text = _with_artifact_url(text, cwd, base_url)
@@ -691,9 +744,93 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
     )
     router = APIRouter()
 
+    @router.post("/api/process360/task-orders")
+    async def process360_task_order(request: Request):
+        """Page-initiated dispatch.  Body carries draft references only."""
+        if not _authorized(request):
+            raise HTTPException(401, "unauthorized")
+        try:
+            body = await request.json()
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(400, f"invalid JSON body: {exc}") from exc
+        if not isinstance(body, dict):
+            raise HTTPException(400, "body must be an object")
+        draft_id = str(body.get("draftId") or "").strip()
+        draft_hash = str(body.get("draftHash") or "").strip()
+        action_id = str(body.get("actionId") or "").strip()
+        request_id = str(body.get("requestId") or uuid.uuid4().hex)
+        if not draft_id or not draft_hash or not action_id:
+            return JSONResponse(
+                {
+                    "schema": "process360.dispatch.v1",
+                    "status": "blocked",
+                    "accepted": False,
+                    "message": "缺少 draftId / draftHash / actionId，旧版建议需重新生成",
+                    "receipt": None,
+                    "draftId": draft_id,
+                    "actionId": action_id,
+                    "requestId": request_id,
+                },
+                status_code=200,
+            )
+        service = process360_tools.Process360Service(cwd=get_cwd() or os.getcwd())
+        result = await asyncio.to_thread(
+            dispatch_draft,
+            service,
+            draft_id=draft_id,
+            draft_hash=draft_hash,
+            action_id=action_id,
+            request_id=request_id,
+        )
+        return JSONResponse(result)
+
+    @router.get("/api/process360/task-orders")
+    def process360_task_order_status(request: Request) -> dict[str, Any]:
+        """Look up the stored execution result for a draft action."""
+        if not _authorized(request):
+            raise HTTPException(401, "unauthorized")
+        draft_id = (request.query_params.get("draftId") or "").strip()
+        action_id = (request.query_params.get("actionId") or "").strip()
+        if not draft_id or not action_id:
+            raise HTTPException(400, "draftId and actionId are required")
+        service = process360_tools.Process360Service(cwd=get_cwd() or os.getcwd())
+        record = service.store.get_execution(f"page:{draft_id}:{action_id}")
+        if not record:
+            return {
+                "schema": "process360.dispatch.v1",
+                "status": "unconfirmed",
+                "accepted": False,
+                "message": "尚无执行记录，结果待确认",
+                "receipt": None,
+                "draftId": draft_id,
+                "actionId": action_id,
+                "requestId": "",
+            }
+        response = record.get("response") or {}
+        state = str(response.get("status") or record.get("status") or "unconfirmed").lower()
+        return {
+            "schema": "process360.dispatch.v1",
+            "status": "ok" if state == "ok" else ("unconfirmed" if state == "in_progress" else "blocked"),
+            "accepted": state == "ok",
+            "message": "任务令已创建" if state == "ok" else "执行结果待确认或未创建",
+            "receipt": response.get("receipt"),
+            "draftId": draft_id,
+            "actionId": action_id,
+            "requestId": "",
+        }
+
     @router.get("/api/mcp/health")
     def mcp_health() -> dict[str, Any]:
-        return {"ok": True, "server": SERVER_NAME, "version": SERVER_VERSION, "protocol": MCP_PROTOCOL_VERSION}
+        missing = runtime.missing_executors()
+        if missing:
+            LOGGER.warning("MCP tools declared without an executor: %s", ", ".join(missing))
+        return {
+            "ok": True,
+            "server": SERVER_NAME,
+            "version": SERVER_VERSION,
+            "protocol": MCP_PROTOCOL_VERSION,
+            "missingExecutors": list(missing),
+        }
 
     @router.post("/api/mcp")
     async def mcp_post(request: Request):

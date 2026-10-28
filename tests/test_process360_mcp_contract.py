@@ -8,11 +8,45 @@ from bi_agent.process360 import tools
 from bi_agent.web import mcp_endpoint
 
 
-def test_process360_data_tools_require_host_principal() -> None:
-    with pytest.raises(ValueError, match="required"):
-        tools.EXECUTORS["Process360Query"]({"scenario": "SC01"}, ".")
-    with pytest.raises(ValueError, match="required"):
-        tools.EXECUTORS["Process360Plan"]({"question": "经营情况怎么样"}, ".")
+def test_process360_schemas_never_expose_principal() -> None:
+    for spec in tools.SPECS:
+        properties = spec["input_schema"].get("properties", {})
+        assert "principal" not in properties, spec["name"]
+        assert "principal" not in spec["input_schema"].get("required", [])
+
+
+def test_process360_tools_reject_model_supplied_principal() -> None:
+    runtime = mcp_endpoint.McpRuntime(
+        get_source=lambda: None,
+        build_doris=lambda *args, **kwargs: None,
+        get_cwd=lambda: ".",
+        executor_factory=lambda source: {},
+    )
+    with pytest.raises(ValueError, match="resolved by the server"):
+        runtime.call_tool("Process360Route", {"question": "经营情况怎么样", "principal": {"tenantId": "t", "userId": "u"}})
+
+
+def test_process360_runtime_injects_server_principal(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    def executor(params, cwd):
+        from bi_agent.process360.identity import active_principal_payload
+        seen.update(active_principal_payload() or {})
+        return "{}"
+
+    runtime = mcp_endpoint.McpRuntime(
+        get_source=lambda: None,
+        build_doris=lambda *args, **kwargs: None,
+        get_cwd=lambda: ".",
+        executor_factory=lambda source: {},
+        exposed_tools=("Process360Query",),
+        principal_provider=lambda: {"tenantId": "poc", "userId": "readonly", "grantKind": "all"},
+    )
+    runtime._source_free["Process360Query"] = executor
+    runtime.call_tool("Process360Query", {"scenario": "SC01"})
+    assert seen["tenantId"] == "poc"
+    assert seen["userId"] == "readonly"
+    assert seen["grantKind"] == "all"
 
 
 def test_task_order_create_uses_trusted_draft_and_ignores_caller_content(monkeypatch) -> None:
@@ -65,3 +99,35 @@ def test_process360_metadata_cannot_use_legacy_dispatch_without_draft() -> None:
 def test_all_process360_mcp_tools_are_exposed() -> None:
     for name in tools.EXECUTORS:
         assert name in mcp_endpoint.DEFAULT_EXPOSED_TOOLS
+
+
+def test_render_tools_are_registered_and_invocable() -> None:
+    runtime = mcp_endpoint.McpRuntime(
+        get_source=lambda: None,
+        build_doris=lambda *args, **kwargs: None,
+        get_cwd=lambda: ".",
+        executor_factory=lambda source: {},
+        exposed_tools=("TableGenerate", "ChartGenerate", "ChartGenerateMultiDim"),
+    )
+    assert runtime.missing_executors() == ()
+
+    table = runtime.call_tool(
+        "TableGenerate",
+        {
+            "title": "测试表",
+            "columns": [{"key": "a", "label": "A"}],
+            "rows": [{"a": 1}],
+        },
+    )
+    assert "<TABLE_SPEC>" in table or "TABLE_SPEC" in table
+
+    chart = runtime.call_tool(
+        "ChartGenerate",
+        {
+            "chart_type": "bar",
+            "title": "测试图",
+            "series": [{"name": "S", "data": [1, 2]}],
+            "x_axis": ["a", "b"],
+        },
+    )
+    assert "CHART_SPEC" in chart

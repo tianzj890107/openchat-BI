@@ -34,17 +34,17 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 | `ChartGenerateMultiDim` | 多维可切换图表 | 与 Web 多维图表参数一致 |
 | `TableGenerate` | 结构化表格 | 与 Web 表格参数一致 |
 | `CanvasGenerate` | 整页自包含 HTML，返回 `Artifact URL` | `title`、`conclusion`、`source_note`、`blocks` |
-| `TaskOrderCreate` | 用户点击后把一条行动建议直接推送到 Fuxi 风险待办 | Process360：`draft_id`、`draft_hash`、`action_id`、`principal`、`recipients_raw`、可选 `idempotency_key`/`retry`；旧版通用：`action_id`、`title`、`content`、`recipients_raw` |
+| `TaskOrderCreate` | 用户点击后把一条行动建议直接推送到 Fuxi 风险待办 | Process360：`draft_id`、`draft_hash`、`action_id`，可选 `idempotency_key`/`retry`；身份与接收人均由服务端解析。旧版通用：`action_id`、`title`、`content`、`recipients_raw` |
 | `OutputGateCheck` | 五道交付闸门 | `answer`、`question`、`sql`、`chart`、`reconcile`、`claims` |
-| `Process360Route/Search/Context/Query/Analyze/Draft/Verify` | SC01-SC05 的 S00-S07 主链 | 业务阶段均需 `principal` |
-| `Process360Plan` | S00 多目标 DAG、依赖、步骤版本、共享预算 | `question`、`principal`、可选预算 |
-| `Process360Explore` | S08 受控自主探索 | `question`、`planRef`、`stepId`、`principal` |
-| `Process360Compare` | P04 多期同口径比较 | `scenario`、`scope`、`periods`、`principal` |
-| `Process360Structure` | P05 结构贡献/排名/占比 | `scenario`、`scope`、`dimension`、`principal` |
-| `Process360ProcessFlow` | P07 节点转化与停留 | `scenario`、`stages`、`objectKey`、`batchKey`、`principal` |
-| `Process360Progress` | P14 执行记录和 Fuxi 推送回执 | `scenario`、可选 `draftId`、`principal` |
-| `Process360Forecast` | P17 显式假设下的规则推算 | `actualToDate`、`target`、`elapsedDays`、`totalDays`、`assumption`、`principal` |
-| `Process360Solutions` | P18 多子目标综合 | `question`、`principal`、可选方案依据 |
+| `Process360Route/Search/Context/Query/Analyze/Draft/Verify` | SC01-SC05 的 S00-S07 主链 | 身份由服务端注入；`Query` 返回 `queryId`，后续步骤可用 `queryId` 复用同一结果 |
+| `Process360Plan` | S00 多目标 DAG、依赖、步骤版本、共享预算 | `question`、可选预算 |
+| `Process360Explore` | S08 受控自主探索 | `question`、`planRef`、`stepId` |
+| `Process360Compare` | P04 多期同口径比较 | `scenario`、`scope`、`periods` |
+| `Process360Structure` | P05 结构贡献/排名/占比 | `scenario`、`scope`、`dimension`、可选 `queryId` |
+| `Process360ProcessFlow` | P07 节点转化与停留 | `scenario`、`stages`、`objectKey`、`batchKey` |
+| `Process360Progress` | P14 执行记录和 Fuxi 推送回执 | `scenario`、可选 `draftId` |
+| `Process360Forecast` | P17 显式假设下的规则推算 | `actualToDate`、`target`、`elapsedDays`、`totalDays`、`assumption` |
+| `Process360Solutions` | P18 多子目标综合 | `question`、可选方案依据 |
 
 ### 不暴露的工具
 
@@ -71,7 +71,7 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
    `reject` 要修正或拒答。
 8. 任务令：只有用户点击行动卡后才调用 `TaskOrderCreate`。Process360 卡片携带
    `draftId/draftHash/actionId/runId/scenario/approvalStatus/expiresAt/dispatchTool`；
-   宿主补 `principal` 和 `recipients_raw` 后调用，服务端从草稿回读标题/正文，不采用
+   主服务按服务端身份和接收人映射调用，服务端从草稿回读标题/正文，不采用
    调用方改写。手机号由 Fuxi 宿主传入，技能和模型不得猜测；空接收人会被拒绝。
    网络失败使用同一 `idempotency_key` 和 `retry=true`，成功回执不得重发。
 9. Fuxi 契约只有 `POST /source/todo-batches` 和 `POST /source/todo-status-events`；

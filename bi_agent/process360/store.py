@@ -57,6 +57,18 @@ class Process360Store:
       payload_hash TEXT NOT NULL,
       created_at REAL NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS queries (
+      id TEXT PRIMARY KEY,
+      scenario TEXT NOT NULL,
+      tenant TEXT NOT NULL DEFAULT '',
+      principal TEXT NOT NULL DEFAULT '',
+      scope TEXT NOT NULL,
+      query_hash TEXT NOT NULL,
+      catalog_version TEXT NOT NULL DEFAULT '',
+      payload TEXT NOT NULL,
+      created_at REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS queries_scope ON queries(scenario, tenant, principal, created_at);
     CREATE TABLE IF NOT EXISTS drafts (
       id TEXT PRIMARY KEY,
       run_id TEXT NOT NULL DEFAULT '',
@@ -194,6 +206,47 @@ class Process360Store:
             return None
         result = dict(row)
         result["payload"] = _load(result.get("payload"))
+        return result
+
+    # -- queries ----------------------------------------------------------
+    def save_query(
+        self,
+        *,
+        scenario: str,
+        scope: Mapping[str, Any],
+        payload: Mapping[str, Any],
+        tenant: str = "",
+        principal: str = "",
+        catalog_version: str = "",
+        query_id: str = "",
+    ) -> dict[str, Any]:
+        record_id = str(query_id or uuid.uuid4().hex)
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO queries(id,scenario,tenant,principal,scope,query_hash,catalog_version,payload,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (
+                    record_id,
+                    str(scenario).upper(),
+                    tenant,
+                    principal,
+                    _json(dict(scope)),
+                    digest({"scenario": str(scenario).upper(), "scope": dict(scope)}),
+                    catalog_version,
+                    _json(dict(payload)),
+                    _now(),
+                ),
+            )
+        return {"id": record_id}
+
+    def get_query(self, query_id: str) -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM queries WHERE id=?", (str(query_id or ""),)).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        result["payload"] = _load(result.get("payload"))
+        result["scope"] = _load(result.get("scope"))
         return result
 
     # -- drafts -----------------------------------------------------------

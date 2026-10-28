@@ -434,8 +434,18 @@ def _normalize_actions(params: dict) -> list[dict[str, Any]]:
     return normalized
 
 
+REQUIRED_DRAFT_FIELDS = ("draftId", "draftHash", "actionId", "approvalStatus", "expiresAt", "dispatchTool")
+
+
+def _draft_ready(item: dict[str, Any]) -> bool:
+    """A card may only be dispatched when the server stored a full draft."""
+    return all(str(item.get(field) or "").strip() for field in REQUIRED_DRAFT_FIELDS)
+
+
 def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
     items = _normalize_actions(params)
+    for item in items:
+        item["draftReady"] = _draft_ready(item)
     cards: list[str] = []
     for item in items:
         evidence = (
@@ -452,10 +462,16 @@ def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
                 f'<span class="action-chip">责任人 {escape(item["owner_name"] or item["owner_ref"])}</span>'
             )
         approval = str(item.get("approvalStatus") or "").strip().lower()
-        can_send = not approval or approval in {"approved", "host_click_authorized"}
-        label = "发送任务令" if can_send else "待审批"
-        disabled = "" if can_send else " disabled"
-        title_attr = "" if can_send else ' title="该建议尚未获得下发授权"'
+        if not item["draftReady"]:
+            label, disabled, title_attr = "旧版建议", " disabled", ' title="旧版建议，请重新生成任务草稿"'
+        elif approval in {"approved", "host_click_authorized"}:
+            label, disabled, title_attr = "发送任务令", "", ""
+        else:
+            label, disabled, title_attr = "待审批", " disabled", ' title="该建议尚未获得下发授权"'
+        legacy_note = (
+            '<p class="action-feedback" style="color:#B42318">旧版建议，请重新生成任务草稿</p>'
+            if not item["draftReady"] else ""
+        )
         card = (
             '<article class="action-item">'
             f'<div class="action-head"><h4>{_inline_markdown(item["title"])}</h4>'
@@ -464,106 +480,202 @@ def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
             f'<div class="action-content">{_render_markdown(item["content"])}</div>'
             f'{evidence}'
             f'<div class="action-meta">{"".join(chips)}</div>'
+            f'{legacy_note}'
             '</article>'
         )
         cards.append(card)
     return f'<div class="action-list">{"".join(cards)}</div>', items
 
 
+ACTION_RUNTIME = r"""
+<script>
+  const PROCESS360_ACTIONS = __ACTIONS__;
+  const PROCESS360_DISPATCH = { url: __DISPATCH_URL__, timeoutMs: 25000 };
+  const PENDING = new Map();
+
+  function feedbackNode(button) {
+    const item = button.closest('.action-item');
+    let note = item && item.querySelector(':scope > .action-feedback');
+    if (!note) {
+      note = document.createElement('p');
+      note.className = 'action-feedback';
+      if (item) item.appendChild(note);
+    }
+    return note;
+  }
+
+  function setActionState(button, text, tone) {
+    const note = feedbackNode(button);
+    if (!note) return;
+    note.textContent = text;
+    note.style.color = tone === 'error' ? '#B42318' : (tone === 'pending' ? '#B54708' : '#087443');
+  }
+
+  // One receipt contract for host and HTTP dispatch.
+  function normalizeReceipt(payload) {
+    if (!payload || typeof payload !== 'object') {
+      return { state: 'unconfirmed', message: '未收到执行回执，请稍后在待办中确认' };
+    }
+    const status = String(payload.status || payload.state || '').toLowerCase();
+    const receipt = payload.receipt || payload.result || null;
+    if (payload.accepted === false) {
+      return { state: 'unconfirmed', message: payload.message || '请求已发出，执行结果待确认', receipt };
+    }
+    if (status === 'ok' || payload.ok === true) {
+      return { state: 'ok', message: payload.message || '任务令已创建', receipt };
+    }
+    if (status === 'blocked' || status === 'rejected' || payload.ok === false) {
+      const gaps = (payload.gaps || []).map((item) => item && item.name).filter(Boolean);
+      return { state: 'rejected', message: payload.message || gaps.join('；') || '执行被拒绝', receipt };
+    }
+    if (status === 'pending' || status === 'unconfirmed' || status === 'in_progress') {
+      return { state: 'unconfirmed', message: payload.message || '执行结果待确认', receipt };
+    }
+    return { state: 'failed', message: payload.message || '执行失败', receipt };
+  }
+
+  function applyReceipt(button, payload) {
+    const result = normalizeReceipt(payload);
+    if (result.state === 'ok') {
+      button.disabled = true;
+      setActionState(button, '任务令已创建' + (result.receipt && result.receipt.sourceTodoId ? '（' + result.receipt.sourceTodoId + '）' : ''), 'ok');
+    } else if (result.state === 'unconfirmed') {
+      button.disabled = false;
+      setActionState(button, result.message, 'pending');
+    } else {
+      button.disabled = false;
+      setActionState(button, result.message, 'error');
+    }
+    return result;
+  }
+
+  async function postDirect(action) {
+    const response = await fetch(PROCESS360_DISPATCH.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        draftId: action.draftId,
+        draftHash: action.draftHash,
+        actionId: action.actionId || action.id,
+        requestId: action.__requestId,
+      }),
+    });
+    const text = await response.text();
+    let payload = null;
+    try { payload = text ? JSON.parse(text) : null; } catch (error) { payload = null; }
+    if (!payload) {
+      return { status: 'unconfirmed', accepted: false, message: '服务端返回无法解析的回执' };
+    }
+    return payload;
+  }
+
+  function viaHost(action, requestId, taskOrder) {
+    const callback = window.fuxiCreateTaskOrder || (window.Fuxi && window.Fuxi.createTaskOrder);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        PENDING.delete(requestId);
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = setTimeout(() => {
+        finish({ status: 'unconfirmed', accepted: false, message: '宿主未在 25 秒内返回执行结果，请稍后在待办中确认' });
+      }, PROCESS360_DISPATCH.timeoutMs);
+      PENDING.set(requestId, finish);
+      try {
+        const result = typeof callback === 'function' ? callback(action, taskOrder) : null;
+        if (result && typeof result.then === 'function') {
+          result.then(finish).catch((error) => finish({ status: 'failed', message: String((error && error.message) || error) }));
+        } else if (result && typeof result === 'object') {
+          finish(result);
+        } else if (typeof callback === 'function') {
+          // Synchronous host ack without a receipt is not a success.
+          finish({ status: 'unconfirmed', accepted: false, message: '宿主已接收请求，执行结果待确认' });
+        } else {
+          finish(null);
+        }
+      } catch (error) {
+        finish({ status: 'failed', message: String((error && error.message) || error) });
+      }
+    });
+  }
+
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type !== 'fuxi:task-order-result' && data.type !== 'fuxi:task-order-ack') return;
+    const requestId = String(data.requestId || '');
+    const handler = PENDING.get(requestId);
+    if (handler) handler(data.payload || data);
+  });
+
+  document.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-fuxi-task-order]');
+    if (!button || button.disabled) return;
+    const action = PROCESS360_ACTIONS[button.getAttribute('data-fuxi-task-order')];
+    if (!action) return;
+    if (!action.draftReady) {
+      setActionState(button, '旧版建议，请重新生成任务草稿', 'error');
+      return;
+    }
+    const approval = String(action.approvalStatus || '').toLowerCase();
+    if (approval !== 'approved' && approval !== 'host_click_authorized') {
+      setActionState(button, '该建议尚未获得下发授权，请先完成审批', 'error');
+      return;
+    }
+    const expiry = typeof action.expiresAt === 'number'
+      ? action.expiresAt * 1000
+      : Date.parse(String(action.expiresAt || ''));
+    if (Number.isFinite(expiry) && expiry <= Date.now()) {
+      setActionState(button, '任务草稿已过期，请重新生成建议', 'error');
+      return;
+    }
+    const requestId = (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+    const taskOrder = {
+      action_id: action.actionId || action.id,
+      draft_id: action.draftId,
+      draft_hash: action.draftHash,
+      run_id: action.runId || undefined,
+      dispatch_tool: action.dispatchTool,
+    };
+    button.disabled = true;
+    setActionState(button, '正在提交任务令…', 'pending');
+    let payload = null;
+    let transport = 'http';
+    try {
+      payload = await postDirect({ ...action, __requestId: requestId });
+    } catch (error) {
+      transport = 'host';
+    }
+    if (transport === 'host') {
+      payload = await viaHost(action, requestId, taskOrder);
+    }
+    if (!payload) {
+      button.disabled = false;
+      setActionState(button, '本页未连接任务服务，也未检测到 Fuxi 宿主桥接', 'error');
+      return;
+    }
+    applyReceipt(button, payload);
+  });
+</script>
+"""
+
+
 def _actions_runtime(actions: list[dict[str, Any]]) -> str:
     if not actions:
         return ""
     payload = {item["id"]: item for item in actions}
-    return f"""
-<script>
-  const FUXI_ACTIONS = {_json_for_script(payload)};
-  function setActionState(button, text, failed) {{
-    const item = button.closest('.action-item');
-    let note = item && item.querySelector(':scope > .action-feedback');
-    if (!note) {{
-      note = document.createElement('p');
-      note.className = 'action-feedback';
-      if (item) item.appendChild(note);
-    }}
-    if (note) {{ note.textContent = text; note.style.color = failed ? '#B42318' : '#087443'; }}
-  }}
-  document.addEventListener('click', (event) => {{
-    const button = event.target.closest('[data-fuxi-task-order]');
-    if (!button || button.disabled) return;
-    const action = FUXI_ACTIONS[button.getAttribute('data-fuxi-task-order')];
-    if (!action) return;
-    const approval = String(action.approvalStatus || '').toLowerCase();
-    if (approval && approval !== 'approved' && approval !== 'host_click_authorized') {{
-      setActionState(button, '该建议尚未获得下发授权，请先完成审批', true);
-      return;
-    }}
-    const expiry = typeof action.expiresAt === 'number'
-      ? action.expiresAt * 1000
-      : Date.parse(String(action.expiresAt || ''));
-    if (Number.isFinite(expiry) && expiry <= Date.now()) {{
-      setActionState(button, '任务草稿已过期，请重新生成建议', true);
-      return;
-    }}
-    const taskOrder = {{
-      action_id: action.actionId || action.id,
-      draft_id: action.draftId || undefined,
-      draft_hash: action.draftHash || undefined,
-      run_id: action.runId || undefined,
-      source_todo_id: action.sourceTodoId || undefined,
-      canvas_id: action.canvasId || undefined,
-      title: action.title,
-      content: action.content,
-      severity: action.severity || undefined,
-      due_at: action.due_at || undefined,
-      owner_ref: action.owner_ref || undefined,
-      owner_name: action.owner_name || undefined,
-      evidence: action.evidence || undefined,
-      scenario: action.scenario || undefined,
-      task_template: action.task_template || undefined,
-      category: action.category || undefined,
-      dispatch_tool: action.dispatchTool || undefined,
-      caliber_meta: {{
-        actionId: action.actionId || action.id,
-        draftId: action.draftId || undefined,
-        runId: action.runId || undefined,
-        scenario: action.scenario || undefined,
-      }},
-    }};
-    const callback = window.fuxiCreateTaskOrder
-      || (window.Fuxi && window.Fuxi.createTaskOrder);
-    if (typeof callback === 'function') {{
-      button.disabled = true;
-      setActionState(button, '正在提交任务令…', false);
-      try {{
-        const result = callback(action, taskOrder);
-        if (result && typeof result.then === 'function') {{
-          result.then((response) => {{
-            const ok = !response || response.ok !== false;
-            setActionState(button, ok ? '任务令已提交到 Fuxi' : '任务令提交失败，可重试', !ok);
-            if (!ok) button.disabled = false;
-          }}).catch((error) => {{
-            setActionState(button, '任务令提交失败：' + String((error && error.message) || error), true);
-            button.disabled = false;
-          }});
-        }} else {{
-          setActionState(button, '任务令已提交到 Fuxi', false);
-        }}
-      }} catch (error) {{
-        setActionState(button, '任务令提交失败：' + String(error), true);
-        button.disabled = false;
-      }}
-      return;
-    }}
-    if (window.parent && window.parent !== window) {{
-      const targetOrigin = (window.location.ancestorOrigins && window.location.ancestorOrigins[0]) || '*';
-      window.parent.postMessage({{ type: 'fuxi:task-order-create', action, taskOrder }}, targetOrigin);
-      button.disabled = true;
-      setActionState(button, '已提交到 Fuxi 会话，等待创建任务令', false);
-      return;
-    }}
-    setActionState(button, '请在 Fuxi 客户端中打开本页后发送任务令', true);
-  }});
-</script>"""
+    url = (os.environ.get("PROCESS360_DISPATCH_URL") or "/api/process360/task-orders").strip()
+    return (
+        ACTION_RUNTIME
+        .replace("__ACTIONS__", _json_for_script(payload))
+        .replace("__DISPATCH_URL__", json.dumps(url))
+    )
 
 
 PAGE_STYLE = """

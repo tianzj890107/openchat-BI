@@ -16,6 +16,10 @@ def baseline(keys=None):
         "observationWindow": {"start": "2026-10-01", "end": "2026-10-27"},
         "objectKeys": keys or ["o1|1|p1|plan1|2026-10-01", "o2|1|p1|plan2|2026-10-02"],
         "objectCount": 2,
+        "fullObjectCount": 2,
+        "frozenObjectCount": 2,
+        "complete": True,
+        "objectSetHash": "hash",
         "metrics": {"M36005": 0.0},
     }
 
@@ -92,3 +96,30 @@ def test_sc05_without_approved_formula_is_explicitly_blocked() -> None:
     )
     assert result["status"] == "blocked"
     assert "CLOSURE_FORMULA_MISSING" in {item["code"] for item in result["gaps"]}
+
+
+def test_incomplete_frozen_set_blocks_formal_closure() -> None:
+    from bi_agent.process360.closure import build_baseline
+    from bi_agent.process360.models import Scope
+
+    query = {
+        "status": "partial",
+        "records": [{"order_id": "o1", "line_no": 1, "product_id": "p1", "plan_id": "x", "plan_date": "2026-10-01"}],
+        "metrics": [],
+        "queryInfo": {"totalRows": 2102, "truncated": True},
+    }
+    frozen = build_baseline(catalog(), "SC01", Scope.from_payload({}), query)
+    assert frozen["complete"] is False
+    assert frozen["fullObjectCount"] == 2102
+    assert frozen["frozenObjectCount"] == 1
+
+    blocked = build_closure(
+        catalog(),
+        "SC01",
+        baseline=frozen,
+        current=current("o1"),
+        approval_ref="AP-1",
+        approved_target=0.5,
+    )
+    assert blocked["status"] == "blocked"
+    assert "VERIFICATION_BASELINE_MISSING" in {item["code"] for item in blocked["gaps"]}

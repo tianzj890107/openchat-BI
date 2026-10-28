@@ -9,10 +9,40 @@ filters.
 
 from __future__ import annotations
 
+import contextvars
+import json
+import os
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 
 from .models import Scope, as_list
+
+GRANT_KINDS = ("none", "restricted", "all")
+DEFAULT_POC_PRINCIPAL = {
+    "tenantId": "ywln",
+    "userId": "poc-readonly",
+    "grantKind": "all",
+    "canDispatch": True,
+    "source": "server-poc-config",
+}
+
+# The MCP runtime sets this for the duration of one tool call.  Business tools
+# read the identity from here, never from model-supplied arguments.
+_ACTIVE_PRINCIPAL: contextvars.ContextVar[Mapping[str, Any] | None] = contextvars.ContextVar(
+    "process360_active_principal", default=None
+)
+
+
+def set_active_principal(payload: Mapping[str, Any] | None):
+    return _ACTIVE_PRINCIPAL.set(dict(payload) if payload is not None else None)
+
+
+def reset_active_principal(token: Any) -> None:
+    _ACTIVE_PRINCIPAL.reset(token)
+
+
+def active_principal_payload() -> Mapping[str, Any] | None:
+    return _ACTIVE_PRINCIPAL.get()
 
 
 def _strings(value: Any, *, field: str, maximum: int = 500) -> tuple[str, ...]:
@@ -37,6 +67,7 @@ class PrincipalScope:
     product_ids: tuple[str, ...] = ()
     can_dispatch: bool = False
     source: str = "host"
+    grant_kind: str = "restricted"
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any] | None, *, required: bool = True) -> "PrincipalScope":
@@ -56,7 +87,7 @@ class PrincipalScope:
             "product_ids": "productIds",
             "can_dispatch": "canDispatch",
         }
-        allowed = set(aliases) | set(aliases.values()) | {"roles", "source"}
+        allowed = set(aliases) | set(aliases.values()) | {"roles", "source", "grantKind", "grant_kind"}
         unknown = set(raw) - allowed
         if unknown:
             raise ValueError("principal contains unsupported fields")
@@ -72,6 +103,21 @@ class PrincipalScope:
         dispatch = raw.get("canDispatch", raw.get("can_dispatch", False))
         if not isinstance(dispatch, bool):
             raise ValueError("principal.canDispatch must be a boolean")
+        raw_grant = raw.get("grantKind", raw.get("grant_kind"))
+        if raw_grant is None:
+            # Legacy payloads: an explicit dimension list means a restricted
+            # grant; no lists at all means the caller declared full read access.
+            raw_grant = (
+                "restricted"
+                if any(
+                    raw.get(key) or raw.get(key.lower())
+                    for key in ("orgIds", "customerIds", "ownerIds", "productIds")
+                )
+                else "all"
+            )
+        grant_kind = str(raw_grant).strip().lower()
+        if grant_kind not in GRANT_KINDS:
+            raise ValueError(f"principal.grantKind must be one of {GRANT_KINDS}")
         return cls(
             tenant_id=tenant,
             user_id=user,
@@ -82,12 +128,38 @@ class PrincipalScope:
             product_ids=_strings(raw.get("productIds", raw.get("product_ids")), field="productIds"),
             can_dispatch=dispatch,
             source=str(raw.get("source") or "host")[:40],
+            grant_kind=grant_kind,
         )
 
     @classmethod
+    def poc(cls) -> "PrincipalScope":
+        """Server-configured POC identity.
+
+        The model never supplies this.  It defaults to a read-only, full-scope
+        POC principal and can be overridden by ``PROCESS360_POC_PRINCIPAL``.
+        """
+        raw = os.environ.get("PROCESS360_POC_PRINCIPAL")
+        payload: dict[str, Any] = dict(DEFAULT_POC_PRINCIPAL)
+        if raw and raw.strip():
+            try:
+                parsed = json.loads(raw)
+            except ValueError as exc:
+                raise ValueError("PROCESS360_POC_PRINCIPAL must be valid JSON") from exc
+            if not isinstance(parsed, dict):
+                raise ValueError("PROCESS360_POC_PRINCIPAL must be a JSON object")
+            payload.update(parsed)
+        return cls.from_payload(payload)
+
+    @classmethod
     def local(cls) -> "PrincipalScope":
-        """Internal/test principal.  MCP callers must supply a host principal."""
-        return cls(tenant_id="local", user_id="local", source="local", can_dispatch=True)
+        """Internal/test principal.  Never resolves from model-supplied input."""
+        return cls(
+            tenant_id="local",
+            user_id="local",
+            source="local",
+            can_dispatch=True,
+            grant_kind="all",
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -100,14 +172,32 @@ class PrincipalScope:
             "productIds": list(self.product_ids),
             "canDispatch": self.can_dispatch,
             "source": self.source,
+            "grantKind": self.grant_kind,
         }
 
     @property
     def key(self) -> str:
         return f"{self.tenant_id}:{self.user_id}"
 
+    @property
+    def can_read_data(self) -> bool:
+        return self.grant_kind in {"restricted", "all"}
+
     def merge_scope(self, scope: Scope) -> Scope:
-        """Intersect user filters with the principal's allowed data range."""
+        """Intersect user filters with the principal's allowed data range.
+
+        Empty allowances never mean "unlimited": a ``restricted`` grant must
+        name at least one dimension, and ``all`` must be granted explicitly.
+        """
+        if self.grant_kind == "none":
+            raise ValueError("principal has no data grant")
+        if self.grant_kind == "all":
+            return scope
+        if not any((self.customer_ids, self.owner_ids, self.product_ids)):
+            raise ValueError(
+                "restricted principal grant must name at least one customer/owner/product"
+            )
+
         def narrow(requested: tuple[str, ...], allowed: tuple[str, ...]) -> tuple[str, ...]:
             if not allowed:
                 return requested
@@ -136,6 +226,8 @@ class PrincipalScope:
             "orgIds": list(self.org_ids),
             "roles": list(self.roles),
             "canDispatch": self.can_dispatch,
+            "grantKind": self.grant_kind,
+            "source": self.source,
         }
 
 

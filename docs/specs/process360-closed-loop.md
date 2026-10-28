@@ -59,22 +59,61 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
 `blocked` 与 `partial` 必须原样交付；禁止把不可评估的指标改成 0，也禁止用当前余额
 回填历史。`candidateCauses` 只表示待证据验证的候选原因。
 
+### 3.1 身份（服务端解析）
+
+- `principal` 不是工具参数。MCP 网关在每次调用时解析身份并经 contextvar 注入；
+  入参中出现 `principal`/`principalScope` 直接报错。
+- 授权语义显式化为 `grantKind`：
+
+| grantKind | 行为 |
+|---|---|
+| `none` | 拒绝一切业务取数 |
+| `restricted` | 与查询筛选取交集；必须至少指定一个客户/负责人/产品维度 |
+| `all` | 允许全量只读 |
+
+空授权列表不再表示“不限制”。POC 默认身份为服务端配置的只读全量
+（`PROCESS360_POC_PRINCIPAL` 可覆盖），`canDispatch` 与取数授权分开判断。
+
+### 3.2 查询结果复用
+
+- `Process360Query` 返回 `queryId` 和 `recordsRef{queryId,rowCount,totalRows,sampleSize,truncated}`，
+  `records` 替换为最多 5 条 `sampleRecords`；`evidence[].records` 同样只保留样本与计数。
+- `Process360Analyze/Structure/Verify` 接受 `queryId` 复用同一份服务端结果，不再逐步重复查库。
+  结果按 tenant/principal/catalogVersion/scenario 隔离，跨用户或跨场景复用一律不命中。
+- `Process360Analyze` 的 `metricCatalog` 只包含本轮相关指标，完整目录留在 catalog。
+
+### 3.3 全量冻结基准
+
+- `Process360Analyze` 在服务端按 `queryInfo.totalRows` 独立重取完整对象集后冻结，
+  记录 `fullObjectCount/frozenObjectCount/complete/objectSetHash`。
+- 展示 `limit` 不再影响基准；`complete=false` 时 `Process360Verify` 直接 blocked。
+- `Process360Verify` 的当期对象集同样使用完整结果，而不是页面样本。
+
 ## 4. 执行边界
 
 ```text
 S05 Process360Draft.canvasActions[]
   → CanvasGenerate kind=actions（只带草稿引用和展示字段）
-  → 用户在 Fuxi HTML 点击“发送任务令”
-  → Fuxi 宿主补 principal + recipients_raw（当前用户/责任人手机号）
-  → TaskOrderCreate
-  → 服务端回读草稿、校验租户/用户/hash/审批/canDispatch
+  → 用户在 HTML 点击“发送任务令”
+  → POST /api/process360/task-orders（只传 draftId/draftHash/actionId/requestId）
+  → 服务端以可信身份解析接收人映射，回读草稿
+  → 校验租户/用户/hash/审批/canDispatch/有效期
   → 单个 actionId 一次性消费，persistent idempotency key
   → Fuxi POST /source/todo-batches（source=boulderai-anaylize-todo）
-  → Fuxi 待办侧承接业务处理
+  → 统一回执返回页面，页面按回执显示成功/拒绝/失败/待确认
 ```
 
-- 建议卡只携带 `draftId/draftHash/runId/actionId/scenario/approvalStatus/expiresAt/
-  dispatchTool`。`CanvasGenerate` 拒绝行动条目中出现手机号字段或 11 位手机号文本。
+- 建议卡必须携带 `draftId/draftHash/runId/actionId/scenario/approvalStatus/expiresAt/
+  dispatchTool` 六项关键字段。任一缺失即为旧版卡片：按钮禁用并显示
+  “旧版建议，请重新生成任务草稿”，服务端也不接受手工补字段。
+- 页面不提交手机号也不持有凭据；接收人由 `PROCESS360_RECIPIENT_MAP` 在服务端解析。
+  `CanvasGenerate` 拒绝行动条目中出现手机号字段或 11 位手机号文本。
+- 统一回执 `schema=process360.dispatch.v1`：
+  `status=ok|blocked|unconfirmed`、`accepted`、`message`、`receipt`、`draftId/actionId/requestId`。
+  仅当 `status=ok` 且 Fuxi 回执证明 `applied+skipped>0` 才算成功；`blocked` 显示拒绝原因；
+  空回执或超时显示“结果待确认”。HTTP 200 本身不代表成功。
+- 宿主桥接只在页面无法直连主服务时启用：带 `requestId` 发消息，监听
+  `fuxi:task-order-result`，25 秒未回执转为“结果待确认”，不会显示成功。
 - `approvalStatus` 不是 `approved` / `host_click_authorized` 时按钮显示“待审批”并禁用；
   过期草稿点击时要求重新生成。服务端仍会二次校验，前端不能绕过。
 - 标题、正文、场景、严重程度、期限、责任人从服务端草稿回读，调用方不能改写。
@@ -99,6 +138,13 @@ PROCESS360_PG_SCHEMA=ywln_crm
 PROCESS360_PG_STATEMENT_TIMEOUT_MS=15000
 # 可选：catalog 不在 <cwd>/dataset 下时指定绝对/相对路径
 PROCESS360_CATALOG_PATH=
+# 服务端 POC 身份（模型不可见）；缺省为只读全量
+PROCESS360_POC_PRINCIPAL=
+# 页面直接下发开关与接收人映射；手机号只在这里出现
+PROCESS360_PAGE_DISPATCH=1
+PROCESS360_RECIPIENT_MAP={"__default__":["<phone>"]}
+# 页面/独立部署时指向主服务的绝对地址；默认同源 /api/process360/task-orders
+PROCESS360_DISPATCH_URL=
 ```
 
 `web` extras 增加 `psycopg[binary]>=3.1`。未安装驱动或未配置连接时，

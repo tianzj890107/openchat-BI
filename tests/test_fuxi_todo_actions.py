@@ -166,9 +166,10 @@ def test_canvas_actions_block_renders_task_order_control(tmp_path: Path) -> None
     assert "Canvas generated" in output
     html = (tmp_path / "dataset" / "canvas").glob("*.html")
     page = next(html).read_text(encoding="utf-8")
-    assert "发送任务令" in page
+    assert "旧版建议" in page
     assert 'data-fuxi-task-order="action-1"' in page
-    assert "fuxi:task-order-create" in page
+    assert "fuxi:task-order-result" in page
+    assert "/api/process360/task-orders" in page
     assert '"actions"' in output
 
 
@@ -205,10 +206,13 @@ def test_canvas_actions_preserve_process360_dispatch_metadata(tmp_path: Path) ->
     for field in ("draftId", "draftHash", "runId", "actionId", "approvalStatus", "expiresAt", "dispatchTool"):
         assert f'"{field}"' in page
         assert f'"{field}"' in output
-    assert 'const taskOrder = ' in page
-    assert 'taskOrder }' in page
-    assert '发送任务令' in page
-    assert '待审批' not in page
+    assert "const taskOrder = " in page
+    assert "draft_id: action.draftId" in page
+    assert "draft_hash: action.draftHash" in page
+    assert "normalizeReceipt" in page
+    assert "PROCESS360_DISPATCH" in page
+    assert "发送任务令" in page
+    assert "待审批" not in page
 
 
 def test_canvas_actions_reject_phone_and_pending_approval(tmp_path: Path) -> None:
@@ -229,6 +233,7 @@ def test_canvas_actions_reject_phone_and_pending_approval(tmp_path: Path) -> Non
             "id": "a2", "title": "核查", "content": "核查排产证据。", "evidence": "证据模板",
             "draftId": "draft-2", "draftHash": "hash-2", "actionId": "a2",
             "approvalStatus": "pending", "dispatchTool": "TaskOrderCreate",
+            "expiresAt": "2099-01-01T00:00:00Z",
         }]}}],
     }, str(tmp_path))
     assert "Canvas generated" in pending

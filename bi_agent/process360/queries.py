@@ -391,6 +391,9 @@ def query_sc01(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, A
             "aggregateMs": aggregate.duration_ms,
             "detailMs": detail.duration_ms,
             "detailRows": len(detail.rows),
+            "totalRows": max(
+                int(row.get("overdue_rows") or 0), len(detail.rows)
+            ),
             "truncated": detail.truncated
             or int(row.get("overdue_rows") or row.get("actual_rows") or 0) > len(detail.rows),
         },
@@ -512,6 +515,7 @@ def query_sc02(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, A
             "aggregateMs": aggregate.duration_ms,
             "detailMs": detail.duration_ms,
             "detailRows": len(detail.rows),
+            "totalRows": max(int(approved or 0), len(detail.rows)),
             "truncated": detail.truncated or approved > len(detail.rows),
         },
         approvedCount=approved,
@@ -635,7 +639,12 @@ def query_sc03(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, A
             "客户等级编码 1 的含义需业务最终确认。",
         ],
         next_steps=["补充批准计划客户全集后计算 M36003", "对无有效商机的战略客户逐户核查"],
-        queryInfo={"durationMs": rows.duration_ms, "truncated": truncated},
+        queryInfo={
+            "durationMs": rows.duration_ms,
+            "detailRows": len(rows.rows),
+            "totalRows": max(total, len(rows.rows)),
+            "truncated": truncated,
+        },
         strategicCustomers=total,
         pendingCustomers=pending,
         truncated=truncated,
@@ -821,6 +830,7 @@ def query_sc04(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, A
             "aggregateMs": aggregate.duration_ms,
             "detailMs": detail.duration_ms,
             "detailRows": len(detail.rows),
+            "totalRows": max(int(count or 0), len(detail.rows)),
             "truncated": detail.truncated or count > len(detail.rows),
         },
         awardedUnsigned=count,
@@ -1042,6 +1052,9 @@ def query_sc05(catalog: Process360Catalog, scope: Scope, db: Any) -> dict[str, A
             "aggregateMs": aggregate.duration_ms,
             "detailMs": detail.duration_ms,
             "detailRows": len(detail.rows),
+            "totalRows": max(
+                int(row.get("overdue_rows") or row.get("actual_rows") or 0), len(detail.rows)
+            ),
             "truncated": detail.truncated
             or int(row.get("overdue_rows") or row.get("actual_rows") or 0) > len(detail.rows),
         },

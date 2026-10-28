@@ -147,3 +147,37 @@
   src/layout.js` 的环境问题，与本轮 Process360 改动无关。
 - 边界：本轮未部署、未发送真实 Fuxi 任务、未创建 MR/tag/Release；业务批准口径、真实
   证据、宿主权限注入、真实点击与回执、主服务对话入口仍需联调。
+
+### 2026-10-28 Process360 身份、全量基准、查询复用与任务令回执加固
+
+- 身份改为服务端解析：MCP 网关为每次 Process360/TaskOrderCreate 调用注入可信
+  `principal`（contextvar），工具公共 schema 不再暴露 `principal`，入参携带会被拒绝。
+  新增 `grantKind=none|restricted|all`，空授权列表不再等于“不限制”；POC 默认使用
+  服务端配置的只读全量身份 `PROCESS360_POC_PRINCIPAL`。
+- 全量冻结基准：`build_baseline` 接收服务端独立重取的完整对象集，记录
+  `fullObjectCount/frozenObjectCount/complete/objectSetHash`；展示 `limit` 不再污染基准，
+  `complete=false` 时 S07 直接 blocked，复验的当期对象集同样取全量。
+- 查询复用与紧凑返回：`Process360Query` 返回 `queryId` + `recordsRef` + 最多 5 条样本，
+  明细与证据记录不再回传全量；`Analyze/Structure/Verify` 接受 `queryId` 复用同一结果，
+  按 tenant/principal/catalogVersion/scenario 隔离；Analyze 的 `metricCatalog` 只保留本轮指标。
+- 渲染工具注册修复：`ChartGenerate/ChartGenerateMultiDim/TableGenerate` 注册为不依赖数据源
+  的能力，`CanvasGenerate` 在真实源路径下同样进入 source-free 集合；`/api/mcp/health`
+  暴露 `missingExecutors`，声明未实现的工具会被记录。
+- 任务令下发链路：新增 `POST/GET /api/process360/task-orders`，页面只提交
+  `draftId/draftHash/actionId/requestId`，服务端解析身份与接收人映射
+  （`PROCESS360_RECIPIENT_MAP`）并回读草稿。统一回执 `process360.dispatch.v1`，
+  只有 `status=ok` 且 Fuxi 回执证明 `applied+skipped>0` 才显示成功。
+- Canvas 行动卡状态机：六项草稿字段缺失即判定旧版并禁用（“旧版建议，请重新生成任务草稿”）；
+  增加 `requestId`、宿主 `fuxi:task-order-result` 回执监听、25 秒超时和“结果待确认”状态，
+  `blocked` 不再显示为成功。
+- 涉及文件：`bi_agent/process360/{identity,service,closure,store,tools,dispatch}.py`、
+  `bi_agent/process360/queries.py`、`bi_agent/web/mcp_endpoint.py`、
+  `ontology-analytics-mcp/canvas_tool.py`、`ontology-analytics-skill/SKILL.md`、
+  `ontology-analytics-skill/references/08-tools-and-sources.md`、
+  `docs/specs/process360-closed-loop.md` 及新增/更新测试。
+- 验证：`pytest -q tests/test_process360_*.py tests/test_fuxi_todo_actions.py` 为
+  142 passed / 9 skipped；全量 `pytest -q tests` 为 1528 passed / 37 skipped，唯一失败仍是
+  worktree 缺少 `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js`。
+  用 32444 只读库实测：`limit=5` 的 SC01 查询返回 5 条样本但冻结基准为 2102/2102、
+  `complete=true`；`queryId` 复用的 Analyze 约 2.1 秒，返回 5 条样本与 4 条指标定义。
+- 边界：未部署、未发送真实 Fuxi 任务；接收人映射与页面下发地址需按环境配置后才可点击下发。

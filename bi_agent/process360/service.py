@@ -7,10 +7,11 @@ and never executes a business write from analysis; S06 is a separate call.
 
 from __future__ import annotations
 
-import os
 import json
+import os
 import re
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -87,9 +88,15 @@ class Process360Service:
 
     @staticmethod
     def _principal(payload: Mapping[str, Any] | None) -> PrincipalScope:
-        # Direct Python callers keep a local compatibility principal.  The MCP
-        # schema requires a host-injected principal for every data operation.
-        return PrincipalScope.from_payload(payload, required=payload is not None)
+        """Resolve the caller identity on the server side.
+
+        The MCP runtime injects a server-resolved principal for every tool
+        call.  When a direct Python caller provides none, the configured POC
+        principal is used - never a model-supplied or anonymous one.
+        """
+        if payload is not None:
+            return PrincipalScope.from_payload(payload, required=True)
+        return PrincipalScope.poc()
 
     @staticmethod
     def _principal_gap(message: str) -> dict[str, Any]:
@@ -183,13 +190,14 @@ class Process360Service:
             return False, str(reason)
         return True, ""
 
-    def query(
+    def _query_full(
         self,
         scenario: str,
         *,
         scope: Mapping[str, Any] | None = None,
         principal: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Execute (or reuse) one controlled query and keep the full rows."""
         code = str(scenario or "").strip().upper()
         try:
             identity = self._principal(principal)
@@ -213,7 +221,7 @@ class Process360Service:
             result = run_scenario(self.catalog, code, resolved, self.db)
             result["principalScope"] = identity.fingerprint()
             result["requestedScope"] = dict(scope or {})
-            return result
+            return self._remember_query(code, identity, result)
         except DatabaseUnavailable as exc:
             result = self._blocked_query(code, resolved, str(exc))
             result["principalScope"] = identity.fingerprint()
@@ -231,6 +239,140 @@ class Process360Service:
                 scenario=code or None,
                 limitations=[str(exc)],
             )
+
+    def _remember_query(
+        self, code: str, identity: PrincipalScope, result: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Store the full result server-side and stamp a reusable reference."""
+        if result.get("status") in {"blocked", "not_applicable"}:
+            result["queryId"] = None
+            return result
+        query_id = uuid.uuid4().hex
+        self.store.save_query(
+            scenario=code,
+            scope=result.get("scope") or {},
+            payload=result,
+            tenant=identity.tenant_id,
+            principal=identity.user_id,
+            catalog_version=self.catalog_version,
+            query_id=query_id,
+        )
+        result["queryId"] = query_id
+        return result
+
+    def _reuse_query(
+        self, query_id: str, code: str, identity: PrincipalScope
+    ) -> dict[str, Any] | None:
+        stored = self.store.get_query(query_id)
+        if not stored:
+            return None
+        if stored.get("tenant") != identity.tenant_id or stored.get("principal") != identity.user_id:
+            return None
+        if stored.get("catalog_version") and stored.get("catalog_version") != self.catalog_version:
+            return None
+        if str(stored.get("scenario") or "").upper() != code:
+            return None
+        payload = dict(stored.get("payload") or {})
+        payload["queryId"] = stored.get("id")
+        payload["queryReused"] = True
+        return payload
+
+    def _query_full_for(
+        self,
+        scenario: str,
+        *,
+        scope: Mapping[str, Any] | None = None,
+        principal: Mapping[str, Any] | None = None,
+        query_id: str = "",
+    ) -> dict[str, Any]:
+        """Reuse a stored query when allowed, otherwise query once."""
+        code = str(scenario or "").strip().upper()
+        if query_id:
+            try:
+                identity = self._principal(principal)
+            except ValueError as exc:
+                return envelope(
+                    "S03", "needs_clarification", catalog_id=self.catalog_id,
+                    catalog_version=self.catalog_version, scenario=code or None,
+                    gaps=[self._principal_gap(str(exc))],
+                )
+            reused = self._reuse_query(str(query_id), code, identity)
+            if reused is not None:
+                return reused
+        return self._query_full(code, scope=scope, principal=principal)
+
+    #: Upper bound for one full-object freeze pass.  Larger result sets stay
+    #: incomplete on purpose instead of being silently truncated.
+    FREEZE_ROW_LIMIT = 200_000
+
+    def _freeze_rows(
+        self, code: str, scope: Scope, query: Mapping[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Return the complete object rows, independent of the display limit."""
+        info = dict(query.get("queryInfo") or {})
+        total = int(info.get("totalRows") or 0)
+        rows = list(query.get("records") or [])
+        if not total or (not info.get("truncated") and len(rows) >= total):
+            return rows
+        limit = min(total, self.FREEZE_ROW_LIMIT)
+        if limit <= len(rows):
+            return rows
+        try:
+            full = run_scenario(self.catalog, code, replace(scope, limit=limit), self.db)
+        except Exception:  # noqa: BLE001 - keep the partial set; completeness fails
+            return rows
+        return list(full.get("records") or rows)
+
+    @staticmethod
+    def compact_query(payload: Mapping[str, Any], *, sample: int = 5) -> dict[str, Any]:
+        """Model-facing view: summary plus a bounded sample and a reference."""
+        out = dict(payload)
+        rows = list(out.pop("records", []) or [])
+        sample_rows = rows[: max(0, sample)]
+        out["sampleRecords"] = sample_rows
+        info = dict(out.get("queryInfo") or {})
+        out["recordsRef"] = {
+            "queryId": out.get("queryId"),
+            "rowCount": len(rows),
+            "totalRows": info.get("totalRows"),
+            "sampleSize": len(sample_rows),
+            "truncated": bool(info.get("truncated")),
+        }
+        evidence_items = []
+        for item in out.get("evidence", []) or []:
+            entry = dict(item)
+            records = list(entry.pop("records", []) or [])
+            entry["recordCount"] = len(records)
+            entry["sampleRecords"] = records[:2]
+            evidence_items.append(entry)
+        out["evidence"] = evidence_items
+        return out
+
+    def query(
+        self,
+        scenario: str,
+        *,
+        scope: Mapping[str, Any] | None = None,
+        principal: Mapping[str, Any] | None = None,
+        query_id: str = "",
+        sample: int = 5,
+    ) -> dict[str, Any]:
+        """S03 tool entry: reuse a stored query or run one, then return a summary."""
+        code = str(scenario or "").strip().upper()
+        if query_id:
+            try:
+                identity = self._principal(principal)
+            except ValueError as exc:
+                return envelope(
+                    "S03", "needs_clarification", catalog_id=self.catalog_id,
+                    catalog_version=self.catalog_version, scenario=code or None,
+                    gaps=[self._principal_gap(str(exc))],
+                )
+            reused = self._reuse_query(str(query_id), code, identity)
+            if reused is not None:
+                return self.compact_query(reused, sample=sample)
+        full = self._query_full(code, scope=scope, principal=principal)
+        return self.compact_query(full, sample=sample)
 
     # -- S04 --------------------------------------------------------------
     def _unsupported_analysis(self, decision, question: str):
@@ -316,7 +458,7 @@ class Process360Service:
             cursor, _meta = previous_period(cursor)
             windows.append(cursor)
         queries = [
-            self.query(scenario, scope=window.to_dict(), principal=principal)
+            self._query_full(scenario, scope=window.to_dict(), principal=principal)
             for window in windows
         ]
         current_query, previous_query = queries[0], queries[1]
@@ -375,8 +517,9 @@ class Process360Service:
         dimension: str = "",
         value_field: str = "",
         top_n: int = 10,
+        query_id: str = "",
     ) -> dict[str, Any]:
-        query = self.query(scenario, scope=scope, principal=principal)
+        query = self._query_full_for(scenario, scope=scope, principal=principal, query_id=query_id)
         structure = structure_from_records(
             query.get("records", []),
             dimension=normalize_dimension(dimension),
@@ -396,6 +539,8 @@ class Process360Service:
             gaps=dedupe_gaps([*query.get("gaps", []), *structure.get("gaps", [])]),
             limitations=[*query.get("limitations", []), *structure.get("limitations", [])],
             structure=structure,
+            queryId=query.get("queryId"),
+            queryReused=bool(query.get("queryReused")),
             principalScope=query.get("principalScope"),
         )
 
@@ -566,7 +711,7 @@ class Process360Service:
 
         def execute_tool() -> dict[str, Any]:
             if tool == "Process360Query":
-                return self.query(str(params.get("scenario") or ""), scope=params.get("scope"), principal=identity.to_dict())
+                return self._query_full(str(params.get("scenario") or ""), scope=params.get("scope"), principal=identity.to_dict())
             if tool == "Process360Analyze":
                 return self.analyze(
                     question=str(params.get("question") or ""),
@@ -660,13 +805,13 @@ class Process360Service:
         for step in planned.get("steps", []):
             sop = step.get("sop")
             if sop == "P03":
-                branches["fact"] = self.query(code, scope=scope, principal=principal)
+                branches["fact"] = self._query_full(code, scope=scope, principal=principal)
             elif sop == "P04":
                 branches["trend"] = self.compare_periods(code, scope=scope, principal=principal)
             elif sop == "P05":
                 branches["structure"] = self.structure(code, scope=scope, principal=principal)
             elif sop == "P06":
-                query = self.query(code, scope=scope, principal=principal)
+                query = self._query_full(code, scope=scope, principal=principal)
                 context = build_context(self.catalog, code, question=question)
                 branches["anomaly"] = analyze_stage(
                     self.catalog, code, context, query, question=question
@@ -702,6 +847,7 @@ class Process360Service:
         principal: Mapping[str, Any] | None = None,
         evidence: Iterable[Mapping[str, Any]] | None = None,
         forecast_inputs: Mapping[str, Any] | None = None,
+        query_id: str = "",
     ) -> dict[str, Any]:
         try:
             identity = self._principal(principal)
@@ -770,7 +916,9 @@ class Process360Service:
             )
             else build_context(self.catalog, decision.scenario, question=question or None)
         )
-        query = self.query(decision.scenario, scope=scope, principal=principal)
+        query = self._query_full_for(
+            decision.scenario, scope=scope, principal=principal, query_id=query_id
+        )
         if query.get("status") == "needs_clarification" and any(
             item.get("code") == "PRINCIPAL_SCOPE_INVALID" for item in query.get("gaps", [])
         ):
@@ -786,6 +934,7 @@ class Process360Service:
                 ],
             }
         resolved = Scope.from_payload(query.get("scope") or scope)
+        full_rows = self._freeze_rows(decision.scenario, resolved, query)
         result = analyze_stage(
             self.catalog, decision.scenario, ctx, query, question=question or None
         )
@@ -795,7 +944,12 @@ class Process360Service:
             resolved,
             query,
             principal=identity.fingerprint(),
+            full_rows=full_rows,
         )
+        compact = self.compact_query(query, sample=5)
+        result["records"] = compact["sampleRecords"]
+        result["recordsRef"] = compact["recordsRef"]
+        result["queryId"] = query.get("queryId")
         run_id = uuid.uuid4().hex
         result = apply_evidence(
             self.catalog,
@@ -805,7 +959,23 @@ class Process360Service:
         )
         result["route"] = decision.to_dict()
         result["contextSummary"] = ctx.get("counts")
-        result["metricCatalog"] = ctx.get("metrics")
+        result["contextRef"] = {
+            "scenario": decision.scenario,
+            "counts": ctx.get("counts"),
+            "note": "完整流程/规则/证据模板保留在服务端 catalog，按需用 Process360Context 读取。",
+        }
+        metric_codes = {
+            str(item.get("code")) for item in query.get("metrics", []) if item.get("code")
+        }
+        result["metricCatalog"] = [
+            dict(row)
+            for row in (ctx.get("metrics") or [])
+            if str(row.get("指标编码") or row.get("code") or "") in metric_codes
+        ]
+        result["metricCatalogRef"] = {
+            "codes": sorted(metric_codes),
+            "note": "仅返回本轮相关指标定义；完整指标目录见 Process360Context。",
+        }
         result["runId"] = run_id
         result["dataSnapshot"] = {
             "catalogId": self.catalog_id,
@@ -814,6 +984,9 @@ class Process360Service:
             "baselineHash": baseline["baselineHash"],
             "observationWindow": baseline["observationWindow"],
             "objectCount": baseline["objectCount"],
+            "fullObjectCount": baseline.get("fullObjectCount"),
+            "complete": baseline.get("complete"),
+            "objectSetHash": baseline.get("objectSetHash"),
         }
         result["principalScope"] = identity.fingerprint()
         result["evidenceStatus"] = result.get("evidenceValidation", {}).get("status")
@@ -832,7 +1005,11 @@ class Process360Service:
                     "status": query.get("status"),
                     "scope": query.get("scope"),
                     "metrics": query.get("metrics", []),
-                    "records": query.get("records", []),
+                    "records": (query.get("records") or [])[:200],
+                    "recordsRef": {
+                        "queryId": query.get("queryId"),
+                        "rowCount": len(query.get("records") or []),
+                    },
                     "gaps": query.get("gaps", []),
                 },
             },
@@ -1021,6 +1198,7 @@ class Process360Service:
             runId=result.get("runId"),
             expiresAt=saved["expiresAt"],
             approvalStatus=approval_status,
+            dispatchTool="TaskOrderCreate",
             principalScope=identity.fingerprint(),
             limitations=[
                 *output.get("limitations", []),
@@ -1271,6 +1449,7 @@ class Process360Service:
         excluded_object_keys: Iterable[str] | None = None,
         exclusion_evidence: Mapping[str, Any] | None = None,
         delivery_evidence: Mapping[str, Any] | None = None,
+        query_id: str = "",
     ) -> dict[str, Any]:
         code = str(scenario or "").strip().upper()
         try:
@@ -1281,7 +1460,7 @@ class Process360Service:
                 scenario=code, gaps=[self._principal_gap(str(exc))],
                 closure={"status": "blocked", "canClose": False},
             )
-        query = self.query(code, scope=scope, principal=principal)
+        query = self._query_full_for(code, scope=scope, principal=principal, query_id=query_id)
         current = {
             str(item.get("code")): item.get("value")
             for item in query.get("metrics", [])
@@ -1317,11 +1496,19 @@ class Process360Service:
                 extra_gaps.append(
                     gap("UNTRUSTED_BASELINE_REJECTED", "拒绝调用方自填基准", needed="改传 runId", impact="避免篡改原对象集合或分母", severity="blocking", source="security")
                 )
+        # Compare against the complete current object set, never the page sample.
+        try:
+            resolved_scope = Scope.from_payload(query.get("scope") or scope)
+        except ValueError:
+            resolved_scope = Scope.from_payload(None)
+        current_rows = self._freeze_rows(code, resolved_scope, query)
+        current_payload = dict(query)
+        current_payload["records"] = current_rows
         result = build_closure(
             self.catalog,
             code,
             baseline=trusted_baseline,
-            current=query,
+            current=current_payload,
             approval_ref=approval_ref,
             approved_target=approved_target,
             approved_direction=approved_direction,
@@ -1398,7 +1585,7 @@ class Process360Service:
                 "next": "按返回的子目标或缺口继续；不能把局部结果表述为全部完成。",
             }
         ctx = self.context(code, question=question)
-        query = self.query(code, scope=scope, principal=principal)
+        query = self._query_full(code, scope=scope, principal=principal)
         if route_payload.get("sop") == "P03":
             return {
                 "schema": "process360.closed_loop.v1",

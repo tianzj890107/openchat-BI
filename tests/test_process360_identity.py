@@ -38,3 +38,39 @@ def test_principal_unrestricted_dimension_is_still_bounded_by_request() -> None:
     principal = PrincipalScope.from_payload({"tenantId": "t1", "userId": "u1"})
     scope = principal.merge_scope(Scope.from_payload({"productIds": ["p1"]}))
     assert scope.product_ids == ("p1",)
+
+
+def test_empty_grant_is_not_unlimited() -> None:
+    denied = PrincipalScope.from_payload(
+        {"tenantId": "t1", "userId": "u1", "grantKind": "none"}
+    )
+    assert denied.can_read_data is False
+    with pytest.raises(ValueError, match="no data grant"):
+        denied.merge_scope(Scope.from_payload({}))
+
+    ambiguous = PrincipalScope.from_payload(
+        {"tenantId": "t1", "userId": "u1", "grantKind": "restricted"}
+    )
+    with pytest.raises(ValueError, match="at least one"):
+        ambiguous.merge_scope(Scope.from_payload({}))
+
+    full = PrincipalScope.from_payload(
+        {"tenantId": "t1", "userId": "u1", "grantKind": "all"}
+    )
+    assert full.merge_scope(Scope.from_payload({"customerIds": ["c9"]})).customer_ids == ("c9",)
+
+
+def test_poc_principal_comes_from_server_config(monkeypatch) -> None:
+    monkeypatch.delenv("PROCESS360_POC_PRINCIPAL", raising=False)
+    poc = PrincipalScope.poc()
+    assert poc.grant_kind == "all"
+    assert poc.source == "server-poc-config"
+    assert poc.tenant_id and poc.user_id
+
+    monkeypatch.setenv(
+        "PROCESS360_POC_PRINCIPAL",
+        '{"tenantId":"ywln","userId":"reader","grantKind":"restricted","customerIds":["c1"]}',
+    )
+    restricted = PrincipalScope.poc()
+    assert restricted.grant_kind == "restricted"
+    assert restricted.merge_scope(Scope.from_payload({})).customer_ids == ("c1",)

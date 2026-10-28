@@ -76,9 +76,25 @@ def build_baseline(
     query: Mapping[str, Any],
     *,
     principal: Mapping[str, Any] | None = None,
+    full_rows: Iterable[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    """Freeze the object set from the complete server-side result.
+
+    ``full_rows`` must come from a server pass that is not bounded by the
+    display ``limit``.  When it is omitted the query's own rows are used and
+    completeness is checked against ``queryInfo.totalRows``; an incomplete set
+    is recorded as ``complete=false`` and blocks formal effect verification.
+    """
     code = str(scenario).upper()
-    keys = object_keys(query.get("records") or [], code)
+    info = dict(query.get("queryInfo") or {})
+    rows = list(full_rows if full_rows is not None else (query.get("records") or []))
+    total = int(info.get("totalRows") or 0)
+    keys = object_keys(rows, code)
+    if full_rows is not None:
+        # The server already re-read the full set; only its size matters.
+        complete = bool(total) and len(rows) >= total
+    else:
+        complete = bool(total) and len(rows) >= total and not info.get("truncated")
     metrics = _metric_values(query.get("metrics") or [])
     window = {
         "start": scope.period_start.isoformat() if scope.period_start else None,
@@ -95,6 +111,10 @@ def build_baseline(
         "observationWindow": window,
         "objectKeys": keys,
         "objectCount": len(keys),
+        "fullObjectCount": total or len(rows),
+        "frozenObjectCount": len(rows),
+        "complete": complete,
+        "objectSetHash": digest(sorted(keys)),
         "metrics": metrics,
         "queryStatus": query.get("status"),
         "queryHash": digest({"scenario": code, "scope": scope.to_dict(), "catalog": catalog.version}),
@@ -165,13 +185,14 @@ def build_closure(
         and (baseline.get("objectKeys") or baseline.get("objectCount") is not None)
         and baseline.get("frozenAt")
         and baseline.get("observationWindow")
+        and baseline.get("complete", False)
     )
     if not baseline_valid:
         gaps.append(
             gap(
                 "VERIFICATION_BASELINE_MISSING",
-                "缺少服务端冻结的原始对象集合",
-                needed="先用本次分析创建 runId 并冻结基准",
+                "缺少服务端冻结的完整原始对象集合",
+                needed="先用本次分析创建 runId 并冻结全量基准；展示分页不能作为基准",
                 impact="无法计算原集合化解比例",
                 severity="blocking",
                 source="runtime",
