@@ -349,3 +349,18 @@
 - 环境文件备份后重启既有 release；未修改 Cockpit 静态站、未覆盖历史数据、未新增发送待办。
   线上健康、状态接口及权限／接收人解析验证通过，完整 HTML 点击链路仍待联调。
 - 部署及回退记录见 `DEPLOYMENT.md`；手机号等个人配置未入库。
+
+### 2026-10-28 17:05 · Process360 五场景伏羲 SOP 复跑与任务令下发验证
+
+- 以当前 HEAD 重启本地 MCP，用新会话重跑 SC01–SC05，全部完成 Route → 受控取数 →
+  分析/结构 → Canvas → 闸门；五场景执行期间不发送任务令。
+- 身份改为服务端注入 `ywln/zhangzhen`；模型注入 principal、无计划业务调用、旧版无草稿
+  下发三个绕过入口现场验证均被拒绝。
+- SC01/SC03 冻结基准达到完整对象集（2102 / 40）；SC04、SC05 的 TableGenerate 与
+  ChartGenerate 直接调用成功。
+- 单独验证下发链路：用 SC01 真实运行生成可信草稿，经 `TaskOrderCreate` 向沈康
+  `159****7656` 创建 1 条 Fuxi 待办，`applied=1/skipped=0/errors=[]`；MCP 与页面接口
+  重放均返回同一 executionId，未产生重复待办。
+- 记录仍未关闭的问题：P02/P12 计划步骤不是可执行工具、多目标计划碎片化、SC05 否定语义
+  误路由、大结果截断导致 queryId 丢失、4/5 闸门未绑定 runId、SC05 blocked 查询未落库。
+- 完整核对见 `docs/specs/process360-fuxi-sop-execution-rerun-2026-10-28.md`。
