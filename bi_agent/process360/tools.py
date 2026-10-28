@@ -506,9 +506,60 @@ def _analyze(params: dict[str, Any], cwd: str) -> str:
     )
 
 
+def _with_action_block(result: dict[str, Any]) -> dict[str, Any]:
+    """Attach a ready-to-render block so HTML cannot silently drop actions."""
+
+    actions = list(result.get("canvasActions") or [])
+    if actions:
+        result["canvasActionBlock"] = {"kind": "actions", "params": {"items": actions}}
+        result["actionDelivery"] = {
+            "required": True,
+            "status": "ready",
+            "count": len(actions),
+        }
+        return result
+    gaps = list(result.get("gaps") or [])
+    reasons: list[str] = []
+    for item in gaps[:3]:
+        if isinstance(item, dict):
+            text = str(
+                item.get("needed")
+                or item.get("title")
+                or item.get("message")
+                or item.get("code")
+                or ""
+            ).strip()
+        else:
+            text = str(item or "").strip()
+        if text:
+            reasons.append(text)
+    reason = "；".join(reasons) or str(result.get("message") or "").strip()
+    reason = "未生成可下发任务：" + (reason or "证据或责任人条件不足")
+    reason = reason[:400]
+    gap_codes = [
+        str(item.get("code") or item.get("title") or "").strip()
+        for item in gaps
+        if isinstance(item, dict) and str(item.get("code") or item.get("title") or "").strip()
+    ]
+    result["canvasActionBlock"] = {
+        "kind": "actions",
+        "params": {
+            "items": [],
+            "reason": reason,
+            "gaps": gap_codes,
+        },
+    }
+    result["actionDelivery"] = {
+        "required": True,
+        "status": str(result.get("status") or "blocked"),
+        "count": 0,
+        "reason": reason,
+    }
+    return result
+
+
 def _draft(params: dict[str, Any], cwd: str) -> str:
-    return _json(
-        _service(cwd).draft(
+    result = _service(cwd).draft(
             question=str(params.get("question") or ""),
             scenario=params.get("scenario"),
             scope=params.get("scope"),
@@ -521,7 +572,7 @@ def _draft(params: dict[str, Any], cwd: str) -> str:
             severity=params.get("severity"),
             solutions=params.get("solutions"),
         )
-    )
+    return _json(_with_action_block(result))
 
 
 def _verify(params: dict[str, Any], cwd: str) -> str:

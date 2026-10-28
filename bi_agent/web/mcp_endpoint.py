@@ -15,11 +15,13 @@ web application.
 from __future__ import annotations
 
 import asyncio
+import html as html_lib
 import importlib.util
 import hashlib
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -51,6 +53,7 @@ from ..process360.request_context import (
     resolve_request_context,
     set_request_context,
 )
+from ..process360.router import delivery_requirement as process360_delivery_requirement
 from ..paths import DATASET_DIR, project_path
 from ..tools import (
     ask_user,
@@ -169,6 +172,8 @@ OUTPUT_GATE_SCHEMA: dict[str, Any] = {
     "name": "OutputGateCheck",
     "description": (
         "交付前闸门：检查证据引用、预测披露、图表抑制、只读 SQL 和总额/分月对账。"
+        "当 Process360 计划要求行动交付时，还检查 HTML 的结构化行动卡是否绑定"
+        "服务端可信草稿；缺卡或草稿不一致会 reject。"
         "返回 verdict=pass/warn/reject；reject 时不得把候选结论作为最终交付。"
     ),
     "input_schema": {
@@ -185,7 +190,10 @@ OUTPUT_GATE_SCHEMA: dict[str, Any] = {
                 "type": "string",
                 "description": "CanvasGenerate 返回的 artifactHash；提供 canvasId 时必填",
             },
-            "planId": {"type": "string", "description": "本次分析所属的服务端执行计划"},
+            "planId": {
+                "type": "string",
+                "description": "本次分析所属的服务端执行计划；行动交付要求从这里读取，不能由模型临时声明",
+            },
             "queryId": {"type": "string", "description": "本次分析消费的服务端查询结果"},
             "deliveryKind": {
                 "type": "string",
@@ -417,6 +425,209 @@ def _route_executor() -> Executor:
     return run
 
 
+_CANVAS_ACTIONS_META_RE = re.compile(
+    r'<meta\s+name="canvas-actions"\s+content="([^"]*)"', re.IGNORECASE
+)
+
+
+def _canvas_actions_meta(page: str) -> dict[str, Any] | None:
+    match = _CANVAS_ACTIONS_META_RE.search(page or "")
+    if not match:
+        return None
+    try:
+        value = json.loads(html_lib.unescape(match.group(1)))
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _check_action_delivery(
+    *,
+    plan_id: str,
+    question: str,
+    plan: Mapping[str, Any] | None,
+    action_meta: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """Check that an action-delivery plan ends in trusted, structured cards.
+
+    The server route owns the requirement.  The model cannot turn it off at
+    delivery time; a blocked draft is acceptable only when the plan recorded a
+    Draft attempt and the HTML carries an explicit, reader-visible reason.
+    """
+
+    hard: list[str] = []
+    warnings: list[str] = []
+    inferred = (
+        process360_delivery_requirement(question)
+        if str(question or "").strip()
+        else {"required": False, "sopId": "", "kind": "analysis_report"}
+    )
+    required = False
+    required_by = ""
+    payload = dict(plan or {})
+    if payload:
+        if "actionDeliveryRequired" in payload:
+            required = bool(payload.get("actionDeliveryRequired"))
+        else:
+            sop = str(payload.get("sopId") or (payload.get("route") or {}).get("sop") or "")
+            required = sop in {"P10", "P11", "P12"}
+        required_by = "plan"
+
+    if not payload and plan_id:
+        if inferred.get("required"):
+            warnings.append("action_delivery_plan_not_found")
+            required = True
+            required_by = "question"
+    elif not plan_id and inferred.get("required"):
+        # Non-Process360 analyses may still produce structured cards.  Without
+        # a plan we require the card block, but cannot verify a trusted draft.
+        required = True
+        required_by = "question"
+
+    # A draft/dispatch request cannot be downgraded by a stale or rewritten
+    # plan.  Plan revisions remain the explicit way to change requirements.
+    if (
+        payload
+        and inferred.get("required")
+        and str(inferred.get("sopId") or "") in {"P11", "P12"}
+        and not required
+    ):
+        hard.append("action_delivery_plan_mismatch")
+        required = True
+        required_by = "question"
+
+    status = str((action_meta or {}).get("status") or "none")
+    items = list((action_meta or {}).get("items") or []) if action_meta else []
+    reason = str((action_meta or {}).get("reason") or "").strip() if action_meta else ""
+    draft_ids = [
+        str(item.get("draftId") or "").strip()
+        for item in items
+        if str(item.get("draftId") or "").strip()
+    ]
+    runs = process360_audit.store().list_plan_steps(plan_id) if plan_id else []
+    strict_draft = bool(payload and required)
+    recommendation_only = (
+        status == "recommendations"
+        and not required
+        and all(not str(item.get("draftId") or "").strip() for item in items)
+    )
+
+    if required and action_meta is None:
+        hard.append("action_card_required")
+    elif required and status == "blocked":
+        if not reason:
+            hard.append("action_block_reason_required")
+        steps = list(payload.get("steps") or [])
+        draft_step_ids = {
+            str(step.get("id") or "")
+            for step in steps
+            if str(step.get("tool") or "") == "Process360Draft"
+        }
+        if not draft_step_ids:
+            hard.append("action_delivery_plan_missing_draft_step")
+        elif plan_id and strict_draft:
+            attempted = any(
+                str(run.get("step_id") or "") in draft_step_ids
+                and str(run.get("tool") or "") == "Process360Draft"
+                and str(run.get("status") or "") in {"blocked", "needs_input", "skipped"}
+                for run in runs
+            )
+            if not attempted:
+                hard.append("action_draft_not_attempted")
+    elif required and not items:
+        hard.append("action_card_required")
+
+    store = process360_audit.store()
+    plan_runs = runs
+    plan_run_ids = {
+        str((run.get("refs") or {}).get("runId") or "")
+        for run in plan_runs
+        if str((run.get("refs") or {}).get("runId") or "")
+    }
+    for index, item in enumerate(items):
+        action_id = str(item.get("actionId") or item.get("id") or f"#{index + 1}")
+        missing = [
+            field
+            for field in ("draftId", "draftHash", "actionId", "dispatchTool")
+            if not str(item.get(field) or "").strip()
+        ]
+        if missing:
+            if strict_draft:
+                hard.append(f"action_card_fields_missing:{action_id}")
+            elif not recommendation_only:
+                warnings.append(f"action_card_without_trusted_draft:{action_id}")
+            continue
+        if str(item.get("dispatchTool") or "") != "TaskOrderCreate":
+            if strict_draft:
+                hard.append(f"action_dispatch_tool_invalid:{action_id}")
+            else:
+                warnings.append(f"action_dispatch_tool_invalid:{action_id}")
+        draft = store.get_draft(str(item.get("draftId") or ""))
+        if not draft:
+            if strict_draft:
+                hard.append(f"action_draft_not_found:{action_id}")
+            else:
+                warnings.append(f"action_draft_not_found:{action_id}")
+            continue
+        if str(draft.get("payload_hash") or "") != str(item.get("draftHash") or ""):
+            if strict_draft:
+                hard.append(f"action_draft_hash_mismatch:{action_id}")
+            else:
+                warnings.append(f"action_draft_hash_mismatch:{action_id}")
+        if str(item.get("actionId") or "") not in (draft.get("actions") or {}):
+            if strict_draft:
+                hard.append(f"action_not_in_draft:{action_id}")
+            else:
+                warnings.append(f"action_not_in_draft:{action_id}")
+        if item.get("runId") and str(draft.get("run_id") or "") != str(item.get("runId") or ""):
+            if strict_draft:
+                hard.append(f"action_run_mismatch:{action_id}")
+            else:
+                warnings.append(f"action_run_mismatch:{action_id}")
+        elif item.get("runId") and plan_run_ids and str(item.get("runId") or "") not in plan_run_ids:
+            if strict_draft:
+                hard.append(f"action_run_not_in_plan:{action_id}")
+            else:
+                warnings.append(f"action_run_not_in_plan:{action_id}")
+        if item.get("scenario") and str(draft.get("scenario") or "").upper() != str(
+            item.get("scenario") or ""
+        ).upper():
+            if strict_draft:
+                hard.append(f"action_scenario_mismatch:{action_id}")
+            else:
+                warnings.append(f"action_scenario_mismatch:{action_id}")
+        if draft.get("expired"):
+            warnings.append(f"action_draft_expired:{action_id}")
+        if str(draft.get("approval_status") or "") not in {"approved", "host_click_authorized"}:
+            warnings.append(f"action_draft_pending_approval:{action_id}")
+
+    if recommendation_only:
+        state = "recommendations"
+    elif not required and action_meta is None:
+        state = "not_required"
+    elif status == "blocked":
+        state = "blocked"
+        if reason:
+            warnings.append(f"action_delivery_blocked:{reason[:80]}")
+    elif items:
+        state = "ready" if (strict_draft or len(draft_ids) == len(items)) else "untrusted"
+        if state == "untrusted":
+            warnings.append("action_cards_without_trusted_draft")
+    else:
+        state = "missing"
+
+    report = {
+        "required": required,
+        "requiredBy": required_by,
+        "status": state,
+        "count": len(items),
+        "trusted": bool(items) and (strict_draft or len(draft_ids) == len(items)),
+        "reason": reason,
+        "draftIds": draft_ids,
+    }
+    return report, hard, warnings
+
+
 def _gate_executor() -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
         payload = dict(params or {})
@@ -426,9 +637,12 @@ def _gate_executor() -> Executor:
         plan_id = str(payload.pop("planId", "") or "").strip()
         query_id = str(payload.pop("queryId", "") or "").strip()
         delivery_kind = str(payload.pop("deliveryKind", "") or "analysis_report").strip()
+        question = str(payload.get("question") or "").strip()
         report = _gate_rules().check(payload)
         hard = list(report.get("hard_issues") or [])
+        warnings = list(report.get("warnings") or [])
         artifact_record = None
+        page_text = ""
         if delivery_kind not in {"analysis_report", "fact_answer"}:
             hard.append("delivery_kind_invalid")
         if delivery_kind == "analysis_report" and (not canvas_id or not expected):
@@ -445,6 +659,7 @@ def _gate_executor() -> Executor:
                 hard.append("artifact_missing")
             else:
                 actual = hashlib.sha256(target.read_bytes()).hexdigest()
+                page_text = target.read_text(encoding="utf-8", errors="replace")
                 artifact["actualHash"] = actual
                 if not expected:
                     hard.append("artifact_hash_required")
@@ -464,9 +679,22 @@ def _gate_executor() -> Executor:
                 }
                 if baseline and baseline.get("complete") is False:
                     hard.append("frozen_baseline_incomplete")
+        plan_record = process360_audit.store().get_plan(plan_id) if plan_id else None
+        action_report, action_hard, action_warnings = _check_action_delivery(
+            plan_id=plan_id,
+            question=question,
+            plan=(plan_record or {}).get("payload"),
+            action_meta=_canvas_actions_meta(page_text) if page_text else None,
+        )
+        report["actionDelivery"] = action_report
+        hard.extend(action_hard)
+        warnings.extend(action_warnings)
         if hard:
             report["hard_issues"] = sorted(dict.fromkeys(hard))
             report["verdict"] = "reject"
+        elif warnings:
+            report["warnings"] = sorted(dict.fromkeys(warnings))
+            report["verdict"] = "warn"
         artifact = report.get("artifact")
         if isinstance(artifact, dict) and artifact.get("actualHash"):
             context = active_request_context()

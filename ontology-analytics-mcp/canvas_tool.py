@@ -78,7 +78,10 @@ CANVAS_GENERATE_SCHEMA = {
         "口径说明按顺序放进同一个页面。`blocks[].params` 与 "
         "`ChartGenerate` / `ChartGenerateMultiDim` / `TableGenerate` 完全一致，"
         "不要在正文里手写 Markdown 表格，也不要把编码当展示名。"
-        "行动建议使用 kind=actions，每条带稳定 id，供 Fuxi 宿主在用户点击后创建任务令。"
+        "行动建议使用 kind=actions，每条带稳定 id，供 Fuxi 宿主在用户点击后创建任务令；"
+        "没有服务端草稿引用的卡片只作为“分析建议”展示，不会出现发送按钮；要求行动交付时"
+        "必须使用 Process360Draft 返回的字段。草稿 blocked 时用 items=[] + reason 保留"
+        "可见的阻断位置。"
     ),
     "input_schema": {
         "type": "object",
@@ -148,7 +151,8 @@ CANVAS_GENERATE_SCHEMA = {
                             "type": "object",
                             "description": (
                                 "kind=chart/chart_multi/table 时，与对应工具完全相同的参数；"
-                                "kind=actions 时传入 items 数组。"
+                                "kind=actions 时传入 items 数组；草稿 blocked 时可传 items=[]"
+                                " 并必须给 reason（可带 gaps），页面展示阻断说明而不是隐藏按钮。"
                             ),
                         },
                     },
@@ -330,7 +334,7 @@ def _validate_canvas(params: dict) -> str | None:
             return f"blocks[{index}] ({kind}) needs params"
         if kind == "actions":
             try:
-                _normalize_actions(block["params"])
+                _validate_action_block(block["params"])
             except ValueError as exc:
                 return f"blocks[{index}] (actions): {exc}"
     return None
@@ -392,9 +396,13 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _normalize_actions(params: dict) -> list[dict[str, Any]]:
+def _normalize_actions(params: dict, *, allow_empty: bool = False) -> list[dict[str, Any]]:
     items = params.get("items") if isinstance(params, dict) else None
-    if not isinstance(items, list) or not items:
+    if not isinstance(items, list):
+        raise ValueError("items must be a non-empty list")
+    if not items:
+        if allow_empty:
+            return []
         raise ValueError("items must be a non-empty list")
     normalized: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -441,7 +449,56 @@ def _normalize_actions(params: dict) -> list[dict[str, Any]]:
     return normalized
 
 
+def _action_block_reason(params: dict) -> str:
+    for key in ("reason", "unavailableReason", "blockedReason", "message"):
+        value = str(params.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _action_block_gaps(params: dict) -> list[str]:
+    gaps = params.get("gaps")
+    if isinstance(gaps, dict):
+        gaps = [gaps]
+    if not isinstance(gaps, list):
+        return []
+    result: list[str] = []
+    for gap in gaps:
+        if isinstance(gap, dict):
+            text = str(
+                gap.get("needed")
+                or gap.get("title")
+                or gap.get("message")
+                or gap.get("code")
+                or ""
+            ).strip()
+        else:
+            text = str(gap or "").strip()
+        if text:
+            result.append(text)
+    return result
+
+
+def _validate_action_block(params: dict) -> list[dict[str, Any]]:
+    """Validate an actions block, including an explicit blocked placeholder."""
+
+    items = _normalize_actions(params, allow_empty=True)
+    if items:
+        return items
+    reason = _action_block_reason(params)
+    if not reason:
+        raise ValueError(
+            "items is empty; an unavailable action block requires a reason"
+        )
+    related = " ".join([reason, *_action_block_gaps(params)])
+    if _PHONE_RE.search(related):
+        raise ValueError("actions block reason or gaps must not contain a phone number")
+    return []
+
+
 REQUIRED_DRAFT_FIELDS = ("draftId", "draftHash", "actionId", "approvalStatus", "expiresAt", "dispatchTool")
+DRAFT_REF_FIELDS = ("draftId", "draftHash", "approvalStatus", "expiresAt", "dispatchTool")
 
 
 def _draft_ready(item: dict[str, Any]) -> bool:
@@ -472,11 +529,34 @@ def _draft_issue(item: dict[str, Any]) -> tuple[str, str]:
     return "", ""
 
 
-def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
-    items = _normalize_actions(params)
+def _render_actions(
+    params: dict,
+) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    items = _validate_action_block(params)
+    if not items:
+        reason = _action_block_reason(params)
+        gaps = _action_block_gaps(params)
+        gap_html = (
+            "<ul>" + "".join(f"<li>{escape(item)}</li>" for item in gaps) + "</ul>"
+            if gaps
+            else ""
+        )
+        return (
+            '<div class="action-empty" data-action-state="blocked">'
+            "<h4>尚不能生成可下发任务</h4>"
+            f"<p>{escape(reason)}</p>{gap_html}</div>",
+            [],
+            {"status": "blocked", "count": 0, "items": [], "reason": reason, "gaps": gaps},
+        )
     for item in items:
         item["draftReady"] = _draft_ready(item)
-        issue, message = _draft_issue(item)
+        item["hasDraftRefs"] = any(
+            str(item.get(field) or "").strip() for field in DRAFT_REF_FIELDS
+        )
+        if item["draftReady"] or item["hasDraftRefs"]:
+            issue, message = _draft_issue(item)
+        else:
+            issue, message = "", ""
         item["draftIssue"] = issue
         item["draftIssueMessage"] = message
     cards: list[str] = []
@@ -495,23 +575,52 @@ def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
                 f'<span class="action-chip">责任人 {escape(item["owner_name"] or item["owner_ref"])}</span>'
             )
         issue = item["draftIssue"]
-        if issue == "missing":
+        recommendation = not item["draftReady"] and not item["hasDraftRefs"]
+        if recommendation:
+            chips.append('<span class="action-chip">分析建议</span>')
+            action_control = ""
+            issue_note = (
+                '<p class="action-recommendation-note">尚未生成任务草稿，仅供分析参考；'
+                "如需下发，请先生成任务草稿。</p>"
+            )
+        elif issue == "missing":
             label, disabled, title_attr = "缺少草稿字段", " disabled", ' title="缺少草稿字段，请重新生成任务草稿"'
+            action_control = (
+                f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}"'
+                f'{disabled}{title_attr}>{label}</button>'
+            )
+            issue_note = (
+                f'<p class="action-feedback" style="color:#B42318">{escape(item["draftIssueMessage"])}</p>'
+            )
         elif issue == "expired":
             label, disabled, title_attr = "草稿已过期", " disabled", ' title="任务草稿已过期，请重新生成建议"'
+            action_control = (
+                f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}"'
+                f'{disabled}{title_attr}>{label}</button>'
+            )
+            issue_note = (
+                f'<p class="action-feedback" style="color:#B42318">{escape(item["draftIssueMessage"])}</p>'
+            )
         elif issue == "pending":
             label, disabled, title_attr = "待审批", " disabled", ' title="该建议待审批，请先完成审批"'
+            action_control = (
+                f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}"'
+                f'{disabled}{title_attr}>{label}</button>'
+            )
+            issue_note = (
+                f'<p class="action-feedback" style="color:#B42318">{escape(item["draftIssueMessage"])}</p>'
+            )
         else:
             label, disabled, title_attr = "发送任务令", "", ""
-        issue_note = (
-            f'<p class="action-feedback" style="color:#B42318">{escape(item["draftIssueMessage"])}</p>'
-            if item["draftIssue"] else ""
-        )
+            action_control = (
+                f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}"'
+                f'{disabled}{title_attr}>{label}</button>'
+            )
+            issue_note = ""
         card = (
             '<article class="action-item">'
             f'<div class="action-head"><h4>{_inline_markdown(item["title"])}</h4>'
-            f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}"'
-            f'{disabled}{title_attr}>{label}</button></div>'
+            f'{action_control}</div>'
             f'<div class="action-content">{_render_markdown(item["content"])}</div>'
             f'{evidence}'
             f'<div class="action-meta">{"".join(chips)}</div>'
@@ -519,7 +628,35 @@ def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
             '</article>'
         )
         cards.append(card)
-    return f'<div class="action-list">{"".join(cards)}</div>', items
+    meta_items = [
+        {
+            "id": item.get("id"),
+            "actionId": item.get("actionId"),
+            "draftId": item.get("draftId"),
+            "draftHash": item.get("draftHash"),
+            "dispatchTool": item.get("dispatchTool"),
+            "approvalStatus": item.get("approvalStatus"),
+            "expiresAt": item.get("expiresAt"),
+            "runId": item.get("runId"),
+            "scenario": item.get("scenario"),
+        }
+        for item in items
+    ]
+    ready_count = sum(1 for item in items if item.get("draftReady"))
+    legacy_count = sum(
+        1 for item in items if item.get("hasDraftRefs") and not item.get("draftReady")
+    )
+    if ready_count == len(items):
+        state = "ready"
+    elif ready_count == 0 and legacy_count == 0:
+        state = "recommendations"
+    else:
+        state = "mixed"
+    return (
+        f'<div class="action-list">{"".join(cards)}</div>',
+        items,
+        {"status": state, "count": len(items), "items": meta_items, "reason": "", "gaps": []},
+    )
 
 
 ACTION_RUNTIME = r"""
@@ -885,6 +1022,11 @@ PAGE_STYLE = """
   tr.highlight td { background: #FFF7E6; }
   code { background: #F3F4F6; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
   .action-list { display: grid; gap: 10px; }
+  .action-empty { border: 1px dashed #D0D5DD; border-radius: 10px; padding: 12px 14px;
+    background: #FFFAEB; color: #7A2E0E; }
+  .action-empty h4 { margin: 0 0 6px; font-size: 14px; }
+  .action-empty p { margin: 4px 0; font-size: 13px; }
+  .action-empty ul { margin: 6px 0 0 18px; padding: 0; font-size: 12px; }
   .action-item { border: 1px solid #E4E7EC; border-radius: 10px; padding: 12px 14px;
     background: #FCFCFD; }
   .action-head { display: flex; align-items: flex-start; justify-content: space-between;
@@ -902,6 +1044,8 @@ PAGE_STYLE = """
     font-family: inherit; cursor: pointer; }
   .action-send:disabled { background: #98A2B3; border-color: #98A2B3; cursor: default; }
   .action-feedback { margin: 8px 0 0; font-size: 12px; }
+  .action-recommendation-note { margin: 8px 0 0; color: #667085;
+    font-size: 12px; line-height: 18px; }
   .page-foot { margin-top: 8px; color: #9AA0A6; font-size: 12px; }
   @media (prefers-color-scheme: dark) {
     html, body { background: #14161A; color: #E8EAED; }
@@ -913,6 +1057,7 @@ PAGE_STYLE = """
     .action-item { background: #171A1F; border-color: #2A2E35; }
     .action-content { color: #D0D5DD; }
     .action-chip { background: #242830; color: #C6CBD1; }
+    .action-recommendation-note { color: #98A2B3; }
   }
 """
 
@@ -924,6 +1069,7 @@ def _build_page(
     multis: list[dict],
     echarts_script: str,
     actions_runtime: str = "",
+    actions_meta: dict[str, Any] | None = None,
 ) -> str:
     title = escape(str(params.get("title") or "分析交付"), quote=False)
     subtitle = str(params.get("subtitle") or "").strip()
@@ -972,11 +1118,21 @@ def _build_page(
   }}
 </script>"""
 
+    actions_meta_html = ""
+    if actions_meta and actions_meta.get("status") in {
+        "ready", "recommendations", "mixed", "blocked"
+    }:
+        payload = json.dumps(actions_meta, ensure_ascii=False, separators=(",", ":"))
+        actions_meta_html = (
+            '<meta name="canvas-actions" content="' + escape(payload, quote=True) + '">'
+        )
+
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{actions_meta_html}
 <title>{title}</title>
 <style>{PAGE_STYLE}</style>
 {echarts_script}
@@ -1011,6 +1167,7 @@ def _make_canvas_generate(
         body_blocks: list[str] = []
         counts = {"text": 0, "chart": 0, "chart_multi": 0, "table": 0, "actions": 0}
         actions: list[dict[str, Any]] = []
+        blocked_action_state: dict[str, Any] | None = None
 
         try:
             for index, block in enumerate(params["blocks"]):
@@ -1025,13 +1182,51 @@ def _make_canvas_generate(
                 elif kind == "chart_multi":
                     inner = _render_chart_multi(block["params"], f"chart-{index}", multis)
                 elif kind == "actions":
-                    inner, block_actions = _render_actions(block["params"])
+                    inner, block_actions, block_state = _render_actions(block["params"])
                     actions.extend(block_actions)
+                    if block_state.get("status") == "blocked" and blocked_action_state is None:
+                        blocked_action_state = block_state
                 else:
                     inner = _render_table(block["params"])
                 body_blocks.append(f'<section class="card">{heading_html}{inner}</section>')
         except Exception as exc:  # noqa: BLE001
             return f"CanvasGenerate build error: {type(exc).__name__}: {exc}"
+
+        if actions:
+            has_draft_refs = any(item.get("hasDraftRefs") for item in actions)
+            all_drafts_ready = all(item.get("draftReady") for item in actions)
+            if all_drafts_ready:
+                action_status = "ready"
+            elif not has_draft_refs:
+                action_status = "recommendations"
+            else:
+                action_status = "mixed"
+            action_meta = {
+                "status": action_status,
+                "count": len(actions),
+                "items": [
+                    {
+                        "id": item.get("id"),
+                        "actionId": item.get("actionId"),
+                        "draftId": item.get("draftId"),
+                        "draftHash": item.get("draftHash"),
+                        "dispatchTool": item.get("dispatchTool"),
+                        "approvalStatus": item.get("approvalStatus"),
+                        "expiresAt": item.get("expiresAt"),
+                        "runId": item.get("runId"),
+                        "scenario": item.get("scenario"),
+                        "draftReady": bool(item.get("draftReady")),
+                        "hasDraftRefs": bool(item.get("hasDraftRefs")),
+                    }
+                    for item in actions
+                ],
+                "reason": "",
+                "gaps": [],
+            }
+        elif blocked_action_state is not None:
+            action_meta = blocked_action_state
+        else:
+            action_meta = {"status": "none", "count": 0, "items": [], "reason": "", "gaps": []}
 
         inline = params.get("inline_echarts", True)
         assets_note = ""
@@ -1073,7 +1268,13 @@ def _make_canvas_generate(
             suffix += 1
 
         page = _build_page(
-            params, body_blocks, charts, multis, echarts_script, _actions_runtime(actions)
+            params,
+            body_blocks,
+            charts,
+            multis,
+            echarts_script,
+            _actions_runtime(actions),
+            action_meta,
         )
         try:
             out_path.write_text(page, encoding="utf-8")
@@ -1104,6 +1305,7 @@ def _make_canvas_generate(
             "inline_echarts": bool(inline),
             "blocks": [block["kind"] for block in params["blocks"]],
             "actions": actions,
+            "actionState": action_meta,
         }
         return (
             f"{header}\n\n{CANVAS_SPEC_OPEN}"

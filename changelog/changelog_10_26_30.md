@@ -361,8 +361,9 @@
 - 单独验证下发链路：用 SC01 真实运行生成可信草稿，经 `TaskOrderCreate` 向沈康
   `159****7656` 创建 1 条 Fuxi 待办，`applied=1/skipped=0/errors=[]`；MCP 与页面接口
   重放均返回同一 executionId，未产生重复待办。
-- 记录仍未关闭的问题：P02/P12 计划步骤不是可执行工具、多目标计划碎片化、SC05 否定语义
-  误路由、大结果截断导致 queryId 丢失、4/5 闸门未绑定 runId、SC05 blocked 查询未落库。
+- 记录仍未关闭的问题：P02 计划步骤不是可执行工具（P12 已改为 Analyze+Draft 可执行步骤）、
+  多目标计划碎片化、SC05 否定语义误路由、大结果截断导致 queryId 丢失、4/5 闸门未绑定
+  runId、SC05 blocked 查询未落库。
 - 完整核对见 `docs/specs/process360-fuxi-sop-execution-rerun-2026-10-28.md`。
 
 ### 2026-10-28 17:06 · 34 线上 Process360 接入真实 PostgreSQL
@@ -379,3 +380,27 @@
   Traceback 与 5xx。
 - 边界：本轮只补充真实数据库连接与部署，未改变五场景口径，SC02–SC05 业务闭环和效果
   复验仍不能据此判为完成；未创建 MR、tag 或 Release。
+
+
+### 2026-10-28 17:50 · 行动交付卡与可信草稿闸门
+
+- 用户可见变化：要求改善建议、处置方案、任务草稿或下发的分析，HTML 现在必须包含结构化
+  行动卡和“发送任务令”按钮；不再只输出一段文字建议。草稿因证据、权限或责任人不足时，
+  页面显示“尚不能生成可下发任务”及具体缺口，不伪造草稿，也不让按钮无声消失。
+- Skill：新增交付类型判定（事实／分析／行动）和固定顺序 Analyze → Process360Draft →
+  CanvasGenerate → OutputGateCheck；明确生成草稿不等于发送，发送仍等用户点击。更新
+  P10/P11/P12 停止点、行动卡字段和闸门说明。
+- MCP：Process360Route/Plan 保存 `actionDeliveryRequired` 并为 P10/P11/P12 生成可执行的
+  Analyze+Draft 步骤；Process360Draft 返回 `canvasActionBlock`；OutputGateCheck 校验行动卡
+  是否存在、草稿是否存在/哈希一致/action 归属一致/runId 属于本轮计划，草稿 blocked 时必须
+  有 Draft 尝试记录和明确原因。
+- Canvas：actions 块支持空的阻断占位（`items=[]` + `reason/gaps`），输出机器可读
+  `canvas-actions` 元数据；有效卡片继续复用原有按钮、审批/过期禁用和统一下发状态机。
+- Canvas 状态修正：未携带任何服务端草稿引用的建议卡标记为“分析建议”，不再误显示
+  “缺少草稿字段”，也不出现发送按钮；只有携带部分草稿字段的旧版卡才显示缺字段错误，
+  六项字段完整且审批有效时才显示“发送任务令”。交付闸门对非行动分析允许普通建议，
+  但要求行动交付的计划仍拒绝用普通建议冒充可信行动卡。
+- 验证：新增行动交付与建议卡状态测试 15 项通过；Process360/Canvas/MCP 聚焦测试 120 项
+  通过；全量 Python `1613 passed / 37 skipped`，仅保留 worktree 缺少前端
+  `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的既有环境失败。
+- 边界：旧 HTML 不会自动补按钮，需要重新生成；本轮未部署、未创建 MR/tag/Release。

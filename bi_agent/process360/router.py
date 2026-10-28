@@ -135,6 +135,10 @@ SOP_RULES: tuple[tuple[str, str, str, str], ...] = (
 
 DEFAULT_RULE = (r".*", "P03", "fact", "默认指标问数")
 
+#: SOPs whose delivery includes executable actions.  Generating a trusted
+#: draft is part of delivery; sending it still waits for a user click.
+ACTION_DELIVERY_SOPS = frozenset({"P10", "P11", "P12"})
+
 
 def _score_scenarios(question: str) -> list[tuple[str, int]]:
     text = question.lower()
@@ -155,6 +159,28 @@ def _match_rule(question: str) -> tuple[str, str, str]:
         if re.search(pattern, question, flags=re.IGNORECASE):
             return sop, intent, reason
     return DEFAULT_RULE[1], DEFAULT_RULE[2], DEFAULT_RULE[3]
+
+
+def delivery_requirement(
+    question: str = "", *, sop_id: str = "", intent: str = ""
+) -> dict[str, Any]:
+    """Describe whether this request must carry structured action cards.
+
+    The decision belongs to the server-side route, not to the final answer.
+    A recommendation/draft/dispatch request must deliver a trusted draft and
+    a ``kind=actions`` block; a fact query or a pure diagnosis stops earlier.
+    """
+
+    if not sop_id:
+        sop_id, intent, _reason = _match_rule(question)
+    required = str(sop_id or "").upper() in ACTION_DELIVERY_SOPS
+    return {
+        "required": required,
+        "kind": "action_cards" if required else "analysis_report",
+        "sopId": str(sop_id or ""),
+        "intent": str(intent or ""),
+        "rule": "P10/P11/P12 require a server draft and structured action cards",
+    }
 
 
 def _clean_question(value: object) -> str:

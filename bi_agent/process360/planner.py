@@ -71,11 +71,17 @@ def build_plan(
     principal: Mapping[str, Any],
     budget: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    from .router import route
+    from .router import delivery_requirement, route
 
     primary = route(question, catalog, scenario=scenario)
     code = primary.scenario
+    delivery = delivery_requirement(question, sop_id=primary.sop_id, intent=primary.intent)
     goals = _goal_rows(question, primary.sop_id)
+    if delivery["required"]:
+        goals = [row for row in goals if row[0] not in {"P10", "P11", "P12"}]
+        if not any(row[0] == "P09" for row in goals):
+            goals.append(("P09", "候选原因与反证"))
+        goals.append(("P11", "任务草稿与依赖"))
     query_steps = [sop for sop, _title in goals if sop in {"P03", "P04", "P05", "P06", "P07"}]
     steps: list[dict[str, Any]] = []
     for index, (sop, title) in enumerate(goals, 1):
@@ -116,6 +122,9 @@ def build_plan(
         question=question,
         scope=scope,
         route=primary.to_dict(),
+        actionDeliveryRequired=bool(delivery["required"]),
+        deliveryKind=delivery["kind"],
+        delivery=delivery,
         goals=[{"id": f"goal-{i}", "sop": sop, "title": title} for i, (sop, title) in enumerate(goals, 1)],
         steps=steps,
         planVersion=1,

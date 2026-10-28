@@ -9,6 +9,8 @@ Fuxi 运行时直接调用远程 MCP 的 `OutputGateCheck`，传入 `answer`、`
 正式报告还必须传 `CanvasGenerate` 返回的 `canvasId`、`artifactHash`，以及可用的
 `planId/queryId/runId`。缺少最终 HTML 产物引用时直接 reject。只有显式
 `deliveryKind=fact_answer` 的纯文字事实回答可以不带 Canvas；缺省视为 `analysis_report`。
+行动交付（P10/P11/P12）必须传服务端生成的 `planId`，闸门从计划读取行动卡要求，不能由
+模型在交付时自行声明“本轮不需要行动卡”。
 
 离线开发/回归时可以运行纯规则脚本：
 
@@ -18,6 +20,19 @@ python scripts/gates.py sql --sql "SELECT ..."       # 只读 SQL 守卫
 ```
 
 `turn.json` 结构见 `cases/gate_cases.jsonl` 里的样例；至少包含 `answer`，预测轮次再带 `forecast_kind` / `forecast_assumption`，数字轮次带 `query_results`。
+
+## 0. 行动交付闸门
+
+- 触发：服务端计划（`Process360Route/Plan`）标记 `actionDeliveryRequired=true`，即
+  P10 对策、P11 任务草稿或 P12 下发语义。
+- 要求：最终 HTML 必须有 `kind=actions` 块。每张卡必须带服务端草稿引用
+  `draftId/draftHash/actionId/dispatchTool`，且能在服务端回读到同一草稿和同一 action。
+- 不通过：计划要求行动卡但 HTML 没有卡片、草稿不存在、哈希不符、action 不属于草稿、
+  卡片缺少草稿字段，均 reject；不得用正文“建议……”或普通“分析建议”替代可信行动卡。
+- 允许阻断：`Process360Draft` 因证据、权限、责任人不足而 blocked 时，HTML 必须用
+  空 actions 块写明 `reason`；计划中必须有一次 Draft 步骤记录，否则 reject。
+- 不强制：纯事实查询（P03 等）、纯分析（P06/P09 等未要求处置）可以不带行动卡。
+- 下发边界：生成草稿和行动卡不等于发送；只有用户点击后宿主才调用 `TaskOrderCreate`。
 
 ## 1. 证据闸门（数字与确定性判断）
 

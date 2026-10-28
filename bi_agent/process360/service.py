@@ -41,7 +41,7 @@ from .plans import build_draft
 from .planner import TOOL_FOR_SOP, PlanExecutionError, build_plan, run_exploration_step
 from .queries import run_scenario
 from .request_context import active_request_context, current_or_resolve
-from .router import route as route_stage
+from .router import delivery_requirement, route as route_stage
 from .store import Process360Store, digest
 from .verify import build_verification
 from ..integrations.fuxi_todo import make_source_todo_id, normalize_recipients
@@ -51,6 +51,33 @@ DRAFT_TTL_SECONDS = 7 * 86400
 QUERY_CONTRACT_VERSION = "process360.query.v2"
 QUERY_TEMPLATE_VERSION = "process360.queries.v1"
 TRUSTED_APPROVAL_STATES = {"approved", "host_click_authorized"}
+
+
+def _action_delivery_steps(decision: Any, steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ensure an action-delivery plan contains an executable Draft step."""
+
+    del decision, steps
+    # P10/P11/P12 are delivery intents, not render tools.  The server first
+    # freezes an analysis run, then creates the trusted draft that backs every
+    # action card.  Sending still waits for the user's click.
+    return [
+        {
+            "id": "step-1",
+            "sop": "P09",
+            "title": "候选原因与分析运行",
+            "tool": "Process360Analyze",
+            "dependsOn": [],
+            "status": "pending",
+        },
+        {
+            "id": "step-2",
+            "sop": "P11",
+            "title": "任务草稿与依赖",
+            "tool": "Process360Draft",
+            "dependsOn": ["step-1"],
+            "status": "pending",
+        },
+    ]
 
 
 def _query_ttl_seconds() -> float:
@@ -210,21 +237,30 @@ class Process360Service:
             )
         decision = route_stage(question, self.catalog, scenario=scenario)
         status = "needs_clarification" if decision.clarification and not decision.scenario else "ok"
+        delivery = delivery_requirement(
+            question, sop_id=decision.sop_id, intent=decision.intent
+        )
+        steps = [
+            {
+                "id": "step-1",
+                "sop": decision.sop_id,
+                "title": decision.sop_title,
+                "tool": TOOL_FOR_SOP.get(decision.sop_id, decision.sop_id),
+                "dependsOn": [],
+                "status": "pending",
+            }
+        ]
+        if delivery["required"]:
+            steps = _action_delivery_steps(decision, steps)
         payload = {
             "question": question,
             "scenario": decision.scenario,
             "sopId": decision.sop_id,
             "route": decision.to_dict(),
-            "steps": [
-                {
-                    "id": "step-1",
-                    "sop": decision.sop_id,
-                    "title": decision.sop_title,
-                    "tool": TOOL_FOR_SOP.get(decision.sop_id, decision.sop_id),
-                    "dependsOn": [],
-                    "status": "pending",
-                }
-            ],
+            "steps": steps,
+            "actionDeliveryRequired": bool(delivery["required"]),
+            "deliveryKind": delivery["kind"],
+            "delivery": delivery,
             "scope": identity.merge_scope(Scope.from_payload(None)).to_dict(),
             "tenant": identity.tenant_id,
             "principalKey": identity.key,
@@ -277,6 +313,9 @@ class Process360Service:
             revision=payload["revision"],
             revisedFrom=payload["revisedFrom"],
             steps=payload["steps"],
+            actionDeliveryRequired=payload["actionDeliveryRequired"],
+            deliveryKind=payload["deliveryKind"],
+            delivery=payload["delivery"],
             principalScope=identity.fingerprint(),
         )
 

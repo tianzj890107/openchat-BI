@@ -93,14 +93,44 @@ headers: {}
    放进同一页。返回的 `Artifact URL` 就是最终交付链接；不要再执行
    `run_scratch`、`promote_artifact` 或手工复制 HTML。
 6. **交付前过闸门**：调用 `OutputGateCheck`，正式分析报告必须传入 `canvasId`、
-   `artifactHash`，并尽量带 `planId/queryId/runId`、本轮 SQL（如有）、图表参数和总额/分月
-   对账。缺少最终 HTML 产物引用直接 reject；只有显式 `deliveryKind=fact_answer` 的纯文字
-   事实回答可以不带 Canvas。`verdict=reject` 时不得交付。
+   `artifactHash`；行动交付（P10/P11/P12）必须带 `planId`，并尽量带 `queryId/runId`、
+   本轮 SQL（如有）、图表参数和总额/分月对账。缺少最终 HTML 产物引用直接 reject；只有
+   显式 `deliveryKind=fact_answer` 的纯文字事实回答可以不带 Canvas。`verdict=reject`
+   时不得交付。
 7. **回答附执行摘要**：路由模式、取数工具、对账结果、闸门 verdict、`Artifact URL`
    各一行。
 
-任务令不是分析生成步骤。只有用户点击某条行动建议的“发送任务令/转督办”后，
-宿方才调用 `TaskOrderCreate`；模型不得在生成结论时自动发送，也不得猜测手机号。
+生成任务草稿属于分析交付的一部分，不等于下发。只有用户点击某条行动建议的
+“发送任务令/转督办”后，宿方才调用 `TaskOrderCreate`；模型不得在生成结论时自动发送，
+也不得猜测手机号。
+
+### 交付类型与行动卡
+
+先判定用户要的是哪一种交付，不能把“有建议文字”当作已经交付行动卡：
+
+| 用户需求 | 交付内容 | 任务令按钮 |
+| --- | --- | --- |
+| 查数量、金额、趋势、明细 | 事实、表格或图表 | 不需要 |
+| 分析风险、原因，未要求处置 | 结论、证据、限制 | 不强制 |
+| 要求改善建议、处置方案、任务草稿或下发 | 分析 + 服务端可信草稿 + 结构化行动卡 | 需要；条件不足时展示阻断原因 |
+
+“建议补充数据后再分析”属于分析限制，不是可下发任务，不要为它伪造行动卡。
+当交付类型需要行动卡时，按固定顺序执行：
+
+```text
+Process360Plan → Query/Analyze → Process360Draft → CanvasGenerate → OutputGateCheck
+```
+
+`Process360Draft` 返回的 `canvasActionBlock` 已是 `kind=actions` 块，应原样放入
+`CanvasGenerate.blocks`；也可使用 `draft.canvasActions` 作为 `params.items`。生成草稿后
+不要在正文里用一段文字替代行动卡。草稿因证据、权限或责任人不足而 blocked 时，传入
+`{"kind":"actions","params":{"items":[],"reason":"…","gaps":[…]}}`，页面会显示
+“尚不能生成可下发任务”及缺口，而不是让按钮无声消失。
+
+`OutputGateCheck` 会读取计划中的行动交付要求：要求行动卡却没有卡片、卡片引用缺失或与
+服务端草稿不一致时 reject；草稿确实 blocked 且 HTML 明确披露原因时允许交付分析结论。
+纯查询、纯分析报告不受此限制。非行动交付的普通建议若放入 actions 块但未填写任何草稿
+引用，页面会标为“分析建议”且不出现发送按钮；P10/P11/P12 不能用这种卡片绕过 Draft。
 
 只有用户明确说“只要一句话 / 不要文件 / 不要图表”时，才可以省略 HTML 或图表；
 路由、取数和对账仍然必须执行。
@@ -124,9 +154,9 @@ headers: {}
 | P01 定义、P02 流程规则 | `Process360Search` / `Process360Context`，无需取数 |
 | P03 当前事实与明细 | `Process360Query`，查询完成即停止，不自动诊断或生成任务 |
 | P06 异常、P08 影响、P09 候选原因 | `Process360Analyze`；根因仍须证据，只有明确要求才继续草稿 |
-| P10 对策 | 依据上下文中的候选方案说明核查建议与适用约束；当前未实现效果/成本排序 |
-| P11 任务草稿 | `Process360Draft`；`CanvasGenerate` 的 actions 原样使用 `draft.canvasActions` |
-| P12 下发 | 仅在用户点击建议卡后调用主服务统一执行服务；页面与 MCP 共用草稿、幂等键和回执契约 |
+| P10 对策 | 先分析；需要可执行交付时继续 `Process360Draft`，不能只输出文字建议 |
+| P11 任务草稿 | `Process360Draft`；`CanvasGenerate` 原样使用 `draft.canvasActionBlock`（或 `canvasActions`） |
+| P12 下发 | 本轮只生成可信草稿和行动卡；用户点击后才调用主服务统一执行，页面与 MCP 共用幂等与回执契约 |
 | P15 复验 | `Process360Verify`；缺冻结基准、批准目标或交付证据时 `canClose=false` |
 | P04 多期比较 | `Process360Compare`；同口径窗口、对象集合和期间必须一致 |
 | P05 结构排名 | `Process360Structure`；未知维度单列，贡献不等于原因 |
@@ -223,13 +253,20 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
 
 - L3 及以上的行动建议除正文外，必须在 `CanvasGenerate` 的 `kind=actions` 块中
   提供结构化条目；每条至少包含稳定 `id`、`title`、`content` 和 `evidence`。
+  Process360 的 P10/P11/P12 交付必须先调用 `Process360Draft`，不能只写文字建议。
 - 可选字段：`severity`（`CRITICAL/HIGH/MEDIUM/LOW`）、`due_at`（UTC `Z` 结尾）、
   `owner_ref`、`owner_name`、`category`。严重程度缺省 `MEDIUM`。
 - Process360 草稿生成的行动卡必须原样带上 `draftId`、`draftHash`、`runId`、
   `actionId`、`scenario`、`approvalStatus`、`expiresAt`、`dispatchTool`。按钮只携带
   这些不透明引用和展示字段，不携带任务正文替代品、手机号或凭据。
-- 六项草稿字段（`draftId/draftHash/actionId/approvalStatus/expiresAt/dispatchTool`）任一
-  缺失即为旧版卡片：按钮禁用并显示“旧版建议，请重新生成任务草稿”，不能手工补字段。
+- 未携带任何服务端草稿引用的 actions 条目是普通“分析建议”：可展示，但不出现发送按钮，
+  并明确提示“尚未生成任务草稿”。带任一草稿引用但六项字段
+  （`draftId/draftHash/actionId/approvalStatus/expiresAt/dispatchTool`）不完整的旧版卡片
+  仍按钮禁用并显示“缺少草稿字段，请重新生成任务草稿”，不能手工补字段。
+- 交付闸门会检查计划 `actionDeliveryRequired`：要求行动卡但 HTML 没有卡片、行动卡引用的
+  草稿不存在/哈希不符/不属于该草稿时 reject；草稿 blocked 时必须由计划记录一次 Draft
+  尝试，并在 HTML 中用空的 actions 块写明原因，才允许交付分析结论。要求行动交付时，
+  普通“分析建议”不能替代可信行动卡。
 - 点击“发送任务令”时，页面只把草稿引用 POST 到主服务
   `/api/process360/task-orders`；服务端解析身份、映射接收人、回读草稿并调用统一执行服务。
   只有显式设置 `window.PROCESS360_TASK_ORDER_TRANSPORT='host'` 时才走 Fuxi 宿主桥接，

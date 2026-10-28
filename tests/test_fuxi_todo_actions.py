@@ -158,7 +158,9 @@ def test_task_order_executor_uses_fuxi_client(monkeypatch: pytest.MonkeyPatch) -
     assert client.calls[0][0] == "/source/todo-batches"
 
 
-def test_canvas_actions_block_renders_task_order_control(tmp_path: Path) -> None:
+def test_canvas_actions_block_marks_plain_suggestions_as_non_dispatchable(
+    tmp_path: Path,
+) -> None:
     canvas = mcp_endpoint._canvas_tools()
     execute = canvas._make_canvas_generate()
     output = execute({
@@ -179,8 +181,13 @@ def test_canvas_actions_block_renders_task_order_control(tmp_path: Path) -> None
     assert "Canvas generated" in output
     html = (tmp_path / "dataset" / "canvas").glob("*.html")
     page = next(html).read_text(encoding="utf-8")
-    assert "缺少草稿字段" in page
-    assert 'data-fuxi-task-order="action-1"' in page
+    assert "分析建议" in page
+    assert "尚未生成任务草稿，仅供分析参考" in page
+    assert 'title="缺少草稿字段' not in page
+    assert "<button" not in page
+    assert 'data-fuxi-task-order="action-1"' not in page
+    assert 'name="canvas-actions"' in page
+    assert '&quot;status&quot;:&quot;recommendations&quot;' in page
     assert "fuxi:task-order-result" in page
     assert "/api/process360/task-orders" in page
     assert '"actions"' in output

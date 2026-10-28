@@ -152,7 +152,7 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
 ## 4. 执行边界
 
 ```text
-S05 Process360Draft.canvasActions[]
+S05 Process360Draft.canvasActionBlock（内部 items=draft.canvasActions[]）
   → CanvasGenerate kind=actions（只带草稿引用和展示字段）
   → 用户在 HTML 点击“发送任务令”
   → POST /api/process360/task-orders（只传 draftId/draftHash/actionId/requestId）
@@ -164,8 +164,18 @@ S05 Process360Draft.canvasActions[]
 ```
 
 - 建议卡必须携带 `draftId/draftHash/runId/actionId/scenario/approvalStatus/expiresAt/
-  dispatchTool` 六项关键字段。任一缺失即为旧版卡片：按钮禁用并显示
-  “旧版建议，请重新生成任务草稿”，服务端也不接受手工补字段。
+  dispatchTool` 六项关键字段。未携带任何服务端草稿引用的普通建议卡显示“分析建议”，
+  不出现发送按钮，并明确说明“尚未生成任务草稿”；带任一草稿引用但六项字段不完整的旧版卡
+  仍按钮禁用并显示“缺少草稿字段，请重新生成任务草稿”，服务端也不接受手工补字段。
+- 服务端计划标记 `actionDeliveryRequired=true` 时（P10 对策、P11 任务草稿、P12 下发），
+  计划必须包含 `Process360Analyze` 与 `Process360Draft` 步骤。`Process360Draft` 返回的
+  `canvasActionBlock` 必须原样进入 HTML；只写文字建议视为漏交付。
+- `Process360Draft` blocked 时返回空 `items` 的 `canvasActionBlock` 并附 `reason/gaps`；
+  HTML 显示“尚不能生成可下发任务”，不得伪造草稿或让按钮无声消失。
+- `OutputGateCheck` 对该计划检查行动卡：卡片缺失、草稿不存在/哈希不符/action 不属于草稿
+  时 reject；草稿确实 blocked 且计划记录过一次 Draft 尝试时，允许交付分析结论并明确披露
+  缺口。计划要求行动交付时，普通“分析建议”不能冒充可信行动卡。纯查询、纯分析不强制
+  行动卡。
 - 页面不提交手机号也不持有凭据；接收人由 `PROCESS360_RECIPIENT_MAP` 在服务端解析。
   `CanvasGenerate` 拒绝行动条目中出现手机号字段或 11 位手机号文本。
 - 统一回执 `schema=process360.dispatch.v1`：
