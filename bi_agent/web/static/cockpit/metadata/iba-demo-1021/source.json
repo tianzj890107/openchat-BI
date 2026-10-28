@@ -1,13 +1,13 @@
 {
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
-  "commit": "558f2ae27cdc5a9569c5d91a1db45f97d31a4321",
-  "importedAt": "2026-10-26",
+  "commit": "d01c08a07b79ba781f820524ff612f58cfa4e090",
+  "importedAt": "2026-10-28",
   "mode": "active-runtime-adapter",
-  "notes": "Imported upstream metadata unchanged; runtime uses live AP via the main service. Frozen snapshots are retained only for explicit replay mode.",
+  "notes": "Imported upstream metadata unchanged from d01c08a; the cockpit supplies only the delivered single-query adapter and does not inject the batch adapter. Missing data stays visible at the component position.",
   "rootComponents": 2,
   "templates": 13,
-  "totalComponents": 135,
+  "totalComponents": 145,
   "componentTypes": {
     "bar": 3,
     "bar-line": 2,
@@ -16,31 +16,39 @@
     "funnel": 1,
     "group": 5,
     "horizontal-bar": 14,
-    "kpiCard": 37,
+    "kpiCard": 38,
     "mini-cpgraph": 2,
     "process-arc": 1,
-    "progress": 15,
-    "segmented-strip": 5,
+    "progress": 20,
+    "segmented-strip": 6,
     "share-bar": 6,
     "tab-container": 1,
-    "table": 17,
+    "table": 19,
     "template": 3,
-    "title": 19
+    "title": 20
   },
   "dataSourceModes": {
-    "ap": 98,
-    "mock": 37
+    "ap": 106,
+    "mock": 39
   },
   "insights": 12,
   "insightComponents": 12,
+  "activateRules": 6,
+  "queryContract": {
+    "gatewayPrefix": "/api/gateway2",
+    "singlePath": "/x360/v1/ontology/data/query",
+    "repositoryId": "8",
+    "batchAdapterInjected": false,
+    "batchFallback": "ProUI concurrent single queries"
+  },
   "files": [
     {
       "file": "components.json",
-      "sha256": "a7f8065f47d25cfdc412a4c77e19ad3c0b230633e52b709ce6de7876efaf47a6"
+      "sha256": "d0c7ea3e43dbf3637fa7084d7b3c686ed015983b53570a1fd9ae2fc54962098f"
     },
     {
       "file": "template-registry.json",
-      "sha256": "d19f5922b1b249cfe71d6abf53b19d4adb25680251867ac65d40d55d605f9a66"
+      "sha256": "4bc6a6bf1de87a95c6024230ad4158d73a704b83715cdec786468548cfa1af02"
     },
     {
       "file": "insights.js",
@@ -49,6 +57,10 @@
     {
       "file": "insights.json",
       "sha256": "c0d1d0e3cb9b523931d7e18163be8082e053d1c1aa78e84bbb4b222bb809bfd0"
+    },
+    {
+      "file": "activate-rules.json",
+      "sha256": "58764642830522388eb545f594b43d990c491bfb8906c864870c0fa9ef41ed35"
     }
   ],
   "knownIssues": [
@@ -56,8 +68,8 @@
       "templateId": "2112062888320483329",
       "componentId": "group-9ypz7vwt",
       "missingChildId": "share-bar-79fsomq9",
-      "description": "Upstream child definition is absent; runtime reports the gap."
+      "description": "Upstream child definition is absent; runtime reports the gap and keeps the original position empty."
     }
   ],
-  "activatedAt": "2026-10-23"
+  "activatedAt": "2026-10-28"
 }

@@ -1,7 +1,24 @@
 """Read-only evidence extracted from the supplied V3 HTML, with no invented rows."""
 import hashlib
-from .metadata import FIXTURE, prototype, ring_for, ring_rows, text
+import json
+import re
+from pathlib import Path
 from .data import NAMES
+
+
+FIXTURE=Path(__file__).parent/'fixtures/v3-prototype.json'
+
+
+def prototype():return json.loads(FIXTURE.read_text())
+def text(value):return re.sub('<[^>]+>','',str(value)).replace('&nbsp;',' ')
+def ring_for(p,stage,risk=False):
+    if risk:return p[{'opportunity':'PROJ_RING','bid':'SALES_BID_RING','order':'SALES_ORDER_RING','shipment':'SALES_SHIP_RING'}[stage]]
+    return p[{'opportunity':'S1_OPP_RING','order':'S1_ORDER_RING','shipment':'S1_SHIP_RING'}[stage]] if stage in {'opportunity','order','shipment'} else p['S1_STAGE_RINGS'][NAMES[stage]]
+def ring_rows(ring):
+    out=[]
+    for group in ring['groups']:
+        for seg in group.get('segs',[]):out.append(dict(name=group['n']+' · '+seg['g'] if group['n']!=seg['g'] else seg['g'],value=seg.get('v',0),group=group['n']))
+    return out
 
 class PrototypeSource:
     def snapshot(self, period='2025-10', department='全部产品部'):

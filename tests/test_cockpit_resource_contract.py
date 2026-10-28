@@ -14,7 +14,9 @@ def test_vendor_manifest_matches_local_artifacts():
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=608062c7' in html
+    assert 'pro-bi-ui.min.js?v=90318295' in html
+    sdk=(vendor/'pro-bi-ui.min.js').read_text()
+    assert 'if(!t||!t.get("group"))return;t.fitView(vOn' in sdk
     assert 'data-dashboard-theme="white"' in html
     css=(ROOT/'cockpit.css').read_text()
     assert '--dashboard-canvas-bg:#fff' in css
@@ -24,7 +26,8 @@ def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='558f2ae27cdc5a9569c5d91a1db45f97d31a4321'
+    assert source['commit']=='d01c08a07b79ba781f820524ff612f58cfa4e090'
+    assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
     roots=json.loads((folder/'components.json').read_text())
@@ -33,6 +36,12 @@ def test_imported_metadata_hashes_and_three_tabs():
     assert [t['label'] for t in tabs]==['经营看板','运营360整体分析','穿透式问题分析']
     assert all(t['templateId'] in registry for t in tabs)
     assert source['totalComponents']==len(roots)+sum(len(t['components']) for t in registry.values())
+    rules=json.loads((folder/'activate-rules.json').read_text())
+    assert len(rules)==6
+    sales=next(rule for rule in rules if rule['id']=='activate-luv1ff6x')
+    assert sales['source']['actionKey']=='1793158849339'
+    assert sales['actions'][1]['nodeId']=='2109840325158682625'
+    assert sales['actions'][1]['nodeName']=='商机获取'
 
 def test_upstream_missing_children_are_reported_without_mutating_metadata():
     folder=ROOT/'metadata/iba-demo-1021'
@@ -81,6 +90,8 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     assert 'ensureAnalysis' in js and 'requestIdleCallback' in js
     assert 'PREFETCH_STAGES' in js
     assert ':bi-adapters="biAdapters"' in html
+    assert ':activate-rules="runtime.activateRules"' in html
+    assert 'postAnalysisDataQueryBatch' not in js
     assert 'layout/' not in js and 'views.json' not in js
 
 
@@ -148,12 +159,11 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
             assert 'useInsight(props, emit)' in source
 
 
-def test_analysis_flow_uses_three_delivered_nodes_and_shared_risk_markup():
+def test_analysis_flow_preserves_delivered_graph_and_shared_risk_markup():
     runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
     graph=next(component for component in runtime['pages']['analysis']['components']
                if component['id']=='mini-cpgraph-93j6k86p')
-    assert graph['title']=='销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）'
-    assert '投标' not in graph['title']
+    assert graph['title']=='销售额口径 · 四节点头盔图（商机获取 → 投标 → 订单接收 → 发货）'
     assert {rule['nodeId'] for rule in graph['graphConfig']['graphTemplateSwitchRules']}=={
         '2109840325158682625','2109840573998350338','2109840696539136002',
     }

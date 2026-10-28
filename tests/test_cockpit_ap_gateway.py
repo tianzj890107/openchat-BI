@@ -38,10 +38,10 @@ def test_transport_has_its_own_headers_paths_and_capacity(tmp_path,monkeypatch):
     gateway=APGateway(config(tmp_path),opener)
     assert gateway.query('analysis',QUERY)==DATA
     request,timeout=opener.calls[0]
-    assert request.full_url=='http://ap.example/api/gateway2/ontology/api/v1/analysis/data/query'
+    assert request.full_url=='http://ap.example/api/gateway2/x360/v1/ontology/data/query'
     assert request.get_method()=='POST' and timeout==2
     assert 'must-not-reach-ap' not in str(request.headers)
-    assert request.headers['X-ontology-repository-id']=='ap-repo'
+    assert request.headers['X-ontology-repository-id']=='8'
     assert json.loads(request.data)==QUERY
     gateway._capacity.acquire()
     try:
@@ -181,7 +181,7 @@ def test_individual_batch_uses_exact_single_ap_queries_in_order_and_never_calls_
     result=gateway.query('batch',[QUERY,second])
     assert result==[{'success':True,'data':DATA},{'success':True,'data':DATA}]
     assert [json.loads(r.data) for r,_ in opener.calls]==[QUERY,second]
-    assert all(r.full_url.endswith('/ontology/api/v1/analysis/data/query') for r,_ in opener.calls)
+    assert all(r.full_url.endswith('/x360/v1/ontology/data/query') for r,_ in opener.calls)
     assert all(timeout<=cfg.timeout for _,timeout in opener.calls)
 
 
@@ -211,6 +211,16 @@ def test_invalid_batch_mode_is_a_configuration_error(monkeypatch):
     monkeypatch.setenv('COCKPIT_AP_BATCH_MODE','invented')
     with pytest.raises(HTTPException) as error:APConfig.load()
     assert error.value.status_code==503
+
+
+def test_ontology_gateway_code_envelope_and_repository_override(monkeypatch,tmp_path):
+    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2')
+    monkeypatch.setenv('COCKPIT_AP_HEADERS_FILE',str(config(tmp_path).headers_file))
+    monkeypatch.setenv('COCKPIT_AP_REPOSITORY_ID','8')
+    gateway=APGateway(APConfig.load(),Opener({'code':200,'data':DATA}))
+    assert gateway.query('analysis',QUERY)==DATA
+    request,_=gateway._opener.calls[0]
+    assert request.headers['X-ontology-repository-id']=='8'
 
 
 def test_individual_batch_deduplicates_equal_children_without_losing_positions(tmp_path):

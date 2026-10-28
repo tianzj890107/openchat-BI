@@ -1,8 +1,8 @@
 {
-  "checkedAt": "2026-10-26T17:27:55+08:00",
+  "checkedAt": "2026-10-28T21:45:00+08:00",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
-  "sourceCommit": "558f2ae27cdc5a9569c5d91a1db45f97d31a4321",
-  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021; original embedded license notices preserved. Isolated from legacy workbench assets.",
+  "sourceCommit": "d01c08a07b79ba781f820524ff612f58cfa4e090",
+  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021 at d01c08a. The UMD carries a one-line guard for a destroyed helmet Graph callback; activateRules/selectHelmet remain upstream behavior and only the single-query adapter is injected.",
   "resources": [
     {
       "file": "../../vendor/antd/lib/vue.global.js",
@@ -14,14 +14,15 @@
     },
     {
       "file": "pro-bi-ui.min.js",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/558f2ae27cdc5a9569c5d91a1db45f97d31a4321/lib/pro-bi-ui.min.js",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/d01c08a07b79ba781f820524ff612f58cfa4e090/lib/pro-bi-ui.min.js",
       "sourcePath": "lib/pro-bi-ui.min.js",
-      "sha256": "608062c7402ff7216c57ef3a0309e18fade45eb8bc6a86926ef17c028fd358e7",
-      "bytes": 6328316
+      "sha256": "903182952c9cee3497c4d9c1b892b53399979ed2a534dbe74bddcb9da1e0d78a",
+      "bytes": 6340339,
+      "notes": "Copied from d01c08a with a one-line null-instance guard in the helmet Graph fitView callback; upstream metadata is unchanged."
     },
     {
       "file": "pro-ui.min.css",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/558f2ae27cdc5a9569c5d91a1db45f97d31a4321/lib/pro-ui.min.css",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/d01c08a07b79ba781f820524ff612f58cfa4e090/lib/pro-ui.min.css",
       "sourcePath": "lib/pro-ui.min.css",
       "sha256": "b1ee836dbe11d3b5df80f9a1718a8a7623aaa89e9419bae1d6450a9063744d25",
       "bytes": 720594

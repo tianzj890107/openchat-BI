@@ -106,7 +106,6 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
   }
   return {scope, ready, clearScope, entries, read:query, block:message=>{blocked=message;}, biAdapters: {
     postAnalysisDataQuery: payload => query('analysis', payload),
-    postAnalysisDataQueryBatch: payload => query('batch', payload),
   }, utils: {request: async req => {
     try {
       const url = new URL(req.url, globalThis.location?.origin || 'http://localhost');
@@ -115,6 +114,21 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
       return [null, {data, success: true}];
     } catch (error) { return [error, null]; }
   }}};
+}
+
+// The host renders one tab per route. ProUI emits activation actions into the
+// shared runtime; translate the committed tab/node selection into host state.
+export function observeActivationActions(runtime, {onTabChange=()=>{},onHelmetSelection=()=>{}}={}) {
+  for(const [method,callback] of [['setActiveTab',onTabChange],['setHelmetGraphSelection',onHelmetSelection]]) {
+    const original=runtime[method];
+    if(typeof original!=='function')continue;
+    runtime[method]=function(...args) {
+      const result=original.apply(this,args);
+      callback(...args);
+      return result;
+    };
+  }
+  return runtime;
 }
 
 // Observe committed SDK filter changes, not clicks that merely open a filter editor.

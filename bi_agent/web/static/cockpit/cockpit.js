@@ -311,7 +311,6 @@
 
   function installSnapshots(snapshots) {
     const analysis = new Map(Object.entries(snapshots.analysis || {}));
-    const batch = new Map(Object.entries(snapshots.batch || {}));
     const requests = new Map(Object.entries(snapshots.requests || {}));
     const utils = {
       request: async request => {
@@ -341,13 +340,6 @@
         const hit = analysis.get(canonical(payload));
         if (hit && hit.success === false) failDashboardQuery(hit.msg || hit.message || 'AP 查询失败');
         if (!hit?.data) failDashboardQuery('未找到该 AP 查询的发布快照');
-        displayedQueries.add(canonical(payload));
-        return hit.data;
-      },
-      postAnalysisDataQueryBatch: async payload => {
-        const hit = batch.get(canonical(payload));
-        if (hit && hit.success === false) failDashboardQuery(hit.msg || hit.message || 'AP 查询失败');
-        if (!hit?.data) failDashboardQuery('未找到该批量查询的发布快照');
         displayedQueries.add(canonical(payload));
         return hit.data;
       },
@@ -392,8 +384,51 @@
         const source = runtime.value?.source;
         if (!source) return '';
         const snapshot = source.snapshot || {};
-        return `交付看板 ${source.branch}@${source.commit?.slice(0, 7)} · ${source.templateCount} 个模板 · ${source.totalComponents} 个组件 · ${source.insightComponents} 个插槽声明 · 快照 ${snapshot.analysisRequests} 个 AP 查询`;
+        const mode = source.dataMode === 'ap-single-query' ? 'AP 单查' : `快照 ${snapshot.analysisRequests} 个 AP 查询`;
+        return `交付看板 ${source.branch}@${source.commit?.slice(0, 7)} · ${source.templateCount} 个模板 · ${source.totalComponents} 个组件 · ${source.insightComponents} 个插槽声明 · ${mode}`;
       });
+
+      let pendingActivationPage = '';
+      function pageForTab(tabId) {
+        return Object.entries(runtime.value?.pages || {}).find(([, spec]) => spec.tabId === tabId)?.[0] || '';
+      }
+      function queueActivationNavigation(containerId, tabId) {
+        const target = pageForTab(tabId);
+        if (!target || target === page.value) return;
+        pendingActivationPage = target;
+        setTimeout(() => {
+          if (pendingActivationPage !== target) return;
+          pendingActivationPage = '';
+          location.assign(routeFor(target));
+        }, 0);
+      }
+      function rememberActivationHelmet(componentId, selection, path) {
+        if (!pendingActivationPage) return;
+        try {
+          sessionStorage.setItem('cockpit.pendingActivation', JSON.stringify({
+            id: identityId, page: pendingActivationPage, componentId, selection, path,
+            expiresAt: Date.now() + 30000,
+          }));
+        } catch (_) { /* storage can be disabled by the embedding host */ }
+      }
+      function applyPendingActivation() {
+        let pending = null;
+        try { pending = JSON.parse(sessionStorage.getItem('cockpit.pendingActivation') || 'null'); } catch (_) {}
+        try { sessionStorage.removeItem('cockpit.pendingActivation'); } catch (_) {}
+        if (!pending || pending.id !== identityId || pending.page !== page.value || pending.expiresAt < Date.now()) return;
+        // Selecting the helmet before ProUI has mounted its Graph leaves the SDK
+        // fitView callback attached to a destroyed instance on the first remount.
+        const apply = attempt => {
+          if (!biRuntime.value || !document.querySelector('.mini-cp-helmet__graph canvas')) {
+            if (attempt < 50) setTimeout(() => apply(attempt + 1), 100);
+            return;
+          }
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            biRuntime.value?.setHelmetGraphSelection?.(pending.componentId, pending.selection, pending.path);
+          }));
+        };
+        apply(0);
+      }
 
       function findTab(label) {
         return [...document.querySelectorAll('.pro-bi-tab-container__tab')]
@@ -443,7 +478,7 @@
         }
         let installed;
         if (dataConfig.mode === 'ap') {
-          const [{createAPDataClient,observeRuntimeFilters},{createPageCache}] = await Promise.all([
+          const [{createAPDataClient,observeRuntimeFilters,observeActivationActions},{createPageCache}] = await Promise.all([
             import(`${assetBase}/data-client.js?v=${encodeURIComponent(assetVersion)}`),
             import(`${assetBase}/page-client.js?v=${encodeURIComponent(assetVersion)}`),
           ]);
@@ -464,7 +499,9 @@
               const restored=biRuntime.value?.replayView?.(nextRuntime);
               rawRuntime=nextRuntime;
               if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
-              biRuntime.value=observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady,restored);
+              biRuntime.value=observeActivationActions(
+                observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady,restored),
+                {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
               const path={segments:[{kind:'tab',containerId:tabs.id,tabId:payload.pages[page.value].tabId,templateId:payload.pages[page.value].templateId}]};
               for(const component of payload.templates[payload.pages[page.value].templateId]?.components||[]){
                 if(component.type!=='button-group')continue;
@@ -514,7 +551,9 @@
               try {const snapshot=await pageCache.load(uiScope);if(snapshot&&token===pageEpoch){install(snapshot,true);schedulePageRefresh(800);}}catch{}
             }
           }
-          biRuntime.value=observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady);
+          biRuntime.value=observeActivationActions(
+            observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady),
+            {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
           if(analysisEngine==='main') {
             pageCache=createPageCache({apiBase,id:identityId,page:page.value,makeClient,bodyFor:baseMainBody,
               onState:value=>Object.assign(pageState,value),
@@ -550,6 +589,9 @@
           biRuntime.value=ProUIBi.createBiRuntime();
           const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
           if(tabs)biRuntime.value.setActiveTab(tabs.id,payload.pages[page.value].tabId);
+          const {observeActivationActions}=await import(`${assetBase}/data-client.js?v=${encodeURIComponent(assetVersion)}`);
+          biRuntime.value=observeActivationActions(biRuntime.value,
+            {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
           biAdapters.value=installed.biAdapters;hostUtils.value=installed.utils;
         } else { throw new Error('未识别的看板取数模式'); }
         runtime.value = payload;
@@ -565,6 +607,7 @@
         try {
           await loadRuntime();
           await nextTick();
+          applyPendingActivation();
           onPageActivity();
           schedulePrefetch();
         } catch (cause) {

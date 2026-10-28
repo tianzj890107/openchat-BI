@@ -12,6 +12,32 @@
 
 ## 本周变更
 
+### 2026-10-29 · Cockpit 适配 iba-demo 1021 单查接口、跳转规则与 12 个 AI 插槽
+
+- 组件同步：按上游 `feature/demo_1021` 的 `d01c08a` 更新根组件、13 份模板、145 个组件配置、
+  声明式插槽和 `activate-rules.json`；新版取消旧的三节点头盔覆盖，恢复交付四节点拓扑，并保留
+  唯一缺失子组件 `share-bar-79fsomq9` 的空位与缺项报告。
+- 数据请求：单查改用 `/x360/v1/ontology/data/query`，服务端固定发送
+  `X-Ontology-Repository-Id: 8`（可由 `COCKPIT_AP_REPOSITORY_ID` 显式覆盖），兼容
+  `success:true` 与 `code:200` 两种成功包装。页面只注入 `postAnalysisDataQuery`，不再注入批量
+  适配器；批量接口仍请求本体且不可用，由新版 ProUI 自动并发单查，宿主不补空数据或部分结果。
+- 页内跳转：接入 6 条 `activateRules`，把跨 Tab 的 `switchTab` 转换为主服务三页路由，并在目标
+  页头盔图实际挂载后恢复 `selectHelmet` 节点；“查看销售额风险”和“查看出货风险”分别落到商机、
+  发货节点。新增新版 SDK 销毁后 `fitView` 回调的空实例保护，避免切页时产生内部异常。
+- 插槽验收：经营看板 0 个、运营页 4 个、穿透页 8 个，共 12 个 AI 插槽。浏览器逐节点验证
+  `bid-status-note`、`quote-summary`、`bid-summary`、`order-sign-summary`、
+  `sales-shipment-issues`、`opportunity-risk`、`opportunity-coverage-note`、
+  `order-risk-summary`、`shipment-risk-summary`、`shipment-overdue-note`、
+  `shipment-cause-breakdown`、`shipment-task-order` 均能挂载，无浏览器异常。
+- 数据边界：当前仅有本地 QA 夹具，真实 AP 指标尚未配完；缺口在组件原位置保留，不用旧原型、
+  发布快照或零值冒充新客户数据。业务数值是否完整需等数据配置完成后再验收。
+- 验证：Cockpit 相关 Python 测试 94 项通过，数据客户端／整页缓存前端测试 23 项通过；浏览器
+  QA 覆盖激活跳转、非默认节点恢复、缓存首屏、AP 失败保留和三个页面，全部通过。
+- 涉及文件：`bi_agent/cockpit/ap_gateway.py`、`runtime.py`、`metadata.py`、`prototype.py`、
+  `cockpit.js`、`data-client.js`、`index.html`、`vendor/pro-bi-ui.min.js`、`vendor/resources.json`、
+  `metadata/iba-demo-1021/*`、`.env.example`、`docs/specs/cockpit-analysis-engines.md` 及测试。
+- 边界：未部署，未修改服务器或用户历史会话，未升级版本、创建 tag 或 Release。
+
 ### 2026-10-27 · Cockpit 首屏加载与整页数据版本优化
 
 - 首屏与资源：Cockpit 改用生产版 Vue，组件脚本和静态资源支持 gzip 预压缩；目标页面在挂载前
