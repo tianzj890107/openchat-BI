@@ -12,6 +12,21 @@
 
 ## 本周变更
 
+### 2026-10-28 · URL prompt 自动发起智能分析
+
+- 工作台 `/workbench`、根路径及网关子路径支持 `?prompt=...`。页面等到现有工作台绑定输入框与
+  发送事件后，自动填入问题并走原有发送流程，保留相同的 session、流式交互和会话保存行为。
+- 使用标准 URL 解码，支持中文、换行及正确编码的 `&`、`+` 等特殊字符；缺失或仅空白的参数不触发
+  请求。发送前从当前地址移除全部 `prompt` 参数，保留其他参数、锚点和浏览器历史状态，刷新不重复发送。
+- 页面加载独立的原生 ES 模块，Python 静态服务直接提供；同步补充 README 接入示例。
+- 主要文件：`bi_agent/web/static/url-prompt.mjs`、`bi_agent/web/static/index.html`、
+  `frontend/tests/urlPrompt.test.mjs`、`README.md`。
+- 验证：前端 Node 测试 81 项通过（新增 5 项）；无头 Chrome 通过根路径、`/workbench` 和子路径的
+  自动提交、特殊字符、刷新防重发、空白参数及手动发送验证，API 使用临时模拟服务，不调用真实模型、
+  不读写历史会话；相较手动发送基线无新增浏览器错误。当前 Python 服务可返回新增模块（HTTP 200）。
+- 已有环境限制：完整前端构建因仓库外的 `../ontology-graph` 依赖缺失而失败；本次独立模块已单独验证。
+  页面基线仍有 `getBoundingClientRect is not a function` 布局错误，自动提交与原有手动发送均可完成。
+
 ### 2026-10-27 · Cockpit 首屏加载与整页数据版本优化
 
 - 首屏与资源：Cockpit 改用生产版 Vue，组件脚本和静态资源支持 gzip 预压缩；目标页面在挂载前
