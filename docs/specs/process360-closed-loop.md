@@ -83,8 +83,8 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
 - `Process360Query` 返回 `queryId` 和 `recordsRef{queryId,rowCount,totalRows,sampleSize,truncated}`，
   `records` 替换为最多 5 条 `sampleRecords`；`evidence[].records` 同样只保留样本与计数。
 - `Process360Analyze/Draft/Structure/Verify` 接受 `queryId` 复用同一份服务端结果，不再逐步重复查库。
-  结果按 tenant/principal、授权版本/授权指纹、catalog 版本/哈希、查询模板、场景、规范范围
-  和有效期隔离；跨用户、撤权、换范围或换场景一律不命中。
+  结果按 tenant/principal、授权版本/授权指纹、当前数据库来源连接、catalog 版本/哈希、查询模板、
+  场景、规范范围和有效期隔离；跨用户、撤权、换连接、换范围或换场景一律不命中。
 - 结果记录完整行、来源连接、结果哈希和完整性；返回
   `dataSource=process360-postgres` 与 `sourceConnection`。`queryId` 只是服务端引用，
   不能凭它绕过权限或范围校验。
@@ -97,7 +97,8 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
   都必须带 `planId + stepId`；服务端校验计划存在、属于当前用户、工具属于该步骤、
   前置依赖已完成、场景/范围一致，且没有待澄清项。
 - 场景不一致返回 `PLAN_SCENARIO_MISMATCH`；缺步骤、工具不匹配、依赖未完成或范围变化分别
-  返回明确 gap，均不执行底层工具。
+  返回明确 gap，均不执行底层工具。步骤结果区分 `completed/skipped/needs_input/blocked`；
+  `not_applicable` 记为 `skipped`，不能解锁依赖步骤。
 - 需要改判时用 `Process360Route(planId, reviseReason)` 生成新修订：新计划记录
   `revisedFrom/reviseReason/revision`，原计划保持不变，形成可追溯链。
 
@@ -171,10 +172,13 @@ S05 Process360Draft.canvasActions[]
   `status=ok|blocked|rejected|unknown|unconfirmed`、`accepted`、`message`、`receipt`、
   `draftId/actionId/requestId`。执行状态至少区分
   `queued/sending/succeeded/blocked/rejected/unknown`。
-  仅当服务端状态明确成功且 Fuxi 回执证明 `applied+skipped>0` 才算成功；`blocked/rejected`
-  显示拒绝原因；空回执或超时显示“结果待确认”。HTTP 200 本身不代表成功。
+  仅当服务端状态明确成功、`accepted=true`、回执 `ok=true` 且 `applied+skipped>0` 才算成功；
+  `blocked/rejected` 显示拒绝原因；空回执、零处理条数或超时显示“结果待确认”。HTTP 200
+  本身不代表成功。
 - 宿主桥接只在页面无法直连主服务时启用：带 `requestId` 发消息，监听
-  `fuxi:task-order-result`，25 秒未回执转为“结果待确认”，不会显示成功。
+  `fuxi:task-order-result`，25 秒（含响应体读取）未回执转为“结果待确认”，不会显示成功。
+  页面把待确认行动记录到本地存储，刷新后自动恢复状态并短时轮询；`unknown` 可带
+  `retry=true` 使用原幂等键安全重试，`GET /api/process360/task-orders` 返回 `retryable`。
 - `approvalStatus` 不是 `approved` / `host_click_authorized` 时按钮显示“待审批”并禁用；
   过期草稿点击时要求重新生成。服务端仍会二次校验，前端不能绕过。
 - 标题、正文、场景、严重程度、期限、责任人从服务端草稿回读，调用方不能改写。
@@ -185,6 +189,8 @@ S05 Process360Draft.canvasActions[]
 - 网络结果不确定时保留 `unknown`，用同一 `idempotency_key` 和 `retry=true` 查询或安全重试；
   不自动切换宿主再发，已成功回执重放不重复创建。接收人映射版本冻结进执行记录，映射
   变化时阻断原执行。
+- `TaskOrderCreate` 的兼容入口也必须在调用 Fuxi 前检查服务端 `canDispatch`；权限检查覆盖
+  Process360 草稿、普通行动和所有重试分支，缺权限时不会实例化或调用发送客户端。
 - 不调用 X360 任务令，不发送 Fuxi IM，不伪造发运/签单/排产写操作。
 - S07 只能使用冻结 run、批准目标和交付证据；上游口头完成或本地 RF 样例不能关闭。
 

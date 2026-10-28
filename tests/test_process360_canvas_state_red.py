@@ -41,10 +41,45 @@ def test_ok_without_a_verifiable_receipt_is_not_success() -> None:
     assert _run_normalize({"status": "ok", "accepted": False})["state"] == "unconfirmed"
     assert _run_normalize({"status": "ok", "accepted": True, "receipt": {}})["state"] == "unconfirmed"
     verified = _run_normalize(
-        {"status": "ok", "accepted": True, "receipt": {"sourceTodoId": "analytics-1"}}
+        {
+            "status": "ok",
+            "accepted": True,
+            "receipt": {"ok": True, "applied": 1, "skipped": 0, "sourceTodoId": "analytics-1"},
+        }
     )
     assert verified["state"] == "ok"
-    assert _run_normalize({"status": "unknown", "accepted": False})["state"] == "unconfirmed"
+    unknown = _run_normalize({"status": "unknown", "accepted": False})
+    assert unknown["state"] == "unconfirmed"
+    assert unknown["retryable"] is True
+
+
+def test_success_requires_a_receipt_that_proves_an_item_was_applied() -> None:
+    inconsistent = _run_normalize(
+        {
+            "status": "ok",
+            "accepted": True,
+            "receipt": {
+                "ok": False,
+                "applied": 0,
+                "skipped": 0,
+                "sourceTodoId": "analytics-1",
+            },
+        }
+    )
+    assert inconsistent["state"] == "unconfirmed"
+    zero_rows = _run_normalize(
+        {
+            "status": "ok",
+            "accepted": True,
+            "receipt": {
+                "ok": True,
+                "applied": 0,
+                "skipped": 0,
+                "sourceTodoId": "analytics-1",
+            },
+        }
+    )
+    assert zero_rows["state"] == "unconfirmed"
 
 
 def test_canvas_distinguishes_missing_fields_pending_approval_and_expiry(tmp_path: Path) -> None:
@@ -75,3 +110,45 @@ def test_canvas_never_falls_back_to_host_after_http_error() -> None:
     assert "transport = 'host'" not in runtime
     assert "AbortController" in runtime
     assert "refreshStatus" in runtime
+
+
+def test_canvas_timeout_extends_through_response_body_read() -> None:
+    runtime = mcp_endpoint._canvas_tools().ACTION_RUNTIME
+    match = re.search(r"async function fetchPayload\(url, options\) \{.*?\n  \}", runtime, re.S)
+    assert match, "fetchPayload must keep the abort timer active while reading the body"
+    script = (
+        "const PROCESS360_DISPATCH = { timeoutMs: 20 };\n"
+        + match.group(0)
+        + r"""
+const started = Date.now();
+global.fetch = (_url, options) => Promise.resolve({
+  ok: true,
+  status: 200,
+  text: () => new Promise((_resolve, reject) => {
+    options.signal.addEventListener('abort', () => {
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      reject(error);
+    });
+  }),
+});
+fetchPayload('http://example.invalid', {})
+  .then(() => console.log(JSON.stringify({ timedOut: false })))
+  .catch((error) => console.log(JSON.stringify({
+    timedOut: error.name === 'AbortError',
+    elapsed: Date.now() - started,
+  })));
+"""
+    )
+    output = subprocess.check_output(["node", "-e", script], text=True)
+    result = json.loads(output)
+    assert result["timedOut"] is True
+    assert result["elapsed"] >= 15
+
+
+def test_canvas_restores_pending_status_and_offers_safe_retry() -> None:
+    runtime = mcp_endpoint._canvas_tools().ACTION_RUNTIME
+    assert "PROCESS360_PENDING" in runtime
+    assert "DOMContentLoaded" in runtime
+    assert "monitorStatus" in runtime
+    assert "retry: button.dataset.retry === 'true'" in runtime

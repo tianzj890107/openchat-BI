@@ -135,6 +135,7 @@ def dispatch_draft(
     draft_hash: str,
     action_id: str,
     request_id: str = "",
+    retry: bool = False,
     client: FuxiTodoClient | None = None,
 ) -> dict[str, Any]:
     if not page_dispatch_enabled():
@@ -153,6 +154,7 @@ def dispatch_draft(
         action_id=action_id,
         request_id=request_id,
         recipients=None,
+        retry=retry,
         client=client,
     )
 
@@ -180,6 +182,24 @@ def dispatch_action(
     if identity is None:
         resolver = getattr(service, "_principal", None)
         identity = resolver(None) if callable(resolver) else PrincipalScope.local()
+
+    if not identity.can_dispatch:
+        return envelope(
+            "blocked",
+            message="当前用户无任务下发权限",
+            accepted=False,
+            draft_id=draft_id,
+            action_id=action_id,
+            request_id=request_id,
+            gaps=[{
+                "code": "DISPATCH_NOT_AUTHORIZED",
+                "name": "当前用户无任务下发权限",
+                "needed": "宿主授予 canDispatch 或交由有权限人员点击",
+                "impact": "未创建待办",
+                "severity": "blocking",
+                "source": "host",
+            }],
+        )
 
     draft = service.store.get_draft(str(draft_id or ""))
     if not draft:

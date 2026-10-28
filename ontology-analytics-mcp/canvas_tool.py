@@ -533,6 +533,8 @@ ACTION_RUNTIME = r"""
     pending: '该建议待审批，请先完成审批',
     expired: '任务草稿已过期，请重新生成建议',
   };
+  const PROCESS360_PENDING_KEY = 'process360.pending.' + PROCESS360_DISPATCH.url;
+  const PROCESS360_STATUS_DELAYS = [1200, 2500, 5000];
 
   function feedbackNode(button) {
     const item = button.closest('.action-item');
@@ -564,6 +566,37 @@ ACTION_RUNTIME = r"""
     return '';
   }
 
+  function pendingKey(action) {
+    return [
+      action.draftId || '',
+      action.actionId || action.id || '',
+    ].join('|');
+  }
+
+  function rememberPending(action) {
+    try {
+      localStorage.setItem(PROCESS360_PENDING_KEY + ':' + pendingKey(action), JSON.stringify({
+        draftId: action.draftId || '',
+        actionId: action.actionId || action.id || '',
+        requestedAt: Date.now(),
+      }));
+    } catch (error) {}
+  }
+
+  function hasPending(action) {
+    try {
+      return Boolean(localStorage.getItem(PROCESS360_PENDING_KEY + ':' + pendingKey(action)));
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function forgetPending(action) {
+    try {
+      localStorage.removeItem(PROCESS360_PENDING_KEY + ':' + pendingKey(action));
+    } catch (error) {}
+  }
+
   // One receipt contract for host and HTTP dispatch.  Acknowledging a request
   // is not success: only a server receipt that proves the todo was applied is.
   function normalizeReceipt(payload) {
@@ -580,52 +613,72 @@ ACTION_RUNTIME = r"""
       return { state: 'failed', message: payload.message || '执行失败', receipt };
     }
     if (status === 'pending' || status === 'unconfirmed' || status === 'in_progress' || status === 'unknown') {
-      return { state: 'unconfirmed', message: payload.message || '执行结果待确认', receipt };
+      return {
+        state: 'unconfirmed',
+        message: payload.message || '执行结果待确认',
+        receipt,
+        retryable: payload.retryable === true || status === 'unknown',
+      };
     }
     if (payload.accepted !== true) {
       return { state: 'unconfirmed', message: payload.message || '执行结果待确认', receipt };
     }
     const applied = Number((receipt && receipt.applied) || 0);
     const skipped = Number((receipt && receipt.skipped) || 0);
-    const verified = Boolean(receipt && (String(receipt.sourceTodoId || '').trim() || applied + skipped > 0));
-    if ((status === 'ok' || payload.ok === true) && verified) {
+    const receiptOk = Boolean(receipt && receipt.ok === true);
+    const appliedCount = Number.isFinite(applied) && Number.isFinite(skipped) ? applied + skipped : 0;
+    if ((status === 'ok' || payload.ok === true) && receiptOk && appliedCount > 0) {
       return { state: 'ok', message: payload.message || '任务令已创建', receipt };
     }
-    return { state: 'unconfirmed', message: payload.message || '缺少可验证的执行回执，结果待确认', receipt };
+    const retryable = payload.retryable === true || status === 'unknown' || status === 'failed';
+    return {
+      state: 'unconfirmed',
+      message: payload.message || '缺少可验证的执行回执，结果待确认',
+      receipt,
+      retryable,
+    };
   }
 
-  function applyReceipt(button, payload) {
+  function applyReceipt(button, payload, action) {
     const result = normalizeReceipt(payload);
     if (result.state === 'ok') {
       button.disabled = true;
+      button.dataset.retry = 'false';
+      button.textContent = '发送任务令';
+      if (action) forgetPending(action);
       setActionState(button, '任务令已创建' + (result.receipt && result.receipt.sourceTodoId ? '（' + result.receipt.sourceTodoId + '）' : ''), 'ok');
     } else if (result.state === 'unconfirmed') {
       button.disabled = false;
-      setActionState(button, result.message, 'pending');
+      const retryable = result.retryable === true;
+      button.dataset.retry = retryable ? 'true' : 'false';
+      button.textContent = retryable ? '安全重试' : '发送任务令';
+      setActionState(button, result.message + (retryable ? '，可使用同一草稿安全重试' : ''), 'pending');
     } else {
       button.disabled = false;
+      button.dataset.retry = 'false';
+      button.textContent = '发送任务令';
+      if (action) forgetPending(action);
       setActionState(button, result.message, 'error');
     }
     return result;
   }
 
-  async function fetchWithTimeout(url, options) {
+  async function fetchPayload(url, options) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROCESS360_DISPATCH.timeoutMs);
     try {
-      return await fetch(url, Object.assign({ credentials: 'same-origin' }, options || {}, { signal: controller.signal }));
+      const response = await fetch(url, Object.assign({ credentials: 'same-origin' }, options || {}, { signal: controller.signal }));
+      const text = await response.text();
+      let payload = null;
+      try { payload = text ? JSON.parse(text) : null; } catch (error) { payload = null; }
+      return { response, payload };
     } finally {
       clearTimeout(timer);
     }
   }
 
-  async function readPayload(response) {
-    const text = await response.text();
-    try { return text ? JSON.parse(text) : null; } catch (error) { return null; }
-  }
-
-  async function postDirect(action) {
-    const response = await fetchWithTimeout(PROCESS360_DISPATCH.url, {
+  async function postDirect(action, button) {
+    const { response, payload } = await fetchPayload(PROCESS360_DISPATCH.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
@@ -633,14 +686,14 @@ ACTION_RUNTIME = r"""
         draftHash: action.draftHash,
         actionId: action.actionId || action.id,
         requestId: action.__requestId,
+        retry: button.dataset.retry === 'true',
       }),
     });
-    const payload = await readPayload(response);
     if (!response.ok) {
-      return { status: 'unconfirmed', accepted: false, message: '服务端返回 HTTP ' + response.status + '，执行结果待确认' };
+      return { status: 'unconfirmed', accepted: false, retryable: true, message: '服务端返回 HTTP ' + response.status + '，执行结果待确认' };
     }
     if (!payload) {
-      return { status: 'unconfirmed', accepted: false, message: '服务端返回无法解析的回执，执行结果待确认' };
+      return { status: 'unconfirmed', accepted: false, retryable: true, message: '服务端返回无法解析的回执，执行结果待确认' };
     }
     return payload;
   }
@@ -650,17 +703,36 @@ ACTION_RUNTIME = r"""
       const url = new URL(PROCESS360_DISPATCH.url, window.location.href);
       url.searchParams.set('draftId', action.draftId || '');
       url.searchParams.set('actionId', action.actionId || action.id || '');
-      const response = await fetchWithTimeout(url.toString(), {
+      const { response, payload } = await fetchPayload(url.toString(), {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
       });
       if (!response.ok) return null;
-      const payload = await readPayload(response);
       if (!payload) return null;
-      return applyReceipt(button, payload);
+      return applyReceipt(button, payload, action);
     } catch (error) {
       return null;
     }
+  }
+
+  async function monitorStatus(button, action, attempt) {
+    const current = Number.isInteger(attempt) ? attempt : 0;
+    const result = await refreshStatus(button, action);
+    if (!result || result.state !== 'unconfirmed' || !hasPending(action)) return result;
+    if (current >= PROCESS360_STATUS_DELAYS.length) return result;
+    const delay = PROCESS360_STATUS_DELAYS[current];
+    setTimeout(() => monitorStatus(button, action, current + 1), delay);
+    return result;
+  }
+
+  function restorePendingDispatches() {
+    document.querySelectorAll('[data-fuxi-task-order]').forEach((button) => {
+      const action = PROCESS360_ACTIONS[button.getAttribute('data-fuxi-task-order')];
+      if (!action || !hasPending(action)) return;
+      button.disabled = false;
+      setActionState(button, '正在恢复任务令状态…', 'pending');
+      monitorStatus(button, action, 0);
+    });
   }
 
   function viaHost(action, requestId, taskOrder) {
@@ -734,7 +806,9 @@ ACTION_RUNTIME = r"""
       draft_hash: action.draftHash,
       run_id: action.runId || undefined,
       dispatch_tool: action.dispatchTool,
+      retry: button.dataset.retry === 'true',
     };
+    rememberPending(action);
     button.disabled = true;
     setActionState(button, '正在提交任务令…', 'pending');
     let payload = null;
@@ -743,9 +817,9 @@ ACTION_RUNTIME = r"""
       payload = await viaHost(action, requestId, taskOrder);
     } else {
       try {
-        payload = await postDirect({ ...action, __requestId: requestId });
+        payload = await postDirect({ ...action, __requestId: requestId }, button);
       } catch (error) {
-        payload = { status: 'unconfirmed', accepted: false, message: '请求可能已发出，执行结果待确认' };
+        payload = { status: 'unconfirmed', accepted: false, retryable: true, message: '请求可能已发出，执行结果待确认' };
       }
     }
     if (!payload) {
@@ -753,9 +827,15 @@ ACTION_RUNTIME = r"""
       setActionState(button, '本页未连接任务服务，也未检测到 Fuxi 宿主桥接', 'error');
       return;
     }
-    const result = applyReceipt(button, payload);
-    if (result.state === 'unconfirmed') refreshStatus(button, action);
+    const result = applyReceipt(button, payload, action);
+    if (result.state === 'unconfirmed') monitorStatus(button, action, 0);
   });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', restorePendingDispatches);
+  } else {
+    restorePendingDispatches();
+  }
 </script>
 """
 

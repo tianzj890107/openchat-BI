@@ -235,3 +235,22 @@
   `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题；`git diff --check` 通过。
 - 边界：未部署、未发送真实 Fuxi 待办、未创建 MR/tag/Release、未升级正式版本；真实业务批准、
   外部证据和 Fuxi 端到端联调仍需业务条件。
+
+### 2026-10-28 Process360 下发兼容入口、回执恢复与来源校验收口
+
+- `TaskOrderCreate` 的权限检查前置到全部发送分支：Process360 草稿、旧版普通行动和重试都必须
+  使用服务端解析身份并满足 `canDispatch`，无权限时不创建或调用 Fuxi 客户端。
+- Canvas 成功条件收紧为 `status=ok + accepted=true + receipt.ok=true + applied+skipped>0`；
+  仅带 `sourceTodoId`、零处理条数或 `receipt.ok=false` 均显示待确认。HTTP 超时覆盖响应体读取；
+  页面持久化待确认行动，刷新后自动恢复并短时轮询，`unknown` 可用同一草稿显式安全重试。
+- 页面下发接口接受 `retry=true` 并复用原幂等键；状态接口返回 `retryable/retryHint`。
+- `queryId` 复用新增当前 `sourceConnection` 校验，切换数据库连接后返回
+  `QUERY_SOURCE_CONNECTION_CHANGED`；被阻断的 PostgreSQL 查询仍保留
+  `dataSource/sourceConnection/scope`。
+- 计划步骤状态区分 `completed/skipped/needs_input/blocked`；`not_applicable` 记为 `skipped`，
+  不再放行依赖步骤。
+- 验证：Process360、Fuxi、MCP 与 Cockpit 相关组合测试 `240 passed / 9 skipped`，Cockpit
+  JavaScript 测试 `21 passed`，Canvas 生成脚本通过 `node --check`，`git diff --check` 通过。
+  全量 `pytest -q tests` 为 `1588 passed / 37 skipped / 1 failed`，唯一失败仍是 worktree
+  缺少 `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题。
+- 边界：未部署、未发送真实 Fuxi 待办、未创建 MR/tag/Release、未升级正式版本。

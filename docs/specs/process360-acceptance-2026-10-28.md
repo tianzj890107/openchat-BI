@@ -204,3 +204,21 @@ MCP、Canvas 和 Cockpit 改动无关。
 - 驾驶舱目前显式来源为 AP；尚未把看板图表切换到 Process360 PostgreSQL 查询。切换前必须
   保持 `dataSource` 分离，不能把两套结果混成一份证据。
 - 本轮未部署、未创建 MR/tag/Release、未升级正式版本、未写业务库。
+
+### 6.6 第四轮下发与恢复收口（基线 `47a4e83`）
+
+| 问题 | 修复结果 | 验证 |
+| --- | --- | --- |
+| 旧版 `TaskOrderCreate` 绕过下发权限 | 权限检查前置到所有发送分支；无 `canDispatch` 时不创建 Fuxi 客户端、不调用发送 | `test_process360_dispatch_recovery_red.py` |
+| Canvas 回执判断偏宽 | 成功必须同时满足 `status=ok`、`accepted=true`、`receipt.ok=true`、`applied+skipped>0`；`sourceTodoId` 本身不再足以判成功 | `test_process360_canvas_state_red.py` |
+| 查询复用未校验来源连接 | `queryId` 复用比较当前 `sourceConnection`，变化返回 `QUERY_SOURCE_CONNECTION_CHANGED` | `test_process360_query_reuse.py` |
+| 超时恢复未闭环 | 超时覆盖响应体读取；页面持久化待确认行动、刷新恢复并轮询；HTTP 接受显式 `retry=true`，状态接口返回 `retryable` | `test_process360_canvas_state_red.py`、`test_process360_request_context_red.py` |
+| `not_applicable` 被记为完成 | 计划步骤区分 `completed/skipped/needs_input/blocked`；`not_applicable` 为 `skipped`，不能解锁依赖 | `test_process360_dispatch_recovery_red.py` |
+| 阻断结果缺来源 | PG 查询即使 blocked 也保留 `dataSource/sourceConnection/scope` | `test_process360_dispatch_recovery_red.py` |
+
+验证：Process360、Fuxi、MCP 与 Cockpit 相关组合测试为 `240 passed / 9 skipped`；Cockpit
+JavaScript 测试为 `21 passed`；Canvas 生成脚本通过 `node --check`。9 项跳过仍为需要
+`PROCESS360_ACCEPTANCE_DSN` 的 PostgreSQL 合约测试。全量 `pytest -q tests` 为
+`1588 passed / 37 skipped / 1 failed`，唯一失败仍是 worktree 缺少
+`frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题。
+未部署、未发送真实 Fuxi 待办、未创建 MR/tag/Release。

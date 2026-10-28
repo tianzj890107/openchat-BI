@@ -36,7 +36,7 @@ from ..integrations.fuxi_todo import FuxiTodoClient, FuxiTodoError
 from ..process360 import tools as process360_tools
 from ..process360.execute import _assert_no_phone
 from ..process360 import audit as process360_audit
-from ..process360.dispatch import dispatch_action, dispatch_draft, execution_key
+from ..process360.dispatch import dispatch_action, dispatch_draft, envelope, execution_key
 from ..process360.identity import (
     PrincipalScope,
     active_principal_payload,
@@ -492,11 +492,30 @@ def _gate_executor() -> Executor:
 
 
 def _task_order_executor() -> Executor:
+    def denied(action_id: str, request_id: str) -> str:
+        result = envelope(
+            "blocked",
+            message="当前用户无任务下发权限",
+            accepted=False,
+            action_id=action_id,
+            request_id=request_id,
+            gaps=[{
+                "code": "DISPATCH_NOT_AUTHORIZED",
+                "name": "当前用户无任务下发权限",
+                "needed": "宿主授予 canDispatch 或交由有权限人员点击",
+                "impact": "未创建待办",
+                "severity": "blocking",
+                "source": "host",
+            }],
+        )
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
     def run(params: dict[str, Any], cwd: str) -> str:
-        client = FuxiTodoClient()
+        context = active_request_context()
         draft_id = str(params.get("draft_id") or "").strip()
+        if context is not None and not context.can_dispatch:
+            return denied(str(params.get("action_id") or ""), context.request_id)
         if draft_id:
-            context = active_request_context()
             if context is None:
                 raise ValueError("principal is resolved by the server and is required for dispatch")
             service = process360_tools.Process360Service(cwd=cwd)
@@ -509,7 +528,7 @@ def _task_order_executor() -> Executor:
                 recipients=params.get("recipients_raw") or [],
                 principal=context.principal.to_dict(),
                 retry=bool(params.get("retry")),
-                client=client,
+                client=FuxiTodoClient(),
             )
             return json.dumps(result, ensure_ascii=False, indent=2)
         meta = params.get("caliber_meta") if isinstance(params.get("caliber_meta"), dict) else {}
@@ -520,11 +539,20 @@ def _task_order_executor() -> Executor:
             or params.get("task_template")
         ):
             raise ValueError("Process360 action requires draft_id, draft_hash, action_id and principal")
+        if context is not None:
+            identity = context.principal
+        elif isinstance(params.get("principal"), Mapping):
+            identity = PrincipalScope.from_payload(params["principal"], required=True)
+        else:
+            raise ValueError("principal is resolved by the server and is required for dispatch")
+        if not identity.can_dispatch:
+            return denied(str(params.get("action_id") or ""), context.request_id if context else "")
         _assert_no_phone(json.dumps({
             key: params.get(key)
             for key in ("title", "content", "impact_text", "owner_name", "owner_ref",
                         "evidence", "caliber_meta")
         }, ensure_ascii=False))
+        client = FuxiTodoClient()
         try:
             result = client.create_todo(
                 title=str(params.get("title") or ""),
@@ -617,7 +645,12 @@ def _record_plan_step_outcome(name: str, params: Mapping[str, Any], output: str)
     except ValueError:
         payload = {}
     result_status = str(payload.get("status") or "").lower()
-    status = "completed" if result_status in {"ok", "partial", "not_applicable"} else "blocked"
+    status = {
+        "ok": "completed",
+        "partial": "completed",
+        "not_applicable": "skipped",
+        "needs_clarification": "needs_input",
+    }.get(result_status, "blocked")
     refs = {
         key: payload.get(key)
         for key in ("queryId", "runId", "planId", "draftId", "baselineId", "actionId")
@@ -1028,6 +1061,7 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
         draft_hash = str(body.get("draftHash") or "").strip()
         action_id = str(body.get("actionId") or "").strip()
         request_id = str(body.get("requestId") or uuid.uuid4().hex)
+        retry = body.get("retry") is True
         if not draft_id or not draft_hash or not action_id:
             return JSONResponse(
                 {
@@ -1054,6 +1088,7 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
                 draft_hash=draft_hash,
                 action_id=action_id,
                 request_id=request_id,
+                retry=retry,
             )
         finally:
             reset_request_context(token)
@@ -1110,6 +1145,7 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
                 "draftId": draft_id,
                 "actionId": action_id,
                 "requestId": "",
+                "retryable": False,
             }
         response = record.get("response") or {}
         state = str(response.get("status") or record.get("status") or "unconfirmed").lower()
@@ -1122,6 +1158,10 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
             "sending": "unconfirmed",
             "in_progress": "unconfirmed",
         }.get(state, "unconfirmed")
+        gaps = response.get("gaps") or []
+        retryable = state == "unknown" or any(
+            str(item.get("code") or "") == "FUXI_TODO_UNKNOWN" for item in gaps
+        )
         return {
             "schema": "process360.dispatch.v1",
             "status": mapped,
@@ -1133,7 +1173,9 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
                 "blocked": "任务令未创建",
             }.get(mapped, "执行结果待确认"),
             "receipt": response.get("receipt"),
-            "gaps": response.get("gaps") or [],
+            "gaps": gaps,
+            "retryable": retryable,
+            "retryHint": "用同一草稿和建议安全重试；不会生成新的幂等键" if retryable else "",
             "draftId": draft_id,
             "actionId": action_id,
             "requestId": record.get("request_id") or "",

@@ -75,7 +75,8 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
    主服务按服务端身份和接收人映射调用，服务端从草稿回读标题/正文，不采用
    调用方改写。手机号只在服务端映射中配置，技能和模型不得猜测；空接收人会被拒绝。
    页面与 MCP 共用 `tenant:draftId:actionId` 幂等键；网络结果不确定返回 `unknown`，
-   用同一身份查询或安全重试，成功回执不得重发。
+   用同一身份查询或显式 `retry=true` 安全重试，成功回执不得重发。回执必须同时满足
+   `ok=true` 且 `applied+skipped>0`，不能仅凭 `sourceTodoId` 或 HTTP 200 判成功。
 9. Fuxi 契约只有 `POST /source/todo-batches` 和 `POST /source/todo-status-events`；
    没有进度查询接口。字段名固定为 `sourceTodoId/title/severity/itemType/category/
    sourceStatus/sourceUpdatedAt/recipientsRaw/dueAt/description/impactText/ownerRef/
@@ -88,7 +89,8 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
   数据返回 `dataSource=ap`。PostgreSQL 事实与旧 AP 快照必须分别标明来源，不能仅因页面标题
   相同就合并为同一份证据。
 - `queryId` 是服务端结果引用，不是权限通行证。复用前检查 tenant/principal、授权版本、
-  场景、范围、查询模板、catalog 版本和有效期；不匹配时明确 blocked，不静默换范围重取。
+  当前数据库来源连接、场景、范围、查询模板、catalog 版本和有效期；不匹配时明确 blocked，
+  不静默换范围或换连接重取。
 - 本体：主服务启动时从 demo2 读取 repository catalog，解析
   `ontology_ecore`；不在客户端保存连接信息。
 - 指标与明细：通过主服务的 `analysis/meta/query`、`analysis/data/query` 和

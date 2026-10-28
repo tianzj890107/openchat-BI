@@ -234,9 +234,10 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
   `/api/process360/task-orders`；服务端解析身份、映射接收人、回读草稿并调用统一执行服务。
   只有显式设置 `window.PROCESS360_TASK_ORDER_TRANSPORT='host'` 时才走 Fuxi 宿主桥接，
   HTTP 异常不会自动切换传输方式，避免服务端已执行后重复发送。
-- 统一回执：仅当服务端状态明确成功、`accepted=true` 且存在可验证的 Fuxi 执行回执时显示
-  成功；`blocked/rejected` 优先显示拒绝原因，空回执/超时/`unknown` 显示“结果待确认”，
-  不会因为 HTTP 200 或消息已发出就当作成功。刷新页面后可查询原行动的执行状态。
+- 统一回执：仅当服务端状态明确成功、`accepted=true`、回执 `ok=true` 且 `applied+skipped>0`
+  时显示成功；`blocked/rejected` 优先显示拒绝原因，空回执、零处理条数、超时或 `unknown`
+  显示“结果待确认”，不会因为 HTTP 200、`sourceTodoId` 或消息已发出就当作成功。页面刷新后
+  自动恢复待确认行动并短时轮询，`unknown` 可用同一草稿显式安全重试。
 - `approvalStatus` 不是 `approved` 或 `host_click_authorized` 时按钮显示“待审批”并
   禁用；`expiresAt` 已过时点击会提示重新生成。服务端还会再次校验，不能靠前端绕过。
 - 手机号属于服务端配置：页面不提交、HTML 不包含、模型不展示；主服务用
@@ -246,6 +247,8 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
 - `TaskOrderCreate` 只写 Fuxi 风险待办，不负责 IM；接收人为空会被工具拒绝，
   因为 Fuxi 契约中空数组表示全员广播。Fuxi 返回的 `applied/skipped/errors` 原样保存
   为回执；没有进度查询接口，不能把本地执行记录称为 Fuxi 已处理完成。
+- `TaskOrderCreate` 的所有分支（Process360 草稿、旧版普通行动和重试）都先检查服务端
+  `canDispatch`；无下发权限时不会调用 Fuxi 客户端。
 
 ## 术语、消歧与澄清
 

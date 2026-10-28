@@ -90,6 +90,47 @@ def test_stored_query_is_reused_only_for_the_same_principal(tmp_path: Path) -> N
     assert svc._reuse_query(query_id, "SC02", owner)[0] is None
 
 
+def test_stored_query_is_not_reused_after_the_source_connection_changes(tmp_path: Path) -> None:
+    svc = service(tmp_path)
+    identity = PrincipalScope.from_payload(
+        {
+            "tenantId": "t1",
+            "userId": "u1",
+            "grantKind": "all",
+            "authorizationVersion": "test-auth-v1",
+        }
+    )
+    query_id = svc.store.save_query(
+        scenario="SC01",
+        scope={"limit": 100},
+        payload={"status": "ok", "records": [{"order_id": "o1"}]},
+        tenant="t1",
+        principal="u1",
+        catalog_version=svc.catalog_version,
+        catalog_hash=svc._catalog_hash(),
+        authorization_version="test-auth-v1",
+        grant_fingerprint=identity.grant_fingerprint,
+        source_connection="pg:old-db:5432/ywln#ywln_crm",
+        template_version=QUERY_TEMPLATE_VERSION,
+        complete=True,
+        full_count=1,
+        expires_at=9999999999,
+        full_rows=[{"order_id": "o1"}],
+        contract_version=QUERY_CONTRACT_VERSION,
+    )["id"]
+    svc.db = type(
+        "ChangedDB",
+        (),
+        {"config": type("Config", (), {"public_dict": lambda _self: {
+            "host": "new-db", "port": 5432, "database": "ywln", "schema": "ywln_crm",
+        }})()},
+    )()
+    reused, issue = svc._reuse_query(query_id, "SC01", identity)
+    assert reused is None
+    assert issue is not None
+    assert issue["code"] == "QUERY_SOURCE_CONNECTION_CHANGED"
+
+
 def test_draft_reuses_the_query_id_without_a_second_database_read(
     tmp_path: Path, monkeypatch
 ) -> None:

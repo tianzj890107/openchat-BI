@@ -98,3 +98,26 @@ def test_page_dispatch_uses_the_server_principal(monkeypatch) -> None:
     call(service)
     assert service.calls[0]["principal"]["userId"] == "local"
     assert service.calls[0]["idempotency_key"] == "local:draft-1:SC01-TK01"
+
+
+def test_dispatch_action_blocks_permission_before_calling_the_service() -> None:
+    service = FakeService({"status": "ok", "receipt": {}})
+    result = dispatch.dispatch_action(
+        service,
+        draft_id="draft-1",
+        draft_hash="hash-1",
+        action_id="SC01-TK01",
+        request_id="req-denied",
+        recipients=["18800000001"],
+        principal={
+            "tenantId": "t1",
+            "userId": "u1",
+            "grantKind": "all",
+            "authorizationVersion": "auth-v1",
+            "canDispatch": False,
+        },
+    )
+    assert result["status"] == "blocked"
+    assert result["accepted"] is False
+    assert "DISPATCH_NOT_AUTHORIZED" in {item["code"] for item in result["gaps"]}
+    assert service.calls == []

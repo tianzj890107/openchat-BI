@@ -382,13 +382,20 @@ class Process360Service:
                 severity="blocking",
                 source="runtime",
             )
-        completed = {
-            str(item.get("step_id") or "")
+        latest_steps = {
+            str(item.get("step_id") or ""): item
             for item in self.store.list_plan_steps(str(plan_id))
+            if item.get("step_id")
+        }
+        completed = {
+            step
+            for step, item in latest_steps.items()
             if str(item.get("status") or "") in {"completed", "succeeded", "ok", "partial"}
         }
         pending_dependencies = [
-            str(item) for item in (step.get("dependsOn") or []) if str(item) not in completed
+            f"{item}({latest_steps.get(str(item), {}).get('status') or 'pending'})"
+            for item in (step.get("dependsOn") or [])
+            if str(item) not in completed
         ]
         if pending_dependencies:
             return gap(
@@ -435,6 +442,8 @@ class Process360Service:
             catalog_version=self.catalog_version,
             scenario=scenario,
             scope=scope,
+            dataSource="process360-postgres",
+            sourceConnection=self._source_connection(),
             gaps=[
                 gap(
                     code,
@@ -498,6 +507,7 @@ class Process360Service:
             return self._blocked_query(code, resolved, reason)
         try:
             result = self._run_scenario_snapshot(code, resolved)
+            result = self._stamp_query_source(result, resolved)
             result["principalScope"] = identity.fingerprint()
             result["requestedScope"] = dict(scope or {})
             return self._remember_query(code, identity, result)
@@ -510,14 +520,26 @@ class Process360Service:
             result["principalScope"] = identity.fingerprint()
             return result
         except ValueError as exc:
-            return envelope(
+            result = envelope(
                 "S03",
                 "not_applicable",
                 catalog_id=self.catalog_id,
                 catalog_version=self.catalog_version,
                 scenario=code or None,
+                scope=resolved,
                 limitations=[str(exc)],
             )
+            return self._stamp_query_source(result, resolved)
+
+    def _stamp_query_source(
+        self, result: dict[str, Any], scope: Scope | None = None
+    ) -> dict[str, Any]:
+        """Keep provenance even when a governed calculation is blocked."""
+        result["dataSource"] = "process360-postgres"
+        result["sourceConnection"] = self._source_connection()
+        if result.get("scope") is None and scope is not None:
+            result["scope"] = scope.to_dict()
+        return result
 
     def _run_scenario_snapshot(self, code: str, scope: Scope) -> dict[str, Any]:
         """Run display and full-object passes in one read-only snapshot."""
@@ -661,6 +683,15 @@ class Process360Service:
                 impact="旧查询结果不再可读",
                 severity="blocking",
                 source="security",
+            )
+        if str(stored.get("source_connection") or "") != self._source_connection():
+            return None, gap(
+                "QUERY_SOURCE_CONNECTION_CHANGED",
+                "查询结果的来源连接已变化",
+                needed="按当前数据库连接重新取数",
+                impact="未混用旧连接或旧快照的数据",
+                severity="blocking",
+                source="runtime",
             )
         if stored.get("catalog_version") and stored.get("catalog_version") != self.catalog_version:
             return None, gap(

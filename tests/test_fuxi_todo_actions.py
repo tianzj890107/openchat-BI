@@ -14,6 +14,11 @@ from bi_agent.integrations.fuxi_todo import (
     normalize_recipient,
     normalize_recipients,
 )
+from bi_agent.process360.request_context import (
+    reset_request_context,
+    resolve_request_context,
+    set_request_context,
+)
 from bi_agent.web import mcp_endpoint
 
 
@@ -134,13 +139,21 @@ def test_task_order_executor_uses_fuxi_client(monkeypatch: pytest.MonkeyPatch) -
     client = _CaptureClient()
     monkeypatch.setattr(mcp_endpoint, "FuxiTodoClient", lambda: client)
     executor = mcp_endpoint._task_order_executor()
-    output = executor({
-        "action_id": "a1",
-        "title": "跟进回款",
-        "content": "复核逾期客户",
-        "recipients_raw": ["13800000001"],
-        "severity": "HIGH",
-    }, "/tmp")
+    token = set_request_context(resolve_request_context(
+        principal={"tenantId": "t1", "userId": "u1", "grantKind": "all", "canDispatch": True},
+        request_id="legacy-test",
+        surface="mcp",
+    ))
+    try:
+        output = executor({
+            "action_id": "a1",
+            "title": "跟进回款",
+            "content": "复核逾期客户",
+            "recipients_raw": ["13800000001"],
+            "severity": "HIGH",
+        }, "/tmp")
+    finally:
+        reset_request_context(token)
     assert json.loads(output)["sourceTodoId"] == "analytics-analysis-a1"
     assert client.calls[0][0] == "/source/todo-batches"
 
@@ -256,7 +269,12 @@ def test_principal_user_id_may_be_phone_like_without_leaking_into_task() -> None
             "title": "跟进回款",
             "content": "复核逾期客户",
             "recipients_raw": ["13800000001"],
-            "principal": {"tenantId": "t1", "userId": "13812345678", "canDispatch": True},
+            "principal": {
+                "tenantId": "t1",
+                "userId": "13812345678",
+                "grantKind": "all",
+                "canDispatch": True,
+            },
         }, "/tmp")
     finally:
         endpoint.FuxiTodoClient = old

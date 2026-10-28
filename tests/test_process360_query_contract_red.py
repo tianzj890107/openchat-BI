@@ -40,7 +40,7 @@ def stored_query(tmp_path: Path, **overrides):
         "catalog_hash": svc._catalog_hash(),
         "authorization_version": "auth-v1",
         "grant_fingerprint": PrincipalScope.from_payload(PRINCIPAL).grant_fingerprint,
-        "source_connection": "pg:ywln:ywln_crm",
+        "source_connection": svc._source_connection(),
         "template_version": QUERY_TEMPLATE_VERSION,
         "result_hash": "result-hash-1",
         "complete": True,
@@ -54,7 +54,7 @@ def stored_query(tmp_path: Path, **overrides):
 def test_query_contract_fields_are_persisted_and_reloaded(tmp_path: Path) -> None:
     query_id = stored_query(tmp_path)
     stored = service(tmp_path).store.get_query(query_id)
-    assert stored["source_connection"] == "pg:ywln:ywln_crm"
+    assert stored["source_connection"] == "database:test"
     assert stored["authorization_version"] == "auth-v1"
     assert stored["grant_fingerprint"] == PrincipalScope.from_payload(PRINCIPAL).grant_fingerprint
     assert stored["template_version"] == QUERY_TEMPLATE_VERSION

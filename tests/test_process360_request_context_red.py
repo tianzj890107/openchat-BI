@@ -157,6 +157,94 @@ def test_http_dispatch_rejects_identity_or_permission_fields_from_the_page(forbi
     assert response.status_code == 400
 
 
+def test_http_dispatch_passes_an_explicit_safe_retry(monkeypatch) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from bi_agent.web import mcp_endpoint
+
+    captured = {}
+
+    def fake_dispatch(service, **kwargs):
+        captured.update(kwargs)
+        return {
+            "schema": "process360.dispatch.v1",
+            "status": "unknown",
+            "accepted": False,
+            "message": "retry captured",
+            "receipt": None,
+        }
+
+    monkeypatch.setattr(mcp_endpoint, "dispatch_draft", fake_dispatch)
+    app = FastAPI()
+    app.include_router(
+        mcp_endpoint.build_mcp_router(
+            get_source=lambda: None,
+            build_doris=lambda *args, **kwargs: None,
+            get_cwd=lambda: ".",
+            executor_factory=lambda source: {},
+            request_principal=lambda request: PRINCIPAL,
+        )
+    )
+    response = TestClient(app).post(
+        "/api/process360/task-orders",
+        json={
+            "draftId": "draft-1",
+            "draftHash": "hash-1",
+            "actionId": "action-1",
+            "requestId": "retry-1",
+            "retry": True,
+        },
+    )
+    assert response.status_code == 200
+    assert captured["retry"] is True
+
+
+def test_http_status_marks_an_unknown_receipt_retryable(monkeypatch) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from bi_agent.web import mcp_endpoint
+
+    class Store:
+        def get_draft(self, draft_id):
+            return {"tenant": "t1", "principal": "u1"} if draft_id == "draft-1" else None
+
+        def get_execution(self, _key):
+            return {
+                "status": "unknown",
+                "request_id": "req-unknown",
+                "response": {
+                    "status": "unknown",
+                    "accepted": False,
+                    "receipt": None,
+                    "gaps": [{"code": "FUXI_TODO_UNKNOWN", "name": "执行结果不确定"}],
+                },
+            }
+
+    class Service:
+        store = Store()
+
+    monkeypatch.setattr(mcp_endpoint.process360_tools, "Process360Service", lambda cwd: Service())
+    app = FastAPI()
+    app.include_router(
+        mcp_endpoint.build_mcp_router(
+            get_source=lambda: None,
+            build_doris=lambda *args, **kwargs: None,
+            get_cwd=lambda: ".",
+            executor_factory=lambda source: {},
+            request_principal=lambda request: PRINCIPAL,
+        )
+    )
+    response = TestClient(app).get(
+        "/api/process360/task-orders",
+        params={"draftId": "draft-1", "actionId": "action-1"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "unknown"
+    assert response.json()["retryable"] is True
+
+
 def test_audit_trail_lookup_is_scoped_to_the_current_principal(tmp_path: Path) -> None:
     from bi_agent.process360 import audit
     from bi_agent.process360.store import Process360Store
