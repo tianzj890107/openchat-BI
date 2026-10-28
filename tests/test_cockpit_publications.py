@@ -60,10 +60,11 @@ def test_persistent_refresh_keeps_last_result_and_isolates_filters(tmp_path,monk
 
 
 def test_scope_ignores_transport_receipts_but_keeps_source_and_actual_filters():
-    c=request();c['dataIdentity']='source-A'
+    c=request();c['dataIdentity']='source-A';c['dataSource']='ap'
     key=publication_scope(c)
     assert publication_scope(dict(c,apReceiptIds=['new'],snapshotId='different-response',defaultView=False))==key
     assert publication_scope(dict(c,dataIdentity='source-B'))!=key
+    assert publication_scope(dict(c,dataSource='postgres'))!=key
     assert publication_scope(dict(c,id=2))!=key
     assert publication_scope(dict(c,clarifications={'answer':'已确认'}))!=key
     assert publication_scope(dict(c,chartQueries=['{"otherFilter":"B"}']))!=key

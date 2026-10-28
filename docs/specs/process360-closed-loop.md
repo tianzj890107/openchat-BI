@@ -52,7 +52,7 @@
 ```text
 schema=process360.result.v1
 stage=S00..S07
-status=ok | partial | blocked | needs_clarification | not_applicable
+status=ok | partial | blocked | needs_clarification | not_applicable | unknown
 metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
 ```
 
@@ -62,7 +62,10 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
 ### 3.1 身份（服务端解析）
 
 - `principal` 不是工具参数。MCP 网关在每次调用时解析身份并经 contextvar 注入；
-  入参中出现 `principal`/`principalScope` 直接报错。
+  入参中出现 `principal`/`principalScope`/`tenantId`/`canDispatch` 直接报错。
+- 同一请求上下文统一携带
+  `principalId/tenantId/grantKind/grantScope/authorizationVersion/conversationId/requestId/surface`；
+  MCP、页面下发和审计查询都从服务端上下文读取，不接受模型或页面自行声明。
 - 授权语义显式化为 `grantKind`：
 
 | grantKind | 行为 |
@@ -72,21 +75,29 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
 | `all` | 允许全量只读 |
 
 空授权列表不再表示“不限制”。POC 默认身份为服务端配置的只读全量
-（`PROCESS360_POC_PRINCIPAL` 可覆盖），`canDispatch` 与取数授权分开判断。
+（`PROCESS360_POC_PRINCIPAL` 可覆盖），`canDispatch` 由
+`PROCESS360_POC_DISPATCH` 单独开启；取数与下发是两个权限。
 
 ### 3.2 查询结果复用
 
 - `Process360Query` 返回 `queryId` 和 `recordsRef{queryId,rowCount,totalRows,sampleSize,truncated}`，
   `records` 替换为最多 5 条 `sampleRecords`；`evidence[].records` 同样只保留样本与计数。
-- `Process360Analyze/Structure/Verify` 接受 `queryId` 复用同一份服务端结果，不再逐步重复查库。
-  结果按 tenant/principal/catalogVersion/scenario 隔离，跨用户或跨场景复用一律不命中。
+- `Process360Analyze/Draft/Structure/Verify` 接受 `queryId` 复用同一份服务端结果，不再逐步重复查库。
+  结果按 tenant/principal、授权版本/授权指纹、catalog 版本/哈希、查询模板、场景、规范范围
+  和有效期隔离；跨用户、撤权、换范围或换场景一律不命中。
+- 结果记录完整行、来源连接、结果哈希和完整性；返回
+  `dataSource=process360-postgres` 与 `sourceConnection`。`queryId` 只是服务端引用，
+  不能凭它绕过权限或范围校验。
 - `Process360Analyze` 的 `metricCatalog` 只包含本轮相关指标，完整目录留在 catalog。
 
 ### 3.3 计划校验与修订
 
-- `Process360Route` 现在落库并返回 `planId` + `revision`。把 `planId` 传给
-  `Process360Query/Analyze` 时，服务端校验计划存在、属于当前用户、场景一致。
-- 场景不一致时返回 `needs_clarification` + `PLAN_SCENARIO_MISMATCH`，不会静默换场景。
+- `Process360Route/Plan` 落库并返回 `planId`、`revision`、`steps[]`。公共 MCP 的
+  `Query/Analyze/Draft/Verify/Compare/Structure/ProcessFlow/Progress/Forecast/Solutions`
+  都必须带 `planId + stepId`；服务端校验计划存在、属于当前用户、工具属于该步骤、
+  前置依赖已完成、场景/范围一致，且没有待澄清项。
+- 场景不一致返回 `PLAN_SCENARIO_MISMATCH`；缺步骤、工具不匹配、依赖未完成或范围变化分别
+  返回明确 gap，均不执行底层工具。
 - 需要改判时用 `Process360Route(planId, reviseReason)` 生成新修订：新计划记录
   `revisedFrom/reviseReason/revision`，原计划保持不变，形成可追溯链。
 
@@ -95,16 +106,25 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
 - 每个 Process360 工具调用（包括只问数的 `Process360Query`）都写一条 `steps`：
   `tool/status/input_hash/duration_ms/rows_returned/refs`，`refs` 含
   `queryId/runId/planId/draftId` 和基准完整性。
-- 轨迹按 Fuxi 会话聚合为 `requests`，可用 `GET /api/process360/requests/{id}` 读取。
+- 一个 Fuxi `conversationId` 可以包含多个 `requestId`；请求轨迹按 `requestId` 分开，
+  可用 `GET /api/process360/requests/{id}` 读取。计划步骤完成状态另存
+  `plan_step_runs`，记录依赖校验和步骤引用。
 - 不再用“是否调用过 Analyze”判断可审计性；事实查询停在 S03 也有完整记录。
 
 ### 3.5 闸门绑定产物版本
 
 - `CanvasGenerate` 的 spec 增加 `canvasId` 和 `artifactHash`（页面内容 SHA-256）。
-- `OutputGateCheck` 接受 `canvasId/artifactHash`：文件不存在记 `artifact_missing`，
-  哈希不符记 `artifact_hash_mismatch`，缺失哈希记 `artifact_hash_required`，均判 reject。
-- `OutputGateCheck` 接受 `runId` 时绑定该冻结运行；`complete=false` 记
+- 正式分析报告的 `OutputGateCheck` 必须接受 `canvasId/artifactHash`：两者都缺失记
+  `artifact_reference_required`；文件不存在记 `artifact_missing`，哈希不符记
+  `artifact_hash_mismatch`，缺失哈希记 `artifact_hash_required`，均判 reject。
+  只有显式 `deliveryKind=fact_answer` 的纯文字事实回答可免 Canvas；缺省视为
+  `analysis_report`。
+- `OutputGateCheck` 接受 `planId/queryId/runId` 时绑定对应计划、查询和冻结运行；
+  `complete=false` 记
   `frozen_baseline_incomplete` 并 reject。
+- 每次校验登记 append-only artifact 版本，包含
+  `artifactId/artifactHash/requestId/planId/queryId/runId/gateResult/checkedAt`；
+  HTML 变化后哈希变化，不能复用旧成功记录。
 
 ### 3.6 全量冻结基准
 
@@ -112,6 +132,21 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
   记录 `fullObjectCount/frozenObjectCount/complete/objectSetHash`。
 - 展示 `limit` 不再影响基准；`complete=false` 时 `Process360Verify` 直接 blocked。
 - `Process360Verify` 的当期对象集同样使用完整结果，而不是页面样本。
+
+### 3.7 可信批准目标
+
+- `Process360Verify` 的目标、比较方向、最低分母、适用范围和有效期从服务端
+  `approvalRef` 记录读取；模型传入 `approvedTarget` 只用于冲突检测，不能代替审批。
+- 缺记录返回 `APPROVAL_NOT_FOUND`，过期返回 `APPROVAL_EXPIRED`，目标冲突返回
+  `APPROVAL_TARGET_MISMATCH`。哈希只证明内容未变，不证明根因或效果达标。
+
+### 3.8 驾驶舱数据来源
+
+- 驾驶舱整页显式记录 `dataSource/dataIdentity/dataFingerprint`，当前 AP 路线为 `ap`；
+  流程360 PostgreSQL 查询返回 `process360-postgres`。页面发布要求图表与全部可见 AI 卡片
+  属于同一 `dataSource + dataIdentity + dataFingerprint + chartQueries`，否则保留上一版。
+- 发布范围与卡片缓存的 key 都包含数据来源；不能仅因页面标题或角色相同，把 PG 事实与旧 AP
+  快照混用。报告页直接展示来源标签，未标明来源时显示“未标明数据来源”。
 
 ## 4. 执行边界
 
@@ -122,9 +157,9 @@ S05 Process360Draft.canvasActions[]
   → POST /api/process360/task-orders（只传 draftId/draftHash/actionId/requestId）
   → 服务端以可信身份解析接收人映射，回读草稿
   → 校验租户/用户/hash/审批/canDispatch/有效期
-  → 单个 actionId 一次性消费，persistent idempotency key
+  → 原子 claim 执行任务；稳定幂等键 tenant:draftId:actionId
   → Fuxi POST /source/todo-batches（source=boulderai-anaylize-todo）
-  → 统一回执返回页面，页面按回执显示成功/拒绝/失败/待确认
+  → 保存真实回执；页面查询或刷新执行状态
 ```
 
 - 建议卡必须携带 `draftId/draftHash/runId/actionId/scenario/approvalStatus/expiresAt/
@@ -133,9 +168,11 @@ S05 Process360Draft.canvasActions[]
 - 页面不提交手机号也不持有凭据；接收人由 `PROCESS360_RECIPIENT_MAP` 在服务端解析。
   `CanvasGenerate` 拒绝行动条目中出现手机号字段或 11 位手机号文本。
 - 统一回执 `schema=process360.dispatch.v1`：
-  `status=ok|blocked|unconfirmed`、`accepted`、`message`、`receipt`、`draftId/actionId/requestId`。
-  仅当 `status=ok` 且 Fuxi 回执证明 `applied+skipped>0` 才算成功；`blocked` 显示拒绝原因；
-  空回执或超时显示“结果待确认”。HTTP 200 本身不代表成功。
+  `status=ok|blocked|rejected|unknown|unconfirmed`、`accepted`、`message`、`receipt`、
+  `draftId/actionId/requestId`。执行状态至少区分
+  `queued/sending/succeeded/blocked/rejected/unknown`。
+  仅当服务端状态明确成功且 Fuxi 回执证明 `applied+skipped>0` 才算成功；`blocked/rejected`
+  显示拒绝原因；空回执或超时显示“结果待确认”。HTTP 200 本身不代表成功。
 - 宿主桥接只在页面无法直连主服务时启用：带 `requestId` 发消息，监听
   `fuxi:task-order-result`，25 秒未回执转为“结果待确认”，不会显示成功。
 - `approvalStatus` 不是 `approved` / `host_click_authorized` 时按钮显示“待审批”并禁用；
@@ -145,7 +182,9 @@ S05 Process360Draft.canvasActions[]
   `sourceTodoId/title/severity/itemType/category/sourceStatus/sourceUpdatedAt/
   recipientsRaw/dueAt/description/impactText/ownerRef/ownerName/evidence/activity/
   caliberMeta`，不改名、不补造。
-- 网络失败可用同一 `idempotency_key` 和 `retry=true` 重试；已成功回执重放不重复创建。
+- 网络结果不确定时保留 `unknown`，用同一 `idempotency_key` 和 `retry=true` 查询或安全重试；
+  不自动切换宿主再发，已成功回执重放不重复创建。接收人映射版本冻结进执行记录，映射
+  变化时阻断原执行。
 - 不调用 X360 任务令，不发送 Fuxi IM，不伪造发运/签单/排产写操作。
 - S07 只能使用冻结 run、批准目标和交付证据；上游口头完成或本地 RF 样例不能关闭。
 
@@ -164,11 +203,16 @@ PROCESS360_PG_STATEMENT_TIMEOUT_MS=15000
 PROCESS360_CATALOG_PATH=
 # 服务端 POC 身份（模型不可见）；缺省为只读全量
 PROCESS360_POC_PRINCIPAL=
+# 下发权限单独开启；默认 0 保持只读
+PROCESS360_POC_DISPATCH=0
 # 页面直接下发开关与接收人映射；手机号只在这里出现
 PROCESS360_PAGE_DISPATCH=1
 PROCESS360_RECIPIENT_MAP={"__default__":["<phone>"]}
+PROCESS360_RECIPIENT_MAP_VERSION=
 # 页面/独立部署时指向主服务的绝对地址；默认同源 /api/process360/task-orders
 PROCESS360_DISPATCH_URL=
+PROCESS360_HOST_ORIGIN=
+PROCESS360_QUERY_TTL_SECONDS=900
 ```
 
 `web` extras 增加 `psycopg[binary]>=3.1`。未安装驱动或未配置连接时，

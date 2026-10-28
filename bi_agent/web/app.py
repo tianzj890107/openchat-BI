@@ -3966,12 +3966,12 @@ def _cockpit_main_context(req):
             from ..cockpit.publications import digest
             identities={v.get("connectionId","") for v in selected.values()}
             if len(identities)!=1:raise ValueError("AP材料来自不同连接，不能合并分析")
-            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataIdentity=next(iter(identities)),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))),dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数')
+            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataSource='ap',dataIdentity=next(iter(identities)),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))),dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数')
         if req.apReceiptIds:raise ValueError('快照模式不能消费实时AP凭据')
         fingerprint,_=material(req.model_dump())
     except (ValueError, TypeError) as exc:
         raise HTTPException(422,str(exc)) from exc
-    return dict(snapshotId='dashboard-'+fingerprint,repositoryId='',dataIdentity='pdt-release-2109836674373566465',dataFingerprint=fingerprint,
+    return dict(snapshotId='dashboard-'+fingerprint,repositoryId='',dataSource='snapshot',dataIdentity='pdt-release-2109836674373566465',dataFingerprint=fingerprint,
         dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库')
 
 

@@ -12,7 +12,14 @@ from datetime import date, datetime, timezone
 from typing import Any, Iterable, Mapping
 
 RESULT_SCHEMA = "process360.result.v1"
-STATUS_VALUES = ("ok", "partial", "blocked", "needs_clarification", "not_applicable")
+STATUS_VALUES = (
+    "ok",
+    "partial",
+    "blocked",
+    "needs_clarification",
+    "not_applicable",
+    "unknown",
+)
 GAP_SEVERITIES = ("blocking", "degrading", "informational")
 
 

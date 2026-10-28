@@ -128,6 +128,6 @@ def session_evidence(session,context):
         if len(records)>=24:break
     records=records[:24]
     row_evidence=[dict(id=r['id'],label=r['customer'],value=None,unit='',definition=r['cause'],record=r) for r in records]
-    evidence=dict(sourceMode='service',snapshotId=context['snapshotId'],stage=context['stage'],stageName=NAMES[context['stage']],
+    evidence=dict(sourceMode='service',dataSource=context.get('dataSource',''),snapshotId=context['snapshotId'],stage=context['stage'],stageName=NAMES[context['stage']],
         period='以AP原始请求为准' if context.get('snapshotId','').startswith('ap-') else context['period'],department='以AP原始请求为准' if context.get('snapshotId','').startswith('ap-') else context['department'],facts=facts,records=records,causes=[],evidence=facts+row_evidence,limitations=limitations+['冻结查询行最多24条，超过8000字符的行不进入材料包；样本分布不能外推总体比例'])
     return evidence

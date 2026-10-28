@@ -15,7 +15,7 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 客户端不读取 `.env`、不需要 App ID 或 Token。若部署方显式设置
 `ONTOLOGY_MCP_AUTH_TOKEN`，Bearer 头由管理员在连接器统一配置。
 
-## 暴露给 Fuxi 的 17 个工具
+## 暴露给 Fuxi 的通用与 Process360 工具
 
 | 工具 | 用途 | 主要参数 |
 | --- | --- | --- |
@@ -35,8 +35,8 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 | `TableGenerate` | 结构化表格 | 与 Web 表格参数一致 |
 | `CanvasGenerate` | 整页自包含 HTML，返回 `Artifact URL` | `title`、`conclusion`、`source_note`、`blocks` |
 | `TaskOrderCreate` | 用户点击后把一条行动建议直接推送到 Fuxi 风险待办 | Process360：`draft_id`、`draft_hash`、`action_id`，可选 `idempotency_key`/`retry`；身份与接收人均由服务端解析。旧版通用：`action_id`、`title`、`content`、`recipients_raw` |
-| `OutputGateCheck` | 五道交付闸门 | `answer`、`question`、`sql`、`chart`、`reconcile`、`claims` |
-| `Process360Route/Search/Context/Query/Analyze/Draft/Verify` | SC01-SC05 的 S00-S07 主链 | 身份由服务端注入；`Query` 返回 `queryId`，后续步骤可用 `queryId` 复用同一结果 |
+| `OutputGateCheck` | 五道交付闸门与最终产物登记 | 正式报告必填 `canvasId`、`artifactHash`；`deliveryKind=fact_answer` 的纯文字事实回答可免 Canvas；可选 `answer`、`question`、`sql`、`chart`、`reconcile`、`claims`、`planId`、`queryId`、`runId` |
+| `Process360Route/Search/Context/Query/Analyze/Draft/Verify` | SC01-SC05 的 S00-S07 主链 | 身份由服务端注入；Query/Analyze/Draft/Verify 等业务步骤必须带 `planId + stepId`；`Query` 返回 `queryId`，后续步骤可用 `queryId` 复用同一结果 |
 | `Process360Plan` | S00 多目标 DAG、依赖、步骤版本、共享预算 | `question`、可选预算 |
 | `Process360Explore` | S08 受控自主探索 | `question`、`planRef`、`stepId` |
 | `Process360Compare` | P04 多期同口径比较 | `scenario`、`scope`、`periods` |
@@ -68,12 +68,14 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 6. 结果交付：`TableGenerate` / `ChartGenerate` / `ChartGenerateMultiDim`；
    最后 `CanvasGenerate`。L3 以上的行动建议放进 `kind=actions` 块。
 7. 交付闸门：`OutputGateCheck` 返回 `pass` 才能交付；`warn` 要披露，
-   `reject` 要修正或拒答。
+   `reject` 要修正或拒答。必须传最终 `canvasId/artifactHash`；缺失即 reject，不得把中间
+   模型回答当作最终报告。
 8. 任务令：只有用户点击行动卡后才调用 `TaskOrderCreate`。Process360 卡片携带
    `draftId/draftHash/actionId/runId/scenario/approvalStatus/expiresAt/dispatchTool`；
    主服务按服务端身份和接收人映射调用，服务端从草稿回读标题/正文，不采用
-   调用方改写。手机号由 Fuxi 宿主传入，技能和模型不得猜测；空接收人会被拒绝。
-   网络失败使用同一 `idempotency_key` 和 `retry=true`，成功回执不得重发。
+   调用方改写。手机号只在服务端映射中配置，技能和模型不得猜测；空接收人会被拒绝。
+   页面与 MCP 共用 `tenant:draftId:actionId` 幂等键；网络结果不确定返回 `unknown`，
+   用同一身份查询或安全重试，成功回执不得重发。
 9. Fuxi 契约只有 `POST /source/todo-batches` 和 `POST /source/todo-status-events`；
    没有进度查询接口。字段名固定为 `sourceTodoId/title/severity/itemType/category/
    sourceStatus/sourceUpdatedAt/recipientsRaw/dueAt/description/impactText/ownerRef/
@@ -81,6 +83,12 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 
 ## 数据源与安全边界
 
+- `Process360Query` 可把 `queryId` 传给 `Analyze/Draft/Structure/Verify` 复用同一结果。
+  `Process360Query` 返回 `dataSource=process360-postgres` 与 `sourceConnection`；驾驶舱 AP
+  数据返回 `dataSource=ap`。PostgreSQL 事实与旧 AP 快照必须分别标明来源，不能仅因页面标题
+  相同就合并为同一份证据。
+- `queryId` 是服务端结果引用，不是权限通行证。复用前检查 tenant/principal、授权版本、
+  场景、范围、查询模板、catalog 版本和有效期；不匹配时明确 blocked，不静默换范围重取。
 - 本体：主服务启动时从 demo2 读取 repository catalog，解析
   `ontology_ecore`；不在客户端保存连接信息。
 - 指标与明细：通过主服务的 `analysis/meta/query`、`analysis/data/query` 和

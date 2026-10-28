@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 from typing import Any, Callable
@@ -448,10 +449,36 @@ def _draft_ready(item: dict[str, Any]) -> bool:
     return all(str(item.get(field) or "").strip() for field in REQUIRED_DRAFT_FIELDS)
 
 
+def _draft_issue(item: dict[str, Any]) -> tuple[str, str]:
+    """Return a precise, non-legacy reason why a card cannot be sent."""
+    if not _draft_ready(item):
+        return "missing", "缺少草稿字段，请重新生成任务草稿"
+    expires = item.get("expiresAt")
+    if isinstance(expires, (int, float)):
+        expires_at = datetime.fromtimestamp(float(expires), tz=timezone.utc)
+    else:
+        text = str(expires or "").strip().replace("Z", "+00:00")
+        try:
+            expires_at = datetime.fromisoformat(text)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+        except ValueError:
+            expires_at = None
+    if expires_at is not None and expires_at <= datetime.now(timezone.utc):
+        return "expired", "任务草稿已过期，请重新生成建议"
+    approval = str(item.get("approvalStatus") or "").strip().lower()
+    if approval not in {"approved", "host_click_authorized"}:
+        return "pending", "该建议待审批，请先完成审批"
+    return "", ""
+
+
 def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
     items = _normalize_actions(params)
     for item in items:
         item["draftReady"] = _draft_ready(item)
+        issue, message = _draft_issue(item)
+        item["draftIssue"] = issue
+        item["draftIssueMessage"] = message
     cards: list[str] = []
     for item in items:
         evidence = (
@@ -467,16 +494,18 @@ def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
             chips.append(
                 f'<span class="action-chip">责任人 {escape(item["owner_name"] or item["owner_ref"])}</span>'
             )
-        approval = str(item.get("approvalStatus") or "").strip().lower()
-        if not item["draftReady"]:
-            label, disabled, title_attr = "旧版建议", " disabled", ' title="旧版建议，请重新生成任务草稿"'
-        elif approval in {"approved", "host_click_authorized"}:
-            label, disabled, title_attr = "发送任务令", "", ""
+        issue = item["draftIssue"]
+        if issue == "missing":
+            label, disabled, title_attr = "缺少草稿字段", " disabled", ' title="缺少草稿字段，请重新生成任务草稿"'
+        elif issue == "expired":
+            label, disabled, title_attr = "草稿已过期", " disabled", ' title="任务草稿已过期，请重新生成建议"'
+        elif issue == "pending":
+            label, disabled, title_attr = "待审批", " disabled", ' title="该建议待审批，请先完成审批"'
         else:
-            label, disabled, title_attr = "待审批", " disabled", ' title="该建议尚未获得下发授权"'
-        legacy_note = (
-            '<p class="action-feedback" style="color:#B42318">旧版建议，请重新生成任务草稿</p>'
-            if not item["draftReady"] else ""
+            label, disabled, title_attr = "发送任务令", "", ""
+        issue_note = (
+            f'<p class="action-feedback" style="color:#B42318">{escape(item["draftIssueMessage"])}</p>'
+            if item["draftIssue"] else ""
         )
         card = (
             '<article class="action-item">'
@@ -486,7 +515,7 @@ def _render_actions(params: dict) -> tuple[str, list[dict[str, Any]]]:
             f'<div class="action-content">{_render_markdown(item["content"])}</div>'
             f'{evidence}'
             f'<div class="action-meta">{"".join(chips)}</div>'
-            f'{legacy_note}'
+            f'{issue_note}'
             '</article>'
         )
         cards.append(card)
@@ -497,7 +526,13 @@ ACTION_RUNTIME = r"""
 <script>
   const PROCESS360_ACTIONS = __ACTIONS__;
   const PROCESS360_DISPATCH = { url: __DISPATCH_URL__, timeoutMs: 25000 };
+  const PROCESS360_HOST_ORIGIN = __HOST_ORIGIN__;
   const PENDING = new Map();
+  const DRAFT_STATE_MESSAGES = {
+    missing: '缺少草稿字段，请重新生成任务草稿',
+    pending: '该建议待审批，请先完成审批',
+    expired: '任务草稿已过期，请重新生成建议',
+  };
 
   function feedbackNode(button) {
     const item = button.closest('.action-item');
@@ -517,27 +552,46 @@ ACTION_RUNTIME = r"""
     note.style.color = tone === 'error' ? '#B42318' : (tone === 'pending' ? '#B54708' : '#087443');
   }
 
-  // One receipt contract for host and HTTP dispatch.
+  function draftIssue(action) {
+    const required = ['draftId', 'draftHash', 'actionId', 'approvalStatus', 'expiresAt', 'dispatchTool'];
+    if (required.some((field) => !String(action[field] == null ? '' : action[field]).trim())) return 'missing';
+    const expiry = typeof action.expiresAt === 'number'
+      ? action.expiresAt * 1000
+      : Date.parse(String(action.expiresAt || ''));
+    if (Number.isFinite(expiry) && expiry <= Date.now()) return 'expired';
+    const approval = String(action.approvalStatus || '').toLowerCase();
+    if (approval !== 'approved' && approval !== 'host_click_authorized') return 'pending';
+    return '';
+  }
+
+  // One receipt contract for host and HTTP dispatch.  Acknowledging a request
+  // is not success: only a server receipt that proves the todo was applied is.
   function normalizeReceipt(payload) {
     if (!payload || typeof payload !== 'object') {
       return { state: 'unconfirmed', message: '未收到执行回执，请稍后在待办中确认' };
     }
     const status = String(payload.status || payload.state || '').toLowerCase();
     const receipt = payload.receipt || payload.result || null;
-    if (payload.accepted === false) {
-      return { state: 'unconfirmed', message: payload.message || '请求已发出，执行结果待确认', receipt };
-    }
-    if (status === 'ok' || payload.ok === true) {
-      return { state: 'ok', message: payload.message || '任务令已创建', receipt };
-    }
     if (status === 'blocked' || status === 'rejected' || payload.ok === false) {
       const gaps = (payload.gaps || []).map((item) => item && item.name).filter(Boolean);
       return { state: 'rejected', message: payload.message || gaps.join('；') || '执行被拒绝', receipt };
     }
-    if (status === 'pending' || status === 'unconfirmed' || status === 'in_progress') {
+    if (status === 'failed') {
+      return { state: 'failed', message: payload.message || '执行失败', receipt };
+    }
+    if (status === 'pending' || status === 'unconfirmed' || status === 'in_progress' || status === 'unknown') {
       return { state: 'unconfirmed', message: payload.message || '执行结果待确认', receipt };
     }
-    return { state: 'failed', message: payload.message || '执行失败', receipt };
+    if (payload.accepted !== true) {
+      return { state: 'unconfirmed', message: payload.message || '执行结果待确认', receipt };
+    }
+    const applied = Number((receipt && receipt.applied) || 0);
+    const skipped = Number((receipt && receipt.skipped) || 0);
+    const verified = Boolean(receipt && (String(receipt.sourceTodoId || '').trim() || applied + skipped > 0));
+    if ((status === 'ok' || payload.ok === true) && verified) {
+      return { state: 'ok', message: payload.message || '任务令已创建', receipt };
+    }
+    return { state: 'unconfirmed', message: payload.message || '缺少可验证的执行回执，结果待确认', receipt };
   }
 
   function applyReceipt(button, payload) {
@@ -555,11 +609,25 @@ ACTION_RUNTIME = r"""
     return result;
   }
 
+  async function fetchWithTimeout(url, options) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROCESS360_DISPATCH.timeoutMs);
+    try {
+      return await fetch(url, Object.assign({ credentials: 'same-origin' }, options || {}, { signal: controller.signal }));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function readPayload(response) {
+    const text = await response.text();
+    try { return text ? JSON.parse(text) : null; } catch (error) { return null; }
+  }
+
   async function postDirect(action) {
-    const response = await fetch(PROCESS360_DISPATCH.url, {
+    const response = await fetchWithTimeout(PROCESS360_DISPATCH.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      credentials: 'same-origin',
       body: JSON.stringify({
         draftId: action.draftId,
         draftHash: action.draftHash,
@@ -567,13 +635,32 @@ ACTION_RUNTIME = r"""
         requestId: action.__requestId,
       }),
     });
-    const text = await response.text();
-    let payload = null;
-    try { payload = text ? JSON.parse(text) : null; } catch (error) { payload = null; }
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      return { status: 'unconfirmed', accepted: false, message: '服务端返回 HTTP ' + response.status + '，执行结果待确认' };
+    }
     if (!payload) {
-      return { status: 'unconfirmed', accepted: false, message: '服务端返回无法解析的回执' };
+      return { status: 'unconfirmed', accepted: false, message: '服务端返回无法解析的回执，执行结果待确认' };
     }
     return payload;
+  }
+
+  async function refreshStatus(button, action) {
+    try {
+      const url = new URL(PROCESS360_DISPATCH.url, window.location.href);
+      url.searchParams.set('draftId', action.draftId || '');
+      url.searchParams.set('actionId', action.actionId || action.id || '');
+      const response = await fetchWithTimeout(url.toString(), {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+      if (!response.ok) return null;
+      const payload = await readPayload(response);
+      if (!payload) return null;
+      return applyReceipt(button, payload);
+    } catch (error) {
+      return null;
+    }
   }
 
   function viaHost(action, requestId, taskOrder) {
@@ -590,7 +677,7 @@ ACTION_RUNTIME = r"""
       const timer = setTimeout(() => {
         finish({ status: 'unconfirmed', accepted: false, message: '宿主未在 25 秒内返回执行结果，请稍后在待办中确认' });
       }, PROCESS360_DISPATCH.timeoutMs);
-      PENDING.set(requestId, finish);
+      PENDING.set(requestId, { resolve: finish, acknowledged: false });
       try {
         const result = typeof callback === 'function' ? callback(action, taskOrder) : null;
         if (result && typeof result.then === 'function') {
@@ -610,12 +697,22 @@ ACTION_RUNTIME = r"""
   }
 
   window.addEventListener('message', (event) => {
+    if (window.parent !== window) {
+      if (event.source !== window.parent) return;
+      if (PROCESS360_HOST_ORIGIN && event.origin !== PROCESS360_HOST_ORIGIN) return;
+      if (!PROCESS360_HOST_ORIGIN && event.origin !== window.location.origin) return;
+    }
     const data = event.data;
     if (!data || typeof data !== 'object') return;
     if (data.type !== 'fuxi:task-order-result' && data.type !== 'fuxi:task-order-ack') return;
     const requestId = String(data.requestId || '');
-    const handler = PENDING.get(requestId);
-    if (handler) handler(data.payload || data);
+    const pending = PENDING.get(requestId);
+    if (!pending) return;
+    if (data.type === 'fuxi:task-order-ack') {
+      pending.acknowledged = true;
+      return;
+    }
+    pending.resolve(data.payload || data);
   });
 
   document.addEventListener('click', async (event) => {
@@ -623,20 +720,9 @@ ACTION_RUNTIME = r"""
     if (!button || button.disabled) return;
     const action = PROCESS360_ACTIONS[button.getAttribute('data-fuxi-task-order')];
     if (!action) return;
-    if (!action.draftReady) {
-      setActionState(button, '旧版建议，请重新生成任务草稿', 'error');
-      return;
-    }
-    const approval = String(action.approvalStatus || '').toLowerCase();
-    if (approval !== 'approved' && approval !== 'host_click_authorized') {
-      setActionState(button, '该建议尚未获得下发授权，请先完成审批', 'error');
-      return;
-    }
-    const expiry = typeof action.expiresAt === 'number'
-      ? action.expiresAt * 1000
-      : Date.parse(String(action.expiresAt || ''));
-    if (Number.isFinite(expiry) && expiry <= Date.now()) {
-      setActionState(button, '任务草稿已过期，请重新生成建议', 'error');
+    const issue = draftIssue(action);
+    if (issue) {
+      setActionState(button, DRAFT_STATE_MESSAGES[issue], 'error');
       return;
     }
     const requestId = (window.crypto && crypto.randomUUID)
@@ -652,21 +738,23 @@ ACTION_RUNTIME = r"""
     button.disabled = true;
     setActionState(button, '正在提交任务令…', 'pending');
     let payload = null;
-    let transport = 'http';
-    try {
-      payload = await postDirect({ ...action, __requestId: requestId });
-    } catch (error) {
-      transport = 'host';
-    }
-    if (transport === 'host') {
+    const useHostAdapter = window.PROCESS360_TASK_ORDER_TRANSPORT === 'host';
+    if (useHostAdapter) {
       payload = await viaHost(action, requestId, taskOrder);
+    } else {
+      try {
+        payload = await postDirect({ ...action, __requestId: requestId });
+      } catch (error) {
+        payload = { status: 'unconfirmed', accepted: false, message: '请求可能已发出，执行结果待确认' };
+      }
     }
     if (!payload) {
       button.disabled = false;
       setActionState(button, '本页未连接任务服务，也未检测到 Fuxi 宿主桥接', 'error');
       return;
     }
-    applyReceipt(button, payload);
+    const result = applyReceipt(button, payload);
+    if (result.state === 'unconfirmed') refreshStatus(button, action);
   });
 </script>
 """
@@ -677,10 +765,12 @@ def _actions_runtime(actions: list[dict[str, Any]]) -> str:
         return ""
     payload = {item["id"]: item for item in actions}
     url = (os.environ.get("PROCESS360_DISPATCH_URL") or "/api/process360/task-orders").strip()
+    host_origin = (os.environ.get("PROCESS360_HOST_ORIGIN") or "").strip()
     return (
         ACTION_RUNTIME
         .replace("__ACTIONS__", _json_for_script(payload))
         .replace("__DISPATCH_URL__", json.dumps(url))
+        .replace("__HOST_ORIGIN__", json.dumps(host_origin))
     )
 
 

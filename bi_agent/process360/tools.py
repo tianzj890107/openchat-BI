@@ -7,6 +7,7 @@ write path here; task dispatch remains the existing ``TaskOrderCreate`` tool.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from typing import Any, Callable
 
 from .audit import record_step
@@ -394,22 +395,37 @@ def _without_principal(spec: dict[str, Any]) -> dict[str, Any]:
     return schema
 
 
+def _with_plan_refs(spec: dict[str, Any]) -> dict[str, Any]:
+    """Expose plan/step references; the public MCP runtime makes them mandatory."""
+    schema = deepcopy(spec)
+    properties = schema.setdefault("input_schema", {}).setdefault("properties", {})
+    properties.setdefault(
+        "planId",
+        {"type": "string", "description": "Process360Route/Plan 返回的服务端执行计划"},
+    )
+    properties.setdefault(
+        "stepId",
+        {"type": "string", "description": "当前计划 steps[] 中的步骤 ID"},
+    )
+    return schema
+
+
 SPECS = tuple(_without_principal(spec) for spec in (
     PROCESS360_ROUTE_SCHEMA,
     PROCESS360_SEARCH_SCHEMA,
     PROCESS360_CONTEXT_SCHEMA,
-    PROCESS360_QUERY_SCHEMA,
-    PROCESS360_ANALYZE_SCHEMA,
-    PROCESS360_DRAFT_SCHEMA,
-    PROCESS360_VERIFY_SCHEMA,
+    _with_plan_refs(PROCESS360_QUERY_SCHEMA),
+    _with_plan_refs(PROCESS360_ANALYZE_SCHEMA),
+    _with_plan_refs(PROCESS360_DRAFT_SCHEMA),
+    _with_plan_refs(PROCESS360_VERIFY_SCHEMA),
     PROCESS360_PLAN_SCHEMA,
     PROCESS360_EXPLORE_SCHEMA,
-    PROCESS360_COMPARE_SCHEMA,
-    PROCESS360_STRUCTURE_SCHEMA,
-    PROCESS360_PROCESS_FLOW_SCHEMA,
-    PROCESS360_PROGRESS_SCHEMA,
-    PROCESS360_FORECAST_SCHEMA,
-    PROCESS360_SOLUTIONS_SCHEMA,
+    _with_plan_refs(PROCESS360_COMPARE_SCHEMA),
+    _with_plan_refs(PROCESS360_STRUCTURE_SCHEMA),
+    _with_plan_refs(PROCESS360_PROCESS_FLOW_SCHEMA),
+    _with_plan_refs(PROCESS360_PROGRESS_SCHEMA),
+    _with_plan_refs(PROCESS360_FORECAST_SCHEMA),
+    _with_plan_refs(PROCESS360_SOLUTIONS_SCHEMA),
 ))
 
 
@@ -497,6 +513,7 @@ def _draft(params: dict[str, Any], cwd: str) -> str:
             scenario=params.get("scenario"),
             scope=params.get("scope"),
             run_id=str(params.get("runId") or ""),
+            query_id=str(params.get("queryId") or ""),
             principal=_principal(params),
             owner_ref=str(params.get("ownerRef") or ""),
             owner_name=str(params.get("ownerName") or ""),

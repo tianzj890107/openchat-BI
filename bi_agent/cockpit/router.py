@@ -136,7 +136,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if not value:raise HTTPException(404,"分析记录不存在")
         return value
     def context_value(c,s):
-        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=s["snapshotId"],sourceMode=c.source,engine=c.engine,repositoryId=s.get("repositoryId",c.repositoryId),dataBasis=s.get("dataBasis","原型或演示证据，不是当前看板AP快照"),dataIdentity=s.get("dataIdentity",""),dataFingerprint=s.get("dataFingerprint",""))
+        snapshot_id=s["snapshotId"]
+        data_source=s.get("dataSource") or ('ap' if snapshot_id.startswith('ap-') else 'snapshot' if snapshot_id.startswith('dashboard-') else 'demo')
+        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=snapshot_id,sourceMode=c.source,engine=c.engine,repositoryId=s.get("repositoryId",c.repositoryId),dataSource=data_source,dataIdentity=s.get("dataIdentity",""),dataFingerprint=s.get("dataFingerprint",""),dataBasis=s.get("dataBasis","原型或演示证据，不是当前看板AP快照"))
         return value
     def scope(c,s):
         if c.engine=="main":return publication_scope(context_value(c,s))
@@ -221,7 +223,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         from .dashboard_source import RELEASE
         from .cards import CONTRACT
         identity=get_gateway().config.identity() if data_mode()=='ap' else RELEASE
-        context=dict(id=id,engine=engine,page=page,chartSnapshotId=RELEASE,dataIdentity=identity)
+        context=dict(id=id,engine=engine,page=page,chartSnapshotId=RELEASE,dataSource='ap' if data_mode()=='ap' else 'snapshot',dataIdentity=identity)
         items=store().published_view(view_scope(context))
         return dict(items={k:compact_analysis(v) for k,v in items.items()} if compact else items,cardContract=CONTRACT)
 
@@ -237,7 +239,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if main_context is None or data_mode()!='ap':raise HTTPException(409,'整页缓存仅支持主服务实时AP路线')
         config=get_gateway().config
         key=page_scope(config,req.id,req.page,req.uiScope)
-        page=build_page(req,store(),config)
+        page=build_page(req,store(),config,data_source='ap')
         if key!=page_scope(config,req.id,req.page,req.uiScope):raise HTTPException(409,'AP认证配置已变化，保留原版本')
         accepted=store().publish_page(key,page)
         return dict(accepted=accepted,snapshot=page if accepted else store().published_page(key))
@@ -292,7 +294,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         item=get_analysis(aid)
         if item["status"] not in {"completed","limited","needs_input"}:raise HTTPException(409,"分析尚未完成")
         result=item["result"];ctx=item["context"]
-        label=('主服务冻结证据（独立对照）' if ctx.get('engine')=='standalone' else ('页面本次AP结果' if ctx.get('snapshotId','').startswith('ap-') else '交付AP快照')) if ctx.get('sourceMode')=='service' else '演示数据'
+        labels={'ap':'页面本次实时AP结果','snapshot':'交付AP快照','postgres':'Process360 PostgreSQL 只读结果','demo':'演示数据'}
+        label=('主服务冻结证据（独立对照）' if ctx.get('engine')=='standalone' else labels.get(ctx.get('dataSource'),'未标明数据来源')) if ctx.get('sourceMode')=='service' else '演示数据'
         summary='' if result.get('narrative') else escape(result['summary'])
         display_scope='实际期间和部门以本次AP原始请求为准' if ctx.get('snapshotId','').startswith('ap-') else escape(ctx['period'])+' · '+escape(ctx['department'])
         content=f'<h1>{escape(ctx["stageName"])}分析报告</h1><p>{label} · {display_scope} · {escape(item["status"])}</p><p>{summary}</p>'

@@ -96,5 +96,5 @@ def test_page_dispatch_uses_the_server_principal(monkeypatch) -> None:
     receipt = {"ok": True, "applied": 1, "skipped": 0, "sourceTodoId": "analytics-y"}
     service = FakeService({"status": "ok", "receipt": receipt})
     call(service)
-    assert service.calls[0]["principal"] is None
-    assert service.calls[0]["idempotency_key"] == "page:draft-1:SC01-TK01"
+    assert service.calls[0]["principal"]["userId"] == "local"
+    assert service.calls[0]["idempotency_key"] == "local:draft-1:SC01-TK01"

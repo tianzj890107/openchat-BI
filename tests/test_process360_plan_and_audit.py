@@ -7,6 +7,7 @@ import pytest
 
 from bi_agent.process360 import audit, tools
 from bi_agent.process360.identity import reset_active_principal, set_active_principal
+from bi_agent.process360.request_context import reset_request_context, resolve_request_context, set_request_context
 from bi_agent.process360.catalog import Process360Catalog
 from bi_agent.process360.service import Process360Service
 from bi_agent.process360.store import Process360Store
@@ -71,14 +72,19 @@ def test_unknown_plan_is_rejected(tmp_path: Path) -> None:
 def test_pure_query_still_writes_a_step(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("PROCESS360_STORE_PATH", str(tmp_path / "audit.sqlite3"))
     monkeypatch.setattr(audit, "_STORE", None)
-    token = audit.set_request_id("sess-1")
-    identity_token = set_active_principal(PRINCIPAL)
+    request_token = set_request_context(
+        resolve_request_context(
+            principal=PRINCIPAL,
+            conversation_id="conv-1",
+            request_id="sess-1",
+            surface="mcp",
+        )
+    )
     try:
         audit.ensure_request()
         output = tools.EXECUTORS["Process360Route"]({"question": "超期未发有多少"}, str(ROOT))
     finally:
-        reset_active_principal(identity_token)
-        audit.reset_request_id(token)
+        reset_request_context(request_token)
     assert json.loads(output)["planId"]
     trail = audit.store().get_request("sess-1")
     assert trail is not None

@@ -97,24 +97,41 @@ def send_task_order(
             source_updated_at=source_updated_at,
         )
     except FuxiTodoError as exc:
+        message = str(exc)
+        status_code = getattr(exc, "status", None)
+        definitive_rejection = bool(
+            isinstance(status_code, int)
+            and 400 <= status_code < 500
+            and status_code not in {408, 409, 425, 429}
+        )
+        configuration_block = not status_code and any(
+            marker in message.lower()
+            for marker in ("disabled", "not configured", "requires", "must")
+        )
+        outcome = "blocked" if definitive_rejection or configuration_block else "unknown"
+        code = "FUXI_TODO_REJECTED" if definitive_rejection else (
+            "FUXI_TODO_CONFIG_BLOCKED" if configuration_block else "FUXI_TODO_UNKNOWN"
+        )
         return envelope(
             "S06",
-            "blocked",
+            outcome,
             catalog_id=catalog.catalog_id,
             catalog_version=catalog.version,
             scenario=str(task.get("scenario") or "") or None,
             gaps=[
                 gap(
-                    "FUXI_TODO_FAILED",
-                    "Fuxi 待办提交失败",
-                    needed="检查 Fuxi 服务与回执后用同一幂等键重试",
-                    impact="任务令未创建；业务动作未执行",
+                    code,
+                    "Fuxi 明确拒绝" if definitive_rejection else (
+                        "Fuxi 配置未就绪" if configuration_block else "Fuxi 执行结果不确定"
+                    ),
+                    needed="检查 Fuxi 回执；结果不确定时用同一幂等身份安全重试",
+                    impact="可能已送达，也可能未创建；不得直接视为失败或另换幂等键",
                     severity="blocking",
                     source="runtime",
                 )
             ],
-            limitations=[str(exc)],
-            next_steps=["保留草稿并使用相同 sourceTodoId 重试，避免重复待办"],
+            limitations=[message],
+            next_steps=["保留草稿并使用相同 sourceTodoId 与接收人版本重试"],
             receipt=None,
             task=dict(task),
         )

@@ -198,3 +198,40 @@
 - 验证：`pytest -q tests` 为 1534 passed / 37 skipped，唯一失败仍是 worktree 缺
   `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js`。
 - 边界：未部署、未发送真实 Fuxi 任务、未创建 MR。
+
+### 2026-10-28 Process360 统一请求、查询复用、计划约束、产物与下发收口
+
+- 统一请求上下文：MCP、页面下发和审计共用服务端解析的
+  `principalId/tenantId/grantKind/grantScope/authorizationVersion/conversationId/requestId/surface`；
+  模型或页面提交身份、租户、下发权限字段会被拒绝。POC 默认只读，下发由
+  `PROCESS360_POC_DISPATCH` 单独开启。
+- 查询结果改为 v2 契约：`queryId` 绑定来源连接、规范范围、授权版本/指纹、catalog 和查询
+  模板版本、有效期、完整性、结果哈希及完整行；Query/Analyze/Draft/Structure/Verify 可复用，
+  换范围、撤权、换场景或过期时明确阻断。Process360 查询结果显式返回
+  `dataSource=process360-postgres` 和 `sourceConnection`。
+- 公共 MCP 的 Process360 业务工具强制 `planId + stepId`，校验步骤工具、前置依赖、场景、
+  范围和待澄清项；计划步骤结果与服务端请求轨迹分别落库，一个伏羲会话可包含多个 requestId。
+- `OutputGateCheck` 对正式分析报告强制绑定 `canvasId/artifactHash`，缺省
+  `deliveryKind=analysis_report`，缺失产物直接 reject；产物按 request/plan/query/run
+  append-only 登记，页面变化后必须重过闸门。`Process360Verify` 从服务端 `approvalRef`
+  读取批准目标、方向和有效期，模型自填目标不能代替审批。
+- 页面与 MCP 下发收口到同一执行服务，幂等键固定为 `tenant:draftId:actionId`，发送前原子
+  claim，状态区分 `queued/sending/succeeded/blocked/rejected/unknown`；执行登记失败不会调用
+  Fuxi。Canvas 按钮按完整回执显示状态，超时不自动切宿主，支持状态刷新、父窗口来源校验和
+  接收人映射版本阻断。
+- 驾驶舱整页显式记录并校验 `dataSource/dataIdentity/dataFingerprint`；AP 图表与 AI 卡片
+  必须同源同版本才能发布，PG 查询结果和旧 AP 快照不能仅因标题相同就混用；页面与卡片缓存
+  key 同步加入数据来源。
+- 文档同步更新：`ontology-analytics-skill/SKILL.md`、
+  `ontology-analytics-skill/references/{07-output-gates,08-tools-and-sources}.md`、
+  `docs/specs/process360-closed-loop.md`、`docs/specs/process360-acceptance-2026-10-28.md`、
+  `.env.example`。新增/更新的关键文件还包括
+  `bi_agent/process360/{request_context,service,dispatch,store,identity,audit}.py`、
+  `bi_agent/web/{mcp_endpoint,app}.py`、`bi_agent/cockpit/{page_cache,publications,router}.py`、
+  `ontology-analytics-mcp/canvas_tool.py`。
+- 验证：Process360、Fuxi、MCP 与 Cockpit 相关组合测试为 230 passed / 9 skipped（9 项
+  PostgreSQL 合约需 `PROCESS360_ACCEPTANCE_DSN`）；全量 `pytest -q tests` 为
+  1578 passed / 37 skipped / 1 failed，唯一失败是 worktree 缺少
+  `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题；`git diff --check` 通过。
+- 边界：未部署、未发送真实 Fuxi 待办、未创建 MR/tag/Release、未升级正式版本；真实业务批准、
+  外部证据和 Fuxi 端到端联调仍需业务条件。

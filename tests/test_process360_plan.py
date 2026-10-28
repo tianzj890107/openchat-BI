@@ -8,7 +8,13 @@ from bi_agent.process360.store import Process360Store
 from tests.test_process360_engine import FakeDB
 
 ROOT = Path(__file__).resolve().parents[1]
-PRINCIPAL = {"tenantId": "t1", "userId": "u1", "canDispatch": True}
+PRINCIPAL = {
+    "tenantId": "t1",
+    "userId": "u1",
+    "grantKind": "all",
+    "authorizationVersion": "test-auth-v1",
+    "canDispatch": True,
+}
 
 
 def service(tmp_path: Path) -> Process360Service:

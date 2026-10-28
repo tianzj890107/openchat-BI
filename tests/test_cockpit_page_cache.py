@@ -28,7 +28,7 @@ def fixture(tmp_path):
     fp=digest([(json.dumps(q,sort_keys=True),data)])
     ids={}
     for stage in ['shipment','opportunity']:
-        ctx=dict(id=1,page='analysis',stage=stage,engine='main',dataIdentity=config.identity(),dataFingerprint=fp,chartQueries=[json.dumps(q)])
+        ctx=dict(id=1,page='analysis',stage=stage,engine='main',dataSource='ap',dataIdentity=config.identity(),dataFingerprint=fp,chartQueries=[json.dumps(q)])
         item=store.create_analysis('scope-'+stage,ctx)
         store.update_analysis(item['id'],status='limited',result=dict(summary='Validated card',causes=[],recommendations=[],cardContract=CONTRACT),evidence={'facts':[],'records':[],'evidence':[]})
         ids[stage]=item['id']
@@ -52,6 +52,29 @@ def test_full_page_survives_restart_but_not_wrong_role_filter_source_or_config(t
         with pytest.raises(HTTPException):
             build_page(req,store,cfg)
     assert store.get_ap_result(receipt['id'],1,allow_expired=True)
+
+
+def test_full_page_declares_and_binds_the_ap_source(tmp_path):
+    store,cfg,req,_=fixture(tmp_path)
+    page=build_page(req,store,cfg)
+    assert page['dataSource']=='ap'
+    assert page['dataIdentity']==cfg.identity()
+    assert page['dataFingerprint']
+    assert {item['context']['dataSource'] for item in page['items'].values()}=={'ap'}
+    assert page_scope(cfg,1,'analysis','default','ap')!=page_scope(cfg,1,'analysis','default','postgres')
+
+
+def test_full_page_rejects_ai_results_from_a_different_data_source(tmp_path):
+    store,cfg,req,_=fixture(tmp_path)
+    item=store.get_analysis(req.analysisIds['shipment'])
+    context=deepcopy(item['context'])
+    context['dataSource']='postgres'
+    changed=store.create_analysis('wrong-source',context)
+    store.update_analysis(changed['id'],status='limited',result={'summary':'validated','cardContract':CONTRACT})
+    values=req.model_dump()
+    values['analysisIds']['shipment']=changed['id']
+    with pytest.raises(HTTPException):
+        build_page(PageRequest(**values),store,cfg)
 
 
 @pytest.mark.parametrize('bad',['missing-slot','wrong-data','wrong-role','missing-graph','duplicate-receipt','incomplete-card','failed-card'])

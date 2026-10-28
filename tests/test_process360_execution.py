@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PRINCIPAL = {
     "tenantId": "tenant-1",
     "userId": "user-1",
+    "grantKind": "all",
+    "authorizationVersion": "test-auth-v1",
     "canDispatch": True,
     "source": "host",
 }
@@ -163,7 +165,7 @@ def test_network_failure_retry_reuses_the_same_execution_key(tmp_path: Path) -> 
         draft_id=bundle["draftId"], draft_hash=bundle["draftHash"], action_id=action["id"],
         recipients=["18837823993"], principal=PRINCIPAL, client=client, retry=True,
     )
-    assert failed["status"] == "blocked"
+    assert failed["status"] == "unknown"
     assert retried["status"] == "ok" and retried["idempotentReplay"] is False
     assert len(client.calls) == 2
     assert client.calls[0]["source_todo_id"] == client.calls[1]["source_todo_id"]

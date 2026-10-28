@@ -10,6 +10,7 @@ filters.
 from __future__ import annotations
 
 import contextvars
+import hashlib
 import json
 import os
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ DEFAULT_POC_PRINCIPAL = {
     "tenantId": "ywln",
     "userId": "poc-readonly",
     "grantKind": "all",
-    "canDispatch": True,
+    "canDispatch": False,
     "source": "server-poc-config",
 }
 
@@ -68,6 +69,7 @@ class PrincipalScope:
     can_dispatch: bool = False
     source: str = "host"
     grant_kind: str = "restricted"
+    authorization_version: str = ""
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any] | None, *, required: bool = True) -> "PrincipalScope":
@@ -87,7 +89,10 @@ class PrincipalScope:
             "product_ids": "productIds",
             "can_dispatch": "canDispatch",
         }
-        allowed = set(aliases) | set(aliases.values()) | {"roles", "source", "grantKind", "grant_kind"}
+        allowed = set(aliases) | set(aliases.values()) | {
+            "roles", "source", "grantKind", "grant_kind",
+            "authorizationVersion", "authorization_version",
+        }
         unknown = set(raw) - allowed
         if unknown:
             raise ValueError("principal contains unsupported fields")
@@ -105,19 +110,15 @@ class PrincipalScope:
             raise ValueError("principal.canDispatch must be a boolean")
         raw_grant = raw.get("grantKind", raw.get("grant_kind"))
         if raw_grant is None:
-            # Legacy payloads: an explicit dimension list means a restricted
-            # grant; no lists at all means the caller declared full read access.
-            raw_grant = (
-                "restricted"
-                if any(
-                    raw.get(key) or raw.get(key.lower())
-                    for key in ("orgIds", "customerIds", "ownerIds", "productIds")
-                )
-                else "all"
-            )
+            raise ValueError("principal.grantKind is required")
         grant_kind = str(raw_grant).strip().lower()
         if grant_kind not in GRANT_KINDS:
             raise ValueError(f"principal.grantKind must be one of {GRANT_KINDS}")
+        authorization_version = str(
+            raw.get("authorizationVersion", raw.get("authorization_version", "")) or ""
+        ).strip()
+        if len(authorization_version) > 200:
+            raise ValueError("principal.authorizationVersion is too long")
         return cls(
             tenant_id=tenant,
             user_id=user,
@@ -129,6 +130,7 @@ class PrincipalScope:
             can_dispatch=dispatch,
             source=str(raw.get("source") or "host")[:40],
             grant_kind=grant_kind,
+            authorization_version=authorization_version,
         )
 
     @classmethod
@@ -140,6 +142,7 @@ class PrincipalScope:
         """
         raw = os.environ.get("PROCESS360_POC_PRINCIPAL")
         payload: dict[str, Any] = dict(DEFAULT_POC_PRINCIPAL)
+        explicit_dispatch = False
         if raw and raw.strip():
             try:
                 parsed = json.loads(raw)
@@ -147,7 +150,11 @@ class PrincipalScope:
                 raise ValueError("PROCESS360_POC_PRINCIPAL must be valid JSON") from exc
             if not isinstance(parsed, dict):
                 raise ValueError("PROCESS360_POC_PRINCIPAL must be a JSON object")
+            explicit_dispatch = "canDispatch" in parsed or "can_dispatch" in parsed
             payload.update(parsed)
+        dispatch_raw = (os.environ.get("PROCESS360_POC_DISPATCH") or "").strip().lower()
+        if not explicit_dispatch:
+            payload["canDispatch"] = dispatch_raw in {"1", "true", "yes", "on"}
         return cls.from_payload(payload)
 
     @classmethod
@@ -159,6 +166,7 @@ class PrincipalScope:
             source="local",
             can_dispatch=True,
             grant_kind="all",
+            authorization_version="local",
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -173,6 +181,7 @@ class PrincipalScope:
             "canDispatch": self.can_dispatch,
             "source": self.source,
             "grantKind": self.grant_kind,
+            "authorizationVersion": self.authorization_version,
         }
 
     @property
@@ -182,6 +191,33 @@ class PrincipalScope:
     @property
     def can_read_data(self) -> bool:
         return self.grant_kind in {"restricted", "all"}
+
+    def grant_scope(self) -> dict[str, Any]:
+        return {
+            "tenantId": self.tenant_id,
+            "userId": self.user_id,
+            "orgIds": list(self.org_ids),
+            "roles": list(self.roles),
+            "customerIds": list(self.customer_ids),
+            "ownerIds": list(self.owner_ids),
+            "productIds": list(self.product_ids),
+            "grantKind": self.grant_kind,
+        }
+
+    @property
+    def grant_fingerprint(self) -> str:
+        payload = self.grant_scope()
+        payload["authorizationVersion"] = self.effective_authorization_version
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+    @property
+    def effective_authorization_version(self) -> str:
+        if self.authorization_version:
+            return self.authorization_version
+        payload = self.grant_scope()
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return "grant-" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:24]
 
     def merge_scope(self, scope: Scope) -> Scope:
         """Intersect user filters with the principal's allowed data range.
@@ -228,6 +264,7 @@ class PrincipalScope:
             "canDispatch": self.can_dispatch,
             "grantKind": self.grant_kind,
             "source": self.source,
+            "authorizationVersion": self.effective_authorization_version,
         }
 
 

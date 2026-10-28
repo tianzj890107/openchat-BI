@@ -6,6 +6,9 @@
 
 Fuxi 运行时直接调用远程 MCP 的 `OutputGateCheck`，传入 `answer`、`question`、
 `sql`、`chart`、`reconcile` 和可选的 `claims`；返回 `verdict=pass/warn/reject`。
+正式报告还必须传 `CanvasGenerate` 返回的 `canvasId`、`artifactHash`，以及可用的
+`planId/queryId/runId`。缺少最终 HTML 产物引用时直接 reject。只有显式
+`deliveryKind=fact_answer` 的纯文字事实回答可以不带 Canvas；缺省视为 `analysis_report`。
 
 离线开发/回归时可以运行纯规则脚本：
 
@@ -70,3 +73,15 @@ python scripts/gates.py sql --sql "SELECT ..."       # 只读 SQL 守卫
 
 下一步需要补齐可执行的数据查询、物理字段映射或明确分析口径；当前不把本体操作本身当作最终业务答案。
 ```
+
+## 6. 产物绑定与服务端登记
+
+- `canvasId` + `artifactHash` 必须指向当前 HTML；文件不存在、哈希缺失或不一致分别返回
+  `artifact_missing`、`artifact_hash_required`、`artifact_hash_mismatch`；两者都缺失返回
+  `artifact_reference_required`。
+- 闸门通过或失败都会登记一次 append-only artifact 版本，包含
+  `artifactId/artifactHash/requestId/planId/queryId/runId/gateResult/checkedAt`。
+- 页面内容修改后哈希会变化，必须重新生成产物并重过闸门；旧的成功记录不能复用。
+- `runId` 绑定冻结分析运行；冻结基准 `complete=false` 时返回
+  `frozen_baseline_incomplete`。事实报告可以披露缺口后交付，但不能据此宣称效果验收通过。
+- 正式效果复验还必须绑定服务端可信 `approvalRef`；模型自填目标不构成批准。

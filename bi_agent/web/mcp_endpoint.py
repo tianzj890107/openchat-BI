@@ -26,7 +26,7 @@ import time
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -36,12 +36,20 @@ from ..integrations.fuxi_todo import FuxiTodoClient, FuxiTodoError
 from ..process360 import tools as process360_tools
 from ..process360.execute import _assert_no_phone
 from ..process360 import audit as process360_audit
-from ..process360.dispatch import dispatch_draft
+from ..process360.dispatch import dispatch_action, dispatch_draft, execution_key
 from ..process360.identity import (
     PrincipalScope,
     active_principal_payload,
     reset_active_principal,
     set_active_principal,
+)
+from ..process360.request_context import (
+    FORBIDDEN_CLIENT_FIELDS,
+    active_request_context,
+    reject_client_identity_fields,
+    reset_request_context,
+    resolve_request_context,
+    set_request_context,
 )
 from ..paths import DATASET_DIR, project_path
 from ..tools import (
@@ -64,6 +72,31 @@ Executor = Callable[[dict[str, Any], str], str]
 #: Business tools whose identity is always resolved by the server.
 PROCESS360_TOOL_NAMES: frozenset[str] = frozenset(process360_tools.EXECUTORS)
 SERVER_PRINCIPAL_TOOLS: frozenset[str] = PROCESS360_TOOL_NAMES | {"TaskOrderCreate"}
+PLAN_REQUIRED_TOOLS: frozenset[str] = frozenset({
+    "Process360Query",
+    "Process360Analyze",
+    "Process360Draft",
+    "Process360Verify",
+    "Process360Compare",
+    "Process360Structure",
+    "Process360ProcessFlow",
+    "Process360Progress",
+    "Process360Forecast",
+    "Process360Solutions",
+})
+
+PLAN_TOOL_STAGES = {
+    "Process360Query": "S03",
+    "Process360Compare": "S03",
+    "Process360Structure": "S03",
+    "Process360ProcessFlow": "S03",
+    "Process360Analyze": "S04",
+    "Process360Draft": "S05",
+    "Process360Solutions": "S05",
+    "Process360Progress": "S06",
+    "Process360Verify": "S07",
+    "Process360Forecast": "S07",
+}
 
 MCP_PROTOCOL_VERSION = "2025-03-26"
 SERVER_NAME = "ontology-analytics-mcp"
@@ -151,6 +184,13 @@ OUTPUT_GATE_SCHEMA: dict[str, Any] = {
             "artifactHash": {
                 "type": "string",
                 "description": "CanvasGenerate 返回的 artifactHash；提供 canvasId 时必填",
+            },
+            "planId": {"type": "string", "description": "本次分析所属的服务端执行计划"},
+            "queryId": {"type": "string", "description": "本次分析消费的服务端查询结果"},
+            "deliveryKind": {
+                "type": "string",
+                "enum": ["analysis_report", "fact_answer"],
+                "description": "缺省为 analysis_report，必须有 Canvas 产物；fact_answer 才允许纯文字交付",
             },
             "chart": {"type": "object", "description": "图表工具名和参数"},
             "reconcile": {
@@ -383,8 +423,16 @@ def _gate_executor() -> Executor:
         canvas_id = str(payload.pop("canvasId", "") or "").strip()
         expected = str(payload.pop("artifactHash", "") or "").strip()
         run_id = str(payload.pop("runId", "") or "").strip()
+        plan_id = str(payload.pop("planId", "") or "").strip()
+        query_id = str(payload.pop("queryId", "") or "").strip()
+        delivery_kind = str(payload.pop("deliveryKind", "") or "analysis_report").strip()
         report = _gate_rules().check(payload)
         hard = list(report.get("hard_issues") or [])
+        artifact_record = None
+        if delivery_kind not in {"analysis_report", "fact_answer"}:
+            hard.append("delivery_kind_invalid")
+        if delivery_kind == "analysis_report" and (not canvas_id or not expected):
+            hard.append("artifact_reference_required")
         if canvas_id or expected:
             artifact = {"canvasId": canvas_id, "artifactHash": expected}
             target = None
@@ -419,6 +467,26 @@ def _gate_executor() -> Executor:
         if hard:
             report["hard_issues"] = sorted(dict.fromkeys(hard))
             report["verdict"] = "reject"
+        artifact = report.get("artifact")
+        if isinstance(artifact, dict) and artifact.get("actualHash"):
+            context = active_request_context()
+            artifact_id = uuid.uuid4().hex
+            artifact["artifactId"] = artifact_id
+            artifact_record = process360_audit.store().save_artifact(
+                artifact_id=artifact_id,
+                artifact_hash=str(artifact.get("actualHash") or ""),
+                request_id=context.request_id if context else "",
+                plan_id=plan_id,
+                query_id=query_id,
+                run_id=run_id,
+                tenant=context.tenant_id if context else "",
+                principal=context.principal_id if context else "",
+                gate_result=report,
+            )
+            report["artifactRegistry"] = {
+                "artifactId": artifact_record.get("id"),
+                "checkedAt": artifact_record.get("checked_at"),
+            }
         return json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
     return run
 
@@ -428,17 +496,18 @@ def _task_order_executor() -> Executor:
         client = FuxiTodoClient()
         draft_id = str(params.get("draft_id") or "").strip()
         if draft_id:
-            principal = active_principal_payload() or params.get("principal")
-            if not principal:
+            context = active_request_context()
+            if context is None:
                 raise ValueError("principal is resolved by the server and is required for dispatch")
             service = process360_tools.Process360Service(cwd=cwd)
-            result = service.execute_draft(
+            result = dispatch_action(
+                service,
                 draft_id=draft_id,
                 draft_hash=str(params.get("draft_hash") or ""),
                 action_id=str(params.get("action_id") or ""),
+                request_id=context.request_id,
                 recipients=params.get("recipients_raw") or [],
-                principal=principal,
-                idempotency_key=str(params.get("idempotency_key") or ""),
+                principal=context.principal.to_dict(),
                 retry=bool(params.get("retry")),
                 client=client,
             )
@@ -485,6 +554,89 @@ def _task_order_executor() -> Executor:
             )
         return json.dumps(result, ensure_ascii=False, indent=2)
     return run
+
+
+def _plan_block(tool: str, issue: Mapping[str, Any], *, plan_id: str = "", step_id: str = "") -> str:
+    return json.dumps(
+        {
+            "schema": "process360.result.v1",
+            "stage": PLAN_TOOL_STAGES.get(tool, "S00"),
+            "status": "needs_clarification",
+            "tool": tool,
+            "planId": plan_id or None,
+            "stepId": step_id or None,
+            "gaps": [dict(issue)],
+            "limitations": ["计划校验未通过，业务工具未执行。"],
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def _enforce_process360_plan(
+    name: str,
+    params: dict[str, Any],
+    cwd: str,
+    context: Any,
+) -> str | None:
+    if name not in PLAN_REQUIRED_TOOLS:
+        return None
+    service = process360_tools.Process360Service(cwd=cwd)
+    plan_id = str(params.get("planId") or params.get("plan_id") or "").strip()
+    step_id = str(params.get("stepId") or params.get("step_id") or "").strip()
+    issue = service.validate_plan_step(
+        plan_id,
+        step_id,
+        name,
+        str(params.get("scenario") or ""),
+        context.principal,
+        scope=params.get("scope"),
+        require_plan=True,
+    )
+    if issue:
+        return _plan_block(name, issue, plan_id=plan_id, step_id=step_id)
+    record = service.store.get_plan(plan_id) or {}
+    plan_scope = (record.get("payload") or {}).get("scope")
+    if not params.get("scope") and isinstance(plan_scope, dict):
+        params["scope"] = dict(plan_scope)
+    return None
+
+
+def _record_plan_step_outcome(name: str, params: Mapping[str, Any], output: str) -> None:
+    if name not in PLAN_REQUIRED_TOOLS:
+        return
+    context = active_request_context()
+    if context is None:
+        return
+    plan_id = str(params.get("planId") or params.get("plan_id") or "").strip()
+    step_id = str(params.get("stepId") or params.get("step_id") or "").strip()
+    if not plan_id or not step_id:
+        return
+    try:
+        payload = json.loads(output) if isinstance(output, str) else {}
+    except ValueError:
+        payload = {}
+    result_status = str(payload.get("status") or "").lower()
+    status = "completed" if result_status in {"ok", "partial", "not_applicable"} else "blocked"
+    refs = {
+        key: payload.get(key)
+        for key in ("queryId", "runId", "planId", "draftId", "baselineId", "actionId")
+        if payload.get(key)
+    }
+    try:
+        process360_audit.store().record_plan_step(
+            plan_id=plan_id,
+            step_id=step_id,
+            request_id=context.request_id,
+            tool=name,
+            status=status,
+            input_hash=hashlib.sha256(
+                json.dumps(params, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest(),
+            refs=refs,
+        )
+    except Exception:  # noqa: BLE001 - step history is an audit side effect
+        return
 
 
 def _render_executors() -> dict[str, Executor]:
@@ -624,7 +776,15 @@ class McpRuntime:
         schemas = _tool_schemas(source)
         return [_mcp_tool(schemas[name]) for name in self.exposed if name in schemas]
 
-    def call_tool(self, name: str, arguments: dict[str, Any], base_url: str = "") -> str:
+    def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        base_url: str = "",
+        *,
+        conversation_id: str = "",
+        request_id: str = "",
+    ) -> str:
         if name in MCP_DENIED_TOOLS or name not in self.exposed:
             raise PermissionError(f"tool_not_allowed: {name}")
         if name in self._source_free:
@@ -637,20 +797,48 @@ class McpRuntime:
         cwd = self.get_cwd() or os.getcwd()
         params = dict(arguments or {})
         token = None
+        plan_block = None
         if name in SERVER_PRINCIPAL_TOOLS:
-            for forbidden in ("principal", "principalScope", "__principal"):
-                if forbidden in params:
-                    raise ValueError(
-                        "principal is resolved by the server; "
-                        f"tool arguments must not contain {forbidden}"
-                    )
-            token = set_active_principal(self.principal_payload())
+            reject_client_identity_fields(params)
+            context = resolve_request_context(
+                principal=self.principal_payload(),
+                conversation_id=conversation_id,
+                request_id=request_id or uuid.uuid4().hex,
+                surface="mcp",
+            )
+            token = set_request_context(context)
             process360_audit.ensure_request()
+            plan_block = _enforce_process360_plan(name, params, cwd, context)
         try:
-            result = executor(params, cwd)
+            if plan_block is not None:
+                result = plan_block
+                process360_audit.record_step(name, params, result)
+            else:
+                try:
+                    result = executor(params, cwd)
+                except Exception as exc:
+                    if name in PROCESS360_TOOL_NAMES:
+                        process360_audit.record_step(
+                            name,
+                            params,
+                            json.dumps(
+                                {
+                                    "status": "blocked",
+                                    "errorType": type(exc).__name__,
+                                },
+                                ensure_ascii=False,
+                            ),
+                        )
+                        _record_plan_step_outcome(
+                            name,
+                            params,
+                            json.dumps({"status": "blocked"}, ensure_ascii=False),
+                        )
+                    raise
+                _record_plan_step_outcome(name, params, result)
         finally:
             if token is not None:
-                reset_active_principal(token)
+                reset_request_context(token)
         text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
         if name == "CanvasGenerate":
             text = _with_artifact_url(text, cwd, base_url)
@@ -703,16 +891,18 @@ class McpRuntime:
                 arguments = params.get("params") or {}
             if not isinstance(arguments, dict):
                 return session_id, _error(request_id, -32602, "tool arguments must be an object")
-            token = None
-            if name in PROCESS360_TOOL_NAMES:
-                token = process360_audit.set_request_id(session_id or "")
             try:
-                text = self.call_tool(name, arguments, base_url)
+                text = self.call_tool(
+                    name,
+                    arguments,
+                    base_url,
+                    conversation_id=session_id or "",
+                    request_id=str(
+                        request_id if request_id is not None else uuid.uuid4().hex
+                    ),
+                )
             except Exception as exc:  # noqa: BLE001
                 return session_id, _tool_error(request_id, f"{type(exc).__name__}: {exc}"[:800])
-            finally:
-                if token is not None:
-                    process360_audit.reset_request_id(token)
             return session_id, _response(request_id, {
                 "content": [{"type": "text", "text": text}],
                 "isError": False,
@@ -787,7 +977,8 @@ def _authorized(request: Request) -> bool:
 def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[..., Any],
                      get_cwd: Callable[[], str],
                      executor_factory: Callable[[Any], dict[str, Executor]] | None = None,
-                     exposed_tools: tuple[str, ...] | None = None) -> APIRouter:
+                     exposed_tools: tuple[str, ...] | None = None,
+                     request_principal: Callable[[Request], dict[str, Any]] | None = None) -> APIRouter:
     runtime = McpRuntime(
         get_source=get_source,
         build_doris=build_doris,
@@ -796,6 +987,20 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
         exposed_tools=exposed_tools,
     )
     router = APIRouter()
+    principal_for_request = request_principal or (lambda request: runtime.principal_payload())
+
+    def http_context(request: Request, *, surface: str, request_id: str = ""):
+        conversation_id = (
+            request.headers.get("x-fuxi-conversation-id")
+            or request.headers.get("x-conversation-id")
+            or ""
+        )
+        return resolve_request_context(
+            principal=principal_for_request(request),
+            conversation_id=conversation_id,
+            request_id=request_id or uuid.uuid4().hex,
+            surface=surface,
+        )
 
     @router.post("/api/process360/task-orders")
     async def process360_task_order(request: Request):
@@ -808,6 +1013,17 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
             raise HTTPException(400, f"invalid JSON body: {exc}") from exc
         if not isinstance(body, dict):
             raise HTTPException(400, "body must be an object")
+        try:
+            reject_client_identity_fields(body)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        forbidden_context = set(body) & {"conversationId", "surface", "principalId", "grantScope"}
+        if forbidden_context:
+            raise HTTPException(
+                400,
+                "会话与执行上下文由服务端解析；页面不得提交 "
+                + ", ".join(sorted(forbidden_context)),
+            )
         draft_id = str(body.get("draftId") or "").strip()
         draft_hash = str(body.get("draftHash") or "").strip()
         action_id = str(body.get("actionId") or "").strip()
@@ -827,20 +1043,33 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
                 status_code=200,
             )
         service = process360_tools.Process360Service(cwd=get_cwd() or os.getcwd())
-        result = await asyncio.to_thread(
-            dispatch_draft,
-            service,
-            draft_id=draft_id,
-            draft_hash=draft_hash,
-            action_id=action_id,
-            request_id=request_id,
-        )
+        context = http_context(request, surface="canvas", request_id=request_id)
+        token = set_request_context(context)
+        process360_audit.ensure_request("canvas")
+        try:
+            result = await asyncio.to_thread(
+                dispatch_draft,
+                service,
+                draft_id=draft_id,
+                draft_hash=draft_hash,
+                action_id=action_id,
+                request_id=request_id,
+            )
+        finally:
+            reset_request_context(token)
         return JSONResponse(result)
 
     @router.get("/api/process360/requests/{request_id}")
-    def process360_request_trail(request_id: str) -> dict[str, Any]:
+    def process360_request_trail(request_id: str, request: Request) -> dict[str, Any]:
         """Read the recorded step trail for one Fuxi conversation."""
-        record = process360_audit.store().get_request(request_id)
+        if not _authorized(request):
+            raise HTTPException(401, "unauthorized")
+        context = http_context(request, surface="web")
+        token = set_request_context(context)
+        try:
+            record = process360_audit.request_trail(request_id)
+        finally:
+            reset_request_context(token)
         if not record:
             raise HTTPException(404, "request not found")
         return {
@@ -860,7 +1089,17 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
         if not draft_id or not action_id:
             raise HTTPException(400, "draftId and actionId are required")
         service = process360_tools.Process360Service(cwd=get_cwd() or os.getcwd())
-        record = service.store.get_execution(f"page:{draft_id}:{action_id}")
+        context = http_context(request, surface="canvas")
+        draft = service.store.get_draft(draft_id)
+        owned = bool(
+            draft
+            and draft.get("tenant") == context.tenant_id
+            and draft.get("principal") == context.principal_id
+        )
+        record = (
+            service.store.get_execution(execution_key(context.tenant_id, draft_id, action_id))
+            if owned else None
+        )
         if not record:
             return {
                 "schema": "process360.dispatch.v1",
@@ -874,15 +1113,30 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
             }
         response = record.get("response") or {}
         state = str(response.get("status") or record.get("status") or "unconfirmed").lower()
+        mapped = {
+            "ok": "ok",
+            "succeeded": "ok",
+            "unknown": "unknown",
+            "rejected": "rejected",
+            "blocked": "blocked",
+            "sending": "unconfirmed",
+            "in_progress": "unconfirmed",
+        }.get(state, "unconfirmed")
         return {
             "schema": "process360.dispatch.v1",
-            "status": "ok" if state == "ok" else ("unconfirmed" if state == "in_progress" else "blocked"),
-            "accepted": state == "ok",
-            "message": "任务令已创建" if state == "ok" else "执行结果待确认或未创建",
+            "status": mapped,
+            "accepted": mapped == "ok",
+            "message": {
+                "ok": "任务令已创建",
+                "unknown": "请求可能已送达，执行结果待确认",
+                "rejected": "Fuxi 明确拒绝任务令",
+                "blocked": "任务令未创建",
+            }.get(mapped, "执行结果待确认"),
             "receipt": response.get("receipt"),
+            "gaps": response.get("gaps") or [],
             "draftId": draft_id,
             "actionId": action_id,
-            "requestId": "",
+            "requestId": record.get("request_id") or "",
         }
 
     @router.get("/api/mcp/health")

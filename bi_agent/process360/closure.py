@@ -90,11 +90,17 @@ def build_baseline(
     rows = list(full_rows if full_rows is not None else (query.get("records") or []))
     total = int(info.get("totalRows") or 0)
     keys = object_keys(rows, code)
-    if full_rows is not None:
-        # The server already re-read the full set; only its size matters.
-        complete = bool(total) and len(rows) >= total
-    else:
-        complete = bool(total) and len(rows) >= total and not info.get("truncated")
+    raw_keys = [object_key(row, code) for row in rows]
+    missing_keys = sum(1 for key in raw_keys if not key)
+    duplicate_keys = len(raw_keys) - len(keys) - missing_keys
+    empty_complete = total == 0 and not rows
+    row_complete = len(rows) >= total
+    if full_rows is None and info.get("truncated"):
+        row_complete = False
+    complete = bool(
+        empty_complete
+        or (row_complete and not missing_keys and duplicate_keys == 0)
+    )
     metrics = _metric_values(query.get("metrics") or [])
     window = {
         "start": scope.period_start.isoformat() if scope.period_start else None,
@@ -114,6 +120,9 @@ def build_baseline(
         "fullObjectCount": total or len(rows),
         "frozenObjectCount": len(rows),
         "complete": complete,
+        "missingObjectKeyCount": missing_keys,
+        "duplicateObjectCount": duplicate_keys,
+        "objectKeyCoverage": (len(keys) / len(rows)) if rows else 1.0,
         "objectSetHash": digest(sorted(keys)),
         "metrics": metrics,
         "queryStatus": query.get("status"),
@@ -206,7 +215,14 @@ def build_closure(
             catalog_version=catalog.version,
             scenario=code,
             gaps=gaps,
-            closure={"status": "blocked", "canClose": False, "metric": metric_code},
+            closure={
+                "status": "blocked",
+                "canClose": False,
+                "metric": metric_code,
+                "target": approved_target,
+                "direction": str(approved_direction or "").strip() or ">=",
+                "approvalRef": approval_ref,
+            },
             baseline=dict(baseline or {}),
         )
     baseline = dict(baseline or {})

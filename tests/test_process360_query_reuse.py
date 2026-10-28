@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import date
 
+from bi_agent.process360.catalog import Process360Catalog
 from bi_agent.process360.identity import PrincipalScope
-from bi_agent.process360.service import Process360Service
+from bi_agent.process360.service import QUERY_CONTRACT_VERSION, QUERY_TEMPLATE_VERSION, Process360Service
 from bi_agent.process360.store import Process360Store
+from tests.test_process360_engine import FakeDB
+
+ROOT = Path(__file__).resolve().parents[1]
+PRINCIPAL = {
+    "tenantId": "t1",
+    "userId": "u1",
+    "grantKind": "all",
+    "authorizationVersion": "auth-v1",
+}
 
 
 def service(tmp_path: Path) -> Process360Service:
@@ -44,14 +55,67 @@ def test_stored_query_is_reused_only_for_the_same_principal(tmp_path: Path) -> N
         tenant="t1",
         principal="u1",
         catalog_version=svc.catalog_version,
+        catalog_hash=svc._catalog_hash(),
+        authorization_version="test-auth-v1",
+        grant_fingerprint=PrincipalScope.from_payload(
+            {
+                "tenantId": "t1",
+                "userId": "u1",
+                "grantKind": "all",
+                "authorizationVersion": "test-auth-v1",
+            }
+        ).grant_fingerprint,
+        source_connection="database:test",
+        template_version=QUERY_TEMPLATE_VERSION,
+        complete=True,
+        full_count=1,
+        expires_at=9999999999,
+        full_rows=[{"order_id": "o1"}],
+        contract_version=QUERY_CONTRACT_VERSION,
     )["id"]
 
-    owner = PrincipalScope.from_payload({"tenantId": "t1", "userId": "u1", "grantKind": "all"})
-    reused = svc._reuse_query(query_id, "SC01", owner)
+    owner = PrincipalScope.from_payload(
+        {"tenantId": "t1", "userId": "u1", "grantKind": "all", "authorizationVersion": "test-auth-v1"}
+    )
+    reused, issue = svc._reuse_query(query_id, "SC01", owner)
+    assert issue is None
     assert reused is not None
     assert reused["queryReused"] is True
     assert reused["queryId"] == query_id
 
-    other = PrincipalScope.from_payload({"tenantId": "t1", "userId": "u2", "grantKind": "all"})
-    assert svc._reuse_query(query_id, "SC01", other) is None
-    assert svc._reuse_query(query_id, "SC02", owner) is None
+    other = PrincipalScope.from_payload(
+        {"tenantId": "t1", "userId": "u2", "grantKind": "all", "authorizationVersion": "test-auth-v1"}
+    )
+    assert svc._reuse_query(query_id, "SC01", other)[0] is None
+    assert svc._reuse_query(query_id, "SC02", owner)[0] is None
+
+
+def test_draft_reuses_the_query_id_without_a_second_database_read(
+    tmp_path: Path, monkeypatch
+) -> None:
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 10, 27)
+
+    monkeypatch.setattr("bi_agent.process360.models.date", FixedDate)
+    monkeypatch.setattr("bi_agent.process360.queries.date", FixedDate)
+    db = FakeDB()
+    svc = Process360Service(
+        catalog=Process360Catalog.from_project(ROOT),
+        db=db,
+        store=Process360Store(tmp_path / "runtime.sqlite3"),
+        cwd=ROOT,
+    )
+    query = svc.query("SC01", scope={"periodEnd": "2026-10-27"}, principal=PRINCIPAL)
+    assert query["queryId"]
+    calls = len(db.calls)
+    draft = svc.draft(
+        scenario="SC01",
+        scope={"periodEnd": "2026-10-27"},
+        query_id=query["queryId"],
+        principal={**PRINCIPAL, "canDispatch": True},
+    )
+    assert draft["status"] == "ok"
+    assert draft["queryId"] == query["queryId"]
+    assert len(db.calls) == calls

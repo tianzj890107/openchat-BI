@@ -32,9 +32,10 @@ def transport_identity(config):
     return digest({'base': config.base_url, 'headers': config.headers(), 'batchMode': config.batch_mode})
 
 
-def page_scope(config, identity, page, ui_scope):
+def page_scope(config, identity, page, ui_scope, data_source='ap'):
     return digest(dict(connection=transport_identity(config), id=identity, page=page,
-                       uiScope=ui_scope, config=config_version(), contract=CONTRACT))
+                       uiScope=ui_scope, dataSource=data_source,
+                       config=config_version(), contract=CONTRACT))
 
 
 def compact_analysis(item):
@@ -62,7 +63,9 @@ def compact_analysis(item):
     return value
 
 
-def build_page(req, store, config):
+def build_page(req, store, config, *, data_source='ap'):
+    if data_source not in {'ap', 'snapshot', 'postgres', 'demo'}:
+        raise HTTPException(422, '整页数据来源无效')
     if len(set(req.apReceiptIds)) != len(req.apReceiptIds):
         raise HTTPException(422, '页面数据凭据重复')
     records = [store.get_ap_result(r, req.id) for r in req.apReceiptIds]
@@ -101,13 +104,15 @@ def build_page(req, store, config):
                 or (item.get('result') or {}).get('cardContract') != CONTRACT
                 or any(c.get(k) != v for k, v in dict(id=req.id, page=req.page, stage=stage,
                                                      engine='main', dataIdentity=connection,
-                                                     dataFingerprint=fingerprint).items())
+                                                     dataFingerprint=fingerprint,
+                                                     dataSource=data_source).items())
                 or sorted({canonical(json.loads(q)) for q in c.get('chartQueries', [])}) != queries):
             raise HTTPException(422, '图表与AI的数据版本不一致，保留上次完整版本')
         items[stage] = compact_analysis(item)
     entries = [dict(kind=r['kind'], payload=r['request'], data=r['response'], receiptId=r['id'],
                     receivedAt=r['createdAt'], expiresAt=r['expiresAt']) for r in records]
     page = dict(id=req.id, page=req.page, uiScope=req.uiScope, entries=entries, items=items,
+                dataSource=data_source, dataIdentity=connection, dataFingerprint=fingerprint,
                 dataAsOf=min(r['createdAt'] for r in records), publishedAt=time.time(),
                 configVersion=config_version(), cardContract=CONTRACT)
     page['version'] = digest({'entries': [(r['kind'], r['request'], r['response']) for r in records],

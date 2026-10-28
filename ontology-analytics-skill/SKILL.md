@@ -49,8 +49,8 @@ headers: {}
 | `ChartGenerateMultiDim` | 多维可切换图表 |
 | `TableGenerate` | 结构化表格 |
 | `CanvasGenerate` | 把结论、图表、表格和口径拼成整页自包含 HTML，返回 `Artifact URL` |
-| `TaskOrderCreate` | 把用户确认的一条行动建议推送到 Fuxi 风险待办；只在用户点击后调用 |
-| `OutputGateCheck` | 交付前检查证据、预测披露、图表、只读 SQL 和对账 |
+| `TaskOrderCreate` | 把用户确认的一条行动建议推送到 Fuxi 风险待办；只在用户点击后由服务端执行 |
+| `OutputGateCheck` | 交付前检查证据、预测披露、图表、只读 SQL、对账和最终 HTML 产物 |
 | `Process360Route` | Process360 S00：P01-P18 SOP 与 SC01-SC05 场景确定性路由 |
 | `Process360Search` | Process360 S01：指标/业务对象双入口检索与场景归属 |
 | `Process360Context` | Process360 S02：装配流程、活动、角色、规则、证据和缺口 |
@@ -67,11 +67,12 @@ headers: {}
 | `Process360Forecast` | P17 显式假设下的条件推算，不冒充正式模型 |
 | `Process360Solutions` | P18 多子目标综合；局部 blocked 不伪装整体完成 |
 
-身份由服务端解析，不是工具参数：MCP 网关为每次调用注入可信 `principal`
-（POC 使用服务端配置的只读身份，可用 `PROCESS360_POC_PRINCIPAL` 覆盖）。工具入参中出现
-`principal` 会直接报错，模型既不能填写也不能覆盖身份。`TaskOrderCreate` 的 Process360
-草稿模式还需要 `draft_id`、`draft_hash`、`action_id`，接收人由服务端映射解析，不从模型或
-页面读取。
+身份由服务端解析，不是工具参数：MCP 网关为每次调用生成统一请求上下文，包含
+`principalId/tenantId/grantKind/grantScope/authorizationVersion/conversationId/requestId/surface`。
+工具入参中出现 `principal`、`tenantId`、`canDispatch` 等身份字段会直接报错，模型既不能填写
+也不能覆盖身份。POC 仍可使用服务端配置的只读身份，但下发权限必须通过
+`PROCESS360_POC_DISPATCH` 单独开启。`TaskOrderCreate` 的 Process360 草稿模式还需要
+`draft_id`、`draft_hash`、`action_id`，接收人由服务端映射解析，不从模型或页面读取。
 
 ## 默认交付契约
 
@@ -91,8 +92,10 @@ headers: {}
 5. **最后出整页 HTML**：调用 `CanvasGenerate`，把 📌 结论、文字说明、图表和表格
    放进同一页。返回的 `Artifact URL` 就是最终交付链接；不要再执行
    `run_scratch`、`promote_artifact` 或手工复制 HTML。
-6. **交付前过闸门**：调用 `OutputGateCheck`，传入候选回答、本轮 SQL（如有）、
-   图表参数和总额/分月对账；`verdict=reject` 时不得交付。
+6. **交付前过闸门**：调用 `OutputGateCheck`，正式分析报告必须传入 `canvasId`、
+   `artifactHash`，并尽量带 `planId/queryId/runId`、本轮 SQL（如有）、图表参数和总额/分月
+   对账。缺少最终 HTML 产物引用直接 reject；只有显式 `deliveryKind=fact_answer` 的纯文字
+   事实回答可以不带 Canvas。`verdict=reject` 时不得交付。
 7. **回答附执行摘要**：路由模式、取数工具、对账结果、闸门 verdict、`Artifact URL`
    各一行。
 
@@ -123,7 +126,7 @@ headers: {}
 | P06 异常、P08 影响、P09 候选原因 | `Process360Analyze`；根因仍须证据，只有明确要求才继续草稿 |
 | P10 对策 | 依据上下文中的候选方案说明核查建议与适用约束；当前未实现效果/成本排序 |
 | P11 任务草稿 | `Process360Draft`；`CanvasGenerate` 的 actions 原样使用 `draft.canvasActions` |
-| P12 下发 | 仅在用户点击建议卡后由 Fuxi 宿主调用 `TaskOrderCreate`；服务端回读草稿，单条消费、幂等重试 |
+| P12 下发 | 仅在用户点击建议卡后调用主服务统一执行服务；页面与 MCP 共用草稿、幂等键和回执契约 |
 | P15 复验 | `Process360Verify`；缺冻结基准、批准目标或交付证据时 `canClose=false` |
 | P04 多期比较 | `Process360Compare`；同口径窗口、对象集合和期间必须一致 |
 | P05 结构排名 | `Process360Structure`；未知维度单列，贡献不等于原因 |
@@ -145,19 +148,24 @@ headers: {}
 - `Process360Query`/`Process360Analyze`/`Process360Draft` 返回
   `status=ok|partial|blocked|needs_clarification|not_applicable`。`blocked` 或 `partial` 必须原样
   披露，禁止补 0、禁止把“不可评估”改写成“没有风险”。
-- `Process360Route` 返回 `planId`/`revision`；把 `planId` 传给 Query/Analyze 时服务端校验
-  场景一致。要改判时用 `Process360Route(planId, reviseReason)` 生成修订，不要直接换场景。
+- `Process360Route`/`Process360Plan` 返回 `planId` 和 `steps[]`。公共 MCP 的 Query、Analyze、
+  Draft、Verify、Compare、Structure、ProcessFlow、Progress、Forecast、Solutions 都必须携带
+  `planId + stepId`；服务端校验工具与步骤匹配、依赖已完成、场景/范围一致，且没有待澄清项。
+  要改判时用 `Process360Route(planId, reviseReason)` 生成新修订，原计划保留，不要直接换场景。
 - 每个 Process360 工具调用都会写执行轨迹（含只问数的 Query），可用
   `GET /api/process360/requests/{requestId}` 查看；不要求为审计强行调用 Analyze。
-- CanvasGenerate 返回 `canvasId` 和 `artifactHash`；交付前 `OutputGateCheck` 传这两项
-  （可加 `runId`）即可校验产物版本与冻结数据一致。
+- CanvasGenerate 返回 `canvasId` 和 `artifactHash`；交付前 `OutputGateCheck` 必须传这两项
+  （可加 `planId/queryId/runId`），服务端会校验文件哈希、冻结数据并登记 append-only
+  `artifactId/requestId/planId/queryId/runId/gateResult/checkedAt`。内容变化后必须重过闸门。
 - `Process360Query` 返回 `queryId` 和 `recordsRef`（`rowCount`/`totalRows`/样本 5 条），
-  不再回传完整明细；把 `queryId` 传给 `Analyze/Structure/Verify` 即复用同一份结果，避免
-  每步重复查库。缓存按身份、范围和 catalog 版本隔离。
+  不再回传完整明细；把 `queryId` 传给 `Analyze/Draft/Structure/Verify` 即复用同一份结果，
+  避免每步重复查库。缓存按身份、授权、范围和 catalog 版本隔离。
 - `Process360Analyze` 由服务端独立重取**完整对象集**再冻结 baseline，返回
   `fullObjectCount/frozenObjectCount/complete/objectSetHash`；展示 `limit` 不再影响基准。
   `complete=false` 时 `Process360Verify` 直接 blocked，不能用“以后重跑”代替。
-- 后续 `Process360Verify` 必须传 `runId` 和批准目标，不能由调用方另填 baseline。
+- 后续 `Process360Verify` 必须传 `runId` 和 `approvalRef`。目标、方向、最低分母和有效期从
+  服务端批准记录读取；模型自填 `approvedTarget` 不能替代审批，冲突时返回
+  `APPROVAL_TARGET_MISMATCH`。
 - `Process360Analyze.candidateCauses` 是候选原因，不是已确认根因。证据哈希只能证明
   内容未变化；还要同时满足来源可信、对象/期间匹配、验证规则和反证检查，才可升级为
   已验证原因。缺少证据时只能提出核查任务。
@@ -165,11 +173,11 @@ headers: {}
   `params.items` 形态，可直接原样传入；每条带 `draftId`、`draftHash`、`runId`、
   `actionId`、`scenario`、`approvalStatus`、`expiresAt`、`dispatchTool`。
   `tasks[]` 是带审批/证据要求的完整草稿。两者都不含手机号。
-- S06 唯一出口是 Fuxi 待办：用户点击后由服务端以可信身份携带 `draftId`、
-  `draftHash`、`actionId` 调用 `TaskOrderCreate`（接收人来自服务端映射），来源固定
-  `boulderai-anaylize-todo`。服务端从草稿回读标题/正文，不采用调用方改写；一个
-  `actionId` 只消费一次，网络失败用同一 `idempotency_key` 和 `retry=true` 重试。
-  不调用 X360、不发送 Fuxi IM、不伪造发运/签单/排产等业务执行结果。
+- S06 唯一出口是 Fuxi 待办：用户点击后，页面只向主服务提交
+  `draftId/draftHash/actionId/requestId`；主服务和 MCP 共用同一个执行服务，使用
+  `tenant:draftId:actionId` 稳定幂等键。服务端从草稿回读标题/正文和接收人，不采用调用方
+  改写；发送前原子登记执行，网络结果不确定时返回 `unknown/unconfirmed`，不会自动换宿主
+  再发。不调用 X360、不发送 Fuxi IM、不伪造发运/签单/排产等业务执行结果。
 - Fuxi 契约只有 `POST /source/todo-batches` 和 `POST /source/todo-status-events`，没有
   单条待办或执行进度查询接口。字段名固定为 `sourceTodoId/title/severity/itemType/
   category/sourceStatus/sourceUpdatedAt/recipientsRaw/dueAt/description/impactText/
@@ -223,16 +231,18 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
 - 六项草稿字段（`draftId/draftHash/actionId/approvalStatus/expiresAt/dispatchTool`）任一
   缺失即为旧版卡片：按钮禁用并显示“旧版建议，请重新生成任务草稿”，不能手工补字段。
 - 点击“发送任务令”时，页面只把草稿引用 POST 到主服务
-  `/api/process360/task-orders`；服务端解析身份、映射接收人、回读草稿并调用
-  `TaskOrderCreate`。没有该端点时才回退宿主桥接 `window.fuxiCreateTaskOrder`，并向父窗口
-  发送带 `requestId` 的消息等待回执。
-- 统一回执：仅当 `status=ok` 且 Fuxi 回执证明 `applied+skipped>0` 时显示成功；`blocked`
-  显示拒绝原因，空回执/超时显示“结果待确认”，不会因为 HTTP 200 就当作成功。
+  `/api/process360/task-orders`；服务端解析身份、映射接收人、回读草稿并调用统一执行服务。
+  只有显式设置 `window.PROCESS360_TASK_ORDER_TRANSPORT='host'` 时才走 Fuxi 宿主桥接，
+  HTTP 异常不会自动切换传输方式，避免服务端已执行后重复发送。
+- 统一回执：仅当服务端状态明确成功、`accepted=true` 且存在可验证的 Fuxi 执行回执时显示
+  成功；`blocked/rejected` 优先显示拒绝原因，空回执/超时/`unknown` 显示“结果待确认”，
+  不会因为 HTTP 200 或消息已发出就当作成功。刷新页面后可查询原行动的执行状态。
 - `approvalStatus` 不是 `approved` 或 `host_click_authorized` 时按钮显示“待审批”并
   禁用；`expiresAt` 已过时点击会提示重新生成。服务端还会再次校验，不能靠前端绕过。
 - 手机号属于服务端配置：页面不提交、HTML 不包含、模型不展示；主服务用
-  `PROCESS360_RECIPIENT_MAP` 解析接收人，未配置时明确 blocked。Canvas 生成阶段会拒绝
-  包含手机号字段或 11 位手机号文本的行动条目。
+  `PROCESS360_RECIPIENT_MAP` 解析接收人，未配置时明确 blocked。接收人映射版本会冻结进
+  执行记录，重试时映射变化会阻断，避免把任务发给另一批人。Canvas 生成阶段会拒绝包含
+  手机号字段或 11 位手机号文本的行动条目。
 - `TaskOrderCreate` 只写 Fuxi 风险待办，不负责 IM；接收人为空会被工具拒绝，
   因为 Fuxi 契约中空数组表示全员广播。Fuxi 返回的 `applied/skipped/errors` 原样保存
   为回执；没有进度查询接口，不能把本地执行记录称为 Fuxi 已处理完成。

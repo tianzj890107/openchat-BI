@@ -4,35 +4,25 @@ Every tool call writes one step row, even when the answer is a pure fact query
 that never reaches S04.  The trail is what makes "did the SOP actually run"
 answerable without inferring from the model's prose.
 
-The request id is the MCP session (one Fuxi conversation).  Runs, queries and
-baselines are attached as references when they exist, so a request, a query and
-an analysis run stay distinguishable.
+The context is one user request inside a Fuxi conversation.  A conversation may
+contain several requests, and every request has its own step trail.  Runs,
+queries and baselines are attached as references when they exist, so a request,
+a query and an analysis run stay distinguishable.
 """
 
 from __future__ import annotations
 
-import contextvars
 import json
 from typing import Any, Mapping
 
+from .request_context import active_request_context
 from .store import Process360Store, digest
-
-_REQUEST_ID: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "process360_request_id", default=""
-)
 _STORE: Process360Store | None = None
 
 
-def set_request_id(value: str):
-    return _REQUEST_ID.set(str(value or ""))
-
-
-def reset_request_id(token: Any) -> None:
-    _REQUEST_ID.reset(token)
-
-
 def current_request_id() -> str:
-    return _REQUEST_ID.get()
+    context = active_request_context()
+    return context.request_id if context else ""
 
 
 def store() -> Process360Store:
@@ -106,17 +96,28 @@ def record_step(
 
 
 def ensure_request(surface: str = "mcp") -> str:
+    context = active_request_context()
     request_id = current_request_id() or "unscoped"
+    if context is None:
+        return request_id
     try:
-        from .identity import active_principal_payload
-
-        principal = active_principal_payload() or {}
         store().ensure_request(
             request_id,
-            surface=surface,
-            tenant=str(principal.get("tenantId") or ""),
-            principal=str(principal.get("userId") or ""),
+            surface=context.surface or surface,
+            tenant=context.tenant_id,
+            principal=context.principal_id,
+            conversation_id=context.conversation_id,
+            authorization_version=context.authorization_version,
         )
     except Exception:  # noqa: BLE001
         pass
     return request_id
+
+
+def request_trail(request_id: str) -> dict[str, Any] | None:
+    context = active_request_context()
+    if context is None:
+        return None
+    return store().get_request(
+        request_id, tenant=context.tenant_id, principal=context.principal_id
+    )

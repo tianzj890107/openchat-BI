@@ -163,3 +163,44 @@ pytest -q tests/test_process360_*.py tests/test_fuxi_todo_actions.py tests/test_
 全量 `pytest -q tests`：1514 passed、37 skipped、1 failed。唯一失败是 worktree 缺少
 `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题，与本轮
 Process360 改动无关，未修改该前端依赖或断言。
+
+### 6.5 第三轮收口（统一请求、计划、产物与下发）
+
+本轮在现有实现上收口，不换框架、不另开服务。目标是让一次用户请求沿
+“可信身份 → 受控范围 → 同源数据 → 有约束的计划 → 可追溯分析 → 可信草稿 →
+幂等下发 → 真实回执 → 绑定产物”完整追踪。
+
+| 能力 | 最终行为 | 主要文件/测试 |
+| --- | --- | --- |
+| 统一请求上下文 | MCP、页面下发和审计共用 `principalId/tenantId/grantKind/grantScope/ authorizationVersion/conversationId/requestId/surface`；模型或页面提交身份字段直接拒绝 | `request_context.py`、`mcp_endpoint.py`、`test_process360_request_context_red.py` |
+| 权限显式化 | 缺 `grantKind` 不再默认全量；POC 默认只读，下发由 `PROCESS360_POC_DISPATCH` 单独开启；撤权、换授权版本后旧 query/publication 不再可读 | `identity.py`、`test_process360_authorization_red.py` |
+| 查询结果契约 | `queryId` 绑定来源连接、规范范围、catalog/模板版本、授权指纹、有效期、完整性、结果哈希和完整行；Query/Analyze/Draft/Structure/Verify 可复用；换范围或撤权明确 blocked | `service.py`、`store.py`、`test_process360_query_contract_red.py`、`test_process360_query_reuse.py` |
+| 计划强制 | 公共 MCP 业务工具必须 `planId + stepId`；校验步骤工具、依赖、场景、范围、澄清项；计划步骤结果单独落库，修订保留原计划 | `service.py`、`store.py`、`test_process360_sop_enforcement_red.py` |
+| 产物闸门 | 正式报告必须带 `canvasId/artifactHash`，缺省 `deliveryKind=analysis_report`；缺失直接 reject；通过/失败都登记 append-only artifact，并绑定 request/plan/query/run | `mcp_endpoint.py`、`store.py`、`test_process360_artifact_and_dispatch_failure_red.py` |
+| 可信批准 | Verify 从 `approvalRef` 读取目标、方向、最低分母和有效期；模型自填目标不能代替批准，缺记录/过期/冲突均 blocked | `service.py`、`test_process360_trusted_approval_red.py` |
+| 统一下发 | 页面和 MCP 共用执行服务；稳定幂等键 `tenant:draftId:actionId`；发送前原子 claim；状态区分 `queued/sending/succeeded/blocked/rejected/unknown`；登记失败绝不调用 Fuxi | `dispatch.py`、`service.py`、`store.py`、`test_process360_dispatch_unified_red.py` |
+| Canvas 状态机 | 空回执、缺 `sourceTodoId`、`accepted!=true` 不显示成功；`blocked/rejected` 优先；HTTP 超时不自动切宿主；父窗口来源、ack/result、刷新恢复和草稿过期分别处理 | `ontology-analytics-mcp/canvas_tool.py`、`test_process360_canvas_state_red.py` |
+| 驾驶舱来源 | 整页与 AI 卡片显式绑定 `dataSource/dataIdentity/dataFingerprint/chartQueries`；来源不同的 AI 结果不能覆盖 AP 页面；页面和卡片缓存按来源隔离 | `cockpit/page_cache.py`、`cockpit/publications.py`、`test_cockpit_page_cache.py` |
+
+验证：
+
+```bash
+pytest -q tests/test_process360_*.py tests/test_fuxi_todo_actions.py \
+  tests/test_mcp_endpoint_red.py tests/test_cockpit_page_cache.py \
+  tests/test_cockpit_main_service.py tests/test_cockpit_publications.py \
+  tests/test_cockpit_card_delivery.py
+# 230 passed, 9 skipped（9 项 PostgreSQL 合约需 PROCESS360_ACCEPTANCE_DSN）
+git diff --check
+```
+
+全量 `pytest -q tests` 为 1578 passed / 37 skipped / 1 failed；唯一失败仍是 worktree 缺少
+`frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js`，与本轮 Process360、
+MCP、Canvas 和 Cockpit 改动无关。
+
+仍需业务或宿主条件才能关闭：
+
+- 真实业务批准记录、生产/质量/物流等外部证据尚未接入；候选原因不能升级为已验证根因。
+- 真实 Fuxi 测试账号、人员、任务范围和真实点击/回执未联调；本轮未发送真实待办。
+- 驾驶舱目前显式来源为 AP；尚未把看板图表切换到 Process360 PostgreSQL 查询。切换前必须
+  保持 `dataSource` 分离，不能把两套结果混成一份证据。
+- 本轮未部署、未创建 MR/tag/Release、未升级正式版本、未写业务库。

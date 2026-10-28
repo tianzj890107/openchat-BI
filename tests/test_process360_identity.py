@@ -13,6 +13,7 @@ def test_principal_requires_tenant_and_user_and_intersects_scope() -> None:
         {
             "tenantId": "t1",
             "userId": "u1",
+            "grantKind": "restricted",
             "customerIds": ["c1", "c2"],
             "ownerIds": ["u1"],
             "canDispatch": True,
@@ -28,14 +29,14 @@ def test_principal_requires_tenant_and_user_and_intersects_scope() -> None:
 
 def test_principal_scope_never_widens_an_empty_intersection() -> None:
     principal = PrincipalScope.from_payload(
-        {"tenantId": "t1", "userId": "u1", "customerIds": ["c1"]}
+        {"tenantId": "t1", "userId": "u1", "grantKind": "restricted", "customerIds": ["c1"]}
     )
     with pytest.raises(ValueError, match="outside the principal"):
         principal.merge_scope(Scope.from_payload({"customerIds": ["c2"]}))
 
 
 def test_principal_unrestricted_dimension_is_still_bounded_by_request() -> None:
-    principal = PrincipalScope.from_payload({"tenantId": "t1", "userId": "u1"})
+    principal = PrincipalScope.from_payload({"tenantId": "t1", "userId": "u1", "grantKind": "all"})
     scope = principal.merge_scope(Scope.from_payload({"productIds": ["p1"]}))
     assert scope.product_ids == ("p1",)
 

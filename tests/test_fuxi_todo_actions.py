@@ -166,7 +166,7 @@ def test_canvas_actions_block_renders_task_order_control(tmp_path: Path) -> None
     assert "Canvas generated" in output
     html = (tmp_path / "dataset" / "canvas").glob("*.html")
     page = next(html).read_text(encoding="utf-8")
-    assert "旧版建议" in page
+    assert "缺少草稿字段" in page
     assert 'data-fuxi-task-order="action-1"' in page
     assert "fuxi:task-order-result" in page
     assert "/api/process360/task-orders" in page
@@ -212,7 +212,8 @@ def test_canvas_actions_preserve_process360_dispatch_metadata(tmp_path: Path) ->
     assert "normalizeReceipt" in page
     assert "PROCESS360_DISPATCH" in page
     assert "发送任务令" in page
-    assert "待审批" not in page
+    assert 'title="缺少草稿字段' not in page
+    assert 'title="该建议待审批' not in page
 
 
 def test_canvas_actions_reject_phone_and_pending_approval(tmp_path: Path) -> None:

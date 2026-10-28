@@ -10,8 +10,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import uuid
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -28,7 +30,7 @@ from .advanced import (
     validate_solution_structure,
 )
 from .catalog import Process360Catalog
-from .closure import build_baseline, build_closure
+from .closure import build_baseline, build_closure, object_key
 from .context import build_context, search as search_stage
 from .db import DatabaseQueryError, DatabaseUnavailable, PostgresDatabase
 from .evidence import apply_evidence
@@ -36,15 +38,27 @@ from .execute import send_task_order, _assert_task_no_phone
 from .identity import PrincipalScope
 from .models import Scope, combine_status, envelope, gap, dedupe_gaps
 from .plans import build_draft
-from .planner import PlanExecutionError, build_plan, run_exploration_step
+from .planner import TOOL_FOR_SOP, PlanExecutionError, build_plan, run_exploration_step
 from .queries import run_scenario
+from .request_context import active_request_context, current_or_resolve
 from .router import route as route_stage
 from .store import Process360Store, digest
 from .verify import build_verification
+from ..integrations.fuxi_todo import make_source_todo_id, normalize_recipients
 
 
 DRAFT_TTL_SECONDS = 7 * 86400
+QUERY_CONTRACT_VERSION = "process360.query.v2"
+QUERY_TEMPLATE_VERSION = "process360.queries.v1"
 TRUSTED_APPROVAL_STATES = {"approved", "host_click_authorized"}
+
+
+def _query_ttl_seconds() -> float:
+    try:
+        value = int(os.environ.get("PROCESS360_QUERY_TTL_SECONDS", "900"))
+    except ValueError:
+        value = 900
+    return float(max(1, min(value, 7 * 86400)))
 
 
 def _period_count(question: str) -> int:
@@ -96,7 +110,48 @@ class Process360Service:
         """
         if payload is not None:
             return PrincipalScope.from_payload(payload, required=True)
+        context = active_request_context()
+        if context is not None:
+            return context.principal
         return PrincipalScope.poc()
+
+    def _request_context(
+        self,
+        identity: PrincipalScope,
+        *,
+        surface: str = "service",
+        request_id: str = "",
+        conversation_id: str = "",
+    ):
+        active = active_request_context()
+        if active is not None:
+            return active
+        return current_or_resolve(
+            principal=identity,
+            surface=surface,
+            request_id=request_id or uuid.uuid4().hex,
+            conversation_id=conversation_id,
+        )
+
+    def _catalog_hash(self) -> str:
+        return digest({"catalogId": self.catalog_id, "version": self.catalog_version})
+
+    def _source_connection(self) -> str:
+        config = getattr(self.db, "config", None)
+        if config is None:
+            return "database:test"
+        public = config.public_dict() if hasattr(config, "public_dict") else {}
+        return (
+            f"pg:{public.get('host') or 'configured'}:{public.get('port') or ''}/"
+            f"{public.get('database') or ''}#{public.get('schema') or ''}"
+        )
+
+    @staticmethod
+    def _scope_contract(scope: Mapping[str, Any] | None) -> dict[str, Any]:
+        resolved = Scope.from_payload(scope)
+        value = resolved.to_dict()
+        value.pop("limit", None)
+        return value
 
     @staticmethod
     def _principal_gap(message: str) -> dict[str, Any]:
@@ -160,6 +215,17 @@ class Process360Service:
             "scenario": decision.scenario,
             "sopId": decision.sop_id,
             "route": decision.to_dict(),
+            "steps": [
+                {
+                    "id": "step-1",
+                    "sop": decision.sop_id,
+                    "title": decision.sop_title,
+                    "tool": TOOL_FOR_SOP.get(decision.sop_id, decision.sop_id),
+                    "dependsOn": [],
+                    "status": "pending",
+                }
+            ],
+            "scope": identity.merge_scope(Scope.from_payload(None)).to_dict(),
             "tenant": identity.tenant_id,
             "principalKey": identity.key,
             "revision": 1,
@@ -210,6 +276,7 @@ class Process360Service:
             planId=saved["id"],
             revision=payload["revision"],
             revisedFrom=payload["revisedFrom"],
+            steps=payload["steps"],
             principalScope=identity.fingerprint(),
         )
 
@@ -236,6 +303,119 @@ class Process360Service:
                 needed=f"按计划场景 {planned} 执行，或用 Process360Route 记录修订理由",
                 impact="该步骤未执行", severity="blocking", source="runtime",
             )
+        return None
+
+    def validate_plan_step(
+        self,
+        plan_id: str,
+        step_id: str,
+        tool: str,
+        scenario: str,
+        identity: PrincipalScope,
+        *,
+        scope: Mapping[str, Any] | None = None,
+        require_plan: bool = False,
+    ) -> dict[str, Any] | None:
+        """Validate the complete plan/step contract before a business tool runs."""
+        if not str(plan_id or "").strip():
+            if not require_plan:
+                return None
+            return gap(
+                "PLAN_REQUIRED",
+                "缺少服务端执行计划",
+                needed="先调用 Process360Route 或 Process360Plan 获取 planId",
+                impact="业务步骤未执行，避免无计划取数或写操作",
+                severity="blocking",
+                source="runtime",
+            )
+        base = self.validate_plan(plan_id, scenario, identity)
+        if base:
+            return base
+        record = self.store.get_plan(str(plan_id)) or {}
+        payload = dict(record.get("payload") or {})
+        clarifications = payload.get("clarification") or (payload.get("route") or {}).get("clarification") or []
+        if payload.get("status") == "needs_clarification" or clarifications:
+            return gap(
+                "PLAN_CLARIFICATION_PENDING",
+                "执行计划仍有影响结果的澄清项",
+                needed="先向用户确认计划中的场景、范围或口径，再生成修订计划",
+                impact="业务步骤未执行，避免按假设取数",
+                severity="blocking",
+                source="runtime",
+            )
+        steps = list(payload.get("steps") or [])
+        if not str(step_id or "").strip():
+            return gap(
+                "PLAN_STEP_REQUIRED",
+                "缺少计划步骤引用",
+                needed="传入计划 steps[] 中的 stepId",
+                impact="业务步骤未执行，避免绕过步骤约束",
+                severity="blocking",
+                source="runtime",
+            )
+        if not steps:
+            return gap(
+                "PLAN_STEP_NOT_FOUND",
+                "计划没有可执行步骤",
+                needed="重新调用 Process360Plan 生成带步骤的计划",
+                impact="业务步骤未执行",
+                severity="blocking",
+                source="runtime",
+            )
+        step = next((item for item in steps if str(item.get("id") or "") == str(step_id)), None)
+        if not step:
+            return gap(
+                "PLAN_STEP_NOT_FOUND",
+                "步骤不属于该计划",
+                needed="使用当前计划中的 stepId",
+                impact="业务步骤未执行",
+                severity="blocking",
+                source="runtime",
+            )
+        expected_tool = str(step.get("tool") or "")
+        if expected_tool and expected_tool != str(tool):
+            return gap(
+                "PLAN_TOOL_MISMATCH",
+                "工具与计划步骤不匹配",
+                needed=f"该步骤只允许调用 {expected_tool}",
+                impact=f"{tool} 未执行",
+                severity="blocking",
+                source="runtime",
+            )
+        completed = {
+            str(item.get("step_id") or "")
+            for item in self.store.list_plan_steps(str(plan_id))
+            if str(item.get("status") or "") in {"completed", "succeeded", "ok", "partial"}
+        }
+        pending_dependencies = [
+            str(item) for item in (step.get("dependsOn") or []) if str(item) not in completed
+        ]
+        if pending_dependencies:
+            return gap(
+                "PLAN_DEPENDENCY_PENDING",
+                "前置步骤尚未完成",
+                needed="先完成计划步骤：" + "、".join(pending_dependencies),
+                impact=f"{tool} 未执行",
+                severity="blocking",
+                source="runtime",
+            )
+        plan_scope = payload.get("scope") if isinstance(payload.get("scope"), Mapping) else None
+        if scope is not None and plan_scope is not None:
+            try:
+                requested = identity.merge_scope(Scope.from_payload(scope)).to_dict()
+                planned = identity.merge_scope(Scope.from_payload(plan_scope)).to_dict()
+            except ValueError:
+                requested = dict(scope or {})
+                planned = dict(plan_scope or {})
+            if requested != planned:
+                return gap(
+                    "PLAN_SCOPE_MISMATCH",
+                    "查询范围与计划不一致",
+                    needed="使用计划 scope，或先生成带修订理由的新计划",
+                    impact=f"{tool} 未执行，避免换范围复用结论",
+                    severity="blocking",
+                    source="runtime",
+                )
         return None
 
     def search(self, query: str, *, scenario: str | None = None, limit: int = 20) -> dict[str, Any]:
@@ -317,7 +497,7 @@ class Process360Service:
         if not ready:
             return self._blocked_query(code, resolved, reason)
         try:
-            result = run_scenario(self.catalog, code, resolved, self.db)
+            result = self._run_scenario_snapshot(code, resolved)
             result["principalScope"] = identity.fingerprint()
             result["requestedScope"] = dict(scope or {})
             return self._remember_query(code, identity, result)
@@ -339,6 +519,33 @@ class Process360Service:
                 limitations=[str(exc)],
             )
 
+    def _run_scenario_snapshot(self, code: str, scope: Scope) -> dict[str, Any]:
+        """Run display and full-object passes in one read-only snapshot."""
+        snapshot = getattr(self.db, "snapshot", None)
+        if callable(snapshot):
+            with snapshot() as reader:
+                return self._run_scenario_with_full_rows(code, scope, reader)
+        return self._run_scenario_with_full_rows(code, scope, self.db)
+
+    def _run_scenario_with_full_rows(self, code: str, scope: Scope, db: Any) -> dict[str, Any]:
+        result = run_scenario(self.catalog, code, scope, db)
+        if result.get("status") in {"blocked", "not_applicable", "needs_clarification"}:
+            result["_fullRows"] = []
+            return result
+        info = dict(result.get("queryInfo") or {})
+        rows = list(result.get("records") or [])
+        total = int(info.get("totalRows") or 0)
+        full_rows = rows
+        if total > len(rows) or info.get("truncated"):
+            limit = min(max(total, len(rows)), self.FREEZE_ROW_LIMIT)
+            try:
+                full = run_scenario(self.catalog, code, replace(scope, limit=limit), db)
+                full_rows = list(full.get("records") or rows)
+            except Exception:  # noqa: BLE001 - completeness is recorded as false
+                full_rows = rows
+        result["_fullRows"] = full_rows
+        return result
+
     def _remember_query(
         self, code: str, identity: PrincipalScope, result: dict[str, Any]
     ) -> dict[str, Any]:
@@ -347,6 +554,31 @@ class Process360Service:
             result["queryId"] = None
             return result
         query_id = uuid.uuid4().hex
+        full_rows = list(result.get("_fullRows") or result.get("records") or [])
+        info = dict(result.get("queryInfo") or {})
+        total = int(info.get("totalRows") or 0)
+        keys = [object_key(row, code) for row in full_rows]
+        unique_keys = [item for item in dict.fromkeys(keys) if item]
+        complete = (
+            (total == 0 and not full_rows)
+            or (
+                len(full_rows) >= total
+                and len(unique_keys) == len(full_rows)
+                and all(keys)
+                and not info.get("truncated")
+            )
+        )
+        result_hash = digest(
+            {
+                "scenario": code,
+                "scope": result.get("scope") or {},
+                "records": full_rows,
+                "metrics": result.get("metrics") or [],
+            }
+        )
+        expires_at = time.time() + _query_ttl_seconds()
+        result["dataSource"] = "process360-postgres"
+        result["sourceConnection"] = self._source_connection()
         self.store.save_query(
             scenario=code,
             scope=result.get("scope") or {},
@@ -355,26 +587,145 @@ class Process360Service:
             principal=identity.user_id,
             catalog_version=self.catalog_version,
             query_id=query_id,
+            catalog_hash=self._catalog_hash(),
+            authorization_version=identity.effective_authorization_version,
+            grant_fingerprint=identity.grant_fingerprint,
+            source_connection=self._source_connection(),
+            template_version=QUERY_TEMPLATE_VERSION,
+            result_hash=result_hash,
+            complete=complete,
+            full_count=len(full_rows),
+            expires_at=expires_at,
+            full_rows=full_rows,
+            contract_version=QUERY_CONTRACT_VERSION,
         )
         result["queryId"] = query_id
+        result["queryContract"] = {
+            "version": QUERY_CONTRACT_VERSION,
+            "complete": complete,
+            "fullCount": len(full_rows),
+            "expiresAt": expires_at,
+            "authorizationVersion": identity.effective_authorization_version,
+        }
         return result
 
     def _reuse_query(
-        self, query_id: str, code: str, identity: PrincipalScope
-    ) -> dict[str, Any] | None:
+        self,
+        query_id: str,
+        code: str,
+        identity: PrincipalScope,
+        *,
+        requested_scope: Mapping[str, Any] | None = None,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         stored = self.store.get_query(query_id)
-        if not stored:
-            return None
-        if stored.get("tenant") != identity.tenant_id or stored.get("principal") != identity.user_id:
-            return None
+        not_found = gap(
+            "QUERY_NOT_FOUND_OR_INACCESSIBLE",
+            "查询结果不存在或无权访问",
+            needed="重新执行受控查询",
+            impact="未复用旧结果，也没有用新范围静默替换",
+            severity="blocking",
+            source="runtime",
+        )
+        if (
+            not stored
+            or stored.get("tenant") != identity.tenant_id
+            or stored.get("principal") != identity.user_id
+        ):
+            return None, not_found
+        if stored.get("contract_version") != QUERY_CONTRACT_VERSION:
+            return None, gap(
+                "QUERY_LEGACY_CONTRACT",
+                "旧查询记录没有完整授权与完整性契约",
+                needed="重新执行查询生成 v2 查询结果",
+                impact="旧结果不能作为可信复用或复验基准",
+                severity="blocking",
+                source="runtime",
+            )
+        if float(stored.get("expires_at") or 0) <= time.time():
+            return None, gap(
+                "QUERY_EXPIRED",
+                "查询结果已超过有效期",
+                needed="重新执行查询",
+                impact="未复用过期结果",
+                severity="blocking",
+                source="runtime",
+            )
+        if (
+            stored.get("authorization_version") != identity.effective_authorization_version
+            or stored.get("grant_fingerprint") != identity.grant_fingerprint
+        ):
+            return None, gap(
+                "QUERY_AUTHORIZATION_CHANGED",
+                "授权版本或授权范围已变化",
+                needed="按当前权限重新取数",
+                impact="旧查询结果不再可读",
+                severity="blocking",
+                source="security",
+            )
         if stored.get("catalog_version") and stored.get("catalog_version") != self.catalog_version:
-            return None
+            return None, gap(
+                "QUERY_CATALOG_CHANGED",
+                "本体目录版本已变化",
+                needed="按当前本体版本重新取数",
+                impact="未混用旧口径结果",
+                severity="blocking",
+                source="catalog",
+            )
+        if stored.get("catalog_hash") and stored.get("catalog_hash") != self._catalog_hash():
+            return None, gap(
+                "QUERY_CATALOG_CHANGED",
+                "本体目录哈希已变化",
+                needed="按当前本体版本重新取数",
+                impact="未混用旧口径结果",
+                severity="blocking",
+                source="catalog",
+            )
+        if stored.get("template_version") != QUERY_TEMPLATE_VERSION:
+            return None, gap(
+                "QUERY_TEMPLATE_CHANGED",
+                "查询模板版本不兼容",
+                needed="使用当前查询模板重新取数",
+                impact="未复用旧模板结果",
+                severity="blocking",
+                source="runtime",
+            )
         if str(stored.get("scenario") or "").upper() != code:
-            return None
+            return None, gap(
+                "QUERY_SCENARIO_MISMATCH",
+                "查询结果与当前场景不一致",
+                needed="重新执行当前场景查询",
+                impact="未跨场景复用结果",
+                severity="blocking",
+                source="runtime",
+            )
+        if requested_scope is not None:
+            requested = identity.merge_scope(Scope.from_payload(requested_scope))
+            if self._scope_contract(requested.to_dict()) != self._scope_contract(stored.get("scope")):
+                return None, gap(
+                    "QUERY_SCOPE_CONFLICT",
+                    "queryId 与本次查询范围不一致",
+                    needed="去掉 queryId 重新查询，或使用同一范围",
+                    impact="未用新范围覆盖原查询结果",
+                    severity="blocking",
+                    source="runtime",
+                )
         payload = dict(stored.get("payload") or {})
         payload["queryId"] = stored.get("id")
         payload["queryReused"] = True
-        return payload
+        payload["_fullRows"] = list(stored.get("full_rows") or [])
+        return payload, None
+
+    def _query_reference_error(self, code: str, query_id: str, issue: Mapping[str, Any]) -> dict[str, Any]:
+        return envelope(
+            "S03",
+            "blocked",
+            catalog_id=self.catalog_id,
+            catalog_version=self.catalog_version,
+            scenario=code or None,
+            queryId=query_id,
+            gaps=[dict(issue)],
+            limitations=["查询结果引用未通过授权、有效期或范围校验；未重新取数。"],
+        )
 
     def _query_full_for(
         self,
@@ -396,7 +747,11 @@ class Process360Service:
                     catalog_version=self.catalog_version, scenario=code or None,
                     gaps=[self._principal_gap(str(exc))],
                 )
-            reused = self._reuse_query(str(query_id), code, identity)
+            reused, issue = self._reuse_query(
+                str(query_id), code, identity, requested_scope=scope
+            )
+            if issue is not None:
+                return self._query_reference_error(code, str(query_id), issue)
             if reused is not None:
                 return reused
         return self._query_full(code, scope=scope, principal=principal)
@@ -412,6 +767,8 @@ class Process360Service:
         info = dict(query.get("queryInfo") or {})
         total = int(info.get("totalRows") or 0)
         rows = list(query.get("records") or [])
+        if query.get("_fullRows") is not None:
+            return list(query.get("_fullRows") or [])
         if not total or (not info.get("truncated") and len(rows) >= total):
             return rows
         limit = min(total, self.FREEZE_ROW_LIMIT)
@@ -427,6 +784,7 @@ class Process360Service:
     def compact_query(payload: Mapping[str, Any], *, sample: int = 5) -> dict[str, Any]:
         """Model-facing view: summary plus a bounded sample and a reference."""
         out = dict(payload)
+        out.pop("_fullRows", None)
         rows = list(out.pop("records", []) or [])
         sample_rows = rows[: max(0, sample)]
         out["sampleRecords"] = sample_rows
@@ -469,7 +827,11 @@ class Process360Service:
                     catalog_version=self.catalog_version, scenario=code or None,
                     gaps=[self._principal_gap(str(exc))],
                 )
-            reused = self._reuse_query(str(query_id), code, identity)
+            reused, issue = self._reuse_query(
+                str(query_id), code, identity, requested_scope=scope
+            )
+            if issue is not None:
+                return self._query_reference_error(code, str(query_id), issue)
             if reused is not None:
                 return self.compact_query(reused, sample=sample)
         full = self._query_full(code, scope=scope, principal=principal, plan_id=plan_id)
@@ -621,12 +983,18 @@ class Process360Service:
         query_id: str = "",
     ) -> dict[str, Any]:
         query = self._query_full_for(scenario, scope=scope, principal=principal, query_id=query_id)
+        full_rows = list(query.get("_fullRows") or self._freeze_rows(
+            str(scenario or "").upper(),
+            Scope.from_payload(query.get("scope") or scope),
+            query,
+        ))
+        total = int((query.get("queryInfo") or {}).get("totalRows") or 0)
         structure = structure_from_records(
-            query.get("records", []),
+            full_rows,
             dimension=normalize_dimension(dimension),
             value_field=value_field,
             top_n=top_n,
-            truncated=bool(query.get("truncated") or (query.get("queryInfo") or {}).get("truncated")),
+            truncated=bool(total and len(full_rows) < total),
         )
         status = combine_status([str(query.get("status")), str(structure.get("status"))])
         return envelope(
@@ -1144,6 +1512,7 @@ class Process360Service:
         scope: Mapping[str, Any] | None = None,
         analysis: Mapping[str, Any] | None = None,
         run_id: str = "",
+        query_id: str = "",
         principal: Mapping[str, Any] | None = None,
         owner_ref: str = "",
         owner_name: str = "",
@@ -1170,6 +1539,7 @@ class Process360Service:
             and analysis.get("scenario") != str(scenario).upper()
             or analysis.get("catalogId") != self.catalog_id
             or analysis.get("catalogVersion") != self.catalog_version
+            or query_id and analysis.get("queryId") and analysis.get("queryId") != query_id
         ):
             return envelope(
                 "S05",
@@ -1203,6 +1573,24 @@ class Process360Service:
                     canvasActions=[],
                 )
             result = dict((run.get("payload") or {}).get("analysis") or {})
+            run_query = ((run.get("payload") or {}).get("query") or {})
+            run_query_id = str(
+                (run_query.get("recordsRef") or {}).get("queryId")
+                or run_query.get("queryId")
+                or result.get("queryId")
+                or ""
+            )
+            if query_id and run_query_id != str(query_id):
+                return envelope(
+                    "S05",
+                    "needs_clarification",
+                    catalog_id=self.catalog_id,
+                    catalog_version=self.catalog_version,
+                    scenario=scenario,
+                    gaps=[gap("ANALYSIS_QUERY_MISMATCH", "分析运行不是基于指定查询结果", needed="使用该 queryId 重新分析，或移除不匹配的 queryId", impact="未生成任务令")],
+                    tasks=[],
+                    canvasActions=[],
+                )
             if not result.get("runId"):
                 result["runId"] = supplied_run_id
             if scenario and result.get("scenario") != str(scenario).upper():
@@ -1239,6 +1627,7 @@ class Process360Service:
                 question=question,
                 scenario=scenario,
                 scope=scope,
+                query_id=query_id,
                 principal=principal,
             )
         code = str(result.get("scenario") or scenario or "").strip().upper()
@@ -1263,6 +1652,7 @@ class Process360Service:
             severity=severity,
             selected_solutions=list(solutions or []),
         )
+        output["queryId"] = result.get("queryId") or (str(query_id) if query_id else None)
         if output.get("status") != "ok" or not output.get("canvasActions"):
             output["runId"] = result.get("runId")
             output["principalScope"] = identity.fingerprint()
@@ -1278,6 +1668,7 @@ class Process360Service:
             principal=identity.user_id,
             payload={
                 "runId": result.get("runId"),
+                "queryId": output.get("queryId"),
                 "scenario": code,
                 "tasks": output.get("tasks", []),
                 "canvasActions": output.get("canvasActions", []),
@@ -1292,6 +1683,7 @@ class Process360Service:
             "draftId": saved["id"],
             "draftHash": draft_hash,
             "runId": result.get("runId"),
+            "queryId": output.get("queryId"),
             "actionId": "",
             "scenario": code,
             "approvalStatus": approval_status,
@@ -1306,6 +1698,7 @@ class Process360Service:
             draftId=saved["id"],
             draftHash=draft_hash,
             runId=result.get("runId"),
+            queryId=output.get("queryId"),
             expiresAt=saved["expiresAt"],
             approvalStatus=approval_status,
             dispatchTool="TaskOrderCreate",
@@ -1347,8 +1740,10 @@ class Process360Service:
         recipients: Iterable[str] | str,
         principal: Mapping[str, Any] | None = None,
         idempotency_key: str = "",
+        recipient_hash: str = "",
         retry: bool = False,
         client: Any = None,
+        source_updated_at: str = "",
     ) -> dict[str, Any]:
         """Create one Fuxi todo from a server-trusted suggestion-card draft."""
         try:
@@ -1431,22 +1826,59 @@ class Process360Service:
                 gaps=[gap("PRIVATE_DATA_IN_TASK", "任务内容包含手机号", needed="任务正文不得包含手机号", impact="未创建待办", severity="blocking", source="runtime")],
                 limitations=[str(exc)],
             )
-        key = str(idempotency_key or "").strip() or digest({"draftId": draft_id, "actionId": action_id})
-        source_todo_id = f"analytics-{draft_id[:24]}-{action_id}"
+        if not idempotency_key:
+            from .dispatch import execution_key
+
+            key = execution_key(identity.tenant_id, draft_id, action_id)
+        else:
+            key = str(idempotency_key).strip()
+        source_todo_id = make_source_todo_id(action_id, draft_id)
+        normalized_recipients = normalize_recipients(recipients)
+        recipient_hash = recipient_hash or digest({"recipients": sorted(normalized_recipients)})
+        source_updated_at = source_updated_at or datetime.fromtimestamp(
+            float(draft.get("created_at") or time.time()), tz=timezone.utc
+        ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        snapshot = {
+            "draftId": draft_id,
+            "draftHash": draft_hash,
+            "actionId": action_id,
+            "scenario": draft.get("scenario"),
+            "principal": identity.fingerprint(),
+            "recipientHash": recipient_hash,
+            "recipientVersion": (os.environ.get("PROCESS360_RECIPIENT_MAP_VERSION") or "").strip(),
+            "sourceTodoId": source_todo_id,
+            "sourceUpdatedAt": source_updated_at,
+            "requestId": (active_request_context().request_id if active_request_context() else ""),
+            "authorizationVersion": identity.effective_authorization_version,
+        }
         existing = self.store.get_execution(key)
-        if existing and existing.get("response"):
-            previous = dict(existing["response"])
-            retryable = any(
-                item.get("code") in {"FUXI_TODO_FAILED", "FUXI_TODO_REJECTED"}
-                for item in previous.get("gaps", [])
-            )
-            if not (retry and retryable):
-                previous["idempotentReplay"] = True
-                return previous
-            existing["response"] = None
-            existing["status"] = "in_progress"
-        if existing and not existing.get("response"):
-            if not retry:
+        if existing:
+            previous_request = dict(existing.get("request") or {})
+            if (
+                previous_request.get("recipientHash")
+                and previous_request.get("recipientHash") != recipient_hash
+            ):
+                return envelope(
+                    "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                    scenario=draft.get("scenario"),
+                    gaps=[gap("RECIPIENT_MAPPING_CHANGED", "接收人映射已变化", needed="重新生成草稿并确认新的接收人版本", impact="未向新接收人发送，旧请求身份保持不变", severity="blocking", source="security")],
+                    draftId=draft_id,
+                    actionId=action_id,
+                )
+            if existing.get("response"):
+                previous = dict(existing["response"])
+                retryable = any(
+                    item.get("code") in {
+                        "FUXI_TODO_FAILED", "FUXI_TODO_REJECTED", "FUXI_TODO_UNKNOWN",
+                    }
+                    for item in previous.get("gaps", [])
+                ) or str(previous.get("status") or "") == "unknown"
+                if not (retry and retryable):
+                    previous["idempotentReplay"] = True
+                    return previous
+                existing["response"] = None
+                existing["status"] = "sending"
+            elif not retry:
                 return envelope(
                     "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
                     scenario=draft.get("scenario"),
@@ -1454,66 +1886,89 @@ class Process360Service:
                     draftId=draft_id,
                     actionId=action_id,
                 )
-            consumption = self.store.get_action_consumption(draft_id, action_id)
-            if consumption is None and not self.store.consume_action(
-                draft_id, action_id, consumed_by=identity.key
-            ):
-                return envelope(
-                    "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
-                    scenario=draft.get("scenario"),
-                    gaps=[gap("DRAFT_ACTION_ALREADY_CONSUMED", "该建议已执行", needed="使用原回执；不要用新的幂等键重复下发", impact="未重复创建待办", severity="blocking", source="runtime")],
-                    draftId=draft_id,
-                    actionId=action_id,
-                )
-            if consumption is not None and str(consumption.get("consumed_by") or "") != identity.key:
-                return envelope(
-                    "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
-                    scenario=draft.get("scenario"),
-                    gaps=[gap("DRAFT_ACTION_ALREADY_CONSUMED", "该建议已由其他操作消费", needed="使用原发起人的回执重试", impact="未重复创建待办", severity="blocking", source="runtime")],
-                    draftId=draft_id,
-                    actionId=action_id,
-                )
-            existing["status"] = "in_progress"
-        if existing:
+            if retry:
+                consumption = self.store.get_action_consumption(draft_id, action_id)
+                if consumption is None and not self.store.consume_action(
+                    draft_id, action_id, consumed_by=identity.key
+                ):
+                    return envelope(
+                        "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                        scenario=draft.get("scenario"),
+                        gaps=[gap("DRAFT_ACTION_ALREADY_CONSUMED", "该建议已执行", needed="使用原回执；不要用新的幂等键重复下发", impact="未重复创建待办", severity="blocking", source="runtime")],
+                        draftId=draft_id,
+                        actionId=action_id,
+                    )
+                if consumption is not None and str(consumption.get("consumed_by") or "") != identity.key:
+                    return envelope(
+                        "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                        scenario=draft.get("scenario"),
+                        gaps=[gap("DRAFT_ACTION_ALREADY_CONSUMED", "该建议已由其他操作消费", needed="使用原发起人的回执重试", impact="未重复创建待办", severity="blocking", source="runtime")],
+                        draftId=draft_id,
+                        actionId=action_id,
+                    )
             execution = existing
+            source_todo_id = str(existing.get("source_todo_id") or source_todo_id)
+            source_updated_at = str(previous_request.get("sourceUpdatedAt") or source_updated_at)
         else:
-            created, execution = self.store.begin_execution(
-                draft_id=draft_id,
-                action_id=action_id,
-                idempotency_key=key,
-                source_todo_id=source_todo_id,
-                request={
-                    "draftId": draft_id,
-                    "draftHash": draft_hash,
-                    "actionId": action_id,
-                    "scenario": draft.get("scenario"),
-                    "principal": identity.fingerprint(),
-                },
-            )
-            if not created and execution.get("response"):
-                replay = dict(execution["response"])
-                replay["idempotentReplay"] = True
-                return replay
-            if created and not self.store.consume_action(
-                draft_id, action_id, consumed_by=identity.key
-            ):
-                blocked = envelope(
+            try:
+                outcome, execution = self.store.claim_execution(
+                    draft_id=draft_id,
+                    action_id=action_id,
+                    idempotency_key=key,
+                    source_todo_id=source_todo_id,
+                    consumed_by=identity.key,
+                    tenant=identity.tenant_id,
+                    principal=identity.user_id,
+                    request_id=active_request_context().request_id if active_request_context() else "",
+                    authorization_version=identity.effective_authorization_version,
+                    recipient_hash=recipient_hash,
+                    request=snapshot,
+                )
+            except Exception as exc:  # noqa: BLE001 - never send without a durable claim
+                return envelope(
+                    "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                    scenario=draft.get("scenario"),
+                    gaps=[gap(
+                        "EXECUTION_REGISTRATION_FAILED",
+                        "执行登记失败",
+                        needed="恢复运行记录存储后重试；不要换幂等键重新发送",
+                        impact="未调用 Fuxi，未创建待办",
+                        severity="blocking",
+                        source="runtime",
+                    )],
+                    limitations=[f"durable execution claim failed: {type(exc).__name__}"],
+                    draftId=draft_id,
+                    actionId=action_id,
+                )
+            if outcome == "existing" and execution:
+                if execution.get("response"):
+                    replay = dict(execution["response"])
+                    replay["idempotentReplay"] = True
+                    return replay
+                return envelope(
+                    "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                    scenario=draft.get("scenario"),
+                    gaps=[gap("DISPATCH_IN_PROGRESS", "该建议正在下发", needed="等待当前执行完成", impact="未重复创建待办", severity="blocking", source="runtime")],
+                    draftId=draft_id,
+                    actionId=action_id,
+                )
+            if outcome == "consumed":
+                return envelope(
                     "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
                     scenario=draft.get("scenario"),
                     gaps=[gap("DRAFT_ACTION_ALREADY_CONSUMED", "该建议已执行", needed="使用原回执；如失败请用同一幂等键重试", impact="未重复创建待办", severity="blocking", source="runtime")],
                     draftId=draft_id,
                     actionId=action_id,
                 )
-                self.store.finish_execution(execution["id"], status="blocked", response=blocked)
-                return blocked
         result = send_task_order(
             self.catalog,
             task,
-            recipients,
+            normalized_recipients,
             action_id=action_id,
             canvas_id=draft_id,
             source_todo_id=source_todo_id,
             client=client,
+            source_updated_at=source_updated_at,
         )
         result.update(
             draftId=draft_id,
@@ -1525,7 +1980,11 @@ class Process360Service:
         )
         self.store.finish_execution(
             execution["id"],
-            status=str(result.get("status") or "blocked"),
+            status={
+                "ok": "succeeded",
+                "unknown": "unknown",
+                "rejected": "rejected",
+            }.get(str(result.get("status") or ""), "blocked"),
             response=result,
         )
         receipt = result.get("receipt") if isinstance(result.get("receipt"), dict) else {}
@@ -1585,6 +2044,138 @@ class Process360Service:
         )
         trusted_baseline = None
         extra_gaps: list[dict[str, Any]] = []
+        approval_record: dict[str, Any] | None = None
+        effective_target = approved_target
+        effective_direction = approved_direction
+        effective_minimum = approved_minimum_denominator
+        if approval_ref.strip():
+            approval_record = self.store.get_trusted_approval(
+                approval_ref.strip(), tenant=identity.tenant_id
+            )
+            if not approval_record:
+                extra_gaps.append(
+                    gap(
+                        "APPROVAL_NOT_FOUND",
+                        "批准记录不存在或不属于当前租户",
+                        needed="提供服务端可信批准记录编号",
+                        impact="不采用调用方自填目标，不能判定达标",
+                        severity="blocking",
+                        source="security",
+                    )
+                )
+                effective_target = None
+                effective_direction = ""
+                effective_minimum = None
+            else:
+                now = time.time()
+                if str(approval_record.get("scenario") or "").upper() != code:
+                    extra_gaps.append(
+                        gap(
+                            "APPROVAL_SCENARIO_MISMATCH",
+                            "批准记录与复验场景不一致",
+                            needed="使用同一场景的业务批准记录",
+                            impact="不能跨场景复用目标",
+                            severity="blocking",
+                            source="security",
+                        )
+                    )
+                if str(approval_record.get("status") or "").lower() != "approved":
+                    extra_gaps.append(
+                        gap(
+                            "APPROVAL_NOT_ACTIVE",
+                            "批准记录不是有效批准状态",
+                            needed="由业务负责人完成批准",
+                            impact="不能判定达标",
+                            severity="blocking",
+                            source="security",
+                        )
+                    )
+                if float(approval_record.get("valid_from") or 0) > now:
+                    extra_gaps.append(
+                        gap(
+                            "APPROVAL_NOT_YET_VALID",
+                            "批准记录尚未生效",
+                            needed="等待批准生效或使用当前有效批准",
+                            impact="不能判定达标",
+                            severity="blocking",
+                            source="security",
+                        )
+                    )
+                if float(approval_record.get("valid_until") or 0) < now:
+                    extra_gaps.append(
+                        gap(
+                            "APPROVAL_EXPIRED",
+                            "批准记录已过期",
+                            needed="重新取得业务批准并保存新记录",
+                            impact="不能判定达标",
+                            severity="blocking",
+                            source="security",
+                        )
+                    )
+                stored_target = approval_record.get("target")
+                if approved_target is not None and stored_target is not None:
+                    try:
+                        mismatched = abs(float(approved_target) - float(stored_target)) > 1e-9
+                    except (TypeError, ValueError):
+                        mismatched = True
+                    if mismatched:
+                        extra_gaps.append(
+                            gap(
+                                "APPROVAL_TARGET_MISMATCH",
+                                "调用方目标与服务器批准记录不一致",
+                                needed="以批准记录为准；模型或调用方不得覆盖目标",
+                                impact="不采用调用方目标，不能判定达标",
+                                severity="blocking",
+                                source="security",
+                            )
+                        )
+                stored_direction = str(approval_record.get("direction") or "").strip()
+                if approved_direction and stored_direction and approved_direction != stored_direction:
+                    extra_gaps.append(
+                        gap(
+                            "APPROVAL_DIRECTION_MISMATCH",
+                            "调用方比较方向与批准记录不一致",
+                            needed="以批准记录为准",
+                            impact="不能判定达标",
+                            severity="blocking",
+                            source="security",
+                        )
+                    )
+                effective_target = stored_target
+                effective_direction = stored_direction
+                effective_minimum = approval_record.get("minimum_denominator")
+                approval_scope = (approval_record.get("payload") or {}).get("scope")
+                if isinstance(approval_scope, Mapping) and approval_scope:
+                    try:
+                        requested = identity.merge_scope(Scope.from_payload(scope)).to_dict()
+                        approved_scope = identity.merge_scope(Scope.from_payload(approval_scope)).to_dict()
+                    except ValueError:
+                        requested, approved_scope = dict(scope or {}), dict(approval_scope)
+                    if requested != approved_scope:
+                        extra_gaps.append(
+                            gap(
+                                "APPROVAL_SCOPE_MISMATCH",
+                                "复验范围与批准范围不一致",
+                                needed="按批准范围复验，或重新申请范围变更",
+                                impact="不能判定达标",
+                                severity="blocking",
+                                source="security",
+                            )
+                        )
+        elif approved_target is not None or approved_direction or approved_minimum_denominator is not None:
+            extra_gaps.append(
+                gap(
+                    "UNTRUSTED_APPROVAL_REJECTED",
+                    "拒绝调用方自填批准目标",
+                    needed="提供服务端保存的 approvalRef",
+                    impact="不采用模型目标，不能判定达标",
+                    severity="blocking",
+                    source="security",
+                )
+            )
+            effective_target = None
+            effective_direction = ""
+            effective_minimum = None
         if run_id:
             run = self.store.get_run(run_id)
             if not run or run.get("tenant") != identity.tenant_id or run.get("principal") != identity.user_id:
@@ -1620,19 +2211,34 @@ class Process360Service:
             baseline=trusted_baseline,
             current=current_payload,
             approval_ref=approval_ref,
-            approved_target=approved_target,
-            approved_direction=approved_direction,
-            approved_minimum_denominator=approved_minimum_denominator,
+            approved_target=effective_target,
+            approved_direction=effective_direction,
+            approved_minimum_denominator=effective_minimum,
             excluded_keys=list(excluded_object_keys or []),
             exclusion_evidence=exclusion_evidence,
             delivery_evidence=delivery_evidence,
         )
-        if approved_target is None:
+        if effective_target is None:
             extra_gaps.append(
                 gap("VERIFICATION_TARGET_MISSING", "复验目标尚未批准", needed="提供批准记录和批准目标值", impact="catalog 样例目标不启用", severity="blocking", source="runtime")
             )
         result["gaps"] = dedupe_gaps([*result["gaps"], *extra_gaps, *query.get("gaps", [])])
+        if any(str(item.get("severity") or "") == "blocking" for item in extra_gaps):
+            result["status"] = "blocked"
+            if isinstance(result.get("closure"), dict):
+                result["closure"]["canClose"] = False
+                result["closure"]["status"] = "blocked"
         result["verification"] = legacy.get("verification")
+        if approval_record:
+            result["approval"] = {
+                "approvalRef": approval_ref,
+                "status": approval_record.get("status"),
+                "target": approval_record.get("target"),
+                "direction": approval_record.get("direction"),
+                "minimumDenominator": approval_record.get("minimum_denominator"),
+                "validFrom": approval_record.get("valid_from"),
+                "validUntil": approval_record.get("valid_until"),
+            }
         result["runId"] = run_id or None
         result["principalScope"] = identity.fingerprint()
         result["dataSnapshot"] = {

@@ -5,6 +5,11 @@ import json
 import pytest
 
 from bi_agent.process360 import tools
+from bi_agent.process360.request_context import (
+    reset_request_context,
+    resolve_request_context,
+    set_request_context,
+)
 from bi_agent.web import mcp_endpoint
 
 
@@ -22,7 +27,7 @@ def test_process360_tools_reject_model_supplied_principal() -> None:
         get_cwd=lambda: ".",
         executor_factory=lambda source: {},
     )
-    with pytest.raises(ValueError, match="resolved by the server"):
+    with pytest.raises(ValueError, match="服务端"):
         runtime.call_tool("Process360Route", {"question": "经营情况怎么样", "principal": {"tenantId": "t", "userId": "u"}})
 
 
@@ -39,11 +44,11 @@ def test_process360_runtime_injects_server_principal(monkeypatch) -> None:
         build_doris=lambda *args, **kwargs: None,
         get_cwd=lambda: ".",
         executor_factory=lambda source: {},
-        exposed_tools=("Process360Query",),
+        exposed_tools=("Process360Route",),
         principal_provider=lambda: {"tenantId": "poc", "userId": "readonly", "grantKind": "all"},
     )
-    runtime._source_free["Process360Query"] = executor
-    runtime.call_tool("Process360Query", {"scenario": "SC01"})
+    runtime._source_free["Process360Route"] = executor
+    runtime.call_tool("Process360Route", {"question": "超期未发有多少"})
     assert seen["tenantId"] == "poc"
     assert seen["userId"] == "readonly"
     assert seen["grantKind"] == "all"
@@ -52,28 +57,74 @@ def test_process360_runtime_injects_server_principal(monkeypatch) -> None:
 def test_task_order_create_uses_trusted_draft_and_ignores_caller_content(monkeypatch) -> None:
     calls = {}
 
+    class Store:
+        def get_draft(self, draft_id):
+            if draft_id != "draft-1":
+                return None
+            return {
+                "scenario": "SC01",
+                "tenant": "t1",
+                "principal": "u1",
+                "payload_hash": "hash-1",
+                "payload": {},
+                "actions": {
+                    "SC01-TK01": {
+                        "id": "SC01-TK01",
+                        "title": "服务端草稿标题",
+                        "content": "服务端草稿正文",
+                    }
+                },
+            }
+
     class Service:
         def __init__(self, *, cwd):
             calls["cwd"] = cwd
+            self.store = Store()
 
         def execute_draft(self, **kwargs):
             calls.update(kwargs)
-            return {"status": "ok", "draftId": kwargs["draft_id"], "actionId": kwargs["action_id"]}
+            return {
+                "status": "ok",
+                "draftId": kwargs["draft_id"],
+                "actionId": kwargs["action_id"],
+                "receipt": {
+                    "ok": True,
+                    "applied": 1,
+                    "skipped": 0,
+                    "sourceTodoId": "analytics-draft-1-SC01-TK01",
+                },
+            }
 
     monkeypatch.setattr(mcp_endpoint.process360_tools, "Process360Service", Service)
     monkeypatch.setattr(mcp_endpoint, "FuxiTodoClient", lambda: object())
-    output = mcp_endpoint._task_order_executor()(
-        {
-            "draft_id": "draft-1",
-            "draft_hash": "hash-1",
-            "action_id": "SC01-TK01",
-            "title": "调用方篡改标题",
-            "content": "调用方篡改正文",
-            "recipients_raw": ["13800000001"],
-            "principal": {"tenantId": "t1", "userId": "u1", "canDispatch": True},
+    context = resolve_request_context(
+        principal={
+            "tenantId": "t1",
+            "userId": "u1",
+            "grantKind": "all",
+            "authorizationVersion": "auth-v1",
+            "canDispatch": True,
         },
-        "/tmp/project",
+        conversation_id="conv-1",
+        request_id="req-1",
+        surface="mcp",
     )
+    token = set_request_context(context)
+    try:
+        output = mcp_endpoint._task_order_executor()(
+            {
+                "draft_id": "draft-1",
+                "draft_hash": "hash-1",
+                "action_id": "SC01-TK01",
+                "title": "调用方篡改标题",
+                "content": "调用方篡改正文",
+                "recipients_raw": ["13800000001"],
+                "principal": {"tenantId": "forged", "userId": "forged", "canDispatch": True},
+            },
+            "/tmp/project",
+        )
+    finally:
+        reset_request_context(token)
     assert json.loads(output)["status"] == "ok"
     assert calls["draft_id"] == "draft-1"
     assert calls["draft_hash"] == "hash-1"

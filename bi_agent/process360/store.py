@@ -62,6 +62,8 @@ class Process360Store:
       surface TEXT NOT NULL DEFAULT '',
       tenant TEXT NOT NULL DEFAULT '',
       principal TEXT NOT NULL DEFAULT '',
+      conversation_id TEXT NOT NULL DEFAULT '',
+      authorization_version TEXT NOT NULL DEFAULT '',
       created_at REAL NOT NULL
     );
     CREATE TABLE IF NOT EXISTS steps (
@@ -85,6 +87,17 @@ class Process360Store:
       scope TEXT NOT NULL,
       query_hash TEXT NOT NULL,
       catalog_version TEXT NOT NULL DEFAULT '',
+      catalog_hash TEXT NOT NULL DEFAULT '',
+      authorization_version TEXT NOT NULL DEFAULT '',
+      grant_fingerprint TEXT NOT NULL DEFAULT '',
+      source_connection TEXT NOT NULL DEFAULT '',
+      template_version TEXT NOT NULL DEFAULT '',
+      result_hash TEXT NOT NULL DEFAULT '',
+      complete INTEGER NOT NULL DEFAULT 0,
+      full_count INTEGER NOT NULL DEFAULT 0,
+      expires_at REAL NOT NULL DEFAULT 0,
+      full_rows TEXT NOT NULL DEFAULT '[]',
+      contract_version TEXT NOT NULL DEFAULT 'legacy',
       payload TEXT NOT NULL,
       created_at REAL NOT NULL
     );
@@ -123,6 +136,11 @@ class Process360Store:
       idempotency_key TEXT NOT NULL UNIQUE,
       source_todo_id TEXT NOT NULL,
       status TEXT NOT NULL,
+      tenant TEXT NOT NULL DEFAULT '',
+      principal TEXT NOT NULL DEFAULT '',
+      request_id TEXT NOT NULL DEFAULT '',
+      authorization_version TEXT NOT NULL DEFAULT '',
+      recipient_hash TEXT NOT NULL DEFAULT '',
       request TEXT,
       response TEXT,
       created_at REAL NOT NULL,
@@ -142,6 +160,19 @@ class Process360Store:
       created_at REAL NOT NULL,
       updated_at REAL NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS plan_step_runs (
+      id TEXT PRIMARY KEY,
+      plan_id TEXT NOT NULL,
+      step_id TEXT NOT NULL,
+      request_id TEXT NOT NULL DEFAULT '',
+      tool TEXT NOT NULL,
+      status TEXT NOT NULL,
+      input_hash TEXT NOT NULL DEFAULT '',
+      refs TEXT NOT NULL DEFAULT '{}',
+      created_at REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS plan_step_runs_plan
+      ON plan_step_runs(plan_id, step_id, created_at);
     CREATE TABLE IF NOT EXISTS exploration_calls (
       id TEXT PRIMARY KEY,
       plan_id TEXT NOT NULL,
@@ -175,6 +206,34 @@ class Process360Store:
       payload TEXT,
       created_at REAL NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS trusted_approvals (
+      id TEXT PRIMARY KEY,
+      tenant TEXT NOT NULL,
+      scenario TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      target REAL,
+      direction TEXT NOT NULL DEFAULT '>=',
+      minimum_denominator INTEGER NOT NULL DEFAULT 1,
+      valid_from REAL NOT NULL DEFAULT 0,
+      valid_until REAL NOT NULL DEFAULT 0,
+      payload TEXT NOT NULL DEFAULT '{}',
+      created_at REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS trusted_approvals_scope
+      ON trusted_approvals(tenant, scenario, status, created_at);
+    CREATE TABLE IF NOT EXISTS artifacts (
+      id TEXT PRIMARY KEY,
+      artifact_hash TEXT NOT NULL,
+      request_id TEXT NOT NULL DEFAULT '',
+      plan_id TEXT NOT NULL DEFAULT '',
+      query_id TEXT NOT NULL DEFAULT '',
+      run_id TEXT NOT NULL DEFAULT '',
+      tenant TEXT NOT NULL DEFAULT '',
+      principal TEXT NOT NULL DEFAULT '',
+      gate_result TEXT NOT NULL DEFAULT '{}',
+      checked_at REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS artifacts_request ON artifacts(request_id, checked_at);
     """
 
     def __init__(self, path: str | Path | None = None) -> None:
@@ -183,6 +242,45 @@ class Process360Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as db:
             db.executescript(self.SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Incremental, append-preserving migrations for existing POC stores."""
+        additions = {
+            "requests": {
+                "conversation_id": "TEXT NOT NULL DEFAULT ''",
+                "authorization_version": "TEXT NOT NULL DEFAULT ''",
+            },
+            "queries": {
+                "catalog_hash": "TEXT NOT NULL DEFAULT ''",
+                "authorization_version": "TEXT NOT NULL DEFAULT ''",
+                "grant_fingerprint": "TEXT NOT NULL DEFAULT ''",
+                "source_connection": "TEXT NOT NULL DEFAULT ''",
+                "template_version": "TEXT NOT NULL DEFAULT ''",
+                "result_hash": "TEXT NOT NULL DEFAULT ''",
+                "complete": "INTEGER NOT NULL DEFAULT 0",
+                "full_count": "INTEGER NOT NULL DEFAULT 0",
+                "expires_at": "REAL NOT NULL DEFAULT 0",
+                "full_rows": "TEXT NOT NULL DEFAULT '[]'",
+                "contract_version": "TEXT NOT NULL DEFAULT 'legacy'",
+            },
+            "executions": {
+                "tenant": "TEXT NOT NULL DEFAULT ''",
+                "principal": "TEXT NOT NULL DEFAULT ''",
+                "request_id": "TEXT NOT NULL DEFAULT ''",
+                "authorization_version": "TEXT NOT NULL DEFAULT ''",
+                "recipient_hash": "TEXT NOT NULL DEFAULT ''",
+            },
+        }
+        with self._connect() as db:
+            for table, columns in additions.items():
+                existing = {
+                    str(row["name"])
+                    for row in db.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                for name, declaration in columns.items():
+                    if name not in existing:
+                        db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -230,13 +328,24 @@ class Process360Store:
 
     # -- request trail ----------------------------------------------------
     def ensure_request(
-        self, request_id: str, *, surface: str = "", tenant: str = "", principal: str = ""
+        self,
+        request_id: str,
+        *,
+        surface: str = "",
+        tenant: str = "",
+        principal: str = "",
+        conversation_id: str = "",
+        authorization_version: str = "",
     ) -> str:
         record_id = str(request_id or uuid.uuid4().hex)
         with self._connect() as db:
             db.execute(
-                "INSERT OR IGNORE INTO requests(id,surface,tenant,principal,created_at) VALUES(?,?,?,?,?)",
-                (record_id, str(surface), str(tenant), str(principal), _now()),
+                "INSERT OR IGNORE INTO requests(id,surface,tenant,principal,conversation_id,authorization_version,created_at) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (
+                    record_id, str(surface), str(tenant), str(principal),
+                    str(conversation_id), str(authorization_version), _now(),
+                ),
             )
         return record_id
 
@@ -264,9 +373,15 @@ class Process360Store:
             )
         return {"id": record_id, "requestId": str(request_id)}
 
-    def get_request(self, request_id: str) -> dict[str, Any] | None:
+    def get_request(
+        self, request_id: str, *, tenant: str = "", principal: str = ""
+    ) -> dict[str, Any] | None:
         with self._connect() as db:
             row = db.execute("SELECT * FROM requests WHERE id=?", (str(request_id or ""),)).fetchone()
+            if row and tenant and str(row["tenant"]) != str(tenant):
+                row = None
+            if row and principal and str(row["principal"]) != str(principal):
+                row = None
             if not row:
                 return None
             steps = db.execute(
@@ -289,12 +404,35 @@ class Process360Store:
         principal: str = "",
         catalog_version: str = "",
         query_id: str = "",
+        catalog_hash: str = "",
+        authorization_version: str = "",
+        grant_fingerprint: str = "",
+        source_connection: str = "",
+        template_version: str = "",
+        result_hash: str = "",
+        complete: bool = False,
+        full_count: int = 0,
+        expires_at: float = 0,
+        full_rows: list[Mapping[str, Any]] | None = None,
+        contract_version: str = "",
     ) -> dict[str, Any]:
         record_id = str(query_id or uuid.uuid4().hex)
+        effective_contract = str(contract_version or "").strip() or (
+            "process360.query.v2"
+            if any(
+                (
+                    catalog_hash, authorization_version, grant_fingerprint,
+                    source_connection, template_version, expires_at, full_rows,
+                )
+            )
+            else "legacy"
+        )
         with self._connect() as db:
             db.execute(
-                "INSERT INTO queries(id,scenario,tenant,principal,scope,query_hash,catalog_version,payload,created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO queries(id,scenario,tenant,principal,scope,query_hash,catalog_version,"
+                "catalog_hash,authorization_version,grant_fingerprint,source_connection,template_version,"
+                "result_hash,complete,full_count,expires_at,full_rows,contract_version,payload,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     record_id,
                     str(scenario).upper(),
@@ -303,6 +441,17 @@ class Process360Store:
                     _json(dict(scope)),
                     digest({"scenario": str(scenario).upper(), "scope": dict(scope)}),
                     catalog_version,
+                    catalog_hash,
+                    authorization_version,
+                    grant_fingerprint,
+                    source_connection,
+                    template_version,
+                    result_hash or digest(payload),
+                    1 if complete else 0,
+                    int(full_count or 0),
+                    float(expires_at or 0),
+                    _json(list(full_rows or [])),
+                    effective_contract,
                     _json(dict(payload)),
                     _now(),
                 ),
@@ -317,6 +466,8 @@ class Process360Store:
         result = dict(row)
         result["payload"] = _load(result.get("payload"))
         result["scope"] = _load(result.get("scope"))
+        result["full_rows"] = _load(result.get("full_rows")) or []
+        result["complete"] = bool(result.get("complete"))
         return result
 
     # -- drafts -----------------------------------------------------------
@@ -422,7 +573,181 @@ class Process360Store:
             ).fetchone()
         return dict(row) if row else None
 
+    def save_trusted_approval(
+        self,
+        *,
+        tenant: str,
+        scenario: str,
+        status: str,
+        target: float | None,
+        direction: str,
+        minimum_denominator: int,
+        valid_from: Any,
+        valid_until: Any,
+        payload: Mapping[str, Any] | None = None,
+        approval_id: str = "",
+    ) -> dict[str, Any]:
+        from datetime import datetime
+
+        def epoch(value: Any) -> float:
+            if isinstance(value, (int, float)):
+                return float(value)
+            text = str(value or "").strip().replace("Z", "+00:00")
+            return datetime.fromisoformat(text).timestamp() if text else 0.0
+
+        record_id = str(approval_id or uuid.uuid4().hex)
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO trusted_approvals(id,tenant,scenario,status,target,direction,minimum_denominator,valid_from,valid_until,payload,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    record_id, str(tenant), str(scenario).upper(), str(status).lower(),
+                    float(target) if target is not None else None, str(direction or ">="),
+                    int(minimum_denominator or 1), epoch(valid_from), epoch(valid_until),
+                    _json(payload or {}), _now(),
+                ),
+            )
+        return self.get_trusted_approval(record_id) or {}
+
+    def get_trusted_approval(self, approval_id: str, *, tenant: str = "") -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM trusted_approvals WHERE id=?",
+                (str(approval_id or ""),),
+            ).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        if tenant and str(item.get("tenant") or "") != str(tenant):
+            return None
+        item["payload"] = _load(item.get("payload")) or {}
+        return item
+
+    # -- artifacts --------------------------------------------------------
+    def save_artifact(
+        self,
+        *,
+        artifact_id: str,
+        artifact_hash: str,
+        request_id: str,
+        plan_id: str,
+        query_id: str,
+        run_id: str,
+        tenant: str,
+        principal: str,
+        gate_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO artifacts(id,artifact_hash,request_id,plan_id,query_id,run_id,tenant,principal,gate_result,checked_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (
+                    str(artifact_id), str(artifact_hash), str(request_id), str(plan_id),
+                    str(query_id), str(run_id), str(tenant), str(principal),
+                    _json(gate_result), _now(),
+                ),
+            )
+        return self.get_artifact(artifact_id) or {}
+
+    def get_artifact(self, artifact_id: str, *, tenant: str = "", principal: str = "") -> dict[str, Any] | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM artifacts WHERE id=?",
+                (str(artifact_id or ""),),
+            ).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        if tenant and str(item.get("tenant") or "") != str(tenant):
+            return None
+        if principal and str(item.get("principal") or "") != str(principal):
+            return None
+        item["gate_result"] = _load(item.get("gate_result")) or {}
+        return item
+
     # -- executions / idempotency ----------------------------------------
+    def claim_execution(
+        self,
+        *,
+        draft_id: str,
+        action_id: str,
+        idempotency_key: str,
+        source_todo_id: str,
+        consumed_by: str,
+        tenant: str = "",
+        principal: str = "",
+        request_id: str = "",
+        authorization_version: str = "",
+        recipient_hash: str = "",
+        request: Mapping[str, Any] | None = None,
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Atomically claim one draft action and create its execution row.
+
+        Outcomes: ``created``, ``existing`` or ``consumed``.  A concurrent click
+        can never create two execution records or consume one action twice.
+        """
+        record_id = uuid.uuid4().hex
+        now = _now()
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT * FROM executions WHERE idempotency_key=?",
+                (str(idempotency_key),),
+            ).fetchone()
+            if row:
+                return "existing", self._execution(row)
+            consumed = db.execute(
+                "SELECT * FROM action_consumptions WHERE draft_id=? AND action_id=?",
+                (str(draft_id), str(action_id)),
+            ).fetchone()
+            if consumed:
+                return "consumed", dict(consumed)
+            try:
+                db.execute(
+                    "INSERT INTO executions(id,draft_id,action_id,idempotency_key,source_todo_id,status,tenant,principal,request_id,authorization_version,recipient_hash,request,response,created_at,updated_at) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        record_id, str(draft_id), str(action_id), str(idempotency_key),
+                        str(source_todo_id), "sending", str(tenant), str(principal),
+                        str(request_id), str(authorization_version), str(recipient_hash),
+                        _json(request or {}), None, now, now,
+                    ),
+                )
+                db.execute(
+                    "INSERT INTO action_consumptions(draft_id,action_id,consumed_by,consumed_at) "
+                    "VALUES(?,?,?,?)",
+                    (str(draft_id), str(action_id), str(consumed_by), now),
+                )
+            except sqlite3.IntegrityError:
+                db.rollback()
+                row = db.execute(
+                    "SELECT * FROM executions WHERE idempotency_key=?",
+                    (str(idempotency_key),),
+                ).fetchone()
+                if row:
+                    return "existing", self._execution(row)
+                consumed = db.execute(
+                    "SELECT * FROM action_consumptions WHERE draft_id=? AND action_id=?",
+                    (str(draft_id), str(action_id)),
+                ).fetchone()
+                if consumed:
+                    return "consumed", dict(consumed)
+                raise
+        return "created", {
+            "id": record_id,
+            "draft_id": str(draft_id),
+            "action_id": str(action_id),
+            "idempotency_key": str(idempotency_key),
+            "source_todo_id": str(source_todo_id),
+            "status": "sending",
+            "tenant": str(tenant),
+            "principal": str(principal),
+            "request_id": str(request_id),
+            "authorization_version": str(authorization_version),
+            "recipient_hash": str(recipient_hash),
+            "request": dict(request or {}),
+            "response": None,
+        }
+
     def begin_execution(
         self,
         *,
@@ -517,6 +842,50 @@ class Process360Store:
         result["payload"] = _load(result.get("payload"))
         return result
 
+    def record_plan_step(
+        self,
+        *,
+        plan_id: str,
+        step_id: str,
+        request_id: str,
+        tool: str,
+        status: str,
+        input_hash: str = "",
+        refs: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        record_id = uuid.uuid4().hex
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO plan_step_runs(id,plan_id,step_id,request_id,tool,status,input_hash,refs,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (
+                    record_id, str(plan_id), str(step_id), str(request_id), str(tool),
+                    str(status), str(input_hash), _json(refs or {}), _now(),
+                ),
+            )
+        return {
+            "id": record_id,
+            "planId": str(plan_id),
+            "stepId": str(step_id),
+            "requestId": str(request_id),
+            "tool": str(tool),
+            "status": str(status),
+            "refs": dict(refs or {}),
+        }
+
+    def list_plan_steps(self, plan_id: str) -> list[dict[str, Any]]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT * FROM plan_step_runs WHERE plan_id=? ORDER BY created_at",
+                (str(plan_id or ""),),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["refs"] = _load(item.get("refs")) or {}
+            result.append(item)
+        return result
+
     def record_exploration(
         self,
         *,
@@ -600,7 +969,8 @@ class Process360Store:
     def export(self) -> dict[str, Any]:
         tables = (
             "runs", "drafts", "actions", "action_consumptions", "executions",
-            "receipts", "plans", "exploration_calls", "evidence", "approvals",
+            "receipts", "plans", "plan_step_runs", "exploration_calls", "evidence",
+            "approvals", "trusted_approvals", "artifacts",
         )
         payload: dict[str, Any] = {"schema": "process360.store.v1", "exportedAt": _now(), "tables": {}}
         with self._connect() as db:
