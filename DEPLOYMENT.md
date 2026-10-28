@@ -897,3 +897,28 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 验证：资源与元数据 14 项测试、数据／发布客户端 13 项 Node 测试通过；本地浏览器已确认三个节点绘制为饼图、标题正确、原因默认展开且无逐条指标列表。视觉测试内容仅用于本地，静态包不包含测试数据。
 
 - 新 SDK 对不同图节点发送相同指标、不同状态过滤的批查询。宿主原先只按指标定义保存最后一条凭据，会因节点请求顺序不同造成默认缓存范围漂移；现改为按完整查询保留每个组件的凭据，用户真正切换筛选时仍整体失效旧范围。新增正／逆响应顺序的回归测试，发布后重新预热两身份默认范围。
+
+### Cockpit AP并发排队修复（2026-10-28）
+
+- 用户可见变化：驾驶舱不再显示“Cockpit AP查询并发已满，请稍后重试”。AP共享槽位占满时，
+  请求在自身超时内排队；只有排队超过超时才返回504排队超时，且不降级到旧快照、本体或数据库。
+- 代码提交：`15d31e0`（`feature/cockpit-34-deploy-record`）。`bi_agent/cockpit/ap_gateway.py`
+  改为带剩余超时的阻塞获取；默认 `COCKPIT_AP_CONCURRENCY` 由2调整为4。
+  `data-client.js` 对429和“排队超时”504做短暂重试，避免瞬时排队直接显示为错误。
+- 后端 release：`/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/cockpit-main-15d31e0-20261028-0817`，
+  PID `158559`，监听8765；`.env`、`.venv`、`dataset` 继续软链到 `mcp-11dc92c-20261020`，
+  未迁移或覆盖历史会话、上传、图表和分析记录。
+- 切换方式：新release先在18765预检（PID `153599`，`/healthz`和`data/config`通过后停止），
+  再SIGTERM旧 `0cf0f4b` 进程（PID `2587466`）并启动新进程；旧release完整保留回滚。
+  运行环境确认 `COCKPIT_AP_CONCURRENCY=4`、`COCKPIT_AP_TIMEOUT_SECONDS=10`、`data_mode=ap`、
+  `analysis_engine=main`。
+- 静态站：新增内容寻址目录 `/static/cockpit/releases/4da3f092598bd18dde3b/`，
+  `site/release.json` 已指向该版本；staging `site-next-15d31e0-20261028-085226`，
+  入口备份 `backups/site-20261028-085226-pre-15d31e0`。manifest校验通过，旧资源目录保留，
+  `gzip_static` 和一年immutable缓存不变。
+- 验证：全量Python `1395 passed, 28 skipped`；前端Node测试22项通过。
+  34线上24／48／64并发AP查询全部200，64并发最大约1.8秒；新release日志429和5xx均为0。
+  `id=1|2` 的 overview／operations／analysis 共6个路由浏览器验收全部AP 200，
+  无“并发已满”“未切换”“查询失败”等错误文案，无JavaScript异常和console error。
+- 边界：本轮只修复Cockpit 8765／8876的AP排队与前端重试，不修改AP上游、不切换数据源、
+  不改变X360字段兼容映射，也不覆盖任何历史会话或运行数据。
