@@ -2,6 +2,7 @@
 import json
 import io
 import threading
+import time
 from urllib.error import HTTPError
 from unittest.mock import patch
 
@@ -45,10 +46,23 @@ def test_transport_has_its_own_headers_paths_and_capacity(tmp_path,monkeypatch):
     assert json.loads(request.data)==QUERY
     gateway._capacity.acquire()
     try:
-        with pytest.raises(HTTPException) as error:gateway.query('analysis',QUERY)
-        assert error.value.status_code==429
-    finally:gateway._capacity.release()
+        threading.Timer(0.1,gateway._capacity.release).start()
+        assert gateway.query('analysis',QUERY)==DATA
+    finally:
+        if gateway._capacity.acquire(blocking=False):gateway._capacity.release()
     assert gateway.query('analysis',QUERY)==DATA
+
+
+def test_saturated_gateway_times_out_instead_of_rejecting_immediately(tmp_path):
+    from dataclasses import replace
+    gateway=APGateway(replace(config(tmp_path),timeout=1),Opener({'success':True,'data':DATA}))
+    gateway._capacity.acquire()
+    started=time.monotonic()
+    try:
+        with pytest.raises(HTTPException) as error:gateway.query('analysis',QUERY)
+        assert error.value.status_code==504 and '并发已满' not in str(error.value.detail)
+        assert time.monotonic()-started>=0.5
+    finally:gateway._capacity.release()
 
 
 @pytest.mark.parametrize('failure',[TimeoutError('private-ap-test'),HTTPError('http://secret-url',401,'private-ap-test',{},None),{'success':False,'msg':'private-ap-test','data':DATA}, {'success':True}, {'success':True,'data':[]}])
@@ -221,3 +235,25 @@ def test_individual_batch_deduplicates_equal_children_without_losing_positions(t
     assert len(result)==3 and len(opener.calls)==1
     result[0]['data']['result']['rows'].clear()
     assert result[1]['data']['result']['rows']
+
+
+def test_helmet_proxy_restores_validated_legacy_config(tmp_path,monkeypatch):
+    import bi_agent.cockpit.router as router
+    monkeypatch.setenv('COCKPIT_DATA_MODE','ap')
+    opportunity={"dimension":[{"identifierCode":"D020"}],"measure":[{"identifierCode":"M0023"}]}
+    quotation={"dimension":[{"identifierCode":"D021"}],"measure":[{"identifierCode":"M0031"}]}
+    helmet={"helmetGlobalConfig":None,"edges":[],"nodes":[
+        {"code":"BUSINESS_OPPORTUNITY_ACQUISITION","meta":{"helmetConfig":{
+            "dataConfig":json.dumps(opportunity),"statusMappings":[]}}},
+        {"code":"QUOTATION","meta":{"helmetConfig":{"dataConfig":json.dumps(quotation)}}}]}
+    gateway=APGateway(config(tmp_path),Opener({'success':True,'data':helmet}))
+    monkeypatch.setattr(router,'get_gateway',lambda:gateway)
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:tmp_path,main_context=lambda c:{}))
+    response=TestClient(app).post('/api/cockpit/data/query',json=dict(
+        id=1,kind='helmet',payload={'flowCode':'FULL_PROCESS_OPERATIONS_MANAGEMENT'}))
+    assert response.status_code==200,response.text
+    nodes=response.json()['data']['nodes']
+    normalized=json.loads(nodes[0]['meta']['helmetConfig']['dataConfig'])
+    assert normalized['dimension'][0]['identifierCode']=='D007'
+    assert normalized['measure'][0]['identifierCode']=='M00013'
+    assert 'helmetConfig' not in nodes[1]['meta']

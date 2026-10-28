@@ -561,6 +561,72 @@ git diff --name-only
 - 本地预览：`/tmp/cockpit-local-preview.py` 使用当前工作区代码启动
   `127.0.0.1:8876`，已更新到新交付包资源和 39／3／4 快照；该进程只监听回环地址。
 
+#### 2026-10-27 发布：master@032bad3（看板 v0.1.5 加载优化）
+
+- 范围：只更新 34 上的 Cockpit 静态站与 8765 主服务，不改 8876 入口拓扑、不复制或清空
+  `dataset/` 用户历史、不动 8878 等其他容器。
+- 代码与提交：`032bad38f99c47b3b4e121ca1708a361a325ece9`（`master`，含
+  `feature/cockpit-v3-poc` 合并与 `ontology-v0.1.5` 加载优化），静态站
+  `assetVersion=31f5d6cf3c49bbdf2574`。
+- 后端 release：`/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/cockpit-main-032bad3-20261027-1825`，
+  PID 记录在 `APP.pid`（本次切换后为 `1931070`），监听 `8765`；`.env`、`.venv`、`dataset`
+  均软链到 `mcp-11dc92c-20261020`，历史分析库继续共用
+  `dataset/cockpit/history.sqlite3`（47 条分析记录）。
+- 切换方式：先在同 release 的 `18765` 预检 `/healthz`、`/api/cockpit/data/config`、
+  `/api/cockpit/startup` 和 `page/lookup`，再 SIGTERM 旧 `ca3d29b` 进程（原 PID `2250486`）
+  并在 `8765` 启动新进程；旧 release 目录完整保留可回滚。
+- 发布过程修正：首次解包时 `dataset/` 是仓库内真实目录，`ln -s` 被建到了
+  `dataset/dataset`。已于 21:53 保留该次新产生的数据到 `dataset.local-20261027-2155`，
+  再把 `dataset` 指回共享目录并重启；没有删除或覆盖任何历史会话、上传或分析记录。
+- 静态站：新增内容寻址资源目录
+  `/static/cockpit/releases/31f5d6cf3c49bbdf2574/`（127 个文件），并替换
+  `site/index.html`、`site/release.json`、`site/manifest.sha256`；旧扁平资源仍在原地。
+  发布前入口备份：`backups/site-20261027-182452-pre-032bad3/`；staging：
+  `site-next-31f5d6c-20261027-182452/`。
+- 加载优化：nginx 对 `/static/cockpit/releases/` 开启 `gzip_static` 和一年
+  `immutable` 缓存；实测 `pro-bi-ui.min.js` 从 6.33 MB 降到 2.24 MB 传输，
+  `runtime.json` 从 425 KB 降到 25 KB。配置备份
+  `conf/default.conf.bak-20261027-215058`，`nginx -t` 通过后热加载。
+- 验证：`/cockpit/overview|operations|analysis`、`/release.json`、新资源、
+  Vue 生产包、`/api/cockpit/startup`、`page/lookup` 均 200；远程浏览器三页均渲染
+  `ProBiDashboard`（图表 3／9／54），无 JS 异常；经营看板整页快照已发布并显示
+  “完整看板 · 数据时间”；AI 插槽继续走 `8765` 真实模型分析。共享分析库的 47 条历史
+  记录保留；页面按当前筛选范围重新绑定已发布卡片，数据指纹一致时复用已有分析，
+  整页快照按本版本重新生成。
+- 已知上游缺口（不启用本地兜底；2026-10-28 已由运行适配层兼容，见下）：AP 返回的活动/头盔配置引用
+  `D020/M0023`、`D021/M0031`，对这两组字段调用 AP 数据查询接口返回 HTTP 500
+  `系统繁忙，请稍后再试`；同一凭据下 `M0001`、`M0001+D001/D002` 正常，说明代理、
+  认证与网络可用。页面按设计显示“AP请求失败；未切换到本体、数据库或旧快照”，
+  不使用快照或补 0 冒充结果；需 AP 侧修复该发布配置或字段映射后再复验。
+- 回滚：停当前 PID 后用旧 release `cockpit-cards-ca3d29b-20261026-120629/start-main.py`
+  重启；静态站恢复上述备份的 `index.html`／`release.json`／`manifest.sha256` 即可，
+  旧资源和旧分析数据都未删除。整页快照是可重建缓存，不属于用户历史。
+
+#### 2026-10-28 热修复：头盔图 AP 字段兼容（0cf0f4b）
+
+- 现象：运营页和穿透页的头盔图批次请求返回 502，页面显示
+  “AP请求失败；未切换到本体、数据库或旧快照”。
+- 定位：AP 的 X360 流程配置（`FULL_PROCESS_OPERATIONS_MANAGEMENT`、
+  `SALES_CALIBER`）当前引用 `D020/M0023`、`D021/M0031`、`D016/M0033`、
+  `D024/M0036`；当前 AP 分析模型只发布 `M0001-M0013`、`D001-D008`，这些字段
+  单独查询也返回 500“系统繁忙”。2026-10-22 参考发布中商机获取节点使用
+  `D007/M00013`，其余节点没有数据配置；同一查询实测返回 2 行数据。
+- 修复：新增 `bi_agent/cockpit/helmet_compat.py`，在 `/api/cockpit/data/query`
+  的 helmet 分支把两类旧节点恢复为参考配置：商机获取 → `D007/M00013` +
+  参考 `statusMappings`（并清理 pie 切片），报价/订单接收/发货 → 移除不可用的
+  `helmetConfig`。其他节点、流程和已修正的上游配置原样透传，不新建指标、
+  不补 0、不切换数据源。
+- 测试：新增 `tests/test_cockpit_helmet_compat.py` 和代理链路回归；全量
+  `1394 passed, 28 skipped`。
+- 发布：release
+  `cockpit-main-0cf0f4b-20261028-0041`，PID `2587466`；先在 `18765` 预检两套
+  flow（helmet 200、batch 200、2 行），再切 `8765`；上一 release
+  `cockpit-main-6f0d9ab-20261028-0036` 保留可回滚，共享 `dataset` 未变。
+- 验证：`id=1|2` 的 overview/operations/analysis 全部 AP 请求 200，页面不再出现
+  “未切换…”；运营页 13／30 次、穿透页 29 次 AP 请求均无失败，整页快照继续发布。
+- 边界：该映射是针对 X360 仍引用未发布字段的临时兼容；X360/AP 修正字段后应删除
+  `helmet_compat.py` 的映射并复验，避免长期掩盖上游口径问题。
+
 上一运行状态（2026-09-03 部署 v0.1.2，现保留为回滚版本）：
 
 - 运行目录 `~/eimosp-ontology-agentic-analytics-releases/v0.1.2`，
@@ -851,3 +917,28 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 验证：资源与元数据 14 项测试、数据／发布客户端 13 项 Node 测试通过；本地浏览器已确认三个节点绘制为饼图、标题正确、原因默认展开且无逐条指标列表。视觉测试内容仅用于本地，静态包不包含测试数据。
 
 - 新 SDK 对不同图节点发送相同指标、不同状态过滤的批查询。宿主原先只按指标定义保存最后一条凭据，会因节点请求顺序不同造成默认缓存范围漂移；现改为按完整查询保留每个组件的凭据，用户真正切换筛选时仍整体失效旧范围。新增正／逆响应顺序的回归测试，发布后重新预热两身份默认范围。
+
+### Cockpit AP并发排队修复（2026-10-28）
+
+- 用户可见变化：驾驶舱不再显示“Cockpit AP查询并发已满，请稍后重试”。AP共享槽位占满时，
+  请求在自身超时内排队；只有排队超过超时才返回504排队超时，且不降级到旧快照、本体或数据库。
+- 代码提交：`15d31e0`（`feature/cockpit-34-deploy-record`）。`bi_agent/cockpit/ap_gateway.py`
+  改为带剩余超时的阻塞获取；默认 `COCKPIT_AP_CONCURRENCY` 由2调整为4。
+  `data-client.js` 对429和“排队超时”504做短暂重试，避免瞬时排队直接显示为错误。
+- 后端 release：`/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/cockpit-main-15d31e0-20261028-0817`，
+  PID `158559`，监听8765；`.env`、`.venv`、`dataset` 继续软链到 `mcp-11dc92c-20261020`，
+  未迁移或覆盖历史会话、上传、图表和分析记录。
+- 切换方式：新release先在18765预检（PID `153599`，`/healthz`和`data/config`通过后停止），
+  再SIGTERM旧 `0cf0f4b` 进程（PID `2587466`）并启动新进程；旧release完整保留回滚。
+  运行环境确认 `COCKPIT_AP_CONCURRENCY=4`、`COCKPIT_AP_TIMEOUT_SECONDS=10`、`data_mode=ap`、
+  `analysis_engine=main`。
+- 静态站：新增内容寻址目录 `/static/cockpit/releases/4da3f092598bd18dde3b/`，
+  `site/release.json` 已指向该版本；staging `site-next-15d31e0-20261028-085226`，
+  入口备份 `backups/site-20261028-085226-pre-15d31e0`。manifest校验通过，旧资源目录保留，
+  `gzip_static` 和一年immutable缓存不变。
+- 验证：全量Python `1395 passed, 28 skipped`；前端Node测试22项通过。
+  34线上24／48／64并发AP查询全部200，64并发最大约1.8秒；新release日志429和5xx均为0。
+  `id=1|2` 的 overview／operations／analysis 共6个路由浏览器验收全部AP 200，
+  无“并发已满”“未切换”“查询失败”等错误文案，无JavaScript异常和console error。
+- 边界：本轮只修复Cockpit 8765／8876的AP排队与前端重试，不修改AP上游、不切换数据源、
+  不改变X360字段兼容映射，也不覆盖任何历史会话或运行数据。

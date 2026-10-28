@@ -254,3 +254,38 @@
   全量 `pytest -q tests` 为 `1588 passed / 37 skipped / 1 failed`，唯一失败仍是 worktree
   缺少 `frontend/node_modules/@boulderaitech/ontology-graph/src/layout.js` 的环境问题。
 - 边界：未部署、未发送真实 Fuxi 待办、未创建 MR/tag/Release、未升级正式版本。
+
+### 2026-10-28 · 驾驶舱头盔图 AP 字段兼容修复
+
+- 用户可见变化：运营页和穿透页的头盔图不再显示“AP请求失败；未切换到本体、
+  数据库或旧快照”，AP 请求全部恢复 200。
+- 原因：X360 流程配置把商机获取/报价/订单接收/发货节点改为引用
+  `D020/M0023`、`D021/M0031`、`D016/M0033`、`D024/M0036`；当前 AP 分析模型
+  未发布这些字段，单独查询也返回 500“系统繁忙”。2026-10-22 参考发布使用
+  `D007/M00013` 且其余节点无数据配置，实测查询正常。
+- 修复：新增 `bi_agent/cockpit/helmet_compat.py`，在读取头盔配置时把商机获取
+  恢复为 `D007/M00013` + 参考状态映射，并移除报价/订单接收/发货三处不可用的
+  `helmetConfig`；其他节点、流程和已修正配置原样透传，不新建指标、不补 0、
+  不切换数据源。
+- 验证：新增兼容与代理链路回归测试；全量 1394 passed、28 skipped。34 线上
+  `id=1|2` 三页 AP 请求全部 200，整页快照继续发布。
+- 边界：这是 X360 字段发布前的临时兼容映射，上游修正后应删除并复验。
+
+### 2026-10-28 · 驾驶舱AP并发排队替代429
+
+- 用户可见变化：经营看板、运营360和穿透分析不再显示“Cockpit AP查询并发已满，请稍后重试”；
+  AP槽位占满时请求在自身超时内排队，正常加载、多标签和多身份同时访问继续返回数据。
+- 原因：AP传输层在共享并发信号量被占满时使用非阻塞获取并直接返回429；一个页面会并行发起多条
+  AP查询，两个身份或多个标签同时打开即可触发。34旧release日志确认只有 `/api/cockpit/data/query`
+  返回过429，`/analyses` 没有。
+- 修复：`bi_agent/cockpit/ap_gateway.py` 改为按请求剩余超时等待槽位，等待超时返回504排队超时，
+  不静默降级、不切换数据源；默认 `COCKPIT_AP_CONCURRENCY` 由2调整为4；
+  `bi_agent/web/static/cockpit/data-client.js` 对429和排队超时504做短暂重试。
+- 涉及文件：`bi_agent/cockpit/ap_gateway.py`、`bi_agent/web/static/cockpit/data-client.js`、
+  `.env.example`、`tests/test_cockpit_ap_gateway.py`、`tests/cockpit_data_client.test.mjs`、
+  `DEPLOYMENT.md`。
+- 验证：全量Python测试1395 passed、28 skipped；前端Node测试22项通过；
+  34线上24／48／64并发AP查询全部200（最大约1.8秒），新release日志429和5xx均为0；
+  `id=1|2` 三个页面共6个路由浏览器验收全部AP 200，无错误文案、无JavaScript异常。
+- 部署：后端 `cockpit-main-15d31e0-20261028-0817`（PID 158559，8765），
+  静态站 `assetVersion=4da3f092598bd18dde3b`；旧release和旧静态资源保留可回滚。

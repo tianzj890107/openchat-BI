@@ -50,6 +50,13 @@ test('browser query queue limits upstream traffic to two requests', async () => 
   assert.equal(max,2);assert.equal(client.scope().apReceiptIds.length,7);
 });
 
+test('a queue-timeout response is retried instead of surfacing as an error', async () => {
+  let calls=0;
+  const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>++calls===1?{ok:false,status:504,json:async()=>({detail:'AP查询排队超时，请稍后重试'})}:ok('queued-once')});
+  assert.deepEqual(await client.biAdapters.postAnalysisDataQuery(query),{rows:[{amount:42}]});
+  assert.equal(calls,2);assert.deepEqual(client.scope().apReceiptIds,['queued-once']);
+});
+
 test('host utilities accept only the fixed read-only graph interface', async () => {
   let calls=0;
   const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>{calls++;return ok('graph',{nodes:[]});}});

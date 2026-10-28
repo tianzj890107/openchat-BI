@@ -28,16 +28,17 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 35000);
     try {
-      let response;
+      let response, body;
       for (let attempt = 0; attempt < 3; attempt++) {
         response = await request(`${apiBase}/data/query`, {method: 'POST', signal: controller.signal,
           headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
           body: JSON.stringify({id: Number(id), kind, payload})});
-        if (response.status !== 429 || attempt === 2) break;
+        try { body = await response.json(); } catch (_) { body = null; }
+        const queued = response.status === 429 || (response.status === 504 && /排队/.test(String(body?.detail || '')));
+        if (!queued || attempt === 2) break;
         await pause(300 * (attempt + 1));
       }
-      let body;
-      try { body = await response.json(); } catch (_) { throw new Error('看板AP代理响应无效'); }
+      if (!body) throw new Error('看板AP代理响应无效');
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : '看板AP查询失败');
       if (!body.receiptId || body.data === undefined) throw new Error('看板AP响应缺少服务端结果凭据');
       return body;

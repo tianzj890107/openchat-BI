@@ -52,7 +52,7 @@ class APConfig:
             config = cls(os.getenv('COCKPIT_AP_BASE_URL', '').rstrip('/'),
                 os.getenv('COCKPIT_AP_HEADERS_FILE', ''),
                 min(30., max(1., float(os.getenv('COCKPIT_AP_TIMEOUT_SECONDS', '10')))),
-                min(8, max(1, int(os.getenv('COCKPIT_AP_CONCURRENCY', '2')))),
+                min(8, max(1, int(os.getenv('COCKPIT_AP_CONCURRENCY', '4')))),
                 min(86400, max(60, int(os.getenv('COCKPIT_AP_RECEIPT_TTL_SECONDS', '1800')))),
                 os.getenv('COCKPIT_AP_BATCH_MODE', 'individual'))
         except ValueError:
@@ -98,7 +98,7 @@ class APGateway:
         self._capacity = threading.BoundedSemaphore(config.concurrency)
         self._opener = opener or build_opener(ProxyHandler({}), NoRedirect())
 
-    def query(self, kind, payload, *, _deadline=None, _wait=False):
+    def query(self, kind, payload, *, _deadline=None):
         if kind not in PATHS:
             raise HTTPException(422, '不支持的只读AP接口')
         if kind == 'batch':
@@ -119,7 +119,7 @@ class APGateway:
             for child in payload:
                 key = json.dumps(child, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
                 if key not in cache:
-                    cache[key] = self.query('analysis', child, _deadline=deadline, _wait=True)
+                    cache[key] = self.query('analysis', child, _deadline=deadline)
                 item = dict(success=True, data=deepcopy(cache[key]))
                 size += len(json.dumps(item, ensure_ascii=False).encode()) + 1
                 if size > MAX_RESPONSE:raise HTTPException(502, 'AP响应过大，请缩小查询范围')
@@ -134,9 +134,12 @@ class APGateway:
         remaining = self.config.timeout if _deadline is None else _deadline-time.monotonic()
         if remaining <= 0:
             raise HTTPException(504, 'AP整批查询超时，未交付部分结果')
-        admitted = self._capacity.acquire(timeout=remaining) if _wait else self._capacity.acquire(blocking=False)
+        # Queue behind the shared upstream bound instead of failing a page query.
+        # The request deadline still caps the wait, so saturated traffic degrades
+        # to one bounded timeout rather than bursty 429s in the dashboard.
+        admitted = self._capacity.acquire(timeout=remaining)
         if not admitted:
-            raise HTTPException(429, 'Cockpit AP查询并发已满，请稍后重试')
+            raise HTTPException(504, 'AP查询排队超时，请稍后重试')
         try:
             timeout = self.config.timeout if _deadline is None else _deadline-time.monotonic()
             if timeout <= 0:raise HTTPException(504, 'AP整批查询超时，未交付部分结果')
