@@ -2,6 +2,7 @@
 import json
 import io
 import threading
+import time
 from urllib.error import HTTPError
 from unittest.mock import patch
 
@@ -45,10 +46,23 @@ def test_transport_has_its_own_headers_paths_and_capacity(tmp_path,monkeypatch):
     assert json.loads(request.data)==QUERY
     gateway._capacity.acquire()
     try:
-        with pytest.raises(HTTPException) as error:gateway.query('analysis',QUERY)
-        assert error.value.status_code==429
-    finally:gateway._capacity.release()
+        threading.Timer(0.1,gateway._capacity.release).start()
+        assert gateway.query('analysis',QUERY)==DATA
+    finally:
+        if gateway._capacity.acquire(blocking=False):gateway._capacity.release()
     assert gateway.query('analysis',QUERY)==DATA
+
+
+def test_saturated_gateway_times_out_instead_of_rejecting_immediately(tmp_path):
+    from dataclasses import replace
+    gateway=APGateway(replace(config(tmp_path),timeout=1),Opener({'success':True,'data':DATA}))
+    gateway._capacity.acquire()
+    started=time.monotonic()
+    try:
+        with pytest.raises(HTTPException) as error:gateway.query('analysis',QUERY)
+        assert error.value.status_code==504 and '并发已满' not in str(error.value.detail)
+        assert time.monotonic()-started>=0.5
+    finally:gateway._capacity.release()
 
 
 @pytest.mark.parametrize('failure',[TimeoutError('private-ap-test'),HTTPError('http://secret-url',401,'private-ap-test',{},None),{'success':False,'msg':'private-ap-test','data':DATA}, {'success':True}, {'success':True,'data':[]}])
