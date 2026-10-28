@@ -22,6 +22,8 @@ from urllib.request import ProxyHandler, Request, build_opener
 DEFAULT_CONTROL_BASE_URL = "http://172.16.5.69:8080"
 DEFAULT_SOURCE_CODE = "boulderai-anaylize-todo"
 DEFAULT_CATEGORY = "智能分析任务令"
+DEFAULT_RISK_CATEGORY = "智能分析风险"
+VALID_ITEM_TYPES = ("RISK", "TODO")
 VALID_SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
 LEVEL_TO_SEVERITY = {
     "ALERT": "HIGH",
@@ -129,12 +131,23 @@ def normalize_severity(value: str | None) -> str:
     return severity
 
 
-def make_source_todo_id(action_id: str, canvas_id: str = "") -> str:
+def normalize_item_type(value: str | None) -> str:
+    item_type = str(value or "TODO").strip().upper()
+    if item_type not in VALID_ITEM_TYPES:
+        raise ValueError(f"item_type must be one of {list(VALID_ITEM_TYPES)}")
+    return item_type
+
+
+def make_source_todo_id(
+    action_id: str, canvas_id: str = "", item_type: str = "TODO"
+) -> str:
     action = str(action_id or "").strip()
     if not action:
         raise ValueError("action_id is required")
     canvas = str(canvas_id or "").strip() or "analysis"
-    raw = f"analytics-{canvas}-{action}"
+    kind = normalize_item_type(item_type)
+    prefix = "analytics-risk" if kind == "RISK" else "analytics"
+    raw = f"{prefix}-{canvas}-{action}"
     stable = re.sub(r"[^A-Za-z0-9_.:-]+", "-", raw).strip("-")
     if stable != raw or len(stable) > 200:
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
@@ -213,7 +226,7 @@ class FuxiTodoClient:
             raise FuxiTodoError("Fuxi todo service returned a non-object response")
         return parsed
 
-    def create_todo(
+    def create_item(
         self,
         *,
         title: str,
@@ -231,6 +244,7 @@ class FuxiTodoClient:
         evidence: Any = None,
         caliber_meta: Mapping[str, Any] | None = None,
         source_updated_at: str | datetime | None = None,
+        item_type: str = "TODO",
     ) -> dict[str, Any]:
         title = str(title or "").strip()
         content = str(content or "").strip()
@@ -242,10 +256,16 @@ class FuxiTodoClient:
             raise ValueError("content is required")
         recipients = normalize_recipients(recipients_raw)
         severity_value = normalize_severity(severity)
-        category_value = str(category or self.config.category).strip()
+        item_type_value = normalize_item_type(item_type)
+        default_category = (
+            DEFAULT_RISK_CATEGORY if item_type_value == "RISK" else self.config.category
+        )
+        category_value = str(category or default_category).strip()
         if not category_value:
             raise ValueError("category is required")
-        todo_id = source_todo_id or make_source_todo_id(action_id, canvas_id)
+        todo_id = source_todo_id or make_source_todo_id(
+            action_id, canvas_id, item_type_value
+        )
         updated_at = _utc_iso(source_updated_at, field="sourceUpdatedAt") or utc_now()
         due_value = _utc_iso(due_at, field="dueAt")
         metadata = dict(caliber_meta or {})
@@ -256,7 +276,7 @@ class FuxiTodoClient:
             "sourceTodoId": todo_id,
             "title": title,
             "severity": severity_value,
-            "itemType": "TODO",
+            "itemType": item_type_value,
             "category": category_value,
             "sourceStatus": "OPEN",
             "sourceUpdatedAt": updated_at,
@@ -267,10 +287,16 @@ class FuxiTodoClient:
             "ownerRef": str(owner_ref or "").strip() or None,
             "ownerName": str(owner_name or "").strip() or None,
             "evidence": _evidence(evidence),
-            "activity": [{"at": updated_at, "text": "智能分析生成任务令"}],
+            "activity": [{
+                "at": updated_at,
+                "text": "智能分析生成风险条目"
+                if item_type_value == "RISK"
+                else "智能分析生成任务令",
+            }],
             "caliberMeta": metadata or None,
         }
-        batch_ref = f"analytics-{todo_id}-{uuid.uuid4().hex[:12]}"
+        batch_prefix = "analytics-risk" if item_type_value == "RISK" else "analytics"
+        batch_ref = f"{batch_prefix}-{todo_id}-{uuid.uuid4().hex[:12]}"
         result = self._post("/source/todo-batches", {
             "batchRef": batch_ref[:200],
             "items": [item],
@@ -285,6 +311,16 @@ class FuxiTodoClient:
             "skipped": int(result.get("skipped") or 0),
             "errors": _public_error(errors),
         }
+
+    def create_todo(self, **kwargs: Any) -> dict[str, Any]:
+        """Backward-compatible TODO entry point."""
+        kwargs["item_type"] = "TODO"
+        return self.create_item(**kwargs)
+
+    def create_risk(self, **kwargs: Any) -> dict[str, Any]:
+        """Create a Fuxi RISK item through the same source-owned mirror."""
+        kwargs["item_type"] = "RISK"
+        return self.create_item(**kwargs)
 
     def update_status(
         self,

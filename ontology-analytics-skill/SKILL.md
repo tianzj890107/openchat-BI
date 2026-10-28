@@ -49,14 +49,15 @@ headers: {}
 | `ChartGenerateMultiDim` | 多维可切换图表 |
 | `TableGenerate` | 结构化表格 |
 | `CanvasGenerate` | 把结论、图表、表格和口径拼成整页自包含 HTML，返回 `Artifact URL` |
-| `TaskOrderCreate` | 把用户确认的一条行动建议推送到 Fuxi 风险待办；只在用户点击后由服务端执行 |
+| `RiskItemCreate` | 把用户确认的一张已观察风险卡推送到 Fuxi（`itemType=RISK`）；只在用户点击后执行 |
+| `TaskOrderCreate` | 把用户确认的一条处置建议推送到 Fuxi 待办（`itemType=TODO`）；只在用户点击后执行 |
 | `OutputGateCheck` | 交付前检查证据、预测披露、图表、只读 SQL、对账和最终 HTML 产物 |
 | `Process360Route` | Process360 S00：P01-P18 SOP 与 SC01-SC05 场景确定性路由 |
 | `Process360Search` | Process360 S01：指标/业务对象双入口检索与场景归属 |
 | `Process360Context` | Process360 S02：装配流程、活动、角色、规则、证据和缺口 |
 | `Process360Query` | Process360 S03：五场景受控只读 PostgreSQL 取数；不接受 SQL |
 | `Process360Analyze` | Process360 S04：异常、影响、候选原因和证据缺口 |
-| `Process360Draft` | Process360 S05：服务端可信方案与任务令草稿（不含手机号） |
+| `Process360Draft` | Process360 S05：服务端可信风险卡、方案与任务令草稿（不含手机号） |
 | `Process360Verify` | Process360 S07：交付验收与效果复验计划 |
 | `Process360Plan` | S00 多目标拆分：DAG、依赖、步骤版本和共享预算 |
 | `Process360Explore` | S08 受控自主探索：服务端工具白名单、调用去重与 path_gap |
@@ -71,8 +72,9 @@ headers: {}
 `principalId/tenantId/grantKind/grantScope/authorizationVersion/conversationId/requestId/surface`。
 工具入参中出现 `principal`、`tenantId`、`canDispatch` 等身份字段会直接报错，模型既不能填写
 也不能覆盖身份。POC 仍可使用服务端配置的只读身份，但下发权限必须通过
-`PROCESS360_POC_DISPATCH` 单独开启。`TaskOrderCreate` 的 Process360 草稿模式还需要
-`draft_id`、`draft_hash`、`action_id`，接收人由服务端映射解析，不从模型或页面读取。
+`PROCESS360_POC_DISPATCH` 单独开启。`RiskItemCreate` 与 `TaskOrderCreate` 的 Process360
+草稿模式都需要 `draft_id`、`draft_hash`、`action_id`，接收人由服务端映射解析，不从模型
+或页面读取；风险卡不能改用待办工具下发。
 
 ## 默认交付契约
 
@@ -101,8 +103,8 @@ headers: {}
    各一行。
 
 生成任务草稿属于分析交付的一部分，不等于下发。只有用户点击某条行动建议的
-“发送任务令/转督办”后，宿方才调用 `TaskOrderCreate`；模型不得在生成结论时自动发送，
-也不得猜测手机号。
+“推送风险”后宿方才调用 `RiskItemCreate`，“发送任务令/转督办”后宿方才调用
+`TaskOrderCreate`；模型不得在生成结论时自动发送，也不得猜测手机号。
 
 ### 交付类型与行动卡
 
@@ -121,8 +123,9 @@ headers: {}
 Process360Plan → Query/Analyze → Process360Draft → CanvasGenerate → OutputGateCheck
 ```
 
-`Process360Draft` 返回的 `canvasActionBlock` 已是 `kind=actions` 块，应原样放入
-`CanvasGenerate.blocks`；也可使用 `draft.canvasActions` 作为 `params.items`。生成草稿后
+`Process360Draft` 返回的 `canvasActionBlock` 已合并 `riskActions` 与 `canvasActions`，
+是可直接使用的 `kind=actions` 块；应原样放入 `CanvasGenerate.blocks`。若手工组装，风险卡
+来自 `draft.riskActions`，处置待办来自 `draft.canvasActions`，两者不能互相替代。生成草稿后
 不要在正文里用一段文字替代行动卡。草稿因证据、权限或责任人不足而 blocked 时，传入
 `{"kind":"actions","params":{"items":[],"reason":"…","gaps":[…]}}`，页面会显示
 “尚不能生成可下发任务”及缺口，而不是让按钮无声消失。
@@ -251,11 +254,16 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
 责任视角、时间节点、完成标准、监控指标和复盘机制。证据不足时先补取数或明确说明
 限制，不要编造根因、预测数字或执行结果。
 
-### 行动建议与任务令
+### 风险卡、行动建议与任务令
 
 - L3 及以上的行动建议除正文外，必须在 `CanvasGenerate` 的 `kind=actions` 块中
   提供结构化条目；每条至少包含稳定 `id`、`title`、`content` 和 `evidence`。
   Process360 的 P10/P11/P12 交付必须先调用 `Process360Draft`，不能只写文字建议。
+- 有证据支持且已观察到的风险使用 `item_type=RISK` 和 `dispatchTool=RiskItemCreate`。
+  卡片必须包含风险标题、已观察事实、影响、等级依据、业务范围、证据和责任人。候选原因
+  必须标为“待验证，不是已确认根因”，不得作为已确认风险事实推送。
+- 处置任务使用 `item_type=TODO` 和 `dispatchTool=TaskOrderCreate`。风险条目与待办条目
+  必须使用不同 `actionId`、`sourceTodoId` 和幂等执行记录。
 - 可选字段：`severity`（`CRITICAL/HIGH/MEDIUM/LOW`）、`due_at`（UTC `Z` 结尾）、
   `owner_ref`、`owner_name`、`category`。严重程度缺省 `MEDIUM`。
 - Process360 草稿生成的行动卡必须原样带上 `draftId`、`draftHash`、`runId`、
@@ -270,9 +278,10 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
   草稿不存在/哈希不符/不属于该草稿时 reject；草稿 blocked 时必须由计划记录一次 Draft
   尝试，并在 HTML 中用空的 actions 块写明原因，才允许交付分析结论。要求行动交付时，
   普通“分析建议”不能替代可信行动卡。
-- 点击“发送任务令”时，页面只把草稿引用和当前卡片展示字段 POST 到主服务
+- 点击“推送风险”或“发送任务令”时，页面只把草稿引用和当前卡片展示字段 POST 到主服务
   `/api/process360/task-orders`；服务端解析身份、映射接收人、回读或按需补建草稿并调用
-  统一执行服务。临时模式的接收人取服务端唯一配置，页面仍不得提交手机号。
+  统一执行服务，并按草稿条目的 `item_type` 选择 RISK/TODO 通道。临时模式的接收人取
+  服务端唯一配置，页面仍不得提交手机号。
   只有显式设置 `window.PROCESS360_TASK_ORDER_TRANSPORT='host'` 时才走 Fuxi 宿主桥接，
   HTTP 异常不会自动切换传输方式，避免服务端已执行后重复发送。
 - 统一回执：仅当服务端状态明确成功、`accepted=true`、回执 `ok=true` 且 `applied+skipped>0`
@@ -285,11 +294,12 @@ L4 输出 2–4 个可比较方案（效果、成本、风险、周期）和推�
   `PROCESS360_RECIPIENT_MAP` 解析接收人，未配置时明确 blocked。接收人映射版本会冻结进
   执行记录，重试时映射变化会阻断，避免把任务发给另一批人。Canvas 生成阶段会拒绝包含
   手机号字段或 11 位手机号文本的行动条目。
-- `TaskOrderCreate` 只写 Fuxi 风险待办，不负责 IM；接收人为空会被工具拒绝，
-  因为 Fuxi 契约中空数组表示全员广播。Fuxi 返回的 `applied/skipped/errors` 原样保存
-  为回执；没有进度查询接口，不能把本地执行记录称为 Fuxi 已处理完成。
-- `TaskOrderCreate` 的所有分支（Process360 草稿、旧版普通行动和重试）都先检查服务端
-  `canDispatch`；无下发权限时不会调用 Fuxi 客户端。
+- `RiskItemCreate` 只推送有证据的已观察风险，`TaskOrderCreate` 只创建处置待办；两者都
+  不负责 IM。接收人为空会被工具拒绝，因为 Fuxi 契约中空数组表示全员广播。Fuxi 返回的
+  `applied/skipped/errors` 原样保存为回执；没有进度查询接口，不能把本地执行记录称为
+  Fuxi 已处理完成。风险推送成功也不代表风险解除。
+- `RiskItemCreate`/`TaskOrderCreate` 的所有分支都先检查服务端 `canDispatch`；无下发权限
+  时不会调用 Fuxi 客户端。MCP 工具与卡片 `itemType` 不匹配时服务端阻断。
 
 ## 术语、消歧与澄清
 

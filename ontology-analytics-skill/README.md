@@ -41,9 +41,9 @@ url: http://<bi-agent-host>/api/mcp
 headers: {}
 ```
 
-连接后，Fuxi 工具面板会显示 32 个真实工具，包括 `AnalysisRoute`、
+连接后，Fuxi 工具面板会显示 33 个真实工具，包括 `AnalysisRoute`、
 `MetricFactQuery`、`ChartGenerate`、`TableGenerate`、`CanvasGenerate`、
-`TaskOrderCreate`、`OutputGateCheck`，以及 `Process360Route/Search/Context/Query/
+`RiskItemCreate`、`TaskOrderCreate`、`OutputGateCheck`，以及 `Process360Route/Search/Context/Query/
 Analyze/Draft/Verify/Plan/Explore/Compare/Structure/ProcessFlow/Progress/Forecast/
 Solutions`。不会显示 `AnalysisRun`、`AskUser`、`TodoWrite`、原始 SQL 或表结构工具。
 
@@ -64,9 +64,10 @@ AnalysisRoute
 
 行动建议在 Canvas 中以 `kind=actions` 输出。Process360 卡片携带
 `draftId/draftHash/runId/actionId/scenario/approvalStatus/expiresAt/dispatchTool`；
-用户点击“发送任务令”后，Fuxi 宿主补 `principal` 和当前用户手机号，直接调用
-`TaskOrderCreate` 写入 Fuxi 风险待办。服务端回读可信草稿、单条消费并按
-`idempotency_key` 幂等重试；HTML 不含手机号或凭据。
+风险卡带 `itemType=RISK`，用户点击“推送风险”后调用 `RiskItemCreate`；处置卡带
+`itemType=TODO`，用户点击“发送任务令”后调用 `TaskOrderCreate`。服务端回读可信草稿、
+单条消费并按类型隔离的幂等键重试；风险使用独立 `analytics-risk-*` 来源 ID。HTML 不含
+手机号或凭据，风险推送成功也不表示风险已解除。
 
 名称无法解析时才增加 `Ontology-SemanticQuery` / `Ontology-TermDisambiguate`；
 指标口径有疑问时才增加 `MetricCalculation`。不要每轮先堆叠元数据查询。

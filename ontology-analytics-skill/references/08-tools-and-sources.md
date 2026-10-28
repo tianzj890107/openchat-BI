@@ -34,7 +34,8 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 | `ChartGenerateMultiDim` | 多维可切换图表 | 与 Web 多维图表参数一致 |
 | `TableGenerate` | 结构化表格 | 与 Web 表格参数一致 |
 | `CanvasGenerate` | 整页自包含 HTML，返回 `Artifact URL` | `title`、`conclusion`、`source_note`、`blocks` |
-| `TaskOrderCreate` | 用户点击后把一条行动建议直接推送到 Fuxi 风险待办 | Process360：`draft_id`、`draft_hash`、`action_id`，可选 `idempotency_key`/`retry`；身份与接收人均由服务端解析。旧版通用：`action_id`、`title`、`content`、`recipients_raw` |
+| `RiskItemCreate` | 用户点击后把有证据的已观察风险推送到 Fuxi（`itemType=RISK`） | Process360 风险卡：`draft_id`、`draft_hash`、`action_id`，可选 `retry`；不接受旧版无草稿调用，身份与接收人由服务端解析 |
+| `TaskOrderCreate` | 用户点击后把一条处置建议推送到 Fuxi 待办（`itemType=TODO`） | Process360：`draft_id`、`draft_hash`、`action_id`，可选 `idempotency_key`/`retry`；身份与接收人均由服务端解析。旧版通用：`action_id`、`title`、`content`、`recipients_raw` |
 | `OutputGateCheck` | 五道交付闸门与最终产物登记 | 正式报告必填 `canvasId`、`artifactHash`；`deliveryKind=fact_answer` 的纯文字事实回答可免 Canvas；可选 `answer`、`question`、`sql`、`chart`、`reconcile`、`claims`、`planId`、`queryId`、`runId` |
 | `Process360Route/Search/Context/Query/Analyze/Draft/Verify` | SC01-SC05 的 S00-S07 主链 | 身份由服务端注入；Query/Analyze/Draft/Verify 等业务步骤必须带 `planId + stepId`；`Query` 返回 `queryId`，后续步骤可用 `queryId` 复用同一结果 |
 | `Process360Plan` | S00 多目标 DAG、依赖、步骤版本、共享预算 | `question`、可选预算 |
@@ -70,11 +71,13 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 7. 交付闸门：`OutputGateCheck` 返回 `pass` 才能交付；`warn` 要披露，
    `reject` 要修正或拒答。必须传最终 `canvasId/artifactHash`；缺失即 reject，不得把中间
    模型回答当作最终报告。
-8. 任务令：只有用户点击行动卡后才调用 `TaskOrderCreate`。Process360 卡片携带
-   `draftId/draftHash/actionId/runId/scenario/approvalStatus/expiresAt/dispatchTool`；
+8. 风险/任务令：只有用户点击卡片后才调用对应工具。风险卡使用 `RiskItemCreate`，处置卡
+   使用 `TaskOrderCreate`。Process360 卡片携带
+   `draftId/draftHash/actionId/itemType/runId/scenario/approvalStatus/expiresAt/dispatchTool`；
    主服务按服务端身份和接收人映射调用，服务端从草稿回读标题/正文，不采用
    调用方改写。手机号只在服务端映射中配置，技能和模型不得猜测；空接收人会被拒绝。
-   页面与 MCP 共用 `tenant:draftId:actionId` 幂等键；网络结果不确定返回 `unknown`，
+   页面与 MCP 共用按 `itemType` 隔离的幂等键（风险额外使用独立 `analytics-risk-*`
+   `sourceTodoId`）；网络结果不确定返回 `unknown`，
    用同一身份查询或显式 `retry=true` 安全重试，成功回执不得重发。回执必须同时满足
    `ok=true` 且 `applied+skipped>0`，不能仅凭 `sourceTodoId` 或 HTTP 200 判成功。
 9. Fuxi 契约只有 `POST /source/todo-batches` 和 `POST /source/todo-status-events`；

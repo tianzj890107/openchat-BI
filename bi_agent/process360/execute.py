@@ -16,6 +16,7 @@ from ..integrations.fuxi_todo import (
     FuxiTodoClient,
     FuxiTodoError,
     make_source_todo_id,
+    normalize_item_type,
     normalize_recipients,
     normalize_severity,
 )
@@ -68,12 +69,14 @@ def send_task_order(
         raise ValueError("action_id is required")
     if not str(canvas_id or "").strip() and not str(source_todo_id or "").strip():
         raise ValueError("canvas_id or an explicitly scoped source_todo_id is required")
-    todo_id = source_todo_id or make_source_todo_id(action, canvas_id)
+    item_type = normalize_item_type(task.get("item_type") or task.get("itemType"))
+    todo_id = source_todo_id or make_source_todo_id(action, canvas_id, item_type)
     normalized_recipients = normalize_recipients(recipients)
     severity = normalize_severity(str(task.get("severity") or "MEDIUM"))
     client = client or FuxiTodoClient()
+    create = client.create_risk if item_type == "RISK" else client.create_todo
     try:
-        result = client.create_todo(
+        result = create(
             title=title,
             content=content,
             recipients_raw=normalized_recipients,
@@ -81,6 +84,7 @@ def send_task_order(
             source_todo_id=todo_id,
             canvas_id=canvas_id,
             severity=severity,
+            category=task.get("category") or None,
             due_at=task.get("dueAt") or None,
             owner_ref=task.get("ownerRef") or None,
             owner_name=task.get("ownerName") or None,
@@ -136,6 +140,7 @@ def send_task_order(
             task=dict(task),
         )
     ok = bool(result.get("ok"))
+    subject = "风险条目" if item_type == "RISK" else "待办"
     return envelope(
         "S06",
         "ok" if ok else "blocked",
@@ -147,15 +152,22 @@ def send_task_order(
         else [
             gap(
                 "FUXI_TODO_REJECTED",
-                "Fuxi 待办被拒绝",
-                needed="核对回执错误",
-                impact="任务令未创建",
+                f"Fuxi {subject}被拒绝",
+                needed="核对 Fuxi 回执错误",
+                impact=f"本次{subject}未创建",
                 source="runtime",
             )
         ],
-        limitations=["只创建 Fuxi 待办；不发送 IM，不执行发运/签单等业务动作。"],
-        next_steps=["在 Fuxi 待办查看回执与执行状态", "按复验计划在 S07 验收"],
+        limitations=[
+            "只创建 Fuxi 风险/待办条目；不发送 IM，不执行发运/签单等业务动作。",
+            "推送成功只表示 Fuxi 已接收，不代表风险已解除或任务已完成。",
+        ],
+        next_steps=[
+            "在 Fuxi 查看回执与执行状态",
+            "风险解除仍需后续证据和复验；任务完成需执行回执",
+        ],
         receipt=result,
         task=dict(task),
+        itemType=item_type,
         recipientsProvidedByHost=len(normalized_recipients),
     )

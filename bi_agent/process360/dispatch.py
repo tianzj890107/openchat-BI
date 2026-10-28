@@ -26,6 +26,7 @@ from typing import Any, Mapping
 from ..integrations.fuxi_todo import (
     FuxiTodoClient,
     make_source_todo_id,
+    normalize_item_type,
     normalize_recipients,
 )
 from .execute import _assert_no_phone
@@ -158,6 +159,9 @@ def _canvas_action(action: Mapping[str, Any]) -> dict[str, Any]:
     if severity not in {"CRITICAL", "HIGH", "MEDIUM", "LOW"}:
         severity = "MEDIUM"
     due_at = str(action.get("dueAt") or action.get("due_at") or "").strip()[:64]
+    item_type = normalize_item_type(
+        action.get("item_type") or action.get("itemType") or "TODO"
+    )
     _assert_no_phone(
         json.dumps(
             [action_id, title, content, evidence, owner_ref, owner_name, scenario, due_at],
@@ -174,10 +178,18 @@ def _canvas_action(action: Mapping[str, Any]) -> dict[str, Any]:
         "owner_ref": owner_ref,
         "owner_name": owner_name,
         "scenario": scenario,
+        "item_type": item_type,
         "source": "boulderai-anaylize-todo",
         "category": str(action.get("category") or "智能分析任务令").strip()[:80],
         "task_template": str(action.get("taskTemplate") or action.get("task_template") or "").strip()[:80],
-        "metadata": {"temporaryCanvasDispatch": True},
+        "metadata": {
+            **(
+                action.get("metadata")
+                if isinstance(action.get("metadata"), dict)
+                else {}
+            ),
+            "temporaryCanvasDispatch": True,
+        },
     }
 
 
@@ -187,20 +199,27 @@ def _temporary_draft_id(identity: PrincipalScope, action: Mapping[str, Any]) -> 
         "principal": identity.user_id,
         "action": {
             key: action.get(key)
-            for key in ("id", "title", "content", "evidence", "scenario", "owner_ref", "due_at")
+            for key in (
+                "id", "title", "content", "evidence", "scenario", "owner_ref",
+                "due_at", "item_type",
+            )
         },
     }
     return "canvas-" + digest(material)[:32]
 
 
-def execution_key(tenant_id: str, draft_id: str, action_id: str) -> str:
+def execution_key(
+    tenant_id: str, draft_id: str, action_id: str, item_type: str = "TODO"
+) -> str:
     """Stable business idempotency key; requestId is tracing only."""
     tenant = str(tenant_id or "").strip()
     draft = str(draft_id or "").strip()
     action = str(action_id or "").strip()
     if not tenant or not draft or not action:
         raise ValueError("tenantId, draftId and actionId are required for dispatch")
-    return f"{tenant}:{draft}:{action}"
+    kind = normalize_item_type(item_type)
+    suffix = ":risk" if kind == "RISK" else ""
+    return f"{tenant}:{draft}:{action}{suffix}"
 
 
 def recipient_fingerprint(recipients: list[str]) -> str:
@@ -284,6 +303,7 @@ def dispatch_action(
     principal: Mapping[str, Any] | None = None,
     retry: bool = False,
     client: FuxiTodoClient | None = None,
+    item_type: str = "",
 ) -> dict[str, Any]:
     """Single execution path used by Canvas HTTP and MCP TaskOrderCreate."""
     context = active_request_context()
@@ -336,6 +356,39 @@ def dispatch_action(
             request_id=request_id,
         )
     try:
+        action_item_type = normalize_item_type(
+            action.get("item_type") or action.get("itemType") or "TODO"
+        )
+        requested_item_type = (
+            normalize_item_type(item_type) if str(item_type or "").strip() else action_item_type
+        )
+    except ValueError as exc:
+        return envelope(
+            "blocked",
+            message=str(exc),
+            accepted=False,
+            draft_id=draft_id,
+            action_id=action_id,
+            request_id=request_id,
+        )
+    if requested_item_type != action_item_type:
+        return envelope(
+            "blocked",
+            message="下发工具与卡片类型不一致；风险卡使用 RiskItemCreate，处置待办使用 TaskOrderCreate",
+            accepted=False,
+            draft_id=draft_id,
+            action_id=action_id,
+            request_id=request_id,
+            gaps=[{
+                "code": "DISPATCH_ITEM_TYPE_MISMATCH",
+                "name": "下发工具与卡片类型不一致",
+                "needed": "按卡片 dispatchTool 选择 RiskItemCreate 或 TaskOrderCreate",
+                "impact": "未调用 Fuxi",
+                "severity": "blocking",
+                "source": "runtime",
+            }],
+        )
+    try:
         resolved_recipients = (
             normalize_recipients(list(recipients))
             if recipients is not None
@@ -356,10 +409,13 @@ def dispatch_action(
         action_id=action_id,
         recipients=resolved_recipients,
         principal=identity.to_dict(),
-        idempotency_key=execution_key(identity.tenant_id, draft_id, action_id),
+        idempotency_key=execution_key(
+            identity.tenant_id, draft_id, action_id, action_item_type
+        ),
         recipient_hash=recipient_fingerprint(resolved_recipients),
         retry=retry,
         client=client,
+        item_type=action_item_type,
     )
     status = str(result.get("status") or "").lower()
     receipt = result.get("receipt") if isinstance(result.get("receipt"), dict) else None
@@ -369,7 +425,7 @@ def dispatch_action(
     if status in {"ok", "succeeded"} and applied:
         response = envelope(
             "ok",
-            message="任务令已创建",
+            message="风险条目已推送" if action_item_type == "RISK" else "任务令已创建",
             accepted=True,
             receipt=receipt,
             draft_id=draft_id,
@@ -394,10 +450,16 @@ def dispatch_action(
             message = "请求可能已送达 Fuxi，执行结果待确认"
         elif status == "rejected" or "FUXI_TODO_REJECTED" in gap_codes:
             state = "rejected"
-            message = _message(gaps, "Fuxi 明确拒绝任务令")
+            message = _message(
+                gaps,
+                "Fuxi 明确拒绝风险条目" if action_item_type == "RISK" else "Fuxi 明确拒绝任务令",
+            )
         else:
             state = "blocked"
-            message = _message(gaps, "任务令未创建")
+            message = _message(
+                gaps,
+                "风险条目未推送" if action_item_type == "RISK" else "任务令未创建",
+            )
         response = envelope(
             state,
             message=message,
@@ -412,10 +474,11 @@ def dispatch_action(
         response["idempotentReplay"] = True
     if result.get("executionId"):
         response["executionId"] = result.get("executionId")
+    response["itemType"] = action_item_type
     response["sourceTodoId"] = (
         (receipt or {}).get("sourceTodoId")
         or result.get("sourceTodoId")
-        or make_source_todo_id(action_id, draft_id)
+        or make_source_todo_id(action_id, draft_id, action_item_type)
     )
     return response
 

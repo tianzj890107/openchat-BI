@@ -15,6 +15,7 @@ web application.
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import html as html_lib
 import importlib.util
 import hashlib
@@ -81,7 +82,9 @@ Executor = Callable[[dict[str, Any], str], str]
 
 #: Business tools whose identity is always resolved by the server.
 PROCESS360_TOOL_NAMES: frozenset[str] = frozenset(process360_tools.EXECUTORS)
-SERVER_PRINCIPAL_TOOLS: frozenset[str] = PROCESS360_TOOL_NAMES | {"TaskOrderCreate"}
+SERVER_PRINCIPAL_TOOLS: frozenset[str] = PROCESS360_TOOL_NAMES | {
+    "RiskItemCreate", "TaskOrderCreate",
+}
 PLAN_REQUIRED_TOOLS: frozenset[str] = frozenset({
     "Process360Query",
     "Process360Analyze",
@@ -276,6 +279,17 @@ TASK_ORDER_CREATE_SCHEMA: dict[str, Any] = {
     },
 }
 
+RISK_ITEM_CREATE_SCHEMA: dict[str, Any] = {
+    **deepcopy(TASK_ORDER_CREATE_SCHEMA),
+    "name": "RiskItemCreate",
+    "description": (
+        "把用户确认的一张已观察风险卡推送到 Fuxi（itemType=RISK）。只在用户点击"
+        "“推送风险”后调用，不在分析阶段自动推送。必须传 draft_id、draft_hash、"
+        "action_id；风险事实、候选原因和证据从服务端可信草稿回读。候选原因不得"
+        "被改写成已确认根因。recipients_raw 不能为空，手机号由可信宿主提供。"
+    ),
+}
+
 #: Tools shown to Fuxi.  Deliberately excludes AnalysisRun (the old one-call
 #: wrapper), TodoWrite, AskUser and every raw-SQL/schema tool.
 DEFAULT_EXPOSED_TOOLS: tuple[str, ...] = (
@@ -294,6 +308,7 @@ DEFAULT_EXPOSED_TOOLS: tuple[str, ...] = (
     "ChartGenerateMultiDim",
     "TableGenerate",
     "CanvasGenerate",
+    "RiskItemCreate",
     "TaskOrderCreate",
     "OutputGateCheck",
     "Process360Route",
@@ -313,7 +328,7 @@ DEFAULT_EXPOSED_TOOLS: tuple[str, ...] = (
     "Process360Solutions",
 )
 
-WRITE_TOOLS = frozenset({"TaskOrderCreate"})
+WRITE_TOOLS = frozenset({"RiskItemCreate", "TaskOrderCreate"})
 
 #: Even an environment override may not expose these.
 MCP_DENIED_TOOLS: frozenset[str] = frozenset({
@@ -397,6 +412,7 @@ def _tool_schemas(source: Any) -> dict[str, dict[str, Any]]:
     schemas["AnalysisRoute"] = ANALYSIS_ROUTE_SCHEMA
     schemas["OutputGateCheck"] = OUTPUT_GATE_SCHEMA
     schemas["TaskOrderCreate"] = TASK_ORDER_CREATE_SCHEMA
+    schemas["RiskItemCreate"] = RISK_ITEM_CREATE_SCHEMA
     for schema in process360_tools.SPECS:
         schemas[str(schema["name"])] = schema
     return schemas
@@ -564,7 +580,9 @@ def _check_action_delivery(
             elif not recommendation_only:
                 warnings.append(f"action_card_without_trusted_draft:{action_id}")
             continue
-        if str(item.get("dispatchTool") or "") != "TaskOrderCreate":
+        dispatch_tool = str(item.get("dispatchTool") or "")
+        allowed_tools = {"TaskOrderCreate": "TODO", "RiskItemCreate": "RISK"}
+        if dispatch_tool not in allowed_tools:
             if strict_draft:
                 hard.append(f"action_dispatch_tool_invalid:{action_id}")
             else:
@@ -581,11 +599,32 @@ def _check_action_delivery(
                 hard.append(f"action_draft_hash_mismatch:{action_id}")
             else:
                 warnings.append(f"action_draft_hash_mismatch:{action_id}")
-        if str(item.get("actionId") or "") not in (draft.get("actions") or {}):
+        draft_actions = draft.get("actions") or {}
+        if str(item.get("actionId") or "") not in draft_actions:
             if strict_draft:
                 hard.append(f"action_not_in_draft:{action_id}")
             else:
                 warnings.append(f"action_not_in_draft:{action_id}")
+        else:
+            draft_action = draft_actions[str(item.get("actionId") or "")]
+            draft_type = str(
+                draft_action.get("item_type")
+                or draft_action.get("itemType")
+                or "TODO"
+            ).upper()
+            declared_type = str(
+                item.get("itemType") or item.get("item_type") or draft_type
+            ).upper()
+            if declared_type != draft_type:
+                if strict_draft:
+                    hard.append(f"action_item_type_mismatch:{action_id}")
+                else:
+                    warnings.append(f"action_item_type_mismatch:{action_id}")
+            if dispatch_tool in allowed_tools and allowed_tools[dispatch_tool] != draft_type:
+                if strict_draft:
+                    hard.append(f"action_dispatch_tool_type_mismatch:{action_id}")
+                else:
+                    warnings.append(f"action_dispatch_tool_type_mismatch:{action_id}")
         if item.get("runId") and str(draft.get("run_id") or "") != str(item.get("runId") or ""):
             if strict_draft:
                 hard.append(f"action_run_mismatch:{action_id}")
@@ -726,19 +765,22 @@ def _gate_executor() -> Executor:
     return run
 
 
-def _task_order_executor() -> Executor:
+def _dispatch_item_executor(item_type: str = "TODO") -> Executor:
+    expected_type = "RISK" if str(item_type).upper() == "RISK" else "TODO"
+
     def denied(action_id: str, request_id: str) -> str:
+        noun = "风险推送" if expected_type == "RISK" else "任务下发"
         result = envelope(
             "blocked",
-            message="当前用户无任务下发权限",
+            message=f"当前用户无{noun}权限",
             accepted=False,
             action_id=action_id,
             request_id=request_id,
             gaps=[{
                 "code": "DISPATCH_NOT_AUTHORIZED",
-                "name": "当前用户无任务下发权限",
+                "name": f"当前用户无{noun}权限",
                 "needed": "宿主授予 canDispatch 或交由有权限人员点击",
-                "impact": "未创建待办",
+                "impact": "未创建风险条目" if expected_type == "RISK" else "未创建待办",
                 "severity": "blocking",
                 "source": "host",
             }],
@@ -764,8 +806,13 @@ def _task_order_executor() -> Executor:
                 principal=context.principal.to_dict(),
                 retry=bool(params.get("retry")),
                 client=FuxiTodoClient(),
+                item_type=expected_type,
             )
             return json.dumps(result, ensure_ascii=False, indent=2)
+        if expected_type == "RISK":
+            raise ValueError(
+                "RiskItemCreate requires draft_id, draft_hash and action_id from Process360Draft"
+            )
         meta = params.get("caliber_meta") if isinstance(params.get("caliber_meta"), dict) else {}
         if (
             str(params.get("source") or "") == "boulderai-anaylize-todo"
@@ -817,6 +864,14 @@ def _task_order_executor() -> Executor:
             )
         return json.dumps(result, ensure_ascii=False, indent=2)
     return run
+
+
+def _task_order_executor() -> Executor:
+    return _dispatch_item_executor("TODO")
+
+
+def _risk_item_executor() -> Executor:
+    return _dispatch_item_executor("RISK")
 
 
 def _plan_block(tool: str, issue: Mapping[str, Any], *, plan_id: str = "", step_id: str = "") -> str:
@@ -938,6 +993,7 @@ def _build_executors(source: Any, build_doris: Callable[..., Any]) -> dict[str, 
     executors["CanvasGenerate"] = canvas_factory()
     executors["AnalysisRoute"] = _route_executor()
     executors["OutputGateCheck"] = _gate_executor()
+    executors["RiskItemCreate"] = _risk_item_executor()
     executors["TaskOrderCreate"] = _task_order_executor()
     return executors
 
@@ -964,6 +1020,7 @@ class McpRuntime:
         source_free: dict[str, Executor] = {
             "AnalysisRoute": _route_executor(),
             "OutputGateCheck": _gate_executor(),
+            "RiskItemCreate": _risk_item_executor(),
             "TaskOrderCreate": _task_order_executor(),
             **_render_executors(),
             **process360_tools.EXECUTORS,
@@ -1133,6 +1190,8 @@ class McpRuntime:
                     "Process360 问题先调用 Process360Route，按 SOP 选择步骤：问数用 Process360Query 后停止，"
                     "诊断用 Process360Analyze，仅明确要求草稿时用 Process360Draft；复验用 "
                     "Process360Verify。任务令只用 TaskOrderCreate，接收手机号由 Fuxi 宿主提供。"
+                    "已观察风险卡用 RiskItemCreate 推送风险，处置任务用 TaskOrderCreate；"
+                    "候选原因必须保持待验证，风险推送成功不等于风险解除。"
                     "不要调用 AnalysisRun、原始 SQL、TodoWrite 或 AskUser；"
                     "歧义时直接把选项问用户。CanvasGenerate 返回的 Artifact URL 是最终交付链接。"
                 ),
@@ -1395,13 +1454,19 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
         service = process360_tools.Process360Service(cwd=get_cwd() or os.getcwd())
         context = http_context(request, surface="canvas")
         draft = service.store.get_draft(draft_id)
+        action = ((draft or {}).get("actions") or {}).get(action_id) or {}
+        item_type = str(
+            action.get("item_type") or action.get("itemType") or "TODO"
+        ).upper()
         owned = bool(
             draft
             and draft.get("tenant") == context.tenant_id
             and draft.get("principal") == context.principal_id
         )
         record = (
-            service.store.get_execution(execution_key(context.tenant_id, draft_id, action_id))
+            service.store.get_execution(
+                execution_key(context.tenant_id, draft_id, action_id, item_type)
+            )
             if owned else None
         )
         if not record:
@@ -1413,6 +1478,7 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
                 "receipt": None,
                 "draftId": draft_id,
                 "actionId": action_id,
+                "itemType": item_type,
                 "requestId": "",
                 "retryable": False,
             }
@@ -1436,10 +1502,10 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
             "status": mapped,
             "accepted": mapped == "ok",
             "message": {
-                "ok": "任务令已创建",
+                "ok": "风险条目已推送" if item_type == "RISK" else "任务令已创建",
                 "unknown": "请求可能已送达，执行结果待确认",
-                "rejected": "Fuxi 明确拒绝任务令",
-                "blocked": "任务令未创建",
+                "rejected": "Fuxi 明确拒绝风险条目" if item_type == "RISK" else "Fuxi 明确拒绝任务令",
+                "blocked": "风险条目未推送" if item_type == "RISK" else "任务令未创建",
             }.get(mapped, "执行结果待确认"),
             "receipt": response.get("receipt"),
             "gaps": gaps,
@@ -1447,6 +1513,7 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
             "retryHint": "用同一草稿和建议安全重试；不会生成新的幂等键" if retryable else "",
             "draftId": draft_id,
             "actionId": action_id,
+            "itemType": item_type,
             "requestId": record.get("request_id") or "",
         }
 
