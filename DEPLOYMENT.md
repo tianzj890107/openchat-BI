@@ -1335,3 +1335,34 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 验证：Cockpit 聚焦 Python 测试 147 项通过；Node 测试 48 项通过；新增用例覆盖真实证据解析、
   PostgreSQL 补查整页发布、无整页快照的卡片维护、手工刷新租约去重、自定义范围执行、轮询
   失败续跑与卡片版本原位替换。
+
+### Cockpit 初始化重复 loading 修复上线（2026-10-29 18:48）
+
+- 代码提交：`71070ee789c9c99355cef8eecbbf564a302f0981`（分支
+  `feature/cockpit-risk-dispatch-closure`）。ProUI 初始化时回放默认筛选（`YEAR`、日期等）不再
+  被当成用户切换口径：初始化阶段只记录状态，第一次真实用户操作后才允许触发 `changeScope()`；
+  节点选择、头盔图选择继续作为视图状态，不进入数据查询范围。
+- 防止宿主重建循环：整页快照增加 `id`／页面／`uiScope` 一致性校验和幂等安装；同一页面、同一
+  范围、同一快照版本不再重复递增 `boardRevision` 重挂看板。快照缺失恢复最多每 30 秒一次，
+  普通重复范围请求在 1.2 秒内合并；范围准备失败会进入明确错误态，不再无限加载。
+- AI 插槽补齐终止态：服务端没有该环节可用卡片时显示“该环节尚无可用分析结果，服务端正在补充
+  当前口径数据”，不再保留无限骨架屏；有已发布卡片的插槽继续直接展示。
+- 8765 release：
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-71070ee-20261029-1848`，
+  PID `4187781`。同提交实例先在 `127.0.0.1:18765` 预检 `/healthz`、
+  `/api/cockpit/data/config`、两种角色各 15/15 张 AI 卡片后切换；`.env`、`.venv` 和
+  `dataset` 继续指向旧 release 的共享副本，历史分析库未复制、清空或迁移；旧 release
+  `process360-cockpit-464ae6c-20261029-1807` 完整保留。预检进程已停止，`18765` 不再监听。
+- 8876 静态站：`commit=71070ee789c9c99355cef8eecbbf564a302f0981`、
+  `assetVersion=858ed16fc8bac3de386e`、资源前缀
+  `/static/cockpit/releases/858ed16fc8bac3de386e`；manifest 146 项校验通过。站点原地叠加，
+  nginx bind mount inode 未变、未重启 nginx。部署前备份
+  `backups/site-71070ee-20261029-1848`，暂存包保留在
+  `staging-cockpit-71070ee-20261029-1848`。
+- 真实浏览器验证（`172.16.10.34:8876`，独立 headless Chrome）：运营页 `id=1|2` 首屏正常
+  结束加载，无启动占位、无持续 AI 骨架、无 JavaScript 异常；`id=1` 稳定后连续观察 20 秒，
+  新增 `/api/cockpit/data/query` 为 0，页面未重复重建。经营看板 `id=1` 同样无加载残留。
+  穿透页仍有少量 AP 慢查询在 180 秒预算内等待，属于上游数据等待，不是宿主重复刷新。
+- 回退：停止 PID `4187781`，用旧 release
+  `process360-cockpit-464ae6c-20261029-1807/start-main.py` 启动；8876 静态站从
+  `backups/site-71070ee-20261029-1848` 原地恢复。
