@@ -384,7 +384,6 @@
       let liveErrorSweep = null;
       let liveErrorSince = 0;
       const liveFailures = new Set();
-      const liveErrorSummary = computed(() => liveError.value ? `部分指标加载失败（${liveFailures.size} 项）` : '');
       const pageTitle = computed(() => PAGES[page.value]?.title || PAGES.overview.title);
       const release = computed(() => runtime.value?.dashboard || null);
       const gaps = computed(() => runtime.value?.gaps || []);
@@ -775,7 +774,7 @@
       onBeforeUnmount(() => {document.removeEventListener('click', onTabClick, true);clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
-        page, runtime, loading, error, pageTitle, pageState, liveError, liveErrorSummary, boardRevision, dashboard: release, release, gaps, metadataSummary,
+        page, runtime, loading, error, pageTitle, pageState, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
         pageInsights, dashboardComponent: dashboard, biAdapters, biRuntime, hostUtils,
         slot_name: insight => `insight-${insight.id}`,
       };

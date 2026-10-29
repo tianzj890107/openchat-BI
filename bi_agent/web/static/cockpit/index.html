@@ -26,7 +26,6 @@
       <div v-if="error" class="cockpit-state error" role="alert">{{error}}</div>
       <div v-else-if="loading" class="cockpit-state">正在加载正式看板配置…</div>
       <div v-else class="cockpit-board">
-        <div v-if="liveErrorSummary" class="cockpit-publication-state error" role="alert" :title="liveError">{{ liveErrorSummary }}</div>
         <div v-if="pageState.cached || pageState.error" class="cockpit-publication-state" role="status">
           <span v-if="pageState.cached">完整看板 · 数据时间 {{new Date(pageState.dataAsOf * 1000).toLocaleString('zh-CN', {hour12:false})}}</span>
           <span v-if="pageState.refreshing"> · 正在后台更新</span>
