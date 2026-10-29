@@ -100,7 +100,7 @@ cp .env.example .env
 | 模型网关 | `LLM_PROVIDER`、`TEAM_BASE_URL`、`TEAM_API_KEY`、`TEAM_MODEL` | 选择模型提供方与默认模型 |
 | 本体服务 | `ONTOLOGY_BACKEND`、`ONTOLOGY_BASE_URL`、`ONTOLOGY_REPOSITORY_ID` | 选择本地或远程本体 |
 | 事实数据 | `DORIS_API_URL`、`DORIS_DATABASE` | 配置业务事实查询 |
-| 远程 MCP | `ONTOLOGY_MCP_AUTH_TOKEN`（可选）、`MCP_PUBLIC_BASE_URL`（可选）、`ONTOLOGY_MCP_EXPOSED_TOOLS`（可选） | 控制 Fuxi 连接器鉴权、Artifact 公网基址和工具白名单 |
+| 远程 MCP | `ONTOLOGY_MCP_AUTH_TOKEN`（可选）、`MCP_PUBLIC_BASE_URL`（可选）、`ONTOLOGY_MCP_TOOL_PROFILE`（`general`/`process360`）、`ONTOLOGY_MCP_EXPOSED_TOOLS`（可选） | 控制 Fuxi 连接器鉴权、Artifact 公网基址、技能工具白名单与数据源隔离 |
 | 并发治理 | `CHATBI_MAX_ACTIVE_TURNS` 等 | 限制 turn、principal 和下游并发 |
 | 子路径部署 | `APP_ROOT_PATH` | 外部网关子路径前缀（如 `/api/ontology-agentic-analytics`）；缺省为空字符串，保持域名根路径部署 |
 

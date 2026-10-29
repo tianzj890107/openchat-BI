@@ -15,7 +15,7 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 客户端不读取 `.env`、不需要 App ID 或 Token。若部署方显式设置
 `ONTOLOGY_MCP_AUTH_TOKEN`，Bearer 头由管理员在连接器统一配置。
 
-## 暴露给 Fuxi 的通用与 Process360 工具
+## 暴露给 Fuxi 的通用工具（`ONTOLOGY_MCP_TOOL_PROFILE=general`）
 
 | 工具 | 用途 | 主要参数 |
 | --- | --- | --- |
@@ -34,19 +34,9 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 | `ChartGenerateMultiDim` | 多维可切换图表 | 与 Web 多维图表参数一致 |
 | `TableGenerate` | 结构化表格 | 与 Web 表格参数一致 |
 | `CanvasGenerate` | 整页自包含 HTML，返回 `Artifact URL` | `title`、`conclusion`、`source_note`、`blocks` |
-| `RiskItemCreate` | 用户点击后把有证据的已观察风险推送到 Fuxi（`itemType=RISK`） | Process360 风险卡：`draft_id`、`draft_hash`、`action_id`，可选 `retry`；不接受旧版无草稿调用，身份与接收人由服务端解析 |
-| `TaskOrderCreate` | 用户点击后把一条处置建议推送到 Fuxi 待办（`itemType=TODO`） | Process360：`draft_id`、`draft_hash`、`action_id`，可选 `idempotency_key`/`retry`；身份与接收人均由服务端解析。旧版通用：`action_id`、`title`、`content`、`recipients_raw` |
+| `RiskItemCreate` | 用户点击后把有证据的已观察风险推送到 Fuxi（`itemType=RISK`） | `action_id`、风险标题/正文/证据；身份与接收人由服务端解析，模型不传手机号 |
+| `TaskOrderCreate` | 用户点击后把一条处置建议推送到 Fuxi 待办（`itemType=TODO`） | `action_id`、`title`、`content`，可选 `idempotency_key`/`retry`；身份与接收人由服务端解析 |
 | `OutputGateCheck` | 五道交付闸门与最终产物登记 | 正式报告必填 `canvasId`、`artifactHash`；`deliveryKind=fact_answer` 的纯文字事实回答可免 Canvas；可选 `answer`、`question`、`sql`、`chart`、`reconcile`、`claims`、`planId`、`queryId`、`runId` |
-| `Process360Route/Search/Context/Query/Analyze/Draft/Verify` | SC01-SC05 的 S00-S07 主链 | 身份由服务端注入；Query/Analyze/Draft/Verify 等业务步骤必须带 `planId + stepId`；`Query` 返回 `queryId`，后续步骤可用 `queryId` 复用同一结果 |
-| `Process360Plan` | S00 多目标 DAG、依赖、步骤版本、共享预算 | `question`、可选预算 |
-| `Process360Explore` | S08 受控自主探索 | `question`、`planRef`、`stepId` |
-| `Process360Compare` | P04 多期同口径比较 | `scenario`、`scope`、`periods` |
-| `Process360Structure` | P05 结构贡献/排名/占比 | `scenario`、`scope`、`dimension`、可选 `queryId` |
-| `Process360ProcessFlow` | P07 节点转化与停留 | `scenario`、`stages`、`objectKey`、`batchKey` |
-| `Process360Progress` | P14 执行记录和 Fuxi 推送回执 | `scenario`、可选 `draftId` |
-| `Process360Forecast` | P17 显式假设下的规则推算 | `actualToDate`、`target`、`elapsedDays`、`totalDays`、`assumption` |
-| `Process360Solutions` | P18 多子目标综合 | `question`、可选方案依据 |
-
 ### 不暴露的工具
 
 以下工具即使通过环境变量请求也不会出现在 `tools/list`，调用会被服务端拒绝：
@@ -72,10 +62,8 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
    `reject` 要修正或拒答。必须传最终 `canvasId/artifactHash`；缺失即 reject，不得把中间
    模型回答当作最终报告。
 8. 风险/任务令：只有用户点击卡片后才调用对应工具。风险卡使用 `RiskItemCreate`，处置卡
-   使用 `TaskOrderCreate`。Process360 卡片携带
-   `draftId/draftHash/actionId/itemType/runId/scenario/approvalStatus/expiresAt/dispatchTool`；
-   主服务按服务端身份和接收人映射调用，服务端从草稿回读标题/正文，不采用
-   调用方改写。手机号只在服务端映射中配置，技能和模型不得猜测；空接收人会被拒绝。
+   使用 `TaskOrderCreate`。主服务按服务端身份和接收人映射调用，不采用调用方改写的
+   标题/正文；手机号只在服务端映射中配置，技能和模型不得猜测；空接收人会被拒绝。
    页面与 MCP 共用按 `itemType` 隔离的幂等键（风险额外使用独立 `analytics-risk-*`
    `sourceTodoId`）；网络结果不确定返回 `unknown`，
    用同一身份查询或显式 `retry=true` 安全重试，成功回执不得重发。回执必须同时满足
@@ -87,10 +75,9 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 
 ## 数据源与安全边界
 
-- `Process360Query` 可把 `queryId` 传给 `Analyze/Draft/Structure/Verify` 复用同一结果。
-  `Process360Query` 返回 `dataSource=process360-postgres` 与 `sourceConnection`；驾驶舱 AP
-  数据返回 `dataSource=ap`。PostgreSQL 事实与旧 AP 快照必须分别标明来源，不能仅因页面标题
-  相同就合并为同一份证据。
+- 本技能只使用通用本体的 Doris 指标链路和驾驶舱 AP 数据。SC01-SC05 的
+  `process360-postgres` / `ywln_crm` 数据属于 `process360-analytics`，不得混入通用分析
+  结论，也不得用它替代通用指标取数。
 - `queryId` 是服务端结果引用，不是权限通行证。复用前检查 tenant/principal、授权版本、
   当前数据库来源连接、场景、范围、查询模板、catalog 版本和有效期；不匹配时明确 blocked，
   不静默换范围或换连接重取。

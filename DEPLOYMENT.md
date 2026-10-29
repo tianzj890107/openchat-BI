@@ -240,8 +240,29 @@ Fuxi 连接器配置为 `transport: http`、`url: http://<host>:8080/api/mcp`、
 ```dotenv
 ONTOLOGY_MCP_AUTH_TOKEN=            # 留空表示依赖内网/网关白名单；设置后要求 Bearer
 MCP_PUBLIC_BASE_URL=                # 反向代理后的外部基址，用于拼 Artifact URL
-ONTOLOGY_MCP_EXPOSED_TOOLS=         # 逗号分隔的工具白名单；默认 17 个真实分析工具
+ONTOLOGY_MCP_TOOL_PROFILE=          # general | process360；按连接器固定工具白名单
+ONTOLOGY_MCP_EXPOSED_TOOLS=         # 逗号分隔的工具白名单；优先于 profile，仅作用于 /api/mcp
 ```
+
+### 智能分析与 360 智能分析分开接入
+
+MCP 的 `tools/call` 不携带技能 ID，服务端不能从一次调用本身判断“是哪个技能在调”。
+因此按**连接**隔离，一个技能一个连接器，工具白名单同时决定数据源：
+
+| 连接 | 技能 | 工具白名单 | 数据源 |
+| --- | --- | --- | --- |
+| `http://<host>/api/mcp/general` | `ontology-analytics`（智能分析） | 18 个通用分析工具 | demo2 本体 + Doris |
+| `http://<host>/api/mcp/process360` | `process360-analytics`（360智能分析） | `Process360*` + `CanvasGenerate`/`RiskItemCreate`/`TaskOrderCreate`/`OutputGateCheck` | `process360-postgres` / `ywln_crm` |
+
+`/api/mcp` 保持原行为（全部 33 个工具），用于过渡期和旧连接器；新连接器应直接用上面
+两个带 profile 的地址。`/api/mcp/general` 不暴露 `Process360*`，`/api/mcp/process360`
+不暴露 `AnalysisRoute`/`MetricFactQuery`/`ListBusinessObjects`，越权调用返回
+`tool_not_allowed`。
+
+另外，即使走全量 `/api/mcp`，`AnalysisRoute` 遇到明确的 SC01-SC05 问题也会返回
+`mode=PROCESS360_REQUIRED`、`next_step=PROCESS360_ROUTE`、`required_tools=["Process360Route"]`，
+不再返回 `QUERY_DORIS`，避免 360 问题落到采购域数据；连接器没有 `Process360Route` 时
+返回 `next_step=SWITCH_CONNECTOR`。
 
 工具白名单永远不能重新启用 `AnalysisRun`、`AskUser`、`TodoWrite`、`Ontology-FactQuery`、
 `ListTables`、`DescribeTable`。如果部署在反向代理/容器后，必须设置

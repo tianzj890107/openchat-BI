@@ -84,6 +84,12 @@ SOP_RULES: tuple[tuple[str, str, str, str], ...] = (
     ),
     (r"复验|验收|能否关闭|可以关闭|整改有效|效果达标|闭环结果", "P15", "verify", "复验/关闭语义"),
     (r"下发|发待办|发到待办|发送任务令|派给|通知责任人", "P12", "dispatch", "任务下发语义"),
+    (
+        r"发风险|推送风险|生成.*风险卡|风险卡|待办卡|风险和待办|风险.*待办|待办.*风险|发.*待办",
+        "P11",
+        "draft",
+        "风险卡/待办卡交付语义",
+    ),
     (r"拆(成|解成)?任务|任务令草稿|任务清单|整改计划|行动计划草稿", "P11", "draft", "任务拆解语义"),
     (
         r"怎么办|怎么处理|如何处置|怎么改|改善建议|对策|方案比选|优先.*(补料|排产|调整)|下一步",
@@ -139,6 +145,11 @@ DEFAULT_RULE = (r".*", "P03", "fact", "默认指标问数")
 #: draft is part of delivery; sending it still waits for a user click.
 ACTION_DELIVERY_SOPS = frozenset({"P10", "P11", "P12"})
 
+#: A scenario score this high means the wording is unambiguously Process360,
+#: so the generic analysis route must hand the question over instead of
+#: querying the procurement Doris domain.
+STRONG_SCENARIO_SCORE = 5
+
 
 def _score_scenarios(question: str) -> list[tuple[str, int]]:
     text = question.lower()
@@ -189,6 +200,24 @@ def _clean_question(value: object) -> str:
 
 def detect_scenarios(question: str) -> list[str]:
     return [scenario for scenario, _score in _score_scenarios(_clean_question(question))]
+
+
+def strong_scenario(question: str) -> tuple[str, int] | None:
+    """Return ``(scenario, score)`` for an unambiguous Process360 question.
+
+    Used by the generic ``AnalysisRoute`` to refuse to answer SC01-SC05 with
+    procurement-domain data.  A single weak keyword (for example "发货" in
+    "本月发货金额") stays below the threshold and remains a general question.
+    """
+
+    text = _clean_question(question)
+    if not text:
+        return None
+    scored = _score_scenarios(text)
+    if not scored:
+        return None
+    code, score = scored[0]
+    return (code, score) if score >= STRONG_SCENARIO_SCORE else None
 
 
 def route(

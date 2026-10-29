@@ -437,3 +437,35 @@
 - 验证：新增风险 Fuxi payload、双类型草稿、独立幂等键、类型错配阻断、Canvas 双按钮和
   交付闸门测试 7 项通过；Process360/Fuxi/Canvas/MCP 聚焦回归 229 项通过、9 项跳过。
 - 边界：本轮未部署、未创建真实 Fuxi 风险/待办、未创建 MR/tag/Release、未升级正式版本。
+
+### 2026-10-29 · 智能分析与 360 智能分析拆分为两个 Skill，360 强制走 ywln 链路
+
+- 用户可见变化：`智能分析` 与 `360智能分析` 现在是两个独立技能。
+  `ontology-analytics-skill` 只覆盖通用经营/财务分析（18 个通用工具，demo2 本体 + Doris）；
+  新增 `process360-analytics-skill` 只覆盖 SC01-SC05，第一步必须调用 `Process360Route`，
+  数据只取 `process360-postgres` 的 `ywln_crm`，明确禁止用 `AnalysisRoute`、
+  `MetricFactQuery`、`ListBusinessObjects` 或采购域 Doris 兜底。
+- 连接级隔离：MCP 的 `tools/call` 不携带技能 ID，服务端改为按连接区分技能与数据源。
+  新增 `/api/mcp/general`（通用白名单）和 `/api/mcp/process360`（仅 `Process360*` +
+  `CanvasGenerate`/`RiskItemCreate`/`TaskOrderCreate`/`OutputGateCheck`）；
+  `ONTOLOGY_MCP_TOOL_PROFILE=general|process360` 作为默认白名单，`/api/mcp` 保持旧行为。
+  越权工具返回 `tool_not_allowed`，连接器里看不到入口工具即说明接错连接。
+- 服务端强约束：即使走全量 `/api/mcp`，`AnalysisRoute` 对明确的 SC01-SC05 问题返回
+  `mode=PROCESS360_REQUIRED`、`next_step=PROCESS360_ROUTE`、
+  `required_tools=["Process360Route"]`，不再给出 `QUERY_DORIS`；连接器未暴露
+  `Process360Route` 时返回 `next_step=SWITCH_CONNECTOR` 并要求改用 360 连接器。
+  弱关键词（例如“本月发货金额”）仍按通用事实查询处理。
+- 风险与待办：新增“发风险/推送风险/风险卡/待办卡/风险和待办”等下发语义，路由落 P11 并
+  置 `actionDeliveryRequired=true`；计划自动追加 P09 + P11，先 `Process360Draft` 再
+  `CanvasGenerate` 行动卡，用户点击后才走 `RiskItemCreate`/`TaskOrderCreate`。
+  此前“计划外发货偏差分析…发风险和待办”被识别成 P06、`actionRequired=false`，现已修正。
+- 涉及文件：`process360-analytics-skill/`（新增 SKILL.md、README、4 个 references）、
+  `ontology-analytics-skill/SKILL.md`、`README.md`、`references/07-output-gates.md`、
+  `references/08-tools-and-sources.md`、`bi_agent/process360/router.py`、
+  `bi_agent/web/mcp_endpoint.py`、`.env.example`、`DEPLOYMENT.md`、
+  `tests/test_process360_skill_split_red.py`。
+- 验证：新增 10 项拆分与拦截测试通过；Process360 全量 229 passed / 9 skipped；
+  MCP、路由与安全聚焦回归 124 passed / 49 subtests passed。
+- 边界：本轮未部署、未在伏羲重新安装技能、未创建真实风险/待办、未创建 MR/tag/Release、
+  未升级正式版本；伏羲侧仍需发布 `process360-analytics` 技能并给 360 Agent 绑定
+  `process360` 连接器。
