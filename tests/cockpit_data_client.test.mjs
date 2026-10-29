@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const source = fs.readFileSync(new URL('../bi_agent/web/static/cockpit/data-client.js', import.meta.url), 'utf8');
 const clientModule = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
-const {createAPDataClient, observeRuntimeFilters} = clientModule;
+const {createAPDataClient, observeRuntimeFilters, observeActivationActions} = clientModule;
 const query = {analysisConfig: {indicators: [{identifierCode:'M0001'}]}, commonConfig: {filters: {month:'2026-10'}}};
 const ok = (receiptId, data = {rows:[{amount:42}]}) => ({ok:true, status:200, json:async()=>({receiptId,data,expiresAt:Date.now()/1000+60})});
 
@@ -68,6 +68,27 @@ test('host utilities accept only the fixed read-only graph interface', async () 
   assert.throws(()=>client.scope(),/加载/); // Graph metadata is not business evidence.
 });
 
+test('the host injects only the delivered single-query adapter',()=>{
+ const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>ok('single')});
+ assert.deepEqual(Object.keys(client.biAdapters),['postAnalysisDataQuery']);
+ assert.equal('postAnalysisDataQueryBatch' in client.biAdapters,false);
+});
+
+test('activation actions expose tab and helmet selections to the host router',()=>{
+ const calls=[];
+ const runtime=observeActivationActions({
+  setActiveTab(containerId,tabId){calls.push(['tab',containerId,tabId]);return 'tab';},
+  setHelmetGraphSelection(componentId,selection,path){calls.push(['helmet',componentId,selection,path]);return 'helmet';},
+ },{onTabChange:(...args)=>calls.push(['navigate',...args]),onHelmetSelection:(...args)=>calls.push(['remember',...args])});
+ assert.equal(runtime.setActiveTab('tabs','analysis'),'tab');
+ runtime.setHelmetGraphSelection('graph',{nodeId:'2109840325158682625'},{segments:[]});
+ assert.deepEqual(calls,[
+  ['tab','tabs','analysis'],['navigate','tabs','analysis'],
+  ['helmet','graph',{nodeId:'2109840325158682625'},{segments:[]}],
+  ['remember','graph',{nodeId:'2109840325158682625'},{segments:[]}],
+ ]);
+});
+
 test('SDK filter change drops all previous-scope receipts before new requests',async()=>{
  const {observeRuntimeFilters}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
  let ready=false,changes=0;
@@ -86,8 +107,8 @@ test('SDK filter change drops all previous-scope receipts before new requests',a
    const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:()=>new Promise(resolve=>resolves.push(resolve))});
    const first=structuredClone(query),second=structuredClone(query);
    first.commonConfig.filters={status:['overdue']};second.commonConfig.filters={status:['overdue','normal']};
-   const a=client.biAdapters.postAnalysisDataQueryBatch([first]);
-   const b=client.biAdapters.postAnalysisDataQueryBatch([second]);
+   const a=client.biAdapters.postAnalysisDataQuery(first);
+   const b=client.biAdapters.postAnalysisDataQuery(second);
    for(const i of reverse?[1,0]:[0,1]) resolves[i](ok('status-'+i));
    await Promise.all([a,b]);
    assert.deepEqual(client.scope().apReceiptIds,['status-0','status-1']);

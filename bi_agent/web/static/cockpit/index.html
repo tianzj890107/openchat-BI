@@ -15,7 +15,7 @@
   <link rel="modulepreload" href="@@APP_ROOT_PATH@@/static/cockpit/page-client.js?v=@@COCKPIT_VERSION@@">
   <link rel="modulepreload" href="@@APP_ROOT_PATH@@/static/cockpit/publication-client.js?v=@@COCKPIT_VERSION@@">
   <script defer src="@@APP_ROOT_PATH@@/static/cockpit/vendor/vue.global.prod.js?v=3.5.25"></script>
-  <script defer src="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-bi-ui.min.js?v=608062c7"></script>
+  <script defer src="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-bi-ui.min.js?v=90318295"></script>
 </head>
 <body data-dashboard-theme="white">
   <div id="cockpit-boot" role="status" style="padding:24px;color:#737b8c;font:14px sans-serif">正在加载经营看板…</div>
@@ -34,6 +34,7 @@
                    :components="dashboard.components"
                    :template-registry="runtime.templates"
                    :insights="pageInsights"
+                   :activate-rules="runtime.activateRules"
                    :bi-adapters="biAdapters"
                    :bi-runtime="biRuntime"
                    :utils="hostUtils"
@@ -55,7 +56,7 @@
       <details v-if="gaps.length" class="cockpit-gap-report">
         <summary>元数据缺失与渲染限制 · {{gaps.length}} 项</summary>
         <div class="cockpit-gap-body">
-          <p>页面只渲染交付元数据原样结构，宿主不增删、不重排卡片。缺失组件、缺失数据或没有对应组件的位置保留空位并在下方列明；静态快照未覆盖的 AP 查询仍显示原卡片错误。</p>
+          <p>页面只渲染交付元数据原样结构，宿主不增删、不重排卡片。缺失组件或没有对应组件的位置保留空位并在下方列明；AP 或字段配置缺失时由原卡片展示明确错误，宿主不补造数据。</p>
           <ul>
             <li v-for="gap in gaps" :key="gap.code + (gap.componentId || gap.description)">
               <b>{{gap.code}}</b><small>{{gap.description}}</small>

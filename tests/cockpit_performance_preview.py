@@ -58,6 +58,13 @@ def debug():
  with st.db() as db:pages=db.execute('SELECT count(*) FROM page_snapshot_views').fetchone()[0]
  with st.db() as db:scopes=[json.loads(r[0])['uiScope'] for r in db.execute('SELECT p.body FROM page_snapshot_views v JOIN page_snapshots p ON p.id=v.snapshot_id') ]
  return dict(revision=state['revision'],fail=state['fail'],apiCalls=len(state['requests']),models=state['models'],pages=pages,scopes=scopes,requests=state['requests'])
+@app.post('/debug/reset')
+def reset():
+ """Reset only this process's temporary fixture store; never touches user data."""
+ global scratch
+ scratch=Path(tempfile.mkdtemp(prefix='cockpit-performance-qa-'))
+ state.update(revision=1,fail=False,requests=[],models=0)
+ return {'ok':True}
 @app.post('/debug/change')
 async def change(req:Request):
  args=await req.json()

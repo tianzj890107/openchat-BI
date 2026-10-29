@@ -1,11 +1,9 @@
 """Materialize the delivered iba-demo dashboard for the isolated cockpit page.
 
-The source of truth is the handed-off ``feature/demo_1021`` metadata:
-two root components, 13 template configs, 12 insight placements and the
-matching static insight components.  The host does not rewrite component
-positions or synthesise missing cards.  AP reads are replayed from the frozen
-pdt-release snapshot bundle; any uncaptured query surfaces the native
-"missing release snapshot" error at its original card position.
+The source of truth is the handed-off ``feature/demo_1021`` metadata.  The host
+does not rewrite component positions, inject fixture datasets, or synthesise
+missing cards.  Live reads use the delivered AP configuration; the retained
+pdt-release snapshot is available only as explicit offline replay data.
 """
 from __future__ import annotations
 
@@ -19,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1] / "web/static/cockpit/metadata"
 METADATA = ROOT / "iba-demo-1021"
 RELEASE = ROOT / "pdt-release-2109836674373566465"
 SNAPSHOTS = RELEASE / "data-snapshots.json"
+ACTIVATE_RULES = METADATA / "activate-rules.json"
 PAGE_IDS = {
     "overview": "tab-bc6wp3k2",
     "operations": "tab-211tc4o0",
@@ -34,9 +33,6 @@ PAGE_LABELS = {
     "operations": "运营360整体分析",
     "analysis": "穿透式问题分析",
 }
-ANALYSIS_GRAPH_ID = "mini-cpgraph-93j6k86p"
-ANALYSIS_GRAPH_TITLE = "销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）"
-ANALYSIS_BID_NODE_ID = "2109840573985767425"
 CONTAINERS = {
     "group", "template", "tab-container", "segmented-strip", "split-container",
     "button-group", "composite-filter", "title",
@@ -61,22 +57,6 @@ def _component_counts(components: list[dict]) -> dict:
             if (component.get("dataConfig") or {}).get("sourceType") in {"ap", "request"}
         ),
     }
-
-
-def _apply_analysis_flow_override(components: list[dict]) -> None:
-    graph = next(
-        (component for component in components if component.get("id") == ANALYSIS_GRAPH_ID),
-        None,
-    )
-    if not graph:
-        return
-    graph["title"] = ANALYSIS_GRAPH_TITLE
-    graph_config = graph.setdefault("graphConfig", {})
-    graph_config["graphTemplateSwitchRules"] = [
-        rule
-        for rule in graph_config.get("graphTemplateSwitchRules", [])
-        if rule.get("nodeId") != ANALYSIS_BID_NODE_ID
-    ]
 
 
 def _template_refs(value):
@@ -156,10 +136,6 @@ def _collect_gaps(root: list[dict], templates: dict[str, dict]) -> list[dict]:
                     "componentId": referenced,
                 })
 
-    gaps.append({
-        "code": "AP_SNAPSHOT_BASIS",
-        "description": "AP 查询沿用 pdt release 2109836674373566465 的冻结快照；本次新增且未捕获的查询会在原卡片显示“未找到该 AP 查询的发布快照”，宿主不补造数据。",
-    })
     return gaps
 
 
@@ -168,6 +144,7 @@ def release_payload() -> dict:
     root = deepcopy(_json(METADATA / "components.json"))
     templates = deepcopy(_json(METADATA / "template-registry.json"))
     insights = _json(METADATA / "insights.json")
+    activate_rules = _json(ACTIVATE_RULES)
     snapshot_source = _json(RELEASE / "source.json")
     snapshots = _json(SNAPSHOTS)
 
@@ -188,11 +165,6 @@ def release_payload() -> dict:
             ],
         }
 
-    _apply_analysis_flow_override(pages["analysis"]["components"])
-    _apply_analysis_flow_override(templates[PAGE_TEMPLATES["analysis"]]["components"])
-
-    layout = source.get("dashboard") or {}
-    published = source.get("published") or {}
     dashboard = {
         "id": "iba-demo-1021",
         "name": "储能经营风险驾驶舱",
@@ -201,12 +173,11 @@ def release_payload() -> dict:
         "status": "active",
         "url": f"{source['repository']}/-/tree/{source['branch']}",
         "components": root,
-        "gridCols": layout.get("gridCols") or 120,
-        "rowHeight": layout.get("rowHeight") or 10,
-        "theme": layout.get("theme") or "light",
-        "headerLayout": layout.get("headerLayout")
-        or {"componentIds": ["composite-filter-hzjk9t5q"]},
-        "showHeaderTitle": layout.get("showHeaderTitle", True),
+        "gridCols": 120,
+        "rowHeight": 10,
+        "theme": "light",
+        "headerLayout": {"componentIds": ["composite-filter-hzjk9t5q"]},
+        "showHeaderTitle": True,
     }
     return {
         "source": {
@@ -214,23 +185,19 @@ def release_payload() -> dict:
             "dashboardId": "iba-demo-1021",
             "name": "储能经营风险驾驶舱",
             "releaseUrl": dashboard["url"],
-            "buildTime": source.get("publishedAt") or source["importedAt"],
-            "fetchedAt": source.get("publishedAt") or source["importedAt"],
+            "buildTime": source["importedAt"],
+            "fetchedAt": source["importedAt"],
             "version": source["commit"][:7],
             "status": "active",
             "branch": source["branch"],
             "commit": source["commit"],
-            "published": {
-                "dashboardId": published.get("dashboardId"),
-                "name": published.get("name"),
-                "lastUpdatedTime": published.get("lastUpdatedTime"),
-                "importedAt": source.get("publishedAt") or source["importedAt"],
-            },
             "templateCount": len(templates),
             "totalComponents": len(root) + sum(
                 len(template.get("components", [])) for template in templates.values()
             ),
             "insightComponents": source["insightComponents"],
+            "activateRules": len(activate_rules),
+            "dataMode": "ap-single-query",
             "credentialsStored": False,
             "snapshot": {
                 "kind": snapshot_source["kind"],
@@ -244,6 +211,8 @@ def release_payload() -> dict:
         "dashboard": dashboard,
         "pages": pages,
         "templates": templates,
+        "insights": insights,
+        "activateRules": activate_rules,
         "counts": {
             "root": _component_counts(root),
             **{

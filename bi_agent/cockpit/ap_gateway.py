@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
 PATHS = {
-    'analysis': '/ontology/api/v1/analysis/data/query',
+    'analysis': '/x360/v1/ontology/data/query',
     'batch': '/x360/v1/ontology/data/multidimensional/batch',
     'helmet': '/x360/v1/graphs/helmet-view',
 }
@@ -45,6 +45,7 @@ class APConfig:
     concurrency: int
     receipt_ttl: int
     batch_mode: str = 'individual'
+    repository_id: str = '8'
 
     @classmethod
     def load(cls):
@@ -54,12 +55,15 @@ class APConfig:
                 min(30., max(1., float(os.getenv('COCKPIT_AP_TIMEOUT_SECONDS', '10')))),
                 min(8, max(1, int(os.getenv('COCKPIT_AP_CONCURRENCY', '4')))),
                 min(86400, max(60, int(os.getenv('COCKPIT_AP_RECEIPT_TTL_SECONDS', '1800')))),
-                os.getenv('COCKPIT_AP_BATCH_MODE', 'individual'))
+                os.getenv('COCKPIT_AP_BATCH_MODE', 'individual'),
+                os.getenv('COCKPIT_AP_REPOSITORY_ID', '8').strip())
         except ValueError:
             raise HTTPException(503, 'Cockpit AP配置无效') from None
         parts = urlsplit(config.base_url)
         if config.batch_mode not in {'native','individual'}:
             raise HTTPException(503, 'COCKPIT_AP_BATCH_MODE必须为native或individual')
+        if not config.repository_id or len(config.repository_id) > 32 or not config.repository_id.isdigit():
+            raise HTTPException(503, 'COCKPIT_AP_REPOSITORY_ID必须为数字本体库ID')
         if parts.scheme not in {'http', 'https'} or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment:
             raise HTTPException(503, '请配置独立的COCKPIT_AP_BASE_URL')
         return config
@@ -80,7 +84,9 @@ class APConfig:
             forbidden = {'host', 'content-length', 'connection', 'transfer-encoding'}
             if any(k.lower() in forbidden for k in headers):
                 raise ValueError()
-            return {**headers, 'Content-Type': 'application/json', 'Accept': 'application/json'}
+            headers = {k: v for k, v in headers.items() if k.lower() != 'x-ontology-repository-id'}
+            return {**headers, 'X-Ontology-Repository-Id': self.repository_id,
+                    'Content-Type': 'application/json', 'Accept': 'application/json'}
         except (OSError, ValueError):
             raise HTTPException(503, 'Cockpit AP认证配置不可用，请检查独立请求头文件') from None
 
@@ -148,7 +154,8 @@ class APGateway:
             if len(raw) > MAX_RESPONSE:
                 raise HTTPException(502, 'AP响应过大，请缩小查询范围')
             body = json.loads(raw)
-            if not isinstance(body, dict) or body.get('success') is not True or body.get('data') is None:
+            success = isinstance(body, dict) and (body.get('success') is True or str(body.get('code', '')).strip() == '200')
+            if not success or body.get('data') is None:
                 raise HTTPException(502, 'AP未返回成功的数据结果，请检查查询口径及AP认证')
             if kind == 'batch':
                 if not isinstance(body['data'], list) or len(body['data']) != len(payload) or any(not isinstance(v, dict) or v.get('success') is not True or v.get('data') is None for v in body['data']):

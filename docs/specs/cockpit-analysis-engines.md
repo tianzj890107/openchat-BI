@@ -1,6 +1,6 @@
 # Cockpit 数据接入、分析路线与统一上线
 
-2026-10-26 修订。看板通过主服务代理同一套 AP 接口，AI 消费页面同次查询的服务端结果。
+2026-10-29 修订。看板通过主服务代理同一套 AP 接口，AI 消费页面同次查询的服务端结果。
 原有对话与 MCP 的本体库、数据库连接不变。2026-10-26已按用户当次授权部署至8765，8876的API代理已切换；不构成未来部署、重启或停服授权。
 
 ## 数据路径与隔离
@@ -20,9 +20,15 @@ AP 地址及认证只从 `COCKPIT_AP_*` 配置读取，不使用 `ONTOLOGY_*`、
 
 | kind | 方法 | `COCKPIT_AP_BASE_URL` 下的固定路径 |
 | --- | --- | --- |
-| analysis | POST | `/ontology/api/v1/analysis/data/query` |
+| analysis | POST | `/x360/v1/ontology/data/query` |
 | batch | POST | `/x360/v1/ontology/data/multidimensional/batch` |
 | helmet | GET | `/x360/v1/graphs/helmet-view` |
+
+本体库 8 的页面只注入 `postAnalysisDataQuery`，不注入批量适配器。ProUI 在批量适配器缺失时
+按单个查询并发兜底；当前批量接口仍在请求本体且不可用，不能用空数据或部分结果兜底。
+2026-10-29 已按 iba-demo `d01c08a` 切换到该单查路径，并接入 6 条 `activateRules`；跨页跳转在
+目标页头盔图挂载后恢复节点，避免初始化竞态。
+服务端固定发送 `X-Ontology-Repository-Id: 8`，可用 `COCKPIT_AP_REPOSITORY_ID` 显式覆盖。
 
 原有对话、MCP、报表的连接和工具不变。Cockpit 的临时 WebSession 仅允许 `Cockpit-DashboardQuery`、`CockpitDeliverCards` 和 `AskUser`（2026-10-26已上线），
 执行边界拒绝模型请求的其他工具。确定性路由记录 `QUERY_DASHBOARD`，不把 AP 查询误记为 Doris 取数。
@@ -40,6 +46,7 @@ Cockpit 主服务分析最多并行 1 个，排队可取消；执行仍复用主
 ```dotenv
 COCKPIT_DATA_MODE=ap
 COCKPIT_AP_BASE_URL=http://pdt-dev.eimos.com/api/gateway2
+COCKPIT_AP_REPOSITORY_ID=8
 COCKPIT_AP_HEADERS_FILE=/absolute/private/path/cockpit-ap-headers.json
 COCKPIT_AP_TIMEOUT_SECONDS=10
 COCKPIT_AP_CONCURRENCY=2
@@ -48,7 +55,8 @@ COCKPIT_ANALYSIS_ENGINE=main
 COCKPIT_COMPARISON_ENABLED=true
 ```
 
-请求头文件是 JSON 对象，应包含上游实际要求的 `X-App-Id`、`X-Ontology-Repository-Id`、认证请求头及必要的 Cookie。
+请求头文件是 JSON 对象，应包含上游实际要求的 `X-App-Id`、认证请求头及必要的 Cookie。
+`X-Ontology-Repository-Id` 由 `COCKPIT_AP_REPOSITORY_ID` 统一注入，避免浏览器或旧文件带入错误仓库。
 文件必须位于仓库外，POSIX 权限为 600；不得提交真实内容，也不得把它返回前端。批量与头盔图同样需要有效认证，
 不能只验证单条指标接口。认证过期时更新独立文件，不修改原主服务认证。不要将浏览器临时登录态当作永久有效的部署凭据。
 
