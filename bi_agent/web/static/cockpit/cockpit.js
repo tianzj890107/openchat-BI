@@ -381,6 +381,9 @@
       const hostUtils = ref(null);
       const liveError = ref('');
       let liveErrorClear = null;
+      let liveErrorSweep = null;
+      let liveErrorSince = 0;
+      const liveFailures = new Set();
       const pageTitle = computed(() => PAGES[page.value]?.title || PAGES.overview.title);
       const release = computed(() => runtime.value?.dashboard || null);
       const gaps = computed(() => runtime.value?.gaps || []);
@@ -522,30 +525,59 @@
           }
         });
       }
+      function scrubUnavailableComponent(loader) {
+        const owner = loader.closest('.pro-bi-comp-wrap');
+        if (!owner) return;
+        const loaderText = loader.querySelector('.pro-bi-chart-loading__text');
+        if (loaderText && /^(loading|加载中)$/i.test((loaderText.textContent || '').trim())) {
+          loaderText.textContent = '加载失败';
+          loaderText.title = liveError.value;
+        }
+        const value = owner.querySelector('.pro-bi-kpi-card__value-row');
+        if (value) value.textContent = '—';
+        const current = owner.querySelector('.pro-bi-progress-card__current');
+        if (current) current.textContent = '—';
+        const rate = owner.querySelector('.pro-bi-progress-card__rate');
+        if (rate) rate.textContent = '—';
+        const target = owner.querySelector('.pro-bi-progress-card__target');
+        if (target) target.textContent = '目标 —';
+        const gap = owner.querySelector('.pro-bi-progress-card__gap');
+        if (gap) gap.textContent = '—';
+      }
       function sweepStuckLoading() {
         if (!liveError.value) return;
+        scrubFailedMetrics();
+        // Give still-running queries a grace window; only then treat a
+        // remaining "loading" card as failed instead of overwriting its value.
+        if (Date.now() - liveErrorSince < 6000) return;
         document.querySelectorAll('.cockpit-board *').forEach(element => {
           if (element.children.length) return;
-          if ((element.textContent || '').trim() === 'loading') {
+          if (/^(loading|加载中)$/i.test((element.textContent || '').trim())) {
             element.textContent = '加载失败';
             element.title = liveError.value;
           }
         });
-        scrubFailedMetrics();
+        document.querySelectorAll('.pro-bi-chart-loading').forEach(scrubUnavailableComponent);
       }
       function showLiveError(message, detail = {}) {
-        liveError.value = message ? '部分指标加载失败：' + message : '';
-        if (detail.kind === 'helmet') annotateFailedHelmet(message);
+        if (!liveFailures.size) liveErrorSince = Date.now();
+        if (message) liveFailures.add(message);
+        liveError.value = liveFailures.size ? '部分指标加载失败：' + [...liveFailures].join('；') : '';
+        if (detail.kind === 'helmet') annotateFailedHelmet(liveError.value);
         clearTimeout(liveErrorClear);
         // The vendor cards keep an internal "loading" label when a promise
         // rejects; replace only that placeholder, never a real value.
-        clearTimeout(liveErrorClear);
+        clearInterval(liveErrorSweep);
+        liveErrorSweep = setInterval(sweepStuckLoading, 4000);
         liveErrorClear = setTimeout(sweepStuckLoading, 6000);
         setTimeout(() => { if (liveError.value) sweepStuckLoading(); }, 15000);
       }
       function clearLiveError() {
+        liveFailures.clear();
+        liveErrorSince = 0;
         liveError.value = '';
         clearTimeout(liveErrorClear);
+        clearInterval(liveErrorSweep);
         clearHelmetAnnotations();
       }
 
@@ -649,7 +681,7 @@
           async function changeScope(uiScope,miss=false) {
             let metadata=fullSnapshot?.entries?.filter(e=>e.kind==='helmet')||[];
             if(!metadata.length)try{metadata=liveDataClient.entries().filter(e=>e.kind==='helmet');}catch{}
-            const token=++pageEpoch;pageCache?.invalidate();
+            const token=++pageEpoch;pageCache?.invalidate();clearLiveError();
             currentUiScope=uiScope;defaultView=uiScope==='default';fullSnapshot=null;
             clearTimeout(refreshTimer);publications?.invalidate();liveDataClient?.clearScope();
             Object.assign(pageState,{cached:false,dataAsOf:0,error:'',refreshing:false});
@@ -725,7 +757,7 @@
           document.getElementById('cockpit-boot')?.remove();
         }
       });
-      onBeforeUnmount(() => {document.removeEventListener('click', onTabClick, true);clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {document.removeEventListener('click', onTabClick, true);clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
         page, runtime, loading, error, pageTitle, pageState, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
