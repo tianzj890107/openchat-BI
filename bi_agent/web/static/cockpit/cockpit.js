@@ -544,9 +544,23 @@
         const gap = owner.querySelector('.pro-bi-progress-card__gap');
         if (gap) gap.textContent = '—';
       }
+      function scrubZeroPlaceholders() {
+        const failure = /AP未返回成功|AP请求超时|看板AP查询失败|SQL 超时/;
+        document.querySelectorAll('.pro-bi-comp-wrap').forEach(owner => {
+          if (!failure.test(owner.textContent || '')) return;
+          owner.querySelectorAll('*').forEach(element => {
+            if (element.children.length) return;
+            const text = element.textContent || '';
+            if (!/(^|[^\d.])0\.00\s*(?:亿元|GWh|天|%|单)/.test(text)) return;
+            element.textContent = text.replace(/(^|[^\d.])0\.00(\s*(?:亿元|GWh|天|%|单))/g, '$1—$2');
+            element.title = liveError.value;
+          });
+        });
+      }
       function sweepStuckLoading() {
         if (!liveError.value) return;
         scrubFailedMetrics();
+        scrubZeroPlaceholders();
         // Give still-running queries a grace window; only then treat a
         // remaining "loading" card as failed instead of overwriting its value.
         if (Date.now() - liveErrorSince < 6000) return;
