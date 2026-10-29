@@ -957,6 +957,20 @@
           biRuntime.value=observeActivationActions(
             observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady),
             {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
+          // Historical cards are an independent, best-effort request.  The
+          // board already exists; a slow cards response leaves only the AI
+          // slot skeletons visible and never delays charts or the shell.
+          async function loadCurrentHistoryCards(){
+            const token=pageEpoch,target=page.value;
+            try{
+              const cards=await pageCache.cards();
+              if(token!==pageEpoch||target!==page.value)return;
+              publications?.preload(cards.items||{});
+              cardsVersion=cards.cardsVersion||'';
+              const analyzed=Math.max(0,...Object.values(cards.items||{}).map(item=>Number(item?.updatedAt||0)));
+              if(analyzed)Object.assign(pageState,{analyzedAt:analyzed});
+            }catch(_){/* the status poll retries the same read */}
+          }
           if(analysisEngine==='main') {
             pageCache=createPageCache({apiBase,id:identityId,page:page.value,makeClient,bodyFor:baseMainBody,
               onState:value=>Object.assign(pageState,value),
@@ -1013,20 +1027,6 @@
               });
               return true;
             };
-            // Historical cards are an independent, best-effort request.  The
-            // board already exists; a slow cards response leaves only the AI
-            // slot skeletons visible and never delays charts or the shell.
-            async function loadCurrentHistoryCards(){
-              const token=pageEpoch,target=page.value;
-              try{
-                const cards=await pageCache.cards();
-                if(token!==pageEpoch||target!==page.value)return;
-                publications?.preload(cards.items||{});
-                cardsVersion=cards.cardsVersion||'';
-                const analyzed=Math.max(0,...Object.values(cards.items||{}).map(item=>Number(item?.updatedAt||0)));
-                if(analyzed)Object.assign(pageState,{analyzedAt:analyzed});
-              }catch(_){/* the status poll retries the same read */}
-            }
             statusPoller=createPublicationPoller({
               probe:async()=>{const scope=currentUiScope;return {scope,status:await pageCache.status(scope)};},
               apply:async value=>{

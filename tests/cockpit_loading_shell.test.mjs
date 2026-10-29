@@ -43,6 +43,17 @@ test('history cards and publication status are background reads after the board 
   assert.match(source, /publications\?\.preload\(cards\.items\|\|\{\}\)/);
 });
 
+test('history-card loader stays in scope across the main-engine block', () => {
+  const block = source.indexOf("if(analysisEngine==='main') {\n            pageCache=createPageCache");
+  const declaration = source.indexOf('async function loadCurrentHistoryCards()');
+  const call = source.indexOf("if(analysisEngine==='main'){\n            loadCurrentHistoryCards();");
+  assert.notEqual(block, -1);
+  assert.notEqual(declaration, -1);
+  assert.notEqual(call, -1);
+  assert.ok(declaration < block, 'loader declaration must not be block-scoped inside the main-engine branch');
+  assert.ok(block < call);
+});
+
 test('configuration failure exposes a retry action instead of an endless loader', () => {
   assert.match(html, /class="cockpit-state__retry"/);
   assert.match(html, /@click="retryRuntime"/);
