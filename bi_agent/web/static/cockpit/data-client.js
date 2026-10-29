@@ -134,7 +134,7 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     }
     const slot = shape(kind, payload);
     const labels = queryLabels(payload);
-    const state = {key: canonical(payload), pending: true, error: '', labels, receiptId: '', expiresAt: 0,
+    const state = {kind, key: canonical(payload), pending: true, error: '', labels, receiptId: '', expiresAt: 0,
       stage: stageFor(kind, payload) || '', timings: null};
     all.set(slot, state);
     if (kind !== 'helmet') { const previous=active.get(slot); active.set(slot, state); onInvalidate({replacement:Boolean(previous && previous.key!==state.key)}); }
@@ -256,6 +256,30 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     active.clear(); all.clear(); completed.clear(); inflight.clear(); replay.clear(); replaying=false;
     onInvalidate({replacement:true});
   }
+  function applySnapshot(entries = []) {
+    // Apply a newer server-owned publication in place.  This deliberately
+    // does not bump generation or abort in-flight work: the mounted dashboard
+    // and its current filter scope stay alive while receipts and evidence are
+    // advanced for the next analysis.
+    let updated = 0;
+    for (const entry of entries || []) {
+      if (!entry || entry.kind === 'helmet' || !entry.payload) continue;
+      const key = entry.kind + ':' + canonical(entry.payload);
+      const body = {data:entry.data, receiptId:entry.receiptId,
+        receivedAt:entry.receivedAt, expiresAt:entry.expiresAt, timings:entry.timings};
+      replay.set(key, entry);
+      completed.set(key, body);
+      for (const [slot, state] of all.entries()) {
+        if (state.key !== canonical(entry.payload) || (state.kind && state.kind !== entry.kind)) continue;
+        Object.assign(state, {pending:false, error:'', receiptId:entry.receiptId,
+          expiresAt:entry.expiresAt, entry,
+          timings:entry.timings || state.timings});
+        if (entry.kind !== 'helmet') active.set(slot, state);
+        updated += 1;
+      }
+    }
+    return updated;
+  }
   function failures() {
     return [...new Set([...all.values()].filter(state => state.error).map(state => state.error))];
   }
@@ -263,7 +287,7 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     if(!all.size || [...all.values()].some(s=>s.pending||s.error||!s.entry))throw new Error('看板数据未完整加载');
     return JSON.parse(JSON.stringify([...all.values()].map(s=>s.entry)));
   }
-  return {scope, ready, clearScope, entries, failures, read:query, block:message=>{blocked=message;}, biAdapters: {
+  return {scope, ready, clearScope, applySnapshot, entries, failures, read:query, block:message=>{blocked=message;}, biAdapters: {
     postAnalysisDataQuery: payload => query('analysis', payload),
   }, utils: {request: async req => {
     try {

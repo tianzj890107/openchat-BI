@@ -1336,6 +1336,23 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   PostgreSQL 补查整页发布、无整页快照的卡片维护、手工刷新租约去重、自定义范围执行、轮询
   失败续跑与卡片版本原位替换。
 
+### 刷新生命周期与静默更新收口（2026-10-29）
+
+- `page_refresh` 在启动时做加法迁移，增加 `business_key`、`config_version`、`lifecycle`、
+  `last_access`、`expires`、`superseded_by`、`job_id`、`worker_id`、`deadline`、`heartbeat`、
+  `generation`。旧配置产生的范围只标记为 `superseded`，不删除页面快照、分析或任何历史结果。
+- 默认范围常驻维护；自定义范围由 `COCKPIT_CUSTOM_REFRESH_TTL_SECONDS` 控制（默认 86400 秒）。
+  到期查询、手工刷新和任务领取都校验 `active`、配置版本和有效期；旧范围不会再永久占用调度扫描。
+- 刷新 worker 领取时保存 job/generation，分析等待期间续租；超时或租约失效会协作取消分析。
+  手动刷新不会清掉正在运行的租约；已被重新排队或配置轮换的旧 worker 不能完成状态或覆盖发布版本。
+- 两个角色、三张默认 AI 表格在启动后按浏览器相同的默认查询键预热并持久化；浏览器先读缓存，
+  后台更新时只有实际行数据变化才重建 DataTable。新整页版本通过现有 runtime 原位更新图表，
+  不再重挂看板或整页取数。
+- 状态接口的 `update.queue` 提供 `activeCount`、`dueCount`、`runningCount`、`waitingCount`、
+  `oldestWaitSeconds`、`timedOutCount`，用于区分历史记录和实时待执行队列。
+- 本次只使用加法迁移和后台线程，不修改服务器 `.env`、历史会话、上传文件或任务数据；部署仍需当次
+  明确授权。
+
 ### Cockpit 初始化重复 loading 修复上线（2026-10-29 18:48）
 
 - 代码提交：`71070ee789c9c99355cef8eecbbf564a302f0981`（分支

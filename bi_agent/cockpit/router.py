@@ -21,13 +21,16 @@ from .cards import CONTRACT, card_delivery_state, valid_card
 from .metadata import build_bundle
 from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
-from .publications import digest, legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
+from .publications import (config_version, digest, legacy_publication_scope, legacy_view_scope,
+                           publication_scope, view_scope)
 from .page_cache import APReuse, PageLookup, PageRequest, build_page, legacy_page_scope, page_scope, transport_identity, compact_analysis
 from .targets import PAGES, REGISTRY_VERSION, slot_registry, target_stages
 from .ai_tables import (TABLE_MAPPING_VERSION, TABLE_SPECS, TableQuery, annotate_rows,
-                        build_ap_query, result_rows, table_cache_key, table_scope_key)
+                        build_ap_query, preheat_table, result_rows, table_cache_key,
+                        table_scope_key)
 from .refresh import (RefreshManager, RefreshScheduler, publication_status, scheduler_enabled,
-                      preheat_target_scope, stage_card_status, view_target_scope)
+                      custom_refresh_expiry, preheat_target_scope, refresh_business_key,
+                      stage_card_status, view_target_scope)
 
 RESULT_CONTRACT_VERSION="compact-v1"
 
@@ -323,6 +326,16 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 raise
         return item
 
+    def cancel_analysis_job(aid):
+        """Cooperate with a running scheduler job without deleting its record."""
+        item=store().get_analysis(aid)
+        if not item or item.get('status') not in {'queued','running'}:
+            return item
+        with lock:
+            event=jobs.get(aid)
+            if event is not None:event.set()
+        return store().update_analysis(aid,status="cancelled",progress="已停止，可重新分析")
+
     @router.get('/analyses/published')
     def published_default(id:int=1,engine:Literal['main','standalone']='main',page:Literal['overview','operations','analysis']='analysis',compact:bool=False):
         if id not in (1,2):raise HTTPException(422,'无效身份')
@@ -576,6 +589,18 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         store().save_ai_table_snapshot(cache_key,req.id,table_key,scope_key,cached_body)
         return response_for(rows,total,cache_status='refreshed',generated_at=cached_body['createdAt'])
 
+    def preheat_ai_table(identity:int, table_key:str):
+        """Persist the same default table query the browser will ask for."""
+        return preheat_table(store(),identity,table_key,query_receipt)
+
+    def preheat_ai_tables():
+        for identity in (1,2):
+            for table_key in TABLE_SPECS:
+                try:
+                    preheat_ai_table(identity,table_key)
+                except Exception as exc:
+                    print(f'[cockpit-table-preheat] {identity}/{table_key}: {exc}')
+
     @router.get('/page')
     def published_page(id:int=1,page:Literal['overview','operations','analysis']='overview',uiScope:str='default'):
         if id not in (1,2) or not 0<len(uiScope)<=16000:raise HTTPException(422,'无效页面范围')
@@ -643,7 +668,11 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
               or store().latest_page(req.id,req.page,req.uiScope,data_identity=config.identity()))
         if body is not None:
             store().set_refresh_plan(scope,body)
-            queued=store().request_refresh(scope)
+            expires=0 if req.uiScope=='default' else custom_refresh_expiry()
+            queued=store().request_refresh(
+                scope, business_key=refresh_business_key('page',req.id,req.page,
+                                                         ui_scope=req.uiScope),
+                config_version=config_version(), expires=expires)
             return dict(queued=queued,scope=scope,status='waiting' if queued else 'running',kind='page')
         # Operations and penetration pages may have published AI cards without
         # ever forming a whole-page snapshot.  Refresh those cards instead of
@@ -651,9 +680,20 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         targets=[view_target_scope(view_key,stage) for view_key,stage,analysis in store().default_views(limit=2000)
                  if req.uiScope=='default'
                  and (analysis.get('context') or {}).get('id')==req.id
-                 and (analysis.get('context') or {}).get('page')==req.page]
+                 and (analysis.get('context') or {}).get('page')==req.page
+                 and view_scope(analysis.get('context') or {})==view_key]
         if targets:
-            queued=[target for target in dict.fromkeys(targets) if store().request_refresh(target)]
+            contexts={view_target_scope(view_key,stage):(view_key,stage,analysis)
+                      for view_key,stage,analysis in store().default_views(limit=2000)}
+            queued=[]
+            for target in dict.fromkeys(targets):
+                _key,stage,analysis=contexts[target]
+                context=analysis.get('context') or {}
+                if store().request_refresh(
+                        target, business_key=refresh_business_key(
+                            'view',req.id,context.get('page') or req.page,stage),
+                        config_version=config_version(), expires=0):
+                    queued.append(target)
             return dict(queued=bool(queued),scope=scope,status='waiting' if queued else 'running',
                         kind='views',targets=len(set(targets)))
         raise HTTPException(409,'该范围还没有可复核的查询计划，请先在页面完成取数后再刷新')
@@ -707,11 +747,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
 
     @router.post("/analyses/{aid}/cancel")
     def cancel(aid:str):
-        item=get_analysis(aid)
-        with lock:
-            event=jobs.get(aid)
-            if event:event.set()
-        return store().update_analysis(aid,status="cancelled",progress="已停止，可重新分析") if item["status"] in {"queued","running"} else item
+        get_analysis(aid)
+        return cancel_analysis_job(aid)
 
     @router.get("/analyses/{aid}/report",response_class=HTMLResponse)
     def report(aid:str):
@@ -823,12 +860,15 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 lambda identity, kind, payload: query_receipt(identity, kind, payload)['response'],
                 start_refresh_analysis,
                 interval=int(os.getenv('COCKPIT_REFRESH_INTERVAL_SECONDS', '900')),
-                timeout=int(os.getenv('COCKPIT_REFRESH_TIMEOUT_SECONDS', '1200')))
+                timeout=int(os.getenv('COCKPIT_REFRESH_TIMEOUT_SECONDS', '1200')),
+                cancel_analysis=cancel_analysis_job)
             scheduler = RefreshScheduler(
                 manager, store(),
                 scan_seconds=int(os.getenv('COCKPIT_REFRESH_SCAN_SECONDS', '20')),
                 scope_limit=int(os.getenv('COCKPIT_REFRESH_SCOPE_LIMIT', '1')))
             scheduler.start()
+            threading.Thread(target=preheat_ai_tables,daemon=True,
+                             name='cockpit-ai-table-preheat').start()
     except Exception as exc:
         # A scheduler/configuration failure must not prevent the dashboard from
         # serving its last published version; it is reported in the app log.

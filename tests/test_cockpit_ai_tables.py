@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from bi_agent.cockpit.cards import CONTRACT
 from bi_agent.cockpit.dashboard_source import RELEASE
+from bi_agent.cockpit.ai_tables import TABLE_SPECS, preheat_table
 from bi_agent.cockpit.page_cache import page_scope
 from bi_agent.cockpit.publications import view_scope
 from bi_agent.cockpit.router import build_cockpit_router
@@ -214,6 +215,31 @@ def test_table_snapshot_is_saved_and_reused_without_another_ap_query(tmp_path, m
     assert miss.json()["meta"]["cacheStatus"] == "missing"
     assert miss.json()["meta"]["scopeMatch"] is False
     assert len(gateway.calls) == 1
+
+
+def test_all_three_tables_are_preheated_for_both_roles_and_hit_cache_only(tmp_path, monkeypatch):
+    response, gateway = _client(tmp_path, monkeypatch, {
+        "result": {"rows": [{"YWLN_D049": {"value": "SO-1"}}]},
+        "pagination": {"total": 1},
+    })
+    calls = []
+    def receipt(identity, kind, payload):
+        calls.append((identity, kind, payload))
+        return dict(response={"result": {"rows": [{"YWLN_D049": {"value": "SO-1"}}]},
+                              "pagination": {"total": 1}})
+    store = Store(tmp_path / "dataset" / "cockpit" / "history.sqlite3")
+    for identity in (1, 2):
+        for table_key in TABLE_SPECS:
+            assert preheat_table(store, identity, table_key, receipt) == "published"
+    assert len(calls) == 6
+    for identity in (1, 2):
+        for table_key, spec in TABLE_SPECS.items():
+            fields = [(item["identifierCode"], item["fieldType"]) for item in spec["fields"]]
+            query = _query(fields)
+            query.update(id=identity, cacheOnly=True, period='2025-10')
+            hit = response.post(f"/api/cockpit/ai-tables/{table_key}/query", json=query)
+            assert hit.status_code == 200, hit.text
+            assert hit.json()["meta"]["cacheStatus"] == "hit"
 
 
 def test_failed_table_refresh_never_overwrites_the_saved_snapshot(tmp_path, monkeypatch):

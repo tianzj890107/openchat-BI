@@ -11,6 +11,7 @@ import calendar
 import json
 import hashlib
 import re
+import time
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -383,6 +384,38 @@ def build_ap_query(table_key: str, request: TableQuery) -> dict:
     if filters not in (None, {}, []):
         payload["commonConfig"]["filters"] = filters
     return payload
+
+
+def preheat_table(store, identity: int, table_key: str, query_receipt,
+                  period: str = "2025-10") -> str:
+    """Persist the exact default table query the browser will request.
+
+    ``query_receipt(identity, kind, payload)`` is the router's shared AP read
+    path, so table preheat participates in request coalescing and stores the
+    same receipt-backed facts as an interactive query.
+    """
+    spec = TABLE_SPECS[table_key]
+    request = TableQuery(
+        id=identity, uiScope="default", period=period,
+        analysisConfig={
+            "dimensions": [item for item in spec["fields"]
+                           if item["fieldType"] == "Dimension"],
+            "indicators": [item for item in spec["fields"]
+                           if item["fieldType"] == "Indicator"],
+        },
+        commonConfig={"pagination": {"pageNum": 1, "pageSize": 10}},
+    )
+    payload = build_ap_query(table_key, request)
+    scope_key = table_scope_key(request.ui_scope)
+    cache_key = table_cache_key(request.id, table_key, scope_key, payload)
+    if store.get_ai_table_snapshot(cache_key, request.id, table_key, scope_key) is not None:
+        return "cached"
+    receipt = query_receipt(request.id, "analysis", payload)
+    rows, total = result_rows(receipt["response"])
+    store.save_ai_table_snapshot(
+        cache_key, request.id, table_key, scope_key,
+        dict(rows=rows, total=total, createdAt=time.time(), query=payload))
+    return "published"
 
 
 def result_rows(data: Any) -> tuple[list[dict], int | None]:

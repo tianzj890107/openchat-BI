@@ -78,4 +78,8 @@ test('background publication updates replace cards in place instead of remountin
   assert.doesNotMatch(source, /if\(status\.publicationVersion[\s\S]{0,700}install\(snapshot,true\)/)
   assert.match(source, /onSnapshot:snapshot=>\{[\s\S]{0,300}fullSnapshot=snapshot;[\s\S]{0,300}publications\?\.preload/)
   assert.match(source, /fullSnapshot=snapshot;\s*\n\s*if\(snapshot\.items\)publications\?\.preload/)
+  assert.match(source, /updateSnapshotInPlace\(snapshot\)/)
+  assert.match(source, /liveDataClient\.applySnapshot\?\.\(snapshot\.entries\|\|\[\]\)/)
+  assert.match(source, /rawRuntime\.setComponentData\(component\.id,value,path\)/)
+  assert.match(source, /kind:'tab',containerId:tabs\.id,tabId:tab,templateId/)
 })

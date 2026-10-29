@@ -1113,6 +1113,41 @@
             client.ready({allowExpired:Boolean(snapshot),partial:true}).then(scopeReady,scopeFailed);
             setTimeout(()=>{if(client===liveDataClient&&liveError.value)sweepStuckLoading();},6500);
           }
+          function updateSnapshotInPlace(snapshot) {
+            if(!snapshot||!liveDataClient||snapshot.uiScope!==currentUiScope)return;
+            liveDataClient.applySnapshot?.(snapshot.entries||[]);
+            if(!rawRuntime?.setComponentData)return;
+            const templateId=payload.pages[page.value]?.templateId;
+            const tab=payload.pages[page.value]?.tabId||'';
+            // The runtime stores tab-contained components under the same path
+            // shape as install(); omitting containerId silently updates only
+            // the host context and leaves the visible charts on the old data.
+            const path={segments:tab?[{kind:'tab',containerId:tabs.id,tabId:tab,templateId}]:[]};
+            const components=payload.templates?.[templateId]?.components||[];
+            const codesOf=value=>{
+              const found=new Set(),stack=[value];
+              while(stack.length){const node=stack.pop();
+                if(Array.isArray(node)){stack.push(...node);continue;}
+                if(!node||typeof node!=='object')continue;
+                if(typeof node.identifierCode==='string')found.add(node.identifierCode);
+                for(const child of Object.values(node))if(child&&typeof child==='object')stack.push(child);
+              }
+              return found;
+            };
+            const componentCodes=components.map(component=>({component,codes:codesOf(component.dataConfig||{})}));
+            for(const entry of snapshot.entries||[]){
+              if(!entry||entry.kind!=='analysis'||!entry.payload?.analysisConfig)continue;
+              const queryCodes=codesOf({dimensions:entry.payload.analysisConfig.dimensions||[],
+                indicators:entry.payload.analysisConfig.indicators||[]});
+              if(!queryCodes.size)continue;
+              for(const {component,codes} of componentCodes){
+                if(codes.size!==queryCodes.size||![...queryCodes].every(code=>codes.has(code)))continue;
+                const value={data:entry.data,error:null,loading:false,lastUpdated:Date.now()};
+                rawRuntime.setComponentData(component.id,value,path);
+                rawRuntime.setComponentData(component.id,value,{segments:[]});
+              }
+            }
+          }
           const scheduleStatusPoll=(delay=1000)=>statusPoller?.poke(delay);
           async function changeScope(uiScope,miss=false,detail='') {
             const scopeKey=`${page.value}:${uiScope}`;
@@ -1243,6 +1278,7 @@
                     // Keep the mounted charts and data client intact. Publish
                     // new metadata/cards into the existing page version.
                     fullSnapshot=snapshot;
+                    updateSnapshotInPlace(snapshot);
                     if(snapshot.items)publications?.preload(snapshot.items);
                     Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,displayStale:false,refreshing:false,error:'',updateStatus:'published'});
                   }

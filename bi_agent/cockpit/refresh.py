@@ -27,6 +27,7 @@ DEFAULT_PAGES = ('overview', 'operations', 'analysis')
 _DELIVERED_QUERY_CACHE = None
 _COMPONENT_QUERY_CACHE = None
 _METRIC_STAGES = {code: stage for stage, codes in STAGE_METRICS.items() for code in codes}
+DEFAULT_CUSTOM_REFRESH_TTL_SECONDS = 24 * 60 * 60
 
 
 def _canonical(value):
@@ -162,6 +163,21 @@ def preheat_target_scope(identity, page, stage):
     return digest({'preheat': True, 'id': int(identity), 'page': page, 'stage': stage})
 
 
+def refresh_business_key(kind, identity, page='', stage='', ui_scope='default'):
+    """Stable maintenance identity that survives config/contract rotations."""
+    return digest({'business': kind, 'id': int(identity), 'page': page or '',
+                   'stage': stage or '', 'uiScope': ui_scope or 'default'})
+
+
+def custom_refresh_expiry(now=None):
+    try:
+        ttl = int(os.getenv('COCKPIT_CUSTOM_REFRESH_TTL_SECONDS',
+                            str(DEFAULT_CUSTOM_REFRESH_TTL_SECONDS)))
+    except ValueError:
+        ttl = DEFAULT_CUSTOM_REFRESH_TTL_SECONDS
+    return (time.time() if now is None else float(now)) + max(300, ttl)
+
+
 def stage_card_status(store, identity, page, *, now=None):
     """Aggregate refresh state for pages whose AI cards have no page snapshot.
 
@@ -225,7 +241,8 @@ class RefreshManager:
     a second time.
     """
 
-    def __init__(self, store, config, query, start_analysis, *, interval=900, poll=2.0, timeout=1200):
+    def __init__(self, store, config, query, start_analysis, *, interval=900, poll=2.0,
+                 timeout=1200, cancel_analysis=None):
         self.store = store
         self.config = config
         self.query = query
@@ -233,6 +250,7 @@ class RefreshManager:
         self.interval = max(60, int(interval))
         self.poll = max(0.1, float(poll))
         self.timeout = max(60, int(timeout))
+        self.cancel_analysis = cancel_analysis
 
     def _set(self, scope, status, **changes):
         next_check = changes.pop('next_check', None)
@@ -332,25 +350,61 @@ class RefreshManager:
             # query was answered; surface it as a blocked supplement instead.
             return {}, [dict(query=query, code='FALLBACK_UNAVAILABLE') for query in failures]
 
-    def _await(self, item):
+    def _cancel(self, item):
+        if not item or not item.get('id'):
+            return
+        try:
+            if self.cancel_analysis:
+                self.cancel_analysis(item['id'])
+            else:
+                self.store.update_analysis(item['id'], status='cancelled',
+                                           progress='后台更新已超时停止')
+        except Exception:
+            pass
+
+    def _owned(self, claim):
+        return bool(claim and self.store.owns_refresh(
+            claim['scope'], claim['job_id'], claim['generation']))
+
+    def _await(self, item, claim=None):
         deadline = time.time() + self.timeout
         while item and item.get('status') in {'queued', 'running'}:
             if time.time() > deadline:
-                raise RuntimeError('后台分析更新超时，保留上次完整版本')
+                self._cancel(item)
+                raise RuntimeError('后台分析更新超时，已停止旧执行，保留上次完整版本')
+            if claim:
+                if not self.store.heartbeat_refresh(
+                        claim['scope'], claim['job_id'],
+                        lease=max(180, self.timeout + 60)):
+                    self._cancel(item)
+                    raise RuntimeError('刷新任务租约已失效，已停止旧执行')
             time.sleep(self.poll)
             item = self.store.get_analysis(item['id'])
         if not item or item.get('status') not in {'completed', 'limited'}:
             raise RuntimeError((item or {}).get('error') or '后台分析未完整交付，保留上次完整版本')
         if (item.get('result') or {}).get('cardContract') != 'cockpit-cards-v1':
             raise RuntimeError('后台分析缺少卡片契约，保留上次完整版本')
+        if claim and not self._owned(claim):
+            raise RuntimeError('刷新任务已被更新的配置取代，未写回旧结果')
         return item
 
-    def _failure(self, scope, exc):
+    def _finish(self, scope, claim, status, *, next_check=None, error=None,
+                last_success=None):
+        if claim:
+            return self.store.finish_refresh(
+                scope, claim['job_id'], claim['generation'], status,
+                next_check=next_check, error=error, last_success=last_success)
+        self._set(scope, status, next_check=next_check, error=error,
+                  last_success=last_success)
+        return True
+
+    def _failure(self, scope, exc, claim=None):
         now = time.time()
         state = self.store.refresh_state(scope) or {}
         attempt = int(state.get('attempt') or 1)
-        self._set(scope, 'retry_wait', next_check=now + min(900, 60 * max(1, attempt)),
-                  error=str(exc)[:500])
+        self._finish(scope, claim, 'retry_wait',
+                     next_check=now + min(900, 60 * max(1, attempt)),
+                     error=str(exc)[:500])
         return dict(scope=scope, status='retry_wait', error=str(exc)[:500])
 
     def refresh(self, body):
@@ -359,7 +413,9 @@ class RefreshManager:
         if body.get('dataSource') not in {'ap', 'ap+pg', 'pg'}:
             self._set(scope, 'published', next_check=time.time() + self.interval)
             return dict(scope=scope, status='unchanged', reason='not-ap')
-        if not self.store.claim_refresh(scope, lease=max(180, self.timeout + 60)):
+        claim = self.store.claim_refresh_info(
+            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+        if not claim:
             return dict(scope=scope, status='already-running')
         try:
             records, failures = self._query_entries(body)
@@ -381,6 +437,8 @@ class RefreshManager:
                             if item and item.get('id')}
             data_source = body.get('dataSource') or 'ap'
             if changed:
+                if not self._owned(claim):
+                    raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
                 queries = sorted({_canonical(record['request']) for record in records
                                   if record['kind'] in {'analysis', 'batch'}})
                 receipt_ids = [record['id'] for record in records
@@ -402,23 +460,25 @@ class RefreshManager:
                         data_mode='ap', resolve_fallback=False, fallback_notes=notes)
                     data_source = resolved['dataSource']
                     job = self.start_analysis(request, resolved)
-                    analysis_ids[stage] = self._await(job)['id']
+                    analysis_ids[stage] = self._await(job, claim)['id']
             page = build_page(PageRequest(
                 id=int(body['id']), page=body['page'], uiScope=body.get('uiScope') or 'default',
                 apReceiptIds=[record['id'] for record in records], pgReceiptIds=pg_ids,
                 analysisIds=analysis_ids), self.store, self.config,
                 data_source=data_source, data_identity=identity)
+            if not self._owned(claim):
+                raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             current_page = self.store.published_page(scope)
             if not current_page or current_page.get('version') != page.get('version'):
                 if not self.store.publish_page(scope, page):
                     raise RuntimeError('服务端复核结果早于当前发布版本，未覆盖')
             now = time.time()
-            self._set(scope, 'published', next_check=now + self.interval,
-                      error='', last_success=now)
+            self._finish(scope, claim, 'published', next_check=now + self.interval,
+                         error='', last_success=now)
             return dict(scope=scope, status='published', changed=changed,
                         fingerprint=fingerprint, version=page.get('version'))
         except Exception as exc:
-            return self._failure(scope, exc)
+            return self._failure(scope, exc, claim)
 
     def refresh_view(self, view_key, stage, analysis):
         """Refresh one published default AI card when its page has no snapshot."""
@@ -427,7 +487,9 @@ class RefreshManager:
         if context.get('engine') != 'main' or context.get('source') != 'service':
             self._set(scope, 'published', next_check=time.time() + self.interval)
             return dict(scope=scope, status='unchanged', reason='not-main')
-        if not self.store.claim_refresh(scope, lease=max(180, self.timeout + 60)):
+        claim = self.store.claim_refresh_info(
+            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+        if not claim:
             return dict(scope=scope, status='already-running')
         try:
             # Successful and previously unavailable queries are both re-read;
@@ -463,13 +525,16 @@ class RefreshManager:
                        or resolved.get('fallbackVersion', '') != context.get('fallbackVersion', '')
                        or current_scope != view_key)
             if changed:
-                self._await(self.start_analysis(request, resolved))
+                job = self.start_analysis(request, resolved)
+                self._await(job, claim)
+            if not self._owned(claim):
+                raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             now = time.time()
-            self._set(scope, 'published', next_check=now + self.interval,
-                      error='', last_success=now)
+            self._finish(scope, claim, 'published', next_check=now + self.interval,
+                         error='', last_success=now)
             return dict(scope=scope, status='published', changed=changed)
         except Exception as exc:
-            return self._failure(scope, exc)
+            return self._failure(scope, exc, claim)
 
     def _stage_requests(self, identity, page, stage):
         """Seed one configured slot from saved cards or the page's own queries.
@@ -520,15 +585,17 @@ class RefreshManager:
     def preheat_target(self, identity, page, stage):
         """Materialise a card for one configured slot, even before it is opened."""
         scope = preheat_target_scope(identity, page, stage)
-        if not self.store.claim_refresh(scope, lease=max(180, self.timeout + 60)):
+        claim = self.store.claim_refresh_info(
+            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+        if not claim:
             return dict(scope=scope, status='already-running')
         try:
             seed, requests = self._stage_requests(identity, page, stage)
             if not requests:
                 # No browser has delivered this page's query plan yet; this is
                 # a waiting condition, not a failed refresh.
-                self._set(scope, 'awaiting-plan', next_check=time.time() + self.interval,
-                          error='')
+                self._finish(scope, claim, 'awaiting-plan',
+                             next_check=time.time() + self.interval, error='')
                 return dict(scope=scope, status='awaiting-plan')
             identity = int(identity)
             records, failures = self._query_requests(identity, requests)
@@ -556,15 +623,18 @@ class RefreshManager:
                        or existing.get('context', {}).get('dataFingerprint')
                        != resolved['dataFingerprint'])
             if changed:
-                self._await(self.start_analysis(request, resolved))
+                job = self.start_analysis(request, resolved)
+                self._await(job, claim)
+            if not self._owned(claim):
+                raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             now = time.time()
-            self._set(scope, 'published', next_check=now + self.interval,
-                      error='', last_success=now)
+            self._finish(scope, claim, 'published', next_check=now + self.interval,
+                         error='', last_success=now)
             self.store.set_refresh_state(view_target_scope(key, stage), 'published',
                                          next_check=now + self.interval, last_success=now)
             return dict(scope=scope, status='published', changed=changed)
         except Exception as exc:
-            return self._failure(scope, exc)
+            return self._failure(scope, exc, claim)
 
 
 def _context_requests(context, stage=None):
@@ -610,6 +680,7 @@ def _stage_queries(body, stage):
 
 
 def publication_status(store, scope, body=None):
+    now = time.time()
     state = store.refresh_state(scope) or {}
     body = body or {}
     items = body.get('items') or {}
@@ -627,6 +698,7 @@ def publication_status(store, scope, body=None):
             lastCheckedAt=state.get('updated', 0),
             error=state.get('last_error', ''),
             attempt=state.get('attempt', 0),
+            queue=store.refresh_queue_stats(now=now),
         ),
     )
 
@@ -648,6 +720,13 @@ class RefreshScheduler(threading.Thread):
     def _view_targets(self):
         targets = {}
         for view_key, stage, body in self.store.default_views(limit=2000):
+            context = body.get('context') or {}
+            # The publication row is append-only history.  A view key created
+            # by an older component/config revision stays displayable but is
+            # not a refresh target; the current configured slot is handled by
+            # the preheat target below.
+            if view_scope(context) != view_key:
+                continue
             targets.setdefault(view_target_scope(view_key, stage), (view_key, stage, body))
         return targets
 
@@ -657,7 +736,7 @@ class RefreshScheduler(threading.Thread):
             targets[preheat_target_scope(identity, page, stage)] = (identity, page, stage)
         return targets
 
-    def _seed(self, current, view_targets, preheat_targets):
+    def _seed(self, current, view_targets, preheat_targets, custom_targets):
         """Register every configured slot, not only the ones already published.
 
         A deploy must not re-query and re-analyse every default page at once,
@@ -667,13 +746,28 @@ class RefreshScheduler(threading.Thread):
         is materialised by ``RefreshManager.preheat_target``.
         """
         due = current + self.manager.interval
+        active = set()
+        version = config_version()
         for identity in DEFAULT_IDENTITIES:
             for page in DEFAULT_PAGES:
+                scope = page_scope(self.manager.config, identity, page, 'default', 'ap')
+                active.add(scope)
                 self.store.ensure_refresh_state(
-                    page_scope(self.manager.config, identity, page, 'default', 'ap'), next_check=due)
-        for target in view_targets:
-            self.store.ensure_refresh_state(target, next_check=due)
+                    scope, next_check=due, expires=0, lifecycle='active',
+                    config_version=version,
+                    business_key=refresh_business_key('page', identity, page,
+                                                      ui_scope='default'))
+        for target, (view_key, stage, body) in view_targets.items():
+            context = body.get('context') or {}
+            identity = int(context.get('id') or 0)
+            page = context.get('page') or ''
+            active.add(target)
+            self.store.ensure_refresh_state(
+                target, next_check=due, expires=0, lifecycle='active',
+                config_version=version,
+                business_key=refresh_business_key('view', identity, page, stage))
         for target, (identity, page, stage) in preheat_targets.items():
+            active.add(target)
             state = self.store.refresh_state(target)
             # A configured slot without a readable card is a first-run task, not
             # a future maintenance task.  Start it on this scan so opening the
@@ -681,28 +775,65 @@ class RefreshScheduler(threading.Thread):
             # backoff is respected to avoid a hot loop when the source is down.
             if not self._has_card(identity, page, stage):
                 if state is None:
-                    self.store.ensure_refresh_state(target, next_check=current)
+                    self.store.ensure_refresh_state(
+                        target, next_check=current, expires=0, lifecycle='active',
+                        config_version=version,
+                        business_key=refresh_business_key('preheat', identity, page, stage))
                 elif state.get('status') not in {'running', 'retry_wait'}:
-                    self.store.request_refresh(target, now=current)
+                    self.store.request_refresh(
+                        target, now=current, expires=0,
+                        config_version=version,
+                        business_key=refresh_business_key('preheat', identity, page, stage))
             else:
-                self.store.ensure_refresh_state(target, next_check=due)
+                self.store.ensure_refresh_state(
+                    target, next_check=due, expires=0, lifecycle='active',
+                    config_version=version,
+                    business_key=refresh_business_key('preheat', identity, page, stage))
+        for scope, body, last_access in custom_targets:
+            identity = int(body.get('id') or 0)
+            page = body.get('page') or ''
+            ui_scope = body.get('uiScope') or 'default'
+            state = self.store.refresh_state(scope) or {}
+            expires = max(float(state.get('expires') or 0),
+                          custom_refresh_expiry(last_access or current))
+            active.add(scope)
+            self.store.ensure_refresh_state(
+                scope, next_check=float(state.get('next_check') or due), expires=expires,
+                last_access=last_access or current, lifecycle='active',
+                config_version=version,
+                business_key=refresh_business_key('page', identity, page,
+                                                  ui_scope=ui_scope))
+        # Rows from an older config are retained as history but no longer
+        # participate in scheduling.  Custom scopes remain active until TTL.
+        self.store.retire_unknown_refreshes(active, now=current)
+        return active
 
     def _has_card(self, identity, page, stage):
         """Whether a saved card can already be served for this role/stage."""
         data_identity = self.manager.config.identity()
         for candidate in (page, *[item for item in DEFAULT_PAGES if item != page]):
-            if valid_card(self.store.latest_views(identity, 'main', candidate,
-                                                  data_identity=data_identity).get(stage)):
-                return True
+            for key, stage_name, body in self.store.default_views(limit=2000):
+                context = (body or {}).get('context') or {}
+                if (stage_name == stage and int(context.get('id') or 0) == int(identity)
+                        and context.get('page') == candidate
+                        and view_scope(context) == key and valid_card(body)):
+                    return True
             body = self.store.latest_page(identity, candidate, 'default',
                                           data_identity=data_identity)
-            if body and valid_card((body.get('items') or {}).get(stage)):
+            if (body and body.get('configVersion') == config_version()
+                    and valid_card((body.get('items') or {}).get(stage))):
                 return True
         return False
 
     def run_once(self, now=None):
         current = time.time() if now is None else float(now)
         bodies = self._page_bodies()
+        custom_bodies = [
+            (scope, body, source_time) for scope, body, source_time in
+            self.store.page_publications(limit=2000)
+            if (body.get('uiScope') or 'default') != 'default'
+            and body.get('configVersion') == config_version()
+        ]
         views = self._view_targets()
         preheat = self._preheat_targets()
         # A published card is already maintained through its view target; a
@@ -711,7 +842,7 @@ class RefreshScheduler(threading.Thread):
         for _key, stage, analysis in views.values():
             context = analysis.get('context') or {}
             published_targets.add((int(context.get('id') or 0), context.get('page'), stage))
-        self._seed(current, views, preheat)
+        self._seed(current, views, preheat, custom_bodies)
         # A whole-page refresh already re-analyses every stage in its plan;
         # maintaining those same stage cards separately would double the calls.
         pages_with_body = {(int(body['id']), body['page']) for body in bodies.values()

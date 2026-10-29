@@ -4,6 +4,8 @@ import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -280,7 +282,7 @@ def test_status_uses_card_state_when_a_page_has_no_snapshot(tmp_path, monkeypatc
     assert waiting['update']['status'] == 'waiting'
 
 
-def test_scheduler_warms_default_scopes_only(tmp_path):
+def test_scheduler_registers_custom_scope_with_ttl_but_keeps_defaults_permanent(tmp_path):
     store, cfg, page = _router_fixture(tmp_path)
     custom_scope = page_scope(cfg, 1, 'analysis', 'custom', 'ap')
     assert store.publish_page(custom_scope, dict(page, uiScope='custom'))
@@ -296,7 +298,132 @@ def test_scheduler_warms_default_scopes_only(tmp_path):
     assert store.refresh_state(page_scope(cfg, 1, 'analysis', 'default', 'ap'))['next_check'] == 1900.0
     assert scheduler.run_once(now=1901.0) >= 1
     assert store.refresh_state(page_scope(cfg, 1, 'analysis', 'default', 'ap'))['status'] == 'published'
-    assert store.refresh_state(custom_scope) is None
+    custom = store.refresh_state(custom_scope)
+    assert custom and custom['lifecycle'] == 'active'
+    assert custom['expires'] > 0 and custom['business_key']
+    assert store.refresh_state(page_scope(cfg, 1, 'analysis', 'default', 'ap'))['expires'] == 0
+
+
+def test_config_rotation_supersedes_old_refresh_scope_without_deleting_history(tmp_path):
+    with patch('bi_agent.cockpit.page_cache.config_version', return_value='old-config'):
+        store, cfg, _page = _router_fixture(tmp_path)
+        old_scope = page_scope(cfg, 1, 'analysis', 'default', 'ap')
+    old_page = store.published_page(old_scope)
+    calls = []
+    with patch('bi_agent.cockpit.page_cache.config_version', return_value='old-config'):
+        manager = RefreshManager(
+            store, cfg, lambda identity, kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
+            _analysis_factory(store, calls), interval=900, poll=0.01, timeout=5)
+        RefreshScheduler(manager, store, scan_seconds=2, scope_limit=2).run_once(now=1000.0)
+    with patch('bi_agent.cockpit.page_cache.config_version', return_value='new-config'):
+        manager = RefreshManager(
+            store, cfg, lambda identity, kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
+            _analysis_factory(store, calls), interval=900, poll=0.01, timeout=5)
+        RefreshScheduler(manager, store, scan_seconds=2, scope_limit=2).run_once(now=2000.0)
+        current_scope = page_scope(cfg, 1, 'analysis', 'default', 'ap')
+    assert store.published_page(old_scope) == old_page
+    assert store.refresh_state(old_scope)['lifecycle'] == 'superseded'
+    assert store.refresh_state(current_scope)['lifecycle'] == 'active'
+    with store.db() as db:
+        duplicates = db.execute(
+            "SELECT business_key,COUNT(*) FROM page_refresh "
+            "WHERE lifecycle='active' AND business_key<>'' "
+            "GROUP BY business_key HAVING COUNT(*)>1").fetchall()
+    assert duplicates == []
+
+
+def test_expired_custom_scope_is_not_due_and_late_generation_cannot_finish(tmp_path):
+    store = Store(tmp_path / 'history.sqlite3')
+    scope = 'scope-custom'
+    store.ensure_refresh_state(scope, next_check=1000, business_key='slot:1:shipment',
+                               config_version='v1', expires=2000, lifecycle='active')
+    assert scope not in store.due_refresh_scopes(now=950)
+    first = store.claim_refresh_info(scope, now=1000, lease=10, config_version='v1')
+    assert first and first['generation'] == 1
+    second = store.claim_refresh_info(scope, now=1020, lease=10, config_version='v1')
+    assert second and second['generation'] == 2
+    assert store.finish_refresh(scope, first['job_id'], first['generation'], 'published') is False
+    state = store.refresh_state(scope)
+    assert state['job_id'] == second['job_id'] and state['status'] == 'running'
+    store.ensure_refresh_state(scope, next_check=1020, business_key='slot:1:shipment',
+                               config_version='v1', expires=1010, lifecycle='active')
+    store.expire_refreshes(now=1030)
+    assert store.refresh_state(scope)['lifecycle'] == 'expired'
+    assert scope not in store.due_refresh_scopes(now=1030)
+
+
+def test_manual_requeue_prevents_the_abandoned_worker_from_finishing(tmp_path):
+    store = Store(tmp_path / 'history.sqlite3')
+    scope = 'scope-requeued'
+    store.ensure_refresh_state(scope, next_check=1000, business_key='slot:1:shipment',
+                               config_version='v1', expires=0, lifecycle='active')
+    abandoned = store.claim_refresh_info(scope, now=1000, lease=1, config_version='v1')
+    assert abandoned
+    assert store.request_refresh(scope, now=1002, business_key='slot:1:shipment',
+                                 config_version='v1', expires=0)
+    assert store.finish_refresh(scope, abandoned['job_id'], abandoned['generation'],
+                                'published') is False
+    assert store.refresh_state(scope)['status'] == 'waiting'
+    replacement = store.claim_refresh_info(scope, now=1003, lease=10, config_version='v1')
+    assert replacement and replacement['generation'] == abandoned['generation'] + 1
+
+
+def test_refresh_queue_stats_exclude_superseded_rows_and_report_waits(tmp_path):
+    store = Store(tmp_path / 'history.sqlite3')
+    store.ensure_refresh_state('waiting-one', next_check=900, business_key='waiting:1',
+                               config_version='v1', expires=0, lifecycle='active')
+    store.ensure_refresh_state('running-one', next_check=900, business_key='running:1',
+                               config_version='v1', expires=0, lifecycle='active')
+    running = store.claim_refresh_info('running-one', now=900, lease=120, config_version='v1')
+    store.ensure_refresh_state('old-one', next_check=900, business_key='old:1',
+                               config_version='v1', expires=0, lifecycle='superseded')
+    store.ensure_refresh_state('timed-out', next_check=900, business_key='timeout:1',
+                               config_version='v1', expires=0, lifecycle='active')
+    store.set_refresh_state('timed-out', 'retry_wait', next_check=900,
+                            error='后台分析更新超时，已停止旧执行')
+    stats = store.refresh_queue_stats(now=1000)
+    assert running
+    assert stats['activeCount'] == 3
+    assert stats['dueCount'] == 2
+    assert stats['runningCount'] == 1
+    assert stats['waitingCount'] == 2
+    assert stats['oldestWaitingAt'] == 900
+    assert stats['oldestWaitSeconds'] == 100
+    assert stats['timedOutCount'] == 1
+
+
+def test_superseded_refresh_cannot_publish_a_late_result(tmp_path):
+    store, cfg, query, helmet, old = _fixture(tmp_path)
+    calls = []
+    scope = page_scope(cfg, 1, 'analysis', 'default', 'ap')
+    normal = _analysis_factory(store, calls)
+
+    def superseding_start(body, resolved):
+        store.supersede_refresh(scope, superseded_by='test-config')
+        return normal(body, resolved)
+
+    manager = RefreshManager(
+        store, cfg,
+        lambda identity, kind, payload: {'value': 99.0} if kind == 'analysis' else {'nodes': []},
+        superseding_start, interval=900, poll=0.01, timeout=5)
+    result = manager.refresh(old)
+    assert result['status'] == 'retry_wait'
+    assert '配置取代' in result['error']
+    assert store.published_page(scope)['version'] == old['version']
+
+
+def test_refresh_timeout_cancels_the_analysis_instead_of_only_stopping_the_wait(tmp_path):
+    store = Store(tmp_path / 'history.sqlite3')
+    cancelled = []
+    manager = RefreshManager(store, Config(), lambda *_args: {}, lambda *_args: {},
+                             poll=0.001, timeout=60,
+                             cancel_analysis=lambda aid: cancelled.append(aid))
+    manager.timeout = 0.01
+    item = store.create_analysis('slow', {'id': 1, 'stage': 'shipment'})
+    store.update_analysis(item['id'], status='running')
+    with pytest.raises(RuntimeError, match='已停止旧执行'):
+        manager._await(store.get_analysis(item['id']))
+    assert cancelled == [item['id']]
 
 
 def test_scheduler_recovers_publication_when_config_version_rotates(tmp_path):

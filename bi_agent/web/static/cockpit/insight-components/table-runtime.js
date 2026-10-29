@@ -4,6 +4,7 @@ const { cockpitApiBase, cockpitIdentityId } = window.InsightRuntime
 const RESULT_CACHE_LIMIT = 60
 const REFRESH_WINDOW_MS = 5 * 60 * 1000
 const resultCache = new Map()
+const contentCache = new Map()
 const lastRefreshed = new Map()
 
 function remember(cache, key, value) {
@@ -40,14 +41,20 @@ function apQuery(ctx, fields) {
   return {analysisConfig: {dimensions, indicators}, commonConfig}
 }
 
-function querySignature(tableKey, props, ctx, fields) {
+function contentSignature(tableKey, props, ctx, fields) {
   return stable({
     tableKey,
     scope: pageScope(props),
-    analysis: [props.analysis?.id || '', props.analysis?.updatedAt || ''],
     fields: fields.map(field => field.identifierCode),
     params: ctx?.params || {},
     filters: ctx?.filters || [],
+  })
+}
+
+function querySignature(tableKey, props, ctx, fields) {
+  return stable({
+    content: contentSignature(tableKey, props, ctx, fields),
+    analysis: [props.analysis?.id || '', props.analysis?.updatedAt || ''],
   })
 }
 
@@ -101,8 +108,13 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
         dataConfig: {pageSize: 10, sourceType: 'ap', tableFields: displayFields},
         tableColumnConfig: columns,
       })
-      const componentKey = Vue.computed(() => `${pageScope(props)}:${props.analysis?.id || ''}:${props.analysis?.updatedAt || ''}:${revision.value}`)
+      // Analysis timestamps change on every background publish even when the
+      // rows are identical.  The table request signature still includes the
+      // analysis id so annotations are refreshed, but the component instance
+      // must survive so pagination, scroll and expanded rows are preserved.
+      const componentKey = Vue.computed(() => `${pageScope(props)}:${revision.value}`)
       const refreshing = new Set()
+      let lastContext = null
 
       async function refreshInBackground(ctx, signature) {
         if (refreshing.has(signature)) return
@@ -113,9 +125,10 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
         await new Promise(resolve => setTimeout(resolve, 300))
         try {
           const live = await requestRows(tableKey, fields, props, ctx)
-          const previous = resultCache.get(signature)
+          const contentKey = contentSignature(tableKey, props, ctx, fields)
+          const previous = contentCache.get(contentKey)
           const changed = stable(live.data) !== stable(previous?.data || [])
-            || Number(live.meta.generatedAt || 0) > Number(previous?.meta?.generatedAt || 0)
+          remember(contentCache, contentKey, live)
           remember(resultCache, signature, live)
           lastRefreshed.set(signature, Date.now())
           scopeError.value = ''
@@ -134,6 +147,7 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
       }
 
       async function request(ctx) {
+        lastContext = ctx
         const signature = querySignature(tableKey, props, ctx, fields)
         const saved = resultCache.get(signature)
         if (saved) {
@@ -144,6 +158,7 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
           scopeState.value = '正在读取已保存的表格'
           const cached = await requestRows(tableKey, fields, props, ctx, {cacheOnly: true})
           if (cached.meta?.cacheStatus === 'hit') {
+            remember(contentCache, contentSignature(tableKey, props, ctx, fields), cached)
             remember(resultCache, signature, cached)
             scopeState.value = '已加载上次保存的表格'
             refreshInBackground(ctx, signature).catch(() => {})
@@ -151,6 +166,7 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
           }
           scopeState.value = '正在加载表格数据'
           const live = await requestRows(tableKey, fields, props, ctx)
+          remember(contentCache, contentSignature(tableKey, props, ctx, fields), live)
           remember(resultCache, signature, live)
           lastRefreshed.set(signature, Date.now())
           scopeState.value = live.meta?.cacheStatus === 'refreshed' ? '表格数据已加载' : ''
@@ -162,6 +178,16 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
           throw cause
         }
       }
+
+      // A new analysis publication may change the AI columns while leaving the
+      // table facts untouched.  Refresh the request, but only bump the mount key
+      // when the actual row content changes; timestamps alone must not reset
+      // pagination, scroll or expanded rows.
+      Vue.watch(() => [props.analysis?.id || '', props.analysis?.updatedAt || 0], () => {
+        if (!lastContext || !props.analysis) return
+        const signature = querySignature(tableKey, props, lastContext, fields)
+        refreshInBackground(lastContext, signature).catch(() => {})
+      }, {flush: 'post'})
 
       return () => Vue.h('section', {class: ['ai-table', id]}, [
         scopeState.value || scopeError.value

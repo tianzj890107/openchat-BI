@@ -47,6 +47,30 @@ class Store:
             CREATE TABLE IF NOT EXISTS refresh_plans (
               scope TEXT PRIMARY KEY, body TEXT NOT NULL, updated REAL NOT NULL);
             ''')
+            # Additive migration: keep every historical result and every old
+            # scope row, but make refresh eligibility explicit.  Older rows get
+            # an empty business key and are retired by the scheduler on the
+            # first scan instead of remaining in the due queue forever.
+            columns = {row[1] for row in db.execute('PRAGMA table_info(page_refresh)')}
+            for name, ddl in (
+                ('business_key', "TEXT NOT NULL DEFAULT ''"),
+                ('config_version', "TEXT NOT NULL DEFAULT ''"),
+                ('lifecycle', "TEXT NOT NULL DEFAULT 'active'"),
+                ('last_access', 'REAL NOT NULL DEFAULT 0'),
+                ('expires', 'REAL NOT NULL DEFAULT 0'),
+                ('superseded_by', "TEXT NOT NULL DEFAULT ''"),
+                ('job_id', "TEXT NOT NULL DEFAULT ''"),
+                ('worker_id', "TEXT NOT NULL DEFAULT ''"),
+                ('deadline', 'REAL NOT NULL DEFAULT 0'),
+                ('heartbeat', 'REAL NOT NULL DEFAULT 0'),
+                ('generation', 'INTEGER NOT NULL DEFAULT 0'),
+            ):
+                if name not in columns:
+                    db.execute(f'ALTER TABLE page_refresh ADD COLUMN {name} {ddl}')
+            db.execute('CREATE INDEX IF NOT EXISTS refresh_business '
+                       'ON page_refresh(business_key,lifecycle)')
+            db.execute('CREATE INDEX IF NOT EXISTS refresh_due '
+                       'ON page_refresh(lifecycle,next_check)')
 
     @contextmanager
     def db(self):
@@ -170,16 +194,106 @@ class Store:
 
     def refresh_state(self, scope):
         with self.db() as db:
-            row = db.execute('SELECT scope,status,attempt,next_check,lease_until,last_error,last_success,updated '
-                             'FROM page_refresh WHERE scope=?', (scope,)).fetchone()
+            row = db.execute('SELECT * FROM page_refresh WHERE scope=?', (scope,)).fetchone()
         return dict(row) if row else None
 
-    def ensure_refresh_state(self, scope, *, next_check=None):
+    def ensure_refresh_state(self, scope, *, next_check=None, business_key=None,
+                             config_version=None, expires=None, last_access=None,
+                             lifecycle=None):
+        """Register one scope without deleting history.
+
+        ``business_key`` is stable across config/contract rotations.  When a
+        new scope is registered for the same business range, the previous
+        active row is marked ``superseded`` (never deleted), so historical
+        snapshots stay readable while only the current config can be refreshed.
+        """
+        now = time.time()
+        next_check = now if next_check is None else float(next_check)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if business_key:
+                db.execute(
+                    "UPDATE page_refresh SET lifecycle='superseded', superseded_by=?, "
+                    "next_check=0, lease_until=0, updated=? "
+                    "WHERE business_key=? AND scope<>? AND lifecycle='active'",
+                    (scope, now, business_key, scope))
+            db.execute(
+                'INSERT INTO page_refresh(scope,status,attempt,next_check,lease_until,last_error,last_success,updated,'
+                'business_key,config_version,lifecycle,last_access,expires,superseded_by,job_id,worker_id,deadline,heartbeat,generation) '
+                'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(scope) DO NOTHING',
+                (scope, 'waiting', 0, next_check, 0, '', 0, now,
+                 business_key or '', config_version or '', lifecycle or 'active',
+                 float(last_access or 0), float(expires or 0), '', '', '', 0, 0, 0))
+            updates, values = [], []
+            if business_key:
+                updates.append('business_key=?'); values.append(business_key)
+            if config_version is not None:
+                updates.append('config_version=?'); values.append(config_version)
+            if lifecycle is not None:
+                updates.append('lifecycle=?'); values.append(lifecycle)
+            if last_access is not None:
+                updates.append('last_access=?'); values.append(float(last_access))
+            if expires is not None:
+                updates.append('expires=?'); values.append(float(expires))
+            if updates:
+                updates.append('updated=?'); values.append(now); values.append(scope)
+                db.execute('UPDATE page_refresh SET '+','.join(updates)+' WHERE scope=?', values)
+        return self.refresh_state(scope)
+
+    def set_refresh_plan(self, scope, body):
         now = time.time()
         with self.db() as db:
-            db.execute('INSERT INTO page_refresh(scope,status,attempt,next_check,lease_until,last_error,last_success,updated) '
-                       'VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(scope) DO NOTHING',
-                       (scope, 'waiting', 0, next_check if next_check is not None else now, 0, '', 0, now))
+            db.execute('INSERT INTO refresh_plans VALUES(?,?,?) ON CONFLICT(scope) '
+                       'DO UPDATE SET body=excluded.body,updated=excluded.updated',
+                       (scope, json.dumps(body, ensure_ascii=False), now))
+        return body
+
+    def refresh_plan(self, scope):
+        with self.db() as db:
+            row = db.execute('SELECT body FROM refresh_plans WHERE scope=?', (scope,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def supersede_refresh(self, scope, *, superseded_by='', now=None):
+        now = time.time() if now is None else float(now)
+        with self.db() as db:
+            db.execute("UPDATE page_refresh SET lifecycle='superseded', superseded_by=?, "
+                       "next_check=0, lease_until=0, updated=? WHERE scope=?",
+                       (superseded_by or 'current-config', now, scope))
+        return self.refresh_state(scope)
+
+    def retire_unknown_refreshes(self, active_scopes, *, now=None):
+        """Retire rows that are no longer in the current maintenance registry.
+
+        This is deliberately a lifecycle change, not a DELETE: the linked
+        publication/snapshot and every analysis remain available for display.
+        """
+        active = set(active_scopes or ())
+        now = time.time() if now is None else float(now)
+        with self.db() as db:
+            rows = db.execute("SELECT scope FROM page_refresh WHERE lifecycle='active'").fetchall()
+            stale = [row[0] for row in rows if row[0] not in active]
+            if stale:
+                db.executemany(
+                    "UPDATE page_refresh SET lifecycle='superseded', superseded_by='registry', "
+                    "next_check=0, lease_until=0, updated=? WHERE scope=?",
+                    [(now, scope) for scope in stale])
+        return len(stale)
+
+    def expire_refreshes(self, *, now=None):
+        now = time.time() if now is None else float(now)
+        with self.db() as db:
+            cursor = db.execute(
+                "UPDATE page_refresh SET lifecycle='expired', next_check=0, lease_until=0, updated=? "
+                "WHERE lifecycle='active' AND expires>0 AND expires<=?", (now, now))
+            return cursor.rowcount
+
+    def touch_refresh(self, scope, *, now=None, ttl=0):
+        """Record a real user access; only this extends a custom-scope TTL."""
+        now = time.time() if now is None else float(now)
+        with self.db() as db:
+            db.execute('UPDATE page_refresh SET last_access=?, '
+                       'expires=CASE WHEN expires>0 THEN ? ELSE expires END, updated=? WHERE scope=?',
+                       (now, now + max(0, int(ttl)), now, scope))
         return self.refresh_state(scope)
 
     def set_refresh_state(self, scope, status, *, next_check=None, error=None,
@@ -198,29 +312,110 @@ class Store:
                         last_success, now, scope))
         return self.refresh_state(scope)
 
-    def claim_refresh(self, scope, *, now=None, lease=120):
-        """Atomically claim one scope; a live lease prevents duplicate workers."""
+    def claim_refresh(self, scope, *, now=None, lease=120, config_version=None, worker_id=''):
+        """Atomically claim one current scope; a live lease prevents duplicates.
+
+        The returned boolean is kept for compatibility with existing callers.
+        ``job_id``/``generation`` are written to the row and must be checked
+        before publishing a late result.
+        """
         now = time.time() if now is None else float(now)
-        self.ensure_refresh_state(scope, next_check=now)
+        self.ensure_refresh_state(scope, next_check=now, config_version=config_version)
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
-            row = db.execute('SELECT status,lease_until,attempt,next_check FROM page_refresh WHERE scope=?',
-                             (scope,)).fetchone()
-            if not row or (row['status'] == 'running' and row['lease_until'] > now):
+            row = db.execute('SELECT * FROM page_refresh WHERE scope=?', (scope,)).fetchone()
+            if not row:
+                return False
+            if row['lifecycle'] != 'active':
+                return False
+            if row['expires'] and row['expires'] <= now:
+                db.execute("UPDATE page_refresh SET lifecycle='expired', next_check=0, updated=? WHERE scope=?",
+                           (now, scope))
+                return False
+            if config_version and row['config_version'] and row['config_version'] != config_version:
+                db.execute("UPDATE page_refresh SET lifecycle='superseded', superseded_by='config-version', "
+                           "next_check=0, lease_until=0, updated=? WHERE scope=?", (now, scope))
+                return False
+            if row['status'] == 'running' and row['lease_until'] > now:
                 return False
             if row['next_check'] > now and row['status'] != 'retry_wait':
                 return False
-            db.execute('UPDATE page_refresh SET status=?,attempt=?,next_check=?,lease_until=?,updated=? WHERE scope=?',
-                       ('running', int(row['attempt']) + 1, now, now + lease, now, scope))
+            generation = int(row['generation'] or 0) + 1
+            db.execute(
+                'UPDATE page_refresh SET status=?,attempt=?,next_check=?,lease_until=?,updated=?,'
+                'job_id=?,worker_id=?,deadline=?,heartbeat=?,generation=? WHERE scope=?',
+                ('running', int(row['attempt']) + 1, now, now + lease, now,
+                 uuid.uuid4().hex, worker_id or '', now + lease, now, generation, scope))
         return True
 
-    def request_refresh(self, scope, *, now=None):
-        """Queue a refresh without stealing a running worker's lease."""
+    def claim_refresh_info(self, scope, *, now=None, lease=120, config_version=None,
+                           worker_id=''):
+        """Claim a scope and return the exact job/generation written for it.
+
+        The boolean-only ``claim_refresh`` stays available for older callers,
+        while the refresh manager needs this identity to heartbeat and to
+        reject a late worker before it mutates a newer publication.
+        """
+        if not self.claim_refresh(scope, now=now, lease=lease,
+                                  config_version=config_version, worker_id=worker_id):
+            return None
+        state = self.refresh_state(scope) or {}
+        if not state.get('job_id') or state.get('status') != 'running':
+            return None
+        return dict(scope=scope, job_id=state['job_id'], generation=int(state['generation']),
+                    lease_until=float(state.get('lease_until') or 0))
+
+    def heartbeat_refresh(self, scope, job_id, *, lease=120, now=None):
         now = time.time() if now is None else float(now)
-        self.ensure_refresh_state(scope, next_check=now)
+        with self.db() as db:
+            cursor = db.execute(
+                "UPDATE page_refresh SET lease_until=?, deadline=?, heartbeat=?, updated=? "
+                "WHERE scope=? AND job_id=? AND status='running' AND lifecycle='active'",
+                (now + lease, now + lease, now, now, scope, job_id))
+            return cursor.rowcount == 1
+
+    def owns_refresh(self, scope, job_id, generation):
+        if not job_id:
+            return False
+        with self.db() as db:
+            row = db.execute('SELECT job_id,generation,status,lifecycle FROM page_refresh WHERE scope=?',
+                             (scope,)).fetchone()
+        return bool(row and row['job_id'] == job_id and int(row['generation']) == int(generation)
+                    and row['status'] == 'running' and row['lifecycle'] == 'active')
+
+    def finish_refresh(self, scope, job_id, generation, status, *, next_check=None, error=None,
+                       last_success=None, lifecycle=None):
+        """Commit only the worker that still owns this exact generation."""
+        now = time.time()
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
-            row = db.execute('SELECT status,lease_until,attempt FROM page_refresh WHERE scope=?',
+            row = db.execute('SELECT * FROM page_refresh WHERE scope=?', (scope,)).fetchone()
+            # ``request_refresh`` can move an expired running row back to
+            # waiting before the next worker claims it.  The old worker must not
+            # be able to finish that abandoned generation merely because its
+            # job id has not yet been replaced.
+            if (not row or row['job_id'] != job_id
+                    or int(row['generation']) != int(generation)
+                    or row['status'] != 'running' or row['lifecycle'] != 'active'):
+                return False
+            values = [status, row['attempt'], float(next_check if next_check is not None else row['next_check']),
+                      0.0, str(error or ''), float(last_success if last_success is not None else row['last_success']),
+                      now, lifecycle or row['lifecycle'], '', '', 0.0, 0.0, scope, job_id, int(generation)]
+            db.execute('UPDATE page_refresh SET status=?,attempt=?,next_check=?,lease_until=?,last_error=?,'
+                       'last_success=?,updated=?,lifecycle=?,job_id=?,worker_id=?,deadline=?,heartbeat=? '
+                       'WHERE scope=? AND job_id=? AND generation=?', values)
+        return True
+
+    def request_refresh(self, scope, *, now=None, business_key=None, config_version=None,
+                        expires=None, last_access=None):
+        """Queue a refresh without stealing a running worker's lease."""
+        now = time.time() if now is None else float(now)
+        self.ensure_refresh_state(scope, next_check=now, business_key=business_key,
+                                  config_version=config_version, expires=expires,
+                                  last_access=last_access)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT status,lease_until,attempt,lifecycle FROM page_refresh WHERE scope=?',
                              (scope,)).fetchone()
             if not row:
                 return False
@@ -228,22 +423,11 @@ class Store:
                 # A manual click must not hand the same scope to a second
                 # worker; the in-flight run finishes and reschedules itself.
                 return False
+            if row['lifecycle'] not in {'active'}:
+                return False
             db.execute("UPDATE page_refresh SET status='waiting',next_check=?,lease_until=0,updated=? WHERE scope=?",
                        (now, now, scope))
         return True
-
-    def set_refresh_plan(self, scope, body):
-        now = time.time()
-        with self.db() as db:
-            db.execute('INSERT INTO refresh_plans VALUES(?,?,?) ON CONFLICT(scope) '
-                       'DO UPDATE SET body=excluded.body,updated=excluded.updated',
-                       (scope, json.dumps(body, ensure_ascii=False), now))
-        return body
-
-    def refresh_plan(self, scope):
-        with self.db() as db:
-            row = db.execute('SELECT body FROM refresh_plans WHERE scope=?', (scope,)).fetchone()
-        return json.loads(row[0]) if row else None
 
     def default_views(self, limit=2000):
         """Published default-scope AI cards that need scheduled maintenance.
@@ -252,9 +436,8 @@ class Store:
         so they may never have a whole-page snapshot.  Their published stage
         cards are still a durable maintenance target.  A component/config
         rotation creates a new view key while the previous key remains as
-        append-only history; only the newest card for each business stage is a
-        live maintenance target, otherwise the old key would re-run the model
-        forever under the rotated key.
+        append-only history; the scheduler additionally verifies that the
+        stored key still matches the current config before refreshing it.
         """
         with self.db() as db:
             rows = db.execute('SELECT v.view_key, v.stage, a.body FROM publication_views v '
@@ -270,12 +453,45 @@ class Store:
         return list(latest.values())
 
     def due_refresh_scopes(self, now=None, limit=20):
+        """Current, unexpired work only; old awaiting-plan rows go last."""
         now = time.time() if now is None else float(now)
+        self.expire_refreshes(now=now)
         with self.db() as db:
-            rows = db.execute('SELECT scope FROM page_refresh WHERE next_check<=? AND '
-                              '(status!=\'running\' OR lease_until<=?) ORDER BY next_check LIMIT ?',
-                              (now, now, limit)).fetchall()
+            rows = db.execute(
+                "SELECT scope FROM page_refresh WHERE lifecycle='active' "
+                "AND (expires=0 OR expires>?) AND next_check<=? "
+                "AND (status!='running' OR lease_until<=?) "
+                "ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 "
+                "WHEN 'waiting' THEN 2 WHEN 'retry_wait' THEN 3 WHEN 'published' THEN 4 "
+                "WHEN 'awaiting-plan' THEN 5 ELSE 6 END, next_check LIMIT ?",
+                (now, now, now, limit)).fetchall()
         return [r[0] for r in rows]
+
+    def refresh_queue_stats(self, *, now=None):
+        """Operational counts that separate history from the live queue."""
+        now = time.time() if now is None else float(now)
+        self.expire_refreshes(now=now)
+        with self.db() as db:
+            row = db.execute(
+                "SELECT COUNT(*), "
+                "SUM(CASE WHEN next_check<=? AND "
+                " (status!='running' OR lease_until<=?) THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN status='running' AND lease_until>? THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN status IN ('waiting','queued','retry_wait','awaiting-plan') "
+                " THEN 1 ELSE 0 END), "
+                "MIN(CASE WHEN next_check<=? AND "
+                " (status!='running' OR lease_until<=?) THEN next_check END), "
+                "SUM(CASE WHEN last_error LIKE '%超时%' OR last_error LIKE '%租约已失效%' "
+                " OR last_error LIKE '%停止旧执行%' THEN 1 ELSE 0 END) "
+                "FROM page_refresh WHERE lifecycle='active' AND (expires=0 OR expires>?)",
+                (now, now, now, now, now, now)).fetchone()
+        active, due, running, waiting, oldest, timed_out = row
+        oldest = float(oldest or 0)
+        return dict(activeCount=int(active or 0), dueCount=int(due or 0),
+                    runningCount=int(running or 0), waitingCount=int(waiting or 0),
+                    oldestWaitingAt=oldest,
+                    oldestWaitSeconds=max(0.0, round(now - oldest, 1)) if oldest else 0,
+                    timedOutCount=int(timed_out or 0))
 
     def create_analysis(self, scope, context):
         now=time.time()

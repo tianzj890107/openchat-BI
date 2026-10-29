@@ -12,6 +12,30 @@
 
 ## 本周变更
 
+### 2026-10-29 23:47 · Cockpit 刷新生命周期、表格预热与静默更新收口
+
+- 刷新调度：`page_refresh` 增加稳定业务键、配置版本、生命周期、最近访问、有效期、jobId、
+  workerId、deadline、heartbeat 和 generation。同一业务范围切换组件配置时，旧刷新范围标记为
+  `superseded`，历史页面、分析和发布结果全部保留但不再进入调度；默认范围常驻，自定义范围按
+  `COCKPIT_CUSTOM_REFRESH_TTL_SECONDS`（默认 24 小时）失效。到期查询和领取任务都校验
+  `active`、配置版本和有效期，旧版 `awaiting-plan` 不再长期抢占有效任务。
+- 执行收尾：后台刷新领取任务后记录 job/generation，等待分析时续租；超时或租约失效会协作
+  取消对应分析线程并结束等待，而不是只停止轮询。旧 generation 迟到完成不能更新刷新状态或
+  写回新结果。手动刷新不再抢占正在运行的租约，也不会重新激活已失效范围。
+- AI 表格：两个角色、三张默认 AI 表格在服务端启动后按与浏览器完全相同的查询键预热并落盘；
+  `cacheOnly=true` 可直接命中，失败不会覆盖上次成功快照。DataTable 的组件实例 key 不再包含
+  分析更新时间，后台发布只在实际行数据变化时更新，保留分页、滚动和展开状态。
+- 图表静默更新：数据客户端增加快照就地合并，轮询收到新整页版本时更新现有查询凭据与证据，
+  并把新结果写入当前 SDK runtime 的组件数据；不增加 `boardRevision`、不重新挂载看板，也不
+  清除当前筛选范围。Tab 内组件按完整 container/tab/template 路径更新。状态接口的
+  `update.queue` 同步给出有效待刷新、执行中、等待、最老等待时长和超时计数，避免把历史记录
+  当成实时队列。AI 卡片仍先展示已发布版本，内容不足时继续按 `contentGaps` 标记受限交付。
+- 主要文件：`bi_agent/cockpit/{store,refresh,router,ai_tables}.py`、
+  `bi_agent/web/static/cockpit/{cockpit,data-client}.js`、
+  `bi_agent/web/static/cockpit/insight-components/table-runtime.js` 及对应测试。
+- 验证：全量 Python `1715 passed, 37 skipped, 1022 subtests passed`；前端单元测试 77 项通过。
+  浏览器性能测试需要本地 8896 服务，未在本次纯单测环境启动。未部署、未重启服务、未修改服务器。
+
 ### 2026-10-29 22:37 · Cockpit AI 卡片稳定性、表格缓存与任务令下发闭环
 
 - 用户可见变化：第三页「销售额 / 出货量共同问题分析」不再因缺少 `computed` 引用一直显示

@@ -15,7 +15,13 @@ test('the three order DataTables use the shared ProDataTable adapter', async () 
   assert.match(runtime, /period: String\(slot\.period \|\| ''\)/);
   assert.match(runtime, /cacheOnly: true/);
   assert.match(runtime, /已加载上次保存的表格/);
-  assert.match(runtime, /pageScope\(props\).*props\.analysis\?\.id.*revision\.value/);
+  assert.match(runtime, /querySignature[\s\S]*props\.analysis\?\.id[\s\S]*props\.analysis\?\.updatedAt/);
+  assert.match(runtime, /componentKey = Vue\.computed\(\(\) => `\$\{pageScope\(props\)\}:\$\{revision\.value\}`\)/);
+  assert.doesNotMatch(runtime, /componentKey[\s\S]{0,80}analysis\?\.updatedAt/);
+  assert.match(runtime, /stable\(live\.data\) !== stable\(previous\?\.data \|\| \[\]\)/);
+  assert.doesNotMatch(runtime, /live\.meta\.generatedAt[\s\S]{0,100}revision\.value/);
+  assert.match(runtime, /contentSignature\(tableKey, props, ctx, fields\)/);
+  assert.match(runtime, /Vue\.watch\(\(\) => \[props\.analysis\?\.id[\s\S]{0,220}refreshInBackground/);
   for (const name of names) {
     assert.match(registry, new RegExp(`'${name}'`));
     const source = await readFile(new URL(`insight-components/${name}/index.js`, root), 'utf8');

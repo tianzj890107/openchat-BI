@@ -16,6 +16,19 @@ test('concurrent duplicate widgets share the same upstream response and result r
   assert.deepEqual(client.scope().apReceiptIds,['receipt1']);
 });
 
+test('a newer server snapshot advances receipts in place without fetching or clearing the mounted scope', async () => {
+  let calls = 0;
+  const client = createAPDataClient({apiBase:'/api/cockpit', id:1,
+    request:async()=>{calls+=1; return ok('receipt-old');}});
+  await client.biAdapters.postAnalysisDataQuery(query);
+  const updated = client.applySnapshot([{kind:'analysis', payload:query, data:{rows:[{amount:99}]},
+    receiptId:'receipt-new', receivedAt:Date.now()/1000, expiresAt:Date.now()/1000+120}]);
+  assert.equal(updated, 1);
+  assert.equal(calls, 1);
+  assert.deepEqual(client.scope().apReceiptIds, ['receipt-new']);
+  assert.deepEqual(client.entries()[0].data, {rows:[{amount:99}]});
+});
+
 test('filter change replaces old scope and rejects the late old response', async () => {
   const resolves=[];
   const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:()=>new Promise(resolve=>resolves.push(resolve))});
