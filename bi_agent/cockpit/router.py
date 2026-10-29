@@ -39,6 +39,7 @@ class Context(BaseModel):
     chartSnapshotId:str=Field(default="",max_length=160)
     apReceiptIds:list[str]=Field(default_factory=list,max_length=80)
     chartQueries:list[str]=Field(default_factory=list,max_length=80)
+    unavailableQueries:list[str]=Field(default_factory=list,max_length=80)
     filters:dict[str,str|list[str]]=Field(default_factory=dict,max_length=20)
     baselineAnalysisId:str=Field(default="",pattern=r"^(|[a-f0-9]{32})$")
     clarifications:dict[str,str]=Field(default_factory=dict,max_length=10)

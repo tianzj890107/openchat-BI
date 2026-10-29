@@ -108,16 +108,29 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     inflight.set(key, promise);
     return promise;
   }
-  function scope(allowExpired=false) {
+  function scope(options=false) {
+    const {allowExpired=false, partial=false} = typeof options === 'object' ? options : {allowExpired: Boolean(options)};
     if(blocked)throw new Error(blocked);
     const states = [...active.values()];
     if (!states.length || states.some(s => s.pending)) throw new Error('看板AP查询仍在加载，请稍后分析');
-    const error = states.find(s => s.error);
-    if (error) throw new Error(error.error);
-    if (!allowExpired && states.some(s => s.expiresAt * 1000 <= Date.now())) throw new Error('看板数据凭据已过期，请刷新页面重新取数');
-    return {chartQueries: [...new Set(states.map(s => s.key))].sort(), apReceiptIds: states.map(s => s.receiptId).sort()};
+    if (!partial) {
+      const error = states.find(s => s.error);
+      if (error) throw new Error(error.error);
+      if (!allowExpired && states.some(s => s.expiresAt * 1000 <= Date.now())) throw new Error('看板数据凭据已过期，请刷新页面重新取数');
+      return {chartQueries: [...new Set(states.map(s => s.key))].sort(), apReceiptIds: states.map(s => s.receiptId).sort()};
+    }
+    const now = Date.now(), usable = [], unavailable = [];
+    for (const state of states) {
+      if (state.error) unavailable.push({query: state.key, labels: state.labels, error: state.error});
+      else if (!allowExpired && state.expiresAt * 1000 <= now) unavailable.push({query: state.key, labels: state.labels, error: '看板数据凭据已过期，请刷新页面重新取数'});
+      else if (!state.receiptId) unavailable.push({query: state.key, labels: state.labels, error: '看板AP响应缺少服务端结果凭据'});
+      else usable.push(state);
+    }
+    if (!usable.length) throw new Error(unavailable.length ? '看板AP查询全部失败，无法分析：' + unavailable[0].error : '看板AP查询仍在加载，请稍后分析');
+    return {chartQueries: [...new Set(usable.map(s => s.key))].sort(), apReceiptIds: [...new Set(usable.map(s => s.receiptId))].sort(), unavailable};
   }
-  async function ready({allowExpired=false}={}) {
+  async function ready(options={}) {
+    const {allowExpired=false, partial=false} = typeof options === 'boolean' ? {allowExpired: options} : options;
     let stable = 0, previous = '';
     for (let attempt = 0; attempt < 450; attempt++) {
       await pause(100);
@@ -125,12 +138,14 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
       stable = signature && signature === previous ? stable + 1 : 0;
       previous = signature;
       if (stable >= 3 && ![...all.values()].some(s => s.pending)) {
-        const failed=[...all.values()].find(s=>s.error);
-        if(failed)throw new Error(failed.error);
-        return scope(allowExpired);
+        if (!partial) {
+          const failed=[...all.values()].find(s=>s.error);
+          if(failed)throw new Error(failed.error);
+        }
+        return scope({allowExpired, partial});
       }
     }
-    return scope(allowExpired);
+    return scope({allowExpired, partial});
   }
   function clearScope() { active.clear(); all.clear(); completed.clear(); inflight.clear(); replay.clear(); replaying=false; onInvalidate({replacement:true}); }
   function failures() {

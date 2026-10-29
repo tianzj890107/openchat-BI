@@ -128,3 +128,19 @@ def test_stage_projection_hides_other_stage_columns_in_mixed_query():
     output = json.loads(executor(selected, "opportunity")({"queryId": "q1"}, ""))
     assert output["data"]["rows"] == [{"产品类型[YWLN_D003]": "PACK",
                                        "商机获取电量[YWLN_M0022]": 1.45}]
+
+
+def test_failed_queries_are_reported_for_the_matching_stage_only():
+    from bi_agent.cockpit.dashboard_source import unavailable_stage_evidence
+    failed = {"unavailableQueries": [
+        json.dumps({"analysisConfig": {"indicators": [
+            {"identifierCode": "YWLN_M0023", "alias": "商机获取金额"}]}}),
+        json.dumps({"analysisConfig": {"indicators": [
+            {"identifierCode": "YWLN_M0036", "alias": "发货金额"}]}}),
+    ]}
+    got = unavailable_stage_evidence(failed, "opportunity")
+    assert got["failed"] == 1 and got["excluded"] == 1
+    assert "商机获取金额" in got["labels"]
+    assert unavailable_stage_evidence({}, "opportunity")["failed"] == 0
+    with pytest.raises(ValueError):
+        unavailable_stage_evidence({"unavailableQueries": ["{not json"]}, "opportunity")

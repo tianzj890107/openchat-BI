@@ -187,3 +187,17 @@ def test_stage_without_matching_evidence_skips_the_model_and_delivers_a_gap_card
     assert result['cardContract'] == 'cockpit-cards-v1'
     assert result['causes'] == [] and result['recommendations'] == []
     assert '商机获取' in result['summary']
+
+
+def test_failed_stage_queries_are_disclosed_without_using_other_stages():
+    from bi_agent.cockpit.dashboard_source import stage_gap_result
+    context = dict(CONTEXT, stage='opportunity', stageEvidence=dict(
+        stage='opportunity', kept=1, excluded=2, failed=1, failedLabels=['商机获取金额']))
+    question = analysis_question(context)
+    assert '1条指标查询因上游数据失败' in question
+    assert '商机获取金额' in question
+    gap = stage_gap_result(dict(context, stageEvidence=dict(
+        stage='opportunity', kept=0, excluded=2, failed=1, failedLabels=['商机获取金额'])))
+    assert gap['_status'] == 'limited' and gap['causes'] == [] and gap['recommendations'] == []
+    assert any('商机获取金额' in item for item in gap['limitations'])
+    assert '未生成原因与建议' in gap['summary']

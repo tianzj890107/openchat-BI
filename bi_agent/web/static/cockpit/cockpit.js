@@ -128,7 +128,7 @@
   function checkedAnalysis(item, stage) {
     const context=item.context || {};
     if (analysisEngine === 'main') {
-      const current = liveDataClient ? liveDataClient.scope() : {chartQueries: [...displayedQueries].sort(), apReceiptIds: []};
+      const current = liveDataClient ? liveDataClient.scope({partial:true}) : {chartQueries: [...displayedQueries].sort(), apReceiptIds: []};
       if (dashboardQueryError || canonical(context.chartQueries||[])!==canonical(current.chartQueries) || canonical(context.apReceiptIds||[])!==canonical(current.apReceiptIds)) throw new Error(dashboardQueryError || '看板查询范围已变化，请重新分析');
     }
     if(context.engine!==analysisEngine || context.id!==Number(identityId) || context.stage!==stage ||
@@ -147,7 +147,7 @@
     state.progress = '提交模型分析';
     let dataScope = {chartQueries: [], apReceiptIds: []};
     if (analysisEngine === 'main' && liveDataClient) {
-      dataScope = await liveDataClient.ready();
+      dataScope = await liveDataClient.ready({partial:true});
     } else if (analysisEngine === 'main') {
       let previous = -1, stable = 0;
       for (let attempt = 0; attempt < 20 && stable < 3; attempt++) {
@@ -167,6 +167,7 @@
       chartSnapshotId: 'pdt-release-2109836674373566465',
       chartQueries: dataScope.chartQueries,
       apReceiptIds: dataScope.apReceiptIds,
+      unavailableQueries: (dataScope.unavailable || []).map(entry => entry.query),
       period: baselineItem?.context.period || PERIOD,
       department: baselineItem?.context.department || DEPARTMENT,
       filters: baselineItem?.context.filters || {},
@@ -250,9 +251,10 @@
   }
   async function mainBody(stage,refresh) {
     let dataScope;
-    if(liveDataClient) dataScope=await liveDataClient.ready();
+    if(liveDataClient) dataScope=await liveDataClient.ready({partial:true});
     else {for(let n=0;n<20 && !displayedQueries.size;n++) await new Promise(r=>setTimeout(r,100));if(dashboardQueryError)throw new Error(dashboardQueryError);dataScope={chartQueries:[...displayedQueries].sort(),apReceiptIds:[]};}
-    return {...baseMainBody(stage,refresh),...dataScope};
+    const {unavailable=[],...usableScope}=dataScope;
+    return {...baseMainBody(stage,refresh),...usableScope,unavailableQueries:unavailable.map(entry=>entry.query)};
   }
 
   const CockpitInsight = {
@@ -686,7 +688,7 @@
               nextTick(()=>requestAnimationFrame(()=>window.scrollTo({top,behavior:'instant'})));
             }
             const client=liveDataClient;
-            client.ready({allowExpired:Boolean(snapshot)}).then(()=>{if(client===liveDataClient){filtersReady=true;onPageActivity();}}).catch(()=>{});
+            client.ready({allowExpired:Boolean(snapshot),partial:true}).then(()=>{if(client===liveDataClient){filtersReady=true;onPageActivity();}}).catch(()=>{if(client===liveDataClient){filtersReady=true;onPageActivity();}});
             setTimeout(()=>{if(client===liveDataClient&&liveError.value)sweepStuckLoading();},6500);
           }
           function schedulePageRefresh(delay=120000) {

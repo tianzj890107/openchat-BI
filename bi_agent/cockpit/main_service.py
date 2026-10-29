@@ -21,6 +21,9 @@ def analysis_question(context):
     if stage_gap:
         stage_note=(f"本轮只为{NAMES[context['stage']]}环节提供{stage_gap.get('kept',0)}条匹配查询；"
                     f"另有{stage_gap.get('excluded',0)}条其他环节查询已排除，不得引用或改写成该环节证据。")
+        if stage_gap.get('failed'):
+            labels='、'.join(stage_gap.get('failedLabels') or []) or '若干指标'
+            stage_note+=f"本环节另有{stage_gap['failed']}条指标查询因上游数据失败未纳入（{labels}）；不得据此推断该环节正常，原因与建议必须说明该缺口。"
     return (
         f"请分析{NAMES[context['stage']]}环节的经营异常，调查有证据支持的原因，并给出基于证据的改善建议。"
         "请沿用主服务正常意图路由、只读看板工具取数与交付校验。本任务为无对话自动卡片交付，遇到口径歧义请交付受限卡片说明缺失，不要等待交互。"
@@ -118,6 +121,9 @@ def session_evidence(session,context):
     stage_filter=getattr(session,'cockpit_stage_filter',None) or {}
     if stage_filter.get('excluded'):
         limitations.append(f"已排除{stage_filter['excluded']}条与{NAMES.get(stage_filter.get('stage'),stage_filter.get('stage'))}环节无关的页面查询；未使用其他环节数据代替。")
+    if stage_filter.get('failed'):
+        labels='、'.join(stage_filter.get('failedLabels') or []) or '指标'
+        limitations.append(f"本环节有{stage_filter['failed']}条指标查询失败未纳入（{labels}）；未用其他数据替代，相关结论应视为不完整。")
     records=[]
     for index,query in enumerate(getattr(session,'query_results',[])):
         data=getattr(query,'data',None)

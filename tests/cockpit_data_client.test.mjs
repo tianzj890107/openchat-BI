@@ -210,3 +210,23 @@ test('a transient 504 is retried once while a deterministic 502 is not', async (
   await assert.rejects(deterministic.biAdapters.postAnalysisDataQuery(query), /AP未返回成功/);
   assert.equal(failed.length, 1);
 });
+
+test('partial scope keeps successful queries and reports failed ones for stage disclosure', async () => {
+  const failed = {analysisConfig: {indicators: [{identifierCode:'FAIL'}]}, commonConfig: {filters: {month:'2026-10'}}};
+  const client = createAPDataClient({apiBase:'/api/cockpit', id:1, request:async (url, options) => {
+    const body = JSON.parse(options.body);
+    if (body.payload.analysisConfig.indicators[0].identifierCode === 'FAIL')
+      return {ok:false, status:502, json:async () => ({detail:'AP未返回成功的数据结果：SQL 超时'})};
+    return ok('receipt-ok');
+  }});
+  await assert.rejects(client.biAdapters.postAnalysisDataQuery(failed), /SQL 超时/);
+  await client.biAdapters.postAnalysisDataQuery(query);
+  assert.throws(() => client.scope(), /SQL 超时/);
+  await assert.rejects(client.ready(), /SQL 超时/);
+  const partial = await client.ready({partial:true});
+  assert.deepEqual(partial.apReceiptIds, ['receipt-ok']);
+  assert.equal(partial.chartQueries.length, 1);
+  assert.equal(partial.unavailable.length, 1);
+  assert.match(partial.unavailable[0].query, /FAIL/);
+  assert.match(partial.unavailable[0].error, /SQL 超时/);
+});

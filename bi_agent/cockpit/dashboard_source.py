@@ -97,6 +97,29 @@ def filter_stage_selected(selected, stage):
     return kept, excluded
 
 
+def unavailable_stage_evidence(context, stage):
+    """Count failed AP queries that belong to this stage without using them as evidence."""
+    items = {}
+    for index, raw in enumerate(context.get('unavailableQueries') or []):
+        if not isinstance(raw, str) or len(raw) > 20000:
+            raise ValueError('无效的AP失败查询')
+        try:
+            request = json.loads(raw)
+        except ValueError:
+            raise ValueError('无效的AP失败查询') from None
+        if not isinstance(request, (dict, list)):
+            raise ValueError('无效的AP失败查询')
+        items[str(index)] = {'request': request}
+    kept, excluded = filter_stage_selected(items, stage)
+    labels = []
+    for value in kept.values():
+        for token in request_labels(value['request']):
+            if token in labels or _CODE_RE.fullmatch(token):
+                continue
+            labels.append(token)
+    return dict(failed=len(kept), excluded=len(excluded), labels=labels)
+
+
 def stage_gap_result(context):
     """Server-owned limited card when a stage has no matching dashboard data."""
     from .cards import CONTRACT
@@ -104,12 +127,17 @@ def stage_gap_result(context):
     stage = context.get('stage')
     name = NAMES.get(stage, stage)
     gap = context.get('stageEvidence') or {}
+    failed = int(gap.get('failed') or 0)
+    failed_labels = [str(value) for value in gap.get('failedLabels') or [] if str(value).strip()]
+    failure_note = (f'本环节有{failed}条指标查询失败（{"、".join(failed_labels) or "指标"}），未纳入本轮证据。' if failed else '')
     limitations = [
-        f'本次页面没有与{name}环节匹配的看板指标；已排除{gap.get("excluded", 0)}条无关查询，未用采购、发货等其他环节数据代替。',
+        f'本次页面没有与{name}环节匹配的可用看板指标；已排除{gap.get("excluded", 0)}条无关查询，未用采购、发货等其他环节数据代替。',
         '没有同源业务明细或指标映射，不能生成原因与建议，也不代表该环节经营正常。',
-        '请先切换到包含该环节指标的页面或补齐数据配置后重新分析。',
+        '上游数据不可用时不补造结论；请待指标恢复或补齐数据配置后重新分析。',
     ]
-    summary = f'本次分析未取得{name}环节对应的看板指标，未生成原因与建议。'
+    if failure_note:
+        limitations.insert(1, failure_note)
+    summary = f'本次分析未取得{name}环节对应的看板指标，未生成原因与建议。' + (failure_note if failure_note else '')
     evidence = dict(
         sourceMode='service', dataSource=context.get('dataSource', ''),
         snapshotId=context.get('snapshotId', ''), stage=stage, stageName=name,

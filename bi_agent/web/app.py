@@ -3951,7 +3951,7 @@ app.include_router(build_mcp_router(
 from ..cockpit.router import build_cockpit_router  # noqa: E402
 
 def _cockpit_main_context(req):
-    from ..cockpit.dashboard_source import material, receipt_material, filter_stage_selected
+    from ..cockpit.dashboard_source import material, receipt_material, filter_stage_selected, unavailable_stage_evidence
     from ..cockpit.ap_gateway import data_mode
     from ..cockpit.store import Store
     if STATE.agent_def is None:
@@ -3967,14 +3967,16 @@ def _cockpit_main_context(req):
             identities={v.get("connectionId","") for v in selected.values()}
             if len(identities)!=1:raise ValueError("AP材料来自不同连接，不能合并分析")
             kept,excluded=filter_stage_selected(selected,req.stage)
-            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataSource='ap',dataIdentity=next(iter(identities)),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))),dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数',stageEvidence=dict(stage=req.stage,kept=len(kept),excluded=len(excluded),available=len(selected),receipts=sorted({v.get('receiptId','') for v in kept.values()}-{''})))
+            failed=unavailable_stage_evidence(req.model_dump(),req.stage)
+            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataSource='ap',dataIdentity=next(iter(identities)),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))),dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数',stageEvidence=dict(stage=req.stage,kept=len(kept),excluded=len(excluded),available=len(selected),failed=failed['failed'],failedLabels=failed['labels'],receipts=sorted({v.get('receiptId','') for v in kept.values()}-{''})))
         if req.apReceiptIds:raise ValueError('快照模式不能消费实时AP凭据')
         fingerprint,selected=material(req.model_dump())
         kept,excluded=filter_stage_selected(selected,req.stage)
+        failed=unavailable_stage_evidence(req.model_dump(),req.stage)
     except (ValueError, TypeError) as exc:
         raise HTTPException(422,str(exc)) from exc
     return dict(snapshotId='dashboard-'+fingerprint,repositoryId='',dataSource='snapshot',dataIdentity='pdt-release-2109836674373566465',dataFingerprint=fingerprint,
-        dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库',stageEvidence=dict(stage=req.stage,kept=len(kept),excluded=len(excluded),available=len(selected)))
+        dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库',stageEvidence=dict(stage=req.stage,kept=len(kept),excluded=len(excluded),available=len(selected),failed=failed['failed'],failedLabels=failed['labels']))
 
 
 @contextmanager
