@@ -178,14 +178,18 @@ class RefreshScheduler(threading.Thread):
         self.stop_event = threading.Event()
 
     def run_once(self, now=None):
+        current = time.time() if now is None else float(now)
         # Only default scopes are kept warm; the scan reads version metadata and
         # loads a full page body only for the few scopes it is about to refresh.
         publications = {scope: version for scope, version, _source
                         in self.store.default_publications(limit=2000)}
         for scope in publications:
-            self.store.ensure_refresh_state(scope, next_check=now)
+            # New scopes wait one full interval before the first automatic
+            # check: a deploy must not re-query and re-analyse every default
+            # page at once while the dashboard is already serving traffic.
+            self.store.ensure_refresh_state(scope, next_check=current + self.manager.interval)
         claimed = 0
-        for scope in self.store.due_refresh_scopes(now, limit=self.scope_limit):
+        for scope in self.store.due_refresh_scopes(current, limit=self.scope_limit):
             body = self.store.published_page(scope) if scope in publications else None
             if not body:
                 self.store.set_refresh_state(scope, 'idle', next_check=time.time() + self.manager.interval)

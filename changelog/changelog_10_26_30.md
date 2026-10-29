@@ -634,7 +634,8 @@
 - 服务端调度：新增 `bi_agent/cockpit/refresh.py`。`RefreshScheduler` 常驻线程按
   `page_refresh` 表扫描到期的默认范围，`RefreshManager` 重新执行原页面查询、计算
   证据指纹，数据、来源或交付契约未变化时只更新检查时间，不调用模型；变化时创建分析任务，
-  等待完整卡片契约后再整页发布。
+  等待完整卡片契约后再整页发布。新登记范围首次检查延后一个周期，部署或重启不会立刻重跑
+  全部默认页面；手工触发 `/publications/refresh` 仍立即生效。
 - 持久与去重：`page_refresh` 记录状态、尝试次数、下次检查时间、租约和错误；`claim_refresh`
   用 `BEGIN IMMEDIATE` 加租约保证同一范围只有一个工作线程，进程重启后过期租约可重新领取；
   失败进入 `retry_wait`，按 60 秒递增退避、上限 15 分钟，旧版本始终可读。

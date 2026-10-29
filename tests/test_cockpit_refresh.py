@@ -205,7 +205,11 @@ def test_scheduler_warms_default_scopes_only(tmp_path):
         lambda kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
         _analysis_factory(store, calls), interval=900, poll=0.01, timeout=5)
     scheduler = RefreshScheduler(manager, store, scan_seconds=2, scope_limit=3)
-    assert scheduler.run_once() == 1
+    # A fresh deploy seeds the first check one interval ahead instead of
+    # re-querying every default page the moment the process starts.
+    assert scheduler.run_once(now=1000.0) == 0
+    assert store.refresh_state(page_scope(cfg, 1, 'analysis', 'default', 'ap'))['next_check'] == 1900.0
+    assert scheduler.run_once(now=1901.0) == 1
     assert calls == []
     assert store.refresh_state(page_scope(cfg, 1, 'analysis', 'default', 'ap'))['status'] == 'published'
     assert store.refresh_state(custom_scope) is None
