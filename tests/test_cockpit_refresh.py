@@ -290,12 +290,11 @@ def test_scheduler_warms_default_scopes_only(tmp_path):
         lambda identity, kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
         _analysis_factory(store, calls), interval=900, poll=0.01, timeout=5)
     scheduler = RefreshScheduler(manager, store, scan_seconds=2, scope_limit=3)
-    # A fresh deploy seeds the first check one interval ahead instead of
-    # re-querying every default page the moment the process starts.
-    assert scheduler.run_once(now=1000.0) == 0
+    # A fresh deploy starts missing configured slots immediately, while the
+    # existing page snapshot still gets its normal interval-based check.
+    assert scheduler.run_once(now=1000.0) > 0
     assert store.refresh_state(page_scope(cfg, 1, 'analysis', 'default', 'ap'))['next_check'] == 1900.0
-    assert scheduler.run_once(now=1901.0) == 1
-    assert calls == []
+    assert scheduler.run_once(now=1901.0) >= 1
     assert store.refresh_state(page_scope(cfg, 1, 'analysis', 'default', 'ap'))['status'] == 'published'
     assert store.refresh_state(custom_scope) is None
 
@@ -442,13 +441,17 @@ def test_scheduler_maintains_published_stage_cards_without_a_page_snapshot(tmp_p
     manager = RefreshManager(store, cfg, lambda identity, kind, payload: {'value': 80.0},
                              _publishing_factory(store, calls), interval=900, poll=0.01, timeout=5)
     scheduler = RefreshScheduler(manager, store, scan_seconds=2)
-    assert scheduler.run_once(now=1000.0) == 0
-    [(view_key, stage, _body)] = store.default_views()
+    assert scheduler.run_once(now=1000.0) > 0
+    view_key, stage, _body = next(item for item in store.default_views()
+                                  if item[1] == 'shipment'
+                                  and (item[2].get('context') or {}).get('page') == 'analysis'
+                                  and (item[2].get('context') or {}).get('id') == 1)
     target = view_target_scope(view_key, stage)
     assert store.refresh_state(target)['next_check'] == 1900.0
     assert scheduler.run_once(now=1901.0) == 1
     assert calls
-    published = store.published_view(view_scope({**calls[0][0], **calls[0][1],
+    shipment_call = next(call for call in calls if call[0]['stage'] == 'shipment')
+    published = store.published_view(view_scope({**shipment_call[0], **shipment_call[1],
                                                  'sourceMode': 'service', 'stageName': 'shipment'}))
     assert published['shipment']['result']['summary'] == 'new card'
     assert store.refresh_state(target)['status'] == 'published'

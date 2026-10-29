@@ -166,6 +166,40 @@ test('SDK filter change drops all previous-scope receipts before new requests',a
  runtime.setFilterConditions('filter',[{department:'B'}]);assert.equal(changes,1);
 });
 
+test('node selection keeps the loaded data scope and chart/table cache',async()=>{
+ let ready=true,calls=0,changes=0;
+ const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>{calls++;return {...ok('node-scope',{value:42}),json:async()=>({receiptId:'node-scope',data:{value:42},receivedAt:Date.now()/1000,expiresAt:Date.now()/1000+60})};}});
+ const runtime=observeRuntimeFilters({setFilterConditions(){},setButtonGrainSelection(){},setContainerActiveNode(){},setHelmetGraphSelection(){}},()=>{changes++;client.clearScope();},()=>ready);
+ await client.biAdapters.postAnalysisDataQuery(query);
+ const receipt=client.scope().apReceiptIds[0];
+ runtime.setContainerActiveNode('quote-container',{nodeId:'quote-node'});
+ runtime.setHelmetGraphSelection('graph',{nodeId:'quote-node'},{segments:[]});
+ assert.equal(changes,0);
+ assert.equal(client.scope().apReceiptIds[0],receipt);
+ await client.biAdapters.postAnalysisDataQuery(query);
+ assert.equal(calls,1);
+ runtime.setFilterConditions('filter',[{label:'时间',value:'2026'}]);
+ assert.equal(changes,1);
+});
+
+test('clearing a scope rejects queued requests instead of leaving them running',async()=>{
+ let queued=0;
+ const client=createAPDataClient({apiBase:'/api/cockpit',id:1,concurrency:1,request:async(url,options)=>{
+   queued++;
+   return new Promise((resolve,reject)=>{
+     options.signal.addEventListener('abort',()=>{const error=new Error('aborted');error.name='AbortError';reject(error);},{once:true});
+   });
+ }});
+ const first=client.biAdapters.postAnalysisDataQuery(query);
+ const second=client.biAdapters.postAnalysisDataQuery({...query,commonConfig:{filters:{month:'other'}}});
+ await new Promise(resolve=>setTimeout(resolve,10));
+ assert.equal(queued,1);
+ client.clearScope();
+ await assert.rejects(first,/超时|取消|aborted/);
+ await assert.rejects(second,/超时|取消|aborted/);
+ assert.equal(queued,1);
+});
+
  test('simultaneous graph widgets retain distinct status filters regardless of response order', async()=>{
   for(const reverse of [false,true]) {
    const resolves=[];

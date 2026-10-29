@@ -189,7 +189,9 @@ def test_scheduler_preheats_targets_that_have_no_saved_card(tmp_path):
         store, cfg, lambda identity, kind, payload: {'value': 'live'},
         _publishing_factory(store, calls), interval=900, poll=0.01, timeout=5)
     scheduler = RefreshScheduler(manager, store, scan_seconds=2, scope_limit=8)
-    assert scheduler.run_once(now=1000.0) == 0
+    # A configured slot with no saved card is due immediately.  It must not
+    # wait for the first 900-second maintenance interval.
+    assert scheduler.run_once(now=1000.0) > 0
     for stage in ('bid', 'quotation', 'order'):
         assert store.refresh_state(preheat_target_scope(1, 'operations', stage))
     scheduler.run_once(now=1901.0)
@@ -206,6 +208,31 @@ def test_scheduler_preheats_targets_that_have_no_saved_card(tmp_path):
         card = store.latest_views(1, 'main', 'operations').get(stage)
         assert card and card['context']['page'] == 'operations'
     del page
+
+
+def test_scheduler_can_seed_a_role_from_a_saved_query_plan_without_reusing_evidence(tmp_path):
+    cfg = Config()
+    store = Store(tmp_path / 'history.sqlite3')
+    query = QUERIES['quotation']
+    context = dict(id=2, page='operations', stage='quotation', engine='main', dataSource='ap',
+                   dataIdentity=cfg.identity(), dataFingerprint='role-2-plan',
+                   chartQueries=[json.dumps(query, sort_keys=True)], period='2025-10',
+                   department='全部产品部')
+    item = store.create_analysis('role-2-quotation', context)
+    store.update_analysis(item['id'], status='limited',
+                          result=dict(summary='role 2 card', cardContract=CONTRACT),
+                          evidence={'facts': [], 'records': [], 'evidence': []})
+    store.publish(item['id'])
+    store.bind_view(view_scope(context), 'quotation', item['scope'])
+    calls = []
+    manager = RefreshManager(
+        store, cfg, lambda identity, kind, payload: {'value': 'live'},
+        _publishing_factory(store, calls), interval=900, poll=0.01, timeout=5)
+    scheduler = RefreshScheduler(manager, store, scan_seconds=2, scope_limit=8)
+    assert scheduler.run_once(now=1000.0) > 0
+    role_one = store.latest_views(1, 'main', 'operations').get('quotation')
+    assert role_one and role_one['context']['id'] == 1
+    assert any(body['id'] == 1 and body['stage'] == 'quotation' for body in calls)
 
 
 def test_unchanged_preheat_does_not_call_the_model_twice(tmp_path):

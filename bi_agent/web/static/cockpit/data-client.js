@@ -12,15 +12,20 @@ export const AP_QUERY_TIMEOUT_MS = 200000;
 export const SCOPE_READY_TIMEOUT_MS = 220000;
 export const TRANSIENT_RETRY_WINDOW_MS = 30000;
 export const AP_QUERY_CONCURRENCY = 3;
+/* A node switch is a view change, not a new data scope. Keep already loaded
+ * chart/table responses available long enough for the user to move between
+ * nodes without repeating the same AP queries. */
+export const DATA_REUSE_WINDOW_MS = 5 * 60 * 1000;
 
 export function createAPDataClient({apiBase, id, request = fetch, onInvalidate = () => {}, snapshot = null, onSnapshotMiss = () => {}, onError = () => {}, onRecover = () => {},
   timeoutMs = AP_QUERY_TIMEOUT_MS, readyTimeoutMs = SCOPE_READY_TIMEOUT_MS, retryWindowMs = TRANSIENT_RETRY_WINDOW_MS,
   idleMs = 3000, concurrency = AP_QUERY_CONCURRENCY, stageFor = () => '', priorityFor = () => ({})}) {
   const active = new Map(), all = new Map(), completed = new Map(), inflight = new Map(), queue = [];
+  const controllers = new Set();
   const replay = new Map((snapshot?.entries || []).map(e => [e.kind + ':' + canonical(e.payload), e]));
   let replaying = Boolean(snapshot), missed = false;
   let blocked = '';
-  let running = 0, heavyRunning = 0, sequence = 0;
+  let running = 0, heavyRunning = 0, sequence = 0, generation = 0;
   const limitCount = Math.max(1, Math.min(4, Number(concurrency) || AP_QUERY_CONCURRENCY));
   const heavyLimit = Math.max(1, limitCount - 1);
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -44,15 +49,16 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
       const index = queue.findIndex(job => !hint(job).heavy || heavyRunning < heavyLimit);
       if (index < 0) break;
       const [job] = queue.splice(index, 1);
+      if (job.generation !== generation) { job.reject(new Error('查询已取消')); continue; }
       const heavy = Boolean(hint(job).heavy);
       running += 1; if (heavy) heavyRunning += 1;
       job.run().then(job.resolve, job.reject).finally(() => {
-        running -= 1; if (heavy) heavyRunning -= 1; pump();
+        running -= 1; if (heavy) heavyRunning -= 1; if (job.controller) controllers.delete(job.controller); pump();
       });
     }
   }
-  const limit = (run, kind, payload) => new Promise((resolve, reject) => {
-    queue.push({run, resolve, reject, kind, payload, sequence: sequence++}); pump();
+  const limit = (run, kind, payload, controller) => new Promise((resolve, reject) => {
+    queue.push({run, resolve, reject, kind, payload, controller, generation, sequence: sequence++}); pump();
   });
   function queryLabels(payload) {
     const labels = [], codes = [], stack = [payload];
@@ -85,8 +91,7 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     const wanted = new Set((stages || []).filter(Boolean));
     return wanted.size ? values.filter(state => wanted.has(state.stage)) : values;
   }
-  async function proxy(kind, payload) {
-    const controller = new AbortController();
+  async function proxy(kind, payload, controller) {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       let response, body;
@@ -144,13 +149,19 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     const reused = completed.get(key);
     const entry = replay.get(key);
     const queuedAt = clock();
+    const jobGeneration = generation;
+    const controller = new AbortController();
     const work = replaying ? Promise.resolve({body:{data:entry.data,receiptId:entry.receiptId,receivedAt:entry.receivedAt,expiresAt:entry.expiresAt},timings:{clientQueueMs:0,clientResponseMs:0,replay:true}}) :
-      reused && Math.min(reused.expiresAt * 1000, reused.receivedAt * 1000 + 15000) > Date.now() ? Promise.resolve({body:reused,timings:{clientQueueMs:0,clientResponseMs:0,reused:true}}) :
+      reused && Math.min(reused.expiresAt * 1000, reused.receivedAt * 1000 + DATA_REUSE_WINDOW_MS) > Date.now() ? Promise.resolve({body:reused,timings:{clientQueueMs:0,clientResponseMs:0,reused:true}}) :
         limit(async () => {
+          if (jobGeneration !== generation) throw new Error('查询已取消');
           const startedAt = clock();
-          const body = await proxy(kind, payload);
+          const body = await proxy(kind, payload, controller);
           return {body, timings:{clientQueueMs:Math.round(startedAt-queuedAt), clientResponseMs:Math.round(clock()-startedAt)}};
-        }, kind, payload);
+        }, kind, payload, controller);
+    if (!replaying && !(reused && Math.min(reused.expiresAt * 1000, reused.receivedAt * 1000 + DATA_REUSE_WINDOW_MS) > Date.now())) {
+      controllers.add(controller);
+    }
     const promise = work.then(result => {
       const body = result.body;
       if (kind !== 'helmet' && active.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
@@ -165,10 +176,14 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
       recovered();
       return body.data;
     }).catch(error => {
-      state.pending = false;
-      const detail = error.message || 'AP查询失败';
-      state.error = (labels.length ? '指标 ' + labels.join('、') + '：' : '') + detail;
-      notify(state.error, kind);
+      // A cleared scope aborts its old requests. Their late rejection must not
+      // re-open an error banner for the new, already-rendered view.
+      if (jobGeneration === generation && error.name !== 'AbortError') {
+        state.pending = false;
+        const detail = error.message || 'AP查询失败';
+        state.error = (labels.length ? '指标 ' + labels.join('、') + '：' : '') + detail;
+        notify(state.error, kind);
+      }
       throw error;
     })
       .finally(() => { if(inflight.get(key)===promise) inflight.delete(key); });
@@ -229,7 +244,14 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     // falling through only reports what is actually ready, never a timeout error.
     return scope({allowExpired, partial, stages});
   }
-  function clearScope() { active.clear(); all.clear(); completed.clear(); inflight.clear(); replay.clear(); replaying=false; onInvalidate({replacement:true}); }
+  function clearScope() {
+    generation += 1;
+    for (const controller of controllers) { try { controller.abort(); } catch (_) {} }
+    controllers.clear();
+    for (const job of queue.splice(0)) { try { job.reject(new Error('查询已取消')); } catch (_) {} }
+    active.clear(); all.clear(); completed.clear(); inflight.clear(); replay.clear(); replaying=false;
+    onInvalidate({replacement:true});
+  }
   function failures() {
     return [...new Set([...all.values()].filter(state => state.error).map(state => state.error))];
   }
@@ -312,8 +334,14 @@ export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored
   // data. Keep only the latest one and apply it once the client is ready;
   // dropping it made the first user change look like no change at all.
   let pending=null;
-  const observed=new Set(['setFilterConditions','setButtonGrainSelection','setHelmetGraphSelection','setContainerActiveNode']);
-  for(const method of [...observed,'setFilterUiSelection','setTemplateState','setTabTemplateOverrides','setActiveTab','setSelectionGroupActive','clearHelmetGraphSelection','clearContainerActiveNode']) {
+  // Helmet/container node selection is a view choice, not a new business
+  // filter.  Treating it as a scope change cleared the data client and rebuilt
+  // the whole board, so switching from 投标 to 报价 repeated every AP query.
+  // Keep node calls in the replay map, but only real filter methods feed the
+  // data-scope key.
+  const observed=new Set(['setFilterConditions','setButtonGrainSelection']);
+  const viewMethods=['setHelmetGraphSelection','setContainerActiveNode'];
+  for(const method of [...observed,...viewMethods,'setFilterUiSelection','setTemplateState','setTabTemplateOverrides','setActiveTab','setSelectionGroupActive','clearHelmetGraphSelection','clearContainerActiveNode']) {
     const original=runtime[method];
     if(typeof original!=='function')continue;
     runtime[method]=function(...args) {

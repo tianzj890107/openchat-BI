@@ -356,23 +356,37 @@ class RefreshManager:
 
         A slot may exist on two pages.  Its own page is preferred, then the same
         stage published anywhere else, then the stage's queries from a saved
-        page plan.  No query is invented: an empty result means the browser has
-        never delivered that page's plan yet.
+        page plan.  A saved query plan is not user data, so a missing role's
+        plan may be reused from another role; the analysis result is still
+        written with the requesting role's identity.  No query is invented: an
+        empty result means the browser has never delivered a usable plan yet.
         """
         identity = int(identity)
         data_identity = self.config.identity()
         pages = (page, *[item for item in DEFAULT_PAGES if item != page])
-        for candidate in pages:
-            body = self.store.latest_views(identity, 'main', candidate,
-                                           data_identity=data_identity).get(stage)
-            context = (body or {}).get('context') or {}
-            requests = _context_requests(context, stage)
-            if requests:
-                return context, requests
-        for candidate in pages:
-            body = self.store.latest_page(identity, candidate, 'default',
-                                          data_identity=data_identity)
-            if not body:
+        identities = (identity, *[item for item in DEFAULT_IDENTITIES if item != identity])
+        for candidate_identity in identities:
+            for candidate in pages:
+                body = self.store.latest_views(candidate_identity, 'main', candidate,
+                                               data_identity=data_identity).get(stage)
+                context = (body or {}).get('context') or {}
+                requests = _context_requests(context, stage)
+                if requests:
+                    return context, requests
+            for candidate in pages:
+                body = self.store.latest_page(candidate_identity, candidate, 'default',
+                                              data_identity=data_identity)
+                if not body:
+                    continue
+                requests = _stage_queries(body, stage)
+                if requests:
+                    item = (body.get('items') or {}).get(stage) or {}
+                    return item.get('context') or {}, requests
+        # The latest published page plan is also a valid stage-plan source when
+        # one role has never opened the page.  It contains only queries, not
+        # another user's evidence or results.
+        for _scope, body, _source in self.store.page_publications(limit=2000):
+            if (body.get('uiScope') or 'default') != 'default' or body.get('page') not in pages:
                 continue
             requests = _stage_queries(body, stage)
             if requests:
@@ -538,8 +552,32 @@ class RefreshScheduler(threading.Thread):
                     page_scope(self.manager.config, identity, page, 'default', 'ap'), next_check=due)
         for target in view_targets:
             self.store.ensure_refresh_state(target, next_check=due)
-        for target in preheat_targets:
-            self.store.ensure_refresh_state(target, next_check=due)
+        for target, (identity, page, stage) in preheat_targets.items():
+            state = self.store.refresh_state(target)
+            # A configured slot without a readable card is a first-run task, not
+            # a future maintenance task.  Start it on this scan so opening the
+            # page does not wait for the 15-minute interval.  Existing retry
+            # backoff is respected to avoid a hot loop when the source is down.
+            if not self._has_card(identity, page, stage):
+                if state is None:
+                    self.store.ensure_refresh_state(target, next_check=current)
+                elif state.get('status') not in {'running', 'retry_wait'}:
+                    self.store.request_refresh(target, now=current)
+            else:
+                self.store.ensure_refresh_state(target, next_check=due)
+
+    def _has_card(self, identity, page, stage):
+        """Whether a saved card can already be served for this role/stage."""
+        data_identity = self.manager.config.identity()
+        for candidate in (page, *[item for item in DEFAULT_PAGES if item != page]):
+            if stage in self.store.latest_views(identity, 'main', candidate,
+                                                 data_identity=data_identity):
+                return True
+            body = self.store.latest_page(identity, candidate, 'default',
+                                          data_identity=data_identity)
+            if body and stage in (body.get('items') or {}):
+                return True
+        return False
 
     def run_once(self, now=None):
         current = time.time() if now is None else float(now)
