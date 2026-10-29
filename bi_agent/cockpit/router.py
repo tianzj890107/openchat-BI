@@ -30,6 +30,31 @@ from .refresh import (RefreshManager, RefreshScheduler, publication_status, sche
 
 RESULT_CONTRACT_VERSION="compact-v1"
 
+
+def _default_display_scope(ui_scope: str) -> bool:
+    """Whether a UI scope is one of the two default cache states.
+
+    The delivered filter emits either the literal ``default`` scope or a scope
+    containing only button-grain/view choices.  The latter covers the visible
+    ``2025-10`` month and the completely empty date state; both deliberately
+    reuse the same preheated default cards.  Any committed business filter
+    keeps the existing mismatch/stale disclosure.
+    """
+    if ui_scope == 'default':
+        return True
+    try:
+        changes = json.loads(ui_scope)
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(changes, list) or not changes:
+        return False
+    for change in changes:
+        if not isinstance(change, list) or not change or not isinstance(change[0], str):
+            return False
+        if change[0].split(':', 1)[0] != 'setButtonGrainSelection':
+            return False
+    return True
+
 class Context(BaseModel):
     model_config=ConfigDict(extra="forbid")
     id:int=Field(default=1,ge=1,le=2)
@@ -405,7 +430,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             )
 
         slots = {}
-        scope_match = ui_scope == 'default'
+        scope_match = _default_display_scope(ui_scope)
         for slot in slot_registry():
             item = stage_items.get(slot['stage'])
             update = refresh_for(slot, item)

@@ -129,19 +129,19 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
         assert stored["templates"][template_id] == source_registry[template_id]
         assert stored["pages"][page]["components"] == source_registry[template_id]["components"]
     delivered_root = json.loads((METADATA / "components.json").read_text())
-    assert stored["dashboard"]["components"] != delivered_root
+    assert stored["dashboard"]["components"] == delivered_root
     assert [component["id"] for component in stored["dashboard"]["components"]] == [
         component["id"] for component in delivered_root
     ]
 
 
-def test_annual_default_period_label_matches_the_executed_query_range():
+def test_delivered_month_default_period_is_preserved():
     payload = runtime_payload()
     filter_component = next(
         component for component in payload["dashboard"]["components"]
         if component.get("type") == "composite-filter"
     )
-    assert filter_component["baseConfig"]["defaultValue"]["values"]["YWLN_D044"] == "2025"
+    assert filter_component["baseConfig"]["defaultValue"]["values"]["YWLN_D044"] == "2025-10"
     operations = next(
         component for component in payload["pages"]["operations"]["components"]
         if component.get("type") == "button-group"

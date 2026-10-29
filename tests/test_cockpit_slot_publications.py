@@ -141,3 +141,23 @@ def test_custom_scope_exposes_default_cards_only_as_marked_fallback(tmp_path, mo
                and item['status'] == 'ready' for item in value['slots'].values())
     assert all(item['payload']['result']['summary'].endswith('已发布卡片')
                for item in value['slots'].values())
+
+
+def test_month_and_empty_date_scopes_reuse_preheated_default_cards(tmp_path, monkeypatch):
+    cfg = Config()
+    store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
+    for stage, page in (('bid', 'operations'), ('quotation', 'operations'),
+                        ('order', 'operations'), ('opportunity', 'analysis'),
+                        ('shipment', 'analysis')):
+        _save_stage(store, cfg, stage, page)
+    client = _client(tmp_path, monkeypatch, cfg)
+    for scope in (
+        json.dumps([["setButtonGrainSelection:grain:{}", '"MONTH"']]),
+        json.dumps([["setButtonGrainSelection:grain:{}", '"YEAR"'],
+                    ["setButtonGrainSelection:other:{}", '"YEAR"']]),
+    ):
+        value = client.get('/api/cockpit/ai-publications', params={'id': 1, 'uiScope': scope}).json()
+        assert value['readyCount'] == 15
+        assert value['scopeMatch'] is True
+        assert value['displayScope'] == 'default'
+        assert all(item['scopeMatch'] is True for item in value['slots'].values())
