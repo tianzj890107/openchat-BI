@@ -156,9 +156,11 @@ def test_saved_page_cards_and_cross_page_stage_cards_are_returned(tmp_path, monk
     order = _analyse(store, cfg, 'order', 'analysis', [QUERIES['order']])
     store.bind_view(view_scope(order['context']), 'order', order['scope'])
 
-    cards = _client(tmp_path, monkeypatch, cfg).get(
-        '/api/cockpit/publications/cards?id=1&page=operations').json()['items']
+    saved = _client(tmp_path, monkeypatch, cfg).get(
+        '/api/cockpit/publications/cards?id=1&page=operations').json()
+    cards = saved['items']
     assert set(cards) == {'bid', 'quotation', 'order'}
+    assert saved['cardsVersion']
     assert all(item['result']['cardContract'] == CONTRACT for item in cards.values())
 
 

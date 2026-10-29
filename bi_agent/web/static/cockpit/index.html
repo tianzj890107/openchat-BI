@@ -19,12 +19,32 @@
   <script defer src="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-bi-ui.min.js?v=fc21219c"></script>
 </head>
 <body data-dashboard-theme="white">
-  <div id="cockpit-boot" role="status" style="padding:24px;color:#737b8c;font:14px sans-serif">正在加载经营看板…</div>
+  <div id="cockpit-boot" class="cockpit-loading" role="status" aria-busy="true" aria-label="正在加载经营看板">
+    <span class="visually-hidden">正在加载经营看板</span>
+    <div class="cockpit-loading__head">
+      <span class="cockpit-loading__line cockpit-loading__line--title"></span>
+      <span class="cockpit-loading__line cockpit-loading__line--subtitle"></span>
+    </div>
+    <div class="cockpit-loading__kpis">
+      <div class="cockpit-loading__card cockpit-loading__card--kpi"><span class="cockpit-loading__line"></span><span class="cockpit-loading__line cockpit-loading__line--value"></span></div>
+      <div class="cockpit-loading__card cockpit-loading__card--kpi"><span class="cockpit-loading__line"></span><span class="cockpit-loading__line cockpit-loading__line--value"></span></div>
+      <div class="cockpit-loading__card cockpit-loading__card--kpi"><span class="cockpit-loading__line"></span><span class="cockpit-loading__line cockpit-loading__line--value"></span></div>
+      <div class="cockpit-loading__card cockpit-loading__card--kpi"><span class="cockpit-loading__line"></span><span class="cockpit-loading__line cockpit-loading__line--value"></span></div>
+    </div>
+    <div class="cockpit-loading__panels">
+      <div class="cockpit-loading__card cockpit-loading__card--chart"><span class="cockpit-loading__line cockpit-loading__line--panel"></span><span class="cockpit-loading__chart"></span></div>
+      <div class="cockpit-loading__card cockpit-loading__card--chart"><span class="cockpit-loading__line cockpit-loading__line--panel"></span><span class="cockpit-loading__chart"></span></div>
+    </div>
+    <div class="cockpit-loading__card cockpit-loading__card--wide"><span class="cockpit-loading__line cockpit-loading__line--panel"></span><span class="cockpit-loading__chart cockpit-loading__chart--wide"></span></div>
+  </div>
   <div id="app" v-cloak>
     <main class="cockpit-main" :data-page="page" :aria-label="pageTitle">
       <h1 class="visually-hidden">{{pageTitle}}</h1>
-      <div v-if="error" class="cockpit-state error" role="alert">{{error}}</div>
-      <div v-else-if="loading" class="cockpit-state">正在加载正式看板配置…</div>
+      <div v-if="error" class="cockpit-state error" role="alert">
+        <p>{{error}}</p>
+        <button type="button" class="cockpit-state__retry" @click="retryRuntime">重新加载</button>
+      </div>
+      <cockpit-loading v-else-if="loading" label="正在加载经营看板"></cockpit-loading>
       <div v-else class="cockpit-board">
         <component :is="dashboardComponent" :key="dashboard.id + ':' + boardRevision"
                    :components="dashboard.components"

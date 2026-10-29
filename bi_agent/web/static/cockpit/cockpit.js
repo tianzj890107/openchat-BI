@@ -29,15 +29,34 @@
   const PAGE_ALIASES = {home: 'overview'};
   let currentPage = pageFromLocation();
 
+  function showBootFailure(message) {
+    document.getElementById('cockpit-boot')?.remove();
+    const host = document.getElementById('app');
+    if (!host) return;
+    host.removeAttribute('v-cloak');
+    host.replaceChildren();
+    const main = document.createElement('main');
+    main.className = 'cockpit-state error';
+    main.setAttribute('aria-live', 'assertive');
+    const text = document.createElement('p');
+    text.textContent = message;
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'cockpit-state__retry';
+    retry.textContent = '重新加载';
+    retry.addEventListener('click', () => location.reload());
+    main.append(text, retry);
+    host.append(main);
+  }
+
   if (!window.Vue) {
-    document.getElementById('app').textContent = 'Vue 资源加载失败，请刷新页面。';
+    showBootFailure('Vue 资源加载失败，请重新加载页面。');
     return;
   }
   const ProUIBi = window.ProUIBi;
   const dashboard = ProUIBi?.ProBiDashboard;
   if (!dashboard || !ProUIBi.configureBi) {
-    document.getElementById('app').textContent = 'ProUI 组件资源加载失败，请刷新页面或检查静态资源。';
-    document.getElementById('app').removeAttribute('v-cloak');
+    showBootFailure('ProUI 组件资源加载失败，请重新加载页面或检查静态资源。');
     return;
   }
 
@@ -512,6 +531,25 @@
     return `${routeRoot}/cockpit/${page}?${search}`;
   }
 
+  const CockpitLoading = {
+    props: {label: {type: String, default: '正在加载经营看板'}},
+    template: `
+      <div class="cockpit-loading" role="status" aria-busy="true" :aria-label="label">
+        <span class="visually-hidden">{{ label }}</span>
+        <div class="cockpit-loading__head">
+          <span class="cockpit-loading__line cockpit-loading__line--title"></span>
+          <span class="cockpit-loading__line cockpit-loading__line--subtitle"></span>
+        </div>
+        <div class="cockpit-loading__kpis">
+          <div v-for="n in 4" :key="'kpi-'+n" class="cockpit-loading__card cockpit-loading__card--kpi"><span class="cockpit-loading__line"></span><span class="cockpit-loading__line cockpit-loading__line--value"></span></div>
+        </div>
+        <div class="cockpit-loading__panels">
+          <div v-for="n in 2" :key="'chart-'+n" class="cockpit-loading__card cockpit-loading__card--chart"><span class="cockpit-loading__line cockpit-loading__line--panel"></span><span class="cockpit-loading__chart"></span></div>
+        </div>
+        <div class="cockpit-loading__card cockpit-loading__card--wide"><span class="cockpit-loading__line cockpit-loading__line--panel"></span><span class="cockpit-loading__chart cockpit-loading__chart--wide"></span></div>
+      </div>`,
+  };
+
   const app = createApp({
     setup() {
       const page = ref(currentPage);
@@ -799,8 +837,14 @@
       }
 
       async function loadRuntime() {
-        const [payload,startup] = await Promise.all([loadJson(runtimeUrl),loadJson(`${apiBase}/startup?id=${identityId}&page=${page.value}`)]);
-        const capabilities=startup.engines,dataConfig=startup.dataConfig;
+        // Only the delivered layout and the two small capability endpoints are
+        // needed before the board can render.  Saved cards, page snapshots and
+        // update status are loaded afterwards and never hold the shell.
+        const [payload,capabilities,dataConfig] = await Promise.all([
+          loadJson(runtimeUrl),
+          loadJson(`${apiBase}/engines`),
+          loadJson(`${apiBase}/data/config`),
+        ]);
         if(!capabilities.comparisonOnly || !params.has('engine'))analysisEngine=capabilities.default;
         if(baselineId){
           if(!capabilities.comparisonOnly || analysisEngine!=='standalone')throw new Error('当前不允许独立证据对照');
@@ -822,8 +866,6 @@
         if(analysisEngine==='main') {
           const {createPublicationClient}=await import(`${assetBase}/publication-client.js?v=${encodeURIComponent(assetVersion)}`);
           publications=createPublicationClient({apiBase,stateFor,bodyFor:mainBody,queue:withAnalysisSlot});
-          publications.preload(startup.cards||{});
-          cardsVersion=startup.cardsVersion||'';
         }
         let installed;
         if (dataConfig.mode === 'ap') {
@@ -929,35 +971,52 @@
                   if(changed)install(snapshot,true);
                   else{fullSnapshot=snapshot;Object.assign(pageState,{dataAsOf:snapshot.dataAsOf,analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.updatedAt||0))),error:'',refreshing:false,updateStatus:'published'});}
                 }});
+              let analysisReady=Promise.resolve(),cardsReady=Promise.resolve();
               if(scope==='default'){
-                try{
-                  const started=await loadJson(`${apiBase}/startup?id=${identityId}&page=${target}`);
-                  if(token!==pageEpoch)return false;
-                  publications?.preload(started.cards||{});
-                  const snapshot=started.snapshot||started.displaySnapshot||null;
-                  const pageCards=started.cardsByPage?.[target]||{};
-                  // This is publication metadata for the active route, not a
-                  // replacement snapshot for the live client.  Keeping it in
-                  // sync stops the poller from remounting the board just
-                  // because the tab changed.
-                  fullSnapshot=snapshot;
-                  cardsVersion=started.cardsVersion||'';
-                  Object.assign(pageState,{cached:Boolean(snapshot),dataAsOf:snapshot?.dataAsOf||0,
-                    analyzedAt:Math.max(0,...Object.values(pageCards).map(item=>Number(item?.updatedAt||0))),
-                    updateStatus:started.status?.update?.status||'idle',
-                    displayStale:Boolean(started.displayStale),refreshing:false,error:''});
-                }catch(_){/* keep the mounted board and let the poller retry */}
+                // Saved cards are one independent read.  The publication poll
+                // handles the page snapshot/status in parallel and can never
+                // hold the newly mounted tab.
+                fullSnapshot=null;
+                Object.assign(pageState,{cached:false,dataAsOf:0,displayStale:false,refreshing:false,error:''});
+                cardsReady=pageCache.cards().then(cards=>{
+                  if(token!==pageEpoch)return;
+                  publications?.preload(cards.items||{});
+                  cardsVersion=cards.cardsVersion||'';
+                  const analyzed=Math.max(0,...Object.values(cards.items||{}).map(item=>Number(item?.updatedAt||0)));
+                  if(analyzed)Object.assign(pageState,{analyzedAt:analyzed});
+                }).catch(()=>{});
+                statusPoller?.poke(0);
+                // Prefer waiting for cards so opening a tab reuses saved
+                // analysis, but never strand the tab behind a slow card read.
+                analysisReady=Promise.race([cardsReady,new Promise(resolve=>setTimeout(resolve,800))]);
               }else{
                 // Custom filters are not represented by the default-scope
-                // startup payload.  Keep the cards already on screen; the
+                // default history payload.  Keep the cards already on screen; the
                 // publication client marks them stale until this scope lands.
                 fullSnapshot=null;cardsVersion='';
                 Object.assign(pageState,{cached:false,displayStale:true,refreshing:false,error:''});
+                statusPoller?.poke(0);
               }
-              statusPoller?.poke(0);
-              for(const stage of stagesForPage(target))ensureAnalysis(stage).catch(()=>{});
+              analysisReady.catch(()=>{}).finally(()=>{
+                if(token!==pageEpoch)return;
+                for(const stage of stagesForPage(target))ensureAnalysis(stage).catch(()=>{});
+              });
               return true;
             };
+            // Historical cards are an independent, best-effort request.  The
+            // board already exists; a slow cards response leaves only the AI
+            // slot skeletons visible and never delays charts or the shell.
+            async function loadCurrentHistoryCards(){
+              const token=pageEpoch,target=page.value;
+              try{
+                const cards=await pageCache.cards();
+                if(token!==pageEpoch||target!==page.value)return;
+                publications?.preload(cards.items||{});
+                cardsVersion=cards.cardsVersion||'';
+                const analyzed=Math.max(0,...Object.values(cards.items||{}).map(item=>Number(item?.updatedAt||0)));
+                if(analyzed)Object.assign(pageState,{analyzedAt:analyzed});
+              }catch(_){/* the status poll retries the same read */}
+            }
             statusPoller=createPublicationPoller({
               probe:async()=>{const scope=currentUiScope;return {scope,status:await pageCache.status(scope)};},
               apply:async value=>{
@@ -994,9 +1053,11 @@
               isHidden:()=>document.hidden,
             });
           }
-          install(analysisEngine==='main'?(startup.snapshot||startup.displaySnapshot):null);
-          if(analysisEngine==='main')Object.assign(pageState,{displayStale:Boolean(startup.displayStale),updateStatus:startup.status?.update?.status||pageState.updateStatus,analyzedAt:startup.status?.analyzedAt||pageState.analyzedAt});
-          if(analysisEngine==='main')statusPoller?.start(1000);
+          install(null);
+          if(analysisEngine==='main'){
+            loadCurrentHistoryCards();
+            statusPoller?.start(50);
+          }
           onPageActivity=()=>{
             clearTimeout(publishTimer);
             if(analysisEngine!=='main'||fullSnapshot||publishing)return;
@@ -1034,14 +1095,9 @@
         if (!runtime.value?.dashboard) throw new Error('交付看板配置为空');
       }
 
-      onMounted(async () => {
-        document.title = `储能经营风险驾驶舱 · ${pageTitle.value}`;
-        document.addEventListener('click', onTabClick, true);
-        document.addEventListener('visibilitychange', onVisibilityChange);
-        window.addEventListener('popstate', onPopState);
-        if (location.pathname.endsWith('/cockpit/home')) {
-          history.replaceState(null, '', routeFor('overview'));
-        }
+      const retryRuntime = () => location.reload();
+      async function bootRuntime() {
+        error.value='';loading.value=true;
         try {
           await loadRuntime();
           await nextTick();
@@ -1049,22 +1105,36 @@
           onPageActivity();
           schedulePrefetch();
         } catch (cause) {
-          error.value = `正式看板配置加载失败：${cause.message}`;
+          error.value = `看板配置加载失败：${cause.message || cause}`;
         } finally {
           loading.value = false;
-          document.getElementById('cockpit-boot')?.remove();
         }
+      }
+
+      onMounted(() => {
+        document.title = `储能经营风险驾驶舱 · ${pageTitle.value}`;
+        document.addEventListener('click', onTabClick, true);
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        window.addEventListener('popstate', onPopState);
+        if (location.pathname.endsWith('/cockpit/home')) {
+          history.replaceState(null, '', routeFor('overview'));
+        }
+        // Vue owns the first paint from this point on.  Keeping the static
+        // shell for the whole startup caused the old double loading state.
+        document.getElementById('cockpit-boot')?.remove();
+        bootRuntime();
       });
       onBeforeUnmount(() => {statusPoller?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
-        page, runtime, loading, error, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
+        page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
         pageInsights, dashboardComponent: dashboard, biAdapters, biRuntime, hostUtils,
         slot_name: insight => `insight-${insight.id}`,
       };
     },
   });
   app.component('cockpit-insight', CockpitInsight);
+  app.component('cockpit-loading', CockpitLoading);
   app.config.errorHandler = cause => console.error('cockpit component error', cause);
   app.mount('#app');
 })();

@@ -387,7 +387,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if id not in (1,2):raise HTTPException(422,'无效身份')
         from .cards import CONTRACT
         items=published_default(id,'main',page,True)['items'] if main_context is not None else {}
-        return dict(items=items,cardContract=CONTRACT)
+        return dict(items=items,cardContract=CONTRACT,cardsVersion=cards_version(items))
 
     @router.post('/publications/refresh')
     def request_publication_refresh(req:PageLookup):

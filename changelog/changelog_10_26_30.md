@@ -736,3 +736,23 @@
   调用模型、Tab 原地切换、可见环节插队、重查询隔离、当前环节等待和共享跟随者长超时。
 - 边界：本轮只提交并推送临时分支，未部署、未创建正式版本；上游慢 SQL、未登记指标口径和真实
   伏羲任务联调仍按原范围单独验收。
+
+### 2026-10-29 17:06 · Cockpit 首屏骨架与启动依赖解耦
+
+- 用户可见变化：首屏不再同时出现静态“正在加载经营看板”和 Vue 白框。Vue 接管前只显示一层
+  按 KPI、图表区域排布的统一骨架；Vue 挂载后立即移除静态骨架，不再等全部初始化结束。
+- 启动拆分：布局配置只并行读取 `runtime.json`、`GET /engines` 和 `GET /data/config`，不再等待
+  `/startup`。真实看板布局取得配置后立即挂载，图表继续使用组件原有 loading，AI 插槽使用现有
+  分析骨架；历史卡片由挂载后的 `GET /publications/cards` 独立刷新，页面快照与更新状态由
+  发布轮询独立补充，任一历史请求变慢都不会挡住整张看板。
+- Tab 数据：切换 Tab 时只读取目标页已保存卡片，不再等待完整 `/startup`；页面快照和更新状态
+  在后台由发布轮询补充，均不阻塞布局。
+- 错误与重试：配置、Vue 或 ProUI 资源加载失败时显示明确错误和“重新加载”按钮，不再无限显示
+  loading；`GET /publications/cards` 同时返回 `cardsVersion`，前端命中后不再重复拉取相同卡片。
+- 主要文件：`bi_agent/web/static/cockpit/index.html`、`cockpit.css`、`cockpit.js`、
+  `bi_agent/cockpit/router.py`、`tests/cockpit_loading_shell.test.mjs`、
+  `tests/cockpit_tab_navigation.test.mjs`、`tests/test_cockpit_card_preheat.py`。
+- 验证：Cockpit 聚焦回归 165 项 Python（含 14 个子用例）、58 项 JS 通过；`node --check`
+  与 `git diff --check` 通过。新增用例覆盖单一首屏骨架、配置不等 `/startup`、静态骨架及时移除、
+  挂载后独立加载历史卡片与状态、失败重试和卡片版本返回。
+- 边界：本轮只提交并推送临时分支，未部署；上游 SQL、指标口径和真实业务数据仍需单独验收。

@@ -1,0 +1,51 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+
+const html = await readFile(new URL('../bi_agent/web/static/cockpit/index.html', import.meta.url), 'utf8');
+const source = await readFile(new URL('../bi_agent/web/static/cockpit/cockpit.js', import.meta.url), 'utf8');
+
+test('first paint has one board-shaped skeleton instead of duplicate loading text', () => {
+  assert.equal((html.match(/id="cockpit-boot"/g) || []).length, 1);
+  assert.match(html, /id="cockpit-boot" class="cockpit-loading"/);
+  assert.match(html, /cockpit-loading__kpis/);
+  assert.match(html, /cockpit-loading__card--chart/);
+  assert.match(html, /<cockpit-loading v-else-if="loading"/);
+  assert.doesNotMatch(html, /正在加载正式看板配置/);
+  assert.doesNotMatch(html, /style="padding:24px;/);
+});
+
+test('layout configuration does not wait for startup history or status', () => {
+  const start = source.indexOf('async function loadRuntime()');
+  const end = source.indexOf('const retryRuntime', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const block = source.slice(start, end);
+  assert.match(block, /loadJson\(`\$\{apiBase\}\/engines`\)/);
+  assert.match(block, /loadJson\(`\$\{apiBase\}\/data\/config`\)/);
+  assert.doesNotMatch(block, /\/startup/);
+  assert.doesNotMatch(block, /Promise\.all\(\[loadJson\(runtimeUrl\),loadJson/);
+});
+
+test('Vue removes the static shell before awaiting runtime configuration', () => {
+  const start = source.indexOf('onMounted(() => {');
+  const end = source.indexOf('onBeforeUnmount', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const block = source.slice(start, end);
+  assert.ok(block.indexOf("document.getElementById('cockpit-boot')?.remove()") < block.indexOf('bootRuntime()'));
+  assert.doesNotMatch(block.slice(block.indexOf('bootRuntime()')), /cockpit-boot.*remove/);
+});
+
+test('history cards and publication status are background reads after the board mounts', () => {
+  assert.match(source, /install\(null\);\s*\n\s*if\(analysisEngine==='main'\)\{\s*\n\s*loadCurrentHistoryCards\(\);\s*\n\s*statusPoller\?\.start\(50\)/);
+  assert.match(source, /const cards=await pageCache\.cards\(\)/);
+  assert.match(source, /publications\?\.preload\(cards\.items\|\|\{\}\)/);
+});
+
+test('configuration failure exposes a retry action instead of an endless loader', () => {
+  assert.match(html, /class="cockpit-state__retry"/);
+  assert.match(html, /@click="retryRuntime"/);
+  assert.match(source, /const retryRuntime = \(\) => location\.reload\(\)/);
+  assert.match(source, /error\.value = `看板配置加载失败：\$\{cause\.message \|\| cause\}`/);
+});

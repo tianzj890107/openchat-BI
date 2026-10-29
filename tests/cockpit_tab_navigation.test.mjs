@@ -9,7 +9,11 @@ const source = await readFile(
 
 test('top tabs navigate with history instead of reloading the document', () => {
   assert.doesNotMatch(source, /location\.assign\(routeFor/);
-  assert.doesNotMatch(source, /location\.reload\(/);
+  const start = source.indexOf('function onTabClick');
+  const end = source.indexOf('function onPopState', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  assert.doesNotMatch(source.slice(start, end), /location\.reload\(/);
   assert.match(source, /history\.pushState\(\{cockpitPage: target\}/);
   assert.match(source, /window\.addEventListener\('popstate', onPopState\)/);
   assert.match(source, /goPage\(entry\[0\]\)/);
@@ -26,6 +30,8 @@ test('tab switching keeps the mounted board and only re-points page state', () =
   assert.doesNotMatch(block, /install\(null/);
   assert.doesNotMatch(block, /currentUiScope='default'/);
   assert.match(block, /pageCache=createPageCache/);
-  assert.match(block, /publications\?\.preload\(started\.cards/);
+  assert.match(block, /pageCache\.cards\(\)/);
+  assert.match(block, /statusPoller\?\.poke\(0\)/);
+  assert.match(block, /publications\?\.preload\(cards\.items/);
   assert.match(block, /for\(const stage of stagesForPage\(target\)\)ensureAnalysis/);
 });
