@@ -60,9 +60,6 @@ registerInsightComponent(
           </article>
           <div class="shipment-task-order__foot">
             <span class="shipment-task-order__hint">依据 {{ evidenceCount }} 条证据生成，限制：{{ limitations[0] || '未提供' }}</span>
-            <button type="button" class="shipment-task-order__dispatch" :disabled="!openRecommendations.length">
-              下发 {{ openRecommendations.length }} 条任务令
-            </button>
           </div>
         </template>
       </section>

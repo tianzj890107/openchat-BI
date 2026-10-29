@@ -134,14 +134,3 @@
   justify-content: space-between;
   margin-top: 12px;
 }
-
-.shipment-task-order__dispatch {
-  padding: 4px 14px;
-  border: 0;
-  border-radius: 16px;
-  background: #1677ff;
-  color: #fff;
-  font-size: 13px;
-  line-height: 22px;
-  cursor: pointer;
-}
