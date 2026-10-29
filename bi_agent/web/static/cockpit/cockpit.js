@@ -56,7 +56,7 @@
     const parts = [];
     if (pageState.cached) parts.push('完整看板 · 数据时间 ' + new Date(pageState.dataAsOf * 1000).toLocaleString('zh-CN', {hour12:false}));
     if (pageState.refreshing) parts.push('正在后台更新');
-    if (pageState.error) parts.push(pageState.error + (pageState.cached ? '，继续展示上次完整内容' : ''));
+    if (pageState.error) parts.push(pageState.cached ? '部分数据加载失败，继续展示上次完整内容' : '部分数据加载失败');
     return parts.join(' · ');
   });
   const visibleStages = new Map();
