@@ -1164,3 +1164,25 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   上游失败原因，失败周期卡保持“— — 目标 — —”，无 `0.00` 占位和 JavaScript 异常。
 - 回退：停止 PID `2009985`，用旧 release `process360-cockpit-968e75-20261029-0945`
   的 `start-main.py` 启动；静态站从上述备份原地恢复。
+
+### Cockpit 状态行并入看板 Header（2026-10-29 10:10）
+
+- 代码提交：`432e2a2b50380c34ffab805332560557fc08e7fa`（分支
+  `feature/cockpit-risk-dispatch-closure`）。页面标题继续由看板组件
+  `ProBiDashboardHeader` 的 `title` 渲染；“完整看板/数据时间/后台更新”状态行改由同一
+  Header 的 `description` 渲染，删除 cockpit 自定义 `cockpit-publication-state`。失败时
+  状态行只显示“部分数据加载失败”，不展开上游 SQL 错误。
+- 8765 release：
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-432e2a-20261029-1006`，
+  PID `2065756`；同提交实例先在 `127.0.0.1:18765` 预检通过后切换。旧 release
+  `process360-cockpit-dd5e33-20261029-1005` 完整保留。
+- 8876 静态站：`commit=432e2a2b50380c34ffab805332560557fc08e7fa`、
+  `assetVersion=73cf660573ad48a69811`，manifest 128 项通过，三页 `id=1|2` 均 200；
+  部署前站点备份为 `backups/site-432e2a2-*`。
+- 验证：经营页 `.pro-bi-dashboard-header__main` 显示“储能经营风险驾驶舱”，
+  `.pro-bi-dashboard-header__sub` 显示“部分数据加载失败”；页面不存在
+  `.cockpit-publication-state`，无 JavaScript 异常。
+- 边界：AI 插槽内容仍由 cockpit 的 `insight-components` 实现；页面标题和状态行不再由
+  cockpit 自定义样式承载。
+- 回退：停止 PID `2065756`，用旧 release `process360-cockpit-dd5e33-20261029-1005`
+  的 `start-main.py` 启动；静态站从上述备份原地恢复。
