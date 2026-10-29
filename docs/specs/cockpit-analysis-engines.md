@@ -48,12 +48,16 @@ COCKPIT_DATA_MODE=ap
 COCKPIT_AP_BASE_URL=http://pdt-dev.eimos.com/api/gateway2
 COCKPIT_AP_REPOSITORY_ID=8
 COCKPIT_AP_HEADERS_FILE=/absolute/private/path/cockpit-ap-headers.json
-COCKPIT_AP_TIMEOUT_SECONDS=10
+COCKPIT_AP_TIMEOUT_SECONDS=180
 COCKPIT_AP_CONCURRENCY=2
 COCKPIT_AP_RECEIPT_TTL_SECONDS=1800
 COCKPIT_ANALYSIS_ENGINE=main
 COCKPIT_COMPARISON_ENABLED=true
 ```
+
+`COCKPIT_AP_TIMEOUT_SECONDS` 是单次页面取数的整体预算（排队等待 + 上游执行共用同一期限，
+取值 1–240 秒）。上游 SQL 时限调整为 3 分钟时设置为 180；浏览器单请求超时 200 秒、取数就绪
+等待 220 秒，均需大于该预算。已经消耗完预算的 504 不自动重试，只有快速失败才重试一次。
 
 请求头文件是 JSON 对象，应包含上游实际要求的 `X-App-Id`、认证请求头及必要的 Cookie。
 `X-Ontology-Repository-Id` 由 `COCKPIT_AP_REPOSITORY_ID` 统一注入，避免浏览器或旧文件带入错误仓库。

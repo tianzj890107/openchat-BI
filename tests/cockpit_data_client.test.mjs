@@ -238,3 +238,65 @@ test('empty vertex config is stopped before it reaches the AP gateway', async ()
   assert.equal(calls, 0);
   assert.deepEqual(client.failures(), ['看板组件未配置实体查询字段，已跳过空查询']);
 });
+
+test('the browser waits longer than the three-minute AP budget and never replays a spent 504',async()=>{
+ const {AP_QUERY_TIMEOUT_MS,SCOPE_READY_TIMEOUT_MS}=clientModule;
+ assert.ok(AP_QUERY_TIMEOUT_MS>=180000,'browser request timeout must outlast the AP budget');
+ assert.ok(SCOPE_READY_TIMEOUT_MS>AP_QUERY_TIMEOUT_MS,'scope preparation must outlast one slow AP query');
+ let calls=0;
+ const client=createAPDataClient({apiBase:'/api/cockpit',id:1,retryWindowMs:0,
+  request:async()=>{calls++;return {ok:false,status:504,json:async()=>({detail:'AP请求超时或不可达；未切换到其他数据源'})};}});
+ await assert.rejects(client.biAdapters.postAnalysisDataQuery(query),/超时/);
+ assert.equal(calls,1,'a 504 that consumed the long budget must not be retried immediately');
+});
+
+test('scope preparation stops at its own budget instead of spinning forever',async()=>{
+ const started=Date.now();
+ const client=createAPDataClient({apiBase:'/api/cockpit',id:1,readyTimeoutMs:250,timeoutMs:500,
+  request:()=>new Promise(()=>{})});
+ client.biAdapters.postAnalysisDataQuery(query).catch(()=>{});
+ await assert.rejects(client.ready({partial:true}),/仍在加载/);
+ assert.ok(Date.now()-started<2000);
+});
+
+test('the first user filter change is not swallowed as the default scope',async()=>{
+ let ready=false;const scopes=[];
+ const runtime=observeRuntimeFilters({setFilterConditions(){}},scope=>scopes.push(scope),()=>ready);
+ runtime.setFilterConditions('filter',[{label:'时间',value:'2025'}]);
+ ready=true;
+ runtime.setFilterConditions('filter',[{label:'时间',value:'2026'}]);
+ runtime.setFilterConditions('filter',[{label:'时间',value:'2025'}]);
+ assert.equal(scopes.length,2);
+ assert.notEqual(scopes[0],'default','the first change must load the new scope');
+ assert.equal(scopes[1],'default','going back to the loaded default keeps the default scope');
+});
+
+test('a filter change made while the page is still loading is applied after readiness',async()=>{
+ let ready=false;const scopes=[];
+ const runtime=observeRuntimeFilters({setFilterConditions(){}},(scope,detail)=>scopes.push([scope,detail]),()=>ready);
+ runtime.setFilterConditions('filter',[{label:'时间',value:'2025'}]);
+ runtime.setFilterConditions('filter',[{label:'时间',value:'2026-01-01'}]);
+ assert.equal(scopes.length,0);
+ assert.equal(runtime.flushPendingScope(),false,'a pending change cannot fire before readiness');
+ ready=true;
+ assert.equal(runtime.flushPendingScope(),true);
+ assert.equal(scopes.length,1);
+ assert.notEqual(scopes[0][0],'default');
+ assert.match(scopes[0][1],/时间：2026-01-01/);
+ runtime.setFilterConditions('filter',[{label:'时间',value:'2026-01-01'}]);
+ assert.equal(scopes.length,1,'replaying the same value must not re-trigger analysis');
+});
+
+test('filter changes produce a readable scope hint without internal identifier codes',()=>{
+ const describe=clientModule.summarizeFilterChange;
+ assert.match(describe('setFilterConditions',['f',[{label:'时间',value:['2026-01-01','2026-12-31']}]]),/时间：2026-01-01 至 2026-12-31/);
+ assert.equal(describe('setFilterConditions',['f',[{field:'YWLN_D044',value:['2026']}]]),'');
+ assert.equal(describe('setButtonGrainSelection',['f','YEAR']),'');
+});
+
+test('a page that never starts a query does not hold the long AP budget',async()=>{
+ const started=Date.now();
+ const client=createAPDataClient({apiBase:'/api/cockpit',id:1,idleMs:300});
+ await assert.rejects(client.ready({partial:true}),/仍在加载/);
+ assert.ok(Date.now()-started<1500,'an idle page must fail fast, not wait for the three-minute budget');
+});

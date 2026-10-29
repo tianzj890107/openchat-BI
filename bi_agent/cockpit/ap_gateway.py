@@ -63,7 +63,7 @@ class APConfig:
         try:
             config = cls(os.getenv('COCKPIT_AP_BASE_URL', '').rstrip('/'),
                 os.getenv('COCKPIT_AP_HEADERS_FILE', ''),
-                min(30., max(1., float(os.getenv('COCKPIT_AP_TIMEOUT_SECONDS', '10')))),
+                min(240., max(1., float(os.getenv('COCKPIT_AP_TIMEOUT_SECONDS', '10')))),
                 min(8, max(1, int(os.getenv('COCKPIT_AP_CONCURRENCY', '4')))),
                 min(86400, max(60, int(os.getenv('COCKPIT_AP_RECEIPT_TTL_SECONDS', '1800')))),
                 os.getenv('COCKPIT_AP_BATCH_MODE', 'individual'),
@@ -141,10 +141,13 @@ class APGateway:
         encoded = json.dumps(payload, ensure_ascii=False).encode()
         if len(encoded) > 256 * 1024:
             raise HTTPException(413, 'AP查询配置过大')
+        # One budget per HTTP request: queueing behind the shared upstream bound
+        # and the upstream execution share the same deadline, so a saturated
+        # page cannot wait timeout*2 before the browser gives up.
+        deadline = _deadline if _deadline is not None else time.monotonic() + self.config.timeout
         if kind == 'batch' and self.config.batch_mode == 'individual':
             # Explicit transport policy, not a partial-result or alternate-source fallback.
             # One overall deadline and the existing global capacity bound every child.
-            deadline = time.monotonic() + self.config.timeout
             cache = {}; result = []; size = 2
             for child in payload:
                 key = json.dumps(child, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
@@ -161,7 +164,7 @@ class APGateway:
         request = Request(url + ('?' + urlencode(payload) if kind == 'helmet' else ''),
             data=None if kind == 'helmet' else encoded, headers=headers,
             method='GET' if kind == 'helmet' else 'POST')
-        remaining = self.config.timeout if _deadline is None else _deadline-time.monotonic()
+        remaining = deadline-time.monotonic()
         if remaining <= 0:
             raise HTTPException(504, 'AP整批查询超时，未交付部分结果')
         # Queue behind the shared upstream bound instead of failing a page query.
@@ -171,7 +174,7 @@ class APGateway:
         if not admitted:
             raise HTTPException(504, 'AP查询排队超时，请稍后重试')
         try:
-            timeout = self.config.timeout if _deadline is None else _deadline-time.monotonic()
+            timeout = deadline-time.monotonic()
             if timeout <= 0:raise HTTPException(504, 'AP整批查询超时，未交付部分结果')
             with self._opener.open(request, timeout=timeout) as response:
                 raw = response.read(MAX_RESPONSE + 1)
@@ -191,7 +194,7 @@ class APGateway:
                     detail = 'AP批量查询不完整或包含失败子查询'
                     detail += ('：' + reason) if reason else '；未交付缺项结果'
                     raise HTTPException(502, detail)
-            if _deadline is not None and time.monotonic() > _deadline:
+            if time.monotonic() > deadline:
                 raise HTTPException(504, 'AP整批查询超时，未交付部分结果')
             return body['data']
         except HTTPError as exc:

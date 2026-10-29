@@ -158,7 +158,7 @@
   }
 
   function stateFor(stage) {
-    if (!insightState[stage]) insightState[stage] = {status: 'idle', progress: '', item: null, error: ''};
+    if (!insightState[stage]) insightState[stage] = {status: 'idle', progress: '', item: null, error: '', stale: false, scopeNotice: ''};
     return insightState[stage];
   }
 
@@ -381,6 +381,7 @@
       <component v-if="delivered" :is="delivered"
                  :analysis="state.item" :status="state.status" :progress="state.progress"
                  :cached="state.cached" :refreshing="state.refreshing"
+                 :stale="Boolean(state.stale)" :scope-notice="state.scopeNotice || ''"
                  :error="state.error" :context="analysisContext" :slot-props="slotProps"
                  @retry="reload"></component>
       <div v-else-if="insightLoadError" class="insight-runtime-empty" role="status">{{ insightLoadError }}</div>
@@ -749,7 +750,7 @@
               rawRuntime=nextRuntime;
               if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
               biRuntime.value=observeActivationActions(
-                observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady,restored),
+                observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,restored),
                 {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
               const path={segments:[{kind:'tab',containerId:tabs.id,tabId:payload.pages[page.value].tabId,templateId:payload.pages[page.value].templateId}]};
               for(const component of payload.templates[payload.pages[page.value].templateId]?.components||[]){
@@ -775,7 +776,8 @@
               nextTick(()=>requestAnimationFrame(()=>window.scrollTo({top,behavior:'instant'})));
             }
             const client=liveDataClient;
-            client.ready({allowExpired:Boolean(snapshot),partial:true}).then(()=>{if(client===liveDataClient){filtersReady=true;onPageActivity();}}).catch(()=>{if(client===liveDataClient){filtersReady=true;onPageActivity();}});
+            const scopeReady=()=>{if(client!==liveDataClient)return;filtersReady=true;biRuntime.value?.flushPendingScope?.();onPageActivity();};
+            client.ready({allowExpired:Boolean(snapshot),partial:true}).then(scopeReady).catch(scopeReady);
             setTimeout(()=>{if(client===liveDataClient&&liveError.value)sweepStuckLoading();},6500);
           }
           function schedulePageRefresh(delay=120000) {
@@ -788,12 +790,15 @@
               if(token===pageEpoch&&fullSnapshot)schedulePageRefresh(pageState.error?60000:120000);
             },delay);
           }
-          async function changeScope(uiScope,miss=false) {
+          async function changeScope(uiScope,miss=false,detail='') {
             let metadata=fullSnapshot?.entries?.filter(e=>e.kind==='helmet')||[];
             if(!metadata.length)try{metadata=liveDataClient.entries().filter(e=>e.kind==='helmet');}catch{}
             const token=++pageEpoch;pageCache?.invalidate();clearLiveError();
             currentUiScope=uiScope;defaultView=uiScope==='default';fullSnapshot=null;
-            clearTimeout(refreshTimer);publications?.invalidate();liveDataClient?.clearScope();
+            // Keep the last complete cards on screen; the notice says the scope
+            // changed and that the visible analysis still belongs to the old one.
+            const notice='筛选口径已切换'+(detail?'（'+detail+'）':'')+'，正在加载新数据；以下仍为上次分析';
+            clearTimeout(refreshTimer);publications?.invalidate(notice);liveDataClient?.clearScope();
             Object.assign(pageState,{cached:false,dataAsOf:0,error:'',refreshing:false});
             filtersReady=false;await Promise.resolve();if(token!==pageEpoch)return;
             install(null,true,metadata);
@@ -802,7 +807,7 @@
             }
           }
           biRuntime.value=observeActivationActions(
-            observeRuntimeFilters(rawRuntime,uiScope=>changeScope(uiScope),()=>filtersReady),
+            observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady),
             {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
           if(analysisEngine==='main') {
             pageCache=createPageCache({apiBase,id:identityId,page:page.value,makeClient,bodyFor:baseMainBody,
@@ -820,7 +825,11 @@
             if(analysisEngine!=='main'||fullSnapshot||publishing)return;
             publishTimer=setTimeout(async()=>{
               const token=pageEpoch,client=liveDataClient,uiScope=currentUiScope;
-              const items=Object.fromEntries([...visibleStages.keys()].map(stage=>[stage,stateFor(stage).item]));
+              // Stale cards belong to the previous filter scope: never publish
+              // them as the version for the new one.
+              const stages=[...visibleStages.keys()];
+              if(stages.some(stage=>stateFor(stage).stale))return;
+              const items=Object.fromEntries(stages.map(stage=>[stage,stateFor(stage).item]));
               if(Object.values(items).some(item=>item?.result?.cardContract!=='cockpit-cards-v1'))return;
               if(page.value!=='overview'&&!Object.keys(items).length)return;
               publishing=true;

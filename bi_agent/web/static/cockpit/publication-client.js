@@ -8,14 +8,23 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
   const known=new Set();
   function preload(items) {
     for(const [stage,item] of Object.entries(items||{})) {
-      if(item?.result?.cardContract===CARD_CONTRACT) {known.add(stage);Object.assign(stateFor(stage),{item,status:'done',refreshing:false,error:'',cached:true});}
+      if(item?.result?.cardContract===CARD_CONTRACT) {known.add(stage);Object.assign(stateFor(stage),{item,status:'done',refreshing:false,error:'',cached:true,stale:false,scopeNotice:''});}
     }
   }
-  function invalidate() {
+  function invalidate(notice='') {
     generation++;
     pending.clear();
-    // A different filter cannot borrow even a successful result from the previous scope.
-    for(const stage of known) Object.assign(stateFor(stage),{item:null,status:'running',refreshing:false,error:'',progress:'正在分析当前筛选范围'});
+    // A different filter cannot borrow the previous result as evidence, but the
+    // user should keep seeing it until the new scope finishes. The card is
+    // marked stale and says which scope is loading; only a complete new result
+    // replaces it.
+    for(const stage of known) {
+      const state=stateFor(stage);
+      if(state.item) Object.assign(state,{status:'done',refreshing:true,stale:true,cached:false,error:'',
+        progress:'正在加载新口径数据',
+        scopeNotice:notice||'筛选口径已切换，正在加载新数据；以下仍为上次分析'});
+      else Object.assign(state,{status:'running',refreshing:false,stale:false,scopeNotice:'',error:'',progress:'正在分析当前筛选范围'});
+    }
   }
   const stages=new Set();
   function compatible(item,body) {
@@ -47,7 +56,10 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
       const body=await bodyFor(stage,force);
       if(!current())return null;
       state.progress='AI 正在分析';
-      if(state.item && !compatible(state.item,body)) Object.assign(state,{item:null,status:'running',cached:false});
+      // Keep the previous scope on screen while the new one is being computed;
+      // the freshness notice already tells the user it is not this scope's data.
+      if(state.item && !compatible(state.item,body)) Object.assign(state,{status:'done',refreshing:true,stale:true,cached:false,
+        scopeNotice:state.scopeNotice||'筛选口径已切换，正在加载新数据；以下仍为上次分析'});
       return queue(async()=>{
       for(let pass=0;pass<2;pass++) {
         let envelope;
@@ -66,7 +78,7 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
         }
         if(!current())return null;
         if(envelope.cached && compatible(envelope.cached,body) && (!envelope.dataFingerprint || envelope.cached.context.dataFingerprint===envelope.dataFingerprint)) Object.assign(state,{item:envelope.cached,status:'done',cached:true});
-        else if(envelope.dataFingerprint && state.item?.context.dataFingerprint!==envelope.dataFingerprint) Object.assign(state,{item:null,status:'running',cached:false});
+        else if(envelope.dataFingerprint && state.item?.context.dataFingerprint!==envelope.dataFingerprint) Object.assign(state,{status:state.item?'done':'running',refreshing:Boolean(state.item),cached:false});
         let item=envelope.analysis;
         if(!item)return state.item;
         if(!compatible(item,body)) throw new Error('分析范围不一致，拒绝回填');
@@ -83,14 +95,18 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
         if(!current())return null;
         if(!['completed','limited'].includes(item.status)||item.result?.cardContract!==CARD_CONTRACT) throw new Error(item.error||item.progress||'主服务尚未交付完整卡片');
         // Replace a whole stage atomically, never one half-finished cause/action at a time.
-        Object.assign(state,{item,status:'done',cached:false,error:'',progress:''});
+        Object.assign(state,{item,status:'done',cached:false,error:'',progress:'',stale:false,scopeNotice:''});
         if(!envelope.dataFingerprint || item.context.dataFingerprint===envelope.dataFingerprint) return item;
         body.refresh=false; // An older in-flight job may finish first; revalidate the latest AP material once.
       }
       return state.item;
       },{stage,urgent});
     })().catch(error=>{
-      if(current()) {state.error=error.message||'分析更新失败';state.status=state.item?'done':'error';}
+      if(current()) {
+        const message=error.message||'分析更新失败';
+        state.error=message;state.status=state.item?'done':'error';
+        if(state.item&&state.stale) state.scopeNotice='新口径分析未完成，以下仍为上次分析：'+message;
+      }
       return null;
     }).finally(()=>{if(current()){state.refreshing=false;pending.delete(stage);}});
     pending.set(stage,promise);return promise;

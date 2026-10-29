@@ -872,8 +872,11 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 新接口 `/api/cockpit/data/config`、`/api/cockpit/data/query` 仅完整主服务提供AP能力；
   页面取数成功返回receiptId，分析携带同批apReceiptIds与chartQueries，主服务只读保存的AP响应，不二次取数。
   `ap_results` 表自动追加到Cockpit历史库，保留旧分析与任务。凭据默认1800秒有效；过期要求重新取数，不删除旧材料。
-- 默认AP网络并发2、网络超时10秒，Cockpit主服务分析并发1；`COCKPIT_AP_CONCURRENCY`、
+- 默认AP网络并发2、网络超时10秒（允许1–240秒），Cockpit主服务分析并发1；`COCKPIT_AP_CONCURRENCY`、
   `COCKPIT_AP_TIMEOUT_SECONDS`、`COCKPIT_AP_RECEIPT_TTL_SECONDS` 可按需配置。
+  上游SQL预算调整为3分钟时，本侧必须同步三处：`COCKPIT_AP_TIMEOUT_SECONDS=180`（排队等待与
+  上游执行共用同一期限）、浏览器单请求超时200秒、取数就绪等待220秒；上游快速失败仍重试一次，
+  已经消耗掉长预算的504不再重试，避免等待翻倍。
   AP失败不回退默认本体、数据库或旧快照；缺少同源根因明细时仍受限交付。
 - 如需离线回放，显式设置 `COCKPIT_DATA_MODE=snapshot`；未捕获的查询仍可能缺失。新代码不再默认依赖旧快照。
 - 已在2026-10-26获当次授权后完成代理切换、8765更新与独立8877停服，并验证三类AP和同次结果分析。
@@ -939,8 +942,8 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   未迁移或覆盖历史会话、上传、图表和分析记录。
 - 切换方式：新release先在18765预检（PID `153599`，`/healthz`和`data/config`通过后停止），
   再SIGTERM旧 `0cf0f4b` 进程（PID `2587466`）并启动新进程；旧release完整保留回滚。
-  运行环境确认 `COCKPIT_AP_CONCURRENCY=4`、`COCKPIT_AP_TIMEOUT_SECONDS=10`、`data_mode=ap`、
-  `analysis_engine=main`。
+  运行环境确认 `COCKPIT_AP_CONCURRENCY=4`、`COCKPIT_AP_TIMEOUT_SECONDS=180`（与上游3分钟SQL
+  预算对齐，浏览器单请求200秒、取数就绪220秒）、`data_mode=ap`、`analysis_engine=main`。
 - 静态站：新增内容寻址目录 `/static/cockpit/releases/4da3f092598bd18dde3b/`，
   `site/release.json` 已指向该版本；staging `site-next-15d31e0-20261028-085226`，
   入口备份 `backups/site-20261028-085226-pre-15d31e0`。manifest校验通过，旧资源目录保留，

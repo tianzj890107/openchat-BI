@@ -40,7 +40,7 @@ def test_transport_has_its_own_headers_paths_and_capacity(tmp_path,monkeypatch):
     assert gateway.query('analysis',QUERY)==DATA
     request,timeout=opener.calls[0]
     assert request.full_url=='http://ap.example/api/gateway2/x360/v1/ontology/data/query'
-    assert request.get_method()=='POST' and timeout==2
+    assert request.get_method()=='POST' and timeout==pytest.approx(2,abs=0.2)
     assert 'must-not-reach-ap' not in str(request.headers)
     assert request.headers['X-ontology-repository-id']=='8'
     assert json.loads(request.data)==QUERY
@@ -265,3 +265,29 @@ def test_helmet_proxy_preserves_upstream_ywln_config(tmp_path,monkeypatch):
     nodes=response.json()['data']['nodes']
     assert json.loads(nodes[0]['meta']['helmetConfig']['dataConfig'])==opportunity
     assert json.loads(nodes[1]['meta']['helmetConfig']['dataConfig'])==quotation
+
+
+def test_ap_timeout_supports_three_minute_budget_and_caps_above_it(monkeypatch,tmp_path):
+    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2')
+    monkeypatch.setenv('COCKPIT_AP_HEADERS_FILE',str(config(tmp_path).headers_file))
+    monkeypatch.setenv('COCKPIT_AP_TIMEOUT_SECONDS','180')
+    assert APConfig.load().timeout==180
+    monkeypatch.setenv('COCKPIT_AP_TIMEOUT_SECONDS','600')
+    assert APConfig.load().timeout==240
+
+
+def test_queue_wait_and_upstream_share_one_deadline(tmp_path):
+    """A page waiting for capacity must not then get a full second budget."""
+    from dataclasses import replace
+    opener=Opener({'success':True,'data':DATA})
+    gateway=APGateway(replace(config(tmp_path),timeout=1),opener)
+    waits=[]
+    class Capacity:
+        def acquire(self,timeout=None):waits.append(timeout);return True
+        def release(self):pass
+    gateway._capacity=Capacity()
+    with patch('bi_agent.cockpit.ap_gateway.time.monotonic',side_effect=[0,0.5,0.6,0.7]):
+        assert gateway.query('analysis',QUERY)==DATA
+    assert waits==[pytest.approx(0.5)]
+    assert opener.calls[0][1]==pytest.approx(0.4)
+    assert opener.calls[0][1]<1

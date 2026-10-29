@@ -5,7 +5,16 @@ export function canonical(value) {
   return JSON.stringify(value);
 }
 
-export function createAPDataClient({apiBase, id, request = fetch, onInvalidate = () => {}, snapshot = null, onSnapshotMiss = () => {}, onError = () => {}, onRecover = () => {}}) {
+/* The AP backend now allows a three-minute SQL budget, so every layer between
+ * the browser and the upstream has to wait longer than the old 35 s page
+ * timeout. Keep a margin for network and receipt handling. */
+export const AP_QUERY_TIMEOUT_MS = 200000;
+export const SCOPE_READY_TIMEOUT_MS = 220000;
+export const TRANSIENT_RETRY_WINDOW_MS = 30000;
+
+export function createAPDataClient({apiBase, id, request = fetch, onInvalidate = () => {}, snapshot = null, onSnapshotMiss = () => {}, onError = () => {}, onRecover = () => {},
+  timeoutMs = AP_QUERY_TIMEOUT_MS, readyTimeoutMs = SCOPE_READY_TIMEOUT_MS, retryWindowMs = TRANSIENT_RETRY_WINDOW_MS,
+  idleMs = 3000}) {
   const active = new Map(), all = new Map(), completed = new Map(), inflight = new Map(), queue = [];
   const replay = new Map((snapshot?.entries || []).map(e => [e.kind + ':' + canonical(e.payload), e]));
   let replaying = Boolean(snapshot), missed = false;
@@ -47,18 +56,21 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
   }
   async function proxy(kind, payload) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 35000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       let response, body;
       for (let attempt = 0; attempt < 3; attempt++) {
+        const attemptStarted = Date.now();
         response = await request(`${apiBase}/data/query`, {method: 'POST', signal: controller.signal,
           headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
           body: JSON.stringify({id: Number(id), kind, payload})});
         try { body = await response.json(); } catch (_) { body = null; }
         const queued = response.status === 429 || (response.status === 504 && /排队/.test(String(body?.detail || '')));
-        // One bounded retry for a transient upstream timeout; never retry a
-        // deterministic 502 or keep replaying a failing SQL query.
-        const transientTimeout = response.status === 504 && !queued && attempt === 0;
+        // One bounded retry for an early transient failure; never retry a
+        // deterministic 502, and never replay a 504 that already consumed the
+        // long AP budget - that would silently double the user's wait.
+        const transientTimeout = response.status === 504 && !queued && attempt === 0 &&
+          Date.now() - attemptStarted < retryWindowMs;
         if ((!queued && !transientTimeout) || attempt === 2) break;
         await pause(queued ? 300 * (attempt + 1) : 600);
       }
@@ -143,9 +155,14 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
   }
   async function ready(options={}) {
     const {allowExpired=false, partial=false} = typeof options === 'boolean' ? {allowExpired: options} : options;
-    let stable = 0, previous = '';
-    for (let attempt = 0; attempt < 450; attempt++) {
+    let stable = 0, previous = '', idle = 0;
+    const deadline = Date.now() + readyTimeoutMs;
+    while (Date.now() < deadline) {
       await pause(100);
+      // A page that never starts a query must not hold the caller for the
+      // whole long-AP budget; give the components a short settle window.
+      if (!all.size) { if (++idle >= Math.max(1, Math.ceil(idleMs / 100))) break; continue; }
+      idle = 0;
       const signature = [...all.values()].map(s => `${s.key}:${s.receiptId}:${s.pending}`).join('|');
       stable = signature && signature === previous ? stable + 1 : 0;
       previous = signature;
@@ -157,6 +174,8 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
         return scope({allowExpired, partial});
       }
     }
+    // Data preparation may legitimately take as long as the AP budget itself;
+    // falling through only reports what is actually ready, never a timeout error.
     return scope({allowExpired, partial});
   }
   function clearScope() { active.clear(); all.clear(); completed.clear(); inflight.clear(); replay.clear(); replaying=false; onInvalidate({replacement:true}); }
@@ -194,10 +213,54 @@ export function observeActivationActions(runtime, {onTabChange=()=>{},onHelmetSe
   return runtime;
 }
 
+/* Turn a committed filter condition list into a short, human-readable scope
+ * hint for the card notice. Unknown shapes simply yield '' and the UI falls
+ * back to the generic notice; internal codes are never shown. */
+export function summarizeFilterChange(method,args) {
+  if(method!=='setFilterConditions')return '';
+  const parts=[],pushed=new Set();
+  const emit=(label,values)=>{
+    if(!label||!values.length||parts.length>=3)return;
+    const text=`${label}：${values.join(' 至 ')}`;
+    if(!pushed.has(text)){pushed.add(text);parts.push(text);}
+  };
+  const scalars=value=>{
+    const list=Array.isArray(value)?value:[value],out=[];
+    for(const item of list){
+      if(item===null||item===undefined||item==='')continue;
+      if(typeof item==='string'||typeof item==='number'){out.push(String(item));continue;}
+      if(typeof item==='object')for(const key of ['label','name','text','value','title']){
+        const text=item[key];
+        if(typeof text==='string'||typeof text==='number'){out.push(String(text));break;}
+      }
+    }
+    return [...new Set(out)].slice(0,4);
+  };
+  const walk=(value,label)=>{
+    if(Array.isArray(value)){value.forEach(item=>walk(item,label));return;}
+    if(!value||typeof value!=='object')return;
+    const own=[value.label,value.labelName,value.alias,value.title,value.dimension?.label,value.dim?.label]
+      .find(text=>typeof text==='string'&&text.trim());
+    const next=own||label,values=[];
+    for(const key of ['value','values','selected','selectedValues','range','conditionValues']){
+      const picked=scalars(value[key]);
+      if(picked.length){values.push(...picked);break;}
+    }
+    if(own&&values.length)emit(own,values);
+    for(const child of Object.values(value))if(child&&typeof child==='object')walk(child,next);
+  };
+  walk(args?.[1]);
+  return parts.join('；');
+}
+
 // Observe committed SDK filter changes, not clicks that merely open a filter editor.
 export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored=null,hooks={}) {
   const seen=new Map(restored?.seen||[]),calls=new Map(restored?.calls||[]);
   let baseline=restored?.baseline??null;
+  // A committed filter change can land while the page is still loading its
+  // data. Keep only the latest one and apply it once the client is ready;
+  // dropping it made the first user change look like no change at all.
+  let pending=null;
   const observed=new Set(['setFilterConditions','setButtonGrainSelection','setHelmetGraphSelection','setContainerActiveNode']);
   for(const method of [...observed,'setFilterUiSelection','setTemplateState','setTabTemplateOverrides','setActiveTab','setSelectionGroupActive','clearHelmetGraphSelection','clearContainerActiveNode']) {
     const original=runtime[method];
@@ -216,16 +279,29 @@ export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored
       if(method==='setHelmetGraphSelection')hooks.onHelmetSelect?.(args[0],args[1]);
       const selection=method==='setContainerActiveNode'?{nodeId:args[1]?.nodeId}:args[1];
       const value=canonical(selection);
+      // The baseline is the scope *before* the first observed change; keeping
+      // the pre-change map is what makes "switch back to default" detectable.
+      const before=baseline===null?canonical([...seen].sort()):baseline;
       const changed=seen.has(key)?seen.get(key)!==value:isReady();
-      if(changed&&isReady()&&baseline===null)baseline=canonical([...seen].sort());
       seen.set(key,value);
+      const scope=canonical([...seen].sort());
+      const detail=summarizeFilterChange(method,args);
       if(changed&&isReady()) {
-        const scope=canonical([...seen].sort());
-        onChange(scope===baseline?'default':scope);
+        if(baseline===null)baseline=before;
+        onChange(scope===baseline?'default':scope,detail);
+      } else if(changed) {
+        pending={scope,detail,before};
       }
       return original.apply(this,args);
     };
   }
+  runtime.flushPendingScope=()=>{
+    if(!pending||!isReady())return false;
+    const {scope,detail,before}=pending;pending=null;
+    if(baseline===null)baseline=before;
+    onChange(scope===baseline?'default':scope,detail);
+    return true;
+  };
   runtime.replayView=target=>{
     for(const [method,args] of calls.values())if(typeof target[method]==='function')target[method](...args);
     return {seen:[...seen],baseline,calls:[...calls]};

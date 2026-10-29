@@ -21,6 +21,7 @@ body{overflow-x:hidden;background:var(--dashboard-canvas-bg,#fff);color:#1f2329;
 .cockpit-board .pro-bi-in-card-insight-zone--contain::-webkit-scrollbar{width:4px}
 .cockpit-board .pro-bi-in-card-insight-zone--contain::-webkit-scrollbar-thumb{border-radius:4px;background:#c9d1dc}
 
+.insight-scope-notice{margin:0 0 2px;padding:7px 10px;border:1px solid #ffe58f;border-radius:6px;background:#fffbe6;color:#ad6800;font-size:12px;line-height:20px}
 .stage-risk-analysis{display:flex;flex-direction:column;gap:8px;min-width:0;margin:0;color:#262626;font-size:13px;line-height:22px;overflow-wrap:anywhere}
 .stage-risk-analysis__card{min-width:0;padding:14px 16px 12px;border:1px solid #f0f0f0;border-radius:8px;background:#fff}
 .stage-risk-analysis__overview{background:var(--pro-bi-card-bg,var(--dashboard-component-bg,#fff));border-color:var(--pro-bi-card-border,var(--dashboard-component-border,#e8e8e8))}
