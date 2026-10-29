@@ -14,9 +14,9 @@ def test_vendor_manifest_matches_local_artifacts():
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=fc21219c' in html
+    assert 'pro-bi-ui.min.js?v=2bf2cdd5' in html
     sdk=(vendor/'pro-bi-ui.min.js').read_text()
-    assert 'if(!t||!t.get("group"))return;t.fitView(fjn' in sdk
+    assert 'if(!t||!t.get("group"))return;t.fitView(' in sdk
     assert 'data-dashboard-theme="white"' in html
     css=(ROOT/'cockpit.css').read_text()
     assert '--dashboard-canvas-bg:#fff' in css
@@ -26,7 +26,7 @@ def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='00be09f699fe642c7ba18e12b8d48a0f3689c81d'
+    assert source['commit']=='50cdc94615dc25dafe012f70ce4bb815f4708409'
     assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
@@ -172,7 +172,7 @@ def test_analysis_flow_preserves_delivered_graph_and_shared_risk_markup():
     runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
     graph=next(component for component in runtime['pages']['analysis']['components']
                if component['id']=='mini-cpgraph-93j6k86p')
-    assert graph['title']=='销售额口径 · 四节点头盔图（商机获取 → 投标 → 订单接收 → 发货）'
+    assert graph['title']=='销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）'
     assert {rule['nodeId'] for rule in graph['graphConfig']['graphTemplateSwitchRules']}=={
         '2109840325158682625','2109840573998350338','2109840696539136002',
     }

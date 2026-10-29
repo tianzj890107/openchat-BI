@@ -286,7 +286,7 @@ window.DashboardInsights = [
     },
     placement: { mode: 'insert', afterId: 'share-bar-zob5z1uu' },
   },
-  // 穿透式问题分析 → 发货节点联动展示模版 → 客户与超期订单卡片下方
+  // 穿透式问题分析 → 发货节点「客户与超期订单」列表下方（出货风险解决任务令）
   // 组件 insight-components/shipment-task-order
   {
     id: 'shipment-task-order',
@@ -305,6 +305,7 @@ window.DashboardInsights = [
         },
       ],
     },
-    placement: { mode: 'insert', afterId: 'table-md1iftaj' },
+    // 模版已去掉 table-md1iftaj，与列表同缝落在占比条下，靠数组顺序排在列表后
+    placement: { mode: 'insert', afterId: 'share-bar-zob5z1uu' },
   },
 ]

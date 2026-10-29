@@ -1,7 +1,7 @@
 # 前端交付元数据：feature/demo_1021
 
 来源：[iba-demo](http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021)，
-固定 commit `00be09f699fe642c7ba18e12b8d48a0f3689c81d`。
+固定 commit `50cdc94615dc25dafe012f70ce4bb815f4708409`。
 `components.json`、`template-registry.json`、`insights.js` 和 `activate-rules.json`
 按上游原样复制；`insights.json` 由声明式 `insights.js` 转为 JSON。
 哈希、类型统计、跳转规则数量和已知问题见 `source.json`。
@@ -58,7 +58,7 @@ X-Ontology-Repository-Id: 8
 - 订单接收「明星产品订单电量及占比」：返回系列、2025 年出货参考、推算订单电量、
   占比和已登记口径。
 - 订单接收「受影响订单清单」：AP 事实字段之外，按证据中实际出现的订单号合并原因和
-  责任动作。
+  责任动作；事实列包含变更类型、减少电量和影响金额。
 - 发货「客户与超期订单」：AP 事实字段之外，按证据中实际出现的订单号合并主因和具体
   根因。
 
@@ -76,5 +76,5 @@ AI 文字只从当前范围已发布且通过交付校验的环节卡片按订�
 商机模板 `2112062888320483329` 的 `group-9ypz7vwt` 仍引用不存在的
 `share-bar-79fsomq9`。运行包保留原位置为空并写入缺项报告，不猜测图形配置。
 
-发货模板中的旧插槽 `shipment-task-order` 仍引用不存在的 `table-md1iftaj`。运行包同样
-只报告 `INSIGHT_ANCHOR_MISSING` 并保留原状；本次没有改第四张表或迁移该旧插槽。
+发货模板中的 `shipment-task-order` 已按上游新配置落在 `share-bar-zob5z1uu` 之后，
+不再依赖不存在的 `table-md1iftaj`；运行包按插槽数组顺序排在客户与超期订单列表之后。

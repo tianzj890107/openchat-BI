@@ -11,7 +11,9 @@ const fields = [
   {fieldType: 'Dimension', identifierCode: 'YWLN_D005', isTree: false, label: '客户等级', valueType: 'STRING'},
   {fieldType: 'Dimension', identifierCode: 'YWLN_D003', isTree: false, label: '产品类型', valueType: 'STRING'},
   {fieldType: 'Dimension', identifierCode: 'YWLN_D004', isTree: false, label: '产品团队', valueType: 'STRING'},
-  {fieldType: 'Indicator', identifierCode: 'YWLN_M_ORDER_CANCEL_CHANGE', isTree: false, label: '取消/变更订单电量', name: '取消/变更订单电量', valueType: 'NUMBER'},
+  {fieldType: 'Dimension', identifierCode: 'YWLN_D016', isTree: false, label: '变更类型', valueType: 'STRING'},
+  {fieldType: 'Indicator', identifierCode: 'YWLN_M0032', isTree: false, label: '减少电量（GWh）', name: '减少电量（GWh）', valueType: 'NUMBER'},
+  {fieldType: 'Indicator', identifierCode: 'YWLN_M0033', isTree: false, label: '影响金额（亿元）', name: '影响金额（亿元）', valueType: 'NUMBER'},
 ]
 
 const columns = [
@@ -20,7 +22,9 @@ const columns = [
   {code: 'YWLN_D005', fieldType: 'Dimension', id: 'YWLN_D005', isTree: false, label: '客户等级', showSearch: false, showSource: true, valueType: 'STRING'},
   {code: 'YWLN_D003', fieldType: 'Dimension', id: 'YWLN_D003', isTree: false, label: '产品类型', showSearch: false, showSource: true, valueType: 'STRING'},
   {code: 'YWLN_D004', fieldType: 'Dimension', id: 'YWLN_D004', isTree: false, label: '产品团队', showSearch: false, showSource: true, valueType: 'STRING'},
-  {code: 'YWLN_M_ORDER_CANCEL_CHANGE', fieldType: 'Indicator', id: 'YWLN_M_ORDER_CANCEL_CHANGE', isTree: false, label: '取消/变更订单电量', showSearch: false, showSource: true, valueType: 'NUMBER'},
+  {code: 'YWLN_D016', fieldType: 'Dimension', id: 'YWLN_D016', isTree: false, label: '变更类型', showSearch: false, showSource: true, valueType: 'STRING'},
+  {code: 'YWLN_M0032', fieldType: 'Indicator', id: 'YWLN_M0032', isTree: false, label: '减少电量（GWh）', showSearch: false, showSource: true, valueType: 'NUMBER'},
+  {code: 'YWLN_M0033', fieldType: 'Indicator', id: 'YWLN_M0033', isTree: false, label: '影响金额（亿元）', showSearch: false, showSource: true, valueType: 'NUMBER'},
   {code: '原因', fieldType: 'Dimension', id: '原因', isTree: false, label: '原因', showSearch: false, showSource: true, valueType: 'STRING'},
   {code: '责任动作', fieldType: 'Dimension', id: '责任动作', isTree: false, label: '责任动作', showSearch: false, showSource: true, valueType: 'STRING'},
 ]

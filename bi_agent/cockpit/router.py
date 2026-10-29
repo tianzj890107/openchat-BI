@@ -34,11 +34,11 @@ RESULT_CONTRACT_VERSION="compact-v1"
 def _default_display_scope(ui_scope: str) -> bool:
     """Whether a UI scope is one of the two default cache states.
 
-    The delivered filter emits either the literal ``default`` scope or a scope
-    containing only button-grain/view choices.  The latter covers the visible
-    ``2025-10`` month and the completely empty date state; both deliberately
-    reuse the same preheated default cards.  Any committed business filter
-    keeps the existing mismatch/stale disclosure.
+    The delivered filter emits either the literal ``default``/empty scope or a
+    canonical month-grain selection while the header shows ``2025-10``.  Both
+    deliberately reuse the same preheated default cards.  Other grains,
+    node/view choices and committed business filters must keep the explicit
+    mismatch/stale disclosure instead of being mistaken for the default scope.
     """
     if ui_scope == 'default':
         return True
@@ -46,12 +46,21 @@ def _default_display_scope(ui_scope: str) -> bool:
         changes = json.loads(ui_scope)
     except (TypeError, ValueError):
         return False
-    if not isinstance(changes, list) or not changes:
+    if not isinstance(changes, list):
         return False
+    if not changes:
+        return True
     for change in changes:
-        if not isinstance(change, list) or not change or not isinstance(change[0], str):
+        if not isinstance(change, list) or len(change) != 2 or not isinstance(change[0], str):
             return False
-        if change[0].split(':', 1)[0] != 'setButtonGrainSelection':
+        parts = change[0].split(':', 2)
+        if len(parts) < 2 or parts[0] != 'setButtonGrainSelection' or parts[1] != 'grain':
+            return False
+        try:
+            value = json.loads(change[1]) if isinstance(change[1], str) else change[1]
+        except (TypeError, ValueError):
+            return False
+        if not isinstance(value, str) or value.strip().upper() != 'MONTH':
             return False
     return True
 

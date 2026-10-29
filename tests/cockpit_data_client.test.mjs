@@ -5,7 +5,7 @@ const source = fs.readFileSync(new URL('../bi_agent/web/static/cockpit/data-clie
 const clientModule = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 const {createAPDataClient, observeRuntimeFilters, observeActivationActions, AP_QUERY_CONCURRENCY} = clientModule;
 const query = {analysisConfig: {indicators: [{identifierCode:'M0001'}]}, commonConfig: {filters: {month:'2026-10'}}};
-const ok = (receiptId, data = {rows:[{amount:42}]}) => ({ok:true, status:200, json:async()=>({receiptId,data,expiresAt:Date.now()/1000+60})});
+const ok = (receiptId, data = {rows:[{amount:42}]}) => ({ok:true, status:200, json:async()=>({receiptId,data,receivedAt:Date.now()/1000,expiresAt:Date.now()/1000+60})});
 
 test('concurrent duplicate widgets share the same upstream response and result receipt', async () => {
   const calls=[];
@@ -229,7 +229,9 @@ test('full-page replay renders expired display data without inventing fresh anal
  const client=createAPDataClient({apiBase:'/api/cockpit',id:1,snapshot,request:async()=>{calls++;return ok('new');},onSnapshotMiss:()=>misses++});
  assert.deepEqual(await client.biAdapters.postAnalysisDataQuery(query),{value:42});assert.equal(calls,0);
  assert.throws(()=>client.scope(),/过期/);
- assert.deepEqual(await client.biAdapters.postAnalysisDataQuery({...query,commonConfig:{filters:{month:'other'}}}),{rows:[{amount:42}]});
+ const missedQuery={...query,commonConfig:{filters:{month:'other'}}};
+ assert.deepEqual(await client.biAdapters.postAnalysisDataQuery(missedQuery),{rows:[{amount:42}]});
+ assert.deepEqual(await client.biAdapters.postAnalysisDataQuery(missedQuery),{rows:[{amount:42}]});
  await new Promise(r=>setImmediate(r));assert.equal(misses,1);assert.equal(calls,1);
 });
 

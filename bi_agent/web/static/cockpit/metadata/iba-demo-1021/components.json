@@ -953,7 +953,7 @@
                 "templateId": "2112060211964461057"
               }
             ],
-            "targetId": "insight-star-product-order-list",
+            "targetId": "table-npgn6a03",
             "templateComponentId": "tab-container-zm9eyxne",
             "templateId": "2112060211964461057"
           },
@@ -1413,6 +1413,24 @@
             "targetId": "progress-tjejbjpp",
             "templateComponentId": "tab-container-zm9eyxne",
             "templateId": "2112434004503347202"
+          },
+          {
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-211tc4o0",
+                "templateId": "2112434004503347202"
+              },
+              {
+                "containerId": "template-rjjcf4v1",
+                "kind": "template",
+                "templateId": "2112060211964461057"
+              }
+            ],
+            "targetId": "insight-star-product-order-list",
+            "templateComponentId": "tab-container-zm9eyxne",
+            "templateId": "2112060211964461057"
           }
         ]
       },
@@ -1597,7 +1615,7 @@
                 "templateId": "2112064105591390209"
               }
             ],
-            "targetId": "insight-affected-order-list",
+            "targetId": "table-x6qt15if",
             "templateComponentId": "tab-container-zm9eyxne",
             "templateId": "2112064105591390209"
           },
@@ -1616,24 +1634,6 @@
               }
             ],
             "targetId": "share-bar-zob5z1uu",
-            "templateComponentId": "tab-container-zm9eyxne",
-            "templateId": "2112064144187375617"
-          },
-          {
-            "embedPath": [
-              {
-                "containerId": "tab-container-zm9eyxne",
-                "kind": "tab",
-                "tabId": "tab-1suxx5hd",
-                "templateId": "2112061604959928321"
-              },
-              {
-                "containerId": "template-ryfsat5y",
-                "kind": "template",
-                "templateId": "2112064144187375617"
-              }
-            ],
-            "targetId": "insight-overdue-order-list",
             "templateComponentId": "tab-container-zm9eyxne",
             "templateId": "2112064144187375617"
           },
@@ -1693,6 +1693,42 @@
             "targetId": "mini-cpgraph-93j6k86p",
             "templateComponentId": "tab-container-zm9eyxne",
             "templateId": "2112061604959928321"
+          },
+          {
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "containerId": "template-ryfsat5y",
+                "kind": "template",
+                "templateId": "2112064105591390209"
+              }
+            ],
+            "targetId": "insight-affected-order-list",
+            "templateComponentId": "tab-container-zm9eyxne",
+            "templateId": "2112064105591390209"
+          },
+          {
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "containerId": "template-ryfsat5y",
+                "kind": "template",
+                "templateId": "2112064144187375617"
+              }
+            ],
+            "targetId": "insight-overdue-order-list",
+            "templateComponentId": "tab-container-zm9eyxne",
+            "templateId": "2112064144187375617"
           }
         ]
       }
@@ -1732,7 +1768,8 @@
           "label": "穿透式问题分析",
           "templateId": "2112061604959928321"
         }
-      ]
+      ],
+      "activateRules": []
     }
   }
 ]

@@ -97,18 +97,24 @@ def test_affected_orders_merge_only_evidence_linked_cause_and_action(tmp_path, m
             "YWLN_D005": {"value": "A类"},
             "YWLN_D003": {"value": "储能"},
             "YWLN_D004": {"value": "产品一部"},
-            "YWLN_M_ORDER_CANCEL_CHANGE": {"value": 12.5, "render": {"unit": "GWh"}},
+            "YWLN_D016": {"value": "订单变更"},
+            "YWLN_M0032": {"value": 12.5, "render": {"unit": "GWh"}},
+            "YWLN_M0033": {"value": 0.18, "render": {"unit": "亿元"}},
         }]},
         "pagination": {"total": 1},
     })
     fields = [("YWLN_D049", "Dimension"), ("YWLN_D006", "Dimension"),
               ("YWLN_D005", "Dimension"), ("YWLN_D003", "Dimension"),
-              ("YWLN_D004", "Dimension"), ("YWLN_M_ORDER_CANCEL_CHANGE", "Indicator")]
+              ("YWLN_D004", "Dimension"), ("YWLN_D016", "Dimension"),
+              ("YWLN_M0032", "Indicator"), ("YWLN_M0033", "Indicator")]
     result = response.post("/api/cockpit/ai-tables/affected-order-list/query",
                            json=_query(fields))
     assert result.status_code == 200, result.text
     row = result.json()["rows"][0]
     assert row["YWLN_D049"] == "SO-1"
+    assert row["YWLN_D016"] == "订单变更"
+    assert row["YWLN_M0032"] == {"unit": "GWh", "value": 12.5}
+    assert row["YWLN_M0033"] == {"unit": "亿元", "value": 0.18}
     assert row["原因"] == "证据支持：排产分配不足；产能池被调走"
     assert "重排交付计划" in row["责任动作"] and "计划经理" in row["责任动作"]
     assert gateway.calls[0][0] == "analysis"
@@ -153,7 +159,8 @@ def test_table_query_rejects_unreviewed_fields_and_or_filters(tmp_path, monkeypa
     good_fields = _query([
         ("YWLN_D049", "Dimension"), ("YWLN_D006", "Dimension"),
         ("YWLN_D005", "Dimension"), ("YWLN_D003", "Dimension"),
-        ("YWLN_D004", "Dimension"), ("YWLN_M_ORDER_CANCEL_CHANGE", "Indicator"),
+        ("YWLN_D004", "Dimension"), ("YWLN_D016", "Dimension"),
+        ("YWLN_M0032", "Indicator"), ("YWLN_M0033", "Indicator"),
     ], filters=[{"identifierCode": "YWLN_D049", "operator": {"code": "EQ"}, "value": "SO-1"}])
     good_fields["commonConfig"]["filters"]["logic"] = "OR"
     assert response.post("/api/cockpit/ai-tables/affected-order-list/query",

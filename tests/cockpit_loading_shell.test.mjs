@@ -66,7 +66,8 @@ test('default SDK filters and repeated snapshots cannot remount the board in a l
   assert.match(source, /event\?\.target\?\.closest\?\.\(SCOPE_CONTROL\)/);
   assert.match(source, /installedSnapshotKey/);
   assert.match(source, /incomingKey===installedSnapshotKey&&liveDataClient/);
-  assert.match(source, /snapshotMissKey===key&&now-snapshotMissAt<30000/);
+  assert.match(source, /onSnapshotMiss:\(\)=>\{fullSnapshot=null;pageState\.cached=false;pageState\.displayStale=true;\}/);
+  assert.doesNotMatch(source, /onSnapshotMiss:\(\)=>\{[\s\S]{0,300}changeScope\(currentUiScope,true\)/);
   assert.match(source, /scopeKey===lastScopeRequestKey&&now-lastScopeRequestAt/);
   assert.match(source, /settleMissingSlotStages\(\)/);
   assert.match(source, /尚无可用分析结果，服务端正在补充当前口径数据/);

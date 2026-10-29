@@ -27,6 +27,9 @@ test('table columns match the delivered AP facts and validated AI fields', async
   assert.match(star, /YWLN_M_STAR_PRODUCT_ORDER_SHARE/);
 
   const affected = await readFile(new URL('insight-components/affected-order-list/index.js', root), 'utf8');
+  assert.match(affected, /YWLN_D016/);
+  assert.match(affected, /YWLN_M0032/);
+  assert.match(affected, /YWLN_M0033/);
   assert.match(affected, /label: '原因'/);
   assert.match(affected, /label: '责任动作'/);
 

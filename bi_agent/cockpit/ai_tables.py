@@ -61,7 +61,9 @@ AFFECTED_FIELDS = [
     _field("YWLN_D005", "客户等级", "Dimension"),
     _field("YWLN_D003", "产品类型", "Dimension"),
     _field("YWLN_D004", "产品团队", "Dimension"),
-    _field("YWLN_M_ORDER_CANCEL_CHANGE", "取消/变更订单电量", "Indicator"),
+    _field("YWLN_D016", "变更类型", "Dimension"),
+    _field("YWLN_M0032", "减少电量（GWh）", "Indicator"),
+    _field("YWLN_M0033", "影响金额（亿元）", "Indicator"),
 ]
 
 TABLE_SPECS = {

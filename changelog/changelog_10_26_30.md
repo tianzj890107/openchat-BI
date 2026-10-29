@@ -18,23 +18,30 @@
   “2025”。`2025年10月` 和日期完全为空这两个优先范围都直接复用已预热的 15 张 AI 卡片，
   不显示旧口径或缓存缺失提示；其他真实业务筛选仍明确标注口径差异，不把旧卡片冒充新结果。
   AI 卡片读取不再等待布局配置、指标或 AP 取数完成。
-- 服务端：`/api/cockpit/ai-publications` 识别仅包含时间粒度/视图选择的默认显示范围，命中
-  默认卡片时返回 `scopeMatch=true`；带真实业务筛选的范围仍返回 `scopeMatch=false`、
-  `displayScope=default` 和逐插槽标记。相同 AP 查询的成功结果复用窗口继续为 5 分钟。
+- 服务端：`/api/cockpit/ai-publications` 只把空日期和 `MONTH` 粒度识别为默认显示范围，命中
+  默认卡片时返回 `scopeMatch=true`；`YEAR`、节点/视图选择和其他真实业务筛选仍返回
+  `scopeMatch=false`、`displayScope=default` 和逐插槽标记，不误用默认范围缓存。相同 AP
+  查询的成功结果复用窗口继续为 5 分钟。
 - 组件适配：撤回宿主对 `YWLN_D044` 的年度改写，运行时元数据与上游 `2025-10` 默认值一致；
   不改上游组件结构、卡片位置或指标配置。
-- 验证：Python 1695 通过、37 跳过、1022 subtests 通过；Node 70 通过；`git diff --check`
-  通过。部署后以真实浏览器复核两种角色 15/15 卡片。
+- 验证：本轮最终聚焦测试结果见下一条；未在本次修改后部署。
 
-### 2026-10-29 19:45 · 销售额 / 出货量卡片补齐三条待核实项
+### 2026-10-29 21:15 · Cockpit 同步 demo_1021 最新组件并撤回演示期兜底
 
-- 用户可见变化：当发货分析卡没有返回结构化原因时，「销售额 / 出货量共同问题分析」仍展示
-  三条明确标注“待核实”的条目：总量缺口待定位、金额影响未验证、结构原因未定位。
-- 证据边界：三条只依据当前卡片已交付的摘要与上游失败范围生成，不新增数值、不把推测写成
-  已确认根因；无摘要结果时仍保持原加载/错误状态。
-- 主要文件：`bi_agent/web/static/cockpit/insight-components/sales-shipment-issues/index.js`、
-  `tests/cockpit_sales_shipment_issues.test.mjs`。
-- 验证：组件语法检查与新增 Node 测试通过。
+- 组件同步：根配置、13 份模板和插槽声明同步到 iba-demo `feature/demo_1021@50cdc94`，
+  BI UMD 更新并继续保留头盔图销毁后的空实例保护；宿主仍固定交付组件的 `2025-10` 默认日期。
+- 订单表格：明星产品、受影响订单和超期订单插槽按上游新位置落位；受影响订单事实列改为
+  `YWLN_D016` 变更类型、`YWLN_M0032` 减少电量、`YWLN_M0033` 影响金额，AI 原因与责任动作
+  仍只从带证据的已发布卡片逐行合并。
+- 风险卡片：撤回演示时为「销售额 / 出货量共同问题分析」强制生成的三条固定结论；没有结构化
+  原因时只保留真实摘要和限制说明，不再把占位推断展示成风险项。
+- 缓存边界：默认范围只接受空日期和 `MONTH` 粒度；快照缺项改为一次实时补查并复用同一结果，
+  不再重挂看板或把宿主缓存错误显示在组件内。
+- 主要文件：`bi_agent/cockpit/{router.py,ai_tables.py}`、`bi_agent/web/static/cockpit/{index.html,data-client.js}`、
+  `insight-components/{affected-order-list,sales-shipment-issues}/index.js`、
+  `metadata/iba-demo-1021/**`、`metadata/runtime.json`、`vendor/**` 及对应测试。
+- 验证：`pytest -q tests/test_cockpit*.py` 172 通过；`node --test tests/*.test.mjs` 71 通过；
+  JS 语法、JSON 解析和 UMD「上游 + 空实例守卫」逐字节核对通过；未部署。
 
 ### 2026-10-29 18:10 · Cockpit 节点切换保留看板缓存，缺失 AI 卡片立即预热
 

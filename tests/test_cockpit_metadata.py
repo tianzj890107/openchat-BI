@@ -74,9 +74,6 @@ def test_activate_rules_cover_sales_risk_and_every_insight_anchor_is_delivered()
 
     for slot in bundle["insights"]:
         assert slot["embedPath"]["segments"]
-        if slot["id"] == "shipment-task-order":
-            assert (slot.get("placement") or {}).get("afterId") == "table-md1iftaj"
-            continue
         target_ids = _target_ids(slot, bundle["roots"], bundle["templates"])
         for key in ("anchorId", "afterId"):
             referenced = (slot.get("placement") or {}).get(key)
@@ -96,8 +93,8 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     assert stored["renderer"] == "ProBiDashboard"
     assert stored["mode"] == "release"
     assert stored["source"]["dashboardId"] == "iba-demo-1021"
-    assert stored["source"]["version"] == "00be09f"
-    assert stored["source"]["commit"] == "00be09f699fe642c7ba18e12b8d48a0f3689c81d"
+    assert stored["source"]["version"] == "50cdc94"
+    assert stored["source"]["commit"] == "50cdc94615dc25dafe012f70ce4bb815f4708409"
     assert stored["source"]["templateCount"] == 13
     assert stored["source"]["totalComponents"] == 142
     assert stored["source"]["activateRules"] == 6
@@ -178,11 +175,9 @@ def test_prototype_source_remains_available_only_for_explicit_standalone_analysi
 
 def test_runtime_reports_live_ap_single_query_mode_and_only_real_gaps():
     payload = release_payload()
-    assert payload["source"]["commit"] == "00be09f699fe642c7ba18e12b8d48a0f3689c81d"
+    assert payload["source"]["commit"] == "50cdc94615dc25dafe012f70ce4bb815f4708409"
     assert payload["source"]["dataMode"] == "ap-single-query"
-    assert {gap["code"] for gap in payload["gaps"]} == {
-        "CHILD_DEFINITION_MISSING", "INSIGHT_ANCHOR_MISSING",
-    }
+    assert {gap["code"] for gap in payload["gaps"]} == {"CHILD_DEFINITION_MISSING"}
     overview = payload["pages"]["overview"]["components"]
     progress = {component["id"]: component for component in overview if component.get("type") == "progress"}
     assert [item["identifierCode"] for item in progress["progress-y5dumxio"]["dataConfig"]["measure"]] == ["YWLN_M0001"]
