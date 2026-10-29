@@ -455,3 +455,21 @@
   `297911caba6a992560b6c0aee66be5bb38a59cf02522a2c65fd2a83247cb3d84`。
 - 边界：旧 HTML 不会自动补按钮，需要重新生成；本轮未创建真实 Fuxi 待办，真实点击回执
   和业务效果需在伏羲人工验收；未创建 MR/tag/Release，未升级正式版本。
+
+### 2026-10-28 18:36 · 风险卡与风险下发通道
+
+- 用户可见变化：Process360Draft 现在同时生成“风险卡”和“处置待办卡”。风险卡展示风险标题、
+  已观察事实、影响、等级依据、业务范围、证据和责任人，候选原因明确标为“待验证，不是已确认
+  根因”；按钮为“推送风险”。处置待办继续显示“发送任务令”，两类卡片可关联但不会互相替代。
+- Fuxi 下发：新增 MCP 写工具 `RiskItemCreate`，按 Fuxi 契约发送 `itemType=RISK`；待办仍由
+  `TaskOrderCreate` 发送 `itemType=TODO`。两类条目使用不同 `sourceTodoId`
+  （风险为 `analytics-risk-*`）和不同幂等键；重复点击只重放原执行，工具与卡片类型不匹配时
+  在调用 Fuxi 前阻断。推送风险成功只表示 Fuxi 已接收，不代表风险解除。
+- Canvas 与闸门：actions 元数据新增 `itemType`，风险按钮和待办按钮分别显示并复用身份、
+  接收人、审批、过期、超时和安全重试状态机。OutputGateCheck 现在接受
+  `RISK + RiskItemCreate` 与 `TODO + TaskOrderCreate` 两种可信组合，并拒绝类型错配。
+- Skill/文档：更新 `ontology-analytics-skill/SKILL.md`、工具与闸门参考、README 和
+  Process360 closed-loop spec，明确风险卡只推送有证据的已观察事实，风险与待办独立幂等。
+- 验证：新增风险 Fuxi payload、双类型草稿、独立幂等键、类型错配阻断、Canvas 双按钮和
+  交付闸门测试 7 项通过；Process360/Fuxi/Canvas/MCP 聚焦回归 229 项通过、9 项跳过。
+- 边界：本轮未部署、未创建真实 Fuxi 风险/待办、未创建 MR/tag/Release、未升级正式版本。

@@ -44,7 +44,11 @@ from .request_context import active_request_context, current_or_resolve
 from .router import delivery_requirement, route as route_stage
 from .store import Process360Store, digest
 from .verify import build_verification
-from ..integrations.fuxi_todo import make_source_todo_id, normalize_recipients
+from ..integrations.fuxi_todo import (
+    make_source_todo_id,
+    normalize_item_type,
+    normalize_recipients,
+)
 
 
 DRAFT_TTL_SECONDS = 7 * 86400
@@ -1723,7 +1727,9 @@ class Process360Service:
             selected_solutions=list(solutions or []),
         )
         output["queryId"] = result.get("queryId") or (str(query_id) if query_id else None)
-        if output.get("status") != "ok" or not output.get("canvasActions"):
+        risk_actions = list(output.get("riskActions") or [])
+        task_actions = list(output.get("canvasActions") or [])
+        if output.get("status") != "ok" or not (risk_actions or task_actions):
             output["runId"] = result.get("runId")
             output["principalScope"] = identity.fingerprint()
             output["approvalStatus"] = "not_available"
@@ -1741,7 +1747,8 @@ class Process360Service:
                 "queryId": output.get("queryId"),
                 "scenario": code,
                 "tasks": output.get("tasks", []),
-                "canvasActions": output.get("canvasActions", []),
+                "riskActions": risk_actions,
+                "canvasActions": [*risk_actions, *task_actions],
             },
             approval_status=approval_status,
             ttl_seconds=DRAFT_TTL_SECONDS,
@@ -1758,12 +1765,37 @@ class Process360Service:
             "scenario": code,
             "approvalStatus": approval_status,
             "expiresAt": saved["expiresAt"],
-            "dispatchTool": "TaskOrderCreate",
+            "dispatchTool": "",
         }
-        for action in output.get("canvasActions", []):
-            action.update({**refs, "actionId": str(action.get("id") or "")})
+        dispatch_tools: set[str] = set()
+        for action in [*risk_actions, *task_actions]:
+            item_type = str(action.get("item_type") or action.get("itemType") or "TODO").upper()
+            dispatch_tool = str(
+                action.get("dispatchTool")
+                or ("RiskItemCreate" if item_type == "RISK" else "TaskOrderCreate")
+            )
+            action.update({
+                **refs,
+                "item_type": item_type,
+                "dispatchTool": dispatch_tool,
+                "actionId": str(action.get("id") or ""),
+            })
+            metadata = action.get("metadata") if isinstance(action.get("metadata"), dict) else {}
+            metadata["dispatchTool"] = dispatch_tool
+            action["metadata"] = metadata
+            dispatch_tools.add(dispatch_tool)
         for task in output.get("tasks", []):
-            task.update({**refs, "actionId": str(task.get("id") or "")})
+            task.update({
+                **refs,
+                "item_type": "TODO",
+                "dispatchTool": "TaskOrderCreate",
+                "actionId": str(task.get("id") or ""),
+            })
+        primary_tool = (
+            "TaskOrderCreate"
+            if "TaskOrderCreate" in dispatch_tools
+            else next(iter(dispatch_tools), "TaskOrderCreate")
+        )
         output.update(
             draftId=saved["id"],
             draftHash=draft_hash,
@@ -1771,11 +1803,13 @@ class Process360Service:
             queryId=output.get("queryId"),
             expiresAt=saved["expiresAt"],
             approvalStatus=approval_status,
-            dispatchTool="TaskOrderCreate",
+            dispatchTool=primary_tool,
+            dispatchTools=sorted(dispatch_tools),
             principalScope=identity.fingerprint(),
             limitations=[
                 *output.get("limitations", []),
-                "点击任一建议时由 Fuxi 宿主携带 principal、draftId、draftHash、actionId 和手机号调用 TaskOrderCreate；任务内容以服务端草稿为准。",
+                "点击风险卡调用 RiskItemCreate，点击处置待办调用 TaskOrderCreate；两者都只携带草稿引用，内容以服务端草稿为准。",
+                "风险卡只表达已观察风险，候选原因标为待验证；推送成功不代表风险解除。",
             ],
         )
         return output
@@ -1814,8 +1848,9 @@ class Process360Service:
         retry: bool = False,
         client: Any = None,
         source_updated_at: str = "",
+        item_type: str = "",
     ) -> dict[str, Any]:
-        """Create one Fuxi todo from a server-trusted suggestion-card draft."""
+        """Create one Fuxi risk/todo item from a trusted suggestion-card draft."""
         try:
             identity = self._principal(principal)
         except ValueError as exc:
@@ -1858,6 +1893,29 @@ class Process360Service:
                 scenario=draft.get("scenario"),
                 gaps=[gap("DRAFT_ACTION_NOT_FOUND", "建议不属于该草稿", needed="从当前建议卡选择 actionId", impact="未创建待办", severity="blocking", source="runtime")],
             )
+        action_item_type = normalize_item_type(
+            action.get("item_type") or action.get("itemType") or "TODO"
+        )
+        requested_item_type = (
+            normalize_item_type(item_type) if str(item_type or "").strip() else action_item_type
+        )
+        if requested_item_type != action_item_type:
+            return envelope(
+                "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
+                scenario=draft.get("scenario"),
+                gaps=[gap(
+                    "DISPATCH_ITEM_TYPE_MISMATCH",
+                    "下发工具与卡片类型不一致",
+                    needed=(
+                        "风险卡使用 RiskItemCreate，处置待办使用 TaskOrderCreate"
+                    ),
+                    impact="未调用 Fuxi",
+                    severity="blocking",
+                    source="runtime",
+                )],
+                draftId=draft_id,
+                actionId=action_id,
+            )
         if not identity.can_dispatch:
             return envelope(
                 "S06", "blocked", catalog_id=self.catalog_id, catalog_version=self.catalog_version,
@@ -1880,10 +1938,14 @@ class Process360Service:
             "dueAt": action.get("due_at") or action.get("dueAt"),
             "ownerRef": action.get("owner_ref") or action.get("ownerRef"),
             "ownerName": action.get("owner_name") or action.get("ownerName"),
+            "item_type": action_item_type,
+            "category": action.get("category"),
             "scenario": action.get("scenario") or draft.get("scenario"),
             "solution": (action.get("metadata") or {}).get("solution"),
             "taskTemplate": action.get("task_template") or (action.get("metadata") or {}).get("taskTemplate"),
             "verification": (action.get("metadata") or {}).get("verification"),
+            "riskCode": (action.get("metadata") or {}).get("riskCode"),
+            "dataBoundary": (action.get("metadata") or {}).get("dataBoundary"),
             "severityBasis": action.get("severityBasis"),
             "dispatch": {"source": action.get("source") or "boulderai-anaylize-todo"},
         }
@@ -1899,10 +1961,10 @@ class Process360Service:
         if not idempotency_key:
             from .dispatch import execution_key
 
-            key = execution_key(identity.tenant_id, draft_id, action_id)
+            key = execution_key(identity.tenant_id, draft_id, action_id, action_item_type)
         else:
             key = str(idempotency_key).strip()
-        source_todo_id = make_source_todo_id(action_id, draft_id)
+        source_todo_id = make_source_todo_id(action_id, draft_id, action_item_type)
         normalized_recipients = normalize_recipients(recipients)
         recipient_hash = recipient_hash or digest({"recipients": sorted(normalized_recipients)})
         source_updated_at = source_updated_at or datetime.fromtimestamp(
@@ -1912,6 +1974,7 @@ class Process360Service:
             "draftId": draft_id,
             "draftHash": draft_hash,
             "actionId": action_id,
+            "itemType": action_item_type,
             "scenario": draft.get("scenario"),
             "principal": identity.fingerprint(),
             "recipientHash": recipient_hash,
@@ -2044,6 +2107,7 @@ class Process360Service:
             draftId=draft_id,
             draftHash=draft_hash,
             actionId=action_id,
+            itemType=action_item_type,
             runId=(draft.get("payload") or {}).get("runId"),
             executionId=execution.get("id"),
             idempotentReplay=False,

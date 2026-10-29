@@ -1,7 +1,8 @@
 """MCP-facing Process360 tool catalog.
 
 The tools expose the deterministic engine only.  There is no raw SQL, DSN or
-write path here; task dispatch remains the existing ``TaskOrderCreate`` tool.
+business write path here; Fuxi risk/todo dispatch remains a separate user-click
+tool (``RiskItemCreate`` / ``TaskOrderCreate``).
 """
 
 from __future__ import annotations
@@ -163,8 +164,9 @@ PROCESS360_ANALYZE_SCHEMA: dict[str, Any] = {
 PROCESS360_DRAFT_SCHEMA: dict[str, Any] = {
     "name": "Process360Draft",
     "description": (
-        "Process360 S05 生成方案与任务令草稿。返回 tasks[]，可直接映射到 CanvasGenerate "
-        "的 kind=actions items。草稿不含手机号；接收人由 Fuxi 宿主在用户点击时提供。"
+        "Process360 S05 生成风险卡、方案与任务令草稿。riskActions[] 是有证据支持的"
+        "风险卡（候选原因明确标为待验证），tasks[]/canvasActions[] 是关联处置待办；"
+        "canvasActionBlock 已合并两类卡片。草稿不含手机号，接收人由服务端配置解析。"
     ),
     "input_schema": {
         "type": "object",
@@ -509,8 +511,18 @@ def _analyze(params: dict[str, Any], cwd: str) -> str:
 def _with_action_block(result: dict[str, Any]) -> dict[str, Any]:
     """Attach a ready-to-render block so HTML cannot silently drop actions."""
 
-    actions = list(result.get("canvasActions") or [])
+    actions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for key in ("riskActions", "canvasActions"):
+        for action in list(result.get(key) or []):
+            action_id = str(action.get("id") or action.get("actionId") or "")
+            if action_id and action_id in seen:
+                continue
+            if action_id:
+                seen.add(action_id)
+            actions.append(action)
     if actions:
+        result["actionCards"] = actions
         result["canvasActionBlock"] = {"kind": "actions", "params": {"items": actions}}
         result["actionDelivery"] = {
             "required": True,

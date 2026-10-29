@@ -17,7 +17,7 @@
 | 受控取数 | `bi_agent/process360/queries.py` | 五场景固定语句；缺口返回 blocked/partial，不补 0 |
 | 分析 | `bi_agent/process360/analysis.py` | 异常、影响、候选原因、证据缺口；候选原因不等于根因 |
 | 方案/任务草稿 | `bi_agent/process360/plans.py` | 方案、任务模板、验收要求；不含手机号 |
-| 执行 | `bi_agent/process360/execute.py` + `bi_agent/integrations/fuxi_todo.py` | 只发 Fuxi 待办，来源 `boulderai-anaylize-todo` |
+| 执行 | `bi_agent/process360/execute.py` + `bi_agent/integrations/fuxi_todo.py` | 只发 Fuxi 风险/待办，来源 `boulderai-anaylize-todo`；`itemType=RISK/TODO` |
 | 复验 | `bi_agent/process360/verify.py` | 交付验收与效果验收分开；缺冻结基准/批准目标时不可关闭 |
 | 身份与权限 | `bi_agent/process360/identity.py` | 宿主注入 tenant/user；权限范围与业务筛选取交集；交集为空拒绝取数 |
 | 运行记录 | `bi_agent/process360/store.py` | SQLite 记录 runs/drafts/actions/executions/receipts，支持导出；不写客户 PG |
@@ -25,7 +25,7 @@
 | 闭合计算 | `bi_agent/process360/closure.py` | 只使用冻结 baseline、批准目标和交付证据；样例数字不生效 |
 | 多期/结构/流程/进度/预测/综合 | `bi_agent/process360/advanced.py` | P04/P05/P07/P14/P17/P18；缺数据时明确 blocked |
 | 多目标与探索 | `bi_agent/process360/planner.py` | 多目标 DAG、依赖、计划版本、共享预算、探索工具白名单 |
-| MCP / Skill | `bi_agent/process360/tools.py`、`bi_agent/web/mcp_endpoint.py`、`ontology-analytics-skill/SKILL.md` | Process360 工具族；`TaskOrderCreate` 仍是唯一写工具 |
+| MCP / Skill | `bi_agent/process360/tools.py`、`bi_agent/web/mcp_endpoint.py`、`ontology-analytics-skill/SKILL.md` | Process360 工具族；写工具为 `RiskItemCreate` 与 `TaskOrderCreate` |
 
 ## 2. 场景与取数
 
@@ -152,19 +152,22 @@ metrics[] / records[] / evidence[] / gaps[] / limitations[] / nextSteps[]
 ## 4. 执行边界
 
 ```text
-S05 Process360Draft.canvasActionBlock（内部 items=draft.canvasActions[]）
+S05 Process360Draft.canvasActionBlock（items=draft.riskActions[] + draft.canvasActions[]）
   → CanvasGenerate kind=actions（只带草稿引用和展示字段）
-  → 用户在 HTML 点击“发送任务令”
+  → 用户在 HTML 点击“推送风险”或“发送任务令”
   → POST /api/process360/task-orders（只传 draftId/draftHash/actionId/requestId）
   → 服务端以可信身份解析接收人映射，回读草稿
   → 校验租户/用户/hash/审批/canDispatch/有效期
-  → 原子 claim 执行任务；稳定幂等键 tenant:draftId:actionId
+  → 原子 claim 执行任务；稳定幂等键按 itemType 隔离
   → Fuxi POST /source/todo-batches（source=boulderai-anaylize-todo）
   → 保存真实回执；页面查询或刷新执行状态
 ```
 
-- 建议卡必须携带 `draftId/draftHash/runId/actionId/scenario/approvalStatus/expiresAt/
-  dispatchTool` 六项关键字段。可信模式下，未携带任何服务端草稿引用的普通建议卡显示
+- 建议卡必须携带 `draftId/draftHash/runId/actionId/itemType/scenario/approvalStatus/
+  expiresAt/dispatchTool`。风险卡固定 `itemType=RISK + RiskItemCreate`，处置待办固定
+  `itemType=TODO + TaskOrderCreate`；类型不匹配时闸门和下发服务都阻断。风险卡只表达有证据
+  的已观察事实，候选原因标为待验证；风险使用独立 `analytics-risk-*` `sourceTodoId` 和
+  `tenant:draftId:actionId:risk` 幂等键。可信模式下，未携带任何服务端草稿引用的普通建议卡显示
   “分析建议”且不出现发送按钮；带任一草稿引用但六项字段不完整的旧版卡按钮禁用并显示
   “缺少草稿字段，请重新生成任务草稿”，服务端也不接受手工补字段。
 - 临时 POC 直发模式 `PROCESS360_CANVAS_DISPATCH_MODE=all`（当前默认）下，所有有正文的
@@ -205,8 +208,9 @@ S05 Process360Draft.canvasActionBlock（内部 items=draft.canvasActions[]）
 - 网络结果不确定时保留 `unknown`，用同一 `idempotency_key` 和 `retry=true` 查询或安全重试；
   不自动切换宿主再发，已成功回执重放不重复创建。接收人映射版本冻结进执行记录，映射
   变化时阻断原执行。
-- `TaskOrderCreate` 的兼容入口也必须在调用 Fuxi 前检查服务端 `canDispatch`；权限检查覆盖
-  Process360 草稿、普通行动和所有重试分支，缺权限时不会实例化或调用发送客户端。
+- `RiskItemCreate`/`TaskOrderCreate` 的所有入口都必须在调用 Fuxi 前检查服务端
+  `canDispatch`；权限检查覆盖风险卡、Process360 草稿、普通行动和所有重试分支，缺权限时
+  不会实例化或调用发送客户端。风险推送成功只表示 Fuxi 已接收，风险解除仍需证据和复验。
 - 不调用 X360 任务令，不发送 Fuxi IM，不伪造发运/签单/排产写操作。
 - S07 只能使用冻结 run、批准目标和交付证据；上游口头完成或本地 RF 样例不能关闭。
 

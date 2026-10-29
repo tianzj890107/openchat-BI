@@ -7,6 +7,7 @@ absent because the Fuxi host supplies them at click time.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Mapping
 
 from .catalog import Process360Catalog, _codes
@@ -69,6 +70,159 @@ def _content(
         "**说明**：本任务令由分析结论生成，执行由 Fuxi 待办承接；未确认的原因不得当作既定事实。"
     )
     return "\n".join(lines)
+
+
+def _impact_text(observation: Mapping[str, Any]) -> str:
+    impact = observation.get("impact") if isinstance(observation.get("impact"), dict) else {}
+    parts: list[str] = []
+    amount = impact.get("amount100m")
+    power = impact.get("powerGwh")
+    if isinstance(amount, (int, float)):
+        parts.append(f"涉及金额 {float(amount):.2f} 亿元")
+    if isinstance(power, (int, float)):
+        parts.append(f"涉及电量 {float(power):.2f} GWh")
+    objects = observation.get("objects")
+    if isinstance(objects, int) and objects > 0:
+        parts.append(f"涉及 {objects} 个业务对象")
+    return "；".join(parts) or "影响范围见本次查询证据"
+
+
+def _scope_text(scope: Any) -> str:
+    if not isinstance(scope, Mapping):
+        return "未单独指定业务范围"
+    labels = {
+        "periodStart": "期间开始",
+        "periodEnd": "期间结束",
+        "asOf": "观察截止日",
+        "customerIds": "客户",
+        "ownerIds": "负责人",
+        "productIds": "产品",
+    }
+    parts = [
+        f"{label} {scope.get(key)}"
+        for key, label in labels.items()
+        if scope.get(key) not in (None, "", [], ())
+    ]
+    return "；".join(parts) or "本次查询全部授权范围"
+
+
+def _evidence_text(evidence: Any) -> str:
+    values = evidence if isinstance(evidence, list) else ([evidence] if evidence else [])
+    names: list[str] = []
+    for item in values[:8]:
+        if isinstance(item, Mapping):
+            text = str(
+                item.get("name")
+                or item.get("title")
+                or item.get("template")
+                or item.get("code")
+                or item.get("metricCode")
+                or ""
+            ).strip()
+        else:
+            text = str(item or "").strip()
+        if text:
+            names.append(text)
+    return "；".join(names)
+
+
+def _risk_content(
+    record: Mapping[str, Any],
+    analysis: Mapping[str, Any],
+    risk: Mapping[str, Any],
+) -> str:
+    observation = analysis.get("observation") or {}
+    causes = [str(row.get("name") or "").strip() for row in analysis.get("candidateCauses", [])]
+    causes = [name for name in causes if name]
+    lines = [
+        f"**场景**：{record.get('场景编码') or analysis.get('scenario')} "
+        f"{record.get('场景名称') or ''}".strip(),
+        f"**已观察事实**：{observation.get('headline') or '见本轮查询证据'}",
+        f"**影响**：{_impact_text(observation)}",
+        f"**风险等级**：{risk.get('severity') or observation.get('severity') or 'MEDIUM'}"
+        f"（{risk.get('severityBasis') or observation.get('severityBasis') or '运营分诊，不是客户批准的风险矩阵等级'}）",
+        f"**业务范围**：{_scope_text(analysis.get('scope'))}",
+    ]
+    if risk.get("dataBoundary"):
+        lines.append(f"**数据边界**：{risk.get('dataBoundary')}")
+    if causes:
+        lines.append(
+            "**候选原因（待验证，不是已确认根因）**：" + "、".join(causes[:5])
+        )
+    evidence = _evidence_text(analysis.get("evidence"))
+    if evidence:
+        lines.append(f"**证据**：{evidence}")
+    lines.append(
+        "**说明**：本卡只推送有证据支持的已观察风险；推送成功只表示 Fuxi 已接收，"
+        "不代表风险已解除。风险解除仍需后续证据与复验。"
+    )
+    return "\n".join(lines)
+
+
+def _build_risk_actions(
+    code: str,
+    record: Mapping[str, Any],
+    analysis: Mapping[str, Any],
+    *,
+    owner_ref: str = "",
+    owner_name: str = "",
+    severity: str | None = None,
+) -> list[dict[str, Any]]:
+    observation = analysis.get("observation") or {}
+    level = SEVERITY_MAP.get(
+        str(severity or observation.get("severity") or "MEDIUM"), "MEDIUM"
+    )
+    if not observation.get("observed") or observation.get("severity") == "UNVERIFIABLE":
+        return []
+    rows = list(analysis.get("risks") or [])
+    if not rows:
+        return []
+    evidence_text = _evidence_text(analysis.get("evidence")) or str(
+        observation.get("headline") or ""
+    )
+    actions: list[dict[str, Any]] = []
+    for index, risk in enumerate(rows, start=1):
+        risk_code = str(risk.get("code") or f"R{index:02d}").strip()
+        safe_code = re.sub(r"[^A-Za-z0-9_.:-]+", "-", risk_code).strip("-") or f"R{index:02d}"
+        name = str(risk.get("name") or risk.get("riskName") or "经营风险").strip()
+        actions.append({
+            "id": f"{code}-RISK-{safe_code}",
+            "kind": "risk",
+            "item_type": "RISK",
+            "scenario": code,
+            "title": f"{record.get('场景名称') or code}：{name}",
+            "content": _risk_content(record, analysis, risk),
+            "evidence": evidence_text,
+            "severity": level,
+            "severityBasis": risk.get("severityBasis")
+            or observation.get("severityBasis")
+            or "运营分诊级别；不是客户批准的风险矩阵等级",
+            "due_at": "",
+            "owner_ref": str(owner_ref or ""),
+            "owner_name": str(owner_name or ""),
+            "source": "boulderai-anaylize-todo",
+            "category": "智能分析风险",
+            "dispatchTool": "RiskItemCreate",
+            "metadata": {
+                "riskCode": risk_code,
+                "riskName": name,
+                "dataBoundary": risk.get("dataBoundary"),
+                "candidateCauses": [
+                    str(row.get("code") or "")
+                    for row in analysis.get("candidateCauses", [])
+                    if row.get("code")
+                ],
+                "candidateCausesUnverified": True,
+                "dispatchTool": "RiskItemCreate",
+            },
+            "dispatch": {
+                "tool": "RiskItemCreate",
+                "source": "boulderai-anaylize-todo",
+                "idempotency": "由独立的 analytics-risk sourceTodoId 保证重复点击幂等",
+                "executionBoundary": "只推送风险条目；风险解除由后续证据与复验驱动",
+            },
+        })
+    return actions
 
 
 def build_draft(
@@ -147,6 +301,14 @@ def build_draft(
     top_severity = SEVERITY_MAP.get(
         str(severity or (analysis.get("observation") or {}).get("severity") or "MEDIUM"), "MEDIUM"
     )
+    risk_actions = _build_risk_actions(
+        code,
+        record,
+        analysis,
+        owner_ref=owner_ref,
+        owner_name=owner_name,
+        severity=severity,
+    )
     items: list[dict[str, Any]] = []
     for solution in solutions:
         task = _task_for_solution(catalog, solution, tasks)
@@ -164,6 +326,7 @@ def build_draft(
             {
                 "id": f"{code}-{task_code}",
                 "kind": "task_order",
+                "item_type": "TODO",
                 "scenario": code,
                 "solution": solution.get("code"),
                 "solutionName": solution.get("name") or solution.get("方案名称"),
@@ -212,6 +375,7 @@ def build_draft(
             "owner_name": item.get("ownerName") or "",
             "source": "boulderai-anaylize-todo",
             "scenario": code,
+            "item_type": "TODO",
             "task_template": item.get("taskTemplate") or "",
             "category": "智能分析任务令",
             "metadata": {
@@ -222,7 +386,7 @@ def build_draft(
         }
         for item in items
     ]
-    status = "ok" if items else "blocked"
+    status = "ok" if items or risk_actions else "blocked"
     return envelope(
         "S05",
         status,
@@ -245,5 +409,6 @@ def build_draft(
         ],
         tasks=items,
         canvasActions=canvas_actions,
+        riskActions=risk_actions,
         recommendedTask=next((item["id"] for item in items if item["recommended"]), None),
     )

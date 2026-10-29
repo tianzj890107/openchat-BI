@@ -425,13 +425,19 @@ def _normalize_actions(params: dict, *, allow_empty: bool = False) -> list[dict[
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
         refs = {name: _first_text(item, keys) for name, keys in _ACTION_REF_FIELDS.items()}
         refs["actionId"] = _first_text(item, _ACTION_ID_FIELDS) or action_id
+        item_type = _first_text(item, ("item_type", "itemType")).upper() or "TODO"
+        if item_type not in {"RISK", "TODO"}:
+            raise ValueError(f"items[{index}].itemType must be RISK or TODO")
         if not refs["dispatchTool"] and (
             str(item.get("source") or "").strip() == "boulderai-anaylize-todo"
             or str(item.get("scenario") or "").strip()
         ):
-            refs["dispatchTool"] = "TaskOrderCreate"
+            refs["dispatchTool"] = (
+                "RiskItemCreate" if item_type == "RISK" else "TaskOrderCreate"
+            )
         normalized.append({
             "id": action_id,
+            "item_type": item_type,
             "title": title,
             "content": content,
             "evidence": str(item.get("evidence") or "").strip(),
@@ -572,8 +578,13 @@ def _render_actions(
             if item["evidence"] else ""
         )
         chips = []
+        is_risk = str(item.get("item_type") or "TODO").upper() == "RISK"
+        send_label = "推送风险" if is_risk else "发送任务令"
+        subject = "风险条目" if is_risk else "待办"
         if item["severity"]:
             chips.append(f'<span class="action-chip severity">{escape(item["severity"])}</span>')
+        if is_risk:
+            chips.append('<span class="action-chip risk">风险条目</span>')
         if item["due_at"]:
             chips.append(f'<span class="action-chip">截止 {escape(item["due_at"])}</span>')
         if item["owner_name"] or item["owner_ref"]:
@@ -591,11 +602,11 @@ def _render_actions(
             chips.append('<span class="action-chip temporary">临时直发</span>')
             action_control = (
                 f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}">'
-                "发送任务令</button>"
+                f"{send_label}</button>"
             )
             issue_note = (
                 '<p class="action-recommendation-note">临时演示：该卡尚未生成可信草稿，'
-                "点击后将按当前卡片内容生成待办，并发送给服务端配置的接收人。</p>"
+                f"点击后将按当前卡片内容生成{subject}，并发送给服务端配置的接收人。</p>"
             )
         elif recommendation:
             chips.append('<span class="action-chip">分析建议</span>')
@@ -632,7 +643,7 @@ def _render_actions(
                 f'<p class="action-feedback" style="color:#B42318">{escape(item["draftIssueMessage"])}</p>'
             )
         else:
-            label, disabled, title_attr = "发送任务令", "", ""
+            label, disabled, title_attr = send_label, "", ""
             action_control = (
                 f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}"'
                 f'{disabled}{title_attr}>{label}</button>'
@@ -660,6 +671,7 @@ def _render_actions(
             "expiresAt": item.get("expiresAt"),
             "runId": item.get("runId"),
             "scenario": item.get("scenario"),
+            "itemType": item.get("item_type"),
         }
         for item in items
     ]
@@ -739,6 +751,18 @@ ACTION_RUNTIME = r"""
     ].join('|');
   }
 
+  function isRiskItem(action) {
+    return String((action && (action.itemType || action.item_type)) || 'TODO').toUpperCase() === 'RISK';
+  }
+
+  function itemLabel(action) {
+    return isRiskItem(action) ? '风险条目' : '任务令';
+  }
+
+  function sendLabel(action) {
+    return isRiskItem(action) ? '推送风险' : '发送任务令';
+  }
+
   function rememberPending(action) {
     try {
       localStorage.setItem(PROCESS360_PENDING_KEY + ':' + pendingKey(action), JSON.stringify({
@@ -807,24 +831,26 @@ ACTION_RUNTIME = r"""
 
   function applyReceipt(button, payload, action) {
     const result = normalizeReceipt(payload);
+    const label = sendLabel(action);
+    const subject = itemLabel(action);
     if (result.state === 'ok') {
       button.disabled = true;
       button.dataset.retry = 'false';
-      button.textContent = '发送任务令';
+      button.textContent = label;
       if (action) forgetPending(action);
-      setActionState(button, '任务令已创建' + (result.receipt && result.receipt.sourceTodoId ? '（' + result.receipt.sourceTodoId + '）' : ''), 'ok');
+      setActionState(button, (isRiskItem(action) ? '风险条目已推送' : '任务令已创建') + (result.receipt && result.receipt.sourceTodoId ? '（' + result.receipt.sourceTodoId + '）' : ''), 'ok');
     } else if (result.state === 'unconfirmed') {
       button.disabled = false;
       const retryable = result.retryable === true;
       button.dataset.retry = retryable ? 'true' : 'false';
-      button.textContent = retryable ? '安全重试' : '发送任务令';
+      button.textContent = retryable ? '安全重试' : label;
       setActionState(button, result.message + (retryable ? '，可使用同一草稿安全重试' : ''), 'pending');
     } else {
       button.disabled = false;
       button.dataset.retry = 'false';
-      button.textContent = '发送任务令';
+      button.textContent = label;
       if (action) forgetPending(action);
-      setActionState(button, result.message, 'error');
+      setActionState(button, result.message || (subject + '未推送'), 'error');
     }
     return result;
   }
@@ -851,12 +877,15 @@ ACTION_RUNTIME = r"""
       content: action.content,
       evidence: action.evidence || '',
       severity: action.severity || 'MEDIUM',
+      itemType: action.itemType || action.item_type || 'TODO',
       dueAt: action.dueAt || action.due_at || '',
       ownerRef: action.ownerRef || action.owner_ref || '',
       ownerName: action.ownerName || action.owner_name || '',
       scenario: action.scenario || 'CANVAS',
       category: action.category || '智能分析任务令',
       taskTemplate: action.taskTemplate || action.task_template || '',
+      dispatchTool: action.dispatchTool || '',
+      metadata: action.metadata && typeof action.metadata === 'object' ? action.metadata : {},
     };
   }
 
@@ -885,6 +914,7 @@ ACTION_RUNTIME = r"""
         draftHash: action.draftHash,
         actionId: action.actionId || action.id,
         requestId: action.__requestId,
+        itemType: taskAction(action).itemType,
         retry: button.dataset.retry === 'true',
         action: taskAction(action),
       }),
@@ -1006,12 +1036,13 @@ ACTION_RUNTIME = r"""
       draft_hash: action.draftHash,
       run_id: action.runId || undefined,
       dispatch_tool: action.dispatchTool,
+      item_type: action.itemType || action.item_type || 'TODO',
       action: taskAction(action),
       retry: button.dataset.retry === 'true',
     };
     rememberPending(action);
     button.disabled = true;
-    setActionState(button, '正在提交任务令…', 'pending');
+    setActionState(button, isRiskItem(action) ? '正在推送风险…' : '正在提交任务令…', 'pending');
     let payload = null;
     const useHostAdapter = window.PROCESS360_TASK_ORDER_TRANSPORT === 'host';
     if (useHostAdapter) {
@@ -1285,6 +1316,7 @@ def _make_canvas_generate(
                         "expiresAt": item.get("expiresAt"),
                         "runId": item.get("runId"),
                         "scenario": item.get("scenario"),
+                        "itemType": item.get("item_type") or item.get("itemType"),
                         "draftReady": bool(item.get("draftReady")),
                         "hasDraftRefs": bool(item.get("hasDraftRefs")),
                     }
