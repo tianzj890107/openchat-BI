@@ -4,7 +4,7 @@ export const InsightLoading = Vue.defineComponent({
   name: 'InsightLoading',
   props: {kind: {type:String,default:'summary'},progress: {type:String,default:''}},
   template: `<div class="insight-loading" :class="'insight-loading--'+kind" role="status" aria-busy="true" aria-label="AI正在分析当前筛选范围">
-    <div class="insight-loading__head"><span class="insight-loading__spark">✦</span><strong>AI 正在分析</strong><span class="insight-loading__dots">···</span></div>
+    <div class="insight-loading__head"><span class="insight-loading__spark">✦</span><strong>{{ progress || 'AI 正在分析' }}</strong><span class="insight-loading__dots">···</span></div>
     <div class="insight-loading__line"></div><div class="insight-loading__line insight-loading__line--short"></div>
     <template v-if="kind==='risk' || kind==='task'"><div class="insight-loading__panel"><div class="insight-loading__line"></div><div class="insight-loading__line insight-loading__line--short"></div></div><div class="insight-loading__line"></div></template>
   </div>`,

@@ -33,9 +33,10 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
     stages.add(stage);known.add(stage);
     if(pending.has(stage)) return force?pending.get(stage).then(()=>refresh(stage,true)):pending.get(stage);
     const token=generation,state=stateFor(stage),current=()=>token===generation;
-    state.status=state.item?'done':'running';state.refreshing=Boolean(state.item);state.error='';
+    state.status=state.item?'done':'running';state.refreshing=Boolean(state.item);state.error='';state.progress='正在加载分析数据';
     const promise=queue(async()=>{
       const body=await bodyFor(stage,force);
+      state.progress='AI 正在分析';
       if(!current())return null;
       if(state.item && !compatible(state.item,body)) Object.assign(state,{item:null,status:'running',cached:false});
       for(let pass=0;pass<2;pass++) {

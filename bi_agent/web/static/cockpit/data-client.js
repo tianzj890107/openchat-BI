@@ -85,6 +85,18 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     const state = {key: canonical(payload), pending: true, error: '', labels, receiptId: '', expiresAt: 0};
     all.set(slot, state);
     if (kind !== 'helmet') { const previous=active.get(slot); active.set(slot, state); onInvalidate({replacement:Boolean(previous && previous.key!==state.key)}); }
+    const config = payload && payload.analysisConfig;
+    if (kind === 'analysis' && config && Array.isArray(config.vertex) && !config.vertex.length
+        && !(config.indicators || []).length && !(config.dimensions || []).length) {
+      // Delivered metadata with an empty vertex block cannot become a valid
+      // AP query; stop before the upstream returns a misleading gateway error.
+      const error = new Error('看板组件未配置实体查询字段，已跳过空查询');
+      state.pending = false; state.error = error.message; notify(state.error, kind);
+      const rejected = Promise.reject(error);
+      rejected.catch(() => {});
+      inflight.set(key, rejected);
+      return rejected;
+    }
     const reused = completed.get(key);
     const entry = replay.get(key);
     const work = replaying ? Promise.resolve({data:entry.data,receiptId:entry.receiptId,receivedAt:entry.receivedAt,expiresAt:entry.expiresAt}) :

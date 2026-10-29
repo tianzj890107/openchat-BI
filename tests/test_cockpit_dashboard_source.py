@@ -144,3 +144,16 @@ def test_failed_queries_are_reported_for_the_matching_stage_only():
     assert unavailable_stage_evidence({}, "opportunity")["failed"] == 0
     with pytest.raises(ValueError):
         unavailable_stage_evidence({"unavailableQueries": ["{not json"]}, "opportunity")
+
+
+def test_customer_planning_metrics_count_as_opportunity_evidence():
+    from bi_agent.cockpit.dashboard_source import filter_stage_selected, unavailable_stage_evidence
+    planning = {"analysisConfig": {"indicators": [
+        {"identifierCode": "YWLN_M0075", "alias": "目标电量"},
+        {"identifierCode": "YWLN_M_CUSTOMER_TARGET_ENERGY", "alias": "规划电量"},
+        {"identifierCode": "YWLN_M_CUSTOMER_ACTUAL_ENERGY", "alias": "实际电量"}]}}
+    kept, excluded = filter_stage_selected({"plan": _entry(planning)}, "opportunity")
+    assert set(kept) == {"plan"} and excluded == []
+    failed = unavailable_stage_evidence({"unavailableQueries": [json.dumps(planning)]}, "opportunity")
+    assert failed["failed"] == 1
+    assert set(failed["labels"]) == {"目标电量", "规划电量", "实际电量"}

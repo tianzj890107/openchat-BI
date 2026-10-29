@@ -17,7 +17,8 @@ SCHEMA = {"name": TOOL, "description": "读取本轮看板实际展示的 AP 查
 STAGE_METRICS = {
     'opportunity': {
         'YWLN_M0022', 'YWLN_M0023', 'YWLN_M0024', 'YWLN_M0038', 'YWLN_M0039',
-        'YWLN_M0140', 'YWLN_D015', 'YWLN_D020',
+        'YWLN_M0140', 'YWLN_M0075', 'YWLN_M_CUSTOMER_TARGET_ENERGY',
+        'YWLN_M_CUSTOMER_ACTUAL_ENERGY', 'YWLN_D015', 'YWLN_D020',
     },
     'guidance': {'YWLN_D017', 'YWLN_M0028'},
     'quotation': {
@@ -88,8 +89,8 @@ def filter_stage_selected(selected, stage):
     kept, excluded = {}, []
     for key, value in selected.items():
         text = request_text(value.get('request'))
-        codes = set(_CODE_RE.findall(text))
         tokens = request_labels(value.get('request'))
+        codes = set(_CODE_RE.findall(text)) | {token for token in tokens if token.startswith('YWLN_')}
         if codes & metrics or any(label in token for label in labels for token in tokens):
             kept[key] = value
         else:
@@ -114,7 +115,7 @@ def unavailable_stage_evidence(context, stage):
     labels = []
     for value in kept.values():
         for token in request_labels(value['request']):
-            if token in labels or _CODE_RE.fullmatch(token):
+            if token in labels or token.startswith('YWLN_') or _CODE_RE.fullmatch(token):
                 continue
             labels.append(token)
     return dict(failed=len(kept), excluded=len(excluded), labels=labels)

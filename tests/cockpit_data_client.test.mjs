@@ -230,3 +230,11 @@ test('partial scope keeps successful queries and reports failed ones for stage d
   assert.match(partial.unavailable[0].query, /FAIL/);
   assert.match(partial.unavailable[0].error, /SQL 超时/);
 });
+
+test('empty vertex config is stopped before it reaches the AP gateway', async () => {
+  let calls = 0;
+  const client = createAPDataClient({apiBase:'/api/cockpit', id:1, request:async () => { calls++; return ok('r'); }});
+  await assert.rejects(client.biAdapters.postAnalysisDataQuery({analysisConfig:{vertex:[]}, commonConfig:{filters:{}}}), /未配置实体查询字段/);
+  assert.equal(calls, 0);
+  assert.deepEqual(client.failures(), ['看板组件未配置实体查询字段，已跳过空查询']);
+});

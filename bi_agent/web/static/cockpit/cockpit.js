@@ -144,7 +144,7 @@
     if(baselineItem && baselineItem.context.stage!==stage)throw new Error('当前对照基线属于'+STAGE_NAMES[baselineItem.context.stage]+'，请切换至该节点');
     state.status = 'running';
     state.item = null;
-    state.progress = '提交模型分析';
+    state.progress = '正在加载分析数据';
     let dataScope = {chartQueries: [], apReceiptIds: []};
     if (analysisEngine === 'main' && liveDataClient) {
       dataScope = await liveDataClient.ready({partial:true});
@@ -159,6 +159,7 @@
       if (!displayedQueries.size) throw new Error('当前看板尚无成功展示的 AP 查询，不能开始分析');
       dataScope.chartQueries = [...displayedQueries].sort();
     }
+    state.progress = 'AI 正在分析';
     state.error = '';
     const body = JSON.stringify({
       id: Number(identityId),
