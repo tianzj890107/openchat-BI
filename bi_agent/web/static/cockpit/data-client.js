@@ -150,7 +150,13 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
       else if (!state.receiptId) unavailable.push({query: state.key, labels: state.labels, error: '看板AP响应缺少服务端结果凭据'});
       else usable.push(state);
     }
-    if (!usable.length) throw new Error(unavailable.length ? '看板AP查询全部失败，无法分析：' + unavailable[0].error : '看板AP查询仍在加载，请稍后分析');
+    if (!usable.length) {
+      if (!unavailable.length) throw new Error('看板AP查询仍在加载，请稍后分析');
+      // Every page query failed. The main service may still answer the
+      // registered subset from PostgreSQL, so hand it the failed queries as
+      // the declared unavailable scope instead of blocking the analysis here.
+      return {chartQueries: [], apReceiptIds: [], unavailable};
+    }
     return {chartQueries: [...new Set(usable.map(s => s.key))].sort(), apReceiptIds: [...new Set(usable.map(s => s.receiptId))].sort(), unavailable};
   }
   async function ready(options={}) {

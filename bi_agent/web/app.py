@@ -3976,10 +3976,14 @@ def _cockpit_main_context(req):
             fallback_metrics=sorted({str(column.get('identifierCode') or '') for value in kept.values() if value.get('source')=='pg'
                 for column in ((value.get('response') or {}).get('result') or {}).get('columns') or [] if column.get('identifierCode')})
             blocked=fallback_notes_for_stage(notes,req.stage)
+            sources={str(value.get('source') or '') for value in selected.values() if value.get('source')}
+            data_source='+'.join(sorted(sources)) if sources else 'ap'
             basis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准'
-            if pg_receipts:
+            if data_source=='pg':
+                basis='页面本次AP取数全部失败；已按同一筛选口径从主库（PostgreSQL）补查，未混用AP结果'
+            elif pg_receipts:
                 basis+='；页面失败指标已按同一筛选口径从主库（PostgreSQL）补查，补查结果标注来源且与AP不可混算'
-            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataSource=('ap+pg' if pg_receipts else 'ap'),
+            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataSource=data_source,
                 dataIdentity=(next(iter(identities)) if identities else 'postgres'),pgReceiptIds=pg_receipts,
                 fallbackVersion=(pg_fallback.version() if pg_receipts else ''),
                 fallback=dict(version=pg_fallback.version(),metrics=fallback_metrics,blocked=blocked,attempted=len(notes)+len(pg_receipts)),
@@ -4023,9 +4027,11 @@ def _cockpit_main_turn(context,cancel):
         session=WebSession(cwd=STATE.cwd,agent_def=STATE.agent_def,
             ontology_store=None,tools_override=[TOOL,DELIVERY_TOOL,'AskUser'],
             context_header=(
-                (('本轮数据来源：页面本次实时AP响应的冻结结果，另有'+str(len(context.get('fallback',{}).get('metrics') or []))+'项失败指标按同一筛选口径从主库（PostgreSQL）补查，来源已在证据中标为 pg，禁止与AP结果混算。')
+                (('本轮数据来源：页面本次AP取数全部失败，已按同一筛选口径从主库（PostgreSQL）补查，来源已在证据中标为 pg，未混用AP结果。')
+                 if (live and context.get('dataSource')=='pg')
+                 else (('本轮数据来源：页面本次实时AP响应的冻结结果，另有'+str(len(context.get('fallback',{}).get('metrics') or []))+'项失败指标按同一筛选口径从主库（PostgreSQL）补查，来源已在证据中标为 pg，禁止与AP结果混算。')
                  if (live and context.get('dataSource')=='ap+pg')
-                 else ('本轮数据来源：页面本次实时AP响应的冻结结果。' if live else '本轮数据来源：看板交付AP快照。'))
+                 else ('本轮数据来源：页面本次实时AP响应的冻结结果。' if live else '本轮数据来源：看板交付AP快照。')))
                 +'只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。'),
             tool_executors={TOOL:executor(selected,context['stage'])})
         raw_read=session._tool_executors[TOOL]

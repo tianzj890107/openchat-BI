@@ -50,15 +50,42 @@ def enabled_metrics() -> list[str]:
                   if value.get("status") == "enabled")
 
 
+def _filters(payload: dict) -> list[dict]:
+    """Return flat AND conditions only; anything richer is rejected, not simplified."""
+    filters = ((payload or {}).get("commonConfig") or {}).get("filters") or {}
+    if not isinstance(filters, dict):
+        raise FallbackUnavailable("FILTER_UNSUPPORTED", "filters")
+    children = filters.get("children")
+    logic = filters.get("logic")
+    if children is None:
+        # `{"logic":"AND"}` with no conditions means "no filter"; any other
+        # logic without an explicit condition list is ambiguous.
+        if logic not in (None, "AND"):
+            raise FallbackUnavailable("FILTER_UNSUPPORTED", f"logic:{logic}")
+        items = [filters] if any(key in filters for key in ("identifierCode", "operator", "value")) else []
+    else:
+        # A mixed AND/OR tree changes the meaning of an aggregate; only a
+        # flat AND list may be replayed against the registered source.
+        if logic not in (None, "AND"):
+            raise FallbackUnavailable("FILTER_UNSUPPORTED", f"logic:{logic}")
+        if not isinstance(children, list):
+            raise FallbackUnavailable("FILTER_UNSUPPORTED", "children")
+        items = children
+    result = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise FallbackUnavailable("FILTER_UNSUPPORTED", "condition")
+        if "children" in item or "logic" in item:
+            raise FallbackUnavailable("FILTER_UNSUPPORTED", "nested")
+        result.append(item)
+    return result
+
+
 def _items(payload: dict) -> tuple[list[dict], list[dict], list[dict]]:
     config = (payload or {}).get("analysisConfig") or {}
     indicators = [item for item in config.get("indicators") or [] if isinstance(item, dict)]
     dimensions = [item for item in config.get("dimensions") or [] if isinstance(item, dict)]
-    filters = ((payload or {}).get("commonConfig") or {}).get("filters") or {}
-    children = filters.get("children") if isinstance(filters, dict) else None
-    if children is None:
-        children = [filters] if filters else []
-    return indicators, dimensions, [item for item in children if isinstance(item, dict)]
+    return indicators, dimensions, _filters(payload)
 
 
 def _metric(code: str) -> dict:
@@ -72,11 +99,25 @@ def _metric(code: str) -> dict:
 
 def _bind_date(filters: list[dict], metric: dict, params: list[Any], where: list[str]) -> None:
     allowed = registry().get("timeFilters") or {}
+    seen: set[str] = set()
     for item in filters:
         code = str(item.get("identifierCode") or "")
         if code not in allowed:
             raise FallbackUnavailable("FILTER_UNMAPPED", code or "unknown")
+        if code in seen:
+            # Two conditions on the same column would otherwise collapse into
+            # one SQL fragment while keeping both parameter pairs.
+            raise FallbackUnavailable("FILTER_UNSUPPORTED", f"{code}:duplicate")
+        seen.add(code)
         if code == "YWLN_D044":
+            operator = item.get("operator")
+            if not isinstance(operator, dict):
+                raise FallbackUnavailable("FILTER_UNSUPPORTED", f"{code}:operator")
+            kind = str(operator.get("code") or "").upper()
+            value_type = str(operator.get("type") or "").upper()
+            expected = str((allowed.get(code) or {}).get("operator") or "BETWEEN").upper()
+            if kind != expected or value_type != "DATE" or str(item.get("valueType") or "").upper() != "ABSOLUTE":
+                raise FallbackUnavailable("FILTER_UNSUPPORTED", f"{code}:{kind or 'MISSING'}")
             values = item.get("value")
             if (not isinstance(values, list) or len(values) != 2
                     or not all(isinstance(v, str) and _DATE.match(v) for v in values)):
@@ -172,24 +213,24 @@ def receipt(payload: dict, result: dict, store, identity: int, ttl: int = 900) -
     return value
 
 
-def supplement(context: dict, store, *, query_fn=None, limit: int = 4) -> tuple[dict, list[dict]]:
+def supplement(context: dict, store, *, query_fn=None, limit: int = 4,
+               stage: str | None = None) -> tuple[dict, list[dict]]:
     """Resolve failed dashboard queries from PostgreSQL, one reviewed metric set at a time.
 
-    At most ``limit`` queries are attempted so a page with many failures cannot
-    turn one analysis request into a long serial scan of the database.
+    Candidates are first narrowed to the current stage and to queries the
+    reviewed registry can actually execute, so unmapped or foreign-stage
+    failures can never consume the execution quota.  At most ``limit``
+    executable queries are run.
     """
     entries: dict[str, dict] = {}
     notes: list[dict] = []
     seen: set[str] = set()
-    attempted = 0
+    candidates: list[tuple[str, dict]] = []
+    stage = stage or (context or {}).get("stage")
     for raw in context.get("unavailableQueries") or []:
         if not isinstance(raw, str) or raw in seen:
             continue
         seen.add(raw)
-        if attempted >= limit:
-            notes.append(dict(query=raw, code="FALLBACK_LIMIT"))
-            continue
-        attempted += 1
         try:
             payload = json.loads(raw)
         except ValueError:
@@ -197,6 +238,24 @@ def supplement(context: dict, store, *, query_fn=None, limit: int = 4) -> tuple[
             continue
         if not isinstance(payload, dict):
             notes.append(dict(query=raw, code="QUERY_INVALID"))
+            continue
+        candidates.append((raw, payload))
+    if stage:
+        from .dashboard_source import filter_stage_selected
+        keyed = {str(index): {"request": payload} for index, (_, payload) in enumerate(candidates)}
+        kept, _excluded = filter_stage_selected(keyed, stage)
+        candidates = [candidates[int(key)] for key in sorted(kept, key=int)]
+    executable: list[tuple[str, dict]] = []
+    for raw, payload in candidates:
+        try:
+            compile_payload(payload)
+        except FallbackUnavailable as exc:
+            notes.append(dict(query=raw, code=exc.code, detail=str(exc.detail)[:200]))
+            continue
+        executable.append((raw, payload))
+    for index, (raw, payload) in enumerate(executable):
+        if index >= limit:
+            notes.append(dict(query=raw, code="FALLBACK_LIMIT"))
             continue
         try:
             result = (query_fn or query)(payload)

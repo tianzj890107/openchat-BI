@@ -300,3 +300,16 @@ test('a page that never starts a query does not hold the long AP budget',async()
  await assert.rejects(client.ready({partial:true}),/仍在加载/);
  assert.ok(Date.now()-started<1500,'an idle page must fail fast, not wait for the three-minute budget');
 });
+
+test('all failed page queries still produce a partial scope for the PG fallback',async()=>{
+ const client=createAPDataClient({apiBase:'/api/cockpit',id:1,
+  request:async()=>({ok:false,status:502,json:async()=>({detail:'AP请求超时或不可达'})})});
+ await assert.rejects(client.biAdapters.postAnalysisDataQuery(query),/超时/);
+ const scope=await client.ready({partial:true});
+ assert.deepEqual(scope.chartQueries,[]);
+ assert.deepEqual(scope.apReceiptIds,[]);
+ assert.equal(scope.unavailable.length,1);
+ assert.match(scope.unavailable[0].query,/M0001/);
+ // A whole-page publish still needs real AP material; only analysis may proceed.
+ assert.throws(()=>client.scope(),/AP请求超时/);
+});

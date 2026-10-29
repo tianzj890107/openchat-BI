@@ -14,7 +14,7 @@ from .data import NAMES
 
 def analysis_question(context):
     scope={k:context.get(k) for k in ('period','department','filters','repositoryId','chartSnapshotId','clarifications')}
-    if context.get('apReceiptIds'):
+    if context.get('apReceiptIds') or context.get('pgReceiptIds'):
         for key in ('period','department','filters'):scope.pop(key,None)
     stage_gap=context.get('stageEvidence') or {}
     stage_note=''
@@ -119,7 +119,10 @@ def session_evidence(session,context):
         facts.append(dict(id=value['id'],label=label,value=number,unit='',definition=statement,claim=value))
     stage_filter=getattr(session,'cockpit_stage_filter',None) or {}
     if context.get('snapshotId','').startswith('ap-'):
-        basis='主服务读取页面本次实时AP响应的冻结结果' + ('，并对页面失败的指标按同一口径补查主库' if stage_filter.get('fallback') else '')
+        if context.get('dataSource')=='pg':
+            basis='页面本次AP取数全部失败；主服务按同一筛选口径从主库（PostgreSQL）补查，结果标注来源且未混用AP'
+        else:
+            basis='主服务读取页面本次实时AP响应的冻结结果' + ('，并对页面失败的指标按同一口径补查主库' if stage_filter.get('fallback') else '')
     else:
         basis='主服务读取当前看板同一份交付AP快照，非实时数据库'
     limitations=[basis+'；时间、部门以AP原始请求为准。没有同源明细补查接口，不能据此确认根因。',

@@ -187,13 +187,31 @@ def _receipt_id(value):
     return isinstance(value, str) and len(value) == 32 and all(c in '0123456789abcdef' for c in value)
 
 
+def _query_keys(values):
+    """Canonical page query set; the browser sends compact JSON strings."""
+    keys = set()
+    for raw in values or []:
+        if not isinstance(raw, str) or len(raw) > 20000:
+            raise ValueError('无效的页面查询')
+        try:
+            request = json.loads(raw)
+        except ValueError:
+            raise ValueError('无效的页面查询') from None
+        if not isinstance(request, (dict, list)):
+            raise ValueError('无效的页面查询')
+        keys.add(json.dumps(request, ensure_ascii=False, sort_keys=True, separators=(',', ':')))
+    return keys
+
+
 def receipt_scope(context, store, *, allow_expired=False, resolve_fallback=False):
     """Resolve receipts into evidence and optionally supplement failed queries from PG.
 
-    Returns ``(fingerprint, selected, pg_receipt_ids, fallback_notes)``.  The
-    page's AP receipts stay authoritative for the metrics they cover; only the
-    queries that failed are re-derived from the reviewed PostgreSQL registry and
-    every such entry keeps ``source='pg'`` so the analysis can disclose it.
+    Returns ``(fingerprint, selected, pg_receipt_ids, fallback_notes)``.  The page
+    reports two disjoint sets: ``chartQueries`` are the queries it displayed
+    successfully, ``unavailableQueries`` are the ones that failed.  AP receipts
+    must cover exactly the first set; PostgreSQL supplements may only cover the
+    second, so the merged evidence range stays auditable without pretending the
+    failed query was an AP success.  Every supplement keeps ``source='pg'``.
     """
     if context.get('chartSnapshotId', RELEASE) != RELEASE:
         raise ValueError('看板发布标识不匹配')
@@ -202,17 +220,22 @@ def receipt_scope(context, store, *, allow_expired=False, resolve_fallback=False
     for group in (ids, pg_ids):
         if not isinstance(group, list) or len(group) > 80 or len(group) != len(set(group)):
             raise ValueError('无效的结果凭据列表')
-    if not ids and not pg_ids:
-        raise ValueError('必须指定本次页面已展示的AP结果凭据')
+    chart = _query_keys(context.get('chartQueries'))
+    unavailable = _query_keys(context.get('unavailableQueries'))
+    if chart & unavailable:
+        raise ValueError('同一条查询不能同时列为成功和失败')
+    if not chart and not unavailable:
+        raise ValueError('必须指定本次页面成功展示或失败待补查的AP查询')
     selected = {}
-    requests = []
+    ap_requests = []
+    pg_requests = []
     for receipt_id in sorted(ids):
         if not _receipt_id(receipt_id):
             raise ValueError('无效的AP结果凭据')
         item = store.get_ap_result(receipt_id, context['id'], allow_expired=allow_expired)
         if not item or item['kind'] not in {'analysis', 'batch'}:
             raise ValueError('AP结果凭据不存在、身份不匹配或已过期，请刷新图表取数')
-        requests.append(item['request'])
+        ap_requests.append(item['request'])
         entries = list(zip(item['request'], item['response'])) if item['kind'] == 'batch' else [(item['request'], {'data': item['response']})]
         for index, (request, response) in enumerate(entries):
             key = receipt_id + ':' + str(index)
@@ -227,23 +250,29 @@ def receipt_scope(context, store, *, allow_expired=False, resolve_fallback=False
             raise ValueError('数据库补查凭据不存在、身份不匹配或已过期，请重新分析')
         if item.get('authScope') and item['authScope'] != _fallback_version():
             raise ValueError('数据库补查口径已更新，请重新分析')
-        requests.append(item['request'])
+        pg_requests.append(item['request'])
         selected['pg:' + receipt_id] = {'request': item['request'], 'response': item['response'],
                                         'receivedAt': item['createdAt'], 'source': 'pg', 'receiptId': receipt_id,
                                         'connectionId': item.get('connectionId', ''), 'transport': item.get('transport', '')}
     notes = []
     if resolve_fallback:
         from . import pg_fallback
-        extra, notes = pg_fallback.supplement(context, store)
+        extra, notes = pg_fallback.supplement(context, store, stage=context.get('stage'))
         for key, value in extra.items():
             if key not in selected:
                 selected[key] = value
-                requests.append(value['request'])
-        # A query that the fallback could answer must not also be replayed as if
-        # the page had failed it: the merged requests are validated below.
+                pg_requests.append(value['request'])
     canonical = lambda v: json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-    if sorted(canonical(v) for v in requests) != sorted(set(canonical(json.loads(v)) for v in context.get('chartQueries', []))):
+    ap_scope = {canonical(value) for value in ap_requests}
+    pg_scope = {canonical(value) for value in pg_requests}
+    if ap_scope != chart:
         raise ValueError('结果凭据与页面查询范围不一致，拒绝回填')
+    if not pg_scope <= unavailable:
+        raise ValueError('数据库补查凭据与页面失败查询范围不一致，拒绝回填')
+    if pg_scope & chart:
+        raise ValueError('数据库补查凭据与页面成功查询范围重叠，拒绝回填')
+    if not selected:
+        raise ValueError('页面取数全部失败，且没有任何已登记口径可供补查，不能生成分析')
     fingerprint = hashlib.sha256(json.dumps(selected, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:20]
     pg_used = sorted({value['receiptId'] for value in selected.values() if value.get('source') == 'pg'})
     return fingerprint, selected, pg_used, notes
