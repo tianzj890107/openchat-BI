@@ -1,8 +1,8 @@
 {
   "checkedAt": "2026-10-29T14:36:33+08:00",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
-  "sourceCommit": "97f4e28e7f9b5094a1f018e2d96102b7e573e7fa",
-  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021 at 97f4e28. The UMD carries the one-line null-instance guard for a destroyed helmet Graph callback (re-applied after each upstream sync); activateRules/selectHelmet remain upstream behavior and only the single-query adapter is injected.",
+  "sourceCommit": "00be09f699fe642c7ba18e12b8d48a0f3689c81d",
+  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021 at 00be09f. The UMD carries the one-line null-instance guard for a destroyed helmet Graph callback (re-applied after each upstream sync); activateRules/selectHelmet remain upstream behavior and only the single-query adapter is injected.",
   "resources": [
     {
       "file": "../../vendor/antd/lib/vue.global.js",
@@ -14,15 +14,15 @@
     },
     {
       "file": "pro-bi-ui.min.js",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/97f4e28e7f9b5094a1f018e2d96102b7e573e7fa/lib/pro-bi-ui.min.js",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/00be09f699fe642c7ba18e12b8d48a0f3689c81d/lib/pro-bi-ui.min.js",
       "sourcePath": "lib/pro-bi-ui.min.js",
       "sha256": "fc21219cad1c60c1a3137a01271b6a690d675e5b6ef2e66892f123875bbb07b0",
       "bytes": 6197235,
-      "notes": "Copied from 97f4e28 with the one-line null-instance guard in the helmet Graph fitView callback; upstream metadata is unchanged."
+      "notes": "Copied from 00be09f with the one-line null-instance guard in the helmet Graph fitView callback; upstream metadata is unchanged."
     },
     {
       "file": "pro-ui.min.css",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/97f4e28e7f9b5094a1f018e2d96102b7e573e7fa/lib/pro-ui.min.css",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/00be09f699fe642c7ba18e12b8d48a0f3689c81d/lib/pro-ui.min.css",
       "sourcePath": "lib/pro-ui.min.css",
       "sha256": "b1ee836dbe11d3b5df80f9a1718a8a7623aaa89e9419bae1d6450a9063744d25",
       "bytes": 720594

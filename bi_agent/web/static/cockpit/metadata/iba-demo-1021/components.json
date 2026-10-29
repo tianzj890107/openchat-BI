@@ -953,7 +953,7 @@
                 "templateId": "2112060211964461057"
               }
             ],
-            "targetId": "table-npgn6a03",
+            "targetId": "insight-star-product-order-list",
             "templateComponentId": "tab-container-zm9eyxne",
             "templateId": "2112060211964461057"
           },
@@ -1597,7 +1597,7 @@
                 "templateId": "2112064105591390209"
               }
             ],
-            "targetId": "table-x6qt15if",
+            "targetId": "insight-affected-order-list",
             "templateComponentId": "tab-container-zm9eyxne",
             "templateId": "2112064105591390209"
           },
@@ -1616,6 +1616,24 @@
               }
             ],
             "targetId": "share-bar-zob5z1uu",
+            "templateComponentId": "tab-container-zm9eyxne",
+            "templateId": "2112064144187375617"
+          },
+          {
+            "embedPath": [
+              {
+                "containerId": "tab-container-zm9eyxne",
+                "kind": "tab",
+                "tabId": "tab-1suxx5hd",
+                "templateId": "2112061604959928321"
+              },
+              {
+                "containerId": "template-ryfsat5y",
+                "kind": "template",
+                "templateId": "2112064144187375617"
+              }
+            ],
+            "targetId": "insight-overdue-order-list",
             "templateComponentId": "tab-container-zm9eyxne",
             "templateId": "2112064144187375617"
           },
@@ -1714,8 +1732,7 @@
           "label": "穿透式问题分析",
           "templateId": "2112061604959928321"
         }
-      ],
-      "activateRules": []
+      ]
     }
   }
 ]

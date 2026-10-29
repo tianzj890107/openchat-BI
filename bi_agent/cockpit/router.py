@@ -23,6 +23,7 @@ from .ap_gateway import APQuery, data_mode, get_gateway
 from .publications import digest, legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
 from .page_cache import APReuse, PageLookup, PageRequest, build_page, legacy_page_scope, page_scope, transport_identity, compact_analysis
 from .targets import PAGES, target_stages
+from .ai_tables import TABLE_SPECS, TableQuery, annotate_rows, build_ap_query, result_rows
 from .refresh import (RefreshManager, RefreshScheduler, publication_status, scheduler_enabled,
                       stage_card_status, view_target_scope)
 
@@ -338,6 +339,24 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                           if item.get('displayOnly') else compact_analysis(item))
                    for stage,item in items.items()}
         return dict(items=items,cardContract=CONTRACT)
+
+    @router.post('/ai-tables/{table_key}/query')
+    def query_ai_table(table_key:str, req:TableQuery):
+        if main_context is None or data_mode()!='ap':raise HTTPException(409,'AI表格仅支持主服务实时AP路线')
+        spec=TABLE_SPECS.get(table_key)
+        if spec is None:raise HTTPException(404,'未知的AI表格')
+        try:
+            payload=build_ap_query(table_key,req)
+        except (ValueError,TypeError) as exc:
+            raise HTTPException(422,str(exc)) from None
+        data=get_gateway().query('analysis',payload)
+        try:
+            rows,total=result_rows(data)
+        except ValueError as exc:
+            raise HTTPException(502,str(exc)) from None
+        card=published_default(req.id,'main',spec['page'],False)['items'].get(spec['stage'])
+        annotated,meta=annotate_rows(table_key,rows,card)
+        return dict(rows=annotated,total=total if total is not None else len(annotated),meta=meta)
 
     @router.get('/page')
     def published_page(id:int=1,page:Literal['overview','operations','analysis']='overview',uiScope:str='default'):

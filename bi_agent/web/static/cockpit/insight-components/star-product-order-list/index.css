@@ -1,0 +1,15 @@
+.star-product-order-list {
+  margin: 0;
+  min-height: 200px;
+}
+
+.star-product-order-list .pro-bi-comp-wrap {
+  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
+}
+
+.star-product-order-list .pro-bi-comp-wrap__body {
+  padding: 0;
+}

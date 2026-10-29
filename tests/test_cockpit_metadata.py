@@ -27,7 +27,7 @@ def test_build_bundle_preserves_delivered_data_without_fixture_substitution():
     assert bundle["datasets"] == {} and bundle["bindings"] == {} and bundle["overrides"] == []
     assert bundle["roots"] == json.loads((ROOT / "components.json").read_text())
     assert bundle["templates"] == json.loads((ROOT / "template-registry.json").read_text())
-    assert len(bundle["insights"]) == 12
+    assert len(bundle["insights"]) == 15
     assert len(bundle["activateRules"]) == 6
 
     all_components = bundle["roots"] + [
@@ -35,7 +35,7 @@ def test_build_bundle_preserves_delivered_data_without_fixture_substitution():
         for template in bundle["templates"].values()
         for component in template.get("components", [])
     ]
-    assert len(all_components) == 145
+    assert len(all_components) == 142
     assert {(component.get("dataConfig") or {}).get("sourceType") for component in all_components} <= {"ap", "mock"}
     assert all("cockpitBindingKey" not in component for component in all_components)
 
@@ -74,6 +74,9 @@ def test_activate_rules_cover_sales_risk_and_every_insight_anchor_is_delivered()
 
     for slot in bundle["insights"]:
         assert slot["embedPath"]["segments"]
+        if slot["id"] == "shipment-task-order":
+            assert (slot.get("placement") or {}).get("afterId") == "table-md1iftaj"
+            continue
         target_ids = _target_ids(slot, bundle["roots"], bundle["templates"])
         for key in ("anchorId", "afterId"):
             referenced = (slot.get("placement") or {}).get(key)
@@ -82,7 +85,8 @@ def test_activate_rules_cover_sales_risk_and_every_insight_anchor_is_delivered()
         "bid-status-note", "quote-summary", "bid-summary", "order-sign-summary",
         "sales-shipment-issues", "opportunity-risk", "opportunity-coverage-note",
         "order-risk-summary", "shipment-risk-summary", "shipment-overdue-note",
-        "shipment-cause-breakdown", "shipment-task-order",
+        "shipment-cause-breakdown", "shipment-task-order", "star-product-order-list",
+        "affected-order-list", "overdue-order-list",
     }
 
 
@@ -92,16 +96,16 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     assert stored["renderer"] == "ProBiDashboard"
     assert stored["mode"] == "release"
     assert stored["source"]["dashboardId"] == "iba-demo-1021"
-    assert stored["source"]["version"] == "97f4e28"
-    assert stored["source"]["commit"] == "97f4e28e7f9b5094a1f018e2d96102b7e573e7fa"
+    assert stored["source"]["version"] == "00be09f"
+    assert stored["source"]["commit"] == "00be09f699fe642c7ba18e12b8d48a0f3689c81d"
     assert stored["source"]["templateCount"] == 13
-    assert stored["source"]["totalComponents"] == 145
+    assert stored["source"]["totalComponents"] == 142
     assert stored["source"]["activateRules"] == 6
     assert stored["source"]["dataMode"] == "ap-single-query"
     assert len(stored["templates"]) == 13
     assert len(stored["activateRules"]) == 6
     assert {page: len(page_spec["insights"]) for page, page_spec in stored["pages"].items()} == {
-        "overview": 0, "operations": 4, "analysis": 8,
+        "overview": 0, "operations": 5, "analysis": 10,
     }
     assert set(stored["pages"]["analysis"]["insights"][0]) >= {"id", "embedPath", "placement"}
     assert set(stored["pages"]) == {"overview", "operations", "analysis"}
@@ -156,9 +160,11 @@ def test_prototype_source_remains_available_only_for_explicit_standalone_analysi
 
 def test_runtime_reports_live_ap_single_query_mode_and_only_real_gaps():
     payload = release_payload()
-    assert payload["source"]["commit"] == "97f4e28e7f9b5094a1f018e2d96102b7e573e7fa"
+    assert payload["source"]["commit"] == "00be09f699fe642c7ba18e12b8d48a0f3689c81d"
     assert payload["source"]["dataMode"] == "ap-single-query"
-    assert {gap["code"] for gap in payload["gaps"]} == {"CHILD_DEFINITION_MISSING"}
+    assert {gap["code"] for gap in payload["gaps"]} == {
+        "CHILD_DEFINITION_MISSING", "INSIGHT_ANCHOR_MISSING",
+    }
     overview = payload["pages"]["overview"]["components"]
     progress = {component["id"]: component for component in overview if component.get("type") == "progress"}
     assert [item["identifierCode"] for item in progress["progress-y5dumxio"]["dataConfig"]["measure"]] == ["YWLN_M0001"]

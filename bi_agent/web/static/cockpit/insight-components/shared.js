@@ -1,5 +1,17 @@
 const { computed, ref } = window.Vue
 
+export function cockpitApiBase() {
+  const configured = document.querySelector('meta[name="cockpit-api-base"]')?.content || ''
+  if (configured) return configured.replace(/\/$/, '')
+  const root = location.pathname.replace(/\/cockpit(?:\/(?:home|overview|operations|analysis))?\/?$/, '')
+  return `${root}/api/cockpit`
+}
+
+export function cockpitIdentityId() {
+  const value = Number(new URLSearchParams(location.search).get('id'))
+  return value === 2 ? 2 : 1
+}
+
 export const InsightLoading = Vue.defineComponent({
   name: 'InsightLoading',
   props: {kind: {type:String,default:'summary'},progress: {type:String,default:''}},

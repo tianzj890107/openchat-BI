@@ -1,13 +1,13 @@
 {
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
-  "commit": "97f4e28e7f9b5094a1f018e2d96102b7e573e7fa",
+  "commit": "00be09f699fe642c7ba18e12b8d48a0f3689c81d",
   "importedAt": "2026-10-29",
   "mode": "active-runtime-adapter",
-  "notes": "Re-synced from iba-demo feature/demo_1021 at 97f4e28: dashboard and template configs plus the BI UMD; insight-components are unchanged upstream, so the local host adaptations are kept. The cockpit still supplies only the delivered single-query adapter and does not inject the batch adapter. Host adaptation: the composite filter keeps the default period YWLN_D044=2025-10 because the page scope and published cards are bound to that period.",
+  "notes": "Re-synced from iba-demo feature/demo_1021 at 00be09f: dashboard/template configs, activate rules and the three order DataTable slots are copied from upstream. Their mock-only reason/action/scope calls are replaced by the cockpit ai-tables API, which reads AP facts and merges only evidence-linked structured card fields. The BI UMD keeps the local null-instance guard. The cockpit supplies only the delivered single-query adapter and does not inject the batch adapter. Host adaptation: the composite filter keeps the default period YWLN_D044=2025-10 because the page scope and published cards are bound to that period.",
   "rootComponents": 2,
   "templates": 13,
-  "totalComponents": 145,
+  "totalComponents": 142,
   "componentTypes": {
     "bar": 3,
     "bar-line": 2,
@@ -23,16 +23,16 @@
     "segmented-strip": 6,
     "share-bar": 6,
     "tab-container": 1,
-    "table": 19,
+    "table": 16,
     "template": 3,
     "title": 20
   },
   "dataSourceModes": {
-    "ap": 106,
+    "ap": 103,
     "mock": 39
   },
-  "insights": 12,
-  "insightComponents": 12,
+  "insights": 15,
+  "insightComponents": 15,
   "activateRules": 6,
   "queryContract": {
     "gatewayPrefix": "/api/gateway2",
@@ -44,19 +44,19 @@
   "files": [
     {
       "file": "components.json",
-      "sha256": "0d36a87e64db247e05a8ed42495baa763a8a8f8cd505cf991c5678f2d4d88401"
+      "sha256": "05ceb5306625ab64ba30a1995a430e11f914a2c56a77956c703b5ed4487ae813"
     },
     {
       "file": "template-registry.json",
-      "sha256": "b9eefabce5108e61153a5ec6cb8680db62ee4a9fa13c52be49acd9982b3fcc51"
+      "sha256": "c51822f9a7bbb5f9a4721b342d72d461dcb2924bb20970b8931570a742d1906b"
     },
     {
       "file": "insights.js",
-      "sha256": "fc243eb7211ba836c4fc830bb31378eade8c01b53ee140b4291893f9b8d995cf"
+      "sha256": "c7c55c5f2ebc99603c9cfdec0e878ef441f6b00fabda4fd37e71281c69afbfce"
     },
     {
       "file": "insights.json",
-      "sha256": "c0d1d0e3cb9b523931d7e18163be8082e053d1c1aa78e84bbb4b222bb809bfd0"
+      "sha256": "1df5277fdfd94d96cca1cd3f0e907d3e3d083827d81f7199328ee7c9c638214f"
     },
     {
       "file": "activate-rules.json",
@@ -69,6 +69,11 @@
       "componentId": "group-9ypz7vwt",
       "missingChildId": "share-bar-79fsomq9",
       "description": "Upstream child definition is absent; runtime reports the gap and keeps the original position empty."
+    },
+    {
+      "insightId": "shipment-task-order",
+      "componentId": "table-md1iftaj",
+      "description": "Upstream slot still references an anchor absent from the delivered shipment template; runtime reports the gap and does not move or recreate the old slot."
     }
   ],
   "activatedAt": "2026-10-28"

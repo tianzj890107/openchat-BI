@@ -90,6 +90,9 @@
     'quote-summary': 'quotation',
     'bid-summary': 'bid',
     'order-sign-summary': 'order',
+    'star-product-order-list': 'order',
+    'affected-order-list': 'order',
+    'overdue-order-list': 'shipment',
     'sales-shipment-issues': 'shipment',
     'opportunity-risk': 'opportunity',
     'opportunity-coverage-note': 'opportunity',
@@ -379,6 +382,13 @@
       const stage = computed(() => SLOT_STAGE[props.insight.id] || 'shipment');
       const state = computed(() => stateFor(stage.value));
       const delivered = shallowRef(null);
+      const insightSlotProps = computed(() => ({
+        ...props.slotProps,
+        apiBase,
+        identityId: Number(identityId),
+        page: page.value,
+        stage: stage.value,
+      }));
       const analysisContext = computed(() => ({
         id: Number(identityId),
         stage: stage.value,
@@ -441,14 +451,14 @@
           await ensureAnalysis(stage.value);onPageActivity();
         } catch(cause) {if(alive)insightLoadError.value=`插槽加载失败：${cause.message||cause}`;}
       });
-      return {dashboardDataMode, delivered, state, analysisContext, reload, insightLoadError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
+      return {dashboardDataMode, delivered, state, analysisContext, insightSlotProps, reload, insightLoadError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
     },
     template: `
       <component v-if="delivered" :is="delivered"
                  :analysis="state.item" :status="state.status" :progress="state.progress"
                  :cached="state.cached" :refreshing="state.refreshing"
                  :stale="Boolean(state.stale)" :scope-notice="state.scopeNotice || ''"
-                 :error="state.error" :context="analysisContext" :slot-props="slotProps"
+                 :error="state.error" :context="analysisContext" :slot-props="insightSlotProps"
                  @retry="reload"></component>
       <div v-else-if="insightLoadError" class="insight-runtime-empty" role="status">{{ insightLoadError }}</div>
       <div v-else class="insight-runtime-empty" role="status" aria-label="插槽组件加载中"></div>

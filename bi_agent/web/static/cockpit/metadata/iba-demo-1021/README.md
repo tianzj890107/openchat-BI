@@ -1,7 +1,7 @@
 # 前端交付元数据：feature/demo_1021
 
 来源：[iba-demo](http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021)，
-固定 commit `d01c08a07b79ba781f820524ff612f58cfa4e090`。
+固定 commit `00be09f699fe642c7ba18e12b8d48a0f3689c81d`。
 `components.json`、`template-registry.json`、`insights.js` 和 `activate-rules.json`
 按上游原样复制；`insights.json` 由声明式 `insights.js` 转为 JSON。
 哈希、类型统计、跳转规则数量和已知问题见 `source.json`。
@@ -14,7 +14,7 @@
 | 运营 360 整体分析 | tab-211tc4o0 | 2112434004503347202 |
 | 穿透式问题分析 | tab-1suxx5hd | 2112061604959928321 |
 
-根组件 2 个，子模板 13 份，共 145 个组件配置，其中 106 个声明 AP 数据、39 个仍使用
+根组件 2 个，子模板 13 份，共 142 个组件配置，其中 103 个声明 AP 数据、39 个仍使用
 上游 mock 配置。数据尚未配置完整的组件由原组件展示错误或空态，宿主不读取旧原型快照补数。
 
 ## 数据请求
@@ -38,16 +38,35 @@ X-Ontology-Repository-Id: 8
 
 ## 分析插槽
 
-`insights.js` 提供 12 个声明式插槽，位置如下：
+`insights.js` 提供 15 个声明式插槽，位置如下：
 
 - 经营看板：无。
-- 运营页：`bid-status-note`、`quote-summary`、`bid-summary`、`order-sign-summary`。
+- 运营页：`bid-status-note`、`quote-summary`、`bid-summary`、`order-sign-summary`、
+  `star-product-order-list`。
 - 穿透页：`sales-shipment-issues`、`opportunity-risk`、`opportunity-coverage-note`、
-  `order-risk-summary`、`shipment-risk-summary`、`shipment-overdue-note`、
-  `shipment-cause-breakdown`、`shipment-task-order`。
+  `order-risk-summary`、`affected-order-list`、`shipment-risk-summary`、
+  `shipment-overdue-note`、`shipment-cause-breakdown`、`overdue-order-list`、
+  `shipment-task-order`。
 
 插槽内容调用主服务 `/api/cockpit/analyses`，页面运行时组件保留真实加载、错误、重试和
 任务卡状态；不直接覆盖为上游静态文案。
+
+## 订单 DataTable
+
+本次同步启用三张订单表，布局和列配置复用上游 `ProDataTable`：
+
+- 订单接收「明星产品订单电量及占比」：返回系列、2025 年出货参考、推算订单电量、
+  占比和已登记口径。
+- 订单接收「受影响订单清单」：AP 事实字段之外，按证据中实际出现的订单号合并原因和
+  责任动作。
+- 发货「客户与超期订单」：AP 事实字段之外，按证据中实际出现的订单号合并主因和具体
+  根因。
+
+上游三张表分别调用 `/api/mock/star-product-scope`、`/api/mock/affected-order-extra` 和
+`/api/mock/overdue-order-root-cause`。本仓库不复制这些 mock，统一改走
+`POST /api/cockpit/ai-tables/{tableKey}/query`：事实数据仍由主服务按 AP 单查契约取得，
+AI 文字只从当前范围已发布且通过交付校验的环节卡片按订单证据合并。没有匹配证据的行
+显示“证据不足，未确认根因”或“待核实原因后明确责任动作”，不借用其他订单的结论。
 
 ## 接入边界
 
@@ -56,3 +75,6 @@ X-Ontology-Repository-Id: 8
 
 商机模板 `2112062888320483329` 的 `group-9ypz7vwt` 仍引用不存在的
 `share-bar-79fsomq9`。运行包保留原位置为空并写入缺项报告，不猜测图形配置。
+
+发货模板中的旧插槽 `shipment-task-order` 仍引用不存在的 `table-md1iftaj`。运行包同样
+只报告 `INSIGHT_ANCHOR_MISSING` 并保留原状；本次没有改第四张表或迁移该旧插槽。

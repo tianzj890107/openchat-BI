@@ -26,7 +26,7 @@ def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='97f4e28e7f9b5094a1f018e2d96102b7e573e7fa'
+    assert source['commit']=='00be09f699fe642c7ba18e12b8d48a0f3689c81d'
     assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
@@ -53,7 +53,8 @@ def test_upstream_missing_children_are_reported_without_mutating_metadata():
         for c in t['components']:
             for child in c.get('children',[]):
                 if child not in ids:actual.add((tid,c['id'],child))
-    reported={(i['templateId'],i['componentId'],i['missingChildId']) for i in source['knownIssues']}
+    reported={(i['templateId'],i['componentId'],i['missingChildId'])
+              for i in source['knownIssues'] if i.get('missingChildId')}
     assert actual==reported
 
 
@@ -117,9 +118,9 @@ def test_three_top_tabs_and_static_proui_dashboard_are_present():
     ]
     assert runtime['pages']['operations']['components']
     assert runtime['pages']['analysis']['components']
-    assert sum(len(page['insights']) for page in runtime['pages'].values())==12
-    assert len(runtime['pages']['operations']['insights'])==4
-    assert len(runtime['pages']['analysis']['insights'])==8
+    assert sum(len(page['insights']) for page in runtime['pages'].values())==15
+    assert len(runtime['pages']['operations']['insights'])==5
+    assert len(runtime['pages']['analysis']['insights'])==10
     assert ':insights="pageInsights"' in html
     assert 'v-slot:[slot_name(insight)]' in html
     assert "app.component('cockpit-insight', CockpitInsight)" in js
@@ -142,15 +143,23 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
                    'stage-risk-analysis__owner','stage-risk-analysis__time'):
         assert marker in shared
     stage_risk={'opportunity-risk':'商机获取','order-risk-summary':'订单接收','shipment-risk-summary':'发货'}
+    tables={'star-product-order-list','affected-order-list','overdue-order-list'}
     for name in ('bid-status-note','quote-summary','bid-summary','order-sign-summary',
                  'sales-shipment-issues','opportunity-risk','opportunity-coverage-note',
                  'order-risk-summary','shipment-risk-summary','shipment-overdue-note',
-                 'shipment-cause-breakdown','shipment-task-order'):
+                 'shipment-cause-breakdown','shipment-task-order',*tables):
         source=(components/name/'index.js').read_text()
         assert 'window.InsightRuntime' in source
-        assert "from '../" not in source
+        if name in tables:
+            assert "from '../table-runtime.js'" in source
+            assert source.count("from '../") == 1
+        else:
+            assert "from '../" not in source
         assert '静态文案' not in source
-        if name in stage_risk:
+        if name in tables:
+            assert 'createTableInsight' in source
+            assert 'tableKey:' in source
+        elif name in stage_risk:
             assert 'createStageRiskComponent' in source
             assert f"fallbackStage: '{stage_risk[name]}'" in source
         else:
