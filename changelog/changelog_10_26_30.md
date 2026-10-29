@@ -624,3 +624,34 @@
   `bi_agent/web/static/cockpit/data-client.js`。
 - 验证：看板聚焦回归 129 项 Python、41 项 JS 通过；新增用例覆盖真实前后端契约下的补查接入、
   全部失败仅补查、操作符/逻辑/嵌套拒绝、重复日期条件、额度顺序与环节过滤。
+
+### 2026-10-29 14:25 · 看板分析改为服务端定时刷新与页面订阅
+
+- 用户可见变化：刷新页面或重新进入看板时直接显示服务端上次完成的卡片和“分析更新于 …”，
+  不再每次打开都重新取数并触发一轮模型分析；后台更新期间保留旧卡片并提示“正在后台更新”，
+  新版本完整交付后一次性替换。状态行不再出现“主服务：路由、取证与交付校验中”等内部步骤，
+  只在没有历史结果时显示首次加载。
+- 服务端调度：新增 `bi_agent/cockpit/refresh.py`。`RefreshScheduler` 常驻线程按
+  `page_refresh` 表扫描到期的默认范围，`RefreshManager` 重新执行原页面查询、计算
+  证据指纹，数据、来源或交付契约未变化时只更新检查时间，不调用模型；变化时创建分析任务，
+  等待完整卡片契约后再整页发布。
+- 持久与去重：`page_refresh` 记录状态、尝试次数、下次检查时间、租约和错误；`claim_refresh`
+  用 `BEGIN IMMEDIATE` 加租约保证同一范围只有一个工作线程，进程重启后过期租约可重新领取；
+  失败进入 `retry_wait`，按 60 秒递增退避、上限 15 分钟，旧版本始终可读。
+- 接口：新增 `GET /api/cockpit/publications/status`（只返回版本、数据时间、分析时间、
+  更新状态与下次检查时间）和 `POST /api/cockpit/publications/refresh`（手工置为待刷新）。
+  `GET /api/cockpit/startup` 改为返回快照与分析状态，不再因为打开页面启动分析；
+  `POST /api/cockpit/page/lookup` 增加 `displaySnapshot`/`displayStale`，配置版本轮换后
+  旧版本只作展示，不能当作新范围证据。
+- 前端：`cockpit.js` 用状态轮询替代浏览器定时发布，发现新版本才拉取整页替换，页面隐藏时
+  降频；缓存命中与新版本应用共用同一入口，统一清理 `stale`、`scopeNotice`、`progress`、
+  `error`、`refreshing`；`page-client.js` 增加 `status()` 并读取 `displaySnapshot`。
+- 数据读取：`latest_page` 与调度扫描改为 SQL 侧按 `json_extract` 过滤，只加载需要处理的
+  页面正文，避免每次轮询都解析全部历史快照。
+- 主要文件：`bi_agent/cockpit/refresh.py`、`store.py`、`router.py`、`page_cache.py`、
+  `bi_agent/web/static/cockpit/cockpit.js`、`page-client.js`、`tests/test_cockpit_refresh.py`。
+- 验证：Cockpit 聚焦回归 135 项 Python、41 项 JS 通过；新增用例覆盖打开页面不调用模型、
+  证据未变化不重跑、指纹变化才重跑、AP 失败保留上一版本、配置轮换只展示旧版本、
+  租约阻止重复工作与过期后可重领。
+- 边界：默认范围由服务端维护，自定义筛选仍按访问触发生成；调度器只复核原页面查询，
+  不修复上游 SQL 错误，也不改变指标口径。

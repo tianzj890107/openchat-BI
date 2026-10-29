@@ -80,6 +80,21 @@ def compact_analysis(item):
     return value
 
 
+def page_fingerprint(records):
+    """Evidence fingerprint for the page cache; receipt IDs and fetch times are excluded."""
+    canonical = lambda v: json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    business = [r for r in records if r.get('kind') != 'helmet']
+    selected = []
+    for record in business:
+        if record.get('kind') == 'batch':
+            selected.extend((q, v.get('data') if isinstance(v, dict) else v)
+                            for q, v in zip(record.get('request') or [], record.get('response') or []))
+        else:
+            selected.append((record.get('request'), record.get('response')))
+    return digest(sorted(((json.dumps(q, sort_keys=True), v) for q, v in selected),
+                          key=lambda v: json.dumps(v, sort_keys=True)))
+
+
 def build_page(req, store, config, *, data_source='ap'):
     if data_source not in {'ap', 'snapshot', 'postgres', 'demo'}:
         raise HTTPException(422, '整页数据来源无效')
@@ -105,14 +120,7 @@ def build_page(req, store, config, *, data_source='ap'):
         raise HTTPException(422, '整页没有业务数据')
     canonical = lambda v: json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
     queries = sorted({canonical(r['request']) for r in business})
-    selected = []
-    for r in business:
-        if r['kind'] == 'batch':
-            selected.extend((q, v['data']) for q, v in zip(r['request'], r['response']))
-        else:
-            selected.append((r['request'], r['response']))
-    fingerprint = digest(sorted(((json.dumps(q, sort_keys=True), v) for q, v in selected),
-                                key=lambda v: json.dumps(v, sort_keys=True)))
+    fingerprint = page_fingerprint(records)
     items = {}
     for stage, aid in req.analysisIds.items():
         item = store.get_analysis(aid)

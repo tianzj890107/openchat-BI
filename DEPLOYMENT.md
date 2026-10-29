@@ -1282,3 +1282,26 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   `backups/site-fe154e9-20261029-115307` 原地恢复。
 - 边界：上游 AP 的日期过滤 SQL 超时、`acc_t` 别名错误和慢查询仍需数据侧修复；补查只覆盖
   已登记且对账通过的指标，商机数等未对齐口径继续返回阻断原因，不替代看板图表自身的错误提示。
+
+## 服务端定时刷新与页面订阅（2026-10-29，代码已实现，部署需新的明确授权）
+
+- 刷新调度由浏览器移到主服务：页面打开只读取 `page_snapshots` 中的上次完整版本，不再自行发起
+  模型分析；服务端按默认范围定时复核数据指纹，只有数据或口径变化才调用模型。
+- 新增表 `page_refresh`（`scope` 主键、`status`、`attempt`、`next_check`、`lease_until`、
+  `last_error`、`last_success`、`updated`），由 `Store` 在打开历史库时自动创建，不迁移、不删除
+  既有分析与页面快照。
+- 新增接口：`GET /api/cockpit/publications/status`（轻量状态）、
+  `POST /api/cockpit/publications/refresh`（手工把某个范围置为待刷新）；`GET /api/cockpit/startup`
+  改为返回 `snapshot` + `status`，`POST /api/cockpit/page/lookup` 增加 `displaySnapshot`/
+  `displayStale`。
+- 调度线程随 `build_cockpit_router` 启动，仅在 `COCKPIT_DATA_MODE=ap` 且已连接主服务上下文时启用；
+  配置异常只打印日志并关闭调度，不影响读取上次发布版本。
+- 环境变量：`COCKPIT_REFRESH_ENABLED`（默认开启，测试环境关闭）、
+  `COCKPIT_REFRESH_INTERVAL_SECONDS=900`、`COCKPIT_REFRESH_TIMEOUT_SECONDS=1200`、
+  `COCKPIT_REFRESH_SCAN_SECONDS=20`。时间可按数据源更新频率调整，检查数据不等于重新调用模型。
+- 更新失败、AP 超时、模型失败或进程重启都不覆盖上一版本；`retry_wait` 按 60 秒递增退避，上限
+  15 分钟，租约过期后由调度器重新领取。
+- 前端先渲染已发布快照，再按 5～15 秒轮询版本（页面隐藏时降频），发现新版本才拉取整页替换；
+  状态行不再显示“路由、取证与交付校验中”等内部步骤。
+- 本段只记录实现与配置；部署、重启 8765 或更新 8876 静态资源仍需当次明确授权。
+- 设计与验证细节见 `docs/specs/cockpit-card-publications.md`。

@@ -83,3 +83,56 @@ AP原始行不能按“原因”归组后展示虚构的金额／订单数量；
 上线记录：2026-10-26发布代码ca3d29b，两个固定身份共6组默认环节卡片缓存已持久保存；正式重启后仍可读取。
 正式浏览器复核确认先显示缓存、无旧长正文、查询范围匹配，无加载骨架或JS异常；新范围第一次访问仍按设计加载。
 部署路径、PID及受保护回滚资料见DEPLOYMENT.md，不构成未来部署授权。
+
+## 服务端定时刷新与页面订阅（2026-10-29）
+
+刷新调度从浏览器移到主服务：页面打开只读取已发布结果，不再自行触发一轮模型分析。
+
+### 数据与状态
+
+- `page_snapshots` 继续按 `scope` 追加版本，`page_snapshot_views` 只移动当前指针；历史版本不覆盖。
+- 新增 `page_refresh`：`scope` 主键、`status`、`attempt`、`next_check`、`lease_until`、
+  `last_error`、`last_success`、`updated`。状态取值为 `waiting`、`running`、`published`、
+  `retry_wait`、`idle`。
+- 证据指纹由页面业务查询与响应计算，排除 helmet 图、receiptId、取数时间和发布时间；数据未变化
+  时不调用模型。
+
+### 接口
+
+| 接口 | 行为 |
+|---|---|
+| GET `/api/cockpit/page`、POST `/api/cockpit/page/lookup` | 返回当前发布版本 `snapshot`，以及配置键轮换时的历史展示 `displaySnapshot` + `displayStale` |
+| GET `/api/cockpit/publications/status` | 只返回版本、`dataAsOf`、`analyzedAt`、`update.status`、`nextCheckAt`、`lastError`，不重复下载证据 |
+| POST `/api/cockpit/publications/refresh` | 把指定范围置为 `waiting`，由服务端调度器接管；仅实时 AP 路线可用 |
+| GET `/api/cockpit/startup` | 返回 `snapshot`（或历史展示）与分析状态，不再因为打开页面而启动模型分析 |
+
+### 调度
+
+- `RefreshScheduler` 为常驻线程，扫描 `page_refresh` 中到期的默认范围，每轮最多处理 3 个范围。
+- `RefreshManager` 先按原始查询重新取数并计算指纹，再决定是否创建分析任务；完成后重新发布整页，
+  失败一律保留上一版本并写入 `retry_wait`，退避上限 15 分钟。
+- `claim_refresh` 使用 SQLite `BEGIN IMMEDIATE` 与租约去重，进程重启后过期租约可被重新领取。
+- 取数与模型分析沿用各自并发预算，等待 AP 的任务不占分析名额。
+
+### 前端
+
+- 打开页面直接渲染已发布快照，随后按 5～15 秒轮询状态（页面隐藏时降频），发现新版本才拉取整页替换。
+- 状态行只展示“分析更新于 …／正在后台更新／当前展示上次完整版本”，不再显示“主服务：路由、取证与
+  交付校验中”等内部步骤。
+- 新版本应用与缓存命中共用同一入口，统一清理 `stale`、`scopeNotice`、`progress`、`error`、`refreshing`。
+- 服务端刷新不可用时保留原浏览器发布路径，行为与旧版本一致。
+
+### 环境变量
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `COCKPIT_REFRESH_ENABLED` | 开启（测试环境除外） | 关闭后只保留页面发布路径 |
+| `COCKPIT_REFRESH_INTERVAL_SECONDS` | 900 | 同一范围两次数据检查的最小间隔 |
+| `COCKPIT_REFRESH_TIMEOUT_SECONDS` | 1200 | 单次后台分析等待上限 |
+| `COCKPIT_REFRESH_SCAN_SECONDS` | 20 | 调度器扫描间隔 |
+
+### 验证
+
+- 证据未变化时刷新不调用模型；指纹变化才重跑并追加新版本。
+- AP 失败、模型失败、重启、租约过期都不覆盖上次完整版本。
+- 配置版本轮换后旧版本只能作为 `displayStale` 展示，不能当作新范围证据。

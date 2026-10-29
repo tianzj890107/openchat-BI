@@ -33,6 +33,11 @@ class Store:
               id TEXT PRIMARY KEY, scope TEXT NOT NULL, body TEXT NOT NULL, source_time REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS page_snapshot_views (
               scope TEXT PRIMARY KEY, snapshot_id TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS page_refresh (
+              scope TEXT PRIMARY KEY, status TEXT NOT NULL,
+              attempt INTEGER NOT NULL DEFAULT 0, next_check REAL NOT NULL,
+              lease_until REAL NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '',
+              last_success REAL NOT NULL DEFAULT 0, updated REAL NOT NULL);
             ''')
 
     @contextmanager
@@ -85,6 +90,93 @@ class Store:
             row = db.execute('SELECT p.body FROM page_snapshot_views v JOIN page_snapshots p '
                              'ON p.id=v.snapshot_id WHERE v.scope=?', (scope,)).fetchone()
         return json.loads(row[0]) if row else None
+
+    def page_publications(self, limit=500):
+        """Current published page body per scope, newest first (append-only history)."""
+        with self.db() as db:
+            rows = db.execute('SELECT v.scope, p.body, p.source_time FROM page_snapshot_views v '
+                              'JOIN page_snapshots p ON p.id=v.snapshot_id '
+                              'ORDER BY p.source_time DESC LIMIT ?', (limit,)).fetchall()
+        return [(r[0], json.loads(r[1]), r[2]) for r in rows]
+
+    def latest_page(self, identity, page, ui_scope, *, data_identity=None):
+        """Newest displayable page for a role/page/filter, even if its config key rotated.
+
+        This is display-only history.  It is never used as fresh evidence: the
+        caller must still publish a matching analysis/page before replacing it.
+        """
+        with self.db() as db:
+            row = db.execute("SELECT p.body FROM page_snapshot_views v "
+                             "JOIN page_snapshots p ON p.id=v.snapshot_id "
+                             "WHERE json_extract(p.body,'$.id')=? AND json_extract(p.body,'$.page')=? "
+                             "AND json_extract(p.body,'$.uiScope')=? "
+                             "AND (? IS NULL OR json_extract(p.body,'$.dataIdentity')=?) "
+                             "ORDER BY p.source_time DESC LIMIT 1",
+                             (identity, page, ui_scope, data_identity, data_identity)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def default_publications(self, limit=2000):
+        """Scope and version of default-scope publications; bodies load on demand."""
+        with self.db() as db:
+            rows = db.execute("SELECT v.scope, json_extract(p.body,'$.version'), p.source_time "
+                              "FROM page_snapshot_views v JOIN page_snapshots p ON p.id=v.snapshot_id "
+                              "WHERE json_extract(p.body,'$.uiScope')='default' "
+                              "ORDER BY p.source_time DESC LIMIT ?", (limit,)).fetchall()
+        return [(r[0], r[1] or '', r[2]) for r in rows]
+
+    def refresh_state(self, scope):
+        with self.db() as db:
+            row = db.execute('SELECT scope,status,attempt,next_check,lease_until,last_error,last_success,updated '
+                             'FROM page_refresh WHERE scope=?', (scope,)).fetchone()
+        return dict(row) if row else None
+
+    def ensure_refresh_state(self, scope, *, next_check=None):
+        now = time.time()
+        with self.db() as db:
+            db.execute('INSERT INTO page_refresh(scope,status,attempt,next_check,lease_until,last_error,last_success,updated) '
+                       'VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(scope) DO NOTHING',
+                       (scope, 'waiting', 0, next_check if next_check is not None else now, 0, '', 0, now))
+        return self.refresh_state(scope)
+
+    def set_refresh_state(self, scope, status, *, next_check=None, error=None,
+                          attempt=None, last_success=None, lease_until=0):
+        now = time.time()
+        self.ensure_refresh_state(scope, next_check=now)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT attempt,next_check,last_success FROM page_refresh WHERE scope=?', (scope,)).fetchone()
+            attempt = row['attempt'] if attempt is None else int(attempt)
+            next_check = row['next_check'] if next_check is None else float(next_check)
+            last_success = row['last_success'] if last_success is None else float(last_success)
+            db.execute('UPDATE page_refresh SET status=?,attempt=?,next_check=?,lease_until=?,last_error=?,'
+                       'last_success=?,updated=? WHERE scope=?',
+                       (status, attempt, next_check, float(lease_until or 0), str(error or ''),
+                        last_success, now, scope))
+        return self.refresh_state(scope)
+
+    def claim_refresh(self, scope, *, now=None, lease=120):
+        """Atomically claim one scope; a live lease prevents duplicate workers."""
+        now = time.time() if now is None else float(now)
+        self.ensure_refresh_state(scope, next_check=now)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT status,lease_until,attempt,next_check FROM page_refresh WHERE scope=?',
+                             (scope,)).fetchone()
+            if not row or (row['status'] == 'running' and row['lease_until'] > now):
+                return False
+            if row['next_check'] > now and row['status'] != 'retry_wait':
+                return False
+            db.execute('UPDATE page_refresh SET status=?,attempt=?,next_check=?,lease_until=?,updated=? WHERE scope=?',
+                       ('running', int(row['attempt']) + 1, now, now + lease, now, scope))
+        return True
+
+    def due_refresh_scopes(self, now=None, limit=20):
+        now = time.time() if now is None else float(now)
+        with self.db() as db:
+            rows = db.execute('SELECT scope FROM page_refresh WHERE next_check<=? AND '
+                              '(status!=\'running\' OR lease_until<=?) ORDER BY next_check LIMIT ?',
+                              (now, now, limit)).fetchall()
+        return [r[0] for r in rows]
 
     def create_analysis(self, scope, context):
         now=time.time()

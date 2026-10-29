@@ -51,10 +51,12 @@
   const insightLoadError = ref('');
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
-  const pageState = reactive({cached:false,dataAsOf:0,refreshing:false,error:''});
+  const pageState = reactive({cached:false,dataAsOf:0,analyzedAt:0,refreshing:false,updateStatus:'idle',displayStale:false,error:''});
   const dashboardDescription = computed(() => {
     const parts = [];
     if (pageState.cached) parts.push('完整看板 · 数据时间 ' + new Date(pageState.dataAsOf * 1000).toLocaleString('zh-CN', {hour12:false}));
+    if (pageState.analyzedAt) parts.push('分析更新于 ' + new Date(pageState.analyzedAt * 1000).toLocaleString('zh-CN', {hour12:false}));
+    if (pageState.displayStale) parts.push('当前展示上次完整版本');
     if (pageState.refreshing) parts.push('正在后台更新');
     if (pageState.error) parts.push(pageState.cached ? '部分数据加载失败，继续展示上次完整内容' : '部分数据加载失败');
     return parts.join(' · ');
@@ -162,6 +164,13 @@
     return insightState[stage];
   }
 
+  function publicProgress(message) {
+    if (!message) return '正在更新分析';
+    // Routing, evidence assembly and delivery checks are server internals; the
+    // AI slot only needs a stable user-facing state.
+    return /主服务|路由|取证|交付校验|质量闸门/.test(String(message)) ? '正在更新分析' : String(message);
+  }
+
   async function responseError(response) {
     try {
       const body = await response.json();
@@ -204,7 +213,7 @@
       if (!displayedQueries.size) throw new Error('当前看板尚无成功展示的 AP 查询，不能开始分析');
       dataScope.chartQueries = [...displayedQueries].sort();
     }
-    state.progress = 'AI 正在分析';
+    state.progress = '正在更新分析';
     state.error = '';
     const body = JSON.stringify({
       id: Number(identityId),
@@ -241,7 +250,7 @@
     if (!response?.ok) throw new Error(response ? await responseError(response) : '分析请求失败');
     let item = checkedAnalysis(await response.json(), stage);
     state.item = item;
-    state.progress = item.progress || '读取当前快照';
+    state.progress = publicProgress(item.progress || '正在更新分析');
     const deadline = Date.now() + 240000;
     while (item.status === 'queued' || item.status === 'running') {
       if (Date.now() > deadline) throw new Error('模型分析超时，请重试');
@@ -250,7 +259,7 @@
       if (!poll.ok) throw new Error(await responseError(poll));
       item = checkedAnalysis(await poll.json(), stage);
       state.item = item;
-      state.progress = item.progress || '模型分析中';
+      state.progress = publicProgress(item.progress || '正在更新分析');
     }
     if (!['completed', 'limited', 'needs_input'].includes(item.status)) throw new Error(item.progress || '分析未完成');
     state.status = 'done';
@@ -260,12 +269,15 @@
   }
 
   function ensureAnalysis(stage, refresh = false, urgent = false) {
-    if (analysisEngine === 'main' && fullSnapshot) {
+    const state = stateFor(stage);
+    if (analysisEngine === 'main' && !refresh && !state.stale && state.status === 'done' && state.item) {
+      return Promise.resolve(state.item);
+    }
+    if (analysisEngine === 'main' && fullSnapshot && !state.stale) {
       if (refresh) return pageCache.refresh(fullSnapshot,true);
-      return Promise.resolve(stateFor(stage).item);
+      return Promise.resolve(state.item);
     }
     if (analysisEngine === 'main' && publications) return publications.refresh(stage, refresh, urgent).finally(onPageActivity);
-    const state = stateFor(stage);
     if (!refresh && state.status === 'done' && state.item) {
       try { return Promise.resolve(checkedAnalysis(state.item, stage)); } catch (_) { analysisPromises.delete(stage); }
     }
@@ -770,7 +782,7 @@
             }).catch(()=>{});
             biAdapters.value=liveDataClient.biAdapters;hostUtils.value=liveDataClient.utils;
             ProUIBi.configureBi({...liveDataClient.biAdapters,utils:liveDataClient.utils});
-            if(snapshot){publications?.preload(snapshot.items);Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,error:''});}
+            if(snapshot){publications?.preload(snapshot.items);Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.context?.updatedAt||item?.updatedAt||0))),error:''});}
             if(remount){
               filtersReady=false;const top=window.scrollY;boardRevision.value++;
               nextTick(()=>requestAnimationFrame(()=>window.scrollTo({top,behavior:'instant'})));
@@ -780,15 +792,39 @@
             client.ready({allowExpired:Boolean(snapshot),partial:true}).then(scopeReady).catch(scopeReady);
             setTimeout(()=>{if(client===liveDataClient&&liveError.value)sweepStuckLoading();},6500);
           }
-          function schedulePageRefresh(delay=120000) {
+          let statusPolling=false;
+          async function pollPublicationStatus() {
+            if(!pageCache||analysisEngine!=='main'||statusPolling)return;
+            if(document.hidden){scheduleStatusPoll(20000);return;}
+            statusPolling=true;
+            const token=pageEpoch;
+            try {
+              const status=await pageCache.status(currentUiScope);
+              if(token!==pageEpoch)return;
+              const update=status.update||{};
+              const active=['waiting','checking','running','queued','retry_wait'].includes(update.status);
+              Object.assign(pageState,{
+                updateStatus:update.status||'idle',refreshing:active,
+                analyzedAt:status.analyzedAt||pageState.analyzedAt,
+                dataAsOf:status.dataAsOf||pageState.dataAsOf,
+                displayStale:Boolean(status.displayStale||update.status==='stale-display'),
+              });
+              if(status.publicationVersion&&(!fullSnapshot||status.publicationVersion!==fullSnapshot.version)){
+                const snapshot=await pageCache.load(currentUiScope);
+                if(snapshot&&token===pageEpoch){
+                  install(snapshot,true);
+                  Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,displayStale:false,refreshing:false,error:''});
+                }
+              }
+            } catch(_) { /* keep the last good cards while the status probe recovers */ }
+            finally {
+              statusPolling=false;
+              scheduleStatusPoll(active?5000:15000);
+            }
+          }
+          function scheduleStatusPoll(delay=1000) {
             clearTimeout(refreshTimer);
-            refreshTimer=setTimeout(async()=>{
-              if(!fullSnapshot||!pageCache)return;
-              if(document.hidden){schedulePageRefresh(30000);return;}
-              const token=pageEpoch;
-              await pageCache.refresh(fullSnapshot);
-              if(token===pageEpoch&&fullSnapshot)schedulePageRefresh(pageState.error?60000:120000);
-            },delay);
+            refreshTimer=setTimeout(pollPublicationStatus,Math.max(500,delay));
           }
           async function changeScope(uiScope,miss=false,detail='') {
             let metadata=fullSnapshot?.entries?.filter(e=>e.kind==='helmet')||[];
@@ -799,11 +835,12 @@
             // changed and that the visible analysis still belongs to the old one.
             const notice='筛选口径已切换'+(detail?'（'+detail+'）':'')+'，正在加载新数据；以下仍为上次分析';
             clearTimeout(refreshTimer);publications?.invalidate(notice);liveDataClient?.clearScope();
-            Object.assign(pageState,{cached:false,dataAsOf:0,error:'',refreshing:false});
+            Object.assign(pageState,{cached:false,dataAsOf:0,error:'',refreshing:false,displayStale:true,updateStatus:'waiting'});
             filtersReady=false;await Promise.resolve();if(token!==pageEpoch)return;
             install(null,true,metadata);
+            if(analysisEngine==='main')scheduleStatusPoll(800);
             if(!miss&&analysisEngine==='main') {
-              try {const snapshot=await pageCache.load(uiScope);if(snapshot&&token===pageEpoch){install(snapshot,true);schedulePageRefresh(800);}}catch{}
+              try {const snapshot=await pageCache.load(uiScope);if(snapshot&&token===pageEpoch){install(snapshot,true);scheduleStatusPoll(800);}}catch{}
             }
           }
           biRuntime.value=observeActivationActions(
@@ -815,11 +852,12 @@
               onSnapshot:snapshot=>{
                 const changed=fullSnapshot?.version!==snapshot.version;
                 if(changed)install(snapshot,true);
-                else{fullSnapshot=snapshot;pageState.dataAsOf=snapshot.dataAsOf;pageState.error='';}
+                else{fullSnapshot=snapshot;Object.assign(pageState,{dataAsOf:snapshot.dataAsOf,analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.updatedAt||0))),error:'',refreshing:false,updateStatus:'published'});}
               }});
           }
-          install(analysisEngine==='main'?startup.snapshot:null);
-          if(fullSnapshot)schedulePageRefresh(1000);
+          install(analysisEngine==='main'?(startup.snapshot||startup.displaySnapshot):null);
+          if(analysisEngine==='main')Object.assign(pageState,{displayStale:Boolean(startup.displayStale),updateStatus:startup.status?.update?.status||pageState.updateStatus,analyzedAt:startup.status?.analyzedAt||pageState.analyzedAt});
+          if(analysisEngine==='main')scheduleStatusPoll(1000);
           onPageActivity=()=>{
             clearTimeout(publishTimer);
             if(analysisEngine!=='main'||fullSnapshot||publishing)return;
@@ -837,7 +875,7 @@
                 await client.ready();await new Promise(r=>setTimeout(r,500));
                 if(token!==pageEpoch||client!==liveDataClient)return;
                 const snapshot=await pageCache.publish(client,items,uiScope);
-                if(snapshot&&token===pageEpoch){fullSnapshot=snapshot;Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,error:''});schedulePageRefresh();}
+                if(snapshot&&token===pageEpoch){fullSnapshot=snapshot;Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,error:''});scheduleStatusPoll();}
               }catch(cause){if(token===pageEpoch)pageState.error=cause.message||'未形成完整看板';}
               finally{publishing=false;}
             },600);

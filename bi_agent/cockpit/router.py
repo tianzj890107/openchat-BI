@@ -21,6 +21,7 @@ from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
 from .publications import legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
 from .page_cache import APReuse, PageLookup, PageRequest, build_page, legacy_page_scope, page_scope, transport_identity, compact_analysis
+from .refresh import RefreshManager, RefreshScheduler, publication_status, scheduler_enabled
 
 RESULT_CONTRACT_VERSION="compact-v1"
 
@@ -76,6 +77,23 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             if path not in stores:
                 value=Store(Path(path));value.recover();stores[path]=value
             return stores[path]
+
+    def publication_lookup(identity, page, ui_scope):
+        """Return the current publication plus a display-only last-known fallback."""
+        if main_context is None or data_mode() != 'ap':
+            return dict(snapshot=None, displaySnapshot=None, displayStale=False,
+                        status=dict(publicationVersion='', update=dict(status='idle')))
+        config=get_gateway().config
+        scope=page_scope(config, identity, page, ui_scope)
+        snapshot=store().published_page(scope)
+        if snapshot is None:
+            snapshot=store().published_page(legacy_page_scope(config, identity, page, ui_scope))
+        display=snapshot or store().latest_page(identity, page, ui_scope, data_identity=config.identity())
+        state=publication_status(store(), scope, snapshot or display)
+        if snapshot is None and display is not None:
+            state['update']['status']='stale-display'
+        return dict(snapshot=snapshot, displaySnapshot=display,
+                    displayStale=bool(snapshot is None and display is not None), status=state)
     @router.get('/data/config')
     def data_config():
         mode=data_mode()
@@ -242,12 +260,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     @router.get('/page')
     def published_page(id:int=1,page:Literal['overview','operations','analysis']='overview',uiScope:str='default'):
         if id not in (1,2) or not 0<len(uiScope)<=16000:raise HTTPException(422,'无效页面范围')
-        if main_context is None or data_mode()!='ap':return dict(snapshot=None)
-        config=get_gateway().config
-        key=page_scope(config,id,page,uiScope)
-        snapshot=store().published_page(key)
-        if snapshot is None:snapshot=store().published_page(legacy_page_scope(config,id,page,uiScope))
-        return dict(snapshot=snapshot)
+        return publication_lookup(id, page, uiScope)
 
     @router.post('/page')
     def publish_page(req:PageRequest):
@@ -261,14 +274,32 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
 
     @router.post('/page/lookup')
     def lookup_page(req:PageLookup):
-        return published_page(req.id,req.page,req.uiScope)
+        return publication_lookup(req.id, req.page, req.uiScope)
+
+    @router.get('/publications/status')
+    def publication_update(id:int=1,page:Literal['overview','operations','analysis']='overview',uiScope:str='default'):
+        if id not in (1,2) or not 0<len(uiScope)<=16000:raise HTTPException(422,'无效页面范围')
+        lookup=publication_lookup(id,page,uiScope)
+        snapshot=lookup.get('snapshot') or lookup.get('displaySnapshot')
+        return dict(id=id,page=page,uiScope=uiScope,snapshotVersion=(snapshot or {}).get('version',''),
+                    displayStale=lookup.get('displayStale',False),**(lookup.get('status') or {}))
+
+    @router.post('/publications/refresh')
+    def request_publication_refresh(req:PageLookup):
+        if main_context is None or data_mode()!='ap':raise HTTPException(409,'服务端刷新仅支持实时AP路线')
+        config=get_gateway().config
+        scope=page_scope(config,req.id,req.page,req.uiScope)
+        store().set_refresh_state(scope,'waiting',next_check=time.time(), error='')
+        return dict(queued=True,scope=scope,status='waiting')
 
     @router.get('/startup')
     def startup(id:int=1,page:Literal['overview','operations','analysis']='overview'):
-        caps=engines();snapshot=published_page(id,page)['snapshot']
-        # An AP cache miss must not combine fresh charts with unrelated older AI cards.
-        cards=published_default(id,'main',page,True)['items'] if data_mode()!='ap' and not snapshot and caps['default']=='main' and main_context is not None else {}
-        return dict(engines=caps,dataConfig=data_config(),snapshot=snapshot,cards=cards)
+        caps=engines();lookup=publication_lookup(id,page,'default')
+        # Cards already published for this role/page are display-only until a
+        # matching server publication replaces them.  Opening the page never
+        # starts a model call by itself.
+        cards=published_default(id,'main',page,True)['items'] if caps['default']=='main' and main_context is not None else {}
+        return dict(engines=caps,dataConfig=data_config(),cards=cards,**lookup)
 
     @router.post('/analyses/refresh')
     def refresh_analysis(req:AnalysisRequest,compact:bool=False):
@@ -351,4 +382,24 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         except KeyError:raise HTTPException(404,"任务不存在")
         except ValueError as exc:raise HTTPException(409,str(exc))
 
+    scheduler = None
+    try:
+        if main_context is not None and data_mode() == 'ap' and scheduler_enabled():
+            config = get_gateway().config
+            def start_refresh_analysis(body, resolved):
+                return start_analysis(AnalysisRequest(**body), resolved=resolved)
+            manager = RefreshManager(
+                store(), config, lambda kind, payload: get_gateway().query(kind, payload),
+                start_refresh_analysis,
+                interval=int(os.getenv('COCKPIT_REFRESH_INTERVAL_SECONDS', '900')),
+                timeout=int(os.getenv('COCKPIT_REFRESH_TIMEOUT_SECONDS', '1200')))
+            scheduler = RefreshScheduler(
+                manager, store(),
+                scan_seconds=int(os.getenv('COCKPIT_REFRESH_SCAN_SECONDS', '20')))
+            scheduler.start()
+    except Exception as exc:
+        # A scheduler/configuration failure must not prevent the dashboard from
+        # serving its last published version; it is reported in the app log.
+        print(f'[cockpit-refresh] disabled: {exc}')
+    router._cockpit_refresh_scheduler = scheduler
     return router

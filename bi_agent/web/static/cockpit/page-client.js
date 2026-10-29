@@ -12,8 +12,13 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
   async function load(uiScope) {
     const token=generation;
     const value=await json('/page/lookup',{id:Number(id),page,uiScope});
-    if(value.snapshot&&(value.snapshot.id!==Number(id)||value.snapshot.page!==page||value.snapshot.uiScope!==uiScope))throw new Error('完整看板范围不匹配');
-    return current(token)?value.snapshot:null;
+    const snapshot=value.snapshot||value.displaySnapshot||null;
+    if(snapshot&&(snapshot.id!==Number(id)||snapshot.page!==page||snapshot.uiScope!==uiScope))throw new Error('完整看板范围不匹配');
+    return current(token)?snapshot:null;
+  }
+  async function status(uiScope) {
+    const query=new URLSearchParams({id:String(id),page,uiScope});
+    return json('/publications/status?'+query.toString());
   }
   async function publish(client,items,uiScope,token=generation) {
     await client.ready();if(!current(token))return null;
@@ -73,5 +78,5 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
       .finally(()=>{if(current(token)){pending=null;onState({refreshing:false});}});
     pending=work;return work;
   }
-  return {invalidate,load,publish,refresh};
+  return {invalidate,load,status,publish,refresh};
 }
