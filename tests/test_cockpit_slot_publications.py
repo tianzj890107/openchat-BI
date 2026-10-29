@@ -101,11 +101,20 @@ def test_ai_publications_returns_all_slots_without_starting_analysis(tmp_path, m
         '/api/cockpit/ai-publications?id=1&uiScope=default').json()
     assert value['expectedCount'] == value['targetCount'] == 15
     assert value['readyCount'] == value['publishedCount'] == 15
+    assert value['renderableCount'] == 15
+    assert value['completeCount'] == 0
+    assert value['limitedCount'] == 15
+    assert value['incompleteCount'] == 15
     assert value['missingCount'] == value['updatingCount'] == 0
     assert set(value['slots']) == {item['id'] for item in slots()}
     assert value['scopeKey'] == 'default'
     assert value['registryVersion'] == REGISTRY_VERSION
     assert all(item['status'] == 'ready' and item['payload']['result']['cardContract'] == CONTRACT
+               for item in value['slots'].values())
+    assert all(item['contentStatus'] == 'limited' and item['contentComplete'] is False
+               and 'ANALYSIS_LIMITED' in item['contentGaps']
+               and 'CAUSES_EMPTY' in item['contentGaps']
+               and 'ACTION_EMPTY' in item['contentGaps']
                for item in value['slots'].values())
     assert all(item['lastSuccessfulPublication'] == item['payload'] and item['lastSuccessfulAt'] > 0
                for item in value['slots'].values())

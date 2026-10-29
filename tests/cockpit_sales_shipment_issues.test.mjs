@@ -5,6 +5,7 @@ import {readFile} from 'node:fs/promises';
 const source = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/sales-shipment-issues/index.js', import.meta.url), 'utf8');
 
 test('sales and shipment card never fabricates fallback findings', () => {
+  assert.match(source, /const \{ computed \} = window\.Vue/);
   assert.match(source, /const displayCauses = computed/);
   assert.doesNotMatch(source, /sales-shipment-total-gap/);
   assert.doesNotMatch(source, /sales-shipment-amount-gap/);

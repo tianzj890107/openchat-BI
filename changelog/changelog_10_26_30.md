@@ -12,6 +12,30 @@
 
 ## 本周变更
 
+### 2026-10-29 22:37 · Cockpit AI 卡片稳定性、表格缓存与任务令下发闭环
+
+- 用户可见变化：第三页「销售额 / 出货量共同问题分析」不再因缺少 `computed` 引用一直显示
+  “AI 正在分析”；插槽组件异常会结束加载并显示明确错误。页面切换筛选后，所有 AI 插槽统一
+  显示旧口径提示；后台发布新版本时只替换卡片和页面状态，不再整页重挂、重跑图表查询。
+- AI 表格：明星产品、受影响订单、超期订单三张表增加按身份、表格、页面范围和完整 AP 查询
+  隔离的持久快照。打开时先读上次成功结果，后台再更新；更新失败不覆盖已保存表格。表格请求
+  显式携带页面范围；默认页面同时传入当前可见期间，月度/年度日期会转换为 `YWLN_D044` 的
+  `BETWEEN` 条件。自定义范围若已有同口径整页发布，会读取该范围的卡片合并分析，不再借用
+  默认卡片；无法映射的自定义筛选在访问 AP 前阻断，不再静默查询全量。明星产品“口径”改为
+  读取当前发布分析中的版本化说明，删除固定原型文案。
+- 发布完整性：AI 发布接口在 `ready` 之外增加 `contentStatus`、`contentComplete`、
+  `contentGaps`、`evidenceCount`，并汇总 `renderableCount`、`completeCount`、`limitedCount`、
+  `incompleteCount`；可渲染不再等同于分析完整。
+- 任务令：发货任务令增加“生成草稿 → 编辑 → 保存 → 确认下发”弹窗和终态提示。保存与下发
+  仅在完整成功后转为已下发；部分失败保留草稿并显示回执。接收人只由服务端映射，
+  当前默认发送到 `18837823993`，浏览器源码不包含手机号。
+- 主要文件：`bi_agent/cockpit/{ai_tables,cards,router,store}.py`、
+  `bi_agent/process360/dispatch.py`、`bi_agent/web/static/cockpit/cockpit.js`、
+  `insight-components/{table-runtime,shipment-task-order,sales-shipment-issues,shared}.js` 及对应测试。
+- 验证：`pytest -q tests/test_cockpit*.py` 183 通过；全量 `pytest -q tests` 1708 通过、
+  37 跳过、1022 个子测试通过；`node --test tests/*.test.mjs` 76 通过。本次仅提交和推送代码，
+  未部署、未重启服务、未实际发送任务或风险。
+
 ### 2026-10-29 19:20 · Cockpit 双日期范围预热、AI 卡片刷新兜底与首屏独立加载
 
 - 用户可见变化：右上角保留交付组件的 `2025年10月` 默认日期，不再改写为没有显示位置的

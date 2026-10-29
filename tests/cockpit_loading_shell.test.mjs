@@ -72,3 +72,10 @@ test('default SDK filters and repeated snapshots cannot remount the board in a l
   assert.match(source, /settleMissingSlotStages\(\)/);
   assert.match(source, /尚无可用分析结果，服务端正在补充当前口径数据/);
 });
+
+test('background publication updates replace cards in place instead of remounting the board', () => {
+  assert.doesNotMatch(source, /onSnapshot:snapshot=>\{[\s\S]{0,500}install\(snapshot,true\)/)
+  assert.doesNotMatch(source, /if\(status\.publicationVersion[\s\S]{0,700}install\(snapshot,true\)/)
+  assert.match(source, /onSnapshot:snapshot=>\{[\s\S]{0,300}fullSnapshot=snapshot;[\s\S]{0,300}publications\?\.preload/)
+  assert.match(source, /fullSnapshot=snapshot;\s*\n\s*if\(snapshot\.items\)publications\?\.preload/)
+})

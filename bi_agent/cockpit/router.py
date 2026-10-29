@@ -17,14 +17,15 @@ from pydantic import BaseModel, Field, ConfigDict
 from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
 from .agent import run_analysis
-from .cards import CONTRACT, valid_card
+from .cards import CONTRACT, card_delivery_state, valid_card
 from .metadata import build_bundle
 from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
 from .publications import digest, legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
 from .page_cache import APReuse, PageLookup, PageRequest, build_page, legacy_page_scope, page_scope, transport_identity, compact_analysis
 from .targets import PAGES, REGISTRY_VERSION, slot_registry, target_stages
-from .ai_tables import TABLE_SPECS, TableQuery, annotate_rows, build_ap_query, result_rows
+from .ai_tables import (TABLE_MAPPING_VERSION, TABLE_SPECS, TableQuery, annotate_rows,
+                        build_ap_query, result_rows, table_cache_key, table_scope_key)
 from .refresh import (RefreshManager, RefreshScheduler, publication_status, scheduler_enabled,
                       preheat_target_scope, stage_card_status, view_target_scope)
 
@@ -106,7 +107,14 @@ class TaskChange(BaseModel):
     measures:list[Measure]=Field(default_factory=list,max_length=8)
 
 
-def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main_context=None):
+class TaskDispatch(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    id:int=Field(ge=1,le=2)
+    retry:bool=False
+
+
+def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main_context=None,
+                         task_dispatcher=None):
     router=APIRouter(prefix="/api/cockpit",tags=["cockpit"])
     source=DemoSource();stores={};lock=threading.RLock();jobs={};capacity=threading.BoundedSemaphore(3)
     try:
@@ -443,10 +451,15 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         for slot in slot_registry():
             item = stage_items.get(slot['stage'])
             update = refresh_for(slot, item)
-            status = 'ready' if item else 'missing'
+            delivery = card_delivery_state(item)
+            status = 'ready' if delivery['renderable'] else 'missing'
             slots[slot['slotId']] = dict(
                 **slot,
                 status=status,
+                contentStatus=delivery['status'],
+                contentComplete=delivery['complete'],
+                contentGaps=delivery['gaps'],
+                evidenceCount=delivery['evidenceCount'],
                 generatedAt=float((item or {}).get('updatedAt') or 0),
                 dataAsOf=float(((item or {}).get('context') or {}).get('updatedAt') or
                                (item or {}).get('updatedAt') or 0),
@@ -462,10 +475,12 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
 
         expected = len(slots)
         ready = sum(1 for item in slots.values() if item['status'] == 'ready')
+        complete = sum(1 for item in slots.values() if item['contentComplete'])
+        limited = sum(1 for item in slots.values() if item['contentStatus'] == 'limited')
         missing = expected - ready
         updating = sum(1 for item in slots.values() if item['update']['active'])
         version = digest([
-            (slot_id, value['status'], (value.get('payload') or {}).get('id', ''),
+            (slot_id, value['status'], value['contentStatus'], (value.get('payload') or {}).get('id', ''),
              float((value.get('payload') or {}).get('updatedAt') or 0))
             for slot_id, value in sorted(slots.items())
         ])
@@ -483,7 +498,11 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             version=version,
             expectedCount=expected,
             readyCount=ready,
+            renderableCount=ready,
             publishedCount=ready,
+            completeCount=complete,
+            limitedCount=limited,
+            incompleteCount=ready-complete,
             targetCount=expected,
             missingCount=missing,
             updatingCount=updating,
@@ -504,14 +523,58 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             payload=build_ap_query(table_key,req)
         except (ValueError,TypeError) as exc:
             raise HTTPException(422,str(exc)) from None
-        data=get_gateway().query('analysis',payload)
+        scope_key=table_scope_key(req.ui_scope)
+        cache_key=table_cache_key(req.id,table_key,scope_key,payload)
+        cached=store().get_ai_table_snapshot(cache_key,req.id,table_key,scope_key)
+        default_scope=_default_display_scope(scope_key)
+        card=None
+        analysis_scope='none'
+        if default_scope:
+            try:
+                card=published_default(req.id,'main',spec['page'],False)['items'].get(spec['stage'])
+                analysis_scope='default' if card else 'none'
+            except Exception:
+                card=None
+        else:
+            try:
+                # A custom scope may already have its own complete page
+                # publication.  Use that exact card so table facts and AI
+                # annotations share one business range; never borrow the
+                # preheated default card for a different filter.
+                snapshot=publication_lookup(req.id,spec['page'],scope_key).get('snapshot') or {}
+                card=(snapshot.get('items') or {}).get(spec['stage'])
+                analysis_scope=scope_key if card else 'none'
+            except Exception:
+                card=None
+
+        def response_for(rows,total,*,cache_status,generated_at=0):
+            annotated,meta=annotate_rows(table_key,rows,card)
+            meta.update(
+                cacheStatus=cache_status,
+                generatedAt=float(generated_at or 0),
+                scopeKey=scope_key,
+                scopeMatch=default_scope,
+                analysisScopeMatch=bool(card),
+                analysisScope=analysis_scope,
+                mappingVersion=TABLE_MAPPING_VERSION,
+                source='api-cache' if cache_status=='hit' else meta.get('source','ap+structured-analysis'),
+            )
+            return dict(rows=annotated,total=total if total is not None else len(annotated),meta=meta)
+
+        if req.cache_only:
+            if cached is None:
+                return response_for([],0,cache_status='missing')
+            return response_for(cached.get('rows') or [],cached.get('total'),
+                                cache_status='hit',generated_at=cached.get('createdAt'))
+
+        receipt=query_receipt(req.id,'analysis',payload)
         try:
-            rows,total=result_rows(data)
+            rows,total=result_rows(receipt['response'])
         except ValueError as exc:
             raise HTTPException(502,str(exc)) from None
-        card=published_default(req.id,'main',spec['page'],False)['items'].get(spec['stage'])
-        annotated,meta=annotate_rows(table_key,rows,card)
-        return dict(rows=annotated,total=total if total is not None else len(annotated),meta=meta)
+        cached_body=dict(rows=rows,total=total,createdAt=time.time(),query=payload)
+        store().save_ai_table_snapshot(cache_key,req.id,table_key,scope_key,cached_body)
+        return response_for(rows,total,cache_status='refreshed',generated_at=cached_body['createdAt'])
 
     @router.get('/page')
     def published_page(id:int=1,page:Literal['overview','operations','analysis']='overview',uiScope:str='default'):
@@ -672,9 +735,63 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     @router.post("/analyses/{aid}/draft")
     def draft(aid:str):
         item=get_analysis(aid)
-        if item["status"]!="completed":raise HTTPException(409,"只能基于已完成分析生成任务令草稿")
+        if item["status"] not in {"completed","limited"}:raise HTTPException(409,"只能基于已完成或受限分析生成任务令草稿")
         if not item["result"].get("recommendations"):raise HTTPException(409,"当前主服务交付尚无结构化任务措施，请由分析员确认；不从正文猜测责任和期限")
         return store().draft(item)
+
+    @router.post("/tasks/{tid}/dispatch")
+    def dispatch_task(tid:str, req:TaskDispatch):
+        item=store().get_task(tid)
+        if not item:raise HTTPException(404,"任务不存在")
+        context=item.get("context") or {}
+        if int(context.get("id") or 0)!=req.id:raise HTTPException(403,"任务不属于当前身份")
+        if item.get("status")!="draft":raise HTTPException(409,"任务令已下发，不能重复发送；如需补发请新建任务令")
+        analysis=get_analysis(str(item.get("analysisId") or ""))
+        result=analysis.get("result") or {}
+        actions=[]
+        evidence="\n".join(result.get("limitations") or [])[:4000]
+        for measure in item.get("measures") or []:
+            action_id=f"{tid}-{measure.get('id')}"
+            content="\n".join([
+                f"任务令：{item.get('title','')}",
+                f"目标：{item.get('goal','')}",
+                f"措施：{measure.get('action','')}",
+                f"责任角色：{measure.get('owner','')}",
+                f"期限：{measure.get('deadline','')}",
+                f"验收：{measure.get('acceptance','')}",
+            ])
+            actions.append(dict(
+                id=action_id, actionId=action_id, itemType="TODO",
+                dispatchTool="TaskOrderCreate", title=measure.get("action") or "发货风险处置",
+                content=content, evidence=evidence, ownerName=measure.get("owner",""),
+                dueAt=measure.get("deadline",""), severity="MEDIUM", scenario="COCKPIT",
+                category="智能分析任务令",
+            ))
+        if not actions:raise HTTPException(409,"草稿没有可下发措施")
+        recipients=[x.strip() for x in (os.getenv('COCKPIT_TASK_ORDER_RECIPIENTS') or '18837823993').split(',') if x.strip()]
+        if task_dispatcher is not None:
+            results=task_dispatcher(actions=actions, recipients=recipients, identity=req.id)
+        else:
+            from ..process360.identity import PrincipalScope
+            from ..process360.service import Process360Service
+            from ..process360.dispatch import dispatch_canvas_action
+            service=Process360Service(cwd=get_cwd())
+            poc=PrincipalScope.poc()
+            principal=dict(poc.to_dict())
+            # This endpoint is only reached after an explicit cockpit click.
+            # The server owns the recipient and never accepts a phone from the
+            # browser; keep the principal server-resolved as well.
+            principal.update(canDispatch=True, source="cockpit-click-authorized")
+            results=[dispatch_canvas_action(service, action=action, recipients=recipients,
+                                            principal=principal, expected_item_type="TODO", retry=req.retry)
+                     for action in actions]
+        accepted=sum(1 for value in results if value.get("accepted") is True)
+        if accepted==len(results):
+            try:item=store().mutate_task(tid,item["revision"],"issue",dict(dispatch=results))
+            except (KeyError,ValueError):pass
+        return dict(accepted=accepted==len(results),acceptedCount=accepted,total=len(results),
+                    results=results,task=item,message=("任务令已下发" if accepted==len(results)
+                                                       else "部分任务令未下发，请查看回执后重试"))
 
     @router.get("/tasks")
     def tasks():return store().list_tasks()

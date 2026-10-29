@@ -7,7 +7,10 @@ turns arbitrary page text into a cause or an action.
 """
 from __future__ import annotations
 
+import calendar
 import json
+import hashlib
+import re
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,6 +20,9 @@ class TableQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: int = Field(ge=1, le=2)
+    ui_scope: str = Field(default="default", alias="uiScope", max_length=16000)
+    period: str = Field(default="", max_length=32)
+    cache_only: bool = Field(default=False, alias="cacheOnly")
     analysis_config: dict = Field(alias="analysisConfig")
     common_config: dict = Field(alias="commonConfig")
 
@@ -93,17 +99,197 @@ TABLE_SPECS = {
     },
 }
 
-STAR_PRODUCT_SCOPES = {
-    "MB31": "含系统；电芯 / 模组口径 21.126 GWh",
-    "LF100L": "2025 全年出货参考",
-    "MB56": "2025 全年出货参考",
-    "明星产品合计": "三款产品，不重复计量",
-    "其他产品": "其余型号",
-    "全部产品": "有效已签订单",
-}
-
 MISSING_CAUSE = "证据不足，未确认根因"
 MISSING_ACTION = "待核实原因后明确责任动作"
+DATE_SCOPE_DIMENSION = "YWLN_D044"
+TABLE_MAPPING_VERSION = "ai-tables-v2"
+
+
+def table_scope_key(ui_scope: str) -> str:
+    return str(ui_scope or "default").strip() or "default"
+
+
+def table_cache_key(identity: int, table_key: str, ui_scope: str, ap_payload: dict) -> str:
+    material = json.dumps({
+        "id": identity,
+        "table": table_key,
+        "mapping": TABLE_MAPPING_VERSION,
+        "scope": table_scope_key(ui_scope),
+        "query": ap_payload,
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _scope_changes(ui_scope: str) -> list | None:
+    raw = str(ui_scope or "").strip()
+    if not raw or raw in {"default", "[]"}:
+        return []
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if isinstance(value, list) else None
+
+
+def _date_values(node, values: list[str]) -> None:
+    """Collect only date-like scalar values from a delivered filter payload."""
+    if isinstance(node, dict):
+        for key in ("value", "values", "selected", "selectedValues", "range", "conditionValues"):
+            if key in node:
+                _date_values(node[key], values)
+        for key in ("start", "end", "from", "to"):
+            if key in node:
+                _date_values(node[key], values)
+        return
+    if isinstance(node, list):
+        for item in node:
+            _date_values(item, values)
+        return
+    if isinstance(node, (int, float)) and not isinstance(node, bool):
+        text = str(node)
+    elif isinstance(node, str):
+        text = node.strip()
+    else:
+        return
+    if re.fullmatch(r"\d{4}(?:-\d{2}(?:-\d{2})?)?", text) and text not in values:
+        values.append(text)
+
+
+def _is_date_filter(node) -> bool:
+    if not isinstance(node, dict):
+        return False
+    code = str(node.get("identifierCode") or node.get("code") or node.get("field") or "").strip()
+    if code == DATE_SCOPE_DIMENSION:
+        return True
+    label = " ".join(str(node.get(key) or "") for key in ("label", "labelName", "alias", "title", "name"))
+    return any(word in label for word in ("时间", "日期", "期间"))
+
+
+def _looks_like_business_filter(node: dict) -> bool:
+    code = str(node.get("identifierCode") or node.get("code") or node.get("field") or "").strip()
+    if code and code != DATE_SCOPE_DIMENSION and re.match(r"^[A-Za-z]{1,8}\d", code):
+        return True
+    label = " ".join(str(node.get(key) or "") for key in ("label", "labelName", "alias", "title", "name"))
+    return any(word in label for word in ("客户", "产品", "状态", "团队", "等级", "区域", "部门", "类型", "行业"))
+
+
+def _collect_scope_dates(node, dates: list[str], *, date_scope: bool = False,
+                         unsupported: list[str] | None = None) -> None:
+    if isinstance(node, list):
+        for child in node:
+            _collect_scope_dates(child, dates, date_scope=date_scope, unsupported=unsupported)
+        return
+    if not isinstance(node, dict):
+        return
+    current = date_scope or _is_date_filter(node)
+    if current:
+        _date_values(node, dates)
+    elif unsupported is not None and _looks_like_business_filter(node) and any(
+            key in node for key in ("value", "values", "selected", "selectedValues", "range", "conditionValues")):
+        label = str(node.get("identifierCode") or node.get("code") or node.get("label") or "未识别筛选")
+        unsupported.append(label)
+    for key, child in node.items():
+        if key in {"value", "values", "selected", "selectedValues", "range", "conditionValues",
+                   "start", "end", "from", "to"}:
+            continue
+        if isinstance(child, (dict, list)):
+            _collect_scope_dates(child, dates, date_scope=current, unsupported=unsupported)
+
+
+def _date_range(value: str) -> tuple[str, str]:
+    value = value.strip()
+    if re.fullmatch(r"\d{4}", value):
+        return f"{value}-01-01", f"{value}-12-31"
+    if re.fullmatch(r"\d{4}-\d{2}", value):
+        year, month = (int(part) for part in value.split("-"))
+        return f"{value}-01", f"{value}-{calendar.monthrange(year, month)[1]:02d}"
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return value, value
+    raise ValueError("页面日期筛选格式不受支持")
+
+
+def page_scope_date_filter(ui_scope: str, fallback_period: str = "") -> dict | None:
+    """Translate the delivered page date scope into one AP date filter.
+
+    The host scope is a serialized list of committed runtime calls.  Only the
+    date dimension used by these tables is mapped here.  A custom scope with no
+    translatable date condition must be rejected by the caller: querying the
+    full table would silently answer a different business question.
+    """
+    changes = _scope_changes(ui_scope)
+    if changes is None:
+        raise ValueError("页面筛选范围格式无效，已阻止无口径查询")
+    if not changes:
+        # The delivered cockpit defaults to 2025-10 without emitting a custom
+        # date change.  Use the explicitly supplied page period so the table
+        # facts stay aligned with the visible header instead of silently
+        # querying all time.
+        fallback = str(fallback_period or "").strip()
+        if not fallback:
+            return None
+        start, end = _date_range(fallback)
+        return {
+            "identifierCode": DATE_SCOPE_DIMENSION,
+            "operator": {"code": "BETWEEN", "type": "DATE"},
+            "value": [start, end],
+            "valueType": "ABSOLUTE",
+        }
+    grain = ""
+    dates: list[str] = []
+    unsupported: list[str] = []
+    real_filters = 0
+    for change in changes:
+        if not isinstance(change, list) or len(change) != 2 or not isinstance(change[0], str):
+            continue
+        try:
+            value = json.loads(change[1]) if isinstance(change[1], str) else change[1]
+        except (TypeError, ValueError):
+            continue
+        method = change[0].split(":", 1)[0]
+        if method == "setButtonGrainSelection":
+            if isinstance(value, str):
+                grain = value.strip().upper()
+            elif isinstance(value, dict):
+                grain = str(value.get("grain") or "").strip().upper()
+            continue
+        real_filters += 1
+        _collect_scope_dates(value, dates, unsupported=unsupported)
+    if unsupported:
+        names = "、".join(dict.fromkeys(unsupported))
+        raise ValueError(f"页面筛选包含尚未映射到AI表格的字段：{names}，已阻止只按部分条件查询")
+    if not dates:
+        # The delivered default emits a MONTH grain call before the first user
+        # action.  It deliberately represents the preheated default scope.
+        if grain == "MONTH" and not real_filters:
+            fallback = str(fallback_period or "").strip()
+            if not fallback:
+                return None
+            start, end = _date_range(fallback)
+            return {
+                "identifierCode": DATE_SCOPE_DIMENSION,
+                "operator": {"code": "BETWEEN", "type": "DATE"},
+                "value": [start, end],
+                "valueType": "ABSOLUTE",
+            }
+        raise ValueError("当前页面筛选尚未映射到AI表格，已阻止无口径查询")
+    start, end = _date_range(dates[0])
+    if len(dates) > 1:
+        start, _ = _date_range(dates[0])
+        _, end = _date_range(dates[-1])
+    return {
+        "identifierCode": DATE_SCOPE_DIMENSION,
+        "operator": {"code": "BETWEEN", "type": "DATE"},
+        "value": [start, end],
+        "valueType": "ABSOLUTE",
+    }
+
+
+def _merge_scope_filter(filters, scope_filter: dict | None):
+    if scope_filter is None:
+        return filters
+    if filters in (None, {}, []):
+        return scope_filter
+    return {"logic": "AND", "children": [filters, scope_filter]}
 
 
 def _text(value) -> str:
@@ -177,6 +363,8 @@ def build_ap_query(table_key: str, request: TableQuery) -> dict:
     }
     common = request.common_config or {}
     filters = common.get("filters")
+    scope_filter = page_scope_date_filter(request.ui_scope, request.period)
+    filters = _merge_scope_filter(filters, scope_filter)
     _filter_codes(filters, allowed_filters)
     pagination = common.get("pagination") or {}
     try:
@@ -283,13 +471,27 @@ def _action_text(cause_ids: set[str], recommendations: list[dict]) -> str:
     return "；".join(dict.fromkeys(values))
 
 
-def _star_scope(series: str) -> str:
-    if series in STAR_PRODUCT_SCOPES:
-        return STAR_PRODUCT_SCOPES[series]
-    for name, value in STAR_PRODUCT_SCOPES.items():
-        if name != "全部产品" and name in series:
-            return value
-    return "未登记口径，待业务确认"
+def _star_scope(series: str, card: dict | None) -> str:
+    """Read a versioned scope note from the current analysis, never fixed copy."""
+    card = card or {}
+    result = card.get("result") or {}
+    evidence = card.get("evidence") or {}
+    for source in (result.get("scopeNotes"), evidence.get("scopeNotes")):
+        if not isinstance(source, dict):
+            continue
+        value = source.get(series) or source.get("*")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    candidates = [*(evidence.get("facts") or []), *(evidence.get("evidence") or [])]
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        text = " ".join(_text(item.get(key)) for key in ("label", "name", "definition", "claim"))
+        if series and series in text:
+            definition = _text(item.get("definition")) or _text(item.get("claim"))
+            if definition:
+                return definition
+    return "当前筛选范围的业务口径未在已发布分析中提供，未沿用固定参考文案。"
 
 
 def annotate_rows(table_key: str, rows: list[dict], card: dict | None) -> tuple[list[dict], dict]:
@@ -301,7 +503,7 @@ def annotate_rows(table_key: str, rows: list[dict], card: dict | None) -> tuple[
         value = dict(row)
         row_key = _text(value.get(spec["identity"]))
         if table_key == "star-product-order-list":
-            value["口径"] = _star_scope(row_key)
+            value["口径"] = _star_scope(row_key, card)
         else:
             matched = _matched_causes(row_key, causes, records) if row_key else []
             if matched:

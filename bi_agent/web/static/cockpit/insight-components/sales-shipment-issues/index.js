@@ -3,6 +3,7 @@
  * 内容由当前发货环节的真实分析结果、证据事实和记录驱动。
  */
 const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
+const { computed } = window.Vue
 
 loadInsightStyle(import.meta.url)
 

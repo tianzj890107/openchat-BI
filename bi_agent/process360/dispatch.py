@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 from ..integrations.fuxi_todo import (
     FuxiTodoClient,
@@ -535,6 +535,8 @@ def dispatch_canvas_action(
     retry: bool = False,
     client: FuxiTodoClient | None = None,
     expected_item_type: str = "",
+    recipients: Iterable[str] | str | None = None,
+    principal: Mapping[str, Any] | PrincipalScope | None = None,
 ) -> dict[str, Any]:
     """Temporary POC path for every Canvas action card.
 
@@ -594,10 +596,14 @@ def dispatch_canvas_action(
             )
 
     context = active_request_context()
-    identity = context.principal if context is not None else None
-    if identity is None:
-        resolver = getattr(service, "_principal", None)
-        identity = resolver(None) if callable(resolver) else PrincipalScope.local()
+    if principal is not None:
+        identity = (principal if isinstance(principal, PrincipalScope)
+                    else PrincipalScope.from_payload(principal, required=True))
+    else:
+        identity = context.principal if context is not None else None
+        if identity is None:
+            resolver = getattr(service, "_principal", None)
+            identity = resolver(None) if callable(resolver) else PrincipalScope.local()
     if not identity.can_dispatch:
         return envelope(
             "blocked",
@@ -616,7 +622,8 @@ def dispatch_canvas_action(
             }],
         )
     try:
-        recipients = resolve_canvas_recipients()
+        resolved_recipients = (normalize_recipients(list(recipients))
+                               if recipients is not None else resolve_canvas_recipients())
     except ValueError as exc:
         return envelope(
             "blocked",
@@ -644,7 +651,7 @@ def dispatch_canvas_action(
             draft_hash=draft_hash,
             action_id=requested_action_id,
             request_id=request_id,
-            recipients=recipients,
+            recipients=resolved_recipients,
             retry=retry,
             client=client,
         )
@@ -682,7 +689,7 @@ def dispatch_canvas_action(
         draft_hash=temporary_hash,
         action_id=temporary_action_id,
         request_id=request_id,
-        recipients=recipients,
+        recipients=resolved_recipients,
         retry=retry,
         client=client,
     )

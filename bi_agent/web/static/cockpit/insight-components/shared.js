@@ -207,7 +207,6 @@ export function createStageRiskComponent(options = {}) {
     },
     template: `
       <section class="stage-risk-analysis" aria-live="polite">
-        <div v-if="scopeNotice" class="insight-scope-notice" role="status">{{ scopeNotice }}</div>
         <insight-loading v-if="!hasResult && status !== 'error'" kind="risk" :progress="progress" />
         <div v-if="hasResult || status === 'error'" class="insight-runtime-state">
           <div class="insight-runtime-state__row">

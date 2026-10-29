@@ -126,6 +126,85 @@ def test_task_draft_accepts_legacy_analysis_without_deadline_days(tmp_path):
     assert task['measures'][0]['deadline']=='10 个工作日'
 
 
+def test_task_draft_can_start_from_a_limited_analysis(tmp_path):
+    store=Store(tmp_path/'dataset'/'cockpit'/'history.sqlite3')
+    analysis=store.create_analysis('limited-task',{'id':1,'stageName':'发货'})
+    analysis=store.update_analysis(analysis['id'],status='limited',result=dict(
+        summary='证据范围有限，但仍有可执行措施。',
+        causes=[dict(id='c1',title='处理记录未闭环',description='记录显示仍有未关闭事项。',status='supported',evidenceIds=['q1'])],
+        recommendations=[dict(id='r1',causeIds=['c1'],action='核实超期订单',ownerRole='运营负责人',deadlineDays=3,acceptance='提供逐单关闭证据')],
+        limitations=['缺少部分金额明细']))
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:str(tmp_path)))
+    c=TestClient(app)
+    task=c.post('/api/cockpit/analyses/'+analysis['id']+'/draft')
+    assert task.status_code==200, task.text
+    assert task.json()['analysisId']==analysis['id']
+
+
+def test_task_dispatch_uses_server_recipient_and_only_issues_after_full_success(tmp_path,monkeypatch):
+    monkeypatch.delenv('COCKPIT_TASK_ORDER_RECIPIENTS',raising=False)
+    calls=[]
+    def runner(evidence,context,stop,progress):
+        return valid_result(evidence),[dict(tool='CockpitEvidenceQuery',section='all',evidenceCount=len(evidence['evidence']))]
+    def dispatcher(*,actions,recipients,identity):
+        calls.append(dict(actions=actions,recipients=recipients,identity=identity))
+        return [dict(accepted=True,status='ok',message='已提交',actionId=item['id']) for item in actions]
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:str(tmp_path),
+        runner=runner,task_dispatcher=dispatcher))
+    c=TestClient(app)
+    a=wait(c,c.post('/api/cockpit/analyses',json={'id':1,'stage':'shipment'}).json()['id'])
+    task=c.post('/api/cockpit/analyses/'+a['id']+'/draft').json()
+    task_id=task['id']
+    edited=c.post('/api/cockpit/tasks/'+task_id,json=dict(
+        id=1,revision=task['revision'],action='save',title='发货超期订单处置',
+        goal='在期限内关闭可验证的超期事项',
+        measures=[dict(id=task['measures'][0]['id'],action='核实并关闭超期订单',
+                       owner='运营负责人',deadline='3 个工作日',acceptance='逐单提供关闭证据')]))
+    assert edited.status_code==200, edited.text
+    edited=edited.json()
+    assert edited['measures'][0]['action']=='核实并关闭超期订单'
+
+    result=c.post('/api/cockpit/tasks/'+task_id+'/dispatch',json={'id':1,'retry':False})
+    assert result.status_code==200, result.text
+    payload=result.json()
+    assert payload['accepted'] is True and payload['task']['status']=='issued'
+    assert calls[0]['recipients']==['18837823993']
+    assert calls[0]['identity']==1
+    assert all(item['itemType']=='TODO' for item in calls[0]['actions'])
+    assert c.get('/api/cockpit/tasks/'+task_id).json()['dispatch'][0]['accepted'] is True
+    assert c.post('/api/cockpit/tasks/'+task_id+'/dispatch',json={'id':1,'retry':False}).status_code==409
+
+
+def test_partial_task_dispatch_keeps_the_draft_status_and_replays_receipts(tmp_path):
+    def dispatcher(*,actions,recipients,identity):
+        return [dict(accepted=index==0,status='ok' if index==0 else 'blocked',
+                     message='已提交' if index==0 else '接收人配置不可用') for index,_ in enumerate(actions)]
+    def two_measure_runner(evidence,context,stop,progress):
+        result=valid_result(evidence)
+        result['recommendations'].append(dict(id='r2',causeIds=['c1'],action='更新客户交付承诺',
+            ownerRole='客户经理',deadlineDays=5,acceptance='客户确认新交付日期'))
+        return result,[dict(tool='CockpitEvidenceQuery',section='all',evidenceCount=len(evidence['evidence']))]
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:str(tmp_path),
+        runner=two_measure_runner,task_dispatcher=dispatcher))
+    c=TestClient(app)
+    a=wait(c,c.post('/api/cockpit/analyses',json={'id':1,'stage':'shipment'}).json()['id'])
+    task=c.post('/api/cockpit/analyses/'+a['id']+'/draft').json()
+    result=c.post('/api/cockpit/tasks/'+task['id']+'/dispatch',json={'id':1,'retry':False})
+    assert result.status_code==200, result.text
+    body=result.json()
+    assert body['accepted'] is False and body['acceptedCount']==1 and body['total']==2
+    assert c.get('/api/cockpit/tasks/'+task['id']).json()['status']=='draft'
+
+
+def test_cockpit_task_dispatch_imports_the_process360_service_module():
+    from pathlib import Path
+    source=Path(__file__).resolve().parents[1]/'bi_agent'/'cockpit'/'router.py'
+    text=source.read_text(encoding='utf-8')
+    assert 'from ..process360.service import Process360Service' in text
+    assert 'from .process360.service' not in text
+    assert 'from .process360.tools' not in text
+
+
 def test_cancelled_job_cannot_be_overwritten(tmp_path):
     started=threading.Event();release=threading.Event()
     def runner(e,c,stop,p):started.set();release.wait(2);return valid_result(e),[]

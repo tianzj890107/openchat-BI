@@ -23,3 +23,15 @@ test('AI insight slots receive the current page without referencing an outer set
   assert.doesNotMatch(component, /page:\s*page\.value/);
   assert.match(html, /<cockpit-insight[^>]*:page="page"/);
 });
+
+test('a broken delivered insight leaves loading and shows an explicit error', () => {
+  assert.match(cockpit, /onErrorCaptured\(\(cause, _instance, info\) => \{/)
+  assert.match(cockpit, /componentError\.value = `AI 卡片渲染失败/)
+  assert.match(cockpit, /delivered\.value = null/)
+  assert.match(cockpit, /v-else-if="insightLoadError \|\| componentError"/)
+});
+
+test('every AI slot renders the shared stale-scope notice', () => {
+  assert.match(cockpit, /v-if="state\.scopeNotice" class="insight-scope-notice"/)
+  assert.match(cockpit, /:scope-notice="state\.scopeNotice \|\| ''"/)
+});

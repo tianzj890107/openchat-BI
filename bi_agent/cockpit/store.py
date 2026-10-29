@@ -26,6 +26,12 @@ class Store:
             CREATE TABLE IF NOT EXISTS ap_results (
               id TEXT PRIMARY KEY, identity INTEGER NOT NULL, body TEXT NOT NULL,
               created REAL NOT NULL, expires REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS ai_table_snapshots (
+              cache_key TEXT PRIMARY KEY, identity INTEGER NOT NULL,
+              table_key TEXT NOT NULL, scope_key TEXT NOT NULL,
+              body TEXT NOT NULL, created REAL NOT NULL, updated REAL NOT NULL);
+            CREATE INDEX IF NOT EXISTS ai_table_scope
+              ON ai_table_snapshots(identity, table_key, scope_key, updated);
             CREATE TABLE IF NOT EXISTS tasks (
               id TEXT PRIMARY KEY, analysis_id TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL,
               body TEXT NOT NULL, updated REAL NOT NULL);
@@ -71,6 +77,26 @@ class Store:
         if not row or (not allow_expired and row['expires'] < time.time()):
             return None
         return json.loads(row['body'])
+
+    def save_ai_table_snapshot(self, cache_key, identity, table_key, scope_key, body):
+        """Append the last successful page of one table query and move its pointer."""
+        now = time.time()
+        payload = json.dumps(body, ensure_ascii=False)
+        with self.db() as db:
+            db.execute(
+                "INSERT INTO ai_table_snapshots(cache_key,identity,table_key,scope_key,body,created,updated) "
+                "VALUES(?,?,?,?,?,?,?) ON CONFLICT(cache_key) DO UPDATE SET "
+                "body=excluded.body,updated=excluded.updated",
+                (cache_key, identity, table_key, scope_key, payload, now, now))
+        return json.loads(payload)
+
+    def get_ai_table_snapshot(self, cache_key, identity, table_key, scope_key):
+        with self.db() as db:
+            row = db.execute(
+                "SELECT body FROM ai_table_snapshots WHERE cache_key=? AND identity=? "
+                "AND table_key=? AND scope_key=?",
+                (cache_key, identity, table_key, scope_key)).fetchone()
+        return json.loads(row[0]) if row else None
 
     def publish_page(self, scope, page):
         """Append a complete version and atomically move its pointer; never erase history."""
@@ -377,6 +403,8 @@ class Store:
             else:
                 before,after=transitions[action]
                 if item["status"]!=before:raise ValueError("当前任务状态不允许此操作")
+                if action=="issue" and payload.get("dispatch") is not None:
+                    item["dispatch"]=payload["dispatch"]
                 if action=="feedback":
                     if not payload.get("feedback","").strip():raise ValueError("请填写处理反馈与证据说明")
                     item["feedback"]=payload["feedback"]

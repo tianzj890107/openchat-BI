@@ -11,6 +11,11 @@ test('the three order DataTables use the shared ProDataTable adapter', async () 
   assert.match(runtime, /ProUIBi\.ProDataTable/);
   assert.match(runtime, /ai-tables\/\$\{encodeURIComponent\(tableKey\)\}\/query/);
   assert.match(runtime, /tableFields: displayFields/);
+  assert.match(runtime, /uiScope: pageScope\(props\)/);
+  assert.match(runtime, /period: String\(slot\.period \|\| ''\)/);
+  assert.match(runtime, /cacheOnly: true/);
+  assert.match(runtime, /已加载上次保存的表格/);
+  assert.match(runtime, /pageScope\(props\).*props\.analysis\?\.id.*revision\.value/);
   for (const name of names) {
     assert.match(registry, new RegExp(`'${name}'`));
     const source = await readFile(new URL(`insight-components/${name}/index.js`, root), 'utf8');

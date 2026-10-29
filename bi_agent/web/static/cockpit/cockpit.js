@@ -60,7 +60,7 @@
     return;
   }
 
-  const {createApp, ref, computed, reactive, onMounted, onBeforeUnmount, nextTick, shallowRef, markRaw, getCurrentInstance} = window.Vue;
+  const {createApp, ref, computed, reactive, onMounted, onBeforeUnmount, onErrorCaptured, nextTick, shallowRef, markRaw, getCurrentInstance} = window.Vue;
 
   const dashboardDataMode = ref('ap');
   let liveDataClient = null;
@@ -520,12 +520,15 @@
       const stage = computed(() => SLOT_STAGE[props.insight.id] || 'shipment');
       const state = computed(() => stateFor(stage.value));
       const delivered = shallowRef(null);
+      const componentError = ref('');
       const insightSlotProps = computed(() => ({
         ...props.slotProps,
         apiBase,
         identityId: Number(identityId),
         page: props.page,
         stage: stage.value,
+        uiScope: currentUiScope,
+        period: PERIOD,
       }));
       const analysisContext = computed(() => ({
         id: Number(identityId),
@@ -570,6 +573,14 @@
         observer.observe(el);
       };
       visibleStages.set(registeredStage,(visibleStages.get(registeredStage)||0)+1);
+      onErrorCaptured((cause, _instance, info) => {
+        // A broken delivered component must terminate its own loading state.
+        // Leaving the shallow child mounted made the slot look like a model
+        // job that never finished.
+        componentError.value = `AI 卡片渲染失败：${cause?.message || cause || info || '未知异常'}`;
+        delivered.value = null;
+        return false;
+      });
       onBeforeUnmount(()=>{
         alive=false;
         if(observer)observer.disconnect();
@@ -589,16 +600,19 @@
           await ensureSlotAnalysis(props.insight.id,stage.value);onPageActivity();
         } catch(cause) {if(alive)insightLoadError.value=`插槽加载失败：${cause.message||cause}`;}
       });
-      return {dashboardDataMode, delivered, state, analysisContext, insightSlotProps, reload, insightLoadError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
+      return {dashboardDataMode, delivered, state, analysisContext, insightSlotProps, reload, insightLoadError, componentError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
     },
     template: `
-      <component v-if="delivered" :is="delivered"
-                 :analysis="state.item" :status="state.status" :progress="state.progress"
-                 :cached="state.cached" :refreshing="state.refreshing"
-                 :stale="Boolean(state.stale)" :scope-notice="state.scopeNotice || ''"
-                 :error="state.error" :context="analysisContext" :slot-props="insightSlotProps"
-                 @retry="reload"></component>
-      <div v-else-if="insightLoadError" class="insight-runtime-empty" role="status">{{ insightLoadError }}</div>
+      <div v-if="delivered" class="cockpit-insight-slot">
+        <div v-if="state.scopeNotice" class="insight-scope-notice" role="status">{{ state.scopeNotice }}</div>
+        <component :is="delivered"
+                   :analysis="state.item" :status="state.status" :progress="state.progress"
+                   :cached="state.cached" :refreshing="state.refreshing"
+                   :stale="Boolean(state.stale)" :scope-notice="state.scopeNotice || ''"
+                   :error="state.error" :context="analysisContext" :slot-props="insightSlotProps"
+                   @retry="reload"></component>
+      </div>
+      <div v-else-if="insightLoadError || componentError" class="insight-runtime-empty" role="status">{{ insightLoadError || componentError }}</div>
       <div v-else class="insight-runtime-empty" role="status" aria-label="插槽组件加载中"></div>
     `,
   };
@@ -1152,9 +1166,12 @@
             pageCache=createPageCache({apiBase,id:identityId,page:page.value,makeClient,bodyFor:baseMainBody,
               onState:value=>Object.assign(pageState,value),
               onSnapshot:snapshot=>{
-                const changed=fullSnapshot?.version!==snapshot.version;
-                if(changed)install(snapshot,true);
-                else{fullSnapshot=snapshot;Object.assign(pageState,{dataAsOf:snapshot.dataAsOf,analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.updatedAt||0))),error:'',refreshing:false,updateStatus:'published'});}
+                // Background publications refresh metadata and AI cards in
+                // place. Remounting the delivered board here would clear all
+                // chart state and replay every query for a silent update.
+                fullSnapshot=snapshot;
+                if(snapshot.items)publications?.preload(snapshot.items);
+                Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.updatedAt||0))),error:'',refreshing:false,updateStatus:'published',displayStale:false});
               }});
             // Tab switches stay inside the mounted board.  Keep the SDK
             // instance and its data client intact: replacing either one makes
@@ -1168,9 +1185,9 @@
               pageCache=createPageCache({apiBase,id:identityId,page:target,makeClient,bodyFor:baseMainBody,
                 onState:value=>Object.assign(pageState,value),
                 onSnapshot:snapshot=>{
-                  const changed=fullSnapshot?.version!==snapshot.version;
-                  if(changed)install(snapshot,true);
-                  else{fullSnapshot=snapshot;Object.assign(pageState,{dataAsOf:snapshot.dataAsOf,analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.updatedAt||0))),error:'',refreshing:false,updateStatus:'published'});}
+                  fullSnapshot=snapshot;
+                  if(snapshot.items)publications?.preload(snapshot.items);
+                  Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.updatedAt||0))),error:'',refreshing:false,updateStatus:'published',displayStale:false});
                 }});
               let analysisReady=Promise.resolve(),cardsReady=Promise.resolve();
               if(scope==='default'){
@@ -1223,7 +1240,10 @@
                 if(status.publicationVersion&&(!fullSnapshot||status.publicationVersion!==fullSnapshot.version)){
                   const snapshot=await pageCache.load(scope);
                   if(snapshot&&scope===currentUiScope){
-                    install(snapshot,true);
+                    // Keep the mounted charts and data client intact. Publish
+                    // new metadata/cards into the existing page version.
+                    fullSnapshot=snapshot;
+                    if(snapshot.items)publications?.preload(snapshot.items);
                     Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,displayStale:false,refreshing:false,error:'',updateStatus:'published'});
                   }
                 }

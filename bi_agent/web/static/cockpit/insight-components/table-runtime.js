@@ -1,5 +1,29 @@
-/** Shared ProDataTable adapter for AP fact tables with validated AI columns. */
+/** Shared ProDataTable adapter for cached AP facts with validated AI columns. */
 const { cockpitApiBase, cockpitIdentityId } = window.InsightRuntime
+
+const RESULT_CACHE_LIMIT = 60
+const REFRESH_WINDOW_MS = 5 * 60 * 1000
+const resultCache = new Map()
+const lastRefreshed = new Map()
+
+function remember(cache, key, value) {
+  if (cache.has(key)) cache.delete(key)
+  cache.set(key, value)
+  while (cache.size > RESULT_CACHE_LIMIT) cache.delete(cache.keys().next().value)
+}
+
+function stable(value) {
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable(value[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function pageScope(props) {
+  const slot = props.slotProps || {}
+  return String(slot.uiScope || slot.scopeKey || 'default')
+}
 
 function apQuery(ctx, fields) {
   const dimensions = []
@@ -16,18 +40,39 @@ function apQuery(ctx, fields) {
   return {analysisConfig: {dimensions, indicators}, commonConfig}
 }
 
-async function requestRows(tableKey, fields, props, ctx) {
+function querySignature(tableKey, props, ctx, fields) {
+  return stable({
+    tableKey,
+    scope: pageScope(props),
+    analysis: [props.analysis?.id || '', props.analysis?.updatedAt || ''],
+    fields: fields.map(field => field.identifierCode),
+    params: ctx?.params || {},
+    filters: ctx?.filters || [],
+  })
+}
+
+async function requestRows(tableKey, fields, props, ctx, {cacheOnly=false} = {}) {
   const slot = props.slotProps || {}
   const apiBase = String(slot.apiBase || cockpitApiBase()).replace(/\/$/, '')
   const identityId = Number(slot.identityId) === 2 ? 2 : Number(slot.identityId) === 1 ? 1 : cockpitIdentityId()
   const response = await fetch(`${apiBase}/ai-tables/${encodeURIComponent(tableKey)}/query`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json', Accept: 'application/json'},
-    body: JSON.stringify({id: identityId, ...apQuery(ctx, fields)}),
+    body: JSON.stringify({
+      id: identityId,
+      uiScope: pageScope(props),
+      period: String(slot.period || ''),
+      cacheOnly,
+      ...apQuery(ctx, fields),
+    }),
   })
   const payload = await response.json().catch(() => null)
   if (!response.ok || !payload) throw new Error(payload?.detail || `表格查询失败 ${response.status}`)
-  return {data: Array.isArray(payload.rows) ? payload.rows : [], total: Number(payload.total) || 0}
+  return {
+    data: Array.isArray(payload.rows) ? payload.rows : [],
+    total: Number(payload.total) || 0,
+    meta: payload.meta || {},
+  }
 }
 
 export function createTableInsight({id, name, title, tableKey, fields, columns, showTitle = false}) {
@@ -43,6 +88,9 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
     name,
     props: insightProps,
     setup(props) {
+      const scopeState = Vue.ref('')
+      const scopeError = Vue.ref('')
+      const revision = Vue.ref(0)
       const component = Vue.markRaw({
         id: `insight-${id}`,
         type: 'table',
@@ -53,13 +101,78 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
         dataConfig: {pageSize: 10, sourceType: 'ap', tableFields: displayFields},
         tableColumnConfig: columns,
       })
-      const revision = Vue.computed(() => `${props.analysis?.id || ''}:${props.analysis?.updatedAt || ''}`)
+      const componentKey = Vue.computed(() => `${pageScope(props)}:${props.analysis?.id || ''}:${props.analysis?.updatedAt || ''}:${revision.value}`)
+      const refreshing = new Set()
+
+      async function refreshInBackground(ctx, signature) {
+        if (refreshing.has(signature)) return
+        const refreshedAt = Number(lastRefreshed.get(signature) || 0)
+        if (Date.now() - refreshedAt < REFRESH_WINDOW_MS) return
+        refreshing.add(signature)
+        scopeState.value = '已显示上次保存的表格，正在后台更新'
+        await new Promise(resolve => setTimeout(resolve, 300))
+        try {
+          const live = await requestRows(tableKey, fields, props, ctx)
+          const previous = resultCache.get(signature)
+          const changed = stable(live.data) !== stable(previous?.data || [])
+            || Number(live.meta.generatedAt || 0) > Number(previous?.meta?.generatedAt || 0)
+          remember(resultCache, signature, live)
+          lastRefreshed.set(signature, Date.now())
+          scopeError.value = ''
+          if (changed) {
+            scopeState.value = '表格数据已更新'
+            revision.value += 1
+          } else {
+            scopeState.value = '表格已是最新版本'
+          }
+        } catch (cause) {
+          scopeError.value = `后台更新失败，继续展示上次表格：${cause.message || cause}`
+          scopeState.value = ''
+        } finally {
+          refreshing.delete(signature)
+        }
+      }
+
+      async function request(ctx) {
+        const signature = querySignature(tableKey, props, ctx, fields)
+        const saved = resultCache.get(signature)
+        if (saved) {
+          scopeState.value = saved.meta?.cacheStatus === 'hit' ? '已加载上次保存的表格' : '表格数据已加载'
+          return saved
+        }
+        try {
+          scopeState.value = '正在读取已保存的表格'
+          const cached = await requestRows(tableKey, fields, props, ctx, {cacheOnly: true})
+          if (cached.meta?.cacheStatus === 'hit') {
+            remember(resultCache, signature, cached)
+            scopeState.value = '已加载上次保存的表格'
+            refreshInBackground(ctx, signature).catch(() => {})
+            return cached
+          }
+          scopeState.value = '正在加载表格数据'
+          const live = await requestRows(tableKey, fields, props, ctx)
+          remember(resultCache, signature, live)
+          lastRefreshed.set(signature, Date.now())
+          scopeState.value = live.meta?.cacheStatus === 'refreshed' ? '表格数据已加载' : ''
+          scopeError.value = ''
+          return live
+        } catch (cause) {
+          scopeError.value = cause.message || String(cause)
+          scopeState.value = ''
+          throw cause
+        }
+      }
+
       return () => Vue.h('section', {class: ['ai-table', id]}, [
+        scopeState.value || scopeError.value
+          ? Vue.h('div', {class: ['ai-table-state', scopeError.value ? 'ai-table-state--error' : ''], role: 'status'},
+              scopeError.value || scopeState.value)
+          : null,
         Vue.h(ProUIBi.ProDataTable, {
-          key: revision.value,
+          key: componentKey.value,
           autoScrollY: false,
           component,
-          request: ctx => requestRows(tableKey, fields, props, ctx),
+          request,
         }),
       ])
     },
