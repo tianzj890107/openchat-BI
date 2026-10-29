@@ -59,6 +59,35 @@ def _component_counts(components: list[dict]) -> dict:
     }
 
 
+def _align_default_period(root: list[dict], templates: dict[str, dict]) -> None:
+    """Make the delivered period label agree with the default grain.
+
+    The delivered metadata selects the annual grain by default, but its header
+    date filter carries the prototype month ``2025-10``.  ProUI then renders a
+    month while every query is executed for the full year.  Keep the upstream
+    component untouched and normalise only this host-level default so the
+    visible filter and the AP query describe the same period.
+    """
+    all_components = [*root, *(
+        component for template in templates.values()
+        for component in template.get("components", [])
+    )]
+    annual = any(
+        item.get("default") and item.get("grain") == "year"
+        for component in all_components if component.get("type") == "button-group"
+        for item in (component.get("buttonGroupConfig") or {}).get("items", [])
+    )
+    if not annual:
+        return
+    for component in root:
+        if component.get("type") != "composite-filter":
+            continue
+        values = ((component.get("baseConfig") or {}).get("defaultValue") or {}).get("values") or {}
+        value = values.get("YWLN_D044")
+        if isinstance(value, str) and len(value) >= 4 and value[:4].isdigit():
+            values["YWLN_D044"] = value[:4]
+
+
 def _template_refs(value):
     if isinstance(value, dict):
         for key, child in value.items():
@@ -143,6 +172,7 @@ def release_payload() -> dict:
     source = _json(METADATA / "source.json")
     root = deepcopy(_json(METADATA / "components.json"))
     templates = deepcopy(_json(METADATA / "template-registry.json"))
+    _align_default_period(root, templates)
     insights = _json(METADATA / "insights.json")
     activate_rules = _json(ACTIVATE_RULES)
     snapshot_source = _json(RELEASE / "source.json")

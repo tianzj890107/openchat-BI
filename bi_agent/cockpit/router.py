@@ -76,9 +76,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     router=APIRouter(prefix="/api/cockpit",tags=["cockpit"])
     source=DemoSource();stores={};lock=threading.RLock();jobs={};capacity=threading.BoundedSemaphore(3)
     try:
-        reuse_ttl = max(5, min(300, int(os.getenv('COCKPIT_AP_REUSE_SECONDS', '45'))))
+        # A browser refresh must be able to reuse the last successful AP
+        # receipts for the same exact query.  The old 45-second window made a
+        # normal reload issue every slow SQL again; five minutes preserves the
+        # last rendered data while the background refresh validates freshness.
+        reuse_ttl = max(5, min(900, int(os.getenv('COCKPIT_AP_REUSE_SECONDS', '300'))))
     except ValueError:
-        reuse_ttl = 45
+        reuse_ttl = 300
     ap_reuse = APReuse(ttl=reuse_ttl)
     def store():
         path=str(Path(get_cwd()).resolve()/"dataset"/"cockpit"/"history.sqlite3")
@@ -351,11 +355,11 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         of their component contracts, not a fabricated per-card analysis.
         """
         page_cards = {}
-        # Stage publications are currently persisted for the delivered default
-        # scope.  A custom filter must not receive default-scope cards as if
-        # they matched its range; the browser keeps the old cards visibly
-        # labelled until a custom-scope publication exists.
-        if main_context is not None and ui_scope == 'default':
+        # Always expose the last successful default-scope card.  For a custom
+        # filter it is explicitly marked as a display-only fallback, so a page
+        # reload cannot turn every AI slot into a blank "missing" card while the
+        # server is preparing the new scope.
+        if main_context is not None:
             for page_name in ('operations', 'analysis'):
                 page_cards[page_name] = published_default(
                     identity, 'main', page_name, True)['items']
@@ -401,6 +405,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             )
 
         slots = {}
+        scope_match = ui_scope == 'default'
         for slot in slot_registry():
             item = stage_items.get(slot['stage'])
             update = refresh_for(slot, item)
@@ -413,6 +418,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                                (item or {}).get('updatedAt') or 0),
                 lastSuccessfulPublication=item,
                 lastSuccessfulAt=float((item or {}).get('updatedAt') or 0),
+                scopeMatch=scope_match,
+                displayScope='default' if item else '',
                 refreshStatus=update['status'],
                 lastRefreshError=update['lastRefreshError'],
                 update=update,
@@ -435,6 +442,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         return dict(
             scopeKey=(ui_scope if ui_scope == 'default' else digest({'id': identity, 'scope': ui_scope})),
             requestedScope=ui_scope,
+            scopeMatch=scope_match,
+            displayScope='default' if slots and ready else '',
             registryVersion=REGISTRY_VERSION,
             contractVersion=CONTRACT,
             version=version,

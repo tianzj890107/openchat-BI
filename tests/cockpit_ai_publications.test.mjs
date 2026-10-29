@@ -39,3 +39,12 @@ test('cockpit owns a slot store outside the board and skips analysis for ready s
   assert.match(source,/markAiPublicationsStale\(notice\)/);
   assert.doesNotMatch(source,/aiPublicationStore\.slots\s*=\s*\{\s*\}/);
 });
+
+test('persisted AI cards start before runtime and mark default fallback cards stale', async () => {
+  const source = await readFile(new URL('../bi_agent/web/static/cockpit/cockpit.js', import.meta.url),'utf8');
+  assert.match(source,/function startAiPublications\(\)/);
+  assert.match(source,/startAiPublications\(\);\s*\n\s*document\.title/);
+  assert.match(source,/scopeMismatch=value\.scopeMatch===false/);
+  assert.match(source,/以下仍为上次默认口径分析/);
+  assert.match(source,/scopeMatch:value\.scopeMatch!==false/);
+});

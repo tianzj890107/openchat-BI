@@ -123,7 +123,7 @@ def test_missing_slots_are_explicit_and_never_empty_completed(tmp_path, monkeypa
                for item in value['slots'].values())
 
 
-def test_custom_scope_never_reuses_default_scope_cards(tmp_path, monkeypatch):
+def test_custom_scope_exposes_default_cards_only_as_marked_fallback(tmp_path, monkeypatch):
     cfg = Config()
     store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
     for stage, page in (('bid', 'operations'), ('quotation', 'operations'),
@@ -132,6 +132,12 @@ def test_custom_scope_never_reuses_default_scope_cards(tmp_path, monkeypatch):
         _save_stage(store, cfg, stage, page)
     value = _client(tmp_path, monkeypatch, cfg).get(
         '/api/cockpit/ai-publications?id=1&uiScope=month%3D2026-01').json()
-    assert value['readyCount'] == 0
-    assert value['missingCount'] == 15
+    assert value['readyCount'] == 15
+    assert value['missingCount'] == 0
     assert value['requestedScope'] == 'month=2026-01'
+    assert value['scopeMatch'] is False
+    assert value['displayScope'] == 'default'
+    assert all(item['scopeMatch'] is False and item['displayScope'] == 'default'
+               and item['status'] == 'ready' for item in value['slots'].values())
+    assert all(item['payload']['result']['summary'].endswith('已发布卡片')
+               for item in value['slots'].values())

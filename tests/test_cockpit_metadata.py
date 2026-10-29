@@ -25,7 +25,7 @@ def test_build_bundle_preserves_delivered_data_without_fixture_substitution():
     assert set(bundle["pages"]) == {"overview", "operations", "analysis"}
     assert bundle["sourceMode"] == "upstream-ap"
     assert bundle["datasets"] == {} and bundle["bindings"] == {} and bundle["overrides"] == []
-    assert bundle["roots"] == json.loads((ROOT / "components.json").read_text())
+    assert bundle["roots"] == runtime_payload()["dashboard"]["components"]
     assert bundle["templates"] == json.loads((ROOT / "template-registry.json").read_text())
     assert len(bundle["insights"]) == 15
     assert len(bundle["activateRules"]) == 6
@@ -128,7 +128,25 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     for page, template_id in PAGE_TEMPLATES.items():
         assert stored["templates"][template_id] == source_registry[template_id]
         assert stored["pages"][page]["components"] == source_registry[template_id]["components"]
-    assert stored["dashboard"]["components"] == json.loads((METADATA / "components.json").read_text())
+    delivered_root = json.loads((METADATA / "components.json").read_text())
+    assert stored["dashboard"]["components"] != delivered_root
+    assert [component["id"] for component in stored["dashboard"]["components"]] == [
+        component["id"] for component in delivered_root
+    ]
+
+
+def test_annual_default_period_label_matches_the_executed_query_range():
+    payload = runtime_payload()
+    filter_component = next(
+        component for component in payload["dashboard"]["components"]
+        if component.get("type") == "composite-filter"
+    )
+    assert filter_component["baseConfig"]["defaultValue"]["values"]["YWLN_D044"] == "2025"
+    operations = next(
+        component for component in payload["pages"]["operations"]["components"]
+        if component.get("type") == "button-group"
+    )
+    assert next(item for item in operations["buttonGroupConfig"]["items"] if item.get("default"))["grain"] == "year"
 
 
 def test_metadata_api_exposes_delivered_rules_and_keeps_legacy_analysis_endpoints(tmp_path):

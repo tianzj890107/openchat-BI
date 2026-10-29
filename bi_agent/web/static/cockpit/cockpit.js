@@ -83,8 +83,9 @@
   // Slot cards live outside the dashboard component lifecycle.  Tabs, node
   // switches and board remounts may change charts, but never clear this store.
   const aiPublicationStore = reactive({slots:{},expectedCount:15,readyCount:0,missingCount:0,
-    updatingCount:0,version:'',scopeKey:'',requestedScope:'',status:'idle',error:''});
+    updatingCount:0,version:'',scopeKey:'',requestedScope:'',displayScope:'',scopeMatch:true,status:'idle',error:''});
   let aiPublicationClient=null, resolveAiPublicationReady=null;
+  let aiPublicationBoot=null;
   let aiPublicationReady=new Promise(resolve=>{resolveAiPublicationReady=resolve;});
   const dashboardDescription = computed(() => {
     const parts = [];
@@ -151,11 +152,15 @@
       return;
     }
     const incoming=value.slots, previous=aiPublicationStore.slots, next={};
+    const scopeMismatch=value.scopeMatch===false;
+    const mismatchNotice='右上角筛选已切换，正在加载新口径；以下仍为上次默认口径分析';
     for(const [slotId,slot] of Object.entries(incoming)) {
       const prior=previous[slotId];
       if(slot.status==='ready') {
-        next[slotId]={...slot,stale:false,scopeNotice:''};
-        applyServerCard(slotId,slot,{stale:value.requestedScope!==currentUiScope});
+        const stale=scopeMismatch||slot.scopeMatch===false||value.requestedScope!==currentUiScope;
+        const slotNotice=stale?(notice||mismatchNotice):'';
+        next[slotId]={...slot,stale,scopeNotice:slotNotice};
+        applyServerCard(slotId,slot,{stale,notice:slotNotice});
       } else if(preserve && prior?.status==='ready') {
         // Missing means "no usable card for this scope", not "clear the card".
         // Keep the last successful payload explicitly labelled as old scope.
@@ -172,7 +177,9 @@
       expectedCount:Number(value.expectedCount||Object.keys(incoming).length||15),
       readyCount:Number(value.readyCount||0),missingCount:Number(value.missingCount||0),
       updatingCount:Number(value.updatingCount||0),version:value.version||'',
-      scopeKey:value.scopeKey||'',requestedScope:value.requestedScope||'',status:value.update?.status||'idle',
+      scopeKey:value.scopeKey||'',requestedScope:value.requestedScope||'',
+      displayScope:value.displayScope||'',scopeMatch:value.scopeMatch!==false,
+      status:value.update?.status||'idle',
       error:'',
     });
     settleMissingSlotStages();
@@ -190,6 +197,19 @@
     aiPublicationStore.error=String(error?.message||error||'AI卡片读取失败');
     if(!Object.keys(aiPublicationStore.slots).length)aiPublicationStore.status='unavailable';
     resolveAiPublicationReady?.();resolveAiPublicationReady=null;
+  }
+  function startAiPublications() {
+    if(analysisEngine!=='main'||aiPublicationClient)return Promise.resolve(aiPublicationClient);
+    if(!aiPublicationBoot)aiPublicationBoot=import(`${assetBase}/ai-publication-client.js?v=${encodeURIComponent(assetVersion)}`)
+      .then(({createAiPublicationClient})=>{
+        if(analysisEngine!=='main')return null;
+        aiPublicationClient=createAiPublicationClient({apiBase,id:identityId,
+          onUpdate:(value,meta)=>applyAiPublications(value,{preserve:meta?.preserve!==false}),
+          onError:failureAiPublications});
+        aiPublicationClient.start('default');
+        return aiPublicationClient;
+      }).catch(error=>{failureAiPublications(error);aiPublicationBoot=null;return null;});
+    return aiPublicationBoot;
   }
   function settleMissingSlotStages() {
     const readyStages=new Set();
@@ -994,17 +1014,11 @@
           }
         }
         if(analysisEngine==='main') {
-          const [{createPublicationClient},{createAiPublicationClient}]=await Promise.all([
+          const [{createPublicationClient}]=await Promise.all([
             import(`${assetBase}/publication-client.js?v=${encodeURIComponent(assetVersion)}`),
-            import(`${assetBase}/ai-publication-client.js?v=${encodeURIComponent(assetVersion)}`),
+            startAiPublications(),
           ]);
           publications=createPublicationClient({apiBase,stateFor,bodyFor:mainBody,queue:withAnalysisSlot});
-          aiPublicationClient=createAiPublicationClient({apiBase,id:identityId,
-            onUpdate:(value,meta)=>applyAiPublications(value,{preserve:meta?.preserve!==false}),
-            onError:failureAiPublications});
-          // Start the slot read immediately.  It is not chained to runtime,
-          // metrics or AP readiness, and its store survives the board below.
-          aiPublicationClient.start('default');
         }
         let installed;
         if (dataConfig.mode === 'ap') {
@@ -1293,6 +1307,10 @@
       }
 
       onMounted(() => {
+        // Persisted AI cards are independent of layout, metrics and AP
+        // readiness.  Start their read before runtime/config can delay the
+        // board, and keep the store alive across every board remount.
+        startAiPublications();
         document.title = `储能经营风险驾驶舱 · ${pageTitle.value}`;
         document.addEventListener('click', onTabClick, true);
         document.addEventListener('click', noteScopeAction, true);
