@@ -1137,6 +1137,9 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   页面显示“已推送（未经验证分析）”/“已创建（未经验证分析）”，按钮点击后禁用，无 JavaScript
   异常。四条测试条目均带“【验收测试】”标识和 `unverified/page_direct` 标记。
   Fuxi 列表可见性仍需在伏羲客户端人工确认；回执成功只代表 Fuxi 接收，不代表根因已验证。
+- Skill 分发包：`ontology-analytics-skill.zip` 已按当前源码重打，29 个文件，排除
+  `__pycache__`/`.pyc`，SHA256 `94c9d56dc83283fb1d4159adaa6206d55abbf251b46fbf776dc699f58f3256cb`；
+  工具说明已与 POC 直发模式对齐。分发包不入库。
 - 边界：上游 AP 当前存在 SQL 超时和未配置指标，属于数据配置/上游故障，页面按设计明确失败。
   未创建 MR/tag/Release，未升级正式版本。
 - 回退：停止本 release PID，使用旧 release
