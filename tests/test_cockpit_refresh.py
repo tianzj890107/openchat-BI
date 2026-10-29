@@ -114,6 +114,19 @@ def test_refresh_reuses_publication_when_evidence_is_unchanged(tmp_path):
     assert state['publicationVersion'] == current['version']
 
 
+def test_unchanged_refresh_does_not_append_duplicate_snapshots(tmp_path):
+    store, cfg, query, helmet, old = _fixture(tmp_path)
+    def snapshots():
+        with store.db() as db:
+            return db.execute('SELECT COUNT(*) FROM page_snapshots').fetchone()[0]
+    before = snapshots()
+    manager = RefreshManager(store, cfg,
+        lambda kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
+        _analysis_factory(store, []), interval=900, poll=0.01, timeout=5)
+    assert manager.refresh(old)['status'] == 'published'
+    assert snapshots() == before
+
+
 def test_refresh_runs_model_only_after_fingerprint_changes(tmp_path):
     store, cfg, query, helmet, old = _fixture(tmp_path)
     calls = []

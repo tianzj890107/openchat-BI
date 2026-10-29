@@ -128,8 +128,10 @@ class RefreshManager:
                                           uiScope=body.get('uiScope') or 'default',
                                           apReceiptIds=[r['id'] for r in records],
                                           analysisIds=analysis_ids), self.store, self.config, data_source='ap')
-            if not self.store.publish_page(scope, page):
-                raise RuntimeError('服务端复核结果早于当前发布版本，未覆盖')
+            current_page = self.store.published_page(scope)
+            if not current_page or current_page.get('version') != page.get('version'):
+                if not self.store.publish_page(scope, page):
+                    raise RuntimeError('服务端复核结果早于当前发布版本，未覆盖')
             now = time.time()
             self._set(scope, 'published', next_check=now + self.interval,
                       error='', last_success=now)

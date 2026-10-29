@@ -639,6 +639,8 @@
 - 持久与去重：`page_refresh` 记录状态、尝试次数、下次检查时间、租约和错误；`claim_refresh`
   用 `BEGIN IMMEDIATE` 加租约保证同一范围只有一个工作线程，进程重启后过期租约可重新领取；
   失败进入 `retry_wait`，按 60 秒递增退避、上限 15 分钟，旧版本始终可读。
+- 快照不膨胀：复核结果的页面版本与当前发布版本相同时只更新检查时间，不追加快照，避免每
+  15 分钟写入一份内容相同的历史副本。
 - 接口：新增 `GET /api/cockpit/publications/status`（只返回版本、数据时间、分析时间、
   更新状态与下次检查时间）和 `POST /api/cockpit/publications/refresh`（手工置为待刷新）。
   `GET /api/cockpit/startup` 改为返回快照与分析状态，不再因为打开页面启动分析；
