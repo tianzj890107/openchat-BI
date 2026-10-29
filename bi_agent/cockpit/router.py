@@ -268,7 +268,17 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                     current=items.get(stage)
                     if current is None or float(item.get('updatedAt') or 0)>=float(current.get('updatedAt') or 0):
                         items[stage]=item
-        return dict(items={k:compact_analysis(v) for k,v in items.items()} if compact else items,cardContract=CONTRACT)
+        # A metadata/config rotation hides the keyed view but not the user's
+        # last analysis.  Show it as display-only until the scheduler republishes.
+        for data_identity in identities:
+            for stage,item in store().latest_views(id,engine,page,data_identity=data_identity).items():
+                if stage not in items:
+                    items[stage]=dict(item,displayOnly=True)
+        if compact:
+            items={stage:({**compact_analysis(item),'displayOnly':True}
+                          if item.get('displayOnly') else compact_analysis(item))
+                   for stage,item in items.items()}
+        return dict(items=items,cardContract=CONTRACT)
 
     @router.get('/page')
     def published_page(id:int=1,page:Literal['overview','operations','analysis']='overview',uiScope:str='default'):
@@ -308,6 +318,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     @router.get('/publications/cards')
     def publication_cards(id:int=1,page:Literal['overview','operations','analysis']='overview'):
         if id not in (1,2):raise HTTPException(422,'无效身份')
+        from .cards import CONTRACT
         items=published_default(id,'main',page,True)['items'] if main_context is not None else {}
         return dict(items=items,cardContract=CONTRACT)
 

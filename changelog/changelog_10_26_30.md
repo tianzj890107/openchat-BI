@@ -659,6 +659,7 @@
 - 前端：`cockpit.js` 用 `publication-poll.js` 单一状态轮询替代浏览器定时发布：探测异常继续
   重试，页面卸载后停止，标签页隐藏时降频，重新可见时立即检查；发现新整页版本才拉取替换，
   没有整页快照的页面按 `cardsVersion` 原位替换环节卡片。旧卡片不会覆盖更新时间更新的卡片；
+  配置版本轮换后仍以 `displayOnly` 展示上次分析并提示“后台正在更新”，避免部署后瞬间清空卡片；
   缓存命中与新版本应用共用同一入口，统一清理 `stale`、`scopeNotice`、`progress`、`error`、
   `refreshing`；`page-client.js` 增加 `status()`、`cards()`。
 - 数据读取：`latest_page` 与调度扫描改为 SQL 侧按 `json_extract` 过滤，只加载需要处理的
@@ -667,7 +668,7 @@
   `dashboard_source.py`、`bi_agent/web/app.py`、`bi_agent/web/static/cockpit/cockpit.js`、
   `page-client.js`、`publication-client.js`、`publication-poll.js`、
   `tests/test_cockpit_refresh.py`、`tests/cockpit_publication_poll.test.mjs`。
-- 验证：Cockpit 聚焦回归 147 项 Python、48 项 JS 通过；新增用例覆盖真实共享证据解析、
+- 验证：Cockpit 聚焦回归 155 项 Python、48 项 JS 通过；新增用例覆盖真实共享证据解析、
   PostgreSQL 补查整页发布、无整页快照的卡片维护、手工刷新租约去重、自定义范围实际执行、
   轮询失败续跑和卡片版本原位替换。
 - 边界：默认范围由服务端维护，自定义筛选仍按访问触发；调度器只复核原页面查询，不修复上游

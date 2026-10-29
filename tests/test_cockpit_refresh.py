@@ -495,3 +495,26 @@ def test_manual_refresh_of_a_custom_scope_is_executed_by_the_scheduler(tmp_path,
     assert store.refresh_state(custom)['status'] == 'published'
     # Unchanged custom evidence reuses the last complete page and spends no model call.
     assert calls == []
+
+
+def test_rotated_card_key_still_displays_the_last_analysis(tmp_path, monkeypatch):
+    from bi_agent.cockpit.dashboard_source import RELEASE
+    from bi_agent.cockpit.publications import view_scope
+    store, cfg, _page = _router_fixture(tmp_path)
+    context = dict(id=1, engine='main', page='analysis', stage='shipment', source='service',
+                   defaultView=True, chartSnapshotId=RELEASE, chartQueries=[],
+                   period='2025-10', department='全部产品部', filters={}, repositoryId='',
+                   clarifications={}, baselineAnalysisId='', dataSource='ap',
+                   dataIdentity=cfg.identity(), dataFingerprint='old-fingerprint')
+    item = store.create_analysis('old-card', context)
+    store.update_analysis(item['id'], status='limited',
+                          result=dict(summary='last analysis', cardContract=CONTRACT),
+                          evidence={'facts': [], 'records': [], 'evidence': []})
+    with patch('bi_agent.cockpit.publications.config_version', return_value='before-metadata-sync'):
+        old_key = view_scope(context)
+    store.publish(item['id'])
+    store.bind_view(old_key, 'shipment', item['scope'])
+    saved = _client(tmp_path, monkeypatch, cfg).get(
+        '/api/cockpit/analyses/published?id=1&page=analysis').json()['items']
+    assert saved['shipment']['id'] == item['id']
+    assert saved['shipment']['displayOnly'] is True

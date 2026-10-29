@@ -12,7 +12,9 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
       const current=stateFor(stage);
       // A preloaded or polled card must never replace a newer delivered card.
       if(current.item&&Number(current.item.updatedAt||0)>Number(item.updatedAt||0))continue;
-      known.add(stage);Object.assign(current,{item,status:'done',refreshing:false,error:'',cached:true,stale:false,scopeNotice:''});
+      known.add(stage);
+      Object.assign(current,{item,status:'done',refreshing:false,error:'',cached:true,stale:false,
+        scopeNotice:item.displayOnly?'当前展示上次分析，后台正在更新':''});
     }
   }
   function invalidate(notice='') {

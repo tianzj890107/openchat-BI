@@ -286,6 +286,29 @@ class Store:
             rows=db.execute('SELECT v.stage,a.body FROM publication_views v JOIN publications p ON p.scope=v.scope JOIN analyses a ON a.id=p.analysis_id WHERE v.view_key=?',(view_key,)).fetchall()
         return {r[0]:json.loads(r[1]) for r in rows}
 
+    def latest_views(self, identity, engine, page, *, data_identity=None):
+        """Newest published card per stage, even if the config key rotated.
+
+        Display-only history: the card keeps its original analysis timestamp and
+        is replaced by the scheduler once a card for the current contract is
+        published.
+        """
+        with self.db() as db:
+            rows = db.execute(
+                "SELECT v.stage, a.body FROM publication_views v "
+                "JOIN publications p ON p.scope=v.scope "
+                "JOIN analyses a ON a.id=p.analysis_id "
+                "WHERE json_extract(a.body,'$.context.id')=? "
+                "AND json_extract(a.body,'$.context.engine')=? "
+                "AND json_extract(a.body,'$.context.page')=? "
+                "AND (? IS NULL OR json_extract(a.body,'$.context.dataIdentity')=?) "
+                "ORDER BY a.updated DESC",
+                (identity, engine, page, data_identity, data_identity)).fetchall()
+        result = {}
+        for row in rows:
+            result.setdefault(row[0], json.loads(row[1]))
+        return result
+
     def recover(self):
         # Called once when this process opens a store. Preserve records; never delete history.
         for item in self.list_analyses(limit=10000):
