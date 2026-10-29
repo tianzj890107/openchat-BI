@@ -1130,6 +1130,12 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   `executionId=5c6f6aa5e5fe41ceb2500531a0b9800e`，Fuxi 回执 `applied=1`。两条均标注
   `temporaryDraft=true`、`verificationStatus=unverified`、`sourceKind=page_direct`；同一
   action 再次提交返回相同 `sourceTodoId`/`executionId` 且 `idempotentReplay=true`，未重复创建。
+  另生成一张仅用于验收的 Canvas 行动卡页面（`canvas-20261029-094108-看板风险直发验收测试.html`），
+  在 headless Chrome 中分别点击“推送风险”和“发送任务令”：风险回执
+  `analytics-risk-canvas-243e4bc6cbeb681d62187253636a12f2-risk-html-verify-20261029`，
+  待办回执 `analytics-canvas-bfea4966ace4c2b39f3cddd7e829b17f-todo-html-verify-20261029`；
+  页面显示“已推送（未经验证分析）”/“已创建（未经验证分析）”，按钮点击后禁用，无 JavaScript
+  异常。四条测试条目均带“【验收测试】”标识和 `unverified/page_direct` 标记。
   Fuxi 列表可见性仍需在伏羲客户端人工确认；回执成功只代表 Fuxi 接收，不代表根因已验证。
 - 边界：上游 AP 当前存在 SQL 超时和未配置指标，属于数据配置/上游故障，页面按设计明确失败。
   未创建 MR/tag/Release，未升级正式版本。
