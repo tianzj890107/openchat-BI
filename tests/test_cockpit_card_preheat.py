@@ -200,8 +200,14 @@ def test_scheduler_preheats_targets_that_have_no_saved_card(tmp_path):
     views = store.default_views()
     assert {(body['context']['page'], stage) for _key, stage, body in views} >= {
         ('operations', 'bid'), ('operations', 'quotation'), ('operations', 'order'),
-        ('analysis', 'opportunity'), ('analysis', 'order'), ('analysis', 'shipment'),
+        ('analysis', 'opportunity'), ('analysis', 'shipment'),
     }
+    # 订单接收 is one business stage shared by both pages.  The API exposes it
+    # under both slot ids, but preheat must not run a second model call merely
+    # because the same stage is mounted on the penetration page.
+    order_cards = [body for _key, stage, body in views
+                   if stage == 'order' and body['context']['id'] == 1]
+    assert len(order_cards) == 1
     # The stage card is bound to the operations page, not to whichever page
     # happened to publish it first.
     for stage in ('quotation', 'order'):

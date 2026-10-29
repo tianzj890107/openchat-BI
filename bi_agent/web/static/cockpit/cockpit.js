@@ -72,6 +72,12 @@
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
   const pageState = reactive({cached:false,dataAsOf:0,analyzedAt:0,refreshing:false,updateStatus:'idle',displayStale:false,error:''});
+  // Slot cards live outside the dashboard component lifecycle.  Tabs, node
+  // switches and board remounts may change charts, but never clear this store.
+  const aiPublicationStore = reactive({slots:{},expectedCount:15,readyCount:0,missingCount:0,
+    updatingCount:0,version:'',scopeKey:'',requestedScope:'',status:'idle',error:''});
+  let aiPublicationClient=null, resolveAiPublicationReady=null;
+  let aiPublicationReady=new Promise(resolve=>{resolveAiPublicationReady=resolve;});
   const dashboardDescription = computed(() => {
     const parts = [];
     if (pageState.cached) parts.push('完整看板 · 数据时间 ' + new Date(pageState.dataAsOf * 1000).toLocaleString('zh-CN', {hour12:false}));
@@ -102,6 +108,93 @@
     'shipment-cause-breakdown': 'shipment',
     'shipment-task-order': 'shipment',
   };
+  function validAiCard(item) {
+    const result=item?.result;
+    return result?.cardContract==='cockpit-cards-v1' && typeof result.summary==='string' &&
+      result.summary.trim() && Array.isArray(result.causes) && Array.isArray(result.recommendations) &&
+      Array.isArray(result.limitations);
+  }
+  function slotPublication(slotId) {
+    return aiPublicationStore.slots[slotId] || null;
+  }
+  function hasPublishedSlot(slotId) {
+    const slot=slotPublication(slotId);
+    return analysisEngine==='main' && slot?.status==='ready' && validAiCard(slot.payload);
+  }
+  function applyServerCard(slotId, slot, {stale=false, notice=''}={}) {
+    if(!slot || slot.status!=='ready' || !validAiCard(slot.payload))return;
+    const stage=slot.stage || SLOT_STAGE[slotId];
+    if(!stage)return;
+    const state=stateFor(stage);
+    // An explicit user analysis is authoritative until it settles.  A polled
+    // card can replace an older successful card, but never interrupt work the
+    // user just started.
+    if(state.status==='running' && !state.item && !state.stale)return;
+    if(!state.stale && state.item && Number(state.item.updatedAt||0)>Number(slot.payload.updatedAt||0))return;
+    Object.assign(state,{item:slot.payload,status:'done',progress:'',cached:true,
+      refreshing:Boolean(slot.update?.active),stale,error:'',scopeNotice:stale?notice:''});
+  }
+  function applyAiPublications(value, {preserve=true, notice=''}={}) {
+    if(!value?.slots)return;
+    // A slower read for the previous filter must never repaint the current
+    // scope.  Keep the visible cards and let the newest request win.
+    if(value.requestedScope && value.requestedScope!==currentUiScope){
+      resolveAiPublicationReady?.();resolveAiPublicationReady=null;
+      return;
+    }
+    const incoming=value.slots, previous=aiPublicationStore.slots, next={};
+    for(const [slotId,slot] of Object.entries(incoming)) {
+      const prior=previous[slotId];
+      if(slot.status==='ready') {
+        next[slotId]={...slot,stale:false,scopeNotice:''};
+        applyServerCard(slotId,slot,{stale:value.requestedScope!==currentUiScope});
+      } else if(preserve && prior?.status==='ready') {
+        // Missing means "no usable card for this scope", not "clear the card".
+        // Keep the last successful payload explicitly labelled as old scope.
+        next[slotId]={...prior,refreshing:Boolean(slot.update?.active),stale:true,
+          refreshStatus:slot.refreshStatus,lastRefreshError:slot.lastRefreshError,update:slot.update,
+          scopeNotice:notice||'当前展示上次分析，后台正在更新'};
+        applyServerCard(slotId,prior,{stale:true,notice:next[slotId].scopeNotice});
+      } else {
+        next[slotId]=slot;
+      }
+    }
+    aiPublicationStore.slots=next;
+    Object.assign(aiPublicationStore,{
+      expectedCount:Number(value.expectedCount||Object.keys(incoming).length||15),
+      readyCount:Number(value.readyCount||0),missingCount:Number(value.missingCount||0),
+      updatingCount:Number(value.updatingCount||0),version:value.version||'',
+      scopeKey:value.scopeKey||'',requestedScope:value.requestedScope||'',status:value.update?.status||'idle',
+      error:'',
+    });
+    resolveAiPublicationReady?.();resolveAiPublicationReady=null;
+  }
+  function markAiPublicationsStale(notice) {
+    for(const [slotId,slot] of Object.entries(aiPublicationStore.slots)) {
+      if(slot.status!=='ready')continue;
+      aiPublicationStore.slots[slotId]={...slot,stale:true,refreshing:true,
+        scopeNotice:notice||'筛选口径已切换，正在加载新数据；以下仍为上次分析'};
+      applyServerCard(slotId,slot,{stale:true,notice:aiPublicationStore.slots[slotId].scopeNotice});
+    }
+  }
+  function failureAiPublications(error) {
+    aiPublicationStore.error=String(error?.message||error||'AI卡片读取失败');
+    if(!Object.keys(aiPublicationStore.slots).length)aiPublicationStore.status='unavailable';
+    resolveAiPublicationReady?.();resolveAiPublicationReady=null;
+  }
+  async function ensureSlotAnalysis(slotId, stage, refresh=false, urgent=false) {
+    if(analysisEngine!=='main') return ensureAnalysis(stage,refresh,urgent);
+    if(refresh) return ensureAnalysis(stage,true,urgent);
+    if(hasPublishedSlot(slotId)) return stateFor(stage).item;
+    // Opening, refreshing or scrolling a page only reads published cards; it
+    // must not start a model job.  Give the independent publication read a
+    // brief head start so an already-saved card wins the race.  Missing cards
+    // are filled by the server preheat scheduler, while the explicit retry
+    // action above remains available to the user.
+    await Promise.race([aiPublicationReady,new Promise(resolve=>setTimeout(resolve,2500))]);
+    if(hasPublishedSlot(slotId)) return stateFor(stage).item;
+    return null;
+  }
   const QUERY_STAGE_CODES = {
     opportunity: ['YWLN_M0022','YWLN_M0023','YWLN_M0024','YWLN_M0038','YWLN_M0039','YWLN_M0140','YWLN_D015','YWLN_D020'],
     guidance: ['YWLN_M0028','YWLN_D017'],
@@ -421,7 +514,7 @@
         }
         seenVisible=next;
         noteStageVisibility(registeredStage,next,order);
-        if(next)ensureAnalysis(registeredStage).catch(()=>{});
+        if(next)ensureSlotAnalysis(props.insight.id,registeredStage).catch(()=>{});
       };
       const registerSlot=()=>{
         const top=slotTop();
@@ -452,7 +545,7 @@
           // Give the observer one frame to report the real viewport before the
           // queue commits to an order; off-screen cards stay at low priority.
           await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-          await ensureAnalysis(stage.value);onPageActivity();
+          await ensureSlotAnalysis(props.insight.id,stage.value);onPageActivity();
         } catch(cause) {if(alive)insightLoadError.value=`插槽加载失败：${cause.message||cause}`;}
       });
       return {dashboardDataMode, delivered, state, analysisContext, insightSlotProps, reload, insightLoadError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
@@ -878,8 +971,17 @@
           }
         }
         if(analysisEngine==='main') {
-          const {createPublicationClient}=await import(`${assetBase}/publication-client.js?v=${encodeURIComponent(assetVersion)}`);
+          const [{createPublicationClient},{createAiPublicationClient}]=await Promise.all([
+            import(`${assetBase}/publication-client.js?v=${encodeURIComponent(assetVersion)}`),
+            import(`${assetBase}/ai-publication-client.js?v=${encodeURIComponent(assetVersion)}`),
+          ]);
           publications=createPublicationClient({apiBase,stateFor,bodyFor:mainBody,queue:withAnalysisSlot});
+          aiPublicationClient=createAiPublicationClient({apiBase,id:identityId,
+            onUpdate:(value,meta)=>applyAiPublications(value,{preserve:meta?.preserve!==false}),
+            onError:failureAiPublications});
+          // Start the slot read immediately.  It is not chained to runtime,
+          // metrics or AP readiness, and its store survives the board below.
+          aiPublicationClient.start('default');
         }
         let installed;
         if (dataConfig.mode === 'ap') {
@@ -948,7 +1050,11 @@
             // Keep the last complete cards on screen; the notice says the scope
             // changed and that the visible analysis still belongs to the old one.
             const notice='筛选口径已切换'+(detail?'（'+detail+'）':'')+'，正在加载新数据；以下仍为上次分析';
-            clearTimeout(refreshTimer);publications?.invalidate(notice);liveDataClient?.clearScope();
+            clearTimeout(refreshTimer);publications?.invalidate(notice);markAiPublicationsStale(notice);liveDataClient?.clearScope();
+            // The slot store is independent from the board.  Ask for the new
+            // scope, but keep every old payload on screen until a replacement
+            // has been validated and returned.
+            if(analysisEngine==='main')aiPublicationClient?.poke(0,uiScope);
             statusPoller?.poke(0);
             Object.assign(pageState,{cached:false,dataAsOf:0,error:'',refreshing:false,displayStale:true,updateStatus:'waiting'});
             filtersReady=false;await Promise.resolve();if(token!==pageEpoch)return;
@@ -1138,7 +1244,7 @@
         document.getElementById('cockpit-boot')?.remove();
         bootRuntime();
       });
-      onBeforeUnmount(() => {statusPoller?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
         page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,

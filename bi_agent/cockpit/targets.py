@@ -3,13 +3,15 @@
 The delivered dashboard is the source of truth: ``insights.json`` lists every
 slot and its embed path, and the tab in that path names the page.  The slot id
 itself carries the business meaning, so the slot -> stage mapping stays an
-explicit host contract.  ``slots()`` and ``unmapped_slots()`` exist so a new
-delivered slot cannot silently drop out of the preheat registry.
+explicit host contract.  ``slot_registry`` is the single registry used by the
+read API, preheat scheduler, frontend bootstrap and acceptance tests.  A new
+delivered slot cannot silently drop out of it.
 """
 from __future__ import annotations
 
 import json
 
+from .cards import CONTRACT
 from .runtime import METADATA, PAGE_IDS
 
 PAGES = ('overview', 'operations', 'analysis')
@@ -34,6 +36,17 @@ SLOT_STAGES = {
     'shipment-task-order': 'shipment',
 }
 
+# Output contract is deliberately explicit.  Several slots share one business
+# stage (and therefore one analysis), but the dashboard still needs a stable
+# slot-level identity for independent reads and acceptance counts.
+SLOT_OUTPUT_TYPES = {
+    'star-product-order-list': 'table',
+    'affected-order-list': 'table',
+    'overdue-order-list': 'table',
+    'shipment-task-order': 'table',
+}
+REGISTRY_VERSION = 'cockpit-ai-slots-v1'
+
 
 def slots() -> list[dict]:
     """Delivered AI slots, in dashboard order."""
@@ -51,6 +64,42 @@ def unmapped_slots() -> list[str]:
     """Slots that have no explicit stage mapping or no resolvable page."""
     return [slot.get('id', '') for slot in slots()
             if slot.get('id') not in SLOT_STAGES or not page_of_slot(slot)]
+
+
+def slot_registry() -> list[dict]:
+    """The fixed 15-slot contract used by every server/browser consumer."""
+    result = []
+    for slot in slots():
+        slot_id = slot.get('id', '')
+        result.append(dict(
+            slotId=slot_id,
+            page=page_of_slot(slot),
+            stage=SLOT_STAGES[slot_id],
+            outputType=SLOT_OUTPUT_TYPES.get(slot_id, 'card'),
+            contractVersion=CONTRACT,
+        ))
+    return result
+
+
+def maintenance_targets() -> list[tuple[int, str, str]]:
+    """Distinct page/stage work units for both delivered roles.
+
+    One analysis result is shared by every slot in a stage; keeping the target
+    at stage level avoids spending a model call per card while the public API
+    still exposes all 15 slot ids.
+    """
+    seen = set()
+    result = []
+    for identity in (1, 2):
+        for slot in slot_registry():
+            # The same stage can be rendered on operations and analysis.  A
+            # stage card is shared by both pages, so preheating it twice would
+            # spend a second model call for the same business analysis.
+            key = (identity, slot['stage'])
+            if key not in seen:
+                seen.add(key)
+                result.append((identity, slot['page'], slot['stage']))
+    return result
 
 
 def configured_targets() -> dict[str, tuple[str, ...]]:

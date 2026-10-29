@@ -822,3 +822,33 @@
   `tests/test_cockpit_refresh.py`。
 - 验证：Cockpit 聚焦回归 170 项 Python（含 14 个子用例）、62 项 JS 通过；`node --check`
   与 `git diff --check` 通过。新增用例锁住插槽 page prop 传递和后台单范围默认值。
+
+### 2026-10-29 18:29 · Cockpit 15 个 AI 插槽独立发布与稳定读取
+
+- 用户可见变化：Cockpit 启动后单独读取全部 15 个 AI 插槽的已发布结果，不再等待指标、
+  图表或 AP 查询。已有结果的插槽直接展示；没有结果的插槽明确标记为 `missing`，不会用
+  空内容冒充完成。切换三个 Tab、切换运营节点、图表/AP 失败或后台刷新期间，已加载卡片
+  保持可见，不再退回 loading。
+- 固定注册表：以 `insights.json` 的 15 个实际 `slotId` 为准，统一登记
+  `slotId/page/stage/outputType/contractVersion`。读取接口、预热调度和验收测试共用同一张
+  注册表；同一业务环节仍只分析一次，订单接收等跨页共享环节不会重复调用模型。
+- 独立读取接口：新增 `GET /api/cockpit/ai-publications?id=1&uiScope=default`，只访问持久化
+  发布记录，不触发 AP、`ensureAnalysis()` 或页面取数。响应返回
+  `expectedCount/readyCount/missingCount/updatingCount`、固定 slot 映射、每个插槽的
+  `status/generatedAt/dataAsOf/refreshStatus/payload`，并按内容生成轮询版本。
+- 服务端预热：缺失插槽立即登记补齐任务；无历史访问计划时，从交付包内的组件查询快照
+  生成对应环节查询计划，再重新取数、执行分析与卡片契约校验。成功结果持久化，失败只更新
+  错误状态并保留上一版；只有通过 `cockpit-cards-v1` 和摘要/原因/建议/限制结构校验的卡片
+  才能计为 ready。
+- 前端状态：新增 `ai-publication-client.js` 与页面外层 `aiPublicationStore`，在启动阶段
+  并行读取全部 slot，组件挂载后按 `slotId` 获取结果；命中已发布卡片时跳过
+  `ensureAnalysis()`。筛选口径真实变化时保留旧卡片并标注“以下仍为上次分析”，只允许最新
+  范围结果替换展示内容；后台新版本由轻量轮询自动回填，不重建看板。
+- 主要文件：`bi_agent/cockpit/targets.py`、`cards.py`、`refresh.py`、`router.py`、
+  `bi_agent/web/static/cockpit/ai-publication-client.js`、`cockpit.js`、`index.html`、
+  `tests/test_cockpit_slot_publications.py`、`tests/cockpit_ai_publications.test.mjs`。
+- 验证：Cockpit 聚焦回归 169 项 Python、67 项 Node 测试通过；`node --check` 与
+  `git diff --check` 通过。覆盖 15 slot 注册表、全部 ready/missing 计数、无 AP/模型读取、
+  旧卡片保留、缺失不冒充完成、共享环节只预热一次及真实查询计划补位。
+- 边界：本轮只提交并推送临时分支，未部署；线上已有卡片是否全部可读需部署后按两个角色、
+  三个页面复核，缺失项由服务端预热继续补齐。

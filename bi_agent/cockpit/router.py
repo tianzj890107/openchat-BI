@@ -17,15 +17,16 @@ from pydantic import BaseModel, Field, ConfigDict
 from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
 from .agent import run_analysis
+from .cards import CONTRACT, valid_card
 from .metadata import build_bundle
 from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
 from .publications import digest, legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
 from .page_cache import APReuse, PageLookup, PageRequest, build_page, legacy_page_scope, page_scope, transport_identity, compact_analysis
-from .targets import PAGES, target_stages
+from .targets import PAGES, REGISTRY_VERSION, slot_registry, target_stages
 from .ai_tables import TABLE_SPECS, TableQuery, annotate_rows, build_ap_query, result_rows
 from .refresh import (RefreshManager, RefreshScheduler, publication_status, scheduler_enabled,
-                      stage_card_status, view_target_scope)
+                      preheat_target_scope, stage_card_status, view_target_scope)
 
 RESULT_CONTRACT_VERSION="compact-v1"
 
@@ -340,6 +341,115 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                    for stage,item in items.items()}
         return dict(items=items,cardContract=CONTRACT)
 
+    def slot_publications(identity:int, ui_scope:str) -> dict:
+        """Read all configured AI slots from persisted publications only.
+
+        This path intentionally touches no AP endpoint, no analysis job and no
+        page-data preparation.  The slot registry is fixed, so the response has
+        the same 15 keys before and after a tab/node switch.  Several slots may
+        share one stage publication; that is the same result delivered to each
+        of their component contracts, not a fabricated per-card analysis.
+        """
+        page_cards = {}
+        # Stage publications are currently persisted for the delivered default
+        # scope.  A custom filter must not receive default-scope cards as if
+        # they matched its range; the browser keeps the old cards visibly
+        # labelled until a custom-scope publication exists.
+        if main_context is not None and ui_scope == 'default':
+            for page_name in ('operations', 'analysis'):
+                page_cards[page_name] = published_default(
+                    identity, 'main', page_name, True)['items']
+
+        stage_items = {}
+        for items in page_cards.values():
+            for stage, item in items.items():
+                if not valid_card(item):
+                    continue
+                current = stage_items.get(stage)
+                if current is None or float(item.get('updatedAt') or 0) >= float(current.get('updatedAt') or 0):
+                    stage_items[stage] = item
+
+        def refresh_for(slot, item):
+            keys = [preheat_target_scope(identity, slot['page'], slot['stage'])]
+            context = (item or {}).get('context') or {}
+            if context:
+                keys.insert(0, view_target_scope(view_scope(context), slot['stage']))
+            states = [store().refresh_state(key) or {} for key in keys]
+            statuses = [str(value.get('status') or 'idle') for value in states]
+            active = ['running', 'checking', 'queued', 'waiting', 'retry_wait']
+            if 'running' in statuses or 'checking' in statuses:
+                update_status = 'running'
+            elif 'queued' in statuses:
+                update_status = 'queued'
+            elif 'waiting' in statuses:
+                update_status = 'waiting'
+            elif 'retry_wait' in statuses:
+                update_status = 'retry_wait'
+            elif 'published' in statuses:
+                update_status = 'published'
+            else:
+                update_status = statuses[0] if statuses else 'idle'
+            errors = [str(value.get('last_error') or '') for value in states if value.get('last_error')]
+            next_checks = [float(value.get('next_check') or 0) for value in states if float(value.get('next_check') or 0) > 0]
+            return dict(
+                status=update_status,
+                active=update_status in active,
+                attempt=max((int(value.get('attempt') or 0) for value in states), default=0),
+                lastCheckedAt=max((float(value.get('updated') or 0) for value in states), default=0),
+                nextCheckAt=min(next_checks, default=0),
+                lastRefreshError='; '.join(errors)[:500],
+            )
+
+        slots = {}
+        for slot in slot_registry():
+            item = stage_items.get(slot['stage'])
+            update = refresh_for(slot, item)
+            status = 'ready' if item else 'missing'
+            slots[slot['slotId']] = dict(
+                **slot,
+                status=status,
+                generatedAt=float((item or {}).get('updatedAt') or 0),
+                dataAsOf=float(((item or {}).get('context') or {}).get('updatedAt') or
+                               (item or {}).get('updatedAt') or 0),
+                refreshStatus=update['status'],
+                lastRefreshError=update['lastRefreshError'],
+                update=update,
+                payload=item,
+            )
+
+        expected = len(slots)
+        ready = sum(1 for item in slots.values() if item['status'] == 'ready')
+        missing = expected - ready
+        updating = sum(1 for item in slots.values() if item['update']['active'])
+        version = digest([
+            (slot_id, value['status'], (value.get('payload') or {}).get('id', ''),
+             float((value.get('payload') or {}).get('updatedAt') or 0))
+            for slot_id, value in sorted(slots.items())
+        ])
+        checked = max((value['update']['lastCheckedAt'] for value in slots.values()), default=0)
+        next_check = min((value['update']['nextCheckAt'] for value in slots.values()
+                          if value['update']['nextCheckAt'] > 0), default=0)
+        errors = [value['lastRefreshError'] for value in slots.values() if value['lastRefreshError']]
+        return dict(
+            scopeKey=(ui_scope if ui_scope == 'default' else digest({'id': identity, 'scope': ui_scope})),
+            requestedScope=ui_scope,
+            registryVersion=REGISTRY_VERSION,
+            contractVersion=CONTRACT,
+            version=version,
+            expectedCount=expected,
+            readyCount=ready,
+            publishedCount=ready,
+            targetCount=expected,
+            missingCount=missing,
+            updatingCount=updating,
+            generatedAt=max((value['generatedAt'] for value in slots.values()), default=0),
+            dataAsOf=max((value['dataAsOf'] for value in slots.values()), default=0),
+            update=dict(status='running' if updating else ('retry_wait' if errors else 'idle'),
+                        lastCheckedAt=checked, nextCheckAt=next_check,
+                        error='; '.join(errors)[:500]),
+            slots=slots,
+        )
+
     @router.post('/ai-tables/{table_key}/query')
     def query_ai_table(table_key:str, req:TableQuery):
         if main_context is None or data_mode()!='ap':raise HTTPException(409,'AI表格仅支持主服务实时AP路线')
@@ -407,6 +517,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         from .cards import CONTRACT
         items=published_default(id,'main',page,True)['items'] if main_context is not None else {}
         return dict(items=items,cardContract=CONTRACT,cardsVersion=cards_version(items))
+
+    @router.get('/ai-publications')
+    def ai_publications(id:int=1,uiScope:str='default',scopeKey:str=''):
+        if id not in (1,2):raise HTTPException(422,'无效身份')
+        scope=(scopeKey or uiScope or 'default').strip()
+        if not 0<len(scope)<=16000:raise HTTPException(422,'无效发布范围')
+        return slot_publications(id,scope)
 
     @router.post('/publications/refresh')
     def request_publication_refresh(req:PageLookup):

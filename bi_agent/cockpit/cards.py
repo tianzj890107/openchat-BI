@@ -7,6 +7,23 @@ from .agent import Result, Cause, Recommendation, validate_result
 CONTRACT='cockpit-cards-v1'
 TOOL='CockpitDeliverCards'
 
+
+def valid_card(item) -> bool:
+    """Whether a persisted analysis can be rendered as a complete AI card.
+
+    A database row or a merely non-empty result is not enough: every public
+    slot needs the delivered card contract and the fields consumed by the
+    composition slot.  This is intentionally shared by publication reads and
+    background preheat so status cannot claim ready for an unusable payload.
+    """
+    result = (item or {}).get('result') if isinstance(item, dict) else None
+    if not isinstance(result, dict) or result.get('cardContract') != CONTRACT:
+        return False
+    if not isinstance(result.get('summary'), str) or not result['summary'].strip():
+        return False
+    return all(isinstance(result.get(key), list)
+               for key in ('causes', 'recommendations', 'limitations'))
+
 class CardCause(Cause):
     title:str=Field(min_length=1,max_length=32)
     description:str=Field(min_length=1,max_length=160)

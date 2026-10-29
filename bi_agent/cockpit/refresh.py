@@ -14,18 +14,138 @@ import os
 import threading
 import time
 
-from .dashboard_source import (RELEASE, filter_stage_selected, page_analysis_context,
+from .cards import valid_card
+from .dashboard_source import (RELEASE, STAGE_METRICS, filter_stage_selected, page_analysis_context,
                               supplement_failed_queries)
 from .page_cache import PageRequest, build_page, page_fingerprint, page_scope, transport_identity
 from .publications import config_version, digest, view_scope
-from .targets import configured_targets
+from .runtime import METADATA, SNAPSHOTS
+from .targets import maintenance_targets
 
 DEFAULT_IDENTITIES = (1, 2)
 DEFAULT_PAGES = ('overview', 'operations', 'analysis')
+_DELIVERED_QUERY_CACHE = None
+_COMPONENT_QUERY_CACHE = None
+_METRIC_STAGES = {code: stage for stage, codes in STAGE_METRICS.items() for code in codes}
 
 
 def _canonical(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+
+
+def delivered_stage_requests(stage):
+    """Query plans from the delivered release snapshot.
+
+    The snapshot is component metadata/configuration, not user evidence.  It
+    lets a never-opened node enter preheat without waiting for someone to click
+    it.  The refresh path still executes the queries again and validates the
+    new receipts, so this never reuses old values as fresh evidence.
+    """
+    global _DELIVERED_QUERY_CACHE
+    if _DELIVERED_QUERY_CACHE is None:
+        try:
+            _DELIVERED_QUERY_CACHE = json.loads(SNAPSHOTS.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            _DELIVERED_QUERY_CACHE = {}
+    selected = {}
+    for section in ('analysis', 'batch'):
+        for raw, result in (_DELIVERED_QUERY_CACHE.get(section) or {}).items():
+            if not isinstance(result, dict) or not result.get('success'):
+                continue
+            try:
+                request = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(request, (dict, list)):
+                selected[_canonical(request)] = {'request': request}
+    try:
+        kept, _excluded = filter_stage_selected(selected, stage)
+    except ValueError:
+        return []
+    return [selected[key]['request'] for key in sorted(kept)]
+
+
+def delivered_component_requests(stage):
+    """Build stage query plans from the delivered component configuration.
+
+    The release snapshot is useful for older delivered queries, but some nodes
+    use newer metric codes that are only present in ``runtime.json``.  Reading
+    the component field definitions keeps first-run preheat independent from a
+    browser visit without inventing metric meanings.  The generated requests
+    are executed and validated by the normal receipt/evidence path.
+    """
+    global _COMPONENT_QUERY_CACHE
+    if _COMPONENT_QUERY_CACHE is None:
+        try:
+            _COMPONENT_QUERY_CACHE = json.loads(
+                (METADATA.parent / 'runtime.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            _COMPONENT_QUERY_CACHE = {}
+    field_keys = {
+        'measure', 'subMeasure', 'target', 'valueAxis', 'tableFields', 'categoryAxis',
+        'dimensions', 'indicators', 'bidMeasure', 'shipMeasure', 'orderMeasure',
+        'quoteMeasure', 'paymentMeasure', 'opportunityMeasure',
+    }
+
+    def collect(value, dimensions, indicators):
+        if isinstance(value, dict):
+            code = value.get('identifierCode')
+            if isinstance(code, str) and code:
+                if value.get('fieldType') == 'Dimension':
+                    dimensions[code] = {key: value[key] for key in
+                                        ('identifierCode', 'label', 'alias', 'fieldType', 'valueType')
+                                        if key in value}
+                elif value.get('fieldType') == 'Indicator':
+                    indicators[code] = {key: value[key] for key in
+                                        ('identifierCode', 'label', 'alias', 'name', 'fieldType', 'valueType')
+                                        if key in value}
+        elif isinstance(value, list):
+            for item in value:
+                collect(item, dimensions, indicators)
+
+    candidates = {}
+    specs = list((_COMPONENT_QUERY_CACHE.get('pages') or {}).values())
+    specs.extend((_COMPONENT_QUERY_CACHE.get('templates') or {}).values())
+    for spec in specs:
+        for component in (spec or {}).get('components') or []:
+            data = component.get('dataConfig') or {}
+            dimensions, indicators = {}, {}
+            for key in field_keys:
+                collect(data.get(key), dimensions, indicators)
+            if not indicators:
+                continue
+            selected = {}
+            for code, indicator in indicators.items():
+                if code in _METRIC_STAGES:
+                    if _METRIC_STAGES[code] != stage:
+                        continue
+                    selected[code] = indicator
+                    continue
+                probe = {
+                    'analysisConfig': {'dimensions': list(dimensions.values()),
+                                       'indicators': [indicator]},
+                    'commonConfig': {'filters': {'logic': 'AND', 'children': []}},
+                }
+                try:
+                    kept, _excluded = filter_stage_selected({'probe': {'request': probe}}, stage)
+                except ValueError:
+                    return []
+                if kept:
+                    selected[code] = indicator
+            if not selected:
+                continue
+            query = {
+                'analysisConfig': {
+                    'dimensions': list(dimensions.values()),
+                    'indicators': list(selected.values()),
+                },
+                'commonConfig': {
+                    'filters': {'logic': 'AND', 'children': []},
+                    'pagination': {'pageNum': 1, 'pageSize': 500},
+                },
+            }
+            candidates[_canonical(query)] = {'request': query}
+    return [candidates[key]['request'] for key in sorted(candidates)]
 
 
 def _snapshot_scope(config, body):
@@ -392,7 +512,10 @@ class RefreshManager:
             if requests:
                 item = (body.get('items') or {}).get(stage) or {}
                 return item.get('context') or {}, requests
-        return {}, []
+        # No browser has visited this node.  The delivered release snapshot
+        # carries the exact component query plans; reuse those requests as a
+        # plan and fetch fresh receipts rather than requiring navigation first.
+        return {}, (delivered_component_requests(stage) or delivered_stage_requests(stage))
 
     def preheat_target(self, identity, page, stage):
         """Materialise a card for one configured slot, even before it is opened."""
@@ -530,10 +653,8 @@ class RefreshScheduler(threading.Thread):
 
     def _preheat_targets(self):
         targets = {}
-        for identity in DEFAULT_IDENTITIES:
-            for page, stages in configured_targets().items():
-                for stage in stages:
-                    targets[preheat_target_scope(identity, page, stage)] = (identity, page, stage)
+        for identity, page, stage in maintenance_targets():
+            targets[preheat_target_scope(identity, page, stage)] = (identity, page, stage)
         return targets
 
     def _seed(self, current, view_targets, preheat_targets):
@@ -570,12 +691,12 @@ class RefreshScheduler(threading.Thread):
         """Whether a saved card can already be served for this role/stage."""
         data_identity = self.manager.config.identity()
         for candidate in (page, *[item for item in DEFAULT_PAGES if item != page]):
-            if stage in self.store.latest_views(identity, 'main', candidate,
-                                                 data_identity=data_identity):
+            if valid_card(self.store.latest_views(identity, 'main', candidate,
+                                                  data_identity=data_identity).get(stage)):
                 return True
             body = self.store.latest_page(identity, candidate, 'default',
                                           data_identity=data_identity)
-            if body and stage in (body.get('items') or {}):
+            if body and valid_card((body.get('items') or {}).get(stage)):
                 return True
         return False
 
