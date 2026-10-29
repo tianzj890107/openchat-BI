@@ -8,7 +8,11 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
   const known=new Set();
   function preload(items) {
     for(const [stage,item] of Object.entries(items||{})) {
-      if(item?.result?.cardContract===CARD_CONTRACT) {known.add(stage);Object.assign(stateFor(stage),{item,status:'done',refreshing:false,error:'',cached:true,stale:false,scopeNotice:''});}
+      if(item?.result?.cardContract!==CARD_CONTRACT)continue;
+      const current=stateFor(stage);
+      // A preloaded or polled card must never replace a newer delivered card.
+      if(current.item&&Number(current.item.updatedAt||0)>Number(item.updatedAt||0))continue;
+      known.add(stage);Object.assign(current,{item,status:'done',refreshing:false,error:'',cached:true,stale:false,scopeNotice:''});
     }
   }
   function invalidate(notice='') {

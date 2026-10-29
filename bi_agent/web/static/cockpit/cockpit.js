@@ -484,7 +484,7 @@
       const loading = ref(true);
       const error = ref('');
       const boardRevision=ref(0);
-      let publishTimer=null, refreshTimer=null, pageEpoch=0, publishing=false;
+      let publishTimer=null, refreshTimer=null, pageEpoch=0, publishing=false, statusPoller=null, cardsVersion='';
       const biAdapters = ref(null);
       const biRuntime = ref(null);
       const hostUtils = ref(null);
@@ -581,6 +581,12 @@
         if(!entry||entry[0]===page.value)return;
         event.preventDefault();event.stopPropagation();
         location.assign(routeFor(entry[0]));
+      }
+
+      function onVisibilityChange() {
+        // Resume immediately when the tab becomes visible again instead of
+        // waiting out the hidden-tab interval.
+        if (!document.hidden) statusPoller?.poke(0);
       }
 
       function clearHelmetAnnotations() {
@@ -738,9 +744,10 @@
         }
         let installed;
         if (dataConfig.mode === 'ap') {
-          const [{createAPDataClient,observeRuntimeFilters,observeActivationActions},{createPageCache}] = await Promise.all([
+          const [{createAPDataClient,observeRuntimeFilters,observeActivationActions},{createPageCache},{createPublicationPoller}] = await Promise.all([
             import(`${assetBase}/data-client.js?v=${encodeURIComponent(assetVersion)}`),
             import(`${assetBase}/page-client.js?v=${encodeURIComponent(assetVersion)}`),
+            import(`${assetBase}/publication-poll.js?v=${encodeURIComponent(assetVersion)}`),
           ]);
           let rawRuntime=ProUIBi.createBiRuntime();
           const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
@@ -792,49 +799,17 @@
             client.ready({allowExpired:Boolean(snapshot),partial:true}).then(scopeReady).catch(scopeReady);
             setTimeout(()=>{if(client===liveDataClient&&liveError.value)sweepStuckLoading();},6500);
           }
-          let statusPolling=false;
-          async function pollPublicationStatus() {
-            if(!pageCache||analysisEngine!=='main'||statusPolling)return;
-            if(document.hidden){scheduleStatusPoll(20000);return;}
-            statusPolling=true;
-            const token=pageEpoch;
-            try {
-              const status=await pageCache.status(currentUiScope);
-              if(token!==pageEpoch)return;
-              const update=status.update||{};
-              const active=['waiting','checking','running','queued','retry_wait'].includes(update.status);
-              Object.assign(pageState,{
-                updateStatus:update.status||'idle',refreshing:active,
-                analyzedAt:status.analyzedAt||pageState.analyzedAt,
-                dataAsOf:status.dataAsOf||pageState.dataAsOf,
-                displayStale:Boolean(status.displayStale||update.status==='stale-display'),
-              });
-              if(status.publicationVersion&&(!fullSnapshot||status.publicationVersion!==fullSnapshot.version)){
-                const snapshot=await pageCache.load(currentUiScope);
-                if(snapshot&&token===pageEpoch){
-                  install(snapshot,true);
-                  Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,displayStale:false,refreshing:false,error:''});
-                }
-              }
-            } catch(_) { /* keep the last good cards while the status probe recovers */ }
-            finally {
-              statusPolling=false;
-              scheduleStatusPoll(active?5000:15000);
-            }
-          }
-          function scheduleStatusPoll(delay=1000) {
-            clearTimeout(refreshTimer);
-            refreshTimer=setTimeout(pollPublicationStatus,Math.max(500,delay));
-          }
+          const scheduleStatusPoll=(delay=1000)=>statusPoller?.poke(delay);
           async function changeScope(uiScope,miss=false,detail='') {
             let metadata=fullSnapshot?.entries?.filter(e=>e.kind==='helmet')||[];
             if(!metadata.length)try{metadata=liveDataClient.entries().filter(e=>e.kind==='helmet');}catch{}
             const token=++pageEpoch;pageCache?.invalidate();clearLiveError();
-            currentUiScope=uiScope;defaultView=uiScope==='default';fullSnapshot=null;
+            currentUiScope=uiScope;defaultView=uiScope==='default';fullSnapshot=null;cardsVersion='';
             // Keep the last complete cards on screen; the notice says the scope
             // changed and that the visible analysis still belongs to the old one.
             const notice='筛选口径已切换'+(detail?'（'+detail+'）':'')+'，正在加载新数据；以下仍为上次分析';
             clearTimeout(refreshTimer);publications?.invalidate(notice);liveDataClient?.clearScope();
+            statusPoller?.poke(0);
             Object.assign(pageState,{cached:false,dataAsOf:0,error:'',refreshing:false,displayStale:true,updateStatus:'waiting'});
             filtersReady=false;await Promise.resolve();if(token!==pageEpoch)return;
             install(null,true,metadata);
@@ -854,10 +829,45 @@
                 if(changed)install(snapshot,true);
                 else{fullSnapshot=snapshot;Object.assign(pageState,{dataAsOf:snapshot.dataAsOf,analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.updatedAt||0))),error:'',refreshing:false,updateStatus:'published'});}
               }});
+            statusPoller=createPublicationPoller({
+              probe:async()=>{const scope=currentUiScope;return {scope,status:await pageCache.status(scope)};},
+              apply:async value=>{
+                if(!pageCache||analysisEngine!=='main')return {active:false};
+                const {scope,status}=value||{};
+                // A late probe for the previous filter scope must not repaint
+                // the current page or schedule work for it.
+                if(!status||scope!==currentUiScope)return {active:false};
+                const update=status.update||{};
+                const active=['waiting','checking','running','queued','retry_wait'].includes(update.status);
+                Object.assign(pageState,{
+                  updateStatus:update.status||'idle',refreshing:active,
+                  analyzedAt:status.analyzedAt||pageState.analyzedAt,
+                  dataAsOf:status.dataAsOf||pageState.dataAsOf,
+                  displayStale:Boolean(status.displayStale||update.status==='stale-display'),
+                });
+                if(status.publicationVersion&&(!fullSnapshot||status.publicationVersion!==fullSnapshot.version)){
+                  const snapshot=await pageCache.load(scope);
+                  if(snapshot&&scope===currentUiScope){
+                    install(snapshot,true);
+                    Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,displayStale:false,refreshing:false,error:'',updateStatus:'published'});
+                  }
+                }
+                // Pages without a whole-page snapshot publish AI cards on their
+                // own; a changed card version is replaced in place.
+                if(currentUiScope==='default'&&status.cardsVersion&&status.cardsVersion!==cardsVersion&&publications){
+                  try{
+                    const value=await pageCache.cards();
+                    if(scope===currentUiScope){publications.preload(value.items||{});cardsVersion=status.cardsVersion;}
+                  }catch(_){/* the next poll retries the card fetch */}
+                }
+                return {active};
+              },
+              isHidden:()=>document.hidden,
+            });
           }
           install(analysisEngine==='main'?(startup.snapshot||startup.displaySnapshot):null);
           if(analysisEngine==='main')Object.assign(pageState,{displayStale:Boolean(startup.displayStale),updateStatus:startup.status?.update?.status||pageState.updateStatus,analyzedAt:startup.status?.analyzedAt||pageState.analyzedAt});
-          if(analysisEngine==='main')scheduleStatusPoll(1000);
+          if(analysisEngine==='main')statusPoller?.start(1000);
           onPageActivity=()=>{
             clearTimeout(publishTimer);
             if(analysisEngine!=='main'||fullSnapshot||publishing)return;
@@ -898,6 +908,7 @@
       onMounted(async () => {
         document.title = `储能经营风险驾驶舱 · ${pageTitle.value}`;
         document.addEventListener('click', onTabClick, true);
+        document.addEventListener('visibilitychange', onVisibilityChange);
         if (location.pathname.endsWith('/cockpit/home')) {
           history.replaceState(null, '', routeFor('overview'));
         }
@@ -914,7 +925,7 @@
           document.getElementById('cockpit-boot')?.remove();
         }
       });
-      onBeforeUnmount(() => {document.removeEventListener('click', onTabClick, true);clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {statusPoller?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('visibilitychange', onVisibilityChange);clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
         page, runtime, loading, error, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,

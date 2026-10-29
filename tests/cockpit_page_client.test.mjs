@@ -44,3 +44,11 @@ test('new filter lookup is exact and wrong-role snapshots are rejected',async()=
  await assert.rejects(client.load('department-B'),/范围不匹配/);
  assert.equal(await client.refresh({...snapshot,id:2}),null);
 });
+
+test('cards endpoint serves the published stage cards independently of page snapshots', async () => {
+  const paths = [];
+  const {client} = setup({request: async path => { paths.push(path); return ok({items: {shipment: card('new-card')}}); }});
+  const value = await client.cards();
+  assert.equal(value.items.shipment.id, 'new-card');
+  assert.equal(paths.at(-1), '/api/cockpit/publications/cards?id=1&page=analysis');
+});

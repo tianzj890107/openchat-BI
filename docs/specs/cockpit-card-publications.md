@@ -91,36 +91,52 @@ AP原始行不能按“原因”归组后展示虚构的金额／订单数量；
 ### 数据与状态
 
 - `page_snapshots` 继续按 `scope` 追加版本，`page_snapshot_views` 只移动当前指针；历史版本不覆盖。
-- 新增 `page_refresh`：`scope` 主键、`status`、`attempt`、`next_check`、`lease_until`、
-  `last_error`、`last_success`、`updated`。状态取值为 `waiting`、`running`、`published`、
-  `retry_wait`、`idle`。
+- `page_refresh`：`scope` 主键、`status`、`attempt`、`next_check`、`lease_until`、`last_error`、
+  `last_success`、`updated`。状态取值为 `waiting`、`running`、`published`、`retry_wait`、
+  `awaiting-plan`。`awaiting-plan` 表示默认页面已登记维护、但还没有可用于复核的整页查询计划，
+  不显示为正在分析。
+- `refresh_plans`：保存手工刷新的查询计划，使自定义范围在调度扫描时仍能执行；不迁移、不删除
+  既有分析与页面快照。
 - 证据指纹由页面业务查询与响应计算，排除 helmet 图、receiptId、取数时间和发布时间；数据未变化
   时不调用模型。
+- 页面证据既可以来自 AP，也可以来自已登记 PostgreSQL 补查。补查凭据单独记录
+  `kind=pg`、来源与映射版本，页面和分析同时标注 `dataSource=ap+pg` 或 `pg`。
 
 ### 接口
 
 | 接口 | 行为 |
 |---|---|
 | GET `/api/cockpit/page`、POST `/api/cockpit/page/lookup` | 返回当前发布版本 `snapshot`，以及配置键轮换时的历史展示 `displaySnapshot` + `displayStale` |
-| GET `/api/cockpit/publications/status` | 只返回版本、`dataAsOf`、`analyzedAt`、`update.status`、`nextCheckAt`、`lastError`，不重复下载证据 |
-| POST `/api/cockpit/publications/refresh` | 把指定范围置为 `waiting`，由服务端调度器接管；仅实时 AP 路线可用 |
-| GET `/api/cockpit/startup` | 返回 `snapshot`（或历史展示）与分析状态，不再因为打开页面而启动模型分析 |
+| GET `/api/cockpit/publications/status` | 返回版本、`dataAsOf`、`analyzedAt`、`update.status`、`nextCheckAt`、`lastError` 和卡片版本 `cardsVersion`，不重复下载证据 |
+| POST `/api/cockpit/publications/refresh` | 有整页计划时登记 `refresh_plans` 并排队；没有整页计划的运营页/穿透页改为维护已发布环节卡片；两者都没有时返回 409，不制造空任务 |
+| GET `/api/cockpit/publications/cards` | 返回该角色/页面最近发布的环节卡片，供没有整页快照的页面自动换新 |
+| GET `/api/cockpit/startup` | 返回 `snapshot`（或历史展示）、环节卡片与分析状态，不再因为打开页面而启动模型分析 |
 
 ### 调度
 
-- `RefreshScheduler` 为常驻线程，扫描 `page_refresh` 中到期的默认范围，每轮最多处理 3 个范围。
+- `RefreshScheduler` 为常驻线程，扫描 `page_refresh` 中到期的范围，每轮最多处理 3 个范围。
+- 每次扫描都显式登记两种身份 × 三个默认页面，不能以“已经存在整页快照”为维护前提；有整页
+  快照的范围复核整页，没有整页快照但已发布环节卡片的范围复核卡片。
 - 新登记的范围首次检查延后一个刷新周期，避免部署或重启瞬间把全部默认页面同时重新取数与分析；
   手工触发 `/publications/refresh` 仍然立即生效。
-- `RefreshManager` 先按原始查询重新取数并计算指纹，再决定是否创建分析任务；完成后重新发布整页，
-  失败一律保留上一版本并写入 `retry_wait`，退避上限 15 分钟。
+- `RefreshManager` 复用 `dashboard_source.page_analysis_context`，与 HTTP 分析入口使用同一份
+  证据解析、`snapshotId`、`dataFingerprint` 和来源披露；helmet 图只用于整页渲染，不进入业务分析
+  凭据。
+- 单条 AP 业务查询失败不再中止整轮复核：失败查询按同一环节和筛选交给已登记 PostgreSQL 补查，
+  所有环节共享同一批补查凭据后再分析，保证一份页面只有一个证据指纹。
 - 复核得到的页面版本与当前发布版本一致时不追加快照，只更新检查时间；避免每 15 分钟产生一份
   内容相同的历史副本。
-- `claim_refresh` 使用 SQLite `BEGIN IMMEDIATE` 与租约去重，进程重启后过期租约可被重新领取。
+- `claim_refresh` 使用 SQLite `BEGIN IMMEDIATE` 与租约去重；手工刷新只把范围置为 `waiting`，
+  不会清除正在运行任务的租约。进程重启后过期租约可被重新领取。
 - 取数与模型分析沿用各自并发预算，等待 AP 的任务不占分析名额。
 
 ### 前端
 
 - 打开页面直接渲染已发布快照，随后按 5～15 秒轮询状态（页面隐藏时降频），发现新版本才拉取整页替换。
+- 状态轮询为单一循环：探测失败继续按短间隔重试，页面卸载或范围变化后不再安排下一次请求；
+  隐藏标签页降频，重新可见时立即检查。
+- 没有整页快照的运营页/穿透页按 `cardsVersion` 拉取已发布环节卡片并原位替换；旧卡片不会覆盖
+  更新时间更新的卡片。
 - 状态行只展示“分析更新于 …／正在后台更新／当前展示上次完整版本”，不再显示“主服务：路由、取证与
   交付校验中”等内部步骤。
 - 新版本应用与缓存命中共用同一入口，统一清理 `stale`、`scopeNotice`、`progress`、`error`、`refreshing`。
@@ -138,5 +154,9 @@ AP原始行不能按“原因”归组后展示虚构的金额／订单数量；
 ### 验证
 
 - 证据未变化时刷新不调用模型；指纹变化才重跑并追加新版本。
+- 定时复核使用与 HTTP 分析入口相同的真实证据解析；`snapshotId` 可由分析回合重新计算一致。
+- AP 业务查询失败时，已登记指标可按同一筛选从 PostgreSQL 补查并交付卡片；未登记指标明确阻断。
+- 运营页、穿透页即使没有整页快照，只要有已发布环节卡片就进入定时维护。
+- 手工刷新运行中的范围不会清除租约或启动第二个工作线程；没有查询计划的范围被明确拒绝。
 - AP 失败、模型失败、重启、租约过期都不覆盖上次完整版本。
 - 配置版本轮换后旧版本只能作为 `displayStale` 展示，不能当作新范围证据。

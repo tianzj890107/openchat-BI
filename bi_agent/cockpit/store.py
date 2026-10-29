@@ -38,6 +38,8 @@ class Store:
               attempt INTEGER NOT NULL DEFAULT 0, next_check REAL NOT NULL,
               lease_until REAL NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '',
               last_success REAL NOT NULL DEFAULT 0, updated REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS refresh_plans (
+              scope TEXT PRIMARY KEY, body TEXT NOT NULL, updated REAL NOT NULL);
             ''')
 
     @contextmanager
@@ -169,6 +171,51 @@ class Store:
             db.execute('UPDATE page_refresh SET status=?,attempt=?,next_check=?,lease_until=?,updated=? WHERE scope=?',
                        ('running', int(row['attempt']) + 1, now, now + lease, now, scope))
         return True
+
+    def request_refresh(self, scope, *, now=None):
+        """Queue a refresh without stealing a running worker's lease."""
+        now = time.time() if now is None else float(now)
+        self.ensure_refresh_state(scope, next_check=now)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT status,lease_until,attempt FROM page_refresh WHERE scope=?',
+                             (scope,)).fetchone()
+            if not row:
+                return False
+            if row['status'] == 'running' and row['lease_until'] > now:
+                # A manual click must not hand the same scope to a second
+                # worker; the in-flight run finishes and reschedules itself.
+                return False
+            db.execute("UPDATE page_refresh SET status='waiting',next_check=?,lease_until=0,updated=? WHERE scope=?",
+                       (now, now, scope))
+        return True
+
+    def set_refresh_plan(self, scope, body):
+        now = time.time()
+        with self.db() as db:
+            db.execute('INSERT INTO refresh_plans VALUES(?,?,?) ON CONFLICT(scope) '
+                       'DO UPDATE SET body=excluded.body,updated=excluded.updated',
+                       (scope, json.dumps(body, ensure_ascii=False), now))
+        return body
+
+    def refresh_plan(self, scope):
+        with self.db() as db:
+            row = db.execute('SELECT body FROM refresh_plans WHERE scope=?', (scope,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def default_views(self, limit=2000):
+        """Published default-scope AI cards that need scheduled maintenance.
+
+        Operations and penetration pages are opened as independent AI slots,
+        so they may never have a whole-page snapshot.  Their published stage
+        cards are still a durable maintenance target.
+        """
+        with self.db() as db:
+            rows = db.execute('SELECT v.view_key, v.stage, a.body FROM publication_views v '
+                              'JOIN publications p ON p.scope=v.scope '
+                              'JOIN analyses a ON a.id=p.analysis_id '
+                              'ORDER BY a.updated DESC LIMIT ?', (limit,)).fetchall()
+        return [(r[0], r[1], json.loads(r[2])) for r in rows]
 
     def due_refresh_scopes(self, now=None, limit=20):
         now = time.time() if now is None else float(now)

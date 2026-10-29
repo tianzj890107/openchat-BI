@@ -1305,3 +1305,28 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   状态行不再显示“路由、取证与交付校验中”等内部步骤。
 - 本段只记录实现与配置；部署、重启 8765 或更新 8876 静态资源仍需当次明确授权。
 - 设计与验证细节见 `docs/specs/cockpit-card-publications.md`。
+
+### 定时刷新闭环修复（2026-10-29）
+
+- 新增 `refresh_plans`（`scope` 主键、`body`、`updated`），保存手工刷新的查询计划；仍在
+  `Store` 打开历史库时自动创建，只新增表，不迁移或删除历史会话、分析、草稿、回执和页面快照。
+- `RefreshScheduler` 每次扫描显式登记两种身份 × 三个默认页面，不再要求先存在整页快照；有整页
+  版本的范围复核整页，没有整页版本但已发布环节卡片的运营页/穿透页复核卡片。没有查询计划的
+  范围标记 `awaiting-plan`，不再伪装成 `idle` 或持续 `waiting`。
+- 页面与环节卡片复核统一调用 `dashboard_source.page_analysis_context`，与 HTTP 分析入口共享
+  证据解析、`snapshotId`、`dataFingerprint` 和来源披露；helmet 图不进入业务分析凭据。
+- 单条 AP 业务查询失败时按同一环节与筛选调用已登记 PostgreSQL 补查；整页复核先合并所有环节的
+  补查凭据再分析，页面记录 `dataSource=ap+pg`/`pg`、`dataIdentity=postgres`，补查凭据独立保存。
+  `PageRequest` 新增 `pgReceiptIds`，整页条目可包含 `kind=pg` 的补查结果。
+- 手工刷新改为 `Store.request_refresh`：运行中的租约不会被清除；没有查询计划的范围返回 409，
+  不再创建随后被调度器置为 `idle` 的空任务。
+- 新增 `GET /api/cockpit/publications/cards`，`GET /api/cockpit/publications/status` 增加
+  `cardsVersion`；没有整页快照的页面按卡片版本原位替换。
+- 前端状态轮询改为 `publication-poll.js` 单一循环：探测异常继续重试，页面卸载后停止，标签页
+  隐藏时降频，重新可见时立即检查；文件随 8876 静态资源一起发布，需要新的 `COCKPIT_VERSION`。
+- 发布步骤不变：8765 使用新 release 目录并通过 `preflight-main.py` 预检后重启；8876 先备份
+  `site/`，再用 `scripts/build_cockpit_site.py` 生成的新静态包整体替换。`history.sqlite3` 从旧
+  release 复制/沿用，禁止覆盖或清空。
+- 验证：Cockpit 聚焦 Python 测试 147 项通过；Node 测试 48 项通过；新增用例覆盖真实证据解析、
+  PostgreSQL 补查整页发布、无整页快照的卡片维护、手工刷新租约去重、自定义范围执行、轮询
+  失败续跑与卡片版本原位替换。

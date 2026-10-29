@@ -3951,53 +3951,20 @@ app.include_router(build_mcp_router(
 from ..cockpit.router import build_cockpit_router  # noqa: E402
 
 def _cockpit_main_context(req):
-    from ..cockpit.dashboard_source import material, receipt_material, filter_stage_selected, unavailable_stage_evidence
+    # One resolver serves the page, the manual refresh and the scheduled
+    # refresh, so snapshot ids and evidence fingerprints cannot diverge.
+    from ..cockpit.dashboard_source import page_analysis_context
     from ..cockpit.ap_gateway import data_mode
     from ..cockpit.store import Store
     if STATE.agent_def is None:
         raise HTTPException(503,'主服务未配置分析Agent')
-    if req.repositoryId:
-        raise HTTPException(422,'看板快照分析不接受其他本体库绑定')
-    if req.filters:
-        raise HTTPException(422,'筛选必须体现在已展示的AP请求中，不能声明未应用的自定义筛选')
     try:
-        if data_mode()=='ap':
-            from ..cockpit.dashboard_source import receipt_scope, fallback_notes_for_stage
-            from ..cockpit import pg_fallback
-            payload=req.model_dump()
-            fingerprint,selected,pg_receipts,notes=receipt_scope(payload,Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'),resolve_fallback=True)
-            from ..cockpit.publications import digest
-            identities={v.get("connectionId","") for v in selected.values() if v.get('source')=='ap'}
-            if len(identities)>1:raise ValueError("AP材料来自不同连接，不能合并分析")
-            kept,excluded=filter_stage_selected(selected,req.stage)
-            # Only queries that neither AP nor the registered fallback could
-            # answer count as missing; covered ones are real evidence now.
-            failed=unavailable_stage_evidence({'unavailableQueries':[note['query'] for note in notes]},req.stage)
-            fallback_metrics=sorted({str(column.get('identifierCode') or '') for value in kept.values() if value.get('source')=='pg'
-                for column in ((value.get('response') or {}).get('result') or {}).get('columns') or [] if column.get('identifierCode')})
-            blocked=fallback_notes_for_stage(notes,req.stage)
-            sources={str(value.get('source') or '') for value in selected.values() if value.get('source')}
-            data_source='+'.join(sorted(sources)) if sources else 'ap'
-            basis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准'
-            if data_source=='pg':
-                basis='页面本次AP取数全部失败；已按同一筛选口径从主库（PostgreSQL）补查，未混用AP结果'
-            elif pg_receipts:
-                basis+='；页面失败指标已按同一筛选口径从主库（PostgreSQL）补查，补查结果标注来源且与AP不可混算'
-            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataSource=data_source,
-                dataIdentity=(next(iter(identities)) if identities else 'postgres'),pgReceiptIds=pg_receipts,
-                fallbackVersion=(pg_fallback.version() if pg_receipts else ''),
-                fallback=dict(version=pg_fallback.version(),metrics=fallback_metrics,blocked=blocked,attempted=len(notes)+len(pg_receipts)),
-                dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))),
-                dataBasis=basis,
-                stageEvidence=dict(stage=req.stage,kept=len(kept),excluded=len(excluded),available=len(selected),failed=failed['failed'],failedLabels=failed['labels'],fallbackMetrics=fallback_metrics,fallbackBlocked=blocked,receipts=sorted({v.get('receiptId','') for v in kept.values()}-{''})))
-        if req.apReceiptIds:raise ValueError('快照模式不能消费实时AP凭据')
-        fingerprint,selected=material(req.model_dump())
-        kept,excluded=filter_stage_selected(selected,req.stage)
-        failed=unavailable_stage_evidence(req.model_dump(),req.stage)
+        return page_analysis_context(
+            req.model_dump(),
+            Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'),
+            data_mode=data_mode())
     except (ValueError, TypeError) as exc:
         raise HTTPException(422,str(exc)) from exc
-    return dict(snapshotId='dashboard-'+fingerprint,repositoryId='',dataSource='snapshot',dataIdentity='pdt-release-2109836674373566465',dataFingerprint=fingerprint,
-        dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库',stageEvidence=dict(stage=req.stage,kept=len(kept),excluded=len(excluded),available=len(selected),failed=failed['failed'],failedLabels=failed['labels']))
 
 
 @contextmanager

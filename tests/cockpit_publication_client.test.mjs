@@ -128,3 +128,13 @@ test('queue receives the stage and the user-retry priority',async()=>{
  await client.refresh('order',false,false);
  assert.deepEqual(seen,[{stage:'shipment',urgent:true},{stage:'order',urgent:false}]);
 });
+
+test('a polled older card never replaces a newer delivered card', () => {
+  const {client, states} = setup({request: async () => ok({})});
+  const fresh = {...item('new-card', '新卡片'), updatedAt: 200};
+  const stale = {...item('old-card', '旧卡片'), updatedAt: 100};
+  client.preload({shipment: fresh});
+  client.preload({shipment: stale});
+  assert.equal(states.shipment.item.id, 'new-card');
+  assert.equal(states.shipment.item.result.summary, '新卡片');
+});

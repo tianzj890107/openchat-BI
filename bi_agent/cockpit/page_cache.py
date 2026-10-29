@@ -23,7 +23,8 @@ class PageLookup(BaseModel):
 
 
 class PageRequest(PageLookup):
-    apReceiptIds: list[str] = Field(min_length=1, max_length=80)
+    apReceiptIds: list[str] = Field(default_factory=list, max_length=80)
+    pgReceiptIds: list[str] = Field(default_factory=list, max_length=40)
     analysisIds: dict[str, str] = Field(default_factory=dict, max_length=5)
 
 
@@ -95,17 +96,28 @@ def page_fingerprint(records):
                           key=lambda v: json.dumps(v, sort_keys=True)))
 
 
-def build_page(req, store, config, *, data_source='ap'):
-    if data_source not in {'ap', 'snapshot', 'postgres', 'demo'}:
+def build_page(req, store, config, *, data_source='ap', data_identity=None):
+    if data_source not in {'ap', 'ap+pg', 'pg', 'snapshot', 'postgres', 'demo'}:
         raise HTTPException(422, '整页数据来源无效')
-    if len(set(req.apReceiptIds)) != len(req.apReceiptIds):
-        raise HTTPException(422, '页面数据凭据重复')
-    records = [store.get_ap_result(r, req.id) for r in req.apReceiptIds]
+    for ids in (req.apReceiptIds, req.pgReceiptIds):
+        if len(set(ids)) != len(ids):
+            raise HTTPException(422, '页面数据凭据重复')
+    if not req.apReceiptIds and not req.pgReceiptIds:
+        raise HTTPException(422, '整页没有数据凭据')
+    ap_records = [store.get_ap_result(r, req.id) for r in req.apReceiptIds]
+    pg_records = [store.get_ap_result(r, req.id) for r in req.pgReceiptIds]
     connection = config.identity()
     auth = transport_identity(config)
-    if any(not r or r.get('connectionId') != connection or r.get('authScope') != auth for r in records):
+    if any(not r or r.get('connectionId') != connection or r.get('authScope') != auth for r in ap_records):
         raise HTTPException(422, '页面凭据已过期或不属于当前AP连接与身份')
-    if req.page != 'overview' and not any(r['kind'] == 'helmet' for r in records):
+    from . import pg_fallback
+    fallback_version = pg_fallback.version()
+    if any(not r or r.get('kind') != 'pg' for r in pg_records):
+        raise HTTPException(422, '数据库补查凭据不存在或已失效')
+    if any(r.get('authScope') and r['authScope'] != fallback_version for r in pg_records):
+        raise HTTPException(422, '数据库补查口径已更新，请重新分析')
+    records = ap_records + pg_records
+    if req.page != 'overview' and not any(r['kind'] == 'helmet' for r in ap_records):
         raise HTTPException(422, '整页缺少头盔图数据，保留上次完整版本')
     allowed = {'overview': set(), 'operations': {'bid', 'quotation', 'order'},
                'analysis': {'opportunity', 'order', 'shipment'}}[req.page]
@@ -118,8 +130,14 @@ def build_page(req, store, config, *, data_source='ap'):
     business = [r for r in records if r['kind'] != 'helmet']
     if not business:
         raise HTTPException(422, '整页没有业务数据')
+    has_ap_business = any(r['kind'] in {'analysis', 'batch'} for r in ap_records)
+    identity = data_identity or (connection if has_ap_business else 'postgres')
     canonical = lambda v: json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-    queries = sorted({canonical(r['request']) for r in business})
+    # chartQueries describe the AP receipts; the full evidence fingerprint
+    # below additionally covers registered PostgreSQL supplements, so a page
+    # can be published when one AP query was answered from the fallback.
+    queries = sorted({canonical(r['request']) for r in ap_records
+                      if r['kind'] in {'analysis', 'batch'}})
     fingerprint = page_fingerprint(records)
     items = {}
     for stage, aid in req.analysisIds.items():
@@ -129,7 +147,7 @@ def build_page(req, store, config, *, data_source='ap'):
                 or (item.get('result') or {}).get('cardContract') != CONTRACT
                     or not analysis_source_matches(c, data_source)
                 or any(c.get(k) != v for k, v in dict(id=req.id, page=req.page, stage=stage,
-                                                     engine='main', dataIdentity=connection,
+                                                     engine='main', dataIdentity=identity,
                                                      dataFingerprint=fingerprint,
                                                          ).items())
                 or sorted({canonical(json.loads(q)) for q in c.get('chartQueries', [])}) != queries):
@@ -138,7 +156,7 @@ def build_page(req, store, config, *, data_source='ap'):
     entries = [dict(kind=r['kind'], payload=r['request'], data=r['response'], receiptId=r['id'],
                     receivedAt=r['createdAt'], expiresAt=r['expiresAt']) for r in records]
     page = dict(id=req.id, page=req.page, uiScope=req.uiScope, entries=entries, items=items,
-                dataSource=data_source, dataIdentity=connection, dataFingerprint=fingerprint,
+                dataSource=data_source, dataIdentity=identity, dataFingerprint=fingerprint,
                 dataAsOf=min(r['createdAt'] for r in records), publishedAt=time.time(),
                 configVersion=config_version(), cardContract=CONTRACT)
     page['version'] = digest({'entries': [(r['kind'], r['request'], r['response']) for r in records],

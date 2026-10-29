@@ -20,6 +20,10 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
     const query=new URLSearchParams({id:String(id),page,uiScope});
     return json('/publications/status?'+query.toString());
   }
+  async function cards() {
+    const query=new URLSearchParams({id:String(id),page});
+    return json('/publications/cards?'+query.toString());
+  }
   async function publish(client,items,uiScope,token=generation) {
     await client.ready();if(!current(token))return null;
     const entries=client.entries();
@@ -78,5 +82,5 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
       .finally(()=>{if(current(token)){pending=null;onState({refreshing:false});}});
     pending=work;return work;
   }
-  return {invalidate,load,status,publish,refresh};
+  return {invalidate,load,status,cards,publish,refresh};
 }

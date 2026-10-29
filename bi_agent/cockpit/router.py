@@ -19,9 +19,9 @@ from .agent import run_analysis
 from .metadata import build_bundle
 from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
-from .publications import legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
+from .publications import digest, legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
 from .page_cache import APReuse, PageLookup, PageRequest, build_page, legacy_page_scope, page_scope, transport_identity, compact_analysis
-from .refresh import RefreshManager, RefreshScheduler, publication_status, scheduler_enabled
+from .refresh import RefreshManager, RefreshScheduler, publication_status, scheduler_enabled, view_target_scope
 
 RESULT_CONTRACT_VERSION="compact-v1"
 
@@ -88,9 +88,11 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         snapshot=store().published_page(scope)
         if snapshot is None:
             snapshot=store().published_page(legacy_page_scope(config, identity, page, ui_scope))
-        display=snapshot or store().latest_page(identity, page, ui_scope, data_identity=config.identity())
+        display=(snapshot
+                 or store().latest_page(identity, page, ui_scope, data_identity=config.identity())
+                 or store().latest_page(identity, page, ui_scope, data_identity='postgres'))
         state=publication_status(store(), scope, snapshot or display)
-        if snapshot is None and display is not None:
+        if snapshot is None and display is not None and state['update']['status'] in {'', 'idle'}:
             state['update']['status']='stale-display'
         return dict(snapshot=snapshot, displaySnapshot=display,
                     displayStale=bool(snapshot is None and display is not None), status=state)
@@ -251,10 +253,21 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         from .dashboard_source import RELEASE
         from .cards import CONTRACT
         identity=get_gateway().config.identity() if data_mode()=='ap' else RELEASE
-        context=dict(id=id,engine=engine,page=page,chartSnapshotId=RELEASE,dataSource='ap' if data_mode()=='ap' else 'snapshot',dataIdentity=identity)
-        items=store().published_view(view_scope(context))
-        if not items and data_mode()=='ap' and context['dataSource']=='ap':
-            items=store().published_view(legacy_view_scope(context))
+        items={}
+        sources=('ap','ap+pg','pg') if data_mode()=='ap' else ('snapshot',)
+        identities=(identity,'postgres') if data_mode()=='ap' else (identity,)
+        for data_source in sources:
+            for data_identity in identities:
+                context=dict(id=id,engine=engine,page=page,chartSnapshotId=RELEASE,
+                             dataSource=data_source,dataIdentity=data_identity)
+                found=store().published_view(view_scope(context))
+                if (not found and data_mode()=='ap' and data_source=='ap'
+                        and data_identity==identity):
+                    found=store().published_view(legacy_view_scope(context))
+                for stage,item in found.items():
+                    current=items.get(stage)
+                    if current is None or float(item.get('updatedAt') or 0)>=float(current.get('updatedAt') or 0):
+                        items[stage]=item
         return dict(items={k:compact_analysis(v) for k,v in items.items()} if compact else items,cardContract=CONTRACT)
 
     @router.get('/page')
@@ -276,21 +289,52 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     def lookup_page(req:PageLookup):
         return publication_lookup(req.id, req.page, req.uiScope)
 
+    def cards_version(id, page):
+        # Operations and penetration pages publish AI cards without a whole-page
+        # snapshot, so the browser needs a version for those cards too.
+        items=published_default(id,'main',page,False)['items'] if main_context is not None else {}
+        return digest(sorted((stage,(item or {}).get('id',''),float((item or {}).get('updatedAt') or 0))
+                             for stage,item in items.items()))
+
     @router.get('/publications/status')
     def publication_update(id:int=1,page:Literal['overview','operations','analysis']='overview',uiScope:str='default'):
         if id not in (1,2) or not 0<len(uiScope)<=16000:raise HTTPException(422,'无效页面范围')
         lookup=publication_lookup(id,page,uiScope)
         snapshot=lookup.get('snapshot') or lookup.get('displaySnapshot')
         return dict(id=id,page=page,uiScope=uiScope,snapshotVersion=(snapshot or {}).get('version',''),
+                    cardsVersion=cards_version(id,page),
                     displayStale=lookup.get('displayStale',False),**(lookup.get('status') or {}))
+
+    @router.get('/publications/cards')
+    def publication_cards(id:int=1,page:Literal['overview','operations','analysis']='overview'):
+        if id not in (1,2):raise HTTPException(422,'无效身份')
+        items=published_default(id,'main',page,True)['items'] if main_context is not None else {}
+        return dict(items=items,cardContract=CONTRACT)
 
     @router.post('/publications/refresh')
     def request_publication_refresh(req:PageLookup):
         if main_context is None or data_mode()!='ap':raise HTTPException(409,'服务端刷新仅支持实时AP路线')
         config=get_gateway().config
         scope=page_scope(config,req.id,req.page,req.uiScope)
-        store().set_refresh_state(scope,'waiting',next_check=time.time(), error='')
-        return dict(queued=True,scope=scope,status='waiting')
+        body=(store().published_page(scope)
+              or store().published_page(legacy_page_scope(config,req.id,req.page,req.uiScope))
+              or store().latest_page(req.id,req.page,req.uiScope,data_identity=config.identity()))
+        if body is not None:
+            store().set_refresh_plan(scope,body)
+            queued=store().request_refresh(scope)
+            return dict(queued=queued,scope=scope,status='waiting' if queued else 'running',kind='page')
+        # Operations and penetration pages may have published AI cards without
+        # ever forming a whole-page snapshot.  Refresh those cards instead of
+        # queueing a page scope that has no query plan.
+        targets=[view_target_scope(view_key,stage) for view_key,stage,analysis in store().default_views(limit=2000)
+                 if req.uiScope=='default'
+                 and (analysis.get('context') or {}).get('id')==req.id
+                 and (analysis.get('context') or {}).get('page')==req.page]
+        if targets:
+            queued=[target for target in dict.fromkeys(targets) if store().request_refresh(target)]
+            return dict(queued=bool(queued),scope=scope,status='waiting' if queued else 'running',
+                        kind='views',targets=len(set(targets)))
+        raise HTTPException(409,'该范围还没有可复核的查询计划，请先在页面完成取数后再刷新')
 
     @router.get('/startup')
     def startup(id:int=1,page:Literal['overview','operations','analysis']='overview'):

@@ -319,6 +319,124 @@ def fallback_notes_for_stage(notes, stage):
     return list(dict.fromkeys(value['code'] for value in kept.values() if value['code']))
 
 
+def _failure_queries(values):
+    """Parse the browser-declared failed queries without accepting ambiguous shapes."""
+    parsed = []
+    for raw in values or []:
+        if not isinstance(raw, str) or len(raw) > 20000:
+            raise ValueError('无效的AP失败查询')
+        try:
+            request = json.loads(raw)
+        except ValueError:
+            raise ValueError('无效的AP失败查询') from None
+        if not isinstance(request, (dict, list)):
+            raise ValueError('无效的AP失败查询')
+        parsed.append((raw, request))
+    return parsed
+
+
+def supplement_failed_queries(context, store, stages, *, limit=8):
+    """Resolve the union of stage-relevant failed queries from PostgreSQL once.
+
+    A whole-page refresh analyses several stages at once.  Running the fallback
+    per stage would save different receipts and give each stage a different
+    evidence fingerprint, so the page could never be assembled.  This resolves
+    the union first; every stage then reuses the same ``pgReceiptIds``.
+    """
+    from . import pg_fallback
+    failures = _failure_queries(context.get('unavailableQueries'))
+    wanted = set()
+    for stage in stages or ():
+        keyed = {str(index): {'request': request} for index, (_raw, request) in enumerate(failures)}
+        kept, _excluded = filter_stage_selected(keyed, stage)
+        wanted.update(int(index) for index in kept)
+    candidates, notes = [], []
+    for index, (raw, request) in enumerate(failures):
+        if index not in wanted:
+            continue
+        # Batch payloads are lists of single-table queries and have no reviewed
+        # aggregate fallback; surface them instead of letting compile_payload
+        # fail on the wrong shape.
+        if not isinstance(request, dict):
+            notes.append(dict(query=raw, code='BATCH_UNSUPPORTED'))
+            continue
+        candidates.append(raw)
+    if not candidates:
+        return {}, notes
+    extra, blocked = pg_fallback.supplement(
+        dict(context, stage=None, unavailableQueries=candidates), store, limit=limit)
+    return extra, notes + blocked
+
+
+def page_analysis_context(context, store, *, data_mode='ap', resolve_fallback=True,
+                          fallback_notes=None):
+    """Resolve one page-bound request into the main-service evidence snapshot.
+
+    The HTTP route and the server-side refresh both call this function.  It is
+    the only place that derives ``snapshotId``, the evidence fingerprint, the
+    disclosed source mix and the per-stage coverage, so the two paths cannot
+    drift apart (helmet graph data never enters business evidence).
+    """
+    from .publications import digest
+    if context.get('repositoryId'):
+        raise ValueError('看板快照分析不接受其他本体库绑定')
+    if context.get('filters'):
+        raise ValueError('筛选必须体现在已展示的AP请求中，不能声明未应用的自定义筛选')
+    if data_mode != 'ap':
+        if context.get('apReceiptIds') or context.get('pgReceiptIds'):
+            raise ValueError('快照模式不能消费实时AP或补查凭据')
+        fingerprint, selected = material(context)
+        kept, excluded = filter_stage_selected(selected, context['stage'])
+        failed = unavailable_stage_evidence(context, context['stage'])
+        return dict(snapshotId='dashboard-' + fingerprint, repositoryId='', dataSource='snapshot',
+                    dataIdentity='pdt-release-2109836674373566465', dataFingerprint=fingerprint,
+                    dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库',
+                    stageEvidence=dict(stage=context['stage'], kept=len(kept), excluded=len(excluded),
+                                       available=len(selected), failed=failed['failed'],
+                                       failedLabels=failed['labels']))
+    from . import pg_fallback
+    fingerprint, selected, pg_receipts, notes = receipt_scope(
+        context, store, resolve_fallback=resolve_fallback)
+    if fallback_notes is not None:
+        notes = list(fallback_notes)
+    identities = {value.get('connectionId', '') for value in selected.values() if value.get('source') == 'ap'}
+    if len(identities) > 1:
+        raise ValueError('AP材料来自不同连接，不能合并分析')
+    kept, excluded = filter_stage_selected(selected, context['stage'])
+    # Only queries that neither AP nor the registered fallback could answer
+    # count as missing; covered ones are real evidence now.
+    failed = unavailable_stage_evidence(
+        {'unavailableQueries': [note['query'] for note in notes]}, context['stage'])
+    fallback_metrics = sorted({
+        str(column.get('identifierCode') or '')
+        for value in kept.values() if value.get('source') == 'pg'
+        for column in ((value.get('response') or {}).get('result') or {}).get('columns') or []
+        if column.get('identifierCode')})
+    blocked = fallback_notes_for_stage(notes, context['stage'])
+    sources = {str(value.get('source') or '') for value in selected.values() if value.get('source')}
+    data_source = '+'.join(sorted(sources)) if sources else 'ap'
+    basis = '页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准'
+    if data_source == 'pg':
+        basis = '页面本次AP取数全部失败；已按同一筛选口径从主库（PostgreSQL）补查，未混用AP结果'
+    elif pg_receipts:
+        basis += '；页面失败指标已按同一筛选口径从主库（PostgreSQL）补查，补查结果标注来源且与AP不可混算'
+    return dict(
+        snapshotId='ap-' + fingerprint, repositoryId='', dataSource=data_source,
+        dataIdentity=(next(iter(identities)) if identities else 'postgres'), pgReceiptIds=pg_receipts,
+        fallbackVersion=(pg_fallback.version() if pg_receipts else ''),
+        fallback=dict(version=pg_fallback.version(), metrics=fallback_metrics, blocked=blocked,
+                      attempted=len(notes) + len(pg_receipts)),
+        dataFingerprint=digest(sorted(
+            ((json.dumps(value['request'], sort_keys=True), value['response'])
+             for value in selected.values()), key=lambda value: json.dumps(value, sort_keys=True))),
+        dataBasis=basis,
+        stageEvidence=dict(stage=context['stage'], kept=len(kept), excluded=len(excluded),
+                           available=len(selected), failed=failed['failed'],
+                           failedLabels=failed['labels'], fallbackMetrics=fallback_metrics,
+                           fallbackBlocked=blocked,
+                           receipts=sorted({value.get('receiptId', '') for value in kept.values()} - {''})))
+
+
 def executor(selected, stage=None):
     source, live = evidence_source(selected)
     stage_metrics=STAGE_METRICS.get(stage) or set()
