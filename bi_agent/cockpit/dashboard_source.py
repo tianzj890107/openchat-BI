@@ -130,7 +130,8 @@ def stage_gap_result(context):
     gap = context.get('stageEvidence') or {}
     failed = int(gap.get('failed') or 0)
     failed_labels = [str(value) for value in gap.get('failedLabels') or [] if str(value).strip()]
-    failure_note = (f'本环节有{failed}条指标查询失败（{"、".join(failed_labels) or "指标"}），未纳入本轮证据。' if failed else '')
+    label_text = ('、'.join(failed_labels[:6]) + ('等' if len(failed_labels) > 6 else '')) if failed_labels else '指标'
+    failure_note = (f'本环节有{failed}条指标查询失败（{label_text}），未纳入本轮证据。' if failed else '')
     limitations = [
         f'本次页面没有与{name}环节匹配的可用看板指标；已排除{gap.get("excluded", 0)}条无关查询，未用采购、发货等其他环节数据代替。',
         '没有同源业务明细或指标映射，不能生成原因与建议，也不代表该环节经营正常。',
