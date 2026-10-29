@@ -71,7 +71,10 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 7. 交付闸门：`OutputGateCheck` 返回 `pass` 才能交付；`warn` 要披露，
    `reject` 要修正或拒答。必须传最终 `canvasId/artifactHash`；缺失即 reject，不得把中间
    模型回答当作最终报告。
-8. 风险/任务令：只有用户点击卡片后才调用对应工具。风险卡使用 `RiskItemCreate`，处置卡
+8. 证据按环节隔离：每个环节只使用本环节指标；没有匹配指标时交付 `limited` 卡片并列出
+   缺口，不引用采购、发货等其他环节数据，也不输出“0 项原因”当作结论。看板 AI 插槽由
+   服务端按 stage 过滤 AP 查询；模型不得自行扩大到其他环节证据。
+9. 风险/任务令：只有用户点击卡片后才调用对应工具。风险卡使用 `RiskItemCreate`，处置卡
    使用 `TaskOrderCreate`。Process360 卡片携带
    `draftId/draftHash/actionId/itemType/runId/scenario/approvalStatus/expiresAt/dispatchTool`；
    主服务按服务端身份和接收人映射调用，服务端从草稿回读标题/正文，不采用
@@ -80,7 +83,7 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
    `sourceTodoId`）；网络结果不确定返回 `unknown`，
    用同一身份查询或显式 `retry=true` 安全重试，成功回执不得重发。回执必须同时满足
    `ok=true` 且 `applied+skipped>0`，不能仅凭 `sourceTodoId` 或 HTTP 200 判成功。
-9. Fuxi 契约只有 `POST /source/todo-batches` 和 `POST /source/todo-status-events`；
+10. Fuxi 契约只有 `POST /source/todo-batches` 和 `POST /source/todo-status-events`；
    没有进度查询接口。字段名固定为 `sourceTodoId/title/severity/itemType/category/
    sourceStatus/sourceUpdatedAt/recipientsRaw/dueAt/description/impactText/ownerRef/
    ownerName/evidence/activity/caliberMeta`，不得改名或补造。

@@ -359,9 +359,12 @@
     return PAGES[page] ? page : 'overview';
   }
 
-  function routeFor(page) {
+  function routeFor(page, extra = {}) {
     const search = new URLSearchParams({id: identityId, engine: analysisEngine});
     if(baselineId)search.set('baseline',baselineId);
+    for (const [key, value] of Object.entries(extra || {})) {
+      if (value !== undefined && value !== null && String(value).trim()) search.set(key, String(value).trim());
+    }
     return `${routeRoot}/cockpit/${page}?${search}`;
   }
 
@@ -376,6 +379,8 @@
       const biAdapters = ref(null);
       const biRuntime = ref(null);
       const hostUtils = ref(null);
+      const liveError = ref('');
+      let liveErrorClear = null;
       const pageTitle = computed(() => PAGES[page.value]?.title || PAGES.overview.title);
       const release = computed(() => runtime.value?.dashboard || null);
       const gaps = computed(() => runtime.value?.gaps || []);
@@ -389,24 +394,41 @@
       });
 
       let pendingActivationPage = '';
+      let pendingActivationNode = '';
+      let activationTimer = null;
       function pageForTab(tabId) {
         return Object.entries(runtime.value?.pages || {}).find(([, spec]) => spec.tabId === tabId)?.[0] || '';
+      }
+      function activationRuleForNode(node) {
+        for (const rule of runtime.value?.activateRules || []) {
+          const action = (rule.actions || []).find(item => item.type === 'selectHelmet' && String(item.nodeId) === String(node));
+          if (action) return {componentId: action.componentId, selection: {nodeId: action.nodeId}, path: action.embedPath || []};
+        }
+        return null;
       }
       function queueActivationNavigation(containerId, tabId) {
         const target = pageForTab(tabId);
         if (!target || target === page.value) return;
         pendingActivationPage = target;
-        setTimeout(() => {
+        pendingActivationNode = '';
+        clearTimeout(activationTimer);
+        // A delivered activate rule fires switchTab and selectHelmet in the same
+        // turn. Wait briefly so the target URL carries the node that was chosen.
+        activationTimer = setTimeout(() => {
           if (pendingActivationPage !== target) return;
+          const node = pendingActivationNode;
           pendingActivationPage = '';
-          location.assign(routeFor(target));
-        }, 0);
+          pendingActivationNode = '';
+          location.assign(routeFor(target, node ? {node} : {}));
+        }, 120);
       }
       function rememberActivationHelmet(componentId, selection, path) {
+        const node = String(selection?.nodeId || selection?.id || '').trim();
+        if (node) pendingActivationNode = node;
         if (!pendingActivationPage) return;
         try {
           sessionStorage.setItem('cockpit.pendingActivation', JSON.stringify({
-            id: identityId, page: pendingActivationPage, componentId, selection, path,
+            id: identityId, page: pendingActivationPage, node, componentId, selection, path,
             expiresAt: Date.now() + 30000,
           }));
         } catch (_) { /* storage can be disabled by the embedding host */ }
@@ -415,7 +437,12 @@
         let pending = null;
         try { pending = JSON.parse(sessionStorage.getItem('cockpit.pendingActivation') || 'null'); } catch (_) {}
         try { sessionStorage.removeItem('cockpit.pendingActivation'); } catch (_) {}
-        if (!pending || pending.id !== identityId || pending.page !== page.value || pending.expiresAt < Date.now()) return;
+        if (pending && (pending.id !== identityId || pending.page !== page.value || pending.expiresAt < Date.now())) pending = null;
+        const routeNode = params.get('node') || '';
+        if (!pending && routeNode) pending = activationRuleForNode(routeNode);
+        if (!pending) return;
+        const node = String(pending.node || pending.selection?.nodeId || routeNode || '');
+        if (node) history.replaceState(null, '', routeFor(page.value, {node}));
         // Selecting the helmet before ProUI has mounted its Graph leaves the SDK
         // fitView callback attached to a destroyed instance on the first remount.
         const apply = attempt => {
@@ -442,6 +469,84 @@
         if(!entry||entry[0]===page.value)return;
         event.preventDefault();event.stopPropagation();
         location.assign(routeFor(entry[0]));
+      }
+
+      function clearHelmetAnnotations() {
+        document.querySelectorAll('.cockpit-helmet-error').forEach(node => node.remove());
+      }
+      function annotateFailedHelmet(message) {
+        const roots = [...document.querySelectorAll('.mini-cp-helmet')];
+        if (!roots.length) return;
+        for (const root of roots) {
+          if (!root.querySelector('.cockpit-helmet-error')) {
+            const banner = document.createElement('div');
+            banner.className = 'cockpit-helmet-error';
+            banner.role = 'alert';
+            banner.textContent = '指标加载失败，节点数值不可用' + (message ? '：' + message : '');
+            root.prepend(banner);
+          }
+          // A failed node must never look like a real 0.00 total.
+          root.querySelectorAll('*').forEach(element => {
+            if (element.children.length) return;
+            const text = element.textContent || '';
+            if (/0\.00/.test(text) && /金额|天|率|电量|总/.test(text)) {
+              element.textContent = text.replace(/0\.00/g, '—');
+            }
+          });
+        }
+      }
+      function failedMetricLabels() {
+        const match = liveError.value.match(/^部分指标加载失败：(?:指标 ([^：]+)：)?/);
+        return match && match[1] ? match[1].split('、').filter(Boolean) : [];
+      }
+      function scrubFailedMetrics() {
+        const labels = failedMetricLabels();
+        if (!labels.length) return;
+        document.querySelectorAll('.cockpit-board *').forEach(element => {
+          if (element.children.length) return;
+          let text = element.textContent || '';
+          let changed = false;
+          for (const label of labels) {
+            const index = text.indexOf(label);
+            if (index < 0) continue;
+            const after = text.slice(index + label.length);
+            const value = after.match(/^(\s*)(-?[\d,]+(?:\.\d+)?\s*(?:%|GWh|亿元|天|单)?)/);
+            if (value) {
+              text = text.slice(0, index + label.length) + value[1] + '—' + after.slice(value[0].length);
+              changed = true;
+            }
+          }
+          if (changed) {
+            element.textContent = text;
+            element.title = liveError.value;
+          }
+        });
+      }
+      function sweepStuckLoading() {
+        if (!liveError.value) return;
+        document.querySelectorAll('.cockpit-board *').forEach(element => {
+          if (element.children.length) return;
+          if ((element.textContent || '').trim() === 'loading') {
+            element.textContent = '加载失败';
+            element.title = liveError.value;
+          }
+        });
+        scrubFailedMetrics();
+      }
+      function showLiveError(message, detail = {}) {
+        liveError.value = message ? '部分指标加载失败：' + message : '';
+        if (detail.kind === 'helmet') annotateFailedHelmet(message);
+        clearTimeout(liveErrorClear);
+        // The vendor cards keep an internal "loading" label when a promise
+        // rejects; replace only that placeholder, never a real value.
+        clearTimeout(liveErrorClear);
+        liveErrorClear = setTimeout(sweepStuckLoading, 6000);
+        setTimeout(() => { if (liveError.value) sweepStuckLoading(); }, 15000);
+      }
+      function clearLiveError() {
+        liveError.value = '';
+        clearTimeout(liveErrorClear);
+        clearHelmetAnnotations();
       }
 
       async function loadJson(url) {
@@ -487,6 +592,8 @@
           if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
           const makeClient=(snapshot=null)=>createAPDataClient({apiBase,id:identityId,snapshot,
             onSnapshotMiss:()=>changeScope(currentUiScope,true),
+            onError:(message,detail)=>showLiveError(message,detail),
+            onRecover:()=>clearLiveError(),
             onInvalidate:()=>{
               if(analysisEngine!=='main'||fullSnapshot)return;
               clearTimeout(refreshDebounce);
@@ -527,6 +634,7 @@
             }
             const client=liveDataClient;
             client.ready({allowExpired:Boolean(snapshot)}).then(()=>{if(client===liveDataClient){filtersReady=true;onPageActivity();}}).catch(()=>{});
+            setTimeout(()=>{if(client===liveDataClient&&liveError.value)sweepStuckLoading();},6500);
           }
           function schedulePageRefresh(delay=120000) {
             clearTimeout(refreshTimer);
@@ -617,10 +725,10 @@
           document.getElementById('cockpit-boot')?.remove();
         }
       });
-      onBeforeUnmount(() => {document.removeEventListener('click', onTabClick, true);clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {document.removeEventListener('click', onTabClick, true);clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
-        page, runtime, loading, error, pageTitle, pageState, boardRevision, dashboard: release, release, gaps, metadataSummary,
+        page, runtime, loading, error, pageTitle, pageState, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
         pageInsights, dashboardComponent: dashboard, biAdapters, biRuntime, hostUtils,
         slot_name: insight => `insight-${insight.id}`,
       };

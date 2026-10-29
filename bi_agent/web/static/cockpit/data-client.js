@@ -5,7 +5,7 @@ export function canonical(value) {
   return JSON.stringify(value);
 }
 
-export function createAPDataClient({apiBase, id, request = fetch, onInvalidate = () => {}, snapshot = null, onSnapshotMiss = () => {}}) {
+export function createAPDataClient({apiBase, id, request = fetch, onInvalidate = () => {}, snapshot = null, onSnapshotMiss = () => {}, onError = () => {}, onRecover = () => {}}) {
   const active = new Map(), all = new Map(), completed = new Map(), inflight = new Map(), queue = [];
   const replay = new Map((snapshot?.entries || []).map(e => [e.kind + ':' + canonical(e.payload), e]));
   let replaying = Boolean(snapshot), missed = false;
@@ -19,6 +19,27 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     }
   }
   const limit = run => new Promise((resolve, reject) => { queue.push({run, resolve, reject}); pump(); });
+  function queryLabels(payload) {
+    const labels = [], codes = [], stack = [payload];
+    while (stack.length) {
+      const value = stack.pop();
+      if (Array.isArray(value)) { stack.push(...value); continue; }
+      if (!value || typeof value !== 'object') continue;
+      for (const key of ['alias', 'label', 'name']) {
+        if (typeof value[key] === 'string' && value[key].trim()) labels.push(value[key].trim());
+      }
+      if (typeof value.identifierCode === 'string' && value.identifierCode.trim()) codes.push(value.identifierCode.trim());
+      for (const child of Object.values(value)) {
+        if (child && typeof child === 'object') stack.push(child);
+      }
+    }
+    const unique = [...new Set(labels.length ? labels : codes)];
+    return unique.slice(0, 6);
+  }
+  function notify(error, kind) { try { onError(error, {kind}); } catch (_) {} }
+  function recovered() {
+    if (![...all.values()].some(state => state.error)) { try { onRecover(); } catch (_) {} }
+  }
   function shape(kind, payload) {
     // Different widgets may share measures but use different status filters.
     // Keep each full query; committed SDK filter changes clear the whole scope.
@@ -35,8 +56,11 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
           body: JSON.stringify({id: Number(id), kind, payload})});
         try { body = await response.json(); } catch (_) { body = null; }
         const queued = response.status === 429 || (response.status === 504 && /排队/.test(String(body?.detail || '')));
-        if (!queued || attempt === 2) break;
-        await pause(300 * (attempt + 1));
+        // One bounded retry for a transient upstream timeout; never retry a
+        // deterministic 502 or keep replaying a failing SQL query.
+        const transientTimeout = response.status === 504 && !queued && attempt === 0;
+        if ((!queued && !transientTimeout) || attempt === 2) break;
+        await pause(queued ? 300 * (attempt + 1) : 600);
       }
       if (!body) throw new Error('看板AP代理响应无效');
       if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : '看板AP查询失败');
@@ -57,7 +81,8 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
       return Promise.reject(new Error('当前范围没有完整缓存，正在重新取数'));
     }
     const slot = shape(kind, payload);
-    const state = {key: canonical(payload), pending: true, error: '', receiptId: '', expiresAt: 0};
+    const labels = queryLabels(payload);
+    const state = {key: canonical(payload), pending: true, error: '', labels, receiptId: '', expiresAt: 0};
     all.set(slot, state);
     if (kind !== 'helmet') { const previous=active.get(slot); active.set(slot, state); onInvalidate({replacement:Boolean(previous && previous.key!==state.key)}); }
     const reused = completed.get(key);
@@ -68,10 +93,17 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
       if (kind !== 'helmet' && active.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
       if (all.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
       completed.set(key, body);
-      Object.assign(state, {pending: false, receiptId: body.receiptId, expiresAt: body.expiresAt,
+      Object.assign(state, {pending: false, error: '', receiptId: body.receiptId, expiresAt: body.expiresAt,
         entry:{kind,payload,data:body.data,receiptId:body.receiptId,receivedAt:body.receivedAt,expiresAt:body.expiresAt}});
+      recovered();
       return body.data;
-    }).catch(error => { state.pending = false; state.error = error.message || 'AP查询失败'; throw error; })
+    }).catch(error => {
+      state.pending = false;
+      const detail = error.message || 'AP查询失败';
+      state.error = (labels.length ? '指标 ' + labels.join('、') + '：' : '') + detail;
+      notify(state.error, kind);
+      throw error;
+    })
       .finally(() => { if(inflight.get(key)===promise) inflight.delete(key); });
     inflight.set(key, promise);
     return promise;
@@ -101,11 +133,14 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     return scope(allowExpired);
   }
   function clearScope() { active.clear(); all.clear(); completed.clear(); inflight.clear(); replay.clear(); replaying=false; onInvalidate({replacement:true}); }
+  function failures() {
+    return [...new Set([...all.values()].filter(state => state.error).map(state => state.error))];
+  }
   function entries() {
     if(!all.size || [...all.values()].some(s=>s.pending||s.error||!s.entry))throw new Error('看板数据未完整加载');
     return JSON.parse(JSON.stringify([...all.values()].map(s=>s.entry)));
   }
-  return {scope, ready, clearScope, entries, read:query, block:message=>{blocked=message;}, biAdapters: {
+  return {scope, ready, clearScope, entries, failures, read:query, block:message=>{blocked=message;}, biAdapters: {
     postAnalysisDataQuery: payload => query('analysis', payload),
   }, utils: {request: async req => {
     try {

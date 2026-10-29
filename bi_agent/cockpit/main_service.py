@@ -16,13 +16,19 @@ def analysis_question(context):
     scope={k:context.get(k) for k in ('period','department','filters','repositoryId','chartSnapshotId','clarifications')}
     if context.get('apReceiptIds'):
         for key in ('period','department','filters'):scope.pop(key,None)
+    stage_gap=context.get('stageEvidence') or {}
+    stage_note=''
+    if stage_gap:
+        stage_note=(f"本轮只为{NAMES[context['stage']]}环节提供{stage_gap.get('kept',0)}条匹配查询；"
+                    f"另有{stage_gap.get('excluded',0)}条其他环节查询已排除，不得引用或改写成该环节证据。")
     return (
         f"请分析{NAMES[context['stage']]}环节的经营异常，调查有证据支持的原因，并给出基于证据的改善建议。"
         "请沿用主服务正常意图路由、只读看板工具取数与交付校验。本任务为无对话自动卡片交付，遇到口径歧义请交付受限卡片说明缺失，不要等待交互。"
         "先调用Cockpit-DashboardQuery读取目录，再读取相关queryId。工具读取的是与网页同一次取数的冻结结果；是否为实时AP取数以工具返回live标记为准。范围JSON的时间和部门只是页面历史参数，实际分析范围以AP原始请求为准，不可假定已应用筛选。"
         "缺少指标映射或实体关系时明确说明，存在歧义时正常请求确认，不得自动选采购指标代替销售指标。"
         "请读取工具返回的evidenceIds，最终调用CockpitDeliverCards提交短摘要、原因、建议、限制供既有AI插槽展示；业务数值由事实字段展示，短摘要不重复业务数字，不新造比例；没有原因证据时causes和recommendations留空并说明缺口。不要生成HTML或重新绘制图表，不得编造根因、责任角色或期限。提交后用正常中文章节确认交付，不另开模型改写。"
-        "\n范围："+json.dumps(scope,ensure_ascii=False,sort_keys=True)
+        +("\n证据范围："+stage_note if stage_note else '')
+        +"\n范围："+json.dumps(scope,ensure_ascii=False,sort_keys=True)
     )
 
 
@@ -109,6 +115,9 @@ def session_evidence(session,context):
         facts.append(dict(id=value['id'],label=label,value=number,unit='',definition=statement,claim=value))
     limitations=[('主服务读取页面本次实时AP响应的冻结结果，未重新取数；' if context.get('snapshotId','').startswith('ap-') else '主服务读取当前看板同一份交付AP快照，非实时数据库；')+'时间、部门以AP原始请求为准。没有同源明细补查接口，不能据此确认根因。',
         '展示层直接摘取主服务已交付章节，没有额外调用模型生成原因或建议。']
+    stage_filter=getattr(session,'cockpit_stage_filter',None) or {}
+    if stage_filter.get('excluded'):
+        limitations.append(f"已排除{stage_filter['excluded']}条与{NAMES.get(stage_filter.get('stage'),stage_filter.get('stage'))}环节无关的页面查询；未使用其他环节数据代替。")
     records=[]
     for index,query in enumerate(getattr(session,'query_results',[])):
         data=getattr(query,'data',None)

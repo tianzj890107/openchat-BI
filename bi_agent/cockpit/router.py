@@ -92,9 +92,6 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         result_store=store()
         def read():
             result = gateway.query(req.kind, req.payload)
-            if req.kind == 'helmet':
-                from .helmet_compat import normalize_helmet
-                result = normalize_helmet(result)
             if transport_identity(gateway.config)!=auth_scope:raise HTTPException(409,'AP认证配置已变化，请重新取数')
             return result_store.save_ap_result(req.id, req.kind, req.payload, result,
                                           gateway.config.receipt_ttl, gateway.config.identity(), auth_scope,
@@ -141,7 +138,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     def context_value(c,s):
         snapshot_id=s["snapshotId"]
         data_source=s.get("dataSource") or ('ap' if snapshot_id.startswith('ap-') else 'snapshot' if snapshot_id.startswith('dashboard-') else 'demo')
-        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=snapshot_id,sourceMode=c.source,engine=c.engine,repositoryId=s.get("repositoryId",c.repositoryId),dataSource=data_source,dataIdentity=s.get("dataIdentity",""),dataFingerprint=s.get("dataFingerprint",""),dataBasis=s.get("dataBasis","原型或演示证据，不是当前看板AP快照"))
+        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=snapshot_id,sourceMode=c.source,engine=c.engine,repositoryId=s.get("repositoryId",c.repositoryId),dataSource=data_source,dataIdentity=s.get("dataIdentity",""),dataFingerprint=s.get("dataFingerprint",""),dataBasis=s.get("dataBasis","原型或演示证据，不是当前看板AP快照"),stageEvidence=s.get("stageEvidence") or {})
         return value
     def scope(c,s):
         if c.engine=="main":return publication_scope(context_value(c,s))

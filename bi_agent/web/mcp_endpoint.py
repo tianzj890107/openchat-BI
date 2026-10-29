@@ -1375,6 +1375,9 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
         ).strip()
         request_id = str(body.get("requestId") or uuid.uuid4().hex)
         retry = body.get("retry") is True
+        requested_item_type = str(body.get("itemType") or "").strip().upper()
+        if requested_item_type and requested_item_type not in {"RISK", "TODO"}:
+            raise HTTPException(400, "itemType must be RISK or TODO")
         temporary_canvas_dispatch = bool(
             isinstance(action_payload, dict) and all_canvas_actions_dispatchable()
         )
@@ -1407,6 +1410,7 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
                     action_id=action_id,
                     request_id=request_id,
                     retry=retry,
+                    expected_item_type=requested_item_type,
                 )
             else:
                 result = await asyncio.to_thread(

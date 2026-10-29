@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from copy import deepcopy
@@ -22,6 +23,16 @@ PATHS = {
     'helmet': '/x360/v1/graphs/helmet-view',
 }
 MAX_RESPONSE = 16 * 1024 * 1024
+
+
+def _upstream_message(body):
+    if not isinstance(body, dict):
+        return ''
+    for key in ('message', 'msg', 'detail', 'errorMsg', 'error'):
+        value = body.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ''
 
 
 class APQuery(BaseModel):
@@ -104,6 +115,19 @@ class APGateway:
         self._capacity = threading.BoundedSemaphore(config.concurrency)
         self._opener = opener or build_opener(ProxyHandler({}), NoRedirect())
 
+    def _sanitize(self, text):
+        """Keep the upstream metric reason, never credentials or line breaks."""
+        try:
+            secrets = [value for value in self.config.headers().values()
+                       if isinstance(value, str) and len(value) >= 4]
+        except HTTPException:
+            secrets = []
+        cleaned = str(text or '')
+        for value in secrets:
+            cleaned = cleaned.replace(value, '***')
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        return cleaned[:240]
+
     def query(self, kind, payload, *, _deadline=None):
         if kind not in PATHS:
             raise HTTPException(422, '不支持的只读AP接口')
@@ -156,10 +180,17 @@ class APGateway:
             body = json.loads(raw)
             success = isinstance(body, dict) and (body.get('success') is True or str(body.get('code', '')).strip() == '200')
             if not success or body.get('data') is None:
-                raise HTTPException(502, 'AP未返回成功的数据结果，请检查查询口径及AP认证')
+                reason = self._sanitize(_upstream_message(body))
+                detail = 'AP未返回成功的数据结果'
+                detail += ('：' + reason) if reason else '，请检查查询口径及AP认证'
+                raise HTTPException(502, detail)
             if kind == 'batch':
-                if not isinstance(body['data'], list) or len(body['data']) != len(payload) or any(not isinstance(v, dict) or v.get('success') is not True or v.get('data') is None for v in body['data']):
-                    raise HTTPException(502, 'AP批量查询不完整或包含失败子查询')
+                failed = next((item for item in body['data'] if isinstance(item, dict) and item.get('success') is not True), None) if isinstance(body['data'], list) else None
+                if not isinstance(body['data'], list) or len(body['data']) != len(payload) or failed is not None or any(not isinstance(v, dict) or v.get('data') is None for v in body['data']):
+                    reason = self._sanitize(_upstream_message(failed))
+                    detail = 'AP批量查询不完整或包含失败子查询'
+                    detail += ('：' + reason) if reason else '；未交付缺项结果'
+                    raise HTTPException(502, detail)
             if _deadline is not None and time.monotonic() > _deadline:
                 raise HTTPException(504, 'AP整批查询超时，未交付部分结果')
             return body['data']

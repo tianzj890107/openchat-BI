@@ -116,7 +116,9 @@ def test_real_main_api_uses_shared_admission_and_preserves_user_sessions(tmp_pat
         client=TestClient(web.app)
         from bi_agent.cockpit.dashboard_source import RELEASE, SNAPSHOT
         import json
-        query=next(iter(json.loads(SNAPSHOT.read_text())['analysis']))
+        analysis=json.loads(SNAPSHOT.read_text())['analysis']
+        query=next(key for key,value in analysis.items()
+                   if '发货' in json.dumps(value,ensure_ascii=False))
         item=client.post('/api/cockpit/analyses',json=dict(engine='main',source='service',chartSnapshotId=RELEASE,chartQueries=[query])).json()
         assert 'id' in item,item
         done=wait(client,item['id'])
@@ -172,3 +174,16 @@ def test_raw_query_row_cannot_be_upgraded_to_supported_root_cause():
     with pytest.raises(ValueError):validate_result(result,evidence,{'q1'})
     result['causes'][0]['status']='hypothesis'
     assert validate_result(result,evidence,{'q1'})['causes'][0]['status']=='hypothesis'
+
+
+def test_stage_without_matching_evidence_skips_the_model_and_delivers_a_gap_card():
+    from bi_agent.web.app import _cockpit_main_runner
+    context = dict(id=1, engine='main', source='service', stage='opportunity',
+                   snapshotId='ap-test', dataSource='ap',
+                   stageEvidence=dict(stage='opportunity', kept=0, excluded=5))
+    result, events = _cockpit_main_runner(context, threading.Event(), lambda *a: None)
+    assert events == []
+    assert result['_status'] == 'limited'
+    assert result['cardContract'] == 'cockpit-cards-v1'
+    assert result['causes'] == [] and result['recommendations'] == []
+    assert '商机获取' in result['summary']

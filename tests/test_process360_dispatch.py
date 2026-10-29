@@ -192,6 +192,8 @@ def test_canvas_recommendation_creates_one_temporary_draft_and_reuses_it(
         "content": "由财务复核逾期账户。",
         "evidence": "应收明细",
         "severity": "HIGH",
+        "verificationStatus": "unverified",
+        "metadata": {"verified": True, "verificationStatus": "verified", "keep": "ok"},
     }
     try:
         first = dispatch.dispatch_canvas_action(
@@ -210,12 +212,19 @@ def test_canvas_recommendation_creates_one_temporary_draft_and_reuses_it(
         reset_request_context(token)
     assert first["status"] == "ok" and first["accepted"] is True
     assert first["temporaryDraft"] is True
+    assert first["verificationStatus"] == "unverified"
+    assert first["sourceKind"] == "page_direct"
     assert first["draftId"].startswith("canvas-")
     assert second["draftId"] == first["draftId"]
     assert service.calls[0]["recipients"] == ["18800000003"]
     draft = service.store.get_draft(first["draftId"])
     assert draft and "a1" in draft["actions"]
     assert draft["approval_status"] == "host_click_authorized"
+    assert "未经过服务端证据校验" in draft["actions"]["a1"]["content"]
+    assert draft["actions"]["a1"]["verification_status"] == "unverified"
+    assert draft["actions"]["a1"]["metadata"]["verificationStatus"] == "unverified"
+    assert "verified" not in draft["actions"]["a1"]["metadata"]
+    assert draft["actions"]["a1"]["metadata"]["keep"] == "ok"
 
 
 def test_canvas_recommendation_rejects_phone_content(monkeypatch) -> None:
@@ -231,4 +240,31 @@ def test_canvas_recommendation_rejects_phone_content(monkeypatch) -> None:
     )
     assert result["status"] == "blocked"
     assert "手机号" in result["message"]
+    assert service.calls == []
+
+
+def test_canvas_direct_send_cannot_claim_verified_root_cause(monkeypatch) -> None:
+    monkeypatch.setenv("PROCESS360_RECIPIENT_MAP", json.dumps({"shenkang": ["18800000003"]}))
+    service = FakeService({"status": "ok", "receipt": {}})
+    result = dispatch.dispatch_canvas_action(
+        service,
+        action={"id": "a1", "title": "风险", "content": "已确认根因", "verificationStatus": "verified"},
+        action_id="a1",
+    )
+    assert result["status"] == "blocked"
+    assert "已验证" in result["message"]
+    assert service.calls == []
+
+
+def test_canvas_direct_send_rejects_item_type_mismatch(monkeypatch) -> None:
+    monkeypatch.setenv("PROCESS360_RECIPIENT_MAP", json.dumps({"shenkang": ["18800000003"]}))
+    service = FakeService({"status": "ok", "receipt": {}})
+    result = dispatch.dispatch_canvas_action(
+        service,
+        action={"id": "a1", "title": "处置", "content": "跟进", "item_type": "TODO"},
+        action_id="a1",
+        expected_item_type="RISK",
+    )
+    assert result["status"] == "blocked"
+    assert "类型不一致" in result["message"]
     assert service.calls == []

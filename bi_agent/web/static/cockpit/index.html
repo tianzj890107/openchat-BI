@@ -9,6 +9,7 @@
   <meta name="cockpit-assets" content="@@APP_ROOT_PATH@@/static/cockpit">
   <meta name="cockpit-api-base" content="@@APP_ROOT_PATH@@/api/cockpit">
   <title>储能经营风险驾驶舱</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230f62fe'/%3E%3Cpath d='M4 11V6h2v5H4zm3 0V3h2v8H7zm3 0V8h2v3h-2z' fill='white'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/vendor/pro-ui.min.css?v=b1ee836d">
   <link rel="stylesheet" href="@@APP_ROOT_PATH@@/static/cockpit/cockpit.css?v=@@COCKPIT_VERSION@@">
   <link rel="modulepreload" href="@@APP_ROOT_PATH@@/static/cockpit/data-client.js?v=@@COCKPIT_VERSION@@">
@@ -25,6 +26,7 @@
       <div v-if="error" class="cockpit-state error" role="alert">{{error}}</div>
       <div v-else-if="loading" class="cockpit-state">正在加载正式看板配置…</div>
       <div v-else class="cockpit-board">
+        <div v-if="liveError" class="cockpit-publication-state error" role="alert">{{ liveError }}</div>
         <div v-if="pageState.cached || pageState.error" class="cockpit-publication-state" role="status">
           <span v-if="pageState.cached">完整看板 · 数据时间 {{new Date(pageState.dataAsOf * 1000).toLocaleString('zh-CN', {hour12:false})}}</span>
           <span v-if="pageState.refreshing"> · 正在后台更新</span>

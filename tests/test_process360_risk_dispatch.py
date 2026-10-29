@@ -235,6 +235,41 @@ def test_canvas_renders_risk_and_todo_cards_with_distinct_actions(
     assert "正在推送风险" in html
 
 
+def test_canvas_risk_direct_card_is_marked_unverified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PROCESS360_CANVAS_DISPATCH_MODE", "all")
+    canvas = mcp_endpoint._canvas_tools()
+    execute = canvas._make_canvas_generate()
+    output = execute({
+        "title": "风险直发",
+        "blocks": [{"kind": "actions", "params": {"items": [{
+            "id": "risk-direct-1",
+            "itemType": "RISK",
+            "dispatchTool": "RiskItemCreate",
+            "title": "超期未发货风险",
+            "content": "已观察事实。",
+            "severity": "HIGH",
+        }]}}],
+    }, str(tmp_path))
+    assert "Canvas generated" in output
+    spec = json.loads(
+        output.split(canvas.CANVAS_SPEC_OPEN)[1].split(canvas.CANVAS_SPEC_CLOSE)[0]
+    )
+    page = Path(spec["saved_path"])
+    if not page.is_absolute():
+        page = tmp_path / page
+    html = page.read_text(encoding="utf-8")
+    assert "推送风险" in html
+    assert "临时直发" in html
+    assert "未经验证分析" in html
+    item = spec["actionState"]["items"][0]
+    assert item["itemType"] == "RISK"
+    assert item["temporaryDispatch"] is True
+    assert item["verificationStatus"] == "unverified"
+    assert item["sourceKind"] == "page_direct"
+
+
 def test_gate_accepts_risk_tool_only_for_risk_draft_action(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -247,11 +247,11 @@ def test_individual_batch_deduplicates_equal_children_without_losing_positions(t
     assert result[1]['data']['result']['rows']
 
 
-def test_helmet_proxy_restores_validated_legacy_config(tmp_path,monkeypatch):
+def test_helmet_proxy_preserves_upstream_ywln_config(tmp_path,monkeypatch):
     import bi_agent.cockpit.router as router
     monkeypatch.setenv('COCKPIT_DATA_MODE','ap')
-    opportunity={"dimension":[{"identifierCode":"D020"}],"measure":[{"identifierCode":"M0023"}]}
-    quotation={"dimension":[{"identifierCode":"D021"}],"measure":[{"identifierCode":"M0031"}]}
+    opportunity={"dimension":[{"identifierCode":"YWLN_D020"}],"measure":[{"identifierCode":"YWLN_M0022"}]}
+    quotation={"dimension":[{"identifierCode":"YWLN_D021"}],"measure":[{"identifierCode":"YWLN_M0031"}]}
     helmet={"helmetGlobalConfig":None,"edges":[],"nodes":[
         {"code":"BUSINESS_OPPORTUNITY_ACQUISITION","meta":{"helmetConfig":{
             "dataConfig":json.dumps(opportunity),"statusMappings":[]}}},
@@ -263,7 +263,5 @@ def test_helmet_proxy_restores_validated_legacy_config(tmp_path,monkeypatch):
         id=1,kind='helmet',payload={'flowCode':'FULL_PROCESS_OPERATIONS_MANAGEMENT'}))
     assert response.status_code==200,response.text
     nodes=response.json()['data']['nodes']
-    normalized=json.loads(nodes[0]['meta']['helmetConfig']['dataConfig'])
-    assert normalized['dimension'][0]['identifierCode']=='D007'
-    assert normalized['measure'][0]['identifierCode']=='M00013'
-    assert 'helmetConfig' not in nodes[1]['meta']
+    assert json.loads(nodes[0]['meta']['helmetConfig']['dataConfig'])==opportunity
+    assert json.loads(nodes[1]['meta']['helmetConfig']['dataConfig'])==quotation

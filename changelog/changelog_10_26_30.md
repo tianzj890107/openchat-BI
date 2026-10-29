@@ -12,6 +12,42 @@
 
 ## 本周变更
 
+### 2026-10-29 09:20 · Cockpit 验收收口：指标证据隔离、失败状态与直发标注
+
+- 用户可见变化：看板 AI 插槽按业务环节隔离证据，商机卡只消费商机指标，报价、投标、订单、
+  发货各自使用本环节指标；页面没有本环节指标时交付限制卡片并说明缺口，不再输出“0 项原因、
+  0 项建议”冒充分析结论。采购、发货等其他环节数据不会再被商机卡引用。
+- 头盔图兼容：删除旧的 `helmet_compat` 重写，停止把上游 `YWLN_D020/YWLN_M0022` 商机头盔
+  改成旧 `D007/M00013` 发货口径，也不再移除报价、订单、发货节点配置。上游 repository 8 返回
+  的 `YWLN_*` 配置原样渲染；本体未配置的指标继续由上游返回失败，宿主不补造。
+- 失败状态：AP 上游返回 `success:false` 时保留清洗后的指标级原因（例如 SQL 超时及指标编码），
+  页面显示“部分指标加载失败”，头盔节点在失败时以“—”替代可能的 `0.00`，长期 `loading`
+  占位改为“加载失败”；只对瞬时 504 做一次有界重试，确定性 502 不重试。真实零值和上游明确
+  返回的 `0.00` 保持不变。
+- 风险/待办直发：保留页面直接发送，服务端补建一次性草稿并继续校验身份、权限、接收人、幂等和
+  回执；直发卡片标注“临时直发 / 未经验证分析”，正文追加“未经过服务端证据校验，不代表已验证
+  根因或风险已解除”。Canvas 自带的 `verificationStatus=unverified` 标记可正常直发，会被强制
+  归一化为未验证；调用方声明 `verified/true` 仍会阻断，嵌套元数据中的冒充字段也会清除；
+  RISK/TODO 工具类型错配在调用 Fuxi 前阻断。
+- 跳转与展示：跨 Tab 的 `switchTab + selectHelmet` 现在把 `node` 写入目标 URL，并在目标页按
+  路由或 `activate-rules.json` 恢复节点；KPI 数值行不再被裁掉末位，超过 4 项的底层指标明细
+  默认折叠；补充 favicon，消除 404。
+- 数据口径：线上 9c906a9 静态包已使用 d01c08a 元数据；本轮浏览器复核经营看板各 KPI 为
+  销售额 78.32 亿元、出货量 20.36 GWh、毛利率 18.20%、净利率 7.60%、应收周转 76 天，
+  不再共用采购金额。部分运营指标（如订单接收电量、已中标未签单金额、中标率）上游仍返回
+  502/504，页面按失败状态展示，需等上游补齐指标。
+- Skill：更新风险卡、直发标注和环节证据规则，重新打包 24 文件，SHA256 为
+  `e065e095caf65ee59441ecf40fe1f770a63a39aca6fd50eef44a9ad7a3f5dba1`；分发包不入库。
+- 验证：全量 pytest 1632 passed、37 skipped、1022 subtests passed；Node 数据客户端 16 项、
+  整页缓存 5 项、发布客户端 6 项通过；Skill 自检 160/160 通过。`git diff --check`、JS 语法
+  检查与 Python 编译检查均通过。
+- 涉及文件：`bi_agent/cockpit/dashboard_source.py`、`router.py`、`ap_gateway.py`、
+  `main_service.py`、`bi_agent/web/app.py`、`bi_agent/process360/dispatch.py`、
+  `bi_agent/web/mcp_endpoint.py`、`ontology-analytics-mcp/canvas_tool.py`、
+  `bi_agent/web/static/cockpit/{cockpit.js,data-client.js,index.html,cockpit.css}`、
+  `insight-components/shared.js`、`ontology-analytics-skill/**` 及测试。
+- 边界：未发送真实 Fuxi 风险/待办；上游尚未配置的指标仍保持明确失败，不视为业务数据完整。
+
 ### 2026-10-29 · Cockpit 适配 iba-demo 1021 单查接口、跳转规则与 12 个 AI 插槽
 
 - 组件同步：按上游 `feature/demo_1021` 的 `d01c08a` 更新根组件、13 份模板、145 个组件配置、

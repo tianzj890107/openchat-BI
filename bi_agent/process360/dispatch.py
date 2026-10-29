@@ -42,6 +42,24 @@ _RECIPIENT_VERSION_ENV = "PROCESS360_RECIPIENT_MAP_VERSION"
 _CANVAS_MODE_ENV = "PROCESS360_CANVAS_DISPATCH_MODE"
 _CANVAS_RECIPIENT_ENV = "PROCESS360_CANVAS_RECIPIENT"
 _TRUSTED_APPROVAL_STATES = {"approved", "host_click_authorized"}
+_DIRECT_SEND_NOTE = (
+    "本条目由页面直接下发，未经过服务端证据校验；仅代表当前分析建议，"
+    "不代表已验证根因或风险已解除。"
+)
+_VERIFICATION_FIELDS = {
+    "verificationstatus", "verification_status", "verified",
+    "rootcauseverified", "root_cause_verified",
+}
+_UNVERIFIED_MARKERS = {"", "unverified", "unverified_analysis", "page_direct"}
+
+
+def _claims_verification(value: Any) -> bool:
+    """True only for values that claim a verified/confirmed state."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() not in _UNVERIFIED_MARKERS
 
 
 def page_dispatch_enabled() -> bool:
@@ -140,6 +158,15 @@ def _canvas_action(action: Mapping[str, Any]) -> dict[str, Any]:
             "action must not contain recipient, identity or permission fields: "
             + ", ".join(sorted(forbidden))
         )
+    claimed = {
+        str(key) for key, value in action.items()
+        if str(key).lower() in _VERIFICATION_FIELDS and _claims_verification(value)
+    }
+    if claimed:
+        raise ValueError(
+            "页面直接下发不能声明已验证状态："
+            + ", ".join(sorted(claimed))
+        )
     action_id = str(action.get("id") or action.get("actionId") or "").strip()
     title = str(action.get("title") or "").strip()
     content = str(action.get("content") or action.get("markdown") or "").strip()
@@ -152,6 +179,9 @@ def _canvas_action(action: Mapping[str, Any]) -> dict[str, Any]:
     evidence = str(action.get("evidence") or "").strip()
     if len(evidence) > 4000:
         raise ValueError("action.evidence must be at most 4000 characters")
+    content = f"{content}\n\n> {_DIRECT_SEND_NOTE}"
+    if len(content) > 12000:
+        raise ValueError("action.content is required and must be at most 12000 characters")
     owner_ref = str(action.get("ownerRef") or action.get("owner_ref") or "").strip()
     owner_name = str(action.get("ownerName") or action.get("owner_name") or "").strip()[:200]
     scenario = str(action.get("scenario") or "CANVAS").strip().upper()[:40] or "CANVAS"
@@ -168,6 +198,11 @@ def _canvas_action(action: Mapping[str, Any]) -> dict[str, Any]:
             ensure_ascii=False,
         )
     )
+    metadata = action.get("metadata") if isinstance(action.get("metadata"), dict) else {}
+    metadata = {
+        key: value for key, value in metadata.items()
+        if str(key).lower() not in _VERIFICATION_FIELDS
+    }
     return {
         "id": action_id,
         "title": title,
@@ -180,15 +215,15 @@ def _canvas_action(action: Mapping[str, Any]) -> dict[str, Any]:
         "scenario": scenario,
         "item_type": item_type,
         "source": "boulderai-anaylize-todo",
+        "source_kind": "page_direct",
+        "verification_status": "unverified",
         "category": str(action.get("category") or "智能分析任务令").strip()[:80],
         "task_template": str(action.get("taskTemplate") or action.get("task_template") or "").strip()[:80],
         "metadata": {
-            **(
-                action.get("metadata")
-                if isinstance(action.get("metadata"), dict)
-                else {}
-            ),
+            **metadata,
             "temporaryCanvasDispatch": True,
+            "sourceKind": "page_direct",
+            "verificationStatus": "unverified",
         },
     }
 
@@ -475,6 +510,12 @@ def dispatch_action(
     if result.get("executionId"):
         response["executionId"] = result.get("executionId")
     response["itemType"] = action_item_type
+    if draft.get("temporaryCanvasDispatch"):
+        response["verificationStatus"] = "unverified"
+        response["sourceKind"] = "page_direct"
+    else:
+        response["verificationStatus"] = "draft_backed"
+        response["sourceKind"] = "server_draft"
     response["sourceTodoId"] = (
         (receipt or {}).get("sourceTodoId")
         or result.get("sourceTodoId")
@@ -493,6 +534,7 @@ def dispatch_canvas_action(
     request_id: str = "",
     retry: bool = False,
     client: FuxiTodoClient | None = None,
+    expected_item_type: str = "",
 ) -> dict[str, Any]:
     """Temporary POC path for every Canvas action card.
 
@@ -531,6 +573,25 @@ def dispatch_canvas_action(
             action_id=action_id,
             request_id=request_id,
         )
+    if expected_item_type:
+        want = normalize_item_type(expected_item_type)
+        if normalized["item_type"] != want:
+            return envelope(
+                "blocked",
+                message="下发工具与卡片类型不一致；风险卡使用 RiskItemCreate，处置待办使用 TaskOrderCreate",
+                accepted=False,
+                draft_id=draft_id,
+                action_id=action_id,
+                request_id=request_id,
+                gaps=[{
+                    "code": "DISPATCH_ITEM_TYPE_MISMATCH",
+                    "name": "下发工具与卡片类型不一致",
+                    "needed": "按卡片 dispatchTool 选择 RiskItemCreate 或 TaskOrderCreate",
+                    "impact": "未调用 Fuxi",
+                    "severity": "blocking",
+                    "source": "runtime",
+                }],
+            )
 
     context = active_request_context()
     identity = context.principal if context is not None else None
@@ -602,6 +663,8 @@ def dispatch_canvas_action(
         payload = {
             "status": "ok",
             "temporaryCanvasDispatch": True,
+            "verificationStatus": "unverified",
+            "sourceKind": "page_direct",
             "canvasActions": [normalized],
         }
         saved = service.store.save_draft(
@@ -624,4 +687,6 @@ def dispatch_canvas_action(
         client=client,
     )
     result["temporaryDraft"] = True
+    result["verificationStatus"] = "unverified"
+    result["sourceKind"] = "page_direct"
     return result

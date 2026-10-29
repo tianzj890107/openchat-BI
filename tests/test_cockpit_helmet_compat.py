@@ -1,18 +1,26 @@
+"""The cockpit must render upstream helmet configs verbatim.
+
+2026-10-29: upstream ontology repository 8 publishes YWLN_* helmet codes.
+The old compatibility shim rewrote valid YWLN_D020/YWLN_M0022 (and removed
+quotation/order/dispatch configs) to legacy D007/M00013, which made the
+opportunity helmet show shipment amounts.  The shim is gone; this test keeps
+the transport path from silently reintroducing a rewrite.
+"""
 import json
 
-from bi_agent.cockpit.helmet_compat import normalize_helmet
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+import bi_agent.cockpit.router as router
+from bi_agent.cockpit.router import build_cockpit_router
 
 OPPORTUNITY = {
-    "dimension": [{"fieldType": "dimension", "identifierCode": "D020",
-                   "label": "商机获取办理状态", "valueType": "STRING"}],
-    "measure": [{"fieldType": "measure", "identifierCode": "M0023",
-                 "label": "商机获取金额", "name": "Opportunity_Amount"}],
+    "dimension": [{"identifierCode": "YWLN_D020"}],
+    "measure": [{"identifierCode": "YWLN_M0022"}],
 }
 QUOTATION = {
-    "dimension": [{"fieldType": "dimension", "identifierCode": "D021",
-                   "label": "报价办理状态", "valueType": "STRING"}],
-    "measure": [{"fieldType": "measure", "identifierCode": "M0031",
-                 "label": "报价电量"}],
+    "dimension": [{"identifierCode": "YWLN_D021"}],
+    "measure": [{"identifierCode": "YWLN_M0031"}],
 }
 
 
@@ -26,66 +34,49 @@ def node(code, config):
                                       "statusMappings": [{"statusCode": "normal-error"}]}}}
 
 
-def test_legacy_opportunity_config_is_replaced_with_validated_codes():
-    payload = helmet(node("BUSINESS_OPPORTUNITY_ACQUISITION", OPPORTUNITY))
-    result = normalize_helmet(payload)
+class Gateway:
+    def __init__(self, payload):
+        self.payload = payload
+        from types import SimpleNamespace
+        self.config = SimpleNamespace(
+            base_url="http://ap.example", batch_mode="individual", receipt_ttl=60,
+            headers=lambda: {"X-App-Id": "test"}, identity=lambda: "identity-test",
+        )
+
+    def query(self, kind, payload):
+        return json.loads(json.dumps(self.payload))
+
+
+def fetch(payload, monkeypatch, tmp_path):
+    monkeypatch.setenv("COCKPIT_DATA_MODE", "ap")
+    monkeypatch.setattr(router, "get_gateway", lambda: Gateway(payload))
+    app = FastAPI()
+    app.include_router(build_cockpit_router(lambda: tmp_path, main_context=lambda c: {}))
+    response = TestClient(app).post(
+        "/api/cockpit/data/query",
+        json=dict(id=1, kind="helmet", payload={"flowCode": "FULL_PROCESS_OPERATIONS_MANAGEMENT"}),
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def test_upstream_ywln_helmet_configs_are_not_rewritten(monkeypatch, tmp_path):
+    payload = helmet(node("BUSINESS_OPPORTUNITY_ACQUISITION", OPPORTUNITY),
+                     node("QUOTATION", QUOTATION))
+    result = fetch(payload, monkeypatch, tmp_path)
+    opportunity = json.loads(result["nodes"][0]["meta"]["helmetConfig"]["dataConfig"])
+    assert opportunity["dimension"][0]["identifierCode"] == "YWLN_D020"
+    assert opportunity["measure"][0]["identifierCode"] == "YWLN_M0022"
+    quotation = json.loads(result["nodes"][1]["meta"]["helmetConfig"]["dataConfig"])
+    assert quotation["dimension"][0]["identifierCode"] == "YWLN_D021"
+    assert quotation["measure"][0]["identifierCode"] == "YWLN_M0031"
+
+
+def test_legacy_only_helmet_payloads_are_also_left_alone(monkeypatch, tmp_path):
+    legacy = {"dimension": [{"identifierCode": "D007"}],
+              "measure": [{"identifierCode": "M00013"}]}
+    payload = helmet(node("BUSINESS_OPPORTUNITY_ACQUISITION", legacy))
+    result = fetch(payload, monkeypatch, tmp_path)
     config = json.loads(result["nodes"][0]["meta"]["helmetConfig"]["dataConfig"])
     assert config["dimension"][0]["identifierCode"] == "D007"
     assert config["measure"][0]["identifierCode"] == "M00013"
-    assert config["measure"][0]["label"] == "发货金额"
-    assert [x["dimensionValue"] for x in
-            result["nodes"][0]["meta"]["helmetConfig"]["statusMappings"]] == [
-        "overdue_uncompleted", "imminent_uncompleted", "normal_uncompleted",
-        "overdue_completed", "normal_completed"]
-    assert payload["nodes"][0]["meta"]["helmetConfig"]["dataConfig"] == json.dumps(
-        OPPORTUNITY, ensure_ascii=False)
-
-
-def test_legacy_quotation_config_is_removed_like_reference_release():
-    payload = helmet(node("QUOTATION", QUOTATION))
-    result = normalize_helmet(payload)
-    assert "helmetConfig" not in result["nodes"][0]["meta"]
-    assert payload["nodes"][0]["meta"]["helmetConfig"]
-
-
-def test_valid_or_unrelated_configs_are_untouched():
-    valid = {"dimension": [{"identifierCode": "D007"}],
-             "measure": [{"identifierCode": "M00013"}]}
-    payload = helmet(node("BUSINESS_OPPORTUNITY_ACQUISITION", valid),
-                     node("UNKNOWN_NODE", OPPORTUNITY))
-    assert normalize_helmet(payload) is payload
-
-
-def test_non_helmet_payloads_are_returned_unchanged():
-    assert normalize_helmet(None) is None
-    assert normalize_helmet({"nodes": "bad"}) == {"nodes": "bad"}
-    assert normalize_helmet({"nodes": [{"code": "QUOTATION", "meta": {}}]}) == {
-        "nodes": [{"code": "QUOTATION", "meta": {}}]}
-
-
-def test_legacy_order_and_dispatch_configs_are_removed():
-    order = {"dimension": [{"identifierCode": "D016"}],
-             "measure": [{"identifierCode": "M0033"}]}
-    dispatch = {"dimension": [{"identifierCode": "D024"}],
-                "measure": [{"identifierCode": "M0036"}]}
-    payload = helmet(node("ORDER_RECEIPT", order), node("DISPATCH", dispatch))
-    result = normalize_helmet(payload)
-    assert all("helmetConfig" not in n["meta"] for n in result["nodes"])
-
-
-def test_opportunity_pie_config_restores_reference_status_mappings():
-    opportunity = dict(OPPORTUNITY)
-    item = node("BUSINESS_OPPORTUNITY_ACQUISITION", opportunity)
-    item["meta"]["helmetConfig"].update(
-        nodeStyle="pie",
-        pieSliceMappings=[{"dimensionValue": "signed_opportunity"},
-                          {"dimensionValue": "unsigned_opportunity"}],
-    )
-    result = normalize_helmet(helmet(item))
-    config = result["nodes"][0]["meta"]["helmetConfig"]
-    parsed = json.loads(config["dataConfig"])
-    assert parsed["dimension"][0]["identifierCode"] == "D007"
-    assert [x["dimensionValue"] for x in config["statusMappings"]] == [
-        "overdue_uncompleted", "imminent_uncompleted", "normal_uncompleted",
-        "overdue_completed", "normal_completed"]
-    assert "pieSliceMappings" not in config and "nodeStyle" not in config

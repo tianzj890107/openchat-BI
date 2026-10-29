@@ -596,17 +596,20 @@ def _render_actions(
         temporary_dispatch = _all_canvas_actions_dispatchable() and (
             recommendation or bool(issue)
         )
+        item["temporaryDispatch"] = bool(temporary_dispatch)
         if temporary_dispatch:
             if recommendation:
                 chips.append('<span class="action-chip">分析建议</span>')
             chips.append('<span class="action-chip temporary">临时直发</span>')
+            chips.append('<span class="action-chip unverified">未经验证分析</span>')
             action_control = (
                 f'<button type="button" class="action-send" data-fuxi-task-order="{escape(item["id"])}">'
                 f"{send_label}</button>"
             )
             issue_note = (
-                '<p class="action-recommendation-note">临时演示：该卡尚未生成可信草稿，'
-                f"点击后将按当前卡片内容生成{subject}，并发送给服务端配置的接收人。</p>"
+                '<p class="action-recommendation-note">该卡尚未生成可信草稿，点击后将按当前卡片内容生成'
+                f"{subject}，并发送给服务端配置的接收人；只表示 Fuxi 已接收，"
+                "不代表根因已验证或风险已解除。</p>"
             )
         elif recommendation:
             chips.append('<span class="action-chip">分析建议</span>')
@@ -672,6 +675,8 @@ def _render_actions(
             "runId": item.get("runId"),
             "scenario": item.get("scenario"),
             "itemType": item.get("item_type"),
+            "verificationStatus": "unverified" if item.get("temporaryDispatch") else "draft_backed",
+            "sourceKind": "page_direct" if item.get("temporaryDispatch") else "server_draft",
         }
         for item in items
     ]
@@ -838,7 +843,8 @@ ACTION_RUNTIME = r"""
       button.dataset.retry = 'false';
       button.textContent = label;
       if (action) forgetPending(action);
-      setActionState(button, (isRiskItem(action) ? '风险条目已推送' : '任务令已创建') + (result.receipt && result.receipt.sourceTodoId ? '（' + result.receipt.sourceTodoId + '）' : ''), 'ok');
+      const verification = payload && payload.verificationStatus === 'unverified' ? '（未经验证分析）' : '';
+      setActionState(button, (isRiskItem(action) ? '风险条目已推送' : '任务令已创建') + verification + (result.receipt && result.receipt.sourceTodoId ? '（' + result.receipt.sourceTodoId + '）' : ''), 'ok');
     } else if (result.state === 'unconfirmed') {
       button.disabled = false;
       const retryable = result.retryable === true;
@@ -885,6 +891,7 @@ ACTION_RUNTIME = r"""
       category: action.category || '智能分析任务令',
       taskTemplate: action.taskTemplate || action.task_template || '',
       dispatchTool: action.dispatchTool || '',
+      verificationStatus: action.verificationStatus || 'unverified',
       metadata: action.metadata && typeof action.metadata === 'object' ? action.metadata : {},
     };
   }
@@ -1140,6 +1147,7 @@ PAGE_STYLE = """
     color: #475467; font-size: 11px; }
   .action-chip.severity { background: #FEF3F2; color: #B42318; }
   .action-chip.temporary { background: #EAF3FF; color: #0B4FA8; }
+  .action-chip.unverified { background: #FFFAEB; color: #B54708; }
   .action-send { flex: none; border: 1px solid #1570EF; border-radius: 8px;
     background: #1570EF; color: #FFFFFF; padding: 6px 11px; font-size: 12px;
     font-family: inherit; cursor: pointer; }
@@ -1317,6 +1325,9 @@ def _make_canvas_generate(
                         "runId": item.get("runId"),
                         "scenario": item.get("scenario"),
                         "itemType": item.get("item_type") or item.get("itemType"),
+                        "temporaryDispatch": bool(item.get("temporaryDispatch")),
+                        "verificationStatus": "unverified" if item.get("temporaryDispatch") else "draft_backed",
+                        "sourceKind": "page_direct" if item.get("temporaryDispatch") else "server_draft",
                         "draftReady": bool(item.get("draftReady")),
                         "hasDraftRefs": bool(item.get("hasDraftRefs")),
                     }

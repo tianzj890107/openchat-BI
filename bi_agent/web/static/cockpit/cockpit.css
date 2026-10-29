@@ -105,3 +105,14 @@ body{overflow-x:hidden;background:var(--dashboard-canvas-bg,#fff);color:#1f2329;
   .cockpit-gap-body li{grid-template-columns:1fr}
 }
 .cockpit-publication-state { padding:4px 0 12px; color:#737b8c; font-size:12px; line-height:20px; }
+
+.cockpit-publication-state.error { color:#b42318; font-weight:500; }
+.cockpit-helmet-error { margin:0 0 8px; padding:6px 10px; border:1px solid #fecdca; border-radius:4px; background:#fef3f2; color:#b42318; font-size:12px; line-height:18px; }
+
+/* Vendor KPI value rows clip the last two pixels; keep full digits and units. */
+.cockpit-board .pro-bi-kpi-card__value-row { overflow: visible; }
+.cockpit-board .pro-bi-kpi-card__int,
+.cockpit-board .pro-bi-kpi-card__frac,
+.cockpit-board .pro-bi-kpi-card__unit { line-height: 1.1; }
+.stage-risk-analysis__facts-fold { margin-top: 8px; color: #8c8c8c; font-size: 12px; }
+.stage-risk-analysis__facts-fold summary { width: max-content; max-width: 100%; color: #1677ff; cursor: pointer; }

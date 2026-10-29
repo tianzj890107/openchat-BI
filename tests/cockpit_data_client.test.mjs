@@ -170,3 +170,43 @@ test('delivered activate rules reach the host route and survive a remount replay
   });
   assert.deepEqual(replay,[['helmet','mini-cpgraph-93j6k86p','2109840696539136002'],['tab','tab-container-zm9eyxne','tab-1suxx5hd']]);
 });
+
+test('failed query reports metric labels and a later success clears the live error', async () => {
+  let fail = true;
+  const errors = [], details = [], recovers = [];
+  const withAlias = {analysisConfig: {indicators: [{identifierCode:'YWLN_M0022', alias:'商机获取电量'}]}};
+  const client = createAPDataClient({apiBase:'/api/cockpit', id:1,
+    request: async () => fail
+      ? {ok:false, status:502, json:async()=>({detail:'SQL 超时且没有 mock 数据'})}
+      : ok('receipt-recovered'),
+    onError: (message, detail) => { errors.push(message); details.push(detail); },
+    onRecover: () => recovers.push(1)});
+  await assert.rejects(client.biAdapters.postAnalysisDataQuery(withAlias), /SQL 超时/);
+  assert.equal(errors.length, 1);
+  assert.deepEqual(details[0], {kind:'analysis'});
+  assert.match(errors[0], /商机获取电量/);
+  assert.match(errors[0], /SQL 超时/);
+  assert.deepEqual(client.failures().length, 1);
+  fail = false;
+  await client.biAdapters.postAnalysisDataQuery(withAlias);
+  assert.ok(recovers.length >= 1);
+  assert.deepEqual(client.failures(), []);
+});
+
+test('a transient 504 is retried once while a deterministic 502 is not', async () => {
+  const statuses = [];
+  const transient = createAPDataClient({apiBase:'/api/cockpit', id:1, request: async () => {
+    statuses.push(504);
+    if (statuses.length === 1) return {ok:false, status:504, json:async()=>({detail:'AP请求超时或不可达'})};
+    return ok('receipt-after-retry');
+  }});
+  await transient.biAdapters.postAnalysisDataQuery(query);
+  assert.equal(statuses.length, 2);
+  const failed = [];
+  const deterministic = createAPDataClient({apiBase:'/api/cockpit', id:1, request: async () => {
+    failed.push(502);
+    return {ok:false, status:502, json:async()=>({detail:'AP未返回成功的数据结果'})};
+  }});
+  await assert.rejects(deterministic.biAdapters.postAnalysisDataQuery(query), /AP未返回成功/);
+  assert.equal(failed.length, 1);
+});

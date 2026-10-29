@@ -3951,7 +3951,7 @@ app.include_router(build_mcp_router(
 from ..cockpit.router import build_cockpit_router  # noqa: E402
 
 def _cockpit_main_context(req):
-    from ..cockpit.dashboard_source import material, receipt_material
+    from ..cockpit.dashboard_source import material, receipt_material, filter_stage_selected
     from ..cockpit.ap_gateway import data_mode
     from ..cockpit.store import Store
     if STATE.agent_def is None:
@@ -3966,13 +3966,15 @@ def _cockpit_main_context(req):
             from ..cockpit.publications import digest
             identities={v.get("connectionId","") for v in selected.values()}
             if len(identities)!=1:raise ValueError("AP材料来自不同连接，不能合并分析")
-            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataSource='ap',dataIdentity=next(iter(identities)),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))),dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数')
+            kept,excluded=filter_stage_selected(selected,req.stage)
+            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataSource='ap',dataIdentity=next(iter(identities)),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))),dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数',stageEvidence=dict(stage=req.stage,kept=len(kept),excluded=len(excluded),available=len(selected),receipts=sorted({v.get('receiptId','') for v in kept.values()}-{''})))
         if req.apReceiptIds:raise ValueError('快照模式不能消费实时AP凭据')
-        fingerprint,_=material(req.model_dump())
+        fingerprint,selected=material(req.model_dump())
+        kept,excluded=filter_stage_selected(selected,req.stage)
     except (ValueError, TypeError) as exc:
         raise HTTPException(422,str(exc)) from exc
     return dict(snapshotId='dashboard-'+fingerprint,repositoryId='',dataSource='snapshot',dataIdentity='pdt-release-2109836674373566465',dataFingerprint=fingerprint,
-        dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库')
+        dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库',stageEvidence=dict(stage=req.stage,kept=len(kept),excluded=len(excluded),available=len(selected)))
 
 
 @contextmanager
@@ -3992,6 +3994,8 @@ def _cockpit_main_turn(context,cancel):
             if live else material(context))
         if context['snapshotId']!=('ap-' if live else 'dashboard-')+fingerprint:
             raise RuntimeError('看板快照已变化，请重新提交分析任务')
+        from ..cockpit.dashboard_source import filter_stage_selected
+        selected,excluded=filter_stage_selected(selected,context['stage'])
         # Registration supplies the schema only. Every task binds its own executor.
         def unbound(params,cwd):
             raise RuntimeError('看板查询只能在绑定快照的任务内执行')
@@ -4000,7 +4004,7 @@ def _cockpit_main_turn(context,cancel):
         session=WebSession(cwd=STATE.cwd,agent_def=STATE.agent_def,
             ontology_store=None,tools_override=[TOOL,DELIVERY_TOOL,'AskUser'],
             context_header=('本轮数据来源：页面本次实时AP响应的冻结结果。' if live else '本轮数据来源：看板交付AP快照。')+'只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。',
-            tool_executors={TOOL:executor(selected)})
+            tool_executors={TOOL:executor(selected,context['stage'])})
         raw_read=session._tool_executors[TOOL]
         def read_with_refs(params,cwd):
             from ..reliability import QueryResult, claims_from_query_result
@@ -4010,6 +4014,7 @@ def _cockpit_main_turn(context,cancel):
             data['evidenceIds']=[claim.id for claim in claims]
             return json.dumps(data,ensure_ascii=False)
         session._tool_executors[TOOL]=read_with_refs
+        session.cockpit_stage_filter=dict(stage=context['stage'],kept=len(selected),excluded=len(excluded))
         install_delivery(session,context)
         with STATE.registry_lock:
             STATE.sessions[key]=session
@@ -4027,6 +4032,10 @@ _cockpit_analysis_capacity=threading.BoundedSemaphore(1)
 
 def _cockpit_main_runner(context,cancel,progress):
     from ..cockpit.main_service import run_main_analysis
+    from ..cockpit.dashboard_source import stage_gap_result
+    if context.get('stageEvidence') and context['stageEvidence'].get('kept')==0:
+        progress('本环节缺少匹配的看板指标，未调用模型',[])
+        return stage_gap_result(context),[]
     progress('等待Cockpit独立分析配额',[])
     while not _cockpit_analysis_capacity.acquire(timeout=0.2):
         if cancel.is_set():raise InterruptedError('分析已停止')

@@ -152,3 +152,15 @@ def test_prototype_source_remains_available_only_for_explicit_standalone_analysi
     assert evidence["sourceMode"] == "prototype"
     assert evidence["records"][0]["id"] == "SO-2026-0318"
     assert len(source.evidence(snapshot, "opportunity")["records"]) == 10
+
+
+def test_runtime_reports_live_ap_single_query_mode_and_only_real_gaps():
+    payload = release_payload()
+    assert payload["source"]["commit"] == "d01c08a07b79ba781f820524ff612f58cfa4e090"
+    assert payload["source"]["dataMode"] == "ap-single-query"
+    assert {gap["code"] for gap in payload["gaps"]} == {"CHILD_DEFINITION_MISSING"}
+    overview = payload["pages"]["overview"]["components"]
+    progress = {component["id"]: component for component in overview if component.get("type") == "progress"}
+    assert [item["identifierCode"] for item in progress["progress-y5dumxio"]["dataConfig"]["measure"]] == ["YWLN_M0001"]
+    assert [item["identifierCode"] for item in progress["progress-djttwi50"]["dataConfig"]["measure"]] == ["M0013"]
+    assert [item["identifierCode"] for item in progress["progress-rna6k8bw"]["dataConfig"]["measure"]] == ["M0019"]
