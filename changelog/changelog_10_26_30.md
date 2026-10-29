@@ -586,6 +586,19 @@
 - 主要文件：`bi_agent/cockpit/ap_gateway.py`、`bi_agent/web/static/cockpit/data-client.js`、
   `publication-client.js`、`cockpit.js`、`insight-components/shared.js`、`cockpit.css`。
 - 验证：看板聚焦回归 121 项 Python、40 项 JS 通过（新增 AP 预算/排队共期限、长超时不重试、
-  筛选变化不被吞、加载中筛选补触发、旧卡片保留与失败提示等用例）。
+  筛选变化不被吞、加载中筛选补触发、旧卡片保留与失败提示等用例）。本地浏览器复验：
+  点击“月度”后旧卡片保留并出现“筛选口径已切换，正在加载新数据；以下仍为上次分析”，
+  新口径分析完成后提示自动消失；同一脚本在改动前提交上也会停在首个“完整看板”断言，
+  属于本地 fixture 既有的发布失败，不是本次回归。
+- 部署与线上验证：8765 新增 release `process360-cockpit-bf34362-20261029-1330`
+  （提交 `bf34362`，PID `2541175`），旧 `process360-cockpit-fe154e9-20261029-1150`
+  （PID `2496079`）停止后完整保留；新实例先在 `127.0.0.1:18765` 预检再切换。
+  `runtime-env.json` 更新为 `COCKPIT_AP_TIMEOUT_SECONDS=180`，并同步 `PYTHONPATH`、`PWD`、
+  `RELEASE_COMMIT`、`PROCESS360_CATALOG_PATH`；`dataset` 以当前运行副本合并，历史
+  `history.sqlite3` 保留。8876 静态站 `commit=bf34362`、
+  `assetVersion=c2bff4a1bc1a9c973257`，manifest 129 项通过，三页 `id=1|2` 均 200；
+  部署前站点备份 `backups/site-bf34362-20261029-120325`。线上 `M0036` 2025 全年查询
+  `/api/cockpit/data/query` 返回 200（约 0.34 秒），`startup` 200，日志无 Traceback；
+  nginx `/api/cockpit/` 仍为 `proxy_read_timeout 300s`，覆盖 180 秒预算。
 - 边界：上游 SQL 别名错误、空 vertex 配置不会因为延长超时而消失；超时只解决“等得不够久”，
   不改变失败口径，也不引入第二数据源。
