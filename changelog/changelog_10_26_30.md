@@ -29,14 +29,24 @@
   `sales-shipment-issues`、`opportunity-risk`、`opportunity-coverage-note`、
   `order-risk-summary`、`shipment-risk-summary`、`shipment-overdue-note`、
   `shipment-cause-breakdown`、`shipment-task-order` 均能挂载，无浏览器异常。
-- 数据边界：当前仅有本地 QA 夹具，真实 AP 指标尚未配完；缺口在组件原位置保留，不用旧原型、
-  发布快照或零值冒充新客户数据。业务数值是否完整需等数据配置完成后再验收。
-- 验证：Cockpit 相关 Python 测试 94 项通过，数据客户端／整页缓存前端测试 23 项通过；浏览器
-  QA 覆盖激活跳转、非默认节点恢复、缓存首屏、AP 失败保留和三个页面，全部通过。
+- 数据边界：34 已接入真实 AP 单查和 repository 8，但部分指标仍未配置完整；浏览器验收中
+  7 次 `/api/cockpit/data/query` 返回上游 502，页面在原位置显示“未返回成功的数据结果”，
+  不回退旧快照、旧原型或零值。业务数值完整性仍需等组件数据配完后复验。
+- 验证：与 Process360 基线合并后，Cockpit 相关 Python 106 项、数据客户端／整页缓存前端
+  25 项通过；Process360／Fuxi／MCP 回归 230 项通过、9 项跳过。34 浏览器逐节点确认 12 个
+  AI 插槽全部挂载，销售额风险与出货风险跳转正确，无 batch 请求、无 JavaScript 或控制台异常。
 - 涉及文件：`bi_agent/cockpit/ap_gateway.py`、`runtime.py`、`metadata.py`、`prototype.py`、
   `cockpit.js`、`data-client.js`、`index.html`、`vendor/pro-bi-ui.min.js`、`vendor/resources.json`、
   `metadata/iba-demo-1021/*`、`.env.example`、`docs/specs/cockpit-analysis-engines.md` 及测试。
-- 边界：未部署，未修改服务器或用户历史会话，未升级版本、创建 tag 或 Release。
+- 部署：将 Process360 运行基线 `b32449c` 与本次 `f68f0bd` 合并为部署提交
+  `2b7ff72`，避免覆盖既有 Process360 能力。8765 新 release 为
+  `process360-cockpit-2b7ff72-20261029-081724`，PID `1629274`；旧
+  `process360-a5342cd-20261028-180448`（PID `2561043`）已优雅停止并完整保留。8876
+  静态站更新到 `commit=2b7ff72`、`assetVersion=9c906a9a91660d3a9406`，128 项 manifest
+  全部通过。部署前在 18765 预检 AP 单查、两套头盔流程、MCP 与 Cockpit 配置，预检进程及端口
+  已关闭；未修改 nginx 配置、共享 `.env`、`.venv`、`dataset` 或历史会话。
+- 边界：未发送真实 Fuxi 待办，未创建 MR、tag 或 Release，未升级正式版本。AP 上游 502 和
+  Process360 当前 `blocked/G16` 均保留为明确业务／数据缺口，不据此判定业务效果完成。
 
 ### 2026-10-27 · Cockpit 首屏加载与整页数据版本优化
 

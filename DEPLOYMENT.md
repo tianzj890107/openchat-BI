@@ -1056,3 +1056,40 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 回退：停止本 release PID，使用旧 release
   `process360-a6239d4-20261028-170622/start-main.py` 启动；旧 release、共享环境和历史数据
   均保留。
+
+### Cockpit iba-demo 1021 部署（2026-10-29 08:18）
+
+- 代码提交：`2b7ff725f5653d8ffafe09c4d0cecd1898a195df`（分支
+  `feature/cockpit-iba-demo-1021-deploy`）。该提交先把线上 Process360 基线 `b32449c`
+  与 Cockpit `f68f0bd` 合并，再部署，避免以旧 Cockpit 分支覆盖 Process360 运行能力。
+- 8765 主服务 release：
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-2b7ff72-20261029-081724`，
+  PID `1629274`；旧 `process360-a5342cd-20261028-180448`（PID `2561043`）已优雅停止并
+  完整保留。新 release 的 `.env`、`.venv`、`dataset` 继续软链原共享实体，git archive
+  自带数据目录保留为 `dataset.tracked-2b7ff72-20261029-081724`；`runtime-env.json`
+  为 600，`RELEASE_COMMIT`、`PYTHONPATH`、`PROCESS360_CATALOG_PATH` 指向新 release。
+- 切换：新 release 先在 `127.0.0.1:18765` 预检通过，再停止旧 8765 并由
+  `start-main.py` 启动新进程；18765 预检进程已停止，当前只监听 8765。
+- 8876 静态站：`commit=2b7ff725f5653d8ffafe09c4d0cecd1898a195df`、
+  `assetVersion=9c906a9a91660d3a9406`、资源前缀
+  `/static/cockpit/releases/9c906a9a91660d3a9406`。新增资源目录与原 `4da3f092598bd18dde3b`、
+  `31f5d6cf3c49bbdf2574` 并存；站点原地叠加，未替换 bind mount inode，未重启 nginx。
+  manifest 128 项全部通过，站点根恢复为 755、文件 644。
+- 备份：部署前完整站点备份为
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/iba-demo-2b7ff72-20261029-081844`；
+  新包暂存保留在
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/staging-iba-demo-2b7ff72-20261029-081844`。
+- 验证：8765 `/healthz`、`/api/mcp/health`（`missingExecutors=[]`）、
+  `/api/cockpit/data/config`、`/api/cockpit/engines` 均 200；真实 AP 单查成功，
+  `FULL_PROCESS_OPERATIONS_MANAGEMENT` 头盔图返回 6 节点、`SALES_CALIBER` 返回 3 节点。
+  8876 三页 `id=1|2` 均 200；浏览器逐节点确认经营看板 0、运营页 4、穿透页 8，共 12 个 AI
+  插槽全部挂载；“查看销售额风险”“查看出货风险”正确路由并恢复目标节点；无 batch 适配器请求，
+  无 JavaScript 或控制台异常。
+- Process360：`Process360Plan` 正常，`Process360Query`（SC01）仍连接
+  `process360-postgres`，当前因 G16 口径一致性缺口返回 `blocked`，未执行未经批准的口径查询。
+  8765 日志无 Traceback；浏览器验收中 7 次 Cockpit AP 查询返回上游 502，页面按设计显示
+  原始失败状态，不切换数据源或伪造数据。该现象属当前指标尚未配完，不是部署回退。
+- 回退：停止新 release PID `1629274` 后，用
+  `process360-a5342cd-20261028-180448/start-main.py` 启动旧 8765；静态站从上述备份目录
+  原地复制回 `site` 并保持 755/644。不得删除或覆盖共享 dataset、历史会话、上传、图表和
+  分析记录。本轮未创建 MR/tag/Release，未升级正式版本，未发送真实 Fuxi 待办。
