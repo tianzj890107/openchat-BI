@@ -1322,6 +1322,10 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   不再创建随后被调度器置为 `idle` 的空任务。
 - 新增 `GET /api/cockpit/publications/cards`，`GET /api/cockpit/publications/status` 增加
   `cardsVersion`；没有整页快照的页面按卡片版本原位替换。
+- `Store.default_views()` 只返回每个业务环节最新的卡片键；配置轮换留下的旧键不会被调度器
+  反复复核。整页复核会回读历史失败查询，AP 恢复后替换补查或部分证据。
+- 没有整页快照的运营页/穿透页，其状态接口聚合环节卡片状态：未来定时检查为 `scheduled`，
+  手工刷新为 `waiting`/`running`，发布完成为 `published`，页面不会永久显示后台更新提示。
 - 前端状态轮询改为 `publication-poll.js` 单一循环：探测异常继续重试，页面卸载后停止，标签页
   隐藏时降频，重新可见时立即检查；文件随 8876 静态资源一起发布，需要新的 `COCKPIT_VERSION`。
 - 发布步骤不变：8765 使用新 release 目录并通过 `preflight-main.py` 预检后重启；8876 先备份

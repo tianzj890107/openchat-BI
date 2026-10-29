@@ -208,14 +208,24 @@ class Store:
 
         Operations and penetration pages are opened as independent AI slots,
         so they may never have a whole-page snapshot.  Their published stage
-        cards are still a durable maintenance target.
+        cards are still a durable maintenance target.  A component/config
+        rotation creates a new view key while the previous key remains as
+        append-only history; only the newest card for each business stage is a
+        live maintenance target, otherwise the old key would re-run the model
+        forever under the rotated key.
         """
         with self.db() as db:
             rows = db.execute('SELECT v.view_key, v.stage, a.body FROM publication_views v '
                               'JOIN publications p ON p.scope=v.scope '
                               'JOIN analyses a ON a.id=p.analysis_id '
                               'ORDER BY a.updated DESC LIMIT ?', (limit,)).fetchall()
-        return [(r[0], r[1], json.loads(r[2])) for r in rows]
+        latest = {}
+        for row in rows:
+            body = json.loads(row[2])
+            context = body.get('context') or {}
+            key = (context.get('id') or 0, context.get('page') or '', row[1])
+            latest.setdefault(key, (row[0], row[1], body))
+        return list(latest.values())
 
     def due_refresh_scopes(self, now=None, limit=20):
         now = time.time() if now is None else float(now)

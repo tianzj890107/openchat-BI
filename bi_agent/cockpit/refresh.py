@@ -35,6 +35,60 @@ def view_target_scope(view_key, stage):
     return digest({'view': view_key, 'stage': stage})
 
 
+def stage_card_status(store, identity, page, *, now=None):
+    """Aggregate refresh state for pages whose AI cards have no page snapshot.
+
+    A seeded future check is a schedule, not an in-flight update.  Manual
+    refreshes set ``waiting`` with an immediate next-check time, so they still
+    surface as active while a scheduled card does not leave the page saying it
+    is updating forever.
+    """
+    now = time.time() if now is None else float(now)
+    rows = []
+    for view_key, stage, body in store.default_views(limit=2000):
+        context = body.get('context') or {}
+        if (int(context.get('id') or 0) != int(identity)
+                or context.get('page') != page
+                or context.get('engine') not in {'main', None}):
+            continue
+        state = store.refresh_state(view_target_scope(view_key, stage)) or {}
+        rows.append((stage, state, body))
+    if not rows:
+        return None
+
+    def effective(state):
+        status = str(state.get('status') or 'idle')
+        if status == 'waiting' and float(state.get('next_check') or 0) > now + 5 \
+                and float(state.get('lease_until') or 0) <= now:
+            return 'scheduled'
+        return status
+
+    states = [effective(state) for _stage, state, _body in rows]
+    active = [status for status in states if status in {'running', 'checking', 'queued', 'waiting'}]
+    if active:
+        status = 'running' if 'running' in active else ('queued' if 'queued' in active else 'waiting')
+    elif 'retry_wait' in states or 'failed' in states:
+        status = 'retry_wait'
+    elif 'published' in states:
+        status = 'published'
+    elif 'scheduled' in states:
+        status = 'scheduled'
+    else:
+        status = states[0]
+    analyzed = max((float((body or {}).get('updatedAt') or 0) for _stage, _state, body in rows), default=0)
+    successful = [float(state.get('last_success') or 0) for _stage, state, _body in rows]
+    errors = [str(state.get('last_error') or '') for _stage, state, _body in rows
+              if state.get('last_error')]
+    next_checks = [float(state.get('next_check') or 0) for _stage, state, _body in rows
+                   if float(state.get('next_check') or 0) > 0]
+    checked = [float(state.get('updated') or 0) for _stage, state, _body in rows]
+    return dict(scope='', publicationVersion='', dataAsOf=0, analyzedAt=analyzed,
+                publishedAt=max(successful, default=0), update=dict(
+                    status=status, lastSuccessAt=max(successful + [analyzed]), nextCheckAt=min(next_checks, default=0),
+                    lastCheckedAt=max(checked, default=0), error='; '.join(errors)[:500],
+                    attempt=max((int(state.get('attempt') or 0) for _stage, state, _body in rows), default=0)))
+
+
 class RefreshManager:
     """One-scope-at-a-time, append-preserving publication refresher.
 
@@ -84,6 +138,7 @@ class RefreshManager:
     def _query_entries(self, body):
         """Re-read every page query; one failed business query becomes a fallback candidate."""
         records, failures, retry = [], [], []
+        seen = set()
         for entry in body.get('entries') or []:
             kind, payload = entry.get('kind'), entry.get('payload')
             if kind == 'pg':
@@ -93,6 +148,7 @@ class RefreshManager:
                 continue
             if kind not in {'analysis', 'batch', 'helmet'} or payload is None:
                 raise RuntimeError('历史页面包含无效查询，保留上次完整版本')
+            seen.add(_canonical(payload))
             try:
                 data = self.query(kind, payload)
             except Exception as exc:
@@ -101,12 +157,24 @@ class RefreshManager:
                 failures.append(_canonical(payload))
                 continue
             records.append(self._receipt(int(body['id']), kind, payload, data))
-        for payload in retry:
+        # A publication stores only successful/fallback entries, so failures
+        # with no registered fallback would otherwise never be retried.  Re-read
+        # them from the stage contexts as well; a recovered AP source must be
+        # allowed to replace the old partial evidence.
+        previous = []
+        for item in (body.get('items') or {}).values():
+            for raw in ((item or {}).get('context') or {}).get('unavailableQueries') or []:
+                previous.append(json.loads(raw))
+        for payload in retry + previous:
+            key = _canonical(payload)
+            if key in seen:
+                continue
+            seen.add(key)
             kind = 'batch' if isinstance(payload, list) else 'analysis'
             try:
                 data = self.query(kind, payload)
             except Exception:
-                failures.append(_canonical(payload))
+                failures.append(key)
                 continue
             records.append(self._receipt(int(body['id']), kind, payload, data))
         return records, failures

@@ -209,6 +209,71 @@ def test_refresh_lease_blocks_duplicate_workers_and_recovers_after_expiry(tmp_pa
     assert scope in store.due_refresh_scopes(now=1450)
 
 
+def test_manual_refresh_does_not_steal_a_live_lease(tmp_path):
+    store, cfg, _page = _router_fixture(tmp_path)
+    scope = page_scope(cfg, 1, 'analysis', 'default', 'ap')
+    now = time.time()
+    store.set_refresh_state(scope, 'running', next_check=now, lease_until=now + 120)
+    assert store.request_refresh(scope, now=now) is False
+    state = store.refresh_state(scope)
+    assert state['status'] == 'running'
+    assert state['lease_until'] >= now + 100
+
+
+def test_default_views_keeps_only_the_newest_card_for_each_stage(tmp_path):
+    from bi_agent.cockpit.dashboard_source import RELEASE
+    from bi_agent.cockpit.publications import view_scope
+    store, cfg, _page = _router_fixture(tmp_path)
+    contexts = []
+    for fingerprint in ('old-card', 'new-card'):
+        contexts.append(dict(id=1, engine='main', page='operations', stage='bid', source='service',
+                             defaultView=True, chartSnapshotId=RELEASE, chartQueries=[],
+                             period='2025-10', department='全部产品部', filters={}, repositoryId='',
+                             clarifications={}, baselineAnalysisId='', dataSource='ap',
+                             dataIdentity=cfg.identity(), dataFingerprint=fingerprint))
+    ids = []
+    for context in contexts:
+        item = store.create_analysis('view-' + context['dataFingerprint'], context)
+        store.update_analysis(item['id'], status='limited',
+                              result=dict(summary=context['dataFingerprint'], cardContract=CONTRACT),
+                              evidence={'facts': [], 'records': [], 'evidence': []})
+        assert store.publish(item['id'])
+        assert store.bind_view(view_scope(context), 'bid', item['scope'])
+        ids.append(item['id'])
+    rows = [row for row in store.default_views() if row[1] == 'bid' and
+            (row[2].get('context') or {}).get('id') == 1]
+    assert len(rows) == 1
+    assert rows[0][2]['id'] == ids[-1]
+
+
+def test_status_uses_card_state_when_a_page_has_no_snapshot(tmp_path, monkeypatch):
+    from bi_agent.cockpit.dashboard_source import RELEASE
+    from bi_agent.cockpit.publications import view_scope
+    from bi_agent.cockpit.refresh import view_target_scope
+    store, cfg, _page = _router_fixture(tmp_path)
+    context = dict(id=1, engine='main', page='operations', stage='bid', source='service',
+                   defaultView=True, chartSnapshotId=RELEASE, chartQueries=[],
+                   period='2025-10', department='全部产品部', filters={}, repositoryId='',
+                   clarifications={}, baselineAnalysisId='', dataSource='ap',
+                   dataIdentity=cfg.identity(), dataFingerprint='ops-card')
+    item = store.create_analysis('ops-card', context)
+    store.update_analysis(item['id'], status='limited',
+                          result=dict(summary='ops card', cardContract=CONTRACT),
+                          evidence={'facts': [], 'records': [], 'evidence': []})
+    assert store.publish(item['id'])
+    assert store.bind_view(view_scope(context), 'bid', item['scope'])
+    target = view_target_scope(view_scope(context), 'bid')
+    store.set_refresh_state(target, 'waiting', next_check=time.time() + 900)
+    client = _client(tmp_path, monkeypatch, cfg)
+    status = client.get('/api/cockpit/publications/status?id=1&page=operations').json()
+    assert status['update']['status'] == 'scheduled'
+    assert status['update']['nextCheckAt'] > time.time() + 500
+    assert status['cardsVersion']
+    store.request_refresh(target)
+    waiting = client.get('/api/cockpit/publications/status?id=1&page=operations').json()
+    assert waiting['update']['status'] == 'waiting'
+
+
 def test_scheduler_warms_default_scopes_only(tmp_path):
     store, cfg, page = _router_fixture(tmp_path)
     custom_scope = page_scope(cfg, 1, 'analysis', 'custom', 'ap')

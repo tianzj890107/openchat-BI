@@ -21,7 +21,8 @@ from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
 from .publications import digest, legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
 from .page_cache import APReuse, PageLookup, PageRequest, build_page, legacy_page_scope, page_scope, transport_identity, compact_analysis
-from .refresh import RefreshManager, RefreshScheduler, publication_status, scheduler_enabled, view_target_scope
+from .refresh import (RefreshManager, RefreshScheduler, publication_status, scheduler_enabled,
+                      stage_card_status, view_target_scope)
 
 RESULT_CONTRACT_VERSION="compact-v1"
 
@@ -299,10 +300,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     def lookup_page(req:PageLookup):
         return publication_lookup(req.id, req.page, req.uiScope)
 
-    def cards_version(id, page):
+    def cards_version(items):
         # Operations and penetration pages publish AI cards without a whole-page
         # snapshot, so the browser needs a version for those cards too.
-        items=published_default(id,'main',page,False)['items'] if main_context is not None else {}
         return digest(sorted((stage,(item or {}).get('id',''),float((item or {}).get('updatedAt') or 0))
                              for stage,item in items.items()))
 
@@ -311,9 +311,18 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if id not in (1,2) or not 0<len(uiScope)<=16000:raise HTTPException(422,'无效页面范围')
         lookup=publication_lookup(id,page,uiScope)
         snapshot=lookup.get('snapshot') or lookup.get('displaySnapshot')
+        items=published_default(id,'main',page,False)['items'] if main_context is not None else {}
+        status=lookup.get('status') or {}
+        # Operations/penetration cards are published independently of a
+        # whole-page snapshot.  Their aggregate state is the page's real
+        # refresh state; otherwise the page would stay "updating" forever after
+        # a successful card refresh.
+        if items and not lookup.get('snapshot') and not lookup.get('displaySnapshot'):
+            card_status=stage_card_status(store(),id,page)
+            if card_status:status=card_status
         return dict(id=id,page=page,uiScope=uiScope,snapshotVersion=(snapshot or {}).get('version',''),
-                    cardsVersion=cards_version(id,page),
-                    displayStale=lookup.get('displayStale',False),**(lookup.get('status') or {}))
+                    cardsVersion=cards_version(items),
+                    displayStale=lookup.get('displayStale',False),**status)
 
     @router.get('/publications/cards')
     def publication_cards(id:int=1,page:Literal['overview','operations','analysis']='overview'):
