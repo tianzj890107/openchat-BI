@@ -4,7 +4,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -154,6 +154,15 @@ def test_failed_ap_reads_are_not_cached():
     for _ in range(2):
         with pytest.raises(RuntimeError):reuse.read('same',fail)
     assert len(calls)==2
+
+
+def test_shared_query_follower_waits_for_the_full_ap_budget():
+    reuse=APReuse();pending=Mock();pending.result.return_value={'receiptId':'shared'}
+    reuse.pending['same']=pending
+    trace={}
+    assert reuse.read('same',lambda:{},timeout=200,trace=trace)=={'receiptId':'shared'}
+    pending.result.assert_called_once_with(timeout=200)
+    assert trace=={'cacheHit':False,'follower':True}
 
 
 def test_site_build_uses_real_immutable_paths_and_valid_precompressed_assets(tmp_path):

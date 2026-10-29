@@ -1,6 +1,7 @@
 """Cockpit API: read-only demo source, bounded analysis jobs, simulated tasks."""
 from __future__ import annotations
 import hashlib
+import inspect
 import json
 import threading
 import time
@@ -21,6 +22,7 @@ from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
 from .publications import digest, legacy_publication_scope, legacy_view_scope, publication_scope, view_scope
 from .page_cache import APReuse, PageLookup, PageRequest, build_page, legacy_page_scope, page_scope, transport_identity, compact_analysis
+from .targets import PAGES, target_stages
 from .refresh import (RefreshManager, RefreshScheduler, publication_status, scheduler_enabled,
                       stage_card_status, view_target_scope)
 
@@ -71,7 +73,11 @@ class TaskChange(BaseModel):
 def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main_context=None):
     router=APIRouter(prefix="/api/cockpit",tags=["cockpit"])
     source=DemoSource();stores={};lock=threading.RLock();jobs={};capacity=threading.BoundedSemaphore(3)
-    ap_reuse = APReuse()
+    try:
+        reuse_ttl = max(5, min(300, int(os.getenv('COCKPIT_AP_REUSE_SECONDS', '45'))))
+    except ValueError:
+        reuse_ttl = 45
+    ap_reuse = APReuse(ttl=reuse_ttl)
     def store():
         path=str(Path(get_cwd()).resolve()/"dataset"/"cockpit"/"history.sqlite3")
         with lock:
@@ -104,26 +110,48 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             analysisConcurrency=1,source='Cockpit独立AP连接' if mode=='ap' else '交付快照回放',
             batchMode=os.getenv('COCKPIT_AP_BATCH_MODE','individual'))
 
+    def query_receipt(identity, kind, payload, *, timing=None):
+        """One shared read path for page requests and background refresh.
+
+        The cache/coalescing key includes the role, transport identity, store
+        and exact payload.  A scheduler therefore waits on the same in-flight
+        page query instead of sending a duplicate to AP.
+        """
+        gateway=get_gateway()
+        auth_scope=transport_identity(gateway.config)
+        result_store=store()
+        def read():
+            if 'timing' in inspect.signature(gateway.query).parameters:
+                result=gateway.query(kind,payload,timing=timing)
+            else:
+                result=gateway.query(kind,payload)
+            if transport_identity(gateway.config)!=auth_scope:
+                raise HTTPException(409,'AP认证配置已变化，请重新取数')
+            return result_store.save_ap_result(identity,kind,payload,result,
+                gateway.config.receipt_ttl,gateway.config.identity(),auth_scope,
+                gateway.config.batch_mode if kind=='batch' else 'fixed-path')
+        key=digest(dict(connection=auth_scope,store=str(result_store.path),id=identity,
+                        kind=kind,payload=payload))
+        started=time.monotonic()
+        trace={} if timing is None else timing
+        timeout=getattr(gateway.config,'timeout',200)
+        receipt=ap_reuse.read(key,read,timeout=max(35,float(timeout)+10),trace=trace)
+        if timing is not None:
+            timing['receiptWaitMs']=round((time.monotonic()-started)*1000,1)
+        return receipt
+
     @router.post('/data/query')
     async def data_query(req:APQuery, request:Request):
         if main_context is None:raise HTTPException(503,'AP代理仅由主服务提供，请连接主服务Cockpit入口')
         if data_mode()!='ap':raise HTTPException(409,'当前为显式快照模式，不允许混用实时AP查询')
-        gateway=get_gateway()
         if await request.is_disconnected():raise HTTPException(499,'看板请求已取消')
-        auth_scope=transport_identity(gateway.config)
-        result_store=store()
-        def read():
-            result = gateway.query(req.kind, req.payload)
-            if transport_identity(gateway.config)!=auth_scope:raise HTTPException(409,'AP认证配置已变化，请重新取数')
-            return result_store.save_ap_result(req.id, req.kind, req.payload, result,
-                                          gateway.config.receipt_ttl, gateway.config.identity(), auth_scope,
-                                          gateway.config.batch_mode if req.kind=='batch' else 'fixed-path')
-        from .publications import digest
-        key = digest(dict(connection=auth_scope, store=str(result_store.path), id=req.id,
-                          kind=req.kind, payload=req.payload))
-        receipt = await run_in_threadpool(ap_reuse.read, key, read)
+        timing={}
+        started=time.monotonic()
+        receipt = await run_in_threadpool(query_receipt, req.id, req.kind, req.payload, timing=timing)
         if await request.is_disconnected():raise HTTPException(499,'看板请求已取消，未保存分析凭据')
-        return dict(data=receipt['response'],receiptId=receipt['id'],receivedAt=receipt['createdAt'],expiresAt=receipt['expiresAt'])
+        timing['serverTotalMs']=round((time.monotonic()-started)*1000,1)
+        return dict(data=receipt['response'],receiptId=receipt['id'],receivedAt=receipt['createdAt'],
+                    expiresAt=receipt['expiresAt'],timings=timing)
 
     def adapter(mode):return PrototypeSource() if mode=="prototype" else source
     def context_id(context):
@@ -275,6 +303,36 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             for stage,item in store().latest_views(id,engine,page,data_identity=data_identity).items():
                 if stage not in items:
                     items[stage]=dict(item,displayOnly=True)
+        # A saved whole-page version already contains delivered cards.  They
+        # must come back on their own, not only after a per-stage click.
+        for data_identity in identities:
+            body=store().latest_page(id,page,'default',data_identity=data_identity)
+            for stage,item in ((body or {}).get('items') or {}).items():
+                if not item:continue
+                current=items.get(stage)
+                if current is None or float(item.get('updatedAt') or 0)>=float(current.get('updatedAt') or 0):
+                    items[stage]=item
+        # One business stage can be shown by two pages (for example 订单接收 on
+        # the operations and penetration pages).  The saved card is stage-level,
+        # so switching pages must not hide it.
+        for stage in target_stages(page):
+            if stage in items:continue
+            found=None
+            for other in PAGES:
+                if other==page:continue
+                # Older deployments published a complete page before binding
+                # its cards as standalone views.  Keep that history usable when
+                # the same business stage is shown by another page.
+                for data_identity in identities:
+                    body=store().latest_page(id,other,'default',data_identity=data_identity)
+                    candidate=((body or {}).get('items') or {}).get(stage)
+                    if candidate and (found is None or float(candidate.get('updatedAt') or 0)>float(found.get('updatedAt') or 0)):
+                        found=candidate
+                for data_identity in identities:
+                    candidate=store().latest_views(id,engine,other,data_identity=data_identity).get(stage)
+                    if candidate and (found is None or float(candidate.get('updatedAt') or 0)>float(found.get('updatedAt') or 0)):
+                        found=candidate
+            if found:items[stage]=found
         if compact:
             items={stage:({**compact_analysis(item),'displayOnly':True}
                           if item.get('displayOnly') else compact_analysis(item))
@@ -359,11 +417,21 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     @router.get('/startup')
     def startup(id:int=1,page:Literal['overview','operations','analysis']='overview'):
         caps=engines();lookup=publication_lookup(id,page,'default')
-        # Cards already published for this role/page are display-only until a
-        # matching server publication replaces them.  Opening the page never
-        # starts a model call by itself.
-        cards=published_default(id,'main',page,True)['items'] if caps['default']=='main' and main_context is not None else {}
-        return dict(engines=caps,dataConfig=data_config(),cards=cards,**lookup)
+        # Return every saved slot card, not only the active tab.  The SDK keeps
+        # all three tabs mounted while routes change, so a preloaded card makes
+        # tab switches instant and prevents opening a tab from starting a new
+        # model call.  Opening a page never starts an analysis by itself.
+        cards_by_page={}
+        if caps['default']=='main' and main_context is not None:
+            cards_by_page={name:published_default(id,'main',name,True)['items'] for name in PAGES}
+        cards={}
+        for page_cards in cards_by_page.values():
+            for stage,item in page_cards.items():
+                current=cards.get(stage)
+                if current is None or float((item or {}).get('updatedAt') or 0)>=float(current.get('updatedAt') or 0):
+                    cards[stage]=item
+        return dict(engines=caps,dataConfig=data_config(),cards=cards,
+                    cardsByPage=cards_by_page,cardsVersion=cards_version(cards),**lookup)
 
     @router.post('/analyses/refresh')
     def refresh_analysis(req:AnalysisRequest,compact:bool=False):
@@ -453,7 +521,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             def start_refresh_analysis(body, resolved):
                 return start_analysis(AnalysisRequest(**body), resolved=resolved)
             manager = RefreshManager(
-                store(), config, lambda kind, payload: get_gateway().query(kind, payload),
+                store(), config,
+                lambda identity, kind, payload: query_receipt(identity, kind, payload)['response'],
                 start_refresh_analysis,
                 interval=int(os.getenv('COCKPIT_REFRESH_INTERVAL_SECONDS', '900')),
                 timeout=int(os.getenv('COCKPIT_REFRESH_TIMEOUT_SECONDS', '1200')))

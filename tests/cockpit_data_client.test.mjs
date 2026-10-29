@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 const source = fs.readFileSync(new URL('../bi_agent/web/static/cockpit/data-client.js', import.meta.url), 'utf8');
 const clientModule = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
-const {createAPDataClient, observeRuntimeFilters, observeActivationActions} = clientModule;
+const {createAPDataClient, observeRuntimeFilters, observeActivationActions, AP_QUERY_CONCURRENCY} = clientModule;
 const query = {analysisConfig: {indicators: [{identifierCode:'M0001'}]}, commonConfig: {filters: {month:'2026-10'}}};
 const ok = (receiptId, data = {rows:[{amount:42}]}) => ({ok:true, status:200, json:async()=>({receiptId,data,expiresAt:Date.now()/1000+60})});
 
@@ -44,11 +44,76 @@ test('AP errors and expired receipts block analysis and cannot fall back to fixt
   assert.throws(()=>expired.scope(),/已过期/);
 });
 
-test('browser query queue limits upstream traffic to two requests', async () => {
+test('browser query queue bounds upstream traffic without serialising every query', async () => {
   let active=0,max=0,count=0;
   const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>{active++;max=Math.max(max,active);await new Promise(r=>setTimeout(r,5));active--;return ok('receipt'+(++count));}});
   await Promise.all(Array.from({length:7},(_,i)=>client.biAdapters.postAnalysisDataQuery({analysisConfig:{indicators:[{identifierCode:'M'+i}]}})));
-  assert.equal(max,2);assert.equal(client.scope().apReceiptIds.length,7);
+  assert.equal(max,AP_QUERY_CONCURRENCY);assert.equal(client.scope().apReceiptIds.length,7);
+});
+
+test('queries for the visible stage jump ahead of queued offscreen work', async () => {
+  const started=[], releases=new Map();
+  const payload=n=>({analysisConfig:{indicators:[{identifierCode:'M'+n}]}});
+  const client=createAPDataClient({apiBase:'/api/cockpit',id:1,concurrency:1,
+    priorityFor:(kind,value)=>({visible:value.analysisConfig.indicators[0].identifierCode==='M2',heavy:false}),
+    request:async(_url,options)=>{
+      const code=JSON.parse(options.body).payload.analysisConfig.indicators[0].identifierCode;
+      started.push(code);
+      await new Promise(resolve=>releases.set(code,resolve));
+      return ok('receipt-'+code);
+    }});
+  const first=client.biAdapters.postAnalysisDataQuery(payload(0));
+  const hidden=client.biAdapters.postAnalysisDataQuery(payload(1));
+  const visible=client.biAdapters.postAnalysisDataQuery(payload(2));
+  assert.deepEqual(started,['M0']);
+  releases.get('M0')();await first;await new Promise(resolve=>setTimeout(resolve,0));
+  assert.deepEqual(started,['M0','M2']);
+  releases.get('M2')();await visible;await new Promise(resolve=>setTimeout(resolve,0));
+  assert.deepEqual(started,['M0','M2','M1']);
+  releases.get('M1')();await hidden;
+});
+
+test('heavy queries cannot occupy every AP execution slot', async () => {
+  const started=[], releases=new Map();let activeHeavy=0,maxHeavy=0;
+  const payload=n=>({analysisConfig:{indicators:[{identifierCode:n}]}});
+  const client=createAPDataClient({apiBase:'/api/cockpit',id:1,
+    priorityFor:(kind,value)=>({heavy:value.analysisConfig.indicators[0].identifierCode.startsWith('H')}),
+    request:async(_url,options)=>{
+      const code=JSON.parse(options.body).payload.analysisConfig.indicators[0].identifierCode;
+      if(code.startsWith('H')){activeHeavy++;maxHeavy=Math.max(maxHeavy,activeHeavy);}
+      started.push(code);
+      await new Promise(resolve=>releases.set(code,resolve));
+      if(code.startsWith('H'))activeHeavy--;
+      return ok('receipt-'+code);
+    }});
+  const heavy=[0,1,2].map(n=>client.biAdapters.postAnalysisDataQuery(payload('H'+n)));
+  const light=client.biAdapters.postAnalysisDataQuery(payload('L0'));
+  assert.deepEqual(started,['H0','H1','L0']);
+  assert.equal(maxHeavy,2);
+  releases.get('L0')();await light;await new Promise(resolve=>setTimeout(resolve,0));
+  releases.get('H0')();await heavy[0];await new Promise(resolve=>setTimeout(resolve,0));
+  assert.deepEqual(started,['H0','H1','L0','H2']);
+  assert.equal(maxHeavy,2);
+  releases.get('H1')();releases.get('H2')();
+  await Promise.all(heavy);
+});
+
+test('AI waits only for the current stage rather than the whole page', async () => {
+  let releaseShip;
+  const client=createAPDataClient({apiBase:'/api/cockpit',id:1,readyTimeoutMs:2000,
+    stageFor:(kind,value)=>value.analysisConfig.indicators[0].identifierCode==='SHIP'?'shipment':'opportunity',
+    request:async(_url,options)=>{
+      const code=JSON.parse(options.body).payload.analysisConfig.indicators[0].identifierCode;
+      if(code==='SHIP')return new Promise(resolve=>{releaseShip=resolve;});
+      return ok('receipt-opportunity');
+    }});
+  const shipment=client.biAdapters.postAnalysisDataQuery({analysisConfig:{indicators:[{identifierCode:'SHIP'}]}});
+  await client.biAdapters.postAnalysisDataQuery({analysisConfig:{indicators:[{identifierCode:'OPP'}]}});
+  const scope=await client.ready({partial:true,stages:['opportunity']});
+  assert.deepEqual(scope.apReceiptIds,['receipt-opportunity']);
+  assert.match(scope.chartQueries[0],/OPP/);
+  assert.doesNotMatch(scope.chartQueries.join('|'),/SHIP/);
+  releaseShip(ok('receipt-shipment'));await shipment;
 });
 
 test('a queue-timeout response is retried instead of surfacing as an error', async () => {

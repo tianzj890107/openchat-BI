@@ -11,23 +11,49 @@ export function canonical(value) {
 export const AP_QUERY_TIMEOUT_MS = 200000;
 export const SCOPE_READY_TIMEOUT_MS = 220000;
 export const TRANSIENT_RETRY_WINDOW_MS = 30000;
+export const AP_QUERY_CONCURRENCY = 3;
 
 export function createAPDataClient({apiBase, id, request = fetch, onInvalidate = () => {}, snapshot = null, onSnapshotMiss = () => {}, onError = () => {}, onRecover = () => {},
   timeoutMs = AP_QUERY_TIMEOUT_MS, readyTimeoutMs = SCOPE_READY_TIMEOUT_MS, retryWindowMs = TRANSIENT_RETRY_WINDOW_MS,
-  idleMs = 3000}) {
+  idleMs = 3000, concurrency = AP_QUERY_CONCURRENCY, stageFor = () => '', priorityFor = () => ({})}) {
   const active = new Map(), all = new Map(), completed = new Map(), inflight = new Map(), queue = [];
   const replay = new Map((snapshot?.entries || []).map(e => [e.kind + ':' + canonical(e.payload), e]));
   let replaying = Boolean(snapshot), missed = false;
   let blocked = '';
-  let running = 0;
+  let running = 0, heavyRunning = 0, sequence = 0;
+  const limitCount = Math.max(1, Math.min(4, Number(concurrency) || AP_QUERY_CONCURRENCY));
+  const heavyLimit = Math.max(1, limitCount - 1);
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const clock = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+  function hint(job) {
+    try { return priorityFor(job.kind, job.payload) || {}; } catch (_) { return {}; }
+  }
+  function compareJobs(left, right) {
+    const a = hint(left), b = hint(right);
+    const visible = Number(Boolean(b.visible)) - Number(Boolean(a.visible));
+    if (visible) return visible;
+    const rank = Number(a.rank || 0) - Number(b.rank || 0);
+    if (rank) return rank;
+    const heavy = Number(Boolean(a.heavy)) - Number(Boolean(b.heavy));
+    if (heavy) return heavy;
+    return left.sequence - right.sequence;
+  }
   function pump() {
-    while (running < 2 && queue.length) {
-      const job = queue.shift(); running++;
-      job.run().then(job.resolve, job.reject).finally(() => { running--; pump(); });
+    while (running < limitCount && queue.length) {
+      queue.sort(compareJobs);
+      const index = queue.findIndex(job => !hint(job).heavy || heavyRunning < heavyLimit);
+      if (index < 0) break;
+      const [job] = queue.splice(index, 1);
+      const heavy = Boolean(hint(job).heavy);
+      running += 1; if (heavy) heavyRunning += 1;
+      job.run().then(job.resolve, job.reject).finally(() => {
+        running -= 1; if (heavy) heavyRunning -= 1; pump();
+      });
     }
   }
-  const limit = run => new Promise((resolve, reject) => { queue.push({run, resolve, reject}); pump(); });
+  const limit = (run, kind, payload) => new Promise((resolve, reject) => {
+    queue.push({run, resolve, reject, kind, payload, sequence: sequence++}); pump();
+  });
   function queryLabels(payload) {
     const labels = [], codes = [], stack = [payload];
     while (stack.length) {
@@ -53,6 +79,11 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     // Different widgets may share measures but use different status filters.
     // Keep each full query; committed SDK filter changes clear the whole scope.
     return kind + ':' + canonical(payload);
+  }
+  function selectedStates(stages) {
+    const values = [...active.values()];
+    const wanted = new Set((stages || []).filter(Boolean));
+    return wanted.size ? values.filter(state => wanted.has(state.stage)) : values;
   }
   async function proxy(kind, payload) {
     const controller = new AbortController();
@@ -94,7 +125,8 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     }
     const slot = shape(kind, payload);
     const labels = queryLabels(payload);
-    const state = {key: canonical(payload), pending: true, error: '', labels, receiptId: '', expiresAt: 0};
+    const state = {key: canonical(payload), pending: true, error: '', labels, receiptId: '', expiresAt: 0,
+      stage: stageFor(kind, payload) || '', timings: null};
     all.set(slot, state);
     if (kind !== 'helmet') { const previous=active.get(slot); active.set(slot, state); onInvalidate({replacement:Boolean(previous && previous.key!==state.key)}); }
     const config = payload && payload.analysisConfig;
@@ -111,14 +143,25 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     }
     const reused = completed.get(key);
     const entry = replay.get(key);
-    const work = replaying ? Promise.resolve({data:entry.data,receiptId:entry.receiptId,receivedAt:entry.receivedAt,expiresAt:entry.expiresAt}) :
-      reused && Math.min(reused.expiresAt * 1000, reused.receivedAt * 1000 + 15000) > Date.now() ? Promise.resolve(reused) : limit(() => proxy(kind, payload));
-    const promise = work.then(body => {
+    const queuedAt = clock();
+    const work = replaying ? Promise.resolve({body:{data:entry.data,receiptId:entry.receiptId,receivedAt:entry.receivedAt,expiresAt:entry.expiresAt},timings:{clientQueueMs:0,clientResponseMs:0,replay:true}}) :
+      reused && Math.min(reused.expiresAt * 1000, reused.receivedAt * 1000 + 15000) > Date.now() ? Promise.resolve({body:reused,timings:{clientQueueMs:0,clientResponseMs:0,reused:true}}) :
+        limit(async () => {
+          const startedAt = clock();
+          const body = await proxy(kind, payload);
+          return {body, timings:{clientQueueMs:Math.round(startedAt-queuedAt), clientResponseMs:Math.round(clock()-startedAt)}};
+        }, kind, payload);
+    const promise = work.then(result => {
+      const body = result.body;
       if (kind !== 'helmet' && active.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
       if (all.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
       completed.set(key, body);
-      Object.assign(state, {pending: false, error: '', receiptId: body.receiptId, expiresAt: body.expiresAt,
-        entry:{kind,payload,data:body.data,receiptId:body.receiptId,receivedAt:body.receivedAt,expiresAt:body.expiresAt}});
+      const timings = {...(body.timings || {}), ...(result.timings || {})};
+      Object.assign(state, {pending: false, error: '', receiptId: body.receiptId, expiresAt: body.expiresAt, timings,
+        entry:{kind,payload,data:body.data,receiptId:body.receiptId,receivedAt:body.receivedAt,expiresAt:body.expiresAt,timings}});
+      if (typeof console !== 'undefined' && console.debug) {
+        console.debug('[cockpit-ap-timing]', {kind, stage: state.stage, key: state.key, ...timings});
+      }
       recovered();
       return body.data;
     }).catch(error => {
@@ -133,10 +176,11 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     return promise;
   }
   function scope(options=false) {
-    const {allowExpired=false, partial=false} = typeof options === 'object' ? options : {allowExpired: Boolean(options)};
+    const {allowExpired=false, partial=false, stages=[]} = typeof options === 'object' ? options : {allowExpired: Boolean(options)};
     if(blocked)throw new Error(blocked);
-    const states = [...active.values()];
-    if (!states.length || states.some(s => s.pending)) throw new Error('看板AP查询仍在加载，请稍后分析');
+    const states = selectedStates(stages);
+    if (!states.length) throw new Error(stages.length ? '当前环节尚无看板查询数据，请稍后重试' : '看板AP查询仍在加载，请稍后分析');
+    if (states.some(s => s.pending)) throw new Error('看板AP查询仍在加载，请稍后分析');
     if (!partial) {
       const error = states.find(s => s.error);
       if (error) throw new Error(error.error);
@@ -160,29 +204,30 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     return {chartQueries: [...new Set(usable.map(s => s.key))].sort(), apReceiptIds: [...new Set(usable.map(s => s.receiptId))].sort(), unavailable};
   }
   async function ready(options={}) {
-    const {allowExpired=false, partial=false} = typeof options === 'boolean' ? {allowExpired: options} : options;
+    const {allowExpired=false, partial=false, stages=[]} = typeof options === 'boolean' ? {allowExpired: options} : options;
     let stable = 0, previous = '', idle = 0;
     const deadline = Date.now() + readyTimeoutMs;
     while (Date.now() < deadline) {
       await pause(100);
+      const current = selectedStates(stages);
       // A page that never starts a query must not hold the caller for the
       // whole long-AP budget; give the components a short settle window.
-      if (!all.size) { if (++idle >= Math.max(1, Math.ceil(idleMs / 100))) break; continue; }
+      if (!current.length) { if (++idle >= Math.max(1, Math.ceil(idleMs / 100))) break; continue; }
       idle = 0;
-      const signature = [...all.values()].map(s => `${s.key}:${s.receiptId}:${s.pending}`).join('|');
+      const signature = current.map(s => `${s.key}:${s.receiptId}:${s.pending}`).join('|');
       stable = signature && signature === previous ? stable + 1 : 0;
       previous = signature;
-      if (stable >= 3 && ![...all.values()].some(s => s.pending)) {
+      if (stable >= 3 && !current.some(s => s.pending)) {
         if (!partial) {
-          const failed=[...all.values()].find(s=>s.error);
+          const failed=current.find(s=>s.error);
           if(failed)throw new Error(failed.error);
         }
-        return scope({allowExpired, partial});
+        return scope({allowExpired, partial, stages});
       }
     }
     // Data preparation may legitimately take as long as the AP budget itself;
     // falling through only reports what is actually ready, never a timeout error.
-    return scope({allowExpired, partial});
+    return scope({allowExpired, partial, stages});
   }
   function clearScope() { active.clear(); all.clear(); completed.clear(); inflight.clear(); replay.clear(); replaying=false; onInvalidate({replacement:true}); }
   function failures() {

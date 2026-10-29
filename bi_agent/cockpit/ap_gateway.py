@@ -128,7 +128,7 @@ class APGateway:
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         return cleaned[:240]
 
-    def query(self, kind, payload, *, _deadline=None):
+    def query(self, kind, payload, *, _deadline=None, timing=None):
         if kind not in PATHS:
             raise HTTPException(422, '不支持的只读AP接口')
         if kind == 'batch':
@@ -152,7 +152,7 @@ class APGateway:
             for child in payload:
                 key = json.dumps(child, sort_keys=True, ensure_ascii=False, separators=(',', ':'))
                 if key not in cache:
-                    cache[key] = self.query('analysis', child, _deadline=deadline)
+                    cache[key] = self.query('analysis', child, _deadline=deadline, timing=timing)
                 item = dict(success=True, data=deepcopy(cache[key]))
                 size += len(json.dumps(item, ensure_ascii=False).encode()) + 1
                 if size > MAX_RESPONSE:raise HTTPException(502, 'AP响应过大，请缩小查询范围')
@@ -170,14 +170,21 @@ class APGateway:
         # Queue behind the shared upstream bound instead of failing a page query.
         # The request deadline still caps the wait, so saturated traffic degrades
         # to one bounded timeout rather than bursty 429s in the dashboard.
+        queue_started = time.monotonic() if timing is not None else None
         admitted = self._capacity.acquire(timeout=remaining)
+        if timing is not None:
+            queued = round((time.monotonic() - queue_started) * 1000, 1)
+            timing['backendQueueMs'] = timing.get('backendQueueMs', 0) + queued
         if not admitted:
             raise HTTPException(504, 'AP查询排队超时，请稍后重试')
         try:
             timeout = deadline-time.monotonic()
             if timeout <= 0:raise HTTPException(504, 'AP整批查询超时，未交付部分结果')
+            upstream_started = time.monotonic() if timing is not None else None
             with self._opener.open(request, timeout=timeout) as response:
                 raw = response.read(MAX_RESPONSE + 1)
+            if timing is not None:
+                timing['upstreamMs'] = timing.get('upstreamMs', 0) + round((time.monotonic() - upstream_started) * 1000, 1)
             if len(raw) > MAX_RESPONSE:
                 raise HTTPException(502, 'AP响应过大，请缩小查询范围')
             body = json.loads(raw)

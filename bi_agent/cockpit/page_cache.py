@@ -178,17 +178,26 @@ class APReuse:
         self.sizes = {}
         self.bytes = 0
 
-    def read(self, key, load):
+    def read(self, key, load, *, timeout=200, trace=None):
         with self.lock:
             cached = self.values.get(key)
             if cached and time.time() < min(cached[0], cached[1]['expiresAt']):
+                if trace is not None:
+                    trace.update(cacheHit=True, follower=False)
                 return deepcopy(cached[1])
             future = self.pending.get(key)
             leader = future is None
             if leader:
                 future = self.pending[key] = Future()
         if not leader:
-            return deepcopy(future.result(timeout=35))
+            if trace is not None:
+                trace.update(cacheHit=False, follower=True)
+            # Followers wait for the same AP budget as the leader.  The old
+            # fixed 35 s limit failed a shared query long before the upstream's
+            # three-minute budget had a chance to answer it.
+            return deepcopy(future.result(timeout=timeout))
+        if trace is not None:
+            trace.update(cacheHit=False, follower=False)
         try:
             value = load()
             size = len(json.dumps(value, ensure_ascii=False).encode())

@@ -102,7 +102,7 @@ def test_refresh_reuses_publication_when_evidence_is_unchanged(tmp_path):
     store, cfg, query, helmet, old = _fixture(tmp_path)
     calls = []
     manager = RefreshManager(store, cfg,
-        lambda kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
+        lambda identity, kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
         _analysis_factory(store, calls), interval=900, poll=0.01, timeout=5)
     result = manager.refresh(old)
     assert result['status'] == 'published' and result['changed'] is False
@@ -122,7 +122,7 @@ def test_unchanged_refresh_does_not_append_duplicate_snapshots(tmp_path):
             return db.execute('SELECT COUNT(*) FROM page_snapshots').fetchone()[0]
     before = snapshots()
     manager = RefreshManager(store, cfg,
-        lambda kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
+        lambda identity, kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
         _analysis_factory(store, []), interval=900, poll=0.01, timeout=5)
     assert manager.refresh(old)['status'] == 'published'
     assert snapshots() == before
@@ -132,7 +132,7 @@ def test_refresh_runs_model_only_after_fingerprint_changes(tmp_path):
     store, cfg, query, helmet, old = _fixture(tmp_path)
     calls = []
     manager = RefreshManager(store, cfg,
-        lambda kind, payload: {'value': 99.0} if kind == 'analysis' else {'nodes': []},
+        lambda identity, kind, payload: {'value': 99.0} if kind == 'analysis' else {'nodes': []},
         _analysis_factory(store, calls), interval=900, poll=0.01, timeout=5)
     result = manager.refresh(old)
     assert result['status'] == 'published' and result['changed'] is True
@@ -145,7 +145,7 @@ def test_refresh_runs_model_only_after_fingerprint_changes(tmp_path):
 def test_refresh_keeps_last_version_on_ap_failure(tmp_path):
     store, cfg, query, helmet, old = _fixture(tmp_path)
     calls = []
-    def fail(kind, payload):
+    def fail(identity, kind, payload):
         raise RuntimeError('AP unavailable')
     manager = RefreshManager(store, cfg, fail, _analysis_factory(store, calls),
                              interval=900, poll=0.01, timeout=5)
@@ -281,7 +281,7 @@ def test_scheduler_warms_default_scopes_only(tmp_path):
     calls = []
     manager = RefreshManager(
         store, cfg,
-        lambda kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
+        lambda identity, kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
         _analysis_factory(store, calls), interval=900, poll=0.01, timeout=5)
     scheduler = RefreshScheduler(manager, store, scan_seconds=2, scope_limit=3)
     # A fresh deploy seeds the first check one interval ahead instead of
@@ -301,7 +301,7 @@ def test_scheduler_recovers_publication_when_config_version_rotates(tmp_path):
     assert store.published_page(new_scope) is None
     calls = []
     manager = RefreshManager(store, cfg,
-        lambda kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
+        lambda identity, kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
         _analysis_factory(store, calls), interval=900, poll=0.01, timeout=5)
     scheduler = RefreshScheduler(manager, store, scan_seconds=2)
     store.set_refresh_state(new_scope, 'waiting', next_check=0)
@@ -354,7 +354,7 @@ def test_refresh_uses_the_same_evidence_resolver_as_the_http_turn(tmp_path):
     store, cfg, query, helmet, old = _fixture(tmp_path)
     calls = []
     manager = RefreshManager(store, cfg,
-        lambda kind, payload: {'value': 99.0} if kind == 'analysis' else {'nodes': []},
+        lambda identity, kind, payload: {'value': 99.0} if kind == 'analysis' else {'nodes': []},
         _capture_factory(store, calls), interval=900, poll=0.01, timeout=5)
     result = manager.refresh(old)
     assert result['status'] == 'published' and result['changed'] is True
@@ -396,7 +396,7 @@ def test_refresh_supplements_failed_business_queries_from_postgres(tmp_path, mon
 
     monkeypatch.setattr(pg_fallback, 'supplement', fake_supplement)
 
-    def query_transport(kind, payload):
+    def query_transport(identity, kind, payload):
         if kind == 'helmet':
             return {'nodes': []}
         raise RuntimeError('AP timeout')
@@ -433,7 +433,7 @@ def test_scheduler_maintains_published_stage_cards_without_a_page_snapshot(tmp_p
     store.bind_view(view_scope(context), 'shipment', item['scope'])
     assert store.published_page(page_scope(cfg, 1, 'analysis', 'default', 'ap')) is None
     calls = []
-    manager = RefreshManager(store, cfg, lambda kind, payload: {'value': 80.0},
+    manager = RefreshManager(store, cfg, lambda identity, kind, payload: {'value': 80.0},
                              _publishing_factory(store, calls), interval=900, poll=0.01, timeout=5)
     scheduler = RefreshScheduler(manager, store, scan_seconds=2)
     assert scheduler.run_once(now=1000.0) == 0
@@ -506,7 +506,7 @@ def test_refresh_view_recovers_a_postgres_only_card(tmp_path, monkeypatch):
     monkeypatch.setattr(pg_fallback, 'supplement', fake_supplement)
     calls = []
 
-    def query_transport(kind, payload):
+    def query_transport(identity, kind, payload):
         raise RuntimeError('AP still unavailable')
 
     manager = RefreshManager(store, cfg, query_transport, _publishing_factory(store, calls),
@@ -553,7 +553,7 @@ def test_manual_refresh_of_a_custom_scope_is_executed_by_the_scheduler(tmp_path,
     assert store.refresh_state(custom)['status'] == 'waiting'
     calls = []
     manager = RefreshManager(store, cfg,
-        lambda kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
+        lambda identity, kind, payload: {'value': 79.16} if kind == 'analysis' else {'nodes': []},
         _analysis_factory(store, calls), interval=900, poll=0.01, timeout=5)
     scheduler = RefreshScheduler(manager, store, scan_seconds=2)
     assert scheduler.run_once(now=time.time() + 1) == 1

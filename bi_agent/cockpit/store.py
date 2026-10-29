@@ -85,6 +85,22 @@ class Store:
                        (sid, scope, json.dumps(page, ensure_ascii=False), page['dataAsOf']))
             db.execute('INSERT INTO page_snapshot_views VALUES(?,?) ON CONFLICT(scope) '
                        'DO UPDATE SET snapshot_id=excluded.snapshot_id', (scope, sid))
+            if page.get('uiScope') == 'default':
+                # A page version carries delivered cards for its stages.  Bind
+                # them as view targets in the same transaction so they survive
+                # a restart and keep being refreshed without a browser.
+                from .publications import view_scope
+                for stage, item in (page.get('items') or {}).items():
+                    context = (item or {}).get('context') or {}
+                    if context.get('engine') != 'main' or context.get('sourceMode') != 'service':
+                        continue
+                    row = db.execute('SELECT scope FROM analyses WHERE id=?',
+                                     (item.get('id'),)).fetchone()
+                    if not row:
+                        continue
+                    db.execute('INSERT INTO publication_views VALUES(?,?,?) '
+                               'ON CONFLICT(view_key,stage) DO UPDATE SET scope=excluded.scope',
+                               (view_scope(context), stage, row[0]))
         return True
 
     def published_page(self, scope):

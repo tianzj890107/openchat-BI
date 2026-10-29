@@ -708,3 +708,31 @@
 - 验证：Cockpit 聚焦 137 项 Python、41 项 JS 测试通过；UMD `node --check` 通过；资源清单
   哈希、metadata 文件哈希与 `source.json` 一致；静态站资源版本由 `3abcfd47…` 变为
   `bc0eb9fd3a578bb113eb`。
+
+### 2026-10-29 17:00 · Cockpit 全槽位预热、Tab 常驻与 AP 慢查询调度收口
+
+- 用户可见变化：三个页面配置的 12 个 AI 插槽会按业务环节在服务端预热并保存；运营页和
+  穿透页即使没有整页快照，也会进入维护队列。打开或刷新页面直接返回全部已保存卡片，未访问过
+  的 Tab 也能立即展示已有结果，不再依赖浏览器先打开一次。
+- 启动与切换：`/api/cockpit/startup` 增加 `cardsByPage`、并集 `cards` 和 `cardsVersion`；
+  三个顶部 Tab 改为组件内 `setActiveTab` 加 `history.pushState`/`popstate`，只切换当前页面、
+  卡片元数据和轮询范围，不重建 SDK、数据客户端或已加载的看板实例。
+- AP 调度：前端 AP 并发从 2 调到 3，按 `IntersectionObserver` 的真实可见环节优先，重查询最多
+  占 2 个槽位，轻查询始终保留一个执行位；同一环节的卡片共享查询，不因多个 AI 插槽重复取数。
+- AI 等待：分析等待从“整页 AP 全部结束”收敛为当前业务环节的查询；一个无关图表失败或变慢，
+  不再阻断已有足够证据的可见卡片。后台刷新只回读当前环节的查询，避免历史上下文带入同页其他环节。
+- 查询复用与超时：页面请求和后台刷新统一经过 `query_receipt` 的共享 AP 缓存/合并层，缓存键
+  包含身份、连接、查询和存储；共享查询的跟随者等待预算由网关超时加余量决定，不再固定 35 秒。
+  后台调度保持单工作线程，页面并发预算仍可用满；后台沿用同一结果，不再走独立的 AP 快路径。
+- 计时：单条 AP 请求记录前端排队 `clientQueueMs`、服务端排队 `backendQueueMs`、上游执行
+  `upstreamMs`、响应处理 `clientResponseMs`，并在 `/data/query` 返回 `receiptWaitMs` 与
+  `serverTotalMs`，可在浏览器调试日志中按查询环节定位慢点。
+- 主要文件：`bi_agent/cockpit/targets.py`、`refresh.py`、`router.py`、`store.py`、
+  `page_cache.py`、`ap_gateway.py`、`bi_agent/web/static/cockpit/cockpit.js`、
+  `data-client.js`、`tests/test_cockpit_card_preheat.py`、`test_cockpit_page_cache.py`、
+  `cockpit_data_client.test.mjs`、`cockpit_tab_navigation.test.mjs`。
+- 验证：Cockpit 聚焦回归 165 项 Python（含 14 个子用例）、53 项 JS 通过；`node --check`
+  与 `git diff --check` 通过。覆盖全部插槽映射、无整页快照预热、启动返回跨页卡片、未变化不重复
+  调用模型、Tab 原地切换、可见环节插队、重查询隔离、当前环节等待和共享跟随者长超时。
+- 边界：本轮只提交并推送临时分支，未部署、未创建正式版本；上游慢 SQL、未登记指标口径和真实
+  伏羲任务联调仍按原范围单独验收。

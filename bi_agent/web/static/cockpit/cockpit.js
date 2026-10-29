@@ -27,6 +27,7 @@
     analysis: {title: '穿透式问题分析', tab: '穿透式问题分析'},
   };
   const PAGE_ALIASES = {home: 'overview'};
+  let currentPage = pageFromLocation();
 
   if (!window.Vue) {
     document.getElementById('app').textContent = 'Vue 资源加载失败，请刷新页面。';
@@ -79,6 +80,40 @@
     'shipment-cause-breakdown': 'shipment',
     'shipment-task-order': 'shipment',
   };
+  const QUERY_STAGE_CODES = {
+    opportunity: ['YWLN_M0022','YWLN_M0023','YWLN_M0024','YWLN_M0038','YWLN_M0039','YWLN_M0140','YWLN_D015','YWLN_D020'],
+    guidance: ['YWLN_M0028','YWLN_D017'],
+    quotation: ['YWLN_M0031','YWLN_M0050','YWLN_M0051','YWLN_M0131','YWLN_M0137','YWLN_D021'],
+    technical: ['YWLN_D018'],
+    bid: ['YWLN_M0027','YWLN_M0030','YWLN_M0034','YWLN_M0047','YWLN_M0048','YWLN_M0168','YWLN_D022'],
+    order: ['YWLN_M0032','YWLN_M0033','YWLN_M0142','YWLN_M0179','YWLN_M0194','YWLN_M0198','YWLN_D016','YWLN_D023'],
+    shipment: ['YWLN_M0006','YWLN_M0007','YWLN_M0008','YWLN_M0010','YWLN_M0011','YWLN_M0012','YWLN_M0035','YWLN_M0036','YWLN_M0037','YWLN_D024'],
+  };
+  const QUERY_STAGE_LABELS = {
+    opportunity: ['商机'], guidance: ['方案引导','方案'], quotation: ['报价'], technical: ['技术方案','技术'],
+    bid: ['投标','中标','丢标','弃标'], order: ['订单接收','订单','签单','接收'],
+    shipment: ['发货','出货','履约','超期未发'],
+  };
+  function queryStage(payload) {
+    const text = canonical(payload);
+    for (const [stage, codes] of Object.entries(QUERY_STAGE_CODES)) {
+      if (codes.some(code => text.includes(code))) return stage;
+    }
+    for (const [stage, labels] of Object.entries(QUERY_STAGE_LABELS)) {
+      if (labels.some(label => text.includes(label))) return stage;
+    }
+    return '';
+  }
+  function queryPriority(kind, payload) {
+    const stage = queryStage(payload);
+    const visible = Boolean(stage && stageViewport.get(stage)?.visibleCount);
+    const encoded = JSON.stringify(payload || {});
+    const config = payload?.analysisConfig || {};
+    const indicators = Array.isArray(config.indicators) ? config.indicators.length : 0;
+    const dimensions = Array.isArray(config.dimensions) ? config.dimensions.length : 0;
+    const heavy = kind === 'batch' || encoded.length > 12000 || indicators > 8 || dimensions > 5;
+    return {stage, visible, heavy, rank: visible ? 0 : 1};
+  }
   const STAGE_NAMES = {
     opportunity: '商机获取',
     guidance: '方案引导',
@@ -182,7 +217,7 @@
   function checkedAnalysis(item, stage) {
     const context=item.context || {};
     if (analysisEngine === 'main') {
-      const current = liveDataClient ? liveDataClient.scope({partial:true}) : {chartQueries: [...displayedQueries].sort(), apReceiptIds: []};
+      const current = liveDataClient ? liveDataClient.scope({partial:true, stages:[stage]}) : {chartQueries: [...displayedQueries].sort(), apReceiptIds: []};
       if (dashboardQueryError || canonical(context.chartQueries||[])!==canonical(current.chartQueries) || canonical(context.apReceiptIds||[])!==canonical(current.apReceiptIds)) throw new Error(dashboardQueryError || '看板查询范围已变化，请重新分析');
     }
     if(context.engine!==analysisEngine || context.id!==Number(identityId) || context.stage!==stage ||
@@ -201,7 +236,7 @@
     state.progress = '正在加载分析数据';
     let dataScope = {chartQueries: [], apReceiptIds: []};
     if (analysisEngine === 'main' && liveDataClient) {
-      dataScope = await liveDataClient.ready({partial:true});
+      dataScope = await liveDataClient.ready({partial:true, stages:[stage]});
     } else if (analysisEngine === 'main') {
       let previous = -1, stable = 0;
       for (let attempt = 0; attempt < 20 && stable < 3; attempt++) {
@@ -273,7 +308,7 @@
     if (analysisEngine === 'main' && !refresh && !state.stale && state.status === 'done' && state.item) {
       return Promise.resolve(state.item);
     }
-    if (analysisEngine === 'main' && fullSnapshot && !state.stale) {
+    if (analysisEngine === 'main' && fullSnapshot && !state.stale && state.item) {
       if (refresh) return pageCache.refresh(fullSnapshot,true);
       return Promise.resolve(state.item);
     }
@@ -307,13 +342,13 @@
   }
 
   function baseMainBody(stage,refresh) {
-    return {id:Number(identityId),engine:'main',source:'service',page:pageFromLocation(),defaultView:currentUiScope==='default' && !clarificationAnswers.has(stage),
+    return {id:Number(identityId),engine:'main',source:'service',page:currentPage,defaultView:currentUiScope==='default' && !clarificationAnswers.has(stage),
       stage,period:PERIOD,department:DEPARTMENT,filters:{},repositoryId:'',chartSnapshotId:'pdt-release-2109836674373566465',
       clarifications:clarificationAnswers.get(stage)||{},refresh:Boolean(refresh)};
   }
   async function mainBody(stage,refresh) {
     let dataScope;
-    if(liveDataClient) dataScope=await liveDataClient.ready({partial:true});
+    if(liveDataClient) dataScope=await liveDataClient.ready({partial:true,stages:[stage]});
     else {for(let n=0;n<20 && !displayedQueries.size;n++) await new Promise(r=>setTimeout(r,100));if(dashboardQueryError)throw new Error(dashboardQueryError);dataScope={chartQueries:[...displayedQueries].sort(),apReceiptIds:[]};}
     const {unavailable=[],...usableScope}=dataScope;
     return {...baseMainBody(stage,refresh),...usableScope,unavailableQueries:unavailable.map(entry=>entry.query)};
@@ -479,7 +514,27 @@
 
   const app = createApp({
     setup() {
-      const page = ref(pageFromLocation());
+      const page = ref(currentPage);
+      let switchPageImpl = null;
+      function stagesForPage(target) {
+        const insights = runtime.value?.pages?.[target]?.insights || [];
+        return [...new Set(insights.map(item => SLOT_STAGE[item.id]).filter(Boolean))];
+      }
+      function framePage(target, {push = true} = {}) {
+        if (!runtime.value || !PAGES[target] || target === page.value) return false;
+        const payload = runtime.value;
+        currentPage = target;
+        page.value = target;
+        document.title = `储能经营风险驾驶舱 · ${PAGES[target].title}`;
+        const tabs = payload.dashboard?.components?.find(c => c.type === 'tab-container');
+        if (tabs) biRuntime.value?.setActiveTab?.(tabs.id, payload.pages[target].tabId);
+        if (push) history.pushState({cockpitPage: target}, '', routeFor(target));
+        return true;
+      }
+      function goPage(target, options = {}) {
+        if (!framePage(target, options)) return Promise.resolve(false);
+        return switchPageImpl ? switchPageImpl(target) : Promise.resolve(true);
+      }
       const runtime = ref(null);
       const loading = ref(true);
       const error = ref('');
@@ -531,11 +586,33 @@
           const node = pendingActivationNode;
           pendingActivationPage = '';
           pendingActivationNode = '';
-          location.assign(routeFor(target, node ? {node} : {}));
+          // Switching tabs is a component-internal move: the board instance,
+          // its loaded data and every saved AI card stay in memory.
+          goPage(target, {push: false}).then(() => {
+            if (!node) return;
+            history.replaceState(null, '', routeFor(page.value, {node}));
+            applyPendingHelmet();
+          }).catch(() => {});
         }, 120);
+      }
+      let pendingHelmet = null;
+      function applyPendingHelmet() {
+        const pending = pendingHelmet;
+        if (!pending) return;
+        const apply = attempt => {
+          if (!biRuntime.value || !document.querySelector('.mini-cp-helmet__graph canvas')) {
+            if (attempt < 50) setTimeout(() => apply(attempt + 1), 100);
+            return;
+          }
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            biRuntime.value?.setHelmetGraphSelection?.(pending.componentId, pending.selection, pending.path);
+          }));
+        };
+        apply(0);
       }
       function rememberActivationHelmet(componentId, selection, path) {
         const node = String(selection?.nodeId || selection?.id || '').trim();
+        pendingHelmet = {componentId, selection, path};
         if (node) pendingActivationNode = node;
         if (!pendingActivationPage) return;
         try {
@@ -580,7 +657,12 @@
         const entry=Object.entries(PAGES).find(([,value])=>value.tab===button.textContent.trim());
         if(!entry||entry[0]===page.value)return;
         event.preventDefault();event.stopPropagation();
-        location.assign(routeFor(entry[0]));
+        goPage(entry[0]).catch(()=>{});
+      }
+
+      function onPopState() {
+        const target = pageFromLocation();
+        if (target !== page.value) goPage(target, {push: false}).catch(() => {});
       }
 
       function onVisibilityChange() {
@@ -741,6 +823,7 @@
           const {createPublicationClient}=await import(`${assetBase}/publication-client.js?v=${encodeURIComponent(assetVersion)}`);
           publications=createPublicationClient({apiBase,stateFor,bodyFor:mainBody,queue:withAnalysisSlot});
           publications.preload(startup.cards||{});
+          cardsVersion=startup.cardsVersion||'';
         }
         let installed;
         if (dataConfig.mode === 'ap') {
@@ -753,6 +836,7 @@
           const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
           if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
           const makeClient=(snapshot=null)=>createAPDataClient({apiBase,id:identityId,snapshot,
+            stageFor:(kind,payload)=>queryStage(payload),priorityFor:queryPriority,
             onSnapshotMiss:()=>changeScope(currentUiScope,true),
             onError:(message,detail)=>showLiveError(message,detail),
             onRecover:()=>clearLiveError(),
@@ -829,6 +913,51 @@
                 if(changed)install(snapshot,true);
                 else{fullSnapshot=snapshot;Object.assign(pageState,{dataAsOf:snapshot.dataAsOf,analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.updatedAt||0))),error:'',refreshing:false,updateStatus:'published'});}
               }});
+            // Tab switches stay inside the mounted board.  Keep the SDK
+            // instance and its data client intact: replacing either one makes
+            // already rendered tabs query again.  The host only re-points the
+            // route, page-specific cards, publication metadata and poller.
+            switchPageImpl=async target=>{
+              if(analysisEngine!=='main')return true;
+              const token=++pageEpoch,scope=currentUiScope;
+              clearTimeout(publishTimer);clearTimeout(refreshTimer);
+              pageCache?.invalidate();
+              pageCache=createPageCache({apiBase,id:identityId,page:target,makeClient,bodyFor:baseMainBody,
+                onState:value=>Object.assign(pageState,value),
+                onSnapshot:snapshot=>{
+                  const changed=fullSnapshot?.version!==snapshot.version;
+                  if(changed)install(snapshot,true);
+                  else{fullSnapshot=snapshot;Object.assign(pageState,{dataAsOf:snapshot.dataAsOf,analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.updatedAt||0))),error:'',refreshing:false,updateStatus:'published'});}
+                }});
+              if(scope==='default'){
+                try{
+                  const started=await loadJson(`${apiBase}/startup?id=${identityId}&page=${target}`);
+                  if(token!==pageEpoch)return false;
+                  publications?.preload(started.cards||{});
+                  const snapshot=started.snapshot||started.displaySnapshot||null;
+                  const pageCards=started.cardsByPage?.[target]||{};
+                  // This is publication metadata for the active route, not a
+                  // replacement snapshot for the live client.  Keeping it in
+                  // sync stops the poller from remounting the board just
+                  // because the tab changed.
+                  fullSnapshot=snapshot;
+                  cardsVersion=started.cardsVersion||'';
+                  Object.assign(pageState,{cached:Boolean(snapshot),dataAsOf:snapshot?.dataAsOf||0,
+                    analyzedAt:Math.max(0,...Object.values(pageCards).map(item=>Number(item?.updatedAt||0))),
+                    updateStatus:started.status?.update?.status||'idle',
+                    displayStale:Boolean(started.displayStale),refreshing:false,error:''});
+                }catch(_){/* keep the mounted board and let the poller retry */}
+              }else{
+                // Custom filters are not represented by the default-scope
+                // startup payload.  Keep the cards already on screen; the
+                // publication client marks them stale until this scope lands.
+                fullSnapshot=null;cardsVersion='';
+                Object.assign(pageState,{cached:false,displayStale:true,refreshing:false,error:''});
+              }
+              statusPoller?.poke(0);
+              for(const stage of stagesForPage(target))ensureAnalysis(stage).catch(()=>{});
+              return true;
+            };
             statusPoller=createPublicationPoller({
               probe:async()=>{const scope=currentUiScope;return {scope,status:await pageCache.status(scope)};},
               apply:async value=>{
@@ -909,6 +1038,7 @@
         document.title = `储能经营风险驾驶舱 · ${pageTitle.value}`;
         document.addEventListener('click', onTabClick, true);
         document.addEventListener('visibilitychange', onVisibilityChange);
+        window.addEventListener('popstate', onPopState);
         if (location.pathname.endsWith('/cockpit/home')) {
           history.replaceState(null, '', routeFor('overview'));
         }
@@ -925,7 +1055,7 @@
           document.getElementById('cockpit-boot')?.remove();
         }
       });
-      onBeforeUnmount(() => {statusPoller?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('visibilitychange', onVisibilityChange);clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {statusPoller?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
         page, runtime, loading, error, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
