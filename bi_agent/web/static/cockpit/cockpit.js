@@ -774,6 +774,10 @@
         }
         return null;
       }
+      function helmetPathArg(path) {
+        if (Array.isArray(path)) return {segments: path};
+        return path && typeof path === 'object' ? path : {segments: []};
+      }
       function queueActivationNavigation(containerId, tabId) {
         const target = pageForTab(tabId);
         if (!target || target === page.value) return;
@@ -806,7 +810,8 @@
             return;
           }
           requestAnimationFrame(() => requestAnimationFrame(() => {
-            biRuntime.value?.setHelmetGraphSelection?.(pending.componentId, pending.selection, pending.path);
+            biRuntime.value?.setHelmetGraphSelection?.(
+              pending.componentId, pending.selection, helmetPathArg(pending.path));
           }));
         };
         apply(0);
@@ -841,7 +846,8 @@
             return;
           }
           requestAnimationFrame(() => requestAnimationFrame(() => {
-            biRuntime.value?.setHelmetGraphSelection?.(pending.componentId, pending.selection, pending.path);
+            biRuntime.value?.setHelmetGraphSelection?.(
+              pending.componentId, pending.selection, helmetPathArg(pending.path));
           }));
         };
         apply(0);

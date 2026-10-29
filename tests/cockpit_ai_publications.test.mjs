@@ -48,3 +48,10 @@ test('persisted AI cards start before runtime and mark default fallback cards st
   assert.match(source,/以下仍为上次默认口径分析/);
   assert.match(source,/scopeMatch:value\.scopeMatch!==false/);
 });
+
+test('helmet node deep links pass the ProUI path object', async () => {
+  const source = await readFile(new URL('../bi_agent/web/static/cockpit/cockpit.js', import.meta.url),'utf8');
+  assert.match(source,/function helmetPathArg\(path\)/);
+  assert.match(source,/Array\.isArray\(path\).*\{segments: path\}/);
+  assert.match(source,/pending\.componentId, pending\.selection, helmetPathArg\(pending\.path\)/s);
+});
