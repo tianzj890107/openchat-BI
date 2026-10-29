@@ -314,6 +314,29 @@ def test_table_query_uses_the_visible_page_period_when_scope_is_default(tmp_path
     assert page_filter["value"] == ["2025-10-01", "2025-10-31"]
 
 
+def test_table_query_does_not_append_a_duplicate_visible_date_filter(tmp_path, monkeypatch):
+    response, gateway = _client(tmp_path, monkeypatch, {
+        "result": {"rows": [{"YWLN_D049": {"value": "SO-1"}}]},
+        "pagination": {"total": 1},
+    })
+    fields = [("YWLN_D049", "Dimension"), ("YWLN_D006", "Dimension"),
+              ("YWLN_D005", "Dimension"), ("YWLN_D004", "Dimension"),
+              ("YWLN_D050", "Dimension"), ("M0143", "Indicator"),
+              ("YWLN_M_ORDER_OVERDUE_DAYS", "Indicator")]
+    date_filter = {
+        "identifierCode": "YWLN_D044",
+        "operator": {"code": "BETWEEN", "type": "DATE"},
+        "value": ["2025-10-01", "2025-10-31"],
+        "valueType": "ABSOLUTE",
+    }
+    filters = {"logic": "AND", "children": [date_filter]}
+    query = _query(fields, filters=[date_filter])
+    query["period"] = "2025-10"
+    result = response.post("/api/cockpit/ai-tables/overdue-order-list/query", json=query)
+    assert result.status_code == 200, result.text
+    assert gateway.calls[-1][1]["commonConfig"]["filters"] == filters
+
+
 def test_custom_table_scope_uses_its_exact_published_card(tmp_path, monkeypatch):
     cfg = Config()
     item = _save_order_card(tmp_path, cfg, page="analysis", stage="shipment")

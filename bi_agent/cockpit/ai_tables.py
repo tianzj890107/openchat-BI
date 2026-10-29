@@ -285,8 +285,19 @@ def page_scope_date_filter(ui_scope: str, fallback_period: str = "") -> dict | N
     }
 
 
+def _contains_filter_code(node, code: str) -> bool:
+    if isinstance(node, list):
+        return any(_contains_filter_code(item, code) for item in node)
+    if not isinstance(node, dict):
+        return False
+    current = str(node.get("identifierCode") or node.get("code") or node.get("field") or "").strip()
+    if current == code:
+        return True
+    return any(_contains_filter_code(value, code) for value in node.values())
+
+
 def _merge_scope_filter(filters, scope_filter: dict | None):
-    if scope_filter is None:
+    if scope_filter is None or _contains_filter_code(filters, DATE_SCOPE_DIMENSION):
         return filters
     if filters in (None, {}, []):
         return scope_filter
