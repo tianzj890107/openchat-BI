@@ -1211,3 +1211,30 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   改动引入，且不影响页面渲染。
 - 回退：停止 PID `2133904`，用旧 release `process360-cockpit-432e2a-20261029-1006`
   的 `start-main.py` 启动；静态站从 `backups/site-e355e5c-20261029-102449` 原地恢复。
+
+### Cockpit AI 分析按环节隔离上游失败（2026-10-29 11:40）
+
+- 代码提交：`552e5a63476518d99886e0416c7a0531f6defba9`（分支
+  `feature/cockpit-risk-dispatch-closure`）。单个 AP 指标查询失败不再让整页 AI 插槽
+  全部报错：成功查询照常构成证据，失败查询按环节写入 `stageEvidence.failed/failedLabels`
+  并在卡片限制中披露；本环节没有可用指标时继续交付限制卡，不引用其他环节数据、不生成
+  原因和建议。前端分析请求新增 `unavailableQueries`，加载阶段显示“正在加载分析数据”，
+  进入模型后显示“AI 正在分析”。商机证据白名单纳入客户规划与实际电量指标
+  （`YWLN_M0075`、`YWLN_M_CUSTOMER_TARGET_ENERGY`、`YWLN_M_CUSTOMER_ACTUAL_ENERGY`），
+  `YWLN_` 前缀自定义编码参与环节匹配；`vertex:[]` 且无指标/维度配置的组件在宿主侧
+  直接标记“看板组件未配置实体查询字段，已跳过空查询”，不再发往 AP。
+- 8765 release：
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-552e5a6-20261029-1124`，
+  PID `2402427`；同提交实例先在 `127.0.0.1:18765` 预检通过后切换。旧 release
+  `process360-cockpit-e355e5-20261029-1022` 完整保留。
+- 8876 静态站：`commit=552e5a63476518d99886e0416c7a0531f6defba9`、
+  `assetVersion=0c2fc8c9f9792677a2bd`，manifest 128 项通过，三页 `id=1|2` 均 200；
+  部署前站点备份为 `backups/site-552e5a6-20261029-112909`。
+- 验证：真实分析页在 8876 上由“所有卡片取数失败”变为可交付：商机获取卡最终显示
+  “62 条证据”，无持续 loading、无错误；上游失败的 3 类商机指标在限制中列明
+  “未纳入，不能据此判断该环节经营正常”。110 项 Cockpit Python 测试、29 项前端测试通过。
+- 边界：上游 AP 的日期过滤 SQL 超时、`acc_t` 别名错误和慢查询仍需数据侧修复；本轮
+  只是让看板在部分指标失败时继续分析可用环节并如实披露缺口，不补造数据。
+- 回退：停止 PID `2402427`，用旧 release
+  `process360-cockpit-e355e5-20261029-1022` 的 `start-main.py` 启动；静态站从
+  `backups/site-552e5a6-20261029-112909` 原地恢复。
