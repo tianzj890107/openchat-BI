@@ -54,3 +54,30 @@ test('filter changes invalidate preloaded cards even when their graph node has n
  assert.equal(client.stages.size,0); // Preloading must not trigger five hidden analyses.
  client.invalidate();assert.equal(states.shipment.item,null);assert.equal(states.order.item,null);
 });
+
+test('a full analysis pool keeps the card loading instead of failing',async()=>{
+ let calls=0;const paused=[];
+ const states={};
+ const stateFor=stage=>states[stage]||(states[stage]={status:'idle',item:null,progress:''});
+ const client=createPublicationClient({apiBase:'/api/cockpit',stateFor,bodyFor:async()=>({...body}),pollMs:0,
+   pause:async()=>{paused.push(states.shipment.progress);},
+   request:async()=>{
+     calls+=1;
+     if(calls<3) return {ok:false,status:429,json:async()=>({detail:'分析并发已满，请稍后重试'})};
+     return ok({cached:item('queued'),analysis:null});
+   }});
+ await client.refresh('shipment');
+ assert.equal(calls,3);
+ assert.equal(states.shipment.status,'done');
+ assert.equal(states.shipment.item.id,'queued');
+ assert.equal(states.shipment.error,'');
+ assert.ok(paused.includes('排队中，等待分析资源'));
+});
+
+test('queue receives the stage and the user-retry priority',async()=>{
+ const seen=[];
+ const {client}=setup({queue:(run,options)=>{seen.push(options);return run();},request:async()=>ok({cached:item('x'),analysis:null})});
+ await client.refresh('shipment',true,true);
+ await client.refresh('order',false,false);
+ assert.deepEqual(seen,[{stage:'shipment',urgent:true},{stage:'order',urgent:false}]);
+});

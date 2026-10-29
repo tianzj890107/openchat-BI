@@ -27,6 +27,9 @@ def publication_scope(context):
     # Receipt IDs and response values change on every fetch. Neither is a filter.
     value={k:context.get(k) for k in ('id','engine','page','stage','source','period','department','filters','repositoryId','chartSnapshotId','dataSource','dataIdentity','clarifications','baselineAnalysisId')}
     value['chartQueries']=sorted({json.dumps(json.loads(q),sort_keys=True,ensure_ascii=False,separators=(',',':')) for q in context.get('chartQueries',[])})
+    # A fallback registry change (new metric, fixed口径) must never reuse a card
+    # computed from the previous mapping.
+    value['fallback']=context.get('fallbackVersion','') or ''
     value.update(config=config_version(),contract=CONTRACT)
     return digest(value)
 

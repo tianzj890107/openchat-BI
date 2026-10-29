@@ -40,7 +40,7 @@
     return;
   }
 
-  const {createApp, ref, computed, reactive, onMounted, onBeforeUnmount, nextTick, shallowRef, markRaw} = window.Vue;
+  const {createApp, ref, computed, reactive, onMounted, onBeforeUnmount, nextTick, shallowRef, markRaw, getCurrentInstance} = window.Vue;
 
   const dashboardDataMode = ref('ap');
   let liveDataClient = null;
@@ -92,10 +92,36 @@
   const clarificationAnswers = new Map();
   const MAX_CONCURRENT = 3;
   const analysisQueue = [];
+  const stageViewport = new Map();
   let runningAnalyses = 0;
+  let jobSequence = 0;
+
+  /* What the user is looking at runs first. A stage only becomes "visible"
+   * after IntersectionObserver says so, not when Vue merely mounts it. Running
+   * jobs are never pre-empted; only the waiting order changes. */
+  function jobRank(job) {
+    if (job.urgent) return 0;
+    const view = stageViewport.get(job.stage);
+    return view && view.visibleCount > 0 ? 1 : 2;
+  }
+  function jobOrder(job) {
+    const view = stageViewport.get(job.stage);
+    return view && Number.isFinite(view.order) ? view.order : Number.MAX_SAFE_INTEGER;
+  }
+  function compareJobs(left, right) {
+    const rank = jobRank(left) - jobRank(right);
+    if (rank) return rank;
+    if (jobRank(left) === 1) {
+      const order = jobOrder(left) - jobOrder(right);
+      if (order) return order;
+    }
+    return left.sequence - right.sequence;
+  }
+  function slotLimit() { return analysisEngine === 'main' ? 1 : MAX_CONCURRENT; }
 
   function pumpAnalysisQueue() {
-    while (runningAnalyses < (analysisEngine === 'main' ? 1 : MAX_CONCURRENT) && analysisQueue.length) {
+    while (runningAnalyses < slotLimit() && analysisQueue.length) {
+      analysisQueue.sort(compareJobs);
       const job = analysisQueue.shift();
       runningAnalyses += 1;
       job.run().then(job.resolve, job.reject).finally(() => {
@@ -105,11 +131,30 @@
     }
   }
 
-  function withAnalysisSlot(run) {
+  function reprioritiseAnalyses() {
+    if (analysisQueue.length && runningAnalyses < slotLimit()) pumpAnalysisQueue();
+  }
+
+  function withAnalysisSlot(run, options = {}) {
+    const {stage = '', urgent = false} = typeof options === 'string' ? {stage: options} : (options || {});
+    if (urgent && stage) {
+      // A retry must jump an already-queued (not yet started) job for the same
+      // stage instead of leaving a stale low-priority entry ahead of it.
+      const queued = analysisQueue.find(job => job.stage === stage);
+      if (queued) queued.urgent = true;
+    }
     return new Promise((resolve, reject) => {
-      analysisQueue.push({run, resolve, reject});
+      analysisQueue.push({run, resolve, reject, stage, urgent, sequence: jobSequence++});
       pumpAnalysisQueue();
     });
+  }
+
+  function noteStageVisibility(stage, visible, order) {
+    const view = stageViewport.get(stage) || {visibleCount: 0, order: Number.MAX_SAFE_INTEGER};
+    view.visibleCount = Math.max(0, (view.visibleCount || 0) + (visible ? 1 : -1));
+    if (visible) view.order = Math.min(view.order, order);
+    stageViewport.set(stage, view);
+    reprioritiseAnalyses();
   }
 
   function stateFor(stage) {
@@ -179,15 +224,19 @@
       refresh: Boolean(refresh),
     });
     let response;
-    for (let attempt = 0; attempt < 4; attempt += 1) {
+    const queueDeadline = Date.now() + 240000;
+    for (let attempt = 0; ; attempt += 1) {
       response = await fetch(`${apiBase}/analyses`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
         body,
       });
       if (response.status !== 429) break;
-      state.progress = '分析并发已满，排队重试';
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // A full execution pool means "queued", never "failed": keep the card
+      // loading and retry until a slot frees.
+      state.progress = '排队中，等待分析资源';
+      if (Date.now() > queueDeadline) throw new Error('分析排队时间较长，请稍后重试');
+      await new Promise(resolve => setTimeout(resolve, Math.min(1000 * (attempt + 1), 5000)));
     }
     if (!response?.ok) throw new Error(response ? await responseError(response) : '分析请求失败');
     let item = checkedAnalysis(await response.json(), stage);
@@ -210,18 +259,18 @@
     return item;
   }
 
-  function ensureAnalysis(stage, refresh = false) {
+  function ensureAnalysis(stage, refresh = false, urgent = false) {
     if (analysisEngine === 'main' && fullSnapshot) {
       if (refresh) return pageCache.refresh(fullSnapshot,true);
       return Promise.resolve(stateFor(stage).item);
     }
-    if (analysisEngine === 'main' && publications) return publications.refresh(stage, refresh).finally(onPageActivity);
+    if (analysisEngine === 'main' && publications) return publications.refresh(stage, refresh, urgent).finally(onPageActivity);
     const state = stateFor(stage);
     if (!refresh && state.status === 'done' && state.item) {
       try { return Promise.resolve(checkedAnalysis(state.item, stage)); } catch (_) { analysisPromises.delete(stage); }
     }
     if (!refresh && analysisPromises.has(stage)) return analysisPromises.get(stage);
-    const promise = withAnalysisSlot(() => startAnalysis(stage, refresh)).catch(cause => {
+    const promise = withAnalysisSlot(() => startAnalysis(stage, refresh), {stage, urgent}).catch(cause => {
       state.status = 'error';
       state.error = cause.message || '模型分析失败';
       analysisPromises.delete(stage);
@@ -273,19 +322,56 @@
       }));
       const compareLink = computed(()=>{if(!state.value.item)return '';const url=new URL(location.href);url.searchParams.set('engine','standalone');url.searchParams.set('baseline',state.value.item.id);return url.pathname+url.search;});
       const clarification = ref('');
-      const confirmScope = () => {if(!clarification.value.trim())return;clarificationAnswers.set(stage.value, {answer:clarification.value.trim()});ensureAnalysis(stage.value,true).catch(()=>{});};
+      const confirmScope = () => {if(!clarification.value.trim())return;clarificationAnswers.set(stage.value, {answer:clarification.value.trim()});ensureAnalysis(stage.value,true,true).catch(()=>{});};
       const stop = async () => {if(state.value.item?.id)await fetch(`${apiBase}/analyses/${state.value.item.id}/cancel`,{method:'POST'});};
-      const reload = () => ensureAnalysis(stage.value, true).catch(() => {});
+      const reload = () => ensureAnalysis(stage.value, true, true).catch(() => {});
       let alive=true;
       const registeredStage=stage.value;
+      const instance=getCurrentInstance();
+      let seenVisible=false, observer=null;
+      const slotTop=()=>{
+        const el=instance?.proxy?.$el;
+        if(el&&el.nodeType===1&&typeof el.getBoundingClientRect==='function')return el.getBoundingClientRect().top+window.scrollY;
+        return Number.MAX_SAFE_INTEGER;
+      };
+      const markVisible=(next,order)=>{
+        if(next===seenVisible){
+          if(next){const view=stageViewport.get(registeredStage);if(view&&order<view.order)view.order=order;}
+          return;
+        }
+        seenVisible=next;
+        noteStageVisibility(registeredStage,next,order);
+        if(next)ensureAnalysis(registeredStage).catch(()=>{});
+      };
+      const registerSlot=()=>{
+        const top=slotTop();
+        const view=stageViewport.get(registeredStage)||{visibleCount:0,order:top};
+        view.order=Math.min(view.order,top);
+        stageViewport.set(registeredStage,view);
+        const el=instance?.proxy?.$el;
+        if(typeof IntersectionObserver!=='function'||!el||el.nodeType!==1){markVisible(true,top);return;}
+        observer=new IntersectionObserver(entries=>{
+          for(const entry of entries)markVisible(entry.isIntersecting,entry.boundingClientRect.top+window.scrollY);
+        },{rootMargin:'240px 0px'});
+        observer.observe(el);
+      };
       visibleStages.set(registeredStage,(visibleStages.get(registeredStage)||0)+1);
-      onBeforeUnmount(()=>{alive=false;const count=(visibleStages.get(registeredStage)||1)-1;if(count)visibleStages.set(registeredStage,count);else visibleStages.delete(registeredStage);});
+      onBeforeUnmount(()=>{
+        alive=false;
+        if(observer)observer.disconnect();
+        if(seenVisible)noteStageVisibility(registeredStage,false,0);
+        const count=(visibleStages.get(registeredStage)||1)-1;if(count)visibleStages.set(registeredStage,count);else visibleStages.delete(registeredStage);
+      });
       onMounted(async()=>{
         try {
           const bundle=await (insightBundleReady ||= import(insightBundleUrl));
           const component=await bundle.loadInsight(props.insight.id);
           if(!alive)return;
           delivered.value=markRaw(component);
+          await nextTick();registerSlot();
+          // Give the observer one frame to report the real viewport before the
+          // queue commits to an order; off-screen cards stay at low priority.
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
           await ensureAnalysis(stage.value);onPageActivity();
         } catch(cause) {if(alive)insightLoadError.value=`插槽加载失败：${cause.message||cause}`;}
       });

@@ -183,35 +183,115 @@ def material(context):
     return fingerprint, selected
 
 
-def receipt_material(context, store, *, allow_expired=False):
-    """Resolve server receipts, never refetch or accept client-provided facts."""
-    if context.get('chartSnapshotId',RELEASE)!=RELEASE:
+def _receipt_id(value):
+    return isinstance(value, str) and len(value) == 32 and all(c in '0123456789abcdef' for c in value)
+
+
+def receipt_scope(context, store, *, allow_expired=False, resolve_fallback=False):
+    """Resolve receipts into evidence and optionally supplement failed queries from PG.
+
+    Returns ``(fingerprint, selected, pg_receipt_ids, fallback_notes)``.  The
+    page's AP receipts stay authoritative for the metrics they cover; only the
+    queries that failed are re-derived from the reviewed PostgreSQL registry and
+    every such entry keeps ``source='pg'`` so the analysis can disclose it.
+    """
+    if context.get('chartSnapshotId', RELEASE) != RELEASE:
         raise ValueError('看板发布标识不匹配')
-    ids=context.get('apReceiptIds') or []
-    if not ids or len(ids)>80 or len(ids)!=len(set(ids)):
+    ids = context.get('apReceiptIds') or []
+    pg_ids = context.get('pgReceiptIds') or []
+    for group in (ids, pg_ids):
+        if not isinstance(group, list) or len(group) > 80 or len(group) != len(set(group)):
+            raise ValueError('无效的结果凭据列表')
+    if not ids and not pg_ids:
         raise ValueError('必须指定本次页面已展示的AP结果凭据')
-    selected={};requests=[]
+    selected = {}
+    requests = []
     for receipt_id in sorted(ids):
-        if not isinstance(receipt_id,str) or len(receipt_id)!=32 or any(c not in '0123456789abcdef' for c in receipt_id):
+        if not _receipt_id(receipt_id):
             raise ValueError('无效的AP结果凭据')
-        item=store.get_ap_result(receipt_id,context['id'],allow_expired=allow_expired)
-        if not item or item['kind'] not in {'analysis','batch'}:
+        item = store.get_ap_result(receipt_id, context['id'], allow_expired=allow_expired)
+        if not item or item['kind'] not in {'analysis', 'batch'}:
             raise ValueError('AP结果凭据不存在、身份不匹配或已过期，请刷新图表取数')
         requests.append(item['request'])
-        entries=list(zip(item['request'],item['response'])) if item['kind']=='batch' else [(item['request'],{'data':item['response']})]
-        for index,(request,response) in enumerate(entries):
-            key=receipt_id+':'+str(index)
-            selected[key]={'request':request,'response':response['data'],'receivedAt':item['createdAt'],'source':'ap','receiptId':receipt_id,'connectionId':item.get('connectionId',''),'transport':item.get('transport','')}
-    canonical=lambda v:json.dumps(v,ensure_ascii=False,sort_keys=True,separators=(',',':'))
-    if sorted(canonical(v) for v in requests)!=sorted(set(canonical(json.loads(v)) for v in context.get('chartQueries',[]))):
-        raise ValueError('AP结果凭据与页面查询范围不一致，拒绝回填')
-    fingerprint=hashlib.sha256(json.dumps(selected,ensure_ascii=False,sort_keys=True).encode()).hexdigest()[:20]
-    return fingerprint,selected
+        entries = list(zip(item['request'], item['response'])) if item['kind'] == 'batch' else [(item['request'], {'data': item['response']})]
+        for index, (request, response) in enumerate(entries):
+            key = receipt_id + ':' + str(index)
+            selected[key] = {'request': request, 'response': response['data'], 'receivedAt': item['createdAt'],
+                             'source': 'ap', 'receiptId': receipt_id, 'connectionId': item.get('connectionId', ''),
+                             'transport': item.get('transport', '')}
+    for receipt_id in sorted(pg_ids):
+        if not _receipt_id(receipt_id):
+            raise ValueError('无效的数据库补查凭据')
+        item = store.get_ap_result(receipt_id, context['id'], allow_expired=allow_expired)
+        if not item or item['kind'] != 'pg':
+            raise ValueError('数据库补查凭据不存在、身份不匹配或已过期，请重新分析')
+        if item.get('authScope') and item['authScope'] != _fallback_version():
+            raise ValueError('数据库补查口径已更新，请重新分析')
+        requests.append(item['request'])
+        selected['pg:' + receipt_id] = {'request': item['request'], 'response': item['response'],
+                                        'receivedAt': item['createdAt'], 'source': 'pg', 'receiptId': receipt_id,
+                                        'connectionId': item.get('connectionId', ''), 'transport': item.get('transport', '')}
+    notes = []
+    if resolve_fallback:
+        from . import pg_fallback
+        extra, notes = pg_fallback.supplement(context, store)
+        for key, value in extra.items():
+            if key not in selected:
+                selected[key] = value
+                requests.append(value['request'])
+        # A query that the fallback could answer must not also be replayed as if
+        # the page had failed it: the merged requests are validated below.
+    canonical = lambda v: json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    if sorted(canonical(v) for v in requests) != sorted(set(canonical(json.loads(v)) for v in context.get('chartQueries', []))):
+        raise ValueError('结果凭据与页面查询范围不一致，拒绝回填')
+    fingerprint = hashlib.sha256(json.dumps(selected, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:20]
+    pg_used = sorted({value['receiptId'] for value in selected.values() if value.get('source') == 'pg'})
+    return fingerprint, selected, pg_used, notes
+
+
+def _fallback_version():
+    from . import pg_fallback
+    return pg_fallback.version()
+
+
+def receipt_material(context, store, *, allow_expired=False, resolve_fallback=False):
+    """Resolve server receipts, never refetch or accept client-provided facts."""
+    fingerprint, selected, _pg, _notes = receipt_scope(
+        context, store, allow_expired=allow_expired, resolve_fallback=resolve_fallback)
+    return fingerprint, selected
+
+
+def evidence_source(selected):
+    sources = {str(v.get('source') or '') for v in selected.values()}
+    if sources == {'ap'}:
+        return 'cockpit-ap', True
+    if sources == {'pg'}:
+        return 'cockpit-pg', True
+    if sources == {'ap', 'pg'}:
+        return 'cockpit-ap+pg', True
+    return RELEASE, False
+
+
+def fallback_notes_for_stage(notes, stage):
+    """Reason codes for failed queries that belong to one stage."""
+    items = {}
+    for index, note in enumerate(notes or []):
+        try:
+            request = json.loads(note.get('query') or '')
+        except (TypeError, ValueError):
+            continue
+        items[str(index)] = {'request': request, 'code': str(note.get('code') or '')}
+    if not items:
+        return []
+    try:
+        kept, _excluded = filter_stage_selected(items, stage)
+    except ValueError:
+        return []
+    return list(dict.fromkeys(value['code'] for value in kept.values() if value['code']))
 
 
 def executor(selected, stage=None):
-    live=any(v.get("source")=="ap" for v in selected.values())
-    source="cockpit-ap" if live else RELEASE
+    source, live = evidence_source(selected)
     stage_metrics=STAGE_METRICS.get(stage) or set()
     stage_labels=STAGE_LABELS.get(stage) or ()
 

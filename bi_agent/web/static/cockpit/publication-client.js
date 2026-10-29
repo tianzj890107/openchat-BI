@@ -26,24 +26,43 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
   async function json(url,options) {
     const response=await request(url,options);let body;
     try {body=await response.json();} catch (_) {throw new Error('分析响应无效');}
-    if(!response.ok) throw new Error(typeof body.detail==='string'?body.detail:'分析暂未完成');
+    if(!response.ok) {
+      const error=new Error(typeof body.detail==='string'?body.detail:'分析暂未完成');
+      error.status=response.status;
+      throw error;
+    }
     return body;
   }
-  function refresh(stage,force=false) {
+  function waitingInQueue(error) {
+    return error?.status===429 || /并发|排队/.test(String(error?.message||''));
+  }
+  function refresh(stage,force=false,urgent=false) {
     stages.add(stage);known.add(stage);
-    if(pending.has(stage)) return force?pending.get(stage).then(()=>refresh(stage,true)):pending.get(stage);
+    if(pending.has(stage)) return force?pending.get(stage).then(()=>refresh(stage,true,urgent)):pending.get(stage);
     const token=generation,state=stateFor(stage),current=()=>token===generation;
     state.status=state.item?'done':'running';state.refreshing=Boolean(state.item);state.error='';state.progress='正在加载分析数据';
-    const promise=queue(async()=>{
+    const promise=(async()=>{
+      // Wait for the page data *before* claiming the analysis slot, so a slow
+      // query cannot block an already-ready visible card.
       const body=await bodyFor(stage,force);
-      state.progress='AI 正在分析';
       if(!current())return null;
+      state.progress='AI 正在分析';
       if(state.item && !compatible(state.item,body)) Object.assign(state,{item:null,status:'running',cached:false});
+      return queue(async()=>{
       for(let pass=0;pass<2;pass++) {
         let envelope;
-        for(let attempt=0;attempt<4;attempt++) {
+        const queueDeadline=Date.now()+240000;
+        for(;;) {
           try { envelope=await json(`${apiBase}/analyses/refresh?compact=true`,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(body)});break; }
-          catch(error) { if(!/并发/.test(error.message)||attempt===3)throw error;await pause(1000);if(!current())return null; }
+          catch(error) {
+            // A full pool means queued, not failed: keep the card loading and
+            // poll for a slot instead of showing a concurrency error.
+            if(!waitingInQueue(error))throw error;
+            if(Date.now()>queueDeadline)throw new Error('分析排队时间较长，请稍后重试');
+            if(!current())return null;
+            state.progress='排队中，等待分析资源';
+            await pause(1500);
+          }
         }
         if(!current())return null;
         if(envelope.cached && compatible(envelope.cached,body) && (!envelope.dataFingerprint || envelope.cached.context.dataFingerprint===envelope.dataFingerprint)) Object.assign(state,{item:envelope.cached,status:'done',cached:true});
@@ -69,7 +88,8 @@ export function createPublicationClient({apiBase, stateFor, bodyFor, request=fet
         body.refresh=false; // An older in-flight job may finish first; revalidate the latest AP material once.
       }
       return state.item;
-    }).catch(error=>{
+      },{stage,urgent});
+    })().catch(error=>{
       if(current()) {state.error=error.message||'分析更新失败';state.status=state.item?'done':'error';}
       return null;
     }).finally(()=>{if(current()){state.refreshing=false;pending.delete(stage);}});

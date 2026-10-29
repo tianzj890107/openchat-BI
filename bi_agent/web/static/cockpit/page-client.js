@@ -5,7 +5,7 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
   async function json(path,body) {
     const response=await request(apiBase+path,{headers:{Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},...(body?{method:'POST',body:JSON.stringify(body)}:{})});
     let value;try{value=await response.json();}catch{throw new Error('完整看板响应无效');}
-    if(!response.ok)throw new Error(typeof value.detail==='string'?value.detail:'完整看板更新失败');
+    if(!response.ok){const error=new Error(typeof value.detail==='string'?value.detail:'完整看板更新失败');error.status=response.status;throw error;}
     return value;
   }
   function invalidate(){generation++;pending=null;}
@@ -25,7 +25,18 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
   }
   async function analysis(body,token) {
     for(let pass=0;pass<2;pass++) {
-      const envelope=await json('/analyses/refresh?compact=true',body);if(!current(token))return null;
+      let envelope;
+      const queueDeadline=Date.now()+240000;
+      for(;;) {
+        try { envelope=await json('/analyses/refresh?compact=true',body);break; }
+        catch(error) {
+          // Full analysis pool = queued, never a card error; wait for a slot.
+          if(error.status!==429&&!/并发|排队/.test(String(error.message||'')))throw error;
+          if(Date.now()>queueDeadline)throw new Error('后台分析排队超时，保留上次完整看板');
+          await pause(1500);if(!current(token))return null;
+        }
+      }
+      if(!current(token))return null;
       if(envelope.cached?.context.dataFingerprint===envelope.dataFingerprint)return envelope.cached;
       let item=envelope.analysis;
       const deadline=Date.now()+240000;

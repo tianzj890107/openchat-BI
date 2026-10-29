@@ -139,7 +139,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     def context_value(c,s):
         snapshot_id=s["snapshotId"]
         data_source=s.get("dataSource") or ('ap' if snapshot_id.startswith('ap-') else 'snapshot' if snapshot_id.startswith('dashboard-') else 'demo')
-        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=snapshot_id,sourceMode=c.source,engine=c.engine,repositoryId=s.get("repositoryId",c.repositoryId),dataSource=data_source,dataIdentity=s.get("dataIdentity",""),dataFingerprint=s.get("dataFingerprint",""),dataBasis=s.get("dataBasis","原型或演示证据，不是当前看板AP快照"),stageEvidence=s.get("stageEvidence") or {})
+        value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=snapshot_id,sourceMode=c.source,engine=c.engine,repositoryId=s.get("repositoryId",c.repositoryId),dataSource=data_source,dataIdentity=s.get("dataIdentity",""),dataFingerprint=s.get("dataFingerprint",""),dataBasis=s.get("dataBasis","原型或演示证据，不是当前看板AP快照"),stageEvidence=s.get("stageEvidence") or {},pgReceiptIds=s.get("pgReceiptIds") or [],fallbackVersion=s.get("fallbackVersion",""),fallback=s.get("fallback") or {})
         return value
     def scope(c,s):
         if c.engine=="main":return publication_scope(context_value(c,s))
@@ -205,16 +205,25 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             for item in previous:
                 if item["status"] in {"queued","running"} and item["id"] in jobs:return item
                 if req.engine=="standalone" and not req.refresh and item["status"]=="completed":return item
-            if not capacity.acquire(blocking=False):raise HTTPException(429,"分析并发已满，请稍后重试")
             try:
                 item=st.create_analysis(key,context_value(req,snapshot));cancel=threading.Event();jobs[item["id"]]=cancel
                 evidence=(snapshot['_evidence'] if '_evidence' in snapshot else adapter(req.source).evidence(snapshot,req.stage)) if req.engine=='standalone' else {}
                 execute=runner if req.engine=='standalone' else lambda e,c,stop,p:main_runner(c,stop,p)
-                thread=threading.Thread(target=worker,args=(st,item,evidence,cancel,execute),daemon=True)
+                def run_queued():
+                    # Capacity is a shared execution budget, not a user-facing
+                    # error: hold the request in queued state and start it as
+                    # soon as a slot frees instead of returning 429.
+                    if not capacity.acquire(timeout=900):
+                        st.update_analysis(item["id"],status="failed",progress="分析未完成",error="排队超时，请稍后重试")
+                        with lock: jobs.pop(item["id"],None)
+                        return
+                    worker(st,item,evidence,cancel,execute)
+                st.update_analysis(item["id"],status="queued",progress="排队中，等待分析槽位")
+                thread=threading.Thread(target=run_queued,daemon=True)
                 thread.start()
             except Exception:
                 jobs.pop(item["id"],None) if 'item' in locals() else None
-                capacity.release();raise
+                raise
         return item
 
     @router.get('/analyses/published')
@@ -302,7 +311,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         item=get_analysis(aid)
         if item["status"] not in {"completed","limited","needs_input"}:raise HTTPException(409,"分析尚未完成")
         result=item["result"];ctx=item["context"]
-        labels={'ap':'页面本次实时AP结果','snapshot':'交付AP快照','postgres':'Process360 PostgreSQL 只读结果','demo':'演示数据'}
+        labels={'ap':'页面本次实时AP结果','ap+pg':'页面AP结果＋主库同口径补查','snapshot':'交付AP快照','postgres':'Process360 PostgreSQL 只读结果','demo':'演示数据'}
         label=('主服务冻结证据（独立对照）' if ctx.get('engine')=='standalone' else labels.get(ctx.get('dataSource'),'未标明数据来源')) if ctx.get('sourceMode')=='service' else '演示数据'
         summary='' if result.get('narrative') else escape(result['summary'])
         display_scope='实际期间和部门以本次AP原始请求为准' if ctx.get('snapshotId','').startswith('ap-') else escape(ctx['period'])+' · '+escape(ctx['department'])

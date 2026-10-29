@@ -117,9 +117,17 @@ def session_evidence(session,context):
         match=re.fullmatch(r'(.+)=(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)',statement)
         if match:label=re.sub(r'\[[^\]]+\]$','',match[1]);number=float(match[2])
         facts.append(dict(id=value['id'],label=label,value=number,unit='',definition=statement,claim=value))
-    limitations=[('主服务读取页面本次实时AP响应的冻结结果，未重新取数；' if context.get('snapshotId','').startswith('ap-') else '主服务读取当前看板同一份交付AP快照，非实时数据库；')+'时间、部门以AP原始请求为准。没有同源明细补查接口，不能据此确认根因。',
-        '展示层直接摘取主服务已交付章节，没有额外调用模型生成原因或建议。']
     stage_filter=getattr(session,'cockpit_stage_filter',None) or {}
+    if context.get('snapshotId','').startswith('ap-'):
+        basis='主服务读取页面本次实时AP响应的冻结结果' + ('，并对页面失败的指标按同一口径补查主库' if stage_filter.get('fallback') else '')
+    else:
+        basis='主服务读取当前看板同一份交付AP快照，非实时数据库'
+    limitations=[basis+'；时间、部门以AP原始请求为准。没有同源明细补查接口，不能据此确认根因。',
+        '展示层直接摘取主服务已交付章节，没有额外调用模型生成原因或建议。']
+    if stage_filter.get('fallback'):
+        limitations.append('已从主库（PostgreSQL）补查：'+'、'.join(stage_filter['fallback'][:8])+'。补查与页面AP为不同装载时点的副本，同一计算范围只用一种来源。')
+    if stage_filter.get('fallbackBlocked'):
+        limitations.append('另有失败指标未补查，原因代码：'+'、'.join(sorted(set(stage_filter['fallbackBlocked']))[:6])+'；未用其他指标替代。')
     if stage_filter.get('excluded'):
         limitations.append(f"已排除{stage_filter['excluded']}条与{NAMES.get(stage_filter.get('stage'),stage_filter.get('stage'))}环节无关的页面查询；未使用其他环节数据代替。")
     if stage_filter.get('failed'):

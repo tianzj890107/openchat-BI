@@ -1,0 +1,49 @@
+{
+  "version": "ywln-pg-fallback-2026-10-29.2",
+  "schema": "ywln_crm",
+  "timeFilters": {
+    "YWLN_D044": {"operator": "BETWEEN"}
+  },
+  "filters": {},
+  "metrics": {
+    "YWLN_M0036": {
+      "catalog": "M0036",
+      "name": "发货金额",
+      "unit": "亿元",
+      "decimals": 2,
+      "status": "enabled",
+      "table": "v_ods_crm_new_ord_shipment_esb",
+      "expression": "SUM(new_money)/100000000.0",
+      "time": "new_shipping_date",
+      "where": [
+        "statecode = 0",
+        "new_ord_shipmentid IS NOT NULL",
+        "new_money IS NOT NULL"
+      ],
+      "reconcile": {
+        "checkedAt": "2026-10-29",
+        "window": "2025-01-01..2025-12-31",
+        "ap": 78.32,
+        "pg": 79.16,
+        "note": "字段与过滤口径一致（发货单头 new_money、statecode=0、实际发货日期）。差异约1.1%，来自两个副本的装载时点不同：PG 年底及跨年补录数据更完整，AP 为较早快照。补查结果与页面AP不可混用于同一次计算，须标注来源。"
+      }
+    },
+    "YWLN_M0024": {
+      "catalog": "M0024",
+      "name": "商机数",
+      "unit": "个",
+      "decimals": 0,
+      "status": "blocked",
+      "reason": "RECONCILE_GAP",
+      "detail": "2025年同口径对账：AP 338（含产品类型 PACK 时70），PG 1374（271）。约4倍差异未能定位到具体过滤条件，补齐口径前不得用补查数字代替AP。",
+      "table": "v_ods_crm_opportunity_esb",
+      "expression": "COUNT(DISTINCT opportunityid)",
+      "time": "new_approved_time",
+      "where": [
+        "new_approvalstatus = '3'",
+        "opportunityid IS NOT NULL"
+      ]
+    }
+  },
+  "dimensions": {}
+}
