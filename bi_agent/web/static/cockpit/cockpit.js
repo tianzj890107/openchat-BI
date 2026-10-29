@@ -68,6 +68,14 @@
   let defaultView = true;
   let refreshDebounce = null;
   let filtersReady = false;
+  // A filter callback without a recent user gesture is SDK initialization or
+  // replay. It records the default scope but must not restart the board.
+  let scopeActionUntil = 0;
+  const SCOPE_CONTROL = '.pro-radio-button,.pro-bi-filter-chip,.pro-bi-composite-filter,.pro-date-filter,.pro-select-filter,.pro-button-group,.pro-bi-button-group,[class*="filter"]';
+  const noteScopeAction = event => {
+    if (event?.target?.closest?.(SCOPE_CONTROL)) scopeActionUntil = Date.now() + 2000;
+  };
+  const isScopeUserAction = () => Date.now() <= scopeActionUntil;
   const insightLoadError = ref('');
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
@@ -167,6 +175,7 @@
       scopeKey:value.scopeKey||'',requestedScope:value.requestedScope||'',status:value.update?.status||'idle',
       error:'',
     });
+    settleMissingSlotStages();
     resolveAiPublicationReady?.();resolveAiPublicationReady=null;
   }
   function markAiPublicationsStale(notice) {
@@ -181,6 +190,18 @@
     aiPublicationStore.error=String(error?.message||error||'AI卡片读取失败');
     if(!Object.keys(aiPublicationStore.slots).length)aiPublicationStore.status='unavailable';
     resolveAiPublicationReady?.();resolveAiPublicationReady=null;
+  }
+  function settleMissingSlotStages() {
+    const readyStages=new Set();
+    for(const slot of Object.values(aiPublicationStore.slots)) {
+      if(slot?.status==='ready'&&validAiCard(slot.payload))readyStages.add(slot.stage||SLOT_STAGE[slot.slotId]);
+    }
+    for(const stage of new Set(Object.values(SLOT_STAGE))) {
+      if(!stage||readyStages.has(stage))continue;
+      const state=stateFor(stage);
+      if(state.item||state.status==='running')continue;
+      Object.assign(state,{status:'error',progress:'',refreshing:false,error:'该环节尚无可用分析结果，服务端正在补充当前口径数据'});
+    }
   }
   async function ensureSlotAnalysis(slotId, stage, refresh=false, urgent=false) {
     if(analysisEngine!=='main') return ensureAnalysis(stage,refresh,urgent);
@@ -685,6 +706,8 @@
       const error = ref('');
       const boardRevision=ref(0);
       let publishTimer=null, refreshTimer=null, pageEpoch=0, publishing=false, statusPoller=null, cardsVersion='';
+      let installedSnapshotKey='', lastScopeRequestKey='', lastScopeRequestAt=0;
+      let snapshotMissKey='', snapshotMissAt=0;
       const biAdapters = ref(null);
       const biRuntime = ref(null);
       const hostUtils = ref(null);
@@ -995,7 +1018,17 @@
           if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
           const makeClient=(snapshot=null)=>createAPDataClient({apiBase,id:identityId,snapshot,
             stageFor:(kind,payload)=>queryStage(payload),priorityFor:queryPriority,
-            onSnapshotMiss:()=>changeScope(currentUiScope,true),
+            onSnapshotMiss:()=>{
+              const key=`${page.value}:${currentUiScope}`;
+              const now=Date.now();
+              // A snapshot can legitimately lack one query while a component
+              // is still settling. Rebuilding the whole scope for every miss
+              // created a self-sustaining loading loop, so allow one recovery
+              // per page/scope for a bounded window.
+              if(snapshotMissKey===key&&now-snapshotMissAt<30000)return;
+              snapshotMissKey=key;snapshotMissAt=now;
+              changeScope(currentUiScope,true);
+            },
             onError:(message,detail)=>showLiveError(message,detail),
             onRecover:()=>clearLiveError(),
             onInvalidate:()=>{
@@ -1004,6 +1037,15 @@
               refreshDebounce=setTimeout(()=>{for(const stage of visibleStages.keys())ensureAnalysis(stage).catch(()=>{});onPageActivity();},400);
             }});
           function install(snapshot,remount=false,metadata=[]) {
+            if(snapshot&&(Number(snapshot.id)!==Number(identityId)||snapshot.page!==page.value||snapshot.uiScope!==currentUiScope))return;
+            const incomingKey=snapshot?.version?`${page.value}:${currentUiScope}:${snapshot.version}`:'';
+            if(remount&&incomingKey&&incomingKey===installedSnapshotKey&&liveDataClient){
+              fullSnapshot=snapshot;
+              if(snapshot.items)publications?.preload(snapshot.items);
+              Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,
+                analyzedAt:Math.max(0,...Object.values(snapshot.items||{}).map(item=>Number(item?.context?.updatedAt||item?.updatedAt||0))),error:''});
+              return;
+            }
             if(remount){
               filtersReady=false;
               const nextRuntime=ProUIBi.createBiRuntime();
@@ -1011,7 +1053,8 @@
               rawRuntime=nextRuntime;
               if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
               biRuntime.value=observeActivationActions(
-                observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,restored),
+                observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,restored,
+                  {isUserAction:isScopeUserAction}),
                 {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
               const path={segments:[{kind:'tab',containerId:tabs.id,tabId:payload.pages[page.value].tabId,templateId:payload.pages[page.value].templateId}]};
               for(const component of payload.templates[payload.pages[page.value].templateId]?.components||[]){
@@ -1021,6 +1064,7 @@
               }
             }
             fullSnapshot=snapshot;
+            installedSnapshotKey=incomingKey;
             liveDataClient=makeClient(snapshot);
             const installedClient=liveDataClient;
             for(const entry of metadata)installedClient.read('helmet',entry.payload).then(data=>{
@@ -1038,11 +1082,27 @@
             }
             const client=liveDataClient;
             const scopeReady=()=>{if(client!==liveDataClient)return;filtersReady=true;biRuntime.value?.flushPendingScope?.();onPageActivity();};
-            client.ready({allowExpired:Boolean(snapshot),partial:true}).then(scopeReady).catch(scopeReady);
+            const scopeFailed=cause=>{
+              if(client!==liveDataClient)return;
+              scopeReady();
+              // A component can keep its own loading state forever when the
+              // shared client settles without a complete result. Surface a
+              // terminal, retryable message instead of an endless skeleton.
+              if(cause)showLiveError('看板指标加载未完成：'+(cause.message||cause));
+            };
+            client.ready({allowExpired:Boolean(snapshot),partial:true}).then(scopeReady,scopeFailed);
             setTimeout(()=>{if(client===liveDataClient&&liveError.value)sweepStuckLoading();},6500);
           }
           const scheduleStatusPoll=(delay=1000)=>statusPoller?.poke(delay);
           async function changeScope(uiScope,miss=false,detail='') {
+            const scopeKey=`${page.value}:${uiScope}`;
+            const now=Date.now();
+            const repeated=scopeKey===lastScopeRequestKey&&now-lastScopeRequestAt<(miss?30000:1200);
+            if(repeated)return;
+            lastScopeRequestKey=scopeKey;lastScopeRequestAt=now;
+            // The gesture has been consumed by this scope change. SDK defaults
+            // emitted while the replacement runtime mounts are not new actions.
+            scopeActionUntil=0;
             let metadata=fullSnapshot?.entries?.filter(e=>e.kind==='helmet')||[];
             if(!metadata.length)try{metadata=liveDataClient.entries().filter(e=>e.kind==='helmet');}catch{}
             const token=++pageEpoch;pageCache?.invalidate();clearLiveError();
@@ -1065,7 +1125,8 @@
             }
           }
           biRuntime.value=observeActivationActions(
-            observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady),
+            observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,null,
+              {isUserAction:isScopeUserAction}),
             {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
           // Historical cards are an independent, best-effort request.  The
           // board already exists; a slow cards response leaves only the AI
@@ -1234,6 +1295,9 @@
       onMounted(() => {
         document.title = `储能经营风险驾驶舱 · ${pageTitle.value}`;
         document.addEventListener('click', onTabClick, true);
+        document.addEventListener('click', noteScopeAction, true);
+        document.addEventListener('pointerdown', noteScopeAction, true);
+        document.addEventListener('keydown', noteScopeAction, true);
         document.addEventListener('visibilitychange', onVisibilityChange);
         window.addEventListener('popstate', onPopState);
         if (location.pathname.endsWith('/cockpit/home')) {
@@ -1244,7 +1308,7 @@
         document.getElementById('cockpit-boot')?.remove();
         bootRuntime();
       });
-      onBeforeUnmount(() => {statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
         page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,

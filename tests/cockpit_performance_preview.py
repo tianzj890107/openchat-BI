@@ -39,7 +39,7 @@ class Gateway:
   return {'resultType':'TABLE','result':{'columns':columns,'rows':rows}}
 gateway=Gateway();router.get_gateway=lambda:gateway
 # Keep fault injection immediate; production APReuse is covered by concurrency unit tests.
-router.APReuse=lambda:APReuse(ttl=0)
+router.APReuse=lambda **_:APReuse(ttl=0)
 def context(req):
  st=Store(scratch/'dataset/cockpit/history.sqlite3');fp,selected=receipt_material(req.model_dump(),st)
  return dict(snapshotId='ap-'+fp,dataIdentity=gateway.config.identity(),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))))

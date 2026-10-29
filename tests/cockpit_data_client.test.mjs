@@ -244,6 +244,23 @@ test('a remounted SDK restores UI selections and preserves the original default 
  second.setButtonGrainSelection('grain','MONTH');ready=true;second.setButtonGrainSelection('grain','YEAR');
  assert.equal(scopes.at(-1),'default');second.setButtonGrainSelection('grain','MONTH');assert.equal(scopes.at(-1),monthly);
 });
+test('SDK default filters do not restart the page before the first user filter action',()=>{
+ const scopes=[];let ready=false,userAction=false;
+ const runtime={setButtonGrainSelection(){},setFilterConditions(){}};
+ const wrapped=observeRuntimeFiltersForTest(runtime,s=>scopes.push(s),()=>ready,null,
+   {isUserAction:()=>userAction});
+ wrapped.setButtonGrainSelection('grain','YEAR');
+ wrapped.setFilterConditions('date',{value:'2025-10'});
+ ready=true;
+ assert.equal(wrapped.flushPendingScope(),false);
+ assert.deepEqual(scopes,[]);
+ userAction=true;wrapped.setButtonGrainSelection('grain','MONTH');
+ assert.equal(scopes.length,1);assert.notEqual(scopes[0],'default');
+ userAction=false;wrapped.setButtonGrainSelection('grain','MONTH');
+ assert.equal(scopes.length,1,'a programmatic replay must not create another scope change');
+ userAction=true;wrapped.setButtonGrainSelection('grain','YEAR');
+ assert.equal(scopes.at(-1),'default');
+});
 const {observeRuntimeFilters:observeRuntimeFiltersForTest}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 
 test('delivered activate rules reach the host route and survive a remount replay', () => {

@@ -330,6 +330,12 @@ export function summarizeFilterChange(method,args) {
 export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored=null,hooks={}) {
   const seen=new Map(restored?.seen||[]),calls=new Map(restored?.calls||[]);
   let baseline=restored?.baseline??null;
+  // ProUI emits its delivered default filters (for example YEAR grain while a
+  // page is mounting).  Those calls are configuration, not a user scope
+  // change.  Treating them as a real filter change cleared the data client and
+  // remounted the board, which started the whole page over again.  Keep a
+  // separate initialization phase until the first genuine user interaction.
+  let phase=restored?.phase||(hooks.isUserAction?'initializing':'armed');
   // A committed filter change can land while the page is still loading its
   // data. Keep only the latest one and apply it once the client is ready;
   // dropping it made the first user change look like no change at all.
@@ -361,14 +367,17 @@ export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored
       // The baseline is the scope *before* the first observed change; keeping
       // the pre-change map is what makes "switch back to default" detectable.
       const before=baseline===null?canonical([...seen].sort()):baseline;
-      const changed=seen.has(key)?seen.get(key)!==value:isReady();
+      const changed=seen.has(key)?seen.get(key)!==value:true;
       seen.set(key,value);
       const scope=canonical([...seen].sort());
       const detail=summarizeFilterChange(method,args);
-      if(changed&&isReady()) {
+      const userAction=hooks.isUserAction?Boolean(hooks.isUserAction()):true;
+      if(phase==='initializing'&&!userAction)return original.apply(this,args);
+      if(phase==='initializing')phase='armed';
+      if(changed&&userAction&&isReady()) {
         if(baseline===null)baseline=before;
         onChange(scope===baseline?'default':scope,detail);
-      } else if(changed) {
+      } else if(changed&&userAction) {
         pending={scope,detail,before};
       }
       return original.apply(this,args);
@@ -383,7 +392,7 @@ export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored
   };
   runtime.replayView=target=>{
     for(const [method,args] of calls.values())if(typeof target[method]==='function')target[method](...args);
-    return {seen:[...seen],baseline,calls:[...calls]};
+    return {seen:[...seen],baseline,calls:[...calls],phase};
   };
   return runtime;
 }

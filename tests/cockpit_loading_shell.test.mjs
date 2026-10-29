@@ -60,3 +60,14 @@ test('configuration failure exposes a retry action instead of an endless loader'
   assert.match(source, /const retryRuntime = \(\) => location\.reload\(\)/);
   assert.match(source, /error\.value = `看板配置加载失败：\$\{cause\.message \|\| cause\}`/);
 });
+
+test('default SDK filters and repeated snapshots cannot remount the board in a loop', () => {
+  assert.match(source, /isUserAction:isScopeUserAction/);
+  assert.match(source, /event\?\.target\?\.closest\?\.\(SCOPE_CONTROL\)/);
+  assert.match(source, /installedSnapshotKey/);
+  assert.match(source, /incomingKey===installedSnapshotKey&&liveDataClient/);
+  assert.match(source, /snapshotMissKey===key&&now-snapshotMissAt<30000/);
+  assert.match(source, /scopeKey===lastScopeRequestKey&&now-lastScopeRequestAt/);
+  assert.match(source, /settleMissingSlotStages\(\)/);
+  assert.match(source, /尚无可用分析结果，服务端正在补充当前口径数据/);
+});
