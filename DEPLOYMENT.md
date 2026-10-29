@@ -1146,3 +1146,21 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   `process360-cockpit-e1f508a-20261029-0932/start-main.py` 启动；静态站从上述备份目录
   原地复制回 `site` 并保持 755/644。不得删除或覆盖共享 dataset、历史会话、上传、图表和
   分析记录。
+
+### Cockpit 全局失败横幅移除（2026-10-29 09:56）
+
+- 代码提交：`2ef3e464cbc8bef03b4ba97aa66f2cae2e246292`（分支
+  `feature/cockpit-risk-dispatch-closure`）。移除 `index.html` 中渲染 `liveError` 全文的
+  全局红色横幅，失败指标和上游原因只保留在组件内错误与悬浮提示中；失败值 `—`、失败态
+  清理和 6 秒宽限逻辑不变。
+- 8765 release：
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-2ef3e4-20261029-0953`，
+  PID `2009985`；同提交实例先在 `127.0.0.1:18765` 预检通过后切换。旧 release
+  `process360-cockpit-968e75-20261029-0945` 完整保留。
+- 8876 静态站：`commit=2ef3e464cbc8bef03b4ba97aa66f2cae2e246292`、
+  `assetVersion=375937a05aa317ad6ff5`，manifest 128 项通过，三页 `id=1|2` 均 200；
+  部署前站点备份为 `backups/site-2ef3e46-*`。
+- 验证：运营页不再出现“部分指标加载失败”全局横幅（出现次数 0），组件内仍显示指标级
+  上游失败原因，失败周期卡保持“— — 目标 — —”，无 `0.00` 占位和 JavaScript 异常。
+- 回退：停止 PID `2009985`，用旧 release `process360-cockpit-968e75-20261029-0945`
+  的 `start-main.py` 启动；静态站从上述备份原地恢复。
