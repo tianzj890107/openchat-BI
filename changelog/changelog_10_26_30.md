@@ -33,8 +33,10 @@
   `bi_agent/process360/dispatch.py`、`bi_agent/web/static/cockpit/cockpit.js`、
   `insight-components/{table-runtime,shipment-task-order,sales-shipment-issues,shared}.js` 及对应测试。
 - 验证：`pytest -q tests/test_cockpit*.py` 183 通过；全量 `pytest -q tests` 1708 通过、
-  37 跳过、1022 个子测试通过；`node --test tests/*.test.mjs` 76 通过。本次仅提交和推送代码，
-  未部署、未重启服务、未实际发送任务或风险。
+  37 跳过、1022 个子测试通过；`node --test tests/*.test.mjs` 76 通过。
+- 部署（2026-10-29 22:54-22:57）：8765 已从 `dd27e55` 切换到 `ae59331` release，8876 静态站
+  已切换 `assetVersion=531a79456736f510ee6f`。两种角色默认范围均为 15/15 可渲染；默认期间
+  `2025-10` 与 AI 表格 `YWLN_D044` 日期条件一致。部署未删除或迁移历史数据，未实际发送任务或风险。
 
 ### 2026-10-29 19:20 · Cockpit 双日期范围预热、AI 卡片刷新兜底与首屏独立加载
 

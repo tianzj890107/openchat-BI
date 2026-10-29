@@ -1366,3 +1366,36 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 回退：停止 PID `4187781`，用旧 release
   `process360-cockpit-464ae6c-20261029-1807/start-main.py` 启动；8876 静态站从
   `backups/site-71070ee-20261029-1848` 原地恢复。
+
+### Cockpit AI 缓存、表格口径与任务令下发上线（2026-10-29 22:54）
+
+- 代码提交：`ae5933143017b652d50d49a63ba4ea36c34544a1`（分支
+  `feature/cockpit-risk-dispatch-closure`）。补齐第三页 `computed` 引用、AI 插槽错误终态、
+  全插槽旧口径提示、后台发布原位更新、AI 表格持久快照/页面期间继承、发布完整性统计和发货任务令
+  草稿编辑下发闭环；默认页面期间与默认预热缓存统一为 `2025-10`。
+- 8765 release：
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-ae59331-20261029-2254`，
+  PID `962439`。新 release 先在 `127.0.0.1:18765` 预检 `/healthz`、`data/config`、两种角色
+  AI 发布后切换。`.env`、`.venv` 沿用共享实体，`dataset` 继续软链
+  `process360-cockpit-464ae6c-20261029-1807/dataset`；历史分析库未复制、清空或迁移。
+- 发布过程处置：`git archive` 自带空 `dataset/` 目录，首次预检因此读到空库并返回 0/15。
+  预检进程停止后，将该目录原样移到
+  `process360-cockpit-ae59331-20261029-2254/dataset.local-preflight-ae59331-20261029-2254`
+  保留，再建立共享 `dataset` 软链并重跑预检；没有删除任何用户数据。旧 8765 进程 `845106`
+  在预检通过后由 SIGTERM 正常停止，旧 release `process360-cockpit-dd27e55-20261029-1948`
+  完整保留。
+- 8876 静态站：`commit=ae5933143017b652d50d49a63ba4ea36c34544a1`、
+  `assetVersion=531a79456736f510ee6f`、资源前缀
+  `/static/cockpit/releases/531a79456736f510ee6f`；新资源 147 个文件，manifest 校验通过。
+  发布前备份 `backups/site-ae59331-20261029-225539`，暂存包保留在
+  `staging-cockpit-ae59331-20261029-225539`；站点原地叠加，未重启 nginx。
+- 验证：`/healthz`、三页静态路由、`release.json`、新 `cockpit.js`／`cockpit.css`、
+  `/api/cockpit/startup`、AI 发布接口均返回 200；两种角色默认范围均为
+  `readyCount=15`、`missingCount=0`，按新完整性字段显示 15 张 limited（可渲染，但不伪装为
+  内容完整）。默认页展示期间 `2025-10`，AI 表格默认请求显式携带该期间并映射为
+  `YWLN_D044` 的 `2025-10-01` 至 `2025-10-31`。主服务日志无 Traceback 或 5xx。
+- 回退：停止 PID `962439`，用旧 release
+  `process360-cockpit-dd27e55-20261029-1948/start-main.py` 启动 8765；8876 从
+  `backups/site-ae59331-20261029-225539` 原地恢复入口文件。旧资源和历史分析数据均已保留。
+- 边界：本轮没有实际下发任务令或风险；接收人配置为 `18837823993`，只在用户点击“确认下发”
+  时由服务端调用待办接口。AP 侧慢查询和未登记指标口径仍按原有受限结果披露。
