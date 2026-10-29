@@ -1123,8 +1123,16 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   无 JavaScript 异常；失败提示包含具体指标编码与上游原因（SQL 超时/请求不可达），
   未切换数据源、未补造数据。经营页在本次验收时上游接口大量 504，KPI 按设计显示“—”
   和失败原因；穿透页 AI 插槽显示指标级取数失败与重试，未输出伪造原因或建议。
-- 边界：本轮未发送真实 Fuxi 风险或待办；上游 AP 当前存在 SQL 超时和未配置指标，属于
-  数据配置/上游故障，页面按设计明确失败。未创建 MR/tag/Release，未升级正式版本。
+- 直发验收：按用户本轮要求向固定接收人各发送一条带“【验收测试】”标识的条目。
+  风险条目 `sourceTodoId=analytics-risk-canvas-b2aea9b406780ece052bc5fb52f6981b-risk-verify-20261029`、
+  `executionId=c9f1108b24fe43fe8eba55d06c3a682c`，Fuxi 回执 `applied=1`；待办条目
+  `sourceTodoId=analytics-canvas-8b21eafd3230f662409dc24f071fb69d-todo-verify-20261029`、
+  `executionId=5c6f6aa5e5fe41ceb2500531a0b9800e`，Fuxi 回执 `applied=1`。两条均标注
+  `temporaryDraft=true`、`verificationStatus=unverified`、`sourceKind=page_direct`；同一
+  action 再次提交返回相同 `sourceTodoId`/`executionId` 且 `idempotentReplay=true`，未重复创建。
+  Fuxi 列表可见性仍需在伏羲客户端人工确认；回执成功只代表 Fuxi 接收，不代表根因已验证。
+- 边界：上游 AP 当前存在 SQL 超时和未配置指标，属于数据配置/上游故障，页面按设计明确失败。
+  未创建 MR/tag/Release，未升级正式版本。
 - 回退：停止本 release PID，使用旧 release
   `process360-cockpit-e1f508a-20261029-0932/start-main.py` 启动；静态站从上述备份目录
   原地复制回 `site` 并保持 755/644。不得删除或覆盖共享 dataset、历史会话、上传、图表和
