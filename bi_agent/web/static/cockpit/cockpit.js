@@ -52,6 +52,13 @@
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
   const pageState = reactive({cached:false,dataAsOf:0,refreshing:false,error:''});
+  const dashboardDescription = computed(() => {
+    const parts = [];
+    if (pageState.cached) parts.push('完整看板 · 数据时间 ' + new Date(pageState.dataAsOf * 1000).toLocaleString('zh-CN', {hour12:false}));
+    if (pageState.refreshing) parts.push('正在后台更新');
+    if (pageState.error) parts.push(pageState.error + (pageState.cached ? '，继续展示上次完整内容' : ''));
+    return parts.join(' · ');
+  });
   const visibleStages = new Map();
   let onPageActivity = () => {};
 
@@ -774,7 +781,7 @@
       onBeforeUnmount(() => {document.removeEventListener('click', onTabClick, true);clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
-        page, runtime, loading, error, pageTitle, pageState, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
+        page, runtime, loading, error, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
         pageInsights, dashboardComponent: dashboard, biAdapters, biRuntime, hostUtils,
         slot_name: insight => `insight-${insight.id}`,
       };
