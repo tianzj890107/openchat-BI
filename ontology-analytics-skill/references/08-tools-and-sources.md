@@ -34,7 +34,7 @@ Fuxi 连接器使用 `transport: http`，URL 指向 `/api/mcp`，headers 留空�
 | `ChartGenerateMultiDim` | 多维可切换图表 | 与 Web 多维图表参数一致 |
 | `TableGenerate` | 结构化表格 | 与 Web 表格参数一致 |
 | `CanvasGenerate` | 整页自包含 HTML，返回 `Artifact URL` | `title`、`conclusion`、`source_note`、`blocks` |
-| `RiskItemCreate` | 用户点击后把有证据的已观察风险推送到 Fuxi（`itemType=RISK`） | Process360 风险卡：`draft_id`、`draft_hash`、`action_id`，可选 `retry`；不接受旧版无草稿调用，身份与接收人由服务端解析 |
+| `RiskItemCreate` | 用户点击后把有证据的已观察风险推送到 Fuxi（`itemType=RISK`） | Process360 风险卡：`draft_id`、`draft_hash`、`action_id`，可选 `retry`；严格模式不接受无草稿调用，POC 直发模式可省略三项引用并由服务端补建一次性草稿，标记 `unverified/page_direct`；身份与接收人由服务端解析 |
 | `TaskOrderCreate` | 用户点击后把一条处置建议推送到 Fuxi 待办（`itemType=TODO`） | Process360：`draft_id`、`draft_hash`、`action_id`，可选 `idempotency_key`/`retry`；身份与接收人均由服务端解析。旧版通用：`action_id`、`title`、`content`、`recipients_raw` |
 | `OutputGateCheck` | 五道交付闸门与最终产物登记 | 正式报告必填 `canvasId`、`artifactHash`；`deliveryKind=fact_answer` 的纯文字事实回答可免 Canvas；可选 `answer`、`question`、`sql`、`chart`、`reconcile`、`claims`、`planId`、`queryId`、`runId` |
 | `Process360Route/Search/Context/Query/Analyze/Draft/Verify` | SC01-SC05 的 S00-S07 主链 | 身份由服务端注入；Query/Analyze/Draft/Verify 等业务步骤必须带 `planId + stepId`；`Query` 返回 `queryId`，后续步骤可用 `queryId` 复用同一结果 |
