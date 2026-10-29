@@ -1093,3 +1093,39 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   `process360-a5342cd-20261028-180448/start-main.py` 启动旧 8765；静态站从上述备份目录
   原地复制回 `site` 并保持 755/644。不得删除或覆盖共享 dataset、历史会话、上传、图表和
   分析记录。本轮未创建 MR/tag/Release，未升级正式版本，未发送真实 Fuxi 待办。
+
+### Cockpit 风险直发与失败态收口部署（2026-10-29 09:38）
+
+- 代码提交：`98ababe86e5e0fb46c7b3233e7e82147157cbd41`（分支
+  `feature/cockpit-risk-dispatch-closure`）。本轮保留页面直接发待办、直接推风险，服务端
+  继续校验草稿/权限/接收人/幂等/回执，并在正文和卡片标注“临时直发 / 未经验证分析”，
+  不将页面文字包装成已验证根因。
+- 8765 主服务 release：
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-98ababe-20261029-0934`，
+  PID `1933085`。切换前同提交实例先在 `127.0.0.1:18765` 预检通过，`/healthz`、
+  `/api/mcp/health`（`missingExecutors=[]`）、`/api/cockpit/data/config`
+  （`mode=ap`、`batchMode=individual`）、`/api/cockpit/analyses/published` 均 200；
+  预检进程已停止，当前只监听 8765。旧 release
+  `process360-cockpit-e1f508a-20261029-0932`、`process360-cockpit-ef093c5-20261029-0928`
+  完整保留可回退；`.env`、`.venv` 继续软链共享环境，`dataset` 软链共享数据目录。
+- 8876 静态站：`commit=98ababe86e5e0fb46c7b3233e7e82147157cbd41`、
+  `assetVersion=85f84189ce8533c3cd19`、资源前缀
+  `/static/cockpit/releases/85f84189ce8533c3cd19`。站点原地叠加，未替换 bind mount inode、
+  未重启 nginx；manifest 128 项校验通过，三页 `id=1|2` 均 200。备份为
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-98ababe-*`，
+  新包暂存在 `staging-cockpit-98ababe-20261029-093532`。
+- 失败态修复：AP 上游返回 `success:false` 时保留指标级原因；失败组件 KPI、周期、达成率、
+  目标值显示“—”，失败组件内的 `0.00` 金额/电量/天数占位改为“—”，真实非零值与真实零值
+  不替换；长期 `loading`/`加载中` 显示“加载失败”。失败提示出现后保留 6 秒宽限期，避免
+  误伤仍在进行的查询；切换筛选时清空旧失败提示。
+- 浏览器验收（172.16.10.34:8876，独立 headless Chrome）：运营页加载新资源
+  `85f84189ce8533c3cd19`，头盔图无 `0.00` 节点，失败周期卡显示“— — 目标 — —”，
+  无 JavaScript 异常；失败提示包含具体指标编码与上游原因（SQL 超时/请求不可达），
+  未切换数据源、未补造数据。经营页在本次验收时上游接口大量 504，KPI 按设计显示“—”
+  和失败原因；穿透页 AI 插槽显示指标级取数失败与重试，未输出伪造原因或建议。
+- 边界：本轮未发送真实 Fuxi 风险或待办；上游 AP 当前存在 SQL 超时和未配置指标，属于
+  数据配置/上游故障，页面按设计明确失败。未创建 MR/tag/Release，未升级正式版本。
+- 回退：停止本 release PID，使用旧 release
+  `process360-cockpit-e1f508a-20261029-0932/start-main.py` 启动；静态站从上述备份目录
+  原地复制回 `site` 并保持 755/644。不得删除或覆盖共享 dataset、历史会话、上传、图表和
+  分析记录。
