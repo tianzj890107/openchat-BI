@@ -727,7 +727,6 @@
       const boardRevision=ref(0);
       let publishTimer=null, refreshTimer=null, pageEpoch=0, publishing=false, statusPoller=null, cardsVersion='';
       let installedSnapshotKey='', lastScopeRequestKey='', lastScopeRequestAt=0;
-      let snapshotMissKey='', snapshotMissAt=0;
       const biAdapters = ref(null);
       const biRuntime = ref(null);
       const hostUtils = ref(null);
@@ -1032,17 +1031,10 @@
           if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
           const makeClient=(snapshot=null)=>createAPDataClient({apiBase,id:identityId,snapshot,
             stageFor:(kind,payload)=>queryStage(payload),priorityFor:queryPriority,
-            onSnapshotMiss:()=>{
-              const key=`${page.value}:${currentUiScope}`;
-              const now=Date.now();
-              // A snapshot can legitimately lack one query while a component
-              // is still settling. Rebuilding the whole scope for every miss
-              // created a self-sustaining loading loop, so allow one recovery
-              // per page/scope for a bounded window.
-              if(snapshotMissKey===key&&now-snapshotMissAt<30000)return;
-              snapshotMissKey=key;snapshotMissAt=now;
-              changeScope(currentUiScope,true);
-            },
+            // The data client falls back to a live read for a query omitted by
+            // the page snapshot.  Do not rebuild the dashboard or inject a
+            // host-specific cache message into the delivered component.
+            onSnapshotMiss:()=>{fullSnapshot=null;pageState.cached=false;pageState.displayStale=true;},
             onError:(message,detail)=>showLiveError(message,detail),
             onRecover:()=>clearLiveError(),
             onInvalidate:()=>{

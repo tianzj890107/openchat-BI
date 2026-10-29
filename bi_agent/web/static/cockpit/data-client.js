@@ -124,9 +124,13 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     payload = JSON.parse(JSON.stringify(payload));
     const key = kind + ':' + canonical(payload);
     if (inflight.has(key)) return inflight.get(key);
-    if (replaying && !replay.has(key)) {
-      if (!missed) {missed = true; queueMicrotask(onSnapshotMiss);}
-      return Promise.reject(new Error('当前范围没有完整缓存，正在重新取数'));
+    // A page snapshot is only a fast path.  If it does not contain this
+    // widget's query, fetch that query live instead of surfacing a host-only
+    // cache error inside the delivered dashboard component.
+    const replayHit = replaying && replay.has(key);
+    if (replaying && !replayHit && !missed) {
+      missed = true;
+      queueMicrotask(onSnapshotMiss);
     }
     const slot = shape(kind, payload);
     const labels = queryLabels(payload);
@@ -151,7 +155,7 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     const queuedAt = clock();
     const jobGeneration = generation;
     const controller = new AbortController();
-    const work = replaying ? Promise.resolve({body:{data:entry.data,receiptId:entry.receiptId,receivedAt:entry.receivedAt,expiresAt:entry.expiresAt},timings:{clientQueueMs:0,clientResponseMs:0,replay:true}}) :
+    const work = replayHit ? Promise.resolve({body:{data:entry.data,receiptId:entry.receiptId,receivedAt:entry.receivedAt,expiresAt:entry.expiresAt},timings:{clientQueueMs:0,clientResponseMs:0,replay:true}}) :
       reused && Math.min(reused.expiresAt * 1000, reused.receivedAt * 1000 + DATA_REUSE_WINDOW_MS) > Date.now() ? Promise.resolve({body:reused,timings:{clientQueueMs:0,clientResponseMs:0,reused:true}}) :
         limit(async () => {
           if (jobGeneration !== generation) throw new Error('查询已取消');

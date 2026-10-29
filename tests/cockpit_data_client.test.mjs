@@ -229,8 +229,8 @@ test('full-page replay renders expired display data without inventing fresh anal
  const client=createAPDataClient({apiBase:'/api/cockpit',id:1,snapshot,request:async()=>{calls++;return ok('new');},onSnapshotMiss:()=>misses++});
  assert.deepEqual(await client.biAdapters.postAnalysisDataQuery(query),{value:42});assert.equal(calls,0);
  assert.throws(()=>client.scope(),/过期/);
- await assert.rejects(client.biAdapters.postAnalysisDataQuery({...query,commonConfig:{filters:{month:'other'}}}),/没有完整缓存/);
- await new Promise(r=>setImmediate(r));assert.equal(misses,1);assert.equal(calls,0);
+ assert.deepEqual(await client.biAdapters.postAnalysisDataQuery({...query,commonConfig:{filters:{month:'other'}}}),{rows:[{amount:42}]});
+ await new Promise(r=>setImmediate(r));assert.equal(misses,1);assert.equal(calls,1);
 });
 
 test('a remounted SDK restores UI selections and preserves the original default scope',()=>{
