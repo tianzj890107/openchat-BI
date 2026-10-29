@@ -1186,3 +1186,28 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   cockpit 自定义样式承载。
 - 回退：停止 PID `2065756`，用旧 release `process360-cockpit-dd5e33-20261029-1005`
   的 `start-main.py` 启动；静态站从上述备份原地恢复。
+
+### Cockpit AI 插槽移除未接线下发按钮（2026-10-29 10:30）
+
+- 代码提交：`e355e5c0ce24382f423a48d9b39971aee1af45b1`（分支
+  `feature/cockpit-risk-dispatch-closure`）。AI 插槽卡片按原型 HTML 交付，原型不含
+  风险/待办下发按钮；本次删除 `insight-components/shipment-task-order` 中未接线的
+  “下发 N 条任务令”占位按钮及对应 CSS。Canvas 生成 HTML 中的行动卡仍是
+  “推送风险/发送任务令”的唯一入口（`temporaryDraft=true`、
+  `verificationStatus=unverified`、`sourceKind=page_direct`）。
+- 8765 release：
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-e355e5-20261029-1022`，
+  PID `2133904`；同提交实例先在 `127.0.0.1:18765` 预检通过（`/healthz` 正常、
+  `missingExecutors=[]`、`mode=ap`、`batchMode=individual`）后切换。旧 release
+  `process360-cockpit-432e2a-20261029-1006` 完整保留，预检进程已停止。
+- 8876 静态站：`commit=e355e5c0ce24382f423a48d9b39971aee1af45b1`、
+  `assetVersion=b332f2bce76cb5252863`，manifest 128 项校验通过，三页 `id=1|2`
+  均返回 200；部署前站点备份为 `backups/site-e355e5c-20261029-102449`。
+- 验证：overview/operations/analysis 三页由看板组件 `ProBiDashboardHeader` 渲染标题
+  “储能经营风险驾驶舱”，状态行位于 `description`；页面不存在
+  `.cockpit-publication-state`；AI 插槽内按钮数量为 0（不再出现“下发 N 条任务令”）。
+  分析页仍按设计显示组件级 AP 失败与 `—`，无 `0.00` 占位，无未捕获 JavaScript 异常。
+  控制台存在既有的 Vue `insertBefore` 错误，已在上一版本 `432e2a2` 复现确认，不是本次
+  改动引入，且不影响页面渲染。
+- 回退：停止 PID `2133904`，用旧 release `process360-cockpit-432e2a-20261029-1006`
+  的 `start-main.py` 启动；静态站从 `backups/site-e355e5c-20261029-102449` 原地恢复。
