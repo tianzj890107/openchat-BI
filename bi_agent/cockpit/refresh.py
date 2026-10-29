@@ -497,7 +497,7 @@ def publication_status(store, scope, body=None):
 class RefreshScheduler(threading.Thread):
     """Small POC scheduler.  A database lease prevents duplicate scope workers."""
 
-    def __init__(self, manager, store, *, scan_seconds=20, scope_limit=3):
+    def __init__(self, manager, store, *, scan_seconds=20, scope_limit=1):
         super().__init__(name='cockpit-publication-refresh', daemon=True)
         self.manager = manager
         self.store = store

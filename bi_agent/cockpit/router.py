@@ -547,7 +547,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 timeout=int(os.getenv('COCKPIT_REFRESH_TIMEOUT_SECONDS', '1200')))
             scheduler = RefreshScheduler(
                 manager, store(),
-                scan_seconds=int(os.getenv('COCKPIT_REFRESH_SCAN_SECONDS', '20')))
+                scan_seconds=int(os.getenv('COCKPIT_REFRESH_SCAN_SECONDS', '20')),
+                scope_limit=int(os.getenv('COCKPIT_REFRESH_SCOPE_LIMIT', '1')))
             scheduler.start()
     except Exception as exc:
         # A scheduler/configuration failure must not prevent the dashboard from

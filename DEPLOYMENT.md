@@ -1298,7 +1298,8 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   配置异常只打印日志并关闭调度，不影响读取上次发布版本。
 - 环境变量：`COCKPIT_REFRESH_ENABLED`（默认开启，测试环境关闭）、
   `COCKPIT_REFRESH_INTERVAL_SECONDS=900`、`COCKPIT_REFRESH_TIMEOUT_SECONDS=1200`、
-  `COCKPIT_REFRESH_SCAN_SECONDS=20`。时间可按数据源更新频率调整，检查数据不等于重新调用模型。
+  `COCKPIT_REFRESH_SCAN_SECONDS=20`、`COCKPIT_REFRESH_SCOPE_LIMIT=1`。时间可按数据源更新频率
+  调整，检查数据不等于重新调用模型；范围上限默认 1，避免后台预热同时占满页面 AP 槽位。
 - 更新失败、AP 超时、模型失败或进程重启都不覆盖上一版本；`retry_wait` 按 60 秒递增退避，上限
   15 分钟，租约过期后由调度器重新领取。
 - 前端先渲染已发布快照，再按 5～15 秒轮询版本（页面隐藏时降频），发现新版本才拉取整页替换；

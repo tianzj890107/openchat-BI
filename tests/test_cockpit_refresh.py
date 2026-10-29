@@ -209,6 +209,12 @@ def test_refresh_lease_blocks_duplicate_workers_and_recovers_after_expiry(tmp_pa
     assert scope in store.due_refresh_scopes(now=1450)
 
 
+def test_background_refresh_defaults_to_one_scope_so_page_queries_keep_ap_capacity(tmp_path):
+    store, cfg, _page = _router_fixture(tmp_path)
+    manager = RefreshManager(store, cfg, lambda *_args: {}, lambda *_args: {})
+    assert RefreshScheduler(manager, store).scope_limit == 1
+
+
 def test_manual_refresh_does_not_steal_a_live_lease(tmp_path):
     store, cfg, _page = _router_fixture(tmp_path)
     scope = page_scope(cfg, 1, 'analysis', 'default', 'ap')

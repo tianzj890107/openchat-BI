@@ -789,3 +789,20 @@
   未审核字段和 `OR` 筛选阻断、字段哈希与 runtime 可复现、三张表不引用 mock 路径。
 - 边界：本轮完成代码与静态配置验证，未部署，未用真实业务数据验收三张表的 AP 返回、分页、
   排序或页面视觉效果，也未发送风险/待办。
+
+### 2026-10-29 17:55 · 修复 AI 插槽渲染作用域与后台刷新抢占首屏 AP
+
+- 用户可见变化：修复新版页面中 AI 插槽只显示空占位、模块未完成加载的问题。根因是
+  `CockpitInsight` 在渲染时读取了外层应用 setup 的 `page` 变量，实际作用域内不存在，
+  触发 `ReferenceError: page is not defined`。当前页面现通过显式 `page` prop 传入，三个
+  Tab 的插槽都能继续加载 registry、shared 和各自组件，不再因组件异常停在空占位。
+- 首屏 AP：后台定时刷新默认从 3 个范围并行收敛为 1 个。此前三个后台范围可同时占用三个
+  上游 AP 槽位，用户打开页面时 26 个图表查询只剩一个槽位可用，表现为整页长时间 loading。
+  现在后台最多占一个槽位，至少保留三个槽位给页面请求；预热心跳仍按 15 分钟间隔执行。
+- 配置：新增 `COCKPIT_REFRESH_SCOPE_LIMIT`，默认 `1`；需要更高预热吞吐时可显式调大，
+  但会与页面 AP 查询共享 `COCKPIT_AP_CONCURRENCY=4` 的槽位。
+- 主要文件：`bi_agent/web/static/cockpit/cockpit.js`、`index.html`、
+  `bi_agent/cockpit/refresh.py`、`router.py`、`tests/cockpit_insight_runtime.test.mjs`、
+  `tests/test_cockpit_refresh.py`。
+- 验证：Cockpit 聚焦回归 170 项 Python（含 14 个子用例）、62 项 JS 通过；`node --check`
+  与 `git diff --check` 通过。新增用例锁住插槽 page prop 传递和后台单范围默认值。

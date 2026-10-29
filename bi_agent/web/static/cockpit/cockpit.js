@@ -377,7 +377,11 @@
   }
 
   const CockpitInsight = {
-    props: {insight: {type: Object, required: true}, slotProps: {type: Object, default: () => ({})}},
+    props: {
+      insight: {type: Object, required: true},
+      page: {type: String, default: 'overview'},
+      slotProps: {type: Object, default: () => ({})},
+    },
     setup(props) {
       const stage = computed(() => SLOT_STAGE[props.insight.id] || 'shipment');
       const state = computed(() => stateFor(stage.value));
@@ -386,7 +390,7 @@
         ...props.slotProps,
         apiBase,
         identityId: Number(identityId),
-        page: page.value,
+        page: props.page,
         stage: stage.value,
       }));
       const analysisContext = computed(() => ({
