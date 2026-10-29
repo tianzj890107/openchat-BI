@@ -1238,3 +1238,44 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 回退：停止 PID `2402427`，用旧 release
   `process360-cockpit-e355e5-20261029-1022` 的 `start-main.py` 启动；静态站从
   `backups/site-552e5a6-20261029-112909` 原地恢复。
+
+### Cockpit 分析排队优先与数据库同口径补查上线（2026-10-29 11:55）
+
+- 代码提交：`fe154e9da3f1b6c5dbe9bf82ccf994f807ea91c2`（分支
+  `feature/cockpit-risk-dispatch-closure`）。分析槽位占满时后端不再返回 429，改为
+  `queued` 任务等待共享槽位（最长 900 秒）；前端按真实视口排序（重试最高、屏幕内按位置、
+  屏幕外最后），取数在申请槽位之前完成，卡片在排队期间持续加载。
+- 数据库补查：页面 AP 查询失败时，主服务按同一指标/维度/筛选口径从
+  `172.16.5.181:32444`（`ywln` / `ywln_crm`）只读补查，结果保存为独立的 `pg` 凭据
+  （`kind=pg`、`transport=postgres`、`authScope=<registry version>`），页面成功结果仍以
+  AP 为准，同一计算范围只用一种来源。
+- 口径登记：`dataset/process360/ywln-v3.1/pg-fallback.json` 版本
+  `ywln-pg-fallback-2026-10-29.2`。仅 `YWLN_M0036 发货金额` 为 `enabled`；`YWLN_M0024 商机数`
+  因对账相差约 4 倍标记 `RECONCILE_GAP`，不输出数字。维度、`D007`、产品类型等未映射筛选
+  返回 `DIMENSION_UNMAPPED`/`FILTER_UNMAPPED` 等原因代码，不换指标、不补 0。单次分析最多
+  补查 4 条失败查询。
+- 8765 release：
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-fe154e9-20261029-1150`，
+  PID `2496079`；旧 `process360-cockpit-552e5a6-20261029-1129`（PID `2402427`）完整保留。
+  `.env`/`.venv` 软链沿用上一 release，`dataset` 由 git archive 后与当前运行副本无覆盖合并，
+  `history.sqlite3`（3.76 MB）保留；`runtime-env.json` 的 `PYTHONPATH`、`PWD`、
+  `RELEASE_COMMIT` 指向新 release，`preflight-main.py` 从上一 release 复制。同提交实例先在
+  `127.0.0.1:18765` 预检通过后切换。
+- 8876 静态站：`commit=fe154e9da3f1b6c5dbe9bf82ccf994f807ea91c2`、
+  `assetVersion=ad7a02148ca32ce8b2ec`、资源前缀
+  `/static/cockpit/releases/ad7a02148ca32ce8b2ec`；新增资源目录与既有目录并存，站点原地
+  叠加，未替换 bind mount inode，未重启 nginx。manifest 128 项通过，目录 755、文件 644。
+  部署前站点备份 `backups/site-fe154e9-20261029-115307`，新包保留在
+  `staging-cockpit-fe154e9-20261029-115307`。
+- 验证：8765 `/healthz`、`/api/cockpit/data/config`、`/api/cockpit/bootstrap`、
+  `/api/cockpit/startup`、`/api/cockpit/analyses/published` 均 200；新 release 的 venv 内直接
+  执行补查得到 2025 全年发货金额 79.16 亿元。线上真实复现：发货金额 AP 返回 504（网关超时）
+  时，创建的分析任务上下文为 `dataSource=ap+pg`、`pgReceiptIds=1`、
+  `fallback.metrics=["YWLN_M0036"]`、`stageEvidence.failed=0`，随后取消该任务（状态
+  `cancelled`），未产生卡片、未写业务数据、未发送 Fuxi 待办。8876 三页 `id=1|2` 均 200，
+  `cockpit.js`/`page-client.js`/`publication-client.js` 下载后语法检查通过。
+- 回退：停止 PID `2496079` 后，用
+  `process360-cockpit-552e5a6-20261029-1124/start-main.py` 启动旧 8765；静态站从
+  `backups/site-fe154e9-20261029-115307` 原地恢复。
+- 边界：上游 AP 的日期过滤 SQL 超时、`acc_t` 别名错误和慢查询仍需数据侧修复；补查只覆盖
+  已登记且对账通过的指标，商机数等未对齐口径继续返回阻断原因，不替代看板图表自身的错误提示。
