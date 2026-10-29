@@ -12,7 +12,7 @@
           "isTree": false,
           "label": "通用统计期间",
           "valueType": "DATE",
-          "alias": "时间"
+          "alias": "日期"
         }
       ]
     },
@@ -38,7 +38,7 @@
           "isTree": false,
           "label": "通用统计期间",
           "valueType": "DATE",
-          "alias": "时间"
+          "alias": "日期"
         },
         "targetComponentIds": []
       }
@@ -1714,7 +1714,8 @@
           "label": "穿透式问题分析",
           "templateId": "2112061604959928321"
         }
-      ]
+      ],
+      "activateRules": []
     }
   }
 ]

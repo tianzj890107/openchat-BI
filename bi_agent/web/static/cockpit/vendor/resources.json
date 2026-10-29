@@ -1,8 +1,8 @@
 {
-  "checkedAt": "2026-10-28T21:45:00+08:00",
+  "checkedAt": "2026-10-29T14:36:33+08:00",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
-  "sourceCommit": "d01c08a07b79ba781f820524ff612f58cfa4e090",
-  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021 at d01c08a. The UMD carries a one-line guard for a destroyed helmet Graph callback; activateRules/selectHelmet remain upstream behavior and only the single-query adapter is injected.",
+  "sourceCommit": "97f4e28e7f9b5094a1f018e2d96102b7e573e7fa",
+  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021 at 97f4e28. The UMD carries the one-line null-instance guard for a destroyed helmet Graph callback (re-applied after each upstream sync); activateRules/selectHelmet remain upstream behavior and only the single-query adapter is injected.",
   "resources": [
     {
       "file": "../../vendor/antd/lib/vue.global.js",
@@ -14,15 +14,15 @@
     },
     {
       "file": "pro-bi-ui.min.js",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/d01c08a07b79ba781f820524ff612f58cfa4e090/lib/pro-bi-ui.min.js",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/97f4e28e7f9b5094a1f018e2d96102b7e573e7fa/lib/pro-bi-ui.min.js",
       "sourcePath": "lib/pro-bi-ui.min.js",
-      "sha256": "903182952c9cee3497c4d9c1b892b53399979ed2a534dbe74bddcb9da1e0d78a",
-      "bytes": 6340339,
-      "notes": "Copied from d01c08a with a one-line null-instance guard in the helmet Graph fitView callback; upstream metadata is unchanged."
+      "sha256": "fc21219cad1c60c1a3137a01271b6a690d675e5b6ef2e66892f123875bbb07b0",
+      "bytes": 6197235,
+      "notes": "Copied from 97f4e28 with the one-line null-instance guard in the helmet Graph fitView callback; upstream metadata is unchanged."
     },
     {
       "file": "pro-ui.min.css",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/d01c08a07b79ba781f820524ff612f58cfa4e090/lib/pro-ui.min.css",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/97f4e28e7f9b5094a1f018e2d96102b7e573e7fa/lib/pro-ui.min.css",
       "sourcePath": "lib/pro-ui.min.css",
       "sha256": "b1ee836dbe11d3b5df80f9a1718a8a7623aaa89e9419bae1d6450a9063744d25",
       "bytes": 720594

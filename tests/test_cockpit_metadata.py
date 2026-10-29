@@ -92,8 +92,8 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     assert stored["renderer"] == "ProBiDashboard"
     assert stored["mode"] == "release"
     assert stored["source"]["dashboardId"] == "iba-demo-1021"
-    assert stored["source"]["version"] == "d01c08a"
-    assert stored["source"]["commit"] == "d01c08a07b79ba781f820524ff612f58cfa4e090"
+    assert stored["source"]["version"] == "97f4e28"
+    assert stored["source"]["commit"] == "97f4e28e7f9b5094a1f018e2d96102b7e573e7fa"
     assert stored["source"]["templateCount"] == 13
     assert stored["source"]["totalComponents"] == 145
     assert stored["source"]["activateRules"] == 6
@@ -156,7 +156,7 @@ def test_prototype_source_remains_available_only_for_explicit_standalone_analysi
 
 def test_runtime_reports_live_ap_single_query_mode_and_only_real_gaps():
     payload = release_payload()
-    assert payload["source"]["commit"] == "d01c08a07b79ba781f820524ff612f58cfa4e090"
+    assert payload["source"]["commit"] == "97f4e28e7f9b5094a1f018e2d96102b7e573e7fa"
     assert payload["source"]["dataMode"] == "ap-single-query"
     assert {gap["code"] for gap in payload["gaps"]} == {"CHILD_DEFINITION_MISSING"}
     overview = payload["pages"]["overview"]["components"]

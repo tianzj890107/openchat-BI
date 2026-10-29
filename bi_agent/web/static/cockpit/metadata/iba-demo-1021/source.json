@@ -1,10 +1,10 @@
 {
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
-  "commit": "d01c08a07b79ba781f820524ff612f58cfa4e090",
-  "importedAt": "2026-10-28",
+  "commit": "97f4e28e7f9b5094a1f018e2d96102b7e573e7fa",
+  "importedAt": "2026-10-29",
   "mode": "active-runtime-adapter",
-  "notes": "Imported upstream metadata unchanged from d01c08a; the cockpit supplies only the delivered single-query adapter and does not inject the batch adapter. Missing data stays visible at the component position.",
+  "notes": "Re-synced from iba-demo feature/demo_1021 at 97f4e28: dashboard and template configs plus the BI UMD; insight-components are unchanged upstream, so the local host adaptations are kept. The cockpit still supplies only the delivered single-query adapter and does not inject the batch adapter. Host adaptation: the composite filter keeps the default period YWLN_D044=2025-10 because the page scope and published cards are bound to that period.",
   "rootComponents": 2,
   "templates": 13,
   "totalComponents": 145,
@@ -44,11 +44,11 @@
   "files": [
     {
       "file": "components.json",
-      "sha256": "d0c7ea3e43dbf3637fa7084d7b3c686ed015983b53570a1fd9ae2fc54962098f"
+      "sha256": "0d36a87e64db247e05a8ed42495baa763a8a8f8cd505cf991c5678f2d4d88401"
     },
     {
       "file": "template-registry.json",
-      "sha256": "4bc6a6bf1de87a95c6024230ad4158d73a704b83715cdec786468548cfa1af02"
+      "sha256": "b9eefabce5108e61153a5ec6cb8680db62ee4a9fa13c52be49acd9982b3fcc51"
     },
     {
       "file": "insights.js",

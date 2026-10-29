@@ -658,3 +658,24 @@
   租约阻止重复工作与过期后可重领。
 - 边界：默认范围由服务端维护，自定义筛选仍按访问触发生成；调度器只复核原页面查询，
   不修复上游 SQL 错误，也不改变指标口径。
+
+### 2026-10-29 14:40 · Cockpit 同步 iba-demo 97f4e28 与新版 ProUI
+
+- 用户可见变化：看板 ProUI 运行包与看板/子模板配置同步到 `iba-demo feature/demo_1021`
+  `97f4e28`（上一版为 `d01c08a`）。组件数量与类型保持 2 个根组件、13 个模板、145 个组件，
+  AI 插槽仍为 12 个；筛选标签由“时间”改为上游的“日期”，其余布局与交互按上游配置渲染。
+- 运行包：`vendor/pro-bi-ui.min.js` 更新为上游新 UMD（6,197,235 字节，sha256 `fc21219c…`），
+  `index.html` 的缓存参数同步改为 `?v=fc21219c`；上游仍未包含头盔图销毁后 `fitView` 的
+  空实例保护，同步后重新补回这一行守卫。`pro-ui.min.css` 与 Vue 运行时未变化。
+- 配置同步：`metadata/iba-demo-1021/components.json`、`template-registry.json` 按上游原样更新，
+  并重新生成 `metadata/runtime.json`；`activate-rules.json`、`insights.js` 与
+  `insight-components/` 上游未变，保留现有的宿主适配（例如任务令按钮的调整）。
+- 宿主适配：组合筛选器默认期间继续保留 `YWLN_D044=2025-10`。上游把该默认值清空，若直接跟随会让
+  看板默认查询失去期间约束，与页面范围和已发布卡片不一致，因此在同步后重新写回并记录在
+  `source.json`、`vendor/resources.json`。
+- 主要文件：`bi_agent/web/static/cockpit/vendor/pro-bi-ui.min.js`、`vendor/resources.json`、
+  `index.html`、`metadata/iba-demo-1021/{components,template-registry,source}.json`、
+  `metadata/runtime.json`、`tests/test_cockpit_metadata.py`、`tests/test_cockpit_resource_contract.py`。
+- 验证：Cockpit 聚焦 137 项 Python、41 项 JS 测试通过；UMD `node --check` 通过；资源清单
+  哈希、metadata 文件哈希与 `source.json` 一致；静态站资源版本由 `3abcfd47…` 变为
+  `bc0eb9fd3a578bb113eb`。

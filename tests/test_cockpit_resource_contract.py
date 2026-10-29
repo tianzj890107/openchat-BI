@@ -14,9 +14,9 @@ def test_vendor_manifest_matches_local_artifacts():
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=90318295' in html
+    assert 'pro-bi-ui.min.js?v=fc21219c' in html
     sdk=(vendor/'pro-bi-ui.min.js').read_text()
-    assert 'if(!t||!t.get("group"))return;t.fitView(vOn' in sdk
+    assert 'if(!t||!t.get("group"))return;t.fitView(fjn' in sdk
     assert 'data-dashboard-theme="white"' in html
     css=(ROOT/'cockpit.css').read_text()
     assert '--dashboard-canvas-bg:#fff' in css
@@ -26,7 +26,7 @@ def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='d01c08a07b79ba781f820524ff612f58cfa4e090'
+    assert source['commit']=='97f4e28e7f9b5094a1f018e2d96102b7e573e7fa'
     assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
