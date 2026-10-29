@@ -107,6 +107,8 @@ def test_ai_publications_returns_all_slots_without_starting_analysis(tmp_path, m
     assert value['registryVersion'] == REGISTRY_VERSION
     assert all(item['status'] == 'ready' and item['payload']['result']['cardContract'] == CONTRACT
                for item in value['slots'].values())
+    assert all(item['lastSuccessfulPublication'] == item['payload'] and item['lastSuccessfulAt'] > 0
+               for item in value['slots'].values())
     assert value['slots']['bid-status-note']['payload']['id'] == store.latest_views(
         1, 'main', 'operations').get('bid')['id']
 

@@ -411,6 +411,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 generatedAt=float((item or {}).get('updatedAt') or 0),
                 dataAsOf=float(((item or {}).get('context') or {}).get('updatedAt') or
                                (item or {}).get('updatedAt') or 0),
+                lastSuccessfulPublication=item,
+                lastSuccessfulAt=float((item or {}).get('updatedAt') or 0),
                 refreshStatus=update['status'],
                 lastRefreshError=update['lastRefreshError'],
                 update=update,
