@@ -1490,3 +1490,12 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - `8876` 静态站：`assetVersion=75295eae3d3c7f708a7f`，`commit=14b2587`，目录 `site-next-14b2587-20261030-143548`，manifest 校验通过，容器 `10de73310da9` 重启后生效。
 - 验证：两个角色 `/api/cockpit/ai-publications` 均 `readyCount=15`、`missingCount=0`，所有插槽 `deliveryContract=cockpit-delivery-v2`；`quote-summary` 与 `shipment-overdue-note` 不再携带原因列表，`bid-summary` 原因已标注 `[结构定位]` 等层级。
 - 回退：`8765` 停止 PID `590092`，用旧 release `process360-cockpit-37476f2-20261030-no-ap-cache/start-main.py` 启动；`8876` 将 `site` 指回 `site-next-4c933e4-20261030-115044` 并重启容器。不得删除历史 release、备份、会话、上传、图表或 dataset。
+
+### 2026-10-30 · 交付推理清理与逐插槽完整性验收（8765 + 8876）
+
+- 代码提交序列 `012fd2a7a68483c0c270e9ce8a6781887c4cc668`、`d611a72c42fcaf616977e97a040723a84240e306`、`71a4da67335f6843300c790416e85a8b141dd140`（`bugfix/cockpit-disable-ap-reuse-cache`）：交付投影直接删除跨金额/电量推断和由同一推断派生的“取消变更量级有限”子句；删除原因后同步剔除悬空建议；原因分类按标题优先；证据计数按 id 去重；逐插槽完整性按职责判断，状态类卡片不再强制要求原因和措施。
+- `8765` 主服务：release `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-71a4da6-20261030-151759`，PID `763133`，`/healthz` 200，`/api/mcp/health` 返回 `missingExecutors=[]`，启动日志无 Traceback。新 release 在 `8769` 关闭定时刷新预检通过后再切换。`.env`、`.venv`、共享 `dataset` 均软链到原目录，未覆盖历史会话、上传、图表或分析数据。`git archive` 自带的 `dataset/` 已原样改名为 `dataset.git-archive-71a4da6`，再建立共享软链。
+- `8876` 静态站：`assetVersion=f4b2cb70ffa2f8e87c77`、`commit=71a4da67335f6843300c790416e85a8b141dd140`、资源前缀 `/static/cockpit/releases/f4b2cb70ffa2f8e87c77`，manifest 149 个文件校验通过；目录 `site-next-71a4da6-20261030-151847`，`site` 软链已切换，容器 `10de73310da9` 重启后生效。
+- 验证：两个角色 `/api/cockpit/ai-publications` 均为 `readyCount=15`、`missingCount=0`；报价 `contentGaps=['ANALYSIS_LIMITED']`，共同分析去重证据为 117/118 条。总裁共同分析保留 5 条有依据的原因，分析员保留口径冲突、商机覆盖、客户结构 3 条；接口全文不再出现“难以解释”“不足以解释”“金额占比不足”“订单取消变更量级有限”及悬空 `signed-unsigned-scope`。8876 首页、三个 Cockpit 路由、静态 `cockpit.js` 均返回 200；`release.json` 已指向 `71a4da6`。
+- 自动化验证：Cockpit 相关 Python 219 项通过，Node 看板测试 82 项通过，`git diff --check` 通过。本次验收请求只读取已发布结果，未主动触发 AP 或模型重新分析；代码修改集中在交付投影和验收口径。
+- 回退：停止 8765 PID `763133`，用 `process360-cockpit-d611a72-20261030-151355/start-main.py` 启动；8876 将 `site` 指回 `site-next-012fd2a-20261030-151130` 并执行 `docker restart 10de73310da9`。更早 release、备份、共享 `dataset`、会话、上传、图表和分析结果均完整保留，不得删除。
