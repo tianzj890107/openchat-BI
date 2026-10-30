@@ -1465,3 +1465,12 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 
 - 实际上线 `919c3922ac3ae0fb3ab3f354484cac40e255bb6f`（包含 `75cb19c`），8765 release `process360-cockpit-919c392-20261030-quote`，PID `3327493`；8876 资源版本 `9b5c5e29d1bc366efc7b`，入口备份 `backups/site-quote-75cb19c-pre`。报价压缩响应仅保留状态/电量两个展示字段，修复原始行在发布层被裁掉的问题。
 - 仅预热报价：总裁 `b0933d26279e4cfdb155ff07bf571781`、分析员 `088dce766ee542ca96adb938e2afdc3c`。两个角色均 15 个 ready；逐插槽比较仅 `quote-summary` 的分析 ID 变化，共同分析及其他卡片未重算。正常完成 25.57、逾期完成 0.56、逾期未完成 0.60 GWh，未返回状态不补零。
+
+### 2026-10-30 · 关闭已完成 AP 响应复用（8765 + 8876）
+
+- 代码 `37476f2b471b2a40d382025aa3cf2b701b293cba`（`bugfix/cockpit-disable-ap-reuse-cache`）：后端 `COCKPIT_AP_REUSE_SECONDS` 默认 `0`，前端 `DATA_REUSE_WINDOW_MS = 0`；相同查询不再复用上一次已完成响应，重叠在途请求仍合并。AI 发布卡片与历史快照不受影响。
+- `8765` 主服务：release `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-37476f2-20261030-no-ap-cache`，PID `3852987`，进程环境未设置 `COCKPIT_AP_REUSE_SECONDS`（走默认 `0`），`.venv`／`.env`／共享 `dataset` 继续使用原目录。
+- `8876` 静态站：`assetVersion=b6628694318ccccd18f1`，`commit=37476f2`，资源前缀 `/static/cockpit/releases/b6628694318ccccd18f1`，manifest 149 个文件校验通过。部署前备份 `backups/site-919c392-20261030-105250-pre`，新站目录 `site-next-37476f2-20261030-105008`，`site` 软链已指向新目录。
+- 8876 的 nginx 容器（`eimosp-cockpit-8876`，ID `10de73310da9`）以 bind mount 在启动时解析 `site` 软链，仅切换软链不会生效；本次执行 `docker restart 10de73310da9` 后重新解析挂载。重启后 `http://172.16.10.34:8876/` 返回 200，`release.json` 与 `/static/cockpit/releases/b6628694318ccccd18f1/data-client.js` 均为新版本（`DATA_REUSE_WINDOW_MS = 0`）。
+- 验证：`8765 /healthz` 200；连续两次相同 AP 查询 receipt `aed6f8e82312`／`524fe7cd7eec`，`cacheHit=false`、`follower=false`，证明已完成响应不再复用。Python 42 项、Node 82 项测试通过。
+- 回退：`8765` 停止 PID `3852987` 后用旧 release `process360-cockpit-919c392-20261030-quote` 启动；`8876` 将 `site` 软链指回 `backups/site-919c392-20261030-105250-pre` 并再次 `docker restart 10de73310da9`。不得删除历史 release、备份、会话、上传、图表或 dataset。

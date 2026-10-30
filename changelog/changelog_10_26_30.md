@@ -1000,3 +1000,12 @@
 - 展示由同源结构化查询记录聚合已完成、未完成及各状态电量，不再按 claim 标签或缺失 unit 推测；正常完成、逾期完成分列，缺失状态标为“未返回”，合法零值保留。
 - 增加只读冻结凭据的报价专用预热入口，仅更新两个角色的报价分析，不额外查询 AP/PG。56 项相关 Python、5 项前端验证通过。
 - 上线补齐报价发布压缩响应的状态/电量原始行；只保留该插槽需要的两个字段，避免发布结果缺少可聚合状态。两个角色仅报价分析 ID 更新，其他卡片及共同分析均保留；正式代码 `919c392`。补充 22 项凭据与压缩契约测试通过。
+
+### 2026-10-30 · 关闭已完成 AP 响应复用（默认不缓存）
+
+- 用户可见变化：同一查询再次发起时不再回放上一次已完成的 AP 响应，每次都重新向上游取数并生成新凭据；同一时刻重叠发出的相同查询仍合并为一次上游调用，避免重复 SQL，但不再有“上次结果”复用窗口。
+- 配置与实现：后端 `COCKPIT_AP_REUSE_SECONDS` 默认值由 `300` 改为 `0`，允许显式设置 `0`；前端 `DATA_REUSE_WINDOW_MS` 由 `5 * 60 * 1000` 改为 `0`。AI 发布卡片、历史快照与在途请求合并逻辑保持不变。
+- 主要文件：`bi_agent/cockpit/router.py`、`bi_agent/web/static/cockpit/data-client.js`、`tests/cockpit_data_client.test.mjs`、`tests/test_cockpit_ap_gateway.py`；提交 `37476f2`。
+- 验证：Python 42 项、Node 看板测试 82 项通过，`node --check`、`py_compile`、`git diff --check` 通过。线上 `8765` 连续两次相同查询 receipt `aed6f8e82312`／`524fe7cd7eec`，两次均 `cacheHit=false`、`follower=false`。
+- 上线：`8765` release `process360-cockpit-37476f2-20261030-no-ap-cache`，PID `3852987`，`/healthz` 200；`8876` assetVersion `b6628694318ccccd18f1`，`release.json` 指向提交 `37476f2`。`8876` 的 nginx 容器以 bind mount 解析 `site` 软链，切换软链后需重启容器（`10de73310da9`），已在重启后确认 HTTP 同时返回新 assetVersion 与 `DATA_REUSE_WINDOW_MS = 0`。
+- 回退：`8765` 旧 release `process360-cockpit-919c392-20261030-quote`；`8876` 备份 `backups/site-919c392-20261030-105250-pre`。历史 release、`.env`、`.venv`、共享 `dataset`、会话与用户数据均未覆盖或删除。
