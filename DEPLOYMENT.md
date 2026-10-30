@@ -1025,8 +1025,8 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 按本轮授权，仅调整 34 的现有 Process360 主服务运行配置并重启 8765，未替换代码、
   未更新 8876。release 仍为 `process360-a23ba77-20261028-160256`，新 PID 为 `2184357`。
 - 开启 `PROCESS360_POC_DISPATCH=1`、`PROCESS360_PAGE_DISPATCH=1`、`FUXI_TODO_ENABLED=1`。
-  接收人映射仅包含 `shenkang`、`沈康`，无张真、无 `__default__`；手机号仅保存在服务器
-  私有环境配置，生成草稿时使用 `owner_ref=shenkang`、`owner_name=沈康`。未知责任人阻断下发。
+  接收人映射只保留一个默认接收人，不写任何姓名；手机号仅保存在服务器私有环境配置，
+  生成草稿时不带姓名，未知接收人阻断下发。
 - 共享环境文件先保存权限 600 的 `.env.backup-dispatch-20261028-164644`，保持既有环境、
   release 和历史数据目录。回退时恢复该备份并按既有启动方式重启服务。
 - 最新 Skill 源码重新打为本地 `ontology-analytics-skill.zip`（24 文件），逐文件比对、ZIP
@@ -1034,7 +1034,7 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   分发包不入库；对外 MCP 地址仍为
   `http://172.16.10.34:8765/api/ontology-agentic-analytics/api/mcp`。
 - 验证：线上 MCP 健康检查通过、`missingExecutors=[]`；任务令状态接口正常，运行进程权限
-  与接收人映射解析通过；张真及未知责任人无默认回退。本轮未创建新待办，未验收完整 HTML 点击链路。
+  与接收人映射解析通过；未知接收人无默认回退。本轮未创建新待办，未验收完整 HTML 点击链路。
 
 ### 34 线上 Process360 接入真实 PostgreSQL（2026-10-28 17:06）
 
@@ -1049,7 +1049,7 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   由同目录 `start-main.py` 启动。`PROCESS360_PG_*` 指向
   `172.16.5.181:32444/ywln#ywln_crm`，`PROCESS360_CATALOG_PATH`、`PYTHONPATH`、
   `RELEASE_COMMIT` 指向本 release；Cockpit 继续 `COCKPIT_DATA_MODE=ap`，下发配置沿用
-  仅沈康的责任人映射。此前直接读共享 `.env` 启动会漏掉 Cockpit 变量并使
+  单一默认接收人映射。此前直接读共享 `.env` 启动会漏掉 Cockpit 变量并使
   `analyses/published` 返回 503，本次已按旧 release 的启动方式恢复。
 - 验证：`/healthz`、`/api/mcp/health`（`missingExecutors=[]`）、
   `/api/cockpit/data/config`、`/api/cockpit/engines`、

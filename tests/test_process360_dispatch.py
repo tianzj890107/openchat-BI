@@ -132,7 +132,7 @@ def test_dispatch_action_blocks_permission_before_calling_the_service() -> None:
 def test_canvas_recipient_uses_the_single_configured_identity(monkeypatch) -> None:
     monkeypatch.setenv(
         "PROCESS360_RECIPIENT_MAP",
-        json.dumps({"shenkang": ["18800000003"], "沈康": ["18800000003"]}),
+        json.dumps({"owner-a": ["18800000003"]}),
     )
     assert dispatch.resolve_canvas_recipients() == ["18800000003"]
 
@@ -153,7 +153,7 @@ def test_canvas_recommendation_creates_one_temporary_draft_and_reuses_it(
 ) -> None:
     monkeypatch.setenv(
         "PROCESS360_RECIPIENT_MAP",
-        json.dumps({"shenkang": ["18800000003"], "沈康": ["18800000003"]}),
+        json.dumps({"owner-a": ["18800000003"]}),
     )
     monkeypatch.setenv("PROCESS360_CANVAS_DISPATCH_MODE", "all")
 
@@ -230,7 +230,7 @@ def test_canvas_recommendation_creates_one_temporary_draft_and_reuses_it(
 def test_canvas_recommendation_rejects_phone_content(monkeypatch) -> None:
     monkeypatch.setenv(
         "PROCESS360_RECIPIENT_MAP",
-        json.dumps({"shenkang": ["18800000003"]}),
+        json.dumps({"owner-a": ["18800000003"]}),
     )
     service = FakeService({"status": "ok", "receipt": {}})
     result = dispatch.dispatch_canvas_action(

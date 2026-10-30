@@ -145,7 +145,7 @@ def test_execution_registration_failure_never_calls_fuxi(
         scenario="SC01",
         principal=PRINCIPAL,
         owner_ref="u1",
-        owner_name="张真",
+        owner_name="owner-a",
     )
     action = bundle["canvasActions"][0]
 

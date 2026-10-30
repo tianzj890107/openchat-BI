@@ -50,7 +50,7 @@ def draft(tmp_path: Path):
         scenario="SC01",
         principal=PRINCIPAL,
         owner_ref="u1",
-        owner_name="张真",
+        owner_name="owner-a",
     )
 
 

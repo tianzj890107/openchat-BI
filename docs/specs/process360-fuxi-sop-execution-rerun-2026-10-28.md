@@ -290,7 +290,7 @@ aggregate mismatch: parent=18.3961, children=18.3961
 
 建议由伏羲连接器传 `x-fuxi-conversation-id`（任务级），服务端生成 UUID 作为 `requestId`，否则审计无法按用户请求分组。
 
-## 5. 任务令下发验证（沈康 159****7656）
+## 5. 任务令下发验证（服务端默认接收人）
 
 ### 5.1 验证方式
 
@@ -302,7 +302,7 @@ aggregate mismatch: parent=18.3961, children=18.3961
 | 草稿 | `78d223a3e17e4e7ebaa6edff50f050a2` |
 | 草稿状态 | `ok`，`approvalStatus=host_click_authorized` |
 | 动作 | `SC01-TK01` 发货超期治理：锁定排产与产能任务令 |
-| 接收人 | 沈康 `159****7656`（服务端接收人版本 `poc-shenkang-20261028`） |
+| 接收人 | 服务端默认接收人（版本 `poc-default-20261028`） |
 
 调用 `TaskOrderCreate`，参数为 `draft_id / draft_hash / action_id / recipients_raw=[本轮联调号码]`。仓库文档对手机号脱敏，完整号码见本轮任务指令。
 
@@ -330,7 +330,7 @@ aggregate mismatch: parent=18.3961, children=18.3961
 - Fuxi 地址 `http://172.16.5.69:8080` 健康检查 `200 {"status":"ok"}`；
 - `POST /source/todo-batches` 返回 `applied=1, skipped=0, errors=[]`；
 - 本地 `executions` 记录状态 `succeeded`，`recipientsProvidedByHost=1`；
-- 存储的 `recipientHash=fdfc9d447391ae76150bd60ab8fb567508b8d162610bc7f76f17cf20741e258f`，与本轮联调完整号码 + `mappingVersion=poc-shenkang-20261028` 的 `recipient_fingerprint` 重算结果一致；
+- 存储的 `recipientHash=fdfc9d447391ae76150bd60ab8fb567508b8d162610bc7f76f17cf20741e258f`，与本轮联调完整号码 + `mappingVersion=poc-default-20261028` 的 `recipient_fingerprint` 重算结果一致；
 - 幂等重放：再次调用同一草稿/动作，返回同一 `executionId` 和 `sourceTodoId`，`idempotentReplay=true`；
 - 页面下发接口 `POST /api/process360/task-orders` 用同一草稿/动作重放，也返回同一执行号，证明页面与 MCP 共用一条执行链路。
 
@@ -340,7 +340,7 @@ Fuxi 控制接口没有待办查询端点（GET `/source/todo-batches`、`/sourc
 
 1. 打开伏羲待办，来源选 `boulderai-anaylize-todo`；
 2. 应看到标题 `发货超期治理：锁定排产与产能任务令`；
-3. 接收人应为沈康 / `159****7656`；
+3. 接收人应为服务端配置的默认接收人；
 4. 记录号为 `analytics-78d223a3e17e4e7ebaa6edff50f050a2-SC01-TK01`；
 5. 批次号为 `analytics-analytics-78d223a3e17e4e7ebaa6edff50f050a2-SC01-TK01-611e72e50b95`。
 
@@ -463,7 +463,7 @@ applied=1, skipped=0, errors=[]
 - 伏羲能加载 Skill，五个场景都能完成 Route → 取数 → 分析/结构 → 方案/复验 → Canvas → 闸门；
 - 身份由服务端注入，模型猜身份、注入身份、无计划取数、旧版无草稿下发四个绕过入口都已关闭；
 - 表格/图表工具已可用，全量冻结基准在 SC01/SC03 已达到完整对象集；
-- 任务令下发链路真实可用：1 条待办已推到沈康 `159****7656`，幂等重放不重复，页面与 MCP 共用同一执行号。
+- 任务令下发链路真实可用：1 条待办已推到服务端默认接收人，幂等重放不重复，页面与 MCP 共用同一执行号。
 
 但本轮不能判定“完整符合 SOP”：
 

@@ -121,7 +121,7 @@ def test_sc01_analysis_and_draft_are_closed_loop_but_not_executed(monkeypatch) -
     assert analysis["candidateCauses"]
     assert all(row["status"] == "candidate_unverified" for row in analysis["candidateCauses"])
     draft = service.draft(question="超期未发为什么增加？", scope={"periodEnd": "2026-10-27"},
-                          owner_ref="u1", owner_name="张真")
+                          owner_ref="u1", owner_name="owner-a")
     assert draft["status"] == "ok"
     assert {task["taskTemplate"] for task in draft["tasks"]} == {"TK01", "TK02", "TK03", "TK04"}
     for task in draft["tasks"]:
@@ -191,7 +191,7 @@ def test_task_order_execution_is_fuxi_only_and_supplied_by_host() -> None:
             return {"ok": True, "sourceTodoId": kwargs["source_todo_id"], "applied": 1}
 
     service = _service()
-    draft = service.draft(scenario="SC01", owner_ref="u1", owner_name="张真")
+    draft = service.draft(scenario="SC01", owner_ref="u1", owner_name="owner-a")
     client = Client()
     receipt = service.execute(task=draft["tasks"][0], recipients=["18837823993"],
                               action_id="a1", canvas_id="canvas-1", client=client)

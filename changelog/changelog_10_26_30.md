@@ -459,3 +459,9 @@
 - 在同一仓库的 `feature/analytics-unified-service` 分支整合 cockpit、工作台 URL 入口、PDT 本体 fallback、本地 Excel 文档与 Process360 skill 分离。
 - 保留通用分析和 Process360 两类 MCP 工具配置；不引入 LangGraph 实验引擎。
 - 第一轮定向验证：Python 32 项、URL 入口 Node 5 项通过；未部署、未清理原工作区。
+
+### 2026-10-30 共享执行模块
+
+- 将现有执行循环提取到 `bi_agent.runtime.session.AgentSession`，工作台和 Cockpit main 路线使用同一实现；旧 WebSession 导入保持模块级兼容。
+- 纳入 Process360 接收人配置说明和测试示例匿名化；保留原主目录独有资料，管理清单记录文件指纹。
+- 新增隔离运行时 spec，明确 MCP 基础工具与未来委托任务入口的边界。

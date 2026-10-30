@@ -107,7 +107,7 @@ def test_risk_tool_is_exposed_and_requires_a_trusted_draft(tmp_path: Path) -> No
 
 def test_draft_exposes_independent_risk_and_todo_cards(tmp_path: Path) -> None:
     svc = _service(tmp_path)
-    bundle = svc.draft(scenario="SC01", principal=PRINCIPAL, owner_ref="u1", owner_name="张真")
+    bundle = svc.draft(scenario="SC01", principal=PRINCIPAL, owner_ref="u1", owner_name="owner-a")
     assert bundle["status"] == "ok"
     assert bundle["riskActions"] and bundle["canvasActions"]
     risk = bundle["riskActions"][0]
@@ -132,7 +132,7 @@ def test_risk_and_todo_use_separate_idempotency_identities() -> None:
 
 def test_risk_click_dispatches_risk_and_rejects_wrong_tool(tmp_path: Path) -> None:
     svc = _service(tmp_path)
-    bundle = svc.draft(scenario="SC01", principal=PRINCIPAL, owner_ref="u1", owner_name="张真")
+    bundle = svc.draft(scenario="SC01", principal=PRINCIPAL, owner_ref="u1", owner_name="owner-a")
     risk = bundle["riskActions"][0]
     client = ReceiptClient()
     wrong = dispatch.dispatch_action(

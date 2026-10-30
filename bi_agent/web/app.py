@@ -75,7 +75,7 @@ from ..tools.sql_tools import (
     DorisHttpConn,
 )
 from .conversations import ConversationStore, sanitize_source_config
-from .session import TurnContext, WebSession
+from ..runtime.session import TurnContext, AgentSession as WebSession
 
 
 logger = logging.getLogger(__name__)
