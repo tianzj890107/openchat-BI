@@ -651,6 +651,21 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         items=published_default(id,'main',page,True)['items'] if main_context is not None else {}
         return dict(items=items,cardContract=CONTRACT,cardsVersion=cards_version(items))
 
+    @router.post('/quotation/preheat')
+    def preheat_quotation(req: PageLookup):
+        if req.page != 'operations' or req.uiScope != 'default':
+            raise HTTPException(422, '当前仅支持默认报价口径')
+        from .combined import cached_quotation_request
+        from .dashboard_source import page_analysis_context
+        card = published_default(req.id, 'main', 'operations', False)['items'].get('quotation')
+        try:
+            body = cached_quotation_request(store(), req.id, card or {})
+            resolved = page_analysis_context(body, store(), resolve_fallback=False, allow_expired=True)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        resolved['dataBasis'] = '运营头盔图报价办理状态的已保存AP响应，未额外取数'
+        return start_analysis(AnalysisRequest(**body), resolved=resolved)
+
     @router.post('/combined/preheat')
     def preheat_combined(req: PageLookup):
         if req.page != 'analysis' or req.uiScope != 'default':

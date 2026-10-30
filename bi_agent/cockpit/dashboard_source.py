@@ -93,7 +93,10 @@ def filter_stage_selected(selected, stage):
         text = request_text(value.get('request'))
         tokens = request_labels(value.get('request'))
         codes = set(_CODE_RE.findall(text)) | {token for token in tokens if token.startswith('YWLN_')}
-        if codes & metrics or any(label in token for label in labels for token in tokens):
+        matches = bool(codes & metrics or any(label in token for label in labels for token in tokens))
+        if stage == 'quotation' and codes:
+            matches = {'YWLN_D021', 'YWLN_M0031'} <= codes
+        if matches:
             kept[key] = value
         else:
             excluded.append(key)

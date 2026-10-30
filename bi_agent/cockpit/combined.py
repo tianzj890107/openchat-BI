@@ -79,3 +79,38 @@ def cached_combined_request(store, identity, cards):
                 chartQueries=sorted(found), unavailableQueries=sorted(missing),
                 clarifications={'coverage': ','.join(coverage),
                                 'instruction': '仅复用已保存AP凭据；逐条披露观察时间，不把不同业务状态混算；跨环节仅做关联分析'})
+
+
+def cached_quotation_request(store, identity, card):
+    """Use the helmet's quotation-state receipt, not the overview risk KPIs."""
+    context = card.get('context') or {}
+    queries = context.get('chartQueries') or []
+    if context.get('id') != identity or not queries:
+        raise ValueError('缺少当前角色报价分析口径')
+    period = date_scope(json.loads(queries[0]))
+    if not period:
+        raise ValueError('报价日期口径不明确')
+    with store.db() as db:
+        rows = db.execute('SELECT body FROM ap_results WHERE identity=? ORDER BY created DESC',
+                          (identity,)).fetchall()
+    receipt = None
+    for row in rows:
+        item = json.loads(row[0]);query = item.get('request')
+        if item.get('kind') != 'analysis' or item.get('connectionId') != context.get('dataIdentity'):
+            continue
+        config = (query or {}).get('analysisConfig') or {}
+        dimensions = {v.get('identifierCode') for v in config.get('dimensions') or []}
+        metrics = {v.get('identifierCode') for v in config.get('indicators') or []}
+        if dimensions == {'YWLN_D021'} and metrics == {'YWLN_M0031'} and date_scope(query) == period:
+            receipt = item
+            break
+    if receipt is None:
+        raise ValueError('未保存同期间报价办理状态结果，未额外查询AP')
+    return dict(id=identity, engine='main', source='service', page='operations', stage='quotation',
+                period=context.get('period') or '2025-10',
+                department=context.get('department') or '全部产品部', defaultView=True,
+                chartSnapshotId=RELEASE, apReceiptIds=[receipt['id']],
+                chartQueries=[canonical(receipt['request'])], unavailableQueries=[],
+                clarifications={'instruction': '只分析运营头盔图报价节点的报价办理状态YWLN_D021及报价电量YWLN_M0031，'
+                    '区分正常完成、逾期完成、逾期未完成、临期未完成、正常未完成；未返回状态不补造0。'
+                    '不要引用经营看板红区报价单数或电芯占比。历史凭据的原始取数时间保持不变。'})

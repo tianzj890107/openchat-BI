@@ -1457,3 +1457,8 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 本次实际部署：代码 `c087a0cf22fa556ddd6831175c02318c831c1bb8`，8765 release `process360-cockpit-c087a0c-20261030-combined`，PID `3250689`；8876 `assetVersion=4775ab66d1ec485bc4a3`。原服务正常退出后启动新服务，未并行保留验证调度器。入口备份 `backups/site-combined-c087a0c-pre`，共享 `.env`、`.venv`、dataset 未覆盖。
 - 仅主动预热共同分析：总裁 `a5f779c3bc5543b887b0365154935bc1`（8 查询、117 条证据、8 原因、5 建议），分析员 `d9deeae109fe43dcb8d54b24c9fdd987`（9 查询、118 条证据、4 原因、2 建议）；两者为 limited，继续披露因果未验证及上游缺失。两个角色均恢复 15 个可渲染插槽；共同分析 ID 与发货卡片分离。
 - 验证：58 项相关 Python、7 项前端测试通过；manifest 校验通过。浏览器拦截实时取数后，第三页共同分析正常显示、AI loading=0、无 JS 异常；没有实际下发待办或风险。
+
+### 2026-10-30 · 报价状态插槽单独替换
+
+- 通过 `POST /api/cockpit/quotation/preheat`（`id`、`page=operations`、`uiScope=default`）仅重建报价分析；从同角色、同连接、同日期范围的已保存 `YWLN_D021`/`YWLN_M0031` 凭据取证，不重新请求 AP/PG。
+- 插槽按原始记录展示完成/未完成状态，元数据及头盔图保持原样。发布保留其他卡片和共享 dataset，入口资源使用独立版本目录，可回退到前一版本入口文件。

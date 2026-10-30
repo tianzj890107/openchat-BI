@@ -43,3 +43,19 @@ def test_other_identity_cannot_be_reused(tmp_path):
     store = Store(tmp_path/'db.sqlite');cards = fixture_cards(store)
     with pytest.raises(ValueError):
         cached_combined_request(store, 2, cards)
+
+
+def test_quotation_uses_helmet_state_not_risk_kpis(tmp_path):
+    from bi_agent.cockpit.combined import cached_quotation_request
+    store = Store(tmp_path/'db.sqlite');cards = fixture_cards(store)
+    q = query('YWLN_M0031');q['analysisConfig']['dimensions'] = [{'identifierCode': 'YWLN_D021'}]
+    store.save_ap_result(1, 'analysis', q, {'result': {}}, 1, 'conn')
+    risk = query('YWLN_M0137')
+    store.save_ap_result(1, 'analysis', risk, {'result': {}}, 1, 'conn')
+    card = {'context': {'id': 1, 'dataIdentity': 'conn', 'chartQueries': [json.dumps(risk)]}}
+    body = cached_quotation_request(store, 1, card)
+    assert len(body['apReceiptIds']) == 1
+    assert json.loads(body['chartQueries'][0]) == q
+    kept, excluded = filter_stage_selected({'status': {'request': q}, 'risk': {'request': risk}}, 'quotation')
+    assert list(kept) == ['status']
+    assert excluded == ['risk']
