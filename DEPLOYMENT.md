@@ -1416,3 +1416,35 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   `backups/site-ae59331-20261029-225539` 原地恢复入口文件。旧资源和历史分析数据均已保留。
 - 边界：本轮没有实际下发任务令或风险；接收人配置为 `18837823993`，只在用户点击“确认下发”
   时由服务端调用待办接口。AP 侧慢查询和未登记指标口径仍按原有受限结果披露。
+
+### Cockpit 自动合页静默与最终静态发布（2026-10-30 08:25）
+
+- 代码提交：`07650cdb8e656e1d6beb323d675aee75e60be560`（分支
+  `feature/cockpit-risk-dispatch-closure`），在 `28e7745` 基础上修复自动整页合并的误报：
+  `/page` 的后台校验拒绝和本地 `client.entries()` 未齐全不再写入 `pageState.error`，三页标题
+  不再出现“部分数据加载失败”；显式用户刷新仍保留自己的错误态。前序提交包括 `7d9e98c`
+  （AI 表格去重日期筛选）和 `c36feca`（ProUI 头盔深链路径对象）。
+- 8765 主服务：release
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-28e7745-20261030-0813`，
+  PID `3129750`，提交 `28e7745`；`/healthz` 正常，`18765` 预检进程已停止。本轮只更新静态站，
+  未重启 8765，`.env`、`.venv` 和 `dataset` 继续使用共享目录；历史分析、会话、上传和图表未删除、
+  未迁移。
+- 8876 静态站：`commit=07650cdb8e656e1d6beb323d675aee75e60be560`、
+  `assetVersion=38d6b9718fa7076aac5f`、资源前缀
+  `/static/cockpit/releases/38d6b9718fa7076aac5f`；147 个文件，manifest 全量校验通过。
+  部署前备份为
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/site-07650cd-20261030-082320-pre`，
+  暂存包保留在 `staging-cockpit-07650cd-20261030-082320`。站点原地叠加，未重启 nginx；`site`
+  目录权限保持 `755`。
+- 验证：两个角色 `id=1|2` 的默认范围均为 `expectedCount=15`、`readyCount=15`、
+  `missingCount=0`；三张 AI 表格在两个角色下的 `cacheOnly=true` 请求共 6/6 返回 `200/hit`。
+  真实浏览器（`172.16.10.34:8876`）复核经营看板、运营页、穿透页：无 AI loading、无
+  “部分数据加载失败”、无 JavaScript 异常；三页 `id=1|2` 路由均返回 200。
+- 口径与限制：页面“分析更新于 2026/10/29”是最后一次成功分析时间，不是本次部署时间。数据指纹
+  未变化时服务端按设计复用上次成功分析，没有为刷新展示时间而强制调用模型；现有卡片仍为
+  `limited`，表示可交付但存在上游证据或指标缺口，不等于根因已经充分验证。
+- 回退：静态入口可从
+  `backups/site-07650cd-20261030-082320-pre` 原地恢复；如需回到本轮部署前的静态版本，可使用
+  `backups/site-28e7745-20261030-0815-pre`。8765 回退时停止 PID `3129750`，使用旧 release
+  `process360-cockpit-7d9e98c-20261030-0759/start-main.py` 启动。不得删除历史 release、
+  备份、会话、上传、图表或 dataset。
