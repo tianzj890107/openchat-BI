@@ -274,8 +274,16 @@ def _bad_unit_claim(sentence):
             and _has_any(sentence, _CROSS_UNIT))
 
 
+def _bad_attrition_claim(sentence, evidence):
+    claim = _has_any(sentence, ('量级有限', '规模有限', '占比不足', '不足以解释',
+                                '难以解释', '不能解释', '不足以', '难以', '不能'))
+    return (not (evidence or {}).get('setOverlapVerified')
+            and _has_any(sentence, ('取消', '变更')) and claim)
+
+
 def _unsupported_inference(text, evidence):
     return any(_bad_set_claim(sentence, evidence) or _bad_unit_claim(sentence)
+               or _bad_attrition_claim(sentence, evidence)
                for sentence in _sentences(text))
 
 
@@ -290,17 +298,27 @@ def sanitize_summary(text, evidence):
         key = _norm(sentence)
         if not key or key in seen:
             continue
-        if _bad_set_claim(sentence, evidence):
-            if SET_REPLACEMENT not in replaced:
-                kept.append(SET_REPLACEMENT)
-                replaced.add(SET_REPLACEMENT)
+        if _bad_set_claim(sentence, evidence) or _bad_unit_claim(sentence):
+            replacement = UNIT_REPLACEMENT if _bad_unit_claim(sentence) else SET_REPLACEMENT
+            if replacement not in replaced:
+                kept.append(replacement)
+                replaced.add(replacement)
+            seen.add(key)
             continue
-        if _bad_unit_claim(sentence):
-            if UNIT_REPLACEMENT not in replaced:
-                kept.append(UNIT_REPLACEMENT)
-                replaced.add(UNIT_REPLACEMENT)
+        clauses = [part.strip() for part in re.split(r'[,，]', sentence) if part.strip()]
+        unsupported = [claim for claim in clauses
+                       if (_bad_set_claim(claim, evidence) or _bad_unit_claim(claim)
+                           or _bad_attrition_claim(claim, evidence))]
+        clean = [claim for claim in clauses if claim not in unsupported]
+        if clean:
+            kept.append('，'.join(clean))
+            seen.add(key)
             continue
-        kept.append(sentence)
+        replacement = UNIT_REPLACEMENT if any(_bad_unit_claim(claim) for claim in unsupported) \
+            else SET_REPLACEMENT
+        if replacement not in replaced:
+            kept.append(replacement)
+            replaced.add(replacement)
         seen.add(key)
     return ('。'.join(kept) + '。') if kept else ''
 

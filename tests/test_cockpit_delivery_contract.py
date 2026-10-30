@@ -199,6 +199,15 @@ def test_separate_money_and_energy_observations_are_not_removed():
     assert [cause['id'] for cause in projected['result']['causes']] == ['separate']
 
 
+def test_unsupported_attrition_clause_is_removed_from_mixed_summary():
+    card = _card()
+    card['result']['summary'] = '订单取消变更量级有限，发货办理状态证据缺失。'
+    projected = project_card(card, 'sales-shipment-issues')
+    summary = projected['result']['summary']
+    assert '订单取消变更量级有限' not in summary
+    assert '发货办理状态证据缺失' in summary
+
+
 def test_actions_with_dangling_cause_references_are_dropped():
     card = _card()
     card['result']['recommendations'] = [dict(
