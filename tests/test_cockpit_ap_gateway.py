@@ -120,6 +120,7 @@ def test_proxy_returns_exact_result_and_receipt_without_extra_fetch(tmp_path,mon
 def test_http_queries_share_the_same_short_lived_receipt_and_report_timing(tmp_path,monkeypatch):
     import bi_agent.cockpit.router as router
     monkeypatch.setenv('COCKPIT_DATA_MODE','ap')
+    monkeypatch.setenv('COCKPIT_AP_REUSE_SECONDS','300')
     gateway=APGateway(config(tmp_path),Opener({'success':True,'data':DATA}))
     monkeypatch.setattr(router,'get_gateway',lambda:gateway)
     app=FastAPI();app.include_router(build_cockpit_router(lambda:tmp_path,main_context=lambda c:{}))
@@ -129,6 +130,20 @@ def test_http_queries_share_the_same_short_lived_receipt_and_report_timing(tmp_p
     assert first['receiptId']==second['receiptId'] and len(gateway._opener.calls)==1
     assert {'backendQueueMs','upstreamMs','receiptWaitMs','serverTotalMs'} <= set(first['timings'])
     assert second['timings']['cacheHit'] is True and 'receiptWaitMs' in second['timings']
+
+
+def test_completed_http_queries_are_not_reused_by_default(tmp_path,monkeypatch):
+    import bi_agent.cockpit.router as router
+    monkeypatch.setenv('COCKPIT_DATA_MODE','ap')
+    monkeypatch.delenv('COCKPIT_AP_REUSE_SECONDS',raising=False)
+    gateway=APGateway(config(tmp_path),Opener({'success':True,'data':DATA}))
+    monkeypatch.setattr(router,'get_gateway',lambda:gateway)
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:tmp_path,main_context=lambda c:{}))
+    client=TestClient(app)
+    first=client.post('/api/cockpit/data/query',json=dict(id=1,kind='analysis',payload=QUERY)).json()
+    second=client.post('/api/cockpit/data/query',json=dict(id=1,kind='analysis',payload=QUERY)).json()
+    assert first['receiptId']!=second['receiptId'] and len(gateway._opener.calls)==2
+    assert first['timings']['cacheHit'] is False and second['timings']['cacheHit'] is False
 
 
 def test_sidecar_and_snapshot_mode_cannot_start_live_proxy(tmp_path,monkeypatch):

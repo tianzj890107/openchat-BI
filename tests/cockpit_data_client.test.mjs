@@ -179,7 +179,7 @@ test('SDK filter change drops all previous-scope receipts before new requests',a
  runtime.setFilterConditions('filter',[{department:'B'}]);assert.equal(changes,1);
 });
 
-test('node selection keeps the loaded data scope and chart/table cache',async()=>{
+test('node selection keeps the loaded data scope without replaying a completed response',async()=>{
  let ready=true,calls=0,changes=0;
  const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>{calls++;return {...ok('node-scope',{value:42}),json:async()=>({receiptId:'node-scope',data:{value:42},receivedAt:Date.now()/1000,expiresAt:Date.now()/1000+60})};}});
  const runtime=observeRuntimeFilters({setFilterConditions(){},setButtonGrainSelection(){},setContainerActiveNode(){},setHelmetGraphSelection(){}},()=>{changes++;client.clearScope();},()=>ready);
@@ -190,7 +190,7 @@ test('node selection keeps the loaded data scope and chart/table cache',async()=
  assert.equal(changes,0);
  assert.equal(client.scope().apReceiptIds[0],receipt);
  await client.biAdapters.postAnalysisDataQuery(query);
- assert.equal(calls,1);
+ assert.equal(calls,2);
  runtime.setFilterConditions('filter',[{label:'时间',value:'2026'}]);
  assert.equal(changes,1);
 });
@@ -228,12 +228,12 @@ test('clearing a scope rejects queued requests instead of leaving them running',
   }
  });
 
-test('completed duplicate reads reuse the same receipt until short TTL or scope change',async()=>{
+test('completed duplicate reads reach the server again when response replay is disabled',async()=>{
  let calls=0;
  const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>({...ok('r'+(++calls)),json:async()=>({receiptId:'r'+calls,data:{value:calls},receivedAt:Date.now()/1000,expiresAt:Date.now()/1000+60})})});
  await client.biAdapters.postAnalysisDataQuery(query);await client.biAdapters.postAnalysisDataQuery(query);
- assert.equal(calls,1);assert.equal(client.entries().length,1);
- client.clearScope();await client.biAdapters.postAnalysisDataQuery(query);assert.equal(calls,2);
+ assert.equal(calls,2);assert.equal(client.entries().length,1);
+ client.clearScope();await client.biAdapters.postAnalysisDataQuery(query);assert.equal(calls,3);
 });
 
 test('full-page replay renders expired display data without inventing fresh analysis receipts',async()=>{
@@ -245,7 +245,7 @@ test('full-page replay renders expired display data without inventing fresh anal
  const missedQuery={...query,commonConfig:{filters:{month:'other'}}};
  assert.deepEqual(await client.biAdapters.postAnalysisDataQuery(missedQuery),{rows:[{amount:42}]});
  assert.deepEqual(await client.biAdapters.postAnalysisDataQuery(missedQuery),{rows:[{amount:42}]});
- await new Promise(r=>setImmediate(r));assert.equal(misses,1);assert.equal(calls,1);
+ await new Promise(r=>setImmediate(r));assert.equal(misses,1);assert.equal(calls,2);
 });
 
 test('a remounted SDK restores UI selections and preserves the original default scope',()=>{

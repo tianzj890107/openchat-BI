@@ -12,10 +12,9 @@ export const AP_QUERY_TIMEOUT_MS = 200000;
 export const SCOPE_READY_TIMEOUT_MS = 220000;
 export const TRANSIENT_RETRY_WINDOW_MS = 30000;
 export const AP_QUERY_CONCURRENCY = 3;
-/* A node switch is a view change, not a new data scope. Keep already loaded
- * chart/table responses available long enough for the user to move between
- * nodes without repeating the same AP queries. */
-export const DATA_REUSE_WINDOW_MS = 5 * 60 * 1000;
+/* Completed responses are not replayed by default. Concurrent duplicate
+ * widgets still share the same in-flight request and receipt. */
+export const DATA_REUSE_WINDOW_MS = 0;
 
 export function createAPDataClient({apiBase, id, request = fetch, onInvalidate = () => {}, snapshot = null, onSnapshotMiss = () => {}, onError = () => {}, onRecover = () => {},
   timeoutMs = AP_QUERY_TIMEOUT_MS, readyTimeoutMs = SCOPE_READY_TIMEOUT_MS, retryWindowMs = TRANSIENT_RETRY_WINDOW_MS,

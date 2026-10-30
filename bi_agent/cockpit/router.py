@@ -121,13 +121,12 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     router=APIRouter(prefix="/api/cockpit",tags=["cockpit"])
     source=DemoSource();stores={};lock=threading.RLock();jobs={};capacity=threading.BoundedSemaphore(3)
     try:
-        # A browser refresh must be able to reuse the last successful AP
-        # receipts for the same exact query.  The old 45-second window made a
-        # normal reload issue every slow SQL again; five minutes preserves the
-        # last rendered data while the background refresh validates freshness.
-        reuse_ttl = max(5, min(900, int(os.getenv('COCKPIT_AP_REUSE_SECONDS', '300'))))
+        # Completed AP receipts are not reused by default.  Identical requests
+        # that overlap in flight are still coalesced below, but a later request
+        # must reach AP again instead of replaying a previous response.
+        reuse_ttl = max(0, min(900, int(os.getenv('COCKPIT_AP_REUSE_SECONDS', '0'))))
     except ValueError:
-        reuse_ttl = 300
+        reuse_ttl = 0
     ap_reuse = APReuse(ttl=reuse_ttl)
     def store():
         path=str(Path(get_cwd()).resolve()/"dataset"/"cockpit"/"history.sqlite3")
