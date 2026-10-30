@@ -8,15 +8,18 @@ ROOT=Path(__file__).resolve().parents[1]/'bi_agent/web/static/cockpit'
 def test_vendor_manifest_matches_local_artifacts():
     vendor=ROOT/'vendor'
     manifest=json.loads((vendor/'resources.json').read_text())
+    assert manifest['sourceCommit']=='ebe55d0dce39212f6b1b31c62a1ae485b6bf8da5'
+    assert manifest['metadataCommit']=='cd8d71fd6278dcf9630043d00bb95e62d97b347a'
     for r in manifest['resources']:
         data=(vendor/r['file']).read_bytes()
         assert hashlib.sha256(data).hexdigest()==r['sha256']
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=57a370de' in html
+    assert 'pro-bi-ui.min.js?v=10f624d9' in html
     sdk=(vendor/'pro-bi-ui.min.js').read_text()
     assert 'if(!t||!t.get("group"))return;t.fitView(' in sdk
+    assert 'updateComponentMeta' in sdk and 'setTemplateRegistry' in sdk
     assert 'data-dashboard-theme="white"' in html
     css=(ROOT/'cockpit.css').read_text()
     assert '--dashboard-canvas-bg:#fff' in css
@@ -27,6 +30,7 @@ def test_imported_metadata_hashes_and_three_tabs():
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
     assert source['commit']=='cd8d71fd6278dcf9630043d00bb95e62d97b347a'
+    assert source['umdCommit']=='ebe55d0dce39212f6b1b31c62a1ae485b6bf8da5'
     assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
@@ -42,6 +46,25 @@ def test_imported_metadata_hashes_and_three_tabs():
     assert sales['source']['actionKey']=='1793158849339'
     assert sales['actions'][1]['nodeId']=='2109840325158682625'
     assert sales['actions'][1]['nodeName']=='商机获取'
+
+
+def test_risk_header_counts_follow_published_detail_cards():
+    source=(ROOT/'cockpit.js').read_text()
+    targets={
+        'progress-y5dumxio': ('opportunity-risk','tab-bc6wp3k2','2112001069107167233'),
+        'progress-91j3rt9a': ('shipment-risk-summary','tab-bc6wp3k2','2112001069107167233'),
+        'progress-ynh9zsng': ('opportunity-risk','tab-211tc4o0','2112434004503347202'),
+        'progress-zl0egumz': ('shipment-risk-summary','tab-211tc4o0','2112434004503347202'),
+    }
+    for component_id,(slot_id,tab_id,template_id) in targets.items():
+        assert component_id in source
+        assert slot_id in source
+        assert tab_id in source
+        assert template_id in source
+    assert "const RISK_COUNT_PATH = ['headerActions', 0, 'label']" in source
+    assert 'const causes=slot.payload.result.causes' in source
+    assert '`${count}条风险`' in source
+    assert 'runtime.updateComponentMeta(target.componentId,RISK_COUNT_PATH,label' in source
 
 def test_upstream_missing_children_are_reported_without_mutating_metadata():
     folder=ROOT/'metadata/iba-demo-1021'

@@ -117,6 +117,15 @@
     'shipment-cause-breakdown': 'shipment',
     'shipment-task-order': 'shipment',
   };
+  const RISK_COUNT_TARGETS = [
+    {componentId:'progress-y5dumxio', slotId:'opportunity-risk', tabId:'tab-bc6wp3k2', templateId:'2112001069107167233'},
+    {componentId:'progress-91j3rt9a', slotId:'shipment-risk-summary', tabId:'tab-bc6wp3k2', templateId:'2112001069107167233'},
+    {componentId:'progress-ynh9zsng', slotId:'opportunity-risk', tabId:'tab-211tc4o0', templateId:'2112434004503347202'},
+    {componentId:'progress-zl0egumz', slotId:'shipment-risk-summary', tabId:'tab-211tc4o0', templateId:'2112434004503347202'},
+  ];
+  const RISK_COUNT_PATH = ['headerActions', 0, 'label'];
+  let riskCountRuntime = null;
+  const appliedRiskCountLabels = new Map();
   function validAiCard(item) {
     const result=item?.result;
     return result?.cardContract==='cockpit-cards-v1' && typeof result.summary==='string' &&
@@ -125,6 +134,29 @@
   }
   function slotPublication(slotId) {
     return aiPublicationStore.slots[slotId] || null;
+  }
+  function riskCountForSlot(slotId) {
+    const slot=slotPublication(slotId);
+    if(!slot || slot.status!=='ready' || !validAiCard(slot.payload))return null;
+    const causes=slot.payload.result.causes;
+    return causes.filter(item=>item && typeof item==='object').length;
+  }
+  function syncRiskCountLabels(runtime=biRuntime.value) {
+    if(!runtime?.updateComponentMeta)return;
+    if(runtime!==riskCountRuntime) {
+      riskCountRuntime=runtime;
+      appliedRiskCountLabels.clear();
+    }
+    for(const target of RISK_COUNT_TARGETS) {
+      const count=riskCountForSlot(target.slotId);
+      const label=count===null?'风险分析中':`${count}条风险`;
+      if(appliedRiskCountLabels.get(target.componentId)===label)continue;
+      const result=runtime.updateComponentMeta(target.componentId,RISK_COUNT_PATH,label,{
+        embedPath:{segments:[{kind:'tab',containerId:'tab-container-zm9eyxne',
+          tabId:target.tabId,templateId:target.templateId}]},
+      });
+      if(result?.ok!==false)appliedRiskCountLabels.set(target.componentId,label);
+    }
   }
   function hasPublishedSlot(slotId) {
     const slot=slotPublication(slotId);
@@ -182,6 +214,7 @@
       status:value.update?.status||'idle',
       error:'',
     });
+    syncRiskCountLabels();
     settleMissingSlotStages();
     resolveAiPublicationReady?.();resolveAiPublicationReady=null;
   }
@@ -1016,6 +1049,12 @@
         return response.json();
       }
 
+      function createRuntime(payload) {
+        const runtime=ProUIBi.createBiRuntime({runtimeKey:'iba-demo'});
+        if(payload?.templates)runtime.setTemplateRegistry?.(payload.templates);
+        return runtime;
+      }
+
       async function loadRuntime() {
         // Only the delivered layout and the two small capability endpoints are
         // needed before the board can render.  Saved cards, page snapshots and
@@ -1057,7 +1096,7 @@
             import(`${assetBase}/page-client.js?v=${encodeURIComponent(assetVersion)}`),
             import(`${assetBase}/publication-poll.js?v=${encodeURIComponent(assetVersion)}`),
           ]);
-          let rawRuntime=ProUIBi.createBiRuntime();
+          let rawRuntime=createRuntime(payload);
           const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
           if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
           // Charts read live AP data by default.  The page snapshot still
@@ -1089,7 +1128,7 @@
             }
             if(remount){
               filtersReady=false;
-              const nextRuntime=ProUIBi.createBiRuntime();
+              const nextRuntime=createRuntime(payload);
               const restored=biRuntime.value?.replayView?.(nextRuntime);
               rawRuntime=nextRuntime;
               if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
@@ -1097,6 +1136,7 @@
                 observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,restored,
                   {isUserAction:isScopeUserAction}),
                 {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
+              syncRiskCountLabels();
               const path={segments:[{kind:'tab',containerId:tabs.id,tabId:payload.pages[page.value].tabId,templateId:payload.pages[page.value].templateId}]};
               for(const component of payload.templates[payload.pages[page.value].templateId]?.components||[]){
                 if(component.type!=='button-group')continue;
@@ -1204,6 +1244,7 @@
             observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,null,
               {isUserAction:isScopeUserAction}),
             {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
+          syncRiskCountLabels();
           // Historical cards are an independent, best-effort request.  The
           // board already exists; a slow cards response leaves only the AI
           // slot skeletons visible and never delays charts or the shell.
@@ -1354,12 +1395,13 @@
           installed=liveDataClient;
         } else if (dataConfig.mode === 'snapshot') {
           installed = installSnapshots(await loadJson(snapshotsUrl));
-          biRuntime.value=ProUIBi.createBiRuntime();
+          biRuntime.value=createRuntime(payload);
           const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
           if(tabs)biRuntime.value.setActiveTab(tabs.id,payload.pages[page.value].tabId);
           const {observeActivationActions}=await import(`${assetBase}/data-client.js?v=${encodeURIComponent(assetVersion)}`);
           biRuntime.value=observeActivationActions(biRuntime.value,
             {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
+          syncRiskCountLabels();
           biAdapters.value=installed.biAdapters;hostUtils.value=installed.utils;
         } else { throw new Error('未识别的看板取数模式'); }
         runtime.value = payload;

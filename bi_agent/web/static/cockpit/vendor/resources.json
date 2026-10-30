@@ -1,8 +1,9 @@
 {
-  "checkedAt": "2026-10-30T17:30:00+08:00",
+  "checkedAt": "2026-10-31T09:30:00+08:00",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
-  "sourceCommit": "cd8d71fd6278dcf9630043d00bb95e62d97b347a",
-  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021 at cd8d71f. The UMD carries the one-line null-instance guard for a destroyed helmet Graph callback (re-applied after each upstream sync); activateRules/selectHelmet remain upstream behavior and only the single-query adapter is injected.",
+  "sourceCommit": "ebe55d0dce39212f6b1b31c62a1ae485b6bf8da5",
+  "metadataCommit": "cd8d71fd6278dcf9630043d00bb95e62d97b347a",
+  "notes": "The BI UMD is synced from iba-demo feature/demo_1021 at ebe55d0, which adds createBiRuntime runtime keys and updateComponentMeta; component metadata and CSS remain unchanged from cd8d71f. The UMD carries the one-line null-instance guard for a destroyed helmet Graph callback (re-applied after each upstream sync); activateRules/selectHelmet remain upstream behavior and only the single-query adapter is injected.",
   "resources": [
     {
       "file": "../../vendor/antd/lib/vue.global.js",
@@ -14,11 +15,11 @@
     },
     {
       "file": "pro-bi-ui.min.js",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/cd8d71fd6278dcf9630043d00bb95e62d97b347a/lib/pro-bi-ui.min.js",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/ebe55d0dce39212f6b1b31c62a1ae485b6bf8da5/lib/pro-bi-ui.min.js",
       "sourcePath": "lib/pro-bi-ui.min.js",
-      "sha256": "57a370de7087593e0c99219c7725ba7ae80f07cba54f372ea4fc7d7d6b52517d",
-      "bytes": 6245828,
-      "notes": "Copied from cd8d71f with the one-line null-instance guard in the helmet Graph fitView callback; upstream metadata is unchanged except for that guard."
+      "sha256": "10f624d92a9c752af803392ca1930ec1a26edc966abfcc4f89e6a8a38049c937",
+      "bytes": 6249677,
+      "notes": "Copied from ebe55d0 with the one-line null-instance guard in the helmet Graph fitView callback; this build exposes createBiRuntime({runtimeKey}), setTemplateRegistry and updateComponentMeta. Upstream metadata is unchanged except for that guard."
     },
     {
       "file": "pro-ui.min.css",
