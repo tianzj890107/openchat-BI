@@ -8,10 +8,10 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
     if(!response.ok){
       const message=typeof value.detail==='string'?value.detail:'完整看板更新失败';
       const error=new Error(message);error.status=response.status;
-      // A mismatched background snapshot keeps the live charts and saved AI
-      // cards untouched. It is not a page-data failure and must not replace
-      // the visible analysis timestamp with a host-generated error banner.
-      error.backgroundOnly=path==='/page'&&response.status===422&&/图表与AI的数据版本不一致/.test(message);
+      // Whole-page publication is a background merge attempt. Its validation
+      // rejection keeps the live charts and saved AI cards untouched and must
+      // not replace the visible analysis timestamp with a host error banner.
+      error.backgroundOnly=path==='/page';
       throw error;
     }
     return value;
