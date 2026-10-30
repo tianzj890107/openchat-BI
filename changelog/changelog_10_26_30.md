@@ -465,3 +465,12 @@
 - 将现有执行循环提取到 `bi_agent.runtime.session.AgentSession`，工作台和 Cockpit main 路线使用同一实现；旧 WebSession 导入保持模块级兼容。
 - 纳入 Process360 接收人配置说明和测试示例匿名化；保留原主目录独有资料，管理清单记录文件指纹。
 - 新增隔离运行时 spec，明确 MCP 基础工具与未来委托任务入口的边界。
+
+### 2026-10-30 MCP 委托任务接入共享 Runtime
+
+- 新增 `/api/mcp/tasks` 的提交、分页查询和协作取消工具，复用工作台 AgentSession、数据源装配、全局 admission 与 turn 生命周期。
+- 有界任务队列、SQLite 状态与事件、私有任务 token、单进程存储所有权及重启中断标记；取消保留结果，不自动重放。
+- 后台任务禁用派发和任意 Shell/文件写工具，服务端校验白名单；需要澄清时返回 needs_input，保留既有浏览器会话。
+- 基础工具 MCP 与 Cockpit 调度发布保持原接口；未启动、重启或退役任何现有服务。
+
+- 本轮验证：全量 1757 passed、37 skipped、1022 subtests passed；补充排队取消与终态测试后定向回归通过；录制 provider 回放 122/122，通过指标之外仍有未测量项，不作为线上发布验收。

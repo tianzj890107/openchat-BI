@@ -1433,7 +1433,8 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
                      get_cwd: Callable[[], str],
                      executor_factory: Callable[[Any], dict[str, Executor]] | None = None,
                      exposed_tools: tuple[str, ...] | None = None,
-                     request_principal: Callable[[Request], dict[str, Any]] | None = None) -> APIRouter:
+                     request_principal: Callable[[Request], dict[str, Any]] | None = None,
+                     task_service_factory: Callable[[], Any] | None = None) -> APIRouter:
     def make_runtime(tools: tuple[str, ...] | None) -> McpRuntime:
         return McpRuntime(
             get_source=get_source,
@@ -1728,6 +1729,22 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
             raise HTTPException(400, "Mcp-Session-Id header is required")
         rt.delete_session(session_id)
         return Response(status_code=204)
+
+    if task_service_factory is not None:
+        from .task_mcp import TaskMcpRuntime
+        task_runtime = TaskMcpRuntime(task_service_factory)
+
+        @router.post("/api/mcp/tasks")
+        async def task_mcp_post(request: Request):
+            return await handle_post(request, task_runtime)
+
+        @router.delete("/api/mcp/tasks")
+        def task_mcp_delete(request: Request):
+            return handle_delete(request, task_runtime)
+
+        @router.get("/api/mcp/tasks")
+        def task_mcp_get():
+            return Response(status_code=405, headers={"Allow": "POST, DELETE"})
 
     @router.post("/api/mcp")
     async def mcp_post(request: Request):

@@ -1873,6 +1873,8 @@ class AgentSession:
         the per-tool timeout and always returns a structured outcome.
         """
         def invoke() -> str:
+            if getattr(self, "enforce_tool_allowlist", False) and name not in (self.allowed_tools or []):
+                raise PermissionError("委托分析禁止执行未授权工具")
             if "Cockpit-DashboardQuery" in self._tool_executors and name not in (self.allowed_tools or []):
                 raise PermissionError("看板分析禁止调用未绑定的工具或其他数据源")
             executor = self._tool_executors.get(name)

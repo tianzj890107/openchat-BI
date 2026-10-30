@@ -3989,10 +3989,72 @@ def _build_report_session(
 # mounted last so every helper above is defined; no circular import is needed.
 from .mcp_endpoint import build_mcp_router  # noqa: E402
 
+_analysis_task_service = None
+_analysis_task_service_lock = threading.RLock()
+
+
+def _delegated_analysis_events(task_id, question, cancel):
+    # A task may never attach to a browser's conversation or override its source.
+    key = "delegated-" + task_id
+    session = None
+    try:
+        session = _ensure_session(key)
+        # Delegation is analysis-only: write actions require a separate user click.
+        from open_claude.tools import get_filtered_tool_schemas
+        forbidden = {"RiskItemCreate", "TaskOrderCreate", "Bash", "Write", "Edit", "Skill"}
+        allowed = session.allowed_tools
+        if allowed is None:
+            allowed = [tool["name"] for tool in get_filtered_tool_schemas()]
+        session.set_tools_override([name for name in allowed if name not in forbidden])
+        session.enforce_tool_allowlist = True
+        slot, lease, turn_id, ticket, _ = _begin_turn(
+            "data", key, cancel_event=cancel,
+            principal_session_id="delegated-analysis",
+        )
+        with _turn_execution_scope(session, slot, lease, turn_id, ticket, cancel):
+            for event in _annotate_events(session.generate_turn(question), turn_id=turn_id, generation=lease.generation):
+                yield event
+            if session.pending_tool_use_id:
+                yield {"type": "needs_input", "message": "分析需要用户补充信息；请根据澄清内容重新提交问题。"}
+    finally:
+        with STATE.registry_lock:
+            if STATE.sessions.get(key) is session:
+                STATE.sessions.pop(key, None)
+            STATE.source_contexts.pop(key, None)
+
+
+def _get_analysis_task_service():
+    global _analysis_task_service
+    from ..runtime.tasks import TaskService
+    with _analysis_task_service_lock:
+        if _analysis_task_service is None:
+            if not STATE.cwd or STATE.agent_def is None:
+                raise HTTPException(503, "Analytics 尚未配置")
+            _analysis_task_service = TaskService(
+                Path(STATE.cwd) / "dataset" / "analysis_tasks" / "tasks.sqlite3",
+                _delegated_analysis_events,
+            )
+            _analysis_task_service.cwd = STATE.cwd
+        return _analysis_task_service
+
+
+def _close_analysis_task_service():
+    global _analysis_task_service
+    with _analysis_task_service_lock:
+        service = _analysis_task_service
+        _analysis_task_service = None
+    if service is not None:
+        service.close()
+
+
+app.router.add_event_handler("shutdown", _close_analysis_task_service)
+
+
 app.include_router(build_mcp_router(
     get_source=lambda: _source_for_session(None),
     build_doris=_doris_http_conn,
     get_cwd=lambda: STATE.cwd or os.getcwd(),
+    task_service_factory=_get_analysis_task_service,
 ))
 
 

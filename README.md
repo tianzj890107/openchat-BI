@@ -317,3 +317,19 @@ Node 子进程执行。
 ## License
 
 仓库中的 Open Claude Runtime 沿用 MIT License；eimosp-ontology-agentic-analytics 其他业务代码的授权范围请联系项目维护者确认。
+
+## 委托完整分析（共享 Runtime）
+
+工作台、Cockpit main 与 MCP 委托任务均使用 `bi_agent.runtime.session.AgentSession`。
+基础工具连接器仍是 `/api/mcp/general`、`/api/mcp/process360`，不启动内部 Agent 循环。
+新增 `/api/mcp/tasks` 专用于把完整问题委托给 Analytics 的工作台分析链：
+
+1. `AnalysisTaskSubmit(question)` 返回 `task_id`、私有 `task_token`。
+2. `AnalysisTaskGet(task_id, task_token, after?, limit?)` 分页获取状态和事件。
+3. `AnalysisTaskCancel(task_id, task_token)` 请求取消，不删除历史。
+
+`needs_input` 表示需要用户补充信息后重新提交；不是成功完成分析。
+任务接口禁用派发、Shell 和任意文件写入工具，不接受调用方指定浏览器会话或身份。
+任务状态保存在 `dataset/analysis_tasks/`，容器部署时需单独持久化；一个数据库只允许
+一个进程拥有，第二个所有者会拒绝启动任务管理器。重启后未完成任务标记为 `interrupted`，
+不自动重放。部署和旧服务退役须等待独立验收，不因代码合并自动执行。
