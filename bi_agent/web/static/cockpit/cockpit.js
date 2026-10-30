@@ -1323,12 +1323,15 @@
               try {
                 await client.ready();await new Promise(r=>setTimeout(r,500));
                 if(token!==pageEpoch||client!==liveDataClient)return;
-                const snapshot=await pageCache.publish(client,items,uiScope);
+                const snapshot=await pageCache.publish(client,items,uiScope,undefined,true);
                 if(snapshot&&token===pageEpoch){fullSnapshot=snapshot;Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,error:''});scheduleStatusPoll();}
               }catch(cause){
                 if(token!==pageEpoch)return;
-                if(cause.backgroundOnly)Object.assign(pageState,{error:'',refreshing:false,updateStatus:'waiting'});
-                else pageState.error=cause.message||'未形成完整看板';
+                // Automatic page merging is optional. A rejected or incomplete
+                // merge keeps the live charts and published cards unchanged;
+                // explicit user refreshes still surface their own errors.
+                console.debug('[cockpit-page-publish]',cause?.message||cause);
+                Object.assign(pageState,{error:'',refreshing:false,updateStatus:'waiting'});
               }
               finally{publishing=false;}
             },600);

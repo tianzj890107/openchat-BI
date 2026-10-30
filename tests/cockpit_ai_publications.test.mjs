@@ -58,6 +58,6 @@ test('helmet node deep links pass the ProUI path object', async () => {
 
 test('background-only page snapshot rejection does not become a load error', async () => {
   const source = await readFile(new URL('../bi_agent/web/static/cockpit/cockpit.js', import.meta.url),'utf8');
-  assert.match(source,/cause\.backgroundOnly/);
-  assert.match(source,/updateStatus:'waiting'/);
+  assert.match(source,/pageCache\.publish\(client,items,uiScope,undefined,true\)/);
+  assert.match(source,/\[cockpit-page-publish\][\s\S]{0,220}error:'',refreshing:false,updateStatus:'waiting'/);
 });

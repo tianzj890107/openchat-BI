@@ -82,4 +82,6 @@ test('background publication updates replace cards in place instead of remountin
   assert.match(source, /liveDataClient\.applySnapshot\?\.\(snapshot\.entries\|\|\[\]\)/)
   assert.match(source, /rawRuntime\.setComponentData\(component\.id,value,path\)/)
   assert.match(source, /kind:'tab',containerId:tabs\.id,tabId:tab,templateId/)
+  assert.match(source, /pageCache\.publish\(client,items,uiScope,undefined,true\)/)
+  assert.match(source, /\[cockpit-page-publish\][\s\S]{0,220}error:'',refreshing:false,updateStatus:'waiting'/)
 })

@@ -2,7 +2,7 @@
 export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=()=>{},onState=()=>{},request=fetch,pause=ms=>new Promise(r=>setTimeout(r,ms))}) {
   let generation=0, pending=null;
   const current=token=>token===generation;
-  async function json(path,body) {
+  async function json(path,body,{backgroundOnly=false}={}) {
     const response=await request(apiBase+path,{headers:{Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},...(body?{method:'POST',body:JSON.stringify(body)}:{})});
     let value;try{value=await response.json();}catch{throw new Error('完整看板响应无效');}
     if(!response.ok){
@@ -11,7 +11,7 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
       // Whole-page publication is a background merge attempt. Its validation
       // rejection keeps the live charts and saved AI cards untouched and must
       // not replace the visible analysis timestamp with a host error banner.
-      error.backgroundOnly=path==='/page';
+      error.backgroundOnly=backgroundOnly;
       throw error;
     }
     return value;
@@ -32,10 +32,10 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
     const query=new URLSearchParams({id:String(id),page});
     return json('/publications/cards?'+query.toString());
   }
-  async function publish(client,items,uiScope,token=generation) {
+  async function publish(client,items,uiScope,token=generation,backgroundOnly=false) {
     await client.ready();if(!current(token))return null;
     const entries=client.entries();
-    const value=await json('/page',{id:Number(id),page,uiScope,apReceiptIds:entries.map(e=>e.receiptId),analysisIds:Object.fromEntries(Object.entries(items).map(([k,v])=>[k,v.id]))});
+    const value=await json('/page',{id:Number(id),page,uiScope,apReceiptIds:entries.map(e=>e.receiptId),analysisIds:Object.fromEntries(Object.entries(items).map(([k,v])=>[k,v.id]))},{backgroundOnly});
     if(!current(token))return null;
     if(value.accepted===false){const error=new Error('更新已被较新的完整看板取代');error.backgroundOnly=true;throw error;}
     return value.snapshot;

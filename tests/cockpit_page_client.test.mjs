@@ -39,18 +39,14 @@ test('missing or partial card contract cannot publish a mixed page',async()=>{
  await client.refresh(snapshot);assert.equal(shown.length,0);assert.match(states.find(s=>s.error)?.error,/未完整交付/);
 });
 
-for(const detail of ['图表与AI的数据版本不一致，保留上次完整版本','AI插槽未完整交付，保留上次完整版本']){
- test('a rejected background snapshot does not surface as a page load failure: '+detail,async()=>{
-  const {client,shown,states}=setup({request:async(path,opts)=>{
-   if(path.endsWith('/page'))return {ok:false,status:422,json:async()=>({detail})};
-   const body=JSON.parse(opts.body);return ok({cached:card(body.stage),dataFingerprint:'new'});
-  }});
-  await client.refresh(snapshot);
-  assert.equal(shown.length,0);
-  assert.equal(states.filter(state=>'error' in state).at(-1)?.error,'');
-  assert.equal(states.some(state=>state.error),false);
- });
-}
+test('only an explicitly background page publication is marked silent',async()=>{
+ const {client}=setup({request:async path=>{
+  if(path.endsWith('/page'))return {ok:false,status:422,json:async()=>({detail:'AI插槽未完整交付，保留上次完整版本'})};
+  return ok({});
+ }});
+ await assert.rejects(client.publish(fresh(),{},'default',undefined,true),error=>error.backgroundOnly===true);
+ await assert.rejects(client.publish(fresh(),{},'default'),error=>error.backgroundOnly===false);
+});
 
 test('new filter lookup is exact and wrong-role snapshots are rejected',async()=>{
  const {client}=setup({request:async()=>ok({snapshot:{...snapshot,id:2}})});
