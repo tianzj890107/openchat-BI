@@ -62,7 +62,13 @@ export function useInsight(props, emit) {
   const period = computed(() => props.analysis?.context?.engine==='main' ? '' : props.context?.period || props.analysis?.context?.period || '')
   const department = computed(() => props.analysis?.context?.engine==='main' ? '当前筛选范围' : props.context?.department || props.analysis?.context?.department || '')
   const contextLine = computed(() => [stageName.value, period.value, department.value].filter(Boolean).join(' · '))
-  const evidenceCount = computed(() => evidence.value.length)
+  // Evidence bundles repeat the same record under facts/records/evidence.
+  // Count distinct ids so one record is never presented as two findings.
+  const evidenceCount = computed(() => {
+    const ids = new Set()
+    for (const item of evidence.value) if (item && item.id) ids.add(String(item.id))
+    return ids.size || evidence.value.length
+  })
   const updatedAt = computed(() => {
     const timestamp = Number(props.analysis?.updatedAt)
     if (!Number.isFinite(timestamp)) return ''

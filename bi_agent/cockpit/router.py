@@ -464,9 +464,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         for slot in slot_registry():
             item = stage_items.get(slot['stage'])
             update = refresh_for(slot, item)
-            delivery = card_delivery_state(item)
-            status = 'ready' if delivery['renderable'] else 'missing'
             payload = project_card(item, slot['slotId'])
+            delivery = card_delivery_state(payload, slot['slotId'])
+            status = 'ready' if delivery['renderable'] else 'missing'
             slots[slot['slotId']] = dict(
                 **slot,
                 status=status,

@@ -1,10 +1,10 @@
 {
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
-  "commit": "50cdc94615dc25dafe012f70ce4bb815f4708409",
-  "importedAt": "2026-10-29",
+  "commit": "cd8d71fd6278dcf9630043d00bb95e62d97b347a",
+  "importedAt": "2026-10-30",
   "mode": "active-runtime-adapter",
-  "notes": "Re-synced from iba-demo feature/demo_1021 at 50cdc94: dashboard/template configs, activate rules, the adjusted order insight placements and the three order DataTable slots are copied from upstream. Their mock-only reason/action/scope calls are replaced by the cockpit ai-tables API, which reads AP facts and merges only evidence-linked structured card fields. The BI UMD keeps the local null-instance guard. The cockpit supplies only the delivered single-query adapter and does not inject the batch adapter. Host adaptation: the composite filter keeps the default period YWLN_D044=2025-10 because the page scope and published cards are bound to that period.",
+  "notes": "Re-synced from iba-demo feature/demo_1021 at cd8d71f: dashboard/template configs, activate rules, the three order DataTable field/filter updates and the updated BI UMD are copied from upstream. Their mock-only reason/action/scope calls remain replaced by the cockpit ai-tables API, which reads AP facts and merges only evidence-linked structured card fields. The BI UMD keeps the local null-instance guard. The cockpit supplies only the delivered single-query adapter and does not inject the batch adapter. Host adaptation: the composite filter keeps the default period YWLN_D044=2025-10 because the page scope and published cards are bound to that period.",
   "rootComponents": 2,
   "templates": 13,
   "totalComponents": 142,
@@ -48,7 +48,7 @@
     },
     {
       "file": "template-registry.json",
-      "sha256": "213efa959760890f36b2c884ef1cb410b6819a52ef7b5e5d385d81dba7bc3185"
+      "sha256": "026410aafc37050a063aa2445e6142aa1115d2e101c8c2c61929a440c2f87499"
     },
     {
       "file": "insights.js",
@@ -71,5 +71,5 @@
       "description": "Upstream child definition is absent; runtime reports the gap and keeps the original position empty."
     }
   ],
-  "activatedAt": "2026-10-29"
+  "activatedAt": "2026-10-30"
 }

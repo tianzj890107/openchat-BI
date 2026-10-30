@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pydantic import Field, ValidationError
 from .agent import Result, Cause, Recommendation, validate_result
-from .delivery import validate_reasoning
+from .delivery import SLOT_SPECS, evidence_count as distinct_evidence_count, validate_reasoning
 
 CONTRACT='cockpit-cards-v1'
 TOOL='CockpitDeliverCards'
@@ -26,12 +26,12 @@ def valid_card(item) -> bool:
                for key in ('causes', 'recommendations', 'limitations'))
 
 
-def card_delivery_state(item) -> dict:
-    """Separate renderability from evidence/content completeness.
+def card_delivery_state(item, slot=None) -> dict:
+    """Separate renderability from evidence/content completeness per slot.
 
-    A persisted card may be safe to render while still being a limited
-    analysis.  The publication status must expose that difference instead of
-    treating ``status=ready`` as proof that the business answer is complete.
+    A status-only card (quotation, bid status, table row positioning) does not
+    owe a root cause or an action.  Completeness follows the slot contract and
+    counts each evidence id once, even when facts and records overlap.
     """
     if not isinstance(item, dict) or not item:
         return dict(status="missing", renderable=False, complete=False,
@@ -41,15 +41,18 @@ def card_delivery_state(item) -> dict:
                     evidenceCount=0, gaps=["CARD_CONTRACT_INVALID"])
     result = item.get("result") or {}
     evidence = item.get("evidence") or {}
-    evidence_count = sum(len(evidence.get(key) or []) for key in ("facts", "records", "evidence"))
+    evidence_count = distinct_evidence_count(evidence)
+    spec = SLOT_SPECS.get(slot or "") or {}
+    causes_required = spec.get("causes_required", True)
+    actions_required = spec.get("actions_required", False)
     gaps = []
     if str(item.get("status") or "") != "completed":
         gaps.append("ANALYSIS_LIMITED")
     if evidence_count == 0:
         gaps.append("EVIDENCE_EMPTY")
-    if not result.get("causes"):
+    if causes_required and not result.get("causes"):
         gaps.append("CAUSES_EMPTY")
-    if not result.get("recommendations"):
+    if actions_required and not result.get("recommendations"):
         gaps.append("ACTION_EMPTY")
     complete = not gaps
     return dict(status="complete" if complete else "limited", renderable=True,

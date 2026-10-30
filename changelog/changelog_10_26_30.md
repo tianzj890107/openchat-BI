@@ -473,4 +473,231 @@
 - 后台任务禁用派发和任意 Shell/文件写工具，服务端校验白名单；需要澄清时返回 needs_input，保留既有浏览器会话。
 - 基础工具 MCP 与 Cockpit 调度发布保持原接口；未启动、重启或退役任何现有服务。
 
-- 本轮验证：全量 1757 passed、37 skipped、1022 subtests passed；补充排队取消与终态测试后定向回归通过；录制 provider 回放 122/122，通过指标之外仍有未测量项，不作为线上发布验收。
+
+### 2026-10-29 14:40 · Cockpit 同步 iba-demo 97f4e28 与新版 ProUI
+
+- 用户可见变化：看板 ProUI 运行包与看板/子模板配置同步到 `iba-demo feature/demo_1021`
+  `97f4e28`（上一版为 `d01c08a`）。组件数量与类型保持 2 个根组件、13 个模板、145 个组件，
+  AI 插槽仍为 12 个；筛选标签由“时间”改为上游的“日期”，其余布局与交互按上游配置渲染。
+- 运行包：`vendor/pro-bi-ui.min.js` 更新为上游新 UMD（6,197,235 字节，sha256 `fc21219c…`），
+  `index.html` 的缓存参数同步改为 `?v=fc21219c`；上游仍未包含头盔图销毁后 `fitView` 的
+  空实例保护，同步后重新补回这一行守卫。`pro-ui.min.css` 与 Vue 运行时未变化。
+- 配置同步：`metadata/iba-demo-1021/components.json`、`template-registry.json` 按上游原样更新，
+  并重新生成 `metadata/runtime.json`；`activate-rules.json`、`insights.js` 与
+  `insight-components/` 上游未变，保留现有的宿主适配（例如任务令按钮的调整）。
+- 宿主适配：组合筛选器默认期间继续保留 `YWLN_D044=2025-10`。上游把该默认值清空，若直接跟随会让
+  看板默认查询失去期间约束，与页面范围和已发布卡片不一致，因此在同步后重新写回并记录在
+  `source.json`、`vendor/resources.json`。
+- 主要文件：`bi_agent/web/static/cockpit/vendor/pro-bi-ui.min.js`、`vendor/resources.json`、
+  `index.html`、`metadata/iba-demo-1021/{components,template-registry,source}.json`、
+  `metadata/runtime.json`、`tests/test_cockpit_metadata.py`、`tests/test_cockpit_resource_contract.py`。
+- 验证：Cockpit 聚焦 137 项 Python、41 项 JS 测试通过；UMD `node --check` 通过；资源清单
+  哈希、metadata 文件哈希与 `source.json` 一致；静态站资源版本由 `3abcfd47…` 变为
+  `bc0eb9fd3a578bb113eb`。
+
+### 2026-10-29 17:00 · Cockpit 全槽位预热、Tab 常驻与 AP 慢查询调度收口
+
+- 用户可见变化：三个页面配置的 12 个 AI 插槽会按业务环节在服务端预热并保存；运营页和
+  穿透页即使没有整页快照，也会进入维护队列。打开或刷新页面直接返回全部已保存卡片，未访问过
+  的 Tab 也能立即展示已有结果，不再依赖浏览器先打开一次。
+- 启动与切换：`/api/cockpit/startup` 增加 `cardsByPage`、并集 `cards` 和 `cardsVersion`；
+  三个顶部 Tab 改为组件内 `setActiveTab` 加 `history.pushState`/`popstate`，只切换当前页面、
+  卡片元数据和轮询范围，不重建 SDK、数据客户端或已加载的看板实例。
+- AP 调度：前端 AP 并发从 2 调到 3，按 `IntersectionObserver` 的真实可见环节优先，重查询最多
+  占 2 个槽位，轻查询始终保留一个执行位；同一环节的卡片共享查询，不因多个 AI 插槽重复取数。
+- AI 等待：分析等待从“整页 AP 全部结束”收敛为当前业务环节的查询；一个无关图表失败或变慢，
+  不再阻断已有足够证据的可见卡片。后台刷新只回读当前环节的查询，避免历史上下文带入同页其他环节。
+- 查询复用与超时：页面请求和后台刷新统一经过 `query_receipt` 的共享 AP 缓存/合并层，缓存键
+  包含身份、连接、查询和存储；共享查询的跟随者等待预算由网关超时加余量决定，不再固定 35 秒。
+  后台调度保持单工作线程，页面并发预算仍可用满；后台沿用同一结果，不再走独立的 AP 快路径。
+- 计时：单条 AP 请求记录前端排队 `clientQueueMs`、服务端排队 `backendQueueMs`、上游执行
+  `upstreamMs`、响应处理 `clientResponseMs`，并在 `/data/query` 返回 `receiptWaitMs` 与
+  `serverTotalMs`，可在浏览器调试日志中按查询环节定位慢点。
+- 主要文件：`bi_agent/cockpit/targets.py`、`refresh.py`、`router.py`、`store.py`、
+  `page_cache.py`、`ap_gateway.py`、`bi_agent/web/static/cockpit/cockpit.js`、
+  `data-client.js`、`tests/test_cockpit_card_preheat.py`、`test_cockpit_page_cache.py`、
+  `cockpit_data_client.test.mjs`、`cockpit_tab_navigation.test.mjs`。
+- 验证：Cockpit 聚焦回归 165 项 Python（含 14 个子用例）、53 项 JS 通过；`node --check`
+  与 `git diff --check` 通过。覆盖全部插槽映射、无整页快照预热、启动返回跨页卡片、未变化不重复
+  调用模型、Tab 原地切换、可见环节插队、重查询隔离、当前环节等待和共享跟随者长超时。
+- 边界：本轮只提交并推送临时分支，未部署、未创建正式版本；上游慢 SQL、未登记指标口径和真实
+  伏羲任务联调仍按原范围单独验收。
+
+### 2026-10-29 17:06 · Cockpit 首屏骨架与启动依赖解耦
+
+- 用户可见变化：首屏不再同时出现静态“正在加载经营看板”和 Vue 白框。Vue 接管前只显示一层
+  按 KPI、图表区域排布的统一骨架；Vue 挂载后立即移除静态骨架，不再等全部初始化结束。
+- 启动拆分：布局配置只并行读取 `runtime.json`、`GET /engines` 和 `GET /data/config`，不再等待
+  `/startup`。真实看板布局取得配置后立即挂载，图表继续使用组件原有 loading，AI 插槽使用现有
+  分析骨架；历史卡片由挂载后的 `GET /publications/cards` 独立刷新，页面快照与更新状态由
+  发布轮询独立补充，任一历史请求变慢都不会挡住整张看板。
+- Tab 数据：切换 Tab 时只读取目标页已保存卡片，不再等待完整 `/startup`；页面快照和更新状态
+  在后台由发布轮询补充，均不阻塞布局。
+- 错误与重试：配置、Vue 或 ProUI 资源加载失败时显示明确错误和“重新加载”按钮，不再无限显示
+  loading；`GET /publications/cards` 同时返回 `cardsVersion`，前端命中后不再重复拉取相同卡片。
+- 主要文件：`bi_agent/web/static/cockpit/index.html`、`cockpit.css`、`cockpit.js`、
+  `bi_agent/cockpit/router.py`、`tests/cockpit_loading_shell.test.mjs`、
+  `tests/cockpit_tab_navigation.test.mjs`、`tests/test_cockpit_card_preheat.py`。
+- 验证：Cockpit 聚焦回归 165 项 Python（含 14 个子用例）、58 项 JS 通过；`node --check`
+  与 `git diff --check` 通过。新增用例覆盖单一首屏骨架、配置不等 `/startup`、静态骨架及时移除、
+  挂载后独立加载历史卡片与状态、失败重试和卡片版本返回。
+- 边界：本轮只提交并推送临时分支，未部署；上游 SQL、指标口径和真实业务数据仍需单独验收。
+
+### 2026-10-29 17:23（2026-10-30 17:35 更新）· Cockpit 同步 iba-demo cd8d71f 与三张订单 DataTable
+
+- 用户可见变化：同步最新 ProUI/看板配置后，订单接收节点新增「明星产品订单电量及占比」
+  与「受影响订单清单」，发货节点新增「客户与超期订单」。三张表复用上游 `ProDataTable`
+  的布局、列宽和分页，不再在宿主另写表格样式。四处置顶跳转动作的“3项风险”文案已随上游
+  更新为“查看风险”，模板、报价图和商机搜索配置同步到最新版。
+- 组件同步：`iba-demo feature/demo_1021` 更新到 `cd8d71f`，组件数保持 142，AI 插槽保持
+  15 个；其中 103 个组件声明 AP、39 个保留上游 mock。运营页插槽数 5，穿透页 10。
+  `activate-rules.json` 和 CSS 未变化；UMD 更新到新版并继续保留本地头盔图 `fitView`
+  空实例保护，当前资源哈希为 `57a370de...`。
+- 订单表格：明星产品表对齐新版 AP 字段，展示系列、去年参考电量、订单接收电量、占全部订单
+  电量和已登记口径；受影响订单表展示 AP 事实及原因、责任动作，并固定筛选变更/取消订单；
+  超期订单表展示 AP 事实及主因和具体根因，并固定筛选超期天数大于 0 的订单。口径由服务端
+  按已登记系列映射生成，不让模型临场编造指标定义。
+- 数据链路：上游三张表的 `/api/mock/star-product-scope`、`/api/mock/affected-order-extra`、
+  `/api/mock/overdue-order-root-cause` 不进入交付包，统一改走
+  `POST /api/cockpit/ai-tables/{tableKey}/query`。主服务按固定字段白名单生成 AP 单查，
+  在服务端再次合并两张表各自的固定预过滤条件，前端漏传也不会扩大数据范围；事实列直接
+  使用 AP 返回，原因、责任动作和根因只从当前范围已发布且通过交付校验的环节卡片中，按
+  `evidenceIds` 对应记录里实际出现的订单号合并。表格映射版本升级为 `ai-tables-v3`。
+- 证据边界：筛选项只允许 `AND`，字段和分页有白名单及上限；未匹配到订单证据时显示
+  “证据不足，未确认根因”或“待核实原因后明确责任动作”，不借用其他订单结论，也不把
+  页面文字或模型猜测包装成已验证根因。
+- 已知缺口：商机模板原有的 `share-bar-79fsomq9` 子组件缺项仍保留为空位并记录
+  `CHILD_DEFINITION_MISSING`；三张订单表的插槽落点均已命中。
+- 主要文件：`bi_agent/cockpit/ai_tables.py`、`router.py`、`targets.py`、
+  `bi_agent/web/static/cockpit/cockpit.js`、`insight-components/table-runtime.js`、
+  三张订单表插槽目录、`metadata/iba-demo-1021/*`、`metadata/runtime.json`、
+  `index.html`、`vendor/{pro-bi-ui.min.js,resources.json}`、
+  `tests/test_cockpit_ai_tables.py`、`tests/cockpit_ai_tables.test.mjs`。
+- 验证：Cockpit 相关 Python 219 项、Node 看板测试 82 项全部通过；`node --check` 与
+  `git diff --check` 通过。覆盖证据关联合并、未知订单不借用原因、明星产品口径、
+  未审核字段和 `OR` 筛选阻断、固定预过滤、字段哈希与 runtime 可复现、三张表不引用 mock 路径。
+- 边界：本轮完成代码与静态配置验证，未部署，未用真实业务数据验收三张表的 AP 返回、分页、
+  排序或页面视觉效果，也未发送风险/待办。
+
+### 2026-10-29 17:55 · 修复 AI 插槽渲染作用域与后台刷新抢占首屏 AP
+
+- 用户可见变化：修复新版页面中 AI 插槽只显示空占位、模块未完成加载的问题。根因是
+  `CockpitInsight` 在渲染时读取了外层应用 setup 的 `page` 变量，实际作用域内不存在，
+  触发 `ReferenceError: page is not defined`。当前页面现通过显式 `page` prop 传入，三个
+  Tab 的插槽都能继续加载 registry、shared 和各自组件，不再因组件异常停在空占位。
+- 首屏 AP：后台定时刷新默认从 3 个范围并行收敛为 1 个。此前三个后台范围可同时占用三个
+  上游 AP 槽位，用户打开页面时 26 个图表查询只剩一个槽位可用，表现为整页长时间 loading。
+  现在后台最多占一个槽位，至少保留三个槽位给页面请求；预热心跳仍按 15 分钟间隔执行。
+- 配置：新增 `COCKPIT_REFRESH_SCOPE_LIMIT`，默认 `1`；需要更高预热吞吐时可显式调大，
+  但会与页面 AP 查询共享 `COCKPIT_AP_CONCURRENCY=4` 的槽位。
+- 主要文件：`bi_agent/web/static/cockpit/cockpit.js`、`index.html`、
+  `bi_agent/cockpit/refresh.py`、`router.py`、`tests/cockpit_insight_runtime.test.mjs`、
+  `tests/test_cockpit_refresh.py`。
+- 验证：Cockpit 聚焦回归 170 项 Python（含 14 个子用例）、62 项 JS 通过；`node --check`
+  与 `git diff --check` 通过。新增用例锁住插槽 page prop 传递和后台单范围默认值。
+
+### 2026-10-29 18:29 · Cockpit 15 个 AI 插槽独立发布与稳定读取
+
+- 用户可见变化：Cockpit 启动后单独读取全部 15 个 AI 插槽的已发布结果，不再等待指标、
+  图表或 AP 查询。已有结果的插槽直接展示；没有结果的插槽明确标记为 `missing`，不会用
+  空内容冒充完成。切换三个 Tab、切换运营节点、图表/AP 失败或后台刷新期间，已加载卡片
+  保持可见，不再退回 loading。
+- 固定注册表：以 `insights.json` 的 15 个实际 `slotId` 为准，统一登记
+  `slotId/page/stage/outputType/contractVersion`。读取接口、预热调度和验收测试共用同一张
+  注册表；同一业务环节仍只分析一次，订单接收等跨页共享环节不会重复调用模型。
+- 独立读取接口：新增 `GET /api/cockpit/ai-publications?id=1&uiScope=default`，只访问持久化
+  发布记录，不触发 AP、`ensureAnalysis()` 或页面取数。响应返回
+  `expectedCount/readyCount/missingCount/updatingCount`、固定 slot 映射、每个插槽的
+  `status/generatedAt/dataAsOf/refreshStatus/payload`，并按内容生成轮询版本。
+- 服务端预热：缺失插槽立即登记补齐任务；无历史访问计划时，从交付包内的组件查询快照
+  生成对应环节查询计划，再重新取数、执行分析与卡片契约校验。成功结果持久化，失败只更新
+  错误状态并保留上一版；只有通过 `cockpit-cards-v1` 和摘要/原因/建议/限制结构校验的卡片
+  才能计为 ready。
+- 前端状态：新增 `ai-publication-client.js` 与页面外层 `aiPublicationStore`，在启动阶段
+  并行读取全部 slot，组件挂载后按 `slotId` 获取结果；命中已发布卡片时跳过
+  `ensureAnalysis()`。筛选口径真实变化时保留旧卡片并标注“以下仍为上次分析”，只允许最新
+  范围结果替换展示内容；后台新版本由轻量轮询自动回填，不重建看板。
+- 主要文件：`bi_agent/cockpit/targets.py`、`cards.py`、`refresh.py`、`router.py`、
+  `bi_agent/web/static/cockpit/ai-publication-client.js`、`cockpit.js`、`index.html`、
+  `tests/test_cockpit_slot_publications.py`、`tests/cockpit_ai_publications.test.mjs`。
+- 验证：Cockpit 聚焦回归 169 项 Python、67 项 Node 测试通过；`node --check` 与
+  `git diff --check` 通过。覆盖 15 slot 注册表、全部 ready/missing 计数、无 AP/模型读取、
+  旧卡片保留、缺失不冒充完成、共享环节只预热一次及真实查询计划补位。
+- 边界：本轮只提交并推送临时分支，未部署；线上已有卡片是否全部可读需部署后按两个角色、
+  三个页面复核，缺失项由服务端预热继续补齐。
+
+### 2026-10-29 18:48 · 修复 Cockpit 初始化筛选触发重复 loading
+
+- 用户可见变化：修复打开页面或切换节点后看板反复重建、图表长期停在 loading 的问题。
+  ProUI 初始化时自动写入的“年度/月度”等默认筛选不再被宿主误判为用户切换口径，不会因此
+  清空数据客户端并重新挂载整张看板；只有筛选控件上的真实用户操作才会触发新范围取数。
+- 幂等保护：同一页面、同一范围、同一完整快照版本重复返回时不再重装客户端或增加
+  `boardRevision`；快照缺失回调在同范围 30 秒内最多触发一次恢复，避免缺失查询形成自循环。
+  Tab 切回已加载页面继续复用原 SDK、数据客户端和缓存。
+- 加载终态：共享取数客户端明确失败时转为可重试的组件错误态，不再无限保留组件自身
+  `loading`；服务端尚未生成 AI 结果时，对应插槽显示“正在补充当前口径数据”并可重试，不再
+  永久显示 AI 分析骨架。
+- 主要文件：`bi_agent/web/static/cockpit/cockpit.js`、
+  `bi_agent/web/static/cockpit/data-client.js`、`tests/cockpit_data_client.test.mjs`、
+  `tests/cockpit_loading_shell.test.mjs`、`tests/cockpit_performance_preview.py`。
+- 验证：Cockpit 回归 169 项 Python、69 项 Node 测试通过；`node --check` 与
+  `git diff --check` 通过。隔离浏览器复测中，首屏稳定后 12 秒内无新增 AP 请求；切换
+  “月度”只触发一次范围更新；经营看板与运营页 Tab 往返无整页刷新、无残留 loading、无
+  JavaScript 异常。
+- 边界：本轮只修复宿主调度与加载状态，不修改上游 SQL、指标口径或 AP 数据；真实业务数据
+  仍需在上线后按三个页面和两种角色复核。
+
+### 2026-10-29 19:25 · 页面快照缺项改为静默实时取数
+
+- 用户可见变化：看板组件不再显示宿主产生的“当前范围没有完整缓存，正在重新取数”。页面快照
+  只作为加载快路径；某个组件查询不在快照内时，该查询直接走真实 AP 取数，组件继续使用自身
+  的加载与错误展示，不触发整页重建，也不向组件注入 Cockpit 自绘缓存错误。
+- 兼容边界：快照中已有的查询仍按原逻辑回放；缺少的查询独立实时读取，不改变当前筛选、指标
+  或结果凭据校验。
+- 主要文件：`bi_agent/web/static/cockpit/data-client.js`、`cockpit.js`、
+  `tests/cockpit_data_client.test.mjs`。
+- 验证：`node --test tests/cockpit_data_client.test.mjs` 31 项通过。
+
+### 2026-10-30 · 销售额与出货量共同分析独立取证
+
+- 共同问题插槽独立绑定 `combined`，不再展示发货卡片的同一分析。使用主服务原有路由、取证工具与交付校验，联合已保存的商机、订单、发货查询；匹配明确日期范围、角色、部门和连接，不额外调用 AP/PG，不改写凭据取数时间。
+- 增加默认范围显式预热入口 `/api/cockpit/combined/preheat`；仅启动共同分析，至少两个环节才生成。其他环节结果保留，共同分析不进入普通 SQL 预热队列；缺失证据继续披露，不将跨环节关联称为已确认根因。
+- 涉及 `combined.py`、查询投影、插槽注册与主服务提示；新增同口径合并、跨期间排除和身份隔离测试。
+- 上线验证：34 的 8765/8876 已部署 `c087a0c`；仅主动预热两个角色的共同分析插槽，分别为 117/118 条证据，其他卡片未清空或手动重算。两角色均 15 个插槽可渲染；浏览器拦截 AP 后共同分析显示正常、无 AI loading。58 项 Python、7 项前端测试通过。
+
+### 2026-10-30 · 报价 AI 插槽对齐运营头盔图状态
+
+- 报价概况仅消费 `YWLN_D021` 报价办理状态与 `YWLN_M0031` 报价电量，排除经营看板的红区报价单数与电芯占比；头盔图、组件包、元数据均未修改。
+- 展示由同源结构化查询记录聚合已完成、未完成及各状态电量，不再按 claim 标签或缺失 unit 推测；正常完成、逾期完成分列，缺失状态标为“未返回”，合法零值保留。
+- 增加只读冻结凭据的报价专用预热入口，仅更新两个角色的报价分析，不额外查询 AP/PG。56 项相关 Python、5 项前端验证通过。
+- 上线补齐报价发布压缩响应的状态/电量原始行；只保留该插槽需要的两个字段，避免发布结果缺少可聚合状态。两个角色仅报价分析 ID 更新，其他卡片及共同分析均保留；正式代码 `919c392`。补充 22 项凭据与压缩契约测试通过。
+
+### 2026-10-30 · 关闭已完成 AP 响应复用（默认不缓存）
+
+- 用户可见变化：同一查询再次发起时不再回放上一次已完成的 AP 响应，每次都重新向上游取数并生成新凭据；同一时刻重叠发出的相同查询仍合并为一次上游调用，避免重复 SQL，但不再有“上次结果”复用窗口。
+- 配置与实现：后端 `COCKPIT_AP_REUSE_SECONDS` 默认值由 `300` 改为 `0`，允许显式设置 `0`；前端 `DATA_REUSE_WINDOW_MS` 由 `5 * 60 * 1000` 改为 `0`。AI 发布卡片、历史快照与在途请求合并逻辑保持不变。
+- 主要文件：`bi_agent/cockpit/router.py`、`bi_agent/web/static/cockpit/data-client.js`、`tests/cockpit_data_client.test.mjs`、`tests/test_cockpit_ap_gateway.py`；提交 `37476f2`。
+- 验证：Python 42 项、Node 看板测试 82 项通过，`node --check`、`py_compile`、`git diff --check` 通过。线上 `8765` 连续两次相同查询 receipt `aed6f8e82312`／`524fe7cd7eec`，两次均 `cacheHit=false`、`follower=false`。
+- 上线：`8765` release `process360-cockpit-37476f2-20261030-no-ap-cache`，PID `3852987`，`/healthz` 200；`8876` assetVersion `b6628694318ccccd18f1`，`release.json` 指向提交 `37476f2`。`8876` 的 nginx 容器以 bind mount 解析 `site` 软链，切换软链后需重启容器（`10de73310da9`），已在重启后确认 HTTP 同时返回新 assetVersion 与 `DATA_REUSE_WINDOW_MS = 0`。
+- 回退：`8765` 旧 release `process360-cockpit-919c392-20261030-quote`；`8876` 备份 `backups/site-919c392-20261030-105250-pre`。历史 release、`.env`、`.venv`、共享 `dataset`、会话与用户数据均未覆盖或删除。
+
+### 2026-10-30 · 图表默认不再回放整页快照
+
+- 用户可见变化：打开或刷新看板时，图表数据默认逐条实时查询 AP，不再从服务端保存的整页快照直接回填；需要旧快路径时可显式使用 `?cache=1`。AI 已发布卡片与分析时间提示仍从发布结果读取，不走 AP。
+- 实现：`install()` 仅在 URL 带 `cache=1` 时把快照交给数据客户端，否则传 `null` 触发实时查询；`DATA_REUSE_WINDOW_MS=0` 与后端 `COCKPIT_AP_REUSE_SECONDS=0` 保持不变，重叠在途请求仍合并。
+- 主要文件：`bi_agent/web/static/cockpit/cockpit.js`；提交 `4c933e4`。
+- 验证：Node 看板测试全通过，`node --check` 通过；线上入口返回 `assetVersion=4dc6e0a2dda046f2c5bd`，`cockpit.js` 含 `cache=1` 分支。
+- 上线：`8876` 资源版本 `4dc6e0a2dda046f2c5bd`（`commit=4c933e4`），`site` 指向 `site-next-4c933e4-20261030-115044`，容器 `10de73310da9` 重启后生效；`8765` 后端代码未变（`37476f2`），`/healthz` 200。
+- 回退：`8876` 将 `site` 指回 `site-next-37476f2-20261030-105008` 并重启容器；更早版本备份 `backups/site-919c392-20261030-105250-pre`。历史 release、共享 `dataset` 与用户数据未改动。
+
+### 2026-10-30 · AI 插槽交付契约与推理校验
+
+- 新增逐插槽交付契约 `cockpit-delivery-v2`：同一环节分析按插槽问题分别适配，不再把通用摘要直接投放到所有位置。报价只交付状态概况；投标交付异常表现与排查方向；商机、订单交付结构定位；共同分析作为管理总览；超期与原因拆解在缺少逐单状态时只交付数据缺口与核查动作。
+- 新增并收紧推理校验：金额与电量混用比较、未验证的“取消/变更＋中标未签”集合相加、把异常表现/结构定位/数据缺口写成原因、目标口径冲突只藏在限制说明、验收写成“缺口不再扩大”，都会在交付时被拒绝并要求修正。交付投影会直接删除跨单位推断及由同一推断衍生的“取消变更量级有限”子句，不再只补免责声明；删除原因后引用它的建议同步剔除，避免悬空 `causeIds`。
+- 原因按 `[异常表现]`/`[结构定位]`/`[数据缺口]`/`[待验证假设]`/`[记录支持]` 标注并分层排序；建议统一为“建议措施”，责任角色标注待确认，期限标注建议值，验收补齐可检查的清单/对账要求。
+- 任务草稿、受影响订单/超期订单表格同步使用上述标注；发货状态缺失时不再复用出货目标缺口分析，订单接收卡在缺结构证据时明确披露“不能解释签单结构”。
+- 前端插槽优先使用服务端按插槽投影的卡片，文案与同一环节其他插槽分开；共享样式按 `kind` 展示原因层级。
+- 逐插槽完整性按职责验收：报价、投标状态、订单接收、表格和超期说明不强制要求原因或措施，报价概况不再因 `CAUSES_EMPTY`／`ACTION_EMPTY` 被判为内容不完整；证据条数按 id 去重，同一事实、记录和证据引用不重复计数。
+- 主要文件：`bi_agent/cockpit/delivery.py`、`cards.py`、`router.py`、`store.py`、`ai_tables.py`、`agent.py`、`main_service.py`、`cockpit.js`、`insight-components/shared.js`；新增 `tests/test_cockpit_delivery_contract.py`。
+- 验证：Cockpit 相关 Python 219 项、Node 看板测试 82 项通过，`git diff --check` 通过；使用线上已保存插槽重放，两个角色的共同分析均不再出现“难以解释”“不足以解释”“金额占比不足”“订单取消变更量级有限”和悬空 `signed-unsigned-scope`。
+- 上线：交付契约提交序列为 `012fd2a`、`d611a72`、`71a4da6`（分支 `bugfix/cockpit-disable-ap-reuse-cache`）。34 的 `8765` release `process360-cockpit-71a4da6-20261030-151759`（PID `763133`），`8876` assetVersion `f4b2cb70ffa2f8e87c77`、`commit=71a4da6`。两个角色均 15/15 插槽 ready，报价 `contentGaps` 仅 `ANALYSIS_LIMITED`，共同分析证据去重后为 117/118 条；总裁共同分析保留 5 条有依据的原因，分析员保留口径冲突、商机覆盖、客户结构 3 条。回滚使用 `process360-cockpit-d611a72-20261030-151355` 与 `site-next-012fd2a-20261030-151130`。
