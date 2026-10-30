@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from bi_agent.cockpit.cards import CONTRACT
+from bi_agent.cockpit.cards import CONTRACT, card_delivery_state
 from bi_agent.cockpit.delivery import (
     KIND_LABELS, SLOT_SPECS, checkable_acceptance, classify_cause,
     project_card, validate_reasoning,
@@ -153,6 +153,59 @@ def test_shipment_overdue_slots_do_not_reuse_target_gap_analysis():
 def test_order_sign_card_discloses_missing_signing_structure():
     projected = project_card(_card(), 'order-sign-summary')
     assert '不能解释签单结构' in projected['result']['summary']
+
+
+def test_unsupported_set_inference_is_removed_from_summary():
+    card = _card()
+    card['result']['summary'] = '订单取消/变更与中标未签的量级不足以解释该缺口。'
+    projected = project_card(card, 'sales-shipment-issues')
+    summary = projected['result']['summary']
+    assert '不足以解释' not in summary
+    assert '尚不能建立与出货缺口的对应关系' in summary
+
+
+def test_cross_unit_inference_is_removed_from_summary():
+    card = _card()
+    card['result']['summary'] = '变更取消金额占比不足 5%，难以解释出货量缺口。'
+    projected = project_card(card, 'sales-shipment-issues')
+    summary = projected['result']['summary']
+    assert '难以解释' not in summary
+    assert '金额与电量口径不同' in summary
+
+
+def test_actions_with_dangling_cause_references_are_dropped():
+    card = _card()
+    card['result']['recommendations'] = [dict(
+        id='r1', causeIds=['c1', 'signed-unsigned-scope'], action='核查订单',
+        ownerRole='运营负责人', deadlineDays=5, acceptance='形成核查清单')]
+    projected = project_card(card, 'sales-shipment-issues')
+    ids = {cause['id'] for cause in projected['result']['causes']}
+    for action in projected['result']['recommendations']:
+        assert set(action['causeIds']) <= ids
+
+
+def test_title_level_observation_and_data_quality_classification():
+    assert classify_cause(_cause(title='出货完成度低于目标',
+                                 description='该缺口影响了全年节奏')) == 'fact'
+    assert classify_cause(_cause(title='客户目标存在空值')) == 'data_gap'
+    assert classify_cause(_cause(title='交付风险集中在国内团队')) == 'structure'
+
+
+def test_status_slots_do_not_require_cause_or_action_for_completeness():
+    item = dict(status='limited', evidence=_evidence(records=[dict(id='e1')]),
+                result=dict(cardContract=CONTRACT, summary='状态概况', causes=[],
+                            recommendations=[], limitations=[]))
+    assert card_delivery_state(item, 'quote-summary')['gaps'] == ['ANALYSIS_LIMITED']
+    assert 'CAUSES_EMPTY' in card_delivery_state(item, 'opportunity-risk')['gaps']
+
+
+def test_evidence_count_counts_overlapping_ids_once():
+    item = dict(status='limited', evidence=dict(
+        facts=[dict(id='e1')], records=[dict(id='e1')], evidence=[dict(id='e1')],
+        limitations=[]),
+        result=dict(cardContract=CONTRACT, summary='状态', causes=[],
+                    recommendations=[], limitations=[]))
+    assert card_delivery_state(item, 'quote-summary')['evidenceCount'] == 1
 
 
 def test_every_registered_insight_slot_has_a_contract():

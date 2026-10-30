@@ -27,11 +27,11 @@ KIND_LABELS = {
 SLOT_SPECS = {
     'quote-summary': dict(
         question='报价办理状态如何，哪些状态需要业务关注',
-        kinds=None, actions=False, max_causes=0,
+        kinds=None, actions=False, max_causes=0, causes_required=False,
         note='本卡只交付报价状态概况与异常提醒，不作根因判断。'),
     'bid-status-note': dict(
         question='投标办理状态是否异常，异常集中在哪个状态',
-        kinds=('fact', 'data_gap'), actions=False, max_causes=3,
+        kinds=('fact', 'data_gap'), actions=False, max_causes=3, causes_required=False,
         note='本卡只交付投标状态与异常定位，不判定根因。'),
     'bid-summary': dict(
         question='投标环节有哪些异常表现和排查方向',
@@ -40,18 +40,22 @@ SLOT_SPECS = {
     'order-sign-summary': dict(
         question='订单接收结构如何，已签与未签、产品与客户分布在哪里',
         kinds=('fact', 'structure', 'data_gap'), actions=True, max_causes=4,
+        causes_required=False,
         note='本卡交付签单结构与风险定位；结构分布不等于业务原因。'),
     'star-product-order-list': dict(
         question='每个明星产品的订单电量、占比与口径是否可解释',
         kinds=('fact', 'structure', 'data_gap'), actions=False, max_causes=4,
+        causes_required=False, table_slot=True,
         note='按产品逐行交付口径与占比；不把通用摘要当作逐产品结论。'),
     'affected-order-list': dict(
         question='受影响订单有哪些，原因与责任动作是否有逐单证据',
         kinds=('fact', 'structure', 'data_gap'), actions=True, max_causes=4,
+        causes_required=False, table_slot=True,
         note='按订单行交付风险定位；没有逐单证据时不填写已确认原因。'),
     'overdue-order-list': dict(
         question='哪些订单超期，超期原因是否有逐单证据',
         kinds=('fact', 'data_gap'), actions=True, max_causes=4,
+        causes_required=False, table_slot=True,
         note='按订单行交付超期定位；发货状态缺失时只给出待补数据与核查动作。'),
     'sales-shipment-issues': dict(
         question='销售额与出货量的共同问题是什么，能否形成管理结论',
@@ -80,23 +84,26 @@ SLOT_SPECS = {
     'shipment-overdue-note': dict(
         question='哪些客户订单超期，超期原因是什么',
         kinds=('fact', 'data_gap'), actions=True, max_causes=3,
+        causes_required=False,
         note='发货状态缺失时只交付待补数据与核查动作，不复用出货目标缺口分析。'),
     'shipment-cause-breakdown': dict(
         question='超期原因如何拆解，哪些原因有证据',
         kinds=('fact', 'data_gap', 'hypothesis'), actions=True, max_causes=4,
+        causes_required=False,
         note='原因拆解必须有逐单或状态证据；否则只交付缺口与核查方向。'),
     'shipment-task-order': dict(
         question='针对当前风险应形成什么待确认的任务令草稿',
         kinds=('fact', 'structure', 'data_gap', 'hypothesis', 'verified'),
-        actions=True, max_causes=5,
+        actions=True, max_causes=5, actions_required=True,
         note='任务令为草稿：期限为建议值，责任角色待确认。'),
 }
 
 _MONEY = ('金额', '亿元', '万元', '元')
-_ENERGY = ('电量', 'GWh', 'kWh', 'MWh', '兆瓦时', '度电')
+_ENERGY = ('电量', 'GWh', 'kWh', 'MWh', '兆瓦时', '度电', '出货量', '订单量', '数量', '台数')
 _COMPARE = ('解释', '对应', '换算', '相加', '合计', '比较', '占比', '不足', '难以', '不能')
 _CAUSAL = ('导致', '因为', '由于', '造成', '使得', '致使', '因此', '根源', '之所以')
-_DATA_GAP = ('缺失', '未返回', '为空', '无数据', '未取得', '无法取得', '查询失败', '口径不明', '未对账')
+_DATA_GAP = ('缺失', '未返回', '为空', '空值', '无数据', '未取得', '无法取得', '查询失败',
+             '口径不明', '未对账', '缺失值', '空记录')
 _STRUCTURE = ('集中', '主要来自', '分布', '占比', '结构', '团队', '客户等级', '产品线', '区域')
 _FACT = ('低于', '高于', '缺口', '逾期', '偏离', '超出', '下降', '上升', '未完成', '超期')
 _CAUSE = ('导致', '因为', '由于', '造成', '使得', '致使', '根源')
@@ -129,7 +136,12 @@ def _record_ids(evidence):
 
 
 def classify_cause(cause, records=None):
-    """Classify a delivered cause by what the evidence actually supports."""
+    """Classify a delivered cause by what the evidence actually supports.
+
+    The title carries the claim; a causal word in the description must not turn
+    a plain observation like "出货完成度低于目标" into a hypothesis.  Empty and
+    missing-value statements are data quality, not structure.
+    """
     records = records or set()
     title = _text((cause or {}).get('title'))
     description = _text((cause or {}).get('description'))
@@ -137,10 +149,16 @@ def classify_cause(cause, records=None):
     status = (cause or {}).get('status')
     if status == 'supported' and set(map(str, (cause or {}).get('evidenceIds') or [])) & records:
         return 'verified'
-    if _has_any(text, _STRUCTURE):
-        return 'structure'
-    if _has_any(text, _DATA_GAP):
+    if _has_any(title, _DATA_GAP):
         return 'data_gap'
+    if _has_any(title, _STRUCTURE):
+        return 'structure'
+    if _has_any(title, _FACT):
+        return 'fact'
+    if _has_any(description, _DATA_GAP):
+        return 'data_gap'
+    if _has_any(description, _STRUCTURE):
+        return 'structure'
     if _has_any(text, _CAUSE):
         return 'hypothesis'
     if _has_any(text, _FACT):
@@ -240,9 +258,65 @@ def validate_reasoning(value, evidence, *, stage='', slot=''):
     return value
 
 
+SET_REPLACEMENT = '当前汇总规模尚不能建立与出货缺口的对应关系，需按订单和计划交付期间核对'
+UNIT_REPLACEMENT = '金额与电量口径不同，缺少单价、产品结构或交期映射，不能相互解释，需按统一口径补充映射后再判断'
+
+
+def _bad_set_claim(sentence, evidence):
+    sets = _has_any(sentence, ('取消', '变更')) and _has_any(sentence, ('中标未签', '未签'))
+    claimed = _has_any(sentence, ('相加', '合计', '之和', '叠加', '不足以解释', '难以解释', '不能解释', '不足'))
+    return sets and claimed and not (evidence or {}).get('setOverlapVerified')
+
+
+def _bad_unit_claim(sentence):
+    return (_has_any(sentence, _MONEY) and _has_any(sentence, _ENERGY)
+            and _has_any(sentence, _COMPARE))
+
+
+def _norm(text):
+    return re.sub(r'[。；;，,\s（）()]', '', _text(text))
+
+
+def sanitize_summary(text, evidence):
+    """Remove unsupported inferences instead of only labelling them."""
+    kept, seen, replaced = [], set(), set()
+    for sentence in _sentences(text):
+        key = _norm(sentence)
+        if not key or key in seen:
+            continue
+        if _bad_set_claim(sentence, evidence):
+            if SET_REPLACEMENT not in replaced:
+                kept.append(SET_REPLACEMENT)
+                replaced.add(SET_REPLACEMENT)
+            continue
+        if _bad_unit_claim(sentence):
+            if UNIT_REPLACEMENT not in replaced:
+                kept.append(UNIT_REPLACEMENT)
+                replaced.add(UNIT_REPLACEMENT)
+            continue
+        kept.append(sentence)
+        seen.add(key)
+    return ('。'.join(kept) + '。') if kept else ''
+
+
+def evidence_count(evidence):
+    """Count distinct evidence ids; the same record is not a second fact."""
+    ids, extra = set(), 0
+    for key in ('facts', 'records', 'evidence'):
+        for item in (evidence or {}).get(key) or []:
+            if isinstance(item, dict) and item.get('id'):
+                ids.add(str(item['id']))
+            elif item:
+                extra += 1
+    return len(ids) + extra
+
+
+_LABEL_RE = re.compile(r'^\[(异常表现|结构定位|数据缺口|待验证假设|记录支持)\]\s*')
+
+
 def _label(kind, title):
     label = KIND_LABELS.get(kind, '待验证假设')
-    value = f'[{label}] {_text(title)}'
+    value = f'[{label}] {_LABEL_RE.sub("", _text(title))}'
     return value[:32]
 
 
@@ -287,11 +361,21 @@ def ensure_checkable(acceptance):
     return _checkable(acceptance)
 
 
+def _balance(value):
+    if value.count('（') > value.count('）'):
+        value += '）'
+    return value
+
+
 def _with_note(summary, note):
-    value = _text(summary)
-    if note and note not in value:
-        value = (value + '（' + note + '）') if value else note
-    return value[:240]
+    value = _text(summary).rstrip('。')
+    if note and _norm(note) not in _norm(value):
+        value = (value + '。' + note) if value else note
+    value = value + '。'
+    if len(value) > 240:
+        cut = value.rfind('。', 0, 240)
+        value = value[:cut + 1] if cut >= 40 else value[:239] + '。'
+    return _balance(value)[:240]
 
 
 def project_card(item, slot):
@@ -330,6 +414,7 @@ def project_card(item, slot):
     order = {'fact': 0, 'structure': 1, 'data_gap': 2, 'hypothesis': 3, 'verified': 4}
     kept.sort(key=lambda cause: order.get(cause.get('kind'), 5))
     result['causes'] = kept
+    result['summary'] = sanitize_summary(result.get('summary'), evidence)
     if suppress_gap:
         result['summary'] = _with_note(
             result.get('summary'), '当前缺少逐单超期状态证据，不复用出货目标缺口分析')
@@ -340,7 +425,12 @@ def project_card(item, slot):
     if spec['actions']:
         cause_ids = {str(cause.get('id')) for cause in kept}
         for action in result.get('recommendations') or []:
-            if not isinstance(action, dict) or not cause_ids.intersection(map(str, action.get('causeIds') or [])):
+            if not isinstance(action, dict):
+                continue
+            # Every referenced cause must still exist.  A partially dangling
+            # reference is a contract error, not a usable suggestion.
+            linked = [str(item) for item in (action.get('causeIds') or [])]
+            if not linked or not set(linked) <= cause_ids:
                 continue
             value = dict(action)
             value['action'] = _suggest(value.get('action'))
