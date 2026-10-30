@@ -68,8 +68,13 @@ def compact_analysis(item):
     evidence = item.get('evidence') or {}
     def record(value):
         if not isinstance(value,dict):return deepcopy(value)
-        return {k:deepcopy(value[k]) for k in ('id','status','amount','unit','overdueDays','customer',
+        result = {k:deepcopy(value[k]) for k in ('id','status','amount','unit','overdueDays','customer',
             'evidence','cause','causeSupport','product','department','quantity','value','name') if k in value}
+        if (item.get('context') or {}).get('stage') == 'quotation':
+            result['data'] = {k: deepcopy(v) for k, v in (value.get('data') or {}).items()
+                              if k in ('YWLN_D021', 'YWLN_M0031')
+                              or k.endswith('[YWLN_D021]') or k.endswith('[YWLN_M0031]')}
+        return result
     value['evidence'] = dict(limitations=deepcopy(evidence.get('limitations', [])),
         records=[record(v) for v in evidence.get('records', [])],
         facts=[{k:deepcopy(v[k]) for k in ('id','label','value','unit','definition','claim') if k in v}

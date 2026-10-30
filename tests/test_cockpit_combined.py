@@ -59,3 +59,12 @@ def test_quotation_uses_helmet_state_not_risk_kpis(tmp_path):
     kept, excluded = filter_stage_selected({'status': {'request': q}, 'risk': {'request': risk}}, 'quotation')
     assert list(kept) == ['status']
     assert excluded == ['risk']
+
+
+def test_compact_quotation_retains_only_the_status_row_fields():
+    from bi_agent.cockpit.page_cache import compact_analysis
+    item = {'context': {'stage': 'quotation'}, 'evidence': {'records': [{'data': {
+        '报价办理状态[YWLN_D021]': 'normal_completed', '报价电量[YWLN_M0031]': 25.57,
+        'unrelated': 'not needed'}}]}}
+    data = compact_analysis(item)['evidence']['records'][0]['data']
+    assert data == {'报价办理状态[YWLN_D021]': 'normal_completed', '报价电量[YWLN_M0031]': 25.57}
