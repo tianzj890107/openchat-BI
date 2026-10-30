@@ -1462,3 +1462,6 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 
 - 通过 `POST /api/cockpit/quotation/preheat`（`id`、`page=operations`、`uiScope=default`）仅重建报价分析；从同角色、同连接、同日期范围的已保存 `YWLN_D021`/`YWLN_M0031` 凭据取证，不重新请求 AP/PG。
 - 插槽按原始记录展示完成/未完成状态，元数据及头盔图保持原样。发布保留其他卡片和共享 dataset，入口资源使用独立版本目录，可回退到前一版本入口文件。
+
+- 实际上线 `919c3922ac3ae0fb3ab3f354484cac40e255bb6f`（包含 `75cb19c`），8765 release `process360-cockpit-919c392-20261030-quote`，PID `3327493`；8876 资源版本 `9b5c5e29d1bc366efc7b`，入口备份 `backups/site-quote-75cb19c-pre`。报价压缩响应仅保留状态/电量两个展示字段，修复原始行在发布层被裁掉的问题。
+- 仅预热报价：总裁 `b0933d26279e4cfdb155ff07bf571781`、分析员 `088dce766ee542ca96adb938e2afdc3c`。两个角色均 15 个 ready；逐插槽比较仅 `quote-summary` 的分析 ID 变化，共同分析及其他卡片未重算。正常完成 25.57、逾期完成 0.56、逾期未完成 0.60 GWh，未返回状态不补零。
