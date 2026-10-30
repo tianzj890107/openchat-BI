@@ -1050,7 +1050,11 @@
           let rawRuntime=ProUIBi.createBiRuntime();
           const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
           if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
-          const makeClient=(snapshot=null)=>createAPDataClient({apiBase,id:identityId,snapshot,
+          // Charts read live AP data by default.  The page snapshot still
+          // supplies AI cards and display metadata, but it is not replayed as
+          // chart data unless ?cache=1 is requested explicitly.
+          const allowSnapshotReplay=/[?&]cache=1(?:&|$)/.test(location.search);
+          const makeClient=(snapshot=null)=>createAPDataClient({apiBase,id:identityId,snapshot:allowSnapshotReplay?snapshot:null,
             stageFor:(kind,payload)=>queryStage(payload),priorityFor:queryPriority,
             // The data client falls back to a live read for a query omitted by
             // the page snapshot.  Do not rebuild the dashboard or inject a
