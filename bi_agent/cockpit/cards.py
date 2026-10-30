@@ -3,9 +3,57 @@ from __future__ import annotations
 import json
 from pydantic import Field, ValidationError
 from .agent import Result, Cause, Recommendation, validate_result
+from .delivery import validate_reasoning
 
 CONTRACT='cockpit-cards-v1'
 TOOL='CockpitDeliverCards'
+
+
+def valid_card(item) -> bool:
+    """Whether a persisted analysis can be rendered as a complete AI card.
+
+    A database row or a merely non-empty result is not enough: every public
+    slot needs the delivered card contract and the fields consumed by the
+    composition slot.  This is intentionally shared by publication reads and
+    background preheat so status cannot claim ready for an unusable payload.
+    """
+    result = (item or {}).get('result') if isinstance(item, dict) else None
+    if not isinstance(result, dict) or result.get('cardContract') != CONTRACT:
+        return False
+    if not isinstance(result.get('summary'), str) or not result['summary'].strip():
+        return False
+    return all(isinstance(result.get(key), list)
+               for key in ('causes', 'recommendations', 'limitations'))
+
+
+def card_delivery_state(item) -> dict:
+    """Separate renderability from evidence/content completeness.
+
+    A persisted card may be safe to render while still being a limited
+    analysis.  The publication status must expose that difference instead of
+    treating ``status=ready`` as proof that the business answer is complete.
+    """
+    if not isinstance(item, dict) or not item:
+        return dict(status="missing", renderable=False, complete=False,
+                    evidenceCount=0, gaps=["CARD_MISSING"])
+    if not valid_card(item):
+        return dict(status="invalid", renderable=False, complete=False,
+                    evidenceCount=0, gaps=["CARD_CONTRACT_INVALID"])
+    result = item.get("result") or {}
+    evidence = item.get("evidence") or {}
+    evidence_count = sum(len(evidence.get(key) or []) for key in ("facts", "records", "evidence"))
+    gaps = []
+    if str(item.get("status") or "") != "completed":
+        gaps.append("ANALYSIS_LIMITED")
+    if evidence_count == 0:
+        gaps.append("EVIDENCE_EMPTY")
+    if not result.get("causes"):
+        gaps.append("CAUSES_EMPTY")
+    if not result.get("recommendations"):
+        gaps.append("ACTION_EMPTY")
+    complete = not gaps
+    return dict(status="complete" if complete else "limited", renderable=True,
+                complete=complete, evidenceCount=evidence_count, gaps=gaps)
 
 class CardCause(Cause):
     title:str=Field(min_length=1,max_length=32)
@@ -29,6 +77,7 @@ def install_delivery(session,context):
         try:
             if not session.query_results:raise ValueError('请先读取本轮看板数据')
             value=validate_result(params,evidence,{e['id'] for e in evidence['evidence']},result_model=Cards)
+            validate_reasoning(value,evidence,stage=str(context.get('stage') or ''))
         except ValueError as exc:
             # Invalid model arguments are repairable business feedback, not a
             # transport failure that terminates the main Tool Runtime.

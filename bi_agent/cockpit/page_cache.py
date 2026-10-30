@@ -23,7 +23,8 @@ class PageLookup(BaseModel):
 
 
 class PageRequest(PageLookup):
-    apReceiptIds: list[str] = Field(min_length=1, max_length=80)
+    apReceiptIds: list[str] = Field(default_factory=list, max_length=80)
+    pgReceiptIds: list[str] = Field(default_factory=list, max_length=40)
     analysisIds: dict[str, str] = Field(default_factory=dict, max_length=5)
 
 
@@ -32,9 +33,27 @@ def transport_identity(config):
     return digest({'base': config.base_url, 'headers': config.headers(), 'batchMode': config.batch_mode})
 
 
-def page_scope(config, identity, page, ui_scope):
+def page_scope(config, identity, page, ui_scope, data_source='ap'):
+    return digest(dict(connection=transport_identity(config), id=identity, page=page,
+                       uiScope=ui_scope, dataSource=data_source,
+                       config=config_version(), contract=CONTRACT))
+
+
+def legacy_page_scope(config, identity, page, ui_scope):
+    """Read-only key for AP pages published before dataSource entered the scope."""
     return digest(dict(connection=transport_identity(config), id=identity, page=page,
                        uiScope=ui_scope, config=config_version(), contract=CONTRACT))
+
+
+def analysis_source_matches(context, data_source):
+    if context.get('dataSource') == data_source:
+        return True
+    # AP analyses stored before dataSource was introduced retain an AP snapshot
+    # and the main-service source mode. They may rejoin another AP publication,
+    # never a PostgreSQL or demo page.
+    return (data_source == 'ap' and not context.get('dataSource')
+            and context.get('sourceMode') == 'service'
+            and str(context.get('snapshotId') or '').startswith('ap-'))
 
 
 def compact_analysis(item):
@@ -49,8 +68,13 @@ def compact_analysis(item):
     evidence = item.get('evidence') or {}
     def record(value):
         if not isinstance(value,dict):return deepcopy(value)
-        return {k:deepcopy(value[k]) for k in ('id','status','amount','unit','overdueDays','customer',
+        result = {k:deepcopy(value[k]) for k in ('id','status','amount','unit','overdueDays','customer',
             'evidence','cause','causeSupport','product','department','quantity','value','name') if k in value}
+        if (item.get('context') or {}).get('stage') == 'quotation':
+            result['data'] = {k: deepcopy(v) for k, v in (value.get('data') or {}).items()
+                              if k in ('YWLN_D021', 'YWLN_M0031')
+                              or k.endswith('[YWLN_D021]') or k.endswith('[YWLN_M0031]')}
+        return result
     value['evidence'] = dict(limitations=deepcopy(evidence.get('limitations', [])),
         records=[record(v) for v in evidence.get('records', [])],
         facts=[{k:deepcopy(v[k]) for k in ('id','label','value','unit','definition','claim') if k in v}
@@ -62,15 +86,43 @@ def compact_analysis(item):
     return value
 
 
-def build_page(req, store, config):
-    if len(set(req.apReceiptIds)) != len(req.apReceiptIds):
-        raise HTTPException(422, '页面数据凭据重复')
-    records = [store.get_ap_result(r, req.id) for r in req.apReceiptIds]
+def page_fingerprint(records):
+    """Evidence fingerprint for the page cache; receipt IDs and fetch times are excluded."""
+    canonical = lambda v: json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    business = [r for r in records if r.get('kind') != 'helmet']
+    selected = []
+    for record in business:
+        if record.get('kind') == 'batch':
+            selected.extend((q, v.get('data') if isinstance(v, dict) else v)
+                            for q, v in zip(record.get('request') or [], record.get('response') or []))
+        else:
+            selected.append((record.get('request'), record.get('response')))
+    return digest(sorted(((json.dumps(q, sort_keys=True), v) for q, v in selected),
+                          key=lambda v: json.dumps(v, sort_keys=True)))
+
+
+def build_page(req, store, config, *, data_source='ap', data_identity=None):
+    if data_source not in {'ap', 'ap+pg', 'pg', 'snapshot', 'postgres', 'demo'}:
+        raise HTTPException(422, '整页数据来源无效')
+    for ids in (req.apReceiptIds, req.pgReceiptIds):
+        if len(set(ids)) != len(ids):
+            raise HTTPException(422, '页面数据凭据重复')
+    if not req.apReceiptIds and not req.pgReceiptIds:
+        raise HTTPException(422, '整页没有数据凭据')
+    ap_records = [store.get_ap_result(r, req.id) for r in req.apReceiptIds]
+    pg_records = [store.get_ap_result(r, req.id) for r in req.pgReceiptIds]
     connection = config.identity()
     auth = transport_identity(config)
-    if any(not r or r.get('connectionId') != connection or r.get('authScope') != auth for r in records):
+    if any(not r or r.get('connectionId') != connection or r.get('authScope') != auth for r in ap_records):
         raise HTTPException(422, '页面凭据已过期或不属于当前AP连接与身份')
-    if req.page != 'overview' and not any(r['kind'] == 'helmet' for r in records):
+    from . import pg_fallback
+    fallback_version = pg_fallback.version()
+    if any(not r or r.get('kind') != 'pg' for r in pg_records):
+        raise HTTPException(422, '数据库补查凭据不存在或已失效')
+    if any(r.get('authScope') and r['authScope'] != fallback_version for r in pg_records):
+        raise HTTPException(422, '数据库补查口径已更新，请重新分析')
+    records = ap_records + pg_records
+    if req.page != 'overview' and not any(r['kind'] == 'helmet' for r in ap_records):
         raise HTTPException(422, '整页缺少头盔图数据，保留上次完整版本')
     allowed = {'overview': set(), 'operations': {'bid', 'quotation', 'order'},
                'analysis': {'opportunity', 'order', 'shipment'}}[req.page]
@@ -83,31 +135,33 @@ def build_page(req, store, config):
     business = [r for r in records if r['kind'] != 'helmet']
     if not business:
         raise HTTPException(422, '整页没有业务数据')
+    has_ap_business = any(r['kind'] in {'analysis', 'batch'} for r in ap_records)
+    identity = data_identity or (connection if has_ap_business else 'postgres')
     canonical = lambda v: json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-    queries = sorted({canonical(r['request']) for r in business})
-    selected = []
-    for r in business:
-        if r['kind'] == 'batch':
-            selected.extend((q, v['data']) for q, v in zip(r['request'], r['response']))
-        else:
-            selected.append((r['request'], r['response']))
-    fingerprint = digest(sorted(((json.dumps(q, sort_keys=True), v) for q, v in selected),
-                                key=lambda v: json.dumps(v, sort_keys=True)))
+    # chartQueries describe the AP receipts; the full evidence fingerprint
+    # below additionally covers registered PostgreSQL supplements, so a page
+    # can be published when one AP query was answered from the fallback.
+    queries = sorted({canonical(r['request']) for r in ap_records
+                      if r['kind'] in {'analysis', 'batch'}})
+    fingerprint = page_fingerprint(records)
     items = {}
     for stage, aid in req.analysisIds.items():
         item = store.get_analysis(aid)
         c = (item or {}).get('context', {})
         if (not item or item['status'] not in {'completed', 'limited'}
                 or (item.get('result') or {}).get('cardContract') != CONTRACT
+                    or not analysis_source_matches(c, data_source)
                 or any(c.get(k) != v for k, v in dict(id=req.id, page=req.page, stage=stage,
-                                                     engine='main', dataIdentity=connection,
-                                                     dataFingerprint=fingerprint).items())
+                                                     engine='main', dataIdentity=identity,
+                                                     dataFingerprint=fingerprint,
+                                                         ).items())
                 or sorted({canonical(json.loads(q)) for q in c.get('chartQueries', [])}) != queries):
             raise HTTPException(422, '图表与AI的数据版本不一致，保留上次完整版本')
         items[stage] = compact_analysis(item)
     entries = [dict(kind=r['kind'], payload=r['request'], data=r['response'], receiptId=r['id'],
                     receivedAt=r['createdAt'], expiresAt=r['expiresAt']) for r in records]
     page = dict(id=req.id, page=req.page, uiScope=req.uiScope, entries=entries, items=items,
+                dataSource=data_source, dataIdentity=identity, dataFingerprint=fingerprint,
                 dataAsOf=min(r['createdAt'] for r in records), publishedAt=time.time(),
                 configVersion=config_version(), cardContract=CONTRACT)
     page['version'] = digest({'entries': [(r['kind'], r['request'], r['response']) for r in records],
@@ -129,17 +183,26 @@ class APReuse:
         self.sizes = {}
         self.bytes = 0
 
-    def read(self, key, load):
+    def read(self, key, load, *, timeout=200, trace=None):
         with self.lock:
             cached = self.values.get(key)
             if cached and time.time() < min(cached[0], cached[1]['expiresAt']):
+                if trace is not None:
+                    trace.update(cacheHit=True, follower=False)
                 return deepcopy(cached[1])
             future = self.pending.get(key)
             leader = future is None
             if leader:
                 future = self.pending[key] = Future()
         if not leader:
-            return deepcopy(future.result(timeout=35))
+            if trace is not None:
+                trace.update(cacheHit=False, follower=True)
+            # Followers wait for the same AP budget as the leader.  The old
+            # fixed 35 s limit failed a shared query long before the upstream's
+            # three-minute budget had a chance to answer it.
+            return deepcopy(future.result(timeout=timeout))
+        if trace is not None:
+            trace.update(cacheHit=False, follower=False)
         try:
             value = load()
             size = len(json.dumps(value, ensure_ascii=False).encode())

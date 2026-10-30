@@ -59,6 +59,10 @@ def decide(question: str, allowed_tools) -> dict:
         "wants_forecast": bool(intent.wants_forecast),
         "forecast_kind": intent.forecast_kind,
     }
+    decision["delivery"] = {
+        "kind": "action_cards" if intent.wants_action else "analysis_report",
+        "actionRequired": bool(intent.wants_action),
+    }
     return decision
 
 

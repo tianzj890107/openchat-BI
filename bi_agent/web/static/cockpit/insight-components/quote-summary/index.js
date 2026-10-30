@@ -4,6 +4,8 @@
  */
 const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 
+const { quotationStatus } = await import(new URL('./status.js' + new URL(import.meta.url).search, import.meta.url))
+
 loadInsightStyle(import.meta.url)
 
 registerInsightComponent(
@@ -14,7 +16,10 @@ registerInsightComponent(
     components: {InsightLoading: window.InsightRuntime.InsightLoading},
     emits: ['retry'],
     setup(props, { emit }) {
-      return useInsight(props, emit)
+      const insight = useInsight(props, emit)
+      const statusData = Vue.computed(() => quotationStatus(insight.records.value))
+      const volume = value => value === null || value === undefined ? '未返回' : `${value} GWh`
+      return {...insight, statusData, volume}
     },
     template: `
       <section class="quote-summary" aria-live="polite">
@@ -31,22 +36,18 @@ registerInsightComponent(
             <span class="quote-summary__aside">{{ contextLine }}</span>
           </div>
           <div>
-            阶段事实合计 {{ sumFacts(null, 'GWh') }} GWh ·
-            <span class="quote-summary__green">已完成 {{ factText('已完成') }}</span>
-            · 进行中 {{ factSum('进行中', 'GWh') }} GWh
+            已返回状态合计 {{ volume(statusData.total) }} ·
+            <span class="quote-summary__green">已完成 {{ volume(statusData.completed) }}</span>
+            · 未完成 {{ volume(statusData.pending) }}
           </div>
           <div>
-            阶段进度：已完成 {{ factText('已完成') }}（{{ percent(fact('已完成')?.value, sumFacts(null, 'GWh')) }}）；
-            进行中各时限分组合计 {{ factSum('进行中', 'GWh') }} GWh
-            （{{ percent(factSum('进行中', 'GWh'), sumFacts(null, 'GWh')) }}）。
+            正常完成 {{ volume(statusData.values.normal_completed) }} ·
+            逾期完成 {{ volume(statusData.values.overdue_completed) }}
           </div>
           <div>
-            进行中：
-            <span class="quote-summary__red">超7天 {{ factText('超7天') }}</span>
-            ·
-            <span class="quote-summary__orange">5–7天 {{ factText('5–7天') }}</span>
-            ·
-            <span class="quote-summary__green">小于5天 {{ factText('小于5天') }}</span>
+            <span class="quote-summary__red">逾期未完成 {{ volume(statusData.values.overdue_uncompleted) }}</span> ·
+            临期未完成 {{ volume(statusData.values.imminent_uncompleted) }} ·
+            正常未完成 {{ volume(statusData.values.normal_uncompleted) }}
           </div>
           <div class="quote-summary__note" :title="summary">真实分析摘要：{{ summary }}</div>
         </template>

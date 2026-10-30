@@ -6,6 +6,7 @@ const version = new URL(import.meta.url).search
 const load = path => import(new URL(`${path}${version}`, import.meta.url).href)
 
 const ids = new Set(['bid-status-note','quote-summary','bid-summary','order-sign-summary',
+  'star-product-order-list','affected-order-list','overdue-order-list',
   'sales-shipment-issues','opportunity-risk','opportunity-coverage-note','order-risk-summary',
   'shipment-risk-summary','shipment-overdue-note','shipment-cause-breakdown','shipment-task-order'])
 let runtime

@@ -1,0 +1,215 @@
+[
+  {
+    "id": "activate-luv1ff6x",
+    "source": {
+      "componentId": "progress-y5dumxio",
+      "embedPath": [
+        {
+          "containerId": "tab-container-zm9eyxne",
+          "kind": "tab",
+          "tabId": "tab-bc6wp3k2",
+          "templateId": "2112001069107167233"
+        }
+      ],
+      "surface": "headerAction",
+      "actionKey": "1793158849339"
+    },
+    "actions": [
+      {
+        "type": "switchTab",
+        "containerId": "tab-container-zm9eyxne",
+        "embedPath": [],
+        "tabId": "tab-1suxx5hd"
+      },
+      {
+        "type": "selectHelmet",
+        "componentId": "mini-cpgraph-93j6k86p",
+        "embedPath": [
+          {
+            "containerId": "tab-container-zm9eyxne",
+            "kind": "tab",
+            "tabId": "tab-1suxx5hd",
+            "templateId": "2112061604959928321"
+          }
+        ],
+        "nodeId": "2109840325158682625",
+        "nodeName": "商机获取"
+      }
+    ]
+  },
+  {
+    "id": "activate-izvixcym",
+    "source": {
+      "componentId": "progress-91j3rt9a",
+      "embedPath": [
+        {
+          "containerId": "tab-container-zm9eyxne",
+          "kind": "tab",
+          "tabId": "tab-bc6wp3k2",
+          "templateId": "2112001069107167233"
+        }
+      ],
+      "surface": "headerAction",
+      "actionKey": "1793158863956"
+    },
+    "actions": [
+      {
+        "type": "switchTab",
+        "containerId": "tab-container-zm9eyxne",
+        "embedPath": [],
+        "tabId": "tab-1suxx5hd"
+      },
+      {
+        "type": "selectHelmet",
+        "componentId": "mini-cpgraph-93j6k86p",
+        "embedPath": [
+          {
+            "containerId": "tab-container-zm9eyxne",
+            "kind": "tab",
+            "tabId": "tab-1suxx5hd",
+            "templateId": "2112061604959928321"
+          }
+        ],
+        "nodeId": "2109840696539136002",
+        "nodeName": "发货"
+      }
+    ]
+  },
+  {
+    "id": "activate-vo0qtecg",
+    "source": {
+      "componentId": "kpiCard-q9oq9mxq",
+      "embedPath": [
+        {
+          "containerId": "tab-container-zm9eyxne",
+          "kind": "tab",
+          "tabId": "tab-bc6wp3k2",
+          "templateId": "2112001069107167233"
+        }
+      ],
+      "surface": "headerAction",
+      "actionKey": "1792720055376"
+    },
+    "actions": [
+      {
+        "type": "switchTab",
+        "containerId": "tab-container-zm9eyxne",
+        "embedPath": [],
+        "tabId": "tab-1suxx5hd"
+      },
+      {
+        "type": "selectHelmet",
+        "componentId": "mini-cpgraph-93j6k86p",
+        "embedPath": [
+          {
+            "containerId": "tab-container-zm9eyxne",
+            "kind": "tab",
+            "tabId": "tab-1suxx5hd",
+            "templateId": "2112061604959928321"
+          }
+        ],
+        "nodeId": "2109840696539136002",
+        "nodeName": "发货"
+      }
+    ]
+  },
+  {
+    "id": "activate-yq6t9cfm",
+    "source": {
+      "componentId": "title-d15r7zbi",
+      "embedPath": [
+        {
+          "containerId": "tab-container-zm9eyxne",
+          "kind": "tab",
+          "tabId": "tab-bc6wp3k2",
+          "templateId": "2112001069107167233"
+        }
+      ],
+      "surface": "titleText"
+    },
+    "actions": [
+      {
+        "type": "switchTab",
+        "containerId": "tab-container-zm9eyxne",
+        "embedPath": [],
+        "tabId": "tab-211tc4o0"
+      }
+    ]
+  },
+  {
+    "id": "activate-tn84800h",
+    "source": {
+      "componentId": "progress-ynh9zsng",
+      "embedPath": [
+        {
+          "containerId": "tab-container-zm9eyxne",
+          "kind": "tab",
+          "tabId": "tab-211tc4o0",
+          "templateId": "2112434004503347202"
+        }
+      ],
+      "surface": "headerAction",
+      "actionKey": "1793167575501"
+    },
+    "actions": [
+      {
+        "type": "switchTab",
+        "containerId": "tab-container-zm9eyxne",
+        "embedPath": [],
+        "tabId": "tab-1suxx5hd"
+      },
+      {
+        "type": "selectHelmet",
+        "componentId": "mini-cpgraph-93j6k86p",
+        "embedPath": [
+          {
+            "containerId": "tab-container-zm9eyxne",
+            "kind": "tab",
+            "tabId": "tab-1suxx5hd",
+            "templateId": "2112061604959928321"
+          }
+        ],
+        "nodeId": "2109840325158682625",
+        "nodeName": "商机获取"
+      }
+    ]
+  },
+  {
+    "id": "activate-peijvkm0",
+    "source": {
+      "componentId": "progress-zl0egumz",
+      "embedPath": [
+        {
+          "containerId": "tab-container-zm9eyxne",
+          "kind": "tab",
+          "tabId": "tab-211tc4o0",
+          "templateId": "2112434004503347202"
+        }
+      ],
+      "surface": "headerAction",
+      "actionKey": "1793167587293"
+    },
+    "actions": [
+      {
+        "type": "switchTab",
+        "containerId": "tab-container-zm9eyxne",
+        "embedPath": [],
+        "tabId": "tab-1suxx5hd"
+      },
+      {
+        "type": "selectHelmet",
+        "componentId": "mini-cpgraph-93j6k86p",
+        "embedPath": [
+          {
+            "containerId": "tab-container-zm9eyxne",
+            "kind": "tab",
+            "tabId": "tab-1suxx5hd",
+            "templateId": "2112061604959928321"
+          }
+        ],
+        "nodeId": "2109840696539136002",
+        "nodeName": "发货"
+      }
+    ]
+  }
+]

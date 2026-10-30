@@ -1,0 +1,177 @@
+"""Per-slot delivery contract and reasoning checks."""
+import json
+import time
+
+import pytest
+
+from bi_agent.cockpit.cards import CONTRACT
+from bi_agent.cockpit.delivery import (
+    KIND_LABELS, SLOT_SPECS, checkable_acceptance, classify_cause,
+    project_card, validate_reasoning,
+)
+from bi_agent.cockpit.store import Store
+
+
+def _cause(cid='c1', title='异常', description='说明', status='hypothesis', evidence=('e1',)):
+    return dict(id=cid, title=title, description=description, status=status,
+                evidenceIds=list(evidence))
+
+
+def _action(cid='r1', cause='c1', action='核查订单计划交付期', owner='运营负责人', days=5,
+            acceptance='形成逐单核查清单'):
+    return dict(id=cid, causeIds=[cause], action=action, ownerRole=owner,
+                deadlineDays=days, acceptance=acceptance)
+
+
+def _value(causes=None, actions=None, summary='当前范围存在异常，需要核实。'):
+    return dict(summary=summary, causes=causes or [], recommendations=actions or [],
+                limitations=[])
+
+
+def _evidence(records=None, facts=None, limitations=None, **extra):
+    value = dict(facts=facts or [], records=records or [], evidence=[],
+                 limitations=limitations or [])
+    value.update(extra)
+    return value
+
+
+def test_money_and_energy_cannot_be_compared_without_a_bridge():
+    value = _value(
+        causes=[_cause(title='变更金额占比不足 5%', description='金额口径不足以解释出货电量缺口')],
+    )
+    with pytest.raises(ValueError) as error:
+        validate_reasoning(value, _evidence(), stage='combined')
+    assert '金额与电量' in str(error.value)
+
+
+def test_unverified_set_arithmetic_is_rejected_and_verified_one_passes():
+    value = _value(causes=[_cause(
+        title='取消变更与中标未签',
+        description='取消变更订单电量加中标未签电量不足以解释出货缺口')])
+    with pytest.raises(ValueError) as error:
+        validate_reasoning(value, _evidence(), stage='combined')
+    assert '相加' in str(error.value) or '对应关系' in str(error.value)
+    validate_reasoning(value, _evidence(setOverlapVerified=True), stage='combined')
+
+
+def test_phenomenon_cannot_be_delivered_as_cause():
+    value = _value(causes=[_cause(
+        title='缺口集中在国内团队', description='由于国内团队客户目标为空导致缺口')])
+    with pytest.raises(ValueError) as error:
+        validate_reasoning(value, _evidence(facts=[dict(label='客户目标', value=None)]))
+    assert '异常表现' in str(error.value) or '结构定位' in str(error.value)
+
+
+def test_target_conflict_must_be_visible_in_summary():
+    evidence = _evidence(limitations=['两个来源的目标总量口径冲突，尚不能汇总'])
+    with pytest.raises(ValueError) as error:
+        validate_reasoning(_value(summary='发货完成度存在明显缺口。'), evidence, stage='combined')
+    assert '口径冲突' in str(error.value)
+    validate_reasoning(_value(
+        summary='各自口径下发货完成度偏低，但目标总量口径冲突，尚不能汇总对账。'),
+        evidence, stage='combined')
+
+
+def test_acceptance_must_be_checkable():
+    assert checkable_acceptance('形成逐单核查清单')
+    assert not checkable_acceptance('缺口不再扩大')
+    with pytest.raises(ValueError) as error:
+        validate_reasoning(_value(actions=[_action(acceptance='缺口不再扩大')]), _evidence())
+    assert '验收' in str(error.value)
+
+
+def test_missing_overdue_status_only_allows_verification_actions():
+    evidence = _evidence(limitations=['发货状态查询无数据，超期明细缺失'])
+    with pytest.raises(ValueError) as error:
+        validate_reasoning(_value(
+            causes=[_cause(title='超期原因：排产延误', description='排产延误导致超期')],
+            actions=[_action(action='提升排产效率')]), evidence, stage='shipment')
+    message = str(error.value)
+    assert '发货' in message
+    validate_reasoning(_value(
+        causes=[_cause(title='超期状态数据缺失', description='当前没有逐单超期状态记录')],
+        actions=[_action(action='核查并补齐订单状态与计划交付期')]), evidence, stage='shipment')
+
+
+def test_classify_cause_separates_verified_fact_structure_and_gap():
+    assert classify_cause(_cause(status='supported', evidence=('r1',)), {'r1'}) == 'verified'
+    assert classify_cause(_cause(title='缺口集中在华东团队')) == 'structure'
+    assert classify_cause(_cause(title='客户目标为空')) == 'data_gap'
+    assert classify_cause(_cause(title='出货量低于目标', description='缺口扩大')) == 'fact'
+    assert classify_cause(_cause(title='排产延误', description='可能受物料影响')) == 'hypothesis'
+    assert KIND_LABELS['hypothesis'] == '待验证假设'
+
+
+def _card():
+    return dict(
+        id='a1', updatedAt=time.time(), status='limited',
+        evidence=_evidence(records=[dict(id='e1', causeSupport=False, order='SO-1')]),
+        result=dict(
+            cardContract=CONTRACT,
+            summary='发货完成度偏低，需核实。',
+            causes=[_cause('c1', '缺口集中在国内团队', '由于客户目标为空导致'),
+                    _cause('c2', '记录支持的处理未闭环', '处理记录显示质检未放行', 'supported', ('e1',))],
+            recommendations=[_action('r1', 'c1', '核查客户目标', '运营负责人', 5, '缺口不再扩大')],
+            limitations=['发货状态缺失']))
+
+
+def test_quote_status_card_delivers_status_only():
+    projected = project_card(_card(), 'quote-summary')
+    assert projected['result']['causes'] == []
+    assert projected['result']['recommendations'] == []
+    assert '只交付报价状态概况' in projected['result']['summary']
+    assert projected['result']['deliveryContract'] == 'cockpit-delivery-v2'
+
+
+def test_bid_card_labels_phenomena_and_suggests_measures():
+    projected = project_card(_card(), 'bid-summary')
+    result = projected['result']
+    assert result['causes']
+    assert result['causes'][0]['title'].startswith('[异常表现]') or \
+        result['causes'][0]['title'].startswith('[结构定位]')
+    assert '不是已确认原因' in result['causes'][0]['description']
+    if result['recommendations']:
+        action = result['recommendations'][0]
+        assert action['action'].startswith('建议：')
+        assert '待确认' in action['ownerRole']
+        assert '清单' in action['acceptance'] or '对账' in action['acceptance']
+
+
+def test_shipment_overdue_slots_do_not_reuse_target_gap_analysis():
+    card = _card()
+    card['evidence'] = _evidence(limitations=['发货状态查询无数据'])
+    card['result']['causes'] = [
+        _cause('c1', '出货量低于目标', '缺口扩大'),
+        _cause('c2', '发货状态数据缺失', '没有逐单超期状态记录'),
+    ]
+    projected = project_card(card, 'shipment-overdue-note')
+    kinds = {cause['kind'] for cause in projected['result']['causes']}
+    assert kinds <= {'data_gap'}
+    assert '不复用出货目标缺口分析' in projected['result']['summary']
+
+
+def test_order_sign_card_discloses_missing_signing_structure():
+    projected = project_card(_card(), 'order-sign-summary')
+    assert '不能解释签单结构' in projected['result']['summary']
+
+
+def test_every_registered_insight_slot_has_a_contract():
+    from bi_agent.cockpit.targets import slot_registry
+    missing = [slot['slotId'] for slot in slot_registry() if slot['slotId'] not in SLOT_SPECS]
+    assert not missing
+
+
+def test_task_draft_marks_suggested_owner_deadline_and_checkable_acceptance(tmp_path):
+    store = Store(tmp_path / 'history.sqlite3')
+    result = dict(
+        cardContract=CONTRACT, summary='存在风险',
+        causes=[_cause('c1', '处理未闭环', '处理记录显示未闭环', 'supported')],
+        recommendations=[_action('r1', 'c1', '核查处理记录', '运营负责人', 5, '缺口不再扩大')],
+        limitations=['待确认'])
+    analysis = dict(id='a1', context=dict(stageName='发货'), result=result)
+    card = store.draft(analysis)
+    measure = card['measures'][0]
+    assert measure['action'].startswith('建议：')
+    assert '建议角色，待确认' in measure['owner']
+    assert measure['deadline'].startswith('建议期限：')
+    assert '清单' in measure['acceptance'] or '对账' in measure['acceptance']

@@ -4,7 +4,7 @@ const base=process.env.COCKPIT_QA_URL||'http://127.0.0.1:8896';
 if(!['127.0.0.1','localhost'].includes(new URL(base).hostname))throw new Error('Browser fault tests are restricted to localhost QA fixtures');
 const cdp=process.env.COCKPIT_QA_CDP||'http://127.0.0.1:9337';
 const target=await(await fetch(cdp+'/json/new?about:blank',{method:'PUT'})).json();const ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise(r=>ws.onopen=r);let seq=0;const pending=new Map(),errors=[],resources=[];
-ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=pending.get(m.id);if(p){pending.delete(m.id);m.error?p.reject(new Error(JSON.stringify(m.error))):p.resolve(m.result)}}if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.text);if(m.method==='Network.requestWillBeSent')resources.push(m.params.request.url)};
+ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=pending.get(m.id);if(p){pending.delete(m.id);m.error?p.reject(new Error(JSON.stringify(m.error))):p.resolve(m.result)}}if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.exception?.description||m.params.exceptionDetails.text);if(m.method==='Network.requestWillBeSent')resources.push(m.params.request.url)};
 const send=(method,params={})=>new Promise((resolve,reject)=>{pending.set(++seq,{resolve,reject});ws.send(JSON.stringify({id:seq,method,params}))});
 const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.text);return r.result?.value};
 const wait=async(expression,timeout=15000)=>{const until=Date.now()+timeout;while(Date.now()<until){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,100));}throw new Error('Browser condition timeout: '+expression)};
@@ -13,7 +13,7 @@ const debug=async()=>await(await fetch(base+'/debug/state')).json();
 const navigate=page=>send('Page.navigate',{url:base+'/cockpit/'+page+'?id=1'});
 await send('Page.enable');await send('Page.bringToFront');await send('Runtime.enable');await send('Network.enable');await send('Network.setCacheDisabled',{cacheDisabled:true});await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
 try {
- await change({revision:1,fail:false});await navigate('analysis');
+ await fetch(base+'/debug/reset',{method:'POST'});await change({revision:1,fail:false});await navigate('analysis');
  await wait('document.querySelector("#app:not([v-cloak]) .cockpit-publication-state")?.innerText.includes("完整看板")');
  await wait('document.querySelectorAll(".insight-runtime-state").length===3');
  assert.equal(await evaluate('document.title'),'储能经营风险驾驶舱 · 穿透式问题分析');
@@ -47,6 +47,19 @@ try {
   assert.equal(await evaluate('document.querySelectorAll(".insight-loading").length'),0);
   console.log('PASS full-page publication '+page);
  }
+ await navigate('overview');await wait('document.querySelector("#app:not([v-cloak]) .cockpit-publication-state")?.innerText.includes("完整看板")');
+ assert.equal(await evaluate('document.querySelectorAll(".insight-runtime-state").length'),0);
+ await evaluate('[...document.querySelectorAll("button")].find(e=>e.textContent.trim()==="查看销售额风险").click()');
+ await wait('location.pathname.endsWith("/cockpit/analysis")');
+ await wait('document.querySelectorAll(".insight-runtime-state").length===3');
+ assert.equal(await evaluate('sessionStorage.getItem("cockpit.pendingActivation")'),null);
+ console.log('PASS activation rule routes sales risk to the opportunity node');
+ await navigate('overview');await wait('document.querySelector("#app:not([v-cloak]) .cockpit-publication-state")?.innerText.includes("完整看板")');
+ await evaluate('[...document.querySelectorAll("button")].find(e=>e.textContent.trim()==="查看出货风险").click()');
+ await wait('location.pathname.endsWith("/cockpit/analysis")');
+ await wait('document.querySelectorAll(".insight-runtime-state").length===5');
+ assert.ok((await evaluate('document.body.innerText')).includes('发货风险概况'));
+ console.log('PASS activation rule carries a non-default shipment node across routes');
  assert.deepEqual(errors,[]);
  console.log('PASS no browser exceptions; tests used only isolated fixtures');
 } catch(error){console.log(JSON.stringify(await evaluate('({text:document.body.innerText.slice(0,2200),selected:[...document.querySelectorAll(".pro-radio-button.is-active")].map(e=>e.innerText)})')));throw error;} finally {await send('Page.close');ws.close();}

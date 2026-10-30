@@ -1,8 +1,8 @@
 {
-  "checkedAt": "2026-10-26T17:27:55+08:00",
+  "checkedAt": "2026-10-29T21:09:48+08:00",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
-  "sourceCommit": "558f2ae27cdc5a9569c5d91a1db45f97d31a4321",
-  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021; original embedded license notices preserved. Isolated from legacy workbench assets.",
+  "sourceCommit": "50cdc94615dc25dafe012f70ce4bb815f4708409",
+  "notes": "BI UMD and CSS copied from iba-demo feature/demo_1021 at 50cdc94. The UMD carries the one-line null-instance guard for a destroyed helmet Graph callback (re-applied after each upstream sync); activateRules/selectHelmet remain upstream behavior and only the single-query adapter is injected.",
   "resources": [
     {
       "file": "../../vendor/antd/lib/vue.global.js",
@@ -14,14 +14,15 @@
     },
     {
       "file": "pro-bi-ui.min.js",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/558f2ae27cdc5a9569c5d91a1db45f97d31a4321/lib/pro-bi-ui.min.js",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/50cdc94615dc25dafe012f70ce4bb815f4708409/lib/pro-bi-ui.min.js",
       "sourcePath": "lib/pro-bi-ui.min.js",
-      "sha256": "608062c7402ff7216c57ef3a0309e18fade45eb8bc6a86926ef17c028fd358e7",
-      "bytes": 6328316
+      "sha256": "2bf2cdd5376cae337c5ccdd8596d772a2c330fe5fd5a362aec86380e92d25a19",
+      "bytes": 6199539,
+      "notes": "Copied from 50cdc94 with the one-line null-instance guard in the helmet Graph fitView callback; upstream metadata is unchanged."
     },
     {
       "file": "pro-ui.min.css",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/558f2ae27cdc5a9569c5d91a1db45f97d31a4321/lib/pro-ui.min.css",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/50cdc94615dc25dafe012f70ce4bb815f4708409/lib/pro-ui.min.css",
       "sourcePath": "lib/pro-ui.min.css",
       "sha256": "b1ee836dbe11d3b5df80f9a1718a8a7623aaa89e9419bae1d6450a9063744d25",
       "bytes": 720594

@@ -39,6 +39,15 @@ stateStyle.textContent = `
   color: #8c8c8c;
   font-size: 12px;
 }
+.ai-table-state {
+  margin: 0 0 8px;
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 20px;
+}
+.ai-table-state--error {
+  color: #cf1322;
+}
 `
 if (!document.getElementById(stateStyle.id)) document.head.appendChild(stateStyle)
 

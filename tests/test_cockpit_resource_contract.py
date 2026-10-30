@@ -14,7 +14,9 @@ def test_vendor_manifest_matches_local_artifacts():
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=608062c7' in html
+    assert 'pro-bi-ui.min.js?v=2bf2cdd5' in html
+    sdk=(vendor/'pro-bi-ui.min.js').read_text()
+    assert 'if(!t||!t.get("group"))return;t.fitView(' in sdk
     assert 'data-dashboard-theme="white"' in html
     css=(ROOT/'cockpit.css').read_text()
     assert '--dashboard-canvas-bg:#fff' in css
@@ -24,7 +26,8 @@ def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='558f2ae27cdc5a9569c5d91a1db45f97d31a4321'
+    assert source['commit']=='50cdc94615dc25dafe012f70ce4bb815f4708409'
+    assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
     roots=json.loads((folder/'components.json').read_text())
@@ -33,6 +36,12 @@ def test_imported_metadata_hashes_and_three_tabs():
     assert [t['label'] for t in tabs]==['经营看板','运营360整体分析','穿透式问题分析']
     assert all(t['templateId'] in registry for t in tabs)
     assert source['totalComponents']==len(roots)+sum(len(t['components']) for t in registry.values())
+    rules=json.loads((folder/'activate-rules.json').read_text())
+    assert len(rules)==6
+    sales=next(rule for rule in rules if rule['id']=='activate-luv1ff6x')
+    assert sales['source']['actionKey']=='1793158849339'
+    assert sales['actions'][1]['nodeId']=='2109840325158682625'
+    assert sales['actions'][1]['nodeName']=='商机获取'
 
 def test_upstream_missing_children_are_reported_without_mutating_metadata():
     folder=ROOT/'metadata/iba-demo-1021'
@@ -44,7 +53,8 @@ def test_upstream_missing_children_are_reported_without_mutating_metadata():
         for c in t['components']:
             for child in c.get('children',[]):
                 if child not in ids:actual.add((tid,c['id'],child))
-    reported={(i['templateId'],i['componentId'],i['missingChildId']) for i in source['knownIssues']}
+    reported={(i['templateId'],i['componentId'],i['missingChildId'])
+              for i in source['knownIssues'] if i.get('missingChildId')}
     assert actual==reported
 
 
@@ -81,6 +91,8 @@ def test_fuxi_identity_and_missing_risk_actions_are_wired():
     assert 'ensureAnalysis' in js and 'requestIdleCallback' in js
     assert 'PREFETCH_STAGES' in js
     assert ':bi-adapters="biAdapters"' in html
+    assert ':activate-rules="runtime.activateRules"' in html
+    assert 'postAnalysisDataQueryBatch' not in js
     assert 'layout/' not in js and 'views.json' not in js
 
 
@@ -106,9 +118,9 @@ def test_three_top_tabs_and_static_proui_dashboard_are_present():
     ]
     assert runtime['pages']['operations']['components']
     assert runtime['pages']['analysis']['components']
-    assert sum(len(page['insights']) for page in runtime['pages'].values())==12
-    assert len(runtime['pages']['operations']['insights'])==4
-    assert len(runtime['pages']['analysis']['insights'])==8
+    assert sum(len(page['insights']) for page in runtime['pages'].values())==15
+    assert len(runtime['pages']['operations']['insights'])==5
+    assert len(runtime['pages']['analysis']['insights'])==10
     assert ':insights="pageInsights"' in html
     assert 'v-slot:[slot_name(insight)]' in html
     assert "app.component('cockpit-insight', CockpitInsight)" in js
@@ -118,7 +130,8 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
     js=(ROOT/'cockpit.js').read_text()
     assert 'insightBundleUrl' in js
     assert 'import(insightBundleUrl)' in js
-    assert ':analysis="state.item"' in js
+    assert ':analysis="slotAnalysis"' in js
+    assert 'slotPublication(props.insight.id)' in js
     assert ':status="state.status"' in js
     assert '@retry="reload"' in js
     components=ROOT/'insight-components'
@@ -131,15 +144,23 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
                    'stage-risk-analysis__owner','stage-risk-analysis__time'):
         assert marker in shared
     stage_risk={'opportunity-risk':'商机获取','order-risk-summary':'订单接收','shipment-risk-summary':'发货'}
+    tables={'star-product-order-list','affected-order-list','overdue-order-list'}
     for name in ('bid-status-note','quote-summary','bid-summary','order-sign-summary',
                  'sales-shipment-issues','opportunity-risk','opportunity-coverage-note',
                  'order-risk-summary','shipment-risk-summary','shipment-overdue-note',
-                 'shipment-cause-breakdown','shipment-task-order'):
+                 'shipment-cause-breakdown','shipment-task-order',*tables):
         source=(components/name/'index.js').read_text()
         assert 'window.InsightRuntime' in source
-        assert "from '../" not in source
+        if name in tables:
+            assert "from '../table-runtime.js'" in source
+            assert source.count("from '../") == 1
+        else:
+            assert "from '../" not in source
         assert '静态文案' not in source
-        if name in stage_risk:
+        if name in tables:
+            assert 'createTableInsight' in source
+            assert 'tableKey:' in source
+        elif name in stage_risk:
             assert 'createStageRiskComponent' in source
             assert f"fallbackStage: '{stage_risk[name]}'" in source
         else:
@@ -148,12 +169,11 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
             assert 'useInsight(props, emit)' in source
 
 
-def test_analysis_flow_uses_three_delivered_nodes_and_shared_risk_markup():
+def test_analysis_flow_preserves_delivered_graph_and_shared_risk_markup():
     runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
     graph=next(component for component in runtime['pages']['analysis']['components']
                if component['id']=='mini-cpgraph-93j6k86p')
     assert graph['title']=='销售额口径 · 三节点头盔图（商机获取 → 订单接收 → 发货）'
-    assert '投标' not in graph['title']
     assert {rule['nodeId'] for rule in graph['graphConfig']['graphTemplateSwitchRules']}=={
         '2109840325158682625','2109840573998350338','2109840696539136002',
     }

@@ -4,7 +4,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -28,7 +28,7 @@ def fixture(tmp_path):
     fp=digest([(json.dumps(q,sort_keys=True),data)])
     ids={}
     for stage in ['shipment','opportunity']:
-        ctx=dict(id=1,page='analysis',stage=stage,engine='main',dataIdentity=config.identity(),dataFingerprint=fp,chartQueries=[json.dumps(q)])
+        ctx=dict(id=1,page='analysis',stage=stage,engine='main',dataSource='ap',dataIdentity=config.identity(),dataFingerprint=fp,chartQueries=[json.dumps(q)])
         item=store.create_analysis('scope-'+stage,ctx)
         store.update_analysis(item['id'],status='limited',result=dict(summary='Validated card',causes=[],recommendations=[],cardContract=CONTRACT),evidence={'facts':[],'records':[],'evidence':[]})
         ids[stage]=item['id']
@@ -52,6 +52,50 @@ def test_full_page_survives_restart_but_not_wrong_role_filter_source_or_config(t
         with pytest.raises(HTTPException):
             build_page(req,store,cfg)
     assert store.get_ap_result(receipt['id'],1,allow_expired=True)
+
+
+def test_full_page_declares_and_binds_the_ap_source(tmp_path):
+    store,cfg,req,_=fixture(tmp_path)
+    page=build_page(req,store,cfg)
+    assert page['dataSource']=='ap'
+    assert page['dataIdentity']==cfg.identity()
+    assert page['dataFingerprint']
+    assert {item['context']['dataSource'] for item in page['items'].values()}=={'ap'}
+    assert page_scope(cfg,1,'analysis','default','ap')!=page_scope(cfg,1,'analysis','default','postgres')
+
+
+def test_full_page_rejects_ai_results_from_a_different_data_source(tmp_path):
+    store,cfg,req,_=fixture(tmp_path)
+    item=store.get_analysis(req.analysisIds['shipment'])
+    context=deepcopy(item['context'])
+    context['dataSource']='postgres'
+    changed=store.create_analysis('wrong-source',context)
+    store.update_analysis(changed['id'],status='limited',result={'summary':'validated','cardContract':CONTRACT})
+    values=req.model_dump()
+    values['analysisIds']['shipment']=changed['id']
+    with pytest.raises(HTTPException):
+        build_page(PageRequest(**values),store,cfg)
+
+
+def test_legacy_ap_cards_republish_only_with_explicit_ap_provenance(tmp_path):
+    store,cfg,req,_=fixture(tmp_path)
+    ids={}
+    for stage,aid in req.analysisIds.items():
+        item=store.get_analysis(aid);context=deepcopy(item['context']);context.pop('dataSource')
+        context.update(snapshotId='ap-legacy-'+stage,sourceMode='service')
+        legacy=store.create_analysis('legacy-'+stage,context)
+        store.update_analysis(legacy['id'],status='limited',result=item['result'],evidence=item['evidence'])
+        ids[stage]=legacy['id']
+    values=req.model_dump();values['analysisIds']=ids
+    page=build_page(PageRequest(**values),store,cfg)
+    assert {item['context'].get('snapshotId') for item in page['items'].values()}=={'ap-legacy-opportunity','ap-legacy-shipment'}
+
+    item=store.get_analysis(ids['shipment']);context=deepcopy(item['context']);context['snapshotId']='dashboard-legacy'
+    ambiguous=store.create_analysis('ambiguous-shipment',context)
+    store.update_analysis(ambiguous['id'],status='limited',result=item['result'],evidence=item['evidence'])
+    values['analysisIds']['shipment']=ambiguous['id']
+    with pytest.raises(HTTPException):
+        build_page(PageRequest(**values),store,cfg)
 
 
 @pytest.mark.parametrize('bad',['missing-slot','wrong-data','wrong-role','missing-graph','duplicate-receipt','incomplete-card','failed-card'])
@@ -110,6 +154,15 @@ def test_failed_ap_reads_are_not_cached():
     for _ in range(2):
         with pytest.raises(RuntimeError):reuse.read('same',fail)
     assert len(calls)==2
+
+
+def test_shared_query_follower_waits_for_the_full_ap_budget():
+    reuse=APReuse();pending=Mock();pending.result.return_value={'receiptId':'shared'}
+    reuse.pending['same']=pending
+    trace={}
+    assert reuse.read('same',lambda:{},timeout=200,trace=trace)=={'receiptId':'shared'}
+    pending.result.assert_called_once_with(timeout=200)
+    assert trace=={'cacheHit':False,'follower':True}
 
 
 def test_site_build_uses_real_immutable_paths_and_valid_precompressed_assets(tmp_path):

@@ -1,10 +1,22 @@
 const { computed, ref } = window.Vue
 
+export function cockpitApiBase() {
+  const configured = document.querySelector('meta[name="cockpit-api-base"]')?.content || ''
+  if (configured) return configured.replace(/\/$/, '')
+  const root = location.pathname.replace(/\/cockpit(?:\/(?:home|overview|operations|analysis))?\/?$/, '')
+  return `${root}/api/cockpit`
+}
+
+export function cockpitIdentityId() {
+  const value = Number(new URLSearchParams(location.search).get('id'))
+  return value === 2 ? 2 : 1
+}
+
 export const InsightLoading = Vue.defineComponent({
   name: 'InsightLoading',
   props: {kind: {type:String,default:'summary'},progress: {type:String,default:''}},
   template: `<div class="insight-loading" :class="'insight-loading--'+kind" role="status" aria-busy="true" aria-label="AI正在分析当前筛选范围">
-    <div class="insight-loading__head"><span class="insight-loading__spark">✦</span><strong>AI 正在分析</strong><span class="insight-loading__dots">···</span></div>
+    <div class="insight-loading__head"><span class="insight-loading__spark">✦</span><strong>{{ progress || 'AI 正在分析' }}</strong><span class="insight-loading__dots">···</span></div>
     <div class="insight-loading__line"></div><div class="insight-loading__line insight-loading__line--short"></div>
     <template v-if="kind==='risk' || kind==='task'"><div class="insight-loading__panel"><div class="insight-loading__line"></div><div class="insight-loading__line insight-loading__line--short"></div></div><div class="insight-loading__line"></div></template>
   </div>`,
@@ -16,6 +28,8 @@ export const insightProps = {
   progress: { type: String, default: '' },
   refreshing: { type: Boolean, default: false },
   cached: { type: Boolean, default: false },
+  stale: { type: Boolean, default: false },
+  scopeNotice: { type: String, default: '' },
   error: { type: String, default: '' },
   context: { type: Object, default: () => ({}) },
   slotProps: { type: Object, default: () => ({}) },
@@ -99,6 +113,8 @@ export function useInsight(props, emit) {
   }
 
   function causeStatus(cause) {
+    const labels = {verified:'记录支持', fact:'异常表现', structure:'结构定位', data_gap:'数据缺口', hypothesis:'待验证假设'}
+    if (cause?.kind && labels[cause.kind]) return labels[cause.kind]
     return cause?.status === 'supported' ? '记录支持' : '待核实'
   }
 
@@ -206,12 +222,21 @@ export function createStageRiskComponent(options = {}) {
               <strong class="stage-risk-analysis__title">{{ displayStage }}风险概况</strong>
               <span class="stage-risk-analysis__aside">{{ contextLine }}</span>
             </div>
-            <div v-if="facts.length" class="stage-risk-analysis__facts">
+            <div v-if="facts.length && facts.length <= 4" class="stage-risk-analysis__facts">
               <div v-for="item in facts" :key="item.id" class="stage-risk-analysis__fact" :title="item.definition || item.label">
                 <span>{{ item.label }}</span>
                 <b>{{ metricValue(item) }}</b>
               </div>
             </div>
+            <details v-else-if="facts.length" class="stage-risk-analysis__facts-fold">
+              <summary>查看 {{ facts.length }} 项指标明细</summary>
+              <div class="stage-risk-analysis__facts">
+                <div v-for="item in facts" :key="item.id" class="stage-risk-analysis__fact" :title="item.definition || item.label">
+                  <span>{{ item.label }}</span>
+                  <b>{{ metricValue(item) }}</b>
+                </div>
+              </div>
+            </details>
             <div class="stage-risk-analysis__note">
               {{ records.length }} 条记录 · {{ evidenceCount }} 条证据<span v-if="updatedAt"> · {{ updatedAt }}</span>
             </div>
@@ -228,9 +253,13 @@ export function createStageRiskComponent(options = {}) {
           <article class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">
             <div class="stage-risk-analysis__title">
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【原因】</span>
-              模型基于当前证据识别 {{ causes.length }} 项原因
+              <template v-if="causes.length">模型基于当前证据识别 {{ causes.length }} 项原因</template>
+              <template v-else-if="status === 'limited'">证据范围不足，未形成原因判断</template>
+              <template v-else>暂未识别到有证据支持的原因</template>
             </div>
-            <div v-if="!causes.length" class="insight-runtime-empty">当前证据不足以确认原因，需补充同源明细。</div>
+            <div v-if="!causes.length" class="insight-runtime-empty">
+              {{ status === 'limited' ? '当前环节缺少匹配指标或同源明细，不能把其他环节数据当作原因证据。' : '当前证据不足以确认原因，需补充同源明细。' }}
+            </div>
             <div v-for="(cause, index) in causes" :key="cause.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index + 1 }}</span>
               <span class="stage-risk-analysis__cause-text">
@@ -248,7 +277,9 @@ export function createStageRiskComponent(options = {}) {
               </div>
               <span class="stage-risk-analysis__aside">{{ openRecommendations.length }} 项</span>
             </div>
-            <div v-if="!openRecommendations.length" class="insight-runtime-empty">尚无可交付措施，待原因与责任口径核实。</div>
+            <div v-if="!openRecommendations.length" class="insight-runtime-empty">
+              {{ status === 'limited' ? '证据不足或责任口径未确认，暂无可下发措施；这不代表工作已完成。' : '尚无可交付措施，待原因与责任口径核实。' }}
+            </div>
             <div v-for="(item, index) in openRecommendations" :key="item.id" class="stage-risk-analysis__action">
               <span class="stage-risk-analysis__index">{{ index + 1 }}</span>
               <span class="stage-risk-analysis__action-text">{{ item.action }}</span>

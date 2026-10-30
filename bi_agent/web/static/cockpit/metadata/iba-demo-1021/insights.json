@@ -84,6 +84,28 @@
     }
   },
   {
+    "id": "star-product-order-list",
+    "embedPath": {
+      "segments": [
+        {
+          "kind": "tab",
+          "containerId": "tab-container-zm9eyxne",
+          "tabId": "tab-211tc4o0",
+          "templateId": "2112434004503347202"
+        },
+        {
+          "kind": "template",
+          "containerId": "template-rjjcf4v1",
+          "templateId": "2112060211964461057"
+        }
+      ]
+    },
+    "placement": {
+      "mode": "insert",
+      "afterId": "horizontal-bar-ohu23fcx"
+    }
+  },
+  {
     "id": "sales-shipment-issues",
     "embedPath": {
       "segments": [
@@ -168,6 +190,28 @@
     }
   },
   {
+    "id": "affected-order-list",
+    "embedPath": {
+      "segments": [
+        {
+          "kind": "tab",
+          "containerId": "tab-container-zm9eyxne",
+          "tabId": "tab-1suxx5hd",
+          "templateId": "2112061604959928321"
+        },
+        {
+          "kind": "template",
+          "containerId": "template-ryfsat5y",
+          "templateId": "2112064105591390209"
+        }
+      ]
+    },
+    "placement": {
+      "mode": "insert",
+      "afterId": "title-0iqvjnog"
+    }
+  },
+  {
     "id": "shipment-risk-summary",
     "embedPath": {
       "segments": [
@@ -235,6 +279,28 @@
     }
   },
   {
+    "id": "overdue-order-list",
+    "embedPath": {
+      "segments": [
+        {
+          "kind": "tab",
+          "containerId": "tab-container-zm9eyxne",
+          "tabId": "tab-1suxx5hd",
+          "templateId": "2112061604959928321"
+        },
+        {
+          "kind": "template",
+          "containerId": "template-ryfsat5y",
+          "templateId": "2112064144187375617"
+        }
+      ]
+    },
+    "placement": {
+      "mode": "insert",
+      "afterId": "share-bar-zob5z1uu"
+    }
+  },
+  {
     "id": "shipment-task-order",
     "embedPath": {
       "segments": [
@@ -253,7 +319,7 @@
     },
     "placement": {
       "mode": "insert",
-      "afterId": "table-md1iftaj"
+      "afterId": "share-bar-zob5z1uu"
     }
   }
 ]

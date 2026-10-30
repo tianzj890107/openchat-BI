@@ -1,9 +1,10 @@
 # 前端交付元数据：feature/demo_1021
 
 来源：[iba-demo](http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021)，
-固定 commit `558f2ae27cdc5a9569c5d91a1db45f97d31a4321`。
-`components.json`、`template-registry.json`、`insights.js` 和 `insight-components/` 原样复制；
-`insights.json` 由声明式 `insights.js` 转为 JSON。哈希、类型统计和已知问题见 `source.json`。
+固定 commit `50cdc94615dc25dafe012f70ce4bb815f4708409`。
+`components.json`、`template-registry.json`、`insights.js` 和 `activate-rules.json`
+按上游原样复制；`insights.json` 由声明式 `insights.js` 转为 JSON。
+哈希、类型统计、跳转规则数量和已知问题见 `source.json`。
 
 ## 页面对应
 
@@ -13,36 +14,67 @@
 | 运营 360 整体分析 | tab-211tc4o0 | 2112434004503347202 |
 | 穿透式问题分析 | tab-1suxx5hd | 2112061604959928321 |
 
-根组件 2 个，子模板 13 份，共 135 个组件配置。
-范围包含五类经营进度、运营头盔与节点明细、商机／订单／发货穿透、流程弧形图等。
-运行包已验证支持配置里的 `process-arc`、`mini-cpgraph`、`bar-line`、`progress`、
-`share-bar`、`funnel`、`segmented-strip` 和 `tab-container` 等类型。
+根组件 2 个，子模板 13 份，共 142 个组件配置，其中 103 个声明 AP 数据、39 个仍使用
+上游 mock 配置。数据尚未配置完整的组件由原组件展示错误或空态，宿主不读取旧原型快照补数。
+
+## 数据请求
+
+新组件按本体库 8 的单查契约运行：
+
+```text
+POST /api/gateway2/x360/v1/ontology/data/query
+X-Ontology-Repository-Id: 8
+```
+
+页面只注入 `postAnalysisDataQuery`，不注入批量适配器。ProUI 新版在批量适配器缺失时，
+按单个查询并发兜底；批量接口仍在请求本体、当前不可用，因此不能把批量错误包装成空结果。
+
+## 页内跳转
+
+`activate-rules.json` 共 6 条规则，由新版 `pro-bi-ui.min.js` 消费。规则可以组合
+`switchTab` 与 `selectHelmet`，例如“查看销售额风险”从经营看板跳到穿透式问题分析，
+并选中 `mini-cpgraph-93j6k86p` 的“商机获取”节点 `2109840325158682625`。
+宿主把跨 Tab 动作转换为现有三页路由，并在目标页恢复节点选择。
 
 ## 分析插槽
 
-`insights.js` 提供 12 个声明式插槽，位置如下：
+`insights.js` 提供 15 个声明式插槽，位置如下：
 
 - 经营看板：无。
-- 运营页：`bid-status-note`、`quote-summary`、`bid-summary`、`order-sign-summary`。
+- 运营页：`bid-status-note`、`quote-summary`、`bid-summary`、`order-sign-summary`、
+  `star-product-order-list`。
 - 穿透页：`sales-shipment-issues`、`opportunity-risk`、`opportunity-coverage-note`、
-  `order-risk-summary`、`shipment-risk-summary`、`shipment-overdue-note`、
-  `shipment-cause-breakdown`、`shipment-task-order`。
+  `order-risk-summary`、`affected-order-list`、`shipment-risk-summary`、
+  `shipment-overdue-note`、`shipment-cause-breakdown`、`overdue-order-list`、
+  `shipment-task-order`。
 
-插槽位置按交付配置挂载，内容调用主服务 `/api/cockpit/analyses` 的真实模型分析。
-主路线按可见插槽和当前节点串行调度，不再空闲预取五个环节；只有“重新分析”强制刷新。
-`insight-components/` 保留为交付原始文件，当前页面不再加载其静态文案。
+插槽内容调用主服务 `/api/cockpit/analyses`，页面运行时组件保留真实加载、错误、重试和
+任务卡状态；不直接覆盖为上游静态文案。
+
+## 订单 DataTable
+
+本次同步启用三张订单表，布局和列配置复用上游 `ProDataTable`：
+
+- 订单接收「明星产品订单电量及占比」：返回系列、2025 年出货参考、推算订单电量、
+  占比和已登记口径。
+- 订单接收「受影响订单清单」：AP 事实字段之外，按证据中实际出现的订单号合并原因和
+  责任动作；事实列包含变更类型、减少电量和影响金额。
+- 发货「客户与超期订单」：AP 事实字段之外，按证据中实际出现的订单号合并主因和具体
+  根因。
+
+上游三张表分别调用 `/api/mock/star-product-scope`、`/api/mock/affected-order-extra` 和
+`/api/mock/overdue-order-root-cause`。本仓库不复制这些 mock，统一改走
+`POST /api/cockpit/ai-tables/{tableKey}/query`：事实数据仍由主服务按 AP 单查契约取得，
+AI 文字只从当前范围已发布且通过交付校验的环节卡片按订单证据合并。没有匹配证据的行
+显示“证据不足，未确认根因”或“待核实原因后明确责任动作”，不借用其他订单的结论。
 
 ## 接入边界
 
-`components.json`、`template-registry.json`、`insights.js` 和 `insight-components/` 保持交付原样，
-由 `bi_agent/cockpit/metadata.py` 编译为 `metadata/runtime.json`。页面只读取导出的 runtime 和
-`pdt-release-2109836674373566465/data-snapshots.json`，不访问 AP、PDT 或生产接口。
-`GET /api/cockpit/metadata` 返回编译后的模板、插槽路径、适配记录与差异。
+前端只读取导出的 `metadata/runtime.json`。AP 地址、仓库 ID 和认证只从主服务
+`COCKPIT_AP_*` 配置读取，浏览器不能指定上游 URL、请求头或证据正文。
 
-AP 中的采购指标与销售标题可能不一致，页面保留交付原值；未捕获的查询显示组件自带的
-“未找到该 AP 查询的发布快照”，不补造数据。
-交付仓库的鉴权、浏览器 token、网关代理和固定 AI 结论均未复制。
+商机模板 `2112062888320483329` 的 `group-9ypz7vwt` 仍引用不存在的
+`share-bar-79fsomq9`。运行包保留原位置为空并写入缺项报告，不猜测图形配置。
 
-商机模板 `2112062888320483329` 的 `group-9ypz7vwt` 引用 `share-bar-79fsomq9`，
-但交付中没有子组件定义。运行包保留空位并在缺项报告中列明，不猜测图形配置。
-完整差异及需补交内容见仓库 `docs/specs/cockpit-v3-metadata-gaps.md`。
+发货模板中的 `shipment-task-order` 已按上游新配置落在 `share-bar-zob5z1uu` 之后，
+不再依赖不存在的 `table-md1iftaj`；运行包按插槽数组顺序排在客户与超期订单列表之后。

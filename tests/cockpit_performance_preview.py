@@ -39,7 +39,7 @@ class Gateway:
   return {'resultType':'TABLE','result':{'columns':columns,'rows':rows}}
 gateway=Gateway();router.get_gateway=lambda:gateway
 # Keep fault injection immediate; production APReuse is covered by concurrency unit tests.
-router.APReuse=lambda:APReuse(ttl=0)
+router.APReuse=lambda **_:APReuse(ttl=0)
 def context(req):
  st=Store(scratch/'dataset/cockpit/history.sqlite3');fp,selected=receipt_material(req.model_dump(),st)
  return dict(snapshotId='ap-'+fp,dataIdentity=gateway.config.identity(),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))))
@@ -58,6 +58,13 @@ def debug():
  with st.db() as db:pages=db.execute('SELECT count(*) FROM page_snapshot_views').fetchone()[0]
  with st.db() as db:scopes=[json.loads(r[0])['uiScope'] for r in db.execute('SELECT p.body FROM page_snapshot_views v JOIN page_snapshots p ON p.id=v.snapshot_id') ]
  return dict(revision=state['revision'],fail=state['fail'],apiCalls=len(state['requests']),models=state['models'],pages=pages,scopes=scopes,requests=state['requests'])
+@app.post('/debug/reset')
+def reset():
+ """Reset only this process's temporary fixture store; never touches user data."""
+ global scratch
+ scratch=Path(tempfile.mkdtemp(prefix='cockpit-performance-qa-'))
+ state.update(revision=1,fail=False,requests=[],models=0)
+ return {'ok':True}
 @app.post('/debug/change')
 async def change(req:Request):
  args=await req.json()

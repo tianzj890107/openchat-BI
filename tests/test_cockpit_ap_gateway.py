@@ -2,6 +2,7 @@
 import json
 import io
 import threading
+import time
 from urllib.error import HTTPError
 from unittest.mock import patch
 
@@ -38,17 +39,30 @@ def test_transport_has_its_own_headers_paths_and_capacity(tmp_path,monkeypatch):
     gateway=APGateway(config(tmp_path),opener)
     assert gateway.query('analysis',QUERY)==DATA
     request,timeout=opener.calls[0]
-    assert request.full_url=='http://ap.example/api/gateway2/ontology/api/v1/analysis/data/query'
-    assert request.get_method()=='POST' and timeout==2
+    assert request.full_url=='http://ap.example/api/gateway2/x360/v1/ontology/data/query'
+    assert request.get_method()=='POST' and timeout==pytest.approx(2,abs=0.2)
     assert 'must-not-reach-ap' not in str(request.headers)
-    assert request.headers['X-ontology-repository-id']=='ap-repo'
+    assert request.headers['X-ontology-repository-id']=='8'
     assert json.loads(request.data)==QUERY
     gateway._capacity.acquire()
     try:
-        with pytest.raises(HTTPException) as error:gateway.query('analysis',QUERY)
-        assert error.value.status_code==429
-    finally:gateway._capacity.release()
+        threading.Timer(0.1,gateway._capacity.release).start()
+        assert gateway.query('analysis',QUERY)==DATA
+    finally:
+        if gateway._capacity.acquire(blocking=False):gateway._capacity.release()
     assert gateway.query('analysis',QUERY)==DATA
+
+
+def test_saturated_gateway_times_out_instead_of_rejecting_immediately(tmp_path):
+    from dataclasses import replace
+    gateway=APGateway(replace(config(tmp_path),timeout=1),Opener({'success':True,'data':DATA}))
+    gateway._capacity.acquire()
+    started=time.monotonic()
+    try:
+        with pytest.raises(HTTPException) as error:gateway.query('analysis',QUERY)
+        assert error.value.status_code==504 and '并发已满' not in str(error.value.detail)
+        assert time.monotonic()-started>=0.5
+    finally:gateway._capacity.release()
 
 
 @pytest.mark.parametrize('failure',[TimeoutError('private-ap-test'),HTTPError('http://secret-url',401,'private-ap-test',{},None),{'success':False,'msg':'private-ap-test','data':DATA}, {'success':True}, {'success':True,'data':[]}])
@@ -101,6 +115,35 @@ def test_proxy_returns_exact_result_and_receipt_without_extra_fetch(tmp_path,mon
     assert len(gateway._opener.calls)==1
     assert client.post('/api/cockpit/data/query',json=dict(kind='analysis',payload=QUERY,url='http://evil')).status_code==422
     assert 'private-ap-test' not in response.text
+
+
+def test_http_queries_share_the_same_short_lived_receipt_and_report_timing(tmp_path,monkeypatch):
+    import bi_agent.cockpit.router as router
+    monkeypatch.setenv('COCKPIT_DATA_MODE','ap')
+    monkeypatch.setenv('COCKPIT_AP_REUSE_SECONDS','300')
+    gateway=APGateway(config(tmp_path),Opener({'success':True,'data':DATA}))
+    monkeypatch.setattr(router,'get_gateway',lambda:gateway)
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:tmp_path,main_context=lambda c:{}))
+    client=TestClient(app)
+    first=client.post('/api/cockpit/data/query',json=dict(id=1,kind='analysis',payload=QUERY)).json()
+    second=client.post('/api/cockpit/data/query',json=dict(id=1,kind='analysis',payload=QUERY)).json()
+    assert first['receiptId']==second['receiptId'] and len(gateway._opener.calls)==1
+    assert {'backendQueueMs','upstreamMs','receiptWaitMs','serverTotalMs'} <= set(first['timings'])
+    assert second['timings']['cacheHit'] is True and 'receiptWaitMs' in second['timings']
+
+
+def test_completed_http_queries_are_not_reused_by_default(tmp_path,monkeypatch):
+    import bi_agent.cockpit.router as router
+    monkeypatch.setenv('COCKPIT_DATA_MODE','ap')
+    monkeypatch.delenv('COCKPIT_AP_REUSE_SECONDS',raising=False)
+    gateway=APGateway(config(tmp_path),Opener({'success':True,'data':DATA}))
+    monkeypatch.setattr(router,'get_gateway',lambda:gateway)
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:tmp_path,main_context=lambda c:{}))
+    client=TestClient(app)
+    first=client.post('/api/cockpit/data/query',json=dict(id=1,kind='analysis',payload=QUERY)).json()
+    second=client.post('/api/cockpit/data/query',json=dict(id=1,kind='analysis',payload=QUERY)).json()
+    assert first['receiptId']!=second['receiptId'] and len(gateway._opener.calls)==2
+    assert first['timings']['cacheHit'] is False and second['timings']['cacheHit'] is False
 
 
 def test_sidecar_and_snapshot_mode_cannot_start_live_proxy(tmp_path,monkeypatch):
@@ -181,7 +224,7 @@ def test_individual_batch_uses_exact_single_ap_queries_in_order_and_never_calls_
     result=gateway.query('batch',[QUERY,second])
     assert result==[{'success':True,'data':DATA},{'success':True,'data':DATA}]
     assert [json.loads(r.data) for r,_ in opener.calls]==[QUERY,second]
-    assert all(r.full_url.endswith('/ontology/api/v1/analysis/data/query') for r,_ in opener.calls)
+    assert all(r.full_url.endswith('/x360/v1/ontology/data/query') for r,_ in opener.calls)
     assert all(timeout<=cfg.timeout for _,timeout in opener.calls)
 
 
@@ -213,6 +256,16 @@ def test_invalid_batch_mode_is_a_configuration_error(monkeypatch):
     assert error.value.status_code==503
 
 
+def test_ontology_gateway_code_envelope_and_repository_override(monkeypatch,tmp_path):
+    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2')
+    monkeypatch.setenv('COCKPIT_AP_HEADERS_FILE',str(config(tmp_path).headers_file))
+    monkeypatch.setenv('COCKPIT_AP_REPOSITORY_ID','8')
+    gateway=APGateway(APConfig.load(),Opener({'code':200,'data':DATA}))
+    assert gateway.query('analysis',QUERY)==DATA
+    request,_=gateway._opener.calls[0]
+    assert request.headers['X-ontology-repository-id']=='8'
+
+
 def test_individual_batch_deduplicates_equal_children_without_losing_positions(tmp_path):
     from dataclasses import replace
     opener=Opener({'success':True,'data':DATA})
@@ -221,3 +274,49 @@ def test_individual_batch_deduplicates_equal_children_without_losing_positions(t
     assert len(result)==3 and len(opener.calls)==1
     result[0]['data']['result']['rows'].clear()
     assert result[1]['data']['result']['rows']
+
+
+def test_helmet_proxy_preserves_upstream_ywln_config(tmp_path,monkeypatch):
+    import bi_agent.cockpit.router as router
+    monkeypatch.setenv('COCKPIT_DATA_MODE','ap')
+    opportunity={"dimension":[{"identifierCode":"YWLN_D020"}],"measure":[{"identifierCode":"YWLN_M0022"}]}
+    quotation={"dimension":[{"identifierCode":"YWLN_D021"}],"measure":[{"identifierCode":"YWLN_M0031"}]}
+    helmet={"helmetGlobalConfig":None,"edges":[],"nodes":[
+        {"code":"BUSINESS_OPPORTUNITY_ACQUISITION","meta":{"helmetConfig":{
+            "dataConfig":json.dumps(opportunity),"statusMappings":[]}}},
+        {"code":"QUOTATION","meta":{"helmetConfig":{"dataConfig":json.dumps(quotation)}}}]}
+    gateway=APGateway(config(tmp_path),Opener({'success':True,'data':helmet}))
+    monkeypatch.setattr(router,'get_gateway',lambda:gateway)
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:tmp_path,main_context=lambda c:{}))
+    response=TestClient(app).post('/api/cockpit/data/query',json=dict(
+        id=1,kind='helmet',payload={'flowCode':'FULL_PROCESS_OPERATIONS_MANAGEMENT'}))
+    assert response.status_code==200,response.text
+    nodes=response.json()['data']['nodes']
+    assert json.loads(nodes[0]['meta']['helmetConfig']['dataConfig'])==opportunity
+    assert json.loads(nodes[1]['meta']['helmetConfig']['dataConfig'])==quotation
+
+
+def test_ap_timeout_supports_three_minute_budget_and_caps_above_it(monkeypatch,tmp_path):
+    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2')
+    monkeypatch.setenv('COCKPIT_AP_HEADERS_FILE',str(config(tmp_path).headers_file))
+    monkeypatch.setenv('COCKPIT_AP_TIMEOUT_SECONDS','180')
+    assert APConfig.load().timeout==180
+    monkeypatch.setenv('COCKPIT_AP_TIMEOUT_SECONDS','600')
+    assert APConfig.load().timeout==240
+
+
+def test_queue_wait_and_upstream_share_one_deadline(tmp_path):
+    """A page waiting for capacity must not then get a full second budget."""
+    from dataclasses import replace
+    opener=Opener({'success':True,'data':DATA})
+    gateway=APGateway(replace(config(tmp_path),timeout=1),opener)
+    waits=[]
+    class Capacity:
+        def acquire(self,timeout=None):waits.append(timeout);return True
+        def release(self):pass
+    gateway._capacity=Capacity()
+    with patch('bi_agent.cockpit.ap_gateway.time.monotonic',side_effect=[0,0.5,0.6,0.7]):
+        assert gateway.query('analysis',QUERY)==DATA
+    assert waits==[pytest.approx(0.5)]
+    assert opener.calls[0][1]==pytest.approx(0.4)
+    assert opener.calls[0][1]<1

@@ -74,3 +74,86 @@ def test_dashboard_capability_routes_to_bound_snapshot_without_doris():
     assert policy['required_tools']==[TOOL]
     assert policy['next_step']=='QUERY_DASHBOARD'
     assert policy['evidence_required'] is True
+
+
+def _entry(request):
+    return {"request": request, "response": {"result": {"columns": [], "rows": []}}}
+
+
+def test_stage_filter_keeps_only_matching_business_evidence():
+    from bi_agent.cockpit.dashboard_source import filter_stage_selected
+    selected = {
+        "opportunity": _entry({"analysisConfig": {"indicators": [
+            {"identifierCode": "YWLN_M0022", "alias": "商机获取电量"},
+            {"identifierCode": "YWLN_M0023", "alias": "商机获取金额"}]}}),
+        "shipment": _entry({"analysisConfig": {"indicators": [
+            {"identifierCode": "YWLN_M0035", "alias": "发货量"}]}}),
+        "legacy_procurement": _entry({"analysisConfig": {"indicators": [
+            {"identifierCode": "M0001", "alias": "采购金额"}]}}),
+        "legacy_shipment": _entry({"analysisConfig": {"indicators": [
+            {"identifierCode": "M00013", "alias": "发货金额"}]}}),
+    }
+    kept, excluded = filter_stage_selected(selected, "opportunity")
+    assert set(kept) == {"opportunity"}
+    assert set(excluded) == {"shipment", "legacy_procurement", "legacy_shipment"}
+    kept, _ = filter_stage_selected(selected, "shipment")
+    assert set(kept) == {"shipment", "legacy_shipment"}
+    kept, _ = filter_stage_selected(selected, "order")
+    assert kept == {}
+
+
+def test_stage_gap_result_is_a_limited_publishable_card():
+    from bi_agent.cockpit.dashboard_source import stage_gap_result
+    result = stage_gap_result(dict(stage="opportunity", dataSource="ap", snapshotId="ap-x",
+                                   stageEvidence=dict(kept=0, excluded=4)))
+    assert result["_status"] == "limited"
+    assert result["cardContract"] == "cockpit-cards-v1"
+    assert result["causes"] == [] and result["recommendations"] == []
+    assert any("未取得商机获取环节" in item for item in [result["summary"]])
+    assert any("已排除4条" in limit for limit in result["limitations"])
+
+
+def test_stage_projection_hides_other_stage_columns_in_mixed_query():
+    from bi_agent.cockpit.dashboard_source import executor
+    request = {"analysisConfig": {"indicators": [
+        {"identifierCode": "YWLN_M0022"}, {"identifierCode": "YWLN_M0035"}]}}
+    response = {"result": {"columns": [
+        {"identifierCode": "YWLN_D003", "label": "产品类型", "type": "DIMENSION"},
+        {"identifierCode": "YWLN_M0022", "label": "商机获取电量", "type": "METRIC"},
+        {"identifierCode": "YWLN_M0035", "label": "发货量", "type": "METRIC"}],
+        "rows": [{"YWLN_D003": {"value": "PACK"},
+                  "YWLN_M0022": {"value": 1.45},
+                  "YWLN_M0035": {"value": 3.73}}]}}
+    selected = {"q1": {"request": request, "response": response}}
+    output = json.loads(executor(selected, "opportunity")({"queryId": "q1"}, ""))
+    assert output["data"]["rows"] == [{"产品类型[YWLN_D003]": "PACK",
+                                       "商机获取电量[YWLN_M0022]": 1.45}]
+
+
+def test_failed_queries_are_reported_for_the_matching_stage_only():
+    from bi_agent.cockpit.dashboard_source import unavailable_stage_evidence
+    failed = {"unavailableQueries": [
+        json.dumps({"analysisConfig": {"indicators": [
+            {"identifierCode": "YWLN_M0023", "alias": "商机获取金额"}]}}),
+        json.dumps({"analysisConfig": {"indicators": [
+            {"identifierCode": "YWLN_M0036", "alias": "发货金额"}]}}),
+    ]}
+    got = unavailable_stage_evidence(failed, "opportunity")
+    assert got["failed"] == 1 and got["excluded"] == 1
+    assert "商机获取金额" in got["labels"]
+    assert unavailable_stage_evidence({}, "opportunity")["failed"] == 0
+    with pytest.raises(ValueError):
+        unavailable_stage_evidence({"unavailableQueries": ["{not json"]}, "opportunity")
+
+
+def test_customer_planning_metrics_count_as_opportunity_evidence():
+    from bi_agent.cockpit.dashboard_source import filter_stage_selected, unavailable_stage_evidence
+    planning = {"analysisConfig": {"indicators": [
+        {"identifierCode": "YWLN_M0075", "alias": "目标电量"},
+        {"identifierCode": "YWLN_M_CUSTOMER_TARGET_ENERGY", "alias": "规划电量"},
+        {"identifierCode": "YWLN_M_CUSTOMER_ACTUAL_ENERGY", "alias": "实际电量"}]}}
+    kept, excluded = filter_stage_selected({"plan": _entry(planning)}, "opportunity")
+    assert set(kept) == {"plan"} and excluded == []
+    failed = unavailable_stage_evidence({"unavailableQueries": [json.dumps(planning)]}, "opportunity")
+    assert failed["failed"] == 1
+    assert set(failed["labels"]) == {"目标电量", "规划电量", "实际电量"}

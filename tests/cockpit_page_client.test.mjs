@@ -39,8 +39,25 @@ test('missing or partial card contract cannot publish a mixed page',async()=>{
  await client.refresh(snapshot);assert.equal(shown.length,0);assert.match(states.find(s=>s.error)?.error,/未完整交付/);
 });
 
+test('only an explicitly background page publication is marked silent',async()=>{
+ const {client}=setup({request:async path=>{
+  if(path.endsWith('/page'))return {ok:false,status:422,json:async()=>({detail:'AI插槽未完整交付，保留上次完整版本'})};
+  return ok({});
+ }});
+ await assert.rejects(client.publish(fresh(),{},'default',undefined,true),error=>error.backgroundOnly===true);
+ await assert.rejects(client.publish(fresh(),{},'default'),error=>error.backgroundOnly===false);
+});
+
 test('new filter lookup is exact and wrong-role snapshots are rejected',async()=>{
  const {client}=setup({request:async()=>ok({snapshot:{...snapshot,id:2}})});
  await assert.rejects(client.load('department-B'),/范围不匹配/);
  assert.equal(await client.refresh({...snapshot,id:2}),null);
+});
+
+test('cards endpoint serves the published stage cards independently of page snapshots', async () => {
+  const paths = [];
+  const {client} = setup({request: async path => { paths.push(path); return ok({items: {shipment: card('new-card')}}); }});
+  const value = await client.cards();
+  assert.equal(value.items.shipment.id, 'new-card');
+  assert.equal(paths.at(-1), '/api/cockpit/publications/cards?id=1&page=analysis');
 });

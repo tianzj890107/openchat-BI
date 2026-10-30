@@ -24,6 +24,7 @@ eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Age
 - [版本历史](docs/versions/README.md)
 - [版本管理规范](docs/versions/versioning-policy.md)
 - [部署说明](DEPLOYMENT.md)
+- [本地 Excel 本体回退部署说明](docs/local-excel-ontology-fallback.md)
 - [GitLab 统一推送工作流](docs/gitlab-push-workflow.md)
 - [Open Claude Runtime 说明](open_claude/README.md)
 
@@ -100,7 +101,7 @@ cp .env.example .env
 | 模型网关 | `LLM_PROVIDER`、`TEAM_BASE_URL`、`TEAM_API_KEY`、`TEAM_MODEL` | 选择模型提供方与默认模型 |
 | 本体服务 | `ONTOLOGY_BACKEND`、`ONTOLOGY_BASE_URL`、`ONTOLOGY_REPOSITORY_ID` | 选择本地或远程本体 |
 | 事实数据 | `DORIS_API_URL`、`DORIS_DATABASE` | 配置业务事实查询 |
-| 远程 MCP | `ONTOLOGY_MCP_AUTH_TOKEN`（可选）、`MCP_PUBLIC_BASE_URL`（可选）、`ONTOLOGY_MCP_EXPOSED_TOOLS`（可选） | 控制 Fuxi 连接器鉴权、Artifact 公网基址和工具白名单 |
+| 远程 MCP | `ONTOLOGY_MCP_AUTH_TOKEN`（可选）、`MCP_PUBLIC_BASE_URL`（可选）、`ONTOLOGY_MCP_TOOL_PROFILE`（`general`/`process360`）、`ONTOLOGY_MCP_EXPOSED_TOOLS`（可选） | 控制 Fuxi 连接器鉴权、Artifact 公网基址、技能工具白名单与数据源隔离 |
 | 并发治理 | `CHATBI_MAX_ACTIVE_TURNS` 等 | 限制 turn、principal 和下游并发 |
 | 子路径部署 | `APP_ROOT_PATH` | 外部网关子路径前缀（如 `/api/ontology-agentic-analytics`）；缺省为空字符串，保持域名根路径部署 |
 
@@ -121,6 +122,11 @@ curl -fsS http://127.0.0.1:8765/healthz
 ```
 
 本地本体与 SQLite 参数通过 `python -m bi_agent.web --help` 查看。
+
+工作台支持 URL 参数 `prompt`：页面初始化后自动提交问题，使用与手动发送相同的智能体交互流程。
+例如 `http://127.0.0.1:8765/workbench?prompt=分析采购情况`，根路径入口同样支持。
+拼接链接时使用 `encodeURIComponent(prompt)` 编码问题，以保留中文、换行和 `&`、`+` 等字符。
+未传或仅含空白时不提交；自动提交前会从当前地址移除 `prompt`，保留其他参数和锚点，避免刷新重复发送。
 
 ### V3 经营驾驶舱 POC
 
@@ -170,12 +176,22 @@ Fuxi 连接器配置：
 }
 ```
 
-连接后可以看到 16 个真实分析工具（`AnalysisRoute`、`MetricFactQuery`、
-`ChartGenerate`、`TableGenerate`、`CanvasGenerate`、`OutputGateCheck` 等），
+连接后可以看到 `AnalysisRoute`、`MetricFactQuery`、`ChartGenerate`、
+`TableGenerate`、`CanvasGenerate`、`TaskOrderCreate`、`OutputGateCheck` 以及
+`Process360Route/Search/Context/Query/Analyze/Draft/Verify` 等真实分析工具，
 不会出现 `AnalysisRun`、`AskUser`、`TodoWrite` 或原始 SQL 工具。客户端不需要
 `.env`、App ID 或 Token；demo2 本体和 Doris 配置由主服务持有。若在网关后使用，
 用 `MCP_PUBLIC_BASE_URL` 指定外部可访问基址，使 `CanvasGenerate` 返回的
 `Artifact URL` 不指向容器内地址。
+
+### Process360 五场景闭环
+
+主服务内置 SC01 发货超期、SC02 红区报价、SC03 战略客户、SC04 中标未签、
+SC05 计划外发货的确定性闭环：本地 catalog 提供流程/指标/规则/证据语义，业务事实通过
+只读 PostgreSQL 受控取数，候选原因必须补证据，任务令只发 Fuxi 待办
+（`boulderai-anaylize-todo`），复验缺少冻结基准或批准目标时不能关闭。
+数据库只读配置使用 `PROCESS360_PG_*`（见 `.env.example`）；未配置时取数明确返回
+`blocked`，不回退 mock。详见 [Process360 闭环实现](docs/specs/process360-closed-loop.md)。
 
 ## 反向代理子路径部署（`APP_ROOT_PATH`）
 
@@ -290,6 +306,7 @@ Node 子进程执行。
 ## 相关文档
 
 - [部署与运行](DEPLOYMENT.md)
+- [本地 Excel 本体回退部署说明](docs/local-excel-ontology-fallback.md)
 - [系统接口调用与代码统计](API/系统接口调用与代码统计.md)
 - [智能分析 Agent 前端 API 接口文档](API/智能分析Agent前端API.md)
 - [Skills 说明](docs/skills/README.md)
@@ -300,3 +317,19 @@ Node 子进程执行。
 ## License
 
 仓库中的 Open Claude Runtime 沿用 MIT License；eimosp-ontology-agentic-analytics 其他业务代码的授权范围请联系项目维护者确认。
+
+## 委托完整分析（共享 Runtime）
+
+工作台、Cockpit main 与 MCP 委托任务均使用 `bi_agent.runtime.session.AgentSession`。
+基础工具连接器仍是 `/api/mcp/general`、`/api/mcp/process360`，不启动内部 Agent 循环。
+新增 `/api/mcp/tasks` 专用于把完整问题委托给 Analytics 的工作台分析链：
+
+1. `AnalysisTaskSubmit(question)` 返回 `task_id`、私有 `task_token`。
+2. `AnalysisTaskGet(task_id, task_token, after?, limit?)` 分页获取状态和事件。
+3. `AnalysisTaskCancel(task_id, task_token)` 请求取消，不删除历史。
+
+`needs_input` 表示需要用户补充信息后重新提交；不是成功完成分析。
+任务接口禁用派发、Shell 和任意文件写入工具，不接受调用方指定浏览器会话或身份。
+任务状态保存在 `dataset/analysis_tasks/`，容器部署时需单独持久化；一个数据库只允许
+一个进程拥有，第二个所有者会拒绝启动任务管理器。重启后未完成任务标记为 `interrupted`，
+不自动重放。部署和旧服务退役须等待独立验收，不因代码合并自动执行。

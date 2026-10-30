@@ -75,7 +75,7 @@ from ..tools.sql_tools import (
     DorisHttpConn,
 )
 from .conversations import ConversationStore, sanitize_source_config
-from .session import TurnContext, WebSession
+from ..runtime.session import TurnContext, AgentSession as WebSession
 
 
 logger = logging.getLogger(__name__)
@@ -575,7 +575,9 @@ def configure(
         else:
             STATE.remote_catalog_error = ""
             STATE.remote_catalog_last_attempt = 0.0
-            repository = next((item for item in catalog if item["id"] == STATE.remote_ontology.repository_id), None)
+            repository, fallback = _resolve_remote_repository(
+                catalog, STATE.remote_ontology.repository_id,
+            )
             if repository is None:
                 available_ids = ", ".join(str(item["id"]) for item in catalog) or "（目录为空）"
                 raise RuntimeError(
@@ -587,6 +589,17 @@ def configure(
                 raise RuntimeError(f"远程本体库 {repository['name']} 未配置 dorisDatabase")
             if not repository["namespace"]:
                 raise RuntimeError(f"远程本体库 {repository['name']} 未配置 namespaceCode")
+            if fallback is not None:
+                print(
+                    "[bi-agent-web] warning: configured ontology repository "
+                    f"{STATE.remote_ontology.repository_id} is unavailable; using verified "
+                    f"compatibility repository {repository['id']} "
+                    f"({repository['name']} / {repository['namespace']} / "
+                    f"{repository['dorisDatabase']}). "
+                    "Update ONTOLOGY_REPOSITORY_ID when deployment configuration is available.",
+                    flush=True,
+                )
+            STATE.remote_ontology.repository_id = repository["id"]
             STATE.ontology_namespace = repository["namespace"]
             STATE.doris_database = repository["dorisDatabase"]
             STATE.remote_ontology.namespace = repository["namespace"]
@@ -849,6 +862,42 @@ class ConfigUpdate(BaseModel):
 DORIS_SOURCE_VALUE = "__doris_api__"
 REMOTE_ONTOLOGY_PREFIX = "__metaerp_repository__:"
 REMOTE_DORIS_PREFIX = "__doris_repository__:"
+
+# Temporary compatibility for the pdt-dev deployment that still injects the
+# retired repository ID 3. The fallback is deliberately narrow: it is only
+# accepted when the catalog contains the exact repository, namespace and Doris
+# database verified for the 亿纬锂能 (ywln) source. Any catalog drift keeps the
+# original fail-fast behavior instead of silently querying another domain.
+REMOTE_REPOSITORY_COMPAT_FALLBACKS: dict[str, dict[str, str]] = {
+    "3": {
+        "id": "14",
+        "namespace": "ywln",
+        "doris_database": "ontology_ywln",
+    },
+}
+
+
+def _resolve_remote_repository(
+    catalog: list[dict[str, Any]], configured_id: str,
+) -> tuple[Optional[dict[str, Any]], Optional[dict[str, str]]]:
+    """Return the exact configured repository or a verified legacy fallback."""
+    configured_id = str(configured_id).strip()
+    repository = next((item for item in catalog if item["id"] == configured_id), None)
+    if repository is not None:
+        return repository, None
+    expected = REMOTE_REPOSITORY_COMPAT_FALLBACKS.get(configured_id)
+    if not expected:
+        return None, None
+    repository = next((item for item in catalog if item["id"] == expected["id"]), None)
+    if repository is None:
+        return None, None
+    if repository.get("namespace") != expected["namespace"]:
+        return None, None
+    if repository.get("dorisDatabase") != expected["doris_database"]:
+        return None, None
+    return repository, expected
+
+
 # Pseudo-source shown in 本体适配. It represents the production ontology
 # service, not a local workbook.
 METAERP_ONTOLOGY_VALUE = "__metaerp_ontology__"
@@ -3940,10 +3989,72 @@ def _build_report_session(
 # mounted last so every helper above is defined; no circular import is needed.
 from .mcp_endpoint import build_mcp_router  # noqa: E402
 
+_analysis_task_service = None
+_analysis_task_service_lock = threading.RLock()
+
+
+def _delegated_analysis_events(task_id, question, cancel):
+    # A task may never attach to a browser's conversation or override its source.
+    key = "delegated-" + task_id
+    session = None
+    try:
+        session = _ensure_session(key)
+        # Delegation is analysis-only: write actions require a separate user click.
+        from open_claude.tools import get_filtered_tool_schemas
+        forbidden = {"RiskItemCreate", "TaskOrderCreate", "Bash", "Write", "Edit", "Skill"}
+        allowed = session.allowed_tools
+        if allowed is None:
+            allowed = [tool["name"] for tool in get_filtered_tool_schemas()]
+        session.set_tools_override([name for name in allowed if name not in forbidden])
+        session.enforce_tool_allowlist = True
+        slot, lease, turn_id, ticket, _ = _begin_turn(
+            "data", key, cancel_event=cancel,
+            principal_session_id="delegated-analysis",
+        )
+        with _turn_execution_scope(session, slot, lease, turn_id, ticket, cancel):
+            for event in _annotate_events(session.generate_turn(question), turn_id=turn_id, generation=lease.generation):
+                yield event
+            if session.pending_tool_use_id:
+                yield {"type": "needs_input", "message": "分析需要用户补充信息；请根据澄清内容重新提交问题。"}
+    finally:
+        with STATE.registry_lock:
+            if STATE.sessions.get(key) is session:
+                STATE.sessions.pop(key, None)
+            STATE.source_contexts.pop(key, None)
+
+
+def _get_analysis_task_service():
+    global _analysis_task_service
+    from ..runtime.tasks import TaskService
+    with _analysis_task_service_lock:
+        if _analysis_task_service is None:
+            if not STATE.cwd or STATE.agent_def is None:
+                raise HTTPException(503, "Analytics 尚未配置")
+            _analysis_task_service = TaskService(
+                Path(STATE.cwd) / "dataset" / "analysis_tasks" / "tasks.sqlite3",
+                _delegated_analysis_events,
+            )
+            _analysis_task_service.cwd = STATE.cwd
+        return _analysis_task_service
+
+
+def _close_analysis_task_service():
+    global _analysis_task_service
+    with _analysis_task_service_lock:
+        service = _analysis_task_service
+        _analysis_task_service = None
+    if service is not None:
+        service.close()
+
+
+app.router.add_event_handler("shutdown", _close_analysis_task_service)
+
+
 app.include_router(build_mcp_router(
     get_source=lambda: _source_for_session(None),
     build_doris=_doris_http_conn,
     get_cwd=lambda: STATE.cwd or os.getcwd(),
+    task_service_factory=_get_analysis_task_service,
 ))
 
 
@@ -3951,28 +4062,20 @@ app.include_router(build_mcp_router(
 from ..cockpit.router import build_cockpit_router  # noqa: E402
 
 def _cockpit_main_context(req):
-    from ..cockpit.dashboard_source import material, receipt_material
+    # One resolver serves the page, the manual refresh and the scheduled
+    # refresh, so snapshot ids and evidence fingerprints cannot diverge.
+    from ..cockpit.dashboard_source import page_analysis_context
     from ..cockpit.ap_gateway import data_mode
     from ..cockpit.store import Store
     if STATE.agent_def is None:
         raise HTTPException(503,'主服务未配置分析Agent')
-    if req.repositoryId:
-        raise HTTPException(422,'看板快照分析不接受其他本体库绑定')
-    if req.filters:
-        raise HTTPException(422,'筛选必须体现在已展示的AP请求中，不能声明未应用的自定义筛选')
     try:
-        if data_mode()=='ap':
-            fingerprint,selected=receipt_material(req.model_dump(),Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'))
-            from ..cockpit.publications import digest
-            identities={v.get("connectionId","") for v in selected.values()}
-            if len(identities)!=1:raise ValueError("AP材料来自不同连接，不能合并分析")
-            return dict(snapshotId='ap-'+fingerprint,repositoryId='',dataIdentity=next(iter(identities)),dataFingerprint=digest(sorted(((json.dumps(v['request'],sort_keys=True),v['response']) for v in selected.values()),key=lambda v:json.dumps(v,sort_keys=True))),dataBasis='页面本次成功AP响应的服务端冻结结果；实际筛选以原始请求为准，分析不重新取数')
-        if req.apReceiptIds:raise ValueError('快照模式不能消费实时AP凭据')
-        fingerprint,_=material(req.model_dump())
+        return page_analysis_context(
+            req.model_dump(),
+            Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'),
+            data_mode=data_mode())
     except (ValueError, TypeError) as exc:
         raise HTTPException(422,str(exc)) from exc
-    return dict(snapshotId='dashboard-'+fingerprint,repositoryId='',dataIdentity='pdt-release-2109836674373566465',dataFingerprint=fingerprint,
-        dataBasis='当前看板已展示AP请求的服务端交付快照；实际筛选口径以原始AP请求为准，非实时数据库')
 
 
 @contextmanager
@@ -3992,6 +4095,8 @@ def _cockpit_main_turn(context,cancel):
             if live else material(context))
         if context['snapshotId']!=('ap-' if live else 'dashboard-')+fingerprint:
             raise RuntimeError('看板快照已变化，请重新提交分析任务')
+        from ..cockpit.dashboard_source import filter_stage_selected
+        selected,excluded=filter_stage_selected(selected,context['stage'])
         # Registration supplies the schema only. Every task binds its own executor.
         def unbound(params,cwd):
             raise RuntimeError('看板查询只能在绑定快照的任务内执行')
@@ -3999,8 +4104,14 @@ def _cockpit_main_turn(context,cancel):
         register_tool(DELIVERY_SCHEMA,unbound)
         session=WebSession(cwd=STATE.cwd,agent_def=STATE.agent_def,
             ontology_store=None,tools_override=[TOOL,DELIVERY_TOOL,'AskUser'],
-            context_header=('本轮数据来源：页面本次实时AP响应的冻结结果。' if live else '本轮数据来源：看板交付AP快照。')+'只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。',
-            tool_executors={TOOL:executor(selected)})
+            context_header=(
+                (('本轮数据来源：页面本次AP取数全部失败，已按同一筛选口径从主库（PostgreSQL）补查，来源已在证据中标为 pg，未混用AP结果。')
+                 if (live and context.get('dataSource')=='pg')
+                 else (('本轮数据来源：页面本次实时AP响应的冻结结果，另有'+str(len(context.get('fallback',{}).get('metrics') or []))+'项失败指标按同一筛选口径从主库（PostgreSQL）补查，来源已在证据中标为 pg，禁止与AP结果混算。')
+                 if (live and context.get('dataSource')=='ap+pg')
+                 else ('本轮数据来源：页面本次实时AP响应的冻结结果。' if live else '本轮数据来源：看板交付AP快照。')))
+                +'只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。'),
+            tool_executors={TOOL:executor(selected,context['stage'])})
         raw_read=session._tool_executors[TOOL]
         def read_with_refs(params,cwd):
             from ..reliability import QueryResult, claims_from_query_result
@@ -4010,6 +4121,9 @@ def _cockpit_main_turn(context,cancel):
             data['evidenceIds']=[claim.id for claim in claims]
             return json.dumps(data,ensure_ascii=False)
         session._tool_executors[TOOL]=read_with_refs
+        session.cockpit_stage_filter=dict(stage=context['stage'],kept=len(selected),excluded=len(excluded),
+            fallback=list((context.get('stageEvidence') or {}).get('fallbackMetrics') or []),
+            fallbackBlocked=list((context.get('stageEvidence') or {}).get('fallbackBlocked') or []))
         install_delivery(session,context)
         with STATE.registry_lock:
             STATE.sessions[key]=session
@@ -4027,6 +4141,10 @@ _cockpit_analysis_capacity=threading.BoundedSemaphore(1)
 
 def _cockpit_main_runner(context,cancel,progress):
     from ..cockpit.main_service import run_main_analysis
+    from ..cockpit.dashboard_source import stage_gap_result
+    if context.get('stageEvidence') and context['stageEvidence'].get('kept')==0:
+        progress('本环节缺少匹配的看板指标，未调用模型',[])
+        return stage_gap_result(context),[]
     progress('等待Cockpit独立分析配额',[])
     while not _cockpit_analysis_capacity.acquire(timeout=0.2):
         if cancel.is_set():raise InterruptedError('分析已停止')
