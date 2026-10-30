@@ -1,6 +1,6 @@
 /**
  * 销售额 / 出货量共同问题分析。插在穿透式问题分析的经营指标分组下方。
- * 内容由当前发货环节的真实分析结果、证据事实和记录驱动。
+ * 内容由跨环节共同分析的真实分析结果、证据事实和记录驱动。
  */
 const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
 const { computed } = window.Vue

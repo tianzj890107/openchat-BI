@@ -26,7 +26,7 @@ DEFAULT_IDENTITIES = (1, 2)
 DEFAULT_PAGES = ('overview', 'operations', 'analysis')
 _DELIVERED_QUERY_CACHE = None
 _COMPONENT_QUERY_CACHE = None
-_METRIC_STAGES = {code: stage for stage, codes in STAGE_METRICS.items() for code in codes}
+_METRIC_STAGES = {code: stage for stage, codes in STAGE_METRICS.items() for code in codes if stage != 'combined'}
 DEFAULT_CUSTOM_REFRESH_TTL_SECONDS = 24 * 60 * 60
 
 
@@ -720,6 +720,8 @@ class RefreshScheduler(threading.Thread):
     def _view_targets(self):
         targets = {}
         for view_key, stage, body in self.store.default_views(limit=2000):
+            if stage == 'combined':
+                continue  # Composite refresh is explicit and reuses saved receipts only.
             context = body.get('context') or {}
             # The publication row is append-only history.  A view key created
             # by an older component/config revision stays displayable but is

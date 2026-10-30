@@ -1448,3 +1448,8 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   `backups/site-28e7745-20261030-0815-pre`。8765 回退时停止 PID `3129750`，使用旧 release
   `process360-cockpit-7d9e98c-20261030-0759/start-main.py` 启动。不得删除历史 release、
   备份、会话、上传、图表或 dataset。
+
+### 2026-10-30 · 共同分析单插槽发布
+
+- `sales-shipment-issues` 改为独立 `combined` 分析，保留原 `shipment` 发布历史。通过 `POST /api/cockpit/combined/preheat`（`id`、`page=analysis`、`uiScope=default`）仅重新生成此插槽；只读现有 AP 凭据，允许复用已过 TTL 的冻结结果并披露历史来源，不续签观察时间、不访问 AP/PG。
+- 普通组件 SQL 调度不负责此组合任务。部署保留共享 dataset、凭据与虚拟环境，后台刷新配置保持既有值；不清空其他卡片、不手动请求全量刷新。验证应检查组合分析使用至少两个环节的同期间查询，其他插槽分析 ID 不变。

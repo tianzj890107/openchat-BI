@@ -28,6 +28,7 @@ class Config:
 
 
 QUERIES = {
+    'combined': {'analysisConfig': {'indicators': [{'identifierCode': 'YWLN_M0035'}]}},
     'bid': {'analysisConfig': {'indicators': [{'identifierCode': 'YWLN_M0034'}]},
             'commonConfig': {'pagination': {'pageNum': 1, 'pageSize': 20}}},
     'quotation': {'analysisConfig': {'indicators': [{'identifierCode': 'YWLN_M0031'}]},
@@ -94,7 +95,7 @@ def test_ai_publications_returns_all_slots_without_starting_analysis(tmp_path, m
     store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
     for stage, page in (('bid', 'operations'), ('quotation', 'operations'),
                         ('order', 'operations'), ('opportunity', 'analysis'),
-                        ('shipment', 'analysis')):
+                        ('shipment', 'analysis'), ('combined', 'analysis')):
         _save_stage(store, cfg, stage, page)
 
     value = _client(tmp_path, monkeypatch, cfg).get(
@@ -137,7 +138,7 @@ def test_custom_scope_exposes_default_cards_only_as_marked_fallback(tmp_path, mo
     store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
     for stage, page in (('bid', 'operations'), ('quotation', 'operations'),
                         ('order', 'operations'), ('opportunity', 'analysis'),
-                        ('shipment', 'analysis')):
+                        ('shipment', 'analysis'), ('combined', 'analysis')):
         _save_stage(store, cfg, stage, page)
     value = _client(tmp_path, monkeypatch, cfg).get(
         '/api/cockpit/ai-publications?id=1&uiScope=month%3D2026-01').json()
@@ -157,7 +158,7 @@ def test_month_and_empty_date_scopes_reuse_preheated_default_cards(tmp_path, mon
     store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
     for stage, page in (('bid', 'operations'), ('quotation', 'operations'),
                         ('order', 'operations'), ('opportunity', 'analysis'),
-                        ('shipment', 'analysis')):
+                        ('shipment', 'analysis'), ('combined', 'analysis')):
         _save_stage(store, cfg, stage, page)
     client = _client(tmp_path, monkeypatch, cfg)
     for scope in (
@@ -176,7 +177,7 @@ def test_non_default_grain_view_and_business_filters_do_not_reuse_default_scope(
     store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
     for stage, page in (('bid', 'operations'), ('quotation', 'operations'),
                         ('order', 'operations'), ('opportunity', 'analysis'),
-                        ('shipment', 'analysis')):
+                        ('shipment', 'analysis'), ('combined', 'analysis')):
         _save_stage(store, cfg, stage, page)
     client = _client(tmp_path, monkeypatch, cfg)
     for scope in (

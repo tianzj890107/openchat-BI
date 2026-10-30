@@ -108,7 +108,7 @@
     'star-product-order-list': 'order',
     'affected-order-list': 'order',
     'overdue-order-list': 'shipment',
-    'sales-shipment-issues': 'shipment',
+    'sales-shipment-issues': 'combined',
     'opportunity-risk': 'opportunity',
     'opportunity-coverage-note': 'opportunity',
     'order-risk-summary': 'order',
@@ -278,6 +278,7 @@
     bid: '投标',
     order: '订单接收',
     shipment: '发货',
+    combined: '销售额与出货量共同分析',
   };
   const PREFETCH_STAGES = [...new Set(Object.values(SLOT_STAGE))];
   const insightState = reactive({});

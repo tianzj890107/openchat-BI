@@ -142,7 +142,7 @@ def test_every_delivered_slot_has_a_page_and_stage_target():
     targets = configured_targets()
     assert targets['overview'] == ()
     assert targets['operations'] == ('bid', 'order', 'quotation')
-    assert targets['analysis'] == ('opportunity', 'order', 'shipment')
+    assert targets['analysis'] == ('combined', 'opportunity', 'order', 'shipment')
 
 
 def test_saved_page_cards_and_cross_page_stage_cards_are_returned(tmp_path, monkeypatch):

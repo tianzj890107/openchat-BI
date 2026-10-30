@@ -26,7 +26,7 @@ SLOT_STAGES = {
     'star-product-order-list': 'order',
     'affected-order-list': 'order',
     'overdue-order-list': 'shipment',
-    'sales-shipment-issues': 'shipment',
+    'sales-shipment-issues': 'combined',
     'opportunity-risk': 'opportunity',
     'opportunity-coverage-note': 'opportunity',
     'order-risk-summary': 'order',
@@ -92,6 +92,8 @@ def maintenance_targets() -> list[tuple[int, str, str]]:
     result = []
     for identity in (1, 2):
         for slot in slot_registry():
+            if slot['stage'] == 'combined':
+                continue  # Explicit cached-only preheat; no component SQL fan-out.
             # The same stage can be rendered on operations and analysis.  A
             # stage card is shared by both pages, so preheating it twice would
             # spend a second model call for the same business analysis.

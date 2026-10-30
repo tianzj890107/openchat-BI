@@ -73,7 +73,7 @@ class Context(BaseModel):
     id:int=Field(default=1,ge=1,le=2)
     period:Literal["2025-10","2025-09"]="2025-10"
     department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部"
-    stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment"]="shipment"
+    stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment","combined"]="shipment"
 
     page:Literal["overview","operations","analysis"]="analysis"
     defaultView:bool=False
@@ -650,6 +650,23 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         from .cards import CONTRACT
         items=published_default(id,'main',page,True)['items'] if main_context is not None else {}
         return dict(items=items,cardContract=CONTRACT,cardsVersion=cards_version(items))
+
+    @router.post('/combined/preheat')
+    def preheat_combined(req: PageLookup):
+        if req.page != 'analysis' or req.uiScope != 'default':
+            raise HTTPException(422, '当前仅支持默认口径共同分析')
+        from .combined import cached_combined_request
+        from .dashboard_source import page_analysis_context
+        cards = {}
+        for page_name in ('operations', 'analysis'):
+            cards.update(published_default(req.id, 'main', page_name, False)['items'])
+        try:
+            body = cached_combined_request(store(), req.id, cards)
+            resolved = page_analysis_context(body, store(), resolve_fallback=False, allow_expired=True)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        resolved['dataBasis'] = '跨环节已保存AP响应联合分析；未重新查询AP或数据库，取数时间以各凭据为准'
+        return start_analysis(AnalysisRequest(**body), resolved=resolved)
 
     @router.get('/ai-publications')
     def ai_publications(id:int=1,uiScope:str='default',scopeKey:str=''):

@@ -52,6 +52,8 @@ STAGE_LABELS = {
     'order': ('订单接收', '订单', '签单', '接收'),
     'shipment': ('发货', '出货', '履约', '超期未发'),
 }
+STAGE_METRICS['combined'] = set().union(*(STAGE_METRICS[s] for s in ('opportunity', 'order', 'shipment')))
+STAGE_LABELS['combined'] = tuple(label for s in ('opportunity', 'order', 'shipment') for label in STAGE_LABELS[s])
 _CODE_RE = re.compile(r'YWLN_[DM]\d+')
 _LABEL_KEYS = ('alias', 'label', 'name', 'identifierCode', 'title')
 
@@ -369,7 +371,7 @@ def supplement_failed_queries(context, store, stages, *, limit=8):
 
 
 def page_analysis_context(context, store, *, data_mode='ap', resolve_fallback=True,
-                          fallback_notes=None):
+                          fallback_notes=None, allow_expired=False):
     """Resolve one page-bound request into the main-service evidence snapshot.
 
     The HTTP route and the server-side refresh both call this function.  It is
@@ -396,7 +398,7 @@ def page_analysis_context(context, store, *, data_mode='ap', resolve_fallback=Tr
                                        failedLabels=failed['labels']))
     from . import pg_fallback
     fingerprint, selected, pg_receipts, notes = receipt_scope(
-        context, store, resolve_fallback=resolve_fallback)
+        context, store, resolve_fallback=resolve_fallback, allow_expired=allow_expired)
     if fallback_notes is not None:
         notes = list(fallback_notes)
     identities = {value.get('connectionId', '') for value in selected.values() if value.get('source') == 'ap'}
