@@ -173,6 +173,32 @@ def test_cross_unit_inference_is_removed_from_summary():
     assert '金额与电量口径不同' in summary
 
 
+def test_cross_unit_inference_is_removed_from_causes_and_dependent_actions():
+    card = _card()
+    card['result']['causes'] = [
+        _cause('money-energy', '订单取消变更量级有限',
+               '变更与取消金额合计占比不足5%，难以解释出货量达成缺口'),
+        _cause('valid', '出货完成度低于目标', '实际出货量低于目标'),
+    ]
+    card['result']['recommendations'] = [
+        _action('drop', 'money-energy'),
+        _action('keep', 'valid'),
+    ]
+    projected = project_card(card, 'sales-shipment-issues')
+    ids = {cause['id'] for cause in projected['result']['causes']}
+    assert ids == {'valid'}
+    assert [action['id'] for action in projected['result']['recommendations']] == ['keep']
+
+
+def test_separate_money_and_energy_observations_are_not_removed():
+    card = _card()
+    card['result']['causes'] = [_cause(
+        'separate', '商机覆盖不足',
+        '商机预测金额152.74亿元覆盖目标321.90亿元，商机预测电量44.86GWh对目标91.96GWh')]
+    projected = project_card(card, 'sales-shipment-issues')
+    assert [cause['id'] for cause in projected['result']['causes']] == ['separate']
+
+
 def test_actions_with_dangling_cause_references_are_dropped():
     card = _card()
     card['result']['recommendations'] = [dict(

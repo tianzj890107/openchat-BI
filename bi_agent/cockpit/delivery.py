@@ -101,6 +101,7 @@ SLOT_SPECS = {
 _MONEY = ('金额', '亿元', '万元', '元')
 _ENERGY = ('电量', 'GWh', 'kWh', 'MWh', '兆瓦时', '度电', '出货量', '订单量', '数量', '台数')
 _COMPARE = ('解释', '对应', '换算', '相加', '合计', '比较', '占比', '不足', '难以', '不能')
+_CROSS_UNIT = ('解释', '说明', '换算', '相加', '比较', '不足', '难以', '不能', '无法', '排除', '证明')
 _CAUSAL = ('导致', '因为', '由于', '造成', '使得', '致使', '因此', '根源', '之所以')
 _DATA_GAP = ('缺失', '未返回', '为空', '空值', '无数据', '未取得', '无法取得', '查询失败',
              '口径不明', '未对账', '缺失值', '空记录')
@@ -270,7 +271,12 @@ def _bad_set_claim(sentence, evidence):
 
 def _bad_unit_claim(sentence):
     return (_has_any(sentence, _MONEY) and _has_any(sentence, _ENERGY)
-            and _has_any(sentence, _COMPARE))
+            and _has_any(sentence, _CROSS_UNIT))
+
+
+def _unsupported_inference(text, evidence):
+    return any(_bad_set_claim(sentence, evidence) or _bad_unit_claim(sentence)
+               for sentence in _sentences(text))
 
 
 def _norm(text):
@@ -396,6 +402,9 @@ def project_card(item, slot):
     kept = []
     for cause in result.get('causes') or []:
         if not isinstance(cause, dict):
+            continue
+        if _unsupported_inference(
+                _text(cause.get('title')) + '；' + _text(cause.get('description')), evidence):
             continue
         kind = classify_cause(cause, records)
         cause['kind'] = kind
