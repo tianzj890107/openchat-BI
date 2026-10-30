@@ -1,8 +1,11 @@
-# ontology-analytics-skill
+# ontology-analytics-skill（智能分析）
 
-硕磐智能分析 Agent 的可移植规则包：把意图路由、分析 SOP、证据纪律、交付闸门和
-整页 HTML 交付契约写成通用 Agent 可执行的说明。真实数据由主服务的远程 MCP 提供，
-技能包本身不启动服务、不保存凭据、不包含用户数据。
+通用企业财务/经营分析的可移植规则包：意图路由、分析 SOP、证据纪律、交付闸门和整页
+HTML 交付契约。真实数据由主服务的远程 MCP 提供，技能包本身不启动服务、不保存凭据、
+不包含用户数据。
+
+本技能**只覆盖通用经营/财务分析**。360 场景（SC01-SC05）由独立技能
+`process360-analytics`（360智能分析）负责，不能用本技能或采购域数据替代。
 
 ## 目录
 
@@ -17,7 +20,7 @@ ontology-analytics-skill/
 │  ├─ 05-naming-rules.md    业务名称优先
 │  ├─ 06-routing-rules.md   路由字段与优先级
 │  ├─ 07-output-gates.md    五道交付闸门
-│  ├─ 08-tools-and-sources.md 远程 MCP 的 17 个工具契约
+│  ├─ 08-tools-and-sources.md 远程 MCP 的通用工具契约
 │  ├─ 09-graph-mode.md      图库检索模式
 │  └─ 10-roles.md           用户画像与回答风格
 ├─ scripts/                纯规则脚本（仅标准库，可选离线校验）
@@ -39,13 +42,17 @@ ontology-analytics-skill/
 transport: http
 url: http://<bi-agent-host>/api/mcp
 headers: {}
+环境：ONTOLOGY_MCP_TOOL_PROFILE=general
 ```
 
-连接后，Fuxi 工具面板会显示 33 个真实工具，包括 `AnalysisRoute`、
-`MetricFactQuery`、`ChartGenerate`、`TableGenerate`、`CanvasGenerate`、
-`RiskItemCreate`、`TaskOrderCreate`、`OutputGateCheck`，以及 `Process360Route/Search/Context/Query/
-Analyze/Draft/Verify/Plan/Explore/Compare/Structure/ProcessFlow/Progress/Forecast/
-Solutions`。不会显示 `AnalysisRun`、`AskUser`、`TodoWrite`、原始 SQL 或表结构工具。
+`general` 白名单只暴露 18 个通用工具：`AnalysisRoute`、`Ontology-*`、
+`MetricCalculation`、`Ontology-MetricQuery`、`MetricFactQuery`、`ChartGenerate`、
+`ChartGenerateMultiDim`、`TableGenerate`、`CanvasGenerate`、`RiskItemCreate`、
+`TaskOrderCreate`、`OutputGateCheck`。不会显示 `Process360*`，也不会显示
+`AnalysisRun`、`AskUser`、`TodoWrite`、原始 SQL 或表结构工具。
+
+如果连接器里出现 `Process360Route`，说明用的是全量白名单；这不影响本技能，但 360 请求
+必须交给 `process360-analytics`，不要在本技能里回答。
 
 用户只输入业务问题；工具选择、指标解析、取数、对账、HTML 生成和闸门都由技能规则
 与远程 MCP 自动完成。用户不需要填写 `.env`、App ID、Token、输出目录，也不需要
@@ -62,12 +69,8 @@ AnalysisRoute
   → 返回业务结论 + Artifact URL
 ```
 
-行动建议在 Canvas 中以 `kind=actions` 输出。Process360 卡片携带
-`draftId/draftHash/runId/actionId/scenario/approvalStatus/expiresAt/dispatchTool`；
-风险卡带 `itemType=RISK`，用户点击“推送风险”后调用 `RiskItemCreate`；处置卡带
-`itemType=TODO`，用户点击“发送任务令”后调用 `TaskOrderCreate`。服务端回读可信草稿、
-单条消费并按类型隔离的幂等键重试；风险使用独立 `analytics-risk-*` 来源 ID。HTML 不含
-手机号或凭据，风险推送成功也不表示风险已解除。
+若 `AnalysisRoute` 返回 `mode=PROCESS360_REQUIRED` / `next_step=PROCESS360_ROUTE`，
+说明该问题属于 360 场景：停止本技能，改用 `process360-analytics`。
 
 名称无法解析时才增加 `Ontology-SemanticQuery` / `Ontology-TermDisambiguate`；
 指标口径有疑问时才增加 `MetricCalculation`。不要每轮先堆叠元数据查询。
@@ -101,3 +104,4 @@ python3 scripts/selfcheck.py --quiet     # 期望 160/160 passed
 - 远程 MCP 由主服务 `bi_agent.web` 部署；技能包不启动服务。
 - 没有 MCP 连接、网络不可达或权限不足时，明确说明能力限制，不编造数字。
 - 预测与情景没有统计模型支持，必须披露窗口、方法和假设，不得编造置信区间或准确率。
+- 不处理 SC01-SC05；识别到 360 语义时切换到 `process360-analytics`。

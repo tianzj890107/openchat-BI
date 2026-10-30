@@ -61,7 +61,10 @@ from ..process360.request_context import (
     resolve_request_context,
     set_request_context,
 )
-from ..process360.router import delivery_requirement as process360_delivery_requirement
+from ..process360.router import (
+    delivery_requirement as process360_delivery_requirement,
+    strong_scenario as process360_strong_scenario,
+)
 from ..paths import DATASET_DIR, project_path
 from ..tools import (
     ask_user,
@@ -330,6 +333,59 @@ DEFAULT_EXPOSED_TOOLS: tuple[str, ...] = (
 
 WRITE_TOOLS = frozenset({"RiskItemCreate", "TaskOrderCreate"})
 
+#: Generic finance/operations analysis.  No Process360 tool is exposed, so a
+#: misrouted 360 question cannot reach the ywln chain through this connector.
+GENERAL_TOOL_PROFILE: tuple[str, ...] = (
+    "AnalysisRoute",
+    "Ontology-SemanticQuery",
+    "Ontology-TermDisambiguate",
+    "MetricCalculation",
+    "Ontology-RelationQuery",
+    "Ontology-EntityDescribe",
+    "ListBusinessObjects",
+    "Ontology-GraphContext",
+    "Ontology-GraphExpand",
+    "Ontology-MetricQuery",
+    "MetricFactQuery",
+    "ChartGenerate",
+    "ChartGenerateMultiDim",
+    "TableGenerate",
+    "CanvasGenerate",
+    "RiskItemCreate",
+    "TaskOrderCreate",
+    "OutputGateCheck",
+)
+
+#: 360 analytics.  AnalysisRoute / MetricFactQuery / ListBusinessObjects are
+#: deliberately absent: every data question must go through Process360Route
+#: and read the ywln PostgreSQL chain.
+PROCESS360_TOOL_PROFILE: tuple[str, ...] = (
+    "Process360Route",
+    "Process360Plan",
+    "Process360Search",
+    "Process360Context",
+    "Process360Query",
+    "Process360Analyze",
+    "Process360Draft",
+    "Process360Verify",
+    "Process360Explore",
+    "Process360Compare",
+    "Process360Structure",
+    "Process360ProcessFlow",
+    "Process360Progress",
+    "Process360Forecast",
+    "Process360Solutions",
+    "CanvasGenerate",
+    "RiskItemCreate",
+    "TaskOrderCreate",
+    "OutputGateCheck",
+)
+
+TOOL_PROFILES: dict[str, tuple[str, ...]] = {
+    "general": GENERAL_TOOL_PROFILE,
+    "process360": PROCESS360_TOOL_PROFILE,
+}
+
 #: Even an environment override may not expose these.
 MCP_DENIED_TOOLS: frozenset[str] = frozenset({
     "AnalysisRun",
@@ -341,12 +397,24 @@ MCP_DENIED_TOOLS: frozenset[str] = frozenset({
 })
 
 
-def _configured_tools() -> tuple[str, ...]:
+def _configured_tools(profile: str = "") -> tuple[str, ...]:
+    """Resolve the exposed tool list for one connector.
+
+    MCP does not carry a skill identity on ``tools/call``, so separation is
+    done per connection: ``/api/mcp/general`` and ``/api/mcp/process360``
+    each get a fixed whitelist, and the whitelist implies the data source.
+    """
+
+    name = (profile or os.environ.get("ONTOLOGY_MCP_TOOL_PROFILE") or "").strip().lower()
     raw = (os.environ.get("ONTOLOGY_MCP_EXPOSED_TOOLS") or "").strip()
-    if not raw:
-        return DEFAULT_EXPOSED_TOOLS
-    requested = tuple(item.strip() for item in raw.split(",") if item.strip())
-    return tuple(name for name in requested if name not in MCP_DENIED_TOOLS)
+    if raw:
+        requested = tuple(item.strip() for item in raw.split(",") if item.strip())
+        return tuple(item for item in requested if item not in MCP_DENIED_TOOLS)
+    if name:
+        if name not in TOOL_PROFILES:
+            raise ValueError(f"unknown ONTOLOGY_MCP_TOOL_PROFILE: {name}")
+        return tuple(item for item in TOOL_PROFILES[name] if item not in MCP_DENIED_TOOLS)
+    return DEFAULT_EXPOSED_TOOLS
 
 
 def _source_snapshot(source: Any) -> SimpleNamespace:
@@ -434,7 +502,65 @@ def _mcp_tool(schema: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _route_executor() -> Executor:
+_PROCESS360_REDIRECT = (
+    "该问题属于流程 360 场景 {scenario}，必须改用 process360-analytics（360智能分析）技能："
+    "第一步调用 Process360Route，再按 Process360Plan → Process360Query/Analyze → "
+    "Process360Draft → CanvasGenerate → OutputGateCheck 执行；数据只取 "
+    "process360-postgres 的 ywln 链路。禁止使用 AnalysisRoute、MetricFactQuery、"
+    "ListBusinessObjects 或采购域 Doris 数据；取数 blocked 时原样披露，不得回退通用分析。"
+)
+
+_PROCESS360_SWITCH_CONNECTOR = (
+    "该问题属于流程 360 场景 {scenario}，但当前连接器是通用智能分析，没有暴露 "
+    "Process360Route。请改用 360智能分析连接器（/api/mcp/process360 或 "
+    "ONTOLOGY_MCP_TOOL_PROFILE=process360），不要用采购域数据代替。"
+)
+
+
+def _apply_process360_guard(decision: dict[str, Any], question: str,
+                            allowed: list[str]) -> dict[str, Any]:
+    """Refuse to route SC01-SC05 into the generic procurement domain."""
+
+    guard = process360_strong_scenario(question)
+    if not guard:
+        return decision
+    scenario, score = guard
+    delivery = process360_delivery_requirement(question)
+    has_process360 = "Process360Route" in allowed
+    decision.update(
+        {
+            "mode": "PROCESS360_REQUIRED",
+            "reason_code": "PROCESS360_SCENARIO_DETECTED",
+            "next_step": "PROCESS360_ROUTE" if has_process360 else "SWITCH_CONNECTOR",
+            "required_tools": ["Process360Route"] if has_process360 else [],
+            "evidence_required": True,
+            "needs_human": not has_process360,
+            "skill": "process360-analytics",
+            "scenario": scenario,
+            "scenarioScore": score,
+            "dataSource": "process360-postgres",
+            "dataChain": "ywln",
+            "intent": {
+                "level": "L2",
+                "wants_root_cause": bool(delivery.get("required")),
+                "wants_action": bool(delivery.get("required")),
+                "wants_forecast": False,
+                "forecast_kind": None,
+            },
+            "delivery": {
+                "kind": delivery.get("kind", "analysis_report"),
+                "actionRequired": bool(delivery.get("required")),
+                "sopId": delivery.get("sopId", ""),
+            },
+            "instruction": (
+                _PROCESS360_REDIRECT if has_process360 else _PROCESS360_SWITCH_CONNECTOR
+            ).format(scenario=scenario),
+        }
+    )
+    return decision
+
+
+def _route_executor(exposed: tuple[str, ...] = DEFAULT_EXPOSED_TOOLS) -> Executor:
     def run(params: dict[str, Any], cwd: str) -> str:
         del cwd
         question = str(params.get("question") or "").strip()
@@ -442,8 +568,10 @@ def _route_executor() -> Executor:
             return "AnalysisRoute error: question is required"
         allowed = params.get("allowed_tools")
         if not isinstance(allowed, list) or not allowed:
-            allowed = list(DEFAULT_EXPOSED_TOOLS)
-        decision = _route_rules().decide(question, [str(item) for item in allowed])
+            allowed = list(exposed)
+        tools = [str(item) for item in allowed]
+        decision = _route_rules().decide(question, tools)
+        decision = _apply_process360_guard(decision, question, tools)
         return json.dumps(decision, ensure_ascii=False, indent=2)
     return run
 
@@ -1018,7 +1146,7 @@ class McpRuntime:
         self._cache_executors: dict[str, Executor] = {}
         self._cache_schemas: dict[str, dict[str, Any]] = {}
         source_free: dict[str, Executor] = {
-            "AnalysisRoute": _route_executor(),
+            "AnalysisRoute": _route_executor(self.exposed),
             "OutputGateCheck": _gate_executor(),
             "RiskItemCreate": _risk_item_executor(),
             "TaskOrderCreate": _task_order_executor(),
@@ -1306,13 +1434,25 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
                      executor_factory: Callable[[Any], dict[str, Executor]] | None = None,
                      exposed_tools: tuple[str, ...] | None = None,
                      request_principal: Callable[[Request], dict[str, Any]] | None = None) -> APIRouter:
-    runtime = McpRuntime(
-        get_source=get_source,
-        build_doris=build_doris,
-        get_cwd=get_cwd,
-        executor_factory=executor_factory,
-        exposed_tools=exposed_tools,
-    )
+    def make_runtime(tools: tuple[str, ...] | None) -> McpRuntime:
+        return McpRuntime(
+            get_source=get_source,
+            build_doris=build_doris,
+            get_cwd=get_cwd,
+            executor_factory=executor_factory,
+            exposed_tools=tools,
+        )
+
+    # The skill identity is never sent on ``tools/call``.  Instead every
+    # connector gets its own endpoint and its own tool whitelist, so the
+    # server can tell "which skill" from the connection and therefore which
+    # data source applies.
+    runtime = make_runtime(exposed_tools or _configured_tools(""))
+    runtimes: dict[str, McpRuntime] = {
+        "": runtime,
+        "general": make_runtime(_configured_tools("general")),
+        "process360": make_runtime(_configured_tools("process360")),
+    }
     router = APIRouter()
     principal_for_request = request_principal or (lambda request: runtime.principal_payload())
 
@@ -1532,10 +1672,12 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
             "version": SERVER_VERSION,
             "protocol": MCP_PROTOCOL_VERSION,
             "missingExecutors": list(missing),
+            "profiles": {
+                name or "default": list(rt.exposed) for name, rt in runtimes.items()
+            },
         }
 
-    @router.post("/api/mcp")
-    async def mcp_post(request: Request):
+    async def handle_post(request: Request, rt: McpRuntime):
         if not _authorized(request):
             raise HTTPException(401, "unauthorized")
         try:
@@ -1546,7 +1688,7 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
         base_url = str(request.base_url).rstrip("/")
 
         async def one(item: dict[str, Any]):
-            sid, response = await asyncio.to_thread(runtime.handle, item, session_id, base_url)
+            sid, response = await asyncio.to_thread(rt.handle, item, session_id, base_url)
             return sid, response
 
         if isinstance(payload, list):
@@ -1578,17 +1720,42 @@ def build_mcp_router(*, get_source: Callable[[], Any], build_doris: Callable[...
             return sse
         return JSONResponse(response, headers=headers)
 
-    @router.delete("/api/mcp")
-    def mcp_delete(request: Request) -> Response:
+    def handle_delete(request: Request, rt: McpRuntime) -> Response:
         if not _authorized(request):
             raise HTTPException(401, "unauthorized")
         session_id = (request.headers.get("mcp-session-id") or "").strip()
         if not session_id:
             raise HTTPException(400, "Mcp-Session-Id header is required")
-        runtime.delete_session(session_id)
+        rt.delete_session(session_id)
         return Response(status_code=204)
 
+    @router.post("/api/mcp")
+    async def mcp_post(request: Request):
+        return await handle_post(request, runtimes[""])
+
+    @router.post("/api/mcp/general")
+    async def mcp_post_general(request: Request):
+        return await handle_post(request, runtimes["general"])
+
+    @router.post("/api/mcp/process360")
+    async def mcp_post_process360(request: Request):
+        return await handle_post(request, runtimes["process360"])
+
+    @router.delete("/api/mcp")
+    def mcp_delete(request: Request) -> Response:
+        return handle_delete(request, runtimes[""])
+
+    @router.delete("/api/mcp/general")
+    def mcp_delete_general(request: Request) -> Response:
+        return handle_delete(request, runtimes["general"])
+
+    @router.delete("/api/mcp/process360")
+    def mcp_delete_process360(request: Request) -> Response:
+        return handle_delete(request, runtimes["process360"])
+
     @router.get("/api/mcp")
+    @router.get("/api/mcp/general")
+    @router.get("/api/mcp/process360")
     def mcp_get() -> Response:
         return Response(status_code=405, headers={"Allow": "POST, DELETE"})
 
