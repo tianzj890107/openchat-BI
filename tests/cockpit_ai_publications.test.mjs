@@ -55,3 +55,9 @@ test('helmet node deep links pass the ProUI path object', async () => {
   assert.match(source,/Array\.isArray\(path\).*\{segments: path\}/);
   assert.match(source,/pending\.componentId, pending\.selection, helmetPathArg\(pending\.path\)/s);
 });
+
+test('background-only page snapshot rejection does not become a load error', async () => {
+  const source = await readFile(new URL('../bi_agent/web/static/cockpit/cockpit.js', import.meta.url),'utf8');
+  assert.match(source,/cause\.backgroundOnly/);
+  assert.match(source,/updateStatus:'waiting'/);
+});

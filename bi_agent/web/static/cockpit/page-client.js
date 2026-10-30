@@ -5,7 +5,15 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
   async function json(path,body) {
     const response=await request(apiBase+path,{headers:{Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},...(body?{method:'POST',body:JSON.stringify(body)}:{})});
     let value;try{value=await response.json();}catch{throw new Error('完整看板响应无效');}
-    if(!response.ok){const error=new Error(typeof value.detail==='string'?value.detail:'完整看板更新失败');error.status=response.status;throw error;}
+    if(!response.ok){
+      const message=typeof value.detail==='string'?value.detail:'完整看板更新失败';
+      const error=new Error(message);error.status=response.status;
+      // A mismatched background snapshot keeps the live charts and saved AI
+      // cards untouched. It is not a page-data failure and must not replace
+      // the visible analysis timestamp with a host-generated error banner.
+      error.backgroundOnly=path==='/page'&&response.status===422&&/图表与AI的数据版本不一致/.test(message);
+      throw error;
+    }
     return value;
   }
   function invalidate(){generation++;pending=null;}
@@ -29,7 +37,7 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
     const entries=client.entries();
     const value=await json('/page',{id:Number(id),page,uiScope,apReceiptIds:entries.map(e=>e.receiptId),analysisIds:Object.fromEntries(Object.entries(items).map(([k,v])=>[k,v.id]))});
     if(!current(token))return null;
-    if(value.accepted===false)throw new Error('更新已被较新的完整看板取代');
+    if(value.accepted===false){const error=new Error('更新已被较新的完整看板取代');error.backgroundOnly=true;throw error;}
     return value.snapshot;
   }
   async function analysis(body,token) {
@@ -78,7 +86,7 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
       const result=await publish(client,items,snapshot.uiScope,token);
       if(result&&current(token))onSnapshot(result);
       return result;
-    })().catch(error=>{if(current(token))onState({error:error.message||'后台更新失败'});return null;})
+    })().catch(error=>{if(current(token))onState({error:error.backgroundOnly?'':(error.message||'后台更新失败')});return null;})
       .finally(()=>{if(current(token)){pending=null;onState({refreshing:false});}});
     pending=work;return work;
   }

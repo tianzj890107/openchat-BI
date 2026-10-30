@@ -39,6 +39,17 @@ test('missing or partial card contract cannot publish a mixed page',async()=>{
  await client.refresh(snapshot);assert.equal(shown.length,0);assert.match(states.find(s=>s.error)?.error,/未完整交付/);
 });
 
+test('a mismatched background snapshot does not surface as a page load failure',async()=>{
+ const {client,shown,states}=setup({request:async(path,opts)=>{
+  if(path.endsWith('/page'))return {ok:false,status:422,json:async()=>({detail:'图表与AI的数据版本不一致，保留上次完整版本'})};
+  const body=JSON.parse(opts.body);return ok({cached:card(body.stage),dataFingerprint:'new'});
+ }});
+ await client.refresh(snapshot);
+ assert.equal(shown.length,0);
+ assert.equal(states.filter(state=>'error' in state).at(-1)?.error,'');
+ assert.equal(states.some(state=>/数据版本不一致/.test(state.error||'')),false);
+});
+
 test('new filter lookup is exact and wrong-role snapshots are rejected',async()=>{
  const {client}=setup({request:async()=>ok({snapshot:{...snapshot,id:2}})});
  await assert.rejects(client.load('department-B'),/范围不匹配/);

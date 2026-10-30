@@ -1325,7 +1325,11 @@
                 if(token!==pageEpoch||client!==liveDataClient)return;
                 const snapshot=await pageCache.publish(client,items,uiScope);
                 if(snapshot&&token===pageEpoch){fullSnapshot=snapshot;Object.assign(pageState,{cached:true,dataAsOf:snapshot.dataAsOf,error:''});scheduleStatusPoll();}
-              }catch(cause){if(token===pageEpoch)pageState.error=cause.message||'未形成完整看板';}
+              }catch(cause){
+                if(token!==pageEpoch)return;
+                if(cause.backgroundOnly)Object.assign(pageState,{error:'',refreshing:false,updateStatus:'waiting'});
+                else pageState.error=cause.message||'未形成完整看板';
+              }
               finally{publishing=false;}
             },600);
           };
