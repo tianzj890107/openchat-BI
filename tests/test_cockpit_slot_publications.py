@@ -112,11 +112,13 @@ def test_ai_publications_returns_all_slots_without_starting_analysis(tmp_path, m
     assert value['registryVersion'] == REGISTRY_VERSION
     assert all(item['status'] == 'ready' and item['payload']['result']['cardContract'] == CONTRACT
                for item in value['slots'].values())
-    assert all(item['contentStatus'] == 'limited' and item['contentComplete'] is False
-               and 'ANALYSIS_LIMITED' in item['contentGaps']
-               and 'CAUSES_EMPTY' in item['contentGaps']
-               and 'ACTION_EMPTY' in item['contentGaps']
-               for item in value['slots'].values())
+    from bi_agent.cockpit.delivery import SLOT_SPECS
+    for slot_id, item in value['slots'].items():
+        spec = SLOT_SPECS[slot_id]
+        assert item['contentStatus'] == 'limited' and item['contentComplete'] is False
+        assert 'ANALYSIS_LIMITED' in item['contentGaps']
+        assert ('CAUSES_EMPTY' in item['contentGaps']) is spec.get('causes_required', True)
+        assert ('ACTION_EMPTY' in item['contentGaps']) is spec.get('actions_required', False)
     assert all(item['lastSuccessfulPublication'] == item['payload'] and item['lastSuccessfulAt'] > 0
                for item in value['slots'].values())
     assert value['slots']['bid-status-note']['payload']['id'] == store.latest_views(

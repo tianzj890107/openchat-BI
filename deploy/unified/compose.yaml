@@ -1,0 +1,37 @@
+# One application process per environment; all UI/API/MCP routes share it.
+services:
+  analytics:
+    image: ${ANALYTICS_IMAGE:?Set an immutable image tag or digest}
+    env_file:
+      - ${ANALYTICS_ENV_FILE:?Set the environment-specific runtime env file}
+    environment:
+      APP_PORT: "8080"
+      APP_ROOT_PATH: /api/ontology-agentic-analytics
+      COCKPIT_ANALYSIS_ENGINE: main
+      COCKPIT_COMPARISON_ENABLED: "false"
+      PROCESS360_STORE_PATH: /app/dataset/process360-state/runtime.sqlite3
+    ports:
+      - "${ANALYTICS_BIND_ADDRESS:-127.0.0.1}:${ANALYTICS_PORT:-8765}:8080"
+    volumes:
+      - conversations:/app/dataset/conversations
+      - charts:/app/dataset/charts
+      - canvas:/app/dataset/canvas
+      - uploads:/app/dataset/uploaded_reports
+      - exports:/app/dataset/exports
+      - logs:/app/dataset/logs
+      - cockpit:/app/dataset/cockpit
+      - process360:/app/dataset/process360-state
+      - tasks:/app/dataset/analysis_tasks
+    restart: unless-stopped
+    stop_grace_period: 120s
+    init: true
+volumes:
+  conversations:
+  charts:
+  canvas:
+  uploads:
+  exports:
+  logs:
+  cockpit:
+  process360:
+  tasks:

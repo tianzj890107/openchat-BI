@@ -93,13 +93,16 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     assert stored["renderer"] == "ProBiDashboard"
     assert stored["mode"] == "release"
     assert stored["source"]["dashboardId"] == "iba-demo-1021"
-    assert stored["source"]["version"] == "50cdc94"
-    assert stored["source"]["commit"] == "50cdc94615dc25dafe012f70ce4bb815f4708409"
+    assert stored["source"]["version"] == "cd8d71f"
+    assert stored["source"]["commit"] == "cd8d71fd6278dcf9630043d00bb95e62d97b347a"
     assert stored["source"]["templateCount"] == 13
     assert stored["source"]["totalComponents"] == 142
     assert stored["source"]["activateRules"] == 6
     assert stored["source"]["dataMode"] == "ap-single-query"
     assert len(stored["templates"]) == 13
+    serialized = json.dumps(stored, ensure_ascii=False)
+    assert "3项风险" not in serialized
+    assert serialized.count('"label": "查看风险"') == 8
     assert len(stored["activateRules"]) == 6
     assert {page: len(page_spec["insights"]) for page, page_spec in stored["pages"].items()} == {
         "overview": 0, "operations": 5, "analysis": 10,
@@ -175,7 +178,7 @@ def test_prototype_source_remains_available_only_for_explicit_standalone_analysi
 
 def test_runtime_reports_live_ap_single_query_mode_and_only_real_gaps():
     payload = release_payload()
-    assert payload["source"]["commit"] == "50cdc94615dc25dafe012f70ce4bb815f4708409"
+    assert payload["source"]["commit"] == "cd8d71fd6278dcf9630043d00bb95e62d97b347a"
     assert payload["source"]["dataMode"] == "ap-single-query"
     assert {gap["code"] for gap in payload["gaps"]} == {"CHILD_DEFINITION_MISSING"}
     overview = payload["pages"]["overview"]["components"]

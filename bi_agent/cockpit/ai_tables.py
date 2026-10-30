@@ -30,13 +30,13 @@ class TableQuery(BaseModel):
     common_config: dict = Field(alias="commonConfig")
 
 
-def _field(code: str, label: str, kind: str, *, name: str = "") -> dict:
+def _field(code: str, label: str, kind: str, *, name: str = "", value_type: str = "") -> dict:
     value = {
         "fieldType": kind,
         "identifierCode": code,
         "isTree": False,
         "label": label,
-        "valueType": "NUMBER" if kind == "Indicator" else "STRING",
+        "valueType": value_type or ("NUMBER" if kind == "Indicator" else "STRING"),
     }
     if name:
         value["name"] = name
@@ -45,9 +45,10 @@ def _field(code: str, label: str, kind: str, *, name: str = "") -> dict:
 
 STAR_PRODUCT_FIELDS = [
     _field("YWLN_D046", "明星产品系列", "Dimension"),
-    _field("YWLN_M_STAR_PRODUCT_SHIPMENT_2025", "2025年明星产品出货参考电量", "Indicator"),
+    _field("YWLN_M_STAR_PRODUCT_SHIPMENT_2025", "去年参考电量", "Indicator"),
     _field("YWLN_M0032", "订单接收电量", "Indicator", name="Signed_Opportunity_Forecast_Energy"),
-    _field("YWLN_M_STAR_PRODUCT_ORDER_SHARE", "明星产品订单电量占比", "Indicator"),
+    _field("YWLN_M_ORDER_RECEIPT_ENERGY_PCT", "占全部订单电量", "Indicator",
+           name="Order_Receipt_Energy_Percentage"),
 ]
 
 ORDER_LIST_FIELDS = [
@@ -59,9 +60,9 @@ ORDER_LIST_FIELDS = [
 
 OVERDUE_FIELDS = [
     *ORDER_LIST_FIELDS,
-    _field("YWLN_D050", "承诺发货日", "Dimension"),
     _field("M0143", "超期订未发金额", "Indicator", name="Overdue_Unshipped_Amount"),
     _field("YWLN_M_ORDER_OVERDUE_DAYS", "超期天数", "Indicator", name="Order_Overdue_Days"),
+    _field("YWLN_D050", "承诺发货日", "Dimension", value_type="DATE"),
 ]
 
 AFFECTED_FIELDS = [
@@ -75,6 +76,24 @@ AFFECTED_FIELDS = [
     _field("YWLN_M0033", "影响金额（亿元）", "Indicator"),
 ]
 
+AFFECTED_PRE_FILTERS = [{
+    "alias": "订单状态",
+    "identifierCode": "YWLN_D016",
+    "operator": {"code": "IN", "type": "STRING"},
+    "type": "Dimension",
+    "value": ["order_change", "order_cancel"],
+    "valueType": "ABSOLUTE",
+}]
+
+OVERDUE_PRE_FILTERS = [{
+    "alias": "超期天数",
+    "identifierCode": "YWLN_M_ORDER_OVERDUE_DAYS",
+    "operator": {"code": "GT", "type": "NUMBER"},
+    "type": "Indicator",
+    "value": 0,
+    "valueType": "ABSOLUTE",
+}]
+
 TABLE_SPECS = {
     "star-product-order-list": {
         "page": "operations",
@@ -82,6 +101,7 @@ TABLE_SPECS = {
         "identity": "YWLN_D046",
         "title": "明星产品订单电量及占比",
         "fields": STAR_PRODUCT_FIELDS,
+        "pre_filters": [],
         "custom": ("口径",),
     },
     "affected-order-list": {
@@ -90,6 +110,7 @@ TABLE_SPECS = {
         "identity": "YWLN_D049",
         "title": "受影响订单清单",
         "fields": AFFECTED_FIELDS,
+        "pre_filters": AFFECTED_PRE_FILTERS,
         "custom": ("原因", "责任动作"),
     },
     "overdue-order-list": {
@@ -98,6 +119,7 @@ TABLE_SPECS = {
         "identity": "YWLN_D049",
         "title": "客户与超期订单",
         "fields": OVERDUE_FIELDS,
+        "pre_filters": OVERDUE_PRE_FILTERS,
         "custom": ("主因和根因分析",),
     },
 }
@@ -105,7 +127,7 @@ TABLE_SPECS = {
 MISSING_CAUSE = "证据不足，未确认根因"
 MISSING_ACTION = "待核实原因后明确责任动作"
 DATE_SCOPE_DIMENSION = "YWLN_D044"
-TABLE_MAPPING_VERSION = "ai-tables-v2"
+TABLE_MAPPING_VERSION = "ai-tables-v3"
 
 
 def table_scope_key(ui_scope: str) -> str:
@@ -306,6 +328,34 @@ def _merge_scope_filter(filters, scope_filter: dict | None):
     return {"logic": "AND", "children": [filters, scope_filter]}
 
 
+def _merge_filter_parts(*parts):
+    """Combine filter trees with AND while removing identical pre-filters."""
+    children = []
+    seen = set()
+    for part in parts:
+        if part in (None, {}, []):
+            continue
+        if isinstance(part, list):
+            values = part
+        elif isinstance(part, dict) and (
+            str(part.get("logic") or "").upper() == "AND" or "children" in part
+        ):
+            values = part.get("children") or []
+        else:
+            values = [part]
+        for value in values:
+            signature = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            if signature in seen:
+                continue
+            seen.add(signature)
+            children.append(value)
+    if not children:
+        return None
+    if len(children) == 1:
+        return children[0]
+    return {"logic": "AND", "children": children}
+
+
 def _text(value) -> str:
     if value is None:
         return ""
@@ -374,12 +424,13 @@ def build_ap_query(table_key: str, request: TableQuery) -> dict:
         raise ValueError("表格字段与交付配置不一致")
     allowed_filters = {"YWLN_D044"} | {
         item["identifierCode"] for item in spec["fields"] if item["fieldType"] == "Dimension"
-    }
+    } | {item["identifierCode"] for item in spec.get("pre_filters", [])}
     common = request.common_config or {}
     filters = common.get("filters")
     scope_filter = page_scope_date_filter(request.ui_scope, request.period)
     filters = _merge_scope_filter(filters, scope_filter)
     _filter_codes(filters, allowed_filters)
+    filters = _merge_filter_parts(filters, spec.get("pre_filters"))
     pagination = common.get("pagination") or {}
     try:
         page_num = max(1, int(pagination.get("pageNum") or 1))

@@ -83,7 +83,7 @@
           {
             "actionType": "switchTab",
             "key": "1793158849339",
-            "label": "3项风险",
+            "label": "查看风险",
             "styleType": "warning-link"
           }
         ],
@@ -184,7 +184,7 @@
           {
             "actionType": "switchTab",
             "key": "1793158863956",
-            "label": "3项风险",
+            "label": "查看风险",
             "styleType": "warning-link"
           }
         ],
@@ -3492,7 +3492,7 @@
           {
             "actionType": "switchTab",
             "key": "1793167575501",
-            "label": "3项风险",
+            "label": "查看风险",
             "styleType": "warning-link"
           }
         ],
@@ -3583,7 +3583,7 @@
           {
             "actionType": "switchTab",
             "key": "1793167587293",
-            "label": "3项风险",
+            "label": "查看风险",
             "styleType": "warning-link"
           }
         ],
@@ -7016,6 +7016,15 @@
               "label": "商机获取办理状态",
               "valueType": "STRING"
             }
+          ],
+          "searchFields": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "YWLN_D003",
+              "isTree": false,
+              "label": "产品类型",
+              "valueType": "STRING"
+            }
           ]
         },
         "id": "table-biauwdwh",
@@ -7057,12 +7066,9 @@
             "id": "YWLN_D004",
             "isTree": false,
             "label": "产品团队",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
-            "valueType": "STRING",
-            "searchConfig": {
-              "control": "dropdown"
-            }
+            "valueType": "STRING"
           },
           {
             "code": "YWLN_D048",
@@ -7100,9 +7106,12 @@
             "id": "YWLN_D015",
             "isTree": false,
             "label": "商机类型",
-            "showSearch": false,
+            "showSearch": true,
             "showSource": true,
-            "valueType": "STRING"
+            "valueType": "STRING",
+            "searchConfig": {
+              "control": "buttonGroup"
+            }
           },
           {
             "code": "YWLN_D020",
@@ -7110,14 +7119,33 @@
             "id": "YWLN_D020",
             "isTree": false,
             "label": "状态",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
+            "valueType": "STRING"
+          }
+        ],
+        "tableSearchFieldConfig": [
+          {
+            "code": "YWLN_D003",
+            "fieldType": "Dimension",
+            "id": "YWLN_D003",
+            "isTree": false,
+            "label": "产品类型",
+            "showSearch": true,
+            "showSource": false,
             "valueType": "STRING",
             "searchConfig": {
-              "control": "dropdown"
+              "control": "buttonGroup",
+              "optionValues": [
+                "1",
+                "2"
+              ]
             }
           }
-        ]
+        ],
+        "styleConfig": {
+          "showCurrentInfo": false
+        }
       },
       {
         "dataConfig": {
@@ -7201,10 +7229,10 @@
           "valueAxis": [
             {
               "fieldType": "Indicator",
-              "identifierCode": "YWLN_M_KEY_PENDING_ENERGY",
+              "identifierCode": "YWLN_M0031",
               "isTree": false,
-              "label": "重点异常项目涉及电量",
-              "name": "Key_Pending_Energy",
+              "label": "报价电量",
+              "name": "Quote_Energy",
               "valueType": "NUMBER"
             }
           ],
@@ -7215,6 +7243,40 @@
               "isTree": false,
               "label": "产品类型",
               "valueType": "STRING"
+            }
+          ],
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M0031",
+              "isTree": false,
+              "label": "报价电量",
+              "name": "Quote_Energy",
+              "valueType": "NUMBER",
+              "order": "ASC"
+            }
+          ],
+          "filter": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "YWLN_D021",
+              "isTree": false,
+              "label": "报价办理状态",
+              "valueType": "STRING",
+              "conditions": {
+                "alias": "报价办理状态",
+                "identifierCode": "YWLN_D021",
+                "operator": {
+                  "code": "IN",
+                  "type": "STRING"
+                },
+                "type": "Dimension",
+                "value": [
+                  "overdue_uncompleted",
+                  "overdue_completed"
+                ],
+                "valueType": "ABSOLUTE"
+              }
             }
           ]
         },
@@ -7281,10 +7343,10 @@
           "valueAxis": [
             {
               "fieldType": "Indicator",
-              "identifierCode": "YWLN_M_KEY_PENDING_ENERGY",
+              "identifierCode": "YWLN_M0031",
               "isTree": false,
-              "label": "重点异常项目涉及电量",
-              "name": "Key_Pending_Energy",
+              "label": "报价电量",
+              "name": "Quote_Energy",
               "valueType": "NUMBER"
             }
           ],
@@ -7300,12 +7362,35 @@
           "sort": [
             {
               "fieldType": "Indicator",
-              "identifierCode": "YWLN_M_KEY_PENDING_ENERGY",
+              "identifierCode": "YWLN_M0031",
               "isTree": false,
-              "label": "重点异常项目涉及电量",
-              "name": "Key_Pending_Energy",
+              "label": "报价电量",
+              "name": "Quote_Energy",
               "valueType": "NUMBER",
               "order": "ASC"
+            }
+          ],
+          "filter": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "YWLN_D021",
+              "isTree": false,
+              "label": "报价办理状态",
+              "valueType": "STRING",
+              "conditions": {
+                "alias": "报价办理状态",
+                "identifierCode": "YWLN_D021",
+                "operator": {
+                  "code": "IN",
+                  "type": "STRING"
+                },
+                "type": "Dimension",
+                "value": [
+                  "overdue_uncompleted",
+                  "overdue_completed"
+                ],
+                "valueType": "ABSOLUTE"
+              }
             }
           ]
         },
@@ -7398,10 +7483,10 @@
             },
             {
               "fieldType": "Indicator",
-              "identifierCode": "YWLN_M_KEY_PENDING_ENERGY",
+              "identifierCode": "YWLN_M0031",
               "isTree": false,
-              "label": "重点异常项目涉及电量",
-              "name": "Key_Pending_Energy",
+              "label": "报价电量",
+              "name": "Quote_Energy",
               "valueType": "NUMBER"
             },
             {
@@ -7423,20 +7508,21 @@
           "filter": [
             {
               "fieldType": "Dimension",
-              "identifierCode": "YWLN_D045",
+              "identifierCode": "YWLN_D021",
               "isTree": false,
-              "label": "是否异常",
+              "label": "报价办理状态",
               "valueType": "STRING",
               "conditions": {
-                "alias": "是否异常",
-                "identifierCode": "YWLN_D045",
+                "alias": "报价办理状态",
+                "identifierCode": "YWLN_D021",
                 "operator": {
                   "code": "IN",
                   "type": "STRING"
                 },
                 "type": "Dimension",
                 "value": [
-                  "是"
+                  "overdue_uncompleted",
+                  "overdue_completed"
                 ],
                 "valueType": "ABSOLUTE"
               }
@@ -7462,7 +7548,7 @@
             "id": "YWLN_D_PROJECT_NUMBER",
             "isTree": false,
             "label": "项目编号",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "STRING"
           },
@@ -7497,11 +7583,11 @@
             "valueType": "STRING"
           },
           {
-            "code": "YWLN_M_KEY_PENDING_ENERGY",
+            "code": "YWLN_M0031",
             "fieldType": "Indicator",
-            "id": "YWLN_M_KEY_PENDING_ENERGY",
+            "id": "YWLN_M0031",
             "isTree": false,
-            "label": "重点异常项目涉及电量",
+            "label": "报价电量",
             "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
@@ -7526,7 +7612,11 @@
             "showSource": true,
             "valueType": "STRING"
           }
-        ]
+        ],
+        "styleConfig": {
+          "showCurrentInfo": false
+        },
+        "tableSearchFieldConfig": []
       },
       {
         "dataConfig": {
@@ -7639,19 +7729,22 @@
           "filter": [
             {
               "fieldType": "Dimension",
-              "identifierCode": "YWLN_D045",
+              "identifierCode": "YWLN_D022",
               "isTree": false,
-              "label": "是否异常",
+              "label": "投标办理状态",
               "valueType": "STRING",
               "conditions": {
-                "alias": "是否异常",
-                "identifierCode": "YWLN_D045",
+                "alias": "投标办理状态",
+                "identifierCode": "YWLN_D022",
                 "operator": {
-                  "code": "EQ",
+                  "code": "IN",
                   "type": "STRING"
                 },
                 "type": "Dimension",
-                "value": "是",
+                "value": [
+                  "overdue_uncompleted",
+                  "overdue_completed"
+                ],
                 "valueType": "ABSOLUTE"
               }
             }
@@ -7729,19 +7822,22 @@
           "filter": [
             {
               "fieldType": "Dimension",
-              "identifierCode": "YWLN_D045",
+              "identifierCode": "YWLN_D022",
               "isTree": false,
-              "label": "是否异常",
+              "label": "投标办理状态",
               "valueType": "STRING",
               "conditions": {
-                "alias": "是否异常",
-                "identifierCode": "YWLN_D045",
+                "alias": "投标办理状态",
+                "identifierCode": "YWLN_D022",
                 "operator": {
-                  "code": "EQ",
+                  "code": "IN",
                   "type": "STRING"
                 },
                 "type": "Dimension",
-                "value": "是",
+                "value": [
+                  "overdue_uncompleted",
+                  "overdue_completed"
+                ],
                 "valueType": "ABSOLUTE"
               }
             }
@@ -7871,19 +7967,22 @@
           "filter": [
             {
               "fieldType": "Dimension",
-              "identifierCode": "YWLN_D045",
+              "identifierCode": "YWLN_D022",
               "isTree": false,
-              "label": "是否异常",
+              "label": "投标办理状态",
               "valueType": "STRING",
               "conditions": {
-                "alias": "是否异常",
-                "identifierCode": "YWLN_D045",
+                "alias": "投标办理状态",
+                "identifierCode": "YWLN_D022",
                 "operator": {
-                  "code": "EQ",
+                  "code": "IN",
                   "type": "STRING"
                 },
                 "type": "Dimension",
-                "value": "是",
+                "value": [
+                  "overdue_uncompleted",
+                  "overdue_completed"
+                ],
                 "valueType": "ABSOLUTE"
               }
             }
@@ -7898,7 +7997,7 @@
             "id": "YWLN_D_PROJECT_NUMBER",
             "isTree": false,
             "label": "项目编号",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "STRING"
           },
@@ -7962,7 +8061,10 @@
             "showSource": true,
             "valueType": "STRING"
           }
-        ]
+        ],
+        "styleConfig": {
+          "showCurrentInfo": false
+        }
       },
       {
         "id": "segmented-strip-yvhlsyv3",
@@ -8525,7 +8627,7 @@
         },
         "id": "table-bh7u4yxk",
         "position": {
-          "h": 19,
+          "h": 13,
           "w": 120,
           "x": 0,
           "y": 21
@@ -8562,11 +8664,14 @@
             "id": "YWLN_M_ORDER_RECEIPT_ENERGY_SHARE",
             "isTree": false,
             "label": "订单电量占比",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           }
-        ]
+        ],
+        "styleConfig": {
+          "showCurrentInfo": false
+        }
       },
       {
         "dataConfig": {
@@ -8649,7 +8754,7 @@
           "h": 19,
           "w": 120,
           "x": 0,
-          "y": 40
+          "y": 34
         },
         "showHeader": true,
         "showTitle": true,
@@ -8744,7 +8849,7 @@
           "h": 19,
           "w": 120,
           "x": 0,
-          "y": 59
+          "y": 53
         },
         "showHeader": false,
         "showTitle": true,
@@ -8758,7 +8863,7 @@
             "id": "YWLN_D006",
             "isTree": false,
             "label": "具体客户",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "STRING"
           },
@@ -8778,11 +8883,14 @@
             "id": "YWLN_M_ORDER_RECEIPT_ENERGY_SHARE",
             "isTree": false,
             "label": "订单电量占比",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           }
-        ]
+        ],
+        "styleConfig": {
+          "showCurrentInfo": false
+        }
       },
       {
         "dataConfig": {
@@ -8836,14 +8944,6 @@
               "label": "订单接收电量",
               "name": "Signed_Opportunity_Forecast_Energy",
               "valueType": "NUMBER"
-            },
-            {
-              "fieldType": "Indicator",
-              "identifierCode": "YWLN_M_STAR_PRODUCT_ORDER_SHARE",
-              "isTree": false,
-              "label": "明星产品订单电量占比",
-              "name": "明星产品订单电量占比",
-              "valueType": "NUMBER"
             }
           ],
           "categoryAxis": [
@@ -8861,14 +8961,15 @@
           "h": 19,
           "w": 120,
           "x": 0,
-          "y": 78
+          "y": 72
         },
         "showHeader": true,
         "showTitle": true,
         "title": "明星产品订单电量及占比",
         "type": "horizontal-bar",
         "visualization": {
-          "legend": true
+          "legend": true,
+          "labelPosition": "right"
         }
       }
     ],
@@ -8945,19 +9046,22 @@
           "filter": [
             {
               "fieldType": "Dimension",
-              "identifierCode": "YWLN_D045",
+              "identifierCode": "YWLN_D024",
               "isTree": false,
-              "label": "是否异常",
+              "label": "发货办理状态",
               "valueType": "STRING",
               "conditions": {
-                "alias": "是否异常",
-                "identifierCode": "YWLN_D045",
+                "alias": "发货办理状态",
+                "identifierCode": "YWLN_D024",
                 "operator": {
-                  "code": "EQ",
+                  "code": "IN",
                   "type": "STRING"
                 },
                 "type": "Dimension",
-                "value": "是",
+                "value": [
+                  "overdue_uncompleted",
+                  "overdue_completed"
+                ],
                 "valueType": "ABSOLUTE"
               }
             }
@@ -9034,19 +9138,22 @@
           "filter": [
             {
               "fieldType": "Dimension",
-              "identifierCode": "YWLN_D045",
+              "identifierCode": "YWLN_D024",
               "isTree": false,
-              "label": "是否异常",
+              "label": "发货办理状态",
               "valueType": "STRING",
               "conditions": {
-                "alias": "是否异常",
-                "identifierCode": "YWLN_D045",
+                "alias": "发货办理状态",
+                "identifierCode": "YWLN_D024",
                 "operator": {
-                  "code": "EQ",
+                  "code": "IN",
                   "type": "STRING"
                 },
                 "type": "Dimension",
-                "value": "是",
+                "value": [
+                  "overdue_uncompleted",
+                  "overdue_completed"
+                ],
                 "valueType": "ABSOLUTE"
               }
             }
@@ -9185,19 +9292,22 @@
           "filter": [
             {
               "fieldType": "Dimension",
-              "identifierCode": "YWLN_D045",
+              "identifierCode": "YWLN_D024",
               "isTree": false,
-              "label": "是否异常",
+              "label": "发货办理状态",
               "valueType": "STRING",
               "conditions": {
-                "alias": "是否异常",
-                "identifierCode": "YWLN_D045",
+                "alias": "发货办理状态",
+                "identifierCode": "YWLN_D024",
                 "operator": {
-                  "code": "EQ",
+                  "code": "IN",
                   "type": "STRING"
                 },
                 "type": "Dimension",
-                "value": "是",
+                "value": [
+                  "overdue_uncompleted",
+                  "overdue_completed"
+                ],
                 "valueType": "ABSOLUTE"
               }
             }
@@ -9296,7 +9406,11 @@
             "showSource": true,
             "valueType": "STRING"
           }
-        ]
+        ],
+        "tableSearchFieldConfig": [],
+        "styleConfig": {
+          "showCurrentInfo": false
+        }
       },
       {
         "dataConfig": {
@@ -10320,7 +10434,7 @@
             "id": "YWLN_D005",
             "isTree": false,
             "label": "客户等级",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "STRING"
           },
@@ -10330,7 +10444,7 @@
             "id": "YWLN_M0075",
             "isTree": false,
             "label": "客户数",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10340,7 +10454,7 @@
             "id": "YWLN_M_CUSTOMER_TARGET_ENERGY",
             "isTree": false,
             "label": "客户目标电量",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10350,7 +10464,7 @@
             "id": "YWLN_M_CUSTOMER_ACTUAL_ENERGY",
             "isTree": false,
             "label": "客户实际发货电量",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10360,7 +10474,7 @@
             "id": "YWLN_M0024",
             "isTree": false,
             "label": "商机数",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10370,13 +10484,13 @@
             "id": "YWLN_M0140",
             "isTree": false,
             "label": "商机预测缺口（亿元）",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           }
         ],
         "styleConfig": {
-          "showCurrentInfo": true
+          "showCurrentInfo": false
         }
       },
       {
@@ -10840,6 +10954,32 @@
               "label": "风险说明",
               "valueType": "STRING"
             }
+          ],
+          "searchFields": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "YWLN_D015",
+              "isTree": false,
+              "label": "商机签单",
+              "valueType": "STRING",
+              "alias": "商机类型"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "YWLN_D_IS_BIDDING",
+              "isTree": false,
+              "label": "是否投标中",
+              "valueType": "STRING",
+              "alias": "投标状态"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "YWLN_D_CUSTOMER_HAS_OPPORTUNITY",
+              "isTree": false,
+              "label": "客户有无商机",
+              "valueType": "STRING",
+              "alias": "客户商机"
+            }
           ]
         },
         "id": "table-ilzta6h7",
@@ -10861,7 +11001,7 @@
             "id": "YWLN_D006",
             "isTree": false,
             "label": "具体客户",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "STRING"
           },
@@ -10873,7 +11013,14 @@
             "label": "客户等级",
             "showSearch": true,
             "showSource": true,
-            "valueType": "STRING"
+            "valueType": "STRING",
+            "searchConfig": {
+              "control": "buttonGroup",
+              "optionValues": [
+                "1",
+                "2"
+              ]
+            }
           },
           {
             "code": "YWLN_M_CUSTOMER_TARGET_ENERGY",
@@ -10881,7 +11028,7 @@
             "id": "YWLN_M_CUSTOMER_TARGET_ENERGY",
             "isTree": false,
             "label": "规划目标（GWh）",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10891,7 +11038,7 @@
             "id": "YWLN_M0194",
             "isTree": false,
             "label": "已签单商机预测（GWH/亿元）",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10901,7 +11048,7 @@
             "id": "YWLN_M0195",
             "isTree": false,
             "label": "未签单商机预测（GWh/亿元）",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10911,7 +11058,7 @@
             "id": "YWLN_M_CUSTOMER_OPPORTUNITY_GAP",
             "isTree": false,
             "label": "商机预测合计（GWh）",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10921,7 +11068,7 @@
             "id": "YWLN_M_CUSTOMER_ENERGY_GAP",
             "isTree": false,
             "label": "目标差距（GWh）",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10931,7 +11078,7 @@
             "id": "YWLN_M_CUSTOMER_OPPORTUNITY_COVERAGE",
             "isTree": false,
             "label": "覆盖率（已签/未签/总）",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10941,7 +11088,7 @@
             "id": "YWLN_M_CUSTOMER_ORDER_ENERGY",
             "isTree": false,
             "label": "单电量（GWh）",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10951,7 +11098,7 @@
             "id": "YWLN_M_CUSTOMER_ORDER_GAP",
             "isTree": false,
             "label": "订单缺口（GWh）",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
           },
@@ -10961,7 +11108,7 @@
             "id": "YWLN_D048",
             "isTree": false,
             "label": "销售责任人",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "STRING"
           },
@@ -10971,11 +11118,61 @@
             "id": "YWLN_D_PROJECT_RISK_DESC",
             "isTree": false,
             "label": "风险说明",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "STRING"
           }
-        ]
+        ],
+        "tableSearchFieldConfig": [
+          {
+            "code": "YWLN_D015",
+            "fieldType": "Dimension",
+            "id": "YWLN_D015",
+            "isTree": false,
+            "label": "商机类型",
+            "showSearch": true,
+            "showSource": false,
+            "valueType": "STRING",
+            "searchConfig": {
+              "control": "buttonGroup",
+              "optionValues": [
+                "signed_opportunity"
+              ]
+            }
+          },
+          {
+            "code": "YWLN_D_IS_BIDDING",
+            "fieldType": "Dimension",
+            "id": "YWLN_D_IS_BIDDING",
+            "isTree": false,
+            "label": "投标状态",
+            "showSearch": true,
+            "showSource": false,
+            "valueType": "STRING",
+            "searchConfig": {
+              "control": "buttonGroup",
+              "optionValues": [
+                "是"
+              ]
+            }
+          },
+          {
+            "code": "YWLN_D_CUSTOMER_HAS_OPPORTUNITY",
+            "fieldType": "Dimension",
+            "id": "YWLN_D_CUSTOMER_HAS_OPPORTUNITY",
+            "isTree": false,
+            "label": "客户商机",
+            "showSearch": true,
+            "showSource": false,
+            "valueType": "STRING",
+            "searchConfig": {
+              "control": "buttonGroup"
+            }
+          }
+        ],
+        "styleConfig": {
+          "showCurrentInfo": false
+        }
       },
       {
         "dataConfig": {
@@ -11257,7 +11454,10 @@
             "showSource": true,
             "valueType": "NUMBER"
           }
-        ]
+        ],
+        "styleConfig": {
+          "showCurrentInfo": false
+        }
       },
       {
         "dataConfig": {
@@ -11367,7 +11567,8 @@
               "identifierCode": "YWLN_D015",
               "isTree": false,
               "label": "商机签单",
-              "valueType": "STRING"
+              "valueType": "STRING",
+              "alias": "商机类型"
             },
             {
               "fieldType": "Dimension",
@@ -11389,6 +11590,24 @@
               "isTree": false,
               "label": "风险说明",
               "valueType": "STRING"
+            }
+          ],
+          "searchFields": [
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "YWLN_D_IS_BIDDING",
+              "isTree": false,
+              "label": "是否投标中",
+              "valueType": "STRING",
+              "alias": "投标状态"
+            },
+            {
+              "fieldType": "Dimension",
+              "identifierCode": "YWLN_D_CUSTOMER_HAS_OPPORTUNITY",
+              "isTree": false,
+              "label": "客户有无商机",
+              "valueType": "STRING",
+              "alias": "客户商机"
             }
           ]
         },
@@ -11490,10 +11709,16 @@
             "fieldType": "Dimension",
             "id": "YWLN_D015",
             "isTree": false,
-            "label": "商机签单",
-            "showSearch": false,
+            "label": "商机类型",
+            "showSearch": true,
             "showSource": true,
-            "valueType": "STRING"
+            "valueType": "STRING",
+            "searchConfig": {
+              "control": "buttonGroup",
+              "optionValues": [
+                "signed_opportunity"
+              ]
+            }
           },
           {
             "code": "YWLN_D020",
@@ -11501,7 +11726,7 @@
             "id": "YWLN_D020",
             "isTree": false,
             "label": "商机获取办理状态",
-            "showSearch": true,
+            "showSearch": false,
             "showSource": true,
             "valueType": "STRING"
           },
@@ -11524,6 +11749,40 @@
             "showSearch": false,
             "showSource": true,
             "valueType": "STRING"
+          }
+        ],
+        "styleConfig": {
+          "showCurrentInfo": false
+        },
+        "tableSearchFieldConfig": [
+          {
+            "code": "YWLN_D_IS_BIDDING",
+            "fieldType": "Dimension",
+            "id": "YWLN_D_IS_BIDDING",
+            "isTree": false,
+            "label": "投标状态",
+            "showSearch": true,
+            "showSource": false,
+            "valueType": "STRING",
+            "searchConfig": {
+              "control": "buttonGroup",
+              "optionValues": [
+                "是"
+              ]
+            }
+          },
+          {
+            "code": "YWLN_D_CUSTOMER_HAS_OPPORTUNITY",
+            "fieldType": "Dimension",
+            "id": "YWLN_D_CUSTOMER_HAS_OPPORTUNITY",
+            "isTree": false,
+            "label": "客户商机",
+            "showSearch": true,
+            "showSource": false,
+            "valueType": "STRING",
+            "searchConfig": {
+              "control": "buttonGroup"
+            }
           }
         ]
       },

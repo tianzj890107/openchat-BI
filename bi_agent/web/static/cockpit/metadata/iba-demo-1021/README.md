@@ -1,7 +1,7 @@
 # 前端交付元数据：feature/demo_1021
 
 来源：[iba-demo](http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021)，
-固定 commit `50cdc94615dc25dafe012f70ce4bb815f4708409`。
+固定 commit `cd8d71fd6278dcf9630043d00bb95e62d97b347a`。
 `components.json`、`template-registry.json`、`insights.js` 和 `activate-rules.json`
 按上游原样复制；`insights.json` 由声明式 `insights.js` 转为 JSON。
 哈希、类型统计、跳转规则数量和已知问题见 `source.json`。
@@ -55,12 +55,12 @@ X-Ontology-Repository-Id: 8
 
 本次同步启用三张订单表，布局和列配置复用上游 `ProDataTable`：
 
-- 订单接收「明星产品订单电量及占比」：返回系列、2025 年出货参考、推算订单电量、
-  占比和已登记口径。
+- 订单接收「明星产品订单电量及占比」：返回系列、去年参考电量、订单接收电量、
+  占全部订单电量和已登记口径。
 - 订单接收「受影响订单清单」：AP 事实字段之外，按证据中实际出现的订单号合并原因和
-  责任动作；事实列包含变更类型、减少电量和影响金额。
+  责任动作；事实列包含变更类型、减少电量和影响金额，并固定筛选变更/取消订单。
 - 发货「客户与超期订单」：AP 事实字段之外，按证据中实际出现的订单号合并主因和具体
-  根因。
+  根因；事实列固定筛选超期天数大于 0 的订单。
 
 上游三张表分别调用 `/api/mock/star-product-scope`、`/api/mock/affected-order-extra` 和
 `/api/mock/overdue-order-root-cause`。本仓库不复制这些 mock，统一改走
