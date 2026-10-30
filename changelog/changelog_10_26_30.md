@@ -701,3 +701,9 @@
 - 主要文件：`bi_agent/cockpit/delivery.py`、`cards.py`、`router.py`、`store.py`、`ai_tables.py`、`agent.py`、`main_service.py`、`cockpit.js`、`insight-components/shared.js`；新增 `tests/test_cockpit_delivery_contract.py`。
 - 验证：Cockpit 相关 Python 219 项、Node 看板测试 82 项通过，`git diff --check` 通过；使用线上已保存插槽重放，两个角色的共同分析均不再出现“难以解释”“不足以解释”“金额占比不足”“订单取消变更量级有限”和悬空 `signed-unsigned-scope`。
 - 上线：交付契约提交序列为 `012fd2a`、`d611a72`、`71a4da6`（分支 `bugfix/cockpit-disable-ap-reuse-cache`）。34 的 `8765` release `process360-cockpit-71a4da6-20261030-151759`（PID `763133`），`8876` assetVersion `f4b2cb70ffa2f8e87c77`、`commit=71a4da6`。两个角色均 15/15 插槽 ready，报价 `contentGaps` 仅 `ANALYSIS_LIMITED`，共同分析证据去重后为 117/118 条；总裁共同分析保留 5 条有依据的原因，分析员保留口径冲突、商机覆盖、客户结构 3 条。回滚使用 `process360-cockpit-d611a72-20261030-151355` 与 `site-next-012fd2a-20261030-151130`。
+
+### 2026-10-30 单主服务部署约定
+
+- 纳入整合后新增的五个 Cockpit 修正提交，避免遗漏推断与表格筛选修复。
+- 提供按环境隔离的单应用 Compose 与单前缀网关转发模板，统一工作台、Cockpit、MCP 入口，保留全部运行数据卷。
+- 模板默认主分析路线；实际切换必须先完成候选实例真实环境验收，旧实例不自动退役。

@@ -19,3 +19,7 @@ dataset/charts
 dataset/logs
 dataset/uploaded_reports
 dataset/exports
+dataset/analysis_tasks
+dataset/cockpit
+dataset/process360-state
+dataset/process360/*.sqlite3*
