@@ -12,6 +12,24 @@
 
 ## 本周变更
 
+### 2026-10-30 · 修正本体库编号与环境模板
+
+- pdt-dev 当前目录已不存在本体库 `3`；ywln 目标改为 `14`（亿纬锂能开发本体库 /
+  `ywln` / `ontology_ywln`），V2 为 `16`，demo2 仍为 `1`（ECore / `ontology_ecore`）。
+- 同步修正 `.env.example`、`DEPLOYMENT.md` 和环境作用域说明，写清旧值会导致
+  `configure()` 启动 fail-fast 与 Pod `CrashLoopBackOff`。为兼容尚未更新平台变量的
+  pdt-dev 部署，增加窄口径 `3 → 14` 回退：只有目录中的 `14` 同时匹配命名空间 `ywln`
+  和 Doris 库 `ontology_ywln` 时才启用并输出启动告警；`/api/sources` 显示实际编号；
+  不匹配时仍保持 fail-fast，不自动选择其它业务库。平台变量仍建议改为 `14`。
+- 同步修正 demo2 真实环境测试中的预期编号，并补充兼容回退的正向与数据库不匹配测试。
+  涉及文件：`bi_agent/web/app.py`、`.env.example`、`DEPLOYMENT.md`、
+  `docs/specs/environment-scoped-ontology-and-unused-session.md`、
+  `tests/test_environment_scoped_ontology_and_unused_session.py`、
+  `tests/test_pdt_pg_lake_improvements_red.py`。
+- 验证：相关配置/回归测试 36 项通过（另 5 项按环境开关跳过）；用真实 pdt-dev 目录执行
+  回退解析，选中 `14` 且对应 `亿纬锂能开发本体库 / ywln / ontology_ywln`，
+  meta/knowledge 库也均存在；demo2 返回 `1`（ECore）；`git diff --check` 通过。
+
 ### 2026-10-28 · URL prompt 自动发起智能分析
 
 - 工作台 `/workbench`、根路径及网关子路径支持 `?prompt=...`。页面等到现有工作台绑定输入框与

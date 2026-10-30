@@ -132,7 +132,8 @@ DORIS_DATABASE=<database>
 ONTOLOGY_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/ontology
 DORIS_API_URL=http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query
 # 新 MAL 契约（可选）：http://pdt-dev.eimos.com/api/gateway2/ontology/api/v1/analysis/data/query
-# ONTOLOGY_REPOSITORY_ID=<按该环境目录查到的真实编号>
+# 当前 pdt-dev 目录的 ywln 本体库；旧编号 3 由下面的兼容回退处理。
+ONTOLOGY_REPOSITORY_ID=14
 ```
 
 ```dotenv
@@ -147,8 +148,11 @@ ONTOLOGY_REPOSITORY_ID=1
   `ApTH1EHKdRk58WhDQB`），各环境可按需覆盖；`ONTOLOGY_AUTH_TOKEN` 是密钥，只能由各
   环境注入，仓库与镜像中不保存真实值（当前两个环境都为空）。
 - `ONTOLOGY_REPOSITORY_ID` 只决定"当前激活哪个本体库"，**必须按环境取该环境目录里的
-  真实 ID**，不要照抄文档里的编号：PDT 当前激活的是 `12`（钱江本体库-勿动，
-  `ontology_qianjiang`），demo2 的 ECore 本体库是 `1`（`ontology_ecore`）。
+  真实 ID**，不要照抄文档里的编号：2026-10-30 核对时，PDT 的 ywln 目标是 `14`
+  （亿纬锂能开发本体库，`ontology_ywln`；V2 为 `16` / `ontology_ywln2`），demo2 的
+  ECore 本体库是 `1`（`ontology_ecore`）；`12` 是钱江本体库，不是当前默认目标。
+  旧 PDT 编号 `3` 已不在目录中，继续配置为 `3` 会让新进程启动即报
+  “远程本体库 3 不在可用目录中”；本分支为此提供了一条窄口径兼容回退，见下表说明。
   查法：`GET <ONTOLOGY_BASE_URL>/system/manager/ontology-repository?page=1&size=100`
   （不带 `X-Ontology-Repository-Id` 头），在 `data.items` 里按名称找到目标库的
   `id`、`namespaceCode`、`currentDatabase`。用错 ID 时 `configure()` 会快速失败，并在
@@ -168,9 +172,15 @@ ONTOLOGY_REPOSITORY_ID=1
 | --- | --- | --- | --- |
 | `ONTOLOGY_BASE_URL` | 必填，PDT 网关 | 必填，demo2 网关 | 运维按环境注入 |
 | `DORIS_API_URL` | 必填，PDT 网关 | 必填，demo2 网关 | 运维按环境注入 |
-| `ONTOLOGY_REPOSITORY_ID` | `12`（钱江本体库-勿动；以该环境目录实际返回为准） | `1`（demo2 的 ECore 本体库） | 运维按环境注入 |
+| `ONTOLOGY_REPOSITORY_ID` | `14`（亿纬锂能开发本体库；V2 用 `16`，以该环境目录实际返回为准） | `1`（demo2 的 ECore 本体库） | 运维按环境注入 |
 | `ONTOLOGY_APP_ID` | `ApTH1EHKdRk58WhDQB`（共享默认） | 同左 | 仓库默认，可覆盖 |
 | `ONTOLOGY_AUTH_TOKEN` | 当前为空 | 当前为空 | 运维注入（不得入库） |
+
+> 2026-10-30 实测 pdt-dev 的本体目录已不再包含编号 `3`。为兼容尚未更新平台变量的部署，
+> 本分支仅在目录中存在 `14`、且其 namespace 为 `ywln`、Doris 库为 `ontology_ywln` 时，
+> 自动使用 `14` 并输出启动告警；`/api/sources` 的 `atomic_source.repository_id` 会显示实际
+> 使用的 `14`。如果 `14` 缺失或数据库不匹配，仍保持原来的 fail-fast，不会随便选择其它库。
+> 该回退只覆盖 `3 → 14`，不是通用自动切库规则；平台变量仍建议改为 `14`。
 
 改完后必须重启服务（`ONTOLOGY_BASE_URL` / `DORIS_API_URL` 是启动期配置），并核对：
 

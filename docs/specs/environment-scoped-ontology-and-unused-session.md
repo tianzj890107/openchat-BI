@@ -18,6 +18,7 @@ PDT 环境配置：
 ```text
 ONTOLOGY_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/ontology
 DORIS_API_URL=http://pdt-dev.eimos.com/api/gateway2/ontology/agent/doris/query
+ONTOLOGY_REPOSITORY_ID=14
 ```
 
 Demo 环境配置：
@@ -25,8 +26,14 @@ Demo 环境配置：
 ```text
 ONTOLOGY_BASE_URL=http://demo2.eimos.com/api/gateway2/ontology
 DORIS_API_URL=http://demo2.eimos.com/api/gateway2/ontology/agent/doris/query
-ONTOLOGY_REPOSITORY_ID=3
+ONTOLOGY_REPOSITORY_ID=1
 ```
+
+2026-10-30 核对时，PDT 的 `14` 是亿纬锂能开发本体库（`ywln` /
+`ontology_ywln`），V2 使用 `16`；demo2 的 `1` 是 ECore 本体库（`ecore` /
+`ontology_ecore`）。PDT 目录中已经没有旧的 `3`。为兼容尚未更新的部署，本版本仅在
+目录中的 `14` 同时匹配 `ywln` / `ontology_ywln` 时回退到 `14` 并输出启动告警；
+编号或数据库不匹配时仍启动 fail-fast，不自动选择其它业务库。
 
 `ONTOLOGY_APP_ID`、`ONTOLOGY_AUTH_TOKEN` 使用各环境自己的凭据。代码不得新增
 `ONTOLOGY_ALLOWED_REPOSITORY_IDS` 来掩盖跨环境连接错误。Dockerfile 和 Python 默认值

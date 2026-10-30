@@ -421,6 +421,64 @@ class RepositoryIdErrorTests(unittest.TestCase):
         "remote_catalog_error", "remote_catalog_last_attempt",
     )
 
+    def _run_configure(self, fake: _FakePgGateway, repository_id: str = "3") -> None:
+        saved = {field: getattr(STATE, field, None) for field in self.STATE_FIELDS}
+        self.addCleanup(lambda: [setattr(STATE, field, value) for field, value in saved.items()])
+        env = {
+            "ONTOLOGY_BACKEND": "production",
+            "ONTOLOGY_BASE_URL": fake.base_url,
+            "DORIS_API_URL": fake.base_url + SQL_LEGACY,
+            "ONTOLOGY_REPOSITORY_ID": repository_id,
+            "ONTOLOGY_APP_ID": "test-app",
+            "ONTOLOGY_TIMEOUT_SECONDS": "5",
+        }
+        cwd = str(Path(__file__).resolve().parents[1])
+        with mock.patch.dict(os.environ, env, clear=False), mock.patch(
+            "bi_agent.web.app.register_all", return_value=None,
+        ):
+            STATE.ontology_backend = "production"
+            STATE.doris_api_url = fake.base_url + SQL_LEGACY
+            configure(
+                cwd=cwd,
+                ontology_path=str(Path(cwd) / "dataset/spreadsheets/本体元素_MetaERP（采购领域）-建模.xlsx"),
+                db_path=str(Path(cwd) / "dataset/databases/HyperFusion.db"),
+                use_doris=True,
+            )
+
+    def test_r18b_pdt_legacy_id_3_uses_verified_ywln_repository_14(self):
+        """旧 PDT 注入 3 时，只回退到已验证的 14 / ywln / ontology_ywln。"""
+        fake = _FakePgGateway(repository_ids=(16, 14, 13, 12))
+        self.addCleanup(fake.close)
+        fake.on(REPO_LIST, {
+            "success": True, "code": 200, "msg": "success",
+            "data": {"items": [{
+                "id": 14, "name": "亿纬锂能开发本体库", "namespaceCode": "ywln",
+                "currentDatabase": "ontology_ywln",
+            }], "total": 1},
+        })
+
+        self._run_configure(fake)
+
+        self.assertEqual(STATE.remote_ontology.repository_id, "14")
+        self.assertEqual(STATE.ontology_namespace, "ywln")
+        self.assertEqual(STATE.doris_database, "ontology_ywln")
+
+    def test_r18c_legacy_id_3_does_not_fallback_when_14_database_mismatches(self):
+        """编号 14 存在但数据库不是 ywln 时，必须继续 fail-fast。"""
+        fake = _FakePgGateway(repository_ids=(14,))
+        self.addCleanup(fake.close)
+        fake.on(REPO_LIST, {
+            "success": True, "code": 200, "msg": "success",
+            "data": {"items": [{
+                "id": 14, "name": "亿纬锂能开发本体库", "namespaceCode": "ywln",
+                "currentDatabase": "ontology_qianjiang",
+            }], "total": 1},
+        })
+
+        with self.assertRaises(RuntimeError) as ctx:
+            self._run_configure(fake)
+        self.assertIn("不在可用目录中", str(ctx.exception))
+
     def test_r18_unknown_repository_id_error_lists_the_available_ids(self):
         """R18：编号不在目录中时，报错要给出可用编号与配置键名，且不含内网地址。"""
         fake = _FakePgGateway(repository_ids=(12, 8, 6, 5))
