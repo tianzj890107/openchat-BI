@@ -1453,3 +1453,7 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 
 - `sales-shipment-issues` 改为独立 `combined` 分析，保留原 `shipment` 发布历史。通过 `POST /api/cockpit/combined/preheat`（`id`、`page=analysis`、`uiScope=default`）仅重新生成此插槽；只读现有 AP 凭据，允许复用已过 TTL 的冻结结果并披露历史来源，不续签观察时间、不访问 AP/PG。
 - 普通组件 SQL 调度不负责此组合任务。部署保留共享 dataset、凭据与虚拟环境，后台刷新配置保持既有值；不清空其他卡片、不手动请求全量刷新。验证应检查组合分析使用至少两个环节的同期间查询，其他插槽分析 ID 不变。
+
+- 本次实际部署：代码 `c087a0cf22fa556ddd6831175c02318c831c1bb8`，8765 release `process360-cockpit-c087a0c-20261030-combined`，PID `3250689`；8876 `assetVersion=4775ab66d1ec485bc4a3`。原服务正常退出后启动新服务，未并行保留验证调度器。入口备份 `backups/site-combined-c087a0c-pre`，共享 `.env`、`.venv`、dataset 未覆盖。
+- 仅主动预热共同分析：总裁 `a5f779c3bc5543b887b0365154935bc1`（8 查询、117 条证据、8 原因、5 建议），分析员 `d9deeae109fe43dcb8d54b24c9fdd987`（9 查询、118 条证据、4 原因、2 建议）；两者为 limited，继续披露因果未验证及上游缺失。两个角色均恢复 15 个可渲染插槽；共同分析 ID 与发货卡片分离。
+- 验证：58 项相关 Python、7 项前端测试通过；manifest 校验通过。浏览器拦截实时取数后，第三页共同分析正常显示、AI loading=0、无 JS 异常；没有实际下发待办或风险。
