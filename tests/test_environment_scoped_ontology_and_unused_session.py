@@ -58,7 +58,7 @@ class EnvironmentScopedOntologyGatewayTests(unittest.TestCase):
         )
         repositories = payload["ontology"]["remote_repositories"]
         self.assertEqual(len(repositories), 1)
-        self.assertEqual(str(repositories[0]["id"]), "3")
+        self.assertEqual(str(repositories[0]["id"]), "1")
         self.assertIn("ECore", repositories[0]["name"])
         self.assertEqual(
             payload["database"]["options"],

@@ -575,7 +575,9 @@ def configure(
         else:
             STATE.remote_catalog_error = ""
             STATE.remote_catalog_last_attempt = 0.0
-            repository = next((item for item in catalog if item["id"] == STATE.remote_ontology.repository_id), None)
+            repository, fallback = _resolve_remote_repository(
+                catalog, STATE.remote_ontology.repository_id,
+            )
             if repository is None:
                 available_ids = ", ".join(str(item["id"]) for item in catalog) or "（目录为空）"
                 raise RuntimeError(
@@ -587,6 +589,17 @@ def configure(
                 raise RuntimeError(f"远程本体库 {repository['name']} 未配置 dorisDatabase")
             if not repository["namespace"]:
                 raise RuntimeError(f"远程本体库 {repository['name']} 未配置 namespaceCode")
+            if fallback is not None:
+                print(
+                    "[bi-agent-web] warning: configured ontology repository "
+                    f"{STATE.remote_ontology.repository_id} is unavailable; using verified "
+                    f"compatibility repository {repository['id']} "
+                    f"({repository['name']} / {repository['namespace']} / "
+                    f"{repository['dorisDatabase']}). "
+                    "Update ONTOLOGY_REPOSITORY_ID when deployment configuration is available.",
+                    flush=True,
+                )
+            STATE.remote_ontology.repository_id = repository["id"]
             STATE.ontology_namespace = repository["namespace"]
             STATE.doris_database = repository["dorisDatabase"]
             STATE.remote_ontology.namespace = repository["namespace"]
@@ -849,6 +862,42 @@ class ConfigUpdate(BaseModel):
 DORIS_SOURCE_VALUE = "__doris_api__"
 REMOTE_ONTOLOGY_PREFIX = "__metaerp_repository__:"
 REMOTE_DORIS_PREFIX = "__doris_repository__:"
+
+# Temporary compatibility for the pdt-dev deployment that still injects the
+# retired repository ID 3. The fallback is deliberately narrow: it is only
+# accepted when the catalog contains the exact repository, namespace and Doris
+# database verified for the 亿纬锂能 (ywln) source. Any catalog drift keeps the
+# original fail-fast behavior instead of silently querying another domain.
+REMOTE_REPOSITORY_COMPAT_FALLBACKS: dict[str, dict[str, str]] = {
+    "3": {
+        "id": "14",
+        "namespace": "ywln",
+        "doris_database": "ontology_ywln",
+    },
+}
+
+
+def _resolve_remote_repository(
+    catalog: list[dict[str, Any]], configured_id: str,
+) -> tuple[Optional[dict[str, Any]], Optional[dict[str, str]]]:
+    """Return the exact configured repository or a verified legacy fallback."""
+    configured_id = str(configured_id).strip()
+    repository = next((item for item in catalog if item["id"] == configured_id), None)
+    if repository is not None:
+        return repository, None
+    expected = REMOTE_REPOSITORY_COMPAT_FALLBACKS.get(configured_id)
+    if not expected:
+        return None, None
+    repository = next((item for item in catalog if item["id"] == expected["id"]), None)
+    if repository is None:
+        return None, None
+    if repository.get("namespace") != expected["namespace"]:
+        return None, None
+    if repository.get("dorisDatabase") != expected["doris_database"]:
+        return None, None
+    return repository, expected
+
+
 # Pseudo-source shown in 本体适配. It represents the production ontology
 # service, not a local workbook.
 METAERP_ONTOLOGY_VALUE = "__metaerp_ontology__"

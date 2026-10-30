@@ -122,6 +122,11 @@ curl -fsS http://127.0.0.1:8765/healthz
 
 本地本体与 SQLite 参数通过 `python -m bi_agent.web --help` 查看。
 
+工作台支持 URL 参数 `prompt`：页面初始化后自动提交问题，使用与手动发送相同的智能体交互流程。
+例如 `http://127.0.0.1:8765/workbench?prompt=分析采购情况`，根路径入口同样支持。
+拼接链接时使用 `encodeURIComponent(prompt)` 编码问题，以保留中文、换行和 `&`、`+` 等字符。
+未传或仅含空白时不提交；自动提交前会从当前地址移除 `prompt`，保留其他参数和锚点，避免刷新重复发送。
+
 ### V3 经营驾驶舱 POC
 
 主服务提供三个独立看板入口（支持 `APP_ROOT_PATH` 子路径）：
