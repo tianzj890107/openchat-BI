@@ -101,6 +101,19 @@ def _date_scope(value, grain="MONTH"):
     ], ensure_ascii=False)
 
 
+def _filter_children(payload):
+    node = payload["commonConfig"].get("filters")
+    if not node:
+        return []
+    return node.get("children") if isinstance(node, dict) and "children" in node else [node]
+
+
+def _filter_for(payload, code):
+    matches = [item for item in _filter_children(payload) if item.get("identifierCode") == code]
+    assert len(matches) == 1, f"expected one {code} filter, got {matches}"
+    return matches[0]
+
+
 def test_affected_orders_merge_only_evidence_linked_cause_and_action(tmp_path, monkeypatch):
     cfg = Config()
     _save_order_card(tmp_path, cfg, page="analysis", stage="order")
@@ -133,6 +146,9 @@ def test_affected_orders_merge_only_evidence_linked_cause_and_action(tmp_path, m
     assert "重排交付计划" in row["责任动作"] and "计划经理" in row["责任动作"]
     assert gateway.calls[0][0] == "analysis"
     assert gateway.calls[0][1]["commonConfig"]["pagination"]["pageSize"] == 10
+    status_filter = _filter_for(gateway.calls[0][1], "YWLN_D016")
+    assert status_filter["operator"]["code"] == "IN"
+    assert status_filter["value"] == ["order_change", "order_cancel"]
 
 
 def test_unknown_rows_are_not_given_a_borrowed_cause(tmp_path, monkeypatch):
@@ -158,7 +174,7 @@ def test_star_product_scope_is_not_the_fixed_prototype_copy(tmp_path, monkeypatc
         "pagination": {"total": 1},
     })
     fields = [("YWLN_D046", "Dimension"), ("YWLN_M_STAR_PRODUCT_SHIPMENT_2025", "Indicator"),
-              ("YWLN_M0032", "Indicator"), ("YWLN_M_STAR_PRODUCT_ORDER_SHARE", "Indicator")]
+              ("YWLN_M0032", "Indicator"), ("YWLN_M_ORDER_RECEIPT_ENERGY_PCT", "Indicator")]
     result = response.post("/api/cockpit/ai-tables/star-product-order-list/query",
                            json=_query(fields))
     assert result.status_code == 200, result.text
@@ -177,7 +193,7 @@ def test_star_product_scope_uses_the_published_versioned_definition(tmp_path, mo
         "pagination": {"total": 1},
     })
     fields = [("YWLN_D046", "Dimension"), ("YWLN_M_STAR_PRODUCT_SHIPMENT_2025", "Indicator"),
-              ("YWLN_M0032", "Indicator"), ("YWLN_M_STAR_PRODUCT_ORDER_SHARE", "Indicator")]
+              ("YWLN_M0032", "Indicator"), ("YWLN_M_ORDER_RECEIPT_ENERGY_PCT", "Indicator")]
     result = response.post("/api/cockpit/ai-tables/star-product-order-list/query",
                            json=_query(fields))
     assert result.status_code == 200, result.text
@@ -197,7 +213,7 @@ def test_table_snapshot_is_saved_and_reused_without_another_ap_query(tmp_path, m
                          json=_query(fields))
     assert live.status_code == 200, live.text
     assert live.json()["meta"]["cacheStatus"] == "refreshed"
-    assert live.json()["meta"]["mappingVersion"] == "ai-tables-v2"
+    assert live.json()["meta"]["mappingVersion"] == "ai-tables-v3"
     assert len(gateway.calls) == 1
 
     cached = _query(fields)
@@ -284,16 +300,20 @@ def test_table_query_inherits_the_page_month_or_year_date_scope(tmp_path, monkey
     month["uiScope"] = _date_scope("2026-01")
     result = response.post("/api/cockpit/ai-tables/overdue-order-list/query", json=month)
     assert result.status_code == 200, result.text
-    page_filter = gateway.calls[-1][1]["commonConfig"]["filters"]
-    assert page_filter["identifierCode"] == "YWLN_D044"
+    payload = gateway.calls[-1][1]
+    page_filter = _filter_for(payload, "YWLN_D044")
     assert page_filter["value"] == ["2026-01-01", "2026-01-31"]
     assert page_filter["operator"]["code"] == "BETWEEN"
+    overdue_filter = _filter_for(payload, "YWLN_M_ORDER_OVERDUE_DAYS")
+    assert overdue_filter["value"] == 0
+    assert overdue_filter["operator"] == {"code": "GT", "type": "NUMBER"}
 
     year = _query(fields)
     year["uiScope"] = _date_scope("2026", grain="YEAR")
     result = response.post("/api/cockpit/ai-tables/overdue-order-list/query", json=year)
     assert result.status_code == 200, result.text
-    assert gateway.calls[-1][1]["commonConfig"]["filters"]["value"] == ["2026-01-01", "2026-12-31"]
+    assert _filter_for(gateway.calls[-1][1], "YWLN_D044")["value"] == [
+        "2026-01-01", "2026-12-31"]
 
 
 def test_table_query_uses_the_visible_page_period_when_scope_is_default(tmp_path, monkeypatch):
@@ -309,9 +329,10 @@ def test_table_query_uses_the_visible_page_period_when_scope_is_default(tmp_path
     query["period"] = "2025-10"
     result = response.post("/api/cockpit/ai-tables/overdue-order-list/query", json=query)
     assert result.status_code == 200, result.text
-    page_filter = gateway.calls[-1][1]["commonConfig"]["filters"]
-    assert page_filter["identifierCode"] == "YWLN_D044"
+    payload = gateway.calls[-1][1]
+    page_filter = _filter_for(payload, "YWLN_D044")
     assert page_filter["value"] == ["2025-10-01", "2025-10-31"]
+    assert _filter_for(payload, "YWLN_M_ORDER_OVERDUE_DAYS")["operator"]["code"] == "GT"
 
 
 def test_table_query_does_not_append_a_duplicate_visible_date_filter(tmp_path, monkeypatch):
@@ -329,12 +350,23 @@ def test_table_query_does_not_append_a_duplicate_visible_date_filter(tmp_path, m
         "value": ["2025-10-01", "2025-10-31"],
         "valueType": "ABSOLUTE",
     }
-    filters = {"logic": "AND", "children": [date_filter]}
-    query = _query(fields, filters=[date_filter])
+    overdue_filter = {
+        "alias": "超期天数",
+        "identifierCode": "YWLN_M_ORDER_OVERDUE_DAYS",
+        "operator": {"code": "GT", "type": "NUMBER"},
+        "type": "Indicator",
+        "value": 0,
+        "valueType": "ABSOLUTE",
+    }
+    query = _query(fields, filters=[overdue_filter, date_filter])
     query["period"] = "2025-10"
     result = response.post("/api/cockpit/ai-tables/overdue-order-list/query", json=query)
     assert result.status_code == 200, result.text
-    assert gateway.calls[-1][1]["commonConfig"]["filters"] == filters
+    payload = gateway.calls[-1][1]
+    children = _filter_children(payload)
+    assert [item for item in children if item["identifierCode"] == "YWLN_D044"] == [date_filter]
+    assert len([item for item in children if item["identifierCode"] == "YWLN_D044"]) == 1
+    assert [item for item in children if item["identifierCode"] == "YWLN_M_ORDER_OVERDUE_DAYS"] == [overdue_filter]
 
 
 def test_custom_table_scope_uses_its_exact_published_card(tmp_path, monkeypatch):

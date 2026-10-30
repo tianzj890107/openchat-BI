@@ -875,36 +875,39 @@
   挂载后独立加载历史卡片与状态、失败重试和卡片版本返回。
 - 边界：本轮只提交并推送临时分支，未部署；上游 SQL、指标口径和真实业务数据仍需单独验收。
 
-### 2026-10-29 17:23 · Cockpit 同步 iba-demo 00be09f 与三张订单 DataTable
+### 2026-10-29 17:23（2026-10-30 17:35 更新）· Cockpit 同步 iba-demo cd8d71f 与三张订单 DataTable
 
 - 用户可见变化：同步最新 ProUI/看板配置后，订单接收节点新增「明星产品订单电量及占比」
   与「受影响订单清单」，发货节点新增「客户与超期订单」。三张表复用上游 `ProDataTable`
-  的布局、列宽和分页，不再在宿主另写表格样式。
-- 组件同步：`iba-demo feature/demo_1021` 更新到 `00be09f`，组件数由 145 变为 142，
-  AI 插槽由 12 个变为 15 个；其中 103 个组件声明 AP、39 个保留上游 mock。运营页插槽数
-  变为 5，穿透页变为 10。`activate-rules.json`、UMD 与 CSS 未产生内容变化，UMD 继续保留
-  头盔图 `fitView` 空实例保护。
-- 订单表格：明星产品表展示系列、2025 年出货参考、推算订单电量、占比和已登记口径；
-  受影响订单表展示 AP 事实及原因、责任动作；超期订单表展示 AP 事实及主因和具体根因。
-  口径由服务端按已登记系列映射生成，不让模型临场编造指标定义。
+  的布局、列宽和分页，不再在宿主另写表格样式。四处置顶跳转动作的“3项风险”文案已随上游
+  更新为“查看风险”，模板、报价图和商机搜索配置同步到最新版。
+- 组件同步：`iba-demo feature/demo_1021` 更新到 `cd8d71f`，组件数保持 142，AI 插槽保持
+  15 个；其中 103 个组件声明 AP、39 个保留上游 mock。运营页插槽数 5，穿透页 10。
+  `activate-rules.json` 和 CSS 未变化；UMD 更新到新版并继续保留本地头盔图 `fitView`
+  空实例保护，当前资源哈希为 `57a370de...`。
+- 订单表格：明星产品表对齐新版 AP 字段，展示系列、去年参考电量、订单接收电量、占全部订单
+  电量和已登记口径；受影响订单表展示 AP 事实及原因、责任动作，并固定筛选变更/取消订单；
+  超期订单表展示 AP 事实及主因和具体根因，并固定筛选超期天数大于 0 的订单。口径由服务端
+  按已登记系列映射生成，不让模型临场编造指标定义。
 - 数据链路：上游三张表的 `/api/mock/star-product-scope`、`/api/mock/affected-order-extra`、
   `/api/mock/overdue-order-root-cause` 不进入交付包，统一改走
   `POST /api/cockpit/ai-tables/{tableKey}/query`。主服务按固定字段白名单生成 AP 单查，
-  事实列直接使用 AP 返回；原因、责任动作和根因只从当前范围已发布且通过交付校验的环节
-  卡片中，按 `evidenceIds` 对应记录里实际出现的订单号合并。
+  在服务端再次合并两张表各自的固定预过滤条件，前端漏传也不会扩大数据范围；事实列直接
+  使用 AP 返回，原因、责任动作和根因只从当前范围已发布且通过交付校验的环节卡片中，按
+  `evidenceIds` 对应记录里实际出现的订单号合并。表格映射版本升级为 `ai-tables-v3`。
 - 证据边界：筛选项只允许 `AND`，字段和分页有白名单及上限；未匹配到订单证据时显示
   “证据不足，未确认根因”或“待核实原因后明确责任动作”，不借用其他订单结论，也不把
   页面文字或模型猜测包装成已验证根因。
-- 已知缺口：上游旧插槽 `shipment-task-order` 仍引用不存在的 `table-md1iftaj`，运行包记录
-  `INSIGHT_ANCHOR_MISSING` 并保留原状；本次没有改第四张表或迁移该插槽。商机模板原有的
-  `share-bar-79fsomq9` 缺项仍在。
+- 已知缺口：商机模板原有的 `share-bar-79fsomq9` 子组件缺项仍保留为空位并记录
+  `CHILD_DEFINITION_MISSING`；三张订单表的插槽落点均已命中。
 - 主要文件：`bi_agent/cockpit/ai_tables.py`、`router.py`、`targets.py`、
   `bi_agent/web/static/cockpit/cockpit.js`、`insight-components/table-runtime.js`、
   三张订单表插槽目录、`metadata/iba-demo-1021/*`、`metadata/runtime.json`、
-  `vendor/resources.json`、`tests/test_cockpit_ai_tables.py`、`tests/cockpit_ai_tables.test.mjs`。
-- 验证：Cockpit 聚焦回归 169 项 Python（含 14 个子用例）、60 项 JS 通过；`node --check`
-  与 `git diff --check` 通过。覆盖证据关联合并、未知订单不借用原因、明星产品口径、
-  未审核字段和 `OR` 筛选阻断、字段哈希与 runtime 可复现、三张表不引用 mock 路径。
+  `index.html`、`vendor/{pro-bi-ui.min.js,resources.json}`、
+  `tests/test_cockpit_ai_tables.py`、`tests/cockpit_ai_tables.test.mjs`。
+- 验证：Cockpit 相关 Python 219 项、Node 看板测试 82 项全部通过；`node --check` 与
+  `git diff --check` 通过。覆盖证据关联合并、未知订单不借用原因、明星产品口径、
+  未审核字段和 `OR` 筛选阻断、固定预过滤、字段哈希与 runtime 可复现、三张表不引用 mock 路径。
 - 边界：本轮完成代码与静态配置验证，未部署，未用真实业务数据验收三张表的 AP 返回、分页、
   排序或页面视觉效果，也未发送风险/待办。
 

@@ -11,6 +11,8 @@ test('the three order DataTables use the shared ProDataTable adapter', async () 
   assert.match(runtime, /ProUIBi\.ProDataTable/);
   assert.match(runtime, /ai-tables\/\$\{encodeURIComponent\(tableKey\)\}\/query/);
   assert.match(runtime, /tableFields: displayFields/);
+  assert.match(runtime, /filterFields = \[\]/);
+  assert.match(runtime, /dataConfig: \{[\s\S]{0,160}filter: filterFields/);
   assert.match(runtime, /uiScope: pageScope\(props\)/);
   assert.match(runtime, /period: String\(slot\.period \|\| ''\)/);
   assert.match(runtime, /cacheOnly: true/);
@@ -20,7 +22,7 @@ test('the three order DataTables use the shared ProDataTable adapter', async () 
   assert.doesNotMatch(runtime, /componentKey[\s\S]{0,80}analysis\?\.updatedAt/);
   assert.match(runtime, /stable\(live\.data\) !== stable\(previous\?\.data \|\| \[\]\)/);
   assert.doesNotMatch(runtime, /live\.meta\.generatedAt[\s\S]{0,100}revision\.value/);
-  assert.match(runtime, /contentSignature\(tableKey, props, ctx, fields\)/);
+  assert.match(runtime, /contentSignature\(tableKey, props, ctx, fields, filterFields\)/);
   assert.match(runtime, /Vue\.watch\(\(\) => \[props\.analysis\?\.id[\s\S]{0,220}refreshInBackground/);
   for (const name of names) {
     assert.match(registry, new RegExp(`'${name}'`));
@@ -35,7 +37,9 @@ test('the three order DataTables use the shared ProDataTable adapter', async () 
 test('table columns match the delivered AP facts and validated AI fields', async () => {
   const star = await readFile(new URL('insight-components/star-product-order-list/index.js', root), 'utf8');
   assert.match(star, /label: '口径'/);
-  assert.match(star, /YWLN_M_STAR_PRODUCT_ORDER_SHARE/);
+  assert.match(star, /YWLN_M_ORDER_RECEIPT_ENERGY_PCT/);
+  assert.match(star, /label: '去年参考电量'/);
+  assert.doesNotMatch(star, /YWLN_M_STAR_PRODUCT_ORDER_SHARE/);
 
   const affected = await readFile(new URL('insight-components/affected-order-list/index.js', root), 'utf8');
   assert.match(affected, /YWLN_D016/);
@@ -43,8 +47,14 @@ test('table columns match the delivered AP facts and validated AI fields', async
   assert.match(affected, /YWLN_M0033/);
   assert.match(affected, /label: '原因'/);
   assert.match(affected, /label: '责任动作'/);
+  assert.match(affected, /operator: \{code: 'IN', type: 'STRING'\}/);
+  assert.match(affected, /value: \['order_change', 'order_cancel'\]/);
+  assert.match(affected, /filterFields/);
 
   const overdue = await readFile(new URL('insight-components/overdue-order-list/index.js', root), 'utf8');
   assert.match(overdue, /label: '主因和根因分析'/);
   assert.doesNotMatch(overdue, /YWLN_D003/);
+  assert.match(overdue, /operator: \{code: 'GT', type: 'NUMBER'\}/);
+  assert.match(overdue, /filterFields/);
+  assert.match(overdue, /isTree: true, label: '承诺发货日'/);
 });
