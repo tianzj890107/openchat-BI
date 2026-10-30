@@ -539,6 +539,16 @@
         department: analysisEngine === 'main' ? '' : baselineItem?.context.department || DEPARTMENT,
       }));
       const compareLink = computed(()=>{if(!state.value.item)return '';const url=new URL(location.href);url.searchParams.set('engine','standalone');url.searchParams.set('baseline',state.value.item.id);return url.pathname+url.search;});
+      // Each slot answers its own question.  Prefer the slot-projected
+      // publication over the shared stage card when it is at least as new.
+      const slotAnalysis = computed(()=>{
+        const published=slotPublication(props.insight.id);
+        const projected=published?.status==='ready'&&validAiCard(published.payload)?published.payload:null;
+        const current=state.value.item;
+        if(!projected)return current;
+        if(!current)return projected;
+        return Number(projected.updatedAt||0)>=Number(current.updatedAt||0)?projected:current;
+      });
       const clarification = ref('');
       const confirmScope = () => {if(!clarification.value.trim())return;clarificationAnswers.set(stage.value, {answer:clarification.value.trim()});ensureAnalysis(stage.value,true,true).catch(()=>{});};
       const stop = async () => {if(state.value.item?.id)await fetch(`${apiBase}/analyses/${state.value.item.id}/cancel`,{method:'POST'});};
@@ -601,13 +611,13 @@
           await ensureSlotAnalysis(props.insight.id,stage.value);onPageActivity();
         } catch(cause) {if(alive)insightLoadError.value=`插槽加载失败：${cause.message||cause}`;}
       });
-      return {dashboardDataMode, delivered, state, analysisContext, insightSlotProps, reload, insightLoadError, componentError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
+      return {dashboardDataMode, delivered, state, slotAnalysis, analysisContext, insightSlotProps, reload, insightLoadError, componentError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
     },
     template: `
       <div v-if="delivered" class="cockpit-insight-slot">
         <div v-if="state.scopeNotice" class="insight-scope-notice" role="status">{{ state.scopeNotice }}</div>
         <component :is="delivered"
-                   :analysis="state.item" :status="state.status" :progress="state.progress"
+                   :analysis="slotAnalysis" :status="state.status" :progress="state.progress"
                    :cached="state.cached" :refreshing="state.refreshing"
                    :stale="Boolean(state.stale)" :scope-notice="state.scopeNotice || ''"
                    :error="state.error" :context="analysisContext" :slot-props="insightSlotProps"

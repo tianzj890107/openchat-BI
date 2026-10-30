@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pydantic import Field, ValidationError
 from .agent import Result, Cause, Recommendation, validate_result
+from .delivery import validate_reasoning
 
 CONTRACT='cockpit-cards-v1'
 TOOL='CockpitDeliverCards'
@@ -76,6 +77,7 @@ def install_delivery(session,context):
         try:
             if not session.query_results:raise ValueError('请先读取本轮看板数据')
             value=validate_result(params,evidence,{e['id'] for e in evidence['evidence']},result_model=Cards)
+            validate_reasoning(value,evidence,stage=str(context.get('stage') or ''))
         except ValueError as exc:
             # Invalid model arguments are repairable business feedback, not a
             # transport failure that terminates the main Tool Runtime.

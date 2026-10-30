@@ -106,7 +106,9 @@ def test_bootstrap_uses_single_numeric_id_identity(tmp_path):
 def test_task_state_and_revision_guards_are_identity_neutral(tmp_path):
     c=client(tmp_path);a=wait(c,c.post('/api/cockpit/analyses',json={}).json()['id'])
     t=c.post('/api/cockpit/analyses/'+a['id']+'/draft').json();url='/api/cockpit/tasks/'+t['id']
-    assert t['measures'][0]['deadline']=='5 个工作日'
+    assert t['measures'][0]['deadline']=='建议期限：5 个工作日（待确认）'
+    assert '待确认' in t['measures'][0]['owner']
+    assert t['measures'][0]['action'].startswith('建议：')
     assert c.post(url,json=dict(id=2,revision=1,action='close',feedback='ok')).status_code==409
     t=c.post(url,json=dict(id=2,revision=1,action='issue')).json();assert t['status']=='issued'
     assert c.post(url,json=dict(id=1,revision=1,action='issue')).status_code==409
@@ -123,7 +125,9 @@ def test_task_draft_accepts_legacy_analysis_without_deadline_days(tmp_path):
     analysis=store.update_analysis(analysis['id'],status='completed',result=dict(recommendations=[dict(
         id='r1',action='核实超期订单',ownerRole='运营负责人',acceptance='完成逐单核实')]))
     task=store.draft(analysis)
-    assert task['measures'][0]['deadline']=='10 个工作日'
+    assert task['measures'][0]['deadline']=='建议期限：10 个工作日（待确认）'
+    assert '待确认' in task['measures'][0]['owner']
+    assert task['measures'][0]['action'].startswith('建议：')
 
 
 def test_task_draft_can_start_from_a_limited_analysis(tmp_path):

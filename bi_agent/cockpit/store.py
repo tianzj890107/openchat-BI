@@ -589,10 +589,14 @@ class Store:
             db.execute("BEGIN IMMEDIATE")
             row=db.execute("SELECT body FROM tasks WHERE analysis_id=?",(aid,)).fetchone()
             if row:return json.loads(row[0])
+            from .delivery import ensure_checkable, pending_owner, suggestion_action
             actions=analysis["result"]["recommendations"]
             item=dict(id="POC-"+uuid.uuid4().hex[:10].upper(),analysisId=aid, revision=1,status="draft",simulated=True,
                 title=analysis["context"]["stageName"]+"风险改善任务令", context=analysis["context"],
-                measures=[dict(id=x["id"], action=x["action"],owner=x["ownerRole"],deadline=f"{x.get('deadlineDays') or 10} 个工作日", acceptance=x["acceptance"]) for x in actions],
+                measures=[dict(id=x["id"], action=suggestion_action(x["action"]),
+                    owner=pending_owner(x["ownerRole"]),
+                    deadline=f"建议期限：{x.get('deadlineDays') or 10} 个工作日（待确认）",
+                    acceptance=ensure_checkable(x["acceptance"])) for x in actions],
                 goal="逐项核实并处理当前分析识别的卡点，按证据复核改善情况",feedback="",audit=[dict(action="draft",at=time.time())])
             db.execute("INSERT INTO tasks VALUES(?,?,?,?,?)",(item["id"],aid,1,json.dumps(item,ensure_ascii=False),time.time()))
         return item

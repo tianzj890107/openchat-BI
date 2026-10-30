@@ -16,6 +16,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .delivery import KIND_LABELS, ensure_checkable
+
 
 class TableQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -490,7 +492,11 @@ def _matched_causes(row_key: str, causes: list[dict], records: dict[str, dict]) 
 def _cause_text(cause: dict) -> str:
     title = _text(cause.get("title"))
     description = _text(cause.get("description"))
-    status = "待验证" if cause.get("status") == "hypothesis" else "证据支持"
+    kind = _text(cause.get("kind"))
+    if kind:
+        status = "证据支持" if kind == "verified" else KIND_LABELS.get(kind, "待验证")
+    else:
+        status = "证据支持" if cause.get("status") == "supported" else "待验证"
     value = "；".join(part for part in (title, description) if part)
     return f"{status}：{value}" if value else ""
 
@@ -505,10 +511,10 @@ def _action_text(cause_ids: set[str], recommendations: list[dict]) -> str:
         days = item.get("deadlineDays")
         acceptance = _text(item.get("acceptance"))
         detail = "；".join(part for part in (
-            action,
-            f"责任角色：{owner}" if owner else "",
-            f"期限：{days} 个工作日" if isinstance(days, int) and days > 0 else "",
-            f"验收：{acceptance}" if acceptance else "",
+            f"建议措施：{action}" if action else "",
+            f"建议责任角色：{owner}（待确认）" if owner else "",
+            f"建议期限：{days} 个工作日（待确认）" if isinstance(days, int) and days > 0 else "",
+            f"验收：{ensure_checkable(acceptance)}" if acceptance else "",
         ) if part)
         if detail:
             values.append(detail)

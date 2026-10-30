@@ -130,7 +130,8 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
     js=(ROOT/'cockpit.js').read_text()
     assert 'insightBundleUrl' in js
     assert 'import(insightBundleUrl)' in js
-    assert ':analysis="state.item"' in js
+    assert ':analysis="slotAnalysis"' in js
+    assert 'slotPublication(props.insight.id)' in js
     assert ':status="state.status"' in js
     assert '@retry="reload"' in js
     components=ROOT/'insight-components'

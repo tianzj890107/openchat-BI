@@ -18,6 +18,7 @@ from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
 from .agent import run_analysis
 from .cards import CONTRACT, card_delivery_state, valid_card
+from .delivery import project_card
 from .metadata import build_bundle
 from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
@@ -465,6 +466,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             update = refresh_for(slot, item)
             delivery = card_delivery_state(item)
             status = 'ready' if delivery['renderable'] else 'missing'
+            payload = project_card(item, slot['slotId'])
             slots[slot['slotId']] = dict(
                 **slot,
                 status=status,
@@ -475,14 +477,14 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 generatedAt=float((item or {}).get('updatedAt') or 0),
                 dataAsOf=float(((item or {}).get('context') or {}).get('updatedAt') or
                                (item or {}).get('updatedAt') or 0),
-                lastSuccessfulPublication=item,
+                lastSuccessfulPublication=payload,
                 lastSuccessfulAt=float((item or {}).get('updatedAt') or 0),
                 scopeMatch=scope_match,
                 displayScope='default' if item else '',
                 refreshStatus=update['status'],
                 lastRefreshError=update['lastRefreshError'],
                 update=update,
-                payload=item,
+                payload=payload,
             )
 
         expected = len(slots)

@@ -113,6 +113,8 @@ export function useInsight(props, emit) {
   }
 
   function causeStatus(cause) {
+    const labels = {verified:'记录支持', fact:'异常表现', structure:'结构定位', data_gap:'数据缺口', hypothesis:'待验证假设'}
+    if (cause?.kind && labels[cause.kind]) return labels[cause.kind]
     return cause?.status === 'supported' ? '记录支持' : '待核实'
   }
 

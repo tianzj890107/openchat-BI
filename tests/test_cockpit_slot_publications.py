@@ -149,7 +149,9 @@ def test_custom_scope_exposes_default_cards_only_as_marked_fallback(tmp_path, mo
     assert value['displayScope'] == 'default'
     assert all(item['scopeMatch'] is False and item['displayScope'] == 'default'
                and item['status'] == 'ready' for item in value['slots'].values())
-    assert all(item['payload']['result']['summary'].endswith('已发布卡片')
+    assert all('已发布卡片' in item['payload']['result']['summary']
+               for item in value['slots'].values())
+    assert all(item['payload']['result']['deliveryContract'] == 'cockpit-delivery-v2'
                for item in value['slots'].values())
 
 
