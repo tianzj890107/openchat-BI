@@ -1482,3 +1482,11 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - `8765` 后端保持 `process360-cockpit-37476f2-20261030-no-ap-cache`（PID `3852987`），本轮未改后端代码；`/healthz` 200。
 - 验证：Node 看板测试全通过、`node --check` 通过；`release.json`、入口 HTML、`cockpit.js` 均返回新版本并包含 `cache=1` 分支。AP 已完成响应复用仍为关闭（`COCKPIT_AP_REUSE_SECONDS` 默认 `0`、`DATA_REUSE_WINDOW_MS=0`）。
 - 回退：`site` 指回 `site-next-37476f2-20261030-105008` 并重启容器 `10de73310da9`；更早备份 `backups/site-919c392-20261030-105250-pre`。不得删除历史 release、备份、会话、上传、图表或 dataset。
+
+### 2026-10-30 · 逐插槽交付契约与推理校验上线
+
+- 代码 `14b258720c5bcbfbb65d228b5eab4b7a253fd9b7`（`bugfix/cockpit-disable-ap-reuse-cache`）：新增 `bi_agent/cockpit/delivery.py`，按 15 个插槽裁剪同一环节分析并校验推理；金额/电量混用比较、未验证集合相加、现象写成原因、目标口径冲突隐藏、不可检查验收会在交付时被拒绝。
+- `8765` 主服务：release `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-14b2587-20261030-143353`，PID `590092`，`/healthz` 200，启动日志无 Traceback。`.env`、`.venv`、`dataset` 继续软链到原目录，历史数据未覆盖。
+- `8876` 静态站：`assetVersion=75295eae3d3c7f708a7f`，`commit=14b2587`，目录 `site-next-14b2587-20261030-143548`，manifest 校验通过，容器 `10de73310da9` 重启后生效。
+- 验证：两个角色 `/api/cockpit/ai-publications` 均 `readyCount=15`、`missingCount=0`，所有插槽 `deliveryContract=cockpit-delivery-v2`；`quote-summary` 与 `shipment-overdue-note` 不再携带原因列表，`bid-summary` 原因已标注 `[结构定位]` 等层级。
+- 回退：`8765` 停止 PID `590092`，用旧 release `process360-cockpit-37476f2-20261030-no-ap-cache/start-main.py` 启动；`8876` 将 `site` 指回 `site-next-4c933e4-20261030-115044` 并重启容器。不得删除历史 release、备份、会话、上传、图表或 dataset。

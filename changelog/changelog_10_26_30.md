@@ -1028,3 +1028,4 @@
 - 前端插槽优先使用服务端按插槽投影的卡片，文案与同一环节其他插槽分开；共享样式按 `kind` 展示原因层级。
 - 主要文件：`bi_agent/cockpit/delivery.py`、`cards.py`、`router.py`、`store.py`、`ai_tables.py`、`agent.py`、`main_service.py`、`cockpit.js`、`insight-components/shared.js`；新增 `tests/test_cockpit_delivery_contract.py`。
 - 验证：Cockpit 相关 Python 210 项、Node 看板测试全部通过。本轮仅本地实现与测试，未部署、未重跑模型。
+- 上线：34 的 `8765` release `process360-cockpit-14b2587-20261030-143353`（PID `590092`），`8876` assetVersion `75295eae3d3c7f708a7f`。两个角色 15/15 插槽 ready，全部返回 `cockpit-delivery-v2`；报价、订单接收、超期说明按插槽裁剪为状态/风险定位，不再共用同一份原因文案。回滚分别使用旧 release `process360-cockpit-37476f2-20261030-no-ap-cache` 与 `site-next-4c933e4-20261030-115044`。
