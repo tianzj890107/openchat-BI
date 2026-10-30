@@ -1474,3 +1474,11 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 8876 的 nginx 容器（`eimosp-cockpit-8876`，ID `10de73310da9`）以 bind mount 在启动时解析 `site` 软链，仅切换软链不会生效；本次执行 `docker restart 10de73310da9` 后重新解析挂载。重启后 `http://172.16.10.34:8876/` 返回 200，`release.json` 与 `/static/cockpit/releases/b6628694318ccccd18f1/data-client.js` 均为新版本（`DATA_REUSE_WINDOW_MS = 0`）。
 - 验证：`8765 /healthz` 200；连续两次相同 AP 查询 receipt `aed6f8e82312`／`524fe7cd7eec`，`cacheHit=false`、`follower=false`，证明已完成响应不再复用。Python 42 项、Node 82 项测试通过。
 - 回退：`8765` 停止 PID `3852987` 后用旧 release `process360-cockpit-919c392-20261030-quote` 启动；`8876` 将 `site` 软链指回 `backups/site-919c392-20261030-105250-pre` 并再次 `docker restart 10de73310da9`。不得删除历史 release、备份、会话、上传、图表或 dataset。
+
+### 2026-10-30 · 图表默认实时取数（8876 静态站）
+
+- 代码 `4c933e41f836973f61a4b3624f23a6502377cd83`（`bugfix/cockpit-disable-ap-reuse-cache`）：`cockpit.js` 只有在 URL 带 `?cache=1` 时才把整页快照交给数据客户端回放；默认传 `null`，图表逐条实时查询 AP。AI 发布卡片与显示元数据仍来自发布结果。
+- `8876` 静态站：`assetVersion=4dc6e0a2dda046f2c5bd`，`commit=4c933e4`，资源前缀 `/static/cockpit/releases/4dc6e0a2dda046f2c5bd`，manifest 149 个文件校验通过；目录 `site-next-4c933e4-20261030-115044`，`site` 软链已切换，容器 `10de73310da9` 重启后 HTTP 返回新版本。
+- `8765` 后端保持 `process360-cockpit-37476f2-20261030-no-ap-cache`（PID `3852987`），本轮未改后端代码；`/healthz` 200。
+- 验证：Node 看板测试全通过、`node --check` 通过；`release.json`、入口 HTML、`cockpit.js` 均返回新版本并包含 `cache=1` 分支。AP 已完成响应复用仍为关闭（`COCKPIT_AP_REUSE_SECONDS` 默认 `0`、`DATA_REUSE_WINDOW_MS=0`）。
+- 回退：`site` 指回 `site-next-37476f2-20261030-105008` 并重启容器 `10de73310da9`；更早备份 `backups/site-919c392-20261030-105250-pre`。不得删除历史 release、备份、会话、上传、图表或 dataset。

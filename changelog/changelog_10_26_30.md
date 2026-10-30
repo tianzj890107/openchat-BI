@@ -1009,3 +1009,12 @@
 - 验证：Python 42 项、Node 看板测试 82 项通过，`node --check`、`py_compile`、`git diff --check` 通过。线上 `8765` 连续两次相同查询 receipt `aed6f8e82312`／`524fe7cd7eec`，两次均 `cacheHit=false`、`follower=false`。
 - 上线：`8765` release `process360-cockpit-37476f2-20261030-no-ap-cache`，PID `3852987`，`/healthz` 200；`8876` assetVersion `b6628694318ccccd18f1`，`release.json` 指向提交 `37476f2`。`8876` 的 nginx 容器以 bind mount 解析 `site` 软链，切换软链后需重启容器（`10de73310da9`），已在重启后确认 HTTP 同时返回新 assetVersion 与 `DATA_REUSE_WINDOW_MS = 0`。
 - 回退：`8765` 旧 release `process360-cockpit-919c392-20261030-quote`；`8876` 备份 `backups/site-919c392-20261030-105250-pre`。历史 release、`.env`、`.venv`、共享 `dataset`、会话与用户数据均未覆盖或删除。
+
+### 2026-10-30 · 图表默认不再回放整页快照
+
+- 用户可见变化：打开或刷新看板时，图表数据默认逐条实时查询 AP，不再从服务端保存的整页快照直接回填；需要旧快路径时可显式使用 `?cache=1`。AI 已发布卡片与分析时间提示仍从发布结果读取，不走 AP。
+- 实现：`install()` 仅在 URL 带 `cache=1` 时把快照交给数据客户端，否则传 `null` 触发实时查询；`DATA_REUSE_WINDOW_MS=0` 与后端 `COCKPIT_AP_REUSE_SECONDS=0` 保持不变，重叠在途请求仍合并。
+- 主要文件：`bi_agent/web/static/cockpit/cockpit.js`；提交 `4c933e4`。
+- 验证：Node 看板测试全通过，`node --check` 通过；线上入口返回 `assetVersion=4dc6e0a2dda046f2c5bd`，`cockpit.js` 含 `cache=1` 分支。
+- 上线：`8876` 资源版本 `4dc6e0a2dda046f2c5bd`（`commit=4c933e4`），`site` 指向 `site-next-4c933e4-20261030-115044`，容器 `10de73310da9` 重启后生效；`8765` 后端代码未变（`37476f2`），`/healthz` 200。
+- 回退：`8876` 将 `site` 指回 `site-next-37476f2-20261030-105008` 并重启容器；更早版本备份 `backups/site-919c392-20261030-105250-pre`。历史 release、共享 `dataset` 与用户数据未改动。
