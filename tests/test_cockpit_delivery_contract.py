@@ -263,3 +263,23 @@ def test_task_draft_marks_suggested_owner_deadline_and_checkable_acceptance(tmp_
     assert '建议角色，待确认' in measure['owner']
     assert measure['deadline'].startswith('建议期限：')
     assert '清单' in measure['acceptance'] or '对账' in measure['acceptance']
+
+
+def test_summary_notes_and_generation_instructions_are_clean():
+    from bi_agent.cockpit.delivery import sanitize_summary, _with_note, _strip_causal, classify_cause
+    assert '短摘要' not in sanitize_summary('存在逾期。短摘要不含业务数字，具体数值见事实字段。', {})
+    assert _with_note('存在逾期。', '请核查。') == '存在逾期。请核查。'
+    assert _strip_causal('尚不能归因为某一环节问题') == '尚不能归因为某一环节问题'
+    assert classify_cause({'title': '口径冲突与发货证据缺口'}) == 'data_gap'
+
+
+def test_publication_trim_preserves_history_and_display_fields():
+    from bi_agent.cockpit.delivery import publication_payload
+    raw = {'context': {'stage': 'quotation', 'chartQueries': ['large']}, 'evidence': {
+        'records': [{'data': {'YWLN_D021': 'normal_completed'}}],
+        'facts': [{'value': 0, 'claim': {'id': 'x', 'statement': 'value=0', 'provenance': {'query': 'large'}}}]}}
+    value = publication_payload(raw)
+    assert 'chartQueries' not in value['context']
+    assert 'provenance' not in value['evidence']['facts'][0]['claim']
+    assert value['evidence']['records'] == raw['evidence']['records']
+    assert raw['context']['chartQueries'] == ['large']

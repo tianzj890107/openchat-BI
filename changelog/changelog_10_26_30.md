@@ -1043,3 +1043,9 @@
 - 主要文件：`bi_agent/cockpit/delivery.py`、`cards.py`、`router.py`、`store.py`、`ai_tables.py`、`agent.py`、`main_service.py`、`cockpit.js`、`insight-components/shared.js`；新增 `tests/test_cockpit_delivery_contract.py`。
 - 验证：Cockpit 相关 Python 219 项、Node 看板测试 82 项通过，`git diff --check` 通过；使用线上已保存插槽重放，两个角色的共同分析均不再出现“难以解释”“不足以解释”“金额占比不足”“订单取消变更量级有限”和悬空 `signed-unsigned-scope`。
 - 上线：交付契约提交序列为 `012fd2a`、`d611a72`、`71a4da6`（分支 `bugfix/cockpit-disable-ap-reuse-cache`）。34 的 `8765` release `process360-cockpit-71a4da6-20261030-151759`（PID `763133`），`8876` assetVersion `f4b2cb70ffa2f8e87c77`、`commit=71a4da6`。两个角色均 15/15 插槽 ready，报价 `contentGaps` 仅 `ANALYSIS_LIMITED`，共同分析证据去重后为 117/118 条；总裁共同分析保留 5 条有依据的原因，分析员保留口径冲突、商机覆盖、客户结构 3 条。回滚使用 `process360-cockpit-d611a72-20261030-151355` 与 `site-next-012fd2a-20261030-151130`。
+
+### 2026-10-31 · AI 插槽文案、分类与发布体积优化
+
+- 修复摘要补充说明重复句号，过滤“短摘要不含业务数字”等生成说明；不再用替换因果词片段的方式破坏“尚不能归因为”等原句。口径冲突与证据缺口优先归为数据缺口。
+- AI 发布接口保留既有字段结构，仅裁剪前端不使用的查询计划、凭据 ID 与事实完整 provenance；完整证据与历史分析仍保存在原处，报价原始状态行保留。该修改只影响发布读取，不触发 AP、模型重算或部署。
+- 31 项交付与插槽接口测试通过，覆盖句子完整性、分类、零值、报价记录保留及历史对象不变。
