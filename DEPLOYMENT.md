@@ -1499,3 +1499,9 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 验证：两个角色 `/api/cockpit/ai-publications` 均为 `readyCount=15`、`missingCount=0`；报价 `contentGaps=['ANALYSIS_LIMITED']`，共同分析去重证据为 117/118 条。总裁共同分析保留 5 条有依据的原因，分析员保留口径冲突、商机覆盖、客户结构 3 条；接口全文不再出现“难以解释”“不足以解释”“金额占比不足”“订单取消变更量级有限”及悬空 `signed-unsigned-scope`。8876 首页、三个 Cockpit 路由、静态 `cockpit.js` 均返回 200；`release.json` 已指向 `71a4da6`。
 - 自动化验证：Cockpit 相关 Python 219 项通过，Node 看板测试 82 项通过，`git diff --check` 通过。本次验收请求只读取已发布结果，未主动触发 AP 或模型重新分析；代码修改集中在交付投影和验收口径。
 - 回退：停止 8765 PID `763133`，用 `process360-cockpit-d611a72-20261030-151355/start-main.py` 启动；8876 将 `site` 指回 `site-next-012fd2a-20261030-151130` 并执行 `docker restart 10de73310da9`。更早 release、备份、共享 `dataset`、会话、上传、图表和分析结果均完整保留，不得删除。
+
+### 2026-10-31 · 8765 AI 交付优化发布
+
+- 部署代码 `8e1c8882abd41aa1976d4603a5b69bb5d25c0500`，release `process360-cockpit-8e1c888-20261031`，PID `2641625`；原 8765 服务正常退出后启动新服务，无并行验证进程。正式入口仍为 `http://172.16.10.34:8765/api/ontology-agentic-analytics/cockpit/{overview|operations|analysis}`；8876 未更新。
+- 沿用原 `.env`、`.venv`、共享 dataset 与路由前缀，未清空、迁移历史数据，未手动触发 AP、模型分析或任务下发。旧 release `process360-cockpit-71a4da6-20261030-151759` 保留供回退。
+- 线上三页、JS 资源和 healthz 均正常；两个角色各 15 个可读取插槽，无建议原因引用断裂；重复句号、生成说明、数据缺口分类修复已在接口响应生效，报价3条状态行保留。发布体积分别约362 KB、625 KB。复验为路由、资源及发布接口检查，未执行浏览器交互全流程。
