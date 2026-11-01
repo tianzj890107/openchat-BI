@@ -151,9 +151,9 @@ analytics-eval-live-canary:
     paths:
       - dataset/evals/analytics/reports/
 
-cockpit-eval-observe:
+cockpit-eval-delivery-gate:
   stage: eval
-  allow_failure: true
+  allow_failure: false
   script:
     - mkdir -p dataset/evals/cockpit/reports
     - python -m scripts.run_cockpit_eval --output dataset/evals/cockpit/reports/latest.json

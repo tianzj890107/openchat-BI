@@ -100,14 +100,30 @@ SLOT_SPECS = {
 
 _MONEY = ('金额', '亿元', '万元', '元')
 _ENERGY = ('电量', 'GWh', 'kWh', 'MWh', '兆瓦时', '度电', '出货量', '订单量', '数量', '台数')
-_COMPARE = ('解释', '对应', '换算', '相加', '合计', '比较', '占比', '不足', '难以', '不能')
-_CROSS_UNIT = ('解释', '说明', '换算', '相加', '比较', '不足', '难以', '不能', '无法', '排除', '证明')
+_MONEY_TERMS = _MONEY + ('销售额', '发货金额', '订单金额', '变更金额', '损失金额', '营收',
+                          'value', 'amount', 'revenue', 'sales value', 'price', 'cost', 'currency')
+_ENERGY_TERMS = _ENERGY + ('发货量', '出货数量', 'shipment volume', 'shipment quantity',
+                            'volume', 'quantity', 'units', 'energy')
+_CROSS_UNIT = ('解释', '说明', '换算', '相加', '比较', '不足', '难以', '不能', '无法', '排除',
+               '证明', '验证', '推断', '意味着', '支撑',
+               'prove', 'proves', 'proven', 'explain', 'explains', 'explained',
+               'cannot explain', 'cannot be explained', 'can not explain', "can't explain",
+               'does not explain', "doesn't explain", 'insufficient to explain',
+               'derive', 'derives', 'imply', 'implies', 'correspond', 'corresponds',
+               'equal', 'equals')
 _CAUSAL = ('导致', '因为', '由于', '造成', '使得', '致使', '因此', '根源', '之所以')
 _DATA_GAP = ('缺失', '未返回', '为空', '空值', '无数据', '未取得', '无法取得', '查询失败',
-             '口径不明', '未对账', '缺失值', '空记录')
+             '口径不明', '未对账', '缺失值', '空记录', '证据缺口', '数据缺口', '口径冲突',
+             '口径不一致', '口径差异', '证据不足')
 _STRUCTURE = ('集中', '主要来自', '分布', '占比', '结构', '团队', '客户等级', '产品线', '区域')
 _FACT = ('低于', '高于', '缺口', '逾期', '偏离', '超出', '下降', '上升', '未完成', '超期')
 _CAUSE = ('导致', '因为', '由于', '造成', '使得', '致使', '根源')
+_CHANGE_TERMS = ('变更', '取消', 'cancelled', 'canceled', 'change', 'changed')
+_LOSS_TERMS = ('损失', '亏损', '减值', 'loss', 'impairment', 'write-off', 'writeoff')
+_CHANGE_AMOUNT_TERMS = ('变更金额', '取消金额', 'change amount', 'changed amount',
+                        'cancelled value', 'canceled value', 'change value')
+_INSTRUCTION_MARKERS = ('短摘要', '事实字段', '业务数值', '具体数值见', '不重复业务数字',
+                        '不新造比例', '生成说明', '模型执行', '交付说明', '不要生成', '客户摘要')
 _ACCEPTANCE_OK = ('清单', '对账', '确认', '记录', '核查', '复核', '台账', '证据', '留痕')
 _MISSING_CAUSE = ('证据不足：当前分页/记录内没有可引用的逐单处理记录，暂不填写具体原因，'
                   '需先补齐订单状态、计划交付期与变更记录。')
@@ -123,6 +139,11 @@ def _sentences(text):
 
 def _has_any(text, words):
     return any(word in text for word in words)
+
+
+def _has_any_ci(text, words):
+    value = _text(text).lower()
+    return any(str(word).lower() in value for word in words)
 
 
 def _record_ids(evidence):
@@ -207,24 +228,21 @@ def validate_reasoning(value, evidence, *, stage='', slot=''):
     actions = list((value or {}).get('recommendations') or [])
     records = _record_ids(evidence)
 
-    # 1. Money and energy cannot be compared without an explicit bridge.
+    # 1. Money and energy cannot be compared without an explicit bridge, and
+    #    changed/cancelled value is not automatically a realised loss.
     claims = [summary]
     claims += [_text(c.get('title')) + '；' + _text(c.get('description')) for c in causes]
     claims += [_text(a.get('action')) + '；' + _text(a.get('detail')) for a in actions]
     for claim in claims:
         for sentence in _sentences(claim):
-            if _has_any(sentence, _MONEY) and _has_any(sentence, _ENERGY) and _has_any(sentence, _COMPARE):
+            if _bad_unit_claim(sentence):
                 issues.append('同一判断混用金额与电量口径：需要单价、产品结构或交期映射才能比较，请拆分或删除该推断')
-
-    # 2. Cancelled/changed plus unsigned sets cannot be added unless verified.
-    for claim in claims:
-        for sentence in _sentences(claim):
-            sets = _has_any(sentence, ('取消', '变更')) and _has_any(sentence, ('中标未签', '未签'))
-            if not sets:
-                continue
-            if _has_any(sentence, ('相加', '合计', '之和', '叠加', '不足以解释', '难以解释', '不能解释')):
-                if not (evidence or {}).get('setOverlapVerified'):
-                    issues.append('取消/变更与中标未签两个集合的期间、重叠关系和是否对应当期应发货订单尚未验证，不能相加或据此排除缺口；请改为“尚不能建立与出货缺口的对应关系，需按订单和计划交付期间核对”')
+            if _bad_set_claim(sentence, evidence):
+                issues.append('取消/变更与中标未签两个集合的期间、重叠关系和是否对应当期应发货订单尚未验证，不能相加或据此排除缺口；请改为“尚不能建立与出货缺口的对应关系，需按订单和计划交付期间核对”')
+            if _bad_attrition_claim(sentence, evidence):
+                issues.append('变更/取消金额的占比或量级不能单独解释电量或出货缺口；需先核对集合关系、期间和单位口径')
+            if _bad_change_loss_claim(sentence, evidence):
+                issues.append('订单变更或取消金额不等于已实现损失；需先核实变更方向、净额、生效状态及订单集合')
 
     # 3. A target-total conflict must be visible in the summary, not only limits.
     if _has_target_conflict(evidence):
@@ -270,20 +288,45 @@ def _bad_set_claim(sentence, evidence):
 
 
 def _bad_unit_claim(sentence):
-    return (_has_any(sentence, _MONEY) and _has_any(sentence, _ENERGY)
-            and _has_any(sentence, _CROSS_UNIT))
+    text = _text(sentence)
+    if _has_any_ci(text, ('口径不同', '不同口径', '不能相互解释', '不能直接比较',
+                          '需按统一口径', '需要映射', 'not comparable')):
+        return False
+    return (_has_any_ci(text, _MONEY_TERMS) and _has_any_ci(text, _ENERGY_TERMS)
+            and _has_any_ci(text, _CROSS_UNIT))
+
+
+def _change_loss_verified(evidence):
+    return any((evidence or {}).get(key) for key in (
+        'changeDirectionVerified', 'netDecreaseVerified', 'changeEffectiveVerified', 'lossVerified'))
+
+
+def _bad_change_loss_claim(sentence, evidence):
+    text = _text(sentence)
+    if _has_any_ci(text, ('不是损失', '不等于损失', '不能视为损失', 'not a loss',
+                          'not equal to loss', 'cannot be treated as loss', 'no evidence of loss')):
+        return False
+    change_amount = (_has_any_ci(text, _CHANGE_AMOUNT_TERMS)
+                     and _has_any_ci(text, _MONEY_TERMS))
+    asserted_loss = (_has_any_ci(text, _LOSS_TERMS)
+                     and _has_any_ci(text, ('是', '为', '等于', '构成', '造成', '计入',
+                                            'is', 'are', 'equal', 'equals', 'means', 'represents')))
+    return change_amount and asserted_loss and not _change_loss_verified(evidence)
 
 
 def _bad_attrition_claim(sentence, evidence):
-    claim = _has_any(sentence, ('量级有限', '规模有限', '占比不足', '不足以解释',
-                                '难以解释', '不能解释', '不足以', '难以', '不能'))
+    claim = _has_any_ci(sentence, ('量级有限', '规模有限', '占比不足', '不足以解释',
+                                   '难以解释', '不能解释', '不足以', '难以', '不能',
+                                   'insufficient to explain', 'cannot explain',
+                                   'does not explain', "doesn't explain"))
     return (not (evidence or {}).get('setOverlapVerified')
-            and _has_any(sentence, ('取消', '变更')) and claim)
+            and _has_any_ci(sentence, _CHANGE_TERMS) and claim)
 
 
 def _unsupported_inference(text, evidence):
     return any(_bad_set_claim(sentence, evidence) or _bad_unit_claim(sentence)
                or _bad_attrition_claim(sentence, evidence)
+               or _bad_change_loss_claim(sentence, evidence)
                for sentence in _sentences(text))
 
 
@@ -305,13 +348,27 @@ def sanitize_summary(text, evidence):
                 replaced.add(replacement)
             seen.add(key)
             continue
+        if _bad_change_loss_claim(sentence, evidence):
+            replacement = '订单变更金额不等于损失金额，需核实变更方向、净额及生效状态'
+            if replacement not in replaced:
+                kept.append(replacement)
+                replaced.add(replacement)
+            seen.add(key)
+            continue
         clauses = [part.strip() for part in re.split(r'[,，]', sentence) if part.strip()]
         unsupported = [claim for claim in clauses
                        if (_bad_set_claim(claim, evidence) or _bad_unit_claim(claim)
-                           or _bad_attrition_claim(claim, evidence))]
-        clean = [claim for claim in clauses if claim not in unsupported]
+                           or _bad_attrition_claim(claim, evidence)
+                           or _bad_change_loss_claim(claim, evidence))]
+        clean = [claim for claim in clauses
+                 if claim not in unsupported and not _has_any_ci(claim, _INSTRUCTION_MARKERS)]
         if clean:
             kept.append('，'.join(clean))
+            seen.add(key)
+            continue
+        if not unsupported:
+            # The sentence only contained generation/delivery instructions.
+            # Remove it without inventing an unrelated business conclusion.
             seen.add(key)
             continue
         replacement = UNIT_REPLACEMENT if any(_bad_unit_claim(claim) for claim in unsupported) \

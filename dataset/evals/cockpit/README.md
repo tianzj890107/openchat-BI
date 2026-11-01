@@ -17,12 +17,20 @@ python -m pytest -q tests/test_cockpit_eval_dataset.py
 
 需已安装项目 Python 依赖。运行不读 .env、不连接服务或数据库、不打开业务页面、不触发模型和预热。测试只使用内存；报告只写调用方指定位置。严格模式有任一失败返回 1，异常单列为 harnessError，不算业务通过。
 
-JSON 报告列出每条 expected/actual；不只给总分。manifest 和用例可静态评审。新增 CI 为非阻断监测任务（allow_failure），**不能声称 P0 发布门禁通过**；待已知缺口关闭后应去掉 allow_failure。不修改现有 analytics 评测门禁。
+JSON 报告列出每条 expected/actual；不只给总分。manifest 和用例可静态评审。2026-11-02 收口后，CI 的 `cockpit-eval-delivery-gate` 已改为失败即阻断（`allow_failure: false`），只对这套离线交付层评测负责，不修改现有 analytics 评测门禁。它仍**不能**替代模型端到端、真实 AP/PG、浏览器渲染、调度性能和 Fuxi 下发验收。
 
 可用 `--baseline <file>` 显式比较已评审的失败 ID 集合，校验用例指纹并拒绝新增失败及运行器异常；仓库不自动生成或启用失败预算，禁止悄悄接受 P0。
 
 ## 初次实测（2026-11-01，基于 master 4c63e4d）
 
 40 条中 35 通过、5 失败，详见 `docs/specs/cockpit-eval-findings-2026-11-01.md`。这是严格业务预期下的红测，不是测试环境缺依赖。此前修复分支上的分类/文案修正未包含在该 master 基线，不能把线上结果与 master 结果混为一谈。
+
+## 当前收口（2026-11-02，feature/cockpit-golden-evals）
+
+未修改任何用例或预期，`cases.json` 指纹仍为
+`23e4d9ff1993d3106c381603ea6b19ca85b76dc687df5714fde080cf038b5c98`。
+交付层评测为 **40/40 通过、0 失败、0 harnessError**。本轮关闭了中英文跨单位推证、变更金额等同损失、口径冲突分类和生成说明残留五项红测，并补充了安全否定与已核实证据的回归测试。Cockpit Python 回归 229 项、Node 回归 82 项通过。
+
+上述结果只说明离线交付校验已收口；受限卡片、逐单证据和模型实际推理仍需按下文端到端项目继续验收。
 
 后续优先补充：人工复核模型录制回放；同一模型候选在不同插槽的预期输出；逐单证据与建议引用闭环；时间/单位/分母口径结构化对账；受控模型 canary。新增真实模型评测必须显式选择，默认不能访问客户数据和发送外部任务。
