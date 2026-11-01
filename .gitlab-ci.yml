@@ -150,3 +150,15 @@ analytics-eval-live-canary:
     expire_in: 7 days
     paths:
       - dataset/evals/analytics/reports/
+
+cockpit-eval-observe:
+  stage: eval
+  allow_failure: true
+  script:
+    - mkdir -p dataset/evals/cockpit/reports
+    - python -m scripts.run_cockpit_eval --output dataset/evals/cockpit/reports/latest.json
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - dataset/evals/cockpit/reports/

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cockpit synthetic acceptance case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "area", "priority", "operation", "input", "expected", "rationale"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[A-Z]+-[0-9]{3}$"},
+    "area": {"type": "string", "minLength": 1},
+    "priority": {"enum": ["P0", "P1", "P2"]},
+    "operation": {"enum": ["reasoning", "classify", "summary", "scope", "projection"]},
+    "input": {"type": "object"},
+    "expected": {"type": "object", "minProperties": 1},
+    "rationale": {"type": "string", "minLength": 1}
+  }
+}
