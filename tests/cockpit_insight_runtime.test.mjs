@@ -10,6 +10,10 @@ const html = await readFile(
   new URL('../bi_agent/web/static/cockpit/index.html', import.meta.url),
   'utf8',
 );
+const cockpitCss = await readFile(
+  new URL('../bi_agent/web/static/cockpit/cockpit.css', import.meta.url),
+  'utf8',
+);
 
 test('AI insight slots receive the current page without referencing an outer setup ref', () => {
   const start = cockpit.indexOf('const CockpitInsight = {');
@@ -34,6 +38,18 @@ test('a broken delivered insight leaves loading and shows an explicit error', ()
 test('every AI slot renders the shared stale-scope notice', () => {
   assert.match(cockpit, /v-if="state\.scopeNotice" class="insight-scope-notice"/)
   assert.match(cockpit, /:scope-notice="state\.scopeNotice \|\| ''"/)
+});
+
+test('the stale-scope notice reads as hint text instead of a warning banner', () => {
+  const rule = cockpitCss.match(/\.insight-scope-notice\{[^}]*\}/)?.[0] || '';
+  const prefix = cockpitCss.match(/\.insight-scope-notice::before\{[^}]*\}/)?.[0] || '';
+
+  assert.match(rule, /color:var\(--cockpit-text-help\)/);
+  assert.match(rule, /background:none/);
+  assert.match(rule, /border:0/);
+  assert.doesNotMatch(rule, /--cockpit-warning/);
+  assert.match(prefix, /content:"ⓘ"/);
+  assert.match(prefix, /margin-right:6px/);
 });
 
 test('risk count labels bind the dashboard runtime explicitly and never reach into setup refs', () => {

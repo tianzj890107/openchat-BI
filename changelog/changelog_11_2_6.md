@@ -38,3 +38,10 @@
 - 评测与修复：合入 40 条 Cockpit 业务评测用例及运行器；任务令 POC 测试改用具体日期，
   与“工作日建议不是可下发日期”的期限校验保持一致。
 - 验证：全量 Python 与前端 Node 测试通过；`git diff --check` 通过。
+
+### 2026-11-02 18:05 Cockpit 旧口径提示改为文字提示
+
+- 用户可见变化：AI 卡片上方的“当前展示上次分析”类旧口径提示不再使用橙色警告底色和边框，
+  改为带 `ⓘ` 前缀的灰色辅助文字；提示内容和触发逻辑不变。
+- 主要文件：`bi_agent/web/static/cockpit/cockpit.css`、`tests/cockpit_insight_runtime.test.mjs`。
+- 验证：Cockpit 运行时测试 6 项、Cockpit Python 测试 284 项通过；`git diff --check` 通过。
