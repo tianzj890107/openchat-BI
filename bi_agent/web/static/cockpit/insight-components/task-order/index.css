@@ -7,10 +7,10 @@
 
 .stage-risk-analysis__draft {
   padding: 4px 14px;
-  border: 1px solid #1677ff;
+  border: 1px solid var(--cockpit-primary);
   border-radius: 16px;
-  background: #1677ff;
-  color: #fff;
+  background: var(--cockpit-primary);
+  color: var(--cockpit-surface);
   font: inherit;
   font-size: 12px;
   line-height: 22px;
@@ -19,26 +19,26 @@
 }
 
 .stage-risk-analysis__draft:disabled {
-  border-color: #d9d9d9;
-  background: #f5f5f5;
-  color: #8c8c8c;
+  border-color: var(--cockpit-input-border);
+  background: var(--cockpit-background);
+  color: var(--cockpit-text-help);
   cursor: default;
 }
 
 .stage-risk-analysis__task-state,
 .stage-risk-analysis__hint {
-  color: #8c8c8c;
+  color: var(--cockpit-text-help);
   font-size: 12px;
   line-height: 20px;
 }
 
 .stage-risk-analysis__task-state--warn {
-  color: #d46b08;
+  color: var(--cockpit-warning);
 }
 
 .stage-risk-analysis__error {
   margin: 6px 0;
-  color: #cf1322;
+  color: var(--cockpit-error);
   font-size: 12px;
   line-height: 20px;
 }
@@ -47,26 +47,26 @@
   flex: none;
   padding: 0 6px;
   border-radius: 9px;
-  background: #e6f4ff;
-  color: #1677ff;
+  background: var(--cockpit-primary-10);
+  color: var(--cockpit-primary);
   font-size: 11px;
   line-height: 20px;
 }
 
 .stage-risk-analysis__action-type--remediation {
-  background: #f6ffed;
-  color: #389e0d;
+  background: var(--cockpit-success-bg);
+  color: var(--cockpit-success);
 }
 
 .stage-risk-analysis__action-type--pending {
-  background: #f5f5f5;
-  color: #8c8c8c;
+  background: var(--cockpit-background);
+  color: var(--cockpit-text-help);
 }
 
 .stage-risk-analysis__missing-evidence {
   display: block;
   margin-top: 2px;
-  color: #d46b08;
+  color: var(--cockpit-warning);
   font-size: 11px;
   line-height: 18px;
 }
@@ -88,9 +88,9 @@
   overflow: auto;
   padding: 18px 20px 16px;
   border-radius: 10px;
-  background: #fff;
+  background: var(--cockpit-surface);
   box-shadow: 0 12px 40px rgba(0, 0, 0, .2);
-  color: #262626;
+  color: var(--cockpit-text);
   font-size: 13px;
   line-height: 22px;
 }
@@ -118,7 +118,7 @@
 .task-order-dialog__status,
 .task-order-dialog__hint,
 .task-order-dialog__evidence {
-  color: #8c8c8c;
+  color: var(--cockpit-text-help);
   font-size: 12px;
 }
 
@@ -131,12 +131,12 @@
   display: grid;
   gap: 4px;
   min-width: 0;
-  color: #595959;
+  color: var(--cockpit-text-secondary);
   font-size: 12px;
 }
 
 .task-order-dialog__field small {
-  color: #8c8c8c;
+  color: var(--cockpit-text-help);
   font-size: 11px;
 }
 
@@ -145,10 +145,10 @@
   width: 100%;
   box-sizing: border-box;
   padding: 5px 9px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--cockpit-input-border);
   border-radius: 6px;
-  background: #fff;
-  color: #262626;
+  background: var(--cockpit-surface);
+  color: var(--cockpit-text);
   font: inherit;
   line-height: 22px;
 }
@@ -159,8 +159,8 @@
 
 .task-order-dialog__field input:disabled,
 .task-order-dialog__field textarea:disabled {
-  background: #fafafa;
-  color: #595959;
+  background: var(--cockpit-background);
+  color: var(--cockpit-text-secondary);
 }
 
 .task-order-dialog__measure {
@@ -168,16 +168,16 @@
   gap: 9px;
   margin-top: 4px;
   padding: 12px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--cockpit-divider);
   border-radius: 8px;
-  background: #fcfdff;
+  background: var(--cockpit-surface);
 }
 
 .task-order-dialog__type {
   padding: 0 8px;
   border-radius: 10px;
-  background: #e6f4ff;
-  color: #1677ff;
+  background: var(--cockpit-primary-10);
+  color: var(--cockpit-primary);
   font-size: 11px;
   line-height: 20px;
 }
@@ -191,7 +191,7 @@
 .task-order-dialog__confirm {
   flex-wrap: wrap;
   padding-top: 2px;
-  color: #595959;
+  color: var(--cockpit-text-secondary);
 }
 
 .task-order-dialog__confirm label {
@@ -211,27 +211,27 @@
 }
 
 .task-order-dialog__notice {
-  background: #f6ffed;
-  color: #389e0d;
+  background: var(--cockpit-success-bg);
+  color: var(--cockpit-success);
 }
 
 .task-order-dialog__notice--neutral {
-  background: #f7f9fc;
-  color: #595959;
+  background: var(--cockpit-background);
+  color: var(--cockpit-text-secondary);
 }
 
 .task-order-dialog__error {
-  background: #fff1f0;
-  color: #cf1322;
+  background: var(--cockpit-error-bg);
+  color: var(--cockpit-error);
 }
 
 .task-order-dialog__receipts {
-  background: #fafafa;
-  color: #595959;
+  background: var(--cockpit-background);
+  color: var(--cockpit-text-secondary);
 }
 
 .task-order-dialog__receipts summary {
-  color: #1677ff;
+  color: var(--cockpit-primary);
   cursor: pointer;
 }
 
@@ -239,7 +239,7 @@
   flex-wrap: wrap;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--cockpit-divider);
 }
 
 .task-order-dialog__foot .task-order-dialog__hint {
@@ -249,10 +249,10 @@
 .task-order-dialog__primary,
 .task-order-dialog__secondary,
 .task-order-dialog__icon {
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--cockpit-input-border);
   border-radius: 6px;
-  background: #fff;
-  color: #262626;
+  background: var(--cockpit-surface);
+  color: var(--cockpit-text);
   font: inherit;
   line-height: 30px;
   cursor: pointer;
@@ -260,9 +260,9 @@
 
 .task-order-dialog__primary {
   padding: 0 14px;
-  border-color: #1677ff;
-  background: #1677ff;
-  color: #fff;
+  border-color: var(--cockpit-primary);
+  background: var(--cockpit-primary);
+  color: var(--cockpit-surface);
 }
 
 .task-order-dialog__secondary {

@@ -248,4 +248,4 @@ def test_analysis_flow_preserves_delivered_graph_and_shared_risk_markup():
                      'stage-risk-analysis__overview','stage-risk-analysis__tag--cause'):
         assert selector in css
     assert 'padding:14px 16px 12px' in css
-    assert 'border-left:3px solid #cf1322' in css
+    assert 'border-left:3px solid var(--cockpit-error)' in css
