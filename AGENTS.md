@@ -185,3 +185,12 @@
 - 若该文件缺失，回退从仓库 `.env` 的 `GITLAB_TOKEN` 读取并同步到上述路径；`.env` 已被 gitignore，禁止提交。
 - API 基地址：`http://gitlab.boulderaitech.com/api/v4`（本机代理下 HTTPS 不可达），请求头 `PRIVATE-TOKEN: $TOKEN`。
 - 创建 MR：`POST /projects/ai-team%2Feimosp-ontology-agentic-analytics/merge_requests`，`source_branch` 为当前临时分支（`feature/*`、`bugfix/*`、`hotfix/*`），`target_branch` 为 `master`，reviewer 用户名 `tianzijing`（田子敬，id 166），assignee `zhangzhen`（张真，id 245）；`title` 和 `description` 必须根据 `master..<branch>` 的全部 commit 与 diff 生成并覆盖所有变更主题，不得只写分支名；只创建 MR，不自动合并、不直接 push `master`。`20260727` 已归档，不得作为 Merge Request 的 source/target。
+
+## 单一主目录与临时工作区禁令（用户约定，2026-11-02）
+
+- 每个项目只保留一个日常源码主目录。默认在当前主目录使用 Git 分支工作，不得自行执行 `git worktree add`、额外 clone、复制项目，或创建 `*-worktree`、`*_poc*`、`*_integrate*`、`merge-all` 等临时源码目录；隐藏目录、`/tmp`、其他账号工作区和归档目录也不能作为绕过方式。
+- 并行任务、分支脏、合并冲突、评测、验收、发布准备都不自动构成创建第二份源码目录的授权。先保护当前改动，再在主目录按顺序处理；确实无法安全推进时说明具体原因，只有用户明确要求创建时才允许例外。
+- 已获明确授权的临时工作区，在成果合入对应主线后必须核对线上实际运行路径、独有提交、未提交修改及本地资料，然后清理；不以本地预览进程占用为由长期保留。按用户当次清理授权处理本地预览，绝不因此停止、重启或修改线上服务。
+- 清理前先确认精确路径、提交已被主线包含，并保全独有补丁、配置及资料。历史会话、数据库、上传和产物必须保留，不能随源码目录删除；存在未合并成果则先处理或明确报告，不得直接丢弃。
+- 不以整体归档多份重复源码代替清理；必要保留的是独有补丁和数据。主线、分支、远端和部署继续遵守本项目原有规则，目录清理不等于合并、推送或部署。
+- 本规则针对额外源码工作区；测试框架在系统临时目录创建、退出时清理的隔离 fixture 不受影响，不得借测试之名复制整仓或遗留持久源码副本。
