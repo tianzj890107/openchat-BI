@@ -859,7 +859,12 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         result=analysis.get("result") or {}
         actions=[]
         evidence="\n".join(result.get("limitations") or [])[:4000]
+        from .deadline import dispatch_deadline
         for measure in item.get("measures") or []:
+            try:
+                due_at = dispatch_deadline(measure.get('deadline'))
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from None
             action_id=f"{tid}-{measure.get('id')}"
             content="\n".join([
                 f"任务令：{item.get('title','')}",
@@ -875,7 +880,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 id=action_id, actionId=action_id, itemType="TODO",
                 dispatchTool="TaskOrderCreate", title=measure.get("action") or "发货风险处置",
                 content=content, evidence=evidence, ownerName=measure.get("owner",""),
-                dueAt=measure.get("deadline",""), severity="MEDIUM", scenario="COCKPIT",
+                dueAt=due_at, severity="MEDIUM", scenario="COCKPIT",
                 category="智能分析任务令",
             ))
         if not actions:raise HTTPException(409,"草稿没有可下发措施")

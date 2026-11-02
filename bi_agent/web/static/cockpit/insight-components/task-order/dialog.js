@@ -22,6 +22,7 @@ export const TaskOrderDialog = Vue.defineComponent({
     const readonly = computed(() => !props.task || props.task.status !== 'draft' || props.dispatched)
     const confirmed = computed(() => (props.task?.measures || []).every(item => (
       item.ownerConfirmed === true && item.deadlineConfirmed === true
+      && /^\d{4}-\d{2}-\d{2}(?:$|T| )/.test(String(item.deadline || ''))
     )))
     function typeLabel(value) {
       return ACTION_LABELS[value] || ACTION_LABELS.pending
@@ -68,8 +69,8 @@ export const TaskOrderDialog = Vue.defineComponent({
                        @input="measure.ownerConfirmed = false">
               </label>
               <label class="task-order-dialog__field">
-                <span>期限 <small>建议值，待确认</small></span>
-                <input v-model="measure.deadline" maxlength="120" :disabled="readonly || Boolean(busy)"
+                <span>截止日期 <small>将建议期限改为 YYYY-MM-DD；日期按北京时间18:00下发</small></span>
+                <input v-model="measure.deadline" placeholder="YYYY-MM-DD" maxlength="120" :disabled="readonly || Boolean(busy)"
                        @input="measure.deadlineConfirmed = false">
               </label>
             </div>

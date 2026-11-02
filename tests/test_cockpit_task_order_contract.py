@@ -157,7 +157,7 @@ def test_dispatch_requires_confirmation_and_blocks_duplicate_send(tmp_path):
     client = _client(tmp_path, dispatcher)
     task = client.post(f"/api/cockpit/analyses/{analysis['id']}/draft", json={'id': 1, 'recommendationIds': ['a1']}).json()
     measure = dict(id=task['measures'][0]['id'], action=task['measures'][0]['action'], owner='交付运营',
-                   deadline='5 个工作日', acceptance=task['measures'][0]['acceptance'])
+                   deadline='2026-12-01', acceptance=task['measures'][0]['acceptance'])
     url = '/api/cockpit/tasks/' + task['id']
     draft = client.post(url, json={'id': 1, 'revision': task['revision'], 'action': 'save',
                                    'title': task['title'], 'goal': task['goal'], 'measures': [measure]})
@@ -165,8 +165,14 @@ def test_dispatch_requires_confirmation_and_blocks_duplicate_send(tmp_path):
     blocked = client.post(url + '/dispatch', json={'id': 1, 'retry': False})
     assert blocked.status_code == 409 and '确认责任角色和期限' in blocked.json()['detail']
 
+    invalid = dict(measure, ownerConfirmed=True, deadlineConfirmed=True, deadline='建议期限：7 个工作日（待确认）')
+    invalid_saved = client.post(url, json={'id': 1, 'revision': draft.json()['revision'], 'action': 'save',
+                                          'title': task['title'], 'goal': task['goal'], 'measures': [invalid]})
+    rejected = client.post(url + '/dispatch', json={'id': 1, 'retry': False})
+    assert rejected.status_code == 422 and '具体截止日期' in rejected.json()['detail']
+    assert not calls
     confirmed = dict(measure, ownerConfirmed=True, deadlineConfirmed=True)
-    saved = client.post(url, json={'id': 1, 'revision': draft.json()['revision'], 'action': 'save',
+    saved = client.post(url, json={'id': 1, 'revision': invalid_saved.json()['revision'], 'action': 'save',
                                    'title': task['title'], 'goal': task['goal'], 'measures': [confirmed]})
     assert saved.status_code == 200
     sent = client.post(url + '/dispatch', json={'id': 1, 'retry': False})
