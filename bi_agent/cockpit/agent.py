@@ -37,10 +37,20 @@ class Recommendation(StrictModel):
     acceptance:str=Field(min_length=1,max_length=180)
     detail:str=Field(default="",max_length=600)
 
+class Finding(StrictModel):
+    id:str=Field(min_length=1,max_length=80)
+    kind:Literal["risk_fact"]
+    title:str=Field(min_length=1,max_length=80)
+    description:str=Field(default="",max_length=320)
+    metricCodes:list[str]=Field(min_length=1,max_length=12)
+    evidenceIds:list[str]=Field(min_length=1,max_length=20)
+    riskDomain:Literal["sales","shipment"]|None=None
+
 class Result(StrictModel):
     summary:str=Field(min_length=1,max_length=800)
     causes:list[Cause]=Field(min_length=1,max_length=8)
     recommendations:list[Recommendation]=Field(min_length=1,max_length=8)
+    findings:list[Finding]=Field(default_factory=list,max_length=12)
     limitations:list[Annotated[str,Field(min_length=1,max_length=300)]]=Field(min_length=1,max_length=10)
 
 
@@ -50,6 +60,16 @@ def validate_result(raw, evidence, seen, *, result_model=Result):
     causes={x["id"] for x in value["causes"]}
     if len(causes)!=len(value["causes"]):raise ValueError("原因 ID 重复")
     if len({x["id"] for x in value["recommendations"]})!=len(value["recommendations"]):raise ValueError("建议 ID 重复")
+    seen_findings=set()
+    finding_ids=set()
+    for finding in value["findings"]:
+        if finding["id"] in finding_ids:raise ValueError("风险发现 ID 重复")
+        finding_ids.add(finding["id"])
+        if not set(finding["evidenceIds"]) <= available & seen:raise ValueError("风险发现引用未查询或不存在的证据")
+        codes=tuple(sorted(str(code).strip().casefold() for code in finding["metricCodes"] if str(code).strip()))
+        if not codes:raise ValueError("风险发现必须包含指标标识")
+        if codes in seen_findings:raise ValueError("同一指标风险发现重复")
+        seen_findings.add(codes)
     for cause in value["causes"]:
         if not set(cause["evidenceIds"]) <= available & seen:raise ValueError("原因引用未查询或不存在的证据")
         if cause["status"]=="supported" and not any(x in {r["id"] for r in evidence["records"] if r.get("causeSupport",True)} for x in cause["evidenceIds"]):
@@ -69,6 +89,7 @@ def run_analysis(evidence, context, cancel, on_progress, provider=stream_message
 数值事实由服务端卡片展示，正文不要重复数字或自行预测。
 输出必须短而可执行，建议按原型“措施 / 责任角色 / 期限 / 验收”呈现，详细背景不得塞进 action。
 输出字段严格为：summary（不超过200字）；causes 数组 [{id,title（不超过24字）,description（不超过100字）,status:"supported"或"hypothesis",evidenceIds:[已查询证据ID]}]；
+findings 数组只列证据直接支持的风险事实或异常表现，不含原因、数据缺口、结构分布：[{id,kind:"risk_fact",title（不超过24字）,description（不超过100字）,metricCodes:[指标编码或稳定标签],evidenceIds:[已查询证据ID],riskDomain:"sales"或"shipment"}]；同一目标缺口只列一次；
 recommendations 数组 [{id,causeIds:[原因ID],action（不超过50字）,ownerRole（只写一个责任角色，不超过20字）,deadlineDays（1-365的整数，预计完成工作日）,acceptance（不超过50字）,detail（可选的补充说明，不超过200字）}]；
 limitations 字符串数组（每项不超过80字）。禁止输出额外字段。每项建议引用原因。证据不足要直说并提出核实动作。'''
     if evidence.get('sourceMode')=='service':

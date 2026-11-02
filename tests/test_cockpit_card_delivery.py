@@ -5,6 +5,8 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from bi_agent.cockpit.cards import CONTRACT, TOOL, install_delivery
+from bi_agent.cockpit.agent import validate_result
+from bi_agent.cockpit.cards import Cards
 from bi_agent.cockpit.dashboard_source import RELEASE
 from bi_agent.reliability import QueryResult
 from tests.test_cockpit_ap_gateway import QUERY, DATA, APGateway, Opener, config
@@ -26,6 +28,26 @@ def test_delivery_tool_rejects_missing_or_fabricated_causal_evidence():
     assert session.cockpit_card_delivery is None
     session._tool_executors[TOOL](candidate(ref='f1'),'')
     assert session.cockpit_card_delivery[1]['causes'][0]['status']=='hypothesis'
+
+
+def test_findings_require_queried_evidence_and_deduplicate_metric_codes():
+    fact = dict(id='f1',label='amount',value=42.5,unit='')
+    evidence = dict(facts=[fact], records=[], evidence=[fact], limitations=[])
+    value = dict(summary='指标存在风险。', causes=[], recommendations=[], limitations=['测试限制'],
+                 findings=[dict(id='risk-1',kind='risk_fact',title='销售额低于目标',
+                                description='证据支持',metricCodes=['SALES_GAP'],
+                                evidenceIds=['f1'],riskDomain='sales')])
+    accepted = validate_result(value, evidence, {'f1'}, result_model=Cards)
+    assert accepted['findings'][0]['kind'] == 'risk_fact'
+
+    value['findings'][0]['evidenceIds'] = ['foreign']
+    with pytest.raises(ValueError, match='风险发现引用'):
+        validate_result(value, evidence, {'f1', 'foreign'}, result_model=Cards)
+
+    value['findings'] = [dict(value['findings'][0], id='risk-1', evidenceIds=['f1']),
+                         dict(value['findings'][0], id='risk-2', evidenceIds=['f1'])]
+    with pytest.raises(ValueError, match='同一指标风险发现重复'):
+        validate_result(value, evidence, {'f1'}, result_model=Cards)
 
 
 @pytest.mark.parametrize('repair_first',[False,True])

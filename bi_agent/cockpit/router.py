@@ -18,7 +18,8 @@ from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
 from .agent import run_analysis
 from .cards import CONTRACT, card_delivery_state, valid_card
-from .delivery import project_card
+from .delivery import project_card, publication_payload
+from .risk import summarize_risk_counts
 from .metadata import build_bundle
 from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
@@ -464,7 +465,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         for slot in slot_registry():
             item = stage_items.get(slot['stage'])
             update = refresh_for(slot, item)
-            payload = project_card(item, slot['slotId'])
+            payload = publication_payload(project_card(item, slot['slotId']))
             delivery = card_delivery_state(payload, slot['slotId'])
             status = 'ready' if delivery['renderable'] else 'missing'
             slots[slot['slotId']] = dict(
@@ -474,6 +475,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 contentComplete=delivery['complete'],
                 contentGaps=delivery['gaps'],
                 evidenceCount=delivery['evidenceCount'],
+                riskFindingCount=delivery['riskFindingCount'],
                 generatedAt=float((item or {}).get('updatedAt') or 0),
                 dataAsOf=float(((item or {}).get('context') or {}).get('updatedAt') or
                                (item or {}).get('updatedAt') or 0),
@@ -520,6 +522,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             targetCount=expected,
             missingCount=missing,
             updatingCount=updating,
+            riskCounts=summarize_risk_counts(slots),
             generatedAt=max((value['generatedAt'] for value in slots.values()), default=0),
             dataAsOf=max((value['dataAsOf'] for value in slots.values()), default=0),
             update=dict(status='running' if updating else ('retry_wait' if errors else 'idle'),

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
+from .risk import build_risk_findings
 
 CONTRACT_VERSION = 'cockpit-delivery-v2'
 
@@ -103,7 +104,7 @@ _ENERGY = ('电量', 'GWh', 'kWh', 'MWh', '兆瓦时', '度电', '出货量', '�
 _COMPARE = ('解释', '对应', '换算', '相加', '合计', '比较', '占比', '不足', '难以', '不能')
 _CROSS_UNIT = ('解释', '说明', '换算', '相加', '比较', '不足', '难以', '不能', '无法', '排除', '证明')
 _CAUSAL = ('导致', '因为', '由于', '造成', '使得', '致使', '因此', '根源', '之所以')
-_DATA_GAP = ('缺失', '未返回', '为空', '空值', '无数据', '未取得', '无法取得', '查询失败',
+_DATA_GAP = ('口径冲突', '证据缺口', '缺失', '未返回', '为空', '空值', '无数据', '未取得', '无法取得', '查询失败',
              '口径不明', '未对账', '缺失值', '空记录')
 _STRUCTURE = ('集中', '主要来自', '分布', '占比', '结构', '团队', '客户等级', '产品线', '区域')
 _FACT = ('低于', '高于', '缺口', '逾期', '偏离', '超出', '下降', '上升', '未完成', '超期')
@@ -295,6 +296,8 @@ def sanitize_summary(text, evidence):
     """Remove unsupported inferences instead of only labelling them."""
     kept, seen, replaced = [], set(), set()
     for sentence in _sentences(text):
+        if any(token in sentence for token in ('短摘要不含业务数字', '具体数值见事实字段', '提交后用正常中文', '不要生成HTML')):
+            continue
         key = _norm(sentence)
         if not key or key in seen:
             continue
@@ -346,9 +349,7 @@ def _label(kind, title):
 
 def _strip_causal(text):
     value = _text(text)
-    for word in ('导致', '因为', '由于', '造成', '使得', '致使'):
-        value = value.replace(word, '；')
-    return value.strip('； ')[:120]
+    return value[:120]
 
 
 def _suggest(action):
@@ -394,6 +395,7 @@ def _balance(value):
 def _with_note(summary, note):
     value = _text(summary).rstrip('。')
     if note and _norm(note) not in _norm(value):
+        note = _text(note).strip('。；; ')
         value = (value + '。' + note) if value else note
     value = value + '。'
     if len(value) > 240:
@@ -465,8 +467,27 @@ def project_card(item, slot):
             value['acceptance'] = _checkable(value.get('acceptance'))
             actions.append(value)
     result['recommendations'] = actions
+    context = out.get('context') or {}
+    result['findings'] = build_risk_findings(
+        result, evidence, context, dict(slotId=slot, stage=context.get('stage')))
+    result['riskFindingCount'] = len(result['findings'])
     result['summary'] = _with_note(result.get('summary'), spec.get('note'))
     result['deliveryContract'] = CONTRACT_VERSION
     result['slotQuestion'] = spec['question']
     out['result'] = result
     return out
+
+
+def publication_payload(item):
+    """Trim browser delivery only; full evidence remains in analysis history."""
+    if not item:
+        return item
+    from copy import deepcopy
+    result = deepcopy(item)
+    context = result.get('context') or {}
+    for key in ('chartQueries', 'unavailableQueries', 'apReceiptIds', 'pgReceiptIds', 'clarifications'):
+        context.pop(key, None)
+    for fact in (result.get('evidence') or {}).get('facts') or []:
+        if isinstance(fact.get('claim'), dict):
+            fact['claim'] = {key: fact['claim'][key] for key in ('id', 'statement') if key in fact['claim']}
+    return result

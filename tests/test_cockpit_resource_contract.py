@@ -8,15 +8,20 @@ ROOT=Path(__file__).resolve().parents[1]/'bi_agent/web/static/cockpit'
 def test_vendor_manifest_matches_local_artifacts():
     vendor=ROOT/'vendor'
     manifest=json.loads((vendor/'resources.json').read_text())
+    assert manifest['sourceCommit']=='cdaa3b683489e911fdf62d2d1d80b6ee265c8727'
+    assert manifest['metadataCommit']=='cdaa3b683489e911fdf62d2d1d80b6ee265c8727'
     for r in manifest['resources']:
         data=(vendor/r['file']).read_bytes()
         assert hashlib.sha256(data).hexdigest()==r['sha256']
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=57a370de' in html
+    assert 'pro-bi-ui.min.js?v=68f6bb8f' in html
     sdk=(vendor/'pro-bi-ui.min.js').read_text()
     assert 'if(!t||!t.get("group"))return;t.fitView(' in sdk
+    assert 'updateComponentMeta' in sdk and 'setTemplateRegistry' in sdk
+    assert 'helmetViewUrl' in sdk
+    assert '/api/gateway2/x360/v1/graphs/helmet-view' in sdk
     assert 'data-dashboard-theme="white"' in html
     css=(ROOT/'cockpit.css').read_text()
     assert '--dashboard-canvas-bg:#fff' in css
@@ -26,7 +31,8 @@ def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='cd8d71fd6278dcf9630043d00bb95e62d97b347a'
+    assert source['commit']=='cdaa3b683489e911fdf62d2d1d80b6ee265c8727'
+    assert source['umdCommit']=='cdaa3b683489e911fdf62d2d1d80b6ee265c8727'
     assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
@@ -42,6 +48,50 @@ def test_imported_metadata_hashes_and_three_tabs():
     assert sales['source']['actionKey']=='1793158849339'
     assert sales['actions'][1]['nodeId']=='2109840325158682625'
     assert sales['actions'][1]['nodeName']=='商机获取'
+
+
+def test_runtime_routes_new_helmet_interface_to_host_gateway():
+    folder=ROOT/'metadata/iba-demo-1021'
+    registry=json.loads((folder/'template-registry.json').read_text())
+    upstream_urls=[component['graphConfig']['helmetViewUrl']
+                   for template in registry.values()
+                   for component in template.get('components',[])
+                   if component.get('graphConfig',{}).get('helmetViewUrl')]
+    assert upstream_urls and all(url.startswith('http://172.16.5.230:8080/') for url in upstream_urls)
+
+    runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
+    serialized=json.dumps(runtime, ensure_ascii=False)
+    assert '172.16.5.230' not in serialized
+    delivered_urls=[component['graphConfig']['helmetViewUrl']
+                    for template in runtime['templates'].values()
+                    for component in template.get('components',[])
+                    if component.get('graphConfig',{}).get('helmetViewUrl')]
+    assert len(delivered_urls)==len(upstream_urls)
+    assert set(delivered_urls)=={'/api/gateway2/x360/v1/graphs/helmet-view'}
+
+
+def test_risk_header_counts_follow_published_detail_cards():
+    source=(ROOT/'cockpit.js').read_text()
+    targets={
+        'progress-y5dumxio': ('sales','tab-bc6wp3k2','2112001069107167233'),
+        'progress-91j3rt9a': ('shipment','tab-bc6wp3k2','2112001069107167233'),
+        'progress-ynh9zsng': ('sales','tab-211tc4o0','2112434004503347202'),
+        'progress-zl0egumz': ('shipment','tab-211tc4o0','2112434004503347202'),
+    }
+    for component_id,(metric,tab_id,template_id) in targets.items():
+        assert component_id in source
+        assert f"metric:'{metric}'" in source
+        assert tab_id in source
+        assert template_id in source
+    assert "const RISK_COUNT_PATH = ['headerActions', 0, 'label']" in source
+    assert 'function applyRiskCounts(value)' in source
+    assert 'function riskCountForMetric(metric)' in source
+    assert 'if(item.known===true&&current)riskMetricCounts.set(metric,count)' in source
+    assert 'item.complete===true' in source
+    assert 'if(count===null)continue;' in source
+    assert '风险分析中' not in source
+    assert '`${count}条风险`' in source
+    assert 'runtime.updateComponentMeta(target.componentId,RISK_COUNT_PATH,label' in source
 
 def test_upstream_missing_children_are_reported_without_mutating_metadata():
     folder=ROOT/'metadata/iba-demo-1021'

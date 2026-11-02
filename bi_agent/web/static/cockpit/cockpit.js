@@ -117,6 +117,16 @@
     'shipment-cause-breakdown': 'shipment',
     'shipment-task-order': 'shipment',
   };
+  const RISK_COUNT_TARGETS = [
+    {componentId:'progress-y5dumxio', metric:'sales', tabId:'tab-bc6wp3k2', templateId:'2112001069107167233'},
+    {componentId:'progress-91j3rt9a', metric:'shipment', tabId:'tab-bc6wp3k2', templateId:'2112001069107167233'},
+    {componentId:'progress-ynh9zsng', metric:'sales', tabId:'tab-211tc4o0', templateId:'2112434004503347202'},
+    {componentId:'progress-zl0egumz', metric:'shipment', tabId:'tab-211tc4o0', templateId:'2112434004503347202'},
+  ];
+  const RISK_COUNT_PATH = ['headerActions', 0, 'label'];
+  let riskCountRuntime = null;
+  const appliedRiskCountLabels = new Map();
+  const riskMetricCounts = new Map();
   function validAiCard(item) {
     const result=item?.result;
     return result?.cardContract==='cockpit-cards-v1' && typeof result.summary==='string' &&
@@ -125,6 +135,51 @@
   }
   function slotPublication(slotId) {
     return aiPublicationStore.slots[slotId] || null;
+  }
+  function applyRiskCounts(value) {
+    const counts=value?.riskCounts||{};
+    for(const metric of ['sales','shipment']) {
+      const item=counts[metric];
+      const count=Number(item?.count);
+      if(!Number.isFinite(count))continue;
+      const current=value.scopeMatch!==false&&item.scopeMatch!==false;
+      if(item.known===true&&current)riskMetricCounts.set(metric,count);
+      else if(!riskMetricCounts.has(metric)&&item.complete===true)riskMetricCounts.set(metric,count);
+    }
+  }
+  function riskCountForMetric(metric) {
+    return riskMetricCounts.has(metric) ? riskMetricCounts.get(metric) : null;
+  }
+  function syncRiskCountLabels(runtime) {
+    if(!runtime?.updateComponentMeta)return;
+    if(runtime!==riskCountRuntime) {
+      riskCountRuntime=runtime;
+      appliedRiskCountLabels.clear();
+    }
+    for(const target of RISK_COUNT_TARGETS) {
+      const count=riskCountForMetric(target.metric);
+      if(count===null)continue;
+      const label=`${count}条风险`;
+      if(appliedRiskCountLabels.get(target.componentId)===label)continue;
+      const result=runtime.updateComponentMeta(target.componentId,RISK_COUNT_PATH,label,{
+        embedPath:{segments:[{kind:'tab',containerId:'tab-container-zm9eyxne',
+          tabId:target.tabId,templateId:target.templateId}]},
+      });
+      if(result?.ok!==false)appliedRiskCountLabels.set(target.componentId,label);
+    }
+  }
+  function bindRiskCountRuntime(runtime) {
+    riskCountRuntime=runtime||null;
+    appliedRiskCountLabels.clear();
+    if(riskCountRuntime)syncRiskCountLabels(riskCountRuntime);
+  }
+  function syncBoundRiskCountLabels() {
+    if(riskCountRuntime)syncRiskCountLabels(riskCountRuntime);
+  }
+  function unbindRiskCountRuntime(runtime) {
+    if(runtime&&riskCountRuntime!==runtime)return;
+    riskCountRuntime=null;
+    appliedRiskCountLabels.clear();
   }
   function hasPublishedSlot(slotId) {
     const slot=slotPublication(slotId);
@@ -182,6 +237,8 @@
       status:value.update?.status||'idle',
       error:'',
     });
+    applyRiskCounts(value);
+    syncBoundRiskCountLabels();
     settleMissingSlotStages();
     resolveAiPublicationReady?.();resolveAiPublicationReady=null;
   }
@@ -1016,6 +1073,12 @@
         return response.json();
       }
 
+      function createRuntime(payload) {
+        const runtime=ProUIBi.createBiRuntime({runtimeKey:'iba-demo'});
+        if(payload?.templates)runtime.setTemplateRegistry?.(payload.templates);
+        return runtime;
+      }
+
       async function loadRuntime() {
         // Only the delivered layout and the two small capability endpoints are
         // needed before the board can render.  Saved cards, page snapshots and
@@ -1057,7 +1120,7 @@
             import(`${assetBase}/page-client.js?v=${encodeURIComponent(assetVersion)}`),
             import(`${assetBase}/publication-poll.js?v=${encodeURIComponent(assetVersion)}`),
           ]);
-          let rawRuntime=ProUIBi.createBiRuntime();
+          let rawRuntime=createRuntime(payload);
           const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
           if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
           // Charts read live AP data by default.  The page snapshot still
@@ -1089,7 +1152,7 @@
             }
             if(remount){
               filtersReady=false;
-              const nextRuntime=ProUIBi.createBiRuntime();
+              const nextRuntime=createRuntime(payload);
               const restored=biRuntime.value?.replayView?.(nextRuntime);
               rawRuntime=nextRuntime;
               if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
@@ -1097,6 +1160,7 @@
                 observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,restored,
                   {isUserAction:isScopeUserAction}),
                 {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
+              bindRiskCountRuntime(biRuntime.value);
               const path={segments:[{kind:'tab',containerId:tabs.id,tabId:payload.pages[page.value].tabId,templateId:payload.pages[page.value].templateId}]};
               for(const component of payload.templates[payload.pages[page.value].templateId]?.components||[]){
                 if(component.type!=='button-group')continue;
@@ -1204,6 +1268,7 @@
             observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,null,
               {isUserAction:isScopeUserAction}),
             {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
+          bindRiskCountRuntime(biRuntime.value);
           // Historical cards are an independent, best-effort request.  The
           // board already exists; a slow cards response leaves only the AI
           // slot skeletons visible and never delays charts or the shell.
@@ -1354,12 +1419,13 @@
           installed=liveDataClient;
         } else if (dataConfig.mode === 'snapshot') {
           installed = installSnapshots(await loadJson(snapshotsUrl));
-          biRuntime.value=ProUIBi.createBiRuntime();
+          biRuntime.value=createRuntime(payload);
           const tabs=payload.dashboard.components.find(c=>c.type==='tab-container');
           if(tabs)biRuntime.value.setActiveTab(tabs.id,payload.pages[page.value].tabId);
           const {observeActivationActions}=await import(`${assetBase}/data-client.js?v=${encodeURIComponent(assetVersion)}`);
           biRuntime.value=observeActivationActions(biRuntime.value,
             {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
+          bindRiskCountRuntime(biRuntime.value);
           biAdapters.value=installed.biAdapters;hostUtils.value=installed.utils;
         } else { throw new Error('未识别的看板取数模式'); }
         runtime.value = payload;
@@ -1402,7 +1468,7 @@
         document.getElementById('cockpit-boot')?.remove();
         bootRuntime();
       });
-      onBeforeUnmount(() => {statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
         page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
