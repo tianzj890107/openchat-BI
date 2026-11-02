@@ -1,0 +1,24 @@
+/* Host-owned semantic tokens only; never override ProUI/dashboard variables. */
+:root {
+  --cockpit-primary: #165dff;
+  --cockpit-primary-10: rgba(22, 93, 255, .1);
+  --cockpit-primary-20: rgba(22, 93, 255, .2);
+  --cockpit-primary-30: rgba(22, 93, 255, .3);
+  --cockpit-primary-40: rgba(22, 93, 255, .4);
+  --cockpit-primary-active: #124acc;
+  --cockpit-success: #44bc09;
+  --cockpit-success-bg: rgba(68, 188, 9, .1);
+  --cockpit-warning: #ff8f1f;
+  --cockpit-warning-bg: rgba(255, 143, 31, .1);
+  --cockpit-error: #ff4d4f;
+  --cockpit-error-bg: rgba(255, 77, 79, .1);
+  --cockpit-link: #165dff;
+  --cockpit-text: rgba(0, 0, 0, .85);
+  --cockpit-text-secondary: rgba(0, 0, 0, .65);
+  --cockpit-text-help: rgba(0, 0, 0, .45);
+  --cockpit-text-placeholder: #c7c8cc;
+  --cockpit-input-border: #dcdfe6;
+  --cockpit-divider: #eaebf2;
+  --cockpit-background: #f5f5f5;
+  --cockpit-surface: #fff;
+}

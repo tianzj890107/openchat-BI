@@ -1,6 +1,6 @@
 .sales-shipment-issues {
   margin: 4px 12px 8px;
-  color: #262626;
+  color: var(--cockpit-text);
   font-size: 13px;
   line-height: 22px;
 }
@@ -16,7 +16,7 @@
 }
 
 .sales-shipment-issues__num {
-  color: #1677ff;
+  color: var(--cockpit-primary);
 }
 
 .sales-shipment-issues__summary {
@@ -31,6 +31,6 @@
 }
 
 .sales-shipment-issues__details summary {
-  color: #1677ff;
+  color: var(--cockpit-primary);
   cursor: pointer;
 }
