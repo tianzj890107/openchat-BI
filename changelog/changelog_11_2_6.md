@@ -47,3 +47,10 @@
 - 主要文件：`bi_agent/cockpit/{risk,agent}.py`、`bi_agent/web/static/cockpit/{data-client,cockpit}.js`；补充风险同义去重、跨节点归属、同指标不同事项、局部筛选与全局筛选隔离测试。
 - 本地浏览器验收：在隔离 AP／模型 fixture 下，客户等级 1、2 与重置均保持原看板 DOM 和 runtime 实例；未触发整页重建。线上历史响应只读复算为总裁销售 7 条、出货 3 条，不作为已部署结果。
 - 验证：Cockpit Python 291 项、前端 Node 91 项通过；本地浏览器局部筛选与全页月度筛选对照通过；`git diff --check` 通过。本轮未部署。
+
+### 2026-11-02 18:05 Cockpit 旧口径提示改为文字提示
+
+- 用户可见变化：AI 卡片上方的“当前展示上次分析”类旧口径提示不再使用橙色警告底色和边框，
+  改为带 `ⓘ` 前缀的灰色辅助文字；提示内容和触发逻辑不变。
+- 主要文件：`bi_agent/web/static/cockpit/cockpit.css`、`tests/cockpit_insight_runtime.test.mjs`。
+- 验证：Cockpit 运行时测试 6 项、Cockpit Python 测试 284 项通过；`git diff --check` 通过。
