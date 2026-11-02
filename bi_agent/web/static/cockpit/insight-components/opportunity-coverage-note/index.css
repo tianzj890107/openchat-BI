@@ -59,3 +59,8 @@
   font-size: 12px;
   line-height: 22px;
 }
+
+.opportunity-coverage-note__tag--warning {
+  background: var(--cockpit-warning-bg);
+  color: var(--cockpit-warning);
+}
