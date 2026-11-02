@@ -700,7 +700,7 @@
         "styleConfig": {
           "kpiIcon": "🔴",
           "kpiSubSuffix": "涉及战略及重点客户交付，影响年度销售额与出货目标达成",
-          "kpiValueColor": "#e64980",
+          "kpiValueColor": "#FF4D4F",
           "kpiValueSuffix": "",
           "kpiSubFixedText": "涉及战略及重点客户交付，影响年度销售额与出货目标达成"
         },
@@ -779,7 +779,7 @@
         },
         "showHeader": true,
         "styleConfig": {
-          "kpiValueColor": "#fa5252"
+          "kpiValueColor": "#FF4D4F"
         },
         "visualization": {
           "colorScheme": [
@@ -851,7 +851,7 @@
         "showHeader": true,
         "styleConfig": {
           "kpiIcon": "🟡",
-          "kpiValueColor": "#fab005",
+          "kpiValueColor": "#FF8F1F",
           "kpiValueSuffix": "单"
         },
         "visualization": {
@@ -944,7 +944,7 @@
         "styleConfig": {
           "kpiIcon": "🟡",
           "kpiSubStyles": {},
-          "kpiValueColor": "#fab005",
+          "kpiValueColor": "#FF8F1F",
           "kpiValueSuffix": "",
           "kpiSubSeparator": "，"
         },
@@ -2674,8 +2674,8 @@
               },
               "compareColor": {
                 "baseline": "YWLN_M0007",
-                "aboveColor": "#52c41a",
-                "belowColor": "#f5222d"
+                "aboveColor": "#63AD73",
+                "belowColor": "#DE5A60"
               },
               "identifierCode": "YWLN_M0011"
             }
@@ -2696,16 +2696,13 @@
         "visualization": {
           "legend": true,
           "colorScheme": [
-            "#5470c6",
-            "#91cc75",
-            "#fac858",
-            "#ee6666",
-            "#73c0de",
-            "#3ba272",
-            "#fc8452",
-            "#9a60b4",
-            "#ea7ccc",
-            "#ff9f7f"
+            "#4C8BF3",
+            "#63AD73",
+            "#5CBBD5",
+            "#E7B550",
+            "#DD8142",
+            "#DE5A60",
+            "#D751AD"
           ]
         }
       },
@@ -2978,8 +2975,8 @@
               },
               "compareColor": {
                 "baseline": "YWLN_M0007",
-                "aboveColor": "#52c41a",
-                "belowColor": "#f5222d"
+                "aboveColor": "#63AD73",
+                "belowColor": "#DE5A60"
               },
               "identifierCode": "YWLN_M0011"
             }
@@ -3000,16 +2997,13 @@
         "visualization": {
           "legend": true,
           "colorScheme": [
-            "#5470c6",
-            "#91cc75",
-            "#fac858",
-            "#ee6666",
-            "#73c0de",
-            "#3ba272",
-            "#fc8452",
-            "#9a60b4",
-            "#ea7ccc",
-            "#ff9f7f"
+            "#4C8BF3",
+            "#63AD73",
+            "#5CBBD5",
+            "#E7B550",
+            "#DD8142",
+            "#DE5A60",
+            "#D751AD"
           ]
         }
       },
@@ -4540,16 +4534,13 @@
         "showHeader": true,
         "visualization": {
           "colorScheme": [
-            "#4096FF",
-            "#73D13D",
-            "#FFC53D",
-            "#FF7875",
-            "#B37FEB",
-            "#36CFC9",
-            "#FF85C0",
-            "#FFA940",
-            "#597EF7",
-            "#95DE64"
+            "#4C8BF3",
+            "#63AD73",
+            "#5CBBD5",
+            "#E7B550",
+            "#DD8142",
+            "#DE5A60",
+            "#D751AD"
           ],
           "labelContent": []
         }
@@ -4918,16 +4909,13 @@
         "showHeader": true,
         "visualization": {
           "colorScheme": [
-            "#4096FF",
-            "#73D13D",
-            "#FFC53D",
-            "#FF7875",
-            "#B37FEB",
-            "#36CFC9",
-            "#FF85C0",
-            "#FFA940",
-            "#597EF7",
-            "#95DE64"
+            "#4C8BF3",
+            "#63AD73",
+            "#5CBBD5",
+            "#E7B550",
+            "#DD8142",
+            "#DE5A60",
+            "#D751AD"
           ],
           "labelContent": []
         }
@@ -5236,16 +5224,13 @@
         "showHeader": true,
         "visualization": {
           "colorScheme": [
-            "#4096FF",
-            "#73D13D",
-            "#FFC53D",
-            "#FF7875",
-            "#B37FEB",
-            "#36CFC9",
-            "#FF85C0",
-            "#FFA940",
-            "#597EF7",
-            "#95DE64"
+            "#4C8BF3",
+            "#63AD73",
+            "#5CBBD5",
+            "#E7B550",
+            "#DD8142",
+            "#DE5A60",
+            "#D751AD"
           ],
           "labelContent": []
         }
@@ -5585,16 +5570,13 @@
         "showHeader": true,
         "visualization": {
           "colorScheme": [
-            "#4096FF",
-            "#73D13D",
-            "#FFC53D",
-            "#FF7875",
-            "#B37FEB",
-            "#36CFC9",
-            "#FF85C0",
-            "#FFA940",
-            "#597EF7",
-            "#95DE64"
+            "#4C8BF3",
+            "#63AD73",
+            "#5CBBD5",
+            "#E7B550",
+            "#DD8142",
+            "#DE5A60",
+            "#D751AD"
           ],
           "labelContent": []
         }
@@ -7294,7 +7276,10 @@
         "type": "horizontal-bar",
         "visualization": {
           "legend": true,
-          "labelPosition": "right"
+          "labelPosition": "right",
+          "colorScheme": [
+            "#FF8F1F"
+          ]
         }
       },
       {
@@ -7408,7 +7393,10 @@
         "type": "horizontal-bar",
         "visualization": {
           "legend": true,
-          "labelPosition": "right"
+          "labelPosition": "right",
+          "colorScheme": [
+            "#FF8F1F"
+          ]
         }
       },
       {
@@ -7754,7 +7742,10 @@
         "showHeader": true,
         "visualization": {
           "legend": true,
-          "labelPosition": "right"
+          "labelPosition": "right",
+          "colorScheme": [
+            "#FF8F1F"
+          ]
         }
       },
       {
@@ -7857,7 +7848,10 @@
         "showHeader": true,
         "visualization": {
           "legend": true,
-          "labelPosition": "right"
+          "labelPosition": "right",
+          "colorScheme": [
+            "#FF8F1F"
+          ]
         }
       },
       {
@@ -8375,16 +8369,13 @@
         "showHeader": true,
         "visualization": {
           "colorScheme": [
-            "#4096FF",
-            "#73D13D",
-            "#FFC53D",
-            "#FF7875",
-            "#B37FEB",
-            "#36CFC9",
-            "#FF85C0",
-            "#FFA940",
-            "#597EF7",
-            "#95DE64"
+            "#4C8BF3",
+            "#63AD73",
+            "#5CBBD5",
+            "#E7B550",
+            "#DD8142",
+            "#DE5A60",
+            "#D751AD"
           ],
           "labelContent": []
         }
@@ -9080,7 +9071,10 @@
         "title": "分产品部看异常",
         "type": "horizontal-bar",
         "visualization": {
-          "legend": true
+          "legend": true,
+          "colorScheme": [
+            "#FF8F1F"
+          ]
         }
       },
       {
@@ -9183,7 +9177,10 @@
         "title": "分客户看异常",
         "type": "horizontal-bar",
         "visualization": {
-          "legend": true
+          "legend": true,
+          "colorScheme": [
+            "#FF8F1F"
+          ]
         }
       },
       {
@@ -11252,9 +11249,9 @@
                 "numericScale": 2
               },
               "compareColor": {
-                "aboveColor": "#52c41a",
+                "aboveColor": "#63AD73",
                 "baseline": "YWLN_M0002",
-                "belowColor": "#f5222d"
+                "belowColor": "#DE5A60"
               }
             }
           ]

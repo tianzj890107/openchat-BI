@@ -1,9 +1,9 @@
 {
-  "checkedAt": "2026-11-02T10:20:00+08:00",
+  "checkedAt": "2026-11-02T17:00:00+08:00",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
-  "sourceCommit": "cdaa3b683489e911fdf62d2d1d80b6ee265c8727",
-  "metadataCommit": "cdaa3b683489e911fdf62d2d1d80b6ee265c8727",
-  "notes": "The BI UMD and template metadata are synced from iba-demo feature/demo_1021 at cdaa3b6, which adds configurable helmetViewUrl support and routes the default helmet request through /api/gateway2. The imported absolute internal URL is rewritten by the host runtime to that gateway path; CSS remains unchanged from cd8d71f. The UMD carries the one-line null-instance guard for a destroyed helmet Graph callback (re-applied after each upstream sync); activateRules/selectHelmet remain upstream behavior and only the single-query adapter is injected.",
+  "sourceCommit": "be99db5cbbda4496b62d6c14e7f4c5e793a77476",
+  "metadataCommit": "be99db5cbbda4496b62d6c14e7f4c5e793a77476",
+  "notes": "The BI UMD, dashboard component config and template registry are synced from iba-demo feature/demo_1021 at be99db5, which refreshes the chart brand palette and sub-template labels while keeping the insert-list linkage. Four upstream labels contain U+FFFD replacement characters and were restored to the previous correct text by the host. The host keeps the YWLN_D044=2025-10 default period and the local null-instance guard in the helmet Graph callback. CSS and the Vue runtime are unchanged.",
   "resources": [
     {
       "file": "../../vendor/antd/lib/vue.global.js",
@@ -15,11 +15,11 @@
     },
     {
       "file": "pro-bi-ui.min.js",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/cdaa3b683489e911fdf62d2d1d80b6ee265c8727/lib/pro-bi-ui.min.js",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/be99db5cbbda4496b62d6c14e7f4c5e793a77476/lib/pro-bi-ui.min.js",
       "sourcePath": "lib/pro-bi-ui.min.js",
-      "sha256": "68f6bb8ff765ddc650cacd674bda00f8e42c9f161bd3a32ffba4bffca390ca29",
-      "bytes": 6250208,
-      "notes": "Copied from cdaa3b6 with the one-line null-instance guard in the helmet Graph fitView callback; this build exposes createBiRuntime({runtimeKey}), setTemplateRegistry, updateComponentMeta and configurable helmetViewUrl. Upstream code is unchanged except for that guard."
+      "sha256": "e152acd804386fd646b65153d42a0d41e3acdfeda3ccdff9f4ddfa231c871885",
+      "bytes": 6263608,
+      "notes": "Copied from be99db5; refreshes component/chart colors and keeps createBiRuntime({runtimeKey}), setTemplateRegistry, updateComponentMeta and configurable helmetViewUrl. The local null-instance guard in the helmet Graph fitView callback is re-applied after each upstream sync."
     },
     {
       "file": "pro-ui.min.css",

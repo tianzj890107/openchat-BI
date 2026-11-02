@@ -8,15 +8,15 @@ ROOT=Path(__file__).resolve().parents[1]/'bi_agent/web/static/cockpit'
 def test_vendor_manifest_matches_local_artifacts():
     vendor=ROOT/'vendor'
     manifest=json.loads((vendor/'resources.json').read_text())
-    assert manifest['sourceCommit']=='cdaa3b683489e911fdf62d2d1d80b6ee265c8727'
-    assert manifest['metadataCommit']=='cdaa3b683489e911fdf62d2d1d80b6ee265c8727'
+    assert manifest['sourceCommit']=='be99db5cbbda4496b62d6c14e7f4c5e793a77476'
+    assert manifest['metadataCommit']=='be99db5cbbda4496b62d6c14e7f4c5e793a77476'
     for r in manifest['resources']:
         data=(vendor/r['file']).read_bytes()
         assert hashlib.sha256(data).hexdigest()==r['sha256']
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=68f6bb8f' in html
+    assert 'pro-bi-ui.min.js?v=e152acd8' in html
     sdk=(vendor/'pro-bi-ui.min.js').read_text()
     assert 'if(!t||!t.get("group"))return;t.fitView(' in sdk
     assert 'updateComponentMeta' in sdk and 'setTemplateRegistry' in sdk
@@ -31,8 +31,8 @@ def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='cdaa3b683489e911fdf62d2d1d80b6ee265c8727'
-    assert source['umdCommit']=='cdaa3b683489e911fdf62d2d1d80b6ee265c8727'
+    assert source['commit']=='be99db5cbbda4496b62d6c14e7f4c5e793a77476'
+    assert source['umdCommit']=='be99db5cbbda4496b62d6c14e7f4c5e793a77476'
     assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
