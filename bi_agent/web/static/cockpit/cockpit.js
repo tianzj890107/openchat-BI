@@ -819,19 +819,11 @@
       const liveFailures = new Set();
       const pageTitle = computed(() => PAGES[page.value]?.title || PAGES.overview.title);
       const release = computed(() => runtime.value?.dashboard || null);
-      const gaps = computed(() => runtime.value?.gaps || []);
       // The legacy shipment task card is a hidden 15-slot compatibility entry.
       // Its user-facing action now lives in shipment-risk-summary, so rendering
       // the compatibility slot would create a second, empty insight card.
       const pageInsights = computed(() => (runtime.value?.pages?.[page.value]?.insights || [])
         .filter(item => item.id !== 'shipment-task-order'));
-      const metadataSummary = computed(() => {
-        const source = runtime.value?.source;
-        if (!source) return '';
-        const snapshot = source.snapshot || {};
-        const mode = source.dataMode === 'ap-single-query' ? 'AP 单查' : `快照 ${snapshot.analysisRequests} 个 AP 查询`;
-        return `交付看板 ${source.branch}@${source.commit?.slice(0, 7)} · ${source.templateCount} 个模板 · ${source.totalComponents} 个组件 · ${source.insightComponents} 个插槽声明 · ${mode}`;
-      });
 
       let pendingActivationPage = '';
       let pendingActivationNode = '';
@@ -1475,7 +1467,7 @@
       onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
-        page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
+        page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release,
         pageInsights, dashboardComponent: dashboard, biAdapters, biRuntime, hostUtils,
         slot_name: insight => `insight-${insight.id}`,
       };
