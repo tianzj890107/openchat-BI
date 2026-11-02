@@ -61,6 +61,13 @@ test('configuration failure exposes a retry action instead of an endless loader'
   assert.match(source, /error\.value = `看板配置加载失败：\$\{cause\.message \|\| cause\}`/);
 });
 
+test('host does not expose delivered metadata diagnostics in the dashboard UI', () => {
+  assert.doesNotMatch(html, /元数据缺失与渲染限制/);
+  assert.doesNotMatch(html, /cockpit-gap-report/);
+  assert.doesNotMatch(source, /metadataSummary/);
+  assert.doesNotMatch(source, /const gaps = computed/);
+});
+
 test('default SDK filters and repeated snapshots cannot remount the board in a loop', () => {
   assert.match(source, /isUserAction:isScopeUserAction/);
   assert.match(source, /event\?\.target\?\.closest\?\.\(SCOPE_CONTROL\)/);

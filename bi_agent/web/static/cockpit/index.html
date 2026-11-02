@@ -71,19 +71,6 @@
         </component>
       </div>
 
-      <details v-if="gaps.length" class="cockpit-gap-report">
-        <summary>元数据缺失与渲染限制 · {{gaps.length}} 项</summary>
-        <div class="cockpit-gap-body">
-          <p>页面只渲染交付元数据原样结构，宿主不增删、不重排卡片。缺失组件或没有对应组件的位置保留空位并在下方列明；AP 或字段配置缺失时由原卡片展示明确错误，宿主不补造数据。</p>
-          <ul>
-            <li v-for="gap in gaps" :key="gap.code + (gap.componentId || gap.description)">
-              <b>{{gap.code}}</b><small>{{gap.description}}</small>
-            </li>
-          </ul>
-          <p v-if="metadataSummary" class="cockpit-gap-meta">{{metadataSummary}}</p>
-        </div>
-      </details>
-
     </main>
   </div>
   <noscript>驾驶舱需要启用 JavaScript。</noscript>
