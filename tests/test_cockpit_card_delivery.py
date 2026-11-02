@@ -30,7 +30,7 @@ def test_delivery_tool_rejects_missing_or_fabricated_causal_evidence():
     assert session.cockpit_card_delivery[1]['causes'][0]['status']=='hypothesis'
 
 
-def test_findings_require_queried_evidence_and_deduplicate_metric_codes():
+def test_findings_require_queried_evidence_and_deduplicate_business_issues():
     fact = dict(id='f1',label='amount',value=42.5,unit='')
     evidence = dict(facts=[fact], records=[], evidence=[fact], limitations=[])
     value = dict(summary='指标存在风险。', causes=[], recommendations=[], limitations=['测试限制'],
@@ -46,7 +46,7 @@ def test_findings_require_queried_evidence_and_deduplicate_metric_codes():
 
     value['findings'] = [dict(value['findings'][0], id='risk-1', evidenceIds=['f1']),
                          dict(value['findings'][0], id='risk-2', evidenceIds=['f1'])]
-    with pytest.raises(ValueError, match='同一指标风险发现重复'):
+    with pytest.raises(ValueError, match='同一业务风险发现重复'):
         validate_result(value, evidence, {'f1'}, result_model=Cards)
 
 
