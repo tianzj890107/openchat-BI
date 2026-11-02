@@ -71,7 +71,7 @@ class Cards(Result):
     causes:list[CardCause]=Field(default_factory=list,max_length=8)
     recommendations:list[CardRecommendation]=Field(default_factory=list,max_length=8)
 
-SCHEMA=dict(name=TOOL,description='提交现有AI插槽的短摘要、原因、结构化风险发现、建议与限制。必须先读取看板证据；引用工具返回的evidenceIds。findings只列证据支持的风险事实，不把原因、数据缺口或结构定位计入。无原因证据时可交付空原因和空建议并说明缺口，不得编造。此工具不取数、不执行任务。',input_schema=Cards.model_json_schema())
+SCHEMA=dict(name=TOOL,description='提交现有AI插槽的短摘要、原因、结构化风险发现、建议与限制。必须先读取看板证据；引用工具返回的evidenceIds。findings只列证据支持的风险事实，不把原因、数据缺口或结构定位计入。根因未确认时可交付空原因，但商机、订单、发货和共同分析有可定位业务事实时必须给出有证据的核查建议；不得编造原因或改善措施。此工具不取数、不执行任务。',input_schema=Cards.model_json_schema())
 
 
 def install_delivery(session,context):

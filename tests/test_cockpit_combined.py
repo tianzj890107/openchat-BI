@@ -68,3 +68,13 @@ def test_compact_quotation_retains_only_the_status_row_fields():
         'unrelated': 'not needed'}}]}}
     data = compact_analysis(item)['evidence']['records'][0]['data']
     assert data == {'报价办理状态[YWLN_D021]': 'normal_completed', '报价电量[YWLN_M0031]': 25.57}
+
+
+def test_policy_stage_preheat_is_scoped_to_saved_identity_and_queries(tmp_path):
+    from bi_agent.cockpit.combined import cached_stage_request
+    store=Store(tmp_path/'history.sqlite3');cards=fixture_cards(store)
+    body=cached_stage_request(store,1,'shipment',cards['shipment'])
+    assert len(body['apReceiptIds'])==1
+    assert body['stage']=='shipment'
+    assert body['clarifications']['deliveryPolicy']=='investigation-v1'
+    with pytest.raises(ValueError):cached_stage_request(store,2,'shipment',cards['shipment'])

@@ -41,7 +41,7 @@ SLOT_SPECS = {
         note='此处只交付异常表现与排查方向，不把现象写成已确认原因。'),
     'order-sign-summary': dict(
         question='订单接收结构如何，已签与未签、产品与客户分布在哪里',
-        kinds=('fact', 'structure', 'data_gap'), actions=True, max_causes=4,
+        kinds=('fact', 'structure', 'data_gap', 'hypothesis'), actions=True, max_causes=4,
         causes_required=False,
         note='本卡交付签单结构与风险定位；结构分布不等于业务原因。'),
     'star-product-order-list': dict(
@@ -470,6 +470,17 @@ def validate_reasoning(value, evidence, *, stage='', slot=''):
             validate_action_contract(normalized, evidence, strict=True)
         except ValueError as exc:
             issues.append(str(exc))
+
+    # Lack of verified causality must not silently erase the next step.
+    if stage in {'opportunity', 'order', 'shipment', 'combined'}:
+        actionable = any(isinstance(f, dict) and f.get('id') and f.get('value') is not None
+                         for f in (evidence or {}).get('facts') or [])
+        actionable = actionable or any(isinstance(r, dict) and r.get('id') and r.get('data')
+                                      for r in (evidence or {}).get('records') or [])
+        if actionable and not actions:
+            issues.append('已有可定位的业务事实，不能仅因根因未确认而清空建议；请提交至少一项investigation核查动作，'
+                          '直接引用已读取的证据，明确核查范围和可检查的清单/对账验收。'
+                          'causes可以为空；禁止为挂建议编造原因，不得承诺改善结果，责任与期限待确认。')
 
     if issues:
         raise ValueError('；'.join(dict.fromkeys(issues))[:1200])

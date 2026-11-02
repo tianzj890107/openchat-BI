@@ -670,6 +670,23 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         items=published_default(id,'main',page,True)['items'] if main_context is not None else {}
         return dict(items=items,cardContract=CONTRACT,cardsVersion=cards_version(items))
 
+    @router.post('/stages/{stage}/preheat')
+    def preheat_stage(stage: Literal['opportunity', 'order', 'shipment'], req: PageLookup):
+        if req.uiScope != 'default':
+            raise HTTPException(422, '只允许默认口径定向预热')
+        from .combined import cached_stage_request
+        from .dashboard_source import page_analysis_context
+        cards = {}
+        for page_name in ('operations', 'analysis'):
+            cards.update(published_default(req.id, 'main', page_name, False)['items'])
+        try:
+            body = cached_stage_request(store(), req.id, stage, cards.get(stage) or {})
+            resolved = page_analysis_context(body, store(), resolve_fallback=False, allow_expired=True)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        resolved['dataBasis'] = '按新交付规则分析已保存环节凭据；未额外查询AP/PG，观察时间以原记录为准'
+        return start_analysis(AnalysisRequest(**body), resolved=resolved)
+
     @router.post('/quotation/preheat')
     def preheat_quotation(req: PageLookup):
         if req.page != 'operations' or req.uiScope != 'default':
@@ -850,7 +867,12 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         result=analysis.get("result") or {}
         actions=[]
         evidence="\n".join(result.get("limitations") or [])[:4000]
+        from .deadline import dispatch_deadline
         for measure in item.get("measures") or []:
+            try:
+                due_at = dispatch_deadline(measure.get('deadline'))
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from None
             action_id=f"{tid}-{measure.get('id')}"
             content="\n".join([
                 f"任务令：{item.get('title','')}",
@@ -866,7 +888,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 id=action_id, actionId=action_id, itemType="TODO",
                 dispatchTool="TaskOrderCreate", title=measure.get("action") or "发货风险处置",
                 content=content, evidence=evidence, ownerName=measure.get("owner",""),
-                dueAt=measure.get("deadline",""), severity="MEDIUM", scenario="COCKPIT",
+                dueAt=due_at, severity="MEDIUM", scenario="COCKPIT",
                 category="智能分析任务令",
             ))
         if not actions:raise HTTPException(409,"草稿没有可下发措施")
