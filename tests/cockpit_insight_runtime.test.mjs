@@ -35,3 +35,21 @@ test('every AI slot renders the shared stale-scope notice', () => {
   assert.match(cockpit, /v-if="state\.scopeNotice" class="insight-scope-notice"/)
   assert.match(cockpit, /:scope-notice="state\.scopeNotice \|\| ''"/)
 });
+
+test('risk count labels bind the dashboard runtime explicitly and never reach into setup refs', () => {
+  const start = cockpit.indexOf('function syncRiskCountLabels(');
+  const end = cockpit.indexOf('\n  function hasPublishedSlot', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const sync = cockpit.slice(start, end);
+
+  assert.match(cockpit, /function syncRiskCountLabels\(runtime\) \{/);
+  assert.doesNotMatch(sync, /biRuntime\.value/);
+  assert.doesNotMatch(cockpit, /syncRiskCountLabels\(\)/);
+  assert.match(cockpit, /function bindRiskCountRuntime\(runtime\) \{/);
+  assert.match(cockpit, /function syncBoundRiskCountLabels\(\) \{/);
+  assert.match(cockpit, /function unbindRiskCountRuntime\(runtime\) \{/);
+  assert.match(cockpit, /syncBoundRiskCountLabels\(\);\s*\n\s*settleMissingSlotStages\(\)/);
+  assert.equal((cockpit.match(/[\s;]bindRiskCountRuntime\(biRuntime\.value\)/g) || []).length, 3);
+  assert.match(cockpit, /onBeforeUnmount\(\(\) => \{unbindRiskCountRuntime\(biRuntime\.value\);/);
+});

@@ -141,7 +141,7 @@
     const causes=slot.payload.result.causes;
     return causes.filter(item=>item && typeof item==='object').length;
   }
-  function syncRiskCountLabels(runtime=biRuntime.value) {
+  function syncRiskCountLabels(runtime) {
     if(!runtime?.updateComponentMeta)return;
     if(runtime!==riskCountRuntime) {
       riskCountRuntime=runtime;
@@ -157,6 +157,19 @@
       });
       if(result?.ok!==false)appliedRiskCountLabels.set(target.componentId,label);
     }
+  }
+  function bindRiskCountRuntime(runtime) {
+    riskCountRuntime=runtime||null;
+    appliedRiskCountLabels.clear();
+    if(riskCountRuntime)syncRiskCountLabels(riskCountRuntime);
+  }
+  function syncBoundRiskCountLabels() {
+    if(riskCountRuntime)syncRiskCountLabels(riskCountRuntime);
+  }
+  function unbindRiskCountRuntime(runtime) {
+    if(runtime&&riskCountRuntime!==runtime)return;
+    riskCountRuntime=null;
+    appliedRiskCountLabels.clear();
   }
   function hasPublishedSlot(slotId) {
     const slot=slotPublication(slotId);
@@ -214,7 +227,7 @@
       status:value.update?.status||'idle',
       error:'',
     });
-    syncRiskCountLabels();
+    syncBoundRiskCountLabels();
     settleMissingSlotStages();
     resolveAiPublicationReady?.();resolveAiPublicationReady=null;
   }
@@ -1136,7 +1149,7 @@
                 observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,restored,
                   {isUserAction:isScopeUserAction}),
                 {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
-              syncRiskCountLabels();
+              bindRiskCountRuntime(biRuntime.value);
               const path={segments:[{kind:'tab',containerId:tabs.id,tabId:payload.pages[page.value].tabId,templateId:payload.pages[page.value].templateId}]};
               for(const component of payload.templates[payload.pages[page.value].templateId]?.components||[]){
                 if(component.type!=='button-group')continue;
@@ -1244,7 +1257,7 @@
             observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,null,
               {isUserAction:isScopeUserAction}),
             {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
-          syncRiskCountLabels();
+          bindRiskCountRuntime(biRuntime.value);
           // Historical cards are an independent, best-effort request.  The
           // board already exists; a slow cards response leaves only the AI
           // slot skeletons visible and never delays charts or the shell.
@@ -1401,7 +1414,7 @@
           const {observeActivationActions}=await import(`${assetBase}/data-client.js?v=${encodeURIComponent(assetVersion)}`);
           biRuntime.value=observeActivationActions(biRuntime.value,
             {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
-          syncRiskCountLabels();
+          bindRiskCountRuntime(biRuntime.value);
           biAdapters.value=installed.biAdapters;hostUtils.value=installed.utils;
         } else { throw new Error('未识别的看板取数模式'); }
         runtime.value = payload;
@@ -1444,7 +1457,7 @@
         document.getElementById('cockpit-boot')?.remove();
         bootRuntime();
       });
-      onBeforeUnmount(() => {statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
         page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release, gaps, metadataSummary,
