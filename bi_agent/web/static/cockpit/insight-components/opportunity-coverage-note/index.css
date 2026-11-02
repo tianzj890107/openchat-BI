@@ -1,6 +1,6 @@
 .opportunity-coverage-note {
   margin: 0;
-  color: #434343;
+  color: var(--cockpit-text-secondary);
   font-size: 13px;
   line-height: 22px;
 }
@@ -18,13 +18,13 @@
 }
 
 .opportunity-coverage-note__status {
-  color: #595959;
+  color: var(--cockpit-text-secondary);
   font-size: 12px;
   line-height: 20px;
 }
 
 .opportunity-coverage-note__em {
-  color: #cf1322;
+  color: var(--cockpit-error);
   font-weight: 600;
 }
 
@@ -37,13 +37,13 @@
 
 .opportunity-coverage-note__causes {
   margin-top: 6px;
-  color: #595959;
+  color: var(--cockpit-text-secondary);
   font-size: 12px;
   line-height: 20px;
 }
 
 .opportunity-coverage-note__causes summary {
-  color: #1677ff;
+  color: var(--cockpit-primary);
   cursor: pointer;
 }
 
@@ -54,8 +54,8 @@
 .opportunity-coverage-note__tag {
   padding: 0 8px;
   border-radius: 11px;
-  background: #fff1f0;
-  color: #cf1322;
+  background: var(--cockpit-error-bg);
+  color: var(--cockpit-error);
   font-size: 12px;
   line-height: 22px;
 }

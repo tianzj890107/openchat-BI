@@ -1,10 +1,11 @@
 {
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
-  "commit": "cd8d71fd6278dcf9630043d00bb95e62d97b347a",
-  "importedAt": "2026-10-30",
+  "commit": "cdaa3b683489e911fdf62d2d1d80b6ee265c8727",
+  "umdCommit": "cdaa3b683489e911fdf62d2d1d80b6ee265c8727",
+  "importedAt": "2026-11-02",
   "mode": "active-runtime-adapter",
-  "notes": "Re-synced from iba-demo feature/demo_1021 at cd8d71f: dashboard/template configs, activate rules, the three order DataTable field/filter updates and the updated BI UMD are copied from upstream. Their mock-only reason/action/scope calls remain replaced by the cockpit ai-tables API, which reads AP facts and merges only evidence-linked structured card fields. The BI UMD keeps the local null-instance guard. The cockpit supplies only the delivered single-query adapter and does not inject the batch adapter. Host adaptation: the composite filter keeps the default period YWLN_D044=2025-10 because the page scope and published cards are bound to that period.",
+  "notes": "Dashboard/template configs, activate rules and the three order DataTable field/filter updates are copied from iba-demo feature/demo_1021 at cdaa3b6; the BI UMD is from the same commit, which adds configurable helmetViewUrl on top of createBiRuntime runtime keys and updateComponentMeta. Their mock-only reason/action/scope calls remain replaced by the cockpit ai-tables API, which reads AP facts and merges only evidence-linked structured card fields. The BI UMD keeps the local null-instance guard. The cockpit supplies only the delivered single-query adapter and does not inject the batch adapter. Host adaptation: the composite filter keeps the default period YWLN_D044=2025-10 because the page scope and published cards are bound to that period, and runtime export rewrites the upstream absolute helmetViewUrl to /api/gateway2/x360/v1/graphs/helmet-view.",
   "rootComponents": 2,
   "templates": 13,
   "totalComponents": 142,
@@ -37,6 +38,8 @@
   "queryContract": {
     "gatewayPrefix": "/api/gateway2",
     "singlePath": "/x360/v1/ontology/data/query",
+    "helmetPath": "/api/gateway2/x360/v1/graphs/helmet-view",
+    "helmetUrlSource": "host-rewritten",
     "repositoryId": "8",
     "batchAdapterInjected": false,
     "batchFallback": "ProUI concurrent single queries"
@@ -48,7 +51,7 @@
     },
     {
       "file": "template-registry.json",
-      "sha256": "026410aafc37050a063aa2445e6142aa1115d2e101c8c2c61929a440c2f87499"
+      "sha256": "4802f9168e2f0bb6dff56c0d89eda387dd0a05890e5b244daed43de88dce6483"
     },
     {
       "file": "insights.js",
@@ -71,5 +74,5 @@
       "description": "Upstream child definition is absent; runtime reports the gap and keeps the original position empty."
     }
   ],
-  "activatedAt": "2026-10-30"
+  "activatedAt": "2026-11-02"
 }

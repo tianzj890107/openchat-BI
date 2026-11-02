@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 from bi_agent.cockpit.metadata import PAGE_IDS, ROOT, build_bundle
 from bi_agent.cockpit.prototype import PrototypeSource
 from bi_agent.cockpit.router import build_cockpit_router
-from bi_agent.cockpit.runtime import METADATA, PAGE_TEMPLATES, release_payload, runtime_payload
+from bi_agent.cockpit.runtime import (
+    HELMET_VIEW_PATH, METADATA, PAGE_TEMPLATES, release_payload, runtime_payload,
+)
 
 
 def _target_ids(slot, roots, templates):
@@ -15,6 +17,16 @@ def _target_ids(slot, roots, templates):
     template_id = segments[-1].get("templateId") if segments else ""
     components = templates.get(template_id, {}).get("components", []) if template_id else roots
     return {component["id"] for component in components if component.get("id")}
+
+
+def _host_template_registry():
+    registry = json.loads((ROOT / "template-registry.json").read_text())
+    for template in registry.values():
+        for component in template.get("components", []):
+            graph_config = component.get("graphConfig")
+            if isinstance(graph_config, dict) and "helmetViewUrl" in graph_config:
+                graph_config["helmetViewUrl"] = HELMET_VIEW_PATH
+    return registry
 
 
 def test_build_bundle_preserves_delivered_data_without_fixture_substitution():
@@ -26,7 +38,7 @@ def test_build_bundle_preserves_delivered_data_without_fixture_substitution():
     assert bundle["sourceMode"] == "upstream-ap"
     assert bundle["datasets"] == {} and bundle["bindings"] == {} and bundle["overrides"] == []
     assert bundle["roots"] == runtime_payload()["dashboard"]["components"]
-    assert bundle["templates"] == json.loads((ROOT / "template-registry.json").read_text())
+    assert bundle["templates"] == _host_template_registry()
     assert len(bundle["insights"]) == 15
     assert len(bundle["activateRules"]) == 6
 
@@ -93,8 +105,8 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     assert stored["renderer"] == "ProBiDashboard"
     assert stored["mode"] == "release"
     assert stored["source"]["dashboardId"] == "iba-demo-1021"
-    assert stored["source"]["version"] == "cd8d71f"
-    assert stored["source"]["commit"] == "cd8d71fd6278dcf9630043d00bb95e62d97b347a"
+    assert stored["source"]["version"] == "cdaa3b6"
+    assert stored["source"]["commit"] == "cdaa3b683489e911fdf62d2d1d80b6ee265c8727"
     assert stored["source"]["templateCount"] == 13
     assert stored["source"]["totalComponents"] == 142
     assert stored["source"]["activateRules"] == 6
@@ -124,7 +136,7 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
         "withData": 5,
     }
 
-    source_registry = json.loads((METADATA / "template-registry.json").read_text())
+    source_registry = _host_template_registry()
     for page, template_id in PAGE_TEMPLATES.items():
         assert stored["templates"][template_id] == source_registry[template_id]
         assert stored["pages"][page]["components"] == source_registry[template_id]["components"]
@@ -178,7 +190,7 @@ def test_prototype_source_remains_available_only_for_explicit_standalone_analysi
 
 def test_runtime_reports_live_ap_single_query_mode_and_only_real_gaps():
     payload = release_payload()
-    assert payload["source"]["commit"] == "cd8d71fd6278dcf9630043d00bb95e62d97b347a"
+    assert payload["source"]["commit"] == "cdaa3b683489e911fdf62d2d1d80b6ee265c8727"
     assert payload["source"]["dataMode"] == "ap-single-query"
     assert {gap["code"] for gap in payload["gaps"]} == {"CHILD_DEFINITION_MISSING"}
     overview = payload["pages"]["overview"]["components"]

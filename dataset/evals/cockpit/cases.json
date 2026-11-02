@@ -1,0 +1,791 @@
+[
+  {
+    "id": "REASON-001",
+    "area": "reasoning",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "报价出现逾期状态，需要逐单核查。"
+    },
+    "expected": {
+      "reject": false
+    },
+    "rationale": "状态观察不等于原因，应允许"
+  },
+  {
+    "id": "REASON-002",
+    "area": "reasoning",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "订单变更金额不足5%，难以解释出货量缺口。"
+    },
+    "expected": {
+      "reject": true
+    },
+    "rationale": "金额不能解释电量"
+  },
+  {
+    "id": "REASON-003",
+    "area": "reasoning",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "订单取消和中标未签合计解释全部缺口。"
+    },
+    "expected": {
+      "reject": true
+    },
+    "rationale": "集合重叠未验证"
+  },
+  {
+    "id": "REASON-004",
+    "area": "reasoning",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "取消订单和未签订单应分别核对，不推断相互关系。"
+    },
+    "expected": {
+      "reject": false
+    },
+    "rationale": "分别核对不是集合相加"
+  },
+  {
+    "id": "REASON-005",
+    "area": "reasoning",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "本期实际电量低于目标，需核查交付计划。"
+    },
+    "expected": {
+      "reject": false
+    },
+    "rationale": "同口径事实允许"
+  },
+  {
+    "id": "REASON-006",
+    "area": "reasoning",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "发货金额增长证明出货量增长。"
+    },
+    "expected": {
+      "reject": true
+    },
+    "rationale": "金额和电量变化不能直接互证"
+  },
+  {
+    "id": "REASON-007",
+    "area": "reasoning",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "订单变更金额应核对，出货量应另行核对。"
+    },
+    "expected": {
+      "reject": false
+    },
+    "rationale": "并列两个量不应误杀"
+  },
+  {
+    "id": "REASON-008",
+    "area": "reasoning",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "Cancelled value below 5% cannot explain shipment volume gap."
+    },
+    "expected": {
+      "reject": true
+    },
+    "rationale": "英文也需拦截跨单位推断"
+  },
+  {
+    "id": "REASON-009",
+    "area": "reasoning",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "取消与中标未签的量级不足以解释出货缺口。"
+    },
+    "expected": {
+      "reject": true
+    },
+    "rationale": "没有加号也有非法集合排除"
+  },
+  {
+    "id": "REASON-010",
+    "area": "reasoning",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "订单变更金额是损失金额。"
+    },
+    "expected": {
+      "reject": true
+    },
+    "rationale": "变更不等于净减少"
+  },
+  {
+    "id": "CLASS-001",
+    "area": "classification",
+    "priority": "P0",
+    "operation": "classify",
+    "input": {
+      "title": "客户等级目标电量为空",
+      "status": "hypothesis"
+    },
+    "expected": {
+      "kind": "data_gap"
+    },
+    "rationale": "业务人工标签，不能从当前实现回填期望"
+  },
+  {
+    "id": "CLASS-002",
+    "area": "classification",
+    "priority": "P0",
+    "operation": "classify",
+    "input": {
+      "title": "口径冲突与发货证据缺口",
+      "status": "hypothesis"
+    },
+    "expected": {
+      "kind": "data_gap"
+    },
+    "rationale": "业务人工标签，不能从当前实现回填期望"
+  },
+  {
+    "id": "CLASS-003",
+    "area": "classification",
+    "priority": "P0",
+    "operation": "classify",
+    "input": {
+      "title": "缺口集中于三个团队",
+      "status": "hypothesis"
+    },
+    "expected": {
+      "kind": "structure"
+    },
+    "rationale": "业务人工标签，不能从当前实现回填期望"
+  },
+  {
+    "id": "CLASS-004",
+    "area": "classification",
+    "priority": "P0",
+    "operation": "classify",
+    "input": {
+      "title": "出货完成度低于目标",
+      "status": "hypothesis"
+    },
+    "expected": {
+      "kind": "fact"
+    },
+    "rationale": "业务人工标签，不能从当前实现回填期望"
+  },
+  {
+    "id": "CLASS-005",
+    "area": "classification",
+    "priority": "P0",
+    "operation": "classify",
+    "input": {
+      "title": "物料短缺可能阻碍交付",
+      "status": "hypothesis"
+    },
+    "expected": {
+      "kind": "hypothesis"
+    },
+    "rationale": "业务人工标签，不能从当前实现回填期望"
+  },
+  {
+    "id": "CLASS-006",
+    "area": "classification",
+    "priority": "P0",
+    "operation": "classify",
+    "input": {
+      "title": "交付计划缺失",
+      "status": "hypothesis"
+    },
+    "expected": {
+      "kind": "data_gap"
+    },
+    "rationale": "业务人工标签，不能从当前实现回填期望"
+  },
+  {
+    "id": "TEXT-001",
+    "area": "copy",
+    "priority": "P0",
+    "operation": "summary",
+    "input": {
+      "text": "存在逾期。短摘要不含业务数字，具体数值见事实字段。"
+    },
+    "expected": {
+      "contains": [
+        "存在逾期"
+      ],
+      "absent": [
+        "短摘要"
+      ]
+    },
+    "rationale": "保留否定语义，清除生成指令"
+  },
+  {
+    "id": "TEXT-002",
+    "area": "copy",
+    "priority": "P0",
+    "operation": "summary",
+    "input": {
+      "text": "存在逾期。"
+    },
+    "expected": {
+      "contains": [
+        "存在逾期"
+      ],
+      "absent": [
+        "。。"
+      ]
+    },
+    "rationale": "保留否定语义，清除生成指令"
+  },
+  {
+    "id": "TEXT-003",
+    "area": "copy",
+    "priority": "P0",
+    "operation": "summary",
+    "input": {
+      "text": "缺少证据，尚不能归因为某一环节问题。"
+    },
+    "expected": {
+      "contains": [
+        "尚不能归因为某一环节问题"
+      ],
+      "absent": [
+        "归；"
+      ]
+    },
+    "rationale": "保留否定语义，清除生成指令"
+  },
+  {
+    "id": "TEXT-004",
+    "area": "copy",
+    "priority": "P0",
+    "operation": "summary",
+    "input": {
+      "text": "当前汇总规模尚不能建立与出货缺口的对应关系。"
+    },
+    "expected": {
+      "contains": [
+        "尚不能建立"
+      ],
+      "absent": [
+        "。。"
+      ]
+    },
+    "rationale": "保留否定语义，清除生成指令"
+  },
+  {
+    "id": "SLOT-001",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "quote-summary"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-002",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "bid-status-note"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-003",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "bid-summary"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-004",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "order-sign-summary"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-005",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "star-product-order-list"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-006",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "affected-order-list"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-007",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "overdue-order-list"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-008",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "sales-shipment-issues"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-009",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "opportunity-risk"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-010",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "opportunity-coverage-note"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-011",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "order-risk-summary"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-012",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "shipment-risk-summary"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-013",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "shipment-overdue-note"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-014",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "shipment-cause-breakdown"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SLOT-015",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "shipment-task-order"
+    },
+    "expected": {
+      "no_dangling": true,
+      "contract": "cockpit-delivery-v2",
+      "summary_nonempty": true,
+      "no_verified": true
+    },
+    "rationale": "同一合成输入覆盖该插槽过滤、引用与交付契约；不宣称表格已取数"
+  },
+  {
+    "id": "SCOPE-001",
+    "area": "scope",
+    "priority": "P0",
+    "operation": "scope",
+    "input": {
+      "codes": [
+        "YWLN_D021",
+        "YWLN_M0031"
+      ],
+      "stage": "quotation"
+    },
+    "expected": {
+      "keep": true
+    },
+    "rationale": "报价节点状态与首页风险指标必须分离；跨环节显式许可"
+  },
+  {
+    "id": "SCOPE-002",
+    "area": "scope",
+    "priority": "P0",
+    "operation": "scope",
+    "input": {
+      "codes": [
+        "YWLN_M0137"
+      ],
+      "stage": "quotation"
+    },
+    "expected": {
+      "keep": false
+    },
+    "rationale": "报价节点状态与首页风险指标必须分离；跨环节显式许可"
+  },
+  {
+    "id": "SCOPE-003",
+    "area": "scope",
+    "priority": "P0",
+    "operation": "scope",
+    "input": {
+      "codes": [
+        "YWLN_M0032"
+      ],
+      "stage": "shipment"
+    },
+    "expected": {
+      "keep": false
+    },
+    "rationale": "报价节点状态与首页风险指标必须分离；跨环节显式许可"
+  },
+  {
+    "id": "SCOPE-004",
+    "area": "scope",
+    "priority": "P0",
+    "operation": "scope",
+    "input": {
+      "codes": [
+        "YWLN_M0035"
+      ],
+      "stage": "shipment"
+    },
+    "expected": {
+      "keep": true
+    },
+    "rationale": "报价节点状态与首页风险指标必须分离；跨环节显式许可"
+  },
+  {
+    "id": "SCOPE-005",
+    "area": "scope",
+    "priority": "P0",
+    "operation": "scope",
+    "input": {
+      "codes": [
+        "YWLN_M0023"
+      ],
+      "stage": "combined"
+    },
+    "expected": {
+      "keep": true
+    },
+    "rationale": "报价节点状态与首页风险指标必须分离；跨环节显式许可"
+  },
+  {
+    "id": "DRAFT-001",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"], "missingEvidence": ["订单处理记录"]}],
+        "recommendations": [{"id": "a1", "actionType": "investigation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "逐单核对逾期订单的当前处理节点", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交包含订单、处理节点和阻塞项的核查清单"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录显示阻塞"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": true, "ids": ["a1"], "actionTypes": ["investigation"]},
+    "rationale": "待验证假设可以形成核查任务，但不能自动升级为改善动作"
+  },
+  {
+    "id": "DRAFT-002",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"], "missingEvidence": ["订单处理记录"]}],
+        "recommendations": [{"id": "a1", "actionType": "remediation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "调整交付优先级并同步客户", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交调整后的交付计划确认记录"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录显示阻塞"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": false, "errorContains": "尚未得到记录支持"},
+    "rationale": "未证实原因不能直接生成改善任务"
+  },
+  {
+    "id": "DRAFT-003",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "发货状态记录缺失，需要补数。",
+        "causes": [],
+        "recommendations": [{"id": "a1", "actionType": "investigation", "causeIds": [], "evidenceIds": ["e1"], "action": "补齐订单处理记录并核对超期状态", "ownerRole": "交付运营", "deadlineDays": 3, "acceptance": "提交订单、处理节点与数据缺口清单"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "发货状态缺失"}], "records": [], "evidence": [{"id": "e1", "claim": "发货状态查询无数据"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": true, "ids": ["a1"], "actionTypes": ["investigation"]},
+    "rationale": "数据缺口核查可直接引用证据，不必先伪造原因"
+  },
+  {
+    "id": "DRAFT-004",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "处理记录已确认阻塞。",
+        "causes": [{"id": "c1", "kind": "verified", "title": "质检未放行", "description": "处理记录确认质检尚未放行", "status": "supported", "evidenceIds": ["e1"]}],
+        "recommendations": [{"id": "a1", "actionType": "remediation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "调整交付优先级并同步客户", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交调整后的交付计划确认记录"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [], "records": [{"id": "e1"}], "evidence": [{"id": "e1", "claim": "质检记录确认未放行"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": true, "ids": ["a1"], "actionTypes": ["remediation"]},
+    "rationale": "已支持原因与改善动作、证据匹配时可以生成改善任务"
+  },
+  {
+    "id": "DRAFT-005",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"]}],
+        "recommendations": [{"id": "a1", "actionType": "investigation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "逐单核对处理节点", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交核查清单"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录"}], "limitations": []},
+      "recommendationIds": ["closed-recommendation"]
+    },
+    "expected": {"draftable": false, "errorContains": "建议已关闭"},
+    "rationale": "已关闭、已过滤或不属于当前分析的建议不能进入草稿"
+  },
+  {
+    "id": "DRAFT-006",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"]}],
+        "recommendations": [{"id": "a1", "actionType": "investigation", "causeIds": ["c1"], "evidenceIds": ["e9"], "action": "逐单核对处理节点", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交核查清单"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": false, "errorContains": "不存在的证据"},
+    "rationale": "草稿不能引用不存在或未读取的证据"
+  },
+  {
+    "id": "DRAFT-007",
+    "area": "task_order",
+    "priority": "P1",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "存在交付风险。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"]}],
+        "recommendations": [{"id": "a1", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "持续关注该事项", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "完成相关工作"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": false, "errorContains": "尚待确认"},
+    "rationale": "旧缓存中无法明确识别动作类型的建议保持待确认，不默认升级"
+  },
+  {
+    "id": "DRAFT-008",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"]}],
+        "recommendations": [
+          {"id": "a1", "actionType": "investigation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "核对订单处理节点", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交核查清单"},
+          {"id": "a2", "actionType": "investigation", "causeIds": [], "evidenceIds": ["e1"], "action": "补齐订单处理记录", "ownerRole": "交付运营", "deadlineDays": 3, "acceptance": "提交数据缺口清单"}
+        ],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": true, "ids": ["a1"], "actionTypes": ["investigation"]},
+    "rationale": "用户关闭的建议不进入草稿，选择集合由服务端复核"
+  },
+  {
+    "id": "DRAFT-009",
+    "area": "task_order",
+    "priority": "P1",
+    "operation": "draft",
+    "input": {
+      "result": {"summary": "当前只能定位异常。", "causes": [], "recommendations": [], "limitations": []},
+      "evidence": {"facts": [{"id": "e1", "label": "事实"}], "records": [], "evidence": [{"id": "e1", "claim": "事实记录"}], "limitations": []},
+      "recommendationIds": []
+    },
+    "expected": {"draftable": false, "ids": [], "emptyState": "当前只能定位异常，缺少处理记录，尚未形成原因判断。"},
+    "rationale": "空态文案必须说明实际缺口，不统一写成没有已证明内容"
+  },
+  {
+    "id": "SLOT-016",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "shipment-risk-summary",
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"]}],
+        "recommendations": [
+          {"id": "a1", "actionType": "investigation", "causeIds": [], "evidenceIds": ["e1"], "action": "补齐订单处理记录", "ownerRole": "交付运营", "deadlineDays": 3, "acceptance": "提交数据缺口清单"},
+          {"id": "a2", "actionType": "remediation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "调整交付优先级", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交新的交付计划"}
+        ],
+        "limitations": [],
+        "cardContract": "cockpit-cards-v1"
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录"}], "limitations": []}
+    },
+    "expected": {"no_dangling": true, "contract": "cockpit-delivery-v2", "summary_nonempty": true, "no_verified": true, "actionTypes": {"a1": "investigation", "a2": "pending"}},
+    "rationale": "投影保留有直接证据的数据缺口核查，并将无支持原因的改善建议降为待确认而不是清空全部建议"
+  }
+]

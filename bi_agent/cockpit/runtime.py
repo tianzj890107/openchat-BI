@@ -37,6 +37,7 @@ CONTAINERS = {
     "group", "template", "tab-container", "segmented-strip", "split-container",
     "button-group", "composite-filter", "title",
 }
+HELMET_VIEW_PATH = "/api/gateway2/x360/v1/graphs/helmet-view"
 SUPPORTED_TYPES = CONTAINERS | {
     "bar", "bar-line", "funnel", "horizontal-bar", "kpiCard", "mini-cpgraph",
     "process-arc", "progress", "share-bar", "table",
@@ -75,6 +76,14 @@ def _template_refs(value):
 
 def _component_ids(components: list[dict]) -> set[str]:
     return {component["id"] for component in components if component.get("id")}
+
+
+def _adapt_graph_endpoints(components: list[dict]) -> None:
+    """Keep the upstream URL interface while routing through the host gateway."""
+    for component in components:
+        graph_config = component.get("graphConfig")
+        if isinstance(graph_config, dict) and "helmetViewUrl" in graph_config:
+            graph_config["helmetViewUrl"] = HELMET_VIEW_PATH
 
 
 def _target_components(slot: dict, root: list[dict], templates: dict[str, dict]) -> list[dict]:
@@ -143,6 +152,9 @@ def release_payload() -> dict:
     source = _json(METADATA / "source.json")
     root = deepcopy(_json(METADATA / "components.json"))
     templates = deepcopy(_json(METADATA / "template-registry.json"))
+    _adapt_graph_endpoints(root)
+    for template in templates.values():
+        _adapt_graph_endpoints(template.get("components", []))
     insights = _json(METADATA / "insights.json")
     activate_rules = _json(ACTIVATE_RULES)
     snapshot_source = _json(RELEASE / "source.json")

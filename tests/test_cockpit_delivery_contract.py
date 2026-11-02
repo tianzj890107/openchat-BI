@@ -7,7 +7,7 @@ import pytest
 from bi_agent.cockpit.cards import CONTRACT, card_delivery_state
 from bi_agent.cockpit.delivery import (
     KIND_LABELS, SLOT_SPECS, checkable_acceptance, classify_cause,
-    project_card, validate_reasoning,
+    project_card, sanitize_summary, validate_reasoning,
 )
 from bi_agent.cockpit.store import Store
 
@@ -42,6 +42,37 @@ def test_money_and_energy_cannot_be_compared_without_a_bridge():
     with pytest.raises(ValueError) as error:
         validate_reasoning(value, _evidence(), stage='combined')
     assert '金额与电量' in str(error.value)
+
+
+@pytest.mark.parametrize('summary', [
+    '发货金额增长证明出货量增长。',
+    'Cancelled value below 5% cannot explain shipment volume gap.',
+])
+def test_cross_unit_inference_is_rejected_in_chinese_and_english(summary):
+    with pytest.raises(ValueError) as error:
+        validate_reasoning(_value(summary=summary), _evidence(), stage='combined')
+    assert '金额与电量' in str(error.value)
+
+
+def test_change_amount_is_not_accepted_as_realised_loss_without_evidence():
+    with pytest.raises(ValueError) as error:
+        validate_reasoning(_value(summary='订单变更金额是损失金额。'), _evidence())
+    assert '变更方向' in str(error.value)
+    validate_reasoning(
+        _value(summary='订单变更金额是已核实的净减少损失。'),
+        _evidence(changeDirectionVerified=True, netDecreaseVerified=True), stage='combined')
+
+
+def test_explicit_negative_change_loss_wording_remains_safe():
+    safe = '订单变更金额不是损失金额，需核实变更方向、净额及生效状态。'
+    validate_reasoning(_value(summary=safe), _evidence(), stage='combined')
+    assert sanitize_summary(safe, _evidence()) == safe
+
+
+def test_explicit_unit_caveat_remains_safe():
+    safe = '金额与电量口径不同，不能相互解释，需按统一口径补充映射后再判断。'
+    validate_reasoning(_value(summary=safe), _evidence(), stage='combined')
+    assert sanitize_summary(safe, _evidence()) == safe
 
 
 def test_unverified_set_arithmetic_is_rejected_and_verified_one_passes():
@@ -97,9 +128,15 @@ def test_classify_cause_separates_verified_fact_structure_and_gap():
     assert classify_cause(_cause(status='supported', evidence=('r1',)), {'r1'}) == 'verified'
     assert classify_cause(_cause(title='缺口集中在华东团队')) == 'structure'
     assert classify_cause(_cause(title='客户目标为空')) == 'data_gap'
+    assert classify_cause(_cause(title='口径冲突与发货证据缺口')) == 'data_gap'
     assert classify_cause(_cause(title='出货量低于目标', description='缺口扩大')) == 'fact'
     assert classify_cause(_cause(title='排产延误', description='可能受物料影响')) == 'hypothesis'
     assert KIND_LABELS['hypothesis'] == '待验证假设'
+
+
+def test_summary_removes_generation_instruction_but_keeps_factual_copy():
+    summary = sanitize_summary('存在逾期。短摘要不含业务数字，具体数值见事实字段。', {})
+    assert summary == '存在逾期。'
 
 
 def _card():
@@ -263,3 +300,120 @@ def test_task_draft_marks_suggested_owner_deadline_and_checkable_acceptance(tmp_
     assert '建议角色，待确认' in measure['owner']
     assert measure['deadline'].startswith('建议期限：')
     assert '清单' in measure['acceptance'] or '对账' in measure['acceptance']
+
+
+def test_summary_notes_and_generation_instructions_are_clean():
+    from bi_agent.cockpit.delivery import sanitize_summary, _with_note, _strip_causal, classify_cause
+    assert '短摘要' not in sanitize_summary('存在逾期。短摘要不含业务数字，具体数值见事实字段。', {})
+    assert _with_note('存在逾期。', '请核查。') == '存在逾期。请核查。'
+    assert _strip_causal('尚不能归因为某一环节问题') == '尚不能归因为某一环节问题'
+    assert classify_cause({'title': '口径冲突与发货证据缺口'}) == 'data_gap'
+
+
+def test_publication_trim_preserves_history_and_display_fields():
+    from bi_agent.cockpit.delivery import publication_payload
+    raw = {'context': {'stage': 'quotation', 'chartQueries': ['large']}, 'evidence': {
+        'records': [{'data': {'YWLN_D021': 'normal_completed'}}],
+        'facts': [{'value': 0, 'claim': {'id': 'x', 'statement': 'value=0', 'provenance': {'query': 'large'}}}]}}
+    value = publication_payload(raw)
+    assert 'chartQueries' not in value['context']
+    assert 'provenance' not in value['evidence']['facts'][0]['claim']
+    assert value['evidence']['records'] == raw['evidence']['records']
+    assert raw['context']['chartQueries'] == ['large']
+
+
+def test_projection_keeps_structured_risk_facts_and_drops_reasons_or_gaps():
+    item = dict(
+        id='risk-card', updatedAt=time.time(), status='limited',
+        context=dict(stage='opportunity', snapshotId='snapshot-risk'),
+        evidence=_evidence(records=[dict(id='e1'), dict(id='e2')]),
+        result=dict(
+            cardContract=CONTRACT,
+            summary='商机覆盖存在缺口。',
+            causes=[_cause('c-gap', '客户目标为空', '目标字段缺失')],
+            recommendations=[],
+            limitations=[],
+            findings=[
+                dict(id='f1', kind='risk_fact', title='商机覆盖低于目标',
+                     description='当前证据支持覆盖缺口', metricCodes=['OPP_GAP'],
+                     evidenceIds=['e1'], riskDomain='sales'),
+                dict(id='f2', kind='risk_fact', title='商机覆盖未达年度目标',
+                     description='同一指标的另一表述', metricCodes=['OPP_GAP'],
+                     evidenceIds=['e2'], riskDomain='sales'),
+            ],
+        ),
+    )
+    projected = project_card(item, 'opportunity-risk')
+    findings = projected['result']['findings']
+    assert len(findings) == 1
+    assert findings[0]['kind'] == 'risk_fact'
+    assert findings[0]['scopeKey'] == 'snapshot-risk'
+    assert projected['result']['riskFindingCount'] == 1
+
+
+def test_target_and_actual_facts_create_one_programmatic_metric_risk():
+    item = dict(
+        id='metric-card', updatedAt=time.time(), status='limited',
+        context=dict(stage='shipment', snapshotId='snapshot-shipment'),
+        evidence=_evidence(facts=[
+            dict(id='target', label='目标出货量', value=60, unit='GWh', definition='年度目标'),
+            dict(id='actual', label='实际出货量', value=19.02, unit='GWh', definition='实际完成'),
+        ]),
+        result=dict(cardContract=CONTRACT, summary='出货量低于目标。', causes=[],
+                    recommendations=[], limitations=[]),
+    )
+    projected = project_card(item, 'shipment-risk-summary')
+    findings = projected['result']['findings']
+    assert len(findings) == 1
+    assert findings[0]['kind'] == 'risk_fact'
+    assert findings[0]['riskDomain'] == 'shipment'
+    assert set(findings[0]['evidenceIds']) == {'target', 'actual'}
+
+
+def test_legacy_fact_cause_still_supplies_a_risk_fact_without_reanalysis():
+    item = dict(
+        id='legacy-card', updatedAt=time.time(), status='limited',
+        context=dict(stage='shipment', snapshotId='snapshot-legacy'),
+        evidence=_evidence(records=[dict(id='e1')]),
+        result=dict(cardContract=CONTRACT, summary='出货量低于目标。',
+                    causes=[_cause('c1', '出货量低于年度目标', '实际出货量低于目标')],
+                    recommendations=[], limitations=[]),
+    )
+    projected = project_card(item, 'shipment-risk-summary')
+    findings = projected['result']['findings']
+    assert len(findings) == 1
+    assert findings[0]['kind'] == 'risk_fact'
+    assert findings[0]['riskDomain'] == 'shipment'
+
+
+def test_risk_counts_separate_sales_and_shipment_and_require_complete_sources():
+    from bi_agent.cockpit.risk import summarize_risk_counts
+
+    def slot(stage, finding, scope_match=True):
+        return dict(stage=stage, status='ready', scopeMatch=scope_match,
+                    payload=dict(result=dict(findings=[finding])))
+
+    sales = dict(id='sales-1', kind='risk_fact', title='销售额低于目标',
+                 metricCodes=['SALES_GAP'], riskDomain='sales')
+    shipment = dict(id='shipment-1', kind='risk_fact', title='出货量低于目标',
+                    metricCodes=['SHIPMENT_GAP'], riskDomain='shipment')
+    counts = summarize_risk_counts({
+        'opportunity-risk': slot('opportunity', sales),
+        'opportunity-coverage-note': slot('opportunity', dict(sales)),
+        'shipment-risk-summary': slot('shipment', shipment),
+    })
+    assert counts['sales']['count'] == 1
+    assert counts['shipment']['count'] == 1
+    assert counts['sales']['known'] is True
+    assert counts['shipment']['known'] is True
+    assert counts['sales']['complete'] is True
+    assert counts['shipment']['complete'] is True
+
+    counts = summarize_risk_counts({
+        'opportunity-risk': slot('opportunity', sales),
+        'opportunity-coverage-note': dict(stage='opportunity', status='missing', payload=None),
+        'shipment-risk-summary': slot('shipment', shipment),
+    })
+    assert counts['sales']['known'] is False
+    assert counts['sales']['complete'] is False
+    assert counts['sales']['count'] == 1

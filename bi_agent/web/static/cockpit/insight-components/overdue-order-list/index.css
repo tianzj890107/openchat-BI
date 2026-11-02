@@ -4,10 +4,10 @@
 }
 
 .overdue-order-list .pro-bi-comp-wrap {
-  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, var(--cockpit-divider)));
   border-radius: 8px;
   overflow: hidden;
-  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, var(--cockpit-surface)));
 }
 
 .overdue-order-list .pro-bi-comp-wrap__body {

@@ -4,12 +4,12 @@
     "dashboardId": "iba-demo-1021",
     "name": "储能经营风险驾驶舱",
     "releaseUrl": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021",
-    "buildTime": "2026-10-30",
-    "fetchedAt": "2026-10-30",
-    "version": "cd8d71f",
+    "buildTime": "2026-11-02",
+    "fetchedAt": "2026-11-02",
+    "version": "cdaa3b6",
     "status": "active",
     "branch": "feature/demo_1021",
-    "commit": "cd8d71fd6278dcf9630043d00bb95e62d97b347a",
+    "commit": "cdaa3b683489e911fdf62d2d1d80b6ee265c8727",
     "templateCount": 13,
     "totalComponents": 142,
     "insightComponents": 15,
@@ -29,7 +29,7 @@
     "id": "iba-demo-1021",
     "name": "储能经营风险驾驶舱",
     "description": "",
-    "version": "cd8d71f",
+    "version": "cdaa3b6",
     "status": "active",
     "url": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021",
     "components": [
@@ -3690,6 +3690,7 @@
           "showHeader": true,
           "graphConfig": {
             "processCode": "FULL_PROCESS_OPERATIONS_MANAGEMENT",
+            "helmetViewUrl": "/api/gateway2/x360/v1/graphs/helmet-view",
             "graphTemplateSwitchRules": [
               {
                 "nodeId": "2109848488855519233",
@@ -7105,6 +7106,7 @@
           "graphConfig": {
             "defaultActiveKey": "2109840325158682625",
             "processCode": "SALES_CALIBER",
+            "helmetViewUrl": "/api/gateway2/x360/v1/graphs/helmet-view",
             "graphTemplateSwitchRules": [
               {
                 "nodeId": "2109840325158682625",
@@ -11635,6 +11637,7 @@
           "showHeader": true,
           "graphConfig": {
             "processCode": "FULL_PROCESS_OPERATIONS_MANAGEMENT",
+            "helmetViewUrl": "/api/gateway2/x360/v1/graphs/helmet-view",
             "graphTemplateSwitchRules": [
               {
                 "nodeId": "2109848488855519233",
@@ -17643,6 +17646,7 @@
           "graphConfig": {
             "defaultActiveKey": "2109840325158682625",
             "processCode": "SALES_CALIBER",
+            "helmetViewUrl": "/api/gateway2/x360/v1/graphs/helmet-view",
             "graphTemplateSwitchRules": [
               {
                 "nodeId": "2109840325158682625",

@@ -18,7 +18,8 @@ from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
 from .agent import run_analysis
 from .cards import CONTRACT, card_delivery_state, valid_card
-from .delivery import project_card
+from .delivery import project_card, publication_payload
+from .risk import summarize_risk_counts
 from .metadata import build_bundle
 from .prototype import PrototypeSource
 from .ap_gateway import APQuery, data_mode, get_gateway
@@ -92,6 +93,11 @@ class Context(BaseModel):
 class AnalysisRequest(Context):
     refresh:bool=False
 
+class DraftRequest(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    id:int|None=Field(default=None,ge=1,le=2)
+    recommendationIds:list[str]|None=Field(default=None,max_length=20)
+
 class Measure(BaseModel):
     model_config=ConfigDict(extra="forbid")
     id:str=Field(min_length=1,max_length=80)
@@ -99,6 +105,8 @@ class Measure(BaseModel):
     owner:str=Field(min_length=1,max_length=100)
     deadline:str=Field(min_length=1,max_length=120)
     acceptance:str=Field(min_length=1,max_length=600)
+    ownerConfirmed:bool=False
+    deadlineConfirmed:bool=False
 
 class TaskChange(BaseModel):
     model_config=ConfigDict(extra="forbid")
@@ -464,7 +472,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         for slot in slot_registry():
             item = stage_items.get(slot['stage'])
             update = refresh_for(slot, item)
-            payload = project_card(item, slot['slotId'])
+            payload = publication_payload(project_card(item, slot['slotId']))
             delivery = card_delivery_state(payload, slot['slotId'])
             status = 'ready' if delivery['renderable'] else 'missing'
             slots[slot['slotId']] = dict(
@@ -474,6 +482,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 contentComplete=delivery['complete'],
                 contentGaps=delivery['gaps'],
                 evidenceCount=delivery['evidenceCount'],
+                riskFindingCount=delivery['riskFindingCount'],
                 generatedAt=float((item or {}).get('updatedAt') or 0),
                 dataAsOf=float(((item or {}).get('context') or {}).get('updatedAt') or
                                (item or {}).get('updatedAt') or 0),
@@ -520,6 +529,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             targetCount=expected,
             missingCount=missing,
             updatingCount=updating,
+            riskCounts=summarize_risk_counts(slots),
             generatedAt=max((value['generatedAt'] for value in slots.values()), default=0),
             dataAsOf=max((value['dataAsOf'] for value in slots.values()), default=0),
             update=dict(status='running' if updating else ('retry_wait' if errors else 'idle'),
@@ -803,11 +813,18 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         return HTMLResponse('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>经营分析报告</title><style>body{max-width:980px;margin:48px auto;padding:0 24px;font:15px/1.8 system-ui;color:#253550}h1,h2{color:#254edb}p{overflow-wrap:anywhere}</style>'+content+'</html>',headers={"Content-Disposition":f'inline; filename="analysis-{aid}.html"'})
 
     @router.post("/analyses/{aid}/draft")
-    def draft(aid:str):
+    def draft(aid:str,req:DraftRequest|None=None):
         item=get_analysis(aid)
         if item["status"] not in {"completed","limited"}:raise HTTPException(409,"只能基于已完成或受限分析生成任务令草稿")
-        if not item["result"].get("recommendations"):raise HTTPException(409,"当前主服务交付尚无结构化任务措施，请由分析员确认；不从正文猜测责任和期限")
-        return store().draft(item)
+        req=req or DraftRequest()
+        if req.id is not None and req.id!=context_id(item["context"]):
+            raise HTTPException(403,"建议不属于当前分析身份")
+        if not item["result"].get("recommendations"):
+            raise HTTPException(409,"当前缺少明确核查对象或必要口径，暂不能生成任务草稿")
+        try:
+            return store().draft(item,req.recommendationIds)
+        except ValueError as exc:
+            raise HTTPException(409,str(exc))
 
     @router.post("/tasks/{tid}/dispatch")
     def dispatch_task(tid:str, req:TaskDispatch):
@@ -815,6 +832,11 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if not item:raise HTTPException(404,"任务不存在")
         context=item.get("context") or {}
         if int(context.get("id") or 0)!=req.id:raise HTTPException(403,"任务不属于当前身份")
+        if item.get('contractVersion')=='cockpit-task-order-v2':
+            pending=[str(measure.get('id')) for measure in item.get('measures') or []
+                     if not measure.get('ownerConfirmed') or not measure.get('deadlineConfirmed')]
+            if pending:
+                raise HTTPException(409,"请先确认责任角色和期限："+'、'.join(pending))
         if item.get("status")!="draft":raise HTTPException(409,"任务令已下发，不能重复发送；如需补发请新建任务令")
         analysis=get_analysis(str(item.get("analysisId") or ""))
         result=analysis.get("result") or {}
@@ -824,11 +846,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             action_id=f"{tid}-{measure.get('id')}"
             content="\n".join([
                 f"任务令：{item.get('title','')}",
+                f"类型：{'核查任务' if measure.get('actionType')=='investigation' else '处置任务'}",
                 f"目标：{item.get('goal','')}",
                 f"措施：{measure.get('action','')}",
                 f"责任角色：{measure.get('owner','')}",
                 f"期限：{measure.get('deadline','')}",
                 f"验收：{measure.get('acceptance','')}",
+                f"关联证据：{'、'.join(measure.get('evidenceIds') or []) or '历史草稿未提供'}",
             ])
             actions.append(dict(
                 id=action_id, actionId=action_id, itemType="TODO",

@@ -35,6 +35,9 @@ web = [
     # PROCESS360_PG_* is configured.
     "psycopg[binary]>=3.1",
 ]
+langgraph = [
+    "langgraph==1.2.16",
+]
 
 [tool.setuptools.packages.find]
 include = ["open_claude*", "bi_agent*"]

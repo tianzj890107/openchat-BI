@@ -53,3 +53,6 @@ dataset/process360/*.sqlite3-shm
 
 # Delegated analysis task state and private event records
 dataset/analysis_tasks/
+
+# Local/CI cockpit evaluation reports (golden inputs remain tracked)
+dataset/evals/cockpit/reports/

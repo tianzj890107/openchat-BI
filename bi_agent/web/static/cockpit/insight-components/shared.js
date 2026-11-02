@@ -1,3 +1,6 @@
+import {createTaskOrderController, ensureTaskOrderStyle} from './task-order/controller.js'
+import {TaskOrderDialog} from './task-order/dialog.js'
+
 const { computed, ref } = window.Vue
 
 export function cockpitApiBase() {
@@ -206,12 +209,23 @@ export function createStageRiskComponent(options = {}) {
   return Vue.defineComponent({
     name: options.name || 'StageRiskAnalysis',
     props: insightProps,
-    components: {InsightLoading},
+    components: {InsightLoading, TaskOrderDialog},
     emits: ['retry'],
     setup(props, { emit }) {
       const insight = useInsight(props, emit)
       const displayStage = computed(() => insight.stageName.value || options.fallbackStage || '当前环节')
-      return { ...insight, displayStage }
+      const taskApiBase = computed(() => String(props.slotProps?.apiBase || cockpitApiBase()).replace(/\/$/, ''))
+      const taskIdentityId = computed(() => {
+        const supplied = Number(props.slotProps?.identityId)
+        return supplied === 2 ? 2 : supplied === 1 ? 1 : cockpitIdentityId()
+      })
+      const analysisId = computed(() => String(props.analysis?.id || ''))
+      ensureTaskOrderStyle()
+      const taskOrder = createTaskOrderController({
+        analysisId, insight, apiBase: () => taskApiBase.value,
+        identityId: () => taskIdentityId.value,
+      })
+      return { ...insight, ...taskOrder, displayStage }
     },
     template: `
       <section class="stage-risk-analysis" aria-live="polite">
@@ -271,6 +285,9 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__cause-text">
                 <b>{{ cause.title }}</b>——{{ cause.description }}
                 <small class="stage-risk-analysis__cause-meta">{{ causeMeta(cause) }}</small>
+                <small v-if="(cause.missingEvidence || []).length" class="stage-risk-analysis__missing-evidence">
+                  待补材料：{{ cause.missingEvidence.join('、') }}
+                </small>
               </span>
             </div>
           </article>
@@ -279,15 +296,28 @@ export function createStageRiskComponent(options = {}) {
             <div class="stage-risk-analysis__head">
               <div class="stage-risk-analysis__title">
                 <span class="stage-risk-analysis__mark stage-risk-analysis__mark--suggest">【建议】</span>
-                按原因形成可执行动作
+                核查与改善建议
               </div>
-              <span class="stage-risk-analysis__aside">{{ openRecommendations.length }} 项</span>
+              <div class="stage-risk-analysis__suggest-actions">
+                <span class="stage-risk-analysis__aside">{{ openRecommendations.length }} 项</span>
+                <button type="button" class="stage-risk-analysis__draft" :disabled="!canCreate"
+                        @click="openOrGenerate">{{ taskButtonLabel }}</button>
+              </div>
             </div>
+            <div v-if="task" class="stage-risk-analysis__task-state" :class="{'stage-risk-analysis__task-state--warn': !taskMatchesSelection}">
+              {{ taskStatus }} · {{ task.id }}<template v-if="!taskMatchesSelection"> · 对应上次选择的建议</template>
+            </div>
+            <div v-if="taskError" class="stage-risk-analysis__error" role="alert">{{ taskError }}</div>
+            <div v-if="taskNotice" class="stage-risk-analysis__task-state" role="status">{{ taskNotice }}</div>
             <div v-if="!openRecommendations.length" class="insight-runtime-empty">
-              {{ status === 'limited' ? '证据不足或责任口径未确认，暂无可下发措施；这不代表工作已完成。' : '尚无可交付措施，待原因与责任口径核实。' }}
+              {{ emptyState }}
             </div>
+            <div v-else-if="recommendationHint" class="stage-risk-analysis__hint">{{ recommendationHint }}</div>
             <div v-for="(item, index) in openRecommendations" :key="item.id" class="stage-risk-analysis__action">
               <span class="stage-risk-analysis__index">{{ index + 1 }}</span>
+              <span class="stage-risk-analysis__action-type" :class="'stage-risk-analysis__action-type--' + (item.actionType || 'pending')">
+                {{ actionTypeLabel(item.actionType) }}
+              </span>
               <span class="stage-risk-analysis__action-text">{{ item.action }}</span>
               <span class="stage-risk-analysis__owner">{{ item.ownerRole || '未提供' }}</span>
               <span class="stage-risk-analysis__time">{{ deadlineText(item) }}</span>
@@ -303,6 +333,10 @@ export function createStageRiskComponent(options = {}) {
               <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
             </details>
           </article>
+          <task-order-dialog v-if="dialogOpen" :task="task" :busy="busy" :error="taskError"
+                             :notice="taskNotice" :receipts="receipts" :task-status="taskStatus"
+                             :dispatched="dispatched" @close="closeDialog" @save="saveDraft"
+                             @dispatch="dispatchDraft" />
         </template>
       </section>
     `,
