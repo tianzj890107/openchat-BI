@@ -2,7 +2,7 @@
 # 标准安装方式是在仓库根目录执行：
 #   pip install --no-cache-dir '.[web]'
 # 如果旧构建脚本仍在用 `pip install -r open_claude/requirements.txt`，
-# 本文件必须与 pyproject.toml 的 dependencies + [data] + [web] 完全一致，
+# 本文件必须与 pyproject.toml 的 dependencies + 全部 optional-dependencies 完全一致，
 # 否则镜像会缺依赖（例如缺 python-dotenv，`python -m bi_agent.web` 直接起不来）。
 # 该一致性由 tests/test_legacy_requirements_contract.py 守护。
 anthropic>=0.42.0
@@ -21,3 +21,4 @@ pymysql>=1.1.0
 networkx>=3.0
 redis>=5.0.0
 psycopg[binary]>=3.1
+langgraph==1.2.16

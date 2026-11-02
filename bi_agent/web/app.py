@@ -101,6 +101,12 @@ STATIC_DIR = Path(__file__).parent / "static"
 _DEFAULT_COORDINATION_LEASE_TTL = 60.0
 _DEFAULT_COORDINATION_HEARTBEAT = _DEFAULT_COORDINATION_LEASE_TTL / 3.0
 
+# Opt-in LangGraph experiment.  The default remains the production
+# WebSession; these names only isolate the optional HTTP side path.
+LANGGRAPH_EXPERIMENT_ENV = "CHATBI_ENABLE_LANGGRAPH_EXPERIMENT"
+EXPERIMENTAL_LANGGRAPH_MODE = "experimental-langgraph"
+_TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+
 
 def _env_coordination_float(
     env: dict[str, str], name: str, default: float
@@ -134,6 +140,11 @@ class AppState:
         # path for existing API clients and tests.
         self.sessions: dict[str, WebSession] = {}
         self.source_contexts: dict[str, SimpleNamespace] = {}
+        # Experimental LangGraph sessions are deliberately kept in separate
+        # registries.  They must never share state, slots or source snapshots
+        # with the production data sessions above.
+        self.experimental_sessions: dict[str, WebSession] = {}
+        self.experimental_source_contexts: dict[str, SimpleNamespace] = {}
         self.db_path: str = ""
         self.ontology_path: str = ""
         # --- Doris (MySQL protocol) data source -------------------------
@@ -620,6 +631,8 @@ def configure(
     )
     STATE.sessions.clear()
     STATE.source_contexts.clear()
+    STATE.experimental_sessions.clear()
+    STATE.experimental_source_contexts.clear()
     STATE.report_sessions.clear()
     STATE.report_ids_by_session.clear()
     STATE.report_db_by_session.clear()
@@ -1816,6 +1829,11 @@ def _reap_idle_sessions() -> None:
         return
     with STATE.registry_lock:
         for slot_key in removed:
+            mode, _, experimental_sid = slot_key.partition(":")
+            if mode == EXPERIMENTAL_LANGGRAPH_MODE:
+                STATE.experimental_sessions.pop(experimental_sid, None)
+                STATE.experimental_source_contexts.pop(experimental_sid, None)
+                continue
             sid = slot_key.split(":", 1)[1] if ":" in slot_key else slot_key
             STATE.sessions.pop(sid, None)
             STATE.report_sessions.pop(sid, None)
@@ -3052,6 +3070,54 @@ def choice(req: ChoiceRequest):
     )
 
 
+@app.post("/api/experimental/langgraph/chat")
+def experimental_langgraph_chat(req: ChatRequest):
+    """Opt-in LangGraph turn loop; the legacy data session is untouched."""
+    _require_langgraph_experiment()
+    message = (req.message or "").strip()
+    if not message:
+        raise HTTPException(400, "empty message")
+    session = _ensure_experimental_session(req.session_id)
+    try:
+        slot, lease, turn_id, ticket, cancel = _begin_turn(
+            EXPERIMENTAL_LANGGRAPH_MODE, req.session_id,
+        )
+    except HTTPException as exc:
+        return _turn_guard_json_response(exc)
+    response = _run_turn_stream(
+        session,
+        session.generate_turn(message, req.visible_user_text),
+        slot, lease, turn_id, ticket, cancel,
+    )
+    response.headers["X-Agent-Engine"] = "langgraph-experimental"
+    return response
+
+
+@app.post("/api/experimental/langgraph/choice")
+def experimental_langgraph_choice(req: ChoiceRequest):
+    """Resume an AskUser pause owned by the experimental registry."""
+    _require_langgraph_experiment()
+    session = _experimental_session_for_choice(req.session_id)
+    if session is None:
+        raise HTTPException(400, "No active experimental session")
+    if not session.pending_tool_use_id:
+        raise HTTPException(400, "No pending user choice")
+    ids, labels = req.normalized()
+    try:
+        slot, lease, turn_id, ticket, cancel = _begin_turn(
+            EXPERIMENTAL_LANGGRAPH_MODE, req.session_id,
+        )
+    except HTTPException as exc:
+        return _turn_guard_json_response(exc)
+    response = _run_turn_stream(
+        session,
+        session.continue_with_choice(ids, labels),
+        slot, lease, turn_id, ticket, cancel,
+    )
+    response.headers["X-Agent-Engine"] = "langgraph-experimental"
+    return response
+
+
 # ---------------------------------------------------------------------------
 # Task alert (行动 → 转督办) proxy to the external task-order service
 # ---------------------------------------------------------------------------
@@ -3859,6 +3925,115 @@ def _ensure_session(session_id: Optional[str] = None) -> WebSession:
             STATE.session = session
         STATE.session_slots.ensure(_slot_key("data", key))
     return session
+
+
+def _langgraph_experiment_enabled() -> bool:
+    """Whether the opt-in LangGraph side path may be called.
+
+    ``CHATBI_AGENT_ENGINE`` is accepted for developer convenience, but the
+    explicit experiment switch is preferred because it cannot be confused with
+    a future process-wide default-engine migration.
+    """
+    raw = str(os.environ.get(LANGGRAPH_EXPERIMENT_ENV, "")).strip().lower()
+    if raw in _TRUE_ENV_VALUES:
+        return True
+    from ..experimental.factory import LANGGRAPH_ENGINES, engine_name
+
+    return engine_name() in LANGGRAPH_ENGINES
+
+
+def _require_langgraph_experiment() -> None:
+    if not _langgraph_experiment_enabled():
+        raise HTTPException(404, "experimental LangGraph engine is disabled")
+
+
+def _experimental_source_for_session(session_id: Optional[str]) -> Any:
+    """Return a source snapshot owned only by the experimental session.
+
+    The production ``source_contexts`` registry is intentionally not used:
+    switching a data source for a legacy session must not mutate the source of
+    an already-running experimental comparison, and vice versa.
+    """
+    key = _session_key(session_id)
+    with STATE.registry_lock:
+        source = STATE.experimental_source_contexts.get(key)
+        if source is None:
+            source = _snapshot_source()
+            STATE.experimental_source_contexts[key] = source
+        return source
+
+
+def _build_experimental_session(key: str, source: Any) -> WebSession:
+    """Build one LangGraph session with the same production wiring as data."""
+    if not STATE.agent_def or source.ontology_store is None:
+        raise HTTPException(500, "Server not configured; call configure() first.")
+    try:
+        doris = (
+            _doris_http_conn(source.doris_api_url, source.doris_database, source.remote_ontology)
+            if source.use_doris else None
+        )
+    except ValueError as exc:
+        raise HTTPException(500, f"数据源配置无效: {exc}") from exc
+    executors = build_source_executors(
+        source.ontology_store,
+        source.db_path,
+        doris=doris,
+        remote_ontology=source.remote_ontology,
+    )
+    tools_override = None
+    headers: list[str] = []
+    if source.remote_ontology is not None:
+        headers.append(
+            "# 当前原子数据源\n"
+            f"- repository_id: {source.remote_ontology.repository_id}\n"
+            f"- namespace: {source.ontology_namespace or source.remote_ontology.namespace}\n"
+            f"- doris_database: {source.doris_database}"
+        )
+    if source.retrieval_mode == "graph":
+        base = list(STATE.agent_def.tools or [])
+        tools_override = base + [t for t in GRAPH_TOOL_NAMES if t not in base]
+        headers.append(GRAPH_MODE_SOP)
+    from ..experimental.factory import resolve_session_class
+
+    session_cls = resolve_session_class("langgraph")
+    return session_cls(
+        cwd=STATE.cwd,
+        agent_def=STATE.agent_def,
+        ontology_store=source.ontology_store,
+        tools_override=tools_override,
+        context_header="\n\n".join(headers) or None,
+        role_block=_role_block(key),
+        ontology_backend=("remote" if source.ontology_backend in {"remote", "production"} else "local"),
+        ontology_repository_id=(source.remote_ontology.repository_id if source.remote_ontology else ""),
+        tool_executors=executors,
+    )
+
+
+def _ensure_experimental_session(session_id: Optional[str] = None) -> WebSession:
+    """Return the isolated LangGraph session for ``session_id``."""
+    _require_langgraph_experiment()
+    key = _session_key(session_id)
+    _reap_idle_sessions()
+    with STATE.registry_lock:
+        existing = STATE.experimental_sessions.get(key)
+        if existing is not None:
+            STATE.session_slots.ensure(_slot_key(EXPERIMENTAL_LANGGRAPH_MODE, key)).touch()
+            return existing
+    source = _experimental_source_for_session(key)
+    session = _build_experimental_session(key, source)
+    with STATE.registry_lock:
+        existing = STATE.experimental_sessions.get(key)
+        if existing is not None:
+            return existing
+        STATE.experimental_sessions[key] = session
+        STATE.session_slots.ensure(_slot_key(EXPERIMENTAL_LANGGRAPH_MODE, key))
+    return session
+
+
+def _experimental_session_for_choice(session_id: Optional[str]) -> Optional[WebSession]:
+    key = _session_key(session_id)
+    with STATE.registry_lock:
+        return STATE.experimental_sessions.get(key)
 
 
 def _require_report_store() -> ReportStore:
