@@ -14,7 +14,9 @@ registerInsightComponent(
     components: {InsightLoading: window.InsightRuntime.InsightLoading},
     emits: ['retry'],
     setup(props, { emit }) {
-      return useInsight(props, emit)
+      const insight = useInsight(props, emit)
+      const coverage = Vue.computed(() => insight.result.value?.customerCoverage || null)
+      return {...insight, coverage}
     },
     template: `
       <section class="opportunity-coverage-note" aria-live="polite">
@@ -26,6 +28,11 @@ registerInsightComponent(
           </div>
         </div>
         <template v-if="hasResult">
+          <div v-if="coverage?.status === 'ready'" class="opportunity-coverage-note__tags" :title="coverage.basis">
+            <span class="opportunity-coverage-note__tag opportunity-coverage-note__tag--warning">{{ coverage.withOpportunityNotBidding }} 家有商机未投标</span>
+            <span class="opportunity-coverage-note__tag">{{ coverage.withoutOpportunity }} 家无商机</span>
+          </div>
+          <div v-else class="opportunity-coverage-note__status">客户覆盖统计未返回完整数据</div>
           <div class="opportunity-coverage-note__summary" :title="summary">真实分析摘要：{{ summary }}</div>
           <details v-if="causes.length" class="opportunity-coverage-note__causes">
             <summary>查看 {{ causes.length }} 项原因与证据</summary>

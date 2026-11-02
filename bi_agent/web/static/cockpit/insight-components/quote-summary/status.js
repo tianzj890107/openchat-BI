@@ -8,7 +8,10 @@ export function quotationStatus(records = []) {
       const value = row[key]
       return value && typeof value === 'object' ? value.value : value
     }
-    const status = cell('YWLN_D021'), raw = cell('YWLN_M0031')
+    const aliases = {'正常完成':'normal_completed','逾期完成':'overdue_completed',
+      '逾期未完成':'overdue_uncompleted','临期未完成':'imminent_uncompleted','正常未完成':'normal_uncompleted'}
+    const rawStatus = cell('YWLN_D021')
+    const status = aliases[rawStatus] || rawStatus, raw = cell('YWLN_M0031')
     if (!['normal_completed','overdue_completed','overdue_uncompleted','imminent_uncompleted','normal_uncompleted'].includes(status)
       || raw === null || raw === undefined || raw === '' || !Number.isFinite(Number(raw))) continue
     const key = JSON.stringify([record.scope?.request || {}, status, raw])

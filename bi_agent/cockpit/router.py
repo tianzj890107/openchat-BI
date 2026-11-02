@@ -169,7 +169,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             analysisConcurrency=1,source='Cockpit独立AP连接' if mode=='ap' else '交付快照回放',
             batchMode=os.getenv('COCKPIT_AP_BATCH_MODE','individual'))
 
-    def query_receipt(identity, kind, payload, *, timing=None):
+    def query_receipt(identity, kind, payload, *, timing=None, _deadline=None):
         """One shared read path for page requests and background refresh.
 
         The cache/coalescing key includes the role, transport identity, store
@@ -181,7 +181,10 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         result_store=store()
         def read():
             if 'timing' in inspect.signature(gateway.query).parameters:
-                result=gateway.query(kind,payload,timing=timing)
+                kwargs = {'timing': timing}
+                if _deadline is not None:
+                    kwargs['_deadline'] = _deadline
+                result=gateway.query(kind,payload,**kwargs)
             else:
                 result=gateway.query(kind,payload)
             if transport_identity(gateway.config)!=auth_scope:
@@ -194,7 +197,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         started=time.monotonic()
         trace={} if timing is None else timing
         timeout=getattr(gateway.config,'timeout',200)
-        receipt=ap_reuse.read(key,read,timeout=max(35,float(timeout)+10),trace=trace)
+        wait_timeout = max(35,float(timeout)+10) if _deadline is None else max(.01, _deadline-time.monotonic())
+        receipt=ap_reuse.read(key,read,timeout=wait_timeout,trace=trace)
         if timing is not None:
             timing['receiptWaitMs']=round((time.monotonic()-started)*1000,1)
         return receipt
@@ -260,6 +264,10 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             result,events=execute(evidence,item["context"],cancel,progress)
             if cancel.is_set():raise InterruptedError()
             status=result.pop('_status','completed');actual_evidence=result.pop('_evidence',evidence);execution=result.pop('_execution',dict(engine=item['context']['engine']))
+            if item['context'].get('stage') == 'opportunity' and item['context'].get('engine') == 'main':
+                from .customer_coverage import load as load_customer_coverage
+                result['customerCoverage'] = load_customer_coverage(item['context'], st, query_receipt)
+                if cancel.is_set():raise InterruptedError()
             execution.setdefault('durationSeconds',round(time.time()-item['createdAt'],3))
             with lock:
                 st.update_analysis(item["id"],status=status,progress='待补充口径' if status=='needs_input' else '证据不足／受限交付' if status=='limited' else '分析完成',result=result,events=events,evidence=actual_evidence,execution=execution)

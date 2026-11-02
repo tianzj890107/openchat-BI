@@ -64,7 +64,7 @@ def compact_analysis(item):
     result = item.get('result')
     value['result'] = ({k: deepcopy(result[k]) for k in
                        ('summary', 'causes', 'recommendations', 'limitations', 'findings',
-                        'riskFindingCount', 'cardContract') if k in result}
+                        'riskFindingCount', 'cardContract', 'customerCoverage') if k in result}
                       if result else None)
     evidence = item.get('evidence') or {}
     def record(value):

@@ -12,3 +12,11 @@ test('zero is valid, null is missing, duplicate records do not double count', ()
  assert.equal(result.completed,0);assert.equal(result.total,0);assert.equal(result.pending,null)
  assert.equal(quotationStatus([]).total,null)
 })
+
+test('live AP Chinese states produce volumes without regenerating analysis', () => {
+ const result = quotationStatus([row('正常完成',25.57),row('逾期完成',.56),row('逾期未完成',.6)])
+ assert.equal(result.completed,26.13)
+ assert.equal(result.pending,.6)
+ assert.equal(result.total,26.73)
+ assert.equal(result.values.imminent_uncompleted,undefined)
+})
