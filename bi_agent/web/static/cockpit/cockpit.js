@@ -1111,7 +1111,7 @@
         }
         let installed;
         if (dataConfig.mode === 'ap') {
-          const [{createAPDataClient,observeRuntimeFilters,observeActivationActions},{createPageCache},{createPublicationPoller}] = await Promise.all([
+          const [{createAPDataClient,observeRuntimeFilters,observeActivationActions,tableFilterIds},{createPageCache},{createPublicationPoller}] = await Promise.all([
             import(`${assetBase}/data-client.js?v=${encodeURIComponent(assetVersion)}`),
             import(`${assetBase}/page-client.js?v=${encodeURIComponent(assetVersion)}`),
             import(`${assetBase}/publication-poll.js?v=${encodeURIComponent(assetVersion)}`),
@@ -1154,7 +1154,7 @@
               if(tabs)rawRuntime.setActiveTab(tabs.id,payload.pages[page.value].tabId);
               biRuntime.value=observeActivationActions(
                 observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,restored,
-                  {isUserAction:isScopeUserAction}),
+                  {isUserAction:isScopeUserAction,localFilterIds:tableFilterIds(payload)}),
                 {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
               bindRiskCountRuntime(biRuntime.value);
               const path={segments:[{kind:'tab',containerId:tabs.id,tabId:payload.pages[page.value].tabId,templateId:payload.pages[page.value].templateId}]};
@@ -1262,7 +1262,7 @@
           }
           biRuntime.value=observeActivationActions(
             observeRuntimeFilters(rawRuntime,(uiScope,detail)=>changeScope(uiScope,false,detail),()=>filtersReady,null,
-              {isUserAction:isScopeUserAction}),
+              {isUserAction:isScopeUserAction,localFilterIds:tableFilterIds(payload)}),
             {onTabChange:queueActivationNavigation,onHelmetSelection:rememberActivationHelmet});
           bindRiskCountRuntime(biRuntime.value);
           // Historical cards are an independent, best-effort request.  The

@@ -353,6 +353,18 @@ export function summarizeFilterChange(method,args) {
   return parts.join('；');
 }
 
+// Table search controls belong to their own table, not the page filter scope.
+export function tableFilterIds(payload) {
+  const ids = new Set();
+  const walk = value => {
+    if (!value || typeof value !== 'object') return;
+    if (['table', 'dataTable', 'datatable'].includes(value.type) && typeof value.id === 'string') ids.add(value.id);
+    for (const child of Object.values(value)) if (child && typeof child === 'object') walk(child);
+  };
+  walk(payload);
+  return ids;
+}
+
 // Observe committed SDK filter changes, not clicks that merely open a filter editor.
 export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored=null,hooks={}) {
   const seen=new Map(restored?.seen||[]),calls=new Map(restored?.calls||[]);
@@ -380,7 +392,8 @@ export function observeRuntimeFilters(runtime,onChange,isReady=()=>true,restored
     runtime[method]=function(...args) {
       const key=method+':'+args[0]+':'+canonical(method==='setFilterUiSelection'?[args[1],args[3]||null]:args[2]||null);
       calls.delete(key);calls.set(key,[method,JSON.parse(JSON.stringify(args))]);
-      if(!observed.has(method)){
+      const localFilter=method==='setFilterConditions' && hooks.localFilterIds?.has(args[0]);
+      if(!observed.has(method)||localFilter){
         const made=original.apply(this,args);
         // Delivered activate rules drive tabs and helmet nodes through the runtime;
         // the host mirrors them so the route, its data scope and its cards stay aligned.

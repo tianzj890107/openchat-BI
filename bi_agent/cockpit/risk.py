@@ -8,6 +8,7 @@ from typing import Any
 
 
 RISK_FACT = 'risk_fact'
+RISK_IDENTITY_VERSION = 'cockpit-risk-identity-v2'
 DOMAINS = ('sales', 'shipment')
 
 _TARGET = re.compile(r'(?:年度|全年|月度|当月|累计|预算|计划|目标)(?:值|数)?$', re.I)
@@ -89,11 +90,44 @@ def _fingerprint(*parts: Any) -> str:
     return hashlib.sha256(value.encode('utf-8')).hexdigest()[:16]
 
 
+def _business_issue(finding: dict) -> tuple[str, str]:
+    """Versioned business identity shared by node cards and combined cards.
+
+    Codes identify measures, not incidents. Only reviewed semantic rules merge
+    different titles; unknown issues retain their title rather than collapsing
+    all risks mentioning the same measure.
+    """
+    codes = set(finding.get('metricCodes') or [])
+    title = _normalise(finding.get('title'))
+    if ('出货量' in title or '发货电量' in title) and any(w in title for w in ('目标', '达成')):
+        customer = any(w in title for w in ('客户', '等级'))
+        return ('shipment', 'customer-shipment-target-gap' if customer else 'shipment-target-gap')
+    if {'YWLN_M_CUSTOMER_TARGET_ENERGY', 'YWLN_M_CUSTOMER_ACTUAL_ENERGY'} <= codes and '客户' in title and '商机' not in title:
+        return 'shipment', 'customer-shipment-target-gap'
+    if '商机' in title and any(w in title for w in ('目标', '覆盖')) and any(w in title for w in ('不足', '低于', '缺口', '未达')) and not any(w in title for w in ('客户', '等级')):
+        return 'sales', 'opportunity-target-gap'
+    if '商机' in title and '未签单' in title and any(w in title for w in ('为零', '零值')):
+        return 'sales', 'unsigned-opportunity-zero'
+    if '报价' in title and '逾期' in title:
+        return 'sales', 'quotation-overdue'
+    if '投标' in title and '周期' in title:
+        return 'sales', 'bid-cycle-overrun'
+    if '投标' in title and '丢标' in title:
+        return 'sales', 'bid-lost'
+    if '投标' in title and '逾期' in title:
+        return 'sales', 'bid-overdue'
+    if '订单' in title and any(w in title for w in ('取消', '变更')) and '中标未签' not in title:
+        return 'sales', 'order-cancel-change'
+    if '商机' in title and any(w in title for w in ('未进入投标', '未投标')):
+        # PACK and other populations must not collapse into a global issue.
+        return 'sales', 'opportunity-not-bidding:' + ('pack' if 'pack' in title else title)
+    return '', 'title:' + title
+
+
 def _dedupe_key(finding: dict) -> str:
-    codes = sorted(_normalise(code) for code in finding.get('metricCodes') or [] if _text(code))
-    if codes:
-        return 'metric:' + '|'.join(codes)
-    return 'title:' + _normalise(finding.get('title'))
+    domain, issue = _business_issue(finding)
+    domain = domain or _finding_domain(finding)
+    return domain + ':' + issue
 
 
 def _model_finding(item: Any, evidence: dict | None, context: dict | None,
@@ -243,18 +277,20 @@ def build_risk_findings(result: dict, evidence: dict | None, context: dict | Non
                         slot: dict | None) -> list[dict]:
     """Return deduplicated, evidence-backed risk facts for one delivered slot."""
     accepted: list[dict] = []
-    metric_keys: set[str] = set()
-    title_keys: set[str] = set()
+    issue_keys: set[str] = set()
 
     def add(finding: dict | None):
         if not finding:
             return
-        keys = {_normalise(code) for code in finding.get('metricCodes') or [] if _text(code)}
-        title_key = _normalise(finding.get('title'))
-        if keys & metric_keys or title_key in title_keys:
+        domain, _issue = _business_issue(finding)
+        if domain:
+            finding['riskDomain'] = domain
+        key = _dedupe_key(finding)
+        if key in issue_keys:
             return
-        metric_keys.update(keys)
-        title_keys.add(title_key)
+        issue_keys.add(key)
+        finding['riskKey'] = key
+        finding['dedupeKey'] = key
         accepted.append(finding)
 
     for item in (result or {}).get('findings') or []:
@@ -272,32 +308,41 @@ def summarize_risk_counts(slots: dict[str, dict]) -> dict[str, dict]:
     result = {}
     for domain in DOMAINS:
         relevant = [slot for slot in slots.values()
-                    if _slot_domain(slot) == domain
-                    or (_text(slot.get('stage')) == 'combined'
-                        and any(_finding_domain(item, slot) == domain
-                                for item in (((slot.get('payload') or {}).get('result') or {}).get('findings') or [])
-                                if isinstance(item, dict)))]
+                    if _slot_domain(slot) == domain or any(
+                        (_business_issue(item)[0] or _finding_domain(item, slot)) == domain
+                        for item in (((slot.get('payload') or {}).get('result') or {}).get('findings') or [])
+                        if isinstance(item, dict))]
         ready = [slot for slot in relevant
                  if slot.get('status') == 'ready'
                  and isinstance((slot.get('payload') or {}).get('result'), dict)]
         unique = {}
-        for slot in ready:
+        for slot_id, slot in slots.items():
+            if slot.get('status') != 'ready' or not isinstance((slot.get('payload') or {}).get('result'), dict):
+                continue
             for item in ((slot.get('payload') or {}).get('result') or {}).get('findings') or []:
                 if not isinstance(item, dict) or item.get('kind') != RISK_FACT:
                     continue
-                if _finding_domain(item, slot) != domain:
+                resolved_domain = _business_issue(item)[0] or _finding_domain(item, slot)
+                if resolved_domain != domain:
                     continue
-                unique.setdefault(_dedupe_key(item), item)
+                key = _dedupe_key({**item, 'riskDomain': resolved_domain})
+                entry = unique.setdefault(key, dict(riskKey=key, title=item.get('title', ''),
+                    description=item.get('description', ''), riskDomain=domain, sources=[]))
+                entry['sources'].append(dict(slotId=slot_id,
+                    analysisId=(slot.get('payload') or {}).get('id', ''),
+                    evidenceIds=list(item.get('evidenceIds') or [])))
         scope_match = all(slot.get('scopeMatch') is not False for slot in relevant)
         complete = bool(relevant) and len(ready) == len(relevant)
         known = complete and scope_match
         result[domain] = dict(
+            identityVersion=RISK_IDENTITY_VERSION,
             count=len(unique),
             known=known,
             complete=complete,
             scopeMatch=scope_match,
             sourceSlots=len(relevant),
             readySlots=len(ready),
-            findingKeys=sorted(unique)[:50],
+            findingKeys=sorted(unique),
+            findings=[unique[key] for key in sorted(unique)],
         )
     return result

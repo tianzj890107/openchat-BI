@@ -449,3 +449,22 @@ test('all failed page queries still produce a partial scope for the PG fallback'
  // A whole-page publish still needs real AP material; only analysis may proceed.
  assert.throws(()=>client.scope(),/AP请求超时/);
 });
+
+test('customer table filters only invoke their SDK control and do not invalidate page scope', () => {
+ const ids = clientModule.tableFilterIds({templates:{a:{components:[{id:'table-customer',type:'table'},{id:'table-upper',type:'table'},{id:'global',type:'filter'}]}}});
+ assert.deepEqual([...ids].sort(), ['table-customer','table-upper']);
+ let changes=0, localCalls=0, globalCalls=0;
+ const runtime=observeRuntimeFilters({setFilterConditions(id){if(id==='table-customer')localCalls++;else globalCalls++;}},
+   ()=>changes++,()=>true,null,{localFilterIds:ids});
+ runtime.setFilterConditions('table-customer',[{field:'customer-level',value:'1'}]);
+ runtime.setFilterConditions('table-customer',[{field:'customer-level',value:'2'}]);
+ runtime.setFilterConditions('table-customer',[]);
+ assert.equal(localCalls,3);
+ assert.equal(changes,0);
+ assert.equal(runtime.flushPendingScope(),false);
+ runtime.setFilterConditions('global',[{field:'date',value:'2026'}]);
+ assert.equal(changes,1);
+ assert.equal(globalCalls,1);
+ const restored=runtime.replayView({setFilterConditions(){}});
+ assert.equal(restored.seen.some(([key])=>key.includes('table-customer')),false);
+});

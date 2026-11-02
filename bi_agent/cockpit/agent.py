@@ -75,8 +75,10 @@ def validate_result(raw, evidence, seen, *, result_model=Result):
         if not set(finding["evidenceIds"]) <= available & seen:raise ValueError("风险发现引用未查询或不存在的证据")
         codes=tuple(sorted(str(code).strip().casefold() for code in finding["metricCodes"] if str(code).strip()))
         if not codes:raise ValueError("风险发现必须包含指标标识")
-        if codes in seen_findings:raise ValueError("同一指标风险发现重复")
-        seen_findings.add(codes)
+        from .risk import _dedupe_key
+        issue = _dedupe_key(finding)
+        if issue in seen_findings:raise ValueError("同一业务风险发现重复")
+        seen_findings.add(issue)
     for cause in value["causes"]:
         if not set(cause["evidenceIds"]) <= available & seen:raise ValueError("原因引用未查询或不存在的证据")
         if cause["status"]=="supported" and not any(x in {r["id"] for r in evidence["records"] if r.get("causeSupport",True)} for x in cause["evidenceIds"]):
