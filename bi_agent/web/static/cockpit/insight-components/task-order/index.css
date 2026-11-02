@@ -1,0 +1,298 @@
+.stage-risk-analysis__suggest-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.stage-risk-analysis__draft {
+  padding: 4px 14px;
+  border: 1px solid #1677ff;
+  border-radius: 16px;
+  background: #1677ff;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  line-height: 22px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stage-risk-analysis__draft:disabled {
+  border-color: #d9d9d9;
+  background: #f5f5f5;
+  color: #8c8c8c;
+  cursor: default;
+}
+
+.stage-risk-analysis__task-state,
+.stage-risk-analysis__hint {
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.stage-risk-analysis__task-state--warn {
+  color: #d46b08;
+}
+
+.stage-risk-analysis__error {
+  margin: 6px 0;
+  color: #cf1322;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.stage-risk-analysis__action-type {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-size: 11px;
+  line-height: 20px;
+}
+
+.stage-risk-analysis__action-type--remediation {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.stage-risk-analysis__action-type--pending {
+  background: #f5f5f5;
+  color: #8c8c8c;
+}
+
+.stage-risk-analysis__missing-evidence {
+  display: block;
+  margin-top: 2px;
+  color: #d46b08;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.task-order-dialog__backdrop {
+  position: fixed;
+  z-index: 1300;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, .45);
+}
+
+.task-order-dialog {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 18px 20px 16px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .2);
+  color: #262626;
+  font-size: 13px;
+  line-height: 22px;
+}
+
+.task-order-dialog__head,
+.task-order-dialog__measure-head,
+.task-order-dialog__foot,
+.task-order-dialog__confirm {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.task-order-dialog__head,
+.task-order-dialog__measure-head,
+.task-order-dialog__foot {
+  justify-content: space-between;
+}
+
+.task-order-dialog__head {
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.task-order-dialog__status,
+.task-order-dialog__hint,
+.task-order-dialog__evidence {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.task-order-dialog__body {
+  display: grid;
+  gap: 10px;
+}
+
+.task-order-dialog__field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #595959;
+  font-size: 12px;
+}
+
+.task-order-dialog__field small {
+  color: #8c8c8c;
+  font-size: 11px;
+}
+
+.task-order-dialog__field input,
+.task-order-dialog__field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 9px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #262626;
+  font: inherit;
+  line-height: 22px;
+}
+
+.task-order-dialog__field textarea {
+  resize: vertical;
+}
+
+.task-order-dialog__field input:disabled,
+.task-order-dialog__field textarea:disabled {
+  background: #fafafa;
+  color: #595959;
+}
+
+.task-order-dialog__measure {
+  display: grid;
+  gap: 9px;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fcfdff;
+}
+
+.task-order-dialog__type {
+  padding: 0 8px;
+  border-radius: 10px;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-size: 11px;
+  line-height: 20px;
+}
+
+.task-order-dialog__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.task-order-dialog__confirm {
+  flex-wrap: wrap;
+  padding-top: 2px;
+  color: #595959;
+}
+
+.task-order-dialog__confirm label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.task-order-dialog__notice,
+.task-order-dialog__error,
+.task-order-dialog__receipts {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.task-order-dialog__notice {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.task-order-dialog__notice--neutral {
+  background: #f7f9fc;
+  color: #595959;
+}
+
+.task-order-dialog__error {
+  background: #fff1f0;
+  color: #cf1322;
+}
+
+.task-order-dialog__receipts {
+  background: #fafafa;
+  color: #595959;
+}
+
+.task-order-dialog__receipts summary {
+  color: #1677ff;
+  cursor: pointer;
+}
+
+.task-order-dialog__foot {
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.task-order-dialog__foot .task-order-dialog__hint {
+  margin-right: auto;
+}
+
+.task-order-dialog__primary,
+.task-order-dialog__secondary,
+.task-order-dialog__icon {
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #262626;
+  font: inherit;
+  line-height: 30px;
+  cursor: pointer;
+}
+
+.task-order-dialog__primary {
+  padding: 0 14px;
+  border-color: #1677ff;
+  background: #1677ff;
+  color: #fff;
+}
+
+.task-order-dialog__secondary {
+  padding: 0 12px;
+}
+
+.task-order-dialog__icon {
+  width: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 22px;
+}
+
+.task-order-dialog__primary:disabled,
+.task-order-dialog__secondary:disabled,
+.task-order-dialog__icon:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+@media (max-width: 640px) {
+  .task-order-dialog__grid {
+    grid-template-columns: 1fr;
+  }
+  .stage-risk-analysis__head {
+    align-items: flex-start;
+  }
+  .stage-risk-analysis__suggest-actions {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+}

@@ -7,7 +7,7 @@ import pytest
 from bi_agent.cockpit.cards import CONTRACT, card_delivery_state
 from bi_agent.cockpit.delivery import (
     KIND_LABELS, SLOT_SPECS, checkable_acceptance, classify_cause,
-    project_card, validate_reasoning,
+    project_card, sanitize_summary, validate_reasoning,
 )
 from bi_agent.cockpit.store import Store
 
@@ -42,6 +42,37 @@ def test_money_and_energy_cannot_be_compared_without_a_bridge():
     with pytest.raises(ValueError) as error:
         validate_reasoning(value, _evidence(), stage='combined')
     assert '金额与电量' in str(error.value)
+
+
+@pytest.mark.parametrize('summary', [
+    '发货金额增长证明出货量增长。',
+    'Cancelled value below 5% cannot explain shipment volume gap.',
+])
+def test_cross_unit_inference_is_rejected_in_chinese_and_english(summary):
+    with pytest.raises(ValueError) as error:
+        validate_reasoning(_value(summary=summary), _evidence(), stage='combined')
+    assert '金额与电量' in str(error.value)
+
+
+def test_change_amount_is_not_accepted_as_realised_loss_without_evidence():
+    with pytest.raises(ValueError) as error:
+        validate_reasoning(_value(summary='订单变更金额是损失金额。'), _evidence())
+    assert '变更方向' in str(error.value)
+    validate_reasoning(
+        _value(summary='订单变更金额是已核实的净减少损失。'),
+        _evidence(changeDirectionVerified=True, netDecreaseVerified=True), stage='combined')
+
+
+def test_explicit_negative_change_loss_wording_remains_safe():
+    safe = '订单变更金额不是损失金额，需核实变更方向、净额及生效状态。'
+    validate_reasoning(_value(summary=safe), _evidence(), stage='combined')
+    assert sanitize_summary(safe, _evidence()) == safe
+
+
+def test_explicit_unit_caveat_remains_safe():
+    safe = '金额与电量口径不同，不能相互解释，需按统一口径补充映射后再判断。'
+    validate_reasoning(_value(summary=safe), _evidence(), stage='combined')
+    assert sanitize_summary(safe, _evidence()) == safe
 
 
 def test_unverified_set_arithmetic_is_rejected_and_verified_one_passes():
@@ -97,9 +128,15 @@ def test_classify_cause_separates_verified_fact_structure_and_gap():
     assert classify_cause(_cause(status='supported', evidence=('r1',)), {'r1'}) == 'verified'
     assert classify_cause(_cause(title='缺口集中在华东团队')) == 'structure'
     assert classify_cause(_cause(title='客户目标为空')) == 'data_gap'
+    assert classify_cause(_cause(title='口径冲突与发货证据缺口')) == 'data_gap'
     assert classify_cause(_cause(title='出货量低于目标', description='缺口扩大')) == 'fact'
     assert classify_cause(_cause(title='排产延误', description='可能受物料影响')) == 'hypothesis'
     assert KIND_LABELS['hypothesis'] == '待验证假设'
+
+
+def test_summary_removes_generation_instruction_but_keeps_factual_copy():
+    summary = sanitize_summary('存在逾期。短摘要不含业务数字，具体数值见事实字段。', {})
+    assert summary == '存在逾期。'
 
 
 def _card():

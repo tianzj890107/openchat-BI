@@ -110,13 +110,17 @@ def test_task_state_and_revision_guards_are_identity_neutral(tmp_path):
     assert '待确认' in t['measures'][0]['owner']
     assert t['measures'][0]['action'].startswith('建议：')
     assert c.post(url,json=dict(id=2,revision=1,action='close',feedback='ok')).status_code==409
-    t=c.post(url,json=dict(id=2,revision=1,action='issue')).json();assert t['status']=='issued'
-    assert c.post(url,json=dict(id=1,revision=1,action='issue')).status_code==409
+    t=c.post(url,json=dict(id=2,revision=1,action='save',title='测试任务令',goal='完成核查',
+        measures=[dict(id=t['measures'][0]['id'],action=t['measures'][0]['action'],
+                       owner='运营负责人',deadline='3 个工作日',acceptance='提交核查清单',
+                       ownerConfirmed=True,deadlineConfirmed=True)])).json()
+    t=c.post(url,json=dict(id=2,revision=t['revision'],action='issue')).json();assert t['status']=='issued'
+    assert c.post(url,json=dict(id=1,revision=t['revision'],action='issue')).status_code==409
     t=c.post(url,json=dict(id=1,revision=t['revision'],action='accept')).json()
     assert c.post(url,json=dict(id=1,revision=t['revision'],action='feedback')).status_code==409
     t=c.post(url,json=dict(id=1,revision=t['revision'],action='feedback',feedback='演示证据已补充')).json()
     t=c.post(url,json=dict(id=2,revision=t['revision'],action='close',feedback='模拟验收通过')).json()
-    assert t['status']=='closed' and t['simulated'] and len(t['audit'])==5
+    assert t['status']=='closed' and t['simulated'] and len(t['audit'])==6
 
 
 def test_task_draft_accepts_legacy_analysis_without_deadline_days(tmp_path):
@@ -163,7 +167,8 @@ def test_task_dispatch_uses_server_recipient_and_only_issues_after_full_success(
         id=1,revision=task['revision'],action='save',title='发货超期订单处置',
         goal='在期限内关闭可验证的超期事项',
         measures=[dict(id=task['measures'][0]['id'],action='核实并关闭超期订单',
-                       owner='运营负责人',deadline='3 个工作日',acceptance='逐单提供关闭证据')]))
+                       owner='运营负责人',deadline='3 个工作日',acceptance='逐单提供关闭证据',
+                       ownerConfirmed=True,deadlineConfirmed=True)]))
     assert edited.status_code==200, edited.text
     edited=edited.json()
     assert edited['measures'][0]['action']=='核实并关闭超期订单'
@@ -193,6 +198,12 @@ def test_partial_task_dispatch_keeps_the_draft_status_and_replays_receipts(tmp_p
     c=TestClient(app)
     a=wait(c,c.post('/api/cockpit/analyses',json={'id':1,'stage':'shipment'}).json()['id'])
     task=c.post('/api/cockpit/analyses/'+a['id']+'/draft').json()
+    saved=c.post('/api/cockpit/tasks/'+task['id'],json=dict(
+        id=1,revision=task['revision'],action='save',title=task['title'],goal=task['goal'],
+        measures=[dict(id=item['id'],action=item['action'],owner=item['owner'],deadline=item['deadline'],
+                       acceptance=item['acceptance'],ownerConfirmed=True,deadlineConfirmed=True)
+                  for item in task['measures']]))
+    assert saved.status_code==200, saved.text
     result=c.post('/api/cockpit/tasks/'+task['id']+'/dispatch',json={'id':1,'retry':False})
     assert result.status_code==200, result.text
     body=result.json()

@@ -8,6 +8,7 @@ conflicts and acceptance criteria that a single task cannot guarantee.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from copy import deepcopy
 from .risk import build_risk_findings
@@ -65,7 +66,7 @@ SLOT_SPECS = {
         note='跨环节结论必须同口径；口径冲突未对账前只交付各自观察，不汇总缺口。'),
     'opportunity-risk': dict(
         question='商机风险集中在哪些团队、客户等级和项目',
-        kinds=('fact', 'structure', 'data_gap', 'hypothesis'), actions=True,
+        kinds=('fact', 'structure', 'data_gap', 'hypothesis', 'verified'), actions=True,
         max_causes=5,
         note='本卡交付商机缺口的结构定位；缺口分布不等于业务原因。'),
     'opportunity-coverage-note': dict(
@@ -74,12 +75,12 @@ SLOT_SPECS = {
         note='本卡交付覆盖结构与数据缺口，不把目标为空当成原因。'),
     'order-risk-summary': dict(
         question='订单环节有哪些风险，风险能否定位到订单或客户',
-        kinds=('fact', 'structure', 'data_gap', 'hypothesis'), actions=True,
+        kinds=('fact', 'structure', 'data_gap', 'hypothesis', 'verified'), actions=True,
         max_causes=4,
         note='本卡交付风险定位；环节级假设不得填进具体订单行。'),
     'shipment-risk-summary': dict(
         question='发货目标缺口有多大，影响集中在哪些范围',
-        kinds=('fact', 'structure', 'data_gap', 'hypothesis'), actions=True,
+        kinds=('fact', 'structure', 'data_gap', 'hypothesis', 'verified'), actions=True,
         max_causes=4,
         note='商机储备不足只作为上游关联假设，不作为已确认的发货原因。'),
     'shipment-overdue-note': dict(
@@ -101,17 +102,48 @@ SLOT_SPECS = {
 
 _MONEY = ('金额', '亿元', '万元', '元')
 _ENERGY = ('电量', 'GWh', 'kWh', 'MWh', '兆瓦时', '度电', '出货量', '订单量', '数量', '台数')
-_COMPARE = ('解释', '对应', '换算', '相加', '合计', '比较', '占比', '不足', '难以', '不能')
-_CROSS_UNIT = ('解释', '说明', '换算', '相加', '比较', '不足', '难以', '不能', '无法', '排除', '证明')
+_MONEY_TERMS = _MONEY + ('销售额', '发货金额', '订单金额', '变更金额', '损失金额', '营收',
+                          'value', 'amount', 'revenue', 'sales value', 'price', 'cost', 'currency')
+_ENERGY_TERMS = _ENERGY + ('发货量', '出货数量', 'shipment volume', 'shipment quantity',
+                            'volume', 'quantity', 'units', 'energy')
+_CROSS_UNIT = ('解释', '说明', '换算', '相加', '比较', '不足', '难以', '不能', '无法', '排除',
+               '证明', '验证', '推断', '意味着', '支撑',
+               'prove', 'proves', 'proven', 'explain', 'explains', 'explained',
+               'cannot explain', 'cannot be explained', 'can not explain', "can't explain",
+               'does not explain', "doesn't explain", 'insufficient to explain',
+               'derive', 'derives', 'imply', 'implies', 'correspond', 'corresponds',
+               'equal', 'equals')
 _CAUSAL = ('导致', '因为', '由于', '造成', '使得', '致使', '因此', '根源', '之所以')
-_DATA_GAP = ('口径冲突', '证据缺口', '缺失', '未返回', '为空', '空值', '无数据', '未取得', '无法取得', '查询失败',
-             '口径不明', '未对账', '缺失值', '空记录')
+_DATA_GAP = ('缺失', '未返回', '为空', '空值', '无数据', '未取得', '无法取得', '查询失败',
+             '口径不明', '未对账', '缺失值', '空记录', '证据缺口', '数据缺口', '口径冲突',
+             '口径不一致', '口径差异', '证据不足')
 _STRUCTURE = ('集中', '主要来自', '分布', '占比', '结构', '团队', '客户等级', '产品线', '区域')
 _FACT = ('低于', '高于', '缺口', '逾期', '偏离', '超出', '下降', '上升', '未完成', '超期')
 _CAUSE = ('导致', '因为', '由于', '造成', '使得', '致使', '根源')
+_CHANGE_TERMS = ('变更', '取消', 'cancelled', 'canceled', 'change', 'changed')
+_LOSS_TERMS = ('损失', '亏损', '减值', 'loss', 'impairment', 'write-off', 'writeoff')
+_CHANGE_AMOUNT_TERMS = ('变更金额', '取消金额', 'change amount', 'changed amount',
+                        'cancelled value', 'canceled value', 'change value')
+_INSTRUCTION_MARKERS = ('短摘要', '事实字段', '业务数值', '具体数值见', '不重复业务数字',
+                        '不新造比例', '生成说明', '模型执行', '交付说明', '不要生成', '客户摘要')
 _ACCEPTANCE_OK = ('清单', '对账', '确认', '记录', '核查', '复核', '台账', '证据', '留痕')
 _MISSING_CAUSE = ('证据不足：当前分页/记录内没有可引用的逐单处理记录，暂不填写具体原因，'
                   '需先补齐订单状态、计划交付期与变更记录。')
+
+ACTION_INVESTIGATION = 'investigation'
+ACTION_REMEDIATION = 'remediation'
+ACTION_PENDING = 'pending'
+ACTION_TYPES = (ACTION_INVESTIGATION, ACTION_REMEDIATION, ACTION_PENDING)
+DRAFTABLE_ACTION_TYPES = (ACTION_INVESTIGATION, ACTION_REMEDIATION)
+
+_CAUSE_KINDS = ('verified', 'fact', 'structure', 'data_gap', 'hypothesis')
+_INVESTIGATION_TERMS = ('核查', '核实', '核对', '对账', '补齐', '补数', '补充证据', '确认',
+                        '复核', '排查', '检查', '验证', '梳理', '盘点', '取证',
+                        'verify', 'check', 'confirm', 'reconcile', 'audit',
+                        'investigate', 'validate')
+_REMEDIATION_TERMS = ('调整', '重排', '优化', '协调', '提升', '增加', '减少', '更换',
+                      '催办', '推进', '修订', '更新', '处置', '关闭',
+                      'adjust', 'optimize', 'expedite', 'update', 'resolve')
 
 
 def _text(value):
@@ -124,6 +156,24 @@ def _sentences(text):
 
 def _has_any(text, words):
     return any(word in text for word in words)
+
+
+def _has_any_ci(text, words):
+    value = _text(text).lower()
+    return any(str(word).lower() in value for word in words)
+
+
+def _strings(values):
+    return [str(value) for value in (values or []) if str(value).strip()]
+
+
+def _all_evidence_ids(evidence):
+    ids = set()
+    for key in ('facts', 'records', 'evidence'):
+        for item in (evidence or {}).get(key) or []:
+            if isinstance(item, dict) and item.get('id'):
+                ids.add(str(item['id']))
+    return ids
 
 
 def _record_ids(evidence):
@@ -168,6 +218,164 @@ def classify_cause(cause, records=None):
     return 'hypothesis'
 
 
+def infer_action_type(action):
+    """Classify an action without upgrading ambiguous legacy prose.
+
+    New model output must state ``actionType`` explicitly.  This inference is
+    retained for old cached cards: wording that clearly asks for verification
+    becomes an investigation; wording that clearly asks for a business change
+    becomes remediation.  Anything else stays ``pending`` and is not draftable.
+    """
+    declared = _text((action or {}).get('actionType'))
+    if declared in ACTION_TYPES:
+        return declared
+    text = '；'.join(_text((action or {}).get(key)) for key in ('action', 'detail', 'acceptance'))
+    if _has_any_ci(text, _INVESTIGATION_TERMS):
+        return ACTION_INVESTIGATION
+    if _has_any_ci(text, _REMEDIATION_TERMS):
+        return ACTION_REMEDIATION
+    return ACTION_PENDING
+
+
+def normalize_delivery_contract(value, evidence=None):
+    """Add v2 classifications without destroying legacy payloads.
+
+    This function is deliberately non-rejecting: display can still show an old
+    card while server-side draft selection applies the stricter rules.  User
+    confirmation flags are always reset on model/cached output and can only be
+    set while saving an editable draft.
+    """
+    out = deepcopy(value or {})
+    records = _record_ids(evidence)
+    causes = []
+    for raw in out.get('causes') or []:
+        if not isinstance(raw, dict):
+            continue
+        cause = deepcopy(raw)
+        kind = _text(cause.get('kind'))
+        if kind not in _CAUSE_KINDS:
+            kind = classify_cause(cause, records)
+        cause['kind'] = kind
+        cause['evidenceIds'] = _strings(cause.get('evidenceIds'))
+        cause['missingEvidence'] = _strings(cause.get('missingEvidence'))
+        causes.append(cause)
+    by_id = {str(cause.get('id')): cause for cause in causes if cause.get('id')}
+    actions = []
+    for raw in out.get('recommendations') or []:
+        if not isinstance(raw, dict):
+            continue
+        action = deepcopy(raw)
+        action['actionType'] = infer_action_type(action)
+        action['causeIds'] = _strings(action.get('causeIds'))
+        evidence_ids = _strings(action.get('evidenceIds'))
+        if not evidence_ids:
+            for cause_id in action['causeIds']:
+                evidence_ids.extend(by_id.get(cause_id, {}).get('evidenceIds') or [])
+        action['evidenceIds'] = list(dict.fromkeys(evidence_ids))
+        action['ownerConfirmed'] = False
+        action['deadlineConfirmed'] = False
+        actions.append(action)
+    out['causes'] = causes
+    out['recommendations'] = actions
+    return out
+
+
+def validate_action_contract(value, evidence=None, *, seen=None, strict=False):
+    """Validate action type, cause/evidence references and remediation support."""
+    issues = []
+    causes = {str(item.get('id')): item for item in (value or {}).get('causes') or []
+              if isinstance(item, dict) and item.get('id')}
+    available = _all_evidence_ids(evidence)
+    queried = set(map(str, seen)) if seen is not None else set(available)
+    for action in (value or {}).get('recommendations') or []:
+        if not isinstance(action, dict):
+            continue
+        aid = _text(action.get('id')) or '未命名建议'
+        action_type = _text(action.get('actionType')) or infer_action_type(action)
+        if strict and action_type not in DRAFTABLE_ACTION_TYPES:
+            issues.append(f'建议“{aid}”尚未明确为核查或改善动作，不能作为可下发建议')
+            continue
+        linked = set(_strings(action.get('causeIds')))
+        unknown_causes = linked - set(causes)
+        if unknown_causes:
+            issues.append(f'建议“{aid}”引用了不存在或已被过滤的原因：{", ".join(sorted(unknown_causes))}')
+        evidence_ids = set(_strings(action.get('evidenceIds')))
+        if available:
+            unknown_evidence = evidence_ids - available
+            unread_evidence = evidence_ids - queried
+            if unknown_evidence:
+                issues.append(f'建议“{aid}”引用了不存在的证据：{", ".join(sorted(unknown_evidence))}')
+            if unread_evidence:
+                issues.append(f'建议“{aid}”引用了本轮未读取的证据：{", ".join(sorted(unread_evidence))}')
+        if not evidence_ids and (strict or available):
+            issues.append(f'建议“{aid}”缺少证据引用；需关联原因证据或数据缺口记录')
+        if action_type == ACTION_REMEDIATION:
+            if not linked:
+                issues.append(f'改善建议“{aid}”必须关联已核实原因，不能直接引用风险事实或数据缺口')
+            supported = [causes[item] for item in linked if item in causes
+                         and causes[item].get('kind') == 'verified'
+                         and causes[item].get('status') == 'supported']
+            if linked and not supported:
+                issues.append(f'改善建议“{aid}”关联的原因尚未得到记录支持，应先形成核查任务')
+    if issues:
+        raise ValueError('；'.join(dict.fromkeys(issues))[:1200])
+    return value
+
+
+def draft_selection_key(recommendation_ids):
+    value = '|'.join(sorted(set(map(str, recommendation_ids or []))))
+    return hashlib.sha256(value.encode('utf-8')).hexdigest()[:20]
+
+
+def draftable_actions(value, evidence=None, recommendation_ids=None):
+    """Return only actions that may become a task draft.
+
+    ``recommendation_ids=None`` means all currently open draftable actions.
+    Explicit ids are validated against the analysis, not trusted as task text.
+    """
+    normalized = normalize_delivery_contract(value, evidence)
+    available = _all_evidence_ids(evidence)
+    all_actions = {str(item.get('id')): item for item in normalized.get('recommendations') or []
+                   if isinstance(item, dict) and item.get('id')}
+    requested = None if recommendation_ids is None else list(dict.fromkeys(map(str, recommendation_ids)))
+    ids = list(all_actions) if requested is None else requested
+    missing = [item for item in ids if item not in all_actions]
+    if missing:
+        raise ValueError('建议已关闭、已过滤或不属于当前分析：' + '、'.join(missing))
+    selected = [all_actions[item] for item in ids]
+    rejected = []
+    for action in selected:
+        action_type = action.get('actionType') or infer_action_type(action)
+        if action_type not in DRAFTABLE_ACTION_TYPES:
+            rejected.append(f'建议“{action.get("id")}”尚待确认')
+            continue
+        try:
+            validate_action_contract({'causes': normalized.get('causes') or [],
+                                      'recommendations': [action]}, evidence,
+                                     strict=bool(available))
+        except ValueError as exc:
+            rejected.append(str(exc))
+    if rejected:
+        raise ValueError('；'.join(dict.fromkeys(rejected))[:1200])
+    return selected, draft_selection_key([action['id'] for action in selected])
+
+
+def recommendation_empty_state(causes, recommendations):
+    """Human-readable gap that matches what is actually missing."""
+    causes = [item for item in causes or [] if isinstance(item, dict)]
+    recommendations = [item for item in recommendations or [] if isinstance(item, dict)]
+    if recommendations:
+        types = {item.get('actionType') or infer_action_type(item) for item in recommendations}
+        if types <= {ACTION_INVESTIGATION}:
+            return '可先生成核查任务，改善措施待核实后补充。'
+        return ''
+    if causes and any((item.get('kind') or classify_cause(item)) == 'hypothesis' for item in causes):
+        return '以下为待验证假设；当前无核查建议，暂不能生成任务草稿。'
+    if causes:
+        return '当前缺少明确核查对象或必要口径，暂不能生成任务草稿。'
+    return '当前只能定位异常，缺少处理记录，尚未形成原因判断。'
+
+
 def checkable_acceptance(text):
     return _has_any(_text(text), _ACCEPTANCE_OK)
 
@@ -203,29 +411,31 @@ def _missing_overdue_status(evidence):
 def validate_reasoning(value, evidence, *, stage='', slot=''):
     """Raise ``ValueError`` when the delivered prose outruns its evidence."""
     issues = []
-    summary = _text((value or {}).get('summary'))
-    causes = list((value or {}).get('causes') or [])
-    actions = list((value or {}).get('recommendations') or [])
+    original_actions = list((value or {}).get('recommendations') or [])
+    strict_contract = any(any(key in action for key in (
+        'actionType', 'evidenceIds', 'ownerConfirmed', 'deadlineConfirmed'))
+        for action in original_actions if isinstance(action, dict))
+    normalized = normalize_delivery_contract(value, evidence)
+    summary = _text(normalized.get('summary'))
+    causes = list(normalized.get('causes') or [])
+    actions = list(normalized.get('recommendations') or [])
     records = _record_ids(evidence)
 
-    # 1. Money and energy cannot be compared without an explicit bridge.
+    # 1. Money and energy cannot be compared without an explicit bridge, and
+    #    changed/cancelled value is not automatically a realised loss.
     claims = [summary]
     claims += [_text(c.get('title')) + '；' + _text(c.get('description')) for c in causes]
     claims += [_text(a.get('action')) + '；' + _text(a.get('detail')) for a in actions]
     for claim in claims:
         for sentence in _sentences(claim):
-            if _has_any(sentence, _MONEY) and _has_any(sentence, _ENERGY) and _has_any(sentence, _COMPARE):
+            if _bad_unit_claim(sentence):
                 issues.append('同一判断混用金额与电量口径：需要单价、产品结构或交期映射才能比较，请拆分或删除该推断')
-
-    # 2. Cancelled/changed plus unsigned sets cannot be added unless verified.
-    for claim in claims:
-        for sentence in _sentences(claim):
-            sets = _has_any(sentence, ('取消', '变更')) and _has_any(sentence, ('中标未签', '未签'))
-            if not sets:
-                continue
-            if _has_any(sentence, ('相加', '合计', '之和', '叠加', '不足以解释', '难以解释', '不能解释')):
-                if not (evidence or {}).get('setOverlapVerified'):
-                    issues.append('取消/变更与中标未签两个集合的期间、重叠关系和是否对应当期应发货订单尚未验证，不能相加或据此排除缺口；请改为“尚不能建立与出货缺口的对应关系，需按订单和计划交付期间核对”')
+            if _bad_set_claim(sentence, evidence):
+                issues.append('取消/变更与中标未签两个集合的期间、重叠关系和是否对应当期应发货订单尚未验证，不能相加或据此排除缺口；请改为“尚不能建立与出货缺口的对应关系，需按订单和计划交付期间核对”')
+            if _bad_attrition_claim(sentence, evidence):
+                issues.append('变更/取消金额的占比或量级不能单独解释电量或出货缺口；需先核对集合关系、期间和单位口径')
+            if _bad_change_loss_claim(sentence, evidence):
+                issues.append('订单变更或取消金额不等于已实现损失；需先核实变更方向、净额、生效状态及订单集合')
 
     # 3. A target-total conflict must be visible in the summary, not only limits.
     if _has_target_conflict(evidence):
@@ -255,6 +465,12 @@ def validate_reasoning(value, evidence, *, stage='', slot=''):
         if not checkable_acceptance(action.get('acceptance')):
             issues.append('验收标准必须是可检查的清单、对账或确认记录，不能写“缺口不再扩大”等单一任务无法保证的结果')
 
+    if strict_contract:
+        try:
+            validate_action_contract(normalized, evidence, strict=True)
+        except ValueError as exc:
+            issues.append(str(exc))
+
     if issues:
         raise ValueError('；'.join(dict.fromkeys(issues))[:1200])
     return value
@@ -271,20 +487,45 @@ def _bad_set_claim(sentence, evidence):
 
 
 def _bad_unit_claim(sentence):
-    return (_has_any(sentence, _MONEY) and _has_any(sentence, _ENERGY)
-            and _has_any(sentence, _CROSS_UNIT))
+    text = _text(sentence)
+    if _has_any_ci(text, ('口径不同', '不同口径', '不能相互解释', '不能直接比较',
+                          '需按统一口径', '需要映射', 'not comparable')):
+        return False
+    return (_has_any_ci(text, _MONEY_TERMS) and _has_any_ci(text, _ENERGY_TERMS)
+            and _has_any_ci(text, _CROSS_UNIT))
+
+
+def _change_loss_verified(evidence):
+    return any((evidence or {}).get(key) for key in (
+        'changeDirectionVerified', 'netDecreaseVerified', 'changeEffectiveVerified', 'lossVerified'))
+
+
+def _bad_change_loss_claim(sentence, evidence):
+    text = _text(sentence)
+    if _has_any_ci(text, ('不是损失', '不等于损失', '不能视为损失', 'not a loss',
+                          'not equal to loss', 'cannot be treated as loss', 'no evidence of loss')):
+        return False
+    change_amount = (_has_any_ci(text, _CHANGE_AMOUNT_TERMS)
+                     and _has_any_ci(text, _MONEY_TERMS))
+    asserted_loss = (_has_any_ci(text, _LOSS_TERMS)
+                     and _has_any_ci(text, ('是', '为', '等于', '构成', '造成', '计入',
+                                            'is', 'are', 'equal', 'equals', 'means', 'represents')))
+    return change_amount and asserted_loss and not _change_loss_verified(evidence)
 
 
 def _bad_attrition_claim(sentence, evidence):
-    claim = _has_any(sentence, ('量级有限', '规模有限', '占比不足', '不足以解释',
-                                '难以解释', '不能解释', '不足以', '难以', '不能'))
+    claim = _has_any_ci(sentence, ('量级有限', '规模有限', '占比不足', '不足以解释',
+                                   '难以解释', '不能解释', '不足以', '难以', '不能',
+                                   'insufficient to explain', 'cannot explain',
+                                   'does not explain', "doesn't explain"))
     return (not (evidence or {}).get('setOverlapVerified')
-            and _has_any(sentence, ('取消', '变更')) and claim)
+            and _has_any_ci(sentence, _CHANGE_TERMS) and claim)
 
 
 def _unsupported_inference(text, evidence):
     return any(_bad_set_claim(sentence, evidence) or _bad_unit_claim(sentence)
                or _bad_attrition_claim(sentence, evidence)
+               or _bad_change_loss_claim(sentence, evidence)
                for sentence in _sentences(text))
 
 
@@ -308,13 +549,27 @@ def sanitize_summary(text, evidence):
                 replaced.add(replacement)
             seen.add(key)
             continue
+        if _bad_change_loss_claim(sentence, evidence):
+            replacement = '订单变更金额不等于损失金额，需核实变更方向、净额及生效状态'
+            if replacement not in replaced:
+                kept.append(replacement)
+                replaced.add(replacement)
+            seen.add(key)
+            continue
         clauses = [part.strip() for part in re.split(r'[,，]', sentence) if part.strip()]
         unsupported = [claim for claim in clauses
                        if (_bad_set_claim(claim, evidence) or _bad_unit_claim(claim)
-                           or _bad_attrition_claim(claim, evidence))]
-        clean = [claim for claim in clauses if claim not in unsupported]
+                           or _bad_attrition_claim(claim, evidence)
+                           or _bad_change_loss_claim(claim, evidence))]
+        clean = [claim for claim in clauses
+                 if claim not in unsupported and not _has_any_ci(claim, _INSTRUCTION_MARKERS)]
         if clean:
             kept.append('，'.join(clean))
+            seen.add(key)
+            continue
+        if not unsupported:
+            # The sentence only contained generation/delivery instructions.
+            # Remove it without inventing an unrelated business conclusion.
             seen.add(key)
             continue
         replacement = UNIT_REPLACEMENT if any(_bad_unit_claim(claim) for claim in unsupported) \
@@ -414,7 +669,10 @@ def project_card(item, slot):
     if not isinstance(result, dict):
         return out
     evidence = out.get('evidence') or {}
+    result = normalize_delivery_contract(result, evidence)
+    out['result'] = result
     records = _record_ids(evidence)
+    available_evidence = _all_evidence_ids(evidence)
     # Missing per-order overdue status must not be answered with the shipment
     # target-gap analysis that happens to share the stage.
     suppress_gap = (slot in {'shipment-overdue-note', 'shipment-cause-breakdown', 'overdue-order-list'}
@@ -426,7 +684,7 @@ def project_card(item, slot):
         if _unsupported_inference(
                 _text(cause.get('title')) + '；' + _text(cause.get('description')), evidence):
             continue
-        kind = classify_cause(cause, records)
+        kind = cause.get('kind') or classify_cause(cause, records)
         cause['kind'] = kind
         if spec['kinds'] is not None and kind not in spec['kinds']:
             continue
@@ -452,16 +710,36 @@ def project_card(item, slot):
             result.get('summary'), '当前证据未包含订单状态与已签/未签结构，不能解释签单结构')
     actions = []
     if spec['actions']:
-        cause_ids = {str(cause.get('id')) for cause in kept}
+        cause_map = {str(cause.get('id')): cause for cause in kept}
         for action in result.get('recommendations') or []:
             if not isinstance(action, dict):
                 continue
-            # Every referenced cause must still exist.  A partially dangling
-            # reference is a contract error, not a usable suggestion.
             linked = [str(item) for item in (action.get('causeIds') or [])]
-            if not linked or not set(linked) <= cause_ids:
+            # A linked cause that was filtered out is a dangling reference.  A
+            # data-gap investigation may deliberately have no cause and cite
+            # evidence directly.
+            if linked and not set(linked) <= set(cause_map):
+                continue
+            evidence_ids = set(_strings(action.get('evidenceIds')))
+            if available_evidence and evidence_ids - available_evidence:
                 continue
             value = dict(action)
+            action_type = value.get('actionType') or infer_action_type(value)
+            reasons = []
+            if action_type == ACTION_REMEDIATION:
+                supported = [cause_map[item] for item in linked if item in cause_map
+                             and cause_map[item].get('kind') == 'verified'
+                             and cause_map[item].get('status') == 'supported']
+                if not linked:
+                    reasons.append('改善建议缺少已核实原因')
+                elif not supported:
+                    reasons.append('关联原因尚未得到记录支持')
+            if available_evidence and not evidence_ids:
+                reasons.append('缺少证据引用')
+            if reasons:
+                action_type = ACTION_PENDING
+                value['actionTypeIssue'] = '；'.join(reasons)
+            value['actionType'] = action_type
             value['action'] = _suggest(value.get('action'))
             value['ownerRole'] = _pending_owner(value.get('ownerRole'))
             value['acceptance'] = _checkable(value.get('acceptance'))

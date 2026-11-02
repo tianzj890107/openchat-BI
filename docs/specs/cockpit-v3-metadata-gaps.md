@@ -36,14 +36,18 @@
 
 ## 智能分析插槽
 
-交付根配置本身没有 `insights` 字段。宿主从 `iba-demo-1021/insights.json` 补入 12 个插槽声明，
+交付根配置本身没有 `insights` 字段。宿主从 `iba-demo-1021/insights.json` 补入 15 个插槽声明，
 并保留完整 Tab `embedPath`：
 
 - 经营看板 0 个。
-- 运营 360 4 个：`bid-status-note`、`quote-summary`、`bid-summary`、`order-sign-summary`。
-- 穿透式问题分析 8 个：`sales-shipment-issues`、`opportunity-risk`、`opportunity-coverage-note`、
-  `order-risk-summary`、`shipment-risk-summary`、`shipment-overdue-note`、
-  `shipment-cause-breakdown`、`shipment-task-order`。
+- 运营 360 5 个：`bid-status-note`、`quote-summary`、`bid-summary`、`order-sign-summary`、
+  `star-product-order-list`。
+- 穿透式问题分析 10 个：`sales-shipment-issues`、`opportunity-risk`、`opportunity-coverage-note`、
+  `order-risk-summary`、`affected-order-list`、`shipment-risk-summary`、`shipment-overdue-note`、
+  `shipment-cause-breakdown`、`overdue-order-list`、`shipment-task-order`。
+
+其中 `shipment-task-order` 已作为隐藏兼容占位保留在 15 槽注册表和服务端发布契约中；用户可见的
+任务令草稿按钮已统一放入商机、订单、发货三个风险卡的建议区，避免同一范围出现两个入口和不同草稿。
 
 插槽内容调用主服务 `/api/cockpit/analyses` 的真实模型分析。主路线按可见插槽和当前节点串行调度，
 不再空闲预取五个环节；插槽挂载时复用同一分析 Promise，点击头盔节点不重新请求，只有“重新分析”才强制刷新。
