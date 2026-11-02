@@ -1,7 +1,7 @@
 # 前端交付元数据：feature/demo_1021
 
 来源：[iba-demo](http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021)，
-固定 commit `cd8d71fd6278dcf9630043d00bb95e62d97b347a`。
+固定 commit `cdaa3b683489e911fdf62d2d1d80b6ee265c8727`。
 `components.json`、`template-registry.json`、`insights.js` 和 `activate-rules.json`
 按上游原样复制；`insights.json` 由声明式 `insights.js` 转为 JSON。
 哈希、类型统计、跳转规则数量和已知问题见 `source.json`。
@@ -25,6 +25,11 @@
 POST /api/gateway2/x360/v1/ontology/data/query
 X-Ontology-Repository-Id: 8
 ```
+
+新版头盔组件支持元数据配置 `graphConfig.helmetViewUrl`。上游交付值指向演示环境
+`172.16.5.230`，浏览器不能直连；运行包导出时统一改写为
+`/api/gateway2/x360/v1/graphs/helmet-view`，再由主服务携带凭据请求 AP，页面不接触
+内网 AP 地址或认证信息。
 
 页面只注入 `postAnalysisDataQuery`，不注入批量适配器。ProUI 新版在批量适配器缺失时，
 按单个查询并发兜底；批量接口仍在请求本体、当前不可用，因此不能把批量错误包装成空结果。

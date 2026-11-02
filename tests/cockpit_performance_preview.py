@@ -75,28 +75,32 @@ def seed_risk_cards(count:int=3):
  count=max(1,min(int(count),4))
  st=Store(scratch/'dataset/cockpit/history.sqlite3')
  identity=gateway.config.identity()
- for stage in ('opportunity','shipment'):
+ pages={'bid':'operations','quotation':'operations','order':'operations',
+        'opportunity':'analysis','shipment':'analysis','combined':'analysis'}
+ for stage,page in pages.items():
   scope='qa-risk-'+stage
-  context=dict(id=1,engine='main',page='analysis',stage=stage,source='service',
+  context=dict(id=1,engine='main',page=page,stage=stage,source='service',
     period='2025-10',department='全部产品部',filters={},chartSnapshotId=RELEASE,
     dataSource='ap',dataIdentity=identity)
+  has_risks=stage in {'opportunity','shipment'}
   causes=[dict(id=f'qa-cause-{i+1}',title=['客户等级分布缺口','产品结构缺口','订单处理缺口','区域覆盖缺口'][i],
     description='本地浏览器验收用风险定位，不代表真实经营结论。',status='hypothesis',
-    evidenceIds=[f'qa-evidence-{i+1}']) for i in range(count)]
+    evidenceIds=[f'qa-evidence-{i+1}']) for i in range(count)] if has_risks else []
   findings=[dict(id=f'qa-risk-{i+1}',kind='risk_fact',
     title=['客户覆盖低于目标','产品覆盖低于目标','订单处理低于目标','区域覆盖低于目标'][i],
     description='本地浏览器验收用风险事实，不代表真实经营结论。',
     metricCodes=[f'QA_RISK_{i+1}'],evidenceIds=[f'qa-evidence-{i+1}'],
-    riskDomain='sales' if stage=='opportunity' else 'shipment') for i in range(count)]
+    riskDomain='sales' if stage=='opportunity' else 'shipment') for i in range(count)] if has_risks else []
   result=dict(summary='本地浏览器验收风险卡片',causes=causes,recommendations=[],findings=findings,
     limitations=['仅本地自动化测试，不代表真实业务结论'],cardContract=CONTRACT)
   evidence=dict(facts=[],records=[],evidence=[dict(id=f'qa-evidence-{i+1}',
-    claim='本地浏览器验收证据') for i in range(count)],limitations=['仅本地自动化测试'])
+    claim='本地浏览器验收证据') for i in range(count)] if has_risks else [],
+    limitations=['仅本地自动化测试'])
   item=st.create_analysis(scope,context)
   st.update_analysis(item['id'],status='limited',progress='QA',result=result,evidence=evidence)
   if not st.publish(item['id']):raise HTTPException(500,'QA卡片发布失败')
   if not st.bind_view(view_scope(context),stage,scope):raise HTTPException(500,'QA卡片绑定失败')
- return {'ok':True,'count':count,'stages':['opportunity','shipment']}
+ return {'ok':True,'count':count,'stages':list(pages)}
 @app.post('/debug/change')
 async def change(req:Request):
  args=await req.json()

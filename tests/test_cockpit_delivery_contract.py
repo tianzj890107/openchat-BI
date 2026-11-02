@@ -369,6 +369,8 @@ def test_risk_counts_separate_sales_and_shipment_and_require_complete_sources():
     assert counts['shipment']['count'] == 1
     assert counts['sales']['known'] is True
     assert counts['shipment']['known'] is True
+    assert counts['sales']['complete'] is True
+    assert counts['shipment']['complete'] is True
 
     counts = summarize_risk_counts({
         'opportunity-risk': slot('opportunity', sales),
@@ -376,4 +378,5 @@ def test_risk_counts_separate_sales_and_shipment_and_require_complete_sources():
         'shipment-risk-summary': slot('shipment', shipment),
     })
     assert counts['sales']['known'] is False
+    assert counts['sales']['complete'] is False
     assert counts['sales']['count'] == 1

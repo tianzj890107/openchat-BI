@@ -144,11 +144,11 @@
       if(!Number.isFinite(count))continue;
       const current=value.scopeMatch!==false&&item.scopeMatch!==false;
       if(item.known===true&&current)riskMetricCounts.set(metric,count);
-      else if(!riskMetricCounts.has(metric))riskMetricCounts.set(metric,count);
+      else if(!riskMetricCounts.has(metric)&&item.complete===true)riskMetricCounts.set(metric,count);
     }
   }
   function riskCountForMetric(metric) {
-    return riskMetricCounts.get(metric) ?? 0;
+    return riskMetricCounts.has(metric) ? riskMetricCounts.get(metric) : null;
   }
   function syncRiskCountLabels(runtime) {
     if(!runtime?.updateComponentMeta)return;
@@ -158,6 +158,7 @@
     }
     for(const target of RISK_COUNT_TARGETS) {
       const count=riskCountForMetric(target.metric);
+      if(count===null)continue;
       const label=`${count}条风险`;
       if(appliedRiskCountLabels.get(target.componentId)===label)continue;
       const result=runtime.updateComponentMeta(target.componentId,RISK_COUNT_PATH,label,{

@@ -4170,6 +4170,7 @@
         "showHeader": true,
         "graphConfig": {
           "processCode": "FULL_PROCESS_OPERATIONS_MANAGEMENT",
+          "helmetViewUrl": "http://172.16.5.230:8080/v1/graphs/helmet-view",
           "graphTemplateSwitchRules": [
             {
               "nodeId": "2109848488855519233",
@@ -10178,6 +10179,7 @@
         "graphConfig": {
           "defaultActiveKey": "2109840325158682625",
           "processCode": "SALES_CALIBER",
+          "helmetViewUrl": "http://172.16.5.230:8080/v1/graphs/helmet-view",
           "graphTemplateSwitchRules": [
             {
               "nodeId": "2109840325158682625",

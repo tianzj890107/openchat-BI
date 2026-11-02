@@ -58,7 +58,8 @@ test('risk labels always show a count and keep the last known value for incomple
   assert.match(cockpit, /const riskMetricCounts = new Map\(\);/);
   assert.match(cockpit, /function applyRiskCounts\(value\) \{/);
   assert.match(cockpit, /if\(item\.known===true&&current\)riskMetricCounts\.set\(metric,count\);/);
-  assert.match(cockpit, /else if\(!riskMetricCounts\.has\(metric\)\)riskMetricCounts\.set\(metric,count\);/);
+  assert.match(cockpit, /else if\(!riskMetricCounts\.has\(metric\)&&item\.complete===true\)riskMetricCounts\.set\(metric,count\);/);
+  assert.match(cockpit, /if\(count===null\)continue;/);
   assert.match(cockpit, /const label=`\$\{count\}条风险`;/);
   assert.doesNotMatch(cockpit, /风险分析中/);
 });

@@ -289,10 +289,12 @@ def summarize_risk_counts(slots: dict[str, dict]) -> dict[str, dict]:
                     continue
                 unique.setdefault(_dedupe_key(item), item)
         scope_match = all(slot.get('scopeMatch') is not False for slot in relevant)
-        known = bool(ready) and len(ready) == len(relevant) and scope_match
+        complete = bool(relevant) and len(ready) == len(relevant)
+        known = complete and scope_match
         result[domain] = dict(
             count=len(unique),
             known=known,
+            complete=complete,
             scopeMatch=scope_match,
             sourceSlots=len(relevant),
             readySlots=len(ready),

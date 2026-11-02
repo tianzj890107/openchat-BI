@@ -141,8 +141,13 @@ test('host utilities accept only the fixed read-only graph interface', async () 
   const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>{calls++;return ok('graph',{nodes:[]});}});
   assert.ok((await client.utils.request({url:'http://foreign/admin/delete'}))[0]);
   assert.equal(calls,0);
-  const [error,result]=await client.utils.request({url:'/x360/v1/graphs/helmet-view',params:{flowCode:'SALES_CALIBER'}});
-  assert.equal(error,null);assert.deepEqual(result.data,{nodes:[]});
+  for(const url of ['/x360/v1/graphs/helmet-view','/api/gateway2/x360/v1/graphs/helmet-view']){
+    const [error,result]=await client.utils.request({url,params:{flowCode:'SALES_CALIBER'}});
+    assert.equal(error,null);assert.deepEqual(result.data,{nodes:[]});
+  }
+  assert.equal(calls,2);
+  assert.ok((await client.utils.request({url:'http://172.16.5.230:8080/v1/graphs/helmet-view'}))[0]);
+  assert.equal(calls,2);
   assert.throws(()=>client.scope(),/加载/); // Graph metadata is not business evidence.
 });
 
