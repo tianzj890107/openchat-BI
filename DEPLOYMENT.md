@@ -1514,3 +1514,14 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 验证：`/healthz`、三页入口、静态资源和 Cockpit API 均返回 200；两个角色 `id=1|2` 的 `/api/cockpit/ai-publications` 均为 `readyCount=15`、`missingCount=0`、`renderableCount=15`。真实 headless Chrome 覆盖 8765 两角色三页面共 6 组路由及 8876 代理入口，未出现看板配置加载失败、`ReferenceError` 或浏览器异常；风险数量标签可从“风险分析中”更新为实际条数。
 - 自动化验证：Cockpit 相关 Python 222 项通过，Node 看板测试 83 项通过；新增专项浏览器回归覆盖 AI 结果先于 runtime 返回、三个页面首次打开、切 Tab 和筛选重建，`git diff --check` 通过。本次未手动触发 AP、模型分析或任务下发。
 - 回退：停止 8765 PID `3677772`，在 `process360-cockpit-8e1c888-20261031` 执行 `nohup python3 start-main.py >> main-8e1c888.log 2>&1 &` 恢复旧版本；不得删除新 release、历史 release、备份、共享 `dataset`、会话、上传、图表或分析记录。8876 仍代理到恢复后的 8765，无需改 nginx。
+
+### 2026-11-02 · 风险事实计数与头盔组件接口同步发布
+
+- 部署代码 `84fd3b803e89237b9b60601cd77e158cd6d999c4`（`bugfix/cockpit-disable-ap-reuse-cache`）：顶栏风险数改为只统计当前指标范围内、证据有效且去重的 `risk_fact`，销售额与出货量分域计数；原因、数据缺口、结构定位不进入风险数。发布响应同时返回 `known` 与 `complete`，数据不完整时保留上次有效标签，不把未知状态显示成 `0条风险`。同步 `iba-demo feature/demo_1021@cdaa3b6` 的 `pro-bi-ui.min.js` 和模板，支持 `helmetViewUrl`，并把上游内网绝对地址在运行包中统一改写为 `/api/gateway2/x360/v1/graphs/helmet-view`。
+- `8765` 主服务：release `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-84fd3b8-20261102-102335`，PID `3851649`。新 release 先在 `18765` 预检，预检进程 `3850132` 已停止；预检显式关闭刷新调度，正式进程继续沿用 `COCKPIT_REFRESH_ENABLED=1`。旧 release `process360-cockpit-990c4fa-20261102-094608` 与旧 PID `3677772` 保留用于回退。
+- 运行边界：`.env`、`.venv` 继续软链到 `mcp-11dc92c-20261020`，`dataset` 继续软链到共享数据目录；`git archive` 自带数据目录保留为 `dataset.git-archive-84fd3b8`。`runtime-env.json` 权限 600，`RELEASE_COMMIT`、`PYTHONPATH`、`PWD` 指向新 release。未迁移、清空或覆盖历史会话、上传、图表、分析结果，未修改 AP 凭据、本体或数据库配置。
+- `8876` 保持既有反向代理到 `8765`，本轮不构建或覆盖静态站、不重启 nginx；根地址、三个 Cockpit 路由和 API 代理均返回 200。
+- 验证：`/healthz`、三页入口、`data/config`、`engines`、`metadata` 和新版 `pro-bi-ui.min.js` 均返回 200，静态包 SHA256 为 `68f6bb8f...`；运行包 `source.commit=cdaa3b6`，不含 `172.16.5.230`，两个头盔组件的 `helmetViewUrl` 均为受控网关路径。两个角色 `id=1|2` 的 `/api/cockpit/ai-publications` 均为 `readyCount=15`、`missingCount=0`、`renderableCount=15`。
+- 风险计数实测：`id=1` 的销售额为 `1` 条、出货量为 `2` 条；`id=2` 的销售额为 `2` 条、出货量为 `0` 条，出货量来源完整且 `known=true`。真实 headless Chrome 验证三页和 Tab 切换无看板配置错误或浏览器异常，`id=1` 顶栏显示 `1条风险/2条风险`，`id=2` 显示 `2条风险/0条风险`，不再出现“风险分析中”。
+- 自动化验证：Cockpit 相关 Python 289 项通过，Node 看板测试 84 项通过；`git diff --check` 通过。页面验收产生正常的图表 AP 读取；未手工调用分析接口、未发送任务令。
+- 回退：停止 8765 PID `3851649`，在 `process360-cockpit-990c4fa-20261102-094608` 使用 `.venv/bin/python start-main.py` 恢复旧版本；不得删除新 release、历史 release、共享 `dataset`、会话、上传、图表或分析记录。8876 继续代理恢复后的 8765，无需修改 nginx。
