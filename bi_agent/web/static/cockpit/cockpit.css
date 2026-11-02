@@ -5,7 +5,7 @@ body{overflow-x:hidden;background:var(--dashboard-canvas-bg,#fff);color:#1f2329;
 .cockpit-main{width:100%;min-height:100vh;margin:0;background:transparent}
 .visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 
-.cockpit-tabs{position:sticky;top:0;z-index:20;padding:0 20px;background:#fff}
+.cockpit-tabs{position:sticky;top:0;z-index:20;padding:0 20px;background:var(--cockpit-surface)}
 .cockpit-tabs>.pro-tabs__header{flex:0 0 50px;width:100%;height:50px;margin:0;padding:0}
 .cockpit-tabs .pro-tabs__nav-wrap{margin-bottom:0}
 .cockpit-tabs .pro-tabs__nav-wrap:after{height:1px}
@@ -21,103 +21,103 @@ body{overflow-x:hidden;background:var(--dashboard-canvas-bg,#fff);color:#1f2329;
 .cockpit-board .pro-bi-in-card-insight-zone--contain::-webkit-scrollbar{width:4px}
 .cockpit-board .pro-bi-in-card-insight-zone--contain::-webkit-scrollbar-thumb{border-radius:4px;background:#c9d1dc}
 
-.insight-scope-notice{margin:0 0 2px;padding:7px 10px;border:1px solid #ffe58f;border-radius:6px;background:#fffbe6;color:#ad6800;font-size:12px;line-height:20px}
-.stage-risk-analysis{display:flex;flex-direction:column;gap:8px;min-width:0;margin:0;color:#262626;font-size:13px;line-height:22px;overflow-wrap:anywhere}
-.stage-risk-analysis__card{min-width:0;padding:14px 16px 12px;border:1px solid #f0f0f0;border-radius:8px;background:#fff}
-.stage-risk-analysis__overview{background:var(--pro-bi-card-bg,var(--dashboard-component-bg,#fff));border-color:var(--pro-bi-card-border,var(--dashboard-component-border,#e8e8e8))}
-.stage-risk-analysis__card--risk{border-left:3px solid #cf1322}
-.stage-risk-analysis__card--cause{border-left:3px solid #d46b08}
-.stage-risk-analysis__card--suggest{border-left:3px solid #1677ff}
+.insight-scope-notice{margin:0 0 2px;padding:7px 10px;border:1px solid var(--cockpit-divider);border-radius:6px;background:var(--cockpit-warning-bg);color:var(--cockpit-warning);font-size:12px;line-height:20px}
+.stage-risk-analysis{display:flex;flex-direction:column;gap:8px;min-width:0;margin:0;color:var(--cockpit-text);font-size:13px;line-height:22px;overflow-wrap:anywhere}
+.stage-risk-analysis__card{min-width:0;padding:14px 16px 12px;border:1px solid var(--cockpit-divider);border-radius:8px;background:var(--cockpit-surface)}
+.stage-risk-analysis__overview{background:var(--pro-bi-card-bg,var(--dashboard-component-bg,var(--cockpit-surface)));border-color:var(--pro-bi-card-border,var(--dashboard-component-border,var(--cockpit-divider)))}
+.stage-risk-analysis__card--risk{border-left:3px solid var(--cockpit-error)}
+.stage-risk-analysis__card--cause{border-left:3px solid var(--cockpit-warning)}
+.stage-risk-analysis__card--suggest{border-left:3px solid var(--cockpit-primary)}
 .stage-risk-analysis__head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .stage-risk-analysis__title{min-width:0;font-size:14px;font-weight:600;line-height:22px}
 .stage-risk-analysis__head .stage-risk-analysis__title{flex:1 1 auto}
-.stage-risk-analysis__mark--risk{color:#cf1322}
-.stage-risk-analysis__mark--cause{color:#d46b08}
-.stage-risk-analysis__mark--suggest{color:#1677ff}
-.stage-risk-analysis__aside{flex:none;max-width:48%;color:#8c8c8c;font-size:12px;font-weight:400;line-height:20px;text-align:right}
-.stage-risk-analysis__summary{margin-top:8px;color:#262626;font-size:13px;line-height:22px;overflow-wrap:anywhere}
+.stage-risk-analysis__mark--risk{color:var(--cockpit-error)}
+.stage-risk-analysis__mark--cause{color:var(--cockpit-warning)}
+.stage-risk-analysis__mark--suggest{color:var(--cockpit-primary)}
+.stage-risk-analysis__aside{flex:none;max-width:48%;color:var(--cockpit-text-help);font-size:12px;font-weight:400;line-height:20px;text-align:right}
+.stage-risk-analysis__summary{margin-top:8px;color:var(--cockpit-text);font-size:13px;line-height:22px;overflow-wrap:anywhere}
 .stage-risk-analysis__facts{display:flex;flex-wrap:wrap;gap:2px 24px;margin-top:8px}
-.stage-risk-analysis__fact{display:inline-flex;align-items:baseline;gap:4px;min-width:0;color:#595959;font-size:13px;line-height:22px}
+.stage-risk-analysis__fact{display:inline-flex;align-items:baseline;gap:4px;min-width:0;color:var(--cockpit-text-secondary);font-size:13px;line-height:22px}
 .stage-risk-analysis__fact span{min-width:0;overflow-wrap:anywhere}
 .stage-risk-analysis__fact span:after{content:'：'}
-.stage-risk-analysis__fact b{color:#262626;font-weight:600}
-.stage-risk-analysis__note{margin-top:8px;color:#8c8c8c;font-size:12px;line-height:20px}
-.stage-risk-analysis__cause,.stage-risk-analysis__action{display:flex;align-items:flex-start;gap:12px;padding-top:10px;margin-top:10px;border-top:1px solid #f5f5f5}
+.stage-risk-analysis__fact b{color:var(--cockpit-text);font-weight:600}
+.stage-risk-analysis__note{margin-top:8px;color:var(--cockpit-text-help);font-size:12px;line-height:20px}
+.stage-risk-analysis__cause,.stage-risk-analysis__action{display:flex;align-items:flex-start;gap:12px;padding-top:10px;margin-top:10px;border-top:1px solid var(--cockpit-background)}
 .stage-risk-analysis__tag{display:inline-block;flex:none;padding:0 6px;border-radius:4px;font-size:12px;line-height:20px}
-.stage-risk-analysis__tag--cause{background:#fff7e6;color:#d46b08}
+.stage-risk-analysis__tag--cause{background:var(--cockpit-warning-bg);color:var(--cockpit-warning)}
 .stage-risk-analysis__cause-text{min-width:0;flex:1;font-size:13px;line-height:22px}
 .stage-risk-analysis__cause-text b{font-weight:600}
-.stage-risk-analysis__cause-meta{margin-left:6px;color:#8c8c8c;font-size:12px;white-space:nowrap}
-.stage-risk-analysis__index{flex:none;width:16px;color:#8c8c8c;line-height:22px}
+.stage-risk-analysis__cause-meta{margin-left:6px;color:var(--cockpit-text-help);font-size:12px;white-space:nowrap}
+.stage-risk-analysis__index{flex:none;width:16px;color:var(--cockpit-text-help);line-height:22px}
 .stage-risk-analysis__action-text{min-width:0;flex:1;line-height:22px;overflow-wrap:break-word}
-.stage-risk-analysis__owner{flex:none;color:#1677ff;line-height:22px;white-space:nowrap}
-.stage-risk-analysis__time{flex:none;color:#8c8c8c;line-height:22px;white-space:nowrap}
-.stage-risk-analysis__close{flex:none;padding:0;border:0;background:transparent;color:#bfbfbf;font-size:16px;line-height:22px;cursor:pointer}
-.stage-risk-analysis__foot{margin-top:4px;color:#8c8c8c;font-size:12px;line-height:20px}
-.stage-risk-analysis__foot summary{width:max-content;max-width:100%;color:#1677ff;cursor:pointer}
+.stage-risk-analysis__owner{flex:none;color:var(--cockpit-primary);line-height:22px;white-space:nowrap}
+.stage-risk-analysis__time{flex:none;color:var(--cockpit-text-help);line-height:22px;white-space:nowrap}
+.stage-risk-analysis__close{flex:none;padding:0;border:0;background:transparent;color:var(--cockpit-text-placeholder);font-size:16px;line-height:22px;cursor:pointer}
+.stage-risk-analysis__foot{margin-top:4px;color:var(--cockpit-text-help);font-size:12px;line-height:20px}
+.stage-risk-analysis__foot summary{width:max-content;max-width:100%;color:var(--cockpit-primary);cursor:pointer}
 .stage-risk-analysis__foot[open] summary{margin-bottom:4px}
 .stage-risk-analysis__acceptance,.stage-risk-analysis__detail,.stage-risk-analysis__evidence{overflow-wrap:anywhere}
-.stage-risk-analysis__detail{margin-top:2px;color:#8c8c8c}
+.stage-risk-analysis__detail{margin-top:2px;color:var(--cockpit-text-help)}
 
-.cockpit-insight{margin:0;padding:14px 16px 12px;border:1px solid var(--pro-border-color-light,#e5e9f0);border-radius:8px;background:#fff;color:var(--pro-text-color-primary,#1b2733);box-sizing:border-box}
+.cockpit-insight{margin:0;padding:14px 16px 12px;border:1px solid var(--pro-border-color-light,var(--cockpit-divider));border-radius:8px;background:var(--cockpit-surface);color:var(--pro-text-color-primary,var(--cockpit-text-secondary));box-sizing:border-box}
 .cockpit-insight__hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .cockpit-insight__title{display:flex;align-items:baseline;gap:8px;min-width:0}
 .cockpit-insight__title b{font-size:14px;font-weight:600}
-.cockpit-insight__title small{color:var(--pro-text-color-secondary,#5b6b7c);font-size:12px}
-.cockpit-insight__refresh{border:1px solid var(--pro-border-color,#dcdfe6);background:#fff;color:var(--pro-color-primary,#1e6be6);border-radius:5px;padding:3px 10px;font-size:12px;line-height:18px;cursor:pointer}
-.cockpit-insight__refresh:disabled{cursor:progress;color:#8b99a9}
-.cockpit-insight__loading{display:flex;align-items:center;gap:8px;margin:12px 0 4px;color:#5b6b7c;font-size:13px}
-.cockpit-insight__loading i{width:12px;height:12px;border:2px solid #c9d7ef;border-top-color:#1e6be6;border-radius:50%;animation:cockpit-spin .8s linear infinite}
+.cockpit-insight__title small{color:var(--pro-text-color-secondary,var(--cockpit-text-secondary));font-size:12px}
+.cockpit-insight__refresh{border:1px solid var(--pro-border-color,var(--cockpit-input-border));background:var(--cockpit-surface);color:var(--pro-color-primary,var(--cockpit-text-help));border-radius:5px;padding:3px 10px;font-size:12px;line-height:18px;cursor:pointer}
+.cockpit-insight__refresh:disabled{cursor:progress;color:var(--cockpit-text-help)}
+.cockpit-insight__loading{display:flex;align-items:center;gap:8px;margin:12px 0 4px;color:var(--cockpit-text-secondary);font-size:13px}
+.cockpit-insight__loading i{width:12px;height:12px;border:2px solid var(--cockpit-divider);border-top-color:var(--cockpit-text-help);border-radius:50%;animation:cockpit-spin .8s linear infinite}
 @keyframes cockpit-spin{to{transform:rotate(360deg)}}
-.cockpit-insight__error{display:flex;align-items:center;gap:10px;margin:12px 0 4px;color:#c0392b;font-size:13px}
-.cockpit-insight__error button{border:1px solid #e5b5ae;background:#fff;color:#c0392b;border-radius:5px;padding:2px 9px;font-size:12px;cursor:pointer}
-.cockpit-insight__summary{margin:10px 0 0;font-size:13px;line-height:1.75;color:#31404f}
+.cockpit-insight__error{display:flex;align-items:center;gap:10px;margin:12px 0 4px;color:var(--cockpit-text-secondary);font-size:13px}
+.cockpit-insight__error button{border:1px solid var(--cockpit-text-help);background:var(--cockpit-surface);color:var(--cockpit-text-secondary);border-radius:5px;padding:2px 9px;font-size:12px;cursor:pointer}
+.cockpit-insight__summary{margin:10px 0 0;font-size:13px;line-height:1.75;color:var(--cockpit-text-secondary)}
 .cockpit-insight__list{display:grid;gap:9px;margin:10px 0 0;padding:0;list-style:none}
-.cockpit-insight__list li{display:grid;gap:3px;padding:9px 11px;border-radius:6px;background:#f7f9fc;border:1px solid #eef2f7}
-.cockpit-insight__list b{font-size:13px;font-weight:600;color:#25384d}
-.cockpit-insight__list em{margin-left:7px;font-style:normal;font-size:11px;font-weight:500;padding:1px 6px;border-radius:9px;background:#eef3fb;color:#4a6b96}
-.cockpit-insight__list em.is-supported{background:#e8f7f1;color:#127a5f}
-.cockpit-insight__list small{font-size:12px;line-height:1.65;color:#5f7085}
-.cockpit-insight__meta{margin:10px 0 0;font-size:11px;color:#8b99a9}
-.cockpit-insight__idle{margin:10px 0 0;font-size:12px;color:#8b99a9}
-.cockpit-insight-missing{margin:0;padding:16px;border:1px dashed #d8dee8;border-radius:8px;background:#fafbfd;color:#8b99a9;font-size:13px;text-align:center}
+.cockpit-insight__list li{display:grid;gap:3px;padding:9px 11px;border-radius:6px;background:var(--cockpit-divider);border:1px solid var(--cockpit-background)}
+.cockpit-insight__list b{font-size:13px;font-weight:600;color:var(--cockpit-text)}
+.cockpit-insight__list em{margin-left:7px;font-style:normal;font-size:11px;font-weight:500;padding:1px 6px;border-radius:9px;background:var(--cockpit-primary-10);color:var(--cockpit-text-secondary)}
+.cockpit-insight__list em.is-supported{background:var(--cockpit-success-bg);color:var(--cockpit-success)}
+.cockpit-insight__list small{font-size:12px;line-height:1.65;color:var(--cockpit-text-secondary)}
+.cockpit-insight__meta{margin:10px 0 0;font-size:11px;color:var(--cockpit-text-help)}
+.cockpit-insight__idle{margin:10px 0 0;font-size:12px;color:var(--cockpit-text-help)}
+.cockpit-insight-missing{margin:0;padding:16px;border:1px dashed var(--cockpit-input-border);border-radius:8px;background:var(--cockpit-background);color:var(--cockpit-text-help);font-size:13px;text-align:center}
 
-.cockpit-state{margin:40px auto;max-width:560px;padding:24px;border:1px solid #e3e8ef;border-radius:12px;color:#5b6b7c;text-align:center;background:#fff}
-.cockpit-state.error{border-color:#f3c7c7;background:#fff7f7;color:#b33b3b}
+.cockpit-state{margin:40px auto;max-width:560px;padding:24px;border:1px solid var(--cockpit-divider);border-radius:12px;color:var(--cockpit-text-secondary);text-align:center;background:var(--cockpit-surface)}
+.cockpit-state.error{border-color:var(--cockpit-divider);background:var(--cockpit-error-bg);color:var(--cockpit-error)}
 .cockpit-state p{margin:0;line-height:1.7}
-.cockpit-state__retry{margin-top:14px;padding:6px 16px;border:1px solid #d5a3a3;border-radius:6px;background:#fff;color:#a52a2a;font:inherit;font-size:13px;cursor:pointer}
-.cockpit-state__retry:hover{border-color:#b33b3b;background:#fffafa}
+.cockpit-state__retry{margin-top:14px;padding:6px 16px;border:1px solid var(--cockpit-input-border);border-radius:6px;background:var(--cockpit-surface);color:var(--cockpit-error);font:inherit;font-size:13px;cursor:pointer}
+.cockpit-state__retry:hover{border-color:var(--cockpit-error);background:var(--cockpit-error-bg)}
 
 .cockpit-loading{width:100%;min-height:100vh;padding:16px 20px 32px;box-sizing:border-box;background:transparent}
 .cockpit-loading__head{display:flex;flex-direction:column;gap:9px;margin:2px 0 18px}
 .cockpit-loading__kpis,.cockpit-loading__panels{display:grid;gap:16px;margin-bottom:16px}
 .cockpit-loading__kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
 .cockpit-loading__panels{grid-template-columns:repeat(2,minmax(0,1fr))}
-.cockpit-loading__card{position:relative;min-width:0;padding:18px;border:1px solid #e7ebf1;border-radius:8px;background:var(--dashboard-component-bg,#fff);box-shadow:0 1px 2px rgba(15,35,65,.025);box-sizing:border-box}
+.cockpit-loading__card{position:relative;min-width:0;padding:18px;border:1px solid var(--cockpit-divider);border-radius:8px;background:var(--dashboard-component-bg,var(--cockpit-surface));box-shadow:0 1px 2px rgba(15,35,65,.025);box-sizing:border-box}
 .cockpit-loading__card--kpi{display:flex;flex-direction:column;gap:14px;min-height:98px}
 .cockpit-loading__card--chart{display:flex;flex-direction:column;gap:16px;min-height:242px}
 .cockpit-loading__card--wide{display:flex;flex-direction:column;gap:16px;min-height:190px}
-.cockpit-loading__line,.cockpit-loading__chart{position:relative;display:block;overflow:hidden;border-radius:6px;background:#eef2f7}
+.cockpit-loading__line,.cockpit-loading__chart{position:relative;display:block;overflow:hidden;border-radius:6px;background:var(--cockpit-background)}
 .cockpit-loading__line{width:36%;height:10px}
 .cockpit-loading__line--title{width:186px;height:18px}
 .cockpit-loading__line--subtitle{width:286px;max-width:70%;height:10px}
 .cockpit-loading__line--value{width:58%;height:24px;margin-top:2px}
 .cockpit-loading__line--panel{width:132px;height:12px}
-.cockpit-loading__chart{width:100%;flex:1 1 auto;min-height:174px;border-radius:7px;background:#f3f6fa}
+.cockpit-loading__chart{width:100%;flex:1 1 auto;min-height:174px;border-radius:7px;background:var(--cockpit-background)}
 .cockpit-loading__chart--wide{min-height:124px}
 .cockpit-loading__line:after,.cockpit-loading__chart:after{content:'';position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,rgba(255,255,255,.76) 48%,transparent 76%);transform:translateX(-100%);animation:cockpit-shimmer 1.45s ease-in-out infinite}
 @keyframes cockpit-shimmer{to{transform:translateX(100%)}}
-@media (prefers-reduced-motion:reduce){.cockpit-loading__line:after,.cockpit-loading__chart:after{animation:none}.cockpit-loading__line,.cockpit-loading__chart{background:#f1f4f8}}
+@media (prefers-reduced-motion:reduce){.cockpit-loading__line:after,.cockpit-loading__chart:after{animation:none}.cockpit-loading__line,.cockpit-loading__chart{background:var(--cockpit-background)}}
 
-.cockpit-gap-report{max-width:1100px;margin:4px 20px 28px;border-top:1px solid #e3e8ef;padding-top:12px;color:#5b6b7c;font-size:12px}
-.cockpit-gap-report summary{cursor:pointer;font-weight:600;color:#41506a;padding:5px 0}
+.cockpit-gap-report{max-width:1100px;margin:4px 20px 28px;border-top:1px solid var(--cockpit-divider);padding-top:12px;color:var(--cockpit-text-secondary);font-size:12px}
+.cockpit-gap-report summary{cursor:pointer;font-weight:600;color:var(--cockpit-text-secondary);padding:5px 0}
 .cockpit-gap-body{padding:8px 2px 4px}
 .cockpit-gap-body p{margin:0 0 10px;line-height:1.7}
 .cockpit-gap-body ul{display:grid;gap:7px;margin:0;padding:0;list-style:none}
-.cockpit-gap-body li{display:grid;grid-template-columns:minmax(180px,220px) minmax(0,1fr);gap:10px;align-items:baseline;padding:7px 10px;border:1px solid #edf0f4;border-radius:7px;background:#fafbfd}
-.cockpit-gap-body li b{color:#34445a}
-.cockpit-gap-body li small{color:#7b899b;line-height:1.6}
-.cockpit-gap-meta{color:#8b99a9;font-size:11px;margin-top:12px!important}
+.cockpit-gap-body li{display:grid;grid-template-columns:minmax(180px,220px) minmax(0,1fr);gap:10px;align-items:baseline;padding:7px 10px;border:1px solid var(--cockpit-divider);border-radius:7px;background:var(--cockpit-background)}
+.cockpit-gap-body li b{color:var(--cockpit-text)}
+.cockpit-gap-body li small{color:var(--cockpit-text-help);line-height:1.6}
+.cockpit-gap-meta{color:var(--cockpit-text-help);font-size:11px;margin-top:12px!important}
 
 @media (max-width:900px){
   .cockpit-tabs{padding:0 12px;overflow-x:auto}
@@ -138,12 +138,12 @@ body{overflow-x:hidden;background:var(--dashboard-canvas-bg,#fff);color:#1f2329;
   .cockpit-loading__line--subtitle{width:80%}
 }
 
-.cockpit-helmet-error { margin:0 0 8px; padding:6px 10px; border:1px solid #fecdca; border-radius:4px; background:#fef3f2; color:#b42318; font-size:12px; line-height:18px; }
+.cockpit-helmet-error { margin:0 0 8px; padding:6px 10px; border:1px solid var(--cockpit-divider); border-radius:4px; background:var(--cockpit-error-bg); color:var(--cockpit-error); font-size:12px; line-height:18px; }
 
 /* Vendor KPI value rows clip the last two pixels; keep full digits and units. */
 .cockpit-board .pro-bi-kpi-card__value-row { overflow: visible; }
 .cockpit-board .pro-bi-kpi-card__int,
 .cockpit-board .pro-bi-kpi-card__frac,
 .cockpit-board .pro-bi-kpi-card__unit { line-height: 1.1; }
-.stage-risk-analysis__facts-fold { margin-top: 8px; color: #8c8c8c; font-size: 12px; }
-.stage-risk-analysis__facts-fold summary { width: max-content; max-width: 100%; color: #1677ff; cursor: pointer; }
+.stage-risk-analysis__facts-fold { margin-top: 8px; color: var(--cockpit-text-help); font-size: 12px; }
+.stage-risk-analysis__facts-fold summary { width: max-content; max-width: 100%; color: var(--cockpit-primary); cursor: pointer; }

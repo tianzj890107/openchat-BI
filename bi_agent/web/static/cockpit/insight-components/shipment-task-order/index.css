@@ -1,10 +1,10 @@
 .shipment-task-order {
   margin: 0;
   padding: 14px 16px 12px;
-  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
-  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, var(--cockpit-surface)));
+  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, var(--cockpit-divider)));
   border-radius: 8px;
-  color: #262626;
+  color: var(--cockpit-text);
   font-size: 13px;
   line-height: 22px;
 }
@@ -32,13 +32,13 @@
 }
 
 .shipment-task-order__step {
-  background: #1677ff;
-  color: #fff;
+  background: var(--cockpit-primary);
+  color: var(--cockpit-surface);
 }
 
 .shipment-task-order__no {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: var(--cockpit-primary-10);
+  color: var(--cockpit-primary);
 }
 
 .shipment-task-order__title {
@@ -47,7 +47,7 @@
 
 .shipment-task-order__sub,
 .shipment-task-order__hint {
-  color: #8c8c8c;
+  color: var(--cockpit-text-help);
   font-size: 12px;
 }
 
@@ -61,7 +61,7 @@
 
 .shipment-task-order__task {
   padding: 12px 14px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--cockpit-divider);
   border-radius: 8px;
 }
 
@@ -79,8 +79,8 @@
   flex: none;
   padding: 0 7px;
   border-radius: 10px;
-  background: #f2f4f7;
-  color: #595959;
+  background: var(--cockpit-background);
+  color: var(--cockpit-text-secondary);
   font-size: 12px;
   line-height: 20px;
 }
@@ -91,13 +91,13 @@
   align-items: center;
   gap: 4px 12px;
   margin-top: 4px;
-  color: #8c8c8c;
+  color: var(--cockpit-text-help);
   font-size: 12px;
   line-height: 20px;
 }
 
 .shipment-task-order__owner {
-  color: #1677ff;
+  color: var(--cockpit-primary);
 }
 
 .shipment-task-order__acceptance {
@@ -109,7 +109,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #1677ff;
+  color: var(--cockpit-primary);
   font-size: 12px;
   line-height: 20px;
   cursor: pointer;
@@ -119,8 +119,8 @@
   margin-top: 6px;
   padding: 6px 8px;
   border-radius: 4px;
-  background: #fafafa;
-  color: #595959;
+  background: var(--cockpit-background);
+  color: var(--cockpit-text-secondary);
   font-size: 12px;
   line-height: 20px;
   overflow-wrap: break-word;
@@ -143,16 +143,16 @@
   gap: 8px 12px;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--cockpit-divider);
 }
 
 .shipment-task-order__primary,
 .shipment-task-order__secondary,
 .shipment-task-order__close {
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--cockpit-input-border);
   border-radius: 6px;
-  background: #fff;
-  color: #262626;
+  background: var(--cockpit-surface);
+  color: var(--cockpit-text);
   font: inherit;
   line-height: 30px;
   cursor: pointer;
@@ -160,9 +160,9 @@
 
 .shipment-task-order__primary {
   padding: 0 14px;
-  border-color: #1677ff;
-  background: #1677ff;
-  color: #fff;
+  border-color: var(--cockpit-primary);
+  background: var(--cockpit-primary);
+  color: var(--cockpit-surface);
 }
 
 .shipment-task-order__secondary {
@@ -187,24 +187,24 @@
 .shipment-task-order__issued,
 .shipment-task-order__notice {
   margin-right: auto;
-  color: #389e0d;
+  color: var(--cockpit-success);
   font-size: 12px;
 }
 
 .shipment-task-order__error {
   flex-basis: 100%;
-  color: #cf1322;
+  color: var(--cockpit-error);
   font-size: 12px;
 }
 
 .shipment-task-order__receipts {
   margin-top: 10px;
-  color: #595959;
+  color: var(--cockpit-text-secondary);
   font-size: 12px;
 }
 
 .shipment-task-order__receipts summary {
-  color: #1677ff;
+  color: var(--cockpit-primary);
   cursor: pointer;
 }
 
@@ -225,7 +225,7 @@
   overflow: auto;
   padding: 18px 20px;
   border-radius: 10px;
-  background: #fff;
+  background: var(--cockpit-surface);
   box-shadow: 0 12px 40px rgba(0, 0, 0, .18);
 }
 
@@ -239,7 +239,7 @@
 .shipment-task-order__dialog-head {
   justify-content: space-between;
   padding-bottom: 12px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--cockpit-divider);
   font-size: 16px;
 }
 
@@ -248,7 +248,7 @@
   justify-content: flex-end;
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--cockpit-divider);
 }
 
 .shipment-task-order__dialog-foot .shipment-task-order__hint {
@@ -265,7 +265,7 @@
 .shipment-task-order__measure label {
   display: grid;
   gap: 4px;
-  color: #595959;
+  color: var(--cockpit-text-secondary);
   font-size: 12px;
 }
 
@@ -274,18 +274,18 @@
   box-sizing: border-box;
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--cockpit-input-border);
   border-radius: 6px;
-  color: #262626;
+  color: var(--cockpit-text);
   font: inherit;
   line-height: 20px;
 }
 
 .shipment-task-order__measure {
   padding: 12px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--cockpit-divider);
   border-radius: 8px;
-  background: #fafafa;
+  background: var(--cockpit-background);
 }
 
 .shipment-task-order__measure-grid {

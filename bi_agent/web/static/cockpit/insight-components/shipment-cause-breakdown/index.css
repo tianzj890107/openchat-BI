@@ -1,10 +1,10 @@
 .shipment-cause-breakdown {
   margin: 0;
   padding: 14px 16px 12px;
-  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
-  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, var(--cockpit-surface)));
+  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, var(--cockpit-divider)));
   border-radius: 8px;
-  color: #262626;
+  color: var(--cockpit-text);
   font-size: 13px;
   line-height: 22px;
 }
@@ -23,7 +23,7 @@
 
 .shipment-cause-breakdown__item {
   padding: 12px 14px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--cockpit-divider);
   border-radius: 8px;
 }
 
@@ -32,7 +32,7 @@
 }
 
 .shipment-cause-breakdown__metric {
-  color: #1677ff;
+  color: var(--cockpit-primary);
   font-weight: 600;
 }
 
@@ -48,9 +48,9 @@
 .shipment-cause-breakdown__foot {
   margin-top: 12px;
   padding: 8px 12px;
-  background: #f4f6f8;
+  background: var(--cockpit-background);
   border-radius: 8px;
-  color: #8c8c8c;
+  color: var(--cockpit-text-help);
   font-size: 12px;
   line-height: 20px;
 }

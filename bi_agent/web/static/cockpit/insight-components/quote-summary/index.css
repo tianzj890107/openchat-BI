@@ -1,10 +1,10 @@
 .quote-summary {
   margin: 0;
   padding: 14px 16px 12px;
-  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
-  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, var(--cockpit-surface)));
+  border: 1px solid var(--pro-bi-card-border, var(--dashboard-component-border, var(--cockpit-divider)));
   border-radius: 8px;
-  color: #262626;
+  color: var(--cockpit-text);
   font-size: 13px;
   line-height: 22px;
 }
@@ -22,7 +22,7 @@
 
 .quote-summary__aside,
 .quote-summary__note {
-  color: #8c8c8c;
+  color: var(--cockpit-text-help);
 }
 
 .quote-summary__note {
@@ -35,13 +35,13 @@
 }
 
 .quote-summary__green {
-  color: #389e0d;
+  color: var(--cockpit-success);
 }
 
 .quote-summary__orange {
-  color: #d46b08;
+  color: var(--cockpit-warning);
 }
 
 .quote-summary__red {
-  color: #cf1322;
+  color: var(--cockpit-error);
 }

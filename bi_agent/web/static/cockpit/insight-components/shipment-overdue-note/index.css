@@ -1,9 +1,9 @@
 .shipment-overdue-note {
   margin: 0;
   padding: 10px 12px;
-  background: #f4f6f8;
+  background: var(--cockpit-background);
   border-radius: 8px;
-  color: #434343;
+  color: var(--cockpit-text-secondary);
   font-size: 13px;
   line-height: 22px;
 }

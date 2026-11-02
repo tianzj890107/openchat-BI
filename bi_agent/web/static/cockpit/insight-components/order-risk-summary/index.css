@@ -3,7 +3,7 @@
   flex-direction: column;
   gap: 8px;
   margin: 0;
-  color: #262626;
+  color: var(--cockpit-text);
   font-size: 13px;
   line-height: 22px;
 }
@@ -11,14 +11,14 @@
 .order-risk-summary__card,
 .order-risk-summary__panel {
   padding: 14px 16px 12px;
-  background: #fff;
-  border: 1px solid #f0f0f0;
+  background: var(--cockpit-surface);
+  border: 1px solid var(--cockpit-divider);
   border-radius: 8px;
 }
 
 .order-risk-summary__card {
-  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, #fff));
-  border-color: var(--pro-bi-card-border, var(--dashboard-component-border, #e8e8e8));
+  background: var(--pro-bi-card-bg, var(--dashboard-component-bg, var(--cockpit-surface)));
+  border-color: var(--pro-bi-card-border, var(--dashboard-component-border, var(--cockpit-divider)));
 }
 
 .order-risk-summary__head {
@@ -35,7 +35,7 @@
 
 .order-risk-summary__aside,
 .order-risk-summary__note {
-  color: #8c8c8c;
+  color: var(--cockpit-text-help);
 }
 
 .order-risk-summary__note {
@@ -52,29 +52,29 @@
 }
 
 .order-risk-summary__panel--risk {
-  border-left: 3px solid #cf1322;
+  border-left: 3px solid var(--cockpit-error);
 }
 
 .order-risk-summary__panel--cause {
-  border-left: 3px solid #d46b08;
+  border-left: 3px solid var(--cockpit-warning);
 }
 
 .order-risk-summary__panel--suggest {
-  border-left: 3px solid #1677ff;
+  border-left: 3px solid var(--cockpit-primary);
 }
 
 .order-risk-summary__mark--risk,
 .order-risk-summary__num--risk {
-  color: #cf1322;
+  color: var(--cockpit-error);
 }
 
 .order-risk-summary__mark--cause,
 .order-risk-summary__num--cause {
-  color: #d46b08;
+  color: var(--cockpit-warning);
 }
 
 .order-risk-summary__mark--suggest {
-  color: #1677ff;
+  color: var(--cockpit-primary);
 }
 
 .order-risk-summary__num--risk,
@@ -83,46 +83,46 @@
 }
 
 .order-risk-summary__green {
-  color: #389e0d;
+  color: var(--cockpit-success);
 }
 
 .order-risk-summary__orange {
-  color: #d46b08;
+  color: var(--cockpit-warning);
 }
 
 .order-risk-summary__red {
-  color: #cf1322;
+  color: var(--cockpit-error);
   font-weight: 600;
 }
 
 .order-risk-summary__details {
-  color: #595959;
+  color: var(--cockpit-text-secondary);
   font-size: 12px;
   line-height: 20px;
 }
 
 .order-risk-summary__details summary {
-  color: #1677ff;
+  color: var(--cockpit-primary);
   cursor: pointer;
 }
 
 .order-risk-summary__recommendation + .order-risk-summary__recommendation {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #f5f5f5;
+  border-top: 1px solid var(--cockpit-background);
 }
 
 .order-risk-summary__recommendation-meta {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #8c8c8c;
+  color: var(--cockpit-text-help);
   font-size: 12px;
   line-height: 20px;
 }
 
 .order-risk-summary__recommendation-acceptance {
-  color: #8c8c8c;
+  color: var(--cockpit-text-help);
   font-size: 12px;
   line-height: 20px;
 }
