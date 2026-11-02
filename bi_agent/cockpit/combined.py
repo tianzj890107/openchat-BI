@@ -114,3 +114,37 @@ def cached_quotation_request(store, identity, card):
                 clarifications={'instruction': '只分析运营头盔图报价节点的报价办理状态YWLN_D021及报价电量YWLN_M0031，'
                     '区分正常完成、逾期完成、逾期未完成、临期未完成、正常未完成；未返回状态不补造0。'
                     '不要引用经营看板红区报价单数或电芯占比。历史凭据的原始取数时间保持不变。'})
+
+
+def cached_stage_request(store, identity, stage, card):
+    """Explicit policy refresh using saved stage receipts without AP requests."""
+    if stage not in ('opportunity', 'order', 'shipment'):
+        raise ValueError('不支持的定向预热环节')
+    context = card.get('context') or {}
+    if context.get('id') != identity:
+        raise ValueError('缺少当前角色的环节口径')
+    wanted = {canonical(json.loads(q)) for q in context.get('chartQueries') or []}
+    wanted = set(filter_stage_selected({q:{'request':json.loads(q)} for q in wanted},stage)[0])
+    if not wanted:
+        raise ValueError('没有该环节已保存的成功查询')
+    found = {}
+    with store.db() as db:
+        rows = db.execute('SELECT body FROM ap_results WHERE identity=? ORDER BY created DESC',(identity,)).fetchall()
+    for row in rows:
+        item = json.loads(row[0])
+        if item.get('kind') != 'analysis' or item.get('connectionId') != context.get('dataIdentity'):
+            continue
+        key = canonical(item.get('request'))
+        if key in wanted:
+            found.setdefault(key,item)
+    if not found or len(found)>80:
+        raise ValueError('缺少可复用的环节凭据，未触发外部取数')
+    missing = (wanted-set(found)) | {canonical(json.loads(q)) for q in context.get('unavailableQueries') or []}
+    missing -= set(found)
+    return dict(id=identity, engine='main',source='service',page=context.get('page') or 'analysis',
+                stage=stage,period=context.get('period') or '2025-10',
+                department=context.get('department') or '全部产品部',defaultView=True,
+                chartSnapshotId=RELEASE,apReceiptIds=[v['id'] for v in found.values()],
+                chartQueries=sorted(found),unavailableQueries=sorted(missing),
+                clarifications={'deliveryPolicy':'investigation-v1',
+                    'instruction':'按新交付策略更新：有事实时给出有证据、有对象、有验收的核查建议；原因未确认不编造。复用历史凭据，观察时间保持原样。'})

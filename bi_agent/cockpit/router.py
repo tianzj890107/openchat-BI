@@ -662,6 +662,23 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         items=published_default(id,'main',page,True)['items'] if main_context is not None else {}
         return dict(items=items,cardContract=CONTRACT,cardsVersion=cards_version(items))
 
+    @router.post('/stages/{stage}/preheat')
+    def preheat_stage(stage: Literal['opportunity', 'order', 'shipment'], req: PageLookup):
+        if req.uiScope != 'default':
+            raise HTTPException(422, '只允许默认口径定向预热')
+        from .combined import cached_stage_request
+        from .dashboard_source import page_analysis_context
+        cards = {}
+        for page_name in ('operations', 'analysis'):
+            cards.update(published_default(req.id, 'main', page_name, False)['items'])
+        try:
+            body = cached_stage_request(store(), req.id, stage, cards.get(stage) or {})
+            resolved = page_analysis_context(body, store(), resolve_fallback=False, allow_expired=True)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
+        resolved['dataBasis'] = '按新交付规则分析已保存环节凭据；未额外查询AP/PG，观察时间以原记录为准'
+        return start_analysis(AnalysisRequest(**body), resolved=resolved)
+
     @router.post('/quotation/preheat')
     def preheat_quotation(req: PageLookup):
         if req.page != 'operations' or req.uiScope != 'default':

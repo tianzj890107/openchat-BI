@@ -1566,3 +1566,8 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 只为已打开旧页面保留 `/static/cockpit/releases/` 不可变资源兼容；新页面资源由主服务提供。8876 的旧 `release.json` 不再作为正式版本来源。修改只涉及 nginx，不重启主服务、不触发取数或分析。
 - nginx 配置 `nginx -t` 通过后平滑 reload；原配置备份为 `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/nginx-before-main-proxy-1793582991.conf`。回退时将备份内容写回 `conf/default.conf` 原 inode，再 `docker exec eimosp-cockpit-8876 nginx -t` 和 `nginx -s reload`；不能用 rename 替换单文件 bind mount。
 - 线上复验：两角色三页面共6组 HTML 与8765完全相同，三个JS入口资源均200；旧API与带前缀API均返回15个AI插槽，根地址正常。没有执行真实SQL或任务下发。
+
+### 2026-11-02 · 核查建议策略定向预热
+
+- 新增 `POST /api/cockpit/stages/{opportunity|order|shipment}/preheat`，请求体 `id`、`page`、`uiScope=default`。仅复用同角色、同连接已保存且匹配该环节的AP成功凭据；缺失凭据标为缺失，不重签取数时间、不额外请求AP/PG。共同分析继续使用 `/combined/preheat`。
+- 用于规则升级后定向强制分析，即使数据指纹没变也可生成新的分析；正常页面打开不调用该入口。生成成功通过既有发布流程替换缓存，失败保留历史结果。
