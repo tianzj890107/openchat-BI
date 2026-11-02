@@ -167,7 +167,7 @@ def test_task_dispatch_uses_server_recipient_and_only_issues_after_full_success(
         id=1,revision=task['revision'],action='save',title='发货超期订单处置',
         goal='在期限内关闭可验证的超期事项',
         measures=[dict(id=task['measures'][0]['id'],action='核实并关闭超期订单',
-                       owner='运营负责人',deadline='3 个工作日',acceptance='逐单提供关闭证据',
+                       owner='运营负责人',deadline='2026-12-31',acceptance='逐单提供关闭证据',
                        ownerConfirmed=True,deadlineConfirmed=True)]))
     assert edited.status_code==200, edited.text
     edited=edited.json()
@@ -200,7 +200,7 @@ def test_partial_task_dispatch_keeps_the_draft_status_and_replays_receipts(tmp_p
     task=c.post('/api/cockpit/analyses/'+a['id']+'/draft').json()
     saved=c.post('/api/cockpit/tasks/'+task['id'],json=dict(
         id=1,revision=task['revision'],action='save',title=task['title'],goal=task['goal'],
-        measures=[dict(id=item['id'],action=item['action'],owner=item['owner'],deadline=item['deadline'],
+        measures=[dict(id=item['id'],action=item['action'],owner=item['owner'],deadline='2026-12-31',
                        acceptance=item['acceptance'],ownerConfirmed=True,deadlineConfirmed=True)
                   for item in task['measures']]))
     assert saved.status_code==200, saved.text
