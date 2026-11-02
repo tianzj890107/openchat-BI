@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "cases": 50,
-  "casesSha256": "23dffab7f67b4c0d67eb49b8b4b8aff0cd4382a13cff8dd35d33f041740b323c",
+  "cases": 54,
+  "casesSha256": "c421b454eca2652646443ea08d8b2240edb39162b2dc09a2bc70bc06c1b3683d",
   "slots": 15,
   "source": "Synthetic business acceptance examples based on cockpit incidents; no customer data"
 }

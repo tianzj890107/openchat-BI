@@ -787,5 +787,127 @@
     },
     "expected": {"no_dangling": true, "contract": "cockpit-delivery-v2", "summary_nonempty": true, "no_verified": true, "actionTypes": {"a1": "investigation", "a2": "pending"}},
     "rationale": "投影保留有直接证据的数据缺口核查，并将无支持原因的改善建议降为待确认而不是清空全部建议"
+  },
+  {
+    "id": "NEXT-001",
+    "area": "investigation",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "当前范围需进一步核实。",
+      "stage": "shipment",
+      "evidence": {
+        "facts": [
+          {
+            "id": "e1",
+            "label": "实际发货",
+            "value": 19.02
+          }
+        ],
+        "records": [],
+        "evidence": [
+          {
+            "id": "e1"
+          }
+        ],
+        "limitations": []
+      },
+      "recommendations": []
+    },
+    "expected": {
+      "reject": true
+    },
+    "rationale": "有事实而无原因时必须提出核查下一步"
+  },
+  {
+    "id": "NEXT-002",
+    "area": "investigation",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "当前范围需进一步核实。",
+      "stage": "shipment",
+      "evidence": {
+        "facts": [
+          {
+            "id": "e1",
+            "label": "实际发货",
+            "value": 19.02
+          }
+        ],
+        "records": [],
+        "evidence": [
+          {
+            "id": "e1"
+          }
+        ],
+        "limitations": []
+      },
+      "recommendations": [
+        {
+          "id": "a1",
+          "actionType": "investigation",
+          "causeIds": [],
+          "evidenceIds": [
+            "e1"
+          ],
+          "action": "核对当前期间订单计划交期与发货差异",
+          "ownerRole": "待确认",
+          "deadlineDays": 5,
+          "acceptance": "形成订单交期差异核查清单"
+        }
+      ]
+    },
+    "expected": {
+      "reject": false
+    },
+    "rationale": "核查动作可直接引用事实，无需编造原因"
+  },
+  {
+    "id": "NEXT-003",
+    "area": "investigation",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "当前范围需进一步核实。",
+      "stage": "quotation",
+      "evidence": {
+        "facts": [
+          {
+            "id": "e1",
+            "label": "实际发货",
+            "value": 19.02
+          }
+        ],
+        "records": [],
+        "evidence": [
+          {
+            "id": "e1"
+          }
+        ],
+        "limitations": []
+      },
+      "recommendations": []
+    },
+    "expected": {
+      "reject": false
+    },
+    "rationale": "状态说明卡不强求任务建议"
+  },
+  {
+    "id": "NEXT-004",
+    "area": "investigation",
+    "priority": "P0",
+    "operation": "reasoning",
+    "input": {
+      "summary": "当前范围需进一步核实。",
+      "stage": "order",
+      "evidence": {},
+      "recommendations": []
+    },
+    "expected": {
+      "reject": false
+    },
+    "rationale": "完全无事实不能强制编造动作"
   }
 ]

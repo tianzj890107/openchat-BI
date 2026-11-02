@@ -19,7 +19,9 @@ def evaluate(case):
     if op == 'reasoning':
         rejected = False
         try:
-            validate_reasoning({'summary':value['summary'],'causes':[], 'recommendations':[]}, {})
+            validate_reasoning({'summary':value['summary'],'causes':value.get('causes',[]),
+                                'recommendations':value.get('recommendations',[])},
+                               value.get('evidence',{}),stage=value.get('stage',''))
         except ValueError:
             rejected = True
         return {'reject': rejected}, rejected == expected['reject']

@@ -17,7 +17,7 @@ def test_case_integrity_and_all_delivered_slots():
         assert isinstance(case['input'],dict) and isinstance(case['expected'],dict) and case['expected']
     manifest=json.loads((DATA/'manifest.json').read_text())
     assert hashlib.sha256(raw).hexdigest()==manifest['casesSha256']
-    assert len(cases)==manifest['cases']==50
+    assert len(cases)==manifest['cases']==54
     assert len({c['id'] for c in cases})==len(cases)
     assert {c['input']['slot'] for c in cases if c['operation']=='projection'}=={s['slotId'] for s in slot_registry()}
     assert all(c['rationale'] and c['priority'] in {'P0','P1','P2'} for c in cases)
