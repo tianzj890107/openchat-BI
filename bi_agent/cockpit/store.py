@@ -33,8 +33,10 @@ class Store:
             CREATE INDEX IF NOT EXISTS ai_table_scope
               ON ai_table_snapshots(identity, table_key, scope_key, updated);
             CREATE TABLE IF NOT EXISTS tasks (
-              id TEXT PRIMARY KEY, analysis_id TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL,
-              body TEXT NOT NULL, updated REAL NOT NULL);
+              id TEXT PRIMARY KEY, analysis_id TEXT NOT NULL,
+              selection_key TEXT NOT NULL DEFAULT '', revision INTEGER NOT NULL,
+              body TEXT NOT NULL, updated REAL NOT NULL,
+              UNIQUE(analysis_id,selection_key));
             CREATE TABLE IF NOT EXISTS page_snapshots (
               id TEXT PRIMARY KEY, scope TEXT NOT NULL, body TEXT NOT NULL, source_time REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS page_snapshot_views (
@@ -71,6 +73,24 @@ class Store:
                        'ON page_refresh(business_key,lifecycle)')
             db.execute('CREATE INDEX IF NOT EXISTS refresh_due '
                        'ON page_refresh(lifecycle,next_check)')
+            task_columns = {row[1] for row in db.execute('PRAGMA table_info(tasks)')}
+            if 'selection_key' not in task_columns:
+                # Rebuild the legacy one-draft-per-analysis table. Existing
+                # drafts stay readable under ``legacy`` and future selections
+                # can coexist without overwriting history.
+                db.executescript('''
+                ALTER TABLE tasks RENAME TO tasks_legacy;
+                CREATE TABLE tasks (
+                  id TEXT PRIMARY KEY, analysis_id TEXT NOT NULL,
+                  selection_key TEXT NOT NULL DEFAULT '', revision INTEGER NOT NULL,
+                  body TEXT NOT NULL, updated REAL NOT NULL,
+                  UNIQUE(analysis_id,selection_key));
+                INSERT INTO tasks(id,analysis_id,selection_key,revision,body,updated)
+                  SELECT id,analysis_id,'legacy',revision,body,updated FROM tasks_legacy;
+                DROP TABLE tasks_legacy;
+                ''')
+            db.execute('CREATE INDEX IF NOT EXISTS task_analysis '
+                       'ON tasks(analysis_id,updated)')
 
     @contextmanager
     def db(self):
@@ -583,22 +603,42 @@ class Store:
             if item["status"] in {"queued","running"}:
                 self.update_analysis(item["id"], status="interrupted",progress="服务重新启动，分析已中断，可重试")
 
-    def draft(self, analysis):
+    def draft(self, analysis, recommendation_ids=None):
         aid=analysis["id"]
+        from .delivery import (ACTION_INVESTIGATION, draftable_actions,
+                               ensure_checkable, normalize_delivery_contract,
+                               pending_owner, suggestion_action)
+        evidence = analysis.get('evidence') or {}
+        result = normalize_delivery_contract(analysis.get('result') or {}, evidence)
+        actions, selection_key = draftable_actions(result, evidence, recommendation_ids)
+        if not actions:
+            raise ValueError('当前缺少明确核查对象或必要口径，暂不能生成任务草稿')
+        action_types = {item.get('actionType') for item in actions}
+        investigation_only = action_types <= {ACTION_INVESTIGATION}
+        stage_name = str((analysis.get('context') or {}).get('stageName') or '当前环节')
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
-            row=db.execute("SELECT body FROM tasks WHERE analysis_id=?",(aid,)).fetchone()
+            row=db.execute("SELECT body FROM tasks WHERE analysis_id=? AND selection_key=?",
+                           (aid,selection_key)).fetchone()
             if row:return json.loads(row[0])
-            from .delivery import ensure_checkable, pending_owner, suggestion_action
-            actions=analysis["result"]["recommendations"]
-            item=dict(id="POC-"+uuid.uuid4().hex[:10].upper(),analysisId=aid, revision=1,status="draft",simulated=True,
-                title=analysis["context"]["stageName"]+"风险改善任务令", context=analysis["context"],
-                measures=[dict(id=x["id"], action=suggestion_action(x["action"]),
-                    owner=pending_owner(x["ownerRole"]),
+            item=dict(id="POC-"+uuid.uuid4().hex[:10].upper(),analysisId=aid,
+                selectionKey=selection_key, recommendationIds=[x['id'] for x in actions],
+                contractVersion='cockpit-task-order-v2', revision=1,status="draft",simulated=True,
+                title=stage_name+("风险核查任务令" if investigation_only else "风险处置任务令"),
+                context=analysis["context"],
+                measures=[dict(id=x["id"], actionType=x.get('actionType'),
+                    causeIds=list(x.get('causeIds') or []), evidenceIds=list(x.get('evidenceIds') or []),
+                    action=suggestion_action(x["action"]),
+                    ownerRole=pending_owner(x["ownerRole"]), owner=pending_owner(x["ownerRole"]),
+                    ownerConfirmed=False, deadlineDays=x.get('deadlineDays') or 10,
                     deadline=f"建议期限：{x.get('deadlineDays') or 10} 个工作日（待确认）",
-                    acceptance=ensure_checkable(x["acceptance"])) for x in actions],
-                goal="逐项核实并处理当前分析识别的卡点，按证据复核改善情况",feedback="",audit=[dict(action="draft",at=time.time())])
-            db.execute("INSERT INTO tasks VALUES(?,?,?,?,?)",(item["id"],aid,1,json.dumps(item,ensure_ascii=False),time.time()))
+                    deadlineConfirmed=False, acceptance=ensure_checkable(x["acceptance"])) for x in actions],
+                goal=("先补齐证据并按清单核实当前卡点" if investigation_only
+                      else "在已支持原因基础上执行处置，并按证据复核结果"),
+                feedback="",audit=[dict(action="draft",at=time.time())])
+            db.execute("INSERT INTO tasks(id,analysis_id,selection_key,revision,body,updated) "
+                       "VALUES(?,?,?,?,?,?)",
+                       (item["id"],aid,selection_key,1,json.dumps(item,ensure_ascii=False),time.time()))
         return item
 
     def get_task(self, tid):
@@ -619,10 +659,22 @@ class Store:
             transitions={"issue":("draft","issued"),"accept":("issued","accepted"),"feedback":("accepted","review"),"close":("review","closed")}
             if action=="save":
                 if item["status"]!="draft":raise ValueError("仅草稿可编辑")
-                item.update(payload)
+                existing={str(measure.get('id')):measure for measure in item.get('measures') or []}
+                measures=[]
+                for measure in payload.get('measures') or []:
+                    saved=dict(existing.get(str(measure.get('id')),{}))
+                    saved.update(measure)
+                    measures.append(saved)
+                item.update({key:value for key,value in payload.items() if key!='measures'})
+                item['measures']=measures
             else:
                 before,after=transitions[action]
                 if item["status"]!=before:raise ValueError("当前任务状态不允许此操作")
+                if action=="issue" and item.get('contractVersion')=='cockpit-task-order-v2':
+                    pending=[str(measure.get('id')) for measure in item.get('measures') or []
+                             if not measure.get('ownerConfirmed') or not measure.get('deadlineConfirmed')]
+                    if pending:
+                        raise ValueError('请先确认责任角色和期限：'+'、'.join(pending))
                 if action=="issue" and payload.get("dispatch") is not None:
                     item["dispatch"]=payload["dispatch"]
                 if action=="feedback":

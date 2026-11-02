@@ -763,7 +763,11 @@
       const pageTitle = computed(() => PAGES[page.value]?.title || PAGES.overview.title);
       const release = computed(() => runtime.value?.dashboard || null);
       const gaps = computed(() => runtime.value?.gaps || []);
-      const pageInsights = computed(() => runtime.value?.pages?.[page.value]?.insights || []);
+      // The legacy shipment task card is a hidden 15-slot compatibility entry.
+      // Its user-facing action now lives in shipment-risk-summary, so rendering
+      // the compatibility slot would create a second, empty insight card.
+      const pageInsights = computed(() => (runtime.value?.pages?.[page.value]?.insights || [])
+        .filter(item => item.id !== 'shipment-task-order'));
       const metadataSummary = computed(() => {
         const source = runtime.value?.source;
         if (!source) return '';

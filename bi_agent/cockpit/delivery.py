@@ -8,6 +8,7 @@ conflicts and acceptance criteria that a single task cannot guarantee.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from copy import deepcopy
 
@@ -64,7 +65,7 @@ SLOT_SPECS = {
         note='跨环节结论必须同口径；口径冲突未对账前只交付各自观察，不汇总缺口。'),
     'opportunity-risk': dict(
         question='商机风险集中在哪些团队、客户等级和项目',
-        kinds=('fact', 'structure', 'data_gap', 'hypothesis'), actions=True,
+        kinds=('fact', 'structure', 'data_gap', 'hypothesis', 'verified'), actions=True,
         max_causes=5,
         note='本卡交付商机缺口的结构定位；缺口分布不等于业务原因。'),
     'opportunity-coverage-note': dict(
@@ -73,12 +74,12 @@ SLOT_SPECS = {
         note='本卡交付覆盖结构与数据缺口，不把目标为空当成原因。'),
     'order-risk-summary': dict(
         question='订单环节有哪些风险，风险能否定位到订单或客户',
-        kinds=('fact', 'structure', 'data_gap', 'hypothesis'), actions=True,
+        kinds=('fact', 'structure', 'data_gap', 'hypothesis', 'verified'), actions=True,
         max_causes=4,
         note='本卡交付风险定位；环节级假设不得填进具体订单行。'),
     'shipment-risk-summary': dict(
         question='发货目标缺口有多大，影响集中在哪些范围',
-        kinds=('fact', 'structure', 'data_gap', 'hypothesis'), actions=True,
+        kinds=('fact', 'structure', 'data_gap', 'hypothesis', 'verified'), actions=True,
         max_causes=4,
         note='商机储备不足只作为上游关联假设，不作为已确认的发货原因。'),
     'shipment-overdue-note': dict(
@@ -128,6 +129,21 @@ _ACCEPTANCE_OK = ('清单', '对账', '确认', '记录', '核查', '复核', '�
 _MISSING_CAUSE = ('证据不足：当前分页/记录内没有可引用的逐单处理记录，暂不填写具体原因，'
                   '需先补齐订单状态、计划交付期与变更记录。')
 
+ACTION_INVESTIGATION = 'investigation'
+ACTION_REMEDIATION = 'remediation'
+ACTION_PENDING = 'pending'
+ACTION_TYPES = (ACTION_INVESTIGATION, ACTION_REMEDIATION, ACTION_PENDING)
+DRAFTABLE_ACTION_TYPES = (ACTION_INVESTIGATION, ACTION_REMEDIATION)
+
+_CAUSE_KINDS = ('verified', 'fact', 'structure', 'data_gap', 'hypothesis')
+_INVESTIGATION_TERMS = ('核查', '核实', '核对', '对账', '补齐', '补数', '补充证据', '确认',
+                        '复核', '排查', '检查', '验证', '梳理', '盘点', '取证',
+                        'verify', 'check', 'confirm', 'reconcile', 'audit',
+                        'investigate', 'validate')
+_REMEDIATION_TERMS = ('调整', '重排', '优化', '协调', '提升', '增加', '减少', '更换',
+                      '催办', '推进', '修订', '更新', '处置', '关闭',
+                      'adjust', 'optimize', 'expedite', 'update', 'resolve')
+
 
 def _text(value):
     return value.strip() if isinstance(value, str) else ''
@@ -144,6 +160,19 @@ def _has_any(text, words):
 def _has_any_ci(text, words):
     value = _text(text).lower()
     return any(str(word).lower() in value for word in words)
+
+
+def _strings(values):
+    return [str(value) for value in (values or []) if str(value).strip()]
+
+
+def _all_evidence_ids(evidence):
+    ids = set()
+    for key in ('facts', 'records', 'evidence'):
+        for item in (evidence or {}).get(key) or []:
+            if isinstance(item, dict) and item.get('id'):
+                ids.add(str(item['id']))
+    return ids
 
 
 def _record_ids(evidence):
@@ -188,6 +217,164 @@ def classify_cause(cause, records=None):
     return 'hypothesis'
 
 
+def infer_action_type(action):
+    """Classify an action without upgrading ambiguous legacy prose.
+
+    New model output must state ``actionType`` explicitly.  This inference is
+    retained for old cached cards: wording that clearly asks for verification
+    becomes an investigation; wording that clearly asks for a business change
+    becomes remediation.  Anything else stays ``pending`` and is not draftable.
+    """
+    declared = _text((action or {}).get('actionType'))
+    if declared in ACTION_TYPES:
+        return declared
+    text = '；'.join(_text((action or {}).get(key)) for key in ('action', 'detail', 'acceptance'))
+    if _has_any_ci(text, _INVESTIGATION_TERMS):
+        return ACTION_INVESTIGATION
+    if _has_any_ci(text, _REMEDIATION_TERMS):
+        return ACTION_REMEDIATION
+    return ACTION_PENDING
+
+
+def normalize_delivery_contract(value, evidence=None):
+    """Add v2 classifications without destroying legacy payloads.
+
+    This function is deliberately non-rejecting: display can still show an old
+    card while server-side draft selection applies the stricter rules.  User
+    confirmation flags are always reset on model/cached output and can only be
+    set while saving an editable draft.
+    """
+    out = deepcopy(value or {})
+    records = _record_ids(evidence)
+    causes = []
+    for raw in out.get('causes') or []:
+        if not isinstance(raw, dict):
+            continue
+        cause = deepcopy(raw)
+        kind = _text(cause.get('kind'))
+        if kind not in _CAUSE_KINDS:
+            kind = classify_cause(cause, records)
+        cause['kind'] = kind
+        cause['evidenceIds'] = _strings(cause.get('evidenceIds'))
+        cause['missingEvidence'] = _strings(cause.get('missingEvidence'))
+        causes.append(cause)
+    by_id = {str(cause.get('id')): cause for cause in causes if cause.get('id')}
+    actions = []
+    for raw in out.get('recommendations') or []:
+        if not isinstance(raw, dict):
+            continue
+        action = deepcopy(raw)
+        action['actionType'] = infer_action_type(action)
+        action['causeIds'] = _strings(action.get('causeIds'))
+        evidence_ids = _strings(action.get('evidenceIds'))
+        if not evidence_ids:
+            for cause_id in action['causeIds']:
+                evidence_ids.extend(by_id.get(cause_id, {}).get('evidenceIds') or [])
+        action['evidenceIds'] = list(dict.fromkeys(evidence_ids))
+        action['ownerConfirmed'] = False
+        action['deadlineConfirmed'] = False
+        actions.append(action)
+    out['causes'] = causes
+    out['recommendations'] = actions
+    return out
+
+
+def validate_action_contract(value, evidence=None, *, seen=None, strict=False):
+    """Validate action type, cause/evidence references and remediation support."""
+    issues = []
+    causes = {str(item.get('id')): item for item in (value or {}).get('causes') or []
+              if isinstance(item, dict) and item.get('id')}
+    available = _all_evidence_ids(evidence)
+    queried = set(map(str, seen)) if seen is not None else set(available)
+    for action in (value or {}).get('recommendations') or []:
+        if not isinstance(action, dict):
+            continue
+        aid = _text(action.get('id')) or '未命名建议'
+        action_type = _text(action.get('actionType')) or infer_action_type(action)
+        if strict and action_type not in DRAFTABLE_ACTION_TYPES:
+            issues.append(f'建议“{aid}”尚未明确为核查或改善动作，不能作为可下发建议')
+            continue
+        linked = set(_strings(action.get('causeIds')))
+        unknown_causes = linked - set(causes)
+        if unknown_causes:
+            issues.append(f'建议“{aid}”引用了不存在或已被过滤的原因：{", ".join(sorted(unknown_causes))}')
+        evidence_ids = set(_strings(action.get('evidenceIds')))
+        if available:
+            unknown_evidence = evidence_ids - available
+            unread_evidence = evidence_ids - queried
+            if unknown_evidence:
+                issues.append(f'建议“{aid}”引用了不存在的证据：{", ".join(sorted(unknown_evidence))}')
+            if unread_evidence:
+                issues.append(f'建议“{aid}”引用了本轮未读取的证据：{", ".join(sorted(unread_evidence))}')
+        if not evidence_ids and (strict or available):
+            issues.append(f'建议“{aid}”缺少证据引用；需关联原因证据或数据缺口记录')
+        if action_type == ACTION_REMEDIATION:
+            if not linked:
+                issues.append(f'改善建议“{aid}”必须关联已核实原因，不能直接引用风险事实或数据缺口')
+            supported = [causes[item] for item in linked if item in causes
+                         and causes[item].get('kind') == 'verified'
+                         and causes[item].get('status') == 'supported']
+            if linked and not supported:
+                issues.append(f'改善建议“{aid}”关联的原因尚未得到记录支持，应先形成核查任务')
+    if issues:
+        raise ValueError('；'.join(dict.fromkeys(issues))[:1200])
+    return value
+
+
+def draft_selection_key(recommendation_ids):
+    value = '|'.join(sorted(set(map(str, recommendation_ids or []))))
+    return hashlib.sha256(value.encode('utf-8')).hexdigest()[:20]
+
+
+def draftable_actions(value, evidence=None, recommendation_ids=None):
+    """Return only actions that may become a task draft.
+
+    ``recommendation_ids=None`` means all currently open draftable actions.
+    Explicit ids are validated against the analysis, not trusted as task text.
+    """
+    normalized = normalize_delivery_contract(value, evidence)
+    available = _all_evidence_ids(evidence)
+    all_actions = {str(item.get('id')): item for item in normalized.get('recommendations') or []
+                   if isinstance(item, dict) and item.get('id')}
+    requested = None if recommendation_ids is None else list(dict.fromkeys(map(str, recommendation_ids)))
+    ids = list(all_actions) if requested is None else requested
+    missing = [item for item in ids if item not in all_actions]
+    if missing:
+        raise ValueError('建议已关闭、已过滤或不属于当前分析：' + '、'.join(missing))
+    selected = [all_actions[item] for item in ids]
+    rejected = []
+    for action in selected:
+        action_type = action.get('actionType') or infer_action_type(action)
+        if action_type not in DRAFTABLE_ACTION_TYPES:
+            rejected.append(f'建议“{action.get("id")}”尚待确认')
+            continue
+        try:
+            validate_action_contract({'causes': normalized.get('causes') or [],
+                                      'recommendations': [action]}, evidence,
+                                     strict=bool(available))
+        except ValueError as exc:
+            rejected.append(str(exc))
+    if rejected:
+        raise ValueError('；'.join(dict.fromkeys(rejected))[:1200])
+    return selected, draft_selection_key([action['id'] for action in selected])
+
+
+def recommendation_empty_state(causes, recommendations):
+    """Human-readable gap that matches what is actually missing."""
+    causes = [item for item in causes or [] if isinstance(item, dict)]
+    recommendations = [item for item in recommendations or [] if isinstance(item, dict)]
+    if recommendations:
+        types = {item.get('actionType') or infer_action_type(item) for item in recommendations}
+        if types <= {ACTION_INVESTIGATION}:
+            return '可先生成核查任务，改善措施待核实后补充。'
+        return ''
+    if causes and any((item.get('kind') or classify_cause(item)) == 'hypothesis' for item in causes):
+        return '以下为待验证假设；当前无核查建议，暂不能生成任务草稿。'
+    if causes:
+        return '当前缺少明确核查对象或必要口径，暂不能生成任务草稿。'
+    return '当前只能定位异常，缺少处理记录，尚未形成原因判断。'
+
+
 def checkable_acceptance(text):
     return _has_any(_text(text), _ACCEPTANCE_OK)
 
@@ -223,9 +410,14 @@ def _missing_overdue_status(evidence):
 def validate_reasoning(value, evidence, *, stage='', slot=''):
     """Raise ``ValueError`` when the delivered prose outruns its evidence."""
     issues = []
-    summary = _text((value or {}).get('summary'))
-    causes = list((value or {}).get('causes') or [])
-    actions = list((value or {}).get('recommendations') or [])
+    original_actions = list((value or {}).get('recommendations') or [])
+    strict_contract = any(any(key in action for key in (
+        'actionType', 'evidenceIds', 'ownerConfirmed', 'deadlineConfirmed'))
+        for action in original_actions if isinstance(action, dict))
+    normalized = normalize_delivery_contract(value, evidence)
+    summary = _text(normalized.get('summary'))
+    causes = list(normalized.get('causes') or [])
+    actions = list(normalized.get('recommendations') or [])
     records = _record_ids(evidence)
 
     # 1. Money and energy cannot be compared without an explicit bridge, and
@@ -271,6 +463,12 @@ def validate_reasoning(value, evidence, *, stage='', slot=''):
     for action in actions:
         if not checkable_acceptance(action.get('acceptance')):
             issues.append('验收标准必须是可检查的清单、对账或确认记录，不能写“缺口不再扩大”等单一任务无法保证的结果')
+
+    if strict_contract:
+        try:
+            validate_action_contract(normalized, evidence, strict=True)
+        except ValueError as exc:
+            issues.append(str(exc))
 
     if issues:
         raise ValueError('；'.join(dict.fromkeys(issues))[:1200])
@@ -469,7 +667,10 @@ def project_card(item, slot):
     if not isinstance(result, dict):
         return out
     evidence = out.get('evidence') or {}
+    result = normalize_delivery_contract(result, evidence)
+    out['result'] = result
     records = _record_ids(evidence)
+    available_evidence = _all_evidence_ids(evidence)
     # Missing per-order overdue status must not be answered with the shipment
     # target-gap analysis that happens to share the stage.
     suppress_gap = (slot in {'shipment-overdue-note', 'shipment-cause-breakdown', 'overdue-order-list'}
@@ -481,7 +682,7 @@ def project_card(item, slot):
         if _unsupported_inference(
                 _text(cause.get('title')) + '；' + _text(cause.get('description')), evidence):
             continue
-        kind = classify_cause(cause, records)
+        kind = cause.get('kind') or classify_cause(cause, records)
         cause['kind'] = kind
         if spec['kinds'] is not None and kind not in spec['kinds']:
             continue
@@ -507,16 +708,36 @@ def project_card(item, slot):
             result.get('summary'), '当前证据未包含订单状态与已签/未签结构，不能解释签单结构')
     actions = []
     if spec['actions']:
-        cause_ids = {str(cause.get('id')) for cause in kept}
+        cause_map = {str(cause.get('id')): cause for cause in kept}
         for action in result.get('recommendations') or []:
             if not isinstance(action, dict):
                 continue
-            # Every referenced cause must still exist.  A partially dangling
-            # reference is a contract error, not a usable suggestion.
             linked = [str(item) for item in (action.get('causeIds') or [])]
-            if not linked or not set(linked) <= cause_ids:
+            # A linked cause that was filtered out is a dangling reference.  A
+            # data-gap investigation may deliberately have no cause and cite
+            # evidence directly.
+            if linked and not set(linked) <= set(cause_map):
+                continue
+            evidence_ids = set(_strings(action.get('evidenceIds')))
+            if available_evidence and evidence_ids - available_evidence:
                 continue
             value = dict(action)
+            action_type = value.get('actionType') or infer_action_type(value)
+            reasons = []
+            if action_type == ACTION_REMEDIATION:
+                supported = [cause_map[item] for item in linked if item in cause_map
+                             and cause_map[item].get('kind') == 'verified'
+                             and cause_map[item].get('status') == 'supported']
+                if not linked:
+                    reasons.append('改善建议缺少已核实原因')
+                elif not supported:
+                    reasons.append('关联原因尚未得到记录支持')
+            if available_evidence and not evidence_ids:
+                reasons.append('缺少证据引用')
+            if reasons:
+                action_type = ACTION_PENDING
+                value['actionTypeIssue'] = '；'.join(reasons)
+            value['actionType'] = action_type
             value['action'] = _suggest(value.get('action'))
             value['ownerRole'] = _pending_owner(value.get('ownerRole'))
             value['acceptance'] = _checkable(value.get('acceptance'))

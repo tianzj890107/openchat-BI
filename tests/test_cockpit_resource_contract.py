@@ -163,6 +163,10 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
         elif name in stage_risk:
             assert 'createStageRiskComponent' in source
             assert f"fallbackStage: '{stage_risk[name]}'" in source
+        elif name == 'shipment-task-order':
+            assert 'Compatibility shim' in source
+            assert 'display:none' in source
+            assert "registerInsightComponent('shipment-task-order'" in source
         else:
             assert 'insight-runtime-state' in source
             assert 'props: insightProps' in source

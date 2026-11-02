@@ -4,7 +4,10 @@ import hashlib
 import json
 from copy import deepcopy
 from pathlib import Path
-from bi_agent.cockpit.delivery import classify_cause, project_card, sanitize_summary, validate_reasoning
+from bi_agent.cockpit.delivery import (
+    classify_cause, draftable_actions, normalize_delivery_contract, project_card,
+    recommendation_empty_state, sanitize_summary, validate_reasoning,
+)
 from bi_agent.cockpit.dashboard_source import filter_stage_selected
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,12 +42,37 @@ def evaluate(case):
                 'result':{'summary':'当前存在缺口，需要核实。','causes':[cause],'recommendations':[action],
                           'limitations':[],'cardContract':'cockpit-cards-v1'},
                 'evidence':{'facts':[],'records':[],'evidence':[{'id':'e1'}],'limitations':[]}}
+        if 'result' in value:
+            item['result'] = deepcopy(value['result'])
+        if 'evidence' in value:
+            item['evidence'] = deepcopy(value['evidence'])
         projected = project_card(item,value['slot'])
         r = projected['result']; ids = {c['id'] for c in r.get('causes',[])}
         checks = {'no_dangling': all(set(a.get('causeIds',[])) <= ids for a in r.get('recommendations',[])),
                   'contract':r.get('deliveryContract'),'summary_nonempty':bool(r.get('summary')),
                   'no_verified':not any(c.get('status')=='supported' for c in r.get('causes',[]))}
+        if 'actionTypes' in expected:
+            checks['actionTypes'] = {str(a.get('id')):a.get('actionType') for a in r.get('recommendations',[])}
         return checks, checks == expected
+    if op == 'draft':
+        result = value.get('result') or {}
+        evidence = value.get('evidence') or {}
+        normalized = normalize_delivery_contract(result, evidence)
+        actual = {'emptyState':recommendation_empty_state(normalized.get('causes'),normalized.get('recommendations'))}
+        try:
+            selected, _ = draftable_actions(normalized, evidence, value.get('recommendationIds'))
+            actual.update(draftable=bool(selected), ids=[str(item.get('id')) for item in selected],
+                          actionTypes=[item.get('actionType') for item in selected])
+        except ValueError as exc:
+            actual.update(draftable=False, ids=[], error=str(exc))
+        checks = {}
+        for key in ('draftable','ids','actionTypes','emptyState'):
+            if key in expected:
+                checks[key] = actual.get(key)
+        if 'errorContains' in expected:
+            needle = expected['errorContains']
+            checks['errorContains'] = needle if needle in str(actual.get('error') or '') else ''
+        return actual, checks == expected
     raise ValueError('Unknown operation: '+op)
 
 

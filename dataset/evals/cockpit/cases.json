@@ -605,5 +605,187 @@
       "keep": true
     },
     "rationale": "报价节点状态与首页风险指标必须分离；跨环节显式许可"
+  },
+  {
+    "id": "DRAFT-001",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"], "missingEvidence": ["订单处理记录"]}],
+        "recommendations": [{"id": "a1", "actionType": "investigation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "逐单核对逾期订单的当前处理节点", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交包含订单、处理节点和阻塞项的核查清单"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录显示阻塞"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": true, "ids": ["a1"], "actionTypes": ["investigation"]},
+    "rationale": "待验证假设可以形成核查任务，但不能自动升级为改善动作"
+  },
+  {
+    "id": "DRAFT-002",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"], "missingEvidence": ["订单处理记录"]}],
+        "recommendations": [{"id": "a1", "actionType": "remediation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "调整交付优先级并同步客户", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交调整后的交付计划确认记录"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录显示阻塞"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": false, "errorContains": "尚未得到记录支持"},
+    "rationale": "未证实原因不能直接生成改善任务"
+  },
+  {
+    "id": "DRAFT-003",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "发货状态记录缺失，需要补数。",
+        "causes": [],
+        "recommendations": [{"id": "a1", "actionType": "investigation", "causeIds": [], "evidenceIds": ["e1"], "action": "补齐订单处理记录并核对超期状态", "ownerRole": "交付运营", "deadlineDays": 3, "acceptance": "提交订单、处理节点与数据缺口清单"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "发货状态缺失"}], "records": [], "evidence": [{"id": "e1", "claim": "发货状态查询无数据"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": true, "ids": ["a1"], "actionTypes": ["investigation"]},
+    "rationale": "数据缺口核查可直接引用证据，不必先伪造原因"
+  },
+  {
+    "id": "DRAFT-004",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "处理记录已确认阻塞。",
+        "causes": [{"id": "c1", "kind": "verified", "title": "质检未放行", "description": "处理记录确认质检尚未放行", "status": "supported", "evidenceIds": ["e1"]}],
+        "recommendations": [{"id": "a1", "actionType": "remediation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "调整交付优先级并同步客户", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交调整后的交付计划确认记录"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [], "records": [{"id": "e1"}], "evidence": [{"id": "e1", "claim": "质检记录确认未放行"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": true, "ids": ["a1"], "actionTypes": ["remediation"]},
+    "rationale": "已支持原因与改善动作、证据匹配时可以生成改善任务"
+  },
+  {
+    "id": "DRAFT-005",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"]}],
+        "recommendations": [{"id": "a1", "actionType": "investigation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "逐单核对处理节点", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交核查清单"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录"}], "limitations": []},
+      "recommendationIds": ["closed-recommendation"]
+    },
+    "expected": {"draftable": false, "errorContains": "建议已关闭"},
+    "rationale": "已关闭、已过滤或不属于当前分析的建议不能进入草稿"
+  },
+  {
+    "id": "DRAFT-006",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"]}],
+        "recommendations": [{"id": "a1", "actionType": "investigation", "causeIds": ["c1"], "evidenceIds": ["e9"], "action": "逐单核对处理节点", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交核查清单"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": false, "errorContains": "不存在的证据"},
+    "rationale": "草稿不能引用不存在或未读取的证据"
+  },
+  {
+    "id": "DRAFT-007",
+    "area": "task_order",
+    "priority": "P1",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "存在交付风险。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"]}],
+        "recommendations": [{"id": "a1", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "持续关注该事项", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "完成相关工作"}],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": false, "errorContains": "尚待确认"},
+    "rationale": "旧缓存中无法明确识别动作类型的建议保持待确认，不默认升级"
+  },
+  {
+    "id": "DRAFT-008",
+    "area": "task_order",
+    "priority": "P0",
+    "operation": "draft",
+    "input": {
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"]}],
+        "recommendations": [
+          {"id": "a1", "actionType": "investigation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "核对订单处理节点", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交核查清单"},
+          {"id": "a2", "actionType": "investigation", "causeIds": [], "evidenceIds": ["e1"], "action": "补齐订单处理记录", "ownerRole": "交付运营", "deadlineDays": 3, "acceptance": "提交数据缺口清单"}
+        ],
+        "limitations": []
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录"}], "limitations": []},
+      "recommendationIds": ["a1"]
+    },
+    "expected": {"draftable": true, "ids": ["a1"], "actionTypes": ["investigation"]},
+    "rationale": "用户关闭的建议不进入草稿，选择集合由服务端复核"
+  },
+  {
+    "id": "DRAFT-009",
+    "area": "task_order",
+    "priority": "P1",
+    "operation": "draft",
+    "input": {
+      "result": {"summary": "当前只能定位异常。", "causes": [], "recommendations": [], "limitations": []},
+      "evidence": {"facts": [{"id": "e1", "label": "事实"}], "records": [], "evidence": [{"id": "e1", "claim": "事实记录"}], "limitations": []},
+      "recommendationIds": []
+    },
+    "expected": {"draftable": false, "ids": [], "emptyState": "当前只能定位异常，缺少处理记录，尚未形成原因判断。"},
+    "rationale": "空态文案必须说明实际缺口，不统一写成没有已证明内容"
+  },
+  {
+    "id": "SLOT-016",
+    "area": "slot_contract",
+    "priority": "P0",
+    "operation": "projection",
+    "input": {
+      "slot": "shipment-risk-summary",
+      "result": {
+        "summary": "交付存在阻塞，需要核实。",
+        "causes": [{"id": "c1", "kind": "hypothesis", "title": "交付阻塞待核实", "description": "处理记录提示存在阻塞", "status": "hypothesis", "evidenceIds": ["e1"]}],
+        "recommendations": [
+          {"id": "a1", "actionType": "investigation", "causeIds": [], "evidenceIds": ["e1"], "action": "补齐订单处理记录", "ownerRole": "交付运营", "deadlineDays": 3, "acceptance": "提交数据缺口清单"},
+          {"id": "a2", "actionType": "remediation", "causeIds": ["c1"], "evidenceIds": ["e1"], "action": "调整交付优先级", "ownerRole": "交付运营", "deadlineDays": 5, "acceptance": "提交新的交付计划"}
+        ],
+        "limitations": [],
+        "cardContract": "cockpit-cards-v1"
+      },
+      "evidence": {"facts": [{"id": "e1", "label": "处理记录"}], "records": [], "evidence": [{"id": "e1", "claim": "订单处理记录"}], "limitations": []}
+    },
+    "expected": {"no_dangling": true, "contract": "cockpit-delivery-v2", "summary_nonempty": true, "no_verified": true, "actionTypes": {"a1": "investigation", "a2": "pending"}},
+    "rationale": "投影保留有直接证据的数据缺口核查，并将无支持原因的改善建议降为待确认而不是清空全部建议"
   }
 ]
