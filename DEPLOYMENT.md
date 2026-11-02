@@ -1559,3 +1559,10 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 风险计数实测：`id=1` 的销售额为 `1` 条、出货量为 `2` 条；`id=2` 的销售额为 `2` 条、出货量为 `0` 条，出货量来源完整且 `known=true`。真实 headless Chrome 验证三页和 Tab 切换无看板配置错误或浏览器异常，`id=1` 顶栏显示 `1条风险/2条风险`，`id=2` 显示 `2条风险/0条风险`，不再出现“风险分析中”。
 - 自动化验证：Cockpit 相关 Python 289 项通过，Node 看板测试 84 项通过；`git diff --check` 通过。页面验收产生正常的图表 AP 读取；未手工调用分析接口、未发送任务令。
 - 回退：停止 8765 PID `3851649`，在 `process360-cockpit-990c4fa-20261102-094608` 使用 `.venv/bin/python start-main.py` 恢复旧版本；不得删除新 release、历史 release、共享 `dataset`、会话、上传、图表或分析记录。8876 继续代理恢复后的 8765，无需修改 nginx。
+
+### 2026-11-02 · 8876 兼容入口代理到主服务
+
+- 已应用 `deploy/cockpit/nginx-8876.conf`，8876 的三个 `/cockpit/*` 页面、当前静态资源、旧 `/api/cockpit/*` 与主服务前缀 `/api/ontology-agentic-analytics/*` 均反向代理到 `172.16.10.34:8765`，保留 URI 和查询参数；根地址映射经营看板。Fuxi 现有 8876 URL 不需调整，不是跳转到新端口。
+- 只为已打开旧页面保留 `/static/cockpit/releases/` 不可变资源兼容；新页面资源由主服务提供。8876 的旧 `release.json` 不再作为正式版本来源。修改只涉及 nginx，不重启主服务、不触发取数或分析。
+- nginx 配置 `nginx -t` 通过后平滑 reload；原配置备份为 `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/nginx-before-main-proxy-1793582991.conf`。回退时将备份内容写回 `conf/default.conf` 原 inode，再 `docker exec eimosp-cockpit-8876 nginx -t` 和 `nginx -s reload`；不能用 rename 替换单文件 bind mount。
+- 线上复验：两角色三页面共6组 HTML 与8765完全相同，三个JS入口资源均200；旧API与带前缀API均返回15个AI插槽，根地址正常。没有执行真实SQL或任务下发。
