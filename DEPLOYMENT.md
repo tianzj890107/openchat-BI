@@ -1533,3 +1533,10 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 验证：两个角色 `/api/cockpit/ai-publications` 均为 `readyCount=15`、`missingCount=0`；报价 `contentGaps=['ANALYSIS_LIMITED']`，共同分析去重证据为 117/118 条。总裁共同分析保留 5 条有依据的原因，分析员保留口径冲突、商机覆盖、客户结构 3 条；接口全文不再出现“难以解释”“不足以解释”“金额占比不足”“订单取消变更量级有限”及悬空 `signed-unsigned-scope`。8876 首页、三个 Cockpit 路由、静态 `cockpit.js` 均返回 200；`release.json` 已指向 `71a4da6`。
 - 自动化验证：Cockpit 相关 Python 219 项通过，Node 看板测试 82 项通过，`git diff --check` 通过。本次验收请求只读取已发布结果，未主动触发 AP 或模型重新分析；代码修改集中在交付投影和验收口径。
 - 回退：停止 8765 PID `763133`，用 `process360-cockpit-d611a72-20261030-151355/start-main.py` 启动；8876 将 `site` 指回 `site-next-012fd2a-20261030-151130` 并执行 `docker restart 10de73310da9`。更早 release、备份、共享 `dataset`、会话、上传、图表和分析结果均完整保留，不得删除。
+
+### 2026-11-02 · 8876 兼容入口代理到主服务
+
+- 已应用 `deploy/cockpit/nginx-8876.conf`，8876 的三个 `/cockpit/*` 页面、当前静态资源、旧 `/api/cockpit/*` 与主服务前缀 `/api/ontology-agentic-analytics/*` 均反向代理到 `172.16.10.34:8765`，保留 URI 和查询参数；根地址映射经营看板。Fuxi 现有 8876 URL 不需调整，不是跳转到新端口。
+- 只为已打开旧页面保留 `/static/cockpit/releases/` 不可变资源兼容；新页面资源由主服务提供。8876 的旧 `release.json` 不再作为正式版本来源。修改只涉及 nginx，不重启主服务、不触发取数或分析。
+- nginx 配置 `nginx -t` 通过后平滑 reload；原配置备份为 `/home/data/zhangzhen_home/zhangzhen/eimosp-cockpit-8876/backups/nginx-before-main-proxy-1793582991.conf`。回退时将备份内容写回 `conf/default.conf` 原 inode，再 `docker exec eimosp-cockpit-8876 nginx -t` 和 `nginx -s reload`；不能用 rename 替换单文件 bind mount。
+- 线上复验：两角色三页面共6组 HTML 与8765完全相同，三个JS入口资源均200；旧API与带前缀API均返回15个AI插槽，根地址正常。没有执行真实SQL或任务下发。
