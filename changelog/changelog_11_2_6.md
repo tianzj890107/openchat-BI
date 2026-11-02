@@ -54,3 +54,18 @@
   改为带 `ⓘ` 前缀的灰色辅助文字；提示内容和触发逻辑不变。
 - 主要文件：`bi_agent/web/static/cockpit/cockpit.css`、`tests/cockpit_insight_runtime.test.mjs`。
 - 验证：Cockpit 运行时测试 6 项、Cockpit Python 测试 284 项通过；`git diff --check` 通过。
+
+### 2026-11-02 18:35 Workbench 分析 Agent 对话层 Pro UI 状态适配
+
+- 用户可见变化：分析 Agent 对话区新增 Pro UI 风格状态条，实时显示思考、工具执行、
+  等待选择、完成、失败、会话重建和中断；工具开始即显示执行行，结果返回后原位置更新，
+  不再等到结果到达才出现。生成中发送按钮变为停止，停止后保留已输出内容且不保存为完成回答。
+- 交互修复：用户停止与连接中断使用不同提示；切换模式、会话重建、409/429 和选择提交失败
+  不再把状态条卡在“运行中”；选择提交期间也可停止，未完成选择卡会恢复为可重试状态。
+- 数据契约：新增 Analytics SSE 到活动状态的纯适配器，按 `turn_id` 隔离晚到事件、按工具
+  `id` 去重并保持终态幂等；旧历史 HTML 快照、图表、表格、本体实体和业务会话接口保持不变。
+- 主要文件：`frontend/src/agentActivityModel.js`、`ProUiAgentStatus.jsx`、`runtime.js`、
+  `main.jsx`、`shell.html`、`workbench.css`、`frontend/tests/agentActivityModel.test.mjs`、
+  `docs/specs/workbench-pro-ui-agent-conversation.md` 及同名静态构建产物。
+- 验证：前端 Node 测试 92 项、`tests.test_regressions` 221 项、`npm run build` 和
+  `git diff --check` 通过；本地浏览器确认状态条运行中/已停止显示正确。本轮未部署。

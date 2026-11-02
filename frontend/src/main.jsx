@@ -8,6 +8,7 @@ import {
   bootWorkbenchRuntime,
   fetchConversationSummaries,
 } from "./runtime.js";
+import ProUiAgentStatus from "./ProUiAgentStatus.jsx";
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -889,7 +890,7 @@ function syncAllThoughtChainRails(container) {
   container?.querySelectorAll(".antd-step-timeline").forEach(syncThoughtChainRail);
 }
 
-function AntdStep({ name, summary, duration, html }) {
+function AntdStep({ name, summary, duration, html, status = "complete" }) {
   const [expanded, setExpanded] = useState(false);
   const expandedRef = useRef(false);
   const shellRef = useRef(null);
@@ -898,7 +899,10 @@ function AntdStep({ name, summary, duration, html }) {
   const transition = "height 220ms cubic-bezier(.22,.61,.36,1)";
   const detailHtml = String(html || "").trim() || '<div class="antd-step-empty">暂无详细内容</div>';
   const tone = TOOL_RESULT_TONES[name] || "muted";
-  const toneClass = `antd-step-tone-${tone}`;
+  const running = status === "running";
+  const failed = status === "error" || status === "cancelled";
+  const toneClass = `antd-step-tone-${running ? "running" : failed ? "error" : tone}`;
+  const chainStatus = running ? "pending" : failed ? "error" : "success";
   useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
   useEffect(() => {
     const shell = shellRef.current;
@@ -943,7 +947,7 @@ function AntdStep({ name, summary, duration, html }) {
     shell.style.transition = transition;
     shell.style.height = expandedRef.current ? "auto" : "0px";
   };
-  return <div className="thinking-step">
+  return <div className={`thinking-step${running ? " is-running" : ""}`} data-step-status={status}>
     <ThoughtChain
       size="small"
       className={`antd-thought-chain ${toneClass}`}
@@ -953,6 +957,7 @@ function AntdStep({ name, summary, duration, html }) {
       collapsible={false}
       items={[{
         key: "step",
+        status: chainStatus,
         // Tool results are the only execution events shown in the conversation.
         // The runtime owns the shared thinking row; this component renders the
         // completed result once the tool has returned.
@@ -1003,15 +1008,23 @@ function mountStep(step) {
   }
   const root = createRoot(host);
   const update = () => {
-    root.render(<AntdStep name={text(".step-name")} summary={text(".step-summary")} duration={text(".step-duration")} html={body?.innerHTML || ""} />);
+    root.render(<AntdStep
+      name={text(".step-name")}
+      summary={text(".step-summary")}
+      duration={text(".step-duration")}
+      html={body?.innerHTML || ""}
+      status={step.dataset.status || "complete"}
+    />);
     requestAnimationFrame(() => syncThoughtChainRail(step.closest(".antd-step-timeline")));
   };
   const observer = body ? new MutationObserver(update) : null;
   if (body) observer.observe(body, { childList: true, subtree: true, characterData: true });
+  const statusObserver = new MutationObserver(update);
+  statusObserver.observe(step, { attributes: true, attributeFilter: ["data-status"] });
   if (header) header.style.display = "none";
   if (body) body.style.display = "none";
   step.classList.add("antd-step-enhanced");
-  stepRoots.set(step, { root, observer });
+  stepRoots.set(step, { root, observer, statusObserver });
   update();
 }
 
@@ -1322,10 +1335,12 @@ function WorkbenchApp() {
     const versionRoot = shellRef.current.querySelector("#product-version");
     const workflowRoot = shellRef.current.querySelector("#antd-workflow-root");
     const dashboardWorkflowRoot = shellRef.current.querySelector("#antd-dashboard-workflow-root");
+    const proUiStatusRoot = shellRef.current.querySelector("#ant-pro-ui-status-root");
     if (sidebarRoot) createRoot(sidebarRoot).render(<Sidebar />);
     if (versionRoot) createRoot(versionRoot).render(<ProductVersionTag />);
     if (workflowRoot) createRoot(workflowRoot).render(<WorkflowPanels />);
     if (dashboardWorkflowRoot) createRoot(dashboardWorkflowRoot).render(<WorkflowPanels />);
+    if (proUiStatusRoot) createRoot(proUiStatusRoot).render(<ProUiAgentStatus />);
     shellRef.current.querySelectorAll(".page-title-icon[data-feature-glyph]").forEach((node) => {
       createRoot(node).render(<FeatureGlyph kind={node.dataset.featureGlyph} />);
     });

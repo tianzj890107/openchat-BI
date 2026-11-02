@@ -6393,10 +6393,11 @@ select,
 }
 .composer-send.is-busy svg { display: none; }
 .composer-send.is-busy::after {
-  content: "…";
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1;
+  content: "";
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background: currentColor;
 }
 
 /* Once an AskUser choice is resolved, there is no progress separator left to
@@ -6515,4 +6516,215 @@ body[data-layout="single"][data-mobile-pane="dashboard"] .dashboard-pane {
   background-color: #FFFFFF !important;
   background-image: none !important;
   color: #2563EB !important;
+}
+
+/* -------------------------------------------------------------------------
+ * Pro UI Agent conversation status
+ *
+ * The status strip is a React island driven by agentActivityModel. It mirrors
+ * the execution state already owned by runtime.js and deliberately does not
+ * introduce a second SSE client or a browser-only conversation store.
+ * ---------------------------------------------------------------------- */
+.ant-pro-ui-status-root:empty { display: none; }
+
+.pro-ui-agent-status {
+  --pro-ui-accent: #36745c;
+  --pro-ui-accent-soft: #eef5f1;
+  --pro-ui-border: #dbe4ec;
+  --pro-ui-muted: #697386;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  margin: 2px 10px 7px;
+  padding: 7px 10px;
+  border: 1px solid var(--pro-ui-border);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfcfe 0%, #f6f8fb 100%);
+  color: #35383f;
+  font-size: 12px;
+  line-height: 1.35;
+  flex-shrink: 0;
+}
+
+.pro-ui-agent-status-glyph {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 7px;
+  background: #eef1f5;
+  color: var(--pro-ui-muted);
+}
+
+.pro-ui-agent-status-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.pro-ui-agent-status-copy strong {
+  flex: 0 0 auto;
+  color: #30343b;
+  font-weight: 600;
+}
+
+.pro-ui-agent-status-copy span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--pro-ui-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pro-ui-agent-status-tool,
+.pro-ui-agent-status-count {
+  flex: 0 0 auto;
+  max-width: 160px;
+  overflow: hidden;
+  padding: 2px 7px;
+  border: 1px solid #e7ebf0;
+  border-radius: 999px;
+  background: #fff;
+  color: #667085;
+  font-family: var(--font-mono, SFMono-Regular, Consolas, monospace);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pro-ui-agent-status-stop {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid #d7dee7;
+  border-radius: 8px;
+  background: #fff;
+  color: #3f4a5a;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pro-ui-agent-status-stop:hover {
+  border-color: #aeb9c7;
+  background: #f8fafc;
+}
+
+.pro-ui-agent-status-stop:focus-visible {
+  outline: 2px solid #86a692;
+  outline-offset: 1px;
+}
+
+.pro-ui-agent-status-running .pro-ui-agent-status-glyph,
+.pro-ui-agent-status-awaiting_choice .pro-ui-agent-status-glyph {
+  background: var(--pro-ui-accent-soft);
+  color: var(--pro-ui-accent);
+}
+
+.pro-ui-agent-status-completed .pro-ui-agent-status-glyph {
+  background: #edf8f1;
+  color: #15803d;
+}
+
+.pro-ui-agent-status-failed .pro-ui-agent-status-glyph,
+.pro-ui-agent-status-superseded .pro-ui-agent-status-glyph {
+  background: #fff1f0;
+  color: #b42318;
+}
+
+.pro-ui-agent-status-interrupted .pro-ui-agent-status-glyph {
+  background: #fff7e8;
+  color: #b45309;
+}
+
+.pro-ui-agent-status[data-status="running"] .pro-ui-agent-status-glyph::after {
+  content: "";
+}
+
+/* Running execution rows. The completed row keeps the existing ThoughtChain
+ * presentation; running is expressed only through the activity glyph, a small
+ * pulse and the explicit "执行中" metadata. */
+.step.is-running .step-running-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px dashed #d8e2ea;
+  border-radius: 8px;
+  color: #697386;
+  background: #fafcfe;
+  font-size: 12px;
+}
+
+.step.is-error .step-name,
+.step.is-cancelled .step-name {
+  color: #b42318;
+}
+
+.step.is-cancelled .step-duration {
+  color: #b45309;
+}
+
+.step.is-error .antd-step-host .ant-thought-chain-item-icon {
+  color: #b42318 !important;
+}
+
+.step.is-cancelled .antd-step-host .ant-thought-chain-item-icon {
+  color: #b45309 !important;
+}
+
+.step-running-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #36745c;
+  box-shadow: 0 0 0 0 rgba(54, 116, 92, 0.28);
+  animation: pro-ui-step-pulse 1.4s ease-out infinite;
+}
+
+.step.step-reasoning .reasoning-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #475467;
+  font: 12px/1.65 var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+}
+
+.antd-step-tone-running {
+  color: #36745c;
+}
+
+.antd-step-tone-error {
+  color: #b42318;
+}
+
+.antd-thought-chain.antd-step-tone-running .ant-thought-chain-item-icon {
+  color: #36745c;
+}
+
+.antd-step-status-running .ant-thought-chain-item-title,
+.thinking-step.is-running .antd-step-label b {
+  color: #36745c;
+}
+
+@keyframes pro-ui-step-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(54, 116, 92, 0.3); }
+  70% { box-shadow: 0 0 0 7px rgba(54, 116, 92, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(54, 116, 92, 0); }
+}
+
+@media (max-width: 720px) {
+  .pro-ui-agent-status {
+    margin-left: 6px;
+    margin-right: 6px;
+  }
+  .pro-ui-agent-status-tool,
+  .pro-ui-agent-status-count {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-running-dot { animation: none; }
 }

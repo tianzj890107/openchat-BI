@@ -75,6 +75,15 @@ import {
   recordFailure,
   resetTurnLifecycle,
 } from "./turnLifecycle.js";
+import {
+  ACTIVITY_STATUS,
+  AGENT_STATUS,
+  applyAgentEvent,
+  beginAgentTurn,
+  createAgentActivityState,
+  resetAgentActivity,
+  stopAgentTurn,
+} from "./agentActivityModel.js";
 
 const conversationSummaryCache = new Map();
 const conversationSummaryRequests = new Map();
@@ -344,6 +353,10 @@ export function bootWorkbenchRuntime() {
       // belongs to a superseded (reset / restore / activation) session generation.
       lastDoneTurnId: null,
       lastDoneGeneration: null,
+      // Pro UI conversation activity for the current turn. This is a view
+      // model only: requests, history snapshots and persisted artifacts stay
+      // owned by the runtime below.
+      activity: createAgentActivityState(),
       // Completed / failed turn lifecycle. `completed` is a bounded FIFO so
       // repeated or delayed `done` frames stay idempotent; `failed` records
       // turns that ended in error / superseded / interrupted so a late
@@ -415,6 +428,31 @@ export function bootWorkbenchRuntime() {
   };
 
   function B() { return buckets[state.mode]; }
+
+  function publishAgentActivity(mode = state.mode, sourceEvent = null) {
+    const activity = buckets[mode]?.activity || createAgentActivityState();
+    try {
+      window.__biAgentActivityState = activity;
+    } catch (_) { /* window is unavailable in isolated unit tests */ }
+    try {
+      window.dispatchEvent(new CustomEvent("bi-agent-activity", {
+        detail: {
+          mode,
+          state: activity,
+          eventType: sourceEvent?.type || "",
+        },
+      }));
+    } catch (_) { /* events are best-effort */ }
+    return activity;
+  }
+
+  function recordAgentActivity(evt, { publish = true } = {}) {
+    const bucket = B();
+    const result = applyAgentEvent(bucket.activity, evt, { at: Date.now() });
+    bucket.activity = result.state;
+    if (publish) publishAgentActivity(state.mode, evt);
+    return result;
+  }
 
   // ------------------------------------------------------------------
   // Elements
@@ -1479,6 +1517,8 @@ export function bootWorkbenchRuntime() {
 
   function renderConversationPreview(preview, mode) {
     const bucket = buckets[mode];
+    bucket.activity = resetAgentActivity(bucket.activity, { at: Date.now() });
+    if (state.mode === mode) publishAgentActivity(mode, { type: "history_restore" });
     bucket.convId = preview.id || null;
     bucket.titleHint = preview.title || "";
     bucket.firstUserQuestion = preview.first_user_question ||
@@ -3495,6 +3535,20 @@ export function bootWorkbenchRuntime() {
     }
   }
 
+  function restoreSubmittingChoiceCards(message) {
+    el.chatScroll.querySelectorAll(".choice-card.submitting").forEach((card) => {
+      card.classList.remove("submitting");
+      card.querySelectorAll(".choice-check").forEach((check) => { check.disabled = false; });
+      const confirmBtn = card.querySelector(".choice-confirm");
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = "确定";
+      }
+      const status = card.querySelector(".choice-status");
+      if (status) status.textContent = message;
+    });
+  }
+
   async function submitChoice(card, ids, labels) {
     if (card.classList.contains("resolved") || card.classList.contains("submitting")) return;
     card.classList.add("submitting");
@@ -3507,14 +3561,19 @@ export function bootWorkbenchRuntime() {
 
     const url = state.mode === "report" ? withBasePath("api/report/choice") : withBasePath("api/choice");
     const mySeq = ++streamSeq;
+    const myController = new AbortController();
+    activeRequestController = myController;
     let resp;
     try {
       resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ choice_ids: ids, choice_labels: labels, session_id: clientSessionId }),
+        signal: myController.signal,
       });
     } catch (err) {
+      if (activeRequestController === myController) activeRequestController = null;
+      if (err && err.name === "AbortError") return;
       onEvent({ type: "error", message: `choice request failed: ${err.message || err}` });
       card.classList.remove("submitting");
       card.querySelectorAll(".choice-check").forEach(c => { c.disabled = false; });
@@ -3524,6 +3583,7 @@ export function bootWorkbenchRuntime() {
       return;
     }
     if (!resp.ok || !resp.body) {
+      if (activeRequestController === myController) activeRequestController = null;
       const errText = await resp.text().catch(() => resp.statusText);
       let errBody = null;
       try { errBody = JSON.parse(errText); } catch (_) { /* non-JSON */ }
@@ -3531,8 +3591,10 @@ export function bootWorkbenchRuntime() {
       const retryAfter = resp.headers.get("Retry-After") || (errBody && errBody.retry_after) || 1;
       if (resp.status === 409 && errCode === "SESSION_BUSY") {
         uploadStatus("当前会话仍在生成，请等待完成或取消", "error");
+        recordAgentActivity({ type: "error", message: "当前会话仍在生成，请等待完成或取消" });
       } else if (resp.status === 429 && errCode) {
         uploadStatus(`服务繁忙，请 ${retryAfter} 秒后重试`, "error");
+        recordAgentActivity({ type: "error", message: `服务繁忙，请 ${retryAfter} 秒后重试` });
       } else {
         onEvent({ type: "error", message: `HTTP ${resp.status}: ${errText}` });
       }
@@ -3546,7 +3608,21 @@ export function bootWorkbenchRuntime() {
     // The choice endpoint accepted the selection. Mark the card immediately;
     // the following SSE stream is the agent continuation, not a pending card.
     markChoiceResolved(card.dataset.toolUseId, labels);
-    await streamResponse(resp, mySeq);
+    recordAgentActivity({
+      type: "user_choice_resolved",
+      tool_use_id: card.dataset.toolUseId,
+      choice_labels: labels,
+    });
+    try {
+      await streamResponse(resp, mySeq);
+    } catch (err) {
+      console.warn("choice stream interrupted", err);
+      if (mySeq === streamSeq) {
+        onEvent({ type: "stream_interrupted", message: err?.name || "stream interrupted" });
+      }
+    } finally {
+      if (activeRequestController === myController) activeRequestController = null;
+    }
   }
 
   function attachChatChart(chart) {
@@ -6446,30 +6522,137 @@ export function bootWorkbenchRuntime() {
     </span>`;
   }
 
-  function buildChatStep(r) {
+  function buildChatStep(r, status = ACTIVITY_STATUS.COMPLETE) {
     const step = el_h("div", "step");
+    if (r.id) step.dataset.activityId = String(r.id);
+    step.dataset.status = status;
     const preview = toolPreview(r.name, r.input);
     const chips = (r.ontology_entities || []).map(e => buildChipHTML(e)).join("");
+    const running = status === ACTIVITY_STATUS.RUNNING;
     step.innerHTML = `
       <div class="step-header">
         <span class="step-icon">▸</span>
         <span class="step-name">${esc(r.name)}</span>
-        <span class="step-summary">${esc(preview)}</span>
-        <span class="step-duration">${fmtDuration(r.duration_ms)}</span>
+        <span class="step-summary">${esc(running ? (r.input ? preview : "正在执行…") : preview)}</span>
+        <span class="step-duration">${running ? "执行中" : fmtDuration(r.duration_ms)}</span>
       </div>
       <div class="step-body">
         <div class="tool-io-bubble tool-io-input">
           <div class="tool-io-label">输入</div>
           <pre class="tool-io-content">${esc(JSON.stringify(r.input || {}, null, 2))}</pre>
         </div>
-        <div class="tool-io-bubble tool-io-output">
+        ${running ? '<div class="step-running-note"><span class="step-running-dot"></span>等待工具返回…</div>' : `<div class="tool-io-bubble tool-io-output">
           <div class="tool-io-label">输出</div>
           <pre class="tool-io-content">${esc(r.output || "")}</pre>
-        </div>
+        </div>`}
         ${chips ? `<div class="step-sub">命中的本体</div><div class="chip-row">${chips}</div>` : ""}
       </div>`;
     step.querySelector(".step-header").addEventListener("click", () => step.classList.toggle("open"));
     return step;
+  }
+
+  function activityRecord(activity) {
+    return {
+      id: activity.id,
+      name: activity.name,
+      input: activity.input,
+      output: activity.output,
+      duration_ms: activity.durationMs,
+      ontology_entities: activity.ontologyEntities || [],
+      status: activity.status,
+    };
+  }
+
+  function activityStepSummary(activity) {
+    if (activity.kind === "reasoning") {
+      return activity.status === ACTIVITY_STATUS.RUNNING ? "模型正在整理分析思路…" : "思考已结束";
+    }
+    if (activity.status === ACTIVITY_STATUS.RUNNING) {
+      return activity.input ? toolPreview(activity.name, activity.input) : "正在执行…";
+    }
+    return toolPreview(activity.name, activity.input);
+  }
+
+  function updateActivityChatStep(step, activity) {
+    if (!step || !activity) return;
+    step.dataset.status = activity.status;
+    if (activity.kind === "reasoning") {
+      step.dataset.reasoning = "1";
+      const name = step.querySelector(".step-name");
+      const summary = step.querySelector(".step-summary");
+      const duration = step.querySelector(".step-duration");
+      const body = step.querySelector(".step-body");
+      if (name) name.textContent = activity.name || "思考摘要";
+      if (summary) summary.textContent = activityStepSummary(activity);
+      if (duration) duration.textContent = activity.status === ACTIVITY_STATUS.RUNNING ? "进行中" : "";
+      if (body) {
+        let content = body.querySelector(".reasoning-content");
+        if (!content) {
+          body.innerHTML = '<div class="reasoning-content"></div>';
+          content = body.querySelector(".reasoning-content");
+        }
+        if (content) content.textContent = activity.text || "等待思考内容…";
+      }
+      step.classList.toggle("is-running", activity.status === ACTIVITY_STATUS.RUNNING);
+      return;
+    }
+
+    const record = activityRecord(activity);
+    const preview = toolPreview(record.name, record.input);
+    const running = activity.status === ACTIVITY_STATUS.RUNNING;
+    const name = step.querySelector(".step-name");
+    const summary = step.querySelector(".step-summary");
+    const duration = step.querySelector(".step-duration");
+    const body = step.querySelector(".step-body");
+    if (name) name.textContent = record.name || "工具调用";
+    if (summary) summary.textContent = running ? (record.input ? preview : "正在执行…") : preview;
+    if (duration) duration.textContent = running ? "执行中" : fmtDuration(record.duration_ms);
+    if (body) body.innerHTML = `
+      <div class="tool-io-bubble tool-io-input">
+        <div class="tool-io-label">输入</div>
+        <pre class="tool-io-content">${esc(JSON.stringify(record.input || {}, null, 2))}</pre>
+      </div>
+      ${running ? '<div class="step-running-note"><span class="step-running-dot"></span>等待工具返回…</div>' : `<div class="tool-io-bubble tool-io-output">
+        <div class="tool-io-label">输出</div>
+        <pre class="tool-io-content">${esc(record.output || "")}</pre>
+      </div>`}
+      ${(record.ontology_entities || []).length
+        ? `<div class="step-sub">命中的本体</div><div class="chip-row">${record.ontology_entities.map(e => buildChipHTML(e)).join("")}</div>`
+        : ""}`;
+    step.classList.toggle("is-running", running);
+    step.classList.toggle("is-error", activity.status === ACTIVITY_STATUS.ERROR);
+    step.classList.toggle("is-cancelled", activity.status === ACTIVITY_STATUS.CANCELLED);
+  }
+
+  function upsertActivityChatStep(activity) {
+    if (!activity) return null;
+    const existing = el.chatScroll.querySelector(
+      `.step[data-activity-id="${CSS.escape(String(activity.id))}"]`,
+    );
+    if (existing) {
+      updateActivityChatStep(existing, activity);
+      return existing;
+    }
+    const step = activity.kind === "reasoning"
+      ? buildChatStep({ id: activity.id, name: activity.name, input: {}, output: "", status: activity.status })
+      : buildChatStep(activityRecord(activity), activity.status);
+    if (activity.kind === "reasoning") {
+      step.classList.add("step-reasoning");
+      step.dataset.reasoning = "1";
+    }
+    updateActivityChatStep(step, activity);
+    attachChatStep(step);
+    if (window.antdStepMount) window.antdStepMount(step);
+    return step;
+  }
+
+  function syncExistingAgentActivitySteps(activityState = B().activity) {
+    (activityState?.activities || []).forEach((activity) => {
+      const step = el.chatScroll.querySelector(
+        `.step[data-activity-id="${CSS.escape(String(activity.id))}"]`,
+      );
+      if (step) updateActivityChatStep(step, activity);
+    });
   }
 
   // ------------------------------------------------------------------
@@ -6571,6 +6754,14 @@ export function bootWorkbenchRuntime() {
   // SSE dispatch
   // ------------------------------------------------------------------
   function onEvent(evt) {
+    // Keep the Pro UI activity model ahead of DOM mutations. Text and
+    // thinking deltas can arrive hundreds of times per turn; their state is
+    // still recorded, but the status bar only needs the lower-frequency
+    // execution and terminal changes.
+    const activityResult = recordAgentActivity(evt, {
+      publish: evt.type !== "text_delta" && evt.type !== "thinking_delta",
+    });
+    const activity = activityResult.activity;
     switch (evt.type) {
       case "user_message":
         break;
@@ -6585,8 +6776,12 @@ export function bootWorkbenchRuntime() {
       case "text_delta":
         appendAssistantDelta(evt.text);
         break;
+      case "thinking_delta":
+        if (activity) upsertActivityChatStep(activity);
+        break;
       case "tool_start":
       case "tool_input":
+        if (activity) upsertActivityChatStep(activity);
         break;
       case "sop_progress": {
         // Structured backend SOP event (1-based step).  Turn isolation is
@@ -6609,9 +6804,12 @@ export function bootWorkbenchRuntime() {
           multi_chart: evt.multi_chart || null,
         };
         recordToolCall(record);
-        const chatStep = buildChatStep(record);
-        attachChatStep(chatStep);
-        if (window.antdStepMount) window.antdStepMount(chatStep);
+        if (activity) upsertActivityChatStep(activity);
+        else {
+          const chatStep = buildChatStep(record);
+          attachChatStep(chatStep);
+          if (window.antdStepMount) window.antdStepMount(chatStep);
+        }
         // Advance the pinned SOP checklist based on which tool just ran
         // (output lets query tools report success vs failure detail).
         advanceSopForTool(record.name, record.output);
@@ -6643,6 +6841,7 @@ export function bootWorkbenchRuntime() {
         break;
       case "llm_response":
         finalizeAssistantText();
+        if (activity) upsertActivityChatStep(activity);
         // A tool-bearing response means the agent is still working. Keep a
         // visible status row until the corresponding tool_result arrives;
         // pure final text should not leave an empty timeline behind.
@@ -6758,10 +6957,12 @@ export function bootWorkbenchRuntime() {
           const _supB = B();
           _supB.turnLifecycle = recordFailure(_supB.turnLifecycle, evt.turn_id);
         }
+        syncExistingAgentActivitySteps();
         finalizeAssistantText();
         cleanupTurnLoadingUI();
         setBusy(false);
         B().choiceContinuation = false;
+        restoreSubmittingChoiceCards("会话已重建，请重新提交");
         const _supTip = el_h("div", "msg msg-system msg-enforce",
           `<div class="msg-header"><span class="msg-role" style="color: var(--accent-amber,#ff6d00); border-color: var(--accent-amber,#ff6d00);">SYSTEM · 会话已重建</span></div>
            <div class="msg-body" style="color: var(--fg-1); border-left: 2px solid var(--accent-amber,#ff6d00); padding-left: 10px;">
@@ -6780,14 +6981,19 @@ export function bootWorkbenchRuntime() {
           const _intB = B();
           _intB.turnLifecycle = recordFailure(_intB.turnLifecycle, evt.turn_id);
         }
+        syncExistingAgentActivitySteps();
         finalizeAssistantText();
         cleanupTurnLoadingUI();
         setBusy(false);
         B().choiceContinuation = false;
+        const stoppedByUser = Boolean(evt.stopped_by_user);
+        if (stoppedByUser) restoreSubmittingChoiceCards("已停止生成，请重新提交");
         const _intTip = el_h("div", "msg msg-system msg-enforce",
-          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-amber,#ff6d00); border-color: var(--accent-amber,#ff6d00);">SYSTEM · 生成中断</span></div>
+          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-amber,#ff6d00); border-color: var(--accent-amber,#ff6d00);">SYSTEM · ${stoppedByUser ? "已停止生成" : "生成中断"}</span></div>
            <div class="msg-body" style="color: var(--fg-1); border-left: 2px solid var(--accent-amber,#ff6d00); padding-left: 10px;">
-             连接中断，本轮内容可能不完整，未保存为已完成回答。请重新发送问题。
+             ${stoppedByUser
+               ? "本轮生成已停止，当前已生成内容已保留，未保存为完成回答。"
+               : "连接中断，本轮内容可能不完整，未保存为已完成回答。请重新发送问题。"}
            </div>`);
         el.chatScroll.appendChild(_intTip);
         el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
@@ -6802,6 +7008,15 @@ export function bootWorkbenchRuntime() {
         // and a late `done` after an error / interruption must never flip
         // that turn into a success.
         const _b = B();
+        if (_b.activity?.status === AGENT_STATUS.AWAITING_CHOICE) {
+          // An unresolved AskUser pause point is not a completed analysis.
+          // Keep the clarification card active and never run success-only
+          // side effects (SOP completion, export or conversation save).
+          finalizeAssistantText();
+          cleanupTurnLoadingUI();
+          setBusy(false);
+          break;
+        }
         if (evt.turn_id) {
           const rec = recordDone(_b.turnLifecycle, evt.turn_id);
           if (!rec.accepted) break;
@@ -6811,6 +7026,7 @@ export function bootWorkbenchRuntime() {
         if (evt.generation !== undefined && evt.generation !== null) {
           _b.lastDoneGeneration = evt.generation;
         }
+        syncExistingAgentActivitySteps();
         finalizeAssistantText();
         cleanupTurnLoadingUI();
         setBusy(false);
@@ -6837,8 +7053,10 @@ export function bootWorkbenchRuntime() {
           const _errB = B();
           _errB.turnLifecycle = recordFailure(_errB.turnLifecycle, evt.turn_id);
         }
+        syncExistingAgentActivitySteps();
         finalizeAssistantText();
         cleanupTurnLoadingUI();
+        restoreSubmittingChoiceCards("提交失败，请重试");
         const errEl = el_h("div", "msg msg-error",
           `<div class="msg-header"><span class="msg-role" style="color: var(--accent-red); border-color: var(--accent-red);">ERROR</span></div>
            <div class="msg-body" style="color: var(--accent-red);">${esc(evt.message || "unknown")}</div>`);
@@ -6870,6 +7088,9 @@ export function bootWorkbenchRuntime() {
       return;
     }
     setBusy(true);
+    const _activityB = B();
+    _activityB.activity = beginAgentTurn(_activityB.activity, { text, at: Date.now() });
+    publishAgentActivity(state.mode, { type: "user_message" });
     // Bump per-turn tag so dashboard cards group by user turn
     B().currentTurnTag = (B().currentTurnTag || 0) + 1;
     const _bk = B();
@@ -6983,7 +7204,12 @@ export function bootWorkbenchRuntime() {
             if (myTurnId === null) myTurnId = event.turn_id;
             if (event.turn_id !== myTurnId) { stale = true; return; }  // stale turn — ignore
           }
-          if (event.type === "done" || event.type === "error" || event.type === "session_superseded") {
+          if (
+            event.type === "done" ||
+            event.type === "error" ||
+            event.type === "session_superseded" ||
+            event.type === "stream_interrupted"
+          ) {
             sawTerminalEvent = true;
           }
           onEvent(event);
@@ -7032,9 +7258,13 @@ export function bootWorkbenchRuntime() {
     state.busy = v;
     document.body.dataset.agentBusy = v ? "1" : "0";
     window.dispatchEvent(new CustomEvent("bi-agent-busy", { detail: { busy: v } }));
-    const disabled = v || state.historyRestoring;
-    el.btnSend.disabled = disabled;
-    el.chatInput.disabled = disabled;
+    // During a running turn the same button becomes the stop control, so it
+    // must stay enabled. The textarea stays locked to prevent a competing
+    // request while the active stream owns the session.
+    el.btnSend.disabled = state.historyRestoring;
+    el.chatInput.disabled = v || state.historyRestoring;
+    el.btnSend.setAttribute("aria-label", v ? "停止生成" : "发送");
+    el.btnSend.title = v ? "停止生成" : "发送";
     // Keep the canonical paper-plane SVG; busy is expressed with a class so
     // the button looks identical on first paint and after history restore.
     el.btnSend.classList.toggle("is-busy", v);
@@ -7057,7 +7287,16 @@ export function bootWorkbenchRuntime() {
   function switchMode(newMode) {
     if (newMode === state.mode) return;
     if (state.busy) {
+      const outB = B();
+      outB.activity = applyAgentEvent(
+        outB.activity,
+        { type: "stream_interrupted", message: "切换模式，已中断" },
+        { at: Date.now() },
+      ).state;
+      publishAgentActivity(state.mode, { type: "stream_interrupted" });
+      restoreSubmittingChoiceCards("已切换模式，请重新提交");
       if (activeRequestController) activeRequestController.abort();
+      activeRequestController = null;
       // The aborted stream must never emit a terminal event into the newly
       // activated mode, so mark it stale by advancing the request sequence.
       streamSeq += 1;
@@ -7082,6 +7321,7 @@ export function bootWorkbenchRuntime() {
 
     state.mode = newMode;
     document.body.dataset.mode = newMode;
+    publishAgentActivity(newMode);
     window.dispatchEvent(new CustomEvent("bi-mode-changed", { detail: { mode: newMode } }));
     el.modeBtns.forEach(b => b.classList.toggle("active", b.dataset.mode === newMode));
 
@@ -7419,6 +7659,7 @@ export function bootWorkbenchRuntime() {
     bucket.firstUserQuestion = null;
     bucket.lastDoneTurnId = null;
     bucket.lastDoneGeneration = null;
+    bucket.activity = resetAgentActivity(bucket.activity, { at: Date.now() });
     bucket.turnLifecycle = resetTurnLifecycle(bucket.turnLifecycle);
     conversationDraftIds.delete(mode === "report" ? "report" : "data");
     // If this is the active mode, also clear visible DOM
@@ -7441,6 +7682,7 @@ export function bootWorkbenchRuntime() {
       el.countLlm.textContent = "0";
       if (el.dashboardCount) el.dashboardCount.textContent = "0";
       updateTurnCounter();
+      publishAgentActivity(mode);
     }
   }
 
@@ -7660,7 +7902,31 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   // Input handling
   // ------------------------------------------------------------------
+  function stopGeneration() {
+    if (!state.busy) return;
+    const bucket = B();
+    const turnId = bucket.activity?.turnId || undefined;
+    bucket.activity = stopAgentTurn(bucket.activity, Date.now());
+    publishAgentActivity(state.mode, { type: "stopped" });
+    // Advance the stream sequence before aborting so the rejected fetch cannot
+    // emit a second terminal frame into the stopped turn.
+    streamSeq += 1;
+    const controller = activeRequestController;
+    activeRequestController = null;
+    if (controller) controller.abort();
+    onEvent({
+      type: "stream_interrupted",
+      turn_id: turnId,
+      message: "已停止生成",
+      stopped_by_user: true,
+    });
+  }
+
   function trySend() {
+    if (state.busy) {
+      stopGeneration();
+      return;
+    }
     const text = el.chatInput.value.trim();
     if (!text) return;
     el.chatInput.value = "";
@@ -7669,6 +7935,7 @@ export function bootWorkbenchRuntime() {
   }
 
   el.btnSend.addEventListener("click", trySend);
+  window.addEventListener("bi-stop-generation", stopGeneration);
   el.chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -8337,6 +8604,7 @@ export function bootWorkbenchRuntime() {
   applyQuadrantFromUrl();
   initOntologyFilters();
   bindDashboardQuestionLinks();
+  publishAgentActivity(state.mode);
 
   // ------------------------------------------------------------------
   // Boot
