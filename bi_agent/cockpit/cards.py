@@ -35,10 +35,10 @@ def card_delivery_state(item, slot=None) -> dict:
     """
     if not isinstance(item, dict) or not item:
         return dict(status="missing", renderable=False, complete=False,
-                    evidenceCount=0, gaps=["CARD_MISSING"])
+                    evidenceCount=0, riskFindingCount=0, gaps=["CARD_MISSING"])
     if not valid_card(item):
         return dict(status="invalid", renderable=False, complete=False,
-                    evidenceCount=0, gaps=["CARD_CONTRACT_INVALID"])
+                    evidenceCount=0, riskFindingCount=0, gaps=["CARD_CONTRACT_INVALID"])
     result = item.get("result") or {}
     evidence = item.get("evidence") or {}
     evidence_count = distinct_evidence_count(evidence)
@@ -56,7 +56,8 @@ def card_delivery_state(item, slot=None) -> dict:
         gaps.append("ACTION_EMPTY")
     complete = not gaps
     return dict(status="complete" if complete else "limited", renderable=True,
-                complete=complete, evidenceCount=evidence_count, gaps=gaps)
+                complete=complete, evidenceCount=evidence_count,
+                riskFindingCount=len(result.get("findings") or []), gaps=gaps)
 
 class CardCause(Cause):
     title:str=Field(min_length=1,max_length=32)
@@ -70,7 +71,7 @@ class Cards(Result):
     causes:list[CardCause]=Field(default_factory=list,max_length=8)
     recommendations:list[CardRecommendation]=Field(default_factory=list,max_length=8)
 
-SCHEMA=dict(name=TOOL,description='提交现有AI插槽的短摘要、原因、建议与限制。必须先读取看板证据；引用工具返回的evidenceIds。无原因证据时可交付空原因和空建议并说明缺口，不得编造。此工具不取数、不执行任务。',input_schema=Cards.model_json_schema())
+SCHEMA=dict(name=TOOL,description='提交现有AI插槽的短摘要、原因、结构化风险发现、建议与限制。必须先读取看板证据；引用工具返回的evidenceIds。findings只列证据支持的风险事实，不把原因、数据缺口或结构定位计入。无原因证据时可交付空原因和空建议并说明缺口，不得编造。此工具不取数、不执行任务。',input_schema=Cards.model_json_schema())
 
 
 def install_delivery(session,context):

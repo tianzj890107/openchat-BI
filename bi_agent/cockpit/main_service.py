@@ -38,7 +38,7 @@ def analysis_question(context):
         "交付内容按“发现什么／集中在哪里／可能为什么／下一步怎么做”组织：异常表现、结构定位、数据缺口不得写成原因；"
         "金额与电量缺少单价、产品结构或交期映射时不得比较或相加；取消/变更与中标未签集合未验证重叠和期间对应时，不得相加或据此排除缺口；"
         "目标或口径冲突时，摘要必须同时写各自口径观察和“尚不能汇总对账”；建议的责任角色标为待确认、期限标为建议值，验收必须可检查。"
-        "请读取工具返回的evidenceIds，最终调用CockpitDeliverCards提交短摘要、原因、建议、限制供既有AI插槽展示；业务数值由事实字段展示，短摘要不重复业务数字，不新造比例；没有原因证据时causes和recommendations留空并说明缺口。不要生成HTML或重新绘制图表，不得编造根因、责任角色或期限。提交后用正常中文章节确认交付，不另开模型改写。"
+        "请读取工具返回的evidenceIds，最终调用CockpitDeliverCards提交短摘要、原因、风险发现、建议、限制供既有AI插槽展示；业务数值由事实字段展示，短摘要不重复业务数字，不新造比例；没有原因证据时causes和recommendations留空并说明缺口。findings只列证据直接支持的风险事实或异常表现，不含原因、数据缺口和结构分布；同一风险只列一次。不要生成HTML或重新绘制图表，不得编造根因、责任角色或期限。提交后用正常中文章节确认交付，不另开模型改写。"
         +("\n证据范围："+stage_note if stage_note else '')
         +"\n范围："+json.dumps(scope,ensure_ascii=False,sort_keys=True)
     )
@@ -111,6 +111,7 @@ def run_main_analysis(context, cancel, progress, turn_factory):
         card_value=delivery[1] if delivery and delivery[0]==len(getattr(session,'query_results',[])) and not needs_input and done not in {'answer_blocked','delivery_incomplete','max_iterations'} else None
         return dict(summary=(card_value['summary'] if card_value else (split_sections(narrative)['summary'] or narrative)[:600]),
             causes=card_value['causes'] if card_value else [],recommendations=card_value['recommendations'] if card_value else [],
+            findings=card_value.get('findings',[]) if card_value else [],
             limitations=list(dict.fromkeys(limitations+(card_value['limitations'] if card_value else []))),cardContract=CONTRACT if card_value else None,
             narrative=narrative,sections=split_sections(narrative),engine='main',policy=policy,clarification=getattr(session,'pending_choice_spec',None),
             _status=status,_evidence=evidence,_execution=dict(engine='main',durationSeconds=round(time.monotonic()-started,3),

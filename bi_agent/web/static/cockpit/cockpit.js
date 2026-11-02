@@ -118,14 +118,15 @@
     'shipment-task-order': 'shipment',
   };
   const RISK_COUNT_TARGETS = [
-    {componentId:'progress-y5dumxio', slotId:'opportunity-risk', tabId:'tab-bc6wp3k2', templateId:'2112001069107167233'},
-    {componentId:'progress-91j3rt9a', slotId:'shipment-risk-summary', tabId:'tab-bc6wp3k2', templateId:'2112001069107167233'},
-    {componentId:'progress-ynh9zsng', slotId:'opportunity-risk', tabId:'tab-211tc4o0', templateId:'2112434004503347202'},
-    {componentId:'progress-zl0egumz', slotId:'shipment-risk-summary', tabId:'tab-211tc4o0', templateId:'2112434004503347202'},
+    {componentId:'progress-y5dumxio', metric:'sales', tabId:'tab-bc6wp3k2', templateId:'2112001069107167233'},
+    {componentId:'progress-91j3rt9a', metric:'shipment', tabId:'tab-bc6wp3k2', templateId:'2112001069107167233'},
+    {componentId:'progress-ynh9zsng', metric:'sales', tabId:'tab-211tc4o0', templateId:'2112434004503347202'},
+    {componentId:'progress-zl0egumz', metric:'shipment', tabId:'tab-211tc4o0', templateId:'2112434004503347202'},
   ];
   const RISK_COUNT_PATH = ['headerActions', 0, 'label'];
   let riskCountRuntime = null;
   const appliedRiskCountLabels = new Map();
+  const riskMetricCounts = new Map();
   function validAiCard(item) {
     const result=item?.result;
     return result?.cardContract==='cockpit-cards-v1' && typeof result.summary==='string' &&
@@ -135,11 +136,19 @@
   function slotPublication(slotId) {
     return aiPublicationStore.slots[slotId] || null;
   }
-  function riskCountForSlot(slotId) {
-    const slot=slotPublication(slotId);
-    if(!slot || slot.status!=='ready' || !validAiCard(slot.payload))return null;
-    const causes=slot.payload.result.causes;
-    return causes.filter(item=>item && typeof item==='object').length;
+  function applyRiskCounts(value) {
+    const counts=value?.riskCounts||{};
+    for(const metric of ['sales','shipment']) {
+      const item=counts[metric];
+      const count=Number(item?.count);
+      if(!Number.isFinite(count))continue;
+      const current=value.scopeMatch!==false&&item.scopeMatch!==false;
+      if(item.known===true&&current)riskMetricCounts.set(metric,count);
+      else if(!riskMetricCounts.has(metric))riskMetricCounts.set(metric,count);
+    }
+  }
+  function riskCountForMetric(metric) {
+    return riskMetricCounts.get(metric) ?? 0;
   }
   function syncRiskCountLabels(runtime) {
     if(!runtime?.updateComponentMeta)return;
@@ -148,8 +157,8 @@
       appliedRiskCountLabels.clear();
     }
     for(const target of RISK_COUNT_TARGETS) {
-      const count=riskCountForSlot(target.slotId);
-      const label=count===null?'风险分析中':`${count}条风险`;
+      const count=riskCountForMetric(target.metric);
+      const label=`${count}条风险`;
       if(appliedRiskCountLabels.get(target.componentId)===label)continue;
       const result=runtime.updateComponentMeta(target.componentId,RISK_COUNT_PATH,label,{
         embedPath:{segments:[{kind:'tab',containerId:'tab-container-zm9eyxne',
@@ -227,6 +236,7 @@
       status:value.update?.status||'idle',
       error:'',
     });
+    applyRiskCounts(value);
     syncBoundRiskCountLabels();
     settleMissingSlotStages();
     resolveAiPublicationReady?.();resolveAiPublicationReady=null;

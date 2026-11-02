@@ -42,16 +42,21 @@ QUERIES = {
 }
 
 
-def _save_stage(store, cfg, stage, page):
+def _save_stage(store, cfg, stage, page, findings=None):
     context = dict(id=1, page=page, stage=stage, engine='main', source='service',
                    dataSource='ap', dataIdentity=cfg.identity(), dataFingerprint='fp-' + stage,
                    chartSnapshotId=RELEASE, chartQueries=[json.dumps(QUERIES[stage], sort_keys=True)],
                    period='2025-10', department='全部产品部', filters={}, repositoryId='',
                    clarifications={}, baselineAnalysisId='')
+    findings = findings or []
+    evidence_ids = [str(value) for finding in findings for value in finding.get('evidenceIds', [])]
+    evidence = dict(facts=[dict(id=value, label='测试风险', value=1, unit='', definition='测试证据')
+                           for value in dict.fromkeys(evidence_ids)],
+                    records=[], evidence=[], limitations=[])
     item = store.create_analysis('slot-' + stage, context)
     store.update_analysis(item['id'], status='limited', result=dict(
         summary=stage + ' 已发布卡片', causes=[], recommendations=[], limitations=[],
-        cardContract=CONTRACT), evidence={'facts': [], 'records': [], 'evidence': []})
+        findings=findings, cardContract=CONTRACT), evidence=evidence)
     assert store.publish(item['id'])
     assert store.bind_view(view_scope(item['context']), stage, item['scope'])
     return store.get_analysis(item['id'])
@@ -194,3 +199,29 @@ def test_non_default_grain_view_and_business_filters_do_not_reuse_default_scope(
         assert value['readyCount'] == 15
         assert value['scopeMatch'] is False
         assert all(item['scopeMatch'] is False for item in value['slots'].values())
+
+
+def test_ai_publications_exposes_deduplicated_metric_risk_counts(tmp_path, monkeypatch):
+    cfg = Config()
+    store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
+    findings = {
+        'opportunity': [dict(id='sales-risk', kind='risk_fact', title='销售额低于目标',
+                             description='测试风险事实', metricCodes=['SALES_GAP'],
+                             evidenceIds=['sales-evidence'], riskDomain='sales')],
+        'shipment': [dict(id='shipment-risk', kind='risk_fact', title='出货量低于目标',
+                          description='测试风险事实', metricCodes=['SHIPMENT_GAP'],
+                          evidenceIds=['shipment-evidence'], riskDomain='shipment')],
+    }
+    for stage, page in (('bid', 'operations'), ('quotation', 'operations'),
+                        ('order', 'operations'), ('opportunity', 'analysis'),
+                        ('shipment', 'analysis'), ('combined', 'analysis')):
+        _save_stage(store, cfg, stage, page, findings.get(stage))
+
+    value = _client(tmp_path, monkeypatch, cfg).get(
+        '/api/cockpit/ai-publications?id=1&uiScope=default').json()
+    assert value['riskCounts']['sales'] == dict(
+        value['riskCounts']['sales'], count=1, known=True, scopeMatch=True)
+    assert value['riskCounts']['shipment'] == dict(
+        value['riskCounts']['shipment'], count=1, known=True, scopeMatch=True)
+    assert value['slots']['opportunity-risk']['riskFindingCount'] == 1
+    assert value['slots']['shipment-risk-summary']['riskFindingCount'] == 1

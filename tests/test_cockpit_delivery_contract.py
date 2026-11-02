@@ -283,3 +283,97 @@ def test_publication_trim_preserves_history_and_display_fields():
     assert 'provenance' not in value['evidence']['facts'][0]['claim']
     assert value['evidence']['records'] == raw['evidence']['records']
     assert raw['context']['chartQueries'] == ['large']
+
+
+def test_projection_keeps_structured_risk_facts_and_drops_reasons_or_gaps():
+    item = dict(
+        id='risk-card', updatedAt=time.time(), status='limited',
+        context=dict(stage='opportunity', snapshotId='snapshot-risk'),
+        evidence=_evidence(records=[dict(id='e1'), dict(id='e2')]),
+        result=dict(
+            cardContract=CONTRACT,
+            summary='商机覆盖存在缺口。',
+            causes=[_cause('c-gap', '客户目标为空', '目标字段缺失')],
+            recommendations=[],
+            limitations=[],
+            findings=[
+                dict(id='f1', kind='risk_fact', title='商机覆盖低于目标',
+                     description='当前证据支持覆盖缺口', metricCodes=['OPP_GAP'],
+                     evidenceIds=['e1'], riskDomain='sales'),
+                dict(id='f2', kind='risk_fact', title='商机覆盖未达年度目标',
+                     description='同一指标的另一表述', metricCodes=['OPP_GAP'],
+                     evidenceIds=['e2'], riskDomain='sales'),
+            ],
+        ),
+    )
+    projected = project_card(item, 'opportunity-risk')
+    findings = projected['result']['findings']
+    assert len(findings) == 1
+    assert findings[0]['kind'] == 'risk_fact'
+    assert findings[0]['scopeKey'] == 'snapshot-risk'
+    assert projected['result']['riskFindingCount'] == 1
+
+
+def test_target_and_actual_facts_create_one_programmatic_metric_risk():
+    item = dict(
+        id='metric-card', updatedAt=time.time(), status='limited',
+        context=dict(stage='shipment', snapshotId='snapshot-shipment'),
+        evidence=_evidence(facts=[
+            dict(id='target', label='目标出货量', value=60, unit='GWh', definition='年度目标'),
+            dict(id='actual', label='实际出货量', value=19.02, unit='GWh', definition='实际完成'),
+        ]),
+        result=dict(cardContract=CONTRACT, summary='出货量低于目标。', causes=[],
+                    recommendations=[], limitations=[]),
+    )
+    projected = project_card(item, 'shipment-risk-summary')
+    findings = projected['result']['findings']
+    assert len(findings) == 1
+    assert findings[0]['kind'] == 'risk_fact'
+    assert findings[0]['riskDomain'] == 'shipment'
+    assert set(findings[0]['evidenceIds']) == {'target', 'actual'}
+
+
+def test_legacy_fact_cause_still_supplies_a_risk_fact_without_reanalysis():
+    item = dict(
+        id='legacy-card', updatedAt=time.time(), status='limited',
+        context=dict(stage='shipment', snapshotId='snapshot-legacy'),
+        evidence=_evidence(records=[dict(id='e1')]),
+        result=dict(cardContract=CONTRACT, summary='出货量低于目标。',
+                    causes=[_cause('c1', '出货量低于年度目标', '实际出货量低于目标')],
+                    recommendations=[], limitations=[]),
+    )
+    projected = project_card(item, 'shipment-risk-summary')
+    findings = projected['result']['findings']
+    assert len(findings) == 1
+    assert findings[0]['kind'] == 'risk_fact'
+    assert findings[0]['riskDomain'] == 'shipment'
+
+
+def test_risk_counts_separate_sales_and_shipment_and_require_complete_sources():
+    from bi_agent.cockpit.risk import summarize_risk_counts
+
+    def slot(stage, finding, scope_match=True):
+        return dict(stage=stage, status='ready', scopeMatch=scope_match,
+                    payload=dict(result=dict(findings=[finding])))
+
+    sales = dict(id='sales-1', kind='risk_fact', title='销售额低于目标',
+                 metricCodes=['SALES_GAP'], riskDomain='sales')
+    shipment = dict(id='shipment-1', kind='risk_fact', title='出货量低于目标',
+                    metricCodes=['SHIPMENT_GAP'], riskDomain='shipment')
+    counts = summarize_risk_counts({
+        'opportunity-risk': slot('opportunity', sales),
+        'opportunity-coverage-note': slot('opportunity', dict(sales)),
+        'shipment-risk-summary': slot('shipment', shipment),
+    })
+    assert counts['sales']['count'] == 1
+    assert counts['shipment']['count'] == 1
+    assert counts['sales']['known'] is True
+    assert counts['shipment']['known'] is True
+
+    counts = summarize_risk_counts({
+        'opportunity-risk': slot('opportunity', sales),
+        'opportunity-coverage-note': dict(stage='opportunity', status='missing', payload=None),
+        'shipment-risk-summary': slot('shipment', shipment),
+    })
+    assert counts['sales']['known'] is False
+    assert counts['sales']['count'] == 1

@@ -1,0 +1,301 @@
+"""Structured risk findings and top-level risk counts."""
+from __future__ import annotations
+
+import hashlib
+import math
+import re
+from typing import Any
+
+
+RISK_FACT = 'risk_fact'
+DOMAINS = ('sales', 'shipment')
+
+_TARGET = re.compile(r'(?:年度|全年|月度|当月|累计|预算|计划|目标)(?:值|数)?$', re.I)
+_TARGET_ANY = re.compile(r'目标|预算|计划值|target|budget', re.I)
+_ACTUAL_ANY = re.compile(r'实际|当前|已完成|完成值|actual|current|real', re.I)
+_HIGHER_IS_WORSE = ('天数', '周转', '超期', '逾期', '账龄', '周期', '成本', '费用',
+                    '库存', '用量', '风险', '时长', 'delay', 'days')
+_SALES_WORDS = ('销售', '签单', '签约', '商机', '投标', '报价', '订单接收', '订单',
+                '金额', '收入', '利润', '毛利', '净利', '应收', '回款', 'sales',
+                'quotation', 'bid', 'opportunity', 'order')
+_SHIPMENT_WORDS = ('发货', '出货', '交付', '超期', '逾期', '物流', '运输', 'shipment',
+                   'delivery', 'overdue', 'logistics')
+
+
+def _text(value: Any) -> str:
+    return '' if value is None else str(value).strip()
+
+
+def _normalise(value: Any) -> str:
+    return re.sub(r'[\s·•,，。；;：:()（）\[\]【】/\\_-]+', '', _text(value)).lower()
+
+
+def _available_evidence(evidence: dict | None) -> set[str]:
+    found = set()
+    for key in ('facts', 'records', 'evidence'):
+        for item in (evidence or {}).get(key) or []:
+            if not isinstance(item, dict) or not item.get('id'):
+                continue
+            found.add(str(item['id']))
+            if isinstance(item.get('record'), dict) and item['record'].get('id'):
+                found.add(str(item['record']['id']))
+    return found
+
+
+def _scope_key(context: dict | None) -> str:
+    context = context or {}
+    return _text(context.get('dataFingerprint') or context.get('snapshotId')
+                 or context.get('scope') or context.get('page'))
+
+
+def _domain_from_text(*values: Any) -> str:
+    text = ' '.join(_text(value) for value in values).lower()
+    shipment = any(word.lower() in text for word in _SHIPMENT_WORDS)
+    sales = any(word.lower() in text for word in _SALES_WORDS)
+    if shipment and not sales:
+        return 'shipment'
+    if sales and not shipment:
+        return 'sales'
+    return ''
+
+
+def _slot_domain(slot: dict | None) -> str:
+    stage = _text((slot or {}).get('stage'))
+    if stage == 'shipment':
+        return 'shipment'
+    if stage in {'opportunity', 'bid', 'quotation', 'order'}:
+        return 'sales'
+    return ''
+
+
+def _finding_domain(finding: dict, slot: dict | None = None) -> str:
+    explicit = _text(finding.get('riskDomain')).lower()
+    if explicit in DOMAINS:
+        return explicit
+    inferred = _domain_from_text(
+        ' '.join(str(value) for value in finding.get('metricCodes') or []),
+        finding.get('title'), finding.get('description'))
+    return inferred or _slot_domain(slot)
+
+
+def _metric_codes(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    return [value for value in dict.fromkeys(_text(item) for item in raw) if value][:12]
+
+
+def _fingerprint(*parts: Any) -> str:
+    value = '|'.join(_normalise(part) for part in parts if _text(part))
+    return hashlib.sha256(value.encode('utf-8')).hexdigest()[:16]
+
+
+def _dedupe_key(finding: dict) -> str:
+    codes = sorted(_normalise(code) for code in finding.get('metricCodes') or [] if _text(code))
+    if codes:
+        return 'metric:' + '|'.join(codes)
+    return 'title:' + _normalise(finding.get('title'))
+
+
+def _model_finding(item: Any, evidence: dict | None, context: dict | None,
+                   slot: dict | None) -> dict | None:
+    if not isinstance(item, dict) or item.get('kind') != RISK_FACT:
+        return None
+    codes = _metric_codes(item.get('metricCodes'))
+    ids = [str(value) for value in item.get('evidenceIds') or [] if _text(value)]
+    available = _available_evidence(evidence)
+    if not codes or not ids or not set(ids) <= available:
+        return None
+    title = _text(item.get('title'))
+    if not title:
+        return None
+    finding = dict(
+        id=_text(item.get('id')) or 'risk-' + _fingerprint(codes, title),
+        kind=RISK_FACT,
+        title=title[:80],
+        description=_text(item.get('description'))[:320],
+        metricCodes=codes,
+        evidenceIds=list(dict.fromkeys(ids))[:20],
+        scopeKey=_scope_key(context or ((slot or {}).get('context') or {})),
+    )
+    explicit = _text(item.get('riskDomain')).lower()
+    finding['riskDomain'] = explicit if explicit in DOMAINS else _finding_domain(finding, slot)
+    finding['dedupeKey'] = _dedupe_key(finding)
+    return finding
+
+
+def _legacy_cause_finding(cause: Any, evidence: dict | None, context: dict | None,
+                          slot: dict | None) -> dict | None:
+    if not isinstance(cause, dict):
+        return None
+    kind = _text(cause.get('kind'))
+    if not kind:
+        from .delivery import classify_cause
+        kind = classify_cause(cause)
+    if kind != 'fact':
+        return None
+    ids = [str(value) for value in cause.get('evidenceIds') or [] if _text(value)]
+    if not ids or not set(ids) <= _available_evidence(evidence):
+        return None
+    title = _text(cause.get('title'))
+    if not title:
+        return None
+    codes = _metric_codes(cause.get('metricCodes')) or ['label:' + _normalise(title)]
+    finding = dict(
+        id='legacy-' + _fingerprint(cause.get('id'), title, codes),
+        kind=RISK_FACT,
+        title=title[:80],
+        description=_text(cause.get('description'))[:320],
+        metricCodes=codes,
+        evidenceIds=list(dict.fromkeys(ids))[:20],
+        scopeKey=_scope_key(context),
+    )
+    finding['riskDomain'] = _finding_domain(finding, slot)
+    finding['dedupeKey'] = _dedupe_key(finding)
+    return finding
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _fact_parts(item: Any) -> dict | None:
+    if not isinstance(item, dict) or not item.get('id'):
+        return None
+    label = _text(item.get('label') or item.get('name'))
+    if not label:
+        return None
+    match = re.match(r'^(.*?)(?:\[([^\]]+)\])?$', label)
+    label = _text(match.group(1)) if match else label
+    code = _text(item.get('identifierCode') or item.get('metricCode')
+                 or (match.group(2) if match else ''))
+    unit_match = re.search(r'[（(]([^）)]+)[）)]', label)
+    unit = _text(item.get('unit') or (unit_match.group(1) if unit_match else ''))
+    clean = re.sub(r'[（(][^）)]*[）)]', '', label)
+    target = bool(_TARGET_ANY.search(clean) or _TARGET_ANY.search(code))
+    actual = bool(_ACTUAL_ANY.search(clean) or _ACTUAL_ANY.search(code))
+    base = clean
+    if target:
+        base = _TARGET.sub('', base)
+        base = re.sub(r'目标|预算|计划', '', base)
+    if actual:
+        base = re.sub(r'实际|当前|已完成|完成值', '', base)
+    base = re.sub(r'^(年度|全年|月度|当月|累计)', '', base).strip()
+    base = re.sub(r'(值|数)$', '', base).strip()
+    if not base:
+        return None
+    value = _number(item.get('value'))
+    return dict(id=str(item['id']), label=label.strip(), code=code, unit=unit,
+                base=base, target=target, actual=actual, value=value)
+
+
+def _metric_findings(evidence: dict | None, context: dict | None,
+                     slot: dict | None) -> list[dict]:
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for item in (evidence or {}).get('facts') or []:
+        parts = _fact_parts(item)
+        if not parts:
+            continue
+        groups.setdefault((_normalise(parts['base']), _normalise(parts['unit'])), []).append(parts)
+    findings = []
+    for (_, _unit), values in groups.items():
+        targets = [item for item in values if item['target'] and item['value'] is not None]
+        if len(targets) != 1:
+            continue
+        target = targets[0]
+        actuals = [item for item in values if item is not target
+                   and item['value'] is not None and not item['target']]
+        if len(actuals) != 1:
+            continue
+        actual = actuals[0]
+        base_text = target['base'].lower()
+        higher_worse = any(word in base_text for word in _HIGHER_IS_WORSE)
+        worse = actual['value'] > target['value'] if higher_worse else actual['value'] < target['value']
+        relation = '高于' if actual['value'] > target['value'] else '低于'
+        if not worse:
+            continue
+        domain = _domain_from_text(target['base'], actual['base'], target['code'], actual['code'],
+                                   (slot or {}).get('stage'))
+        codes = [value for value in (target['code'], actual['code']) if value]
+        if not codes:
+            codes = ['label:' + _normalise(target['base'])]
+        finding = dict(
+            id='metric-' + _fingerprint(domain, target['base'], codes),
+            kind=RISK_FACT,
+            title=f"{target['base']}{relation}目标"[:80],
+            description=f"当前口径下{target['base']}{relation}目标，需核实影响范围与口径一致性。",
+            metricCodes=list(dict.fromkeys(codes))[:12],
+            evidenceIds=[target['id'], actual['id']],
+            scopeKey=_scope_key(context),
+            riskDomain=domain,
+        )
+        finding['dedupeKey'] = _dedupe_key(finding)
+        findings.append(finding)
+    return findings
+
+
+def build_risk_findings(result: dict, evidence: dict | None, context: dict | None,
+                        slot: dict | None) -> list[dict]:
+    """Return deduplicated, evidence-backed risk facts for one delivered slot."""
+    accepted: list[dict] = []
+    metric_keys: set[str] = set()
+    title_keys: set[str] = set()
+
+    def add(finding: dict | None):
+        if not finding:
+            return
+        keys = {_normalise(code) for code in finding.get('metricCodes') or [] if _text(code)}
+        title_key = _normalise(finding.get('title'))
+        if keys & metric_keys or title_key in title_keys:
+            return
+        metric_keys.update(keys)
+        title_keys.add(title_key)
+        accepted.append(finding)
+
+    for item in (result or {}).get('findings') or []:
+        add(_model_finding(item, evidence, context, slot))
+    for item in _metric_findings(evidence, context, slot):
+        add(item)
+    if not accepted:
+        for cause in (result or {}).get('causes') or []:
+            add(_legacy_cause_finding(cause, evidence, context, slot))
+    return accepted
+
+
+def summarize_risk_counts(slots: dict[str, dict]) -> dict[str, dict]:
+    """Count current-scope risk facts by top-level KPI domain."""
+    result = {}
+    for domain in DOMAINS:
+        relevant = [slot for slot in slots.values()
+                    if _slot_domain(slot) == domain
+                    or (_text(slot.get('stage')) == 'combined'
+                        and any(_finding_domain(item, slot) == domain
+                                for item in (((slot.get('payload') or {}).get('result') or {}).get('findings') or [])
+                                if isinstance(item, dict)))]
+        ready = [slot for slot in relevant
+                 if slot.get('status') == 'ready'
+                 and isinstance((slot.get('payload') or {}).get('result'), dict)]
+        unique = {}
+        for slot in ready:
+            for item in ((slot.get('payload') or {}).get('result') or {}).get('findings') or []:
+                if not isinstance(item, dict) or item.get('kind') != RISK_FACT:
+                    continue
+                if _finding_domain(item, slot) != domain:
+                    continue
+                unique.setdefault(_dedupe_key(item), item)
+        scope_match = all(slot.get('scopeMatch') is not False for slot in relevant)
+        known = bool(ready) and len(ready) == len(relevant) and scope_match
+        result[domain] = dict(
+            count=len(unique),
+            known=known,
+            scopeMatch=scope_match,
+            sourceSlots=len(relevant),
+            readySlots=len(ready),
+            findingKeys=sorted(unique)[:50],
+        )
+    return result

@@ -51,18 +51,21 @@ def test_imported_metadata_hashes_and_three_tabs():
 def test_risk_header_counts_follow_published_detail_cards():
     source=(ROOT/'cockpit.js').read_text()
     targets={
-        'progress-y5dumxio': ('opportunity-risk','tab-bc6wp3k2','2112001069107167233'),
-        'progress-91j3rt9a': ('shipment-risk-summary','tab-bc6wp3k2','2112001069107167233'),
-        'progress-ynh9zsng': ('opportunity-risk','tab-211tc4o0','2112434004503347202'),
-        'progress-zl0egumz': ('shipment-risk-summary','tab-211tc4o0','2112434004503347202'),
+        'progress-y5dumxio': ('sales','tab-bc6wp3k2','2112001069107167233'),
+        'progress-91j3rt9a': ('shipment','tab-bc6wp3k2','2112001069107167233'),
+        'progress-ynh9zsng': ('sales','tab-211tc4o0','2112434004503347202'),
+        'progress-zl0egumz': ('shipment','tab-211tc4o0','2112434004503347202'),
     }
-    for component_id,(slot_id,tab_id,template_id) in targets.items():
+    for component_id,(metric,tab_id,template_id) in targets.items():
         assert component_id in source
-        assert slot_id in source
+        assert f"metric:'{metric}'" in source
         assert tab_id in source
         assert template_id in source
     assert "const RISK_COUNT_PATH = ['headerActions', 0, 'label']" in source
-    assert 'const causes=slot.payload.result.causes' in source
+    assert 'function applyRiskCounts(value)' in source
+    assert 'function riskCountForMetric(metric)' in source
+    assert 'if(item.known===true&&current)riskMetricCounts.set(metric,count)' in source
+    assert '风险分析中' not in source
     assert '`${count}条风险`' in source
     assert 'runtime.updateComponentMeta(target.componentId,RISK_COUNT_PATH,label' in source
 

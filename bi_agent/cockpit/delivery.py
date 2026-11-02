@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
+from .risk import build_risk_findings
 
 CONTRACT_VERSION = 'cockpit-delivery-v2'
 
@@ -466,6 +467,10 @@ def project_card(item, slot):
             value['acceptance'] = _checkable(value.get('acceptance'))
             actions.append(value)
     result['recommendations'] = actions
+    context = out.get('context') or {}
+    result['findings'] = build_risk_findings(
+        result, evidence, context, dict(slotId=slot, stage=context.get('stage')))
+    result['riskFindingCount'] = len(result['findings'])
     result['summary'] = _with_note(result.get('summary'), spec.get('note'))
     result['deliveryContract'] = CONTRACT_VERSION
     result['slotQuestion'] = spec['question']

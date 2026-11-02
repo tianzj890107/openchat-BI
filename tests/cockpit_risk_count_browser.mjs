@@ -65,6 +65,7 @@ try {
   await navigate('overview');
   await wait('!!document.querySelector("#app:not([v-cloak]) .cockpit-board")');
   await wait('document.body.innerText.includes("3条风险")');
+  assert.ok(!(await evaluate('document.body.innerText')).includes('风险分析中'));
   await assertNoLoadError();
   const timing = await evaluate(`performance.getEntriesByType('resource')
     .filter(entry => entry.name.includes('/api/cockpit/ai-publications') || entry.name.includes('/metadata/runtime.json'))
@@ -96,6 +97,7 @@ try {
   await navigate('overview');
   await wait('!!document.querySelector("#app:not([v-cloak]) .cockpit-board")');
   await wait('document.body.innerText.includes("3条风险")');
+  assert.ok(!(await evaluate('document.body.innerText')).includes('风险分析中'));
   await evaluate(`[...document.querySelectorAll('.pro-radio-button')]
     .find(element => element.textContent.trim() === "月度").click()`);
   await wait(`[...document.querySelectorAll('.pro-radio-button.is-active')]

@@ -83,7 +83,12 @@ def seed_risk_cards(count:int=3):
   causes=[dict(id=f'qa-cause-{i+1}',title=['客户等级分布缺口','产品结构缺口','订单处理缺口','区域覆盖缺口'][i],
     description='本地浏览器验收用风险定位，不代表真实经营结论。',status='hypothesis',
     evidenceIds=[f'qa-evidence-{i+1}']) for i in range(count)]
-  result=dict(summary='本地浏览器验收风险卡片',causes=causes,recommendations=[],
+  findings=[dict(id=f'qa-risk-{i+1}',kind='risk_fact',
+    title=['客户覆盖低于目标','产品覆盖低于目标','订单处理低于目标','区域覆盖低于目标'][i],
+    description='本地浏览器验收用风险事实，不代表真实经营结论。',
+    metricCodes=[f'QA_RISK_{i+1}'],evidenceIds=[f'qa-evidence-{i+1}'],
+    riskDomain='sales' if stage=='opportunity' else 'shipment') for i in range(count)]
+  result=dict(summary='本地浏览器验收风险卡片',causes=causes,recommendations=[],findings=findings,
     limitations=['仅本地自动化测试，不代表真实业务结论'],cardContract=CONTRACT)
   evidence=dict(facts=[],records=[],evidence=[dict(id=f'qa-evidence-{i+1}',
     claim='本地浏览器验收证据') for i in range(count)],limitations=['仅本地自动化测试'])
