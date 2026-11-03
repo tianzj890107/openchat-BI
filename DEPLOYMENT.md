@@ -1598,3 +1598,7 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   GitLab/pypi 镜像超时失败，失败发生在 `get_sources` 和安装 `setuptools` 阶段，不是测试断言失败；本轮未修改 CI 规避门禁。
 - 回退：停止 PID `1561973`，在 `process360-cockpit-ce39ab3-20261102-1659` 执行 `.venv/bin/python start-main.py` 恢复旧版本；不得删除新 release、历史 release、共享 `dataset`、
   会话、上传、图表或分析记录。8876 无需修改 nginx。
+
+### 2026-11-03 Workbench本地Excel + ywln_crm可选源
+
+配置独立的`WORKBENCH_LOCAL_ONTOLOGY_PATH`及`WORKBENCH_PG_HOST/PORT/DATABASE/SCHEMA/USER/PASSWORD`后，Workbench数据源页出现“PostgreSQL · ywln_crm”；此选项自动配对本地Excel，不使用远程本体平台或Doris。也可直接使用`python -m bi_agent.web --db postgres`启动。SQL执行器只读并限制超时／返回行数，不从客户Process360配置继承连接。说明见[本地Excel与PG](docs/specs/workbench-local-excel-pg.md)。本次只准备本地配置、测试、提交，不部署或覆盖客户包。

@@ -1,7 +1,7 @@
 """
 SQL tools — safe read-only execution against the customer data source.
 
-Two backends are supported, selected per-registration via `SqlBackend`:
+Backends are selected per-registration via `SqlBackend`:
 
   * SQLite  — local `.db` file (default).
   * Doris   — the team's read-only HTTP query endpoint (see `DorisHttpConn`).
@@ -171,7 +171,7 @@ class SqlBackend:
     """Where the SQL tools run their queries.
 
     Pass a `DorisConn` to query Apache Doris over the MySQL protocol; otherwise
-    queries hit the local SQLite `db_path`.
+    queries hit SQLite, except the explicit env-configured Workbench PG preset.
     """
 
     def __init__(self, db_path: str = "", doris: "DorisConn | None" = None) -> None:
@@ -465,6 +465,9 @@ SQL_RUN_SCHEMA = {
 
 def _make_sql_run(source: "SqlBackend | str") -> Executor:
     backend = _coerce_backend(source)
+    from ..workbench_pg import SOURCE_VALUE, make_executor
+    if backend.db_path == SOURCE_VALUE and not backend.is_doris:
+        return make_executor("fact")
 
     def run(params: dict, cwd: str) -> str:
         sql = (params.get("sql") or "").strip()
@@ -596,6 +599,9 @@ def _list_tables_doris(backend: SqlBackend) -> str:
 
 def _make_list_tables(source: "SqlBackend | str") -> Executor:
     backend = _coerce_backend(source)
+    from ..workbench_pg import SOURCE_VALUE, make_executor
+    if backend.db_path == SOURCE_VALUE and not backend.is_doris:
+        return make_executor("tables")
 
     def run(params: dict, cwd: str) -> str:
         if backend.is_doris:
@@ -700,6 +706,9 @@ def _describe_table_doris(
 
 def _make_describe_table(source: "SqlBackend | str") -> Executor:
     backend = _coerce_backend(source)
+    from ..workbench_pg import SOURCE_VALUE, make_executor
+    if backend.db_path == SOURCE_VALUE and not backend.is_doris:
+        return make_executor("describe")
 
     def run(params: dict, cwd: str) -> str:
         table = (params.get("table") or "").strip()

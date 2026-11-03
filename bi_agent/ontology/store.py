@@ -144,6 +144,23 @@ class OntologyStore:
         store._load_business_objects(wb[SHEET_BO])
         store._load_logical_entities(wb[SHEET_LE])
         store._load_attributes(wb[SHEET_AT])
+        if "逻辑实体映射" in wb.sheetnames:
+            col, rows = store._indexed(wb["逻辑实体映射"])
+            for row in rows:
+                code = store._cell(row, col, "逻辑实体编码", "逻辑实体编号")
+                if code in store.logical_entities:
+                    store.logical_entities[code].physical_table = store._cell(row, col, "关联物理表", "对应物理表")
+            store._le_by_table = {le.physical_table: le.code for le in store.logical_entities.values() if le.physical_table}
+        if "业务属性映射" in wb.sheetnames:
+            col, rows = store._indexed(wb["业务属性映射"])
+            for row in rows:
+                code = store._cell(row, col, "业务属性编码", "业务属性编号")
+                field = store._cell(row, col, "来源字段")
+                if code in store.attributes and field:
+                    store.attributes[code].english = field
+                elif code in store.attributes and store._cell(row, col, "客户接入状态").startswith("blocked"):
+                    store.attributes[code].english = ""
+                    store.attributes[code].definition += "；缺少真实物理来源，不得用于指标取数。"
         store._load_relations(wb[SHEET_ER])
         if SHEET_META_REL in wb.sheetnames:
             store._load_meta_relations(wb[SHEET_META_REL])
@@ -349,18 +366,25 @@ class OntologyStore:
         # Header-driven: ChatBI 源/目标实体, 超聚变 主/从实体, MetaERP 源/目标逻辑实体.
         col, rows = self._indexed(ws)
         for row in rows:
-            code = self._cell(row, col, "关系编号")
+            code = self._cell(row, col, "关系编号", "关系编码")
             if not code:
                 continue
+            source_attr = self.attributes.get(self._cell(row, col, "源关联属性编码"))
+            target_attr = self.attributes.get(self._cell(row, col, "目标关联属性编码"))
+            source_field = source_attr.english if source_attr else self._cell(row, col, "源关联属性英文名")
+            target_field = target_attr.english if target_attr else self._cell(row, col, "目标关联属性英文名")
+            link = self._cell(row, col, "外键字段", "关联条件")
+            if not link and source_field:
+                link = source_field + " = " + target_field if target_field else source_field
             er = EntityRelation(
                 code=code,
-                source_code=self._cell(row, col, "源实体编号", "主实体编号", "源逻辑实体编号"),
+                source_code=self._cell(row, col, "源实体编号", "主实体编号", "源逻辑实体编号", "源逻辑实体编码"),
                 source_name=self._cell(row, col, "源实体名称", "主实体名称", "源逻辑实体名称"),
-                target_code=self._cell(row, col, "目标实体编号", "从实体编号", "目标逻辑实体编号"),
+                target_code=self._cell(row, col, "目标实体编号", "从实体编号", "目标逻辑实体编号", "目标逻辑实体编码"),
                 target_name=self._cell(row, col, "目标实体名称", "从实体名称", "目标逻辑实体名称"),
                 cardinality=self._cell(row, col, "关系类型", "关系基数"),
                 description=self._cell(row, col, "关系描述", "关系说明"),
-                foreign_key=self._cell(row, col, "外键字段", "关联条件", "源关联属性英文名"),
+                foreign_key=link,
                 name=self._cell(row, col, "关系中文名称", "关系名称"),
                 english=self._cell(row, col, "关系英文名称"),
             )
