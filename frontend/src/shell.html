@@ -4,8 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>硕磐智能分析 Agent · 本体工作台</title>
+  <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHJlY3Qgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiByeD0iNCIgZmlsbD0iIzM2NzQ1YyIvPjxwYXRoIGQ9Ik04IDNsMS40IDMuMkwxMi42IDcgMTAgOS4ybC43IDMuM0w4IDEwLjhsLTIuNyAxLjcuNy0zLjNMMy40IDdsMy4yLS44TDggM3oiIGZpbGw9IiNmZmYiLz48L3N2Zz4=" />
 </head>
-<body data-mode="data" class="sidebar-collapsed">
+<body data-mode="data">
   <div class="app">
 
     <!-- React workbench runtime bridge nodes. The visible navigation and
@@ -133,7 +134,8 @@
               </div>
               <ul class="chat-todo-list" id="chat-todo-list"></ul>
             </div>
-            <div class="chat-scroll" id="chat-scroll">
+            <div class="pro-ui-empty-layer" id="pro-ui-empty-layer">
+              <div id="pro-ui-welcome-root"></div>
               <div class="empty-state" id="chat-empty">
                 <div class="empty-glyph" id="empty-glyph" aria-hidden="true"></div>
                 <div class="empty-title-row">
@@ -144,6 +146,7 @@
                 <div class="empty-hints" id="empty-hints"></div>
               </div>
             </div>
+            <div class="chat-scroll" id="chat-scroll"></div>
 
             <!-- ========== CHAT INPUT (claude.ai-style composer) ========== -->
             <div class="chat-input-wrap" id="chat-input-wrap">
@@ -170,6 +173,8 @@
                   <div class="drop-overlay-text">松开以上传 PDF / Word 报表</div>
                 </div>
               </div>
+
+              <div id="pro-ui-composer-root"></div>
 
               <div class="composer">
                 <textarea
@@ -267,7 +272,7 @@
       <!-- ---------- VIEW: 本体内容 ---------- -->
       <section class="view view-page" id="view-ontology" data-view="ontology">
         <div class="page-header">
-          <span class="page-title">⬡ 本体内容</span>
+          <span class="page-title"><span class="page-title-icon" data-feature-glyph="ontology"></span>本体内容</span>
           <span class="tab-count" id="count-ontology">0</span>
         </div>
         <div class="page-body">
@@ -525,7 +530,7 @@
       <!-- ---------- VIEW: 角色选择 ---------- -->
       <section class="view view-page" id="view-roles" data-view="roles">
         <div class="page-header">
-          <span class="page-title">☻ 角色选择</span>
+          <span class="page-title"><span class="page-title-icon" data-feature-glyph="roles"></span>角色选择</span>
         </div>
         <div class="page-body page-body-form">
           <div class="settings-field">
@@ -550,7 +555,7 @@
       <!-- ---------- VIEW: 记忆管理 ---------- -->
       <section class="view view-page" id="view-memory" data-view="memory">
         <div class="page-header">
-          <span class="page-title">⟲ 记忆管理</span>
+          <span class="page-title"><span class="page-title-icon" data-feature-glyph="memory"></span>记忆管理</span>
         </div>
         <div class="page-body page-body-form">
           <div class="rg-note rg-note-info">
@@ -597,7 +602,7 @@
       <!-- ---------- VIEW: 个人账号设置 ---------- -->
       <section class="view view-page" id="view-account" data-view="account">
         <div class="page-header">
-          <span class="page-title">⚙ 个人账号设置</span>
+          <span class="page-title"><span class="page-title-icon" data-feature-glyph="model"></span>个人账号设置</span>
         </div>
         <div class="page-body page-body-form">
           <div class="settings-field">

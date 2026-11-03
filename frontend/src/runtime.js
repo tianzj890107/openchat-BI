@@ -1075,6 +1075,9 @@ export function bootWorkbenchRuntime() {
     if (!txt || !el.chatInput) return;
     const cur = el.chatInput.value.trim();
     el.chatInput.value = cur ? cur + "\n" + txt : txt;
+    window.dispatchEvent(new CustomEvent("bi-composer-prefill", {
+      detail: { text: el.chatInput.value },
+    }));
     autosizeInput();
     el.chatInput.focus();
     try {
@@ -1264,6 +1267,9 @@ export function bootWorkbenchRuntime() {
     state.view = view;
     viewSections.forEach((s) => s.classList.toggle("active", s.dataset.view === view));
     setActiveNav();
+    window.dispatchEvent(new CustomEvent("bi-view-changed", {
+      detail: { view, mode: state.mode },
+    }));
     if (view === "syslog" && state.activeTab === "system") loadSystemPrompt();
   }
 
@@ -1834,7 +1840,8 @@ export function bootWorkbenchRuntime() {
 
   async function openRoles() {
     const st = document.getElementById("roles-status");
-    if (st) { st.textContent = ""; st.className = "settings-status"; }
+    showView("roles");
+    if (st) { st.textContent = "正在加载角色偏好…"; st.className = "settings-status pending"; }
     try {
       const r = await fetch(withClientSession(withBasePath("api/roles")), { cache: "no-store" });
       if (r.ok) {
@@ -1846,7 +1853,7 @@ export function bootWorkbenchRuntime() {
       }
     } catch (e) {}
     renderRoles();
-    showView("roles");
+    if (st) { st.textContent = ""; st.className = "settings-status"; }
   }
 
   async function saveRoles() {
@@ -1967,8 +1974,8 @@ export function bootWorkbenchRuntime() {
     const status = document.getElementById("memory-status");
     if (status) { status.textContent = ""; status.className = "settings-status"; }
     setTrashStatus("正在加载回收站…", "pending");
-    await loadTrash();
     showView("memory");
+    await loadTrash();
   }
 
   async function restoreTrashEntry(cid) {
@@ -2130,6 +2137,9 @@ export function bootWorkbenchRuntime() {
     const val = row.querySelector(".hint-val");
     if (val) {
       el.chatInput.value = val.textContent;
+      window.dispatchEvent(new CustomEvent("bi-composer-prefill", {
+        detail: { text: el.chatInput.value },
+      }));
       el.chatInput.focus();
     }
   });
@@ -2707,8 +2717,8 @@ export function bootWorkbenchRuntime() {
   }
 
   async function openSources() {
-    await loadSourcesInto(el.sourcesStatus);
     showView("sources");
+    await loadSourcesInto(el.sourcesStatus);
   }
 
   function closeSources() {
@@ -2716,8 +2726,8 @@ export function bootWorkbenchRuntime() {
   }
 
   async function openOntologyAdapt() {
-    await loadSourcesInto(el.ontoAdaptStatus);
     showView("ontology-adapt");
+    await loadSourcesInto(el.ontoAdaptStatus);
   }
 
   // Both 数据源 and 本体适配 save the full /api/sources payload (the backend
@@ -3101,7 +3111,10 @@ export function bootWorkbenchRuntime() {
   }
 
   function syncActiveQuestionFromScroll(sourceRoot = null) {
-    const root = sourceRoot || el.chatScroll;
+    // Called directly by requestAnimationFrame (timestamp), resize/scroll
+    // listeners (Event) and targeted pane syncs (Element). Only the last is a
+    // valid DOM root; treating the others as a root breaks getBoundingClientRect.
+    const root = sourceRoot instanceof Element ? sourceRoot : el.chatScroll;
     const selector = root === el.dashboardList
       ? ".dash-card[data-turn]:not(.dash-question)"
       : ".msg-user[data-turn]";
@@ -8038,8 +8051,8 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   // Sidebar collapse / expand  (left nav, Claude/ChatGPT-style)
   // ------------------------------------------------------------------
-  // Versioned key makes the first visit use the new icon-rail default while
-  // preserving an explicit expand/collapse choice afterwards.
+  // Versioned key preserves an explicit expand/collapse choice. The Pro UI
+  // navigation defaults to the expanded business sidebar on first visit.
   const SIDEBAR_LS_KEY = "bi.sidebarCollapsed.v2";
 
   function applySidebarState(collapsed) {
@@ -8057,8 +8070,7 @@ export function bootWorkbenchRuntime() {
       saved = localStorage.getItem(SIDEBAR_LS_KEY);
       collapsed = saved === "1";
     } catch (e) {}
-    // No saved preference means the navigation starts in the compact icon rail.
-    if (saved == null) collapsed = true;
+    if (saved == null) collapsed = false;
     applySidebarState(collapsed);
   })();
 

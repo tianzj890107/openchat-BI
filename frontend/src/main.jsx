@@ -1,14 +1,16 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Button, Card, Collapse, ConfigProvider, Divider, Layout, List, Menu, Progress, Tag, Tooltip } from "antd";
-import { ThoughtChain } from "@ant-design/x";
-import { Bubble } from "@ant-design/x";
+import { Button, Card, Collapse, ConfigProvider, Divider, Dropdown, List, Progress, Tag, Tooltip } from "antd";
+import { Bubble, Conversations, ThoughtChain } from "@ant-design/x";
 import shellDocument from "./shell.html?raw";
 import {
   bootWorkbenchRuntime,
   fetchConversationSummaries,
 } from "./runtime.js";
 import ProUiAgentStatus from "./ProUiAgentStatus.jsx";
+import ProUiComposer from "./ProUiComposer.jsx";
+import ProUiSidebar from "./ProUiSidebar.jsx";
+import ProUiWelcome from "./ProUiWelcome.jsx";
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -16,8 +18,6 @@ import {
 } from "@ant-design/icons";
 import "antd/dist/reset.css";
 import "./workbench.css";
-
-const { Sider } = Layout;
 
 // Unified product identity.  The sidebar brand renders the product name and
 // the workbench hero renders the version chip from these same constants, so
@@ -691,6 +691,7 @@ function AntdMessage({ role, iteration, html }) {
     placement={user ? "end" : "start"}
     variant="filled"
     shape="corner"
+    avatar={user ? undefined : <AgentMark />}
     className={`antd-message-bubble ${user ? "antd-message-user" : "antd-message-assistant"}`}
     content={contentHtml}
     messageRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
@@ -1328,7 +1329,8 @@ function WorkbenchApp() {
 
   useLayoutEffect(() => {
     document.body.dataset.mode = "data";
-    document.body.classList.add("sidebar-collapsed");
+    document.body.classList.add("pro-ui-workbench-body");
+    document.body.classList.remove("sidebar-collapsed");
     if (!shellRef.current) return undefined;
 
     const sidebarRoot = shellRef.current.querySelector("#antd-sidebar-root");
@@ -1336,11 +1338,25 @@ function WorkbenchApp() {
     const workflowRoot = shellRef.current.querySelector("#antd-workflow-root");
     const dashboardWorkflowRoot = shellRef.current.querySelector("#antd-dashboard-workflow-root");
     const proUiStatusRoot = shellRef.current.querySelector("#ant-pro-ui-status-root");
-    if (sidebarRoot) createRoot(sidebarRoot).render(<Sidebar />);
+    const proUiWelcomeRoot = shellRef.current.querySelector("#pro-ui-welcome-root");
+    const proUiComposerRoot = shellRef.current.querySelector("#pro-ui-composer-root");
+    if (sidebarRoot) createRoot(sidebarRoot).render(
+      <ProUiSidebar
+        FeatureGlyph={FeatureGlyph}
+        AgentMark={AgentMark}
+        fetchRecent={fetchRecent}
+        requestRecentRefresh={requestRecentRefresh}
+        recentTimeLabel={recentTimeLabel}
+        dispatchRuntime={dispatchRuntime}
+        productVersion={PRODUCT_VERSION}
+      />,
+    );
     if (versionRoot) createRoot(versionRoot).render(<ProductVersionTag />);
     if (workflowRoot) createRoot(workflowRoot).render(<WorkflowPanels />);
     if (dashboardWorkflowRoot) createRoot(dashboardWorkflowRoot).render(<WorkflowPanels />);
     if (proUiStatusRoot) createRoot(proUiStatusRoot).render(<ProUiAgentStatus />);
+    if (proUiWelcomeRoot) createRoot(proUiWelcomeRoot).render(<ProUiWelcome />);
+    if (proUiComposerRoot) createRoot(proUiComposerRoot).render(<ProUiComposer />);
     shellRef.current.querySelectorAll(".page-title-icon[data-feature-glyph]").forEach((node) => {
       createRoot(node).render(<FeatureGlyph kind={node.dataset.featureGlyph} />);
     });
@@ -1351,7 +1367,9 @@ function WorkbenchApp() {
     bootWorkbenchRuntime();
     observeWorkbenchSurface("chat-scroll");
     observeWorkbenchSurface("dashboard-list");
-    return undefined;
+    return () => {
+      document.body.classList.remove("pro-ui-workbench-body");
+    };
   }, []);
 
   return <div ref={shellRef} dangerouslySetInnerHTML={{ __html: shellMarkup }} />;

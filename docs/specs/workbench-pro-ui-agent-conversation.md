@@ -1,46 +1,70 @@
-# Workbench Pro UI 对话层改造
+# Workbench 全页 Pro UI 组件化
 
-- 日期：2026-11-02
-- 状态：已完成（对话层增量，2026-11-02）
-- 范围：分析 Agent 的 `/workbench` 对话前端
+- 日期：2026-11-02（初版），2026-11-03（扩展为全页）
+- 状态：已完成（可见工作台全页）
+- 范围：分析 Agent 的 `/workbench` 前端
 - 分支：`feature/workbench-pro-ui-chat`
 
 ## 1. 背景
 
-Pro UI 的 Agent Conversation Template 提供了 Pro UI 风格的会话、消息、
-Activity、ToolCall、Sender 与右侧面板插槽，但模板本身依赖文档站的服务端
-适配器，不能直接替换 Analytics 的请求、SSE、会话恢复和业务卡片协议。
+Pro UI 的 Agent Conversation Template 提供了会话、消息、Activity、ToolCall、
+Sender、导航与右侧面板插槽。文档源码中的 React 包名为 `@pro-ui/x-react` 和
+`@pro-ui/chat-runtime`。
 
-本仓库当前 Workbench 已使用 React + Ant Design X 渲染消息与 ThoughtChain，
-但仍由 `runtime.js` 直接操作聊天 DOM。直接整页替换会同时改变后端接口、
-历史快照和图表交付，风险过高。
+文档 `guide/quickstart` 中的 npm 安装命令对应 Vue 3 / Element Plus 包：
 
-本轮只迁移对话层的状态表达和输入状态，保留以下既有契约：
+```bash
+npm install @pro-ui/core
+```
 
-- `/api/chat`、`/api/report/chat` 及全部 SSE 事件；
-- 服务端会话、历史快照、恢复与保存接口；
-- 图表、表格、多维图、本体实体和看板；
-- 设置页、数据源页、系统日志和驾驶舱。
+React 文档只给出 `@pro-ui/x-react`、`@pro-ui/chat-runtime` 的 import 路径和
+GitLab 仓库链接，没有发布可直接安装的 npm 包。当前已核验：
+
+- `npm view @pro-ui/x-react` 返回 404；
+- `registry.npmmirror.com` 返回 `NOT_FOUND`；
+- 本机配置的 GitLab npm registry 对该作用域返回 302 到公共 npm，随后 404；
+- 文档源码给出的 `gitlab.boulderaitech.com/frontend/pro-ui` 当前账号访问为 404。
+
+因此本轮不能把不存在的依赖写入 `package.json`。可见界面使用仓库已安装的
+Ant Design X 1.6.1、Ant Design 5.29.3 和 React 18.3.1，按 Pro UI Agent
+模板的 sage 主题、组件语义和交互层级实现。后端和 `runtime.js` 的业务状态机
+保持不变。
 
 ## 2. 目标
 
-1. 增加 Analytics 专用事件适配器，把现有 SSE 事件转换为稳定的对话活动状态。
-2. 工具执行从“结果到达后才出现”改为“开始即显示、同 ID 更新、完成后保留详情”。
-3. 明确展示思考、工具执行、等待用户选择、完成、失败、会话重建和中断，
-   不把等待选择或断流显示成成功。
-4. 发送按钮在生成中变为“停止”，停止后保留已输出内容，不保存为完成回答。
-5. 保持旧历史快照可打开；历史文件和用户数据不做迁移、清空或重写。
-6. 使用 Pro UI 的语义层级和视觉 token，但不引入不可访问的私有 npm 依赖。
+1. 导航、历史会话、空会话引导、消息气泡、输入框、分析状态和设置页外观统一为
+   Pro UI 风格，而不是只替换状态条。
+2. 使用 React 组件承载可见界面，移除用户可见的旧 DOM 拼接内容。
+3. 保留 `/api/chat`、`/api/report/chat`、全部 SSE 事件、服务端会话、历史恢复、
+   图表、表格、多维图、本体实体和业务动作。
+4. 旧历史 HTML 快照继续可读；不迁移、不清空、不重写用户历史。
+5. 生成中发送按钮变为停止；停止、失败、会话重建和等待选择都不显示为成功。
+6. 维持网关子路径、窄屏和单列/双列工作区布局。
 
 ## 3. 非目标
 
-- 不重写后端 `AgentSession`、SSE 协议或模型服务。
+- 不重写后端 `AgentSession`、SSE 协议、模型服务或 MCP 架构。
 - 不批量改写旧历史 HTML、图表或报告。
 - 不开放消息编辑、重新生成和消息分支；这些语义需要后端任务边界。
-- 不迁移设置页和数据源页；它们仍使用现有 React/Ant Design 实现。
-- 不删除演示站依赖的浏览器线程；Analytics 以服务端会话为准。
+- 不把 Pro UI 演示站的浏览器临时线程和页面退出清理逻辑引入业务工作台。
+- 不在依赖不可获取时伪造 `@pro-ui/x-react` 安装结果或提交不可构建的 lockfile。
 
-## 4. Analytics 事件映射
+## 4. 可见界面与实现映射
+
+| 区域 | 组件 | 说明 |
+|---|---|---|
+| 左侧导航 | `ProUiSidebar.jsx` + Ant Design X `Conversations` | 业务导航、模式切换、最近会话、账号菜单 |
+| 空会话 | `ProUiWelcome.jsx` + `Welcome` / `Prompts` | 标题、说明、建议问题和填充输入框 |
+| 消息正文 | Ant Design X `Bubble` | 用户/助手气泡、Markdown、助手头像 |
+| 工具与 SOP | Ant Design X `ThoughtChain` + `ProUiAgentStatus.jsx` | 执行步骤、SOP 进度、活动状态和停止操作 |
+| 输入区 | `ProUiComposer.jsx` + `Sender` | 发送、停止、报表上传、数据库开关和附件状态 |
+| 业务结果 | Ant Design `Card` / `Collapse` / `Tag` | 图表、表格、多维图、看板和结论卡 |
+| 设置页面 | Pro UI sage token + Ant Design 组件样式 | 数据源、本体适配、模型、角色、记忆和账号页 |
+
+设置页的业务动作仍由 `runtime.js` 处理；React 壳通过隐藏的运行时桥接节点同步
+输入、选项、状态和按钮点击，避免复制数据源、模型参数和回收站的业务逻辑。
+
+## 5. Analytics 事件映射
 
 | Analytics 事件 | 对话活动状态 | 展示要求 |
 |---|---|---|
@@ -58,7 +82,7 @@ Activity、ToolCall、Sender 与右侧面板插槽，但模板本身依赖文档
 | `session_superseded` | `superseded` | 明确会话重建，不显示成功 |
 | `stream_interrupted` | `interrupted` | 明确内容可能不完整 |
 
-## 5. 状态与并发约束
+## 6. 状态与并发约束
 
 - 每个工具调用使用后端 `id` 作为唯一键；重复 `tool_result` 不得新增第二条活动。
 - 每个模式维护独立的活动状态；切换模式不能串流。
@@ -66,64 +90,74 @@ Activity、ToolCall、Sender 与右侧面板插槽，但模板本身依赖文档
 - `done`、`error`、`session_superseded`、`stream_interrupted` 的终态幂等。
 - 已失败、已中断或已重建的 turn 不能被晚到的 `done` 翻转为成功。
 - 停止生成只中断当前请求，保留已显示正文；不得触发完成保存、导出或 SOP 收口。
+- 导航高亮以 runtime 的 `bi-view-changed` 和 `bi-mode-changed` 为准；页面内
+  “返回/保存后回工作区”也必须同步侧栏。
 
-## 6. 组件边界
+## 7. 组件边界
 
-### 6.1 本轮新增
+### 7.1 新增
 
-- `frontend/src/agentActivityModel.js`：纯事件适配器与状态选择器；
-- `frontend/src/ProUiAgentStatus.jsx`：Pro UI 风格的活动状态条和停止操作；
-- `frontend/tests/agentActivityModel.test.mjs`：适配器红测/回归测试。
+- `frontend/src/ProUiSidebar.jsx`：Pro UI 风格导航、会话历史与账号区；
+- `frontend/src/ProUiComposer.jsx`：Ant Design X Sender 和报表工具条；
+- `frontend/src/ProUiWelcome.jsx`：Welcome 与 Prompts 空状态；
+- `frontend/src/proUiBridge.js`：输入、欢迎提示和导航高亮的纯适配器；
+- `frontend/tests/proUiBridge.test.mjs`：适配器回归测试。
 
-### 6.2 本轮调整
+### 7.2 调整
 
-- `frontend/src/runtime.js`：发布活动状态、渲染运行中工具、处理停止、切换模式、
-  409/429 请求失败、选择提交和显式中断；
-- `frontend/src/main.jsx`：挂载状态条；
-- `frontend/src/shell.html`：增加状态条挂载点；
-- `frontend/src/workbench.css`：Pro UI 状态条和运行中工具样式。
+- `frontend/src/main.jsx`：挂载 Pro UI 侧栏、欢迎页、输入区和状态条；将助手消息
+  放入 Bubble 头像布局；为静态壳增加全页主题 class；
+- `frontend/src/runtime.js`：导航切换事件、输入预填、侧栏默认展开、滚动回调修复；
+- `frontend/src/shell.html`：欢迎页/输入框挂载点、页面标题图标；
+- `frontend/src/workbench.css`：Pro UI sage 全页主题、侧栏、气泡、输入、设置页、
+  看板与响应式样式；
+- `bi_agent/web/static/index.html`：默认展开、favicon、静态资源缓存版本；
+- `bi_agent/web/static/vendor/antd/`：前端构建产物同步。
 
-### 6.3 保留
+### 7.3 保留
 
-- 现有 `.step`、ThoughtChain、Bubble、聊天 HTML 快照格式；
-- 现有聊天输入 DOM 与 `#chat-input`、`#btn-send` 绑定；
-- 现有会话恢复、看板和业务卡片代码。
+- 现有 SSE 事件、会话恢复、看板和业务卡片代码；
+- 旧历史 HTML 快照格式及其只读兼容；
+- 设置页的数据源、模型参数、角色和回收站业务接口；
+- 聊天输入 DOM 的 `#chat-input`、`#btn-send` 运行时绑定，由 React 输入框同步。
 
-## 7. 验收
+## 8. 验收
 
-### 7.1 自动测试
+### 8.1 自动测试
 
 ```bash
-node --test frontend/tests/agentActivityModel.test.mjs
+node --test frontend/tests/proUiBridge.test.mjs
 node --test frontend/tests/*.test.mjs
 cd frontend && npm run build
 python -m unittest tests.test_regressions
 git diff --check
 ```
 
-### 7.2 行为验收
+### 8.2 浏览器验收
 
-- `tool_start` 后立即出现运行中工具，`tool_result` 到达后原位置完成；
-- 同一工具 ID 只有一个执行项；
-- 等待用户选择时状态条显示“等待选择”，不显示完成；
-- 停止后保留正文、工具和图表，状态为停止，后续晚到 `done` 不翻转；
-- 失败、会话重建、断流均不触发完成保存/导出；
-- 旧历史仍可打开，历史 HTML 不做批量改写；
-- 窄屏下状态条和输入区无横向溢出。
+- 1440×1000 下侧栏默认展开，导航文字、历史会话和账号区可见；
+- 智能分析、报表分析、本体内容、系统调用记录、本体适配、数据源、模型参数、
+  角色选择、记忆管理九条路由都能切换到可见页面；
+- 报表模式显示上传报表、数据库查询和最近报表工具条；旧附件行不重复显示；
+- Sender 输入与隐藏的 `#chat-input` 双向同步，输入后发送按钮可用；
+- 1440 宽度下工作区无 JS 异常，所有静态资源返回 200；
+- 页面退出、保存或取消返回工作区后，侧栏高亮跟随 runtime 当前视图。
 
-### 7.3 本轮验证结果
+### 8.3 已验证结果
 
-- 前端 Node 测试 92 项通过（其中活动适配器 11 项）；
-- `npm run build` 通过，静态产物已同步到 `bi_agent/web/static/vendor/antd/`；
-- `python -m unittest tests.test_regressions` 221 项通过；
-- 本地浏览器确认 Workbench 可加载，运行中工具和用户停止状态条显示正确；
-- `git diff --check` 通过。
+- `node --test frontend/tests/proUiBridge.test.mjs`：5 项通过；
+- `node --test frontend/tests/*.test.mjs`：98 项通过；
+- `npm run build`：通过，构建产物已同步；
+- `python -m unittest tests.test_regressions`：221 项通过；
+- CDP 浏览器检查：九条导航路由、展开侧栏、数据源/模型参数页面和 Sender 可用；
+- CDP 捕获：无 JavaScript 异常，无业务资源 404；favicon 404 已修复；
+- 历史清空/恢复路径不会删除 Pro UI 欢迎页和空状态节点；
+- `git diff --check`：通过。
 
-## 8. 后续阶段
+## 9. 后续阶段
 
-1. 将聊天正文和输入框完全迁移到受控 React 消息树；
-2. 用结构化消息替换新会话的 HTML 快照，同时保留旧快照只读兼容；
-3. 将设置、数据源和结果面板逐步换成 Pro UI 基础组件；
-4. 增加浏览器级 SSE 回放与历史恢复验收。
-
-后续阶段需要单独设计和授权，不在本轮实现范围内。
+1. 在 `@pro-ui/x-react` 可获得后，用真实 ProX 组件替换当前 Ant Design X 实现，
+   并保留 `proUiBridge.js` 的纯适配边界；
+2. 将新会话消息保存为结构化消息，同时继续只读兼容旧 HTML 快照；
+3. 将设置页的每个原生控件迁移为受控 Pro UI 表单组件，删除隐藏运行时桥接；
+4. 增加浏览器级 SSE 回放、停止、历史恢复和子路径验收。

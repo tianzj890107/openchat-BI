@@ -55,17 +55,25 @@
 - 主要文件：`bi_agent/web/static/cockpit/cockpit.css`、`tests/cockpit_insight_runtime.test.mjs`。
 - 验证：Cockpit 运行时测试 6 项、Cockpit Python 测试 284 项通过；`git diff --check` 通过。
 
-### 2026-11-02 18:35 Workbench 分析 Agent 对话层 Pro UI 状态适配
+### 2026-11-03 09:10 Workbench 分析 Agent 全页 Pro UI 组件化
 
-- 用户可见变化：分析 Agent 对话区新增 Pro UI 风格状态条，实时显示思考、工具执行、
-  等待选择、完成、失败、会话重建和中断；工具开始即显示执行行，结果返回后原位置更新，
-  不再等到结果到达才出现。生成中发送按钮变为停止，停止后保留已输出内容且不保存为完成回答。
-- 交互修复：用户停止与连接中断使用不同提示；切换模式、会话重建、409/429 和选择提交失败
-  不再把状态条卡在“运行中”；选择提交期间也可停止，未完成选择卡会恢复为可重试状态。
-- 数据契约：新增 Analytics SSE 到活动状态的纯适配器，按 `turn_id` 隔离晚到事件、按工具
-  `id` 去重并保持终态幂等；旧历史 HTML 快照、图表、表格、本体实体和业务会话接口保持不变。
-- 主要文件：`frontend/src/agentActivityModel.js`、`ProUiAgentStatus.jsx`、`runtime.js`、
-  `main.jsx`、`shell.html`、`workbench.css`、`frontend/tests/agentActivityModel.test.mjs`、
-  `docs/specs/workbench-pro-ui-agent-conversation.md` 及同名静态构建产物。
-- 验证：前端 Node 测试 92 项、`tests.test_regressions` 221 项、`npm run build` 和
-  `git diff --check` 通过；本地浏览器确认状态条运行中/已停止显示正确。本轮未部署。
+- 用户可见变化：工作台从单条对话状态条扩展为整页统一视觉，左侧导航与最近会话、
+  空会话引导、用户/助手气泡、输入框与停止按钮、报表工具条、分析状态、结果卡片和
+  设置页统一为 Pro UI sage 主题和组件层级。侧栏首次进入默认展开，页面内返回/保存后
+  高亮同步当前视图；九条业务路由均可直接切换。
+- 对话与结果：工具开始即显示执行行，结果按同 ID 原位置更新；思考、等待选择、完成、
+  失败、会话重建和中断使用不同状态，停止后保留已输出内容且不保存为完成回答。报表模式
+  的上传、数据库查询、最近报表和报表生成工具条迁移到 React 输入区，旧附件行不再重复显示。
+- 历史兼容：欢迎页和空状态移到独立覆盖层，历史恢复清空消息区时不会删除 React 挂载点；
+  旧历史 HTML 快照、图表、表格、本体实体和服务端会话格式保持不变。
+- 依赖边界：文档 `guide/quickstart` 的 `npm install @pro-ui/core` 面向 Vue 3 / Element Plus；
+  React 文档仅使用 `@pro-ui/x-react` / `@pro-ui/chat-runtime` import 路径，公共 npm、镜像和
+  当前 GitLab npm 代理均无可用 React 包（404），文档仓库地址当前账号也不可访问；本轮使用
+  已安装的 Ant Design X 1.6.1、Ant Design 5.29.3、React 18.3.1 实现同体系可见组件，
+  未伪造依赖。
+- 主要文件：`frontend/src/ProUiSidebar.jsx`、`ProUiComposer.jsx`、`ProUiWelcome.jsx`、
+  `proUiBridge.js`、`ProUiAgentStatus.jsx`、`main.jsx`、`runtime.js`、`shell.html`、
+  `workbench.css`、`bi_agent/web/static/index.html`、前端构建产物及相关测试、规范文档。
+- 验证：前端 Node 测试 98 项、`tests.test_regressions` 221 项、`npm run build` 和
+  `git diff --check` 通过；1440×1000 本地 CDP 验收九条路由、侧栏折叠偏好刷新后保留、
+  设置页尺寸、Sender 双向同步和返回高亮，未发现 JS 异常或业务资源 404。本轮未部署。
