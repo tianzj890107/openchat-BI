@@ -1,11 +1,11 @@
 # eimosp-ontology-agentic-analytics · 智能分析
 
-eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`ontology-v0.1.5`。
+eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Agent。产品名称为 **智能分析**，当前版本：`ontology-v0.1.10`。
 
 系统以 Open Claude Agent Runtime 为执行底座，将业务本体、指标口径、事实数据查询、
 表格与图表生成、根因分析和决策行动组织为可追踪的分析流程，并通过 Web 工作台交付结果。
 
-- [ontology-v0.1.5 正式版本说明](docs/versions/ontology-v0.1.5.md)
+- [ontology-v0.1.10 正式版本说明](docs/versions/ontology-v0.1.10.md)
 - [ontology-v0.1.4 正式版本说明](docs/versions/ontology-v0.1.4.md)
 - [ontology-v0.1.3 正式版本说明](docs/versions/ontology-v0.1.3.md)
 - [ontology-v0.1.2 正式版本说明](docs/versions/ontology-v0.1.2.md)
@@ -300,7 +300,7 @@ Node 子进程执行。
   [语义化版本与正式发布规范](docs/versions/versioning-policy.md)；
 - push 不等于部署，部署必须由用户在当前任务中明确授权；
 - GitLab Release 授权后在 GitLab 仓库 `ai-team/eimosp-ontology-agentic-analytics` 上基于同名 tag 创建（只补缺失项，不覆盖已有 Release）；
-- 当前版本 `ontology-v0.1.5` 承载驾驶舱加载性能优化，已于 2026-10-27 创建 annotated tag 与 GitLab Release；
+- 当前版本 `ontology-v0.1.10`；2026-11-03 按历史交付阶段补发 0.1.6–0.1.10，各版本指向原定版提交，详见版本索引；
 - 已发布 Release：[智能分析 ontology-v0.1.5](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.5)、对应 tag 指向 v0.1.5 收口提交；[智能分析 ontology-v0.1.4](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.4)、对应 tag 指向 `3287c91`；[智能分析 ontology-v0.1.3](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.3)、对应 tag 指向定版 commit `a805a66`；[智能分析 ontology-v0.1.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.2)、对应 tag 指向定版 commit `3c4de1e`；[智能分析 ontology-v0.1.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.1)、对应 tag 指向定版 commit `c82221f`（2026-10-15 补建）；上一版本：[智能分析 ontology-v0.1.0](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.0)、对应 tag 指向定版 commit `74fca80`；此前版本：[智能分析 ontology-v0.0.10](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.10)、[智能分析 ontology-v0.0.9](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.9)、[智能分析 ontology-v0.0.8](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.8)、[智能分析 ontology-v0.0.7](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.7)、[智能分析 ontology-v0.0.6](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.6)、[智能分析 ontology-v0.0.5](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.5)、[智能分析 ontology-v0.0.4](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.4)、[智能分析 ontology-v0.0.3](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.3)、[智能分析 ontology-v0.0.2](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.2)、[智能分析 ontology-v0.0.1](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.0.1)
 
 ## 相关文档
@@ -333,3 +333,5 @@ Node 子进程执行。
 任务状态保存在 `dataset/analysis_tasks/`，容器部署时需单独持久化；一个数据库只允许
 一个进程拥有，第二个所有者会拒绝启动任务管理器。重启后未完成任务标记为 `interrupted`，
 不自动重放。部署和旧服务退役须等待独立验收，不因代码合并自动执行。
+
+历史补发版本：[ontology-v0.1.6 ](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.6)、[ontology-v0.1.7 ](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.7)、[ontology-v0.1.8 ](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.8)、[ontology-v0.1.9 ](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.9)、[ontology-v0.1.10 ](https://gitlab.boulderaitech.com/ai-team/eimosp-ontology-agentic-analytics/-/releases/ontology-v0.1.10)。

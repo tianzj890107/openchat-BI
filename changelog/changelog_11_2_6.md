@@ -73,3 +73,8 @@
 - 本地本体加载新增物理表／属性映射和V3.1关系编码支持，读取40条关系；缺少真实来源的属性不提供旧字段名。
 - 三个数据库工具提供PG只读事务、search_path、超时、行数限制和安全校验，取证元数据标明PostgreSQL。已只读匹配2319个真实字段，实测只读事务及schema正确。
 - 主要文件：`bi_agent/workbench_pg.py`、`bi_agent/tools/sql_tools.py`、`bi_agent/ontology/store.py`、`bi_agent/web/{app,__main__}.py`；新增及原回归233项、12个子测试通过，catalog／MCP回归15项通过，隔离浏览器数据源下拉验证通过。未部署、未重启现有服务、未改客户ZIP。
+
+### 2026-11-03 正式版本历史补发
+
+- 按用户指定阶段补齐 ontology-v0.1.6–ontology-v0.1.10 文档、tag 与 GitLab Release，沿用版本概览、主要变化、验证与边界格式；历史提交和既有版本文档保持不变。
+- 当前源码版本标识推进到 0.1.10，同步版本索引、README、包清单、前端显示标识与版本契约；本轮不部署。
