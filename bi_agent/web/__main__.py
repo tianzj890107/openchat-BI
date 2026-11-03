@@ -63,7 +63,7 @@ def main() -> None:
     parser.add_argument(
         "--db",
         default=None,
-        help=f"SQLite .db 文件,或 '{DORIS_DB}' 使用 Doris 实时查询(默认)",
+        help=f"SQLite .db 文件、postgres(本地Excel+PG)，或 '{DORIS_DB}' 使用Doris(默认)",
     )
     parser.add_argument("--agent", default=DEFAULT_AGENT)
     parser.add_argument("--reload", action="store_true", help="开发模式热更")
@@ -80,21 +80,30 @@ def main() -> None:
         print(f"Error: 工作目录不存在: {cwd}", file=sys.stderr)
         sys.exit(1)
 
+    from ..workbench_pg import SOURCE_VALUE as PG_SOURCE, preset as pg_preset
+    pg_mode = args.db in {"postgres", PG_SOURCE}
+    if pg_mode:
+        try:
+            pg_config, pg_workbook = pg_preset(cwd)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        os.environ["ONTOLOGY_BACKEND"] = "local"
     remote_mode = os.environ.get("ONTOLOGY_BACKEND", "local").strip().lower() in {"production", "remote"}
     # Production never resolves or validates a local workbook. Keep the CLI
     # option solely for explicit local development mode.
-    ontology_path = _resolve(args.ontology or DEFAULT_ONTOLOGY, cwd) if not remote_mode else Path("")
+    ontology_path = pg_workbook if pg_mode else (_resolve(args.ontology or DEFAULT_ONTOLOGY, cwd) if not remote_mode else Path(""))
 
     # Default database source is Apache Doris (real-time query). A local SQLite
     # .db is used only when explicitly passed via --db <file>.
     db_choice = args.db if args.db is not None else DORIS_DB
     use_doris = db_choice == DORIS_DB
-    db_path = _resolve(DEFAULT_DB, cwd) if use_doris else _resolve(db_choice, cwd)
+    db_path = PG_SOURCE if pg_mode else (_resolve(DEFAULT_DB, cwd) if use_doris else _resolve(db_choice, cwd))
 
     if not remote_mode and not ontology_path.is_file():
         print(f"Error: 未找到本体文件: {ontology_path}", file=sys.stderr)
         sys.exit(1)
-    if not use_doris and not db_path.is_file():
+    if not use_doris and not pg_mode and not db_path.is_file():
         print(f"Error: 未找到数据库: {db_path}", file=sys.stderr)
         sys.exit(1)
 
@@ -110,7 +119,7 @@ def main() -> None:
     # /healthz 的 port 字段必须反映进程实际监听端口（容器内为 8080）。
     set_runtime_port(args.port)
 
-    db_label = "Doris(实时查询)" if use_doris else db_path.name
+    db_label = ("PostgreSQL · " + pg_config.schema) if pg_mode else ("Doris(实时查询)" if use_doris else db_path.name)
     print(f"[bi-agent-web] http://{args.host}:{args.port}")
     ontology_label = "remote-managed" if remote_mode else ontology_path.name
     print(f"[bi-agent-web] agent={args.agent}  ontology={ontology_label}  db={db_label}")

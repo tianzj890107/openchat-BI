@@ -1886,6 +1886,15 @@ def get_sources_endpoint(session_id: str = "") -> JSONResponse:
         graph_options.extend(_scan(GRAPHS_DIR, pat))
     graph_options = sorted(set(graph_options))
     local_ontology_options = [] if production_source else _scan(SPREADSHEETS_DIR, "*.xlsx")
+    from ..workbench_pg import SOURCE_VALUE as PG_SOURCE, preset as pg_preset
+    pg_available = False
+    try:
+        _pg_cfg, _pg_workbook = pg_preset(cwd)
+        local_ontology_options.append(_pg_workbook.relative_to(cwd).as_posix())
+        local_ontology_options = sorted(set(local_ontology_options))
+        pg_available = True
+    except ValueError:
+        pass
     ontology_options = local_ontology_options + [METAERP_ONTOLOGY_VALUE]
     # The production service exposes all selectable repositories through the
     # documented manager endpoint. Keep the local Excel entries as offline
@@ -1953,6 +1962,8 @@ def get_sources_endpoint(session_id: str = "") -> JSONResponse:
     ]
     local_db_options = [] if production_source else _scan(DATABASES_DIR, "*.db")
     db_options = local_db_options + remote_db_options + ([] if production_source else [DORIS_SOURCE_VALUE])
+    if pg_available:
+        db_options.append(PG_SOURCE)
     db_active = _cwd_relative_value(source.db_path)
     if source.use_doris:
         paired = next((
@@ -2076,6 +2087,15 @@ def _put_sources_endpoint_impl(
     BI tools against the new sources and resets sessions so the change
     takes effect on the next turn."""
     source = source or STATE
+    from ..workbench_pg import SOURCE_VALUE as PG_SOURCE, preset as pg_preset, normalize_store
+    pg_config = None
+    if req.database == PG_SOURCE:
+        try:
+            pg_config, workbook = pg_preset(STATE.cwd)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        # One fixed local pair, never a remote ontology + local PG mismatch.
+        req = req.model_copy(update={"ontology": workbook.relative_to(Path(STATE.cwd).resolve()).as_posix()})
     # The settings page prefills the connection inputs with the placeholders
     # from ``GET /api/sources``.  Normalise them to "not provided" *before* any
     # URL/schema validation so an untouched form saves without side effects
@@ -2204,7 +2224,13 @@ def _put_sources_endpoint_impl(
             source.remote_ontology = None
             _mark("ontology")
 
-    if not paired_repo_id and req.database == DORIS_SOURCE_VALUE:
+    if not paired_repo_id and req.database == PG_SOURCE:
+        if source.db_path != PG_SOURCE or source.use_doris:
+            source.db_path = PG_SOURCE
+            source.use_doris = False
+            source.ontology_store = normalize_store(source.ontology_store, pg_config.schema)
+            _mark("database")
+    elif not paired_repo_id and req.database == DORIS_SOURCE_VALUE:
         # Switch the SQL tools to the team's Doris HTTP query API.
         api_url = (req.doris_api_url or source.doris_api_url or DEFAULT_DORIS_API_URL).strip()
         jdbc = (req.doris_jdbc_url or source.doris_jdbc_url or "").strip()
@@ -3893,6 +3919,10 @@ def _ensure_session(session_id: Optional[str] = None) -> WebSession:
     )
     tools_override = None
     headers: list[str] = []
+    from ..workbench_pg import SOURCE_VALUE as PG_SOURCE, config as pg_config
+    if source.db_path == PG_SOURCE:
+        headers.append("# 当前数据源：本地Excel本体 + PostgreSQL；schema=" + pg_config().schema
+                       + "。使用PostgreSQL语法；先查表和字段，不使用SQLite PRAGMA或MySQL DATE_FORMAT，不调用远程本体平台。")
     if source.remote_ontology is not None:
         headers.append(
             "# 当前原子数据源\n"
