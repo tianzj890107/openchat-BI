@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ProXThreadStatus } from "@pro-ui/x-react";
+import { Button as ProXButton, ProXThreadStatus } from "@pro-ui/x-react";
 import {
   AGENT_STATUS,
   createAgentActivityState,
@@ -63,13 +63,12 @@ export default function ProUiAgentStatus() {
         <span className="pro-ui-agent-status-tool">{primary.name}</span>
       ) : null}
       {canStop ? (
-        <button
-          type="button"
+        <ProXButton
           className="pro-ui-agent-status-stop"
           onClick={() => window.dispatchEvent(new CustomEvent("bi-stop-generation"))}
         >
           停止
-        </button>
+        </ProXButton>
       ) : null}
     </div>
   );

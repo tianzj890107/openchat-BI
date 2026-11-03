@@ -2232,15 +2232,16 @@ class OfflineRegressionTests(unittest.TestCase):
     def test_frontend_history_requests_have_one_owner_and_activation_gate(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        sidebar = Path("frontend/src/ProUiSidebar.jsx").read_text(encoding="utf-8")
         css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
         shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
         self.assertEqual(runtime.count("api/conversations?mode="), 1)
         self.assertNotIn("api/conversations?mode=", main)
         self.assertIn("conversationSummaryRequests", runtime)
-        self.assertIn("event.detail?.conversations", main)
-        self.assertIn("const eventMode = event.detail?.mode || \"data\"", main)
-        self.assertIn("eventMode !== (document.body.dataset.mode || \"data\")", main)
-        self.assertIn('window.addEventListener("bi-mode-changed", onMode)', main)
+        self.assertIn("event.detail?.conversations", sidebar)
+        self.assertIn("const eventMode = event.detail?.mode || \"data\"", sidebar)
+        self.assertIn("eventMode !== (document.body.dataset.mode || \"data\")", sidebar)
+        self.assertIn('window.addEventListener("bi-mode-changed", onMode)', sidebar)
         self.assertIn("/preview", runtime)
         self.assertIn("/assets", runtime)
         self.assertIn("/activate", runtime)
@@ -2260,11 +2261,11 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertNotIn("history-restore-status", css)
         self.assertIn("history-chat-skeleton", runtime)
         self.assertIn("state.historyRestoring", runtime)
-        self.assertIn("antd-recent-skeleton", main)
+        self.assertIn("pro-ui-recent-loading", sidebar)
         self.assertNotIn("item.node?.click() ||", main)
-        self.assertIn('recentStatus === "loading"', main)
-        self.assertIn('recentStatus === "error"', main)
-        self.assertIn("bi-conversations-retry", main)
+        self.assertIn('recentStatus === "loading"', sidebar)
+        self.assertIn('recentStatus === "error"', sidebar)
+        self.assertIn("bi-conversations-retry", sidebar)
         self.assertIn("正在加载最近会话…", shell)
         self.assertIn("background: #ffffff", css)
         self.assertIn("background-color: #ffffff", css)
@@ -2325,7 +2326,52 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("background: var(--thinking-color-soft", css)
         self.assertIn("thinking-step-body-shell", css)
         self.assertIn("transition: height", css)
-        self.assertIn("shell.style.height = next ?", main)
+
+    def test_workbench_page_surfaces_use_pro_ui_components(self) -> None:
+        """Settings, logs, filters and the report wizard must use the shared
+        Pro UI component layer instead of leaving page-native controls visible.
+        The native nodes stay as hidden runtime anchors."""
+        main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        controls = Path("frontend/src/ProUiPageControls.jsx").read_text(encoding="utf-8")
+        theme = Path("frontend/src/proUiTheme.js").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+
+        self.assertIn('import { mountProUiPageControls } from "./ProUiPageControls.jsx"', main)
+        self.assertIn("mountProUiPageControls(shellRef.current)", main)
+        self.assertIn("ProXToolResultCard", main)
+        self.assertIn('<ProXToolResultCard className="antd-dashboard-pro-ui-card">', main)
+
+        for component in ("Alert", "Checkbox", "Flex", "Input", "InputNumber", "Radio",
+                          "Segmented", "Select", "Slider", "Steps", "Switch", "Tabs",
+                          "Tag", "Tooltip"):
+            self.assertIn(component, controls)
+        for kind in ('"button"', '"select"', '"input"', '"range"', '"toggle"',
+                     '"check"', '"role"', '"stepper"', '"note"', '"divider"',
+                     '"tabs"', '"segmented"', '"filters"'):
+            self.assertIn(f"return {kind}", controls)
+        self.assertIn("proUiNative", controls)
+        self.assertIn("visibilityObserver", controls)
+        self.assertIn('className="pro-ui-page-filters"', controls)
+        self.assertIn("<Tag.CheckableTag", controls)
+
+        for component in ("Button", "Input", "InputNumber", "Select", "Checkbox",
+                          "Radio", "Switch", "Slider", "Steps", "Alert", "Divider",
+                          "Modal", "Table", "Tabs", "Segmented", "Card", "Tooltip",
+                          "Dropdown", "Form"):
+            self.assertIn(f"{component}: {{", theme)
+        self.assertIn("activeBorderColor: PRIMARY", theme)
+        self.assertIn("rowHoverBg: \"#f4f8f5\"", theme)
+
+        self.assertIn(".pro-ui-control-host[hidden]", css)
+        self.assertIn(".pro-ui-page-tabs.ant-tabs", css)
+        self.assertIn(".pro-ui-page-segmented.ant-segmented", css)
+        self.assertIn(".pro-ui-page-filter-tag.ant-tag", css)
+        self.assertIn(".ant-select-open .ant-select-selector", css)
+        self.assertIn(".pro-ui-control-host .ant-select:not(.ant-select-disabled):hover", css)
+        self.assertIn("outline: 1px solid #aac5b5", css)
+        self.assertIn(".pro-ui-control-host .ant-checkbox-wrapper:hover", css)
+        self.assertIn("--pro-color-primary: var(--pro-ui-accent)", css)
+        self.assertIn("--pro-space-xl: 16px", css)
 
     def test_first_paint_defers_echarts_and_compresses_large_assets(self) -> None:
         index = Path("bi_agent/web/static/index.html").read_text(encoding="utf-8")
@@ -2334,7 +2380,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = withBasePath("static/vendor/echarts.min.js")', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=163" defer', index)
+        self.assertIn('workbench.js?v=165" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(

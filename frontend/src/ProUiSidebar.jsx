@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Button, Divider, Tooltip } from "antd";
+import { Skeleton, Tooltip } from "antd";
 import {
+  Button as ProXButton,
   ProXConfigProvider,
   ProXConversations,
+  ProXSearchDialog,
+  ProXSidebarLayout,
   ProXSidebarNav,
   ProXUserMenu,
 } from "@pro-ui/x-react";
@@ -11,6 +14,7 @@ import {
   MenuUnfoldOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SearchOutlined,
   SettingOutlined,
   UserOutlined,
 } from "@ant-design/icons";
@@ -21,6 +25,7 @@ import {
 import { PROX_WORKBENCH_THEME } from "./proUiTheme.js";
 
 const SIDEBAR_STORAGE_KEY = "bi.sidebarCollapsed.v2";
+const SIDEBAR_WIDTH_STORAGE_KEY = "bi.sidebarWidth.v1";
 
 const NAV_SECTIONS = [
   {
@@ -49,6 +54,17 @@ const NAV_SECTIONS = [
   },
 ];
 
+const ALL_NAV_ITEMS = NAV_SECTIONS.flatMap((section) => section.items);
+
+function readStoredWidth() {
+  try {
+    const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+    return Number.isFinite(saved) ? Math.min(380, Math.max(248, saved)) : 272;
+  } catch (_) {
+    return 272;
+  }
+}
+
 export default function ProUiSidebar({
   FeatureGlyph,
   AgentMark,
@@ -58,8 +74,9 @@ export default function ProUiSidebar({
   dispatchRuntime,
   productVersion,
 }) {
-  // Open the business navigation on first visit while preserving an explicit
-  // collapse choice from the legacy runtime.
+  // The layout component owns collapse and resize mechanics. The runtime body
+  // class is mirrored only because the legacy page router still keys a few
+  // responsive rules from it.
   const [collapsed, setCollapsed] = useState(() => {
     let saved = null;
     try {
@@ -70,9 +87,11 @@ export default function ProUiSidebar({
       document.body.classList.contains("sidebar-collapsed"),
     );
   });
+  const [width, setWidth] = useState(readStoredWidth);
   const [recent, setRecent] = useState([]);
   const [recentStatus, setRecentStatus] = useState("loading");
   const [active, setActive] = useState(() => document.body.dataset.mode || "data");
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     let disposed = false;
@@ -137,7 +156,22 @@ export default function ProUiSidebar({
     } catch (_) {}
   }, [collapsed]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
+    } catch (_) {}
+  }, [width]);
+
   const toggle = () => setCollapsed((value) => !value);
+  const openNewChat = () => document.getElementById("nav-new-chat")?.click();
+  const openConversation = (key) => {
+    const item = recent.find((entry) => entry.key === key);
+    setActive(document.body.dataset.mode || "data");
+    setRecent((items) => items.map((current) => ({ ...current, active: current.key === key })));
+    const legacyNode = item?.node || document.querySelector(`#recent-list .recent-item[data-cid="${CSS.escape(item?.cid || key)}"]`);
+    legacyNode?.click();
+    setSearchOpen(false);
+  };
 
   const conversations = useMemo(() => recent.map((item) => ({
     key: item.key,
@@ -147,143 +181,224 @@ export default function ProUiSidebar({
         <small>{recentTimeLabel(item.updatedAt)}</small>
       </span>
     ),
-    group: "最近对话",
   })), [recent, recentTimeLabel]);
 
+  const searchItems = useMemo(() => recent.map((item) => ({
+    key: item.key,
+    label: item.title,
+    searchText: item.title,
+    description: recentTimeLabel(item.updatedAt),
+    group: "最近对话",
+    icon: <FeatureGlyph kind="syslog" />,
+  })), [recent, recentTimeLabel, FeatureGlyph]);
+
   const activeConversation = recent.find((item) => item.active)?.key;
-
-  const openConversation = (key) => {
-    const item = recent.find((entry) => entry.key === key);
-    setActive(document.body.dataset.mode || "data");
-    setRecent((items) => items.map((current) => ({ ...current, active: current.key === key })));
-    const legacyNode = item?.node || document.querySelector(`#recent-list .recent-item[data-cid="${CSS.escape(item?.cid || key)}"]`);
-    legacyNode?.click();
-  };
-
   const openAccount = () => document.getElementById("sidebar-account")?.click();
   const accountItems = [
     { key: "account", label: "账号设置", icon: <SettingOutlined /> },
     { key: "profile", label: "个人资料", icon: <UserOutlined /> },
   ];
+  const selectNav = (key) => {
+    setActive(key);
+    dispatchRuntime(key);
+  };
+
+  const navigation = (
+    <div className="pro-ui-nav" aria-label="工作台导航">
+      {NAV_SECTIONS.map((section) => (
+        <ProXSidebarNav
+          key={section.label}
+          className="pro-ui-nav-component"
+          items={section.items.map((item) => ({
+            id: item.key,
+            title: item.label,
+            icon: <FeatureGlyph kind={item.icon} />,
+          }))}
+          activeId={active}
+          onSelect={selectNav}
+          collapsed={collapsed}
+          title={section.label}
+          type="sidebar"
+          tooltip={collapsed}
+        />
+      ))}
+    </div>
+  );
+
+  const rail = (
+    <div className="pro-ui-sidebar-rail">
+      <Tooltip title="智能分析" placement="right">
+        <button
+          type="button"
+          className="pro-ui-rail-brand"
+          onClick={() => window.dispatchEvent(new CustomEvent("bi-composer-focus"))}
+          aria-label="智能分析"
+        >
+          <AgentMark />
+        </button>
+      </Tooltip>
+      <Tooltip title="展开导航" placement="right">
+        <ProXButton
+          type="text"
+          className="pro-ui-rail-action"
+          icon={<MenuUnfoldOutlined />}
+          onClick={() => setCollapsed(false)}
+          aria-label="展开导航"
+        />
+      </Tooltip>
+      <Tooltip title="新对话" placement="right">
+        <ProXButton
+          type="text"
+          className="pro-ui-rail-action"
+          icon={<PlusOutlined />}
+          onClick={openNewChat}
+          aria-label="新对话"
+        />
+      </Tooltip>
+      <ProXSidebarNav
+        type="rail"
+        items={ALL_NAV_ITEMS.map((item) => ({
+          id: item.key,
+          title: item.label,
+          icon: <FeatureGlyph kind={item.icon} />,
+        }))}
+        activeId={active}
+        onSelect={selectNav}
+        tooltip
+      />
+      <Tooltip title="搜索最近对话" placement="right">
+        <ProXButton
+          type="text"
+          className="pro-ui-rail-action"
+          icon={<SearchOutlined />}
+          onClick={() => setSearchOpen(true)}
+          aria-label="搜索最近对话"
+        />
+      </Tooltip>
+      <ProXUserMenu
+        name="分析员"
+        description={productVersion}
+        avatar={<span className="pro-ui-account-avatar">分</span>}
+        compact
+        items={accountItems}
+        onAction={openAccount}
+      />
+    </div>
+  );
+
+  const brandHeader = (
+    <header className="pro-ui-sidebar-brand">
+      <button
+        type="button"
+        className="pro-ui-brand-button"
+        onClick={() => window.dispatchEvent(new CustomEvent("bi-composer-focus"))}
+      >
+        <AgentMark />
+        <span className="pro-ui-brand-copy">
+          <strong>智能分析</strong>
+          <small>Ontology Analyst</small>
+        </span>
+      </button>
+      <Tooltip title={collapsed ? "展开导航" : "收起导航"} placement="right">
+        <ProXButton
+          type="text"
+          className="pro-ui-sidebar-toggle"
+          icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          onClick={toggle}
+          aria-label={collapsed ? "展开导航" : "收起导航"}
+        />
+      </Tooltip>
+    </header>
+  );
 
   return (
     <ProXConfigProvider theme={PROX_WORKBENCH_THEME}>
-      <aside className={`pro-ui-sidebar ${collapsed ? "is-collapsed" : "is-expanded"}`}>
-        <div className="pro-ui-sidebar-scroll">
-          <header className="pro-ui-sidebar-brand">
-            <button type="button" className="pro-ui-brand-button" onClick={() => window.dispatchEvent(new CustomEvent("bi-composer-focus"))}>
-              <AgentMark />
-              {!collapsed ? (
-                <span className="pro-ui-brand-copy">
-                  <strong>智能分析</strong>
-                  <small>Ontology Analyst</small>
-                </span>
-              ) : null}
-            </button>
-            <Tooltip title={collapsed ? "展开导航" : "收起导航"} placement="right">
-              <Button
-                type="text"
-                size="small"
-                className="pro-ui-sidebar-toggle"
-                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={toggle}
-                aria-label={collapsed ? "展开导航" : "收起导航"}
-              />
-            </Tooltip>
-          </header>
-
-          <Tooltip title={collapsed ? "新对话" : ""} placement="right">
-            <button
-              type="button"
-              className="pro-ui-new-chat"
-              onClick={() => document.getElementById("nav-new-chat")?.click()}
-            >
-              <PlusOutlined />
-              {!collapsed ? <span>新对话</span> : null}
-            </button>
-          </Tooltip>
-
-          <div className="pro-ui-nav" aria-label="工作台导航">
-            {NAV_SECTIONS.map((section) => (
-              <section key={section.label} className="pro-ui-nav-section">
-                {!collapsed ? <div className="pro-ui-nav-heading">{section.label}</div> : null}
-                <ProXSidebarNav
-                  className="pro-ui-nav-component"
-                  items={section.items.map((item) => ({
-                    id: item.key,
-                    title: item.label,
-                    icon: <FeatureGlyph kind={item.icon} />,
-                  }))}
-                  activeId={active}
-                  onSelect={(key) => {
-                    setActive(key);
-                    dispatchRuntime(key);
-                  }}
-                  collapsed={collapsed}
-                  title={section.label}
-                  type="sidebar"
-                  tooltip={collapsed}
-                />
-              </section>
-            ))}
-          </div>
-
-          {!collapsed ? (
-            <>
-              <Divider className="pro-ui-sidebar-divider" />
-              <section className="pro-ui-recent" aria-label="最近对话">
-                <header>
-                  <span>最近对话</span>
-                  <Tooltip title="刷新历史">
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<ReloadOutlined />}
-                      onClick={() => requestRecentRefresh()}
-                      aria-label="刷新历史"
-                    />
-                  </Tooltip>
-                </header>
-                {recentStatus === "loading" ? (
-                  <div className="pro-ui-recent-loading" aria-busy="true">
-                    {Array.from({ length: 5 }, (_, index) => <span key={index} />)}
-                  </div>
-                ) : recentStatus === "error" ? (
-                  <button type="button" className="pro-ui-recent-error" onClick={() => requestRecentRefresh()}>
-                    历史加载失败，点击重试
-                  </button>
-                ) : recent.length ? (
-                  <ProXConversations
-                    rootClassName="pro-ui-conversations"
-                    items={conversations}
-                    activeKey={activeConversation}
-                    onActiveChange={openConversation}
-                  />
-                ) : (
-                  <div className="pro-ui-recent-empty">暂无历史会话</div>
-                )}
-              </section>
-            </>
-          ) : (
-            <Tooltip title="最近对话" placement="right">
-              <button type="button" className="pro-ui-nav-item pro-ui-recent-rail" onClick={toggle}>
-                <span className="pro-ui-recent-rail-dot" />
-                <span className="pro-ui-recent-rail-dot" />
-                <span className="pro-ui-recent-rail-dot" />
-              </button>
-            </Tooltip>
-          )}
-
+      <ProXSidebarLayout
+        className="pro-ui-sidebar-layout"
+        width={width}
+        onWidthChange={setWidth}
+        collapsed={collapsed}
+        onCollapsedChange={setCollapsed}
+        minWidth={248}
+        maxWidth={380}
+        collapsedWidth={64}
+        railWidth={56}
+        resizable
+        rail={collapsed ? rail : undefined}
+        header={brandHeader}
+        footer={(
           <ProXUserMenu
             name="分析员"
             description={productVersion}
             avatar={<span className="pro-ui-account-avatar">分</span>}
-            compact={collapsed}
             items={accountItems}
-            onAction={() => openAccount()}
+            onAction={openAccount}
           />
+        )}
+      >
+        <div className="pro-ui-sidebar-content">
+          <ProXButton
+            block
+            icon={<PlusOutlined />}
+            className="pro-ui-new-chat"
+            onClick={openNewChat}
+          >
+            新对话
+          </ProXButton>
+
+          {navigation}
+
+          <section className="pro-ui-recent" aria-label="最近对话">
+            <header className="pro-ui-recent-header">
+              <span>最近对话</span>
+              <div className="pro-ui-recent-actions">
+                <Tooltip title="搜索最近对话">
+                  <ProXButton
+                    type="text"
+                    icon={<SearchOutlined />}
+                    onClick={() => setSearchOpen(true)}
+                    aria-label="搜索最近对话"
+                  />
+                </Tooltip>
+                <Tooltip title="刷新历史">
+                  <ProXButton
+                    type="text"
+                    icon={<ReloadOutlined />}
+                    onClick={() => requestRecentRefresh()}
+                    aria-label="刷新历史"
+                  />
+                </Tooltip>
+              </div>
+            </header>
+            {recentStatus === "loading" ? (
+              <Skeleton className="pro-ui-recent-loading" active title={false} paragraph={{ rows: 5 }} />
+            ) : recentStatus === "error" ? (
+              <ProXButton block onClick={() => requestRecentRefresh()}>
+                历史加载失败，点击重试
+              </ProXButton>
+            ) : recent.length ? (
+              <ProXConversations
+                rootClassName="pro-ui-conversations"
+                items={conversations}
+                activeKey={activeConversation}
+                onActiveChange={openConversation}
+              />
+            ) : (
+              <div className="pro-ui-recent-empty">暂无历史会话</div>
+            )}
+          </section>
         </div>
-      </aside>
+      </ProXSidebarLayout>
+
+      <ProXSearchDialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        items={searchItems}
+        onSelect={(item) => openConversation(item.key)}
+        title="搜索最近对话"
+        placeholder="输入会话标题"
+        emptyText="没有匹配的会话"
+      />
     </ProXConfigProvider>
   );
 }

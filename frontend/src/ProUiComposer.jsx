@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Badge, Button, Switch, Tooltip } from "antd";
+import { Badge, Switch, Tooltip } from "antd";
+import {
+  Button as ProXButton,
+  ProXAttachments,
+  ProXSender,
+} from "@pro-ui/x-react";
 import {
   DatabaseOutlined,
   HistoryOutlined,
@@ -7,7 +12,6 @@ import {
   PlusOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
-import { ProXSender } from "@pro-ui/x-react";
 import {
   composerActionState,
   normalizeComposerValue,
@@ -131,69 +135,100 @@ export default function ProUiComposer() {
     setSnapshot((previous) => ({ ...previous, withDb: checked }));
   };
 
-  const toolbar = useMemo(() => {
-    if (snapshot.mode !== "report") return null;
-    return (
-      <div className="pro-ui-composer-toolbar">
-        <div className="pro-ui-composer-tools">
-          <Tooltip title="上传 PDF / Word 报表">
-            <Button
-              size="small"
-              type="text"
-              icon={<PaperClipOutlined />}
-              onClick={() => clickLegacy("btn-attach")}
-            >
-              上传报表
-            </Button>
-          </Tooltip>
-          <Tooltip title="问答同时调用本体工具与 SQL 对账">
-            <label className="pro-ui-db-switch">
-              <DatabaseOutlined />
-              <span>数据库查询</span>
-              <Switch size="small" checked={snapshot.withDb} onChange={toggleDb} />
-            </label>
-          </Tooltip>
-          <Tooltip title="最近上传的报表">
-            <Badge count={snapshot.historyCount} size="small" offset={[-2, 1]}>
-              <Button
+  const attachments = useMemo(() => {
+    if (!snapshot.attachVisible) return [];
+    return [{
+      uid: "active-report",
+      name: snapshot.attachName || "已激活报表",
+      description: snapshot.attachMeta || "当前分析报表",
+      status: "done",
+      cardType: "file",
+    }];
+  }, [snapshot.attachMeta, snapshot.attachName, snapshot.attachVisible]);
+
+  const attachmentHeader = attachments.length ? (
+    <div className="pro-ui-composer-attachments">
+      <ProXAttachments
+        items={attachments}
+        overflow="wrap"
+        showUploadList={{ showRemoveIcon: true }}
+        onRemove={() => {
+          clickLegacy("attach-chip-remove");
+          return true;
+        }}
+        children={null}
+      />
+      <ProXButton
+        type="text"
+        size="small"
+        onClick={() => clickLegacy("attach-chip-change")}
+      >
+        切换报表
+      </ProXButton>
+    </div>
+  ) : null;
+
+  const footer = (
+    <div className="pro-ui-composer-footer">
+      <div className="pro-ui-composer-tools">
+        {snapshot.mode === "report" ? (
+          <>
+            <Tooltip title="上传 PDF / Word 报表">
+              <ProXButton
                 size="small"
                 type="text"
-                icon={<HistoryOutlined />}
-                onClick={() => clickLegacy("btn-history")}
+                icon={<PaperClipOutlined />}
+                onClick={() => clickLegacy("btn-attach")}
               >
-                最近报表
-              </Button>
-            </Badge>
-          </Tooltip>
-          <Tooltip title="按经营规则配置生成标准管报">
-            <Button
-              size="small"
-              type="text"
-              icon={<PlusOutlined />}
-              onClick={() => clickLegacy("btn-reportgen")}
-            >
-              报表生成
-            </Button>
-          </Tooltip>
-        </div>
+                上传报表
+              </ProXButton>
+            </Tooltip>
+            <Tooltip title="问答同时调用本体工具与 SQL 对账">
+              <label className="pro-ui-db-switch">
+                <DatabaseOutlined />
+                <span>数据库查询</span>
+                <Switch size="small" checked={snapshot.withDb} onChange={toggleDb} />
+              </label>
+            </Tooltip>
+            <Tooltip title="最近上传的报表">
+              <Badge count={snapshot.historyCount} size="small" offset={[-2, 1]}>
+                <ProXButton
+                  size="small"
+                  type="text"
+                  icon={<HistoryOutlined />}
+                  onClick={() => clickLegacy("btn-history")}
+                >
+                  最近报表
+                </ProXButton>
+              </Badge>
+            </Tooltip>
+            <Tooltip title="按经营规则配置生成标准管报">
+              <ProXButton
+                size="small"
+                type="text"
+                icon={<PlusOutlined />}
+                onClick={() => clickLegacy("btn-reportgen")}
+              >
+                报表生成
+              </ProXButton>
+            </Tooltip>
+          </>
+        ) : null}
         <span className="pro-ui-upload-status">{snapshot.uploadStatus}</span>
       </div>
-    );
-  }, [snapshot.historyCount, snapshot.mode, snapshot.uploadStatus, snapshot.withDb]);
+      <span className="pro-ui-composer-hint">
+        {snapshot.attachVisible ? (
+          <ProXButton type="link" size="small" icon={<ReloadOutlined />} onClick={() => clickLegacy("btn-history")}>
+            切换报表
+          </ProXButton>
+        ) : null}
+        Enter 发送 · Shift + Enter 换行
+      </span>
+    </div>
+  );
 
   return (
     <div className="pro-ui-composer-shell" data-mode={snapshot.mode}>
-      {snapshot.attachVisible ? (
-        <div className="pro-ui-attach-chip">
-          <span className="pro-ui-attach-icon" aria-hidden="true">PDF</span>
-          <span className="pro-ui-attach-copy">
-            <strong>{snapshot.attachName || "已激活报表"}</strong>
-            <small>{snapshot.attachMeta}</small>
-          </span>
-          <Button size="small" type="text" onClick={() => clickLegacy("attach-chip-change")}>切换</Button>
-          <Button size="small" type="text" onClick={() => clickLegacy("attach-chip-remove")}>移除</Button>
-        </div>
-      ) : null}
       <ProXSender
         ref={senderRef}
         className="pro-ui-sender"
@@ -205,19 +240,13 @@ export default function ProUiComposer() {
         placeholder={snapshot.placeholder}
         autoSize={{ minRows: 1, maxRows: 8 }}
         submitType="enter"
+        ariaLabel="消息输入框"
+        header={attachmentHeader}
+        footer={footer}
         onChange={handleChange}
         onSubmit={handleSubmit}
         onStop={handleCancel}
-        footer={toolbar}
       />
-      <div className="pro-ui-composer-hint">
-        <span>Enter 发送 · Shift + Enter 换行</span>
-        {snapshot.mode === "report" && snapshot.attachVisible ? (
-          <button type="button" onClick={() => clickLegacy("btn-history")}>
-            <ReloadOutlined /> 切换报表
-          </button>
-        ) : null}
-      </div>
     </div>
   );
 }

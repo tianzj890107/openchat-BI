@@ -1,7 +1,7 @@
 # Workbench 全页 Pro UI 组件化
 
-- 日期：2026-11-02（初版），2026-11-03（真实 Pro UI 组件接入）
-- 状态：已完成（导航、历史、欢迎、消息、工具/SOP、输入和状态层）
+- 日期：2026-11-02（初版），2026-11-03（真实 Pro UI 组件接入、页面级控件统一）
+- 状态：已完成（导航、历史、欢迎、消息、工具/SOP、输入、状态层和页面级表单控件）
 - 范围：分析 Agent 的 `/workbench` 前端
 - 分支：`feature/workbench-pro-ui-chat`
 
@@ -29,6 +29,11 @@ ThreadStatus 等。内部 npm `http://npm.boulderaitech.com/` 已发布
 
 构建已使用真实 `@pro-ui/x-react/styles.css` 和 ProX 组件，不再以 Ant Design X
 模拟 Pro UI 外观。
+
+内部 npm 的 React 原生页面能力集中在 `@pro-ui/x-react@0.1.2`；`@pro-ui/core` 和
+`@pro-ui/bi` 的页面、表单与 BI 组件是 Vue 3 / Element Plus 实现，不能直接嵌入本
+React 应用。因此页面表单层使用 `ProXConfigProvider` 的 Pro UI token + Ant Design
+控件，业务结果中的图表 canvas、表格、本体图和证据卡片继续由现有业务实现。
 
 ## 2. 目标
 
@@ -58,11 +63,33 @@ ThreadStatus 等。内部 npm `http://npm.boulderaitech.com/` 已发布
 | 消息正文 | ProX `Bubble` | 用户/助手气泡、Markdown、助手头像；旧历史快照重挂载为 ProX |
 | 工具与 SOP | ProX `ExecutionSteps` + `ProUiAgentStatus.jsx` + ProX `ThreadStatus` | 执行步骤、SOP 进度、活动状态和停止操作 |
 | 输入区 | `ProUiComposer.jsx` + ProX `Sender` | 发送、停止、报表上传、数据库开关和附件状态 |
-| 业务结果 | Ant Design `Card` / `Collapse` / `Tag` | 图表、表格、多维图、看板和结论卡 |
-| 设置页面 | Pro UI sage token + Ant Design 业务控件 | 数据源、本体适配、模型、角色、记忆和账号页；表单控件迁移留待后续 |
+| 业务结果 | ProX `ToolResultCard` + 业务 renderer | 图表、表格、多维图、看板和结论卡使用统一结果外壳，内部保留业务渲染 |
+| 设置页面 | `ProUiPageControls.jsx` + Pro UI token + Ant Design | 数据源、本体适配、模型、角色、记忆和账号页的按钮、输入、选择、开关、滑块、步骤条和提示块 |
 
 设置页的业务动作仍由 `runtime.js` 处理；React 壳通过隐藏的运行时桥接节点同步
 输入、选项、状态和按钮点击，避免复制数据源、模型参数和回收站的业务逻辑。
+
+### 4.1 页面级组件清单
+
+`@pro-ui/x-react@0.1.2` 直接提供并已使用的 React 组件：
+
+`SidebarLayout`、`SidebarNav`、`Conversations`、`UserMenu`、`SearchDialog`、
+`Sender`、`Attachments`、`Bubble`、`Activity`、`ExecutionSteps`、`ToolCall`、
+`ToolResultCard`、`Prompts`、`Welcome`、`ThreadStatus`、`Button`、
+`ConfigProvider`。
+
+通过 `ProXConfigProvider` 的 Pro UI token 统一、并由 `ProUiPageControls.jsx`
+桥接的 Ant Design 页面控件：
+
+输入框、密码框、数字框、多行文本、Select、Checkbox、Radio、Switch、Slider、
+Steps、Alert、Divider、Tabs、Segmented、可勾选 Tag 筛选、Modal、Table、
+Tooltip、Dropdown 和 Portal。
+
+仍是业务实现、没有伪称为 Pro UI 组件的部分：
+
+- SSE、turn 生命周期、请求取消、历史恢复和旧 HTML 快照兼容；
+- 分析 SOP 状态机、工具执行事件、证据和业务结果数据；
+- ECharts canvas 图表、业务表格、本体关系图和导出/报告内容。
 
 ## 5. Analytics 事件映射
 
@@ -99,19 +126,24 @@ ThreadStatus 等。内部 npm `http://npm.boulderaitech.com/` 已发布
 
 - `frontend/src/ProUiSidebar.jsx`：Pro UI 风格导航、会话历史与账号区；
 - `frontend/src/ProUiComposer.jsx`：ProX Sender 和报表工具条；
+- `frontend/src/ProUiPageControls.jsx`：页面级控件的 Pro UI/AntD 桥接层；
 - `frontend/src/ProUiWelcome.jsx`：ProX Welcome 与 Prompts 空状态；
-- `frontend/src/proUiTheme.js`：ProXConfigProvider 的统一主题 token；
+- `frontend/src/proUiTheme.js`：ProXConfigProvider 的统一主题 token，以及 Button、
+  Input、InputNumber、Select、Checkbox、Radio、Switch、Slider、Steps、Alert、
+  Divider、Modal、Table、Tabs、Segmented、Card、Tooltip、Dropdown、Form token；
 - `frontend/src/proUiBridge.js`：输入、欢迎提示和导航高亮的纯适配器；
-- `frontend/tests/proUiBridge.test.mjs`：适配器回归测试。
+- `frontend/tests/proUiBridge.test.mjs`：适配器回归测试；
+- `frontend/tests/proUiTheme.test.mjs`：主题与页面控件 token 回归测试。
 
 ### 7.2 调整
 
 - `frontend/src/main.jsx`：挂载 ProX 侧栏、欢迎页、输入区、状态和 ExecutionSteps；
-  消息使用 ProX Bubble；旧历史中的 Ant Bubble/ThoughtChain 快照在恢复时原位替换；
+  消息使用 ProX Bubble；结果卡使用 ProX ToolResultCard；页面控件挂载
+  `mountProUiPageControls`；旧历史中的 Ant Bubble/ThoughtChain 快照在恢复时原位替换；
 - `frontend/src/runtime.js`：导航切换事件、输入预填、侧栏默认展开、滚动回调修复；
 - `frontend/src/shell.html`：欢迎页/输入框挂载点、页面标题图标；
 - `frontend/src/workbench.css`：Pro UI sage 全页主题、ProX 组件适配、侧栏、气泡、
-  输入、设置页、看板与响应式样式；
+  输入、设置页、看板与响应式样式；输入/Select 的 hover、focus、选中态；
 - `frontend/package.json` / `package-lock.json`：接入 `@pro-ui/x-react@0.1.2`，
   移除 `@ant-design/x`，固定 assistant-ui store/tap 兼容版本；
 - `bi_agent/web/static/index.html`：默认展开、favicon、静态资源缓存版本；
@@ -141,6 +173,13 @@ git diff --check
 - 1440×1000 下侧栏默认展开，导航文字、历史会话和账号区可见；
 - 智能分析、报表分析、本体内容、系统调用记录、本体适配、数据源、模型参数、
   角色选择、记忆管理九条路由都能切换到可见页面；
+- 会话/看板切换为 Segmented，本体类型筛选为可勾选 Tag，系统调用记录为 Tabs；
+- 模型参数页的 Select、输入、数字框、滑块和开关全部由 Pro UI token 下的
+  Ant Design 控件呈现，原 HTML 控件只作为隐藏运行时锚点；
+- 报表向导步骤条、提示块、单选/复选和自定义规则 TextArea 使用统一控件，隐藏
+  面板中的锚点不会留下空壳控件；
+- 输入框和 Select 的 hover/focus 有可见的 sage 边框或外圈；Select 的焦点外圈
+  单独由包装元素承载，避免 rc-select 内部 selector 的样式丢失；
 - 报表模式显示上传报表、数据库查询和最近报表工具条；旧附件行不重复显示；
 - Sender 输入与隐藏的 `#chat-input` 双向同步，输入后发送按钮可用；
 - 1440 宽度下工作区无 JS 异常，所有静态资源返回 200；
@@ -149,20 +188,24 @@ git diff --check
 ### 8.3 已验证结果
 
 - `node --test frontend/tests/proUiBridge.test.mjs`：6 项通过；
-- `node --test frontend/tests/*.test.mjs`：98 项通过；
+- `node --test frontend/tests/*.test.mjs`：100 项通过；
 - `npm run build`：通过，构建产物已同步；
-- `python -m unittest tests.test_regressions`：221 项通过；
+- `python -m unittest tests.test_regressions`：222 项通过；
 - CDP 浏览器检查：九条导航路由、展开/收起侧栏、数据源页面和 Sender 可用；
 - 历史会话恢复：6 条消息均为 ProX Bubble，旧 `.ant-bubble` 和旧 ThoughtChain 为 0；
 - ProX 执行步骤无旧轨道线重复；页面无横向溢出；输入后发送启用、清空后禁用；
+- 页面级控件浏览器检查：Segmented 1 个、Select 1 个、输入 3 个、数字框 1 个、
+  滑块 1 个、开关 1 个；报表向导 TextArea、4 个 Radio 和 25 个 Checkbox 正常；
+- 截图像素对比：Select 悬浮前后 980 个像素发生变化，外圈颜色为 Pro UI
+  `rgb(170, 197, 181)`；输入框 hover 与 focus ring 均可见；
 - CDP 捕获：无 JavaScript 异常，无业务资源 404；favicon 404 已修复；
 - 历史清空/恢复路径不会删除 Pro UI 欢迎页和空状态节点；
 - `git diff --check`：通过。
 
 ## 9. 后续阶段
 
-1. 将设置页的数据源、模型参数、角色和记忆表单迁移为受控 Pro UI 表单组件，
-   删除隐藏运行时桥接；
+1. 在保持现有页面路由和业务接口不变的前提下，逐步把隐藏运行时锚点改为结构化
+   React 表单状态；当前桥接层先保证行为、历史和数据口径不被改写；
 2. 将分析结果 Card、表格和图表逐步替换为 Pro UI/BI 组件适配层；
 3. 将新会话消息保存为结构化消息，同时继续只读兼容旧 HTML 快照；
 4. 增加浏览器级 SSE 回放、停止、历史恢复和子路径验收。
