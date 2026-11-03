@@ -70,5 +70,5 @@
 
 - 新增客户专用启动入口，仅开放驾驶舱、Process360 MCP及产物／下发接口，支持原默认MCP路径；启动不依赖远程本体平台与Doris，不开放完整工作台或异步分析任务入口。
 - 提供离线镜像Dockerfile、Compose和启动脚本；实际客户地址、端口、模型、PG、AP认证及Fuxi接收人全部在交付包.env，不写死在代码，不提交Git或嵌入镜像。
-- 主服务与兼容入口端口由env注入，运行数据持久化；交付客户本体、catalog、Skill、配置清单及供DBA审核的逻辑视图SQL，不自动执行数据库脚本或下发待办。
+- 主服务与兼容入口端口由env注入，启动脚本从env生成Fuxi连接器JSON，运行数据持久化；交付客户本体、catalog、Skill、配置清单及供DBA审核的逻辑视图SQL，不自动执行数据库脚本或下发待办。
 - 主要文件：`bi_agent/web/customer.py`、`bi_agent/web/app.py`、`deploy/customer/`、`tests/test_customer_cockpit_entrypoint.py`。客户入口、Process360 MCP及主服务回归22项通过；离线镜像安装依赖并通过pip check，容器健康检查与19项Process360工具检查通过；未部署客户服务器。
