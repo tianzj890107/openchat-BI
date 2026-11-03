@@ -533,6 +533,7 @@ def configure(
     db_path: str,
     agent_name: str = "bi-analyst",
     use_doris: bool = False,
+    process360_only: bool = False,
 ) -> None:
     """Load ontology, register tools, select agent def. Call once before serving."""
     # API keys are checked per-provider at call time:
@@ -546,7 +547,13 @@ def configure(
     STATE.ontology_path = ontology_path
     STATE.use_doris = use_doris
     remote_mode = STATE.ontology_backend in {"production", "remote"}
-    if remote_mode:
+    if process360_only:
+        # Customer cockpit/MCP boot has no remote ontology or Doris dependency.
+        STATE.ontology_backend = "local"
+        STATE.ontology_store = OntologyStore()
+        STATE.remote_ontology = None
+        STATE.use_doris = False
+    elif remote_mode:
         # Environment isolation: every deployment must inject its own ontology
         # and Doris gateway. A baked-in fallback would silently point this
         # deployment at another environment's ontology service (and therefore

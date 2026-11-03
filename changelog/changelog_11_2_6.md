@@ -65,3 +65,10 @@
 - 验证：两个角色 15/15 个 AI 插槽可渲染；风险计数总裁销售 9／发货 3、分析员销售 8／发货 2；
   三页两角色在 8765 与 8876 均 200，启动日志无异常。合并后前端 92 项、Python 1876 项及
   1072 个子测试通过。GitLab runner 因外部依赖网络超时未完成流水线，未修改 CI。
+
+### 2026-11-03 客户驾驶舱与Process360离线部署包
+
+- 新增客户专用启动入口，仅开放驾驶舱、Process360 MCP及产物／下发接口，支持原默认MCP路径；启动不依赖远程本体平台与Doris，不开放完整工作台或异步分析任务入口。
+- 提供离线镜像Dockerfile、Compose和启动脚本；实际客户地址、端口、模型、PG、AP认证及Fuxi接收人全部在交付包.env，不写死在代码，不提交Git或嵌入镜像。
+- 主服务与兼容入口端口由env注入，运行数据持久化；交付客户本体、catalog、Skill、配置清单及供DBA审核的逻辑视图SQL，不自动执行数据库脚本或下发待办。
+- 主要文件：`bi_agent/web/customer.py`、`bi_agent/web/app.py`、`deploy/customer/`、`tests/test_customer_cockpit_entrypoint.py`。客户入口、Process360 MCP及主服务回归22项通过；离线镜像安装依赖并通过pip check，容器健康检查与19项Process360工具检查通过；未部署客户服务器。
