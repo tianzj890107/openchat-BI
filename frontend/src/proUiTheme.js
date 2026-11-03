@@ -1,0 +1,32 @@
+export const PROX_WORKBENCH_THEME = {
+  token: {
+    primary: "#36745c",
+    primaryHover: "#43876d",
+    primaryDark: "#2b604b",
+    primaryLight: "#edf5f1",
+    primaryBorder: "#cfe1d8",
+    text: "#27332d",
+    muted: "#6b756f",
+    border: "#e4e9e5",
+    page: "#ffffff",
+    fill: "#f7faf8",
+    hover: "#eef5f1",
+    radius: "12px",
+    fontFamily: "PingFang SC, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  },
+  antd: {
+    token: {
+      colorPrimary: "#36745c",
+      colorInfo: "#36745c",
+      colorSuccess: "#2f7d55",
+      colorWarning: "#b45309",
+      colorError: "#b42318",
+      colorText: "#27332d",
+      colorTextSecondary: "#6b756f",
+      colorBorder: "#e4e9e5",
+      colorBgContainer: "#ffffff",
+      borderRadius: 12,
+      fontFamily: "PingFang SC, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    },
+  },
+};

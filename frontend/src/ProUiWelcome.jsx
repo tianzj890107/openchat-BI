@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Tag } from "antd";
-import { Prompts, Welcome } from "@ant-design/x";
+import { ProXPrompts, ProXWelcome } from "@pro-ui/x-react";
 import { welcomePromptsFromHints } from "./proUiBridge.js";
 
 function readWelcome() {
@@ -58,7 +58,7 @@ export default function ProUiWelcome() {
 
   return (
     <div className="pro-ui-welcome-shell">
-      <Welcome
+      <ProXWelcome
         variant="borderless"
         icon={<BrandMark />}
         title={<span className="pro-ui-welcome-title">{data.title}</span>}
@@ -66,7 +66,7 @@ export default function ProUiWelcome() {
         extra={<Tag bordered={false} className="pro-ui-version-tag">ontology-v0.1.5</Tag>}
       />
       {prompts.length ? (
-        <Prompts
+        <ProXPrompts
           className="pro-ui-welcome-prompts"
           title="可以这样开始"
           vertical

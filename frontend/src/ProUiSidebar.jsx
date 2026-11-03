@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Button, ConfigProvider, Divider, Dropdown, Tooltip } from "antd";
-import { Conversations } from "@ant-design/x";
+import { Button, Divider, Tooltip } from "antd";
 import {
-  DownOutlined,
+  ProXConfigProvider,
+  ProXConversations,
+  ProXSidebarNav,
+  ProXUserMenu,
+} from "@pro-ui/x-react";
+import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   PlusOutlined,
@@ -14,24 +18,9 @@ import {
   navigationActiveKey,
   sidebarCollapsedFromPreference,
 } from "./proUiBridge.js";
+import { PROX_WORKBENCH_THEME } from "./proUiTheme.js";
 
 const SIDEBAR_STORAGE_KEY = "bi.sidebarCollapsed.v2";
-
-const SAGE_THEME = {
-  token: {
-    colorPrimary: "#36745c",
-    colorInfo: "#36745c",
-    colorSuccess: "#2f7d55",
-    colorWarning: "#b45309",
-    colorError: "#b42318",
-    colorText: "#27332d",
-    colorTextSecondary: "#6b756f",
-    colorBorder: "#e4e9e5",
-    colorBgContainer: "#ffffff",
-    borderRadius: 12,
-    fontFamily: "PingFang SC, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  },
-};
 
 const NAV_SECTIONS = [
   {
@@ -172,16 +161,13 @@ export default function ProUiSidebar({
   };
 
   const openAccount = () => document.getElementById("sidebar-account")?.click();
-  const accountMenu = {
-    items: [
-      { key: "account", label: "账号设置", icon: <SettingOutlined /> },
-      { key: "profile", label: "个人资料", icon: <UserOutlined /> },
-    ],
-    onClick: () => openAccount(),
-  };
+  const accountItems = [
+    { key: "account", label: "账号设置", icon: <SettingOutlined /> },
+    { key: "profile", label: "个人资料", icon: <UserOutlined /> },
+  ];
 
   return (
-    <ConfigProvider theme={SAGE_THEME}>
+    <ProXConfigProvider theme={PROX_WORKBENCH_THEME}>
       <aside className={`pro-ui-sidebar ${collapsed ? "is-collapsed" : "is-expanded"}`}>
         <div className="pro-ui-sidebar-scroll">
           <header className="pro-ui-sidebar-brand">
@@ -217,29 +203,30 @@ export default function ProUiSidebar({
             </button>
           </Tooltip>
 
-          <nav className="pro-ui-nav" aria-label="工作台导航">
+          <div className="pro-ui-nav" aria-label="工作台导航">
             {NAV_SECTIONS.map((section) => (
               <section key={section.label} className="pro-ui-nav-section">
                 {!collapsed ? <div className="pro-ui-nav-heading">{section.label}</div> : null}
-                {section.items.map((item) => (
-                  <Tooltip key={item.key} title={collapsed ? item.label : ""} placement="right">
-                    <button
-                      type="button"
-                      className={`pro-ui-nav-item${active === item.key ? " is-active" : ""}`}
-                      onClick={() => {
-                        setActive(item.key);
-                        dispatchRuntime(item.key);
-                      }}
-                      aria-current={active === item.key ? "page" : undefined}
-                    >
-                      <FeatureGlyph kind={item.icon} />
-                      {!collapsed ? <span>{item.label}</span> : null}
-                    </button>
-                  </Tooltip>
-                ))}
+                <ProXSidebarNav
+                  className="pro-ui-nav-component"
+                  items={section.items.map((item) => ({
+                    id: item.key,
+                    title: item.label,
+                    icon: <FeatureGlyph kind={item.icon} />,
+                  }))}
+                  activeId={active}
+                  onSelect={(key) => {
+                    setActive(key);
+                    dispatchRuntime(key);
+                  }}
+                  collapsed={collapsed}
+                  title={section.label}
+                  type="sidebar"
+                  tooltip={collapsed}
+                />
               </section>
             ))}
-          </nav>
+          </div>
 
           {!collapsed ? (
             <>
@@ -266,11 +253,10 @@ export default function ProUiSidebar({
                     历史加载失败，点击重试
                   </button>
                 ) : recent.length ? (
-                  <Conversations
-                    className="pro-ui-conversations"
+                  <ProXConversations
+                    rootClassName="pro-ui-conversations"
                     items={conversations}
                     activeKey={activeConversation}
-                    groupable
                     onActiveChange={openConversation}
                   />
                 ) : (
@@ -288,20 +274,16 @@ export default function ProUiSidebar({
             </Tooltip>
           )}
 
-          <Dropdown menu={accountMenu} trigger={["click"]} placement="topRight">
-            <button type="button" className="pro-ui-account" onClick={(event) => event.stopPropagation()}>
-              <span className="pro-ui-account-avatar">分</span>
-              {!collapsed ? (
-                <span className="pro-ui-account-copy">
-                  <strong>分析员</strong>
-                  <small>{productVersion}</small>
-                </span>
-              ) : null}
-              {!collapsed ? <DownOutlined className="pro-ui-account-caret" /> : null}
-            </button>
-          </Dropdown>
+          <ProXUserMenu
+            name="分析员"
+            description={productVersion}
+            avatar={<span className="pro-ui-account-avatar">分</span>}
+            compact={collapsed}
+            items={accountItems}
+            onAction={() => openAccount()}
+          />
         </div>
       </aside>
-    </ConfigProvider>
+    </ProXConfigProvider>
   );
 }

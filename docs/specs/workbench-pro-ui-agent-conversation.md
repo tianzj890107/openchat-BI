@@ -1,34 +1,34 @@
 # Workbench 全页 Pro UI 组件化
 
-- 日期：2026-11-02（初版），2026-11-03（扩展为全页）
-- 状态：已完成（可见工作台全页）
+- 日期：2026-11-02（初版），2026-11-03（真实 Pro UI 组件接入）
+- 状态：已完成（导航、历史、欢迎、消息、工具/SOP、输入和状态层）
 - 范围：分析 Agent 的 `/workbench` 前端
 - 分支：`feature/workbench-pro-ui-chat`
 
 ## 1. 背景
 
-Pro UI 的 Agent Conversation Template 提供了会话、消息、Activity、ToolCall、
-Sender、导航与右侧面板插槽。文档源码中的 React 包名为 `@pro-ui/x-react` 和
-`@pro-ui/chat-runtime`。
+Pro UI 的 Agent Conversation Template 提供基于 assistant-ui 的会话展示能力：
+ProX Sidebar、Conversations、Welcome、Bubble、Sender、ExecutionSteps、
+ThreadStatus 等。内部 npm `http://npm.boulderaitech.com/` 已发布
+`@pro-ui/x-react`，可用版本为 `0.1.0`、`0.1.1`、`0.1.2`，当前固定 `0.1.2`。
+该版本 peer dependency 支持 React 18.2+，仓库使用 React 18.3.1。
 
-文档 `guide/quickstart` 中的 npm 安装命令对应 Vue 3 / Element Plus 包：
+`@pro-ui/chat-runtime` 未在内部 registry 发布；本工作台不依赖该包的浏览器线程
+持久化，而是继续由 Analytics 的 `runtime.js` 管理请求、SSE、会话历史和业务
+状态。Pro UI 只负责可见组件与交互呈现。
 
-```bash
-npm install @pro-ui/core
+安装使用内部 registry。`@assistant-ui/core@0.2.10` 与 npm 默认解析的新版 store/tap
+存在构建冲突，因此 `frontend/package.json` 固定：
+
+```json
+"overrides": {
+  "@assistant-ui/store": "0.2.13",
+  "@assistant-ui/tap": "0.5.16"
+}
 ```
 
-React 文档只给出 `@pro-ui/x-react`、`@pro-ui/chat-runtime` 的 import 路径和
-GitLab 仓库链接，没有发布可直接安装的 npm 包。当前已核验：
-
-- `npm view @pro-ui/x-react` 返回 404；
-- `registry.npmmirror.com` 返回 `NOT_FOUND`；
-- 本机配置的 GitLab npm registry 对该作用域返回 302 到公共 npm，随后 404；
-- 文档源码给出的 `gitlab.boulderaitech.com/frontend/pro-ui` 当前账号访问为 404。
-
-因此本轮不能把不存在的依赖写入 `package.json`。可见界面使用仓库已安装的
-Ant Design X 1.6.1、Ant Design 5.29.3 和 React 18.3.1，按 Pro UI Agent
-模板的 sage 主题、组件语义和交互层级实现。后端和 `runtime.js` 的业务状态机
-保持不变。
+构建已使用真实 `@pro-ui/x-react/styles.css` 和 ProX 组件，不再以 Ant Design X
+模拟 Pro UI 外观。
 
 ## 2. 目标
 
@@ -47,19 +47,19 @@ Ant Design X 1.6.1、Ant Design 5.29.3 和 React 18.3.1，按 Pro UI Agent
 - 不批量改写旧历史 HTML、图表或报告。
 - 不开放消息编辑、重新生成和消息分支；这些语义需要后端任务边界。
 - 不把 Pro UI 演示站的浏览器临时线程和页面退出清理逻辑引入业务工作台。
-- 不在依赖不可获取时伪造 `@pro-ui/x-react` 安装结果或提交不可构建的 lockfile。
+- 不让 assistant-ui 前端会话状态成为历史事实来源；服务端会话和旧 HTML 快照仍为准。
 
 ## 4. 可见界面与实现映射
 
 | 区域 | 组件 | 说明 |
 |---|---|---|
-| 左侧导航 | `ProUiSidebar.jsx` + Ant Design X `Conversations` | 业务导航、模式切换、最近会话、账号菜单 |
-| 空会话 | `ProUiWelcome.jsx` + `Welcome` / `Prompts` | 标题、说明、建议问题和填充输入框 |
-| 消息正文 | Ant Design X `Bubble` | 用户/助手气泡、Markdown、助手头像 |
-| 工具与 SOP | Ant Design X `ThoughtChain` + `ProUiAgentStatus.jsx` | 执行步骤、SOP 进度、活动状态和停止操作 |
-| 输入区 | `ProUiComposer.jsx` + `Sender` | 发送、停止、报表上传、数据库开关和附件状态 |
+| 左侧导航 | `ProUiSidebar.jsx` + ProX `SidebarNav` / `Conversations` / `UserMenu` | 业务导航、模式切换、最近会话、账号菜单 |
+| 空会话 | `ProUiWelcome.jsx` + ProX `Welcome` / `Prompts` | 标题、说明、建议问题和填充输入框 |
+| 消息正文 | ProX `Bubble` | 用户/助手气泡、Markdown、助手头像；旧历史快照重挂载为 ProX |
+| 工具与 SOP | ProX `ExecutionSteps` + `ProUiAgentStatus.jsx` + ProX `ThreadStatus` | 执行步骤、SOP 进度、活动状态和停止操作 |
+| 输入区 | `ProUiComposer.jsx` + ProX `Sender` | 发送、停止、报表上传、数据库开关和附件状态 |
 | 业务结果 | Ant Design `Card` / `Collapse` / `Tag` | 图表、表格、多维图、看板和结论卡 |
-| 设置页面 | Pro UI sage token + Ant Design 组件样式 | 数据源、本体适配、模型、角色、记忆和账号页 |
+| 设置页面 | Pro UI sage token + Ant Design 业务控件 | 数据源、本体适配、模型、角色、记忆和账号页；表单控件迁移留待后续 |
 
 设置页的业务动作仍由 `runtime.js` 处理；React 壳通过隐藏的运行时桥接节点同步
 输入、选项、状态和按钮点击，避免复制数据源、模型参数和回收站的业务逻辑。
@@ -98,19 +98,22 @@ Ant Design X 1.6.1、Ant Design 5.29.3 和 React 18.3.1，按 Pro UI Agent
 ### 7.1 新增
 
 - `frontend/src/ProUiSidebar.jsx`：Pro UI 风格导航、会话历史与账号区；
-- `frontend/src/ProUiComposer.jsx`：Ant Design X Sender 和报表工具条；
-- `frontend/src/ProUiWelcome.jsx`：Welcome 与 Prompts 空状态；
+- `frontend/src/ProUiComposer.jsx`：ProX Sender 和报表工具条；
+- `frontend/src/ProUiWelcome.jsx`：ProX Welcome 与 Prompts 空状态；
+- `frontend/src/proUiTheme.js`：ProXConfigProvider 的统一主题 token；
 - `frontend/src/proUiBridge.js`：输入、欢迎提示和导航高亮的纯适配器；
 - `frontend/tests/proUiBridge.test.mjs`：适配器回归测试。
 
 ### 7.2 调整
 
-- `frontend/src/main.jsx`：挂载 Pro UI 侧栏、欢迎页、输入区和状态条；将助手消息
-  放入 Bubble 头像布局；为静态壳增加全页主题 class；
+- `frontend/src/main.jsx`：挂载 ProX 侧栏、欢迎页、输入区、状态和 ExecutionSteps；
+  消息使用 ProX Bubble；旧历史中的 Ant Bubble/ThoughtChain 快照在恢复时原位替换；
 - `frontend/src/runtime.js`：导航切换事件、输入预填、侧栏默认展开、滚动回调修复；
 - `frontend/src/shell.html`：欢迎页/输入框挂载点、页面标题图标；
-- `frontend/src/workbench.css`：Pro UI sage 全页主题、侧栏、气泡、输入、设置页、
-  看板与响应式样式；
+- `frontend/src/workbench.css`：Pro UI sage 全页主题、ProX 组件适配、侧栏、气泡、
+  输入、设置页、看板与响应式样式；
+- `frontend/package.json` / `package-lock.json`：接入 `@pro-ui/x-react@0.1.2`，
+  移除 `@ant-design/x`，固定 assistant-ui store/tap 兼容版本；
 - `bi_agent/web/static/index.html`：默认展开、favicon、静态资源缓存版本；
 - `bi_agent/web/static/vendor/antd/`：前端构建产物同步。
 
@@ -145,19 +148,21 @@ git diff --check
 
 ### 8.3 已验证结果
 
-- `node --test frontend/tests/proUiBridge.test.mjs`：5 项通过；
+- `node --test frontend/tests/proUiBridge.test.mjs`：6 项通过；
 - `node --test frontend/tests/*.test.mjs`：98 项通过；
 - `npm run build`：通过，构建产物已同步；
 - `python -m unittest tests.test_regressions`：221 项通过；
-- CDP 浏览器检查：九条导航路由、展开侧栏、数据源/模型参数页面和 Sender 可用；
+- CDP 浏览器检查：九条导航路由、展开/收起侧栏、数据源页面和 Sender 可用；
+- 历史会话恢复：6 条消息均为 ProX Bubble，旧 `.ant-bubble` 和旧 ThoughtChain 为 0；
+- ProX 执行步骤无旧轨道线重复；页面无横向溢出；输入后发送启用、清空后禁用；
 - CDP 捕获：无 JavaScript 异常，无业务资源 404；favicon 404 已修复；
 - 历史清空/恢复路径不会删除 Pro UI 欢迎页和空状态节点；
 - `git diff --check`：通过。
 
 ## 9. 后续阶段
 
-1. 在 `@pro-ui/x-react` 可获得后，用真实 ProX 组件替换当前 Ant Design X 实现，
-   并保留 `proUiBridge.js` 的纯适配边界；
-2. 将新会话消息保存为结构化消息，同时继续只读兼容旧 HTML 快照；
-3. 将设置页的每个原生控件迁移为受控 Pro UI 表单组件，删除隐藏运行时桥接；
+1. 将设置页的数据源、模型参数、角色和记忆表单迁移为受控 Pro UI 表单组件，
+   删除隐藏运行时桥接；
+2. 将分析结果 Card、表格和图表逐步替换为 Pro UI/BI 组件适配层；
+3. 将新会话消息保存为结构化消息，同时继续只读兼容旧 HTML 快照；
 4. 增加浏览器级 SSE 回放、停止、历史恢复和子路径验收。

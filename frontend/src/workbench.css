@@ -4604,6 +4604,13 @@ body[data-layout="single"] #antd-dashboard-workflow-root { display: block; }
   pointer-events: none;
   z-index: 0;
 }
+
+/* ProXExecutionSteps renders each compact row without a vertical rail. Hide
+ * the legacy measured rail when the timeline has been migrated. */
+.antd-step-timeline:has(> .step > .antd-step-host .proxr-execution-steps)::before {
+  display: none !important;
+}
+
 .antd-step-timeline:not(.has-multiple-steps)::before {
   display: none;
 }
@@ -6802,6 +6809,14 @@ body.pro-ui-workbench-body.sidebar-collapsed #antd-sidebar-root {
   width: 100%;
   min-height: 0;
   gap: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+#antd-sidebar-root > .proxr-theme {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
 }
 
 .pro-ui-sidebar-brand {
@@ -6906,6 +6921,52 @@ body.pro-ui-workbench-body.sidebar-collapsed #antd-sidebar-root {
   gap: 2px;
 }
 
+.pro-ui-nav-section > .proxb-nav {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+}
+
+.pro-ui-nav-section > .proxb-nav > header {
+  display: none;
+}
+
+.pro-ui-nav-section > .proxb-nav .proxb-nav-items {
+  padding: 0;
+}
+
+.pro-ui-nav-section > .proxb-nav .proxb-nav-item {
+  width: 100%;
+  min-height: 36px;
+  margin-bottom: 2px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #53615a;
+  font: 500 13px/1.2 var(--pro-ui-font);
+}
+
+.pro-ui-nav-section > .proxb-nav .proxb-nav-item:hover {
+  border-color: transparent;
+  background: #eef2ef;
+}
+
+.pro-ui-nav-section > .proxb-nav .proxb-nav-item[aria-current="page"] {
+  border-color: #dbe8df;
+  background: var(--pro-ui-accent-soft);
+  color: var(--pro-ui-accent);
+  font-weight: 600;
+}
+
+.pro-ui-nav-section > .proxb-nav.is-collapsed {
+  width: 100%;
+}
+
+.pro-ui-nav-section > .proxb-nav.is-collapsed .proxb-nav-item {
+  width: 100%;
+  margin-inline: 0;
+}
+
 .pro-ui-nav-heading {
   padding: 8px 10px 4px;
   color: var(--pro-ui-subtle);
@@ -6996,6 +7057,31 @@ body.pro-ui-workbench-body.sidebar-collapsed #antd-sidebar-root {
   flex: 1 1 auto;
   overflow-y: auto;
   padding: 0 2px 2px;
+}
+
+.pro-ui-conversations.proxr-conversations {
+  background: transparent;
+}
+
+.pro-ui-conversations .proxr-conversations-item {
+  min-height: 36px;
+  margin: 1px 0;
+  border-radius: 10px;
+  color: #53615a;
+}
+
+.pro-ui-conversations .proxr-conversations-item:hover {
+  background: #eef2ef;
+}
+
+.pro-ui-conversations .proxr-conversations-item.is-active {
+  background: var(--pro-ui-accent-soft);
+  color: var(--pro-ui-accent);
+}
+
+.pro-ui-conversations .proxr-conversations-select {
+  width: 100%;
+  min-width: 0;
 }
 
 .pro-ui-conversations.ant-conversations {
@@ -7115,6 +7201,52 @@ body.pro-ui-workbench-body.sidebar-collapsed #antd-sidebar-root {
   color: var(--pro-ui-ink);
   cursor: pointer;
   text-align: left;
+}
+
+.pro-ui-sidebar .proxr-user-menu {
+  flex: 0 0 auto;
+  margin-top: auto;
+  border: 1px solid var(--pro-ui-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .58);
+}
+
+.pro-ui-sidebar .proxr-user-menu:hover:not(:disabled) {
+  border-color: var(--pro-ui-border-strong);
+  background: #fff;
+}
+
+.pro-ui-sidebar .proxr-user-menu-avatar .pro-ui-account-avatar {
+  margin: 0;
+}
+
+.pro-ui-sidebar .proxr-user-menu-info {
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.pro-ui-sidebar .proxr-user-menu-name {
+  overflow: hidden;
+  color: var(--pro-ui-ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pro-ui-sidebar .proxr-user-menu-description {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--pro-ui-subtle);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pro-ui-sidebar.is-collapsed .proxr-user-menu {
+  justify-content: center;
+  padding-inline: 0;
 }
 
 .pro-ui-account:hover {
@@ -7325,6 +7457,28 @@ body.pro-ui-workbench-body .attach-chip {
   text-align: center;
 }
 
+.pro-ui-welcome-shell .proxr-welcome {
+  max-width: 620px;
+  padding-inline: 8px;
+  text-align: center;
+}
+
+.pro-ui-welcome-shell .proxr-welcome-title {
+  color: var(--pro-ui-ink);
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 650;
+  letter-spacing: -.025em;
+  line-height: 1.22;
+}
+
+.pro-ui-welcome-shell .proxr-welcome-description {
+  max-width: 560px;
+  margin: 6px auto 0;
+  color: var(--pro-ui-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
 .pro-ui-welcome-shell .ant-welcome-title {
   color: var(--pro-ui-ink);
   font-size: clamp(24px, 3vw, 34px);
@@ -7376,6 +7530,14 @@ body.pro-ui-workbench-body .attach-chip {
   text-transform: uppercase;
 }
 
+.pro-ui-welcome-prompts .proxr-prompts-title {
+  color: var(--pro-ui-subtle);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
 .pro-ui-welcome-prompts .ant-prompts-item {
   border: 1px solid var(--pro-ui-border);
   border-radius: 12px;
@@ -7385,6 +7547,20 @@ body.pro-ui-workbench-body .attach-chip {
 }
 
 .pro-ui-welcome-prompts .ant-prompts-item:hover {
+  border-color: #c9d9cf;
+  background: #fbfdfb;
+  transform: translateY(-1px);
+}
+
+.pro-ui-welcome-prompts .proxr-prompts-item {
+  border: 1px solid var(--pro-ui-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(32,45,37,.025);
+  transition: border-color .16s ease, background .16s ease, transform .16s ease;
+}
+
+.pro-ui-welcome-prompts .proxr-prompts-item:hover {
   border-color: #c9d9cf;
   background: #fbfdfb;
   transform: translateY(-1px);
@@ -7406,9 +7582,29 @@ body.pro-ui-workbench-body .attach-chip {
   gap: 11px;
 }
 
+.msg.antd-message-enhanced .proxr-bubble {
+  gap: 11px;
+  max-width: 100%;
+}
+
+.msg.antd-message-enhanced .proxr-bubble-main {
+  max-width: min(680px, 100%);
+}
+
 .msg.antd-message-enhanced .ant-bubble-avatar .ant-avatar {
   display: grid;
   place-items: center;
+  background: var(--pro-ui-accent-soft);
+  color: var(--pro-ui-accent);
+  border: 1px solid #dbe9e1;
+}
+
+.msg.antd-message-enhanced .proxr-bubble-avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
   background: var(--pro-ui-accent-soft);
   color: var(--pro-ui-accent);
   border: 1px solid #dbe9e1;
@@ -7424,8 +7620,30 @@ body.pro-ui-workbench-body .attach-chip {
   box-shadow: 0 1px 2px rgba(32, 45, 37, .025);
 }
 
+.antd-message-assistant .proxr-bubble-surface,
+.msg.antd-message-enhanced .antd-message-assistant .proxr-bubble-surface {
+  padding: 13px 16px;
+  border: 1px solid var(--pro-ui-border);
+  border-radius: 5px 16px 16px 16px;
+  background: #ffffff !important;
+  color: var(--pro-ui-ink) !important;
+  box-shadow: 0 1px 2px rgba(32, 45, 37, .025);
+}
+
 .antd-message-user .ant-bubble-content,
 .msg.antd-message-enhanced .antd-message-user .ant-bubble-content {
+  padding: 11px 15px;
+  border: 1px solid #d3e5da !important;
+  border-radius: 16px 5px 16px 16px;
+  background: #edf6f0 !important;
+  background-color: #edf6f0 !important;
+  color: #244c3a !important;
+  font-weight: 400 !important;
+  box-shadow: none;
+}
+
+.antd-message-user .proxr-bubble-surface,
+.msg.antd-message-enhanced .antd-message-user .proxr-bubble-surface {
   padding: 11px 15px;
   border: 1px solid #d3e5da !important;
   border-radius: 16px 5px 16px 16px;
@@ -7465,6 +7683,66 @@ body.pro-ui-workbench-body .attach-chip {
   background: #ffffff;
   box-shadow: 0 6px 22px rgba(32, 45, 37, .055);
   transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.pro-ui-composer-shell .proxr-sender {
+  padding: 0;
+  border: 1px solid var(--pro-ui-border-strong);
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 6px 22px rgba(32, 45, 37, .055);
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+
+.pro-ui-composer-shell .proxr-sender:focus-within:not(.is-disabled) {
+  border-color: #adc8b8;
+  box-shadow: 0 0 0 3px rgba(54, 116, 92, .09), 0 8px 26px rgba(32, 45, 37, .07);
+}
+
+.pro-ui-composer-shell .proxr-sender-body {
+  padding: 7px 8px 2px 14px;
+}
+
+.pro-ui-composer-shell .proxr-sender-input {
+  color: var(--pro-ui-ink);
+  font-family: var(--pro-ui-font);
+  font-size: 14px;
+  line-height: 1.62;
+}
+
+.pro-ui-composer-shell .proxr-sender-input::placeholder {
+  color: #9ba59f;
+}
+
+.pro-ui-composer-shell .proxr-sender-bottom {
+  padding: 0 8px 7px 14px;
+}
+
+.pro-ui-composer-shell .proxr-sender-actions .is-send.ant-btn,
+.pro-ui-composer-shell .proxr-sender-actions .is-stop.ant-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border-radius: 11px;
+  background: var(--pro-ui-accent);
+  color: #fff;
+}
+
+.pro-ui-composer-shell .proxr-sender-actions .is-send.ant-btn:not(:disabled):hover,
+.pro-ui-composer-shell .proxr-sender-actions .is-stop.ant-btn:not(:disabled):hover {
+  background: var(--pro-ui-accent-hover);
+  color: #fff;
+}
+
+.pro-ui-composer-shell .proxr-sender-actions .is-send.ant-btn:disabled {
+  background: #eef2ef;
+  color: #abb5ae;
+}
+
+.pro-ui-composer-shell .proxr-sender-footer {
+  padding: 0;
 }
 
 .pro-ui-composer-shell .ant-sender:focus-within {
@@ -7641,6 +7919,35 @@ body.pro-ui-workbench-body .pro-ui-agent-status {
   border-color: var(--pro-ui-border);
   border-radius: 12px;
   background: #fbfcfb;
+}
+
+body.pro-ui-workbench-body .pro-ui-agent-status .proxr-thread-status {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+body.pro-ui-workbench-body .pro-ui-agent-status .proxr-thread-status-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.pro-ui-workbench-body .pro-ui-agent-status-running .proxr-thread-status-dot,
+body.pro-ui-workbench-body .pro-ui-agent-status-awaiting_choice .proxr-thread-status-dot {
+  background: var(--pro-ui-accent);
+}
+
+body.pro-ui-workbench-body .pro-ui-agent-status-completed .proxr-thread-status-dot {
+  background: #15803d;
+}
+
+body.pro-ui-workbench-body .pro-ui-agent-status-failed .proxr-thread-status-dot,
+body.pro-ui-workbench-body .pro-ui-agent-status-superseded .proxr-thread-status-dot {
+  background: #b42318;
+}
+
+body.pro-ui-workbench-body .pro-ui-agent-status-interrupted .proxr-thread-status-dot {
+  background: #b45309;
 }
 
 body.pro-ui-workbench-body .antd-workflow-panels {

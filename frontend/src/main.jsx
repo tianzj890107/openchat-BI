@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Button, Card, Collapse, ConfigProvider, Divider, Dropdown, List, Progress, Tag, Tooltip } from "antd";
-import { Bubble, Conversations, ThoughtChain } from "@ant-design/x";
+import { ProXBubble, ProXConfigProvider, ProXExecutionSteps } from "@pro-ui/x-react";
 import shellDocument from "./shell.html?raw";
 import {
   bootWorkbenchRuntime,
@@ -11,12 +11,14 @@ import ProUiAgentStatus from "./ProUiAgentStatus.jsx";
 import ProUiComposer from "./ProUiComposer.jsx";
 import ProUiSidebar from "./ProUiSidebar.jsx";
 import ProUiWelcome from "./ProUiWelcome.jsx";
+import { PROX_WORKBENCH_THEME } from "./proUiTheme.js";
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   PlusOutlined,
 } from "@ant-design/icons";
 import "antd/dist/reset.css";
+import "@pro-ui/x-react/styles.css";
 import "./workbench.css";
 
 // Unified product identity.  The sidebar brand renders the product name and
@@ -26,6 +28,10 @@ import "./workbench.css";
 // stays on the page title / hero), per the 2026-09-30 brand request.
 const PRODUCT_NAME = "智能分析";
 const PRODUCT_VERSION = "ontology-v0.1.5";
+
+function ProXScope({ children }) {
+  return <ProXConfigProvider theme={PROX_WORKBENCH_THEME}>{children}</ProXConfigProvider>;
+}
 
 const DECORATIVE_EMOJI_TOKEN = "(?:📌|📊|📎|🧭|📈|📉|📄|🧩|🧠|✅|⚠️|🔍|💡)";
 function stripDecorativeAssistantMarkup(value) {
@@ -583,17 +589,14 @@ function workflowIcon(status) {
   return <span className={`antd-sop-status-circle antd-sop-status-${status}`} aria-hidden="true" />;
 }
 
-// ThoughtChain status mapping for the six SOP states. Ant Design ThoughtChain
-// only models `success` / `error` / `pending` natively, and `pending` is the
-// only non-terminal (loading/animation-capable) state. completed -> success
-// (static green); in_progress -> pending (the only dynamic state allowed);
-// pending and skipped -> "idle", a custom static item whose icon/colour are
-// defined entirely by our own CSS so the AntD pending/spinner treatment is
-// never applied to a finished, not-yet-started or bypassed step.
-function sopThoughtChainStatus(status) {
+// ProXExecutionSteps distinguishes a running spinner from static pending
+// states, matching the backend SOP semantics directly.
+function sopExecutionStatus(status) {
   if (status === "completed") return "success";
-  if (status === "in_progress") return "pending";
-  return "idle";
+  if (status === "in_progress") return "running";
+  if (status === "failed" || status === "error") return "error";
+  if (status === "cancelled" || status === "skipped") return "cancelled";
+  return "pending";
 }
 
 function WorkflowPanels() {
@@ -637,9 +640,9 @@ function WorkflowPanels() {
   const done = workflow.sop.filter((item) => item.status === "completed").length;
   const total = workflow.sop.length;
   const chainItems = workflow.sop.map((item) => ({
-    key: item.key,
+    id: item.key,
     title: <span className={`antd-sop-title is-${item.status}`}>{item.text}</span>,
-    status: sopThoughtChainStatus(item.status),
+    status: sopExecutionStatus(item.status),
     icon: workflowIcon(item.status),
   }));
   return (
@@ -649,7 +652,7 @@ function WorkflowPanels() {
         className="antd-workflow-collapse antd-workflow-sop"
         activeKey={sopOpen ? ["sop"] : []}
         onChange={(keys) => setSopOpen(keys.includes("sop"))}
-        items={[{ key: "sop", label: <span className="antd-workflow-title">分析 SOP <Tag color="blue">{total ? `${done}/${total}` : "待开始"}</Tag></span>, children: total ? <ThoughtChain items={chainItems} size="small" /> : <div className="antd-workflow-empty-sop">开始一轮智能分析后，这里会显示本次对话的分阶段执行进度。</div> }]}
+        items={[{ key: "sop", label: <span className="antd-workflow-title">分析 SOP <Tag color="blue">{total ? `${done}/${total}` : "待开始"}</Tag></span>, children: total ? <ProXExecutionSteps items={chainItems} variant="steps" /> : <div className="antd-workflow-empty-sop">开始一轮智能分析后，这里会显示本次对话的分阶段执行进度。</div> }]}
       />}
       {!!workflow.questions.length && <Collapse
         ghost
@@ -687,26 +690,34 @@ function AntdMessage({ role, iteration, html }) {
   const contentHtml = !hasMarkup && hasMarkdown && typeof window.biRenderMarkdown === "function"
     ? window.biRenderMarkdown(visibleHtml)
     : visibleHtml;
-  return <Bubble
+  return <ProXBubble
     placement={user ? "end" : "start"}
     variant="filled"
     shape="corner"
     avatar={user ? undefined : <AgentMark />}
     className={`antd-message-bubble ${user ? "antd-message-user" : "antd-message-assistant"}`}
     content={contentHtml}
-    messageRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
+    contentRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
   />;
 }
 
 function mountMessage(msg, role, iteration) {
   if (!msg || messageRoots.has(msg)) return;
-  const host = document.createElement("div");
-  host.className = "antd-message-host";
-  msg.appendChild(host);
+  // Saved conversations can already contain the host and an old Ant Design X
+  // bubble snapshot. Reuse one host and replace its stale contents so restored
+  // history follows the same Pro UI renderer as live messages.
+  const hosts = [...msg.querySelectorAll(":scope > .antd-message-host")];
+  const host = hosts.shift() || document.createElement("div");
+  hosts.forEach((duplicate) => duplicate.remove());
+  host.replaceChildren();
+  if (!host.isConnected) {
+    host.className = "antd-message-host";
+    msg.appendChild(host);
+  }
   const root = createRoot(host);
   const update = () => {
     const body = msg.querySelector(":scope > .msg-body");
-    root.render(<AntdMessage role={role} iteration={iteration} html={body?.innerHTML || ""} />);
+    root.render(<ProXScope><AntdMessage role={role} iteration={iteration} html={body?.innerHTML || ""} /></ProXScope>);
   };
   const body = msg.querySelector(":scope > .msg-body");
   const observer = body ? new MutationObserver(update) : null;
@@ -860,37 +871,6 @@ function normalizeStepTimelineTree(container) {
 
 window.antdNormalizeStepTimelines = normalizeStepTimelineTree;
 
-const thoughtRailObservers = new WeakMap();
-let thoughtRailFrame = 0;
-
-function syncThoughtChainRail(timeline) {
-  if (!timeline || !timeline.isConnected) return;
-  const icons = [...timeline.querySelectorAll(":scope > .step > .antd-step-host .ant-thought-chain-item-icon")];
-  if (!icons.length) return;
-  const timelineRect = timeline.getBoundingClientRect();
-  const firstRect = icons[0].getBoundingClientRect();
-  const lastRect = icons[icons.length - 1].getBoundingClientRect();
-  const centerX = firstRect.left + firstRect.width / 2 - timelineRect.left;
-  const firstCenterY = firstRect.top + firstRect.height / 2 - timelineRect.top;
-  const lastCenterY = lastRect.top + lastRect.height / 2 - timelineRect.top;
-  timeline.style.setProperty("--thought-step-rail-center-x", `${centerX}px`);
-  timeline.style.setProperty("--thought-step-rail-top", `${firstCenterY}px`);
-  timeline.style.setProperty("--thought-step-rail-bottom", `${lastCenterY}px`);
-  timeline.style.setProperty("--thought-step-rail-height", `${Math.max(0, lastCenterY - firstCenterY)}px`);
-  if (!thoughtRailObservers.has(timeline) && typeof ResizeObserver === "function") {
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(thoughtRailFrame);
-      thoughtRailFrame = requestAnimationFrame(() => syncThoughtChainRail(timeline));
-    });
-    observer.observe(timeline);
-    thoughtRailObservers.set(timeline, observer);
-  }
-}
-
-function syncAllThoughtChainRails(container) {
-  container?.querySelectorAll(".antd-step-timeline").forEach(syncThoughtChainRail);
-}
-
 function AntdStep({ name, summary, duration, html, status = "complete" }) {
   const [expanded, setExpanded] = useState(false);
   const expandedRef = useRef(false);
@@ -903,7 +883,7 @@ function AntdStep({ name, summary, duration, html, status = "complete" }) {
   const running = status === "running";
   const failed = status === "error" || status === "cancelled";
   const toneClass = `antd-step-tone-${running ? "running" : failed ? "error" : tone}`;
-  const chainStatus = running ? "pending" : failed ? "error" : "success";
+  const executionStatus = running ? "running" : failed ? "error" : "success";
   useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
   useEffect(() => {
     const shell = shellRef.current;
@@ -949,16 +929,13 @@ function AntdStep({ name, summary, duration, html, status = "complete" }) {
     shell.style.height = expandedRef.current ? "auto" : "0px";
   };
   return <div className={`thinking-step${running ? " is-running" : ""}`} data-step-status={status}>
-    <ThoughtChain
-      size="small"
+    <ProXExecutionSteps
       className={`antd-thought-chain ${toneClass}`}
-      // Ant Design's content motion is intentionally bypassed. The body
-      // shell below is a direct sibling of the header chain, so its pixel
-      // height participates in normal document flow and pushes later steps.
-      collapsible={false}
+      variant="compact"
+      defaultExpanded={false}
       items={[{
-        key: "step",
-        status: chainStatus,
+        id: "step",
+        status: executionStatus,
         // Tool results are the only execution events shown in the conversation.
         // The runtime owns the shared thinking row; this component renders the
         // completed result once the tool has returned.
@@ -1009,14 +986,13 @@ function mountStep(step) {
   }
   const root = createRoot(host);
   const update = () => {
-    root.render(<AntdStep
+    root.render(<ProXScope><AntdStep
       name={text(".step-name")}
       summary={text(".step-summary")}
       duration={text(".step-duration")}
       html={body?.innerHTML || ""}
       status={step.dataset.status || "complete"}
-    />);
-    requestAnimationFrame(() => syncThoughtChainRail(step.closest(".antd-step-timeline")));
+    /></ProXScope>);
   };
   const observer = body ? new MutationObserver(update) : null;
   if (body) observer.observe(body, { childList: true, subtree: true, characterData: true });
@@ -1294,15 +1270,14 @@ function enhanceWorkbenchTree(container) {
   // Drop those headers outright so restored conversations match new ones; the
   // SYSTEM · … tips keep their own headers.
   container.querySelectorAll(".msg-assistant > .msg-header").forEach((node) => node.remove());
-  container.querySelectorAll(":scope > .msg:not(.antd-message-enhanced)").forEach((node) => {
+  container.querySelectorAll(".msg").forEach((node) => {
     mountMessage(node, node.classList.contains("msg-user") ? "user" : "assistant");
   });
-  container.querySelectorAll(".step:not(.antd-step-enhanced)").forEach(mountStep);
+  container.querySelectorAll(".step").forEach(mountStep);
   container.querySelectorAll(":scope > .chart-card:not(.antd-result-card-host), :scope > .table-card:not(.antd-result-card-host), :scope > .multidim-card:not(.antd-result-card-host)").forEach((node) => {
     mountResultCard(node, node.classList.contains("table-card") ? "table" : node.classList.contains("multidim-card") ? "multi" : "chart");
   });
   container.querySelectorAll(".dash-card:not(.antd-dashboard-question-hidden)").forEach(mountDashboardCard);
-  requestAnimationFrame(() => syncAllThoughtChainRails(container));
 }
 
 function observeWorkbenchSurface(id) {
@@ -1352,11 +1327,11 @@ function WorkbenchApp() {
       />,
     );
     if (versionRoot) createRoot(versionRoot).render(<ProductVersionTag />);
-    if (workflowRoot) createRoot(workflowRoot).render(<WorkflowPanels />);
-    if (dashboardWorkflowRoot) createRoot(dashboardWorkflowRoot).render(<WorkflowPanels />);
-    if (proUiStatusRoot) createRoot(proUiStatusRoot).render(<ProUiAgentStatus />);
-    if (proUiWelcomeRoot) createRoot(proUiWelcomeRoot).render(<ProUiWelcome />);
-    if (proUiComposerRoot) createRoot(proUiComposerRoot).render(<ProUiComposer />);
+    if (workflowRoot) createRoot(workflowRoot).render(<ProXScope><WorkflowPanels /></ProXScope>);
+    if (dashboardWorkflowRoot) createRoot(dashboardWorkflowRoot).render(<ProXScope><WorkflowPanels /></ProXScope>);
+    if (proUiStatusRoot) createRoot(proUiStatusRoot).render(<ProXScope><ProUiAgentStatus /></ProXScope>);
+    if (proUiWelcomeRoot) createRoot(proUiWelcomeRoot).render(<ProXScope><ProUiWelcome /></ProXScope>);
+    if (proUiComposerRoot) createRoot(proUiComposerRoot).render(<ProXScope><ProUiComposer /></ProXScope>);
     shellRef.current.querySelectorAll(".page-title-icon[data-feature-glyph]").forEach((node) => {
       createRoot(node).render(<FeatureGlyph kind={node.dataset.featureGlyph} />);
     });

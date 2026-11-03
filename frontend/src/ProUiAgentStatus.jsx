@@ -1,11 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  CheckCircleFilled,
-  ClockCircleOutlined,
-  ExclamationCircleFilled,
-  LoadingOutlined,
-  PauseCircleOutlined,
-} from "@ant-design/icons";
+import { ProXThreadStatus } from "@pro-ui/x-react";
 import {
   AGENT_STATUS,
   createAgentActivityState,
@@ -22,15 +16,11 @@ function initialActivity() {
   }
 }
 
-function StatusGlyph({ status }) {
-  if (status === AGENT_STATUS.RUNNING) return <LoadingOutlined spin />;
-  if (status === AGENT_STATUS.AWAITING_CHOICE) return <PauseCircleOutlined />;
-  if (status === AGENT_STATUS.COMPLETED) return <CheckCircleFilled />;
-  if (status === AGENT_STATUS.FAILED || status === AGENT_STATUS.SUPERSEDED) {
-    return <ExclamationCircleFilled />;
-  }
-  if (status === AGENT_STATUS.INTERRUPTED) return <PauseCircleOutlined />;
-  return <ClockCircleOutlined />;
+function threadStatusPhase(status) {
+  if (status === AGENT_STATUS.RUNNING) return "running";
+  if (status === AGENT_STATUS.AWAITING_CHOICE) return "awaiting_resume";
+  if (status === AGENT_STATUS.FAILED || status === AGENT_STATUS.SUPERSEDED) return "error";
+  return "idle";
 }
 
 export default function ProUiAgentStatus() {
@@ -60,13 +50,12 @@ export default function ProUiAgentStatus() {
       role="status"
       aria-live="polite"
     >
-      <span className="pro-ui-agent-status-glyph" aria-hidden="true">
-        <StatusGlyph status={activity.status} />
-      </span>
-      <span className="pro-ui-agent-status-copy">
-        <strong>{label}</strong>
-        {detail ? <span>{detail}</span> : null}
-      </span>
+      <ProXThreadStatus
+        phase={threadStatusPhase(activity.status)}
+        label={label}
+        description={detail}
+        hideWhenIdle={false}
+      />
       {runningCount > 1 ? (
         <span className="pro-ui-agent-status-count">{runningCount} 个步骤</span>
       ) : null}

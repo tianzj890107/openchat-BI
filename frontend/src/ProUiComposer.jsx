@@ -7,7 +7,7 @@ import {
   PlusOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
-import { Sender } from "@ant-design/x";
+import { ProXSender } from "@pro-ui/x-react";
 import {
   composerActionState,
   normalizeComposerValue,
@@ -111,9 +111,10 @@ export default function ProUiComposer() {
     writeLegacyValue(next);
   };
 
-  const handleSubmit = () => {
-    if (!state.canSubmit) return;
-    writeLegacyValue(value);
+  const handleSubmit = (submittedValue) => {
+    const next = normalizeComposerValue(submittedValue);
+    if (!next.trim() || snapshot.busy || snapshot.disabled) return;
+    writeLegacyValue(next);
     clickLegacy("btn-send");
     setValue("");
   };
@@ -193,18 +194,20 @@ export default function ProUiComposer() {
           <Button size="small" type="text" onClick={() => clickLegacy("attach-chip-remove")}>移除</Button>
         </div>
       ) : null}
-      <Sender
+      <ProXSender
         ref={senderRef}
         className="pro-ui-sender"
         value={value}
+        layout="vertical"
         loading={snapshot.busy}
         disabled={snapshot.disabled}
+        submitDisabled={!state.canSubmit}
         placeholder={snapshot.placeholder}
         autoSize={{ minRows: 1, maxRows: 8 }}
         submitType="enter"
         onChange={handleChange}
         onSubmit={handleSubmit}
-        onCancel={handleCancel}
+        onStop={handleCancel}
         footer={toolbar}
       />
       <div className="pro-ui-composer-hint">

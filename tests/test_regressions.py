@@ -2311,8 +2311,13 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("--thinking-chain-block-gap: 8px", css)
         self.assertIn("TOOL_STEP_ICON_BY_NAME_COLORED", main)
         self.assertIn("inheritToolIconColor", main)
-        self.assertIn("syncThoughtChainRail", main)
-        self.assertIn("ResizeObserver", main)
+        self.assertIn("ProXExecutionSteps", main)
+        self.assertIn('from "@pro-ui/x-react"', main)
+        self.assertIn('container.querySelectorAll(".msg").forEach', main)
+        self.assertIn('msg.querySelectorAll(":scope > .antd-message-host")', main)
+        self.assertIn('root.render(<ProXScope><AntdMessage', main)
+        self.assertNotIn("syncThoughtChainRail", main)
+        self.assertNotIn("collapsible={false}", main)
         self.assertIn("--thought-step-rail-width", css)
         self.assertIn("--thought-step-rail-center-x", css)
         self.assertIn("z-index: 3 !important", css)
@@ -2320,7 +2325,6 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("background: var(--thinking-color-soft", css)
         self.assertIn("thinking-step-body-shell", css)
         self.assertIn("transition: height", css)
-        self.assertIn("collapsible={false}", main)
         self.assertIn("shell.style.height = next ?", main)
 
     def test_first_paint_defers_echarts_and_compresses_large_assets(self) -> None:
@@ -3022,26 +3026,22 @@ class OfflineRegressionTests(unittest.TestCase):
                          ["completed", "skipped", "skipped", "skipped", "skipped", "in_progress"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
-    def test_sop_thoughtchain_status_mapping_is_static_for_pending_and_skipped(self) -> None:
-        """The WorkflowPanels ThoughtChain mapping reserves AntD's animated
-        `pending` status for in_progress only; pending/skipped map to the
-        custom static `idle` state, and completed maps to `success`.  The
-        mapping is evaluated as a real pure function, not a string scan."""
+    def test_sop_execution_status_mapping_is_static_for_pending_and_skipped(self) -> None:
+        """ProXExecutionSteps reserves its animated `running` state for
+        in_progress only; pending/skipped remain static terminal states."""
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
-        # The mapping is a named pure function used by the chain items, and
-        # the old "everything except completed -> pending" ternary is gone.
-        self.assertIn("function sopThoughtChainStatus(status) {", main)
-        self.assertIn("status: sopThoughtChainStatus(item.status),", main)
+        self.assertIn("function sopExecutionStatus(status) {", main)
+        self.assertIn("status: sopExecutionStatus(item.status),", main)
         self.assertNotIn(
             'status: item.status === "completed" ? "success" : item.status === "in_progress" ? "pending" : "pending"',
             main)
         script = r"""const fs = require('fs');
 const src = fs.readFileSync('frontend/src/main.jsx', 'utf8');
-const start = src.indexOf('function sopThoughtChainStatus(status) {');
+const start = src.indexOf('function sopExecutionStatus(status) {');
 const end = src.indexOf('\n}\n', start) + 3;
 const fn = new Function('return ' + src.slice(start, end))();
 const out = {};
-for (const s of ['completed', 'in_progress', 'pending', 'skipped']) out[s] = fn(s);
+for (const s of ['completed', 'in_progress', 'pending', 'skipped', 'failed', 'cancelled']) out[s] = fn(s);
 console.log(JSON.stringify(out));"""
         proc = subprocess.run(
             ["node", "-e", script],
@@ -3051,9 +3051,11 @@ console.log(JSON.stringify(out));"""
         self.assertEqual(proc.returncode, 0, proc.stderr)
         data = json.loads(proc.stdout.strip())
         self.assertEqual(data["completed"], "success")
-        self.assertEqual(data["in_progress"], "pending")
-        self.assertEqual(data["pending"], "idle")
-        self.assertEqual(data["skipped"], "idle")
+        self.assertEqual(data["in_progress"], "running")
+        self.assertEqual(data["pending"], "pending")
+        self.assertEqual(data["skipped"], "cancelled")
+        self.assertEqual(data["failed"], "error")
+        self.assertEqual(data["cancelled"], "cancelled")
 
     def test_sop_terminal_cleanup_removes_all_loading_placeholders(self) -> None:
         """done / error / session_superseded / stream_closed must clear every
@@ -3563,9 +3565,12 @@ console.log(JSON.stringify(out));"""
         self.assertIn("migrateLegacySop", runtime[:import_start])
         self.assertIn("sopStatusesForDone", runtime[:import_start])
         self.assertIn("visitedFromTodos", runtime[:import_start])
-        self.assertIn("render(<WorkflowPanels />)", main)
+        self.assertIn("render(<ProXScope><WorkflowPanels /></ProXScope>)", main)
         self.assertIn("dashboardWorkflowRoot", main)
-        self.assertIn("createRoot(dashboardWorkflowRoot).render(<WorkflowPanels />)", main)
+        self.assertIn(
+            "createRoot(dashboardWorkflowRoot).render(<ProXScope><WorkflowPanels /></ProXScope>)",
+            main,
+        )
 
     def test_sop_missing_events_never_block_final_answer(self) -> None:
         """Even without any sop_progress event the final text and done still
