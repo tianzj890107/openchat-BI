@@ -26,6 +26,29 @@ export const PROX_WORKBENCH_THEME = {
     radius: "12px",
     fontFamily: FONT_FAMILY,
   },
+  components: {
+    SidebarNav: {
+      itemHeight: "30px",
+      itemGap: "1px",
+      itemPadding: "4px 9px",
+      titleFontSize: "11px",
+      titleFontWeight: "600",
+      headerPadding: "4px 9px 2px",
+      itemRadius: "7px",
+    },
+    Conversations: {
+      itemHeight: "38px",
+      itemGap: "1px",
+      itemPadding: "3px 8px",
+      itemRadius: "7px",
+      groupGap: "6px",
+      groupFontSize: "11px",
+      groupFontWeight: "600",
+    },
+    Sender: {
+      radius: "14px",
+    },
+  },
   antd: {
     token: {
       colorPrimary: PRIMARY,

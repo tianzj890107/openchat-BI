@@ -177,7 +177,7 @@ export default function ProUiSidebar({
     key: item.key,
     label: (
       <span className="pro-ui-conversation-label">
-        <span>{item.title}</span>
+        <span className="pro-ui-conversation-title">{item.title}</span>
         <small>{recentTimeLabel(item.updatedAt)}</small>
       </span>
     ),

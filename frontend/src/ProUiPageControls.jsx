@@ -67,8 +67,45 @@ const bridgedRoots = new WeakMap();
 const mirroredProperties = new WeakSet();
 const globalState = {
   observer: null,
+  styleObserver: null,
+  bodyObserver: null,
   roots: new Set(),
+  visibilitySyncs: new Set(),
+  visibilityFrame: 0,
 };
+
+function scheduleVisibilitySync() {
+  if (globalState.visibilityFrame) return;
+  // A timeout is used instead of requestAnimationFrame because workbench
+  // windows can be restored in a background tab, where rAF is paused while
+  // the runtime still changes dashboard/layout attributes.
+  globalState.visibilityFrame = window.setTimeout(() => {
+    globalState.visibilityFrame = 0;
+    globalState.visibilitySyncs.forEach((sync) => sync());
+  }, 0);
+}
+
+function sourceIsSuppressed(element) {
+  if (element.hidden || element.style.display === "none") return true;
+  let node = element;
+  while (node && node !== document.documentElement) {
+    if (node.hidden) return true;
+    const style = window.getComputedStyle(node);
+    if (style.display === "none" || style.visibility === "hidden") return true;
+    node = node.parentElement;
+  }
+  return false;
+}
+
+function floatingHostStyle(element) {
+  const style = window.getComputedStyle(element);
+  if (style.position !== "absolute" && style.position !== "fixed") return null;
+  const preserved = { position: style.position, display: "block" };
+  for (const property of ["top", "right", "bottom", "left", "width", "height", "zIndex"]) {
+    if (style[property] && style[property] !== "auto") preserved[property] = style[property];
+  }
+  return preserved;
+}
 
 function readBooleanAttribute(element, name) {
   return element.hasAttribute(name);
@@ -645,16 +682,35 @@ function mountControl(element) {
   const host = document.createElement("div");
   host.className = "pro-ui-control-host";
   host.dataset.proUiControl = kind;
+  if (element.id) host.dataset.proUiSourceId = element.id;
+  const floatingStyle = floatingHostStyle(element);
+  if (floatingStyle) {
+    host.classList.add("pro-ui-control-host--floating");
+    Object.assign(host.style, floatingStyle);
+  }
   element.dataset.proUiNative = "true";
   // Native anchors are sometimes hidden directly (for example the wizard's
   // previous/confirm buttons) and sometimes through a hidden parent field.
   // React should always mount the visible component; this host-level mirror
   // prevents a directly hidden anchor from surfacing its sibling control.
+  const isDashboardReopen = element.id === "dashboard-reopen";
   const syncHostVisibility = () => {
-    host.hidden = element.hidden || element.style.display === "none";
+    // The dashboard opener is a floating layout control whose visibility is
+    // driven by body[data-dashboard]/body[data-layout] rather than by the
+    // button itself. Keeping the wrapper addressable lets the CSS rules below
+    // own that transition without depending on throttled background timers.
+    if (isDashboardReopen) {
+      host.hidden = false;
+      return;
+    }
+    host.hidden = sourceIsSuppressed(element);
   };
   const visibilityObserver = new MutationObserver(syncHostVisibility);
-  visibilityObserver.observe(element, { attributes: true, attributeFilter: ["hidden", "style"] });
+  visibilityObserver.observe(element, {
+    attributes: true,
+    attributeFilter: ["hidden", "style", "class"],
+  });
+  globalState.visibilitySyncs.add(syncHostVisibility);
   syncHostVisibility();
   if (kind === "select" || kind === "input" || kind === "range") mirrorPropertyWrites(element, "value");
   if (kind === "toggle" || kind === "check") {
@@ -685,9 +741,33 @@ export function mountProUiPageControls(root = document) {
     }
   });
   globalState.observer.observe(root, { childList: true, subtree: true });
+  // CSS-driven visibility (body mode, view switching, dashboard collapse and
+  // responsive layout) does not mutate the anchor itself. Re-evaluate the
+  // wrappers once per frame so a hidden native control can never surface a
+  // duplicate Pro UI control, and a floating control keeps its own layer.
+  globalState.styleObserver = new MutationObserver(scheduleVisibilitySync);
+  globalState.styleObserver.observe(root, {
+    attributes: true,
+    attributeFilter: ["class", "style", "hidden", "aria-hidden", "data-view", "data-mode"],
+    subtree: true,
+  });
+  globalState.bodyObserver = new MutationObserver(scheduleVisibilitySync);
+  globalState.bodyObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ["class", "style", "hidden", "data-dashboard", "data-layout", "data-mobile-pane", "data-mode"],
+  });
   return () => {
     globalState.observer?.disconnect();
     globalState.observer = null;
+    globalState.styleObserver?.disconnect();
+    globalState.styleObserver = null;
+    globalState.bodyObserver?.disconnect();
+    globalState.bodyObserver = null;
+    globalState.visibilitySyncs.clear();
+    if (globalState.visibilityFrame) {
+      window.clearTimeout(globalState.visibilityFrame);
+      globalState.visibilityFrame = 0;
+    }
   };
 }
 

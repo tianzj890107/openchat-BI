@@ -11,6 +11,7 @@ import {
   PaperClipOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import {
   composerActionState,
@@ -30,6 +31,8 @@ function readLegacySnapshot() {
   const mode = document.body.dataset.mode || "data";
   const busy = !!legacyElement("btn-send")?.classList.contains("is-busy");
   const attachRow = legacyElement("attach-row");
+  const modelSelect = legacyElement("settings-model");
+  const selectedModel = modelSelect?.selectedOptions?.[0];
   return {
     value: input?.value || "",
     busy,
@@ -42,10 +45,11 @@ function readLegacySnapshot() {
     attachName: legacyElement("attach-chip-name")?.textContent?.trim() || "",
     attachMeta: legacyElement("attach-chip-meta")?.textContent?.trim() || "",
     uploadStatus: legacyElement("upload-status")?.textContent?.trim() || "",
+    modelLabel: selectedModel?.textContent?.trim() || "模型参数",
   };
 }
 
-export default function ProUiComposer() {
+export default function ProUiComposer({ dispatchRuntime }) {
   const senderRef = useRef(null);
   const [snapshot, setSnapshot] = useState(readLegacySnapshot);
   const [value, setValue] = useState(() => readLegacySnapshot().value);
@@ -171,6 +175,17 @@ export default function ProUiComposer() {
   const footer = (
     <div className="pro-ui-composer-footer">
       <div className="pro-ui-composer-tools">
+        <Tooltip title="切换模型与采样参数">
+          <ProXButton
+            size="small"
+            type="text"
+            className="pro-ui-model-chip"
+            icon={<SettingOutlined />}
+            onClick={() => dispatchRuntime?.("model")}
+          >
+            {snapshot.modelLabel}
+          </ProXButton>
+        </Tooltip>
         {snapshot.mode === "report" ? (
           <>
             <Tooltip title="上传 PDF / Word 报表">

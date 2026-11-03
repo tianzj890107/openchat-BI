@@ -6825,21 +6825,21 @@ body.pro-ui-workbench-body #antd-sidebar-root > .proxr-theme {
 }
 
 .pro-ui-sidebar-layout-header {
-  padding: 14px 12px 6px;
+  padding: 8px 10px 2px;
 }
 
 .pro-ui-sidebar-layout-scroll {
-  padding: 0 10px 14px;
+  padding: 0 8px 10px;
 }
 
 .pro-ui-sidebar-layout-footer {
-  padding: 8px 10px 10px;
+  padding: 4px 8px 8px;
 }
 
 .pro-ui-sidebar-content {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
   min-height: 100%;
 }
 
@@ -6848,7 +6848,7 @@ body.pro-ui-workbench-body #antd-sidebar-root > .proxr-theme {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 42px;
+  min-height: 36px;
   padding: 0 2px;
 }
 
@@ -6903,16 +6903,16 @@ body.pro-ui-workbench-body #antd-sidebar-root > .proxr-theme {
 }
 
 .pro-ui-new-chat.ant-btn {
-  min-height: 40px;
+  min-height: 36px;
   justify-content: center;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .pro-ui-nav {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
 .pro-ui-nav .proxb-nav {
@@ -6928,8 +6928,8 @@ body.pro-ui-workbench-body #antd-sidebar-root > .proxr-theme {
 .pro-ui-recent {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 2px;
+  gap: 4px;
+  margin-top: 0;
   min-width: 0;
 }
 
@@ -6938,9 +6938,10 @@ body.pro-ui-workbench-body #antd-sidebar-root > .proxr-theme {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 4px 4px 2px;
+  min-height: 26px;
+  padding: 2px 6px 1px;
   color: var(--pro-ui-subtle);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: .04em;
 }
@@ -6968,18 +6969,22 @@ body.pro-ui-workbench-body #antd-sidebar-root > .proxr-theme {
 
 .pro-ui-conversation-label {
   display: flex;
+  align-items: center;
+  flex-direction: row;
   min-width: 0;
-  flex-direction: column;
-  gap: 2px;
+  gap: 7px;
 }
 
-.pro-ui-conversation-label > span {
+.pro-ui-conversation-title {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pro-ui-conversation-label small {
+  flex: 0 0 auto;
   color: var(--pro-ui-subtle);
   font-size: 10px;
   font-weight: 400;
@@ -7453,6 +7458,24 @@ body.pro-ui-workbench-body .attach-chip {
   gap: 3px;
 }
 
+.pro-ui-model-chip.ant-btn {
+  max-width: min(220px, 38vw);
+  padding-inline: 7px;
+  color: var(--pro-ui-muted);
+  font-size: 11px;
+}
+
+.pro-ui-model-chip.ant-btn > span:not(.ant-btn-icon) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pro-ui-model-chip.ant-btn:hover {
+  color: var(--pro-ui-accent) !important;
+  background: var(--pro-ui-accent-soft) !important;
+}
+
 .pro-ui-db-switch {
   display: inline-flex;
   align-items: center;
@@ -7845,11 +7868,40 @@ body.pro-ui-workbench-body .llm-list {
  * tabs and the report wizard the same interaction language as the agent UI.
  * ---------------------------------------------------------------------- */
 [data-pro-ui-native="true"] {
-  display: none !important;
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  white-space: nowrap !important;
 }
 
 .pro-ui-control-host {
   display: contents;
+}
+
+/* Floating runtime anchors (for example the dashboard re-open tab) must keep
+ * their original absolute layer. Rendering the wrapper as a grid item would
+ * create an implicit second row and shrink the conversation surface. */
+.pro-ui-control-host--floating {
+  display: block;
+}
+
+/* Keep the Pro UI mirror of the dashboard opener visually in sync even while
+ * the runtime is changing body attributes and the native button's computed
+ * display in separate mutation batches. */
+body[data-dashboard="expanded"] .split > .pro-ui-control-host[data-pro-ui-source-id="dashboard-reopen"],
+body[data-layout="single"] .split > .pro-ui-control-host[data-pro-ui-source-id="dashboard-reopen"] {
+  display: none !important;
+}
+
+body[data-dashboard="collapsed"][data-layout="two"] .split > .pro-ui-control-host[data-pro-ui-source-id="dashboard-reopen"] {
+  display: block !important;
 }
 
 .pro-ui-control-host[hidden] {

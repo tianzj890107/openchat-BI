@@ -62,7 +62,8 @@
   真实 ProX 组件；结果卡片统一使用 ProX `ToolResultCard` 外壳，设置页、系统调用记录、
   本体类型筛选和报表向导的按钮、输入、选择、开关、滑块、步骤条、页签与提示块统一为
   Pro UI token 下的 Ant Design 组件。侧栏首次进入默认展开，页面内返回/保存后高亮同步
-  当前视图；九条业务路由均可直接切换。
+  当前视图；九条业务路由均可直接切换。会话区恢复满高，单栏切换不再产生额外空白行；
+  左侧导航与最近会话行距压缩，输入区底部增加当前模型入口，可直接进入模型参数页。
 - 对话与结果：工具开始即显示执行行，结果按同 ID 原位置更新；思考、等待选择、完成、
   失败、会话重建和中断使用不同状态，停止后保留已输出内容且不保存为完成回答。报表模式
   的上传、数据库查询、最近报表和报表生成工具条迁移到 React 输入区，旧附件行不再重复显示。
@@ -74,6 +75,9 @@
   Slider、Steps、Alert、Divider、Tabs、Segmented、Tag 和 Tooltip；输入框与 Select 的
   hover/focus 态统一为 sage 色，Select 使用包装层外圈避免 rc-select 内层样式丢失。
   原 HTML 控件不再可见，现有业务事件、参数保存、页签切换和报表向导逻辑保持不变。
+- 看板与布局：两栏看板折叠后显示 Pro UI 浮动展开按钮，展开或单栏时自动隐藏；浮动控件
+  保持绝对定位，不再作为网格项撑出隐式行。1440×900 下以 878px 全高布置对话区，
+  760×900 单栏也保持满高且无横向溢出。
 - 依赖与构建：内部 npm `http://npm.boulderaitech.com/` 提供 `@pro-ui/x-react` 0.1.0–0.1.2，
   当前固定 0.1.2，支持 React 18.3.1；移除 `@ant-design/x`。`@pro-ui/chat-runtime` 未发布，
   浏览器会话仍由 Analytics runtime 管理。为兼容 assistant-ui 依赖，固定
@@ -83,9 +87,11 @@
   `main.jsx`、`runtime.js`、`shell.html`、`workbench.css`、`frontend/package.json`、
   `frontend/package-lock.json`、`bi_agent/web/static/index.html`、前端构建产物、
   回归测试和规范文档。
-- 验证：前端 Node 测试 100 项、`tests.test_regressions` 222 项、`npm run build` 和
-  `git diff --check` 通过；1440×1000 本地 CDP 验收九条路由、侧栏展开/收起、数据源页面、
-  Sender 输入/清空/发送按钮状态和返回高亮；恢复含工具调用的历史会话时 6 条消息全部为
-  ProX Bubble，旧 Bubble/ThoughtChain 为 0，无旧轨道线重复、横向溢出或 JS 异常；
-  模型页控件、本体筛选、系统日志页签和报表向导控件正常，Select 悬浮截图像素对比
-  980 个像素变化，输入框 hover/focus 环可见。本轮未部署。
+- 验证：前端 Node 测试 101 项、`tests.test_regressions` 222 项、`npm run build` 和
+  `git diff --check` 通过；1440×900 与 760×900 本地 CDP 验收九条路由、侧栏展开/收起、
+  数据源页面、Sender 输入/清空/发送按钮状态和返回高亮；导航行高 30px、最近会话行高
+  38px，模型按钮可跳转并高亮模型参数页，看板折叠后的展开按钮位于右上浮动层且可恢复
+  两栏，展开和单栏状态隐藏，无隐式网格行、横向溢出或 JS 异常。恢复含工具调用的历史
+  会话时 6 条消息全部为 ProX Bubble，旧 Bubble/ThoughtChain 为 0；模型页控件、本体
+  筛选、系统日志页签和报表向导控件正常，Select 悬浮与输入框 hover/focus 态可见。
+  本轮未部署。

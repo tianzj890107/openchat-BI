@@ -1010,7 +1010,9 @@ function WorkbenchApp() {
     if (dashboardWorkflowRoot) createRoot(dashboardWorkflowRoot).render(<ProXScope><WorkflowPanels /></ProXScope>);
     if (proUiStatusRoot) createRoot(proUiStatusRoot).render(<ProXScope><ProUiAgentStatus /></ProXScope>);
     if (proUiWelcomeRoot) createRoot(proUiWelcomeRoot).render(<ProXScope><ProUiWelcome /></ProXScope>);
-    if (proUiComposerRoot) createRoot(proUiComposerRoot).render(<ProXScope><ProUiComposer /></ProXScope>);
+    if (proUiComposerRoot) createRoot(proUiComposerRoot).render(
+      <ProXScope><ProUiComposer dispatchRuntime={dispatchRuntime} /></ProXScope>,
+    );
     shellRef.current.querySelectorAll(".page-title-icon[data-feature-glyph]").forEach((node) => {
       createRoot(node).render(<FeatureGlyph kind={node.dataset.featureGlyph} />);
     });

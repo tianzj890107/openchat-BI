@@ -42,3 +42,12 @@ test("page inputs inherit the same hover, focus and selected geometry", () => {
   assert.equal(components.Segmented.itemSelectedColor, PROX_WORKBENCH_THEME.token.primaryDark);
   assert.equal(components.Table.rowHoverBg, "#f4f8f5");
 });
+
+test("sidebar and conversation rows use compact Pro UI component tokens", () => {
+  const components = PROX_WORKBENCH_THEME.components;
+  assert.equal(components.SidebarNav.itemHeight, "30px");
+  assert.equal(components.SidebarNav.itemGap, "1px");
+  assert.equal(components.Conversations.itemHeight, "38px");
+  assert.equal(components.Conversations.itemGap, "1px");
+  assert.equal(components.Sender.radius, "14px");
+});

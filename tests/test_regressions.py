@@ -2351,6 +2351,12 @@ class OfflineRegressionTests(unittest.TestCase):
             self.assertIn(f"return {kind}", controls)
         self.assertIn("proUiNative", controls)
         self.assertIn("visibilityObserver", controls)
+        self.assertIn("sourceIsSuppressed", controls)
+        self.assertIn('const isDashboardReopen = element.id === "dashboard-reopen"', controls)
+        self.assertIn("floatingHostStyle", controls)
+        self.assertIn("pro-ui-control-host--floating", controls)
+        self.assertIn("bodyObserver", controls)
+        self.assertIn("window.setTimeout", controls)
         self.assertIn('className="pro-ui-page-filters"', controls)
         self.assertIn("<Tag.CheckableTag", controls)
 
@@ -2363,6 +2369,9 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("rowHoverBg: \"#f4f8f5\"", theme)
 
         self.assertIn(".pro-ui-control-host[hidden]", css)
+        self.assertIn("position: absolute !important", css)
+        self.assertIn(".pro-ui-control-host--floating", css)
+        self.assertIn('body[data-dashboard="collapsed"][data-layout="two"]', css)
         self.assertIn(".pro-ui-page-tabs.ant-tabs", css)
         self.assertIn(".pro-ui-page-segmented.ant-segmented", css)
         self.assertIn(".pro-ui-page-filter-tag.ant-tag", css)
@@ -2380,7 +2389,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = withBasePath("static/vendor/echarts.min.js")', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=165" defer', index)
+        self.assertIn('workbench.js?v=169" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
