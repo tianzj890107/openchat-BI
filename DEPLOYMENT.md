@@ -1598,3 +1598,9 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   GitLab/pypi 镜像超时失败，失败发生在 `get_sources` 和安装 `setuptools` 阶段，不是测试断言失败；本轮未修改 CI 规避门禁。
 - 回退：停止 PID `1561973`，在 `process360-cockpit-ce39ab3-20261102-1659` 执行 `.venv/bin/python start-main.py` 恢复旧版本；不得删除新 release、历史 release、共享 `dataset`、
   会话、上传、图表或分析记录。8876 无需修改 nginx。
+
+### 2026-11-03 客户Process360本地本体交付
+
+使用 `scripts/build_customer_process360_ontology.py` 从原Excel与数据库部署包生成独立客户Excel、`catalog.json`、结构核对报告与SHA256清单。具体输入、验收范围及限制见 [客户本体说明](docs/specs/process360-customer-ontology-delivery-2026-11-03.md)。
+
+Excel与catalog须成对交付；后续获得部署授权后，才将 `PROCESS360_CATALOG_PATH` 指向客户catalog，PG的数据库名、schema、端口与权限单独配置。不得把兼容视图NULL占位当作实际字段；本体更新不自动改写已有硬编码SQL，兼容视图与真实SQL仍需验收。此变更不执行部署、不替换默认catalog、不迁移或清理任何用户数据。
