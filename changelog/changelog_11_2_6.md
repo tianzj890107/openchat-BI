@@ -93,6 +93,9 @@
   断开可见性观察器并恢复原生节点；历史切换只对真正移除的消息/步骤/结果卡执行 React 卸载。
 - 无障碍名称（2026-11-04）：设置页、账号页、页面控件桥的图标按钮、Select、Input、Slider
   和 Switch 补齐 `aria-label` 或关联标签，1440px 验收未发现无名称的可见控件。
+- 主题收敛（2026-11-04）：`proUiTheme.js` 从逐组件覆盖 Button/Input/Select/Slider 等
+  内部尺寸和形状，收敛为品牌 token、ProX 侧栏/会话/输入区密度，以及 Form/Table 两项
+  业务布局覆盖；通用控件重新继承平台主题，不再为每个控件维护一套几何参数。
 - 依赖与构建：内部 npm `http://npm.boulderaitech.com/` 提供 `@pro-ui/x-react` 0.1.0–0.1.2，
   当前固定 0.1.2，支持 React 18.3.1；移除 `@ant-design/x`。`@pro-ui/chat-runtime` 未发布，
   浏览器会话仍由 Analytics runtime 管理。为兼容 assistant-ui 依赖，固定

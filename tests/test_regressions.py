@@ -2360,12 +2360,10 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('className="pro-ui-page-filters"', controls)
         self.assertIn("<Tag.CheckableTag", controls)
 
-        for component in ("Button", "Input", "InputNumber", "Select", "Checkbox",
-                          "Radio", "Switch", "Slider", "Steps", "Alert", "Divider",
-                          "Modal", "Table", "Tabs", "Segmented", "Card", "Tooltip",
-                          "Dropdown", "Form"):
+        for component in ("Form", "Table"):
             self.assertIn(f"{component}: {{", theme)
-        self.assertIn("activeBorderColor: PRIMARY", theme)
+        self.assertNotIn("Button: {", theme)
+        self.assertIn("colorPrimary: PRIMARY", theme)
         self.assertIn("rowHoverBg: \"#f4f8f5\"", theme)
 
         self.assertIn(".pro-ui-control-host[hidden]", css)
@@ -2389,7 +2387,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = withBasePath("static/vendor/echarts.min.js")', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=170" defer', index)
+        self.assertIn('workbench.js?v=171" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
