@@ -7,9 +7,11 @@ import {
   bootWorkbenchRuntime,
   fetchConversationSummaries,
 } from "./runtime.js";
+import ProUiAccountPage from "./ProUiAccountPage.jsx";
 import ProUiAgentStatus from "./ProUiAgentStatus.jsx";
 import ProUiComposer from "./ProUiComposer.jsx";
 import { mountProUiPageControls } from "./ProUiPageControls.jsx";
+import ProUiSettingsPage from "./ProUiSettingsPage.jsx";
 import ProUiSidebar from "./ProUiSidebar.jsx";
 import ProUiWelcome from "./ProUiWelcome.jsx";
 import { PROX_WORKBENCH_THEME } from "./proUiTheme.js";
@@ -399,8 +401,15 @@ function WorkflowPanels() {
   );
 }
 
-const messageRoots = new WeakMap();
-const stepRoots = new WeakMap();
+const messageRoots = new Map();
+const stepRoots = new Map();
+
+function disposeReactRecord(record) {
+  if (!record) return;
+  record.observer?.disconnect();
+  record.statusObserver?.disconnect();
+  try { record.root?.unmount?.(); } catch (_) { /* already detached */ }
+}
 
 function AntdMessage({ role, iteration, html }) {
   const user = role === "user";
@@ -684,7 +693,18 @@ function mountStep(step) {
 
 window.antdStepMount = mountStep;
 
-const cardRoots = new WeakMap();
+const cardRoots = new Map();
+
+function disposeSubtreeRoots(node) {
+  for (const roots of [messageRoots, stepRoots, cardRoots]) {
+    for (const [element, record] of [...roots]) {
+      if (element === node || (node.contains && node.contains(element))) {
+        disposeReactRecord(record);
+        roots.delete(element);
+      }
+    }
+  }
+}
 function isProUiChartCard(card) {
   if (!card?.dataset?.chartJson) return false;
   try {
@@ -961,10 +981,29 @@ function enhanceWorkbenchTree(container) {
 
 function observeWorkbenchSurface(id) {
   const container = document.getElementById(id);
-  if (!container) return;
+  if (!container) return () => {};
   enhanceWorkbenchTree(container);
-  const observer = new MutationObserver(() => enhanceWorkbenchTree(container));
+  const observer = new MutationObserver((mutations) => {
+    const removed = [];
+    for (const mutation of mutations) {
+      mutation.removedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) removed.push(node);
+      });
+    }
+    if (removed.length) {
+      // Mode switching detaches and reattaches in the same task. Defer the
+      // decision by a microtask so only genuinely removed history nodes are
+      // unmounted and their observers released.
+      queueMicrotask(() => {
+        removed.forEach((node) => {
+          if (!node.isConnected) disposeSubtreeRoots(node);
+        });
+      });
+    }
+    enhanceWorkbenchTree(container);
+  });
   observer.observe(container, { childList: true, subtree: true });
+  return () => observer.disconnect();
 }
 
 const shellMarkup = (shellDocument.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] || shellDocument)
@@ -987,6 +1026,14 @@ function WorkbenchApp() {
     document.body.classList.remove("sidebar-collapsed");
     if (!shellRef.current) return undefined;
 
+    const mountedRoots = [];
+    const mountRoot = (node, element) => {
+      if (!node) return null;
+      const root = createRoot(node);
+      root.render(element);
+      mountedRoots.push(root);
+      return root;
+    };
     const sidebarRoot = shellRef.current.querySelector("#antd-sidebar-root");
     const versionRoot = shellRef.current.querySelector("#product-version");
     const workflowRoot = shellRef.current.querySelector("#antd-workflow-root");
@@ -994,7 +1041,9 @@ function WorkbenchApp() {
     const proUiStatusRoot = shellRef.current.querySelector("#ant-pro-ui-status-root");
     const proUiWelcomeRoot = shellRef.current.querySelector("#pro-ui-welcome-root");
     const proUiComposerRoot = shellRef.current.querySelector("#pro-ui-composer-root");
-    if (sidebarRoot) createRoot(sidebarRoot).render(
+    const proUiSettingsRoot = shellRef.current.querySelector("#pro-ui-settings-root");
+    const proUiAccountRoot = shellRef.current.querySelector("#pro-ui-account-root");
+    mountRoot(sidebarRoot, (
       <ProUiSidebar
         FeatureGlyph={FeatureGlyph}
         AgentMark={AgentMark}
@@ -1003,18 +1052,18 @@ function WorkbenchApp() {
         recentTimeLabel={recentTimeLabel}
         dispatchRuntime={dispatchRuntime}
         productVersion={PRODUCT_VERSION}
-      />,
-    );
-    if (versionRoot) createRoot(versionRoot).render(<ProductVersionTag />);
-    if (workflowRoot) createRoot(workflowRoot).render(<ProXScope><WorkflowPanels /></ProXScope>);
-    if (dashboardWorkflowRoot) createRoot(dashboardWorkflowRoot).render(<ProXScope><WorkflowPanels /></ProXScope>);
-    if (proUiStatusRoot) createRoot(proUiStatusRoot).render(<ProXScope><ProUiAgentStatus /></ProXScope>);
-    if (proUiWelcomeRoot) createRoot(proUiWelcomeRoot).render(<ProXScope><ProUiWelcome /></ProXScope>);
-    if (proUiComposerRoot) createRoot(proUiComposerRoot).render(
-      <ProXScope><ProUiComposer dispatchRuntime={dispatchRuntime} /></ProXScope>,
-    );
+      />
+    ));
+    mountRoot(versionRoot, <ProductVersionTag />);
+    mountRoot(workflowRoot, <ProXScope><WorkflowPanels /></ProXScope>);
+    mountRoot(dashboardWorkflowRoot, <ProXScope><WorkflowPanels /></ProXScope>);
+    mountRoot(proUiStatusRoot, <ProXScope><ProUiAgentStatus /></ProXScope>);
+    mountRoot(proUiWelcomeRoot, <ProXScope><ProUiWelcome /></ProXScope>);
+    mountRoot(proUiComposerRoot, <ProXScope><ProUiComposer dispatchRuntime={dispatchRuntime} /></ProXScope>);
+    mountRoot(proUiSettingsRoot, <ProXScope><ProUiSettingsPage /></ProXScope>);
+    mountRoot(proUiAccountRoot, <ProXScope><ProUiAccountPage /></ProXScope>);
     shellRef.current.querySelectorAll(".page-title-icon[data-feature-glyph]").forEach((node) => {
-      createRoot(node).render(<FeatureGlyph kind={node.dataset.featureGlyph} />);
+      mountRoot(node, <FeatureGlyph kind={node.dataset.featureGlyph} />);
     });
 
     // The former static runtime is now an internal React bundle module. It
@@ -1022,10 +1071,16 @@ function WorkbenchApp() {
     // this React root and no longer loaded as a separate static script.
     const unmountPageControls = mountProUiPageControls(shellRef.current);
     bootWorkbenchRuntime();
-    observeWorkbenchSurface("chat-scroll");
-    observeWorkbenchSurface("dashboard-list");
+    const surfaceCleanups = [
+      observeWorkbenchSurface("chat-scroll"),
+      observeWorkbenchSurface("dashboard-list"),
+    ];
     return () => {
       unmountPageControls();
+      surfaceCleanups.forEach((cleanup) => cleanup());
+      mountedRoots.forEach((root) => {
+        try { root.unmount(); } catch (_) { /* already detached */ }
+      });
       document.body.classList.remove("pro-ui-workbench-body");
     };
   }, []);

@@ -2389,7 +2389,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = withBasePath("static/vendor/echarts.min.js")', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=169" defer', index)
+        self.assertIn('workbench.js?v=170" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -3620,10 +3620,10 @@ console.log(JSON.stringify(out));"""
         self.assertIn("migrateLegacySop", runtime[:import_start])
         self.assertIn("sopStatusesForDone", runtime[:import_start])
         self.assertIn("visitedFromTodos", runtime[:import_start])
-        self.assertIn("render(<ProXScope><WorkflowPanels /></ProXScope>)", main)
+        self.assertIn("mountRoot(workflowRoot, <ProXScope><WorkflowPanels /></ProXScope>)", main)
         self.assertIn("dashboardWorkflowRoot", main)
         self.assertIn(
-            "createRoot(dashboardWorkflowRoot).render(<ProXScope><WorkflowPanels /></ProXScope>)",
+            "mountRoot(dashboardWorkflowRoot, <ProXScope><WorkflowPanels /></ProXScope>)",
             main,
         )
 

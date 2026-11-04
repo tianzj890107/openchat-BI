@@ -70,6 +70,14 @@ import {
 } from "./ontologyGraphRendererHandle.js";
 import { classifyStreamEof } from "./streamTerminal.js";
 import {
+  PRO_BI_CHART_TYPES,
+  buildProBiChart,
+  formatDisplayNumber,
+  isMoneyLabel,
+  isNumericValue,
+  proBiChartType,
+} from "./analyticsChartAdapter.js";
+import {
   createTurnLifecycle,
   recordDone,
   recordFailure,
@@ -505,30 +513,6 @@ export function bootWorkbenchRuntime() {
     historyClearSel:      document.getElementById("history-clear-sel"),
     historyActivateSel:   document.getElementById("history-activate-sel"),
     uploadStatus:   document.getElementById("upload-status"),
-    // Settings modal
-    settingsOverlay:    document.getElementById("settings-overlay"),
-    settingsClose:      document.getElementById("settings-close"),
-    settingsModel:      document.getElementById("settings-model"),
-    settingsModelHint:  document.getElementById("settings-model-hint"),
-    settingsMaxTokens:  document.getElementById("settings-max-tokens"),
-    settingsTemp:       document.getElementById("settings-temperature"),
-    settingsTempVal:    document.getElementById("settings-temp-val"),
-    settingsStatus:     document.getElementById("settings-status"),
-    settingsSave:       document.getElementById("settings-save"),
-    settingsResetDefaults: document.getElementById("settings-reset-defaults"),
-    settingsKeyAnthropic:       document.getElementById("settings-key-anthropic"),
-    settingsKeyAnthropicStatus: document.getElementById("settings-key-anthropic-status"),
-    settingsKeyAnthropicClear:  document.getElementById("settings-key-anthropic-clear"),
-    settingsKeyQwen:            document.getElementById("settings-key-qwen"),
-    settingsKeyQwenStatus:      document.getElementById("settings-key-qwen-status"),
-    settingsKeyQwenClear:       document.getElementById("settings-key-qwen-clear"),
-    settingsKeyDeepseek:        document.getElementById("settings-key-deepseek"),
-    settingsKeyDeepseekStatus:  document.getElementById("settings-key-deepseek-status"),
-    settingsKeyDeepseekClear:   document.getElementById("settings-key-deepseek-clear"),
-    settingsThinkingField:      document.getElementById("settings-thinking-field"),
-    settingsThinking:           document.getElementById("settings-thinking"),
-    settingsThinkingStatus:     document.getElementById("settings-thinking-status"),
-    settingsThinkingHint:       document.getElementById("settings-thinking-hint"),
     // Report-generation wizard
     btnReportgen:       document.getElementById("btn-reportgen"),
     reportgenOverlay:   document.getElementById("reportgen-overlay"),
@@ -1767,33 +1751,14 @@ export function bootWorkbenchRuntime() {
   }
 
   function openAccount() {
-    const nameInput = document.getElementById("account-name-input");
-    const themeToggle = document.getElementById("account-theme-light");
-    if (nameInput) nameInput.value = readPref(ACCT_NAME_KEY, "") || "";
-    if (themeToggle) themeToggle.checked = readPref(ACCT_THEME_KEY, "light") === "light";
-    const st = document.getElementById("account-status");
-    if (st) st.textContent = "";
     showView("account");
   }
 
-  function saveAccount() {
-    const nameInput = document.getElementById("account-name-input");
-    const themeToggle = document.getElementById("account-theme-light");
-    const name = ((nameInput && nameInput.value) || "").trim() || "分析员";
-    const theme = (themeToggle && themeToggle.checked) ? "light" : "dark";
-    try {
-      localStorage.setItem(ACCT_NAME_KEY, name);
-      localStorage.setItem(ACCT_THEME_KEY, theme);
-    } catch (e) {}
-    applyTheme(theme);
+  window.addEventListener("bi-account-updated", (event) => {
+    const theme = event.detail?.theme;
+    if (theme) applyTheme(theme);
     renderAccountChip();
-    const st = document.getElementById("account-status");
-    if (st) {
-      st.textContent = "✓ 已保存";
-      st.className = "settings-status success";
-      setTimeout(() => { if (st) st.textContent = ""; }, 2000);
-    }
-  }
+  });
 
   (function bootAccount() {
     // URL ?theme=light still wins (embedding); otherwise use the saved
@@ -1804,8 +1769,6 @@ export function bootWorkbenchRuntime() {
     renderAccountChip();
     const acctBtn = document.getElementById("sidebar-account");
     if (acctBtn) acctBtn.addEventListener("click", openAccount);
-    const acctSave = document.getElementById("account-save");
-    if (acctSave) acctSave.addEventListener("click", saveAccount);
   })();
 
   // ------------------------------------------------------------------
@@ -2148,87 +2111,12 @@ export function bootWorkbenchRuntime() {
   // Settings modal
   // ------------------------------------------------------------------
   function hydrateSettings(llm) {
-    if (!state.meta) return;
-    state.meta.llm = llm;
-    el.settingsModel.innerHTML = "";
-    (llm.models || []).forEach(m => {
-      const opt = document.createElement("option");
-      opt.value = m.key;
-      opt.textContent = `${m.label}  [${m.provider}]`;
-      opt.dataset.provider = m.provider;
-      opt.dataset.defaultMaxTokens = m.default_max_tokens;
-      opt.dataset.defaultTemperature = m.default_temperature;
-      opt.dataset.maxOutputTokens = m.max_output_tokens;
-      opt.dataset.supportsThinking = m.supports_thinking ? "1" : "0";
-      el.settingsModel.appendChild(opt);
-    });
-    const cur = llm.current || {};
-    el.settingsModel.value = cur.model_key || "";
-    el.settingsMaxTokens.value = cur.max_tokens ?? 8192;
-    el.settingsTemp.value = cur.temperature ?? 1.0;
-    el.settingsTempVal.textContent = Number(el.settingsTemp.value).toFixed(2);
-    if (el.settingsThinking) el.settingsThinking.checked = !!cur.thinking;
-    updateModelHint();
-    renderKeyStatus(llm.api_keys || {});
-    el.settingsKeyAnthropic.value = "";
-    el.settingsKeyQwen.value = "";
-    if (el.settingsKeyDeepseek) el.settingsKeyDeepseek.value = "";
-  }
-
-  function renderKeyStatus(keys) {
-    const render = (target, info) => {
-      if (!target) return;
-      if (!info || !info.present) {
-        target.textContent = "未配置";
-        target.className = "settings-keystatus missing";
-        return;
-      }
-      const src = info.source === "env" ? "env" : "file";
-      target.textContent = `已配置 · ${info.masked} · ${src}`;
-      target.className = "settings-keystatus set";
-    };
-    render(el.settingsKeyAnthropicStatus, keys.anthropic);
-    render(el.settingsKeyQwenStatus, keys.qwen);
-    render(el.settingsKeyDeepseekStatus, keys.deepseek);
-  }
-
-  function updateModelHint() {
-    const opt = el.settingsModel.options[el.settingsModel.selectedIndex];
-    if (!opt) { el.settingsModelHint.textContent = ""; return; }
-    const provider = opt.dataset.provider;
-    const maxOut = opt.dataset.maxOutputTokens;
-    const supportsThinking = opt.dataset.supportsThinking === "1";
-    let hint = `provider: ${provider} · max_output: ${maxOut}`;
-    if (provider === "qwen") hint += " · 需要环境变量 DASHSCOPE_API_KEY";
-    else if (provider === "deepseek") hint += " · 需要环境变量 DEEPSEEK_API_KEY";
-    else if (provider === "team") hint += " · 需要环境变量 TEAM_API_KEY";
-    else hint += " · 需要环境变量 ANTHROPIC_API_KEY";
-    if (supportsThinking) hint += " · 支持思考模式";
-    el.settingsModelHint.textContent = hint;
-    el.settingsMaxTokens.max = maxOut;
-    // Keep the row visible at all times — disabling (rather than hiding)
-    // the checkbox makes the capability difference discoverable across
-    // model swaps without the row jumping in/out.
-    if (el.settingsThinking) {
-      el.settingsThinking.disabled = !supportsThinking;
-      if (!supportsThinking) el.settingsThinking.checked = false;
-    }
-    if (el.settingsThinkingField) {
-      el.settingsThinkingField.classList.toggle("disabled", !supportsThinking);
-    }
-    if (el.settingsThinkingStatus) {
-      el.settingsThinkingStatus.textContent = supportsThinking ? "可用" : "本模型不支持";
-      el.settingsThinkingStatus.className = supportsThinking
-        ? "settings-keystatus set"
-        : "settings-keystatus missing";
-    }
-    if (el.settingsThinkingHint) {
-      el.settingsThinkingHint.style.opacity = supportsThinking ? "" : "0.55";
-    }
+    if (!llm) return;
+    if (state.meta) state.meta.llm = llm;
+    window.dispatchEvent(new CustomEvent("bi-settings-snapshot", { detail: llm }));
   }
 
   function openSettings() {
-    if (el.settingsStatus) el.settingsStatus.textContent = "";
     showView("model");
   }
 
@@ -2236,103 +2124,16 @@ export function bootWorkbenchRuntime() {
     showView("workspace");
   }
 
-  async function saveSettings() {
-    const payload = {
-      model_key: el.settingsModel.value,
-      max_tokens: parseInt(el.settingsMaxTokens.value, 10),
-      temperature: parseFloat(el.settingsTemp.value),
-      thinking: !!(el.settingsThinking && el.settingsThinking.checked),
-    };
-    const aKey = el.settingsKeyAnthropic.value.trim();
-    if (aKey) payload.anthropic_api_key = aKey;
-    const qKey = el.settingsKeyQwen.value.trim();
-    if (qKey) payload.qwen_api_key = qKey;
-    const dsKey = el.settingsKeyDeepseek && el.settingsKeyDeepseek.value.trim();
-    if (dsKey) payload.deepseek_api_key = dsKey;
-
-    el.settingsStatus.textContent = "保存中…";
-    el.settingsStatus.className = "settings-status pending";
-    try {
-      const r = await fetch(withBasePath("api/config"), {
-        method: "PUT",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({detail: r.statusText}));
-        throw new Error(err.detail || "save failed");
-      }
-      const data = await r.json();
-      state.meta.llm = data;
-      renderTopbarMeta();
-      renderKeyStatus(data.api_keys || {});
-      el.settingsKeyAnthropic.value = "";
-      el.settingsKeyQwen.value = "";
-      if (el.settingsKeyDeepseek) el.settingsKeyDeepseek.value = "";
-      el.settingsStatus.textContent = "已保存 · 下一轮对话立即生效";
-      el.settingsStatus.className = "settings-status success";
-      setTimeout(closeSettings, 900);
-    } catch (e) {
-      el.settingsStatus.textContent = "保存失败: " + (e.message || e);
-      el.settingsStatus.className = "settings-status error";
-    }
-  }
-
-  async function clearApiKey(provider) {
-    if (!confirm(`确定清除 ${provider} 的 API key?(仅清除配置文件中的值;环境变量不受影响)`)) return;
-    const fieldByProvider = {
-      anthropic: "anthropic_api_key",
-      qwen:      "qwen_api_key",
-      deepseek:  "deepseek_api_key",
-    };
-    const field = fieldByProvider[provider];
-    if (!field) return;
-    const payload = { [field]: "" };
-    try {
-      const r = await fetch(withBasePath("api/config"), {
-        method: "PUT",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) throw new Error((await r.json()).detail || "clear failed");
-      const data = await r.json();
-      state.meta.llm = data;
-      renderKeyStatus(data.api_keys || {});
-      el.settingsStatus.textContent = `${provider} key 已清除`;
-      el.settingsStatus.className = "settings-status success";
-    } catch (e) {
-      el.settingsStatus.textContent = "清除失败: " + (e.message || e);
-      el.settingsStatus.className = "settings-status error";
-    }
-  }
-
-  function resetSettingsToDefaults() {
-    const opt = el.settingsModel.options[el.settingsModel.selectedIndex];
-    if (!opt) return;
-    el.settingsMaxTokens.value = opt.dataset.defaultMaxTokens;
-    el.settingsTemp.value = opt.dataset.defaultTemperature;
-    el.settingsTempVal.textContent = Number(el.settingsTemp.value).toFixed(2);
-  }
-
-  if (el.btnSettings) el.btnSettings.addEventListener("click", openSettings);
-  if (el.settingsClose) el.settingsClose.addEventListener("click", closeSettings);
-  if (el.settingsOverlay) el.settingsOverlay.addEventListener("click", (e) => {
-    if (e.target === el.settingsOverlay) closeSettings();
+  // The model page is a declarative React form. It owns field state and calls
+  // /api/config directly; the runtime only keeps the shared meta snapshot used
+  // by the top bar and composer. No hidden native controls are synchronized.
+  window.addEventListener("bi-settings-updated", (event) => {
+    if (!event.detail) return;
+    if (state.meta) state.meta.llm = event.detail;
+    renderTopbarMeta();
+    window.dispatchEvent(new CustomEvent("bi-settings-snapshot", { detail: event.detail }));
   });
-  if (el.settingsModel) el.settingsModel.addEventListener("change", updateModelHint);
-  if (el.settingsTemp) el.settingsTemp.addEventListener("input", () => {
-    el.settingsTempVal.textContent = Number(el.settingsTemp.value).toFixed(2);
-  });
-  if (el.settingsSave) el.settingsSave.addEventListener("click", saveSettings);
-  if (el.settingsResetDefaults) el.settingsResetDefaults.addEventListener("click", resetSettingsToDefaults);
-  if (el.settingsKeyAnthropicClear) el.settingsKeyAnthropicClear.addEventListener("click", () => clearApiKey("anthropic"));
-  if (el.settingsKeyQwenClear) el.settingsKeyQwenClear.addEventListener("click", () => clearApiKey("qwen"));
-  if (el.settingsKeyDeepseekClear) el.settingsKeyDeepseekClear.addEventListener("click", () => clearApiKey("deepseek"));
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && el.settingsOverlay && !el.settingsOverlay.hidden) {
-      closeSettings();
-    }
-  });
+  window.addEventListener("bi-settings-close", closeSettings);
 
   // ------------------------------------------------------------------
   // Report-generation wizard
@@ -3856,82 +3657,16 @@ export function bootWorkbenchRuntime() {
   // contract used by history/export; this adapter translates that option into
   // Pro UI's component + row-data contract without carrying over the old
   // visual overrides.
-  const PRO_BI_CHART_TYPES = new Set(["bar", "horizontal_bar", "line", "area", "pie"]);
-
   function proBiLibrary() {
     return typeof window !== "undefined" && window.ProUIBi && window.Vue ? window.ProUIBi : null;
-  }
-
-  function proBiChartType(chart) {
-    const type = String(chart?.chart_type || chart?.option?.series?.[0]?.type || "").toLowerCase();
-    return type === "horizontalbar" || type === "horizontal-bar" ? "horizontal_bar" : type;
-  }
-
-  // Keep numeric presentation consistent across tables and Pro UI charts.
-  // Money uses 万 only for non-zero values at or above 10,000; zero is always
-  // rendered as ¥0.00 so we never produce ¥0万 / 0万.
-  function isMoneyLabel(label, unit = "") {
-    return /元|金额|金额占比|收入|成本|采购|销售|库存|利润|费用|支出|应收|应付|余额|价格|单价|税额|营收|¥|￥/.test(`${label || ""}${unit || ""}`);
-  }
-
-  function isNumericValue(value) {
-    return typeof value === "number" && Number.isFinite(value)
-      || typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value));
-  }
-
-  function formatDisplayNumber(value, { money = false, unit = "", percent = false } = {}) {
-    const num = Number(value);
-    if (!Number.isFinite(num)) return String(value ?? "");
-    if (percent) return `${num.toFixed(2)}%`;
-    if (money) {
-      if (num === 0) return "¥0.00";
-      const sign = num < 0 ? "-" : "";
-      const abs = Math.abs(num);
-      if (abs >= 10000) return `${sign}¥${(abs / 10000).toFixed(2)}万`;
-      return `${sign}¥${abs.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    }
-    const formatted = num.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
-    return `${formatted}${unit ? ` ${unit}` : ""}`;
-  }
-
-  function chartDisplayValue(value, label) {
-    const source = value && typeof value === "object" ? value : { value };
-    const raw = source.value;
-    if (!isNumericValue(raw)) return value;
-    const money = isMoneyLabel(label, source.unit);
-    return {
-      ...source,
-      value: Number(raw),
-      formatValue: formatDisplayNumber(raw, { money, unit: source.unit || "" }),
-    };
-  }
-
-  function proBiRows(chart) {
-    const option = chart?.option || {};
-    const type = proBiChartType(chart);
-    const series = Array.isArray(option.series) ? option.series : [];
-    if (type === "pie") {
-      const points = Array.isArray(series[0]?.data) ? series[0].data : [];
-      const label = series[0]?.name || "值";
-      return points.map((point) => ({ category: point?.name ?? "", value: chartDisplayValue(point?.value ?? point, label) }));
-    }
-    const categories = type === "horizontal_bar" ? option.yAxis?.data : option.xAxis?.data;
-    const labels = Array.isArray(categories) ? categories : [];
-    return labels.map((category, index) => {
-      const row = { category };
-      series.forEach((item, seriesIndex) => {
-        const key = String(item?.name || `series_${seriesIndex + 1}`);
-        const value = Array.isArray(item?.data) ? item.data[index] : null;
-        row[key] = chartDisplayValue(value, key);
-      });
-      return row;
-    });
   }
 
   function mountProBiChart(host, chart, card) {
     const lib = proBiLibrary();
     if (!host || !lib) return false;
-    const type = proBiChartType(chart);
+    const spec = buildProBiChart(chart);
+    const type = spec.type;
+    if (!PRO_BI_CHART_TYPES.has(type)) return false;
     const Component = lib[type === "bar" ? "ProBarChart"
       : type === "horizontal_bar" ? "ProHorizontalBarChart"
       : type === "line" ? "ProLineChart"
@@ -3942,31 +3677,11 @@ export function bootWorkbenchRuntime() {
       host.__proBiApp.unmount();
       host.__proBiApp = null;
     }
-    const option = chart?.option || {};
-    const series = Array.isArray(option.series) ? option.series : [];
-    const measureFields = type === "pie"
-      ? [{ id: "value", identifierCode: "value", label: series[0]?.name || "值" }]
-      : series.map((item, index) => ({
-          id: `measure-${index}`,
-          identifierCode: String(item?.name || `series_${index + 1}`),
-          label: String(item?.name || `系列 ${index + 1}`),
-        }));
-    const component = {
-      id: `chart-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      title: String(chart?.title || "分析结果"),
-      showHeader: true,
-      dataConfig: {
-        categoryAxis: [{ id: "category", identifierCode: "category", label: "类别" }],
-        valueAxis: measureFields,
-      },
-      // Empty visualization deliberately uses Pro UI's own defaults.
-      visualization: {},
-    };
     const app = lib && window.Vue.createApp({
       render() {
         return window.Vue.h(Component, {
-          component,
-          data: proBiRows(chart),
+          component: spec.component,
+          data: spec.rows,
         });
       },
     });
@@ -7281,6 +6996,7 @@ export function bootWorkbenchRuntime() {
     // Keep the canonical paper-plane SVG; busy is expressed with a class so
     // the button looks identical on first paint and after history restore.
     el.btnSend.classList.toggle("is-busy", v);
+    publishComposerState();
     // Navigation remains available while a turn is in flight.
   }
 
@@ -7383,17 +7099,36 @@ export function bootWorkbenchRuntime() {
 
     // 最近 list is per-mode — refresh for the incoming mode
     if (typeof loadRecent === "function") loadRecent();
+    publishComposerState();
   }
 
   el.modeBtns.forEach(b => {
     b.addEventListener("click", () => switchMode(b.dataset.mode));
   });
 
+  function publishComposerState() {
+    window.dispatchEvent(new CustomEvent("bi-composer-state", {
+      detail: {
+        busy: !!state.busy,
+        disabled: !!el.chatInput?.disabled,
+        placeholder: el.chatInput?.placeholder || "提问…",
+        mode: state.mode,
+        withDb: !!el.withDb?.checked,
+        historyCount: Number(el.historyCount?.textContent || 0),
+        attachVisible: !!el.attachRow && !el.attachRow.hidden,
+        attachName: el.attachChipName?.textContent?.trim() || "",
+        attachMeta: el.attachChipMeta?.textContent?.trim() || "",
+        uploadStatus: el.uploadStatus?.textContent?.trim() || "",
+      },
+    }));
+  }
+
   function updateChatInputAvailability() {
     if (state.busy) return;
     const blocked = state.historyRestoring || (state.mode === "report" && !state.report.sessionActivated);
     el.chatInput.disabled = blocked;
     el.btnSend.disabled = blocked;
+    publishComposerState();
   }
 
   function updateSendPlaceholder() {
@@ -7415,6 +7150,7 @@ export function bootWorkbenchRuntime() {
     } else {
       el.chatInput.placeholder = "提问...  (Enter 发送 · Shift+Enter 换行)";
     }
+    publishComposerState();
   }
 
   // ------------------------------------------------------------------
@@ -7423,6 +7159,7 @@ export function bootWorkbenchRuntime() {
   function uploadStatus(msg, kind = "info") {
     el.uploadStatus.textContent = msg || "";
     el.uploadStatus.className = "upload-status " + (msg ? kind : "");
+    publishComposerState();
   }
 
   async function refreshReportStatus() {
@@ -7449,6 +7186,7 @@ export function bootWorkbenchRuntime() {
       state.report.history = data.items || [];
       el.historyCount.textContent = state.report.history.length;
       renderHistoryList();
+      publishComposerState();
     } catch (e) {
       console.warn("report history load failed", e);
     }
@@ -7482,6 +7220,7 @@ export function bootWorkbenchRuntime() {
     if (el.withDb) el.withDb.checked = !!state.report.withDb;
     updateChatInputAvailability();
     updateSendPlaceholder();
+    publishComposerState();
   }
 
   const MAX_ACTIVE_REPORTS = 5;

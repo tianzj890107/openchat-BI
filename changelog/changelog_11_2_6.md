@@ -78,20 +78,38 @@
 - 看板与布局：两栏看板折叠后显示 Pro UI 浮动展开按钮，展开或单栏时自动隐藏；浮动控件
   保持绝对定位，不再作为网格项撑出隐式行。1440×900 下以 878px 全高布置对话区，
   760×900 单栏也保持满高且无横向溢出。
+- 声明式设置页（2026-11-04）：模型参数与个人账号设置改为 React 表单，直接读取
+  `/api/meta`、写入 `/api/config` 或浏览器本地偏好；删除隐藏原生控件、240ms 快照轮询、
+  模拟点击和控件镜像 host。runtime 只发布 `bi-settings-snapshot` / `bi-settings-updated`
+  事件并保留顶层 meta 展示，保存后仍立即刷新模型入口与顶栏信息。
+- 事件驱动输入区（2026-11-04）：去掉 Sender 每 320ms 读取旧输入框的轮询，改由 runtime
+  发布 `bi-composer-state`，输入、忙碌、模式、附件、上传状态和占位文案通过明确事件同步；
+  legacy 输入框仅保留发送适配，不再作为第二状态源。
+- 图表适配器（2026-11-04）：新增 `analyticsChartAdapter.js`，使用 `series_1`…稳定 key
+  生成 Pro BI 行数据，避免同名系列互相覆盖；保留 stack、双轴 `yAxisIndex`（通过
+  `customOptions`）和百分比/金额格式，空值不再伪装成 0，并显式关闭默认 12 类截断。
+- 生命周期清理（2026-11-04）：统一登记页面根节点，卸载时逐个 `root.unmount()` 并断开
+  `chat-scroll` / `dashboard-list` 观察器；页面控件桥保存可遍历的 record，清理时卸载 root、
+  断开可见性观察器并恢复原生节点；历史切换只对真正移除的消息/步骤/结果卡执行 React 卸载。
+- 无障碍名称（2026-11-04）：设置页、账号页、页面控件桥的图标按钮、Select、Input、Slider
+  和 Switch 补齐 `aria-label` 或关联标签，1440px 验收未发现无名称的可见控件。
 - 依赖与构建：内部 npm `http://npm.boulderaitech.com/` 提供 `@pro-ui/x-react` 0.1.0–0.1.2，
   当前固定 0.1.2，支持 React 18.3.1；移除 `@ant-design/x`。`@pro-ui/chat-runtime` 未发布，
   浏览器会话仍由 Analytics runtime 管理。为兼容 assistant-ui 依赖，固定
   `@assistant-ui/store@0.2.13` 和 `@assistant-ui/tap@0.5.16`，`npm run build` 已通过。
 - 主要文件：`frontend/src/ProUiSidebar.jsx`、`ProUiComposer.jsx`、`ProUiWelcome.jsx`、
-  `ProUiPageControls.jsx`、`proUiTheme.js`、`proUiBridge.js`、`ProUiAgentStatus.jsx`、
-  `main.jsx`、`runtime.js`、`shell.html`、`workbench.css`、`frontend/package.json`、
+  `ProUiSettingsPage.jsx`、`ProUiAccountPage.jsx`、`ProUiPageControls.jsx`、
+  `analyticsChartAdapter.js`、`proUiTheme.js`、`proUiBridge.js`、`ProUiAgentStatus.jsx`、
+  `main.jsx`、`runtime.js`、`shell.html`、`workbench.css`、`frontend/tests/`、`frontend/package.json`、
   `frontend/package-lock.json`、`bi_agent/web/static/index.html`、前端构建产物、
   回归测试和规范文档。
-- 验证：前端 Node 测试 101 项、`tests.test_regressions` 222 项、`npm run build` 和
-  `git diff --check` 通过；1440×900 与 760×900 本地 CDP 验收九条路由、侧栏展开/收起、
+- 验证：前端 Node 测试 111 项（新增图表适配器与声明式桥接回归）、`tests.test_regressions`
+  222 项、`npm run build` 和 `git diff --check` 通过；1440×900 与 760×900 本地 CDP 验收
+  九条路由、声明式模型/账号表单、无隐藏原生设置控件、无无名称可见控件、侧栏展开/收起、
   数据源页面、Sender 输入/清空/发送按钮状态和返回高亮；导航行高 30px、最近会话行高
   38px，模型按钮可跳转并高亮模型参数页，看板折叠后的展开按钮位于右上浮动层且可恢复
   两栏，展开和单栏状态隐藏，无隐式网格行、横向溢出或 JS 异常。恢复含工具调用的历史
   会话时 6 条消息全部为 ProX Bubble，旧 Bubble/ThoughtChain 为 0；模型页控件、本体
   筛选、系统日志页签和报表向导控件正常，Select 悬浮与输入框 hover/focus 态可见。
-  本轮未部署。
+  历史切换连续往返两次后消息 73 条、Pro BI 图表 11 个、结果卡 11 个均未增长，
+  console error 为 0；新会话对话区占满 1162px 可用宽度。本轮未部署。

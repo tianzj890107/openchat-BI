@@ -8275,3 +8275,56 @@ body.pro-ui-workbench-body .pro-ui-control-host .ant-slider:hover .ant-slider-ra
 body.pro-ui-workbench-body .pro-ui-control-host .ant-slider:hover .ant-slider-track {
   background: var(--pro-ui-accent-hover);
 }
+
+/* ---------- Declarative Pro UI model settings ---------- */
+body.pro-ui-workbench-body .pro-ui-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: -8px 0 0;
+}
+body.pro-ui-workbench-body .pro-ui-settings-form .ant-form-item {
+  margin-bottom: 20px;
+}
+body.pro-ui-workbench-body .pro-ui-settings-form .ant-form-item-label > label {
+  color: var(--pro-ui-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+body.pro-ui-workbench-body .pro-ui-settings-form .ant-form-item-extra {
+  margin-top: 6px;
+  color: var(--pro-ui-muted);
+  font-size: 12px;
+}
+body.pro-ui-workbench-body .pro-ui-settings-divider {
+  margin: 8px 0 18px;
+  padding-top: 18px;
+  border-top: 1px solid #eff2f0;
+  color: var(--pro-ui-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+body.pro-ui-workbench-body .pro-ui-settings-status {
+  margin-top: 4px;
+}
+body.pro-ui-workbench-body .pro-ui-settings-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 0;
+  color: var(--pro-ui-muted);
+  font-size: 13px;
+}
+body.pro-ui-workbench-body .pro-ui-settings-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 14px auto 0;
+  padding: 16px 2px 0;
+  border-top: 1px solid #eff2f0;
+}
+body.pro-ui-workbench-body .pro-ui-settings-spacer {
+  flex: 1;
+}

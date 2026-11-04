@@ -433,98 +433,7 @@
         <div class="page-header">
           <span class="page-title"><span class="page-title-icon" data-feature-glyph="model"></span>模型参数</span>
         </div>
-        <div class="page-body page-body-form">
-          <div class="settings-field">
-            <label class="settings-label" for="settings-model">模型</label>
-            <select class="settings-select" id="settings-model"></select>
-            <div class="settings-hint" id="settings-model-hint"></div>
-          </div>
-          <div class="settings-field">
-            <label class="settings-label" for="settings-max-tokens">最大输出长度 <span class="settings-val">max_tokens</span></label>
-            <input type="number" min="256" max="200000" step="256"
-                   class="settings-input" id="settings-max-tokens" />
-            <div class="settings-hint">单次响应的最大输出 token 数,范围 256–200000。</div>
-          </div>
-          <div class="settings-field">
-            <label class="settings-label" for="settings-temperature">
-              采样温度 temperature <span class="settings-val" id="settings-temp-val">1.0</span>
-            </label>
-            <input type="range" min="0" max="2" step="0.05"
-                   class="settings-slider" id="settings-temperature" />
-            <div class="settings-hint">0 最确定性,1 平衡,2 最发散。Qwen 建议 ≤1.2。</div>
-          </div>
-
-          <div class="settings-field" id="settings-thinking-field">
-            <label class="settings-label" for="settings-thinking">
-              扩展思考
-              <span class="settings-keystatus" id="settings-thinking-status"></span>
-            </label>
-            <label class="toggle settings-thinking-toggle">
-              <input type="checkbox" id="settings-thinking" />
-              <span class="toggle-track"><span class="toggle-dot"></span></span>
-              <span class="toggle-label">启用思考模式</span>
-            </label>
-            <div class="settings-hint" id="settings-thinking-hint">
-              开启后模型会先输出推理过程再给最终回答。仅对支持思考模式的模型生效;
-              Claude 模型在启用思考时会自动锁定 <code>temperature=1.0</code>。
-            </div>
-          </div>
-
-          <div class="settings-divider">API 密钥</div>
-
-          <div class="settings-field">
-            <label class="settings-label" for="settings-key-anthropic">
-              Anthropic (Claude)
-              <span class="settings-keystatus" id="settings-key-anthropic-status"></span>
-            </label>
-            <div class="settings-keyrow">
-              <input type="password" autocomplete="off" spellcheck="false"
-                     class="settings-input" id="settings-key-anthropic"
-                     placeholder="sk-ant-api03-…  (留空则不修改)" />
-              <button type="button" class="btn btn-ghost settings-key-clear"
-                      id="settings-key-anthropic-clear" title="清空该 key">×</button>
-            </div>
-            <div class="settings-hint">用于 Claude Opus/Sonnet 模型。也可设为环境变量 <code>ANTHROPIC_API_KEY</code>(优先级更高)。</div>
-          </div>
-
-          <div class="settings-field">
-            <label class="settings-label" for="settings-key-qwen">
-              DashScope (Qwen)
-              <span class="settings-keystatus" id="settings-key-qwen-status"></span>
-            </label>
-            <div class="settings-keyrow">
-              <input type="password" autocomplete="off" spellcheck="false"
-                     class="settings-input" id="settings-key-qwen"
-                     placeholder="sk-…  (留空则不修改)" />
-              <button type="button" class="btn btn-ghost settings-key-clear"
-                      id="settings-key-qwen-clear" title="清空该 key">×</button>
-            </div>
-            <div class="settings-hint">用于 Qwen 系列模型。也可设为环境变量 <code>DASHSCOPE_API_KEY</code>。</div>
-          </div>
-
-          <div class="settings-field">
-            <label class="settings-label" for="settings-key-deepseek">
-              DeepSeek
-              <span class="settings-keystatus" id="settings-key-deepseek-status"></span>
-            </label>
-            <div class="settings-keyrow">
-              <input type="password" autocomplete="off" spellcheck="false"
-                     class="settings-input" id="settings-key-deepseek"
-                     placeholder="sk-…  (留空则不修改)" />
-              <button type="button" class="btn btn-ghost settings-key-clear"
-                      id="settings-key-deepseek-clear" title="清空该 key">×</button>
-            </div>
-            <div class="settings-hint">用于 DeepSeek V4 系列模型。也可设为环境变量 <code>DEEPSEEK_API_KEY</code>。</div>
-          </div>
-
-          <div class="settings-status" id="settings-status"></div>
-        </div>
-        <div class="page-footer">
-          <button class="btn btn-ghost" id="settings-reset-defaults">恢复默认</button>
-          <span class="rg-footer-spacer"></span>
-          <button class="btn btn-ghost" id="settings-close">返回</button>
-          <button class="btn btn-primary" id="settings-save">保存</button>
-        </div>
+        <div class="page-body page-body-form" id="pro-ui-settings-root"></div>
       </section>
 
       <!-- ---------- VIEW: 角色选择 ---------- -->
@@ -604,27 +513,7 @@
         <div class="page-header">
           <span class="page-title"><span class="page-title-icon" data-feature-glyph="model"></span>个人账号设置</span>
         </div>
-        <div class="page-body page-body-form">
-          <div class="settings-field">
-            <label class="settings-label" for="account-name-input">用户名</label>
-            <input class="settings-input" id="account-name-input" type="text"
-                   maxlength="24" placeholder="分析员" autocomplete="off" spellcheck="false" />
-            <div class="settings-hint">显示在左下角账号区,仅保存在本机浏览器(localStorage)。</div>
-          </div>
-          <div class="settings-field">
-            <label class="settings-label">界面主题</label>
-            <label class="toggle">
-              <input type="checkbox" id="account-theme-light" />
-              <span class="toggle-track"><span class="toggle-dot"></span></span>
-              <span class="toggle-label">浅色主题</span>
-            </label>
-            <div class="settings-hint">关闭为深色。默认使用 CEO 驾驶舱风格的浅色画布；主题偏好保存在本机浏览器。</div>
-          </div>
-          <div class="settings-status" id="account-status"></div>
-        </div>
-        <div class="page-footer">
-          <button class="btn btn-primary" id="account-save">保存</button>
-        </div>
+        <div class="page-body page-body-form" id="pro-ui-account-root"></div>
       </section>
 
     </div>

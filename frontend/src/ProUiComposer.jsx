@@ -26,13 +26,18 @@ function clickLegacy(id) {
   legacyElement(id)?.click();
 }
 
+function modelLabelFromLlm(llm) {
+  if (!llm) return "模型参数";
+  const current = llm.current || {};
+  const model = (llm.models || []).find((item) => item.key === current.model_key || item.model_key === current.model_key);
+  return model?.label || current.model_key || "模型参数";
+}
+
 function readLegacySnapshot() {
   const input = legacyElement("chat-input");
   const mode = document.body.dataset.mode || "data";
   const busy = !!legacyElement("btn-send")?.classList.contains("is-busy");
   const attachRow = legacyElement("attach-row");
-  const modelSelect = legacyElement("settings-model");
-  const selectedModel = modelSelect?.selectedOptions?.[0];
   return {
     value: input?.value || "",
     busy,
@@ -45,7 +50,7 @@ function readLegacySnapshot() {
     attachName: legacyElement("attach-chip-name")?.textContent?.trim() || "",
     attachMeta: legacyElement("attach-chip-meta")?.textContent?.trim() || "",
     uploadStatus: legacyElement("upload-status")?.textContent?.trim() || "",
-    modelLabel: selectedModel?.textContent?.trim() || "模型参数",
+    modelLabel: "模型参数",
   };
 }
 
@@ -60,29 +65,12 @@ export default function ProUiComposer({ dispatchRuntime }) {
   });
 
   useEffect(() => {
-    let frame = 0;
-    const sync = () => {
-      const next = readLegacySnapshot();
-      setSnapshot((previous) => {
-        const same = Object.keys(next).every((key) => previous[key] === next[key]);
-        return same ? previous : next;
-      });
-      setValue((previous) => (
-        normalizeComposerValue(previous) === normalizeComposerValue(next.value)
-          ? previous
-          : next.value
-      ));
-      frame = window.setTimeout(sync, 320);
+    const mergeState = (detail) => {
+      if (!detail || typeof detail !== "object") return;
+      setSnapshot((previous) => ({ ...previous, ...detail }));
     };
-    sync();
-    const onBusy = (event) => {
-      setSnapshot((previous) => ({ ...previous, busy: !!event.detail?.busy }));
-    };
-    const onMode = () => {
-      const next = readLegacySnapshot();
-      setSnapshot(next);
-      setValue(next.value);
-    };
+    const onBusy = (event) => mergeState({ busy: !!event.detail?.busy });
+    const onState = (event) => mergeState(event.detail);
     const onPrefill = (event) => {
       const next = normalizeComposerValue(event.detail?.text);
       setValue(next);
@@ -94,16 +82,37 @@ export default function ProUiComposer({ dispatchRuntime }) {
       window.requestAnimationFrame(() => senderRef.current?.focus?.());
     };
     const onFocus = () => senderRef.current?.focus?.();
+    const onSettings = (event) => {
+      const label = modelLabelFromLlm(event.detail);
+      setSnapshot((previous) => ({ ...previous, modelLabel: label }));
+    };
+    const input = legacyElement("chat-input");
+    const onInput = () => {
+      setSnapshot((previous) => ({
+        ...previous,
+        value: input?.value || "",
+        disabled: !!input?.disabled,
+        placeholder: input?.placeholder || previous.placeholder,
+      }));
+    };
+    // The runtime is the owner of transport state; it publishes one explicit
+    // snapshot after busy/mode/attachment changes. The composer never polls
+    // the legacy DOM, so a hidden input cannot become a second state source.
     window.addEventListener("bi-agent-busy", onBusy);
-    window.addEventListener("bi-mode-changed", onMode);
+    window.addEventListener("bi-composer-state", onState);
     window.addEventListener("bi-composer-prefill", onPrefill);
     window.addEventListener("bi-composer-focus", onFocus);
+    window.addEventListener("bi-settings-snapshot", onSettings);
+    window.addEventListener("bi-settings-updated", onSettings);
+    input?.addEventListener("input", onInput);
     return () => {
-      window.clearTimeout(frame);
       window.removeEventListener("bi-agent-busy", onBusy);
-      window.removeEventListener("bi-mode-changed", onMode);
+      window.removeEventListener("bi-composer-state", onState);
       window.removeEventListener("bi-composer-prefill", onPrefill);
       window.removeEventListener("bi-composer-focus", onFocus);
+      window.removeEventListener("bi-settings-snapshot", onSettings);
+      window.removeEventListener("bi-settings-updated", onSettings);
+      input?.removeEventListener("input", onInput);
     };
   }, []);
 

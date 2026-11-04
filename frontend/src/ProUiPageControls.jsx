@@ -70,6 +70,7 @@ const globalState = {
   styleObserver: null,
   bodyObserver: null,
   roots: new Set(),
+  records: new Set(),
   visibilitySyncs: new Set(),
   visibilityFrame: 0,
 };
@@ -156,13 +157,11 @@ function useLegacySnapshot(element, read) {
       characterData: true,
       subtree: true,
     });
-    const timer = window.setInterval(sync, 240);
     element.addEventListener("input", sync);
     element.addEventListener("change", sync);
     element.addEventListener("pro-ui-mirror-sync", sync);
     sync();
     return () => {
-      window.clearInterval(timer);
       window.clearTimeout(frame);
       observer.disconnect();
       element.removeEventListener("input", sync);
@@ -176,6 +175,21 @@ function useLegacySnapshot(element, read) {
 
 function dispatchNativeChange(element, eventName = "change") {
   element.dispatchEvent(new Event(eventName, { bubbles: true }));
+}
+
+function accessibleName(element) {
+  const explicit = element.getAttribute("aria-label") || element.getAttribute("title");
+  if (explicit) return explicit.trim();
+  const labelledBy = element.getAttribute("aria-labelledby");
+  if (labelledBy) {
+    const label = document.getElementById(labelledBy);
+    if (label?.textContent?.trim()) return label.textContent.trim();
+  }
+  if (element.id) {
+    const label = document.querySelector(`label[for="${CSS.escape(element.id)}"]`);
+    if (label?.textContent?.trim()) return label.textContent.replace(/\s+/g, " ").trim();
+  }
+  return element.textContent.replace(/\s+/g, " ").trim();
 }
 
 function buttonSnapshot(element) {
@@ -215,6 +229,7 @@ function ButtonIcon({ element }) {
 
 function ProUiButtonControl({ element }) {
   const snapshot = useLegacySnapshot(element, () => buttonSnapshot(element));
+  const name = snapshot.title || snapshot.text || accessibleName(element);
 
   const special = element.classList.contains("settings-key-clear")
     || element.classList.contains("modal-close")
@@ -248,6 +263,7 @@ function ProUiButtonControl({ element }) {
         danger={special && !label}
         block={snapshot.role}
         data-selected={snapshot.selected ? "true" : "false"}
+        aria-label={!label ? name || undefined : undefined}
         onClick={() => element.click()}
       >
         {label || undefined}
@@ -278,6 +294,7 @@ function ProUiSelectControl({ element }) {
       options={snapshot.options}
       disabled={snapshot.disabled}
       placeholder="加载中…"
+      aria-label={accessibleName(element) || "选项"}
       showSearch
       optionFilterProp="label"
       onChange={(value) => {
@@ -319,6 +336,7 @@ function ProUiInputControl({ element }) {
     placeholder: snapshot.placeholder,
     disabled: snapshot.disabled,
     maxLength: snapshot.maxLength ? Number(snapshot.maxLength) : undefined,
+    "aria-label": accessibleName(element) || snapshot.placeholder || "输入",
   };
   const update = (value, eventName) => {
     element.value = value == null ? "" : String(value);
@@ -361,6 +379,7 @@ function ProUiRangeControl({ element }) {
       max={Number(snapshot.max || 100)}
       step={Number(snapshot.step || 1)}
       value={Number(snapshot.value || 0)}
+      aria-label={accessibleName(element) || "数值范围"}
       disabled={snapshot.disabled}
       onChange={(value) => {
         element.value = String(value);
@@ -391,7 +410,7 @@ function ProUiToggleControl({ element }) {
   };
   const control = (
     <span className="pro-ui-page-toggle">
-      <Switch size="small" checked={snapshot.checked} disabled={snapshot.disabled} onChange={setChecked} />
+      <Switch size="small" checked={snapshot.checked} disabled={snapshot.disabled} aria-label={snapshot.label || snapshot.title || accessibleName(element) || "开关"} onChange={setChecked} />
       <span className="pro-ui-page-toggle-label" onClick={() => !snapshot.disabled && setChecked(!snapshot.checked)}>
         {snapshot.label}
       </span>
@@ -719,8 +738,22 @@ function mountControl(element) {
   element.after(host);
   const root = createRoot(host);
   root.render(<ProUiPageControl element={element} kind={kind} />);
-  bridgedRoots.set(element, { host, root, visibilityObserver });
+  const record = { element, host, root, visibilityObserver, syncHostVisibility };
+  bridgedRoots.set(element, record);
   globalState.roots.add(root);
+  globalState.records.add(record);
+}
+
+function disposeControl(record) {
+  if (!record) return;
+  if (record.visibilityObserver) record.visibilityObserver.disconnect();
+  globalState.visibilitySyncs.delete(record.syncHostVisibility);
+  globalState.records.delete(record);
+  globalState.roots.delete(record.root);
+  bridgedRoots.delete(record.element);
+  try { record.root?.unmount(); } catch (_) { /* already detached */ }
+  record.host?.remove();
+  if (record.element?.dataset?.proUiNative) delete record.element.dataset.proUiNative;
 }
 
 function scan(root) {
@@ -763,6 +796,7 @@ export function mountProUiPageControls(root = document) {
     globalState.styleObserver = null;
     globalState.bodyObserver?.disconnect();
     globalState.bodyObserver = null;
+    [...globalState.records].forEach(disposeControl);
     globalState.visibilitySyncs.clear();
     if (globalState.visibilityFrame) {
       window.clearTimeout(globalState.visibilityFrame);
