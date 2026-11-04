@@ -7840,8 +7840,8 @@ export function bootWorkbenchRuntime() {
   }
 
   (function bootDashboardState() {
-    let collapsed = false;
-    try { collapsed = localStorage.getItem(DASHBOARD_LS_KEY) === "1"; } catch (e) {}
+    let collapsed = true;
+    try { collapsed = localStorage.getItem(DASHBOARD_LS_KEY) !== "0"; } catch (e) {}
     applyDashboardState(collapsed);
   })();
 

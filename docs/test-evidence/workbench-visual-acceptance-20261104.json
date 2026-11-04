@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-04",
+  "target": "http://127.0.0.1:8765/workbench",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900,
+      "horizontalOverflow": false
+    },
+    {
+      "width": 760,
+      "height": 900,
+      "horizontalOverflow": false
+    }
+  ],
+  "checks": [
+    "new visitor dashboard collapsed",
+    "empty SOP hidden",
+    "welcome prompt prefill",
+    "keyboard Enter submits",
+    "SSE fixture text rendered",
+    "credential section collapsed",
+    "model settings navigation",
+    "skipped stages separated from cancellation"
+  ],
+  "networkPolicy": "Browser fixture intercepts all POST requests; no real model requests, config writes or history saves",
+  "node_tests": 113,
+  "python_regression_tests": 222,
+  "production_build": "passed",
+  "limitations": [
+    "Real model business quality not assessed",
+    "Production domains not deployed or restarted",
+    "Existing explicit dashboard preferences preserved"
+  ]
+}

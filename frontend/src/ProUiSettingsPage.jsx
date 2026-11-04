@@ -4,6 +4,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Popconfirm,
   Select,
   Slider,
   Space,
@@ -12,11 +13,12 @@ import {
   Tag,
   Typography,
 } from "antd";
-import { Button as ProXButton } from "@pro-ui/x-react";
+import { ProXActivity, Button as ProXButton } from "@pro-ui/x-react";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   ReloadOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 
 const EMPTY_LLM = { models: [], current: {}, api_keys: {} };
@@ -71,6 +73,7 @@ export default function ProUiSettingsPage() {
   const [apiKeys, setApiKeys] = useState({ anthropic: "", qwen: "", deepseek: "" });
   const [status, setStatus] = useState({ type: "info", text: "" });
   const [saving, setSaving] = useState(false);
+  const [credentialsOpen, setCredentialsOpen] = useState(false);
 
   const models = Array.isArray(llm.models) ? llm.models : [];
   const selectedModel = useMemo(
@@ -257,7 +260,7 @@ export default function ProUiSettingsPage() {
           </Space>
         </Form.Item>
 
-        <div className="pro-ui-settings-divider">API 密钥</div>
+        <ProXActivity title="服务商凭据 · 高级设置" expanded={credentialsOpen} onExpand={setCredentialsOpen}>
 
         {keyRows.map(([provider, label, placeholder, envName]) => {
           const current = keyStatus(llm.api_keys?.[provider]);
@@ -275,16 +278,14 @@ export default function ProUiSettingsPage() {
                   autoComplete="off"
                   onChange={(event) => setApiKeys((previous) => ({ ...previous, [provider]: event.target.value }))}
                 />
-                <ProXButton
-                  type="text"
-                  aria-label={`清除 ${label} API key`}
-                  icon={current.text === "未配置" ? <CloseCircleOutlined /> : <CheckCircleOutlined />}
-                  onClick={() => clearKey(provider)}
-                />
+                <Popconfirm title={`确定清除 ${label} 的密钥配置？`} description="环境变量中的配置不受影响。" okText="清除" cancelText="取消" onConfirm={() => clearKey(provider)}>
+                  <ProXButton type="text" danger aria-label={`清除 ${label} API key`} icon={<DeleteOutlined />} disabled={current.text === "未配置"} />
+                </Popconfirm>
               </Space.Compact>
             </Form.Item>
           );
         })}
+        </ProXActivity>
       </Form>
 
       {status.text ? (

@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Tag } from "antd";
 import { ProXPrompts, ProXWelcome } from "@pro-ui/x-react";
 import { welcomePromptsFromHints } from "./proUiBridge.js";
 
@@ -61,9 +60,8 @@ export default function ProUiWelcome() {
       <ProXWelcome
         variant="borderless"
         icon={<BrandMark />}
-        title={<span className="pro-ui-welcome-title">{data.title}</span>}
+        title={<span className="pro-ui-welcome-title">从一个业务问题开始</span>}
         description={data.description}
-        extra={<Tag bordered={false} className="pro-ui-version-tag">ontology-v0.1.5</Tag>}
       />
       {prompts.length ? (
         <ProXPrompts
@@ -73,7 +71,6 @@ export default function ProUiWelcome() {
           items={prompts.map((item) => ({
             key: item.key,
             label: item.label,
-            description: item.description,
             icon: <span className="pro-ui-prompt-arrow" aria-hidden="true">↗</span>,
           }))}
           onItemClick={({ data: prompt }) => {

@@ -261,7 +261,7 @@ export default function ProUiComposer({ dispatchRuntime }) {
         loading={snapshot.busy}
         disabled={snapshot.disabled}
         submitDisabled={!state.canSubmit}
-        placeholder={snapshot.placeholder}
+        placeholder={snapshot.placeholder.replace(/\s*[（(]Enter.*$/i, "")}
         autoSize={{ minRows: 1, maxRows: 8 }}
         submitType="enter"
         ariaLabel="消息输入框"

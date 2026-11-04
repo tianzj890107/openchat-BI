@@ -1,3 +1,4 @@
+import { presentSop } from "./sopPresentation.js";
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Tag } from "antd";
@@ -337,11 +338,10 @@ function WorkflowPanels() {
     document.querySelectorAll(".antd-question-item[data-question-turn], .chat-question-item[data-question-turn]")
       .forEach((node) => node.classList.toggle("active", node.dataset.questionTurn === value));
   }, [workflow.questions, activeQuestionTurn]);
-  const showEmptySop = mode === "data" && !workflow.sop.length;
+  const showEmptySop = false; // Show progress only after a real analysis starts.
   if (workflow.sopHidden && workflow.todoHidden && !showEmptySop) return null;
-  const done = workflow.sop.filter((item) => item.status === "completed").length;
-  const total = workflow.sop.length;
-  const chainItems = workflow.sop.map((item) => ({
+  const { active: visibleSop, skipped: skippedSop, done, total } = presentSop(workflow.sop);
+  const chainItems = visibleSop.map((item) => ({
     id: item.key,
     title: <span className={`antd-sop-title is-${item.status}`}>{item.text}</span>,
     status: sopExecutionStatus(item.status),
@@ -371,7 +371,7 @@ function WorkflowPanels() {
           defaultExpanded
         >
           {total ? (
-            <ProXExecutionSteps items={chainItems} variant="steps" />
+            <><ProXExecutionSteps items={chainItems} variant="steps" />{skippedSop.length ? <p className="pro-ui-sop-skipped">本轮无需执行：{skippedSop.join("、")}</p> : null}</>
           ) : (
             <div className="antd-workflow-empty-sop">开始一轮智能分析后，这里会显示本次对话的分阶段执行进度。</div>
           )}
