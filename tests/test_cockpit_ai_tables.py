@@ -38,10 +38,12 @@ class Gateway:
         return self.data
 
 
-def _save_order_card(tmp_path, cfg, page="analysis", stage="order", scope_notes=None):
+def _save_order_card(tmp_path, cfg, page="analysis", stage="order", scope_notes=None,
+                     period="2025-10"):
     store = Store(tmp_path / "dataset" / "cockpit" / "history.sqlite3")
     context = dict(id=1, page=page, stage=stage, engine="main", sourceMode="service",
-                   chartSnapshotId=RELEASE, dataSource="ap", dataIdentity=cfg.identity())
+                   chartSnapshotId=RELEASE, dataSource="ap", dataIdentity=cfg.identity(),
+                   period=period, filters={})
     item = store.create_analysis("table-card-" + stage, context)
     store.update_analysis(item["id"], status="completed", result={
         "summary": "订单原因已交付",
@@ -61,6 +63,7 @@ def _save_order_card(tmp_path, cfg, page="analysis", stage="order", scope_notes=
     store.publish(item["id"])
     item = store.get_analysis(item["id"])
     store.bind_view(view_scope(context), stage, item["scope"])
+    store.publish_period(1, period, stage, {}, item["id"], view_scope(context))
     return item
 
 
@@ -392,6 +395,30 @@ def test_custom_table_scope_uses_its_exact_published_card(tmp_path, monkeypatch)
     assert body["meta"]["analysisScopeMatch"] is True
     assert body["meta"]["analysisScope"] == scope
     assert body["rows"][0]["主因和根因分析"].startswith("证据支持：排产分配不足")
+
+
+def test_table_analysis_fields_use_the_exact_period_card(tmp_path, monkeypatch):
+    cfg = Config()
+    _save_order_card(tmp_path, cfg, page="analysis", stage="shipment", period="2025-09")
+    response, _ = _client(tmp_path, monkeypatch, {
+        "result": {"rows": [{"YWLN_D049": {"value": "SO-1"}}]},
+        "pagination": {"total": 1},
+    })
+    fields = [("YWLN_D049", "Dimension"), ("YWLN_D006", "Dimension"),
+              ("YWLN_D005", "Dimension"), ("YWLN_D004", "Dimension"),
+              ("YWLN_D050", "Dimension"), ("M0143", "Indicator"),
+              ("YWLN_M_ORDER_OVERDUE_DAYS", "Indicator")]
+    query = _query(fields)
+    query["uiScope"] = _date_scope("2025-09")
+    query["period"] = "2025-09"
+    result = response.post("/api/cockpit/ai-tables/overdue-order-list/query", json=query)
+    assert result.status_code == 200, result.text
+    body = result.json()
+    assert body["meta"]["scopeMatch"] is True
+    assert body["meta"]["analysisScope"] == "period"
+    assert body["meta"]["analysisPeriod"] == "2025-09"
+    assert body["meta"]["analysisScopeMatch"] is True
+    assert body["rows"][0]["主因和根因分析"]
 
 
 def test_unmapped_page_filter_is_rejected_before_ap_is_called(tmp_path, monkeypatch):

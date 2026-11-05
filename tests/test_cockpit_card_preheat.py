@@ -241,7 +241,8 @@ def test_scheduler_can_seed_a_role_from_a_saved_query_plan_without_reusing_evide
     assert any(body['id'] == 1 and body['stage'] == 'quotation' for body in calls)
 
 
-def test_unchanged_preheat_does_not_call_the_model_twice(tmp_path):
+def test_unchanged_preheat_does_not_call_the_model_twice(tmp_path, monkeypatch):
+    monkeypatch.setattr('bi_agent.cockpit.periods.period_catalog', lambda now=None: [])
     cfg = Config()
     store = Store(tmp_path / 'history.sqlite3')
     _publish_operations(store, cfg, items=('bid',))

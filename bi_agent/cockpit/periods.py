@@ -84,6 +84,61 @@ def _period_leaves(node, out):
             _period_leaves(value, out)
 
 
+def _date_only(value) -> bool:
+    """Whether a committed filter value contains dates and nothing else."""
+    if isinstance(value, str):
+        text = value.strip()
+        if text[:1] in {'[', '{'}:
+            try:
+                return _date_only(json.loads(text))
+            except ValueError:
+                return False
+        return bool(normalise(text))
+    if isinstance(value, list):
+        return bool(value) and all(_date_only(item) for item in value)
+    if isinstance(value, dict):
+        # A delivered filter is normally {"label": "时间", "value": "2026-01"}.
+        if 'value' in value:
+            return _date_only(value.get('value'))
+        return False
+    return False
+
+
+def scope_is_period(ui_scope) -> bool:
+    """Whether a UI scope changes only the business period/grain.
+
+    A cached period-stage card is a default-filter card.  Returning it for a
+    scope that also filters by customer, department or product would silently
+    reuse a different business range, so callers must not use the period index
+    for those scopes.
+    """
+    if ui_scope in (None, '', 'default'):
+        return True
+    entries = _entries(ui_scope)
+    if not entries:
+        return False
+    saw_value = False
+    for key, value in entries:
+        method = str(key).split(':', 1)[0]
+        if method == 'setButtonGrainSelection':
+            raw = value.get('value') if isinstance(value, dict) else value
+            if isinstance(raw, str):
+                try:
+                    decoded = json.loads(raw)
+                except ValueError:
+                    decoded = raw
+                if isinstance(decoded, str):
+                    raw = decoded
+            if not isinstance(raw, str) or str(raw).strip().upper() not in _GRAINS:
+                return False
+            saw_value = True
+            continue
+        if method != 'setFilterConditions' or not _date_only(value):
+            return False
+        saw_value = True
+    return saw_value
+
+
 def period_state(ui_scope, fallback='') -> dict:
     """Resolve the effective (periodType, period) from committed filter state.
 
@@ -97,6 +152,13 @@ def period_state(ui_scope, fallback='') -> dict:
             raw = value
             if isinstance(raw, dict):
                 raw = raw.get('value') or raw.get('code') or raw.get('grain') or ''
+            if isinstance(raw, str):
+                try:
+                    decoded = json.loads(raw)
+                except ValueError:
+                    decoded = raw
+                if isinstance(decoded, str):
+                    raw = decoded
             found = _GRAINS.get(str(raw).strip().upper()) if isinstance(raw, str) else ''
             if found:
                 grain = found
@@ -288,17 +350,27 @@ def policy_for(period, *, now=None, active=None, interval=None, grace_days=None,
 
 
 def period_catalog(now=None) -> list[str]:
-    """Explicit list of periods the deployment must keep warm.
+    """Periods the deployment must keep warm.
 
     ``COCKPIT_PREHEAT_PERIODS`` is a comma separated list (``2025,2025-01``).
-    The active period is always first so a fresh deployment warms the range
-    users actually open before any backfill period.
+    The active business month and its year are always included, followed by
+    the settling period inside the grace window and then explicit backfill
+    periods.  A month rollover therefore does not require an environment
+    change or a browser visit before the new range is prepared.
     """
     values = []
+    moment = _moment(now)
+    active = normalise(active_period(moment))
+    if active:
+        values.append(active)
+        if len(active) == 7:
+            values.append(active[:4])
+        for previous in previous_periods(active):
+            policy = policy_for(previous, now=moment, active=active)
+            if policy['kind'] == 'grace' and previous not in values:
+                values.append(previous)
     for raw in (os.getenv('COCKPIT_PREHEAT_PERIODS') or '').split(','):
         period = normalise(raw)
         if period and period not in values:
             values.append(period)
-    # The active period already has maintenance targets; the catalog is the
-    # explicit backfill list, so an empty variable means "no extra periods".
     return values

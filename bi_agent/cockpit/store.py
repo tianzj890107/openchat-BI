@@ -660,9 +660,7 @@ class Store:
         """Bind one (permission range, period, stage, filters) to its analysis."""
         from .publications import config_version, digest
         from .cards import CONTRACT
-        if not isinstance(filters, str):
-            filters = json.dumps(filters, ensure_ascii=False, sort_keys=True,
-                                 separators=(',', ':'))
+        filters = self._period_filters(filters)
         key = digest({'id': int(identity), 'period': period, 'stage': stage,
                       'filters': filters, 'config': config_version(), 'contract': CONTRACT})
         now = time.time()
@@ -674,26 +672,73 @@ class Store:
                         view_key or '', now))
         return key
 
-    def published_period(self, identity, period, stage, filters):
-        """Current published analysis for one period-stage-filters entry."""
+    def published_period(self, identity, period, stage, filters, *, data_identity=None):
+        """Current published analysis for one period-stage-filters entry.
+
+        The key already includes the current metadata/config version.  When a
+        caller supplies ``data_identity`` the stored analysis must still belong
+        to that AP connection; this prevents two sources that share a role from
+        serving each other's card.
+        """
         from .publications import config_version, digest
         from .cards import CONTRACT
-        if not isinstance(filters, str):
-            filters = json.dumps(filters, ensure_ascii=False, sort_keys=True,
-                                 separators=(',', ':'))
+        filters = self._period_filters(filters)
         key = digest({'id': int(identity), 'period': period, 'stage': stage,
                       'filters': filters, 'config': config_version(), 'contract': CONTRACT})
         with self.db() as db:
-            row = db.execute('SELECT analysis_id,view_key,updated FROM period_publications '
-                             'WHERE key=?', (key,)).fetchone()
-        return dict(analysis_id=row[0], view_key=row[1], updated=row[2]) if row else None
+            row = db.execute('SELECT p.analysis_id,p.view_key,p.updated,a.body '
+                             'FROM period_publications p LEFT JOIN analyses a '
+                             'ON a.id=p.analysis_id WHERE p.key=?', (key,)).fetchone()
+        if not row:
+            return None
+        if data_identity is not None:
+            body = json.loads(row[3]) if row[3] else {}
+            if str((body.get('context') or {}).get('dataIdentity') or '') != str(data_identity):
+                return None
+        return dict(analysis_id=row[0], view_key=row[1], updated=row[2])
 
-    def published_stage_periods(self, limit=5000):
-        """Published (identity, stage, period) triples, newest first."""
+    def published_stage_periods(self, limit=5000, *, deliverable_only=True,
+                                data_identity=None):
+        """Published (identity, stage, period) triples under the current config.
+
+        A rotated metadata/config version changes the period key, so rows from
+        the old version remain useful history but must not count as ready.
+        Deliverability is checked against the referenced analysis as well: an
+        index row whose result was deleted, failed or lost its card contract
+        cannot make the coverage report claim completion.
+        """
+        from .publications import config_version, digest
+        from .cards import CONTRACT
+        current = config_version()
         with self.db() as db:
-            rows = db.execute('SELECT identity,stage,period FROM period_publications '
-                              'ORDER BY updated DESC LIMIT ?', (limit,)).fetchall()
-        return {(int(identity), stage, period) for identity, stage, period in rows}
+            rows = db.execute('SELECT p.key,p.identity,p.stage,p.period,p.filters,'
+                              'p.analysis_id,a.body FROM period_publications p '
+                              'LEFT JOIN analyses a ON a.id=p.analysis_id '
+                              'ORDER BY p.updated DESC LIMIT ?', (limit,)).fetchall()
+        result = set()
+        for key, identity, stage, period, filters, analysis_id, body in rows:
+            expected = digest({'id': int(identity), 'period': period, 'stage': stage,
+                               'filters': filters, 'config': current,
+                               'contract': CONTRACT})
+            if key != expected:
+                continue
+            item = json.loads(body) if body else None
+            if deliverable_only:
+                if (not item or item.get('status') not in {'completed', 'limited'}
+                        or (item.get('result') or {}).get('cardContract') != CONTRACT):
+                    continue
+            if data_identity is not None and item:
+                if str((item.get('context') or {}).get('dataIdentity') or '') != str(data_identity):
+                    continue
+            result.add((int(identity), stage, period))
+        return result
+
+    @staticmethod
+    def _period_filters(filters):
+        if isinstance(filters, str):
+            return filters
+        return json.dumps(filters or {}, ensure_ascii=False, sort_keys=True,
+                          separators=(',', ':'))
 
     def latest_views(self, identity, engine, page, *, data_identity=None):
         """Newest published card per stage, even if the config key rotated.

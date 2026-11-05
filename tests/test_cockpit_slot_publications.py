@@ -42,11 +42,11 @@ QUERIES = {
 }
 
 
-def _save_stage(store, cfg, stage, page, findings=None):
+def _save_stage(store, cfg, stage, page, findings=None, period='2025-10'):
     context = dict(id=1, page=page, stage=stage, engine='main', source='service',
                    dataSource='ap', dataIdentity=cfg.identity(), dataFingerprint='fp-' + stage,
                    chartSnapshotId=RELEASE, chartQueries=[json.dumps(QUERIES[stage], sort_keys=True)],
-                   period='2025-10', department='全部产品部', filters={}, repositoryId='',
+                   period=period, department='全部产品部', filters={}, repositoryId='',
                    clarifications={}, baselineAnalysisId='')
     findings = findings or []
     evidence_ids = [str(value) for finding in findings for value in finding.get('evidenceIds', [])]
@@ -73,6 +73,14 @@ def _client(tmp_path, monkeypatch, cfg):
         main_runner=lambda *a: (_ for _ in ()).throw(AssertionError('read path must not call the model')),
         main_context=lambda context: {}))
     return TestClient(app)
+
+
+def _period_scope(period, grain='MONTH'):
+    return json.dumps([
+        ['setButtonGrainSelection:grain:{}', json.dumps(grain)],
+        ['setFilterConditions:filter:{}', json.dumps([{'label': '时间', 'value': period}],
+                                                      ensure_ascii=False)],
+    ], ensure_ascii=False)
 
 
 def test_registry_is_the_fixed_fifteen_slot_contract():
@@ -179,6 +187,60 @@ def test_month_and_empty_date_scopes_reuse_preheated_default_cards(tmp_path, mon
         assert value['scopeMatch'] is True
         assert value['displayScope'] == 'default'
         assert all(item['scopeMatch'] is True for item in value['slots'].values())
+
+
+def test_date_scope_reads_its_exact_period_card_before_the_latest_default(tmp_path, monkeypatch):
+    cfg = Config()
+    store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
+    sept = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-09')
+    october = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-10')
+    store.publish_period(1, '2025-09', 'shipment', {}, sept['id'],
+                         view_scope(sept['context']))
+    store.publish_period(1, '2025-10', 'shipment', {}, october['id'],
+                         view_scope(october['context']))
+
+    client = _client(tmp_path, monkeypatch, cfg)
+    for period, expected in (('2025-09', sept), ('2025-10', october)):
+        value = client.get('/api/cockpit/ai-publications',
+                           params={'id': 1, 'uiScope': _period_scope(period)}).json()
+        shipment = next(item for item in value['slots'].values() if item['stage'] == 'shipment')
+        assert value['requestedPeriod'] == period
+        assert value['scopeMatch'] is True and value['displayScope'] == 'period'
+        assert shipment['periodMatch'] is True and shipment['scopeMatch'] is True
+        assert shipment['payload']['id'] == expected['id']
+        status = client.get('/api/cockpit/publications/status',
+                            params={'id': 1, 'page': 'analysis',
+                                    'uiScope': _period_scope(period)}).json()
+        assert status['period'] == period and status['periodMatch'] is True
+
+
+def test_preheated_years_and_months_survive_restart_and_serve_each_range(tmp_path, monkeypatch):
+    cfg = Config()
+    store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
+    stage_pages = {'bid': 'operations', 'quotation': 'operations', 'order': 'operations',
+                   'opportunity': 'analysis', 'shipment': 'analysis'}
+    periods = ('2024', '2025', '2025-09', '2025-10', '2025-11')
+    expected = {}
+    for period in periods:
+        expected[period] = {}
+        for stage, page in stage_pages.items():
+            item = _save_stage(store, cfg, stage, page, period=period)
+            store.publish_period(1, period, stage, {}, item['id'],
+                                 view_scope(item['context']))
+            expected[period][stage] = item['id']
+
+    # A new router/store instance models a service restart with only SQLite.
+    client = _client(tmp_path, monkeypatch, cfg)
+    for period in periods:
+        scope = _period_scope(period, 'YEAR' if len(period) == 4 else 'MONTH')
+        value = client.get('/api/cockpit/ai-publications',
+                           params={'id': 1, 'uiScope': scope}).json()
+        assert value['requestedPeriod'] == period
+        assert value['scopeMatch'] is True and value['displayScope'] == 'period'
+        for stage, analysis_id in expected[period].items():
+            slot = next(item for item in value['slots'].values() if item['stage'] == stage)
+            assert slot['periodMatch'] is True
+            assert slot['payload']['id'] == analysis_id
 
 
 def test_non_default_grain_view_and_business_filters_do_not_reuse_default_scope(tmp_path, monkeypatch):

@@ -35,8 +35,19 @@
       `commonConfig.filters.children`，只有连 `commonConfig` 都不存在的载荷才拒绝生成。
     - 期间目录注册不再改写 `retry_wait` / `awaiting-plan` 的执行时间，AP 故障时不会每轮重打。
     - 期间解析改为结构化：按最后一次年度/月度粒度选择，残留旧月份不会覆盖新的年度选择。
-- 验证：`tests/test_cockpit_period_refresh.py` 39 项（先红后绿）；
-  全量 `pytest tests -k cockpit` 328 项通过，前端 `node --test tests/*.test.mjs` 92 项通过。
+  - 第三轮验收修复：
+    - AI 插槽、表格分析字段和发布状态接通精确期间读取：日期/年度范围先查该期间的分析 ID，
+      命中后返回对应卡片并标记 `periodMatch=true`；未命中才回退最近默认卡片并明确标记范围不一致。
+    - 期间覆盖统计按当前定义版本、数据身份和可交付分析过滤；配置轮换后的旧索引保留为历史，
+      不再把失效缓存计为 ready。
+    - 有效期间目录始终包含当前业务月份及其年度，并按宽限期加入上月/上一年度，再合并
+      `COCKPIT_PREHEAT_PERIODS`；跨月不再依赖环境变量修改或页面访问。
+    - 期间查询计划遇到 `OR` 根筛选时用新的 `AND` 根节点包裹原筛选和日期条件；已有
+      `YWLN_D044` 条件仅接受 `BETWEEN` / `DATE` / `ABSOLUTE`，其他操作符拒绝生成，避免扩大查询范围。
+    - 期间预热在调度中降为低优先级，不会挤占已到期的页面或单卡维护任务。
+    - 新增重启后 2 个年度、3 个月份 × 5 个环节逐期间读取的端到端用例，读取过程不调用模型或 AP。
+- 验证：`tests/test_cockpit_period_refresh.py` 45 项通过，期间读取/表格/状态相关目标用例 109 项通过；
+  全量 `pytest tests -k cockpit` 339 项通过，前端 `node --test tests/*.test.mjs` 92 项通过。
   全量 Python 套件另有 5 项与本次无关的既有失败（版本 tag 校验、`库存管理演示内容.docx` 缺失、
   Workbench 本地 PG 未完成改动）。
 

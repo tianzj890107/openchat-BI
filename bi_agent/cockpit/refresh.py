@@ -607,7 +607,8 @@ class RefreshManager:
             if changed:
                 job = self.start_analysis(request, resolved)
                 item = self._await(job, claim)
-                self.record_period(identity, stage, request, item['id'], current_scope)
+                self.record_period(identity, stage, {**request, **resolved},
+                                   item['id'], current_scope)
             if not self._owned(claim):
                 raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             now = time.time()
@@ -723,7 +724,8 @@ class RefreshManager:
                 self.store.set_stage_evidence(
                     item['id'], stage, resolved['dataFingerprint'],
                     [record for record in request['chartQueries']])
-                self.record_period(identity, stage, request, item['id'], key)
+                self.record_period(identity, stage, {**request, **resolved},
+                                   item['id'], key)
             if not self._owned(claim):
                 raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             now = time.time()
@@ -804,43 +806,64 @@ def _with_period(requests, period):
         return []
     start, end = value
 
-    def rewrite(node):
-        applied = 0
-        if isinstance(node, dict):
-            if str(node.get('identifierCode') or '') == 'YWLN_D044' and 'value' in node:
-                node['value'] = [start, end]
-                node.setdefault('operator', {'code': 'BETWEEN', 'type': 'DATE'})
-                node.setdefault('valueType', 'ABSOLUTE')
-                applied += 1
-            for child in node.values():
-                applied += rewrite(child)
-        elif isinstance(node, list):
-            for child in node:
-                applied += rewrite(child)
-        return applied
-
     def date_condition():
         return {'identifierCode': 'YWLN_D044',
                 'operator': {'code': 'BETWEEN', 'type': 'DATE'},
                 'valueType': 'ABSOLUTE', 'value': [start, end]}
 
+    def rewrite(node, *, root=False):
+        """Return (applied, valid) while validating every date condition."""
+        applied, valid = 0, True
+        if isinstance(node, dict):
+            if str(node.get('identifierCode') or '') == 'YWLN_D044' and 'value' in node:
+                operator = node.get('operator') or {}
+                code = str(operator.get('code') or '').upper()
+                if code not in {'BETWEEN', 'DATE', 'ABSOLUTE'}:
+                    return applied, False
+                node['value'] = [start, end]
+                applied += 1
+            for child in node.values():
+                child_applied, child_valid = rewrite(child)
+                applied += child_applied
+                valid = valid and child_valid
+        elif isinstance(node, list):
+            for child in node:
+                child_applied, child_valid = rewrite(child)
+                applied += child_applied
+                valid = valid and child_valid
+        return applied, valid
+
     def apply_one(payload):
-        if rewrite(payload):
+        if not isinstance(payload, dict) or not isinstance(payload.get('commonConfig'), dict):
+            return None
+        common = payload['commonConfig']
+        filters = common.get('filters')
+        if not isinstance(filters, dict):
+            filters = {'logic': 'AND', 'children': []}
+            common['filters'] = filters
+        applied, valid = rewrite(filters)
+        if not valid:
+            # An existing date condition with an unsupported operator cannot be
+            # safely reinterpreted.  Drop this template instead of widening it.
+            return None
+        logic = str(filters.get('logic') or 'AND').upper()
+        direct_date = any(
+            isinstance(child, dict)
+            and str(child.get('identifierCode') or '') == 'YWLN_D044'
+            for child in (filters.get('children') or []))
+        if logic != 'AND':
+            # Appending to an OR root would change "A OR period" into a wider
+            # query.  Preserve the whole original filter as one branch and
+            # require the period at a new AND root.
+            common['filters'] = {'logic': 'AND',
+                                 'children': [filters, date_condition()]}
             return payload
-        # Delivered/component templates carry the metric fields but not the
-        # period condition.  Add the AP date filter instead of running an
-        # all-time aggregate and calling it "this month".
-        if isinstance(payload, dict) and isinstance(payload.get('commonConfig'), dict):
-            common = payload['commonConfig']
-            filters = common.get('filters')
-            if not isinstance(filters, dict):
-                filters = common['filters'] = {'logic': 'AND', 'children': []}
+        if not direct_date:
             children = filters.setdefault('children', [])
             if not isinstance(children, list):
                 children = filters['children'] = []
             children.append(date_condition())
-            return payload
-        return None
+        return payload
 
     result = []
     for request in requests or []:
@@ -1172,7 +1195,16 @@ class RefreshScheduler(threading.Thread):
         claimed = 0
         # Scan a few more rows than the execution limit so scopes that are only
         # waiting for their first page plan cannot starve ready work.
-        for scope in self.store.due_refresh_scopes(current, limit=max(self.scope_limit * 8, 24)):
+        # Fetch enough rows for the lower-priority period catalog as well;
+        # otherwise twenty period targets can fill the SQL limit and hide an
+        # already-due page or view refresh behind them.
+        due = self.store.due_refresh_scopes(
+            current, limit=max(self.scope_limit * 8, 24) + len(period_targets))
+        # Explicit period preheat is lower priority than maintaining cards that
+        # a user can already open.  Otherwise a fresh year/month catalog can
+        # occupy every execution slot before an overdue page/view refresh.
+        due.sort(key=lambda scope: 1 if scope in period_targets else 0)
+        for scope in due:
             if claimed >= self.scope_limit:
                 break
             body = (bodies.get(scope) or self.store.refresh_plan(scope)
@@ -1233,10 +1265,12 @@ def scheduler_enabled():
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
-def period_coverage(store, catalog=None, *, identities=DEFAULT_IDENTITIES):
+def period_coverage(store, catalog=None, *, identities=DEFAULT_IDENTITIES,
+                    data_identity=None):
     """Per period x stage publish coverage for the configured catalog."""
     periods_list = catalogue = list(catalog) if catalog else periods.period_catalog()
-    published = store.published_stage_periods()
+    published = store.published_stage_periods(deliverable_only=True,
+                                              data_identity=data_identity)
     stages = sorted({stage for _identity, _page, stage in maintenance_targets()})
     rows = []
     for period in periods_list:
