@@ -1,5 +1,6 @@
 """The 15 delivered AI slots have a fixed, read-only publication contract."""
 import json
+import time
 from types import SimpleNamespace
 
 from fastapi import FastAPI
@@ -8,7 +9,8 @@ from fastapi.testclient import TestClient
 from bi_agent.cockpit.cards import CONTRACT
 from bi_agent.cockpit.dashboard_source import RELEASE
 from bi_agent.cockpit.publications import view_scope
-from bi_agent.cockpit.refresh import delivered_component_requests
+from bi_agent.cockpit.refresh import (delivered_component_requests, period_target_scope,
+                                      preheat_target_scope)
 from bi_agent.cockpit.router import build_cockpit_router
 from bi_agent.cockpit.store import Store
 from bi_agent.cockpit.targets import (REGISTRY_VERSION, maintenance_targets,
@@ -287,3 +289,141 @@ def test_ai_publications_exposes_deduplicated_metric_risk_counts(tmp_path, monke
         value['riskCounts']['shipment'], count=1, known=True, scopeMatch=True)
     assert value['slots']['opportunity-risk']['riskFindingCount'] == 1
     assert value['slots']['shipment-risk-summary']['riskFindingCount'] == 1
+
+
+def test_default_scope_reads_default_period_before_newest_history(tmp_path, monkeypatch):
+    monkeypatch.setattr('bi_agent.cockpit.periods.default_period', lambda: '2025-10')
+    cfg = Config()
+    store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
+    october = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-10')
+    store.publish_period(1, '2025-10', 'shipment', {}, october['id'],
+                         view_scope(october['context']))
+    # Publish history afterwards so the newest default view is September.
+    september = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-09')
+    store.publish_period(1, '2025-09', 'shipment', {}, september['id'],
+                         view_scope(september['context']))
+    client = _client(tmp_path, monkeypatch, cfg)
+
+    def default_shipment():
+        value = client.get('/api/cockpit/ai-publications',
+                           params={'id': 1, 'uiScope': 'default'}).json()
+        slot = next(item for item in value['slots'].values() if item['stage'] == 'shipment')
+        return value, slot
+
+    value, slot = default_shipment()
+    assert value['requestedPeriod'] == '2025-10'
+    assert slot['payload']['id'] == october['id']
+    assert slot['periodMatch'] is True
+    assert slot['scopeMatch'] is True
+
+    august = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-08')
+    store.publish_period(1, '2025-08', 'shipment', {}, august['id'],
+                         view_scope(august['context']))
+    _value, slot = default_shipment()
+    assert slot['payload']['id'] == october['id']
+    # A new router/store instance models a restart: the default entry still
+    # resolves from the period index rather than the newest history view.
+    restarted = _client(tmp_path, monkeypatch, cfg).get(
+        '/api/cockpit/ai-publications?id=1&uiScope=default').json()
+    restarted_shipment = next(item for item in restarted['slots'].values()
+                              if item['stage'] == 'shipment')
+    assert restarted_shipment['payload']['id'] == october['id']
+    assert restarted_shipment['scopeMatch'] is True
+
+
+def test_default_scope_marks_another_month_as_unmatched_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr('bi_agent.cockpit.periods.default_period', lambda: '2025-10')
+    cfg = Config()
+    store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
+    september = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-09')
+    store.publish_period(1, '2025-09', 'shipment', {}, september['id'],
+                         view_scope(september['context']))
+
+    value = _client(tmp_path, monkeypatch, cfg).get(
+        '/api/cockpit/ai-publications?id=1&uiScope=default').json()
+    slot = next(item for item in value['slots'].values() if item['stage'] == 'shipment')
+    assert value['requestedPeriod'] == '2025-10'
+    assert value['scopeMatch'] is False and value['displayScope'] == 'default'
+    assert slot['payload']['id'] == september['id']
+    assert slot['scopeMatch'] is False and slot['periodMatch'] is False
+    assert slot['displayScope'] == 'default'
+
+
+def test_default_cards_and_startup_prefer_the_delivered_period(tmp_path, monkeypatch):
+    monkeypatch.setattr('bi_agent.cockpit.periods.default_period', lambda: '2025-10')
+    cfg = Config()
+    store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
+    october = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-10')
+    store.publish_period(1, '2025-10', 'shipment', {}, october['id'],
+                         view_scope(october['context']))
+    september = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-09')
+    store.publish_period(1, '2025-09', 'shipment', {}, september['id'],
+                         view_scope(september['context']))
+    client = _client(tmp_path, monkeypatch, cfg)
+
+    cards = client.get('/api/cockpit/publications/cards',
+                       params={'id': 1, 'page': 'analysis'}).json()
+    assert cards['items']['shipment']['id'] == october['id']
+    started = client.get('/api/cockpit/startup',
+                         params={'id': 1, 'page': 'analysis'}).json()
+    assert started['cardsByPage']['analysis']['shipment']['id'] == october['id']
+    assert started['cards']['shipment']['id'] == october['id']
+
+
+def test_exact_period_status_ignores_current_month_and_generic_preheat(tmp_path, monkeypatch):
+    monkeypatch.setattr('bi_agent.cockpit.periods.default_period', lambda: '2025-10')
+    cfg = Config()
+    store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
+    september = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-09')
+    store.publish_period(1, '2025-09', 'shipment', {}, september['id'],
+                         view_scope(september['context']))
+    lease = time.time() + 120
+    store.set_refresh_state(
+        period_target_scope(1, 'analysis', 'shipment', '2026-11'),
+        'running', lease_until=lease)
+    store.set_refresh_state(
+        preheat_target_scope(1, 'analysis', 'shipment'),
+        'running', lease_until=lease)
+
+    client = _client(tmp_path, monkeypatch, cfg)
+    value = client.get('/api/cockpit/ai-publications',
+                       params={'id': 1, 'uiScope': _period_scope('2025-09')}).json()
+    shipment = next(item for item in value['slots'].values() if item['stage'] == 'shipment')
+    assert shipment['periodMatch'] is True
+    assert shipment['payload']['id'] == september['id']
+    assert shipment['update']['active'] is False
+    assert shipment['refreshStatus'] not in {'running', 'checking', 'queued', 'waiting'}
+
+    status = client.get('/api/cockpit/publications/status',
+                        params={'id': 1, 'page': 'analysis',
+                                'uiScope': _period_scope('2025-09')}).json()
+    assert status['period'] == '2025-09' and status['periodMatch'] is True
+    assert status['update']['status'] not in {'running', 'checking', 'queued', 'waiting'}
+
+
+def test_default_status_uses_default_period_and_keeps_history_frozen(tmp_path, monkeypatch):
+    monkeypatch.setattr('bi_agent.cockpit.periods.default_period', lambda: '2025-10')
+    cfg = Config()
+    store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
+    october = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-10')
+    store.publish_period(1, '2025-10', 'shipment', {}, october['id'],
+                         view_scope(october['context']))
+    september = _save_stage(store, cfg, 'shipment', 'analysis', period='2025-09')
+    store.publish_period(1, '2025-09', 'shipment', {}, september['id'],
+                         view_scope(september['context']))
+    store.set_refresh_state(period_target_scope(1, 'analysis', 'shipment', '2025-10'),
+                            'running', lease_until=time.time() + 120)
+    store.set_refresh_state(period_target_scope(1, 'analysis', 'shipment', '2025-09'),
+                            'frozen')
+    client = _client(tmp_path, monkeypatch, cfg)
+
+    default = client.get('/api/cockpit/publications/status',
+                         params={'id': 1, 'page': 'analysis', 'uiScope': 'default'}).json()
+    assert default['period'] == '2025-10' and default['periodMatch'] is True
+    assert default['update']['status'] == 'running'
+
+    history = client.get('/api/cockpit/publications/status',
+                         params={'id': 1, 'page': 'analysis',
+                                 'uiScope': _period_scope('2025-09')}).json()
+    assert history['period'] == '2025-09' and history['periodMatch'] is True
+    assert history['update']['status'] == 'frozen'

@@ -185,6 +185,47 @@ def custom_refresh_expiry(now=None):
     return (time.time() if now is None else float(now)) + max(300, ttl)
 
 
+def effective_refresh_status(state, *, now=None):
+    """Classify a refresh row without treating a future plan as an update."""
+    now = time.time() if now is None else float(now)
+    status = str((state or {}).get('status') or 'idle')
+    if (status == 'waiting' and float((state or {}).get('next_check') or 0) > now + 5
+            and float((state or {}).get('lease_until') or 0) <= now):
+        return 'scheduled'
+    return status
+
+
+def _refresh_summary(states, *, analyzed=0, now=None):
+    """Aggregate one or more refresh rows into the public status shape."""
+    now = time.time() if now is None else float(now)
+    states = list(states) or [{}]
+    statuses = [effective_refresh_status(state, now=now) for state in states]
+    active = [status for status in statuses if status in {'running', 'checking', 'queued', 'waiting'}]
+    if active:
+        status = 'running' if 'running' in active else ('queued' if 'queued' in active else 'waiting')
+    elif 'retry_wait' in statuses or 'failed' in statuses:
+        status = 'retry_wait'
+    elif 'published' in statuses:
+        status = 'published'
+    elif 'frozen' in statuses:
+        status = 'frozen'
+    elif 'scheduled' in statuses:
+        status = 'scheduled'
+    else:
+        status = statuses[0]
+    successful = [float(state.get('last_success') or 0) for state in states]
+    errors = [str(state.get('last_error') or '') for state in states
+              if state.get('last_error')]
+    next_checks = [float(state.get('next_check') or 0) for state in states
+                   if float(state.get('next_check') or 0) > 0]
+    checked = [float(state.get('updated') or 0) for state in states]
+    return dict(scope='', publicationVersion='', dataAsOf=0, analyzedAt=float(analyzed or 0),
+                publishedAt=max(successful, default=0), update=dict(
+                    status=status, lastSuccessAt=max(successful + [analyzed]), nextCheckAt=min(next_checks, default=0),
+                    lastCheckedAt=max(checked, default=0), error='; '.join(errors)[:500],
+                    attempt=max((int(state.get('attempt') or 0) for state in states), default=0)))
+
+
 def stage_card_status(store, identity, page, *, now=None):
     """Aggregate refresh state for pages whose AI cards have no page snapshot.
 
@@ -205,38 +246,28 @@ def stage_card_status(store, identity, page, *, now=None):
         rows.append((stage, state, body))
     if not rows:
         return None
-
-    def effective(state):
-        status = str(state.get('status') or 'idle')
-        if status == 'waiting' and float(state.get('next_check') or 0) > now + 5 \
-                and float(state.get('lease_until') or 0) <= now:
-            return 'scheduled'
-        return status
-
-    states = [effective(state) for _stage, state, _body in rows]
-    active = [status for status in states if status in {'running', 'checking', 'queued', 'waiting'}]
-    if active:
-        status = 'running' if 'running' in active else ('queued' if 'queued' in active else 'waiting')
-    elif 'retry_wait' in states or 'failed' in states:
-        status = 'retry_wait'
-    elif 'published' in states:
-        status = 'published'
-    elif 'scheduled' in states:
-        status = 'scheduled'
-    else:
-        status = states[0]
     analyzed = max((float((body or {}).get('updatedAt') or 0) for _stage, _state, body in rows), default=0)
-    successful = [float(state.get('last_success') or 0) for _stage, state, _body in rows]
-    errors = [str(state.get('last_error') or '') for _stage, state, _body in rows
-              if state.get('last_error')]
-    next_checks = [float(state.get('next_check') or 0) for _stage, state, _body in rows
-                   if float(state.get('next_check') or 0) > 0]
-    checked = [float(state.get('updated') or 0) for _stage, state, _body in rows]
-    return dict(scope='', publicationVersion='', dataAsOf=0, analyzedAt=analyzed,
-                publishedAt=max(successful, default=0), update=dict(
-                    status=status, lastSuccessAt=max(successful + [analyzed]), nextCheckAt=min(next_checks, default=0),
-                    lastCheckedAt=max(checked, default=0), error='; '.join(errors)[:500],
-                    attempt=max((int(state.get('attempt') or 0) for _stage, state, _body in rows), default=0)))
+    return _refresh_summary([state for _stage, state, _body in rows],
+                            analyzed=analyzed, now=now)
+
+
+def period_card_status(store, identity, page, period, *, now=None):
+    """Refresh state for the exact period cards shown on one page.
+
+    Default preheat tasks and tasks for other months are deliberately excluded:
+    a historical card already served from its own period index must not report
+    ``active`` just because the current month is being analysed.
+    """
+    from .targets import target_page, target_stages
+    period = periods.normalise(period)
+    stages = target_stages(page)
+    if not period or not stages:
+        return None
+    states = []
+    for stage in stages:
+        scope = period_target_scope(identity, target_page(stage) or page, stage, period)
+        states.append(store.refresh_state(scope) or {})
+    return _refresh_summary(states, now=now)
 
 
 class RefreshManager:

@@ -104,6 +104,17 @@ def maintenance_targets() -> list[tuple[int, str, str]]:
     return result
 
 
+def target_page(stage: str) -> str:
+    """Canonical page that owns a stage-level refresh target.
+
+    One stage card can be rendered on several pages, but the refresh scheduler
+    registers it once under the first configured page.  Status readers must use
+    the same page or they will look up an unrelated (usually empty) task.
+    """
+    return next((page for identity, page, item in maintenance_targets()
+                 if identity == 1 and item == stage), '')
+
+
 def configured_targets() -> dict[str, tuple[str, ...]]:
     """Every page that shows an AI slot, with its distinct stages.
 

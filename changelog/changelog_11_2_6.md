@@ -46,8 +46,16 @@
       `YWLN_D044` 条件仅接受 `BETWEEN` / `DATE` / `ABSOLUTE`，其他操作符拒绝生成，避免扩大查询范围。
     - 期间预热在调度中降为低优先级，不会挤占已到期的页面或单卡维护任务。
     - 新增重启后 2 个年度、3 个月份 × 5 个环节逐期间读取的端到端用例，读取过程不调用模型或 AP。
-- 验证：`tests/test_cockpit_period_refresh.py` 45 项通过，期间读取/表格/状态相关目标用例 109 项通过；
-  全量 `pytest tests -k cockpit` 339 项通过，前端 `node --test tests/*.test.mjs` 92 项通过。
+  - 第四轮验收修复：
+    - `default`、空范围和未带日期的月度粒度先解析为交付默认期间（`YWLN_D044` 默认月份），
+      再读期间索引；`/ai-publications`、`/publications/cards`、`/startup`、表格分析字段和
+      发布状态使用同一规则。默认月份已发布后再预热更早月份，默认页面的分析 ID 保持不变；
+      只有其他月份时可回退展示，但标记 `scopeMatch=false`。
+    - 精确期间命中时，刷新状态只聚合该期间、节点对应的期间任务；当前月任务和通用默认预热
+      任务不再让已冻结的历史卡片显示 `update.active=true`。未来才执行的 `waiting` 归为
+      `scheduled`，不计为正在更新。
+- 验证：`tests/test_cockpit_period_refresh.py` 45 项、期间读取/表格/状态相关目标用例 114 项通过；
+  全量 `pytest tests -k cockpit` 344 项通过，前端 `node --test tests/*.test.mjs` 92 项通过。
   全量 Python 套件另有 5 项与本次无关的既有失败（版本 tag 校验、`库存管理演示内容.docx` 缺失、
   Workbench 本地 PG 未完成改动）。
 

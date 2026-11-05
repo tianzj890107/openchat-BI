@@ -199,6 +199,11 @@ def period_of_scope(ui_scope, fallback='') -> str:
     return period_state(ui_scope, fallback)['period']
 
 
+def default_period() -> str:
+    """Period displayed by the delivered page before the user changes filters."""
+    return normalise(_delivered_period()) or active_period()
+
+
 def _delivered_period() -> str:
     """Default period of the delivered date filter (``YWLN_D044``)."""
     global _METADATA_PERIOD
