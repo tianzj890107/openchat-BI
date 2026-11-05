@@ -43,11 +43,13 @@
 
 ### 3.2 作用域期间
 
-`periods.period_of_scope(ui_scope, fallback)`：
+`periods.period_state(ui_scope, fallback)` 返回 `{period, periodType, source}`：
 
-- `uiScope == 'default'` 或无法解析出日期时，使用 `fallback`（分析上下文里的 `period`）；
-- 否则从 `uiScope` 字符串中提取 `YYYY-MM` / `YYYY年M月` / 纯 `YYYY`，优先取最后一个匹配项
-  （对应最近一次筛选提交）。
+- 先看最后一次 `setButtonGrainSelection`：`YEAR` 选年度、`MONTH` 选月度；
+- 在该粒度下取最后一个匹配值（`YYYY` 或 `YYYY-MM`），残留的旧月份不会覆盖新的年度选择；
+- `uiScope == 'default'` 或解析不出日期时退回 `fallback`（分析上下文里的 `period`）。
+
+`period_of_scope()` 只是取其中的 `period`。
 
 ### 3.3 刷新策略
 
@@ -76,6 +78,15 @@
   返回 `False`，调用方据 `refresh_queue_stats()['pendingCount']` 观测合并数量；
 - 队列统计输出 `pendingCount`，便于观测被合并的任务量。
 
+## 4.1 期间发布索引
+
+`period_publications` 保存「权限范围 + 期间 + 节点 + 规范化筛选 + 定义版本 → 当前分析 ID（含 view_key）」：
+
+- `view_scope()` 纳入 `period` 与 `filters` 摘要，不同月份不再共享同一个 view key；
+- 页面发布、单卡刷新、期间预热都写同一条索引；
+- 覆盖率统计只读该索引，因此 2025-09 与 2025-10 可同时被识别；
+- `publication_views` 继续只指向最近一次发布，默认卡片入口不会被其他月份的预热覆盖。
+
 ## 5. 按环节独立刷新
 
 `page_cache.stage_evidence(records)` 按 `filter_stage_selected()` 把整页证据拆到各环节，
@@ -101,8 +112,12 @@
 
 - 调度为每个「期间 × 角色 × 环节」登记目标，缺少发布结果的目标进入低优先级排队，已发布的按常规
   节奏维护并冻结历史期间；
-- 期间目标只复用该期间**已存在的查询计划**（同一期间的页面/卡片），绝不使用交付默认查询冒充，
-  没有计划的期间写入 `awaiting-plan`；
+- 期间目标优先复用该期间已存在的查询计划；没有时按真实 AP 协议生成：
+  取组件查询模板（交付配置或快照），把日期维度 `YWLN_D044` 的条件改写为
+  `{"operator":{"code":"BETWEEN","type":"DATE"},"valueType":"ABSOLUTE","value":[开始日, 结束日]}`；
+  月度取当月首末日、年度取 1-1 至 12-31。**模板里没有日期维度时直接丢弃**，
+  绝不把无期间条件的查询当成某个月的结果；全部被丢弃时写入 `awaiting-plan`；
+- 已处于 `retry_wait` / `awaiting-plan` 的目标不会被注册流程改写执行时间；
 - `GET /api/cockpit/publications/period-coverage?periods=2025-10,2025-09` 返回
   `total / ready / missing` 与逐条状态。
 

@@ -6,6 +6,7 @@
 import datetime as dt
 import json
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -496,3 +497,136 @@ def _analysis_factory_factory(store, calls=None):
                               evidence={'facts': [], 'records': [], 'evidence': []})
         return store.get_analysis(item['id'])
     return start
+
+
+# ------------------------------------- 验收第二轮：期间索引/计划/退避/解析
+
+def test_view_scope_separates_two_months():
+    from bi_agent.cockpit.publications import view_scope
+    base = dict(id=1, engine='main', page='analysis', stage='shipment',
+                chartSnapshotId='release', dataSource='ap', dataIdentity='ap-1',
+                filters={}, sourceMode='service')
+    assert view_scope(dict(base, period='2025-09')) != view_scope(dict(base, period='2025-10'))
+
+
+def test_period_publication_index_keeps_every_month(tmp_path):
+    store = Store(tmp_path / 'periods.sqlite3')
+    store.publish_period(1, '2025-09', 'shipment', '{"filters":[]}', 'a-09', 'v-09')
+    store.publish_period(1, '2025-10', 'shipment', '{"filters":[]}', 'a-10', 'v-10')
+    assert store.published_period(1, '2025-09', 'shipment', '{"filters":[]}')['analysis_id'] == 'a-09'
+    assert store.published_period(1, '2025-10', 'shipment', '{"filters":[]}')['analysis_id'] == 'a-10'
+    assert (1, 'shipment', '2025-09') in store.published_stage_periods()
+    assert (1, 'shipment', '2025-10') in store.published_stage_periods()
+
+
+def test_seed_periods_keeps_retry_backoff(tmp_path):
+    from bi_agent.cockpit.refresh import RefreshScheduler, period_target_scope
+    store = Store(tmp_path / 'scheduler.sqlite3')
+    manager = _manager(store, Config(), lambda *a, **k: {}, lambda *a, **k: None)
+    scheduler = RefreshScheduler(manager, store, scan_seconds=2)
+    scope = period_target_scope(1, 'analysis', 'shipment', '2025-11')
+    later = time.time() + 600
+    store.ensure_refresh_state(scope, next_check=later)
+    store.set_refresh_state(scope, 'retry_wait', next_check=later, error='AP down')
+    scheduler._seed_periods(time.time(), {scope: (1, 'analysis', 'shipment', '2025-11')})
+    state = store.refresh_state(scope)
+    assert state['status'] == 'retry_wait'
+    assert state['next_check'] >= later - 1
+
+
+def test_period_plan_substitutes_the_requested_date_range(tmp_path):
+    from bi_agent.cockpit.refresh import RefreshManager
+    store = Store(tmp_path / 'plan.sqlite3')
+    manager = _manager(store, Config(), lambda *a, **k: {}, lambda *a, **k: None)
+    template = {'analysisConfig': {'indicators': [{'identifierCode': 'YWLN_M0036'}]},
+                'commonConfig': {'filters': {'logic': 'AND', 'children': [
+                    {'identifierCode': 'YWLN_D044',
+                     'operator': {'code': 'BETWEEN', 'type': 'DATE'},
+                     'valueType': 'ABSOLUTE',
+                     'value': ['2025-01-01', '2025-12-31']}]}}}
+    with patch('bi_agent.cockpit.refresh.delivered_component_requests',
+               return_value=[template]), \
+         patch('bi_agent.cockpit.refresh.delivered_stage_requests', return_value=[]):
+        _context, requests = manager._stage_requests(1, 'analysis', 'shipment', period='2024-03')
+    assert requests
+    item = requests[0]['commonConfig']['filters']['children'][0]
+    assert item['value'] == ['2024-03-01', '2024-03-31']
+
+
+def test_period_plan_refuses_a_template_without_a_date_filter(tmp_path):
+    from bi_agent.cockpit.refresh import RefreshManager
+    store = Store(tmp_path / 'plan.sqlite3')
+    manager = _manager(store, Config(), lambda *a, **k: {}, lambda *a, **k: None)
+    undated = {'analysisConfig': {'indicators': [{'identifierCode': 'YWLN_M0036'}]},
+               'commonConfig': {'filters': {'logic': 'AND', 'children': []}}}
+    with patch('bi_agent.cockpit.refresh.delivered_component_requests', return_value=[undated]), \
+         patch('bi_agent.cockpit.refresh.delivered_stage_requests', return_value=[]):
+        _context, requests = manager._stage_requests(1, 'analysis', 'shipment', period='2024-03')
+    assert requests == []
+
+
+def test_period_state_prefers_the_year_grain_over_a_stale_month():
+    from bi_agent.cockpit import periods
+    scope = json.dumps([
+        ['setFilterConditions:f1', {'value': '2025-10'}],
+        ['setButtonGrainSelection:g1', 'YEAR'],
+        ['setFilterConditions:f2', {'value': '2026'}],
+    ])
+    state = periods.period_state(scope, '')
+    assert state['periodType'] == 'year'
+    assert state['period'] == '2026'
+
+
+def test_two_months_stay_independently_readable(tmp_path):
+    store, cfg, page, _q = _two_stage_page(tmp_path)
+    store.publish_period(1, '2025-09', 'shipment', {}, 'analysis-sept', 'view-sept')
+    store.publish_period(1, '2025-10', 'shipment', {}, 'analysis-oct', 'view-oct')
+    assert store.published_period(1, '2025-09', 'shipment', {})['analysis_id'] == 'analysis-sept'
+    assert store.published_period(1, '2025-10', 'shipment', {})['view_key'] == 'view-oct'
+    # The page's own default view is untouched by the extra period.
+    current = store.published_page(page_scope(cfg, 1, 'analysis', 'default', 'ap'))
+    assert current['items']['shipment']['id'] == page['items']['shipment']['id']
+
+
+def test_restart_keeps_finished_periods_without_requeueing(tmp_path):
+    from bi_agent.cockpit.refresh import RefreshScheduler, period_target_scope
+    path = tmp_path / 'restart.sqlite3'
+    store = Store(path)
+    store.publish_period(1, '2025-10', 'shipment', {}, 'analysis-oct', 'view-oct')
+    manager = _manager(store, Config(), lambda *a, **k: {}, lambda *a, **k: None)
+    scheduler = RefreshScheduler(manager, store, scan_seconds=2)
+    scope = period_target_scope(1, 'analysis', 'shipment', '2025-10')
+    scheduler._seed_periods(time.time(), {scope: (1, 'analysis', 'shipment', '2025-10')})
+    reopened = Store(path)
+    assert (1, 'shipment', '2025-10') in reopened.published_stage_periods()
+    state = reopened.refresh_state(scope)
+    assert state['status'] not in {'waiting', 'queued'} or state['next_check'] > time.time()
+
+
+def test_unvisited_month_is_preheated_from_a_generated_plan(tmp_path):
+    store = Store(tmp_path / 'plan.sqlite3')
+    template = {'analysisConfig': {'indicators': [{'identifierCode': 'YWLN_M0036'}]},
+                'commonConfig': {'filters': {'logic': 'AND', 'children': [
+                    {'identifierCode': 'YWLN_D044',
+                     'operator': {'code': 'BETWEEN', 'type': 'DATE'},
+                     'valueType': 'ABSOLUTE',
+                     'value': ['2025-01-01', '2025-12-31']}]}}}
+    calls = []
+
+    def start(body, resolved):
+        calls.append(dict(body))
+        context = {**body, **resolved, 'stageName': body['stage'], 'sourceMode': 'service'}
+        item = store.create_analysis('new-' + body['stage'], context)
+        store.update_analysis(item['id'], status='limited',
+                              result=dict(summary='new', cardContract=CONTRACT),
+                              evidence={'facts': [], 'records': [], 'evidence': []})
+        return store.get_analysis(item['id'])
+
+    manager = _manager(store, Config(), lambda i, k, p: {'value': 1}, start)
+    with patch('bi_agent.cockpit.refresh.delivered_component_requests',
+               return_value=[template]), \
+         patch('bi_agent.cockpit.refresh.delivered_stage_requests', return_value=[]):
+        result = manager.preheat_period(1, 'analysis', 'shipment', '2024-03')
+    assert result['status'] in {'published', 'frozen'}
+    assert calls and calls[0]['period'] == '2024-03'
+    assert (1, 'shipment', '2024-03') in store.published_stage_periods()

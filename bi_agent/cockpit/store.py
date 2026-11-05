@@ -49,6 +49,10 @@ class Store:
               last_success REAL NOT NULL DEFAULT 0, updated REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS refresh_plans (
               scope TEXT PRIMARY KEY, body TEXT NOT NULL, updated REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS period_publications (
+              key TEXT PRIMARY KEY, identity INTEGER NOT NULL, period TEXT NOT NULL,
+              stage TEXT NOT NULL, filters TEXT NOT NULL, analysis_id TEXT NOT NULL,
+              view_key TEXT NOT NULL DEFAULT '', updated REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS analysis_stage_evidence (
               analysis_id TEXT PRIMARY KEY, stage TEXT NOT NULL,
               fingerprint TEXT NOT NULL, queries TEXT NOT NULL, updated REAL NOT NULL);
@@ -174,9 +178,27 @@ class Store:
                                      (item.get('id'),)).fetchone()
                     if not row:
                         continue
+                    view_key = view_scope(context)
                     db.execute('INSERT INTO publication_views VALUES(?,?,?) '
                                'ON CONFLICT(view_key,stage) DO UPDATE SET scope=excluded.scope',
-                               (view_scope(context), stage, row[0]))
+                               (view_key, stage, row[0]))
+                    # The period index keeps every month addressable even
+                    # though publication_views only holds the newest card.
+                    period = str(context.get('period') or '')
+                    if period:
+                        from .cards import CONTRACT as _CONTRACT
+                        from .publications import config_version, digest as _digest
+                        filters = json.dumps(context.get('filters') or {}, ensure_ascii=False,
+                                             sort_keys=True, separators=(',', ':'))
+                        key = _digest({'id': int(context.get('id') or 0), 'period': period,
+                                       'stage': stage, 'filters': filters,
+                                       'config': config_version(), 'contract': _CONTRACT})
+                        db.execute('INSERT INTO period_publications VALUES(?,?,?,?,?,?,?,?) '
+                                   'ON CONFLICT(key) DO UPDATE SET '
+                                   'analysis_id=excluded.analysis_id,'
+                                   'view_key=excluded.view_key,updated=excluded.updated',
+                                   (key, int(context.get('id') or 0), period, stage, filters,
+                                    item.get('id'), view_key, time.time()))
         return True
 
     def published_page(self, scope):
@@ -634,20 +656,44 @@ class Store:
             rows=db.execute('SELECT v.stage,a.body FROM publication_views v JOIN publications p ON p.scope=v.scope JOIN analyses a ON a.id=p.analysis_id WHERE v.view_key=?',(view_key,)).fetchall()
         return {r[0]:json.loads(r[1]) for r in rows}
 
+    def publish_period(self, identity, period, stage, filters, analysis_id, view_key=''):
+        """Bind one (permission range, period, stage, filters) to its analysis."""
+        from .publications import config_version, digest
+        from .cards import CONTRACT
+        if not isinstance(filters, str):
+            filters = json.dumps(filters, ensure_ascii=False, sort_keys=True,
+                                 separators=(',', ':'))
+        key = digest({'id': int(identity), 'period': period, 'stage': stage,
+                      'filters': filters, 'config': config_version(), 'contract': CONTRACT})
+        now = time.time()
+        with self.db() as db:
+            db.execute('INSERT INTO period_publications VALUES(?,?,?,?,?,?,?,?) '
+                       'ON CONFLICT(key) DO UPDATE SET analysis_id=excluded.analysis_id,'
+                       'view_key=excluded.view_key,updated=excluded.updated',
+                       (key, int(identity), period, stage, filters, analysis_id,
+                        view_key or '', now))
+        return key
+
+    def published_period(self, identity, period, stage, filters):
+        """Current published analysis for one period-stage-filters entry."""
+        from .publications import config_version, digest
+        from .cards import CONTRACT
+        if not isinstance(filters, str):
+            filters = json.dumps(filters, ensure_ascii=False, sort_keys=True,
+                                 separators=(',', ':'))
+        key = digest({'id': int(identity), 'period': period, 'stage': stage,
+                      'filters': filters, 'config': config_version(), 'contract': CONTRACT})
+        with self.db() as db:
+            row = db.execute('SELECT analysis_id,view_key,updated FROM period_publications '
+                             'WHERE key=?', (key,)).fetchone()
+        return dict(analysis_id=row[0], view_key=row[1], updated=row[2]) if row else None
+
     def published_stage_periods(self, limit=5000):
         """Published (identity, stage, period) triples, newest first."""
         with self.db() as db:
-            rows = db.execute(
-                "SELECT json_extract(a.body,'$.context.id'), v.stage, "
-                "json_extract(a.body,'$.context.period') FROM publication_views v "
-                "JOIN publications p ON p.scope=v.scope "
-                "JOIN analyses a ON a.id=p.analysis_id "
-                "ORDER BY a.updated DESC LIMIT ?", (limit,)).fetchall()
-        result = set()
-        for identity, stage, period in rows:
-            if identity is not None and period:
-                result.add((int(identity), stage, str(period)))
-        return result
+            rows = db.execute('SELECT identity,stage,period FROM period_publications '
+                              'ORDER BY updated DESC LIMIT ?', (limit,)).fetchall()
+        return {(int(identity), stage, period) for identity, stage, period in rows}
 
     def latest_views(self, identity, engine, page, *, data_identity=None):
         """Newest published card per stage, even if the config key rotated.

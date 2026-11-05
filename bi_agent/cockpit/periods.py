@@ -46,36 +46,95 @@ def normalise(value) -> str:
     return ''
 
 
-def period_of_scope(ui_scope, fallback='') -> str:
-    """Extract the business period from a committed filter scope string.
+_GRAINS = {'YEAR': 'year', 'Y': 'year', 'ANNUAL': 'year', '年': 'year',
+           'MONTH': 'month', 'M': 'month', 'MONTHLY': 'month', '月': 'month'}
 
-    ``uiScope`` is the canonical JSON of committed ProUI filter calls.  The
-    host treats it as opaque, so extraction is deliberately conservative: only
-    unambiguous ``YYYY-MM`` / ``YYYY年M月`` / ``YYYY`` tokens are accepted, and
-    anything else falls back to the analysis context period.
-    """
-    fallback = normalise(fallback)
+
+def _entries(ui_scope):
+    if isinstance(ui_scope, dict):
+        return list(ui_scope.items())
     if not isinstance(ui_scope, str):
-        return fallback
+        return []
     text = ui_scope.strip()
-    if not text or text == 'default':
-        return fallback
-    if text[:1] in {'[', '{'}:
-        # Committed filter calls arrive as ASCII-escaped JSON; unescape so a
-        # Chinese month label such as "2025年10月" is readable.
-        try:
-            text = json.dumps(json.loads(text), ensure_ascii=False)
-        except ValueError:
-            pass
-    months = _MONTH_RE.findall(text)
-    if months:
-        year, month = int(months[-1][0]), int(months[-1][1])
-        if 1 <= month <= 12:
-            return f'{year:04d}-{month:02d}'
-    # Remove month tokens so a "2025" year-only filter is not shadowed by the
-    # year part of a month range already handled above.
-    years = _YEAR_RE.findall(_MONTH_RE.sub(' ', text))
-    return years[-1] if years else fallback
+    if text[:1] not in {'[', '{'}:
+        return []
+    try:
+        value = json.loads(text)
+    except ValueError:
+        return []
+    if isinstance(value, dict):
+        return list(value.items())
+    if isinstance(value, list):
+        return [item if isinstance(item, (list, tuple)) and len(item) == 2 else ('', item)
+                for item in value]
+    return []
+
+
+def _period_leaves(node, out):
+    """Collect (grain, period) for every date-like value in the filter state."""
+    if isinstance(node, str):
+        found = normalise(node)
+        if found:
+            out.append(('year' if len(found) == 4 else 'month', found))
+    elif isinstance(node, dict):
+        for value in node.values():
+            _period_leaves(value, out)
+    elif isinstance(node, list):
+        for value in node:
+            _period_leaves(value, out)
+
+
+def period_state(ui_scope, fallback='') -> dict:
+    """Resolve the effective (periodType, period) from committed filter state.
+
+    The last grain selection decides whether a year or a month wins; a stale
+    month left in the filter map must not override a later year choice.
+    """
+    candidates, grain = [], ''
+    for key, value in _entries(ui_scope):
+        method = str(key).split(':', 1)[0]
+        if method == 'setButtonGrainSelection':
+            raw = value
+            if isinstance(raw, dict):
+                raw = raw.get('value') or raw.get('code') or raw.get('grain') or ''
+            found = _GRAINS.get(str(raw).strip().upper()) if isinstance(raw, str) else ''
+            if found:
+                grain = found
+        _period_leaves(value, candidates)
+    for wanted in ([grain] if grain else ['month', 'year']):
+        picked = [period for item_grain, period in candidates if item_grain == wanted]
+        if picked:
+            period = picked[-1]
+            if wanted == 'year' and len(period) == 7:
+                period = period[:4]
+            return dict(period=period, periodType=wanted, source='scope')
+    fallback_period = normalise(fallback)
+    if fallback_period:
+        return dict(period=fallback_period,
+                    periodType='year' if len(fallback_period) == 4 else 'month',
+                    source='fallback')
+    return dict(period='', periodType='', source='none')
+
+
+def period_range(period):
+    """Inclusive ISO date range for a period key, or ``None``."""
+    value = normalise(period)
+    try:
+        if len(value) == 7:
+            year, month = int(value[:4]), int(value[5:])
+            start = dt.date(year, month, 1)
+            end = dt.date(year + (month == 12), month % 12 + 1, 1) - dt.timedelta(days=1)
+            return start.isoformat(), end.isoformat()
+        if len(value) == 4:
+            return f'{value}-01-01', f'{value}-12-31'
+    except ValueError:
+        return None
+    return None
+
+
+def period_of_scope(ui_scope, fallback='') -> str:
+    """Business period implied by the committed filter scope."""
+    return period_state(ui_scope, fallback)['period']
 
 
 def _delivered_period() -> str:

@@ -27,8 +27,15 @@
   - `COCKPIT_PERIOD_GRACE_DAYS` 真实生效；上一期间同时覆盖跨年月份与上一年度。
   - 新增期间目录 `COCKPIT_PREHEAT_PERIODS`、期间预热目标（只复用该期间已有查询计划，无计划进入
     `awaiting-plan`）与 `GET /api/cockpit/publications/period-coverage` 覆盖率接口。
-- 验证：`tests/test_cockpit_period_refresh.py` 31 项（先红后绿）；
-  全量 `pytest tests -k cockpit` 322 项通过，前端 `node --test tests/*.test.mjs` 92 项通过。
+  - 第二轮验收修复：
+    - 新增 `period_publications` 期间发布索引（权限范围 + 期间 + 节点 + 筛选 + 定义版本 → 分析 ID）；
+      `view_scope()` 纳入期间与筛选摘要，不同月份不再互相覆盖，默认卡片入口不被污染。
+    - 期间预热可按真实 AP 协议生成查询：把 `YWLN_D044` 的 BETWEEN/DATE 条件改写为目标年/月区间，
+      月度取当月首末日、年度取全年；模板缺日期维度时拒绝生成，保持 `awaiting-plan`。
+    - 期间目录注册不再改写 `retry_wait` / `awaiting-plan` 的执行时间，AP 故障时不会每轮重打。
+    - 期间解析改为结构化：按最后一次年度/月度粒度选择，残留旧月份不会覆盖新的年度选择。
+- 验证：`tests/test_cockpit_period_refresh.py` 39 项（先红后绿）；
+  全量 `pytest tests -k cockpit` 328 项通过，前端 `node --test tests/*.test.mjs` 92 项通过。
   全量 Python 套件另有 5 项与本次无关的既有失败（版本 tag 校验、`库存管理演示内容.docx` 缺失、
   Workbench 本地 PG 未完成改动）。
 

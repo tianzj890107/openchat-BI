@@ -408,6 +408,17 @@ class RefreshManager:
             return 'frozen', 0.0
         return 'published', now + float(policy['recheckAfter'])
 
+    def record_period(self, identity, stage, context, analysis_id, view_key=''):
+        """Bind a published stage card to its (period, filters) index entry."""
+        if not analysis_id:
+            return
+        context = context or {}
+        period = periods.period_of_scope(context.get('uiScope'), context.get('period') or '')
+        if not period:
+            return
+        self.store.publish_period(identity, period, stage, context.get('filters') or {},
+                                  analysis_id, view_key)
+
     def _finish(self, scope, claim, status, *, next_check=None, error=None,
                 last_success=None):
         if claim:
@@ -522,6 +533,11 @@ class RefreshManager:
                     analysis_ids[stage] = item['id']
                     self.store.set_stage_evidence(item['id'], stage, expected_fp,
                                                   expected_queries)
+            for stage, aid in analysis_ids.items():
+                stored = self.store.get_analysis(aid) or {}
+                self.record_period(int(body['id']), stage,
+                                   {'uiScope': body.get('uiScope'),
+                                    **(stored.get('context') or {})}, aid)
             page = build_page(PageRequest(
                 id=int(body['id']), page=body['page'], uiScope=body.get('uiScope') or 'default',
                 apReceiptIds=[record['id'] for record in records], pgReceiptIds=pg_ids,
@@ -590,7 +606,8 @@ class RefreshManager:
                        or current_scope != view_key)
             if changed:
                 job = self.start_analysis(request, resolved)
-                self._await(job, claim)
+                item = self._await(job, claim)
+                self.record_period(identity, stage, request, item['id'], current_scope)
             if not self._owned(claim):
                 raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             now = time.time()
@@ -654,8 +671,12 @@ class RefreshManager:
         if period is not None:
             # A dated period must never be analysed with the delivered default
             # queries: those carry no period filter, so the result would be the
-            # wrong range.  Missing plan means "awaiting-plan", not "guess".
-            return {}, []
+            # wrong range.  Build the plan by substituting the real AP date
+            # condition; if a template has no date filter, refuse it.
+            templates = (delivered_component_requests(stage)
+                         or delivered_stage_requests(stage))
+            generated = _with_period(templates, period)
+            return ({'period': period}, generated) if generated else ({}, [])
         return {}, (delivered_component_requests(stage) or delivered_stage_requests(stage))
 
     def preheat_period(self, identity, page, stage, period):
@@ -702,6 +723,7 @@ class RefreshManager:
                 self.store.set_stage_evidence(
                     item['id'], stage, resolved['dataFingerprint'],
                     [record for record in request['chartQueries']])
+                self.record_period(identity, stage, request, item['id'], key)
             if not self._owned(claim):
                 raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             now = time.time()
@@ -768,6 +790,41 @@ class RefreshManager:
             return dict(scope=scope, status=status, changed=changed)
         except Exception as exc:
             return self._failure(scope, exc, claim)
+
+
+def _with_period(requests, period):
+    """Rewrite the AP date condition of each template to one period.
+
+    The dashboard date dimension is ``YWLN_D044`` with a BETWEEN/DATE
+    operator; a period query without that condition would silently aggregate
+    all time, so such a template is dropped instead of being guessed.
+    """
+    value = periods.period_range(period)
+    if not value:
+        return []
+    start, end = value
+
+    def rewrite(node):
+        applied = 0
+        if isinstance(node, dict):
+            if str(node.get('identifierCode') or '') == 'YWLN_D044' and 'value' in node:
+                node['value'] = [start, end]
+                node.setdefault('operator', {'code': 'BETWEEN', 'type': 'DATE'})
+                node.setdefault('valueType', 'ABSOLUTE')
+                applied += 1
+            for child in node.values():
+                applied += rewrite(child)
+        elif isinstance(node, list):
+            for child in node:
+                applied += rewrite(child)
+        return applied
+
+    result = []
+    for request in requests or []:
+        payload = json.loads(json.dumps(request, ensure_ascii=False))
+        if rewrite(payload):
+            result.append(payload)
+    return result
 
 
 def _context_requests(context, stage=None):
@@ -921,7 +978,11 @@ class RefreshScheduler(threading.Thread):
             ready = (int(identity), stage, period) in covered
             check, seed_status = self._seed_check('default', {'period': period}, current)
             state = self.store.refresh_state(target) or {}
-            if not ready and state.get('status') not in {'running', 'frozen'}:
+            # Registration only adds missing work.  A retry backoff or an
+            # awaiting-plan wait must keep its own deadline; only an explicit
+            # manual retry or a config change may wake it earlier.
+            blocked = {'running', 'frozen', 'retry_wait', 'awaiting-plan'}
+            if not ready and state.get('status') not in blocked:
                 self.store.ensure_refresh_state(
                     target, next_check=current, expires=0, lifecycle='active',
                     config_version=version,
