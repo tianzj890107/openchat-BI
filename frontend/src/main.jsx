@@ -303,9 +303,24 @@ function sopExecutionStatus(status) {
   return "pending";
 }
 
+function TurnSop({ sop }) {
+  const [sopOpen, setSopOpen] = useState(false);
+  const { active, skipped, done, total } = presentSop(sop);
+  const items = active.map((item) => ({
+    id: item.key, title: <span className={`antd-sop-title is-${item.status}`}>{item.text}</span>,
+    status: sopExecutionStatus(item.status), icon: workflowIcon(item.status),
+  }));
+  if (!sop.length) return null;
+  return <ProXActivity className="pro-ui-workflow-activity pro-ui-workflow-sop"
+    title={<span className="antd-workflow-title">分析 SOP <Tag color="blue">{done}/{total}</Tag></span>}
+    expanded={sopOpen} onExpand={setSopOpen}>
+    <ProXExecutionSteps items={items} variant="steps" />
+    {skipped.length ? <p className="pro-ui-sop-skipped">本轮无需执行：{skipped.join("、")}</p> : null}
+  </ProXActivity>;
+}
+
 function WorkflowPanels({ questionNavigation = false }) {
   const [workflow, setWorkflow] = useState(readWorkflow);
-  const [sopOpen, setSopOpen] = useState(false);
   const [mode, setMode] = useState(() => document.body.dataset.mode || "data");
   const [activeQuestionTurn, setActiveQuestionTurn] = useState(() =>
     document.getElementById("chat-todo")?.dataset.activeQuestionTurn || ""
@@ -340,13 +355,6 @@ function WorkflowPanels({ questionNavigation = false }) {
   }, [workflow.questions, activeQuestionTurn]);
   const showEmptySop = false; // Show progress only after a real analysis starts.
   if (workflow.sopHidden && workflow.todoHidden && !showEmptySop) return null;
-  const { active: visibleSop, skipped: skippedSop, done, total } = presentSop(workflow.sop);
-  const chainItems = visibleSop.map((item) => ({
-    id: item.key,
-    title: <span className={`antd-sop-title is-${item.status}`}>{item.text}</span>,
-    status: sopExecutionStatus(item.status),
-    icon: workflowIcon(item.status),
-  }));
   const navigateToQuestion = (turn) => {
     const value = String(turn ?? "");
     if (!value) return;
@@ -356,20 +364,6 @@ function WorkflowPanels({ questionNavigation = false }) {
   };
   return (
     <div className="antd-workflow-panels pro-ui-workflow-panels">
-      {(!!workflow.sop.length || showEmptySop) && (
-        <ProXActivity
-          className="pro-ui-workflow-activity pro-ui-workflow-sop"
-          title={<span className="antd-workflow-title">分析 SOP <Tag color="blue">{total ? `${done}/${total}` : "待开始"}</Tag></span>}
-          expanded={sopOpen}
-          onExpand={setSopOpen}
-        >
-          {total ? (
-            <><ProXExecutionSteps items={chainItems} variant="steps" />{skippedSop.length ? <p className="pro-ui-sop-skipped">本轮无需执行：{skippedSop.join("、")}</p> : null}</>
-          ) : (
-            <div className="antd-workflow-empty-sop">开始一轮智能分析后，这里会显示本次对话的分阶段执行进度。</div>
-          )}
-        </ProXActivity>
-      )}
       {questionNavigation && !!workflow.questions.length && document.getElementById("chat-scroll")?.closest(".chat-pane") && createPortal(
         <nav className="pro-ui-question-elevator" aria-label="会话轮次导航">
           {workflow.questions.map((item, index) => (
@@ -392,6 +386,23 @@ function WorkflowPanels({ questionNavigation = false }) {
 
 const messageRoots = new Map();
 const stepRoots = new Map();
+const sopRoots = new Map();
+
+function mountTurnSop(node) {
+  if (!node || sopRoots.has(node)) return;
+  node.replaceChildren();
+  const root = createRoot(node);
+  const update = () => {
+    let sop = [];
+    try { sop = JSON.parse(node.dataset.sop || "[]"); } catch (_) { /* malformed old snapshot */ }
+    root.render(<ProXScope><TurnSop sop={Array.isArray(sop) ? sop : []} /></ProXScope>);
+  };
+  const observer = new MutationObserver(update);
+  observer.observe(node, { attributes: true, attributeFilter: ["data-sop"] });
+  sopRoots.set(node, { root, observer });
+  update();
+}
+window.antdTurnSopMount = mountTurnSop;
 
 function disposeReactRecord(record) {
   if (!record) return;
@@ -686,7 +697,7 @@ window.antdStepMount = mountStep;
 const cardRoots = new Map();
 
 function disposeSubtreeRoots(node) {
-  for (const roots of [messageRoots, stepRoots, cardRoots]) {
+  for (const roots of [messageRoots, stepRoots, cardRoots, sopRoots]) {
     for (const [element, record] of [...roots]) {
       if (element === node || (node.contains && node.contains(element))) {
         disposeReactRecord(record);
@@ -970,6 +981,7 @@ function summarizeExecutionTimelines(container) {
 
 function enhanceWorkbenchTree(container) {
   if (!container) return;
+  container.querySelectorAll(".turn-sop[data-sop]").forEach(mountTurnSop);
   normalizeStepTimelineTree(container);
   // Remove type-only labels from legacy saved result markup. Semantic labels
   // remain and are handled by the dashboard/result header layout.

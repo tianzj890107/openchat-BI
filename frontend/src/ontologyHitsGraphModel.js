@@ -1,9 +1,4 @@
-const TYPES = {
-  business_object: "BusinessObject", logical_entity: "LogicalEntity", attribute: "BusinessAttribute",
-  metric: "Indicator", rule: "Rule", term: "Term", dimension: "Dimension", activity: "Activity",
-  process: "Process", table_node: "TableNode", column: "Column", relation: "Relation", meta_relation: "MetaRelation",
-};
-const canonicalType = (type) => TYPES[type] || ({ indicator: "Indicator", business_attribute: "BusinessAttribute", business_rule: "Rule" })[type] || type || "Ontology";
+import { canonicalOntologyType as canonicalType, ontologyTypeKind } from "./ontologyTypes.js";
 export const ontologyHitType = (entity) => canonicalType(entity.type || entity.kind);
 export const ontologyHitKey = (entity) => JSON.stringify([entity.source || "", entity.repository_id || "", ontologyHitType(entity), entity.code]);
 
@@ -24,6 +19,7 @@ export function mergeOntologyHitGraphs(entities, contexts, filters = {}) {
       nodes.set(id, { ...node, id, type: canonicalType(node.type), focus: false, anchor: false, source: entity.source, repository_id: entity.repository_id });
     }
     for (const edge of context?.links || []) {
+      if (edge.synthetic) continue;
       const source = localIds.get(edge.source);
       const target = localIds.get(edge.target);
       if (!source || !target || source === target) continue;
@@ -37,8 +33,7 @@ export function mergeOntologyHitGraphs(entities, contexts, filters = {}) {
     nodes.set(id, { ...nodes.get(id), ...node, id, name: entity.name || nodes.get(id)?.name || entity.code,
       source: entity.source, repository_id: entity.repository_id, focus: true, hit: entity });
   }
-  const kinds = Object.fromEntries(Object.entries(TYPES).map(([kind, type]) => [type, kind]));
-  const visible = [...nodes.values()].filter((node) => filters[kinds[node.type] || node.type] !== false);
+  const visible = [...nodes.values()].filter((node) => filters[ontologyTypeKind(node.type)] !== false);
   const visibleIds = new Set(visible.map((node) => node.id));
   return { nodes: visible, links: [...links.values()].filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)) };
 }

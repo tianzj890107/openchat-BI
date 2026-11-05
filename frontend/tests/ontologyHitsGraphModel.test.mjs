@@ -37,6 +37,13 @@ test("missing context keeps isolated hits and never invents relationships", () =
   assert.equal(data.nodes.length, 2);
   assert.equal(data.links.length, 0);
 });
+test("synthetic neighbor edges are not presented as ontology relationships", () => {
+  const data = mergeOntologyHitGraphs([object], new Map([[ontologyHitKey(object), {
+    ...context, links: context.links.map((edge) => ({ ...edge, synthetic: true })),
+  }]]));
+  assert.equal(data.nodes.length, 2);
+  assert.equal(data.links.length, 0);
+});
 test("distinct relation types and directions are preserved; broken and self edges are omitted", () => {
   const data = mergeOntologyHitGraphs([object], new Map([[ontologyHitKey(object), { ...context, links: [
     ...context.links, { source: "BO1", target: "BA1", relationType: "USES" },

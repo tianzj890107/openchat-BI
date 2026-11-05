@@ -2496,6 +2496,12 @@ class AgentSession:
             "metarelation": "meta_relation",
             "tablenode": "table_node",
             "column": "column",
+            "physicaltable": "table_node",
+            "field": "column",
+            "action": "action",
+            "event": "event",
+            "status": "status",
+            "dimensionderivedrule": "dimension_derived_rule",
         }
         if type_key in type_map:
             return type_map[type_key]

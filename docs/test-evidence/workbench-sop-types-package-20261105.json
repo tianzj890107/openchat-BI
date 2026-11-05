@@ -1,0 +1,31 @@
+{
+  "date": "2026-11-05",
+  "package": {
+    "name": "@boulderaitech/ontology-graph",
+    "version": "0.1.2",
+    "registry_project": 1069,
+    "source_commit": "b239147",
+    "sha1": "46c7509b616f46cf33a9aa13137adf3253c75fe4",
+    "tests_passed": 9,
+    "analytics_uses_registry_exact_version": true
+  },
+  "frontend_tests_passed": 121,
+  "backend_regressions_passed": 225,
+  "production_build": "passed",
+  "browser_fixtures": {
+    "type_count_with_all_filters_enabled": 17,
+    "edge_count": 16,
+    "graph_controls": ["重置视图"],
+    "sop_immediately_after_each_question": true,
+    "sop_default_expanded": false,
+    "duplicate_top_sop_count": 0,
+    "continuous_tools_across_three_iterations": [6],
+    "tool_group_after_text_output": [2],
+    "second_turn_preserves_first_with_reused_tool_ids": true,
+    "body_order": ["tools:6", "intermediate text", "tools:2", "final text"]
+  },
+  "demo2_inventory_source": "published home JavaScript palette; no authenticated live-repository all-type claim",
+  "user_data_writes": false,
+  "live_model_calls": false,
+  "service_deployment": false
+}

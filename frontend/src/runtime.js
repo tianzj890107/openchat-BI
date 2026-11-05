@@ -30,6 +30,7 @@ import { createSigmaOntologyRenderer } from "@boulderaitech/ontology-graph";
 import { prepareRadialLayout, radialGraphOption } from "@boulderaitech/ontology-graph/radial";
 import { buildGraph, buildRadialGraph } from "./ontologyGraphModel.js";
 import { mountOntologyHitsGraph } from "./ontologyHitsGraph.js";
+import { ONTOLOGY_TYPES } from "./ontologyTypes.js";
 import {
   ONTOLOGY_LAYOUT_OPTIONS,
   ontologyLayoutOption,
@@ -287,6 +288,7 @@ export function bootWorkbenchRuntime() {
   const ONTOLOGY_FILTER_KINDS = [
     "term", "business_object", "logical_entity", "attribute", "relation", "metric",
     "activity", "rule", "dimension", "process", "meta_relation", "table_node", "column",
+    "action", "event", "status", "dimension_derived_rule",
   ];
 
   function makeOntologyFilters() {
@@ -685,6 +687,7 @@ export function bootWorkbenchRuntime() {
     meta_relation: "元模型关系",
     table_node: "表节点",
     column: "列",
+    action: "动作", event: "事件", status: "状态", dimension_derived_rule: "维度派生规则",
   };
 
   const ENTITY_CODE_RE = /\b[A-Z][A-Z0-9_]{0,31}\d{3,8}\b/g;
@@ -2971,6 +2974,15 @@ export function bootWorkbenchRuntime() {
 
   function startAssistantMessage(iteration) {
     const bucket = B();
+    finalizeAssistantText();
+    // Model iterations are internal bookkeeping, not transcript boundaries.
+    // Reuse a tool-only segment until actual user-visible text separates it.
+    if (bucket.currentExecutionBlock?.isConnected && !bucket.choiceContinuation &&
+        (bucket.lastTranscriptKind === "tool" || !bucket.currentAssistantText.trim())) {
+      if (bucket.currentAssistantText.trim()) createAssistantTextHost(bucket.currentExecutionBlock, iteration);
+      showStepThinking();
+      return;
+    }
     // When the backend discards a buffered candidate (claim validation or
     // render enforcement), the previous iteration never receives text_delta,
     // so its placeholder bubble would otherwise survive as an empty ghost.
@@ -2982,24 +2994,29 @@ export function bootWorkbenchRuntime() {
       if (bucket.stepTimelineEl?.isConnected === false) bucket.stepTimelineEl = null;
     }
     const block = el_h("div", "assistant-execution-block");
+    block.dataset.iteration = String(iteration || "");
+    el.chatScroll.appendChild(block);
+    bucket.currentExecutionBlock = block;
+    createAssistantTextHost(block, iteration);
+    bucket.stepTimelineEl = null;
+    bucket.stepThinkingEl = null;
+    if (!bucket.choiceContinuation) showStepThinking();
+    hideEmpty();
+    scrollChatBottom();
+  }
+
+  function createAssistantTextHost(block, iteration) {
+    const bucket = B();
     const msg = el_h("div", "msg msg-assistant");
     // No message header: the internal agent role name (bi-analyst) and the
     // iteration index are bookkeeping, not user-facing chrome. The iteration
     // stays on the block dataset for anchors and restored-step grouping.
     msg.innerHTML = `
       <div class="msg-body"><span class="thinking-line"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>思考中…</span></div>`;
-    block.dataset.iteration = String(iteration || "");
     block.appendChild(msg);
-    el.chatScroll.appendChild(block);
     if (window.antdMessageMount) window.antdMessageMount(msg, "assistant", iteration);
-    bucket.currentExecutionBlock = block;
     bucket.currentAssistantEl = msg.querySelector(".msg-body");
     bucket.currentAssistantText = "";
-    bucket.stepTimelineEl = null;
-    bucket.stepThinkingEl = null;
-    if (!bucket.choiceContinuation) showStepThinking();
-    hideEmpty();
-    scrollChatBottom();
   }
 
   function ensureStepTimeline() {
@@ -3083,9 +3100,19 @@ export function bootWorkbenchRuntime() {
   function appendAssistantDelta(text) {
     const bucket = B();
     if (!bucket.currentAssistantEl) return;
-    if (bucket.currentAssistantText === "") {
+    if (!String(text || "").trim() && !bucket.currentAssistantText.trim()) return;
+    if (bucket.lastTranscriptKind === "tool") {
+      clearStepThinking();
+      if (bucket.currentAssistantText.trim()) createAssistantTextHost(bucket.currentExecutionBlock, bucket.currentExecutionBlock.dataset.iteration);
+      // The empty placeholder preceded tool execution; move the actual text
+      // after that execution so transcript order follows visible output.
+      bucket.currentExecutionBlock.appendChild(bucket.currentAssistantEl.closest(".msg"));
+      bucket.stepTimelineEl = null;
+    }
+    if (!bucket.currentAssistantText.trim()) {
       bucket.currentAssistantEl.innerHTML = "";
     }
+    bucket.lastTranscriptKind = "text";
     bucket.currentAssistantText += text;
     const display = bucket.currentAssistantText.replace(/\s+$/, "");
     bucket.currentAssistantEl.innerHTML = renderMarkdown(display) +
@@ -3129,7 +3156,12 @@ export function bootWorkbenchRuntime() {
 
   function attachChatStep(stepEl) {
     const bucket = B();
+    if (bucket.lastTranscriptKind === "text") {
+      clearStepThinking();
+      bucket.stepTimelineEl = null;
+    }
     const container = ensureStepTimeline();
+    bucket.lastTranscriptKind = "tool";
     if (!container.isConnected && bucket.currentExecutionBlock) bucket.currentExecutionBlock.appendChild(container);
     if (bucket.stepThinkingEl?.parentNode === container) bucket.stepThinkingEl.remove();
     bucket.stepThinkingEl = null;
@@ -4816,6 +4848,19 @@ export function bootWorkbenchRuntime() {
         `<span class="chat-sop-text">${esc((t && t.content) || SOP_STEPS[i] || "")}</span>` +
         `</li>`;
     }).join("");
+    const question = el.chatScroll.querySelector(`.msg-user[data-turn="${CSS.escape(String(B().currentTurnTag || ""))}"]`);
+    if (question) {
+      let snapshot = question.nextElementSibling;
+      if (!snapshot?.classList.contains("turn-sop")) {
+        snapshot = el_h("div", "turn-sop");
+        snapshot.dataset.turn = String(B().currentTurnTag);
+        question.after(snapshot);
+      }
+      snapshot.dataset.sop = JSON.stringify(todos.map((item, index) => ({
+        key: String(index), text: item.content || SOP_STEPS[index], status: item.status || "pending",
+      })));
+      window.antdTurnSopMount?.(snapshot);
+    }
   }
 
   // Render the active bucket's SOP overview and task list into the shared
@@ -6070,6 +6115,12 @@ export function bootWorkbenchRuntime() {
 
   function initOntologyFilters() {
     if (!el.ontologyFilters) return;
+    ONTOLOGY_TYPES.forEach(([, kind, , , , label]) => {
+      if (el.ontologyFilters.querySelector(`[data-kind="${kind}"]`)) return;
+      const button = el_h("button", "ontology-filter is-on");
+      button.type = "button"; button.dataset.kind = kind; button.textContent = label;
+      el.ontologyFilters.appendChild(button);
+    });
     el.ontologyFilters.querySelectorAll(".ontology-filter[data-kind]").forEach((button) => {
       button.addEventListener("click", () => {
         const bucket = B();
@@ -6240,6 +6291,7 @@ export function bootWorkbenchRuntime() {
 
   function buildChatStep(r, status = ACTIVITY_STATUS.COMPLETE) {
     const step = el_h("div", "step");
+    step.dataset.turn = String(B().currentTurnTag || 1);
     if (r.id) step.dataset.activityId = String(r.id);
     step.dataset.status = status;
     const preview = toolPreview(r.name, r.input);
@@ -6343,7 +6395,7 @@ export function bootWorkbenchRuntime() {
   function upsertActivityChatStep(activity) {
     if (!activity) return null;
     const existing = el.chatScroll.querySelector(
-      `.step[data-activity-id="${CSS.escape(String(activity.id))}"]`,
+      `.step[data-turn="${CSS.escape(String(B().currentTurnTag || 1))}"][data-activity-id="${CSS.escape(String(activity.id))}"]`,
     );
     if (existing) {
       updateActivityChatStep(existing, activity);
@@ -6365,7 +6417,7 @@ export function bootWorkbenchRuntime() {
   function syncExistingAgentActivitySteps(activityState = B().activity) {
     (activityState?.activities || []).forEach((activity) => {
       const step = el.chatScroll.querySelector(
-        `.step[data-activity-id="${CSS.escape(String(activity.id))}"]`,
+        `.step[data-turn="${CSS.escape(String(B().currentTurnTag || 1))}"][data-activity-id="${CSS.escape(String(activity.id))}"]`,
       );
       if (step) updateActivityChatStep(step, activity);
     });
@@ -6813,6 +6865,7 @@ export function bootWorkbenchRuntime() {
     _bk.stepTimelineEl = null;
     _bk.stepThinkingEl = null;
     _bk.currentExecutionBlock = null;
+    _bk.lastTranscriptKind = null;
     _bk.rootCauseDelivered = false;
     _bk.turnQuestions = _bk.turnQuestions || {};
     _bk.turnQuestions[_bk.currentTurnTag] = text;

@@ -8425,3 +8425,15 @@ body.pro-ui-workbench-body .msg-assistant.antd-message-enhanced {
 @media (max-width: 760px) {
   .ontology-hits-canvas { height: 440px; }
 }
+
+/* SOP belongs to its question, while execution segments follow actual output. */
+body.pro-ui-workbench-body .chat-scroll { gap: 10px; }
+body.pro-ui-workbench-body .chat-scroll > .turn-sop { width: 100%; max-width: 900px; margin-inline: auto; }
+.turn-sop .pro-ui-workflow-activity { margin: 0; }
+.pro-ui-execution-summary { margin: 0; }
+.pro-ui-execution-summary > summary { padding: 4px 0; }
+.pro-ui-assistant-prose { padding: 4px 0 6px; }
+.assistant-execution-block { gap: 4px; }
+.msg-assistant.antd-message-enhanced:has(> .antd-message-host:empty) { display: none !important; }
+body.pro-ui-workbench-body #antd-workflow-root,
+body.pro-ui-workbench-body #antd-dashboard-workflow-root { display: none; }

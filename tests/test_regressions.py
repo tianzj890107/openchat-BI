@@ -316,6 +316,56 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertEqual(response.json()["anchor"]["code"], "M1")
         query.assert_called_once_with("Indicator", "M1", strategy="context")
 
+    def test_visual_context_includes_action_event_status_neighbors(self) -> None:
+        class FakeGraphClient:
+            repository_id = "repo-1"
+
+            def graph_neighborhood(self, type_name, code, **kwargs):
+                return {
+                    "relations_available": True,
+                    "objects": [
+                        {"typeName": "Action", "properties": {"code": "AC1", "label": "审批"}},
+                        {"typeName": "Event", "properties": {"code": "EV1", "label": "审批提交"}},
+                        {"typeName": "Status", "properties": {"code": "ST1", "label": "已审批"}},
+                    ],
+                    "relations": [
+                        {"sourceCode": "AC1", "targetCode": "EV1", "relationType": "ActionTriggeredByEvent"},
+                        {"sourceCode": "AC1", "targetCode": "ST1", "relationType": "ActionChangesStatus"},
+                    ],
+                }
+
+        data = RemoteGraphRetriever(FakeGraphClient()).visual_subgraph("Action", "AC1")
+        self.assertEqual({node["type"] for node in data["nodes"]}, {"Action", "Event", "Status"})
+        self.assertEqual(len(data["links"]), 2)
+
+    def test_subgraph_type_names_cover_demo2_home_and_legacy_kinds(self) -> None:
+        from bi_agent.web.app import _remote_graph_type
+
+        expected = {
+            "Action": "Action", "Event": "Event", "Status": "Status",
+            "BusinessObject": "BusinessObject", "LogicalEntity": "LogicalEntity",
+            "BusinessAttribute": "BusinessAttribute", "metric": "Indicator",
+            "Rule": "BusinessRule", "business_rule": "BusinessRule", "BusinessRule": "BusinessRule",
+            "Dimension": "Dimension", "dimension_derived_rule": "DimensionDerivedRule",
+            "DimensionDerivedRule": "DimensionDerivedRule", "Term": "Term",
+            "PhysicalTable": "PhysicalTable", "table_node": "PhysicalTable", "Field": "Field",
+            "column": "Field", "Activity": "Activity", "Process": "Process",
+            "EntityRelation": "EntityRelation", "relation": "EntityRelation", "MetaRelation": "MetaRelation",
+            "meta_relation": "MetaRelation",
+        }
+        for value, type_name in expected.items():
+            with self.subTest(type=value):
+                self.assertEqual(_remote_graph_type(value, "X1"), type_name)
+        self.assertEqual(_remote_graph_type("", "MREL0001"), "MetaRelation")
+
+    def test_platform_types_survive_remote_hit_extraction(self) -> None:
+        for type_name, kind in {
+            "Action": "action", "Event": "event", "Status": "status",
+            "DimensionDerivedRule": "dimension_derived_rule", "PhysicalTable": "table_node", "Field": "column",
+        }.items():
+            with self.subTest(type=type_name):
+                self.assertEqual(WebSession._kind_from_code("X000001", type_name), kind)
+
     def test_two_ontology_click_surfaces_share_one_subgraph_modal(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
         self.assertIn('fetch(withBasePath("api/ontology/subgraph")', runtime)

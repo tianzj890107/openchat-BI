@@ -260,6 +260,14 @@ class RemoteGraphRetriever:
 
         if mode == "context":
             selected = self._context_codes(graph, anchor_code, max_depth=4, max_nodes=max_nodes)
+            # The UI graph covers every ontology type. Its focus may be an
+            # Action/Event/Status/rule, whose relations intentionally do not
+            # belong to the narrower LLM analytics context allowlist.
+            for neighbor, edge, _ in self._adjacency(graph).get(code, []):
+                if len(selected) >= max_nodes:
+                    break
+                if not edge.synthetic:
+                    selected.add(neighbor)
         else:
             adjacency = self._adjacency(graph)
             selected = {anchor_code}
