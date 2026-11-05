@@ -3003,7 +3003,7 @@ export function bootWorkbenchRuntime() {
   function ensureStepTimeline() {
     const bucket = B();
     const block = bucket.currentExecutionBlock;
-    if (bucket.stepTimelineEl && bucket.stepTimelineEl.isConnected && bucket.stepTimelineEl.parentElement === block) return bucket.stepTimelineEl;
+    if (bucket.stepTimelineEl && bucket.stepTimelineEl.isConnected && block?.contains(bucket.stepTimelineEl)) return bucket.stepTimelineEl;
     const timeline = el_h("div", "antd-step-timeline");
     timeline.dataset.turn = String(bucket.currentTurnTag || 1);
     timeline.dataset.iteration = String(block?.dataset.iteration || "");
@@ -3038,9 +3038,7 @@ export function bootWorkbenchRuntime() {
     const timeline = ensureStepTimeline();
     // Results are children of the assistant message, so placing the timeline
     // as the final child of this block keeps it after text and all cards.
-    if (bucket.currentExecutionBlock && timeline.parentElement !== bucket.currentExecutionBlock) {
-      bucket.currentExecutionBlock.appendChild(timeline);
-    } else if (bucket.currentExecutionBlock) {
+    if (bucket.currentExecutionBlock && !bucket.currentExecutionBlock.contains(timeline)) {
       bucket.currentExecutionBlock.appendChild(timeline);
     }
     if (!bucket.stepThinkingEl || !bucket.stepThinkingEl.isConnected) {
@@ -4525,20 +4523,7 @@ export function bootWorkbenchRuntime() {
     // the mounted path has to repair old title/source ordering in place,
     // otherwise those saved cards would remain visually unchanged.
     el.chatScroll.querySelectorAll(".chart-card, .table-card, .multidim-card").forEach((card) => {
-      const type = card.classList.contains("table-card") ? "table"
-        : card.classList.contains("multidim-card") ? "multi" : "chart";
-      if (window.antdResultCardMount) window.antdResultCardMount(card, type);
-    });
-    el.chatScroll.querySelectorAll(".chart-card[data-chart-json]").forEach((card) => {
-      try {
-        const chart = JSON.parse(decodeURIComponent(card.dataset.chartJson));
-        scheduleChartMount(() => mountChart(card, chart));
-      }
-      catch (e) { console.warn("历史聊天图表恢复失败", e); }
-    });
-    el.chatScroll.querySelectorAll(".multidim-card[data-chart-json]").forEach((card) => {
-      try { scheduleChartMount(() => mountMultiChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson)))); }
-      catch (e) { console.warn("历史多维图表恢复失败", e); }
+      card.hidden = true;
     });
     el.chatScroll.querySelectorAll(".dash-export[data-turn]").forEach((card) => {
       bindExportCard(card, card.dataset.turn);
@@ -6542,15 +6527,12 @@ export function bootWorkbenchRuntime() {
         // (output lets query tools report success vs failure detail).
         advanceSopForTool(record.name, record.output);
         if (record.chart) {
-          attachChatChart(record.chart);
           pushChartToDashboard(record.chart);
         }
         if (record.table) {
-          attachChatTable(record.table);
           pushTableToDashboard(record.table);
         }
         if (record.multi_chart) {
-          attachChatMultiChart(record.multi_chart);
           pushMultiChartToDashboard(record.multi_chart);
         }
         upsertOntologyEntities(evt.ontology_entities);
@@ -7840,9 +7822,8 @@ export function bootWorkbenchRuntime() {
   }
 
   (function bootDashboardState() {
-    let collapsed = true;
-    try { collapsed = localStorage.getItem(DASHBOARD_LS_KEY) !== "0"; } catch (e) {}
-    applyDashboardState(collapsed);
+    // The result board is a persistent desktop surface, not a notification.
+    applyDashboardState(false);
   })();
 
   if (el.btnToggleDashboard) el.btnToggleDashboard.addEventListener("click", toggleDashboard);

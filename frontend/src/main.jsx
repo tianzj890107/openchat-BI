@@ -415,11 +415,12 @@ function AntdMessage({ role, iteration, html }) {
   const contentHtml = !hasMarkup && hasMarkdown && typeof window.biRenderMarkdown === "function"
     ? window.biRenderMarkdown(visibleHtml)
     : visibleHtml;
+  if (!user) return <article className="pro-ui-assistant-prose antd-message-html" dangerouslySetInnerHTML={{ __html: contentHtml }} />;
   return <ProXBubble
     placement={user ? "end" : "start"}
     variant="filled"
     shape="corner"
-    avatar={user ? undefined : <AgentMark />}
+    avatar={undefined}
     className={`antd-message-bubble ${user ? "antd-message-user" : "antd-message-assistant"}`}
     content={contentHtml}
     contentRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
@@ -941,6 +942,32 @@ function mountDashboardCard(card) {
 }
 window.antdDashboardCardMount = mountDashboardCard;
 
+function summarizeExecutionTimelines(container) {
+  container.querySelectorAll(".antd-step-timeline").forEach((timeline) => {
+    const steps = [...timeline.querySelectorAll(".step")];
+    if (!steps.length) return;
+    let group = timeline.parentElement;
+    if (!group?.classList.contains("pro-ui-execution-summary")) {
+      group = document.createElement("details");
+      group.className = "pro-ui-execution-summary";
+      const summary = document.createElement("summary");
+      group.appendChild(summary);
+      timeline.before(group);
+      group.appendChild(timeline);
+    }
+    const running = steps.some((step) => ["running", "pending"].includes(step.dataset.status));
+    const failed = steps.some((step) => ["error", "failed"].includes(step.dataset.status));
+    const label = running ? "正在执行工具" : failed ? "执行过程含失败项" : "工具执行记录";
+    const text = `${label} · ${steps.length} 项`;
+    const summary = group.querySelector(":scope > summary");
+    if (summary.textContent !== text) summary.textContent = text;
+    if (failed && !group.dataset.failureRevealed) {
+      group.open = true;
+      group.dataset.failureRevealed = "1";
+    }
+  });
+}
+
 function enhanceWorkbenchTree(container) {
   if (!container) return;
   normalizeStepTimelineTree(container);
@@ -962,7 +989,9 @@ function enhanceWorkbenchTree(container) {
     mountMessage(node, node.classList.contains("msg-user") ? "user" : "assistant");
   });
   container.querySelectorAll(".step").forEach(mountStep);
+  if (container.id === "chat-scroll") summarizeExecutionTimelines(container);
   container.querySelectorAll(":scope > .chart-card:not(.antd-result-card-host), :scope > .table-card:not(.antd-result-card-host), :scope > .multidim-card:not(.antd-result-card-host)").forEach((node) => {
+    if (container.id === "chat-scroll") { node.hidden = true; return; }
     mountResultCard(node, node.classList.contains("table-card") ? "table" : node.classList.contains("multidim-card") ? "multi" : "chart");
   });
   container.querySelectorAll(".dash-card:not(.antd-dashboard-question-hidden)").forEach(mountDashboardCard);

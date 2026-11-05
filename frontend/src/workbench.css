@@ -8394,3 +8394,19 @@ body.pro-ui-workbench-body .chat-pane { position: relative; }
 @media (prefers-reduced-motion: reduce) {
   .pro-ui-question-anchor::before { transition: none; }
 }
+
+/* Assistant text is a document surface; only user questions use a bubble. */
+body.pro-ui-workbench-body .msg-assistant.antd-message-enhanced {
+  display: block; width: 100%; max-width: 100%; padding: 0;
+  border: 0; background: transparent; box-shadow: none;
+}
+.pro-ui-assistant-prose { padding: 6px 0 14px; line-height: 1.8; overflow-wrap: anywhere; }
+.pro-ui-assistant-prose > :first-child { margin-top: 0; }
+.pro-ui-assistant-prose > :last-child { margin-bottom: 0; }
+.pro-ui-execution-summary { margin: 8px 0 16px; color: var(--pro-ui-muted); }
+.pro-ui-execution-summary > summary {
+  cursor: pointer; padding: 6px 0; font-size: 12px; line-height: 1.6;
+}
+.pro-ui-execution-summary > summary:focus-visible { outline: 2px solid var(--pro-ui-accent); outline-offset: 2px; }
+.pro-ui-execution-summary > .antd-step-timeline { margin-top: 8px; }
+#chat-scroll .chart-card, #chat-scroll .table-card, #chat-scroll .multidim-card { display: none; }
