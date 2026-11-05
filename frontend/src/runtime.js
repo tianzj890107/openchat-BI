@@ -29,6 +29,7 @@ import {
 import { createSigmaOntologyRenderer } from "@boulderaitech/ontology-graph";
 import { prepareRadialLayout, radialGraphOption } from "@boulderaitech/ontology-graph/radial";
 import { buildGraph, buildRadialGraph } from "./ontologyGraphModel.js";
+import { mountOntologyHitsGraph } from "./ontologyHitsGraph.js";
 import {
   ONTOLOGY_LAYOUT_OPTIONS,
   ontologyLayoutOption,
@@ -1605,6 +1606,7 @@ export function bootWorkbenchRuntime() {
             kind,
             name: card.querySelector(".entity-name")?.textContent || card.dataset.code,
             source: card.dataset.source || "history",
+            repository_id: card.dataset.repositoryId || "",
             entity_key: key,
           });
         });
@@ -6063,6 +6065,7 @@ export function bootWorkbenchRuntime() {
         button.setAttribute("aria-pressed", visible ? "true" : "false");
       });
     }
+    window.dispatchEvent(new Event("bi-ontology-filters-changed"));
   }
 
   function initOntologyFilters() {
@@ -8335,6 +8338,22 @@ export function bootWorkbenchRuntime() {
   applyThemeFromUrl();
   applyQuadrantFromUrl();
   initOntologyFilters();
+  mountOntologyHitsGraph({
+    list: el.ontologyList,
+    getScope: () => B().ontologyByCode,
+    getScopeVersion: () => JSON.stringify([B().convId || "", activeSourceConfig]),
+    getEntities: () => [...el.ontologyList.querySelectorAll(".entity-card[data-code]")].map(ontologyEntityForElement),
+    getFilters: () => B().ontologyFilters,
+    openEntity: (entity) => { void openOntologyGraphCard(entity); },
+    fetchContext: async (entity, signal) => {
+      const response = await fetch(withBasePath("api/ontology/subgraph"), {
+        method: "POST", signal, headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...normalizeOntologyEntity(entity), session_id: clientSessionId, strategy: STRATEGY_CONTEXT }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    },
+  });
   bindDashboardQuestionLinks();
   publishAgentActivity(state.mode);
 
