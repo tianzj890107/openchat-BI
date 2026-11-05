@@ -1,0 +1,25 @@
+{
+  "date": "2026-11-05",
+  "package": "@boulderaitech/ontology-graph@0.1.3",
+  "package_source_commit": "fec9f3a",
+  "registry_sha1": "540a9103e64d1e80cde0b201c6325002d612ff58",
+  "registry_installed_sources_match_browser_tested_sources": true,
+  "package_tests_passed": 9,
+  "frontend_tests_passed": 123,
+  "production_build": "passed",
+  "browser_sigma": {
+    "camera_ratio": [1, 0.1],
+    "node_radius_px": [12, 12],
+    "font_size_px": [12, 12],
+    "node_distance_px": [11.44, 114.4],
+    "overlapping_nodes_separate_after_zoom": true
+  },
+  "browser_radial": {
+    "zoom": [1, 4],
+    "node_width_px": [517.1232876712328, 517.1232876712328],
+    "font_size_px": [67.22602739726027, 67.22602739726027],
+    "node_distance_px": [254.79452054794515, 1019.1780821917806]
+  },
+  "user_data_writes": false,
+  "service_deployment": false
+}
