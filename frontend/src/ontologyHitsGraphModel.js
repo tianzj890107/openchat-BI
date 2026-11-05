@@ -3,6 +3,7 @@ export const ontologyHitType = (entity) => canonicalType(entity.type || entity.k
 export const ontologyHitKey = (entity) => JSON.stringify([entity.source || "", entity.repository_id || "", ontologyHitType(entity), entity.code]);
 
 // Keep repository/source identities separate, and merge only real returned edges.
+// Context supplies evidence for edges, never additional overview nodes.
 // Missing context leaves an isolated hit rather than an invented parent relation.
 export function mergeOntologyHitGraphs(entities, contexts, filters = {}) {
   const nodes = new Map();
@@ -33,7 +34,7 @@ export function mergeOntologyHitGraphs(entities, contexts, filters = {}) {
     nodes.set(id, { ...nodes.get(id), ...node, id, name: entity.name || nodes.get(id)?.name || entity.code,
       source: entity.source, repository_id: entity.repository_id, focus: true, hit: entity });
   }
-  const visible = [...nodes.values()].filter((node) => filters[ontologyTypeKind(node.type)] !== false);
+  const visible = [...nodes.values()].filter((node) => node.hit && filters[ontologyTypeKind(node.type)] !== false);
   const visibleIds = new Set(visible.map((node) => node.id));
   return { nodes: visible, links: [...links.values()].filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)) };
 }

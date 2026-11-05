@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-05",
+  "frontend_tests_passed": 123,
+  "production_build": "passed",
+  "isolated_browser_fixture": {
+    "hit_count": 2,
+    "context_node_count": 3,
+    "context_edge_count": 2,
+    "overview_node_count": 2,
+    "overview_edge_count": 1,
+    "graph_controls": ["重置视图"],
+    "node_click_detail_handler": "unchanged"
+  },
+  "unhit_intermediates_do_not_create_inferred_edges": true,
+  "real_user_data_writes": false,
+  "deployment": false
+}

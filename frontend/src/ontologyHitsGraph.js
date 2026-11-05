@@ -85,7 +85,7 @@ export function mountOntologyHitsGraph({ list, getScope, getScopeVersion, getEnt
       return context?.truncated || context?.relation_error || context?.relations_available === false;
     });
     status.textContent = currentData.nodes.length
-      ? `${hits} 个命中本体 · ${currentData.nodes.length} 个节点 · ${currentData.links.length} 条关系。高亮为命中本体，按真实关系聚类，点击节点查看本体。${failed ? ` ${failed} 项关系加载失败，已保留命中节点，重置视图可重新加载。` : ""}${incomplete ? " 部分关联数据不可用或已截断，可进入单个本体图继续查看。" : ""}`
+      ? `${hits} 个命中本体 · ${currentData.links.length} 条关系。仅显示命中本体，点击节点查看关联上下文。${failed ? ` ${failed} 项关系加载失败，已保留命中节点，重置视图可重新加载。` : ""}${incomplete ? " 部分关联数据不可用或已截断，可进入单个本体图继续查看。" : ""}`
       : "当前筛选下没有本体节点，请调整类型筛选。";
     surface.hidden = !currentData.nodes.length;
     if (!currentData.nodes.length) return;
