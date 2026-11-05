@@ -819,11 +819,40 @@ def _with_period(requests, period):
                 applied += rewrite(child)
         return applied
 
+    def date_condition():
+        return {'identifierCode': 'YWLN_D044',
+                'operator': {'code': 'BETWEEN', 'type': 'DATE'},
+                'valueType': 'ABSOLUTE', 'value': [start, end]}
+
+    def apply_one(payload):
+        if rewrite(payload):
+            return payload
+        # Delivered/component templates carry the metric fields but not the
+        # period condition.  Add the AP date filter instead of running an
+        # all-time aggregate and calling it "this month".
+        if isinstance(payload, dict) and isinstance(payload.get('commonConfig'), dict):
+            common = payload['commonConfig']
+            filters = common.get('filters')
+            if not isinstance(filters, dict):
+                filters = common['filters'] = {'logic': 'AND', 'children': []}
+            children = filters.setdefault('children', [])
+            if not isinstance(children, list):
+                children = filters['children'] = []
+            children.append(date_condition())
+            return payload
+        return None
+
     result = []
     for request in requests or []:
         payload = json.loads(json.dumps(request, ensure_ascii=False))
-        if rewrite(payload):
-            result.append(payload)
+        if isinstance(payload, list):
+            selected = [item for item in (apply_one(entry) for entry in payload) if item]
+            if selected:
+                result.append(selected)
+            continue
+        applied = apply_one(payload)
+        if applied:
+            result.append(applied)
     return result
 
 

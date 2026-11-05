@@ -31,7 +31,8 @@
     - 新增 `period_publications` 期间发布索引（权限范围 + 期间 + 节点 + 筛选 + 定义版本 → 分析 ID）；
       `view_scope()` 纳入期间与筛选摘要，不同月份不再互相覆盖，默认卡片入口不被污染。
     - 期间预热可按真实 AP 协议生成查询：把 `YWLN_D044` 的 BETWEEN/DATE 条件改写为目标年/月区间，
-      月度取当月首末日、年度取全年；模板缺日期维度时拒绝生成，保持 `awaiting-plan`。
+      月度取当月首末日、年度取全年；组件模板本身不带期间条件时按同一协议补入
+      `commonConfig.filters.children`，只有连 `commonConfig` 都不存在的载荷才拒绝生成。
     - 期间目录注册不再改写 `retry_wait` / `awaiting-plan` 的执行时间，AP 故障时不会每轮重打。
     - 期间解析改为结构化：按最后一次年度/月度粒度选择，残留旧月份不会覆盖新的年度选择。
 - 验证：`tests/test_cockpit_period_refresh.py` 39 项（先红后绿）；

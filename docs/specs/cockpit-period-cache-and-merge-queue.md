@@ -115,8 +115,9 @@
 - 期间目标优先复用该期间已存在的查询计划；没有时按真实 AP 协议生成：
   取组件查询模板（交付配置或快照），把日期维度 `YWLN_D044` 的条件改写为
   `{"operator":{"code":"BETWEEN","type":"DATE"},"valueType":"ABSOLUTE","value":[开始日, 结束日]}`；
-  月度取当月首末日、年度取 1-1 至 12-31。**模板里没有日期维度时直接丢弃**，
-  绝不把无期间条件的查询当成某个月的结果；全部被丢弃时写入 `awaiting-plan`；
+  月度取当月首末日、年度取 1-1 至 12-31。组件模板本身不带期间条件时，按同一协议把
+  `YWLN_D044` 条件补进 `commonConfig.filters.children`；只有连 `commonConfig` 都不存在的
+  载荷才丢弃，全部不可用时写入 `awaiting-plan`，绝不把无期间条件的查询当成某个月的结果；
 - 已处于 `retry_wait` / `awaiting-plan` 的目标不会被注册流程改写执行时间；
 - `GET /api/cockpit/publications/period-coverage?periods=2025-10,2025-09` 返回
   `total / ready / missing` 与逐条状态。

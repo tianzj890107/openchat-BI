@@ -475,14 +475,15 @@ def test_preheat_period_publishes_when_a_plan_for_that_period_exists(tmp_path):
     assert result['period'] == '2025-10'
 
 
-def test_preheat_period_never_fabricates_a_plan_for_an_unseen_period(tmp_path):
+def test_preheat_period_generates_a_plan_for_an_unseen_period(tmp_path):
     store, cfg, page, _q = _two_stage_page(tmp_path)
     calls = []
     manager = _manager(store, cfg, lambda i, k, p: {'value': 1},
                        _analysis_factory_factory(store, calls))
     result = manager.preheat_period(1, 'analysis', 'shipment', '2024-01')
-    assert result['status'] == 'awaiting-plan'
-    assert calls == []
+    assert result['status'] in {'published', 'frozen'}
+    assert calls
+    assert (1, 'shipment', '2024-01') in store.published_stage_periods()
 
 
 def _analysis_factory_factory(store, calls=None):
@@ -553,13 +554,27 @@ def test_period_plan_substitutes_the_requested_date_range(tmp_path):
     assert item['value'] == ['2024-03-01', '2024-03-31']
 
 
-def test_period_plan_refuses_a_template_without_a_date_filter(tmp_path):
+def test_period_plan_adds_the_date_filter_when_the_template_has_none(tmp_path):
     from bi_agent.cockpit.refresh import RefreshManager
     store = Store(tmp_path / 'plan.sqlite3')
     manager = _manager(store, Config(), lambda *a, **k: {}, lambda *a, **k: None)
     undated = {'analysisConfig': {'indicators': [{'identifierCode': 'YWLN_M0036'}]},
                'commonConfig': {'filters': {'logic': 'AND', 'children': []}}}
     with patch('bi_agent.cockpit.refresh.delivered_component_requests', return_value=[undated]), \
+         patch('bi_agent.cockpit.refresh.delivered_stage_requests', return_value=[]):
+        _context, requests = manager._stage_requests(1, 'analysis', 'shipment', period='2024-03')
+    assert requests
+    item = requests[0]['commonConfig']['filters']['children'][0]
+    assert item['identifierCode'] == 'YWLN_D044'
+    assert item['value'] == ['2024-03-01', '2024-03-31']
+
+
+def test_period_plan_refuses_a_payload_it_cannot_date_scope(tmp_path):
+    from bi_agent.cockpit.refresh import RefreshManager
+    store = Store(tmp_path / 'plan.sqlite3')
+    manager = _manager(store, Config(), lambda *a, **k: {}, lambda *a, **k: None)
+    unusable = {'analysisConfig': {'indicators': [{'identifierCode': 'YWLN_M0036'}]}}
+    with patch('bi_agent.cockpit.refresh.delivered_component_requests', return_value=[unusable]), \
          patch('bi_agent.cockpit.refresh.delivered_stage_requests', return_value=[]):
         _context, requests = manager._stage_requests(1, 'analysis', 'shipment', period='2024-03')
     assert requests == []
