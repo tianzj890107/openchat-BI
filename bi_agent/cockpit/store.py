@@ -66,6 +66,8 @@ class Store:
                 ('deadline', 'REAL NOT NULL DEFAULT 0'),
                 ('heartbeat', 'REAL NOT NULL DEFAULT 0'),
                 ('generation', 'INTEGER NOT NULL DEFAULT 0'),
+                ('pending', 'INTEGER NOT NULL DEFAULT 0'),
+                ('pending_since', 'REAL NOT NULL DEFAULT 0'),
             ):
                 if name not in columns:
                     db.execute(f'ALTER TABLE page_refresh ADD COLUMN {name} {ddl}')
@@ -418,11 +420,21 @@ class Store:
                     or int(row['generation']) != int(generation)
                     or row['status'] != 'running' or row['lifecycle'] != 'active'):
                 return False
-            values = [status, row['attempt'], float(next_check if next_check is not None else row['next_check']),
+            # A change that arrived while this run was in flight is kept as a
+            # single marker.  Finish this generation, then schedule the newest
+            # data immediately instead of dropping the request or queueing one
+            # task per change.
+            pending = int(row['pending'] or 0)
+            final_status = 'waiting' if pending else status
+            final_check = now if pending else float(
+                next_check if next_check is not None else row['next_check'])
+            values = [final_status, row['attempt'], final_check,
                       0.0, str(error or ''), float(last_success if last_success is not None else row['last_success']),
-                      now, lifecycle or row['lifecycle'], '', '', 0.0, 0.0, scope, job_id, int(generation)]
+                      now, lifecycle or row['lifecycle'], '', '', 0.0, 0.0, 0, 0.0,
+                      scope, job_id, int(generation)]
             db.execute('UPDATE page_refresh SET status=?,attempt=?,next_check=?,lease_until=?,last_error=?,'
-                       'last_success=?,updated=?,lifecycle=?,job_id=?,worker_id=?,deadline=?,heartbeat=? '
+                       'last_success=?,updated=?,lifecycle=?,job_id=?,worker_id=?,deadline=?,heartbeat=?,'
+                       'pending=?,pending_since=? '
                        'WHERE scope=? AND job_id=? AND generation=?', values)
         return True
 
@@ -440,8 +452,13 @@ class Store:
             if not row:
                 return False
             if row['status'] == 'running' and row['lease_until'] > now:
-                # A manual click must not hand the same scope to a second
-                # worker; the in-flight run finishes and reschedules itself.
+                # A manual click or a data change must not hand the same scope
+                # to a second worker.  Keep one pending marker for the newest
+                # request; the running generation re-queues itself when done.
+                db.execute('UPDATE page_refresh SET pending=1,pending_since=?,updated=? '
+                           'WHERE scope=?', (now, now, scope))
+                # No new task was queued; the live generation re-checks once it
+                # finishes.  The pending flag is reported through queue stats.
                 return False
             if row['lifecycle'] not in {'active'}:
                 return False
@@ -479,7 +496,7 @@ class Store:
         with self.db() as db:
             rows = db.execute(
                 "SELECT scope FROM page_refresh WHERE lifecycle='active' "
-                "AND (expires=0 OR expires>?) AND next_check<=? "
+                "AND status<>'frozen' AND (expires=0 OR expires>?) AND next_check<=? "
                 "AND (status!='running' OR lease_until<=?) "
                 "ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 "
                 "WHEN 'waiting' THEN 2 WHEN 'retry_wait' THEN 3 WHEN 'published' THEN 4 "
@@ -502,13 +519,15 @@ class Store:
                 "MIN(CASE WHEN next_check<=? AND "
                 " (status!='running' OR lease_until<=?) THEN next_check END), "
                 "SUM(CASE WHEN last_error LIKE '%超时%' OR last_error LIKE '%租约已失效%' "
-                " OR last_error LIKE '%停止旧执行%' THEN 1 ELSE 0 END) "
+                " OR last_error LIKE '%停止旧执行%' THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN pending=1 THEN 1 ELSE 0 END) "
                 "FROM page_refresh WHERE lifecycle='active' AND (expires=0 OR expires>?)",
                 (now, now, now, now, now, now)).fetchone()
-        active, due, running, waiting, oldest, timed_out = row
+        active, due, running, waiting, oldest, timed_out, pending = row
         oldest = float(oldest or 0)
         return dict(activeCount=int(active or 0), dueCount=int(due or 0),
                     runningCount=int(running or 0), waitingCount=int(waiting or 0),
+                    pendingCount=int(pending or 0),
                     oldestWaitingAt=oldest,
                     oldestWaitSeconds=max(0.0, round(now - oldest, 1)) if oldest else 0,
                     timedOutCount=int(timed_out or 0))

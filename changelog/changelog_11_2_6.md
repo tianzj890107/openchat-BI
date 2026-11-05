@@ -2,6 +2,25 @@
 
 按自然周维护，不创建日报。
 
+### 2026-11-05 分析按期间缓存、合并队列与按环节刷新（第一阶段）
+
+- 新增 `bi_agent/cockpit/periods.py`：从已提交的筛选范围解析业务期间（`YYYY` / `YYYY-MM`），
+  以 `COCKPIT_ACTIVE_PERIOD` → 交付元数据日期默认值 → 系统当月 的顺序确定「当前期间」。
+  当前期间按 `COCKPIT_REFRESH_INTERVAL_SECONDS` 刷新；上一期间在 `COCKPIT_PERIOD_GRACE_DAYS`
+  宽限期内继续刷新，之后冻结；更早和未来期间冻结（`COCKPIT_HISTORY_REFRESH_ENABLED=1` 可改为按天刷新）。
+  冻结只写入 `status='frozen'`、`next_check=0`，已发布结果与历史记录保持可读。
+- `page_refresh` 增加 `pending`/`pending_since`：运行中的刷新范围再收到请求时只记录一个待更新标记，
+  不新开任务；本次运行结束时若存在标记，立即以 `waiting` 重排一次，处理最新数据。
+  `refresh_queue_stats()` 新增 `pendingCount`。
+- 整页刷新改为按环节判断证据：`stage_evidence()` 拆分各环节指纹与查询集合，只有证据变化的环节
+  重新分析，未变化的环节沿用原分析；`build_page()` 接受整页口径、环节口径或上次发布口径，
+  保证沿用未变化环节时整页仍可发布。配置版本或数据源身份变化时仍强制全部重算。
+- `publication_status()` 增加 `period` 与 `periodPolicy`，便于前端与运维确认该范围的刷新节奏。
+- 验证：新增 `tests/test_cockpit_period_refresh.py` 18 项（先红后绿）；
+  全量 `pytest tests -k cockpit` 309 项通过，前端 `node --test tests/*.test.mjs` 92 项通过。
+  全量 Python 套件中 5 项与本次无关的既有失败（版本 tag 校验、`库存管理演示内容.docx` 缺失、
+  Workbench 本地 PG 未完成改动）。
+
 ### 2026-11-02 单一源码主目录约定
 
 - 在 AGENTS.md 固定用户要求：未经明确授权不创建 worktree、额外 clone 或 POC/集成源码副本；已合并工作区核对线上路径及独有数据后清理。

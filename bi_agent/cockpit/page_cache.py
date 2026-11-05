@@ -102,7 +102,37 @@ def page_fingerprint(records):
                           key=lambda v: json.dumps(v, sort_keys=True)))
 
 
-def build_page(req, store, config, *, data_source='ap', data_identity=None):
+def stage_evidence(records):
+    """Split one page's evidence into per-stage fingerprints and queries.
+
+    A refresh only needs to re-analyse the stages whose own evidence moved.
+    Stages without a matching query are absent from the result, so callers fall
+    back to the whole-page fingerprint for them.
+    """
+    from .dashboard_source import filter_stage_selected
+    business = [record for record in records if record.get('kind') != 'helmet']
+    items = {str(index): {'request': record.get('request')}
+             for index, record in enumerate(business)}
+    result = {}
+    for stage in ('opportunity', 'quotation', 'bid', 'order', 'shipment', 'combined'):
+        try:
+            kept, _excluded = filter_stage_selected(items, stage)
+        except ValueError:
+            continue
+        if not kept:
+            continue
+        subset = [business[int(key)] for key in sorted(kept, key=int)]
+        result[stage] = dict(
+            fingerprint=page_fingerprint(subset),
+            queries=sorted({json.dumps(record['request'], ensure_ascii=False, sort_keys=True,
+                                     separators=(',', ':'))
+                            for record in subset
+                            if record.get('kind') in {'analysis', 'batch'}}))
+    return result
+
+
+def build_page(req, store, config, *, data_source='ap', data_identity=None,
+               previous_fingerprint=None):
     if data_source not in {'ap', 'ap+pg', 'pg', 'snapshot', 'postgres', 'demo'}:
         raise HTTPException(422, '整页数据来源无效')
     for ids in (req.apReceiptIds, req.pgReceiptIds):
@@ -145,18 +175,30 @@ def build_page(req, store, config, *, data_source='ap', data_identity=None):
     queries = sorted({canonical(r['request']) for r in ap_records
                       if r['kind'] in {'analysis', 'batch'}})
     fingerprint = page_fingerprint(records)
+    stage_scoped = stage_evidence(records)
     items = {}
     for stage, aid in req.analysisIds.items():
         item = store.get_analysis(aid)
         c = (item or {}).get('context', {})
+        scoped = stage_scoped.get(stage) or {}
+        # A stage reused from the previous publication carries the page
+        # fingerprint it was produced from, so that value stays acceptable for
+        # unchanged stages.  Changed stages must match the new page or stage
+        # fingerprint; the refresh path decides which stage may be reused.
+        fingerprints = {fingerprint, previous_fingerprint,
+                        scoped.get('fingerprint')} - {None, ''}
+        query_sets = {tuple(queries)}
+        if scoped.get('queries'):
+            query_sets.add(tuple(scoped['queries']))
         if (not item or item['status'] not in {'completed', 'limited'}
                 or (item.get('result') or {}).get('cardContract') != CONTRACT
                     or not analysis_source_matches(c, data_source)
                 or any(c.get(k) != v for k, v in dict(id=req.id, page=req.page, stage=stage,
                                                      engine='main', dataIdentity=identity,
-                                                     dataFingerprint=fingerprint,
                                                          ).items())
-                or sorted({canonical(json.loads(q)) for q in c.get('chartQueries', [])}) != queries):
+                or c.get('dataFingerprint') not in fingerprints
+                or tuple(sorted({canonical(json.loads(q)) for q in c.get('chartQueries', [])}))
+                    not in query_sets):
             raise HTTPException(422, '图表与AI的数据版本不一致，保留上次完整版本')
         items[stage] = compact_analysis(item)
     entries = [dict(kind=r['kind'], payload=r['request'], data=r['response'], receiptId=r['id'],
