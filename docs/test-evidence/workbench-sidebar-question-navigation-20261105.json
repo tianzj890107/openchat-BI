@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-05",
+  "reference": "Local Fuxi renderer: message-elevator / message-elevator-anchor; inspected read-only through CDP",
+  "viewport": [
+    1440,
+    900
+  ],
+  "checks": {
+    "visibleSectionCollapseButtons": 0,
+    "brandHeaderCollapseButtons": 1,
+    "brandBackground": "transparent",
+    "brandColor": "rgb(54,116,92)",
+    "avatarOuterBackground": "rgb(238,245,241)",
+    "questionNavigationInstances": 1,
+    "fixtureQuestionCount": 2,
+    "selectedTurn": "qa2",
+    "scrollTopAfterNavigation": 624,
+    "sopInitiallyExpanded": false,
+    "horizontalOverflow1440": false,
+    "horizontalOverflow760": false
+  },
+  "fixturePolicy": "DOM-only two-turn fixture, no model calls or history writes",
+  "verification": {
+    "nodeTests": 113,
+    "pythonRegressionTests": 222,
+    "build": "passed"
+  }
+}

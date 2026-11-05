@@ -3618,7 +3618,8 @@ console.log(JSON.stringify(out));"""
         self.assertIn("migrateLegacySop", runtime[:import_start])
         self.assertIn("sopStatusesForDone", runtime[:import_start])
         self.assertIn("visitedFromTodos", runtime[:import_start])
-        self.assertIn("mountRoot(workflowRoot, <ProXScope><WorkflowPanels /></ProXScope>)", main)
+        self.assertIn("mountRoot(workflowRoot, <ProXScope><WorkflowPanels questionNavigation /></ProXScope>)", main)
+        self.assertEqual(main.count("<WorkflowPanels questionNavigation />"), 1)
         self.assertIn("dashboardWorkflowRoot", main)
         self.assertIn(
             "mountRoot(dashboardWorkflowRoot, <ProXScope><WorkflowPanels /></ProXScope>)",

@@ -24,6 +24,10 @@ import {
 } from "./proUiBridge.js";
 import { PROX_WORKBENCH_THEME } from "./proUiTheme.js";
 
+function SidebarPanelIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M10 4v16" /></svg>;
+}
+
 const SIDEBAR_STORAGE_KEY = "bi.sidebarCollapsed.v2";
 const SIDEBAR_WIDTH_STORAGE_KEY = "bi.sidebarWidth.v1";
 
@@ -303,7 +307,7 @@ export default function ProUiSidebar({
         <ProXButton
           type="text"
           className="pro-ui-sidebar-toggle"
-          icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          icon={<SidebarPanelIcon />}
           onClick={toggle}
           aria-label={collapsed ? "展开导航" : "收起导航"}
         />

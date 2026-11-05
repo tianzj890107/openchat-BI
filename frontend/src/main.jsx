@@ -1,7 +1,8 @@
+import { createPortal } from "react-dom";
 import { presentSop } from "./sopPresentation.js";
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Tag } from "antd";
+import { Tag, Tooltip } from "antd";
 import { ProXActivity, ProXBubble, ProXConfigProvider, ProXExecutionSteps, ProXPrompts, ProXToolCall, ProXToolResultCard } from "@pro-ui/x-react";
 import shellDocument from "./shell.html?raw";
 import {
@@ -302,10 +303,9 @@ function sopExecutionStatus(status) {
   return "pending";
 }
 
-function WorkflowPanels() {
+function WorkflowPanels({ questionNavigation = false }) {
   const [workflow, setWorkflow] = useState(readWorkflow);
-  const [sopOpen, setSopOpen] = useState(true);
-  const [todoOpen, setTodoOpen] = useState(true);
+  const [sopOpen, setSopOpen] = useState(false);
   const [mode, setMode] = useState(() => document.body.dataset.mode || "data");
   const [activeQuestionTurn, setActiveQuestionTurn] = useState(() =>
     document.getElementById("chat-todo")?.dataset.activeQuestionTurn || ""
@@ -347,12 +347,6 @@ function WorkflowPanels() {
     status: sopExecutionStatus(item.status),
     icon: workflowIcon(item.status),
   }));
-  const questionItems = workflow.questions.map((item, index) => ({
-    key: String(item.turn ?? index),
-    label: item.text,
-    description: "点击跳到本轮问题",
-    icon: <Tag>{index + 1}</Tag>,
-  }));
   const navigateToQuestion = (turn) => {
     const value = String(turn ?? "");
     if (!value) return;
@@ -368,7 +362,6 @@ function WorkflowPanels() {
           title={<span className="antd-workflow-title">分析 SOP <Tag color="blue">{total ? `${done}/${total}` : "待开始"}</Tag></span>}
           expanded={sopOpen}
           onExpand={setSopOpen}
-          defaultExpanded
         >
           {total ? (
             <><ProXExecutionSteps items={chainItems} variant="steps" />{skippedSop.length ? <p className="pro-ui-sop-skipped">本轮无需执行：{skippedSop.join("、")}</p> : null}</>
@@ -377,25 +370,21 @@ function WorkflowPanels() {
           )}
         </ProXActivity>
       )}
-      {!!workflow.questions.length && (
-        <ProXActivity
-          className="pro-ui-workflow-activity pro-ui-workflow-todo"
-          title={<span className="antd-workflow-title">任务清单 <Tag>{workflow.questions.length} 个问题</Tag></span>}
-          expanded={todoOpen}
-          onExpand={setTodoOpen}
-          defaultExpanded
-        >
-          <ProXPrompts
-            className="pro-ui-question-prompts"
-            items={questionItems}
-            vertical
-            itemRender={(item, node) => React.cloneElement(node, {
-              className: `${node.props.className || ""} antd-question-item`,
-              "data-question-turn": item.key,
-            })}
-            onItemClick={({ data }) => navigateToQuestion(data.key)}
-          />
-        </ProXActivity>
+      {questionNavigation && !!workflow.questions.length && document.getElementById("chat-scroll")?.closest(".chat-pane") && createPortal(
+        <nav className="pro-ui-question-elevator" aria-label="会话轮次导航">
+          {workflow.questions.map((item, index) => (
+            <Tooltip key={String(item.turn ?? index)} title={`第 ${index + 1} 轮：${item.text}`} trigger={["hover", "focus"]} placement="right" overlayStyle={{ maxWidth: 360 }}>
+              <button
+                type="button"
+                className="pro-ui-question-anchor"
+                aria-label={`第 ${index + 1} 轮：${item.text}`}
+                aria-current={String(activeQuestionTurn) === String(item.turn) ? "true" : undefined}
+                data-question-turn={item.turn}
+                onClick={() => { setActiveQuestionTurn(String(item.turn)); navigateToQuestion(item.turn); }}
+              />
+            </Tooltip>
+          ))}
+        </nav>, document.getElementById("chat-scroll").closest(".chat-pane")
       )}
     </div>
   );
@@ -1055,7 +1044,7 @@ function WorkbenchApp() {
       />
     ));
     mountRoot(versionRoot, <ProductVersionTag />);
-    mountRoot(workflowRoot, <ProXScope><WorkflowPanels /></ProXScope>);
+    mountRoot(workflowRoot, <ProXScope><WorkflowPanels questionNavigation /></ProXScope>);
     mountRoot(dashboardWorkflowRoot, <ProXScope><WorkflowPanels /></ProXScope>);
     mountRoot(proUiStatusRoot, <ProXScope><ProUiAgentStatus /></ProXScope>);
     mountRoot(proUiWelcomeRoot, <ProXScope><ProUiWelcome /></ProXScope>);
