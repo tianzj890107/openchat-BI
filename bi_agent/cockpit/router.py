@@ -663,6 +663,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                     cardsVersion=cards_version(items),
                     displayStale=lookup.get('displayStale',False),**status)
 
+    @router.get('/publications/period-coverage')
+    def publication_period_coverage(periods:str=''):
+        from .periods import period_catalog
+        from .refresh import period_coverage
+        catalog=[item.strip() for item in periods.split(',') if item.strip()] or period_catalog()
+        return period_coverage(store(), catalog)
+
     @router.get('/publications/cards')
     def publication_cards(id:int=1,page:Literal['overview','operations','analysis']='overview'):
         if id not in (1,2):raise HTTPException(422,'无效身份')

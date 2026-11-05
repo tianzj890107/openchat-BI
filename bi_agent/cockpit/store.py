@@ -1,6 +1,7 @@
 """Append-preserving SQLite history, isolated from conversation storage."""
 from __future__ import annotations
 import json
+import os
 import sqlite3
 import time
 import uuid
@@ -48,6 +49,9 @@ class Store:
               last_success REAL NOT NULL DEFAULT 0, updated REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS refresh_plans (
               scope TEXT PRIMARY KEY, body TEXT NOT NULL, updated REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS analysis_stage_evidence (
+              analysis_id TEXT PRIMARY KEY, stage TEXT NOT NULL,
+              fingerprint TEXT NOT NULL, queries TEXT NOT NULL, updated REAL NOT NULL);
             ''')
             # Additive migration: keep every historical result and every old
             # scope row, but make refresh eligibility explicit.  Older rows get
@@ -425,9 +429,24 @@ class Store:
             # data immediately instead of dropping the request or queueing one
             # task per change.
             pending = int(row['pending'] or 0)
-            final_status = 'waiting' if pending else status
-            final_check = now if pending else float(
-                next_check if next_check is not None else row['next_check'])
+            scheduled = float(next_check if next_check is not None else row['next_check'])
+            final_status, final_check = status, scheduled
+            if pending and status != 'frozen':
+                # A pending request means "there is newer data", not "run right
+                # now": the next run still has to respect the minimum recheck
+                # gap and a failed run's backoff.
+                raw_gap = os.getenv('COCKPIT_REFRESH_MIN_RECHECK_SECONDS', '60')
+                try:
+                    gap = max(0, int(raw_gap))
+                except ValueError:
+                    gap = 60
+                final_status = 'waiting'
+                # A failed run keeps its backoff; a successful one only waits
+                # for the minimum gap before picking up the newer data.
+                final_check = (max(scheduled, now + gap) if status == 'retry_wait'
+                               else now + gap)
+            elif pending and status == 'frozen':
+                final_status, final_check = 'frozen', 0.0
             values = [final_status, row['attempt'], final_check,
                       0.0, str(error or ''), float(last_success if last_success is not None else row['last_success']),
                       now, lifecycle or row['lifecycle'], '', '', 0.0, 0.0, 0, 0.0,
@@ -557,6 +576,28 @@ class Store:
             db.execute("UPDATE analyses SET body=?,status=?,updated=? WHERE id=?",(json.dumps(item,ensure_ascii=False),item["status"],item["updatedAt"],aid))
         return item
 
+    def set_stage_evidence(self, analysis_id, stage, fingerprint, queries):
+        """Record the per-stage evidence a published analysis was built from."""
+        now = time.time()
+        payload = json.dumps(list(queries or []), ensure_ascii=False)
+        with self.db() as db:
+            db.execute('INSERT INTO analysis_stage_evidence VALUES(?,?,?,?,?) '
+                       'ON CONFLICT(analysis_id) DO UPDATE SET stage=excluded.stage,'
+                       'fingerprint=excluded.fingerprint,queries=excluded.queries,'
+                       'updated=excluded.updated',
+                       (analysis_id, stage, fingerprint or '', payload, now))
+
+    def stage_evidence_for(self, analysis_id):
+        """Published stage evidence, or ``None`` for legacy/HTTP analyses."""
+        if not analysis_id:
+            return None
+        with self.db() as db:
+            row = db.execute('SELECT stage,fingerprint,queries FROM analysis_stage_evidence '
+                             'WHERE analysis_id=?', (analysis_id,)).fetchone()
+        if not row:
+            return None
+        return dict(stage=row[0], fingerprint=row[1], queries=json.loads(row[2] or '[]'))
+
     def list_analyses(self, scope=None, limit=50):
         with self.db() as db:
             rows=db.execute("SELECT body FROM analyses "+("WHERE scope=? " if scope else "")+"ORDER BY updated DESC LIMIT ?",(scope,limit) if scope else (limit,)).fetchall()
@@ -592,6 +633,21 @@ class Store:
         with self.db() as db:
             rows=db.execute('SELECT v.stage,a.body FROM publication_views v JOIN publications p ON p.scope=v.scope JOIN analyses a ON a.id=p.analysis_id WHERE v.view_key=?',(view_key,)).fetchall()
         return {r[0]:json.loads(r[1]) for r in rows}
+
+    def published_stage_periods(self, limit=5000):
+        """Published (identity, stage, period) triples, newest first."""
+        with self.db() as db:
+            rows = db.execute(
+                "SELECT json_extract(a.body,'$.context.id'), v.stage, "
+                "json_extract(a.body,'$.context.period') FROM publication_views v "
+                "JOIN publications p ON p.scope=v.scope "
+                "JOIN analyses a ON a.id=p.analysis_id "
+                "ORDER BY a.updated DESC LIMIT ?", (limit,)).fetchall()
+        result = set()
+        for identity, stage, period in rows:
+            if identity is not None and period:
+                result.add((int(identity), stage, str(period)))
+        return result
 
     def latest_views(self, identity, engine, page, *, data_identity=None):
         """Newest published card per stage, even if the config key rotated.

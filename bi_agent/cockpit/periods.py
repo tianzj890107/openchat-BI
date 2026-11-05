@@ -106,23 +106,47 @@ def _delivered_period() -> str:
     return _METADATA_PERIOD
 
 
+def period_mode() -> str:
+    """``live`` maintains the business current period; ``backfill`` replays one."""
+    value = (os.getenv('COCKPIT_PERIOD_MODE') or 'live').strip().lower()
+    return 'backfill' if value == 'backfill' else 'live'
+
+
 def active_period(now=None) -> str:
+    """The period the deployment is currently responsible for.
+
+    ``live`` (default) follows the wall clock in the customer's business
+    timezone so a new month is picked up automatically.  ``backfill`` requires
+    an explicit ``COCKPIT_ACTIVE_PERIOD`` (falling back to the delivered
+    default only when that variable is empty).
+    """
     override = normalise(os.getenv('COCKPIT_ACTIVE_PERIOD', ''))
     if override:
         return override
-    delivered = _delivered_period()
-    if delivered:
-        return delivered
+    if period_mode() == 'backfill':
+        delivered = _delivered_period()
+        if delivered:
+            return delivered
     moment = _moment(now)
     return f'{moment.year:04d}-{moment.month:02d}'
 
 
+def business_timezone():
+    name = os.getenv('COCKPIT_BUSINESS_TIMEZONE', 'Asia/Shanghai')
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(name)
+    except Exception:  # pragma: no cover - missing tz database on minimal images
+        return dt.timezone(dt.timedelta(hours=8))
+
+
 def _moment(now):
+    zone = business_timezone()
     if now is None:
-        return dt.datetime.now()
+        return dt.datetime.now(zone)
     if isinstance(now, dt.datetime):
-        return now
-    return dt.datetime.fromtimestamp(float(now))
+        return now if now.tzinfo else now.replace(tzinfo=zone)
+    return dt.datetime.fromtimestamp(float(now), zone)
 
 
 def _flag(name, default=False):
@@ -132,16 +156,28 @@ def _flag(name, default=False):
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
-def _previous(active: str) -> str:
+def previous_periods(active: str) -> list[str]:
+    """Periods that just ended and may still be settling.
+
+    A new month needs both the previous month and, in January, the previous
+    year: a monthly and an annual analysis are separate cache entries.
+    """
     try:
         if len(active) == 7:
             year, month = int(active[:4]), int(active[5:])
-            return f'{year - 1:04d}-12' if month == 1 else f'{year:04d}-{month - 1:02d}'
+            if month == 1:
+                return [f'{year - 1:04d}-12', f'{year - 1:04d}']
+            return [f'{year:04d}-{month - 1:02d}']
         if len(active) == 4:
-            return f'{int(active) - 1:04d}'
+            return [f'{int(active) - 1:04d}']
     except ValueError:
-        return ''
-    return ''
+        return []
+    return []
+
+
+def _previous(active: str) -> str:
+    values = previous_periods(active)
+    return values[0] if values else ''
 
 
 def _compare(period: str, active: str) -> int:
@@ -163,7 +199,10 @@ def policy_for(period, *, now=None, active=None, interval=None, grace_days=None,
     moment = _moment(now)
     active_period_value = normalise(active) or active_period(moment)
     interval = int(interval or os.getenv('COCKPIT_REFRESH_INTERVAL_SECONDS', DEFAULT_INTERVAL))
-    grace = DEFAULT_GRACE_DAYS if grace_days is None else int(grace_days)
+    if grace_days is None:
+        raw = os.getenv('COCKPIT_PERIOD_GRACE_DAYS')
+        grace_days = int(raw) if raw not in (None, '') else DEFAULT_GRACE_DAYS
+    grace = int(grace_days)
     period_value = normalise(period)
     if _flag('COCKPIT_PERIOD_REFRESH_ENABLED', True) is False:
         return dict(period=period_value, kind='current', recheckAfter=interval,
@@ -174,7 +213,7 @@ def policy_for(period, *, now=None, active=None, interval=None, grace_days=None,
             len(period_value) == 4 and period_value == active_period_value[:4]
             and len(active_period_value) == 7):
         kind, recheck = 'current', interval
-    elif period_value == _previous(active_period_value) and moment.day <= grace:
+    elif period_value in previous_periods(active_period_value) and moment.day <= grace:
         kind, recheck = 'grace', interval
     else:
         earlier = _compare(period_value, active_period_value) < 0
@@ -187,3 +226,20 @@ def policy_for(period, *, now=None, active=None, interval=None, grace_days=None,
             recheck = None
     return dict(period=period_value, kind=kind, recheckAfter=recheck,
                 graceDays=grace, activePeriod=active_period_value)
+
+
+def period_catalog(now=None) -> list[str]:
+    """Explicit list of periods the deployment must keep warm.
+
+    ``COCKPIT_PREHEAT_PERIODS`` is a comma separated list (``2025,2025-01``).
+    The active period is always first so a fresh deployment warms the range
+    users actually open before any backfill period.
+    """
+    values = []
+    for raw in (os.getenv('COCKPIT_PREHEAT_PERIODS') or '').split(','):
+        period = normalise(raw)
+        if period and period not in values:
+            values.append(period)
+    # The active period already has maintenance targets; the catalog is the
+    # explicit backfill list, so an empty variable means "no extra periods".
+    return values

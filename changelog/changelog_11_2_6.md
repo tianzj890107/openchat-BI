@@ -16,9 +16,20 @@
   重新分析，未变化的环节沿用原分析；`build_page()` 接受整页口径、环节口径或上次发布口径，
   保证沿用未变化环节时整页仍可发布。配置版本或数据源身份变化时仍强制全部重算。
 - `publication_status()` 增加 `period` 与 `periodPolicy`，便于前端与运维确认该范围的刷新节奏。
-- 验证：新增 `tests/test_cockpit_period_refresh.py` 18 项（先红后绿）；
-  全量 `pytest tests -k cockpit` 309 项通过，前端 `node --test tests/*.test.mjs` 92 项通过。
-  全量 Python 套件中 5 项与本次无关的既有失败（版本 tag 校验、`库存管理演示内容.docx` 缺失、
+- 验收补强（2026-11-05 晚）：
+  - 每个环节分析在 `analysis_stage_evidence` 中固定保存自己的证据指纹与查询集合，整页校验不再
+    依赖「上一轮整页指纹」，连续多轮刷新可稳定发布；历史分析首次刷新时补写一次环节记录，不调用模型。
+  - 冻结的期间在重新变成当前/宽限期间时自动恢复排队；恢复不抢占运行中的任务、不删除历史。
+  - `pending` 不再表示立即执行：成功后排到 `COCKPIT_REFRESH_MIN_RECHECK_SECONDS`（默认 60 秒），
+    失败时保留原退避时间；`frozen` 不会被 pending 解冻。
+  - 新增 `COCKPIT_PERIOD_MODE=live|backfill` 与 `COCKPIT_BUSINESS_TIMEZONE`：默认按客户业务时区的
+    系统年月维护，不再由看板默认选中月份隐式决定；回填/演示需显式设置 `backfill` + `COCKPIT_ACTIVE_PERIOD`。
+  - `COCKPIT_PERIOD_GRACE_DAYS` 真实生效；上一期间同时覆盖跨年月份与上一年度。
+  - 新增期间目录 `COCKPIT_PREHEAT_PERIODS`、期间预热目标（只复用该期间已有查询计划，无计划进入
+    `awaiting-plan`）与 `GET /api/cockpit/publications/period-coverage` 覆盖率接口。
+- 验证：`tests/test_cockpit_period_refresh.py` 31 项（先红后绿）；
+  全量 `pytest tests -k cockpit` 322 项通过，前端 `node --test tests/*.test.mjs` 92 项通过。
+  全量 Python 套件另有 5 项与本次无关的既有失败（版本 tag 校验、`库存管理演示内容.docx` 缺失、
   Workbench 本地 PG 未完成改动）。
 
 ### 2026-11-02 单一源码主目录约定

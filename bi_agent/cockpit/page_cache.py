@@ -131,8 +131,7 @@ def stage_evidence(records):
     return result
 
 
-def build_page(req, store, config, *, data_source='ap', data_identity=None,
-               previous_fingerprint=None):
+def build_page(req, store, config, *, data_source='ap', data_identity=None):
     if data_source not in {'ap', 'ap+pg', 'pg', 'snapshot', 'postgres', 'demo'}:
         raise HTTPException(422, '整页数据来源无效')
     for ids in (req.apReceiptIds, req.pgReceiptIds):
@@ -181,24 +180,27 @@ def build_page(req, store, config, *, data_source='ap', data_identity=None,
         item = store.get_analysis(aid)
         c = (item or {}).get('context', {})
         scoped = stage_scoped.get(stage) or {}
-        # A stage reused from the previous publication carries the page
-        # fingerprint it was produced from, so that value stays acceptable for
-        # unchanged stages.  Changed stages must match the new page or stage
-        # fingerprint; the refresh path decides which stage may be reused.
-        fingerprints = {fingerprint, previous_fingerprint,
-                        scoped.get('fingerprint')} - {None, ''}
-        query_sets = {tuple(queries)}
-        if scoped.get('queries'):
-            query_sets.add(tuple(scoped['queries']))
+        expected_fp = scoped.get('fingerprint') or fingerprint
+        expected_queries = scoped.get('queries') or queries
+        # Every node keeps its own evidence fingerprint.  A node reused across
+        # refreshes is validated against that node's evidence, never against a
+        # previous whole-page fingerprint; analyses produced by the HTTP path
+        # (no stage record yet) still have to match this page's own version.
+        record = store.stage_evidence_for(aid)
+        if record is not None:
+            evidence_ok = (record.get('fingerprint') == expected_fp
+                           and sorted(record.get('queries') or []) == sorted(expected_queries))
+        else:
+            evidence_ok = c.get('dataFingerprint') == fingerprint and (
+                tuple(sorted({canonical(json.loads(q)) for q in c.get('chartQueries', [])}))
+                in {tuple(queries), tuple(expected_queries)})
         if (not item or item['status'] not in {'completed', 'limited'}
                 or (item.get('result') or {}).get('cardContract') != CONTRACT
                     or not analysis_source_matches(c, data_source)
                 or any(c.get(k) != v for k, v in dict(id=req.id, page=req.page, stage=stage,
                                                      engine='main', dataIdentity=identity,
                                                          ).items())
-                or c.get('dataFingerprint') not in fingerprints
-                or tuple(sorted({canonical(json.loads(q)) for q in c.get('chartQueries', [])}))
-                    not in query_sets):
+                or not evidence_ok):
             raise HTTPException(422, '图表与AI的数据版本不一致，保留上次完整版本')
         items[stage] = compact_analysis(item)
     entries = [dict(kind=r['kind'], payload=r['request'], data=r['response'], receiptId=r['id'],

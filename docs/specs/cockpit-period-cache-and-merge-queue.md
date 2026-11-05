@@ -26,16 +26,20 @@
 
 ## 3. 期间口径
 
-### 3.1 当前期间
+### 3.1 当前期间与运行模式
 
-按以下顺序确定「当前期间」：
+`COCKPIT_PERIOD_MODE` 决定正常维护哪个期间：
 
-1. 环境变量 `COCKPIT_ACTIVE_PERIOD`（如 `2026-11` 或 `2026`）；
-2. 交付元数据 `runtime.json` 中日期筛选组件默认值（`YWLN_D044`）；
-3. 系统当月。
+| 模式 | 当前期间来源 |
+|---|---|
+| `live`（默认） | 客户业务时区（`COCKPIT_BUSINESS_TIMEZONE`，默认 `Asia/Shanghai`）下的系统年月 |
+| `backfill` | 必须显式配置 `COCKPIT_ACTIVE_PERIOD`；为空时退回交付默认值 |
 
-当前期间是刷新基准，不是系统时间：客户数据仍停留在 2025-10 时，默认作用域必须继续按间隔
-刷新，不能因为系统日期更晚而被判为历史。
+`COCKPIT_ACTIVE_PERIOD` 在两种模式下都优先。页面默认选中的月份**不再**隐式决定服务端长期
+维护哪个期间；演示或补数回填必须显式写 `COCKPIT_PERIOD_MODE=backfill` 与
+`COCKPIT_ACTIVE_PERIOD=YYYY-MM`（否则 live 模式会把 2025-10 判为历史并冻结）。
+
+上一期间同时包含月份与年度边界：1 月时上一期间是「去年 12 月」和「去年」，二者分别维护。
 
 ### 3.2 作用域期间
 
@@ -50,7 +54,7 @@
 | 期间 | 判定 | 重算间隔 |
 |---|---|---|
 | 当前期间 | 与当前期间相同 | `COCKPIT_REFRESH_INTERVAL_SECONDS`（默认 900 秒） |
-| 上一期间 | 同粒度下紧邻当前期间，且当月日期 ≤ `COCKPIT_PERIOD_GRACE_DAYS`（默认 7） | 同当前期间 |
+| 上一期间 | `previous_periods()` 中的期间（跨年含上一年度），且当月日期 ≤ `COCKPIT_PERIOD_GRACE_DAYS`（默认 7，读环境变量） | 同当前期间 |
 | 上一期间（超出宽限期） | 同上 | 冻结 |
 | 更早期间 | 早于当前期间 | 冻结（`COCKPIT_HISTORY_REFRESH_ENABLED=1` 时改为按天刷新） |
 | 未来期间 | 晚于当前期间 | 冻结 |
@@ -65,8 +69,9 @@
 
 - 运行中收到新的刷新请求：设置 `pending=1`、`pending_since=now`，不新开任务；
 - 重复请求只更新时间，不产生多条待处理任务；
-- 运行结束（成功或失败）时若 `pending=1`：清除标记，`next_check=now`，状态 `waiting`，
-  让最新数据紧接着处理一次；
+- 运行结束（成功或失败）时若 `pending=1`：清除标记、状态 `waiting`，但**不得**绕过
+  `COCKPIT_REFRESH_MIN_RECHECK_SECONDS`（默认 60 秒）：成功时排到 `now + 最小间隔`，
+  失败时取 `max(本次退避时间, now + 最小间隔)`；`frozen` 状态不会被 pending 解冻；
 - `request_refresh()` 仅在真正新排入任务时返回 `True`；运行中的请求只记录 pending，
   返回 `False`，调用方据 `refresh_queue_stats()['pendingCount']` 观测合并数量；
 - 队列统计输出 `pendingCount`，便于观测被合并的任务量。
@@ -84,8 +89,22 @@
 3. 其余环节重新分析；
 4. 组装整页发布。
 
-`build_page()` 校验放宽为：环节分析的数据指纹/查询集合必须等于「整页口径」**或**「该环节口径」，
-避免沿用未变化环节时整页发布被拒。HTTP 路径仍按整页口径提交，行为不变。
+每个环节分析在 `analysis_stage_evidence` 中固定保存自己的证据指纹与查询集合；
+`build_page()` 按该环节自己的记录校验，不再接受「上一轮整页指纹」。历史分析（只有整页指纹）
+在首次刷新且证据未变化时补写一次环节记录（不调用模型、不改变分析 ID）。HTTP 路径新建的分析
+仍按当轮整页口径校验。
+
+## 5.1 期间目录预热
+
+`COCKPIT_PREHEAT_PERIODS`（逗号分隔，如 `2025,2025-01,2025-02`）声明需要长期保温的期间目录；
+为空表示不额外预热（当前期间仍由常规 preheat 目标维护）。
+
+- 调度为每个「期间 × 角色 × 环节」登记目标，缺少发布结果的目标进入低优先级排队，已发布的按常规
+  节奏维护并冻结历史期间；
+- 期间目标只复用该期间**已存在的查询计划**（同一期间的页面/卡片），绝不使用交付默认查询冒充，
+  没有计划的期间写入 `awaiting-plan`；
+- `GET /api/cockpit/publications/period-coverage?periods=2025-10,2025-09` 返回
+  `total / ready / missing` 与逐条状态。
 
 ## 6. 可观测
 

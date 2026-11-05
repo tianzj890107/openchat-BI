@@ -160,6 +160,11 @@ def view_target_scope(view_key, stage):
     return digest({'view': view_key, 'stage': stage})
 
 
+def period_target_scope(identity, page, stage, period):
+    """Maintenance key for one period x stage preheat target."""
+    return digest({'period': period, 'id': int(identity), 'page': page, 'stage': stage})
+
+
 def preheat_target_scope(identity, page, stage):
     """Maintenance key for a configured slot that has no published card yet."""
     return digest({'preheat': True, 'id': int(identity), 'page': page, 'stage': stage})
@@ -472,6 +477,8 @@ class RefreshManager:
                     # fingerprint so behaviour never becomes more permissive.
                     before = old_scoped.get(stage)
                     after = new_scoped.get(stage)
+                    expected_fp = (after or {}).get('fingerprint') or fingerprint
+                    expected_queries = (after or {}).get('queries') or queries
                     if forced:
                         unchanged = False
                     elif before and after:
@@ -481,7 +488,20 @@ class RefreshManager:
                         unchanged = body.get('dataFingerprint') == fingerprint
                     else:
                         unchanged = False
+                    record = self.store.stage_evidence_for((old or {}).get('id'))
+                    recorded = bool(record
+                                    and record.get('fingerprint') == expected_fp
+                                    and sorted(record.get('queries') or [])
+                                    == sorted(expected_queries))
                     if unchanged and old and old.get('id'):
+                        if recorded:
+                            continue
+                        # One-time migration for analyses published before a
+                        # node kept its own fingerprint.  The stage evidence is
+                        # unchanged, so recording it against the existing
+                        # analysis is truthful and needs no model call.
+                        self.store.set_stage_evidence(old['id'], stage, expected_fp,
+                                                      expected_queries)
                         continue
                     request = dict(
                         id=int(body['id']), engine='main', source='service', page=body['page'],
@@ -498,13 +518,15 @@ class RefreshManager:
                         data_mode='ap', resolve_fallback=False, fallback_notes=notes)
                     data_source = resolved['dataSource']
                     job = self.start_analysis(request, resolved)
-                    analysis_ids[stage] = self._await(job, claim)['id']
+                    item = self._await(job, claim)
+                    analysis_ids[stage] = item['id']
+                    self.store.set_stage_evidence(item['id'], stage, expected_fp,
+                                                  expected_queries)
             page = build_page(PageRequest(
                 id=int(body['id']), page=body['page'], uiScope=body.get('uiScope') or 'default',
                 apReceiptIds=[record['id'] for record in records], pgReceiptIds=pg_ids,
                 analysisIds=analysis_ids), self.store, self.config,
-                data_source=data_source, data_identity=identity,
-                previous_fingerprint=body.get('dataFingerprint'))
+                data_source=data_source, data_identity=identity)
             if not self._owned(claim):
                 raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             current_page = self.store.published_page(scope)
@@ -579,7 +601,7 @@ class RefreshManager:
         except Exception as exc:
             return self._failure(scope, exc, claim)
 
-    def _stage_requests(self, identity, page, stage):
+    def _stage_requests(self, identity, page, stage, period=None):
         """Seed one configured slot from saved cards or the page's own queries.
 
         A slot may exist on two pages.  Its own page is preferred, then the same
@@ -593,13 +615,17 @@ class RefreshManager:
         data_identity = self.config.identity()
         pages = (page, *[item for item in DEFAULT_PAGES if item != page])
         identities = (identity, *[item for item in DEFAULT_IDENTITIES if item != identity])
+
+        def matches(context):
+            return period is None or periods.normalise((context or {}).get('period')) == period
+
         for candidate_identity in identities:
             for candidate in pages:
                 body = self.store.latest_views(candidate_identity, 'main', candidate,
                                                data_identity=data_identity).get(stage)
                 context = (body or {}).get('context') or {}
                 requests = _context_requests(context, stage)
-                if requests:
+                if requests and matches(context):
                     return context, requests
             for candidate in pages:
                 body = self.store.latest_page(candidate_identity, candidate, 'default',
@@ -609,7 +635,8 @@ class RefreshManager:
                 requests = _stage_queries(body, stage)
                 if requests:
                     item = (body.get('items') or {}).get(stage) or {}
-                    return item.get('context') or {}, requests
+                    if matches(item.get('context')):
+                        return item.get('context') or {}, requests
         # The latest published page plan is also a valid stage-plan source when
         # one role has never opened the page.  It contains only queries, not
         # another user's evidence or results.
@@ -619,11 +646,73 @@ class RefreshManager:
             requests = _stage_queries(body, stage)
             if requests:
                 item = (body.get('items') or {}).get(stage) or {}
-                return item.get('context') or {}, requests
+                if matches(item.get('context')):
+                    return item.get('context') or {}, requests
         # No browser has visited this node.  The delivered release snapshot
         # carries the exact component query plans; reuse those requests as a
         # plan and fetch fresh receipts rather than requiring navigation first.
+        if period is not None:
+            # A dated period must never be analysed with the delivered default
+            # queries: those carry no period filter, so the result would be the
+            # wrong range.  Missing plan means "awaiting-plan", not "guess".
+            return {}, []
         return {}, (delivered_component_requests(stage) or delivered_stage_requests(stage))
+
+    def preheat_period(self, identity, page, stage, period):
+        """Materialise one configured slot for an explicit business period."""
+        scope = period_target_scope(identity, page, stage, period)
+        claim = self.store.claim_refresh_info(
+            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+        if not claim:
+            return dict(scope=scope, status='already-running')
+        try:
+            seed, requests = self._stage_requests(identity, page, stage, period=period)
+            if not requests:
+                self._finish(scope, claim, 'awaiting-plan',
+                             next_check=time.time() + self.interval, error='')
+                return dict(scope=scope, status='awaiting-plan')
+            identity = int(identity)
+            records, failures = self._query_requests(identity, requests)
+            extra, notes = self._supplement(identity, failures, [stage])
+            pg_ids = sorted({value['receiptId'] for value in extra.values()})
+            if not records and not pg_ids:
+                raise RuntimeError('本次取数和已登记补查均失败，保留上次卡片')
+            request = dict(
+                id=identity, engine='main', source='service', page=page, stage=stage,
+                defaultView=True, period=period,
+                department=seed.get('department') or '全部产品部',
+                filters=seed.get('filters') or {}, repositoryId='',
+                clarifications=seed.get('clarifications') or {},
+                baselineAnalysisId='', chartSnapshotId=RELEASE,
+                chartQueries=sorted({_canonical(record['request']) for record in records}),
+                apReceiptIds=[record['id'] for record in records],
+                unavailableQueries=list(failures))
+            resolved = page_analysis_context(
+                {**request, 'pgReceiptIds': pg_ids}, self.store,
+                data_mode='ap', resolve_fallback=False, fallback_notes=notes)
+            key = view_scope({**request, **resolved, 'sourceMode': 'service',
+                              'stageName': stage})
+            existing = self.store.published_view(key).get(stage)
+            changed = (not existing
+                       or existing.get('context', {}).get('dataFingerprint')
+                       != resolved['dataFingerprint'])
+            if changed:
+                job = self.start_analysis(request, resolved)
+                item = self._await(job, claim)
+                self.store.set_stage_evidence(
+                    item['id'], stage, resolved['dataFingerprint'],
+                    [record for record in request['chartQueries']])
+            if not self._owned(claim):
+                raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
+            now = time.time()
+            status, next_check = self._schedule('default', request, now=now)
+            self._finish(scope, claim, status, next_check=next_check,
+                         error='', last_success=now)
+            self.store.set_refresh_state(view_target_scope(key, stage), status,
+                                         next_check=next_check, last_success=now)
+            return dict(scope=scope, status=status, changed=changed, period=period)
+        except Exception as exc:
+            return self._failure(scope, exc, claim)
 
     def preheat_target(self, identity, page, stage):
         """Materialise a card for one configured slot, even before it is opened."""
@@ -783,6 +872,14 @@ class RefreshScheduler(threading.Thread):
             targets.setdefault(view_target_scope(view_key, stage), (view_key, stage, body))
         return targets
 
+    def _period_targets(self):
+        targets = {}
+        for period in periods.period_catalog():
+            for identity, page, stage in maintenance_targets():
+                targets[period_target_scope(identity, page, stage, period)] = (
+                    identity, page, stage, period)
+        return targets
+
     def _preheat_targets(self):
         targets = {}
         for identity, page, stage in maintenance_targets():
@@ -796,7 +893,56 @@ class RefreshScheduler(threading.Thread):
             return 0.0, 'frozen'
         return current + float(policy['recheckAfter']), 'waiting'
 
-    def _seed(self, bodies, current, view_targets, preheat_targets, custom_targets):
+    def _resume(self, scope, check, seed_status):
+        """Un-freeze a scope whose period became active/grace again."""
+        if seed_status == 'frozen':
+            return
+        state = self.store.refresh_state(scope) or {}
+        if state.get('status') == 'frozen':
+            # Resume on the normal cadence; a frozen row is never running, so
+            # this cannot steal a live lease or delete published history.
+            self.store.set_refresh_state(scope, 'waiting', next_check=check)
+
+    def _seed_periods(self, current, period_targets):
+        """Register the explicit period x stage catalog.
+
+        A period with no published card is queued once (low priority) even when
+        the period is historical: the first fill must happen exactly once, then
+        the normal policy freezes it.  Periods that already have a card follow
+        the regular cadence.
+        """
+        if not period_targets:
+            return set()
+        covered = self.store.published_stage_periods()
+        version = config_version()
+        active = set()
+        for target, (identity, page, stage, period) in period_targets.items():
+            active.add(target)
+            ready = (int(identity), stage, period) in covered
+            check, seed_status = self._seed_check('default', {'period': period}, current)
+            state = self.store.refresh_state(target) or {}
+            if not ready and state.get('status') not in {'running', 'frozen'}:
+                self.store.ensure_refresh_state(
+                    target, next_check=current, expires=0, lifecycle='active',
+                    config_version=version,
+                    business_key=refresh_business_key('period', identity, page, stage,
+                                                      ui_scope=period))
+                if state.get('status') not in {'waiting', 'queued'}:
+                    self.store.request_refresh(target, now=current)
+            else:
+                self.store.ensure_refresh_state(
+                    target, next_check=check, expires=0, lifecycle='active',
+                    config_version=version,
+                    business_key=refresh_business_key('period', identity, page, stage,
+                                                      ui_scope=period))
+                if seed_status == 'frozen' and ready:
+                    self.store.set_refresh_state(target, 'frozen', next_check=0)
+                else:
+                    self._resume(target, check, seed_status)
+        return active
+
+    def _seed(self, bodies, current, view_targets, preheat_targets, custom_targets,
+              period_targets=None):
         """Register every configured slot, not only the ones already published.
 
         A deploy must not re-query and re-analyse every default page at once,
@@ -823,6 +969,8 @@ class RefreshScheduler(threading.Thread):
                                                       ui_scope='default'))
                 if body and seed_status == 'frozen':
                     self.store.set_refresh_state(scope, 'frozen', next_check=0)
+                else:
+                    self._resume(scope, check, seed_status)
         for target, (view_key, stage, body) in view_targets.items():
             context = body.get('context') or {}
             identity = int(context.get('id') or 0)
@@ -836,9 +984,13 @@ class RefreshScheduler(threading.Thread):
                 business_key=refresh_business_key('view', identity, page, stage))
             if seed_status == 'frozen':
                 self.store.set_refresh_state(target, 'frozen', next_check=0)
+            else:
+                self._resume(target, check, seed_status)
+        preheat_check, preheat_status = self._seed_check('default', None, current)
         for target, (identity, page, stage) in preheat_targets.items():
             active.add(target)
             state = self.store.refresh_state(target)
+            self._resume(target, preheat_check, preheat_status)
             # A configured slot without a readable card is a first-run task, not
             # a future maintenance task.  Start it on this scan so opening the
             # page does not wait for the 15-minute interval.  Existing retry
@@ -877,6 +1029,9 @@ class RefreshScheduler(threading.Thread):
                                                   ui_scope=ui_scope))
             if seed_status == 'frozen':
                 self.store.set_refresh_state(scope, 'frozen', next_check=0)
+            else:
+                self._resume(scope, check, seed_status)
+        active |= self._seed_periods(current, period_targets or {})
         # Rows from an older config are retained as history but no longer
         # participate in scheduling.  Custom scopes remain active until TTL.
         self.store.retire_unknown_refreshes(active, now=current)
@@ -910,13 +1065,14 @@ class RefreshScheduler(threading.Thread):
         ]
         views = self._view_targets()
         preheat = self._preheat_targets()
+        period_targets = self._period_targets()
         # A published card is already maintained through its view target; a
         # second preheat scope for the same page/stage would double the work.
         published_targets = set()
         for _key, stage, analysis in views.values():
             context = analysis.get('context') or {}
             published_targets.add((int(context.get('id') or 0), context.get('page'), stage))
-        self._seed(bodies, current, views, preheat, custom_bodies)
+        self._seed(bodies, current, views, preheat, custom_bodies, period_targets)
         # A whole-page refresh already re-analyses every stage in its plan;
         # maintaining those same stage cards separately would double the calls.
         pages_with_body = {(int(body['id']), body['page']) for body in bodies.values()
@@ -941,6 +1097,9 @@ class RefreshScheduler(threading.Thread):
                         scope, 'published', next_check=current + self.manager.interval)
                     continue
                 result = self.manager.refresh_view(view_key, stage, analysis)
+            elif scope in period_targets:
+                identity, page, stage, period = period_targets[scope]
+                result = self.manager.preheat_period(identity, page, stage, period)
             elif scope in preheat:
                 identity, page, stage = preheat[scope]
                 if ((identity, page, stage) in published_targets
@@ -982,3 +1141,22 @@ def scheduler_enabled():
     if value is None:
         return not bool(os.getenv('PYTEST_CURRENT_TEST'))
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def period_coverage(store, catalog=None, *, identities=DEFAULT_IDENTITIES):
+    """Per period x stage publish coverage for the configured catalog."""
+    periods_list = catalogue = list(catalog) if catalog else periods.period_catalog()
+    published = store.published_stage_periods()
+    stages = sorted({stage for _identity, _page, stage in maintenance_targets()})
+    rows = []
+    for period in periods_list:
+        for identity in identities:
+            for stage in stages:
+                ready = (int(identity), stage, period) in published
+                rows.append(dict(period=period, identity=int(identity), stage=stage,
+                                 status='ready' if ready else 'missing'))
+    return dict(catalog=catalogue,
+                total=len(rows),
+                ready=sum(1 for row in rows if row['status'] == 'ready'),
+                missing=sum(1 for row in rows if row['status'] == 'missing'),
+                periods=rows)
