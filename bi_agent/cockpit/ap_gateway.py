@@ -18,9 +18,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
 PATHS = {
-    'analysis': '/x360/v1/ontology/data/query',
-    'batch': '/x360/v1/ontology/data/multidimensional/batch',
-    'helmet': '/x360/v1/graphs/helmet-view',
+    'analysis': '/v1/ontology/data/query',
+    'batch': '/v1/ontology/data/multidimensional/batch',
+    'helmet': '/v1/graphs/helmet-view',
 }
 MAX_RESPONSE = 16 * 1024 * 1024
 

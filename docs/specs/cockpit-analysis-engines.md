@@ -16,13 +16,14 @@ ProUI 查询配置（包含实际筛选）
 ```
 
 AP 地址及认证只从 `COCKPIT_AP_*` 配置读取，不使用 `ONTOLOGY_*`、Doris 参数、默认 source 或用户会话的源绑定。
-页面不能指定代理 URL、请求头或证据正文。服务端只允许以下三个接口：
+页面不能指定代理 URL、请求头或证据正文。`COCKPIT_AP_BASE_URL` 包含网关前缀及末尾的
+`/x360`，服务端只在其后追加以下固定路径：
 
 | kind | 方法 | `COCKPIT_AP_BASE_URL` 下的固定路径 |
 | --- | --- | --- |
-| analysis | POST | `/x360/v1/ontology/data/query` |
-| batch | POST | `/x360/v1/ontology/data/multidimensional/batch` |
-| helmet | GET | `/x360/v1/graphs/helmet-view` |
+| analysis | POST | `/v1/ontology/data/query` |
+| batch | POST | `/v1/ontology/data/multidimensional/batch` |
+| helmet | GET | `/v1/graphs/helmet-view` |
 
 本体库 8 的页面只注入 `postAnalysisDataQuery`，不注入批量适配器。ProUI 在批量适配器缺失时
 按单个查询并发兜底；当前批量接口仍在请求本体且不可用，不能用空数据或部分结果兜底。
