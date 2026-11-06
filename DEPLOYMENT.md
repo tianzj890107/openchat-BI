@@ -1581,3 +1581,24 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 用户点击任务 `POC-24D113CF65` 下发时遇到的500来自本地日期转换：相对期限被直接传入ISO8601字段，未发出到Fuxi。现对所有措施先校验具体日期，返回422格式提示；弹窗增加日期要求，未代用户重发或创建真实待办。
 - 验证：88项前端、54条黄金评测、28项定向预热及草稿相关测试通过；另20项日期和下发合约测试（含非法期限零外发）及6项任务令前端测试通过。正式三页与资源均200。
 - 按既定“只发沈康”配置修正任务令接收人，运行环境凭据不入库；同版本正常重启后PID为 `754270`，健康检查通过。未试发、未重发失败任务。
+
+### 2026-11-02 · 风险去重与旧口径提示发布（53c4662）
+
+- 部署代码 `53c4662b39a4a1ee99000f3c0349d90d5cf9ba0a`，包含 MR `!36` 的风险事项去重与客户表局部筛选，以及 MR `!37` 的旧口径提示文字化。`8765` release 为
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-53c4662-20261102-1823`，PID `1561973`；旧 release
+  `process360-cockpit-ce39ab3-20261102-1659`（旧 PID `1203631`）完整保留用于回退。
+- 新 release 先在 `127.0.0.1:18765` 预检，预检进程 `1536082` 验证后停止；预检环境关闭后台刷新。正式进程继续使用共享
+  `.env`、`.venv` 和 `dataset` 软链，`runtime-env.json` 权限 600，`PYTHONPATH`、`PWD`、`RELEASE_COMMIT` 指向新 release。
+  新 release 内的源码数据目录已替换为指向共享 `process360-cockpit-464ae6c-20261029-1807/dataset` 的软链，未迁移、覆盖或删除历史会话、上传、图表和分析结果。
+- `8876` 保持既有反向代理到 `8765`，本轮不重建静态站、不重启 nginx。`/healthz`、`data/config` 及 `id=1|2` 的三页在 `8765` 与 `8876` 均返回 200；两个角色的
+  `/api/cockpit/ai-publications` 均为 `readyCount=15`、`missingCount=0`、`renderableCount=15`。
+- 风险计数实测：`id=1` 销售额 `9` 条、出货量 `3` 条；`id=2` 销售额 `8` 条、出货量 `2` 条，均为 `complete=true`。服务端样式已确认旧口径提示使用
+  `--cockpit-text-help`、无警告底色并带 `ⓘ` 前缀。启动日志无 Traceback、CRITICAL 或 ERROR。
+- 验证：合并后本地运行前端 Node 92 项、Python 1876 项及 1072 个子测试通过，`git diff --check` 通过。GitLab runner 在本轮分支和既有 `master` 流水线上均因无法访问
+  GitLab/pypi 镜像超时失败，失败发生在 `get_sources` 和安装 `setuptools` 阶段，不是测试断言失败；本轮未修改 CI 规避门禁。
+- 回退：停止 PID `1561973`，在 `process360-cockpit-ce39ab3-20261102-1659` 执行 `.venv/bin/python start-main.py` 恢复旧版本；不得删除新 release、历史 release、共享 `dataset`、
+  会话、上传、图表或分析记录。8876 无需修改 nginx。
+
+### 2026-11-03 Workbench本地Excel + ywln_crm可选源
+
+配置独立的`WORKBENCH_LOCAL_ONTOLOGY_PATH`及`WORKBENCH_PG_HOST/PORT/DATABASE/SCHEMA/USER/PASSWORD`后，Workbench数据源页出现“PostgreSQL · ywln_crm”；此选项自动配对本地Excel，不使用远程本体平台或Doris。也可直接使用`python -m bi_agent.web --db postgres`启动。SQL执行器只读并限制超时／返回行数，不从客户Process360配置继承连接。说明见[本地Excel与PG](docs/specs/workbench-local-excel-pg.md)。本次只准备本地配置、测试、提交，不部署或覆盖客户包。
