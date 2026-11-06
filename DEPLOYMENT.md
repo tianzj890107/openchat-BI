@@ -20,8 +20,11 @@
 | Nacos 配置中心 | 预留待对接，当前未接入；中间件类配置仍由 `.env`/环境变量注入（见 §10） |
 | GitLab CI/CD | 项目 runner `sys740-docker-runner`（`172.16.10.34`，docker executor）；`.gitlab-ci.yml` 只做验证（单测 + 黄金集），没有 deploy stage（见 §11） |
 
-> 端口约定：`8080` 是统一容器内部端口；`8765`/`47313`/`47314` 是推荐宿主机映射端口
-> 或非容器直接运行端口（本项目对应 `8765`）。不要把宿主机端口写成容器内部监听端口。
+> 端口约定：本仓库对外维护的唯一应用端口是 `8765`，`/workbench`、`/cockpit/*`、
+> `/api/mcp/*` 和 `/healthz` 均由同一进程提供。容器内 `8080` 仅是镜像实现细节，不是
+> 对外维护入口。`8876`、`18765`、`47313`、`47314` 不再作为本仓库部署或验收端口；
+> 下文涉及这些端口的内容均为历史发布记录，不构成当前操作说明。不要把宿主机端口写成
+> 容器内部监听端口。
 
 > 分支与构建口径：DevOps 从 `master` 创建迭代分支或构建正式镜像；仓库里的
 > `.gitlab-ci.yml` 只做验证（单测 + 黄金集），是 CI 不是 CD，push 不等于部署，
@@ -239,13 +242,15 @@ CHATBI_MAX_IN_MEMORY_SESSIONS=500    # 内存会话上限（超限惰性回收�
 主服务 `bi_agent.web` 已内置 Streamable HTTP MCP，不需要另起进程：
 
 ```text
-POST /api/mcp                 # initialize / tools/list / tools/call
+POST /api/mcp/process360      # Process360 连接器（initialize / tools/list / tools/call）
+POST /api/mcp/general         # 通用分析连接器
+POST /api/mcp                 # 兼容旧连接器的全量入口
 GET  /api/mcp/health          # 健康检查
 GET  /api/mcp/artifacts/<f>   # CanvasGenerate 产物的只读下载
 ```
 
-Fuxi 连接器配置为 `transport: http`、`url: http://<host>:8080/api/mcp`、
-`headers: {}`。同名宿主机映射端口按实际部署填写（本地默认 `8765`）。客户端不需要
+Fuxi 连接器配置为 `transport: http`、`url: http://<host>:8765/api/mcp/process360`、
+`headers: {}`。Workbench、Cockpit 和 MCP 共用 `8765`，不存在独立 `/mcp` 服务或额外端口。客户端不需要
 `.env`、App ID 或 Token；本体与 Doris 配置仍由主服务持有。
 
 新增可选环境变量：
@@ -467,7 +472,10 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
-### Cockpit 三页看板（8876，2026-10-26已切实时AP／主服务）
+### 历史记录：Cockpit 三页看板（8876 已停止维护；当前统一使用 8765）
+
+> 本节保留 2026-10-26 的历史发布过程，其中的 `8876`、`18765`、`8877` 地址和目录均不再维护。
+> 当前三页入口为 `http://<host>:8765/cockpit/overview|operations|analysis?id=1|2`。
 
 - 初始范围（2026-10-22历史）：发布 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis` 三个看板 HTML 及其
   CSS／JS、静态 ProUI 运行包和顶部三个视图 Tab，使用 `ProBiDashboard` 渲染原生 ProUI 组件；
@@ -1626,7 +1634,9 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
   `/cockpit/operations`、`/cockpit/analysis`、`/workbench`、
   `/api/cockpit/data/config` 和 `/api/sources` 均返回 200；Cockpit 数据源仍为
   “Cockpit独立AP连接”，Workbench 数据源仍包含本地 Excel 与
-  “PostgreSQL · ywln_crm”。启动日志无 Traceback、CRITICAL 或 ERROR。
+  “PostgreSQL · ywln_crm”。MCP 与 Workbench、Cockpit 共用同一进程：
+  `/api/mcp/health` 返回 200，`/api/mcp/process360` 的 `initialize` 返回 200；
+  `/mcp` 不是独立路由，按设计返回 404。启动日志无 Traceback、CRITICAL 或 ERROR。
 - 自动化验证：合并提交前 Cockpit/Workbench Python 回归 361 项、前端 Node 94 项、
   Python 编译、JS 语法和 `git diff --check` 通过。发布后仅执行健康与只读接口检查，
   未手动触发 AP 查询、模型分析或任务令下发。
