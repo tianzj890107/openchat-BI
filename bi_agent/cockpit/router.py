@@ -13,7 +13,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
 from .agent import run_analysis
@@ -40,37 +40,19 @@ RESULT_CONTRACT_VERSION="compact-v1"
 
 
 def _default_display_scope(ui_scope: str) -> bool:
-    """Whether a UI scope is one of the two default cache states.
+    """Whether the delivered page is still on its empty default filter.
 
-    The delivered filter emits either the literal ``default``/empty scope or a
-    canonical month-grain selection while the header shows ``2025-10``.  Both
-    deliberately reuse the same preheated default cards.  Other grains,
-    node/view choices and committed business filters must keep the explicit
-    mismatch/stale disclosure instead of being mistaken for the default scope.
+    A grain-only selection is an explicit period choice, not the default.  It
+    is resolved by ``_read_period`` to the current year or month so the slot
+    and table reads still share one exact period index.
     """
-    if ui_scope == 'default':
+    if ui_scope in (None, '', 'default'):
         return True
     try:
         changes = json.loads(ui_scope)
     except (TypeError, ValueError):
         return False
-    if not isinstance(changes, list):
-        return False
-    if not changes:
-        return True
-    for change in changes:
-        if not isinstance(change, list) or len(change) != 2 or not isinstance(change[0], str):
-            return False
-        parts = change[0].split(':', 2)
-        if len(parts) < 2 or parts[0] != 'setButtonGrainSelection' or parts[1] != 'grain':
-            return False
-        try:
-            value = json.loads(change[1]) if isinstance(change[1], str) else change[1]
-        except (TypeError, ValueError):
-            return False
-        if not isinstance(value, str) or value.strip().upper() != 'MONTH':
-            return False
-    return True
+    return isinstance(changes, list) and not changes
 
 
 def _read_period(ui_scope: str, fallback: str = '') -> str:
@@ -81,16 +63,18 @@ def _read_period(ui_scope: str, fallback: str = '') -> str:
     entry (slots, status, tables) on the same period index instead of falling
     back to whichever historical preheat was published last.
     """
-    if ui_scope in ('', 'default') or _default_display_scope(ui_scope):
+    if _default_display_scope(ui_scope):
         return periods.default_period()
     if periods.scope_is_period(ui_scope):
-        return periods.normalise(periods.period_state(ui_scope, fallback).get('period'))
+        state = periods.period_state(ui_scope, fallback)
+        return (periods.normalise(state.get('period'))
+                or periods.default_period(period_type=state.get('grain') or ''))
     return ''
 
 class Context(BaseModel):
     model_config=ConfigDict(extra="forbid")
     id:int=Field(default=1,ge=1,le=2)
-    period:Literal["2025-10","2025-09"]="2025-10"
+    period:str=Field(default="",max_length=7)
     department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部"
     stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment","combined"]="shipment"
 
@@ -106,6 +90,26 @@ class Context(BaseModel):
     filters:dict[str,str|list[str]]=Field(default_factory=dict,max_length=20)
     baselineAnalysisId:str=Field(default="",pattern=r"^(|[a-f0-9]{32})$")
     clarifications:dict[str,str]=Field(default_factory=dict,max_length=10)
+
+    @field_validator('period', mode='before')
+    @classmethod
+    def _valid_period(cls, value):
+        if value in (None, ''):
+            return ''
+        period = periods.normalise(value)
+        if not period:
+            raise ValueError('期间必须为 YYYY 或 YYYY-MM')
+        return period
+
+    @model_validator(mode='after')
+    def _fill_default_period(self):
+        if not self.period:
+            # The bundled demo/prototype fixtures only contain the original
+            # delivery month.  Live/main-service requests use the customer's
+            # current business year instead of pinning that fixture month.
+            self.period = (PERIODS[0] if self.source in {'demo', 'prototype'}
+                           else periods.default_period())
+        return self
 
 class AnalysisRequest(Context):
     refresh:bool=False
@@ -338,6 +342,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     def bootstrap():
         return dict(roles=[dict(id=1,name="总裁"),dict(id=2,name="分析员")],identityParameter="id",periods=PERIODS,departments=DEPARTMENTS,
             stages=[dict(id=k,name=v) for k,v in NAMES.items()],sourceMode=("ap" if main_context is not None and data_mode()=="ap" else "demo"),supportsLiveSource=main_context is not None and data_mode()=="ap",
+            periodConfig=dict(defaultPeriod=periods.default_period(),defaultPeriodType='year',mode=periods.period_mode(),activePeriod=periods.active_period(),preheatPeriods=periods.period_catalog()),
             notice="看板数据来源以data/config为准；任务流转仍为模拟，不写入业务系统。两个 id 当前使用相同看板与功能，仅为将来差异化预留。")
 
     @router.get('/engines')
@@ -347,13 +352,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     def metadata():return build_bundle()
 
     @router.get("/snapshot")
-    def snapshot(period:Literal["2025-10","2025-09"]="2025-10",department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
-        return snap(Context(period=period,department=department,source=source))
+    def snapshot(period:str|None=None,department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
+        return snap(Context(period=period or PERIODS[0],department=department,source=source))
 
     @router.get("/evidence")
     def evidence(stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment"]="shipment",
-                 period:Literal["2025-10","2025-09"]="2025-10",department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
-        return adapter(source).evidence(snap(Context(period=period,department=department,source=source)),stage)
+                 period:str|None=None,department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
+        return adapter(source).evidence(snap(Context(period=period or PERIODS[0],department=department,source=source)),stage)
 
     def check_engine(engine):
         configured=os.environ.get('COCKPIT_ANALYSIS_ENGINE','main')
@@ -499,9 +504,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         """
         is_default_scope = ui_scope in ('', 'default') or _default_display_scope(ui_scope)
         period_only_scope = is_default_scope or periods.scope_is_period(ui_scope)
-        requested = {} if is_default_scope else periods.period_state(ui_scope, '')
-        requested_period = (periods.default_period() if is_default_scope
-                            else periods.normalise(requested.get('period')))
+        requested_period = _read_period(ui_scope) if period_only_scope else ''
         period_items = {}
         if requested_period:
             for stage in {slot['stage'] for slot in slot_registry()}:

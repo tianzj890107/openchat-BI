@@ -20,7 +20,23 @@ registerInsightComponent(
       // Missing causes stay explicit through the summary/limitations instead of
       // being filled with demo-time placeholder findings.
       const displayCauses = computed(() => insight.causes.value)
-      return {...insight, displayCauses}
+      const riskCounts = computed(() => props.slotProps?.riskCounts || {})
+      const hasUnifiedRiskCounts = computed(() => Boolean(riskCounts.value?.sales || riskCounts.value?.shipment))
+      const salesRiskCount = computed(() => Math.max(0, Number(riskCounts.value?.sales?.count) || 0))
+      const shipmentRiskCount = computed(() => Math.max(0, Number(riskCounts.value?.shipment?.count) || 0))
+      const riskFindings = computed(() => {
+        const seen = new Set(), result = []
+        for (const domain of ['sales', 'shipment']) {
+          for (const finding of riskCounts.value?.[domain]?.findings || []) {
+            const key = String(finding?.riskKey || finding?.id || `${domain}:${finding?.title || result.length}`)
+            if (seen.has(key)) continue
+            seen.add(key)
+            result.push({...finding, riskDomain: finding?.riskDomain || domain})
+          }
+        }
+        return result
+      })
+      return {...insight, displayCauses, hasUnifiedRiskCounts, salesRiskCount, shipmentRiskCount, riskFindings}
     },
     template: `
       <section class="sales-shipment-issues" aria-live="polite">
@@ -34,8 +50,20 @@ registerInsightComponent(
         <template v-if="hasResult">
           <div class="sales-shipment-issues__title">销售额 / 出货量共同问题分析：</div>
           <div class="sales-shipment-issues__line sales-shipment-issues__summary" :title="summary">分析摘要：{{ summary }}</div>
+          <div v-if="hasUnifiedRiskCounts" class="sales-shipment-issues__counts">
+            <span>销售额风险 <b>{{ salesRiskCount }}</b> 条</span>
+            <span>出货量风险 <b>{{ shipmentRiskCount }}</b> 条</span>
+          </div>
+          <details open v-if="riskFindings.length" class="sales-shipment-issues__details">
+            <summary>风险事实 · {{ riskFindings.length }} 项</summary>
+            <div v-for="(finding, index) in riskFindings" :key="finding.riskKey || finding.id || index" class="sales-shipment-issues__line">
+              {{ index + 1 }}）【{{ finding.riskDomain === 'shipment' ? '出货量风险' : '销售额风险' }}】
+              <span class="sales-shipment-issues__num">{{ finding.title }}</span>
+              <template v-if="finding.description">——{{ finding.description }}</template>
+            </div>
+          </details>
           <details open v-if="displayCauses.length" class="sales-shipment-issues__details">
-            <summary>风险与待核实原因 · {{ displayCauses.length }} 项</summary>
+            <summary>原因与待核实项 · {{ displayCauses.length }} 项</summary>
             <div v-for="(cause, index) in displayCauses" :key="cause.id" class="sales-shipment-issues__line">
               {{ index + 1 }}）【{{ causeStatus(cause) }}】
               <span class="sales-shipment-issues__num">{{ cause.title }}</span>——{{ cause.description }}

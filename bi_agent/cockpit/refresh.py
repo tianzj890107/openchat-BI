@@ -14,7 +14,7 @@ import os
 import threading
 import time
 
-from .cards import valid_card
+from .cards import CONTRACT, valid_card
 from .dashboard_source import (RELEASE, STAGE_METRICS, filter_stage_selected, page_analysis_context,
                               supplement_failed_queries)
 from . import periods
@@ -22,7 +22,7 @@ from .page_cache import (PageRequest, build_page, page_fingerprint, page_scope,
                          stage_evidence, transport_identity)
 from .publications import config_version, digest, view_scope
 from .runtime import METADATA, SNAPSHOTS
-from .targets import maintenance_targets
+from .targets import maintenance_targets, period_maintenance_targets
 
 DEFAULT_IDENTITIES = (1, 2)
 DEFAULT_PAGES = ('overview', 'operations', 'analysis')
@@ -548,7 +548,7 @@ class RefreshManager:
                     request = dict(
                         id=int(body['id']), engine='main', source='service', page=body['page'],
                         stage=stage, defaultView=(body.get('uiScope') or 'default') == 'default',
-                        period=context.get('period') or '2025-10',
+                        period=context.get('period') or periods.default_period(),
                         department=context.get('department') or '全部产品部',
                         filters=context.get('filters') or {}, repositoryId='',
                         clarifications=context.get('clarifications') or {},
@@ -619,7 +619,7 @@ class RefreshManager:
             request = dict(
                 id=identity, engine='main', source='service',
                 page=context.get('page') or 'analysis', stage=stage, defaultView=True,
-                period=context.get('period') or '2025-10',
+                period=context.get('period') or periods.default_period(),
                 department=context.get('department') or '全部产品部',
                 filters=context.get('filters') or {}, repositoryId='',
                 clarifications=context.get('clarifications') or {},
@@ -713,6 +713,8 @@ class RefreshManager:
 
     def preheat_period(self, identity, page, stage, period):
         """Materialise one configured slot for an explicit business period."""
+        if stage == 'combined':
+            return self._preheat_combined_period(identity, page, period)
         scope = period_target_scope(identity, page, stage, period)
         claim = self.store.claim_refresh_info(
             scope, lease=max(180, self.timeout + 60), config_version=config_version())
@@ -769,6 +771,79 @@ class RefreshManager:
         except Exception as exc:
             return self._failure(scope, exc, claim)
 
+    def _period_stage_cards(self, identity, period):
+        """Load the deliverable component-stage cards for one period.
+
+        Combined analysis is deliberately cached-only: it must use the exact
+        receipts already published for the constituent stages and never issue
+        a second AP fan-out.  Missing stages are left out so a partial analysis
+        can still be delivered with its coverage disclosed.
+        """
+        cards = {}
+        data_identity = self.config.identity()
+        for stage in ('opportunity', 'order', 'shipment'):
+            hit = self.store.published_period(identity, period, stage, {},
+                                              data_identity=data_identity)
+            if not hit:
+                continue
+            item = self.store.get_analysis(hit['analysis_id'])
+            context = (item or {}).get('context') or {}
+            if (not item or item.get('status') not in {'completed', 'limited'}
+                    or (item.get('result') or {}).get('cardContract') != CONTRACT
+                    or int(context.get('id') or 0) != int(identity)
+                    or context.get('stage') != stage
+                    or periods.normalise(context.get('period')) != period):
+                continue
+            cards[stage] = item
+        return cards
+
+    def _preheat_combined_period(self, identity, page, period):
+        """Publish the cross-stage card from saved same-period stage receipts."""
+        from .combined import cached_combined_request
+        scope = period_target_scope(identity, page, 'combined', period)
+        claim = self.store.claim_refresh_info(
+            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+        if not claim:
+            return dict(scope=scope, status='already-running')
+        try:
+            cards = self._period_stage_cards(identity, period)
+            if len(cards) < 2:
+                self._finish(scope, claim, 'awaiting-plan',
+                             next_check=time.time() + min(60, self.interval),
+                             error='等待同期间商机、订单和发货分析完成后再生成共同分析')
+                return dict(scope=scope, status='awaiting-plan', period=period)
+            body = cached_combined_request(self.store, int(identity), cards)
+            body['period'] = period
+            resolved = page_analysis_context(
+                body, self.store, data_mode='ap', resolve_fallback=False,
+                allow_expired=True)
+            key = view_scope({**body, **resolved, 'sourceMode': 'service',
+                              'stageName': 'combined'})
+            existing = self.store.published_view(key).get('combined')
+            changed = (not existing
+                       or existing.get('context', {}).get('dataFingerprint')
+                       != resolved['dataFingerprint'])
+            if changed:
+                job = self.start_analysis(body, resolved)
+                item = self._await(job, claim)
+                self.store.set_stage_evidence(
+                    item['id'], 'combined', resolved['dataFingerprint'],
+                    list(body['chartQueries']))
+                existing = item
+            if not self._owned(claim):
+                raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
+            self.record_period(int(identity), 'combined', {**body, **resolved},
+                               existing['id'], key)
+            now = time.time()
+            status, next_check = self._schedule('default', body, now=now)
+            self._finish(scope, claim, status, next_check=next_check,
+                         error='', last_success=now)
+            self.store.set_refresh_state(view_target_scope(key, 'combined'), status,
+                                         next_check=next_check, last_success=now)
+            return dict(scope=scope, status=status, changed=changed, period=period)
+        except Exception as exc:
+            return self._failure(scope, exc, claim)
+
     def preheat_target(self, identity, page, stage):
         """Materialise a card for one configured slot, even before it is opened."""
         scope = preheat_target_scope(identity, page, stage)
@@ -792,7 +867,7 @@ class RefreshManager:
                 raise RuntimeError('本次取数和已登记补查均失败，保留上次卡片')
             request = dict(
                 id=identity, engine='main', source='service', page=page, stage=stage,
-                defaultView=True, period=seed.get('period') or '2025-10',
+                defaultView=True, period=seed.get('period') or periods.default_period(),
                 department=seed.get('department') or '全部产品部',
                 filters=seed.get('filters') or {}, repositoryId='',
                 clarifications=seed.get('clarifications') or {},
@@ -1015,7 +1090,7 @@ class RefreshScheduler(threading.Thread):
     def _period_targets(self):
         targets = {}
         for period in periods.period_catalog():
-            for identity, page, stage in maintenance_targets():
+            for identity, page, stage in period_maintenance_targets():
                 targets[period_target_scope(identity, page, stage, period)] = (
                     identity, page, stage, period)
         return targets
@@ -1302,7 +1377,7 @@ def period_coverage(store, catalog=None, *, identities=DEFAULT_IDENTITIES,
     periods_list = catalogue = list(catalog) if catalog else periods.period_catalog()
     published = store.published_stage_periods(deliverable_only=True,
                                               data_identity=data_identity)
-    stages = sorted({stage for _identity, _page, stage in maintenance_targets()})
+    stages = sorted({stage for _identity, _page, stage in period_maintenance_targets()})
     rows = []
     for period in periods_list:
         for identity in identities:

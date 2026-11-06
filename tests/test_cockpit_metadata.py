@@ -147,13 +147,13 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     ]
 
 
-def test_delivered_month_default_period_is_preserved():
+def test_delivered_filter_does_not_pin_a_historical_month():
     payload = runtime_payload()
     filter_component = next(
         component for component in payload["dashboard"]["components"]
         if component.get("type") == "composite-filter"
     )
-    assert filter_component["baseConfig"]["defaultValue"]["values"]["YWLN_D044"] == "2025-10"
+    assert filter_component["baseConfig"]["defaultValue"]["values"] == {}
     operations = next(
         component for component in payload["pages"]["operations"]["components"]
         if component.get("type") == "button-group"

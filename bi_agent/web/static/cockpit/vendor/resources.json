@@ -1,9 +1,9 @@
 {
-  "checkedAt": "2026-11-02T17:00:00+08:00",
+  "checkedAt": "2026-11-06T14:45:00+08:00",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
-  "sourceCommit": "be99db5cbbda4496b62d6c14e7f4c5e793a77476",
+  "sourceCommit": "0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2",
   "metadataCommit": "be99db5cbbda4496b62d6c14e7f4c5e793a77476",
-  "notes": "The BI UMD, dashboard component config and template registry are synced from iba-demo feature/demo_1021 at be99db5, which refreshes the chart brand palette and sub-template labels while keeping the insert-list linkage. Four upstream labels contain U+FFFD replacement characters and were restored to the previous correct text by the host. The host keeps the YWLN_D044=2025-10 default period and the local null-instance guard in the helmet Graph callback. CSS and the Vue runtime are unchanged.",
+  "notes": "The dashboard component config and template registry remain the host-adapted iba-demo feature/demo_1021 snapshot at be99db5. The BI UMD and host palette are synced from feature/sml_1106 at 0dc0cc0; that branch also contains temporary sorting/URL edits and U+FFFD labels, so those unrelated metadata changes were not imported. The host re-applies the local null-instance guard in the helmet Graph callback. The delivered date filter no longer pins YWLN_D044=2025-10: live runs resolve the current business year and preheat the current year and month.",
   "resources": [
     {
       "file": "../../vendor/antd/lib/vue.global.js",
@@ -15,11 +15,19 @@
     },
     {
       "file": "pro-bi-ui.min.js",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/be99db5cbbda4496b62d6c14e7f4c5e793a77476/lib/pro-bi-ui.min.js",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2/lib/pro-bi-ui.min.js",
       "sourcePath": "lib/pro-bi-ui.min.js",
-      "sha256": "e152acd804386fd646b65153d42a0d41e3acdfeda3ccdff9f4ddfa231c871885",
-      "bytes": 6263608,
-      "notes": "Copied from be99db5; refreshes component/chart colors and keeps createBiRuntime({runtimeKey}), setTemplateRegistry, updateComponentMeta and configurable helmetViewUrl. The local null-instance guard in the helmet Graph fitView callback is re-applied after each upstream sync."
+      "sha256": "36f8ec164b902568fd57f7e32c6d348fc28a0a8ae037cb7e012acbb75fa98264",
+      "bytes": 6259024,
+      "notes": "Copied from 0dc0cc0 after the host re-applied the local null-instance guard in the helmet Graph fitView callback. Keeps createBiRuntime({runtimeKey}), setTemplateRegistry, updateComponentMeta, configurable helmetViewUrl and the refreshed chart/component palette."
+    },
+    {
+      "file": "bi-color-vars.css",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2/bi-color-vars.css",
+      "sourcePath": "bi-color-vars.css",
+      "sha256": "572dcdf56b3d55453bd0225a616b3ecef84688c70b737bd99c2bf799f0fab22f",
+      "bytes": 1721,
+      "notes": "Host palette from 0dc0cc0. Loaded after the BI UMD because that bundle injects its default :root tokens into the document head."
     },
     {
       "file": "pro-ui.min.css",

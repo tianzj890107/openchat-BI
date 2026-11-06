@@ -420,6 +420,24 @@ def test_live_mode_uses_business_timezone_month(monkeypatch):
     assert value == '2026-12'
 
 
+def test_default_period_uses_the_current_business_year_not_a_delivered_month(monkeypatch):
+    from bi_agent.cockpit import periods
+    monkeypatch.delenv('COCKPIT_ACTIVE_PERIOD', raising=False)
+    monkeypatch.delenv('COCKPIT_PERIOD_MODE', raising=False)
+    monkeypatch.setenv('COCKPIT_BUSINESS_TIMEZONE', 'Asia/Shanghai')
+    assert periods.default_period(dt.datetime(2026, 12, 1, 0, 30)) == '2026'
+    assert periods.default_period(dt.datetime(2026, 12, 1, 0, 30),
+                                  period_type='month') == '2026-12'
+
+
+def test_default_period_honours_an_explicit_backfill_range(monkeypatch):
+    from bi_agent.cockpit import periods
+    monkeypatch.setenv('COCKPIT_PERIOD_MODE', 'backfill')
+    monkeypatch.setenv('COCKPIT_ACTIVE_PERIOD', '2025-10')
+    assert periods.default_period(dt.datetime(2026, 12, 1)) == '2025'
+    assert periods.default_period(dt.datetime(2026, 12, 1), period_type='month') == '2025-10'
+
+
 def test_backfill_mode_requires_an_explicit_period(monkeypatch):
     from bi_agent.cockpit import periods
     monkeypatch.setenv('COCKPIT_PERIOD_MODE', 'backfill')
@@ -468,7 +486,7 @@ def test_period_coverage_separates_ready_and_missing(tmp_path, monkeypatch):
     from bi_agent.cockpit.refresh import period_coverage
     store, cfg, page, _q = _two_stage_page(tmp_path)
     coverage = period_coverage(store, ['2025-10', '2025-09'])
-    assert coverage['total'] == 2 * 2 * 5
+    assert coverage['total'] == 2 * 2 * 6
     assert coverage['ready'] >= 2  # shipment + opportunity of 2025-10
     assert coverage['missing'] > 0
     by_period = {row['period'] for row in coverage['periods'] if row['status'] == 'ready'}
@@ -482,6 +500,89 @@ def test_preheat_period_publishes_when_a_plan_for_that_period_exists(tmp_path):
     result = manager.preheat_period(1, 'analysis', 'shipment', '2025-10')
     assert result['status'] in {'published', 'frozen'}
     assert result['period'] == '2025-10'
+
+
+def test_preheat_period_still_analyses_the_successful_ap_queries(tmp_path, monkeypatch):
+    store, cfg, _page, _q = _two_stage_page(tmp_path)
+    calls = []
+
+    def start(body, resolved):
+        calls.append(body)
+        context = {**body, **resolved, 'stageName': body['stage'], 'sourceMode': 'service'}
+        item = store.create_analysis('new-' + body['stage'], context)
+        store.update_analysis(item['id'], status='limited',
+                              result=dict(summary='new', cardContract=CONTRACT),
+                              evidence={'facts': [], 'records': [], 'evidence': []})
+        return store.get_analysis(item['id'])
+
+    manager = _manager(
+        store, cfg,
+        lambda identity, kind, payload: (
+            (_ for _ in ()).throw(RuntimeError('AP timeout'))
+            if 'YWLN_M0037' in json.dumps(payload) else {'value': 19.02}),
+        start)
+    good = _query('YWLN_M0036')
+    failed = _query('YWLN_M0037')
+    monkeypatch.setattr(manager, '_stage_requests',
+                        lambda *args, **kwargs: ({'period': '2025-10'}, [good, failed]))
+    result = manager.preheat_period(1, 'analysis', 'shipment', '2025-10')
+    assert result['status'] in {'published', 'frozen'}
+    assert len(calls) == 1
+    body = calls[0]
+    assert len(body['chartQueries']) == 1
+    assert len(body['unavailableQueries']) == 1
+    assert 'YWLN_M0036' in body['chartQueries'][0]
+    assert 'YWLN_M0037' in body['unavailableQueries'][0]
+
+
+def test_combined_preheat_uses_saved_same_period_stage_cards_only(tmp_path):
+    from bi_agent.cockpit.dashboard_source import RELEASE
+
+    store = Store(tmp_path / 'combined.sqlite3')
+    cfg = Config()
+    date_filter = {'identifierCode': 'YWLN_D044',
+                   'operator': {'code': 'BETWEEN', 'type': 'DATE'},
+                   'valueType': 'ABSOLUTE', 'value': ['2025-10-01', '2025-10-31']}
+    queries = {}
+    for stage, metric in (('opportunity', 'YWLN_M0022'),
+                          ('order', 'YWLN_M0032'),
+                          ('shipment', 'YWLN_M0036')):
+        query = _query(metric)
+        query['commonConfig']['filters']['children'] = [date_filter]
+        queries[stage] = query
+        store.save_ap_result(1, 'analysis', query, {'value': 1}, cfg.receipt_ttl,
+                             cfg.identity(), transport_identity(cfg))
+        context = dict(id=1, page='analysis', stage=stage, engine='main',
+                       source='service', dataSource='ap', dataIdentity=cfg.identity(),
+                       dataFingerprint='stage-' + stage, period='2025-10',
+                       department='全部产品部', filters={}, repositoryId='',
+                       chartSnapshotId=RELEASE, chartQueries=[json.dumps(query, sort_keys=True)],
+                       unavailableQueries=[])
+        item = store.create_analysis('stage-' + stage, context)
+        store.update_analysis(item['id'], status='limited',
+                              result=dict(summary=stage, cardContract=CONTRACT),
+                              evidence={'facts': [], 'records': [], 'evidence': []})
+        store.publish_period(1, '2025-10', stage, {}, item['id'])
+
+    calls = []
+
+    def start(body, resolved):
+        calls.append(body)
+        context = {**body, **resolved, 'stageName': 'combined', 'sourceMode': 'service'}
+        item = store.create_analysis('combined', context)
+        store.update_analysis(item['id'], status='limited',
+                              result=dict(summary='combined', cardContract=CONTRACT),
+                              evidence={'facts': [], 'records': [], 'evidence': []})
+        return store.get_analysis(item['id'])
+
+    manager = _manager(store, cfg, lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError('combined preheat must not query AP')), start)
+    result = manager.preheat_period(1, 'analysis', 'combined', '2025-10')
+    assert result['status'] == 'published'
+    assert len(calls) == 1
+    assert calls[0]['stage'] == 'combined'
+    assert len(calls[0]['chartQueries']) == 3
+    assert store.published_period(1, '2025-10', 'combined', {}) is not None
 
 
 def test_preheat_period_generates_a_plan_for_an_unseen_period(tmp_path):

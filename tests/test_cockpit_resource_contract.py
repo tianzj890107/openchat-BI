@@ -8,7 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]/'bi_agent/web/static/cockpit'
 def test_vendor_manifest_matches_local_artifacts():
     vendor=ROOT/'vendor'
     manifest=json.loads((vendor/'resources.json').read_text())
-    assert manifest['sourceCommit']=='be99db5cbbda4496b62d6c14e7f4c5e793a77476'
+    assert manifest['sourceCommit']=='0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2'
     assert manifest['metadataCommit']=='be99db5cbbda4496b62d6c14e7f4c5e793a77476'
     for r in manifest['resources']:
         data=(vendor/r['file']).read_bytes()
@@ -16,23 +16,27 @@ def test_vendor_manifest_matches_local_artifacts():
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=e152acd8' in html
+    assert 'pro-bi-ui.min.js?v=8520557f' in html
+    assert 'bi-color-vars.css?v=572dcdf5' in html
+    assert html.index('pro-bi-ui.min.js') < html.index('bi-color-vars.css') < html.index('cockpit.js')
     sdk=(vendor/'pro-bi-ui.min.js').read_text()
     assert 'if(!t||!t.get("group"))return;t.fitView(' in sdk
     assert 'updateComponentMeta' in sdk and 'setTemplateRegistry' in sdk
     assert 'helmetViewUrl' in sdk
     assert '/api/gateway2/x360/v1/graphs/helmet-view' in sdk
-    assert 'data-dashboard-theme="white"' in html
+    assert 'data-dashboard-theme="white"' not in html
     css=(ROOT/'cockpit.css').read_text()
-    assert '--dashboard-canvas-bg:#fff' in css
-    assert '--dashboard-component-bg:#fff' in css
+    assert 'var(--pro-bi-color-canvas-bg,#fff)' in css
+    palette=(vendor/'bi-color-vars.css').read_text()
+    assert '--pro-bi-color-canvas-bg: #ffffff' in palette
+    assert '--pro-bi-chart-1: #4c8bf3' in palette
 
 def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
     assert source['commit']=='be99db5cbbda4496b62d6c14e7f4c5e793a77476'
-    assert source['umdCommit']=='be99db5cbbda4496b62d6c14e7f4c5e793a77476'
+    assert source['umdCommit']=='0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2'
     assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
@@ -86,7 +90,8 @@ def test_risk_header_counts_follow_published_detail_cards():
     assert "const RISK_COUNT_PATH = ['headerActions', 0, 'label']" in source
     assert 'function applyRiskCounts(value)' in source
     assert 'function riskCountForMetric(metric)' in source
-    assert 'if(item.known===true&&current)riskMetricCounts.set(metric,count)' in source
+    assert 'if(item.known===true&&current){' in source
+    assert 'riskMetricCounts.set(metric,count);' in source
     assert 'item.complete===true' in source
     assert 'if(count===null)continue;' in source
     assert '风险分析中' not in source

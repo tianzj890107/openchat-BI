@@ -1,6 +1,7 @@
 """Build a cross-stage analysis exclusively from saved, same-period AP receipts."""
 import json
 from .dashboard_source import RELEASE, filter_stage_selected
+from . import periods
 
 STAGES = ('opportunity', 'order', 'shipment')
 
@@ -26,14 +27,20 @@ def date_scope(query):
 
 
 def cached_combined_request(store, identity, cards):
-    anchor = cards.get('shipment') or {}
+    # Use any stage that still has a saved query plan as the period anchor.
+    # The combined card is a partial-data analysis: one missing stage must not
+    # discard the stages that were actually retrieved.  At least two stages
+    # are still required below so this cannot become a single-stage card.
+    anchor = next((cards.get(stage) or {} for stage in ('shipment', 'order', 'opportunity')
+                   if ((cards.get(stage) or {}).get('context') or {}).get('chartQueries')),
+                  {})
     anchor_context = anchor.get('context') or {}
     raw = anchor_context.get('chartQueries') or []
     if not raw:
-        raise ValueError('缺少发货查询口径，不能合并跨环节证据')
+        raise ValueError('缺少可用的环节查询口径，不能合并跨环节证据')
     period = date_scope(json.loads(raw[0]))
     if not period:
-        raise ValueError('发货查询没有明确日期范围，不能自动合并')
+        raise ValueError('环节查询没有明确日期范围，不能自动合并')
     wanted = set()
     unavailable = set()
     for stage in STAGES:
@@ -73,7 +80,7 @@ def cached_combined_request(store, identity, cards):
         raise ValueError('共同分析至少需要两个环节的同口径证据')
     missing = (unavailable | (wanted - set(found))) - set(found)
     return dict(id=identity, engine='main', source='service', page='analysis', stage='combined',
-                period=anchor_context.get('period') or '2025-10',
+                period=anchor_context.get('period') or periods.default_period(),
                 department=anchor_context.get('department') or '全部产品部', defaultView=True,
                 chartSnapshotId=RELEASE, apReceiptIds=[v['id'] for v in found.values()],
                 chartQueries=sorted(found), unavailableQueries=sorted(missing),
@@ -107,7 +114,7 @@ def cached_quotation_request(store, identity, card):
     if receipt is None:
         raise ValueError('未保存同期间报价办理状态结果，未额外查询AP')
     return dict(id=identity, engine='main', source='service', page='operations', stage='quotation',
-                period=context.get('period') or '2025-10',
+                period=context.get('period') or periods.default_period(),
                 department=context.get('department') or '全部产品部', defaultView=True,
                 chartSnapshotId=RELEASE, apReceiptIds=[receipt['id']],
                 chartQueries=[canonical(receipt['request'])], unavailableQueries=[],
@@ -142,7 +149,7 @@ def cached_stage_request(store, identity, stage, card):
     missing = (wanted-set(found)) | {canonical(json.loads(q)) for q in context.get('unavailableQueries') or []}
     missing -= set(found)
     return dict(id=identity, engine='main',source='service',page=context.get('page') or 'analysis',
-                stage=stage,period=context.get('period') or '2025-10',
+                stage=stage,period=context.get('period') or periods.default_period(),
                 department=context.get('department') or '全部产品部',defaultView=True,
                 chartSnapshotId=RELEASE,apReceiptIds=[v['id'] for v in found.values()],
                 chartQueries=sorted(found),unavailableQueries=sorted(missing),

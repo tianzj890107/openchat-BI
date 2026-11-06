@@ -2,10 +2,35 @@
 
 按自然周维护，不创建日报。
 
+### 2026-11-06 Cockpit 上游组件、默认期间与共同分析预热
+
+- 同步 `iba-demo feature/sml_1106@0dc0cc0` 的 BI UMD 与品牌色板：保留宿主的
+  helmet `fitView` 空实例保护，加载顺序固定为 BI UMD → `bi-color-vars.css` → `cockpit.js`；
+  未导入该上游分支的临时排序/URL修改和 U+FFFD 乱码标签。`components.json` 保持
+  `feature/demo_1021@be99db5` 的宿主适配版本，`source.json` 与 `resources.json` 的提交号、
+  哈希、字节数同步，`runtime.json` 重新生成。
+- 取消交付筛选中的固定 `2025-10` 默认值：默认筛选为空，live 模式按客户业务时区解析当前年度/月度，
+  `backfill` 模式才使用显式 `COCKPIT_ACTIVE_PERIOD`；`/bootstrap` 暴露期间配置，页面空筛选、
+  年度/月度切换和表格分析字段统一走同一期间解析。演示快照仍保留原型月份，避免旧 fixture 失效。
+- 风险数量统一为结构化 findings 去重后在顶栏和穿透式卡片显示；节点卡、共同分析卡不再把
+  `causes.length` 当作风险数，销售额与出货量分别统计，数据缺失时保留上次有效数量。
+- 期间目录现在同时预热共同分析卡：从同期间已发布的商机、订单、发货卡片复用已保存 AP 凭据，
+  不额外查询 AP/PG；不足两个环节时进入等待，满足后再生成。期间覆盖接口按六个阶段统计。
+- AP 部分成功时继续分析已取得的证据：未返回值进入 `unavailableQueries` 并在卡片限制中披露，
+  不再因为部分查询失败整卡等待。交付工具未完全通过时，服务端仍可用已有事实和模型正文生成
+  `limited` 卡片；前端只在后台确无活动任务时提示“当前口径暂无可用的已取数证据”，不再把
+  正在进行的分析显示成“尚无可用分析结果”。共同分析主动刷新时按商机、订单、发货三个上游
+  环节汇总可用查询，不再单独选择没有查询计划的 `combined` 而误报无数据。
+- 主要文件：`bi_agent/cockpit/{targets,combined,refresh,main_service,router,periods,ai_tables}.py`、
+  `bi_agent/web/static/cockpit/{index.html,cockpit.js,cockpit.css,vendor/*,insight-components/sales-shipment-issues/*}`、
+  `bi_agent/web/static/cockpit/metadata/{iba-demo-1021/*,runtime.json}`。
+- 验证：全量 Cockpit Python 套件 350 项、前端 Node 套件 94 项通过；Python 编译、JS 语法和
+  `git diff --check` 通过。未部署服务器。
+
 ### 2026-11-05 分析按期间缓存、合并队列与按环节刷新（第一阶段）
 
 - 新增 `bi_agent/cockpit/periods.py`：从已提交的筛选范围解析业务期间（`YYYY` / `YYYY-MM`），
-  以 `COCKPIT_ACTIVE_PERIOD` → 交付元数据日期默认值 → 系统当月 的顺序确定「当前期间」。
+  以 `COCKPIT_ACTIVE_PERIOD` → 客户业务时区的当前年度/月度 的顺序确定「当前期间」。
   当前期间按 `COCKPIT_REFRESH_INTERVAL_SECONDS` 刷新；上一期间在 `COCKPIT_PERIOD_GRACE_DAYS`
   宽限期内继续刷新，之后冻结；更早和未来期间冻结（`COCKPIT_HISTORY_REFRESH_ENABLED=1` 可改为按天刷新）。
   冻结只写入 `status='frozen'`、`next_check=0`，已发布结果与历史记录保持可读。
@@ -47,7 +72,7 @@
     - 期间预热在调度中降为低优先级，不会挤占已到期的页面或单卡维护任务。
     - 新增重启后 2 个年度、3 个月份 × 5 个环节逐期间读取的端到端用例，读取过程不调用模型或 AP。
   - 第四轮验收修复：
-    - `default`、空范围和未带日期的月度粒度先解析为交付默认期间（`YWLN_D044` 默认月份），
+    - `default`、空范围和未带日期的月度粒度先解析为客户当前业务年度/月度，
       再读期间索引；`/ai-publications`、`/publications/cards`、`/startup`、表格分析字段和
       发布状态使用同一规则。默认月份已发布后再预热更早月份，默认页面的分析 ID 保持不变；
       只有其他月份时可回退展示，但标记 `scopeMatch=false`。
@@ -218,3 +243,9 @@
 - SOP 移到每轮用户问题后、回答前，默认折叠并保存各轮快照；移除顶部和看板重复 SOP。
 - 连续工具跨模型迭代合并追加，仅实际正文输出形成新段；工具 id 按轮次隔离。结束上一段流式光标、隐藏空占位并收紧段落留白，详情和本体图点击保持原状。
 - 涉及 main.jsx、runtime.js、workbench.css 及构建产物。隔离流式回放验证两轮问题各有独立 SOP，并分别形成6项连续工具段、正文、2项工具段和最终正文。
+
+### 2026-11-05 亿纬锂能 V3.1 本体元素定义
+
+- 在原 Excel 同目录新增本体元素定义 Markdown，按元素目录整理23类元素的定义、编码前缀、示例和边界，补充目标／基线／阈值、异常／问题／风险、建议与任务令及定义／运行实例的区别。
+- 文档区分元素类型与关系、映射、编排、运行契约等辅助配置；未修改原Excel、模型、程序或运行数据。
+- 验证：与原Excel的23项元素名称逐项核对，Markdown表格及git diff --check通过。

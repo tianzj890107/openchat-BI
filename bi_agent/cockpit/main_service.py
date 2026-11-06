@@ -33,6 +33,8 @@ def analysis_question(context):
     return (
         f"请分析{NAMES[context['stage']]}环节的经营异常，调查有证据支持的原因，并给出基于证据的改善建议。"
         "请沿用主服务正常意图路由、只读看板工具取数与交付校验。本任务为无对话自动卡片交付，遇到口径歧义请交付受限卡片说明缺失，不要等待交互。"
+        "部分AP查询成功、部分失败时，必须使用已成功取得的证据继续完成分析并交付受限卡片；不得因为还有指标未返回而整卡等待或只回一句“尚无分析结果”。"
+        "先在摘要和限制中列明哪些已取到、哪些未返回，再按已取得事实给出可执行的核查动作；缺失项不得推测成结论，也不得用其他环节数据替代。"
         "先调用Cockpit-DashboardQuery读取目录，再读取相关queryId。工具读取的是与网页同一次取数的冻结结果；是否为实时AP取数以工具返回live标记为准。范围JSON的时间和部门只是页面历史参数，实际分析范围以AP原始请求为准，不可假定已应用筛选。"
         "缺少指标映射或实体关系时明确说明，存在歧义时正常请求确认，不得自动选采购指标代替销售指标。"
         "交付内容按“发现什么／集中在哪里／可能为什么／下一步怎么做”组织：异常表现、结构定位、数据缺口不得写成原因；"
@@ -110,6 +112,21 @@ def run_main_analysis(context, cancel, progress, turn_factory):
         from .cards import CONTRACT
         delivery=getattr(session,'cockpit_card_delivery',None)
         card_value=delivery[1] if delivery and delivery[0]==len(getattr(session,'query_results',[])) and not needs_input and done not in {'answer_blocked','delivery_incomplete','max_iterations'} else None
+        # A partially successful AP read must still produce a usable card.
+        # When the tool-level delivery could not pass the full contract, keep
+        # the evidence-backed narrative as a limited card with no fabricated
+        # causes or recommendations.  This is deliberately only a fallback:
+        # validated tool output always wins when it exists.
+        if (not card_value and not needs_input
+                and done in {'answer_blocked', 'delivery_incomplete', 'max_iterations'}
+                and (facts or (evidence.get('records') or []))
+                and narrative.strip()):
+            card_value=dict(
+                summary=(split_sections(narrative)['summary'] or narrative).strip()[:240],
+                causes=[], recommendations=[], findings=[],
+                limitations=list(dict.fromkeys(limitations))[:8])
+            if card_value['summary']:
+                status='limited'
         return dict(summary=(card_value['summary'] if card_value else (split_sections(narrative)['summary'] or narrative)[:600]),
             causes=card_value['causes'] if card_value else [],recommendations=card_value['recommendations'] if card_value else [],
             findings=card_value.get('findings',[]) if card_value else [],

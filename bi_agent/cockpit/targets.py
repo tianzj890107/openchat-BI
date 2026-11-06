@@ -81,19 +81,21 @@ def slot_registry() -> list[dict]:
     return result
 
 
-def maintenance_targets() -> list[tuple[int, str, str]]:
+def _maintenance_targets(*, include_combined: bool) -> list[tuple[int, str, str]]:
     """Distinct page/stage work units for both delivered roles.
 
     One analysis result is shared by every slot in a stage; keeping the target
     at stage level avoids spending a model call per card while the public API
-    still exposes all 15 slot ids.
+    still exposes all 15 slot ids.  The cross-stage combined card is not a
+    component query plan: it is only materialised from the saved, same-period
+    stage receipts, so it is scheduled separately from the five stage targets.
     """
     seen = set()
     result = []
     for identity in (1, 2):
         for slot in slot_registry():
-            if slot['stage'] == 'combined':
-                continue  # Explicit cached-only preheat; no component SQL fan-out.
+            if slot['stage'] == 'combined' and not include_combined:
+                continue
             # The same stage can be rendered on operations and analysis.  A
             # stage card is shared by both pages, so preheating it twice would
             # spend a second model call for the same business analysis.
@@ -102,6 +104,21 @@ def maintenance_targets() -> list[tuple[int, str, str]]:
                 seen.add(key)
                 result.append((identity, slot['page'], slot['stage']))
     return result
+
+
+def maintenance_targets() -> list[tuple[int, str, str]]:
+    """The five component-query stages maintained for both roles."""
+    return _maintenance_targets(include_combined=False)
+
+
+def period_maintenance_targets() -> list[tuple[int, str, str]]:
+    """Period-catalog targets, including the cached-only combined analysis.
+
+    The combined target runs after at least two constituent stage cards for the
+    same period exist.  It never fans out the component SQL itself; the refresh
+    manager builds it from those saved receipts.
+    """
+    return _maintenance_targets(include_combined=True)
 
 
 def target_page(stage: str) -> str:

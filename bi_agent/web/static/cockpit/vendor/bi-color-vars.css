@@ -1,0 +1,47 @@
+/**
+ * iba-demo 宿主色板（只改本文件）
+ *
+ * - 只写可注入 token：--pro-bi-color-*（对应 BI_COLOR_INJECT_*）
+ * - 派生色（primary-10 / link / primary-dark 等）由看板 sync 时自动算，勿手填
+ * - 图表系列：要改数组请在运行时调 setBiChartSeriesColors；下面 --pro-bi-chart-N 仅 CSS 镜像
+ * - 不要再写 --dashboard-*
+ */
+:root {
+  /* —— 主色 / 功能色 / 对照（必配） —— */
+  --pro-bi-color-primary: #165dff;
+  --pro-bi-color-success: #44bc09;
+  --pro-bi-color-warning: #ff8f1f;
+  --pro-bi-color-error: #ff4d4f;
+  --pro-bi-color-compare-above: #63ad73;
+  --pro-bi-color-compare-below: #de5a60;
+
+  /* —— 文字 / 中性 —— */
+  --pro-bi-color-text-title: #000000d9;
+  --pro-bi-color-text-body: #000000a6;
+  --pro-bi-color-text-aux: #00000073;
+  --pro-bi-color-text-placeholder: #c7c8cc;
+  --pro-bi-color-on-primary: #ffffff;
+  --pro-bi-color-divider: #eaebf2;
+  --pro-bi-color-bg: #f5f5f5;
+  --pro-bi-color-hover-bg: #0000000f;
+
+  /* —— 表面 / 控件 —— */
+  --pro-bi-color-canvas-bg: #ffffff;
+  --pro-bi-color-component-bg: #ffffff;
+  --pro-bi-color-component-header-bg: #ffffff;
+  --pro-bi-color-component-border: #e8e8e8;
+  --pro-bi-color-graph-canvas-bg: #f5f5f5;
+  --pro-bi-color-control-bg: #ffffff;
+  --pro-bi-color-control-border: #dcdfe6;
+  --pro-bi-color-overlay-bg: #ffffff;
+  --pro-bi-color-loading-mask-bg: #ffffffcc;
+
+  /* —— 图表系列 CSS 镜像（下标；长度可变时以 JS 数组为准） —— */
+  --pro-bi-chart-1: #4c8bf3;
+  --pro-bi-chart-2: #63ad73;
+  --pro-bi-chart-3: #5cbbd5;
+  --pro-bi-chart-4: #e7b550;
+  --pro-bi-chart-5: #dd8142;
+  --pro-bi-chart-6: #de5a60;
+  --pro-bi-chart-7: #d751ad;
+}

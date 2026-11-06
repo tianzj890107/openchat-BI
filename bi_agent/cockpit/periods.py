@@ -5,10 +5,11 @@ year/month ranges are analysed once and then frozen; the active range keeps
 being re-checked on the configured interval, and the range that just ended
 stays refreshable for a short grace window.
 
-"Active" is the period the delivery is currently working on, not necessarily
-the wall clock month: customer deployments can backfill a period (for example
-2025-10) long after it ended.  ``COCKPIT_ACTIVE_PERIOD`` overrides the derived
-value; otherwise the delivered date-filter default is used.
+"Active" is the period the delivery is currently working on.  Live deployments
+follow the customer's business timezone; an explicit ``COCKPIT_ACTIVE_PERIOD``
+or ``COCKPIT_PERIOD_MODE=backfill`` may replay a historical range.  The page's
+empty delivered filter represents the current business year, while both the
+current year and current month are kept warm by the scheduler.
 """
 from __future__ import annotations
 
@@ -16,13 +17,10 @@ import datetime as dt
 import json
 import os
 import re
-from pathlib import Path
 
 DEFAULT_INTERVAL = 900
 DEFAULT_HISTORY_INTERVAL = 24 * 60 * 60
 DEFAULT_GRACE_DAYS = 7
-_METADATA = Path(__file__).resolve().parents[1] / 'web/static/cockpit/metadata/runtime.json'
-_METADATA_PERIOD = None
 
 _MONTH_RE = re.compile(r'(20\d{2})\s*[-/年.]\s*(\d{1,2})')
 _YEAR_RE = re.compile(r'(?<!\d)(20\d{2})(?!\d)')
@@ -169,13 +167,13 @@ def period_state(ui_scope, fallback='') -> dict:
             period = picked[-1]
             if wanted == 'year' and len(period) == 7:
                 period = period[:4]
-            return dict(period=period, periodType=wanted, source='scope')
+            return dict(period=period, periodType=wanted, grain=grain, source='scope')
     fallback_period = normalise(fallback)
     if fallback_period:
         return dict(period=fallback_period,
                     periodType='year' if len(fallback_period) == 4 else 'month',
-                    source='fallback')
-    return dict(period='', periodType='', source='none')
+                    grain=grain, source='fallback')
+    return dict(period='', periodType='', grain=grain, source='none')
 
 
 def period_range(period):
@@ -199,37 +197,23 @@ def period_of_scope(ui_scope, fallback='') -> str:
     return period_state(ui_scope, fallback)['period']
 
 
-def default_period() -> str:
-    """Period displayed by the delivered page before the user changes filters."""
-    return normalise(_delivered_period()) or active_period()
+def default_period(now=None, period_type: str = '') -> str:
+    """Period shown when the delivered date filter is empty.
 
-
-def _delivered_period() -> str:
-    """Default period of the delivered date filter (``YWLN_D044``)."""
-    global _METADATA_PERIOD
-    if _METADATA_PERIOD is None:
-        value = ''
-        try:
-            data = json.loads(_METADATA.read_text(encoding='utf-8'))
-        except (OSError, ValueError):
-            data = {}
-        stack = [data]
-        while stack:
-            item = stack.pop()
-            if isinstance(item, dict):
-                default = item.get('defaultValue')
-                if isinstance(default, dict):
-                    values = default.get('values')
-                    if isinstance(values, dict):
-                        found = normalise(values.get('YWLN_D044'))
-                        if found:
-                            value = found
-                            break
-                stack.extend(item.values())
-            elif isinstance(item, list):
-                stack.extend(item)
-        _METADATA_PERIOD = value
-    return _METADATA_PERIOD
+    The upstream dashboard ships an empty filter.  Its default grain is the
+    year, so an empty filter resolves to the current business year.  A
+    month-grain selection without an explicit date resolves to the active
+    business month.  An explicit backfill period still wins so operators can
+    replay a named range without changing the delivered metadata.
+    """
+    override = normalise(os.getenv('COCKPIT_ACTIVE_PERIOD', ''))
+    grain = str(period_type or '').strip().lower()
+    if grain == 'month':
+        return override if len(override) == 7 else active_period(now)
+    if override:
+        return override[:4] if len(override) == 7 else override
+    moment = _moment(now)
+    return f'{moment.year:04d}'
 
 
 def period_mode() -> str:
@@ -242,17 +226,12 @@ def active_period(now=None) -> str:
     """The period the deployment is currently responsible for.
 
     ``live`` (default) follows the wall clock in the customer's business
-    timezone so a new month is picked up automatically.  ``backfill`` requires
-    an explicit ``COCKPIT_ACTIVE_PERIOD`` (falling back to the delivered
-    default only when that variable is empty).
+    timezone so a new month is picked up automatically.  ``backfill`` uses the
+    explicit ``COCKPIT_ACTIVE_PERIOD`` when present.
     """
     override = normalise(os.getenv('COCKPIT_ACTIVE_PERIOD', ''))
     if override:
         return override
-    if period_mode() == 'backfill':
-        delivered = _delivered_period()
-        if delivered:
-            return delivered
     moment = _moment(now)
     return f'{moment.year:04d}-{moment.month:02d}'
 

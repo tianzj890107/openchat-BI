@@ -17,6 +17,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from .delivery import KIND_LABELS, ensure_checkable
+from . import periods
 
 
 class TableQuery(BaseModel):
@@ -245,9 +246,9 @@ def page_scope_date_filter(ui_scope: str, fallback_period: str = "") -> dict | N
     if changes is None:
         raise ValueError("页面筛选范围格式无效，已阻止无口径查询")
     if not changes:
-        # The delivered cockpit defaults to 2025-10 without emitting a custom
-        # date change.  Use the explicitly supplied page period so the table
-        # facts stay aligned with the visible header instead of silently
+        # The delivered cockpit is on its empty default filter without emitting
+        # a custom date change.  Use the explicitly supplied page period so the
+        # table facts stay aligned with the visible header instead of silently
         # querying all time.
         fallback = str(fallback_period or "").strip()
         if not fallback:
@@ -451,7 +452,7 @@ def build_ap_query(table_key: str, request: TableQuery) -> dict:
 
 
 def preheat_table(store, identity: int, table_key: str, query_receipt,
-                  period: str = "2025-10") -> str:
+                  period: str = "") -> str:
     """Persist the exact default table query the browser will request.
 
     ``query_receipt(identity, kind, payload)`` is the router's shared AP read
@@ -459,6 +460,7 @@ def preheat_table(store, identity: int, table_key: str, query_receipt,
     same receipt-backed facts as an interactive query.
     """
     spec = TABLE_SPECS[table_key]
+    period = period or periods.default_period()
     request = TableQuery(
         id=identity, uiScope="default", period=period,
         analysisConfig={

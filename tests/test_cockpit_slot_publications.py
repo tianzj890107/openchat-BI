@@ -14,6 +14,7 @@ from bi_agent.cockpit.refresh import (delivered_component_requests, period_targe
 from bi_agent.cockpit.router import build_cockpit_router
 from bi_agent.cockpit.store import Store
 from bi_agent.cockpit.targets import (REGISTRY_VERSION, maintenance_targets,
+                                      period_maintenance_targets,
                                       slot_registry, slots)
 
 
@@ -95,6 +96,8 @@ def test_registry_is_the_fixed_fifteen_slot_contract():
     assert {item['outputType'] for item in registry} == {'card', 'table'}
     assert REGISTRY_VERSION
     assert len(maintenance_targets()) == 10
+    assert len(period_maintenance_targets()) == 12
+    assert any(stage == 'combined' for _identity, _page, stage in period_maintenance_targets())
 
 
 def test_preheat_plans_can_be_derived_without_a_previous_browser_visit():
@@ -173,6 +176,8 @@ def test_custom_scope_exposes_default_cards_only_as_marked_fallback(tmp_path, mo
 
 
 def test_month_and_empty_date_scopes_reuse_preheated_default_cards(tmp_path, monkeypatch):
+    monkeypatch.setattr('bi_agent.cockpit.periods.default_period', lambda *a, **k: '2025-10')
+    monkeypatch.setenv('COCKPIT_ACTIVE_PERIOD', '2025-10')
     cfg = Config()
     store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
     for stage, page in (('bid', 'operations'), ('quotation', 'operations'),
@@ -266,6 +271,7 @@ def test_non_default_grain_view_and_business_filters_do_not_reuse_default_scope(
 
 
 def test_ai_publications_exposes_deduplicated_metric_risk_counts(tmp_path, monkeypatch):
+    monkeypatch.setattr('bi_agent.cockpit.periods.default_period', lambda *a, **k: '2025-10')
     cfg = Config()
     store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
     findings = {
@@ -287,6 +293,8 @@ def test_ai_publications_exposes_deduplicated_metric_risk_counts(tmp_path, monke
         value['riskCounts']['sales'], count=1, known=True, scopeMatch=True)
     assert value['riskCounts']['shipment'] == dict(
         value['riskCounts']['shipment'], count=1, known=True, scopeMatch=True)
+    assert value['riskCounts']['sales']['findings'][0]['sources']
+    assert value['riskCounts']['shipment']['findings'][0]['sources']
     assert value['slots']['opportunity-risk']['riskFindingCount'] == 1
     assert value['slots']['shipment-risk-summary']['riskFindingCount'] == 1
 

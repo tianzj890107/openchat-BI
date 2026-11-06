@@ -237,6 +237,7 @@ def test_table_snapshot_is_saved_and_reused_without_another_ap_query(tmp_path, m
 
 
 def test_all_three_tables_are_preheated_for_both_roles_and_hit_cache_only(tmp_path, monkeypatch):
+    monkeypatch.setattr('bi_agent.cockpit.periods.default_period', lambda *a, **k: '2025-10')
     response, gateway = _client(tmp_path, monkeypatch, {
         "result": {"rows": [{"YWLN_D049": {"value": "SO-1"}}]},
         "pagination": {"total": 1},

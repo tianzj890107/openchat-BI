@@ -43,6 +43,20 @@ def test_clarification_and_blocked_answers_remain_explicit():
     result,_=run_main_analysis(CONTEXT,threading.Event(),lambda *a:None,factory([dict(type='done',stop_reason='answer_blocked')],[dict(role='assistant',content=[dict(type='text',text='证据不足')])]))
     assert result['_status']=='limited'
     assert '证据不足' in result['narrative']
+    assert result['cardContract'] is None
+
+
+def test_partial_ap_evidence_still_returns_a_limited_card_when_delivery_is_incomplete():
+    events=[dict(type='done',stop_reason='delivery_incomplete')]
+    messages=[dict(role='assistant',content=[dict(type='text',text='已取得订单金额，发货状态未返回；先核查订单处理记录。')])]
+    claims=[dict(id='e1',statement='订单金额[YWLN_M0032]=1.0')]
+    result,_=run_main_analysis(CONTEXT,threading.Event(),lambda *a:None,
+                               factory(events,messages,claims))
+    assert result['_status']=='limited'
+    assert result['cardContract']=='cockpit-cards-v1'
+    assert result['summary'].startswith('已取得订单金额')
+    assert result['causes']==[] and result['recommendations']==[]
+    assert any('PostgreSQL' in item or 'AP' in item for item in result['limitations'])
 
 
 def wait(client,aid):

@@ -14,13 +14,65 @@
   const snapshotsUrl = `${assetBase}/metadata/pdt-release-2109836674373566465/data-snapshots.json?v=${encodeURIComponent(assetVersion)}`;
   const insightBundleUrl = `${assetBase}/insight-components/index.js?v=${encodeURIComponent(assetVersion)}`;
   const apiBase = (document.querySelector('meta[name="cockpit-api-base"]')?.content || `${root}/api/cockpit`).replace(/\/$/, '');
-  const PERIOD = '2025-10';
   const DEPARTMENT = '全部产品部';
   const params = new URLSearchParams(location.search);
   let analysisEngine = params.get('engine') === 'standalone' ? 'standalone' : 'main';
   const baselineId = params.get('baseline') || '';
   let baselineItem = null;
   const identityId = ['1', '2'].includes(params.get('id')) ? params.get('id') : '1';
+  let defaultPeriod = String(new Date().getFullYear());
+  let activePeriod = defaultPeriod;
+  let preheatPeriods = [defaultPeriod];
+
+  function periodText(value) {
+    const text = String(value ?? '').trim();
+    if (!text) return '';
+    const month = text.match(/(20\d{2})\s*[-/年.]\s*(\d{1,2})/);
+    if (month) {
+      const number = Number(month[2]);
+      return number >= 1 && number <= 12 ? `${month[1]}-${String(number).padStart(2, '0')}` : '';
+    }
+    const year = text.match(/(?<!\d)(20\d{2})(?!\d)/);
+    return year ? year[1] : '';
+  }
+
+  function scopePeriod(scope = currentUiScope) {
+    if (!scope || scope === 'default') return defaultPeriod;
+    let entries;
+    try { entries = JSON.parse(scope); } catch (_) { return defaultPeriod; }
+    if (!Array.isArray(entries)) return defaultPeriod;
+    let grain = '', candidate = '';
+    const visit = value => {
+      if (typeof value === 'string' || typeof value === 'number') {
+        const found = periodText(value);
+        if (found) candidate = found;
+        return;
+      }
+      if (Array.isArray(value)) { value.forEach(visit); return; }
+      if (!value || typeof value !== 'object') return;
+      for (const key of ['value', 'values', 'selected', 'selectedValues', 'range', 'conditionValues', 'label']) {
+        if (key in value) visit(value[key]);
+      }
+      for (const child of Object.values(value)) if (child && typeof child === 'object') visit(child);
+    };
+    for (const change of entries) {
+      if (!Array.isArray(change) || change.length !== 2) continue;
+      const method = String(change[0] || '').split(':', 1)[0];
+      let value = change[1];
+      if (method === 'setButtonGrainSelection') {
+        if (typeof value === 'string') {
+          try { value = JSON.parse(value); } catch (_) { /* plain YEAR/MONTH */ }
+        }
+        if (value && typeof value === 'object') value = value.value || value.code || value.grain || '';
+        if (typeof value === 'string') grain = value.trim().toUpperCase();
+      } else if (method === 'setFilterConditions') {
+        visit(value);
+      }
+    }
+    if (candidate) return grain === 'YEAR' ? candidate.slice(0, 4) : candidate;
+    if (grain === 'MONTH') return activePeriod;
+    return defaultPeriod;
+  }
   const PAGES = {
     overview: {title: '经营看板', tab: '经营看板'},
     operations: {title: '运营360整体分析', tab: '运营360整体分析'},
@@ -83,7 +135,7 @@
   // Slot cards live outside the dashboard component lifecycle.  Tabs, node
   // switches and board remounts may change charts, but never clear this store.
   const aiPublicationStore = reactive({slots:{},expectedCount:15,readyCount:0,missingCount:0,
-    updatingCount:0,version:'',scopeKey:'',requestedScope:'',displayScope:'',scopeMatch:true,status:'idle',error:''});
+    updatingCount:0,version:'',scopeKey:'',requestedScope:'',displayScope:'',scopeMatch:true,status:'idle',error:'',riskCounts:{}});
   let aiPublicationClient=null, resolveAiPublicationReady=null;
   let aiPublicationBoot=null;
   let aiPublicationReady=new Promise(resolve=>{resolveAiPublicationReady=resolve;});
@@ -117,6 +169,13 @@
     'shipment-cause-breakdown': 'shipment',
     'shipment-task-order': 'shipment',
   };
+  function analysisDataStages(stage) {
+    // The combined slot is derived from the three upstream nodes and has no
+    // component query of its own.  Selecting only "combined" would discard
+    // every successful opportunity/order/shipment query on an explicit
+    // refresh and leave the card on an empty-state error.
+    return stage === 'combined' ? ['opportunity', 'order', 'shipment'] : [stage];
+  }
   const RISK_COUNT_TARGETS = [
     {componentId:'progress-y5dumxio', metric:'sales', tabId:'tab-bc6wp3k2', templateId:'2112001069107167233'},
     {componentId:'progress-91j3rt9a', metric:'shipment', tabId:'tab-bc6wp3k2', templateId:'2112001069107167233'},
@@ -138,14 +197,23 @@
   }
   function applyRiskCounts(value) {
     const counts=value?.riskCounts||{};
+    const next={...aiPublicationStore.riskCounts};
     for(const metric of ['sales','shipment']) {
       const item=counts[metric];
       const count=Number(item?.count);
       if(!Number.isFinite(count))continue;
       const current=value.scopeMatch!==false&&item.scopeMatch!==false;
-      if(item.known===true&&current)riskMetricCounts.set(metric,count);
-      else if(!riskMetricCounts.has(metric)&&item.complete===true)riskMetricCounts.set(metric,count);
+      if(item.known===true&&current){
+        riskMetricCounts.set(metric,count);
+        next[metric]={...item,count};
+      } else if(!riskMetricCounts.has(metric)&&item.complete===true){
+        riskMetricCounts.set(metric,count);
+        next[metric]={...item,count};
+      } else if(riskMetricCounts.has(metric)){
+        next[metric]={...(next[metric]||item),count:riskMetricCounts.get(metric)};
+      }
     }
+    aiPublicationStore.riskCounts=next;
   }
   function riskCountForMetric(metric) {
     return riskMetricCounts.has(metric) ? riskMetricCounts.get(metric) : null;
@@ -277,7 +345,15 @@
       if(!stage||readyStages.has(stage))continue;
       const state=stateFor(stage);
       if(state.item||state.status==='running')continue;
-      Object.assign(state,{status:'error',progress:'',refreshing:false,error:'该环节尚无可用分析结果，服务端正在补充当前口径数据'});
+      const active=Object.values(aiPublicationStore.slots).some(slot=>{
+        const slotStage=slot?.stage||SLOT_STAGE[slot?.slotId];
+        return slotStage===stage&&(slot?.update?.active||['running','checking','queued','waiting','retry_wait'].includes(String(slot?.refreshStatus||'')));
+      });
+      if(active) {
+        Object.assign(state,{status:'running',progress:'已取得部分AP数据，正在分析；未返回的查询会在卡片中列明',refreshing:true,error:''});
+      } else {
+        Object.assign(state,{status:'error',progress:'',refreshing:false,error:'当前口径暂无可用的已取数证据，等待下一次数据更新'});
+      }
     }
   }
   async function ensureSlotAnalysis(slotId, stage, refresh=false, urgent=false) {
@@ -431,11 +507,11 @@
   function checkedAnalysis(item, stage) {
     const context=item.context || {};
     if (analysisEngine === 'main') {
-      const current = liveDataClient ? liveDataClient.scope({partial:true, stages:[stage]}) : {chartQueries: [...displayedQueries].sort(), apReceiptIds: []};
+      const current = liveDataClient ? liveDataClient.scope({partial:true, stages:analysisDataStages(stage)}) : {chartQueries: [...displayedQueries].sort(), apReceiptIds: []};
       if (dashboardQueryError || canonical(context.chartQueries||[])!==canonical(current.chartQueries) || canonical(context.apReceiptIds||[])!==canonical(current.apReceiptIds)) throw new Error(dashboardQueryError || '看板查询范围已变化，请重新分析');
     }
     if(context.engine!==analysisEngine || context.id!==Number(identityId) || context.stage!==stage ||
-       context.period!==(baselineItem?.context.period||PERIOD) || context.department!==(baselineItem?.context.department||DEPARTMENT) ||
+       context.period!==(baselineItem?.context.period||scopePeriod()) || context.department!==(baselineItem?.context.department||DEPARTMENT) ||
        canonical(context.filters||{})!==canonical(baselineItem?.context.filters||{})) {
       throw new Error('分析结果与当前引擎或范围不一致，拒绝回填');
     }
@@ -450,7 +526,7 @@
     state.progress = '正在加载分析数据';
     let dataScope = {chartQueries: [], apReceiptIds: []};
     if (analysisEngine === 'main' && liveDataClient) {
-      dataScope = await liveDataClient.ready({partial:true, stages:[stage]});
+      dataScope = await liveDataClient.ready({partial:true, stages:analysisDataStages(stage)});
     } else if (analysisEngine === 'main') {
       let previous = -1, stable = 0;
       for (let attempt = 0; attempt < 20 && stable < 3; attempt++) {
@@ -472,7 +548,7 @@
       chartQueries: dataScope.chartQueries,
       apReceiptIds: dataScope.apReceiptIds,
       unavailableQueries: (dataScope.unavailable || []).map(entry => entry.query),
-      period: baselineItem?.context.period || PERIOD,
+      period: baselineItem?.context.period || scopePeriod(),
       department: baselineItem?.context.department || DEPARTMENT,
       filters: baselineItem?.context.filters || {},
       repositoryId: baselineItem?.context.repositoryId || '',
@@ -557,12 +633,12 @@
 
   function baseMainBody(stage,refresh) {
     return {id:Number(identityId),engine:'main',source:'service',page:currentPage,defaultView:currentUiScope==='default' && !clarificationAnswers.has(stage),
-      stage,period:PERIOD,department:DEPARTMENT,filters:{},repositoryId:'',chartSnapshotId:'pdt-release-2109836674373566465',
+      stage,period:scopePeriod(),department:DEPARTMENT,filters:{},repositoryId:'',chartSnapshotId:'pdt-release-2109836674373566465',
       clarifications:clarificationAnswers.get(stage)||{},refresh:Boolean(refresh)};
   }
   async function mainBody(stage,refresh) {
     let dataScope;
-    if(liveDataClient) dataScope=await liveDataClient.ready({partial:true,stages:[stage]});
+    if(liveDataClient) dataScope=await liveDataClient.ready({partial:true,stages:analysisDataStages(stage)});
     else {for(let n=0;n<20 && !displayedQueries.size;n++) await new Promise(r=>setTimeout(r,100));if(dashboardQueryError)throw new Error(dashboardQueryError);dataScope={chartQueries:[...displayedQueries].sort(),apReceiptIds:[]};}
     const {unavailable=[],...usableScope}=dataScope;
     return {...baseMainBody(stage,refresh),...usableScope,unavailableQueries:unavailable.map(entry=>entry.query)};
@@ -586,13 +662,14 @@
         page: props.page,
         stage: stage.value,
         uiScope: currentUiScope,
-        period: PERIOD,
+        period: scopePeriod(),
+        riskCounts: aiPublicationStore.riskCounts,
       }));
       const analysisContext = computed(() => ({
         id: Number(identityId),
         stage: stage.value,
         stageName: STAGE_NAMES[stage.value] || stage.value,
-        period: analysisEngine === 'main' ? '' : baselineItem?.context.period || PERIOD,
+        period: analysisEngine === 'main' ? '' : baselineItem?.context.period || scopePeriod(),
         department: analysisEngine === 'main' ? '' : baselineItem?.context.department || DEPARTMENT,
       }));
       const compareLink = computed(()=>{if(!state.value.item)return '';const url=new URL(location.href);url.searchParams.set('engine','standalone');url.searchParams.set('baseline',state.value.item.id);return url.pathname+url.search;});
@@ -1079,11 +1156,19 @@
         // Only the delivered layout and the two small capability endpoints are
         // needed before the board can render.  Saved cards, page snapshots and
         // update status are loaded afterwards and never hold the shell.
-        const [payload,capabilities,dataConfig] = await Promise.all([
+        const [payload,capabilities,dataConfig,bootstrap] = await Promise.all([
           loadJson(runtimeUrl),
           loadJson(`${apiBase}/engines`),
           loadJson(`${apiBase}/data/config`),
+          loadJson(`${apiBase}/bootstrap`),
         ]);
+        const periodConfig = bootstrap?.periodConfig || {};
+        defaultPeriod = periodText(periodConfig.defaultPeriod) || defaultPeriod;
+        activePeriod = periodText(periodConfig.activePeriod) || activePeriod;
+        preheatPeriods = Array.isArray(periodConfig.preheatPeriods)
+          ? periodConfig.preheatPeriods.map(periodText).filter(Boolean)
+          : [activePeriod, defaultPeriod].filter(Boolean);
+        if (!preheatPeriods.includes(defaultPeriod)) preheatPeriods.unshift(defaultPeriod);
         if(!capabilities.comparisonOnly || !params.has('engine'))analysisEngine=capabilities.default;
         if(baselineId){
           if(!capabilities.comparisonOnly || analysisEngine!=='standalone')throw new Error('当前不允许独立证据对照');
