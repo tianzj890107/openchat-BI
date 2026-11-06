@@ -54,3 +54,15 @@
   改为带 `ⓘ` 前缀的灰色辅助文字；提示内容和触发逻辑不变。
 - 主要文件：`bi_agent/web/static/cockpit/cockpit.css`、`tests/cockpit_insight_runtime.test.mjs`。
 - 验证：Cockpit 运行时测试 6 项、Cockpit Python 测试 284 项通过；`git diff --check` 通过。
+
+### 2026-11-06 表格本地筛选不再触发上方 AI 重算
+
+- 用户可见变化：表格筛选、翻页、排序等组件内查询只刷新该表格，不再把单表查询变化当成页面
+  口径变化，因此不会对上方风险、原因、建议卡片发起模型重算。全局日期、年度、月度筛选仍按
+  原逻辑失效并重新分析。
+- 实现：查询级失效携带 `scope:false`，只有真正切换口径的 `clearScope()` 才携带 `scope:true`；
+  Cockpit 宿主只响应口径级失效，并继续复用已发布卡片。
+- 主要文件：`bi_agent/web/static/cockpit/{data-client,cockpit}.js`、
+  `tests/cockpit_data_client.test.mjs`、`tests/cockpit_table_filter_browser.mjs`。
+- 验证：Cockpit Data Client 34 项通过；表格筛选浏览器用例增加“无 `/analyses/refresh`”断言；
+  `node --check`、`git diff --check` 通过。本轮不部署。

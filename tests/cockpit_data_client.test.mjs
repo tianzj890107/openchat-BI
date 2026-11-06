@@ -45,6 +45,19 @@ test('filter change replaces old scope and rejects the late old response', async
   assert.doesNotMatch(client.scope().chartQueries[0],/2026-10/);
 });
 
+test('widget query invalidation is not a page scope change', async () => {
+  const details=[];
+  const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>ok('receipt-widget'),
+    onInvalidate:detail=>details.push(detail)});
+  await client.biAdapters.postAnalysisDataQuery(query);
+  assert.equal(details.length,1);
+  assert.equal(details[0].scope,false);
+  client.clearScope();
+  assert.equal(details.length,2);
+  assert.equal(details[1].scope,true);
+  assert.equal(details[1].replacement,true);
+});
+
 test('AP errors and expired receipts block analysis and cannot fall back to fixtures', async () => {
   let fail=true;
   const client=createAPDataClient({apiBase:'/api/cockpit',id:1,request:async()=>fail?{ok:false,status:502,json:async()=>({detail:'AP认证失效'})}:ok('retried')});

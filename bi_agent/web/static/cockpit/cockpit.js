@@ -1131,8 +1131,11 @@
             onSnapshotMiss:()=>{fullSnapshot=null;pageState.cached=false;pageState.displayStale=true;},
             onError:(message,detail)=>showLiveError(message,detail),
             onRecover:()=>clearLiveError(),
-            onInvalidate:()=>{
-              if(analysisEngine!=='main'||fullSnapshot)return;
+            onInvalidate:detail=>{
+              // A table-local filter, page or sort must not re-run the stage
+              // analyses above it. Only an explicit scope change invalidates
+              // the page; the server publication scheduler maintains the rest.
+              if(analysisEngine!=='main'||fullSnapshot||!detail?.scope)return;
               clearTimeout(refreshDebounce);
               refreshDebounce=setTimeout(()=>{for(const stage of visibleStages.keys())ensureAnalysis(stage).catch(()=>{});onPageActivity();},400);
             }});

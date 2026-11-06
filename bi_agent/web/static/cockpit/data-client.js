@@ -136,7 +136,10 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     const state = {kind, key: canonical(payload), pending: true, error: '', labels, receiptId: '', expiresAt: 0,
       stage: stageFor(kind, payload) || '', timings: null};
     all.set(slot, state);
-    if (kind !== 'helmet') { const previous=active.get(slot); active.set(slot, state); onInvalidate({replacement:Boolean(previous && previous.key!==state.key)}); }
+    // A widget query (table filter, paging, sorting, chart refresh) only
+    // invalidates that widget's data. Page-level analysis is invalidated by
+    // clearScope() below, which is reserved for a real scope change.
+    if (kind !== 'helmet') { const previous=active.get(slot); active.set(slot, state); onInvalidate({replacement:Boolean(previous && previous.key!==state.key),scope:false}); }
     const config = payload && payload.analysisConfig;
     if (kind === 'analysis' && config && Array.isArray(config.vertex) && !config.vertex.length
         && !(config.indicators || []).length && !(config.dimensions || []).length) {
@@ -253,7 +256,7 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     controllers.clear();
     for (const job of queue.splice(0)) { try { job.reject(new Error('查询已取消')); } catch (_) {} }
     active.clear(); all.clear(); completed.clear(); inflight.clear(); replay.clear(); replaying=false;
-    onInvalidate({replacement:true});
+    onInvalidate({replacement:true,scope:true});
   }
   function applySnapshot(entries = []) {
     // Apply a newer server-owned publication in place.  This deliberately
