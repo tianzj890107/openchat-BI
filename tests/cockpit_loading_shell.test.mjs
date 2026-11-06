@@ -77,7 +77,18 @@ test('default SDK filters and repeated snapshots cannot remount the board in a l
   assert.doesNotMatch(source, /onSnapshotMiss:\(\)=>\{[\s\S]{0,300}changeScope\(currentUiScope,true\)/);
   assert.match(source, /scopeKey===lastScopeRequestKey&&now-lastScopeRequestAt/);
   assert.match(source, /settleMissingSlotStages\(\)/);
-  assert.match(source, /尚无可用分析结果，服务端正在补充当前口径数据/);
+  assert.doesNotMatch(source, /尚无可用分析结果，服务端正在补充当前口径数据/);
+  assert.match(source, /已取得部分AP数据，正在分析；未返回的查询会在卡片中列明/);
+  assert.match(source, /slot\?\.update\?\.active\|\|/);
+  assert.match(source, /当前口径暂无可用的已取数证据，等待下一次数据更新/);
+});
+
+test('combined analysis reuses every upstream stage query when AP is partial', () => {
+  assert.match(source, /function analysisDataStages\(stage\) \{/);
+  assert.match(source, /stage === 'combined' \? \['opportunity', 'order', 'shipment'\] : \[stage\]/);
+  assert.match(source, /scope\(\{partial:true, stages:analysisDataStages\(stage\)\}\)/);
+  assert.equal((source.match(/ready\(\{partial:true, ?stages:analysisDataStages\(stage\)\}\)/g) || []).length, 2);
+  assert.doesNotMatch(source, /(?:scope|ready)\(\{partial:true, ?stages:\[stage\]\}\)/);
 });
 
 test('background publication updates replace cards in place instead of remounting the board', () => {

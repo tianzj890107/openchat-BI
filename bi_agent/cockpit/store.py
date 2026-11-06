@@ -1,6 +1,7 @@
 """Append-preserving SQLite history, isolated from conversation storage."""
 from __future__ import annotations
 import json
+import os
 import sqlite3
 import time
 import uuid
@@ -48,6 +49,13 @@ class Store:
               last_success REAL NOT NULL DEFAULT 0, updated REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS refresh_plans (
               scope TEXT PRIMARY KEY, body TEXT NOT NULL, updated REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS period_publications (
+              key TEXT PRIMARY KEY, identity INTEGER NOT NULL, period TEXT NOT NULL,
+              stage TEXT NOT NULL, filters TEXT NOT NULL, analysis_id TEXT NOT NULL,
+              view_key TEXT NOT NULL DEFAULT '', updated REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS analysis_stage_evidence (
+              analysis_id TEXT PRIMARY KEY, stage TEXT NOT NULL,
+              fingerprint TEXT NOT NULL, queries TEXT NOT NULL, updated REAL NOT NULL);
             ''')
             # Additive migration: keep every historical result and every old
             # scope row, but make refresh eligibility explicit.  Older rows get
@@ -66,6 +74,8 @@ class Store:
                 ('deadline', 'REAL NOT NULL DEFAULT 0'),
                 ('heartbeat', 'REAL NOT NULL DEFAULT 0'),
                 ('generation', 'INTEGER NOT NULL DEFAULT 0'),
+                ('pending', 'INTEGER NOT NULL DEFAULT 0'),
+                ('pending_since', 'REAL NOT NULL DEFAULT 0'),
             ):
                 if name not in columns:
                     db.execute(f'ALTER TABLE page_refresh ADD COLUMN {name} {ddl}')
@@ -168,9 +178,27 @@ class Store:
                                      (item.get('id'),)).fetchone()
                     if not row:
                         continue
+                    view_key = view_scope(context)
                     db.execute('INSERT INTO publication_views VALUES(?,?,?) '
                                'ON CONFLICT(view_key,stage) DO UPDATE SET scope=excluded.scope',
-                               (view_scope(context), stage, row[0]))
+                               (view_key, stage, row[0]))
+                    # The period index keeps every month addressable even
+                    # though publication_views only holds the newest card.
+                    period = str(context.get('period') or '')
+                    if period:
+                        from .cards import CONTRACT as _CONTRACT
+                        from .publications import config_version, digest as _digest
+                        filters = json.dumps(context.get('filters') or {}, ensure_ascii=False,
+                                             sort_keys=True, separators=(',', ':'))
+                        key = _digest({'id': int(context.get('id') or 0), 'period': period,
+                                       'stage': stage, 'filters': filters,
+                                       'config': config_version(), 'contract': _CONTRACT})
+                        db.execute('INSERT INTO period_publications VALUES(?,?,?,?,?,?,?,?) '
+                                   'ON CONFLICT(key) DO UPDATE SET '
+                                   'analysis_id=excluded.analysis_id,'
+                                   'view_key=excluded.view_key,updated=excluded.updated',
+                                   (key, int(context.get('id') or 0), period, stage, filters,
+                                    item.get('id'), view_key, time.time()))
         return True
 
     def published_page(self, scope):
@@ -418,11 +446,36 @@ class Store:
                     or int(row['generation']) != int(generation)
                     or row['status'] != 'running' or row['lifecycle'] != 'active'):
                 return False
-            values = [status, row['attempt'], float(next_check if next_check is not None else row['next_check']),
+            # A change that arrived while this run was in flight is kept as a
+            # single marker.  Finish this generation, then schedule the newest
+            # data immediately instead of dropping the request or queueing one
+            # task per change.
+            pending = int(row['pending'] or 0)
+            scheduled = float(next_check if next_check is not None else row['next_check'])
+            final_status, final_check = status, scheduled
+            if pending and status != 'frozen':
+                # A pending request means "there is newer data", not "run right
+                # now": the next run still has to respect the minimum recheck
+                # gap and a failed run's backoff.
+                raw_gap = os.getenv('COCKPIT_REFRESH_MIN_RECHECK_SECONDS', '60')
+                try:
+                    gap = max(0, int(raw_gap))
+                except ValueError:
+                    gap = 60
+                final_status = 'waiting'
+                # A failed run keeps its backoff; a successful one only waits
+                # for the minimum gap before picking up the newer data.
+                final_check = (max(scheduled, now + gap) if status == 'retry_wait'
+                               else now + gap)
+            elif pending and status == 'frozen':
+                final_status, final_check = 'frozen', 0.0
+            values = [final_status, row['attempt'], final_check,
                       0.0, str(error or ''), float(last_success if last_success is not None else row['last_success']),
-                      now, lifecycle or row['lifecycle'], '', '', 0.0, 0.0, scope, job_id, int(generation)]
+                      now, lifecycle or row['lifecycle'], '', '', 0.0, 0.0, 0, 0.0,
+                      scope, job_id, int(generation)]
             db.execute('UPDATE page_refresh SET status=?,attempt=?,next_check=?,lease_until=?,last_error=?,'
-                       'last_success=?,updated=?,lifecycle=?,job_id=?,worker_id=?,deadline=?,heartbeat=? '
+                       'last_success=?,updated=?,lifecycle=?,job_id=?,worker_id=?,deadline=?,heartbeat=?,'
+                       'pending=?,pending_since=? '
                        'WHERE scope=? AND job_id=? AND generation=?', values)
         return True
 
@@ -440,8 +493,13 @@ class Store:
             if not row:
                 return False
             if row['status'] == 'running' and row['lease_until'] > now:
-                # A manual click must not hand the same scope to a second
-                # worker; the in-flight run finishes and reschedules itself.
+                # A manual click or a data change must not hand the same scope
+                # to a second worker.  Keep one pending marker for the newest
+                # request; the running generation re-queues itself when done.
+                db.execute('UPDATE page_refresh SET pending=1,pending_since=?,updated=? '
+                           'WHERE scope=?', (now, now, scope))
+                # No new task was queued; the live generation re-checks once it
+                # finishes.  The pending flag is reported through queue stats.
                 return False
             if row['lifecycle'] not in {'active'}:
                 return False
@@ -479,7 +537,7 @@ class Store:
         with self.db() as db:
             rows = db.execute(
                 "SELECT scope FROM page_refresh WHERE lifecycle='active' "
-                "AND (expires=0 OR expires>?) AND next_check<=? "
+                "AND status<>'frozen' AND (expires=0 OR expires>?) AND next_check<=? "
                 "AND (status!='running' OR lease_until<=?) "
                 "ORDER BY CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 "
                 "WHEN 'waiting' THEN 2 WHEN 'retry_wait' THEN 3 WHEN 'published' THEN 4 "
@@ -502,13 +560,15 @@ class Store:
                 "MIN(CASE WHEN next_check<=? AND "
                 " (status!='running' OR lease_until<=?) THEN next_check END), "
                 "SUM(CASE WHEN last_error LIKE '%超时%' OR last_error LIKE '%租约已失效%' "
-                " OR last_error LIKE '%停止旧执行%' THEN 1 ELSE 0 END) "
+                " OR last_error LIKE '%停止旧执行%' THEN 1 ELSE 0 END), "
+                "SUM(CASE WHEN pending=1 THEN 1 ELSE 0 END) "
                 "FROM page_refresh WHERE lifecycle='active' AND (expires=0 OR expires>?)",
                 (now, now, now, now, now, now)).fetchone()
-        active, due, running, waiting, oldest, timed_out = row
+        active, due, running, waiting, oldest, timed_out, pending = row
         oldest = float(oldest or 0)
         return dict(activeCount=int(active or 0), dueCount=int(due or 0),
                     runningCount=int(running or 0), waitingCount=int(waiting or 0),
+                    pendingCount=int(pending or 0),
                     oldestWaitingAt=oldest,
                     oldestWaitSeconds=max(0.0, round(now - oldest, 1)) if oldest else 0,
                     timedOutCount=int(timed_out or 0))
@@ -537,6 +597,28 @@ class Store:
             item.update(changes,updatedAt=time.time())
             db.execute("UPDATE analyses SET body=?,status=?,updated=? WHERE id=?",(json.dumps(item,ensure_ascii=False),item["status"],item["updatedAt"],aid))
         return item
+
+    def set_stage_evidence(self, analysis_id, stage, fingerprint, queries):
+        """Record the per-stage evidence a published analysis was built from."""
+        now = time.time()
+        payload = json.dumps(list(queries or []), ensure_ascii=False)
+        with self.db() as db:
+            db.execute('INSERT INTO analysis_stage_evidence VALUES(?,?,?,?,?) '
+                       'ON CONFLICT(analysis_id) DO UPDATE SET stage=excluded.stage,'
+                       'fingerprint=excluded.fingerprint,queries=excluded.queries,'
+                       'updated=excluded.updated',
+                       (analysis_id, stage, fingerprint or '', payload, now))
+
+    def stage_evidence_for(self, analysis_id):
+        """Published stage evidence, or ``None`` for legacy/HTTP analyses."""
+        if not analysis_id:
+            return None
+        with self.db() as db:
+            row = db.execute('SELECT stage,fingerprint,queries FROM analysis_stage_evidence '
+                             'WHERE analysis_id=?', (analysis_id,)).fetchone()
+        if not row:
+            return None
+        return dict(stage=row[0], fingerprint=row[1], queries=json.loads(row[2] or '[]'))
 
     def list_analyses(self, scope=None, limit=50):
         with self.db() as db:
@@ -573,6 +655,90 @@ class Store:
         with self.db() as db:
             rows=db.execute('SELECT v.stage,a.body FROM publication_views v JOIN publications p ON p.scope=v.scope JOIN analyses a ON a.id=p.analysis_id WHERE v.view_key=?',(view_key,)).fetchall()
         return {r[0]:json.loads(r[1]) for r in rows}
+
+    def publish_period(self, identity, period, stage, filters, analysis_id, view_key=''):
+        """Bind one (permission range, period, stage, filters) to its analysis."""
+        from .publications import config_version, digest
+        from .cards import CONTRACT
+        filters = self._period_filters(filters)
+        key = digest({'id': int(identity), 'period': period, 'stage': stage,
+                      'filters': filters, 'config': config_version(), 'contract': CONTRACT})
+        now = time.time()
+        with self.db() as db:
+            db.execute('INSERT INTO period_publications VALUES(?,?,?,?,?,?,?,?) '
+                       'ON CONFLICT(key) DO UPDATE SET analysis_id=excluded.analysis_id,'
+                       'view_key=excluded.view_key,updated=excluded.updated',
+                       (key, int(identity), period, stage, filters, analysis_id,
+                        view_key or '', now))
+        return key
+
+    def published_period(self, identity, period, stage, filters, *, data_identity=None):
+        """Current published analysis for one period-stage-filters entry.
+
+        The key already includes the current metadata/config version.  When a
+        caller supplies ``data_identity`` the stored analysis must still belong
+        to that AP connection; this prevents two sources that share a role from
+        serving each other's card.
+        """
+        from .publications import config_version, digest
+        from .cards import CONTRACT
+        filters = self._period_filters(filters)
+        key = digest({'id': int(identity), 'period': period, 'stage': stage,
+                      'filters': filters, 'config': config_version(), 'contract': CONTRACT})
+        with self.db() as db:
+            row = db.execute('SELECT p.analysis_id,p.view_key,p.updated,a.body '
+                             'FROM period_publications p LEFT JOIN analyses a '
+                             'ON a.id=p.analysis_id WHERE p.key=?', (key,)).fetchone()
+        if not row:
+            return None
+        if data_identity is not None:
+            body = json.loads(row[3]) if row[3] else {}
+            if str((body.get('context') or {}).get('dataIdentity') or '') != str(data_identity):
+                return None
+        return dict(analysis_id=row[0], view_key=row[1], updated=row[2])
+
+    def published_stage_periods(self, limit=5000, *, deliverable_only=True,
+                                data_identity=None):
+        """Published (identity, stage, period) triples under the current config.
+
+        A rotated metadata/config version changes the period key, so rows from
+        the old version remain useful history but must not count as ready.
+        Deliverability is checked against the referenced analysis as well: an
+        index row whose result was deleted, failed or lost its card contract
+        cannot make the coverage report claim completion.
+        """
+        from .publications import config_version, digest
+        from .cards import CONTRACT
+        current = config_version()
+        with self.db() as db:
+            rows = db.execute('SELECT p.key,p.identity,p.stage,p.period,p.filters,'
+                              'p.analysis_id,a.body FROM period_publications p '
+                              'LEFT JOIN analyses a ON a.id=p.analysis_id '
+                              'ORDER BY p.updated DESC LIMIT ?', (limit,)).fetchall()
+        result = set()
+        for key, identity, stage, period, filters, analysis_id, body in rows:
+            expected = digest({'id': int(identity), 'period': period, 'stage': stage,
+                               'filters': filters, 'config': current,
+                               'contract': CONTRACT})
+            if key != expected:
+                continue
+            item = json.loads(body) if body else None
+            if deliverable_only:
+                if (not item or item.get('status') not in {'completed', 'limited'}
+                        or (item.get('result') or {}).get('cardContract') != CONTRACT):
+                    continue
+            if data_identity is not None and item:
+                if str((item.get('context') or {}).get('dataIdentity') or '') != str(data_identity):
+                    continue
+            result.add((int(identity), stage, period))
+        return result
+
+    @staticmethod
+    def _period_filters(filters):
+        if isinstance(filters, str):
+            return filters
+        return json.dumps(filters or {}, ensure_ascii=False, sort_keys=True,
+                          separators=(',', ':'))
 
     def latest_views(self, identity, engine, page, *, data_identity=None):
         """Newest published card per stage, even if the config key rotated.

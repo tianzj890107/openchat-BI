@@ -2,25 +2,14 @@
 // Node/edge attributes follow the shared contract in @boulderaitech/ontology-graph
 // (nodeType/label/color/size/parentId/highlighted, edge weight/size/color).
 import Graph from "graphology";
+import { ONTOLOGY_TYPES, canonicalOntologyType } from "./ontologyTypes.js";
 
-export const NODE_STYLE = {
-  BusinessObject: ["businessObject", "#2563eb", 15],
-  LogicalEntity: ["logicalEntity", "#0f766e", 10],
-  BusinessAttribute: ["businessAttribute", "#64748b", 4],
-  Indicator: ["metric", "#7c3aed", 7],
-  Rule: ["businessRule", "#c2410c", 7],
-  Term: ["term", "#0891b2", 7],
-  Dimension: ["dimension", "#db2777", 7],
-  Activity: ["activity", "#16a34a", 7],
-  Process: ["process", "#ca8a04", 7],
-  TableNode: ["tableNode", "#475569", 5],
-  Column: ["column", "#94a3b8", 4],
-};
+export const NODE_STYLE = Object.fromEntries(ONTOLOGY_TYPES.map(([type, , nodeType, color, size]) => [type, [nodeType, color, size]]));
 
 export function buildGraph(data) {
   const graph = new Graph({ type: "undirected", multi: true, allowSelfLoops: false });
   (data.nodes || []).forEach((node) => {
-    const [nodeType, color, size] = NODE_STYLE[node.type] || [String(node.type || "ontology"), "#64748b", 5];
+    const [nodeType, color, size] = NODE_STYLE[canonicalOntologyType(node.type)] || [String(node.type || "ontology"), "#64748b", 5];
     graph.addNode(node.id || node.code, {
       ...node, ontologyType: node.type, type: "circle", nodeType, color, size: node.focus ? size * 1.35 : size,
       label: node.name || node.code, x: 0, y: 0,
@@ -100,7 +89,7 @@ export function buildRadialGraph(data) {
     if (!id) return;
     if (byId.has(id) || (raw.code && byCode.has(raw.code))) return;
     const name = raw.name || raw.code || id;
-    const type = raw.type || "";
+    const type = canonicalOntologyType(raw.type);
     const color = (NODE_STYLE[type] && NODE_STYLE[type][1]) || "#64748b";
     const node = {
       id,

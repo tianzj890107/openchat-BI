@@ -316,6 +316,56 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertEqual(response.json()["anchor"]["code"], "M1")
         query.assert_called_once_with("Indicator", "M1", strategy="context")
 
+    def test_visual_context_includes_action_event_status_neighbors(self) -> None:
+        class FakeGraphClient:
+            repository_id = "repo-1"
+
+            def graph_neighborhood(self, type_name, code, **kwargs):
+                return {
+                    "relations_available": True,
+                    "objects": [
+                        {"typeName": "Action", "properties": {"code": "AC1", "label": "审批"}},
+                        {"typeName": "Event", "properties": {"code": "EV1", "label": "审批提交"}},
+                        {"typeName": "Status", "properties": {"code": "ST1", "label": "已审批"}},
+                    ],
+                    "relations": [
+                        {"sourceCode": "AC1", "targetCode": "EV1", "relationType": "ActionTriggeredByEvent"},
+                        {"sourceCode": "AC1", "targetCode": "ST1", "relationType": "ActionChangesStatus"},
+                    ],
+                }
+
+        data = RemoteGraphRetriever(FakeGraphClient()).visual_subgraph("Action", "AC1")
+        self.assertEqual({node["type"] for node in data["nodes"]}, {"Action", "Event", "Status"})
+        self.assertEqual(len(data["links"]), 2)
+
+    def test_subgraph_type_names_cover_demo2_home_and_legacy_kinds(self) -> None:
+        from bi_agent.web.app import _remote_graph_type
+
+        expected = {
+            "Action": "Action", "Event": "Event", "Status": "Status",
+            "BusinessObject": "BusinessObject", "LogicalEntity": "LogicalEntity",
+            "BusinessAttribute": "BusinessAttribute", "metric": "Indicator",
+            "Rule": "BusinessRule", "business_rule": "BusinessRule", "BusinessRule": "BusinessRule",
+            "Dimension": "Dimension", "dimension_derived_rule": "DimensionDerivedRule",
+            "DimensionDerivedRule": "DimensionDerivedRule", "Term": "Term",
+            "PhysicalTable": "PhysicalTable", "table_node": "PhysicalTable", "Field": "Field",
+            "column": "Field", "Activity": "Activity", "Process": "Process",
+            "EntityRelation": "EntityRelation", "relation": "EntityRelation", "MetaRelation": "MetaRelation",
+            "meta_relation": "MetaRelation",
+        }
+        for value, type_name in expected.items():
+            with self.subTest(type=value):
+                self.assertEqual(_remote_graph_type(value, "X1"), type_name)
+        self.assertEqual(_remote_graph_type("", "MREL0001"), "MetaRelation")
+
+    def test_platform_types_survive_remote_hit_extraction(self) -> None:
+        for type_name, kind in {
+            "Action": "action", "Event": "event", "Status": "status",
+            "DimensionDerivedRule": "dimension_derived_rule", "PhysicalTable": "table_node", "Field": "column",
+        }.items():
+            with self.subTest(type=type_name):
+                self.assertEqual(WebSession._kind_from_code("X000001", type_name), kind)
+
     def test_two_ontology_click_surfaces_share_one_subgraph_modal(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
         self.assertIn('fetch(withBasePath("api/ontology/subgraph")', runtime)
@@ -2232,15 +2282,16 @@ class OfflineRegressionTests(unittest.TestCase):
     def test_frontend_history_requests_have_one_owner_and_activation_gate(self) -> None:
         runtime = Path("frontend/src/runtime.js").read_text(encoding="utf-8")
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        sidebar = Path("frontend/src/ProUiSidebar.jsx").read_text(encoding="utf-8")
         css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
         shell = Path("frontend/src/shell.html").read_text(encoding="utf-8")
         self.assertEqual(runtime.count("api/conversations?mode="), 1)
         self.assertNotIn("api/conversations?mode=", main)
         self.assertIn("conversationSummaryRequests", runtime)
-        self.assertIn("event.detail?.conversations", main)
-        self.assertIn("const eventMode = event.detail?.mode || \"data\"", main)
-        self.assertIn("eventMode !== (document.body.dataset.mode || \"data\")", main)
-        self.assertIn('window.addEventListener("bi-mode-changed", onMode)', main)
+        self.assertIn("event.detail?.conversations", sidebar)
+        self.assertIn("const eventMode = event.detail?.mode || \"data\"", sidebar)
+        self.assertIn("eventMode !== (document.body.dataset.mode || \"data\")", sidebar)
+        self.assertIn('window.addEventListener("bi-mode-changed", onMode)', sidebar)
         self.assertIn("/preview", runtime)
         self.assertIn("/assets", runtime)
         self.assertIn("/activate", runtime)
@@ -2260,11 +2311,11 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertNotIn("history-restore-status", css)
         self.assertIn("history-chat-skeleton", runtime)
         self.assertIn("state.historyRestoring", runtime)
-        self.assertIn("antd-recent-skeleton", main)
+        self.assertIn("pro-ui-recent-loading", sidebar)
         self.assertNotIn("item.node?.click() ||", main)
-        self.assertIn('recentStatus === "loading"', main)
-        self.assertIn('recentStatus === "error"', main)
-        self.assertIn("bi-conversations-retry", main)
+        self.assertIn('recentStatus === "loading"', sidebar)
+        self.assertIn('recentStatus === "error"', sidebar)
+        self.assertIn("bi-conversations-retry", sidebar)
         self.assertIn("正在加载最近会话…", shell)
         self.assertIn("background: #ffffff", css)
         self.assertIn("background-color: #ffffff", css)
@@ -2311,8 +2362,13 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("--thinking-chain-block-gap: 8px", css)
         self.assertIn("TOOL_STEP_ICON_BY_NAME_COLORED", main)
         self.assertIn("inheritToolIconColor", main)
-        self.assertIn("syncThoughtChainRail", main)
-        self.assertIn("ResizeObserver", main)
+        self.assertIn("ProXExecutionSteps", main)
+        self.assertIn('from "@pro-ui/x-react"', main)
+        self.assertIn('container.querySelectorAll(".msg").forEach', main)
+        self.assertIn('msg.querySelectorAll(":scope > .antd-message-host")', main)
+        self.assertIn('root.render(<ProXScope><AntdMessage', main)
+        self.assertNotIn("syncThoughtChainRail", main)
+        self.assertNotIn("collapsible={false}", main)
         self.assertIn("--thought-step-rail-width", css)
         self.assertIn("--thought-step-rail-center-x", css)
         self.assertIn("z-index: 3 !important", css)
@@ -2320,8 +2376,59 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn("background: var(--thinking-color-soft", css)
         self.assertIn("thinking-step-body-shell", css)
         self.assertIn("transition: height", css)
-        self.assertIn("collapsible={false}", main)
-        self.assertIn("shell.style.height = next ?", main)
+
+    def test_workbench_page_surfaces_use_pro_ui_components(self) -> None:
+        """Settings, logs, filters and the report wizard must use the shared
+        Pro UI component layer instead of leaving page-native controls visible.
+        The native nodes stay as hidden runtime anchors."""
+        main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
+        controls = Path("frontend/src/ProUiPageControls.jsx").read_text(encoding="utf-8")
+        theme = Path("frontend/src/proUiTheme.js").read_text(encoding="utf-8")
+        css = Path("frontend/src/workbench.css").read_text(encoding="utf-8")
+
+        self.assertIn('import { mountProUiPageControls } from "./ProUiPageControls.jsx"', main)
+        self.assertIn("mountProUiPageControls(shellRef.current)", main)
+        self.assertIn("ProXToolResultCard", main)
+        self.assertIn('<ProXToolResultCard className="antd-dashboard-pro-ui-card">', main)
+
+        for component in ("Alert", "Checkbox", "Flex", "Input", "InputNumber", "Radio",
+                          "Segmented", "Select", "Slider", "Steps", "Switch", "Tabs",
+                          "Tag", "Tooltip"):
+            self.assertIn(component, controls)
+        for kind in ('"button"', '"select"', '"input"', '"range"', '"toggle"',
+                     '"check"', '"role"', '"stepper"', '"note"', '"divider"',
+                     '"tabs"', '"segmented"', '"filters"'):
+            self.assertIn(f"return {kind}", controls)
+        self.assertIn("proUiNative", controls)
+        self.assertIn("visibilityObserver", controls)
+        self.assertIn("sourceIsSuppressed", controls)
+        self.assertIn('const isDashboardReopen = element.id === "dashboard-reopen"', controls)
+        self.assertIn("floatingHostStyle", controls)
+        self.assertIn("pro-ui-control-host--floating", controls)
+        self.assertIn("bodyObserver", controls)
+        self.assertIn("window.setTimeout", controls)
+        self.assertIn('className="pro-ui-page-filters"', controls)
+        self.assertIn("<Tag.CheckableTag", controls)
+
+        for component in ("Form", "Table"):
+            self.assertIn(f"{component}: {{", theme)
+        self.assertNotIn("Button: {", theme)
+        self.assertIn("colorPrimary: PRIMARY", theme)
+        self.assertIn("rowHoverBg: \"#f4f8f5\"", theme)
+
+        self.assertIn(".pro-ui-control-host[hidden]", css)
+        self.assertIn("position: absolute !important", css)
+        self.assertIn(".pro-ui-control-host--floating", css)
+        self.assertIn('body[data-dashboard="collapsed"][data-layout="two"]', css)
+        self.assertIn(".pro-ui-page-tabs.ant-tabs", css)
+        self.assertIn(".pro-ui-page-segmented.ant-segmented", css)
+        self.assertIn(".pro-ui-page-filter-tag.ant-tag", css)
+        self.assertIn(".ant-select-open .ant-select-selector", css)
+        self.assertIn(".pro-ui-control-host .ant-select:not(.ant-select-disabled):hover", css)
+        self.assertIn("outline: 1px solid #aac5b5", css)
+        self.assertIn(".pro-ui-control-host .ant-checkbox-wrapper:hover", css)
+        self.assertIn("--pro-color-primary: var(--pro-ui-accent)", css)
+        self.assertIn("--pro-space-xl: 16px", css)
 
     def test_first_paint_defers_echarts_and_compresses_large_assets(self) -> None:
         index = Path("bi_agent/web/static/index.html").read_text(encoding="utf-8")
@@ -2330,7 +2437,7 @@ class OfflineRegressionTests(unittest.TestCase):
         self.assertIn('data-bi-echarts-loader', runtime)
         self.assertIn('src = withBasePath("static/vendor/echarts.min.js")', runtime)
         self.assertIn('id="initial-shell-skeleton"', index)
-        self.assertIn('workbench.js?v=162" defer', index)
+        self.assertIn('workbench.js?v=171" defer', index)
         self.assertIn('GZipMiddleware', Path("bi_agent/web/app.py").read_text(encoding="utf-8"))
 
         response = TestClient(app).get(
@@ -3022,26 +3129,22 @@ class OfflineRegressionTests(unittest.TestCase):
                          ["completed", "skipped", "skipped", "skipped", "skipped", "in_progress"])
 
     @unittest.skipUnless(shutil.which("node"), "node not available")
-    def test_sop_thoughtchain_status_mapping_is_static_for_pending_and_skipped(self) -> None:
-        """The WorkflowPanels ThoughtChain mapping reserves AntD's animated
-        `pending` status for in_progress only; pending/skipped map to the
-        custom static `idle` state, and completed maps to `success`.  The
-        mapping is evaluated as a real pure function, not a string scan."""
+    def test_sop_execution_status_mapping_is_static_for_pending_and_skipped(self) -> None:
+        """ProXExecutionSteps reserves its animated `running` state for
+        in_progress only; pending/skipped remain static terminal states."""
         main = Path("frontend/src/main.jsx").read_text(encoding="utf-8")
-        # The mapping is a named pure function used by the chain items, and
-        # the old "everything except completed -> pending" ternary is gone.
-        self.assertIn("function sopThoughtChainStatus(status) {", main)
-        self.assertIn("status: sopThoughtChainStatus(item.status),", main)
+        self.assertIn("function sopExecutionStatus(status) {", main)
+        self.assertIn("status: sopExecutionStatus(item.status),", main)
         self.assertNotIn(
             'status: item.status === "completed" ? "success" : item.status === "in_progress" ? "pending" : "pending"',
             main)
         script = r"""const fs = require('fs');
 const src = fs.readFileSync('frontend/src/main.jsx', 'utf8');
-const start = src.indexOf('function sopThoughtChainStatus(status) {');
+const start = src.indexOf('function sopExecutionStatus(status) {');
 const end = src.indexOf('\n}\n', start) + 3;
 const fn = new Function('return ' + src.slice(start, end))();
 const out = {};
-for (const s of ['completed', 'in_progress', 'pending', 'skipped']) out[s] = fn(s);
+for (const s of ['completed', 'in_progress', 'pending', 'skipped', 'failed', 'cancelled']) out[s] = fn(s);
 console.log(JSON.stringify(out));"""
         proc = subprocess.run(
             ["node", "-e", script],
@@ -3051,9 +3154,11 @@ console.log(JSON.stringify(out));"""
         self.assertEqual(proc.returncode, 0, proc.stderr)
         data = json.loads(proc.stdout.strip())
         self.assertEqual(data["completed"], "success")
-        self.assertEqual(data["in_progress"], "pending")
-        self.assertEqual(data["pending"], "idle")
-        self.assertEqual(data["skipped"], "idle")
+        self.assertEqual(data["in_progress"], "running")
+        self.assertEqual(data["pending"], "pending")
+        self.assertEqual(data["skipped"], "cancelled")
+        self.assertEqual(data["failed"], "error")
+        self.assertEqual(data["cancelled"], "cancelled")
 
     def test_sop_terminal_cleanup_removes_all_loading_placeholders(self) -> None:
         """done / error / session_superseded / stream_closed must clear every
@@ -3563,9 +3668,13 @@ console.log(JSON.stringify(out));"""
         self.assertIn("migrateLegacySop", runtime[:import_start])
         self.assertIn("sopStatusesForDone", runtime[:import_start])
         self.assertIn("visitedFromTodos", runtime[:import_start])
-        self.assertIn("render(<WorkflowPanels />)", main)
+        self.assertIn("mountRoot(workflowRoot, <ProXScope><WorkflowPanels questionNavigation /></ProXScope>)", main)
+        self.assertEqual(main.count("<WorkflowPanels questionNavigation />"), 1)
         self.assertIn("dashboardWorkflowRoot", main)
-        self.assertIn("createRoot(dashboardWorkflowRoot).render(<WorkflowPanels />)", main)
+        self.assertIn(
+            "mountRoot(dashboardWorkflowRoot, <ProXScope><WorkflowPanels /></ProXScope>)",
+            main,
+        )
 
     def test_sop_missing_events_never_block_final_answer(self) -> None:
         """Even without any sop_progress event the final text and done still

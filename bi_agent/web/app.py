@@ -996,8 +996,14 @@ _REMOTE_GRAPH_TYPES = {
     "attribute": "BusinessAttribute", "business_attribute": "BusinessAttribute",
     "businessattribute": "BusinessAttribute", "metric": "Indicator",
     "indicator": "Indicator", "dimension": "Dimension", "activity": "Activity",
-    "process": "Process", "rule": "Rule", "business_rule": "Rule",
-    "term": "Term", "table_node": "TableNode", "column": "Column",
+    "process": "Process", "rule": "BusinessRule", "business_rule": "BusinessRule",
+    "businessrule": "BusinessRule", "term": "Term",
+    "table_node": "PhysicalTable", "tablenode": "PhysicalTable",
+    "physical_table": "PhysicalTable", "physicaltable": "PhysicalTable",
+    "column": "Field", "field": "Field", "action": "Action", "event": "Event", "status": "Status",
+    "dimension_derived_rule": "DimensionDerivedRule", "dimensionderivedrule": "DimensionDerivedRule",
+    "relation": "EntityRelation", "entity_relation": "EntityRelation", "entityrelation": "EntityRelation",
+    "meta_relation": "MetaRelation", "metarelation": "MetaRelation",
 }
 
 
@@ -1007,10 +1013,13 @@ def _remote_graph_type(value: str, code: str) -> str:
         return _REMOTE_GRAPH_TYPES[normalized]
     upper = str(code or "").upper()
     prefixes = (
+        ("MREL", "MetaRelation"), ("TERM", "Term"), ("RULE", "BusinessRule"),
+        ("PROC", "Process"), ("ACT", "Activity"), ("DIM", "Dimension"),
+        ("COL", "Field"), ("PT", "PhysicalTable"), ("ER", "EntityRelation"),
         ("BO", "BusinessObject"), ("LE", "LogicalEntity"),
         ("AT", "BusinessAttribute"), ("M", "Indicator"),
         ("D", "Dimension"), ("AC", "Activity"), ("P", "Process"),
-        ("R", "Rule"), ("T", "Term"),
+        ("R", "BusinessRule"), ("T", "Term"),
     )
     return next((kind for prefix, kind in prefixes if upper.startswith(prefix)), "Unknown")
 
@@ -2676,6 +2685,7 @@ def _render_history_ontology_cards(entities: list[dict[str, Any]]) -> str:
         "attribute": "属性", "relation": "关系", "metric": "指标", "activity": "活动",
         "rule": "规则", "dimension": "维度", "process": "流程",
         "meta_relation": "元模型关系", "table_node": "表节点", "column": "列",
+        "action": "动作", "event": "事件", "status": "状态", "dimension_derived_rule": "维度派生规则",
     }
     cards: list[str] = []
     for entity in entities:

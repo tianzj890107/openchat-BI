@@ -1,0 +1,26 @@
+{
+  "date": "2026-11-05",
+  "fixture": "isolated browser SSE with ontology, table and chart tool results; POST requests intercepted",
+  "results": {
+    "board": "expanded",
+    "leftVisualCards": 0,
+    "rightCharts": 1,
+    "rightTables": 1,
+    "assistantAvatars": 0,
+    "proseRendered": true,
+    "toolSummaryGroups": 1,
+    "toolDetailCount": 3,
+    "ontologyChips": 1,
+    "chipClickRequestsSubgraph": true
+  },
+  "tests": {
+    "node": 113,
+    "pythonRegressions": 222,
+    "build": "passed"
+  },
+  "limitations": [
+    "No live model call",
+    "No configuration/history writes",
+    "Production not deployed"
+  ]
+}

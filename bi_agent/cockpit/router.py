@@ -13,7 +13,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
 from .agent import run_analysis
@@ -26,54 +26,55 @@ from .ap_gateway import APQuery, data_mode, get_gateway
 from .publications import (config_version, digest, legacy_publication_scope, legacy_view_scope,
                            publication_scope, view_scope)
 from .page_cache import APReuse, PageLookup, PageRequest, build_page, legacy_page_scope, page_scope, transport_identity, compact_analysis
-from .targets import PAGES, REGISTRY_VERSION, slot_registry, target_stages
+from .targets import PAGES, REGISTRY_VERSION, slot_registry, target_page, target_stages
 from .ai_tables import (TABLE_MAPPING_VERSION, TABLE_SPECS, TableQuery, annotate_rows,
                         build_ap_query, preheat_table, result_rows, table_cache_key,
                         table_scope_key)
 from .refresh import (RefreshManager, RefreshScheduler, publication_status, scheduler_enabled,
                       custom_refresh_expiry, preheat_target_scope, refresh_business_key,
-                      stage_card_status, view_target_scope)
+                      stage_card_status, view_target_scope, period_target_scope,
+                      period_card_status)
+from . import periods
 
 RESULT_CONTRACT_VERSION="compact-v1"
 
 
 def _default_display_scope(ui_scope: str) -> bool:
-    """Whether a UI scope is one of the two default cache states.
+    """Whether the delivered page is still on its empty default filter.
 
-    The delivered filter emits either the literal ``default``/empty scope or a
-    canonical month-grain selection while the header shows ``2025-10``.  Both
-    deliberately reuse the same preheated default cards.  Other grains,
-    node/view choices and committed business filters must keep the explicit
-    mismatch/stale disclosure instead of being mistaken for the default scope.
+    A grain-only selection is an explicit period choice, not the default.  It
+    is resolved by ``_read_period`` to the current year or month so the slot
+    and table reads still share one exact period index.
     """
-    if ui_scope == 'default':
+    if ui_scope in (None, '', 'default'):
         return True
     try:
         changes = json.loads(ui_scope)
     except (TypeError, ValueError):
         return False
-    if not isinstance(changes, list):
-        return False
-    if not changes:
-        return True
-    for change in changes:
-        if not isinstance(change, list) or len(change) != 2 or not isinstance(change[0], str):
-            return False
-        parts = change[0].split(':', 2)
-        if len(parts) < 2 or parts[0] != 'setButtonGrainSelection' or parts[1] != 'grain':
-            return False
-        try:
-            value = json.loads(change[1]) if isinstance(change[1], str) else change[1]
-        except (TypeError, ValueError):
-            return False
-        if not isinstance(value, str) or value.strip().upper() != 'MONTH':
-            return False
-    return True
+    return isinstance(changes, list) and not changes
+
+
+def _read_period(ui_scope: str, fallback: str = '') -> str:
+    """Exact period a read should use, including the delivered default page.
+
+    ``default`` and the date-less month-grain state are not "no period"; they
+    display the delivery's default month.  Resolving them here keeps every read
+    entry (slots, status, tables) on the same period index instead of falling
+    back to whichever historical preheat was published last.
+    """
+    if _default_display_scope(ui_scope):
+        return periods.default_period()
+    if periods.scope_is_period(ui_scope):
+        state = periods.period_state(ui_scope, fallback)
+        return (periods.normalise(state.get('period'))
+                or periods.default_period(period_type=state.get('grain') or ''))
+    return ''
 
 class Context(BaseModel):
     model_config=ConfigDict(extra="forbid")
     id:int=Field(default=1,ge=1,le=2)
-    period:Literal["2025-10","2025-09"]="2025-10"
+    period:str=Field(default="",max_length=7)
     department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部"
     stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment","combined"]="shipment"
 
@@ -89,6 +90,26 @@ class Context(BaseModel):
     filters:dict[str,str|list[str]]=Field(default_factory=dict,max_length=20)
     baselineAnalysisId:str=Field(default="",pattern=r"^(|[a-f0-9]{32})$")
     clarifications:dict[str,str]=Field(default_factory=dict,max_length=10)
+
+    @field_validator('period', mode='before')
+    @classmethod
+    def _valid_period(cls, value):
+        if value in (None, ''):
+            return ''
+        period = periods.normalise(value)
+        if not period:
+            raise ValueError('期间必须为 YYYY 或 YYYY-MM')
+        return period
+
+    @model_validator(mode='after')
+    def _fill_default_period(self):
+        if not self.period:
+            # The bundled demo/prototype fixtures only contain the original
+            # delivery month.  Live/main-service requests use the customer's
+            # current business year instead of pinning that fixture month.
+            self.period = (PERIODS[0] if self.source in {'demo', 'prototype'}
+                           else periods.default_period())
+        return self
 
 class AnalysisRequest(Context):
     refresh:bool=False
@@ -162,6 +183,41 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             state['update']['status']='stale-display'
         return dict(snapshot=snapshot, displaySnapshot=display,
                     displayStale=bool(snapshot is None and display is not None), status=state)
+
+    def period_publication(identity, stage, ui_scope, *, filters=None, period=None,
+                           compact=True):
+        """Read an exact period-stage publication when the scope is date-only.
+
+        The period index is independent of the newest default card.  This is
+        the single read rule used by AI slots, table annotations and status:
+        a requested month/year is served from its own entry, and only a miss
+        falls back to the display-only latest card.
+        """
+        if period is None:
+            if ui_scope in ('', 'default') or not periods.scope_is_period(ui_scope):
+                return None
+            state = periods.period_state(ui_scope, '')
+            period = state.get('period')
+        period = periods.normalise(period)
+        if not period:
+            return None
+        data_identity = get_gateway().config.identity() if data_mode() == 'ap' else ''
+        hit = store().published_period(identity, period, stage, filters or {},
+                                       data_identity=data_identity or None)
+        if not hit:
+            return None
+        item = store().get_analysis(hit['analysis_id'])
+        context = (item or {}).get('context') or {}
+        if (not item or item.get('status') not in {'completed', 'limited'}
+                or not valid_card(item)
+                or int(context.get('id') or 0) != int(identity)
+                or context.get('stage') != stage
+                or context.get('engine') != 'main'
+                or periods.normalise(context.get('period')) != period):
+            return None
+        if data_identity and str(context.get('dataIdentity') or '') != str(data_identity):
+            return None
+        return compact_analysis(item) if compact else item
     @router.get('/data/config')
     def data_config():
         mode=data_mode()
@@ -286,6 +342,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     def bootstrap():
         return dict(roles=[dict(id=1,name="总裁"),dict(id=2,name="分析员")],identityParameter="id",periods=PERIODS,departments=DEPARTMENTS,
             stages=[dict(id=k,name=v) for k,v in NAMES.items()],sourceMode=("ap" if main_context is not None and data_mode()=="ap" else "demo"),supportsLiveSource=main_context is not None and data_mode()=="ap",
+            periodConfig=dict(defaultPeriod=periods.default_period(),defaultPeriodType='year',mode=periods.period_mode(),activePeriod=periods.active_period(),preheatPeriods=periods.period_catalog()),
             notice="看板数据来源以data/config为准；任务流转仍为模拟，不写入业务系统。两个 id 当前使用相同看板与功能，仅为将来差异化预留。")
 
     @router.get('/engines')
@@ -295,13 +352,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     def metadata():return build_bundle()
 
     @router.get("/snapshot")
-    def snapshot(period:Literal["2025-10","2025-09"]="2025-10",department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
-        return snap(Context(period=period,department=department,source=source))
+    def snapshot(period:str|None=None,department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
+        return snap(Context(period=period or PERIODS[0],department=department,source=source))
 
     @router.get("/evidence")
     def evidence(stage:Literal["opportunity","guidance","quotation","technical","bid","order","shipment"]="shipment",
-                 period:Literal["2025-10","2025-09"]="2025-10",department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
-        return adapter(source).evidence(snap(Context(period=period,department=department,source=source)),stage)
+                 period:str|None=None,department:Literal["全部产品部","AIDC产品部","国内电力产品部","国际电力产品部"]="全部产品部",source:Literal["demo","prototype"]="demo"):
+        return adapter(source).evidence(snap(Context(period=period or PERIODS[0],department=department,source=source)),stage)
 
     def check_engine(engine):
         configured=os.environ.get('COCKPIT_ANALYSIS_ENGINE','main')
@@ -416,6 +473,26 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                    for stage,item in items.items()}
         return dict(items=items,cardContract=CONTRACT)
 
+    def period_default_cards(identity, page_name, compact=True):
+        """Default-scope cards with the delivered period taking precedence.
+
+        The default view can contain a historical preheat if history was
+        published last.  Reading the period index first keeps the default page
+        stable; the newest view remains only a display fallback for stages that
+        have no card for the delivered period yet.
+        """
+        items=published_default(identity,'main',page_name,compact)['items'] if main_context is not None else {}
+        if main_context is None or data_mode()!='ap':
+            return items
+        period=periods.default_period()
+        if not period:
+            return items
+        for stage in target_stages(page_name):
+            card=period_publication(identity,stage,'default',period=period,compact=compact)
+            if card:
+                items[stage]=card
+        return items
+
     def slot_publications(identity:int, ui_scope:str) -> dict:
         """Read all configured AI slots from persisted publications only.
 
@@ -425,6 +502,16 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         share one stage publication; that is the same result delivered to each
         of their component contracts, not a fabricated per-card analysis.
         """
+        is_default_scope = ui_scope in ('', 'default') or _default_display_scope(ui_scope)
+        period_only_scope = is_default_scope or periods.scope_is_period(ui_scope)
+        requested_period = _read_period(ui_scope) if period_only_scope else ''
+        period_items = {}
+        if requested_period:
+            for stage in {slot['stage'] for slot in slot_registry()}:
+                card = period_publication(identity, stage, ui_scope,
+                                          period=requested_period)
+                if card:
+                    period_items[stage] = card
         page_cards = {}
         # Always expose the last successful default-scope card.  For a custom
         # filter it is explicitly marked as a display-only fallback, so a page
@@ -432,8 +519,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         # server is preparing the new scope.
         if main_context is not None:
             for page_name in ('operations', 'analysis'):
-                page_cards[page_name] = published_default(
-                    identity, 'main', page_name, True)['items']
+                page_cards[page_name] = period_default_cards(identity, page_name)
 
         stage_items = {}
         for items in page_cards.values():
@@ -444,13 +530,35 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 if current is None or float(item.get('updatedAt') or 0) >= float(current.get('updatedAt') or 0):
                     stage_items[stage] = item
 
-        def refresh_for(slot, item):
-            keys = [preheat_target_scope(identity, slot['page'], slot['stage'])]
+        def refresh_for(slot, item, period='', exact=False):
+            keys = []
+            if exact:
+                if period:
+                    keys.append(period_target_scope(identity, target_page(slot['stage']) or slot['page'],
+                                                    slot['stage'],
+                                                    period))
+            elif period:
+                # A display-only fallback is waiting for this selected period,
+                # not for whichever default card happens to be newest.
+                keys.append(period_target_scope(identity, target_page(slot['stage']) or slot['page'],
+                                                slot['stage'],
+                                                period))
+            else:
+                keys.append(preheat_target_scope(identity, slot['page'], slot['stage']))
             context = (item or {}).get('context') or {}
-            if context:
-                keys.insert(0, view_target_scope(view_scope(context), slot['stage']))
+            if context and not period:
+                keys.append(view_target_scope(view_scope(context), slot['stage']))
             states = [store().refresh_state(key) or {} for key in keys]
-            statuses = [str(value.get('status') or 'idle') for value in states]
+            now = time.time()
+
+            def effective(value):
+                status = str(value.get('status') or 'idle')
+                if (status == 'waiting' and float(value.get('next_check') or 0) > now + 5
+                        and float(value.get('lease_until') or 0) <= now):
+                    return 'scheduled'
+                return status
+
+            statuses = [effective(value) for value in states]
             active = ['running', 'checking', 'queued', 'waiting', 'retry_wait']
             if 'running' in statuses or 'checking' in statuses:
                 update_status = 'running'
@@ -462,6 +570,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 update_status = 'retry_wait'
             elif 'published' in statuses:
                 update_status = 'published'
+            elif 'scheduled' in statuses:
+                update_status = 'scheduled'
             else:
                 update_status = statuses[0] if statuses else 'idle'
             errors = [str(value.get('last_error') or '') for value in states if value.get('last_error')]
@@ -476,10 +586,15 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             )
 
         slots = {}
-        scope_match = _default_display_scope(ui_scope)
+        default_scope_match = _default_display_scope(ui_scope)
         for slot in slot_registry():
-            item = stage_items.get(slot['stage'])
-            update = refresh_for(slot, item)
+            exact = period_items.get(slot['stage'])
+            item = exact or stage_items.get(slot['stage'])
+            context_period = periods.normalise(((item or {}).get('context') or {}).get('period'))
+            same_period = bool(requested_period and context_period == requested_period
+                               and period_only_scope)
+            update = refresh_for(slot, item, requested_period,
+                                 exact=bool(exact))
             payload = publication_payload(project_card(item, slot['slotId']))
             delivery = card_delivery_state(payload, slot['slotId'])
             status = 'ready' if delivery['renderable'] else 'missing'
@@ -496,8 +611,11 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                                (item or {}).get('updatedAt') or 0),
                 lastSuccessfulPublication=payload,
                 lastSuccessfulAt=float((item or {}).get('updatedAt') or 0),
-                scopeMatch=scope_match,
-                displayScope='default' if item else '',
+                scopeMatch=bool(exact) or same_period or (
+                    not requested_period and default_scope_match),
+                periodMatch=bool(exact),
+                displayScope=('default' if is_default_scope else 'period') if exact
+                             else ('default' if item else ''),
                 refreshStatus=update['status'],
                 lastRefreshError=update['lastRefreshError'],
                 update=update,
@@ -506,6 +624,10 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
 
         expected = len(slots)
         ready = sum(1 for item in slots.values() if item['status'] == 'ready')
+        matched = [value['scopeMatch'] for value in slots.values()
+                   if value['status'] == 'ready']
+        scope_match = bool(matched) and all(matched)
+        has_period = any(value['periodMatch'] for value in slots.values()) and not is_default_scope
         complete = sum(1 for item in slots.values() if item['contentComplete'])
         limited = sum(1 for item in slots.values() if item['contentStatus'] == 'limited')
         missing = expected - ready
@@ -522,8 +644,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         return dict(
             scopeKey=(ui_scope if ui_scope == 'default' else digest({'id': identity, 'scope': ui_scope})),
             requestedScope=ui_scope,
+            requestedPeriod=requested_period,
             scopeMatch=scope_match,
-            displayScope='default' if slots and ready else '',
+            displayScope='period' if has_period else ('default' if slots and ready else ''),
             registryVersion=REGISTRY_VERSION,
             contractVersion=CONTRACT,
             version=version,
@@ -558,12 +681,21 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         scope_key=table_scope_key(req.ui_scope)
         cache_key=table_cache_key(req.id,table_key,scope_key,payload)
         cached=store().get_ai_table_snapshot(cache_key,req.id,table_key,scope_key)
-        default_scope=_default_display_scope(scope_key)
+        default_scope=scope_key in ('','default') or _default_display_scope(scope_key)
+        period_only_scope=default_scope or periods.scope_is_period(scope_key)
+        requested_period=((periods.normalise(req.period) or _read_period(scope_key, req.period))
+                          if period_only_scope else '')
         card=None
         analysis_scope='none'
-        if default_scope:
+        period_card=(period_publication(req.id,spec['stage'],scope_key,period=requested_period,
+                                        compact=False)
+                     if requested_period else None)
+        if period_card:
+            card=period_card
+            analysis_scope='period'
+        elif default_scope:
             try:
-                card=published_default(req.id,'main',spec['page'],False)['items'].get(spec['stage'])
+                card=period_default_cards(req.id,spec['page'],False).get(spec['stage'])
                 analysis_scope='default' if card else 'none'
             except Exception:
                 card=None
@@ -585,9 +717,10 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 cacheStatus=cache_status,
                 generatedAt=float(generated_at or 0),
                 scopeKey=scope_key,
-                scopeMatch=default_scope,
+                scopeMatch=default_scope or bool(period_card),
                 analysisScopeMatch=bool(card),
                 analysisScope=analysis_scope,
+                analysisPeriod=requested_period if period_card else '',
                 mappingVersion=TABLE_MAPPING_VERSION,
                 source='api-cache' if cache_status=='hit' else meta.get('source','ap+structured-analysis'),
             )
@@ -651,6 +784,16 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         lookup=publication_lookup(id,page,uiScope)
         snapshot=lookup.get('snapshot') or lookup.get('displaySnapshot')
         items=published_default(id,'main',page,False)['items'] if main_context is not None else {}
+        is_default_scope=uiScope in ('','default') or _default_display_scope(uiScope)
+        period_only_scope=is_default_scope or periods.scope_is_period(uiScope)
+        requested_period=_read_period(uiScope) if period_only_scope else ''
+        period_items={}
+        if requested_period and period_only_scope:
+            for stage in set(target_stages(page)):
+                card=period_publication(id,stage,uiScope,period=requested_period)
+                if card:period_items[stage]=card
+        if period_items:
+            items={**items,**period_items}
         status=lookup.get('status') or {}
         # Operations/penetration cards are published independently of a
         # whole-page snapshot.  Their aggregate state is the page's real
@@ -659,15 +802,45 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if items and not lookup.get('snapshot') and not lookup.get('displaySnapshot'):
             card_status=stage_card_status(store(),id,page)
             if card_status:status=card_status
-        return dict(id=id,page=page,uiScope=uiScope,snapshotVersion=(snapshot or {}).get('version',''),
-                    cardsVersion=cards_version(items),
-                    displayStale=lookup.get('displayStale',False),**status)
+        # An exact period card owns its own status.  Only tasks for that period
+        # and its stages may make it look active; the current month or a generic
+        # default-preheat task must not leak into a frozen historical card.
+        exact_period_status = bool(period_items) or (period_only_scope and not is_default_scope)
+        if exact_period_status and requested_period:
+            period_status=period_card_status(store(),id,page,requested_period)
+            if period_status:
+                status={**status,**period_status}
+        if period_items:
+            status=dict(status,period=requested_period,
+                        analyzedAt=max((float(value.get('updatedAt') or 0)
+                                        for value in period_items.values()),default=0))
+        payload=dict(id=id,page=page,uiScope=uiScope,
+                     snapshotVersion='' if period_items else (snapshot or {}).get('version',''),
+                     cardsVersion=cards_version(items),
+                     period=requested_period,periodMatch=bool(period_items),
+                     displayStale=(False if period_items else
+                                   (bool(items) if period_only_scope and not is_default_scope
+                                    else lookup.get('displayStale',False))))
+        payload.update(status)
+        if period_only_scope:
+            payload['period']=requested_period
+        payload['periodMatch']=bool(period_items)
+        return payload
+
+    @router.get('/publications/period-coverage')
+    def publication_period_coverage(periods:str=''):
+        from .periods import period_catalog
+        from .refresh import period_coverage
+        catalog=[item.strip() for item in periods.split(',') if item.strip()] or period_catalog()
+        data_identity=(get_gateway().config.identity()
+                       if data_mode()=='ap' and main_context is not None else None)
+        return period_coverage(store(), catalog, data_identity=data_identity)
 
     @router.get('/publications/cards')
     def publication_cards(id:int=1,page:Literal['overview','operations','analysis']='overview'):
         if id not in (1,2):raise HTTPException(422,'无效身份')
         from .cards import CONTRACT
-        items=published_default(id,'main',page,True)['items'] if main_context is not None else {}
+        items=period_default_cards(id,page)
         return dict(items=items,cardContract=CONTRACT,cardsVersion=cards_version(items))
 
     @router.post('/stages/{stage}/preheat')
@@ -775,7 +948,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         # model call.  Opening a page never starts an analysis by itself.
         cards_by_page={}
         if caps['default']=='main' and main_context is not None:
-            cards_by_page={name:published_default(id,'main',name,True)['items'] for name in PAGES}
+            cards_by_page={name:period_default_cards(id,name) for name in PAGES}
         cards={}
         for page_cards in cards_by_page.values():
             for stage,item in page_cards.items():

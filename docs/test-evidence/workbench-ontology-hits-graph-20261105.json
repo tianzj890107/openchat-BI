@@ -1,0 +1,27 @@
+{
+  "scenario": "Isolated SSE and ontology subgraph fixtures; non-GET requests intercepted in browser",
+  "date": "2026-11-05",
+  "frontend_tests": {"passed": 118, "failed": 0},
+  "backend_regressions": {"passed": 222, "failed": 0},
+  "production_build": "passed",
+  "browser": {
+    "initial_graph": {"hits": 2, "nodes": 3, "edges": 2, "list_hidden": true},
+    "graph_controls": ["重置视图"],
+    "search_or_select_inputs": 0,
+    "reset_inside_graph": true,
+    "node_click_opens_existing_modal": true,
+    "filtered_graph": {"nodes": 2, "edges": 1},
+    "filter_and_return_reuse_context_cache": true,
+    "renderer_canvas_count_after_leaving": 0,
+    "renderer_restored_after_return": true,
+    "request_failure_retains_hits_and_reset_retries": true,
+    "empty_state_hides_graph": true,
+    "webgl_unavailable_falls_back_to_existing_list": true,
+    "narrow_viewport_width": 760,
+    "horizontal_overflow": false,
+    "runtime_exceptions_final_replay": 0
+  },
+  "user_configuration_or_history_writes": false,
+  "live_model_calls": false,
+  "deployment": false
+}

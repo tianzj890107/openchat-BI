@@ -16,6 +16,13 @@ from bi_agent.cockpit.router import build_cockpit_router
 from bi_agent.cockpit.store import Store
 
 
+@pytest.fixture(autouse=True)
+def _demo_active_period(monkeypatch):
+    # These fixtures replay the delivered 2025-10 demo period.  Keep it active
+    # so cadence assertions are about scheduling, not historical freezing.
+    monkeypatch.setenv('COCKPIT_ACTIVE_PERIOD', '2025-10')
+
+
 class Config:
     base_url = 'http://ap.example/api/gateway2'
     batch_mode = 'individual'

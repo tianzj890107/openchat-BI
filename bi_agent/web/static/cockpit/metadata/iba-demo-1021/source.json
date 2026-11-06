@@ -2,10 +2,10 @@
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
   "commit": "be99db5cbbda4496b62d6c14e7f4c5e793a77476",
-  "umdCommit": "be99db5cbbda4496b62d6c14e7f4c5e793a77476",
-  "importedAt": "2026-11-02",
+  "umdCommit": "0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2",
+  "importedAt": "2026-11-06",
   "mode": "active-runtime-adapter",
-  "notes": "Dashboard/template configs, activate rules and the three order DataTable field/filter updates are copied from iba-demo feature/demo_1021 at be99db5; the BI UMD is from the same commit, which refreshes the chart brand palette; createBiRuntime runtime keys, updateComponentMeta and configurable helmetViewUrl remain. Four upstream labels arrived as U+FFFD replacement characters and were restored to the previous correct text instead of being guessed. Their mock-only reason/action/scope calls remain replaced by the cockpit ai-tables API, which reads AP facts and merges only evidence-linked structured card fields. The BI UMD keeps the local null-instance guard. The cockpit supplies only the delivered single-query adapter and does not inject the batch adapter. Host adaptation: the composite filter keeps the default period YWLN_D044=2025-10 because the page scope and published cards are bound to that period, and runtime export rewrites the upstream absolute helmetViewUrl to /api/gateway2/x360/v1/graphs/helmet-view.",
+  "notes": "Dashboard/template configs, activate rules and the three order DataTable field/filter updates are copied from iba-demo feature/demo_1021 at be99db5; the BI UMD and host palette are from feature/sml_1106 at 0dc0cc0; createBiRuntime runtime keys, updateComponentMeta and configurable helmetViewUrl remain. Four upstream labels arrived as U+FFFD replacement characters and were restored to the previous correct text instead of being guessed. Their mock-only reason/action/scope calls remain replaced by the cockpit ai-tables API, which reads AP facts and merges only evidence-linked structured card fields. The BI UMD keeps the local null-instance guard. The cockpit supplies only the delivered single-query adapter and does not inject the batch adapter. The delivered date filter keeps the upstream empty default; live runs resolve the default year from the customer business timezone and preheat both the current year and month. Runtime export rewrites the upstream absolute helmetViewUrl to /api/gateway2/x360/v1/graphs/helmet-view.",
   "rootComponents": 2,
   "templates": 13,
   "totalComponents": 142,
@@ -47,7 +47,7 @@
   "files": [
     {
       "file": "components.json",
-      "sha256": "9fbfadb25f007f3994938af87cf2492b24b607c0b9f7ada6306592720d410dfd"
+      "sha256": "8268ade89d68c8de34d06b434c9c8011ed8174fc938187e828ee37283281aaad"
     },
     {
       "file": "template-registry.json",

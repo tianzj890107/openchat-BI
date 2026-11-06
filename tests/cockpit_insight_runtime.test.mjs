@@ -14,6 +14,10 @@ const cockpitCss = await readFile(
   new URL('../bi_agent/web/static/cockpit/cockpit.css', import.meta.url),
   'utf8',
 );
+const combinedInsight = await readFile(
+  new URL('../bi_agent/web/static/cockpit/insight-components/sales-shipment-issues/index.js', import.meta.url),
+  'utf8',
+);
 
 test('AI insight slots receive the current page without referencing an outer setup ref', () => {
   const start = cockpit.indexOf('const CockpitInsight = {');
@@ -73,9 +77,20 @@ test('risk count labels bind the dashboard runtime explicitly and never reach in
 test('risk labels always show a count and keep the last known value for incomplete scopes', () => {
   assert.match(cockpit, /const riskMetricCounts = new Map\(\);/);
   assert.match(cockpit, /function applyRiskCounts\(value\) \{/);
-  assert.match(cockpit, /if\(item\.known===true&&current\)riskMetricCounts\.set\(metric,count\);/);
-  assert.match(cockpit, /else if\(!riskMetricCounts\.has\(metric\)&&item\.complete===true\)riskMetricCounts\.set\(metric,count\);/);
-  assert.match(cockpit, /if\(count===null\)continue;/);
+  assert.match(cockpit, /if\(item\.known===true&&current\)\{\s*riskMetricCounts\.set\(metric,count\);/);
+  assert.match(cockpit, /else if\(!riskMetricCounts\.has\(metric\)&&item\.complete===true\)\{\s*riskMetricCounts\.set\(metric,count\);/);
+  assert.match(cockpit, /if\(!Number\.isFinite\(count\)\)continue;/);
   assert.match(cockpit, /const label=`\$\{count\}条风险`;/);
   assert.doesNotMatch(cockpit, /风险分析中/);
+});
+
+test('penetration combined card reads the same deduplicated risk counts as the header', () => {
+  assert.match(cockpit, /riskCounts:\s*aiPublicationStore\.riskCounts/);
+  assert.match(cockpit, /aiPublicationStore\.riskCounts=next/);
+  assert.match(combinedInsight, /props\.slotProps\?\.riskCounts/);
+  assert.match(combinedInsight, /销售额风险/);
+  assert.match(combinedInsight, /出货量风险/);
+  assert.match(combinedInsight, /风险事实 · \{\{ riskFindings\.length \}\} 项/);
+  assert.match(combinedInsight, /原因与待核实项 · \{\{ displayCauses\.length \}\} 项/);
+  assert.doesNotMatch(combinedInsight, /风险与待核实原因 · \{\{ displayCauses\.length \}\}/);
 });

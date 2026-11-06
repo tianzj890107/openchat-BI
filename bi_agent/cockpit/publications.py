@@ -15,7 +15,12 @@ def config_version():
 
 
 def view_scope(context):
-    return digest({k:context.get(k) for k in ('id','engine','page','chartSnapshotId','dataSource','dataIdentity')} | {'config':config_version(),'contract':CONTRACT})
+    # Two months of the same page/stage must never share one view key: a
+    # preheated period would otherwise overwrite the default card entry.
+    return digest({k:context.get(k) for k in ('id','engine','page','chartSnapshotId','dataSource','dataIdentity')}
+                  | {'config':config_version(),'contract':CONTRACT,
+                     'period':context.get('period') or '',
+                     'filters':digest(context.get('filters') or {})})
 
 
 def legacy_view_scope(context):

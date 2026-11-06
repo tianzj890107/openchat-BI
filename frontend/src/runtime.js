@@ -29,6 +29,8 @@ import {
 import { createSigmaOntologyRenderer } from "@boulderaitech/ontology-graph";
 import { prepareRadialLayout, radialGraphOption } from "@boulderaitech/ontology-graph/radial";
 import { buildGraph, buildRadialGraph } from "./ontologyGraphModel.js";
+import { mountOntologyHitsGraph } from "./ontologyHitsGraph.js";
+import { ONTOLOGY_TYPES } from "./ontologyTypes.js";
 import {
   ONTOLOGY_LAYOUT_OPTIONS,
   ontologyLayoutOption,
@@ -70,11 +72,28 @@ import {
 } from "./ontologyGraphRendererHandle.js";
 import { classifyStreamEof } from "./streamTerminal.js";
 import {
+  PRO_BI_CHART_TYPES,
+  buildProBiChart,
+  formatDisplayNumber,
+  isMoneyLabel,
+  isNumericValue,
+  proBiChartType,
+} from "./analyticsChartAdapter.js";
+import {
   createTurnLifecycle,
   recordDone,
   recordFailure,
   resetTurnLifecycle,
 } from "./turnLifecycle.js";
+import {
+  ACTIVITY_STATUS,
+  AGENT_STATUS,
+  applyAgentEvent,
+  beginAgentTurn,
+  createAgentActivityState,
+  resetAgentActivity,
+  stopAgentTurn,
+} from "./agentActivityModel.js";
 
 const conversationSummaryCache = new Map();
 const conversationSummaryRequests = new Map();
@@ -269,6 +288,7 @@ export function bootWorkbenchRuntime() {
   const ONTOLOGY_FILTER_KINDS = [
     "term", "business_object", "logical_entity", "attribute", "relation", "metric",
     "activity", "rule", "dimension", "process", "meta_relation", "table_node", "column",
+    "action", "event", "status", "dimension_derived_rule",
   ];
 
   function makeOntologyFilters() {
@@ -344,6 +364,10 @@ export function bootWorkbenchRuntime() {
       // belongs to a superseded (reset / restore / activation) session generation.
       lastDoneTurnId: null,
       lastDoneGeneration: null,
+      // Pro UI conversation activity for the current turn. This is a view
+      // model only: requests, history snapshots and persisted artifacts stay
+      // owned by the runtime below.
+      activity: createAgentActivityState(),
       // Completed / failed turn lifecycle. `completed` is a bounded FIFO so
       // repeated or delayed `done` frames stay idempotent; `failed` records
       // turns that ended in error / superseded / interrupted so a late
@@ -416,6 +440,31 @@ export function bootWorkbenchRuntime() {
 
   function B() { return buckets[state.mode]; }
 
+  function publishAgentActivity(mode = state.mode, sourceEvent = null) {
+    const activity = buckets[mode]?.activity || createAgentActivityState();
+    try {
+      window.__biAgentActivityState = activity;
+    } catch (_) { /* window is unavailable in isolated unit tests */ }
+    try {
+      window.dispatchEvent(new CustomEvent("bi-agent-activity", {
+        detail: {
+          mode,
+          state: activity,
+          eventType: sourceEvent?.type || "",
+        },
+      }));
+    } catch (_) { /* events are best-effort */ }
+    return activity;
+  }
+
+  function recordAgentActivity(evt, { publish = true } = {}) {
+    const bucket = B();
+    const result = applyAgentEvent(bucket.activity, evt, { at: Date.now() });
+    bucket.activity = result.state;
+    if (publish) publishAgentActivity(state.mode, evt);
+    return result;
+  }
+
   // ------------------------------------------------------------------
   // Elements
   // ------------------------------------------------------------------
@@ -467,30 +516,6 @@ export function bootWorkbenchRuntime() {
     historyClearSel:      document.getElementById("history-clear-sel"),
     historyActivateSel:   document.getElementById("history-activate-sel"),
     uploadStatus:   document.getElementById("upload-status"),
-    // Settings modal
-    settingsOverlay:    document.getElementById("settings-overlay"),
-    settingsClose:      document.getElementById("settings-close"),
-    settingsModel:      document.getElementById("settings-model"),
-    settingsModelHint:  document.getElementById("settings-model-hint"),
-    settingsMaxTokens:  document.getElementById("settings-max-tokens"),
-    settingsTemp:       document.getElementById("settings-temperature"),
-    settingsTempVal:    document.getElementById("settings-temp-val"),
-    settingsStatus:     document.getElementById("settings-status"),
-    settingsSave:       document.getElementById("settings-save"),
-    settingsResetDefaults: document.getElementById("settings-reset-defaults"),
-    settingsKeyAnthropic:       document.getElementById("settings-key-anthropic"),
-    settingsKeyAnthropicStatus: document.getElementById("settings-key-anthropic-status"),
-    settingsKeyAnthropicClear:  document.getElementById("settings-key-anthropic-clear"),
-    settingsKeyQwen:            document.getElementById("settings-key-qwen"),
-    settingsKeyQwenStatus:      document.getElementById("settings-key-qwen-status"),
-    settingsKeyQwenClear:       document.getElementById("settings-key-qwen-clear"),
-    settingsKeyDeepseek:        document.getElementById("settings-key-deepseek"),
-    settingsKeyDeepseekStatus:  document.getElementById("settings-key-deepseek-status"),
-    settingsKeyDeepseekClear:   document.getElementById("settings-key-deepseek-clear"),
-    settingsThinkingField:      document.getElementById("settings-thinking-field"),
-    settingsThinking:           document.getElementById("settings-thinking"),
-    settingsThinkingStatus:     document.getElementById("settings-thinking-status"),
-    settingsThinkingHint:       document.getElementById("settings-thinking-hint"),
     // Report-generation wizard
     btnReportgen:       document.getElementById("btn-reportgen"),
     reportgenOverlay:   document.getElementById("reportgen-overlay"),
@@ -662,6 +687,7 @@ export function bootWorkbenchRuntime() {
     meta_relation: "元模型关系",
     table_node: "表节点",
     column: "列",
+    action: "动作", event: "事件", status: "状态", dimension_derived_rule: "维度派生规则",
   };
 
   const ENTITY_CODE_RE = /\b[A-Z][A-Z0-9_]{0,31}\d{3,8}\b/g;
@@ -1037,6 +1063,9 @@ export function bootWorkbenchRuntime() {
     if (!txt || !el.chatInput) return;
     const cur = el.chatInput.value.trim();
     el.chatInput.value = cur ? cur + "\n" + txt : txt;
+    window.dispatchEvent(new CustomEvent("bi-composer-prefill", {
+      detail: { text: el.chatInput.value },
+    }));
     autosizeInput();
     el.chatInput.focus();
     try {
@@ -1226,6 +1255,9 @@ export function bootWorkbenchRuntime() {
     state.view = view;
     viewSections.forEach((s) => s.classList.toggle("active", s.dataset.view === view));
     setActiveNav();
+    window.dispatchEvent(new CustomEvent("bi-view-changed", {
+      detail: { view, mode: state.mode },
+    }));
     if (view === "syslog" && state.activeTab === "system") loadSystemPrompt();
   }
 
@@ -1479,6 +1511,8 @@ export function bootWorkbenchRuntime() {
 
   function renderConversationPreview(preview, mode) {
     const bucket = buckets[mode];
+    bucket.activity = resetAgentActivity(bucket.activity, { at: Date.now() });
+    if (state.mode === mode) publishAgentActivity(mode, { type: "history_restore" });
     bucket.convId = preview.id || null;
     bucket.titleHint = preview.title || "";
     bucket.firstUserQuestion = preview.first_user_question ||
@@ -1575,6 +1609,7 @@ export function bootWorkbenchRuntime() {
             kind,
             name: card.querySelector(".entity-name")?.textContent || card.dataset.code,
             source: card.dataset.source || "history",
+            repository_id: card.dataset.repositoryId || "",
             entity_key: key,
           });
         });
@@ -1721,33 +1756,14 @@ export function bootWorkbenchRuntime() {
   }
 
   function openAccount() {
-    const nameInput = document.getElementById("account-name-input");
-    const themeToggle = document.getElementById("account-theme-light");
-    if (nameInput) nameInput.value = readPref(ACCT_NAME_KEY, "") || "";
-    if (themeToggle) themeToggle.checked = readPref(ACCT_THEME_KEY, "light") === "light";
-    const st = document.getElementById("account-status");
-    if (st) st.textContent = "";
     showView("account");
   }
 
-  function saveAccount() {
-    const nameInput = document.getElementById("account-name-input");
-    const themeToggle = document.getElementById("account-theme-light");
-    const name = ((nameInput && nameInput.value) || "").trim() || "分析员";
-    const theme = (themeToggle && themeToggle.checked) ? "light" : "dark";
-    try {
-      localStorage.setItem(ACCT_NAME_KEY, name);
-      localStorage.setItem(ACCT_THEME_KEY, theme);
-    } catch (e) {}
-    applyTheme(theme);
+  window.addEventListener("bi-account-updated", (event) => {
+    const theme = event.detail?.theme;
+    if (theme) applyTheme(theme);
     renderAccountChip();
-    const st = document.getElementById("account-status");
-    if (st) {
-      st.textContent = "✓ 已保存";
-      st.className = "settings-status success";
-      setTimeout(() => { if (st) st.textContent = ""; }, 2000);
-    }
-  }
+  });
 
   (function bootAccount() {
     // URL ?theme=light still wins (embedding); otherwise use the saved
@@ -1758,8 +1774,6 @@ export function bootWorkbenchRuntime() {
     renderAccountChip();
     const acctBtn = document.getElementById("sidebar-account");
     if (acctBtn) acctBtn.addEventListener("click", openAccount);
-    const acctSave = document.getElementById("account-save");
-    if (acctSave) acctSave.addEventListener("click", saveAccount);
   })();
 
   // ------------------------------------------------------------------
@@ -1794,7 +1808,8 @@ export function bootWorkbenchRuntime() {
 
   async function openRoles() {
     const st = document.getElementById("roles-status");
-    if (st) { st.textContent = ""; st.className = "settings-status"; }
+    showView("roles");
+    if (st) { st.textContent = "正在加载角色偏好…"; st.className = "settings-status pending"; }
     try {
       const r = await fetch(withClientSession(withBasePath("api/roles")), { cache: "no-store" });
       if (r.ok) {
@@ -1806,7 +1821,7 @@ export function bootWorkbenchRuntime() {
       }
     } catch (e) {}
     renderRoles();
-    showView("roles");
+    if (st) { st.textContent = ""; st.className = "settings-status"; }
   }
 
   async function saveRoles() {
@@ -1927,8 +1942,8 @@ export function bootWorkbenchRuntime() {
     const status = document.getElementById("memory-status");
     if (status) { status.textContent = ""; status.className = "settings-status"; }
     setTrashStatus("正在加载回收站…", "pending");
-    await loadTrash();
     showView("memory");
+    await loadTrash();
   }
 
   async function restoreTrashEntry(cid) {
@@ -2090,6 +2105,9 @@ export function bootWorkbenchRuntime() {
     const val = row.querySelector(".hint-val");
     if (val) {
       el.chatInput.value = val.textContent;
+      window.dispatchEvent(new CustomEvent("bi-composer-prefill", {
+        detail: { text: el.chatInput.value },
+      }));
       el.chatInput.focus();
     }
   });
@@ -2098,87 +2116,12 @@ export function bootWorkbenchRuntime() {
   // Settings modal
   // ------------------------------------------------------------------
   function hydrateSettings(llm) {
-    if (!state.meta) return;
-    state.meta.llm = llm;
-    el.settingsModel.innerHTML = "";
-    (llm.models || []).forEach(m => {
-      const opt = document.createElement("option");
-      opt.value = m.key;
-      opt.textContent = `${m.label}  [${m.provider}]`;
-      opt.dataset.provider = m.provider;
-      opt.dataset.defaultMaxTokens = m.default_max_tokens;
-      opt.dataset.defaultTemperature = m.default_temperature;
-      opt.dataset.maxOutputTokens = m.max_output_tokens;
-      opt.dataset.supportsThinking = m.supports_thinking ? "1" : "0";
-      el.settingsModel.appendChild(opt);
-    });
-    const cur = llm.current || {};
-    el.settingsModel.value = cur.model_key || "";
-    el.settingsMaxTokens.value = cur.max_tokens ?? 8192;
-    el.settingsTemp.value = cur.temperature ?? 1.0;
-    el.settingsTempVal.textContent = Number(el.settingsTemp.value).toFixed(2);
-    if (el.settingsThinking) el.settingsThinking.checked = !!cur.thinking;
-    updateModelHint();
-    renderKeyStatus(llm.api_keys || {});
-    el.settingsKeyAnthropic.value = "";
-    el.settingsKeyQwen.value = "";
-    if (el.settingsKeyDeepseek) el.settingsKeyDeepseek.value = "";
-  }
-
-  function renderKeyStatus(keys) {
-    const render = (target, info) => {
-      if (!target) return;
-      if (!info || !info.present) {
-        target.textContent = "未配置";
-        target.className = "settings-keystatus missing";
-        return;
-      }
-      const src = info.source === "env" ? "env" : "file";
-      target.textContent = `已配置 · ${info.masked} · ${src}`;
-      target.className = "settings-keystatus set";
-    };
-    render(el.settingsKeyAnthropicStatus, keys.anthropic);
-    render(el.settingsKeyQwenStatus, keys.qwen);
-    render(el.settingsKeyDeepseekStatus, keys.deepseek);
-  }
-
-  function updateModelHint() {
-    const opt = el.settingsModel.options[el.settingsModel.selectedIndex];
-    if (!opt) { el.settingsModelHint.textContent = ""; return; }
-    const provider = opt.dataset.provider;
-    const maxOut = opt.dataset.maxOutputTokens;
-    const supportsThinking = opt.dataset.supportsThinking === "1";
-    let hint = `provider: ${provider} · max_output: ${maxOut}`;
-    if (provider === "qwen") hint += " · 需要环境变量 DASHSCOPE_API_KEY";
-    else if (provider === "deepseek") hint += " · 需要环境变量 DEEPSEEK_API_KEY";
-    else if (provider === "team") hint += " · 需要环境变量 TEAM_API_KEY";
-    else hint += " · 需要环境变量 ANTHROPIC_API_KEY";
-    if (supportsThinking) hint += " · 支持思考模式";
-    el.settingsModelHint.textContent = hint;
-    el.settingsMaxTokens.max = maxOut;
-    // Keep the row visible at all times — disabling (rather than hiding)
-    // the checkbox makes the capability difference discoverable across
-    // model swaps without the row jumping in/out.
-    if (el.settingsThinking) {
-      el.settingsThinking.disabled = !supportsThinking;
-      if (!supportsThinking) el.settingsThinking.checked = false;
-    }
-    if (el.settingsThinkingField) {
-      el.settingsThinkingField.classList.toggle("disabled", !supportsThinking);
-    }
-    if (el.settingsThinkingStatus) {
-      el.settingsThinkingStatus.textContent = supportsThinking ? "可用" : "本模型不支持";
-      el.settingsThinkingStatus.className = supportsThinking
-        ? "settings-keystatus set"
-        : "settings-keystatus missing";
-    }
-    if (el.settingsThinkingHint) {
-      el.settingsThinkingHint.style.opacity = supportsThinking ? "" : "0.55";
-    }
+    if (!llm) return;
+    if (state.meta) state.meta.llm = llm;
+    window.dispatchEvent(new CustomEvent("bi-settings-snapshot", { detail: llm }));
   }
 
   function openSettings() {
-    if (el.settingsStatus) el.settingsStatus.textContent = "";
     showView("model");
   }
 
@@ -2186,103 +2129,16 @@ export function bootWorkbenchRuntime() {
     showView("workspace");
   }
 
-  async function saveSettings() {
-    const payload = {
-      model_key: el.settingsModel.value,
-      max_tokens: parseInt(el.settingsMaxTokens.value, 10),
-      temperature: parseFloat(el.settingsTemp.value),
-      thinking: !!(el.settingsThinking && el.settingsThinking.checked),
-    };
-    const aKey = el.settingsKeyAnthropic.value.trim();
-    if (aKey) payload.anthropic_api_key = aKey;
-    const qKey = el.settingsKeyQwen.value.trim();
-    if (qKey) payload.qwen_api_key = qKey;
-    const dsKey = el.settingsKeyDeepseek && el.settingsKeyDeepseek.value.trim();
-    if (dsKey) payload.deepseek_api_key = dsKey;
-
-    el.settingsStatus.textContent = "保存中…";
-    el.settingsStatus.className = "settings-status pending";
-    try {
-      const r = await fetch(withBasePath("api/config"), {
-        method: "PUT",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({detail: r.statusText}));
-        throw new Error(err.detail || "save failed");
-      }
-      const data = await r.json();
-      state.meta.llm = data;
-      renderTopbarMeta();
-      renderKeyStatus(data.api_keys || {});
-      el.settingsKeyAnthropic.value = "";
-      el.settingsKeyQwen.value = "";
-      if (el.settingsKeyDeepseek) el.settingsKeyDeepseek.value = "";
-      el.settingsStatus.textContent = "已保存 · 下一轮对话立即生效";
-      el.settingsStatus.className = "settings-status success";
-      setTimeout(closeSettings, 900);
-    } catch (e) {
-      el.settingsStatus.textContent = "保存失败: " + (e.message || e);
-      el.settingsStatus.className = "settings-status error";
-    }
-  }
-
-  async function clearApiKey(provider) {
-    if (!confirm(`确定清除 ${provider} 的 API key?(仅清除配置文件中的值;环境变量不受影响)`)) return;
-    const fieldByProvider = {
-      anthropic: "anthropic_api_key",
-      qwen:      "qwen_api_key",
-      deepseek:  "deepseek_api_key",
-    };
-    const field = fieldByProvider[provider];
-    if (!field) return;
-    const payload = { [field]: "" };
-    try {
-      const r = await fetch(withBasePath("api/config"), {
-        method: "PUT",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) throw new Error((await r.json()).detail || "clear failed");
-      const data = await r.json();
-      state.meta.llm = data;
-      renderKeyStatus(data.api_keys || {});
-      el.settingsStatus.textContent = `${provider} key 已清除`;
-      el.settingsStatus.className = "settings-status success";
-    } catch (e) {
-      el.settingsStatus.textContent = "清除失败: " + (e.message || e);
-      el.settingsStatus.className = "settings-status error";
-    }
-  }
-
-  function resetSettingsToDefaults() {
-    const opt = el.settingsModel.options[el.settingsModel.selectedIndex];
-    if (!opt) return;
-    el.settingsMaxTokens.value = opt.dataset.defaultMaxTokens;
-    el.settingsTemp.value = opt.dataset.defaultTemperature;
-    el.settingsTempVal.textContent = Number(el.settingsTemp.value).toFixed(2);
-  }
-
-  if (el.btnSettings) el.btnSettings.addEventListener("click", openSettings);
-  if (el.settingsClose) el.settingsClose.addEventListener("click", closeSettings);
-  if (el.settingsOverlay) el.settingsOverlay.addEventListener("click", (e) => {
-    if (e.target === el.settingsOverlay) closeSettings();
+  // The model page is a declarative React form. It owns field state and calls
+  // /api/config directly; the runtime only keeps the shared meta snapshot used
+  // by the top bar and composer. No hidden native controls are synchronized.
+  window.addEventListener("bi-settings-updated", (event) => {
+    if (!event.detail) return;
+    if (state.meta) state.meta.llm = event.detail;
+    renderTopbarMeta();
+    window.dispatchEvent(new CustomEvent("bi-settings-snapshot", { detail: event.detail }));
   });
-  if (el.settingsModel) el.settingsModel.addEventListener("change", updateModelHint);
-  if (el.settingsTemp) el.settingsTemp.addEventListener("input", () => {
-    el.settingsTempVal.textContent = Number(el.settingsTemp.value).toFixed(2);
-  });
-  if (el.settingsSave) el.settingsSave.addEventListener("click", saveSettings);
-  if (el.settingsResetDefaults) el.settingsResetDefaults.addEventListener("click", resetSettingsToDefaults);
-  if (el.settingsKeyAnthropicClear) el.settingsKeyAnthropicClear.addEventListener("click", () => clearApiKey("anthropic"));
-  if (el.settingsKeyQwenClear) el.settingsKeyQwenClear.addEventListener("click", () => clearApiKey("qwen"));
-  if (el.settingsKeyDeepseekClear) el.settingsKeyDeepseekClear.addEventListener("click", () => clearApiKey("deepseek"));
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && el.settingsOverlay && !el.settingsOverlay.hidden) {
-      closeSettings();
-    }
-  });
+  window.addEventListener("bi-settings-close", closeSettings);
 
   // ------------------------------------------------------------------
   // Report-generation wizard
@@ -2667,8 +2523,8 @@ export function bootWorkbenchRuntime() {
   }
 
   async function openSources() {
-    await loadSourcesInto(el.sourcesStatus);
     showView("sources");
+    await loadSourcesInto(el.sourcesStatus);
   }
 
   function closeSources() {
@@ -2676,8 +2532,8 @@ export function bootWorkbenchRuntime() {
   }
 
   async function openOntologyAdapt() {
-    await loadSourcesInto(el.ontoAdaptStatus);
     showView("ontology-adapt");
+    await loadSourcesInto(el.ontoAdaptStatus);
   }
 
   // Both 数据源 and 本体适配 save the full /api/sources payload (the backend
@@ -3061,7 +2917,10 @@ export function bootWorkbenchRuntime() {
   }
 
   function syncActiveQuestionFromScroll(sourceRoot = null) {
-    const root = sourceRoot || el.chatScroll;
+    // Called directly by requestAnimationFrame (timestamp), resize/scroll
+    // listeners (Event) and targeted pane syncs (Element). Only the last is a
+    // valid DOM root; treating the others as a root breaks getBoundingClientRect.
+    const root = sourceRoot instanceof Element ? sourceRoot : el.chatScroll;
     const selector = root === el.dashboardList
       ? ".dash-card[data-turn]:not(.dash-question)"
       : ".msg-user[data-turn]";
@@ -3115,6 +2974,15 @@ export function bootWorkbenchRuntime() {
 
   function startAssistantMessage(iteration) {
     const bucket = B();
+    finalizeAssistantText();
+    // Model iterations are internal bookkeeping, not transcript boundaries.
+    // Reuse a tool-only segment until actual user-visible text separates it.
+    if (bucket.currentExecutionBlock?.isConnected && !bucket.choiceContinuation &&
+        (bucket.lastTranscriptKind === "tool" || !bucket.currentAssistantText.trim())) {
+      if (bucket.currentAssistantText.trim()) createAssistantTextHost(bucket.currentExecutionBlock, iteration);
+      showStepThinking();
+      return;
+    }
     // When the backend discards a buffered candidate (claim validation or
     // render enforcement), the previous iteration never receives text_delta,
     // so its placeholder bubble would otherwise survive as an empty ghost.
@@ -3126,19 +2994,10 @@ export function bootWorkbenchRuntime() {
       if (bucket.stepTimelineEl?.isConnected === false) bucket.stepTimelineEl = null;
     }
     const block = el_h("div", "assistant-execution-block");
-    const msg = el_h("div", "msg msg-assistant");
-    // No message header: the internal agent role name (bi-analyst) and the
-    // iteration index are bookkeeping, not user-facing chrome. The iteration
-    // stays on the block dataset for anchors and restored-step grouping.
-    msg.innerHTML = `
-      <div class="msg-body"><span class="thinking-line"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>思考中…</span></div>`;
     block.dataset.iteration = String(iteration || "");
-    block.appendChild(msg);
     el.chatScroll.appendChild(block);
-    if (window.antdMessageMount) window.antdMessageMount(msg, "assistant", iteration);
     bucket.currentExecutionBlock = block;
-    bucket.currentAssistantEl = msg.querySelector(".msg-body");
-    bucket.currentAssistantText = "";
+    createAssistantTextHost(block, iteration);
     bucket.stepTimelineEl = null;
     bucket.stepThinkingEl = null;
     if (!bucket.choiceContinuation) showStepThinking();
@@ -3146,10 +3005,24 @@ export function bootWorkbenchRuntime() {
     scrollChatBottom();
   }
 
+  function createAssistantTextHost(block, iteration) {
+    const bucket = B();
+    const msg = el_h("div", "msg msg-assistant");
+    // No message header: the internal agent role name (bi-analyst) and the
+    // iteration index are bookkeeping, not user-facing chrome. The iteration
+    // stays on the block dataset for anchors and restored-step grouping.
+    msg.innerHTML = `
+      <div class="msg-body"><span class="thinking-line"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span>思考中…</span></div>`;
+    block.appendChild(msg);
+    if (window.antdMessageMount) window.antdMessageMount(msg, "assistant", iteration);
+    bucket.currentAssistantEl = msg.querySelector(".msg-body");
+    bucket.currentAssistantText = "";
+  }
+
   function ensureStepTimeline() {
     const bucket = B();
     const block = bucket.currentExecutionBlock;
-    if (bucket.stepTimelineEl && bucket.stepTimelineEl.isConnected && bucket.stepTimelineEl.parentElement === block) return bucket.stepTimelineEl;
+    if (bucket.stepTimelineEl && bucket.stepTimelineEl.isConnected && block?.contains(bucket.stepTimelineEl)) return bucket.stepTimelineEl;
     const timeline = el_h("div", "antd-step-timeline");
     timeline.dataset.turn = String(bucket.currentTurnTag || 1);
     timeline.dataset.iteration = String(block?.dataset.iteration || "");
@@ -3184,9 +3057,7 @@ export function bootWorkbenchRuntime() {
     const timeline = ensureStepTimeline();
     // Results are children of the assistant message, so placing the timeline
     // as the final child of this block keeps it after text and all cards.
-    if (bucket.currentExecutionBlock && timeline.parentElement !== bucket.currentExecutionBlock) {
-      bucket.currentExecutionBlock.appendChild(timeline);
-    } else if (bucket.currentExecutionBlock) {
+    if (bucket.currentExecutionBlock && !bucket.currentExecutionBlock.contains(timeline)) {
       bucket.currentExecutionBlock.appendChild(timeline);
     }
     if (!bucket.stepThinkingEl || !bucket.stepThinkingEl.isConnected) {
@@ -3229,9 +3100,19 @@ export function bootWorkbenchRuntime() {
   function appendAssistantDelta(text) {
     const bucket = B();
     if (!bucket.currentAssistantEl) return;
-    if (bucket.currentAssistantText === "") {
+    if (!String(text || "").trim() && !bucket.currentAssistantText.trim()) return;
+    if (bucket.lastTranscriptKind === "tool") {
+      clearStepThinking();
+      if (bucket.currentAssistantText.trim()) createAssistantTextHost(bucket.currentExecutionBlock, bucket.currentExecutionBlock.dataset.iteration);
+      // The empty placeholder preceded tool execution; move the actual text
+      // after that execution so transcript order follows visible output.
+      bucket.currentExecutionBlock.appendChild(bucket.currentAssistantEl.closest(".msg"));
+      bucket.stepTimelineEl = null;
+    }
+    if (!bucket.currentAssistantText.trim()) {
       bucket.currentAssistantEl.innerHTML = "";
     }
+    bucket.lastTranscriptKind = "text";
     bucket.currentAssistantText += text;
     const display = bucket.currentAssistantText.replace(/\s+$/, "");
     bucket.currentAssistantEl.innerHTML = renderMarkdown(display) +
@@ -3275,7 +3156,12 @@ export function bootWorkbenchRuntime() {
 
   function attachChatStep(stepEl) {
     const bucket = B();
+    if (bucket.lastTranscriptKind === "text") {
+      clearStepThinking();
+      bucket.stepTimelineEl = null;
+    }
     const container = ensureStepTimeline();
+    bucket.lastTranscriptKind = "tool";
     if (!container.isConnected && bucket.currentExecutionBlock) bucket.currentExecutionBlock.appendChild(container);
     if (bucket.stepThinkingEl?.parentNode === container) bucket.stepThinkingEl.remove();
     bucket.stepThinkingEl = null;
@@ -3495,6 +3381,20 @@ export function bootWorkbenchRuntime() {
     }
   }
 
+  function restoreSubmittingChoiceCards(message) {
+    el.chatScroll.querySelectorAll(".choice-card.submitting").forEach((card) => {
+      card.classList.remove("submitting");
+      card.querySelectorAll(".choice-check").forEach((check) => { check.disabled = false; });
+      const confirmBtn = card.querySelector(".choice-confirm");
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = "确定";
+      }
+      const status = card.querySelector(".choice-status");
+      if (status) status.textContent = message;
+    });
+  }
+
   async function submitChoice(card, ids, labels) {
     if (card.classList.contains("resolved") || card.classList.contains("submitting")) return;
     card.classList.add("submitting");
@@ -3507,14 +3407,19 @@ export function bootWorkbenchRuntime() {
 
     const url = state.mode === "report" ? withBasePath("api/report/choice") : withBasePath("api/choice");
     const mySeq = ++streamSeq;
+    const myController = new AbortController();
+    activeRequestController = myController;
     let resp;
     try {
       resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ choice_ids: ids, choice_labels: labels, session_id: clientSessionId }),
+        signal: myController.signal,
       });
     } catch (err) {
+      if (activeRequestController === myController) activeRequestController = null;
+      if (err && err.name === "AbortError") return;
       onEvent({ type: "error", message: `choice request failed: ${err.message || err}` });
       card.classList.remove("submitting");
       card.querySelectorAll(".choice-check").forEach(c => { c.disabled = false; });
@@ -3524,6 +3429,7 @@ export function bootWorkbenchRuntime() {
       return;
     }
     if (!resp.ok || !resp.body) {
+      if (activeRequestController === myController) activeRequestController = null;
       const errText = await resp.text().catch(() => resp.statusText);
       let errBody = null;
       try { errBody = JSON.parse(errText); } catch (_) { /* non-JSON */ }
@@ -3531,8 +3437,10 @@ export function bootWorkbenchRuntime() {
       const retryAfter = resp.headers.get("Retry-After") || (errBody && errBody.retry_after) || 1;
       if (resp.status === 409 && errCode === "SESSION_BUSY") {
         uploadStatus("当前会话仍在生成，请等待完成或取消", "error");
+        recordAgentActivity({ type: "error", message: "当前会话仍在生成，请等待完成或取消" });
       } else if (resp.status === 429 && errCode) {
         uploadStatus(`服务繁忙，请 ${retryAfter} 秒后重试`, "error");
+        recordAgentActivity({ type: "error", message: `服务繁忙，请 ${retryAfter} 秒后重试` });
       } else {
         onEvent({ type: "error", message: `HTTP ${resp.status}: ${errText}` });
       }
@@ -3546,7 +3454,21 @@ export function bootWorkbenchRuntime() {
     // The choice endpoint accepted the selection. Mark the card immediately;
     // the following SSE stream is the agent continuation, not a pending card.
     markChoiceResolved(card.dataset.toolUseId, labels);
-    await streamResponse(resp, mySeq);
+    recordAgentActivity({
+      type: "user_choice_resolved",
+      tool_use_id: card.dataset.toolUseId,
+      choice_labels: labels,
+    });
+    try {
+      await streamResponse(resp, mySeq);
+    } catch (err) {
+      console.warn("choice stream interrupted", err);
+      if (mySeq === streamSeq) {
+        onEvent({ type: "stream_interrupted", message: err?.name || "stream interrupted" });
+      }
+    } finally {
+      if (activeRequestController === myController) activeRequestController = null;
+    }
   }
 
   function attachChatChart(chart) {
@@ -3767,82 +3689,16 @@ export function bootWorkbenchRuntime() {
   // contract used by history/export; this adapter translates that option into
   // Pro UI's component + row-data contract without carrying over the old
   // visual overrides.
-  const PRO_BI_CHART_TYPES = new Set(["bar", "horizontal_bar", "line", "area", "pie"]);
-
   function proBiLibrary() {
     return typeof window !== "undefined" && window.ProUIBi && window.Vue ? window.ProUIBi : null;
-  }
-
-  function proBiChartType(chart) {
-    const type = String(chart?.chart_type || chart?.option?.series?.[0]?.type || "").toLowerCase();
-    return type === "horizontalbar" || type === "horizontal-bar" ? "horizontal_bar" : type;
-  }
-
-  // Keep numeric presentation consistent across tables and Pro UI charts.
-  // Money uses 万 only for non-zero values at or above 10,000; zero is always
-  // rendered as ¥0.00 so we never produce ¥0万 / 0万.
-  function isMoneyLabel(label, unit = "") {
-    return /元|金额|金额占比|收入|成本|采购|销售|库存|利润|费用|支出|应收|应付|余额|价格|单价|税额|营收|¥|￥/.test(`${label || ""}${unit || ""}`);
-  }
-
-  function isNumericValue(value) {
-    return typeof value === "number" && Number.isFinite(value)
-      || typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value));
-  }
-
-  function formatDisplayNumber(value, { money = false, unit = "", percent = false } = {}) {
-    const num = Number(value);
-    if (!Number.isFinite(num)) return String(value ?? "");
-    if (percent) return `${num.toFixed(2)}%`;
-    if (money) {
-      if (num === 0) return "¥0.00";
-      const sign = num < 0 ? "-" : "";
-      const abs = Math.abs(num);
-      if (abs >= 10000) return `${sign}¥${(abs / 10000).toFixed(2)}万`;
-      return `${sign}¥${abs.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    }
-    const formatted = num.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
-    return `${formatted}${unit ? ` ${unit}` : ""}`;
-  }
-
-  function chartDisplayValue(value, label) {
-    const source = value && typeof value === "object" ? value : { value };
-    const raw = source.value;
-    if (!isNumericValue(raw)) return value;
-    const money = isMoneyLabel(label, source.unit);
-    return {
-      ...source,
-      value: Number(raw),
-      formatValue: formatDisplayNumber(raw, { money, unit: source.unit || "" }),
-    };
-  }
-
-  function proBiRows(chart) {
-    const option = chart?.option || {};
-    const type = proBiChartType(chart);
-    const series = Array.isArray(option.series) ? option.series : [];
-    if (type === "pie") {
-      const points = Array.isArray(series[0]?.data) ? series[0].data : [];
-      const label = series[0]?.name || "值";
-      return points.map((point) => ({ category: point?.name ?? "", value: chartDisplayValue(point?.value ?? point, label) }));
-    }
-    const categories = type === "horizontal_bar" ? option.yAxis?.data : option.xAxis?.data;
-    const labels = Array.isArray(categories) ? categories : [];
-    return labels.map((category, index) => {
-      const row = { category };
-      series.forEach((item, seriesIndex) => {
-        const key = String(item?.name || `series_${seriesIndex + 1}`);
-        const value = Array.isArray(item?.data) ? item.data[index] : null;
-        row[key] = chartDisplayValue(value, key);
-      });
-      return row;
-    });
   }
 
   function mountProBiChart(host, chart, card) {
     const lib = proBiLibrary();
     if (!host || !lib) return false;
-    const type = proBiChartType(chart);
+    const spec = buildProBiChart(chart);
+    const type = spec.type;
+    if (!PRO_BI_CHART_TYPES.has(type)) return false;
     const Component = lib[type === "bar" ? "ProBarChart"
       : type === "horizontal_bar" ? "ProHorizontalBarChart"
       : type === "line" ? "ProLineChart"
@@ -3853,31 +3709,11 @@ export function bootWorkbenchRuntime() {
       host.__proBiApp.unmount();
       host.__proBiApp = null;
     }
-    const option = chart?.option || {};
-    const series = Array.isArray(option.series) ? option.series : [];
-    const measureFields = type === "pie"
-      ? [{ id: "value", identifierCode: "value", label: series[0]?.name || "值" }]
-      : series.map((item, index) => ({
-          id: `measure-${index}`,
-          identifierCode: String(item?.name || `series_${index + 1}`),
-          label: String(item?.name || `系列 ${index + 1}`),
-        }));
-    const component = {
-      id: `chart-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      title: String(chart?.title || "分析结果"),
-      showHeader: true,
-      dataConfig: {
-        categoryAxis: [{ id: "category", identifierCode: "category", label: "类别" }],
-        valueAxis: measureFields,
-      },
-      // Empty visualization deliberately uses Pro UI's own defaults.
-      visualization: {},
-    };
     const app = lib && window.Vue.createApp({
       render() {
         return window.Vue.h(Component, {
-          component,
-          data: proBiRows(chart),
+          component: spec.component,
+          data: spec.rows,
         });
       },
     });
@@ -4721,20 +4557,7 @@ export function bootWorkbenchRuntime() {
     // the mounted path has to repair old title/source ordering in place,
     // otherwise those saved cards would remain visually unchanged.
     el.chatScroll.querySelectorAll(".chart-card, .table-card, .multidim-card").forEach((card) => {
-      const type = card.classList.contains("table-card") ? "table"
-        : card.classList.contains("multidim-card") ? "multi" : "chart";
-      if (window.antdResultCardMount) window.antdResultCardMount(card, type);
-    });
-    el.chatScroll.querySelectorAll(".chart-card[data-chart-json]").forEach((card) => {
-      try {
-        const chart = JSON.parse(decodeURIComponent(card.dataset.chartJson));
-        scheduleChartMount(() => mountChart(card, chart));
-      }
-      catch (e) { console.warn("历史聊天图表恢复失败", e); }
-    });
-    el.chatScroll.querySelectorAll(".multidim-card[data-chart-json]").forEach((card) => {
-      try { scheduleChartMount(() => mountMultiChart(card, JSON.parse(decodeURIComponent(card.dataset.chartJson)))); }
-      catch (e) { console.warn("历史多维图表恢复失败", e); }
+      card.hidden = true;
     });
     el.chatScroll.querySelectorAll(".dash-export[data-turn]").forEach((card) => {
       bindExportCard(card, card.dataset.turn);
@@ -5025,6 +4848,19 @@ export function bootWorkbenchRuntime() {
         `<span class="chat-sop-text">${esc((t && t.content) || SOP_STEPS[i] || "")}</span>` +
         `</li>`;
     }).join("");
+    const question = el.chatScroll.querySelector(`.msg-user[data-turn="${CSS.escape(String(B().currentTurnTag || ""))}"]`);
+    if (question) {
+      let snapshot = question.nextElementSibling;
+      if (!snapshot?.classList.contains("turn-sop")) {
+        snapshot = el_h("div", "turn-sop");
+        snapshot.dataset.turn = String(B().currentTurnTag);
+        question.after(snapshot);
+      }
+      snapshot.dataset.sop = JSON.stringify(todos.map((item, index) => ({
+        key: String(index), text: item.content || SOP_STEPS[index], status: item.status || "pending",
+      })));
+      window.antdTurnSopMount?.(snapshot);
+    }
   }
 
   // Render the active bucket's SOP overview and task list into the shared
@@ -6274,10 +6110,17 @@ export function bootWorkbenchRuntime() {
         button.setAttribute("aria-pressed", visible ? "true" : "false");
       });
     }
+    window.dispatchEvent(new Event("bi-ontology-filters-changed"));
   }
 
   function initOntologyFilters() {
     if (!el.ontologyFilters) return;
+    ONTOLOGY_TYPES.forEach(([, kind, , , , label]) => {
+      if (el.ontologyFilters.querySelector(`[data-kind="${kind}"]`)) return;
+      const button = el_h("button", "ontology-filter is-on");
+      button.type = "button"; button.dataset.kind = kind; button.textContent = label;
+      el.ontologyFilters.appendChild(button);
+    });
     el.ontologyFilters.querySelectorAll(".ontology-filter[data-kind]").forEach((button) => {
       button.addEventListener("click", () => {
         const bucket = B();
@@ -6446,30 +6289,138 @@ export function bootWorkbenchRuntime() {
     </span>`;
   }
 
-  function buildChatStep(r) {
+  function buildChatStep(r, status = ACTIVITY_STATUS.COMPLETE) {
     const step = el_h("div", "step");
+    step.dataset.turn = String(B().currentTurnTag || 1);
+    if (r.id) step.dataset.activityId = String(r.id);
+    step.dataset.status = status;
     const preview = toolPreview(r.name, r.input);
     const chips = (r.ontology_entities || []).map(e => buildChipHTML(e)).join("");
+    const running = status === ACTIVITY_STATUS.RUNNING;
     step.innerHTML = `
       <div class="step-header">
         <span class="step-icon">▸</span>
         <span class="step-name">${esc(r.name)}</span>
-        <span class="step-summary">${esc(preview)}</span>
-        <span class="step-duration">${fmtDuration(r.duration_ms)}</span>
+        <span class="step-summary">${esc(running ? (r.input ? preview : "正在执行…") : preview)}</span>
+        <span class="step-duration">${running ? "执行中" : fmtDuration(r.duration_ms)}</span>
       </div>
       <div class="step-body">
         <div class="tool-io-bubble tool-io-input">
           <div class="tool-io-label">输入</div>
           <pre class="tool-io-content">${esc(JSON.stringify(r.input || {}, null, 2))}</pre>
         </div>
-        <div class="tool-io-bubble tool-io-output">
+        ${running ? '<div class="step-running-note"><span class="step-running-dot"></span>等待工具返回…</div>' : `<div class="tool-io-bubble tool-io-output">
           <div class="tool-io-label">输出</div>
           <pre class="tool-io-content">${esc(r.output || "")}</pre>
-        </div>
+        </div>`}
         ${chips ? `<div class="step-sub">命中的本体</div><div class="chip-row">${chips}</div>` : ""}
       </div>`;
     step.querySelector(".step-header").addEventListener("click", () => step.classList.toggle("open"));
     return step;
+  }
+
+  function activityRecord(activity) {
+    return {
+      id: activity.id,
+      name: activity.name,
+      input: activity.input,
+      output: activity.output,
+      duration_ms: activity.durationMs,
+      ontology_entities: activity.ontologyEntities || [],
+      status: activity.status,
+    };
+  }
+
+  function activityStepSummary(activity) {
+    if (activity.kind === "reasoning") {
+      return activity.status === ACTIVITY_STATUS.RUNNING ? "模型正在整理分析思路…" : "思考已结束";
+    }
+    if (activity.status === ACTIVITY_STATUS.RUNNING) {
+      return activity.input ? toolPreview(activity.name, activity.input) : "正在执行…";
+    }
+    return toolPreview(activity.name, activity.input);
+  }
+
+  function updateActivityChatStep(step, activity) {
+    if (!step || !activity) return;
+    step.dataset.status = activity.status;
+    if (activity.kind === "reasoning") {
+      step.dataset.reasoning = "1";
+      const name = step.querySelector(".step-name");
+      const summary = step.querySelector(".step-summary");
+      const duration = step.querySelector(".step-duration");
+      const body = step.querySelector(".step-body");
+      if (name) name.textContent = activity.name || "思考摘要";
+      if (summary) summary.textContent = activityStepSummary(activity);
+      if (duration) duration.textContent = activity.status === ACTIVITY_STATUS.RUNNING ? "进行中" : "";
+      if (body) {
+        let content = body.querySelector(".reasoning-content");
+        if (!content) {
+          body.innerHTML = '<div class="reasoning-content"></div>';
+          content = body.querySelector(".reasoning-content");
+        }
+        if (content) content.textContent = activity.text || "等待思考内容…";
+      }
+      step.classList.toggle("is-running", activity.status === ACTIVITY_STATUS.RUNNING);
+      return;
+    }
+
+    const record = activityRecord(activity);
+    const preview = toolPreview(record.name, record.input);
+    const running = activity.status === ACTIVITY_STATUS.RUNNING;
+    const name = step.querySelector(".step-name");
+    const summary = step.querySelector(".step-summary");
+    const duration = step.querySelector(".step-duration");
+    const body = step.querySelector(".step-body");
+    if (name) name.textContent = record.name || "工具调用";
+    if (summary) summary.textContent = running ? (record.input ? preview : "正在执行…") : preview;
+    if (duration) duration.textContent = running ? "执行中" : fmtDuration(record.duration_ms);
+    if (body) body.innerHTML = `
+      <div class="tool-io-bubble tool-io-input">
+        <div class="tool-io-label">输入</div>
+        <pre class="tool-io-content">${esc(JSON.stringify(record.input || {}, null, 2))}</pre>
+      </div>
+      ${running ? '<div class="step-running-note"><span class="step-running-dot"></span>等待工具返回…</div>' : `<div class="tool-io-bubble tool-io-output">
+        <div class="tool-io-label">输出</div>
+        <pre class="tool-io-content">${esc(record.output || "")}</pre>
+      </div>`}
+      ${(record.ontology_entities || []).length
+        ? `<div class="step-sub">命中的本体</div><div class="chip-row">${record.ontology_entities.map(e => buildChipHTML(e)).join("")}</div>`
+        : ""}`;
+    step.classList.toggle("is-running", running);
+    step.classList.toggle("is-error", activity.status === ACTIVITY_STATUS.ERROR);
+    step.classList.toggle("is-cancelled", activity.status === ACTIVITY_STATUS.CANCELLED);
+  }
+
+  function upsertActivityChatStep(activity) {
+    if (!activity) return null;
+    const existing = el.chatScroll.querySelector(
+      `.step[data-turn="${CSS.escape(String(B().currentTurnTag || 1))}"][data-activity-id="${CSS.escape(String(activity.id))}"]`,
+    );
+    if (existing) {
+      updateActivityChatStep(existing, activity);
+      return existing;
+    }
+    const step = activity.kind === "reasoning"
+      ? buildChatStep({ id: activity.id, name: activity.name, input: {}, output: "", status: activity.status })
+      : buildChatStep(activityRecord(activity), activity.status);
+    if (activity.kind === "reasoning") {
+      step.classList.add("step-reasoning");
+      step.dataset.reasoning = "1";
+    }
+    updateActivityChatStep(step, activity);
+    attachChatStep(step);
+    if (window.antdStepMount) window.antdStepMount(step);
+    return step;
+  }
+
+  function syncExistingAgentActivitySteps(activityState = B().activity) {
+    (activityState?.activities || []).forEach((activity) => {
+      const step = el.chatScroll.querySelector(
+        `.step[data-turn="${CSS.escape(String(B().currentTurnTag || 1))}"][data-activity-id="${CSS.escape(String(activity.id))}"]`,
+      );
+      if (step) updateActivityChatStep(step, activity);
+    });
   }
 
   // ------------------------------------------------------------------
@@ -6571,6 +6522,14 @@ export function bootWorkbenchRuntime() {
   // SSE dispatch
   // ------------------------------------------------------------------
   function onEvent(evt) {
+    // Keep the Pro UI activity model ahead of DOM mutations. Text and
+    // thinking deltas can arrive hundreds of times per turn; their state is
+    // still recorded, but the status bar only needs the lower-frequency
+    // execution and terminal changes.
+    const activityResult = recordAgentActivity(evt, {
+      publish: evt.type !== "text_delta" && evt.type !== "thinking_delta",
+    });
+    const activity = activityResult.activity;
     switch (evt.type) {
       case "user_message":
         break;
@@ -6585,8 +6544,12 @@ export function bootWorkbenchRuntime() {
       case "text_delta":
         appendAssistantDelta(evt.text);
         break;
+      case "thinking_delta":
+        if (activity) upsertActivityChatStep(activity);
+        break;
       case "tool_start":
       case "tool_input":
+        if (activity) upsertActivityChatStep(activity);
         break;
       case "sop_progress": {
         // Structured backend SOP event (1-based step).  Turn isolation is
@@ -6609,22 +6572,22 @@ export function bootWorkbenchRuntime() {
           multi_chart: evt.multi_chart || null,
         };
         recordToolCall(record);
-        const chatStep = buildChatStep(record);
-        attachChatStep(chatStep);
-        if (window.antdStepMount) window.antdStepMount(chatStep);
+        if (activity) upsertActivityChatStep(activity);
+        else {
+          const chatStep = buildChatStep(record);
+          attachChatStep(chatStep);
+          if (window.antdStepMount) window.antdStepMount(chatStep);
+        }
         // Advance the pinned SOP checklist based on which tool just ran
         // (output lets query tools report success vs failure detail).
         advanceSopForTool(record.name, record.output);
         if (record.chart) {
-          attachChatChart(record.chart);
           pushChartToDashboard(record.chart);
         }
         if (record.table) {
-          attachChatTable(record.table);
           pushTableToDashboard(record.table);
         }
         if (record.multi_chart) {
-          attachChatMultiChart(record.multi_chart);
           pushMultiChartToDashboard(record.multi_chart);
         }
         upsertOntologyEntities(evt.ontology_entities);
@@ -6643,6 +6606,7 @@ export function bootWorkbenchRuntime() {
         break;
       case "llm_response":
         finalizeAssistantText();
+        if (activity) upsertActivityChatStep(activity);
         // A tool-bearing response means the agent is still working. Keep a
         // visible status row until the corresponding tool_result arrives;
         // pure final text should not leave an empty timeline behind.
@@ -6758,10 +6722,12 @@ export function bootWorkbenchRuntime() {
           const _supB = B();
           _supB.turnLifecycle = recordFailure(_supB.turnLifecycle, evt.turn_id);
         }
+        syncExistingAgentActivitySteps();
         finalizeAssistantText();
         cleanupTurnLoadingUI();
         setBusy(false);
         B().choiceContinuation = false;
+        restoreSubmittingChoiceCards("会话已重建，请重新提交");
         const _supTip = el_h("div", "msg msg-system msg-enforce",
           `<div class="msg-header"><span class="msg-role" style="color: var(--accent-amber,#ff6d00); border-color: var(--accent-amber,#ff6d00);">SYSTEM · 会话已重建</span></div>
            <div class="msg-body" style="color: var(--fg-1); border-left: 2px solid var(--accent-amber,#ff6d00); padding-left: 10px;">
@@ -6780,14 +6746,19 @@ export function bootWorkbenchRuntime() {
           const _intB = B();
           _intB.turnLifecycle = recordFailure(_intB.turnLifecycle, evt.turn_id);
         }
+        syncExistingAgentActivitySteps();
         finalizeAssistantText();
         cleanupTurnLoadingUI();
         setBusy(false);
         B().choiceContinuation = false;
+        const stoppedByUser = Boolean(evt.stopped_by_user);
+        if (stoppedByUser) restoreSubmittingChoiceCards("已停止生成，请重新提交");
         const _intTip = el_h("div", "msg msg-system msg-enforce",
-          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-amber,#ff6d00); border-color: var(--accent-amber,#ff6d00);">SYSTEM · 生成中断</span></div>
+          `<div class="msg-header"><span class="msg-role" style="color: var(--accent-amber,#ff6d00); border-color: var(--accent-amber,#ff6d00);">SYSTEM · ${stoppedByUser ? "已停止生成" : "生成中断"}</span></div>
            <div class="msg-body" style="color: var(--fg-1); border-left: 2px solid var(--accent-amber,#ff6d00); padding-left: 10px;">
-             连接中断，本轮内容可能不完整，未保存为已完成回答。请重新发送问题。
+             ${stoppedByUser
+               ? "本轮生成已停止，当前已生成内容已保留，未保存为完成回答。"
+               : "连接中断，本轮内容可能不完整，未保存为已完成回答。请重新发送问题。"}
            </div>`);
         el.chatScroll.appendChild(_intTip);
         el.chatScroll.scrollTop = el.chatScroll.scrollHeight;
@@ -6802,6 +6773,15 @@ export function bootWorkbenchRuntime() {
         // and a late `done` after an error / interruption must never flip
         // that turn into a success.
         const _b = B();
+        if (_b.activity?.status === AGENT_STATUS.AWAITING_CHOICE) {
+          // An unresolved AskUser pause point is not a completed analysis.
+          // Keep the clarification card active and never run success-only
+          // side effects (SOP completion, export or conversation save).
+          finalizeAssistantText();
+          cleanupTurnLoadingUI();
+          setBusy(false);
+          break;
+        }
         if (evt.turn_id) {
           const rec = recordDone(_b.turnLifecycle, evt.turn_id);
           if (!rec.accepted) break;
@@ -6811,6 +6791,7 @@ export function bootWorkbenchRuntime() {
         if (evt.generation !== undefined && evt.generation !== null) {
           _b.lastDoneGeneration = evt.generation;
         }
+        syncExistingAgentActivitySteps();
         finalizeAssistantText();
         cleanupTurnLoadingUI();
         setBusy(false);
@@ -6837,8 +6818,10 @@ export function bootWorkbenchRuntime() {
           const _errB = B();
           _errB.turnLifecycle = recordFailure(_errB.turnLifecycle, evt.turn_id);
         }
+        syncExistingAgentActivitySteps();
         finalizeAssistantText();
         cleanupTurnLoadingUI();
+        restoreSubmittingChoiceCards("提交失败，请重试");
         const errEl = el_h("div", "msg msg-error",
           `<div class="msg-header"><span class="msg-role" style="color: var(--accent-red); border-color: var(--accent-red);">ERROR</span></div>
            <div class="msg-body" style="color: var(--accent-red);">${esc(evt.message || "unknown")}</div>`);
@@ -6870,6 +6853,9 @@ export function bootWorkbenchRuntime() {
       return;
     }
     setBusy(true);
+    const _activityB = B();
+    _activityB.activity = beginAgentTurn(_activityB.activity, { text, at: Date.now() });
+    publishAgentActivity(state.mode, { type: "user_message" });
     // Bump per-turn tag so dashboard cards group by user turn
     B().currentTurnTag = (B().currentTurnTag || 0) + 1;
     const _bk = B();
@@ -6879,6 +6865,7 @@ export function bootWorkbenchRuntime() {
     _bk.stepTimelineEl = null;
     _bk.stepThinkingEl = null;
     _bk.currentExecutionBlock = null;
+    _bk.lastTranscriptKind = null;
     _bk.rootCauseDelivered = false;
     _bk.turnQuestions = _bk.turnQuestions || {};
     _bk.turnQuestions[_bk.currentTurnTag] = text;
@@ -6983,7 +6970,12 @@ export function bootWorkbenchRuntime() {
             if (myTurnId === null) myTurnId = event.turn_id;
             if (event.turn_id !== myTurnId) { stale = true; return; }  // stale turn — ignore
           }
-          if (event.type === "done" || event.type === "error" || event.type === "session_superseded") {
+          if (
+            event.type === "done" ||
+            event.type === "error" ||
+            event.type === "session_superseded" ||
+            event.type === "stream_interrupted"
+          ) {
             sawTerminalEvent = true;
           }
           onEvent(event);
@@ -7032,12 +7024,17 @@ export function bootWorkbenchRuntime() {
     state.busy = v;
     document.body.dataset.agentBusy = v ? "1" : "0";
     window.dispatchEvent(new CustomEvent("bi-agent-busy", { detail: { busy: v } }));
-    const disabled = v || state.historyRestoring;
-    el.btnSend.disabled = disabled;
-    el.chatInput.disabled = disabled;
+    // During a running turn the same button becomes the stop control, so it
+    // must stay enabled. The textarea stays locked to prevent a competing
+    // request while the active stream owns the session.
+    el.btnSend.disabled = state.historyRestoring;
+    el.chatInput.disabled = v || state.historyRestoring;
+    el.btnSend.setAttribute("aria-label", v ? "停止生成" : "发送");
+    el.btnSend.title = v ? "停止生成" : "发送";
     // Keep the canonical paper-plane SVG; busy is expressed with a class so
     // the button looks identical on first paint and after history restore.
     el.btnSend.classList.toggle("is-busy", v);
+    publishComposerState();
     // Navigation remains available while a turn is in flight.
   }
 
@@ -7057,7 +7054,16 @@ export function bootWorkbenchRuntime() {
   function switchMode(newMode) {
     if (newMode === state.mode) return;
     if (state.busy) {
+      const outB = B();
+      outB.activity = applyAgentEvent(
+        outB.activity,
+        { type: "stream_interrupted", message: "切换模式，已中断" },
+        { at: Date.now() },
+      ).state;
+      publishAgentActivity(state.mode, { type: "stream_interrupted" });
+      restoreSubmittingChoiceCards("已切换模式，请重新提交");
       if (activeRequestController) activeRequestController.abort();
+      activeRequestController = null;
       // The aborted stream must never emit a terminal event into the newly
       // activated mode, so mark it stale by advancing the request sequence.
       streamSeq += 1;
@@ -7082,6 +7088,7 @@ export function bootWorkbenchRuntime() {
 
     state.mode = newMode;
     document.body.dataset.mode = newMode;
+    publishAgentActivity(newMode);
     window.dispatchEvent(new CustomEvent("bi-mode-changed", { detail: { mode: newMode } }));
     el.modeBtns.forEach(b => b.classList.toggle("active", b.dataset.mode === newMode));
 
@@ -7130,17 +7137,36 @@ export function bootWorkbenchRuntime() {
 
     // 最近 list is per-mode — refresh for the incoming mode
     if (typeof loadRecent === "function") loadRecent();
+    publishComposerState();
   }
 
   el.modeBtns.forEach(b => {
     b.addEventListener("click", () => switchMode(b.dataset.mode));
   });
 
+  function publishComposerState() {
+    window.dispatchEvent(new CustomEvent("bi-composer-state", {
+      detail: {
+        busy: !!state.busy,
+        disabled: !!el.chatInput?.disabled,
+        placeholder: el.chatInput?.placeholder || "提问…",
+        mode: state.mode,
+        withDb: !!el.withDb?.checked,
+        historyCount: Number(el.historyCount?.textContent || 0),
+        attachVisible: !!el.attachRow && !el.attachRow.hidden,
+        attachName: el.attachChipName?.textContent?.trim() || "",
+        attachMeta: el.attachChipMeta?.textContent?.trim() || "",
+        uploadStatus: el.uploadStatus?.textContent?.trim() || "",
+      },
+    }));
+  }
+
   function updateChatInputAvailability() {
     if (state.busy) return;
     const blocked = state.historyRestoring || (state.mode === "report" && !state.report.sessionActivated);
     el.chatInput.disabled = blocked;
     el.btnSend.disabled = blocked;
+    publishComposerState();
   }
 
   function updateSendPlaceholder() {
@@ -7162,6 +7188,7 @@ export function bootWorkbenchRuntime() {
     } else {
       el.chatInput.placeholder = "提问...  (Enter 发送 · Shift+Enter 换行)";
     }
+    publishComposerState();
   }
 
   // ------------------------------------------------------------------
@@ -7170,6 +7197,7 @@ export function bootWorkbenchRuntime() {
   function uploadStatus(msg, kind = "info") {
     el.uploadStatus.textContent = msg || "";
     el.uploadStatus.className = "upload-status " + (msg ? kind : "");
+    publishComposerState();
   }
 
   async function refreshReportStatus() {
@@ -7196,6 +7224,7 @@ export function bootWorkbenchRuntime() {
       state.report.history = data.items || [];
       el.historyCount.textContent = state.report.history.length;
       renderHistoryList();
+      publishComposerState();
     } catch (e) {
       console.warn("report history load failed", e);
     }
@@ -7229,6 +7258,7 @@ export function bootWorkbenchRuntime() {
     if (el.withDb) el.withDb.checked = !!state.report.withDb;
     updateChatInputAvailability();
     updateSendPlaceholder();
+    publishComposerState();
   }
 
   const MAX_ACTIVE_REPORTS = 5;
@@ -7419,6 +7449,7 @@ export function bootWorkbenchRuntime() {
     bucket.firstUserQuestion = null;
     bucket.lastDoneTurnId = null;
     bucket.lastDoneGeneration = null;
+    bucket.activity = resetAgentActivity(bucket.activity, { at: Date.now() });
     bucket.turnLifecycle = resetTurnLifecycle(bucket.turnLifecycle);
     conversationDraftIds.delete(mode === "report" ? "report" : "data");
     // If this is the active mode, also clear visible DOM
@@ -7441,6 +7472,7 @@ export function bootWorkbenchRuntime() {
       el.countLlm.textContent = "0";
       if (el.dashboardCount) el.dashboardCount.textContent = "0";
       updateTurnCounter();
+      publishAgentActivity(mode);
     }
   }
 
@@ -7660,7 +7692,31 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   // Input handling
   // ------------------------------------------------------------------
+  function stopGeneration() {
+    if (!state.busy) return;
+    const bucket = B();
+    const turnId = bucket.activity?.turnId || undefined;
+    bucket.activity = stopAgentTurn(bucket.activity, Date.now());
+    publishAgentActivity(state.mode, { type: "stopped" });
+    // Advance the stream sequence before aborting so the rejected fetch cannot
+    // emit a second terminal frame into the stopped turn.
+    streamSeq += 1;
+    const controller = activeRequestController;
+    activeRequestController = null;
+    if (controller) controller.abort();
+    onEvent({
+      type: "stream_interrupted",
+      turn_id: turnId,
+      message: "已停止生成",
+      stopped_by_user: true,
+    });
+  }
+
   function trySend() {
+    if (state.busy) {
+      stopGeneration();
+      return;
+    }
     const text = el.chatInput.value.trim();
     if (!text) return;
     el.chatInput.value = "";
@@ -7669,6 +7725,7 @@ export function bootWorkbenchRuntime() {
   }
 
   el.btnSend.addEventListener("click", trySend);
+  window.addEventListener("bi-stop-generation", stopGeneration);
   el.chatInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -7771,8 +7828,8 @@ export function bootWorkbenchRuntime() {
   // ------------------------------------------------------------------
   // Sidebar collapse / expand  (left nav, Claude/ChatGPT-style)
   // ------------------------------------------------------------------
-  // Versioned key makes the first visit use the new icon-rail default while
-  // preserving an explicit expand/collapse choice afterwards.
+  // Versioned key preserves an explicit expand/collapse choice. The Pro UI
+  // navigation defaults to the expanded business sidebar on first visit.
   const SIDEBAR_LS_KEY = "bi.sidebarCollapsed.v2";
 
   function applySidebarState(collapsed) {
@@ -7790,8 +7847,7 @@ export function bootWorkbenchRuntime() {
       saved = localStorage.getItem(SIDEBAR_LS_KEY);
       collapsed = saved === "1";
     } catch (e) {}
-    // No saved preference means the navigation starts in the compact icon rail.
-    if (saved == null) collapsed = true;
+    if (saved == null) collapsed = false;
     applySidebarState(collapsed);
   })();
 
@@ -7822,9 +7878,8 @@ export function bootWorkbenchRuntime() {
   }
 
   (function bootDashboardState() {
-    let collapsed = false;
-    try { collapsed = localStorage.getItem(DASHBOARD_LS_KEY) === "1"; } catch (e) {}
-    applyDashboardState(collapsed);
+    // The result board is a persistent desktop surface, not a notification.
+    applyDashboardState(false);
   })();
 
   if (el.btnToggleDashboard) el.btnToggleDashboard.addEventListener("click", toggleDashboard);
@@ -8336,7 +8391,24 @@ export function bootWorkbenchRuntime() {
   applyThemeFromUrl();
   applyQuadrantFromUrl();
   initOntologyFilters();
+  mountOntologyHitsGraph({
+    list: el.ontologyList,
+    getScope: () => B().ontologyByCode,
+    getScopeVersion: () => JSON.stringify([B().convId || "", activeSourceConfig]),
+    getEntities: () => [...el.ontologyList.querySelectorAll(".entity-card[data-code]")].map(ontologyEntityForElement),
+    getFilters: () => B().ontologyFilters,
+    openEntity: (entity) => { void openOntologyGraphCard(entity); },
+    fetchContext: async (entity, signal) => {
+      const response = await fetch(withBasePath("api/ontology/subgraph"), {
+        method: "POST", signal, headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...normalizeOntologyEntity(entity), session_id: clientSessionId, strategy: STRATEGY_CONTEXT }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    },
+  });
   bindDashboardQuestionLinks();
+  publishAgentActivity(state.mode);
 
   // ------------------------------------------------------------------
   // Boot

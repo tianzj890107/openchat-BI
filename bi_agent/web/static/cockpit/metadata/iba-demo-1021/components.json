@@ -56,9 +56,7 @@
         "YWLN_D044": "dropdown"
       },
       "defaultValue": {
-        "values": {
-          "YWLN_D044": "2025-10"
-        }
+        "values": {}
       }
     },
     "grainBindings": [

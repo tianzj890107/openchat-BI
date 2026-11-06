@@ -4,8 +4,8 @@
     "dashboardId": "iba-demo-1021",
     "name": "储能经营风险驾驶舱",
     "releaseUrl": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021",
-    "buildTime": "2026-11-02",
-    "fetchedAt": "2026-11-02",
+    "buildTime": "2026-11-06",
+    "fetchedAt": "2026-11-06",
     "version": "be99db5",
     "status": "active",
     "branch": "feature/demo_1021",
@@ -90,9 +90,7 @@
             "YWLN_D044": "dropdown"
           },
           "defaultValue": {
-            "values": {
-              "YWLN_D044": "2025-10"
-            }
+            "values": {}
           }
         },
         "grainBindings": [

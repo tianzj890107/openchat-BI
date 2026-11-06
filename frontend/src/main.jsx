@@ -1,22 +1,25 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { presentSop } from "./sopPresentation.js";
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Button, Card, Collapse, ConfigProvider, Divider, Layout, List, Menu, Progress, Tag, Tooltip } from "antd";
-import { ThoughtChain } from "@ant-design/x";
-import { Bubble } from "@ant-design/x";
+import { Tag, Tooltip } from "antd";
+import { ProXActivity, ProXBubble, ProXConfigProvider, ProXExecutionSteps, ProXPrompts, ProXToolCall, ProXToolResultCard } from "@pro-ui/x-react";
 import shellDocument from "./shell.html?raw";
 import {
   bootWorkbenchRuntime,
   fetchConversationSummaries,
 } from "./runtime.js";
-import {
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
-  PlusOutlined,
-} from "@ant-design/icons";
+import ProUiAccountPage from "./ProUiAccountPage.jsx";
+import ProUiAgentStatus from "./ProUiAgentStatus.jsx";
+import ProUiComposer from "./ProUiComposer.jsx";
+import { mountProUiPageControls } from "./ProUiPageControls.jsx";
+import ProUiSettingsPage from "./ProUiSettingsPage.jsx";
+import ProUiSidebar from "./ProUiSidebar.jsx";
+import ProUiWelcome from "./ProUiWelcome.jsx";
+import { PROX_WORKBENCH_THEME } from "./proUiTheme.js";
 import "antd/dist/reset.css";
+import "@pro-ui/x-react/styles.css";
 import "./workbench.css";
-
-const { Sider } = Layout;
 
 // Unified product identity.  The sidebar brand renders the product name and
 // the workbench hero renders the version chip from these same constants, so
@@ -25,6 +28,10 @@ const { Sider } = Layout;
 // stays on the page title / hero), per the 2026-09-30 brand request.
 const PRODUCT_NAME = "智能分析";
 const PRODUCT_VERSION = "ontology-v0.1.5";
+
+function ProXScope({ children }) {
+  return <ProXConfigProvider theme={PROX_WORKBENCH_THEME}>{children}</ProXConfigProvider>;
+}
 
 const DECORATIVE_EMOJI_TOKEN = "(?:📌|📊|📎|🧭|📈|📉|📄|🧩|🧠|✅|⚠️|🔍|💡)";
 function stripDecorativeAssistantMarkup(value) {
@@ -256,302 +263,6 @@ function routeUsesSingleColumn() {
     || /\/(?:one|single)(?:\/)?$/.test(window.location.pathname);
 }
 
-function Sidebar() {
-  const [sidebarLevel, setSidebarLevel] = useState(
-    routeUsesSingleColumn()
-      ? 1
-      : document.body.classList.contains("sidebar-collapsed") ? 1 : 0,
-  );
-  const collapsed = sidebarLevel > 0;
-  const [recent, setRecent] = useState(readRecent);
-  const [recentStatus, setRecentStatus] = useState("loading");
-  const [active, setActive] = useState("data");
-
-  useEffect(() => {
-    let disposed = false;
-    const refresh = async (mode = document.body.dataset.mode || "data") => {
-      if (!disposed) {
-        setRecentStatus("loading");
-        setRecent([]);
-      }
-      try {
-        const items = await fetchRecent(mode);
-        if (!disposed) {
-          setRecent(items);
-          setRecentStatus(items.length ? "success" : "empty");
-        }
-      } catch (_) {
-        if (!disposed) {
-          setRecent([]);
-          setRecentStatus("error");
-        }
-      }
-    };
-    refresh();
-    const onUpdated = (event) => {
-      // The shared runtime coordinator publishes the already-fetched list.
-      // Do not turn the event into a second GET request.
-      const eventMode = event.detail?.mode || "data";
-      // Both mode caches share this event channel. A report-mode empty result
-      // must never replace the intelligent-analysis history (and vice versa).
-      if (eventMode !== (document.body.dataset.mode || "data")) return;
-      if (Array.isArray(event.detail?.conversations)) {
-        const activeIds = new Set([...document.querySelectorAll("#recent-list .recent-item.active")].map((node) => node.dataset?.cid));
-        setRecent(event.detail.conversations.map((item) => recentItemFromSummary(item, activeIds)));
-        setRecentStatus(event.detail.status || (event.detail.conversations.length ? "success" : "empty"));
-      }
-    };
-    const onMode = (event) => {
-      refresh(event.detail?.mode || document.body.dataset.mode || "data");
-    };
-    window.addEventListener("bi-conversations-updated", onUpdated);
-    window.addEventListener("bi-mode-changed", onMode);
-    const onRetry = (event) => refresh(event.detail?.mode || document.body.dataset.mode || "data");
-    window.addEventListener("bi-conversations-retry", onRetry);
-    return () => {
-      disposed = true;
-      window.removeEventListener("bi-conversations-updated", onUpdated);
-      window.removeEventListener("bi-mode-changed", onMode);
-      window.removeEventListener("bi-conversations-retry", onRetry);
-    };
-  }, []);
-
-  // Keep the shell selection in sync with the legacy runtime router. In
-  // particular, opening a history row is still a data/report workspace view;
-  // it must clear the previous “记忆管理” selection instead of leaving that
-  // button permanently blue.
-  useEffect(() => {
-    const onMode = (event) => setActive(event.detail?.mode || document.body.dataset.mode || "data");
-    window.addEventListener("bi-mode-changed", onMode);
-    return () => window.removeEventListener("bi-mode-changed", onMode);
-  }, []);
-  // Let the history list use all available height when it fits. If the full
-  // navigation content overflows the sidebar, cap the list at six rows so the
-  // outer surface can reveal that complete window before inner scrolling.
-  useEffect(() => {
-    if (collapsed) return undefined;
-    const root = document.querySelector("#antd-sidebar-root");
-    const outer = root?.querySelector(".antd-sidebar-scroll");
-    const inner = root?.querySelector(".antd-recent-list");
-    if (!outer || !inner) return undefined;
-
-    let frame = 0;
-    const syncRecentWindow = () => {
-      window.cancelAnimationFrame(frame);
-      inner.classList.remove("antd-recent-list-capped");
-      frame = window.requestAnimationFrame(() => {
-        if (!inner.isConnected) return;
-        const hasHistory = !inner.querySelector(".antd-recent-empty");
-        const needsOuterScroll = outer.scrollHeight > outer.clientHeight + 1;
-        inner.classList.toggle("antd-recent-list-capped", hasHistory && needsOuterScroll);
-      });
-    };
-
-    syncRecentWindow();
-    const resizeObserver = typeof ResizeObserver === "function"
-      ? new ResizeObserver(syncRecentWindow)
-      : null;
-    resizeObserver?.observe(outer);
-    window.addEventListener("resize", syncRecentWindow);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", syncRecentWindow);
-      inner.classList.remove("antd-recent-list-capped");
-    };
-  }, [collapsed, recent.length]);
-
-  // The history list is a nested scroll surface. Keep the outer sidebar in
-  // control until the complete six-row history window is visible; otherwise a
-  // partially visible list can consume the wheel and make navigation stick.
-  useEffect(() => {
-    if (collapsed) return undefined;
-    const root = document.querySelector("#antd-sidebar-root");
-    const outer = root?.querySelector(".antd-sidebar-scroll");
-    const inner = root?.querySelector(".antd-recent-list");
-    if (!outer || !inner) return undefined;
-
-    const onWheel = (event) => {
-      const delta = Number(event.deltaY || 0);
-      if (!delta) return;
-      const outerMax = Math.max(0, outer.scrollHeight - outer.clientHeight);
-      const outerCanMove = delta > 0
-        ? outer.scrollTop < outerMax - 1
-        : outer.scrollTop > 1;
-      if (!outerCanMove) return;
-
-      const historyTarget = event.target instanceof Element
-        ? event.target.closest(".antd-recent-list")
-        : null;
-      if (historyTarget === inner) {
-        const outerRect = outer.getBoundingClientRect();
-        const innerRect = inner.getBoundingClientRect();
-        const historyWindowFullyVisible =
-          innerRect.top >= outerRect.top - 1 &&
-          innerRect.bottom <= outerRect.bottom + 1;
-        const innerMax = Math.max(0, inner.scrollHeight - inner.clientHeight);
-        const innerCanMove = delta > 0
-          ? inner.scrollTop < innerMax - 1
-          : inner.scrollTop > 1;
-
-        if (historyWindowFullyVisible && innerCanMove) return;
-      }
-
-      event.preventDefault();
-      outer.scrollTop = Math.max(0, Math.min(outerMax, outer.scrollTop + delta));
-    };
-
-    // Capture makes this run before the nested list's native wheel handling.
-    outer.addEventListener("wheel", onWheel, { passive: false, capture: true });
-    return () => outer.removeEventListener("wheel", onWheel, true);
-  }, [collapsed]);
-
-  useEffect(() => {
-    document.body.classList.toggle("sidebar-collapsed", collapsed);
-    document.body.dataset.sidebarState = sidebarLevel === 1 ? "icons" : "expanded";
-  }, [collapsed, sidebarLevel]);
-
-  useEffect(() => {
-    const onViewportMode = (event) => {
-      setSidebarLevel(1);
-    };
-    window.addEventListener("bi-viewport-mode", onViewportMode);
-    return () => window.removeEventListener("bi-viewport-mode", onViewportMode);
-  }, []);
-
-  // Two states only: expanded (full labels) and collapsed (icon rail).
-  // The sidebar is never removed from the layout entirely.
-  const toggle = () => {
-    setSidebarLevel((level) => (level === 0 ? 1 : 0));
-  };
-
-  // Turn the three section labels into explicit expand controls in collapsed
-  // mode. The menu items themselves keep their labels for tooltips and the
-  // expanded layout.
-  const items = useMemo(() => [{
-    key: "new-chat",
-    label: "新会话",
-    title: "新会话",
-    icon: <PlusOutlined />,
-  }, ...navItems].map((item) => {
-    if (item.type === "group") {
-      return {
-        ...item,
-        label: <button type="button" className="antd-collapsed-section-button" onClick={toggle}>{item.label}</button>,
-      };
-    }
-    if (item.type) return item;
-    return { ...item, label: item.label, title: item.label };
-  }), [toggle]);
-
-  const handleSidebarSurfaceClick = (event) => {
-    if (!collapsed) return;
-    const target = event.target instanceof Element ? event.target : null;
-    const interactive = target?.closest("button, a, .ant-menu-item, .ant-menu-submenu-title");
-    if (!interactive) toggle();
-  };
-
-  return (
-    <ConfigProvider theme={{ token: { colorPrimary: "#2563EB", colorInfo: "#2563EB", colorSuccess: "#15803D", colorError: "#B91C1C", colorWarning: "#C2410C", borderRadius: 8, fontFamily: "PingFang SC, -apple-system, sans-serif" } }}>
-      <Sider className="antd-workbench-sidebar" collapsed={collapsed} width={260} collapsedWidth={72} theme="light">
-        <div className="antd-sidebar-scroll" onClick={handleSidebarSurfaceClick}>
-          <div className="antd-sidebar-brand">
-            <AgentMark />
-            {!collapsed && <span className="antd-product-brand"><strong>{PRODUCT_NAME}</strong></span>}
-            <Tooltip
-              placement="right"
-              title={collapsed ? "展开侧栏" : "折叠侧栏"}
-              color="#fff"
-              overlayClassName="antd-workbench-tooltip"
-            >
-              <Button type="text" size="small" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={toggle} />
-            </Tooltip>
-          </div>
-          <Menu
-            mode="inline"
-            inlineCollapsed={collapsed}
-            selectedKeys={[active]}
-            items={items}
-            onClick={({ key }) => {
-              if (key === "new-chat") {
-                document.getElementById("nav-new-chat")?.click();
-                return;
-              }
-              setActive(key);
-              dispatchRuntime(key);
-            }}
-          />
-          {!collapsed && <>
-            <Divider className="antd-sidebar-divider" />
-            <div className="antd-sidebar-section-row">
-              <div className="antd-sidebar-section-title">最近</div>
-              <button
-                type="button"
-                className={`antd-memory-entry${active === "memory" ? " active" : ""}`}
-                onClick={() => { setActive("memory"); dispatchRuntime("memory"); }}
-                title="记忆管理"
-              >
-                <FeatureGlyph kind="memory" />
-                <span>记忆管理</span>
-              </button>
-            </div>
-            <div className="antd-recent-list" data-status={recentStatus} aria-busy={recentStatus === "loading" ? "true" : "false"}>
-              {recentStatus === "loading" ? <>
-                <span className="antd-recent-loading">正在加载最近会话…</span>
-                {Array.from({ length: 6 }, (_, index) => <span key={`recent-skeleton-${index}`} className="antd-recent-skeleton" aria-hidden="true" />)}
-              </> : recentStatus === "error" ? <button type="button" className="antd-recent-error" onClick={() => requestRecentRefresh()}>
-                加载失败，点击重试
-              </button> : recent.length ? recent.map((item) => {
-                const timeLabel = recentTimeLabel(item.updatedAt);
-                return <button
-                  key={item.key}
-                  className={`antd-recent-item${item.active ? " active" : ""}`}
-                  onClick={() => {
-                    setActive(document.body.dataset.mode || "data");
-                    setRecent((items) => items.map((current) => ({ ...current, active: current.key === item.key })));
-                    const legacyNode = item.node || document.querySelector(`#recent-list .recent-item[data-cid="${CSS.escape(item.cid || item.key)}"]`);
-                    legacyNode?.click();
-                  }}
-                  title={timeLabel ? `${item.title} · ${timeLabel}` : item.title}
-                >
-                  <span className="antd-recent-title">{item.title}</span>
-                  {timeLabel && <small className="antd-recent-meta">{timeLabel}</small>}
-                </button>;
-              }) : <span className="antd-recent-empty">暂无历史会话</span>}
-            </div>
-            <button className="antd-account" onClick={() => document.getElementById("sidebar-account")?.click()}><FeatureGlyph kind="analyst" /> <span>分析员</span></button>
-          </>}
-          {collapsed && (
-            <>
-              <button type="button" className="antd-collapsed-section-button antd-collapsed-recent-button" onClick={toggle}>最近</button>
-              <Tooltip placement="right" title="记忆管理" color="#fff" overlayClassName="antd-workbench-tooltip">
-                <button
-                  type="button"
-                  className="antd-memory-entry antd-memory-entry-collapsed"
-                  onClick={() => { setActive("memory"); dispatchRuntime("memory"); }}
-                  aria-label="记忆管理"
-                >
-                  <FeatureGlyph kind="memory" />
-                </button>
-              </Tooltip>
-              <Tooltip placement="right" title="分析员" color="#fff" overlayClassName="antd-workbench-tooltip">
-                <button
-                  type="button"
-                  className="antd-account antd-account-collapsed"
-                  onClick={() => document.getElementById("sidebar-account")?.click()}
-                  aria-label="分析员"
-                >
-                  <FeatureGlyph kind="analyst" />
-                </button>
-              </Tooltip>
-            </>
-          )}
-        </div>
-      </Sider>
-    </ConfigProvider>
-  );
-}
-
 function readWorkflow() {
   const sop = document.getElementById("chat-sop");
   const todo = document.getElementById("chat-todo");
@@ -582,23 +293,34 @@ function workflowIcon(status) {
   return <span className={`antd-sop-status-circle antd-sop-status-${status}`} aria-hidden="true" />;
 }
 
-// ThoughtChain status mapping for the six SOP states. Ant Design ThoughtChain
-// only models `success` / `error` / `pending` natively, and `pending` is the
-// only non-terminal (loading/animation-capable) state. completed -> success
-// (static green); in_progress -> pending (the only dynamic state allowed);
-// pending and skipped -> "idle", a custom static item whose icon/colour are
-// defined entirely by our own CSS so the AntD pending/spinner treatment is
-// never applied to a finished, not-yet-started or bypassed step.
-function sopThoughtChainStatus(status) {
+// ProXExecutionSteps distinguishes a running spinner from static pending
+// states, matching the backend SOP semantics directly.
+function sopExecutionStatus(status) {
   if (status === "completed") return "success";
-  if (status === "in_progress") return "pending";
-  return "idle";
+  if (status === "in_progress") return "running";
+  if (status === "failed" || status === "error") return "error";
+  if (status === "cancelled" || status === "skipped") return "cancelled";
+  return "pending";
 }
 
-function WorkflowPanels() {
+function TurnSop({ sop }) {
+  const [sopOpen, setSopOpen] = useState(false);
+  const { active, skipped, done, total } = presentSop(sop);
+  const items = active.map((item) => ({
+    id: item.key, title: <span className={`antd-sop-title is-${item.status}`}>{item.text}</span>,
+    status: sopExecutionStatus(item.status), icon: workflowIcon(item.status),
+  }));
+  if (!sop.length) return null;
+  return <ProXActivity className="pro-ui-workflow-activity pro-ui-workflow-sop"
+    title={<span className="antd-workflow-title">分析 SOP <Tag color="blue">{done}/{total}</Tag></span>}
+    expanded={sopOpen} onExpand={setSopOpen}>
+    <ProXExecutionSteps items={items} variant="steps" />
+    {skipped.length ? <p className="pro-ui-sop-skipped">本轮无需执行：{skipped.join("、")}</p> : null}
+  </ProXActivity>;
+}
+
+function WorkflowPanels({ questionNavigation = false }) {
   const [workflow, setWorkflow] = useState(readWorkflow);
-  const [sopOpen, setSopOpen] = useState(true);
-  const [todoOpen, setTodoOpen] = useState(true);
   const [mode, setMode] = useState(() => document.body.dataset.mode || "data");
   const [activeQuestionTurn, setActiveQuestionTurn] = useState(() =>
     document.getElementById("chat-todo")?.dataset.activeQuestionTurn || ""
@@ -631,45 +353,63 @@ function WorkflowPanels() {
     document.querySelectorAll(".antd-question-item[data-question-turn], .chat-question-item[data-question-turn]")
       .forEach((node) => node.classList.toggle("active", node.dataset.questionTurn === value));
   }, [workflow.questions, activeQuestionTurn]);
-  const showEmptySop = mode === "data" && !workflow.sop.length;
+  const showEmptySop = false; // Show progress only after a real analysis starts.
   if (workflow.sopHidden && workflow.todoHidden && !showEmptySop) return null;
-  const done = workflow.sop.filter((item) => item.status === "completed").length;
-  const total = workflow.sop.length;
-  const chainItems = workflow.sop.map((item) => ({
-    key: item.key,
-    title: <span className={`antd-sop-title is-${item.status}`}>{item.text}</span>,
-    status: sopThoughtChainStatus(item.status),
-    icon: workflowIcon(item.status),
-  }));
+  const navigateToQuestion = (turn) => {
+    const value = String(turn ?? "");
+    if (!value) return;
+    window.dispatchEvent(new CustomEvent("bi-question-navigate", {
+      detail: { mode: document.body.dataset.mode || "data", turn: value },
+    }));
+  };
   return (
-    <div className="antd-workflow-panels">
-      {(!!workflow.sop.length || showEmptySop) && <Collapse
-        ghost
-        className="antd-workflow-collapse antd-workflow-sop"
-        activeKey={sopOpen ? ["sop"] : []}
-        onChange={(keys) => setSopOpen(keys.includes("sop"))}
-        items={[{ key: "sop", label: <span className="antd-workflow-title">分析 SOP <Tag color="blue">{total ? `${done}/${total}` : "待开始"}</Tag></span>, children: total ? <ThoughtChain items={chainItems} size="small" /> : <div className="antd-workflow-empty-sop">开始一轮智能分析后，这里会显示本次对话的分阶段执行进度。</div> }]}
-      />}
-      {!!workflow.questions.length && <Collapse
-        ghost
-        className="antd-workflow-collapse antd-workflow-todo"
-        activeKey={todoOpen ? ["todo"] : []}
-        onChange={(keys) => setTodoOpen(keys.includes("todo"))}
-        items={[{ key: "todo", label: <span className="antd-workflow-title">任务清单 <Tag>{workflow.questions.length} 个问题</Tag></span>, children: <>
-          {!!workflow.questions.length && <List size="small" dataSource={workflow.questions} renderItem={(item, index) => <List.Item data-question-turn={item.turn} className="antd-question-item" onClick={() => {
-            const turn = String(item.turn ?? "");
-            if (turn) window.dispatchEvent(new CustomEvent("bi-question-navigate", {
-              detail: { mode: document.body.dataset.mode || "data", turn },
-            }));
-          }}><Tag>{index + 1}</Tag><span>{item.text}</span></List.Item>} />}
-        </> }]}
-      />}
+    <div className="antd-workflow-panels pro-ui-workflow-panels">
+      {questionNavigation && !!workflow.questions.length && document.getElementById("chat-scroll")?.closest(".chat-pane") && createPortal(
+        <nav className="pro-ui-question-elevator" aria-label="会话轮次导航">
+          {workflow.questions.map((item, index) => (
+            <Tooltip key={String(item.turn ?? index)} title={`第 ${index + 1} 轮：${item.text}`} trigger={["hover", "focus"]} placement="right" overlayStyle={{ maxWidth: 360 }}>
+              <button
+                type="button"
+                className="pro-ui-question-anchor"
+                aria-label={`第 ${index + 1} 轮：${item.text}`}
+                aria-current={String(activeQuestionTurn) === String(item.turn) ? "true" : undefined}
+                data-question-turn={item.turn}
+                onClick={() => { setActiveQuestionTurn(String(item.turn)); navigateToQuestion(item.turn); }}
+              />
+            </Tooltip>
+          ))}
+        </nav>, document.getElementById("chat-scroll").closest(".chat-pane")
+      )}
     </div>
   );
 }
 
-const messageRoots = new WeakMap();
-const stepRoots = new WeakMap();
+const messageRoots = new Map();
+const stepRoots = new Map();
+const sopRoots = new Map();
+
+function mountTurnSop(node) {
+  if (!node || sopRoots.has(node)) return;
+  node.replaceChildren();
+  const root = createRoot(node);
+  const update = () => {
+    let sop = [];
+    try { sop = JSON.parse(node.dataset.sop || "[]"); } catch (_) { /* malformed old snapshot */ }
+    root.render(<ProXScope><TurnSop sop={Array.isArray(sop) ? sop : []} /></ProXScope>);
+  };
+  const observer = new MutationObserver(update);
+  observer.observe(node, { attributes: true, attributeFilter: ["data-sop"] });
+  sopRoots.set(node, { root, observer });
+  update();
+}
+window.antdTurnSopMount = mountTurnSop;
+
+function disposeReactRecord(record) {
+  if (!record) return;
+  record.observer?.disconnect();
+  record.statusObserver?.disconnect();
+  try { record.root?.unmount?.(); } catch (_) { /* already detached */ }
+}
 
 function AntdMessage({ role, iteration, html }) {
   const user = role === "user";
@@ -686,25 +426,35 @@ function AntdMessage({ role, iteration, html }) {
   const contentHtml = !hasMarkup && hasMarkdown && typeof window.biRenderMarkdown === "function"
     ? window.biRenderMarkdown(visibleHtml)
     : visibleHtml;
-  return <Bubble
+  if (!user) return <article className="pro-ui-assistant-prose antd-message-html" dangerouslySetInnerHTML={{ __html: contentHtml }} />;
+  return <ProXBubble
     placement={user ? "end" : "start"}
     variant="filled"
     shape="corner"
+    avatar={undefined}
     className={`antd-message-bubble ${user ? "antd-message-user" : "antd-message-assistant"}`}
     content={contentHtml}
-    messageRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
+    contentRender={(content) => <div className="antd-message-html" dangerouslySetInnerHTML={{ __html: String(content || "") }} />}
   />;
 }
 
 function mountMessage(msg, role, iteration) {
   if (!msg || messageRoots.has(msg)) return;
-  const host = document.createElement("div");
-  host.className = "antd-message-host";
-  msg.appendChild(host);
+  // Saved conversations can already contain the host and an old Ant Design X
+  // bubble snapshot. Reuse one host and replace its stale contents so restored
+  // history follows the same Pro UI renderer as live messages.
+  const hosts = [...msg.querySelectorAll(":scope > .antd-message-host")];
+  const host = hosts.shift() || document.createElement("div");
+  hosts.forEach((duplicate) => duplicate.remove());
+  host.replaceChildren();
+  if (!host.isConnected) {
+    host.className = "antd-message-host";
+    msg.appendChild(host);
+  }
   const root = createRoot(host);
   const update = () => {
     const body = msg.querySelector(":scope > .msg-body");
-    root.render(<AntdMessage role={role} iteration={iteration} html={body?.innerHTML || ""} />);
+    root.render(<ProXScope><AntdMessage role={role} iteration={iteration} html={body?.innerHTML || ""} /></ProXScope>);
   };
   const body = msg.querySelector(":scope > .msg-body");
   const observer = body ? new MutationObserver(update) : null;
@@ -858,119 +608,39 @@ function normalizeStepTimelineTree(container) {
 
 window.antdNormalizeStepTimelines = normalizeStepTimelineTree;
 
-const thoughtRailObservers = new WeakMap();
-let thoughtRailFrame = 0;
-
-function syncThoughtChainRail(timeline) {
-  if (!timeline || !timeline.isConnected) return;
-  const icons = [...timeline.querySelectorAll(":scope > .step > .antd-step-host .ant-thought-chain-item-icon")];
-  if (!icons.length) return;
-  const timelineRect = timeline.getBoundingClientRect();
-  const firstRect = icons[0].getBoundingClientRect();
-  const lastRect = icons[icons.length - 1].getBoundingClientRect();
-  const centerX = firstRect.left + firstRect.width / 2 - timelineRect.left;
-  const firstCenterY = firstRect.top + firstRect.height / 2 - timelineRect.top;
-  const lastCenterY = lastRect.top + lastRect.height / 2 - timelineRect.top;
-  timeline.style.setProperty("--thought-step-rail-center-x", `${centerX}px`);
-  timeline.style.setProperty("--thought-step-rail-top", `${firstCenterY}px`);
-  timeline.style.setProperty("--thought-step-rail-bottom", `${lastCenterY}px`);
-  timeline.style.setProperty("--thought-step-rail-height", `${Math.max(0, lastCenterY - firstCenterY)}px`);
-  if (!thoughtRailObservers.has(timeline) && typeof ResizeObserver === "function") {
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(thoughtRailFrame);
-      thoughtRailFrame = requestAnimationFrame(() => syncThoughtChainRail(timeline));
-    });
-    observer.observe(timeline);
-    thoughtRailObservers.set(timeline, observer);
-  }
+function durationToMilliseconds(value) {
+  const text = String(value || "").trim();
+  if (!text) return undefined;
+  const match = text.match(/([0-9]+(?:\.[0-9]+)?)\s*(ms|s|秒|毫秒)?/i);
+  if (!match) return undefined;
+  const number = Number(match[1]);
+  if (!Number.isFinite(number)) return undefined;
+  const unit = String(match[2] || "ms").toLowerCase();
+  return unit === "s" || unit === "秒" ? Math.round(number * 1000) : Math.round(number);
 }
 
-function syncAllThoughtChainRails(container) {
-  container?.querySelectorAll(".antd-step-timeline").forEach(syncThoughtChainRail);
-}
-
-function AntdStep({ name, summary, duration, html }) {
-  const [expanded, setExpanded] = useState(false);
-  const expandedRef = useRef(false);
-  const shellRef = useRef(null);
-  const innerRef = useRef(null);
-  const frameRef = useRef(0);
-  const transition = "height 220ms cubic-bezier(.22,.61,.36,1)";
+function AntdStep({ name, summary, duration, html, status = "complete" }) {
+  const id = useId();
   const detailHtml = String(html || "").trim() || '<div class="antd-step-empty">暂无详细内容</div>';
   const tone = TOOL_RESULT_TONES[name] || "muted";
-  const toneClass = `antd-step-tone-${tone}`;
-  useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
-  useEffect(() => {
-    const shell = shellRef.current;
-    const inner = innerRef.current;
-    if (!shell || !inner || typeof ResizeObserver !== "function") return undefined;
-    const observer = new ResizeObserver(() => {
-      if (!expandedRef.current || shell.dataset.animating !== "true") return;
-      shell.style.height = `${inner.scrollHeight}px`;
-    });
-    observer.observe(inner);
-    return () => observer.disconnect();
-  }, []);
-  const toggle = (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const shell = shellRef.current;
-    const inner = innerRef.current;
-    if (!shell || !inner) return;
-    cancelAnimationFrame(frameRef.current);
-    const next = !expandedRef.current;
-    expandedRef.current = next;
-    setExpanded(next);
-    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    const current = shell.getBoundingClientRect().height;
-    shell.dataset.animating = reduced ? "false" : "true";
-    shell.style.transition = "none";
-    shell.style.height = `${current}px`;
-    if (reduced) {
-      shell.style.height = next ? "auto" : "0px";
-      return;
-    }
-    void shell.offsetHeight;
-    frameRef.current = requestAnimationFrame(() => {
-      shell.style.transition = transition;
-      shell.style.height = next ? `${inner.scrollHeight}px` : "0px";
-    });
-  };
-  const onTransitionEnd = (event) => {
-    if (event.target !== shellRef.current || event.propertyName !== "height") return;
-    const shell = shellRef.current;
-    shell.dataset.animating = "false";
-    shell.style.transition = transition;
-    shell.style.height = expandedRef.current ? "auto" : "0px";
-  };
-  return <div className="thinking-step">
-    <ThoughtChain
-      size="small"
-      className={`antd-thought-chain ${toneClass}`}
-      // Ant Design's content motion is intentionally bypassed. The body
-      // shell below is a direct sibling of the header chain, so its pixel
-      // height participates in normal document flow and pushes later steps.
-      collapsible={false}
-      items={[{
-        key: "step",
-        // Tool results are the only execution events shown in the conversation.
-        // The runtime owns the shared thinking row; this component renders the
-        // completed result once the tool has returned.
-        icon: <ToolStepIcon name={name} tone={tone} />,
-        title: <button type="button" className="thinking-step-header" aria-expanded={expanded} onClick={toggle}>
-          <span className={`antd-step-label ${toneClass}`}>
-            <b>{name}</b>
-            {summary && <span className="antd-step-summary">{summary}</span>}
-            {duration && <em>{duration}</em>}
-          </span>
-        </button>,
-      }]}
+  const running = status === "running";
+  const failed = status === "error" || status === "cancelled";
+  const toneClass = `antd-step-tone-${running ? "running" : failed ? "error" : tone}`;
+  const executionStatus = running ? "running" : failed ? "error" : "success";
+  const detail = <div className="antd-step-html" dangerouslySetInnerHTML={{ __html: detailHtml }} />;
+  return <div className={`thinking-step${running ? " is-running" : ""} ${toneClass}`} data-step-status={status}>
+    <ProXToolCall
+      id={id}
+      name={name}
+      icon={<ToolStepIcon name={name} tone={tone} />}
+      args={summary ? { summary } : undefined}
+      result={detail}
+      resultRender={() => detail}
+      durationMs={durationToMilliseconds(duration)}
+      status={executionStatus}
+      defaultExpanded={failed}
+      blink={running}
     />
-    <div ref={shellRef} className="thinking-step-body-shell" data-expanded={expanded ? "true" : "false"} onTransitionEnd={onTransitionEnd}>
-      <div ref={innerRef} className="thinking-step-body-inner">
-        <div className="antd-step-html" dangerouslySetInnerHTML={{ __html: detailHtml }} />
-      </div>
-    </div>
   </div>;
 }
 
@@ -1003,21 +673,39 @@ function mountStep(step) {
   }
   const root = createRoot(host);
   const update = () => {
-    root.render(<AntdStep name={text(".step-name")} summary={text(".step-summary")} duration={text(".step-duration")} html={body?.innerHTML || ""} />);
-    requestAnimationFrame(() => syncThoughtChainRail(step.closest(".antd-step-timeline")));
+    root.render(<ProXScope><AntdStep
+      name={text(".step-name")}
+      summary={text(".step-summary")}
+      duration={text(".step-duration")}
+      html={body?.innerHTML || ""}
+      status={step.dataset.status || "complete"}
+    /></ProXScope>);
   };
   const observer = body ? new MutationObserver(update) : null;
   if (body) observer.observe(body, { childList: true, subtree: true, characterData: true });
+  const statusObserver = new MutationObserver(update);
+  statusObserver.observe(step, { attributes: true, attributeFilter: ["data-status"] });
   if (header) header.style.display = "none";
   if (body) body.style.display = "none";
   step.classList.add("antd-step-enhanced");
-  stepRoots.set(step, { root, observer });
+  stepRoots.set(step, { root, observer, statusObserver });
   update();
 }
 
 window.antdStepMount = mountStep;
 
-const cardRoots = new WeakMap();
+const cardRoots = new Map();
+
+function disposeSubtreeRoots(node) {
+  for (const roots of [messageRoots, stepRoots, cardRoots, sopRoots]) {
+    for (const [element, record] of [...roots]) {
+      if (element === node || (node.contains && node.contains(element))) {
+        disposeReactRecord(record);
+        roots.delete(element);
+      }
+    }
+  }
+}
 function isProUiChartCard(card) {
   if (!card?.dataset?.chartJson) return false;
   try {
@@ -1151,17 +839,19 @@ function mountResultCard(card, type) {
       ? [card.querySelector(":scope > .table-scroll"), card.querySelector(":scope > .table-summary"), card.querySelector(":scope > .table-footnote")]
       : [card.querySelector(":scope > .multidim-toolbar"), card.querySelector(":scope > .multidim-canvas"), card.querySelector(":scope > .multidim-summary"), card.querySelector(":scope > .multidim-footnote")];
   const root = createRoot(host);
-  root.render(<Card size="small" title={resultTitle} className={`antd-result-card antd-result-${type}${legacyStaticChart ? " antd-result-legacy-static" : ""}`}><div ref={(slot) => { if (slot) nodes.filter(Boolean).forEach((node) => slot.appendChild(node)); }} />{sourceFooter}</Card>);
+  root.render(<ProXScope><ProXToolResultCard title={resultTitle} className={`antd-result-card antd-result-${type}${legacyStaticChart ? " antd-result-legacy-static" : ""}`}><div ref={(slot) => { if (slot) nodes.filter(Boolean).forEach((node) => slot.appendChild(node)); }} />{sourceFooter}</ProXToolResultCard></ProXScope>);
   if (head) head.style.display = "none";
   cardRoots.set(card, root);
 }
 window.antdResultCardMount = mountResultCard;
 
 function DashboardInnerBubble({ nodes }) {
-  return <div
-    className="antd-dashboard-inner-bubble"
-    ref={(slot) => { if (slot) nodes.forEach((node) => slot.appendChild(node)); }}
-  />;
+  return <ProXToolResultCard className="antd-dashboard-pro-ui-card">
+    <div
+      className="antd-dashboard-inner-bubble"
+      ref={(slot) => { if (slot) nodes.forEach((node) => slot.appendChild(node)); }}
+    />
+  </ProXToolResultCard>;
 }
 
 function mountDashboardCard(card) {
@@ -1257,14 +947,41 @@ function mountDashboardCard(card) {
     nodes.unshift(resultHead);
   }
   const root = createRoot(host);
-  root.render(<DashboardInnerBubble nodes={nodes} />);
+  root.render(<ProXScope><DashboardInnerBubble nodes={nodes} /></ProXScope>);
   if (head) head.style.display = "none";
   cardRoots.set(card, root);
 }
 window.antdDashboardCardMount = mountDashboardCard;
 
+function summarizeExecutionTimelines(container) {
+  container.querySelectorAll(".antd-step-timeline").forEach((timeline) => {
+    const steps = [...timeline.querySelectorAll(".step")];
+    if (!steps.length) return;
+    let group = timeline.parentElement;
+    if (!group?.classList.contains("pro-ui-execution-summary")) {
+      group = document.createElement("details");
+      group.className = "pro-ui-execution-summary";
+      const summary = document.createElement("summary");
+      group.appendChild(summary);
+      timeline.before(group);
+      group.appendChild(timeline);
+    }
+    const running = steps.some((step) => ["running", "pending"].includes(step.dataset.status));
+    const failed = steps.some((step) => ["error", "failed"].includes(step.dataset.status));
+    const label = running ? "正在执行工具" : failed ? "执行过程含失败项" : "工具执行记录";
+    const text = `${label} · ${steps.length} 项`;
+    const summary = group.querySelector(":scope > summary");
+    if (summary.textContent !== text) summary.textContent = text;
+    if (failed && !group.dataset.failureRevealed) {
+      group.open = true;
+      group.dataset.failureRevealed = "1";
+    }
+  });
+}
+
 function enhanceWorkbenchTree(container) {
   if (!container) return;
+  container.querySelectorAll(".turn-sop[data-sop]").forEach(mountTurnSop);
   normalizeStepTimelineTree(container);
   // Remove type-only labels from legacy saved result markup. Semantic labels
   // remain and are handled by the dashboard/result header layout.
@@ -1280,23 +997,43 @@ function enhanceWorkbenchTree(container) {
   // Drop those headers outright so restored conversations match new ones; the
   // SYSTEM · … tips keep their own headers.
   container.querySelectorAll(".msg-assistant > .msg-header").forEach((node) => node.remove());
-  container.querySelectorAll(":scope > .msg:not(.antd-message-enhanced)").forEach((node) => {
+  container.querySelectorAll(".msg").forEach((node) => {
     mountMessage(node, node.classList.contains("msg-user") ? "user" : "assistant");
   });
-  container.querySelectorAll(".step:not(.antd-step-enhanced)").forEach(mountStep);
+  container.querySelectorAll(".step").forEach(mountStep);
+  if (container.id === "chat-scroll") summarizeExecutionTimelines(container);
   container.querySelectorAll(":scope > .chart-card:not(.antd-result-card-host), :scope > .table-card:not(.antd-result-card-host), :scope > .multidim-card:not(.antd-result-card-host)").forEach((node) => {
+    if (container.id === "chat-scroll") { node.hidden = true; return; }
     mountResultCard(node, node.classList.contains("table-card") ? "table" : node.classList.contains("multidim-card") ? "multi" : "chart");
   });
   container.querySelectorAll(".dash-card:not(.antd-dashboard-question-hidden)").forEach(mountDashboardCard);
-  requestAnimationFrame(() => syncAllThoughtChainRails(container));
 }
 
 function observeWorkbenchSurface(id) {
   const container = document.getElementById(id);
-  if (!container) return;
+  if (!container) return () => {};
   enhanceWorkbenchTree(container);
-  const observer = new MutationObserver(() => enhanceWorkbenchTree(container));
+  const observer = new MutationObserver((mutations) => {
+    const removed = [];
+    for (const mutation of mutations) {
+      mutation.removedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) removed.push(node);
+      });
+    }
+    if (removed.length) {
+      // Mode switching detaches and reattaches in the same task. Defer the
+      // decision by a microtask so only genuinely removed history nodes are
+      // unmounted and their observers released.
+      queueMicrotask(() => {
+        removed.forEach((node) => {
+          if (!node.isConnected) disposeSubtreeRoots(node);
+        });
+      });
+    }
+    enhanceWorkbenchTree(container);
+  });
   observer.observe(container, { childList: true, subtree: true });
+  return () => observer.disconnect();
 }
 
 const shellMarkup = (shellDocument.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] || shellDocument)
@@ -1315,28 +1052,67 @@ function WorkbenchApp() {
 
   useLayoutEffect(() => {
     document.body.dataset.mode = "data";
-    document.body.classList.add("sidebar-collapsed");
+    document.body.classList.add("pro-ui-workbench-body");
+    document.body.classList.remove("sidebar-collapsed");
     if (!shellRef.current) return undefined;
 
+    const mountedRoots = [];
+    const mountRoot = (node, element) => {
+      if (!node) return null;
+      const root = createRoot(node);
+      root.render(element);
+      mountedRoots.push(root);
+      return root;
+    };
     const sidebarRoot = shellRef.current.querySelector("#antd-sidebar-root");
     const versionRoot = shellRef.current.querySelector("#product-version");
     const workflowRoot = shellRef.current.querySelector("#antd-workflow-root");
     const dashboardWorkflowRoot = shellRef.current.querySelector("#antd-dashboard-workflow-root");
-    if (sidebarRoot) createRoot(sidebarRoot).render(<Sidebar />);
-    if (versionRoot) createRoot(versionRoot).render(<ProductVersionTag />);
-    if (workflowRoot) createRoot(workflowRoot).render(<WorkflowPanels />);
-    if (dashboardWorkflowRoot) createRoot(dashboardWorkflowRoot).render(<WorkflowPanels />);
+    const proUiStatusRoot = shellRef.current.querySelector("#ant-pro-ui-status-root");
+    const proUiWelcomeRoot = shellRef.current.querySelector("#pro-ui-welcome-root");
+    const proUiComposerRoot = shellRef.current.querySelector("#pro-ui-composer-root");
+    const proUiSettingsRoot = shellRef.current.querySelector("#pro-ui-settings-root");
+    const proUiAccountRoot = shellRef.current.querySelector("#pro-ui-account-root");
+    mountRoot(sidebarRoot, (
+      <ProUiSidebar
+        FeatureGlyph={FeatureGlyph}
+        AgentMark={AgentMark}
+        fetchRecent={fetchRecent}
+        requestRecentRefresh={requestRecentRefresh}
+        recentTimeLabel={recentTimeLabel}
+        dispatchRuntime={dispatchRuntime}
+        productVersion={PRODUCT_VERSION}
+      />
+    ));
+    mountRoot(versionRoot, <ProductVersionTag />);
+    mountRoot(workflowRoot, <ProXScope><WorkflowPanels questionNavigation /></ProXScope>);
+    mountRoot(dashboardWorkflowRoot, <ProXScope><WorkflowPanels /></ProXScope>);
+    mountRoot(proUiStatusRoot, <ProXScope><ProUiAgentStatus /></ProXScope>);
+    mountRoot(proUiWelcomeRoot, <ProXScope><ProUiWelcome /></ProXScope>);
+    mountRoot(proUiComposerRoot, <ProXScope><ProUiComposer dispatchRuntime={dispatchRuntime} /></ProXScope>);
+    mountRoot(proUiSettingsRoot, <ProXScope><ProUiSettingsPage /></ProXScope>);
+    mountRoot(proUiAccountRoot, <ProXScope><ProUiAccountPage /></ProXScope>);
     shellRef.current.querySelectorAll(".page-title-icon[data-feature-glyph]").forEach((node) => {
-      createRoot(node).render(<FeatureGlyph kind={node.dataset.featureGlyph} />);
+      mountRoot(node, <FeatureGlyph kind={node.dataset.featureGlyph} />);
     });
 
     // The former static runtime is now an internal React bundle module. It
     // still owns the API/SSE state machine, while all markup is mounted under
     // this React root and no longer loaded as a separate static script.
+    const unmountPageControls = mountProUiPageControls(shellRef.current);
     bootWorkbenchRuntime();
-    observeWorkbenchSurface("chat-scroll");
-    observeWorkbenchSurface("dashboard-list");
-    return undefined;
+    const surfaceCleanups = [
+      observeWorkbenchSurface("chat-scroll"),
+      observeWorkbenchSurface("dashboard-list"),
+    ];
+    return () => {
+      unmountPageControls();
+      surfaceCleanups.forEach((cleanup) => cleanup());
+      mountedRoots.forEach((root) => {
+        try { root.unmount(); } catch (_) { /* already detached */ }
+      });
+      document.body.classList.remove("pro-ui-workbench-body");
+    };
   }, []);
 
   return <div ref={shellRef} dangerouslySetInnerHTML={{ __html: shellMarkup }} />;

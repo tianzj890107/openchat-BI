@@ -39,6 +39,14 @@ def test_other_period_is_excluded(tmp_path):
     assert len(body['apReceiptIds']) == 2
 
 
+def test_missing_shipment_card_keeps_the_other_same_period_stages(tmp_path):
+    store = Store(tmp_path/'db.sqlite');cards = fixture_cards(store)
+    cards.pop('shipment')
+    body = cached_combined_request(store, 1, cards)
+    assert len(body['apReceiptIds']) == 2
+    assert 'opportunity,order' in body['clarifications']['coverage']
+
+
 def test_other_identity_cannot_be_reused(tmp_path):
     store = Store(tmp_path/'db.sqlite');cards = fixture_cards(store)
     with pytest.raises(ValueError):
