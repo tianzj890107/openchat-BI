@@ -6,6 +6,10 @@ const {loadInsightStyle} = window.InsightRuntime
 loadInsightStyle(import.meta.url)
 
 const OVERDUE_DAYS_FIELD = 'YWLN_M_ORDER_OVERDUE_DAYS'
+/** 与看板 table-s41y03ym dataConfig.sort 对齐：按超期订未发金额降序 */
+const SORT_FIELDS = [
+  {fieldType: 'Indicator', identifierCode: 'M0143', isTree: false, label: '超期订未发金额', name: 'Overdue_Unshipped_Amount', valueType: 'NUMBER', order: 'DESC'},
+]
 
 const filterFields = [
   {
@@ -55,5 +59,6 @@ createTableInsight({
   fields,
   columns,
   filterFields,
+  sort: SORT_FIELDS,
   showTitle: true,
 })

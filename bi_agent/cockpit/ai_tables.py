@@ -103,6 +103,7 @@ TABLE_SPECS = {
         "title": "明星产品订单电量及占比",
         "fields": STAR_PRODUCT_FIELDS,
         "pre_filters": [],
+        "sorts": [{"identifierCode": "YWLN_M0032", "order": "DESC"}],
         "custom": ("口径",),
     },
     "affected-order-list": {
@@ -112,6 +113,7 @@ TABLE_SPECS = {
         "title": "受影响订单清单",
         "fields": AFFECTED_FIELDS,
         "pre_filters": AFFECTED_PRE_FILTERS,
+        "sorts": [{"identifierCode": "YWLN_M0032", "order": "DESC"}],
         "custom": ("原因", "责任动作"),
     },
     "overdue-order-list": {
@@ -121,6 +123,7 @@ TABLE_SPECS = {
         "title": "客户与超期订单",
         "fields": OVERDUE_FIELDS,
         "pre_filters": OVERDUE_PRE_FILTERS,
+        "sorts": [{"identifierCode": "M0143", "order": "DESC"}],
         "custom": ("主因和根因分析",),
     },
 }
@@ -432,6 +435,26 @@ def build_ap_query(table_key: str, request: TableQuery) -> dict:
     filters = _merge_scope_filter(filters, scope_filter)
     _filter_codes(filters, allowed_filters)
     filters = _merge_filter_parts(filters, spec.get("pre_filters"))
+    allowed_sorts = {item["identifierCode"] for item in spec["fields"]}
+    raw_sorts = common.get("sorts")
+    if raw_sorts is None:
+        # The delivered table owns its default order.  A browser that has not
+        # sent a sort yet must receive the same payload as table preheat.
+        sorts = list(spec.get("sorts") or [])
+    elif raw_sorts == []:
+        sorts = []
+    elif not isinstance(raw_sorts, list) or len(raw_sorts) > 5:
+        raise ValueError("排序参数无效")
+    else:
+        sorts = []
+        for item in raw_sorts:
+            if not isinstance(item, dict):
+                raise ValueError("排序参数无效")
+            code = str(item.get("identifierCode") or "")
+            order = str(item.get("order") or "").upper()
+            if code not in allowed_sorts or order not in {"ASC", "DESC"}:
+                raise ValueError("排序字段不属于当前表格")
+            sorts.append({"identifierCode": code, "order": order})
     pagination = common.get("pagination") or {}
     try:
         page_num = max(1, int(pagination.get("pageNum") or 1))
@@ -448,6 +471,8 @@ def build_ap_query(table_key: str, request: TableQuery) -> dict:
     }
     if filters not in (None, {}, []):
         payload["commonConfig"]["filters"] = filters
+    if sorts:
+        payload["commonConfig"]["sorts"] = sorts
     return payload
 
 
@@ -469,7 +494,8 @@ def preheat_table(store, identity: int, table_key: str, query_receipt,
             "indicators": [item for item in spec["fields"]
                            if item["fieldType"] == "Indicator"],
         },
-        commonConfig={"pagination": {"pageNum": 1, "pageSize": 10}},
+        commonConfig={"pagination": {"pageNum": 1, "pageSize": 10},
+                      **({"sorts": spec["sorts"]} if spec.get("sorts") else {})},
     )
     payload = build_ap_query(table_key, request)
     scope_key = table_scope_key(request.ui_scope)

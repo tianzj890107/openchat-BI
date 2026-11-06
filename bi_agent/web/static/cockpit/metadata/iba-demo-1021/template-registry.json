@@ -1591,7 +1591,8 @@
               "valueType": "NUMBER",
               "identifierCode": "YWLN_M0004"
             }
-          ]
+          ],
+          "sort": []
         },
         "showHeader": false,
         "visualization": {},
@@ -1656,7 +1657,8 @@
             "showSearch": false,
             "showSource": true
           }
-        ]
+        ],
+        "tableSearchFieldConfig": []
       },
       {
         "id": "table-ys9za5oh",
@@ -1735,7 +1737,8 @@
               "valueType": "NUMBER",
               "identifierCode": "YWLN_M0006"
             }
-          ]
+          ],
+          "sort": []
         },
         "showHeader": false,
         "visualization": {},
@@ -1770,7 +1773,8 @@
             "showSearch": false,
             "showSource": true
           }
-        ]
+        ],
+        "tableSearchFieldConfig": []
       },
       {
         "id": "table-6teuq4qa",
@@ -1857,6 +1861,17 @@
               "valueType": "NUMBER",
               "identifierCode": "YWLN_M0003"
             }
+          ],
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M0002",
+              "isTree": false,
+              "label": "目标销售额（亿元）",
+              "name": "Target_Sales",
+              "valueType": "NUMBER",
+              "order": "DESC"
+            }
           ]
         },
         "showHeader": false,
@@ -1902,7 +1917,8 @@
             "showSearch": false,
             "showSource": true
           }
-        ]
+        ],
+        "tableSearchFieldConfig": []
       },
       {
         "id": "bar-line-swk58lta",
@@ -2815,7 +2831,8 @@
               "valueType": "NUMBER",
               "identifierCode": "YWLN_M0012"
             }
-          ]
+          ],
+          "sort": []
         },
         "showHeader": false,
         "visualization": {},
@@ -2890,7 +2907,8 @@
             "showSearch": false,
             "showSource": true
           }
-        ]
+        ],
+        "tableSearchFieldConfig": []
       },
       {
         "id": "bar-nfodriiq",
@@ -3101,7 +3119,8 @@
               "valueType": "NUMBER",
               "identifierCode": "YWLN_M0011"
             }
-          ]
+          ],
+          "sort": []
         },
         "showHeader": false,
         "visualization": {},
@@ -3156,7 +3175,8 @@
             "showSearch": false,
             "showSource": true
           }
-        ]
+        ],
+        "tableSearchFieldConfig": []
       },
       {
         "id": "table-nu6hm1ge",
@@ -3251,7 +3271,8 @@
               "valueType": "NUMBER",
               "identifierCode": "YWLN_M0008"
             }
-          ]
+          ],
+          "sort": []
         },
         "showHeader": true,
         "visualization": {},
@@ -3306,7 +3327,8 @@
             "showSearch": false,
             "showSource": true
           }
-        ]
+        ],
+        "tableSearchFieldConfig": []
       },
       {
         "id": "title-mdk899iv",
@@ -4164,7 +4186,7 @@
         "showHeader": true,
         "graphConfig": {
           "processCode": "FULL_PROCESS_OPERATIONS_MANAGEMENT",
-          "helmetViewUrl": "http://172.16.5.230:8080/v1/graphs/helmet-view",
+          "helmetViewUrl": "/v1/graphs/helmet-view",
           "graphTemplateSwitchRules": [
             {
               "nodeId": "2109848488855519233",
@@ -7008,6 +7030,17 @@
               "label": "产品类型",
               "valueType": "STRING"
             }
+          ],
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M0023",
+              "isTree": false,
+              "label": "商机获取金额",
+              "name": "Opportunity_Amount",
+              "valueType": "NUMBER",
+              "order": "DESC"
+            }
           ]
         },
         "id": "table-biauwdwh",
@@ -7128,7 +7161,15 @@
         ],
         "styleConfig": {
           "showCurrentInfo": false
-        }
+        },
+        "tableSelectionConfig": {
+          "enabled": false,
+          "mode": "multiple",
+          "rowKeyField": "YWLN_D047"
+        },
+        "buttonConfig": [],
+        "linkConfig": [],
+        "headerActions": []
       },
       {
         "dataConfig": {
@@ -7515,6 +7556,17 @@
                 ],
                 "valueType": "ABSOLUTE"
               }
+            }
+          ],
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M0031",
+              "isTree": false,
+              "label": "报价电量",
+              "name": "Quote_Energy",
+              "valueType": "NUMBER",
+              "order": "DESC"
             }
           ]
         },
@@ -7981,6 +8033,17 @@
                 "valueType": "ABSOLUTE"
               }
             }
+          ],
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M0027",
+              "isTree": false,
+              "label": "投标电量",
+              "name": "Bid_Energy",
+              "valueType": "NUMBER",
+              "order": "DESC"
+            }
           ]
         },
         "showHeader": true,
@@ -8059,7 +8122,8 @@
         ],
         "styleConfig": {
           "showCurrentInfo": false
-        }
+        },
+        "tableSearchFieldConfig": []
       },
       {
         "id": "segmented-strip-yvhlsyv3",
@@ -8615,7 +8679,18 @@
               "valueType": "NUMBER"
             }
           ],
-          "pageSize": 10
+          "pageSize": 10,
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M0032",
+              "isTree": false,
+              "label": "订单接收电量",
+              "name": "Signed_Opportunity_Forecast_Energy",
+              "valueType": "NUMBER",
+              "order": "DESC"
+            }
+          ]
         },
         "id": "table-bh7u4yxk",
         "position": {
@@ -8663,7 +8738,8 @@
         ],
         "styleConfig": {
           "showCurrentInfo": false
-        }
+        },
+        "tableSearchFieldConfig": []
       },
       {
         "dataConfig": {
@@ -9308,6 +9384,17 @@
                 ],
                 "valueType": "ABSOLUTE"
               }
+            }
+          ],
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M0035",
+              "isTree": false,
+              "label": "发货量",
+              "name": "Shipment_Energy",
+              "valueType": "NUMBER",
+              "order": "DESC"
             }
           ]
         },
@@ -10176,7 +10263,7 @@
         "graphConfig": {
           "defaultActiveKey": "2109840325158682625",
           "processCode": "SALES_CALIBER",
-          "helmetViewUrl": "http://172.16.5.230:8080/v1/graphs/helmet-view",
+          "helmetViewUrl": "/v1/graphs/helmet-view",
           "graphTemplateSwitchRules": [
             {
               "nodeId": "2109840325158682625",
@@ -10386,7 +10473,11 @@
               "isTree": false,
               "label": "客户目标电量",
               "name": "Customer_Target_Energy",
-              "valueType": "NUMBER"
+              "valueType": "NUMBER",
+              "valueConfig": {
+                "isThousand": true,
+                "numericScale": 4
+              }
             },
             {
               "fieldType": "Indicator",
@@ -10394,7 +10485,11 @@
               "isTree": false,
               "label": "客户实际发货电量",
               "name": "Customer_Actual_Shipment_Energy",
-              "valueType": "NUMBER"
+              "valueType": "NUMBER",
+              "valueConfig": {
+                "isThousand": true,
+                "numericScale": 4
+              }
             },
             {
               "fieldType": "Indicator",
@@ -10410,7 +10505,19 @@
               "isTree": false,
               "label": "商机预测缺口（亿元）",
               "name": "Opportunity_Forecast_Gap",
-              "valueType": "NUMBER"
+              "valueType": "NUMBER",
+              "alias": "客户电量缺口"
+            }
+          ],
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M_CUSTOMER_ACTUAL_ENERGY",
+              "isTree": false,
+              "label": "客户实际发货电量",
+              "name": "Customer_Actual_Shipment_Energy",
+              "valueType": "NUMBER",
+              "order": "DESC"
             }
           ]
         },
@@ -10482,7 +10589,7 @@
             "fieldType": "Indicator",
             "id": "YWLN_M0140",
             "isTree": false,
-            "label": "商机预测缺口（亿元）",
+            "label": "客户电量缺口",
             "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
@@ -10490,7 +10597,8 @@
         ],
         "styleConfig": {
           "showCurrentInfo": false
-        }
+        },
+        "tableSearchFieldConfig": []
       },
       {
         "dataConfig": {
@@ -10874,7 +10982,7 @@
               "label": "客户目标电量",
               "name": "Customer_Target_Energy",
               "valueType": "NUMBER",
-              "alias": "规划目标（GWh）"
+              "alias": "规划目标（MWh）"
             },
             {
               "fieldType": "Indicator",
@@ -10883,7 +10991,7 @@
               "label": "已签单商机获取电量",
               "name": "Opportunity_Energy_已签单",
               "valueType": "NUMBER",
-              "alias": "已签单商机预测（GWH/亿元）"
+              "alias": "已签单商机预测（MWh）"
             },
             {
               "fieldType": "Indicator",
@@ -10892,7 +11000,7 @@
               "label": "未签单商机获取电量",
               "name": "Opportunity_Energy_未签单",
               "valueType": "NUMBER",
-              "alias": "未签单商机预测（GWh/亿元）"
+              "alias": "未签单商机预测（MWh）"
             },
             {
               "fieldType": "Indicator",
@@ -10901,7 +11009,7 @@
               "label": "客户商机预测缺口电量",
               "name": "Customer_Target_Minus_Opportunity_Energy",
               "valueType": "NUMBER",
-              "alias": "商机预测合计（GWh）"
+              "alias": "商机预测合计（MWh）"
             },
             {
               "fieldType": "Indicator",
@@ -10910,10 +11018,10 @@
               "label": "客户电量缺口",
               "name": "Customer_Target_Minus_Actual_Energy",
               "valueType": "NUMBER",
-              "alias": "目标差距（GWh）"
+              "alias": "目标差距（MWh）"
             },
             {
-              "alias": "覆盖率（已签/未签/总）",
+              "alias": "覆盖率",
               "fieldType": "Indicator",
               "identifierCode": "YWLN_M_CUSTOMER_OPPORTUNITY_COVERAGE",
               "isTree": false,
@@ -10922,7 +11030,7 @@
               "valueType": "NUMBER"
             },
             {
-              "alias": "单电量（GWh）",
+              "alias": "单电量（MWh）",
               "fieldType": "Indicator",
               "identifierCode": "YWLN_M_CUSTOMER_ORDER_ENERGY",
               "isTree": false,
@@ -10931,7 +11039,7 @@
               "valueType": "NUMBER"
             },
             {
-              "alias": "订单缺口（GWh）",
+              "alias": "订单缺口（MWh）",
               "fieldType": "Indicator",
               "identifierCode": "YWLN_M_CUSTOMER_ORDER_GAP",
               "isTree": false,
@@ -10978,6 +11086,17 @@
               "label": "客户有无商机",
               "valueType": "STRING",
               "alias": "客户商机"
+            }
+          ],
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M0194",
+              "isTree": false,
+              "label": "已签单商机获取电量",
+              "name": "Opportunity_Energy_已签单",
+              "valueType": "NUMBER",
+              "order": "DESC"
             }
           ]
         },
@@ -11026,7 +11145,7 @@
             "fieldType": "Indicator",
             "id": "YWLN_M_CUSTOMER_TARGET_ENERGY",
             "isTree": false,
-            "label": "规划目标（GWh）",
+            "label": "规划目标（MWh）",
             "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
@@ -11036,7 +11155,7 @@
             "fieldType": "Indicator",
             "id": "YWLN_M0194",
             "isTree": false,
-            "label": "已签单商机预测（GWH/亿元）",
+            "label": "已签单商机预测（MWh）",
             "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
@@ -11046,7 +11165,7 @@
             "fieldType": "Indicator",
             "id": "YWLN_M0195",
             "isTree": false,
-            "label": "未签单商机预测（GWh/亿元）",
+            "label": "未签单商机预测（MWh）",
             "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
@@ -11056,7 +11175,7 @@
             "fieldType": "Indicator",
             "id": "YWLN_M_CUSTOMER_OPPORTUNITY_GAP",
             "isTree": false,
-            "label": "商机预测合计（GWh）",
+            "label": "商机预测合计（MWh）",
             "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
@@ -11066,7 +11185,7 @@
             "fieldType": "Indicator",
             "id": "YWLN_M_CUSTOMER_ENERGY_GAP",
             "isTree": false,
-            "label": "目标差距（GWh）",
+            "label": "目标差距（MWh）",
             "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
@@ -11076,7 +11195,7 @@
             "fieldType": "Indicator",
             "id": "YWLN_M_CUSTOMER_OPPORTUNITY_COVERAGE",
             "isTree": false,
-            "label": "覆盖率（已签/未签/总）",
+            "label": "覆盖率",
             "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
@@ -11086,7 +11205,7 @@
             "fieldType": "Indicator",
             "id": "YWLN_M_CUSTOMER_ORDER_ENERGY",
             "isTree": false,
-            "label": "单电量（GWh）",
+            "label": "单电量（MWh）",
             "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
@@ -11096,7 +11215,7 @@
             "fieldType": "Indicator",
             "id": "YWLN_M_CUSTOMER_ORDER_GAP",
             "isTree": false,
-            "label": "订单缺口（GWh）",
+            "label": "订单缺口（MWh）",
             "showSearch": false,
             "showSource": true,
             "valueType": "NUMBER"
@@ -11234,7 +11353,11 @@
               "label": "目标销售额（亿元）",
               "name": "Target_Sales",
               "valueType": "NUMBER",
-              "alias": "目标"
+              "alias": "目标",
+              "valueConfig": {
+                "isThousand": true,
+                "numericScale": 2
+              }
             },
             {
               "fieldType": "Indicator",
@@ -11249,9 +11372,7 @@
                 "numericScale": 2
               },
               "compareColor": {
-                "aboveColor": "#63AD73",
-                "baseline": "YWLN_M0002",
-                "belowColor": "#DE5A60"
+                "baseline": "YWLN_M0002"
               }
             }
           ]
@@ -11378,6 +11499,17 @@
               "valueType": "NUMBER",
               "alias": "商机预测（GWh）"
             }
+          ],
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M0022",
+              "isTree": false,
+              "label": "商机获取电量",
+              "name": "Opportunity_Energy",
+              "valueType": "NUMBER",
+              "order": "DESC"
+            }
           ]
         },
         "id": "table-qx1k3riz",
@@ -11456,7 +11588,8 @@
         ],
         "styleConfig": {
           "showCurrentInfo": false
-        }
+        },
+        "tableSearchFieldConfig": []
       },
       {
         "dataConfig": {
@@ -11607,6 +11740,17 @@
               "label": "客户有无商机",
               "valueType": "STRING",
               "alias": "客户商机"
+            }
+          ],
+          "sort": [
+            {
+              "fieldType": "Indicator",
+              "identifierCode": "YWLN_M0022",
+              "isTree": false,
+              "label": "商机获取电量",
+              "name": "Opportunity_Energy",
+              "valueType": "NUMBER",
+              "order": "DESC"
             }
           ]
         },

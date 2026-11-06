@@ -12,7 +12,10 @@ test('the three order DataTables use the shared ProDataTable adapter', async () 
   assert.match(runtime, /ai-tables\/\$\{encodeURIComponent\(tableKey\)\}\/query/);
   assert.match(runtime, /tableFields: displayFields/);
   assert.match(runtime, /filterFields = \[\]/);
-  assert.match(runtime, /dataConfig: \{[\s\S]{0,160}filter: filterFields/);
+  assert.match(runtime, /function apQuery\(ctx, fields, filterFields, sort\)/);
+  assert.match(runtime, /commonConfig\.sorts = sorts/);
+  assert.match(runtime, /dataConfig: \{[\s\S]{0,200}sort/);
+  assert.match(runtime, /dataConfig: \{[\s\S]{0,240}filter: filterFields/);
   assert.match(runtime, /uiScope: pageScope\(props\)/);
   assert.match(runtime, /period: String\(slot\.period \|\| ''\)/);
   assert.match(runtime, /cacheOnly: true/);
@@ -22,12 +25,14 @@ test('the three order DataTables use the shared ProDataTable adapter', async () 
   assert.doesNotMatch(runtime, /componentKey[\s\S]{0,80}analysis\?\.updatedAt/);
   assert.match(runtime, /stable\(live\.data\) !== stable\(previous\?\.data \|\| \[\]\)/);
   assert.doesNotMatch(runtime, /live\.meta\.generatedAt[\s\S]{0,100}revision\.value/);
-  assert.match(runtime, /contentSignature\(tableKey, props, ctx, fields, filterFields\)/);
+  assert.match(runtime, /contentSignature\(tableKey, props, ctx, fields, filterFields, sort\)/);
   assert.match(runtime, /Vue\.watch\(\(\) => \[props\.analysis\?\.id[\s\S]{0,220}refreshInBackground/);
   for (const name of names) {
     assert.match(registry, new RegExp(`'${name}'`));
     const source = await readFile(new URL(`insight-components/${name}/index.js`, root), 'utf8');
     assert.match(source, /createTableInsight/);
+    assert.match(source, /const SORT_FIELDS = \[/);
+    assert.match(source, /sort: SORT_FIELDS/);
     assert.match(source, new RegExp(`tableKey: '${name}'`));
     assert.doesNotMatch(source, /postAnalysisDataQuery/);
     assert.doesNotMatch(source, /\/api\/mock\//);

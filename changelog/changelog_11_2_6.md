@@ -19,10 +19,12 @@
 ### 2026-11-06 Cockpit 上游组件、默认期间与共同分析预热
 
 - 同步 `iba-demo feature/sml_1106@0dc0cc0` 的 BI UMD 与品牌色板：保留宿主的
-  helmet `fitView` 空实例保护，加载顺序固定为 BI UMD → `bi-color-vars.css` → `cockpit.js`；
-  未导入该上游分支的临时排序/URL修改和 U+FFFD 乱码标签。`components.json` 保持
-  `feature/demo_1021@be99db5` 的宿主适配版本，`source.json` 与 `resources.json` 的提交号、
-  哈希、字节数同步，`runtime.json` 重新生成。
+  helmet `fitView` 空实例保护，加载顺序固定为 BI UMD → `bi-color-vars.css` → `cockpit.js`。
+  看板模板同步 `feature/demo_1021@c0f0270`：导入 15 个列表的 `dataConfig.sort` 默认排序
+  （10 个指标降序、5 个显式空排序）以及受影响订单、超期订单、明星产品订单三个 AI 列表的
+  默认降序；`/ai-tables` 同步校验并透传 `sorts`，预热量与浏览器请求使用同一排序口径。
+  上游仍带 U+FFFD 的标签保留宿主已修正文本；`components.json` 保持宿主适配版本，
+  `source.json`、`vendor/resources.json` 的提交号、哈希同步，`runtime.json` 重新生成。
 - 取消交付筛选中的固定 `2025-10` 默认值：默认筛选为空，live 模式按客户业务时区解析当前年度/月度，
   `backfill` 模式才使用显式 `COCKPIT_ACTIVE_PERIOD`；`/bootstrap` 暴露期间配置，页面空筛选、
   年度/月度切换和表格分析字段统一走同一期间解析。演示快照仍保留原型月份，避免旧 fixture 失效。
@@ -43,7 +45,7 @@
 - 主要文件：`bi_agent/cockpit/{targets,combined,refresh,main_service,router,periods,ai_tables}.py`、
   `bi_agent/web/static/cockpit/{index.html,cockpit.js,cockpit.css,vendor/*,insight-components/sales-shipment-issues/*}`、
   `bi_agent/web/static/cockpit/metadata/{iba-demo-1021/*,runtime.json}`。
-- 验证：全量 Cockpit Python 套件 355 项、前端 Node 套件 97 项通过；Python 编译、JS 语法和
+- 验证：全量 Cockpit Python 套件 367 项、前端 Node 套件 97 项通过；Python 编译、JS 语法和
   `git diff --check` 通过。未部署服务器。
 
 ### 2026-11-05 分析按期间缓存、合并队列与按环节刷新（第一阶段）
