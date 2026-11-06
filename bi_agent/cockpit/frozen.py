@@ -160,6 +160,15 @@ class FrozenAnnualService:
                 refreshStatus='published', lastRefreshError='',
                 update=dict(status='published', active=False, nextCheckAt=0), payload=payload)
         complete = sum(s['contentComplete'] for s in slots.values())
+        risk_counts = summarize_risk_counts(slots)
+        # A presentation shortlist; preserve the full analysis and original total.
+        for domain in ('sales', 'shipment'):
+            entry = risk_counts.get(domain) or {}
+            findings = (entry.get('findings') or [])[:3]
+            entry.update(totalCount=entry.get('count', 0), count=len(findings),
+                         findings=findings, findingKeys=[f.get('riskKey') or f.get('id') for f in findings],
+                         displayLimited=True)
+            risk_counts[domain] = entry
         return dict(scopeKey=ui_scope, requestedScope=ui_scope, requestedPeriod=release['period'],
             scopeMatch=True, displayScope='fixed-annual', publicationMode='fixed-annual',
             appliesToPageFilters=False, basis=release.get('basis', ''), manualUpdate=self.store.job(),
@@ -168,7 +177,7 @@ class FrozenAnnualService:
             renderableCount=len(slots), publishedCount=len(slots), missingCount=0,
             completeCount=complete, limitedCount=len(slots)-complete, incompleteCount=len(slots)-complete,
             updatingCount=0, generatedAt=release['createdAt'], dataAsOf=release['createdAt'],
-            riskCounts=summarize_risk_counts(slots), update=dict(status='published', nextCheckAt=0, error=''), slots=slots)
+            riskCounts=risk_counts, update=dict(status='published', nextCheckAt=0, error=''), slots=slots)
 
 
 class FrozenCockpitSurface:

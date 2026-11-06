@@ -22,3 +22,40 @@
   --cockpit-background: #f5f5f5;
   --cockpit-surface: #fff;
 }
+
+/* Customer analysis controls, scoped to the host-owned toolbar. */
+.cockpit-frozen-release {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 16px 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--cockpit-divider);
+  border-radius: 8px;
+  background: var(--cockpit-surface);
+  color: var(--cockpit-text-secondary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+}
+.cockpit-frozen-release__basis { color: var(--cockpit-text-secondary); }
+.cockpit-frozen-release__action {
+  min-height: 32px;
+  padding: 4px 16px;
+  border: 1px solid var(--cockpit-primary);
+  border-radius: 4px;
+  background: var(--cockpit-primary);
+  color: var(--cockpit-surface);
+  font: inherit;
+  cursor: pointer;
+}
+.cockpit-frozen-release__action:hover:not(:disabled) { background: var(--cockpit-primary-active); }
+.cockpit-frozen-release__action:focus-visible { outline: 2px solid var(--cockpit-primary); outline-offset: 2px; }
+.cockpit-frozen-release__action:disabled { opacity: .5; cursor: default; }
+.cockpit-frozen-release__notice {
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: var(--cockpit-warning-bg);
+  color: var(--cockpit-warning);
+}

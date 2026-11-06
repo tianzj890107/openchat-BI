@@ -51,11 +51,11 @@ registerInsightComponent(
           <div class="sales-shipment-issues__title">销售额 / 出货量共同问题分析：</div>
           <div class="sales-shipment-issues__line sales-shipment-issues__summary" :title="summary">分析摘要：{{ summary }}</div>
           <div v-if="hasUnifiedRiskCounts" class="sales-shipment-issues__counts">
-            <span>销售额风险 <b>{{ salesRiskCount }}</b> 条</span>
-            <span>出货量风险 <b>{{ shipmentRiskCount }}</b> 条</span>
+            <span>销售额重点风险 <b>{{ salesRiskCount }}</b> 条</span>
+            <span>出货量重点风险 <b>{{ shipmentRiskCount }}</b> 条</span>
           </div>
           <details open v-if="riskFindings.length" class="sales-shipment-issues__details">
-            <summary>风险事实 · {{ riskFindings.length }} 项</summary>
+            <summary>重点风险 · {{ riskFindings.length }} 项</summary>
             <div v-for="(finding, index) in riskFindings" :key="finding.riskKey || finding.id || index" class="sales-shipment-issues__line">
               {{ index + 1 }}）【{{ finding.riskDomain === 'shipment' ? '出货量风险' : '销售额风险' }}】
               <span class="sales-shipment-issues__num">{{ finding.title }}</span>

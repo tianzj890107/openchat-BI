@@ -71,3 +71,16 @@ def test_startup_and_html_same_release_with_compression(tmp_path):
     assert 'COCKPIT_FIXED_ANNUAL=true' in client.get('/cockpit/analysis').text
     data=client.get('/api/cockpit/startup?page=analysis').json()
     assert data['cards'] and data['cardsVersion']==store.read()['version']
+
+
+def test_risk_shortlist_limits_display_without_rewriting_analysis(tmp_path, monkeypatch):
+    store,_,_=fixture(tmp_path);version=store.read()['version']
+    monkeypatch.setattr('bi_agent.cockpit.frozen.summarize_risk_counts', lambda slots: {
+        domain: {'count':10,'findings':[{'id':str(i),'title':'风险'+str(i)} for i in range(10)]}
+        for domain in ('sales','shipment')})
+    result=FrozenAnnualService(store).envelope(1)
+    for domain in ('sales','shipment'):
+        assert result['riskCounts'][domain]['count']==3
+        assert result['riskCounts'][domain]['totalCount']==10
+        assert len(result['riskCounts'][domain]['findings'])==3
+    assert store.read()['version']==version
