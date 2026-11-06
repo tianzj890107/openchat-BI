@@ -16,6 +16,10 @@
   `causes.length` 当作风险数，销售额与出货量分别统计，数据缺失时保留上次有效数量。
 - 期间目录现在同时预热共同分析卡：从同期间已发布的商机、订单、发货卡片复用已保存 AP 凭据，
   不额外查询 AP/PG；不足两个环节时进入等待，满足后再生成。期间覆盖接口按六个阶段统计。
+- 修复交互式分析未写入期间索引的问题：分析完成并发布后同时绑定期间索引，共同分析与期间覆盖
+  不再只能看到预热任务的结果；共同分析入口只读取同期间、默认筛选的环节卡，拒绝混用其他期间。
+  表格排序从分析指纹、失效通知和共同分析查询中剥离，只保留为表格展示请求，不再因点击排序触发
+  整页 AI 重算或把多个排序变体带入证据。
 - AP 部分成功时继续分析已取得的证据：未返回值进入 `unavailableQueries` 并在卡片限制中披露，
   不再因为部分查询失败整卡等待。交付工具未完全通过时，服务端仍可用已有事实和模型正文生成
   `limited` 卡片；前端只在后台确无活动任务时提示“当前口径暂无可用的已取数证据”，不再把
@@ -24,7 +28,7 @@
 - 主要文件：`bi_agent/cockpit/{targets,combined,refresh,main_service,router,periods,ai_tables}.py`、
   `bi_agent/web/static/cockpit/{index.html,cockpit.js,cockpit.css,vendor/*,insight-components/sales-shipment-issues/*}`、
   `bi_agent/web/static/cockpit/metadata/{iba-demo-1021/*,runtime.json}`。
-- 验证：全量 Cockpit Python 套件 350 项、前端 Node 套件 94 项通过；Python 编译、JS 语法和
+- 验证：全量 Cockpit Python 套件 355 项、前端 Node 套件 95 项通过；Python 编译、JS 语法和
   `git diff --check` 通过。未部署服务器。
 
 ### 2026-11-05 分析按期间缓存、合并队列与按环节刷新（第一阶段）

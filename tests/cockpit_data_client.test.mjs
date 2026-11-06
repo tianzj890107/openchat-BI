@@ -16,6 +16,34 @@ test('concurrent duplicate widgets share the same upstream response and result r
   assert.deepEqual(client.scope().apReceiptIds,['receipt1']);
 });
 
+test('table sorting stays a display change and cannot replace the analysis receipt', async () => {
+  let calls = 0, invalidations = 0;
+  const client = createAPDataClient({apiBase:'/api/cockpit', id:1,
+    onInvalidate:()=>{invalidations+=1;},
+    request:async()=>ok('receipt-'+(++calls))});
+  const base = {analysisConfig:{indicators:[{identifierCode:'M0001'}]},
+    commonConfig:{filters:{month:'2026-10'}, pagination:{pageNum:1,pageSize:10}}};
+  const ascending = structuredClone(base);
+  ascending.commonConfig.sorts = [{identifierCode:'M0001', order:'ASC'}];
+  const descending = structuredClone(base);
+  descending.commonConfig.sorts = [{identifierCode:'M0001', order:'DESC'}];
+
+  await client.biAdapters.postAnalysisDataQuery(base);
+  const original = client.scope();
+  await client.biAdapters.postAnalysisDataQuery(ascending);
+  const afterAscending = client.scope();
+  await client.biAdapters.postAnalysisDataQuery(descending);
+  const afterDescending = client.scope();
+
+  assert.equal(calls, 3);
+  assert.equal(invalidations, 1);
+  assert.deepEqual(afterAscending.chartQueries, original.chartQueries);
+  assert.deepEqual(afterAscending.apReceiptIds, original.apReceiptIds);
+  assert.deepEqual(afterDescending.chartQueries, original.chartQueries);
+  assert.deepEqual(afterDescending.apReceiptIds, original.apReceiptIds);
+  assert.equal(afterDescending.chartQueries.length, 1);
+});
+
 test('a newer server snapshot advances receipts in place without fetching or clearing the mounted scope', async () => {
   let calls = 0;
   const client = createAPDataClient({apiBase:'/api/cockpit', id:1,

@@ -1,5 +1,6 @@
 """Build a cross-stage analysis exclusively from saved, same-period AP receipts."""
 import json
+from .cards import CONTRACT
 from .dashboard_source import RELEASE, filter_stage_selected
 from . import periods
 
@@ -26,20 +27,50 @@ def date_scope(query):
     return tuple(sorted(dates))
 
 
-def cached_combined_request(store, identity, cards):
+def published_period_stage_cards(store, identity, period, *, data_identity=None):
+    """Load the same-period, default-filter stage cards used by combined analysis."""
+    period = periods.normalise(period)
+    if not period:
+        return {}
+    cards = {}
+    for stage in STAGES:
+        hit = store.published_period(identity, period, stage, {},
+                                     data_identity=data_identity)
+        if not hit:
+            continue
+        item = store.get_analysis(hit['analysis_id'])
+        context = (item or {}).get('context') or {}
+        if (not item or item.get('status') not in {'completed', 'limited'}
+                or (item.get('result') or {}).get('cardContract') != CONTRACT
+                or int(context.get('id') or 0) != int(identity)
+                or context.get('stage') != stage
+                or periods.normalise(context.get('period')) != period):
+            continue
+        cards[stage] = item
+    return cards
+
+
+def cached_combined_request(store, identity, cards, period=None):
+    requested_period = periods.normalise(period or '')
     # Use any stage that still has a saved query plan as the period anchor.
     # The combined card is a partial-data analysis: one missing stage must not
     # discard the stages that were actually retrieved.  At least two stages
     # are still required below so this cannot become a single-stage card.
-    anchor = next((cards.get(stage) or {} for stage in ('shipment', 'order', 'opportunity')
-                   if ((cards.get(stage) or {}).get('context') or {}).get('chartQueries')),
-                  {})
+    candidates = []
+    for stage in ('shipment', 'order', 'opportunity'):
+        item = cards.get(stage) or {}
+        context = item.get('context') or {}
+        if requested_period and periods.normalise(context.get('period')) != requested_period:
+            continue
+        candidates.append(item)
+    anchor = next((item for item in candidates
+                   if (item.get('context') or {}).get('chartQueries')), {})
     anchor_context = anchor.get('context') or {}
     raw = anchor_context.get('chartQueries') or []
     if not raw:
         raise ValueError('缺少可用的环节查询口径，不能合并跨环节证据')
-    period = date_scope(json.loads(raw[0]))
-    if not period:
+    date_range = date_scope(json.loads(raw[0]))
+    if not date_range:
         raise ValueError('环节查询没有明确日期范围，不能自动合并')
     wanted = set()
     unavailable = set()
@@ -47,12 +78,17 @@ def cached_combined_request(store, identity, cards):
         context = (cards.get(stage) or {}).get('context') or {}
         if context.get('id') != identity or context.get('filters'):
             continue
+        context_period = periods.normalise(context.get('period'))
+        if requested_period and context_period != requested_period:
+            continue
+        if requested_period and not context_period:
+            continue
         if context.get('department') != anchor_context.get('department'):
             continue
         for key, target in [('chartQueries', wanted), ('unavailableQueries', unavailable)]:
             for encoded in context.get(key) or []:
                 query = json.loads(encoded)
-                if date_scope(query) == period:
+                if date_scope(query) == date_range:
                     target.add(canonical(query))
     found = {}
     # Read persisted receipts without extending their observation time or TTL.
@@ -80,7 +116,7 @@ def cached_combined_request(store, identity, cards):
         raise ValueError('共同分析至少需要两个环节的同口径证据')
     missing = (unavailable | (wanted - set(found))) - set(found)
     return dict(id=identity, engine='main', source='service', page='analysis', stage='combined',
-                period=anchor_context.get('period') or periods.default_period(),
+                period=requested_period or anchor_context.get('period') or periods.default_period(),
                 department=anchor_context.get('department') or '全部产品部', defaultView=True,
                 chartSnapshotId=RELEASE, apReceiptIds=[v['id'] for v in found.values()],
                 chartQueries=sorted(found), unavailableQueries=sorted(missing),

@@ -33,7 +33,7 @@ from .ai_tables import (TABLE_MAPPING_VERSION, TABLE_SPECS, TableQuery, annotate
 from .refresh import (RefreshManager, RefreshScheduler, publication_status, scheduler_enabled,
                       custom_refresh_expiry, preheat_target_scope, refresh_business_key,
                       stage_card_status, view_target_scope, period_target_scope,
-                      period_card_status)
+                      period_card_status, record_period_publication)
 from . import periods
 
 RESULT_CONTRACT_VERSION="compact-v1"
@@ -328,7 +328,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             with lock:
                 st.update_analysis(item["id"],status=status,progress='待补充口径' if status=='needs_input' else '证据不足／受限交付' if status=='limited' else '分析完成',result=result,events=events,evidence=actual_evidence,execution=execution)
                 if st.publish(item["id"]) and item["context"].get("defaultView"):
-                    st.bind_view(view_scope(item["context"]),item["context"]["stage"],item["scope"])
+                    view_key=view_scope(item["context"])
+                    st.bind_view(view_key,item["context"]["stage"],item["scope"])
+                    record_period_publication(st,item["context"],item["id"],view_key)
         except InterruptedError:
             st.update_analysis(item["id"],status="cancelled",progress="已停止，可重新分析",execution=dict(engine=item["context"]["engine"],durationSeconds=round(time.time()-item["createdAt"],3)))
         except Exception as exc:
@@ -879,13 +881,16 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
     def preheat_combined(req: PageLookup):
         if req.page != 'analysis' or req.uiScope != 'default':
             raise HTTPException(422, '当前仅支持默认口径共同分析')
-        from .combined import cached_combined_request
+        from .combined import cached_combined_request, published_period_stage_cards
         from .dashboard_source import page_analysis_context
-        cards = {}
-        for page_name in ('operations', 'analysis'):
-            cards.update(published_default(req.id, 'main', page_name, False)['items'])
+        period = periods.default_period()
+        data_identity = get_gateway().config.identity() if data_mode() == 'ap' else None
+        cards = published_period_stage_cards(store(), req.id, period,
+                                             data_identity=data_identity)
+        if len(cards) < 2:
+            raise HTTPException(409, '等待同期间商机、订单和发货分析完成后再生成共同分析')
         try:
-            body = cached_combined_request(store(), req.id, cards)
+            body = cached_combined_request(store(), req.id, cards, period=period)
             resolved = page_analysis_context(body, store(), resolve_fallback=False, allow_expired=True)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from None
