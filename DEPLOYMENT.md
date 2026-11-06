@@ -1602,3 +1602,34 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 ### 2026-11-03 Workbench本地Excel + ywln_crm可选源
 
 配置独立的`WORKBENCH_LOCAL_ONTOLOGY_PATH`及`WORKBENCH_PG_HOST/PORT/DATABASE/SCHEMA/USER/PASSWORD`后，Workbench数据源页出现“PostgreSQL · ywln_crm”；此选项自动配对本地Excel，不使用远程本体平台或Doris。也可直接使用`python -m bi_agent.web --db postgres`启动。SQL执行器只读并限制超时／返回行数，不从客户Process360配置继承连接。说明见[本地Excel与PG](docs/specs/workbench-local-excel-pg.md)。本次只准备本地配置、测试、提交，不部署或覆盖客户包。
+
+### 2026-11-06 · MR !42 合并与 8765 Workbench/Cockpit 发布
+
+- 合并代码：MR `!42` 于 2026-11-06 合并到 `master`，合并提交
+  `5f2a615cfa81106b740575a75072e78dfab43397`，包含 Pro UI Workbench 页面、
+  本地 Excel + PostgreSQL 数据源、Cockpit 按期间缓存和节点刷新改造。
+- `8765` 主服务：release
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-5f2a615-20261106-1505`，
+  PID `2554054`。新 release 先在 `127.0.0.1:18765` 预检，预检显式设置
+  `COCKPIT_REFRESH_ENABLED=0`，预检进程 `2551117` 验证后停止；正式进程沿用
+  `COCKPIT_REFRESH_ENABLED=1`。旧 release `workbench-local-pg-179a0cf-20261103`
+  和旧 PID `2426367` 完整保留用于回退。
+- 运行资产：`.env`、`.venv` 和共享 `dataset` 继续软链旧 release 使用的目录；
+  `runtime-env.json` 保持 114 个变量、权限 600，仅更新 `RELEASE_COMMIT`、
+  `PYTHONPATH`、`PWD` 和 `WORKBENCH_LOCAL_ONTOLOGY_PATH`。
+  `git archive` 自带的源码数据目录保留为 `dataset.source`，未覆盖共享数据目录。
+  `start-main.py` 与 `ontology-assets/workbench-ywln-local.xlsx` 从旧 release
+  复制；未迁移、清空或覆盖历史会话、上传、图表、分析结果和数据库。
+- `8765` 是唯一应用与静态资源入口。`8876` 仅为历史 nginx 反向代理，没有独立站点、
+  代码或部署内容；后续不再将 `8876` 纳入维护、部署和验收范围。
+- 验证：`8765` 的 `/healthz`、根地址、`/cockpit/overview`、
+  `/cockpit/operations`、`/cockpit/analysis`、`/workbench`、
+  `/api/cockpit/data/config` 和 `/api/sources` 均返回 200；Cockpit 数据源仍为
+  “Cockpit独立AP连接”，Workbench 数据源仍包含本地 Excel 与
+  “PostgreSQL · ywln_crm”。启动日志无 Traceback、CRITICAL 或 ERROR。
+- 自动化验证：合并提交前 Cockpit/Workbench Python 回归 361 项、前端 Node 94 项、
+  Python 编译、JS 语法和 `git diff --check` 通过。发布后仅执行健康与只读接口检查，
+  未手动触发 AP 查询、模型分析或任务令下发。
+- 回退：停止 PID `2554054`，在 `workbench-local-pg-179a0cf-20261103` 执行
+  `nohup python3 start-main.py >> main-rollback-20261106.log 2>&1 &`。
+  不得删除新 release、历史 release、共享 `dataset`、会话、上传、图表或分析记录。
