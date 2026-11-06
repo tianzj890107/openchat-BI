@@ -81,13 +81,15 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     if (![...all.values()].some(state => state.error)) { try { onRecover(); } catch (_) {} }
   }
   function analysisPayload(payload) {
-    // Sorting and page-local display controls do not change the business
-    // scope.  Keep the full payload for the AP request, but remove sort state
-    // from the identity used by AI analysis and invalidation.
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+    // Sorting, paging and page-size are display controls.  Keep the full
+    // payload for the AP request, but never let them change the evidence
+    // identity or trigger a model run.
+    if (Array.isArray(payload)) return payload.map(analysisPayload);
+    if (!payload || typeof payload !== 'object') return payload;
     const normalized = JSON.parse(JSON.stringify(payload));
     if (normalized.commonConfig && typeof normalized.commonConfig === 'object') {
       delete normalized.commonConfig.sorts;
+      delete normalized.commonConfig.pagination;
     }
     return normalized;
   }
@@ -136,25 +138,27 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     if (inflight.has(key)) return inflight.get(key);
     const slot = shape(kind, payload);
     const previous = kind !== 'helmet' ? active.get(slot) : null;
-    // A table sort changes only the request payload.  It must not create a new
-    // analysis scope or invalidate the card that is already being prepared.
-    const sortOnly = Boolean(previous && previous.requestKey !== key);
+    // Pagination and sorting change only the request payload.  They must not
+    // create a new analysis scope or replace the evidence receipt.
+    const displayOnly = Boolean(previous && previous.requestKey !== key);
     // A page snapshot is only a fast path.  If it does not contain this
     // widget's query, fetch that query live instead of surfacing a host-only
     // cache error inside the delivered dashboard component.
     const replayHit = replaying && replay.has(key);
-    if (replaying && !replayHit && !missed && !sortOnly) {
+    if (replaying && !replayHit && !missed && !displayOnly) {
       missed = true;
       queueMicrotask(onSnapshotMiss);
     }
     const labels = queryLabels(payload);
-    const state = {kind, key: canonical(analysisPayload(payload)), requestKey: key, pending: true, error: '', labels, receiptId: '', analysisReceiptId: sortOnly ? (previous.analysisReceiptId || previous.receiptId || '') : '', expiresAt: 0,
+    const state = {kind, key: canonical(analysisPayload(payload)), requestKey: key, pending: true, error: '', labels, receiptId: '', analysisReceiptId: displayOnly ? (previous.analysisReceiptId || previous.receiptId || '') : '', expiresAt: 0,
       stage: stageFor(kind, payload) || '', timings: null};
-    all.set(slot, state);
-    if (kind !== 'helmet') {
-      const changedRequest = !previous || (!sortOnly && previous.requestKey !== key);
+    if (!displayOnly) all.set(slot, state);
+    if (kind !== 'helmet' && !displayOnly) {
+      // A new page of rows or a table-local filter is a display/data fetch,
+      // not a reason to re-run the published analysis.  Page-level business
+      // filters are handled explicitly by observeRuntimeFilters/changeScope,
+      // which starts a new scope and clears receipts before this client runs.
       active.set(slot, state);
-      if (changedRequest) onInvalidate({replacement:Boolean(previous && previous.key!==state.key)});
     }
     const config = payload && payload.analysisConfig;
     if (kind === 'analysis' && config && Array.isArray(config.vertex) && !config.vertex.length
@@ -186,12 +190,14 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     }
     const promise = work.then(result => {
       const body = result.body;
-      if (kind !== 'helmet' && active.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
-      if (all.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
       completed.set(key, body);
       const timings = {...(body.timings || {}), ...(result.timings || {})};
-      Object.assign(state, {pending: false, error: '', receiptId: body.receiptId, analysisReceiptId: state.analysisReceiptId || body.receiptId, expiresAt: body.expiresAt, timings,
-        entry:{kind,payload,data:body.data,receiptId:body.receiptId,receivedAt:body.receivedAt,expiresAt:body.expiresAt,timings}});
+      if (!displayOnly) {
+        if (kind !== 'helmet' && active.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
+        if (all.get(slot) !== state) throw new Error('查询条件已变化，忽略旧AP响应');
+        Object.assign(state, {pending: false, error: '', receiptId: body.receiptId, analysisReceiptId: state.analysisReceiptId || body.receiptId, expiresAt: body.expiresAt, timings,
+          entry:{kind,payload,data:body.data,receiptId:body.receiptId,receivedAt:body.receivedAt,expiresAt:body.expiresAt,timings}});
+      }
       if (typeof console !== 'undefined' && console.debug) {
         console.debug('[cockpit-ap-timing]', {kind, stage: state.stage, key: state.key, ...timings});
       }
@@ -200,7 +206,7 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     }).catch(error => {
       // A cleared scope aborts its old requests. Their late rejection must not
       // re-open an error banner for the new, already-rendered view.
-      if (jobGeneration === generation && error.name !== 'AbortError') {
+      if (!displayOnly && jobGeneration === generation && error.name !== 'AbortError') {
         state.pending = false;
         const detail = error.message || 'AP查询失败';
         state.error = (labels.length ? '指标 ' + labels.join('、') + '：' : '') + detail;
