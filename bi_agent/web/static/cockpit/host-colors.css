@@ -41,13 +41,19 @@
 .cockpit-frozen-release__basis,
 .cockpit-frozen-release__notice { color: inherit; }
 .cockpit-frozen-release__action {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
+  padding: 1px 8px;
+  border: 1px solid var(--cockpit-primary);
+  border-radius: 4px;
+  background: var(--cockpit-primary);
+  color: var(--cockpit-surface);
   font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
   cursor: pointer;
 }
-.cockpit-frozen-release__action:hover:not(:disabled) { color: var(--cockpit-link); }
+.cockpit-frozen-release__action:hover:not(:disabled) { background: var(--cockpit-primary-active); }
 .cockpit-frozen-release__action:focus-visible { outline: 2px solid var(--cockpit-primary); outline-offset: 2px; }
 .cockpit-frozen-release__action:disabled { opacity: .5; cursor: default; }
+
+.cockpit-analysis-meta { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }

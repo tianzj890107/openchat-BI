@@ -132,7 +132,7 @@
   const insightLoadError = ref('');
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
-  const frozenAnnual = reactive({visible:false,running:false,period:'',basis:'',error:''});
+  const frozenAnnual = reactive({visible:false,running:false,period:defaultPeriod,basis:'',error:''});
   async function refreshFrozenAnnual() {
     frozenAnnual.visible=true;
     if(frozenAnnual.running)return;
@@ -696,6 +696,7 @@
       // Each slot answers its own question.  Prefer the slot-projected
       // publication over the shared stage card when it is at least as new.
       const slotAnalysis = computed(()=>{
+        if(frozenAnnualMode && !frozenAnnual.visible)return null;
         const published=slotPublication(props.insight.id);
         const projected=published?.status==='ready'&&validAiCard(published.payload)?published.payload:null;
         const current=state.value.item;

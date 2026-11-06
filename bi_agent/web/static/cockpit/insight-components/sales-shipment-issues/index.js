@@ -40,14 +40,16 @@ registerInsightComponent(
     },
     template: `
       <section class="sales-shipment-issues" aria-live="polite">
-        <insight-loading v-if="!hasResult && status !== 'error'" kind="summary" :progress="progress" />
-        <div v-if="hasResult || status === 'error'" class="insight-runtime-state">
+        <insight-loading v-if="!hasResult && status !== 'error' && !slotProps.frozenControls" kind="summary" :progress="progress" />
+        <div v-if="hasResult || status === 'error' || slotProps.frozenControls" class="insight-runtime-state">
           <div class="insight-runtime-state__row">
-            <span>{{ stateText }}</span>
-            <span v-if="slotProps.frozenControls" class="cockpit-frozen-release" role="status">
-              <span>{{ slotProps.frozenControls.state.period }} 年度分析 · 固定口径</span>
-              <button class="cockpit-frozen-release__action" type="button" :disabled="slotProps.frozenControls.state.running" @click="slotProps.frozenControls.refresh">重新分析</button>
-              <span v-if="slotProps.frozenControls.state.running">后台更新中</span>
+            <span class="cockpit-analysis-meta">
+              <span v-if="hasResult || !slotProps.frozenControls">{{ stateText }}</span>
+              <span v-else>{{ slotProps.frozenControls.state.period }} 年度分析</span>
+              <template v-if="slotProps.frozenControls">
+                <button class="cockpit-frozen-release__action" type="button" :disabled="slotProps.frozenControls.state.running" @click="slotProps.frozenControls.refresh">{{ slotProps.frozenControls.state.visible ? '重新分析' : '分析' }}</button>
+                <span v-if="slotProps.frozenControls.state.running">后台更新中</span>
+              </template>
             </span>
             <button v-if="status === 'error'" type="button" class="insight-runtime-retry" @click="retry">重试</button>
           </div>
