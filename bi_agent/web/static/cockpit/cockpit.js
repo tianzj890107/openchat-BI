@@ -683,6 +683,7 @@
         uiScope: currentUiScope,
         period: scopePeriod(),
         riskCounts: aiPublicationStore.riskCounts,
+        frozenControls: frozenAnnualMode ? {state:frozenAnnual, refresh:refreshFrozenAnnual} : null,
       }));
       const analysisContext = computed(() => ({
         id: Number(identityId),
