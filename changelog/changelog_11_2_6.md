@@ -21,6 +21,10 @@
   `limited` 卡片；前端只在后台确无活动任务时提示“当前口径暂无可用的已取数证据”，不再把
   正在进行的分析显示成“尚无可用分析结果”。共同分析主动刷新时按商机、订单、发货三个上游
   环节汇总可用查询，不再单独选择没有查询计划的 `combined` 而误报无数据。
+- AP 网关地址与接口路径分层（2026-11-06）：`/x360` 属于 `COCKPIT_AP_BASE_URL` 的网关地址末段，
+  服务端固定路径只保留 `/v1/ontology/data/query`、`/v1/ontology/data/multidimensional/batch`
+  和 `/v1/graphs/helmet-view`，避免把 `x360` 写死在 API 路径最前面。示例配置、交付元数据、
+  说明与回归测试同步，最终请求地址保持 `.../x360/v1/...`。
 - 主要文件：`bi_agent/cockpit/{targets,combined,refresh,main_service,router,periods,ai_tables}.py`、
   `bi_agent/web/static/cockpit/{index.html,cockpit.js,cockpit.css,vendor/*,insight-components/sales-shipment-issues/*}`、
   `bi_agent/web/static/cockpit/metadata/{iba-demo-1021/*,runtime.json}`。

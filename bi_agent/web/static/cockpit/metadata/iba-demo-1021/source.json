@@ -36,8 +36,8 @@
   "insightComponents": 15,
   "activateRules": 6,
   "queryContract": {
-    "gatewayPrefix": "/api/gateway2",
-    "singlePath": "/x360/v1/ontology/data/query",
+    "gatewayPrefix": "/api/gateway2/x360",
+    "singlePath": "/v1/ontology/data/query",
     "helmetPath": "/api/gateway2/x360/v1/graphs/helmet-view",
     "helmetUrlSource": "host-rewritten",
     "repositoryId": "8",
