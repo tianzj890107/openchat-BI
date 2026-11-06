@@ -40,8 +40,8 @@
   <div id="app" v-cloak>
     <main class="cockpit-main" :data-page="page" :aria-label="pageTitle">
       <div v-if="frozenAnnualMode" class="cockpit-frozen-release" role="status" style="padding:8px 16px;display:flex;align-items:center;gap:16px;color:rgba(0,0,0,.65)">
-        <span :title="frozenAnnual.basis">{{frozenAnnual.period}} 年度已发布分析 · 独立于看板筛选</span>
-        <button type="button" :disabled="frozenAnnual.running" @click="refreshFrozenAnnual">重新分析</button>
+        <span v-if="frozenAnnual.visible" :title="frozenAnnual.basis">{{frozenAnnual.period}} 年度已发布分析 · 独立于看板筛选</span>
+        <button type="button" :disabled="frozenAnnual.running" @click="refreshFrozenAnnual">{{frozenAnnual.visible ? '重新分析' : '分析'}}</button>
         <span v-if="frozenAnnual.running">后台重新分析中，继续展示上次发布版</span>
         <span v-else-if="frozenAnnual.error">{{frozenAnnual.error}}</span>
       </div>
@@ -70,7 +70,7 @@
                    mode="release">
           <template v-for="insight in pageInsights" :key="insight.id"
                     v-slot:[slot_name(insight)]="slotProps">
-            <cockpit-insight :insight="insight" :page="page" :slot-props="slotProps"></cockpit-insight>
+            <cockpit-insight v-if="!frozenAnnualMode || frozenAnnual.visible" :insight="insight" :page="page" :slot-props="slotProps"></cockpit-insight>
           </template>
         </component>
       </div>

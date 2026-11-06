@@ -278,3 +278,5 @@
 - 主要文件：`bi_agent/cockpit/frozen.py`、`bi_agent/web/customer.py`、Cockpit 页面、
   `tests/test_cockpit_frozen_annual.py`、`DEPLOYMENT.md`。
 - 验证：18 项 Python 测试、6 项前端测试通过；客户镜像断网启动、15 插槽读取及零自动分析验证通过。
+
+- 2026-11-06 补充：客户页面初始隐藏 AI 插槽，点击“分析”立即显示内置发布结果并后台重算；成功后替换，失败保留。仅替换 tar，外部配置不变。

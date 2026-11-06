@@ -132,8 +132,9 @@
   const insightLoadError = ref('');
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
-  const frozenAnnual = reactive({running:false,period:'',basis:'',error:''});
+  const frozenAnnual = reactive({visible:false,running:false,period:'',basis:'',error:''});
   async function refreshFrozenAnnual() {
+    frozenAnnual.visible=true;
     if(frozenAnnual.running)return;
     frozenAnnual.running=true;frozenAnnual.error='';
     try {
