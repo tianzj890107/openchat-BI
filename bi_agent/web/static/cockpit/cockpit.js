@@ -118,8 +118,8 @@
   let liveDataClient = null;
   let publications = null;
   let defaultView = true;
-  let refreshDebounce = null;
   let filtersReady = false;
+  let scopeNeedsAnalysis = false;
   // A filter callback without a recent user gesture is SDK initialization or
   // replay. It records the default scope but must not restart the board.
   let scopeActionUntil = 0;
@@ -1216,11 +1216,10 @@
             onSnapshotMiss:()=>{fullSnapshot=null;pageState.cached=false;pageState.displayStale=true;},
             onError:(message,detail)=>showLiveError(message,detail),
             onRecover:()=>clearLiveError(),
-            onInvalidate:()=>{
-              if(analysisEngine!=='main'||fullSnapshot)return;
-              clearTimeout(refreshDebounce);
-              refreshDebounce=setTimeout(()=>{for(const stage of visibleStages.keys())ensureAnalysis(stage).catch(()=>{});onPageActivity();},400);
-            }});
+            // Query mutations (paging, sorting, table-local filters) are display
+            // changes.  A committed page-level filter calls changeScope and is
+            // handled after the replacement client has loaded its receipts.
+            onInvalidate:()=>{}});
           function install(snapshot,remount=false,metadata=[]) {
             if(snapshot&&(Number(snapshot.id)!==Number(identityId)||snapshot.page!==page.value||snapshot.uiScope!==currentUiScope))return;
             const incomingKey=snapshot?.version?`${page.value}:${currentUiScope}:${snapshot.version}`:'';
@@ -1267,7 +1266,15 @@
               nextTick(()=>requestAnimationFrame(()=>window.scrollTo({top,behavior:'instant'})));
             }
             const client=liveDataClient;
-            const scopeReady=()=>{if(client!==liveDataClient)return;filtersReady=true;biRuntime.value?.flushPendingScope?.();onPageActivity();};
+            const scopeReady=()=>{
+              if(client!==liveDataClient)return;
+              filtersReady=true;biRuntime.value?.flushPendingScope?.();
+              if(scopeNeedsAnalysis){
+                scopeNeedsAnalysis=false;
+                for(const stage of visibleStages.keys())ensureAnalysis(stage,true,true).catch(()=>{});
+              }
+              onPageActivity();
+            };
             const scopeFailed=cause=>{
               if(client!==liveDataClient)return;
               scopeReady();
@@ -1328,6 +1335,7 @@
             if(!metadata.length)try{metadata=liveDataClient.entries().filter(e=>e.kind==='helmet');}catch{}
             const token=++pageEpoch;pageCache?.invalidate();clearLiveError();
             currentUiScope=uiScope;defaultView=uiScope==='default';fullSnapshot=null;cardsVersion='';
+            scopeNeedsAnalysis=true;
             // Keep the last complete cards on screen; the notice says the scope
             // changed and that the visible analysis still belongs to the old one.
             const notice='筛选口径已切换'+(detail?'（'+detail+'）':'')+'，正在加载新数据；以下仍为上次分析';
@@ -1549,7 +1557,7 @@
         document.getElementById('cockpit-boot')?.remove();
         bootRuntime();
       });
-      onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
         page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release,

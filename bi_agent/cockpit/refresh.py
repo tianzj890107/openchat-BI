@@ -209,6 +209,25 @@ def preheat_target_scope(identity, page, stage):
     return digest({'preheat': True, 'id': int(identity), 'page': page, 'stage': stage})
 
 
+def record_period_publication(store, context, analysis_id, view_key=''):
+    """Bind a completed default-scope analysis to its period-stage index.
+
+    Interactive analyses used to publish only a view entry.  The period index
+    therefore stayed empty even though the cards were visible, which prevented
+    same-period cross-stage analysis from finding its inputs.
+    """
+    if not analysis_id:
+        return ''
+    context = context or {}
+    if not context.get('defaultView') or context.get('filters'):
+        return ''
+    period = periods.period_of_scope(context.get('uiScope'), context.get('period') or '')
+    if not period:
+        return ''
+    return store.publish_period(int(context.get('id') or 0), period,
+                                context.get('stage') or '', {}, analysis_id, view_key)
+
+
 def refresh_business_key(kind, identity, page='', stage='', ui_scope='default'):
     """Stable maintenance identity that survives config/contract rotations."""
     return digest({'business': kind, 'id': int(identity), 'page': page or '',
@@ -951,23 +970,9 @@ class RefreshManager:
         a second AP fan-out.  Missing stages are left out so a partial analysis
         can still be delivered with its coverage disclosed.
         """
-        cards = {}
-        data_identity = self.config.identity()
-        for stage in ('opportunity', 'order', 'shipment'):
-            hit = self.store.published_period(identity, period, stage, {},
-                                              data_identity=data_identity)
-            if not hit:
-                continue
-            item = self.store.get_analysis(hit['analysis_id'])
-            context = (item or {}).get('context') or {}
-            if (not item or item.get('status') not in {'completed', 'limited'}
-                    or (item.get('result') or {}).get('cardContract') != CONTRACT
-                    or int(context.get('id') or 0) != int(identity)
-                    or context.get('stage') != stage
-                    or periods.normalise(context.get('period')) != period):
-                continue
-            cards[stage] = item
-        return cards
+        from .combined import published_period_stage_cards
+        return published_period_stage_cards(self.store, identity, period,
+                                            data_identity=self.config.identity())
 
     def _period_published_analysis(self, identity, period, stage, filters):
         """Load an exact period-stage card, including views not yet re-bound."""
@@ -998,7 +1003,7 @@ class RefreshManager:
                              next_check=time.time() + min(60, self.interval),
                              error='等待同期间商机、订单和发货分析完成后再生成共同分析')
                 return dict(scope=scope, status='awaiting-plan', period=period)
-            body = cached_combined_request(self.store, int(identity), cards)
+            body = cached_combined_request(self.store, int(identity), cards, period=period)
             body['period'] = period
             resolved = page_analysis_context(
                 body, self.store, data_mode='ap', resolve_fallback=False,

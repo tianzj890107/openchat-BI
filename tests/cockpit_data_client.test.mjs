@@ -16,6 +16,56 @@ test('concurrent duplicate widgets share the same upstream response and result r
   assert.deepEqual(client.scope().apReceiptIds,['receipt1']);
 });
 
+test('table sorting and paging stay display changes and cannot replace the analysis receipt', async () => {
+  let calls = 0, invalidations = 0;
+  const client = createAPDataClient({apiBase:'/api/cockpit', id:1,
+    onInvalidate:()=>{invalidations+=1;},
+    request:async()=>ok('receipt-'+(++calls))});
+  const base = {analysisConfig:{indicators:[{identifierCode:'M0001'}]},
+    commonConfig:{filters:{month:'2026-10'}, pagination:{pageNum:1,pageSize:10}}};
+  const ascending = structuredClone(base);
+  ascending.commonConfig.sorts = [{identifierCode:'M0001', order:'ASC'}];
+  const descending = structuredClone(base);
+  descending.commonConfig.sorts = [{identifierCode:'M0001', order:'DESC'}];
+  const secondPage = structuredClone(base);
+  secondPage.commonConfig.pagination = {pageNum:2,pageSize:20};
+
+  await client.biAdapters.postAnalysisDataQuery(base);
+  const original = client.scope();
+  await client.biAdapters.postAnalysisDataQuery(ascending);
+  const afterAscending = client.scope();
+  await client.biAdapters.postAnalysisDataQuery(descending);
+  const afterDescending = client.scope();
+  await client.biAdapters.postAnalysisDataQuery(secondPage);
+  const afterPaging = client.scope();
+
+  assert.equal(calls, 4);
+  assert.equal(invalidations, 0);
+  assert.deepEqual(afterAscending.chartQueries, original.chartQueries);
+  assert.deepEqual(afterAscending.apReceiptIds, original.apReceiptIds);
+  assert.deepEqual(afterDescending.chartQueries, original.chartQueries);
+  assert.deepEqual(afterDescending.apReceiptIds, original.apReceiptIds);
+  assert.deepEqual(afterPaging.chartQueries, original.chartQueries);
+  assert.deepEqual(afterPaging.apReceiptIds, original.apReceiptIds);
+  assert.equal(afterPaging.chartQueries.length, 1);
+  assert.doesNotMatch(afterPaging.chartQueries[0], /pagination|sorts/);
+});
+
+test('query-only data changes never start analysis without a scope change', async () => {
+  let invalidations = 0;
+  const client = createAPDataClient({apiBase:'/api/cockpit', id:1,
+    onInvalidate:()=>{invalidations+=1;},
+    request:async()=>ok('receipt')});
+  await client.biAdapters.postAnalysisDataQuery(query);
+  const filtered = structuredClone(query);
+  filtered.commonConfig.filters = {month:'2026-09', customerLevel:'战略客户'};
+  await client.biAdapters.postAnalysisDataQuery(filtered);
+  assert.equal(invalidations, 0);
+  assert.match(client.scope().chartQueries[0], /2026-09/);
+  client.clearScope();
+  assert.equal(invalidations, 1);
+});
+
 test('a newer server snapshot advances receipts in place without fetching or clearing the mounted scope', async () => {
   let calls = 0;
   const client = createAPDataClient({apiBase:'/api/cockpit', id:1,
