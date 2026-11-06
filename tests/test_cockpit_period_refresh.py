@@ -13,7 +13,7 @@ import pytest
 from bi_agent.cockpit.cards import CONTRACT
 from bi_agent.cockpit.page_cache import (PageRequest, build_page, page_fingerprint,
                                          page_scope, transport_identity)
-from bi_agent.cockpit.refresh import RefreshManager
+from bi_agent.cockpit.refresh import RefreshManager, period_target_scope
 from bi_agent.cockpit.store import Store
 
 
@@ -257,6 +257,97 @@ def test_unchanged_stages_reuse_their_analysis_and_the_page_still_publishes(tmp_
     result = manager.refresh(page)
     assert result['status'] == 'published' and result['changed'] is False
     assert calls == []
+
+
+def test_recent_analysis_defers_changed_evidence_without_calling_the_model(tmp_path):
+    store, cfg, page, _queries = _two_stage_page(tmp_path)
+    calls = []
+
+    def start(body, resolved):
+        calls.append(body)
+        context = {**body, **resolved, 'stageName': body['stage'], 'sourceMode': 'service'}
+        item = store.create_analysis('new-' + body['stage'], context)
+        store.update_analysis(item['id'], status='limited',
+                              result=dict(summary='new', cardContract=CONTRACT),
+                              evidence={'facts': [], 'records': [], 'evidence': []})
+        return store.get_analysis(item['id'])
+
+    def query(identity, kind, payload):
+        return {'value': 88.8} if 'YWLN_M0022' in json.dumps(payload) else {'value': 19.02}
+
+    manager = RefreshManager(store, cfg, query, start, interval=900, poll=0.01,
+                             timeout=5, analysis_interval=1800, coalesce_seconds=300)
+    result = manager.refresh(page)
+    scope = page_scope(cfg, 1, 'analysis', 'default', 'ap')
+    inventory = store.analysis_inventory(scope)
+    assert result['deferred'] is True
+    assert result['status'] == 'published'
+    assert calls == []
+    assert store.published_page(scope)['version'] == page['version']
+    assert inventory['status'] == 'pending'
+    assert inventory['pending_fingerprint']
+    assert inventory['next_analysis_at'] > time.time() + 1500
+
+
+def test_changed_evidence_runs_again_after_the_model_interval(tmp_path):
+    store, cfg, page, _queries = _two_stage_page(tmp_path)
+    calls = []
+
+    def start(body, resolved):
+        calls.append(body['stage'])
+        context = {**body, **resolved, 'stageName': body['stage'], 'sourceMode': 'service'}
+        item = store.create_analysis('new-' + body['stage'], context)
+        store.update_analysis(item['id'], status='limited',
+                              result=dict(summary='new', cardContract=CONTRACT),
+                              evidence={'facts': [], 'records': [], 'evidence': []})
+        return store.get_analysis(item['id'])
+
+    def query(identity, kind, payload):
+        return {'value': 88.8} if 'YWLN_M0022' in json.dumps(payload) else {'value': 19.02}
+
+    manager = RefreshManager(store, cfg, query, start, interval=900, poll=0.01,
+                             timeout=5, analysis_interval=1800, coalesce_seconds=300)
+    first = manager.refresh(page)
+    assert first['deferred'] is True and calls == []
+    scope = page_scope(cfg, 1, 'analysis', 'default', 'ap')
+    now = time.time()
+    with store.db() as db:
+        db.execute("UPDATE analysis_inventory SET analyzed_at=?,next_analysis_at=?,"
+                   "pending_since=?,status='current' WHERE scope=?",
+                   (now - 1801, now - 1, now - 300, scope))
+    store.request_refresh(scope, now=now)
+    current = store.published_page(scope)
+    second = manager.refresh(current)
+    assert second['changed'] is True
+    assert second['deferred'] is False
+    assert calls == ['opportunity']
+    inventory = store.analysis_inventory(scope)
+    assert inventory['result_kind'] == 'page'
+    assert inventory['result_id'] == store.published_page(scope)['version']
+
+
+def test_period_preheat_reuses_the_period_index_when_the_view_is_missing(tmp_path):
+    store, cfg, _page, _queries = _two_stage_page(tmp_path)
+    with store.db() as db:
+        db.execute('DELETE FROM publication_views')
+    calls = []
+
+    def start(body, resolved):
+        calls.append(body['stage'])
+        return None
+
+    manager = RefreshManager(
+        store, cfg, lambda identity, kind, payload: {'value': 19.02}, start,
+        interval=900, poll=0.01, timeout=5, analysis_interval=1800,
+        coalesce_seconds=300)
+    result = manager.preheat_period(1, 'analysis', 'shipment', '2025-10')
+    assert result['changed'] is True
+    assert result['deferred'] is True
+    assert calls == []
+    inventory = store.analysis_inventory(
+        period_target_scope(1, 'analysis', 'shipment', '2025-10'))
+    assert inventory['result_id']
+    assert inventory['result_kind'] == 'analysis'
 
 
 def test_failed_refresh_keeps_the_last_publication(tmp_path):

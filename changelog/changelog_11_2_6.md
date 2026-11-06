@@ -2,6 +2,20 @@
 
 按自然周维护，不创建日报。
 
+### 2026-11-06 Cockpit 分析库存与刷新节拍
+
+- 在现有 `dataset/cockpit/history.sqlite3` 增加 `analysis_inventory` 持久化库存，保存每个刷新范围的
+  当前结果、证据指纹、分析时间、分析依据数据时间、最近检查时间、最新待处理版本、失败重试状态和
+  下次允许分析时间；不新增服务，也不删除旧分析或发布记录。
+- 数据检查与模型分析拆成两个节拍：数据仍按 `COCKPIT_REFRESH_INTERVAL_SECONDS` 检查，模型分析
+  默认至少间隔 `COCKPIT_ANALYSIS_MIN_INTERVAL_SECONDS=1800` 秒，连续变化在
+  `COCKPIT_ANALYSIS_COALESCE_SECONDS=300` 秒窗口内只保留最新待处理指纹；达到间隔后先发布本轮
+  固定证据，再处理最新版本。失败重试仍由原刷新退避控制，不被分析间隔额外阻塞。
+- `/api/cockpit/publications/status` 增加 `analysisPolicy` 与 `analysisInventory`，可查看当前结果的
+  分析时间、最新数据时间、待处理状态和下次允许分析时间。
+- 主要文件：`bi_agent/cockpit/{store,refresh,router}.py`、`.env.example`、相关设计说明。
+- 验证：分析库存与刷新调度相关测试通过；未部署服务器。
+
 ### 2026-11-06 Cockpit 上游组件、默认期间与共同分析预热
 
 - 同步 `iba-demo feature/sml_1106@0dc0cc0` 的 BI UMD 与品牌色板：保留宿主的

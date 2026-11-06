@@ -1331,9 +1331,13 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 调度线程随 `build_cockpit_router` 启动，仅在 `COCKPIT_DATA_MODE=ap` 且已连接主服务上下文时启用；
   配置异常只打印日志并关闭调度，不影响读取上次发布版本。
 - 环境变量：`COCKPIT_REFRESH_ENABLED`（默认开启，测试环境关闭）、
-  `COCKPIT_REFRESH_INTERVAL_SECONDS=900`、`COCKPIT_REFRESH_TIMEOUT_SECONDS=1200`、
+  `COCKPIT_REFRESH_INTERVAL_SECONDS=900`、`COCKPIT_ANALYSIS_MIN_INTERVAL_SECONDS=1800`、
+  `COCKPIT_ANALYSIS_COALESCE_SECONDS=300`、`COCKPIT_REFRESH_TIMEOUT_SECONDS=1200`、
   `COCKPIT_REFRESH_SCAN_SECONDS=20`、`COCKPIT_REFRESH_SCOPE_LIMIT=1`。时间可按数据源更新频率
   调整，检查数据不等于重新调用模型；范围上限默认 1，避免后台预热同时占满页面 AP 槽位。
+- 分析库存持久化在 `analysis_inventory`：保存当前结果、分析依据时间、最新数据时间、待处理版本
+  和下次允许分析时间。数据检查可继续按 15 分钟执行，模型分析默认至少间隔 30 分钟，连续变化只
+  保留最新待处理指纹；刷新状态接口返回 `analysisPolicy` 和 `analysisInventory`。
 - 更新失败、AP 超时、模型失败或进程重启都不覆盖上一版本；`retry_wait` 按 60 秒递增退避，上限
   15 分钟，租约过期后由调度器重新领取。
 - 前端先渲染已发布快照，再按 5～15 秒轮询版本（页面隐藏时降频），发现新版本才拉取整页替换；

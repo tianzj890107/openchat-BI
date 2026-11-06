@@ -33,7 +33,7 @@ from .ai_tables import (TABLE_MAPPING_VERSION, TABLE_SPECS, TableQuery, annotate
 from .refresh import (RefreshManager, RefreshScheduler, publication_status, scheduler_enabled,
                       custom_refresh_expiry, preheat_target_scope, refresh_business_key,
                       stage_card_status, view_target_scope, period_target_scope,
-                      period_card_status)
+                      period_card_status, analysis_cadence)
 from . import periods
 
 RESULT_CONTRACT_VERSION="compact-v1"
@@ -1115,12 +1115,15 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             config = get_gateway().config
             def start_refresh_analysis(body, resolved):
                 return start_analysis(AnalysisRequest(**body), resolved=resolved)
+            cadence = analysis_cadence()
             manager = RefreshManager(
                 store(), config,
                 lambda identity, kind, payload: query_receipt(identity, kind, payload)['response'],
                 start_refresh_analysis,
                 interval=int(os.getenv('COCKPIT_REFRESH_INTERVAL_SECONDS', '900')),
                 timeout=int(os.getenv('COCKPIT_REFRESH_TIMEOUT_SECONDS', '1200')),
+                analysis_interval=cadence['minIntervalSeconds'],
+                coalesce_seconds=cadence['coalesceSeconds'],
                 cancel_analysis=cancel_analysis_job)
             scheduler = RefreshScheduler(
                 manager, store(),

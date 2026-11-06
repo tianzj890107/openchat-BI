@@ -148,6 +148,8 @@ AP原始行不能按“原因”归组后展示虚构的金额／订单数量；
 |---|---|---|
 | `COCKPIT_REFRESH_ENABLED` | 开启（测试环境除外） | 关闭后只保留页面发布路径 |
 | `COCKPIT_REFRESH_INTERVAL_SECONDS` | 900 | 同一范围两次数据检查的最小间隔 |
+| `COCKPIT_ANALYSIS_MIN_INTERVAL_SECONDS` | 1800 | 同一范围两次模型分析的最小间隔 |
+| `COCKPIT_ANALYSIS_COALESCE_SECONDS` | 300 | 连续数据变化的最短合并窗口 |
 | `COCKPIT_REFRESH_TIMEOUT_SECONDS` | 1200 | 单次后台分析等待上限 |
 | `COCKPIT_REFRESH_SCAN_SECONDS` | 20 | 调度器扫描间隔 |
 | `COCKPIT_CUSTOM_REFRESH_TTL_SECONDS` | 86400 | 自定义筛选范围的维护有效期；默认范围不设到期 |

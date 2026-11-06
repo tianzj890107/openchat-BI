@@ -56,6 +56,29 @@ class Store:
             CREATE TABLE IF NOT EXISTS analysis_stage_evidence (
               analysis_id TEXT PRIMARY KEY, stage TEXT NOT NULL,
               fingerprint TEXT NOT NULL, queries TEXT NOT NULL, updated REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS analysis_inventory (
+              scope TEXT PRIMARY KEY,
+              identity INTEGER NOT NULL DEFAULT 0,
+              page TEXT NOT NULL DEFAULT '',
+              stage TEXT NOT NULL DEFAULT '',
+              period TEXT NOT NULL DEFAULT '',
+              filters TEXT NOT NULL DEFAULT '{}',
+              result_id TEXT NOT NULL DEFAULT '',
+              result_kind TEXT NOT NULL DEFAULT '',
+              fingerprint TEXT NOT NULL DEFAULT '',
+              data_as_of REAL NOT NULL DEFAULT 0,
+              latest_data_as_of REAL NOT NULL DEFAULT 0,
+              analyzed_at REAL NOT NULL DEFAULT 0,
+              last_checked_at REAL NOT NULL DEFAULT 0,
+              last_change_at REAL NOT NULL DEFAULT 0,
+              pending_since REAL NOT NULL DEFAULT 0,
+              next_analysis_at REAL NOT NULL DEFAULT 0,
+              pending_fingerprint TEXT NOT NULL DEFAULT '',
+              pending_data_as_of REAL NOT NULL DEFAULT 0,
+              status TEXT NOT NULL DEFAULT 'empty',
+              updated REAL NOT NULL);
+            CREATE INDEX IF NOT EXISTS analysis_inventory_due
+              ON analysis_inventory(status,next_analysis_at);
             ''')
             # Additive migration: keep every historical result and every old
             # scope row, but make refresh eligibility explicit.  Older rows get
@@ -300,6 +323,178 @@ class Store:
         with self.db() as db:
             row = db.execute('SELECT body FROM refresh_plans WHERE scope=?', (scope,)).fetchone()
         return json.loads(row[0]) if row else None
+
+    def analysis_inventory(self, scope):
+        """Persistent ledger for one refresh scope's published analysis result."""
+        with self.db() as db:
+            row = db.execute('SELECT * FROM analysis_inventory WHERE scope=?', (scope,)).fetchone()
+        return dict(row) if row else None
+
+    def seed_analysis_inventory(self, scope, *, identity=0, page='', stage='', period='',
+                                filters=None, result_id='', result_kind='',
+                                fingerprint='', data_as_of=0, analyzed_at=0,
+                                min_interval=0):
+        """Create or enrich the inventory baseline without replacing live state.
+
+        This is used when an existing publication was produced before the
+        inventory table existed.  The old result remains the current stock;
+        only missing metadata and its cadence baseline are filled in.
+        """
+        now = time.time()
+        filter_text = self._period_filters(filters or {})
+        analyzed_at = float(analyzed_at or 0)
+        data_as_of = float(data_as_of or 0)
+        next_analysis_at = (analyzed_at + max(0, int(min_interval))) if analyzed_at else 0.0
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT * FROM analysis_inventory WHERE scope=?', (scope,)).fetchone()
+            if not row:
+                db.execute(
+                    'INSERT INTO analysis_inventory(scope,identity,page,stage,period,filters,'
+                    'result_id,result_kind,fingerprint,data_as_of,latest_data_as_of,analyzed_at,'
+                    'last_checked_at,last_change_at,pending_since,next_analysis_at,'
+                    'pending_fingerprint,pending_data_as_of,status,updated) '
+                    'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    (scope, int(identity or 0), page or '', stage or '', period or '', filter_text,
+                     result_id or '', result_kind or '', fingerprint or '', data_as_of,
+                     data_as_of, analyzed_at, 0.0, 0.0, 0.0, next_analysis_at, '', 0.0,
+                     'current' if result_id else 'empty', now))
+            else:
+                updates, values = [], []
+                for name, value in (('identity', int(identity or 0)), ('page', page or ''),
+                                    ('stage', stage or ''), ('period', period or ''),
+                                    ('filters', filter_text)):
+                    if value and not row[name]:
+                        updates.append(f'{name}=?')
+                        values.append(value)
+                if result_id and not row['result_id']:
+                    updates.extend(['result_id=?', 'result_kind=?', 'fingerprint=?',
+                                    'data_as_of=?', 'latest_data_as_of=?', 'analyzed_at=?',
+                                    'next_analysis_at=?', 'status=?'])
+                    values.extend([result_id, result_kind or '', fingerprint or '', data_as_of,
+                                   data_as_of, analyzed_at, next_analysis_at, 'current'])
+                elif analyzed_at and not float(row['analyzed_at'] or 0):
+                    updates.extend(['analyzed_at=?', 'next_analysis_at=?'])
+                    values.extend([analyzed_at, next_analysis_at])
+                if updates:
+                    updates.append('updated=?')
+                    values.extend([now, scope])
+                    db.execute('UPDATE analysis_inventory SET '+','.join(updates)+' WHERE scope=?',
+                               values)
+        return self.analysis_inventory(scope)
+
+    def prepare_analysis(self, scope, *, fingerprint, data_as_of=0, now=None,
+                         min_interval=0, coalesce_seconds=0, force=False):
+        """Decide whether changed evidence may start a model analysis now.
+
+        A changed result becomes one pending version.  Repeated changes keep
+        the earliest unresolved change time, so a continuously updating source
+        cannot postpone analysis forever.  ``force`` is reserved for metadata
+        or evidence-source changes that invalidate the previous result.
+        """
+        now = time.time() if now is None else float(now)
+        data_as_of = float(data_as_of or 0)
+        min_interval = max(0, int(min_interval or 0))
+        coalesce_seconds = max(0, int(coalesce_seconds or 0))
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT * FROM analysis_inventory WHERE scope=?', (scope,)).fetchone()
+            if not row:
+                db.execute(
+                    'INSERT INTO analysis_inventory(scope,status,fingerprint,data_as_of,'
+                    'latest_data_as_of,last_checked_at,pending_fingerprint,pending_data_as_of,'
+                    'pending_since,updated) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                    (scope, 'pending', '', 0.0, data_as_of, now, fingerprint or '', data_as_of,
+                     now, now))
+                row = db.execute('SELECT * FROM analysis_inventory WHERE scope=?', (scope,)).fetchone()
+                allow, reason, pending_since = True, 'initial', now
+                due = now
+            else:
+                analyzed_at = float(row['analyzed_at'] or 0)
+                has_result = bool(row['result_id']) and analyzed_at > 0
+                pending_since = float(row['pending_since'] or 0)
+                if not pending_since:
+                    pending_since = now
+                due = max(analyzed_at + min_interval, pending_since + coalesce_seconds)
+                if not has_result:
+                    allow, reason, due = True, 'initial', now
+                elif force:
+                    allow, reason, due = True, 'forced', now
+                elif row['status'] == 'retry':
+                    allow, reason, due = True, 'retry', now
+                elif min_interval <= 0:
+                    allow, reason, due = True, 'unthrottled', now
+                elif now >= due:
+                    allow, reason = True, 'due'
+                else:
+                    allow, reason = False, 'coalesced'
+            status = 'analyzing' if allow else 'pending'
+            db.execute(
+                'UPDATE analysis_inventory SET latest_data_as_of=?,last_checked_at=?,last_change_at=?,pending_since=?,'
+                'next_analysis_at=?,pending_fingerprint=?,pending_data_as_of=?,status=?,updated=? '
+                'WHERE scope=?',
+                (data_as_of, now, now, pending_since, due, fingerprint or '', data_as_of,
+                 status, now, scope))
+            row = db.execute('SELECT * FROM analysis_inventory WHERE scope=?', (scope,)).fetchone()
+        return dict(allow=bool(allow), reason=reason, nextAnalysisAt=due,
+                    pendingSince=pending_since,
+                    analyzedAt=float(row['analyzed_at'] or 0), inventory=dict(row))
+
+    def record_analysis_inventory(self, scope, *, result_id, result_kind='analysis',
+                                  fingerprint='', data_as_of=0, analyzed_at=None,
+                                  min_interval=0, identity=None, page=None, stage=None,
+                                  period=None, filters=None):
+        """Persist the current analysis stock and clear its pending version."""
+        now = time.time()
+        analyzed_at = now if analyzed_at is None else float(analyzed_at)
+        data_as_of = float(data_as_of or 0)
+        next_analysis_at = analyzed_at + max(0, int(min_interval or 0))
+        fields = dict(identity=identity, page=page, stage=stage, period=period,
+                      filters=self._period_filters(filters) if filters is not None else None)
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute('INSERT OR IGNORE INTO analysis_inventory(scope,status,updated) '
+                       'VALUES(?,?,?)', (scope, 'empty', now))
+            updates = ['result_id=?', 'result_kind=?', 'fingerprint=?', 'data_as_of=?',
+                       'latest_data_as_of=?', 'analyzed_at=?', 'last_checked_at=?',
+                       'last_change_at=?', 'pending_since=?', 'next_analysis_at=?',
+                       'pending_fingerprint=?', 'pending_data_as_of=?', 'status=?', 'updated=?']
+            values = [result_id or '', result_kind or '', fingerprint or '', data_as_of,
+                      data_as_of, analyzed_at, now, 0.0, 0.0, next_analysis_at, '', 0.0,
+                      'current', now]
+            for name, value in fields.items():
+                if value is not None and value != '':
+                    updates.append(f'{name}=?')
+                    values.append(value)
+            values.append(scope)
+            db.execute('UPDATE analysis_inventory SET '+','.join(updates)+' WHERE scope=?', values)
+        return self.analysis_inventory(scope)
+
+    def mark_analysis_unchanged(self, scope, *, now=None, latest_data_as_of=0):
+        """Evidence matches the current stock; drop any deferred version."""
+        now = time.time() if now is None else float(now)
+        with self.db() as db:
+            row = db.execute('SELECT result_id FROM analysis_inventory WHERE scope=?',
+                             (scope,)).fetchone()
+            if not row:
+                return None
+            db.execute(
+                'UPDATE analysis_inventory SET latest_data_as_of=?,last_checked_at=?,'
+                'last_change_at=0,pending_since=0,pending_fingerprint=\'\','
+                'pending_data_as_of=0,status=?,updated=? WHERE scope=?',
+                (float(latest_data_as_of or 0), now, 'current' if row[0] else 'empty', now, scope))
+        return self.analysis_inventory(scope)
+
+    def mark_analysis_retry(self, scope, *, now=None):
+        """A failed model run may retry after the refresh backoff, not the cadence."""
+        now = time.time() if now is None else float(now)
+        with self.db() as db:
+            cursor = db.execute(
+                'UPDATE analysis_inventory SET status=\'retry\',next_analysis_at=0,'
+                'last_checked_at=?,updated=? WHERE scope=?', (now, now, scope))
+            if cursor.rowcount == 0:
+                return None
+        return self.analysis_inventory(scope)
 
     def supersede_refresh(self, scope, *, superseded_by='', now=None):
         now = time.time() if now is None else float(now)
