@@ -267,3 +267,14 @@
 - 本地本体加载新增物理表／属性映射和V3.1关系编码支持，读取40条关系；缺少真实来源的属性不提供旧字段名。
 - 三个数据库工具提供PG只读事务、search_path、超时、行数限制和安全校验，取证元数据标明PostgreSQL。已只读匹配2319个真实字段，实测只读事务及schema正确。
 - 主要文件：`bi_agent/workbench_pg.py`、`bi_agent/tools/sql_tools.py`、`bi_agent/ontology/store.py`、`bi_agent/web/{app,__main__}.py`；新增及原回归233项、12个子测试通过，catalog／MCP回归15项通过，隔离浏览器数据源下拉验证通过。未部署、未重启现有服务、未改客户ZIP。
+
+### 2026-11-06 客户镜像预置固定年度 AI 发布版
+
+- 客户入口首次将镜像内真实年度分析导入独立 SQLite 发布存储，15 个 AI 插槽可直接读取；
+  打开、筛选、切页不启动分析，已有发布不因配置、日期或进程重启失效。
+- 显式“重新分析”在后台复用主服务，重复点击合并；全部环节通过交付校验才原子替换，
+  失败继续展示旧版。页面说明固定年度口径与图表筛选独立，保留证据时间及限制。
+- 交付只替换镜像 tar，不改客户 `.env`、Compose 或运行数据；种子数据不提交仓库。
+- 主要文件：`bi_agent/cockpit/frozen.py`、`bi_agent/web/customer.py`、Cockpit 页面、
+  `tests/test_cockpit_frozen_annual.py`、`DEPLOYMENT.md`。
+- 验证：18 项 Python 测试、6 项前端测试通过；客户镜像断网启动、15 插槽读取及零自动分析验证通过。

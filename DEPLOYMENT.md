@@ -1602,3 +1602,17 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 ### 2026-11-03 Workbench本地Excel + ywln_crm可选源
 
 配置独立的`WORKBENCH_LOCAL_ONTOLOGY_PATH`及`WORKBENCH_PG_HOST/PORT/DATABASE/SCHEMA/USER/PASSWORD`后，Workbench数据源页出现“PostgreSQL · ywln_crm”；此选项自动配对本地Excel，不使用远程本体平台或Doris。也可直接使用`python -m bi_agent.web --db postgres`启动。SQL执行器只读并限制超时／返回行数，不从客户Process360配置继承连接。说明见[本地Excel与PG](docs/specs/workbench-local-excel-pg.md)。本次只准备本地配置、测试、提交，不部署或覆盖客户包。
+
+### 客户镜像固定年度分析（2026-11-06）
+
+- 客户专用入口 `bi_agent.web.customer` 启动时关闭 Cockpit 自动分析调度，首次从镜像内的
+  `bi_agent/cockpit/frozen-annual.json` 导入六组年度分析，投影为 15 个 AI 插槽。
+  预置数据属于交付产物，不提交 Git；需保留真实来源、观察时间与受限说明。
+- 发布结果保存在已有 dataset 挂载中的 `cockpit/frozen-annual.sqlite3`。已有发布版不会被镜像
+  内旧种子覆盖；历史分析与会话均保留。打开、切页、筛选及轮询只读取发布版。
+- “重新分析”显式发送 `POST /api/cockpit/publications/refresh`、`{"manual":true}`。
+  后台仍复用主服务执行链，只有六组分析全部可渲染且年度一致才原子替换；失败保留旧版。
+  页面标明固定年度分析独立于图表筛选，后台更新期间不清空卡片。
+- 此模式仅用于客户专用入口，公司普通主服务调度保持原行为。图表 AP 实时查询并不被冻结。
+- 本次只替换 `images/cockpit-linux-amd64.tar`，镜像名称不变；客户 `.env`、Compose、
+  配置挂载与已有运行数据不改。重新 `docker load` 后按原 Compose 服务重建容器即可。
