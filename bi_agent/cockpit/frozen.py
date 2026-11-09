@@ -173,13 +173,27 @@ class FrozenAnnualService:
             self.phase, self.detail = phase, {**detail, 'lastProgressAt':time.time()}
             self._progress()
 
-    def prioritize(self, slot_id=None, page=None, visible_slots=None):
+    def _job_response(self, queued):
+        job = self.store.job()
+        return dict(queued=queued, status=job.get('status', 'idle'), manualUpdate=job)
+
+    def _requeue(self, stage):
+        if not stage or self.active == stage:
+            return
+        self.pending[:] = [item for item in self.pending if item != stage]
+        self.completed[:] = [item for item in self.completed if item != stage]
+        self.failures[:] = [item for item in self.failures if item.get('stage') != stage]
+        self.pending.insert(0, stage)
+
+    def prioritize(self, slot_id=None, page=None, visible_slots=None, requeue=False):
         order = self.priority_order(slot_id, page, visible_slots)
         with self.queue_lock:
-            if self.store.job()['status']=='running' and self.pending:
+            if self.store.job()['status']=='running':
+                if requeue and slot_id:
+                    self._requeue(order[0])
                 self.pending[:] = [s for s in order if s in self.pending]
                 self._progress()
-        return dict(status=self.store.job()['status'], queued=False)
+        return self._job_response(False)
 
     def refresh(self, slot_id=None, page=None, visible_slots=None):
         order = self.priority_order(slot_id, page, visible_slots)
@@ -187,7 +201,7 @@ class FrozenAnnualService:
             raise HTTPException(503, 'Manual analysis executor unavailable')
         with self.queue_lock:
             if not self.store.claim():
-                return self.prioritize(slot_id, page, visible_slots)
+                return self.prioritize(slot_id, page, visible_slots, requeue=True)
             self.pending, self.completed, self.failures = order, [], []
             self.round_id=uuid.uuid4().hex
             self.active = ''
@@ -257,7 +271,7 @@ class FrozenAnnualService:
                         self.phase='idle'
                         self._progress()
         threading.Thread(target=work, name='cockpit-explicit-annual-analysis', daemon=True).start()
-        return dict(queued=True, status='running')
+        return self._job_response(True)
 
 
     def compact_publications(self, identity):

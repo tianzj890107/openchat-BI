@@ -74,6 +74,17 @@ test('manual job progress polls quickly even while published cards remain ready'
 });
 
 
+test('manual card refresh replaces the metadata prefix with its live background state', async () => {
+  const source = await readFile(new URL('../bi_agent/web/static/cockpit/cockpit.js', import.meta.url),'utf8');
+  assert.ok(source.includes('function applyFrozenStatus(value)'));
+  assert.ok(source.includes('if(frozenAnnualMode)applyFrozenStatus(value);\n    if(!value?.slots)return;'));
+  assert.ok(source.includes('applyFrozenStatus(job);'));
+  assert.ok(source.includes("return `${status||'上次分析'} · ${name} · 当前筛选范围 · ${count} 条证据${stampText}`;"));
+  assert.ok(source.includes('if(frozenAnnual.running && (frozenAnnual.activeStage===stage.value || (!frozenAnnual.activeStage && frozenAnnual.pendingStages[0]===stage.value)))return \'后台更新中\';'));
+  assert.ok(source.includes(':disabled="cardRefreshStatus===\'后台更新中\'"'));
+});
+
+
 test('manifest polling fetches each changed stage once and preserves shared evidence',async()=>{
  const calls=[],updates=[];let orderVersion='o1';
  const manifest=()=>({transport:'stage-manifest-v1',version:orderVersion,

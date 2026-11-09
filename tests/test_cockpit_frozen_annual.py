@@ -147,6 +147,33 @@ def test_priority_incremental_publication_and_failure_isolation(tmp_path):
     assert Store(store.path.parent/'history.sqlite3').list_diagnostics()[0]['diagnosticId']==failure['diagnosticId']
 
 
+def test_manual_card_refresh_requeues_a_completed_stage_in_the_running_round(tmp_path):
+    store,_,_=fixture(tmp_path)
+    service=FrozenAnnualService(store,lambda period:None)
+    assert store.claim()
+    service.pending=['shipment','combined']
+    service.completed=['opportunity']
+    service.active='shipment'
+    service.phase='analysing'
+    service._progress()
+
+    client=TestClient(FrozenCockpitSurface(FastAPI(),service))
+    response=client.post('/api/cockpit/publications/refresh',json={
+        'manual':True,'slotId':'opportunity-risk','page':'analysis'}).json()
+
+    assert response['queued'] is False and response['status']=='running'
+    assert service.pending[0]=='opportunity'
+    assert 'opportunity' not in service.completed
+    assert response['manualUpdate']['pendingStages'][0]=='opportunity'
+    assert response['manualUpdate']['activeStage']=='shipment'
+
+    service.active='opportunity'
+    service.pending=['shipment']
+    service._progress()
+    service.refresh('opportunity-risk','analysis')
+    assert service.pending.count('opportunity')==0
+
+
 def test_independent_combined_failure_does_not_retry_or_block_other_stages(tmp_path):
     store,_,body=fixture(tmp_path);calls=[];done=threading.Event()
     class Runner:
