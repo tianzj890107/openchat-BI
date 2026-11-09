@@ -118,3 +118,24 @@ def test_whole_page_rejection_has_persisted_diagnostic(tmp_path,monkeypatch):
     assert diagnostic['phase']=='page_publication'
     assert diagnostic['diagnosticId']==response.headers['X-Cockpit-Diagnostic-Id']
     assert 'missingStages=shipment' in diagnostic['message']
+
+
+def test_internal_fetch_budget_reaches_ap_gateway_deadline(tmp_path,monkeypatch):
+    import time
+    from bi_agent.cockpit.router import build_cockpit_router
+    calls=[]
+    class Config:
+        base_url='http://ap.example';batch_mode='individual';receipt_ttl=60;timeout=180
+        def headers(self):return {}
+        def identity(self):return 'test'
+    class Gateway:
+        config=Config()
+        def query(self,kind,payload,*,timing=None,_deadline=None):
+            calls.append(_deadline);return {'value':1}
+    monkeypatch.setenv('COCKPIT_REFRESH_ENABLED','0');monkeypatch.setenv('COCKPIT_DATA_MODE','ap')
+    monkeypatch.setattr('bi_agent.cockpit.router.get_gateway',lambda:Gateway())
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:str(tmp_path),main_context=lambda req:{}))
+    deadline=time.monotonic()+30
+    with diagnostic_scope(fetchDeadline=deadline):
+        response=TestClient(app).post('/api/cockpit/data/query',json={'id':1,'kind':'analysis','payload':{'analysisConfig':{}}})
+    assert response.status_code==200 and calls==[deadline]

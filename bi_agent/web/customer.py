@@ -68,7 +68,9 @@ def main():
     frozen = FrozenAnnualStore(cwd/'dataset/cockpit/frozen-annual.sqlite3', seed)
     service = FrozenAnnualService(frozen, recompute_from_router(app, cwd))
     prefix = os.environ.get('APP_ROOT_PATH','')
-    uvicorn.run(FrozenCockpitSurface(CustomerSurface(app,prefix),service,prefix),
+    from starlette.middleware.gzip import GZipMiddleware
+    surface=GZipMiddleware(FrozenCockpitSurface(CustomerSurface(app,prefix),service,prefix),minimum_size=1000,compresslevel=5)
+    uvicorn.run(surface,
                 host=os.environ.get('APP_HOST','0.0.0.0'),port=port)
 
 

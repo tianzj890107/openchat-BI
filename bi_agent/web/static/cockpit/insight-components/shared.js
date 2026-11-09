@@ -56,6 +56,11 @@ export function useInsight(props, emit) {
   const facts = computed(() => bundle.value.facts || [])
   const records = computed(() => bundle.value.records || [])
   const evidence = computed(() => bundle.value.evidence || [])
+  const evidenceLink = computed(() => {
+    const slot=props.slotProps||{};
+    if(!slot.frozenControls || !props.analysis?.id)return '';
+    return `${slot.apiBase}/ai-publications/stages/${encodeURIComponent(slot.stage)}/evidence?id=${slot.identityId}&analysisId=${encodeURIComponent(props.analysis.id)}`;
+  })
   const causes = computed(() => result.value?.causes || [])
   const recommendations = computed(() => result.value?.recommendations || [])
   const limitations = computed(() => result.value?.limitations || bundle.value.limitations || [])
@@ -172,6 +177,7 @@ export function useInsight(props, emit) {
     facts,
     records,
     evidence,
+    evidenceLink,
     causes,
     recommendations,
     openRecommendations,
@@ -329,6 +335,7 @@ export function createStageRiskComponent(options = {}) {
             <div v-for="(item, index) in openRecommendations" :key="'accept-' + item.id" class="stage-risk-analysis__acceptance">
                 建议 {{ index + 1 }} 验收：{{ item.acceptance }}<template v-if="hasRecommendationDetail(item)">；补充：{{ recommendationDetail(item) }}</template>
               </div>
+              <a v-if="evidenceLink" :href="evidenceLink" target="_blank" rel="noopener" class="insight-evidence-link">查看完整证据</a>
               <div class="stage-risk-analysis__evidence">证据范围：{{ contextLine }}；{{ records.length }} 条记录、{{ evidenceCount }} 条证据。</div>
               <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
             </details>

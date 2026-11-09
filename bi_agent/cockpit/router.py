@@ -237,6 +237,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         auth_scope=transport_identity(gateway.config)
         result_store=store()
         diagnostic_context=current_scope()
+        inherited_deadline=diagnostic_context.get('fetchDeadline')
+        if inherited_deadline is not None:
+            _deadline=min(_deadline,inherited_deadline) if _deadline is not None else inherited_deadline
         def read():
             try:
                 if 'timing' in inspect.signature(gateway.query).parameters:

@@ -120,6 +120,37 @@ def _convert_messages(
             elif content_parts:
                 out.append({"role": "user", "content": content_parts})
 
+    return _pair_tool_messages(out)
+
+
+def _pair_tool_messages(messages):
+    """Project interrupted histories into legal tool exchanges, without editing history."""
+    out = []
+    index = 0
+    while index < len(messages):
+        message = messages[index]
+        calls = message.get("tool_calls") if message.get("role") == "assistant" else None
+        if calls:
+            out.append(message)
+            index += 1
+            results = {}
+            while index < len(messages) and messages[index].get("role") == "tool":
+                value = messages[index]
+                results.setdefault(value.get("tool_call_id"), value)
+                index += 1
+            for call in calls:
+                cid = call["id"]
+                out.append(results.pop(cid, None) or {"role":"tool", "tool_call_id":cid,
+                    "content":json.dumps({"error":"tool_result_missing", "available":False,
+                        "message":"Previous tool execution was interrupted or its result is missing; no successful result is available."})})
+            for value in results.values():
+                out.append({"role":"user", "content":"Historical unpaired tool output (not a new execution): " + str(value.get("content") or "")})
+            continue
+        if message.get("role") == "tool":
+            out.append({"role":"user", "content":"Historical unpaired tool output (not a new execution): " + str(message.get("content") or "")})
+        else:
+            out.append(message)
+        index += 1
     return out
 
 

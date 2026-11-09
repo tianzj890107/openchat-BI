@@ -43,3 +43,27 @@ def test_deepseek_team_fallbacks_stay_in_deepseek_family(monkeypatch):
         {'key':'backup','provider':'team','model_id':'deepseek-v4-flash-0731'},
         {'key':'direct','provider':'deepseek','model_id':'deepseek-v4-flash'}])
     assert registry.fallback_model_keys('primary')==['backup']
+
+
+def test_interrupted_multi_tool_turn_gets_explicit_missing_result_without_losing_real_result():
+    messages=[{'role':'assistant','content':[
+        {'type':'tool_use','id':'a','name':'query','input':{}},
+        {'type':'tool_use','id':'b','name':'query','input':{}}]},
+        {'role':'user','content':[{'type':'tool_result','tool_use_id':'b','content':'real result'}]},
+        {'role':'assistant','content':'continue'}]
+    before=deepcopy(messages)
+    result=_convert_messages(messages,'system')
+    assert [m.get('tool_call_id') for m in result[2:4]]==['a','b']
+    assert 'tool_result_missing' in result[2]['content']
+    assert result[3]['content']=='real result' and result[4]['content']=='continue'
+    assert messages==before
+
+
+def test_unpaired_and_duplicate_tool_outputs_never_break_request_sequence():
+    messages=[{'role':'user','content':[{'type':'tool_result','tool_use_id':'orphan','content':'history'}]},
+        {'role':'assistant','content':[{'type':'tool_use','id':'a','name':'query','input':{}}]},
+        {'role':'user','content':[{'type':'tool_result','tool_use_id':'a','content':'first'},
+                                 {'type':'tool_result','tool_use_id':'a','content':'duplicate'}]}]
+    out=_convert_messages(messages,'system')
+    assert out[1]['role']=='user' and 'Historical unpaired' in out[1]['content']
+    assert [m for m in out if m['role']=='tool']==[{'role':'tool','tool_call_id':'a','content':'first'}]

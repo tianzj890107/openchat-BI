@@ -1072,7 +1072,7 @@
       function onVisibilityChange() {
         // Resume immediately when the tab becomes visible again instead of
         // waiting out the hidden-tab interval.
-        if (!document.hidden) statusPoller?.poke(0);
+        if (!document.hidden) {statusPoller?.poke(0);aiPublicationClient?.poke(0,currentUiScope);}
       }
 
       function clearHelmetAnnotations() {
@@ -1418,6 +1418,7 @@
           // board already exists; a slow cards response leaves only the AI
           // slot skeletons visible and never delays charts or the shell.
           async function loadCurrentHistoryCards(){
+            if(frozenAnnualMode)return;
             const token=pageEpoch,target=page.value;
             try{
               const cards=await pageCache.cards();
@@ -1445,6 +1446,7 @@
             // route, page-specific cards, publication metadata and poller.
             switchPageImpl=async target=>{
               if(analysisEngine!=='main')return true;
+              if(frozenAnnualMode){aiPublicationClient?.poke(0,currentUiScope);queueFrozenPriority();return true;}
               const token=++pageEpoch,scope=currentUiScope;
               clearTimeout(publishTimer);clearTimeout(refreshTimer);
               pageCache?.invalidate();
@@ -1488,7 +1490,7 @@
               return true;
             };
             statusPoller=createPublicationPoller({
-              probe:async()=>{const scope=currentUiScope;return {scope,status:await pageCache.status(scope)};},
+              probe:async()=>{if(frozenAnnualMode)return null;const scope=currentUiScope;return {scope,status:await pageCache.status(scope)};},
               apply:async value=>{
                 if(!pageCache||analysisEngine!=='main')return {active:false};
                 const {scope,status}=value||{};
@@ -1530,7 +1532,7 @@
           install(null);
           if(analysisEngine==='main'){
             loadCurrentHistoryCards();
-            statusPoller?.start(50);
+            if(!frozenAnnualMode)statusPoller?.start(50);
           }
           onPageActivity=()=>{
             clearTimeout(publishTimer);

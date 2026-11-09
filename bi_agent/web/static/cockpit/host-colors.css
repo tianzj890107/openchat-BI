@@ -63,3 +63,6 @@
   margin:4px 12px 8px; color:var(--cockpit-text-help); font-size:12px; line-height:20px;
 }
 .cockpit-insight-slot--fixed .insight-runtime-state { display:none; }
+
+.insight-evidence-link { color:var(--cockpit-text-help); font-size:12px; text-decoration:none; }
+.insight-evidence-link:hover { color:var(--cockpit-link); }

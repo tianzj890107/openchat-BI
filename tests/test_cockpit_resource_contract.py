@@ -8,7 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]/'bi_agent/web/static/cockpit'
 def test_vendor_manifest_matches_local_artifacts():
     vendor=ROOT/'vendor'
     manifest=json.loads((vendor/'resources.json').read_text())
-    assert manifest['sourceCommit']=='0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2'
+    assert manifest['sourceCommit']=='325ffcd1022250affac987015b766d20d735efd6'
     assert manifest['metadataCommit']=='c0f0270f713253cb4f33233708ba05e74b1d4e1c'
     for r in manifest['resources']:
         data=(vendor/r['file']).read_bytes()
@@ -16,7 +16,8 @@ def test_vendor_manifest_matches_local_artifacts():
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=8520557f' in html
+    sdk_hash=next(r['sha256'] for r in manifest['resources'] if r['file']=='pro-bi-ui.min.js')
+    assert 'pro-bi-ui.min.js?v='+sdk_hash[:8] in html
     assert 'bi-color-vars.css?v=572dcdf5' in html
     assert html.index('pro-bi-ui.min.js') < html.index('bi-color-vars.css') < html.index('cockpit.js')
     sdk=(vendor/'pro-bi-ui.min.js').read_text()

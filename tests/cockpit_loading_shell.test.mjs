@@ -38,7 +38,7 @@ test('Vue removes the static shell before awaiting runtime configuration', () =>
 });
 
 test('history cards and publication status are background reads after the board mounts', () => {
-  assert.match(source, /install\(null\);\s*\n\s*if\(analysisEngine==='main'\)\{\s*\n\s*loadCurrentHistoryCards\(\);\s*\n\s*statusPoller\?\.start\(50\)/);
+  assert.match(source, /install\(null\);\s*\n\s*if\(analysisEngine==='main'\)\{\s*\n\s*loadCurrentHistoryCards\(\);\s*\n\s*if\(!frozenAnnualMode\)statusPoller\?\.start\(50\)/);
   assert.match(source, /const cards=await pageCache\.cards\(\)/);
   assert.match(source, /publications\?\.preload\(cards\.items\|\|\{\}\)/);
 });

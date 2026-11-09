@@ -4333,14 +4333,19 @@ def _cockpit_main_turn(context,cancel):
                  if (live and context.get('dataSource')=='ap+pg')
                  else ('本轮数据来源：页面本次实时AP响应的冻结结果。' if live else '本轮数据来源：看板交付AP快照。')))
                 +'只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。'),
-            tool_executors={TOOL:executor(selected,context['stage'])})
+            tool_executors={TOOL:executor(selected,context['stage'],lean=True)})
         raw_read=session._tool_executors[TOOL]
+        read_cache={}
         def read_with_refs(params,cwd):
             from ..reliability import QueryResult, claims_from_query_result
+            cache_key=json.dumps(params,ensure_ascii=False,sort_keys=True)
+            if cache_key in read_cache:
+                return json.dumps(dict(alreadyRead=True,evidenceIds=read_cache[cache_key],instruction='该查询已读取，请引用原证据，不需要重复取数。',data={'rows':[]}),ensure_ascii=False)
             output=raw_read(params,cwd)
             data=json.loads(output)
             claims=claims_from_query_result(QueryResult(data=output),f'{TOOL}-{len(session.query_results)+1}')
             data['evidenceIds']=[claim.id for claim in claims]
+            read_cache[cache_key]=data['evidenceIds']
             return json.dumps(data,ensure_ascii=False)
         session._tool_executors[TOOL]=read_with_refs
         session.cockpit_stage_filter=dict(stage=context['stage'],kept=len(selected),excluded=len(excluded),

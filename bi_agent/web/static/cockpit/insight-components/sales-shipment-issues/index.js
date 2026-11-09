@@ -76,6 +76,7 @@ registerInsightComponent(
               <span class="sales-shipment-issues__num">{{ cause.title }}</span>——{{ cause.description }}
             </div>
           </details>
+          <a v-if="evidenceLink" :href="evidenceLink" target="_blank" rel="noopener" class="insight-evidence-link">查看完整证据</a>
         </template>
       </section>
     `,

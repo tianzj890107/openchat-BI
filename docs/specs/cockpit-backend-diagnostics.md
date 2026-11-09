@@ -36,6 +36,7 @@ Each record contains diagnosticId, analysisId (if already created), runId, stage
 | ap_response | AP returned data that the table adapter could not interpret |
 | ap_query_setup | AP configuration, credentials-file or proxy setup failed |
 | ap_query | The AP request failed; SQL errors here are from the upstream service |
+| fetch_budget | Stage collection time budget expired; obtained evidence is retained, unattempted queries excluded |
 | pg_supplement | Optional registered PG supplementation failed; no source SQL is rewritten |
 | main_service | Original main-service error event; lastTool is context, not proof that tool caused the error |
 | analysis_execution | Other analysis execution or delivery failures |

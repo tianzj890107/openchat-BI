@@ -21,7 +21,7 @@ def analysis_question(context):
     if context.get('stage') == 'combined':
         stage_note = ('这是跨环节共同问题分析。联合核对商机覆盖、订单接收、实际发货与目标；'
                       '先核对每条原始请求的时间、单位、过滤口径，禁止把各环节金额直接相加或将关联说成因果。'
-                      '证据是已保存的历史AP响应，不是本次实时取数。说明各查询观察时间与缺失覆盖；'
+                      '证据来自本轮独立取证或本轮复用的同口径AP响应，不依赖其他AI任务完成。说明各查询观察时间与缺失覆盖；'
                       '有证据的环节仍须分析，不得因发货维度缺失而省略商机和订单。')
     if stage_gap:
         stage_note+=(f"本轮只为{NAMES[context['stage']]}环节提供{stage_gap.get('kept',0)}条匹配查询；"

@@ -499,15 +499,46 @@ class RefreshManager:
         return records, failures
 
     def _query_requests(self, identity, requests):
-        records, failures = [], []
+        records, failures, seen = [], [], set()
+        deadline = time.monotonic() + max(30, int(os.getenv('COCKPIT_FETCH_BUDGET_SECONDS','240')))
+        budget_logged = False
+        cache = getattr(self, 'round_queries', None)
         for payload in requests:
             kind = 'batch' if isinstance(payload, list) else 'analysis'
+            key = (identity, transport_identity(self.config), kind, _canonical(payload))
+            if key in seen:
+                continue
+            seen.add(key)
+            cached = cache.get(key) if cache is not None else None
+            if cached and not cached.get('failed') and cached['record'].get('expiresAt',0)<=time.time():
+                cache.pop(key,None)
+                cached=None
+            if cached is not None:
+                if cached.get('failed'):
+                    failures.append(_canonical(payload))
+                else:
+                    records.append(cached['record'])
+                continue
+            if time.monotonic() >= deadline:
+                failures.append(_canonical(payload))
+                if not budget_logged:
+                    from .diagnostics import record_failure
+                    record_failure(self.store,TimeoutError('AP collection budget exhausted; unattempted queries excluded, available evidence retained'),phase='fetch_budget',identity=identity)
+                    budget_logged=True
+                continue
+            if getattr(self, 'progress_callback', None):
+                self.progress_callback('fetching', completed=len(records)+len(failures), total=len(requests))
             try:
-                data = self.query(identity, kind, payload)
+                from .diagnostics import diagnostic_scope
+                with diagnostic_scope(fetchDeadline=deadline):
+                    data = self.query(identity, kind, payload)
             except Exception:
                 failures.append(_canonical(payload))
+                if cache is not None:cache[key]={'failed':True}
                 continue
-            records.append(self._receipt(identity, kind, payload, data))
+            record = self._receipt(identity, kind, payload, data)
+            records.append(record)
+            if cache is not None:cache[key]={'record':record}
         return records, failures
 
     def _supplement(self, identity, failures, stages):
@@ -556,10 +587,17 @@ class RefreshManager:
                     raise RuntimeError('刷新任务租约已失效，已停止旧执行')
             time.sleep(self.poll)
             item = self.store.get_analysis(item['id'])
+            if getattr(self, 'progress_callback', None):
+                self.progress_callback('analysing', analysisId=(item or {}).get('id',''), message=(item or {}).get('progress',''))
         if not item or item.get('status') not in {'completed', 'limited'}:
             raise RuntimeError((item or {}).get('error') or '后台分析未完整交付，保留上次完整版本')
         if (item.get('result') or {}).get('cardContract') != 'cockpit-cards-v1':
             raise RuntimeError('后台分析缺少卡片契约，保留上次完整版本')
+        execution = item.get('execution') or {}
+        if (execution.get('stopReason') == 'stage_no_evidence'
+                or ('claims' in execution and not execution['claims']
+                    and not any((item.get('evidence') or {}).get(k) for k in ('facts','records')))):
+            raise RuntimeError('本环节没有可分析的匹配证据，保留上次有效卡片')
         if claim and not self._owned(claim):
             raise RuntimeError('刷新任务已被更新的配置取代，未写回旧结果')
         return item
@@ -887,8 +925,6 @@ class RefreshManager:
 
     def preheat_period(self, identity, page, stage, period, *, force=False):
         """Materialise one configured slot for an explicit business period."""
-        if stage == 'combined':
-            return self._preheat_combined_period(identity, page, period, force=force)
         scope = period_target_scope(identity, page, stage, period)
         claim = self.store.claim_refresh_info(
             scope, lease=max(180, self.timeout + 60), config_version=config_version())
@@ -896,7 +932,29 @@ class RefreshManager:
             return dict(scope=scope, status='already-running')
         try:
             started = time.time()
-            seed, requests = self._stage_requests(identity, page, stage, period=period)
+            if stage == 'combined':
+                # Build an independent plan; no dependency on successful AI cards.
+                templates = []
+                candidates_count = 0
+                for source_stage in ('opportunity', 'order', 'shipment', 'quotation', 'bid'):
+                    plan = delivered_component_requests(source_stage) or delivered_stage_requests(source_stage)
+                    plan = [query for entry in plan for query in (entry if isinstance(entry,list) else [entry])]
+                    candidates_count += len(plan)
+                    # Aggregate coverage first, then a small dimensional/status slice.
+                    def rank(q):
+                        text=json.dumps((q.get('analysisConfig') or {}).get('indicators') or [],ensure_ascii=False)
+                        important=any(word in text for word in ('目标','实际','预测','销售额','发货','订单'))
+                        return (not important,_canonical(q))
+                    aggregate=sorted([q for q in plan if not (q.get('analysisConfig') or {}).get('dimensions')],key=rank)
+                    dimensional=sorted([q for q in plan if (q.get('analysisConfig') or {}).get('dimensions')],key=rank)
+                    chosen=aggregate[:2]+dimensional[:1]
+                    chosen.extend(q for q in aggregate+dimensional if q not in chosen)
+                    templates.extend(chosen[:3])
+                requests = list({_canonical(q):q for q in _with_period(templates, period)}.values())
+                seed = {'period':period, 'clarifications':{'instruction':
+                    f'共同分析独立取证：从{candidates_count}条组件查询计划中每环节最多选3条，优先汇总及结构证据。只分析本轮实际返回范围，未覆盖明细不能外推；不等待其他AI分析。'}}
+            else:
+                seed, requests = self._stage_requests(identity, page, stage, period=period)
             if not requests:
                 self._finish(scope, claim, 'awaiting-plan',
                              next_check=time.time() + self.interval, error='')

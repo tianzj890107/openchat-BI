@@ -52,8 +52,8 @@ STAGE_LABELS = {
     'order': ('订单接收', '订单', '签单', '接收'),
     'shipment': ('发货', '出货', '履约', '超期未发'),
 }
-STAGE_METRICS['combined'] = set().union(*(STAGE_METRICS[s] for s in ('opportunity', 'order', 'shipment')))
-STAGE_LABELS['combined'] = tuple(label for s in ('opportunity', 'order', 'shipment') for label in STAGE_LABELS[s])
+STAGE_METRICS['combined'] = set().union(*(STAGE_METRICS[s] for s in ('opportunity', 'order', 'shipment', 'quotation', 'bid')))
+STAGE_LABELS['combined'] = tuple(label for s in ('opportunity', 'order', 'shipment', 'quotation', 'bid') for label in STAGE_LABELS[s])
 _CODE_RE = re.compile(r'YWLN_[DM]\d+')
 _LABEL_KEYS = ('alias', 'label', 'name', 'identifierCode', 'title')
 
@@ -442,7 +442,7 @@ def page_analysis_context(context, store, *, data_mode='ap', resolve_fallback=Tr
                            receipts=sorted({value.get('receiptId', '') for value in kept.values()} - {''})))
 
 
-def executor(selected, stage=None):
+def executor(selected, stage=None, *, lean=False):
     source, live = evidence_source(selected)
     stage_metrics=STAGE_METRICS.get(stage) or set()
     stage_labels=STAGE_LABELS.get(stage) or ()
@@ -476,6 +476,19 @@ def executor(selected, stage=None):
                       for col in result.get('columns', []) if 'identifierCode' in col}
             rows = [{labels.get(code, code) + '[' + code + ']': cell.get('value') if isinstance(cell, dict) else cell
                      for code, cell in row.items()} for row in result.get('rows', []) if isinstance(row, dict)]
+            if lean:
+                # Bounded model projection, not a replacement for saved raw receipts.
+                kept, used = [], 0
+                for row in rows[:24]:
+                    size = len(json.dumps(row, ensure_ascii=False))
+                    if used + size > 16000:break
+                    kept.append(row);used += size
+                return json.dumps({'queryId':query_id, 'source':source, 'data':{'rows':kept},
+                    'scope':{'source':source,'receiptId':entry.get('receiptId',''),'request':entry['request']},
+                    'semantic':{'metric':query_id,'definition':labels,'live':live},
+                    'provenance':{'source':source,'query':json.dumps(entry['request'],ensure_ascii=False)},
+                    'coverage':{'returnedRows':len(rows),'providedRows':len(kept),'sampleOnly':len(kept)<len(rows)},
+                    'limitations':'仅提供有界样本，不能外推总体比例。完整响应保存在服务端。' if len(kept)<len(rows) else ''},ensure_ascii=False)
             return json.dumps({'queryId': query_id, **entry, 'source': source,
                 'data': {'rows': rows}, 'scope': {'source': source, 'receiptId':entry.get('receiptId',''), 'request': entry['request']},
                 'semantic': {'metric': query_id, 'definition': labels, 'live': live},
@@ -483,5 +496,5 @@ def executor(selected, stage=None):
         return json.dumps({'source': source, 'live': live, 'queries': [
             {'queryId': key, 'request': value['request'],
              'columns': project(value['response'].get('result', {})).get('columns', [])}
-            for key, value in selected.items()], 'limitations': '原始AP请求决定实际时间和部门口径；页面标题不构成字段定义。没有同源明细补查接口，不能认定根因。'}, ensure_ascii=False)
+            for key, value in selected.items()], 'instruction': '可在一次模型回复中并列调用最多6个不同queryId。不要重复读取已取得的查询，取得必要证据后立即交付。', 'limitations': '原始AP请求决定实际时间和部门口径；页面标题不构成字段定义。没有同源明细补查接口，不能认定根因。'}, ensure_ascii=False)
     return read

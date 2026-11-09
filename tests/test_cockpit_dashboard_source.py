@@ -157,3 +157,16 @@ def test_customer_planning_metrics_count_as_opportunity_evidence():
     failed = unavailable_stage_evidence({"unavailableQueries": [json.dumps(planning)]}, "opportunity")
     assert failed["failed"] == 1
     assert set(failed["labels"]) == {"目标电量", "规划电量", "实际电量"}
+
+
+def test_lean_model_evidence_is_bounded_and_raw_snapshot_stays_intact():
+    from copy import deepcopy
+    selected={'q':{'request':{'analysisConfig':{}},'response':{'result':{
+        'columns':[{'identifierCode':'YWLN_M0036','label':'发货金额'}],
+        'rows':[{'YWLN_M0036':{'value':n}} for n in range(500)]}},'receiptId':'receipt'}}
+    before=deepcopy(selected)
+    output=json.loads(executor(selected,'shipment',lean=True)({'queryId':'q'},''))
+    assert len(output['data']['rows'])==24
+    assert output['coverage']=={'returnedRows':500,'providedRows':24,'sampleOnly':True}
+    assert 'response' not in output and output['scope']['receiptId']=='receipt'
+    assert selected==before
