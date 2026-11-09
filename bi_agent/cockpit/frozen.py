@@ -274,7 +274,7 @@ def recompute_from_router(app, cwd):
             response.raise_for_status()
             return response.json()
     def query(identity, kind, payload):
-        return asyncio.run(invoke('/api/cockpit/data/query', dict(id=identity,kind=kind,payload=payload)))['response']
+        return asyncio.run(invoke('/api/cockpit/data/query', dict(id=identity,kind=kind,payload=payload)))['data']
     def start(body, resolved):
         response = asyncio.run(invoke('/api/cockpit/analyses/refresh', dict(body, refresh=True)))
         return response.get('analysis') or response.get('cached')
