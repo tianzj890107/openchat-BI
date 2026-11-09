@@ -325,4 +325,3 @@
 - 实际静态匹配28/30实体、2319/2354属性；35个属性、54个指标涉及缺失依赖，另有78个指标缺少完整属性依赖声明，均未宣称实库验收完成。
 - 保留原工作表公式及未修改工作表的公式缓存，拒绝覆盖已有输出；补充主键、NULL、外键、未知表达式、原文件保留和清单校验测试。
 - 主要文件：`scripts/build_customer_process360_ontology.py`、`tests/test_customer_process360_ontology.py`、`docs/specs/process360-customer-ontology-delivery-2026-11-03.md`；生成器及catalog测试13项通过，真实Excel原单元格保护检查、catalog校验和文件SHA256检查通过，`git diff --check`通过；未连接客户数据库、未执行SQL、未部署。
-

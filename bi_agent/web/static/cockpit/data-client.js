@@ -150,7 +150,7 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
       queueMicrotask(onSnapshotMiss);
     }
     const labels = queryLabels(payload);
-    const state = {kind, key: canonical(analysisPayload(payload)), requestKey: key, pending: true, error: '', labels, receiptId: '', analysisReceiptId: displayOnly ? (previous.analysisReceiptId || previous.receiptId || '') : '', expiresAt: 0,
+    const state = {kind, key: canonical(payload), requestKey: key, pending: true, error: '', labels, receiptId: '', analysisReceiptId: displayOnly ? (previous.analysisReceiptId || previous.receiptId || '') : '', expiresAt: 0,
       stage: stageFor(kind, payload) || '', timings: null};
     if (!displayOnly) all.set(slot, state);
     if (kind !== 'helmet' && !displayOnly) {
@@ -159,6 +159,7 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
       // filters are handled explicitly by observeRuntimeFilters/changeScope,
       // which starts a new scope and clears receipts before this client runs.
       active.set(slot, state);
+      onInvalidate({replacement:Boolean(previous && previous.key!==state.key),scope:false});
     }
     const config = payload && payload.analysisConfig;
     if (kind === 'analysis' && config && Array.isArray(config.vertex) && !config.vertex.length

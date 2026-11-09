@@ -85,7 +85,7 @@ test('default SDK filters and repeated snapshots cannot remount the board in a l
 
 test('only a committed page scope change starts analysis after its receipts are ready', () => {
   assert.match(source, /onInvalidate:\(\)=>\{\}/);
-  assert.match(source, /scopeNeedsAnalysis=true/);
+  assert.match(source, /scopeNeedsAnalysis=!frozenAnnualMode/);
   assert.match(source, /if\(scopeNeedsAnalysis\)\{[\s\S]{0,240}ensureAnalysis\(stage,true,true\)/);
   assert.doesNotMatch(source, /onInvalidate:[\s\S]{0,220}ensureAnalysis\(stage\)/);
 });

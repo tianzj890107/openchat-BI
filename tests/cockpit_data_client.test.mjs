@@ -19,7 +19,7 @@ test('concurrent duplicate widgets share the same upstream response and result r
 test('table sorting and paging stay display changes and cannot replace the analysis receipt', async () => {
   let calls = 0, invalidations = 0;
   const client = createAPDataClient({apiBase:'/api/cockpit', id:1,
-    onInvalidate:()=>{invalidations+=1;},
+    onInvalidate:detail=>{if(detail?.scope)invalidations+=1;},
     request:async()=>ok('receipt-'+(++calls))});
   const base = {analysisConfig:{indicators:[{identifierCode:'M0001'}]},
     commonConfig:{filters:{month:'2026-10'}, pagination:{pageNum:1,pageSize:10}}};
@@ -48,13 +48,14 @@ test('table sorting and paging stay display changes and cannot replace the analy
   assert.deepEqual(afterPaging.chartQueries, original.chartQueries);
   assert.deepEqual(afterPaging.apReceiptIds, original.apReceiptIds);
   assert.equal(afterPaging.chartQueries.length, 1);
-  assert.doesNotMatch(afterPaging.chartQueries[0], /pagination|sorts/);
+  // Evidence must keep the exact original AP request, including its first page.
+  assert.deepEqual(JSON.parse(afterPaging.chartQueries[0]), base);
 });
 
 test('query-only data changes never start analysis without a scope change', async () => {
   let invalidations = 0;
   const client = createAPDataClient({apiBase:'/api/cockpit', id:1,
-    onInvalidate:()=>{invalidations+=1;},
+    onInvalidate:detail=>{if(detail?.scope)invalidations+=1;},
     request:async()=>ok('receipt')});
   await client.biAdapters.postAnalysisDataQuery(query);
   const filtered = structuredClone(query);
