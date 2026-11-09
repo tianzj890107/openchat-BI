@@ -31,6 +31,7 @@ Each record contains diagnosticId, analysisId (if already created), runId, stage
 
 | Phase | Meaning |
 | --- | --- |
+| page_publication | Whole-page snapshot validation failed; annual publications remain independent |
 | request_validation | Our AI-table request filters or fields were rejected before calling AP |
 | ap_response | AP returned data that the table adapter could not interpret |
 | ap_query_setup | AP configuration, credentials-file or proxy setup failed |
@@ -50,3 +51,9 @@ Messages are redacted and bounded. Long SQL errors retain their beginning and ta
 AI-table preset filters for `YWLN_D016` and `YWLN_M_ORDER_OVERDUE_DAYS` could be duplicated by nested SDK conditions. AND groups now flatten recursively, semantic duplicates ignore presentation labels, and supported IN/EQ predicates intersect without widening scope. Contradictions and unsupported repeated predicates are rejected before AP. OR groups are not rewritten. This fixes our table request composition only; upstream SQL/schema/permissions remain unchanged.
 
 Validation: 407 targeted backend tests and 99 Cockpit Node tests passed, followed by five focused diagnostic/redaction tests after the final redaction adjustment. Tests use isolated fixtures; no live AP/model calls.
+
+## Whole-page cache isolation (2026-11-09)
+
+Fixed-annual mode bypasses whole-page snapshot reads/writes and model refreshes in the page client. The host also stops scheduling those merges. The server tolerates old browser bundles posting `/page` by returning an explicit skipped result; it does not publish a snapshot or run analysis. Normal mode uses required-stage inclusion plus allowed-stage and per-card provenance checks, so valid optional order/quotation stages no longer cause a false incomplete-slot error. Rejected builds retain a diagnostic record, including missing/submitted/unexpected stage names when the stage set is invalid.
+
+Validation: 36 backend and 15 frontend regression tests passed. No live AP/model calls, deployment or customer tar changes in this task. Original model/delivery failures from older deployments still require a new run on the diagnostic-enabled image to identify their exact cause.

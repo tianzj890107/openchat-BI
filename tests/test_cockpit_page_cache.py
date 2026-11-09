@@ -177,3 +177,21 @@ def test_site_build_uses_real_immutable_paths_and_valid_precompressed_assets(tmp
     for line in (site/'manifest.sha256').read_text().splitlines():
         expected,name=line.split('  ',1);assert hashlib.sha256((site/name).read_bytes()).hexdigest()==expected
     with pytest.raises(ValueError):build_site(site)
+
+
+@pytest.mark.parametrize('page,required,optional',[('analysis',['opportunity','shipment'],['order']),('operations',['bid'],['quotation','order'])])
+def test_default_page_accepts_additional_valid_allowed_stages(tmp_path,page,required,optional):
+    store,cfg,req,_=fixture(tmp_path)
+    template=store.get_analysis(req.analysisIds['shipment'])
+    ids={}
+    for stage in required+optional:
+        ctx={**template['context'],'page':page,'stage':stage}
+        item=store.create_analysis('extra-'+stage,ctx)
+        store.update_analysis(item['id'],status='limited',result=template['result'],evidence=template['evidence'])
+        ids[stage]=item['id']
+    value=build_page(PageRequest(**{**req.model_dump(),'page':page,'analysisIds':ids}),store,cfg)
+    assert set(value['items'])==set(required+optional)
+    ids.pop(required[0])
+    with pytest.raises(HTTPException) as failure:
+        build_page(PageRequest(**{**req.model_dump(),'page':page,'analysisIds':ids}),store,cfg)
+    assert required[0] in json.loads(failure.value.diagnostic_message)['missingStages']

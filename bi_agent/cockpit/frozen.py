@@ -328,6 +328,11 @@ class FrozenCockpitSurface:
                 return await JSONResponse(dict(period=release['period'], periodMatch=True,
                     cardsVersion=release['version'], publicationVersion='', dataAsOf=release['createdAt'],
                     update=dict(status='published', nextCheckAt=0), manualUpdate=self.service.store.job()))(scope, receive, send)
+            if path == '/api/cockpit/page' and scope['method']=='POST':
+                # Old browser bundles may still attempt a whole-page merge.
+                # Annual cards publish independently; never couple them to charts.
+                return await JSONResponse(dict(accepted=False, skipped=True,
+                    reason='fixed-annual-independent-publications', snapshot=None))(scope, receive, send)
             if path == '/api/cockpit/publications/priority' and scope['method']=='POST':
                 from starlette.requests import Request
                 body = await Request(scope, receive).json()

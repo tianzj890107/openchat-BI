@@ -199,3 +199,14 @@ def test_manual_combined_uses_only_this_round_successful_inputs(monkeypatch):
     assert manager._period_stage_cards(1,'2026')==cards
     manager.combined_fresh_stages={'order','opportunity'}
     assert set(manager._period_stage_cards(1,'2026'))=={'order','opportunity'}
+
+
+def test_fixed_annual_ignores_legacy_whole_page_publication(tmp_path):
+    store,_,_=fixture(tmp_path)
+    service=FrozenAnnualService(store,lambda p:None)
+    before=store.read()['version']
+    client=TestClient(FrozenCockpitSurface(FastAPI(),service))
+    response=client.post('/api/cockpit/page',json={'id':1,'page':'analysis','analysisIds':{}})
+    assert response.status_code==200 and response.json()['skipped'] is True
+    assert response.json()['accepted'] is False
+    assert store.read()['version']==before and store.job()['status']=='idle'

@@ -800,7 +800,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if main_context is None or data_mode()!='ap':raise HTTPException(409,'整页缓存仅支持主服务实时AP路线')
         config=get_gateway().config
         key=page_scope(config,req.id,req.page,req.uiScope)
-        page=build_page(req,store(),config,data_source='ap')
+        try:
+            page=build_page(req,store(),config,data_source='ap')
+        except Exception as exc:
+            diagnostic=record_failure(store(),exc,phase='page_publication',identity=req.id)
+            if isinstance(exc,HTTPException):
+                exc.headers={**(exc.headers or {}),'X-Cockpit-Diagnostic-Id':diagnostic['diagnosticId']}
+            raise
         if key!=page_scope(config,req.id,req.page,req.uiScope):raise HTTPException(409,'AP认证配置已变化，保留原版本')
         accepted=store().publish_page(key,page)
         return dict(accepted=accepted,snapshot=page if accepted else store().published_page(key))

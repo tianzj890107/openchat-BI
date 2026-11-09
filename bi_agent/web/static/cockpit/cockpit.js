@@ -1429,7 +1429,7 @@
             }catch(_){/* the status poll retries the same read */}
           }
           if(analysisEngine==='main') {
-            pageCache=createPageCache({apiBase,id:identityId,page:page.value,makeClient,bodyFor:baseMainBody,
+            pageCache=createPageCache({independentCards:frozenAnnualMode,apiBase,id:identityId,page:page.value,makeClient,bodyFor:baseMainBody,
               onState:value=>Object.assign(pageState,value),
               onSnapshot:snapshot=>{
                 // Background publications refresh metadata and AI cards in
@@ -1448,7 +1448,7 @@
               const token=++pageEpoch,scope=currentUiScope;
               clearTimeout(publishTimer);clearTimeout(refreshTimer);
               pageCache?.invalidate();
-              pageCache=createPageCache({apiBase,id:identityId,page:target,makeClient,bodyFor:baseMainBody,
+              pageCache=createPageCache({independentCards:frozenAnnualMode,apiBase,id:identityId,page:target,makeClient,bodyFor:baseMainBody,
                 onState:value=>Object.assign(pageState,value),
                 onSnapshot:snapshot=>{
                   fullSnapshot=snapshot;
@@ -1534,7 +1534,7 @@
           }
           onPageActivity=()=>{
             clearTimeout(publishTimer);
-            if(analysisEngine!=='main'||fullSnapshot||publishing)return;
+            if(frozenAnnualMode||analysisEngine!=='main'||fullSnapshot||publishing)return;
             publishTimer=setTimeout(async()=>{
               const token=pageEpoch,client=liveDataClient,uiScope=currentUiScope;
               // Stale cards belong to the previous filter scope: never publish

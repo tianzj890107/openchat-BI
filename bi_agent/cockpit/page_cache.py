@@ -159,9 +159,12 @@ def build_page(req, store, config, *, data_source='ap', data_identity=None):
     required = {'overview': set(), 'operations': {'bid'},
                 'analysis': {'opportunity', 'shipment'}}[req.page]
     stages = set(req.analysisIds)
-    if stages - allowed or (req.uiScope == 'default' and stages != required) or (
+    if stages - allowed or (req.uiScope == 'default' and not required.issubset(stages)) or (
             req.page == 'analysis' and 'shipment' not in stages) or (req.page == 'operations' and not stages):
-        raise HTTPException(422, 'AI插槽未完整交付，保留上次完整版本')
+        error = HTTPException(422, 'AI插槽未完整交付，保留上次完整版本')
+        error.diagnostic_message = json.dumps(dict(page=req.page, missingStages=sorted(required-stages),
+            unexpectedStages=sorted(stages-allowed), submittedStages=sorted(stages)), ensure_ascii=False)
+        raise error
     business = [r for r in records if r['kind'] != 'helmet']
     if not business:
         raise HTTPException(422, '整页没有业务数据')

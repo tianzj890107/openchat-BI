@@ -94,3 +94,27 @@ def test_redaction_handles_driver_named_password_and_unknown_url_tokens(monkeypa
     assert 'unknown-db-password' not in text
     assert 'unknown-access-token' not in text
     assert 'unknown-provider-token' not in text
+
+
+def test_whole_page_rejection_has_persisted_diagnostic(tmp_path,monkeypatch):
+    from bi_agent.cockpit.router import build_cockpit_router
+    from test_cockpit_page_cache import fixture
+    store,cfg,req,_=fixture(tmp_path)
+    monkeypatch.setenv('COCKPIT_DATA_MODE','ap')
+    monkeypatch.setenv('COCKPIT_REFRESH_ENABLED','0')
+    monkeypatch.setattr('bi_agent.cockpit.router.get_gateway',lambda:SimpleNamespace(config=cfg))
+    # The router owns its history location; use a controlled rejection to avoid
+    # copying real data and to exercise HTTP response/log correlation.
+    def reject(*args,**kwargs):
+        exc=HTTPException(422,'AI插槽未完整交付，保留上次完整版本')
+        exc.diagnostic_message='page=analysis missingStages=shipment'
+        raise exc
+    monkeypatch.setattr('bi_agent.cockpit.router.build_page',reject)
+    app=FastAPI();app.include_router(build_cockpit_router(lambda:str(tmp_path),main_context=lambda req:{}))
+    client=TestClient(app)
+    response=client.post('/api/cockpit/page',json=req.model_dump())
+    assert response.status_code==422
+    diagnostic=client.get('/api/cockpit/diagnostics?id=1').json()['items'][0]
+    assert diagnostic['phase']=='page_publication'
+    assert diagnostic['diagnosticId']==response.headers['X-Cockpit-Diagnostic-Id']
+    assert 'missingStages=shipment' in diagnostic['message']
