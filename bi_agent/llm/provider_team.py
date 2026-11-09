@@ -129,10 +129,17 @@ def stream(
 
     try:
         client = OpenAI(api_key=api_key, base_url=_get_base_url())
-        oa_messages = _convert_messages(
-            messages, system_prompt, include_reasoning=bool(thinking)
-        )
+        thinking_body = _thinking_extra_body(model_id, thinking)
         oa_tools = _convert_tools(allowed_tools)
+        # A gateway may still emit reasoning when disabled was requested.
+        # Real provider traces are protocol state, independent from UI visibility.
+        replay_reasoning = bool(thinking)
+        if _model_family(model_id) == 'deepseek':
+            replay_reasoning = bool(oa_tools) or bool(
+                thinking_body and thinking_body.get('thinking', {}).get('type') == 'enabled')
+        oa_messages = _convert_messages(
+            messages, system_prompt, include_reasoning=replay_reasoning
+        )
     except Exception as e:
         yield {"type": "error", "error": f"Team client/message setup failed: {e}"}
         return
@@ -148,7 +155,6 @@ def stream(
     if oa_tools:
         request_kwargs["tools"] = oa_tools
         request_kwargs["tool_choice"] = "auto"
-    thinking_body = _thinking_extra_body(model_id, thinking)
     if thinking_body:
         request_kwargs["extra_body"] = thinking_body
 

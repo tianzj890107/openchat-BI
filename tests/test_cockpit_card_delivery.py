@@ -86,6 +86,13 @@ def test_real_main_delivers_existing_card_contract_then_publishes_without_second
     count=[]
     def provider(*args,**kwargs):
         count.append(1)
+        if prepared_delivery and len(count)==1:
+            from bi_agent.llm.provider_deepseek import _convert_messages
+            projected=_convert_messages(args[0], 'strict thinking gateway', include_reasoning=True)
+            assert not any(message.get('tool_calls') for message in projected)
+            assert not any(message.get('role')=='tool' for message in projected)
+            material='\n'.join(str(message.get('content','')) for message in projected)
+            assert 'evidenceIds' in material and 'Cockpit-DashboardQuery-1-0' in material
         if prepared_delivery:
             yield dict(type='tool_use_end',id='fast-cards-'+str(len(count)),name=TOOL,input=candidate(ref='unknown-evidence') if repair_first and len(count)==1 else candidate())
         elif len(count)==1:yield dict(type='tool_use_end',id='q1',name='Cockpit-DashboardQuery',input={'queryId':receipt['receiptId']+':0'})

@@ -67,3 +67,57 @@ def test_unpaired_and_duplicate_tool_outputs_never_break_request_sequence():
     out=_convert_messages(messages,'system')
     assert out[1]['role']=='user' and 'Historical unpaired' in out[1]['content']
     assert [m for m in out if m['role']=='tool']==[{'role':'tool','tool_call_id':'a','content':'first'}]
+
+
+@pytest.mark.parametrize('env_mode,visible_thinking,expected_mode',[
+    ('true',False,'enabled'),
+    ('false',True,'disabled'),
+    (None,True,'enabled'),
+    (None,False,'disabled'),
+])
+def test_team_tool_reasoning_survives_display_and_requested_mode_changes(monkeypatch, env_mode, visible_thinking, expected_mode):
+    from types import SimpleNamespace
+    captured=[]
+    def create(**kwargs):
+        captured.append(kwargs)
+        return iter(())
+    monkeypatch.setattr(provider_team, 'OpenAI',lambda **_:SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
+    monkeypatch.setattr(provider_team, '_get_api_key',lambda:'test-key')
+    monkeypatch.setattr(provider_team, '_convert_tools', lambda _: [{'type':'function','function':{'name':'query','parameters':{'type':'object'}}}])
+    monkeypatch.delenv('TEAM_ENABLE_THINKING',raising=False)
+    if env_mode is None:monkeypatch.delenv('TEAM_DEEPSEEK_ENABLE_THINKING',raising=False)
+    else:monkeypatch.setenv('TEAM_DEEPSEEK_ENABLE_THINKING',env_mode)
+    messages=[{'role':'user','content':'analyse'},
+        {'role':'assistant','content':[{'type':'thinking','thinking':'actual provider trace'},
+            {'type':'tool_use','id':'read','name':'query','input':{}}]},
+        {'role':'user','content':[{'type':'tool_result','tool_use_id':'read','content':'42'}]}]
+    original=deepcopy(messages)
+    events=list(provider_team.stream(model_id='direct-deepseek-v4-flash',messages=messages,
+        system_prompt='system',allowed_tools=['query'],max_tokens=512,temperature=.2,thinking=visible_thinking))
+    assert not any(e['type']=='error' for e in events)
+    request=captured[0]
+    assert request['extra_body']=={'thinking':{'type':expected_mode}}
+    assistant=next(m for m in request['messages'] if m['role']=='assistant')
+    assert assistant.get('reasoning_content')=='actual provider trace'
+    assert request['messages'][-1]['tool_call_id']=='read'
+    assert messages==original
+
+
+def test_direct_deepseek_keeps_actual_tool_reasoning_even_when_hidden(monkeypatch):
+    from types import SimpleNamespace
+    from bi_agent.llm import provider_deepseek
+    calls=[]
+    def create(**kwargs):
+        calls.append(kwargs)
+        return iter(())
+    monkeypatch.setattr(provider_deepseek,'OpenAI',lambda **_:SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create))))
+    monkeypatch.setattr(provider_deepseek,'_get_api_key',lambda:'test-key')
+    monkeypatch.setattr(provider_deepseek,'_convert_tools',lambda _:[{'type':'function','function':{'name':'query','parameters':{'type':'object'}}}])
+    messages=[{'role':'assistant','content':[{'type':'thinking','thinking':'actual provider trace'},
+        {'type':'tool_use','id':'real-call','name':'query','input':{}}]},
+        {'role':'user','content':[{'type':'tool_result','tool_use_id':'real-call','content':'42'}]}]
+    result=list(provider_deepseek.stream(model_id='deepseek-v4-flash',messages=messages,
+        system_prompt='system',allowed_tools=['query'],max_tokens=512,temperature=.2,thinking=False))
+    assert not any(e['type']=='error' for e in result)
+    assert calls[0]['extra_body']=={'thinking':{'type':'disabled'}}
+    assert calls[0]['messages'][1]['reasoning_content']=='actual provider trace'

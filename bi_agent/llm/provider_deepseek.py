@@ -43,9 +43,10 @@ def _convert_messages(
     produced under thinking mode be passed back on the next request,
     otherwise it returns 400 invalid_request_error.
 
-    `include_reasoning=False` should be passed when thinking is OFF for
-    the current request — re-sending prior reasoning under non-thinking
-    mode is unsupported and may itself trigger a validation error.
+    Tool-enabled requests preserve real provider reasoning independently of
+    the UI visibility toggle: a gateway may ignore a requested mode switch.
+    `include_reasoning=False` is for explicit projections that omit reasoning,
+    such as plain non-tool chat, not for hiding the trace in the UI.
     """
     out: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     for msg in messages:
@@ -203,8 +204,9 @@ def stream(
         return
 
     try:
-        oa_messages = _convert_messages(messages, system_prompt, include_reasoning=bool(thinking))
         oa_tools = _convert_tools(allowed_tools)
+        oa_messages = _convert_messages(messages, system_prompt,
+                                        include_reasoning=bool(thinking) or bool(oa_tools))
     except Exception as e:
         yield {"type": "error", "error": f"Message conversion failed: {e}"}
         return
