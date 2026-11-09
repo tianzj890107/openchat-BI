@@ -518,7 +518,10 @@ class RefreshManager:
             return supplement_failed_queries(
                 {'id': int(identity), 'stage': None, 'unavailableQueries': list(failures)},
                 self.store, stages, limit=8)
-        except Exception:
+        except Exception as exc:
+            from .diagnostics import record_failure
+            record_failure(self.store,exc,phase='pg_supplement',identity=identity,
+                           stage=stages[0] if len(stages)==1 else '')
             # A broken fallback registry must not silently pretend the failed
             # query was answered; surface it as a blocked supplement instead.
             return {}, [dict(query=query, code='FALLBACK_UNAVAILABLE') for query in failures]

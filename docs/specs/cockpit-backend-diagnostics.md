@@ -17,6 +17,8 @@ GET /api/cockpit/analyses/<analysisId>
 For the known customer endpoint, the first URL is:
 `http://172.16.5.230:8765/api/ontology-agentic-analytics/api/cockpit/diagnostics?id=1&limit=20`.
 
+An AP-error diagnostic records one failed attempt, not necessarily a failed analysis: partial evidence may still produce a successful limited card. Use analysisId and task status to distinguish these cases.
+
 The endpoint only reads SQLite. It does not call AP, databases, models or task services. Existing published cards and frontend status messages stay unchanged.
 
 ## Container logs
@@ -33,6 +35,7 @@ Each record contains diagnosticId, analysisId (if already created), runId, stage
 | ap_response | AP returned data that the table adapter could not interpret |
 | ap_query_setup | AP configuration, credentials-file or proxy setup failed |
 | ap_query | The AP request failed; SQL errors here are from the upstream service |
+| pg_supplement | Optional registered PG supplementation failed; no source SQL is rewritten |
 | main_service | Original main-service error event; lastTool is context, not proof that tool caused the error |
 | analysis_execution | Other analysis execution or delivery failures |
 | stage_execution | A stage could not produce a publishable candidate |
