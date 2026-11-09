@@ -317,6 +317,10 @@ def fallback_model_keys(key: str) -> list[str]:
         if model["provider"] != provider or model["key"] == key:
             continue
         candidate_id = str(model.get("model_id", "")).lower()
+        # A selected DeepSeek model must not silently switch to another family.
+        # The shared gateway catalogue can advertise unavailable third-party routes.
+        if provider == "team" and "deepseek" in model_id and "deepseek" not in candidate_id:
+            continue
         candidate_vision = (
             "vision" in model["key"].lower()
             or "-vl-" in candidate_id

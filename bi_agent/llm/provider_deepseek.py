@@ -53,6 +53,8 @@ def _convert_messages(
         content = msg.get("content")
 
         if isinstance(content, str):
+            if role == "assistant" and not content.strip():
+                continue
             out.append({"role": role, "content": content})
             continue
 
@@ -85,7 +87,11 @@ def _convert_messages(
                 assistant_msg["reasoning_content"] = "".join(reasoning_parts)
             if tool_calls:
                 assistant_msg["tool_calls"] = tool_calls
-            out.append(assistant_msg)
+            # Reasoning-only / empty interrupted turns are not legal assistant
+            # messages for DeepSeek. Drop them only in the outgoing projection;
+            # retain real tool calls (and their reasoning) even without text.
+            if text_joined.strip() or tool_calls:
+                out.append(assistant_msg)
 
         elif role == "user":
             text_parts: list[str] = []
