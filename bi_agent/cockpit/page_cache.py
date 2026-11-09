@@ -66,6 +66,13 @@ def compact_analysis(item):
                        ('summary', 'causes', 'recommendations', 'limitations', 'findings',
                         'riskFindingCount', 'cardContract', 'customerCoverage') if k in result}
                       if result else None)
+    execution = item.get('execution')
+    if isinstance(execution, dict):
+        # The card header reports how long the delivered analysis took; keep
+        # only the timing fields so token usage and traces stay server-side.
+        value['execution'] = {k: deepcopy(execution[k]) for k in
+                              ('engine', 'durationSeconds', 'modelRounds', 'stopReason')
+                              if k in execution}
     evidence = item.get('evidence') or {}
     def record(value):
         if not isinstance(value,dict):return deepcopy(value)

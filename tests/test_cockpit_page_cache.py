@@ -136,6 +136,16 @@ def test_compact_cards_keep_ui_evidence_without_narrative_or_query_provenance(tm
     assert 'narrative' not in slim['result'] and 'narrative' in item['result']
 
 
+def test_compact_cards_carry_analysis_duration_for_the_card_header(tmp_path):
+    store,_,req,_=fixture(tmp_path);item=store.get_analysis(req.analysisIds['shipment'])
+    item['execution']={'engine':'main','durationSeconds':42.6,'modelRounds':3,
+                       'stopReason':'max_tokens','usage':{'input_tokens':10},
+                       'route':{'intent':'analysis'}}
+    slim=compact_analysis(item)
+    assert slim['execution']=={'engine':'main','durationSeconds':42.6,
+                               'modelRounds':3,'stopReason':'max_tokens'}
+
+
 def test_short_ap_cache_coalesces_concurrent_reads_without_extending_receipt_time():
     reuse=APReuse(ttl=15);calls=[]
     def load():

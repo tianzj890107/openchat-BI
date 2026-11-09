@@ -37,6 +37,14 @@
     return year ? year[1] : '';
   }
 
+  function formatAnalysisDuration(value) {
+    const seconds = Math.round(Number(value) || 0);
+    if (!(seconds > 0)) return '';
+    const text = seconds < 60 ? `${seconds} 秒`
+      : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+    return ` · 耗时 ${text}`;
+  }
+
   function scopePeriod(scope = currentUiScope) {
     if (!scope || scope === 'default') return defaultPeriod;
     let entries;
@@ -726,12 +734,13 @@
         return '';
       });
       const cardMetadata = computed(()=>{
-        const item=slotAnalysis.value, name=STAGE_NAMES[stage.value]||stage.value, status=cardRefreshStatus.value;
-        if(!item?.result)return `${status?status+' · ':''}${frozenAnnual.period} 年度分析 · ${name}`;
+        const item=slotAnalysis.value, name=STAGE_NAMES[stage.value]||stage.value;
+        if(!item?.result)return `${frozenAnnual.period} 年度分析 · ${name}`;
         const count=slotPublication(props.insight.id)?.evidenceCount||0;
         const stamp=Number(item.updatedAt||0);
-        const stampText=stamp?` · ${status?'上次分析 ':''}${new Date(stamp*1000).toLocaleString('zh-CN',{hour12:false})}`:'';
-        return `${status||'上次分析'} · ${name} · 当前筛选范围 · ${count} 条证据${stampText}`;
+        const stampText=stamp?` · ${new Date(stamp*1000).toLocaleString('zh-CN',{hour12:false})}`:'';
+        const durationText=formatAnalysisDuration(item.execution?.durationSeconds);
+        return `上次分析 · ${name} · 当前筛选范围 · ${count} 条证据${stampText}${durationText}`;
       });
       const refreshCard=()=>refreshFrozenAnnual(props.insight.id);
       const clarification = ref('');
@@ -806,6 +815,7 @@
         <div v-if="frozenAnnualMode" class="cockpit-card-metadata" role="status">
           <span>{{cardMetadata}}</span>
           <button class="cockpit-frozen-release__action" type="button" :disabled="cardRefreshStatus==='后台更新中'" @click="refreshCard">{{slotAnalysis?.result ? '重新分析' : '分析'}}</button>
+          <span v-if="cardRefreshStatus" class="cockpit-card-metadata__status">{{cardRefreshStatus}}</span>
         </div>
         <div v-if="state.scopeNotice" class="insight-scope-notice" role="status">{{ state.scopeNotice }}</div>
         <component :is="delivered"
