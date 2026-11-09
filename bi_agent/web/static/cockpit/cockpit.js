@@ -132,16 +132,28 @@
   const insightLoadError = ref('');
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
-  const frozenAnnual = reactive({visible:false,running:false,period:defaultPeriod,basis:'',error:''});
-  async function refreshFrozenAnnual() {
+  const frozenAnnual = reactive({visible:false,running:false,period:defaultPeriod,basis:'',error:'',activeStage:'',pendingStages:[],completedStages:[],failedStages:[]});
+  const visibleAiSlots = new Map();
+  let priorityTimer=null;
+  function frozenPriority(slotId) {
+    const visibleSlots=[...visibleAiSlots.entries()].sort((a,b)=>a[1]-b[1]).map(([id])=>id);
+    return {slotId:typeof slotId==='string'?slotId:undefined,page:currentPage,visibleSlots};
+  }
+  function queueFrozenPriority() {
+    if(!frozenAnnualMode || !frozenAnnual.running)return;
+    clearTimeout(priorityTimer);
+    priorityTimer=setTimeout(()=>fetch(`${apiBase}/publications/priority`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(frozenPriority())}).catch(()=>{}),150);
+  }
+  async function refreshFrozenAnnual(slotId) {
     frozenAnnual.visible=true;
-    if(frozenAnnual.running)return;
-    frozenAnnual.running=true;frozenAnnual.error='';
+    frozenAnnual.error='';
     try {
-      const response=await fetch(`${apiBase}/publications/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({manual:true,id:Number(identityId)})});
+      const response=await fetch(`${apiBase}/publications/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({manual:true,id:Number(identityId),...frozenPriority(slotId)})});
       if(!response.ok)throw new Error('后台更新未启动，继续展示发布版');
+      const job=await response.json();
+      frozenAnnual.running=job.status==='running';
       aiPublicationClient?.poke(0,currentUiScope);
-    } catch(error) {frozenAnnual.running=false;frozenAnnual.error=error.message;}
+    } catch(error) {frozenAnnual.error=error.message;}
   }
   const pageState = reactive({cached:false,dataAsOf:0,analyzedAt:0,refreshing:false,updateStatus:'idle',displayStale:false,error:''});
   // Slot cards live outside the dashboard component lifecycle.  Tabs, node
@@ -282,6 +294,7 @@
     if(!value?.slots)return;
     if(frozenAnnualMode){
       frozenAnnual.running=value.manualUpdate?.status==='running';
+      for(const key of ['activeStage','pendingStages','completedStages','failedStages'])frozenAnnual[key]=value.manualUpdate?.[key]||(key==='activeStage'?'':[]);
       frozenAnnual.period=value.requestedPeriod||'';
       frozenAnnual.basis=value.basis||'';
       frozenAnnual.error=value.manualUpdate?.error||'';
@@ -704,6 +717,20 @@
         if(!current)return projected;
         return Number(projected.updatedAt||0)>=Number(current.updatedAt||0)?projected:current;
       });
+      const cardMetadata = computed(()=>{
+        const item=slotAnalysis.value, name=STAGE_NAMES[stage.value]||stage.value;
+        if(!item?.result)return `${frozenAnnual.period} 年度分析 · ${name}`;
+        const count=slotPublication(props.insight.id)?.evidenceCount||0;
+        const stamp=Number(item.updatedAt||0);
+        return `上次分析 · ${name} · 当前筛选范围 · ${count} 条证据${stamp?' · '+new Date(stamp*1000).toLocaleString('zh-CN',{hour12:false}):''}`;
+      });
+      const refreshCard=()=>refreshFrozenAnnual(props.insight.id);
+      const cardRefreshStatus=computed(()=>{
+        if(frozenAnnual.running && frozenAnnual.activeStage===stage.value)return '后台更新中';
+        if(frozenAnnual.running && frozenAnnual.pendingStages.includes(stage.value))return '等待更新';
+        if(frozenAnnual.failedStages.some(item=>item.stage===stage.value))return '沿用上次结果';
+        return '';
+      });
       const clarification = ref('');
       const confirmScope = () => {if(!clarification.value.trim())return;clarificationAnswers.set(stage.value, {answer:clarification.value.trim()});ensureAnalysis(stage.value,true,true).catch(()=>{});};
       const stop = async () => {if(state.value.item?.id)await fetch(`${apiBase}/analyses/${state.value.item.id}/cancel`,{method:'POST'});};
@@ -724,6 +751,8 @@
         }
         seenVisible=next;
         noteStageVisibility(registeredStage,next,order);
+        if(next)visibleAiSlots.set(props.insight.id,order);else visibleAiSlots.delete(props.insight.id);
+        queueFrozenPriority();
         if(next)ensureSlotAnalysis(props.insight.id,registeredStage).catch(()=>{});
       };
       const registerSlot=()=>{
@@ -749,6 +778,7 @@
       });
       onBeforeUnmount(()=>{
         alive=false;
+        visibleAiSlots.delete(props.insight.id);
         if(observer)observer.disconnect();
         if(seenVisible)noteStageVisibility(registeredStage,false,0);
         const count=(visibleStages.get(registeredStage)||1)-1;if(count)visibleStages.set(registeredStage,count);else visibleStages.delete(registeredStage);
@@ -766,17 +796,22 @@
           await ensureSlotAnalysis(props.insight.id,stage.value);onPageActivity();
         } catch(cause) {if(alive)insightLoadError.value=`插槽加载失败：${cause.message||cause}`;}
       });
-      return {dashboardDataMode, delivered, state, slotAnalysis, analysisContext, insightSlotProps, reload, insightLoadError, componentError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
+      return {frozenAnnualMode,frozenAnnual,stage,cardMetadata,refreshCard,cardRefreshStatus,dashboardDataMode, delivered, state, slotAnalysis, analysisContext, insightSlotProps, reload, insightLoadError, componentError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
     },
     template: `
-      <div v-if="delivered" class="cockpit-insight-slot">
+      <div v-if="delivered" class="cockpit-insight-slot" :class="{'cockpit-insight-slot--fixed':frozenAnnualMode}">
+        <div v-if="frozenAnnualMode" class="cockpit-card-metadata" role="status">
+          <span>{{cardMetadata}}</span>
+          <button class="cockpit-frozen-release__action" type="button" :disabled="frozenAnnual.running && frozenAnnual.activeStage===stage" @click="refreshCard">{{slotAnalysis?.result ? '重新分析' : '分析'}}</button>
+          <span v-if="cardRefreshStatus">{{cardRefreshStatus}}</span>
+        </div>
         <div v-if="state.scopeNotice" class="insight-scope-notice" role="status">{{ state.scopeNotice }}</div>
         <component :is="delivered"
                    :analysis="slotAnalysis" :status="state.status" :progress="state.progress"
                    :cached="state.cached" :refreshing="state.refreshing"
                    :stale="Boolean(state.stale)" :scope-notice="state.scopeNotice || ''"
                    :error="state.error" :context="analysisContext" :slot-props="insightSlotProps"
-                   @retry="reload"></component>
+                   v-if="!frozenAnnualMode || Boolean(slotAnalysis?.result)" @retry="reload"></component>
       </div>
       <div v-else-if="insightLoadError || componentError" class="insight-runtime-empty" role="status">{{ insightLoadError || componentError }}</div>
       <div v-else class="insight-runtime-empty" role="status" aria-label="插槽组件加载中"></div>
@@ -1578,7 +1613,7 @@
         document.getElementById('cockpit-boot')?.remove();
         bootRuntime();
       });
-      onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(priorityTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
         frozenAnnualMode, frozenAnnual, refreshFrozenAnnual, page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release,

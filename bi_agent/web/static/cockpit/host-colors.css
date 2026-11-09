@@ -41,19 +41,25 @@
 .cockpit-frozen-release__basis,
 .cockpit-frozen-release__notice { color: inherit; }
 .cockpit-frozen-release__action {
-  padding: 1px 8px;
-  border: 1px solid var(--cockpit-primary);
-  border-radius: 4px;
-  background: var(--cockpit-primary);
-  color: var(--cockpit-surface);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cockpit-text-help);
   font: inherit;
   font-size: 12px;
   line-height: 20px;
   white-space: nowrap;
   cursor: pointer;
 }
-.cockpit-frozen-release__action:hover:not(:disabled) { background: var(--cockpit-primary-active); }
+.cockpit-frozen-release__action:hover:not(:disabled) { color: var(--cockpit-link); }
 .cockpit-frozen-release__action:focus-visible { outline: 2px solid var(--cockpit-primary); outline-offset: 2px; }
 .cockpit-frozen-release__action:disabled { opacity: .5; cursor: default; }
 
 .cockpit-analysis-meta { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+/* Every customer AI slot owns one quiet metadata/action row. */
+.cockpit-card-metadata {
+  display:flex; align-items:center; flex-wrap:wrap; gap:8px;
+  margin:4px 12px 8px; color:var(--cockpit-text-help); font-size:12px; line-height:20px;
+}
+.cockpit-insight-slot--fixed .insight-runtime-state { display:none; }

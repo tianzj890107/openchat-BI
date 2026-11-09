@@ -1714,3 +1714,9 @@ Customer fixed-annual mode stays manual-only; company automatic mode retains per
 Customer builds require a separate `cockpit-seed` build context containing the verified `frozen-annual.json`: `docker buildx build --build-context cockpit-seed=/path/to/seed --build-context wheelhouse=/path/to/wheels -f deploy/customer/Dockerfile .`. The seed is a delivery artifact, never committed. Missing seed fails the build.
 
 This integration only prepares source and an MR. Existing tar, servers, configuration and historical data are unchanged. Formal version backfill remains separate.
+
+### Customer per-card priority refresh (2026-11-09)
+
+The customer fixed-annual executor now publishes each valid stage immediately instead of waiting for all six stages. Failed stages retain their prior cards and do not block later work. Each AI slot has its own metadata/button; clicks and visible slots prioritize pending work within one sequential worker. Common analysis consumes only successful same-round inputs. Progress is additive SQLite state; old publications and user data remain intact. See `docs/specs/cockpit-priority-manual-refresh.md` for API fields, dependency behaviour and restart semantics. The customer tar is rebuilt on explicit request with the AP envelope correction, priority queue, independent publication, and integrated table sorting/header fixes. External env/Compose files are unchanged; this is not a server deployment.
+
+Customer per-card refresh actions use small gray text, blue on hover, without a button background or border. Explicit manual rounds force analysis even when evidence is unchanged; automatic refresh reuse is unchanged.

@@ -911,3 +911,15 @@ def test_unvisited_month_is_preheated_from_a_generated_plan(tmp_path):
     assert result['status'] in {'published', 'frozen'}
     assert calls and calls[0]['period'] == '2024-03'
     assert (1, 'shipment', '2024-03') in store.published_stage_periods()
+
+
+def test_explicit_manual_period_refresh_reanalyses_unchanged_data(tmp_path):
+    store,cfg,_page,_q=_two_stage_page(tmp_path)
+    calls=[]
+    manager=_manager(store,cfg,lambda i,k,p:{'value':19.02},_analysis_factory_factory(store,calls))
+    first=manager.preheat_period(1,'analysis','shipment','2025-10')
+    assert first['status'] in {'published','frozen'}
+    store.request_refresh(period_target_scope(1,'analysis','shipment','2025-10'))
+    second=manager.preheat_period(1,'analysis','shipment','2025-10',force=True)
+    assert second['status'] in {'published','frozen'}
+    assert calls==['shipment','shipment']

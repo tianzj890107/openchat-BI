@@ -48,7 +48,7 @@ class FrozenAnnualStore:
     def __init__(self, path, seed):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         with self.db() as db:
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS annual_releases(
@@ -57,6 +57,7 @@ class FrozenAnnualStore:
                 CREATE TABLE IF NOT EXISTS annual_job(
                     id INTEGER PRIMARY KEY, status TEXT NOT NULL, error TEXT NOT NULL, updated REAL NOT NULL);
             ''')
+            db.execute('CREATE TABLE IF NOT EXISTS annual_progress(id INTEGER PRIMARY KEY,body TEXT NOT NULL)')
             db.execute("UPDATE annual_job SET status='failed',error='服务重启，本次更新未发布，继续使用上次版本',updated=? WHERE status='running'", (time.time(),))
         with self.db() as db:
             initialized = db.execute('SELECT 1 FROM annual_head WHERE id=1').fetchone()
@@ -93,7 +94,27 @@ class FrozenAnnualStore:
     def job(self):
         with self.db() as db:
             row = db.execute('SELECT status,error,updated FROM annual_job WHERE id=1').fetchone()
-        return dict(status=row[0], error=row[1], updatedAt=row[2]) if row else dict(status='idle', error='', updatedAt=0)
+            progress = db.execute('SELECT body FROM annual_progress WHERE id=1').fetchone()
+        body = json.loads(progress[0]) if progress else {}
+        return dict(body, status=row[0], error=row[1], updatedAt=row[2]) if row else dict(status='idle', error='', updatedAt=0)
+
+    def progress(self, **body):
+        with self.db() as db:
+            db.execute('INSERT INTO annual_progress VALUES(1,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',
+                       (json.dumps(body, ensure_ascii=False),))
+            db.execute('UPDATE annual_job SET updated=? WHERE id=1', (time.time(),))
+
+    def publish_stage(self, stage, item):
+        # Keep every other stage at its last successful generation.
+        if stage not in STAGES:
+            raise ValueError('Unknown analysis stage')
+        with self.lock:
+            release = self.read()
+            release.pop('version', None)
+            release['items'][stage] = deepcopy(item)
+            release['createdAt'] = time.time()
+            release['basis'] = 'Customer manual annual analysis; stages publish independently. Evidence times and limitations belong to each card.'
+            return self.publish(release)
 
     def claim(self):
         with self.db() as db:
@@ -112,23 +133,99 @@ class FrozenAnnualStore:
 class FrozenAnnualService:
     def __init__(self, store, recompute=None):
         self.store, self.recompute = store, recompute
+        self.queue_lock = threading.RLock()
+        self.pending, self.completed, self.failures = [], [], []
+        self.active = ''
+        self.deferred_combined = False
 
-    def refresh(self):
+    def priority_order(self, slot_id=None, page=None, visible_slots=None):
+        registry = {s['slotId']: s for s in slot_registry()}
+        if slot_id and (not isinstance(slot_id, str) or slot_id not in registry):
+            raise HTTPException(422, 'Unknown AI slot')
+        if page and (not isinstance(page, str) or page not in {'overview', 'operations', 'analysis'}):
+            raise HTTPException(422, 'Unknown page')
+        if visible_slots is None:
+            visible_slots = []
+        if not isinstance(visible_slots, list) or len(visible_slots)>15 or any(not isinstance(v, str) or v not in registry for v in visible_slots):
+            raise HTTPException(422, 'Invalid visible slots')
+        candidates = ([registry[slot_id]['stage']] if slot_id else [])
+        candidates += [registry[v]['stage'] for v in visible_slots]
+        candidates += [s['stage'] for s in registry.values() if s['page']==page]
+        return list(dict.fromkeys(candidates + list(STAGES)))
+
+    def _progress(self):
+        self.store.progress(activeStage=self.active, pendingStages=list(self.pending),
+                            completedStages=list(self.completed), failedStages=list(self.failures))
+
+    def prioritize(self, slot_id=None, page=None, visible_slots=None):
+        order = self.priority_order(slot_id, page, visible_slots)
+        with self.queue_lock:
+            if self.store.job()['status']=='running' and self.pending:
+                self.pending[:] = [s for s in order if s in self.pending]
+                if self.deferred_combined and 'combined' in self.pending:
+                    inputs=[s for s in self.pending if s in {'opportunity','order','shipment'}]
+                    rest=[s for s in self.pending if s not in inputs and s!='combined']
+                    self.pending[:]=inputs+['combined']+rest
+                self._progress()
+        return dict(status=self.store.job()['status'], queued=False)
+
+    def refresh(self, slot_id=None, page=None, visible_slots=None):
+        order = self.priority_order(slot_id, page, visible_slots)
         if not self.recompute:
-            raise HTTPException(503, '当前环境未配置手动分析执行器，继续使用发布版')
-        if not self.store.claim():
-            return dict(queued=False, status='running', message='后台正在重新分析，继续展示已发布版本')
+            raise HTTPException(503, 'Manual analysis executor unavailable')
+        with self.queue_lock:
+            if not self.store.claim():
+                return self.prioritize(slot_id, page, visible_slots)
+            self.pending, self.completed, self.failures = order, [], []
+            self.deferred_combined = False
+            self.active = ''
+            self._progress()
         def work():
             try:
-                candidate = self.recompute(self.store.read()['period'])
-                self.store.publish(candidate)
-                self.store.finish('published')
+                if hasattr(self.recompute, 'run_stage'):
+                    if hasattr(self.recompute, 'begin_round'):
+                        self.recompute.begin_round(self.store.read()['period'])
+                    deferred_combined = False
+                    while True:
+                        with self.queue_lock:
+                            if not self.pending:
+                                self.active = ''
+                                self._progress()
+                                self.store.finish(('partial' if self.completed else 'failed') if self.failures else 'published')
+                                return
+                            stage = self.pending.pop(0)
+                            self.active = stage
+                            self._progress()
+                        try:
+                            item = self.recompute.run_stage(self.store.read()['period'], stage)
+                            self.store.publish_stage(stage, item)
+                            with self.queue_lock:
+                                self.completed.append(stage)
+                        except StageNotReady:
+                            with self.queue_lock:
+                                if stage=='combined' and self.pending and not deferred_combined:
+                                    inputs=[s for s in self.pending if s in {'opportunity','order','shipment'}]
+                                    rest=[s for s in self.pending if s not in inputs]
+                                    self.pending[:]=inputs+[stage]+rest
+                                    deferred_combined = True
+                                    self.deferred_combined = True
+                                else:
+                                    self.failures.append(dict(stage=stage, code='DEPENDENCY_NOT_READY'))
+                        except Exception as exc:
+                            with self.queue_lock:
+                                self.failures.append(dict(stage=stage, code=type(exc).__name__))
+                        with self.queue_lock:
+                            self.active = ''
+                            self._progress()
+                else:
+                    # Compatibility with the old complete-release executor.
+                    self.store.publish(self.recompute(self.store.read()['period']))
+                    self.store.finish('published')
             except Exception:
-                # Source errors may include credential-bearing URLs; keep the
-                # public job message generic and never erase the release.
-                self.store.finish('failed', '本次后台分析未完成，继续展示上次发布版')
+                self.store.finish('failed', 'Background update did not finish; previous publications retained')
         threading.Thread(target=work, name='cockpit-explicit-annual-analysis', daemon=True).start()
-        return dict(queued=True, status='running', message='后台正在重新分析，继续展示已发布版本')
+        return dict(queued=True, status='running')
+
 
     def items(self, identity, page=None, release=None):
         release = release or self.store.read()
@@ -180,6 +277,10 @@ class FrozenAnnualService:
             riskCounts=risk_counts, update=dict(status='published', nextCheckAt=0, error=''), slots=slots)
 
 
+class StageNotReady(RuntimeError):
+    pass
+
+
 class FrozenCockpitSurface:
     """Customer-only boundary: only an explicit user action starts AI work."""
     def __init__(self, app, service, prefix=''):
@@ -208,6 +309,10 @@ class FrozenCockpitSurface:
                 return await JSONResponse(dict(period=release['period'], periodMatch=True,
                     cardsVersion=release['version'], publicationVersion='', dataAsOf=release['createdAt'],
                     update=dict(status='published', nextCheckAt=0), manualUpdate=self.service.store.job()))(scope, receive, send)
+            if path == '/api/cockpit/publications/priority' and scope['method']=='POST':
+                from starlette.requests import Request
+                body = await Request(scope, receive).json()
+                return await JSONResponse(self.service.prioritize(body.get('slotId'),body.get('page'),body.get('visibleSlots')))(scope, receive, send)
             if scope['method'] == 'POST' and (path in {'/api/cockpit/analyses', '/api/cockpit/analyses/refresh',
                     '/api/cockpit/publications/refresh'} or path.endswith('/preheat')):
                 from starlette.requests import Request
@@ -215,7 +320,7 @@ class FrozenCockpitSurface:
                 # Background clients and old scope-change hooks cannot silently
                 # spend a model call. Only the dedicated button sends manual.
                 if body.get('manual') is True:
-                    return await JSONResponse(self.service.refresh())(scope, receive, send)
+                    return await JSONResponse(self.service.refresh(body.get('slotId'),body.get('page'),body.get('visibleSlots')))(scope, receive, send)
                 stage = body.get('stage') or 'combined'
                 item = self.service.items(identity).get(stage)
                 return await JSONResponse(dict(cached=item, analysis=None, refreshing=False,
@@ -274,20 +379,30 @@ def recompute_from_router(app, cwd):
             response.raise_for_status()
             return response.json()
     def query(identity, kind, payload):
-        return asyncio.run(invoke('/api/cockpit/data/query', dict(id=identity,kind=kind,payload=payload)))['response']
+        return asyncio.run(invoke('/api/cockpit/data/query', dict(id=identity,kind=kind,payload=payload)))['data']
     def start(body, resolved):
         response = asyncio.run(invoke('/api/cockpit/analyses/refresh', dict(body, refresh=True)))
         return response.get('analysis') or response.get('cached')
     store = Store(Path(cwd)/'dataset/cockpit/history.sqlite3')
     manager = RefreshManager(store, get_gateway().config, query, start)
-    def recompute(period):
-        items = {}
-        for stage in STAGES:
-            store.request_refresh(period_target_scope(1, target_page(stage) or "analysis", stage, period), now=time.time())
-            result = manager.preheat_period(1, target_page(stage) or 'analysis', stage, period)
+    class Runner:
+        def begin_round(self, period):
+            self.fresh=set()
+            manager.combined_fresh_stages=self.fresh
+
+        def run_stage(self, period, stage):
+            if stage=='combined' and len(self.fresh)<2:
+                raise StageNotReady(stage)
+            page = target_page(stage) or 'analysis'
+            store.request_refresh(period_target_scope(1, page, stage, period), now=time.time())
+            result = manager.preheat_period(1, page, stage, period, force=True)
             hit = store.published_period(1, period, stage, {}, data_identity=get_gateway().config.identity())
             if result.get('status') not in {'published', 'frozen'} or not hit:
-                raise RuntimeError('annual candidate not ready: '+stage)
-            items[stage] = store.get_analysis(hit['analysis_id'])
-        return dict(period=period, createdAt=time.time(), basis='客户环境手动生成的年度发布版；具体证据和限制见各卡片。', items=items)
-    return recompute
+                if stage=='combined' and result.get('status') in {'waiting-for-stages','awaiting-plan'}:
+                    raise StageNotReady(stage)
+                raise RuntimeError('Annual stage not ready: '+stage)
+            item=store.get_analysis(hit['analysis_id'])
+            if stage in {'opportunity','order','shipment'}:
+                self.fresh.add(stage)
+            return item
+    return Runner()
