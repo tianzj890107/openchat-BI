@@ -11,6 +11,9 @@ import time
 from dataclasses import asdict, is_dataclass
 from .data import NAMES
 
+LIMITED_STOP_REASONS = frozenset({'answer_blocked', 'delivery_incomplete',
+                                  'max_iterations', 'max_tokens'})
+
 
 def analysis_question(context):
     scope={k:context.get(k) for k in ('period','department','filters','repositoryId','chartSnapshotId','clarifications')}
@@ -96,7 +99,7 @@ def run_main_analysis(context, cancel, progress, turn_factory):
             if message.get('role')=='assistant' and isinstance(blocks,list) and not any(b.get('type')=='tool_use' for b in blocks):
                 text='\n'.join(b.get('text','') for b in blocks if b.get('type')=='text')
                 if text:committed.append(text)
-        if committed:narrative=committed[-1] if done in {'answer_blocked','delivery_incomplete'} else '\n\n'.join(committed)
+        if committed:narrative=committed[-1] if done in LIMITED_STOP_REASONS else '\n\n'.join(committed)
         if needs_input:
             narrative=narrative or '主服务需要补充或确认指标、口径或业务对象；尚未交付根因结论。'
         elif done is None:raise RuntimeError('主服务未完成交付校验，未展示中间模型回答')
@@ -109,7 +112,7 @@ def run_main_analysis(context, cancel, progress, turn_factory):
                         narrative='\n'.join(b.get('text','') for b in blocks if b.get('type')=='text')
                         if narrative:break
         if not narrative:raise RuntimeError('主服务没有可交付的分析内容')
-        status='needs_input' if needs_input else 'limited' if done in {'answer_blocked','delivery_incomplete','max_iterations'} or not facts else 'completed'
+        status='needs_input' if needs_input else 'limited' if done in LIMITED_STOP_REASONS or not facts else 'completed'
         if context.get('snapshotId','').startswith(('dashboard-','ap-')) and status=='completed':status='limited'
         limitations=evidence['limitations']
         from .cards import CONTRACT
@@ -121,7 +124,7 @@ def run_main_analysis(context, cancel, progress, turn_factory):
         # causes or recommendations.  This is deliberately only a fallback:
         # validated tool output always wins when it exists.
         if (not card_value and not needs_input
-                and done in {'answer_blocked', 'delivery_incomplete', 'max_iterations'}
+                and done in LIMITED_STOP_REASONS
                 and (facts or (evidence.get('records') or []))
                 and narrative.strip()):
             card_value=dict(
