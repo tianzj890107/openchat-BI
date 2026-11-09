@@ -3,13 +3,14 @@ import json
 import io
 import threading
 import time
+from pathlib import Path
 from urllib.error import HTTPError
 from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from bi_agent.cockpit.ap_gateway import APConfig, APGateway
+from bi_agent.cockpit.ap_gateway import APConfig, APGateway, PATHS
 from bi_agent.cockpit.dashboard_source import RELEASE, receipt_material
 from bi_agent.cockpit.router import build_cockpit_router
 from bi_agent.cockpit.store import Store
@@ -30,7 +31,18 @@ def config(tmp_path, **changes):
     headers=tmp_path/'ap-headers.json'
     headers.touch(mode=0o600,exist_ok=True)
     headers.write_text(json.dumps({'X-App-Id':'cockpit-app','X-Ontology-Repository-Id':'ap-repo','apifoxToken':'private-ap-test'}))
-    return APConfig(**dict(base_url='http://ap.example/api/gateway2',headers_file=str(headers),timeout=2,concurrency=1,receipt_ttl=60,batch_mode='native',**changes))
+    return APConfig(**dict(base_url='http://ap.example/api/gateway2/x360',headers_file=str(headers),timeout=2,concurrency=1,receipt_ttl=60,batch_mode='native',**changes))
+
+
+def test_gateway_base_owns_x360_instead_of_api_paths(tmp_path):
+    assert all(not path.startswith('/x360') for path in PATHS.values())
+    env=(Path(__file__).resolve().parents[1]/'.env.example').read_text()
+    base=next(line for line in env.splitlines() if line.startswith('COCKPIT_AP_BASE_URL='))
+    assert base.endswith('/x360')
+    gateway=APGateway(config(tmp_path),Opener({'success':True,'data':DATA}))
+    gateway.query('analysis',QUERY)
+    request,_=gateway._opener.calls[0]
+    assert request.full_url=='http://ap.example/api/gateway2/x360/v1/ontology/data/query'
 
 
 def test_transport_has_its_own_headers_paths_and_capacity(tmp_path,monkeypatch):
@@ -224,7 +236,7 @@ def test_individual_batch_uses_exact_single_ap_queries_in_order_and_never_calls_
     result=gateway.query('batch',[QUERY,second])
     assert result==[{'success':True,'data':DATA},{'success':True,'data':DATA}]
     assert [json.loads(r.data) for r,_ in opener.calls]==[QUERY,second]
-    assert all(r.full_url.endswith('/x360/v1/ontology/data/query') for r,_ in opener.calls)
+    assert all(r.full_url.endswith('/v1/ontology/data/query') for r,_ in opener.calls)
     assert all(timeout<=cfg.timeout for _,timeout in opener.calls)
 
 
@@ -250,14 +262,14 @@ def test_individual_batch_has_one_overall_deadline(tmp_path):
 
 
 def test_invalid_batch_mode_is_a_configuration_error(monkeypatch):
-    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2')
+    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2/x360')
     monkeypatch.setenv('COCKPIT_AP_BATCH_MODE','invented')
     with pytest.raises(HTTPException) as error:APConfig.load()
     assert error.value.status_code==503
 
 
 def test_ontology_gateway_code_envelope_and_repository_override(monkeypatch,tmp_path):
-    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2')
+    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2/x360')
     monkeypatch.setenv('COCKPIT_AP_HEADERS_FILE',str(config(tmp_path).headers_file))
     monkeypatch.setenv('COCKPIT_AP_REPOSITORY_ID','8')
     gateway=APGateway(APConfig.load(),Opener({'code':200,'data':DATA}))
@@ -297,7 +309,7 @@ def test_helmet_proxy_preserves_upstream_ywln_config(tmp_path,monkeypatch):
 
 
 def test_ap_timeout_supports_three_minute_budget_and_caps_above_it(monkeypatch,tmp_path):
-    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2')
+    monkeypatch.setenv('COCKPIT_AP_BASE_URL','http://ap.example/api/gateway2/x360')
     monkeypatch.setenv('COCKPIT_AP_HEADERS_FILE',str(config(tmp_path).headers_file))
     monkeypatch.setenv('COCKPIT_AP_TIMEOUT_SECONDS','180')
     assert APConfig.load().timeout==180

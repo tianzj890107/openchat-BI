@@ -100,6 +100,30 @@
   2025-09 与 2025-10 可同时被识别，配置轮换后的旧索引保留为历史但不计为 ready；
 - `publication_views` 继续只指向最近一次发布，默认卡片入口不会被其他月份的预热覆盖。
 
+## 4.2 分析库存与双节拍
+
+`analysis_inventory` 持久保存每个刷新范围当前可交付的分析库存：
+
+- 身份、页面、环节、期间、筛选摘要和定义版本对应的刷新 `scope`；
+- 当前结果 ID、结果类型（整页发布或环节分析）、证据指纹；
+- 分析依据数据时间 `data_as_of`、最近检查数据时间 `latest_data_as_of`；
+- 分析时间 `analyzed_at`、最近检查时间、最近变化时间；
+- 当前待处理指纹与数据时间、首次待处理时间 `pending_since`；
+- 下次允许模型分析时间 `next_analysis_at` 和状态。
+
+数据检查仍按 `COCKPIT_REFRESH_INTERVAL_SECONDS`（默认 900 秒）执行；
+模型分析由 `COCKPIT_ANALYSIS_MIN_INTERVAL_SECONDS`（默认 1800 秒）限制。
+`COCKPIT_ANALYSIS_COALESCE_SECONDS`（默认 300 秒）合并短时间内的连续变化。
+连续变化不会不断推迟分析：`pending_since` 保留第一次未处理变化的时间，
+`next_analysis_at = max(上次分析时间 + 最小分析间隔, 首次待处理时间 + 合并窗口)`。
+
+同一范围正在运行时仍由一个 `pending` 标记合并请求；分析库存只保留最新待处理指纹。
+完成后先发布本轮固定证据，再按最小间隔处理最新版本。失败重试由刷新退避控制，
+不会被最小分析间隔额外阻塞。历史期间仍按期间策略冻结。
+
+`GET /api/cockpit/publications/status` 增加 `analysisPolicy` 与 `analysisInventory`，
+用于确认当前结果的分析时间、最新数据时间、待处理状态和下次允许分析时间。
+
 ## 5. 按环节独立刷新
 
 `page_cache.stage_evidence(records)` 按 `filter_stage_selected()` 把整页证据拆到各环节，
@@ -142,10 +166,12 @@
 
 ## 6. 可观测
 
-`publication_status()['update']` 增加：
+`publication_status()` 增加：
 
 - `period`：本次作用域解析出的期间；
 - `periodPolicy`：`{kind, recheckAfter, graceDays, activePeriod}`；
+- `analysisPolicy`：`{minIntervalSeconds, coalesceSeconds}`；
+- `analysisInventory`：当前结果、数据时间、待处理版本和下次分析时间；
 - `queue.pendingCount`：被合并的待更新任务数。
 
 ## 7. 验收用例
@@ -163,7 +189,9 @@
 9. 整页刷新只重算证据变化的环节；
 10. 未变化环节沿用原分析且整页仍能发布；
 11. 刷新失败保留上次发布版本并记录错误；
-12. 冻结作用域仍能读到上次发布结果。
+12. 冻结作用域仍能读到上次发布结果；
+13. 最近已分析过的范围收到变化时只记录一个最新待分析版本，不调用模型；
+14. 达到最小分析间隔后才重算，并更新持久化分析库存。
 
 第三轮补强用例另覆盖：两个年度/三个月度与五节点在重启后逐期间读取；日期范围精确命中时
 AI 插槽、表格字段和状态接口返回同一分析；配置轮换后旧期间不计 ready；期间目录自动包含

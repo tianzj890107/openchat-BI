@@ -26,7 +26,7 @@ function pageScope(props) {
   return String(slot.uiScope || slot.scopeKey || 'default')
 }
 
-function apQuery(ctx, fields, filterFields) {
+function apQuery(ctx, fields, filterFields, sort) {
   const dimensions = []
   const indicators = []
   for (const field of fields) {
@@ -37,6 +37,10 @@ function apQuery(ctx, fields, filterFields) {
   const pageNum = Number(ctx?.params?.pageNum) > 0 ? Number(ctx.params.pageNum) : 1
   const pageSize = Number(ctx?.params?.pageSize) > 0 ? Number(ctx.params.pageSize) : 10
   const commonConfig = {pagination: {pageNum, pageSize}}
+  const sorts = (sort || [])
+    .filter(field => field && field.identifierCode)
+    .map(field => ({identifierCode: field.identifierCode, order: field.order === 'DESC' ? 'DESC' : 'ASC'}))
+  if (sorts.length) commonConfig.sorts = sorts
   const children = []
   const seen = new Set()
   for (const condition of [...filterFields.map(field => field.conditions).filter(Boolean), ...(ctx?.filters || [])]) {
@@ -49,25 +53,26 @@ function apQuery(ctx, fields, filterFields) {
   return {analysisConfig: {dimensions, indicators}, commonConfig}
 }
 
-function contentSignature(tableKey, props, ctx, fields, filterFields) {
+function contentSignature(tableKey, props, ctx, fields, filterFields, sort) {
   return stable({
     tableKey,
     scope: pageScope(props),
     fields: fields.map(field => field.identifierCode),
+    sort: (sort || []).map(field => [field.identifierCode, field.order]),
     preFilters: filterFields.map(field => field.conditions),
     params: ctx?.params || {},
     filters: ctx?.filters || [],
   })
 }
 
-function querySignature(tableKey, props, ctx, fields, filterFields) {
+function querySignature(tableKey, props, ctx, fields, filterFields, sort) {
   return stable({
-    content: contentSignature(tableKey, props, ctx, fields, filterFields),
+    content: contentSignature(tableKey, props, ctx, fields, filterFields, sort),
     analysis: [props.analysis?.id || '', props.analysis?.updatedAt || ''],
   })
 }
 
-async function requestRows(tableKey, fields, filterFields, props, ctx, {cacheOnly=false} = {}) {
+async function requestRows(tableKey, fields, filterFields, sort, props, ctx, {cacheOnly=false} = {}) {
   const slot = props.slotProps || {}
   const apiBase = String(slot.apiBase || cockpitApiBase()).replace(/\/$/, '')
   const identityId = Number(slot.identityId) === 2 ? 2 : Number(slot.identityId) === 1 ? 1 : cockpitIdentityId()
@@ -79,7 +84,7 @@ async function requestRows(tableKey, fields, filterFields, props, ctx, {cacheOnl
       uiScope: pageScope(props),
       period: String(slot.period || ''),
       cacheOnly,
-      ...apQuery(ctx, fields, filterFields),
+      ...apQuery(ctx, fields, filterFields, sort),
     }),
   })
   const payload = await response.json().catch(() => null)
@@ -91,7 +96,7 @@ async function requestRows(tableKey, fields, filterFields, props, ctx, {cacheOnl
   }
 }
 
-export function createTableInsight({id, name, title, tableKey, fields, columns, filterFields = [], showTitle = false}) {
+export function createTableInsight({id, name, title, tableKey, fields, columns, filterFields = [], sort = [], showTitle = false}) {
   const { registerInsightComponent, insightProps } = window.InsightRuntime
   const displayFields = columns.map(column => ({
     fieldType: column.fieldType,
@@ -118,6 +123,7 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
           pageSize: 10,
           sourceType: 'ap',
           tableFields: displayFields,
+          ...(sort.length ? {sort} : {}),
           ...(filterFields.length ? {filter: filterFields} : {}),
         },
         tableColumnConfig: columns,
@@ -138,8 +144,8 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
         scopeState.value = '已显示上次保存的表格，正在后台更新'
         await new Promise(resolve => setTimeout(resolve, 300))
         try {
-          const live = await requestRows(tableKey, fields, filterFields, props, ctx)
-          const contentKey = contentSignature(tableKey, props, ctx, fields, filterFields)
+          const live = await requestRows(tableKey, fields, filterFields, sort, props, ctx)
+          const contentKey = contentSignature(tableKey, props, ctx, fields, filterFields, sort)
           const previous = contentCache.get(contentKey)
           const changed = stable(live.data) !== stable(previous?.data || [])
           remember(contentCache, contentKey, live)
@@ -162,7 +168,7 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
 
       async function request(ctx) {
         lastContext = ctx
-        const signature = querySignature(tableKey, props, ctx, fields, filterFields)
+        const signature = querySignature(tableKey, props, ctx, fields, filterFields, sort)
         const saved = resultCache.get(signature)
         if (saved) {
           scopeState.value = saved.meta?.cacheStatus === 'hit' ? '已加载上次保存的表格' : '表格数据已加载'
@@ -170,17 +176,17 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
         }
         try {
           scopeState.value = '正在读取已保存的表格'
-          const cached = await requestRows(tableKey, fields, filterFields, props, ctx, {cacheOnly: true})
+          const cached = await requestRows(tableKey, fields, filterFields, sort, props, ctx, {cacheOnly: true})
           if (cached.meta?.cacheStatus === 'hit') {
-            remember(contentCache, contentSignature(tableKey, props, ctx, fields, filterFields), cached)
+            remember(contentCache, contentSignature(tableKey, props, ctx, fields, filterFields, sort), cached)
             remember(resultCache, signature, cached)
             scopeState.value = '已加载上次保存的表格'
             refreshInBackground(ctx, signature).catch(() => {})
             return cached
           }
           scopeState.value = '正在加载表格数据'
-          const live = await requestRows(tableKey, fields, filterFields, props, ctx)
-          remember(contentCache, contentSignature(tableKey, props, ctx, fields, filterFields), live)
+          const live = await requestRows(tableKey, fields, filterFields, sort, props, ctx)
+          remember(contentCache, contentSignature(tableKey, props, ctx, fields, filterFields, sort), live)
           remember(resultCache, signature, live)
           lastRefreshed.set(signature, Date.now())
           scopeState.value = live.meta?.cacheStatus === 'refreshed' ? '表格数据已加载' : ''
@@ -199,7 +205,7 @@ export function createTableInsight({id, name, title, tableKey, fields, columns, 
       // pagination, scroll or expanded rows.
       Vue.watch(() => [props.analysis?.id || '', props.analysis?.updatedAt || 0], () => {
         if (!lastContext || !props.analysis) return
-        const signature = querySignature(tableKey, props, lastContext, fields, filterFields)
+        const signature = querySignature(tableKey, props, lastContext, fields, filterFields, sort)
         refreshInBackground(lastContext, signature).catch(() => {})
       }, {flush: 'post'})
 

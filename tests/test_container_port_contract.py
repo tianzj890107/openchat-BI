@@ -1,7 +1,7 @@
 """容器端口契约测试（TDD：先 Red 后 Green）。
 
 Spec：docs/specs/container-port-8080.md
-容器内 HTTP 服务统一监听 0.0.0.0:8080；宿主机推荐映射 8765:8080；
+容器内 HTTP 服务统一监听 0.0.0.0:8080；对外维护只使用宿主机 8765；
 非容器本地直接启动默认端口保持 8765；健康检查 port 字段反映实际监听端口。
 """
 
@@ -92,8 +92,9 @@ class DocsContainerPortContractTests(unittest.TestCase):
     def test_docs_state_8080_is_container_internal_port(self) -> None:
         # 比对时忽略 Markdown 反引号（``8080`` 即 8080）。
         combined = (README + "\n" + DEPLOYMENT).replace("`", "")
-        self.assertIn("8080 是统一容器内部端口", combined)
-        self.assertIn("8765/47313/47314 是推荐宿主机映射端口或非容器直接运行端口", combined)
+        self.assertIn("容器内 8080", combined)
+        self.assertIn("对外维护的唯一应用端口是 8765", combined)
+        self.assertIn("不再作为本仓库部署或验收入口", combined)
         self.assertIn("不要把宿主机端口写成容器内部监听端口", combined)
 
 

@@ -1,7 +1,7 @@
 # Cockpit 数据接入、分析路线与统一上线
 
 2026-10-29 修订。看板通过主服务代理同一套 AP 接口，AI 消费页面同次查询的服务端结果。
-原有对话与 MCP 的本体库、数据库连接不变。2026-10-26已按用户当次授权部署至8765，8876的API代理已切换；不构成未来部署、重启或停服授权。
+原有对话与 MCP 的本体库、数据库连接不变。2026-10-26已按用户当次授权部署至8765；`8876` 只是随后被替换为兼容代理的历史入口，现已停止维护。当前 Workbench、Cockpit 和 MCP 统一只走 `8765`；本记录不构成未来部署、重启或停服授权。
 
 ## 数据路径与隔离
 
@@ -16,13 +16,14 @@ ProUI 查询配置（包含实际筛选）
 ```
 
 AP 地址及认证只从 `COCKPIT_AP_*` 配置读取，不使用 `ONTOLOGY_*`、Doris 参数、默认 source 或用户会话的源绑定。
-页面不能指定代理 URL、请求头或证据正文。服务端只允许以下三个接口：
+页面不能指定代理 URL、请求头或证据正文。`COCKPIT_AP_BASE_URL` 包含网关前缀及末尾的
+`/x360`，服务端只在其后追加以下固定路径：
 
 | kind | 方法 | `COCKPIT_AP_BASE_URL` 下的固定路径 |
 | --- | --- | --- |
-| analysis | POST | `/x360/v1/ontology/data/query` |
-| batch | POST | `/x360/v1/ontology/data/multidimensional/batch` |
-| helmet | GET | `/x360/v1/graphs/helmet-view` |
+| analysis | POST | `/v1/ontology/data/query` |
+| batch | POST | `/v1/ontology/data/multidimensional/batch` |
+| helmet | GET | `/v1/graphs/helmet-view` |
 
 本体库 8 的页面只注入 `postAnalysisDataQuery`，不注入批量适配器。ProUI 在批量适配器缺失时
 按单个查询并发兜底；当前批量接口仍在请求本体且不可用，不能用空数据或部分结果兜底。
@@ -113,8 +114,8 @@ main 有证据时可通过 `baselineAnalysisId` 让独立路线读取同身份�
 这是材料归纳对照，不是两套完整取数流程的公平竞速。分析历史和冻结材料不会被新查询覆盖或清空。
 
 选型后设置 `COCKPIT_COMPARISON_ENABLED=false`，全站只允许 `COCKPIT_ANALYSIS_ENGINE` 指定的一条路线。
-若选择 main，静态站 `/api/cockpit/*` 应代理到主服务；旧 8877 不继续承载 AP 或 AI 槽位分析。
-2026-10-26已实施代理切换及8765更新，旧8877进程停止；历史8877数据保留原地，没有复制、迁移、覆盖或删除。
+若选择 main，Cockpit `/api/cockpit/*` 由主服务在 `8765` 同一进程内提供，不再维护独立静态站代理；旧 8877 不继续承载 AP 或 AI 槽位分析。
+2026-10-26已实施代理切换及8765更新，旧8877进程停止；历史8877数据保留原地，没有复制、迁移、覆盖或删除。2026-11-06 起 `8876` 也不再维护。
 
 ## 验证与已知边界
 
@@ -128,7 +129,7 @@ main 有证据时可通过 `baselineAnalysisId` 让独立路线读取同身份�
 
 ## 服务器验收（2026-10-26）
 
-临时18765预检后切换8765及8876代理；线上返回 `mode=ap, available=true, default=main`。
+历史预检后切换到8765；当时的8876代理已停止维护。线上返回 `mode=ap, available=true, default=main`。
 四组缺失指标、批量和头盔图均实时成功；三页浏览器AP请求7／15／14次全部200，未触发快照缺失。
 真实主服务任务 `10c657bf6d414c17bba590c972c95548` 20.619秒、3轮、2次Cockpit-DashboardQuery、1项事实，
 按预期受限交付，没有改用默认本体／数据库。原 `/api/sources` 配置完全一致，328个受保护数据文件哈希未变。

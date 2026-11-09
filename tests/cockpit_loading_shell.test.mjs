@@ -83,6 +83,13 @@ test('default SDK filters and repeated snapshots cannot remount the board in a l
   assert.match(source, /当前口径暂无可用的已取数证据，等待下一次数据更新/);
 });
 
+test('only a committed page scope change starts analysis after its receipts are ready', () => {
+  assert.match(source, /onInvalidate:\(\)=>\{\}/);
+  assert.match(source, /scopeNeedsAnalysis=!frozenAnnualMode/);
+  assert.match(source, /if\(scopeNeedsAnalysis\)\{[\s\S]{0,240}ensureAnalysis\(stage,true,true\)/);
+  assert.doesNotMatch(source, /onInvalidate:[\s\S]{0,220}ensureAnalysis\(stage\)/);
+});
+
 test('combined analysis reuses every upstream stage query when AP is partial', () => {
   assert.match(source, /function analysisDataStages\(stage\) \{/);
   assert.match(source, /stage === 'combined' \? \['opportunity', 'order', 'shipment'\] : \[stage\]/);

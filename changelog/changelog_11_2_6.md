@@ -2,13 +2,29 @@
 
 按自然周维护，不创建日报。
 
+### 2026-11-06 Cockpit 分析库存与刷新节拍
+
+- 在现有 `dataset/cockpit/history.sqlite3` 增加 `analysis_inventory` 持久化库存，保存每个刷新范围的
+  当前结果、证据指纹、分析时间、分析依据数据时间、最近检查时间、最新待处理版本、失败重试状态和
+  下次允许分析时间；不新增服务，也不删除旧分析或发布记录。
+- 数据检查与模型分析拆成两个节拍：数据仍按 `COCKPIT_REFRESH_INTERVAL_SECONDS` 检查，模型分析
+  默认至少间隔 `COCKPIT_ANALYSIS_MIN_INTERVAL_SECONDS=1800` 秒，连续变化在
+  `COCKPIT_ANALYSIS_COALESCE_SECONDS=300` 秒窗口内只保留最新待处理指纹；达到间隔后先发布本轮
+  固定证据，再处理最新版本。失败重试仍由原刷新退避控制，不被分析间隔额外阻塞。
+- `/api/cockpit/publications/status` 增加 `analysisPolicy` 与 `analysisInventory`，可查看当前结果的
+  分析时间、最新数据时间、待处理状态和下次允许分析时间。
+- 主要文件：`bi_agent/cockpit/{store,refresh,router}.py`、`.env.example`、相关设计说明。
+- 验证：分析库存与刷新调度相关测试通过；未部署服务器。
+
 ### 2026-11-06 Cockpit 上游组件、默认期间与共同分析预热
 
 - 同步 `iba-demo feature/sml_1106@0dc0cc0` 的 BI UMD 与品牌色板：保留宿主的
-  helmet `fitView` 空实例保护，加载顺序固定为 BI UMD → `bi-color-vars.css` → `cockpit.js`；
-  未导入该上游分支的临时排序/URL修改和 U+FFFD 乱码标签。`components.json` 保持
-  `feature/demo_1021@be99db5` 的宿主适配版本，`source.json` 与 `resources.json` 的提交号、
-  哈希、字节数同步，`runtime.json` 重新生成。
+  helmet `fitView` 空实例保护，加载顺序固定为 BI UMD → `bi-color-vars.css` → `cockpit.js`。
+  看板模板同步 `feature/demo_1021@c0f0270`：导入 15 个列表的 `dataConfig.sort` 默认排序
+  （10 个指标降序、5 个显式空排序）以及受影响订单、超期订单、明星产品订单三个 AI 列表的
+  默认降序；`/ai-tables` 同步校验并透传 `sorts`，预热量与浏览器请求使用同一排序口径。
+  上游仍带 U+FFFD 的标签保留宿主已修正文本；`components.json` 保持宿主适配版本，
+  `source.json`、`vendor/resources.json` 的提交号、哈希同步，`runtime.json` 重新生成。
 - 取消交付筛选中的固定 `2025-10` 默认值：默认筛选为空，live 模式按客户业务时区解析当前年度/月度，
   `backfill` 模式才使用显式 `COCKPIT_ACTIVE_PERIOD`；`/bootstrap` 暴露期间配置，页面空筛选、
   年度/月度切换和表格分析字段统一走同一期间解析。演示快照仍保留原型月份，避免旧 fixture 失效。
@@ -16,15 +32,24 @@
   `causes.length` 当作风险数，销售额与出货量分别统计，数据缺失时保留上次有效数量。
 - 期间目录现在同时预热共同分析卡：从同期间已发布的商机、订单、发货卡片复用已保存 AP 凭据，
   不额外查询 AP/PG；不足两个环节时进入等待，满足后再生成。期间覆盖接口按六个阶段统计。
+- 修复交互式分析未写入期间索引的问题：分析完成并发布后同时绑定期间索引，共同分析与期间覆盖
+  不再只能看到预热任务的结果；共同分析入口只读取同期间、默认筛选的环节卡，拒绝混用其他期间。
+  表格排序、翻页、每页条数和表内局部筛选从分析指纹中剥离，只保留为表格展示/取数请求；普通取数
+  变化不再自动触发 AI 重算，只有页面级业务筛选通过 `changeScope` 建立新范围后才重新分析，避免
+  点击排序、翻页或筛选表格时反复重算整页卡片。
 - AP 部分成功时继续分析已取得的证据：未返回值进入 `unavailableQueries` 并在卡片限制中披露，
   不再因为部分查询失败整卡等待。交付工具未完全通过时，服务端仍可用已有事实和模型正文生成
   `limited` 卡片；前端只在后台确无活动任务时提示“当前口径暂无可用的已取数证据”，不再把
   正在进行的分析显示成“尚无可用分析结果”。共同分析主动刷新时按商机、订单、发货三个上游
   环节汇总可用查询，不再单独选择没有查询计划的 `combined` 而误报无数据。
+- AP 网关地址与接口路径分层（2026-11-06）：`/x360` 属于 `COCKPIT_AP_BASE_URL` 的网关地址末段，
+  服务端固定路径只保留 `/v1/ontology/data/query`、`/v1/ontology/data/multidimensional/batch`
+  和 `/v1/graphs/helmet-view`，避免把 `x360` 写死在 API 路径最前面。示例配置、交付元数据、
+  说明与回归测试同步，最终请求地址保持 `.../x360/v1/...`。
 - 主要文件：`bi_agent/cockpit/{targets,combined,refresh,main_service,router,periods,ai_tables}.py`、
   `bi_agent/web/static/cockpit/{index.html,cockpit.js,cockpit.css,vendor/*,insight-components/sales-shipment-issues/*}`、
   `bi_agent/web/static/cockpit/metadata/{iba-demo-1021/*,runtime.json}`。
-- 验证：全量 Cockpit Python 套件 350 项、前端 Node 套件 94 项通过；Python 编译、JS 语法和
+- 验证：全量 Cockpit Python 套件 367 项、前端 Node 套件 97 项通过；Python 编译、JS 语法和
   `git diff --check` 通过。未部署服务器。
 
 ### 2026-11-05 分析按期间缓存、合并队列与按环节刷新（第一阶段）
@@ -267,3 +292,36 @@
 - 本地本体加载新增物理表／属性映射和V3.1关系编码支持，读取40条关系；缺少真实来源的属性不提供旧字段名。
 - 三个数据库工具提供PG只读事务、search_path、超时、行数限制和安全校验，取证元数据标明PostgreSQL。已只读匹配2319个真实字段，实测只读事务及schema正确。
 - 主要文件：`bi_agent/workbench_pg.py`、`bi_agent/tools/sql_tools.py`、`bi_agent/ontology/store.py`、`bi_agent/web/{app,__main__}.py`；新增及原回归233项、12个子测试通过，catalog／MCP回归15项通过，隔离浏览器数据源下拉验证通过。未部署、未重启现有服务、未改客户ZIP。
+### 2026-11-06 表格本地筛选不再触发上方 AI 重算
+
+- 用户可见变化：表格筛选、翻页、排序等组件内查询只刷新该表格，不再把单表查询变化当成页面
+  口径变化，因此不会对上方风险、原因、建议卡片发起模型重算。全局日期、年度、月度筛选仍按
+  原逻辑失效并重新分析。
+- 实现：查询级失效携带 `scope:false`，只有真正切换口径的 `clearScope()` 才携带 `scope:true`；
+  Cockpit 宿主只在页面口径实际提交、凭据准备完成后分析；客户固定年度模式始终只响应显式按钮，继续复用已发布卡片。
+- 主要文件：`bi_agent/web/static/cockpit/{data-client,cockpit}.js`、
+  `tests/cockpit_data_client.test.mjs`、`tests/cockpit_table_filter_browser.mjs`。
+- 验证：Cockpit Data Client 34 项通过；表格筛选浏览器用例增加“无 `/analyses/refresh`”断言；
+  `node --check`、`git diff --check` 通过。本轮不部署。
+
+### 2026-11-06 客户镜像预置固定年度 AI 发布版
+
+- 客户入口首次将镜像内真实年度分析导入独立 SQLite 发布存储，15 个 AI 插槽可直接读取；
+  打开、筛选、切页不启动分析，已有发布不因配置、日期或进程重启失效；初始只显示年度与小号蓝色“分析”按钮，点击后同一元信息行显示上次分析与“重新分析”。前两页无顶部宿主分析行。
+- 显式“重新分析”在后台复用主服务，重复点击合并；全部环节通过交付校验才原子替换，
+  失败继续展示旧版且不弹出失败提示；灰色元信息保持低调，风险短列表按销售额／出货量各最多3条展示，完整结果仍保留。
+- 交付只替换镜像 tar，不改客户 `.env`、Compose 或运行数据；种子数据不提交仓库。
+- 主要文件：`bi_agent/cockpit/frozen.py`、`bi_agent/web/customer.py`、Cockpit 页面、
+  `tests/test_cockpit_frozen_annual.py`、`DEPLOYMENT.md`。
+- 验证：18 项 Python 测试、6 项前端测试通过；客户镜像断网启动、15 插槽读取及零自动分析验证通过。
+
+
+
+
+### 2026-11-03 客户Process360本地本体更新
+
+- 增加客户本体生成器：根据数据库部署包DDL更新本地Excel的实体／属性物理映射，保留原文件、业务公式、阈值和审批状态；NULL占位、缺表及缺字段明确列为blocked。
+- 交付Excel、配套catalog、核对报告及SHA256清单，客户原始资料和生成资产保留在本地交付目录，不提交Git；未改变默认catalog或运行环境。
+- 实际静态匹配28/30实体、2319/2354属性；35个属性、54个指标涉及缺失依赖，另有78个指标缺少完整属性依赖声明，均未宣称实库验收完成。
+- 保留原工作表公式及未修改工作表的公式缓存，拒绝覆盖已有输出；补充主键、NULL、外键、未知表达式、原文件保留和清单校验测试。
+- 主要文件：`scripts/build_customer_process360_ontology.py`、`tests/test_customer_process360_ontology.py`、`docs/specs/process360-customer-ontology-delivery-2026-11-03.md`；生成器及catalog测试13项通过，真实Excel原单元格保护检查、catalog校验和文件SHA256检查通过，`git diff --check`通过；未连接客户数据库、未执行SQL、未部署。

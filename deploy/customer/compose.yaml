@@ -1,0 +1,27 @@
+services:
+  cockpit:
+    image: ${ANALYTICS_IMAGE:?请填写镜像名称}
+    env_file: .env
+    ports:
+      - "${ANALYTICS_BIND_ADDRESS:-0.0.0.0}:${ANALYTICS_PORT:-8765}:${APP_PORT:-8080}"
+      - "${ANALYTICS_BIND_ADDRESS:-0.0.0.0}:${COCKPIT_COMPAT_PORT:-8876}:${APP_PORT:-8080}"
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/dataset/runtime
+      - ./data/cockpit:/app/dataset/cockpit
+      - ./data/customer:/app/dataset/customer
+      - ./data/process360-state:/app/dataset/process360-state
+      - ./data/canvas:/app/dataset/canvas
+      - ./data/charts:/app/dataset/charts
+      - ./data/logs:/app/dataset/logs
+      - ./data/conversations:/app/dataset/conversations
+      - ./data/analysis_tasks:/app/dataset/analysis_tasks
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 120s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ['APP_PORT']+'/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 30s

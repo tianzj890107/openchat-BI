@@ -1,7 +1,7 @@
 # eimosp-ontology-agentic-analytics 智能分析容器镜像
 # 标准运行环境: Python 3.13.x（华为云 SWR 镜像 swr.cn-east-3.myhuaweicloud.com/release/python:3.13-slim）
-# 统一容器内部端口: 8080（Dockerfile 显式注入，容器内监听 0.0.0.0:8080）
-#   推荐宿主机映射: 8765:8080（8765 同时是非容器本地默认端口）
+# 对外维护端口: 8765（唯一入口；Workbench、Cockpit、MCP 共用）
+# 容器内部端口: 8080（Dockerfile 显式注入，仅镜像内部使用）
 # 统一健康检查: GET /healthz（别名 /health）
 # 本体/Doris 网关地址与本体库 ID 按环境注入（ONTOLOGY_BASE_URL / DORIS_API_URL /
 # ONTOLOGY_REPOSITORY_ID），镜像不内置任何环境固定值；缺少必填变量时生产模式启动即

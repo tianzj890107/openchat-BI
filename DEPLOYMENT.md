@@ -20,8 +20,11 @@
 | Nacos 配置中心 | 预留待对接，当前未接入；中间件类配置仍由 `.env`/环境变量注入（见 §10） |
 | GitLab CI/CD | 项目 runner `sys740-docker-runner`（`172.16.10.34`，docker executor）；`.gitlab-ci.yml` 只做验证（单测 + 黄金集），没有 deploy stage（见 §11） |
 
-> 端口约定：`8080` 是统一容器内部端口；`8765`/`47313`/`47314` 是推荐宿主机映射端口
-> 或非容器直接运行端口（本项目对应 `8765`）。不要把宿主机端口写成容器内部监听端口。
+> 端口约定：本仓库对外维护的唯一应用端口是 `8765`，`/workbench`、`/cockpit/*`、
+> `/api/mcp/*` 和 `/healthz` 均由同一进程提供。容器内 `8080` 仅是镜像实现细节，不是
+> 对外维护入口。`8876`、`18765`、`47313`、`47314` 不再作为本仓库部署或验收端口；
+> 下文涉及这些端口的内容均为历史发布记录，不构成当前操作说明。不要把宿主机端口写成
+> 容器内部监听端口。
 
 > 分支与构建口径：DevOps 从 `master` 创建迭代分支或构建正式镜像；仓库里的
 > `.gitlab-ci.yml` 只做验证（单测 + 黄金集），是 CI 不是 CD，push 不等于部署，
@@ -239,13 +242,15 @@ CHATBI_MAX_IN_MEMORY_SESSIONS=500    # 内存会话上限（超限惰性回收�
 主服务 `bi_agent.web` 已内置 Streamable HTTP MCP，不需要另起进程：
 
 ```text
-POST /api/mcp                 # initialize / tools/list / tools/call
+POST /api/mcp/process360      # Process360 连接器（initialize / tools/list / tools/call）
+POST /api/mcp/general         # 通用分析连接器
+POST /api/mcp                 # 兼容旧连接器的全量入口
 GET  /api/mcp/health          # 健康检查
 GET  /api/mcp/artifacts/<f>   # CanvasGenerate 产物的只读下载
 ```
 
-Fuxi 连接器配置为 `transport: http`、`url: http://<host>:8080/api/mcp`、
-`headers: {}`。同名宿主机映射端口按实际部署填写（本地默认 `8765`）。客户端不需要
+Fuxi 连接器配置为 `transport: http`、`url: http://<host>:8765/api/mcp/process360`、
+`headers: {}`。Workbench、Cockpit 和 MCP 共用 `8765`，不存在独立 `/mcp` 服务或额外端口。客户端不需要
 `.env`、App ID 或 Token；本体与 Doris 配置仍由主服务持有。
 
 新增可选环境变量：
@@ -467,7 +472,10 @@ git diff --name-only
   Fuxi 验收完成 `AnalysisRoute → MetricFactQuery → CanvasGenerate → OutputGateCheck`，
   Artifact URL 返回 HTTP 200。
 
-### Cockpit 三页看板（8876，2026-10-26已切实时AP／主服务）
+### 历史记录：Cockpit 三页看板（8876 已停止维护；当前统一使用 8765）
+
+> 本节保留 2026-10-26 的历史发布过程，其中的 `8876`、`18765`、`8877` 地址和目录均不再维护。
+> 当前三页入口为 `http://<host>:8765/cockpit/overview|operations|analysis?id=1|2`。
 
 - 初始范围（2026-10-22历史）：发布 `/cockpit/overview`、`/cockpit/operations`、`/cockpit/analysis` 三个看板 HTML 及其
   CSS／JS、静态 ProUI 运行包和顶部三个视图 Tab，使用 `ProBiDashboard` 渲染原生 ProUI 组件；
@@ -1331,9 +1339,13 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 - 调度线程随 `build_cockpit_router` 启动，仅在 `COCKPIT_DATA_MODE=ap` 且已连接主服务上下文时启用；
   配置异常只打印日志并关闭调度，不影响读取上次发布版本。
 - 环境变量：`COCKPIT_REFRESH_ENABLED`（默认开启，测试环境关闭）、
-  `COCKPIT_REFRESH_INTERVAL_SECONDS=900`、`COCKPIT_REFRESH_TIMEOUT_SECONDS=1200`、
+  `COCKPIT_REFRESH_INTERVAL_SECONDS=900`、`COCKPIT_ANALYSIS_MIN_INTERVAL_SECONDS=1800`、
+  `COCKPIT_ANALYSIS_COALESCE_SECONDS=300`、`COCKPIT_REFRESH_TIMEOUT_SECONDS=1200`、
   `COCKPIT_REFRESH_SCAN_SECONDS=20`、`COCKPIT_REFRESH_SCOPE_LIMIT=1`。时间可按数据源更新频率
   调整，检查数据不等于重新调用模型；范围上限默认 1，避免后台预热同时占满页面 AP 槽位。
+- 分析库存持久化在 `analysis_inventory`：保存当前结果、分析依据时间、最新数据时间、待处理版本
+  和下次允许分析时间。数据检查可继续按 15 分钟执行，模型分析默认至少间隔 30 分钟，连续变化只
+  保留最新待处理指纹；刷新状态接口返回 `analysisPolicy` 和 `analysisInventory`。
 - 更新失败、AP 超时、模型失败或进程重启都不覆盖上一版本；`retry_wait` 按 60 秒递增退避，上限
   15 分钟，租约过期后由调度器重新领取。
 - 前端先渲染已发布快照，再按 5～15 秒轮询版本（页面隐藏时降频），发现新版本才拉取整页替换；
@@ -1602,3 +1614,103 @@ X360_FAILURE_COOLDOWN_SECONDS=30       # 失败冷却；冷却期内直接回退
 ### 2026-11-03 Workbench本地Excel + ywln_crm可选源
 
 配置独立的`WORKBENCH_LOCAL_ONTOLOGY_PATH`及`WORKBENCH_PG_HOST/PORT/DATABASE/SCHEMA/USER/PASSWORD`后，Workbench数据源页出现“PostgreSQL · ywln_crm”；此选项自动配对本地Excel，不使用远程本体平台或Doris。也可直接使用`python -m bi_agent.web --db postgres`启动。SQL执行器只读并限制超时／返回行数，不从客户Process360配置继承连接。说明见[本地Excel与PG](docs/specs/workbench-local-excel-pg.md)。本次只准备本地配置、测试、提交，不部署或覆盖客户包。
+
+### 客户镜像固定年度分析（2026-11-06）
+
+- 客户专用入口 `bi_agent.web.customer` 启动时关闭 Cockpit 自动分析调度，首次从镜像内的
+  `bi_agent/cockpit/frozen-annual.json` 导入六组年度分析，投影为 15 个 AI 插槽。
+  预置数据属于交付产物，不提交 Git；需保留真实来源、观察时间与受限说明。
+- 发布结果保存在已有 dataset 挂载中的 `cockpit/frozen-annual.sqlite3`。已有发布版不会被镜像
+  内旧种子覆盖；历史分析与会话均保留。打开、切页、筛选及轮询只读取发布版。
+- “重新分析”显式发送 `POST /api/cockpit/publications/refresh`、`{"manual":true}`。
+  后台仍复用主服务执行链，只有六组分析全部可渲染且年度一致才原子替换；失败保留旧版。
+  页面标明固定年度分析独立于图表筛选，后台更新期间不清空卡片。
+- 此模式仅用于客户专用入口，公司普通主服务调度保持原行为。图表 AP 实时查询并不被冻结。
+- 本次只替换 `images/cockpit-linux-amd64.tar`，镜像名称不变；客户 `.env`、Compose、
+  配置挂载与已有运行数据不改。重新 `docker load` 后按原 Compose 服务重建容器即可。
+
+- 2026-11-06 补充：客户页面初始隐藏 AI 插槽，点击“分析”立即显示内置发布结果并后台重算；成功后替换，失败保留。仅替换 tar，外部配置不变。
+
+
+### 2026-11-06 · 34 点击后显示内置分析预览
+
+- 按当前授权将 `6265ecf` 部署到 34 的 8765，release 为
+  `process360-cockpit-6265ecf-20261106-click`，PID `3296804`；8876 保持原反向代理。
+- 启动器仅为 Cockpit 添加固定年度发布边界，其他主服务/Workbench 路由保留；启动环境关闭
+  自动分析调度，原 `.env` 不改，dataset、依赖环境与配置延续原共享目录。
+- 三页初始隐藏 AI 插槽，点击“分析”立即显示预置发布结果并后台重算；只有完整候选通过
+  才原子替换。预置保留真实年度证据时间与限制，未伪造客户实时结果。
+- 预检 18765 已停止；8765/8876 三路由、两角色 15 插槽和点击显示静态资源检查通过。
+  本轮未试发任务、未代用户点击真实重新分析。客户镜像 tar 不受本次服务器切换影响。
+- 回退：停止新 PID 后运行旧 release `process360-cockpit-5f2a615-20261106-1505/start-main.py`；
+  不删除任何 release、共享 dataset、历史会话或分析记录。
+
+- 2026-11-06 客户 tar 小修：顶部分析工具条使用宿主设计 token（蓝色按钮、中性文字、橙色状态提示），不覆盖看板组件；销售额与出货量各展示最多 3 条重点风险，原分析和完整风险总数保留，不调用模型重算。仅替换 tar，外部配置不变。
+
+
+### 2026-11-06 · 34 顶部规范与重点风险短列表
+
+- 当前授权部署 `4707412` 至 34:8765，release `process360-cockpit-4707412-20261106-shortlist`，PID `3339424`。
+- 顶部宿主工具条使用设计 token，销售额与出货量各展示最多三条重点风险，保留完整历史分析与风险总数。未调用模型分析。
+- 18765 预检已停止；8765 三页及两角色15插槽复验通过，实际返回销售额3条、出货量3条。配置和共享数据保留，客户 tar 未再改变。
+- 回退到上一 release `process360-cockpit-6265ecf-20261106-click/start-main.py`，不删除历史数据。
+
+- 2026-11-06 客户 tar 文案收敛：隐藏后台更新失败提示，移除橙色提示与顶部强调样式；穿透页年度口径、重新分析和更新状态并入共同分析的“上次分析”元信息行，使用小号灰字。初始分析入口保留。未调用分析，外部配置不改。
+
+
+### 2026-11-06 · 34 小号灰色分析元信息
+
+- 按当前授权部署 `3d74d19` 至 34:8765，release `process360-cockpit-3d74d19-20261106-quiet`，PID `3376947`。
+- 穿透页年度口径、重新分析和更新状态并入“上次分析”行，使用12px灰字；不展示失败提示或橙色提示。
+- 18765预检已停止；8765健康、三页入口、元信息组件资源、两角色15插槽及风险短列表检查通过，未调用分析或下发任务。
+- 保留原配置与共享数据；客户tar不变。回退使用 `process360-cockpit-4707412-20261106-shortlist/start-main.py`，不得删除历史记录。
+
+- 2026-11-06 客户 tar 按钮定位：穿透页初始在共同分析原位只显示年度与小号蓝色“分析”按钮，点击后同一元信息行显示上次分析及“重新分析”；删除重复年度说明，不新起一行，不触发额外分析。外部配置不变。
+
+- 2026-11-09 客户 tar：移除经营看板和运营360页顶部宿主分析工具行，保留穿透分析原位按钮；外部配置不变。
+### 2026-11-06 · MR !42 合并与 8765 Workbench/Cockpit 发布
+
+- 合并代码：MR `!42` 于 2026-11-06 合并到 `master`，合并提交
+  `5f2a615cfa81106b740575a75072e78dfab43397`，包含 Pro UI Workbench 页面、
+  本地 Excel + PostgreSQL 数据源、Cockpit 按期间缓存和节点刷新改造。
+- `8765` 主服务：release
+  `/home/data/zhangzhen_home/zhangzhen/eimosp-ontology-agentic-analytics-releases/process360-cockpit-5f2a615-20261106-1505`，
+  PID `2554054`。新 release 先在 `127.0.0.1:18765` 预检，预检显式设置
+  `COCKPIT_REFRESH_ENABLED=0`，预检进程 `2551117` 验证后停止；正式进程沿用
+  `COCKPIT_REFRESH_ENABLED=1`。旧 release `workbench-local-pg-179a0cf-20261103`
+  和旧 PID `2426367` 完整保留用于回退。
+- 运行资产：`.env`、`.venv` 和共享 `dataset` 继续软链旧 release 使用的目录；
+  `runtime-env.json` 保持 114 个变量、权限 600，仅更新 `RELEASE_COMMIT`、
+  `PYTHONPATH`、`PWD` 和 `WORKBENCH_LOCAL_ONTOLOGY_PATH`。
+  `git archive` 自带的源码数据目录保留为 `dataset.source`，未覆盖共享数据目录。
+  `start-main.py` 与 `ontology-assets/workbench-ywln-local.xlsx` 从旧 release
+  复制；未迁移、清空或覆盖历史会话、上传、图表、分析结果和数据库。
+- `8765` 是唯一应用与静态资源入口。`8876` 仅为历史 nginx 反向代理，没有独立站点、
+  代码或部署内容；后续不再将 `8876` 纳入维护、部署和验收范围。
+- 验证：`8765` 的 `/healthz`、根地址、`/cockpit/overview`、
+  `/cockpit/operations`、`/cockpit/analysis`、`/workbench`、
+  `/api/cockpit/data/config` 和 `/api/sources` 均返回 200；Cockpit 数据源仍为
+  “Cockpit独立AP连接”，Workbench 数据源仍包含本地 Excel 与
+  “PostgreSQL · ywln_crm”。MCP 与 Workbench、Cockpit 共用同一进程：
+  `/api/mcp/health` 返回 200，`/api/mcp/process360` 的 `initialize` 返回 200；
+  `/mcp` 不是独立路由，按设计返回 404。启动日志无 Traceback、CRITICAL 或 ERROR。
+- 自动化验证：合并提交前 Cockpit/Workbench Python 回归 361 项、前端 Node 94 项、
+  Python 编译、JS 语法和 `git diff --check` 通过。发布后仅执行健康与只读接口检查，
+  未手动触发 AP 查询、模型分析或任务令下发。
+- 回退：停止 PID `2554054`，在 `workbench-local-pg-179a0cf-20261103` 执行
+  `nohup python3 start-main.py >> main-rollback-20261106.log 2>&1 &`。
+  不得删除新 release、历史 release、共享 `dataset`、会话、上传、图表或分析记录。
+### 2026-11-03 客户Process360本地本体交付
+
+使用 `scripts/build_customer_process360_ontology.py` 从原Excel与数据库部署包生成独立客户Excel、`catalog.json`、结构核对报告与SHA256清单。具体输入、验收范围及限制见 [客户本体说明](docs/specs/process360-customer-ontology-delivery-2026-11-03.md)。
+
+Excel与catalog须成对交付；后续获得部署授权后，才将 `PROCESS360_CATALOG_PATH` 指向客户catalog，PG的数据库名、schema、端口与权限单独配置。不得把兼容视图NULL占位当作实际字段；本体更新不自动改写已有硬编码SQL，兼容视图与真实SQL仍需验收。此变更不执行部署、不替换默认catalog、不迁移或清理任何用户数据。
+
+
+### Completed-fix integration (2026-11-09; review pending)
+
+Customer fixed-annual mode stays manual-only; company automatic mode retains period indexing and analysis cadence. Table sorting, pagination and local filters do not start model analysis. Evidence keeps its original AP request and receipt.
+
+Customer builds require a separate `cockpit-seed` build context containing the verified `frozen-annual.json`: `docker buildx build --build-context cockpit-seed=/path/to/seed --build-context wheelhouse=/path/to/wheels -f deploy/customer/Dockerfile .`. The seed is a delivery artifact, never committed. Missing seed fails the build.
+
+This integration only prepares source and an MR. Existing tar, servers, configuration and historical data are unchanged. Formal version backfill remains separate.
