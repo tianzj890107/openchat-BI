@@ -59,7 +59,7 @@ export function useInsight(props, emit) {
   const evidenceLink = computed(() => {
     const slot=props.slotProps||{};
     if(!slot.frozenControls || !props.analysis?.id)return '';
-    return `${slot.apiBase}/ai-publications/stages/${encodeURIComponent(slot.stage)}/evidence?id=${slot.identityId}&analysisId=${encodeURIComponent(props.analysis.id)}`;
+    return `${slot.apiBase}/ai-publications/stages/${encodeURIComponent(slot.stage)}/evidence?id=${slot.identityId}&format=html&analysisId=${encodeURIComponent(props.analysis.id)}`;
   })
   const causes = computed(() => result.value?.causes || [])
   const recommendations = computed(() => result.value?.recommendations || [])

@@ -1261,6 +1261,49 @@ def _build_page(
 </html>"""
 
 
+def render_canvas_html(params: dict) -> str:
+    """Render one Canvas page in memory without writing a file.
+
+    Embedded hosts (Cockpit's "full evidence" view) need the same page style
+    and table/richtext rendering as ``CanvasGenerate`` but must not create a
+    timestamped artifact or call any tool.  Charts and tables are rendered
+    from the inline ``params`` exactly like the file-producing path, so this
+    adds no AP or model round-trip.
+
+    ``kind=actions`` is rejected here: the action cards carry a dispatch
+    runtime owned by the MCP host, which the read-only evidence page must not
+    embed.
+    """
+    err = _validate_canvas(params)
+    if err:
+        raise ValueError(err)
+    charts: list[tuple[str, dict]] = []
+    multis: list[dict] = []
+    body_blocks: list[str] = []
+    for index, block in enumerate(params["blocks"]):
+        kind = block["kind"]
+        if kind == "actions":
+            raise ValueError("actions blocks are not supported in embedded HTML")
+        heading = str(block.get("heading") or "").strip()
+        heading_html = f"<h3>{escape(heading)}</h3>" if heading else ""
+        if kind == "text":
+            inner = _render_markdown(str(block.get("markdown") or ""))
+        elif kind == "chart":
+            inner = _render_chart(block["params"], f"chart-{index}", charts)
+        elif kind == "chart_multi":
+            inner = _render_chart_multi(block["params"], f"chart-{index}", multis)
+        else:
+            inner = _render_table(block["params"])
+        body_blocks.append(f'<section class="card">{heading_html}{inner}</section>')
+    echarts_script = ""
+    if charts or multis:
+        try:
+            echarts_script = f'<script>{ECHARTS_ASSET.read_text(encoding="utf-8")}</script>'
+        except OSError:
+            echarts_script = f'<script src="{ECHARTS_CDN}"></script>'
+    return _build_page(params, body_blocks, charts, multis, echarts_script)
+
+
 def _make_canvas_generate(
     display_resolver: "Callable[[str], str | None] | None" = None,
 ) -> Executor:

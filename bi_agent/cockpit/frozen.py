@@ -9,7 +9,9 @@ from contextlib import contextmanager
 from copy import deepcopy
 import hashlib
 import asyncio
+import importlib.util
 import json
+import os
 from pathlib import Path
 import sqlite3
 import threading
@@ -18,7 +20,7 @@ import uuid
 from urllib.parse import parse_qs
 
 from fastapi import HTTPException
-from starlette.responses import JSONResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, Response
 
 from .diagnostics import diagnostic_scope, record_failure
 from .cards import CONTRACT, card_delivery_state, valid_card
@@ -365,6 +367,139 @@ def browser_evidence(evidence):
     return value
 
 
+STAGE_LABELS = {'opportunity': '商机获取', 'quotation': '报价', 'bid': '投标',
+                'order': '订单接收', 'shipment': '发货',
+                'combined': '销售额与出货量跨环节共同问题分析'}
+_RECORD_LABELS = {'id': 'ID', 'customer': '客户', 'department': '产品部/部门',
+                  'product': '产品', 'status': '状态', 'cause': '原因',
+                  'amount': '金额', 'quantity': '数量', 'value': '值',
+                  'unit': '单位', 'overdueDays': '逾期天数',
+                  'evidence': '证据', 'name': '名称'}
+_RECORD_ORDER = ('id', 'customer', 'department', 'product', 'status', 'cause',
+                 'amount', 'quantity', 'value', 'unit', 'overdueDays',
+                 'evidence', 'name')
+EVIDENCE_ROW_CHUNK = 400
+EVIDENCE_MAX_BLOCKS = 20
+_EVIDENCE_CACHE = {}
+_EVIDENCE_CACHE_LOCK = threading.Lock()
+_CANVAS_MODULE = None
+
+
+def _canvas_module():
+    """Load the MCP canvas renderer without writing an artifact or calling a tool."""
+    global _CANVAS_MODULE
+    if _CANVAS_MODULE is None:
+        base = os.environ.get('ONTOLOGY_MCP_PACKAGE') or str(Path(__file__).parents[2] / 'ontology-analytics-mcp')
+        path = Path(base) / 'canvas_tool.py'
+        spec = importlib.util.spec_from_file_location('cockpit_evidence_canvas', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _CANVAS_MODULE = module
+    return _CANVAS_MODULE
+
+
+def _record_columns(records):
+    complex_keys = {key for record in records for key, value in record.items()
+                    if isinstance(value, (dict, list))}
+    keys = [key for key in _RECORD_ORDER
+            if any(key in record for record in records) and key not in complex_keys]
+    keys += [key for record in records for key in record
+             if key not in keys and key not in complex_keys]
+    return list(dict.fromkeys(keys))[:14]
+
+
+def _fact_rows(facts):
+    rows = []
+    for fact in facts:
+        value = fact.get('value')
+        unit = str(fact.get('unit') or '').strip()
+        if value is None or value == '':
+            text = ''
+        else:
+            text = f'{value} {unit}'.strip()
+        rows.append([fact.get('label') or fact.get('id') or '', text,
+                     fact.get('definition') or ''])
+    return rows
+
+
+def _evidence_html(stage, item, release):
+    evidence = item.get('evidence') or {}
+    facts = [value for value in evidence.get('facts') or [] if isinstance(value, dict)]
+    records = [value for value in evidence.get('records') or [] if isinstance(value, dict)]
+    result = item.get('result') or {}
+    stamp = float(item.get('updatedAt') or release.get('createdAt') or 0)
+    when = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stamp)) if stamp else ''
+    seconds = (item.get('execution') or {}).get('durationSeconds')
+    duration = ''
+    if isinstance(seconds, (int, float)) and seconds > 0:
+        total = round(seconds)
+        duration = f'{total} 秒' if total < 60 else f'{total // 60} 分 {total % 60} 秒'
+    lines = [f"- 环节：{STAGE_LABELS.get(stage, stage)}",
+             f"- 期间：{release.get('period', '')}",
+             f"- 分析时间：{when or '未知'}" + (f"（耗时 {duration}）" if duration else ''),
+             f"- 证据规模：{len(records)} 条记录 · {len(facts)} 项事实",
+             f"- 分析 ID：{item.get('id', '')}"]
+    summary = str(result.get('summary') or '').strip()
+    if summary:
+        lines.extend(['', summary])
+    limitations = [str(value).strip() for value in evidence.get('limitations') or []
+                   if str(value).strip()]
+    if limitations:
+        lines.extend(['', '**口径与限制**'])
+        lines.extend(f"- {value}" for value in limitations[:20])
+    blocks = [{'kind': 'text', 'heading': '本次分析', 'markdown': '\n'.join(lines)}]
+    if facts:
+        blocks.append({'kind': 'table', 'heading': f'事实（{len(facts)} 项）',
+                       'params': {'columns': [{'key': 'label', 'label': '事实'},
+                                              {'key': 'value', 'label': '数值'},
+                                              {'key': 'definition', 'label': '口径'}],
+                                  'rows': _fact_rows(facts)}})
+    keys = _record_columns(records)
+    reserved = 1 + (1 if facts else 0)
+    max_chunks = max(0, EVIDENCE_MAX_BLOCKS - reserved)
+    if records and keys and len(records) > max_chunks * EVIDENCE_ROW_CHUNK:
+        max_chunks = max(0, max_chunks - 1)
+        truncated = True
+    else:
+        truncated = False
+    shown = min(len(records), max_chunks * EVIDENCE_ROW_CHUNK)
+    columns = [{'key': key, 'label': _RECORD_LABELS.get(key, key)} for key in keys]
+    for index in range(0, shown, EVIDENCE_ROW_CHUNK):
+        chunk = records[index:index + EVIDENCE_ROW_CHUNK]
+        blocks.append({'kind': 'table',
+                       'heading': f'记录 {index + 1}–{index + len(chunk)} / {len(records)}',
+                       'params': {'columns': columns,
+                                  'rows': [[record.get(key) for key in keys] for record in chunk]}})
+    if not records:
+        blocks.append({'kind': 'text',
+                       'markdown': '- 本次分析没有可逐条展示的记录，以上事实即为全部证据。'})
+    if truncated:
+        blocks.append({'kind': 'text',
+                       'markdown': f'- 记录较多，本页展示前 {shown} 条；'
+                                   '完整原始数据可用 `?format=json` 查看。'})
+    return _canvas_module().render_canvas_html({
+        'title': f"完整证据 · {STAGE_LABELS.get(stage, stage)}",
+        'subtitle': f"{release.get('period', '')} 年度分析 · {len(records)} 条记录",
+        'source_note': f"分析 {item.get('id', '')} · 期间 {release.get('period', '')}",
+        'blocks': blocks,
+    })
+
+
+def evidence_page_html(stage, item, release):
+    """Render one evidence report per analysis; repeat opens reuse the page."""
+    key = (stage, str(item.get('id') or ''))
+    with _EVIDENCE_CACHE_LOCK:
+        cached = _EVIDENCE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    page = _evidence_html(stage, item, release)
+    with _EVIDENCE_CACHE_LOCK:
+        if len(_EVIDENCE_CACHE) >= 32:
+            _EVIDENCE_CACHE.clear()
+        _EVIDENCE_CACHE[key] = page
+    return page
+
+
 class FrozenCockpitSurface:
     """Customer-only boundary: only an explicit user action starts AI work."""
     def __init__(self, app, service, prefix=''):
@@ -395,6 +530,15 @@ class FrozenCockpitSurface:
                     item=release['items'][stage]
                     expected=query.get('analysisId',[''])[0]
                     if expected and expected!=item['id']:raise HTTPException(409,'该环节分析已更新，请重新打开证据')
+                    if query.get('format',['json'])[0]=='html':
+                        try:
+                            page=await asyncio.to_thread(lambda:evidence_page_html(stage,item,release))
+                        except Exception as exc:  # noqa: BLE001
+                            value=dict(analysisId=item['id'],stage=stage,period=release['period'],
+                                       dataAsOf=item.get('updatedAt'),evidence=item.get('evidence') or {},
+                                       htmlError=str(exc))
+                            return await JSONResponse(value,headers={'Cache-Control':'private, no-store'})(scope,receive,send)
+                        return await HTMLResponse(page,headers={'Cache-Control':'private, no-store'})(scope,receive,send)
                     response=await asyncio.to_thread(lambda:JSONResponse(dict(analysisId=item['id'],stage=stage,period=release['period'],dataAsOf=item.get('updatedAt'),evidence=item.get('evidence') or {}),headers={'Cache-Control':'private, no-store'}))
                     return await response(scope,receive,send)
                 manifest,groups=await asyncio.to_thread(self.service.compact_publications,identity)

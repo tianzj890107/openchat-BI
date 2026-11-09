@@ -261,6 +261,28 @@ def test_manifest_is_lightweight_and_stages_have_conditional_versions(tmp_path):
     assert updated['stageVersions']['order']!=value['stageVersions']['order']
 
 
+def test_full_evidence_pages_reuse_the_canvas_renderer_and_escape_records(tmp_path):
+    store,_,body=fixture(tmp_path)
+    item=body['items']['shipment']
+    item['evidence']['facts']=[{'id':'proof','label':'amount','value':42,'unit':'GWh','definition':'订单口径'}]
+    item['evidence']['records']=[{'id':'R1','customer':'<script>alert(1)</script>','amount':12.5,'status':'超期'}]
+    item['execution']={'durationSeconds':61.4}
+    store.publish(body)
+    service=FrozenAnnualService(store)
+    client=TestClient(FrozenCockpitSurface(FastAPI(),service))
+    path=('/api/cockpit/ai-publications/stages/shipment/evidence'
+          '?id=1&format=html&analysisId=shipment')
+    response=client.get(path)
+    assert response.status_code==200
+    assert response.headers['content-type'].startswith('text/html')
+    page=response.text
+    assert '完整证据 · 发货' in page and '<table>' in page
+    assert '&lt;script&gt;alert(1)&lt;/script&gt;' in page
+    assert '<script>alert(1)</script>' not in page
+    assert '1 分 1 秒' in page
+    assert client.get(path.replace('analysisId=shipment','analysisId=outdated')).status_code==409
+
+
 def test_combined_can_run_first_without_other_successes_and_empty_result_retains_old(tmp_path):
     store,_,body=fixture(tmp_path);calls=[];done=threading.Event()
     class Runner:
