@@ -333,31 +333,61 @@ def _merge_scope_filter(filters, scope_filter: dict | None):
 
 
 def _merge_filter_parts(*parts):
-    """Combine filter trees with AND while removing identical pre-filters."""
-    children = []
-    seen = set()
-    for part in parts:
-        if part in (None, {}, []):
-            continue
-        if isinstance(part, list):
-            values = part
-        elif isinstance(part, dict) and (
-            str(part.get("logic") or "").upper() == "AND" or "children" in part
-        ):
-            values = part.get("children") or []
-        else:
-            values = [part]
-        for value in values:
-            signature = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-            if signature in seen:
-                continue
-            seen.add(signature)
-            children.append(value)
-    if not children:
-        return None
-    if len(children) == 1:
-        return children[0]
-    return {"logic": "AND", "children": children}
+    """Flatten AND only, deduplicate semantic predicates, never widen scope."""
+    from copy import deepcopy
+    children, positions = [], {}
+    display = {'alias', 'label', 'name', 'type', 'fieldType', 'isTree'}
+    def signature(value):
+        clean = {k:v for k,v in value.items() if k not in display}
+        operator = clean.get('operator') or {}
+        clean['valueType']=clean.get('valueType','ABSOLUTE')
+        clean['operator'] = {k:v for k,v in operator.items() if k not in {'label','name','type'}}
+        if str(operator.get('code') or '').upper()=='IN' and isinstance(clean.get('value'), list):
+            clean['value'] = sorted(clean['value'], key=lambda v:json.dumps(v,sort_keys=True))
+        return json.dumps(clean, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    def add(value):
+        if value in (None, {}, []):
+            return
+        if isinstance(value, list):
+            for child in value:add(child)
+            return
+        if not isinstance(value, dict):
+            raise ValueError('Invalid filter tree')
+        if 'children' in value or 'logic' in value:
+            if str(value.get('logic') or 'AND').upper()!='AND':
+                raise ValueError('Only AND filter groups can be merged')
+            for child in value.get('children') or []:add(child)
+            return
+        code=value.get('identifierCode')
+        if code not in positions:
+            positions[code]=len(children);children.append(deepcopy(value));return
+        index=positions[code];old=children[index]
+        old_op=old.get('operator') or {};new_op=value.get('operator') or {}
+        if old_op.get('type') and new_op.get('type') and old_op['type']!=new_op['type']:
+            raise ValueError('Conflicting filter types: '+str(code))
+        if signature(old)==signature(value):
+            if not old_op.get('type') and new_op.get('type'):old['operator']['type']=new_op['type']
+            return
+        # Only set intersection is lossless for the supported unequal cases.
+        left_code=str(old_op.get('code') or '').upper()
+        right_code=str(new_op.get('code') or '').upper()
+        if (left_code in {'IN','EQ','EQUAL'} and right_code in {'IN','EQ','EQUAL'}
+                and (not old_op.get('type') or not new_op.get('type') or old_op['type']==new_op['type'])
+                and old.get('valueType','ABSOLUTE')==value.get('valueType','ABSOLUTE')):
+            left=old.get('value');right=value.get('value')
+            left=left if isinstance(left,list) else [left]
+            right=right if isinstance(right,list) else [right]
+            common=[v for v in left if any(type(v)==type(w) and v==w for w in right)]
+            left_shape=deepcopy(old);right_shape=deepcopy(value)
+            for shape in (left_shape,right_shape):
+                shape['operator']['code']='IN';shape['value']=[]
+            if common and signature(left_shape)==signature(right_shape):
+                merged=deepcopy(old);merged['operator']['code']='IN';merged['value']=common
+                children[index]=merged;return
+        raise ValueError('Conflicting or unsupported duplicate filter: '+str(code))
+    for part in parts:add(part)
+    if not children:return None
+    return children[0] if len(children)==1 else {'logic':'AND','children':children}
 
 
 def _text(value) -> str:

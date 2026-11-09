@@ -332,3 +332,13 @@ def test_queue_wait_and_upstream_share_one_deadline(tmp_path):
     assert waits==[pytest.approx(0.5)]
     assert opener.calls[0][1]==pytest.approx(0.4)
     assert opener.calls[0][1]<1
+
+
+def test_sql_root_cause_is_kept_for_backend_diagnostics_only(tmp_path):
+    message='PreparedStatementCallback; bad SQL grammar ['+('SELECT q.*, '*300)+'] ERROR: column input_time does not exist'
+    gateway=APGateway(config(tmp_path),Opener({'success':False,'message':message}))
+    with pytest.raises(HTTPException) as failure:
+        gateway.query('analysis',QUERY)
+    assert failure.value.status_code==502
+    assert len(failure.value.detail)<300
+    assert 'column input_time does not exist' in failure.value.diagnostic_message

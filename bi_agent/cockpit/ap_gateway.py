@@ -128,6 +128,17 @@ class APGateway:
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         return cleaned[:240]
 
+    def _diagnostic_error(self, error, message='', upstream_status=None):
+        from .diagnostics import redact
+        try:
+            for value in self.config.headers().values():
+                if isinstance(value,str) and len(value)>=4:message=str(message).replace(value,'[REDACTED]')
+        except HTTPException:
+            pass
+        if message:error.diagnostic_message=redact(message)
+        error.upstream_status=upstream_status
+        return error
+
     def query(self, kind, payload, *, _deadline=None, timing=None):
         if kind not in PATHS:
             raise HTTPException(422, '不支持的只读AP接口')
@@ -193,7 +204,9 @@ class APGateway:
                 reason = self._sanitize(_upstream_message(body))
                 detail = 'AP未返回成功的数据结果'
                 detail += ('：' + reason) if reason else '，请检查查询口径及AP认证'
-                raise HTTPException(502, detail)
+                error=HTTPException(502, detail)
+                error.upstream_code=body.get('code')
+                raise self._diagnostic_error(error,_upstream_message(body),getattr(response,'status',None))
             if kind == 'batch':
                 failed = next((item for item in body['data'] if isinstance(item, dict) and item.get('success') is not True), None) if isinstance(body['data'], list) else None
                 if not isinstance(body['data'], list) or len(body['data']) != len(payload) or failed is not None or any(not isinstance(v, dict) or v.get('data') is None for v in body['data']):
@@ -205,9 +218,14 @@ class APGateway:
                 raise HTTPException(504, 'AP整批查询超时，未交付部分结果')
             return body['data']
         except HTTPError as exc:
+            upstream=''
+            try:
+                upstream=_upstream_message(json.loads(exc.read(65536)))
+            except (OSError,ValueError,AttributeError):
+                pass
             if exc.code in {401, 403, 301, 302, 303, 307, 308}:
-                raise HTTPException(502, 'AP认证失效或权限不足，请更新Cockpit独立认证') from None
-            raise HTTPException(502, 'AP请求失败；未切换到本体、数据库或旧快照') from None
+                raise self._diagnostic_error(HTTPException(502, 'AP认证失效或权限不足，请更新Cockpit独立认证'),upstream,exc.code) from None
+            raise self._diagnostic_error(HTTPException(502, 'AP请求失败；未切换到本体、数据库或旧快照'),upstream,exc.code) from None
         except (TimeoutError, URLError):
             raise HTTPException(504, 'AP请求超时或不可达；未切换到其他数据源') from None
         except (ValueError, OSError):

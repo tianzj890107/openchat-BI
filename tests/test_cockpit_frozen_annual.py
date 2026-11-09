@@ -141,7 +141,10 @@ def test_priority_incremental_publication_and_failure_isolation(tmp_path):
     assert current['items']['bid']['updatedAt']==2
     assert len(calls)==len(set(calls))==6
     assert store.job()['status']=='partial'
-    assert store.job()['failedStages']==[{'stage':'order','code':'RuntimeError'}]
+    failure=store.job()['failedStages'][0]
+    assert failure['stage']=='order' and failure['code']=='RuntimeError'
+    from bi_agent.cockpit.store import Store
+    assert Store(store.path.parent/'history.sqlite3').list_diagnostics()[0]['diagnosticId']==failure['diagnosticId']
 
 
 def test_combined_dependency_defers_without_blocking_other_stages(tmp_path):

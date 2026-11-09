@@ -14,11 +14,13 @@ from pathlib import Path
 import sqlite3
 import threading
 import time
+import uuid
 from urllib.parse import parse_qs
 
 from fastapi import HTTPException
 from starlette.responses import JSONResponse
 
+from .diagnostics import diagnostic_scope, record_failure
 from .cards import CONTRACT, card_delivery_state, valid_card
 from .delivery import project_card, publication_payload
 from .page_cache import compact_analysis
@@ -136,6 +138,7 @@ class FrozenAnnualService:
         self.queue_lock = threading.RLock()
         self.pending, self.completed, self.failures = [], [], []
         self.active = ''
+        self.round_id = ''
         self.deferred_combined = False
 
     def priority_order(self, slot_id=None, page=None, visible_slots=None):
@@ -154,7 +157,7 @@ class FrozenAnnualService:
         return list(dict.fromkeys(candidates + list(STAGES)))
 
     def _progress(self):
-        self.store.progress(activeStage=self.active, pendingStages=list(self.pending),
+        self.store.progress(runId=self.round_id,activeStage=self.active, pendingStages=list(self.pending),
                             completedStages=list(self.completed), failedStages=list(self.failures))
 
     def prioritize(self, slot_id=None, page=None, visible_slots=None):
@@ -177,10 +180,12 @@ class FrozenAnnualService:
             if not self.store.claim():
                 return self.prioritize(slot_id, page, visible_slots)
             self.pending, self.completed, self.failures = order, [], []
+            self.round_id=uuid.uuid4().hex
             self.deferred_combined = False
             self.active = ''
             self._progress()
         def work():
+            round_started=time.monotonic()
             try:
                 if hasattr(self.recompute, 'run_stage'):
                     if hasattr(self.recompute, 'begin_round'):
@@ -196,8 +201,12 @@ class FrozenAnnualService:
                             stage = self.pending.pop(0)
                             self.active = stage
                             self._progress()
+                        started=time.monotonic()
+                        phase='stage_execution'
                         try:
-                            item = self.recompute.run_stage(self.store.read()['period'], stage)
+                            with diagnostic_scope(runId=self.round_id,stage=stage):
+                                item = self.recompute.run_stage(self.store.read()['period'], stage)
+                            phase='publication'
                             self.store.publish_stage(stage, item)
                             with self.queue_lock:
                                 self.completed.append(stage)
@@ -210,10 +219,17 @@ class FrozenAnnualService:
                                     deferred_combined = True
                                     self.deferred_combined = True
                                 else:
-                                    self.failures.append(dict(stage=stage, code='DEPENDENCY_NOT_READY'))
+                                    from .store import Store
+                                    diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),
+                                        RuntimeError('Combined analysis requires two successful same-round source stages'),
+                                        phase='dependency',stage=stage,run_id=self.round_id,duration=time.monotonic()-started)
+                                    self.failures.append(dict(stage=stage,code='DEPENDENCY_NOT_READY',diagnosticId=diagnostic['diagnosticId']))
                         except Exception as exc:
+                            from .store import Store
+                            diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),exc,
+                                phase=phase,stage=stage,run_id=self.round_id,duration=time.monotonic()-started)
                             with self.queue_lock:
-                                self.failures.append(dict(stage=stage, code=type(exc).__name__))
+                                self.failures.append(dict(stage=stage,code=type(exc).__name__,diagnosticId=diagnostic['diagnosticId']))
                         with self.queue_lock:
                             self.active = ''
                             self._progress()
@@ -221,8 +237,11 @@ class FrozenAnnualService:
                     # Compatibility with the old complete-release executor.
                     self.store.publish(self.recompute(self.store.read()['period']))
                     self.store.finish('published')
-            except Exception:
-                self.store.finish('failed', 'Background update did not finish; previous publications retained')
+            except Exception as exc:
+                from .store import Store
+                diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),exc,
+                    phase='refresh_coordinator',stage=self.active,run_id=self.round_id,duration=time.monotonic()-round_started)
+                self.store.finish('failed', 'Background update did not finish; diagnosticId='+diagnostic['diagnosticId'])
         threading.Thread(target=work, name='cockpit-explicit-annual-analysis', daemon=True).start()
         return dict(queued=True, status='running')
 
