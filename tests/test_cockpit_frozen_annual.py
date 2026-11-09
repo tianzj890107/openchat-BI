@@ -141,6 +141,10 @@ def test_priority_incremental_publication_and_failure_isolation(tmp_path):
     assert current['items']['bid']['updatedAt']==2
     assert len(calls)==len(set(calls))==6
     assert store.job()['status']=='partial'
+    work=store.job()['stageProgress']
+    assert work['shipment']['status']=='completed'
+    assert work['shipment']['finishedAt']>=work['shipment']['startedAt']
+    assert work['order']['status']=='failed'
     failure=store.job()['failedStages'][0]
     assert failure['stage']=='order' and failure['code']=='RuntimeError'
     from bi_agent.cockpit.store import Store
@@ -317,3 +321,13 @@ def test_full_evidence_is_read_on_demand_and_old_analysis_is_not_mislabelled(tmp
     assert response.json()['evidence']['facts'][0]['claim']['statement']=='full original proof'
     assert client.get(path.replace('analysisId=combined','analysisId=outdated')).status_code==409
     assert store.job()['status']=='idle'
+
+
+def test_stopped_round_does_not_leave_cards_looking_running(tmp_path):
+    store,_,_=fixture(tmp_path)
+    assert store.claim()
+    store.progress(stageProgress={'shipment':dict(status='running',phase='analysing',startedAt=1),
+                                  'bid':dict(status='queued',queuedAt=1)})
+    store.finish('failed','restart')
+    job=store.job()
+    assert all(work['status']=='failed' and work['finishedAt']>1 for work in job['stageProgress'].values())

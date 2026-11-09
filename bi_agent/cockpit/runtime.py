@@ -79,8 +79,10 @@ def _component_ids(components: list[dict]) -> set[str]:
 
 
 def _adapt_graph_endpoints(components: list[dict]) -> None:
-    """Keep the upstream URL interface while routing through the host gateway."""
+    """Apply host endpoint and explicit display policy using public SDK options."""
     for component in components:
+        if component.get("id") == "horizontal-bar-i2gi98l6":
+            component.setdefault("visualization", {})["displayLimit"] = {"enabled": False}
         graph_config = component.get("graphConfig")
         if isinstance(graph_config, dict) and "helmetViewUrl" in graph_config:
             graph_config["helmetViewUrl"] = HELMET_VIEW_PATH

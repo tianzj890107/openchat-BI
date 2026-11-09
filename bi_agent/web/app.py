@@ -4352,11 +4352,21 @@ def _cockpit_main_turn(context,cancel):
             fallback=list((context.get('stageEvidence') or {}).get('fallbackMetrics') or []),
             fallbackBlocked=list((context.get('stageEvidence') or {}).get('fallbackBlocked') or []))
         install_delivery(session,context)
+        from ..cockpit.cards import delivery_summary
+        session.validated_delivery_summary = delivery_summary
+        session.max_iterations = 6
+        # Freeze/read evidence deterministically. The model starts with real,
+        # normally recorded tool results, not an LLM-generated fetch plan.
+        prepared_ids = list(selected)[:18]
+        session.initial_read_tools = [dict(type='tool_use', id='cockpit-prepared-'+str(index//6),
+            name=TOOL, input={'queryIds':prepared_ids[index:index+6]})
+            for index in range(0,len(prepared_ids),6)]
         with STATE.registry_lock:
             STATE.sessions[key]=session
         slot,lease,turn_id,ticket,_=_begin_turn('data',key,cancel_event=cancel,principal_session_id=f"cockpit-id-{context['id']}")
-        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel):
-            yield session,session.generate_turn(analysis_question(context))
+        from ..llm.runtime_config import request_config
+        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel), request_config(thinking=False, max_tokens=4096, temperature=0.2):
+            yield session,session.generate_turn(analysis_question(context)+f'\n本轮已通过工具预读 {len(prepared_ids)} 条查询，证据引用见工具结果。优先直接交付，不重复取数。'+(f'另有 {len(selected)-len(prepared_ids)} 条查询未预读；必要时可批量读取，其余未读范围须说明。' if len(selected)>len(prepared_ids) else ''))
     finally:
         # Release ephemeral in-memory objects only. Never reset/delete chat history.
         with STATE.registry_lock:
@@ -4396,6 +4406,7 @@ def _cockpit_html(page: str) -> HTMLResponse:
         cockpit / "metadata" / "runtime.json",
         cockpit / "cockpit.js",
         cockpit / "data-client.js",
+        cockpit / "task-progress.js",
         cockpit / "publication-client.js",
         cockpit / "page-client.js",
         cockpit / "insight-components" / "index.js",

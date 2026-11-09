@@ -265,7 +265,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 gateway.config.batch_mode if kind=='batch' else 'fixed-path')
         key=digest(dict(connection=auth_scope,store=str(result_store.path),id=identity,
                         deadlineClass='ai' if inherited_deadline is not None else 'display',
-                        kind=kind,payload=payload))
+                        kind=kind,payload=payload,
+                        helmetConfigVersion=config_version() if kind=='helmet' else ''))
         started=time.monotonic()
         trace={} if timing is None else timing
         timeout=getattr(gateway.config,'timeout',200)
@@ -1030,10 +1031,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         return dict(items=store().list_diagnostics(id,stage=stage,limit=limit))
 
     @router.get("/analyses")
-    def history(id:int=1,period:str|None=None,department:str|None=None,engine:Literal["main","standalone"]|None=None):
+    def history(id:int=1,period:str|None=None,department:str|None=None,engine:Literal["main","standalone"]|None=None,summary:bool=True,limit:int=50,offset:int=0):
         # id is the single Fuxi-facing identity parameter: 1=总裁, 2=分析员.
         if id not in (1,2):raise HTTPException(422,"id 只能是 1 或 2")
-        return [x for x in store().list_analyses() if context_id(x["context"])==id
+        if not 1 <= limit <= 100 or offset < 0:raise HTTPException(422,'Invalid history pagination')
+        if summary:
+            return store().analysis_summaries(id,engine=engine,period=period,department=department,limit=limit,offset=offset)
+        return [x for x in store().list_analyses(limit=limit+offset)[offset:] if context_id(x["context"])==id
             and (engine is None or x["context"].get("engine","standalone")==engine)
             and (period is None or x["context"]["period"]==period) and (department is None or x["context"]["department"]==department)]
 

@@ -104,6 +104,10 @@ class FrozenAnnualStore:
             row = db.execute('SELECT status,error,updated FROM annual_job WHERE id=1').fetchone()
             progress = db.execute('SELECT body FROM annual_progress WHERE id=1').fetchone()
         body = json.loads(progress[0]) if progress else {}
+        if row and row[0] != 'running':
+            for work in (body.get('stageProgress') or {}).values():
+                if work.get('status') in {'queued','running'}:
+                    work.update(status='failed', phase='failed', finishedAt=row[2])
         return dict(body, status=row[0], error=row[1], updatedAt=row[2]) if row else dict(status='idle', error='', updatedAt=0)
 
     def progress(self, **body):
@@ -147,6 +151,7 @@ class FrozenAnnualService:
         self.round_id = ''
         self.phase = 'idle'
         self.detail = {}
+        self.stage_progress = {}
         self._publication_cache = {}
         self.publication_lock = threading.Lock()
 
@@ -168,11 +173,13 @@ class FrozenAnnualService:
     def _progress(self):
         self.store.progress(runId=self.round_id,activeStage=self.active, pendingStages=list(self.pending),
                             completedStages=list(self.completed), failedStages=list(self.failures),
-                            phase=self.phase, progress=self.detail, heartbeatAt=time.time())
+                            phase=self.phase, progress=self.detail, stageProgress=dict(self.stage_progress), heartbeatAt=time.time())
 
     def report_progress(self, phase, **detail):
         with self.queue_lock:
             self.phase, self.detail = phase, {**detail, 'lastProgressAt':time.time()}
+            if self.active:
+                self.stage_progress[self.active] = {**self.stage_progress.get(self.active, {}), **self.detail, 'phase':phase, 'status':'running'}
             self._progress()
 
     def _job_response(self, queued):
@@ -186,6 +193,7 @@ class FrozenAnnualService:
         self.completed[:] = [item for item in self.completed if item != stage]
         self.failures[:] = [item for item in self.failures if item.get('stage') != stage]
         self.pending.insert(0, stage)
+        self.stage_progress[stage] = dict(status='queued', phase='queued', queuedAt=time.time())
 
     def prioritize(self, slot_id=None, page=None, visible_slots=None, requeue=False):
         order = self.priority_order(slot_id, page, visible_slots)
@@ -208,6 +216,7 @@ class FrozenAnnualService:
             self.round_id=uuid.uuid4().hex
             self.active = ''
             self.phase, self.detail = 'queued', {}
+            self.stage_progress = {stage:dict(status='queued',phase='queued',queuedAt=time.time()) for stage in order}
             self._progress()
         def work():
             round_started=time.monotonic()
@@ -234,6 +243,7 @@ class FrozenAnnualService:
                             stage = self.pending.pop(0)
                             self.active = stage
                             self.phase, self.detail = 'fetching', {'startedAt':time.time()}
+                            self.stage_progress[stage] = {**self.stage_progress.get(stage, {}), **self.detail, 'phase':'fetching', 'status':'running'}
                             self._progress()
                         started=time.monotonic()
                         phase='stage_execution'
@@ -247,12 +257,14 @@ class FrozenAnnualService:
                             self.store.publish_stage(stage, item)
                             with self.queue_lock:
                                 self.completed.append(stage)
+                                self.stage_progress[stage].update(status='completed', phase='published', finishedAt=time.time())
                         except Exception as exc:
                             from .store import Store
                             diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),exc,
                                 phase=phase,stage=stage,run_id=self.round_id,duration=time.monotonic()-started)
                             with self.queue_lock:
                                 self.failures.append(dict(stage=stage,code=type(exc).__name__,diagnosticId=diagnostic['diagnosticId']))
+                                self.stage_progress[stage].update(status='failed', phase='failed', finishedAt=time.time(), diagnosticId=diagnostic['diagnosticId'])
                         with self.queue_lock:
                             self.active = ''
                             self._progress()

@@ -7,7 +7,7 @@ from pathlib import Path
 SNAPSHOT = Path(__file__).parents[1] / "web/static/cockpit/metadata/pdt-release-2109836674373566465/data-snapshots.json"
 RELEASE = "pdt-release-2109836674373566465"
 TOOL = "Cockpit-DashboardQuery"
-SCHEMA = {"name": TOOL, "description": "读取本轮看板实际展示的 AP 查询、字段口径和原始结果。只读本轮绑定的看板结果，可能为实时AP响应或显式交付快照，来源以工具返回为准。先读目录，再按 queryId 读取。禁止把采购字段解释为销售指标。", "input_schema": {"type": "object", "properties": {"queryId": {"type": "string"}}, "additionalProperties": False}}
+SCHEMA = {"name": TOOL, "description": "读取本轮看板实际展示的 AP 查询、字段口径和原始结果。只读本轮绑定的看板结果，可能为实时AP响应或显式交付快照，来源以工具返回为准。先读目录，再按 queryId 读取。禁止把采购字段解释为销售指标。", "input_schema": {"type": "object", "properties": {"queryId": {"type": "string"}, "queryIds": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 6, "uniqueItems": True}}, "additionalProperties": False}}
 
 
 # Metric/dimension codes that belong to one business stage.  Codes are only
@@ -222,6 +222,9 @@ def receipt_scope(context, store, *, allow_expired=False, resolve_fallback=False
         raise ValueError('看板发布标识不匹配')
     ids = context.get('apReceiptIds') or []
     pg_ids = context.get('pgReceiptIds') or []
+    from .pg_fallback import enabled as pg_fallback_enabled
+    if pg_ids and not pg_fallback_enabled():
+        raise ValueError('Cockpit PG补查已暂停，请使用AP结果凭据')
     for group in (ids, pg_ids):
         if not isinstance(group, list) or len(group) > 80 or len(group) != len(set(group)):
             raise ValueError('无效的结果凭据列表')
@@ -466,6 +469,18 @@ def executor(selected, stage=None, *, lean=False):
         return {**result, 'columns': columns, 'rows': [row for row in rows if row]}
 
     def read(params, cwd):
+        ids = params.get('queryIds')
+        if ids is not None:
+            if params.get('queryId') or not isinstance(ids, list) or not 1 <= len(ids) <= 6 or any(not isinstance(k, str) or k not in selected for k in ids) or len(set(ids)) != len(ids):
+                raise ValueError('queryIds必须是当前范围内1至6个不同查询')
+            parts = [json.loads(read({'queryId': key}, cwd)) for key in ids]
+            return json.dumps(dict(source=source, data={'rows': [
+                {**{part['queryId']+' :: '+key:value for key,value in row.items()}, '__queryId':part['queryId']} for part in parts for row in part['data']['rows']]},
+                queries=[{k:v for k,v in part.items() if k != 'data'} for part in parts],
+                scope={'queries':{part['queryId']:part['scope'] for part in parts}},
+                semantic={'definition':{k:v for part in parts for k,v in part['semantic']['definition'].items()}},
+                provenance={'source':source,'query':json.dumps([selected[key]['request'] for key in ids],ensure_ascii=False)},
+                limitations='各查询口径独立；__queryId用于追溯，禁止混算不同口径。'), ensure_ascii=False)
         query_id = params.get('queryId')
         if query_id:
             if query_id not in selected:
@@ -481,7 +496,7 @@ def executor(selected, stage=None, *, lean=False):
                 kept, used = [], 0
                 for row in rows[:24]:
                     size = len(json.dumps(row, ensure_ascii=False))
-                    if used + size > 16000:break
+                    if used + size > 6000:break
                     kept.append(row);used += size
                 return json.dumps({'queryId':query_id, 'source':source, 'data':{'rows':kept},
                     'scope':{'source':source,'receiptId':entry.get('receiptId',''),'request':entry['request']},
@@ -494,7 +509,7 @@ def executor(selected, stage=None, *, lean=False):
                 'semantic': {'metric': query_id, 'definition': labels, 'live': live},
                 'provenance': {'source': source, 'query': json.dumps(entry['request'], ensure_ascii=False)}}, ensure_ascii=False)
         return json.dumps({'source': source, 'live': live, 'queries': [
-            {'queryId': key, 'request': value['request'],
+            {'queryId': key, **({'labels':request_labels(value['request'])} if lean else {'request':value['request']}),
              'columns': project(value['response'].get('result', {})).get('columns', [])}
-            for key, value in selected.items()], 'instruction': '可在一次模型回复中并列调用最多6个不同queryId。不要重复读取已取得的查询，取得必要证据后立即交付。', 'limitations': '原始AP请求决定实际时间和部门口径；页面标题不构成字段定义。没有同源明细补查接口，不能认定根因。'}, ensure_ascii=False)
+            for key, value in selected.items()], 'instruction': '使用queryIds一次读取最多6个不同查询，可在同一次回复提交多个批次。不要重复读取已取得的查询，取得必要证据后立即交付。', 'limitations': '原始AP请求决定实际时间和部门口径；页面标题不构成字段定义。没有同源明细补查接口，不能认定根因。'}, ensure_ascii=False)
     return read

@@ -839,6 +839,26 @@ class Store:
             rows=db.execute("SELECT body FROM analyses "+("WHERE scope=? " if scope else "")+"ORDER BY updated DESC LIMIT ?",(scope,limit) if scope else (limit,)).fetchall()
         return [json.loads(r[0]) for r in rows]
 
+    def analysis_summaries(self, identity, *, engine=None, period=None, department=None, limit=50, offset=0):
+        """Project in SQLite: do not deserialize multi-MB evidence to list history."""
+        fields = ('id', 'status', 'createdAt', 'updatedAt', 'progress', 'error')
+        pairs = ["'%s',json_extract(body,'$.%s')" % (key,key) for key in fields]
+        context = ','.join("'%s',json_extract(body,'$.context.%s')" % (key,key) for key in
+                           ('id','role','engine','stage','period','department','dataSource'))
+        pairs += ["'context',json_object("+context+")",
+                  "'result',json_object('summary',json_extract(body,'$.result.summary'))",
+                  "'execution',json_object('durationSeconds',json_extract(body,'$.execution.durationSeconds'),'modelRounds',json_extract(body,'$.execution.modelRounds'))"]
+        conditions = ["COALESCE(json_extract(body,'$.context.id'),CASE WHEN json_extract(body,'$.context.role')='president' THEN 1 ELSE 2 END)=?"]
+        args = [identity]
+        for key,value in (('engine',engine),('period',period),('department',department)):
+            if value is not None:
+                conditions.append("COALESCE(json_extract(body,'$.context.%s'),%s)=?" % (key,"'standalone'" if key=='engine' else "''"))
+                args.append(value)
+        sql = 'SELECT json_object('+','.join(pairs)+') FROM analyses WHERE '+' AND '.join(conditions)+' ORDER BY updated DESC LIMIT ? OFFSET ?'
+        with self.db() as db:
+            rows = db.execute(sql, (*args,limit,offset)).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     def publish(self, aid):
         from .cards import CONTRACT
         with self.db() as db:

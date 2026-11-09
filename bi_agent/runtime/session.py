@@ -1172,6 +1172,26 @@ class AgentSession:
         root_cause_seen = False
         delivery_blocked = False
 
+        # Optional bound snapshot reads use the normal tool/security/evidence path,
+        # after generate_turn's deterministic policy and before any model call.
+        initial_reads = getattr(self, 'initial_read_tools', ())
+        if initial_reads:
+            if self._turn_superseded(turn_ctx):
+                yield {"type": "session_superseded"}
+                return
+            self.messages.append({"role":"assistant", "content":initial_reads})
+            initial_results = []
+            for read_tool in initial_reads:
+                block = yield from self._run_tool_and_emit(read_tool, turn_ctx)
+                if block is None:
+                    yield {"type":"session_superseded"}
+                    return
+                initial_results.append(block)
+                called_tools_this_turn.add(read_tool['name'])
+                if self.recovery.status() in _RECOVERY_STOP_STATUSES:
+                    return
+            self.messages.append({"role":"user", "content":initial_results})
+
         for iteration in range(self.max_iterations):
             if self._turn_superseded(turn_ctx):
                 yield {"type": "session_superseded"}
@@ -1488,6 +1508,16 @@ class AgentSession:
                     return
 
             self.messages.append({"role": "user", "content": tool_results})
+            terminal = getattr(self, 'validated_delivery_summary', None)
+            summary = terminal(self) if callable(terminal) else None
+            if summary:
+                if self._turn_superseded(turn_ctx):
+                    yield {"type": "session_superseded"}
+                    return
+                self.messages.append({"role": "assistant", "content": [{"type": "text", "text": summary}]})
+                yield {"type": "text_delta", "text": summary}
+                yield {"type": "done", "stop_reason": "validated_tool_delivery"}
+                return
 
         # A model can consume every main-loop iteration on ontology/schema
         # tools and never emit a no-tool narrative.  The tool events are useful

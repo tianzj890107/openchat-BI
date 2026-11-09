@@ -3,13 +3,14 @@
  * used verbatim. The host only supplies the Fuxi identity (id=1|2), rewrites
  * the selected tab into the route path and consumes main-service AP results.
  */
-(() => {
+(async () => {
   'use strict';
   const frozenAnnualMode = window.COCKPIT_FIXED_ANNUAL === true;
 
   const root = document.querySelector('meta[name="app-root"]').content.replace(/\/$/, '');
   const routeRoot = location.pathname.replace(/\/cockpit(?:\/(?:home|overview|operations|analysis))?\/?$/, '');
   const assetVersion = document.querySelector('meta[name="cockpit-version"]')?.content || '1';
+  const {taskProgressText}=await import(`./task-progress.js?v=${assetVersion}`);
   const assetBase = document.querySelector('meta[name="cockpit-assets"]')?.content || `${root}/static/cockpit`;
   const runtimeUrl = `${assetBase}/metadata/runtime.json?v=${encodeURIComponent(assetVersion)}`;
   const snapshotsUrl = `${assetBase}/metadata/pdt-release-2109836674373566465/data-snapshots.json?v=${encodeURIComponent(assetVersion)}`;
@@ -140,11 +141,13 @@
   const insightLoadError = ref('');
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
-  const frozenAnnual = reactive({visible:true,running:false,period:defaultPeriod,basis:'',error:'',activeStage:'',pendingStages:[],completedStages:[],failedStages:[]});
+  const frozenAnnual = reactive({visible:true,running:false,period:defaultPeriod,basis:'',error:'',activeStage:'',pendingStages:[],completedStages:[],failedStages:[],stageProgress:{},progress:{}});
   function applyFrozenStatus(value) {
     const manual=value?.manualUpdate || (value?.status ? value : null);
     if(!frozenAnnualMode || !manual)return;
     frozenAnnual.running=manual.status==='running';
+    frozenAnnual.stageProgress=manual.stageProgress||{};
+    frozenAnnual.progress=manual.progress||{};
     for(const key of ['activeStage','pendingStages','completedStages','failedStages'])frozenAnnual[key]=manual[key]||(key==='activeStage'?'':[]);
     if(value.requestedPeriod)frozenAnnual.period=value.requestedPeriod;
     if(typeof value.basis==='string')frozenAnnual.basis=value.basis;
@@ -727,12 +730,11 @@
         if(!current)return projected;
         return Number(projected.updatedAt||0)>=Number(current.updatedAt||0)?projected:current;
       });
-      const cardRefreshStatus=computed(()=>{
-        if(frozenAnnual.running && (frozenAnnual.activeStage===stage.value || (!frozenAnnual.activeStage && frozenAnnual.pendingStages[0]===stage.value)))return '后台更新中';
-        if(frozenAnnual.running && frozenAnnual.pendingStages.includes(stage.value))return '等待更新';
-        if(frozenAnnual.failedStages.some(item=>item.stage===stage.value))return '沿用上次结果';
-        return '';
-      });
+      const progressClock=ref(Date.now());
+      const progressTimer=setInterval(()=>{if(frozenAnnual.running)progressClock.value=Date.now();},1000);
+      onBeforeUnmount(()=>clearInterval(progressTimer));
+      const cardUpdating=computed(()=>frozenAnnual.running && frozenAnnual.activeStage===stage.value);
+      const cardRefreshStatus=computed(()=>taskProgressText(frozenAnnual,stage.value,progressClock.value));
       const cardMetadata = computed(()=>{
         const item=slotAnalysis.value, name=STAGE_NAMES[stage.value]||stage.value;
         if(!item?.result)return `${frozenAnnual.period} 年度分析 · ${name}`;
@@ -808,13 +810,13 @@
           await ensureSlotAnalysis(props.insight.id,stage.value);onPageActivity();
         } catch(cause) {if(alive)insightLoadError.value=`插槽加载失败：${cause.message||cause}`;}
       });
-      return {frozenAnnualMode,frozenAnnual,stage,cardMetadata,refreshCard,cardRefreshStatus,dashboardDataMode, delivered, state, slotAnalysis, analysisContext, insightSlotProps, reload, insightLoadError, componentError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
+      return {frozenAnnualMode,frozenAnnual,stage,cardMetadata,refreshCard,cardRefreshStatus,cardUpdating,dashboardDataMode, delivered, state, slotAnalysis, analysisContext, insightSlotProps, reload, insightLoadError, componentError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
     },
     template: `
       <div v-if="delivered" class="cockpit-insight-slot" :class="{'cockpit-insight-slot--fixed':frozenAnnualMode}">
         <div v-if="frozenAnnualMode" class="cockpit-card-metadata" role="status">
           <span>{{cardMetadata}}</span>
-          <button class="cockpit-frozen-release__action" type="button" :disabled="cardRefreshStatus==='后台更新中'" @click="refreshCard">{{slotAnalysis?.result ? '重新分析' : '分析'}}</button>
+          <button class="cockpit-frozen-release__action" type="button" :disabled="cardUpdating" @click="refreshCard">{{slotAnalysis?.result ? '重新分析' : '分析'}}</button>
           <span v-if="cardRefreshStatus" class="cockpit-card-metadata__status">{{cardRefreshStatus}}</span>
         </div>
         <div v-if="state.scopeNotice" class="insight-scope-notice" role="status">{{ state.scopeNotice }}</div>

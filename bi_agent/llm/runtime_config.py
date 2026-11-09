@@ -11,6 +11,9 @@ and `dashscope_api_key` (Qwen). Helpers at the bottom update that file.
 from __future__ import annotations
 
 import json
+from contextvars import ContextVar
+from contextlib import contextmanager
+from copy import copy
 import os
 from pathlib import Path
 from typing import Any, Optional
@@ -126,9 +129,31 @@ class RuntimeConfig:
 
 
 _instance: Optional[RuntimeConfig] = None
+_scoped_config = ContextVar('llm_scoped_config', default=None)
+
+@contextmanager
+def request_config(**overrides):
+    """Task-local parameters; never persist or mutate another session's config."""
+    config = copy(get_config())
+    for key, value in overrides.items():
+        if key not in {'max_tokens', 'temperature', 'thinking'}:
+            raise ValueError('Unsupported scoped model parameter')
+        setattr(config, key, value)
+    token = _scoped_config.set(config)
+    try:
+        yield config
+    finally:
+        _scoped_config.reset(token)
+
+def scoped_thinking():
+    config = _scoped_config.get()
+    return None if config is None else config.thinking
+
 
 
 def get_config() -> RuntimeConfig:
+    if _scoped_config.get() is not None:
+        return _scoped_config.get()
     global _instance
     if _instance is None:
         _instance = RuntimeConfig()

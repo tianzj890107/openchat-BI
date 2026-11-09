@@ -70,7 +70,8 @@ def test_findings_require_queried_evidence_and_deduplicate_business_issues():
 
 
 @pytest.mark.parametrize('repair_first',[False,True])
-def test_real_main_delivers_existing_card_contract_then_publishes_without_second_model(tmp_path,monkeypatch,repair_first):
+@pytest.mark.parametrize('prepared_delivery',[False,True])
+def test_real_main_delivers_existing_card_contract_then_publishes_without_second_model(tmp_path,monkeypatch,repair_first,prepared_delivery):
     import bi_agent.web.app as web
     import bi_agent.cockpit.router as router
     from open_claude.agent_def import AgentDef
@@ -85,7 +86,9 @@ def test_real_main_delivers_existing_card_contract_then_publishes_without_second
     count=[]
     def provider(*args,**kwargs):
         count.append(1)
-        if len(count)==1:yield dict(type='tool_use_end',id='q1',name='Cockpit-DashboardQuery',input={'queryId':receipt['receiptId']+':0'})
+        if prepared_delivery:
+            yield dict(type='tool_use_end',id='fast-cards-'+str(len(count)),name=TOOL,input=candidate(ref='unknown-evidence') if repair_first and len(count)==1 else candidate())
+        elif len(count)==1:yield dict(type='tool_use_end',id='q1',name='Cockpit-DashboardQuery',input={'queryId':receipt['receiptId']+':0'})
         elif len(count)==2 and repair_first:yield dict(type='tool_use_end',id='invalid-cards',name=TOOL,input=candidate(ref='unknown-evidence'))
         elif len(count)==(3 if repair_first else 2):yield dict(type='tool_use_end',id='cards',name=TOOL,input=candidate())
         else:
@@ -113,4 +116,4 @@ def test_real_main_delivers_existing_card_contract_then_publishes_without_second
         request['apReceiptIds']=[again['receiptId']]
         reopened=client.post('/api/cockpit/analyses/refresh',json=request).json()
         assert reopened['cached']['id']==aid and reopened['analysis'] is None
-        assert len(count)==(4 if repair_first else 3) # Rejection repairs inside the same main tool loop.
+        assert len(count)==((2 if repair_first else 1) if prepared_delivery else (3 if repair_first else 2)) # Rejection repairs inside the same main tool loop.

@@ -10,6 +10,7 @@ replays the failing AP SQL and never substitutes another metric.
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 from datetime import date, timedelta
@@ -213,6 +214,10 @@ def receipt(payload: dict, result: dict, store, identity: int, ttl: int = 900) -
     return value
 
 
+def enabled():
+    return os.getenv('COCKPIT_PG_FALLBACK_ENABLED', '0').strip().lower() in {'1', 'true', 'yes'}
+
+
 def supplement(context: dict, store, *, query_fn=None, limit: int = 4,
                stage: str | None = None) -> tuple[dict, list[dict]]:
     """Resolve failed dashboard queries from PostgreSQL, one reviewed metric set at a time.
@@ -222,6 +227,9 @@ def supplement(context: dict, store, *, query_fn=None, limit: int = 4,
     failures can never consume the execution quota.  At most ``limit``
     executable queries are run.
     """
+    if not enabled():
+        return {}, [dict(query=raw, code='PG_FALLBACK_PAUSED')
+                    for raw in context.get('unavailableQueries') or [] if isinstance(raw, str)]
     entries: dict[str, dict] = {}
     notes: list[dict] = []
     seen: set[str] = set()

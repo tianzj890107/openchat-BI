@@ -38,13 +38,13 @@ def analysis_question(context):
         "请沿用主服务正常意图路由、只读看板工具取数与交付校验。本任务为无对话自动卡片交付，遇到口径歧义请交付受限卡片说明缺失，不要等待交互。"
         "部分AP查询成功、部分失败时，必须使用已成功取得的证据继续完成分析并交付受限卡片；不得因为还有指标未返回而整卡等待或只回一句“尚无分析结果”。"
         "先在摘要和限制中列明哪些已取到、哪些未返回，再按已取得事实给出可执行的核查动作；缺失项不得推测成结论，也不得用其他环节数据替代。"
-        "先调用Cockpit-DashboardQuery读取目录，再读取相关queryId。工具读取的是与网页同一次取数的冻结结果；是否为实时AP取数以工具返回live标记为准。范围JSON的时间和部门只是页面历史参数，实际分析范围以AP原始请求为准，不可假定已应用筛选。"
+        "先调用Cockpit-DashboardQuery读取目录，再用queryIds批量读取相关查询（每批最多6项，尽量一次并列发起所需批次）。工具读取的是与网页同一次取数的冻结结果；是否为实时AP取数以工具返回live标记为准。范围JSON的时间和部门只是页面历史参数，实际分析范围以AP原始请求为准，不可假定已应用筛选。"
         "缺少指标映射或实体关系时明确说明，存在歧义时正常请求确认，不得自动选采购指标代替销售指标。"
         "交付内容按“发现什么／集中在哪里／可能为什么／下一步怎么做”组织：异常表现、结构定位、数据缺口不得写成原因；"
         "金额与电量缺少单价、产品结构或交期映射时不得比较或相加；取消/变更与中标未签集合未验证重叠和期间对应时，不得相加或据此排除缺口；"
         "目标或口径冲突时，摘要必须同时写各自口径观察和“尚不能汇总对账”；建议的责任角色标为待确认、期限标为建议值，验收必须可检查。"
         "原因要给出kind（verified/fact/structure/data_gap/hypothesis），未证明原因在missingEvidence写明缺失材料。建议要给出actionType：核查、补数、对账、确认口径用investigation，可关联待验证假设、数据缺口或直接引用证据；调整交付、资源或价格等改善动作用remediation，必须关联已得到记录支持的原因。原因未证明时只能先给核查任务，不能把假设直接变成改善措施。所有建议的causeIds与evidenceIds必须真实存在，责任人和期限的确认标记由服务端保持false，待用户确认。"
-        "请读取工具返回的evidenceIds，最终调用CockpitDeliverCards提交短摘要、原因、风险发现、建议、限制供既有AI插槽展示；summary必须是纯文本单段结论，不得包含Markdown标题、加粗、列表、表格或“行动建议”清单，行动建议只能写入recommendations；业务数值由事实字段展示，短摘要不重复业务数字，不新造比例；有合理线索时保留hypothesis并说明待验证材料，没有原因证据时causes可以为空；对商机、订单、发货和共同分析，只要取得可定位的业务事实，必须至少交付一项核查建议，不得因原因未确认一并清空建议。建议需明确要核对的对象/范围、具体字段或处理记录与验收清单；不得编造具体订单号、责任人或改善效果。仅状态概况且没有业务分析职责的插槽不强求建议。数据缺口核查建议可独立引用证据，不必为了挂建议而伪造原因。findings只列证据直接支持的风险事实或异常表现，不含原因、数据缺口和结构分布；同一风险只列一次。不要生成HTML或重新绘制图表，不得编造根因、责任角色或期限。提交后用正常中文章节确认交付，不另开模型改写。"
+        "请读取工具返回的evidenceIds，最终调用CockpitDeliverCards提交短摘要、原因、风险发现、建议、限制供既有AI插槽展示；summary必须是纯文本单段结论，不得包含Markdown标题、加粗、列表、表格或“行动建议”清单，行动建议只能写入recommendations；业务数值由事实字段展示，短摘要不重复业务数字，不新造比例；有合理线索时保留hypothesis并说明待验证材料，没有原因证据时causes可以为空；对商机、订单、发货和共同分析，只要取得可定位的业务事实，必须至少交付一项核查建议，不得因原因未确认一并清空建议。建议需明确要核对的对象/范围、具体字段或处理记录与验收清单；不得编造具体订单号、责任人或改善效果。仅状态概况且没有业务分析职责的插槽不强求建议。数据缺口核查建议可独立引用证据，不必为了挂建议而伪造原因。findings只列证据直接支持的风险事实或异常表现，不含原因、数据缺口和结构分布；同一风险只列一次。不要生成HTML或重新绘制图表，不得编造根因、责任角色或期限。每轮最多交付4条风险、3条原因与3条建议，文字简短；证据足够即调用交付工具，不逐条追加查询。提交成功后系统直接展示，不需要再生成确认文案。"
         +("\n证据范围："+stage_note if stage_note else '')
         +"\n范围："+json.dumps(scope,ensure_ascii=False,sort_keys=True)
     )
@@ -89,8 +89,13 @@ def run_main_analysis(context, cancel, progress, turn_factory):
             elif kind=='text_delta' and not narrative:
                 # Refusals/limitations can be emitted without an llm_response.
                 pass
-            if kind in {'cognitive_policy','tool_start','sop_progress','recovery_state','awaiting_user_choice','done'}:
-                progress('主服务：'+('等待补充分析口径' if needs_input else '路由、取证与交付校验中'),list(trace))
+            if kind in {'cognitive_policy','tool_start','sop_progress','recovery_state','awaiting_user_choice','llm_request','llm_response','done'}:
+                if needs_input:message='等待补充分析口径'
+                elif kind=='llm_request':message=f'模型分析第 {rounds+1} 轮'
+                elif kind=='tool_start':message='交付校验' if event.get('name')=='CockpitDeliverCards' else '读取看板证据'
+                elif kind=='done':message='分析完成，正在发布'
+                else:message=f'模型分析已完成 {rounds} 轮' if rounds else '路由与证据准备'
+                progress(message,list(trace))
         evidence=session_evidence(session,context)
         facts=evidence['facts']
         committed=[]
@@ -150,6 +155,7 @@ def session_evidence(session,context):
         statement=value['statement'];label=statement;number=None
         match=re.fullmatch(r'(.+)=(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)',statement)
         if match:label=re.sub(r'\[[^\]]+\]$','',match[1]);number=float(match[2])
+        label=label.split(' :: ',1)[-1]
         facts.append(dict(id=value['id'],label=label,value=number,unit='',definition=statement,claim=value))
     stage_filter=getattr(session,'cockpit_stage_filter',None) or {}
     if context.get('snapshotId','').startswith('ap-'):
@@ -171,6 +177,21 @@ def session_evidence(session,context):
         values=stage_filter.get('failedLabels') or []
         labels='、'.join(values[:6])+('等' if len(values)>6 else '') or '指标'
         limitations.append(f"本环节有{stage_filter['failed']}条指标查询失败未纳入（{labels}）；未用其他数据替代，相关结论应视为不完整。")
+    read_ids, sampled_ids = set(), set()
+    for query in getattr(session,'query_results',[]):
+        output=getattr(query,'data',None)
+        try:output=json.loads(output) if isinstance(output,str) else output
+        except (ValueError,TypeError):continue
+        if not isinstance(output,dict):continue
+        parts=output.get('queries') or [output]
+        for part in parts:
+            if not isinstance(part,dict) or not part.get('queryId'):continue
+            read_ids.add(part['queryId'])
+            if (part.get('coverage') or {}).get('sampleOnly'):sampled_ids.add(part['queryId'])
+    if sampled_ids:
+        limitations.append(f'{len(sampled_ids)}条查询仅提供有界样本，不能外推总体比例；原始AP凭据保留完整响应。')
+    if stage_filter.get('kept',0)>len(read_ids):
+        limitations.append(f"本轮读取{len(read_ids)}/{stage_filter['kept']}条匹配查询，未读查询不作为结论依据。")
     records=[]
     for index,query in enumerate(getattr(session,'query_results',[])):
         data=getattr(query,'data',None)
@@ -185,8 +206,13 @@ def session_evidence(session,context):
             encoded=json.dumps(row,ensure_ascii=False,default=str)
             if len(encoded)>8000:continue
             row=json.loads(encoded)
+            row_query=row.get('__queryId') if isinstance(row,dict) else None
+            row_scope=getattr(query,'scope',{})
+            if row_query:
+                row={key.split(' :: ',1)[-1]:value for key,value in row.items() if key!='__queryId'}
+                row_scope=(row_scope.get('queries') or {}).get(row_query,row_scope)
             records.append(dict(id=f'query-{index}:row-{row_index}',customer=f'主服务查询{index+1}记录{row_index+1}',
-                amount=None,cause='原始查询行，未独立验证因果关系',causeSupport=False,evidence='主服务本轮查询结果',data=row,scope=getattr(query,'scope',{})))
+                amount=None,cause='原始查询行，未独立验证因果关系',causeSupport=False,evidence='主服务本轮查询结果',data=row,scope=row_scope))
         if len(records)>=24:break
     records=records[:24]
     row_evidence=[dict(id=r['id'],label=r['customer'],value=None,unit='',definition=r['cause'],record=r) for r in records]

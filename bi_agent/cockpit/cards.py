@@ -112,3 +112,11 @@ def install_delivery(session,context):
         session.cockpit_card_delivery=(len(session.query_results),value)
         return json.dumps(dict(accepted=True,contract=CONTRACT,summary=value['summary']),ensure_ascii=False)
     session._tool_executors[TOOL]=deliver
+
+
+def delivery_summary(session):
+    """Only a validated, current delivery can terminate the main tool loop."""
+    delivery = getattr(session, 'cockpit_card_delivery', None)
+    if delivery and delivery[0] == len(session.query_results):
+        return delivery[1]['summary']
+    return None

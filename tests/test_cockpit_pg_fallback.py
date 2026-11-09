@@ -14,6 +14,11 @@ from bi_agent.cockpit import pg_fallback as fallback
 from bi_agent.cockpit.dashboard_source import RELEASE, evidence_source, receipt_scope
 from bi_agent.cockpit.store import Store
 
+@pytest.fixture(autouse=True)
+def explicit_pg_opt_in(monkeypatch):
+    # Exercise the retained fallback mechanism only under explicit opt-in.
+    monkeypatch.setenv('COCKPIT_PG_FALLBACK_ENABLED', '1')
+
 DATE = {"identifierCode": "YWLN_D044", "operator": {"code": "BETWEEN", "type": "DATE"},
         "value": ["2025-01-01", "2025-12-31"], "valueType": "ABSOLUTE"}
 

@@ -83,16 +83,18 @@ def _thinking_extra_body(model_id: str, runtime_thinking: bool) -> Optional[dict
     - The two verified Doubao 2.1 routes accept the DeepSeek-style field.
     - GLM/Kimi/unknown families send no thinking payload.
     """
+    from .runtime_config import scoped_thinking
+    override = scoped_thinking()
     family = _model_family(model_id)
     if family == "deepseek":
-        enabled = _env_flag("TEAM_DEEPSEEK_ENABLE_THINKING")
+        enabled = override if override is not None else _env_flag("TEAM_DEEPSEEK_ENABLE_THINKING")
         if enabled is None:
             enabled = _env_flag("TEAM_ENABLE_THINKING")
         if enabled is None:
             enabled = bool(runtime_thinking)
         return {"thinking": {"type": "enabled" if enabled else "disabled"}}
     if family == "qwen":
-        enabled = _env_flag("TEAM_QWEN_ENABLE_THINKING")
+        enabled = override if override is not None else _env_flag("TEAM_QWEN_ENABLE_THINKING")
         if enabled is None:
             enabled = bool(runtime_thinking)
         if not enabled and "qwen3.8-2.4t-a95b" in str(model_id).lower():

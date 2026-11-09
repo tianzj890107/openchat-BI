@@ -144,8 +144,10 @@ export function createAPDataClient({apiBase, id, request = fetch, onInvalidate =
     // A page snapshot is only a fast path.  If it does not contain this
     // widget's query, fetch that query live instead of surfacing a host-only
     // cache error inside the delivered dashboard component.
-    const replayHit = replaying && replay.has(key);
-    if (replaying && !replayHit && !missed && !displayOnly) {
+    // Graph configuration must come from AP after an upstream configuration update.
+    // A saved page remains useful for business data, but is not a graph config cache.
+    const replayHit = kind !== 'helmet' && replaying && replay.has(key);
+    if (kind !== 'helmet' && replaying && !replayHit && !missed && !displayOnly) {
       missed = true;
       queueMicrotask(onSnapshotMiss);
     }

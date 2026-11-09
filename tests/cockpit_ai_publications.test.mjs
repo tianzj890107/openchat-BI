@@ -82,10 +82,9 @@ test('manual card refresh reports analysis duration and appends live state after
   assert.ok(source.includes("return `上次分析 · ${name} · 当前筛选范围 · ${count} 条证据${stampText}${durationText}`;"));
   assert.ok(source.includes('const durationText=formatAnalysisDuration(item.execution?.durationSeconds);'));
   assert.ok(source.includes("function formatAnalysisDuration(value)"));
-  assert.ok(source.includes('if(frozenAnnual.running && (frozenAnnual.activeStage===stage.value || (!frozenAnnual.activeStage && frozenAnnual.pendingStages[0]===stage.value)))return \'后台更新中\';'));
-  assert.ok(source.includes(':disabled="cardRefreshStatus===\'后台更新中\'"'));
+  assert.ok(source.includes(':disabled="cardUpdating"'));
   assert.ok(source.includes('<span v-if="cardRefreshStatus" class="cockpit-card-metadata__status">{{cardRefreshStatus}}</span>'));
-  assert.ok(source.indexOf('{{cardRefreshStatus}}</span>') > source.indexOf(':disabled="cardRefreshStatus===\'后台更新中\'"'));
+  assert.ok(source.indexOf('{{cardRefreshStatus}}</span>') > source.indexOf(':disabled="cardUpdating"'));
 });
 
 

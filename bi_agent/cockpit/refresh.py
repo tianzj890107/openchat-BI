@@ -511,7 +511,7 @@ class RefreshManager:
 
     def _query_requests(self, identity, requests):
         records, failures, seen = [], [], set()
-        deadline = time.monotonic() + max(30, int(os.getenv('COCKPIT_FETCH_BUDGET_SECONDS','240')))
+        deadline = time.monotonic() + max(30, int(os.getenv('COCKPIT_FETCH_BUDGET_SECONDS','60')))
         budget_logged = False
         cache = getattr(self, 'round_queries', None)
         for payload in requests:

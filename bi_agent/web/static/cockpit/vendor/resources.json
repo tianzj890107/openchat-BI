@@ -2,7 +2,7 @@
   "checkedAt": "2026-11-09T17:33:09.147768+08:00",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "sourceCommit": "325ffcd1022250affac987015b766d20d735efd6",
-  "metadataCommit": "c0f0270f713253cb4f33233708ba05e74b1d4e1c",
+  "metadataCommit": "325ffcd1022250affac987015b766d20d735efd6",
   "notes": "ProBIUI and palette synced from feature/demo_1021 at 325ffcd1022250affac987015b766d20d735efd6. Upstream index.html integration checked: BI bundle before bi-color-vars.css; local host routes and templates preserved. Reapplied existing null-instance fitView guard. Dashboard metadata intentionally unchanged.",
   "resources": [
     {

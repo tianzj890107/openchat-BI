@@ -23,6 +23,8 @@ def _host_template_registry():
     registry = json.loads((ROOT / "template-registry.json").read_text())
     for template in registry.values():
         for component in template.get("components", []):
+            if component.get("id") == "horizontal-bar-i2gi98l6":
+                component.setdefault("visualization", {})["displayLimit"] = {"enabled": False}
             graph_config = component.get("graphConfig")
             if isinstance(graph_config, dict) and "helmetViewUrl" in graph_config:
                 graph_config["helmetViewUrl"] = HELMET_VIEW_PATH
@@ -105,8 +107,8 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     assert stored["renderer"] == "ProBiDashboard"
     assert stored["mode"] == "release"
     assert stored["source"]["dashboardId"] == "iba-demo-1021"
-    assert stored["source"]["version"] == "c0f0270"
-    assert stored["source"]["commit"] == "c0f0270f713253cb4f33233708ba05e74b1d4e1c"
+    assert stored["source"]["version"] == "325ffcd"
+    assert stored["source"]["commit"] == "325ffcd1022250affac987015b766d20d735efd6"
     assert stored["source"]["templateCount"] == 13
     assert stored["source"]["totalComponents"] == 142
     assert stored["source"]["activateRules"] == 6
@@ -190,7 +192,7 @@ def test_prototype_source_remains_available_only_for_explicit_standalone_analysi
 
 def test_runtime_reports_live_ap_single_query_mode_and_only_real_gaps():
     payload = release_payload()
-    assert payload["source"]["commit"] == "c0f0270f713253cb4f33233708ba05e74b1d4e1c"
+    assert payload["source"]["commit"] == "325ffcd1022250affac987015b766d20d735efd6"
     assert payload["source"]["dataMode"] == "ap-single-query"
     assert {gap["code"] for gap in payload["gaps"]} == {"CHILD_DEFINITION_MISSING"}
     overview = payload["pages"]["overview"]["components"]
