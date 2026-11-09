@@ -84,3 +84,21 @@ def test_risk_shortlist_limits_display_without_rewriting_analysis(tmp_path, monk
         assert result['riskCounts'][domain]['totalCount']==10
         assert len(result['riskCounts'][domain]['findings'])==3
     assert store.read()['version']==version
+
+
+def test_manual_refresh_uses_public_query_data_envelope(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from bi_agent.cockpit.frozen import recompute_from_router
+    app=FastAPI()
+    expected={"rows":[{"value":17}]}
+    @app.post('/api/cockpit/data/query')
+    def query():
+        return dict(data=expected,receiptId='query-receipt',receivedAt=1,expiresAt=100)
+    captured={}
+    class Manager:
+        def __init__(self,store,config,query,start):
+            captured['query']=query
+    monkeypatch.setattr('bi_agent.cockpit.refresh.RefreshManager',Manager)
+    monkeypatch.setattr('bi_agent.cockpit.ap_gateway.get_gateway',lambda:SimpleNamespace(config=object()))
+    recompute_from_router(app,tmp_path)
+    assert captured['query'](1,'analysis',{'analysisConfig':{}})==expected
