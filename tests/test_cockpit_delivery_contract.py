@@ -7,7 +7,7 @@ import pytest
 from bi_agent.cockpit.cards import CONTRACT, card_delivery_state
 from bi_agent.cockpit.delivery import (
     KIND_LABELS, SLOT_SPECS, checkable_acceptance, classify_cause,
-    project_card, sanitize_summary, validate_reasoning,
+    plain_summary_text, project_card, sanitize_summary, validate_reasoning,
 )
 from bi_agent.cockpit.store import Store
 
@@ -73,6 +73,16 @@ def test_explicit_unit_caveat_remains_safe():
     safe = '金额与电量口径不同，不能相互解释，需按统一口径补充映射后再判断。'
     validate_reasoning(_value(summary=safe), _evidence(), stage='combined')
     assert sanitize_summary(safe, _evidence()) == safe
+
+
+def test_markdown_summary_is_rendered_as_plain_text():
+    raw = ('## 行动建议。**建议 1：核对订单接收电量的口径与产品结构**。'
+           '- 动作对象与范围：核对 `订单号` 与 [逐单明细](http://example.test)。')
+    text = plain_summary_text(raw)
+    assert '#' not in text and '**' not in text and '`' not in text
+    assert '行动建议' in text and '建议 1：核对订单接收电量的口径与产品结构' in text
+    assert '逐单明细' in text and 'http://' not in text
+    assert '#' not in sanitize_summary(raw, _evidence())
 
 
 def test_unverified_set_arithmetic_is_rejected_and_verified_one_passes():

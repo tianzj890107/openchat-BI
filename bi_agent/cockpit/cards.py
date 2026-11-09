@@ -1,6 +1,7 @@
 """Validated card delivery inside the main WebSession, with no extra LLM pass."""
 from __future__ import annotations
 import json
+import re
 from pydantic import Field, ValidationError
 from .agent import Result, Cause, Recommendation, validate_result
 from .delivery import SLOT_SPECS, evidence_count as distinct_evidence_count, validate_reasoning
@@ -71,7 +72,19 @@ class Cards(Result):
     causes:list[CardCause]=Field(default_factory=list,max_length=8)
     recommendations:list[CardRecommendation]=Field(default_factory=list,max_length=8)
 
-SCHEMA=dict(name=TOOL,description='提交现有AI插槽的短摘要、原因、结构化风险发现、建议与限制。必须先读取看板证据；引用工具返回的evidenceIds。findings只列证据支持的风险事实，不把原因、数据缺口或结构定位计入。根因未确认时可交付空原因，但商机、订单、发货和共同分析有可定位业务事实时必须给出有证据的核查建议；不得编造原因或改善措施。此工具不取数、不执行任务。',input_schema=Cards.model_json_schema())
+SCHEMA=dict(name=TOOL,description='提交现有AI插槽的短摘要、原因、结构化风险发现、建议与限制。summary必须是纯文本单段结论，禁止Markdown标题、加粗、列表、表格和行动建议清单，行动建议只能写入recommendations。必须先读取看板证据；引用工具返回的evidenceIds。findings只列证据支持的风险事实，不把原因、数据缺口或结构定位计入。根因未确认时可交付空原因，但商机、订单、发货和共同分析有可定位业务事实时必须给出有证据的核查建议；不得编造原因或改善措施。此工具不取数、不执行任务。',input_schema=Cards.model_json_schema())
+
+
+def summary_structure_issue(summary) -> str:
+    """A card summary is one plain-text conclusion, not a delivery document."""
+    value = str(summary or '')
+    if re.search(r'(?m)^\s{0,3}#{1,6}\s*', value) or '**' in value:
+        return 'summary 含 Markdown 标题或加粗标记'
+    if re.search(r'(?m)^\s{0,3}[-*+•]\s+', value):
+        return 'summary 含项目符号列表'
+    if '行动建议' in value or re.search(r'建议\s*\d+\s*[：:]', value):
+        return 'summary 含行动建议清单'
+    return ''
 
 
 def install_delivery(session,context):
@@ -82,6 +95,12 @@ def install_delivery(session,context):
             if not session.query_results:raise ValueError('请先读取本轮看板数据')
             value=validate_result(params,evidence,{e['id'] for e in evidence['evidence']},result_model=Cards)
             validate_reasoning(value,evidence,stage=str(context.get('stage') or ''))
+            summary_issue=summary_structure_issue(value.get('summary'))
+            if summary_issue:
+                session.cockpit_card_delivery=None
+                return json.dumps(dict(accepted=False,
+                    issues=[dict(loc=['summary'],message=summary_issue)],
+                    instruction='summary 只写纯文本结论；请把行动建议拆成 recommendations 数组中的多条记录（action/actionType/ownerRole/deadlineDays/acceptance/evidenceIds），每条一个动作后重新调用本工具，不需要重复取数。'),ensure_ascii=False)
         except ValueError as exc:
             # Invalid model arguments are repairable business feedback, not a
             # transport failure that terminates the main Tool Runtime.

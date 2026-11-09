@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
-from bi_agent.cockpit.cards import CONTRACT, TOOL, install_delivery
+from bi_agent.cockpit.cards import CONTRACT, TOOL, install_delivery, summary_structure_issue
 from bi_agent.cockpit.agent import validate_result
 from bi_agent.cockpit.cards import Cards
 from bi_agent.cockpit.dashboard_source import RELEASE
@@ -28,6 +28,25 @@ def test_delivery_tool_rejects_missing_or_fabricated_causal_evidence():
     assert session.cockpit_card_delivery is None
     session._tool_executors[TOOL](candidate(ref='f1'),'')
     assert session.cockpit_card_delivery[1]['causes'][0]['status']=='hypothesis'
+
+
+def test_card_delivery_sends_action_plans_back_to_recommendations():
+    context=dict(stage='shipment',period='2025-10',department='全部产品部',snapshotId='ap-test')
+    query=QueryResult(data={'rows':[{'amount':42.5}]})
+    session=SimpleNamespace(query_results=[query],claims=[dict(id='f1',statement='amount=42.5')],_tool_executors={})
+    install_delivery(session,context)
+    assert summary_structure_issue('## 行动建议') == 'summary 含 Markdown 标题或加粗标记'
+    assert summary_structure_issue('**建议 1：核对口径**')
+    assert summary_structure_issue('- 动作对象：逐单核对')
+    assert summary_structure_issue('建议 1：核对订单接收电量')
+    assert summary_structure_issue('订单接收电量与漏斗口径不一致，尚不能汇总对账。') == ''
+    value=dict(candidate(ref='f1'))
+    value['summary']='## 行动建议。**建议 1：核对订单接收电量的口径**。- 动作对象与范围：逐单核对。'
+    rejected=json.loads(session._tool_executors[TOOL](value,''))
+    assert rejected['accepted'] is False
+    assert rejected['issues'][0]['loc']==['summary']
+    assert 'recommendations' in rejected['instruction']
+    assert session.cockpit_card_delivery is None
 
 
 def test_findings_require_queried_evidence_and_deduplicate_business_issues():

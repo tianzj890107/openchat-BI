@@ -44,7 +44,7 @@ def analysis_question(context):
         "金额与电量缺少单价、产品结构或交期映射时不得比较或相加；取消/变更与中标未签集合未验证重叠和期间对应时，不得相加或据此排除缺口；"
         "目标或口径冲突时，摘要必须同时写各自口径观察和“尚不能汇总对账”；建议的责任角色标为待确认、期限标为建议值，验收必须可检查。"
         "原因要给出kind（verified/fact/structure/data_gap/hypothesis），未证明原因在missingEvidence写明缺失材料。建议要给出actionType：核查、补数、对账、确认口径用investigation，可关联待验证假设、数据缺口或直接引用证据；调整交付、资源或价格等改善动作用remediation，必须关联已得到记录支持的原因。原因未证明时只能先给核查任务，不能把假设直接变成改善措施。所有建议的causeIds与evidenceIds必须真实存在，责任人和期限的确认标记由服务端保持false，待用户确认。"
-        "请读取工具返回的evidenceIds，最终调用CockpitDeliverCards提交短摘要、原因、风险发现、建议、限制供既有AI插槽展示；业务数值由事实字段展示，短摘要不重复业务数字，不新造比例；有合理线索时保留hypothesis并说明待验证材料，没有原因证据时causes可以为空；对商机、订单、发货和共同分析，只要取得可定位的业务事实，必须至少交付一项核查建议，不得因原因未确认一并清空建议。建议需明确要核对的对象/范围、具体字段或处理记录与验收清单；不得编造具体订单号、责任人或改善效果。仅状态概况且没有业务分析职责的插槽不强求建议。数据缺口核查建议可独立引用证据，不必为了挂建议而伪造原因。findings只列证据直接支持的风险事实或异常表现，不含原因、数据缺口和结构分布；同一风险只列一次。不要生成HTML或重新绘制图表，不得编造根因、责任角色或期限。提交后用正常中文章节确认交付，不另开模型改写。"
+        "请读取工具返回的evidenceIds，最终调用CockpitDeliverCards提交短摘要、原因、风险发现、建议、限制供既有AI插槽展示；summary必须是纯文本单段结论，不得包含Markdown标题、加粗、列表、表格或“行动建议”清单，行动建议只能写入recommendations；业务数值由事实字段展示，短摘要不重复业务数字，不新造比例；有合理线索时保留hypothesis并说明待验证材料，没有原因证据时causes可以为空；对商机、订单、发货和共同分析，只要取得可定位的业务事实，必须至少交付一项核查建议，不得因原因未确认一并清空建议。建议需明确要核对的对象/范围、具体字段或处理记录与验收清单；不得编造具体订单号、责任人或改善效果。仅状态概况且没有业务分析职责的插槽不强求建议。数据缺口核查建议可独立引用证据，不必为了挂建议而伪造原因。findings只列证据直接支持的风险事实或异常表现，不含原因、数据缺口和结构分布；同一风险只列一次。不要生成HTML或重新绘制图表，不得编造根因、责任角色或期限。提交后用正常中文章节确认交付，不另开模型改写。"
         +("\n证据范围："+stage_note if stage_note else '')
         +"\n范围："+json.dumps(scope,ensure_ascii=False,sort_keys=True)
     )
@@ -123,17 +123,18 @@ def run_main_analysis(context, cancel, progress, turn_factory):
         # the evidence-backed narrative as a limited card with no fabricated
         # causes or recommendations.  This is deliberately only a fallback:
         # validated tool output always wins when it exists.
+        from .delivery import plain_summary_text
         if (not card_value and not needs_input
                 and done in LIMITED_STOP_REASONS
                 and (facts or (evidence.get('records') or []))
                 and narrative.strip()):
             card_value=dict(
-                summary=(split_sections(narrative)['summary'] or narrative).strip()[:240],
+                summary=plain_summary_text(split_sections(narrative)['summary'] or narrative)[:240],
                 causes=[], recommendations=[], findings=[],
                 limitations=list(dict.fromkeys(limitations))[:8])
             if card_value['summary']:
                 status='limited'
-        return dict(summary=(card_value['summary'] if card_value else (split_sections(narrative)['summary'] or narrative)[:600]),
+        return dict(summary=(plain_summary_text(card_value['summary']) if card_value else plain_summary_text(split_sections(narrative)['summary'] or narrative)[:600]),
             causes=card_value['causes'] if card_value else [],recommendations=card_value['recommendations'] if card_value else [],
             findings=card_value.get('findings',[]) if card_value else [],
             limitations=list(dict.fromkeys(limitations+(card_value['limitations'] if card_value else []))),cardContract=CONTRACT if card_value else None,

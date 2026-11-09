@@ -544,10 +544,41 @@ def _norm(text):
     return re.sub(r'[。；;，,\s（）()]', '', _text(text))
 
 
+_MD_IMAGE_RE = re.compile(r'!\[[^\]]*\]\([^)]*\)')
+_MD_LINK_RE = re.compile(r'\[([^\]]*)\]\([^)]*\)')
+_MD_HEADING_RE = re.compile(r'^\s{0,3}#{1,6}\s*', re.MULTILINE)
+_MD_BLOCKQUOTE_RE = re.compile(r'^\s{0,3}>\s?', re.MULTILINE)
+_MD_RULE_RE = re.compile(r'^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$', re.MULTILINE)
+_MD_CODE_RE = re.compile(r'`([^`]*)`')
+_MD_EMPHASIS_RE = re.compile(r'(\*\*|__)(.+?)\1')
+_MD_BULLET_RE = re.compile(r'^\s{0,3}(?:[-*+•]|\d+[.)])\s+', re.MULTILINE)
+_MD_INLINE_BULLET_RE = re.compile(r'(?<=[。；;，,\n])\s*[-*+•]\s+')
+
+
+def plain_summary_text(value):
+    """The card summary is plain text; never leak Markdown syntax into the UI."""
+    text = _text(value)
+    if not text:
+        return ''
+    text = _MD_IMAGE_RE.sub('', text)
+    text = _MD_LINK_RE.sub(r'\1', text)
+    text = _MD_HEADING_RE.sub('', text)
+    text = _MD_BLOCKQUOTE_RE.sub('', text)
+    text = _MD_RULE_RE.sub('', text)
+    text = _MD_CODE_RE.sub(r'\1', text)
+    text = _MD_EMPHASIS_RE.sub(r'\2', text)
+    text = _MD_BULLET_RE.sub('', text)
+    text = _MD_INLINE_BULLET_RE.sub(' ', text)
+    text = text.replace('|', ' ')
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\s*\n\s*', ' ', text)
+    return text.strip()
+
+
 def sanitize_summary(text, evidence):
     """Remove unsupported inferences instead of only labelling them."""
     kept, seen, replaced = [], set(), set()
-    for sentence in _sentences(text):
+    for sentence in _sentences(plain_summary_text(text)):
         if any(token in sentence for token in ('短摘要不含业务数字', '具体数值见事实字段', '提交后用正常中文', '不要生成HTML')):
             continue
         key = _norm(sentence)
