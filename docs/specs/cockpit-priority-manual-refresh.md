@@ -2,7 +2,7 @@
 
 2026-11-09. Customer fixed-annual mode only. No automatic model execution on reads.
 
-- Every rendered AI slot owns a quiet metadata line and compact blue analysis button. Existing results remain visible while refreshing. The shared stage executor covers 15 declared slots through six stage analyses, not 15 independent model runs.
+- Every rendered AI slot owns a quiet metadata line and compact gray text action (blue on hover, without a button background or border). Explicit clicks force a model run even if the evidence fingerprint is unchanged; automatic refresh still reuses unchanged analysis. Existing results remain visible while refreshing. The shared stage executor covers 15 declared slots through six stage analyses, not 15 independent model runs.
 - POST `/api/cockpit/publications/refresh` accepts `manual:true`, `slotId`, `page`, and ordered `visibleSlots`. The clicked slot's stage comes first, followed by visible stages, the current page and remaining stages.
 - One worker runs sequentially. POST `/api/cockpit/publications/priority` reorders pending work only; opening, polling and scrolling cannot start a new round. Running work is not interrupted, completed work is not rerun within the same round, and repeated clicks do not start competing workers.
 - Each successful stage is independently validated and atomically merged into the durable annual publication. Other stages keep their previous successful cards. A failed query or stage cannot prevent later stages from running; partial successful AP evidence is still handled by the existing stage executor and delivery validator.
@@ -11,4 +11,4 @@
 - Stage progress and successful results are persisted in SQLite, with additive tables only. A page reload does not cancel the worker; process restarts retain already published stages but do not automatically resume interrupted work.
 - Customer UI polls saved publications more frequently during a manual round. This does not run AP or models. Updated stage cards replace old cards without a board remount; each card keeps its own analysis timestamp and evidence scope.
 
-Validation: 398 targeted Python tests and 99 Cockpit Node tests passed. The customer tar is rebuilt on explicit request; external env/Compose files stay unchanged. No server deployment, live AP/PG query, model call or task dispatch is performed. The manual-runner AP envelope fix is included.
+Validation: 399 targeted Python tests and 99 Cockpit Node tests passed. The customer tar is rebuilt on explicit request; external env/Compose files stay unchanged. No server deployment, live AP/PG query, model call or task dispatch is performed. The manual-runner AP envelope fix is included.

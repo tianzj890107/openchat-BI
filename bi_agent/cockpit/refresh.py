@@ -882,10 +882,10 @@ class RefreshManager:
             return ({'period': period}, generated) if generated else ({}, [])
         return {}, (delivered_component_requests(stage) or delivered_stage_requests(stage))
 
-    def preheat_period(self, identity, page, stage, period):
+    def preheat_period(self, identity, page, stage, period, *, force=False):
         """Materialise one configured slot for an explicit business period."""
         if stage == 'combined':
-            return self._preheat_combined_period(identity, page, period)
+            return self._preheat_combined_period(identity, page, period, force=force)
         scope = period_target_scope(identity, page, stage, period)
         claim = self.store.claim_refresh_info(
             scope, lease=max(180, self.timeout + 60), config_version=config_version())
@@ -926,12 +926,12 @@ class RefreshManager:
                                           page=page, period=period,
                                           filters=filters)
             data_as_of = self._data_as_of(records)
-            changed = (not existing
+            changed = (force or not existing
                        or existing.get('context', {}).get('dataFingerprint')
                        != resolved['dataFingerprint'])
             gate = self._analysis_gate(
                 scope, fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
-                changed=changed, force=False, now=started)
+                changed=changed, force=force, now=started)
             if changed and not gate['allow']:
                 return self._defer_changed(scope, claim, 'default', request, gate, started)
             if changed:
@@ -989,7 +989,7 @@ class RefreshManager:
             return None
         return item
 
-    def _preheat_combined_period(self, identity, page, period):
+    def _preheat_combined_period(self, identity, page, period, *, force=False):
         """Publish the cross-stage card from saved same-period stage receipts."""
         from .combined import cached_combined_request
         scope = period_target_scope(identity, page, 'combined', period)
@@ -1021,12 +1021,12 @@ class RefreshManager:
             data_as_of = self._data_as_of([record for record in
                                            (self.store.get_ap_result(rid, int(identity)) or {}
                                             for rid in (body.get('apReceiptIds') or [])) if record])
-            changed = (not existing
+            changed = (force or not existing
                        or existing.get('context', {}).get('dataFingerprint')
                        != resolved['dataFingerprint'])
             gate = self._analysis_gate(
                 scope, fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
-                changed=changed, force=False, now=started)
+                changed=changed, force=force, now=started)
             if changed and not gate['allow']:
                 return self._defer_changed(scope, claim, 'default', body, gate, started)
             if changed:

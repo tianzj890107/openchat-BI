@@ -395,7 +395,7 @@ def recompute_from_router(app, cwd):
                 raise StageNotReady(stage)
             page = target_page(stage) or 'analysis'
             store.request_refresh(period_target_scope(1, page, stage, period), now=time.time())
-            result = manager.preheat_period(1, page, stage, period)
+            result = manager.preheat_period(1, page, stage, period, force=True)
             hit = store.published_period(1, period, stage, {}, data_identity=get_gateway().config.identity())
             if result.get('status') not in {'published', 'frozen'} or not hit:
                 if stage=='combined' and result.get('status') in {'waiting-for-stages','awaiting-plan'}:
