@@ -102,3 +102,97 @@ def test_manual_refresh_uses_public_query_data_envelope(tmp_path, monkeypatch):
     monkeypatch.setattr('bi_agent.cockpit.ap_gateway.get_gateway',lambda:SimpleNamespace(config=object()))
     recompute_from_router(app,tmp_path)
     assert captured['query'](1,'analysis',{'analysisConfig':{}})==expected
+
+
+def test_priority_incremental_publication_and_failure_isolation(tmp_path):
+    store,_,body=fixture(tmp_path)
+    entered=threading.Event();release=threading.Event();second=threading.Event();finish_second=threading.Event();done=threading.Event()
+    calls=[]
+    class Runner:
+        def run_stage(self,period,stage):
+            calls.append(stage)
+            if len(calls)==1:
+                entered.set();assert release.wait(5)
+            if len(calls)==2:
+                second.set();assert finish_second.wait(5)
+            if stage=='order':raise RuntimeError('stage source unavailable')
+            item=deepcopy(body['items'][stage]);item['updatedAt']=2
+            return item
+    original_finish=store.finish
+    def finished(*args):original_finish(*args);done.set()
+    store.finish=finished
+    service=FrozenAnnualService(store,Runner())
+    client=TestClient(FrozenCockpitSurface(FastAPI(),service))
+    r=client.post('/api/cockpit/publications/refresh',json={'manual':True,'slotId':'shipment-risk-summary','page':'analysis','visibleSlots':['opportunity-risk']})
+    assert r.status_code==200 and entered.wait(2)
+    assert calls==['shipment']
+    # Reprioritize an existing job; never start a competing model execution.
+    response=client.post('/api/cockpit/publications/priority',json={'slotId':'quote-summary','page':'operations'})
+    assert response.status_code==200
+    release.set();assert second.wait(2)
+    current=store.read()
+    assert current['items']['shipment']['updatedAt']==2
+    assert current['items']['quotation']['updatedAt']==1
+    assert calls==['shipment','quotation']
+    assert service.envelope(1)['readyCount']==15
+    finish_second.set();assert done.wait(3)
+    current=store.read()
+    assert current['items']['order']['updatedAt']==1
+    assert current['items']['bid']['updatedAt']==2
+    assert len(calls)==len(set(calls))==6
+    assert store.job()['status']=='partial'
+    assert store.job()['failedStages']==[{'stage':'order','code':'RuntimeError'}]
+
+
+def test_combined_dependency_defers_without_blocking_other_stages(tmp_path):
+    from bi_agent.cockpit.frozen import StageNotReady
+    store,_,body=fixture(tmp_path);calls=[];done=threading.Event()
+    class Runner:
+        def run_stage(self,period,stage):
+            calls.append(stage)
+            if stage=='combined' and calls.count(stage)==1:raise StageNotReady(stage)
+            item=deepcopy(body['items'][stage]);item['updatedAt']=3;return item
+    original=store.finish
+    def finished(*args):original(*args);done.set()
+    store.finish=finished
+    service=FrozenAnnualService(store,Runner())
+    service.refresh('sales-shipment-issues','analysis')
+    assert done.wait(3)
+    assert calls[0]=='combined' and calls.count('combined')==2
+    assert calls.index('bid')>calls.index('combined',1)
+    assert calls.count('opportunity')==1
+    assert store.job()['status']=='published'
+    assert all(v['updatedAt']==3 for v in store.read()['items'].values())
+
+
+def test_visibility_updates_and_page_reads_cannot_start_analysis(tmp_path):
+    store,_,_=fixture(tmp_path);calls=[]
+    service=FrozenAnnualService(store,lambda period:calls.append(period))
+    client=TestClient(FrozenCockpitSurface(FastAPI(),service))
+    assert client.post('/api/cockpit/publications/priority',json={'slotId':'quote-summary'}).status_code==200
+    assert client.post('/api/cockpit/publications/priority',json={'visibleSlots':['unknown']}).status_code==422
+    assert client.get('/api/cockpit/ai-publications').status_code==200
+    assert calls==[] and store.job()['status']=='idle'
+
+
+def test_dependent_combined_priority_does_not_overtake_its_inputs(tmp_path):
+    store,_,_=fixture(tmp_path);service=FrozenAnnualService(store,lambda p:None)
+    store.claim()
+    service.pending=['opportunity','order','combined']
+    service.deferred_combined=True
+    service.prioritize('sales-shipment-issues','analysis')
+    assert service.pending==['opportunity','order','combined']
+    assert service.store.job()['pendingStages']==service.pending
+    client=TestClient(FrozenCockpitSurface(FastAPI(),service))
+    assert client.post('/api/cockpit/publications/priority',json={'visibleSlots':[{}]}).status_code==422
+
+
+def test_manual_combined_uses_only_this_round_successful_inputs(monkeypatch):
+    from types import SimpleNamespace
+    from bi_agent.cockpit.refresh import RefreshManager
+    cards={stage:{'id':stage} for stage in ('opportunity','order','shipment')}
+    monkeypatch.setattr('bi_agent.cockpit.combined.published_period_stage_cards',lambda *a,**k:cards)
+    manager=RefreshManager(None,SimpleNamespace(identity=lambda:'test'),None,None)
+    assert manager._period_stage_cards(1,'2026')==cards
+    manager.combined_fresh_stages={'order','opportunity'}
+    assert set(manager._period_stage_cards(1,'2026'))=={'order','opportunity'}

@@ -57,3 +57,10 @@
 .cockpit-frozen-release__action:disabled { opacity: .5; cursor: default; }
 
 .cockpit-analysis-meta { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+
+/* Every customer AI slot owns one quiet metadata/action row. */
+.cockpit-card-metadata {
+  display:flex; align-items:center; flex-wrap:wrap; gap:8px;
+  margin:4px 12px 8px; color:var(--cockpit-text-help); font-size:12px; line-height:20px;
+}
+.cockpit-insight-slot--fixed .insight-runtime-state { display:none; }

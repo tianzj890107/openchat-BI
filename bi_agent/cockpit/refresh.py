@@ -971,8 +971,10 @@ class RefreshManager:
         can still be delivered with its coverage disclosed.
         """
         from .combined import published_period_stage_cards
-        return published_period_stage_cards(self.store, identity, period,
+        cards = published_period_stage_cards(self.store, identity, period,
                                             data_identity=self.config.identity())
+        fresh = getattr(self, 'combined_fresh_stages', None)
+        return {stage:item for stage,item in cards.items() if stage in fresh} if fresh is not None else cards
 
     def _period_published_analysis(self, identity, period, stage, filters):
         """Load an exact period-stage card, including views not yet re-bound."""
