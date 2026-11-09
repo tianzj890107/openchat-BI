@@ -18,6 +18,7 @@ def fixture_cards(store):
         q = query(code)
         store.save_ap_result(1, 'analysis', q, {'result': {}}, 1, 'conn')
         cards[stage] = {'context': {'id': 1, 'dataIdentity': 'conn', 'department': '全部产品部',
+                                    'period': '2025-10',
                                     'chartQueries': [json.dumps(q)], 'unavailableQueries': []}}
     return cards
 
@@ -37,6 +38,23 @@ def test_other_period_is_excluded(tmp_path):
     cards['opportunity']['context']['chartQueries'] = [json.dumps(query('YWLN_M0023', '2024-01-01'))]
     body = cached_combined_request(store, 1, cards)
     assert len(body['apReceiptIds']) == 2
+
+
+def test_card_context_period_must_match_even_when_ap_dates_match(tmp_path):
+    store = Store(tmp_path/'db.sqlite');cards = fixture_cards(store)
+    cards['shipment']['context']['period'] = '2025-09'
+    body = cached_combined_request(store, 1, cards, period='2025-10')
+    assert len(body['apReceiptIds']) == 2
+    assert body['period'] == '2025-10'
+    assert body['clarifications']['coverage'] == 'opportunity,order'
+
+
+def test_requested_period_requires_two_matching_stage_cards(tmp_path):
+    store = Store(tmp_path/'db.sqlite');cards = fixture_cards(store)
+    cards['order']['context']['period'] = '2025-09'
+    cards['shipment']['context']['period'] = '2025-09'
+    with pytest.raises(ValueError, match='至少需要两个环节'):
+        cached_combined_request(store, 1, cards, period='2025-10')
 
 
 def test_missing_shipment_card_keeps_the_other_same_period_stages(tmp_path):

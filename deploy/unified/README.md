@@ -1,6 +1,6 @@
 # Analytics 单主服务部署
 
-同一镜像、每环境一个 analytics 服务，容器监听 8080。工作台、Cockpit、基础工具 MCP 和任务 MCP 由同一应用分发，不再部署独立静态 Cockpit。
+同一镜像、每环境一个 analytics 服务；对外只维护 `8765` 一个应用端口，容器内部监听 8080。工作台、Cockpit、基础工具 MCP 和任务 MCP 由同一应用分发，不再部署独立静态 Cockpit，也不维护 8876/18765 等额外入口。
 
 PDT 与 demo2 分别使用 Compose project `analytics-pdt`、`analytics-demo2`，确保配置、任务数据库和持久卷隔离；34 可作为其中一个实例的宿主或独立验收环境，不能仅因域名不同就假定有三套环境。
 

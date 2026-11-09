@@ -9,7 +9,7 @@ def test_vendor_manifest_matches_local_artifacts():
     vendor=ROOT/'vendor'
     manifest=json.loads((vendor/'resources.json').read_text())
     assert manifest['sourceCommit']=='0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2'
-    assert manifest['metadataCommit']=='be99db5cbbda4496b62d6c14e7f4c5e793a77476'
+    assert manifest['metadataCommit']=='c0f0270f713253cb4f33233708ba05e74b1d4e1c'
     for r in manifest['resources']:
         data=(vendor/r['file']).read_bytes()
         assert hashlib.sha256(data).hexdigest()==r['sha256']
@@ -35,7 +35,7 @@ def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='be99db5cbbda4496b62d6c14e7f4c5e793a77476'
+    assert source['commit']=='c0f0270f713253cb4f33233708ba05e74b1d4e1c'
     assert source['umdCommit']=='0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2'
     assert source['activateRules']==6
     for file in source['files']:
@@ -61,7 +61,7 @@ def test_runtime_routes_new_helmet_interface_to_host_gateway():
                    for template in registry.values()
                    for component in template.get('components',[])
                    if component.get('graphConfig',{}).get('helmetViewUrl')]
-    assert upstream_urls and all(url.startswith('http://172.16.5.230:8080/') for url in upstream_urls)
+    assert upstream_urls and all(url=='/v1/graphs/helmet-view' for url in upstream_urls)
 
     runtime=json.loads((ROOT/'metadata/runtime.json').read_text())
     serialized=json.dumps(runtime, ensure_ascii=False)
@@ -72,6 +72,40 @@ def test_runtime_routes_new_helmet_interface_to_host_gateway():
                     if component.get('graphConfig',{}).get('helmetViewUrl')]
     assert len(delivered_urls)==len(upstream_urls)
     assert set(delivered_urls)=={'/api/gateway2/x360/v1/graphs/helmet-view'}
+
+
+def test_upstream_default_table_sorts_are_imported_without_reintroducing_mojibake():
+    folder=ROOT/'metadata/iba-demo-1021'
+    registry=json.loads((folder/'template-registry.json').read_text())
+    expected={
+        ('2112009587516293121','table-6teuq4qa'):('YWLN_M0002','DESC'),
+        ('2112026770145329154','table-biauwdwh'):('YWLN_M0023','DESC'),
+        ('2112059463654490114','table-biauwdwh'):('YWLN_M0031','DESC'),
+        ('2112059751740260354','table-biauwdwh'):('YWLN_M0027','DESC'),
+        ('2112060211964461057','table-bh7u4yxk'):('YWLN_M0032','DESC'),
+        ('2113151813453660161','table-83ioaora'):('YWLN_M0035','DESC'),
+        ('2112062888320483329','table-jmrpjwsj'):('YWLN_M_CUSTOMER_ACTUAL_ENERGY','DESC'),
+        ('2112062888320483329','table-ilzta6h7'):('YWLN_M0194','DESC'),
+        ('2112062888320483329','table-qx1k3riz'):('YWLN_M0022','DESC'),
+        ('2112062888320483329','table-8uc5pvas'):('YWLN_M0022','DESC'),
+    }
+    found={}
+    empty=[]
+    for template_id,template in registry.items():
+        for component in template.get('components',[]):
+            rows=(component.get('dataConfig') or {}).get('sort')
+            if rows:
+                found[(template_id,component['id'])]=[(row['identifierCode'],row['order']) for row in rows]
+            elif rows == []:
+                empty.append((template_id,component['id']))
+    for key,value in expected.items():
+        assert found.get(key)==[value], (key,found.get(key))
+    assert {('2112009587516293121','table-54yeopj2'),
+            ('2112009587516293121','table-ys9za5oh'),
+            ('2112010750949113858','table-j282l5b0'),
+            ('2112010750949113858','table-3qcm5ah3'),
+            ('2112010750949113858','table-nu6hm1ge')} <= set(empty)
+    assert '\ufffd' not in json.dumps(registry,ensure_ascii=False)
 
 
 def test_risk_header_counts_follow_published_detail_cards():

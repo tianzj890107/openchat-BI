@@ -6,6 +6,10 @@ const {loadInsightStyle} = window.InsightRuntime
 loadInsightStyle(import.meta.url)
 
 const SHARE_FIELD = 'YWLN_M_ORDER_RECEIPT_ENERGY_PCT'
+/** 与看板 table-x242c9yb dataConfig.sort 对齐：按订单接收电量降序 */
+const SORT_FIELDS = [
+  {fieldType: 'Indicator', identifierCode: 'YWLN_M0032', isTree: false, label: '订单接收电量', name: 'Signed_Opportunity_Forecast_Energy', valueType: 'NUMBER', order: 'DESC'},
+]
 
 const fields = [
   {fieldType: 'Dimension', identifierCode: 'YWLN_D046', isTree: false, label: '明星产品系列', valueType: 'STRING'},
@@ -29,4 +33,5 @@ createTableInsight({
   tableKey: 'star-product-order-list',
   fields,
   columns,
+  sort: SORT_FIELDS,
 })

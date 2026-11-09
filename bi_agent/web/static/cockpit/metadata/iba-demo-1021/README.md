@@ -22,9 +22,13 @@
 新组件按本体库 8 的单查契约运行：
 
 ```text
-POST /api/gateway2/x360/v1/ontology/data/query
+COCKPIT_AP_BASE_URL=http://pdt-dev.eimos.com/api/gateway2/x360
+POST /v1/ontology/data/query
 X-Ontology-Repository-Id: 8
 ```
+
+`/x360` 属于配置中的网关地址末段，不写死在代码的 API 路径里；最终地址仍为
+`/api/gateway2/x360/v1/ontology/data/query`。
 
 新版头盔组件支持元数据配置 `graphConfig.helmetViewUrl`。上游交付值指向演示环境
 `172.16.5.230`，浏览器不能直连；运行包导出时统一改写为

@@ -1,9 +1,9 @@
 {
-  "checkedAt": "2026-11-06T14:45:00+08:00",
+  "checkedAt": "2026-11-06T17:30:00+08:00",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "sourceCommit": "0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2",
-  "metadataCommit": "be99db5cbbda4496b62d6c14e7f4c5e793a77476",
-  "notes": "The dashboard component config and template registry remain the host-adapted iba-demo feature/demo_1021 snapshot at be99db5. The BI UMD and host palette are synced from feature/sml_1106 at 0dc0cc0; that branch also contains temporary sorting/URL edits and U+FFFD labels, so those unrelated metadata changes were not imported. The host re-applies the local null-instance guard in the helmet Graph callback. The delivered date filter no longer pins YWLN_D044=2025-10: live runs resolve the current business year and preheat the current year and month.",
+  "metadataCommit": "c0f0270f713253cb4f33233708ba05e74b1d4e1c",
+  "notes": "The BI UMD and host palette come from iba-demo feature/sml_1106 at 0dc0cc0. The dashboard template registry is synced from feature/demo_1021 at c0f0270, which adds table dataConfig.sort defaults; U+FFFD labels keep the previously corrected local text. The host re-applies the local null-instance guard in the helmet Graph callback. The delivered date filter no longer pins YWLN_D044=2025-10: live runs resolve the current business year and preheat the current year and month.",
   "resources": [
     {
       "file": "../../vendor/antd/lib/vue.global.js",

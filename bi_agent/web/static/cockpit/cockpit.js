@@ -5,6 +5,7 @@
  */
 (() => {
   'use strict';
+  const frozenAnnualMode = window.COCKPIT_FIXED_ANNUAL === true;
 
   const root = document.querySelector('meta[name="app-root"]').content.replace(/\/$/, '');
   const routeRoot = location.pathname.replace(/\/cockpit(?:\/(?:home|overview|operations|analysis))?\/?$/, '');
@@ -118,8 +119,8 @@
   let liveDataClient = null;
   let publications = null;
   let defaultView = true;
-  let refreshDebounce = null;
   let filtersReady = false;
+  let scopeNeedsAnalysis = false;
   // A filter callback without a recent user gesture is SDK initialization or
   // replay. It records the default scope but must not restart the board.
   let scopeActionUntil = 0;
@@ -131,6 +132,17 @@
   const insightLoadError = ref('');
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
+  const frozenAnnual = reactive({visible:false,running:false,period:defaultPeriod,basis:'',error:''});
+  async function refreshFrozenAnnual() {
+    frozenAnnual.visible=true;
+    if(frozenAnnual.running)return;
+    frozenAnnual.running=true;frozenAnnual.error='';
+    try {
+      const response=await fetch(`${apiBase}/publications/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({manual:true,id:Number(identityId)})});
+      if(!response.ok)throw new Error('后台更新未启动，继续展示发布版');
+      aiPublicationClient?.poke(0,currentUiScope);
+    } catch(error) {frozenAnnual.running=false;frozenAnnual.error=error.message;}
+  }
   const pageState = reactive({cached:false,dataAsOf:0,analyzedAt:0,refreshing:false,updateStatus:'idle',displayStale:false,error:''});
   // Slot cards live outside the dashboard component lifecycle.  Tabs, node
   // switches and board remounts may change charts, but never clear this store.
@@ -268,6 +280,12 @@
   }
   function applyAiPublications(value, {preserve=true, notice=''}={}) {
     if(!value?.slots)return;
+    if(frozenAnnualMode){
+      frozenAnnual.running=value.manualUpdate?.status==='running';
+      frozenAnnual.period=value.requestedPeriod||'';
+      frozenAnnual.basis=value.basis||'';
+      frozenAnnual.error=value.manualUpdate?.error||'';
+    }
     // A slower read for the previous filter must never repaint the current
     // scope.  Keep the visible cards and let the newest request win.
     if(value.requestedScope && value.requestedScope!==currentUiScope){
@@ -595,6 +613,7 @@
 
   function ensureAnalysis(stage, refresh = false, urgent = false) {
     const state = stateFor(stage);
+    if(frozenAnnualMode) return refresh ? refreshFrozenAnnual() : Promise.resolve(state.item);
     if (analysisEngine === 'main' && !refresh && !state.stale && state.status === 'done' && state.item) {
       return Promise.resolve(state.item);
     }
@@ -664,6 +683,7 @@
         uiScope: currentUiScope,
         period: scopePeriod(),
         riskCounts: aiPublicationStore.riskCounts,
+        frozenControls: frozenAnnualMode ? {state:frozenAnnual, refresh:refreshFrozenAnnual} : null,
       }));
       const analysisContext = computed(() => ({
         id: Number(identityId),
@@ -676,6 +696,7 @@
       // Each slot answers its own question.  Prefer the slot-projected
       // publication over the shared stage card when it is at least as new.
       const slotAnalysis = computed(()=>{
+        if(frozenAnnualMode && !frozenAnnual.visible)return null;
         const published=slotPublication(props.insight.id);
         const projected=published?.status==='ready'&&validAiCard(published.payload)?published.payload:null;
         const current=state.value.item;
@@ -1216,11 +1237,10 @@
             onSnapshotMiss:()=>{fullSnapshot=null;pageState.cached=false;pageState.displayStale=true;},
             onError:(message,detail)=>showLiveError(message,detail),
             onRecover:()=>clearLiveError(),
-            onInvalidate:()=>{
-              if(analysisEngine!=='main'||fullSnapshot)return;
-              clearTimeout(refreshDebounce);
-              refreshDebounce=setTimeout(()=>{for(const stage of visibleStages.keys())ensureAnalysis(stage).catch(()=>{});onPageActivity();},400);
-            }});
+            // Query mutations (paging, sorting, table-local filters) are display
+            // changes.  A committed page-level filter calls changeScope and is
+            // handled after the replacement client has loaded its receipts.
+            onInvalidate:()=>{}});
           function install(snapshot,remount=false,metadata=[]) {
             if(snapshot&&(Number(snapshot.id)!==Number(identityId)||snapshot.page!==page.value||snapshot.uiScope!==currentUiScope))return;
             const incomingKey=snapshot?.version?`${page.value}:${currentUiScope}:${snapshot.version}`:'';
@@ -1267,7 +1287,15 @@
               nextTick(()=>requestAnimationFrame(()=>window.scrollTo({top,behavior:'instant'})));
             }
             const client=liveDataClient;
-            const scopeReady=()=>{if(client!==liveDataClient)return;filtersReady=true;biRuntime.value?.flushPendingScope?.();onPageActivity();};
+            const scopeReady=()=>{
+              if(client!==liveDataClient)return;
+              filtersReady=true;biRuntime.value?.flushPendingScope?.();
+              if(scopeNeedsAnalysis){
+                scopeNeedsAnalysis=false;
+                for(const stage of visibleStages.keys())ensureAnalysis(stage,true,true).catch(()=>{});
+              }
+              onPageActivity();
+            };
             const scopeFailed=cause=>{
               if(client!==liveDataClient)return;
               scopeReady();
@@ -1328,10 +1356,11 @@
             if(!metadata.length)try{metadata=liveDataClient.entries().filter(e=>e.kind==='helmet');}catch{}
             const token=++pageEpoch;pageCache?.invalidate();clearLiveError();
             currentUiScope=uiScope;defaultView=uiScope==='default';fullSnapshot=null;cardsVersion='';
+            scopeNeedsAnalysis=!frozenAnnualMode;
             // Keep the last complete cards on screen; the notice says the scope
             // changed and that the visible analysis still belongs to the old one.
             const notice='筛选口径已切换'+(detail?'（'+detail+'）':'')+'，正在加载新数据；以下仍为上次分析';
-            clearTimeout(refreshTimer);publications?.invalidate(notice);markAiPublicationsStale(notice);liveDataClient?.clearScope();
+            clearTimeout(refreshTimer);if(!frozenAnnualMode){publications?.invalidate(notice);markAiPublicationsStale(notice);}liveDataClient?.clearScope();
             // The slot store is independent from the board.  Ask for the new
             // scope, but keep every old payload on screen until a replacement
             // has been validated and returned.
@@ -1549,10 +1578,10 @@
         document.getElementById('cockpit-boot')?.remove();
         bootRuntime();
       });
-      onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(refreshDebounce);clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
+      onBeforeUnmount(() => {unbindRiskCountRuntime(biRuntime.value);statusPoller?.stop();aiPublicationClient?.stop();document.removeEventListener('click', onTabClick, true);document.removeEventListener('click', noteScopeAction, true);document.removeEventListener('pointerdown', noteScopeAction, true);document.removeEventListener('keydown', noteScopeAction, true);document.removeEventListener('visibilitychange', onVisibilityChange);window.removeEventListener('popstate', onPopState);switchPageImpl=null;clearTimeout(publishTimer);clearTimeout(refreshTimer);clearTimeout(activationTimer);clearTimeout(liveErrorClear);clearInterval(liveErrorSweep);pageCache?.invalidate();onPageActivity=()=>{};});
 
       return {
-        page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release,
+        frozenAnnualMode, frozenAnnual, refreshFrozenAnnual, page, runtime, loading, error, retryRuntime, pageTitle, pageState, dashboardDescription, liveError, boardRevision, dashboard: release, release,
         pageInsights, dashboardComponent: dashboard, biAdapters, biRuntime, hostUtils,
         slot_name: insight => `insight-${insight.id}`,
       };

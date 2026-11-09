@@ -122,6 +122,8 @@ def test_refresh_reuses_publication_when_evidence_is_unchanged(tmp_path):
     state = publication_status(store, page_scope(cfg, 1, 'analysis', 'default', 'ap'), current)
     assert state['update']['status'] == 'published'
     assert state['publicationVersion'] == current['version']
+    assert state['analysisPolicy']['minIntervalSeconds'] >= 0
+    assert state['analysisInventory']['resultKind'] == 'page'
 
 
 def test_unchanged_refresh_does_not_append_duplicate_snapshots(tmp_path):

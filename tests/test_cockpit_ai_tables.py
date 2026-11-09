@@ -464,3 +464,44 @@ def test_table_query_rejects_unreviewed_fields_and_or_filters(tmp_path, monkeypa
     good_fields["commonConfig"]["filters"]["logic"] = "OR"
     assert response.post("/api/cockpit/ai-tables/affected-order-list/query",
                          json=good_fields).status_code == 422
+
+
+def test_default_sort_reaches_ap_and_rejects_fields_outside_the_table(tmp_path, monkeypatch):
+    response, gateway = _client(tmp_path, monkeypatch, {"result": {"rows": []}})
+    fields = [("YWLN_D049", "Dimension"), ("YWLN_D006", "Dimension"),
+              ("YWLN_D005", "Dimension"), ("YWLN_D004", "Dimension"),
+              ("YWLN_D050", "Dimension"), ("M0143", "Indicator"),
+              ("YWLN_M_ORDER_OVERDUE_DAYS", "Indicator")]
+    query = _query(fields)
+    query["commonConfig"]["sorts"] = [{"identifierCode": "M0143", "order": "DESC"}]
+    result = response.post("/api/cockpit/ai-tables/overdue-order-list/query", json=query)
+    assert result.status_code == 200, result.text
+    assert gateway.calls[0][1]["commonConfig"]["sorts"] == [
+        {"identifierCode": "M0143", "order": "DESC"}]
+
+    unknown = _query(fields)
+    unknown["commonConfig"]["sorts"] = [{"identifierCode": "YWLN_M9999", "order": "DESC"}]
+    assert response.post("/api/cockpit/ai-tables/overdue-order-list/query",
+                         json=unknown).status_code == 422
+
+    bad_order = _query(fields)
+    bad_order["commonConfig"]["sorts"] = [{"identifierCode": "M0143", "order": "SIDEWAYS"}]
+    assert response.post("/api/cockpit/ai-tables/overdue-order-list/query",
+                         json=bad_order).status_code == 422
+
+
+def test_table_preheat_uses_the_same_default_sort_as_the_browser(tmp_path):
+    store = Store(tmp_path / "dataset" / "cockpit" / "history.sqlite3")
+    payloads = []
+
+    def receipt(identity, kind, payload):
+        payloads.append(payload)
+        return {"response": {"result": {"rows": []}, "pagination": {"total": 0}}}
+
+    assert preheat_table(store, 1, "star-product-order-list", receipt,
+                         period="2025-10") == "published"
+    assert payloads[0]["commonConfig"]["sorts"] == [
+        {"identifierCode": "YWLN_M0032", "order": "DESC"}]
+    assert preheat_table(store, 1, "star-product-order-list", receipt,
+                         period="2025-10") == "cached"
+    assert len(payloads) == 1

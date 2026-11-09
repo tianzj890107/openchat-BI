@@ -6,6 +6,10 @@ const {loadInsightStyle} = window.InsightRuntime
 loadInsightStyle(import.meta.url)
 
 const STATUS_FIELD = 'YWLN_D016'
+/** 与看板 table-jokzn6k4 dataConfig.sort 对齐：按减少电量降序 */
+const SORT_FIELDS = [
+  {fieldType: 'Indicator', identifierCode: 'YWLN_M0032', isTree: false, label: '减少电量（GWh）', name: '减少电量（GWh）', valueType: 'NUMBER', order: 'DESC'},
+]
 
 const filterFields = [
   {
@@ -57,4 +61,5 @@ createTableInsight({
   fields,
   columns,
   filterFields,
+  sort: SORT_FIELDS,
 })

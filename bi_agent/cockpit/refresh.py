@@ -26,10 +26,49 @@ from .targets import maintenance_targets, period_maintenance_targets
 
 DEFAULT_IDENTITIES = (1, 2)
 DEFAULT_PAGES = ('overview', 'operations', 'analysis')
+DEFAULT_ANALYSIS_INTERVAL_SECONDS = 1800
+DEFAULT_ANALYSIS_COALESCE_SECONDS = 300
 _DELIVERED_QUERY_CACHE = None
 _COMPONENT_QUERY_CACHE = None
 _METRIC_STAGES = {code: stage for stage, codes in STAGE_METRICS.items() for code in codes if stage != 'combined'}
 DEFAULT_CUSTOM_REFRESH_TTL_SECONDS = 24 * 60 * 60
+
+
+def analysis_cadence():
+    """Configured data-check versus model-analysis cadence."""
+    try:
+        min_interval = int(os.getenv('COCKPIT_ANALYSIS_MIN_INTERVAL_SECONDS',
+                                     str(DEFAULT_ANALYSIS_INTERVAL_SECONDS)))
+    except ValueError:
+        min_interval = DEFAULT_ANALYSIS_INTERVAL_SECONDS
+    try:
+        coalesce = int(os.getenv('COCKPIT_ANALYSIS_COALESCE_SECONDS',
+                                 str(DEFAULT_ANALYSIS_COALESCE_SECONDS)))
+    except ValueError:
+        coalesce = DEFAULT_ANALYSIS_COALESCE_SECONDS
+    return dict(minIntervalSeconds=max(0, min_interval), coalesceSeconds=max(0, coalesce))
+
+
+def inventory_payload(row):
+    """Public, camel-cased view of one persisted analysis inventory row."""
+    if not row:
+        return None
+    return dict(
+        status=row.get('status') or 'empty',
+        resultId=row.get('result_id') or '',
+        resultKind=row.get('result_kind') or '',
+        period=row.get('period') or '',
+        stage=row.get('stage') or '',
+        fingerprint=row.get('fingerprint') or '',
+        analyzedAt=float(row.get('analyzed_at') or 0),
+        dataAsOf=float(row.get('data_as_of') or 0),
+        latestDataAsOf=float(row.get('latest_data_as_of') or 0),
+        lastCheckedAt=float(row.get('last_checked_at') or 0),
+        lastChangeAt=float(row.get('last_change_at') or 0),
+        pendingSince=float(row.get('pending_since') or 0),
+        nextAnalysisAt=float(row.get('next_analysis_at') or 0),
+        pending=bool(row.get('pending_fingerprint')),
+    )
 
 
 def _canonical(value):
@@ -170,6 +209,25 @@ def preheat_target_scope(identity, page, stage):
     return digest({'preheat': True, 'id': int(identity), 'page': page, 'stage': stage})
 
 
+def record_period_publication(store, context, analysis_id, view_key=''):
+    """Bind a completed default-scope analysis to its period-stage index.
+
+    Interactive analyses used to publish only a view entry.  The period index
+    therefore stayed empty even though the cards were visible, which prevented
+    same-period cross-stage analysis from finding its inputs.
+    """
+    if not analysis_id:
+        return ''
+    context = context or {}
+    if not context.get('defaultView') or context.get('filters'):
+        return ''
+    period = periods.period_of_scope(context.get('uiScope'), context.get('period') or '')
+    if not period:
+        return ''
+    return store.publish_period(int(context.get('id') or 0), period,
+                                context.get('stage') or '', {}, analysis_id, view_key)
+
+
 def refresh_business_key(kind, identity, page='', stage='', ui_scope='default'):
     """Stable maintenance identity that survives config/contract rotations."""
     return digest({'business': kind, 'id': int(identity), 'page': page or '',
@@ -280,7 +338,8 @@ class RefreshManager:
     """
 
     def __init__(self, store, config, query, start_analysis, *, interval=900, poll=2.0,
-                 timeout=1200, cancel_analysis=None):
+                 timeout=1200, cancel_analysis=None, analysis_interval=0,
+                 coalesce_seconds=DEFAULT_ANALYSIS_COALESCE_SECONDS):
         self.store = store
         self.config = config
         self.query = query
@@ -289,6 +348,82 @@ class RefreshManager:
         self.poll = max(0.1, float(poll))
         self.timeout = max(60, int(timeout))
         self.cancel_analysis = cancel_analysis
+        # Zero keeps direct RefreshManager callers on the legacy behaviour.
+        # The router injects the configured production cadence explicitly.
+        self.analysis_interval = max(0, int(analysis_interval or 0))
+        self.coalesce_seconds = max(0, int(coalesce_seconds or 0))
+
+    @staticmethod
+    def _data_as_of(records):
+        values = [float(record.get('createdAt') or 0) for record in (records or [])
+                  if float(record.get('createdAt') or 0) > 0]
+        return min(values) if values else time.time()
+
+    def _seed_inventory(self, scope, *, identity=0, page='', stage='', period='',
+                        filters=None, result_id='', result_kind='', fingerprint='',
+                        data_as_of=0, analyzed_at=0):
+        self.store.seed_analysis_inventory(
+            scope, identity=identity, page=page, stage=stage, period=period,
+            filters=filters or {}, result_id=result_id, result_kind=result_kind,
+            fingerprint=fingerprint, data_as_of=data_as_of, analyzed_at=analyzed_at,
+            min_interval=self.analysis_interval)
+
+    def _seed_page_inventory(self, scope, body):
+        items = body.get('items') or {}
+        analyzed_at = max((float((item or {}).get('updatedAt') or 0)
+                           for item in items.values()), default=0)
+        context = (next(iter(items.values()), {}) or {}).get('context') or {}
+        self._seed_inventory(
+            scope, identity=int(body.get('id') or 0), page=body.get('page') or '',
+            stage='', period=context.get('period') or '', filters=context.get('filters') or {},
+            result_id=body.get('version') or '', result_kind='page',
+            fingerprint=body.get('dataFingerprint') or '',
+            data_as_of=body.get('dataAsOf') or 0,
+            analyzed_at=analyzed_at or body.get('publishedAt') or 0)
+
+    def _seed_analysis_inventory(self, scope, analysis, stage, *, identity=0, page='',
+                                 period='', filters=None):
+        context = (analysis or {}).get('context') or {}
+        self._seed_inventory(
+            scope, identity=int(identity or context.get('id') or 0),
+            page=page or context.get('page') or '', stage=stage,
+            period=period or context.get('period') or '',
+            filters=filters if filters is not None else context.get('filters') or {},
+            result_id=(analysis or {}).get('id') or '', result_kind='analysis',
+            fingerprint=context.get('dataFingerprint') or '',
+            data_as_of=float(context.get('updatedAt') or (analysis or {}).get('updatedAt') or 0),
+            analyzed_at=float((analysis or {}).get('updatedAt') or 0))
+
+    def _analysis_gate(self, scope, *, fingerprint, data_as_of, changed, force, now):
+        if not changed:
+            return self.store.mark_analysis_unchanged(
+                scope, now=now, latest_data_as_of=data_as_of) or dict(
+                    allow=False, reason='unchanged', nextAnalysisAt=0)
+        return self.store.prepare_analysis(
+            scope, fingerprint=fingerprint, data_as_of=data_as_of, now=now,
+            min_interval=self.analysis_interval, coalesce_seconds=self.coalesce_seconds,
+            force=force)
+
+    def _record_inventory(self, scope, *, result_id, result_kind, fingerprint,
+                          data_as_of, identity=0, page='', stage='', period='', filters=None,
+                          now=None):
+        now = time.time() if now is None else float(now)
+        self.store.record_analysis_inventory(
+            scope, result_id=result_id, result_kind=result_kind, fingerprint=fingerprint,
+            data_as_of=data_as_of, analyzed_at=now, min_interval=self.analysis_interval,
+            identity=identity or None, page=page or None, stage=stage or None,
+            period=period or None, filters=filters)
+
+    def _defer_changed(self, scope, claim, ui_scope, context, gate, now):
+        status, next_check = self._schedule(ui_scope, context, now=now)
+        if status != 'frozen':
+            data_check = now + float(self.interval)
+            next_analysis = float(gate.get('nextAnalysisAt') or 0)
+            next_check = min(data_check, next_analysis) if next_analysis > now else data_check
+            next_check = max(next_check, now + 1)
+        self._finish(scope, claim, status, next_check=next_check, error='', last_success=now)
+        return dict(scope=scope, status=status, changed=True, deferred=True,
+                    nextAnalysisAt=float(gate.get('nextAnalysisAt') or 0))
 
     def _set(self, scope, status, **changes):
         next_check = changes.pop('next_check', None)
@@ -464,6 +599,7 @@ class RefreshManager:
         now = time.time()
         state = self.store.refresh_state(scope) or {}
         attempt = int(state.get('attempt') or 1)
+        self.store.mark_analysis_retry(scope, now=now)
         self._finish(scope, claim, 'retry_wait',
                      next_check=now + min(900, 60 * max(1, attempt)),
                      error=str(exc)[:500])
@@ -480,6 +616,8 @@ class RefreshManager:
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
+            started = time.time()
+            self._seed_page_inventory(scope, body)
             records, failures = self._query_entries(body)
             old_items = body.get('items') or {}
             extra, notes = self._supplement(body['id'], failures, list(old_items))
@@ -495,6 +633,16 @@ class RefreshManager:
             changed = (fingerprint != body.get('dataFingerprint')
                        or body.get('dataIdentity') != identity
                        or body.get('configVersion') != config_version())
+            forced = (body.get('configVersion') != config_version()
+                      or body.get('dataIdentity') != identity)
+            data_as_of = self._data_as_of(all_records)
+            gate = self._analysis_gate(
+                scope, fingerprint=fingerprint, data_as_of=data_as_of,
+                changed=changed, force=forced, now=started)
+            if changed and not gate['allow']:
+                context = (next(iter(old_items.values()), {}) or {}).get('context') or {}
+                return self._defer_changed(scope, claim, body.get('uiScope'), context,
+                                           gate, started)
             analysis_ids = {stage: item.get('id') for stage, item in old_items.items()
                             if item and item.get('id')}
             data_source = body.get('dataSource') or 'ap'
@@ -505,8 +653,6 @@ class RefreshManager:
                                   if record['kind'] in {'analysis', 'batch'}})
                 receipt_ids = [record['id'] for record in records
                                if record['kind'] in {'analysis', 'batch'}]
-                forced = (body.get('configVersion') != config_version()
-                          or body.get('dataIdentity') != identity)
                 old_scoped = stage_evidence([
                     {'kind': entry.get('kind'), 'request': entry.get('payload'),
                      'response': entry.get('data')}
@@ -581,13 +727,21 @@ class RefreshManager:
                 if not self.store.publish_page(scope, page):
                     raise RuntimeError('服务端复核结果早于当前发布版本，未覆盖')
             now = time.time()
+            context = (next(iter(old_items.values()), {}) or {}).get('context') or {}
+            if changed:
+                self._record_inventory(
+                    scope, result_id=page.get('version'), result_kind='page',
+                    fingerprint=fingerprint, data_as_of=page.get('dataAsOf') or data_as_of,
+                    identity=int(body['id']), page=body['page'],
+                    period=context.get('period') or '', filters=context.get('filters') or {},
+                    now=now)
             status, next_check = self._schedule(body.get('uiScope'), old_items
                                                 and next(iter(old_items.values()), {}).get('context')
                                                 or None, now=now)
             self._finish(scope, claim, status, next_check=next_check,
                          error='', last_success=now)
             return dict(scope=scope, status=status, changed=changed,
-                        fingerprint=fingerprint, version=page.get('version'))
+                        deferred=False, fingerprint=fingerprint, version=page.get('version'))
         except Exception as exc:
             return self._failure(scope, exc, claim)
 
@@ -603,6 +757,8 @@ class RefreshManager:
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
+            started = time.time()
+            self._seed_analysis_inventory(scope, analysis, stage)
             # Successful and previously unavailable queries are both re-read;
             # a recovered AP source replaces the registered PostgreSQL answer.
             # Historical contexts can contain queries for every slot on the
@@ -635,18 +791,33 @@ class RefreshManager:
             changed = (resolved['dataFingerprint'] != context.get('dataFingerprint')
                        or resolved.get('fallbackVersion', '') != context.get('fallbackVersion', '')
                        or current_scope != view_key)
+            data_as_of = self._data_as_of(records)
+            gate = self._analysis_gate(
+                scope, fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
+                changed=changed, force=current_scope != view_key, now=started)
+            if changed and not gate['allow']:
+                return self._defer_changed(scope, claim, 'default', context, gate, started)
             if changed:
                 job = self.start_analysis(request, resolved)
                 item = self._await(job, claim)
                 self.record_period(identity, stage, {**request, **resolved},
                                    item['id'], current_scope)
+            else:
+                item = None
             if not self._owned(claim):
                 raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             now = time.time()
+            if changed:
+                self._record_inventory(
+                    scope, result_id=(item or {}).get('id') or '', result_kind='analysis',
+                    fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
+                    identity=identity, page=request['page'], stage=stage,
+                    period=request.get('period') or '', filters=request.get('filters') or {},
+                    now=now)
             status, next_check = self._schedule('default', context, now=now)
             self._finish(scope, claim, status, next_check=next_check,
                          error='', last_success=now)
-            return dict(scope=scope, status=status, changed=changed)
+            return dict(scope=scope, status=status, changed=changed, deferred=False)
         except Exception as exc:
             return self._failure(scope, exc, claim)
 
@@ -721,6 +892,7 @@ class RefreshManager:
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
+            started = time.time()
             seed, requests = self._stage_requests(identity, page, stage, period=period)
             if not requests:
                 self._finish(scope, claim, 'awaiting-plan',
@@ -747,10 +919,21 @@ class RefreshManager:
                 data_mode='ap', resolve_fallback=False, fallback_notes=notes)
             key = view_scope({**request, **resolved, 'sourceMode': 'service',
                               'stageName': stage})
-            existing = self.store.published_view(key).get(stage)
+            filters = seed.get('filters') or {}
+            existing = (self.store.published_view(key).get(stage)
+                        or self._period_published_analysis(identity, period, stage, filters))
+            self._seed_analysis_inventory(scope, existing, stage, identity=identity,
+                                          page=page, period=period,
+                                          filters=filters)
+            data_as_of = self._data_as_of(records)
             changed = (not existing
                        or existing.get('context', {}).get('dataFingerprint')
                        != resolved['dataFingerprint'])
+            gate = self._analysis_gate(
+                scope, fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
+                changed=changed, force=False, now=started)
+            if changed and not gate['allow']:
+                return self._defer_changed(scope, claim, 'default', request, gate, started)
             if changed:
                 job = self.start_analysis(request, resolved)
                 item = self._await(job, claim)
@@ -759,15 +942,23 @@ class RefreshManager:
                     [record for record in request['chartQueries']])
                 self.record_period(identity, stage, {**request, **resolved},
                                    item['id'], key)
+            else:
+                item = existing
             if not self._owned(claim):
                 raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             now = time.time()
+            if changed:
+                self._record_inventory(
+                    scope, result_id=(item or {}).get('id') or '', result_kind='analysis',
+                    fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
+                    identity=identity, page=page, stage=stage, period=period,
+                    filters=seed.get('filters') or {}, now=now)
             status, next_check = self._schedule('default', request, now=now)
             self._finish(scope, claim, status, next_check=next_check,
                          error='', last_success=now)
             self.store.set_refresh_state(view_target_scope(key, stage), status,
                                          next_check=next_check, last_success=now)
-            return dict(scope=scope, status=status, changed=changed, period=period)
+            return dict(scope=scope, status=status, changed=changed, deferred=False, period=period)
         except Exception as exc:
             return self._failure(scope, exc, claim)
 
@@ -779,23 +970,22 @@ class RefreshManager:
         a second AP fan-out.  Missing stages are left out so a partial analysis
         can still be delivered with its coverage disclosed.
         """
-        cards = {}
-        data_identity = self.config.identity()
-        for stage in ('opportunity', 'order', 'shipment'):
-            hit = self.store.published_period(identity, period, stage, {},
-                                              data_identity=data_identity)
-            if not hit:
-                continue
-            item = self.store.get_analysis(hit['analysis_id'])
-            context = (item or {}).get('context') or {}
-            if (not item or item.get('status') not in {'completed', 'limited'}
-                    or (item.get('result') or {}).get('cardContract') != CONTRACT
-                    or int(context.get('id') or 0) != int(identity)
-                    or context.get('stage') != stage
-                    or periods.normalise(context.get('period')) != period):
-                continue
-            cards[stage] = item
-        return cards
+        from .combined import published_period_stage_cards
+        return published_period_stage_cards(self.store, identity, period,
+                                            data_identity=self.config.identity())
+
+    def _period_published_analysis(self, identity, period, stage, filters):
+        """Load an exact period-stage card, including views not yet re-bound."""
+        hit = self.store.published_period(
+            int(identity), period, stage, filters or {},
+            data_identity=self.config.identity())
+        if not hit:
+            return None
+        item = self.store.get_analysis(hit['analysis_id'])
+        if (not item or item.get('status') not in {'completed', 'limited'}
+                or (item.get('result') or {}).get('cardContract') != CONTRACT):
+            return None
+        return item
 
     def _preheat_combined_period(self, identity, page, period):
         """Publish the cross-stage card from saved same-period stage receipts."""
@@ -806,23 +996,37 @@ class RefreshManager:
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
+            started = time.time()
             cards = self._period_stage_cards(identity, period)
             if len(cards) < 2:
                 self._finish(scope, claim, 'awaiting-plan',
                              next_check=time.time() + min(60, self.interval),
                              error='等待同期间商机、订单和发货分析完成后再生成共同分析')
                 return dict(scope=scope, status='awaiting-plan', period=period)
-            body = cached_combined_request(self.store, int(identity), cards)
+            body = cached_combined_request(self.store, int(identity), cards, period=period)
             body['period'] = period
             resolved = page_analysis_context(
                 body, self.store, data_mode='ap', resolve_fallback=False,
                 allow_expired=True)
             key = view_scope({**body, **resolved, 'sourceMode': 'service',
                               'stageName': 'combined'})
-            existing = self.store.published_view(key).get('combined')
+            filters = body.get('filters') or {}
+            existing = (self.store.published_view(key).get('combined')
+                        or self._period_published_analysis(identity, period, 'combined', filters))
+            self._seed_analysis_inventory(scope, existing, 'combined', identity=identity,
+                                          page=page, period=period,
+                                          filters=filters)
+            data_as_of = self._data_as_of([record for record in
+                                           (self.store.get_ap_result(rid, int(identity)) or {}
+                                            for rid in (body.get('apReceiptIds') or [])) if record])
             changed = (not existing
                        or existing.get('context', {}).get('dataFingerprint')
                        != resolved['dataFingerprint'])
+            gate = self._analysis_gate(
+                scope, fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
+                changed=changed, force=False, now=started)
+            if changed and not gate['allow']:
+                return self._defer_changed(scope, claim, 'default', body, gate, started)
             if changed:
                 job = self.start_analysis(body, resolved)
                 item = self._await(job, claim)
@@ -835,12 +1039,19 @@ class RefreshManager:
             self.record_period(int(identity), 'combined', {**body, **resolved},
                                existing['id'], key)
             now = time.time()
+            if changed:
+                self._record_inventory(
+                    scope, result_id=(existing or {}).get('id') or '',
+                    result_kind='analysis', fingerprint=resolved['dataFingerprint'],
+                    data_as_of=data_as_of, identity=int(identity), page=page,
+                    stage='combined', period=period, filters=filters,
+                    now=now)
             status, next_check = self._schedule('default', body, now=now)
             self._finish(scope, claim, status, next_check=next_check,
                          error='', last_success=now)
             self.store.set_refresh_state(view_target_scope(key, 'combined'), status,
                                          next_check=next_check, last_success=now)
-            return dict(scope=scope, status=status, changed=changed, period=period)
+            return dict(scope=scope, status=status, changed=changed, deferred=False, period=period)
         except Exception as exc:
             return self._failure(scope, exc, claim)
 
@@ -852,6 +1063,7 @@ class RefreshManager:
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
+            started = time.time()
             seed, requests = self._stage_requests(identity, page, stage)
             if not requests:
                 # No browser has delivered this page's query plan yet; this is
@@ -881,21 +1093,39 @@ class RefreshManager:
             key = view_scope({**request, **resolved, 'sourceMode': 'service',
                               'stageName': stage})
             existing = self.store.published_view(key).get(stage)
+            self._seed_analysis_inventory(scope, existing, stage, identity=identity,
+                                          page=page, period=request.get('period') or '',
+                                          filters=seed.get('filters') or {})
+            data_as_of = self._data_as_of(records)
             changed = (not existing
                        or existing.get('context', {}).get('dataFingerprint')
                        != resolved['dataFingerprint'])
+            gate = self._analysis_gate(
+                scope, fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
+                changed=changed, force=False, now=started)
+            if changed and not gate['allow']:
+                return self._defer_changed(scope, claim, 'default', seed, gate, started)
             if changed:
                 job = self.start_analysis(request, resolved)
-                self._await(job, claim)
+                item = self._await(job, claim)
+            else:
+                item = existing
             if not self._owned(claim):
                 raise RuntimeError('刷新范围已被更新的配置取代，未写回旧结果')
             now = time.time()
+            if changed:
+                self._record_inventory(
+                    scope, result_id=(item or {}).get('id') or '', result_kind='analysis',
+                    fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
+                    identity=identity, page=page, stage=stage,
+                    period=request.get('period') or '', filters=seed.get('filters') or {},
+                    now=now)
             status, next_check = self._schedule('default', seed, now=now)
             self._finish(scope, claim, status, next_check=next_check,
                          error='', last_success=now)
             self.store.set_refresh_state(view_target_scope(key, stage), status,
                                          next_check=next_check, last_success=now)
-            return dict(scope=scope, status=status, changed=changed)
+            return dict(scope=scope, status=status, changed=changed, deferred=False)
         except Exception as exc:
             return self._failure(scope, exc, claim)
 
@@ -1042,6 +1272,8 @@ def publication_status(store, scope, body=None):
         scope=scope,
         period=policy['period'],
         periodPolicy=policy,
+        analysisPolicy=analysis_cadence(),
+        analysisInventory=inventory_payload(store.analysis_inventory(scope)),
         publicationVersion=body.get('version', ''),
         dataAsOf=body.get('dataAsOf', 0),
         analyzedAt=analyzed,

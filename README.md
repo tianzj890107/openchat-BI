@@ -35,7 +35,7 @@ eimosp-ontology-agentic-analytics 是面向业务分析场景的对话式 BI Age
 - **Python 版本**：`3.13.x`（标准运行环境；`pyproject.toml` 约束 `>=3.10,<3.14`）
 - **容器内部端口**：`8080`（统一；Dockerfile `ENV APP_PORT=8080` + `EXPOSE 8080`，CMD 监听 `0.0.0.0:8080`）
 - **推荐宿主机映射端口**：`8765`（`-p 8765:8080`；`8765` 同时也是非容器本地直接运行默认端口）
-- **端口约定**：`8080` 是统一容器内部端口；`8765`/`47313`/`47314` 是推荐宿主机映射端口或非容器直接运行端口。不要把宿主机端口写成容器内部监听端口。
+- **端口约定**：本仓库对外维护的唯一应用端口是 `8765`；`/workbench`、`/cockpit/*`、`/api/mcp/*` 和 `/healthz` 都由同一进程提供。容器内 `8080` 只是镜像实现细节，不作为独立维护入口；`8876`、`18765`、`47313`、`47314` 不再作为本仓库部署或验收入口。不要把宿主机端口写成容器内部监听端口。
 - **统一健康检查接口**：`GET /healthz`（别名 `GET /health`），就绪返回 `200`，未完成配置返回 `503`
 - **Nacos 配置中心**：预留待对接（当前未接入，见 [DEPLOYMENT.md](DEPLOYMENT.md)）
 
@@ -158,10 +158,12 @@ AP 失败不会静默退回旧快照。2026-10-26已在服务器启用，当前�
 
 ### Fuxi 远程 MCP
 
-主服务已内置 Streamable HTTP MCP，入口与健康检查：
+主服务已内置 Streamable HTTP MCP，与 Workbench、Cockpit 共用 `8765` 和同一个应用进程；不存在独立 `/mcp` 服务或额外端口：
 
 ```text
-POST http://<host>:8765/api/mcp
+POST http://<host>:8765/api/mcp/process360  # Process360 连接器
+POST http://<host>:8765/api/mcp/general     # 通用分析连接器
+POST http://<host>:8765/api/mcp             # 兼容旧连接器的全量入口
 GET  http://<host>:8765/api/mcp/health
 GET  http://<host>:8765/api/mcp/artifacts/<filename>
 ```
