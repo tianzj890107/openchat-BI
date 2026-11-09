@@ -39,11 +39,6 @@
   </div>
   <div id="app" v-cloak>
     <main class="cockpit-main" :data-page="page" :aria-label="pageTitle">
-      <div v-if="frozenAnnualMode && page !== 'analysis'" class="cockpit-frozen-release" role="status">
-        <span class="cockpit-frozen-release__basis" :title="frozenAnnual.basis">{{frozenAnnual.period}} 年度分析</span>
-        <button class="cockpit-frozen-release__action" type="button" :disabled="frozenAnnual.running" @click="refreshFrozenAnnual">{{frozenAnnual.visible ? '重新分析' : '分析'}}</button>
-        <span class="cockpit-frozen-release__notice" v-if="frozenAnnual.running">后台更新中</span>
-      </div>
       <h1 class="visually-hidden">{{pageTitle}}</h1>
       <div v-if="error" class="cockpit-state error" role="alert">
         <p>{{error}}</p>
