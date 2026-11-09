@@ -960,3 +960,16 @@ def test_same_round_reuse_is_bound_to_credentials_and_next_round_retries_failure
     assert len(calls)==2
     cfg.headers=lambda:{'Cookie':'session-b'}
     assert manager._query_requests(1,[query])[0] and len(calls)==3
+
+
+def test_ai_only_query_timeout_is_ten_seconds_and_does_not_change_display_config(tmp_path):
+    from bi_agent.cockpit.diagnostics import current_scope,diagnostic_scope
+    from unittest.mock import patch
+    store=Store(tmp_path/'short.sqlite3');cfg=Config();seen=[]
+    manager=_manager(store,cfg,lambda *args:seen.append(current_scope().get('fetchDeadline')) or {'value':1},lambda *a:None)
+    with patch('bi_agent.cockpit.refresh.time.monotonic',return_value=100):
+        manager._analysis_query(1,'analysis',{})
+        manager._analysis_query(1,'helmet',{})
+        with diagnostic_scope(fetchDeadline=105):manager._analysis_query(1,'batch',[])
+    assert seen==[110,None,105]
+    assert not hasattr(cfg,'timeout')

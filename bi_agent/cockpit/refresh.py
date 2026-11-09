@@ -454,6 +454,17 @@ class RefreshManager:
             transport_identity(self.config),
             self.config.batch_mode if kind == 'batch' else 'fixed-path')
 
+    def _analysis_query(self, identity, kind, payload):
+        """Short deadline for AI evidence reads only; chart HTTP requests keep theirs."""
+        if kind not in {'analysis','batch'}:
+            return self.query(identity,kind,payload)
+        from .diagnostics import current_scope, diagnostic_scope
+        deadline=time.monotonic()+10
+        inherited=current_scope().get('fetchDeadline')
+        if inherited is not None:deadline=min(deadline,inherited)
+        with diagnostic_scope(fetchDeadline=deadline):
+            return self.query(identity,kind,payload)
+
     def _query_entries(self, body):
         """Re-read every page query; one failed business query becomes a fallback candidate."""
         records, failures, retry = [], [], []
@@ -469,7 +480,7 @@ class RefreshManager:
                 raise RuntimeError('历史页面包含无效查询，保留上次完整版本')
             seen.add(_canonical(payload))
             try:
-                data = self.query(int(body['id']), kind, payload)
+                data = self._analysis_query(int(body['id']), kind, payload)
             except Exception as exc:
                 if kind == 'helmet':
                     raise RuntimeError('头盔图查询失败，保留上次完整版本') from exc
@@ -491,7 +502,7 @@ class RefreshManager:
             seen.add(key)
             kind = 'batch' if isinstance(payload, list) else 'analysis'
             try:
-                data = self.query(int(body['id']), kind, payload)
+                data = self._analysis_query(int(body['id']), kind, payload)
             except Exception:
                 failures.append(key)
                 continue
@@ -531,7 +542,7 @@ class RefreshManager:
             try:
                 from .diagnostics import diagnostic_scope
                 with diagnostic_scope(fetchDeadline=deadline):
-                    data = self.query(identity, kind, payload)
+                    data = self._analysis_query(identity, kind, payload)
             except Exception:
                 failures.append(_canonical(payload))
                 if cache is not None:cache[key]={'failed':True}

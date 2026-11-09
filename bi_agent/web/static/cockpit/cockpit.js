@@ -132,7 +132,7 @@
   const insightLoadError = ref('');
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
-  const frozenAnnual = reactive({visible:false,running:false,period:defaultPeriod,basis:'',error:'',activeStage:'',pendingStages:[],completedStages:[],failedStages:[]});
+  const frozenAnnual = reactive({visible:true,running:false,period:defaultPeriod,basis:'',error:'',activeStage:'',pendingStages:[],completedStages:[],failedStages:[]});
   const visibleAiSlots = new Map();
   let priorityTimer=null;
   function frozenPriority(slotId) {
@@ -709,7 +709,6 @@
       // Each slot answers its own question.  Prefer the slot-projected
       // publication over the shared stage card when it is at least as new.
       const slotAnalysis = computed(()=>{
-        if(frozenAnnualMode && !frozenAnnual.visible)return null;
         const published=slotPublication(props.insight.id);
         const projected=published?.status==='ready'&&validAiCard(published.payload)?published.payload:null;
         const current=state.value.item;

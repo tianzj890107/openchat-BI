@@ -264,6 +264,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 gateway.config.receipt_ttl,gateway.config.identity(),auth_scope,
                 gateway.config.batch_mode if kind=='batch' else 'fixed-path')
         key=digest(dict(connection=auth_scope,store=str(result_store.path),id=identity,
+                        deadlineClass='ai' if inherited_deadline is not None else 'display',
                         kind=kind,payload=payload))
         started=time.monotonic()
         trace={} if timing is None else timing
