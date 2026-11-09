@@ -1,5 +1,6 @@
 """The three AI DataTables use AP facts and validated structured card fields."""
 import json
+import pytest
 import time
 from types import SimpleNamespace
 
@@ -505,3 +506,36 @@ def test_table_preheat_uses_the_same_default_sort_as_the_browser(tmp_path):
     assert preheat_table(store, 1, "star-product-order-list", receipt,
                          period="2025-10") == "cached"
     assert len(payloads) == 1
+
+
+@pytest.mark.parametrize('table_key',['affected-order-list','overdue-order-list'])
+def test_nested_duplicate_preset_filters_are_sent_only_once(table_key):
+    from copy import deepcopy
+    from bi_agent.cockpit.ai_tables import TABLE_SPECS,TableQuery,build_ap_query
+    spec=TABLE_SPECS[table_key];condition=deepcopy(spec['pre_filters'][0])
+    duplicate=deepcopy(condition);duplicate['alias']='SDK display alias';duplicate['label']='SDK label'
+    duplicate['operator'].pop('type',None);duplicate.pop('valueType',None)
+    fields=spec['fields']
+    request=TableQuery(id=1,period='2026',analysisConfig={
+        'dimensions':[f for f in fields if f['fieldType']=='Dimension'],
+        'indicators':[f for f in fields if f['fieldType']=='Indicator']},commonConfig={
+        'filters':{'logic':'AND','children':[condition,{'logic':'AND','children':[duplicate]}]}})
+    result=build_ap_query(table_key,request)
+    def leaves(v):
+        if isinstance(v,list):return sum((leaves(c) for c in v),[])
+        if not isinstance(v,dict):return []
+        return leaves(v['children']) if 'children' in v else [v]
+    matches=[v for v in leaves(result['commonConfig']['filters']) if v.get('identifierCode')==condition['identifierCode']]
+    assert len(matches)==1 and matches[0]['value']==condition['value']
+    assert condition==spec['pre_filters'][0]
+
+
+def test_repeated_dimension_set_filters_intersect_instead_of_widening():
+    from copy import deepcopy
+    from bi_agent.cockpit.ai_tables import _merge_filter_parts,AFFECTED_PRE_FILTERS
+    condition=deepcopy(AFFECTED_PRE_FILTERS[0]);selection=deepcopy(condition);selection['value']=['order_change']
+    result=_merge_filter_parts(condition,selection)
+    assert result['value']==['order_change']
+    selection['value']=['another_status']
+    with pytest.raises(ValueError,match='YWLN_D016'):_merge_filter_parts(condition,selection)
+    with pytest.raises(ValueError,match='AND'):_merge_filter_parts({'logic':'OR','children':[condition,selection]})

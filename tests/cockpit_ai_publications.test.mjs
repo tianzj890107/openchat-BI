@@ -61,3 +61,14 @@ test('background-only page snapshot rejection does not become a load error', asy
   assert.match(source,/pageCache\.publish\(client,items,uiScope,undefined,true\)/);
   assert.match(source,/\[cockpit-page-publish\][\s\S]{0,220}error:'',refreshing:false,updateStatus:'waiting'/);
 });
+
+test('manual job progress polls quickly even while published cards remain ready', async () => {
+  const jobs=[];
+  const client=createAiPublicationClient({apiBase:'/api/cockpit',id:1,
+    request:async()=>({ok:true,json:async()=>({version:'ready',updatingCount:0,manualUpdate:{status:'running'},slots:{}})}),
+    schedule:(fn,ms)=>{jobs.push({fn,ms});return jobs.length;},clear:()=>{},activeMs:17,pollMs:99});
+  client.start();
+  await jobs.shift().fn();
+  assert.equal(jobs.at(-1).ms,17);
+  client.stop();
+});

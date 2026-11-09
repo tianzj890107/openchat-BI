@@ -78,7 +78,10 @@ def run_main_analysis(context, cancel, progress, turn_factory):
             elif kind=='awaiting_user_choice':needs_input=True
             elif kind in {'error','session_superseded'}:
                 if kind=='session_superseded':raise InterruptedError('主服务任务已失效')
-                raise RuntimeError('主服务分析失败，请查看主服务执行状态；未切换到独立引擎')
+                from .diagnostics import AnalysisFailure
+                raise AnalysisFailure(event.get('message') or event.get('error') or 'Empty main-service error event',
+                    phase='main_service',code=event.get('error_code') or 'MAIN_SERVICE_ERROR',
+                    last_tool=next((v.get('tool','') for v in reversed(trace) if v.get('tool')), ''))
             elif kind=='done':done=event.get('stop_reason','done')
             elif kind=='text_delta' and not narrative:
                 # Refusals/limitations can be emitted without an llm_response.

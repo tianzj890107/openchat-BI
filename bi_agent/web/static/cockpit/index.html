@@ -64,7 +64,7 @@
                    mode="release">
           <template v-for="insight in pageInsights" :key="insight.id"
                     v-slot:[slot_name(insight)]="slotProps">
-            <cockpit-insight v-if="!frozenAnnualMode || frozenAnnual.visible || insight.id === 'sales-shipment-issues'" :insight="insight" :page="page" :slot-props="slotProps"></cockpit-insight>
+            <cockpit-insight :insight="insight" :page="page" :slot-props="slotProps"></cockpit-insight>
           </template>
         </component>
       </div>

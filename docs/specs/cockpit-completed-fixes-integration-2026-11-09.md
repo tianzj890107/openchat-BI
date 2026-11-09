@@ -23,3 +23,7 @@
 ## Validation
 
 392 targeted Python tests passed; 98 Cockpit Node tests passed. No live model calls, task dispatch or deployment. Additional final validation is recorded in the MR.
+
+## Manual refresh envelope regression (2026-11-09)
+
+The internal manual runner read `response` from the public AP proxy envelope, but `/api/cockpit/data/query` returns `data`. A successful query therefore raised KeyError and was recorded as a failed fetch before model analysis. Read the actual `data` field; a regression test exercises the internal ASGI callback with the public response contract. This fix does not refresh live analysis or deploy.

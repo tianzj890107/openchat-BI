@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
+from .diagnostics import record_failure, current_scope, diagnostic_scope
 from .agent import run_analysis
 from .cards import CONTRACT, card_delivery_state, valid_card
 from .delivery import project_card, publication_payload
@@ -225,7 +226,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             analysisConcurrency=1,source='Cockpit独立AP连接' if mode=='ap' else '交付快照回放',
             batchMode=os.getenv('COCKPIT_AP_BATCH_MODE','individual'))
 
-    def query_receipt(identity, kind, payload, *, timing=None, _deadline=None):
+    def _query_receipt(identity, kind, payload, *, timing=None, _deadline=None):
         """One shared read path for page requests and background refresh.
 
         The cache/coalescing key includes the role, transport identity, store
@@ -235,14 +236,25 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         gateway=get_gateway()
         auth_scope=transport_identity(gateway.config)
         result_store=store()
+        diagnostic_context=current_scope()
         def read():
-            if 'timing' in inspect.signature(gateway.query).parameters:
-                kwargs = {'timing': timing}
-                if _deadline is not None:
-                    kwargs['_deadline'] = _deadline
-                result=gateway.query(kind,payload,**kwargs)
-            else:
-                result=gateway.query(kind,payload)
+            try:
+                if 'timing' in inspect.signature(gateway.query).parameters:
+                    kwargs = {'timing': timing}
+                    if _deadline is not None:
+                        kwargs['_deadline'] = _deadline
+                    result=gateway.query(kind,payload,**kwargs)
+                else:
+                    result=gateway.query(kind,payload)
+            except Exception as exc:
+                diagnostic=record_failure(result_store,exc,phase='ap_query',identity=identity,
+                    stage=diagnostic_context.get('stage',''),run_id=diagnostic_context.get('runId',''),
+                    duration=time.monotonic()-started,
+                    query_hash=hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest())
+                exc.diagnostic_id=diagnostic['diagnosticId']
+                if isinstance(exc,HTTPException):
+                    exc.headers={**(exc.headers or {}),'X-Cockpit-Diagnostic-Id':diagnostic['diagnosticId']}
+                raise
             if transport_identity(gateway.config)!=auth_scope:
                 raise HTTPException(409,'AP认证配置已变化，请重新取数')
             return result_store.save_ap_result(identity,kind,payload,result,
@@ -258,6 +270,20 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if timing is not None:
             timing['receiptWaitMs']=round((time.monotonic()-started)*1000,1)
         return receipt
+
+    def query_receipt(identity, kind, payload, *, timing=None, _deadline=None):
+        started=time.monotonic()
+        try:
+            return _query_receipt(identity,kind,payload,timing=timing,_deadline=_deadline)
+        except Exception as exc:
+            if not getattr(exc,'diagnostic_id',None):
+                diagnostic=record_failure(store(),exc,phase='ap_query_setup',identity=identity,
+                    duration=time.monotonic()-started,
+                    query_hash=hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest())
+                exc.diagnostic_id=diagnostic['diagnosticId']
+                if isinstance(exc,HTTPException):
+                    exc.headers={**(exc.headers or {}),'X-Cockpit-Diagnostic-Id':diagnostic['diagnosticId']}
+            raise
 
     @router.post('/data/query')
     async def data_query(req:APQuery, request:Request):
@@ -308,6 +334,7 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         snapshot_id=s["snapshotId"]
         data_source=s.get("dataSource") or ('ap' if snapshot_id.startswith('ap-') else 'snapshot' if snapshot_id.startswith('dashboard-') else 'demo')
         value=c.model_dump(exclude={"refresh"});value.update(stageName=NAMES[c.stage],snapshotId=snapshot_id,sourceMode=c.source,engine=c.engine,repositoryId=s.get("repositoryId",c.repositoryId),dataSource=data_source,dataIdentity=s.get("dataIdentity",""),dataFingerprint=s.get("dataFingerprint",""),dataBasis=s.get("dataBasis","原型或演示证据，不是当前看板AP快照"),stageEvidence=s.get("stageEvidence") or {},pgReceiptIds=s.get("pgReceiptIds") or [],fallbackVersion=s.get("fallbackVersion",""),fallback=s.get("fallback") or {})
+        value['diagnosticRunId']=current_scope().get('runId','')
         return value
     def scope(c,s):
         if c.engine=="main":return publication_scope(context_value(c,s))
@@ -334,8 +361,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         except InterruptedError:
             st.update_analysis(item["id"],status="cancelled",progress="已停止，可重新分析",execution=dict(engine=item["context"]["engine"],durationSeconds=round(time.time()-item["createdAt"],3)))
         except Exception as exc:
-            message=str(exc) if isinstance(exc,(RuntimeError,TimeoutError)) else "分析执行失败，请重试"
-            st.update_analysis(item["id"],status="failed",progress="分析未完成",error=message[:600],execution=dict(engine=item["context"]["engine"],durationSeconds=round(time.time()-item["createdAt"],3)))
+            duration=round(time.time()-item['createdAt'],3)
+            diagnostic=record_failure(st,exc,phase='analysis_execution',identity=context_id(item['context']),
+                stage=item['context'].get('stage',''),analysis_id=item['id'],
+                run_id=item['context'].get('diagnosticRunId',''),duration=duration)
+            message='分析执行失败，请查看后台诊断：'+diagnostic['diagnosticId']
+            st.update_analysis(item['id'],status='failed',progress='分析未完成',error=message,
+                execution=dict(engine=item['context']['engine'],durationSeconds=duration,diagnostic=diagnostic))
         finally:
             with lock:jobs.pop(item["id"],None)
             capacity.release()
@@ -679,7 +711,8 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         try:
             payload=build_ap_query(table_key,req)
         except (ValueError,TypeError) as exc:
-            raise HTTPException(422,str(exc)) from None
+            diagnostic=record_failure(store(),exc,phase='request_validation',identity=req.id,stage=spec['stage'])
+            raise HTTPException(422,str(exc),headers={'X-Cockpit-Diagnostic-Id':diagnostic['diagnosticId']}) from None
         scope_key=table_scope_key(req.ui_scope)
         cache_key=table_cache_key(req.id,table_key,scope_key,payload)
         cached=store().get_ai_table_snapshot(cache_key,req.id,table_key,scope_key)
@@ -734,11 +767,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             return response_for(cached.get('rows') or [],cached.get('total'),
                                 cache_status='hit',generated_at=cached.get('createdAt'))
 
-        receipt=query_receipt(req.id,'analysis',payload)
+        with diagnostic_scope(stage=spec['stage']):
+            receipt=query_receipt(req.id,'analysis',payload)
         try:
             rows,total=result_rows(receipt['response'])
         except ValueError as exc:
-            raise HTTPException(502,str(exc)) from None
+            diagnostic=record_failure(store(),exc,phase='ap_response',identity=req.id,stage=spec['stage'])
+            raise HTTPException(502,str(exc),headers={'X-Cockpit-Diagnostic-Id':diagnostic['diagnosticId']}) from None
         cached_body=dict(rows=rows,total=total,createdAt=time.time(),query=payload)
         store().save_ai_table_snapshot(cache_key,req.id,table_key,scope_key,cached_body)
         return response_for(rows,total,cache_status='refreshed',generated_at=cached_body['createdAt'])
@@ -977,6 +1012,12 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             fresh=cached and cached['context'].get('dataFingerprint')==context.get('dataFingerprint')
             job=None if fresh and not req.refresh else start_analysis(req,snapshot)
             return dict(cached=compact_analysis(cached) if compact else cached,analysis=compact_analysis(job) if compact else job,scope=key,dataFingerprint=context.get("dataFingerprint"),refreshing=bool(job and job['status'] in {'queued','running'}))
+
+    @router.get('/diagnostics')
+    def diagnostics(id:int=1,stage:str|None=None,limit:int=20):
+        if id not in (1,2) or limit<1 or limit>100 or (stage is not None and stage not in NAMES):
+            raise HTTPException(422,'Invalid diagnostic filters')
+        return dict(items=store().list_diagnostics(id,stage=stage,limit=limit))
 
     @router.get("/analyses")
     def history(id:int=1,period:str|None=None,department:str|None=None,engine:Literal["main","standalone"]|None=None):

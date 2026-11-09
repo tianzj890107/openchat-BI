@@ -18,6 +18,10 @@ class Store:
             CREATE TABLE IF NOT EXISTS analyses (
               id TEXT PRIMARY KEY, scope TEXT NOT NULL, body TEXT NOT NULL,
               status TEXT NOT NULL, updated REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS cockpit_diagnostics (
+              id TEXT PRIMARY KEY, identity INTEGER NOT NULL, stage TEXT NOT NULL,
+              analysis_id TEXT NOT NULL, created REAL NOT NULL, body TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS cockpit_diagnostic_lookup ON cockpit_diagnostics(identity,stage,created);
             CREATE INDEX IF NOT EXISTS analysis_scope ON analyses(scope,updated);
             CREATE TABLE IF NOT EXISTS publications (
               scope TEXT PRIMARY KEY, analysis_id TEXT NOT NULL, created REAL NOT NULL);
@@ -124,6 +128,21 @@ class Store:
                 ''')
             db.execute('CREATE INDEX IF NOT EXISTS task_analysis '
                        'ON tasks(analysis_id,updated)')
+
+    def save_diagnostic(self, value):
+        with self.db() as db:
+            db.execute('INSERT INTO cockpit_diagnostics VALUES(?,?,?,?,?,?)',
+                (value['diagnosticId'],int(value['identity']),value.get('stage',''),
+                 value.get('analysisId',''),value['createdAt'],json.dumps(value,ensure_ascii=False)))
+
+    def list_diagnostics(self, identity=1, *, stage=None, limit=20):
+        where='identity=?';params=[int(identity)]
+        if stage is not None:
+            where+=' AND stage=?';params.append(stage)
+        params.append(max(1,min(100,int(limit))))
+        with self.db() as db:
+            rows=db.execute('SELECT body FROM cockpit_diagnostics WHERE '+where+' ORDER BY created DESC LIMIT ?',params).fetchall()
+        return [json.loads(row[0]) for row in rows]
 
     @contextmanager
     def db(self):

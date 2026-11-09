@@ -518,7 +518,10 @@ class RefreshManager:
             return supplement_failed_queries(
                 {'id': int(identity), 'stage': None, 'unavailableQueries': list(failures)},
                 self.store, stages, limit=8)
-        except Exception:
+        except Exception as exc:
+            from .diagnostics import record_failure
+            record_failure(self.store,exc,phase='pg_supplement',identity=identity,
+                           stage=stages[0] if len(stages)==1 else '')
             # A broken fallback registry must not silently pretend the failed
             # query was answered; surface it as a blocked supplement instead.
             return {}, [dict(query=query, code='FALLBACK_UNAVAILABLE') for query in failures]
@@ -882,10 +885,10 @@ class RefreshManager:
             return ({'period': period}, generated) if generated else ({}, [])
         return {}, (delivered_component_requests(stage) or delivered_stage_requests(stage))
 
-    def preheat_period(self, identity, page, stage, period):
+    def preheat_period(self, identity, page, stage, period, *, force=False):
         """Materialise one configured slot for an explicit business period."""
         if stage == 'combined':
-            return self._preheat_combined_period(identity, page, period)
+            return self._preheat_combined_period(identity, page, period, force=force)
         scope = period_target_scope(identity, page, stage, period)
         claim = self.store.claim_refresh_info(
             scope, lease=max(180, self.timeout + 60), config_version=config_version())
@@ -926,12 +929,12 @@ class RefreshManager:
                                           page=page, period=period,
                                           filters=filters)
             data_as_of = self._data_as_of(records)
-            changed = (not existing
+            changed = (force or not existing
                        or existing.get('context', {}).get('dataFingerprint')
                        != resolved['dataFingerprint'])
             gate = self._analysis_gate(
                 scope, fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
-                changed=changed, force=False, now=started)
+                changed=changed, force=force, now=started)
             if changed and not gate['allow']:
                 return self._defer_changed(scope, claim, 'default', request, gate, started)
             if changed:
@@ -971,8 +974,10 @@ class RefreshManager:
         can still be delivered with its coverage disclosed.
         """
         from .combined import published_period_stage_cards
-        return published_period_stage_cards(self.store, identity, period,
+        cards = published_period_stage_cards(self.store, identity, period,
                                             data_identity=self.config.identity())
+        fresh = getattr(self, 'combined_fresh_stages', None)
+        return {stage:item for stage,item in cards.items() if stage in fresh} if fresh is not None else cards
 
     def _period_published_analysis(self, identity, period, stage, filters):
         """Load an exact period-stage card, including views not yet re-bound."""
@@ -987,7 +992,7 @@ class RefreshManager:
             return None
         return item
 
-    def _preheat_combined_period(self, identity, page, period):
+    def _preheat_combined_period(self, identity, page, period, *, force=False):
         """Publish the cross-stage card from saved same-period stage receipts."""
         from .combined import cached_combined_request
         scope = period_target_scope(identity, page, 'combined', period)
@@ -1019,12 +1024,12 @@ class RefreshManager:
             data_as_of = self._data_as_of([record for record in
                                            (self.store.get_ap_result(rid, int(identity)) or {}
                                             for rid in (body.get('apReceiptIds') or [])) if record])
-            changed = (not existing
+            changed = (force or not existing
                        or existing.get('context', {}).get('dataFingerprint')
                        != resolved['dataFingerprint'])
             gate = self._analysis_gate(
                 scope, fingerprint=resolved['dataFingerprint'], data_as_of=data_as_of,
-                changed=changed, force=False, now=started)
+                changed=changed, force=force, now=started)
             if changed and not gate['allow']:
                 return self._defer_changed(scope, claim, 'default', body, gate, started)
             if changed:

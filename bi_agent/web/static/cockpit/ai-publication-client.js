@@ -54,7 +54,7 @@ export function createAiPublicationClient({
     running = true;
     try {
       const value = await load({uiScope: currentScope, preserve: true});
-      plan(value?.updatingCount ? activeMs : pollMs);
+      plan(value?.updatingCount || value?.manualUpdate?.status==='running' ? activeMs : pollMs);
     } finally {
       running = false;
       if (!stopped && timer === null) plan(pollMs);
