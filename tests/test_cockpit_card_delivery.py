@@ -164,7 +164,7 @@ def test_four_independent_entries_survive_validation_and_primary_projection():
     titles=['审批等待','排程协同','记录同步','物料响应']
     value['causes']=[{**deepcopy(value['causes'][0]),'id':f'c{i}','title':title,'kind':'hypothesis'} for i,title in enumerate(titles)]
     value['recommendations']=[{**deepcopy(value['recommendations'][0]),'id':f'a{i}','causeIds':[f'c{i}'],'actionType':'investigation','evidenceIds':['f1']} for i in range(4)]
-    value['findings']=[dict(id=f'f{i}',kind='risk_fact',title=title,description='当前证据范围内的独立观察',metricCodes=[f'M{i}'],evidenceIds=['f1'],riskDomain='sales') for i,title in enumerate(['订单周期偏离','报价逾期未完成','订单取消记录','商机覆盖偏离'])]
+    value['findings']=[dict(id=f'f{i}',kind='risk_fact',title=title,description='当前证据范围内的独立观察',metricCodes=[f'M{i}'],evidenceIds=['f1'],riskDomain='sales') for i,title in enumerate(['订单周期偏离','报价推进偏离','订单取消记录','商机覆盖偏离'])]
     assert json.loads(session._tool_executors[TOOL](value,''))['accepted']
     result=session.cockpit_card_delivery[1]
     projected=project_card(dict(id='test',context=context,status='limited',result=result,evidence=dict(evidence=[dict(id='f1')],facts=[],records=[])),'order-risk-summary')['result']

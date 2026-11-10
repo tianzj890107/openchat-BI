@@ -4352,6 +4352,7 @@ def _cockpit_main_turn(context,cancel):
         session.cockpit_stage_filter=dict(stage=context['stage'],kept=len(selected),excluded=len(excluded),
             fallback=list((context.get('stageEvidence') or {}).get('fallbackMetrics') or []),
             fallbackBlocked=list((context.get('stageEvidence') or {}).get('fallbackBlocked') or []))
+        context={**context,'businessDimensions':True}
         install_delivery(session,context)
         from ..cockpit.cards import delivery_summary
         session.validated_delivery_summary = delivery_summary
@@ -4365,6 +4366,8 @@ def _cockpit_main_turn(context,cancel):
             '本轮交付形式覆盖通用对话的表格、图表和行动文案要求：'
             '不再查询，不用TableGenerate或ChartGenerate，不输出普通Markdown。'
             '第一轮只调用CockpitDeliverCards，必须包含summary、limitations及各数组。'
+            '用户看到的是analysisDimensions业务分析维度，不是待验证假设。分析维度指业务环节（商机、投标、合同、订单、发货等），用真实数字在环节内部展开差异，尽量一风险对应一分析条目；没有已证实机制时causes可为空。'
+            '空值和无法评估只放limitations；建议针对已观察的客户、订单或流程问题，纯补指标与修配置不作业务建议。'
             '只有原始AP记录与汇总，不能证明根因，原因status用hypothesis；'
             '建议使用investigation，验收写“形成逐项核查清单并确认结果”等可检查记录。'
             '收到校验问题后，第二轮按拒绝响应指定工具修复；正常草稿局部修补，截断空草稿完整重交；未改字段原样保留。'
@@ -4380,7 +4383,7 @@ def _cockpit_main_turn(context,cancel):
         slot,lease,turn_id,ticket,_=_begin_turn('data',key,cancel_event=cancel,principal_session_id=f"cockpit-id-{context['id']}")
         from ..llm.runtime_config import request_config
         with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel), request_config(thinking=False, max_tokens=16384, temperature=0.2, reasoning_effort='low'):
-            yield session,session.generate_turn(analysis_question({**context,'preparedEvidence':True})+f'\n本轮已通过工具预读 {len(prepared_ids)} 条查询，证据引用见工具结果。优先直接交付，不重复取数。'+(f'另有 {len(selected)-len(prepared_ids)} 条查询未预读；未读范围必须说明，不得编造或额外读取。' if len(selected)>len(prepared_ids) else ''))
+            yield session,session.generate_turn(analysis_question({**context,'preparedEvidence':True,'businessDimensions':True})+f'\n本轮已通过工具预读 {len(prepared_ids)} 条查询，证据引用见工具结果。优先直接交付，不重复取数。'+(f'另有 {len(selected)-len(prepared_ids)} 条查询未预读；未读范围必须说明，不得编造或额外读取。' if len(selected)>len(prepared_ids) else ''))
     finally:
         # Release ephemeral in-memory objects only. Never reset/delete chat history.
         with STATE.registry_lock:

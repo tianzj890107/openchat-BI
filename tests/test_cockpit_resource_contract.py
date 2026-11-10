@@ -8,8 +8,8 @@ ROOT=Path(__file__).resolve().parents[1]/'bi_agent/web/static/cockpit'
 def test_vendor_manifest_matches_local_artifacts():
     vendor=ROOT/'vendor'
     manifest=json.loads((vendor/'resources.json').read_text())
-    assert manifest['sourceCommit']=='325ffcd1022250affac987015b766d20d735efd6'
-    assert manifest['metadataCommit']=='325ffcd1022250affac987015b766d20d735efd6'
+    assert manifest['sourceCommit']=='5bbfcf796d7a47d3e00dc649e8a811e096009290'
+    assert manifest['metadataCommit']=='5bbfcf796d7a47d3e00dc649e8a811e096009290'
     for r in manifest['resources']:
         data=(vendor/r['file']).read_bytes()
         assert hashlib.sha256(data).hexdigest()==r['sha256']
@@ -36,8 +36,8 @@ def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='325ffcd1022250affac987015b766d20d735efd6'
-    assert source['umdCommit']=='325ffcd1022250affac987015b766d20d735efd6'
+    assert source['commit']=='5bbfcf796d7a47d3e00dc649e8a811e096009290'
+    assert source['umdCommit']=='5bbfcf796d7a47d3e00dc649e8a811e096009290'
     assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']

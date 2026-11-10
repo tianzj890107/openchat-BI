@@ -107,8 +107,8 @@ def test_runtime_is_reproducible_and_preserves_upstream_components():
     assert stored["renderer"] == "ProBiDashboard"
     assert stored["mode"] == "release"
     assert stored["source"]["dashboardId"] == "iba-demo-1021"
-    assert stored["source"]["version"] == "325ffcd"
-    assert stored["source"]["commit"] == "325ffcd1022250affac987015b766d20d735efd6"
+    assert stored["source"]["version"] == "5bbfcf7"
+    assert stored["source"]["commit"] == "5bbfcf796d7a47d3e00dc649e8a811e096009290"
     assert stored["source"]["templateCount"] == 13
     assert stored["source"]["totalComponents"] == 142
     assert stored["source"]["activateRules"] == 6
@@ -155,7 +155,10 @@ def test_delivered_filter_does_not_pin_a_historical_month():
         component for component in payload["dashboard"]["components"]
         if component.get("type") == "composite-filter"
     )
-    assert filter_component["baseConfig"]["defaultValue"]["values"] == {}
+    base=filter_component["baseConfig"]
+    assert base["defaultValue"]["values"] == {"YWLN_D044":{"type":"relative","value":"currentMonth"}}
+    assert base["nonClearableDimensions"] == ["YWLN_D044"]
+    assert base["resetBehavior"] == "restoreDefault"
     operations = next(
         component for component in payload["pages"]["operations"]["components"]
         if component.get("type") == "button-group"
@@ -192,7 +195,7 @@ def test_prototype_source_remains_available_only_for_explicit_standalone_analysi
 
 def test_runtime_reports_live_ap_single_query_mode_and_only_real_gaps():
     payload = release_payload()
-    assert payload["source"]["commit"] == "325ffcd1022250affac987015b766d20d735efd6"
+    assert payload["source"]["commit"] == "5bbfcf796d7a47d3e00dc649e8a811e096009290"
     assert payload["source"]["dataMode"] == "ap-single-query"
     assert {gap["code"] for gap in payload["gaps"]} == {"CHILD_DEFINITION_MISSING"}
     overview = payload["pages"]["overview"]["components"]

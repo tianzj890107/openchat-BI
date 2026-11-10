@@ -16,7 +16,7 @@ SCHEMA = {"name": TOOL, "description": "读取本轮看板实际展示的 AP 查
 # things (legacy M0001 is procurement, YWLN_M0001 is actual sales).
 STAGE_METRICS = {
     'opportunity': {
-        'YWLN_M0022', 'YWLN_M0023', 'YWLN_M0024', 'YWLN_M0038', 'YWLN_M0039',
+        'YWLN_M0022', 'YWLN_M0023', 'YWLN_M0024', 'YWLN_M0038', 'YWLN_M0039', 'YWLN_M0194', 'YWLN_M0195', 'YWLN_M0198',
         'YWLN_M0140', 'YWLN_M0075', 'YWLN_M_CUSTOMER_TARGET_ENERGY',
         'YWLN_M_CUSTOMER_ACTUAL_ENERGY', 'YWLN_D015', 'YWLN_D020',
     },

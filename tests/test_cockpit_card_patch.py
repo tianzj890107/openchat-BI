@@ -64,3 +64,9 @@ def test_empty_truncated_candidate_uses_full_schema_for_the_only_retry():
     response=json.loads(session._tool_executors[TOOL]({},''))
     assert not response['accepted'] and session.model_tools_override==[TOOL]
     assert '完整卡片' in response['instruction']
+
+
+def test_card_patch_supports_new_business_dimensions():
+    value=candidate();dimension=dict(id='d1',title='流程时效',description='周期38天',findingIds=['r1'],evidenceIds=['f1'])
+    patched=apply_card_patch(value,[dict(op='add',path='/analysisDimensions',value=[dimension])])
+    assert patched['analysisDimensions']==[dimension] and 'analysisDimensions' not in value

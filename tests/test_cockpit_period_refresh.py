@@ -962,7 +962,7 @@ def test_same_round_reuse_is_bound_to_credentials_and_next_round_retries_failure
     assert manager._query_requests(1,[query])[0] and len(calls)==3
 
 
-def test_ai_only_query_timeout_is_ten_seconds_and_does_not_change_display_config(tmp_path):
+def test_ai_only_query_timeout_is_ninety_seconds_and_does_not_change_display_config(tmp_path):
     from bi_agent.cockpit.diagnostics import current_scope,diagnostic_scope
     from unittest.mock import patch
     store=Store(tmp_path/'short.sqlite3');cfg=Config();seen=[]
@@ -971,5 +971,14 @@ def test_ai_only_query_timeout_is_ten_seconds_and_does_not_change_display_config
         manager._analysis_query(1,'analysis',{})
         manager._analysis_query(1,'helmet',{})
         with diagnostic_scope(fetchDeadline=105):manager._analysis_query(1,'batch',[])
-    assert seen==[110,None,105]
+    assert seen==[190,None,105]
     assert not hasattr(cfg,'timeout')
+
+
+def test_ai_fetch_budget_cannot_clip_requested_ninety_second_timeout(monkeypatch):
+    from bi_agent.cockpit.refresh import analysis_ap_timeout_seconds,analysis_fetch_budget_seconds
+    monkeypatch.delenv('COCKPIT_ANALYSIS_AP_TIMEOUT_SECONDS',raising=False)
+    monkeypatch.delenv('COCKPIT_FETCH_BUDGET_SECONDS',raising=False)
+    assert analysis_ap_timeout_seconds()==90 and analysis_fetch_budget_seconds()==180
+    monkeypatch.setenv('COCKPIT_FETCH_BUDGET_SECONDS','60')
+    assert analysis_fetch_budget_seconds()==90

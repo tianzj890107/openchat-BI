@@ -44,6 +44,7 @@ def supported_entries(payload):
         if len({x['identifierCode'] for x in values})!=len(values):return []
     wanted,dimensions=_signature(payload)
     return [entry for entry in registry()['queries'] if entry['query_type']=='METRIC'
+            and entry.get('signingBasis')!='order_derived'
             and entry['query_key'].endswith('|_') and _entry_signature(entry)[1]==dimensions
             and _entry_signature(entry)[0]<=wanted and _filters_match(payload,entry)]
 
@@ -77,7 +78,7 @@ def implemented_stage_requests(stage, period):
     if period and not bounds:return []
     requests=[]
     for entry in registry()['queries']:
-        if entry['query_type']!='METRIC' or not entry['query_key'].endswith('|_'):continue
+        if entry['query_type']!='METRIC' or not entry['query_key'].endswith('|_') or entry.get('signingBasis')=='order_derived':continue
         columns=entry['columns'];contract=entry['filter_contract']
         codes=_entry_signature(entry)[0]
         known=set().union(*(STAGE_METRICS[x] for x in ('opportunity','order','shipment','quotation','bid')))
@@ -93,6 +94,11 @@ def implemented_stage_requests(stage, period):
             'indicators':[{**{k:v for k,v in x.items() if k!='type'},'fieldType':'Indicator'} for x in columns if x['type']=='METRIC'],
             'dimensions':[{**{k:v for k,v in x.items() if k!='type'},'fieldType':'Dimension'} for x in columns if x['type']=='DIMENSION']},
             commonConfig=dict(filters={'logic':'AND','children':filters},pagination={'pageNum':1,'pageSize':500}))
+        if entry.get('signingBasis')=='contract_confirmation':
+            for field in payload['analysisConfig']['indicators']+payload['analysisConfig']['dimensions']:
+                label=field.get('label','')
+                label=label.replace('已签单','合同已签订').replace('未签单','合同签订未确认').replace('中标未签','中标合同签订未确认').replace('商机签单','合同签订确认状态')
+                field['label']=label;field['alias']=label
         if filter_stage_selected({'candidate':{'request':payload}},stage)[0]:requests.append(payload)
     # Stable aggregate/status-first ordering; bounded model pre-read is unchanged.
     selected=[]
@@ -100,7 +106,7 @@ def implemented_stage_requests(stage, period):
         codes,dimensions=_signature(q)
         if any(dimensions==_signature(other)[1] and codes<=_signature(other)[0] and q['commonConfig']==other['commonConfig'] for other in selected):continue
         selected.append(q)
-    aggregate=[q for q in selected if not q['analysisConfig']['dimensions']]
+    aggregate=sorted([q for q in selected if not q['analysisConfig']['dimensions']],key=lambda q:not any('合同已签订' in x.get('label','') for x in q['analysisConfig']['indicators']))
     slices=[q for q in selected if q['analysisConfig']['dimensions']]
     ordered=[]
     while aggregate or slices:

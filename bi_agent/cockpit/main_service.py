@@ -37,15 +37,17 @@ def analysis_question(context):
         f"请分析{NAMES[context['stage']]}环节的经营异常，调查有证据支持的原因，并给出基于证据的改善建议。"
         "请沿用主服务正常意图路由、只读看板工具取数与交付校验。本任务为无对话自动卡片交付，遇到口径歧义请交付受限卡片说明缺失，不要等待交互。"
         "部分AP查询成功、部分失败时，必须使用已成功取得的证据继续完成分析并交付受限卡片；不得因为还有指标未返回而整卡等待或只回一句“尚无分析结果”。"
-        "先在摘要和限制中列明哪些已取到、哪些未返回，再按已取得事实给出可执行的核查动作；缺失项不得推测成结论，也不得用其他环节数据替代。"
+        "只在限制中列明哪些未返回，摘要呈现已取得的经营数值和业务变化，再按已取得事实给出可执行的核查动作；缺失项不得推测成结论，也不得用其他环节数据替代。"
         + ("本轮证据已由服务端读取并登记，见后附冻结查询材料。第一次必须直接调用CockpitDeliverCards交付，第二次按拒绝响应指定工具修复：正常草稿用CockpitRepairCards局部修补，截断空草稿用CockpitDeliverCards完整重交；不能再读目录、补取查询或询问用户。材料不足时说明限制，不编造原因。" if context.get('preparedEvidence') else "先调用Cockpit-DashboardQuery读取目录，再用queryIds批量读取相关查询（每批最多6项，尽量一次并列发起所需批次）。")
         + "工具读取的是与网页同一次取数的冻结结果；是否为实时AP取数以工具返回live标记为准。范围JSON的时间和部门只是页面历史参数，实际分析范围以AP原始请求为准，不可假定已应用筛选。"
         "缺少指标映射或实体关系时明确说明，存在歧义时在限制中说明缺失口径，不等待用户确认，不得自动选采购指标代替销售指标。"
+        "业务链条必须区分商机、报价/投标、合同签订、订单接收、发货。未签单指合同未签订，不是没有订单。合同已签订只能依据明确合同确认/状态、合同编号或签订日期；订单存在、订单数及销售订单审批不能证明合同签订。合同未签订也需要明确未签状态；上游非已签分组可能含缺失值，只能说合同签订未确认，不能把未知算成未签。没有合同证据时在limitations说明合同环节缺口，不在订单和商机之间虚构合同状态。"
         "交付内容按“发现什么／集中在哪里／可能为什么／下一步怎么做”组织：异常表现、结构定位、数据缺口不得写成原因；"
         "金额与电量缺少单价、产品结构或交期映射时不得比较或相加；取消/变更与中标未签集合未验证重叠和期间对应时，不得相加或据此排除缺口；"
-        "目标或口径冲突时，摘要必须同时写各自口径观察和“尚不能汇总对账”；建议的责任角色标为待确认、期限标为建议值，验收必须可检查。"
+        "目标或口径冲突时，limitations必须说明各自口径观察和“尚不能汇总对账”，不要把缺数说明当经营结论；建议的责任角色标为待确认、期限标为建议值，验收必须可检查。"
         "只有汇总指标或原始查询行时，原因status只能用hypothesis、kind用hypothesis，明确是待验证假设；不得标supported或verified。没有原因线索可为空，仍可给直接引用事实的investigation核查建议。原因kind只用hypothesis或verified；事实、结构定位和缺数不放入causes，未证明原因在missingEvidence写明缺失材料。建议要给出actionType：核查、补数、对账、确认口径用investigation，可关联待验证假设、数据缺口或直接引用证据；调整交付、资源或价格等改善动作用remediation，必须关联已得到记录支持的原因。原因未证明时只能先给核查任务，不能把假设直接变成改善措施。所有建议的causeIds与evidenceIds必须真实存在，责任人和期限的确认标记由服务端保持false，待用户确认。"
-        "请读取工具返回的evidenceIds，最终调用CockpitDeliverCards提交短摘要、原因、风险发现、建议、限制供既有AI插槽展示；summary必须是纯文本单段结论，不得包含Markdown标题、加粗、列表、表格或“行动建议”清单，行动建议只能写入recommendations；业务数值由事实字段展示，短摘要不重复业务数字，不新造比例；有合理线索时保留hypothesis并说明待验证材料，没有原因证据时causes可以为空；对商机、订单、发货和共同分析，只要取得可定位的业务事实，必须至少交付一项核查建议，不得因原因未确认一并清空建议。建议需明确要核对的对象/范围、具体字段或处理记录与验收清单；不得编造具体订单号、责任人或改善效果。仅状态概况且没有业务分析职责的插槽不强求建议。数据缺口核查建议可独立引用证据，不必为了挂建议而伪造原因。findings只列证据直接支持的风险事实或异常表现，不含原因、数据缺口和结构分布；同一风险只列一次。不要生成HTML或重新绘制图表，不得编造根因、责任角色或期限。每轮风险、原因、建议各最多4条，文字简短。风险优先实际履约逾期、经营目标偏离及持续恶化，再考虑转化或过程异常；同口径内结合影响范围与影响规模排序，不跨单位比较。已有多个重要独立问题时findings应逐项呈现3至4条，不要全塞入summary。负数、正常在途或余额规模本身不等于风险；缺口方向必须有明确公式或同口径目标/实际比较才能判断。逐条检查推进停滞、交期/排程、记录同步、客户变更等是否有独立机制线索；有3至4个不同机制时分别交付，不要把全部原因概括成一条“缺少明细”。同一机制可解释多个风险，不为凑数拆分。只有1至2条重要问题时保留真实数量，不拆分重复、不以数据缺口凑数。原因只保留解释重要风险的机制假设并写缺失证据；建议对应这些风险或原因，核查类可直接引用风险证据；同一目的的补字段、对账动作应合并，不按缺失字段数量机械拆成多条建议；证据足够即调用交付工具，不逐条追加查询。提交成功后系统直接展示，不需要再生成确认文案。"
+        "请读取工具返回的evidenceIds，最终调用CockpitDeliverCards提交短摘要、原因、风险发现、建议、限制供既有AI插槽展示；summary必须是纯文本单段结论，不得包含Markdown标题、加粗、列表、表格或“行动建议”清单，行动建议只能写入recommendations；短摘要可引用同源真实业务数值、趋势和差异，不得新造数字或比例；有合理线索时保留hypothesis并说明待验证材料，没有原因证据时causes可以为空；对商机、订单、发货和共同分析，只要取得可定位的业务事实，必须至少交付一项核查建议，不得因原因未确认一并清空建议。建议需明确要核对的对象/范围、具体字段或处理记录与验收清单；不得编造具体订单号、责任人或改善效果。仅状态概况且没有业务分析职责的插槽不强求建议。数据缺口核查建议可独立引用证据，不必为了挂建议而伪造原因。findings只列证据直接支持的风险事实或异常表现，不含原因、数据缺口和结构分布；同一风险只列一次。不要生成HTML或重新绘制图表，不得编造根因、责任角色或期限。每轮风险、原因、建议各最多4条，文字简短。风险优先实际履约逾期、经营目标偏离及持续恶化，再考虑转化或过程异常；同口径内结合影响范围与影响规模排序，不跨单位比较。已有多个重要独立问题时findings应逐项呈现3至4条，不要全塞入summary。负数、正常在途或余额规模本身不等于风险；缺口方向必须有明确公式或同口径目标/实际比较才能判断。逐条检查推进停滞、交期/排程、记录同步、客户变更等是否有独立机制线索；有3至4个不同机制时分别交付，不要把全部原因概括成一条“缺少明细”。同一机制可解释多个风险，不为凑数拆分。只有1至2条重要问题时保留真实数量，不拆分重复、不以数据缺口凑数。原因只保留解释重要风险的机制假设并写缺失证据；建议对应这些风险或原因，核查类可直接引用风险证据；同一目的的补字段、对账动作应合并，不按缺失字段数量机械拆成多条建议；证据足够即调用交付工具，不逐条追加查询。提交成功后系统直接展示，不需要再生成确认文案。"
+        + ('\n本轮业务展示按风险、分析维度、建议交付：analysisDimensions用findingIds关联本卡风险，并引用同源evidenceIds。各风险都要通过findingIds明确关联分析条目；如果输出causes，也用findingIds关联对应风险。多组独立风险按商机获取、报价、投标、合同签订、订单接收、发货等业务环节展开；优先每条风险对应一个主分析条目，同一风险必要时可有多个条目，确属同一问题也可关联多个风险。analysisDimensions.stage必须明确业务环节，标题写环节内主题；时间、客户、产品等只用于环节内部展开数字分析，不机械一风险一维度，不把全部风险笼统归成一个假设。描述已观察的数字、分布、差异和变化，可直接引用证据原值；不要补造原因。summary只呈现已返回的经营数值、异常及趋势，指标为空、口径冲突、无法评估和方法规则只放limitations，不作为风险或分析维度。不要求为了展示生成causes，缺少已证实机制时causes可为空；核查建议直接引用证据即可。' if context.get('businessDimensions') else '')
         +("\n证据范围："+stage_note if stage_note else '')
         +"\n范围："+json.dumps(scope,ensure_ascii=False,sort_keys=True)
     )
@@ -150,6 +152,7 @@ def run_main_analysis(context, cancel, progress, turn_factory):
         return dict(summary=(plain_summary_text(card_value['summary']) if card_value else plain_summary_text(split_sections(narrative)['summary'] or narrative)[:600]),
             causes=card_value['causes'] if card_value else [],recommendations=card_value['recommendations'] if card_value else [],
             findings=card_value.get('findings',[]) if card_value else [],
+            analysisDimensions=card_value.get('analysisDimensions',[]) if card_value else [],
             limitations=list(dict.fromkeys(limitations+(card_value['limitations'] if card_value else []))),cardContract=CONTRACT if card_value else None,
             narrative=narrative,sections=split_sections(narrative),engine='main',policy=policy,clarification=getattr(session,'pending_choice_spec',None),
             _status=status,_evidence=evidence,_execution=dict(engine='main',durationSeconds=round(time.monotonic()-started,3),

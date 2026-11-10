@@ -302,7 +302,8 @@ def build_risk_findings(result: dict, evidence: dict | None, context: dict | Non
     issue_keys: set[str] = set()
 
     def add(finding: dict | None):
-        if not finding:
+        from .business_presentation import business_finding
+        if not business_finding(finding):
             return
         domain, _issue = _business_issue(finding)
         if domain:

@@ -1,5 +1,7 @@
 /** 明星产品订单电量、占比与口径。布局由 ProDataTable 提供。 */
 import {createTableInsight} from '../table-runtime.js'
+// Upstream 5bbfcf7: default sort icon, click override and explicit clear are
+// preserved by the shared adapter; business/AI reads stay on Cockpit APIs.
 
 const {loadInsightStyle} = window.InsightRuntime
 

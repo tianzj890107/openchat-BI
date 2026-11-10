@@ -1,11 +1,11 @@
 {
   "repository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
   "branch": "feature/demo_1021",
-  "commit": "325ffcd1022250affac987015b766d20d735efd6",
-  "umdCommit": "325ffcd1022250affac987015b766d20d735efd6",
-  "importedAt": "2026-11-09",
+  "commit": "5bbfcf796d7a47d3e00dc649e8a811e096009290",
+  "umdCommit": "5bbfcf796d7a47d3e00dc649e8a811e096009290",
+  "importedAt": "2026-11-10",
   "mode": "active-runtime-adapter",
-  "notes": "Dashboard/template configs synchronized from iba-demo feature/demo_1021 at 325ffcd. The ProBIUI SDK is from the same upstream commit, retaining the local null-instance guard and delivered palette. Current KPI suffix, customer energy-gap metric, numeric precision, chart sort and pageSize are imported. Root activation rules and existing AP-backed AI table adapters are retained. Runtime routes helmetViewUrl through the host gateway and disables automatic Other grouping only for product-team breakdown using visualization.displayLimit.enabled=false.",
+  "notes": "Synchronized components, templates and ProBIUI from cba36d8. Inherited currentMonth relative date default, nonClearableDimensions and restoreDefault reset behavior are retained. Existing host activation rules, AP/AI adapters, palette and null-instance fitView guard are preserved. Three adapted AP-backed lists carry 5bbfcf7 sort semantics through the shared adapter; mock enrichment is not imported.",
   "rootComponents": 2,
   "templates": 13,
   "totalComponents": 142,
@@ -47,7 +47,7 @@
   "files": [
     {
       "file": "components.json",
-      "sha256": "8268ade89d68c8de34d06b434c9c8011ed8174fc938187e828ee37283281aaad"
+      "sha256": "d7676f3b65282443d4fcd72cbde28719feae5f328da7bcf5999fa6a74e6d1f14"
     },
     {
       "file": "template-registry.json",
@@ -74,5 +74,6 @@
       "description": "Upstream child definition is absent; runtime reports the gap and keeps the original position empty."
     }
   ],
-  "activatedAt": "2026-11-02"
+  "activatedAt": "2026-11-02",
+  "insightSortCommit": "5bbfcf796d7a47d3e00dc649e8a811e096009290"
 }

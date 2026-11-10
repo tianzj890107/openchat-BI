@@ -16,27 +16,12 @@ registerInsightComponent(
     emits: ['retry'],
     setup(props, { emit }) {
       const insight = useInsight(props, emit)
-      // The card may only render causes delivered by the analysis contract.
-      // Missing causes stay explicit through the summary/limitations instead of
-      // being filled with demo-time placeholder findings.
-      const displayCauses = computed(() => insight.causes.value)
-      const riskCounts = computed(() => props.slotProps?.riskCounts || {})
-      const hasUnifiedRiskCounts = computed(() => Boolean(riskCounts.value?.sales || riskCounts.value?.shipment))
-      const salesRiskCount = computed(() => Math.max(0, Number(riskCounts.value?.sales?.count) || 0))
-      const shipmentRiskCount = computed(() => Math.max(0, Number(riskCounts.value?.shipment?.count) || 0))
-      const riskFindings = computed(() => {
-        const seen = new Set(), result = []
-        for (const domain of ['sales', 'shipment']) {
-          for (const finding of riskCounts.value?.[domain]?.findings || []) {
-            const key = String(finding?.riskKey || finding?.id || `${domain}:${finding?.title || result.length}`)
-            if (seen.has(key)) continue
-            seen.add(key)
-            result.push({...finding, riskDomain: finding?.riskDomain || domain})
-          }
-        }
-        return result
-      })
-      return {...insight, displayCauses, hasUnifiedRiskCounts, salesRiskCount, shipmentRiskCount, riskFindings}
+      // This card's risks and dimensions share the same analysis and evidence.
+      // Global navigation counts are deliberately not mixed into this panel.
+      const riskFindings = computed(() => insight.findings.value)
+      const salesRiskCount = computed(() => riskFindings.value.filter(f=>f.riskDomain==='sales').length)
+      const shipmentRiskCount = computed(() => riskFindings.value.filter(f=>f.riskDomain==='shipment').length)
+      return {...insight,riskFindings,salesRiskCount,shipmentRiskCount}
     },
     template: `
       <section class="sales-shipment-issues" aria-live="polite">
@@ -56,8 +41,8 @@ registerInsightComponent(
         </div>
         <template v-if="hasResult">
           <div class="sales-shipment-issues__title">销售额 / 出货量共同问题分析：</div>
-          <div class="sales-shipment-issues__line sales-shipment-issues__summary" :title="summary">分析摘要：{{ summary }}</div>
-          <div v-if="hasUnifiedRiskCounts" class="sales-shipment-issues__counts">
+          <div v-if="summary" class="sales-shipment-issues__line sales-shipment-issues__summary" :title="summary">分析摘要：{{ summary }}</div>
+          <div v-if="riskFindings.length" class="sales-shipment-issues__counts">
             <span>销售额重点风险 <b>{{ salesRiskCount }}</b> 条</span>
             <span>出货量重点风险 <b>{{ shipmentRiskCount }}</b> 条</span>
           </div>
@@ -69,12 +54,20 @@ registerInsightComponent(
               <template v-if="finding.description">——{{ finding.description }}</template>
             </div>
           </details>
-          <details open v-if="displayCauses.length" class="sales-shipment-issues__details">
-            <summary>原因与待核实项 · {{ displayCauses.length }} 项</summary>
-            <div v-for="(cause, index) in displayCauses" :key="cause.id" class="sales-shipment-issues__line">
-              {{ index + 1 }}）【{{ causeStatus(cause) }}】
-              <span class="sales-shipment-issues__num">{{ cause.title }}</span>——{{ cause.description }}
+          <details open v-if="analysisDimensions.length" class="sales-shipment-issues__details">
+            <summary>分析维度 · {{ analysisDimensions.length }} 项</summary>
+            <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="sales-shipment-issues__line">
+              {{ index+1 }}）<span class="sales-shipment-issues__num">【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</span>——{{ dimension.description }}
+              <small>{{ dimension.riskLinks.map(link=>link.label).join('；') }}</small>
             </div>
+          </details>
+          <details open v-if="recommendations.length" class="sales-shipment-issues__details">
+            <summary>建议 · {{ recommendations.length }} 项</summary>
+            <div v-for="(action,index) in recommendations" :key="action.id" class="sales-shipment-issues__line">{{ index+1 }}）{{ action.action }}</div>
+          </details>
+          <details v-if="limitations.length" class="sales-shipment-issues__details">
+            <summary>数据范围与限制</summary>
+            <div v-for="(limit,index) in limitations" :key="index" class="sales-shipment-issues__line">{{ limit }}</div>
           </details>
           <a v-if="evidenceLink" :href="evidenceLink" target="_blank" rel="noopener" class="insight-evidence-link">查看完整证据</a>
         </template>

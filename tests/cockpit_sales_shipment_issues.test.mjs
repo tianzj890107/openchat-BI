@@ -6,10 +6,11 @@ const source = await readFile(new URL('../bi_agent/web/static/cockpit/insight-co
 
 test('sales and shipment card never fabricates fallback findings', () => {
   assert.match(source, /const \{ computed \} = window\.Vue/);
-  assert.match(source, /const displayCauses = computed/);
+  assert.match(source, /const riskFindings = computed\(\(\) => insight.findings.value\)/);
   assert.doesNotMatch(source, /sales-shipment-total-gap/);
   assert.doesNotMatch(source, /sales-shipment-amount-gap/);
   assert.doesNotMatch(source, /sales-shipment-dimension-gap/);
   assert.doesNotMatch(source, /status: 'hypothesis'/);
-  assert.match(source, /v-for="\(cause, index\) in displayCauses"/);
+  assert.match(source, /v-for="\(dimension,index\) in analysisDimensions"/);
+  assert.doesNotMatch(source, /props\.slotProps\?\.riskCounts/);
 });

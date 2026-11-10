@@ -1,9 +1,9 @@
 {
-  "checkedAt": "2026-11-09T17:33:09.147768+08:00",
+  "checkedAt": "2026-11-10",
   "sourceRepository": "http://gitlab.boulderaitech.com/shimenglan/iba-demo",
-  "sourceCommit": "325ffcd1022250affac987015b766d20d735efd6",
-  "metadataCommit": "325ffcd1022250affac987015b766d20d735efd6",
-  "notes": "ProBIUI and palette synced from feature/demo_1021 at 325ffcd1022250affac987015b766d20d735efd6. Upstream index.html integration checked: BI bundle before bi-color-vars.css; local host routes and templates preserved. Reapplied existing null-instance fitView guard. Dashboard metadata intentionally unchanged.",
+  "sourceCommit": "5bbfcf796d7a47d3e00dc649e8a811e096009290",
+  "metadataCommit": "5bbfcf796d7a47d3e00dc649e8a811e096009290",
+  "notes": "SDK and component configuration synchronized at cba36d8; date default is currentMonth and non-clearable, reset restores default. Existing fitView null-instance guard and palette retained.",
   "resources": [
     {
       "file": "../../vendor/antd/lib/vue.global.js",
@@ -15,11 +15,12 @@
     },
     {
       "file": "pro-bi-ui.min.js",
-      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/325ffcd1022250affac987015b766d20d735efd6/lib/pro-bi-ui.min.js",
+      "source": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/raw/5bbfcf796d7a47d3e00dc649e8a811e096009290/lib/pro-bi-ui.min.js",
       "sourcePath": "lib/pro-bi-ui.min.js",
-      "sha256": "51a0b87f51ade4e12809901dfc5e8d6ebb0a3f7c6dfeae747f0f6590eeb4a872",
-      "bytes": 6268124,
-      "notes": "Upstream bundle with existing local null-instance fitView guard."
+      "sha256": "b90dc7d7ab0cff1221487cfb9f11b52cfbefe297ab1b06e3937ad55eeccce205",
+      "bytes": 6298699,
+      "notes": "Upstream bundle with existing local null-instance fitView guard.",
+      "upstreamSha256": "adb504744f69f8e1cf2a24b7d891e14aea44cc38056e67c1412d35790694bc39"
     },
     {
       "file": "bi-color-vars.css",

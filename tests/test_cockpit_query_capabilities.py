@@ -4,9 +4,9 @@ from bi_agent.cockpit.query_capabilities import registry,implemented_stage_reque
 
 def test_export_manifest_has_enabled_implementations_without_executable_sql():
     source=registry()
-    assert source['source']=='bp_local_analysis_query_202611100938'
-    assert len(source['queries'])==153
-    assert sum(e['query_type']=='METRIC' for e in source['queries'])==107
+    assert source['source']=='bp_local_analysis_query_202611101416'
+    assert len(source['queries'])==154
+    assert sum(e['query_type']=='METRIC' for e in source['queries'])==108
     assert all('sql_text' not in e for e in source['queries'])
 
 

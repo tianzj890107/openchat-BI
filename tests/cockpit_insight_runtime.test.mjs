@@ -84,14 +84,15 @@ test('risk labels always show a count and keep the last known value for incomple
   assert.doesNotMatch(cockpit, /风险分析中/);
 });
 
-test('penetration combined card reads the same deduplicated risk counts as the header', () => {
+test('combined card keeps its own evidence scope separate from global navigation risk counts', () => {
   assert.match(cockpit, /riskCounts:\s*aiPublicationStore\.riskCounts/);
   assert.match(cockpit, /aiPublicationStore\.riskCounts=next/);
-  assert.match(combinedInsight, /props\.slotProps\?\.riskCounts/);
+  assert.doesNotMatch(combinedInsight, /props\.slotProps\?\.riskCounts/);
+  assert.match(combinedInsight, /insight.findings.value/);
   assert.match(combinedInsight, /销售额风险/);
   assert.match(combinedInsight, /出货量风险/);
   assert.match(combinedInsight, /重点风险 · \{\{ riskFindings\.length \}\} 项/);
-  assert.match(combinedInsight, /原因与待核实项 · \{\{ displayCauses\.length \}\} 项/);
+  assert.match(combinedInsight, /分析维度 · \{\{ analysisDimensions\.length \}\} 项/);
   assert.doesNotMatch(combinedInsight, /风险与待核实原因 · \{\{ displayCauses\.length \}\}/);
 });
 

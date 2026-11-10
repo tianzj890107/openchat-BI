@@ -1,5 +1,7 @@
 /** 受影响订单清单：AP 事实 + 已校验卡片的原因与责任动作。 */
 import {createTableInsight} from '../table-runtime.js'
+// Upstream 5bbfcf7: default sort icon, click override and explicit clear are
+// preserved by the shared adapter; business/AI reads stay on Cockpit APIs.
 
 const {loadInsightStyle} = window.InsightRuntime
 

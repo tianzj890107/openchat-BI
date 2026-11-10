@@ -4,12 +4,12 @@
     "dashboardId": "iba-demo-1021",
     "name": "储能经营风险驾驶舱",
     "releaseUrl": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021",
-    "buildTime": "2026-11-09",
-    "fetchedAt": "2026-11-09",
-    "version": "325ffcd",
+    "buildTime": "2026-11-10",
+    "fetchedAt": "2026-11-10",
+    "version": "5bbfcf7",
     "status": "active",
     "branch": "feature/demo_1021",
-    "commit": "325ffcd1022250affac987015b766d20d735efd6",
+    "commit": "5bbfcf796d7a47d3e00dc649e8a811e096009290",
     "templateCount": 13,
     "totalComponents": 142,
     "insightComponents": 15,
@@ -29,7 +29,7 @@
     "id": "iba-demo-1021",
     "name": "储能经营风险驾驶舱",
     "description": "",
-    "version": "325ffcd",
+    "version": "5bbfcf7",
     "status": "active",
     "url": "http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021",
     "components": [
@@ -84,14 +84,20 @@
         "baseConfig": {
           "showResetButton": true,
           "overrideRenderType": {
-            "D001": "dropdown",
-            "D008": "dropdown",
-            "YWLN_D028": "dropdown",
             "YWLN_D044": "dropdown"
           },
           "defaultValue": {
-            "values": {}
-          }
+            "values": {
+              "YWLN_D044": {
+                "type": "relative",
+                "value": "currentMonth"
+              }
+            }
+          },
+          "nonClearableDimensions": [
+            "YWLN_D044"
+          ],
+          "resetBehavior": "restoreDefault"
         },
         "grainBindings": [
           {
@@ -1800,8 +1806,7 @@
               "label": "穿透式问题分析",
               "templateId": "2112061604959928321"
             }
-          ],
-          "activateRules": []
+          ]
         }
       }
     ],

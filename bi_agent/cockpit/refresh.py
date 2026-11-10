@@ -24,6 +24,14 @@ from .publications import config_version, digest, view_scope
 from .runtime import METADATA, SNAPSHOTS
 from .targets import maintenance_targets, period_maintenance_targets
 
+def analysis_ap_timeout_seconds():
+    return max(1,int(os.getenv('COCKPIT_ANALYSIS_AP_TIMEOUT_SECONDS','90')))
+
+
+def analysis_fetch_budget_seconds():
+    return max(analysis_ap_timeout_seconds(),int(os.getenv('COCKPIT_FETCH_BUDGET_SECONDS','180')))
+
+
 DEFAULT_IDENTITIES = (1, 2)
 DEFAULT_PAGES = ('overview', 'operations', 'analysis')
 DEFAULT_ANALYSIS_INTERVAL_SECONDS = 1800
@@ -463,7 +471,7 @@ class RefreshManager:
             from .query_capabilities import is_registered
             if not all(is_registered(q) for q in (payload if isinstance(payload,list) else [payload])):
                 raise ValueError('AP_QUERY_NOT_IMPLEMENTED: query is outside the enabled AP contract registry')
-        deadline=time.monotonic()+10
+        deadline=time.monotonic()+analysis_ap_timeout_seconds()
         inherited=current_scope().get('fetchDeadline')
         if inherited is not None:deadline=min(deadline,inherited)
         with diagnostic_scope(fetchDeadline=deadline):
@@ -522,7 +530,7 @@ class RefreshManager:
             if excluded:
                 from .diagnostics import AnalysisFailure,record_failure
                 record_failure(self.store,AnalysisFailure(f'Excluded {len(excluded)} unimplemented AP query contracts before HTTP; available registered evidence retained',phase='query_contract',code='AP_QUERY_NOT_IMPLEMENTED'),phase='query_contract',identity=identity)
-        deadline = time.monotonic() + max(30, int(os.getenv('COCKPIT_FETCH_BUDGET_SECONDS','60')))
+        deadline = time.monotonic() + analysis_fetch_budget_seconds()
         budget_logged = False
         cache = getattr(self, 'round_queries', None)
         for payload in requests:
@@ -606,7 +614,7 @@ class RefreshManager:
             if claim:
                 if not self.store.heartbeat_refresh(
                         claim['scope'], claim['job_id'],
-                        lease=max(180, self.timeout + 60)):
+                        lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60)):
                     self._cancel(item)
                     raise RuntimeError('刷新任务租约已失效，已停止旧执行')
             time.sleep(self.poll)
@@ -677,7 +685,7 @@ class RefreshManager:
             self._set(scope, 'published', next_check=time.time() + self.interval)
             return dict(scope=scope, status='unchanged', reason='not-ap')
         claim = self.store.claim_refresh_info(
-            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+            scope, lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60), config_version=config_version())
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
@@ -818,7 +826,7 @@ class RefreshManager:
             self._set(scope, 'published', next_check=time.time() + self.interval)
             return dict(scope=scope, status='unchanged', reason='not-main')
         claim = self.store.claim_refresh_info(
-            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+            scope, lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60), config_version=config_version())
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
@@ -955,7 +963,7 @@ class RefreshManager:
         """Materialise one configured slot for an explicit business period."""
         scope = period_target_scope(identity, page, stage, period)
         claim = self.store.claim_refresh_info(
-            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+            scope, lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60), config_version=config_version())
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
@@ -1094,7 +1102,7 @@ class RefreshManager:
         from .combined import cached_combined_request
         scope = period_target_scope(identity, page, 'combined', period)
         claim = self.store.claim_refresh_info(
-            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+            scope, lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60), config_version=config_version())
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
@@ -1161,7 +1169,7 @@ class RefreshManager:
         """Materialise a card for one configured slot, even before it is opened."""
         scope = preheat_target_scope(identity, page, stage)
         claim = self.store.claim_refresh_info(
-            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+            scope, lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60), config_version=config_version())
         if not claim:
             return dict(scope=scope, status='already-running')
         try:

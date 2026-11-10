@@ -131,11 +131,11 @@ def main():
                 try:
                     result,_=run_main_analysis(context,threading.Event(),lambda *_:None,factory)
                     case=dict(stage=stage,repeat=repeat+1,status='accepted',contentStatus=result['_status'])
-                    case['deliveredCounts']={k:len(result.get(k) or []) for k in ('findings','causes','recommendations')}
+                    case['deliveredCounts']={k:len(result.get(k) or []) for k in ('findings','analysisDimensions','causes','recommendations')}
                     from bi_agent.cockpit.delivery import project_card
                     slots={'opportunity':'opportunity-risk','order':'order-risk-summary','shipment':'shipment-risk-summary','combined':'sales-shipment-issues','bid':'bid-summary','quotation':'quote-summary'}
                     projected=project_card({'id':'canary','status':result['_status'],'context':context,'result':result,'evidence':result['_evidence']},slots[stage])['result']
-                    case['projectedCounts']={k:len(projected.get(k) or []) for k in ('findings','causes','recommendations')}
+                    case['projectedCounts']={k:len(projected.get(k) or []) for k in ('findings','analysisDimensions','causes','recommendations')}
                     case['findingTitles']=[f.get('title') for f in projected.get('findings') or []]
 
                 except Exception as exc:

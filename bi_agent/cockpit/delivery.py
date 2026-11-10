@@ -119,6 +119,8 @@ _DATA_GAP = ('缺失', '未返回', '为空', '空值', '无数据', '未取得'
              '口径不一致', '口径差异', '证据不足')
 _STRUCTURE = ('集中', '主要来自', '分布', '占比', '结构', '团队', '客户等级', '产品线', '区域')
 _FACT = ('低于', '高于', '缺口', '逾期', '偏离', '超出', '下降', '上升', '未完成', '超期')
+_UNDONE = ('逾期未完成', '超期未完成', '逾期且未完成', '逾期但未完成',
+           '逾期仍未完成', '超期且未完成', '逾期未办结', '超期未办结')
 _CAUSE = ('导致', '因为', '由于', '造成', '使得', '致使', '根源')
 _CHANGE_TERMS = ('变更', '取消', 'cancelled', 'canceled', 'change', 'changed')
 _LOSS_TERMS = ('损失', '亏损', '减值', 'loss', 'impairment', 'write-off', 'writeoff')
@@ -412,6 +414,28 @@ def _missing_overdue_status(evidence):
         text, ('缺失', '无数据', '未返回', '失败', '未取得'))
 
 
+def _undone_status_evidence(evidence):
+    """Evidence that actually reports an overdue *and* unfinished state.
+
+    An enum description, a stage note or a bare "逾期" value is not support:
+    only a fact with that status label and a value, or a record whose status
+    carries it, may back "逾期未完成".
+    """
+    for item in (evidence or {}).get('facts') or []:
+        if not isinstance(item, dict) or item.get('value') is None:
+            continue
+        if _has_any(_text(item.get('label')), _UNDONE):
+            return True
+    for key in ('records', 'evidence'):
+        for item in (evidence or {}).get(key) or []:
+            if not isinstance(item, dict):
+                continue
+            record = item.get('record') if isinstance(item.get('record'), dict) else item
+            if _has_any(_text(record.get('status')), _UNDONE):
+                return True
+    return False
+
+
 def reasoning_repair_locations(value, evidence=None):
     """Locate rejected unit comparisons without changing acceptance rules."""
     claims=[(['summary'],_text((value or {}).get('summary')))]
@@ -442,7 +466,7 @@ def reasoning_repair_locations(value, evidence=None):
     return issues
 
 
-def validate_reasoning(value, evidence, *, stage='', slot=''):
+def validate_reasoning(value, evidence, *, stage='', slot='', business_only=False):
     """Raise ``ValueError`` when the delivered prose outruns its evidence."""
     issues = []
     original_actions = list((value or {}).get('recommendations') or [])
@@ -458,6 +482,8 @@ def validate_reasoning(value, evidence, *, stage='', slot=''):
     # 1. Money and energy cannot be compared without an explicit bridge, and
     #    changed/cancelled value is not automatically a realised loss.
     claims = [summary]
+    claims += [_text(d.get('title')) + '；' + _text(d.get('description'))
+               for d in value.get('analysisDimensions') or [] if isinstance(d,dict)]
     claims += [_text(c.get('title')) + '；' + _text(c.get('description')) for c in causes]
     claims += [_text(f.get('title'))+'；'+_text(f.get('description')) for f in (value or {}).get('findings') or [] if isinstance(f,dict)]
     claims += [_text(a.get('action')) + '；' + _text(a.get('detail')) for a in actions]
@@ -474,7 +500,8 @@ def validate_reasoning(value, evidence, *, stage='', slot=''):
 
     # 3. A target-total conflict must be visible in the summary, not only limits.
     if _has_target_conflict(evidence):
-        if not ('口径' in summary and _has_any(summary, ('冲突', '不能汇总', '尚不能', '需核对', '未对账', '各自观察'))):
+        disclosure='；'.join(value.get('limitations') or []) if business_only else summary
+        if not ('口径' in disclosure and _has_any(disclosure, ('冲突', '不能汇总', '尚不能', '需核对', '未对账', '各自观察'))):
             issues.append('证据披露了目标或指标口径冲突：摘要必须同时说明“各自口径下的观察”与“尚不能汇总对账”，不能只给明确缺口结论')
 
     # 4. Phenomena, structure and data gaps are not causes.
@@ -495,6 +522,13 @@ def validate_reasoning(value, evidence, *, stage='', slot=''):
             if not _has_any(_text(action.get('action')), ('核查', '核对', '补齐', '确认', '复核', '对账')):
                 issues.append('发货状态缺失时建议必须是核查/补齐动作，不能直接承诺改善结果')
 
+    # 5b. "Overdue and unfinished" needs its own status value. Overdue alone,
+    #     or an unreturned completion status, cannot prove "未完成".
+    if any(_has_any(_text(claim), _UNDONE) for claim in claims) and not _undone_status_evidence(evidence):
+        issues.append('“逾期未完成/超期未完成”必须有同环节明确的状态值或明细记录支持；'
+                      '只有“逾期”或完成状态未返回时不能推出“未完成”。'
+                      '请改为仅陈述逾期，并把完成状态缺口写入limitations。')
+
     # 6. Acceptance must be checkable.
     for action in actions:
         if not checkable_acceptance(action.get('acceptance')):
@@ -512,6 +546,8 @@ def validate_reasoning(value, evidence, *, stage='', slot=''):
                          for f in (evidence or {}).get('facts') or [])
         actionable = actionable or any(isinstance(r, dict) and r.get('id') and r.get('data')
                                       for r in (evidence or {}).get('records') or [])
+        if business_only and not (value.get('findings') or value.get('analysisDimensions')):
+            actionable=False
         if actionable and not actions:
             issues.append('已有可定位的业务事实，不能仅因根因未确认而清空建议；请提交至少一项investigation核查动作，'
                           '直接引用已读取的证据，明确核查范围和可检查的清单/对账验收。'
@@ -858,7 +894,14 @@ def project_card(item, slot):
     result['findings'] = build_risk_findings(
         result, evidence, context, dict(slotId=slot, stage=context.get('stage')))
     result['riskFindingCount'] = len(result['findings'])
-    result['summary'] = _with_note(result.get('summary'), spec.get('note'))
+    from .business_presentation import BUSINESS_SLOTS,present_business_result
+    if slot in BUSINESS_SLOTS:
+        result['limitations']=list(dict.fromkeys((result.get('limitations') or [])+([spec['note']] if spec.get('note') else [])))
+    else:
+        result['summary'] = _with_note(result.get('summary'), spec.get('note'))
+    if slot in BUSINESS_SLOTS:
+        result=present_business_result(result)
+        result['riskFindingCount']=len(result['findings'])
     result['deliveryContract'] = CONTRACT_VERSION
     result['slotQuestion'] = spec['question']
     out['result'] = result

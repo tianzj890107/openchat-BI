@@ -6,7 +6,7 @@ from copy import deepcopy
 import re
 from typing import Literal
 from pydantic import Field, ValidationError
-from .agent import Result, Cause, Recommendation, Finding, validate_result
+from .agent import StrictModel, Result, Cause, Recommendation, Finding, validate_result
 from .delivery import SLOT_SPECS, evidence_count as distinct_evidence_count, validate_reasoning
 
 CONTRACT='cockpit-cards-v1'
@@ -54,7 +54,7 @@ def card_delivery_state(item, slot=None) -> dict:
         gaps.append("ANALYSIS_LIMITED")
     if evidence_count == 0:
         gaps.append("EVIDENCE_EMPTY")
-    if causes_required and not result.get("causes"):
+    if causes_required and not result.get("causes") and not result.get("analysisDimensions"):
         gaps.append("CAUSES_EMPTY")
     if actions_required and not result.get("recommendations"):
         gaps.append("ACTION_EMPTY")
@@ -64,6 +64,7 @@ def card_delivery_state(item, slot=None) -> dict:
                 riskFindingCount=len(result.get("findings") or []), gaps=gaps)
 
 class CardCause(Cause):
+    findingIds:list[str]=Field(default_factory=list,max_length=8,description='明确关联本卡风险ID；不要根据相同证据自动猜关联')
     kind:Literal["verified","hypothesis"]=Field(default="hypothesis",description="仅证实机制或待验证机制；异常表现放风险发现，结构与缺数放限制，不作原因")
     title:str=Field(min_length=1,max_length=32)
     description:str=Field(min_length=1,max_length=160)
@@ -73,13 +74,22 @@ class CardRecommendation(Recommendation):
     acceptance:str=Field(min_length=1,max_length=180,description="必须是可检查的核查清单、对账记录或确认记录，不承诺经营结果")
     action:str=Field(min_length=1,max_length=64)
 
+class AnalysisDimension(StrictModel):
+    stage:Literal['overview','opportunity','quotation','bid','contract','order','shipment']=Field(description='分析维度指业务环节：经营概况/商机获取/报价/投标/合同签订/订单接收/发货')
+    id:str=Field(min_length=1,max_length=80)
+    title:str=Field(min_length=1,max_length=32,description='该业务环节内的分析主题；时间、客户、产品等只作环节内下钻，不作同级业务维度')
+    description:str=Field(min_length=1,max_length=240,description='用已有数值展开该维度的分布、差异、趋势或流程表现，不复述风险标题，不输出缺数、无法评估、待验证假设')
+    findingIds:list[str]=Field(min_length=1,max_length=8)
+    evidenceIds:list[str]=Field(min_length=1,max_length=20)
+
 class Cards(Result):
     summary:str=Field(min_length=1,max_length=240)
     causes:list[CardCause]=Field(default_factory=list,max_length=4)
+    analysisDimensions:list[AnalysisDimension]=Field(default_factory=list,max_length=4)
     recommendations:list[CardRecommendation]=Field(default_factory=list,max_length=4)
     findings:list[Finding]=Field(default_factory=list,max_length=4,description="按重要性列出最多4个独立经营风险；有多个重要问题时逐项交付，不能合成一句摘要，不以数据缺口凑数")
 
-SCHEMA=dict(name=TOOL,description='提交现有AI插槽的短摘要、原因、结构化风险发现、建议与限制。summary必须是纯文本单段结论，禁止Markdown标题、加粗、列表、表格和行动建议清单，行动建议只能写入recommendations。必须先读取看板证据；引用工具返回的evidenceIds。findings只列证据支持的风险事实，不把原因、数据缺口或结构定位计入。根因未确认时可交付空原因，但商机、订单、发货和共同分析有可定位业务事实时必须给出有证据的核查建议；不得编造原因或改善措施。此工具不取数、不执行任务。',input_schema=Cards.model_json_schema())
+SCHEMA=dict(name=TOOL,description='提交现有AI插槽的经营摘要、结构化风险、analysisDimensions分析维度、建议与限制。分析维度必须以findingIds关联本卡风险，以真实数值展开分布、趋势和流程表现；缺数和无法评估放limitations。summary必须是纯文本单段结论，禁止Markdown标题、加粗、列表、表格和行动建议清单，行动建议只能写入recommendations。必须先读取看板证据；引用工具返回的evidenceIds。findings只列证据支持的风险事实，不把原因、数据缺口或结构定位计入。根因未确认时可交付空原因，但商机、订单、发货和共同分析有可定位业务事实时必须给出有证据的核查建议；不得编造原因或改善措施。此工具不取数、不执行任务。',input_schema=Cards.model_json_schema())
 
 
 REPAIR_TOOL='CockpitRepairCards'
@@ -101,7 +111,7 @@ def apply_card_patch(candidate, patches):
         if not isinstance(path,str) or not path.startswith('/'):
             raise ValueError('patch必须使用JSON Pointer路径')
         parts=[p.replace('~1','/').replace('~0','~') for p in path[1:].split('/')]
-        if not 1 <= len(parts) <= 6 or parts[0] not in {'summary','causes','recommendations','findings','limitations'}:
+        if not 1 <= len(parts) <= 6 or parts[0] not in {'summary','causes','recommendations','findings','analysisDimensions','limitations'}:
             raise ValueError('patch只能修改卡片内容字段')
         parent=value
         for part in parts[:-1]:
@@ -143,7 +153,14 @@ def install_delivery(session,context):
         try:
             if not session.query_results:raise ValueError('请先读取本轮看板数据')
             value=validate_result(params,evidence,{e['id'] for e in evidence['evidence']},result_model=Cards)
-            validate_reasoning(value,evidence,stage=str(context.get('stage') or ''))
+            if context.get('businessDimensions'):
+                from .business_presentation import validate_dimensions,business_finding,present_business_result
+                if any(not business_finding(f) for f in value.get('findings') or []):raise ValueError('风险发现不能是字段为空、口径冲突或无法评估；这些内容应移入limitations')
+                presentation=present_business_result(value)
+                value['summary']=presentation['businessSummary'][:240] or '本轮暂无新增经营结论。'
+                value['limitations']=presentation['limitations']
+                validate_dimensions(value,{e['id'] for e in evidence['evidence']})
+            validate_reasoning(value,evidence,stage=str(context.get('stage') or ''),business_only=bool(context.get('businessDimensions')))
             summary_issue=summary_structure_issue(value.get('summary'))
             if summary_issue:
                 raise ValueError(summary_issue+'；summary只能写纯文本结论，行动建议写入recommendations。')
@@ -153,6 +170,8 @@ def install_delivery(session,context):
             session.cockpit_card_delivery=None
             issues=([dict(loc=list(e['loc']),message=e['msg']) for e in exc.errors(include_input=False,include_url=False)]
                 if isinstance(exc,ValidationError) else [dict(loc=['summary'] if 'summary' in str(exc) else [],message=str(exc)[:1200])])
+            if 'analysisDimensions' in str(exc) or '分析维度' in str(exc):
+                issues.append(dict(loc=['analysisDimensions'],message=str(exc)[:1200]))
             from .delivery import reasoning_repair_locations
             # Report independent semantic gaps with schema errors, so the
             # single repair does not discover them only after fixing a field.
@@ -161,7 +180,7 @@ def install_delivery(session,context):
             issues.extend(reasoning_repair_locations(params,evidence))
             if isinstance(exc,ValidationError):
                 try:
-                    validate_reasoning(deepcopy(params),evidence,stage=str(context.get('stage') or ''))
+                    validate_reasoning(deepcopy(params),evidence,stage=str(context.get('stage') or ''),business_only=bool(context.get('businessDimensions')))
                 except ValueError as semantic:
                     issues.append(dict(loc=[],message=str(semantic)[:1200]))
                 except (TypeError,AttributeError,KeyError):
