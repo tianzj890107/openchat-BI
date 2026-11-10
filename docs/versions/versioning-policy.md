@@ -23,7 +23,7 @@ ontology-vMAJOR.MINOR.PATCH
 - 目前处于 `ontology-v0.x` 快速迭代阶段，当前正式版本保持为：
 
 ```text
-ontology-v0.1.10
+ontology-v0.1.14
 ```
 
 ### 与包管理清单的关系（两处强制例外）
@@ -32,8 +32,8 @@ ontology-v0.1.10
 
 | 清单 | 约束 | 实际写入 |
 | --- | --- | --- |
-| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.10` |
-| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.10` |
+| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.14` |
+| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.14` |
 
 `scripts/run_analytics_eval.py` 的 `product_version()` 读取 `pyproject.toml` 后补
 `ontology-v` 前缀，对外统一返回显示名；同文件 `_version_reached()` 会剥离
