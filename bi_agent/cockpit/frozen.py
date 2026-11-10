@@ -671,6 +671,7 @@ def recompute_from_router(app, cwd):
     import os
     timeout=max(60,min(1800,int(os.getenv('COCKPIT_MANUAL_ANALYSIS_TIMEOUT_SECONDS','600'))))
     manager = RefreshManager(store, get_gateway().config, query, start, timeout=timeout)
+    manager.implemented_only = True
     class Runner:
         def begin_round(self, period):
             manager.round_queries={}

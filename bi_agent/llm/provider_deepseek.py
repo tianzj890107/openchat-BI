@@ -198,7 +198,10 @@ def stream(
         return
 
     try:
-        client = OpenAI(api_key=api_key, base_url=BASE_URL)
+        from .runtime_config import scoped_request_timeout
+        timeout=scoped_request_timeout()
+        options={'timeout':timeout,'max_retries':0} if timeout is not None else {}
+        client = OpenAI(api_key=api_key, base_url=BASE_URL, **options)
     except Exception as e:
         yield {"type": "error", "error": f"Failed to init DeepSeek client: {e}"}
         return
@@ -206,7 +209,9 @@ def stream(
     try:
         oa_tools = _convert_tools(allowed_tools)
         oa_messages = _convert_messages(messages, system_prompt,
-                                        include_reasoning=bool(thinking) or bool(oa_tools))
+                                        include_reasoning=True)
+        from .deepseek_compat import preserve_tool_observations
+        oa_messages=preserve_tool_observations(oa_messages)
     except Exception as e:
         yield {"type": "error", "error": f"Message conversion failed: {e}"}
         return
@@ -234,11 +239,12 @@ def stream(
 
     from .runtime_config import scoped_reasoning_effort
     effort = scoped_reasoning_effort()
-    if effort and True:
+    if effort:
         request_kwargs['reasoning_effort'] = effort
 
     try:
-        completion_stream = client.chat.completions.create(**request_kwargs)
+        from .deepseek_compat import create_stream
+        completion_stream = create_stream(client,request_kwargs,deepseek=True)
     except Exception as e:
         yield {"type": "error", "error": f"DeepSeek request failed: {e}"}
         return

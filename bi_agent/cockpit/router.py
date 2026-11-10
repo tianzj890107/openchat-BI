@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
@@ -141,6 +141,13 @@ class TaskChange(BaseModel):
     measures:list[Measure]=Field(default_factory=list,max_length=8)
 
 
+class ModelProbeRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    id:int=Field(default=1,ge=1,le=2)
+    modelKey:str|None=Field(default=None,max_length=128)
+    toolRoundtrip:bool=True
+
+
 class TaskDispatch(BaseModel):
     model_config=ConfigDict(extra="forbid")
     id:int=Field(ge=1,le=2)
@@ -165,6 +172,21 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             if path not in stores:
                 value=Store(Path(path));value.recover();stores[path]=value
             return stores[path]
+
+    probe_lock=threading.Lock()
+
+    @router.post('/model/probe')
+    def model_probe(req:ModelProbeRequest):
+        from .model_probe import probe
+        if not probe_lock.acquire(blocking=False):raise HTTPException(429,'模型连通性检查正在进行')
+        try:
+            result=probe(req.modelKey,req.toolRoundtrip)
+            status=200 if result.get('ok') else 429 if result.get('code')=='MODEL_BUSY' else 503 if result.get('code')=='MODEL_NOT_CONFIGURED' else 502
+            return JSONResponse(result,status_code=status)
+        except ValueError as exc:
+            raise HTTPException(422,str(exc)) from exc
+        finally:
+            probe_lock.release()
 
     def publication_lookup(identity, page, ui_scope):
         """Return the current publication plus a display-only last-known fallback."""

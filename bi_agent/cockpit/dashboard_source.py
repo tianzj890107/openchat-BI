@@ -52,7 +52,7 @@ STAGE_LABELS = {
     'order': ('订单接收', '订单', '签单', '接收'),
     'shipment': ('发货', '出货', '履约', '超期未发'),
 }
-STAGE_METRICS['combined'] = set().union(*(STAGE_METRICS[s] for s in ('opportunity', 'order', 'shipment', 'quotation', 'bid')))
+STAGE_METRICS['combined'] = set().union(*(STAGE_METRICS[s] for s in ('opportunity', 'order', 'shipment', 'quotation', 'bid'))) | {'YWLN_M0001','YWLN_M0002','YWLN_M0003','YWLN_M0004','YWLN_M0005'}
 STAGE_LABELS['combined'] = tuple(label for s in ('opportunity', 'order', 'shipment', 'quotation', 'bid') for label in STAGE_LABELS[s])
 _CODE_RE = re.compile(r'YWLN_[DM]\d+')
 _LABEL_KEYS = ('alias', 'label', 'name', 'identifierCode', 'title')

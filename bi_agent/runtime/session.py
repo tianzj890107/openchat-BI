@@ -2247,6 +2247,20 @@ class AgentSession:
                 yield self._sop_event(SOP_STEP_ROOTCAUSE, "根因证据链组装")
             yield self._sop_event(SOP_STEP_DECISION, "组装最终报告")
 
+        # Persist assistant turn to history. Thinking blocks must come
+        # FIRST — Anthropic requires the trace at the head of content
+        # blocks when extended thinking is enabled, and DeepSeek's
+        # OpenAI-style translator just reads the field regardless of
+        # position so the ordering is harmless either way.
+        content: list[dict[str, Any]] = []
+        content.extend(thinking_blocks)
+        if text_buffer:
+            content.append({"type": "text", "text": text_buffer})
+        content.extend(tool_uses)
+        if content:
+            if not self._commit_messages(content, turn_ctx):
+                return False
+
         yield {
             "type": "llm_response",
             "iteration": iteration,
@@ -2259,18 +2273,6 @@ class AgentSession:
             "usage": usage,
         }
 
-        # Persist assistant turn to history. Thinking blocks must come
-        # FIRST — Anthropic requires the trace at the head of content
-        # blocks when extended thinking is enabled, and DeepSeek's
-        # OpenAI-style translator just reads the field regardless of
-        # position so the ordering is harmless either way.
-        content: list[dict[str, Any]] = []
-        content.extend(thinking_blocks)
-        if text_buffer:
-            content.append({"type": "text", "text": text_buffer})
-        content.extend(tool_uses)
-        if content:
-            return self._commit_messages(content, turn_ctx)
         return True
 
     def _stream_one_response(

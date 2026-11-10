@@ -459,6 +459,10 @@ class RefreshManager:
         if kind not in {'analysis','batch'}:
             return self.query(identity,kind,payload)
         from .diagnostics import current_scope, diagnostic_scope
+        if getattr(self,'implemented_only',False):
+            from .query_capabilities import is_registered
+            if not all(is_registered(q) for q in (payload if isinstance(payload,list) else [payload])):
+                raise ValueError('AP_QUERY_NOT_IMPLEMENTED: query is outside the enabled AP contract registry')
         deadline=time.monotonic()+10
         inherited=current_scope().get('fetchDeadline')
         if inherited is not None:deadline=min(deadline,inherited)
@@ -511,6 +515,13 @@ class RefreshManager:
 
     def _query_requests(self, identity, requests):
         records, failures, seen = [], [], set()
+        if getattr(self,'implemented_only',False):
+            from .query_capabilities import project_requests
+            requests,excluded=project_requests(requests)
+            failures.extend(_canonical(q) for q in excluded)
+            if excluded:
+                from .diagnostics import AnalysisFailure,record_failure
+                record_failure(self.store,AnalysisFailure(f'Excluded {len(excluded)} unimplemented AP query contracts before HTTP; available registered evidence retained',phase='query_contract',code='AP_QUERY_NOT_IMPLEMENTED'),phase='query_contract',identity=identity)
         deadline = time.monotonic() + max(30, int(os.getenv('COCKPIT_FETCH_BUDGET_SECONDS','60')))
         budget_logged = False
         cache = getattr(self, 'round_queries', None)
@@ -556,6 +567,8 @@ class RefreshManager:
         """Resolve failed queries once so every stage shares one evidence set."""
         if not failures:
             return {}, []
+        if getattr(self,'implemented_only',False):
+            return {},[dict(query=query,code='AP_ONLY_NO_SQL') for query in failures]
         try:
             return supplement_failed_queries(
                 {'id': int(identity), 'stage': None, 'unavailableQueries': list(failures)},
@@ -883,6 +896,10 @@ class RefreshManager:
         written with the requesting role's identity.  No query is invented: an
         empty result means the browser has never delivered a usable plan yet.
         """
+        if getattr(self,'implemented_only',False) and period is not None:
+            from .query_capabilities import implemented_stage_requests
+            plans=implemented_stage_requests(stage,period)
+            return {'period':period,'clarifications':{'instruction':f'本轮仅使用已登记可用的AP查询组合；按原登记业务日期筛选。共{len(plans)}条候选，最多读取前18条，未覆盖范围不能外推；缺失数据不得推测。'}},plans[:18]
         identity = int(identity)
         data_identity = self.config.identity()
         pages = (page, *[item for item in DEFAULT_PAGES if item != page])
@@ -947,8 +964,19 @@ class RefreshManager:
                 # Build an independent plan; no dependency on successful AI cards.
                 templates = []
                 candidates_count = 0
+                if getattr(self,'implemented_only',False):
+                    from .query_capabilities import implemented_stage_requests
+                    global_codes={'YWLN_M0001','YWLN_M0002','YWLN_M0003','YWLN_M0004','YWLN_M0005'}
+                    global_plans=[q for q in implemented_stage_requests('combined',period)
+                                  if global_codes & {x['identifierCode'] for x in q['analysisConfig']['indicators']}]
+                    templates.extend(sorted(global_plans,key=lambda q:(bool(q['analysisConfig']['dimensions']),-len(q['analysisConfig']['indicators']),_canonical(q)))[:3])
+                    candidates_count+=len(global_plans)
                 for source_stage in ('opportunity', 'order', 'shipment', 'quotation', 'bid'):
-                    plan = delivered_component_requests(source_stage) or delivered_stage_requests(source_stage)
+                    if getattr(self,'implemented_only',False):
+                        from .query_capabilities import implemented_stage_requests
+                        plan=implemented_stage_requests(source_stage,period)
+                    else:
+                        plan = delivered_component_requests(source_stage) or delivered_stage_requests(source_stage)
                     plan = [query for entry in plan for query in (entry if isinstance(entry,list) else [entry])]
                     candidates_count += len(plan)
                     # Aggregate coverage first, then a small dimensional/status slice.
@@ -961,9 +989,9 @@ class RefreshManager:
                     chosen=aggregate[:2]+dimensional[:1]
                     chosen.extend(q for q in aggregate+dimensional if q not in chosen)
                     templates.extend(chosen[:3])
-                requests = list({_canonical(q):q for q in _with_period(templates, period)}.values())
+                requests = list({_canonical(q):q for q in (templates if getattr(self,'implemented_only',False) else _with_period(templates, period))}.values())
                 seed = {'period':period, 'clarifications':{'instruction':
-                    f'共同分析独立取证：从{candidates_count}条组件查询计划中每环节最多选3条，优先汇总及结构证据。只分析本轮实际返回范围，未覆盖明细不能外推；不等待其他AI分析。'}}
+                    f'共同分析独立取证：从{candidates_count}条'+('已实现AP登记查询' if getattr(self,'implemented_only',False) else '组件查询计划')+'中每环节最多选3条，已登记的全局销售额口径另优先选择最多3条。只分析本轮实际返回范围，未覆盖明细不能外推；不等待其他AI分析。'}}
             else:
                 seed, requests = self._stage_requests(identity, page, stage, period=period)
             if not requests:
