@@ -55,7 +55,7 @@ registerInsightComponent(
             </div>
           </details>
           <details open v-if="analysisDimensions.length" class="sales-shipment-issues__details">
-            <summary>分析维度 · {{ analysisDimensions.length }} 项</summary>
+            <summary>原因分析 · {{ analysisDimensions.length }} 项</summary>
             <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="sales-shipment-issues__line">
               {{ index+1 }}）<span class="sales-shipment-issues__num">【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</span>——{{ dimension.description }}
               <small>{{ dimension.riskLinks.map(link=>link.label).join('；') }}</small>

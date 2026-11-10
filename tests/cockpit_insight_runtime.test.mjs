@@ -92,7 +92,7 @@ test('combined card keeps its own evidence scope separate from global navigation
   assert.match(combinedInsight, /销售额风险/);
   assert.match(combinedInsight, /出货量风险/);
   assert.match(combinedInsight, /重点风险 · \{\{ riskFindings\.length \}\} 项/);
-  assert.match(combinedInsight, /分析维度 · \{\{ analysisDimensions\.length \}\} 项/);
+  assert.match(combinedInsight, /原因分析 · \{\{ analysisDimensions\.length \}\} 项/);
   assert.doesNotMatch(combinedInsight, /风险与待核实原因 · \{\{ displayCauses\.length \}\}/);
 });
 
@@ -102,4 +102,12 @@ test('risk panels render individual findings instead of reducing them to summary
   assert.match(shared, /v-for="\(finding,index\) in findings"/);
   assert.match(shared, /finding\.title/);
   assert.match(shared, /finding\.description/);
+});
+
+test('risk to cause links are numbered risk N — cause M', async () => {
+  const shared = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
+  assert.ok(shared.includes('label:`风险${riskIndex.get(id)}—原因${analysisNumber}`'));
+  assert.ok(shared.includes('原因{{ index+1 }}'));
+  assert.ok(!shared.includes('—分析${analysisNumber}'));
+  assert.match(shared, /【原因】/);
 });

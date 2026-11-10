@@ -56,7 +56,7 @@ export function riskDimensionLinks(dimensions, findings) {
   const riskIndex=new Map(findings.map((f,i)=>[f.id,i+1])), counts=new Map()
   return dimensions.map(d=>({...d,stageLabel:BUSINESS_STAGES[d.stage]||'业务分析',riskLinks:[...new Set(d.findingIds||[])].filter(id=>riskIndex.has(id)).map(id=>{
     const analysisNumber=(counts.get(id)||0)+1;counts.set(id,analysisNumber)
-    return {riskId:id,riskNumber:riskIndex.get(id),analysisNumber,label:`风险${riskIndex.get(id)}—分析${analysisNumber}`}
+    return {riskId:id,riskNumber:riskIndex.get(id),analysisNumber,label:`风险${riskIndex.get(id)}—原因${analysisNumber}`}
   })}))
 }
 
@@ -296,11 +296,11 @@ export function createStageRiskComponent(options = {}) {
 
           <article v-if="analysisDimensions.length" class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">
             <div class="stage-risk-analysis__title">
-              <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【分析】</span>
-              按 {{ analysisDimensions.length }} 个业务维度展开
+              <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【原因】</span>
+              按 {{ analysisDimensions.length }} 个业务环节展开原因分析
             </div>
             <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="stage-risk-analysis__cause">
-              <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">维度{{ index+1 }}</span>
+              <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
               <span class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b>——{{ dimension.description }}
                 <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }} · {{ evidenceFor(dimension).length }} 条证据</small>
               </span>

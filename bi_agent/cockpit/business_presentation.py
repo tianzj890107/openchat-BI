@@ -89,7 +89,7 @@ def validate_dimensions(value,available):
         for fid in d['findingIds']:
             if not set(d['evidenceIds'])&set(findings[fid]['evidenceIds']):raise ValueError('分析维度缺少对应风险的证据引用')
         covered.update(d['findingIds'])
-    if findings and set(findings)-covered:raise ValueError('analysisDimensions未覆盖本卡风险：'+','.join(sorted(set(findings)-covered))+'；按相同证据展开趋势、客户、产品团队或流程维度，不补造根因')
+    if findings and set(findings)-covered:raise ValueError('analysisDimensions未覆盖本卡风险：'+','.join(sorted(set(findings)-covered))+'；按相同证据展开趋势、客户、产品团队或流程分析，不补造根因')
     metric_groups={tuple(sorted(f['metricCodes'])) for f in findings.values()}
     evidence_groups={tuple(sorted(f['evidenceIds'])) for f in findings.values()}
     if len(findings)>=3 and len(metric_groups)>=2 and len(evidence_groups)>=2 and len(dimensions)<2:
