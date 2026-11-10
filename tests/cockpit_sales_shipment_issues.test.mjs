@@ -29,6 +29,8 @@ test('combined analysis uses the prototype typography and divider', async () => 
   assert.match(css, /line-height:\s*1\.85/);
   assert.match(css, /font-size:\s*14px/);
   assert.match(css, /font-weight:\s*700/);
-  assert.match(css, /border-top:\s*1px solid var\(--cockpit-divider\)/);
+  assert.match(css, /border-top:\s*1px solid var\(--cockpit-divider,\s*#eaebf2\)/);
+  assert.match(css, /color:\s*var\(--cockpit-text,\s*rgba\(0,\s*0,\s*0,\s*\.85\)\)/);
+  assert.match(css, /\.sales-shipment-issues__num\s*\{[^}]*color:\s*var\(--cockpit-primary,\s*#165dff\)/s);
   assert.match(css, /\.sales-shipment-issues__num\s*\{[^}]*font-weight:\s*600/s);
 });

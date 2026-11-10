@@ -1,6 +1,6 @@
 .sales-shipment-issues {
   margin: 0 12px 8px;
-  color: var(--cockpit-text);
+  color: var(--cockpit-text, rgba(0, 0, 0, .85));
   font-size: 13.5px;
   line-height: 1.85;
 }
@@ -8,7 +8,7 @@
 .sales-shipment-issues__title {
   margin: 10px 0 6px;
   padding-top: 10px;
-  border-top: 1px solid var(--cockpit-divider);
+  border-top: 1px solid var(--cockpit-divider, #eaebf2);
   font-size: 14px;
   font-weight: 700;
 }
@@ -18,7 +18,7 @@
 }
 
 .sales-shipment-issues__num {
-  color: var(--cockpit-primary);
+  color: var(--cockpit-primary, #165dff);
   font-weight: 600;
 }
 
