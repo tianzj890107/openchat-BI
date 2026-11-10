@@ -4,12 +4,13 @@
 [changelog](../../changelog/) 下的当前周文件（如 `changelog_9_7_11.md`），
 不再创建日报。
 
-- 当前版本：`ontology-v0.1.5`
-- 当前 tag 与 Release：`ontology-v0.1.5`（v0.1.5 收口提交，2026-10-27）、
+- 当前版本：`ontology-v0.1.10`
+- 当前 tag 与 Release：`ontology-v0.1.10`（指向 `179a0cf`，2026-11-03 历史补发）；0.1.6–0.1.9 见下方补发清单。
+- 此前 tag 与 Release：`ontology-v0.1.5`（v0.1.5 收口提交，2026-10-27）、
   `ontology-v0.1.4`（指向 `3287c91`，2026-10-27 补发）、
   `ontology-v0.1.3`（指向定版 commit `a805a66`）、`ontology-v0.1.2`（指向定版 commit `3c4de1e`）、`ontology-v0.1.1`
   （指向定版 commit `c82221f`，2026-10-15 事后补建）、`ontology-v0.1.0`（指向定版 commit
-  `74fca80`）与 `ontology-v0.0.1`–`ontology-v0.0.10`（共 16 个，均已创建 release，见根
+  `74fca80`）与 `ontology-v0.0.1`–`ontology-v0.0.10`（原有 16 个，均已创建 release，见根
   [README 发布清单](../../README.md)）
 - `ontology-v0.1.5` 已于 2026-10-27 创建 tag 与 GitLab Release，承载驾驶舱整页缓存、首屏
   资源与 AP 拆批优化；`ontology-v0.1.4` 指向加载优化前定版 commit `3287c91`。
@@ -24,7 +25,7 @@
 
 | 版本 | 日期 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| [./ontology-v0.1.5.md](./ontology-v0.1.5.md) | 2026-10-27 | 正式版 / 当前版本 | Cockpit 加载性能 PATCH：整页缓存与后台更新、AP 短时复用与 individual 拆批、生产版 Vue、gzip/内容哈希静态资源、AI 插槽按页加载与初始化并行化 |
+| [./ontology-v0.1.5.md](./ontology-v0.1.5.md) | 2026-10-27 | 正式版（历史版本） | Cockpit 加载性能 PATCH：整页缓存与后台更新、AP 短时复用与 individual 拆批、生产版 Vue、gzip/内容哈希静态资源、AI 插槽按页加载与初始化并行化 |
 | [./ontology-v0.1.4.md](./ontology-v0.1.4.md) | 2026-10-23（2026-10-27 补发 tag/Release） | 正式版（历史版本） | V3 经营驾驶舱 POC：三个独立看板路由、交付 ProUI 元数据、三节点穿透式分析、真实模型分析插槽与 mock 对齐的风险卡片，`ontology-v0.1.3` → `ontology-v0.1.4` PATCH 收口 |
 | [./ontology-v0.1.3.md](./ontology-v0.1.3.md) | 2026-10-20 | 正式版（历史版本） | 主服务内置远程 MCP、Fuxi 零本地凭据接入、16 个受控分析工具、`CanvasGenerate` Artifact URL 交付、demo2 代理与语义检索快路径修复，`ontology-v0.1.2` → `ontology-v0.1.3` PATCH 收口 |
 | [./ontology-v0.1.2.md](./ontology-v0.1.2.md) | 2026-10-15 | 正式版（历史版本） | 分析逻辑剥离包 `ontology-analytics-skill` 收尾（真实工具运行时、CanvasGenerate 整页交付）、多步分析中文过程播报、取数证据与双环境对比归档、`20260727` 归档改为临时分支 → `master`，`ontology-v0.1.0` → `ontology-v0.1.2` PATCH 收口 |
@@ -40,3 +41,17 @@
 | [./ontology-v0.0.3.md](./ontology-v0.0.3.md) | 2026-09-03 | 正式版（历史版本） | 本体子图语义环形可视化与布局控件体验收敛（自定义选择器、键盘闭环、option 悬浮说明） |
 | [./ontology-v0.0.2.md](./ontology-v0.0.2.md) | 2026-09-02 | 正式版（历史版本） | 可靠性硬化、共享本体图包接入、GitLab 交付与容器化端口规范 |
 | [./ontology-v0.0.1.md](./ontology-v0.0.1.md) | 2026-08-28 | 正式版（历史版本） | eimosp-ontology-agentic-analytics 智能分析首个完整可用版本 |
+
+## 2026-11-03 历史补发
+
+本次新增五个历史 tag 与 Release，不改写原有版本；历史合入日期与实际补发日期分开记录。源码版本标识另由收口分支更新，不改写历史提交。
+
+| 版本 | 历史合入日期 | 定版提交 | 主题 |
+| --- | --- | --- | --- |
+| [0.1.6](./ontology-v0.1.6.md) | 2026-10-30 | `3b1bc1e` | Process360 闭环与驾驶舱分析运行时 |
+| [0.1.7](./ontology-v0.1.7.md) | 2026-10-30 | `4c63e4d` | 部署收敛与分析可信性修复 |
+| [0.1.8](./ontology-v0.1.8.md) | 2026-11-02 | `8f673fc` | 风险交付与评测体系 |
+| [0.1.9](./ontology-v0.1.9.md) | 2026-11-02 | `c5ce139` | 驾驶舱展示与任务下发收口 |
+| [0.1.10](./ontology-v0.1.10.md) | 2026-11-03 | `179a0cf` | Workbench 本地 Excel 与只读 PostgreSQL |
+
+当前正式版本：ontology-v0.1.10（正式版 / 当前版本）；合计 21 个正式 tag 与 Release。
