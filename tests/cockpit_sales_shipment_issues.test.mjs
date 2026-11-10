@@ -22,3 +22,13 @@ test('sales and shipment card renders only the prototype summary and numbered bu
   assert.match(source, /\{\{ summary \}\}/);
   assert.match(source, /【\{\{ dimension\.stageLabel \}\}】/);
 });
+
+test('combined analysis uses the prototype typography and divider', async () => {
+  const css = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/sales-shipment-issues/index.css', import.meta.url), 'utf8');
+  assert.match(css, /font-size:\s*13\.5px/);
+  assert.match(css, /line-height:\s*1\.85/);
+  assert.match(css, /font-size:\s*14px/);
+  assert.match(css, /font-weight:\s*700/);
+  assert.match(css, /border-top:\s*1px solid var\(--cockpit-divider\)/);
+  assert.match(css, /\.sales-shipment-issues__num\s*\{[^}]*font-weight:\s*600/s);
+});

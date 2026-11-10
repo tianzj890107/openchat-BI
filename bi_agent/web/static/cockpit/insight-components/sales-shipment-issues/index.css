@@ -1,22 +1,25 @@
 .sales-shipment-issues {
-  margin: 4px 12px 8px;
+  margin: 0 12px 8px;
   color: var(--cockpit-text);
-  font-size: 13px;
-  line-height: 22px;
+  font-size: 13.5px;
+  line-height: 1.85;
 }
 
 .sales-shipment-issues__title {
-  margin-bottom: 4px;
+  margin: 10px 0 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--cockpit-divider);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .sales-shipment-issues__line {
-  margin-top: 4px;
+  margin: 0;
 }
 
 .sales-shipment-issues__num {
   color: var(--cockpit-primary);
+  font-weight: 600;
 }
 
 .sales-shipment-issues__summary {
