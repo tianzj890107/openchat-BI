@@ -110,3 +110,31 @@ def test_enum_description_is_not_evidence_for_unfinished_status():
                                  facts=[dict(id='f1', label='商机逾期天数', value=30)])
     with pytest.raises(ValueError, match='逾期未完成'):
         validate_reasoning(value, described, stage='opportunity')
+
+
+def test_opportunity_signing_status_is_contract_state_not_order():
+    from bi_agent.cockpit.business_presentation import business_finding
+    finding=dict(id='r1',kind='risk_fact',title='抽样商机未签单7条',
+                 description='商机明细状态为未签单7条、已签单2条。',metricCodes=['YWLN_M0023'],evidenceIds=['e1'])
+    assert business_finding(finding)
+    shown=present_business_result(dict(summary='商机明细未签单7条，已签单2条。',findings=[finding],limitations=[]))
+    assert '合同签订未确认' in shown['findings'][0]['title']
+    assert '合同已签订' in shown['findings'][0]['description']
+    assert '合同签订未确认' in shown['businessSummary']
+
+
+def test_order_unsigned_without_contract_semantics_remains_a_data_limit():
+    from bi_agent.cockpit.business_presentation import business_finding
+    finding=dict(id='r1',kind='risk_fact',title='订单未签单7笔',
+                 description='订单未签单7笔。',metricCodes=['ORDER_COUNT'],evidenceIds=['e1'])
+    assert not business_finding(finding)
+    shown=present_business_result(dict(summary='订单未签单7笔。',findings=[finding],limitations=[]))
+    assert shown['findings']==[]
+    assert any('订单未签单' in text for text in shown['limitations'])
+
+
+def test_recommendation_finding_ids_are_pruned_to_visible_risks():
+    action=dict(id='a1',action='逐单核查客户与产品团队',acceptance='形成逐单清单',findingIds=['r1','r3'])
+    shown=present_business_result(dict(summary='订单周期高于标杆。',findings=findings()[:1],
+                                       recommendations=[action],limitations=[]))
+    assert shown['recommendations'][0]['findingIds']==['r1']

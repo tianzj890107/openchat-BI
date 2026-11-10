@@ -169,3 +169,14 @@ def test_four_independent_entries_survive_validation_and_primary_projection():
     result=session.cockpit_card_delivery[1]
     projected=project_card(dict(id='test',context=context,status='limited',result=result,evidence=dict(evidence=[dict(id='f1')],facts=[],records=[])),'order-risk-summary')['result']
     assert {key:len(projected[key]) for key in ('findings','causes','recommendations')}==dict(findings=4,causes=4,recommendations=4)
+
+
+def test_recommendations_may_reference_known_risks_only():
+    from bi_agent.cockpit.cards import recommendation_finding_issue
+    value=dict(findings=[dict(id='risk-1')],
+               recommendations=[dict(id='a1',findingIds=['risk-1']),
+                                dict(id='a2',findingIds=['risk-2'])])
+    issue=recommendation_finding_issue(value)
+    assert 'recommendations[1].findingIds' in issue and 'risk-2' in issue
+    value['recommendations'][1]['findingIds']=['risk-1']
+    assert recommendation_finding_issue(value)==''
