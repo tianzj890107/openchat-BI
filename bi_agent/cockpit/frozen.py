@@ -9,7 +9,9 @@ from contextlib import contextmanager
 from copy import deepcopy
 import hashlib
 import asyncio
+import importlib.util
 import json
+import os
 from pathlib import Path
 import sqlite3
 import threading
@@ -18,7 +20,7 @@ import uuid
 from urllib.parse import parse_qs
 
 from fastapi import HTTPException
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse, Response
 
 from .diagnostics import diagnostic_scope, record_failure
 from .cards import CONTRACT, card_delivery_state, valid_card
@@ -86,6 +88,10 @@ class FrozenAnnualStore:
             db.execute('INSERT INTO annual_head VALUES(1,?) ON CONFLICT(id) DO UPDATE SET version=excluded.version', (version,))
         return version
 
+    def head_version(self):
+        with self.db() as db:
+            return db.execute("SELECT version FROM annual_head WHERE id=1").fetchone()[0]
+
     def read(self):
         with self.db() as db:
             row = db.execute('SELECT r.version,r.body FROM annual_head h JOIN annual_releases r ON r.version=h.version WHERE h.id=1').fetchone()
@@ -98,6 +104,10 @@ class FrozenAnnualStore:
             row = db.execute('SELECT status,error,updated FROM annual_job WHERE id=1').fetchone()
             progress = db.execute('SELECT body FROM annual_progress WHERE id=1').fetchone()
         body = json.loads(progress[0]) if progress else {}
+        if row and row[0] != 'running':
+            for work in (body.get('stageProgress') or {}).values():
+                if work.get('status') in {'queued','running'}:
+                    work.update(status='failed', phase='failed', finishedAt=row[2])
         return dict(body, status=row[0], error=row[1], updatedAt=row[2]) if row else dict(status='idle', error='', updatedAt=0)
 
     def progress(self, **body):
@@ -139,7 +149,11 @@ class FrozenAnnualService:
         self.pending, self.completed, self.failures = [], [], []
         self.active = ''
         self.round_id = ''
-        self.deferred_combined = False
+        self.phase = 'idle'
+        self.detail = {}
+        self.stage_progress = {}
+        self._publication_cache = {}
+        self.publication_lock = threading.Lock()
 
     def priority_order(self, slot_id=None, page=None, visible_slots=None):
         registry = {s['slotId']: s for s in slot_registry()}
@@ -158,19 +172,38 @@ class FrozenAnnualService:
 
     def _progress(self):
         self.store.progress(runId=self.round_id,activeStage=self.active, pendingStages=list(self.pending),
-                            completedStages=list(self.completed), failedStages=list(self.failures))
+                            completedStages=list(self.completed), failedStages=list(self.failures),
+                            phase=self.phase, progress=self.detail, stageProgress=dict(self.stage_progress), heartbeatAt=time.time())
 
-    def prioritize(self, slot_id=None, page=None, visible_slots=None):
+    def report_progress(self, phase, **detail):
+        with self.queue_lock:
+            self.phase, self.detail = phase, {**detail, 'lastProgressAt':time.time()}
+            if self.active:
+                self.stage_progress[self.active] = {**self.stage_progress.get(self.active, {}), **self.detail, 'phase':phase, 'status':'running'}
+            self._progress()
+
+    def _job_response(self, queued):
+        job = self.store.job()
+        return dict(queued=queued, status=job.get('status', 'idle'), manualUpdate=job)
+
+    def _requeue(self, stage):
+        if not stage or self.active == stage:
+            return
+        self.pending[:] = [item for item in self.pending if item != stage]
+        self.completed[:] = [item for item in self.completed if item != stage]
+        self.failures[:] = [item for item in self.failures if item.get('stage') != stage]
+        self.pending.insert(0, stage)
+        self.stage_progress[stage] = dict(status='queued', phase='queued', queuedAt=time.time())
+
+    def prioritize(self, slot_id=None, page=None, visible_slots=None, requeue=False):
         order = self.priority_order(slot_id, page, visible_slots)
         with self.queue_lock:
-            if self.store.job()['status']=='running' and self.pending:
+            if self.store.job()['status']=='running':
+                if requeue and slot_id:
+                    self._requeue(order[0])
                 self.pending[:] = [s for s in order if s in self.pending]
-                if self.deferred_combined and 'combined' in self.pending:
-                    inputs=[s for s in self.pending if s in {'opportunity','order','shipment'}]
-                    rest=[s for s in self.pending if s not in inputs and s!='combined']
-                    self.pending[:]=inputs+['combined']+rest
                 self._progress()
-        return dict(status=self.store.job()['status'], queued=False)
+        return self._job_response(False)
 
     def refresh(self, slot_id=None, page=None, visible_slots=None):
         order = self.priority_order(slot_id, page, visible_slots)
@@ -178,19 +211,28 @@ class FrozenAnnualService:
             raise HTTPException(503, 'Manual analysis executor unavailable')
         with self.queue_lock:
             if not self.store.claim():
-                return self.prioritize(slot_id, page, visible_slots)
+                return self.prioritize(slot_id, page, visible_slots, requeue=True)
             self.pending, self.completed, self.failures = order, [], []
             self.round_id=uuid.uuid4().hex
-            self.deferred_combined = False
             self.active = ''
+            self.phase, self.detail = 'queued', {}
+            self.stage_progress = {stage:dict(status='queued',phase='queued',queuedAt=time.time()) for stage in order}
             self._progress()
         def work():
             round_started=time.monotonic()
+            own_run=self.round_id
+            stopped=threading.Event()
+            def heartbeat():
+                while not stopped.wait(5):
+                    with self.queue_lock:
+                        if self.round_id!=own_run:return
+                        self._progress()
+            threading.Thread(target=heartbeat,name='cockpit-round-heartbeat',daemon=True).start()
             try:
                 if hasattr(self.recompute, 'run_stage'):
                     if hasattr(self.recompute, 'begin_round'):
                         self.recompute.begin_round(self.store.read()['period'])
-                    deferred_combined = False
+                    if hasattr(self.recompute,'set_progress'):self.recompute.set_progress(self.report_progress)
                     while True:
                         with self.queue_lock:
                             if not self.pending:
@@ -200,36 +242,29 @@ class FrozenAnnualService:
                                 return
                             stage = self.pending.pop(0)
                             self.active = stage
+                            self.phase, self.detail = 'fetching', {'startedAt':time.time()}
+                            self.stage_progress[stage] = {**self.stage_progress.get(stage, {}), **self.detail, 'phase':'fetching', 'status':'running'}
                             self._progress()
                         started=time.monotonic()
                         phase='stage_execution'
                         try:
                             with diagnostic_scope(runId=self.round_id,stage=stage):
                                 item = self.recompute.run_stage(self.store.read()['period'], stage)
+                            if (item.get('execution') or {}).get('stopReason')=='stage_no_evidence':
+                                raise RuntimeError('No matching evidence; retain previous published card')
                             phase='publication'
+                            self.report_progress('publishing')
                             self.store.publish_stage(stage, item)
                             with self.queue_lock:
                                 self.completed.append(stage)
-                        except StageNotReady:
-                            with self.queue_lock:
-                                if stage=='combined' and self.pending and not deferred_combined:
-                                    inputs=[s for s in self.pending if s in {'opportunity','order','shipment'}]
-                                    rest=[s for s in self.pending if s not in inputs]
-                                    self.pending[:]=inputs+[stage]+rest
-                                    deferred_combined = True
-                                    self.deferred_combined = True
-                                else:
-                                    from .store import Store
-                                    diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),
-                                        RuntimeError('Combined analysis requires two successful same-round source stages'),
-                                        phase='dependency',stage=stage,run_id=self.round_id,duration=time.monotonic()-started)
-                                    self.failures.append(dict(stage=stage,code='DEPENDENCY_NOT_READY',diagnosticId=diagnostic['diagnosticId']))
+                                self.stage_progress[stage].update(status='completed', phase='published', finishedAt=time.time())
                         except Exception as exc:
                             from .store import Store
                             diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),exc,
                                 phase=phase,stage=stage,run_id=self.round_id,duration=time.monotonic()-started)
                             with self.queue_lock:
                                 self.failures.append(dict(stage=stage,code=type(exc).__name__,diagnosticId=diagnostic['diagnosticId']))
+                                self.stage_progress[stage].update(status='failed', phase='failed', finishedAt=time.time(), diagnosticId=diagnostic['diagnosticId'])
                         with self.queue_lock:
                             self.active = ''
                             self._progress()
@@ -242,9 +277,47 @@ class FrozenAnnualService:
                 diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),exc,
                     phase='refresh_coordinator',stage=self.active,run_id=self.round_id,duration=time.monotonic()-round_started)
                 self.store.finish('failed', 'Background update did not finish; diagnosticId='+diagnostic['diagnosticId'])
+            finally:
+                stopped.set()
+                with self.queue_lock:
+                    if self.round_id==own_run:
+                        self.active=''
+                        self.phase='idle'
+                        self._progress()
         threading.Thread(target=work, name='cockpit-explicit-annual-analysis', daemon=True).start()
-        return dict(queued=True, status='running')
+        return self._job_response(True)
 
+
+    def compact_publications(self, identity):
+        version=self.store.head_version()
+        with self.publication_lock:
+            key=(identity,version)
+            if key not in self._publication_cache:
+                self._publication_cache={k:v for k,v in self._publication_cache.items() if k[1]==version}
+                envelope=self.envelope(identity)
+                grouped={}
+                for sid,slot in envelope['slots'].items():
+                    stage=slot['stage']
+                    bundle=grouped.setdefault(stage,{'slots':{},'evidence':None})
+                    payload=slot['payload']
+                    if bundle['evidence'] is None:
+                        bundle['evidence']=browser_evidence(payload.get('evidence') or {})
+                    value={k:v for k,v in slot.items() if k not in {'lastSuccessfulPublication','payload'}}
+                    value['payload']={k:v for k,v in payload.items() if k!='evidence'}
+                    bundle['slots'][sid]=value
+                from .publications import digest
+                versions={}
+                for stage,bundle in grouped.items():
+                    stable=deepcopy(bundle)
+                    for slot in stable['slots'].values():
+                        (slot['payload'].get('context') or {}).pop('publicationBasis',None)
+                    versions[stage]=digest(stable)
+                manifest={k:v for k,v in envelope.items() if k not in {'slots','manualUpdate'}}
+                manifest['transport']='stage-manifest-v1'
+                manifest['stageVersions']=versions
+                manifest['slots']={sid:{k:v for k,v in slot.items() if k not in {'payload','lastSuccessfulPublication'}} for sid,slot in envelope['slots'].items()}
+                self._publication_cache[key]=(manifest,grouped)
+            return self._publication_cache[key]
 
     def items(self, identity, page=None, release=None):
         release = release or self.store.read()
@@ -296,8 +369,163 @@ class FrozenAnnualService:
             riskCounts=risk_counts, update=dict(status='published', nextCheckAt=0, error=''), slots=slots)
 
 
-class StageNotReady(RuntimeError):
-    pass
+def browser_evidence(evidence):
+    """Keep rendering facts and references; full proof stays in analysis history."""
+    value={k:deepcopy(v) for k,v in evidence.items() if k not in {'facts','records','evidence'}}
+    value['facts']=[{k:deepcopy(v) for k,v in fact.items() if k in {'id','label','value','unit','definition'}} for fact in evidence.get('facts') or []]
+    value['records']=deepcopy(evidence.get('records') or [])
+    records={str(v.get('id')):v for v in value['records']}
+    value['evidence']=[{'id':entry['id'],**({'record':records[str(entry['id'])]} if str(entry.get('id')) in records else {})} for entry in evidence.get('evidence') or [] if entry.get('id')]
+    return value
+
+
+STAGE_LABELS = {'opportunity': '商机获取', 'quotation': '报价', 'bid': '投标',
+                'order': '订单接收', 'shipment': '发货',
+                'combined': '销售额与出货量跨环节共同问题分析'}
+_RECORD_LABELS = {'id': 'ID', 'customer': '客户', 'department': '产品部/部门',
+                  'product': '产品', 'status': '状态', 'cause': '原因',
+                  'amount': '金额', 'quantity': '数量', 'value': '值',
+                  'unit': '单位', 'overdueDays': '逾期天数',
+                  'evidence': '证据', 'name': '名称'}
+_RECORD_ORDER = ('id', 'customer', 'department', 'product', 'status', 'cause',
+                 'amount', 'quantity', 'value', 'unit', 'overdueDays',
+                 'evidence', 'name')
+EVIDENCE_ROW_CHUNK = 400
+EVIDENCE_MAX_BLOCKS = 20
+_EVIDENCE_CACHE = {}
+_EVIDENCE_CACHE_LOCK = threading.Lock()
+_CANVAS_MODULE = None
+
+
+def _canvas_module():
+    """Load the MCP canvas renderer without writing an artifact or calling a tool."""
+    global _CANVAS_MODULE
+    if _CANVAS_MODULE is None:
+        base = os.environ.get('ONTOLOGY_MCP_PACKAGE') or str(Path(__file__).parents[2] / 'ontology-analytics-mcp')
+        path = Path(base) / 'canvas_tool.py'
+        spec = importlib.util.spec_from_file_location('cockpit_evidence_canvas', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _CANVAS_MODULE = module
+    return _CANVAS_MODULE
+
+
+def _record_columns(records):
+    complex_keys = {key for record in records for key, value in record.items()
+                    if isinstance(value, (dict, list))}
+    keys = [key for key in _RECORD_ORDER
+            if any(key in record for record in records) and key not in complex_keys]
+    keys += [key for record in records for key in record
+             if key not in keys and key not in complex_keys]
+    return list(dict.fromkeys(keys))[:14]
+
+
+def _fact_rows(facts):
+    rows = []
+    for fact in facts:
+        value = fact.get('value')
+        unit = str(fact.get('unit') or '').strip()
+        if value is None or value == '':
+            text = ''
+        else:
+            text = f'{value} {unit}'.strip()
+        rows.append([fact.get('label') or fact.get('id') or '', text,
+                     fact.get('definition') or ''])
+    return rows
+
+
+def _evidence_html(stage, item, release):
+    evidence = item.get('evidence') or {}
+    facts = [value for value in evidence.get('facts') or [] if isinstance(value, dict)]
+    records = [value for value in evidence.get('records') or [] if isinstance(value, dict)]
+    result = item.get('result') or {}
+    stamp = float(item.get('updatedAt') or release.get('createdAt') or 0)
+    when = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stamp)) if stamp else ''
+    seconds = (item.get('execution') or {}).get('durationSeconds')
+    duration = ''
+    if isinstance(seconds, (int, float)) and seconds > 0:
+        total = round(seconds)
+        duration = f'{total} 秒' if total < 60 else f'{total // 60} 分 {total % 60} 秒'
+    lines = [f"- 环节：{STAGE_LABELS.get(stage, stage)}",
+             f"- 期间：{release.get('period', '')}",
+             f"- 分析时间：{when or '未知'}" + (f"（耗时 {duration}）" if duration else ''),
+             f"- 证据规模：{len(records)} 条记录 · {len(facts)} 项事实",
+             f"- 分析 ID：{item.get('id', '')}"]
+    summary = str(result.get('summary') or '').strip()
+    if summary:
+        lines.extend(['', summary])
+    limitations = [str(value).strip() for value in evidence.get('limitations') or []
+                   if str(value).strip()]
+    if limitations:
+        lines.extend(['', '**口径与限制**'])
+        lines.extend(f"- {value}" for value in limitations[:20])
+    blocks = [{'kind': 'text', 'heading': '本次分析', 'markdown': '\n'.join(lines)}]
+    from .evidence_charts import chart_blocks
+    charts = chart_blocks(item)
+    for chart in charts:
+        blocks.append(chart)
+        blocks.append({'kind':'text','markdown':'口径与溯源：'+chart['params']['source_note']})
+    if not charts:
+        blocks.append({'kind':'text','markdown':'- 当前冻结证据不足以形成同一查询、同一指标的多点图表，保留以下事实与记录明细。'})
+    if facts:
+        blocks.append({'kind': 'table', 'heading': f'事实（{len(facts)} 项）',
+                       'params': {'columns': [{'key': 'label', 'label': '事实'},
+                                              {'key': 'value', 'label': '数值'},
+                                              {'key': 'definition', 'label': '口径'}],
+                                  'rows': _fact_rows(facts)}})
+    keys = _record_columns(records)
+    reserved = len(blocks)
+    max_chunks = max(0, EVIDENCE_MAX_BLOCKS - reserved)
+    if records and keys and len(records) > max_chunks * EVIDENCE_ROW_CHUNK:
+        max_chunks = max(0, max_chunks - 1)
+        truncated = True
+    else:
+        truncated = False
+    shown = min(len(records), max_chunks * EVIDENCE_ROW_CHUNK)
+    columns = [{'key': key, 'label': _RECORD_LABELS.get(key, key)} for key in keys]
+    for index in range(0, shown, EVIDENCE_ROW_CHUNK):
+        chunk = records[index:index + EVIDENCE_ROW_CHUNK]
+        blocks.append({'kind': 'table',
+                       'heading': f'记录 {index + 1}–{index + len(chunk)} / {len(records)}',
+                       'params': {'columns': columns,
+                                  'rows': [[record.get(key) for key in keys] for record in chunk]}})
+    if not records:
+        blocks.append({'kind': 'text',
+                       'markdown': '- 本次分析没有可逐条展示的记录，以上事实即为全部证据。'})
+    if truncated:
+        blocks.append({'kind': 'text',
+                       'markdown': f'- 记录较多，本页展示前 {shown} 条；'
+                                   '完整原始数据可用 `?format=json` 查看。'})
+    params = {
+        'title': f"完整证据 · {STAGE_LABELS.get(stage, stage)}",
+        'subtitle': f"{release.get('period', '')} 年度分析 · {len(records)} 条记录",
+        'source_note': f"分析 {item.get('id', '')} · 期间 {release.get('period', '')}",
+        'blocks': blocks,
+    }
+    canvas = _canvas_module()
+    try:
+        return canvas.render_canvas_html(params, allow_external_assets=False)
+    except OSError:
+        # Evidence remains readable if a deployment omits the local chart asset.
+        params['blocks'] = [b for b in blocks if b['kind'] != 'chart']
+        params['blocks'].append({'kind':'text','markdown':'- 本地图表资源不可用，以下保留原始证据表格；未请求外部资源。'})
+        return canvas.render_canvas_html(params, allow_external_assets=False)
+
+
+
+def evidence_page_html(stage, item, release):
+    """Render one evidence report per analysis; repeat opens reuse the page."""
+    key = ('evidence-charts-v1', stage, str(item.get('id') or ''), item.get('updatedAt'))
+    with _EVIDENCE_CACHE_LOCK:
+        cached = _EVIDENCE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    page = _evidence_html(stage, item, release)
+    with _EVIDENCE_CACHE_LOCK:
+        if len(_EVIDENCE_CACHE) >= 32:
+            _EVIDENCE_CACHE.clear()
+        _EVIDENCE_CACHE[key] = page
+    return page
 
 
 class FrozenCockpitSurface:
@@ -317,8 +545,40 @@ class FrozenCockpitSurface:
             if identity not in (1, 2):
                 raise HTTPException(422, '无效身份')
             ui_scope = query.get('uiScope', ['default'])[0]
+            if path == '/api/cockpit/ai-publications' and scope['method']=='GET' and query.get('format')==['manifest']:
+                manifest,_=await asyncio.to_thread(self.service.compact_publications,identity)
+                value={**manifest,'scopeKey':ui_scope,'requestedScope':ui_scope,'manualUpdate':self.service.store.job()}
+                return await JSONResponse(value,headers={'Cache-Control':'no-store'})(scope,receive,send)
+            if path.startswith('/api/cockpit/ai-publications/stages/') and scope['method']=='GET':
+                parts=path[len('/api/cockpit/ai-publications/stages/'):].split('/')
+                stage=parts[0]
+                if stage not in STAGES or len(parts)>2 or (len(parts)==2 and parts[1]!='evidence'):raise HTTPException(422,'无效分析环节')
+                if len(parts)==2:
+                    release=await asyncio.to_thread(self.service.store.read)
+                    item=release['items'][stage]
+                    expected=query.get('analysisId',[''])[0]
+                    if expected and expected!=item['id']:raise HTTPException(409,'该环节分析已更新，请重新打开证据')
+                    if query.get('format',['json'])[0]=='html':
+                        try:
+                            page=await asyncio.to_thread(lambda:evidence_page_html(stage,item,release))
+                        except Exception as exc:  # noqa: BLE001
+                            value=dict(analysisId=item['id'],stage=stage,period=release['period'],
+                                       dataAsOf=item.get('updatedAt'),evidence=item.get('evidence') or {},
+                                       htmlError=str(exc))
+                            return await JSONResponse(value,headers={'Cache-Control':'private, no-store'})(scope,receive,send)
+                        return await HTMLResponse(page,headers={'Cache-Control':'private, no-store'})(scope,receive,send)
+                    response=await asyncio.to_thread(lambda:JSONResponse(dict(analysisId=item['id'],stage=stage,period=release['period'],dataAsOf=item.get('updatedAt'),evidence=item.get('evidence') or {}),headers={'Cache-Control':'private, no-store'}))
+                    return await response(scope,receive,send)
+                manifest,groups=await asyncio.to_thread(self.service.compact_publications,identity)
+                version=manifest['stageVersions'][stage]
+                headers=dict(scope.get('headers') or [])
+                if headers.get(b'if-none-match',b'').decode()==('"'+version+'"'):
+                    return await Response(status_code=304,headers={'ETag':'"'+version+'"','Cache-Control':'private, no-cache'})(scope,receive,send)
+                value={'stage':stage,'version':version,**groups[stage]}
+                return await JSONResponse(value,headers={'ETag':'"'+version+'"','Cache-Control':'private, no-cache'})(scope,receive,send)
             if path == '/api/cockpit/ai-publications' and scope['method'] == 'GET':
-                return await JSONResponse(self.service.envelope(identity, ui_scope))(scope, receive, send)
+                response=await asyncio.to_thread(lambda:JSONResponse(self.service.envelope(identity,ui_scope)))
+                return await response(scope,receive,send)
             if path in {'/api/cockpit/publications/cards','/api/cockpit/analyses/published'} and scope['method'] == 'GET':
                 page = query.get('page', ['analysis'])[0]
                 return await JSONResponse(dict(items=self.service.items(identity, page), cardContract=CONTRACT,
@@ -328,6 +588,11 @@ class FrozenCockpitSurface:
                 return await JSONResponse(dict(period=release['period'], periodMatch=True,
                     cardsVersion=release['version'], publicationVersion='', dataAsOf=release['createdAt'],
                     update=dict(status='published', nextCheckAt=0), manualUpdate=self.service.store.job()))(scope, receive, send)
+            if path == '/api/cockpit/page' and scope['method']=='POST':
+                # Old browser bundles may still attempt a whole-page merge.
+                # Annual cards publish independently; never couple them to charts.
+                return await JSONResponse(dict(accepted=False, skipped=True,
+                    reason='fixed-annual-independent-publications', snapshot=None))(scope, receive, send)
             if path == '/api/cockpit/publications/priority' and scope['method']=='POST':
                 from starlette.requests import Request
                 body = await Request(scope, receive).json()
@@ -403,25 +668,24 @@ def recompute_from_router(app, cwd):
         response = asyncio.run(invoke('/api/cockpit/analyses/refresh', dict(body, refresh=True)))
         return response.get('analysis') or response.get('cached')
     store = Store(Path(cwd)/'dataset/cockpit/history.sqlite3')
-    manager = RefreshManager(store, get_gateway().config, query, start)
+    import os
+    timeout=max(60,min(1800,int(os.getenv('COCKPIT_MANUAL_ANALYSIS_TIMEOUT_SECONDS','600'))))
+    manager = RefreshManager(store, get_gateway().config, query, start, timeout=timeout)
+    manager.implemented_only = True
     class Runner:
         def begin_round(self, period):
-            self.fresh=set()
-            manager.combined_fresh_stages=self.fresh
+            manager.round_queries={}
+
+        def set_progress(self, callback):
+            manager.progress_callback=callback
 
         def run_stage(self, period, stage):
-            if stage=='combined' and len(self.fresh)<2:
-                raise StageNotReady(stage)
             page = target_page(stage) or 'analysis'
             store.request_refresh(period_target_scope(1, page, stage, period), now=time.time())
             result = manager.preheat_period(1, page, stage, period, force=True)
             hit = store.published_period(1, period, stage, {}, data_identity=get_gateway().config.identity())
             if result.get('status') not in {'published', 'frozen'} or not hit:
-                if stage=='combined' and result.get('status') in {'waiting-for-stages','awaiting-plan'}:
-                    raise StageNotReady(stage)
                 raise RuntimeError('Annual stage not ready: '+stage)
             item=store.get_analysis(hit['analysis_id'])
-            if stage in {'opportunity','order','shipment'}:
-                self.fresh.add(stage)
             return item
     return Runner()

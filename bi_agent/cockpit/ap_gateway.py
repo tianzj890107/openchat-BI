@@ -6,6 +6,7 @@ import os
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +24,7 @@ PATHS = {
     'helmet': '/v1/graphs/helmet-view',
 }
 MAX_RESPONSE = 16 * 1024 * 1024
+COMBINATION_UNCONFIGURED = ('本地查询组合未配置', '本地查询组合未启用')
 
 
 def _upstream_message(body):
@@ -33,6 +35,109 @@ def _upstream_message(body):
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ''
+
+
+def _analysis_indicators(payload):
+    if not isinstance(payload, dict):
+        return []
+    config = payload.get('analysisConfig')
+    indicators = config.get('indicators') if isinstance(config, dict) else None
+    if not isinstance(indicators, list):
+        return []
+    return [item for item in indicators
+            if isinstance(item, dict) and isinstance(item.get('identifierCode'), str)
+            and item.get('identifierCode').strip()]
+
+
+def _split_analysis(payload):
+    """One AP query per indicator, used only after a combination rejection."""
+    indicators = _analysis_indicators(payload)
+    if len(indicators) < 2:
+        return []
+    parts = []
+    for indicator in indicators:
+        child = deepcopy(payload)
+        child['analysisConfig']['indicators'] = [deepcopy(indicator)]
+        parts.append(child)
+    return parts
+
+
+def _combination_rejected(error):
+    return (isinstance(error, HTTPException) and error.status_code == 502
+            and any(marker in str(error.detail or '') for marker in COMBINATION_UNCONFIGURED))
+
+
+def _cell_value(cell):
+    return cell.get('value') if isinstance(cell, dict) else cell
+
+
+def _join_part(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+
+
+def _merge_analysis(payload, parts, results):
+    """Merge per-indicator TABLE results on their shared dimension values.
+
+    The payload keeps its original indicator set and receipt key, so published
+    evidence still describes the query the dashboard requested.  Missing cells
+    are left absent; no metric is invented and no dimension row is dropped.
+    """
+    if not results or len(results) != len(parts):
+        raise HTTPException(502, 'AP拆分查询未返回完整指标结果')
+    first = results[0]
+    if (not isinstance(first, dict) or not isinstance(first.get('result'), dict)
+            or first.get('resultType') != 'TABLE'):
+        raise HTTPException(502, 'AP拆分查询结果不是同构表格，未合并部分指标')
+    columns, seen = [], set()
+    for data, part in zip(results, parts):
+        if (not isinstance(data, dict) or data.get('resultType') != first.get('resultType')
+                or not isinstance(data.get('result'), dict)):
+            raise HTTPException(502, 'AP拆分查询结果结构不一致，未合并部分指标')
+        expected = str((part.get('analysisConfig') or {}).get('indicators', [{}])[0].get('identifierCode') or '')
+        returned = {str(column.get('identifierCode') or '') for column in
+                    data['result'].get('columns') or [] if isinstance(column, dict)}
+        if expected and expected not in returned:
+            raise HTTPException(502, f'AP拆分查询缺少指标 {expected} 的返回列，未合并部分指标')
+        for column in data['result'].get('columns') or []:
+            if not isinstance(column, dict):
+                raise HTTPException(502, 'AP拆分查询返回了无效列定义')
+            key = str(column.get('identifierCode') or '') or _join_part(column)
+            if key in seen:
+                continue
+            seen.add(key)
+            columns.append(deepcopy(column))
+    config = payload.get('analysisConfig') or {}
+    dimension_codes = [str(item.get('identifierCode') or '') for item in config.get('dimensions') or []
+                       if isinstance(item, dict) and item.get('identifierCode')]
+    if dimension_codes:
+        rows_by_key = {}
+        for data in results:
+            available = {str(column.get('identifierCode') or '') for column in
+                         data['result'].get('columns') or [] if isinstance(column, dict)}
+            missing = [code for code in dimension_codes if code not in available]
+            if missing:
+                raise HTTPException(502, 'AP拆分查询缺少维度列，无法按期间对齐指标')
+            for row in data['result'].get('rows') or []:
+                if not isinstance(row, dict):
+                    raise HTTPException(502, 'AP拆分查询返回了无效行')
+                key = tuple(_join_part(_cell_value(row.get(code))) for code in dimension_codes)
+                target = rows_by_key.setdefault(key, {})
+                for code, cell in row.items():
+                    target[code] = deepcopy(cell)
+        rows = list(rows_by_key.values())
+    else:
+        merged_row, has_row = {}, False
+        for data in results:
+            values = data['result'].get('rows') or []
+            if not isinstance(values, list) or len(values) > 1 or any(not isinstance(row, dict) for row in values):
+                raise HTTPException(502, 'AP拆分查询返回多行聚合结果，未合并部分指标')
+            if values:
+                has_row = True
+                merged_row.update({code: deepcopy(cell) for code, cell in values[0].items()})
+        rows = [merged_row] if has_row else []
+    merged = deepcopy(first)
+    merged['result'] = {**deepcopy(first['result']), 'columns': columns, 'rows': rows}
+    return merged
 
 
 class APQuery(BaseModel):
@@ -140,6 +245,46 @@ class APGateway:
         return error
 
     def query(self, kind, payload, *, _deadline=None, timing=None):
+        deadline = _deadline if _deadline is not None else time.monotonic() + self.config.timeout
+        try:
+            return self._query(kind, payload, _deadline=deadline, timing=timing)
+        except HTTPException as error:
+            if kind != 'analysis' or not _combination_rejected(error):
+                raise
+            parts = _split_analysis(payload)
+            if not parts:
+                raise
+            return self._query_split_analysis(payload, parts, _deadline=deadline, timing=timing)
+
+    def _query_split_analysis(self, payload, parts, *, _deadline, timing):
+        if time.monotonic() >= _deadline:
+            raise HTTPException(504, 'AP整批查询超时，未交付部分结果')
+        results, errors, timings = {}, {}, [{} for _ in parts]
+        workers = min(len(parts), max(1, self.config.concurrency))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='cockpit-ap-split') as pool:
+            futures = {pool.submit(self.query, 'analysis', part, _deadline=_deadline,
+                                   timing=timings[index]): index
+                       for index, part in enumerate(parts)}
+            for future in as_completed(futures):
+                index = futures[future]
+                try:
+                    results[index] = future.result()
+                except Exception as error:
+                    errors[index] = error
+        if timing is not None:
+            for item in timings:
+                for key, value in item.items():
+                    timing[key] = timing.get(key, 0) + value if isinstance(value, (int, float)) else value
+        if errors:
+            index = min(errors)
+            error = errors[index]
+            if _combination_rejected(error):
+                code = str((parts[index].get('analysisConfig') or {}).get('indicators', [{}])[0].get('identifierCode') or '')
+                raise HTTPException(502, f'AP未返回成功的数据结果：指标 {code} 本地查询组合未配置，拆分查询仍失败') from None
+            raise error
+        return _merge_analysis(payload, parts, [results[index] for index in range(len(parts))])
+
+    def _query(self, kind, payload, *, _deadline=None, timing=None):
         if kind not in PATHS:
             raise HTTPException(422, '不支持的只读AP接口')
         if kind == 'batch':

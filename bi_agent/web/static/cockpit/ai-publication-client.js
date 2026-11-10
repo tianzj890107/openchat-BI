@@ -7,16 +7,17 @@ export const AI_PUBLICATION_REGISTRY = 'cockpit-ai-slots-v1';
 
 export function createAiPublicationClient({
   apiBase, id, request = fetch, onUpdate = () => {}, onError = () => {},
-  pollMs = 15000, activeMs = 5000, hiddenMs = 30000,
-  isHidden = () => false,
+  pollMs = 60000, activeMs = 5000, hiddenMs = 30000,
+  isHidden = () => typeof document !== 'undefined' && document.hidden,
   schedule = (fn, ms) => setTimeout(fn, Math.max(250, ms)),
   clear = token => clearTimeout(token),
 }) {
   let timer = null, running = false, stopped = true, generation = 0;
   let currentScope = 'default', lastVersion = '';
+  const stageCache = new Map();
 
   function url(scope) {
-    const query = new URLSearchParams({id: String(id), uiScope: scope});
+    const query = new URLSearchParams({id: String(id), uiScope: scope, format:'manifest'});
     return `${apiBase}/ai-publications?${query}`;
   }
 
@@ -29,6 +30,31 @@ export function createAiPublicationClient({
       try { body = await response.json(); } catch (_) { throw new Error('AI 卡片响应无效'); }
       if (!response.ok) throw new Error(typeof body?.detail === 'string' ? body.detail : 'AI 卡片读取失败');
       if (token !== generation) return null;
+      if(body.transport==='stage-manifest-v1') {
+        const stages=Object.entries(body.stageVersions||{});
+        await Promise.all(stages.map(async ([stage,version])=>{
+          if(stageCache.get(stage)?.version===version)return;
+          const previous=stageCache.get(stage);
+          const query=new URLSearchParams({id:String(id)});
+          try {
+            const r=await request(`${apiBase}/ai-publications/stages/${encodeURIComponent(stage)}?${query}`,{headers:{Accept:'application/json',...(previous?{'If-None-Match':`"${previous.version}"`}:{})}});
+            if(r.status===304)return;
+            if(!r.ok)throw new Error('环节卡片读取失败');
+            const value=await r.json();
+            if(token===generation && value.version===version){
+              value.slots=Object.fromEntries(Object.entries(value.slots||{}).map(([id,slot])=>[id,{...slot,payload:{...slot.payload,evidence:value.evidence}}]));
+              stageCache.set(stage,value);
+            }
+          }catch(error){if(token===generation)onError(error);}
+        }));
+        if(token!==generation)return null;
+        const slots={};
+        for(const [id,meta] of Object.entries(body.slots||{})) {
+          const group=stageCache.get(meta.stage), slot=group?.slots?.[id];
+          slots[id]=slot?{...(group.version===body.stageVersions[meta.stage]?meta:slot),payload:slot.payload}:{...meta,status:'missing'};
+        }
+        body={...body,slots};
+      }
       const unchanged = !force && body.version === lastVersion && currentScope === scope;
       currentScope = scope;
       lastVersion = body.version || '';

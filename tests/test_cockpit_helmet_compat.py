@@ -80,3 +80,30 @@ def test_legacy_only_helmet_payloads_are_also_left_alone(monkeypatch, tmp_path):
     config = json.loads(result["nodes"][0]["meta"]["helmetConfig"]["dataConfig"])
     assert config["dimension"][0]["identifierCode"] == "D007"
     assert config["measure"][0]["identifierCode"] == "M00013"
+
+
+def test_config_revision_invalidates_helmet_cache_only(monkeypatch, tmp_path):
+    monkeypatch.setenv('COCKPIT_DATA_MODE', 'ap')
+    monkeypatch.setenv('COCKPIT_AP_REUSE_SECONDS', '60')
+    gateway = Gateway({'nodes':['old']})
+    calls = []
+    def query(kind, payload):
+        calls.append(kind)
+        return gateway.payload
+    gateway.query = query
+    monkeypatch.setattr(router, 'get_gateway', lambda: gateway)
+    version = ['old']
+    monkeypatch.setattr(router, 'config_version', lambda: version[0])
+    app = FastAPI()
+    app.include_router(build_cockpit_router(lambda: tmp_path, main_context=lambda c: {}))
+    client = TestClient(app)
+    def read(kind):
+        response=client.post('/api/cockpit/data/query',json={'id':1,'kind':kind,'payload':{'flowCode':'test'}})
+        assert response.status_code == 200
+        return response.json()['data']
+    assert read('helmet') == {'nodes':['old']}
+    read('helmet');read('analysis')
+    version[0]='new';gateway.payload={'nodes':['new']}
+    assert read('helmet') == {'nodes':['new']}
+    read('analysis')
+    assert calls == ['helmet','analysis','helmet']

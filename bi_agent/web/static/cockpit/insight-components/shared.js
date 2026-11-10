@@ -50,16 +50,33 @@ function metricValue(metric) {
   return `${metric.value}${metric.unit ? ` ${metric.unit}` : ''}`
 }
 
+const BUSINESS_STAGES={overview:'经营概况',opportunity:'商机获取',quotation:'报价',bid:'投标',contract:'合同签订',order:'订单接收',shipment:'发货'}
+
+export function riskDimensionLinks(dimensions, findings) {
+  const riskIndex=new Map(findings.map((f,i)=>[f.id,i+1])), counts=new Map()
+  return dimensions.map(d=>({...d,stageLabel:BUSINESS_STAGES[d.stage]||'业务分析',riskLinks:[...new Set(d.findingIds||[])].filter(id=>riskIndex.has(id)).map(id=>{
+    const analysisNumber=(counts.get(id)||0)+1;counts.set(id,analysisNumber)
+    return {riskId:id,riskNumber:riskIndex.get(id),analysisNumber,label:`风险${riskIndex.get(id)}—原因${analysisNumber}`}
+  })}))
+}
+
 export function useInsight(props, emit) {
   const result = computed(() => props.analysis?.result || null)
   const bundle = computed(() => props.analysis?.evidence || {})
   const facts = computed(() => bundle.value.facts || [])
   const records = computed(() => bundle.value.records || [])
   const evidence = computed(() => bundle.value.evidence || [])
-  const causes = computed(() => result.value?.causes || [])
+  const evidenceLink = computed(() => {
+    const slot=props.slotProps||{};
+    if(!slot.frozenControls || !props.analysis?.id)return '';
+    return `${slot.apiBase}/ai-publications/stages/${encodeURIComponent(slot.stage)}/evidence?id=${slot.identityId}&format=html&analysisId=${encodeURIComponent(props.analysis.id)}`;
+  })
+  const findings = computed(() => (result.value?.findings || []).slice(0,4))
+  const causes = computed(() => (result.value?.causes || []).map(cause=>({...cause,title:String(cause.title||'').replace(/^\[(待验证假设|结构定位|异常表现|数据缺口|记录支持)\]\s*/, '')})))
+  const analysisDimensions = computed(() => riskDimensionLinks(result.value?.analysisDimensions || [],findings.value))
   const recommendations = computed(() => result.value?.recommendations || [])
   const limitations = computed(() => result.value?.limitations || bundle.value.limitations || [])
-  const summary = computed(() => result.value?.summary || '')
+  const summary = computed(() => result.value?.businessSummary ?? result.value?.summary ?? '')
   const hasResult = computed(() => Boolean(result.value))
   const stageName = computed(() => props.context?.stageName || props.analysis?.context?.stageName || '')
   const period = computed(() => props.analysis?.context?.engine==='main' ? '' : props.context?.period || props.analysis?.context?.period || '')
@@ -122,7 +139,7 @@ export function useInsight(props, emit) {
   }
 
   function causeStatus(cause) {
-    const labels = {verified:'记录支持', fact:'异常表现', structure:'结构定位', data_gap:'数据缺口', hypothesis:'待验证假设'}
+    const labels = {verified:'记录支持', fact:'异常表现', structure:'结构定位', data_gap:'数据缺口', hypothesis:'分析线索'}
     if (cause?.kind && labels[cause.kind]) return labels[cause.kind]
     return cause?.status === 'supported' ? '记录支持' : '待核实'
   }
@@ -172,6 +189,9 @@ export function useInsight(props, emit) {
     facts,
     records,
     evidence,
+    evidenceLink,
+    findings,
+    analysisDimensions,
     causes,
     recommendations,
     openRecommendations,
@@ -262,37 +282,32 @@ export function createStageRiskComponent(options = {}) {
             </div>
           </article>
 
-          <article class="stage-risk-analysis__card stage-risk-analysis__card--risk stage-risk-analysis__panel">
+          <article v-if="summary || findings.length" class="stage-risk-analysis__card stage-risk-analysis__card--risk stage-risk-analysis__panel">
             <div class="stage-risk-analysis__title">
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【风险】</span>
               {{ displayStage }}当前风险判断
             </div>
             <div class="stage-risk-analysis__summary" :title="summary">{{ summary }}</div>
+            <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
+              <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">风险{{ index+1 }}</span>
+              <span class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——{{ finding.description }}</template></span>
+            </div>
           </article>
 
-          <article class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">
+          <article v-if="analysisDimensions.length" class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">
             <div class="stage-risk-analysis__title">
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--cause">【原因】</span>
-              <template v-if="causes.length">模型基于当前证据识别 {{ causes.length }} 项原因</template>
-              <template v-else-if="status === 'limited'">证据范围不足，未形成原因判断</template>
-              <template v-else>暂未识别到有证据支持的原因</template>
+              按 {{ analysisDimensions.length }} 个业务环节展开原因分析
             </div>
-            <div v-if="!causes.length" class="insight-runtime-empty">
-              {{ status === 'limited' ? '当前环节缺少匹配指标或同源明细，不能把其他环节数据当作原因证据。' : '当前证据不足以确认原因，需补充同源明细。' }}
-            </div>
-            <div v-for="(cause, index) in causes" :key="cause.id" class="stage-risk-analysis__cause">
-              <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index + 1 }}</span>
-              <span class="stage-risk-analysis__cause-text">
-                <b>{{ cause.title }}</b>——{{ cause.description }}
-                <small class="stage-risk-analysis__cause-meta">{{ causeMeta(cause) }}</small>
-                <small v-if="(cause.missingEvidence || []).length" class="stage-risk-analysis__missing-evidence">
-                  待补材料：{{ cause.missingEvidence.join('、') }}
-                </small>
+            <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="stage-risk-analysis__cause">
+              <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
+              <span class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b>——{{ dimension.description }}
+                <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }} · {{ evidenceFor(dimension).length }} 条证据</small>
               </span>
             </div>
           </article>
 
-          <article class="stage-risk-analysis__card stage-risk-analysis__card--suggest stage-risk-analysis__panel">
+          <article v-if="recommendations.length" class="stage-risk-analysis__card stage-risk-analysis__card--suggest stage-risk-analysis__panel">
             <div class="stage-risk-analysis__head">
               <div class="stage-risk-analysis__title">
                 <span class="stage-risk-analysis__mark stage-risk-analysis__mark--suggest">【建议】</span>
@@ -323,16 +338,17 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__time">{{ deadlineText(item) }}</span>
               <button type="button" class="stage-risk-analysis__close" aria-label="关闭这条建议" @click="dismissRecommendation(item.id)">×</button>
             </div>
+
+          </article>
             <details class="stage-risk-analysis__foot">
-              <summary>查看验收、证据范围与 {{ limitations.length }} 项限制</summary>
-              <div v-if="!openRecommendations.length" class="insight-runtime-empty">尚无可交付措施，待原因与责任口径核实。</div>
+              <summary>数据范围、验收与 {{ limitations.length }} 项限制</summary>
             <div v-for="(item, index) in openRecommendations" :key="'accept-' + item.id" class="stage-risk-analysis__acceptance">
                 建议 {{ index + 1 }} 验收：{{ item.acceptance }}<template v-if="hasRecommendationDetail(item)">；补充：{{ recommendationDetail(item) }}</template>
               </div>
+              <a v-if="evidenceLink" :href="evidenceLink" target="_blank" rel="noopener" class="insight-evidence-link">查看完整证据</a>
               <div class="stage-risk-analysis__evidence">证据范围：{{ contextLine }}；{{ records.length }} 条记录、{{ evidenceCount }} 条证据。</div>
               <div v-for="(limitation, index) in limitations" :key="'limit-' + index">限制 {{ index + 1 }}：{{ limitation }}</div>
             </details>
-          </article>
           <task-order-dialog v-if="dialogOpen" :task="task" :busy="busy" :error="taskError"
                              :notice="taskNotice" :receipts="receipts" :task-status="taskStatus"
                              :dispatched="dispatched" @close="closeDialog" @save="saveDraft"

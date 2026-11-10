@@ -13,10 +13,11 @@ from bi_agent.cockpit.router import build_cockpit_router
 CONTEXT=dict(id=1,engine='main',source='service',stage='shipment',period='2025-10',department='全部产品部',snapshotId='service-test')
 
 
-def factory(events, messages=None, claims=None, choice=None):
+def factory(events, messages=None, claims=None, choice=None, **session_fields):
     @contextmanager
     def make(context,cancel):
-        yield SimpleNamespace(messages=messages or [],claims=claims or [],pending_choice_spec=choice),iter(events)
+        yield SimpleNamespace(messages=messages or [],claims=claims or [],pending_choice_spec=choice,
+                              **session_fields),iter(events)
     return make
 
 
@@ -57,6 +58,32 @@ def test_partial_ap_evidence_still_returns_a_limited_card_when_delivery_is_incom
     assert result['summary'].startswith('已取得订单金额')
     assert result['causes']==[] and result['recommendations']==[]
     assert any('PostgreSQL' in item or 'AP' in item for item in result['limitations'])
+
+
+def test_max_tokens_with_evidence_still_returns_a_limited_card():
+    events=[dict(type='done',stop_reason='max_tokens')]
+    messages=[dict(role='assistant',content=[dict(type='text',text='分析摘要\n已取得商机金额 28.81 亿元，部分指标未返回。')])]
+    claims=[dict(id='e1',statement='商机获取金额[YWLN_M0023]=28.81')]
+    result,_=run_main_analysis(CONTEXT,threading.Event(),lambda *a:None,
+                               factory(events,messages,claims))
+    assert result['_status']=='limited'
+    assert result['cardContract']=='cockpit-cards-v1'
+    assert '已取得商机金额' in result['summary']
+    assert len(result['summary'])<=240
+    assert result['causes']==[] and result['recommendations']==[]
+
+
+def test_max_tokens_keeps_an_already_validated_card():
+    delivery=dict(summary='已通过工具校验的受限卡片',causes=[],recommendations=[],findings=[],limitations=[])
+    events=[dict(type='done',stop_reason='max_tokens')]
+    messages=[dict(role='assistant',content=[dict(type='text',text='补充说明达到输出上限')])]
+    claims=[dict(id='e1',statement='商机获取金额[YWLN_M0023]=28.81')]
+    result,_=run_main_analysis(CONTEXT,threading.Event(),lambda *a:None,
+                               factory(events,messages,claims,query_results=[object()],
+                                       cockpit_card_delivery=(1,delivery)))
+    assert result['_status']=='limited'
+    assert result['cardContract']=='cockpit-cards-v1'
+    assert result['summary']=='已通过工具校验的受限卡片'
 
 
 def wait(client,aid):
@@ -136,9 +163,8 @@ def test_real_main_api_uses_shared_admission_and_preserves_user_sessions(tmp_pat
         item=client.post('/api/cockpit/analyses',json=dict(engine='main',source='service',chartSnapshotId=RELEASE,chartQueries=[query])).json()
         assert 'id' in item,item
         done=wait(client,item['id'])
-    assert done['status']=='needs_input',done
-    assert done['result']['clarification']['question']=='请选择销售指标'
-    assert done['execution']['route']['mode']
+    assert done['status']=='failed',done
+    assert done['execution']['diagnostic']['errorCode']=='INTERACTION_DISABLED'
     assert web.STATE.sessions=={'existing-user':user_session}
     assert web.STATE.source_contexts=={}
     assert client.post('/api/cockpit/analyses',json=dict(engine='main',source='service',repositoryId='unbound')).status_code==422

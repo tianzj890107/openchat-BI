@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CURRENT_VERSION = "ontology-v0.1.5"
+CURRENT_VERSION = "ontology-v0.1.10"
 # Tags/Releases that actually exist on the remote.  ``ontology-v0.1.0`` was
 # released on 2026-09-29; ``ontology-v0.1.1`` (skill-extraction PATCH) and
 # ``ontology-v0.1.2`` (progress-narration PATCH) were authorized and tagged
@@ -21,7 +21,7 @@ CURRENT_VERSION = "ontology-v0.1.5"
 # ``CURRENT_VERSION`` was backfilled on 2026-10-27 before the loading cut.
 RELEASED_TAGS = frozenset(
     {"ontology-v0.1.0", "ontology-v0.1.1", "ontology-v0.1.2", "ontology-v0.1.3",
-     "ontology-v0.1.4", CURRENT_VERSION}
+     "ontology-v0.1.4", "ontology-v0.1.5", "ontology-v0.1.6", "ontology-v0.1.7", "ontology-v0.1.8", "ontology-v0.1.9", CURRENT_VERSION}
 )
 
 
@@ -91,8 +91,8 @@ class VersioningPolicyDocTests(unittest.TestCase):
         self.assertIn("push 不等于部署", doc)
 
     def test_product_version_is_ontology_v0_1_5(self) -> None:
-        """pyproject stays PEP 440; every display surface speaks ontology-v0.1.5."""
-        self.assertIn('version = "0.1.5"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        """pyproject stays PEP 440; every display surface speaks ontology-v0.1.10."""
+        self.assertIn('version = "0.1.10"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertIn(f'__version__ = "{CURRENT_VERSION}"', (ROOT / "bi_agent/__init__.py").read_text(encoding="utf-8"))
         app = (ROOT / "bi_agent/web/app.py").read_text(encoding="utf-8")
         self.assertIn(f'APP_VERSION = "{CURRENT_VERSION}"', app)
@@ -101,10 +101,10 @@ class VersioningPolicyDocTests(unittest.TestCase):
             app,
         )
         pkg = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
-        self.assertEqual(pkg["version"], "0.1.5")
+        self.assertEqual(pkg["version"], "0.1.10")
         lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
-        self.assertEqual(lock["packages"][""]["version"], "0.1.5")
-        self.assertEqual(lock["version"], "0.1.5")
+        self.assertEqual(lock["packages"][""]["version"], "0.1.10")
+        self.assertEqual(lock["version"], "0.1.10")
         main = (ROOT / "frontend/src/main.jsx").read_text(encoding="utf-8")
         self.assertIn(f'const PRODUCT_VERSION = "{CURRENT_VERSION}";', main)
         self.assertIn(f'__version__ = "{CURRENT_VERSION}"', (ROOT / "open_claude/__init__.py").read_text(encoding="utf-8"))
@@ -113,7 +113,7 @@ class VersioningPolicyDocTests(unittest.TestCase):
         versions_dir = ROOT / "docs/versions"
         allowed = {"README.md", "versioning-policy.md", "ontology-v0.1.0.md",
                    "ontology-v0.1.1.md", "ontology-v0.1.2.md",
-                   "ontology-v0.1.3.md", "ontology-v0.1.4.md", f"{CURRENT_VERSION}.md"} | {
+                   "ontology-v0.1.3.md", "ontology-v0.1.4.md", "ontology-v0.1.5.md", "ontology-v0.1.6.md", "ontology-v0.1.7.md", "ontology-v0.1.8.md", "ontology-v0.1.9.md", f"{CURRENT_VERSION}.md"} | {
             f"ontology-v0.0.{number}.md" for number in range(1, 11)
         }
         names = {p.name for p in versions_dir.iterdir() if p.is_file()}

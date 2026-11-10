@@ -50,14 +50,20 @@
     "baseConfig": {
       "showResetButton": true,
       "overrideRenderType": {
-        "D001": "dropdown",
-        "D008": "dropdown",
-        "YWLN_D028": "dropdown",
         "YWLN_D044": "dropdown"
       },
       "defaultValue": {
-        "values": {}
-      }
+        "values": {
+          "YWLN_D044": {
+            "type": "relative",
+            "value": "currentMonth"
+          }
+        }
+      },
+      "nonClearableDimensions": [
+        "YWLN_D044"
+      ],
+      "resetBehavior": "restoreDefault"
     },
     "grainBindings": [
       {
@@ -1766,8 +1772,7 @@
           "label": "穿透式问题分析",
           "templateId": "2112061604959928321"
         }
-      ],
-      "activateRules": []
+      ]
     }
   }
 ]

@@ -691,7 +691,7 @@ def configure(
 # ---------------------------------------------------------------------------
 APP_NAME = "eimosp-ontology-agentic-analytics"              # 应用名（容器/服务/配置中心统一使用）
 APP_DISPLAY_NAME = "eimosp-ontology-agentic-analytics 智能分析"  # 产品名
-APP_VERSION = "ontology-v0.1.5"                 # 与 pyproject.toml / docs/versions 保持同步
+APP_VERSION = "ontology-v0.1.10"                 # 与 pyproject.toml / docs/versions 保持同步
 def _default_app_port() -> int:
     """实际监听端口来源：优先 APP_PORT 环境变量（容器内 Dockerfile 显式注入 8080），
     缺省回退非容器本地默认端口 8765。"""
@@ -4310,7 +4310,7 @@ def _cockpit_main_turn(context,cancel):
     try:
         from ..cockpit.dashboard_source import material, receipt_material, executor, TOOL, SCHEMA
         from ..cockpit.store import Store
-        from ..cockpit.cards import TOOL as DELIVERY_TOOL, SCHEMA as DELIVERY_SCHEMA, install_delivery
+        from ..cockpit.cards import TOOL as DELIVERY_TOOL, SCHEMA as DELIVERY_SCHEMA, REPAIR_TOOL, REPAIR_SCHEMA, install_delivery
         from open_claude.tools import register_tool
         live=context['snapshotId'].startswith('ap-')
         fingerprint,selected=(receipt_material(context,Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'),allow_expired=True)
@@ -4324,8 +4324,9 @@ def _cockpit_main_turn(context,cancel):
             raise RuntimeError('看板查询只能在绑定快照的任务内执行')
         register_tool(SCHEMA,unbound)
         register_tool(DELIVERY_SCHEMA,unbound)
+        register_tool(REPAIR_SCHEMA,unbound)
         session=WebSession(cwd=STATE.cwd,agent_def=STATE.agent_def,
-            ontology_store=None,tools_override=[TOOL,DELIVERY_TOOL,'AskUser'],
+            ontology_store=None,tools_override=[TOOL,DELIVERY_TOOL,REPAIR_TOOL],
             context_header=(
                 (('本轮数据来源：页面本次AP取数全部失败，已按同一筛选口径从主库（PostgreSQL）补查，来源已在证据中标为 pg，未混用AP结果。')
                  if (live and context.get('dataSource')=='pg')
@@ -4333,25 +4334,56 @@ def _cockpit_main_turn(context,cancel):
                  if (live and context.get('dataSource')=='ap+pg')
                  else ('本轮数据来源：页面本次实时AP响应的冻结结果。' if live else '本轮数据来源：看板交付AP快照。')))
                 +'只有看板只读查询工具；不连接默认本体、SQL或其他数据网关。原始请求包含实际筛选，字段标签为口径。缺少同源明细必须披露，禁止另源补数。'),
-            tool_executors={TOOL:executor(selected,context['stage'])})
+            tool_executors={TOOL:executor(selected,context['stage'],lean=True)})
         raw_read=session._tool_executors[TOOL]
+        read_cache={}
         def read_with_refs(params,cwd):
             from ..reliability import QueryResult, claims_from_query_result
+            cache_key=json.dumps(params,ensure_ascii=False,sort_keys=True)
+            if cache_key in read_cache:
+                return json.dumps(dict(alreadyRead=True,evidenceIds=read_cache[cache_key],instruction='该查询已读取，请引用原证据，不需要重复取数。',data={'rows':[]}),ensure_ascii=False)
             output=raw_read(params,cwd)
             data=json.loads(output)
             claims=claims_from_query_result(QueryResult(data=output),f'{TOOL}-{len(session.query_results)+1}')
             data['evidenceIds']=[claim.id for claim in claims]
+            read_cache[cache_key]=data['evidenceIds']
             return json.dumps(data,ensure_ascii=False)
         session._tool_executors[TOOL]=read_with_refs
         session.cockpit_stage_filter=dict(stage=context['stage'],kept=len(selected),excluded=len(excluded),
             fallback=list((context.get('stageEvidence') or {}).get('fallbackMetrics') or []),
             fallbackBlocked=list((context.get('stageEvidence') or {}).get('fallbackBlocked') or []))
+        context={**context,'businessDimensions':True}
         install_delivery(session,context)
+        from ..cockpit.cards import delivery_summary
+        session.validated_delivery_summary = delivery_summary
+        session.max_iterations = 2
+        session.model_request_limit = 2
+        session.model_tools_override = [DELIVERY_TOOL]
+        session.allow_interaction = False
+        session.require_validated_delivery = True
+        session.system_prompt += (
+            '\n\n本次为主服务固定卡片任务：服务端已通过正常工具预读证据。'
+            '本轮交付形式覆盖通用对话的表格、图表和行动文案要求：'
+            '不再查询，不用TableGenerate或ChartGenerate，不输出普通Markdown。'
+            '第一轮只调用CockpitDeliverCards，必须包含summary、limitations及各数组。'
+            '用户看到的是analysisDimensions业务分析维度，不是待验证假设。分析维度指业务环节（商机、投标、合同、订单、发货等），用真实数字在环节内部展开差异，尽量一风险对应一分析条目；没有已证实机制时causes可为空。'
+            '空值和无法评估只放limitations；建议针对已观察的客户、订单或流程问题，纯补指标与修配置不作业务建议。'
+            '只有原始AP记录与汇总，不能证明根因，原因status用hypothesis；'
+            '建议使用investigation，验收写“形成逐项核查清单并确认结果”等可检查记录。'
+            '收到校验问题后，第二轮按拒绝响应指定工具修复；正常草稿局部修补，截断空草稿完整重交；未改字段原样保留。'
+            '证据、口径、权限和交付校验始终有效，不得编造根因或改善效果。')
+        # Freeze/read evidence deterministically. The model starts with real,
+        # normally recorded tool results, not an LLM-generated fetch plan.
+        prepared_ids = list(selected)[:18]
+        session.initial_read_tools = [dict(type='tool_use', id='cockpit-prepared-'+str(index//6),
+            name=TOOL, input={'queryIds':prepared_ids[index:index+6]})
+            for index in range(0,len(prepared_ids),6)]
         with STATE.registry_lock:
             STATE.sessions[key]=session
         slot,lease,turn_id,ticket,_=_begin_turn('data',key,cancel_event=cancel,principal_session_id=f"cockpit-id-{context['id']}")
-        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel):
-            yield session,session.generate_turn(analysis_question(context))
+        from ..llm.runtime_config import request_config
+        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel), request_config(thinking=False, max_tokens=16384, temperature=0.2, reasoning_effort='low'):
+            yield session,session.generate_turn(analysis_question({**context,'preparedEvidence':True,'businessDimensions':True})+f'\n本轮已通过工具预读 {len(prepared_ids)} 条查询，证据引用见工具结果。优先直接交付，不重复取数。'+(f'另有 {len(selected)-len(prepared_ids)} 条查询未预读；未读范围必须说明，不得编造或额外读取。' if len(selected)>len(prepared_ids) else ''))
     finally:
         # Release ephemeral in-memory objects only. Never reset/delete chat history.
         with STATE.registry_lock:
@@ -4391,6 +4423,7 @@ def _cockpit_html(page: str) -> HTMLResponse:
         cockpit / "metadata" / "runtime.json",
         cockpit / "cockpit.js",
         cockpit / "data-client.js",
+        cockpit / "task-progress.js",
         cockpit / "publication-client.js",
         cockpit / "page-client.js",
         cockpit / "insight-components" / "index.js",

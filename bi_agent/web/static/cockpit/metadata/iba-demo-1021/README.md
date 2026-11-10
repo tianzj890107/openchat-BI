@@ -1,9 +1,10 @@
 # 前端交付元数据：feature/demo_1021
 
 来源：[iba-demo](http://gitlab.boulderaitech.com/shimenglan/iba-demo/-/tree/feature/demo_1021)，
-固定 commit `cdaa3b683489e911fdf62d2d1d80b6ee265c8727`。
+当前 SDK 与模板配置固定 commit `325ffcd1022250affac987015b766d20d735efd6`（2026-11-09 同步）。
 `components.json`、`template-registry.json`、`insights.js` 和 `activate-rules.json`
-按上游原样复制；`insights.json` 由声明式 `insights.js` 转为 JSON。
+按上游同步；根激活规则及 AP 表格适配保留本项目接入。`insights.json` 由声明式 `insights.js` 转为 JSON。
+产品部分解通过组件公开的 `visualization.displayLimit.enabled=false` 关闭自动“其他”合并，SDK 不改。
 哈希、类型统计、跳转规则数量和已知问题见 `source.json`。
 
 ## 页面对应
@@ -30,8 +31,7 @@ X-Ontology-Repository-Id: 8
 `/x360` 属于配置中的网关地址末段，不写死在代码的 API 路径里；最终地址仍为
 `/api/gateway2/x360/v1/ontology/data/query`。
 
-新版头盔组件支持元数据配置 `graphConfig.helmetViewUrl`。上游交付值指向演示环境
-`172.16.5.230`，浏览器不能直连；运行包导出时统一改写为
+新版头盔组件支持元数据配置 `graphConfig.helmetViewUrl`。上游交付值为 `/v1/graphs/helmet-view`，浏览器不直连 AP；运行包导出时统一改写为
 `/api/gateway2/x360/v1/graphs/helmet-view`，再由主服务携带凭据请求 AP，页面不接触
 内网 AP 地址或认证信息。
 

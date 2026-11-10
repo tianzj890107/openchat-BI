@@ -20,30 +20,4 @@
 }
 
 .sales-shipment-issues__summary {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
-.sales-shipment-issues__counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 20px;
-  margin-top: 6px;
-  color: var(--cockpit-text-secondary);
-}
-
-.sales-shipment-issues__counts b {
-  color: var(--cockpit-text);
-  font-weight: 600;
-}
-
-.sales-shipment-issues__details {
-  margin-top: 4px;
-}
-
-.sales-shipment-issues__details summary {
-  color: var(--cockpit-primary);
-  cursor: pointer;
 }

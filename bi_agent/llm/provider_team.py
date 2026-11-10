@@ -83,16 +83,18 @@ def _thinking_extra_body(model_id: str, runtime_thinking: bool) -> Optional[dict
     - The two verified Doubao 2.1 routes accept the DeepSeek-style field.
     - GLM/Kimi/unknown families send no thinking payload.
     """
+    from .runtime_config import scoped_thinking
+    override = scoped_thinking()
     family = _model_family(model_id)
     if family == "deepseek":
-        enabled = _env_flag("TEAM_DEEPSEEK_ENABLE_THINKING")
+        enabled = override if override is not None else _env_flag("TEAM_DEEPSEEK_ENABLE_THINKING")
         if enabled is None:
             enabled = _env_flag("TEAM_ENABLE_THINKING")
         if enabled is None:
             enabled = bool(runtime_thinking)
         return {"thinking": {"type": "enabled" if enabled else "disabled"}}
     if family == "qwen":
-        enabled = _env_flag("TEAM_QWEN_ENABLE_THINKING")
+        enabled = override if override is not None else _env_flag("TEAM_QWEN_ENABLE_THINKING")
         if enabled is None:
             enabled = bool(runtime_thinking)
         if not enabled and "qwen3.8-2.4t-a95b" in str(model_id).lower():
@@ -126,11 +128,23 @@ def stream(
         return
 
     try:
-        client = OpenAI(api_key=api_key, base_url=_get_base_url())
-        oa_messages = _convert_messages(
-            messages, system_prompt, include_reasoning=bool(thinking)
-        )
+        from .runtime_config import scoped_request_timeout
+        timeout=scoped_request_timeout()
+        options={'timeout':timeout,'max_retries':0} if timeout is not None else {}
+        client = OpenAI(api_key=api_key, base_url=_get_base_url(), **options)
+        thinking_body = _thinking_extra_body(model_id, thinking)
         oa_tools = _convert_tools(allowed_tools)
+        # A gateway may still emit reasoning when disabled was requested.
+        # Real provider traces are protocol state, independent from UI visibility.
+        replay_reasoning = bool(thinking)
+        if _model_family(model_id) == 'deepseek':
+            replay_reasoning = True
+        oa_messages = _convert_messages(
+            messages, system_prompt, include_reasoning=replay_reasoning
+        )
+        if _model_family(model_id)=='deepseek':
+            from .deepseek_compat import preserve_tool_observations
+            oa_messages=preserve_tool_observations(oa_messages)
     except Exception as e:
         yield {"type": "error", "error": f"Team client/message setup failed: {e}"}
         return
@@ -146,12 +160,17 @@ def stream(
     if oa_tools:
         request_kwargs["tools"] = oa_tools
         request_kwargs["tool_choice"] = "auto"
-    thinking_body = _thinking_extra_body(model_id, thinking)
     if thinking_body:
         request_kwargs["extra_body"] = thinking_body
 
+    from .runtime_config import scoped_reasoning_effort
+    effort = scoped_reasoning_effort()
+    if effort and _model_family(model_id) == 'deepseek':
+        request_kwargs['reasoning_effort'] = effort
+
     try:
-        completion_stream = client.chat.completions.create(**request_kwargs)
+        from .deepseek_compat import create_stream
+        completion_stream = create_stream(client,request_kwargs,deepseek=_model_family(model_id)=='deepseek')
     except Exception as e:
         yield {"type": "error", "error": f"Team API request failed: {e}"}
         return
@@ -223,6 +242,9 @@ def stream(
             if finish:
                 stop_reason = FINISH_MAP.get(finish, "end_turn")
 
+        if reasoning_buf:
+            yield {"type": "thinking_block", "text": reasoning_buf}
+
         for idx in sorted(tc_state):
             state = tc_state[idx]
             if not state["started"]:
@@ -237,8 +259,6 @@ def stream(
                 "name": state["name"],
                 "input": tool_input,
             }
-        if reasoning_buf:
-            yield {"type": "thinking_block", "text": reasoning_buf}
         yield {"type": "message_end", "stop_reason": stop_reason, "usage": usage}
     except Exception as e:
         yield {"type": "error", "error": f"Team API stream error: {type(e).__name__}: {e}"}

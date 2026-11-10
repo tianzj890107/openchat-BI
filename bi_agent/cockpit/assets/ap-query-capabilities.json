@@ -1,0 +1,7007 @@
+{
+  "source": "bp_local_analysis_query_202611101416",
+  "sourceHash": "cff28480774e2328e2e20961128feec1592b5985a7fc7f52f89b6d60d006e538",
+  "queries": [
+    {
+      "query_key": "M|YWLN_M0023,YWLN_M0317|YWLN_D004,YWLN_D006,YWLN_D015,YWLN_D020,YWLN_D047,YWLN_D048|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "商机编号",
+          "identifierCode": "YWLN_D047"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "销售责任人",
+          "identifierCode": "YWLN_D048"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "预测金额",
+          "identifierCode": "YWLN_M0023"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "商机类型",
+          "identifierCode": "YWLN_D015"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "状态",
+          "identifierCode": "YWLN_D020"
+        },
+        {
+          "type": "METRIC",
+          "unit": "个",
+          "label": "该商机下订单数",
+          "identifierCode": "YWLN_M0317"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true,
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          }
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_statuses",
+          "optional": true
+        },
+        "YWLN_D020": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D047": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "opportunity_numbers",
+          "optional": true
+        },
+        "YWLN_D048": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sales_owners",
+          "optional": true
+        },
+        "YWLN_D_IS_BIDDING": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "is_bidding_flags",
+          "optional": true,
+          "valueLabels": {
+            "否": "非投标中",
+            "是": "投标中"
+          }
+        },
+        "YWLN_D_CUSTOMER_HAS_OPPORTUNITY": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_opportunity_flags",
+          "optional": true
+        }
+      },
+      "signingBasis": "contract_confirmation",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "D|YWLN_D_PROJECT_NEXT_STEP",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "下一步",
+          "identifierCode": "YWLN_D_PROJECT_NEXT_STEP"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D_QUOTE_ABNORMAL",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "报价异常",
+          "identifierCode": "YWLN_D_QUOTE_ABNORMAL"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|M0001||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "label": "采购金额",
+          "identifierCode": "M0001"
+        }
+      ],
+      "filter_contract": {
+        "D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|M00013|D007,D008|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "发货完成状态维度",
+          "identifierCode": "D007"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "发货审批时间维度",
+          "identifierCode": "D008"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "发货金额",
+          "identifierCode": "M00013"
+        }
+      ],
+      "filter_contract": {
+        "D008": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D034",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "报价提交时间维度",
+          "identifierCode": "YWLN_D034"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D035",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "报价统计期间（分支归期）",
+          "identifierCode": "YWLN_D035"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M_NON_BIDDING_OPPORTUNITY_COUNT,YWLN_M_NON_BIDDING_OPPORTUNITY_SHARE||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "个",
+          "label": "未进入投标商机数",
+          "identifierCode": "YWLN_M_NON_BIDDING_OPPORTUNITY_COUNT"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "未进入投标商机百分比",
+          "identifierCode": "YWLN_M_NON_BIDDING_OPPORTUNITY_SHARE"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D030": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D037",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "商机获取完成时间维度",
+          "identifierCode": "YWLN_D037"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D038",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "首次实际发货时间维度",
+          "identifierCode": "YWLN_D038"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D051",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "发货饼图维度",
+          "identifierCode": "YWLN_D051"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D036",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "订单审核通过时间维度",
+          "identifierCode": "YWLN_D036"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D046",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "明星产品系列",
+          "identifierCode": "YWLN_D046"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D047",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "商机编号",
+          "identifierCode": "YWLN_D047"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0006,YWLN_M0007,YWLN_M0011|YWLN_D044|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "通用统计期间",
+          "identifierCode": "YWLN_D044"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "实际出货量（GWh）",
+          "identifierCode": "YWLN_M0006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "目标出货量（GWh）",
+          "identifierCode": "YWLN_M0007"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "预计出货量",
+          "identifierCode": "YWLN_M0011"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0142,YWLN_M_ORDER_CANCEL_CHANGE||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "中标未签电量",
+          "identifierCode": "YWLN_M0142"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "取消/变更订单电量",
+          "identifierCode": "YWLN_M_ORDER_CANCEL_CHANGE"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D016": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_states",
+          "optional": true
+        },
+        "YWLN_D022": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D031": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      },
+      "signingBasis": "contract_confirmation",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M0143,YWLN_M0150,YWLN_M0151||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "超期订未发金额",
+          "identifierCode": "YWLN_M0143"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "正常订未发金额",
+          "identifierCode": "YWLN_M0150"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "计划外发货金额",
+          "identifierCode": "YWLN_M0151"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D_PROJECT_BLOCKER",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "卡点",
+          "identifierCode": "YWLN_D_PROJECT_BLOCKER"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D_PROJECT_RISK_LEVEL",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "风险等级",
+          "identifierCode": "YWLN_D_PROJECT_RISK_LEVEL"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|M0134||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "超期订未发电量",
+          "identifierCode": "M0134"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D017": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "pending_states",
+          "optional": true
+        },
+        "YWLN_D043": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D051": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_pie_states",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0001||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "实际销售额（亿元）",
+          "identifierCode": "YWLN_M0001"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0143,YWLN_M0150||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "超期订未发金额",
+          "identifierCode": "YWLN_M0143"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "正常订未发金额",
+          "identifierCode": "YWLN_M0150"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D017": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "pending_states",
+          "optional": true
+        },
+        "YWLN_D043": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0024||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "label": "商机数",
+          "identifierCode": "YWLN_M0024"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_statuses",
+          "optional": true
+        },
+        "YWLN_D030": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0024,YWLN_M0075,YWLN_M0140,YWLN_M_CUSTOMER_ACTUAL_ENERGY,YWLN_M_CUSTOMER_TARGET_ENERGY|YWLN_D005|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "客户等级",
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          },
+          "identifierCode": "YWLN_D005"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "商机预测缺口（亿元）",
+          "identifierCode": "YWLN_M0140"
+        },
+        {
+          "type": "METRIC",
+          "label": "商机数",
+          "identifierCode": "YWLN_M0024"
+        },
+        {
+          "type": "METRIC",
+          "label": "客户数",
+          "identifierCode": "YWLN_M0075"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "客户实际发货电量",
+          "identifierCode": "YWLN_M_CUSTOMER_ACTUAL_ENERGY"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "客户目标电量",
+          "identifierCode": "YWLN_M_CUSTOMER_TARGET_ENERGY"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true,
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          }
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0004||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "预计销售额（亿元）",
+          "identifierCode": "YWLN_M0004"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0011||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "预计出货量",
+          "identifierCode": "YWLN_M0011"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0006||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "实际出货量（GWh）",
+          "identifierCode": "YWLN_M0006"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D024": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_SHIPMENT_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0032,YWLN_M_ORDER_RECEIPT_ENERGY_PCT,YWLN_M_STAR_PRODUCT_SHIPMENT_2025|YWLN_D046|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "明星产品系列",
+          "identifierCode": "YWLN_D046"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单接收电量",
+          "identifierCode": "YWLN_M0032"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "订单接收电量百分比",
+          "identifierCode": "YWLN_M_ORDER_RECEIPT_ENERGY_PCT"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "去年参考电量",
+          "identifierCode": "YWLN_M_STAR_PRODUCT_SHIPMENT_2025"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D016": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_states",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D046": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "star_series",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0038,YWLN_M0039||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "商机获取平均周期",
+          "identifierCode": "YWLN_M0038"
+        },
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "商机获取标杆周期",
+          "identifierCode": "YWLN_M0039"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D020": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D037": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|M0019,M0020||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "实际应收周转天数（天）",
+          "identifierCode": "M0019"
+        },
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "目标应收周转天数（天）",
+          "identifierCode": "M0020"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D041": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0032,YWLN_M_ORDER_RECEIPT_ENERGY_PCT,YWLN_M_STAR_PRODUCT_SHIPMENT_2025|YWLN_D046|MONTH",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "明星产品系列",
+          "identifierCode": "YWLN_D046"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单接收电量",
+          "identifierCode": "YWLN_M0032"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "订单接收电量百分比",
+          "identifierCode": "YWLN_M_ORDER_RECEIPT_ENERGY_PCT"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "去年参考电量",
+          "identifierCode": "YWLN_M_STAR_PRODUCT_SHIPMENT_2025"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D016": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_states",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D046": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "star_series",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|M0143,YWLN_M_ORDER_OVERDUE_DAYS|YWLN_D004,YWLN_D005,YWLN_D006,YWLN_D049,YWLN_D050|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "客户等级",
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          },
+          "identifierCode": "YWLN_D005"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "销售订单编号",
+          "identifierCode": "YWLN_D049"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "承诺发货日",
+          "identifierCode": "YWLN_D050"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "超期订未发金额",
+          "identifierCode": "M0143"
+        },
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "超期天数",
+          "identifierCode": "YWLN_M_ORDER_OVERDUE_DAYS"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true,
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          }
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D017": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "pending_states",
+          "optional": true
+        },
+        "YWLN_D043": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D049": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_numbers",
+          "optional": true
+        },
+        "YWLN_D050": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "due_dates",
+          "optional": true
+        },
+        "YWLN_M_ORDER_OVERDUE_DAYS": {
+          "op": "GT",
+          "type": "NUMBER",
+          "param": "overdue_days_min",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0169,YWLN_M0206,YWLN_M_AWARDED_SIGNED_AMOUNT||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "中标投标电量",
+          "identifierCode": "YWLN_M0169"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "中标投标金额",
+          "identifierCode": "YWLN_M0206"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "中标已签单金额",
+          "identifierCode": "YWLN_M_AWARDED_SIGNED_AMOUNT"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      },
+      "signingBasis": "order_derived",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M0002||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "目标销售额（亿元）",
+          "identifierCode": "YWLN_M0002"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D029": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0006,YWLN_M0007,YWLN_M0008,YWLN_M0010,YWLN_M0011,YWLN_M0012|YWLN_D004|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "实际出货量（GWh）",
+          "identifierCode": "YWLN_M0006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "目标出货量（GWh）",
+          "identifierCode": "YWLN_M0007"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "出货量达成率",
+          "identifierCode": "YWLN_M0008"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "还可出货量",
+          "identifierCode": "YWLN_M0010"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "预计出货量",
+          "identifierCode": "YWLN_M0011"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "预计出货量达成率",
+          "identifierCode": "YWLN_M0012"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0001,YWLN_M0002||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "销售额实绩（亿元）",
+          "identifierCode": "YWLN_M0001"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "目标销售额（亿元）",
+          "identifierCode": "YWLN_M0002"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D029": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0019,YWLN_M0020||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "实际应收周转天数（天）",
+          "identifierCode": "YWLN_M0019"
+        },
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "目标应收周转天数（天）",
+          "identifierCode": "YWLN_M0020"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D041": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0006,YWLN_M0007,YWLN_M0008|YWLN_D004,YWLN_D044|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "通用统计期间",
+          "identifierCode": "YWLN_D044"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "实际出货量（GWh）",
+          "identifierCode": "YWLN_M0006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "目标出货量（GWh）",
+          "identifierCode": "YWLN_M0007"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "出货量达成率",
+          "identifierCode": "YWLN_M0008"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0007,YWLN_M0008||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "目标出货量（GWh）",
+          "identifierCode": "YWLN_M0007"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "出货量达成率",
+          "identifierCode": "YWLN_M0008"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0006,YWLN_M0007||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "已发货电量（GWh）",
+          "identifierCode": "YWLN_M0006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "目标出货量（GWh）",
+          "identifierCode": "YWLN_M0007"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|M0143,YWLN_M_OVERDUE_PENDING_AMOUNT_SHARE||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "超期订未发金额",
+          "identifierCode": "M0143"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "超期订未发金额占比",
+          "identifierCode": "YWLN_M_OVERDUE_PENDING_AMOUNT_SHARE"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D017": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "pending_states",
+          "optional": true
+        },
+        "YWLN_D043": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D051": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_pie_states",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0032,YWLN_M_ORDER_RECEIPT_ENERGY_PCT,YWLN_M_STAR_PRODUCT_SHIPMENT_2025|YWLN_D046|YEAR",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "明星产品系列",
+          "identifierCode": "YWLN_D046"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单接收电量",
+          "identifierCode": "YWLN_M0032"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "订单接收电量百分比",
+          "identifierCode": "YWLN_M_ORDER_RECEIPT_ENERGY_PCT"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "去年参考电量",
+          "identifierCode": "YWLN_M_STAR_PRODUCT_SHIPMENT_2025"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D016": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_states",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D046": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "star_series",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0032,YWLN_M_ORDER_RECEIPT_ENERGY_SHARE|YWLN_D003|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单接收电量",
+          "identifierCode": "YWLN_M0032"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "订单电量占比",
+          "identifierCode": "YWLN_M_ORDER_RECEIPT_ENERGY_SHARE"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0023|YWLN_D005|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "客户等级",
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          },
+          "identifierCode": "YWLN_D005"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "商机获取金额",
+          "identifierCode": "YWLN_M0023"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true,
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          }
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_statuses",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0022,YWLN_M0023||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "商机获取电量（GWh）",
+          "identifierCode": "YWLN_M0022"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "商机获取金额（亿元）",
+          "identifierCode": "YWLN_M0023"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_codes",
+          "optional": true
+        },
+        "YWLN_D020": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0032,YWLN_M_ORDER_RECEIPT_ENERGY_SHARE|YWLN_D006|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单接收电量",
+          "identifierCode": "YWLN_M0032"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "订单电量占比",
+          "identifierCode": "YWLN_M_ORDER_RECEIPT_ENERGY_SHARE"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0033|YWLN_D016|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "订单状态",
+          "identifierCode": "YWLN_D016"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "订单接收金额",
+          "identifierCode": "YWLN_M0033"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D016": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_states",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0032|YWLN_D046|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "明星产品系列",
+          "identifierCode": "YWLN_D046"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单接收电量",
+          "identifierCode": "YWLN_M0032"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D016": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_states",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D046": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "star_series",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0032|YWLN_D003|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单接收电量",
+          "identifierCode": "YWLN_M0032"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D016": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_states",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D_PROJECT_RISK_DESC",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "风险说明",
+          "identifierCode": "YWLN_D_PROJECT_RISK_DESC"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0007||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "目标出货量（GWh）",
+          "identifierCode": "YWLN_M0007"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D029": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0144,YWLN_M0145,YWLN_M_SHIPMENT_ENERGY_PCT,YWLN_M_SHIPMENT_FUNNEL_ENERGY||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "已发货电量",
+          "identifierCode": "YWLN_M0144"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "未发货电量",
+          "identifierCode": "YWLN_M0145"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "发货电量百分比",
+          "identifierCode": "YWLN_M_SHIPMENT_ENERGY_PCT"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "发货漏斗电量",
+          "identifierCode": "YWLN_M_SHIPMENT_FUNNEL_ENERGY"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0027|YWLN_D003|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "投标电量",
+          "identifierCode": "YWLN_M0027"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D022": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D031": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D_BID_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "bid_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0032,YWLN_M0033|YWLN_D003,YWLN_D004,YWLN_D005,YWLN_D006,YWLN_D016,YWLN_D049|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "客户等级",
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          },
+          "identifierCode": "YWLN_D005"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "订单状态",
+          "identifierCode": "YWLN_D016"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "销售订单编号",
+          "identifierCode": "YWLN_D049"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单接收电量",
+          "identifierCode": "YWLN_M0032"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "订单接收金额",
+          "identifierCode": "YWLN_M0033"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true,
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          }
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D016": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_states",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D049": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_numbers",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|M0134,YWLN_M0143||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "超期订未发电量",
+          "identifierCode": "M0134"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "超期订未发金额",
+          "identifierCode": "YWLN_M0143"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D017": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "pending_states",
+          "optional": true
+        },
+        "YWLN_D043": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D051": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_pie_states",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0022,YWLN_M0023,YWLN_M0317|YWLN_D004,YWLN_D005,YWLN_D006,YWLN_D015,YWLN_D020,YWLN_D047,YWLN_D048,YWLN_D_PROJECT_RISK_DESC,YWLN_D_PROJECT_RISK_LEVEL|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "客户等级",
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          },
+          "identifierCode": "YWLN_D005"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "商机类型",
+          "identifierCode": "YWLN_D015"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "状态",
+          "identifierCode": "YWLN_D020"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "商机编号",
+          "identifierCode": "YWLN_D047"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "销售责任人",
+          "identifierCode": "YWLN_D048"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "风险说明",
+          "identifierCode": "YWLN_D_PROJECT_RISK_DESC"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "风险等级",
+          "identifierCode": "YWLN_D_PROJECT_RISK_LEVEL"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "商机获取电量",
+          "identifierCode": "YWLN_M0022"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "商机获取金额",
+          "identifierCode": "YWLN_M0023"
+        },
+        {
+          "type": "METRIC",
+          "unit": "个",
+          "label": "该商机下订单数",
+          "identifierCode": "YWLN_M0317"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true,
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          }
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_statuses",
+          "optional": true
+        },
+        "YWLN_D020": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D047": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "opportunity_numbers",
+          "optional": true
+        },
+        "YWLN_D048": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sales_owners",
+          "optional": true
+        },
+        "YWLN_D_IS_BIDDING": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "is_bidding_flags",
+          "optional": true,
+          "valueLabels": {
+            "否": "非投标中",
+            "是": "投标中"
+          }
+        },
+        "YWLN_D_PROJECT_RISK_DESC": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "risk_descriptions",
+          "optional": true
+        },
+        "YWLN_D_PROJECT_RISK_LEVEL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "risk_levels",
+          "optional": true
+        },
+        "YWLN_D_CUSTOMER_HAS_OPPORTUNITY": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_opportunity_flags",
+          "optional": true
+        }
+      },
+      "signingBasis": "contract_confirmation",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M0002,YWLN_M0007,YWLN_M0022,YWLN_M0023,YWLN_M0140|YWLN_D004|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "目标销售额（亿元）",
+          "identifierCode": "YWLN_M0002"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "目标出货量（GWh）",
+          "identifierCode": "YWLN_M0007"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "商机获取电量",
+          "identifierCode": "YWLN_M0022"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "商机获取金额",
+          "identifierCode": "YWLN_M0023"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "商机预测缺口（亿元）",
+          "identifierCode": "YWLN_M0140"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0006|D003,YWLN_D044|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "D003"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "通用统计期间",
+          "identifierCode": "YWLN_D044"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "实际出货量（GWh）",
+          "identifierCode": "YWLN_M0006"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D024": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_SHIPMENT_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0022|YWLN_D020|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "商机获取办理状态",
+          "identifierCode": "YWLN_D020"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "商机获取电量",
+          "identifierCode": "YWLN_M0022"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_codes",
+          "optional": true
+        },
+        "YWLN_D020": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0022,YWLN_M_ORDER_FUNNEL_ENERGY,YWLN_M_SHIPMENT_FUNNEL_ENERGY||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "商机获取电量",
+          "identifierCode": "YWLN_M0022"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单漏斗电量",
+          "identifierCode": "YWLN_M_ORDER_FUNNEL_ENERGY"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "发货漏斗电量",
+          "identifierCode": "YWLN_M_SHIPMENT_FUNNEL_ENERGY"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0198|YWLN_D003|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "已签单商机获取金额",
+          "identifierCode": "YWLN_M0198"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_codes",
+          "optional": true
+        },
+        "YWLN_D020": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        }
+      },
+      "signingBasis": "order_derived",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M0024,YWLN_M0075,YWLN_M_CUSTOMER_ACTUAL_ENERGY,YWLN_M_CUSTOMER_ENERGY_GAP,YWLN_M_CUSTOMER_TARGET_ENERGY|YWLN_D005|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "客户等级",
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          },
+          "identifierCode": "YWLN_D005"
+        },
+        {
+          "type": "METRIC",
+          "label": "商机数",
+          "identifierCode": "YWLN_M0024"
+        },
+        {
+          "type": "METRIC",
+          "label": "客户数",
+          "identifierCode": "YWLN_M0075"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "客户实际发货电量",
+          "identifierCode": "YWLN_M_CUSTOMER_ACTUAL_ENERGY"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "客户电量缺口",
+          "identifierCode": "YWLN_M_CUSTOMER_ENERGY_GAP"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "客户目标电量",
+          "identifierCode": "YWLN_M_CUSTOMER_TARGET_ENERGY"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true,
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          }
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0198|YWLN_D005|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "客户等级",
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          },
+          "identifierCode": "YWLN_D005"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "已签单商机获取金额",
+          "identifierCode": "YWLN_M0198"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true,
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          }
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_codes",
+          "optional": true
+        },
+        "YWLN_D020": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        }
+      },
+      "signingBasis": "order_derived",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M0194,YWLN_M0195,YWLN_M_CUSTOMER_ENERGY_GAP,YWLN_M_CUSTOMER_OPPORTUNITY_COVERAGE,YWLN_M_CUSTOMER_OPPORTUNITY_GAP,YWLN_M_CUSTOMER_ORDER_ENERGY,YWLN_M_CUSTOMER_ORDER_GAP,YWLN_M_CUSTOMER_TARGET_ENERGY|YWLN_D005,YWLN_D006,YWLN_D048,YWLN_D_PROJECT_RISK_DESC|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "客户等级",
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          },
+          "identifierCode": "YWLN_D005"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "销售责任人",
+          "identifierCode": "YWLN_D048"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "风险说明",
+          "identifierCode": "YWLN_D_PROJECT_RISK_DESC"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "已签单商机获取电量",
+          "identifierCode": "YWLN_M0194"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "未签单商机获取电量",
+          "identifierCode": "YWLN_M0195"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "客户电量缺口",
+          "identifierCode": "YWLN_M_CUSTOMER_ENERGY_GAP"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "商机总覆盖率",
+          "identifierCode": "YWLN_M_CUSTOMER_OPPORTUNITY_COVERAGE"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "客户商机预测缺口电量",
+          "identifierCode": "YWLN_M_CUSTOMER_OPPORTUNITY_GAP"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "客户订单缺口电量",
+          "identifierCode": "YWLN_M_CUSTOMER_ORDER_GAP"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "客户目标电量",
+          "identifierCode": "YWLN_M_CUSTOMER_TARGET_ENERGY"
+        },
+        {
+          "type": "METRIC",
+          "unit": "MWh",
+          "label": "客户已下单电量",
+          "identifierCode": "YWLN_M_CUSTOMER_ORDER_ENERGY"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true,
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          }
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_statuses",
+          "optional": true,
+          "valueLabels": {
+            "signed_opportunity": "已签单",
+            "unsigned_opportunity": "未签单"
+          }
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D048": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sales_owners",
+          "optional": true
+        },
+        "YWLN_D_IS_BIDDING": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "is_bidding_flags",
+          "optional": true,
+          "valueLabels": {
+            "否": "非投标中",
+            "是": "投标中"
+          }
+        },
+        "YWLN_D_PROJECT_RISK_DESC": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "risk_descriptions",
+          "optional": true
+        },
+        "YWLN_D_CUSTOMER_HAS_OPPORTUNITY": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_opportunity_flags",
+          "optional": true
+        }
+      },
+      "signingBasis": "contract_confirmation",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "D|YWLN_D023",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "订单接收办理状态",
+          "identifierCode": "YWLN_D023"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0006,YWLN_M0007,YWLN_M0011|YWLN_D004|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "实际出货量（GWh）",
+          "identifierCode": "YWLN_M0006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "目标出货量（GWh）",
+          "identifierCode": "YWLN_M0007"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "预计出货量",
+          "identifierCode": "YWLN_M0011"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D028",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "出货时间维度",
+          "identifierCode": "YWLN_D028"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D043",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "订未发观察截止日",
+          "identifierCode": "YWLN_D043"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0006|YWLN_D044|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "通用统计期间",
+          "identifierCode": "YWLN_D044"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "实际出货量（GWh）",
+          "identifierCode": "YWLN_M0006"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D024": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_SHIPMENT_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0006,YWLN_M0007,YWLN_M0008,YWLN_M0011|YWLN_D044|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "通用统计期间",
+          "identifierCode": "YWLN_D044"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "实际出货量（GWh）",
+          "identifierCode": "YWLN_M0006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "目标出货量（GWh）",
+          "identifierCode": "YWLN_M0007"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "出货量达成率",
+          "identifierCode": "YWLN_M0008"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "预计出货量",
+          "identifierCode": "YWLN_M0011"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D024",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "发货办理状态",
+          "identifierCode": "YWLN_D024"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D040",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "损益期间维度",
+          "identifierCode": "YWLN_D040"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0003||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "销售额达成率（%）",
+          "identifierCode": "YWLN_M0003"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D_BID_ABNORMAL",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "投标异常",
+          "identifierCode": "YWLN_D_BID_ABNORMAL"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0002,YWLN_M0023|YWLN_D004|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "目标销售额（亿元）",
+          "identifierCode": "YWLN_M0002"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "商机获取金额",
+          "identifierCode": "YWLN_M0023"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0005||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "预计销售额达成率（%）",
+          "identifierCode": "YWLN_M0005"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D017",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "订未发状态",
+          "identifierCode": "YWLN_D017"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D033",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "报价完成时间维度",
+          "identifierCode": "YWLN_D033"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D016",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "订单状态",
+          "identifierCode": "YWLN_D016"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D045",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "是否异常",
+          "identifierCode": "YWLN_D045"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0001,YWLN_M0002,YWLN_M0003|YWLN_D004|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "实际销售额（亿元）",
+          "identifierCode": "YWLN_M0001"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "目标销售额（亿元）",
+          "identifierCode": "YWLN_M0002"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "销售额达成率（%）",
+          "identifierCode": "YWLN_M0003"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D048",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "销售责任人",
+          "identifierCode": "YWLN_D048"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D049",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "销售订单编号",
+          "identifierCode": "YWLN_D049"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D050",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "承诺发货日",
+          "identifierCode": "YWLN_D050"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D_PROJECT_NUMBER",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "项目编号",
+          "identifierCode": "YWLN_D_PROJECT_NUMBER"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0023|YWLN_D003|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "商机获取金额",
+          "identifierCode": "YWLN_M0023"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_statuses",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0030,YWLN_M0170,YWLN_M0171,YWLN_M0256||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "中标率（%）",
+          "identifierCode": "YWLN_M0030"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "丢标电量（GWh）",
+          "identifierCode": "YWLN_M0170"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "弃标电量（GWh）",
+          "identifierCode": "YWLN_M0171"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "丢标/弃标电量（GWh）",
+          "identifierCode": "YWLN_M0256"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D031": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0032|YWLN_D023|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "订单接收办理状态",
+          "identifierCode": "YWLN_D023"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单接收电量",
+          "identifierCode": "YWLN_M0032"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D016": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_states",
+          "optional": true
+        },
+        "YWLN_D023": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0008||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "出货量达成率",
+          "identifierCode": "YWLN_M0008"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0140,YWLN_M0257||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "商机预测缺口（亿元）",
+          "identifierCode": "YWLN_M0140"
+        },
+        {
+          "type": "METRIC",
+          "unit": "家",
+          "label": "待突破战略客户数（家）",
+          "identifierCode": "YWLN_M0257"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D029": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0034||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "待签单占比",
+          "identifierCode": "YWLN_M0034"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      },
+      "signingBasis": "order_derived",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M0037||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "订单履约率",
+          "identifierCode": "YWLN_M0037"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D_SHIPMENT_ABNORMAL",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "发货异常",
+          "identifierCode": "YWLN_D_SHIPMENT_ABNORMAL"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D041",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "应收快照期间维度",
+          "identifierCode": "YWLN_D041"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D_CUSTOMER_HAS_OPPORTUNITY",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "客户有无商机",
+          "identifierCode": "YWLN_D_CUSTOMER_HAS_OPPORTUNITY"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D_CUSTOMER_HAS_OPPORTUNITY": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_opportunity_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D_IS_BIDDING",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "是否投标中",
+          "valueLabels": {
+            "否": "非投标中",
+            "是": "投标中"
+          },
+          "identifierCode": "YWLN_D_IS_BIDDING"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D_IS_BIDDING": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "is_bidding_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0031|YWLN_D003,YWLN_D004,YWLN_D006,YWLN_D_PROJECT_BLOCKER,YWLN_D_PROJECT_NEXT_STEP,YWLN_D_PROJECT_NUMBER|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "卡点",
+          "identifierCode": "YWLN_D_PROJECT_BLOCKER"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "下一步",
+          "identifierCode": "YWLN_D_PROJECT_NEXT_STEP"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "项目编号",
+          "identifierCode": "YWLN_D_PROJECT_NUMBER"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "报价电量",
+          "identifierCode": "YWLN_M0031"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D021": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D035": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D_PROJECT_NUMBER": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "project_numbers",
+          "optional": true
+        },
+        "YWLN_D_QUOTE_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "quote_abnormal_flags",
+          "optional": true
+        },
+        "YWLN_D_PROJECT_BLOCKER": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "project_blockers",
+          "optional": true
+        },
+        "YWLN_D_PROJECT_NEXT_STEP": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "project_next_steps",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D022",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "投标办理状态",
+          "identifierCode": "YWLN_D022"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D032",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "投标输入时间维度",
+          "identifierCode": "YWLN_D032"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|M0013,M0014||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "实际毛利率（%）",
+          "identifierCode": "M0013"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "目标毛利率（%）",
+          "identifierCode": "M0014"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D040": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0027|YWLN_D006|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "投标电量",
+          "identifierCode": "YWLN_M0027"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D022": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D031": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D_BID_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "bid_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0031|YWLN_D006|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "报价电量",
+          "identifierCode": "YWLN_M0031"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D021": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D035": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_QUOTE_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "quote_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D030",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "商机审核时间维度",
+          "identifierCode": "YWLN_D030"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0053,YWLN_M0054||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "订单接收平均周期",
+          "identifierCode": "YWLN_M0053"
+        },
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "订单接收标杆周期",
+          "identifierCode": "YWLN_M0054"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D023": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D002",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品线",
+          "identifierCode": "YWLN_D002"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D003",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D001",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "月度销售预测期间维度",
+          "identifierCode": "YWLN_D001"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D005",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "客户等级",
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          },
+          "identifierCode": "YWLN_D005"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true,
+          "valueLabels": {
+            "1": "战略客户",
+            "2": "重要客户",
+            "3": "一般客户",
+            "4": "BG客户"
+          }
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D021",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "报价办理状态",
+          "identifierCode": "YWLN_D021"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D029",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "目标时间维度",
+          "identifierCode": "YWLN_D029"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D006",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0032|YWLN_D006|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单接收电量",
+          "identifierCode": "YWLN_M0032"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D016": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_states",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "D|YWLN_D044",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "通用统计期间",
+          "identifierCode": "YWLN_D044"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "M|YWLN_M0010||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "还可出货量",
+          "identifierCode": "YWLN_M0010"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D040": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0001,YWLN_M0002,YWLN_M0003,YWLN_M0004,YWLN_M0005|YWLN_D044|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "通用统计期间",
+          "identifierCode": "YWLN_D044"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "实际销售额（亿元）",
+          "identifierCode": "YWLN_M0001"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "目标销售额（亿元）",
+          "identifierCode": "YWLN_M0002"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "销售额达成率（%）",
+          "identifierCode": "YWLN_M0003"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "预计销售额（亿元）",
+          "identifierCode": "YWLN_M0004"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "预计销售额达成率（%）",
+          "identifierCode": "YWLN_M0005"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|M0016,M0017||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "实际净利率（%）",
+          "identifierCode": "M0016"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "目标净利率（%）",
+          "identifierCode": "M0017"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D040": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0179,YWLN_M0198||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "中标未签金额",
+          "identifierCode": "YWLN_M0179"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "已签单商机获取金额",
+          "identifierCode": "YWLN_M0198"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      },
+      "signingBasis": "order_derived",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "D|YWLN_D004",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D020",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "商机获取办理状态",
+          "identifierCode": "YWLN_D020"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D031",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "投标输入时间维度",
+          "identifierCode": "YWLN_D031"
+        }
+      ],
+      "filter_contract": {}
+    },
+    {
+      "query_key": "D|YWLN_D015",
+      "query_type": "DIMENSION",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "商机签单",
+          "identifierCode": "YWLN_D015"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_statuses",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0009||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "年度时间消耗（比值）",
+          "identifierCode": "YWLN_M0009"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D041": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0012||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "预计出货量达成率",
+          "identifierCode": "YWLN_M0012"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0016,YWLN_M0017||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "实际净利率（%）",
+          "identifierCode": "YWLN_M0016"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "目标净利率（%）",
+          "identifierCode": "YWLN_M0017"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D040": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0023|YWLN_D015|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "商机签单",
+          "identifierCode": "YWLN_D015"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "商机获取金额",
+          "identifierCode": "YWLN_M0023"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D001": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D015": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "sign_statuses",
+          "optional": true
+        }
+      },
+      "signingBasis": "contract_confirmation",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M0027|YWLN_D003,YWLN_D004,YWLN_D006,YWLN_D_PROJECT_BLOCKER,YWLN_D_PROJECT_NEXT_STEP,YWLN_D_PROJECT_NUMBER|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "项目编号",
+          "identifierCode": "YWLN_D_PROJECT_NUMBER"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "投标电量",
+          "identifierCode": "YWLN_M0027"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "卡点",
+          "identifierCode": "YWLN_D_PROJECT_BLOCKER"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "下一步",
+          "identifierCode": "YWLN_D_PROJECT_NEXT_STEP"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D022": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D031": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D_BID_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "bid_abnormal_flags",
+          "optional": true
+        },
+        "YWLN_D_PROJECT_NUMBER": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "project_numbers",
+          "optional": true
+        },
+        "YWLN_D_PROJECT_BLOCKER": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "project_blockers",
+          "optional": true
+        },
+        "YWLN_D_PROJECT_NEXT_STEP": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "project_next_steps",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0027|YWLN_D022|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "投标办理状态",
+          "identifierCode": "YWLN_D022"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "投标电量",
+          "identifierCode": "YWLN_M0027"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D022": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D031": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_BID_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "bid_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0030,YWLN_M0256||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "中标率（%）",
+          "identifierCode": "YWLN_M0030"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "丢标/弃标电量（GWh）",
+          "identifierCode": "YWLN_M0256"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D031": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0031|YWLN_D003|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "报价电量",
+          "identifierCode": "YWLN_M0031"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D021": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D035": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_QUOTE_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "quote_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0031|YWLN_D021|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "报价办理状态",
+          "identifierCode": "YWLN_D021"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "报价电量",
+          "identifierCode": "YWLN_M0031"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D021": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D035": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_QUOTE_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "quote_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0035,YWLN_M0036,YWLN_M_ORDER_OVERDUE_DAYS|YWLN_D003,YWLN_D006,YWLN_D049,YWLN_D_PROJECT_BLOCKER,YWLN_D_PROJECT_NEXT_STEP|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品类型",
+          "identifierCode": "YWLN_D003"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "销售订单编号",
+          "identifierCode": "YWLN_D049"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "卡点",
+          "identifierCode": "YWLN_D_PROJECT_BLOCKER"
+        },
+        {
+          "type": "DIMENSION",
+          "label": "下一步",
+          "identifierCode": "YWLN_D_PROJECT_NEXT_STEP"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "发货量",
+          "identifierCode": "YWLN_M0035"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "发货金额",
+          "identifierCode": "YWLN_M0036"
+        },
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "超期天数",
+          "identifierCode": "YWLN_M_ORDER_OVERDUE_DAYS"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D024": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D049": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "order_numbers",
+          "optional": true
+        },
+        "YWLN_D_PROJECT_BLOCKER": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "project_blockers",
+          "optional": true
+        },
+        "YWLN_D_PROJECT_NEXT_STEP": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "project_next_steps",
+          "optional": true
+        },
+        "YWLN_D_SHIPMENT_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0036|YWLN_D004|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "产品团队",
+          "identifierCode": "YWLN_D004"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "发货金额",
+          "identifierCode": "YWLN_M0036"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D024": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D_SHIPMENT_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0172||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "进行中投标电量",
+          "identifierCode": "YWLN_M0172"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D022": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D031": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_BID_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "bid_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0036|YWLN_D006|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "具体客户",
+          "identifierCode": "YWLN_D006"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "发货金额",
+          "identifierCode": "YWLN_M0036"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D024": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D_SHIPMENT_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0142,YWLN_M0179||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "中标未签电量",
+          "identifierCode": "YWLN_M0142"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "中标未签金额",
+          "identifierCode": "YWLN_M0179"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      },
+      "signingBasis": "contract_confirmation",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M0047,YWLN_M0048||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "投标平均周期",
+          "identifierCode": "YWLN_M0047"
+        },
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "投标标杆周期",
+          "identifierCode": "YWLN_M0048"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D022": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D032": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_BID_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "bid_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0050,YWLN_M0051||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "报价平均周期",
+          "identifierCode": "YWLN_M0050"
+        },
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "报价标杆周期",
+          "identifierCode": "YWLN_M0051"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D021": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D033": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_QUOTE_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "quote_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0056,YWLN_M0057||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "发货平均周期",
+          "identifierCode": "YWLN_M0056"
+        },
+        {
+          "type": "METRIC",
+          "unit": "天",
+          "label": "发货标杆周期",
+          "identifierCode": "YWLN_M0057"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D024": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D038": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_SHIPMENT_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0131,YWLN_M0137||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "电芯百分比",
+          "identifierCode": "YWLN_M0131"
+        },
+        {
+          "type": "METRIC",
+          "unit": "单",
+          "label": "红区报价单数",
+          "identifierCode": "YWLN_M0137"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D021": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D035": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0144,YWLN_M0148||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "已发货电量",
+          "identifierCode": "YWLN_M0144"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "已发货金额",
+          "identifierCode": "YWLN_M0148"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0145,YWLN_M0149||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "未发货电量",
+          "identifierCode": "YWLN_M0145"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "未发货金额",
+          "identifierCode": "YWLN_M0149"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0168,YWLN_M0169,YWLN_M0170||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "完成投标电量",
+          "identifierCode": "YWLN_M0168"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "中标投标电量",
+          "identifierCode": "YWLN_M0169"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "丢标投标电量（GWh）",
+          "identifierCode": "YWLN_M0170"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0168,YWLN_M0169,YWLN_M0170,YWLN_M0171||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "完成投标电量",
+          "identifierCode": "YWLN_M0168"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "中标投标电量",
+          "identifierCode": "YWLN_M0169"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "丢标投标电量（GWh）",
+          "identifierCode": "YWLN_M0170"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "弃标投标电量（GWh）",
+          "identifierCode": "YWLN_M0171"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0169,YWLN_M0170,YWLN_M0171,YWLN_M0172||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "中标投标电量",
+          "identifierCode": "YWLN_M0169"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "丢标投标电量（GWh）",
+          "identifierCode": "YWLN_M0170"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "弃标投标电量（GWh）",
+          "identifierCode": "YWLN_M0171"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "进行中投标电量",
+          "identifierCode": "YWLN_M0172"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0169,YWLN_M0179,YWLN_M0206,YWLN_M_AWARDED_SIGNED_AMOUNT||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "中标投标电量",
+          "identifierCode": "YWLN_M0169"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "中标未签金额",
+          "identifierCode": "YWLN_M0179"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "中标投标金额",
+          "identifierCode": "YWLN_M0206"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "中标已签单金额",
+          "identifierCode": "YWLN_M_AWARDED_SIGNED_AMOUNT"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      },
+      "signingBasis": "order_derived",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M0174,YWLN_M_QUOTE_COMPLETED_ENERGY_PCT||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "完成报价电量",
+          "identifierCode": "YWLN_M0174"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "完成报价电量百分比",
+          "identifierCode": "YWLN_M_QUOTE_COMPLETED_ENERGY_PCT"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0175,YWLN_M_QUOTE_IN_PROGRESS_ENERGY_PCT||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "进行中报价电量",
+          "identifierCode": "YWLN_M0175"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "进行中报价电量百分比",
+          "identifierCode": "YWLN_M_QUOTE_IN_PROGRESS_ENERGY_PCT"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0176,YWLN_M0177,YWLN_M0178||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "小于5天报价电量",
+          "identifierCode": "YWLN_M0176"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "5至7天报价电量",
+          "identifierCode": "YWLN_M0177"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "超7天报价电量",
+          "identifierCode": "YWLN_M0178"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0178||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "超7天报价电量",
+          "identifierCode": "YWLN_M0178"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D021": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D034": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_QUOTE_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "quote_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0179,YWLN_M0198,YWLN_M_ORDER_FUNNEL_ENERGY,YWLN_M_ORDER_RECEIPT_ENERGY_PCT||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "中标未签金额",
+          "identifierCode": "YWLN_M0179"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "已签单商机获取金额",
+          "identifierCode": "YWLN_M0198"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "订单漏斗电量",
+          "identifierCode": "YWLN_M_ORDER_FUNNEL_ENERGY"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "订单接收电量百分比",
+          "identifierCode": "YWLN_M_ORDER_RECEIPT_ENERGY_PCT"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D044": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      },
+      "signingBasis": "order_derived",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M0312|YWLN_D024|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "发货办理状态",
+          "identifierCode": "YWLN_D024"
+        },
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "发货办理订单电量",
+          "identifierCode": "YWLN_M0312"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D024": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "status_codes",
+          "optional": true
+        },
+        "YWLN_D036": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D_SHIPMENT_ABNORMAL": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_abnormal_flags",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M0194,YWLN_M0198||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "GWh",
+          "label": "已签单商机获取电量",
+          "identifierCode": "YWLN_M0194"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "已签单商机获取金额",
+          "identifierCode": "YWLN_M0198"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D028": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      },
+      "signingBasis": "contract_confirmation",
+      "negativeContractStateVerified": false
+    },
+    {
+      "query_key": "M|YWLN_M_PENDING_SHIPMENT_AMOUNT|YWLN_D051|_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "DIMENSION",
+          "label": "发货饼图维度",
+          "identifierCode": "YWLN_D051"
+        },
+        {
+          "type": "METRIC",
+          "unit": "亿元",
+          "label": "订未发金额",
+          "identifierCode": "YWLN_M_PENDING_SHIPMENT_AMOUNT"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D043": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        },
+        "YWLN_D045": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "anomaly_flags",
+          "optional": true
+        },
+        "YWLN_D051": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "shipment_pie_states",
+          "optional": true
+        }
+      }
+    },
+    {
+      "query_key": "M|YWLN_M_BIDDING_OPPORTUNITY_COUNT,YWLN_M_BIDDING_OPPORTUNITY_SHARE||_",
+      "query_type": "METRIC",
+      "columns": [
+        {
+          "type": "METRIC",
+          "unit": "个",
+          "label": "已进入投标商机数",
+          "identifierCode": "YWLN_M_BIDDING_OPPORTUNITY_COUNT"
+        },
+        {
+          "type": "METRIC",
+          "unit": "%",
+          "label": "已进入投标商机百分比",
+          "identifierCode": "YWLN_M_BIDDING_OPPORTUNITY_SHARE"
+        }
+      ],
+      "filter_contract": {
+        "YWLN_D002": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_lines",
+          "optional": true
+        },
+        "YWLN_D003": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "product_types",
+          "optional": true
+        },
+        "YWLN_D004": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "team_ids",
+          "optional": true
+        },
+        "YWLN_D005": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_levels",
+          "optional": true
+        },
+        "YWLN_D006": {
+          "op": "IN",
+          "type": "STRING",
+          "param": "customer_ids",
+          "optional": true
+        },
+        "YWLN_D030": {
+          "op": "BETWEEN",
+          "to": "end_exclusive",
+          "from": "start_date",
+          "type": "DATE",
+          "optional": true
+        }
+      }
+    }
+  ]
+}

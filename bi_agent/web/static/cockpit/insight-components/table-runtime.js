@@ -26,7 +26,16 @@ function pageScope(props) {
   return String(slot.uiScope || slot.scopeKey || 'default')
 }
 
-function apQuery(ctx, fields, filterFields, sort) {
+export function resolveApSorts(ctx, defaults = []) {
+  const params=ctx?.params
+  if(params?.sortCleared === true || params?.sortOrder === null)return []
+  if(typeof params?.sortField === 'string' && params.sortField && ['ascend','descend'].includes(params.sortOrder)) {
+    return [{identifierCode:params.sortField,order:params.sortOrder==='descend'?'DESC':'ASC'}]
+  }
+  return defaults.filter(f=>f?.identifierCode).map(f=>({identifierCode:f.identifierCode,order:f.order==='DESC'?'DESC':'ASC'}))
+}
+
+export function apQuery(ctx, fields, filterFields, sort) {
   const dimensions = []
   const indicators = []
   for (const field of fields) {
@@ -37,10 +46,8 @@ function apQuery(ctx, fields, filterFields, sort) {
   const pageNum = Number(ctx?.params?.pageNum) > 0 ? Number(ctx.params.pageNum) : 1
   const pageSize = Number(ctx?.params?.pageSize) > 0 ? Number(ctx.params.pageSize) : 10
   const commonConfig = {pagination: {pageNum, pageSize}}
-  const sorts = (sort || [])
-    .filter(field => field && field.identifierCode)
-    .map(field => ({identifierCode: field.identifierCode, order: field.order === 'DESC' ? 'DESC' : 'ASC'}))
-  if (sorts.length) commonConfig.sorts = sorts
+  const sorts = resolveApSorts(ctx, sort)
+  commonConfig.sorts = sorts
   const children = []
   const seen = new Set()
   for (const condition of [...filterFields.map(field => field.conditions).filter(Boolean), ...(ctx?.filters || [])]) {

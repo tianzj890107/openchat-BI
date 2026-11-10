@@ -43,9 +43,10 @@ def _convert_messages(
     produced under thinking mode be passed back on the next request,
     otherwise it returns 400 invalid_request_error.
 
-    `include_reasoning=False` should be passed when thinking is OFF for
-    the current request — re-sending prior reasoning under non-thinking
-    mode is unsupported and may itself trigger a validation error.
+    Tool-enabled requests preserve real provider reasoning independently of
+    the UI visibility toggle: a gateway may ignore a requested mode switch.
+    `include_reasoning=False` is for explicit projections that omit reasoning,
+    such as plain non-tool chat, not for hiding the trace in the UI.
     """
     out: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     for msg in messages:
@@ -53,6 +54,8 @@ def _convert_messages(
         content = msg.get("content")
 
         if isinstance(content, str):
+            if role == "assistant" and not content.strip():
+                continue
             out.append({"role": role, "content": content})
             continue
 
@@ -85,7 +88,11 @@ def _convert_messages(
                 assistant_msg["reasoning_content"] = "".join(reasoning_parts)
             if tool_calls:
                 assistant_msg["tool_calls"] = tool_calls
-            out.append(assistant_msg)
+            # Reasoning-only / empty interrupted turns are not legal assistant
+            # messages for DeepSeek. Drop them only in the outgoing projection;
+            # retain real tool calls (and their reasoning) even without text.
+            if text_joined.strip() or tool_calls:
+                out.append(assistant_msg)
 
         elif role == "user":
             text_parts: list[str] = []
@@ -114,6 +121,37 @@ def _convert_messages(
             elif content_parts:
                 out.append({"role": "user", "content": content_parts})
 
+    return _pair_tool_messages(out)
+
+
+def _pair_tool_messages(messages):
+    """Project interrupted histories into legal tool exchanges, without editing history."""
+    out = []
+    index = 0
+    while index < len(messages):
+        message = messages[index]
+        calls = message.get("tool_calls") if message.get("role") == "assistant" else None
+        if calls:
+            out.append(message)
+            index += 1
+            results = {}
+            while index < len(messages) and messages[index].get("role") == "tool":
+                value = messages[index]
+                results.setdefault(value.get("tool_call_id"), value)
+                index += 1
+            for call in calls:
+                cid = call["id"]
+                out.append(results.pop(cid, None) or {"role":"tool", "tool_call_id":cid,
+                    "content":json.dumps({"error":"tool_result_missing", "available":False,
+                        "message":"Previous tool execution was interrupted or its result is missing; no successful result is available."})})
+            for value in results.values():
+                out.append({"role":"user", "content":"Historical unpaired tool output (not a new execution): " + str(value.get("content") or "")})
+            continue
+        if message.get("role") == "tool":
+            out.append({"role":"user", "content":"Historical unpaired tool output (not a new execution): " + str(message.get("content") or "")})
+        else:
+            out.append(message)
+        index += 1
     return out
 
 
@@ -160,14 +198,20 @@ def stream(
         return
 
     try:
-        client = OpenAI(api_key=api_key, base_url=BASE_URL)
+        from .runtime_config import scoped_request_timeout
+        timeout=scoped_request_timeout()
+        options={'timeout':timeout,'max_retries':0} if timeout is not None else {}
+        client = OpenAI(api_key=api_key, base_url=BASE_URL, **options)
     except Exception as e:
         yield {"type": "error", "error": f"Failed to init DeepSeek client: {e}"}
         return
 
     try:
-        oa_messages = _convert_messages(messages, system_prompt, include_reasoning=bool(thinking))
         oa_tools = _convert_tools(allowed_tools)
+        oa_messages = _convert_messages(messages, system_prompt,
+                                        include_reasoning=True)
+        from .deepseek_compat import preserve_tool_observations
+        oa_messages=preserve_tool_observations(oa_messages)
     except Exception as e:
         yield {"type": "error", "error": f"Message conversion failed: {e}"}
         return
@@ -193,8 +237,14 @@ def stream(
         "thinking": {"type": "enabled" if thinking else "disabled"},
     }
 
+    from .runtime_config import scoped_reasoning_effort
+    effort = scoped_reasoning_effort()
+    if effort:
+        request_kwargs['reasoning_effort'] = effort
+
     try:
-        completion_stream = client.chat.completions.create(**request_kwargs)
+        from .deepseek_compat import create_stream
+        completion_stream = create_stream(client,request_kwargs,deepseek=True)
     except Exception as e:
         yield {"type": "error", "error": f"DeepSeek request failed: {e}"}
         return

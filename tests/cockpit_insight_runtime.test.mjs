@@ -84,13 +84,32 @@ test('risk labels always show a count and keep the last known value for incomple
   assert.doesNotMatch(cockpit, /风险分析中/);
 });
 
-test('penetration combined card reads the same deduplicated risk counts as the header', () => {
+test('combined card keeps its own evidence scope and renders the prototype dimensions only', () => {
   assert.match(cockpit, /riskCounts:\s*aiPublicationStore\.riskCounts/);
   assert.match(cockpit, /aiPublicationStore\.riskCounts=next/);
-  assert.match(combinedInsight, /props\.slotProps\?\.riskCounts/);
-  assert.match(combinedInsight, /销售额风险/);
-  assert.match(combinedInsight, /出货量风险/);
-  assert.match(combinedInsight, /重点风险 · \{\{ riskFindings\.length \}\} 项/);
-  assert.match(combinedInsight, /原因与待核实项 · \{\{ displayCauses\.length \}\} 项/);
+  assert.doesNotMatch(combinedInsight, /props\.slotProps\?\.riskCounts/);
+  assert.doesNotMatch(combinedInsight, /销售额风险/);
+  assert.doesNotMatch(combinedInsight, /出货量风险/);
+  assert.doesNotMatch(combinedInsight, /重点风险 ·/);
+  assert.doesNotMatch(combinedInsight, /建议 ·/);
+  assert.doesNotMatch(combinedInsight, /数据范围与限制/);
+  assert.doesNotMatch(combinedInsight, /查看完整证据/);
+  assert.match(combinedInsight, /v-for="\(dimension,index\) in analysisDimensions"/);
   assert.doesNotMatch(combinedInsight, /风险与待核实原因 · \{\{ displayCauses\.length \}\}/);
+});
+
+test('risk panels render individual findings instead of reducing them to summary', async () => {
+  const shared = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
+  assert.match(shared, /findings = computed\(\(\) => \(result.value\?\.findings \|\| \[\]\)\.slice\(0,4\)\)/);
+  assert.match(shared, /v-for="\(finding,index\) in findings"/);
+  assert.match(shared, /finding\.title/);
+  assert.match(shared, /finding\.description/);
+});
+
+test('risk to cause links are numbered risk N — cause M', async () => {
+  const shared = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
+  assert.ok(shared.includes('label:`风险${riskIndex.get(id)}—原因${analysisNumber}`'));
+  assert.ok(shared.includes('原因{{ index+1 }}'));
+  assert.ok(!shared.includes('—分析${analysisNumber}'));
+  assert.match(shared, /【原因】/);
 });

@@ -27,6 +27,36 @@ class Opener:
         return io.BytesIO(json.dumps(self.response).encode())
 
 
+class SplitOpener:
+    """Reject the combined indicator set, then answer each indicator alone."""
+    def __init__(self, fail=''):
+        self.calls = []
+        self.fail = fail
+
+    def open(self, request, timeout):
+        payload = json.loads(request.data)
+        self.calls.append(payload)
+        indicators = (payload.get('analysisConfig') or {}).get('indicators') or []
+        if len(indicators) > 1:
+            return io.BytesIO(json.dumps({'success': False, 'data': None,
+                'msg': '本地查询组合未配置: M|A,B,C|YWLN_D005|_'}).encode())
+        code = indicators[0]['identifierCode']
+        if code == self.fail:
+            return io.BytesIO(json.dumps({'success': False, 'data': None,
+                'msg': '本地查询组合未配置: ' + code}).encode())
+        values = {'A': [1, 2, 3], 'B': [10, 20, 30], 'C': [100, 200, 300]}[code]
+        names = ['战略客户', '重点客户', '一般客户']
+        order = [0, 1, 2] if code != 'B' else [2, 1, 0]
+        rows = [{**{'YWLN_D005': {'value': names[i]}}, code: {'value': values[i]}}
+                for i in order]
+        return io.BytesIO(json.dumps({'success': True, 'data': {
+            'resultType': 'TABLE',
+            'result': {'columns': [
+                {'identifierCode': 'YWLN_D005', 'label': '客户等级', 'type': 'DIMENSION'},
+                {'identifierCode': code, 'label': code, 'type': 'METRIC'}], 'rows': rows},
+            'pagination': {'total': 3, 'pageNum': 1, 'pageSize': 10}}}).encode())
+
+
 def config(tmp_path, **changes):
     headers=tmp_path/'ap-headers.json'
     headers.touch(mode=0o600,exist_ok=True)
@@ -189,7 +219,8 @@ def test_real_main_api_uses_same_result_and_leaves_existing_sources_untouched(tm
         if len(calls)==1:
             yield dict(type='tool_use_end',id='read',name='Cockpit-DashboardQuery',input={'queryId':receipt['receiptId']+':0'})
         else:
-            yield dict(type='tool_use_end',id='ask',name='AskUser',input={'question':'请确认订单口径','options':['按页面字段','补充明细']})
+            from tests.test_cockpit_card_delivery import candidate
+            yield dict(type='tool_use_end',id='deliver',name='CockpitDeliverCards',input=candidate())
         yield dict(type='message_end',stop_reason='tool_use',usage={})
     from tests.test_cockpit_main_service import wait
     with patch('bi_agent.web.session.stream_message',side_effect=provider), patch.object(web,'_source_for_session',side_effect=AssertionError('must not touch original source')):
@@ -197,7 +228,7 @@ def test_real_main_api_uses_same_result_and_leaves_existing_sources_untouched(tm
             chartQueries=[json.dumps(QUERY)],apReceiptIds=[receipt['receiptId']])).json()
         assert 'id' in task,task
         done=wait(client,task['id'])
-    assert done['status']=='needs_input',done
+    assert done['status']=='limited',done
     assert done['evidence']['facts'] and done['evidence']['facts'][0]['value']==42.5
     assert done['evidence']['records'][0]['data']=={'订单超期未发金额[M0001]':42.5}
     assert '页面本次实时AP响应' in done['result']['limitations'][0]
@@ -342,3 +373,92 @@ def test_sql_root_cause_is_kept_for_backend_diagnostics_only(tmp_path):
     assert failure.value.status_code==502
     assert len(failure.value.detail)<300
     assert 'column input_time does not exist' in failure.value.diagnostic_message
+
+
+class AggregateSplitOpener:
+    def __init__(self):
+        self.calls = []
+
+    def open(self, request, timeout):
+        payload = json.loads(request.data)
+        self.calls.append(payload)
+        indicators = (payload.get('analysisConfig') or {}).get('indicators') or []
+        if len(indicators) > 1:
+            return io.BytesIO(json.dumps({'success': False, 'data': None,
+                'msg': '本地查询组合未配置: aggregate'}).encode())
+        code = indicators[0]['identifierCode']
+        return io.BytesIO(json.dumps({'success': True, 'data': {
+            'resultType': 'TABLE',
+            'result': {'columns': [{'identifierCode': code, 'label': code, 'type': 'METRIC'}],
+                       'rows': [{code: {'value': {'A': 7, 'B': 9}[code]}}]},
+            'pagination': {'total': 1, 'pageNum': 1, 'pageSize': 20}}}).encode())
+
+
+def combination_query(*codes):
+    return {'analysisConfig': {
+        'dimensions': [{'identifierCode': 'YWLN_D005', 'label': '客户等级'}],
+        'indicators': [{'identifierCode': code, 'label': code} for code in codes]},
+        'commonConfig': {'filters': {'logic': 'AND', 'children': []},
+                         'pagination': {'pageNum': 1, 'pageSize': 10},
+                         'sorts': [{'identifierCode': 'A', 'order': 'DESC'}]}}
+
+
+def test_combination_rejection_splits_by_indicator_and_merges_dimensions(tmp_path):
+    opener = SplitOpener()
+    gateway = APGateway(config(tmp_path), opener)
+    merged = gateway.query('analysis', combination_query('A', 'B', 'C'))
+    assert merged['resultType'] == 'TABLE'
+    assert [column['identifierCode'] for column in merged['result']['columns']] == ['YWLN_D005', 'A', 'B', 'C']
+    rows = {row['YWLN_D005']['value']: row for row in merged['result']['rows']}
+    assert {name: {code: row[code]['value'] for code in ('A', 'B', 'C')} for name, row in rows.items()} == {
+        '战略客户': {'A': 1, 'B': 10, 'C': 100},
+        '重点客户': {'A': 2, 'B': 20, 'C': 200},
+        '一般客户': {'A': 3, 'B': 30, 'C': 300}}
+    assert [row['YWLN_D005']['value'] for row in merged['result']['rows']] == ['战略客户', '重点客户', '一般客户']
+    assert [len((call.get('analysisConfig') or {}).get('indicators') or []) for call in opener.calls] == [3, 1, 1, 1]
+    assert merged['pagination'] == {'total': 3, 'pageNum': 1, 'pageSize': 10}
+
+
+def test_combination_split_merges_aggregate_rows(tmp_path):
+    gateway = APGateway(config(tmp_path), AggregateSplitOpener())
+    payload = {'analysisConfig': {'dimensions': [], 'indicators': [
+        {'identifierCode': 'A'}, {'identifierCode': 'B'}]},
+        'commonConfig': {'pagination': {'pageNum': 1, 'pageSize': 20}}}
+    merged = gateway.query('analysis', payload)
+    assert [column['identifierCode'] for column in merged['result']['columns']] == ['A', 'B']
+    assert merged['result']['rows'] == [{'A': {'value': 7}, 'B': {'value': 9}}]
+
+
+def test_combination_split_never_returns_partial_metrics(tmp_path):
+    gateway = APGateway(config(tmp_path), SplitOpener(fail='B'))
+    with pytest.raises(HTTPException) as error:
+        gateway.query('analysis', combination_query('A', 'B', 'C'))
+    assert error.value.status_code == 502
+    assert '本地查询组合未配置' in error.value.detail and 'B' in error.value.detail
+
+
+def test_individual_batch_also_splits_rejected_analysis_combination(tmp_path):
+    from dataclasses import replace
+    gateway = APGateway(replace(config(tmp_path), batch_mode='individual'), SplitOpener())
+    result = gateway.query('batch', [combination_query('A', 'B', 'C')])
+    assert result[0]['success'] is True
+    assert [column['identifierCode'] for column in result[0]['data']['result']['columns']] == [
+        'YWLN_D005', 'A', 'B', 'C']
+
+
+def test_http_receipt_keeps_original_combination_and_merged_table(tmp_path, monkeypatch):
+    import bi_agent.cockpit.router as router
+    monkeypatch.setenv('COCKPIT_DATA_MODE', 'ap')
+    gateway = APGateway(config(tmp_path), SplitOpener())
+    monkeypatch.setattr(router, 'get_gateway', lambda: gateway)
+    app = FastAPI(); app.include_router(build_cockpit_router(lambda: tmp_path, main_context=lambda c: {}))
+    client = TestClient(app)
+    payload = combination_query('A', 'B', 'C')
+    body = client.post('/api/cockpit/data/query', json=dict(id=1, kind='analysis', payload=payload)).json()
+    assert [column['identifierCode'] for column in body['data']['result']['columns']] == ['YWLN_D005', 'A', 'B', 'C']
+    store = Store(tmp_path / 'dataset' / 'cockpit' / 'history.sqlite3')
+    fingerprint, selected = receipt_material(
+        dict(id=1, apReceiptIds=[body['receiptId']], chartQueries=[json.dumps(payload)]), store)
+    assert fingerprint
+    assert [column['identifierCode'] for column in next(iter(selected.values()))['response']['result']['columns']] == [
+        'YWLN_D005', 'A', 'B', 'C']

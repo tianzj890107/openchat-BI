@@ -63,3 +63,18 @@ test('table columns match the delivered AP facts and validated AI fields', async
   assert.match(overdue, /filterFields/);
   assert.match(overdue, /isTree: true, label: '承诺发货日'/);
 });
+
+test('upstream default, click and explicit clear reach AP with the same sorting semantics', async () => {
+  const text=await readFile(new URL('insight-components/table-runtime.js',root),'utf8');
+  globalThis.window={InsightRuntime:{cockpitApiBase:()=>'/api/cockpit',cockpitIdentityId:()=>1}};
+  const {apQuery}=await import('data:text/javascript;base64,'+Buffer.from(text).toString('base64'));
+  const defaults=[{identifierCode:'ENERGY',order:'DESC'}];
+  const fields=[{identifierCode:'ENERGY',fieldType:'Indicator',label:'电量'}];
+  assert.deepEqual(apQuery({},fields,[],defaults).commonConfig.sorts,[{identifierCode:'ENERGY',order:'DESC'}]);
+  assert.deepEqual(apQuery({params:{sortField:'ENERGY',sortOrder:'ascend'}},fields,[],defaults).commonConfig.sorts,[{identifierCode:'ENERGY',order:'ASC'}]);
+  for(const params of [{sortCleared:true},{sortOrder:null}]) {
+    const payload=apQuery({params},fields,[],defaults);
+    assert.deepEqual(payload.commonConfig.sorts,[],'clear must remain explicit, so server does not reapply defaults');
+  }
+  assert.equal(defaults[0].order,'DESC');
+});

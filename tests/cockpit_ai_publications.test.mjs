@@ -72,3 +72,62 @@ test('manual job progress polls quickly even while published cards remain ready'
   assert.equal(jobs.at(-1).ms,17);
   client.stop();
 });
+
+
+test('manual card refresh reports analysis duration and appends live state after the action', async () => {
+  const source = await readFile(new URL('../bi_agent/web/static/cockpit/cockpit.js', import.meta.url),'utf8');
+  assert.ok(source.includes('function applyFrozenStatus(value)'));
+  assert.ok(source.includes('if(frozenAnnualMode)applyFrozenStatus(value);\n    if(!value?.slots)return;'));
+  assert.ok(source.includes('applyFrozenStatus(job);'));
+  assert.ok(source.includes("return `上次分析 · ${name} · 当前筛选范围 · ${count} 条证据${stampText}${durationText}`;"));
+  assert.ok(source.includes('const durationText=formatAnalysisDuration(item.execution?.durationSeconds);'));
+  assert.ok(source.includes("function formatAnalysisDuration(value)"));
+  assert.ok(source.includes(':disabled="cardUpdating"'));
+  assert.ok(source.includes('<span v-if="cardRefreshStatus" class="cockpit-card-metadata__status">{{cardRefreshStatus}}</span>'));
+  assert.ok(source.indexOf('{{cardRefreshStatus}}</span>') > source.indexOf(':disabled="cardUpdating"'));
+});
+
+
+test('manifest polling fetches each changed stage once and preserves shared evidence',async()=>{
+ const calls=[],updates=[];let orderVersion='o1';
+ const manifest=()=>({transport:'stage-manifest-v1',version:orderVersion,
+  stageVersions:{shipment:'s1',order:orderVersion},slots:{
+   ship:{stage:'shipment',status:'ready'},order:{stage:'order',status:'ready'}},manualUpdate:{status:'running'}});
+ const client=createAiPublicationClient({apiBase:'/api/cockpit',id:1,onUpdate:v=>updates.push(v),request:async url=>{
+  calls.push(url);
+  if(url.includes('?id=1&uiScope='))return {ok:true,json:async()=>manifest()};
+  const stage=url.includes('/shipment?')?'shipment':'order',id=stage==='shipment'?'ship':'order';
+  return {ok:true,status:200,json:async()=>({version:stage==='shipment'?'s1':orderVersion,evidence:{facts:[{id:'f',value:42}]},slots:{[id]:{payload:{id:stage,result:{summary:'ready'}}}}})};
+ }});
+ await client.load();await client.load();
+ assert.equal(calls.filter(x=>x.includes('/stages/')).length,2);
+ assert.equal(updates[0].slots.ship.payload,updates[1].slots.ship.payload);
+ assert.equal(updates.at(-1).slots.ship.payload.evidence.facts[0].value,42);
+ orderVersion='o2';await client.load();
+ assert.equal(calls.filter(x=>x.includes('/stages/order?')).length,2);
+ assert.equal(calls.filter(x=>x.includes('/stages/shipment?')).length,1);
+ assert.equal(updates[0].slots.ship.payload,updates[2].slots.ship.payload);
+});
+
+
+test('hidden tabs do not fetch and terminal manual rounds return to slow polling',async()=>{
+ const jobs=[];let hidden=true,calls=0;
+ const client=createAiPublicationClient({apiBase:'/api/cockpit',id:1,isHidden:()=>hidden,
+  schedule:(fn,ms)=>{jobs.push({fn,ms});return jobs.length;},clear:()=>{},
+  request:async()=>{calls++;return {ok:true,json:async()=>({version:'done',slots:{},manualUpdate:{status:'partial'}})};}});
+ client.start();await jobs.shift().fn();assert.equal(calls,0);
+ hidden=false;await jobs.shift().fn();assert.equal(calls,1);assert.equal(jobs.at(-1).ms,60000);
+ client.stop();
+});
+
+
+test('failed changed-stage fetch preserves the old payload and its timestamp',async()=>{
+ let version='v1',fail=false;const updates=[];
+ const client=createAiPublicationClient({apiBase:'/api/cockpit',id:1,onUpdate:v=>updates.push(v),request:async url=>{
+  if(url.includes('/stages/'))return fail?{ok:false,status:502}:{ok:true,json:async()=>({version,evidence:{facts:[]},slots:{s:{stage:'shipment',status:'ready',generatedAt:1,payload:{id:'old'}}}})};
+  return {ok:true,json:async()=>({transport:'stage-manifest-v1',version,stageVersions:{shipment:version},slots:{s:{stage:'shipment',status:'ready',generatedAt:version==='v1'?1:2}}})};
+ }});
+ await client.load();version='v2';fail=true;await client.load();
+ assert.equal(updates.at(-1).slots.s.generatedAt,1);
+ assert.equal(updates.at(-1).slots.s.payload,updates[0].slots.s.payload);
+});

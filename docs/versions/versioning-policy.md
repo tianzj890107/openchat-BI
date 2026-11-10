@@ -23,7 +23,7 @@ ontology-vMAJOR.MINOR.PATCH
 - 目前处于 `ontology-v0.x` 快速迭代阶段，当前正式版本保持为：
 
 ```text
-ontology-v0.1.5
+ontology-v0.1.10
 ```
 
 ### 与包管理清单的关系（两处强制例外）
@@ -32,8 +32,8 @@ ontology-v0.1.5
 
 | 清单 | 约束 | 实际写入 |
 | --- | --- | --- |
-| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.5` |
-| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.5` |
+| `pyproject.toml` `[project] version` | 必须是合法 PEP 440 | `0.1.10` |
+| `frontend/package.json` / `package-lock.json` `version` | 必须是合法 semver | `0.1.10` |
 
 `scripts/run_analytics_eval.py` 的 `product_version()` 读取 `pyproject.toml` 后补
 `ontology-v` 前缀，对外统一返回显示名；同文件 `_version_reached()` 会剥离
@@ -310,3 +310,7 @@ Agent 不得自行判断并升级正式版本。只有用户明确说出类似�
 - 本周只做了 Bug 修复与文案修正：保持当前版本或发布 `ontology-v0.0.11`（由用户决定）。
 - 本周新增“报表模式”完整能力：用户明确授权后发布 `ontology-v0.1.0`，PATCH 归零。
 - 纯文档与测试补充：不发布正式版本，只 commit + GitLab 统一推送。
+
+## 2026-11-03 历史阶段补发
+
+用户明确指定补发 ontology-v0.1.6 至 ontology-v0.1.10，逐一创建 annotated tag 和同名 GitLab Release；对应提交依次为 3b1bc1e、4c63e4d、8f673fc、c5ce139、179a0cf。原有 tag、历史文档及历史提交不改写，不另行部署。当前源码版本标识由独立收口分支推进至 0.1.10。

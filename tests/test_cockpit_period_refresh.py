@@ -626,7 +626,7 @@ def test_preheat_period_still_analyses_the_successful_ap_queries(tmp_path, monke
     assert 'YWLN_M0037' in body['unavailableQueries'][0]
 
 
-def test_combined_preheat_uses_saved_same_period_stage_cards_only(tmp_path):
+def test_explicit_legacy_cached_combined_helper_uses_saved_receipts(tmp_path):
     from bi_agent.cockpit.dashboard_source import RELEASE
 
     store = Store(tmp_path / 'combined.sqlite3')
@@ -668,7 +668,7 @@ def test_combined_preheat_uses_saved_same_period_stage_cards_only(tmp_path):
 
     manager = _manager(store, cfg, lambda *args, **kwargs: (_ for _ in ()).throw(
         AssertionError('combined preheat must not query AP')), start)
-    result = manager.preheat_period(1, 'analysis', 'combined', '2025-10')
+    result = manager._preheat_combined_period(1, 'analysis', '2025-10')
     assert result['status'] == 'published'
     assert len(calls) == 1
     assert calls[0]['stage'] == 'combined'
@@ -923,3 +923,62 @@ def test_explicit_manual_period_refresh_reanalyses_unchanged_data(tmp_path):
     second=manager.preheat_period(1,'analysis','shipment','2025-10',force=True)
     assert second['status'] in {'published','frozen'}
     assert calls==['shipment','shipment']
+
+
+@pytest.mark.parametrize('batched',[False,True])
+def test_independent_combined_needs_no_published_stage_cards(tmp_path,monkeypatch,batched):
+    store=Store(tmp_path/'independent.sqlite3');cfg=Config();calls=[];queries=[]
+    query=_query('YWLN_M0036')
+    monkeypatch.setattr('bi_agent.cockpit.refresh.delivered_component_requests',lambda stage:[[query]] if batched else [query])
+    def start(body,resolved):
+        calls.append(body)
+        item=store.create_analysis('independent',{**body,**resolved,'sourceMode':'service'})
+        store.update_analysis(item['id'],status='limited',result={'summary':'partial facts','cardContract':CONTRACT},evidence={'facts':[]})
+        return store.get_analysis(item['id'])
+    manager=_manager(store,cfg,lambda i,k,p:queries.append(p) or {'value':42},start)
+    manager.round_queries={}
+    result=manager.preheat_period(1,'analysis','combined','2026',force=True)
+    assert result['status'] in {'published','frozen'} and len(calls)==1 and len(queries)==1
+    assert calls[0]['stage']=='combined'
+    assert '2026-01-01' in json.dumps(queries[0])
+    manager._query_requests(1,queries+queries)
+    assert len(queries)==1  # exact same-round receipts reused
+
+
+def test_same_round_reuse_is_bound_to_credentials_and_next_round_retries_failures(tmp_path):
+    store=Store(tmp_path/'reuse.sqlite3');cfg=Config();calls=[]
+    cfg.headers=lambda:{'Cookie':'session-a'}
+    query=_query('YWLN_M0036')
+    def read(*args):
+        calls.append(1)
+        if len(calls)==1:raise RuntimeError('upstream busy')
+        return {'value':42}
+    manager=_manager(store,cfg,read,lambda *args:None);manager.round_queries={}
+    assert manager._query_requests(1,[query,query])[0]==[]
+    manager._query_requests(1,[query]);assert len(calls)==1
+    manager.round_queries={};assert manager._query_requests(1,[query])[0]
+    assert len(calls)==2
+    cfg.headers=lambda:{'Cookie':'session-b'}
+    assert manager._query_requests(1,[query])[0] and len(calls)==3
+
+
+def test_ai_only_query_timeout_is_ninety_seconds_and_does_not_change_display_config(tmp_path):
+    from bi_agent.cockpit.diagnostics import current_scope,diagnostic_scope
+    from unittest.mock import patch
+    store=Store(tmp_path/'short.sqlite3');cfg=Config();seen=[]
+    manager=_manager(store,cfg,lambda *args:seen.append(current_scope().get('fetchDeadline')) or {'value':1},lambda *a:None)
+    with patch('bi_agent.cockpit.refresh.time.monotonic',return_value=100):
+        manager._analysis_query(1,'analysis',{})
+        manager._analysis_query(1,'helmet',{})
+        with diagnostic_scope(fetchDeadline=105):manager._analysis_query(1,'batch',[])
+    assert seen==[190,None,105]
+    assert not hasattr(cfg,'timeout')
+
+
+def test_ai_fetch_budget_cannot_clip_requested_ninety_second_timeout(monkeypatch):
+    from bi_agent.cockpit.refresh import analysis_ap_timeout_seconds,analysis_fetch_budget_seconds
+    monkeypatch.delenv('COCKPIT_ANALYSIS_AP_TIMEOUT_SECONDS',raising=False)
+    monkeypatch.delenv('COCKPIT_FETCH_BUDGET_SECONDS',raising=False)
+    assert analysis_ap_timeout_seconds()==90 and analysis_fetch_budget_seconds()==180
+    monkeypatch.setenv('COCKPIT_FETCH_BUDGET_SECONDS','60')
+    assert analysis_fetch_budget_seconds()==90

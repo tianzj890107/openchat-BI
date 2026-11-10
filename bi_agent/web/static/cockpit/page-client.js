@@ -1,5 +1,5 @@
 /* A page is replaced only after all AP data and visible AI slots form one version. */
-export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=()=>{},onState=()=>{},request=fetch,pause=ms=>new Promise(r=>setTimeout(r,ms))}) {
+export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=()=>{},onState=()=>{},request=fetch,independentCards=false,pause=ms=>new Promise(r=>setTimeout(r,ms))}) {
   let generation=0, pending=null;
   const current=token=>token===generation;
   async function json(path,body,{backgroundOnly=false}={}) {
@@ -18,6 +18,7 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
   }
   function invalidate(){generation++;pending=null;}
   async function load(uiScope) {
+    if(independentCards)return null;
     const token=generation;
     const value=await json('/page/lookup',{id:Number(id),page,uiScope});
     const snapshot=value.snapshot||value.displaySnapshot||null;
@@ -33,6 +34,7 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
     return json('/publications/cards?'+query.toString());
   }
   async function publish(client,items,uiScope,token=generation,backgroundOnly=false) {
+    if(independentCards)return null;
     await client.ready();if(!current(token))return null;
     const entries=client.entries();
     const value=await json('/page',{id:Number(id),page,uiScope,apReceiptIds:entries.map(e=>e.receiptId),analysisIds:Object.fromEntries(Object.entries(items).map(([k,v])=>[k,v.id]))},{backgroundOnly});
@@ -69,6 +71,7 @@ export function createPageCache({apiBase,id,page,makeClient,bodyFor,onSnapshot=(
     throw new Error('后台分析数据版本变化，保留上次完整看板');
   }
   function refresh(snapshot,force=false) {
+    if(independentCards)return Promise.resolve(null);
     if(snapshot.id!==Number(id)||snapshot.page!==page)return Promise.resolve(null);
     if(pending)return pending;
     const token=generation;onState({refreshing:true,error:''});

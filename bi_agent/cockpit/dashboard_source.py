@@ -7,7 +7,7 @@ from pathlib import Path
 SNAPSHOT = Path(__file__).parents[1] / "web/static/cockpit/metadata/pdt-release-2109836674373566465/data-snapshots.json"
 RELEASE = "pdt-release-2109836674373566465"
 TOOL = "Cockpit-DashboardQuery"
-SCHEMA = {"name": TOOL, "description": "读取本轮看板实际展示的 AP 查询、字段口径和原始结果。只读本轮绑定的看板结果，可能为实时AP响应或显式交付快照，来源以工具返回为准。先读目录，再按 queryId 读取。禁止把采购字段解释为销售指标。", "input_schema": {"type": "object", "properties": {"queryId": {"type": "string"}}, "additionalProperties": False}}
+SCHEMA = {"name": TOOL, "description": "读取本轮看板实际展示的 AP 查询、字段口径和原始结果。只读本轮绑定的看板结果，可能为实时AP响应或显式交付快照，来源以工具返回为准。先读目录，再按 queryId 读取。禁止把采购字段解释为销售指标。", "input_schema": {"type": "object", "properties": {"queryId": {"type": "string"}, "queryIds": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 6, "uniqueItems": True}}, "additionalProperties": False}}
 
 
 # Metric/dimension codes that belong to one business stage.  Codes are only
@@ -16,7 +16,7 @@ SCHEMA = {"name": TOOL, "description": "读取本轮看板实际展示的 AP 查
 # things (legacy M0001 is procurement, YWLN_M0001 is actual sales).
 STAGE_METRICS = {
     'opportunity': {
-        'YWLN_M0022', 'YWLN_M0023', 'YWLN_M0024', 'YWLN_M0038', 'YWLN_M0039',
+        'YWLN_M0022', 'YWLN_M0023', 'YWLN_M0024', 'YWLN_M0038', 'YWLN_M0039', 'YWLN_M0194', 'YWLN_M0195', 'YWLN_M0198',
         'YWLN_M0140', 'YWLN_M0075', 'YWLN_M_CUSTOMER_TARGET_ENERGY',
         'YWLN_M_CUSTOMER_ACTUAL_ENERGY', 'YWLN_D015', 'YWLN_D020',
     },
@@ -52,8 +52,8 @@ STAGE_LABELS = {
     'order': ('订单接收', '订单', '签单', '接收'),
     'shipment': ('发货', '出货', '履约', '超期未发'),
 }
-STAGE_METRICS['combined'] = set().union(*(STAGE_METRICS[s] for s in ('opportunity', 'order', 'shipment')))
-STAGE_LABELS['combined'] = tuple(label for s in ('opportunity', 'order', 'shipment') for label in STAGE_LABELS[s])
+STAGE_METRICS['combined'] = set().union(*(STAGE_METRICS[s] for s in ('opportunity', 'order', 'shipment', 'quotation', 'bid'))) | {'YWLN_M0001','YWLN_M0002','YWLN_M0003','YWLN_M0004','YWLN_M0005'}
+STAGE_LABELS['combined'] = tuple(label for s in ('opportunity', 'order', 'shipment', 'quotation', 'bid') for label in STAGE_LABELS[s])
 _CODE_RE = re.compile(r'YWLN_[DM]\d+')
 _LABEL_KEYS = ('alias', 'label', 'name', 'identifierCode', 'title')
 
@@ -222,6 +222,9 @@ def receipt_scope(context, store, *, allow_expired=False, resolve_fallback=False
         raise ValueError('看板发布标识不匹配')
     ids = context.get('apReceiptIds') or []
     pg_ids = context.get('pgReceiptIds') or []
+    from .pg_fallback import enabled as pg_fallback_enabled
+    if pg_ids and not pg_fallback_enabled():
+        raise ValueError('Cockpit PG补查已暂停，请使用AP结果凭据')
     for group in (ids, pg_ids):
         if not isinstance(group, list) or len(group) > 80 or len(group) != len(set(group)):
             raise ValueError('无效的结果凭据列表')
@@ -442,7 +445,7 @@ def page_analysis_context(context, store, *, data_mode='ap', resolve_fallback=Tr
                            receipts=sorted({value.get('receiptId', '') for value in kept.values()} - {''})))
 
 
-def executor(selected, stage=None):
+def executor(selected, stage=None, *, lean=False):
     source, live = evidence_source(selected)
     stage_metrics=STAGE_METRICS.get(stage) or set()
     stage_labels=STAGE_LABELS.get(stage) or ()
@@ -466,6 +469,18 @@ def executor(selected, stage=None):
         return {**result, 'columns': columns, 'rows': [row for row in rows if row]}
 
     def read(params, cwd):
+        ids = params.get('queryIds')
+        if ids is not None:
+            if params.get('queryId') or not isinstance(ids, list) or not 1 <= len(ids) <= 6 or any(not isinstance(k, str) or k not in selected for k in ids) or len(set(ids)) != len(ids):
+                raise ValueError('queryIds必须是当前范围内1至6个不同查询')
+            parts = [json.loads(read({'queryId': key}, cwd)) for key in ids]
+            return json.dumps(dict(source=source, data={'rows': [
+                {**{part['queryId']+' :: '+key:value for key,value in row.items()}, '__queryId':part['queryId']} for part in parts for row in part['data']['rows']]},
+                queries=[{k:v for k,v in part.items() if k != 'data'} for part in parts],
+                scope={'queries':{part['queryId']:part['scope'] for part in parts}},
+                semantic={'definition':{k:v for part in parts for k,v in part['semantic']['definition'].items()}},
+                provenance={'source':source,'query':json.dumps([selected[key]['request'] for key in ids],ensure_ascii=False)},
+                limitations='各查询口径独立；__queryId用于追溯，禁止混算不同口径。'), ensure_ascii=False)
         query_id = params.get('queryId')
         if query_id:
             if query_id not in selected:
@@ -476,12 +491,25 @@ def executor(selected, stage=None):
                       for col in result.get('columns', []) if 'identifierCode' in col}
             rows = [{labels.get(code, code) + '[' + code + ']': cell.get('value') if isinstance(cell, dict) else cell
                      for code, cell in row.items()} for row in result.get('rows', []) if isinstance(row, dict)]
+            if lean:
+                # Bounded model projection, not a replacement for saved raw receipts.
+                kept, used = [], 0
+                for row in rows[:24]:
+                    size = len(json.dumps(row, ensure_ascii=False))
+                    if used + size > 6000:break
+                    kept.append(row);used += size
+                return json.dumps({'queryId':query_id, 'source':source, 'data':{'rows':kept},
+                    'scope':{'source':source,'receiptId':entry.get('receiptId',''),'request':entry['request']},
+                    'semantic':{'metric':query_id,'definition':labels,'live':live},
+                    'provenance':{'source':source,'query':json.dumps(entry['request'],ensure_ascii=False)},
+                    'coverage':{'returnedRows':len(rows),'providedRows':len(kept),'sampleOnly':len(kept)<len(rows)},
+                    'limitations':'仅提供有界样本，不能外推总体比例。完整响应保存在服务端。' if len(kept)<len(rows) else ''},ensure_ascii=False)
             return json.dumps({'queryId': query_id, **entry, 'source': source,
                 'data': {'rows': rows}, 'scope': {'source': source, 'receiptId':entry.get('receiptId',''), 'request': entry['request']},
                 'semantic': {'metric': query_id, 'definition': labels, 'live': live},
                 'provenance': {'source': source, 'query': json.dumps(entry['request'], ensure_ascii=False)}}, ensure_ascii=False)
         return json.dumps({'source': source, 'live': live, 'queries': [
-            {'queryId': key, 'request': value['request'],
+            {'queryId': key, **({'labels':request_labels(value['request'])} if lean else {'request':value['request']}),
              'columns': project(value['response'].get('result', {})).get('columns', [])}
-            for key, value in selected.items()], 'limitations': '原始AP请求决定实际时间和部门口径；页面标题不构成字段定义。没有同源明细补查接口，不能认定根因。'}, ensure_ascii=False)
+            for key, value in selected.items()], 'instruction': '使用queryIds一次读取最多6个不同查询，可在同一次回复提交多个批次。不要重复读取已取得的查询，取得必要证据后立即交付。', 'limitations': '原始AP请求决定实际时间和部门口径；页面标题不构成字段定义。没有同源明细补查接口，不能认定根因。'}, ensure_ascii=False)
     return read

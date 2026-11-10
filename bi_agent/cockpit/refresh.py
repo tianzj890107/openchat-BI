@@ -24,6 +24,14 @@ from .publications import config_version, digest, view_scope
 from .runtime import METADATA, SNAPSHOTS
 from .targets import maintenance_targets, period_maintenance_targets
 
+def analysis_ap_timeout_seconds():
+    return max(1,int(os.getenv('COCKPIT_ANALYSIS_AP_TIMEOUT_SECONDS','90')))
+
+
+def analysis_fetch_budget_seconds():
+    return max(analysis_ap_timeout_seconds(),int(os.getenv('COCKPIT_FETCH_BUDGET_SECONDS','180')))
+
+
 DEFAULT_IDENTITIES = (1, 2)
 DEFAULT_PAGES = ('overview', 'operations', 'analysis')
 DEFAULT_ANALYSIS_INTERVAL_SECONDS = 1800
@@ -454,6 +462,21 @@ class RefreshManager:
             transport_identity(self.config),
             self.config.batch_mode if kind == 'batch' else 'fixed-path')
 
+    def _analysis_query(self, identity, kind, payload):
+        """Short deadline for AI evidence reads only; chart HTTP requests keep theirs."""
+        if kind not in {'analysis','batch'}:
+            return self.query(identity,kind,payload)
+        from .diagnostics import current_scope, diagnostic_scope
+        if getattr(self,'implemented_only',False):
+            from .query_capabilities import is_registered
+            if not all(is_registered(q) for q in (payload if isinstance(payload,list) else [payload])):
+                raise ValueError('AP_QUERY_NOT_IMPLEMENTED: query is outside the enabled AP contract registry')
+        deadline=time.monotonic()+analysis_ap_timeout_seconds()
+        inherited=current_scope().get('fetchDeadline')
+        if inherited is not None:deadline=min(deadline,inherited)
+        with diagnostic_scope(fetchDeadline=deadline):
+            return self.query(identity,kind,payload)
+
     def _query_entries(self, body):
         """Re-read every page query; one failed business query becomes a fallback candidate."""
         records, failures, retry = [], [], []
@@ -469,7 +492,7 @@ class RefreshManager:
                 raise RuntimeError('历史页面包含无效查询，保留上次完整版本')
             seen.add(_canonical(payload))
             try:
-                data = self.query(int(body['id']), kind, payload)
+                data = self._analysis_query(int(body['id']), kind, payload)
             except Exception as exc:
                 if kind == 'helmet':
                     raise RuntimeError('头盔图查询失败，保留上次完整版本') from exc
@@ -491,7 +514,7 @@ class RefreshManager:
             seen.add(key)
             kind = 'batch' if isinstance(payload, list) else 'analysis'
             try:
-                data = self.query(int(body['id']), kind, payload)
+                data = self._analysis_query(int(body['id']), kind, payload)
             except Exception:
                 failures.append(key)
                 continue
@@ -499,21 +522,61 @@ class RefreshManager:
         return records, failures
 
     def _query_requests(self, identity, requests):
-        records, failures = [], []
+        records, failures, seen = [], [], set()
+        if getattr(self,'implemented_only',False):
+            from .query_capabilities import project_requests
+            requests,excluded=project_requests(requests)
+            failures.extend(_canonical(q) for q in excluded)
+            if excluded:
+                from .diagnostics import AnalysisFailure,record_failure
+                record_failure(self.store,AnalysisFailure(f'Excluded {len(excluded)} unimplemented AP query contracts before HTTP; available registered evidence retained',phase='query_contract',code='AP_QUERY_NOT_IMPLEMENTED'),phase='query_contract',identity=identity)
+        deadline = time.monotonic() + analysis_fetch_budget_seconds()
+        budget_logged = False
+        cache = getattr(self, 'round_queries', None)
         for payload in requests:
             kind = 'batch' if isinstance(payload, list) else 'analysis'
+            key = (identity, transport_identity(self.config), kind, _canonical(payload))
+            if key in seen:
+                continue
+            seen.add(key)
+            cached = cache.get(key) if cache is not None else None
+            if cached and not cached.get('failed') and cached['record'].get('expiresAt',0)<=time.time():
+                cache.pop(key,None)
+                cached=None
+            if cached is not None:
+                if cached.get('failed'):
+                    failures.append(_canonical(payload))
+                else:
+                    records.append(cached['record'])
+                continue
+            if time.monotonic() >= deadline:
+                failures.append(_canonical(payload))
+                if not budget_logged:
+                    from .diagnostics import record_failure
+                    record_failure(self.store,TimeoutError('AP collection budget exhausted; unattempted queries excluded, available evidence retained'),phase='fetch_budget',identity=identity)
+                    budget_logged=True
+                continue
+            if getattr(self, 'progress_callback', None):
+                self.progress_callback('fetching', completed=len(records)+len(failures), total=len(requests))
             try:
-                data = self.query(identity, kind, payload)
+                from .diagnostics import diagnostic_scope
+                with diagnostic_scope(fetchDeadline=deadline):
+                    data = self._analysis_query(identity, kind, payload)
             except Exception:
                 failures.append(_canonical(payload))
+                if cache is not None:cache[key]={'failed':True}
                 continue
-            records.append(self._receipt(identity, kind, payload, data))
+            record = self._receipt(identity, kind, payload, data)
+            records.append(record)
+            if cache is not None:cache[key]={'record':record}
         return records, failures
 
     def _supplement(self, identity, failures, stages):
         """Resolve failed queries once so every stage shares one evidence set."""
         if not failures:
             return {}, []
+        if getattr(self,'implemented_only',False):
+            return {},[dict(query=query,code='AP_ONLY_NO_SQL') for query in failures]
         try:
             return supplement_failed_queries(
                 {'id': int(identity), 'stage': None, 'unavailableQueries': list(failures)},
@@ -551,15 +614,22 @@ class RefreshManager:
             if claim:
                 if not self.store.heartbeat_refresh(
                         claim['scope'], claim['job_id'],
-                        lease=max(180, self.timeout + 60)):
+                        lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60)):
                     self._cancel(item)
                     raise RuntimeError('刷新任务租约已失效，已停止旧执行')
             time.sleep(self.poll)
             item = self.store.get_analysis(item['id'])
+            if getattr(self, 'progress_callback', None):
+                self.progress_callback('analysing', analysisId=(item or {}).get('id',''), message=(item or {}).get('progress',''))
         if not item or item.get('status') not in {'completed', 'limited'}:
             raise RuntimeError((item or {}).get('error') or '后台分析未完整交付，保留上次完整版本')
         if (item.get('result') or {}).get('cardContract') != 'cockpit-cards-v1':
             raise RuntimeError('后台分析缺少卡片契约，保留上次完整版本')
+        execution = item.get('execution') or {}
+        if (execution.get('stopReason') == 'stage_no_evidence'
+                or ('claims' in execution and not execution['claims']
+                    and not any((item.get('evidence') or {}).get(k) for k in ('facts','records')))):
+            raise RuntimeError('本环节没有可分析的匹配证据，保留上次有效卡片')
         if claim and not self._owned(claim):
             raise RuntimeError('刷新任务已被更新的配置取代，未写回旧结果')
         return item
@@ -615,7 +685,7 @@ class RefreshManager:
             self._set(scope, 'published', next_check=time.time() + self.interval)
             return dict(scope=scope, status='unchanged', reason='not-ap')
         claim = self.store.claim_refresh_info(
-            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+            scope, lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60), config_version=config_version())
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
@@ -756,7 +826,7 @@ class RefreshManager:
             self._set(scope, 'published', next_check=time.time() + self.interval)
             return dict(scope=scope, status='unchanged', reason='not-main')
         claim = self.store.claim_refresh_info(
-            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+            scope, lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60), config_version=config_version())
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
@@ -834,6 +904,10 @@ class RefreshManager:
         written with the requesting role's identity.  No query is invented: an
         empty result means the browser has never delivered a usable plan yet.
         """
+        if getattr(self,'implemented_only',False) and period is not None:
+            from .query_capabilities import implemented_stage_requests
+            plans=implemented_stage_requests(stage,period)
+            return {'period':period,'clarifications':{'instruction':f'本轮仅使用已登记可用的AP查询组合；按原登记业务日期筛选。共{len(plans)}条候选，最多读取前18条，未覆盖范围不能外推；缺失数据不得推测。'}},plans[:18]
         identity = int(identity)
         data_identity = self.config.identity()
         pages = (page, *[item for item in DEFAULT_PAGES if item != page])
@@ -887,16 +961,47 @@ class RefreshManager:
 
     def preheat_period(self, identity, page, stage, period, *, force=False):
         """Materialise one configured slot for an explicit business period."""
-        if stage == 'combined':
-            return self._preheat_combined_period(identity, page, period, force=force)
         scope = period_target_scope(identity, page, stage, period)
         claim = self.store.claim_refresh_info(
-            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+            scope, lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60), config_version=config_version())
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
             started = time.time()
-            seed, requests = self._stage_requests(identity, page, stage, period=period)
+            if stage == 'combined':
+                # Build an independent plan; no dependency on successful AI cards.
+                templates = []
+                candidates_count = 0
+                if getattr(self,'implemented_only',False):
+                    from .query_capabilities import implemented_stage_requests
+                    global_codes={'YWLN_M0001','YWLN_M0002','YWLN_M0003','YWLN_M0004','YWLN_M0005'}
+                    global_plans=[q for q in implemented_stage_requests('combined',period)
+                                  if global_codes & {x['identifierCode'] for x in q['analysisConfig']['indicators']}]
+                    templates.extend(sorted(global_plans,key=lambda q:(bool(q['analysisConfig']['dimensions']),-len(q['analysisConfig']['indicators']),_canonical(q)))[:3])
+                    candidates_count+=len(global_plans)
+                for source_stage in ('opportunity', 'order', 'shipment', 'quotation', 'bid'):
+                    if getattr(self,'implemented_only',False):
+                        from .query_capabilities import implemented_stage_requests
+                        plan=implemented_stage_requests(source_stage,period)
+                    else:
+                        plan = delivered_component_requests(source_stage) or delivered_stage_requests(source_stage)
+                    plan = [query for entry in plan for query in (entry if isinstance(entry,list) else [entry])]
+                    candidates_count += len(plan)
+                    # Aggregate coverage first, then a small dimensional/status slice.
+                    def rank(q):
+                        text=json.dumps((q.get('analysisConfig') or {}).get('indicators') or [],ensure_ascii=False)
+                        important=any(word in text for word in ('目标','实际','预测','销售额','发货','订单'))
+                        return (not important,_canonical(q))
+                    aggregate=sorted([q for q in plan if not (q.get('analysisConfig') or {}).get('dimensions')],key=rank)
+                    dimensional=sorted([q for q in plan if (q.get('analysisConfig') or {}).get('dimensions')],key=rank)
+                    chosen=aggregate[:2]+dimensional[:1]
+                    chosen.extend(q for q in aggregate+dimensional if q not in chosen)
+                    templates.extend(chosen[:3])
+                requests = list({_canonical(q):q for q in (templates if getattr(self,'implemented_only',False) else _with_period(templates, period))}.values())
+                seed = {'period':period, 'clarifications':{'instruction':
+                    f'共同分析独立取证：从{candidates_count}条'+('已实现AP登记查询' if getattr(self,'implemented_only',False) else '组件查询计划')+'中每环节最多选3条，已登记的全局销售额口径另优先选择最多3条。只分析本轮实际返回范围，未覆盖明细不能外推；不等待其他AI分析。'}}
+            else:
+                seed, requests = self._stage_requests(identity, page, stage, period=period)
             if not requests:
                 self._finish(scope, claim, 'awaiting-plan',
                              next_check=time.time() + self.interval, error='')
@@ -997,7 +1102,7 @@ class RefreshManager:
         from .combined import cached_combined_request
         scope = period_target_scope(identity, page, 'combined', period)
         claim = self.store.claim_refresh_info(
-            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+            scope, lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60), config_version=config_version())
         if not claim:
             return dict(scope=scope, status='already-running')
         try:
@@ -1064,7 +1169,7 @@ class RefreshManager:
         """Materialise a card for one configured slot, even before it is opened."""
         scope = preheat_target_scope(identity, page, stage)
         claim = self.store.claim_refresh_info(
-            scope, lease=max(180, self.timeout + 60), config_version=config_version())
+            scope, lease=max(180, self.timeout + analysis_fetch_budget_seconds() + 60), config_version=config_version())
         if not claim:
             return dict(scope=scope, status='already-running')
         try:

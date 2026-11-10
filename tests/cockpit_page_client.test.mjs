@@ -61,3 +61,14 @@ test('cards endpoint serves the published stage cards independently of page snap
   assert.equal(value.items.shipment.id, 'new-card');
   assert.equal(paths.at(-1), '/api/cockpit/publications/cards?id=1&page=analysis');
 });
+
+
+test('fixed annual cards bypass whole-page reads, merges and model refreshes',async()=>{
+ let calls=0;
+ const {client}=setup({independentCards:true,request:async()=>{calls++;throw new Error('unexpected request');}});
+ const trap={ready:()=>{throw new Error('must not wait for AP');}};
+ assert.equal(await client.load('default'),null);
+ assert.equal(await client.publish(trap,{shipment:card('s')},'default'),null);
+ assert.equal(await client.refresh(snapshot,true),null);
+ assert.equal(calls,0);
+});

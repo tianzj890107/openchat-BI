@@ -20,9 +20,9 @@ test('all three stage risk cards share the recommendation task button and dialog
   assert.match(shared, /stage-risk-analysis__draft/)
   assert.match(shared, /openOrGenerate/)
   assert.match(shared, /actionTypeLabel/)
-  assert.match(shared, /missingEvidence/)
-  assert.match(controller, /可先生成核查任务/)
-  assert.match(controller, /当前只能定位异常/)
+  assert.match(shared, /analysisDimensions/)
+  assert.match(controller, /可按所选建议生成核查任务/)
+  assert.match(controller, /当前没有可选择的业务建议/)
 })
 
 test('draft requests send selected ids only and dispatch stays server-owned', () => {

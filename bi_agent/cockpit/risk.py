@@ -116,6 +116,13 @@ def _business_issue(finding: dict) -> tuple[str, str]:
         return 'sales', 'bid-lost'
     if '投标' in title and '逾期' in title:
         return 'sales', 'bid-overdue'
+    if '订单' in title and any(w in title for w in ('逾期','超期')):
+        return 'sales','order-overdue'
+    if '订单' in title and '周期' in title:
+        return 'sales','order-cycle-overrun'
+    if ('出货' in title or '发货' in title) and any(w in title for w in ('连续下降','连续回落','骤降','峰值后','持续回落')):
+        segment = next((word for word in ('pack','电芯','模组') if word in title),'overall')
+        return 'shipment','shipment-trend:'+segment
     if '订单' in title and any(w in title for w in ('取消', '变更')) and '中标未签' not in title:
         return 'sales', 'order-cancel-change'
     if '商机' in title and any(w in title for w in ('未进入投标', '未投标')):
@@ -273,6 +280,21 @@ def _metric_findings(evidence: dict | None, context: dict | None,
     return findings
 
 
+def risk_priority_key(finding):
+    """Versioned display order, not an unapproved quantitative severity grade."""
+    _domain,issue=_business_issue(finding)
+    title=_normalise(finding.get('title'))
+    if 'overdue' in issue or any(w in title for w in ('超期未发','逾期未完成','交付违约')):
+        priority=0
+    elif 'target-gap' in issue or any(w in title for w in ('连续下降','连续回落','骤降','持续下降')):
+        priority=1
+    elif issue in {'bid-cycle-overrun','order-cycle-overrun','bid-lost','order-cancel-change'} or 'not-bidding' in issue:
+        priority=2
+    else:
+        priority=3
+    return priority,_dedupe_key(finding)
+
+
 def build_risk_findings(result: dict, evidence: dict | None, context: dict | None,
                         slot: dict | None) -> list[dict]:
     """Return deduplicated, evidence-backed risk facts for one delivered slot."""
@@ -280,7 +302,8 @@ def build_risk_findings(result: dict, evidence: dict | None, context: dict | Non
     issue_keys: set[str] = set()
 
     def add(finding: dict | None):
-        if not finding:
+        from .business_presentation import business_finding
+        if not business_finding(finding):
             return
         domain, _issue = _business_issue(finding)
         if domain:
@@ -300,7 +323,7 @@ def build_risk_findings(result: dict, evidence: dict | None, context: dict | Non
     if not accepted:
         for cause in (result or {}).get('causes') or []:
             add(_legacy_cause_finding(cause, evidence, context, slot))
-    return accepted
+    return sorted(accepted,key=risk_priority_key)
 
 
 def summarize_risk_counts(slots: dict[str, dict]) -> dict[str, dict]:

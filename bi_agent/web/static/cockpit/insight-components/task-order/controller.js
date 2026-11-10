@@ -67,9 +67,9 @@ export function createTaskOrderController({analysisId, insight, apiBase, identit
   ))
   const emptyState = computed(() => {
     if (!openRecommendations.value.length) {
-      if (!insight.causes.value.length) return '当前只能定位异常，缺少处理记录，尚未形成原因判断。'
+      if (!insight.causes.value.length) return '当前没有可选择的业务建议。'
       if (insight.causes.value.some(item => item?.kind === 'hypothesis' || item?.status === 'hypothesis')) {
-        return '以下为待验证假设；当前无核查建议，暂不能生成任务草稿。'
+        return '当前没有可选择的核查建议。'
       }
       return '当前缺少明确核查对象或必要口径，暂不能生成任务草稿。'
     }
@@ -79,7 +79,7 @@ export function createTaskOrderController({analysisId, insight, apiBase, identit
   const recommendationHint = computed(() => {
     if (!draftableSelected.value.length) return ''
     if (draftableSelected.value.every(item => item.actionType === 'investigation')) {
-      return '可先生成核查任务，改善措施待核实后补充。'
+      return '可按所选建议生成核查任务。'
     }
     return ''
   })

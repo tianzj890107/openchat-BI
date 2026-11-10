@@ -1,5 +1,7 @@
 /** 客户与超期订单：AP 事实 + 已校验卡片的主因和具体根因。 */
 import {createTableInsight} from '../table-runtime.js'
+// Upstream 5bbfcf7: default sort icon, click override and explicit clear are
+// preserved by the shared adapter; business/AI reads stay on Cockpit APIs.
 
 const {loadInsightStyle} = window.InsightRuntime
 

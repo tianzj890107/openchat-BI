@@ -8,15 +8,16 @@ ROOT=Path(__file__).resolve().parents[1]/'bi_agent/web/static/cockpit'
 def test_vendor_manifest_matches_local_artifacts():
     vendor=ROOT/'vendor'
     manifest=json.loads((vendor/'resources.json').read_text())
-    assert manifest['sourceCommit']=='0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2'
-    assert manifest['metadataCommit']=='c0f0270f713253cb4f33233708ba05e74b1d4e1c'
+    assert manifest['sourceCommit']=='5bbfcf796d7a47d3e00dc649e8a811e096009290'
+    assert manifest['metadataCommit']=='5bbfcf796d7a47d3e00dc649e8a811e096009290'
     for r in manifest['resources']:
         data=(vendor/r['file']).read_bytes()
         assert hashlib.sha256(data).hexdigest()==r['sha256']
         assert len(data)==r['bytes']
     html=(ROOT/'index.html').read_text()
     assert 'pro-ui.min.css?v=b1ee836d' in html
-    assert 'pro-bi-ui.min.js?v=8520557f' in html
+    sdk_hash=next(r['sha256'] for r in manifest['resources'] if r['file']=='pro-bi-ui.min.js')
+    assert 'pro-bi-ui.min.js?v='+sdk_hash[:8] in html
     assert 'bi-color-vars.css?v=572dcdf5' in html
     assert html.index('pro-bi-ui.min.js') < html.index('bi-color-vars.css') < html.index('cockpit.js')
     sdk=(vendor/'pro-bi-ui.min.js').read_text()
@@ -35,8 +36,8 @@ def test_imported_metadata_hashes_and_three_tabs():
     folder=ROOT/'metadata/iba-demo-1021'
     source=json.loads((folder/'source.json').read_text())
     assert source['branch']=='feature/demo_1021'
-    assert source['commit']=='c0f0270f713253cb4f33233708ba05e74b1d4e1c'
-    assert source['umdCommit']=='0dc0cc05537ba82ce8783bbe48ae5a6146faa0e2'
+    assert source['commit']=='5bbfcf796d7a47d3e00dc649e8a811e096009290'
+    assert source['umdCommit']=='5bbfcf796d7a47d3e00dc649e8a811e096009290'
     assert source['activateRules']==6
     for file in source['files']:
         assert hashlib.sha256((folder/file['file']).read_bytes()).hexdigest()==file['sha256']
@@ -102,7 +103,6 @@ def test_upstream_default_table_sorts_are_imported_without_reintroducing_mojibak
         assert found.get(key)==[value], (key,found.get(key))
     assert {('2112009587516293121','table-54yeopj2'),
             ('2112009587516293121','table-ys9za5oh'),
-            ('2112010750949113858','table-j282l5b0'),
             ('2112010750949113858','table-3qcm5ah3'),
             ('2112010750949113858','table-nu6hm1ge')} <= set(empty)
     assert '\ufffd' not in json.dumps(registry,ensure_ascii=False)

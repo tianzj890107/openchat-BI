@@ -532,3 +532,14 @@ test('customer table filters only invoke their SDK control and do not invalidate
  const restored=runtime.replayView({setFilterConditions(){}});
  assert.equal(restored.seen.some(([key])=>key.includes('table-customer')),false);
 });
+
+test('helmet configuration bypasses saved page replay without invalidating business data', async () => {
+  let calls=0, misses=0;
+  const payload={flowCode:'SALES_CALIBER'};
+  const client=createAPDataClient({apiBase:'/api/cockpit',id:1,
+    snapshot:{entries:[{kind:'helmet',payload,data:{nodes:['old']},receiptId:'old',expiresAt:Date.now()/1000+60}]},
+    onSnapshotMiss:()=>misses++, request:async()=>{calls++;return ok('fresh',{nodes:['current']});}});
+  const [error,response]=await client.utils.request({url:'/api/gateway2/x360/v1/graphs/helmet-view',params:payload});
+  assert.equal(error,null);assert.deepEqual(response.data,{nodes:['current']});
+  assert.equal(calls,1);assert.equal(misses,0);
+});

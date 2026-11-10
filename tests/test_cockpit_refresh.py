@@ -516,6 +516,7 @@ def test_refresh_uses_the_same_evidence_resolver_as_the_http_turn(tmp_path):
 
 
 def test_refresh_supplements_failed_business_queries_from_postgres(tmp_path, monkeypatch):
+    monkeypatch.setenv('COCKPIT_PG_FALLBACK_ENABLED', '1')
     from bi_agent.cockpit import pg_fallback
     store, cfg, query, helmet, old = _fixture(tmp_path)
     calls = []
@@ -616,6 +617,7 @@ def test_manual_refresh_rejects_a_scope_without_a_query_plan(tmp_path, monkeypat
 
 
 def test_refresh_view_recovers_a_postgres_only_card(tmp_path, monkeypatch):
+    monkeypatch.setenv('COCKPIT_PG_FALLBACK_ENABLED', '1')
     from bi_agent.cockpit import pg_fallback
     from bi_agent.cockpit.dashboard_source import RELEASE
     from bi_agent.cockpit.publications import view_scope

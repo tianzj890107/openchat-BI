@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 from .data import DemoSource, DEPARTMENTS, PERIODS, NAMES
 from .store import Store
@@ -141,6 +141,13 @@ class TaskChange(BaseModel):
     measures:list[Measure]=Field(default_factory=list,max_length=8)
 
 
+class ModelProbeRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    id:int=Field(default=1,ge=1,le=2)
+    modelKey:str|None=Field(default=None,max_length=128)
+    toolRoundtrip:bool=True
+
+
 class TaskDispatch(BaseModel):
     model_config=ConfigDict(extra="forbid")
     id:int=Field(ge=1,le=2)
@@ -165,6 +172,21 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
             if path not in stores:
                 value=Store(Path(path));value.recover();stores[path]=value
             return stores[path]
+
+    probe_lock=threading.Lock()
+
+    @router.post('/model/probe')
+    def model_probe(req:ModelProbeRequest):
+        from .model_probe import probe
+        if not probe_lock.acquire(blocking=False):raise HTTPException(429,'模型连通性检查正在进行')
+        try:
+            result=probe(req.modelKey,req.toolRoundtrip)
+            status=200 if result.get('ok') else 429 if result.get('code')=='MODEL_BUSY' else 503 if result.get('code')=='MODEL_NOT_CONFIGURED' else 502
+            return JSONResponse(result,status_code=status)
+        except ValueError as exc:
+            raise HTTPException(422,str(exc)) from exc
+        finally:
+            probe_lock.release()
 
     def publication_lookup(identity, page, ui_scope):
         """Return the current publication plus a display-only last-known fallback."""
@@ -237,6 +259,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         auth_scope=transport_identity(gateway.config)
         result_store=store()
         diagnostic_context=current_scope()
+        inherited_deadline=diagnostic_context.get('fetchDeadline')
+        if inherited_deadline is not None:
+            _deadline=min(_deadline,inherited_deadline) if _deadline is not None else inherited_deadline
         def read():
             try:
                 if 'timing' in inspect.signature(gateway.query).parameters:
@@ -261,7 +286,9 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
                 gateway.config.receipt_ttl,gateway.config.identity(),auth_scope,
                 gateway.config.batch_mode if kind=='batch' else 'fixed-path')
         key=digest(dict(connection=auth_scope,store=str(result_store.path),id=identity,
-                        kind=kind,payload=payload))
+                        deadlineClass='ai' if inherited_deadline is not None else 'display',
+                        kind=kind,payload=payload,
+                        helmetConfigVersion=config_version() if kind=='helmet' else ''))
         started=time.monotonic()
         trace={} if timing is None else timing
         timeout=getattr(gateway.config,'timeout',200)
@@ -800,7 +827,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         if main_context is None or data_mode()!='ap':raise HTTPException(409,'整页缓存仅支持主服务实时AP路线')
         config=get_gateway().config
         key=page_scope(config,req.id,req.page,req.uiScope)
-        page=build_page(req,store(),config,data_source='ap')
+        try:
+            page=build_page(req,store(),config,data_source='ap')
+        except Exception as exc:
+            diagnostic=record_failure(store(),exc,phase='page_publication',identity=req.id)
+            if isinstance(exc,HTTPException):
+                exc.headers={**(exc.headers or {}),'X-Cockpit-Diagnostic-Id':diagnostic['diagnosticId']}
+            raise
         if key!=page_scope(config,req.id,req.page,req.uiScope):raise HTTPException(409,'AP认证配置已变化，保留原版本')
         accepted=store().publish_page(key,page)
         return dict(accepted=accepted,snapshot=page if accepted else store().published_page(key))
@@ -1020,10 +1053,13 @@ def build_cockpit_router(get_cwd, runner=run_analysis, *, main_runner=None, main
         return dict(items=store().list_diagnostics(id,stage=stage,limit=limit))
 
     @router.get("/analyses")
-    def history(id:int=1,period:str|None=None,department:str|None=None,engine:Literal["main","standalone"]|None=None):
+    def history(id:int=1,period:str|None=None,department:str|None=None,engine:Literal["main","standalone"]|None=None,summary:bool=True,limit:int=50,offset:int=0):
         # id is the single Fuxi-facing identity parameter: 1=总裁, 2=分析员.
         if id not in (1,2):raise HTTPException(422,"id 只能是 1 或 2")
-        return [x for x in store().list_analyses() if context_id(x["context"])==id
+        if not 1 <= limit <= 100 or offset < 0:raise HTTPException(422,'Invalid history pagination')
+        if summary:
+            return store().analysis_summaries(id,engine=engine,period=period,department=department,limit=limit,offset=offset)
+        return [x for x in store().list_analyses(limit=limit+offset)[offset:] if context_id(x["context"])==id
             and (engine is None or x["context"].get("engine","standalone")==engine)
             and (period is None or x["context"]["period"]==period) and (department is None or x["context"]["department"]==department)]
 

@@ -3,13 +3,14 @@
  * used verbatim. The host only supplies the Fuxi identity (id=1|2), rewrites
  * the selected tab into the route path and consumes main-service AP results.
  */
-(() => {
+(async () => {
   'use strict';
   const frozenAnnualMode = window.COCKPIT_FIXED_ANNUAL === true;
 
   const root = document.querySelector('meta[name="app-root"]').content.replace(/\/$/, '');
   const routeRoot = location.pathname.replace(/\/cockpit(?:\/(?:home|overview|operations|analysis))?\/?$/, '');
   const assetVersion = document.querySelector('meta[name="cockpit-version"]')?.content || '1';
+  const {taskProgressText}=await import(`./task-progress.js?v=${assetVersion}`);
   const assetBase = document.querySelector('meta[name="cockpit-assets"]')?.content || `${root}/static/cockpit`;
   const runtimeUrl = `${assetBase}/metadata/runtime.json?v=${encodeURIComponent(assetVersion)}`;
   const snapshotsUrl = `${assetBase}/metadata/pdt-release-2109836674373566465/data-snapshots.json?v=${encodeURIComponent(assetVersion)}`;
@@ -35,6 +36,14 @@
     }
     const year = text.match(/(?<!\d)(20\d{2})(?!\d)/);
     return year ? year[1] : '';
+  }
+
+  function formatAnalysisDuration(value) {
+    const seconds = Math.round(Number(value) || 0);
+    if (!(seconds > 0)) return '';
+    const text = seconds < 60 ? `${seconds} 秒`
+      : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+    return ` · 耗时 ${text}`;
   }
 
   function scopePeriod(scope = currentUiScope) {
@@ -132,7 +141,18 @@
   const insightLoadError = ref('');
   let insightBundleReady;
   let fullSnapshot = null, pageCache = null, currentUiScope = 'default';
-  const frozenAnnual = reactive({visible:false,running:false,period:defaultPeriod,basis:'',error:'',activeStage:'',pendingStages:[],completedStages:[],failedStages:[]});
+  const frozenAnnual = reactive({visible:true,running:false,period:defaultPeriod,basis:'',error:'',activeStage:'',pendingStages:[],completedStages:[],failedStages:[],stageProgress:{},progress:{}});
+  function applyFrozenStatus(value) {
+    const manual=value?.manualUpdate || (value?.status ? value : null);
+    if(!frozenAnnualMode || !manual)return;
+    frozenAnnual.running=manual.status==='running';
+    frozenAnnual.stageProgress=manual.stageProgress||{};
+    frozenAnnual.progress=manual.progress||{};
+    for(const key of ['activeStage','pendingStages','completedStages','failedStages'])frozenAnnual[key]=manual[key]||(key==='activeStage'?'':[]);
+    if(value.requestedPeriod)frozenAnnual.period=value.requestedPeriod;
+    if(typeof value.basis==='string')frozenAnnual.basis=value.basis;
+    frozenAnnual.error=manual.error||'';
+  }
   const visibleAiSlots = new Map();
   let priorityTimer=null;
   function frozenPriority(slotId) {
@@ -151,7 +171,7 @@
       const response=await fetch(`${apiBase}/publications/refresh`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({manual:true,id:Number(identityId),...frozenPriority(slotId)})});
       if(!response.ok)throw new Error('后台更新未启动，继续展示发布版');
       const job=await response.json();
-      frozenAnnual.running=job.status==='running';
+      applyFrozenStatus(job);
       aiPublicationClient?.poke(0,currentUiScope);
     } catch(error) {frozenAnnual.error=error.message;}
   }
@@ -291,14 +311,8 @@
       refreshing:Boolean(slot.update?.active),stale,error:'',scopeNotice:stale?notice:''});
   }
   function applyAiPublications(value, {preserve=true, notice=''}={}) {
+    if(frozenAnnualMode)applyFrozenStatus(value);
     if(!value?.slots)return;
-    if(frozenAnnualMode){
-      frozenAnnual.running=value.manualUpdate?.status==='running';
-      for(const key of ['activeStage','pendingStages','completedStages','failedStages'])frozenAnnual[key]=value.manualUpdate?.[key]||(key==='activeStage'?'':[]);
-      frozenAnnual.period=value.requestedPeriod||'';
-      frozenAnnual.basis=value.basis||'';
-      frozenAnnual.error=value.manualUpdate?.error||'';
-    }
     // A slower read for the previous filter must never repaint the current
     // scope.  Keep the visible cards and let the newest request win.
     if(value.requestedScope && value.requestedScope!==currentUiScope){
@@ -709,7 +723,6 @@
       // Each slot answers its own question.  Prefer the slot-projected
       // publication over the shared stage card when it is at least as new.
       const slotAnalysis = computed(()=>{
-        if(frozenAnnualMode && !frozenAnnual.visible)return null;
         const published=slotPublication(props.insight.id);
         const projected=published?.status==='ready'&&validAiCard(published.payload)?published.payload:null;
         const current=state.value.item;
@@ -717,20 +730,21 @@
         if(!current)return projected;
         return Number(projected.updatedAt||0)>=Number(current.updatedAt||0)?projected:current;
       });
+      const progressClock=ref(Date.now());
+      const progressTimer=setInterval(()=>{if(frozenAnnual.running)progressClock.value=Date.now();},1000);
+      onBeforeUnmount(()=>clearInterval(progressTimer));
+      const cardUpdating=computed(()=>frozenAnnual.running && frozenAnnual.activeStage===stage.value);
+      const cardRefreshStatus=computed(()=>taskProgressText(frozenAnnual,stage.value,progressClock.value));
       const cardMetadata = computed(()=>{
         const item=slotAnalysis.value, name=STAGE_NAMES[stage.value]||stage.value;
         if(!item?.result)return `${frozenAnnual.period} 年度分析 · ${name}`;
         const count=slotPublication(props.insight.id)?.evidenceCount||0;
         const stamp=Number(item.updatedAt||0);
-        return `上次分析 · ${name} · 当前筛选范围 · ${count} 条证据${stamp?' · '+new Date(stamp*1000).toLocaleString('zh-CN',{hour12:false}):''}`;
+        const stampText=stamp?` · ${new Date(stamp*1000).toLocaleString('zh-CN',{hour12:false})}`:'';
+        const durationText=formatAnalysisDuration(item.execution?.durationSeconds);
+        return `上次分析 · ${name} · 当前筛选范围 · ${count} 条证据${stampText}${durationText}`;
       });
       const refreshCard=()=>refreshFrozenAnnual(props.insight.id);
-      const cardRefreshStatus=computed(()=>{
-        if(frozenAnnual.running && frozenAnnual.activeStage===stage.value)return '后台更新中';
-        if(frozenAnnual.running && frozenAnnual.pendingStages.includes(stage.value))return '等待更新';
-        if(frozenAnnual.failedStages.some(item=>item.stage===stage.value))return '沿用上次结果';
-        return '';
-      });
       const clarification = ref('');
       const confirmScope = () => {if(!clarification.value.trim())return;clarificationAnswers.set(stage.value, {answer:clarification.value.trim()});ensureAnalysis(stage.value,true,true).catch(()=>{});};
       const stop = async () => {if(state.value.item?.id)await fetch(`${apiBase}/analyses/${state.value.item.id}/cancel`,{method:'POST'});};
@@ -796,14 +810,14 @@
           await ensureSlotAnalysis(props.insight.id,stage.value);onPageActivity();
         } catch(cause) {if(alive)insightLoadError.value=`插槽加载失败：${cause.message||cause}`;}
       });
-      return {frozenAnnualMode,frozenAnnual,stage,cardMetadata,refreshCard,cardRefreshStatus,dashboardDataMode, delivered, state, slotAnalysis, analysisContext, insightSlotProps, reload, insightLoadError, componentError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
+      return {frozenAnnualMode,frozenAnnual,stage,cardMetadata,refreshCard,cardRefreshStatus,cardUpdating,dashboardDataMode, delivered, state, slotAnalysis, analysisContext, insightSlotProps, reload, insightLoadError, componentError, analysisEngine, clarification, confirmScope, stop, compareLink, baselineId};
     },
     template: `
       <div v-if="delivered" class="cockpit-insight-slot" :class="{'cockpit-insight-slot--fixed':frozenAnnualMode}">
         <div v-if="frozenAnnualMode" class="cockpit-card-metadata" role="status">
           <span>{{cardMetadata}}</span>
-          <button class="cockpit-frozen-release__action" type="button" :disabled="frozenAnnual.running && frozenAnnual.activeStage===stage" @click="refreshCard">{{slotAnalysis?.result ? '重新分析' : '分析'}}</button>
-          <span v-if="cardRefreshStatus">{{cardRefreshStatus}}</span>
+          <button class="cockpit-frozen-release__action" type="button" :disabled="cardUpdating" @click="refreshCard">{{slotAnalysis?.result ? '重新分析' : '分析'}}</button>
+          <span v-if="cardRefreshStatus" class="cockpit-card-metadata__status">{{cardRefreshStatus}}</span>
         </div>
         <div v-if="state.scopeNotice" class="insight-scope-notice" role="status">{{ state.scopeNotice }}</div>
         <component :is="delivered"
@@ -1072,7 +1086,7 @@
       function onVisibilityChange() {
         // Resume immediately when the tab becomes visible again instead of
         // waiting out the hidden-tab interval.
-        if (!document.hidden) statusPoller?.poke(0);
+        if (!document.hidden) {statusPoller?.poke(0);aiPublicationClient?.poke(0,currentUiScope);}
       }
 
       function clearHelmetAnnotations() {
@@ -1418,6 +1432,7 @@
           // board already exists; a slow cards response leaves only the AI
           // slot skeletons visible and never delays charts or the shell.
           async function loadCurrentHistoryCards(){
+            if(frozenAnnualMode)return;
             const token=pageEpoch,target=page.value;
             try{
               const cards=await pageCache.cards();
@@ -1429,7 +1444,7 @@
             }catch(_){/* the status poll retries the same read */}
           }
           if(analysisEngine==='main') {
-            pageCache=createPageCache({apiBase,id:identityId,page:page.value,makeClient,bodyFor:baseMainBody,
+            pageCache=createPageCache({independentCards:frozenAnnualMode,apiBase,id:identityId,page:page.value,makeClient,bodyFor:baseMainBody,
               onState:value=>Object.assign(pageState,value),
               onSnapshot:snapshot=>{
                 // Background publications refresh metadata and AI cards in
@@ -1445,10 +1460,11 @@
             // route, page-specific cards, publication metadata and poller.
             switchPageImpl=async target=>{
               if(analysisEngine!=='main')return true;
+              if(frozenAnnualMode){aiPublicationClient?.poke(0,currentUiScope);queueFrozenPriority();return true;}
               const token=++pageEpoch,scope=currentUiScope;
               clearTimeout(publishTimer);clearTimeout(refreshTimer);
               pageCache?.invalidate();
-              pageCache=createPageCache({apiBase,id:identityId,page:target,makeClient,bodyFor:baseMainBody,
+              pageCache=createPageCache({independentCards:frozenAnnualMode,apiBase,id:identityId,page:target,makeClient,bodyFor:baseMainBody,
                 onState:value=>Object.assign(pageState,value),
                 onSnapshot:snapshot=>{
                   fullSnapshot=snapshot;
@@ -1488,7 +1504,7 @@
               return true;
             };
             statusPoller=createPublicationPoller({
-              probe:async()=>{const scope=currentUiScope;return {scope,status:await pageCache.status(scope)};},
+              probe:async()=>{if(frozenAnnualMode)return null;const scope=currentUiScope;return {scope,status:await pageCache.status(scope)};},
               apply:async value=>{
                 if(!pageCache||analysisEngine!=='main')return {active:false};
                 const {scope,status}=value||{};
@@ -1530,11 +1546,11 @@
           install(null);
           if(analysisEngine==='main'){
             loadCurrentHistoryCards();
-            statusPoller?.start(50);
+            if(!frozenAnnualMode)statusPoller?.start(50);
           }
           onPageActivity=()=>{
             clearTimeout(publishTimer);
-            if(analysisEngine!=='main'||fullSnapshot||publishing)return;
+            if(frozenAnnualMode||analysisEngine!=='main'||fullSnapshot||publishing)return;
             publishTimer=setTimeout(async()=>{
               const token=pageEpoch,client=liveDataClient,uiScope=currentUiScope;
               // Stale cards belong to the previous filter scope: never publish
