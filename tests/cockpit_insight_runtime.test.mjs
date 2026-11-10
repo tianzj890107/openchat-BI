@@ -84,15 +84,17 @@ test('risk labels always show a count and keep the last known value for incomple
   assert.doesNotMatch(cockpit, /风险分析中/);
 });
 
-test('combined card keeps its own evidence scope separate from global navigation risk counts', () => {
+test('combined card keeps its own evidence scope and renders the prototype dimensions only', () => {
   assert.match(cockpit, /riskCounts:\s*aiPublicationStore\.riskCounts/);
   assert.match(cockpit, /aiPublicationStore\.riskCounts=next/);
   assert.doesNotMatch(combinedInsight, /props\.slotProps\?\.riskCounts/);
-  assert.match(combinedInsight, /insight.findings.value/);
-  assert.match(combinedInsight, /销售额风险/);
-  assert.match(combinedInsight, /出货量风险/);
-  assert.match(combinedInsight, /重点风险 · \{\{ riskFindings\.length \}\} 项/);
-  assert.match(combinedInsight, /原因分析 · \{\{ analysisDimensions\.length \}\} 项/);
+  assert.doesNotMatch(combinedInsight, /销售额风险/);
+  assert.doesNotMatch(combinedInsight, /出货量风险/);
+  assert.doesNotMatch(combinedInsight, /重点风险 ·/);
+  assert.doesNotMatch(combinedInsight, /建议 ·/);
+  assert.doesNotMatch(combinedInsight, /数据范围与限制/);
+  assert.doesNotMatch(combinedInsight, /查看完整证据/);
+  assert.match(combinedInsight, /v-for="\(dimension,index\) in analysisDimensions"/);
   assert.doesNotMatch(combinedInsight, /风险与待核实原因 · \{\{ displayCauses\.length \}\}/);
 });
 

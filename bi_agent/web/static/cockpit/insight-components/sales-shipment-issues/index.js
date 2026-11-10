@@ -3,7 +3,6 @@
  * 内容由跨环节共同分析的真实分析结果、证据事实和记录驱动。
  */
 const { loadInsightStyle, registerInsightComponent, insightProps, useInsight } = window.InsightRuntime
-const { computed } = window.Vue
 
 loadInsightStyle(import.meta.url)
 
@@ -15,13 +14,7 @@ registerInsightComponent(
     components: {InsightLoading: window.InsightRuntime.InsightLoading},
     emits: ['retry'],
     setup(props, { emit }) {
-      const insight = useInsight(props, emit)
-      // This card's risks and dimensions share the same analysis and evidence.
-      // Global navigation counts are deliberately not mixed into this panel.
-      const riskFindings = computed(() => insight.findings.value)
-      const salesRiskCount = computed(() => riskFindings.value.filter(f=>f.riskDomain==='sales').length)
-      const shipmentRiskCount = computed(() => riskFindings.value.filter(f=>f.riskDomain==='shipment').length)
-      return {...insight,riskFindings,salesRiskCount,shipmentRiskCount}
+      return useInsight(props, emit)
     },
     template: `
       <section class="sales-shipment-issues" aria-live="polite">
@@ -40,36 +33,11 @@ registerInsightComponent(
           </div>
         </div>
         <template v-if="hasResult">
-          <div class="sales-shipment-issues__title">销售额 / 出货量共同问题分析：</div>
-          <div v-if="summary" class="sales-shipment-issues__line sales-shipment-issues__summary" :title="summary">分析摘要：{{ summary }}</div>
-          <div v-if="riskFindings.length" class="sales-shipment-issues__counts">
-            <span>销售额重点风险 <b>{{ salesRiskCount }}</b> 条</span>
-            <span>出货量重点风险 <b>{{ shipmentRiskCount }}</b> 条</span>
+          <div class="sales-shipment-issues__title">销售额／出货量共同问题分析：</div>
+          <div v-if="summary" class="sales-shipment-issues__line sales-shipment-issues__summary" :title="summary">{{ summary }}</div>
+          <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="sales-shipment-issues__line">
+            {{ index+1 }}）<span class="sales-shipment-issues__num">【{{ dimension.stageLabel }}】</span>{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}<template v-if="dimension.description">——{{ dimension.description }}</template>
           </div>
-          <details open v-if="riskFindings.length" class="sales-shipment-issues__details">
-            <summary>重点风险 · {{ riskFindings.length }} 项</summary>
-            <div v-for="(finding, index) in riskFindings" :key="finding.riskKey || finding.id || index" class="sales-shipment-issues__line">
-              {{ index + 1 }}）【{{ finding.riskDomain === 'shipment' ? '出货量风险' : '销售额风险' }}】
-              <span class="sales-shipment-issues__num">{{ finding.title }}</span>
-              <template v-if="finding.description">——{{ finding.description }}</template>
-            </div>
-          </details>
-          <details open v-if="analysisDimensions.length" class="sales-shipment-issues__details">
-            <summary>原因分析 · {{ analysisDimensions.length }} 项</summary>
-            <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="sales-shipment-issues__line">
-              {{ index+1 }}）<span class="sales-shipment-issues__num">【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</span>——{{ dimension.description }}
-              <small>{{ dimension.riskLinks.map(link=>link.label).join('；') }}</small>
-            </div>
-          </details>
-          <details open v-if="recommendations.length" class="sales-shipment-issues__details">
-            <summary>建议 · {{ recommendations.length }} 项</summary>
-            <div v-for="(action,index) in recommendations" :key="action.id" class="sales-shipment-issues__line">{{ index+1 }}）{{ action.action }}</div>
-          </details>
-          <details v-if="limitations.length" class="sales-shipment-issues__details">
-            <summary>数据范围与限制</summary>
-            <div v-for="(limit,index) in limitations" :key="index" class="sales-shipment-issues__line">{{ limit }}</div>
-          </details>
-          <a v-if="evidenceLink" :href="evidenceLink" target="_blank" rel="noopener" class="insight-evidence-link">查看完整证据</a>
         </template>
       </section>
     `,
