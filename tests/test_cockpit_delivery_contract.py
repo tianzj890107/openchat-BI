@@ -427,3 +427,68 @@ def test_risk_counts_separate_sales_and_shipment_and_require_complete_sources():
     assert counts['sales']['known'] is False
     assert counts['sales']['complete'] is False
     assert counts['sales']['count'] == 1
+
+
+@pytest.mark.parametrize('summary',[
+    '商机获取电量作为独立字段单列观察，不与金额合并比较或换算，缺口来源仅按金额口径描述。',
+    '不能把取消变更与中标未签单相加对账，需逐单核实。',
+    '金额和电量字段存在空值，尚不能量化接收缺口。',
+    '核查时说明金额与电量的计量口径，保留各自数据。',
+])
+def test_explicit_prohibitions_and_scope_documentation_are_not_unit_inferences(summary):
+    validate_reasoning(_value(summary=summary), _evidence(),stage='combined')
+
+
+def test_comparison_prohibition_does_not_hide_an_actual_inference():
+    with pytest.raises(ValueError):
+        validate_reasoning(_value(summary='不得把金额与电量相加，但金额下降证明出货量下降。'),_evidence(),stage='combined')
+
+
+@pytest.mark.parametrize('summary',[
+    '已取到商机金额、商机数量与明细状态，原因待验证，建议先核查。',
+    '待验证假设：金额与电量字段均为零，可能存在回填遗漏，需逐单核实。',
+    '核对金额、电量和规划目标字段的空值，补齐各自口径说明。',
+])
+def test_listing_evidence_and_hypothesis_status_is_not_cross_unit_comparison(summary):
+    validate_reasoning(_value(summary=summary),_evidence(),stage='combined')
+
+
+def test_hypothesis_label_does_not_exempt_a_cross_unit_inference():
+    with pytest.raises(ValueError):
+        validate_reasoning(_value(summary='待验证假设：金额增长证明出货量增长。'),_evidence(),stage='combined')
+
+
+def test_explicit_mechanism_hypothesis_is_not_reclassified_by_verification_scope():
+    from bi_agent.cockpit.delivery import classify_cause
+    cause=dict(title='交付排程或需求节奏变化',description='按产品团队和客户等级核查排程变更记录，当前未证明机制。',
+               kind='hypothesis',status='hypothesis')
+    assert classify_cause(cause)=='hypothesis'
+    assert classify_cause({**cause,'title':'缺口集中于产品团队'})=='structure'
+    assert classify_cause({**cause,'title':'出货量低于目标'})=='fact'
+
+
+def test_semantic_feedback_locates_loss_and_set_claims_for_local_repair():
+    from bi_agent.cockpit.delivery import reasoning_repair_locations
+    value=dict(summary='订单取消金额为实际损失。',findings=[dict(title='集合比较',description='取消与中标未签合计为缺口。')])
+    issues=reasoning_repair_locations(value,{})
+    assert any(i['loc']==['summary'] and '损失' in i['message'] for i in issues)
+    assert any(i['loc']==['findings',0] and '集合' in i['message'] for i in issues)
+
+
+def test_customer_mechanism_hypothesis_does_not_become_structure_from_scope_text():
+    from bi_agent.cockpit.delivery import classify_cause
+    value=dict(title='客户需求条件变化后撤回订单',kind='hypothesis',status='hypothesis',
+               description='可能由于客户采购条件变化而取消订单，需按客户等级核查处理记录。')
+    assert classify_cause(value)=='hypothesis'
+    assert classify_cause({**value,'title':'缺口集中于客户等级'})=='structure'
+
+
+def test_explicit_unperformed_set_arithmetic_is_not_an_asserted_sum():
+    from bi_agent.cockpit.delivery import _bad_set_claim
+    assert not _bad_set_claim('取消与变更分别列示，未相加也未与中标未签集合核对',{})
+    assert _bad_set_claim('取消与变更相加后与中标未签合计',{})
+
+
+def test_uncompleted_is_not_a_prohibition_on_unit_comparison():
+    from bi_agent.cockpit.delivery import _bad_unit_claim
+    assert _bad_unit_claim('未完成订单金额与出货量比较后证明缺口不大')

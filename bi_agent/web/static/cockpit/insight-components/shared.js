@@ -61,6 +61,7 @@ export function useInsight(props, emit) {
     if(!slot.frozenControls || !props.analysis?.id)return '';
     return `${slot.apiBase}/ai-publications/stages/${encodeURIComponent(slot.stage)}/evidence?id=${slot.identityId}&format=html&analysisId=${encodeURIComponent(props.analysis.id)}`;
   })
+  const findings = computed(() => (result.value?.findings || []).slice(0,4))
   const causes = computed(() => result.value?.causes || [])
   const recommendations = computed(() => result.value?.recommendations || [])
   const limitations = computed(() => result.value?.limitations || bundle.value.limitations || [])
@@ -178,6 +179,7 @@ export function useInsight(props, emit) {
     records,
     evidence,
     evidenceLink,
+    findings,
     causes,
     recommendations,
     openRecommendations,
@@ -274,6 +276,10 @@ export function createStageRiskComponent(options = {}) {
               {{ displayStage }}当前风险判断
             </div>
             <div class="stage-risk-analysis__summary" :title="summary">{{ summary }}</div>
+            <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
+              <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">风险{{ index+1 }}</span>
+              <span class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——{{ finding.description }}</template></span>
+            </div>
           </article>
 
           <article class="stage-risk-analysis__card stage-risk-analysis__card--cause stage-risk-analysis__panel">

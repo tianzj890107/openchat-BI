@@ -136,14 +136,21 @@ def request_config(**overrides):
     """Task-local parameters; never persist or mutate another session's config."""
     config = copy(get_config())
     for key, value in overrides.items():
-        if key not in {'max_tokens', 'temperature', 'thinking'}:
+        if key not in {'max_tokens', 'temperature', 'thinking', 'reasoning_effort'}:
             raise ValueError('Unsupported scoped model parameter')
+        if key=='reasoning_effort' and value not in {'low','medium','high','max'}:
+            raise ValueError('Unsupported reasoning effort')
         setattr(config, key, value)
     token = _scoped_config.set(config)
     try:
         yield config
     finally:
         _scoped_config.reset(token)
+
+def scoped_reasoning_effort():
+    config = _scoped_config.get()
+    return getattr(config, 'reasoning_effort', None) if config is not None else None
+
 
 def scoped_thinking():
     config = _scoped_config.get()

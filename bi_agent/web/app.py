@@ -4310,7 +4310,7 @@ def _cockpit_main_turn(context,cancel):
     try:
         from ..cockpit.dashboard_source import material, receipt_material, executor, TOOL, SCHEMA
         from ..cockpit.store import Store
-        from ..cockpit.cards import TOOL as DELIVERY_TOOL, SCHEMA as DELIVERY_SCHEMA, install_delivery
+        from ..cockpit.cards import TOOL as DELIVERY_TOOL, SCHEMA as DELIVERY_SCHEMA, REPAIR_TOOL, REPAIR_SCHEMA, install_delivery
         from open_claude.tools import register_tool
         live=context['snapshotId'].startswith('ap-')
         fingerprint,selected=(receipt_material(context,Store(Path(STATE.cwd or os.getcwd())/'dataset/cockpit/history.sqlite3'),allow_expired=True)
@@ -4324,8 +4324,9 @@ def _cockpit_main_turn(context,cancel):
             raise RuntimeError('看板查询只能在绑定快照的任务内执行')
         register_tool(SCHEMA,unbound)
         register_tool(DELIVERY_SCHEMA,unbound)
+        register_tool(REPAIR_SCHEMA,unbound)
         session=WebSession(cwd=STATE.cwd,agent_def=STATE.agent_def,
-            ontology_store=None,tools_override=[TOOL,DELIVERY_TOOL,'AskUser'],
+            ontology_store=None,tools_override=[TOOL,DELIVERY_TOOL,REPAIR_TOOL],
             context_header=(
                 (('本轮数据来源：页面本次AP取数全部失败，已按同一筛选口径从主库（PostgreSQL）补查，来源已在证据中标为 pg，未混用AP结果。')
                  if (live and context.get('dataSource')=='pg')
@@ -4354,7 +4355,20 @@ def _cockpit_main_turn(context,cancel):
         install_delivery(session,context)
         from ..cockpit.cards import delivery_summary
         session.validated_delivery_summary = delivery_summary
-        session.max_iterations = 6
+        session.max_iterations = 2
+        session.model_request_limit = 2
+        session.model_tools_override = [DELIVERY_TOOL]
+        session.allow_interaction = False
+        session.require_validated_delivery = True
+        session.system_prompt += (
+            '\n\n本次为主服务固定卡片任务：服务端已通过正常工具预读证据。'
+            '本轮交付形式覆盖通用对话的表格、图表和行动文案要求：'
+            '不再查询，不用TableGenerate或ChartGenerate，不输出普通Markdown。'
+            '第一轮只调用CockpitDeliverCards，必须包含summary、limitations及各数组。'
+            '只有原始AP记录与汇总，不能证明根因，原因status用hypothesis；'
+            '建议使用investigation，验收写“形成逐项核查清单并确认结果”等可检查记录。'
+            '收到校验问题后，第二轮按拒绝响应指定工具修复；正常草稿局部修补，截断空草稿完整重交；未改字段原样保留。'
+            '证据、口径、权限和交付校验始终有效，不得编造根因或改善效果。')
         # Freeze/read evidence deterministically. The model starts with real,
         # normally recorded tool results, not an LLM-generated fetch plan.
         prepared_ids = list(selected)[:18]
@@ -4365,8 +4379,8 @@ def _cockpit_main_turn(context,cancel):
             STATE.sessions[key]=session
         slot,lease,turn_id,ticket,_=_begin_turn('data',key,cancel_event=cancel,principal_session_id=f"cockpit-id-{context['id']}")
         from ..llm.runtime_config import request_config
-        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel), request_config(thinking=False, max_tokens=4096, temperature=0.2):
-            yield session,session.generate_turn(analysis_question(context)+f'\n本轮已通过工具预读 {len(prepared_ids)} 条查询，证据引用见工具结果。优先直接交付，不重复取数。'+(f'另有 {len(selected)-len(prepared_ids)} 条查询未预读；必要时可批量读取，其余未读范围须说明。' if len(selected)>len(prepared_ids) else ''))
+        with _turn_execution_scope(session,slot,lease,turn_id,ticket,cancel), request_config(thinking=False, max_tokens=16384, temperature=0.2, reasoning_effort='low'):
+            yield session,session.generate_turn(analysis_question({**context,'preparedEvidence':True})+f'\n本轮已通过工具预读 {len(prepared_ids)} 条查询，证据引用见工具结果。优先直接交付，不重复取数。'+(f'另有 {len(selected)-len(prepared_ids)} 条查询未预读；未读范围必须说明，不得编造或额外读取。' if len(selected)>len(prepared_ids) else ''))
     finally:
         # Release ephemeral in-memory objects only. Never reset/delete chat history.
         with STATE.registry_lock:

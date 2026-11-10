@@ -1261,7 +1261,7 @@ def _build_page(
 </html>"""
 
 
-def render_canvas_html(params: dict) -> str:
+def render_canvas_html(params: dict, *, allow_external_assets: bool = True) -> str:
     """Render one Canvas page in memory without writing a file.
 
     Embedded hosts (Cockpit's "full evidence" view) need the same page style
@@ -1300,6 +1300,8 @@ def render_canvas_html(params: dict) -> str:
         try:
             echarts_script = f'<script>{ECHARTS_ASSET.read_text(encoding="utf-8")}</script>'
         except OSError:
+            if not allow_external_assets:
+                raise
             echarts_script = f'<script src="{ECHARTS_CDN}"></script>'
     return _build_page(params, body_blocks, charts, multis, echarts_script)
 

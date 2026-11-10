@@ -163,9 +163,8 @@ def test_real_main_api_uses_shared_admission_and_preserves_user_sessions(tmp_pat
         item=client.post('/api/cockpit/analyses',json=dict(engine='main',source='service',chartSnapshotId=RELEASE,chartQueries=[query])).json()
         assert 'id' in item,item
         done=wait(client,item['id'])
-    assert done['status']=='needs_input',done
-    assert done['result']['clarification']['question']=='请选择销售指标'
-    assert done['execution']['route']['mode']
+    assert done['status']=='failed',done
+    assert done['execution']['diagnostic']['errorCode']=='INTERACTION_DISABLED'
     assert web.STATE.sessions=={'existing-user':user_session}
     assert web.STATE.source_contexts=={}
     assert client.post('/api/cockpit/analyses',json=dict(engine='main',source='service',repositoryId='unbound')).status_code==422

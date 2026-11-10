@@ -46,3 +46,13 @@ Validation: full Cockpit/LLM regression run passed 631 Python tests plus 42 subt
 Offline end-to-end cases exercise one model call for direct validated delivery and two when one invalid delivery needs repair. These are deterministic mock-provider counts, not a live model latency guarantee. Deployment and tar replacement require separate authorization.
 
 Compatibility correction (2026-11-09): server pre-reads are model input observations, not synthetic assistant tool calls. They retain the existing secured execution, evidence IDs and progress events. Only actual model-requested tool exchanges enter assistant/tool history; actual DeepSeek reasoning needed for their replay stays internal even when hidden in the UI. See [DeepSeek compatibility](deepseek-empty-assistant-compatibility.md#server-preloaded-evidence-and-hidden-reasoning-2026-11-09). Card progress display, manual refresh scheduling and page query behavior remain unchanged.
+
+## Fixed-card generation quality (2026-11-10)
+
+Prepared Cockpit turns expose only structured card delivery, followed by a bounded JSON Patch repair tool after rejection. They have a hard two-request limit shared across runtime repairs, no AskUser and no generic essay/action repair loop. The original card is retained if validation still fails. Source and evidence-ID checks, unsupported-cause checks and cross-unit inference checks remain enforced. Explicit independent unit observations and prohibitions on comparison are not themselves unit-conversion claims. Output tokens are capped at 16384; low reasoning effort is task-local, and provider compliance with thinking settings is not guaranteed.
+
+Risk panels render each finding, up to four, in addition to the summary. Counts are never padded: causes need plausible evidence-linked mechanisms; unconfirmed mechanisms remain hypotheses and actions remain investigations. Same business issue across combined and node cards is deduplicated. Display ordering is a deterministic policy, not a quantitative severity score.
+
+Evidence HTML charts use saved query rows only, preserve query scope and units, disclose sampling and sources, and require unambiguous dimensions. There are no new model or AP calls. Missing local chart assets retain tables instead of loading a CDN.
+
+A truncated empty candidate retries full structured delivery on the second request; a populated candidate uses local patch repair. Both share the same two-request ceiling and full validation. The larger output ceiling accommodates gateway-retained DeepSeek reasoning; it is not a required output length.

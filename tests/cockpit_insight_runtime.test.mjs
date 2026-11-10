@@ -94,3 +94,11 @@ test('penetration combined card reads the same deduplicated risk counts as the h
   assert.match(combinedInsight, /原因与待核实项 · \{\{ displayCauses\.length \}\} 项/);
   assert.doesNotMatch(combinedInsight, /风险与待核实原因 · \{\{ displayCauses\.length \}\}/);
 });
+
+test('risk panels render individual findings instead of reducing them to summary', async () => {
+  const shared = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
+  assert.match(shared, /findings = computed\(\(\) => \(result.value\?\.findings \|\| \[\]\)\.slice\(0,4\)\)/);
+  assert.match(shared, /v-for="\(finding,index\) in findings"/);
+  assert.match(shared, /finding\.title/);
+  assert.match(shared, /finding\.description/);
+});

@@ -460,6 +460,13 @@ def _evidence_html(stage, item, release):
         lines.extend(['', '**口径与限制**'])
         lines.extend(f"- {value}" for value in limitations[:20])
     blocks = [{'kind': 'text', 'heading': '本次分析', 'markdown': '\n'.join(lines)}]
+    from .evidence_charts import chart_blocks
+    charts = chart_blocks(item)
+    for chart in charts:
+        blocks.append(chart)
+        blocks.append({'kind':'text','markdown':'口径与溯源：'+chart['params']['source_note']})
+    if not charts:
+        blocks.append({'kind':'text','markdown':'- 当前冻结证据不足以形成同一查询、同一指标的多点图表，保留以下事实与记录明细。'})
     if facts:
         blocks.append({'kind': 'table', 'heading': f'事实（{len(facts)} 项）',
                        'params': {'columns': [{'key': 'label', 'label': '事实'},
@@ -467,7 +474,7 @@ def _evidence_html(stage, item, release):
                                               {'key': 'definition', 'label': '口径'}],
                                   'rows': _fact_rows(facts)}})
     keys = _record_columns(records)
-    reserved = 1 + (1 if facts else 0)
+    reserved = len(blocks)
     max_chunks = max(0, EVIDENCE_MAX_BLOCKS - reserved)
     if records and keys and len(records) > max_chunks * EVIDENCE_ROW_CHUNK:
         max_chunks = max(0, max_chunks - 1)
@@ -489,17 +496,26 @@ def _evidence_html(stage, item, release):
         blocks.append({'kind': 'text',
                        'markdown': f'- 记录较多，本页展示前 {shown} 条；'
                                    '完整原始数据可用 `?format=json` 查看。'})
-    return _canvas_module().render_canvas_html({
+    params = {
         'title': f"完整证据 · {STAGE_LABELS.get(stage, stage)}",
         'subtitle': f"{release.get('period', '')} 年度分析 · {len(records)} 条记录",
         'source_note': f"分析 {item.get('id', '')} · 期间 {release.get('period', '')}",
         'blocks': blocks,
-    })
+    }
+    canvas = _canvas_module()
+    try:
+        return canvas.render_canvas_html(params, allow_external_assets=False)
+    except OSError:
+        # Evidence remains readable if a deployment omits the local chart asset.
+        params['blocks'] = [b for b in blocks if b['kind'] != 'chart']
+        params['blocks'].append({'kind':'text','markdown':'- 本地图表资源不可用，以下保留原始证据表格；未请求外部资源。'})
+        return canvas.render_canvas_html(params, allow_external_assets=False)
+
 
 
 def evidence_page_html(stage, item, release):
     """Render one evidence report per analysis; repeat opens reuse the page."""
-    key = (stage, str(item.get('id') or ''))
+    key = ('evidence-charts-v1', stage, str(item.get('id') or ''), item.get('updatedAt'))
     with _EVIDENCE_CACHE_LOCK:
         cached = _EVIDENCE_CACHE.get(key)
     if cached is not None:

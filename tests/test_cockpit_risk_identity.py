@@ -71,3 +71,14 @@ def test_delivery_accepts_distinct_issues_on_one_measure():
     value = dict(summary='风险事实',causes=[],recommendations=[],limitations=['测试限制'],findings=[a,b])
     evidence = dict(facts=[],records=[],evidence=[dict(id='e1')],limitations=[])
     assert len(validate_result(value,evidence,{'e1'},result_model=Cards)['findings']) == 2
+
+
+def test_trend_wording_deduplicates_and_priority_does_not_pad():
+    from bi_agent.cockpit.risk import risk_priority_key
+    a = finding('PACK 产品类型 8 月出货量骤降', ['CUSTOM_VOLUME'], 'shipment')
+    b = finding('PACK产品类型出货量8月骤降且未恢复', ['CUSTOM_VOLUME'], 'shipment')
+    counts = summarize_risk_counts({'node':slot('shipment',[a]),'combined':slot('combined',[b])})
+    assert counts['shipment']['count'] == 1
+    overdue = finding('逾期未完成订单', ['CUSTOM_ORDER'])
+    assert risk_priority_key(overdue) < risk_priority_key(a)
+    assert build_risk_findings({'findings':[]}, {}, {}, {'stage':'shipment'}) == []

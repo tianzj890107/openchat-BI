@@ -86,6 +86,7 @@ def test_real_main_delivers_existing_card_contract_then_publishes_without_second
     count=[]
     def provider(*args,**kwargs):
         count.append(1)
+        assert 'AskUser' not in kwargs['allowed_tools']
         if prepared_delivery and len(count)==1:
             from bi_agent.llm.provider_deepseek import _convert_messages
             projected=_convert_messages(args[0], 'strict thinking gateway', include_reasoning=True)
@@ -93,7 +94,14 @@ def test_real_main_delivers_existing_card_contract_then_publishes_without_second
             assert not any(message.get('role')=='tool' for message in projected)
             material='\n'.join(str(message.get('content','')) for message in projected)
             assert 'evidenceIds' in material and 'Cockpit-DashboardQuery-1-0' in material
-        if prepared_delivery:
+        if prepared_delivery and repair_first and len(count)==2:
+            from bi_agent.cockpit.cards import REPAIR_TOOL
+            assert kwargs['allowed_tools']==[REPAIR_TOOL]
+            feedback=json.loads(args[0][-1]['content'][0]['content'])
+            yield dict(type='tool_use_end',id='repair',name=REPAIR_TOOL,input={
+                'draftHash':feedback['draftHash'],
+                'patches':[{'op':'replace','path':'/causes/0/evidenceIds','value':['Cockpit-DashboardQuery-1-0']}]})
+        elif prepared_delivery:
             yield dict(type='tool_use_end',id='fast-cards-'+str(len(count)),name=TOOL,input=candidate(ref='unknown-evidence') if repair_first and len(count)==1 else candidate())
         elif len(count)==1:yield dict(type='tool_use_end',id='q1',name='Cockpit-DashboardQuery',input={'queryId':receipt['receiptId']+':0'})
         elif len(count)==2 and repair_first:yield dict(type='tool_use_end',id='invalid-cards',name=TOOL,input=candidate(ref='unknown-evidence'))
@@ -109,6 +117,10 @@ def test_real_main_delivers_existing_card_contract_then_publishes_without_second
             item=client.get('/api/cockpit/analyses/'+aid).json()
             if item['status'] not in {'queued','running'}:break
             time.sleep(.01)
+        if not prepared_delivery and repair_first:
+            assert item['status']=='failed' and len(count)==2
+            assert item['execution']['diagnostic']['errorCode'] in {'CARD_DELIVERY_NOT_ACCEPTED','MODEL_REQUEST_LIMIT'}
+            return
         assert item['status']=='limited',item
         assert item['result']['cardContract']==CONTRACT,item
         assert item['result']['summary']==candidate()['summary']
@@ -124,3 +136,36 @@ def test_real_main_delivers_existing_card_contract_then_publishes_without_second
         reopened=client.post('/api/cockpit/analyses/refresh',json=request).json()
         assert reopened['cached']['id']==aid and reopened['analysis'] is None
         assert len(count)==((2 if repair_first else 1) if prepared_delivery else (3 if repair_first else 2)) # Rejection repairs inside the same main tool loop.
+        if prepared_delivery and not repair_first:
+            failures=[]
+            def invalid_provider(*args, **kwargs):
+                failures.append(1)
+                yield dict(type='tool_use_end',id='bad-'+str(len(failures)),name=TOOL,input=candidate(ref='unknown-evidence'))
+                yield dict(type='message_end',stop_reason='tool_use',usage={})
+            with patch('bi_agent.web.session.stream_message',side_effect=invalid_provider):
+                failed=client.post('/api/cockpit/analyses/refresh',json={**request,'refresh':True}).json()['analysis']
+                for _ in range(100):
+                    failed=client.get('/api/cockpit/analyses/'+failed['id']).json()
+                    if failed['status'] not in {'queued','running'}:break
+                    time.sleep(.01)
+            assert failed['status']=='failed' and len(failures)==2
+            assert failed['execution']['diagnostic']['diagnosticId']
+            assert client.get('/api/cockpit/analyses/published?id=1&page=analysis').json()['items']['shipment']['id']==aid
+
+
+def test_four_independent_entries_survive_validation_and_primary_projection():
+    from copy import deepcopy
+    from bi_agent.cockpit.delivery import project_card
+    context=dict(stage='order',period='2026',department='全部产品部',snapshotId='ap-test')
+    session=SimpleNamespace(query_results=[QueryResult(data={'rows':[{'amount':42.5}]})],
+        claims=[dict(id='f1',statement='amount=42.5')],_tool_executors={})
+    install_delivery(session,context)
+    value=candidate(ref='f1')
+    titles=['审批等待','排程协同','记录同步','物料响应']
+    value['causes']=[{**deepcopy(value['causes'][0]),'id':f'c{i}','title':title,'kind':'hypothesis'} for i,title in enumerate(titles)]
+    value['recommendations']=[{**deepcopy(value['recommendations'][0]),'id':f'a{i}','causeIds':[f'c{i}'],'actionType':'investigation','evidenceIds':['f1']} for i in range(4)]
+    value['findings']=[dict(id=f'f{i}',kind='risk_fact',title=title,description='当前证据范围内的独立观察',metricCodes=[f'M{i}'],evidenceIds=['f1'],riskDomain='sales') for i,title in enumerate(['订单周期偏离','报价逾期未完成','订单取消记录','商机覆盖偏离'])]
+    assert json.loads(session._tool_executors[TOOL](value,''))['accepted']
+    result=session.cockpit_card_delivery[1]
+    projected=project_card(dict(id='test',context=context,status='limited',result=result,evidence=dict(evidence=[dict(id='f1')],facts=[],records=[])),'order-risk-summary')['result']
+    assert {key:len(projected[key]) for key in ('findings','causes','recommendations')}==dict(findings=4,causes=4,recommendations=4)

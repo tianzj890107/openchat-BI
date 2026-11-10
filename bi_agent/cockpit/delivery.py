@@ -207,6 +207,10 @@ def classify_cause(cause, records=None):
         return 'structure'
     if _has_any(title, _FACT):
         return 'fact'
+    if (cause or {}).get('kind')=='hypothesis' and status=='hypothesis' and (_has_any(text,_CAUSE) or _has_any(title,('排程','排产','需求节奏','节点停滞','同步','等待','审批','产能','物料','资源','响应','协同'))):
+        # A mechanism title already passed the factual/structure/gap checks.
+        # Dimension names in its verification scope do not change its kind.
+        return 'hypothesis'
     if _has_any(description, _DATA_GAP):
         return 'data_gap'
     if _has_any(description, _STRUCTURE):
@@ -408,6 +412,36 @@ def _missing_overdue_status(evidence):
         text, ('缺失', '无数据', '未返回', '失败', '未取得'))
 
 
+def reasoning_repair_locations(value, evidence=None):
+    """Locate rejected unit comparisons without changing acceptance rules."""
+    claims=[(['summary'],_text((value or {}).get('summary')))]
+    claims += [(['findings',i],_text(f.get('title'))+'；'+_text(f.get('description')))
+               for i,f in enumerate((value or {}).get('findings') or []) if isinstance(f,dict)]
+    claims += [(['causes',i],_text(c.get('title'))+'；'+_text(c.get('description')))
+               for i,c in enumerate((value or {}).get('causes') or []) if isinstance(c,dict)]
+    claims += [(['recommendations',i],_text(a.get('action'))+'；'+_text(a.get('detail')))
+               for i,a in enumerate((value or {}).get('recommendations') or []) if isinstance(a,dict)]
+    issues=[dict(loc=loc,message='此句混用金额与电量；拆成独立观察，或删除比较推断，不要新增数字。',rejectedText=sentence)
+            for loc,text in claims for sentence in _sentences(text) if _bad_unit_claim(sentence)]
+    for loc,text in claims:
+        for sentence in _sentences(text):
+            if _bad_change_loss_claim(sentence,evidence):
+                issues.append(dict(loc=loc,rejectedText=sentence,message='取消/变更金额不能写成损失；删去损失判断，保留状态金额事实与待核查范围。'))
+            if _bad_set_claim(sentence,evidence) or _bad_attrition_claim(sentence,evidence):
+                issues.append(dict(loc=loc,rejectedText=sentence,message='集合重叠和期间未核实，不能合计或排除缺口；删除该集合推断，分别保留原始观察。'))
+    for i,cause in enumerate((value or {}).get('causes') or []):
+        if not isinstance(cause,dict):continue
+        kind=classify_cause(cause,_record_ids(evidence))
+        text=_text(cause.get('title'))+'；'+_text(cause.get('description'))
+        if kind in {'fact','structure','data_gap'} and _has_any(text,_CAUSE):
+            issues.append(dict(loc=['causes',i],rejectedText=text,message='此对象是异常/结构/缺数，不能冒充原因。仅在确有机制线索时将标题与描述改成待验证机制，否则删除此原因并同步修改建议causeIds；保留直接引用证据的核查建议。'))
+    for i,action in enumerate((value or {}).get('recommendations') or []):
+        if isinstance(action,dict) and not checkable_acceptance(action.get('acceptance')):
+            issues.append(dict(loc=['recommendations',i,'acceptance'],rejectedText=action.get('acceptance',''),
+                message='验收改为可检查的清单、对账记录或确认记录；不要承诺经营结果。'))
+    return issues
+
+
 def validate_reasoning(value, evidence, *, stage='', slot=''):
     """Raise ``ValueError`` when the delivered prose outruns its evidence."""
     issues = []
@@ -425,6 +459,7 @@ def validate_reasoning(value, evidence, *, stage='', slot=''):
     #    changed/cancelled value is not automatically a realised loss.
     claims = [summary]
     claims += [_text(c.get('title')) + '；' + _text(c.get('description')) for c in causes]
+    claims += [_text(f.get('title'))+'；'+_text(f.get('description')) for f in (value or {}).get('findings') or [] if isinstance(f,dict)]
     claims += [_text(a.get('action')) + '；' + _text(a.get('detail')) for a in actions]
     for claim in claims:
         for sentence in _sentences(claim):
@@ -491,19 +526,38 @@ SET_REPLACEMENT = '当前汇总规模尚不能建立与出货缺口的对应关�
 UNIT_REPLACEMENT = '金额与电量口径不同，缺少单价、产品结构或交期映射，不能相互解释，需按统一口径补充映射后再判断'
 
 
+def _without_comparison_prohibitions(sentence):
+    # Remove only explicit prohibitions, not assertions such as "金额不足以解释电量".
+    return re.sub(r'(?:不与|不将|不把|不做|不作|不进行|不得|不能|不可|不应|禁止|避免|未(?=相加|合计|比较|换算|合并)|未进行)[^，,。；;]{0,80}(?:比较|换算|相加|合计|合并)[^，,。；;]*', '', _text(sentence))
+
+
 def _bad_set_claim(sentence, evidence):
+    sentence = _without_comparison_prohibitions(sentence)
     sets = _has_any(sentence, ('取消', '变更')) and _has_any(sentence, ('中标未签', '未签'))
-    claimed = _has_any(sentence, ('相加', '合计', '之和', '叠加', '不足以解释', '难以解释', '不能解释', '不足'))
+    claimed = _has_any(sentence, ('相加', '合计', '之和', '叠加', '不足以解释', '难以解释', '不能解释', '不足以', '规模不足'))
     return sets and claimed and not (evidence or {}).get('setOverlapVerified')
 
 
 def _bad_unit_claim(sentence):
-    text = _text(sentence)
+    text = _without_comparison_prohibitions(sentence)
+    text = re.sub(r'待验证(?:假设)?|待核实(?:假设)?', '', text)
+    if re.search(r'(?:说明|核对|核查|确认|明确)[^，,。；;]{0,20}(?:金额与电量|金额和电量|电量与金额)[^，,。；;]{0,12}(?:计量口径|各自口径|单位定义)', text) and not _has_any(text,_CAUSAL):
+        return False
+    if _has_any(text,_DATA_GAP) and _has_any(text,('尚不能量化','无法量化','尚不能对账','尚不能汇总对账','尚不能判断','暂不能判断')) and not _has_any(text,('证明','解释','相加','换算','意味着')):
+        return False
     if _has_any_ci(text, ('口径不同', '不同口径', '不能相互解释', '不能直接比较',
                           '需按统一口径', '需要映射', 'not comparable')):
         return False
-    return (_has_any_ci(text, _MONEY_TERMS) and _has_any_ci(text, _ENERGY_TERMS)
-            and _has_any_ci(text, _CROSS_UNIT))
+    clauses = [part for part in re.split(r'[，,]', text) if part.strip()]
+    if len(clauses)>1 and not _has_any_ci(text,('解释','证明','意味着','换算','相加','比较','补足','弥补','explain','prove')) and all(_has_any_ci(part,_MONEY_TERMS) or _has_any_ci(part,_ENERGY_TERMS) for part in clauses):
+        return any(_bad_unit_claim(part) for part in clauses)
+    bridge = ('换算','相加','比较','解释','证明','意味着','补足','弥补','覆盖',
+              'prove','explain','derive','imply','correspond','equal')
+    inferred = _has_any_ci(text,bridge)
+    for prefix, suffix in (text.split('说明',1),) if '说明' in text else ():
+        inferred = inferred or ((_has_any_ci(prefix,_MONEY_TERMS) and _has_any_ci(suffix,_ENERGY_TERMS))
+                               or (_has_any_ci(prefix,_ENERGY_TERMS) and _has_any_ci(suffix,_MONEY_TERMS)))
+    return (_has_any_ci(text, _MONEY_TERMS) and _has_any_ci(text, _ENERGY_TERMS) and inferred)
 
 
 def _change_loss_verified(evidence):
@@ -525,8 +579,9 @@ def _bad_change_loss_claim(sentence, evidence):
 
 
 def _bad_attrition_claim(sentence, evidence):
+    sentence = _without_comparison_prohibitions(sentence)
     claim = _has_any_ci(sentence, ('量级有限', '规模有限', '占比不足', '不足以解释',
-                                   '难以解释', '不能解释', '不足以', '难以', '不能',
+                                   '难以解释', '不能解释', '不足以',
                                    'insufficient to explain', 'cannot explain',
                                    'does not explain', "doesn't explain"))
     return (not (evidence or {}).get('setOverlapVerified')
@@ -761,11 +816,23 @@ def project_card(item, slot):
             # data-gap investigation may deliberately have no cause and cite
             # evidence directly.
             if linked and not set(linked) <= set(cause_map):
-                continue
+                original_ids={str(c.get('id')) for c in result.get('causes') or [] if isinstance(c,dict)}
+                # result.causes is already projected; use the original stage causes.
+                original_ids |= {str(c.get('id')) for c in (item.get('result') or {}).get('causes') or [] if isinstance(c,dict)}
+                ids=set(_strings(action.get('evidenceIds')))
+                independent=(action.get('actionType')==ACTION_INVESTIGATION and ids
+                    and ids<=available_evidence and set(linked)<=original_ids
+                    and not spec.get('table_slot') and not suppress_gap
+                    and all(not _unsupported_inference(_text(c.get('title'))+'；'+_text(c.get('description')),evidence)
+                            for c in (item.get('result') or {}).get('causes') or [] if str(c.get('id')) in linked))
+                if not independent:
+                    continue
+                linked=[cid for cid in linked if cid in cause_map]
             evidence_ids = set(_strings(action.get('evidenceIds')))
             if available_evidence and evidence_ids - available_evidence:
                 continue
             value = dict(action)
+            value['causeIds']=linked
             action_type = value.get('actionType') or infer_action_type(value)
             reasons = []
             if action_type == ACTION_REMEDIATION:

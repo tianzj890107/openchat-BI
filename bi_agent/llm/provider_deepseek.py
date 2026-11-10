@@ -232,6 +232,11 @@ def stream(
         "thinking": {"type": "enabled" if thinking else "disabled"},
     }
 
+    from .runtime_config import scoped_reasoning_effort
+    effort = scoped_reasoning_effort()
+    if effort and True:
+        request_kwargs['reasoning_effort'] = effort
+
     try:
         completion_stream = client.chat.completions.create(**request_kwargs)
     except Exception as e:

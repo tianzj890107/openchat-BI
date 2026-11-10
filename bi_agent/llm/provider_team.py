@@ -158,6 +158,11 @@ def stream(
     if thinking_body:
         request_kwargs["extra_body"] = thinking_body
 
+    from .runtime_config import scoped_reasoning_effort
+    effort = scoped_reasoning_effort()
+    if effort and _model_family(model_id) == 'deepseek':
+        request_kwargs['reasoning_effort'] = effort
+
     try:
         completion_stream = client.chat.completions.create(**request_kwargs)
     except Exception as e:

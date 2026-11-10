@@ -219,7 +219,8 @@ def test_real_main_api_uses_same_result_and_leaves_existing_sources_untouched(tm
         if len(calls)==1:
             yield dict(type='tool_use_end',id='read',name='Cockpit-DashboardQuery',input={'queryId':receipt['receiptId']+':0'})
         else:
-            yield dict(type='tool_use_end',id='ask',name='AskUser',input={'question':'请确认订单口径','options':['按页面字段','补充明细']})
+            from tests.test_cockpit_card_delivery import candidate
+            yield dict(type='tool_use_end',id='deliver',name='CockpitDeliverCards',input=candidate())
         yield dict(type='message_end',stop_reason='tool_use',usage={})
     from tests.test_cockpit_main_service import wait
     with patch('bi_agent.web.session.stream_message',side_effect=provider), patch.object(web,'_source_for_session',side_effect=AssertionError('must not touch original source')):
@@ -227,7 +228,7 @@ def test_real_main_api_uses_same_result_and_leaves_existing_sources_untouched(tm
             chartQueries=[json.dumps(QUERY)],apReceiptIds=[receipt['receiptId']])).json()
         assert 'id' in task,task
         done=wait(client,task['id'])
-    assert done['status']=='needs_input',done
+    assert done['status']=='limited',done
     assert done['evidence']['facts'] and done['evidence']['facts'][0]['value']==42.5
     assert done['evidence']['records'][0]['data']=={'订单超期未发金额[M0001]':42.5}
     assert '页面本次实时AP响应' in done['result']['limitations'][0]
