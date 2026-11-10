@@ -19,8 +19,17 @@ test('sales and shipment card renders only the prototype summary and numbered bu
   assert.doesNotMatch(source, /数据范围与限制/);
   assert.doesNotMatch(source, /查看完整证据/);
   assert.match(source, /销售额／出货量共同问题分析：/);
-  assert.match(source, /\{\{ summary \}\}/);
+  assert.match(source, /<number-text :text="summary" \/>/);
   assert.match(source, /【\{\{ dimension\.stageLabel \}\}】/);
+});
+
+test('combined analysis highlights every number with the prototype blue token', () => {
+  assert.match(source, /const NUMBER_TOKEN = \/\\d\[\\d,\]\*\(\?:\\\.\\d\+\)\?\(\?:\\\/\\d\+\)\?/);
+  assert.match(source, /亿元\|个百分点\|GWh\|个\|%\|天/);
+  assert.match(source, /function highlightNumbers/);
+  assert.match(source, /<number-text v-if="dimension\.title !== dimension\.stageLabel" :text="dimension\.title" \/>/);
+  assert.match(source, /<number-text :text="dimension\.description" \/>/);
+  assert.match(source, /<span class="sales-shipment-issues__num">\{\{ index\+1 \}\}<\/span>）/);
 });
 
 test('combined analysis uses the prototype typography and divider', async () => {
