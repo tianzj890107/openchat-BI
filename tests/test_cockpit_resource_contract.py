@@ -232,7 +232,8 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
     for marker in ('stage-risk-analysis__card--risk','stage-risk-analysis__tag--cause',
                    'stage-risk-analysis__time','stage-risk-analysis__num'):
         assert marker in shared
-    assert 'stage-risk-analysis__owner' not in shared
+    assert 'stage-risk-analysis__owner' in shared
+    assert 'displayOwnerRole' in shared
     stage_risk={'opportunity-risk':'商机获取','order-risk-summary':'订单接收','shipment-risk-summary':'发货'}
     tables={'star-product-order-list','affected-order-list','overdue-order-list'}
     for name in ('bid-status-note','quote-summary','bid-summary','order-sign-summary',

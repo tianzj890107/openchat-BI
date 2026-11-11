@@ -24,7 +24,19 @@ class DatabaseUnavailable(RuntimeError):
 
 
 class DatabaseQueryError(RuntimeError):
-    """A controlled statement failed; the message is safe to return."""
+    """A controlled statement failed; the message is safe to return.
+
+    Driver details are kept only on ``original_message`` for the backend
+    diagnostic store.  HTTP/MCP callers continue to see the safe message.
+    """
+
+    def __init__(self, message: str, *, original_message: str = "", sqlstate: str = "",
+                 duration_ms: int = 0):
+        super().__init__(message)
+        self.original_message = original_message
+        self.sqlstate = str(sqlstate or "")
+        self.upstream_code = self.sqlstate
+        self.query_duration_ms = int(duration_ms or 0)
 
 
 @dataclass(frozen=True)
@@ -200,6 +212,61 @@ class PostgresDatabase:
             finally:
                 connection.close()
 
+    @contextmanager
+    def snapshot_group(self, workers: int = 3):
+        """Yield read-only readers that share one exported PostgreSQL snapshot.
+
+        PostgreSQL does not allow concurrent statements on one connection.
+        The primary connection exports a snapshot after beginning a repeatable
+        read-only transaction; additional connections import that exact
+        snapshot.  Callers can therefore parallelise independent queries
+        without mixing observation times.
+        """
+        count = max(1, min(int(workers or 1), 6))
+        if count == 1:
+            with self.snapshot() as reader:
+                yield [reader]
+            return
+        connections = []
+        try:
+            primary = self._connect()
+            connections.append(primary)
+            # Use an explicit transaction so the exported snapshot stays open
+            # while several connections execute independent read-only queries.
+            primary.autocommit = True
+            with primary.cursor() as cursor:
+                cursor.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                cursor.execute("SELECT pg_export_snapshot()")
+                row = cursor.fetchone()
+            snapshot_id = next(iter(row.values())) if isinstance(row, dict) else row[0]
+            readers = [_SnapshotReader(self, primary)]
+            for _ in range(count - 1):
+                connection = self._connect()
+                connections.append(connection)
+                connection.autocommit = True
+                with connection.cursor() as cursor:
+                    from psycopg import sql as pgsql  # type: ignore[import-not-found]
+
+                    cursor.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                    # SET TRANSACTION SNAPSHOT is a utility statement and
+                    # cannot use a bind parameter.  Literal quoting keeps the
+                    # server-generated snapshot id safe.
+                    cursor.execute(
+                        pgsql.SQL("SET TRANSACTION SNAPSHOT {}").format(pgsql.Literal(snapshot_id))
+                    )
+                readers.append(_SnapshotReader(self, connection))
+            yield readers
+        finally:
+            for connection in reversed(connections):
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
     def run(
         self,
         sql: str,
@@ -219,6 +286,13 @@ class _SnapshotReader:
         self.connection = connection
         self.config = database.config
         self._savepoint_seq = 0
+
+    def cancel(self) -> None:
+        """Cancel a running server-side statement without exposing details."""
+        try:
+            self.connection.cancel()
+        except Exception:
+            pass
 
     def run(
         self,
@@ -255,8 +329,15 @@ class _SnapshotReader:
                     cursor.execute(f'RELEASE SAVEPOINT "{savepoint}"')
                     raise
         except Exception as exc:
-            # Driver messages can contain data values. Only return the exception type.
-            raise DatabaseQueryError(f"只读查询失败：{type(exc).__name__}") from exc
+            duration = int((time.monotonic() - started) * 1000)
+            sqlstate = str(getattr(exc, "sqlstate", "") or getattr(exc, "pgcode", "") or "")
+            # Keep the driver detail only for the redacted backend diagnostic;
+            # the safe public message never contains data values.
+            detail = f"{type(exc).__name__}: {exc}"
+            raise DatabaseQueryError(
+                f"只读查询失败：{type(exc).__name__}" + (f" [{sqlstate}]" if sqlstate else ""),
+                original_message=detail, sqlstate=sqlstate, duration_ms=duration,
+            ) from exc
         duration = int((time.monotonic() - started) * 1000)
         return QueryResult(columns, [_json_safe(dict(row)) for row in rows], duration, truncated)
 

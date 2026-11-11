@@ -31,6 +31,26 @@ def _data(**updates):
     return value
 
 
+def _complete_risk_assessments(value):
+    items = []
+    for candidate in value['riskCandidates']:
+        if candidate['ruleStatus'] == 'triggered':
+            items.append(dict(
+                code=candidate['code'], include=True, classification='confirmed',
+                description='规则证据支持该风险成立，需结合业务核查。',
+                evidenceIds=[candidate['evidenceIds'][0]],
+            ))
+        else:
+            items.append(dict(
+                code=candidate['code'], include=False,
+                classification=('insufficient' if candidate['ruleStatus'] in {'indeterminate', 'insufficient'}
+                                else 'not_applicable'),
+                description='现有证据不足以确认该风险成立。',
+                evidenceIds=[candidate['evidenceIds'][0]] if candidate['evidenceIds'] else [],
+            ))
+    return items
+
+
 def test_v2_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
     assert config_version() == 'opportunity-v2-rules-1'
@@ -231,22 +251,30 @@ def test_model_generated_text_is_validated_against_evidence_numbers_and_links():
     cause = next(item for item in value['causeCandidates'] if item['code'] == 'RC02')
     advice = next(item for item in value['adviceCandidates'] if item['code'] == 'DS02')
     progress_id = value['textSamples'][0]['evidenceId']
+    risks = _complete_risk_assessments(value)
+    for item in risks:
+        if item['code'] == risk['code']:
+            item.update(description='规则证据显示该风险需要优先核查。',
+                        evidenceIds=[risk['evidenceIds'][0]])
     generated = apply_text_interpretation(value, lambda payload: {
-        'summary': '模型结合规则结果与项目进展生成商机风险分析。',
-        'risks': [dict(code=risk['code'], include=True, classification='confirmed',
-                       description='规则证据显示该风险需要优先核查。',
-                       evidenceIds=[risk['evidenceIds'][0]])],
+        'summary': '商机合同签订进度落后于年度时间进度，四季度需要重点推进合同转化。',
+        'risks': risks,
         'causes': [dict(code=cause['code'], description='项目进展显示客户要求补充资质文件，需人工复核。',
                         riskCodes=['RK08'], evidenceIds=[progress_id])],
         'advice': [dict(code=advice['code'], action='推动客户补齐资质文件后进入投标',
                         riskCodes=['RK08'], causeCodes=['RC02'], evidenceIds=[progress_id])],
     })
     assert generated['status'] == 'completed'
+    assert generated['analysisMode'] == 'model'
     assert generated['summaryApplied'] is True
-    assert generated['appliedRisks'] == [risk['code']]
+    assert generated['analysedRiskCount'] == len(value['riskCandidates'])
+    assert generated['coverageComplete'] is True
+    assert value['result']['riskTotalCount'] == len(value['result']['riskCodes'])
+    assert risk['code'] in generated['appliedRisks']
+    assert len(generated['appliedRisks']) == len(value['riskCandidates'])
     assert generated['appliedCauses'] == ['RC02']
     assert generated['appliedAdvice'] == ['DS02']
-    assert value['result']['summary'].startswith('模型结合规则')
+    assert value['result']['summary'].startswith('商机合同签订进度')
     assert next(item for item in value['risks'] if item['code'] == risk['code'])['description'] == '规则证据显示该风险需要优先核查。'
     assert next(item for item in value['result']['causes'] if item['causeCode'] == 'RC02')['description'].startswith('项目进展显示')
     assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'DS02')['action'] == '推动客户补齐资质文件后进入投标'
@@ -262,7 +290,7 @@ def test_model_generated_text_is_validated_against_evidence_numbers_and_links():
         'advice': [dict(code='DS99', action='模型自造建议', riskCodes=['RK08'],
                         causeCodes=[], evidenceIds=[progress_id])],
     })
-    assert bad['status'] == 'completed'
+    assert bad['status'] == 'fallback'
     assert bad['summaryApplied'] is False
     assert 'RK99' in bad['rejectedRisks']
     assert 'RC02' in bad['rejectedCauses']
@@ -277,6 +305,7 @@ def test_model_generated_text_is_validated_against_evidence_numbers_and_links():
     })
     assert uncited['appliedCauses'] == []
     assert uncited['rejectedCauses'] == ['RC02']
+    assert uncited['status'] == 'fallback'
 
     failed_value = evaluate(data)
     before = failed_value['result']['summary']
@@ -295,18 +324,20 @@ def test_all_ontology_candidates_are_sent_to_the_model_and_assessed():
     calls = []
     completed = apply_text_interpretation(value, lambda payload: calls.append(payload) or {})
 
-    assert completed['status'] == 'completed'
+    assert completed['status'] == 'fallback'
+    assert completed['analysedRiskCount'] == 0
+    assert set(completed['missingRiskCodes']) == set(load_config()['risks'])
     assert len(calls) == 1
     candidates = calls[0]['ruleOutcomes']
     assert len(candidates) == 10
     assert {item['code'] for item in candidates} == set(load_config()['risks'])
     assert {item['ruleStatus'] for item in candidates} >= {'triggered', 'not_triggered'}
-    assert any(item['ruleStatus'] == 'indeterminate' for item in candidates)
+    assert any(item['ruleStatus'] == 'insufficient' for item in candidates)
 
     assessments = {item['code']: item for item in completed['riskAssessments']}
     assert set(assessments) == set(load_config()['risks'])
     assert value['result']['riskCandidateCount'] == 10
-    assert value['result']['analysedRiskCount'] == 10
+    assert value['result']['analysedRiskCount'] == 0
     assert assessments['RK04']['include'] is False
     assert assessments['RK04']['classification'] == 'not_applicable'
     assert assessments['RK05']['classification'] == 'insufficient'
@@ -328,10 +359,50 @@ def test_model_cannot_confirm_a_rule_the_program_did_not_trigger():
     })
 
     assert 'RK04' in completed['rejectedRisks']
+    assert completed['status'] == 'fallback'
     assessment = next(item for item in completed['riskAssessments'] if item['code'] == 'RK04')
     assert assessment['include'] is False
     assert assessment['classification'] == 'not_applicable'
     assert 'RK04' not in value['result']['riskCodes']
+
+
+def test_model_missing_a_candidate_is_partial_and_reports_exact_coverage():
+    value = evaluate(_data(
+        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+    ))
+    risks = _complete_risk_assessments(value)
+    omitted = risks.pop()['code']
+    completed = apply_text_interpretation(value, lambda payload: {
+        'summary': '模型完成部分本体候选风险判断。',
+        'risks': risks,
+    })
+
+    assert completed['status'] == 'partial'
+    assert completed['coverageComplete'] is False
+    assert completed['analysedRiskCount'] == len(value['riskCandidates']) - 1
+    assert completed['missingRiskCodes'] == [omitted]
+    assert value['result']['analysedRiskCount'] == len(value['riskCandidates']) - 1
+    assert value['result']['riskTotalCount'] == len(value['result']['riskCodes'])
+    fallback = next(item for item in completed['riskAssessments'] if item['code'] == omitted)
+    assert fallback['assessmentSource'] == 'rule_fallback'
+
+
+def test_rejected_summary_marks_partial_instead_of_completed():
+    value = evaluate(_data(
+        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+    ))
+    completed = apply_text_interpretation(value, lambda payload: {
+        'summary': '模型新增 999 家客户风险。',
+        'risks': _complete_risk_assessments(value),
+    })
+
+    assert completed['status'] == 'partial'
+    assert completed['summaryApplied'] is False
+    assert completed['summaryFallbackUsed'] is True
+    assert completed['coverageComplete'] is True
+    assert '999' not in value['result']['summary']
 
 
 def test_model_can_downgrade_a_triggered_rule_and_records_opposing_evidence():
@@ -354,6 +425,10 @@ def test_model_can_downgrade_a_triggered_rule_and_records_opposing_evidence():
     assert assessment['supportingEvidenceIds'] == [support]
     assert assessment['opposingEvidenceIds'] == [opposing]
     assert 'RK01' in completed['modelExcludedRisks']
+    assert completed['status'] == 'partial'
+    assert completed['analysedRiskCount'] == 1
+    assert value['result']['riskTotalCount'] == len(value['result']['riskCodes'])
+    assert value['result']['ruleTriggeredRiskCount'] > value['result']['riskTotalCount']
     assert 'RK01' in value['result']['modelExcludedRiskCodes']
     assert 'RK01' not in value['result']['riskCodes']
 
@@ -375,13 +450,13 @@ def test_model_cannot_cite_support_or_opposing_evidence_outside_the_payload():
     assert assessment['opposingEvidenceIds'] == []
 
 
-def test_missing_target_facts_make_rk01_indeterminate_and_block_confirmation():
+def test_missing_target_facts_make_rk01_insufficient_and_block_confirmation():
     value = evaluate(_data(
         targets=dict(amount=None, energy=None, byProduct={}, byAccount={}),
         opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
     ))
     candidate = next(item for item in value['riskCandidates'] if item['code'] == 'RK01')
-    assert candidate['ruleStatus'] in {'indeterminate', 'not_triggered'}
+    assert candidate['ruleStatus'] in {'insufficient', 'not_triggered'}
     completed = apply_text_interpretation(value, lambda payload: {
         'risks': [dict(code='RK01', include=True, classification='confirmed',
                        description='模型在目标缺失时确认覆盖不足。',
@@ -401,8 +476,9 @@ def test_model_runs_without_text_samples_and_generates_nonempty_analysis():
     calls = []
     completed = apply_text_interpretation(value, lambda payload: calls.append(payload) or {})
     assert len(calls) == 1 and calls[0]['progressSamples'] == []
-    assert completed['status'] == 'completed' and completed['modelCalls'] == 1
+    assert completed['status'] == 'fallback' and completed['modelCalls'] == 1
     assert completed['appliedCauses'] == []
+    assert completed['analysedRiskCount'] == 0
 
     value = evaluate(_data(
         opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
@@ -412,7 +488,7 @@ def test_model_runs_without_text_samples_and_generates_nonempty_analysis():
     risk = value['risks'][0]
     progress_id = value['textSamples'][0]['evidenceId']
     filled = apply_text_interpretation(value, lambda payload: {
-        'summary': '模型结合商机规则和项目进展完成本轮分析。',
+        'summary': '商机风险需要结合项目进展优先核查，重点推进合同转化。',
         'risks': [dict(code=risk['code'], include=True, classification='confirmed',
                        description='规则证据显示该风险需要优先核查。', evidenceIds=[risk['evidenceIds'][0]])],
         'causes': [dict(code='RC02', description='项目进展显示客户要求补充资质文件，需人工复核。',
@@ -421,7 +497,8 @@ def test_model_runs_without_text_samples_and_generates_nonempty_analysis():
                         riskCodes=['RK08'], causeCodes=['RC02'], evidenceIds=[progress_id])],
     })
     assert filled['appliedCauses'] == ['RC02'] and filled['appliedAdvice'] == ['DS02']
-    assert value['result']['summary'].startswith('模型结合')
+    assert filled['status'] == 'partial'
+    assert value['result']['summary'].startswith('商机风险需要')
     assert next(item for item in value['result']['causes'] if item['causeCode'] == 'RC02')['description'].startswith('项目进展显示')
     assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'DS02')['action'] == '推动客户补齐资质文件后进入投标'
 
@@ -771,3 +848,158 @@ def test_truncated_detail_without_aggregate_never_uses_partial_sums():
     assert value['metrics']['B02']['energy'] is None
     assert 'RK01' not in {risk['code'] for risk in value['risks']}
     assert any('截断明细不参与' in item for item in value['result']['limitations'])
+
+
+def test_model_failure_does_not_replace_the_published_card():
+    from bi_agent.cockpit.opportunity_v2 import OpportunityV2ModelUnavailable
+
+    class Result:
+        truncated = False
+        rows = []
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        def run(self, sql, params, timeout_ms=0):
+            return Result()
+
+    def broken(_payload):
+        raise RuntimeError('model connection failed')
+
+    def capture(entry):
+        captured.append(entry)
+        return dict(diagnosticId='diag-model')
+
+    captured = []
+    try:
+        build_card('2026', database=Database(), measurement_date='2026-11-11',
+                   text_interpreter=broken, diagnostic_reporter=capture)
+    except OpportunityV2ModelUnavailable as exc:
+        assert exc.phase == 'model'
+        assert exc.code == 'MODEL_ANALYSIS_INCOMPLETE'
+        assert exc.model_status == 'failed'
+    else:
+        raise AssertionError('model failure must not publish template output')
+    assert captured and captured[0]['phase'] == 'model'
+
+
+def test_unjudged_risk_retains_previous_published_time_and_source():
+    from bi_agent.cockpit.opportunity_v2 import _merge_previous_card
+
+    value = evaluate(_data())
+    for assessment in value['riskAssessments']:
+        if assessment['code'] == 'RK07':
+            assessment['assessmentSource'] = 'rule_fallback'
+    previous = dict(
+        updatedAt=1234.5,
+        result=dict(
+            findings=[dict(id='opp-v2:risk:RK07', kind='risk_fact', riskCode='RK07',
+                           title='战略客户待突破', description='上一版已确认',
+                           evidenceIds=['opp-v2:metric:R09', 'opp-v2:record:previous-1'])],
+            causes=[dict(id='cause-rk07', title='客户跟进', description='上一版原因',
+                         riskCodes=['RK07'], findingIds=['opp-v2:risk:RK07'],
+                         evidenceIds=['opp-v2:metric:R09'])],
+            recommendations=[dict(id='advice-rk07', action='核查客户', riskCodes=['RK07'],
+                                  evidenceIds=['opp-v2:metric:R09'])],
+        ),
+        risks=[dict(code='RK07', id='opp-v2:risk:RK07', title='战略客户待突破',
+                    description='上一版已确认',
+                    evidenceIds=['opp-v2:metric:R09', 'opp-v2:record:previous-1'])],
+        evidence=dict(facts=[dict(id='opp-v2:metric:R09', label='无商机数', value=1),
+                             dict(id='opp-v2:record:previous-1', label='上期明细', value=2)],
+                      records=[], evidence=[]),
+    )
+    retention = _merge_previous_card(value, previous)
+    assert retention and retention[0]['riskCode'] == 'RK07'
+    carried = next(item for item in value['risks'] if item['code'] == 'RK07')
+    assert carried['retained'] is True
+    assert carried['retainedFrom'] == 1234.5
+    assert value['result']['retainedRiskCodes'] == ['RK07']
+    fact_ids = [item['id'] for item in value['evidence']['facts']]
+    assert fact_ids.count('opp-v2:metric:R09') == 1
+    assert fact_ids.count('opp-v2:record:previous-1') == 1
+
+
+def test_evidence_counts_distinguish_facts_records_and_references():
+    from bi_agent.cockpit.delivery import evidence_count
+
+    value = evaluate(_data(
+        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+    ))
+    counts = value['evidence']['counts']
+    assert counts['facts'] >= 1
+    assert counts['records'] >= 0
+    assert counts['distinct'] == evidence_count(value['evidence'])
+    assert counts['distinct'] <= counts['facts'] + counts['records'] + counts['referenced']
+
+
+def test_collect_uses_three_snapshot_readers_and_reports_query_progress():
+    import threading
+    import time
+    from contextlib import contextmanager
+
+    class Result:
+        truncated = False
+        rows = []
+
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+
+    class Reader:
+        def run(self, sql, params, timeout_ms=0):
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            try:
+                time.sleep(0.01)
+                return Result()
+            finally:
+                with lock:
+                    active -= 1
+
+        def cancel(self):
+            pass
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        @contextmanager
+        def snapshot_group(self, workers=3):
+            assert workers == 3
+            yield [Reader() for _ in range(3)]
+
+        def run(self, sql, params, timeout_ms=0):
+            raise AssertionError('parallel path must use snapshot_group readers')
+
+    events = []
+    data = collect('2026', database=Database(), config=load_config(),
+                   measurement_date='2026-11-11',
+                   progress=lambda phase, **detail: events.append((phase, detail)))
+    assert max_active >= 2
+    fetch = [detail for phase, detail in events if phase == 'fetching']
+    assert fetch and fetch[-1]['completed'] == fetch[-1]['total'] == 9
+    assert all('query' in detail and 'queryDurationSeconds' in detail for detail in fetch)
+    assert data['queryStatus']['商机预测'] == 'ok'
+
+
+def test_model_summary_rejects_rule_language_and_falls_back_to_business_facts():
+    value = evaluate(_data(
+        targets=dict(amount=319.0, energy=91.0, byProduct={}, byAccount={}),
+        opportunities=[_opportunity(id='o1', forecastAmount=60.0, forecastEnergy=30.0)],
+        allOpportunities=[_opportunity(id='o1', forecastAmount=60.0, forecastEnergy=30.0)],
+    ))
+    assessments = _complete_risk_assessments(value)
+    apply_text_interpretation(value, lambda _payload: {
+        'summary': '规则核验 10 项风险：RK01-RK04 触发，阈值和口径见证据。',
+        'risks': assessments,
+    })
+    summary = value['result']['summary']
+    assert '规则核验' not in summary
+    assert 'RK01' not in summary
+    assert summary == value['result']['businessSummary']
+    assert value['result']['modelAssessment']['summaryFallbackUsed'] is True

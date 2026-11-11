@@ -20,7 +20,8 @@ cannot replace the coverage-note card.
 from __future__ import annotations
 
 from collections import defaultdict
-from contextlib import nullcontext
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import date, datetime, time as datetime_time, timezone
 import hashlib
@@ -28,6 +29,7 @@ import json
 import math
 import os
 from pathlib import Path
+import queue
 import re
 import time
 import uuid
@@ -47,6 +49,7 @@ _STAGE_NAMES = {"11": "P0 商机获取", "12": "P1 技术交流", "13": "P2 方�
                 "14": "P3 合同签订", "15": "P4 批量交付"}
 _AP_SUPPLEMENT_CODES = {
     "B01.amount": "YWLN_M0002",
+    "B01.energy": "YWLN_M0007",
     "B02.amount": "YWLN_M0023",
     "B02.energy": "YWLN_M0022",
 }
@@ -71,6 +74,27 @@ _CONFIG_CACHE: dict[str, tuple[int, dict]] = {}
 
 class OpportunityV2Unavailable(RuntimeError):
     """The card cannot be produced without inventing evidence."""
+
+
+class OpportunityV2ModelUnavailable(OpportunityV2Unavailable):
+    """The model step did not produce a validated business analysis.
+
+    Callers must keep the previous published card rather than replacing it
+    with rule templates.  When no previous card exists the task remains a
+    retryable, visible analysis failure.
+    """
+
+    def __init__(self, message, *, status="failed", error="", missing=None):
+        super().__init__(message)
+        self.phase = "model"
+        self.code = "MODEL_ANALYSIS_INCOMPLETE"
+        self.model_status = status
+        self.model_error = error
+        self.missing_risk_codes = list(missing or [])
+        self.diagnostic_message = (
+            f"modelStatus={status}; error={error or 'none'}; "
+            f"missingRiskCodes={','.join(self.missing_risk_codes) or 'none'}"
+        )
 
 
 def _text(value):
@@ -268,45 +292,194 @@ def _report_progress(progress, phase, **detail):
         pass
 
 
-def collect(period, measurement_date=None, database=None, config=None, progress=None):
-    """Read fixed V2 facts from one repeatable-read PostgreSQL snapshot."""
+def _query_timeout_ms():
+    """One statement is capped at 30 seconds unless explicitly lowered."""
+    try:
+        configured = int(os.environ.get("COCKPIT_OPPORTUNITY_V2_QUERY_TIMEOUT_MS", "30000"))
+    except ValueError:
+        configured = 30000
+    return max(1000, min(configured, 30000))
+
+
+def _fetch_budget_seconds():
+    try:
+        configured = int(os.environ.get("COCKPIT_OPPORTUNITY_V2_FETCH_BUDGET_SECONDS", "60"))
+    except ValueError:
+        configured = 60
+    return max(5, min(configured, 300))
+
+
+@contextmanager
+def _reader_group(database, workers=3):
+    """Yield ``(readers, parallel)`` for one shared PostgreSQL snapshot."""
+    if hasattr(database, "snapshot_group"):
+        with database.snapshot_group(workers) as readers:
+            yield list(readers), True
+        return
+    # Older/fake adapters only expose a single reader.  Keeping that path
+    # sequential preserves snapshot semantics and test doubles.
+    if hasattr(database, "snapshot"):
+        with database.snapshot() as reader:  # type: ignore[union-attr]
+            yield [reader], False
+        return
+    yield [database], False
+
+
+def _query_failure(exc, label, duration):
+    sqlstate = _text(getattr(exc, "sqlstate", "") or getattr(exc, "pgcode", "")
+                     or getattr(exc, "upstream_code", ""))
+    original = _text(getattr(exc, "original_message", "") or str(exc))
+    return dict(
+        phase="database_query", query=label or "optional",
+        code=type(exc).__name__, upstreamCode=sqlstate,
+        message=original[:1200], durationSeconds=round(duration, 3),
+    )
+
+
+def collect(period, measurement_date=None, database=None, config=None, progress=None,
+            diagnostic_reporter=None):
+    """Read fixed V2 facts from one repeatable-read PostgreSQL snapshot.
+
+    Independent statements run with three connections that import the same
+    exported snapshot.  A statement is capped at 30 seconds and the whole
+    database phase at 60 seconds; completed results survive a timeout and
+    remaining queries are cancelled.
+    """
     config = config or load_config()
     year = _safe_year(period)
     measured = _measurement_date(period, measurement_date)
     database = database or _database()
     if not database.available:
-        raise OpportunityV2Unavailable(database.unavailable_reason())
+        error = OpportunityV2Unavailable(_text(getattr(database, "unavailable_reason", lambda: "")()))
+        error.phase = "database_connect"
+        error.code = "DATABASE_UNAVAILABLE"
+        error.diagnostic_message = error.args[0]
+        raise error
     started = time.monotonic()
     errors: list[dict] = []
+    failure_details: list[str] = []
     query_status: dict[str, str] = {}
     schema = database.config.schema
-
+    statement_timeout = _query_timeout_ms()
+    budget = _fetch_budget_seconds()
     total_queries = 9
     completed_queries = 0
 
-    def run(source, sql, params, *, optional=False, label=""):
+    def report_query(label, status, duration, error=None, value=None):
         nonlocal completed_queries
+        completed_queries += 1
+        query_status[label] = status
+        if error is not None:
+            entry = dict(stage=label, code=error.get("code") or "QUERY_FAILED",
+                         sqlstate=error.get("upstreamCode") or "",
+                         durationSeconds=error.get("durationSeconds") or 0)
+            failure_details.append(
+                f"{label}: {entry['code']}"
+                + (f" [{entry['sqlstate']}]" if entry['sqlstate'] else "")
+                + (f" {error.get('message')[:300]}" if error.get('message') else "")
+            )
+            if diagnostic_reporter is not None:
+                try:
+                    saved = diagnostic_reporter(error)
+                    if isinstance(saved, dict) and saved.get("diagnosticId"):
+                        entry["diagnosticId"] = saved["diagnosticId"]
+                except Exception:  # noqa: BLE001 - diagnostics cannot fail analysis
+                    pass
+            errors.append(entry)
+        _report_progress(
+            progress, "fetching", message=f"查询数据库 {completed_queries}/{total_queries}",
+            query=label, completed=completed_queries, total=total_queries,
+            queryDurationSeconds=round(duration, 3), queryStatus=status,
+        )
+        return value if value is not None else []
+
+    def run_one(reader, spec):
+        label, sql, params = spec
+        query_started = time.monotonic()
         try:
-            result = source.run(sql, params, timeout_ms=max(
-                database.config.statement_timeout_ms,
-                int(os.environ.get("COCKPIT_OPPORTUNITY_V2_QUERY_TIMEOUT_MS", "90000")),
-            ))
-            if getattr(result, "truncated", False):
-                query_status[label or "optional"] = "truncated"
-                errors.append(dict(stage=label or "optional", code="ROW_LIMIT"))
-            else:
-                query_status[label or "optional"] = "ok"
-            return [dict(row) for row in result.rows]
+            result = reader.run(sql, params, timeout_ms=statement_timeout)
+            duration = time.monotonic() - query_started
+            status = "truncated" if getattr(result, "truncated", False) else "ok"
+            if status == "truncated":
+                error = dict(phase="database_query", query=label, code="ROW_LIMIT",
+                             upstreamCode="", message="row limit reached",
+                             durationSeconds=round(duration, 3))
+                return label, [dict(row) for row in result.rows], status, duration, error
+            return label, [dict(row) for row in result.rows], status, duration, None
         except Exception as exc:  # noqa: BLE001 - report a controlled limitation
-            query_status[label or "optional"] = "failed"
-            if not optional:
-                raise OpportunityV2Unavailable(f"{label or 'V2 取数'}失败：{type(exc).__name__}") from None
-            errors.append(dict(stage=label or "optional", code=type(exc).__name__))
-            return []
-        finally:
-            completed_queries += 1
-            _report_progress(progress, "fetching", message="查询数据库", completed=completed_queries,
-                             total=total_queries)
+            duration = time.monotonic() - query_started
+            return label, [], "failed", duration, _query_failure(exc, label, duration)
+
+    def run_batch(readers, specs, parallel, deadline, results):
+        nonlocal total_queries
+        pending = {}
+        if parallel and len(readers) > 1 and len(specs) > 1:
+            pool = queue.Queue()
+            for reader in readers:
+                pool.put(reader)
+
+            def work(spec):
+                reader = pool.get()
+                try:
+                    return run_one(reader, spec)
+                finally:
+                    pool.put(reader)
+
+            executor = ThreadPoolExecutor(max_workers=min(len(readers), len(specs)),
+                                          thread_name_prefix="cockpit-v2-db")
+            futures = {executor.submit(work, spec): spec[0] for spec in specs}
+            pending = dict(futures)
+            try:
+                while pending:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    done, _ = wait(set(pending), timeout=remaining, return_when=FIRST_COMPLETED)
+                    if not done:
+                        break
+                    for future in done:
+                        label = pending.pop(future)
+                        try:
+                            item = future.result()
+                        except Exception as exc:  # noqa: BLE001 - worker crash
+                            duration = 0.0
+                            item = (label, [], "failed", duration,
+                                    _query_failure(exc, label, duration))
+                        results[item[0]] = item[1]
+                        report_query(item[0], item[2], item[3], item[4])
+                if pending:
+                    # Cancel what has not started and ask PostgreSQL to cancel
+                    # the running statements.  Results already returned stay.
+                    for future in pending:
+                        future.cancel()
+                    for reader in readers:
+                        cancel = getattr(reader, "cancel", None)
+                        if callable(cancel):
+                            cancel()
+                    for label in pending.values():
+                        error = dict(phase="database_query", query=label, code="TIMEOUT",
+                                     upstreamCode="", message="database fetch budget exhausted",
+                                     durationSeconds=round(max(0.0, deadline - time.monotonic()), 3))
+                        results[label] = []
+                        report_query(label, "timeout", 0, error)
+            finally:
+                executor.shutdown(wait=True, cancel_futures=True)
+            return
+
+        for spec in specs:
+            if time.monotonic() >= deadline:
+                remaining_specs = [item for item in specs if item[0] not in results]
+                total_queries = max(total_queries, completed_queries + len(remaining_specs))
+                for label, _sql, _params in remaining_specs:
+                    error = dict(phase="database_query", query=label, code="TIMEOUT",
+                                 upstreamCode="", message="database fetch budget exhausted",
+                                 durationSeconds=0)
+                    results[label] = []
+                    report_query(label, "timeout", 0, error)
+                return
+            label, rows, status, duration, error = run_one(readers[0], spec)
+            results[label] = rows
+            report_query(label, status, duration, error)
 
     # The config contains physical names already validated against the reviewed
     # ontology.  SQL is assembled only from those names and fixed templates.
@@ -424,10 +597,15 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         f" GROUP BY 1,2,3,4,5,6"
     )
 
+    strategic_levels = [str(value) for value in
+                        ((config.get("overrides") or {}).get("customerTier") or {}).get("strategic") or
+                        ["0", "1"]]
+    strategic_level_slots = ",".join(["%s"] * len(strategic_levels))
     accounts_sql = (
         f"SELECT a.{ac['accountid']} AS account_id, a.{ac['name']} AS name, "
         f"a.{ac['new_accountlevel']} AS account_level, a.{ac['createdon']} AS created_at "
-        f"FROM {account_table} a"
+        f"FROM {account_table} a "
+        f"WHERE a.{ac['new_accountlevel']}::text IN ({strategic_level_slots})"
     )
 
     bid_table = _table(config, "LE09")
@@ -481,32 +659,46 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
 
     # All reads share one repeatable-read snapshot.  Calling database.run for
     # each query would silently span several snapshots and could combine target,
-    # forecast and bid facts observed at different times.
-    snapshot = database.snapshot() if hasattr(database, "snapshot") else nullcontext(database)
-    with snapshot as source:
-        target_rows = run(source, target_sql, [year], optional=True, label="销售目标")
-        product_rows = run(
-            source,
-            f"SELECT p.{product_cols['new_product_typeid']} AS product_type_id, "
-            f"p.{product_cols['new_accproducttype']} AS product_type, p.{product_cols['new_name']} AS name "
-            f"FROM {product_table} p",
-            [], optional=True, label="产品类型",
-        )
-        opp_rows = run(source, opp_sql, [past, past, past, year, measured],
-                       optional=True, label="商机预测")
-        all_opp_rows = run(source, all_opp_sql, [measured], optional=True, label="全部商机")
-        account_rows = run(source, accounts_sql, [], optional=True, label="客户")
-        bid_rows_raw = run(source, bid_sql, [measured], optional=True, label="投标")
-        progress_rows = run(source, progress_sql, [measured, measured],
-                            optional=True, label="项目进展")
-        order_rows = run(source, order_sql, [], optional=True, label="订单关联")
-        team_rows = run(source, team_sql, [], optional=True, label="产品团队")
+    # forecast and bid facts observed at different times.  The first batch is
+    # independent and runs with up to three snapshot-sharing connections.
+    product_sql = (
+        f"SELECT p.{product_cols['new_product_typeid']} AS product_type_id, "
+        f"p.{product_cols['new_accproducttype']} AS product_type, p.{product_cols['new_name']} AS name "
+        f"FROM {product_table} p"
+    )
+    specs = [
+        ("销售目标", target_sql, [year]),
+        ("产品类型", product_sql, []),
+        ("商机预测", opp_sql, [past, past, past, year, measured]),
+        ("全部商机", all_opp_sql, [measured]),
+        ("客户", accounts_sql, strategic_levels),
+        ("投标", bid_sql, [measured]),
+        ("项目进展", progress_sql, [measured, measured]),
+        ("订单关联", order_sql, []),
+        ("产品团队", team_sql, []),
+    ]
+    deadline = started + budget
+    results = {}
+    with _reader_group(database, workers=3) as (readers, parallel):
+        run_batch(readers, specs, parallel, deadline, results)
         aggregate_rows = []
         if (query_status.get("商机预测") == "truncated"
                 or query_status.get("全部商机") == "truncated"):
-            total_queries = 10
-            aggregate_rows = run(source, aggregate_sql, [past, past, past, year, measured],
-                                 optional=True, label="商机聚合")
+            total_queries = max(total_queries, completed_queries + 1)
+            run_batch(readers[:1], [("商机聚合", aggregate_sql,
+                                     [past, past, past, year, measured])],
+                      False, deadline, results)
+            aggregate_rows = results.get("商机聚合", [])
+
+    target_rows = results.get("销售目标", [])
+    product_rows = results.get("产品类型", [])
+    opp_rows = results.get("商机预测", [])
+    all_opp_rows = results.get("全部商机", [])
+    account_rows = results.get("客户", [])
+    bid_rows_raw = results.get("投标", [])
+    progress_rows = results.get("项目进展", [])
+    order_rows = results.get("订单关联", [])
+    team_rows = results.get("产品团队", [])
 
     product_types = {_text(row.get("product_type_id")): _text(row.get("product_type"))
                      for row in product_rows}
@@ -699,7 +891,12 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     core_rows = bool(target_rows or opp_rows or all_opp_rows or account_rows)
     if errors and not core_rows:
         labels = "、".join(sorted({item.get("stage") or item.get("code") or "未知" for item in errors}))
-        raise OpportunityV2Unavailable("商机 V2 核心取数失败且无可保留证据：" + labels)
+        error = OpportunityV2Unavailable("商机 V2 核心取数失败且无可保留证据：" + labels)
+        error.phase = "database_query"
+        error.code = "CORE_FETCH_FAILED"
+        error.diagnostic_message = "；".join(failure_details)[:2400]
+        error.query_errors = list(errors)
+        raise error
 
     return dict(
         period=str(year),
@@ -721,8 +918,11 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         accountsComplete=query_status.get("客户") != "truncated",
         bidsComplete=query_status.get("投标") != "truncated",
         errors=errors,
+        queryDiagnostics=[dict(item) for item in errors],
         queryStatus=query_status,
         schema=schema,
+        fetchBudgetSeconds=budget,
+        queryTimeoutMs=statement_timeout,
         fetchedAt=time.time(),
         durationSeconds=round(time.monotonic() - started, 3),
     )
@@ -790,7 +990,8 @@ def _program_risk_assessment(candidate):
     status = candidate.get("ruleStatus") or "not_triggered"
     evidence_ids = list(dict.fromkeys(candidate.get("evidenceIds") or []))[:20]
     classification = ("confirmed" if status == "triggered" else
-                      "insufficient" if status == "indeterminate" else "not_applicable")
+                      "insufficient" if status in {"insufficient", "indeterminate"}
+                      else "not_applicable")
     return dict(
         code=candidate.get("code") or "",
         name=candidate.get("name") or "",
@@ -1119,6 +1320,18 @@ def evaluate(data, config=None, measured=None):
             opp["bidId"] = ""
 
     strategic_accounts = {account["id"]: account for account in accounts if account.get("tier") == "strategic"}
+    # R09/M0257 scopes the customer fact by its own creation timestamp inside
+    # the analysis period.  Do not use the whole customer master: that turns a
+    # period metric into "all strategic accounts ever created".
+    period_start = date(measured.year, 1, 1)
+    period_end = date(measured.year + 1, 1, 1)
+    scoped_strategic = {}
+    for account_id, account in strategic_accounts.items():
+        created = _day(account.get("createdAt"))
+        # Missing creation time is unknown, not evidence that the customer is
+        # outside this period; keep it and let the limitation show coverage.
+        if not created or period_start <= created < period_end:
+            scoped_strategic[account_id] = account
     active_by_account = defaultdict(list)
     all_by_account = defaultdict(list)
     for opp in all_opps:
@@ -1127,9 +1340,9 @@ def evaluate(data, config=None, measured=None):
         if opp.get("status") == "0":
             active_by_account[account_id].append(opp)
     complete_opportunity_scope = all_opps_complete and accounts_complete
-    never_opportunity = [account for account_id, account in strategic_accounts.items()
+    never_opportunity = [account for account_id, account in scoped_strategic.items()
                          if complete_opportunity_scope and not all_by_account.get(account_id)]
-    inactive_opportunity = [account for account_id, account in strategic_accounts.items()
+    inactive_opportunity = [account for account_id, account in scoped_strategic.items()
                             if complete_opportunity_scope and all_by_account.get(account_id)
                             and not active_by_account.get(account_id)]
     no_opportunity = never_opportunity + inactive_opportunity
@@ -1486,18 +1699,46 @@ def evaluate(data, config=None, measured=None):
     # computed as not met.  The program supplies the rule, observed facts and
     # missing inputs; it does not hide candidates before the model weighs them.
     triggered_by_code = {risk["code"]: risk for risk in risks}
+    source_status = data.get("queryStatus") or {}
+
+    def source_ok(label):
+        # A present status map is authoritative.  Older callers/tests without
+        # one never get a silent "not applicable" verdict.
+        return bool(source_status) and source_status.get(label) == "ok"
+
+    strategic_present = any(account.get("tier") == "strategic" for account in accounts)
+    strategic_scope = strategic_present or bool(no_opportunity_count) or bool(no_bidding)
+    applicable = {
+        "RK04": bool(products["1"].get("pending_count")
+                     or products["1"].get("target_amount") is not None
+                     or products["1"].get("target_energy") is not None),
+        "RK05": bool(products["2"].get("pending_count")
+                     or products["2"].get("target_amount") is not None
+                     or products["2"].get("target_energy") is not None),
+        "RK06": bool(target.get("byAccount")),
+        "RK07": strategic_scope or not source_ok("客户"),
+        "RK08": strategic_scope or not source_ok("客户"),
+        "RK09": bool(valid_bids) or not source_ok("投标"),
+        "RK10": bool(opps) or not source_ok("商机预测"),
+    }
     risk_candidates = []
     for code, spec in (config.get("risks") or {}).items():
         triggered = triggered_by_code.get(code)
-        fact_items = [evidence_facts.get(f"opp-v2:metric:{fact_code}")
-                      for fact_code in _RISK_FACT_CODES.get(code, ())]
-        fact_items = [item for item in fact_items if item]
-        missing = [item["id"] for item in fact_items if item.get("value") is None]
+        required_codes = list(_RISK_FACT_CODES.get(code, ()))
+        required = [evidence_facts.get(f"opp-v2:metric:{fact_code}")
+                    for fact_code in required_codes]
+        fact_items = [item for item in required if item]
+        # Missing facts include a required fact that was never produced as well
+        # as a fact whose value is null.  Neither is a genuine zero.
+        missing = [fact_code for fact_code, item in zip(required_codes, required)
+                   if not item or item.get("value") is None]
         # A rule whose required fact is empty did not fail; it could not be
         # settled from the available data.  Only rules with all required facts
         # present can be reported as a genuine not_triggered result.
         rule_status = ("triggered" if triggered else
-                       "indeterminate" if missing else "not_triggered")
+                       "insufficient" if missing else
+                       "not_triggered" if applicable.get(code, True) else
+                       "not_applicable")
         risk_candidates.append(dict(
             code=code,
             name=(spec or {}).get("name") or (triggered or {}).get("name") or code,
@@ -1781,25 +2022,51 @@ def evaluate(data, config=None, measured=None):
     dimensions = dimensions[:4]
 
     summary_parts = []
+    if target_amount is not None and total_amount is not None:
+        summary_parts.append(
+            f"年度目标 {target_amount:.2f} 亿元，商机获取 {total_amount:.2f} 亿元，"
+            f"缺口 {target_amount - total_amount:.2f} 亿元")
+    elif target_energy is not None and total_energy is not None:
+        summary_parts.append(
+            f"年度电量目标 {target_energy:.2f} GWh，商机获取 {total_energy:.2f} GWh，"
+            f"缺口 {target_energy - total_energy:.2f} GWh")
     for risk in displayed[:2]:
-        summary_parts.append(f"{risk['code']} {risk['name']}（{risk['description']}）")
-    summary = "商机获取 V2 规则核验：" + "；".join(summary_parts) if summary_parts else "商机获取 V2 规则核验：本期未触发风险规则，合同未确认与预测口径仍按证据保留。"
+        description = re.sub(r"\bRK\d+\b\s*", "", risk.get("description") or "").strip("。； ")
+        if any(token in description for token in ("口径", "证据", "字段", "取数", "排查")):
+            description = ""
+        impact = risk.get("impact") or {}
+        amount, energy, count = (_number(impact.get("amount")), _number(impact.get("energy")),
+                                 _number(impact.get("count")))
+        if not description:
+            if amount is not None:
+                description = f"影响金额 {amount:.2f} 亿元"
+            elif count is not None:
+                description = f"涉及 {int(count)} 项"
+            elif energy is not None:
+                description = f"影响电量 {energy:.2f} GWh"
+        summary_parts.append(f"{risk.get('name') or '商机风险'}：{description}" if description
+                             else (risk.get('name') or "商机风险"))
+    summary = ("；".join(part for part in summary_parts if part).rstrip("。；") + "。"
+               if summary_parts else
+               "本期未发现需要优先处置的商机风险，合同未确认与预测差异继续按证据跟踪。")
     summary = re.sub(r"\s+", " ", summary)[:240]
 
+    data_issues = []
+    caliber_notes = []
     if data.get("errors"):
-        limitations.append("部分可选查询未返回：" + "、".join(sorted({item.get('stage') or item.get('code') or '未知' for item in data["errors"]})))
+        data_issues.append("部分可选查询未返回：" + "、".join(sorted({item.get('stage') or item.get('code') or '未知' for item in data["errors"]})))
     if aggregate_mode and not aggregate_ready:
-        limitations.append(
+        data_issues.append(
             "商机明细达到行数上限，全量聚合未返回；截断明细不参与金额、电量、合同、产品、客户和风险规则计算。")
     elif not detail_complete:
-        limitations.append(
+        data_issues.append(
             "商机月度明细达到行数上限；明细仅用于展示，金额、电量、合同、产品、客户规则采用全量聚合；逐条周期和项目进展规则未判定。")
     if not all_opps_complete:
-        limitations.append(
+        data_issues.append(
             "全部商机明细达到行数上限；战略客户无商机、未投标等逐客户判断未执行，避免把截断样本当成全量。")
     if not bids_complete:
-        limitations.append("投标明细达到行数上限；投标周期和投标中项目相关规则未判定。")
-    limitations.extend([
+        data_issues.append("投标明细达到行数上限；投标周期和投标中项目相关规则未判定。")
+    caliber_notes.extend([
         "合同签订按 new_contractconfirmation 判断；签订日期字段实库为空，不能用日期推断。",
         "签单进度按已确认签订覆盖率计算（合同已确认商机预测 ÷ 目标）；合同状态未知不计入已签或未签，也不单独触发进度滞后。",
         "目标表按行求和，未按客户或产品去重；目标表缺少经验证的业务唯一键。",
@@ -1810,16 +2077,19 @@ def evaluate(data, config=None, measured=None):
         "建议中的责任角色与期限为模板草稿，须人工确认后才能下发任务令。",
     ])
     if unknown_contract_count:
-        limitations.append(
+        data_issues.append(
             f"{unknown_contract_count} 条商机合同状态未知，涉及预测金额 {unknown_amount or 0:.2f} 亿元、"
             f"电量 {unknown_energy or 0:.2f} GWh；未知单列，既不计入明确未确认，也不视为已签。")
     if (total_amount is not None and amount_coverage is not None and amount_coverage < 0.8):
-        limitations.append(
+        data_issues.append(
             f"正式订单金额覆盖率 {amount_coverage * 100:.1f}%，缺失的正式金额未补成预测金额；"
             "全期间预测金额仅作参考，不替代 B02 参与规则。")
+    limitations.extend(data_issues)
+    limitations.extend(caliber_notes)
 
     result = dict(
         summary=summary,
+        businessSummary=summary,
         findings=findings,
         causes=[dict(
             id=cause["id"], causeCode=cause["causeCode"], kind=cause["kind"],
@@ -1833,6 +2103,8 @@ def evaluate(data, config=None, measured=None):
         analysisDimensions=dimensions,
         recommendations=recommendations,
         limitations=list(dict.fromkeys(limitations))[:10],
+        caliberNotes=list(dict.fromkeys(caliber_notes))[:12],
+        dataDiagnostics=list(dict.fromkeys(data_issues))[:12],
         riskTotalCount=len(risks),
         riskCodes=[risk["code"] for risk in risks],
         riskLevels={risk["code"]: risk["level"] for risk in risks},
@@ -1888,6 +2160,15 @@ def evaluate(data, config=None, measured=None):
             riskCodes=sorted(risk_codes),
             evidenceIds=evidence_ids,
         ))
+    fact_list = list(evidence_facts.values())
+    evidence_id_set = {str(item.get("id")) for key in ("facts", "records", "evidence")
+                       for item in (fact_list if key == "facts" else
+                                    records if key == "records" else evidence_refs)
+                       if isinstance(item, dict) and item.get("id")}
+    evidence_counts = dict(
+        facts=len(fact_list), records=len(records), referenced=len(evidence_refs),
+        distinct=len(evidence_id_set),
+    )
     return dict(
         ruleOutcomes=deepcopy(risk_candidates),
         riskCandidates=deepcopy(risk_candidates),
@@ -1896,9 +2177,10 @@ def evaluate(data, config=None, measured=None):
         adviceCandidates=advice_candidates,
         result=result,
         evidence=dict(
-            facts=list(evidence_facts.values()),
+            facts=fact_list,
             records=records,
             evidence=evidence_refs,
+            counts=evidence_counts,
             limitations=list(dict.fromkeys(limitations))[:10],
             periods=[data.get("period")],
             dataAsOf=data.get("measurementDate"),
@@ -1946,12 +2228,13 @@ def default_text_interpreter(payload):
 
     system_prompt = (
         "你是证据约束的商机经营分析助手。程序已按本体规则完成阈值和数值计算，"
-        "输入中的 ruleOutcomes 是全部本体候选风险及其 ruleStatus=triggered/not_triggered/indeterminate，"
+        "输入中的 ruleOutcomes 是全部本体候选风险及其 "
+        "ruleStatus=triggered/not_triggered/insufficient/not_applicable，"
         "causeCandidates/adviceCandidates 是允许使用的原因和建议边界。"
         "你的任务是结合 facts、records、progressSamples 判断风险证据是否充分、哪些只是结构表现，"
         "并生成摘要、风险说明、原因和建议。不得新增风险、原因或建议代码，不得猜测或重算数字，"
         "不得引用输入之外的证据编号。数字只能原样引用输入中出现的值。只返回 JSON："
-        '{"summary":"不超过320字",'
+        '{"summary":"不超过220字的业务经营摘要",'
         '"risks":[{"code":"RK01","include":true,"classification":"confirmed|structural|insufficient|not_applicable",'
         '"description":"不超过320字","evidenceIds":["支持证据编号"],'
         '"opposingEvidenceIds":["反对或反例证据编号"]}],'
@@ -1961,19 +2244,27 @@ def default_text_interpreter(payload):
         '"riskCodes":["RK01"],"causeCodes":["RC01"],"evidenceIds":["输入中的证据编号"]}]}。'
         "每个 risk 的 code 必须来自 ruleOutcomes。只有 ruleStatus=triggered 且 classification=confirmed 时 include 才能为 true；"
         "structural、insufficient、not_applicable 必须 include=false。数值规则未命中的风险不得被模型改判为成立。"
+        "必须对 ruleOutcomes 中的每一条风险恰好返回一次判断，不得遗漏或重复；覆盖不足视为模型分析未完成。"
         "成立的风险至少引用一条支持证据；opposingEvidenceIds 记录与该判断相反或限制结论的证据，必须来自输入事实、记录或进展。"
         "每个 cause 必须来自 causeCandidates，riskCodes 必须是该原因允许关联且本次包含的风险。"
         "每个 advice 必须来自 adviceCandidates，必须绑定其允许的 causeCodes/riskCodes。"
         "原因必须说明证据中已出现的商务、技术或流程卡点；建议必须给出可核对的对象和动作。"
+        "summary 只写主要经营问题、影响范围、最重要的数字和推进重点，不罗列全部风险；"
+        "不得出现 RK/RC/BR/DS/AC 编码、规则核验、阈值、口径、证据、取数、字段缺失、排查、校验等实现说明。"
         "不得使用‘逾期未完成’表述。"
     )
     events = []
     key = get_default_model_key()
+    try:
+        max_tokens = int(os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_MAX_TOKENS", "12000"))
+    except ValueError:
+        max_tokens = 12000
+    max_tokens = max(1200, min(max_tokens, 32000))
     with request_config(thinking=False, request_timeout=max(15, min(
             int(os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_TIMEOUT_SECONDS", "60")), 120))):
         for event in provider.stream_message(
             [dict(role="user", content=json.dumps(payload, ensure_ascii=False))],
-            system_prompt, None, key, max_tokens=3000, temperature=0, thinking=False,
+            system_prompt, None, key, max_tokens=max_tokens, temperature=0, thinking=False,
         ):
             events.append(event)
     errors = [event.get("error", "") for event in events if event.get("type") == "error"]
@@ -1996,6 +2287,32 @@ def _model_numbers(value):
     return set(re.findall(r"(?<!\d)\d+(?:\.\d+)?(?!\d)", json.dumps(value, ensure_ascii=False, default=str)))
 
 
+def _allowed_model_numbers(payload):
+    """Accept harmless presentation variants, never an unrelated number.
+
+    Models routinely render a stored ratio ``0.131`` as ``13.1%`` and round a
+    long decimal to two places.  Those are not new facts.  The validator keeps
+    every original token and adds only rounded/percentage forms of the original
+    numbers, so an invented magnitude still fails.
+    """
+    allowed = _model_numbers(payload)
+    extra = set()
+    for token in list(allowed):
+        try:
+            value = float(token)
+        except ValueError:
+            continue
+        variants = {value}
+        for digits in (0, 1, 2, 3):
+            variants.add(round(value, digits))
+        if abs(value) <= 1:
+            for digits in (0, 1, 2):
+                variants.add(round(value * 100, digits))
+        for variant in variants:
+            extra.add(f"{variant:g}")
+    return allowed | extra
+
+
 def _model_items(value):
     if isinstance(value, list):
         return [item for item in value if isinstance(item, dict)]
@@ -2007,6 +2324,18 @@ def _model_items(value):
 def _model_text_valid(text, limit, allowed_numbers):
     return (bool(text) and len(text) <= limit and "逾期未完成" not in text
             and _model_numbers(text) <= allowed_numbers)
+
+
+_SUMMARY_FORBIDDEN = re.compile(
+    r"(?i)\b(?:RK|RC|BR|DS|AC)[-_]?\d+\b|规则核验|阈值|口径|证据|取数|字段|缺失|"
+    r"未返回|排查|校验|V2|模型|fallback|SQL"
+)
+
+
+def _model_summary_valid(text, limit, allowed_numbers):
+    """Business summary, not a rule/implementation report."""
+    return (_model_text_valid(text, limit, allowed_numbers)
+            and not _SUMMARY_FORBIDDEN.search(text))
 
 
 def apply_text_interpretation(evaluated, interpreter=None):
@@ -2074,12 +2403,12 @@ def apply_text_interpretation(evaluated, interpreter=None):
                                measure=item.get("measure") or "", ownerRole=item.get("ownerRole") or "",
                                causeCodes=item.get("causeCodes") or [], riskCodes=item.get("riskCodes") or [],
                                evidenceIds=item.get("evidenceIds") or []) for item in advice_candidates],
-        fallbackSummary=result.get("summary") or "",
+        fallbackSummary=result.get("businessSummary") or result.get("summary") or "",
         facts=facts,
         records=records,
         progressSamples=samples[:6],
     )
-    allowed_numbers = _model_numbers(payload)
+    allowed_numbers = _allowed_model_numbers(payload)
     try:
         value = interpreter(payload)
         if not isinstance(value, dict):
@@ -2149,6 +2478,11 @@ def apply_text_interpretation(evaluated, interpreter=None):
                                     opposingEvidenceIds=list(dict.fromkeys(opposing_ids or [])))
             applied_risks.append(code)
 
+        applied_risks = list(dict.fromkeys(applied_risks))
+        missing_risk_codes = [candidate["code"] for candidate in risk_candidates
+                              if candidate["code"] not in risk_specs]
+        risk_coverage_complete = not missing_risk_codes
+
         excluded_codes = {code for code, spec in risk_specs.items() if not spec["include"]}
         included_risks = [risk for risk in triggered_risks if risk["code"] not in excluded_codes]
         for risk in included_risks:
@@ -2166,12 +2500,14 @@ def apply_text_interpretation(evaluated, interpreter=None):
             code = candidate["code"]
             spec = risk_specs.get(code)
             if spec:
+                assessment_source = "model"
                 include = spec["include"]
                 classification = spec["classification"]
                 description = spec["description"]
                 evidence_ids = spec["evidenceIds"]
                 opposing_ids = spec["opposingEvidenceIds"]
             else:
+                assessment_source = "rule_fallback"
                 fallback = _program_risk_assessment(candidate)
                 include = fallback["include"]
                 classification = fallback["classification"]
@@ -2187,11 +2523,13 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 evidenceIds=evidence_ids[:20],
                 supportingEvidenceIds=evidence_ids[:20],
                 opposingEvidenceIds=(opposing_ids or [])[:20],
+                assessmentSource=assessment_source,
                 observed=candidate.get("observed") or [],
                 missingEvidence=candidate.get("missingEvidence") or [],
             ))
 
         cause_items, applied_causes, rejected_causes = [], [], []
+        cause_fallback_used = False
         for item in _model_items(value.get("causes")):
             code = _text(item.get("code"))
             candidate = cause_by_code.get(code)
@@ -2236,9 +2574,11 @@ def apply_text_interpretation(evaluated, interpreter=None):
                                                   if finding_id in risk_id_by_code.values()])
                            for item in cause_items]
             cause_items = [item for item in cause_items if item.get("findingIds")]
+            cause_fallback_used = bool(cause_items)
 
         selected_cause_codes = {item["causeCode"] for item in cause_items}
         recommendations, applied_advice, rejected_advice = [], [], []
+        advice_fallback_used = False
         for item in _model_items(value.get("advice")):
             code = _text(item.get("code"))
             candidate = advice_by_code.get(code)
@@ -2289,11 +2629,25 @@ def apply_text_interpretation(evaluated, interpreter=None):
         if "advice" not in value or not recommendations:
             recommendations = [deepcopy(item) for item in result.get("recommendations") or []
                                if set(item.get("riskCodes") or []) & included_codes]
+            advice_fallback_used = bool(recommendations)
 
         summary = re.sub(r"\s+", " ", _text(value.get("summary")))
-        summary_applied = _model_text_valid(summary, 320, allowed_numbers)
+        summary_applied = _model_summary_valid(summary, 240, allowed_numbers)
+        summary_fallback_used = not summary_applied
         if not summary_applied:
-            summary = _text(result.get("summary"))
+            summary = _text(result.get("businessSummary") or result.get("summary"))
+
+        accepted_model_items = (len(applied_risks) + len(applied_causes)
+                                + len(applied_advice) + int(summary_applied))
+        if not accepted_model_items:
+            model_status, model_error = "fallback", "MODEL_OUTPUT_REJECTED"
+        elif (risk_coverage_complete and summary_applied
+              and not cause_fallback_used and not advice_fallback_used):
+            model_status, model_error = "completed", ""
+        else:
+            model_status, model_error = "partial", "MODEL_OUTPUT_PARTIAL"
+        analysis_mode = {"completed": "model", "partial": "model_partial",
+                         "fallback": "rule_fallback"}[model_status]
 
         findings = [dict(
             id=risk["id"], kind="risk_fact", title=(risk.get("title") or risk.get("name") or "")[:80],
@@ -2302,7 +2656,7 @@ def apply_text_interpretation(evaluated, interpreter=None):
             evidenceIds=(risk.get("evidenceIds") or [])[:20],
             riskDomain="sales", riskCode=risk["code"], riskLevel=risk.get("level") or "中",
             riskClassification=risk.get("classification") or "confirmed",
-            riskTotalCount=len(triggered_risks),
+            riskTotalCount=len(included_risks),
         ) for risk in included_risks]
         dimensions = [dict(
             id=cause["id"], stage=cause.get("stage") or "opportunity",
@@ -2324,10 +2678,19 @@ def apply_text_interpretation(evaluated, interpreter=None):
         result["recommendations"] = recommendations
         result["riskCodes"] = [risk["code"] for risk in included_risks]
         result["riskLevels"] = {risk["code"]: risk.get("level") or "中" for risk in included_risks}
-        result["riskTotalCount"] = len(triggered_risks)
+        result["riskTotalCount"] = len(included_risks)
         result["riskCandidateCount"] = len(risk_candidates)
-        result["analysedRiskCount"] = len(risk_candidates)
+        result["analysedRiskCount"] = len(risk_specs)
         result["includedRiskCount"] = len(included_risks)
+        result["ruleTriggeredRiskCount"] = len(triggered_risks)
+        result["missingRiskCodes"] = missing_risk_codes
+        result["modelAssessment"] = dict(
+            status=model_status, analysisMode=analysis_mode,
+            candidateCount=len(risk_candidates), assessedRiskCount=len(risk_specs),
+            missingRiskCodes=missing_risk_codes, coverageComplete=risk_coverage_complete,
+            summaryApplied=summary_applied, summaryFallbackUsed=summary_fallback_used,
+            causeFallbackUsed=cause_fallback_used, adviceFallbackUsed=advice_fallback_used,
+        )
         result["riskAssessments"] = deepcopy(risk_assessments)
         result["excludedRiskCodes"] = [item["code"] for item in risk_assessments
                                        if not item.get("include")]
@@ -2336,18 +2699,28 @@ def apply_text_interpretation(evaluated, interpreter=None):
         evaluated["riskAssessments"] = risk_assessments
         evaluated["causes"] = cause_items
         evaluated["recommendations"] = recommendations
-        return dict(status="completed", error="", modelCalls=1,
+        return dict(status=model_status, error=model_error, modelCalls=1,
+                    analysisMode=analysis_mode,
                     summaryApplied=summary_applied, appliedRisks=applied_risks,
                     appliedCauses=applied_causes, appliedAdvice=applied_advice,
                     excludedRisks=model_excluded_risks,
                     modelExcludedRisks=model_excluded_risks,
+                    riskCandidateCount=len(risk_candidates),
+                    analysedRiskCount=len(risk_specs),
+                    includedRiskCount=len(included_risks),
+                    missingRiskCodes=missing_risk_codes,
+                    coverageComplete=risk_coverage_complete,
+                    summaryFallbackUsed=summary_fallback_used,
+                    causeFallbackUsed=cause_fallback_used,
+                    adviceFallbackUsed=advice_fallback_used,
                     riskAssessments=deepcopy(risk_assessments),
                     rejectedRisks=rejected_risks, rejectedCauses=rejected_causes,
                     rejectedAdvice=rejected_advice,
                     validatedCauses=[], validatedAdvice=[],
                     mismatchedCauses=[], mismatchedAdvice=[])
     except Exception as exc:  # noqa: BLE001 - model analysis is optional
-        return dict(status="failed", error=type(exc).__name__, modelCalls=1)
+        return dict(status="failed", error=type(exc).__name__, modelCalls=1,
+                    modelErrorMessage=str(exc)[:800])
 
 def _deadline_days(value):
     text = _text(value)
@@ -2509,8 +2882,153 @@ def _empty_collected(period, measured, error):
     )
 
 
+def _merge_previous_card(evaluated, previous):
+    """Retain prior risk conclusions that this round did not explicitly clear.
+
+    A partial database/AP round can judge only a subset of risks.  Replacing
+    the whole card would silently erase still-valid prior conclusions, so each
+    unjudged or evidence-insufficient risk keeps its last published time and
+    source.  A model judgment of ``not_applicable`` is treated as an explicit
+    resolution and removes the old item.
+    """
+    if not isinstance(previous, dict) or not isinstance(previous.get("result"), dict):
+        return []
+    previous_result = previous.get("result") or {}
+    previous_risks = [dict(item) for item in previous.get("risks") or []
+                      if isinstance(item, dict)]
+    if not previous_risks:
+        previous_risks = [dict(item, riskCode=item.get("riskCode"))
+                          for item in previous_result.get("findings") or []
+                          if isinstance(item, dict) and item.get("riskCode")]
+    if not previous_risks:
+        return []
+    included = {risk.get("code") for risk in evaluated.get("risks") or []}
+    assessments = {item.get("code"): item for item in evaluated.get("riskAssessments") or []}
+    retained = []
+    for risk in previous_risks:
+        code = _text(risk.get("code") or risk.get("riskCode"))
+        if not code or code in included:
+            continue
+        assessment = assessments.get(code)
+        if assessment is None:
+            reason = "本轮未覆盖该风险"
+        elif assessment.get("assessmentSource") == "rule_fallback":
+            reason = "本轮模型未给出该风险判断"
+        elif assessment.get("classification") == "insufficient":
+            reason = "本轮证据不足以重新判定"
+        elif assessment.get("classification") == "structural":
+            reason = "本轮仅判定为结构表现，未确认解除"
+        elif assessment.get("classification") == "not_applicable":
+            continue
+        else:
+            continue
+        retained.append((code, risk, reason))
+    if not retained:
+        return []
+
+    result = evaluated.get("result") or {}
+    findings = list(result.get("findings") or [])
+    causes = list(result.get("causes") or [])
+    recommendations = list(result.get("recommendations") or [])
+    current_evidence = evaluated.get("evidence") or {}
+    previous_evidence = previous.get("evidence") or {}
+    referenced = set()
+    retention_rows = []
+    retained_codes = []
+    for code, risk, reason in retained:
+        retained_codes.append(code)
+        carried = deepcopy(risk)
+        carried.update(retained=True, retainedFrom=previous.get("updatedAt"),
+                       retentionReason=reason,
+                       retentionSource="previous published analysis")
+        evaluated.setdefault("risks", []).append(carried)
+        referenced.update(_text(value) for value in carried.get("evidenceIds") or [] if value)
+        previous_findings = [dict(item) for item in previous_result.get("findings") or []
+                             if isinstance(item, dict) and item.get("riskCode") == code]
+        for finding in previous_findings:
+            finding.update(retained=True, retainedFrom=previous.get("updatedAt"),
+                           retentionReason=reason)
+            referenced.update(_text(value) for value in finding.get("evidenceIds") or [] if value)
+            if not any(item.get("id") == finding.get("id") for item in findings):
+                findings.append(finding)
+        for cause in previous_result.get("causes") or []:
+            if not isinstance(cause, dict) or code not in (cause.get("riskCodes") or []):
+                continue
+            carried_cause = deepcopy(cause)
+            carried_cause.update(retained=True, retainedFrom=previous.get("updatedAt"),
+                                 retentionReason=reason)
+            referenced.update(_text(value) for value in carried_cause.get("evidenceIds") or [] if value)
+            if not any(item.get("id") == carried_cause.get("id") for item in causes):
+                causes.append(carried_cause)
+        for recommendation in previous_result.get("recommendations") or []:
+            if (not isinstance(recommendation, dict)
+                    or code not in (recommendation.get("riskCodes") or [])):
+                continue
+            carried_advice = deepcopy(recommendation)
+            carried_advice.update(retained=True, retainedFrom=previous.get("updatedAt"),
+                                  retentionReason=reason)
+            referenced.update(_text(value) for value in carried_advice.get("evidenceIds") or [] if value)
+            if not any(item.get("id") == carried_advice.get("id") for item in recommendations):
+                recommendations.append(carried_advice)
+        retention_rows.append(dict(riskCode=code, reason=reason,
+                                   retainedFrom=previous.get("updatedAt"),
+                                   source="previous published analysis"))
+
+    for key in ("facts", "records", "evidence"):
+        existing = {str(item.get("id")) for item in current_evidence.get(key) or []
+                    if isinstance(item, dict) and item.get("id")}
+        for item in previous_evidence.get(key) or []:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            if str(item.get("id")) not in referenced or str(item.get("id")) in existing:
+                continue
+            current_evidence.setdefault(key, []).append(deepcopy(item))
+            existing.add(str(item.get("id")))
+    counts = current_evidence.get("counts") or {}
+    if counts:
+        ids = {str(item.get("id")) for key in ("facts", "records", "evidence")
+               for item in current_evidence.get(key) or []
+               if isinstance(item, dict) and item.get("id")}
+        counts.update(
+            facts=len(current_evidence.get("facts") or []),
+            records=len(current_evidence.get("records") or []),
+            referenced=len(current_evidence.get("evidence") or []),
+            distinct=len(ids),
+        )
+
+    total = len(evaluated.get("risks") or [])
+    for finding in findings:
+        finding["riskTotalCount"] = total
+    result["findings"] = findings
+    result["causes"] = causes[:6]
+    result["recommendations"] = recommendations[:6]
+    result["analysisDimensions"] = (list(result.get("analysisDimensions") or [])
+                                    + [dict(
+                                        id=cause.get("id"), stage=cause.get("stage") or "opportunity",
+                                        title=(cause.get("title") or "")[:32],
+                                        description=(cause.get("description") or "")[:240],
+                                        findingIds=cause.get("findingIds") or [],
+                                        evidenceIds=cause.get("evidenceIds") or [],
+                                        causeCode=cause.get("causeCode"), kind=cause.get("kind"),
+                                        status=cause.get("status"), retained=True,
+                                    ) for cause in causes if cause.get("retained")])[:4]
+    result["riskTotalCount"] = total
+    result["includedRiskCount"] = total
+    result["riskCodes"] = [risk.get("code") for risk in evaluated.get("risks") or []]
+    result["riskLevels"] = {risk.get("code"): risk.get("level") or "中"
+                            for risk in evaluated.get("risks") or []}
+    result["retainedRiskCodes"] = retained_codes
+    result["retention"] = retention_rows
+    result["excludedRiskCodes"] = [code for code in result.get("excludedRiskCodes") or []
+                                   if code not in retained_codes]
+    result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
+        f"本轮保留上一版风险：{'、'.join(retained_codes)}；保留项沿用上次发布时间和来源。"
+    ]))[:12]
+    return retention_rows
+
+
 def build_card(period, database=None, measurement_date=None, config=None, text_interpreter=None,
-               supplement=None, progress=None):
+               supplement=None, progress=None, previous=None, diagnostic_reporter=None):
     """Build one complete ``opportunity-risk`` publication payload."""
     _report_progress(progress, "ontology", message="读取本体与规则配置")
     config = config or load_config()
@@ -2519,8 +3037,20 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     collected_error = None
     _report_progress(progress, "fetching", message="查询数据库", completed=0, total=9)
     try:
-        data = collect(period, measured, database=database, config=config, progress=progress)
+        data = collect(period, measured, database=database, config=config, progress=progress,
+                       diagnostic_reporter=diagnostic_reporter)
     except OpportunityV2Unavailable as exc:
+        if diagnostic_reporter is not None:
+            try:
+                diagnostic_reporter(dict(
+                    phase=getattr(exc, "phase", "database_query"), query="database_core",
+                    code=getattr(exc, "code", type(exc).__name__),
+                    upstreamCode=getattr(exc, "upstream_code", ""),
+                    message=getattr(exc, "diagnostic_message", str(exc)),
+                    durationSeconds=round(time.monotonic() - started, 3),
+                ))
+            except Exception:  # noqa: BLE001 - diagnostics cannot fail the card
+                pass
         if supplement is None:
             raise
         collected_error = exc
@@ -2537,36 +3067,74 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
         if supplied:
             data["supplement"] = {key: value for key, value in supplied.items() if key != "errors"}
             supplement_errors.extend(supplied.get("errors") or [])
-    if collected_error is not None and not data.get("supplement"):
-        raise collected_error
+    missing = _missing_supplement_fields(data)
+    if collected_error is not None:
+        supplied_groups = data.get("supplement") or {}
+        if not (isinstance(supplied_groups.get("B01"), dict)
+                and isinstance(supplied_groups.get("B02"), dict)):
+            raise collected_error
     _report_progress(progress, "rules", message="计算指标并判断风险规则")
     evaluated = evaluate(data, config, measured)
     _report_progress(progress, "analysing", message="模型分析风险、原因与建议")
     model_status = apply_text_interpretation(evaluated, text_interpreter)
+    if (text_interpreter is not None
+            and model_status.get("status") in {"failed", "fallback"}):
+        failure = OpportunityV2ModelUnavailable(
+            "模型分析未通过校验，保留上一版业务分析",
+            status=model_status.get("status"),
+            error=model_status.get("error") or "",
+            missing=model_status.get("missingRiskCodes") or [],
+        )
+        failure.diagnostic_message = json.dumps(
+            dict(modelStatus=model_status.get("status"), modelError=model_status.get("error"),
+                 modelErrorMessage=model_status.get("modelErrorMessage") or "",
+                 missingRiskCodes=model_status.get("missingRiskCodes") or [],
+                 rejectedRisks=model_status.get("rejectedRisks") or [],
+                 rejectedCauses=model_status.get("rejectedCauses") or [],
+                 rejectedAdvice=model_status.get("rejectedAdvice") or [],
+                 analysedRiskCount=model_status.get("analysedRiskCount"),
+                 riskCandidateCount=model_status.get("riskCandidateCount")),
+            ensure_ascii=False,
+        )
+        if diagnostic_reporter is not None:
+            try:
+                diagnostic_reporter(dict(
+                    phase="model", query="opportunity_v2_model",
+                    code=failure.code, upstreamCode="",
+                    message=failure.diagnostic_message,
+                    durationSeconds=round(time.monotonic() - started, 3),
+                ))
+            except Exception:  # noqa: BLE001 - diagnostics cannot fail the card
+                pass
+        raise failure
+    retention = _merge_previous_card(evaluated, previous)
     fetched_at = time.time()
     result = evaluated["result"]
     result["cardContract"] = "cockpit-cards-v1"
     result["engine"] = "opportunity-v2-rules"
-    if model_status.get("status") == "failed":
-        result["limitations"] = list(dict.fromkeys((result.get("limitations") or []) + [
-            "模型分析未完成；已保留程序规则计算的风险、原因和建议，卡片仍按证据发布。"
-        ]))[:10]
+    if model_status.get("status") == "partial":
+        result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
+            f"模型分析部分采用：已逐项判断 {model_status.get('analysedRiskCount', 0)}/"
+            f"{model_status.get('riskCandidateCount', 0)} 个本体候选风险，"
+            "未覆盖或未通过校验的摘要、原因和建议由规则模板补充。"
+        ]))[:12]
     if collected_error is not None:
-        result["limitations"] = list(dict.fromkeys((result.get("limitations") or []) + [
+        result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
             "数据库核心取数未完成，卡片仅保留 AP 可补充的聚合指标；项目、客户和投标明细未参与判定。"
-        ]))[:10]
+        ]))[:12]
     if data.get("supplement"):
-        result["limitations"] = list(dict.fromkeys((result.get("limitations") or []) + [
+        result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
             "部分目标/预测指标来自 AP 补充，已在对应指标来源中标明；明细级风险不据 AP 聚合值推导。"
-        ]))[:10]
+        ]))[:12]
     if supplement_errors:
-        result["limitations"] = list(dict.fromkeys((result.get("limitations") or []) + [
+        result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
             "AP 补充未全部成功：" + "、".join(sorted(set(supplement_errors))[:4])
-        ]))[:10]
+        ]))[:12]
     _report_progress(progress, "publishing", message="校验并发布卡片")
     item = dict(
         id=uuid.uuid4().hex,
-        status="limited" if (data.get("errors") or missing) else "completed",
+        status="limited" if (data.get("errors") or missing or retention
+                              or model_status.get("status") == "partial") else "completed",
         context=dict(
             stage="opportunity", slotId=SLOT_ID, period=str(period), id=1,
             dataFingerprint=hashlib.sha256(json.dumps(dict(
@@ -2586,7 +3154,22 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
             source="customer PostgreSQL", measurementDate=measured.isoformat(),
             rulesVersion=config.get("version"), configDigest=config_digest(),
             riskCount=len(evaluated["risks"]), errorCount=len(data.get("errors") or []),
-            modelStatus=model_status, supplementMissing=missing,
+            queryTimeoutMs=data.get("queryTimeoutMs"),
+            fetchBudgetSeconds=data.get("fetchBudgetSeconds"),
+            queryDiagnostics=data.get("queryDiagnostics") or [],
+            evidenceCounts=evaluated["evidence"].get("counts") or {},
+            retainedRiskCodes=result.get("retainedRiskCodes") or [],
+            retention=retention,
+            modelStatus=dict(
+                status=model_status.get("status"), analysisMode=model_status.get("analysisMode"),
+                error=model_status.get("error"),
+                riskCandidateCount=model_status.get("riskCandidateCount"),
+                analysedRiskCount=model_status.get("analysedRiskCount"),
+                includedRiskCount=model_status.get("includedRiskCount"),
+                missingRiskCodes=model_status.get("missingRiskCodes") or [],
+                coverageComplete=model_status.get("coverageComplete"),
+            ),
+            supplementMissing=missing,
             supplementErrors=sorted(set(supplement_errors))[:8],
         ),
         updatedAt=fetched_at,
@@ -2595,7 +3178,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
 
 
 __all__ = [
-    "SLOT_ID", "RULES_VERSION", "OpportunityV2Unavailable", "load_config",
+    "SLOT_ID", "RULES_VERSION", "OpportunityV2Unavailable", "OpportunityV2ModelUnavailable", "load_config",
     "config_version", "config_digest", "collect", "evaluate", "build_card",
     "apply_text_interpretation", "default_text_interpreter", "default_ap_supplement",
 ]

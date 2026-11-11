@@ -14,12 +14,15 @@ test('risk card highlights numbers and their units as one blue token', () => {
   ]);
 });
 
-test('shared stage risk component uses highlighted text and omits owner role', async () => {
+test('shared stage risk component highlights text and keeps the display owner role', async () => {
   const shared = await readFile(new URL('../bi_agent/web/static/cockpit/insight-components/shared.js', import.meta.url), 'utf8');
   const css = await readFile(new URL('../bi_agent/web/static/cockpit/cockpit.css', import.meta.url), 'utf8');
   assert.match(shared, /<number-text :text="summary" \/>/);
   assert.match(shared, /<number-text :text="finding\.description" \/>/);
   assert.match(shared, /<number-text :text="item\.action" \/>/);
-  assert.doesNotMatch(shared, /stage-risk-analysis__owner/);
+  assert.match(shared, /stage-risk-analysis__owner/);
+  assert.match(shared, /displayOwnerRole/);
+  assert.match(shared, /\(\?:牵头\|协同\|配合\|支持\|执行\|负责\)/);
+  assert.match(css, /\.stage-risk-analysis__owner\{/);
   assert.match(css, /\.stage-risk-analysis__num\{color:var\(--cockpit-primary\);font-weight:600\}/);
 });

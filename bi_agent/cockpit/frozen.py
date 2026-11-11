@@ -22,7 +22,7 @@ from urllib.parse import parse_qs
 from fastapi import HTTPException
 from starlette.responses import HTMLResponse, JSONResponse, Response
 
-from .diagnostics import diagnostic_scope, record_failure
+from .diagnostics import diagnostic_scope, record_failure, record_query_failure
 from .cards import CONTRACT, card_delivery_state, valid_card
 from .delivery import project_card, publication_payload
 from .page_cache import compact_analysis
@@ -292,6 +292,9 @@ class FrozenAnnualService:
                         phase='stage_execution'
                         try:
                             with diagnostic_scope(runId=self.round_id,stage=stage):
+                                if hasattr(self.recompute, 'previous_items'):
+                                    self.recompute.previous_items[stage] = (
+                                        self.store.read().get('items') or {}).get(stage)
                                 if hasattr(self.recompute, 'run_slot'):
                                     item = self.recompute.run_slot(self.store.read()['period'], stage)
                                 else:
@@ -308,9 +311,12 @@ class FrozenAnnualService:
                             from .store import Store
                             diagnostic=record_failure(Store(self.store.path.parent/'history.sqlite3'),exc,
                                 phase=phase,stage=stage,run_id=self.round_id,duration=time.monotonic()-started)
+                            had_previous = bool((self.store.read().get('items') or {}).get(stage))
                             with self.queue_lock:
                                 self.failures.append(dict(stage=stage,code=type(exc).__name__,diagnosticId=diagnostic['diagnosticId']))
-                                self.stage_progress[stage].update(status='failed', phase='failed', finishedAt=time.time(), diagnosticId=diagnostic['diagnosticId'])
+                                self.stage_progress[stage].update(
+                                    status='failed', phase='failed', finishedAt=time.time(),
+                                    diagnosticId=diagnostic['diagnosticId'], hadPrevious=had_previous)
                         with self.queue_lock:
                             self.active = ''
                             self._progress()
@@ -504,6 +510,17 @@ def _evidence_html(stage, item, release):
     evidence = item.get('evidence') or {}
     facts = [value for value in evidence.get('facts') or [] if isinstance(value, dict)]
     records = [value for value in evidence.get('records') or [] if isinstance(value, dict)]
+    counts = evidence.get('counts') or {}
+    try:
+        fact_count = int(counts.get('facts', len(facts)))
+        record_count = int(counts.get('records', len(records)))
+        distinct_count = int(counts.get('distinct', 0)) or len({
+            str(entry.get('id')) for key in ('facts', 'records', 'evidence')
+            for entry in evidence.get(key) or [] if isinstance(entry, dict) and entry.get('id')})
+        referenced_count = int(counts.get('referenced', len(evidence.get('evidence') or [])))
+    except (TypeError, ValueError):
+        fact_count, record_count = len(facts), len(records)
+        distinct_count = referenced_count = 0
     result = item.get('result') or {}
     stamp = float(item.get('updatedAt') or release.get('createdAt') or 0)
     when = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stamp)) if stamp else ''
@@ -515,7 +532,8 @@ def _evidence_html(stage, item, release):
     lines = [f"- 环节：{STAGE_LABELS.get(stage, stage)}",
              f"- 期间：{release.get('period', '')}",
              f"- 分析时间：{when or '未知'}" + (f"（耗时 {duration}）" if duration else ''),
-             f"- 证据规模：{len(records)} 条记录 · {len(facts)} 项事实",
+             f"- 证据规模：{fact_count} 项数值事实 · {record_count} 条明细记录 · "
+             f"{referenced_count} 条引用证据 · 去重 {distinct_count} 条",
              f"- 分析 ID：{item.get('id', '')}"]
     summary = str(result.get('summary') or '').strip()
     if summary:
@@ -564,7 +582,7 @@ def _evidence_html(stage, item, release):
                                    '完整原始数据可用 `?format=json` 查看。'})
     params = {
         'title': f"完整证据 · {STAGE_LABELS.get(stage, stage)}",
-        'subtitle': f"{release.get('period', '')} 年度分析 · {len(records)} 条记录",
+        'subtitle': f"{release.get('period', '')} 年度分析 · {record_count} 条明细记录 · 去重 {distinct_count} 条证据",
         'source_note': f"分析 {item.get('id', '')} · 期间 {release.get('period', '')}",
         'blocks': blocks,
     }
@@ -745,6 +763,7 @@ def recompute_from_router(app, cwd):
     class Runner:
         def __init__(self):
             self._progress_callback = None
+            self.previous_items = {}
 
         def begin_round(self, period):
             manager.round_queries={}
@@ -756,11 +775,20 @@ def recompute_from_router(app, cwd):
         def run_slot(self, period, stage):
             if stage == 'opportunity-risk':
                 from .opportunity_v2 import build_card, default_ap_supplement, default_text_interpreter
+                from .store import Store
                 enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
                 supplement_enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+                previous = self.previous_items.get('opportunity-risk')
+                diagnostic_store = Store(store.path.parent / 'history.sqlite3')
+
+                def report_diagnostic(entry):
+                    return record_query_failure(
+                        diagnostic_store, identity=1, stage='opportunity-risk', **entry)
+
                 return build_card(period, text_interpreter=default_text_interpreter if enabled else None,
                                   supplement=default_ap_supplement if supplement_enabled else None,
-                                  progress=self._progress_callback)
+                                  progress=self._progress_callback, previous=previous,
+                                  diagnostic_reporter=report_diagnostic)
             return self.run_stage(period, stage)
 
         def run_stage(self, period, stage):
