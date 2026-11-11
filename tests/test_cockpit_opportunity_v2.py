@@ -229,14 +229,21 @@ def test_model_wording_cannot_add_numbers_causes_or_broken_phrases():
     value = evaluate(data)
     assert value['textSamples']
     evidence_id = value['textSamples'][0]['evidenceId']
+    existing_description = value['result']['causes'][0]['description']
+    existing_action = next(item['action'] for item in value['result']['recommendations']
+                           if item['adviceCode'] == 'DS02')
     good = apply_text_interpretation(value, lambda payload: {
-        'causeDescriptions': {'RC02': '项目进展显示客户要求补充资质文件，需人工复核。'},
+        'causeDescriptions': {'RC02': existing_description},
         'causeEvidence': {'RC02': [evidence_id]},
-        'adviceActions': {'DS02': '推动客户补齐资质文件后进入投标'},
+        'adviceActions': {'DS02': existing_action},
     })
     assert good['status'] == 'completed'
-    assert good['causes'] == ['RC02']
-    assert good['advice'] == ['DS02']
+    assert good['causes'] == [] and good['advice'] == []
+    assert good['validatedCauses'] == ['RC02']
+    assert good['validatedAdvice'] == ['DS02']
+    assert value['result']['causes'][0]['description'] == existing_description
+    assert next(item['action'] for item in value['result']['recommendations']
+                if item['adviceCode'] == 'DS02') == existing_action
 
     bad_value = evaluate(data)
     bad = apply_text_interpretation(bad_value, lambda payload: {
@@ -246,6 +253,7 @@ def test_model_wording_cannot_add_numbers_causes_or_broken_phrases():
     })
     assert bad['status'] == 'completed'
     assert bad['causes'] == [] and bad['advice'] == []
+    assert 'RC02' in bad['rejectedCauses'] and 'DS99' in bad['rejectedAdvice']
     assert '999' not in bad_value['result']['causes'][0]['description']
 
     uncited_value = evaluate(data)
@@ -255,6 +263,48 @@ def test_model_wording_cannot_add_numbers_causes_or_broken_phrases():
         'adviceActions': {},
     })
     assert uncited['causes'] == []
+    assert uncited['rejectedCauses'] == ['RC02']
+
+    failed_value = evaluate(data)
+    before = failed_value['result']['causes'][0]['description']
+    def failure(_payload):
+        raise RuntimeError('provider down')
+    failed = apply_text_interpretation(failed_value, failure)
+    assert failed['status'] == 'failed' and failed['modelCalls'] == 1
+    assert failed_value['result']['causes'][0]['description'] == before
+
+
+def test_model_runs_even_without_text_samples_and_only_fills_empty_content():
+    opportunity = _opportunity(acneed='', stage='11', stage1End=None)
+    value = evaluate(_data(
+        opportunities=[opportunity], allOpportunities=[deepcopy(opportunity)],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+    ))
+    calls = []
+    completed = apply_text_interpretation(value, lambda payload: calls.append(payload) or {})
+    assert len(calls) == 1 and calls[0]['progressSamples'] == []
+    assert completed['status'] == 'completed' and completed['modelCalls'] == 1
+
+    value = evaluate(_data(
+        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+        progress={'opp-1': [dict(id='p1', description='客户要求补充资质文件', startAt='2026-10-01')]},
+    ))
+    cause = value['result']['causes'][0]
+    cause_id = cause['id']
+    cause['description'] = ''
+    next(item for item in value['causes'] if item['id'] == cause_id)['description'] = ''
+    action = next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'DS02')
+    action['action'] = ''
+    evidence_id = value['textSamples'][0]['evidenceId']
+    filled = apply_text_interpretation(value, lambda payload: {
+        'causeDescriptions': {'RC02': '项目进展显示客户要求补充资质文件，需人工复核。'},
+        'causeEvidence': {'RC02': [evidence_id]},
+        'adviceActions': {'DS02': '推动客户补齐资质文件后进入投标'},
+    })
+    assert filled['causes'] == ['RC02'] and filled['advice'] == ['DS02']
+    assert cause['description'].startswith('项目进展显示')
+    assert action['action'] == '推动客户补齐资质文件后进入投标'
 
 
 def test_unknown_acneed_status_is_not_a_verified_cause():

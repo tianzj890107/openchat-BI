@@ -1798,25 +1798,27 @@ def evaluate(data, config=None, measured=None):
 
 
 def default_text_interpreter(payload):
-    """Use the deployment model only to explain supplied progress text.
+    """Use one deployment-model call to validate content and fill empty fields.
 
-    The model receives the already-triggered risks, selected causes, advice
-    codes and progress snippets.  It cannot choose new tables, risks, causes or
-    actions.  A failed/invalid response is handled by the caller and never
-    blocks the deterministic rule-backed card.
+    The model receives the already-triggered risks, existing causes/advice,
+    compact supporting evidence and progress snippets.  It cannot choose new
+    tables, risks, causes or actions.  Existing non-empty text is validation
+    input only; the caller never lets the model overwrite it.
     """
     from ..llm import provider
     from ..llm.registry import get_default_model_key
     from ..llm.runtime_config import request_config
 
     system_prompt = (
-        "你是证据约束的经营分析助手。只能解释输入中的项目进展文本，不得补充输入之外的事实、"
-        "不得新增风险、原因或建议代码，不得猜测数字。只返回 JSON："
+        "你是证据约束的经营分析助手。请核验输入中已经生成的风险、原因和建议是否有事实、记录或进展证据支持，"
+        "不得补充输入之外的事实、不得新增风险、原因或建议代码、不得猜测数字。"
+        "已有非空原因描述和建议动作不得改写；认可时原样返回，系统只做校验、不覆盖原文。"
+        "只有输入中的 description 或 action 为空时才可依据证据写出补充文本。只返回 JSON："
         '{"causeDescriptions":{"RC02":"不超过160字"},'
-        '"causeEvidence":{"RC02":["progressSamples中的evidenceId"]},'
+        '"causeEvidence":{"RC02":["输入中的evidenceId"]},'
         '"adviceActions":{"DSxx":"不超过64字"}}。'
-        "原因描述必须说明文本中已出现的商务或技术卡点，并保留‘需人工复核’；建议只可改写给定建议代码的动作。"
-        "每条原因必须引用至少一条 progressSamples.evidenceId，不得引用输入之外的编号。"
+        "原因描述必须说明证据中已出现的商务或技术卡点，并保留‘需人工复核’；建议只可补全给定建议代码的动作。"
+        "每条返回的原因必须引用至少一条 evidenceIds 或 progressSamples 中的证据编号，不得引用输入之外的编号。"
         "不得使用‘逾期未完成’表述。"
     )
     events = []
@@ -1849,20 +1851,40 @@ def _model_numbers(value):
 
 
 def apply_text_interpretation(evaluated, interpreter=None):
-    """Validate and apply model wording without allowing model-created facts."""
+    """Call the model once, validate existing content and fill only empty fields.
+
+    The model never replaces an existing cause description or advice action.
+    Existing content is returned only as a validation signal, while empty
+    fields may be filled after the same evidence and number checks.
+    """
+    if interpreter is None:
+        return dict(status="skipped", error="", modelCalls=0)
     samples = evaluated.get("textSamples") or []
-    selected_causes = [cause for cause in evaluated.get("causes") or [] if cause.get("causeCode") == "RC02"]
-    selected_advice = {item.get("adviceCode"): item for item in evaluated.get("result", {}).get("recommendations") or []
+    selected_causes = [cause for cause in evaluated.get("causes") or [] if cause.get("causeCode")]
+    result = evaluated.get("result") or {}
+    selected_advice = {item.get("adviceCode"): item for item in result.get("recommendations") or []
                        if item.get("adviceCode")}
-    if not samples or not selected_causes or not interpreter:
-        return dict(status="skipped", error="")
+    evidence_bundle = evaluated.get("evidence") or {}
+    facts = [dict(id=item.get("id"), label=item.get("label"), value=item.get("value"),
+                  unit=item.get("unit"), definition=item.get("definition"))
+             for item in evidence_bundle.get("facts") or [] if item.get("id")][:40]
+    records = [dict(id=item.get("id"), customer=item.get("customer"), department=item.get("department"),
+                    product=item.get("product"), status=item.get("status"), amount=item.get("amount"),
+                    quantity=item.get("quantity"), value=item.get("value"), name=item.get("name"))
+               for item in evidence_bundle.get("records") or [] if item.get("id")][:30]
     payload = dict(
         risks=[dict(code=code, name=next((risk.get("name") for risk in evaluated.get("risks") or []
                                           if risk.get("code") == code), ""))
-               for code in evaluated.get("result", {}).get("riskCodes") or []],
-        causes=[dict(code=cause["causeCode"], title=cause["title"], description=cause["description"])
+               for code in result.get("riskCodes") or []],
+        causes=[dict(code=cause["causeCode"], title=cause["title"], description=cause.get("description") or "",
+                     kind=cause.get("kind"), status=cause.get("status"),
+                     evidenceIds=cause.get("evidenceIds") or [])
                 for cause in selected_causes],
-        advice=[dict(code=code, action=item.get("action")) for code, item in selected_advice.items()],
+        advice=[dict(code=code, action=item.get("action") or "", causeIds=item.get("causeIds") or [],
+                     evidenceIds=item.get("evidenceIds") or [])
+                for code, item in selected_advice.items()],
+        facts=facts,
+        records=records,
         progressSamples=samples[:6],
     )
     allowed_numbers = _model_numbers(payload)
@@ -1876,8 +1898,17 @@ def apply_text_interpretation(evaluated, interpreter=None):
         if not isinstance(descriptions, dict) or not isinstance(evidence, dict) or not isinstance(actions, dict):
             raise ValueError("模型结果字段类型错误")
         cause_by_code = {cause["causeCode"]: cause for cause in selected_causes}
+        result_causes = {cause.get("id"): cause for cause in result.get("causes") or []}
+        dimensions = {item.get("id"): item for item in result.get("analysisDimensions") or []}
         allowed_evidence = {sample.get("evidenceId") for sample in samples if sample.get("evidenceId")}
-        applied_causes, applied_actions = [], []
+        for cause in selected_causes:
+            allowed_evidence.update(cause.get("evidenceIds") or [])
+        for item in selected_advice.values():
+            allowed_evidence.update(item.get("evidenceIds") or [])
+        allowed_evidence.update(item.get("id") for item in facts if item.get("id"))
+        allowed_evidence.update(item.get("id") for item in records if item.get("id"))
+        filled_causes, validated_causes, rejected_causes, mismatched_causes = [], [], [], []
+        filled_actions, validated_actions, rejected_actions, mismatched_actions = [], [], [], []
         for code, description in descriptions.items():
             description = _text(description)
             cited = evidence.get(code) or []
@@ -1886,26 +1917,46 @@ def apply_text_interpretation(evaluated, interpreter=None):
                     or not isinstance(cited, list) or not cited
                     or not {_text(item) for item in cited} <= allowed_evidence
                     or not _model_numbers(description) <= allowed_numbers):
+                rejected_causes.append(code)
                 continue
-            cause_id = cause_by_code[code]["id"]
-            for item in evaluated["result"].get("causes") or []:
-                if item.get("id") == cause_id:
-                    item["description"] = description
-            for item in evaluated["result"].get("analysisDimensions") or []:
-                if item.get("id") == cause_id:
-                    item["description"] = description[:240]
-            applied_causes.append(code)
+            cause = cause_by_code[code]
+            cause_id = cause["id"]
+            current = _text((result_causes.get(cause_id) or cause).get("description"))
+            if current:
+                if current == description:
+                    validated_causes.append(code)
+                else:
+                    mismatched_causes.append(code)
+                continue
+            if cause_id in result_causes:
+                result_causes[cause_id]["description"] = description
+            if cause_id in dimensions:
+                dimensions[cause_id]["description"] = description[:240]
+            cause["description"] = description
+            filled_causes.append(code)
         for code, action in actions.items():
             action = _text(action)
             if (code not in selected_advice or not action or len(action) > 64
                     or "逾期未完成" in action
                     or not _model_numbers(action) <= allowed_numbers):
+                rejected_actions.append(code)
+                continue
+            current = _text(selected_advice[code].get("action"))
+            if current:
+                if current == action:
+                    validated_actions.append(code)
+                else:
+                    mismatched_actions.append(code)
                 continue
             selected_advice[code]["action"] = action
-            applied_actions.append(code)
-        return dict(status="completed", error="", causes=applied_causes, advice=applied_actions)
+            filled_actions.append(code)
+        return dict(status="completed", error="", causes=filled_causes, advice=filled_actions,
+                    validatedCauses=validated_causes, validatedAdvice=validated_actions,
+                    rejectedCauses=rejected_causes, rejectedAdvice=rejected_actions,
+                    mismatchedCauses=mismatched_causes, mismatchedAdvice=mismatched_actions,
+                    modelCalls=1)
     except Exception as exc:  # noqa: BLE001 - model enrichment is optional
-        return dict(status="failed", error=type(exc).__name__)
+        return dict(status="failed", error=type(exc).__name__, modelCalls=1)
 
 
 def _deadline_days(value):
@@ -2100,7 +2151,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
         raise collected_error
     _report_progress(progress, "rules", message="计算指标并判断风险规则")
     evaluated = evaluate(data, config, measured)
-    _report_progress(progress, "analysing", message="归纳有文本证据的原因与建议")
+    _report_progress(progress, "analysing", message="核验已有内容并补全缺失原因与建议")
     model_status = apply_text_interpretation(evaluated, text_interpreter)
     fetched_at = time.time()
     result = evaluated["result"]
@@ -2108,7 +2159,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     result["engine"] = "opportunity-v2-rules"
     if model_status.get("status") == "failed":
         result["limitations"] = list(dict.fromkeys((result.get("limitations") or []) + [
-            "项目进展文本的模型归纳未完成；已保留规则风险与有逐条文本证据的待复核原因。"
+            "模型核验未完成；已保留规则风险、既有原因和建议，不覆盖原文。"
         ]))[:10]
     if collected_error is not None:
         result["limitations"] = list(dict.fromkeys((result.get("limitations") or []) + [
