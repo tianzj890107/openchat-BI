@@ -179,6 +179,41 @@ def test_manual_card_refresh_requeues_a_completed_stage_in_the_running_round(tmp
     assert service.pending.count('opportunity-risk')==0
 
 
+def test_frozen_card_analysis_can_generate_a_task_draft(tmp_path):
+    from bi_agent.cockpit.router import build_cockpit_router, set_external_analysis_lookup
+
+    store,_,body=fixture(tmp_path)
+    item=deepcopy(body['items']['opportunity'])
+    item.update(
+        id='frozen-opportunity-risk',
+        context=dict(stage='opportunity',slotId='opportunity-risk',period='2026',id=1,stageName='商机获取'),
+        result=dict(
+            cardContract='cockpit-cards-v1',summary='商机风险需要核查',limitations=[],
+            causes=[dict(id='c1',kind='hypothesis',status='hypothesis',title='客户推进受阻',
+                         description='项目进展提示需要核实',evidenceIds=['e1'],missingEvidence=[])],
+            recommendations=[dict(id='a1',actionType='investigation',causeIds=['c1'],evidenceIds=['e1'],
+                                   action='逐条核对战略客户商机进展',ownerRole='销售运营',deadlineDays=5,
+                                   acceptance='形成客户、商机与下一步动作清单')],
+        ),
+        evidence=dict(facts=[dict(id='e1',label='事实e1')],records=[],
+                      evidence=[dict(id='e1',claim='记录e1')],limitations=[]),
+    )
+    store.publish_stage('opportunity-risk',item)
+    service=FrozenAnnualService(store)
+    set_external_analysis_lookup(service.published_analysis)
+    try:
+        app=FastAPI()
+        app.include_router(build_cockpit_router(lambda: str(tmp_path)))
+        client=TestClient(app)
+        response=client.post('/api/cockpit/analyses/frozen-opportunity-risk/draft',
+                             json={'id':1,'recommendationIds':['a1']})
+        assert response.status_code==200,response.text
+        assert response.json()['status']=='draft'
+        assert response.json()['analysisId']=='frozen-opportunity-risk'
+    finally:
+        set_external_analysis_lookup(None)
+
+
 def test_independent_combined_failure_does_not_retry_or_block_other_stages(tmp_path):
     store,_,body=fixture(tmp_path);calls=[];done=threading.Event()
     class Runner:

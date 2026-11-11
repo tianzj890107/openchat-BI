@@ -85,6 +85,8 @@ test('manual card refresh reports analysis duration and appends live state after
   assert.ok(source.includes(':disabled="cardUpdating"'));
   assert.ok(source.includes('<span v-if="cardRefreshStatus" class="cockpit-card-metadata__status">{{cardRefreshStatus}}</span>'));
   assert.ok(source.indexOf('{{cardRefreshStatus}}</span>') > source.indexOf(':disabled="cardUpdating"'));
+  assert.ok(source.includes("const INDEPENDENT_SLOT_KEYS = new Set(['opportunity-risk']);"));
+  assert.ok(source.includes('INDEPENDENT_SLOT_KEYS.has(props.insight.id)'));
 });
 
 

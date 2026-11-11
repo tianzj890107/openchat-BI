@@ -213,6 +213,7 @@
     'shipment-cause-breakdown': 'shipment',
     'shipment-task-order': 'shipment',
   };
+  const INDEPENDENT_SLOT_KEYS = new Set(['opportunity-risk']);
   function analysisDataStages(stage) {
     // The combined slot is derived from the three upstream nodes and has no
     // component query of its own.  Selecting only "combined" would discard
@@ -733,7 +734,12 @@
       const progressClock=ref(Date.now());
       const progressTimer=setInterval(()=>{if(frozenAnnual.running)progressClock.value=Date.now();},1000);
       onBeforeUnmount(()=>clearInterval(progressTimer));
-      const publicationKey=computed(()=>slotPublication(props.insight.id)?.publicationKey||stage.value);
+      // Independent cards own their queue entry. Older published payloads may
+      // still say publicationKey=opportunity; that must never redirect this
+      // card's progress to the shared opportunity stage.
+      const publicationKey=computed(()=>INDEPENDENT_SLOT_KEYS.has(props.insight.id)
+        ? props.insight.id
+        : slotPublication(props.insight.id)?.publicationKey||stage.value);
       const cardUpdating=computed(()=>frozenAnnual.running && frozenAnnual.activeStage===publicationKey.value);
       const cardRefreshStatus=computed(()=>taskProgressText(frozenAnnual,publicationKey.value,progressClock.value));
       const cardMetadata = computed(()=>{

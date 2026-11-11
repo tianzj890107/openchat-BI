@@ -242,7 +242,17 @@ def _safe_year(period):
     return int(value)
 
 
-def collect(period, measurement_date=None, database=None, config=None):
+def _report_progress(progress, phase, **detail):
+    """Progress reporting is observational and must never break evidence work."""
+    if progress is None:
+        return
+    try:
+        progress(phase, **detail)
+    except Exception:  # noqa: BLE001 - a UI callback cannot fail the analysis
+        pass
+
+
+def collect(period, measurement_date=None, database=None, config=None, progress=None):
     """Read fixed V2 facts from one repeatable-read PostgreSQL snapshot."""
     config = config or load_config()
     year = _safe_year(period)
@@ -255,7 +265,11 @@ def collect(period, measurement_date=None, database=None, config=None):
     query_status: dict[str, str] = {}
     schema = database.config.schema
 
+    total_queries = 9
+    completed_queries = 0
+
     def run(source, sql, params, *, optional=False, label=""):
+        nonlocal completed_queries
         try:
             result = source.run(sql, params, timeout_ms=max(
                 database.config.statement_timeout_ms,
@@ -273,6 +287,10 @@ def collect(period, measurement_date=None, database=None, config=None):
                 raise OpportunityV2Unavailable(f"{label or 'V2 取数'}失败：{type(exc).__name__}") from None
             errors.append(dict(stage=label or "optional", code=type(exc).__name__))
             return []
+        finally:
+            completed_queries += 1
+            _report_progress(progress, "fetching", message="查询数据库", completed=completed_queries,
+                             total=total_queries)
 
     # The config contains physical names already validated against the reviewed
     # ontology.  SQL is assembled only from those names and fixed templates.
@@ -470,6 +488,7 @@ def collect(period, measurement_date=None, database=None, config=None):
         aggregate_rows = []
         if (query_status.get("商机预测") == "truncated"
                 or query_status.get("全部商机") == "truncated"):
+            total_queries = 10
             aggregate_rows = run(source, aggregate_sql, [past, past, past, year, measured],
                                  optional=True, label="商机聚合")
 
@@ -865,7 +884,6 @@ def evaluate(data, config=None, measured=None):
     unknown_contract = [opp for opp in opps if opp.get("contract") == "unknown"]
     unknown_contract_count = (aggregate_count(lambda row: row.get("contract") == "unknown")
                               if aggregate_ready else len(unknown_contract))
-    unresolved = unsigned + unknown_contract
     has_opp_data = (bool(opps) or bool(data.get("opportunityAggregates"))
                     or ((data.get("queryStatus") or {}).get("商机预测") == "ok"))
     if aggregate_ready:
@@ -875,13 +893,10 @@ def evaluate(data, config=None, measured=None):
         unsigned_energy = aggregate_measure("energy", lambda row: row.get("contract") == "not_confirmed")
         unknown_amount = aggregate_measure("amount", lambda row: row.get("contract") == "unknown")
         unknown_energy = aggregate_measure("energy", lambda row: row.get("contract") == "unknown")
-        unresolved_amount = aggregate_measure("amount", lambda row: row.get("contract") != "confirmed")
-        unresolved_energy = aggregate_measure("energy", lambda row: row.get("contract") != "confirmed")
     elif aggregate_mode:
         confirmed_amount = confirmed_energy = None
         unsigned_amount = unsigned_energy = None
         unknown_amount = unknown_energy = None
-        unresolved_amount = unresolved_energy = None
     else:
         confirmed_amount = _sum(opp.get("forecastAmount") for opp in confirmed) if confirmed else (0.0 if has_opp_data else None)
         confirmed_energy = _sum(opp.get("forecastEnergy") for opp in confirmed) if confirmed else (0.0 if has_opp_data else None)
@@ -889,12 +904,13 @@ def evaluate(data, config=None, measured=None):
         unsigned_energy = _sum(opp.get("forecastEnergy") for opp in unsigned) if unsigned else (0.0 if has_opp_data else None)
         unknown_amount = _sum(opp.get("forecastAmount") for opp in unknown_contract) if unknown_contract else (0.0 if has_opp_data else None)
         unknown_energy = _sum(opp.get("forecastEnergy") for opp in unknown_contract) if unknown_contract else (0.0 if has_opp_data else None)
-        unresolved_amount = _sum(opp.get("forecastAmount") for opp in unresolved) if unresolved else (0.0 if has_opp_data else None)
-        unresolved_energy = _sum(opp.get("forecastEnergy") for opp in unresolved) if unresolved else (0.0 if has_opp_data else None)
-    unsigned_ratio_amount = _div((unresolved_amount or 0) + max(gap_amount or 0, 0), target_amount) if target_amount else None
-    unsigned_ratio_energy = _div((unresolved_energy or 0) + max(gap_energy or 0, 0), target_energy) if target_energy else None
-    sign_progress_amount = 1 - unsigned_ratio_amount if unsigned_ratio_amount is not None else None
-    sign_progress_energy = 1 - unsigned_ratio_energy if unsigned_ratio_energy is not None else None
+    # A contract whose state is unknown is neither signed nor explicitly
+    # unsigned.  It therefore stays out of both the pending/quarter window and
+    # the confirmed signing coverage.
+    unsigned_ratio_amount = _div((unsigned_amount or 0) + max(gap_amount or 0, 0), target_amount) if target_amount else None
+    unsigned_ratio_energy = _div((unsigned_energy or 0) + max(gap_energy or 0, 0), target_energy) if target_energy else None
+    sign_progress_amount = _div(confirmed_amount, target_amount)
+    sign_progress_energy = _div(confirmed_energy, target_energy)
     year_start = date(measured.year, 1, 1)
     year_end = date(measured.year, 12, 31)
     time_progress = ((measured - year_start).days + 1) / ((year_end - year_start).days + 1)
@@ -930,19 +946,29 @@ def evaluate(data, config=None, measured=None):
         if aggregate_ready:
             pending_predicate = lambda row: (row.get("contract") == "not_confirmed"
                                              and row.get("productType") == key)
+            confirmed_predicate = lambda row: (row.get("contract") == "confirmed"
+                                               and row.get("productType") == key)
             total_predicate = lambda row: row.get("productType") == key
             pending_amount = aggregate_measure("amount", pending_predicate)
             pending_energy = aggregate_measure("energy", pending_predicate)
+            confirmed_product_amount = aggregate_measure("amount", confirmed_predicate)
+            confirmed_product_energy = aggregate_measure("energy", confirmed_predicate)
             product_total_amount = aggregate_measure("amount", total_predicate)
             product_total_energy = aggregate_measure("energy", total_predicate)
             pending_count = aggregate_count(pending_predicate)
         elif aggregate_mode:
             pending_amount = pending_energy = None
+            confirmed_product_amount = confirmed_product_energy = None
             product_total_amount = product_total_energy = None
             pending_count = 0
         else:
             pending_amount = _sum(opp.get("forecastAmount") for opp in subset)
             pending_energy = _sum(opp.get("forecastEnergy") for opp in subset)
+            confirmed_subset = [opp for opp in confirmed if opp.get("productType") == key]
+            confirmed_product_amount = (_sum(opp.get("forecastAmount") for opp in confirmed_subset)
+                                        if confirmed_subset else (0.0 if has_opp_data else None))
+            confirmed_product_energy = (_sum(opp.get("forecastEnergy") for opp in confirmed_subset)
+                                        if confirmed_subset else (0.0 if has_opp_data else None))
             product_total_amount = _sum(opp.get("forecastAmount") for opp in total_subset)
             product_total_energy = _sum(opp.get("forecastEnergy") for opp in total_subset)
             pending_count = len({opp.get("id") for opp in subset if opp.get("id")})
@@ -958,15 +984,15 @@ def evaluate(data, config=None, measured=None):
         product_unsigned_ratio_energy = _div(
             (pending_energy or 0) + max(product_gap_energy or 0, 0), product_target_energy
         ) if product_target_energy else None
-        product_sign_progress_amount = (1 - product_unsigned_ratio_amount
-                                         if product_unsigned_ratio_amount is not None else None)
-        product_sign_progress_energy = (1 - product_unsigned_ratio_energy
-                                         if product_unsigned_ratio_energy is not None else None)
+        product_sign_progress_amount = _div(confirmed_product_amount, product_target_amount)
+        product_sign_progress_energy = _div(confirmed_product_energy, product_target_energy)
         products[key] = dict(
             pending=subset,
             pending_count=pending_count,
             pending_amount=pending_amount,
             pending_energy=pending_energy,
+            confirmed_amount=confirmed_product_amount,
+            confirmed_energy=confirmed_product_energy,
             total_amount=product_total_amount,
             total_energy=product_total_energy,
             target_amount=product_target_amount,
@@ -1171,8 +1197,10 @@ def evaluate(data, config=None, measured=None):
     f_r02_unknown_e = fact("R02-UNKNOWN-ENERGY", "合同状态未知商机预测（电量）", unknown_energy, "GWh", "new_contractconfirmation 为空或其他值；既不算已签也不算明确未签")
     f_r02_confirmed_a = fact("R02-CONFIRMED-AMOUNT", "已确认合同商机预测（金额）", confirmed_amount, "亿元", "仅 new_contractconfirmation=1")
     f_r02_confirmed_e = fact("R02-CONFIRMED-ENERGY", "已确认合同商机预测（电量）", confirmed_energy, "GWh", "仅 new_contractconfirmation=1")
-    f_r03 = fact("R03-LAG", "签单进度落后时间进度（金额）", lag_amount, "百分点", "签单进度 = 1 −（明确未确认 + 状态未知 + 缺口）÷ 目标；时间进度按测量日")
-    f_r03_e = fact("R03-LAG-ENERGY", "签单进度落后时间进度（电量）", lag_energy, "百分点")
+    f_r03 = fact("R03-LAG", "已确认签订覆盖率落后时间进度（金额）", lag_amount, "百分点",
+                 "已确认签订覆盖率 = 合同已确认商机预测金额 ÷ 目标金额；合同状态未知不计入已签或未签")
+    f_r03_e = fact("R03-LAG-ENERGY", "已确认签订覆盖率落后时间进度（电量）", lag_energy, "百分点",
+                   "已确认签订覆盖率 = 合同已确认商机预测电量 ÷ 目标电量；合同状态未知不计入已签或未签")
     f_r04_count = fact("R04-COUNT", "重点跟踪合同未确认商机数", focus_count, "条")
     f_r04_a = fact("R04-AMOUNT", "重点跟踪合同未确认预测（金额）", focus_amount, "亿元")
     f_r04_e = fact("R04-ENERGY", "重点跟踪合同未确认预测（电量）", focus_energy, "GWh")
@@ -1234,14 +1262,14 @@ def evaluate(data, config=None, measured=None):
                  "高" if lag >= thresholds["signLagHighPoints"] else "中")
         parts = []
         if lag_amount is not None:
-            parts.append(f"金额口径签单进度 {sign_progress_amount * 100:.1f}%、时间进度 {time_progress * 100:.1f}%，落后 {lag_amount:.1f} 个百分点。")
+            parts.append(f"金额口径已确认签订覆盖率 {sign_progress_amount * 100:.1f}%、时间进度 {time_progress * 100:.1f}%，落后 {lag_amount:.1f} 个百分点。")
         if lag_energy is not None:
-            parts.append(f"电量口径签单进度 {sign_progress_energy * 100:.1f}%，落后 {lag_energy:.1f} 个百分点。")
+            parts.append(f"电量口径已确认签订覆盖率 {sign_progress_energy * 100:.1f}%，落后 {lag_energy:.1f} 个百分点。")
         if quarterly:
             parts.append(f"第 {quarter} 季度待签及缺口占比超过 {quarter_window * 100:.0f}% 窗口阈值。")
         evidence = [f_r03, f_r03_e, f_r02_a, f_r02_e, f_r02_unknown_a, f_r02_unknown_e,
                     f_r01_a, f_r01_e]
-        risks.append(_risk("RK02", "签单进度滞后", level, "RK02 签单进度滞后",
+        risks.append(_risk("RK02", "签单进度滞后", level, "RK02 签单进度滞后（已确认签订覆盖率口径）",
                            "".join(parts), ["RK02", "R03", "R02", "R01"], evidence,
                            dict(amount=unsigned_amount, energy=unsigned_energy, count=None), []))
 
@@ -1285,7 +1313,7 @@ def evaluate(data, config=None, measured=None):
         product_lags = [value for value in (bucket.get("lag_amount"), bucket.get("lag_energy"))
                         if value is not None]
         if lagged and product_lags:
-            parts.append(f"该类签单进度落后时间进度 {max(product_lags):.1f} 个百分点")
+            parts.append(f"该类已确认签订覆盖率落后时间进度 {max(product_lags):.1f} 个百分点")
         evidence = [f_r05_a if key == "1" else f_r06_a, f_r05_e if key == "1" else f_r06_e]
         risks.append(_risk(code, "电芯类待签商机风险" if key == "1" else "PACK 类待签商机风险",
                            level, f"{code} {'电芯' if key == '1' else 'PACK'} 类待签商机风险",
@@ -1692,6 +1720,7 @@ def evaluate(data, config=None, measured=None):
         limitations.append("投标明细达到行数上限；投标周期和投标中项目相关规则未判定。")
     limitations.extend([
         "合同签订按 new_contractconfirmation 判断；签订日期字段实库为空，不能用日期推断。",
+        "签单进度按已确认签订覆盖率计算（合同已确认商机预测 ÷ 目标）；合同状态未知不计入已签或未签，也不单独触发进度滞后。",
         "目标表按行求和，未按客户或产品去重；目标表缺少经验证的业务唯一键。",
         "预测电量使用 new_orderforecast_qty（kWh）换算 GWh；本体登记的 new_forcastpower 实库为空。",
         "项目阶段按 11~15 映射 P0~P4；其他枚举不推断。投标关联仅使用去首尾空格后的精确名称，同名歧义不判未投标。",
@@ -1749,6 +1778,7 @@ def evaluate(data, config=None, measured=None):
                      confirmedAmount=confirmed_amount, confirmedEnergy=confirmed_energy),
             R03=dict(lagAmount=lag_amount, lagEnergy=lag_energy,
                      signProgressAmount=sign_progress_amount, signProgressEnergy=sign_progress_energy,
+                     confirmedCoverageAmount=sign_progress_amount, confirmedCoverageEnergy=sign_progress_energy,
                      timeProgress=time_progress),
             R04=dict(count=focus_count, amount=focus_amount, energy=focus_energy),
             R05=dict(amount=products["1"]["pending_amount"], energy=products["1"]["pending_energy"]),
@@ -2039,14 +2069,16 @@ def _empty_collected(period, measured, error):
 
 
 def build_card(period, database=None, measurement_date=None, config=None, text_interpreter=None,
-               supplement=None):
+               supplement=None, progress=None):
     """Build one complete ``opportunity-risk`` publication payload."""
+    _report_progress(progress, "ontology", message="读取本体与规则配置")
     config = config or load_config()
     started = time.monotonic()
     measured = _measurement_context(period, measurement_date)
     collected_error = None
+    _report_progress(progress, "fetching", message="查询数据库", completed=0, total=9)
     try:
-        data = collect(period, measured, database=database, config=config)
+        data = collect(period, measured, database=database, config=config, progress=progress)
     except OpportunityV2Unavailable as exc:
         if supplement is None:
             raise
@@ -2055,6 +2087,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     missing = _missing_supplement_fields(data)
     supplement_errors = []
     if supplement is not None and missing:
+        _report_progress(progress, "ap", message="AP 补充缺失聚合指标")
         try:
             supplied = supplement(data)
         except Exception as exc:  # noqa: BLE001 - AP supplementation is optional
@@ -2065,7 +2098,9 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
             supplement_errors.extend(supplied.get("errors") or [])
     if collected_error is not None and not data.get("supplement"):
         raise collected_error
+    _report_progress(progress, "rules", message="计算指标并判断风险规则")
     evaluated = evaluate(data, config, measured)
+    _report_progress(progress, "analysing", message="归纳有文本证据的原因与建议")
     model_status = apply_text_interpretation(evaluated, text_interpreter)
     fetched_at = time.time()
     result = evaluated["result"]
@@ -2087,6 +2122,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
         result["limitations"] = list(dict.fromkeys((result.get("limitations") or []) + [
             "AP 补充未全部成功：" + "、".join(sorted(set(supplement_errors))[:4])
         ]))[:10]
+    _report_progress(progress, "publishing", message="校验并发布卡片")
     item = dict(
         id=uuid.uuid4().hex,
         status="limited" if (data.get("errors") or missing) else "completed",

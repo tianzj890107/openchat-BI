@@ -208,7 +208,11 @@ class FrozenAnnualService:
 
     def report_progress(self, phase, **detail):
         with self.queue_lock:
-            self.phase, self.detail = phase, {**detail, 'lastProgressAt':time.time()}
+            now = time.time()
+            previous = self.stage_progress.get(self.active, {}) if self.active else {}
+            self.phase, self.detail = phase, {**detail, 'lastProgressAt': now}
+            if previous.get('phase') != phase:
+                self.detail['stepStartedAt'] = now
             if self.active:
                 self.stage_progress[self.active] = {**self.stage_progress.get(self.active, {}), **self.detail, 'phase':phase, 'status':'running'}
             self._progress()
@@ -273,7 +277,8 @@ class FrozenAnnualService:
                                 return
                             stage = self.pending.pop(0)
                             self.active = stage
-                            self.phase, self.detail = 'fetching', {'startedAt':time.time()}
+                            started_at = time.time()
+                            self.phase, self.detail = 'fetching', {'startedAt':started_at, 'stepStartedAt':started_at}
                             self.stage_progress[stage] = {**self.stage_progress.get(stage, {}), **self.detail, 'phase':'fetching', 'status':'running'}
                             self._progress()
                         started=time.monotonic()
@@ -366,6 +371,21 @@ class FrozenAnnualService:
             item['context']['publicationBasis'] = release.get('basis', '')
             items[key] = item
         return items
+
+    def published_analysis(self, aid):
+        """Look up an analysis by id across the current frozen release.
+
+        Frozen cards live in the annual release rather than the ordinary
+        append-only analysis table.  Task drafts and task dispatch still need
+        the exact published item, including its evidence and recommendations.
+        """
+        if not isinstance(aid, str) or not aid:
+            return None
+        release = self.store.read()
+        for item in (release.get('items') or {}).values():
+            if isinstance(item, dict) and item.get('id') == aid:
+                return deepcopy(item)
+        return None
 
     def envelope(self, identity, ui_scope='default'):
         release = self.store.read()
@@ -716,10 +736,14 @@ def recompute_from_router(app, cwd):
     manager = RefreshManager(store, get_gateway().config, query, start, timeout=timeout)
     manager.implemented_only = True
     class Runner:
+        def __init__(self):
+            self._progress_callback = None
+
         def begin_round(self, period):
             manager.round_queries={}
 
         def set_progress(self, callback):
+            self._progress_callback = callback
             manager.progress_callback=callback
 
         def run_slot(self, period, stage):
@@ -728,7 +752,8 @@ def recompute_from_router(app, cwd):
                 enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
                 supplement_enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
                 return build_card(period, text_interpreter=default_text_interpreter if enabled else None,
-                                  supplement=default_ap_supplement if supplement_enabled else None)
+                                  supplement=default_ap_supplement if supplement_enabled else None,
+                                  progress=self._progress_callback)
             return self.run_stage(period, stage)
 
         def run_stage(self, period, stage):

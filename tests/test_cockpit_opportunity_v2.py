@@ -171,6 +171,51 @@ def test_product_risk_uses_product_specific_signing_progress():
     assert 'RK04' not in codes
 
 
+def test_unknown_contract_does_not_reduce_confirmed_signing_coverage():
+    confirmed = _opportunity(
+        id='confirmed-1', contract='confirmed', forecastAmount=100.0, forecastEnergy=100.0,
+        stage='14', createdAt='2026-01-01')
+    unknown = _opportunity(
+        id='unknown-1', contract='unknown', forecastAmount=20.0, forecastEnergy=20.0,
+        stage='14', createdAt='2026-01-01')
+    data = _data(
+        targets=dict(amount=100.0, energy=100.0,
+                     byProduct={'1': dict(amount=100.0, energy=100.0)}, byAccount={}),
+        opportunities=[confirmed, unknown],
+        allOpportunities=[deepcopy(confirmed), deepcopy(unknown)],
+    )
+    value = evaluate(data, measured=date(2026, 11, 11))
+    assert value['metrics']['R03']['signProgressAmount'] == 1.0
+    assert value['metrics']['R03']['signProgressEnergy'] == 1.0
+    assert value['metrics']['R02']['unknownAmount'] == 20.0
+    assert 'RK02' not in {risk['code'] for risk in value['risks']}
+    assert any('合同状态未知不计入已签或未签' in item for item in value['result']['limitations'])
+
+
+def test_build_card_reports_internal_steps_in_execution_order():
+    class EmptyResult:
+        truncated = False
+        rows = []
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        def run(self, sql, params, timeout_ms=0):
+            return EmptyResult()
+
+    events = []
+    build_card('2026', database=Database(), measurement_date='2026-11-11',
+               text_interpreter=None,
+               progress=lambda phase, **detail: events.append((phase, detail)))
+    phases = [phase for phase, _ in events]
+    assert phases[0] == 'ontology'
+    assert phases.count('fetching') >= 9
+    assert phases[-3:] == ['rules', 'analysing', 'publishing']
+    fetch = [detail for phase, detail in events if phase == 'fetching']
+    assert fetch[-1]['completed'] == fetch[-1]['total'] == 9
+
+
 def test_model_wording_cannot_add_numbers_causes_or_broken_phrases():
     opportunity = dict(id='opp-1', name='测试商机', accountId='account-1', accountName='客户A',
                        tier='strategic', productType='1', stage='11', status='0',
