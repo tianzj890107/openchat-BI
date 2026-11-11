@@ -192,8 +192,13 @@ export function useInsight(props, emit) {
   }
 
   function displayOwnerRole(value) {
-    // Strip only an explicit coordination suffix; keep the role itself.
-    return String(value || '').replace(/[（(](?:牵头|协同|配合|支持|执行|负责)[）)]\s*$/u, '').trim()
+    // The draft editor still lets users change the role, so the display does
+    // not need the "to be confirmed" annotation.  Strip only explicit
+    // suffixes; keep the role itself.
+    return String(value || '')
+      .replace(/[（(](?:建议角色[，,]\s*)?待确认[）)]\s*$/u, '')
+      .replace(/[（(](?:牵头|协同|配合|支持|执行|负责)[）)]\s*$/u, '')
+      .trim()
   }
 
   function recommendationDetail(item) {
