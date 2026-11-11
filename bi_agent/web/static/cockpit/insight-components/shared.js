@@ -232,6 +232,7 @@ export function useInsight(props, emit) {
     department,
     contextLine,
     evidenceCount,
+    evidenceCounts,
     updatedAt,
     stateText,
     fact,
