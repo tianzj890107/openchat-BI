@@ -1,7 +1,11 @@
 """Cockpit and Process360-only entrypoint. Customer values come from env only."""
 from pathlib import Path
+from hashlib import sha256
 import json
 import os
+
+
+BUILTIN_CATALOG_PATH = Path('/app/builtin-ontology/catalog.json')
 
 
 class CustomerSurface:
@@ -40,8 +44,37 @@ def prepare():
     os.environ.pop('ONTOLOGY_MCP_EXPOSED_TOOLS',None)
     for name in ('ONTOLOGY_BASE_URL','DORIS_API_URL','CONVERSATION_SYNC_URL','TASK_ALERT_API_URL'):
         os.environ[name]=''
-    if not Path(os.environ.get('PROCESS360_CATALOG_PATH','')).is_file():
-        raise RuntimeError('PROCESS360_CATALOG_PATH缺少客户catalog.json')
+    catalog=os.environ.get('PROCESS360_BUILTIN_CATALOG_PATH','').strip()
+    builtin=Path(catalog) if catalog else BUILTIN_CATALOG_PATH
+    if builtin.is_file():
+        source='builtin'
+    else:
+        source='env'
+        builtin=Path(os.environ.get('PROCESS360_CATALOG_PATH',''))
+        if not builtin.is_file():
+            raise RuntimeError('缺少客户catalog.json：未找到内置本体，PROCESS360_CATALOG_PATH也不存在')
+    from ..process360.catalog import Process360Catalog
+    loaded=Process360Catalog.from_file(builtin)
+    digest=sha256(builtin.read_bytes()).hexdigest()
+    verified=False
+    manifest=builtin.parent/'manifest.json'
+    if source=='builtin' and not manifest.is_file():
+        raise RuntimeError('内置本体缺少manifest.json，无法校验完整性')
+    if manifest.is_file():
+        files=json.loads(manifest.read_text(encoding='utf-8')).get('files',{})
+        if source=='builtin' and not files:
+            raise RuntimeError('内置本体manifest.json未登记待校验文件')
+        for name,expected in files.items():
+            candidate=builtin.parent/name
+            if not candidate.is_file() or sha256(candidate.read_bytes()).hexdigest()!=expected:
+                raise RuntimeError(f'本体文件与manifest哈希不一致：{name}')
+        verified=bool(files)
+    os.environ['PROCESS360_CATALOG_PATH']=str(builtin.resolve())
+    os.environ['PROCESS360_CATALOG_SOURCE']=source
+    os.environ['PROCESS360_CATALOG_SHA256']=digest
+    print(json.dumps({'event':'process360_catalog_loaded','source':source,'path':str(builtin.resolve()),
+                      'catalogId':loaded.catalog_id,'version':loaded.version,'sha256':digest,
+                      'manifestHashVerified':verified},ensure_ascii=False),flush=True)
     target=Path(os.environ.get('COCKPIT_AP_HEADERS_FILE','dataset/customer/ap-headers.json'))
     target.parent.mkdir(parents=True,exist_ok=True)
     headers={}

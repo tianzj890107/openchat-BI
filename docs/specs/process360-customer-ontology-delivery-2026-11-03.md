@@ -25,6 +25,8 @@
 
 Process360 运行时读取 JSON，不直接热加载 Excel。后续授权部署时，须一起交付 Excel 与对应 JSON，再将 `PROCESS360_CATALOG_PATH` 指向客户 catalog；原默认 catalog 不修改。数据库名称、schema、认证、只读权限仍属于运行配置，不写入本体，更不写入密码。
 
+客户镜像构建可把整个 `config/ontology/` 放入 `/app/builtin-ontology/`。客户入口优先加载内置 `catalog.json`，启动时校验 catalog 结构及 `manifest.json` 中登记的文件哈希并输出 `process360_catalog_loaded` 日志；内置本体缺少 manifest 或任一文件哈希不一致时启动失败，不静默回退旧本体。内置本体存在时，外部 `PROCESS360_CATALOG_PATH` 和只读 `./config` 挂载不会覆盖它。因此客户只替换镜像也能同步更新本体，无需修改 `.env` 或 Compose。构建命令见 `scripts/build_customer_image.sh` 与 `DEPLOYMENT.md`。
+
 ## 实际静态核对结果
 
 | 项目 | 结果 |
