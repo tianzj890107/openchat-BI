@@ -733,8 +733,9 @@
       const progressClock=ref(Date.now());
       const progressTimer=setInterval(()=>{if(frozenAnnual.running)progressClock.value=Date.now();},1000);
       onBeforeUnmount(()=>clearInterval(progressTimer));
-      const cardUpdating=computed(()=>frozenAnnual.running && frozenAnnual.activeStage===stage.value);
-      const cardRefreshStatus=computed(()=>taskProgressText(frozenAnnual,stage.value,progressClock.value));
+      const publicationKey=computed(()=>slotPublication(props.insight.id)?.publicationKey||stage.value);
+      const cardUpdating=computed(()=>frozenAnnual.running && frozenAnnual.activeStage===publicationKey.value);
+      const cardRefreshStatus=computed(()=>taskProgressText(frozenAnnual,publicationKey.value,progressClock.value));
       const cardMetadata = computed(()=>{
         const item=slotAnalysis.value, name=STAGE_NAMES[stage.value]||stage.value;
         if(!item?.result)return `${frozenAnnual.period} 年度分析 · ${name}`;

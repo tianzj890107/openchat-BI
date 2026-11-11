@@ -69,7 +69,8 @@ export function useInsight(props, emit) {
   const evidenceLink = computed(() => {
     const slot=props.slotProps||{};
     if(!slot.frozenControls || !props.analysis?.id)return '';
-    return `${slot.apiBase}/ai-publications/stages/${encodeURIComponent(slot.stage)}/evidence?id=${slot.identityId}&format=html&analysisId=${encodeURIComponent(props.analysis.id)}`;
+    const publicationKey=slot.publicationKey||slot.stage;
+    return `${slot.apiBase}/ai-publications/stages/${encodeURIComponent(publicationKey)}/evidence?id=${slot.identityId}&format=html&analysisId=${encodeURIComponent(props.analysis.id)}`;
   })
   const findings = computed(() => (result.value?.findings || []).slice(0,4))
   const causes = computed(() => (result.value?.causes || []).map(cause=>({...cause,title:String(cause.title||'').replace(/^\[(待验证假设|结构定位|异常表现|数据缺口|记录支持)\]\s*/, '')})))

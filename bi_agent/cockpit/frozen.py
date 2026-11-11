@@ -30,6 +30,24 @@ from .risk import summarize_risk_counts
 from .targets import REGISTRY_VERSION, slot_registry
 
 STAGES = ('opportunity', 'order', 'shipment', 'quotation', 'bid', 'combined')
+INDEPENDENT_ITEMS = ('opportunity-risk',)
+PUBLICATION_KEYS = STAGES + INDEPENDENT_ITEMS
+
+
+def _item_key(spec, items=None):
+    """Return the independently published item for a slot when one exists."""
+    if spec.get('slotId') in INDEPENDENT_ITEMS and (items is None or spec['slotId'] in items):
+        return spec['slotId']
+    return spec['stage']
+
+
+def _release_item(release, spec):
+    items = release.get('items') or {}
+    key = _item_key(spec, items)
+    item = items.get(key)
+    if not item and key != spec['stage']:
+        item = items.get(spec['stage'])
+    return item, (key if items.get(key) else spec['stage'])
 
 
 def validate_release(body):
@@ -42,9 +60,20 @@ def validate_release(body):
         if (not valid_card(item) or item.get('status') not in {'completed', 'limited'}
                 or context.get('stage') != stage or context.get('period') != body['period']):
             raise ValueError('年度发布版缺少可交付的同年度环节：' + stage)
-    if any(not card_delivery_state(publication_payload(project_card(items[s['stage']], s['slotId'])),
-                                    s['slotId'])['renderable'] for s in slot_registry()):
-        raise ValueError('年度发布版未覆盖全部AI插槽')
+    for key in INDEPENDENT_ITEMS:
+        item = items.get(key)
+        if item is None:
+            continue
+        context = (item or {}).get('context') or {}
+        spec = next((slot for slot in slot_registry() if slot['slotId'] == key), None)
+        if (not spec or not valid_card(item) or item.get('status') not in {'completed', 'limited'}
+                or context.get('stage') != spec['stage'] or context.get('slotId') != key
+                or context.get('period') != body['period']):
+            raise ValueError('独立卡片发布内容不合法：' + key)
+    for spec in slot_registry():
+        item, _ = _release_item(body, spec)
+        if not card_delivery_state(publication_payload(project_card(item, spec['slotId'])), spec['slotId'])['renderable']:
+            raise ValueError('年度发布版未覆盖全部AI插槽')
     return body
 
 
@@ -118,7 +147,7 @@ class FrozenAnnualStore:
 
     def publish_stage(self, stage, item):
         # Keep every other stage at its last successful generation.
-        if stage not in STAGES:
+        if stage not in PUBLICATION_KEYS:
             raise ValueError('Unknown analysis stage')
         with self.lock:
             release = self.read()
@@ -165,8 +194,10 @@ class FrozenAnnualService:
             visible_slots = []
         if not isinstance(visible_slots, list) or len(visible_slots)>15 or any(not isinstance(v, str) or v not in registry for v in visible_slots):
             raise HTTPException(422, 'Invalid visible slots')
-        candidates = ([registry[slot_id]['stage']] if slot_id else [])
-        candidates += [registry[v]['stage'] for v in visible_slots]
+        candidates = ([_item_key(registry[slot_id])] if slot_id else [])
+        candidates += [_item_key(registry[v]) for v in visible_slots]
+        # A page-wide refresh keeps the shared stage targets.  Independent
+        # cards join only when the user targets them or they are visible.
         candidates += [s['stage'] for s in registry.values() if s['page']==page]
         return list(dict.fromkeys(candidates + list(STAGES)))
 
@@ -229,7 +260,7 @@ class FrozenAnnualService:
                         self._progress()
             threading.Thread(target=heartbeat,name='cockpit-round-heartbeat',daemon=True).start()
             try:
-                if hasattr(self.recompute, 'run_stage'):
+                if hasattr(self.recompute, 'run_stage') or hasattr(self.recompute, 'run_slot'):
                     if hasattr(self.recompute, 'begin_round'):
                         self.recompute.begin_round(self.store.read()['period'])
                     if hasattr(self.recompute,'set_progress'):self.recompute.set_progress(self.report_progress)
@@ -249,7 +280,10 @@ class FrozenAnnualService:
                         phase='stage_execution'
                         try:
                             with diagnostic_scope(runId=self.round_id,stage=stage):
-                                item = self.recompute.run_stage(self.store.read()['period'], stage)
+                                if hasattr(self.recompute, 'run_slot'):
+                                    item = self.recompute.run_slot(self.store.read()['period'], stage)
+                                else:
+                                    item = self.recompute.run_stage(self.store.read()['period'], stage)
                             if (item.get('execution') or {}).get('stopReason')=='stage_no_evidence':
                                 raise RuntimeError('No matching evidence; retain previous published card')
                             phase='publication'
@@ -297,7 +331,7 @@ class FrozenAnnualService:
                 envelope=self.envelope(identity)
                 grouped={}
                 for sid,slot in envelope['slots'].items():
-                    stage=slot['stage']
+                    stage=slot.get('publicationKey') or slot['stage']
                     bundle=grouped.setdefault(stage,{'slots':{},'evidence':None})
                     payload=slot['payload']
                     if bundle['evidence'] is None:
@@ -321,15 +355,16 @@ class FrozenAnnualService:
 
     def items(self, identity, page=None, release=None):
         release = release or self.store.read()
-        stages = {s['stage'] for s in slot_registry() if page is None or s['page'] == page}
+        keys = {_item_key(s, release.get('items') or {}) for s in slot_registry()
+                if page is None or s['page'] == page}
         items = {}
-        for stage, raw in release['items'].items():
-            if stage not in stages:
+        for key, raw in release['items'].items():
+            if key not in keys:
                 continue
             item = compact_analysis(raw)
             item['context']['id'] = identity
             item['context']['publicationBasis'] = release.get('basis', '')
-            items[stage] = item
+            items[key] = item
         return items
 
     def envelope(self, identity, ui_scope='default'):
@@ -337,11 +372,15 @@ class FrozenAnnualService:
         items = self.items(identity, release=release)
         slots = {}
         for spec in slot_registry():
-            item = items[spec['stage']]
+            item, publication_key = _release_item(release, spec)
+            item = compact_analysis(item)
+            item['context']['id'] = identity
+            item['context']['publicationBasis'] = release.get('basis', '')
             payload = publication_payload(project_card(item, spec['slotId']))
             delivery = card_delivery_state(payload, spec['slotId'])
             stamp = float(item.get('updatedAt') or release['createdAt'])
-            slots[spec['slotId']] = dict(**spec, status='ready', contentStatus=delivery['status'],
+            slots[spec['slotId']] = dict(**spec, publicationKey=publication_key,
+                status='ready', contentStatus=delivery['status'],
                 contentComplete=delivery['complete'], contentGaps=delivery['gaps'],
                 evidenceCount=delivery['evidenceCount'], riskFindingCount=delivery['riskFindingCount'],
                 generatedAt=stamp, dataAsOf=stamp, lastSuccessfulPublication=payload,
@@ -379,7 +418,7 @@ def browser_evidence(evidence):
     return value
 
 
-STAGE_LABELS = {'opportunity': '商机获取', 'quotation': '报价', 'bid': '投标',
+STAGE_LABELS = {'opportunity': '商机获取', 'opportunity-risk': '商机获取', 'quotation': '报价', 'bid': '投标',
                 'order': '订单接收', 'shipment': '发货',
                 'combined': '销售额与出货量跨环节共同问题分析'}
 _RECORD_LABELS = {'id': 'ID', 'customer': '客户', 'department': '产品部/部门',
@@ -552,10 +591,14 @@ class FrozenCockpitSurface:
             if path.startswith('/api/cockpit/ai-publications/stages/') and scope['method']=='GET':
                 parts=path[len('/api/cockpit/ai-publications/stages/'):].split('/')
                 stage=parts[0]
-                if stage not in STAGES or len(parts)>2 or (len(parts)==2 and parts[1]!='evidence'):raise HTTPException(422,'无效分析环节')
+                if stage not in PUBLICATION_KEYS or len(parts)>2 or (len(parts)==2 and parts[1]!='evidence'):raise HTTPException(422,'无效分析环节')
                 if len(parts)==2:
                     release=await asyncio.to_thread(self.service.store.read)
-                    item=release['items'][stage]
+                    item=release['items'].get(stage)
+                    if not item:
+                        item=release['items'].get('opportunity')
+                    if not item:
+                        raise HTTPException(404,'该环节尚未发布完整证据')
                     expected=query.get('analysisId',[''])[0]
                     if expected and expected!=item['id']:raise HTTPException(409,'该环节分析已更新，请重新打开证据')
                     if query.get('format',['json'])[0]=='html':
@@ -678,6 +721,15 @@ def recompute_from_router(app, cwd):
 
         def set_progress(self, callback):
             manager.progress_callback=callback
+
+        def run_slot(self, period, stage):
+            if stage == 'opportunity-risk':
+                from .opportunity_v2 import build_card, default_ap_supplement, default_text_interpreter
+                enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_MODEL_ENABLED', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+                supplement_enabled = os.getenv('COCKPIT_OPPORTUNITY_V2_AP_SUPPLEMENT', '1').strip().lower() not in {'0', 'false', 'no', 'off'}
+                return build_card(period, text_interpreter=default_text_interpreter if enabled else None,
+                                  supplement=default_ap_supplement if supplement_enabled else None)
+            return self.run_stage(period, stage)
 
         def run_stage(self, period, stage):
             page = target_page(stage) or 'analysis'

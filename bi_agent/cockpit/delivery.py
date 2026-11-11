@@ -65,10 +65,10 @@ SLOT_SPECS = {
         actions=True, max_causes=5,
         note='跨环节结论必须同口径；口径冲突未对账前只交付各自观察，不汇总缺口。'),
     'opportunity-risk': dict(
-        question='商机风险集中在哪些团队、客户等级和项目',
+        question='哪些商机风险已由本体规则触发，原因与行动是否有证据',
         kinds=('fact', 'structure', 'data_gap', 'hypothesis', 'verified'), actions=True,
         max_causes=5,
-        note='本卡交付商机缺口的结构定位；缺口分布不等于业务原因。'),
+        note='风险与阈值由 V2 规则判定，模型只解释项目进展文本；缺口分布不等于已证实原因。'),
     'opportunity-coverage-note': dict(
         question='商机覆盖缺口在哪里，目标与实际的差异如何理解',
         kinds=('fact', 'structure', 'data_gap'), actions=True, max_causes=4,
