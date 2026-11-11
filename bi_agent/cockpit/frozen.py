@@ -194,11 +194,18 @@ class FrozenAnnualService:
             visible_slots = []
         if not isinstance(visible_slots, list) or len(visible_slots)>15 or any(not isinstance(v, str) or v not in registry for v in visible_slots):
             raise HTTPException(422, 'Invalid visible slots')
+        if slot_id:
+            target = _item_key(registry[slot_id])
+            if target in INDEPENDENT_ITEMS:
+                # A dedicated card retry owns the round. Appending the rest of
+                # the page here previously let a shared opportunity task finish
+                # later and compete with the independently published card.
+                return [target]
         candidates = ([_item_key(registry[slot_id])] if slot_id else [])
         candidates += [_item_key(registry[v]) for v in visible_slots]
         # A page-wide refresh keeps the shared stage targets.  Independent
         # cards join only when the user targets them or they are visible.
-        candidates += [s['stage'] for s in registry.values() if s['page']==page]
+        candidates += [_item_key(s) for s in registry.values() if s['page']==page]
         return list(dict.fromkeys(candidates + list(STAGES)))
 
     def _progress(self):

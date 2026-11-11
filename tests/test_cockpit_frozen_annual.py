@@ -326,6 +326,14 @@ def test_full_evidence_pages_reuse_the_canvas_renderer_and_escape_records(tmp_pa
 def test_combined_can_run_first_without_other_successes_and_empty_result_retains_old(tmp_path):
     store,_,body=fixture(tmp_path);calls=[];done=threading.Event()
     class Runner:
+        def run_slot(self,period,stage):
+            if stage!='opportunity-risk':
+                return self.run_stage(period,stage)
+            calls.append(stage)
+            item=deepcopy(body['items']['opportunity'])
+            item.update(id=stage,updatedAt=10)
+            item['context']=dict(item['context'],slotId=stage)
+            return item
         def run_stage(self,period,stage):
             calls.append(stage)
             item=deepcopy(body['items'][stage]);item['updatedAt']=10
@@ -417,7 +425,46 @@ def test_manual_refresh_runs_the_independent_slot_without_touching_shared_stage(
     service=FrozenAnnualService(store,Runner())
     service.refresh('opportunity-risk','analysis')
     assert done.wait(3)
-    assert calls[0]=='opportunity-risk'
+    assert calls==['opportunity-risk']
     release=store.read()['items']
     assert release['opportunity-risk']['id']=='independent'
     assert release['opportunity']['id']=='opportunity'
+
+
+def test_independent_and_shared_opportunity_publications_never_replace_each_other(tmp_path):
+    store,_,body=fixture(tmp_path)
+    shared=deepcopy(body['items']['opportunity'])
+    independent=deepcopy(shared)
+    independent.update(id='opportunity-v2-independent',updatedAt=20)
+    independent['context']=dict(independent['context'],slotId='opportunity-risk')
+    independent['result']=dict(independent['result'],summary='专用卡结果')
+
+    # Dedicated first, shared later: the later shared timestamp must not become
+    # the dedicated card's payload.
+    store.publish_stage('opportunity-risk',independent)
+    shared_later=deepcopy(shared)
+    shared_later.update(id='shared-later',updatedAt=30)
+    shared_later['result']=dict(shared_later['result'],summary='共享卡结果')
+    store.publish_stage('opportunity',shared_later)
+    slots=FrozenAnnualService(store).envelope(1)['slots']
+    assert slots['opportunity-risk']['payload']['id']=='opportunity-v2-independent'
+    assert slots['opportunity-coverage-note']['payload']['id']=='shared-later'
+
+    # Shared first, dedicated later: the dedicated publication remains scoped
+    # to opportunity-risk and replaces only its own card.
+    dedicated_later=deepcopy(independent)
+    dedicated_later.update(id='opportunity-v2-later',updatedAt=40)
+    dedicated_later['result']=dict(dedicated_later['result'],summary='专用卡新结果')
+    store.publish_stage('opportunity-risk',dedicated_later)
+    slots=FrozenAnnualService(store).envelope(1)['slots']
+    assert slots['opportunity-risk']['payload']['id']=='opportunity-v2-later'
+    assert slots['opportunity-coverage-note']['payload']['id']=='shared-later'
+
+
+def test_independent_card_refresh_targets_only_its_own_slot(tmp_path):
+    store,_,_=fixture(tmp_path)
+    service=FrozenAnnualService(store,lambda period:None)
+    assert service.priority_order('opportunity-risk','analysis')==['opportunity-risk']
+    page_order=service.priority_order(None,'analysis')
+    assert 'opportunity-risk' in page_order
+    assert 'opportunity' in page_order

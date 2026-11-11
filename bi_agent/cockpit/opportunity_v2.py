@@ -50,6 +50,22 @@ _AP_SUPPLEMENT_CODES = {
     "B02.amount": "YWLN_M0023",
     "B02.energy": "YWLN_M0022",
 }
+_RISK_FACT_CODES = {
+    "RK01": ("B01-AMOUNT", "B01-ENERGY", "B02-AMOUNT", "B02-ENERGY",
+             "R01-AMOUNT", "R01-ENERGY", "R01-RATE-AMOUNT", "R01-RATE-ENERGY"),
+    "RK02": ("R03-LAG", "R03-LAG-ENERGY", "R02-AMOUNT", "R02-ENERGY",
+             "R02-CONFIRMED-AMOUNT", "R02-CONFIRMED-ENERGY", "R01-AMOUNT", "R01-ENERGY"),
+    "RK03": ("R04-COUNT", "R04-AMOUNT", "R04-ENERGY", "R01-AMOUNT", "R01-ENERGY"),
+    "RK04": ("R05-AMOUNT", "R05-ENERGY", "B01-AMOUNT", "B01-ENERGY",
+             "B02-AMOUNT", "B02-ENERGY", "R03-LAG", "R03-LAG-ENERGY"),
+    "RK05": ("R06-AMOUNT", "R06-ENERGY", "B01-AMOUNT", "B01-ENERGY",
+             "B02-AMOUNT", "B02-ENERGY", "R03-LAG", "R03-LAG-ENERGY"),
+    "RK06": ("R08",),
+    "RK07": ("R09",),
+    "RK08": ("R10", "BID-AMBIGUOUS"),
+    "RK09": ("R11", "S03", "S03-P1", "S03-P2"),
+    "RK10": ("P0-01", "P0-02", "P2-01"),
+}
 _CONFIG_CACHE: dict[str, tuple[int, dict]] = {}
 
 
@@ -763,6 +779,35 @@ def _risk(code, name, level, title, description, metric_codes, evidence_ids, imp
                 evidenceIds=list(dict.fromkeys(evidence_ids))[:20], impact=impact, objects=list(objects))
 
 
+def _program_risk_assessment(candidate):
+    """Describe the program's rule outcome without claiming a business verdict.
+
+    The model receives this as the starting point.  A triggered rule is
+    supported by the facts the program actually observed; an indeterminate
+    rule has no support yet and must not be presented as a business risk.
+    """
+
+    status = candidate.get("ruleStatus") or "not_triggered"
+    evidence_ids = list(dict.fromkeys(candidate.get("evidenceIds") or []))[:20]
+    classification = ("confirmed" if status == "triggered" else
+                      "insufficient" if status == "indeterminate" else "not_applicable")
+    return dict(
+        code=candidate.get("code") or "",
+        name=candidate.get("name") or "",
+        rule=candidate.get("rule") or "",
+        ruleStatus=status,
+        include=status == "triggered",
+        classification=classification,
+        title=candidate.get("title") or candidate.get("name") or "",
+        description=candidate.get("description") or candidate.get("ontologyDescription") or "",
+        evidenceIds=evidence_ids,
+        supportingEvidenceIds=evidence_ids,
+        opposingEvidenceIds=[],
+        observed=candidate.get("observed") or [],
+        missingEvidence=candidate.get("missingEvidence") or [],
+    )
+
+
 def evaluate(data, config=None, measured=None):
     """Apply BR-A*/BR-C* rules to collected facts and return a card result."""
     config = config or load_config()
@@ -1437,6 +1482,42 @@ def evaluate(data, config=None, measured=None):
         risk["kind"] = "risk_fact"
         risk["impactScore"] = round(impact_ratio(risk), 6)
 
+    # Every ontology risk is sent to the model, including rules the program
+    # computed as not met.  The program supplies the rule, observed facts and
+    # missing inputs; it does not hide candidates before the model weighs them.
+    triggered_by_code = {risk["code"]: risk for risk in risks}
+    risk_candidates = []
+    for code, spec in (config.get("risks") or {}).items():
+        triggered = triggered_by_code.get(code)
+        fact_items = [evidence_facts.get(f"opp-v2:metric:{fact_code}")
+                      for fact_code in _RISK_FACT_CODES.get(code, ())]
+        fact_items = [item for item in fact_items if item]
+        missing = [item["id"] for item in fact_items if item.get("value") is None]
+        # A rule whose required fact is empty did not fail; it could not be
+        # settled from the available data.  Only rules with all required facts
+        # present can be reported as a genuine not_triggered result.
+        rule_status = ("triggered" if triggered else
+                       "indeterminate" if missing else "not_triggered")
+        risk_candidates.append(dict(
+            code=code,
+            name=(spec or {}).get("name") or (triggered or {}).get("name") or code,
+            rule=(spec or {}).get("rule") or "",
+            condition=(spec or {}).get("condition") or "",
+            ontologyDescription=(spec or {}).get("description") or "",
+            ruleStatus=rule_status,
+            level=(triggered or {}).get("level") or "",
+            title=(triggered or {}).get("title") or (spec or {}).get("name") or code,
+            description=(triggered or {}).get("description") or (spec or {}).get("description") or "",
+            metricCodes=(triggered or {}).get("metricCodes") or [],
+            impact=(triggered or {}).get("impact") or {},
+            evidenceIds=list(dict.fromkeys(
+                (triggered or {}).get("evidenceIds") or [item["id"] for item in fact_items]))[:20],
+            observed=[dict(id=item["id"], label=item.get("label"), value=item.get("value"),
+                           unit=item.get("unit")) for item in fact_items],
+            missingEvidence=missing,
+        ))
+    risk_assessments = [_program_risk_assessment(candidate) for candidate in risk_candidates]
+
     # ---- causes -----------------------------------------------------------
     def acneed_unconfirmed(opp):
         # Empty/unknown approval is not evidence that customer demand is
@@ -1755,11 +1836,64 @@ def evaluate(data, config=None, measured=None):
         riskTotalCount=len(risks),
         riskCodes=[risk["code"] for risk in risks],
         riskLevels={risk["code"]: risk["level"] for risk in risks},
+        riskCandidateCount=len(risk_candidates),
+        analysedRiskCount=len(risk_assessments),
+        includedRiskCount=len(risks),
+        riskAssessments=deepcopy(risk_assessments),
+        excludedRiskCodes=[item["code"] for item in risk_assessments if not item.get("include")],
+        modelExcludedRiskCodes=[],
         ontologyVersion=config.get("version"),
         sourceConfigDigest=config_digest(),
         measurementDate=data.get("measurementDate"),
     )
+    cause_candidates = [dict(
+        code=code,
+        title=candidate.get("title") or code,
+        description=candidate.get("description") or "",
+        kind=candidate.get("kind") or "hypothesis",
+        status=candidate.get("status") or "hypothesis",
+        stage=candidate.get("stage") or "opportunity",
+        evidenceIds=list(dict.fromkeys(candidate.get("evidence") or []))[:20],
+        riskCodes=sorted(candidate.get("risks") or []),
+    ) for code, candidate in sorted(candidates.items())]
+    advice_candidates = []
+    risk_by_code = {risk["code"]: risk for risk in risks}
+    cause_candidate_by_code = {item["code"]: item for item in cause_candidates}
+    for code, template in sorted((config.get("advice") or {}).items()):
+        cause_codes = [cause_code for cause_code in template.get("causes") or []
+                       if cause_code in cause_candidate_by_code]
+        risk_codes = {risk_code for cause_code in cause_codes
+                      for risk_code in cause_candidate_by_code[cause_code]["riskCodes"]}
+        for risk_code, link in (config.get("links") or {}).items():
+            if code in (link.get("advice") or []) and risk_code in risk_by_code:
+                risk_codes.add(risk_code)
+        risk_codes &= set(risk_by_code)
+        evidence_ids = []
+        for cause_code in cause_codes:
+            evidence_ids.extend(cause_candidate_by_code[cause_code]["evidenceIds"])
+        if not evidence_ids:
+            for risk_code in sorted(risk_codes):
+                evidence_ids.extend(risk_by_code[risk_code].get("evidenceIds") or [])
+        evidence_ids = list(dict.fromkeys(evidence_ids))[:20]
+        if not risk_codes or not evidence_ids:
+            continue
+        advice_candidates.append(dict(
+            code=code,
+            name=template.get("name") or code,
+            measure=template.get("measure") or "",
+            ownerRole=(template.get("owner") or "待确认")[:40],
+            deadlineDays=_deadline_days(template.get("deadline")),
+            acceptance=_acceptance(code)[:180],
+            causeCodes=cause_codes,
+            riskCodes=sorted(risk_codes),
+            evidenceIds=evidence_ids,
+        ))
     return dict(
+        ruleOutcomes=deepcopy(risk_candidates),
+        riskCandidates=deepcopy(risk_candidates),
+        riskAssessments=deepcopy(risk_assessments),
+        causeCandidates=cause_candidates,
+        adviceCandidates=advice_candidates,
         result=result,
         evidence=dict(
             facts=list(evidence_facts.values()),
@@ -1798,27 +1932,39 @@ def evaluate(data, config=None, measured=None):
 
 
 def default_text_interpreter(payload):
-    """Use one deployment-model call to validate content and fill empty fields.
+    """Use one deployment-model call to produce the card's analysis text.
 
-    The model receives the already-triggered risks, existing causes/advice,
-    compact supporting evidence and progress snippets.  It cannot choose new
-    tables, risks, causes or actions.  Existing non-empty text is validation
-    input only; the caller never lets the model overwrite it.
+    Rules and numeric facts are already settled by code.  The model receives
+    every triggered rule, ontology-approved cause/advice candidate and compact
+    evidence, then writes the summary, risk explanation, causes and advice.
+    The caller validates every returned code, number, evidence id and relation
+    before the text can replace the deterministic fallback.
     """
     from ..llm import provider
     from ..llm.registry import get_default_model_key
     from ..llm.runtime_config import request_config
 
     system_prompt = (
-        "你是证据约束的经营分析助手。请核验输入中已经生成的风险、原因和建议是否有事实、记录或进展证据支持，"
-        "不得补充输入之外的事实、不得新增风险、原因或建议代码、不得猜测数字。"
-        "已有非空原因描述和建议动作不得改写；认可时原样返回，系统只做校验、不覆盖原文。"
-        "只有输入中的 description 或 action 为空时才可依据证据写出补充文本。只返回 JSON："
-        '{"causeDescriptions":{"RC02":"不超过160字"},'
-        '"causeEvidence":{"RC02":["输入中的evidenceId"]},'
-        '"adviceActions":{"DSxx":"不超过64字"}}。'
-        "原因描述必须说明证据中已出现的商务或技术卡点，并保留‘需人工复核’；建议只可补全给定建议代码的动作。"
-        "每条返回的原因必须引用至少一条 evidenceIds 或 progressSamples 中的证据编号，不得引用输入之外的编号。"
+        "你是证据约束的商机经营分析助手。程序已按本体规则完成阈值和数值计算，"
+        "输入中的 ruleOutcomes 是全部本体候选风险及其 ruleStatus=triggered/not_triggered/indeterminate，"
+        "causeCandidates/adviceCandidates 是允许使用的原因和建议边界。"
+        "你的任务是结合 facts、records、progressSamples 判断风险证据是否充分、哪些只是结构表现，"
+        "并生成摘要、风险说明、原因和建议。不得新增风险、原因或建议代码，不得猜测或重算数字，"
+        "不得引用输入之外的证据编号。数字只能原样引用输入中出现的值。只返回 JSON："
+        '{"summary":"不超过320字",'
+        '"risks":[{"code":"RK01","include":true,"classification":"confirmed|structural|insufficient|not_applicable",'
+        '"description":"不超过320字","evidenceIds":["支持证据编号"],'
+        '"opposingEvidenceIds":["反对或反例证据编号"]}],'
+        '"causes":[{"code":"RC01","description":"不超过160字",'
+        '"riskCodes":["RK01"],"evidenceIds":["输入中的证据编号"]}],'
+        '"advice":[{"code":"DS01","action":"不超过64字",'
+        '"riskCodes":["RK01"],"causeCodes":["RC01"],"evidenceIds":["输入中的证据编号"]}]}。'
+        "每个 risk 的 code 必须来自 ruleOutcomes。只有 ruleStatus=triggered 且 classification=confirmed 时 include 才能为 true；"
+        "structural、insufficient、not_applicable 必须 include=false。数值规则未命中的风险不得被模型改判为成立。"
+        "成立的风险至少引用一条支持证据；opposingEvidenceIds 记录与该判断相反或限制结论的证据，必须来自输入事实、记录或进展。"
+        "每个 cause 必须来自 causeCandidates，riskCodes 必须是该原因允许关联且本次包含的风险。"
+        "每个 advice 必须来自 adviceCandidates，必须绑定其允许的 causeCodes/riskCodes。"
+        "原因必须说明证据中已出现的商务、技术或流程卡点；建议必须给出可核对的对象和动作。"
         "不得使用‘逾期未完成’表述。"
     )
     events = []
@@ -1827,7 +1973,7 @@ def default_text_interpreter(payload):
             int(os.environ.get("COCKPIT_OPPORTUNITY_V2_MODEL_TIMEOUT_SECONDS", "60")), 120))):
         for event in provider.stream_message(
             [dict(role="user", content=json.dumps(payload, ensure_ascii=False))],
-            system_prompt, None, key, max_tokens=1200, temperature=0, thinking=False,
+            system_prompt, None, key, max_tokens=3000, temperature=0, thinking=False,
         ):
             events.append(event)
     errors = [event.get("error", "") for event in events if event.get("type") == "error"]
@@ -1850,20 +1996,58 @@ def _model_numbers(value):
     return set(re.findall(r"(?<!\d)\d+(?:\.\d+)?(?!\d)", json.dumps(value, ensure_ascii=False, default=str)))
 
 
-def apply_text_interpretation(evaluated, interpreter=None):
-    """Call the model once, validate existing content and fill only empty fields.
+def _model_items(value):
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        return [dict(item, code=str(key)) for key, item in value.items() if isinstance(item, dict)]
+    return []
 
-    The model never replaces an existing cause description or advice action.
-    Existing content is returned only as a validation signal, while empty
-    fields may be filled after the same evidence and number checks.
+
+def _model_text_valid(text, limit, allowed_numbers):
+    return (bool(text) and len(text) <= limit and "逾期未完成" not in text
+            and _model_numbers(text) <= allowed_numbers)
+
+
+def apply_text_interpretation(evaluated, interpreter=None):
+    """Call the model once to generate the card's analysis text, then validate it.
+
+    The deterministic result remains a complete fallback. Model text replaces
+    it only when its codes, numbers, evidence ids and ontology relations pass
+    program validation. Every call is recorded, including when no model item
+    is accepted.
     """
     if interpreter is None:
         return dict(status="skipped", error="", modelCalls=0)
     samples = evaluated.get("textSamples") or []
-    selected_causes = [cause for cause in evaluated.get("causes") or [] if cause.get("causeCode")]
+    triggered_risks = [dict(risk) for risk in evaluated.get("risks") or [] if risk.get("code")]
+    risk_candidates = [dict(risk) for risk in evaluated.get("riskCandidates") or []
+                       if risk.get("code")]
+    if not risk_candidates:
+        risk_candidates = [dict(risk, ruleStatus="triggered", observed=[], missingEvidence=[])
+                           for risk in triggered_risks]
+    cause_candidates = [dict(item) for item in evaluated.get("causeCandidates") or []
+                        if item.get("code")]
+    advice_candidates = [dict(item) for item in evaluated.get("adviceCandidates") or []
+                         if item.get("code")]
     result = evaluated.get("result") or {}
-    selected_advice = {item.get("adviceCode"): item for item in result.get("recommendations") or []
-                       if item.get("adviceCode")}
+    if not cause_candidates:
+        cause_candidates = [dict(
+            code=cause.get("causeCode"), title=cause.get("title"),
+            description=cause.get("description"), kind=cause.get("kind"),
+            status=cause.get("status"), stage=cause.get("stage"),
+            evidenceIds=cause.get("evidenceIds") or [],
+            riskCodes=cause.get("riskCodes") or cause.get("linkedRiskCodes") or [],
+        ) for cause in evaluated.get("causes") or [] if cause.get("causeCode")]
+    if not advice_candidates:
+        advice_candidates = [dict(
+            code=item.get("adviceCode"), name=item.get("adviceCode"),
+            measure=item.get("detail") or "", ownerRole=item.get("ownerRole") or "待确认",
+            deadlineDays=item.get("deadlineDays") or 30,
+            acceptance=item.get("acceptance") or "",
+            causeCodes=[], riskCodes=item.get("riskCodes") or item.get("linkedRiskCodes") or [],
+            evidenceIds=item.get("evidenceIds") or [],
+        ) for item in result.get("recommendations") or [] if item.get("adviceCode")]
     evidence_bundle = evaluated.get("evidence") or {}
     facts = [dict(id=item.get("id"), label=item.get("label"), value=item.get("value"),
                   unit=item.get("unit"), definition=item.get("definition"))
@@ -1873,16 +2057,24 @@ def apply_text_interpretation(evaluated, interpreter=None):
                     quantity=item.get("quantity"), value=item.get("value"), name=item.get("name"))
                for item in evidence_bundle.get("records") or [] if item.get("id")][:30]
     payload = dict(
-        risks=[dict(code=code, name=next((risk.get("name") for risk in evaluated.get("risks") or []
-                                          if risk.get("code") == code), ""))
-               for code in result.get("riskCodes") or []],
-        causes=[dict(code=cause["causeCode"], title=cause["title"], description=cause.get("description") or "",
-                     kind=cause.get("kind"), status=cause.get("status"),
-                     evidenceIds=cause.get("evidenceIds") or [])
-                for cause in selected_causes],
-        advice=[dict(code=code, action=item.get("action") or "", causeIds=item.get("causeIds") or [],
-                     evidenceIds=item.get("evidenceIds") or [])
-                for code, item in selected_advice.items()],
+        ruleOutcomes=[dict(code=risk.get("code"), name=risk.get("name"), rule=risk.get("rule") or "",
+                           condition=risk.get("condition") or "", ruleStatus=risk.get("ruleStatus"),
+                           level=risk.get("level") or "", title=risk.get("title") or "",
+                           description=risk.get("description") or "",
+                           metricCodes=risk.get("metricCodes") or [], impact=risk.get("impact") or {},
+                           observed=risk.get("observed") or [],
+                           missingEvidence=risk.get("missingEvidence") or [],
+                           evidenceIds=risk.get("evidenceIds") or []) for risk in risk_candidates],
+        causeCandidates=[dict(code=item.get("code"), title=item.get("title") or "",
+                              description=item.get("description") or "", kind=item.get("kind") or "",
+                              status=item.get("status") or "", stage=item.get("stage") or "",
+                              riskCodes=item.get("riskCodes") or [],
+                              evidenceIds=item.get("evidenceIds") or []) for item in cause_candidates],
+        adviceCandidates=[dict(code=item.get("code"), name=item.get("name") or "",
+                               measure=item.get("measure") or "", ownerRole=item.get("ownerRole") or "",
+                               causeCodes=item.get("causeCodes") or [], riskCodes=item.get("riskCodes") or [],
+                               evidenceIds=item.get("evidenceIds") or []) for item in advice_candidates],
+        fallbackSummary=result.get("summary") or "",
         facts=facts,
         records=records,
         progressSamples=samples[:6],
@@ -1892,72 +2084,270 @@ def apply_text_interpretation(evaluated, interpreter=None):
         value = interpreter(payload)
         if not isinstance(value, dict):
             raise ValueError("模型结果不是对象")
-        descriptions = value.get("causeDescriptions") or {}
-        evidence = value.get("causeEvidence") or {}
-        actions = value.get("adviceActions") or {}
-        if not isinstance(descriptions, dict) or not isinstance(evidence, dict) or not isinstance(actions, dict):
-            raise ValueError("模型结果字段类型错误")
-        cause_by_code = {cause["causeCode"]: cause for cause in selected_causes}
-        result_causes = {cause.get("id"): cause for cause in result.get("causes") or []}
-        dimensions = {item.get("id"): item for item in result.get("analysisDimensions") or []}
-        allowed_evidence = {sample.get("evidenceId") for sample in samples if sample.get("evidenceId")}
-        for cause in selected_causes:
-            allowed_evidence.update(cause.get("evidenceIds") or [])
-        for item in selected_advice.values():
-            allowed_evidence.update(item.get("evidenceIds") or [])
-        allowed_evidence.update(item.get("id") for item in facts if item.get("id"))
-        allowed_evidence.update(item.get("id") for item in records if item.get("id"))
-        filled_causes, validated_causes, rejected_causes, mismatched_causes = [], [], [], []
-        filled_actions, validated_actions, rejected_actions, mismatched_actions = [], [], [], []
-        for code, description in descriptions.items():
-            description = _text(description)
-            cited = evidence.get(code) or []
-            if (code not in cause_by_code or not description or len(description) > 160
-                    or "逾期未完成" in description
+        risk_by_code = {risk["code"]: risk for risk in risk_candidates}
+        triggered_by_code = {risk["code"]: risk for risk in triggered_risks}
+        cause_by_code = {item["code"]: item for item in cause_candidates}
+        advice_by_code = {item["code"]: item for item in advice_candidates}
+        sample_evidence = {_text(item.get("evidenceId")) for item in samples if item.get("evidenceId")}
+        fact_evidence = {_text(item.get("id")) for item in facts if item.get("id")}
+        record_evidence = {_text(item.get("id")) for item in records if item.get("id")}
+        risk_evidence = {code: set(item.get("evidenceIds") or [])
+                         for code, item in risk_by_code.items()}
+        cause_evidence = {code: set(item.get("evidenceIds") or [])
+                          for code, item in cause_by_code.items()}
+        advice_evidence = {code: set(item.get("evidenceIds") or [])
+                           for code, item in advice_by_code.items()}
+        allowed_evidence = (set().union(*risk_evidence.values(), *cause_evidence.values(),
+                                        *advice_evidence.values(), sample_evidence,
+                                        fact_evidence, record_evidence)
+                            if risk_by_code or cause_by_code or advice_by_code
+                            else sample_evidence | fact_evidence | record_evidence)
+        rejected_risks, applied_risks = [], []
+        risk_specs = {}
+        for item in _model_items(value.get("risks")):
+            code = _text(item.get("code"))
+            candidate = risk_by_code.get(code)
+            if not candidate:
+                rejected_risks.append(code or "?")
+                continue
+            include = item.get("include", False)
+            classification = _text(item.get("classification")) or "confirmed"
+            if (not isinstance(include, bool)
+                    or classification not in {"confirmed", "structural", "insufficient", "not_applicable"}):
+                rejected_risks.append(code)
+                continue
+            if include and (candidate.get("ruleStatus") != "triggered" or classification != "confirmed"):
+                # A model may explain a numeric miss or mark it insufficient,
+                # but it cannot overturn the program's deterministic threshold.
+                rejected_risks.append(code)
+                continue
+            if not include and classification == "confirmed":
+                rejected_risks.append(code)
+                continue
+            description = re.sub(r"\s+", " ", _text(item.get("description")))
+            cited = item.get("evidenceIds") or []
+            cited_ids = ([_text(entry) for entry in cited]
+                         if isinstance(cited, list) else [])
+            opposing = item.get("opposingEvidenceIds") or []
+            opposing_ids = ([_text(entry) for entry in opposing]
+                            if isinstance(opposing, list) else None)
+            if description and not _model_text_valid(description, 320, allowed_numbers):
+                rejected_risks.append(code)
+                continue
+            if (not isinstance(cited, list) or not isinstance(opposing, list)
+                    or set(cited_ids) - allowed_evidence
+                    or set(opposing_ids or []) - allowed_evidence):
+                rejected_risks.append(code)
+                continue
+            if include and (not description or not cited_ids
+                            or not (set(cited_ids) & risk_evidence.get(code, set()))):
+                rejected_risks.append(code)
+                continue
+            risk_specs[code] = dict(include=include, classification=classification,
+                                    description=description,
+                                    evidenceIds=list(dict.fromkeys(cited_ids)),
+                                    opposingEvidenceIds=list(dict.fromkeys(opposing_ids or [])))
+            applied_risks.append(code)
+
+        excluded_codes = {code for code, spec in risk_specs.items() if not spec["include"]}
+        included_risks = [risk for risk in triggered_risks if risk["code"] not in excluded_codes]
+        for risk in included_risks:
+            spec = risk_specs.get(risk["code"]) or {}
+            if spec.get("description"):
+                risk["description"] = spec["description"]
+                risk["evidenceIds"] = spec["evidenceIds"][:20]
+            risk["classification"] = "confirmed"
+            risk["opposingEvidenceIds"] = list(spec.get("opposingEvidenceIds") or [])[:20]
+        model_excluded_risks = sorted(excluded_codes)
+        included_codes = {risk["code"] for risk in included_risks}
+        risk_id_by_code = {risk["code"]: risk["id"] for risk in included_risks}
+        risk_assessments = []
+        for candidate in risk_candidates:
+            code = candidate["code"]
+            spec = risk_specs.get(code)
+            if spec:
+                include = spec["include"]
+                classification = spec["classification"]
+                description = spec["description"]
+                evidence_ids = spec["evidenceIds"]
+                opposing_ids = spec["opposingEvidenceIds"]
+            else:
+                fallback = _program_risk_assessment(candidate)
+                include = fallback["include"]
+                classification = fallback["classification"]
+                description = fallback["description"]
+                evidence_ids = fallback["evidenceIds"]
+                opposing_ids = fallback["opposingEvidenceIds"]
+            risk_assessments.append(dict(
+                code=code, name=candidate.get("name") or code,
+                rule=candidate.get("rule") or "", ruleStatus=candidate.get("ruleStatus") or "",
+                include=include, classification=classification,
+                title=candidate.get("title") or code,
+                description=description,
+                evidenceIds=evidence_ids[:20],
+                supportingEvidenceIds=evidence_ids[:20],
+                opposingEvidenceIds=(opposing_ids or [])[:20],
+                observed=candidate.get("observed") or [],
+                missingEvidence=candidate.get("missingEvidence") or [],
+            ))
+
+        cause_items, applied_causes, rejected_causes = [], [], []
+        for item in _model_items(value.get("causes")):
+            code = _text(item.get("code"))
+            candidate = cause_by_code.get(code)
+            if not candidate:
+                rejected_causes.append(code or "?")
+                continue
+            allowed_for_candidate = set(candidate.get("riskCodes") or []) & included_codes
+            requested = item.get("riskCodes")
+            selected_codes = (set(_text(value) for value in requested)
+                              if isinstance(requested, list) and requested else allowed_for_candidate)
+            description = re.sub(r"\s+", " ", _text(item.get("description")))
+            cited = item.get("evidenceIds") or []
+            allowed_for_evidence = (cause_evidence.get(code, set())
+                                    | set().union(*(risk_evidence.get(value, set())
+                                                    for value in selected_codes))
+                                    | sample_evidence)
+            if (not selected_codes or not selected_codes <= allowed_for_candidate
                     or not isinstance(cited, list) or not cited
-                    or not {_text(item) for item in cited} <= allowed_evidence
-                    or not _model_numbers(description) <= allowed_numbers):
+                    or not _model_text_valid(description, 160, allowed_numbers)
+                    or not {_text(entry) for entry in cited} <= allowed_for_evidence):
                 rejected_causes.append(code)
                 continue
-            cause = cause_by_code[code]
-            cause_id = cause["id"]
-            current = _text((result_causes.get(cause_id) or cause).get("description"))
-            if current:
-                if current == description:
-                    validated_causes.append(code)
-                else:
-                    mismatched_causes.append(code)
-                continue
-            if cause_id in result_causes:
-                result_causes[cause_id]["description"] = description
-            if cause_id in dimensions:
-                dimensions[cause_id]["description"] = description[:240]
-            cause["description"] = description
-            filled_causes.append(code)
-        for code, action in actions.items():
-            action = _text(action)
-            if (code not in selected_advice or not action or len(action) > 64
-                    or "逾期未完成" in action
-                    or not _model_numbers(action) <= allowed_numbers):
-                rejected_actions.append(code)
-                continue
-            current = _text(selected_advice[code].get("action"))
-            if current:
-                if current == action:
-                    validated_actions.append(code)
-                else:
-                    mismatched_actions.append(code)
-                continue
-            selected_advice[code]["action"] = action
-            filled_actions.append(code)
-        return dict(status="completed", error="", causes=filled_causes, advice=filled_actions,
-                    validatedCauses=validated_causes, validatedAdvice=validated_actions,
-                    rejectedCauses=rejected_causes, rejectedAdvice=rejected_actions,
-                    mismatchedCauses=mismatched_causes, mismatchedAdvice=mismatched_actions,
-                    modelCalls=1)
-    except Exception as exc:  # noqa: BLE001 - model enrichment is optional
-        return dict(status="failed", error=type(exc).__name__, modelCalls=1)
+            evidence_ids = list(dict.fromkeys(_text(entry) for entry in cited))[:20]
+            cause_items.append(dict(
+                id=f"opp-v2:cause:{code}", causeCode=code,
+                kind=candidate.get("kind") or "hypothesis",
+                status=candidate.get("status") or "hypothesis",
+                stage=candidate.get("stage") or "opportunity",
+                title=(candidate.get("title") or code)[:80],
+                description=description,
+                findingIds=[risk_id_by_code[value] for value in sorted(selected_codes)],
+                evidenceIds=evidence_ids,
+                riskCodes=sorted(selected_codes),
+                linkedRiskCodes=sorted(allowed_for_candidate),
+                missingEvidence=[],
+            ))
+            applied_causes.append(code)
+        if "causes" not in value or not cause_items:
+            cause_items = [deepcopy(item) for item in result.get("causes") or []
+                           if (set(item.get("riskCodes") or []) & included_codes)]
+            cause_items = [dict(item, findingIds=[finding_id for finding_id in item.get("findingIds") or []
+                                                  if finding_id in risk_id_by_code.values()])
+                           for item in cause_items]
+            cause_items = [item for item in cause_items if item.get("findingIds")]
 
+        selected_cause_codes = {item["causeCode"] for item in cause_items}
+        recommendations, applied_advice, rejected_advice = [], [], []
+        for item in _model_items(value.get("advice")):
+            code = _text(item.get("code"))
+            candidate = advice_by_code.get(code)
+            if not candidate:
+                rejected_advice.append(code or "?")
+                continue
+            action = re.sub(r"\s+", " ", _text(item.get("action")))
+            requested_risks = item.get("riskCodes")
+            risk_codes = (set(_text(entry) for entry in requested_risks)
+                          if isinstance(requested_risks, list) and requested_risks else set())
+            risk_codes = risk_codes or (set(candidate.get("riskCodes") or []) & included_codes)
+            requested_causes = item.get("causeCodes")
+            cause_codes = (set(_text(entry) for entry in requested_causes)
+                           if isinstance(requested_causes, list) and requested_causes else set())
+            cause_codes &= selected_cause_codes
+            allowed_risk_codes = set(candidate.get("riskCodes") or []) & included_codes
+            allowed_cause_codes = set(candidate.get("causeCodes") or []) & selected_cause_codes
+            cited = item.get("evidenceIds") or []
+            allowed_for_evidence = (advice_evidence.get(code, set())
+                                    | set().union(*(risk_evidence.get(value, set())
+                                                    for value in risk_codes))
+                                    | set().union(*(cause_evidence.get(value, set())
+                                                    for value in cause_codes)))
+            if (not action or len(action) > 64 or "逾期未完成" in action
+                    or not _model_numbers(action) <= allowed_numbers
+                    or not risk_codes or not risk_codes <= allowed_risk_codes
+                    or (cause_codes and not cause_codes <= allowed_cause_codes)
+                    or not isinstance(cited, list) or not cited
+                    or not {_text(entry) for entry in cited} <= allowed_for_evidence):
+                rejected_advice.append(code)
+                continue
+            linked_causes = [cause for cause in cause_items if cause["causeCode"] in cause_codes]
+            recommendations.append(dict(
+                id=f"opp-v2:advice:{code}", adviceCode=code,
+                actionType=("remediation" if any(cause.get("kind") == "verified"
+                                                 and cause.get("status") == "supported"
+                                                 for cause in linked_causes) else "investigation"),
+                causeIds=[cause["id"] for cause in linked_causes],
+                evidenceIds=list(dict.fromkeys(_text(entry) for entry in cited))[:20],
+                action=action, ownerRole=(candidate.get("ownerRole") or "待确认")[:40],
+                deadlineDays=int(candidate.get("deadlineDays") or 30),
+                acceptance=(candidate.get("acceptance") or "")[:180],
+                detail=(candidate.get("measure") or "")[:600],
+                ownerConfirmed=False, deadlineConfirmed=False,
+                riskCodes=sorted(risk_codes), linkedRiskCodes=sorted(allowed_risk_codes),
+            ))
+            applied_advice.append(code)
+        if "advice" not in value or not recommendations:
+            recommendations = [deepcopy(item) for item in result.get("recommendations") or []
+                               if set(item.get("riskCodes") or []) & included_codes]
+
+        summary = re.sub(r"\s+", " ", _text(value.get("summary")))
+        summary_applied = _model_text_valid(summary, 320, allowed_numbers)
+        if not summary_applied:
+            summary = _text(result.get("summary"))
+
+        findings = [dict(
+            id=risk["id"], kind="risk_fact", title=(risk.get("title") or risk.get("name") or "")[:80],
+            description=(risk.get("description") or "")[:320],
+            metricCodes=(risk.get("metricCodes") or [])[:12],
+            evidenceIds=(risk.get("evidenceIds") or [])[:20],
+            riskDomain="sales", riskCode=risk["code"], riskLevel=risk.get("level") or "中",
+            riskClassification=risk.get("classification") or "confirmed",
+            riskTotalCount=len(triggered_risks),
+        ) for risk in included_risks]
+        dimensions = [dict(
+            id=cause["id"], stage=cause.get("stage") or "opportunity",
+            title=(cause.get("title") or "")[:32], description=(cause.get("description") or "")[:240],
+            findingIds=cause.get("findingIds") or [], evidenceIds=cause.get("evidenceIds") or [],
+            causeCode=cause.get("causeCode"), kind=cause.get("kind"), status=cause.get("status"),
+        ) for cause in cause_items][:4]
+        if not dimensions and findings:
+            dimensions = [dict(
+                id=f"dimension-{finding['riskCode']}", stage="opportunity",
+                title=finding["title"][:32], description=finding["description"][:240],
+                findingIds=[finding["id"]], evidenceIds=finding["evidenceIds"][:20],
+            ) for finding in findings][:4]
+
+        result["summary"] = summary
+        result["findings"] = findings
+        result["causes"] = cause_items
+        result["analysisDimensions"] = dimensions
+        result["recommendations"] = recommendations
+        result["riskCodes"] = [risk["code"] for risk in included_risks]
+        result["riskLevels"] = {risk["code"]: risk.get("level") or "中" for risk in included_risks}
+        result["riskTotalCount"] = len(triggered_risks)
+        result["riskCandidateCount"] = len(risk_candidates)
+        result["analysedRiskCount"] = len(risk_candidates)
+        result["includedRiskCount"] = len(included_risks)
+        result["riskAssessments"] = deepcopy(risk_assessments)
+        result["excludedRiskCodes"] = [item["code"] for item in risk_assessments
+                                       if not item.get("include")]
+        result["modelExcludedRiskCodes"] = model_excluded_risks
+        evaluated["risks"] = included_risks
+        evaluated["riskAssessments"] = risk_assessments
+        evaluated["causes"] = cause_items
+        evaluated["recommendations"] = recommendations
+        return dict(status="completed", error="", modelCalls=1,
+                    summaryApplied=summary_applied, appliedRisks=applied_risks,
+                    appliedCauses=applied_causes, appliedAdvice=applied_advice,
+                    excludedRisks=model_excluded_risks,
+                    modelExcludedRisks=model_excluded_risks,
+                    riskAssessments=deepcopy(risk_assessments),
+                    rejectedRisks=rejected_risks, rejectedCauses=rejected_causes,
+                    rejectedAdvice=rejected_advice,
+                    validatedCauses=[], validatedAdvice=[],
+                    mismatchedCauses=[], mismatchedAdvice=[])
+    except Exception as exc:  # noqa: BLE001 - model analysis is optional
+        return dict(status="failed", error=type(exc).__name__, modelCalls=1)
 
 def _deadline_days(value):
     text = _text(value)
@@ -2151,7 +2541,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
         raise collected_error
     _report_progress(progress, "rules", message="计算指标并判断风险规则")
     evaluated = evaluate(data, config, measured)
-    _report_progress(progress, "analysing", message="核验已有内容并补全缺失原因与建议")
+    _report_progress(progress, "analysing", message="模型分析风险、原因与建议")
     model_status = apply_text_interpretation(evaluated, text_interpreter)
     fetched_at = time.time()
     result = evaluated["result"]
@@ -2159,7 +2549,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     result["engine"] = "opportunity-v2-rules"
     if model_status.get("status") == "failed":
         result["limitations"] = list(dict.fromkeys((result.get("limitations") or []) + [
-            "模型核验未完成；已保留规则风险、既有原因和建议，不覆盖原文。"
+            "模型分析未完成；已保留程序规则计算的风险、原因和建议，卡片仍按证据发布。"
         ]))[:10]
     if collected_error is not None:
         result["limitations"] = list(dict.fromkeys((result.get("limitations") or []) + [

@@ -1,7 +1,17 @@
 import {createTaskOrderController, ensureTaskOrderStyle} from './task-order/controller.js'
 import {TaskOrderDialog} from './task-order/dialog.js'
+import {highlightNumbers} from './number-highlight.js'
+
+export {highlightNumbers}
 
 const { computed, ref } = window.Vue
+
+const NumberText = Vue.defineComponent({
+  name: 'StageNumberText',
+  props: {text: {type: String, default: ''}},
+  computed: {parts() { return highlightNumbers(this.text) }},
+  template: `<template v-for="(part, index) in parts" :key="index"><span v-if="part.num" class="stage-risk-analysis__num">{{ part.text }}</span><template v-else>{{ part.text }}</template></template>`,
+})
 
 export function cockpitApiBase() {
   const configured = document.querySelector('meta[name="cockpit-api-base"]')?.content || ''
@@ -230,7 +240,7 @@ export function createStageRiskComponent(options = {}) {
   return Vue.defineComponent({
     name: options.name || 'StageRiskAnalysis',
     props: insightProps,
-    components: {InsightLoading, TaskOrderDialog},
+    components: {InsightLoading, TaskOrderDialog, NumberText},
     emits: ['retry'],
     setup(props, { emit }) {
       const insight = useInsight(props, emit)
@@ -263,10 +273,10 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__mark stage-risk-analysis__mark--risk">【风险】</span>
               {{ displayStage }}当前风险判断
             </div>
-            <div class="stage-risk-analysis__summary" :title="summary">{{ summary }}</div>
+            <div class="stage-risk-analysis__summary" :title="summary"><number-text :text="summary" /></div>
             <div v-for="(finding,index) in findings" :key="finding.riskKey || finding.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__mark--risk">风险{{ index+1 }}</span>
-              <span class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——{{ finding.description }}</template></span>
+              <span class="stage-risk-analysis__cause-text"><b>{{ finding.title }}</b><template v-if="finding.description">——<number-text :text="finding.description" /></template></span>
             </div>
           </article>
 
@@ -277,7 +287,7 @@ export function createStageRiskComponent(options = {}) {
             </div>
             <div v-for="(dimension,index) in analysisDimensions" :key="dimension.id" class="stage-risk-analysis__cause">
               <span class="stage-risk-analysis__tag stage-risk-analysis__tag--cause">原因{{ index+1 }}</span>
-              <span class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b>——{{ dimension.description }}
+              <span class="stage-risk-analysis__cause-text"><b>【{{ dimension.stageLabel }}】{{ dimension.title === dimension.stageLabel ? '' : dimension.title }}</b>——<number-text :text="dimension.description" />
                 <small class="stage-risk-analysis__cause-meta">{{ dimension.riskLinks.map(link=>link.label).join('；') }} · {{ evidenceFor(dimension).length }} 条证据</small>
               </span>
             </div>
@@ -309,8 +319,7 @@ export function createStageRiskComponent(options = {}) {
               <span class="stage-risk-analysis__action-type" :class="'stage-risk-analysis__action-type--' + (item.actionType || 'pending')">
                 {{ actionTypeLabel(item.actionType) }}
               </span>
-              <span class="stage-risk-analysis__action-text">{{ item.action }}</span>
-              <span class="stage-risk-analysis__owner">{{ item.ownerRole || '未提供' }}</span>
+              <span class="stage-risk-analysis__action-text"><number-text :text="item.action" /></span>
               <span class="stage-risk-analysis__time">{{ deadlineText(item) }}</span>
               <button type="button" class="stage-risk-analysis__close" aria-label="关闭这条建议" @click="dismissRecommendation(item.id)">×</button>
             </div>
@@ -319,7 +328,7 @@ export function createStageRiskComponent(options = {}) {
             <details class="stage-risk-analysis__foot">
               <summary>数据范围、验收与 {{ limitations.length }} 项限制</summary>
             <div v-for="(item, index) in openRecommendations" :key="'accept-' + item.id" class="stage-risk-analysis__acceptance">
-                建议 {{ index + 1 }} 验收：{{ item.acceptance }}<template v-if="hasRecommendationDetail(item)">；补充：{{ recommendationDetail(item) }}</template>
+                建议 {{ index + 1 }} 验收：<number-text :text="item.acceptance" /><template v-if="hasRecommendationDetail(item)">；补充：<number-text :text="recommendationDetail(item)" /></template>
               </div>
               <a v-if="evidenceLink" :href="evidenceLink" target="_blank" rel="noopener" class="insight-evidence-link">查看完整证据</a>
               <div class="stage-risk-analysis__evidence">证据范围：{{ contextLine }}；{{ records.length }} 条记录、{{ evidenceCount }} 条证据。</div>

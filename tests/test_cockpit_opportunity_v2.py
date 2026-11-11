@@ -216,7 +216,7 @@ def test_build_card_reports_internal_steps_in_execution_order():
     assert fetch[-1]['completed'] == fetch[-1]['total'] == 9
 
 
-def test_model_wording_cannot_add_numbers_causes_or_broken_phrases():
+def test_model_generated_text_is_validated_against_evidence_numbers_and_links():
     opportunity = dict(id='opp-1', name='测试商机', accountId='account-1', accountName='客户A',
                        tier='strategic', productType='1', stage='11', status='0',
                        contract='not_confirmed', createdAt='2026-01-01',
@@ -227,54 +227,172 @@ def test_model_wording_cannot_add_numbers_causes_or_broken_phrases():
         progress={'opp-1': [dict(id='p1', description='客户要求补充资质文件', startAt='2026-10-01')]},
     )
     value = evaluate(data)
-    assert value['textSamples']
-    evidence_id = value['textSamples'][0]['evidenceId']
-    existing_description = value['result']['causes'][0]['description']
-    existing_action = next(item['action'] for item in value['result']['recommendations']
-                           if item['adviceCode'] == 'DS02')
-    good = apply_text_interpretation(value, lambda payload: {
-        'causeDescriptions': {'RC02': existing_description},
-        'causeEvidence': {'RC02': [evidence_id]},
-        'adviceActions': {'DS02': existing_action},
+    risk = value['risks'][0]
+    cause = next(item for item in value['causeCandidates'] if item['code'] == 'RC02')
+    advice = next(item for item in value['adviceCandidates'] if item['code'] == 'DS02')
+    progress_id = value['textSamples'][0]['evidenceId']
+    generated = apply_text_interpretation(value, lambda payload: {
+        'summary': '模型结合规则结果与项目进展生成商机风险分析。',
+        'risks': [dict(code=risk['code'], include=True, classification='confirmed',
+                       description='规则证据显示该风险需要优先核查。',
+                       evidenceIds=[risk['evidenceIds'][0]])],
+        'causes': [dict(code=cause['code'], description='项目进展显示客户要求补充资质文件，需人工复核。',
+                        riskCodes=['RK08'], evidenceIds=[progress_id])],
+        'advice': [dict(code=advice['code'], action='推动客户补齐资质文件后进入投标',
+                        riskCodes=['RK08'], causeCodes=['RC02'], evidenceIds=[progress_id])],
     })
-    assert good['status'] == 'completed'
-    assert good['causes'] == [] and good['advice'] == []
-    assert good['validatedCauses'] == ['RC02']
-    assert good['validatedAdvice'] == ['DS02']
-    assert value['result']['causes'][0]['description'] == existing_description
-    assert next(item['action'] for item in value['result']['recommendations']
-                if item['adviceCode'] == 'DS02') == existing_action
+    assert generated['status'] == 'completed'
+    assert generated['summaryApplied'] is True
+    assert generated['appliedRisks'] == [risk['code']]
+    assert generated['appliedCauses'] == ['RC02']
+    assert generated['appliedAdvice'] == ['DS02']
+    assert value['result']['summary'].startswith('模型结合规则')
+    assert next(item for item in value['risks'] if item['code'] == risk['code'])['description'] == '规则证据显示该风险需要优先核查。'
+    assert next(item for item in value['result']['causes'] if item['causeCode'] == 'RC02')['description'].startswith('项目进展显示')
+    assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'DS02')['action'] == '推动客户补齐资质文件后进入投标'
 
     bad_value = evaluate(data)
+    bad_risk = bad_value['risks'][0]
     bad = apply_text_interpretation(bad_value, lambda payload: {
-        'causeDescriptions': {'RC02': '新增 999 家客户逾期未完成', 'RC99': '模型自造原因'},
-        'causeEvidence': {'RC02': [evidence_id]},
-        'adviceActions': {'DS99': '模型自造建议'},
+        'summary': '新增 999 家客户逾期未完成',
+        'risks': [dict(code='RK99', include=True, classification='confirmed',
+                       description='模型自造风险', evidenceIds=[bad_risk['evidenceIds'][0]])],
+        'causes': [dict(code='RC02', description='新增 999 家客户逾期未完成',
+                        riskCodes=['RK01'], evidenceIds=[progress_id])],
+        'advice': [dict(code='DS99', action='模型自造建议', riskCodes=['RK08'],
+                        causeCodes=[], evidenceIds=[progress_id])],
     })
     assert bad['status'] == 'completed'
-    assert bad['causes'] == [] and bad['advice'] == []
-    assert 'RC02' in bad['rejectedCauses'] and 'DS99' in bad['rejectedAdvice']
-    assert '999' not in bad_value['result']['causes'][0]['description']
+    assert bad['summaryApplied'] is False
+    assert 'RK99' in bad['rejectedRisks']
+    assert 'RC02' in bad['rejectedCauses']
+    assert 'DS99' in bad['rejectedAdvice']
+    assert '999' not in bad_value['result']['summary']
+    assert all('999' not in item['description'] for item in bad_value['result']['causes'])
 
     uncited_value = evaluate(data)
     uncited = apply_text_interpretation(uncited_value, lambda payload: {
-        'causeDescriptions': {'RC02': '项目进展显示客户要求补充资质文件，需人工复核。'},
-        'causeEvidence': {'RC02': ['model-invented-evidence']},
-        'adviceActions': {},
+        'causes': [dict(code='RC02', description='项目进展显示客户要求补充资质文件，需人工复核。',
+                        riskCodes=['RK08'], evidenceIds=['model-invented-evidence'])],
     })
-    assert uncited['causes'] == []
+    assert uncited['appliedCauses'] == []
     assert uncited['rejectedCauses'] == ['RC02']
 
     failed_value = evaluate(data)
-    before = failed_value['result']['causes'][0]['description']
+    before = failed_value['result']['summary']
     def failure(_payload):
         raise RuntimeError('provider down')
     failed = apply_text_interpretation(failed_value, failure)
     assert failed['status'] == 'failed' and failed['modelCalls'] == 1
-    assert failed_value['result']['causes'][0]['description'] == before
+    assert failed_value['result']['summary'] == before
 
 
-def test_model_runs_even_without_text_samples_and_only_fills_empty_content():
+def test_all_ontology_candidates_are_sent_to_the_model_and_assessed():
+    value = evaluate(_data(
+        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+    ))
+    calls = []
+    completed = apply_text_interpretation(value, lambda payload: calls.append(payload) or {})
+
+    assert completed['status'] == 'completed'
+    assert len(calls) == 1
+    candidates = calls[0]['ruleOutcomes']
+    assert len(candidates) == 10
+    assert {item['code'] for item in candidates} == set(load_config()['risks'])
+    assert {item['ruleStatus'] for item in candidates} >= {'triggered', 'not_triggered'}
+    assert any(item['ruleStatus'] == 'indeterminate' for item in candidates)
+
+    assessments = {item['code']: item for item in completed['riskAssessments']}
+    assert set(assessments) == set(load_config()['risks'])
+    assert value['result']['riskCandidateCount'] == 10
+    assert value['result']['analysedRiskCount'] == 10
+    assert assessments['RK04']['include'] is False
+    assert assessments['RK04']['classification'] == 'not_applicable'
+    assert assessments['RK05']['classification'] == 'insufficient'
+    assert assessments['RK05']['opposingEvidenceIds'] == []
+    assert value['result']['excludedRiskCodes']
+
+
+def test_model_cannot_confirm_a_rule_the_program_did_not_trigger():
+    value = evaluate(_data(
+        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+    ))
+    candidate = next(item for item in value['riskCandidates'] if item['code'] == 'RK04')
+    assert candidate['ruleStatus'] == 'not_triggered'
+    completed = apply_text_interpretation(value, lambda payload: {
+        'risks': [dict(code='RK04', include=True, classification='confirmed',
+                       description='模型认为产品结构风险成立。',
+                       evidenceIds=[candidate['evidenceIds'][0]])],
+    })
+
+    assert 'RK04' in completed['rejectedRisks']
+    assessment = next(item for item in completed['riskAssessments'] if item['code'] == 'RK04')
+    assert assessment['include'] is False
+    assert assessment['classification'] == 'not_applicable'
+    assert 'RK04' not in value['result']['riskCodes']
+
+
+def test_model_can_downgrade_a_triggered_rule_and_records_opposing_evidence():
+    value = evaluate(_data(
+        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+    ))
+    candidate = next(item for item in value['riskCandidates'] if item['code'] == 'RK01')
+    support = candidate['evidenceIds'][0]
+    opposing = next(iter(value['evidence']['facts']))['id'] if value['evidence']['facts'] else support
+    completed = apply_text_interpretation(value, lambda payload: {
+        'risks': [dict(code='RK01', include=False, classification='insufficient',
+                       description='目标与预测口径仍需核对，暂不确认风险成立。',
+                       evidenceIds=[support], opposingEvidenceIds=[opposing])],
+    })
+
+    assessment = next(item for item in completed['riskAssessments'] if item['code'] == 'RK01')
+    assert assessment['include'] is False
+    assert assessment['classification'] == 'insufficient'
+    assert assessment['supportingEvidenceIds'] == [support]
+    assert assessment['opposingEvidenceIds'] == [opposing]
+    assert 'RK01' in completed['modelExcludedRisks']
+    assert 'RK01' in value['result']['modelExcludedRiskCodes']
+    assert 'RK01' not in value['result']['riskCodes']
+
+
+def test_model_cannot_cite_support_or_opposing_evidence_outside_the_payload():
+    value = evaluate(_data(
+        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+    ))
+    candidate = next(item for item in value['riskCandidates'] if item['code'] == 'RK01')
+    support = candidate['evidenceIds'][0]
+    generated = apply_text_interpretation(value, lambda payload: {
+        'risks': [dict(code='RK01', include=True, classification='confirmed',
+                       description='模型引用未知证据支持风险。',
+                       evidenceIds=[support], opposingEvidenceIds=['model-invented-evidence'])],
+    })
+    assert 'RK01' in generated['rejectedRisks']
+    assessment = next(item for item in generated['riskAssessments'] if item['code'] == 'RK01')
+    assert assessment['opposingEvidenceIds'] == []
+
+
+def test_missing_target_facts_make_rk01_indeterminate_and_block_confirmation():
+    value = evaluate(_data(
+        targets=dict(amount=None, energy=None, byProduct={}, byAccount={}),
+        opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
+    ))
+    candidate = next(item for item in value['riskCandidates'] if item['code'] == 'RK01')
+    assert candidate['ruleStatus'] in {'indeterminate', 'not_triggered'}
+    completed = apply_text_interpretation(value, lambda payload: {
+        'risks': [dict(code='RK01', include=True, classification='confirmed',
+                       description='模型在目标缺失时确认覆盖不足。',
+                       evidenceIds=[candidate['evidenceIds'][0]])],
+    })
+    assessment = next(item for item in completed['riskAssessments'] if item['code'] == 'RK01')
+    assert assessment['include'] is False
+    assert assessment['classification'] in {'insufficient', 'not_applicable'}
+
+
+def test_model_runs_without_text_samples_and_generates_nonempty_analysis():
     opportunity = _opportunity(acneed='', stage='11', stage1End=None)
     value = evaluate(_data(
         opportunities=[opportunity], allOpportunities=[deepcopy(opportunity)],
@@ -284,28 +402,28 @@ def test_model_runs_even_without_text_samples_and_only_fills_empty_content():
     completed = apply_text_interpretation(value, lambda payload: calls.append(payload) or {})
     assert len(calls) == 1 and calls[0]['progressSamples'] == []
     assert completed['status'] == 'completed' and completed['modelCalls'] == 1
+    assert completed['appliedCauses'] == []
 
     value = evaluate(_data(
         opportunities=[_opportunity()], allOpportunities=[deepcopy(_opportunity())],
         accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
         progress={'opp-1': [dict(id='p1', description='客户要求补充资质文件', startAt='2026-10-01')]},
     ))
-    cause = value['result']['causes'][0]
-    cause_id = cause['id']
-    cause['description'] = ''
-    next(item for item in value['causes'] if item['id'] == cause_id)['description'] = ''
-    action = next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'DS02')
-    action['action'] = ''
-    evidence_id = value['textSamples'][0]['evidenceId']
+    risk = value['risks'][0]
+    progress_id = value['textSamples'][0]['evidenceId']
     filled = apply_text_interpretation(value, lambda payload: {
-        'causeDescriptions': {'RC02': '项目进展显示客户要求补充资质文件，需人工复核。'},
-        'causeEvidence': {'RC02': [evidence_id]},
-        'adviceActions': {'DS02': '推动客户补齐资质文件后进入投标'},
+        'summary': '模型结合商机规则和项目进展完成本轮分析。',
+        'risks': [dict(code=risk['code'], include=True, classification='confirmed',
+                       description='规则证据显示该风险需要优先核查。', evidenceIds=[risk['evidenceIds'][0]])],
+        'causes': [dict(code='RC02', description='项目进展显示客户要求补充资质文件，需人工复核。',
+                        riskCodes=['RK08'], evidenceIds=[progress_id])],
+        'advice': [dict(code='DS02', action='推动客户补齐资质文件后进入投标',
+                        riskCodes=['RK08'], causeCodes=['RC02'], evidenceIds=[progress_id])],
     })
-    assert filled['causes'] == ['RC02'] and filled['advice'] == ['DS02']
-    assert cause['description'].startswith('项目进展显示')
-    assert action['action'] == '推动客户补齐资质文件后进入投标'
-
+    assert filled['appliedCauses'] == ['RC02'] and filled['appliedAdvice'] == ['DS02']
+    assert value['result']['summary'].startswith('模型结合')
+    assert next(item for item in value['result']['causes'] if item['causeCode'] == 'RC02')['description'].startswith('项目进展显示')
+    assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'DS02')['action'] == '推动客户补齐资质文件后进入投标'
 
 def test_unknown_acneed_status_is_not_a_verified_cause():
     opportunity = _opportunity(acneed='', stage='11', stage1End=None)
@@ -324,14 +442,16 @@ def test_default_text_interpreter_only_parses_bounded_json(monkeypatch):
 
     def fake_stream(*args, **kwargs):
         return iter([
-            dict(type='text_delta', text='```json\n{"causeDescriptions":{"RC02":"有文本依据"},"causeEvidence":{"RC02":["opp-v2:progress:p1"]},"adviceActions":{}}\n```'),
+            dict(type='text_delta', text='```json\n{"summary":"模型摘要","risks":[{"code":"RK08","include":true,"classification":"confirmed","description":"风险说明","evidenceIds":["opp-v2:progress:p1"]}],"causes":[{"code":"RC02","description":"有文本依据","riskCodes":["RK08"],"evidenceIds":["opp-v2:progress:p1"]}],"advice":[]}\n```'),
             dict(type='message_end', stop_reason='end_turn'),
         ])
 
     monkeypatch.setattr(provider, 'stream_message', fake_stream)
     value = default_text_interpreter({'progressSamples': [{'evidenceId': 'opp-v2:progress:p1', 'text': '资质待补'}]})
-    assert value == {'causeDescriptions': {'RC02': '有文本依据'},
-                     'causeEvidence': {'RC02': ['opp-v2:progress:p1']}, 'adviceActions': {}}
+    assert value['summary'] == '模型摘要'
+    assert value['risks'][0]['code'] == 'RK08'
+    assert value['causes'][0]['code'] == 'RC02'
+    assert value['advice'] == []
 
 
 def test_target_rows_are_summed_not_distincted_by_customer_or_product():

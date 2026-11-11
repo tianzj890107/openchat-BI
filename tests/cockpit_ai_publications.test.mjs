@@ -35,7 +35,7 @@ test('cockpit owns a slot store outside the board and skips analysis for ready s
   const source = await readFile(new URL('../bi_agent/web/static/cockpit/cockpit.js', import.meta.url),'utf8');
   assert.match(source,/aiPublicationStore = reactive/);
   assert.match(source,/ensureSlotAnalysis\(props\.insight\.id,stage\.value\)/);
-  assert.match(source,/if\(hasPublishedSlot\(slotId\)\) return stateFor\(stage\)\.item;/);
+  assert.match(source,/if\(hasPublishedSlot\(slotId\)\) return slotPublication\(slotId\)\.payload;/);
   assert.match(source,/markAiPublicationsStale\(notice\)/);
   assert.doesNotMatch(source,/aiPublicationStore\.slots\s*=\s*\{\s*\}/);
 });

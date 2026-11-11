@@ -12,6 +12,7 @@
   const assetVersion = document.querySelector('meta[name="cockpit-version"]')?.content || '1';
   const {taskProgressText}=await import(`./task-progress.js?v=${assetVersion}`);
   const assetBase = document.querySelector('meta[name="cockpit-assets"]')?.content || `${root}/static/cockpit`;
+  const {selectSlotAnalysis}=await import(`./publication-selection.js?v=${assetVersion}`);
   const runtimeUrl = `${assetBase}/metadata/runtime.json?v=${encodeURIComponent(assetVersion)}`;
   const snapshotsUrl = `${assetBase}/metadata/pdt-release-2109836674373566465/data-snapshots.json?v=${encodeURIComponent(assetVersion)}`;
   const insightBundleUrl = `${assetBase}/insight-components/index.js?v=${encodeURIComponent(assetVersion)}`;
@@ -300,6 +301,10 @@
   }
   function applyServerCard(slotId, slot, {stale=false, notice=''}={}) {
     if(!slot || slot.status!=='ready' || !validAiCard(slot.payload))return;
+    // Independent slots are read directly from their own publication entry.
+    // Writing them into the shared stage state is what allowed a later shared
+    // opportunity result to replace opportunity-risk by timestamp.
+    if(INDEPENDENT_SLOT_KEYS.has(slotId))return;
     const stage=slot.stage || SLOT_STAGE[slotId];
     if(!stage)return;
     const state=stateFor(stage);
@@ -404,15 +409,16 @@
   }
   async function ensureSlotAnalysis(slotId, stage, refresh=false, urgent=false) {
     if(analysisEngine!=='main') return ensureAnalysis(stage,refresh,urgent);
+    if(refresh && INDEPENDENT_SLOT_KEYS.has(slotId)) return refreshFrozenAnnual(slotId);
     if(refresh) return ensureAnalysis(stage,true,urgent);
-    if(hasPublishedSlot(slotId)) return stateFor(stage).item;
+    if(hasPublishedSlot(slotId)) return slotPublication(slotId).payload;
     // Opening, refreshing or scrolling a page only reads published cards; it
     // must not start a model job.  Give the independent publication read a
     // brief head start so an already-saved card wins the race.  Missing cards
     // are filled by the server preheat scheduler, while the explicit retry
     // action above remains available to the user.
     await Promise.race([aiPublicationReady,new Promise(resolve=>setTimeout(resolve,2500))]);
-    if(hasPublishedSlot(slotId)) return stateFor(stage).item;
+    if(hasPublishedSlot(slotId)) return slotPublication(slotId).payload;
     return null;
   }
   const QUERY_STAGE_CODES = {
@@ -723,14 +729,13 @@
       const compareLink = computed(()=>{if(!state.value.item)return '';const url=new URL(location.href);url.searchParams.set('engine','standalone');url.searchParams.set('baseline',state.value.item.id);return url.pathname+url.search;});
       // Each slot answers its own question.  Prefer the slot-projected
       // publication over the shared stage card when it is at least as new.
-      const slotAnalysis = computed(()=>{
-        const published=slotPublication(props.insight.id);
-        const projected=published?.status==='ready'&&validAiCard(published.payload)?published.payload:null;
-        const current=state.value.item;
-        if(!projected)return current;
-        if(!current)return projected;
-        return Number(projected.updatedAt||0)>=Number(current.updatedAt||0)?projected:current;
-      });
+      const slotAnalysis = computed(()=>selectSlotAnalysis({
+        slotId:props.insight.id,
+        independent:INDEPENDENT_SLOT_KEYS.has(props.insight.id),
+        published:slotPublication(props.insight.id),
+        current:state.value.item,
+        validPayload:validAiCard,
+      }));
       const progressClock=ref(Date.now());
       const progressTimer=setInterval(()=>{if(frozenAnnual.running)progressClock.value=Date.now();},1000);
       onBeforeUnmount(()=>clearInterval(progressTimer));
@@ -753,9 +758,9 @@
       });
       const refreshCard=()=>refreshFrozenAnnual(props.insight.id);
       const clarification = ref('');
-      const confirmScope = () => {if(!clarification.value.trim())return;clarificationAnswers.set(stage.value, {answer:clarification.value.trim()});ensureAnalysis(stage.value,true,true).catch(()=>{});};
+      const confirmScope = () => {if(!clarification.value.trim())return;clarificationAnswers.set(stage.value, {answer:clarification.value.trim()});ensureSlotAnalysis(props.insight.id,stage.value,true,true).catch(()=>{});};
       const stop = async () => {if(state.value.item?.id)await fetch(`${apiBase}/analyses/${state.value.item.id}/cancel`,{method:'POST'});};
-      const reload = () => ensureAnalysis(stage.value, true, true).catch(() => {});
+      const reload = () => ensureSlotAnalysis(props.insight.id, stage.value, true, true).catch(() => {});
       let alive=true;
       const registeredStage=stage.value;
       const instance=getCurrentInstance();
