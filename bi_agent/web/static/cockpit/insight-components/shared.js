@@ -184,9 +184,11 @@ export function useInsight(props, emit) {
   }
 
   function deadlineText(item) {
+    const text = String(item?.deadline || '').trim()
+    if (text && text !== '待确认') return text
     const days = Number(item?.deadlineDays)
     if (Number.isFinite(days) && days > 0) return `${days} 个工作日`
-    return item?.deadline || '期限未提供'
+    return '期限未提供'
   }
 
   function displayOwnerRole(value) {

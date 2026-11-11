@@ -23,7 +23,7 @@ from collections import defaultdict
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from copy import deepcopy
-from datetime import date, datetime, time as datetime_time, timezone
+from datetime import date, datetime, time as datetime_time, timedelta, timezone
 import hashlib
 import json
 import math
@@ -34,17 +34,20 @@ import re
 import time
 import uuid
 
-CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v2/config.json"
+CONFIG_PATH = Path(__file__).parent / "assets/opportunity-v3/config.json"
 SLOT_ID = "opportunity-risk"
-RULES_VERSION = "opportunity-v2-rules-1"
+RULES_VERSION = "opportunity-v3-rules-1"
 
 _LEVEL_RANK = {"极高": 0, "高": 1, "中": 2, "低": 3}
 _CAUSE_STAGE = {
     "RC01": "opportunity", "RC02": "bid", "RC03": "opportunity",
     "RC04": "opportunity", "RC05": "opportunity", "RC06": "opportunity",
-    "RC07": "opportunity", "RC08": "opportunity",
+    "RC07": "opportunity", "RC08": "opportunity", "RC09": "opportunity",
 }
 _PRODUCT_NAMES = {"1": "电芯", "2": "PACK"}
+# Governance actions repair the measurement source itself; they must not take
+# the place of business remediation in the重点建议 slot.
+_GOVERNANCE_ADVICE = {"AC05"}
 _STAGE_NAMES = {"11": "P0 商机获取", "12": "P1 技术交流", "13": "P2 方案推动",
                 "14": "P3 合同签订", "15": "P4 批量交付"}
 _AP_SUPPLEMENT_CODES = {
@@ -181,7 +184,7 @@ def load_config():
         return cached[1]
     config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     if config.get("version") != RULES_VERSION:
-        raise OpportunityV2Unavailable("商机 V2 运行配置版本不匹配")
+        raise OpportunityV2Unavailable("商机 V3 运行配置版本不匹配")
     source = config.get("source") or {}
     # The authoring workbook is not shipped to customers.  When it is present
     # in a development checkout, verify it; the config hash always protects the
@@ -190,19 +193,21 @@ def load_config():
     if source.get("path") and source_path.exists():
         actual = hashlib.sha256(source_path.read_bytes()).hexdigest()
         if source.get("sha256") and actual != source["sha256"]:
-            raise OpportunityV2Unavailable("商机 V2 本体源文件与运行配置哈希不一致")
+            raise OpportunityV2Unavailable("商机 V3 本体源文件与运行配置哈希不一致")
     risks = set(config.get("risks") or {})
     causes = set(config.get("causes") or {})
     advice = set(config.get("advice") or {})
     for risk, link in (config.get("links") or {}).items():
         if risk not in risks:
-            raise OpportunityV2Unavailable(f"V2 链路引用未知风险：{risk}")
+            raise OpportunityV2Unavailable(f"V3 链路引用未知风险：{risk}")
         if not set(link.get("causes") or []) <= causes:
-            raise OpportunityV2Unavailable(f"V2 链路引用未知根因：{risk}")
+            raise OpportunityV2Unavailable(f"V3 链路引用未知根因：{risk}")
         if not set(link.get("advice") or []) <= advice:
-            raise OpportunityV2Unavailable(f"V2 链路引用未知建议：{risk}")
-    if "RK07" in (config.get("links") or {}) and (config["links"]["RK07"].get("causes") or []):
-        raise OpportunityV2Unavailable("RK07 与 RC01 的矛盾关联未解除")
+            raise OpportunityV2Unavailable(f"V3 链路引用未知建议：{risk}")
+    if "RK07" in (config.get("links") or {}):
+        rk07_causes = config["links"]["RK07"].get("causes") or []
+        if "RC01" in rk07_causes or rk07_causes != ["RC09"]:
+            raise OpportunityV2Unavailable("RK07 必须只关联 RC09，不能保留 RC01 的矛盾关联")
     _CONFIG_CACHE[str(CONFIG_PATH)] = (stamp, config)
     return config
 
@@ -240,14 +245,22 @@ def _database():
                 statement_timeout_ms=max(1000, min(integer("WORKBENCH_PG_STATEMENT_TIMEOUT_MS", 90000), 120000)),
             )
     if not config.ready()[0]:
-        raise OpportunityV2Unavailable("未配置商机 V2 只读数据库：" + config.ready()[1])
+        raise OpportunityV2Unavailable("未配置商机 V3 只读数据库：" + config.ready()[1])
     return PostgresDatabase(config, max_rows=20000)
 
 
 def _table(config, entity):
     table = _text((config.get("logicalEntities", {}).get(entity) or {}).get("table"))
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*", table):
-        raise OpportunityV2Unavailable(f"V2 逻辑实体缺少合法物理表：{entity}")
+        raise OpportunityV2Unavailable(f"V3 逻辑实体缺少合法物理表：{entity}")
+    schema, name = table.split(".", 1)
+    return f'"{schema}"."{name}"'
+
+
+def _physical_table_name(value):
+    table = _text(value)
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*", table):
+        raise OpportunityV2Unavailable("V3 近期活动来源缺少合法物理表")
     schema, name = table.split(".", 1)
     return f'"{schema}"."{name}"'
 
@@ -278,7 +291,7 @@ def _measurement_date(period, requested=None):
 def _safe_year(period):
     value = _text(period)
     if not re.fullmatch(r"\d{4}", value):
-        raise OpportunityV2Unavailable("商机 V2 只接受四位年度期间")
+        raise OpportunityV2Unavailable("商机 V3 只接受四位年度期间")
     return int(value)
 
 
@@ -601,10 +614,35 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
                         ((config.get("overrides") or {}).get("customerTier") or {}).get("strategic") or
                         ["0", "1"]]
     strategic_level_slots = ",".join(["%s"] * len(strategic_levels))
+    activity = (config.get("overrides") or {}).get("recentActivity") or {}
+    activity_fields = activity.get("accountFields") or {}
+    lead_table = _physical_table_name(activity.get("leadTable"))
+    lead_id = _text(activity.get("leadIdField"))
+    lead_account = _text(activity.get("leadAccountField"))
+    lead_created = _text(activity.get("leadCreatedField"))
+    lead_progress_table = _physical_table_name(activity.get("leadProgressTable"))
+    lead_progress_lead = _text(activity.get("leadProgressLeadField"))
+    lead_progress_created = _text(activity.get("leadProgressCreatedField"))
+    for name in (lead_id, lead_account, lead_created, lead_progress_lead, lead_progress_created):
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            raise OpportunityV2Unavailable("V3 近期活动来源缺少合法字段映射")
     accounts_sql = (
         f"SELECT a.{ac['accountid']} AS account_id, a.{ac['name']} AS name, "
-        f"a.{ac['new_accountlevel']} AS account_level, a.{ac['createdon']} AS created_at "
+        f"a.{ac['new_accountlevel']} AS account_level, a.{ac['createdon']} AS created_at, "
+        f"a.{ac[activity_fields['lastVisitAt']]} AS last_visit_at, "
+        f"a.{ac[activity_fields['lastVisitDays']]} AS last_visit_days, "
+        f"a.{ac[activity_fields['latestActivityAt']]} AS latest_activity_at, "
+        f"a.{ac[activity_fields['originatingLeadId']]} AS originating_lead_id, "
+        f"la.latest_lead_at, lp.latest_lead_progress_at "
         f"FROM {account_table} a "
+        f"LEFT JOIN (SELECT l.{lead_account} AS account_id, MAX(l.{lead_created}) AS latest_lead_at "
+        f"           FROM {lead_table} l WHERE l.{lead_created} <= %s AND l.{lead_account} IS NOT NULL "
+        f"           GROUP BY 1) la ON la.account_id = a.{ac['accountid']} "
+        f"LEFT JOIN (SELECT l.{lead_account} AS account_id, MAX(p.{lead_progress_created}) AS latest_lead_progress_at "
+        f"           FROM {lead_table} l JOIN {lead_progress_table} p "
+        f"           ON p.{lead_progress_lead} = l.{lead_id} "
+        f"           WHERE p.{lead_progress_created} <= %s AND l.{lead_account} IS NOT NULL "
+        f"           GROUP BY 1) lp ON lp.account_id = a.{ac['accountid']} "
         f"WHERE a.{ac['new_accountlevel']}::text IN ({strategic_level_slots})"
     )
 
@@ -671,7 +709,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         ("产品类型", product_sql, []),
         ("商机预测", opp_sql, [past, past, past, year, measured]),
         ("全部商机", all_opp_sql, [measured]),
-        ("客户", accounts_sql, strategic_levels),
+        ("客户", accounts_sql, [measured, measured] + strategic_levels),
         ("投标", bid_sql, [measured]),
         ("项目进展", progress_sql, [measured, measured]),
         ("订单关联", order_sql, []),
@@ -860,6 +898,12 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         level=_text(row.get("account_level")),
         tier=_customer_tier(row.get("account_level"), config),
         createdAt=_iso(_day(row.get("created_at"))),
+        lastVisitAt=_iso(_day(row.get("last_visit_at"))),
+        lastVisitDays=int(_number(row.get("last_visit_days"))) if _number(row.get("last_visit_days")) is not None else None,
+        latestActivityAt=_iso(_day(row.get("latest_activity_at"))),
+        originatingLeadId=_text(row.get("originating_lead_id")),
+        latestLeadAt=_iso(_day(row.get("latest_lead_at"))),
+        latestLeadProgressAt=_iso(_day(row.get("latest_lead_progress_at"))),
     ) for row in account_rows if _text(row.get("account_id"))]
 
     all_opportunities = []
@@ -891,7 +935,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     core_rows = bool(target_rows or opp_rows or all_opp_rows or account_rows)
     if errors and not core_rows:
         labels = "、".join(sorted({item.get("stage") or item.get("code") or "未知" for item in errors}))
-        error = OpportunityV2Unavailable("商机 V2 核心取数失败且无可保留证据：" + labels)
+        error = OpportunityV2Unavailable("商机 V3 核心取数失败且无可保留证据：" + labels)
         error.phase = "database_query"
         error.code = "CORE_FETCH_FAILED"
         error.diagnostic_message = "；".join(failure_details)[:2400]
@@ -1777,6 +1821,26 @@ def evaluate(data, config=None, measured=None):
         bucket = products[key]
         product_pending_ratio[key] = _div(bucket.get("pending_amount"), bucket.get("total_amount")) if bucket.get("total_amount") else None
 
+    activity_config = (config.get("overrides") or {}).get("recentActivity") or {}
+    try:
+        recent_days = max(1, min(int(activity_config.get("windowDays") or 90), 730))
+    except (TypeError, ValueError):
+        recent_days = 90
+    recent_floor = measured - timedelta(days=recent_days)
+
+    def recent_activity(account):
+        dates = [
+            _day(account.get("lastVisitAt")),
+            _day(account.get("latestActivityAt")),
+            _day(account.get("latestLeadAt")),
+            _day(account.get("latestLeadProgressAt")),
+        ]
+        active_dates = [item for item in dates if item and item <= measured]
+        return any(item >= recent_floor for item in active_dates)
+
+    no_recent_activity = [account for account in no_opportunity if not recent_activity(account)]
+    activity_source_ready = bool(activity_config) and accounts_complete
+
     candidates = {}
     if strategic_p0:
         amount = _sum(opp.get("forecastAmount") for opp in strategic_p0)
@@ -1838,6 +1902,29 @@ def evaluate(data, config=None, measured=None):
             description=f"{len(late_p0)} 条商机 P0 周期超过动态均值 1.5 倍；细分卡点缺少结构化事件字段，仅作环节定位。",
             evidence=[f_p0, f_rk10] + top_opps(late_p0, 6),
             risks={"RK01", "RK10"} & {risk["code"] for risk in risks},
+        )
+    if no_opportunity and no_recent_activity:
+        activity_evidence = [f_r09]
+        for account in no_recent_activity[:8]:
+            activity_evidence.append(record(
+                f"opp-v2:account:{account.get('id')}:activity",
+                customer=account.get("name"),
+                status=f"近 {recent_days} 天无线索、拜访或销售活动",
+                value=account.get("id"), name=account.get("name"),
+            ))
+        candidates["RC09"] = dict(
+            kind="verified" if activity_source_ready else "data_gap",
+            status="supported" if activity_source_ready else "insufficient",
+            stage="opportunity",
+            title="战略客户开拓不足",
+            description=(
+                f"{len(no_recent_activity)} 家无商机战略客户在近 {recent_days} 天无线索、拜访或销售活动记录。"
+                if activity_source_ready else
+                f"{len(no_opportunity)} 家战略客户当前无商机；近期线索、拜访及需求调研来源未完整接入，不能确认开拓不足。"
+            ),
+            evidence=activity_evidence,
+            risks={"RK07"} & {risk["code"] for risk in risks},
+            missingEvidence=[] if activity_source_ready else ["近期线索", "拜访", "需求调研"],
         )
 
     # Text-only prerequisites: only report when project progress actually
@@ -1924,7 +2011,7 @@ def evaluate(data, config=None, measured=None):
             id=cause_id, causeCode=code, kind=candidate["kind"], status=candidate["status"],
             stage=candidate["stage"], title=candidate["title"], description=description,
             findingIds=finding_ids, evidenceIds=list(dict.fromkeys(candidate["evidence"]))[:20],
-            missingEvidence=[],
+            missingEvidence=list(candidate.get("missingEvidence") or []),
         ))
 
     # ---- advice -----------------------------------------------------------
@@ -1940,9 +2027,13 @@ def evaluate(data, config=None, measured=None):
             for code in link.get("advice") or []:
                 if code not in advice_codes:
                     advice_codes.append(code)
-    advice_codes = [code for code in advice_codes if code in (config.get("advice") or {})][:4]
+    advice_codes = [code for code in advice_codes if code in (config.get("advice") or {})]
+    # Keep data-governance actions available but behind business remediation.
+    advice_codes = ([code for code in advice_codes if code not in _GOVERNANCE_ADVICE]
+                    + [code for code in advice_codes if code in _GOVERNANCE_ADVICE])[:4]
     if not advice_codes and displayed:
-        advice_codes = ["DS06"] if "DS06" in (config.get("advice") or {}) else []
+        advice_codes = (["AC01"] if "AC01" in (config.get("advice") or {})
+                        else list(config.get("advice") or {})[:1])
 
     strategic_count = len({account.get("id") for account in no_opportunity + no_bidding if account.get("id")})
     cause_by_code = {cause["causeCode"]: cause for cause in cause_items}
@@ -1975,12 +2066,19 @@ def evaluate(data, config=None, measured=None):
                           if code in ((config.get("links") or {}).get(risk["code"], {}) or {}).get("advice", [])]
         if not risk_codes:
             risk_codes = linked_risk_codes
+        deadline_days, deadline_type, deadline_text = _deadline_meta(template.get("deadline"))
         recommendations.append(dict(
             id=f"opp-v2:advice:{code}", adviceCode=code,
-            actionType="remediation" if any(cause.get("kind") == "verified" and cause.get("status") == "supported" for cause in linked_causes) else "investigation",
+            actionType=_advice_action_type(code, template, linked_causes),
+            governance=code in _GOVERNANCE_ADVICE,
             causeIds=[cause["id"] for cause in linked_causes], evidenceIds=evidence_ids[:20],
             action=action[:64], ownerRole=(template.get("owner") or "待确认")[:40],
-            deadlineDays=_deadline_days(template.get("deadline")), acceptance=_acceptance(code)[:180],
+            object=(template.get("object") or "")[:120],
+            targetValue=(template.get("target") or "")[:180],
+            tracking=(template.get("tracking") or "")[:180],
+            priority=(template.get("priority") or "")[:20],
+            deadline=deadline_text[:80], deadlineType=deadline_type,
+            deadlineDays=deadline_days, acceptance=_acceptance(code, template)[:180],
             detail=(template.get("measure") or "")[:600], ownerConfirmed=False, deadlineConfirmed=False,
             riskCodes=risk_codes, linkedRiskCodes=linked_risk_codes or risk_codes,
         ))
@@ -1989,7 +2087,8 @@ def evaluate(data, config=None, measured=None):
         recommendations.append(dict(
             id="opp-v2:advice:investigate", adviceCode="INVESTIGATE", actionType="investigation",
             causeIds=[], evidenceIds=risk["evidenceIds"][:1], action=f"核查{risk['name']}的影响客户与预测口径"[:64],
-            ownerRole="销售运营", deadlineDays=10, acceptance="形成受影响客户、商机与预测量的可核对清单",
+            ownerRole="销售运营", deadline="10 个工作日", deadlineType="days", deadlineDays=10,
+            acceptance="形成受影响客户、商机与预测量的可核对清单",
             detail="", ownerConfirmed=False, deadlineConfirmed=False,
             riskCodes=[risk["code"]], linkedRiskCodes=[risk["code"]],
         ))
@@ -2098,7 +2197,7 @@ def evaluate(data, config=None, measured=None):
             riskCodes=[code for code in sorted(candidates[cause["causeCode"]]["risks"])
                        if code in displayed_code_set],
             linkedRiskCodes=sorted(candidates[cause["causeCode"]]["risks"]),
-            missingEvidence=[],
+            missingEvidence=list(cause.get("missingEvidence") or []),
         ) for cause in cause_items],
         analysisDimensions=dimensions,
         recommendations=recommendations,
@@ -2127,6 +2226,7 @@ def evaluate(data, config=None, measured=None):
         stage=candidate.get("stage") or "opportunity",
         evidenceIds=list(dict.fromkeys(candidate.get("evidence") or []))[:20],
         riskCodes=sorted(candidate.get("risks") or []),
+        missingEvidence=list(candidate.get("missingEvidence") or []),
     ) for code, candidate in sorted(candidates.items())]
     advice_candidates = []
     risk_by_code = {risk["code"]: risk for risk in risks}
@@ -2149,13 +2249,23 @@ def evaluate(data, config=None, measured=None):
         evidence_ids = list(dict.fromkeys(evidence_ids))[:20]
         if not risk_codes or not evidence_ids:
             continue
+        deadline_days, deadline_type, deadline_text = _deadline_meta(template.get("deadline"))
+        linked_causes = [cause for cause in cause_items if cause["causeCode"] in cause_codes]
         advice_candidates.append(dict(
             code=code,
+            actionType=_advice_action_type(code, template, linked_causes),
+            governance=code in _GOVERNANCE_ADVICE,
             name=template.get("name") or code,
+            action=template.get("action") or template.get("name") or "",
             measure=template.get("measure") or "",
+            object=template.get("object") or "",
             ownerRole=(template.get("owner") or "待确认")[:40],
-            deadlineDays=_deadline_days(template.get("deadline")),
-            acceptance=_acceptance(code)[:180],
+            deadline=deadline_text[:80], deadlineType=deadline_type,
+            deadlineDays=deadline_days,
+            targetValue=template.get("target") or "",
+            acceptance=_acceptance(code, template)[:180],
+            tracking=template.get("tracking") or "",
+            priority=template.get("priority") or "",
             causeCodes=cause_codes,
             riskCodes=sorted(risk_codes),
             evidenceIds=evidence_ids,
@@ -2240,7 +2350,7 @@ def default_text_interpreter(payload):
         '"opposingEvidenceIds":["反对或反例证据编号"]}],'
         '"causes":[{"code":"RC01","description":"不超过160字",'
         '"riskCodes":["RK01"],"evidenceIds":["输入中的证据编号"]}],'
-        '"advice":[{"code":"DS01","action":"不超过64字",'
+        '"advice":[{"code":"AC01","action":"不超过64字",'
         '"riskCodes":["RK01"],"causeCodes":["RC01"],"evidenceIds":["输入中的证据编号"]}]}。'
         "每个 risk 的 code 必须来自 ruleOutcomes。只有 ruleStatus=triggered 且 classification=confirmed 时 include 才能为 true；"
         "structural、insufficient、not_applicable 必须 include=false。数值规则未命中的风险不得被模型改判为成立。"
@@ -2248,7 +2358,8 @@ def default_text_interpreter(payload):
         "成立的风险至少引用一条支持证据；opposingEvidenceIds 记录与该判断相反或限制结论的证据，必须来自输入事实、记录或进展。"
         "每个 cause 必须来自 causeCandidates，riskCodes 必须是该原因允许关联且本次包含的风险。"
         "每个 advice 必须来自 adviceCandidates，必须绑定其允许的 causeCodes/riskCodes。"
-        "原因必须说明证据中已出现的商务、技术或流程卡点；建议必须给出可核对的对象和动作。"
+        "原因必须说明证据中已出现的商务、技术或流程卡点；建议必须给出可核对的对象和动作，"
+        "优先沿用候选中的作用对象、目标值、验收标准、跟踪指标和原始期限表达。"
         "summary 只写主要经营问题、影响范围、最重要的数字和推进重点，不罗列全部风险；"
         "不得出现 RK/RC/BR/DS/AC 编码、规则核验、阈值、口径、证据、取数、字段缺失、排查、校验等实现说明。"
         "不得使用‘逾期未完成’表述。"
@@ -2372,7 +2483,16 @@ def apply_text_interpretation(evaluated, interpreter=None):
         advice_candidates = [dict(
             code=item.get("adviceCode"), name=item.get("adviceCode"),
             measure=item.get("detail") or "", ownerRole=item.get("ownerRole") or "待确认",
+            action=item.get("action") or "",
+            actionType=item.get("actionType") or "investigation",
+            governance=bool(item.get("governance")),
+            deadline=item.get("deadline") or "",
+            deadlineType=item.get("deadlineType") or "days",
             deadlineDays=item.get("deadlineDays") or 30,
+            object=item.get("object") or "",
+            targetValue=item.get("targetValue") or "",
+            tracking=item.get("tracking") or "",
+            priority=item.get("priority") or "",
             acceptance=item.get("acceptance") or "",
             causeCodes=[], riskCodes=item.get("riskCodes") or item.get("linkedRiskCodes") or [],
             evidenceIds=item.get("evidenceIds") or [],
@@ -2398,9 +2518,15 @@ def apply_text_interpretation(evaluated, interpreter=None):
                               description=item.get("description") or "", kind=item.get("kind") or "",
                               status=item.get("status") or "", stage=item.get("stage") or "",
                               riskCodes=item.get("riskCodes") or [],
-                              evidenceIds=item.get("evidenceIds") or []) for item in cause_candidates],
+                              evidenceIds=item.get("evidenceIds") or [],
+                              missingEvidence=item.get("missingEvidence") or []) for item in cause_candidates],
         adviceCandidates=[dict(code=item.get("code"), name=item.get("name") or "",
-                               measure=item.get("measure") or "", ownerRole=item.get("ownerRole") or "",
+                               action=item.get("action") or item.get("name") or "",
+                               measure=item.get("measure") or "", object=item.get("object") or "",
+                               ownerRole=item.get("ownerRole") or "", deadline=item.get("deadline") or "",
+                               targetValue=item.get("targetValue") or "", tracking=item.get("tracking") or "",
+                               priority=item.get("priority") or "",
+                               acceptance=item.get("acceptance") or "",
                                causeCodes=item.get("causeCodes") or [], riskCodes=item.get("riskCodes") or [],
                                evidenceIds=item.get("evidenceIds") or []) for item in advice_candidates],
         fallbackSummary=result.get("businessSummary") or result.get("summary") or "",
@@ -2613,14 +2739,20 @@ def apply_text_interpretation(evaluated, interpreter=None):
             linked_causes = [cause for cause in cause_items if cause["causeCode"] in cause_codes]
             recommendations.append(dict(
                 id=f"opp-v2:advice:{code}", adviceCode=code,
-                actionType=("remediation" if any(cause.get("kind") == "verified"
-                                                 and cause.get("status") == "supported"
-                                                 for cause in linked_causes) else "investigation"),
+                actionType=(candidate.get("actionType")
+                            or _advice_action_type(code, candidate, linked_causes)),
+                governance=bool(candidate.get("governance")) or code in _GOVERNANCE_ADVICE,
                 causeIds=[cause["id"] for cause in linked_causes],
                 evidenceIds=list(dict.fromkeys(_text(entry) for entry in cited))[:20],
                 action=action, ownerRole=(candidate.get("ownerRole") or "待确认")[:40],
+                object=(candidate.get("object") or "")[:120],
+                targetValue=(candidate.get("targetValue") or "")[:180],
+                tracking=(candidate.get("tracking") or "")[:180],
+                priority=(candidate.get("priority") or "")[:20],
+                deadline=(candidate.get("deadline") or "")[:80],
+                deadlineType=(candidate.get("deadlineType") or "days"),
                 deadlineDays=int(candidate.get("deadlineDays") or 30),
-                acceptance=(candidate.get("acceptance") or "")[:180],
+                acceptance=(candidate.get("acceptance") or _acceptance(code))[:180],
                 detail=(candidate.get("measure") or "")[:600],
                 ownerConfirmed=False, deadlineConfirmed=False,
                 riskCodes=sorted(risk_codes), linkedRiskCodes=sorted(allowed_risk_codes),
@@ -2722,49 +2854,41 @@ def apply_text_interpretation(evaluated, interpreter=None):
         return dict(status="failed", error=type(exc).__name__, modelCalls=1,
                     modelErrorMessage=str(exc)[:800])
 
-def _deadline_days(value):
+def _deadline_meta(value):
     text = _text(value)
     match = re.search(r"(\d+)", text)
-    if match:
-        return max(1, min(int(match.group(1)), 365))
-    return 30
+    if match and any(token in text for token in ("工作日", "天", "日")):
+        return max(1, min(int(match.group(1)), 365)), "days", text
+    return 30, "text", text or "待确认"
 
 
-def _acceptance(code):
-    return {
-        "DS01": "形成战略客户、无商机/未投标分组、责任人与突破时间表的可核对清单",
-        "DS02": "逐客户形成商务与技术前置条件关闭清单，并记录投标计划日期",
-        "DS03": "逐客户形成商机建立计划、目标产品部与需求调研完成时间",
-        "DS04": "按电芯与 PACK 分别形成合同未确认商机转化清单和责任人",
-        "DS05": "形成技术卡点、责任资源与排期确认记录，逐项关闭",
-        "DS06": "形成月度经营对账记录，确认推进率与达成率口径一致",
-        "DS07": "形成重点跟踪纳管清单，核对重点跟踪占合同未确认预测比例",
-        "DS08": "逐条形成需求确认记录与预计签约时间",
-    }.get(code, "形成可核对的对象、数值、责任人与完成时间记录")
+def _advice_action_type(code, template, linked_causes):
+    """Governance actions are investigations, not business remediation."""
+    if code in _GOVERNANCE_ADVICE or "治理" in ((template or {}).get("source") or ""):
+        return "investigation"
+    return ("remediation"
+            if any(cause.get("kind") == "verified" and cause.get("status") == "supported"
+                   for cause in linked_causes or [])
+            else "investigation")
+
+
+def _acceptance(code, template=None):
+    return ((template or {}).get("acceptance")
+            or "形成可核对的对象、数值、责任人与完成时间记录")
 
 
 def _advice_action(code, template, values):
     strategic = values.get("strategic_count") or 0
-    if code == "DS01":
-        return f"针对 {strategic} 家战略客户制定突破计划，分别跟进无商机与未投标客户"
-    if code == "DS02":
-        return f"推动 {values.get('no_bidding') or 0} 家战略客户进入投标并关闭前置条件"
-    if code == "DS03":
+    if code == "AC02":
         return f"对 {values.get('no_opportunity') or 0} 家无商机战略客户限期建立商机"
-    if code == "DS04":
-        return "对电芯与 PACK 合同未确认商机分别制定转化计划，优先保障缺口最大的产品部"
-    if code == "DS05":
-        return f"对 {values.get('bid_late') or 0} 项投标超期及 {values.get('late_p2') or 0} 条方案推动超期项目优先排资源"
-    if code == "DS06":
-        return "将战略客户商机推进率与产品部达成率纳入月度经营对账"
-    if code == "DS07":
+    if code == "AC03":
+        return f"为 {strategic} 家战略客户逐户制定突破计划"
+    if code == "AC10":
         ratio = values.get("focus_ratio")
         suffix = f"（当前 {ratio * 100:.1f}%）" if ratio is not None else ""
         target = round((values.get("focus_threshold") or 0.70) * 100)
-        return f"将战略、重点客户合同未确认商机纳入重点跟踪，使占比达到 {target}%{suffix}"
-    if code == "DS08":
-        return f"对 {values.get('rest_p0') or 0} 条一般客户 P0 需求未确认商机逐条确认需求"
-    return (template.get("measure") or "")[:64]
+        return f"将重点跟踪覆盖率提升至 {target}%{suffix}"
+    return (template.get("action") or template.get("name") or template.get("measure") or "")[:64]
 
 
 def _measurement_context(period, requested=None):
@@ -3111,7 +3235,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
     fetched_at = time.time()
     result = evaluated["result"]
     result["cardContract"] = "cockpit-cards-v1"
-    result["engine"] = "opportunity-v2-rules"
+    result["engine"] = "opportunity-v3-rules"
     if model_status.get("status") == "partial":
         result["dataDiagnostics"] = list(dict.fromkeys((result.get("dataDiagnostics") or []) + [
             f"模型分析部分采用：已逐项判断 {model_status.get('analysedRiskCount', 0)}/"
@@ -3141,7 +3265,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
                 period=str(period), measurementDate=measured.isoformat(),
                 metrics=evaluated["metrics"], riskCodes=result["riskCodes"]), ensure_ascii=False,
                 sort_keys=True, default=str).encode()).hexdigest(),
-            ontologyVersion=config.get("version"), source="opportunity-v2",
+            ontologyVersion=config.get("version"), source="opportunity-v3",
             measurementDate=measured.isoformat(),
         ),
         result=result,
@@ -3149,7 +3273,7 @@ def build_card(period, database=None, measurement_date=None, config=None, text_i
         metrics=evaluated["metrics"],
         risks=evaluated["risks"],
         execution=dict(
-            engine="opportunity-v2-rules", durationSeconds=round(time.monotonic() - started, 3),
+            engine="opportunity-v3-rules", durationSeconds=round(time.monotonic() - started, 3),
             queryDurationSeconds=data.get("durationSeconds"), fetchedAt=fetched_at,
             source="customer PostgreSQL", measurementDate=measured.isoformat(),
             rulesVersion=config.get("version"), configDigest=config_digest(),

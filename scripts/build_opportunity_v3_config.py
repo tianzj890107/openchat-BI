@@ -1,4 +1,4 @@
-"""Build the reviewed runtime config for the opportunity V2 ontology card.
+"""Build the reviewed runtime config for the opportunity V3 ontology card.
 
 The customer workbook is an authoring artifact.  The card never reads it at
 runtime: this script extracts only the reviewed entities, fields, indicators,
@@ -7,7 +7,7 @@ the source hash for audit.  Re-run it when the V2 workbook changes.
 
 Usage::
 
-    .venv/bin/python scripts/build_opportunity_v2_config.py
+    .venv/bin/python scripts/build_opportunity_v3_config.py
 
 The generated file is committed.  The source workbook is not required in the
 customer image.
@@ -17,14 +17,15 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 
 import openpyxl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V2.xlsx"
+SOURCE = ROOT / "docs/亿纬锂能/亿纬锂能_本体_商机获取节点_V3.xlsx"
 DICTIONARY = ROOT / "docs/亿纬锂能/ded_public_数据湖视图数据字典_对齐CRM版_20261111.xlsx"
-OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v2/config.json"
+OUTPUT = ROOT / "bi_agent/cockpit/assets/opportunity-v3/config.json"
 
 
 FIELD_NAMES = {
@@ -46,7 +47,11 @@ FIELD_NAMES = {
         "new_projectprocessid", "new_opportunity_id", "new_desc", "new_sdate",
         "new_edate", "new_question_resource", "new_projectstage",
     ],
-    "LE05": ["accountid", "name", "new_accountlevel", "createdon", "statecode"],
+    "LE05": [
+        "accountid", "name", "new_accountlevel", "createdon", "statecode",
+        "new_lastapptime", "new_lastjgtime", "new_thelastest_updatetime",
+        "originatingleadid",
+    ],
     "LE06": [
         "new_targetid", "new_year", "new_account_id", "new_producttype_id",
         "new_dept_id", "new_opportunity_id", "new_project_name", "statecode",
@@ -190,33 +195,52 @@ def build_config(workbook):
                 output=clean(row.get("输出")),
             )
     advice = {}
-    for row in rows(workbook, "决策建议"):
-        code = clean(row.get("建议编码"))
+    for row in rows(workbook, "行动建议"):
+        code = clean(row.get("行动建议编码"))
         if code:
             advice[code] = dict(
                 code=code,
-                name=clean(row.get("建议名称")),
+                name=clean(row.get("行动建议")),
                 causes=[value.strip() for value in clean(row.get("对应根因")).split("、") if value.strip()],
-                measure=clean(row.get("措施")),
+                action=clean(row.get("行动建议")),
+                measure=clean(row.get("行动内容")),
+                object=clean(row.get("作用对象")),
                 owner=clean(row.get("责任角色")),
                 deadline=clean(row.get("期限")),
+                target=clean(row.get("目标值")),
+                acceptance=clean(row.get("验收标准")),
                 tracking=clean(row.get("跟踪指标")),
+                priority=clean(row.get("优先级")),
                 method=clean(row.get("生成方式")),
                 source=clean(row.get("来源")),
             )
     links = {}
-    for row in rows(workbook, "风险根因建议链路"):
+    for row in rows(workbook, "指标-风险-根因-行动建议链路"):
         risk = clean(row.get("风险编码"))
         cause = clean(row.get("根因编码"))
         if not risk or not cause:
             continue
-        entry = links.setdefault(risk, dict(risk=risk, causes=[], advice=[]))
+        entry = links.setdefault(risk, dict(risk=risk, causes=[], advice=[], rows=[]))
         if cause not in entry["causes"]:
             entry["causes"].append(cause)
-        for token in clean(row.get("决策建议")).replace("\n", "、").split("、"):
-            code = token.strip().split(" ", 1)[0]
-            if code.startswith("DS") and code not in entry["advice"]:
+        raw_advice = "、".join(filter(None, (
+            clean(row.get("行动建议编码")), clean(row.get("行动建议")),
+        )))
+        for code in re.findall(r"\b(?:AC|DS)\d+\b", raw_advice):
+            if code not in entry["advice"]:
                 entry["advice"].append(code)
+        entry["rows"].append(dict(
+            indicator=clean(row.get("触发指标")),
+            risk=risk,
+            cause=cause,
+            advice=list(re.findall(r"\b(?:AC|DS)\d+\b", raw_advice)),
+            owner=clean(row.get("责任角色")),
+            deadline=clean(row.get("期限")),
+            target=clean(row.get("目标值")),
+            tracking=clean(row.get("跟踪指标")),
+            closure=clean(row.get("闭环")),
+            nextStep=clean(row.get("下一步")),
+        ))
     for risk, entry in links.items():
         entry["advice"].extend(
             code for cause in entry["causes"] for code in advice.get(cause, {}).get("causes", [])
@@ -235,10 +259,10 @@ def build_config(workbook):
             "note": "new_contractconfirmation_date 实库 0% 覆盖，不能用于测量日判断。",
         },
         "RK07": {
-            "decision": "解除 RK07 与 RC01 的矛盾关联",
+            "decision": "RK07 只关联 RC09，解除 RK07 与 RC01 的矛盾关联",
             "reason": "RK07 客户无商机，不能同时要求存在该客户的 P0 商机。",
-            "causes": [],
-            "advice": ["DS03"],
+            "causes": ["RC09"],
+            "advice": ["AC02", "AC03"],
         },
         "customerTier": {"strategic": ["0", "1"], "priority": ["2", "4"], "general": ["3"]},
         "stage": {"11": "P0", "12": "P1", "13": "P2", "14": "P3", "15": "P4"},
@@ -262,6 +286,25 @@ def build_config(workbook):
             "reason": "本体登记的 new_forcastpower 实库仅 1 条非空，无法用于指标计算；new_orderforecast_qty 覆盖 99.97%，金额/数量比约 330–530 元/kWh。",
         },
         "measurementDate": "历史期间固定在期末；当前期间使用分析启动日，并写入卡片上下文。",
+        "recentActivity": {
+            "windowDays": 90,
+            "description": "无商机战略客户在窗口内存在线索、线索进展、客户拜访或最新销售活动时，不认定开拓不足。",
+            "accountFields": {
+                "lastVisitAt": "new_lastapptime",
+                "lastVisitDays": "new_lastjgtime",
+                "latestActivityAt": "new_thelastest_updatetime",
+                "originatingLeadId": "originatingleadid",
+            },
+            "leadTable": "ded_public.p_fm_edw_v_ods_crm_lead_esb",
+            "leadIdField": "leadid",
+            "leadAccountField": "new_account_id",
+            "leadCreatedField": "createdon",
+            "leadStatusField": "new_leadstatus",
+            "activeLeadStatuses": ["3", "5"],
+            "leadProgressTable": "ded_public.p_fm_edw_v_ods_crm_new_leadprocess_esb",
+            "leadProgressLeadField": "new_leadid",
+            "leadProgressCreatedField": "createdon",
+        },
         "thresholds": {
             "gapRateHigh": 0.10,
             "gapRateMedium": 0.05,
@@ -277,10 +320,10 @@ def build_config(workbook):
     }
     # The resolved link table must already reflect the explicit business
     # overrides; the UI and task drafting never re-interpret the workbook.
-    links["RK07"] = {"risk": "RK07", "causes": [], "advice": ["DS03"]}
+    links["RK07"] = {"risk": "RK07", "causes": ["RC09"], "advice": ["AC02", "AC03"]}
     config = dict(
-        version="opportunity-v2-rules-1",
-        ontology="商机获取节点 V2",
+        version="opportunity-v3-rules-1",
+        ontology="商机获取节点 V3",
         source=dict(path=str(SOURCE.relative_to(ROOT)), sha256=digest(SOURCE)),
         dictionary=dict(path=str(DICTIONARY.relative_to(ROOT)), sha256=digest(DICTIONARY)),
         logicalEntities=entities,

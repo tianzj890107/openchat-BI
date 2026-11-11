@@ -51,16 +51,16 @@ def _complete_risk_assessments(value):
     return items
 
 
-def test_v2_config_is_complete_and_rk07_has_no_contradictory_cause():
+def test_v3_config_is_complete_and_rk07_has_no_contradictory_cause():
     config = load_config()
-    assert config_version() == 'opportunity-v2-rules-1'
+    assert config_version() == 'opportunity-v3-rules-1'
     assert len(config_digest()) == 64
     assert len(config['metrics']) == 25
     assert len(config['risks']) == 10
-    assert len(config['causes']) == 8
-    assert len(config['advice']) == 8
-    assert config['links']['RK07']['causes'] == []
-    assert config['links']['RK07']['advice'] == ['DS03']
+    assert len(config['causes']) == 9
+    assert len(config['advice']) == 12
+    assert config['links']['RK07']['causes'] == ['RC09']
+    assert config['links']['RK07']['advice'] == ['AC02', 'AC03']
 
 
 def test_contract_confirmation_drives_signing_and_unknown_is_not_zero():
@@ -96,11 +96,14 @@ def test_rk07_is_never_linked_to_the_contradictory_rc01_hypothesis():
     )
     value = evaluate(data)
     assert 'RK07' in {risk['code'] for risk in value['risks']}
-    assert all('RK07' not in cause['riskCodes'] for cause in value['result']['causes'])
+    assert all(not (cause['causeCode'] == 'RC01' and 'RK07' in cause['riskCodes'])
+               for cause in value['result']['causes'])
+    assert any(cause['causeCode'] == 'RC09' and 'RK07' in cause['riskCodes']
+               for cause in value['result']['causes'])
     rk07_finding_ids = {finding['id'] for finding in value['result']['findings']
                         if finding['riskCode'] == 'RK07'}
     assert all(not (set(cause['findingIds']) & rk07_finding_ids)
-               for cause in value['result']['causes'])
+               for cause in value['result']['causes'] if cause['causeCode'] == 'RC01')
 
 
 def test_dynamic_period_is_strict_and_excludes_invalid_times(monkeypatch):
@@ -158,7 +161,7 @@ def test_advice_is_inverted_from_cause_relations_and_keeps_risk_links():
     value = evaluate(data)
     recommendations = value['result']['recommendations']
     assert recommendations
-    assert {item['adviceCode'] for item in recommendations} >= {'DS01', 'DS03'}
+    assert {item['adviceCode'] for item in recommendations} >= {'AC01'}
     assert all(item.get('riskCodes') for item in recommendations)
     assert all(item.get('causeIds') for item in recommendations)
     assert all(cause.get('causeCode') for cause in value['result']['causes'])
@@ -166,6 +169,51 @@ def test_advice_is_inverted_from_cause_relations_and_keeps_risk_links():
     finding_codes = {finding['riskCode'] for finding in value['result']['findings']}
     assert all(set(item['riskCodes']) <= finding_codes for item in recommendations)
     assert all(set(cause['riskCodes']) <= finding_codes for cause in value['result']['causes'])
+
+
+def test_no_opportunity_strategic_customer_uses_rc09_advice_and_keeps_deadline_text():
+    data = _data(accounts=[dict(id='account-empty', name='无商机战略客户', level='1',
+                                tier='strategic')])
+    value = evaluate(data)
+    assert 'RK07' in {risk['code'] for risk in value['risks']}
+    causes = [cause for cause in value['result']['causes'] if cause['causeCode'] == 'RC09']
+    assert causes and causes[0]['kind'] == 'verified'
+    recommendations = value['result']['recommendations']
+    assert {'AC02', 'AC03'} <= {item['adviceCode'] for item in recommendations}
+    assert all(item['deadline'] for item in recommendations)
+    assert all(item['deadlineType'] == 'days' for item in recommendations)
+
+
+def test_deadline_meta_keeps_original_text_instead_of_forcing_30_days():
+    from bi_agent.cockpit.opportunity_v2 import _deadline_meta
+
+    days, kind, text = _deadline_meta('按月')
+    assert (days, kind, text) == (30, 'text', '按月')
+    days, kind, text = _deadline_meta('按突破计划协同')
+    assert (days, kind, text) == (30, 'text', '按突破计划协同')
+    assert _deadline_meta('20 个工作日') == (20, 'days', '20 个工作日')
+
+
+def test_ac05_is_governance_investigation_and_ac10_uses_coverage_wording():
+    general = _opportunity(id='g1', accountId='a1', tier='general', stage='13',
+                           contract='not_confirmed', forecastAmount=10.0, forecastEnergy=5.0)
+    data = _data(opportunities=[general], allOpportunities=[deepcopy(general)],
+                 accounts=[dict(id='a1', name='一般客户', level='3', tier='general')])
+    value = evaluate(data)
+    ac10 = next(item for item in value['result']['recommendations']
+                if item['adviceCode'] == 'AC10')
+    assert ac10['action'] == '将重点跟踪覆盖率提升至 70%（当前 0.0%）'
+
+    opportunity = _opportunity(accountId='account-1', stage='11', stage1End=None, bidding='no')
+    value = evaluate(_data(
+        opportunities=[opportunity], allOpportunities=[deepcopy(opportunity)],
+        accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')],
+        progress={'opp-1': [dict(id='p1', description='客户要求补充资质文件',
+                                 startAt='2026-10-01')]},
+    ))
+    ac05 = next(item for item in value['adviceCandidates'] if item['code'] == 'AC05')
+    assert ac05['actionType'] == 'investigation'
+    assert ac05['governance'] is True
 
 
 def test_product_risk_uses_product_specific_signing_progress():
@@ -249,7 +297,7 @@ def test_model_generated_text_is_validated_against_evidence_numbers_and_links():
     value = evaluate(data)
     risk = value['risks'][0]
     cause = next(item for item in value['causeCandidates'] if item['code'] == 'RC02')
-    advice = next(item for item in value['adviceCandidates'] if item['code'] == 'DS02')
+    advice = next(item for item in value['adviceCandidates'] if item['code'] == 'AC04')
     progress_id = value['textSamples'][0]['evidenceId']
     risks = _complete_risk_assessments(value)
     for item in risks:
@@ -273,11 +321,11 @@ def test_model_generated_text_is_validated_against_evidence_numbers_and_links():
     assert risk['code'] in generated['appliedRisks']
     assert len(generated['appliedRisks']) == len(value['riskCandidates'])
     assert generated['appliedCauses'] == ['RC02']
-    assert generated['appliedAdvice'] == ['DS02']
+    assert generated['appliedAdvice'] == ['AC04']
     assert value['result']['summary'].startswith('商机合同签订进度')
     assert next(item for item in value['risks'] if item['code'] == risk['code'])['description'] == '规则证据显示该风险需要优先核查。'
     assert next(item for item in value['result']['causes'] if item['causeCode'] == 'RC02')['description'].startswith('项目进展显示')
-    assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'DS02')['action'] == '推动客户补齐资质文件后进入投标'
+    assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'AC04')['action'] == '推动客户补齐资质文件后进入投标'
 
     bad_value = evaluate(data)
     bad_risk = bad_value['risks'][0]
@@ -493,14 +541,14 @@ def test_model_runs_without_text_samples_and_generates_nonempty_analysis():
                        description='规则证据显示该风险需要优先核查。', evidenceIds=[risk['evidenceIds'][0]])],
         'causes': [dict(code='RC02', description='项目进展显示客户要求补充资质文件，需人工复核。',
                         riskCodes=['RK08'], evidenceIds=[progress_id])],
-        'advice': [dict(code='DS02', action='推动客户补齐资质文件后进入投标',
+        'advice': [dict(code='AC04', action='推动客户补齐资质文件后进入投标',
                         riskCodes=['RK08'], causeCodes=['RC02'], evidenceIds=[progress_id])],
     })
-    assert filled['appliedCauses'] == ['RC02'] and filled['appliedAdvice'] == ['DS02']
+    assert filled['appliedCauses'] == ['RC02'] and filled['appliedAdvice'] == ['AC04']
     assert filled['status'] == 'partial'
     assert value['result']['summary'].startswith('商机风险需要')
     assert next(item for item in value['result']['causes'] if item['causeCode'] == 'RC02')['description'].startswith('项目进展显示')
-    assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'DS02')['action'] == '推动客户补齐资质文件后进入投标'
+    assert next(item for item in value['result']['recommendations'] if item['adviceCode'] == 'AC04')['action'] == '推动客户补齐资质文件后进入投标'
 
 def test_unknown_acneed_status_is_not_a_verified_cause():
     opportunity = _opportunity(acneed='', stage='11', stage1End=None)

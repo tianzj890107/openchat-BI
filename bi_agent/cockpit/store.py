@@ -1031,7 +1031,9 @@ class Store:
                     action=suggestion_action(x["action"]),
                     ownerRole=pending_owner(x["ownerRole"]), owner=pending_owner(x["ownerRole"]),
                     ownerConfirmed=False, deadlineDays=x.get('deadlineDays') or 10,
-                    deadline=f"建议期限：{x.get('deadlineDays') or 10} 个工作日（待确认）",
+                    deadline=(f"建议期限：{x['deadline']}（待确认）"
+                              if x.get('deadline') and x.get('deadline') != '待确认'
+                              else f"建议期限：{x.get('deadlineDays') or 10} 个工作日（待确认）"),
                     deadlineConfirmed=False, acceptance=ensure_checkable(x["acceptance"])) for x in actions],
                 goal=("先补齐证据并按清单核实当前卡点" if investigation_only
                       else "在已支持原因基础上执行处置，并按证据复核结果"),
