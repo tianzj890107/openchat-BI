@@ -183,8 +183,10 @@ def test_model_wording_cannot_add_numbers_causes_or_broken_phrases():
     )
     value = evaluate(data)
     assert value['textSamples']
+    evidence_id = value['textSamples'][0]['evidenceId']
     good = apply_text_interpretation(value, lambda payload: {
         'causeDescriptions': {'RC02': '项目进展显示客户要求补充资质文件，需人工复核。'},
+        'causeEvidence': {'RC02': [evidence_id]},
         'adviceActions': {'DS02': '推动客户补齐资质文件后进入投标'},
     })
     assert good['status'] == 'completed'
@@ -194,11 +196,20 @@ def test_model_wording_cannot_add_numbers_causes_or_broken_phrases():
     bad_value = evaluate(data)
     bad = apply_text_interpretation(bad_value, lambda payload: {
         'causeDescriptions': {'RC02': '新增 999 家客户逾期未完成', 'RC99': '模型自造原因'},
+        'causeEvidence': {'RC02': [evidence_id]},
         'adviceActions': {'DS99': '模型自造建议'},
     })
     assert bad['status'] == 'completed'
     assert bad['causes'] == [] and bad['advice'] == []
     assert '999' not in bad_value['result']['causes'][0]['description']
+
+    uncited_value = evaluate(data)
+    uncited = apply_text_interpretation(uncited_value, lambda payload: {
+        'causeDescriptions': {'RC02': '项目进展显示客户要求补充资质文件，需人工复核。'},
+        'causeEvidence': {'RC02': ['model-invented-evidence']},
+        'adviceActions': {},
+    })
+    assert uncited['causes'] == []
 
 
 def test_unknown_acneed_status_is_not_a_verified_cause():
@@ -218,13 +229,14 @@ def test_default_text_interpreter_only_parses_bounded_json(monkeypatch):
 
     def fake_stream(*args, **kwargs):
         return iter([
-            dict(type='text_delta', text='```json\n{"causeDescriptions":{"RC02":"有文本依据"},"adviceActions":{}}\n```'),
+            dict(type='text_delta', text='```json\n{"causeDescriptions":{"RC02":"有文本依据"},"causeEvidence":{"RC02":["opp-v2:progress:p1"]},"adviceActions":{}}\n```'),
             dict(type='message_end', stop_reason='end_turn'),
         ])
 
     monkeypatch.setattr(provider, 'stream_message', fake_stream)
-    value = default_text_interpreter({'progressSamples': [{'text': '资质待补'}]})
-    assert value == {'causeDescriptions': {'RC02': '有文本依据'}, 'adviceActions': {}}
+    value = default_text_interpreter({'progressSamples': [{'evidenceId': 'opp-v2:progress:p1', 'text': '资质待补'}]})
+    assert value == {'causeDescriptions': {'RC02': '有文本依据'},
+                     'causeEvidence': {'RC02': ['opp-v2:progress:p1']}, 'adviceActions': {}}
 
 
 def test_target_rows_are_summed_not_distincted_by_customer_or_product():
@@ -450,3 +462,97 @@ def test_all_core_query_failures_do_not_replace_the_last_card():
         assert '核心取数失败' in str(exc)
     else:
         raise AssertionError('core query failure must not produce a zero-valued card')
+
+
+def test_truncated_detail_uses_full_aggregate_for_rules_and_skips_partial_cycles():
+    partial = _opportunity(id='partial', contract='not_confirmed', forecastAmount=1.0,
+                           forecastEnergy=1.0)
+    data = _data(
+        targets=dict(amount=100.0, energy=100.0,
+                     byProduct={'1': dict(amount=50.0, energy=50.0)}, byAccount={}),
+        opportunities=[partial], allOpportunities=[deepcopy(partial)],
+        detailComplete=False, allOpportunitiesComplete=True, aggregatesComplete=True,
+        opportunityAggregates=[dict(
+            contract='not_confirmed', tier='strategic', accountLevel='1', productType='1',
+            accountId='account-1', accountName='战略客户A', stage='11', count=10,
+            amount=30.0, amountFull=35.0, energy=20.0, monthRows=120,
+            pastRows=100, pastAmountRows=20, energyRows=120,
+        )],
+    )
+    value = evaluate(data, measured=date(2026, 11, 11))
+    assert value['metrics']['B02'] == dict(amount=30.0, energy=20.0)
+    assert value['metrics']['R02']['amount'] == 30.0
+    assert value['metrics']['R04']['count'] == 10
+    assert 'RK01' in {risk['code'] for risk in value['risks']}
+    assert 'RK10' not in {risk['code'] for risk in value['risks']}
+    assert any('全量聚合' in item for item in value['result']['limitations'])
+
+
+def test_collect_parses_and_marks_complete_full_aggregate_when_detail_is_truncated():
+    config = load_config()
+
+    class Result:
+        def __init__(self, rows, truncated=False):
+            self.rows = rows
+            self.truncated = truncated
+
+    class Reader:
+        def run(self, sql, params, timeout_ms=0):
+            if 'agg.month_rows, agg.past_rows' in sql:
+                return Result([dict(
+                    opportunity_id='partial', name='截断明细', account_id='account-1',
+                    account_name='客户A', account_level='1', product_type='1',
+                    process_stage='11', acneed_status='1', opportunity_status='0',
+                    contract_confirmation='0', created_at='2026-01-01', stage1_end=None,
+                    stage2_end=None, stage3_end=None, stage4_end=None, stage5_end=None,
+                    owner_id='u1', amount_yuan=1_000_000_000,
+                    forecast_amount_full_yuan=1_000_000_000, energy_gwh=5.0,
+                    month_rows=12, past_rows=10, past_amount_rows=10, energy_rows=12,
+                )], truncated=True)
+            if 'AS contract_raw' in sql:
+                return Result([dict(
+                    contract_raw='0', account_level='1', product_type='1',
+                    account_id='account-1', account_name='客户A', process_stage='11',
+                    opportunity_count=10, amount_yuan=3_000_000_000,
+                    forecast_amount_full_yuan=3_500_000_000, energy_gwh=20.0,
+                    month_rows=120, past_rows=100, past_amount_rows=20, energy_rows=120,
+                )])
+            return Result([])
+
+    class Snapshot:
+        def __enter__(self):
+            return Reader()
+
+        def __exit__(self, *args):
+            return False
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', statement_timeout_ms=1000)
+
+        def snapshot(self):
+            return Snapshot()
+
+    data = collect('2026', database=Database(), config=config, measurement_date='2026-11-11')
+    assert data['detailComplete'] is False
+    assert data['aggregatesComplete'] is True
+    assert data['opportunityAggregates'][0]['count'] == 10
+    assert data['opportunityAggregates'][0]['amount'] == 30.0
+    assert data['opportunityAggregates'][0]['energy'] == 20.0
+    assert data['opportunityAggregates'][0]['pastAmountRows'] == 20
+
+
+def test_truncated_detail_without_aggregate_never_uses_partial_sums():
+    partial = _opportunity(id='partial', contract='not_confirmed', forecastAmount=1.0,
+                           forecastEnergy=1.0)
+    data = _data(
+        targets=dict(amount=100.0, energy=100.0, byProduct={}, byAccount={}),
+        opportunities=[partial], allOpportunities=[deepcopy(partial)],
+        detailComplete=False, allOpportunitiesComplete=True, aggregatesComplete=False,
+        opportunityAggregates=[],
+    )
+    value = evaluate(data, measured=date(2026, 11, 11))
+    assert value['metrics']['B02']['amount'] is None
+    assert value['metrics']['B02']['energy'] is None
+    assert 'RK01' not in {risk['code'] for risk in value['risks']}
+    assert any('截断明细不参与' in item for item in value['result']['limitations'])

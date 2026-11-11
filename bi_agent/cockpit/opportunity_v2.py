@@ -323,7 +323,7 @@ def collect(period, measurement_date=None, database=None, config=None):
         f") SELECT o.{oc['opportunityid']} AS opportunity_id, o.{oc['name']} AS name, "
         f" COALESCE(o.{oc['parentaccountid']}, '') AS account_id, "
         f" COALESCE(a.{ac['name']}, '') AS account_name, "
-        f" COALESCE(NULLIF(o.{oc['new_accountlevel']}, ''), a.{ac['new_accountlevel']}::text, '') AS account_level, "
+        f" COALESCE(NULLIF(a.{ac['new_accountlevel']}::text, ''), o.{oc['new_accountlevel']}, '') AS account_level, "
         f" COALESCE(o.{oc['new_accproducttype']}, '') AS product_type, "
         f" COALESCE(o.{oc['new_processstage']}, '') AS process_stage, "
         f" COALESCE(o.{oc['new_approvalstatus_acneed']}, '') AS acneed_status, "
@@ -343,7 +343,7 @@ def collect(period, measurement_date=None, database=None, config=None):
     all_opp_sql = (
         f"SELECT o.{oc['opportunityid']} AS opportunity_id, o.{oc['name']} AS name, "
         f"COALESCE(o.{oc['parentaccountid']}, '') AS account_id, "
-        f"COALESCE(NULLIF(o.{oc['new_accountlevel']}, ''), a.{ac['new_accountlevel']}::text, '') AS account_level, "
+        f"COALESCE(NULLIF(a.{ac['new_accountlevel']}::text, ''), o.{oc['new_accountlevel']}, '') AS account_level, "
         f"COALESCE(o.{oc['new_accproducttype']}, '') AS product_type, "
         f"COALESCE(o.{oc['new_processstage']}, '') AS process_stage, "
         f"COALESCE(o.{oc['new_opportunitystatus']}, '') AS opportunity_status, "
@@ -353,6 +353,41 @@ def collect(period, measurement_date=None, database=None, config=None):
         f"o.{oc['new_stage4enddate']} AS stage4_end, o.{oc['new_stage5enddate']} AS stage5_end "
         f"FROM {opp_table} o LEFT JOIN {account_table} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
         f"WHERE o.{oc['new_approvalstatus']} = '3' AND o.{oc['createdon']} <= %s"
+    )
+
+    # Full aggregate fallback for truncated detail rows.  A truncated list can
+    # still be displayed, but its partial sums must never drive risk rules.
+    aggregate_sql = (
+        f"WITH agg AS ("
+        f" SELECT m.{mc['new_opportunity_id']} AS opportunity_id, "
+        f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
+        f" THEN m.{mc['new_amt_rmb']} ELSE m.{mc['new_forecast_amt_rmb']} END) AS amount_yuan, "
+        f" SUM(m.{mc['new_forecast_amt_rmb']}) AS forecast_amount_full_yuan, "
+        f" SUM(m.{mc['new_orderforecast_qty']}) / 1000000.0 AS energy_gwh, "
+        f" COUNT(*) AS month_rows, "
+        f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s THEN 1 ELSE 0 END) AS past_rows, "
+        f" SUM(CASE WHEN EXTRACT(MONTH FROM m.{mc['new_accountdate']})::int < %s "
+        f" AND m.{mc['new_amt_rmb']} IS NOT NULL THEN 1 ELSE 0 END) AS past_amount_rows, "
+        f" SUM(CASE WHEN m.{mc['new_orderforecast_qty']} IS NOT NULL THEN 1 ELSE 0 END) AS energy_rows "
+        f" FROM {month_table} m "
+        f" WHERE EXTRACT(YEAR FROM m.{mc['new_accountdate']})::int = %s "
+        f" AND m.{mc['statecode']} = 0 AND m.{mc['new_approvalstatus']} = 3 "
+        f" GROUP BY 1"
+        f") SELECT COALESCE(o.{oc['new_contractconfirmation']}::text, '') AS contract_raw, "
+        f" COALESCE(NULLIF(a.{ac['new_accountlevel']}::text, ''), o.{oc['new_accountlevel']}, '') AS account_level, "
+        f" COALESCE(o.{oc['new_accproducttype']}, '') AS product_type, "
+        f" COALESCE(o.{oc['parentaccountid']}, '') AS account_id, "
+        f" COALESCE(a.{ac['name']}, '') AS account_name, "
+        f" COALESCE(o.{oc['new_processstage']}, '') AS process_stage, "
+        f" COUNT(*) AS opportunity_count, "
+        f" SUM(agg.amount_yuan) AS amount_yuan, SUM(agg.forecast_amount_full_yuan) AS forecast_amount_full_yuan, "
+        f" SUM(agg.energy_gwh) AS energy_gwh, SUM(agg.month_rows) AS month_rows, "
+        f" SUM(agg.past_rows) AS past_rows, SUM(agg.past_amount_rows) AS past_amount_rows, "
+        f" SUM(agg.energy_rows) AS energy_rows "
+        f" FROM {opp_table} o LEFT JOIN agg ON o.{oc['opportunityid']} = agg.opportunity_id "
+        f" LEFT JOIN {account_table} a ON a.{ac['accountid']} = o.{oc['parentaccountid']} "
+        f" WHERE o.{oc['new_approvalstatus']} = '3' AND o.{oc['createdon']} <= %s "
+        f" GROUP BY 1,2,3,4,5,6"
     )
 
     accounts_sql = (
@@ -432,6 +467,11 @@ def collect(period, measurement_date=None, database=None, config=None):
                             optional=True, label="项目进展")
         order_rows = run(source, order_sql, [], optional=True, label="订单关联")
         team_rows = run(source, team_sql, [], optional=True, label="产品团队")
+        aggregate_rows = []
+        if (query_status.get("商机预测") == "truncated"
+                or query_status.get("全部商机") == "truncated"):
+            aggregate_rows = run(source, aggregate_sql, [past, past, past, year, measured],
+                                 optional=True, label="商机聚合")
 
     product_types = {_text(row.get("product_type_id")): _text(row.get("product_type"))
                      for row in product_rows}
@@ -476,6 +516,32 @@ def collect(period, measurement_date=None, database=None, config=None):
         amount=_round((_number(row.get("order_amount")) or 0.0) / 100_000_000.0, 6),
     ) for row in order_rows}
     departments = {_text(row.get("user_id")): _text(row.get("team_name")) for row in team_rows}
+
+    opportunity_aggregates = []
+    for row in aggregate_rows:
+        contract_raw = _text(row.get("contract_raw"))
+        level = _text(row.get("account_level"))
+        product = _text(row.get("product_type"))
+        opportunity_aggregates.append(dict(
+            contract=("confirmed" if contract_raw == "1" else
+                      "not_confirmed" if contract_raw == "0" else "unknown"),
+            tier=_customer_tier(level, config),
+            accountLevel=level,
+            productType=product if product in {"1", "2"} else "unknown",
+            accountId=_text(row.get("account_id")),
+            accountName=_text(row.get("account_name")),
+            stage=_text(row.get("process_stage")),
+            count=int(_number(row.get("opportunity_count")) or 0),
+            amount=(_round(_number(row.get("amount_yuan")) / 100_000_000.0, 6)
+                    if row.get("amount_yuan") is not None else None),
+            amountFull=(_round(_number(row.get("forecast_amount_full_yuan")) / 100_000_000.0, 6)
+                        if row.get("forecast_amount_full_yuan") is not None else None),
+            energy=_round(row.get("energy_gwh"), 6),
+            monthRows=int(_number(row.get("month_rows")) or 0),
+            pastRows=int(_number(row.get("past_rows")) or 0),
+            pastAmountRows=int(_number(row.get("past_amount_rows")) or 0),
+            energyRows=int(_number(row.get("energy_rows")) or 0),
+        ))
 
     opportunities = []
     for row in opp_rows:
@@ -611,6 +677,14 @@ def collect(period, measurement_date=None, database=None, config=None):
         bids=bids,
         progress=dict(progress),
         departments=departments,
+        opportunityAggregates=opportunity_aggregates,
+        aggregatesComplete=(not (query_status.get("商机预测") == "truncated"
+                                 or query_status.get("全部商机") == "truncated")
+                            or query_status.get("商机聚合") == "ok"),
+        detailComplete=query_status.get("商机预测") != "truncated",
+        allOpportunitiesComplete=query_status.get("全部商机") != "truncated",
+        accountsComplete=query_status.get("客户") != "truncated",
+        bidsComplete=query_status.get("投标") != "truncated",
         errors=errors,
         queryStatus=query_status,
         schema=schema,
@@ -685,10 +759,34 @@ def evaluate(data, config=None, measured=None):
     progress = data.get("progress") or {}
     accounts = [dict(item) for item in data.get("accounts") or [] if isinstance(item, dict)]
     supplement = data.get("supplement") or {}
+    aggregates = [dict(item) for item in data.get("opportunityAggregates") or []
+                  if isinstance(item, dict)]
+    detail_complete = data.get("detailComplete", True)
+    all_opps_complete = data.get("allOpportunitiesComplete", True)
+    accounts_complete = data.get("accountsComplete", True)
+    bids_complete = data.get("bidsComplete", True)
     evidence_facts = {}
     records = []
     evidence_refs = []
     limitations = []
+    aggregates_complete = data.get("aggregatesComplete", True)
+    aggregate_mode = not detail_complete or not all_opps_complete
+    aggregate_ready = aggregate_mode and aggregates_complete and bool(aggregates)
+
+    def aggregate_rows(predicate=None):
+        return [row for row in aggregates if predicate is None or predicate(row)]
+
+    def aggregate_measure(field, predicate=None):
+        rows = aggregate_rows(predicate)
+        if not rows:
+            return 0.0
+        values = [_number(row.get(field)) for row in rows]
+        values = [value for value in values if value is not None]
+        return round(sum(values), 6) if values else None
+
+    def aggregate_count(predicate=None):
+        rows = aggregate_rows(predicate)
+        return sum(int(_number(row.get("count")) or 0) for row in rows)
 
     def fact(code, label, value, unit="", definition="", source="customer PostgreSQL · ded_public"):
         fid = f"opp-v2:metric:{code}"
@@ -705,17 +803,22 @@ def evaluate(data, config=None, measured=None):
         evidence_refs.append(dict(id=record_id))
         return record_id
 
-    # Formal-order amount is empty for most elapsed months.  Do not turn that
-    # into zero or a false gap: use the same-period forecast amount and state
-    # the basis explicitly when coverage is insufficient.
-    past_rows = sum(int(opp.get("pastRows") or 0) for opp in opps)
-    past_amount_rows = sum(int(opp.get("pastAmountRows") or 0) for opp in opps)
-    amount_coverage = _div(past_amount_rows, past_rows) if past_rows else 1.0
-    amount_basis = "formal_order_actualized"
-    if amount_coverage is not None and past_rows and amount_coverage < 0.80:
-        amount_basis = "forecast_full"
-        for opp in opps:
-            opp["forecastAmount"] = opp.get("forecastAmountFull")
+    # Formal-order amount is empty for most elapsed months.  Missing formal
+    # amounts stay missing: the full-period forecast is disclosed separately
+    # and never silently replaces the B02 rule input.
+    if aggregate_ready:
+        past_rows = int(sum(int(row.get("pastRows") or 0) for row in aggregates))
+        past_amount_rows = int(sum(int(row.get("pastAmountRows") or 0) for row in aggregates))
+    elif aggregate_mode:
+        past_rows = past_amount_rows = 0
+    else:
+        past_rows = sum(int(opp.get("pastRows") or 0) for opp in opps)
+        past_amount_rows = sum(int(opp.get("pastAmountRows") or 0) for opp in opps)
+    amount_coverage = (_div(past_amount_rows, past_rows) if past_rows else
+                       None if aggregate_mode and not aggregate_ready else 1.0)
+    amount_basis = ("formal_order_actualized_incomplete"
+                    if amount_coverage is not None and past_rows and amount_coverage < 0.80
+                    else "formal_order_actualized")
 
     target_amount = _number(target.get("amount"))
     target_energy = _number(target.get("energy"))
@@ -727,10 +830,20 @@ def evaluate(data, config=None, measured=None):
         target_energy = _number(supplement["B01"].get("energy"))
         if target_energy is not None:
             target_source = supplement["B01"].get("source") or "AP 补充"
-    total_amount = _sum(opp.get("forecastAmount") for opp in opps)
-    total_energy = _sum(opp.get("forecastEnergy") for opp in opps)
+    if aggregate_ready:
+        total_amount = aggregate_measure("amount")
+        total_energy = aggregate_measure("energy")
+    elif aggregate_mode:
+        total_amount = None
+        total_energy = None
+    else:
+        total_amount = _sum(opp.get("forecastAmount") for opp in opps)
+        total_energy = _sum(opp.get("forecastEnergy") for opp in opps)
     forecast_source = "customer PostgreSQL · ded_public"
-    if not opps and (data.get("queryStatus") or {}).get("商机预测") == "ok":
+    if aggregate_ready:
+        forecast_source = "customer PostgreSQL · ded_public · full aggregate"
+    if (not aggregate_ready and not opps
+            and (data.get("queryStatus") or {}).get("商机预测") == "ok"):
         # A successful query with no approved opportunity is a valid zero, not
         # a missing field that should be replaced by another source.
         total_amount = 0.0
@@ -747,12 +860,39 @@ def evaluate(data, config=None, measured=None):
     gap_rate_amount = _div(gap_amount, target_amount) if gap_amount is not None else None
     gap_rate_energy = _div(gap_energy, target_energy) if gap_energy is not None else None
 
-    unsigned = [opp for opp in opps if opp.get("contract") != "confirmed"]
-    has_opp_data = bool(opps) or ((data.get("queryStatus") or {}).get("商机预测") == "ok")
-    unsigned_amount = _sum(opp.get("forecastAmount") for opp in unsigned) if unsigned else (0.0 if has_opp_data else None)
-    unsigned_energy = _sum(opp.get("forecastEnergy") for opp in unsigned) if unsigned else (0.0 if has_opp_data else None)
-    unsigned_ratio_amount = _div((unsigned_amount or 0) + max(gap_amount or 0, 0), target_amount) if target_amount else None
-    unsigned_ratio_energy = _div((unsigned_energy or 0) + max(gap_energy or 0, 0), target_energy) if target_energy else None
+    confirmed = [opp for opp in opps if opp.get("contract") == "confirmed"]
+    unsigned = [opp for opp in opps if opp.get("contract") == "not_confirmed"]
+    unknown_contract = [opp for opp in opps if opp.get("contract") == "unknown"]
+    unknown_contract_count = (aggregate_count(lambda row: row.get("contract") == "unknown")
+                              if aggregate_ready else len(unknown_contract))
+    unresolved = unsigned + unknown_contract
+    has_opp_data = (bool(opps) or bool(data.get("opportunityAggregates"))
+                    or ((data.get("queryStatus") or {}).get("商机预测") == "ok"))
+    if aggregate_ready:
+        confirmed_amount = aggregate_measure("amount", lambda row: row.get("contract") == "confirmed")
+        confirmed_energy = aggregate_measure("energy", lambda row: row.get("contract") == "confirmed")
+        unsigned_amount = aggregate_measure("amount", lambda row: row.get("contract") == "not_confirmed")
+        unsigned_energy = aggregate_measure("energy", lambda row: row.get("contract") == "not_confirmed")
+        unknown_amount = aggregate_measure("amount", lambda row: row.get("contract") == "unknown")
+        unknown_energy = aggregate_measure("energy", lambda row: row.get("contract") == "unknown")
+        unresolved_amount = aggregate_measure("amount", lambda row: row.get("contract") != "confirmed")
+        unresolved_energy = aggregate_measure("energy", lambda row: row.get("contract") != "confirmed")
+    elif aggregate_mode:
+        confirmed_amount = confirmed_energy = None
+        unsigned_amount = unsigned_energy = None
+        unknown_amount = unknown_energy = None
+        unresolved_amount = unresolved_energy = None
+    else:
+        confirmed_amount = _sum(opp.get("forecastAmount") for opp in confirmed) if confirmed else (0.0 if has_opp_data else None)
+        confirmed_energy = _sum(opp.get("forecastEnergy") for opp in confirmed) if confirmed else (0.0 if has_opp_data else None)
+        unsigned_amount = _sum(opp.get("forecastAmount") for opp in unsigned) if unsigned else (0.0 if has_opp_data else None)
+        unsigned_energy = _sum(opp.get("forecastEnergy") for opp in unsigned) if unsigned else (0.0 if has_opp_data else None)
+        unknown_amount = _sum(opp.get("forecastAmount") for opp in unknown_contract) if unknown_contract else (0.0 if has_opp_data else None)
+        unknown_energy = _sum(opp.get("forecastEnergy") for opp in unknown_contract) if unknown_contract else (0.0 if has_opp_data else None)
+        unresolved_amount = _sum(opp.get("forecastAmount") for opp in unresolved) if unresolved else (0.0 if has_opp_data else None)
+        unresolved_energy = _sum(opp.get("forecastEnergy") for opp in unresolved) if unresolved else (0.0 if has_opp_data else None)
+    unsigned_ratio_amount = _div((unresolved_amount or 0) + max(gap_amount or 0, 0), target_amount) if target_amount else None
+    unsigned_ratio_energy = _div((unresolved_energy or 0) + max(gap_energy or 0, 0), target_energy) if target_energy else None
     sign_progress_amount = 1 - unsigned_ratio_amount if unsigned_ratio_amount is not None else None
     sign_progress_energy = 1 - unsigned_ratio_energy if unsigned_ratio_energy is not None else None
     year_start = date(measured.year, 1, 1)
@@ -764,18 +904,48 @@ def evaluate(data, config=None, measured=None):
     quarter_window = _number((thresholds.get("quarterWindows") or {}).get(str(quarter)))
 
     focus = [opp for opp in unsigned if opp.get("tier") in {"strategic", "priority"}]
-    focus_amount = _sum(opp.get("forecastAmount") for opp in focus) if focus else 0.0
-    focus_energy = _sum(opp.get("forecastEnergy") for opp in focus) if focus else 0.0
-    focus_count = len({opp.get("id") for opp in focus if opp.get("id")})
+    if aggregate_ready:
+        focus_predicate = lambda row: (row.get("contract") == "not_confirmed"
+                                       and row.get("tier") in {"strategic", "priority"})
+        focus_amount = aggregate_measure("amount", focus_predicate)
+        focus_energy = aggregate_measure("energy", focus_predicate)
+        focus_count = aggregate_count(focus_predicate)
+        focus_has_strategic = bool(aggregate_rows(
+            lambda row: row.get("contract") == "not_confirmed"
+            and row.get("tier") == "strategic"))
+    elif aggregate_mode:
+        focus_amount = focus_energy = None
+        focus_count = 0
+        focus_has_strategic = False
+    else:
+        focus_amount = _sum(opp.get("forecastAmount") for opp in focus) if focus else 0.0
+        focus_energy = _sum(opp.get("forecastEnergy") for opp in focus) if focus else 0.0
+        focus_count = len({opp.get("id") for opp in focus if opp.get("id")})
+        focus_has_strategic = any(opp.get("tier") == "strategic" for opp in focus)
 
     products = {}
     for key in ("1", "2", "unknown"):
         subset = [opp for opp in unsigned if opp.get("productType") == key]
         total_subset = [opp for opp in opps if opp.get("productType") == key]
-        pending_amount = _sum(opp.get("forecastAmount") for opp in subset)
-        pending_energy = _sum(opp.get("forecastEnergy") for opp in subset)
-        product_total_amount = _sum(opp.get("forecastAmount") for opp in total_subset)
-        product_total_energy = _sum(opp.get("forecastEnergy") for opp in total_subset)
+        if aggregate_ready:
+            pending_predicate = lambda row: (row.get("contract") == "not_confirmed"
+                                             and row.get("productType") == key)
+            total_predicate = lambda row: row.get("productType") == key
+            pending_amount = aggregate_measure("amount", pending_predicate)
+            pending_energy = aggregate_measure("energy", pending_predicate)
+            product_total_amount = aggregate_measure("amount", total_predicate)
+            product_total_energy = aggregate_measure("energy", total_predicate)
+            pending_count = aggregate_count(pending_predicate)
+        elif aggregate_mode:
+            pending_amount = pending_energy = None
+            product_total_amount = product_total_energy = None
+            pending_count = 0
+        else:
+            pending_amount = _sum(opp.get("forecastAmount") for opp in subset)
+            pending_energy = _sum(opp.get("forecastEnergy") for opp in subset)
+            product_total_amount = _sum(opp.get("forecastAmount") for opp in total_subset)
+            product_total_energy = _sum(opp.get("forecastEnergy") for opp in total_subset)
+            pending_count = len({opp.get("id") for opp in subset if opp.get("id")})
         product_target_amount = _number((target.get("byProduct") or {}).get(key, {}).get("amount"))
         product_target_energy = _number((target.get("byProduct") or {}).get(key, {}).get("energy"))
         product_gap_amount = (product_target_amount - product_total_amount
@@ -794,6 +964,7 @@ def evaluate(data, config=None, measured=None):
                                          if product_unsigned_ratio_energy is not None else None)
         products[key] = dict(
             pending=subset,
+            pending_count=pending_count,
             pending_amount=pending_amount,
             pending_energy=pending_energy,
             total_amount=product_total_amount,
@@ -813,24 +984,44 @@ def evaluate(data, config=None, measured=None):
     # Customer-level targets and forecasts.  Target rows stay row-level sums;
     # no unverified customer/product DISTINCT is applied.
     by_account = defaultdict(lambda: dict(target_amount=0.0, target_energy=0.0, forecast_amount=0.0,
-                                          forecast_energy=0.0, opps=[]))
+                                          forecast_energy=0.0, opps=[], account_name="",
+                                          tier="unknown", opportunity_count=0))
     for account_id, bucket in (target.get("byAccount") or {}).items():
         by_account[account_id]["target_amount"] += _number(bucket.get("amount")) or 0.0
         by_account[account_id]["target_energy"] += _number(bucket.get("energy")) or 0.0
-    for opp in opps:
-        bucket = by_account[opp.get("accountId") or ""]
-        bucket["forecast_amount"] += _number(opp.get("forecastAmount")) or 0.0
-        bucket["forecast_energy"] += _number(opp.get("forecastEnergy")) or 0.0
-        bucket["opps"].append(opp)
+    if aggregate_ready:
+        for row in aggregates:
+            bucket = by_account[row.get("accountId") or ""]
+            bucket["forecast_amount"] += _number(row.get("amount")) or 0.0
+            bucket["forecast_energy"] += _number(row.get("energy")) or 0.0
+            bucket["opportunity_count"] += int(row.get("count") or 0)
+            if not bucket["account_name"]:
+                bucket["account_name"] = row.get("accountName") or ""
+            if bucket["tier"] == "unknown":
+                bucket["tier"] = row.get("tier") or "unknown"
+    elif aggregate_mode:
+        pass
+    else:
+        for opp in opps:
+            bucket = by_account[opp.get("accountId") or ""]
+            bucket["forecast_amount"] += _number(opp.get("forecastAmount")) or 0.0
+            bucket["forecast_energy"] += _number(opp.get("forecastEnergy")) or 0.0
+            bucket["opps"].append(opp)
+            if not bucket["account_name"]:
+                bucket["account_name"] = opp.get("accountName") or ""
+            if bucket["tier"] == "unknown":
+                bucket["tier"] = opp.get("tier") or "unknown"
     customer_gaps = []
-    for account_id, bucket in by_account.items():
+    for account_id, bucket in by_account.items() if not (aggregate_mode and not aggregate_ready) else ():
         amount_gap = bucket["target_amount"] - bucket["forecast_amount"]
         energy_gap = bucket["target_energy"] - bucket["forecast_energy"]
         if amount_gap > 0 or energy_gap > 0:
             sample = bucket["opps"][0] if bucket["opps"] else {}
-            customer_gaps.append(dict(accountId=account_id, accountName=sample.get("accountName", ""),
-                                      tier=sample.get("tier", "unknown"), amount=amount_gap,
-                                      energy=energy_gap, count=len(bucket["opps"])))
+            customer_gaps.append(dict(accountId=account_id,
+                                      accountName=bucket["account_name"] or sample.get("accountName", ""),
+                                      tier=bucket["tier"] or sample.get("tier", "unknown"), amount=amount_gap,
+                                      energy=energy_gap,
+                                      count=bucket["opportunity_count"] or len(bucket["opps"])))
 
     # Bid names are matched exactly after trimming.  Duplicate names are
     # ambiguous and never become "not bidding".
@@ -842,8 +1033,11 @@ def evaluate(data, config=None, measured=None):
     ambiguous_bid_names = {name for name, values in bid_names.items() if len(values) > 1}
     all_opp_by_id = {opp.get("id"): opp for opp in all_opps if opp.get("id")}
     for opp in all_opps + opps:
-        candidates = bid_names.get(_text(opp.get("name")), [])
-        if len(candidates) == 1:
+        candidates = bid_names.get(_text(opp.get("name")), []) if all_opps_complete else []
+        if not all_opps_complete:
+            opp["bidding"] = "unknown"
+            opp["bidId"] = ""
+        elif len(candidates) == 1:
             opp["bidding"] = "yes"
             opp["bidId"] = candidates[0].get("id")
         elif len(candidates) > 1:
@@ -861,13 +1055,17 @@ def evaluate(data, config=None, measured=None):
         all_by_account[account_id].append(opp)
         if opp.get("status") == "0":
             active_by_account[account_id].append(opp)
+    complete_opportunity_scope = all_opps_complete and accounts_complete
     never_opportunity = [account for account_id, account in strategic_accounts.items()
-                         if not all_by_account.get(account_id)]
+                         if complete_opportunity_scope and not all_by_account.get(account_id)]
     inactive_opportunity = [account for account_id, account in strategic_accounts.items()
-                            if all_by_account.get(account_id) and not active_by_account.get(account_id)]
+                            if complete_opportunity_scope and all_by_account.get(account_id)
+                            and not active_by_account.get(account_id)]
     no_opportunity = never_opportunity + inactive_opportunity
     no_bidding = []
     for account_id, account in strategic_accounts.items():
+        if not complete_opportunity_scope:
+            break
         # A historical closed/won opportunity must not hide a currently active
         # customer that has no bid in this period.
         values = active_by_account.get(account_id) or []
@@ -877,36 +1075,53 @@ def evaluate(data, config=None, measured=None):
     for opp in opps:
         source = all_opp_by_id.get(opp.get("id"))
         if source:
-            opp["bidding"] = source.get("bidding", "no")
+            opp["bidding"] = source.get("bidding", "unknown")
             opp["bidId"] = source.get("bidId", "")
 
     valid_bids = []
     for bid in bids:
+        if not bids_complete:
+            break
         input_day = _day(bid.get("inputAt"))
         winner_day = _day(bid.get("winnerAt"))
         if not input_day or input_day > measured or (winner_day and winner_day > measured):
             continue
         valid_bids.append(bid)
     in_progress_bids = [bid for bid in valid_bids if bid.get("inProgress")]
-    bid_cycles = [bid.get("cycleDays") for bid in valid_bids if bid.get("cycleDays") is not None]
-    bid_average = _avg(bid_cycles)
+    bid_product = {opp.get("bidId"): opp.get("productType") for opp in all_opps
+                   if opp.get("bidId")}
+    bid_cycles_by_product = defaultdict(list)
+    for bid in valid_bids:
+        if bid.get("cycleDays") is not None:
+            bid_cycles_by_product[bid_product.get(bid.get("id"), "unknown")].append(bid["cycleDays"])
+    bid_average_by_product = ({key: _avg(values) for key, values in bid_cycles_by_product.items()}
+                              if all_opps_complete else {})
+    bid_average = _avg([bid.get("cycleDays") for bid in valid_bids if bid.get("cycleDays") is not None])
 
     # Dynamic stage averages are per product type.  Samples exclude missing or
     # inverted entering times and record their coverage separately.
+    def entered_this_year(opp, stage):
+        start = _day(opp.get("createdAt")) if stage == "P0" else _day(opp.get("stage2End"))
+        return bool(start and start.year == measured.year and start <= measured)
+
     stage_samples = defaultdict(lambda: defaultdict(list))
     for opp in opps:
-        p0 = _p0_cycle(opp, measured)
-        p2 = _p2_cycle(opp, measured)
+        p0 = _p0_cycle(opp, measured) if detail_complete else None
+        p2 = _p2_cycle(opp, measured) if detail_complete else None
         opp["p0Cycle"] = p0
         opp["p2Cycle"] = p2
-        if p0 is not None:
+        if detail_complete and p0 is not None and entered_this_year(opp, "P0"):
             stage_samples[opp.get("productType", "unknown")]["P0"].append(p0)
-        if p2 is not None:
+        if detail_complete and p2 is not None and entered_this_year(opp, "P2"):
             stage_samples[opp.get("productType", "unknown")]["P2"].append(p2)
     stage_average = {product: {stage: _avg(values) for stage, values in groups.items()}
                      for product, groups in stage_samples.items()}
-    overall_p0 = _avg([opp.get("p0Cycle") for opp in opps if opp.get("p0Cycle") is not None])
-    overall_p2 = _avg([opp.get("p2Cycle") for opp in opps if opp.get("p2Cycle") is not None])
+    overall_p0 = (_avg([opp.get("p0Cycle") for opp in opps
+                        if opp.get("p0Cycle") is not None and entered_this_year(opp, "P0")])
+                  if detail_complete else None)
+    overall_p2 = (_avg([opp.get("p2Cycle") for opp in opps
+                        if opp.get("p2Cycle") is not None and entered_this_year(opp, "P2")])
+                  if detail_complete else None)
 
     def multiplier(product, stage):
         value = stage_average.get(product, {}).get(stage)
@@ -914,34 +1129,49 @@ def evaluate(data, config=None, measured=None):
 
     late_p0 = []
     late_p2 = []
-    for opp in opps:
-        average = multiplier(opp.get("productType", "unknown"), "P0")
-        if average and opp.get("p0Cycle") is not None and opp["p0Cycle"] > average * cycle_multiplier:
-            late_p0.append(opp)
-        average2 = multiplier(opp.get("productType", "unknown"), "P2")
-        if average2 and opp.get("p2Cycle") is not None and opp["p2Cycle"] > average2 * cycle_multiplier:
-            late_p2.append(opp)
+    if detail_complete:
+        for opp in opps:
+            average = multiplier(opp.get("productType", "unknown"), "P0")
+            if (entered_this_year(opp, "P0") and average and opp.get("p0Cycle") is not None
+                    and opp["p0Cycle"] > average * cycle_multiplier):
+                late_p0.append(opp)
+            average2 = multiplier(opp.get("productType", "unknown"), "P2")
+            if (entered_this_year(opp, "P2") and average2 and opp.get("p2Cycle") is not None
+                    and opp["p2Cycle"] > average2 * cycle_multiplier):
+                late_p2.append(opp)
 
     # Facts: stable ids, one source, one period and one unit per measure.
     f_b01_a = fact("B01-AMOUNT", "年度销售目标（金额）", target_amount, "亿元",
                    "同年度、组织和产品范围的销售额目标", source=target_source)
     f_b01_e = fact("B01-ENERGY", "年度销售目标（电量）", target_energy, "GWh",
                    "同年度、组织和产品范围的电量目标", source=target_source)
-    amount_basis_label = ("已历月份正式订单金额+当月及以后预测金额" if amount_basis == "formal_order_actualized"
-                          else "正式订单金额覆盖不足，改用同口径全期间预测金额")
+    amount_basis_label = (
+        "已历月份正式订单金额+当月及以后预测金额"
+        if amount_basis == "formal_order_actualized"
+        else "已历月份正式订单金额（覆盖不足，缺失部分不补预测）；全期间预测仅作参考"
+    )
     f_b02_a = fact("B02-AMOUNT", "商机总预测（金额）", total_amount, "亿元",
                    amount_basis_label + "；月度预测有效且审核通过", source=forecast_source)
     f_b02_e = fact("B02-ENERGY", "商机总预测（电量）", total_energy, "GWh",
                    "预测订单数量（kWh 换算 GWh）；本方体 new_forcastpower 实库为空",
                    source=forecast_source)
+    full_forecast_amount = (aggregate_measure("amountFull") if aggregate_ready else
+                            None if aggregate_mode else
+                            _sum(opp.get("forecastAmountFull") for opp in opps))
+    f_b02_full = fact("B02-AMOUNT-FULL", "商机全期间预测（金额，仅参考）", full_forecast_amount, "亿元",
+                      "同口径全期间预测金额；不替代正式金额口径，不参与风险规则")
     gap_source = target_source if target_source == forecast_source else f"derived（{target_source} / {forecast_source}）"
     f_r01_a = fact("R01-AMOUNT", "商机预测缺口（金额）", gap_amount, "亿元", "B01 − B02，金额单独计算", source=gap_source)
     f_r01_e = fact("R01-ENERGY", "商机预测缺口（电量）", gap_energy, "GWh", "B01 − B02，电量单独计算", source=gap_source)
     f_gap_rate_a = fact("R01-RATE-AMOUNT", "商机预测缺口率（金额）", gap_rate_amount * 100 if gap_rate_amount is not None else None, "%")
     f_gap_rate_e = fact("R01-RATE-ENERGY", "商机预测缺口率（电量）", gap_rate_energy * 100 if gap_rate_energy is not None else None, "%")
-    f_r02_a = fact("R02-AMOUNT", "合同未确认商机预测（金额）", unsigned_amount, "亿元", "new_contractconfirmation 非 1；合同确认优先于订单数")
-    f_r02_e = fact("R02-ENERGY", "合同未确认商机预测（电量）", unsigned_energy, "GWh", "new_contractconfirmation 非 1；合同确认优先于订单数")
-    f_r03 = fact("R03-LAG", "签单进度落后时间进度（金额）", lag_amount, "百分点", "签单进度 = 1 −（合同未确认预测 + 缺口）÷ 目标；时间进度按测量日")
+    f_r02_a = fact("R02-AMOUNT", "明确合同未确认商机预测（金额）", unsigned_amount, "亿元", "仅 new_contractconfirmation=0；状态未知单列，不混入待签")
+    f_r02_e = fact("R02-ENERGY", "明确合同未确认商机预测（电量）", unsigned_energy, "GWh", "仅 new_contractconfirmation=0；状态未知单列，不混入待签")
+    f_r02_unknown_a = fact("R02-UNKNOWN-AMOUNT", "合同状态未知商机预测（金额）", unknown_amount, "亿元", "new_contractconfirmation 为空或其他值；既不算已签也不算明确未签")
+    f_r02_unknown_e = fact("R02-UNKNOWN-ENERGY", "合同状态未知商机预测（电量）", unknown_energy, "GWh", "new_contractconfirmation 为空或其他值；既不算已签也不算明确未签")
+    f_r02_confirmed_a = fact("R02-CONFIRMED-AMOUNT", "已确认合同商机预测（金额）", confirmed_amount, "亿元", "仅 new_contractconfirmation=1")
+    f_r02_confirmed_e = fact("R02-CONFIRMED-ENERGY", "已确认合同商机预测（电量）", confirmed_energy, "GWh", "仅 new_contractconfirmation=1")
+    f_r03 = fact("R03-LAG", "签单进度落后时间进度（金额）", lag_amount, "百分点", "签单进度 = 1 −（明确未确认 + 状态未知 + 缺口）÷ 目标；时间进度按测量日")
     f_r03_e = fact("R03-LAG-ENERGY", "签单进度落后时间进度（电量）", lag_energy, "百分点")
     f_r04_count = fact("R04-COUNT", "重点跟踪合同未确认商机数", focus_count, "条")
     f_r04_a = fact("R04-AMOUNT", "重点跟踪合同未确认预测（金额）", focus_amount, "亿元")
@@ -962,6 +1192,8 @@ def evaluate(data, config=None, measured=None):
     f_r10 = fact("R10", "有商机未投标战略客户数", len(no_bidding), "家", "全部商机均未进入投标；同名歧义不判未投标")
     f_r11 = fact("R11", "投标中商机数", len(in_progress_bids), "条", "已录入且尚未公布中标人")
     f_s03 = fact("S03", "投标平均周期", bid_average, "天", "中标公布时间或测量日 − 录入时间；全部有效投标")
+    f_s03_p1 = fact("S03-P1", "电芯类投标平均周期", bid_average_by_product.get("1"), "天", "按关联商机产品类型拆分")
+    f_s03_p2 = fact("S03-P2", "PACK 类投标平均周期", bid_average_by_product.get("2"), "天", "按关联商机产品类型拆分")
     f_p0 = fact("P0-01", "商机获取阶段平均周期", overall_p0, "天", "创建至阶段一结束或测量日；按电芯/PACK 分别计算")
     f_p2 = fact("P2-01", "方案推动阶段平均周期", overall_p2, "天", "阶段三结束或测量日 − 阶段二结束；按电芯/PACK 分别计算")
     f_rk10 = fact("P0-02", "商机获取阶段超期商机数", len(late_p0), "条", "单笔周期严格大于同阶段同产品动态均值 × 1.5")
@@ -1007,14 +1239,15 @@ def evaluate(data, config=None, measured=None):
             parts.append(f"电量口径签单进度 {sign_progress_energy * 100:.1f}%，落后 {lag_energy:.1f} 个百分点。")
         if quarterly:
             parts.append(f"第 {quarter} 季度待签及缺口占比超过 {quarter_window * 100:.0f}% 窗口阈值。")
-        evidence = [f_r03, f_r03_e, f_r02_a, f_r02_e, f_r01_a, f_r01_e]
+        evidence = [f_r03, f_r03_e, f_r02_a, f_r02_e, f_r02_unknown_a, f_r02_unknown_e,
+                    f_r01_a, f_r01_e]
         risks.append(_risk("RK02", "签单进度滞后", level, "RK02 签单进度滞后",
                            "".join(parts), ["RK02", "R03", "R02", "R01"], evidence,
                            dict(amount=unsigned_amount, energy=unsigned_energy, count=None), []))
 
     # RK03
     if ((gap_amount is not None and gap_amount > 0) or (gap_energy is not None and gap_energy > 0)) and focus_count and ((focus_amount or 0) > 0 or (focus_energy or 0) > 0):
-        level = "高" if any(opp.get("tier") == "strategic" for opp in focus) else "中"
+        level = "高" if focus_has_strategic else "中"
         parts = [f"战略及重点客户合同未确认商机 {focus_count} 条"]
         if focus_amount:
             parts.append(f"涉及预测金额 {focus_amount:.2f} 亿元")
@@ -1058,7 +1291,7 @@ def evaluate(data, config=None, measured=None):
                            level, f"{code} {'电芯' if key == '1' else 'PACK'} 类待签商机风险",
                            "，".join(parts) + "；按合同确认口径判断。",
                            [code, "R05" if key == "1" else "R06", "B01", "B02"], evidence,
-                           dict(amount=pending_amount, energy=pending_energy, count=len(bucket["pending"])), []))
+                           dict(amount=pending_amount, energy=pending_energy, count=bucket["pending_count"]), []))
 
     # RK06
     if customer_gaps:
@@ -1114,7 +1347,8 @@ def evaluate(data, config=None, measured=None):
     late_bids = []
     if bid_average:
         for bid in in_progress_bids:
-            if bid.get("cycleDays") is not None and bid["cycleDays"] > bid_average * cycle_multiplier:
+            average = bid_average_by_product.get(bid_product.get(bid.get("id"), "unknown")) or bid_average
+            if bid.get("cycleDays") is not None and bid["cycleDays"] > average * cycle_multiplier:
                 late_bids.append(bid)
     if late_bids:
         impacted = []
@@ -1123,13 +1357,13 @@ def evaluate(data, config=None, measured=None):
             if opp:
                 impacted.append(opp)
         level = "高" if any(opp.get("tier") in {"strategic", "priority"} for opp in impacted) else "中"
-        evidence = [f_s03, f_r11]
+        evidence = [f_s03, f_s03_p1, f_s03_p2, f_r11]
         for bid in late_bids[:8]:
             evidence.append(record(f"opp-v2:bid:{bid.get('id')}", name=bid.get("name"),
                                    status="投标中", value=bid.get("cycleDays"), unit="天",
                                    evidence=bid.get("id")))
         risks.append(_risk("RK09", "投标中商机超期", level, "RK09 投标中商机超期",
-                           f"投标中 {len(in_progress_bids)} 项，平均周期 {bid_average:.1f} 天，超过 1.5 倍均值的 {len(late_bids)} 项。",
+                           f"投标中 {len(in_progress_bids)} 项，按关联产品类型均值比较后，超过 1.5 倍的 {len(late_bids)} 项。",
                            ["RK09", "R11", "S03"], evidence,
                            dict(count=len(late_bids), amount=_sum(opp.get("forecastAmount") for opp in impacted),
                                 energy=_sum(opp.get("forecastEnergy") for opp in impacted)), []))
@@ -1445,17 +1679,34 @@ def evaluate(data, config=None, measured=None):
 
     if data.get("errors"):
         limitations.append("部分可选查询未返回：" + "、".join(sorted({item.get('stage') or item.get('code') or '未知' for item in data["errors"]})))
+    if aggregate_mode and not aggregate_ready:
+        limitations.append(
+            "商机明细达到行数上限，全量聚合未返回；截断明细不参与金额、电量、合同、产品、客户和风险规则计算。")
+    elif not detail_complete:
+        limitations.append(
+            "商机月度明细达到行数上限；明细仅用于展示，金额、电量、合同、产品、客户规则采用全量聚合；逐条周期和项目进展规则未判定。")
+    if not all_opps_complete:
+        limitations.append(
+            "全部商机明细达到行数上限；战略客户无商机、未投标等逐客户判断未执行，避免把截断样本当成全量。")
+    if not bids_complete:
+        limitations.append("投标明细达到行数上限；投标周期和投标中项目相关规则未判定。")
     limitations.extend([
         "合同签订按 new_contractconfirmation 判断；签订日期字段实库为空，不能用日期推断。",
         "目标表按行求和，未按客户或产品去重；目标表缺少经验证的业务唯一键。",
         "预测电量使用 new_orderforecast_qty（kWh）换算 GWh；本体登记的 new_forcastpower 实库为空。",
         "项目阶段按 11~15 映射 P0~P4；其他枚举不推断。投标关联仅使用去首尾空格后的精确名称，同名歧义不判未投标。",
         "RC04 产品部销售缺口需跨发货环节实际销售，本次不把不可得数据推成原因。",
-        "动态均值按同阶段、同产品类型、截至测量日的有效商机计算；缺进入时间或时间倒置的记录已排除。",
+        "动态均值只取本年度进入该阶段、同产品类型、截至测量日的有效商机；缺进入时间或时间倒置的记录已排除。",
         "建议中的责任角色与期限为模板草稿，须人工确认后才能下发任务令。",
     ])
+    if unknown_contract_count:
+        limitations.append(
+            f"{unknown_contract_count} 条商机合同状态未知，涉及预测金额 {unknown_amount or 0:.2f} 亿元、"
+            f"电量 {unknown_energy or 0:.2f} GWh；未知单列，既不计入明确未确认，也不视为已签。")
     if (total_amount is not None and amount_coverage is not None and amount_coverage < 0.8):
-        limitations.append(f"正式订单金额覆盖率 {amount_coverage * 100:.1f}%，金额改用同口径预测金额；金额与电量仍分列，不互相折算。")
+        limitations.append(
+            f"正式订单金额覆盖率 {amount_coverage * 100:.1f}%，缺失的正式金额未补成预测金额；"
+            "全期间预测金额仅作参考，不替代 B02 参与规则。")
 
     result = dict(
         summary=summary,
@@ -1493,7 +1744,9 @@ def evaluate(data, config=None, measured=None):
             B01=dict(amount=target_amount, energy=target_energy),
             B02=dict(amount=total_amount, energy=total_energy),
             R01=dict(amount=gap_amount, energy=gap_energy),
-            R02=dict(amount=unsigned_amount, energy=unsigned_energy),
+            R02=dict(amount=unsigned_amount, energy=unsigned_energy,
+                     unknownAmount=unknown_amount, unknownEnergy=unknown_energy,
+                     confirmedAmount=confirmed_amount, confirmedEnergy=confirmed_energy),
             R03=dict(lagAmount=lag_amount, lagEnergy=lag_energy,
                      signProgressAmount=sign_progress_amount, signProgressEnergy=sign_progress_energy,
                      timeProgress=time_progress),
@@ -1529,8 +1782,11 @@ def default_text_interpreter(payload):
     system_prompt = (
         "你是证据约束的经营分析助手。只能解释输入中的项目进展文本，不得补充输入之外的事实、"
         "不得新增风险、原因或建议代码，不得猜测数字。只返回 JSON："
-        '{"causeDescriptions":{"RC02":"不超过160字"},"adviceActions":{"DSxx":"不超过64字"}}。'
+        '{"causeDescriptions":{"RC02":"不超过160字"},'
+        '"causeEvidence":{"RC02":["progressSamples中的evidenceId"]},'
+        '"adviceActions":{"DSxx":"不超过64字"}}。'
         "原因描述必须说明文本中已出现的商务或技术卡点，并保留‘需人工复核’；建议只可改写给定建议代码的动作。"
+        "每条原因必须引用至少一条 progressSamples.evidenceId，不得引用输入之外的编号。"
         "不得使用‘逾期未完成’表述。"
     )
     events = []
@@ -1585,15 +1841,20 @@ def apply_text_interpretation(evaluated, interpreter=None):
         if not isinstance(value, dict):
             raise ValueError("模型结果不是对象")
         descriptions = value.get("causeDescriptions") or {}
+        evidence = value.get("causeEvidence") or {}
         actions = value.get("adviceActions") or {}
-        if not isinstance(descriptions, dict) or not isinstance(actions, dict):
+        if not isinstance(descriptions, dict) or not isinstance(evidence, dict) or not isinstance(actions, dict):
             raise ValueError("模型结果字段类型错误")
         cause_by_code = {cause["causeCode"]: cause for cause in selected_causes}
+        allowed_evidence = {sample.get("evidenceId") for sample in samples if sample.get("evidenceId")}
         applied_causes, applied_actions = [], []
         for code, description in descriptions.items():
             description = _text(description)
+            cited = evidence.get(code) or []
             if (code not in cause_by_code or not description or len(description) > 160
                     or "逾期未完成" in description
+                    or not isinstance(cited, list) or not cited
+                    or not {_text(item) for item in cited} <= allowed_evidence
                     or not _model_numbers(description) <= allowed_numbers):
                 continue
             cause_id = cause_by_code[code]["id"]
@@ -1677,12 +1938,15 @@ def _missing_supplement_fields(data):
         missing.append("B01.energy")
     opps = data.get("opportunities") or []
     status = (data.get("queryStatus") or {}).get("商机预测")
-    if opps:
+    detail_complete = data.get("detailComplete", True)
+    aggregate_ready = (data.get("aggregatesComplete", True)
+                       and bool(data.get("opportunityAggregates")))
+    if detail_complete and opps:
         if _sum(opp.get("forecastAmount") for opp in opps) is None:
             missing.append("B02.amount")
         if _sum(opp.get("forecastEnergy") for opp in opps) is None:
             missing.append("B02.energy")
-    elif status in {"failed", "truncated"}:
+    elif status in {"failed", "truncated"} and not aggregate_ready:
         missing.extend(("B02.amount", "B02.energy"))
     if not data.get("accounts") and (data.get("queryStatus") or {}).get("客户") in {"failed", "truncated"}:
         missing.append("R09.count")

@@ -218,6 +218,7 @@ class _SnapshotReader:
         self.database = database
         self.connection = connection
         self.config = database.config
+        self._savepoint_seq = 0
 
     def run(
         self,
@@ -230,17 +231,29 @@ class _SnapshotReader:
         ensure_read_only(sql)
         started = time.monotonic()
         limit = max(1, min(int(max_rows or self.database.max_rows), self.database.max_rows))
+        self._savepoint_seq += 1
+        savepoint = f"process360_sp_{self._savepoint_seq}"
         try:
             with self.connection.cursor() as cursor:
                 cursor.execute(
                     "select set_config('statement_timeout', %s, true)",
                     (str(int(timeout_ms or self.config.statement_timeout_ms)),),
                 )
-                cursor.execute(sql, params or ())
-                columns = [str(item.name) for item in (cursor.description or ())]
-                rows = cursor.fetchmany(limit + 1)
-                truncated = len(rows) > limit
-                rows = rows[:limit]
+                cursor.execute(f'SAVEPOINT "{savepoint}"')
+                try:
+                    cursor.execute(sql, params or ())
+                    columns = [str(item.name) for item in (cursor.description or ())]
+                    rows = cursor.fetchmany(limit + 1)
+                    truncated = len(rows) > limit
+                    rows = rows[:limit]
+                    cursor.execute(f'RELEASE SAVEPOINT "{savepoint}"')
+                except Exception:
+                    # A failed statement aborts the whole PostgreSQL
+                    # transaction.  Roll back to the savepoint so optional
+                    # queries can continue in the same snapshot.
+                    cursor.execute(f'ROLLBACK TO SAVEPOINT "{savepoint}"')
+                    cursor.execute(f'RELEASE SAVEPOINT "{savepoint}"')
+                    raise
         except Exception as exc:
             # Driver messages can contain data values. Only return the exception type.
             raise DatabaseQueryError(f"只读查询失败：{type(exc).__name__}") from exc
