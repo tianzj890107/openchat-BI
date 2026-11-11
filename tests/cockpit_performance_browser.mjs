@@ -58,7 +58,7 @@ try {
  await evaluate('[...document.querySelectorAll("button")].find(e=>e.textContent.trim()==="查看出货风险").click()');
  await wait('location.pathname.endsWith("/cockpit/analysis")');
  await wait('document.querySelectorAll(".insight-runtime-state").length===5');
- assert.ok((await evaluate('document.body.innerText')).includes('发货风险概况'));
+ assert.ok(await evaluate('document.querySelectorAll(".stage-risk-analysis__card--risk").length>0'));
  console.log('PASS activation rule carries a non-default shipment node across routes');
  assert.deepEqual(errors,[]);
  console.log('PASS no browser exceptions; tests used only isolated fixtures');

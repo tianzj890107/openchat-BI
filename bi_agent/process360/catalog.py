@@ -219,6 +219,10 @@ class Process360Catalog:
         }
         self._index: dict[str, dict[str, dict[str, Any]]] = {}
         self._sop_index: dict[str, dict[str, Any]] = {str(s.get("id")): s for s in self._sops}
+        self._uses_customer_physical_tables = any(
+            _text(row.get("客户接入状态")) and _text(row.get("关联物理表"))
+            for row in self._sheets.get("entity_mappings", [])
+        )
         self._build_index()
 
     @classmethod
@@ -304,6 +308,27 @@ class Process360Catalog:
 
     def scenario(self, code: str) -> dict[str, Any] | None:
         return self.get("scenarios", code)
+
+    @property
+    def uses_customer_physical_tables(self) -> bool:
+        """Whether mappings point at a customer physical schema, not legacy LE views."""
+        return self._uses_customer_physical_tables
+
+    def physical_table(self, entity_code: str) -> str:
+        """Return the mapped physical table, or empty for a blocked mapping."""
+        row = self.get("entity_mappings", entity_code) or {}
+        status = _text(row.get("客户接入状态"))
+        if status.lower().startswith("blocked"):
+            return ""
+        return _text(row.get("关联物理表"))
+
+    def physical_field(self, attribute_code: str) -> str:
+        """Return the mapped physical column, or empty for a blocked mapping."""
+        row = self.get("attribute_mappings", attribute_code) or {}
+        status = _text(row.get("客户接入状态"))
+        if status.lower().startswith("blocked"):
+            return ""
+        return _text(row.get("来源字段") or row.get("客户来源字段"))
 
     def entities_for_scenario(self, code: str) -> dict[str, list[dict[str, Any]]]:
         scenario = self.scenario(code) or {}

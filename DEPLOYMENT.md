@@ -1711,7 +1711,20 @@ Excel与catalog须成对交付；后续获得部署授权后，才将 `PROCESS36
 
 Customer fixed-annual mode stays manual-only; company automatic mode retains period indexing and analysis cadence. Table sorting, pagination and local filters do not start model analysis. Evidence keeps its original AP request and receipt.
 
-Customer builds require a separate `cockpit-seed` build context containing the verified `frozen-annual.json`: `docker buildx build --build-context cockpit-seed=/path/to/seed --build-context wheelhouse=/path/to/wheels -f deploy/customer/Dockerfile .`. The seed is a delivery artifact, never committed. Missing seed fails the build.
+Customer builds require separate `cockpit-seed`, `wheelhouse` and `builtin-ontology` contexts. The ontology context is the customer `config/ontology/` directory containing `catalog.json`, `manifest.json` and the paired Excel:
+
+```bash
+scripts/build_customer_image.sh \
+  --ontology '/path/to/customer/config/ontology' \
+  --seed '/path/to/seed' \
+  --wheels '/path/to/wheels' \
+  --image 'cockpit-process360:customer-20261103' \
+  --output '/path/to/images/cockpit-linux-amd64.tar'
+```
+
+The image stores the ontology at `/app/builtin-ontology/`; customer startup prefers it over `PROCESS360_CATALOG_PATH`, requires `manifest.json`, verifies every registered file hash, and logs `process360_catalog_loaded` with `source=builtin`, catalog id, version and SHA256. The existing `./config:/app/config:ro` mount can remain because it no longer determines the customer runtime ontology. Replacing only the image therefore replaces both code and ontology; `.env`, Compose and persistent `data/` do not change. Missing manifest, a file hash mismatch, or an invalid catalog fails startup instead of silently falling back.
+
+The seed is a delivery artifact, never committed.
 
 This integration only prepares source and an MR. Existing tar, servers, configuration and historical data are unchanged. Formal version backfill remains separate.
 

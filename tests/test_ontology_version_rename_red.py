@@ -27,8 +27,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = "docs/specs/ontology-version-rename-and-rebuild.md"
-CURRENT = "ontology-v0.1.10"
-PACKAGING_VERSION = "0.1.10"
+CURRENT = "ontology-v0.1.14"
+PACKAGING_VERSION = "0.1.14"
 # The tag released before ``CURRENT``; kept to document the existing tag family.
 LATEST_RELEASED_TAG = "ontology-v0.1.0"
 # ``ontology-v0.1.1`` (skill-extraction PATCH) was backfilled onto its original
@@ -143,7 +143,7 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
         expected = {"README.md", "versioning-policy.md",
                     f"{LATEST_RELEASED_TAG}.md", f"{SKILL_PATCH_TAG}.md",
                     f"{PROGRESS_PATCH_TAG}.md", f"{RELEASED_MCP_TAG}.md",
-                    f"{RELEASED_COCKPIT_TAG}.md", f"{CURRENT}.md"} | {f"ontology-v0.1.{n}.md" for n in range(5,10)} | {
+                    f"{RELEASED_COCKPIT_TAG}.md", f"{CURRENT}.md"} | {f"ontology-v0.1.{n}.md" for n in range(5,15)} | {
             f"{tag}.md" for tag in NEW_TAGS
         }
         self.assertEqual(names, expected)
@@ -182,7 +182,7 @@ class OntologyVersionRenameRedTests(unittest.TestCase):
             tags,
             set(NEW_TAGS)
             | {LATEST_RELEASED_TAG, SKILL_PATCH_TAG, PROGRESS_PATCH_TAG,
-               RELEASED_MCP_TAG, RELEASED_COCKPIT_TAG, LOADING_PERFORMANCE_TAG} | {f"ontology-v0.1.{n}" for n in range(6,11)},
+               RELEASED_MCP_TAG, RELEASED_COCKPIT_TAG, LOADING_PERFORMANCE_TAG} | {f"ontology-v0.1.{n}" for n in range(6,15)},
         )
 
 

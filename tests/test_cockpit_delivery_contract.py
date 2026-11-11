@@ -492,3 +492,15 @@ def test_explicit_unperformed_set_arithmetic_is_not_an_asserted_sum():
 def test_uncompleted_is_not_a_prohibition_on_unit_comparison():
     from bi_agent.cockpit.delivery import _bad_unit_claim
     assert _bad_unit_claim('未完成订单金额与出货量比较后证明缺口不大')
+
+
+def test_nested_raw_query_status_supports_overdue_unfinished():
+    value=_value(summary='商机明细状态为逾期未完成。',actions=[_action(action='逐单核对商机状态')])
+    evidence=_evidence(records=[dict(id='f1',data={'状态[YWLN_D020]':'逾期未完成'})])
+    validate_reasoning(value,evidence,stage='opportunity')
+
+
+def test_acceptance_may_name_a_breakdown_or_sample_artifact():
+    value=_value(summary='订单接收周期高于标杆。',
+                 actions=[_action(acceptance='形成订单接收流程各节点耗时拆解表，并给出可核对的单据样本')])
+    validate_reasoning(value,_evidence(facts=[dict(id='f1',label='订单接收周期',value=26.73)]),stage='order')

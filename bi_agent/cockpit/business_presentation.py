@@ -3,6 +3,33 @@ from copy import deepcopy
 import re
 
 BUSINESS_SLOTS={'opportunity-risk','order-risk-summary','shipment-risk-summary','sales-shipment-issues'}
+CONTRACT_METRIC_CODES={'YWLN_M0142','YWLN_M0179','YWLN_M0194','YWLN_M0195','YWLN_M0198'}
+
+
+def normalize_business_terms(text, metric_codes=()):
+    """Use contract wording only when the source actually carries contract semantics."""
+    value=str(text or '')
+    contract_signal='合同' in value or '中标未签' in value
+    opportunity_signing='商机' in value and any(w in value for w in ('未签单','已签单','待签单'))
+    if not contract_signal and not opportunity_signing and not (set(metric_codes or ()) & CONTRACT_METRIC_CODES):
+        return value
+    replacements=(('已中标未签单','已中标合同签订未确认'),('中标未签单','中标合同签订未确认'),
+                  ('中标未签','中标合同签订未确认'),
+                  ('未签单','合同签订未确认'),('已签单','合同已签订'),
+                  ('待签单','待合同签订'),('商机签单','合同签订确认状态'))
+    for source,target in replacements:value=value.replace(source,target)
+    return value
+
+
+def business_text(text, metric_codes=()):
+    """Keep business observations; move data-gap sentences to limitations."""
+    value=normalize_business_terms(text,metric_codes)
+    kept=[];removed=[]
+    for sentence in re.split(r'(?<=[。；;])\s*',value):
+        sentence=sentence.strip()
+        if not sentence:continue
+        (removed if data_limitation(sentence) else kept).append(sentence)
+    return ''.join(kept).strip(),removed
 
 
 def data_limitation(text):
@@ -14,7 +41,7 @@ def data_limitation(text):
 
 def business_finding(finding):
     if not isinstance(finding,dict) or not finding.get('title') or data_limitation(finding['title']):return False
-    text=str(finding.get('title',''))+'；'+str(finding.get('description',''))
+    text=normalize_business_terms(str(finding.get('title',''))+'；'+str(finding.get('description','')),finding.get('metricCodes') or ())
     if any(w in text for w in ('未签单','已签单','未签商机','已签商机','待签单','中标未签')) and '合同' not in text:return False
     return True
 
@@ -41,6 +68,25 @@ def present_business_result(result):
     """Projection only: preserve source records and internal task/cause contracts."""
     out=deepcopy(result);limits=list(out.get('limitations') or [])
     original=out.get('findings') or []
+    for f in original:
+        if not isinstance(f,dict):continue
+        codes=f.get('metricCodes') or ()
+        f['title']=normalize_business_terms(f.get('title'),codes)
+        f['description']=normalize_business_terms(f.get('description'),codes)
+    out['summary']=normalize_business_terms(out.get('summary'))
+    for dimension in out.get('analysisDimensions') or []:
+        if isinstance(dimension,dict):
+            codes={code for f in original if f.get('id') in (dimension.get('findingIds') or []) for code in (f.get('metricCodes') or [])}
+            dimension['title'],title_gaps=business_text(dimension.get('title'),codes)
+            dimension['description'],description_gaps=business_text(dimension.get('description'),codes)
+            limits.extend(title_gaps+description_gaps)
+    finding_ids={str(f.get('id')) for f in out.get('findings') or [] if isinstance(f,dict) and f.get('id')}
+    for action in out.get('recommendations') or []:
+        if isinstance(action,dict):
+            action['action']=normalize_business_terms(action.get('action'))
+            action['detail']=normalize_business_terms(action.get('detail'))
+            action['acceptance']=normalize_business_terms(action.get('acceptance'))
+            action['findingIds']=[fid for fid in action.get('findingIds') or () if str(fid) in finding_ids]
     out['findings']=[f for f in original if business_finding(f)]
     for f in original:
         if not business_finding(f):limits.append(str(f.get('title',''))+'：'+str(f.get('description','')))
@@ -57,13 +103,20 @@ def present_business_result(result):
     visible={str(f['id']):f for f in out['findings'][:4]}
     dimensions=[]
     for dimension in out.get('analysisDimensions') or []:
-        if not isinstance(dimension,dict) or data_limitation(dimension.get('title')) or dimension.get('stage') not in STAGE_LABELS:continue
+        if not isinstance(dimension,dict) or not dimension.get('title') or not dimension.get('description') or dimension.get('stage') not in STAGE_LABELS:continue
         ids=[fid for fid in dimension.get('findingIds') or [] if fid in visible]
         if not ids:continue
         dimensions.append({**dimension,'findingIds':ids})
     # Old publications have no dimensions. Use their actual delivered findings,
     # never rebrand unsupported hypotheses as factual analysis.
-    if not dimensions:dimensions=legacy_dimensions(list(visible.values()))
+    covered={fid for dimension in dimensions for fid in dimension['findingIds']}
+    missing=[finding for fid,finding in visible.items() if fid not in covered]
+    if missing:
+        offset=len(dimensions)
+        fallback=legacy_dimensions(missing)
+        for index,dimension in enumerate(fallback):
+            dimension['id']=f'dimension-{offset+index+1}'
+        dimensions=(dimensions[:max(0,4-len(fallback))] if len(fallback)<4 else [])+fallback
     out['analysisDimensions']=dimensions[:4]
     business_actions=[]
     for action in out.get('recommendations') or []:

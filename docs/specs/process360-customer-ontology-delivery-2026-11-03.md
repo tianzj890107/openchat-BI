@@ -25,6 +25,8 @@
 
 Process360 运行时读取 JSON，不直接热加载 Excel。后续授权部署时，须一起交付 Excel 与对应 JSON，再将 `PROCESS360_CATALOG_PATH` 指向客户 catalog；原默认 catalog 不修改。数据库名称、schema、认证、只读权限仍属于运行配置，不写入本体，更不写入密码。
 
+客户镜像构建可把整个 `config/ontology/` 放入 `/app/builtin-ontology/`。客户入口优先加载内置 `catalog.json`，启动时校验 catalog 结构及 `manifest.json` 中登记的文件哈希并输出 `process360_catalog_loaded` 日志；内置本体缺少 manifest 或任一文件哈希不一致时启动失败，不静默回退旧本体。内置本体存在时，外部 `PROCESS360_CATALOG_PATH` 和只读 `./config` 挂载不会覆盖它。因此客户只替换镜像也能同步更新本体，无需修改 `.env` 或 Compose。构建命令见 `scripts/build_customer_image.sh` 与 `DEPLOYMENT.md`。
+
 ## 实际静态核对结果
 
 | 项目 | 结果 |
@@ -42,7 +44,16 @@ Process360 运行时读取 JSON，不直接热加载 Excel。后续授权部署�
 
 未提供 `profit_period`、`receivable_period_snapshot` 两张表；35 个属性无法建立真实字段映射，其中 20 个对应兼容视图 NULL 占位，13 个属于缺失表，2 个未在兼容视图声明。`x360_static_metric_config` 不在包内，单独列为缺口。
 
-**本体文件更新不等于 SQL 已适配**：现有硬编码查询若仍引用 `ywln_crm`，需要实际创建并验收兼容视图，或另做 SQL 适配。本次不假定客户数据库名就是 schema 名，也不假定已建治理库；按原部署包说明应明确源库与治理库。
+**本体文件更新不等于 SQL 已适配**：2026-11-11 已在 Process360 查询层增加客户物理 catalog 适配，见下节；旧 `ywln_crm` 兼容视图模式继续保留，避免破坏历史环境。
+
+## 客户物理表 SQL 适配（2026-11-11）
+
+- 仅当 catalog 的实体映射带有 `客户接入状态` 且提供 `关联物理表` 时启用；旧 catalog 继续使用 `PROCESS360_PG_SCHEMA` 加 `LE*` 表名，不改变历史行为。
+- 固定 SQL 中的 `LE*` 逻辑实体在执行前解析为 catalog 的 `关联物理表`，`"AT*"` 属性解析为 `attribute_mappings.来源字段`；`ded_public.p_fm_*` 直接作为完整限定表名，不再拼客户 schema。
+- 客户物理映射缺少实体、缺少字段或字段映射冲突时返回明确 blocked，不猜字段、不回填 `NULL`、不补 0。投标 SC04 当前缺少 `AT9200041`／`AT9200042`／`AT9200102`，因此在 `ywln_gov` 上明确阻断。
+- 查询模板版本升级为 `process360.queries.v2`，旧模板版本的查询结果不再复用。
+- 只读实跑 `ywln_gov#ded_public`：SC01、SC02、SC03、SC05 均可执行并返回结果；SC03 全量聚合返回 1,067 家等级客户、1,039 家未匹配有效商机，明细按 limit 截断。SC01 明细可返回，但缺价/缺交期行继续进入运行时缺口。SC05 本轮期间内未返回发货明细，因此指标为 0 但保留计划匹配限制。
+- 以上为代码层适配和只读验证，不包含部署、服务重启或切换 230 配置；230 当前查询仍受其数据库连接失败影响，需单独部署新代码与修正运行环境后才生效。
 
 ## 验证
 

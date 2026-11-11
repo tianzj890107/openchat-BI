@@ -53,7 +53,7 @@ from ..integrations.fuxi_todo import (
 
 DRAFT_TTL_SECONDS = 7 * 86400
 QUERY_CONTRACT_VERSION = "process360.query.v2"
-QUERY_TEMPLATE_VERSION = "process360.queries.v1"
+QUERY_TEMPLATE_VERSION = "process360.queries.v2"
 TRUSTED_APPROVAL_STATES = {"approved", "host_click_authorized"}
 
 

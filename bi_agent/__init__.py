@@ -6,4 +6,4 @@ open-claude provides the agent loop capability; this package provides
 the BI-specific ontology, tools, and role definition.
 """
 
-__version__ = "ontology-v0.1.10"
+__version__ = "ontology-v0.1.14"

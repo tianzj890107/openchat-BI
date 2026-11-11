@@ -229,7 +229,7 @@ def test_delivered_insight_slots_use_live_analysis_instead_of_static_copy():
     assert 'window.InsightRuntime' in bundle
     shared=(components/'shared.js').read_text()
     assert 'export function createStageRiskComponent' in shared
-    for marker in ('stage-risk-analysis__overview','stage-risk-analysis__tag--cause',
+    for marker in ('stage-risk-analysis__card--risk','stage-risk-analysis__tag--cause',
                    'stage-risk-analysis__owner','stage-risk-analysis__time'):
         assert marker in shared
     stage_risk={'opportunity-risk':'商机获取','order-risk-summary':'订单接收','shipment-risk-summary':'发货'}

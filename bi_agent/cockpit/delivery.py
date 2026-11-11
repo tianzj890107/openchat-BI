@@ -128,7 +128,8 @@ _CHANGE_AMOUNT_TERMS = ('变更金额', '取消金额', 'change amount', 'change
                         'cancelled value', 'canceled value', 'change value')
 _INSTRUCTION_MARKERS = ('短摘要', '事实字段', '业务数值', '具体数值见', '不重复业务数字',
                         '不新造比例', '生成说明', '模型执行', '交付说明', '不要生成', '客户摘要')
-_ACCEPTANCE_OK = ('清单', '对账', '确认', '记录', '核查', '复核', '台账', '证据', '留痕')
+_ACCEPTANCE_OK = ('清单', '对账', '确认', '记录', '核查', '复核', '台账', '证据', '留痕',
+                  '拆解', '样本', '明细')
 _MISSING_CAUSE = ('证据不足：当前分页/记录内没有可引用的逐单处理记录，暂不填写具体原因，'
                   '需先补齐订单状态、计划交付期与变更记录。')
 
@@ -431,7 +432,10 @@ def _undone_status_evidence(evidence):
             if not isinstance(item, dict):
                 continue
             record = item.get('record') if isinstance(item.get('record'), dict) else item
-            if _has_any(_text(record.get('status')), _UNDONE):
+            data = record.get('data') if isinstance(record.get('data'), dict) else {}
+            nested = ' '.join(str(value) for name, value in data.items()
+                              if '状态' in str(name) or str(name).lower() == 'status')
+            if _has_any((_text(record.get('status')) + ' ' + nested).strip(), _UNDONE):
                 return True
     return False
 
@@ -501,7 +505,10 @@ def validate_reasoning(value, evidence, *, stage='', slot='', business_only=Fals
     # 3. A target-total conflict must be visible in the summary, not only limits.
     if _has_target_conflict(evidence):
         disclosure='；'.join(value.get('limitations') or []) if business_only else summary
-        if not ('口径' in disclosure and _has_any(disclosure, ('冲突', '不能汇总', '尚不能', '需核对', '未对账', '各自观察'))):
+        if not ('口径' in disclosure and _has_any(disclosure, (
+                '冲突', '不能汇总', '尚不能', '需核对', '未核对', '未对账',
+                '未核实', '不一致', '不作比较', '不据此下结论', '各自观察',
+                '各自口径', '不作达成结论', '口径并存'))):
             issues.append('证据披露了目标或指标口径冲突：摘要必须同时说明“各自口径下的观察”与“尚不能汇总对账”，不能只给明确缺口结论')
 
     # 4. Phenomena, structure and data gaps are not causes.
@@ -571,7 +578,17 @@ def _bad_set_claim(sentence, evidence):
     sentence = _without_comparison_prohibitions(sentence)
     sets = _has_any(sentence, ('取消', '变更')) and _has_any(sentence, ('中标未签', '未签'))
     claimed = _has_any(sentence, ('相加', '合计', '之和', '叠加', '不足以解释', '难以解释', '不能解释', '不足以', '规模不足'))
-    return sets and claimed and not (evidence or {}).get('setOverlapVerified')
+    if not (sets and claimed):
+        return False
+    # A sentence may legitimately sum two loss states and separately mention
+    # cancellation and unsigned-contract amounts. Require the aggregation word
+    # to follow both set subjects before rejecting it as a cross-set sum.
+    first=max(sentence.find('取消'), sentence.find('变更'))
+    second=max(sentence.find('中标未签'), sentence.find('未签'))
+    if first < 0 or second < 0:
+        return False
+    tail=sentence[max(first, second):]
+    return _has_any(tail, ('相加', '合计', '之和', '叠加', '不足以解释', '难以解释', '不能解释', '不足以', '规模不足')) and not (evidence or {}).get('setOverlapVerified')
 
 
 def _bad_unit_claim(sentence):
