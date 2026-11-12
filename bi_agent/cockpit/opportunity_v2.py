@@ -20,6 +20,7 @@ cannot replace the coverage-note card.
 from __future__ import annotations
 
 from collections import defaultdict
+from decimal import Decimal
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from copy import deepcopy
@@ -410,6 +411,67 @@ def _query_failure(exc, label, duration):
     )
 
 
+
+_QUERY_AGGREGATION_NOTES = {
+    "销售目标": "amount_yuan 按行求和 / 1e8 = 目标金额（亿元）；energy_kwh 按行求和 / 1e6 = 目标电量（GWh）。目标表按行求和，不按客户或产品去重。",
+    "产品类型": "产品类型枚举映射：1=电芯，2=PACK，空或其他=其他；只用于维度归类，不参与金额汇总。",
+    "商机预测": "按 new_oppmonthid 去重后按商机汇总；过去月份取 new_amt_rmb，当月及以后取 new_forecast_amt_rmb；电量取 new_orderforecast_qty(kWh)/1e6。",
+    "全部商机": "审核通过（new_approvalstatus=3）且创建时间不晚于观察时点的商机全集；用于客户覆盖与阶段周期，不直接求和。",
+    "客户": "客户等级 0/1 视为战略客户（本体映射），用于 R09/R10 客户覆盖判断。",
+    "投标": "投标项目按输入时间不晚于观察时点过滤；同名多版本不擅自取最新，按样本记录标记。",
+    "项目进展": "按商机取进展记录，用于原因文本证据；不做数值汇总。",
+    "订单关联": "订单 statecode=0 且非取消；按订单明细关联商机，只作签单佐证，不替代合同确认字段。",
+    "产品团队": "团队成员关系按商机归属去重；同一人属于多团队时不强行合并。",
+    "商机聚合": "明细行被截断时用于恢复全量聚合；仅参与规则计算，不在明细表展示。",
+}
+
+
+def _query_sample_limit() -> int:
+    try:
+        value = int(os.environ.get("COCKPIT_QUERY_SAMPLE_ROWS", "100"))
+    except ValueError:
+        value = 100
+    return max(0, min(value, 500))
+
+
+def _json_safe(value):
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ")
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, datetime_time):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return format(value.normalize(), "f")
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, bytes):
+        return value.hex()
+    return value
+
+
+def _query_result_meta(rows: list[dict]) -> dict:
+    normalized = [_json_safe(dict(row)) for row in rows]
+    limit = _query_sample_limit()
+    columns: list[str] = []
+    for row in normalized[:50]:
+        for key in row:
+            if key not in columns:
+                columns.append(key)
+    sample = normalized[:limit]
+    body = json.dumps(normalized, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":"), default=str)
+    return dict(
+        resultHash=hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        columns=columns,
+        sampleRows=sample,
+        sampleRowCount=len(sample),
+        sampleTruncated=len(normalized) > len(sample),
+        sampleLimit=limit,
+    )
+
 def collect(period, measurement_date=None, database=None, config=None, progress=None,
             diagnostic_reporter=None):
     """Read fixed V2 facts from one repeatable-read PostgreSQL snapshot.
@@ -440,17 +502,48 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     completed_queries = 0
     query_catalog: list[dict] = []
     query_specs: dict[str, tuple[str, list]] = {}
+    db_config = getattr(database, "config", None)
+    db_source = dict(
+        source="customer PostgreSQL",
+        database=_text(getattr(db_config, "database", "")),
+        schema=_text(getattr(db_config, "schema", "") or schema),
+        host=_text(getattr(db_config, "host", "")),
+        port=getattr(db_config, "port", None),
+    )
 
-    def report_query(label, status, duration, error=None, value=None):
+    def report_query(label, status, duration, error=None, value=None, meta=None):
         nonlocal completed_queries
         completed_queries += 1
         query_status[label] = status
         sql, params = query_specs.get(label, ("", []))
-        query_catalog.append(dict(
+        rows = results.get(label) or []
+        meta = dict(meta or {})
+        row_meta = _query_result_meta(rows)
+        entry = dict(
+            executionId=uuid.uuid4().hex,
             label=label, sql=sql, params=list(params), status=status,
             durationSeconds=round(duration, 3),
-            rowCount=len(results.get(label) or []) if label in results else 0,
-        ))
+            durationMs=int(round(duration * 1000)),
+            startedAt=meta.get("startedAt") or "",
+            finishedAt=meta.get("finishedAt") or "",
+            rowCount=len(rows),
+            truncated=status == "truncated" or bool(meta.get("truncated")),
+            resultHash=row_meta["resultHash"],
+            columns=row_meta["columns"],
+            sampleRows=row_meta["sampleRows"],
+            sampleRowCount=row_meta["sampleRowCount"],
+            sampleTruncated=row_meta["sampleTruncated"],
+            sampleLimit=row_meta["sampleLimit"],
+            database=db_source["database"], schema=db_source["schema"],
+            host=db_source["host"], port=db_source["port"],
+            source=db_source["source"],
+            aggregation=_QUERY_AGGREGATION_NOTES.get(label, ""),
+        )
+        if error is not None:
+            entry["error"] = {key: error.get(key) for key in
+                              ("code", "upstreamCode", "message", "diagnosticId")
+                              if error.get(key)}
+        query_catalog.append(entry)
         if error is not None:
             entry = dict(stage=label, code=error.get("code") or "QUERY_FAILED",
                          sqlstate=error.get("upstreamCode") or "",
@@ -475,22 +568,29 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
         )
         return value if value is not None else []
 
+    def _now_iso():
+        return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
     def run_one(reader, spec):
         label, sql, params = spec
+        started_at = _now_iso()
         query_started = time.monotonic()
         try:
             result = reader.run(sql, params, timeout_ms=statement_timeout)
             duration = time.monotonic() - query_started
             status = "truncated" if getattr(result, "truncated", False) else "ok"
+            meta = dict(startedAt=started_at, finishedAt=_now_iso(),
+                        truncated=status == "truncated")
             if status == "truncated":
                 error = dict(phase="database_query", query=label, code="ROW_LIMIT",
                              upstreamCode="", message="row limit reached",
                              durationSeconds=round(duration, 3))
-                return label, [dict(row) for row in result.rows], status, duration, error
-            return label, [dict(row) for row in result.rows], status, duration, None
+                return label, [dict(row) for row in result.rows], status, duration, error, meta
+            return label, [dict(row) for row in result.rows], status, duration, None, meta
         except Exception as exc:  # noqa: BLE001 - report a controlled limitation
             duration = time.monotonic() - query_started
-            return label, [], "failed", duration, _query_failure(exc, label, duration)
+            meta = dict(startedAt=started_at, finishedAt=_now_iso(), truncated=False)
+            return label, [], "failed", duration, _query_failure(exc, label, duration), meta
 
     def run_batch(readers, specs, parallel, deadline, results):
         nonlocal total_queries
@@ -526,9 +626,10 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
                         except Exception as exc:  # noqa: BLE001 - worker crash
                             duration = 0.0
                             item = (label, [], "failed", duration,
-                                    _query_failure(exc, label, duration))
+                                    _query_failure(exc, label, duration),
+                                    dict(startedAt="", finishedAt="", truncated=False))
                         results[item[0]] = item[1]
-                        report_query(item[0], item[2], item[3], item[4])
+                        report_query(item[0], item[2], item[3], item[4], meta=item[5])
                 if pending:
                     # Cancel what has not started and ask PostgreSQL to cancel
                     # the running statements.  Results already returned stay.
@@ -543,7 +644,7 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
                                      upstreamCode="", message="database fetch budget exhausted",
                                      durationSeconds=round(max(0.0, deadline - time.monotonic()), 3))
                         results[label] = []
-                        report_query(label, "timeout", 0, error)
+                        report_query(label, "timeout", 0, error, meta=dict(startedAt="", finishedAt="", truncated=False))
             finally:
                 executor.shutdown(wait=True, cancel_futures=True)
             return
@@ -557,11 +658,11 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
                                  upstreamCode="", message="database fetch budget exhausted",
                                  durationSeconds=0)
                     results[label] = []
-                    report_query(label, "timeout", 0, error)
+                    report_query(label, "timeout", 0, error, meta=dict(startedAt="", finishedAt="", truncated=False))
                 return
-            label, rows, status, duration, error = run_one(readers[0], spec)
+            label, rows, status, duration, error, meta = run_one(readers[0], spec)
             results[label] = rows
-            report_query(label, status, duration, error)
+            report_query(label, status, duration, error, meta=meta)
 
     # The config contains physical names already validated against the reviewed
     # ontology.  SQL is assembled only from those names and fixed templates.
@@ -809,8 +910,16 @@ def collect(period, measurement_date=None, database=None, config=None, progress=
     else:
         query_status["客户"] = "unavailable"
         query_catalog.append(dict(
+            executionId=uuid.uuid4().hex,
             label="客户", sql="", params=[], status="unavailable",
-            durationSeconds=0.0, rowCount=0,
+            durationSeconds=0.0, durationMs=0, startedAt="", finishedAt="",
+            rowCount=0, truncated=False,
+            resultHash=hashlib.sha256(b"[]").hexdigest(),
+            columns=[], sampleRows=[], sampleRowCount=0,
+            sampleTruncated=False, sampleLimit=_query_sample_limit(),
+            database=db_source["database"], schema=db_source["schema"],
+            host=db_source["host"], port=db_source["port"],
+            source=db_source["source"], aggregation=_QUERY_AGGREGATION_NOTES.get("客户", ""),
             reason=f"战略客户名单未配置：{strategic_reason}",
         ))
     total_queries = len(specs)

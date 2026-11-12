@@ -314,6 +314,24 @@ export function useInsight(props, emit) {
     return expanded.value.includes(id)
   }
 
+  function durationText(query) {
+    const ms = Number(query?.durationMs ?? (Number(query?.durationSeconds || 0) * 1000))
+    if (!Number.isFinite(ms)) return '—'
+    return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`
+  }
+
+  function queryColumns(query) {
+    if (query?.columns && query.columns.length) return query.columns
+    const first = (query?.sampleRows || [])[0] || {}
+    return Object.keys(first)
+  }
+
+  function cellText(value) {
+    if (value === null || value === undefined || value === '') return '—'
+    if (typeof value === 'object') return JSON.stringify(value)
+    return String(value)
+  }
+
   return {
     result,
     bundle,
@@ -326,6 +344,9 @@ export function useInsight(props, emit) {
     ontologyTrace,
     riskAssessments,
     queryCatalog,
+    durationText,
+    queryColumns,
+    cellText,
     causes,
     recommendations,
     openRecommendations,
@@ -423,10 +444,39 @@ export function createStageRiskComponent(options = {}) {
                     <div v-if="traces[finding.id].advice.length" class="stage-risk-analysis__trace-line">建议：{{ traces[finding.id].advice.join('；') }}</div>
                     <template v-if="traces[finding.id].sql.length">
                       <div class="stage-risk-analysis__trace-title">取数 SQL</div>
-                      <details v-for="query in traces[finding.id].sql" :key="query.label" class="stage-risk-analysis__trace-query">
-                        <summary>{{ query.label }} · {{ query.status }} · {{ query.rowCount }} 行</summary>
+                      <details v-for="query in traces[finding.id].sql" :key="query.executionId || query.label" class="stage-risk-analysis__trace-query">
+                        <summary>{{ query.label }} · {{ query.status }} · {{ query.rowCount }} 行 · {{ durationText(query) }}</summary>
+                        <div class="stage-risk-analysis__trace-meta">
+                          <span>执行ID：{{ query.executionId || '—' }}</span>
+                          <span>执行时间：{{ query.startedAt || '—' }}</span>
+                          <span>耗时：{{ durationText(query) }}</span>
+                          <span>数据源：{{ query.source || 'customer PostgreSQL' }} · {{ query.database || '—' }} / {{ query.schema || '—' }}<template v-if="query.host"> @ {{ query.host }}<template v-if="query.port">:{{ query.port }}</template></template></span>
+                          <span>结果指纹：{{ (query.resultHash || '').slice(0,16) || '—' }}</span>
+                          <span v-if="query.truncated">结果被截断（命中行数上限）</span>
+                          <span v-else>未截断</span>
+                        </div>
                         <pre>{{ query.sql }}</pre>
                         <div v-if="query.params && query.params.length" class="stage-risk-analysis__trace-params">参数：{{ JSON.stringify(query.params) }}</div>
+                        <div v-if="query.aggregation" class="stage-risk-analysis__trace-note">汇总口径：{{ query.aggregation }}</div>
+                        <div v-if="query.sampleRows && query.sampleRows.length" class="stage-risk-analysis__trace-sample">
+                          <div class="stage-risk-analysis__trace-sample-head">
+                            返回数据（{{ query.sampleRowCount }} / {{ query.rowCount }} 行<template v-if="query.sampleTruncated">，仅保存前 {{ query.sampleLimit }} 行</template>）
+                          </div>
+                          <div class="stage-risk-analysis__trace-table-wrap">
+                            <table class="stage-risk-analysis__trace-table">
+                              <thead><tr><th v-for="col in queryColumns(query)" :key="col">{{ col }}</th></tr></thead>
+                              <tbody>
+                                <tr v-for="(row, rowIndex) in query.sampleRows" :key="rowIndex">
+                                  <td v-for="col in queryColumns(query)" :key="col">{{ cellText(row[col]) }}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                        <div v-else-if="query.status === 'ok'" class="stage-risk-analysis__trace-note">该查询返回 0 行。</div>
+                        <div v-if="query.error" class="stage-risk-analysis__trace-note stage-risk-analysis__trace-note--error">
+                          错误：{{ query.error.code }}<template v-if="query.error.upstreamCode">（{{ query.error.upstreamCode }}）</template><template v-if="query.error.message"> · {{ query.error.message }}</template><template v-if="query.error.diagnosticId"> · 诊断ID {{ query.error.diagnosticId }}</template>
+                        </div>
                       </details>
                     </template>
                   </div>
@@ -459,10 +509,39 @@ export function createStageRiskComponent(options = {}) {
                     <div v-if="traces[dimension.id].advice.length" class="stage-risk-analysis__trace-line">建议：{{ traces[dimension.id].advice.join('；') }}</div>
                     <template v-if="traces[dimension.id].sql.length">
                       <div class="stage-risk-analysis__trace-title">取数 SQL</div>
-                      <details v-for="query in traces[dimension.id].sql" :key="query.label" class="stage-risk-analysis__trace-query">
-                        <summary>{{ query.label }} · {{ query.status }} · {{ query.rowCount }} 行</summary>
+                      <details v-for="query in traces[dimension.id].sql" :key="query.executionId || query.label" class="stage-risk-analysis__trace-query">
+                        <summary>{{ query.label }} · {{ query.status }} · {{ query.rowCount }} 行 · {{ durationText(query) }}</summary>
+                        <div class="stage-risk-analysis__trace-meta">
+                          <span>执行ID：{{ query.executionId || '—' }}</span>
+                          <span>执行时间：{{ query.startedAt || '—' }}</span>
+                          <span>耗时：{{ durationText(query) }}</span>
+                          <span>数据源：{{ query.source || 'customer PostgreSQL' }} · {{ query.database || '—' }} / {{ query.schema || '—' }}<template v-if="query.host"> @ {{ query.host }}<template v-if="query.port">:{{ query.port }}</template></template></span>
+                          <span>结果指纹：{{ (query.resultHash || '').slice(0,16) || '—' }}</span>
+                          <span v-if="query.truncated">结果被截断（命中行数上限）</span>
+                          <span v-else>未截断</span>
+                        </div>
                         <pre>{{ query.sql }}</pre>
                         <div v-if="query.params && query.params.length" class="stage-risk-analysis__trace-params">参数：{{ JSON.stringify(query.params) }}</div>
+                        <div v-if="query.aggregation" class="stage-risk-analysis__trace-note">汇总口径：{{ query.aggregation }}</div>
+                        <div v-if="query.sampleRows && query.sampleRows.length" class="stage-risk-analysis__trace-sample">
+                          <div class="stage-risk-analysis__trace-sample-head">
+                            返回数据（{{ query.sampleRowCount }} / {{ query.rowCount }} 行<template v-if="query.sampleTruncated">，仅保存前 {{ query.sampleLimit }} 行</template>）
+                          </div>
+                          <div class="stage-risk-analysis__trace-table-wrap">
+                            <table class="stage-risk-analysis__trace-table">
+                              <thead><tr><th v-for="col in queryColumns(query)" :key="col">{{ col }}</th></tr></thead>
+                              <tbody>
+                                <tr v-for="(row, rowIndex) in query.sampleRows" :key="rowIndex">
+                                  <td v-for="col in queryColumns(query)" :key="col">{{ cellText(row[col]) }}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                        <div v-else-if="query.status === 'ok'" class="stage-risk-analysis__trace-note">该查询返回 0 行。</div>
+                        <div v-if="query.error" class="stage-risk-analysis__trace-note stage-risk-analysis__trace-note--error">
+                          错误：{{ query.error.code }}<template v-if="query.error.upstreamCode">（{{ query.error.upstreamCode }}）</template><template v-if="query.error.message"> · {{ query.error.message }}</template><template v-if="query.error.diagnosticId"> · 诊断ID {{ query.error.diagnosticId }}</template>
+                        </div>
                       </details>
                     </template>
                   </div>

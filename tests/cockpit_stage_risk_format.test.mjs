@@ -40,4 +40,12 @@ test('shared stage risk component highlights text and keeps the display owner ro
   assert.match(css, /\.stage-risk-analysis__ontology\{/);
   assert.match(css, /\.stage-risk-analysis__trace-query pre\{/);
   assert.match(css, /\.stage-risk-analysis__num\{color:var\(--cockpit-primary\);font-weight:600\}/);
+  assert.match(shared, /durationText/);
+  assert.match(shared, /query\.executionId/);
+  assert.match(shared, /query\.resultHash/);
+  assert.match(shared, /query\.sampleRows/);
+  assert.match(shared, /汇总口径/);
+  assert.match(shared, /返回数据/);
+  assert.match(css, /\.stage-risk-analysis__trace-meta\{/);
+  assert.match(css, /\.stage-risk-analysis__trace-table\{/);
 });

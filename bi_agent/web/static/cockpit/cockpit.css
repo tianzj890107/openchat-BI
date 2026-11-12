@@ -68,6 +68,16 @@ body{overflow-x:hidden;background:var(--pro-bi-color-canvas-bg,#fff);color:#1f23
 .stage-risk-analysis__trace-query summary{width:max-content;max-width:100%;color:var(--cockpit-primary);cursor:pointer}
 .stage-risk-analysis__trace-query pre{margin:4px 0 0;padding:8px;border-radius:4px;background:var(--cockpit-background);font-size:11px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .stage-risk-analysis__trace-params{overflow-wrap:anywhere}
+.stage-risk-analysis__trace-meta{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0 2px;font-size:11px;color:var(--cockpit-text-help)}
+.stage-risk-analysis__trace-note{margin-top:6px;font-size:11px;line-height:1.6;color:var(--cockpit-text-help)}
+.stage-risk-analysis__trace-note--error{color:var(--cockpit-error)}
+.stage-risk-analysis__trace-sample{margin-top:8px}
+.stage-risk-analysis__trace-sample-head{margin-bottom:4px;font-size:11px;color:var(--cockpit-text-help)}
+.stage-risk-analysis__trace-table-wrap{max-height:280px;overflow:auto;border:1px solid var(--cockpit-divider);border-radius:4px;background:var(--cockpit-surface)}
+.stage-risk-analysis__trace-table{border-collapse:collapse;width:100%;font-size:11px;white-space:nowrap}
+.stage-risk-analysis__trace-table th{position:sticky;top:0;z-index:1;padding:4px 8px;background:var(--cockpit-background);text-align:left;font-weight:600;color:var(--cockpit-text);border-bottom:1px solid var(--cockpit-divider)}
+.stage-risk-analysis__trace-table td{padding:3px 8px;border-bottom:1px solid var(--cockpit-divider);color:var(--cockpit-text)}
+.stage-risk-analysis__trace-table tr:last-child td{border-bottom:none}
 .stage-risk-analysis__detail{margin-top:2px;color:var(--cockpit-text-help)}
 
 .cockpit-insight{margin:0;padding:14px 16px 12px;border:1px solid var(--pro-border-color-light,var(--cockpit-divider));border-radius:8px;background:var(--cockpit-surface);color:var(--pro-text-color-primary,var(--cockpit-text-secondary));box-sizing:border-box}

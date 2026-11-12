@@ -1219,3 +1219,60 @@ def test_model_summary_rejects_rule_language_and_falls_back_to_business_facts():
     assert 'RK01' not in summary
     assert summary == value['result']['businessSummary']
     assert value['result']['modelAssessment']['summaryFallbackUsed'] is True
+
+
+def test_query_catalog_keeps_execution_record_and_result_snapshot():
+    class RowResult:
+        truncated = False
+        rows = [dict(account_id='A1', amount_yuan=1_000_000_000, energy_kwh=2_000_000)]
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', database='ywln_gov',
+                                 host='127.0.0.1', port=5432,
+                                 statement_timeout_ms=1000)
+
+        def run(self, sql, params, timeout_ms=0):
+            return RowResult()
+
+    card = build_card('2026', database=Database(), measurement_date='2026-11-11',
+                      text_interpreter=None)
+    catalog = card['result']['queryCatalog']
+    assert len(catalog) == 9
+    for item in catalog:
+        assert item['executionId'] and len(item['executionId']) == 32
+        assert item['startedAt'] and item['finishedAt']
+        assert item['durationMs'] >= 0
+        assert item['resultHash'] and len(item['resultHash']) == 64
+        assert item['database'] == 'ywln_gov' and item['schema'] == 'ded_public'
+        assert isinstance(item['sampleRows'], list)
+        assert isinstance(item['truncated'], bool)
+    target = next(item for item in catalog if item['label'] == '销售目标')
+    assert target['sampleRowCount'] == 1
+    assert target['sampleTruncated'] is False
+    assert target['sampleRows'][0]['account_id'] == 'A1'
+    assert target['aggregation']
+
+
+def test_query_catalog_sample_rows_are_capped_and_flagged():
+    class RowResult:
+        truncated = True
+        rows = [dict(idx=index) for index in range(150)]
+
+    class Database:
+        available = True
+        config = SimpleNamespace(schema='ded_public', database='ywln_gov',
+                                 host='127.0.0.1', port=5432,
+                                 statement_timeout_ms=1000)
+
+        def run(self, sql, params, timeout_ms=0):
+            return RowResult()
+
+    card = build_card('2026', database=Database(), measurement_date='2026-11-11',
+                      text_interpreter=None)
+    item = next(q for q in card['result']['queryCatalog'] if q['label'] == '销售目标')
+    assert item['truncated'] is True
+    assert item['rowCount'] == 150
+    assert item['sampleRowCount'] == item['sampleLimit']
+    assert item['sampleTruncated'] is True
+    assert len(item['sampleRows']) == item['sampleLimit']
