@@ -143,7 +143,7 @@ export function useInsight(props, emit) {
 
   function ontologyName(code) {
     const trace = result.value?.ontologyTrace || {}
-    for (const section of ['metrics', 'risks', 'causes', 'advice']) {
+    for (const section of ['metrics', 'risks', 'causes', 'advice', 'rules']) {
       const found = (trace[section] || []).find(item => item.code === code)
       if (found) return found.name
     }
@@ -188,18 +188,29 @@ export function useInsight(props, emit) {
     }
     const rules = []
     const metrics = new Set()
+    const ruleOntology = new Set()
+    const metricCodes = new Set((trace.metrics || []).map(item => item.code))
     for (const code of riskCodes) {
       const assessment = riskAssessments.value[code]
       if (!assessment) continue
+      const ruleSpec = (trace.rules || []).find(item => item.code === assessment.rule)
       rules.push({
-        code, name: assessment.name || '', rule: assessment.rule || '',
+        code, name: assessment.name || '',
+        ruleCode: assessment.rule || '',
+        ruleName: ruleSpec?.name || '',
+        ruleDescription: ruleSpec?.description || '',
+        ruleTrigger: ruleSpec?.trigger || '',
         condition: assessment.condition || '', status: assessment.ruleStatus || '',
       })
-      for (const metric of assessment.metricCodes || []) metrics.add(metric)
+      if (assessment.rule) ruleOntology.add(assessment.rule)
+      for (const metric of assessment.metricCodes || []) {
+        if (metricCodes.has(metric)) metrics.add(metric)
+      }
     }
     return {
       rules,
       risks: riskCodes.map(ontologyLabel),
+      rulesOntology: [...ruleOntology].map(ontologyLabel),
       causes: [...causes].filter(code => shownCauses.has(code)).map(ontologyLabel),
       advice: [...advice].map(ontologyLabel),
       metrics: [...metrics].map(ontologyLabel),
@@ -402,10 +413,11 @@ export function createStageRiskComponent(options = {}) {
                   <div class="stage-risk-analysis__trace-body">
                     <div class="stage-risk-analysis__trace-title">识别的规则</div>
                     <div v-for="rule in traces[finding.id].rules" :key="rule.code" class="stage-risk-analysis__trace-line">
-                      {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.rule"> · 规则：{{ rule.rule }}</template><template v-if="rule.condition"> · 条件：{{ rule.condition }}</template>
+                      {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.ruleCode"> · 规则：{{ rule.ruleCode }} {{ rule.ruleName }}</template><template v-if="rule.ruleDescription"> · {{ rule.ruleDescription }}</template><template v-if="rule.ruleTrigger"> · 触发：{{ rule.ruleTrigger }}</template><template v-if="rule.condition"> · 成立条件：{{ rule.condition }}</template>
                     </div>
                     <div class="stage-risk-analysis__trace-title">命中的本体</div>
                     <div class="stage-risk-analysis__trace-line">风险：{{ traces[finding.id].risks.join('；') || '—' }}</div>
+                    <div v-if="traces[finding.id].rulesOntology.length" class="stage-risk-analysis__trace-line">规则：{{ traces[finding.id].rulesOntology.join('；') }}</div>
                     <div v-if="traces[finding.id].causes.length" class="stage-risk-analysis__trace-line">原因：{{ traces[finding.id].causes.join('；') }}</div>
                     <div v-if="traces[finding.id].metrics.length" class="stage-risk-analysis__trace-line">指标：{{ traces[finding.id].metrics.join('；') }}</div>
                     <div v-if="traces[finding.id].advice.length" class="stage-risk-analysis__trace-line">建议：{{ traces[finding.id].advice.join('；') }}</div>
@@ -437,10 +449,11 @@ export function createStageRiskComponent(options = {}) {
                   <div class="stage-risk-analysis__trace-body">
                     <div class="stage-risk-analysis__trace-title">识别的规则</div>
                     <div v-for="rule in traces[dimension.id].rules" :key="rule.code" class="stage-risk-analysis__trace-line">
-                      {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.rule"> · 规则：{{ rule.rule }}</template><template v-if="rule.condition"> · 条件：{{ rule.condition }}</template>
+                      {{ rule.code }} {{ rule.name }} · {{ rule.status }}<template v-if="rule.ruleCode"> · 规则：{{ rule.ruleCode }} {{ rule.ruleName }}</template><template v-if="rule.ruleDescription"> · {{ rule.ruleDescription }}</template><template v-if="rule.ruleTrigger"> · 触发：{{ rule.ruleTrigger }}</template><template v-if="rule.condition"> · 成立条件：{{ rule.condition }}</template>
                     </div>
                     <div class="stage-risk-analysis__trace-title">命中的本体</div>
                     <div class="stage-risk-analysis__trace-line">风险：{{ traces[dimension.id].risks.join('；') || '—' }}</div>
+                    <div v-if="traces[dimension.id].rulesOntology.length" class="stage-risk-analysis__trace-line">规则：{{ traces[dimension.id].rulesOntology.join('；') }}</div>
                     <div v-if="traces[dimension.id].causes.length" class="stage-risk-analysis__trace-line">原因：{{ traces[dimension.id].causes.join('；') }}</div>
                     <div v-if="traces[dimension.id].metrics.length" class="stage-risk-analysis__trace-line">指标：{{ traces[dimension.id].metrics.join('；') }}</div>
                     <div v-if="traces[dimension.id].advice.length" class="stage-risk-analysis__trace-line">建议：{{ traces[dimension.id].advice.join('；') }}</div>

@@ -32,6 +32,9 @@ test('shared stage risk component highlights text and keeps the display owner ro
   assert.match(shared, /识别的规则/);
   assert.match(shared, /命中的本体/);
   assert.match(shared, /取数 SQL/);
+  assert.match(shared, /ruleName/);
+  assert.match(shared, /rulesOntology/);
+  assert.match(shared, /成立条件/);
   assert.match(css, /\.stage-risk-analysis__owner\{/);
   assert.match(css, /\.stage-risk-analysis__owner\{[^}]*color:var\(--cockpit-primary\)/);
   assert.match(css, /\.stage-risk-analysis__ontology\{/);

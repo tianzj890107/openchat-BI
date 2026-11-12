@@ -1051,11 +1051,13 @@ def _program_risk_assessment(candidate):
         code=candidate.get("code") or "",
         name=candidate.get("name") or "",
         rule=candidate.get("rule") or "",
+        condition=candidate.get("condition") or "",
         ruleStatus=status,
         include=status == "triggered",
         classification=classification,
         title=candidate.get("title") or candidate.get("name") or "",
         description=candidate.get("description") or candidate.get("ontologyDescription") or "",
+        metricCodes=candidate.get("metricCodes") or [],
         evidenceIds=evidence_ids,
         supportingEvidenceIds=evidence_ids,
         opposingEvidenceIds=[],
@@ -2655,10 +2657,13 @@ def apply_text_interpretation(evaluated, interpreter=None):
                 opposing_ids = fallback["opposingEvidenceIds"]
             risk_assessments.append(dict(
                 code=code, name=candidate.get("name") or code,
-                rule=candidate.get("rule") or "", ruleStatus=candidate.get("ruleStatus") or "",
+                rule=candidate.get("rule") or "",
+                condition=candidate.get("condition") or "",
+                ruleStatus=candidate.get("ruleStatus") or "",
                 include=include, classification=classification,
                 title=candidate.get("title") or code,
                 description=description,
+                metricCodes=candidate.get("metricCodes") or [],
                 evidenceIds=evidence_ids[:20],
                 supportingEvidenceIds=evidence_ids[:20],
                 opposingEvidenceIds=(opposing_ids or [])[:20],
@@ -2887,11 +2892,14 @@ def _advice_action_type(code, template, linked_causes):
 
 def _ontology_trace(config):
     """Expose the full ontology set used by this card for display and audit."""
-    def entries(section):
+    def entries(section, extra=()):
         values = []
         for code, item in (config.get(section) or {}).items():
             name = _text((item or {}).get("name")) or _text((item or {}).get("title")) or code
-            values.append(dict(code=code, name=name))
+            value = dict(code=code, name=name)
+            for key in extra:
+                value[key] = _text((item or {}).get(key))
+            values.append(value)
         return values
 
     return dict(
@@ -2903,6 +2911,7 @@ def _ontology_trace(config):
         risks=entries("risks"),
         causes=entries("causes"),
         advice=entries("advice"),
+        rules=entries("rules", ("description", "trigger", "result")),
     )
 
 

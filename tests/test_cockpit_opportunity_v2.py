@@ -73,20 +73,26 @@ def test_result_exposes_the_full_ontology_trace():
     assert len(trace['risks']) == 10
     assert len(trace['causes']) == 9
     assert len(trace['advice']) == 12
+    assert len(trace['rules']) == 31
     assert trace['risks'][0]['code'] == 'RK01' and trace['risks'][0]['name']
     assert trace['links']['RK07'] == {'risk': 'RK07', 'causes': ['RC09'],
                                       'advice': ['AC02', 'AC03']}
+    br_a07 = next(item for item in trace['rules'] if item['code'] == 'BR-A07')
+    assert br_a07['name'] and br_a07['description'] and br_a07['trigger']
 
 
 def test_result_exposes_rule_assessments_and_query_sql_for_evidence_details():
-    data = _data()
+    opportunity = _opportunity()
+    data = _data(opportunities=[opportunity], allOpportunities=[deepcopy(opportunity)],
+                 accounts=[dict(id='account-1', name='战略客户A', level='1', tier='strategic')])
     data['queryCatalog'] = [dict(label='销售目标', sql='SELECT 1', params=[2026],
                                  status='ok', durationSeconds=0.01, rowCount=1)]
     value = evaluate(data)
     assessments = value['result']['riskAssessments']
     assert len(assessments) == 10
-    assert assessments[0]['code'] == 'RK01'
-    assert assessments[0]['rule'] and assessments[0]['ruleStatus']
+    triggered = next(item for item in assessments if item['ruleStatus'] == 'triggered')
+    assert triggered['rule'] and triggered['condition']
+    assert triggered['metricCodes']
     assert value['result']['queryCatalog'] == data['queryCatalog']
 
 
